@@ -356,6 +356,21 @@ func (ac *AppController) CheckFiles() {
 	CheckFilesUtil(ac)
 }
 
+// CheckLinuxCapabilities checks Linux capabilities and shows a suggestion if needed
+func CheckLinuxCapabilities(ac *AppController) {
+	if suggestion := platform.CheckAndSuggestCapabilities(ac.SingboxPath); suggestion != "" {
+		log.Printf("CheckLinuxCapabilities: %s", suggestion)
+		// Show info dialog (not error) - capabilities can be set later
+		fyne.Do(func() {
+			dialog.ShowInformation(
+				"Linux Capabilities",
+				suggestion,
+				ac.MainWindow,
+			)
+		})
+	}
+}
+
 // Set sets the new value for the 'running' state and triggers a UI update.
 func (r *RunningState) Set(value bool) {
 	r.Lock()
@@ -452,6 +467,13 @@ func StartSingBoxProcess(ac *AppController) {
 
 	ac.CmdMutex.Lock()
 	defer ac.CmdMutex.Unlock()
+
+	// Check capabilities on Linux before starting
+	if suggestion := platform.CheckAndSuggestCapabilities(ac.SingboxPath); suggestion != "" {
+		log.Printf("startSingBox: Capabilities check failed: %s", suggestion)
+		ac.ShowErrorDialog(fmt.Errorf("Linux capabilities required\n\n%s", suggestion))
+		return
+	}
 
 	log.Println("startSingBox: Starting Sing-Box...")
 	ac.SingboxCmd = exec.Command(ac.SingboxPath, "run", "-c", filepath.Base(ac.ConfigPath))

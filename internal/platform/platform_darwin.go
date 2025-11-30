@@ -69,3 +69,8 @@ func GetBuildFlags() string {
 	return ""
 }
 
+// CheckAndSuggestCapabilities is a no-op on macOS (capabilities not needed)
+func CheckAndSuggestCapabilities(singboxPath string) string {
+	return "" // Capabilities are Linux-specific, not needed on macOS
+}
+

@@ -71,3 +71,8 @@ func GetBuildFlags() string {
 	return "-H windowsgui"
 }
 
+// CheckAndSuggestCapabilities is a no-op on Windows (capabilities not needed)
+func CheckAndSuggestCapabilities(singboxPath string) string {
+	return "" // Capabilities are Windows-specific, not needed here
+}
+

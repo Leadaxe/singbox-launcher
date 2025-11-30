@@ -92,6 +92,9 @@ func main() {
 	// Check if config.json exists and show a warning if it doesn't
 	core.CheckConfigFileExists(controller)
 
+	// Check Linux capabilities and suggest setup if needed
+	core.CheckLinuxCapabilities(controller)
+
 	// Check if sing-box is running on startup and show a warning if it is.
 	core.CheckIfSingBoxRunningAtStartUtil(controller)
 
