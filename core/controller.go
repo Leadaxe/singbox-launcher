@@ -506,12 +506,21 @@ func StartSingBoxProcess(ac *AppController) {
 
 // MonitorSingBoxProcess monitors the sing-box process.
 func MonitorSingBoxProcess(ac *AppController, cmdToMonitor *exec.Cmd) {
+	// Store the PID we're monitoring to avoid conflicts with restarted processes
+	monitoredPID := cmdToMonitor.Process.Pid
+	
 	// Wait for process completion - no timeout for long-running processes
 	// The process should run until it exits or is stopped by user
 	err := cmdToMonitor.Wait()
 
 	ac.CmdMutex.Lock()
 	defer ac.CmdMutex.Unlock()
+
+	// Check if this monitor is still valid (process might have been restarted)
+	if ac.SingboxCmd == nil || ac.SingboxCmd.Process == nil || ac.SingboxCmd.Process.Pid != monitoredPID {
+		log.Printf("monitorSingBox: Process was restarted (PID changed from %d). This monitor is obsolete. Exiting.", monitoredPID)
+		return
+	}
 
 	if ac.StoppedByUser {
 		log.Println("monitorSingBox: Sing-Box exited as requested by user.")
