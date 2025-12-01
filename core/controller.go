@@ -35,7 +35,6 @@ import (
 	restartDelay            = 2 * time.Second
 	stabilityThreshold      = 180 * time.Second
 	gracefulShutdownTimeout = 2 * time.Second
-	processWaitTimeout      = 30 * time.Second // Timeout for process.Wait() to prevent hanging
 	maxLogFileSize          = 10 * 1024 * 1024 // 10 MB - maximum log file size before rotation
 )
 
@@ -507,24 +506,9 @@ func StartSingBoxProcess(ac *AppController) {
 
 // MonitorSingBoxProcess monitors the sing-box process.
 func MonitorSingBoxProcess(ac *AppController, cmdToMonitor *exec.Cmd) {
-	// Use a channel to wait for process completion with timeout
-	waitDone := make(chan error, 1)
-	go func() {
-		waitDone <- cmdToMonitor.Wait()
-	}()
-
-	var err error
-	select {
-	case err = <-waitDone:
-		// Process completed normally
-	case <-time.After(processWaitTimeout):
-		// Process wait timed out - likely a zombie process
-		log.Printf("monitorSingBox: Process wait timed out after %v. Process may be a zombie. Forcing kill.", processWaitTimeout)
-		if cmdToMonitor.Process != nil {
-			_ = cmdToMonitor.Process.Kill()
-		}
-		err = fmt.Errorf("process wait timed out after %v", processWaitTimeout)
-	}
+	// Wait for process completion - no timeout for long-running processes
+	// The process should run until it exits or is stopped by user
+	err := cmdToMonitor.Wait()
 
 	ac.CmdMutex.Lock()
 	defer ac.CmdMutex.Unlock()
