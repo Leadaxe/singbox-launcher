@@ -509,8 +509,11 @@ func createTemplateTab(state *WizardState) fyne.CanvasObject {
 		widget.NewLabel("Selectable rules"),
 		rulesScroll,
 		widget.NewSeparator(),
-		widget.NewLabel("Final outbound"),
-		container.NewHBox(finalSelect, layout.NewSpacer()),
+		container.NewHBox(
+			widget.NewLabel("Final outbound:"),
+			finalSelect,
+			layout.NewSpacer(),
+		),
 	)
 }
 
@@ -1193,6 +1196,7 @@ func (state *WizardState) initializeTemplateState() {
 			state.SelectableRuleStates = append(state.SelectableRuleStates, &SelectableRuleState{
 				Rule:             rule,
 				SelectedOutbound: outbound,
+				Enabled:          rule.IsDefault, // Enable rule if @default directive is present
 			})
 		}
 	} else {

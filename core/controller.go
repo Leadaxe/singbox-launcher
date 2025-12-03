@@ -727,6 +727,10 @@ func MonitorSingBoxProcess(ac *AppController, cmdToMonitor *exec.Cmd) {
 			if ac.RunningState.IsRunning() && ac.ConsecutiveCrashAttempts == currentAttemptCount {
 				log.Printf("monitorSingBox: Process has been stable for %v. Resetting crash counter from %d to 0.", stabilityThreshold, ac.ConsecutiveCrashAttempts)
 				ac.ConsecutiveCrashAttempts = 0
+				// Обновляем UI, чтобы счетчик исчез из статуса на вкладке Core
+				if ac.UpdateCoreStatusFunc != nil {
+					ac.UpdateCoreStatusFunc()
+				}
 			} else {
 				log.Printf("monitorSingBox: Stability timer expired, but conditions for reset not met (running: %v, current attempts: %d, attempts at timer start: %d).", ac.RunningState.IsRunning(), ac.ConsecutiveCrashAttempts, currentAttemptCount)
 			}

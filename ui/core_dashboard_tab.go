@@ -89,7 +89,8 @@ func CreateCoreDashboardTab(ac *core.AppController) fyne.CanvasObject {
 
 	// Горизонтальная линия и кнопка Exit в конце списка
 	exitButton := widget.NewButton("Exit", ac.GracefulExit)
-	// Кнопка Exit в отдельной строке
+	// Кнопка Exit в отдельной строке с отступом вниз
+	contentItems = append(contentItems, widget.NewLabel("")) // Отступ
 	contentItems = append(contentItems, container.NewCenter(exitButton))
 
 	content := container.NewVBox(contentItems...)

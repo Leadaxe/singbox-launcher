@@ -36,6 +36,7 @@ type TemplateSelectableRule struct {
 	Raw             map[string]interface{}
 	DefaultOutbound string
 	HasOutbound     bool // true if rule has "outbound" field that can be selected
+	IsDefault       bool // true if rule should be enabled by default
 }
 
 func loadTemplateData(execDir string) (*TemplateData, error) {
@@ -202,8 +203,8 @@ func parseSelectableRules(blocks []string) ([]TemplateSelectableRule, error) {
 			continue
 		}
 
-		label, description, cleanedBlock := extractRuleMetadata(rawBlock, i+1)
-		tplLog(debuglog.LevelVerbose, "parseSelectableRules: block %d label='%s', description='%s'", i+1, label, description)
+		label, description, isDefault, cleanedBlock := extractRuleMetadata(rawBlock, i+1)
+		tplLog(debuglog.LevelVerbose, "parseSelectableRules: block %d label='%s', description='%s', isDefault=%v", i+1, label, description, isDefault)
 		tplLog(debuglog.LevelTrace, "parseSelectableRules: block %d cleaned body (first 200 chars): %s", i+1, truncateString(cleanedBlock, 200))
 
 		if cleanedBlock == "" {
@@ -234,6 +235,7 @@ func parseSelectableRules(blocks []string) ([]TemplateSelectableRule, error) {
 				Raw:         make(map[string]interface{}),
 				Label:       label,
 				Description: description,
+				IsDefault:   isDefault,
 			}
 
 			for key, value := range item {
@@ -267,15 +269,17 @@ func parseSelectableRules(blocks []string) ([]TemplateSelectableRule, error) {
 	return rules, nil
 }
 
-func extractRuleMetadata(block string, blockIndex int) (string, string, string) {
+func extractRuleMetadata(block string, blockIndex int) (string, string, bool, string) {
 	const (
-		labelDirective = "@label"
-		descDirective  = "@description"
+		labelDirective   = "@label"
+		descDirective    = "@description"
+		defaultDirective = "@default"
 	)
 
 	var builder strings.Builder
 	var label string
 	var description string
+	var isDefault bool
 
 	lines := strings.Split(block, "\n")
 	for lineIdx, line := range lines {
@@ -295,6 +299,10 @@ func extractRuleMetadata(block string, blockIndex int) (string, string, string) 
 				tplLog(debuglog.LevelTrace, "parseSelectableRules: block %d line %d description parsed: %s", blockIndex, lineIdx+1, value)
 			}
 			continue
+		case strings.HasPrefix(trimmed, defaultDirective):
+			isDefault = true
+			tplLog(debuglog.LevelTrace, "parseSelectableRules: block %d line %d @default directive found", blockIndex, lineIdx+1)
+			continue
 		default:
 			builder.WriteString(line)
 			builder.WriteString("\n")
@@ -303,7 +311,7 @@ func extractRuleMetadata(block string, blockIndex int) (string, string, string) 
 
 	cleaned := strings.TrimSpace(builder.String())
 	tplLog(debuglog.LevelTrace, "parseSelectableRules: block %d body length after removing directives: %d", blockIndex, len(cleaned))
-	return label, description, cleaned
+	return label, description, isDefault, cleaned
 }
 
 func normalizeRuleJSON(body string, blockIndex int) (string, error) {

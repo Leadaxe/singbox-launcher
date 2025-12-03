@@ -142,13 +142,15 @@
   */
   /**   @SelectableRule
         @label BitTorrent direct
+        @default
         @description Route BitTorrent traffic directly to avoid VPN throttling.
         { "protocol": ["bittorrent"], "outbound": "direct-out" },
   */
   /**   @SelectableRule
-        @label 2ip.io direct test
-        @description Direct route for 2ip.io to check local IP.
-        { "domain": ["2ip.io"], "outbound": "direct-out" },
+        @label 2ip.io for VPN IP test
+        @default
+        @description Direct route for 2ip.io to check VPN IP.
+        { "domain": ["2ip.io"], "outbound": "proxy-out" },
   */
   /**   @SelectableRule
         @label 2ip.me via proxy
@@ -156,14 +158,10 @@
         { "domain": ["2ip.me"], "outbound": "proxy-out" },
   */
   /**   @SelectableRule
-        @label 2ip.ru Russian route
-        @description Route 2ip.ru via Russian VPN group.
+        @label 2ip.ru your direct ip test
+        @default
+        @description Direct route for 2ip.ru to check your IP.
         { "domain": ["2ip.ru"], "outbound": "direct-out" },
-  */
-  /**   @SelectableRule
-        @label Games direct
-        @description Send gaming rule set traffic directly for lower latency.
-        { "rule_set": "games", "network": ["tcp", "udp"], "outbound": "direct-out" },
   */
   /**   @SelectableRule
         @label Gemini via Gemini VPN
@@ -172,11 +170,19 @@
   */
   /**   @SelectableRule
         @label Messengers via proxy
+        @default
         @description Send messenger traffic through proxy selector.
         { "rule_set": "messengers", "network": ["tcp", "udp"], "outbound": "proxy-out" },
   */
   /**   @SelectableRule
+        @label Games direct
+        @default
+        @description Send gaming rule set traffic directly for lower latency.
+        { "rule_set": "games", "network": ["tcp", "udp"], "outbound": "direct-out" },
+  */
+  /**   @SelectableRule
         @label Gaming ports direct
+        @default
         @description Keep popular gaming ports and Steam ranges outside VPN.
         {
           "port": [3659, 1935, 5001, 5795, 5796, 7000, 7777, 9000, 10039, 10040],
@@ -187,6 +193,7 @@
   */
   /**   @SelectableRule
         @label stop HTTP/3
+        @default
         @description QUIC does not support UDP traffic proxying. Therefore, we stop HTTP/3. This may block QUIC traffic (used by Google, YouTube, Cloudflare, etc.), which may potentially reduce speed or availability for these services.
         { "action": "reject", "method": "drop", "network": ["udp"], "port": [443] },
   */
