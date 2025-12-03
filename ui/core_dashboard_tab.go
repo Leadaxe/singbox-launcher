@@ -394,18 +394,22 @@ func (tab *CoreDashboardTab) updateRunningStatus() {
 		if buttonState.StartEnabled {
 			tab.startButton.Enable()
 			tab.startButton.Importance = widget.HighImportance // Синяя кнопка, когда доступна
+			tab.startButton.Refresh()
 		} else {
 			tab.startButton.Disable()
 			tab.startButton.Importance = widget.MediumImportance // Обычная, когда недоступна
+			tab.startButton.Refresh()
 		}
 	}
 	if tab.stopButton != nil {
 		if buttonState.StopEnabled {
 			tab.stopButton.Enable()
 			tab.stopButton.Importance = widget.HighImportance // Синяя кнопка, когда доступна
+			tab.stopButton.Refresh()
 		} else {
 			tab.stopButton.Disable()
 			tab.stopButton.Importance = widget.MediumImportance // Обычная, когда недоступна
+			tab.stopButton.Refresh()
 		}
 	}
 }

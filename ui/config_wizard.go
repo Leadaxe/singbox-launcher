@@ -12,6 +12,8 @@ import (
 
 	"image/color"
 
+	"github.com/muhammadmuzzammil1998/jsonc"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
@@ -56,6 +58,7 @@ type WizardState struct {
 
 	// Navigation buttons
 	CloseButton      *widget.Button
+	PrevButton       *widget.Button
 	NextButton       *widget.Button
 	SaveButton       *widget.Button
 	ButtonsContainer fyne.CanvasObject
@@ -143,6 +146,14 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 	})
 	state.CloseButton.Importance = widget.HighImportance
 
+	state.PrevButton = widget.NewButton("Prev", func() {
+		if currentTabIndex > 0 {
+			currentTabIndex--
+			tabs.SelectTab(tabs.Items[currentTabIndex])
+		}
+	})
+	state.PrevButton.Importance = widget.HighImportance
+
 	state.NextButton = widget.NewButton("Next", func() {
 		if currentTabIndex < len(tabs.Items)-1 {
 			currentTabIndex++
@@ -178,6 +189,7 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 			dialog.ShowError(err, state.Window)
 		} else {
 			dialog.ShowInformation("Config Saved", fmt.Sprintf("Config written to %s", path), state.Window)
+			state.Window.Close()
 		}
 	})
 	state.SaveButton.Importance = widget.HighImportance
@@ -188,20 +200,29 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 	// Функция обновления кнопок в зависимости от вкладки
 	updateNavigationButtons := func() {
 		totalTabs := len(tabs.Items)
-		
+
 		var buttonsContent fyne.CanvasObject
 		if currentTabIndex == totalTabs-1 {
-			// Последняя вкладка (Preview): Close и Save
+			// Последняя вкладка (Preview): Close слева, Prev и Save справа
 			buttonsContent = container.NewHBox(
 				state.CloseButton,
 				layout.NewSpacer(),
+				state.PrevButton,
 				state.SaveButton,
 			)
-		} else {
-			// Первые вкладки: Close слева, Next справа
+		} else if currentTabIndex == 0 {
+			// Первая вкладка: Close слева, Next справа (Prev скрыта)
 			buttonsContent = container.NewHBox(
 				state.CloseButton,
 				layout.NewSpacer(),
+				state.NextButton,
+			)
+		} else {
+			// Средние вкладки: Close слева, Prev и Next справа
+			buttonsContent = container.NewHBox(
+				state.CloseButton,
+				layout.NewSpacer(),
+				state.PrevButton,
 				state.NextButton,
 			)
 		}
@@ -533,6 +554,13 @@ func createRulesScroll(state *WizardState, content fyne.CanvasObject) fyne.Canva
 }
 
 func (state *WizardState) saveConfigWithBackup(text string) (string, error) {
+	// Validate JSON before saving (support JSONC with comments)
+	jsonBytes := jsonc.ToJSON([]byte(text))
+	var testJSON interface{}
+	if err := json.Unmarshal(jsonBytes, &testJSON); err != nil {
+		return "", fmt.Errorf("invalid JSON: %w", err)
+	}
+
 	configPath := state.Controller.ConfigPath
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		return "", err
