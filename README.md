@@ -16,13 +16,13 @@ Cross-platform GUI launcher for [sing-box](https://github.com/SagerNet/sing-box)
 ### Core Dashboard
 ![Core Dashboard](https://github.com/user-attachments/assets/660d5f8d-6b2e-4dfa-ba6a-0c6906b383ee)
 
+### Clash API
+![Clash API Dashboard](https://github.com/user-attachments/assets/389e3c08-f92e-4ef1-bea1-39074b9b6eca)
+
+![Clash API in Tray](https://github.com/user-attachments/assets/9801820b-501c-4221-ba56-96f3442445b0)
+
 ### Config Wizard
-![Config Wizard - VLESS Sources & ParserConfig](https://github.com/user-attachments/assets/389e3c08-f92e-4ef1-bea1-39074b9b6eca)
-
-![Config Wizard - Rules Tab](https://github.com/user-attachments/assets/9801820b-501c-4221-ba56-96f3442445b0)
-
-### Preview & Clash API
-![Config Wizard Preview and Clash API](https://github.com/user-attachments/assets/07d290c1-cdab-4fd4-bd12-a39c77b3bd68)
+![Config Wizard](https://github.com/user-attachments/assets/07d290c1-cdab-4fd4-bd12-a39c77b3bd68)
 
 ## 🚀 Features
 
@@ -188,7 +188,7 @@ This launcher solves all of that. Everything is controlled from one clean GUI:
 
 #### "Clash API" Tab
 
-![Config Wizard Preview and Clash API](https://github.com/user-attachments/assets/07d290c1-cdab-4fd4-bd12-a39c77b3bd68)
+![Clash API Dashboard](https://github.com/user-attachments/assets/389e3c08-f92e-4ef1-bea1-39074b9b6eca)
 
 - **Test API Connection** - Test Clash API connection
 - **Load Proxies** - Load proxy list from selected group
@@ -201,7 +201,7 @@ This launcher solves all of that. Everything is controlled from one clean GUI:
 
 The Config Wizard provides a visual interface for configuring sing-box without manually editing JSON files.
 
-![Config Wizard - VLESS Sources & ParserConfig](https://github.com/user-attachments/assets/389e3c08-f92e-4ef1-bea1-39074b9b6eca)
+![Config Wizard](https://github.com/user-attachments/assets/07d290c1-cdab-4fd4-bd12-a39c77b3bd68)
 
 **Accessing the Wizard:**
 - Click the **"Wizard"** button (⚙️) in the **"Core"** tab
@@ -217,7 +217,7 @@ The Config Wizard provides a visual interface for configuring sing-box without m
 
 2. **Rules**
 
-![Config Wizard - Rules Tab](https://github.com/user-attachments/assets/9801820b-501c-4221-ba56-96f3442445b0)
+![Clash API in Tray](https://github.com/user-attachments/assets/9801820b-501c-4221-ba56-96f3442445b0)
 
    - Select routing rules from template
    - Configure outbound selectors for each rule
@@ -294,12 +294,24 @@ The `config_template.json` file provides a template for the Config Wizard and de
 
 - `/** @ParcerConfig ... */` - Default parser configuration block
 - `/** @SelectableRule ... */` - Defines a selectable routing rule
-  - `@label` - Display name for the rule
-  - `@description` - Description shown in info tooltip
-  - `@default` - Rule is enabled by default when wizard opens
+  - `@label` - Display name for the rule (shown in wizard)
+  - `@description` - Description shown in info tooltip (optional)
+  - `@default` - Rule is enabled by default when wizard opens (optional)
 - `/** @PARSER_OUTBOUNDS_BLOCK */` - Marker where generated outbounds are inserted
 
-**Example Rule:**
+**@SelectableRule Syntax:**
+
+The rule body is a JSON object that defines the routing rule. If the rule contains an `outbound` field, the wizard will show a dropdown selector for that rule.
+
+**Outbound Selection:**
+
+When a rule has an `outbound` field, the wizard provides a dropdown with the following options:
+
+1. **Generated outbounds** - All outbounds created from subscriptions (e.g., `proxy-out`, `🇳🇱Netherlands`, etc.)
+2. **`direct-out`** - Always available for direct connections (bypass proxy)
+3. **`reject`** - Always available for blocking traffic (converted to `"action": "reject", "method": "drop"` in config)
+
+**Example Rules:**
 
 ```json
 /** @SelectableRule
@@ -310,7 +322,55 @@ The `config_template.json` file provides a template for the Config Wizard and de
 */
 ```
 
+This rule has an `outbound` field, so the wizard will show a dropdown allowing you to select from available outbounds, `direct-out`, or `reject`.
+
+```json
+/** @SelectableRule
+    @label Games direct
+    @default
+    @description Send gaming rule set traffic directly for lower latency.
+    { "rule_set": "games", "network": ["tcp", "udp"], "outbound": "direct-out" },
+*/
+```
+
+This rule uses `direct-out` by default, but you can change it in the wizard to any other available outbound.
+
+```json
+/** @SelectableRule
+    @label Block ads
+    @description Block advertising domains.
+    { "rule_set": "ads", "outbound": "direct-out" },
+*/
+```
+
+This rule has an `outbound` field, so the wizard will show a dropdown. If you select `reject` from the dropdown in the wizard, it will be converted in the generated config to:
+```json
+{ "rule_set": "ads", "action": "reject", "method": "drop" }
+```
+
+**Important:** In the template, you cannot write `"outbound": "reject"` directly. The template must use a valid outbound tag (e.g., `"direct-out"` or any generated outbound). The `reject` option appears in the wizard's dropdown, and when selected, it automatically replaces the `outbound` field with `"action": "reject", "method": "drop"` in the final configuration.
+
+**Note:** Rules without an `outbound` field cannot be configured in the wizard - they are included as-is in the final configuration.
+
 If the template is missing, you can download it via the **"Download Config Template"** button in the **"Core"** tab.
+
+**Creating Custom Templates:**
+
+You can create your own `config_template.json` file to customize the rules available in the Config Wizard:
+
+1. **Start with the default template**: Download the default template using the **"Download Config Template"** button
+2. **Edit the template**: Modify `config_template.json` in the `bin/` folder
+3. **Add custom rules**: Use the `/** @SelectableRule ... */` syntax to add your own routing rules
+4. **Customize ParserConfig**: Modify the `/** @ParcerConfig ... */` block to set default subscription settings
+5. **Save and use**: The wizard will automatically use your custom template
+
+**Template Structure:**
+- Base configuration sections (log, dns, inbounds, route, etc.) are always included
+- Rules marked with `/** @SelectableRule ... */` appear in the wizard's Rules tab
+- The `/** @PARSER_OUTBOUNDS_BLOCK */` marker indicates where generated outbounds will be inserted
+- Rules with `@default` directive are enabled by default in the wizard
+
+**Note:** The template file must be valid JSONC (JSON with comments). The wizard validates the template before use.
 
 #### Enabling Clash API
 
