@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"image/color"
@@ -56,6 +57,10 @@ type WizardState struct {
 	SelectedFinalOutbound     string
 	previewNeedsParse         bool
 	autoParseInProgress       bool
+
+	// Debounce timer for template preview updates
+	previewUpdateTimer *time.Timer
+	previewUpdateMutex sync.Mutex
 
 	// Navigation buttons
 	CloseButton      *widget.Button
@@ -143,6 +148,24 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 
 	// Создаем кнопки навигации
 	state.CloseButton = widget.NewButton("Close", func() {
+		// Очищаем таймер обновления превью перед закрытием
+		state.previewUpdateMutex.Lock()
+		if state.previewUpdateTimer != nil {
+			state.previewUpdateTimer.Stop()
+			state.previewUpdateTimer = nil
+		}
+		state.previewUpdateMutex.Unlock()
+		wizardWindow.Close()
+	})
+
+	// Очищаем таймер при закрытии окна через X
+	wizardWindow.SetCloseIntercept(func() {
+		state.previewUpdateMutex.Lock()
+		if state.previewUpdateTimer != nil {
+			state.previewUpdateTimer.Stop()
+			state.previewUpdateTimer = nil
+		}
+		state.previewUpdateMutex.Unlock()
 		wizardWindow.Close()
 	})
 	state.CloseButton.Importance = widget.HighImportance
@@ -314,8 +337,20 @@ func createVLESSSourceTab(state *WizardState) fyne.CanvasObject {
 			return
 		}
 		state.previewNeedsParse = true
-		state.updateTemplatePreview()
 		state.refreshOutboundOptions()
+
+		// Debounce updateTemplatePreview - обновляем через 500ms после последнего изменения
+		// Это предотвращает 100% загрузку CPU при быстром вводе текста
+		state.previewUpdateMutex.Lock()
+		if state.previewUpdateTimer != nil {
+			state.previewUpdateTimer.Stop()
+		}
+		state.previewUpdateTimer = time.AfterFunc(500*time.Millisecond, func() {
+			fyne.Do(func() {
+				state.updateTemplatePreview()
+			})
+		})
+		state.previewUpdateMutex.Unlock()
 	}
 
 	// Создаем фиктивный Rectangle для установки высоты через container.NewMax
