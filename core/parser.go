@@ -618,7 +618,7 @@ func GenerateSelector(allNodes []*ParsedNode, outboundConfig OutboundConfig) (st
 	}
 	log.Printf("Parser: Selector '%s' will have %d unique outbounds", outboundConfig.Tag, len(outboundsList))
 
-	// Determine default
+	// Determine default - only if preferredDefault is specified in config
 	defaultTag := ""
 	if len(outboundConfig.Outbounds.PreferredDefault) > 0 {
 		// Find first node matching preferredDefault filter
@@ -630,11 +630,8 @@ func GenerateSelector(allNodes []*ParsedNode, outboundConfig OutboundConfig) (st
 			}
 		}
 	}
-
-	// If no preferredDefault match, use first node
-	if defaultTag == "" && len(filteredNodes) > 0 {
-		defaultTag = filteredNodes[0].Tag
-	}
+	// Note: We do NOT automatically set default to first node if preferredDefault is not specified
+	// This allows urltest/selector to work without a default value when preferredDefault is not configured
 
 	// Build selector JSON with correct field order
 	var parts []string
