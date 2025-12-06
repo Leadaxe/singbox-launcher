@@ -11,6 +11,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // DecodeSubscriptionContent decodes subscription content from base64 or returns plain text
@@ -92,13 +93,24 @@ func FetchSubscription(url string) ([]byte, error) {
 }
 
 // ParserConfig represents the configuration structure from @ParcerConfig block
+// Supports both version 1 (legacy) and version 2 (with parser settings)
 type ParserConfig struct {
-	Version      int `json:"version"`
+	// Version 1 structure (legacy support)
+	Version      int `json:"version,omitempty"`
 	ParserConfig struct {
-		Proxies   []ProxySource    `json:"proxies"`
-		Outbounds []OutboundConfig `json:"outbounds"`
+		// Version 2: version moved inside ParserConfig
+		Version   int                `json:"version,omitempty"`
+		Proxies   []ProxySource      `json:"proxies"`
+		Outbounds []OutboundConfig   `json:"outbounds"`
+		Parser    struct {
+			Reload      string `json:"reload,omitempty"`      // Интервал автоматического обновления
+			LastUpdated string `json:"last_updated,omitempty"` // Время последнего обновления (RFC3339, UTC)
+		} `json:"parser,omitempty"`
 	} `json:"ParserConfig"`
 }
+
+// ParserConfigVersion is the current version of ParserConfig format
+const ParserConfigVersion = 2
 
 // ProxySource represents a proxy subscription source
 type ProxySource struct {
@@ -145,9 +157,88 @@ func ExtractParcerConfig(configPath string) (*ParserConfig, error) {
 		return nil, fmt.Errorf("failed to parse @ParcerConfig JSON: %w", err)
 	}
 
-	log.Printf("ExtractParcerConfig: Successfully extracted @ParcerConfig with %d proxy sources and %d outbounds",
+	// Backward compatibility: if version is at top level (version 1), migrate to version 2
+	if parserConfig.Version > 0 && parserConfig.ParserConfig.Version == 0 {
+		log.Printf("ExtractParcerConfig: Detected version 1 format, migrating to version 2")
+		parserConfig.ParserConfig.Version = parserConfig.Version
+		parserConfig.Version = 0 // Clear top-level version
+	}
+
+	// If no version specified, set to current version
+	if parserConfig.ParserConfig.Version == 0 {
+		parserConfig.ParserConfig.Version = ParserConfigVersion
+		log.Printf("ExtractParcerConfig: No version specified, defaulting to version %d", ParserConfigVersion)
+	}
+
+	log.Printf("ExtractParcerConfig: Successfully extracted @ParcerConfig (version %d) with %d proxy sources and %d outbounds",
+		parserConfig.ParserConfig.Version,
 		len(parserConfig.ParserConfig.Proxies),
 		len(parserConfig.ParserConfig.Outbounds))
 
 	return &parserConfig, nil
+}
+
+// UpdateLastUpdatedInConfig updates the last_updated field in the @ParcerConfig block
+func UpdateLastUpdatedInConfig(configPath string, lastUpdated time.Time) error {
+	log.Printf("UpdateLastUpdatedInConfig: Updating last_updated to %s", lastUpdated.Format(time.RFC3339))
+
+	// Read config file
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	// Find the @ParcerConfig block using regex
+	pattern := regexp.MustCompile(`(/\*\*\s*@ParcerConfig\s*\n)([\s\S]*?)(\*/)`)
+	matches := pattern.FindSubmatch(data)
+
+	if len(matches) < 4 {
+		return fmt.Errorf("@ParcerConfig block not found in config.json")
+	}
+
+	// Extract the JSON content from the comment block
+	jsonContent := strings.TrimSpace(string(matches[2]))
+
+	// Parse the JSON
+	var parserConfig ParserConfig
+	if err := json.Unmarshal([]byte(jsonContent), &parserConfig); err != nil {
+		return fmt.Errorf("failed to parse @ParcerConfig JSON: %w", err)
+	}
+
+	// Backward compatibility: migrate version 1 to version 2 if needed
+	if parserConfig.Version > 0 && parserConfig.ParserConfig.Version == 0 {
+		parserConfig.ParserConfig.Version = parserConfig.Version
+		parserConfig.Version = 0
+	}
+
+	// Ensure version is set
+	if parserConfig.ParserConfig.Version == 0 {
+		parserConfig.ParserConfig.Version = ParserConfigVersion
+	}
+
+	// Update last_updated field (create parser object if it doesn't exist)
+	parserConfig.ParserConfig.Parser.LastUpdated = lastUpdated.Format(time.RFC3339)
+
+	// Serialize back to JSON with indentation
+	// Wrap ParserConfig in outer object for version 2 format
+	outerJSON := map[string]interface{}{
+		"ParserConfig": parserConfig.ParserConfig,
+	}
+	finalJSON, err := json.MarshalIndent(outerJSON, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal outer @ParcerConfig: %w", err)
+	}
+
+	newBlock := string(matches[1]) + string(finalJSON) + "\n" + string(matches[3])
+
+	// Replace the block in the file
+	newContent := pattern.ReplaceAll(data, []byte(newBlock))
+
+	// Write to file
+	if err := os.WriteFile(configPath, newContent, 0644); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	log.Printf("UpdateLastUpdatedInConfig: Successfully updated last_updated to %s", parserConfig.ParserConfig.Parser.LastUpdated)
+	return nil
 }

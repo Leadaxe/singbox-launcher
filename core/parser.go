@@ -33,101 +33,9 @@ func updateParserProgress(ac *AppController, progress float64, status string) {
 	}
 }
 
-// ParseSubscriptionContent parses subscription content and handles duplicate tags
-// Parameters:
-//   - content: raw subscription content (can be base64 encoded or plain text)
-//   - skipFilters: filters to skip certain nodes
-//   - logPrefix: prefix for log messages (e.g., "Parser" or "ConfigWizard")
-//   - sourceURL: URL of the subscription source (for better error logging, can be empty)
-//
-// Returns:
-//   - []*ParsedNode: list of parsed nodes with unique tags
-//   - map[string]int: tag counts for statistics (originalTag -> count)
-//   - map[string]string: reverse mapping (renamedTag -> originalTag) for performance
-//   - error: parsing error (if content is empty)
-func ParseSubscriptionContent(content []byte, skipFilters []map[string]string, logPrefix string, sourceURL string) ([]*ParsedNode, map[string]int, map[string]string, error) {
-	allNodes := make([]*ParsedNode, 0)
-	tagCounts := make(map[string]int)
-	tagReverseMap := make(map[string]string) // renamedTag -> originalTag for fast lookup
-
-	if logPrefix == "" {
-		logPrefix = "Parser"
-	}
-
-	// Check if content is empty (advanced check from parser)
-	if len(content) == 0 {
-		if sourceURL != "" {
-			return nil, nil, nil, fmt.Errorf("subscription content is empty from %s", sourceURL)
-		}
-		return nil, nil, nil, fmt.Errorf("subscription content is empty")
-	}
-
-	log.Printf("%s: Initializing tag deduplication tracker", logPrefix)
-
-	lines := strings.Split(string(content), "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		node, err := ParseNode(line, skipFilters)
-		if err != nil {
-			if sourceURL != "" {
-				log.Printf("%s: Warning: Failed to parse node from %s: %v", logPrefix, sourceURL, err)
-			} else {
-				log.Printf("%s: Warning: Failed to parse node: %v", logPrefix, err)
-			}
-			continue
-		}
-
-		if node != nil {
-			// Store original tag before any renaming
-			originalTag := node.Tag
-
-			// Make tag unique if it already exists
-			// Check if tag already exists before incrementing
-			if tagCounts[originalTag] > 0 {
-				// Tag already exists, make it unique
-				tagCounts[originalTag]++
-				node.Tag = fmt.Sprintf("%s-%d", originalTag, tagCounts[originalTag])
-				// Store reverse mapping for fast lookup
-				tagReverseMap[node.Tag] = originalTag
-				log.Printf("%s: Duplicate tag '%s' found (occurrence #%d), renamed to '%s'", logPrefix, originalTag, tagCounts[originalTag], node.Tag)
-			} else {
-				// First occurrence, just mark it
-				tagCounts[originalTag] = 1
-				// Store mapping for original tag (maps to itself)
-				tagReverseMap[originalTag] = originalTag
-				log.Printf("%s: First occurrence of tag '%s'", logPrefix, originalTag)
-			}
-
-			allNodes = append(allNodes, node)
-		}
-	}
-
-	// Log statistics about duplicates
-	duplicateCount := 0
-	for tag, count := range tagCounts {
-		if count > 1 {
-			duplicateCount++
-			log.Printf("%s: Tag '%s' had %d occurrences (renamed duplicates)", logPrefix, tag, count)
-		}
-	}
-	if duplicateCount > 0 {
-		log.Printf("%s: Found %d tags with duplicates, all have been renamed", logPrefix, duplicateCount)
-	} else {
-		log.Printf("%s: No duplicate tags found, all tags are unique", logPrefix)
-	}
-
-	return allNodes, tagCounts, tagReverseMap, nil
-}
-
 // UpdateConfigFromSubscriptions updates config.json by fetching subscriptions and parsing nodes
 func UpdateConfigFromSubscriptions(ac *AppController) error {
-	log.Printf("Parser: Starting configuration update...")
-	log.Printf("Parser: Config file path: %s", ac.ConfigPath)
+	log.Println("Parser: Starting configuration update...")
 
 	// Step 1: Extract configuration
 	config, err := ExtractParcerConfig(ac.ConfigPath)
@@ -172,7 +80,7 @@ func UpdateConfigFromSubscriptions(ac *AppController) error {
 			continue
 		}
 
-		// Early check for empty content (optimization - skip parsing if empty)
+		// Check if content is empty
 		if len(content) == 0 {
 			log.Printf("Parser: Warning: Subscription from %s returned empty content", proxySource.Source)
 			continue
@@ -182,54 +90,45 @@ func UpdateConfigFromSubscriptions(ac *AppController) error {
 		progress = 20 + float64(i)*50.0/float64(totalSubscriptions) + 10.0/float64(totalSubscriptions)
 		updateParserProgress(ac, progress, fmt.Sprintf("Parsing subscription %d/%d: %s", i+1, totalSubscriptions, proxySource.Source))
 
-		// Parse subscription content using shared function
-		nodesFromThisSubscription, subscriptionTagCounts, subscriptionTagReverseMap, err := ParseSubscriptionContent(content, proxySource.Skip, "Parser", proxySource.Source)
-		if err != nil {
-			log.Printf("Parser: Error parsing subscription from %s: %v", proxySource.Source, err)
-			continue
-		}
+		// Parse subscription content
+		lines := strings.Split(string(content), "\n")
+		nodesFromThisSubscription := 0
 
-		// Merge tag counts from this subscription into global tagCounts
-		// This ensures duplicates are handled globally across all subscriptions
-		// Use reverse mapping for fast lookup of original tags
-		for _, node := range nodesFromThisSubscription {
-			// Use reverse mapping for O(1) lookup instead of O(n) search
-			originalTag, found := subscriptionTagReverseMap[node.Tag]
-			if !found {
-				// Fallback: extract original tag by removing suffix (e.g., "Tag-2" -> "Tag")
-				originalTag = node.Tag
-				if idx := strings.LastIndex(originalTag, "-"); idx > 0 {
-					// Check if suffix is a number
-					if _, err := strconv.Atoi(originalTag[idx+1:]); err == nil {
-						originalTag = originalTag[:idx]
-					}
-				}
-				log.Printf("Parser: Warning: Could not find original tag for '%s' in reverse map, using extracted '%s'", node.Tag, originalTag)
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
 			}
 
-			// Now check if this original tag exists globally
-			if tagCounts[originalTag] > 0 {
-				// Tag already exists from previous subscription, rename it
-				tagCounts[originalTag]++
-				node.Tag = fmt.Sprintf("%s-%d", originalTag, tagCounts[originalTag])
-				log.Printf("Parser: Global duplicate tag '%s' found (occurrence #%d), renamed to '%s'", originalTag, tagCounts[originalTag], node.Tag)
-			} else {
-				// First occurrence of this tag globally, mark it
-				// Use the count from subscription (which may be > 1 if there were duplicates within subscription)
-				if count, exists := subscriptionTagCounts[originalTag]; exists {
-					tagCounts[originalTag] = count
+			node, err := ParseNode(line, proxySource.Skip)
+			if err != nil {
+				log.Printf("Parser: Warning: Failed to parse node from %s: %v", proxySource.Source, err)
+				continue
+			}
+
+			if node != nil {
+				// Make tag unique if it already exists
+				originalTag := node.Tag
+				// Check if tag already exists before incrementing
+				if tagCounts[originalTag] > 0 {
+					// Tag already exists, make it unique
+					tagCounts[originalTag]++
+					node.Tag = fmt.Sprintf("%s-%d", originalTag, tagCounts[originalTag])
+					log.Printf("Parser: Duplicate tag '%s' found (occurrence #%d), renamed to '%s'", originalTag, tagCounts[originalTag], node.Tag)
 				} else {
+					// First occurrence, just mark it
 					tagCounts[originalTag] = 1
+					log.Printf("Parser: First occurrence of tag '%s'", originalTag)
 				}
+
+				allNodes = append(allNodes, node)
+				nodesFromThisSubscription++
 			}
 		}
 
-		allNodes = append(allNodes, nodesFromThisSubscription...)
-		nodesFromThisSubscriptionCount := len(nodesFromThisSubscription)
-
-		if nodesFromThisSubscriptionCount > 0 {
+		if nodesFromThisSubscription > 0 {
 			successfulSubscriptions++
-			log.Printf("Parser: Successfully parsed %d nodes from %s", nodesFromThisSubscriptionCount, proxySource.Source)
+			log.Printf("Parser: Successfully parsed %d nodes from %s", nodesFromThisSubscription, proxySource.Source)
 		} else {
 			log.Printf("Parser: Warning: No valid nodes parsed from %s", proxySource.Source)
 		}
@@ -247,32 +146,68 @@ func UpdateConfigFromSubscriptions(ac *AppController) error {
 
 	log.Printf("Parser: Parsed %d nodes from subscriptions", len(allNodes))
 
-	// Log global statistics about duplicates across all subscriptions
-	globalDuplicateCount := 0
+	// Log statistics about duplicates
+	duplicateCount := 0
 	for tag, count := range tagCounts {
 		if count > 1 {
-			globalDuplicateCount++
-			log.Printf("Parser: Global tag '%s' had %d total occurrences across all subscriptions (renamed duplicates)", tag, count)
+			duplicateCount++
+			log.Printf("Parser: Tag '%s' had %d occurrences (renamed duplicates)", tag, count)
 		}
 	}
-	if globalDuplicateCount > 0 {
-		log.Printf("Parser: Found %d tags with duplicates across all subscriptions, all have been renamed", globalDuplicateCount)
+	if duplicateCount > 0 {
+		log.Printf("Parser: Found %d tags with duplicates, all have been renamed", duplicateCount)
 	} else {
-		log.Printf("Parser: No duplicate tags found across all subscriptions, all tags are unique")
+		log.Printf("Parser: No duplicate tags found, all tags are unique")
 	}
 
 	updateParserProgress(ac, 70, fmt.Sprintf("Processed nodes: %d. Generating JSON...", len(allNodes)))
 
-	// Step 3: Generate JSON for nodes and selectors using shared function
-	updateParserProgress(ac, 75, "Generating JSON for nodes...")
-
-	selectorsJSON, err := GenerateOutboundsJSON(allNodes, config.ParserConfig.Outbounds)
-	if err != nil {
-		updateParserProgress(ac, -1, fmt.Sprintf("Error: %v", err))
-		return fmt.Errorf("failed to generate outbounds JSON: %w", err)
+	// Check if we have any nodes before proceeding
+	if len(allNodes) == 0 {
+		updateParserProgress(ac, -1, "Error: no nodes found in subscriptions")
+		return fmt.Errorf("no nodes parsed from subscriptions - check internet connection and subscription URLs")
 	}
 
-	updateParserProgress(ac, 85, "Generated JSON successfully")
+	// Step 3: Generate selectors
+	updateParserProgress(ac, 75, "Generating JSON for nodes...")
+
+	selectorsJSON := make([]string, 0)
+
+	// First, generate JSON for all nodes
+	for _, node := range allNodes {
+		nodeJSON, err := GenerateNodeJSON(node)
+		if err != nil {
+			log.Printf("Parser: Warning: Failed to generate JSON for node %s: %v", node.Tag, err)
+			continue
+		}
+		selectorsJSON = append(selectorsJSON, nodeJSON)
+	}
+
+	// Check if we have any node JSON before generating selectors
+	if len(selectorsJSON) == 0 {
+		updateParserProgress(ac, -1, "Error: failed to generate JSON for nodes")
+		return fmt.Errorf("failed to generate JSON for any nodes")
+	}
+
+	// Then, generate selectors
+	updateParserProgress(ac, 85, "Generating selectors...")
+
+	for _, outboundConfig := range config.ParserConfig.Outbounds {
+		selectorJSON, err := GenerateSelector(allNodes, outboundConfig)
+		if err != nil {
+			log.Printf("Parser: Warning: Failed to generate selector %s: %v", outboundConfig.Tag, err)
+			continue
+		}
+		if selectorJSON != "" {
+			selectorsJSON = append(selectorsJSON, selectorJSON)
+		}
+	}
+
+	// Final check: ensure we have content to write
+	if len(selectorsJSON) == 0 {
+		updateParserProgress(ac, -1, "Error: nothing to write to configuration")
+		return fmt.Errorf("no content generated - cannot write empty result to config")
+	}
 
 	// Step 4: Write to file
 	updateParserProgress(ac, 90, "Writing to config file...")
@@ -284,6 +219,14 @@ func UpdateConfigFromSubscriptions(ac *AppController) error {
 	}
 
 	log.Printf("Parser: Done! File %s successfully updated.", ac.ConfigPath)
+
+	// Update last_updated timestamp in @ParcerConfig block
+	if err := UpdateLastUpdatedInConfig(ac.ConfigPath, time.Now().UTC()); err != nil {
+		log.Printf("Parser: Warning: Failed to update last_updated timestamp: %v", err)
+		// Don't fail the whole operation if timestamp update fails
+	} else {
+		log.Printf("Parser: Successfully updated last_updated timestamp")
+	}
 
 	updateParserProgress(ac, 100, "Configuration updated successfully!")
 
@@ -742,57 +685,6 @@ func GenerateSelector(allNodes []*ParsedNode, outboundConfig OutboundConfig) (st
 	return result, nil
 }
 
-// GenerateOutboundsJSON generates JSON strings for all nodes and selectors
-// Parameters:
-//   - allNodes: list of parsed nodes
-//   - outboundConfigs: list of selector configurations
-//
-// Returns:
-//   - []string: JSON strings for nodes and selectors (ready to write to config)
-//   - error: error if no nodes or generation fails
-func GenerateOutboundsJSON(allNodes []*ParsedNode, outboundConfigs []OutboundConfig) ([]string, error) {
-	// Check if we have any nodes before proceeding
-	if len(allNodes) == 0 {
-		return nil, fmt.Errorf("no nodes found - cannot generate outbounds")
-	}
-
-	selectorsJSON := make([]string, 0)
-
-	// First, generate JSON for all nodes
-	for _, node := range allNodes {
-		nodeJSON, err := GenerateNodeJSON(node)
-		if err != nil {
-			log.Printf("GenerateOutboundsJSON: Warning: Failed to generate JSON for node %s: %v", node.Tag, err)
-			continue
-		}
-		selectorsJSON = append(selectorsJSON, nodeJSON)
-	}
-
-	// Check if we have any node JSON before generating selectors
-	if len(selectorsJSON) == 0 {
-		return nil, fmt.Errorf("failed to generate JSON for any nodes")
-	}
-
-	// Then, generate selectors
-	for _, outboundConfig := range outboundConfigs {
-		selectorJSON, err := GenerateSelector(allNodes, outboundConfig)
-		if err != nil {
-			log.Printf("GenerateOutboundsJSON: Warning: Failed to generate selector %s: %v", outboundConfig.Tag, err)
-			continue
-		}
-		if selectorJSON != "" {
-			selectorsJSON = append(selectorsJSON, selectorJSON)
-		}
-	}
-
-	// Final check: ensure we have content
-	if len(selectorsJSON) == 0 {
-		return nil, fmt.Errorf("no content generated - cannot generate empty result")
-	}
-
-	return selectorsJSON, nil
-}
-
 // filterNodesForSelector filters nodes based on outbounds.proxies filter
 // Filter can be a single object (AND between keys) or array of objects (OR between objects, AND inside)
 func filterNodesForSelector(allNodes []*ParsedNode, filter interface{}) []*ParsedNode {
@@ -895,17 +787,12 @@ func matchesFilter(node *ParsedNode, filter map[string]string) bool {
 
 // writeToConfig writes content between @ParserSTART and @ParserEND markers
 func writeToConfig(configPath string, content string) error {
-	log.Printf("writeToConfig: Writing to file: %s", configPath)
-	log.Printf("writeToConfig: Content length: %d bytes", len(content))
-
 	// Read config file
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		log.Printf("writeToConfig: Failed to read config file: %v", err)
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	log.Printf("writeToConfig: Read config file, size: %d bytes", len(data))
 	configStr := string(data)
 
 	// Find markers
@@ -915,29 +802,21 @@ func writeToConfig(configPath string, content string) error {
 	startIdx := strings.Index(configStr, startMarker)
 	endIdx := strings.Index(configStr, endMarker)
 
-	log.Printf("writeToConfig: Start marker found at index: %d", startIdx)
-	log.Printf("writeToConfig: End marker found at index: %d", endIdx)
-
 	if startIdx == -1 || endIdx == -1 {
-		log.Printf("writeToConfig: ERROR - Markers not found! Start: %d, End: %d", startIdx, endIdx)
 		return fmt.Errorf("markers @ParserSTART or @ParserEND not found in config.json")
 	}
 
 	if endIdx <= startIdx {
-		log.Printf("writeToConfig: ERROR - Invalid marker positions! Start: %d, End: %d", startIdx, endIdx)
 		return fmt.Errorf("invalid marker positions")
 	}
 
 	// Build new content
 	newContent := configStr[:startIdx+len(startMarker)] + "\n" + content + "\n" + configStr[endIdx:]
-	log.Printf("writeToConfig: New content size: %d bytes", len(newContent))
 
 	// Write to file
 	if err := os.WriteFile(configPath, []byte(newContent), 0644); err != nil {
-		log.Printf("writeToConfig: ERROR - Failed to write file: %v", err)
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
-	log.Printf("writeToConfig: Successfully wrote to file: %s", configPath)
 	return nil
 }

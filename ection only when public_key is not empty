@@ -1,0 +1,201 @@
+[1mdiff --git a/core/parser.go b/core/parser.go[m
+[1mindex 65fe06b..339602b 100644[m
+[1m--- a/core/parser.go[m
+[1m+++ b/core/parser.go[m
+[36m@@ -43,16 +43,16 @@[m [mfunc UpdateConfigFromSubscriptions(ac *AppController) error {[m
+ 		updateParserProgress(ac, -1, fmt.Sprintf("Error: %v", err))[m
+ 		return fmt.Errorf("failed to extract parser config: %w", err)[m
+ 	}[m
+[31m-	[m
+[32m+[m
+ 	// Update progress: Step 1 completed[m
+ 	updateParserProgress(ac, 5, "Parsed ParcerConfig block")[m
+[31m-	[m
+[32m+[m
+ 	// Wait 0.1 sec before showing connection message[m
+ 	time.Sleep(100 * time.Millisecond)[m
+[31m-	[m
+[32m+[m
+ 	// Show connection message[m
+ 	updateParserProgress(ac, 5, "Connecting...")[m
+[31m-	[m
+[32m+[m
+ 	// Small delay before starting to fetch subscriptions[m
+ 	time.Sleep(100 * time.Millisecond)[m
+ [m
+[36m@@ -61,11 +61,15 @@[m [mfunc UpdateConfigFromSubscriptions(ac *AppController) error {[m
+ 	successfulSubscriptions := 0[m
+ 	totalSubscriptions := len(config.ParserConfig.Proxies)[m
+ [m
+[32m+[m	[32m// Map to track unique tags and their counts[m
+[32m+[m	[32mtagCounts := make(map[string]int)[m
+[32m+[m	[32mlog.Printf("Parser: Initializing tag deduplication tracker")[m
+[32m+[m
+ 	updateParserProgress(ac, 20, fmt.Sprintf("Loading subscriptions (0/%d)...", totalSubscriptions))[m
+ [m
+ 	for i, proxySource := range config.ParserConfig.Proxies {[m
+ 		log.Printf("Parser: Downloading subscription %d/%d from: %s", i+1, totalSubscriptions, proxySource.Source)[m
+[31m-		[m
+[32m+[m
+ 		// Update progress: downloading subscription[m
+ 		progress := 20 + float64(i)*50.0/float64(totalSubscriptions)[m
+ 		updateParserProgress(ac, progress, fmt.Sprintf("Downloading subscription %d/%d: %s", i+1, totalSubscriptions, proxySource.Source))[m
+[36m@@ -103,6 +107,20 @@[m [mfunc UpdateConfigFromSubscriptions(ac *AppController) error {[m
+ 			}[m
+ [m
+ 			if node != nil {[m
+[32m+[m				[32m// Make tag unique if it already exists[m
+[32m+[m				[32moriginalTag := node.Tag[m
+[32m+[m				[32m// Check if tag already exists before incrementing[m
+[32m+[m				[32mif tagCounts[originalTag] > 0 {[m
+[32m+[m					[32m// Tag already exists, make it unique[m
+[32m+[m					[32mtagCounts[originalTag]++[m
+[32m+[m					[32mnode.Tag = fmt.Sprintf("%s-%d", originalTag, tagCounts[originalTag])[m
+[32m+[m					[32mlog.Printf("Parser: Duplicate tag '%s' found (occurrence #%d), renamed to '%s'", originalTag, tagCounts[originalTag], node.Tag)[m
+[32m+[m				[32m} else {[m
+[32m+[m					[32m// First occurrence, just mark it[m
+[32m+[m					[32mtagCounts[originalTag] = 1[m
+[32m+[m					[32mlog.Printf("Parser: First occurrence of tag '%s'", originalTag)[m
+[32m+[m				[32m}[m
+[32m+[m
+ 				allNodes = append(allNodes, node)[m
+ 				nodesFromThisSubscription++[m
+ 			}[m
+[36m@@ -114,7 +132,7 @@[m [mfunc UpdateConfigFromSubscriptions(ac *AppController) error {[m
+ 		} else {[m
+ 			log.Printf("Parser: Warning: No valid nodes parsed from %s", proxySource.Source)[m
+ 		}[m
+[31m-		[m
+[32m+[m
+ 		// Update progress after parsing subscription[m
+ 		progress = 20 + float64(i+1)*50.0/float64(totalSubscriptions)[m
+ 		updateParserProgress(ac, progress, fmt.Sprintf("Processed subscriptions: %d/%d, nodes: %d", i+1, totalSubscriptions, len(allNodes)))[m
+[36m@@ -127,7 +145,21 @@[m [mfunc UpdateConfigFromSubscriptions(ac *AppController) error {[m
+ 	}[m
+ [m
+ 	log.Printf("Parser: Parsed %d nodes from subscriptions", len(allNodes))[m
+[31m-	[m
+[32m+[m
+[32m+[m	[32m// Log statistics about duplicates[m
+[32m+[m	[32mduplicateCount := 0[m
+[32m+[m	[32mfor tag, count := range tagCounts {[m
+[32m+[m		[32mif count > 1 {[m
+[32m+[m			[32mduplicateCount++[m
+[32m+[m			[32mlog.Printf("Parser: Tag '%s' had %d occurrences (renamed duplicates)", tag, count)[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m	[32mif duplicateCount > 0 {[m
+[32m+[m		[32mlog.Printf("Parser: Found %d tags with duplicates, all have been renamed", duplicateCount)[m
+[32m+[m	[32m} else {[m
+[32m+[m		[32mlog.Printf("Parser: No duplicate tags found, all tags are unique")[m
+[32m+[m	[32m}[m
+[32m+[m
+ 	updateParserProgress(ac, 70, fmt.Sprintf("Processed nodes: %d. Generating JSON...", len(allNodes)))[m
+ [m
+ 	// Check if we have any nodes before proceeding[m
+[36m@@ -138,7 +170,7 @@[m [mfunc UpdateConfigFromSubscriptions(ac *AppController) error {[m
+ [m
+ 	// Step 3: Generate selectors[m
+ 	updateParserProgress(ac, 75, "Generating JSON for nodes...")[m
+[31m-	[m
+[32m+[m
+ 	selectorsJSON := make([]string, 0)[m
+ [m
+ 	// First, generate JSON for all nodes[m
+[36m@@ -159,7 +191,7 @@[m [mfunc UpdateConfigFromSubscriptions(ac *AppController) error {[m
+ [m
+ 	// Then, generate selectors[m
+ 	updateParserProgress(ac, 85, "Generating selectors...")[m
+[31m-	[m
+[32m+[m
+ 	for _, outboundConfig := range config.ParserConfig.Outbounds {[m
+ 		selectorJSON, err := GenerateSelector(allNodes, outboundConfig)[m
+ 		if err != nil {[m
+[36m@@ -179,7 +211,7 @@[m [mfunc UpdateConfigFromSubscriptions(ac *AppController) error {[m
+ [m
+ 	// Step 4: Write to file[m
+ 	updateParserProgress(ac, 90, "Writing to config file...")[m
+[31m-	[m
+[32m+[m
+ 	content := strings.Join(selectorsJSON, "\n")[m
+ 	if err := writeToConfig(ac.ConfigPath, content); err != nil {[m
+ 		updateParserProgress(ac, -1, fmt.Sprintf("Write error: %v", err))[m
+[36m@@ -187,9 +219,9 @@[m [mfunc UpdateConfigFromSubscriptions(ac *AppController) error {[m
+ 	}[m
+ [m
+ 	log.Printf("Parser: Done! File %s successfully updated.", ac.ConfigPath)[m
+[31m-	[m
+[32m+[m
+ 	updateParserProgress(ac, 100, "Configuration updated successfully!")[m
+[31m-	[m
+[32m+[m
+ 	return nil[m
+ }[m
+ [m
+[36m@@ -425,12 +457,18 @@[m [mfunc buildOutbound(node *ParsedNode) map[string]interface{} {[m
+ 				"enabled":     true,[m
+ 				"fingerprint": fp,[m
+ 			},[m
+[31m-			"reality": map[string]interface{}{[m
+[32m+[m		[32m}[m
+[32m+[m
+[32m+[m		[32m// Only add Reality section if public_key is not empty[m
+[32m+[m		[32m// Sing-box requires valid public_key when Reality is enabled[m
+[32m+[m		[32mif pbk != "" {[m
+[32m+[m			[32mtlsData["reality"] = map[string]interface{}{[m
+ 				"enabled":    true,[m
+ 				"public_key": pbk,[m
+ 				"short_id":   sid,[m
+[31m-			},[m
+[32m+[m			[32m}[m
+ 		}[m
+[32m+[m
+ 		outbound["tls"] = tlsData[m
+ 	} else if node.Scheme == "vmess" {[m
+ 		outbound["uuid"] = node.UUID[m
+[36m@@ -536,18 +574,41 @@[m [mfunc GenerateSelector(allNodes []*ParsedNode, outboundConfig OutboundConfig) (st[m
+ 		return "", nil[m
+ 	}[m
+ [m
+[31m-	// Build outbounds list[m
+[32m+[m	[32m// Build outbounds list with unique tags[m
+ 	outboundsList := make([]string, 0)[m
+[32m+[m	[32mseenTags := make(map[string]bool)[m
+[32m+[m	[32mduplicateCountInSelector := 0[m
+ [m
+ 	// Add addOutbounds first[m
+ 	if len(outboundConfig.Outbounds.AddOutbounds) > 0 {[m
+[31m-		outboundsList = append(outboundsList, outboundConfig.Outbounds.AddOutbounds...)[m
+[32m+[m		[32mlog.Printf("Parser: Adding %d addOutbounds to selector '%s'", len(outboundConfig.Outbounds.AddOutbounds), outboundConfig.Tag)[m
+[32m+[m		[32mfor _, tag := range outboundConfig.Outbounds.AddOutbounds {[m
+[32m+[m			[32mif !seenTags[tag] {[m
+[32m+[m				[32moutboundsList = append(outboundsList, tag)[m
+[32m+[m				[32mseenTags[tag] = true[m
+[32m+[m			[32m} else {[m
+[32m+[m				[32mduplicateCountInSelector++[m
+[32m+[m				[32mlog.Printf("Parser: Skipping duplicate tag '%s' in addOutbounds for selector '%s'", tag, outboundConfig.Tag)[m
+[32m+[m			[32m}[m
+[32m+[m		[32m}[m
+ 	}[m
+ [m
+[31m-	// Add filtered node tags[m
+[32m+[m	[32m// Add filtered node tags (without duplicates)[m
+[32m+[m	[32mlog.Printf("Parser: Processing %d filtered nodes for selector '%s'", len(filteredNodes), outboundConfig.Tag)[m
+ 	for _, node := range filteredNodes {[m
+[31m-		outboundsList = append(outboundsList, node.Tag)[m
+[32m+[m		[32mif !seenTags[node.Tag] {[m
+[32m+[m			[32moutboundsList = append(outboundsList, node.Tag)[m
+[32m+[m			[32mseenTags[node.Tag] = true[m
+[32m+[m		[32m} else {[m
+[32m+[m			[32mduplicateCountInSelector++[m
+[32m+[m			[32mlog.Printf("Parser: Skipping duplicate tag '%s' in filtered nodes for selector '%s'", node.Tag, outboundConfig.Tag)[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m
+[32m+[m	[32mif duplicateCountInSelector > 0 {[m
+[32m+[m		[32mlog.Printf("Parser: Removed %d duplicate tags from selector '%s' outbounds list", duplicateCountInSelector, outboundConfig.Tag)[m
+ 	}[m
+[32m+[m	[32mlog.Printf("Parser: Selector '%s' will have %d unique outbounds", outboundConfig.Tag, len(outboundsList))[m
+ [m
+ 	// Determine default[m
+ 	defaultTag := ""[m

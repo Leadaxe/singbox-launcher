@@ -47,6 +47,8 @@ type CoreDashboardTab struct {
 	templateDownloadButton    *widget.Button
 	wizardButton              *widget.Button
 	updateConfigButton        *widget.Button
+	parserProgressBar         *widget.ProgressBar // Progress bar for parser
+	parserStatusLabel         *widget.Label       // Status label for parser
 
 	// Data
 	stopAutoUpdate           chan bool
@@ -116,6 +118,49 @@ func CreateCoreDashboardTab(ac *core.AppController) fyne.CanvasObject {
 		})
 	}
 
+	// Регистрируем callback для обновления прогресса парсера
+	tab.controller.UpdateParserProgressFunc = func(progress float64, status string) {
+		fyne.Do(func() {
+			if tab.parserProgressBar != nil {
+				if progress < 0 {
+					// Error state - hide progress bar
+					tab.parserProgressBar.Hide()
+					tab.parserStatusLabel.Hide()
+					// Проверяем, не запущен ли парсер
+					tab.controller.ParserMutex.Lock()
+					parserRunning := tab.controller.ParserRunning
+					tab.controller.ParserMutex.Unlock()
+					if !parserRunning {
+						tab.updateConfigButton.Enable()
+					}
+				} else {
+					// Show progress
+					tab.parserProgressBar.Show()
+					tab.parserStatusLabel.Show()
+					tab.parserProgressBar.SetValue(progress / 100.0)
+					tab.parserStatusLabel.SetText(status)
+					if progress >= 100 {
+						// Completed - hide after a short delay
+						go func() {
+							time.Sleep(1 * time.Second)
+							fyne.Do(func() {
+								tab.parserProgressBar.Hide()
+								tab.parserStatusLabel.Hide()
+								// Проверяем, не запущен ли парсер
+								tab.controller.ParserMutex.Lock()
+								parserRunning := tab.controller.ParserRunning
+								tab.controller.ParserMutex.Unlock()
+								if !parserRunning {
+									tab.updateConfigButton.Enable()
+								}
+							})
+						}()
+					}
+				}
+			}
+		})
+	}
+
 	// Первоначальное обновление
 	tab.updateBinaryStatus() // Проверяет наличие бинарника и вызывает updateRunningStatus
 	tab.updateVersionInfo()
@@ -178,19 +223,26 @@ func (tab *CoreDashboardTab) createConfigBlock() fyne.CanvasObject {
 	tab.configStatusLabel = widget.NewLabel("Checking config...")
 	tab.configStatusLabel.Wrapping = fyne.TextWrapOff
 
-	// Кнопки будут внизу под статусом
+	// Создаем прогрессбар и статус для парсера
+	tab.parserProgressBar = widget.NewProgressBar()
+	tab.parserProgressBar.Hide()
+	tab.parserProgressBar.SetValue(0)
+
+	tab.parserStatusLabel = widget.NewLabel("")
+	tab.parserStatusLabel.Hide()
+	tab.parserStatusLabel.Wrapping = fyne.TextWrapWord
+	tab.parserStatusLabel.Alignment = fyne.TextAlignCenter
+
+	// Кнопка Update
 	tab.updateConfigButton = widget.NewButton("🔄 Update", func() {
-		// Check if parser is already running
-		tab.controller.ParserMutex.Lock()
-		isRunning := tab.controller.ParserRunning
-		tab.controller.ParserMutex.Unlock()
-		
-		if isRunning {
-			dialog.ShowInformation("Parser", "Configuration update is already in progress...", tab.controller.MainWindow)
-			return
-		}
-		
-		// Run parser to update configuration
+		// Деактивируем кнопку и показываем прогрессбар
+		tab.updateConfigButton.Disable()
+		tab.parserProgressBar.Show()
+		tab.parserProgressBar.SetValue(0)
+		tab.parserStatusLabel.Show()
+		tab.parserStatusLabel.SetText("Starting...")
+
+		// Запускаем парсер в отдельной горутине
 		go core.RunParserProcess(tab.controller)
 	})
 	tab.updateConfigButton.Importance = widget.MediumImportance
@@ -216,18 +268,25 @@ func (tab *CoreDashboardTab) createConfigBlock() fyne.CanvasObject {
 		tab.configStatusLabel,
 	)
 
-	// Кнопки под статусом (по центру)
+	// Кнопки под статусом (по центру) - только кнопки, без прогрессбара
 	buttonsRow := container.NewCenter(
 		container.NewHBox(
-			tab.updateConfigButton,
+			tab.updateConfigButton, // Кнопка Update
 			tab.wizardButton,
 			tab.templateDownloadButton,
 		),
 	)
 
+	// Отдельная строка для прогрессбара и статуса парсера (под кнопками)
+	parserProgressRow := container.NewVBox(
+		tab.parserProgressBar,
+		tab.parserStatusLabel,
+	)
+
 	return container.NewVBox(
 		statusRow,
 		buttonsRow,
+		parserProgressRow, // Прогрессбар и статус парсера в отдельной строке
 	)
 }
 
@@ -478,9 +537,12 @@ func (tab *CoreDashboardTab) updateConfigInfo() {
 				tab.wizardButton.Importance = widget.MediumImportance
 			}
 		}
-		// Update кнопка активна только если конфиг существует
+		// Update кнопка активна только если конфиг существует и парсер не запущен
 		if tab.updateConfigButton != nil {
-			if configExists {
+			tab.controller.ParserMutex.Lock()
+			parserRunning := tab.controller.ParserRunning
+			tab.controller.ParserMutex.Unlock()
+			if configExists && !parserRunning {
 				tab.updateConfigButton.Enable()
 			} else {
 				tab.updateConfigButton.Disable()

@@ -105,10 +105,6 @@ type AppController struct {
 	ParserProgressBar        *widget.ProgressBar
 	ParserStatusLabel        *widget.Label
 	UpdateParserProgressFunc func(progress float64, status string) // Callback to update parser progress
-
-	// --- Wizard window state ---
-	WizardWindow    fyne.Window
-	WizardWindowMutex sync.Mutex // Mutex for WizardWindow
 }
 
 // RunningState - structure for tracking the VPN's running state.
@@ -837,11 +833,78 @@ func RunParserProcess(ac *AppController) {
 		log.Println("RunParser: Config updated successfully.")
 		// Progress already updated in UpdateConfigFromSubscriptions with success status
 		dialogs.ShowAutoHideInfo(ac.Application, ac.MainWindow, "Parser", "Config updated successfully!")
-		// Update config status in UI (to show new modification date)
-		if ac.UpdateConfigStatusFunc != nil {
-			ac.UpdateConfigStatusFunc()
-		}
 	}
+}
+
+// StartAutoReloadScheduler starts a background goroutine that periodically checks
+// if the configuration needs to be automatically reloaded based on the reload interval
+func StartAutoReloadScheduler(ac *AppController) {
+	go func() {
+		log.Println("AutoReload: Starting scheduler")
+		ticker := time.NewTicker(1 * time.Minute) // Check every minute
+		defer ticker.Stop()
+
+		for range ticker.C {
+			// Check if parser is already running
+			ac.ParserMutex.Lock()
+			if ac.ParserRunning {
+				ac.ParserMutex.Unlock()
+				log.Println("AutoReload: Parser already running, skipping this check")
+				continue
+			}
+			ac.ParserMutex.Unlock()
+
+			// Extract config to check reload settings
+			config, err := ExtractParcerConfig(ac.ConfigPath)
+			if err != nil {
+				log.Printf("AutoReload: Failed to extract config: %v", err)
+				continue
+			}
+
+			// Check if parser object exists and has reload setting
+			if config.ParserConfig.Parser.Reload == "" {
+				// No reload interval specified, skip
+				continue
+			}
+
+			// Parse reload interval
+			reloadDuration, err := time.ParseDuration(config.ParserConfig.Parser.Reload)
+			if err != nil {
+				log.Printf("AutoReload: Error parsing reload interval '%s': %v", config.ParserConfig.Parser.Reload, err)
+				continue
+			}
+
+			// Check if last_updated exists
+			if config.ParserConfig.Parser.LastUpdated == "" {
+				// No last_updated, trigger update
+				log.Printf("AutoReload: No last_updated found, triggering automatic config update (interval: %s)", config.ParserConfig.Parser.Reload)
+				go RunParserProcess(ac)
+				continue
+			}
+
+			// Parse last_updated timestamp
+			lastUpdated, err := time.Parse(time.RFC3339, config.ParserConfig.Parser.LastUpdated)
+			if err != nil {
+				log.Printf("AutoReload: Error parsing last_updated '%s': %v", config.ParserConfig.Parser.LastUpdated, err)
+				// Treat as if update is needed
+				log.Printf("AutoReload: Triggering automatic config update due to invalid last_updated (interval: %s)", config.ParserConfig.Parser.Reload)
+				go RunParserProcess(ac)
+				continue
+			}
+
+			// Check if enough time has passed
+			nextUpdateTime := lastUpdated.Add(reloadDuration)
+			now := time.Now().UTC()
+
+			if now.After(nextUpdateTime) || now.Equal(nextUpdateTime) {
+				log.Printf("AutoReload: Triggering automatic config update (interval: %s, last_updated: %s)", config.ParserConfig.Parser.Reload, config.ParserConfig.Parser.LastUpdated)
+				go RunParserProcess(ac)
+			} else {
+				timeUntilUpdate := nextUpdateTime.Sub(now)
+				log.Printf("AutoReload: Next update in %v (last_updated: %s, interval: %s)", timeUntilUpdate, config.ParserConfig.Parser.LastUpdated, config.ParserConfig.Parser.Reload)
+			}
+		}
+	}()
 }
 
 func CheckIfSingBoxRunningAtStartUtil(ac *AppController) {

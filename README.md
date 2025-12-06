@@ -415,8 +415,8 @@ For automatic configuration updates from subscriptions, add at the beginning of 
 {
   /** @ParcerConfig
   {
-    "version": 1,
     "ParserConfig": {
+      "version": 2,
       "proxies": [
         {
           "source": "https://your-subscription-url.com/subscription"
@@ -434,7 +434,10 @@ For automatic configuration updates from subscriptions, add at the beginning of 
           },
           "comment": "Proxy group for international connections"
         }
-      ]
+      ],
+      "parser": {
+        "reload": "4h"
+      }
     }
   }
   */
@@ -454,14 +457,18 @@ The subscription parser is a built-in feature that automatically updates the pro
 
 #### 1. Parser Configuration
 
-At the beginning of the `config.json` file, there should be a `/** @ParcerConfig ... */` block with JSON configuration:
+At the beginning of the `config.json` file, there should be a `/** @ParcerConfig ... */` block with JSON configuration.
+
+**Version 2 (Current)**: The `version` field is now inside `ParserConfig`. Automatic configuration reload is supported via the `parser` object.
+
+**Backward Compatibility**: Version 1 format (with `version` at top level) is automatically migrated to version 2.
 
 ```json
 {
   /** @ParcerConfig
   {
-    "version": 1,
     "ParserConfig": {
+      "version": 2,
       "proxies": [
         {
           "source": "https://your-subscription-url.com/subscription",
@@ -480,7 +487,10 @@ At the beginning of the `config.json` file, there should be a `/** @ParcerConfig
           },
           "comment": "Proxy group for international connections"
         }
-      ]
+      ],
+      "parser": {
+        "reload": "4h"
+      }
     }
   }
   */
@@ -584,6 +594,29 @@ When you click the **"Update Config"** button in the "Core" tab (or use the Conf
 5. **Multiple Subscriptions**
    - Multiple subscriptions can be specified in `proxies[]` array
    - All nodes will be merged and filtered together
+
+### Automatic Configuration Reload (Version 2)
+
+Starting from version 2, you can configure automatic periodic updates of your configuration:
+
+```json
+"parser": {
+  "reload": "4h",
+  "last_updated": "2024-01-15T14:30:00Z"
+}
+```
+
+- **`reload`** (optional): Interval for automatic updates (e.g., `"4h"`, `"30m"`, `"1h30m"`). If not specified, automatic updates are disabled.
+- **`last_updated`** (optional): Timestamp of the last successful update (RFC3339 format, UTC). Automatically updated by the launcher.
+
+The launcher checks every minute if an update is needed based on the `reload` interval. If enough time has passed since `last_updated`, it automatically triggers a configuration update.
+
+**Example:**
+```json
+"parser": {
+  "reload": "4h"  // Update every 4 hours
+}
+```
 
 **📖 For detailed parser configuration, see [ParserConfig.md](ParserConfig.md)**
 

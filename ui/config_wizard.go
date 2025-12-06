@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"image/color"
 
@@ -80,16 +81,6 @@ const (
 
 // ShowConfigWizard открывает окно мастера конфигурации
 func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
-	// Check if wizard is already open
-	controller.WizardWindowMutex.Lock()
-	if controller.WizardWindow != nil {
-		// Wizard is already open, bring it to front
-		controller.WizardWindowMutex.Unlock()
-		controller.WizardWindow.RequestFocus()
-		ShowAutoHideInfo(controller.Application, controller.MainWindow, "Config Wizard", "Wizard is already open!")
-		return
-	}
-
 	state := &WizardState{
 		Controller:        controller,
 		previewNeedsParse: true,
@@ -100,18 +91,6 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 	wizardWindow.Resize(fyne.NewSize(920, 720))
 	wizardWindow.CenterOnScreen()
 	state.Window = wizardWindow
-	
-	// Store reference to wizard window
-	controller.WizardWindow = wizardWindow
-	controller.WizardWindowMutex.Unlock()
-	
-	// Clean up reference when window is closed
-	wizardWindow.SetCloseIntercept(func() {
-		controller.WizardWindowMutex.Lock()
-		controller.WizardWindow = nil
-		controller.WizardWindowMutex.Unlock()
-		wizardWindow.Close()
-	})
 
 	if templateData, err := loadTemplateData(controller.ExecDir); err != nil {
 		log.Printf("ConfigWizard: failed to load config_template.json from %s: %v", filepath.Join(controller.ExecDir, "bin", "config_template.json"), err)
@@ -164,9 +143,6 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 
 	// Создаем кнопки навигации
 	state.CloseButton = widget.NewButton("Close", func() {
-		controller.WizardWindowMutex.Lock()
-		controller.WizardWindow = nil
-		controller.WizardWindowMutex.Unlock()
 		wizardWindow.Close()
 	})
 	state.CloseButton.Importance = widget.HighImportance
@@ -798,21 +774,61 @@ func parseAndPreview(state *WizardState) {
 		setPreviewText(state, "Parsing nodes from subscription...")
 	})
 
-	// Get skip filters
-	var skipFilters []map[string]string
-	if len(parserConfig.ParserConfig.Proxies) > 0 {
-		skipFilters = parserConfig.ParserConfig.Proxies[0].Skip
+	allNodes := make([]*core.ParsedNode, 0)
+	lines := strings.Split(string(content), "\n")
+
+	// Map to track unique tags and their counts (same logic as UpdateConfigFromSubscriptions)
+	tagCounts := make(map[string]int)
+	log.Printf("ConfigWizard: Initializing tag deduplication tracker")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		var skipFilters []map[string]string
+		if len(parserConfig.ParserConfig.Proxies) > 0 {
+			skipFilters = parserConfig.ParserConfig.Proxies[0].Skip
+		}
+
+		node, err := parseNodeFromString(line, skipFilters)
+		if err != nil {
+			log.Printf("ConfigWizard: Failed to parse node: %v", err)
+			continue
+		}
+
+		if node != nil {
+			// Make tag unique if it already exists (same logic as UpdateConfigFromSubscriptions)
+			originalTag := node.Tag
+			// Check if tag already exists before incrementing
+			if tagCounts[originalTag] > 0 {
+				// Tag already exists, make it unique
+				tagCounts[originalTag]++
+				node.Tag = fmt.Sprintf("%s-%d", originalTag, tagCounts[originalTag])
+				log.Printf("ConfigWizard: Duplicate tag '%s' found (occurrence #%d), renamed to '%s'", originalTag, tagCounts[originalTag], node.Tag)
+			} else {
+				// First occurrence, just mark it
+				tagCounts[originalTag] = 1
+				log.Printf("ConfigWizard: First occurrence of tag '%s'", originalTag)
+			}
+
+			allNodes = append(allNodes, node)
+		}
 	}
 
-	// Parse subscription content using shared function
-	allNodes, _, _, err := core.ParseSubscriptionContent(content, skipFilters, "ConfigWizard", url)
-	if err != nil {
-		fyne.Do(func() {
-			setPreviewText(state, fmt.Sprintf("Error: %v", err))
-			state.ParseButton.Enable()
-			state.ParseButton.SetText("Parse")
-		})
-		return
+	// Log statistics about duplicates
+	duplicateCount := 0
+	for tag, count := range tagCounts {
+		if count > 1 {
+			duplicateCount++
+			log.Printf("ConfigWizard: Tag '%s' had %d occurrences (renamed duplicates)", tag, count)
+		}
+	}
+	if duplicateCount > 0 {
+		log.Printf("ConfigWizard: Found %d tags with duplicates, all have been renamed", duplicateCount)
+	} else {
+		log.Printf("ConfigWizard: No duplicate tags found, all tags are unique")
 	}
 
 	if len(allNodes) == 0 {
@@ -829,15 +845,28 @@ func parseAndPreview(state *WizardState) {
 		setPreviewText(state, "Generating outbounds...")
 	})
 
-	// Generate JSON for nodes and selectors using shared function
-	selectorsJSON, err := core.GenerateOutboundsJSON(allNodes, parserConfig.ParserConfig.Outbounds)
-	if err != nil {
-		fyne.Do(func() {
-			setPreviewText(state, fmt.Sprintf("Error: %v", err))
-			state.ParseButton.Enable()
-			state.ParseButton.SetText("Parse")
-		})
-		return
+	selectorsJSON := make([]string, 0)
+
+	// Генерируем JSON для всех узлов
+	for _, node := range allNodes {
+		nodeJSON, err := generateNodeJSONForPreview(node)
+		if err != nil {
+			log.Printf("ConfigWizard: Failed to generate JSON for node: %v", err)
+			continue
+		}
+		selectorsJSON = append(selectorsJSON, nodeJSON)
+	}
+
+	// Генерируем селекторы
+	for _, outboundConfig := range parserConfig.ParserConfig.Outbounds {
+		selectorJSON, err := generateSelectorForPreview(allNodes, outboundConfig)
+		if err != nil {
+			log.Printf("ConfigWizard: Failed to generate selector: %v", err)
+			continue
+		}
+		if selectorJSON != "" {
+			selectorsJSON = append(selectorsJSON, selectorJSON)
+		}
 	}
 
 	// Формируем итоговый текст для предпросмотра
@@ -978,9 +1007,47 @@ func buildTemplateConfig(state *WizardState) (string, error) {
 	if state.TemplateData == nil {
 		return "", fmt.Errorf("template data not available")
 	}
-	parserConfig := strings.TrimSpace(state.ParserConfigEntry.Text)
-	if parserConfig == "" {
+	parserConfigText := strings.TrimSpace(state.ParserConfigEntry.Text)
+	if parserConfigText == "" {
 		return "", fmt.Errorf("ParserConfig is empty and no template available")
+	}
+
+	// Parse ParserConfig JSON to ensure it has version 2 and parser object
+	var parserConfig core.ParserConfig
+	if err := json.Unmarshal([]byte(parserConfigText), &parserConfig); err != nil {
+		// If parsing fails, use text as-is (might be invalid JSON, but let user fix it)
+		log.Printf("buildTemplateConfig: Warning: Failed to parse ParserConfig JSON: %v", err)
+	} else {
+		// Backward compatibility: migrate version 1 to version 2 if needed
+		if parserConfig.Version > 0 && parserConfig.ParserConfig.Version == 0 {
+			parserConfig.ParserConfig.Version = parserConfig.Version
+			parserConfig.Version = 0
+		}
+
+		// Ensure version is set to 2
+		if parserConfig.ParserConfig.Version == 0 {
+			parserConfig.ParserConfig.Version = core.ParserConfigVersion
+		}
+
+		// Ensure parser object exists (create if missing)
+		// Set default reload to "4h" if not specified
+		if parserConfig.ParserConfig.Parser.Reload == "" {
+			parserConfig.ParserConfig.Parser.Reload = "4h"
+		}
+
+		// Always set last_updated to current time when saving
+		parserConfig.ParserConfig.Parser.LastUpdated = time.Now().UTC().Format(time.RFC3339)
+
+		// Serialize back to JSON with proper formatting (always version 2 format)
+		configToSerialize := map[string]interface{}{
+			"ParserConfig": parserConfig.ParserConfig,
+		}
+		serialized, err := json.MarshalIndent(configToSerialize, "", "  ")
+		if err == nil {
+			parserConfigText = string(serialized)
+		} else {
+			log.Printf("buildTemplateConfig: Warning: Failed to serialize ParserConfig: %v", err)
+		}
 	}
 	sections := make([]string, 0)
 	for _, key := range state.TemplateData.SectionOrder {
@@ -1035,7 +1102,7 @@ func buildTemplateConfig(state *WizardState) (string, error) {
 	var builder strings.Builder
 	builder.WriteString("{\n")
 	builder.WriteString("/** @ParcerConfig\n")
-	builder.WriteString(parserConfig)
+	builder.WriteString(parserConfigText)
 	builder.WriteString("\n*/\n")
 	builder.WriteString(strings.Join(sections, ",\n"))
 	builder.WriteString("\n}\n")
@@ -1261,17 +1328,46 @@ func (state *WizardState) getAvailableOutbounds() []string {
 	return result
 }
 
+// parseNodeFromString парсит узел из строки (обертка над core.ParseNode)
+func parseNodeFromString(uri string, skipFilters []map[string]string) (*core.ParsedNode, error) {
+	return core.ParseNode(uri, skipFilters)
+}
+
+// generateNodeJSONForPreview генерирует JSON для узла (обертка над core.GenerateNodeJSON)
+func generateNodeJSONForPreview(node *core.ParsedNode) (string, error) {
+	return core.GenerateNodeJSON(node)
+}
+
+// generateSelectorForPreview генерирует JSON для селектора (обертка над core.GenerateSelector)
+func generateSelectorForPreview(allNodes []*core.ParsedNode, outboundConfig core.OutboundConfig) (string, error) {
+	return core.GenerateSelector(allNodes, outboundConfig)
+}
 
 func serializeParserConfig(parserConfig *core.ParserConfig) (string, error) {
 	if parserConfig == nil {
 		return "", fmt.Errorf("parserConfig is nil")
 	}
+
+	// Backward compatibility: migrate version 1 to version 2 if needed
+	if parserConfig.Version > 0 && parserConfig.ParserConfig.Version == 0 {
+		parserConfig.ParserConfig.Version = parserConfig.Version
+		parserConfig.Version = 0
+	}
+
+	// Ensure version is set to 2
+	if parserConfig.ParserConfig.Version == 0 {
+		parserConfig.ParserConfig.Version = core.ParserConfigVersion
+	}
+
+	// Ensure parser object exists (create if missing)
+	// Set default reload to "4h" if not specified
+	if parserConfig.ParserConfig.Parser.Reload == "" {
+		parserConfig.ParserConfig.Parser.Reload = "4h"
+	}
+
+	// Serialize in version 2 format (version inside ParserConfig, not at top level)
 	configToSerialize := map[string]interface{}{
-		"version": parserConfig.Version,
-		"ParserConfig": map[string]interface{}{
-			"proxies":   parserConfig.ParserConfig.Proxies,
-			"outbounds": parserConfig.ParserConfig.Outbounds,
-		},
+		"ParserConfig": parserConfig.ParserConfig,
 	}
 	data, err := json.MarshalIndent(configToSerialize, "", "  ")
 	if err != nil {

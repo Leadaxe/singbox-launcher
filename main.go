@@ -59,6 +59,9 @@ func main() {
 
 			// Start auto-loading proxies after tray initialization
 			controller.AutoLoadProxies()
+
+			// Start automatic config reload scheduler
+			core.StartAutoReloadScheduler(controller)
 		})
 	}
 

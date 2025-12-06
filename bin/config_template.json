@@ -4,8 +4,8 @@
   
   /** @ParcerConfig
     {
-      "version": 1,
       "ParserConfig": {
+        "version": 2,
         "proxies": [{ "source": "https://your-subscription-url-here" }],
         "outbounds": [
           {
@@ -246,7 +246,7 @@
   */
   /**   @SelectableRule
         @label stop HTTP/3
-        @default
+
         @description QUIC does not support UDP traffic proxying. Therefore, we stop HTTP/3. This may block QUIC traffic (used by Google, YouTube, Cloudflare, etc.), which may potentially reduce speed or availability for these services.
         { "action": "reject", "method": "drop", "network": ["udp"], "port": [443] },
   */
