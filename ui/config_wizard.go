@@ -3,7 +3,9 @@ package ui
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -68,6 +70,8 @@ type WizardState struct {
 	TemplatePreviewText         string
 	templatePreviewUpdating     bool
 	TemplatePreviewStatusLabel  *widget.Label
+	TemplatePreviewCache        string // Кэшированный текст превью
+	TemplatePreviewCacheHash    string // Хеш данных для проверки изменений
 	FinalOutboundSelect         *widget.Select
 	SelectedFinalOutbound       string
 	previewNeedsParse           bool
@@ -388,21 +392,51 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 			}
 		}
 		if item == previewTabItem {
-			// Показываем индикацию загрузки сразу
-			if state.TemplatePreviewEntry != nil {
-				state.setTemplatePreviewText("Loading preview...")
+			// Проверяем, есть ли кэшированное превью
+			currentHash := state.calculatePreviewHash()
+			if currentHash == state.TemplatePreviewCacheHash && state.TemplatePreviewCache != "" {
+				// Показываем кэшированное превью сразу
+				if state.TemplatePreviewEntry != nil {
+					state.setTemplatePreviewText(state.TemplatePreviewCache)
+				}
+				if state.TemplatePreviewStatusLabel != nil {
+					state.TemplatePreviewStatusLabel.SetText("✅ Preview ready (cached)")
+				}
+				// Кнопка Save остается включенной
+			} else {
+				// Показываем индикацию загрузки только если нет кэша
+				if state.TemplatePreviewEntry != nil {
+					if state.TemplatePreviewCache != "" {
+						// Показываем старое превью пока генерируется новое
+						state.setTemplatePreviewText(state.TemplatePreviewCache)
+					} else {
+						state.setTemplatePreviewText("Loading preview...")
+					}
+				}
+				if state.TemplatePreviewStatusLabel != nil {
+					state.TemplatePreviewStatusLabel.SetText("⏳ Loading...")
+				}
+				// Отключаем кнопку Save только если идет генерация
+				if state.previewGenerationInProgress {
+					if state.SaveButton != nil {
+						state.SaveButton.Disable()
+					}
+				}
 			}
-			if state.TemplatePreviewStatusLabel != nil {
-				state.TemplatePreviewStatusLabel.SetText("⏳ Loading...")
-			}
-			// Отключаем кнопку Save на время загрузки
-			if state.SaveButton != nil {
-				state.SaveButton.Disable()
-			}
-			// Запускаем парсинг асинхронно
-			state.triggerParseForPreview()
-			// Обновляем превью шаблона асинхронно (функция уже асинхронна внутри)
-			state.updateTemplatePreviewAsync()
+
+			// Запускаем операции с задержкой 500мс после переключения вкладки для полной отрисовки
+			go func() {
+				time.Sleep(500 * time.Millisecond)
+
+				// Запускаем парсинг асинхронно (если нужно)
+				state.triggerParseForPreview()
+
+				// Обновляем превью только если данные изменились или кэша нет
+				// updateTemplatePreviewAsync сама проверит хеш и использует кэш если возможно
+				if currentHash != state.TemplatePreviewCacheHash || state.TemplatePreviewCache == "" {
+					state.updateTemplatePreviewAsync()
+				}
+			}()
 		}
 		updateNavigationButtons()
 		// Обновляем Border контейнер с новыми кнопками
@@ -1361,7 +1395,7 @@ func parseAndPreview(state *WizardState) {
 		state.refreshOutboundOptions()
 		// Обновляем статус после завершения парсинга
 		if state.TemplatePreviewStatusLabel != nil {
-			state.TemplatePreviewStatusLabel.SetText("✅ Parsing complete, generating preview...")
+			state.TemplatePreviewStatusLabel.SetText("⏳✅ Parsing complete, generating preview...")
 		}
 		// Кнопка Save будет включена после завершения генерации превью
 		state.updateTemplatePreview()
@@ -1436,13 +1470,71 @@ func (state *WizardState) applyURLToParserConfig(input string) {
 }
 
 func (state *WizardState) setTemplatePreviewText(text string) {
+	// Оптимизация: не обновляем, если текст не изменился
+	if state.TemplatePreviewText == text {
+		return
+	}
+
 	state.TemplatePreviewText = text
 	if state.TemplatePreviewEntry == nil {
 		return
 	}
+
+	// Проверяем, изменился ли текст в Entry
+	if state.TemplatePreviewEntry.Text == text {
+		return
+	}
+
 	state.templatePreviewUpdating = true
 	state.TemplatePreviewEntry.SetText(text)
 	state.templatePreviewUpdating = false
+}
+
+// calculatePreviewHash вычисляет хеш всех данных, от которых зависит превью
+func (state *WizardState) calculatePreviewHash() string {
+	var data strings.Builder
+
+	// ПarserConfig
+	if state.ParserConfigEntry != nil {
+		data.WriteString(state.ParserConfigEntry.Text)
+	}
+
+	// GeneratedOutbounds
+	data.WriteString(fmt.Sprintf("%d", len(state.GeneratedOutbounds)))
+	for _, outbound := range state.GeneratedOutbounds {
+		data.WriteString(outbound)
+	}
+
+	// TemplateSectionSelections
+	if state.TemplateSectionSelections != nil {
+		keys := make([]string, 0, len(state.TemplateSectionSelections))
+		for k, v := range state.TemplateSectionSelections {
+			if v {
+				keys = append(keys, k)
+			}
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			data.WriteString(k)
+		}
+	}
+
+	// SelectedFinalOutbound
+	data.WriteString(state.SelectedFinalOutbound)
+
+	// SelectableRuleStates
+	if state.SelectableRuleStates != nil {
+		for _, ruleState := range state.SelectableRuleStates {
+			if ruleState.Enabled {
+				data.WriteString(ruleState.Rule.Label)
+				data.WriteString(ruleState.SelectedOutbound)
+			}
+		}
+	}
+
+	// Вычисляем SHA256 хеш
+	hash := sha256.Sum256([]byte(data.String()))
+	return hex.EncodeToString(hash[:])
 }
 
 func (state *WizardState) refreshOutboundOptions() {
@@ -1514,6 +1606,12 @@ func (state *WizardState) triggerParseForPreview() {
 	go parseAndPreview(state)
 }
 
+// invalidatePreviewCache инвалидирует кэш превью (вызывается при изменениях данных)
+func (state *WizardState) invalidatePreviewCache() {
+	state.TemplatePreviewCache = ""
+	state.TemplatePreviewCacheHash = ""
+}
+
 func (state *WizardState) updateTemplatePreview() {
 	// Синхронная версия для вызова из других мест (не блокирует UI)
 	state.updateTemplatePreviewAsync()
@@ -1521,6 +1619,20 @@ func (state *WizardState) updateTemplatePreview() {
 
 func (state *WizardState) updateTemplatePreviewAsync() {
 	if state.TemplateData == nil || state.TemplatePreviewEntry == nil {
+		return
+	}
+
+	// Вычисляем хеш текущих данных
+	currentHash := state.calculatePreviewHash()
+
+	// Если хеш не изменился и есть кэш, используем кэш
+	if currentHash == state.TemplatePreviewCacheHash && state.TemplatePreviewCache != "" {
+		safeFyneDo(state.Window, func() {
+			state.setTemplatePreviewText(state.TemplatePreviewCache)
+			if state.TemplatePreviewStatusLabel != nil {
+				state.TemplatePreviewStatusLabel.SetText("✅ Preview ready (cached)")
+			}
+		})
 		return
 	}
 
@@ -1568,6 +1680,10 @@ func (state *WizardState) updateTemplatePreviewAsync() {
 			})
 			return
 		}
+
+		// Сохраняем в кэш
+		state.TemplatePreviewCache = text
+		state.TemplatePreviewCacheHash = currentHash
 
 		// Обновляем статус: готово
 		safeFyneDo(state.Window, func() {
