@@ -37,8 +37,8 @@
 			"type": "urltest",
 			"options": {
 				"url": "https://raw.githubusercontent.com/github/gitignore/main/Global/GPG.gitignore",
-				"interval": "12h",
-        "idle_timeout": "12h",
+				"interval": "1h",
+				"idle_timeout": "1h",
 				"tolerance": 1000,
 				"interrupt_exist_connections": true
 			},
