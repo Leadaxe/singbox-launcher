@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -93,6 +94,10 @@ type AppController struct {
 	SelectedClashGroup string
 	AutoLoadInProgress bool       // Flag to prevent multiple auto-load attempts
 	AutoLoadMutex      sync.Mutex // Mutex for AutoLoadInProgress
+
+	// --- Context for goroutine cancellation ---
+	ctx        context.Context    // Context for cancellation
+	cancelFunc context.CancelFunc // Cancel function for stopping goroutines
 
 	// --- Callbacks for UI logic ---
 	RefreshAPIFunc         func()
@@ -235,6 +240,9 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	ac.UpdateParserProgressFunc = func(progress float64, status string) {
 		log.Printf("UpdateParserProgressFunc handler is not set yet. Progress: %.0f%%, Status: %s", progress, status)
 	}
+
+	// Initialize context for goroutine cancellation
+	ac.ctx, ac.cancelFunc = context.WithCancel(context.Background())
 
 	return ac, nil
 }
@@ -720,19 +728,24 @@ func MonitorSingBoxProcess(ac *AppController, cmdToMonitor *exec.Cmd) {
 		log.Println("monitorSingBox: Sing-Box restarted successfully.")
 		currentAttemptCount := ac.ConsecutiveCrashAttempts
 		go func() {
-			time.Sleep(stabilityThreshold)
-			ac.CmdMutex.Lock()
-			defer ac.CmdMutex.Unlock()
+			select {
+			case <-ac.ctx.Done():
+				log.Println("monitorSingBox: Stability check cancelled (context cancelled)")
+				return
+			case <-time.After(stabilityThreshold):
+				ac.CmdMutex.Lock()
+				defer ac.CmdMutex.Unlock()
 
-			if ac.RunningState.IsRunning() && ac.ConsecutiveCrashAttempts == currentAttemptCount {
-				log.Printf("monitorSingBox: Process has been stable for %v. Resetting crash counter from %d to 0.", stabilityThreshold, ac.ConsecutiveCrashAttempts)
-				ac.ConsecutiveCrashAttempts = 0
-				// Обновляем UI, чтобы счетчик исчез из статуса на вкладке Core
-				if ac.UpdateCoreStatusFunc != nil {
-					ac.UpdateCoreStatusFunc()
+				if ac.RunningState.IsRunning() && ac.ConsecutiveCrashAttempts == currentAttemptCount {
+					log.Printf("monitorSingBox: Process has been stable for %v. Resetting crash counter from %d to 0.", stabilityThreshold, ac.ConsecutiveCrashAttempts)
+					ac.ConsecutiveCrashAttempts = 0
+					// Обновляем UI, чтобы счетчик исчез из статуса на вкладке Core
+					if ac.UpdateCoreStatusFunc != nil {
+						ac.UpdateCoreStatusFunc()
+					}
+				} else {
+					log.Printf("monitorSingBox: Stability timer expired, but conditions for reset not met (running: %v, current attempts: %d, attempts at timer start: %d).", ac.RunningState.IsRunning(), ac.ConsecutiveCrashAttempts, currentAttemptCount)
 				}
-			} else {
-				log.Printf("monitorSingBox: Stability timer expired, but conditions for reset not met (running: %v, current attempts: %d, attempts at timer start: %d).", ac.RunningState.IsRunning(), ac.ConsecutiveCrashAttempts, currentAttemptCount)
 			}
 		}()
 	} else {
@@ -844,15 +857,20 @@ func StartAutoReloadScheduler(ac *AppController) {
 		ticker := time.NewTicker(1 * time.Minute) // Check every minute
 		defer ticker.Stop()
 
-		for range ticker.C {
-			// Check if parser is already running
-			ac.ParserMutex.Lock()
-			if ac.ParserRunning {
+		for {
+			select {
+			case <-ac.ctx.Done():
+				log.Println("AutoReload: Scheduler stopped (context cancelled)")
+				return
+			case <-ticker.C:
+				// Check if parser is already running
+				ac.ParserMutex.Lock()
+				if ac.ParserRunning {
+					ac.ParserMutex.Unlock()
+					log.Println("AutoReload: Parser already running, skipping this check")
+					continue
+				}
 				ac.ParserMutex.Unlock()
-				log.Println("AutoReload: Parser already running, skipping this check")
-				continue
-			}
-			ac.ParserMutex.Unlock()
 
 			// Extract config to check reload settings
 			config, err := ExtractParcerConfig(ac.ConfigPath)
@@ -902,6 +920,7 @@ func StartAutoReloadScheduler(ac *AppController) {
 			} else {
 				timeUntilUpdate := nextUpdateTime.Sub(now)
 				log.Printf("AutoReload: Next update in %v (last_updated: %s, interval: %s)", timeUntilUpdate, config.ParserConfig.Parser.LastUpdated, config.ParserConfig.Parser.Reload)
+			}
 			}
 		}
 	}()
@@ -1052,9 +1071,29 @@ func (ac *AppController) AutoLoadProxies() {
 
 	go func() {
 		for attempt, interval := range intervals {
+			// Check if context is cancelled
+			select {
+			case <-ac.ctx.Done():
+				log.Println("AutoLoadProxies: Stopped (context cancelled)")
+				ac.AutoLoadMutex.Lock()
+				ac.AutoLoadInProgress = false
+				ac.AutoLoadMutex.Unlock()
+				return
+			default:
+			}
+
 			// Wait for the interval (except first attempt)
 			if attempt > 0 {
-				time.Sleep(interval * time.Second)
+				select {
+				case <-ac.ctx.Done():
+					log.Println("AutoLoadProxies: Stopped during wait (context cancelled)")
+					ac.AutoLoadMutex.Lock()
+					ac.AutoLoadInProgress = false
+					ac.AutoLoadMutex.Unlock()
+					return
+				case <-time.After(interval * time.Second):
+					// Continue
+				}
 			}
 
 			log.Printf("AutoLoadProxies: Attempt %d/%d to load proxies for group '%s'", attempt+1, len(intervals), selectedGroup)

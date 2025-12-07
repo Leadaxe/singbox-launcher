@@ -27,6 +27,13 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
+// safeFyneDo safely calls fyne.Do only if window is still valid
+func safeFyneDo(window fyne.Window, fn func()) {
+	if window != nil {
+		fyne.Do(fn)
+	}
+}
+
 // WizardState хранит состояние мастера конфигурации
 type WizardState struct {
 	Controller *core.AppController
@@ -39,6 +46,10 @@ type WizardState struct {
 	OutboundsPreview     *widget.Entry
 	OutboundsPreviewText string // Храним текст для read-only режима
 	CheckURLButton       *widget.Button
+	CheckURLProgress     *widget.ProgressBar
+	CheckURLPlaceholder  *canvas.Rectangle
+	CheckURLContainer    fyne.CanvasObject
+	checkURLInProgress   bool
 	ParseButton          *widget.Button
 	parserConfigUpdating bool
 
@@ -297,35 +308,89 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 
 // createVLESSSourceTab создает первую вкладку с полями для VLESS URL и ParserConfig
 func createVLESSSourceTab(state *WizardState) fyne.CanvasObject {
-	// Секция 1: VLESS Subscription URL
-	urlLabel := widget.NewLabel("VLESS Subscription URL:")
+	// Секция 1: VLESS Subscription URL or Direct Links
+	state.CheckURLButton = widget.NewButton("Check", func() {
+		if state.checkURLInProgress {
+			return
+		}
+		go checkURL(state)
+	})
+
+	// Создаем прогресс-бар для кнопки Check
+	state.CheckURLProgress = widget.NewProgressBar()
+	state.CheckURLProgress.Hide()
+	state.CheckURLProgress.SetValue(0)
+
+	// Устанавливаем фиксированный размер через placeholder
+	checkButtonWidth := float32(180)
+	checkButtonHeight := state.CheckURLButton.MinSize().Height + 4 // Немного выше
+
+	// Создаем placeholder для сохранения размера (всегда показываем, чтобы сохранить размер)
+	state.CheckURLPlaceholder = canvas.NewRectangle(color.Transparent)
+	state.CheckURLPlaceholder.SetMinSize(fyne.NewSize(checkButtonWidth, checkButtonHeight))
+	state.CheckURLPlaceholder.Show() // Всегда показываем для сохранения размера
+
+	// Создаем контейнер со стеком (placeholder, button, progress)
+	checkURLStack := container.NewStack(
+		state.CheckURLPlaceholder,
+		state.CheckURLButton,
+		state.CheckURLProgress,
+	)
+
+	// Добавляем отступ от края справа (10 единиц в Fyne)
+	// Используем пустой Rectangle для создания отступа
+	paddingRect := canvas.NewRectangle(color.Transparent)
+	paddingRect.SetMinSize(fyne.NewSize(10, 0)) // Отступ 10px справа
+	state.CheckURLContainer = container.NewHBox(
+		checkURLStack, // Кнопка/прогресс
+		paddingRect,   // Отступ справа
+	)
+
+	urlLabel := widget.NewLabel("VLESS Subscription URL or Direct Links:")
 	urlLabel.Importance = widget.MediumImportance
 
-	state.VLESSURLEntry = widget.NewEntry()
-	state.VLESSURLEntry.SetPlaceHolder("https://example.com/subscription")
+	state.VLESSURLEntry = widget.NewMultiLineEntry()
+	state.VLESSURLEntry.SetPlaceHolder("https://example.com/subscription\nor\nvless://...\nvmess://...")
 	state.VLESSURLEntry.Wrapping = fyne.TextWrapOff
 	state.VLESSURLEntry.OnChanged = func(value string) {
 		state.previewNeedsParse = true
 		state.applyURLToParserConfig(strings.TrimSpace(value))
 	}
 
-	state.CheckURLButton = widget.NewButton("Check URL", func() {
-		go checkURL(state)
-	})
+	// Подсказка под полем ввода с кнопкой Check справа
+	hintLabel := widget.NewLabel("Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://).\nFor multiple links, use a new line for each.")
+	hintLabel.Wrapping = fyne.TextWrapWord
+
+	hintRow := container.NewBorder(
+		nil,                     // top
+		nil,                     // bottom
+		nil,                     // left
+		state.CheckURLContainer, // right - кнопка/прогресс
+		hintLabel,               // center - подсказка займет всё доступное пространство
+	)
 
 	state.URLStatusLabel = widget.NewLabel("")
 	state.URLStatusLabel.Wrapping = fyne.TextWrapWord
 
+	// Ограничиваем ширину и высоту поля ввода URL (3 строки)
+	// Обертываем MultiLineEntry в Scroll контейнер для показа скроллбаров
+	urlEntryScroll := container.NewScroll(state.VLESSURLEntry)
+	urlEntryScroll.Direction = container.ScrollBoth
+	// Создаем фиктивный Rectangle для установки размера (высота 3 строки, ширина ограничена)
+	urlEntrySizeRect := canvas.NewRectangle(color.Transparent)
+	urlEntrySizeRect.SetMinSize(fyne.NewSize(900, 60)) // Ширина 900px, высота ~3 строки (примерно 20px на строку)
+	// Обертываем в Max контейнер с Rectangle для фиксации размера
+	// Scroll контейнер будет ограничен этим размером и покажет скроллбары, когда содержимое не помещается
+	urlEntryWithSize := container.NewMax(
+		urlEntrySizeRect,
+		urlEntryScroll,
+	)
+
 	urlContainer := container.NewVBox(
-		urlLabel,
-		container.NewBorder(
-			nil,                  // top
-			nil,                  // bottom
-			nil,                  // left
-			state.CheckURLButton, // right - кнопка справа
-			state.VLESSURLEntry,  // center - поле ввода занимает всё доступное пространство
-		),
-		state.URLStatusLabel,
+		urlLabel,             // Заголовок
+		urlEntryWithSize,     // Поле ввода с ограничением размера (3 строки)
+		hintRow,              // Подсказка с кнопкой справа
+		state.URLStatusLabel, // Статус
 	)
 
 	// Секция 2: ParserConfig
@@ -346,21 +411,23 @@ func createVLESSSourceTab(state *WizardState) fyne.CanvasObject {
 			state.previewUpdateTimer.Stop()
 		}
 		state.previewUpdateTimer = time.AfterFunc(500*time.Millisecond, func() {
-			fyne.Do(func() {
+			safeFyneDo(state.Window, func() {
 				state.updateTemplatePreview()
 			})
 		})
 		state.previewUpdateMutex.Unlock()
 	}
 
+	// Ограничиваем ширину и высоту поля ParserConfig
+	parserConfigScroll := container.NewScroll(state.ParserConfigEntry)
+	parserConfigScroll.Direction = container.ScrollBoth
 	// Создаем фиктивный Rectangle для установки высоты через container.NewMax
 	parserHeightRect := canvas.NewRectangle(color.Transparent)
 	parserHeightRect.SetMinSize(fyne.NewSize(0, 200)) // ~10 строк
-
 	// Обертываем в Max контейнер с Rectangle для фиксации высоты
 	parserConfigWithHeight := container.NewMax(
 		parserHeightRect,
-		state.ParserConfigEntry,
+		parserConfigScroll,
 	)
 
 	// Кнопка документации
@@ -416,14 +483,16 @@ func createVLESSSourceTab(state *WizardState) fyne.CanvasObject {
 		}
 	}
 
+	// Ограничиваем ширину и высоту поля Preview
+	previewScroll := container.NewScroll(state.OutboundsPreview)
+	previewScroll.Direction = container.ScrollBoth
 	// Создаем фиктивный Rectangle для установки высоты через container.NewMax
 	previewHeightRect := canvas.NewRectangle(color.Transparent)
 	previewHeightRect.SetMinSize(fyne.NewSize(0, 200)) // ~10 строк
-
 	// Обертываем в Max контейнер с Rectangle для фиксации высоты
 	previewWithHeight := container.NewMax(
 		previewHeightRect,
-		state.OutboundsPreview,
+		previewScroll,
 	)
 
 	previewContainer := container.NewVBox(
@@ -657,9 +726,15 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 
 	state.ParserConfig = parserConfig
 
-	// Заполняем поле URL
+	// Заполняем поле URL - объединяем Source и Connections
 	if len(parserConfig.ParserConfig.Proxies) > 0 {
-		state.VLESSURLEntry.SetText(parserConfig.ParserConfig.Proxies[0].Source)
+		proxySource := parserConfig.ParserConfig.Proxies[0]
+		lines := make([]string, 0)
+		if proxySource.Source != "" {
+			lines = append(lines, proxySource.Source)
+		}
+		lines = append(lines, proxySource.Connections...)
+		state.VLESSURLEntry.SetText(strings.Join(lines, "\n"))
 	}
 
 	parserConfigJSON, err := serializeParserConfig(parserConfig)
@@ -677,71 +752,176 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 	return true, nil
 }
 
-// checkURL проверяет доступность URL подписки
-func checkURL(state *WizardState) {
-	url := strings.TrimSpace(state.VLESSURLEntry.Text)
-	if url == "" {
-		fyne.Do(func() {
-			state.URLStatusLabel.SetText("❌ Please enter a URL")
-		})
-		return
+// setCheckURLState управляет состоянием кнопки Check и прогресс-бара
+func (state *WizardState) setCheckURLState(statusText string, buttonText string, progress float64) {
+	if statusText != "" && state.URLStatusLabel != nil {
+		state.URLStatusLabel.SetText(statusText)
 	}
 
-	// Обновляем UI
-	fyne.Do(func() {
-		state.URLStatusLabel.SetText("⏳ Checking...")
-		state.CheckURLButton.Disable()
-	})
-
-	// Проверяем URL в горутине
-	content, err := core.FetchSubscription(url)
-	if err != nil {
-		fyne.Do(func() {
-			state.URLStatusLabel.SetText(fmt.Sprintf("❌ Failed: %v", err))
-			state.CheckURLButton.Enable()
-		})
-		return
-	}
-
-	// Проверяем, что контент не пустой и содержит хотя бы одну строку
-	lines := strings.Split(string(content), "\n")
-	validLines := 0
-	previewLines := make([]string, 0)
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line != "" && (strings.HasPrefix(line, "vless://") || strings.HasPrefix(line, "vmess://") || strings.HasPrefix(line, "trojan://") || strings.HasPrefix(line, "ss://")) {
-			validLines++
-			previewLines = append(previewLines, fmt.Sprintf("%d. %s", validLines, line))
+	progressVisible := false
+	if progress < 0 {
+		// Скрыть прогресс
+		if state.CheckURLProgress != nil {
+			state.CheckURLProgress.Hide()
+			state.CheckURLProgress.SetValue(0)
 		}
+	} else {
+		// Показать прогресс
+		if state.CheckURLProgress != nil {
+			state.CheckURLProgress.SetValue(progress)
+			state.CheckURLProgress.Show()
+		}
+		progressVisible = true
 	}
 
-	if validLines == 0 {
-		fyne.Do(func() {
-			state.URLStatusLabel.SetText("❌ URL is accessible but contains no valid proxy links")
+	buttonVisible := false
+	if progressVisible {
+		// Если показываем прогресс, кнопка скрыта
+		if state.CheckURLButton != nil {
+			state.CheckURLButton.Hide()
+		}
+	} else if buttonText == "" {
+		// Скрыть кнопку
+		if state.CheckURLButton != nil {
+			state.CheckURLButton.Hide()
+		}
+	} else {
+		// Показать кнопку
+		if state.CheckURLButton != nil {
+			state.CheckURLButton.SetText(buttonText)
+			state.CheckURLButton.Show()
 			state.CheckURLButton.Enable()
-		})
-		return
+		}
+		buttonVisible = true
 	}
 
-	fyne.Do(func() {
-		state.URLStatusLabel.SetText(fmt.Sprintf("✅ Working! Found %d valid proxy link(s)", validLines))
-		state.CheckURLButton.Enable()
-		if len(previewLines) > 0 {
-			setPreviewText(state, strings.Join(previewLines, "\n"))
+	// Управление placeholder
+	if state.CheckURLPlaceholder != nil {
+		if buttonVisible || progressVisible {
+			state.CheckURLPlaceholder.Show()
 		} else {
-			setPreviewText(state, "No valid proxy links found to preview.")
+			state.CheckURLPlaceholder.Hide()
 		}
+	}
+}
+
+// checkURL проверяет доступность URL подписки или валидность прямых ссылок
+func checkURL(state *WizardState) {
+	input := strings.TrimSpace(state.VLESSURLEntry.Text)
+	if input == "" {
+		safeFyneDo(state.Window, func() {
+			state.URLStatusLabel.SetText("❌ Please enter a URL or direct link")
+			state.setCheckURLState("", "Check", -1)
+		})
+		return
+	}
+
+	state.checkURLInProgress = true
+	safeFyneDo(state.Window, func() {
+		state.URLStatusLabel.SetText("⏳ Checking...")
+		state.setCheckURLState("", "", 0.0)
 	})
+
+	// Разбиваем на строки для обработки
+	inputLines := strings.Split(input, "\n")
+	totalValid := 0
+	previewLines := make([]string, 0)
+	errors := make([]string, 0)
+
+	for i, line := range inputLines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		safeFyneDo(state.Window, func() {
+			progress := float64(i+1) / float64(len(inputLines))
+			state.setCheckURLState(fmt.Sprintf("⏳ Checking... (%d/%d)", i+1, len(inputLines)), "", progress)
+		})
+
+		if core.IsSubscriptionURL(line) {
+			// Это URL подписки - проверяем доступность
+			content, err := core.FetchSubscription(line)
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("Failed to fetch %s: %v", line, err))
+				continue
+			}
+
+			// Проверяем содержимое подписки
+			subLines := strings.Split(string(content), "\n")
+			validInSub := 0
+			for _, subLine := range subLines {
+				subLine = strings.TrimSpace(subLine)
+				if subLine != "" && (strings.HasPrefix(subLine, "vless://") || strings.HasPrefix(subLine, "vmess://") ||
+					strings.HasPrefix(subLine, "trojan://") || strings.HasPrefix(subLine, "ss://")) {
+					validInSub++
+					totalValid++
+					if len(previewLines) < 10 { // Ограничиваем превью
+						previewLines = append(previewLines, fmt.Sprintf("%d. %s", totalValid, subLine))
+					}
+				}
+			}
+			if validInSub == 0 {
+				errors = append(errors, fmt.Sprintf("Subscription %s contains no valid proxy links", line))
+			}
+		} else if core.IsDirectLink(line) {
+			// Это прямая ссылка - проверяем парсинг
+			_, err := core.ParseNode(line, nil)
+			if err != nil {
+				errors = append(errors, fmt.Sprintf("Invalid direct link: %v", err))
+			} else {
+				totalValid++
+				if len(previewLines) < 10 {
+					previewLines = append(previewLines, fmt.Sprintf("%d. %s", totalValid, line))
+				}
+			}
+		} else {
+			errors = append(errors, fmt.Sprintf("Unknown format: %s", line))
+		}
+	}
+
+	state.checkURLInProgress = false
+	safeFyneDo(state.Window, func() {
+		if totalValid == 0 {
+			errorMsg := "❌ No valid proxy links found"
+			if len(errors) > 0 {
+				errorMsg += "\n" + strings.Join(errors[:min(3, len(errors))], "\n")
+			}
+			state.URLStatusLabel.SetText(errorMsg)
+		} else {
+			statusMsg := fmt.Sprintf("✅ Working! Found %d valid proxy link(s)", totalValid)
+			if len(errors) > 0 {
+				statusMsg += fmt.Sprintf("\n⚠️ %d error(s)", len(errors))
+			}
+			state.URLStatusLabel.SetText(statusMsg)
+			if len(previewLines) > 0 {
+				previewText := strings.Join(previewLines, "\n")
+				if totalValid > len(previewLines) {
+					previewText += fmt.Sprintf("\n... and %d more", totalValid-len(previewLines))
+				}
+				setPreviewText(state, previewText)
+			}
+		}
+		state.setCheckURLState("", "Check", -1)
+	})
+}
+
+// min helper function
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // parseAndPreview парсит ParserConfig и генерирует предпросмотр outbounds
 func parseAndPreview(state *WizardState) {
 	defer func() {
-		fyne.Do(func() {
+		safeFyneDo(state.Window, func() {
 			state.autoParseInProgress = false
 		})
 	}()
-	fyne.Do(func() {
+	safeFyneDo(state.Window, func() {
 		state.ParseButton.Disable()
 		state.ParseButton.SetText("Parsing...")
 		setPreviewText(state, "Parsing configuration...")
@@ -750,7 +930,7 @@ func parseAndPreview(state *WizardState) {
 	// Парсим ParserConfig из поля
 	parserConfigJSON := strings.TrimSpace(state.ParserConfigEntry.Text)
 	if parserConfigJSON == "" {
-		fyne.Do(func() {
+		safeFyneDo(state.Window, func() {
 			setPreviewText(state, "Error: ParserConfig is empty")
 			state.ParseButton.Enable()
 			state.ParseButton.SetText("Parse")
@@ -760,7 +940,7 @@ func parseAndPreview(state *WizardState) {
 
 	var parserConfig core.ParserConfig
 	if err := json.Unmarshal([]byte(parserConfigJSON), &parserConfig); err != nil {
-		fyne.Do(func() {
+		safeFyneDo(state.Window, func() {
 			setPreviewText(state, fmt.Sprintf("Error: Failed to parse ParserConfig JSON: %v", err))
 			state.ParseButton.Enable()
 			state.ParseButton.SetText("Parse")
@@ -768,106 +948,75 @@ func parseAndPreview(state *WizardState) {
 		return
 	}
 
-	// Проверяем наличие URL
+	// Проверяем наличие URL или прямых ссылок
 	url := strings.TrimSpace(state.VLESSURLEntry.Text)
 	if url == "" {
-		fyne.Do(func() {
-			setPreviewText(state, "Error: VLESS URL is empty")
+		safeFyneDo(state.Window, func() {
+			setPreviewText(state, "Error: VLESS URL or direct links are empty")
 			state.ParseButton.Enable()
 			state.ParseButton.SetText("Parse")
 		})
 		return
 	}
 
-	// Обновляем URL в конфиге, если он отличается
-	if len(parserConfig.ParserConfig.Proxies) > 0 {
-		parserConfig.ParserConfig.Proxies[0].Source = url
-	} else {
-		// Добавляем новый источник, если его нет
-		parserConfig.ParserConfig.Proxies = []core.ProxySource{
-			{Source: url},
+	// Обновляем конфиг через applyURLToParserConfig, который правильно разделяет подписки и connections
+	state.applyURLToParserConfig(url)
+
+	// Перезагружаем parserConfig после обновления
+	parserConfigJSON = strings.TrimSpace(state.ParserConfigEntry.Text)
+	if parserConfigJSON != "" {
+		if err := json.Unmarshal([]byte(parserConfigJSON), &parserConfig); err != nil {
+			safeFyneDo(state.Window, func() {
+				setPreviewText(state, fmt.Sprintf("Error: Failed to parse updated ParserConfig JSON: %v", err))
+				state.ParseButton.Enable()
+				state.ParseButton.SetText("Parse")
+			})
+			return
 		}
 	}
 
-	// Загружаем подписку
-	fyne.Do(func() {
-		setPreviewText(state, "Downloading subscription...")
+	// Парсим узлы используя новую логику (поддерживает и подписки и прямые ссылки)
+	safeFyneDo(state.Window, func() {
+		setPreviewText(state, "Processing sources...")
 	})
-
-	content, err := core.FetchSubscription(url)
-	if err != nil {
-		fyne.Do(func() {
-			setPreviewText(state, fmt.Sprintf("Error: Failed to fetch subscription: %v", err))
-			state.ParseButton.Enable()
-			state.ParseButton.SetText("Parse")
-		})
-		return
-	}
-
-	// Парсим узлы из подписки
-	fyne.Do(func() {
-		setPreviewText(state, "Parsing nodes from subscription...")
-	})
-
-	allNodes := make([]*core.ParsedNode, 0)
-	lines := strings.Split(string(content), "\n")
 
 	// Map to track unique tags and their counts (same logic as UpdateConfigFromSubscriptions)
 	tagCounts := make(map[string]int)
 	log.Printf("ConfigWizard: Initializing tag deduplication tracker")
 
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+	allNodes := make([]*core.ParsedNode, 0)
+	totalSources := len(parserConfig.ParserConfig.Proxies)
+
+	for i, proxySource := range parserConfig.ParserConfig.Proxies {
+		safeFyneDo(state.Window, func() {
+			setPreviewText(state, fmt.Sprintf("Processing source %d/%d...", i+1, totalSources))
+		})
+
+		// Используем processProxySource для обработки (поддерживает подписки и прямые ссылки)
+		progressCallback := func(p float64, s string) {
+			// Можно обновлять прогресс, но не обязательно для превью
 		}
 
-		var skipFilters []map[string]string
-		if len(parserConfig.ParserConfig.Proxies) > 0 {
-			skipFilters = parserConfig.ParserConfig.Proxies[0].Skip
-		}
-
-		node, err := parseNodeFromString(line, skipFilters)
+		nodesFromSource, err := core.ProcessProxySource(proxySource, tagCounts, progressCallback, i, totalSources)
 		if err != nil {
-			log.Printf("ConfigWizard: Failed to parse node: %v", err)
-			continue
+			log.Printf("ConfigWizard: Error processing source %d/%d: %v", i+1, totalSources, err)
+			safeFyneDo(state.Window, func() {
+				setPreviewText(state, fmt.Sprintf("Error: Failed to process source: %v", err))
+				state.ParseButton.Enable()
+				state.ParseButton.SetText("Parse")
+			})
+			return
 		}
 
-		if node != nil {
-			// Make tag unique if it already exists (same logic as UpdateConfigFromSubscriptions)
-			originalTag := node.Tag
-			// Check if tag already exists before incrementing
-			if tagCounts[originalTag] > 0 {
-				// Tag already exists, make it unique
-				tagCounts[originalTag]++
-				node.Tag = fmt.Sprintf("%s-%d", originalTag, tagCounts[originalTag])
-				log.Printf("ConfigWizard: Duplicate tag '%s' found (occurrence #%d), renamed to '%s'", originalTag, tagCounts[originalTag], node.Tag)
-			} else {
-				// First occurrence, just mark it
-				tagCounts[originalTag] = 1
-				log.Printf("ConfigWizard: First occurrence of tag '%s'", originalTag)
-			}
-
-			allNodes = append(allNodes, node)
-		}
+		allNodes = append(allNodes, nodesFromSource...)
+		log.Printf("ConfigWizard: Successfully parsed %d nodes from source %d/%d", len(nodesFromSource), i+1, totalSources)
 	}
 
 	// Log statistics about duplicates
-	duplicateCount := 0
-	for tag, count := range tagCounts {
-		if count > 1 {
-			duplicateCount++
-			log.Printf("ConfigWizard: Tag '%s' had %d occurrences (renamed duplicates)", tag, count)
-		}
-	}
-	if duplicateCount > 0 {
-		log.Printf("ConfigWizard: Found %d tags with duplicates, all have been renamed", duplicateCount)
-	} else {
-		log.Printf("ConfigWizard: No duplicate tags found, all tags are unique")
-	}
+	core.LogDuplicateTagStatistics(tagCounts, "ConfigWizard")
 
 	if len(allNodes) == 0 {
-		fyne.Do(func() {
+		safeFyneDo(state.Window, func() {
 			setPreviewText(state, "Error: No valid nodes found in subscription")
 			state.ParseButton.Enable()
 			state.ParseButton.SetText("Parse")
@@ -876,7 +1025,7 @@ func parseAndPreview(state *WizardState) {
 	}
 
 	// Генерируем JSON для узлов
-	fyne.Do(func() {
+	safeFyneDo(state.Window, func() {
 		setPreviewText(state, "Generating outbounds...")
 	})
 
@@ -907,7 +1056,7 @@ func parseAndPreview(state *WizardState) {
 	// Формируем итоговый текст для предпросмотра
 	previewText := strings.Join(selectorsJSON, "\n")
 
-	fyne.Do(func() {
+	safeFyneDo(state.Window, func() {
 		setPreviewText(state, previewText)
 		state.ParseButton.Enable()
 		state.ParseButton.SetText("Parse")
@@ -926,8 +1075,8 @@ func setPreviewText(state *WizardState, text string) {
 	}
 }
 
-func (state *WizardState) applyURLToParserConfig(url string) {
-	if state.ParserConfigEntry == nil || url == "" {
+func (state *WizardState) applyURLToParserConfig(input string) {
+	if state.ParserConfigEntry == nil || input == "" {
 		return
 	}
 	text := strings.TrimSpace(state.ParserConfigEntry.Text)
@@ -938,13 +1087,43 @@ func (state *WizardState) applyURLToParserConfig(url string) {
 	if err := json.Unmarshal([]byte(text), &parserConfig); err != nil {
 		return
 	}
+
+	// Разделяем подписки и прямые ссылки
+	lines := strings.Split(input, "\n")
+	subscriptions := make([]string, 0)
+	connections := make([]string, 0)
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if core.IsSubscriptionURL(line) {
+			subscriptions = append(subscriptions, line)
+		} else if core.IsDirectLink(line) {
+			connections = append(connections, line)
+		}
+	}
+
+	// Обновляем ProxySource
 	if len(parserConfig.ParserConfig.Proxies) == 0 {
 		parserConfig.ParserConfig.Proxies = []core.ProxySource{
-			{Source: url},
+			{},
 		}
-	} else {
-		parserConfig.ParserConfig.Proxies[0].Source = url
 	}
+
+	proxySource := &parserConfig.ParserConfig.Proxies[0]
+
+	// Сохраняем подписки (если несколько, берем первую или объединяем)
+	if len(subscriptions) > 0 {
+		proxySource.Source = subscriptions[0] // Пока берем первую, можно расширить логику
+	} else {
+		proxySource.Source = ""
+	}
+
+	// Сохраняем прямые ссылки в connections
+	proxySource.Connections = connections
+
 	serialized, err := serializeParserConfig(&parserConfig)
 	if err != nil {
 		return
@@ -991,7 +1170,7 @@ func (state *WizardState) refreshOutboundOptions() {
 
 	state.ensureFinalSelected(options)
 
-	fyne.Do(func() {
+	safeFyneDo(state.Window, func() {
 		for _, ruleState := range state.SelectableRuleStates {
 			if !ruleState.Rule.HasOutbound || ruleState.OutboundSelect == nil {
 				continue
@@ -1053,25 +1232,8 @@ func buildTemplateConfig(state *WizardState) (string, error) {
 		// If parsing fails, use text as-is (might be invalid JSON, but let user fix it)
 		log.Printf("buildTemplateConfig: Warning: Failed to parse ParserConfig JSON: %v", err)
 	} else {
-		// Backward compatibility: migrate version 1 to version 2 if needed
-		if parserConfig.Version > 0 && parserConfig.ParserConfig.Version == 0 {
-			parserConfig.ParserConfig.Version = parserConfig.Version
-			parserConfig.Version = 0
-		}
-
-		// Ensure version is set to 2
-		if parserConfig.ParserConfig.Version == 0 {
-			parserConfig.ParserConfig.Version = core.ParserConfigVersion
-		}
-
-		// Ensure parser object exists (create if missing)
-		// Set default reload to "4h" if not specified
-		if parserConfig.ParserConfig.Parser.Reload == "" {
-			parserConfig.ParserConfig.Parser.Reload = "4h"
-		}
-
-		// Always set last_updated to current time when saving
-		parserConfig.ParserConfig.Parser.LastUpdated = time.Now().UTC().Format(time.RFC3339)
+		// Normalize ParserConfig (migrate version, set defaults, update last_updated)
+		core.NormalizeParserConfig(&parserConfig, true)
 
 		// Serialize back to JSON with proper formatting (always version 2 format)
 		configToSerialize := map[string]interface{}{
@@ -1383,22 +1545,8 @@ func serializeParserConfig(parserConfig *core.ParserConfig) (string, error) {
 		return "", fmt.Errorf("parserConfig is nil")
 	}
 
-	// Backward compatibility: migrate version 1 to version 2 if needed
-	if parserConfig.Version > 0 && parserConfig.ParserConfig.Version == 0 {
-		parserConfig.ParserConfig.Version = parserConfig.Version
-		parserConfig.Version = 0
-	}
-
-	// Ensure version is set to 2
-	if parserConfig.ParserConfig.Version == 0 {
-		parserConfig.ParserConfig.Version = core.ParserConfigVersion
-	}
-
-	// Ensure parser object exists (create if missing)
-	// Set default reload to "4h" if not specified
-	if parserConfig.ParserConfig.Parser.Reload == "" {
-		parserConfig.ParserConfig.Parser.Reload = "4h"
-	}
+	// Normalize ParserConfig (migrate version, set defaults, but don't update last_updated)
+	core.NormalizeParserConfig(parserConfig, false)
 
 	// Serialize in version 2 format (version inside ParserConfig, not at top level)
 	configToSerialize := map[string]interface{}{

@@ -12,6 +12,10 @@ import (
 	"time"
 )
 
+// MaxNodesPerSubscription limits the maximum number of nodes parsed from a single subscription
+// This prevents memory issues with very large subscriptions
+const MaxNodesPerSubscription = 500
+
 // ParsedNode represents a parsed proxy node
 type ParsedNode struct {
 	Tag      string
@@ -30,6 +34,179 @@ type ParsedNode struct {
 func updateParserProgress(ac *AppController, progress float64, status string) {
 	if ac.UpdateParserProgressFunc != nil {
 		ac.UpdateParserProgressFunc(progress, status)
+	}
+}
+
+// MakeTagUnique makes a tag unique by appending a number if it already exists in tagCounts.
+// Updates tagCounts map and returns the unique tag.
+// logPrefix is used for logging (e.g., "Parser" or "ConfigWizard").
+func MakeTagUnique(tag string, tagCounts map[string]int, logPrefix string) string {
+	if tagCounts[tag] > 0 {
+		// Tag already exists, make it unique
+		tagCounts[tag]++
+		uniqueTag := fmt.Sprintf("%s-%d", tag, tagCounts[tag])
+		log.Printf("%s: Duplicate tag '%s' found (occurrence #%d), renamed to '%s'", logPrefix, tag, tagCounts[tag], uniqueTag)
+		return uniqueTag
+	} else {
+		// First occurrence, just mark it
+		tagCounts[tag] = 1
+		log.Printf("%s: First occurrence of tag '%s'", logPrefix, tag)
+		return tag
+	}
+}
+
+// IsDirectLink checks if the input string is a direct proxy link (vless://, vmess://, etc.)
+// Exported for use in UI
+func IsDirectLink(input string) bool {
+	trimmed := strings.TrimSpace(input)
+	return strings.HasPrefix(trimmed, "vless://") ||
+		strings.HasPrefix(trimmed, "vmess://") ||
+		strings.HasPrefix(trimmed, "trojan://") ||
+		strings.HasPrefix(trimmed, "ss://")
+}
+
+// IsSubscriptionURL checks if the input string is a subscription URL (http:// or https://)
+// Exported for use in UI
+func IsSubscriptionURL(input string) bool {
+	trimmed := strings.TrimSpace(input)
+	return strings.HasPrefix(trimmed, "http://") ||
+		strings.HasPrefix(trimmed, "https://")
+}
+
+// ProcessProxySource processes a single ProxySource:
+// - Processes subscription URL from Source field (http/https)
+// - Processes direct links from Connections field (vless://, etc.)
+// - Also handles legacy format where direct links are in Source (backward compatibility)
+// Exported for use in UI
+func ProcessProxySource(proxySource ProxySource, tagCounts map[string]int, progressCallback func(float64, string), subscriptionIndex, totalSubscriptions int) ([]*ParsedNode, error) {
+	nodes := make([]*ParsedNode, 0)
+	nodesFromThisSource := 0
+	skippedDueToLimit := 0
+
+	// Обрабатываем подписку из поля Source
+	if proxySource.Source != "" {
+		// Проверяем, не является ли source прямой ссылкой (legacy формат)
+		if IsSubscriptionURL(proxySource.Source) {
+			// Это подписка - скачиваем и парсим
+			if progressCallback != nil {
+				progressCallback(20+float64(subscriptionIndex)*50.0/float64(totalSubscriptions),
+					fmt.Sprintf("Downloading subscription %d/%d: %s", subscriptionIndex+1, totalSubscriptions, proxySource.Source))
+			}
+
+			content, err := FetchSubscription(proxySource.Source)
+			if err != nil {
+				log.Printf("Parser: Error: Failed to fetch subscription from %s: %v", proxySource.Source, err)
+			} else if len(content) > 0 {
+				if progressCallback != nil {
+					progressCallback(20+float64(subscriptionIndex)*50.0/float64(totalSubscriptions)+10.0/float64(totalSubscriptions),
+						fmt.Sprintf("Parsing subscription %d/%d: %s", subscriptionIndex+1, totalSubscriptions, proxySource.Source))
+				}
+
+				// Parse subscription content line by line
+				subscriptionLines := strings.Split(string(content), "\n")
+				for _, subLine := range subscriptionLines {
+					subLine = strings.TrimSpace(subLine)
+					if subLine == "" {
+						continue
+					}
+
+					if nodesFromThisSource >= MaxNodesPerSubscription {
+						skippedDueToLimit++
+						continue
+					}
+
+					node, err := ParseNode(subLine, proxySource.Skip)
+					if err != nil {
+						log.Printf("Parser: Warning: Failed to parse node from subscription %s: %v", proxySource.Source, err)
+						continue
+					}
+
+					if node != nil {
+						node.Tag = MakeTagUnique(node.Tag, tagCounts, "Parser")
+						nodes = append(nodes, node)
+						nodesFromThisSource++
+					}
+				}
+			}
+		} else if IsDirectLink(proxySource.Source) {
+			// Legacy формат: прямая ссылка в Source
+			if progressCallback != nil {
+				progressCallback(20+float64(subscriptionIndex)*50.0/float64(totalSubscriptions),
+					fmt.Sprintf("Parsing direct link %d/%d", subscriptionIndex+1, totalSubscriptions))
+			}
+
+			if nodesFromThisSource < MaxNodesPerSubscription {
+				node, err := ParseNode(proxySource.Source, proxySource.Skip)
+				if err != nil {
+					log.Printf("Parser: Warning: Failed to parse direct link: %v", err)
+				} else if node != nil {
+					node.Tag = MakeTagUnique(node.Tag, tagCounts, "Parser")
+					nodes = append(nodes, node)
+					nodesFromThisSource++
+				}
+			} else {
+				skippedDueToLimit++
+			}
+		}
+	}
+
+	// Обрабатываем прямые ссылки из поля Connections
+	for connIndex, connection := range proxySource.Connections {
+		connection = strings.TrimSpace(connection)
+		if connection == "" {
+			continue
+		}
+
+		if !IsDirectLink(connection) {
+			log.Printf("Parser: Warning: Invalid direct link format in connections: %s", connection)
+			continue
+		}
+
+		if progressCallback != nil {
+			progressCallback(20+float64(subscriptionIndex)*50.0/float64(totalSubscriptions),
+				fmt.Sprintf("Parsing direct link %d/%d (connection %d)", subscriptionIndex+1, totalSubscriptions, connIndex+1))
+		}
+
+		if nodesFromThisSource >= MaxNodesPerSubscription {
+			skippedDueToLimit++
+			continue
+		}
+
+		node, err := ParseNode(connection, proxySource.Skip)
+		if err != nil {
+			log.Printf("Parser: Warning: Failed to parse direct link from connections: %v", err)
+			continue
+		}
+
+		if node != nil {
+			node.Tag = MakeTagUnique(node.Tag, tagCounts, "Parser")
+			nodes = append(nodes, node)
+			nodesFromThisSource++
+		}
+	}
+
+	if skippedDueToLimit > 0 {
+		log.Printf("Parser: Warning: Source exceeded limit of %d nodes. Skipped %d additional nodes.",
+			MaxNodesPerSubscription, skippedDueToLimit)
+	}
+
+	return nodes, nil
+}
+
+// LogDuplicateTagStatistics logs statistics about duplicate tags found in tagCounts.
+// logPrefix is used for logging (e.g., "Parser" or "ConfigWizard").
+func LogDuplicateTagStatistics(tagCounts map[string]int, logPrefix string) {
+	duplicateCount := 0
+	for tag, count := range tagCounts {
+		if count > 1 {
+			duplicateCount++
+			log.Printf("%s: Tag '%s' had %d occurrences (renamed duplicates)", logPrefix, tag, count)
+		}
+	}
+	if duplicateCount > 0 {
+		log.Printf("%s: Found %d tags with duplicates, all have been renamed", logPrefix, duplicateCount)
+	} else {
+		log.Printf("%s: No duplicate tags found, all tags are unique", logPrefix)
 	}
 }
 
@@ -68,74 +245,27 @@ func UpdateConfigFromSubscriptions(ac *AppController) error {
 	updateParserProgress(ac, 20, fmt.Sprintf("Loading subscriptions (0/%d)...", totalSubscriptions))
 
 	for i, proxySource := range config.ParserConfig.Proxies {
-		log.Printf("Parser: Downloading subscription %d/%d from: %s", i+1, totalSubscriptions, proxySource.Source)
+		progressCallback := func(p float64, s string) {
+			updateParserProgress(ac, p, s)
+		}
 
-		// Update progress: downloading subscription
-		progress := 20 + float64(i)*50.0/float64(totalSubscriptions)
-		updateParserProgress(ac, progress, fmt.Sprintf("Downloading subscription %d/%d: %s", i+1, totalSubscriptions, proxySource.Source))
-
-		content, err := FetchSubscription(proxySource.Source)
+		nodesFromThisSource, err := ProcessProxySource(proxySource, tagCounts, progressCallback, i, totalSubscriptions)
 		if err != nil {
-			log.Printf("Parser: Error: Failed to fetch subscription from %s: %v", proxySource.Source, err)
+			log.Printf("Parser: Error processing source %d/%d: %v", i+1, totalSubscriptions, err)
 			continue
 		}
 
-		// Check if content is empty
-		if len(content) == 0 {
-			log.Printf("Parser: Warning: Subscription from %s returned empty content", proxySource.Source)
-			continue
-		}
-
-		// Update progress: parsing subscription
-		progress = 20 + float64(i)*50.0/float64(totalSubscriptions) + 10.0/float64(totalSubscriptions)
-		updateParserProgress(ac, progress, fmt.Sprintf("Parsing subscription %d/%d: %s", i+1, totalSubscriptions, proxySource.Source))
-
-		// Parse subscription content
-		lines := strings.Split(string(content), "\n")
-		nodesFromThisSubscription := 0
-
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-
-			node, err := ParseNode(line, proxySource.Skip)
-			if err != nil {
-				log.Printf("Parser: Warning: Failed to parse node from %s: %v", proxySource.Source, err)
-				continue
-			}
-
-			if node != nil {
-				// Make tag unique if it already exists
-				originalTag := node.Tag
-				// Check if tag already exists before incrementing
-				if tagCounts[originalTag] > 0 {
-					// Tag already exists, make it unique
-					tagCounts[originalTag]++
-					node.Tag = fmt.Sprintf("%s-%d", originalTag, tagCounts[originalTag])
-					log.Printf("Parser: Duplicate tag '%s' found (occurrence #%d), renamed to '%s'", originalTag, tagCounts[originalTag], node.Tag)
-				} else {
-					// First occurrence, just mark it
-					tagCounts[originalTag] = 1
-					log.Printf("Parser: First occurrence of tag '%s'", originalTag)
-				}
-
-				allNodes = append(allNodes, node)
-				nodesFromThisSubscription++
-			}
-		}
-
-		if nodesFromThisSubscription > 0 {
+		if len(nodesFromThisSource) > 0 {
+			allNodes = append(allNodes, nodesFromThisSource...)
 			successfulSubscriptions++
-			log.Printf("Parser: Successfully parsed %d nodes from %s", nodesFromThisSubscription, proxySource.Source)
+			log.Printf("Parser: Successfully parsed %d nodes from source %d/%d: %s", len(nodesFromThisSource), i+1, totalSubscriptions, proxySource.Source)
 		} else {
-			log.Printf("Parser: Warning: No valid nodes parsed from %s", proxySource.Source)
+			log.Printf("Parser: Warning: No valid nodes parsed from source %d/%d: %s", i+1, totalSubscriptions, proxySource.Source)
 		}
 
-		// Update progress after parsing subscription
-		progress = 20 + float64(i+1)*50.0/float64(totalSubscriptions)
-		updateParserProgress(ac, progress, fmt.Sprintf("Processed subscriptions: %d/%d, nodes: %d", i+1, totalSubscriptions, len(allNodes)))
+		// Update progress after parsing source
+		progress := 20 + float64(i+1)*50.0/float64(totalSubscriptions)
+		updateParserProgress(ac, progress, fmt.Sprintf("Processed sources: %d/%d, nodes: %d", i+1, totalSubscriptions, len(allNodes)))
 	}
 
 	// Check if we successfully loaded at least one subscription
@@ -147,18 +277,7 @@ func UpdateConfigFromSubscriptions(ac *AppController) error {
 	log.Printf("Parser: Parsed %d nodes from subscriptions", len(allNodes))
 
 	// Log statistics about duplicates
-	duplicateCount := 0
-	for tag, count := range tagCounts {
-		if count > 1 {
-			duplicateCount++
-			log.Printf("Parser: Tag '%s' had %d occurrences (renamed duplicates)", tag, count)
-		}
-	}
-	if duplicateCount > 0 {
-		log.Printf("Parser: Found %d tags with duplicates, all have been renamed", duplicateCount)
-	} else {
-		log.Printf("Parser: No duplicate tags found, all tags are unique")
-	}
+	LogDuplicateTagStatistics(tagCounts, "Parser")
 
 	updateParserProgress(ac, 70, fmt.Sprintf("Processed nodes: %d. Generating JSON...", len(allNodes)))
 
@@ -304,6 +423,12 @@ func ParseNode(uri string, skipFilters []map[string]string) (*ParsedNode, error)
 
 	// Extract fragment (label)
 	node.Label = parsedURL.Fragment
+	// URL decode the fragment if needed
+	if node.Label != "" {
+		if decoded, err := url.QueryUnescape(node.Label); err == nil {
+			node.Label = decoded
+		}
+	}
 
 	// For some formats, label might be in path or userinfo
 	if node.Label == "" {

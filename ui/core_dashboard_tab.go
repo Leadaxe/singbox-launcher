@@ -329,26 +329,38 @@ func (tab *CoreDashboardTab) createVersionBlock() fyne.CanvasObject {
 	)
 }
 
-// setWintunState - управляет состоянием wintun (лейбл, кнопка, прогресс)
+// downloadComponentState represents UI components for download state management
+type downloadComponentState struct {
+	statusLabel *widget.Label
+	button      *widget.Button
+	progressBar *widget.ProgressBar
+	placeholder *canvas.Rectangle
+}
+
+// setDownloadState - управляет состоянием компонента загрузки (лейбл, кнопка, прогресс)
 // statusText: текст для статус-лейбла (если "", не менять)
 // buttonText: текст кнопки (если "", скрыть кнопку; иначе показать с этим текстом и включить)
 // progress: значение прогресса (если < 0, скрыть прогресс; иначе показать с этим значением 0.0-1.0)
-func (tab *CoreDashboardTab) setWintunState(statusText string, buttonText string, progress float64) {
+func (tab *CoreDashboardTab) setDownloadState(component downloadComponentState, statusText string, buttonText string, progress float64) {
 	// Управление статус-лейблом
-	if statusText != "" {
-		tab.wintunStatusLabel.SetText(statusText)
+	if statusText != "" && component.statusLabel != nil {
+		component.statusLabel.SetText(statusText)
 	}
 
 	// Управление прогресс-баром
 	progressVisible := false
 	if progress < 0 {
 		// Скрыть прогресс
-		tab.wintunDownloadProgress.Hide()
-		tab.wintunDownloadProgress.SetValue(0)
+		if component.progressBar != nil {
+			component.progressBar.Hide()
+			component.progressBar.SetValue(0)
+		}
 	} else {
 		// Показать прогресс с значением
-		tab.wintunDownloadProgress.SetValue(progress)
-		tab.wintunDownloadProgress.Show()
+		if component.progressBar != nil {
+			component.progressBar.SetValue(progress)
+			component.progressBar.Show()
+		}
 		progressVisible = true
 	}
 
@@ -356,26 +368,46 @@ func (tab *CoreDashboardTab) setWintunState(statusText string, buttonText string
 	buttonVisible := false
 	if progressVisible {
 		// Если показываем прогресс, кнопка всегда скрыта
-		tab.wintunDownloadButton.Hide()
+		if component.button != nil {
+			component.button.Hide()
+		}
 	} else if buttonText == "" {
 		// Скрыть кнопку
-		tab.wintunDownloadButton.Hide()
+		if component.button != nil {
+			component.button.Hide()
+		}
 	} else {
 		// Показать кнопку с текстом
-		tab.wintunDownloadButton.SetText(buttonText)
-		tab.wintunDownloadButton.Show()
-		tab.wintunDownloadButton.Enable()
+		if component.button != nil {
+			component.button.SetText(buttonText)
+			component.button.Show()
+			component.button.Enable()
+		}
 		buttonVisible = true
 	}
 
 	// Управление placeholder: показывать если есть кнопка ИЛИ прогресс-бар
-	if tab.wintunDownloadPlaceholder != nil {
+	if component.placeholder != nil {
 		if buttonVisible || progressVisible {
-			tab.wintunDownloadPlaceholder.Show()
+			component.placeholder.Show()
 		} else {
-			tab.wintunDownloadPlaceholder.Hide()
+			component.placeholder.Hide()
 		}
 	}
+}
+
+// setWintunState - управляет состоянием wintun (лейбл, кнопка, прогресс)
+// statusText: текст для статус-лейбла (если "", не менять)
+// buttonText: текст кнопки (если "", скрыть кнопку; иначе показать с этим текстом и включить)
+// progress: значение прогресса (если < 0, скрыть прогресс; иначе показать с этим значением 0.0-1.0)
+func (tab *CoreDashboardTab) setWintunState(statusText string, buttonText string, progress float64) {
+	component := downloadComponentState{
+		statusLabel: tab.wintunStatusLabel,
+		button:      tab.wintunDownloadButton,
+		progressBar: tab.wintunDownloadProgress,
+		placeholder: tab.wintunDownloadPlaceholder,
+	}
+	tab.setDownloadState(component, statusText, buttonText, progress)
 }
 
 // setSingboxState - управляет состоянием sing-box (лейбл, кнопка, прогресс)
@@ -383,48 +415,13 @@ func (tab *CoreDashboardTab) setWintunState(statusText string, buttonText string
 // buttonText: текст кнопки (если "", скрыть кнопку; иначе показать с этим текстом и включить)
 // progress: значение прогресса (если < 0, скрыть прогресс; иначе показать с этим значением 0.0-1.0)
 func (tab *CoreDashboardTab) setSingboxState(statusText string, buttonText string, progress float64) {
-	// Управление статус-лейблом
-	if statusText != "" {
-		tab.singboxStatusLabel.SetText(statusText)
+	component := downloadComponentState{
+		statusLabel: tab.singboxStatusLabel,
+		button:      tab.downloadButton,
+		progressBar: tab.downloadProgress,
+		placeholder: tab.downloadPlaceholder,
 	}
-
-	// Управление прогресс-баром
-	progressVisible := false
-	if progress < 0 {
-		// Скрыть прогресс
-		tab.downloadProgress.Hide()
-		tab.downloadProgress.SetValue(0)
-	} else {
-		// Показать прогресс с значением
-		tab.downloadProgress.SetValue(progress)
-		tab.downloadProgress.Show()
-		progressVisible = true
-	}
-
-	// Управление кнопкой (если прогресс виден, кнопка всегда скрыта)
-	buttonVisible := false
-	if progressVisible {
-		// Если показываем прогресс, кнопка всегда скрыта
-		tab.downloadButton.Hide()
-	} else if buttonText == "" {
-		// Скрыть кнопку
-		tab.downloadButton.Hide()
-	} else {
-		// Показать кнопку с текстом
-		tab.downloadButton.SetText(buttonText)
-		tab.downloadButton.Show()
-		tab.downloadButton.Enable()
-		buttonVisible = true
-	}
-
-	// Управление placeholder: показывать если есть кнопка ИЛИ прогресс-бар
-	if tab.downloadPlaceholder != nil {
-		if buttonVisible || progressVisible {
-			tab.downloadPlaceholder.Show()
-		} else {
-			tab.downloadPlaceholder.Hide()
-		}
-	}
+	tab.setDownloadState(component, statusText, buttonText, progress)
 }
 
 // updateBinaryStatus проверяет наличие бинарника и обновляет статус
@@ -628,7 +625,21 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 		tab.templateDownloadButton.Disable()
 	}
 	go func() {
-		resp, err := http.Get(configTemplateURL)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		req, err := http.NewRequestWithContext(ctx, "GET", configTemplateURL, nil)
+		if err != nil {
+			fyne.Do(func() {
+				if tab.templateDownloadButton != nil {
+					tab.templateDownloadButton.Enable()
+				}
+				ShowError(tab.controller.MainWindow, fmt.Errorf("failed to create request: %w", err))
+			})
+			return
+		}
+
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			fyne.Do(func() {
 				if tab.templateDownloadButton != nil {

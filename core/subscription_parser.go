@@ -99,11 +99,11 @@ type ParserConfig struct {
 	Version      int `json:"version,omitempty"`
 	ParserConfig struct {
 		// Version 2: version moved inside ParserConfig
-		Version   int                `json:"version,omitempty"`
-		Proxies   []ProxySource      `json:"proxies"`
-		Outbounds []OutboundConfig   `json:"outbounds"`
+		Version   int              `json:"version,omitempty"`
+		Proxies   []ProxySource    `json:"proxies"`
+		Outbounds []OutboundConfig `json:"outbounds"`
 		Parser    struct {
-			Reload      string `json:"reload,omitempty"`      // Интервал автоматического обновления
+			Reload      string `json:"reload,omitempty"`       // Интервал автоматического обновления
 			LastUpdated string `json:"last_updated,omitempty"` // Время последнего обновления (RFC3339, UTC)
 		} `json:"parser,omitempty"`
 	} `json:"ParserConfig"`
@@ -112,10 +112,44 @@ type ParserConfig struct {
 // ParserConfigVersion is the current version of ParserConfig format
 const ParserConfigVersion = 2
 
+// NormalizeParserConfig normalizes ParserConfig structure:
+// - Migrates version 1 to version 2 if needed
+// - Ensures version is set to ParserConfigVersion
+// - Sets default reload to "4h" if not specified
+// - Optionally updates last_updated timestamp (if updateLastUpdated is true)
+func NormalizeParserConfig(parserConfig *ParserConfig, updateLastUpdated bool) {
+	if parserConfig == nil {
+		return
+	}
+
+	// Backward compatibility: migrate version 1 to version 2 if needed
+	if parserConfig.Version > 0 && parserConfig.ParserConfig.Version == 0 {
+		parserConfig.ParserConfig.Version = parserConfig.Version
+		parserConfig.Version = 0
+	}
+
+	// Ensure version is set to 2
+	if parserConfig.ParserConfig.Version == 0 {
+		parserConfig.ParserConfig.Version = ParserConfigVersion
+	}
+
+	// Ensure parser object exists (create if missing)
+	// Set default reload to "4h" if not specified
+	if parserConfig.ParserConfig.Parser.Reload == "" {
+		parserConfig.ParserConfig.Parser.Reload = "4h"
+	}
+
+	// Optionally update last_updated timestamp
+	if updateLastUpdated {
+		parserConfig.ParserConfig.Parser.LastUpdated = time.Now().UTC().Format(time.RFC3339)
+	}
+}
+
 // ProxySource represents a proxy subscription source
 type ProxySource struct {
-	Source string              `json:"source"`
-	Skip   []map[string]string `json:"skip,omitempty"`
+	Source      string              `json:"source,omitempty"`
+	Connections []string            `json:"connections,omitempty"`
+	Skip        []map[string]string `json:"skip,omitempty"`
 }
 
 // OutboundConfig represents an outbound selector configuration
