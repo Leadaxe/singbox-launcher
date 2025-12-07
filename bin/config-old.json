@@ -1,0 +1,332 @@
+{
+/** @ParcerConfig
+
+{
+  "ParserConfig": {
+    "version": 2,
+    "proxies": [
+      {
+        "source": "https://cdn.proxyliberty.ru/connection/subs/104d012c-cbcc-49ef-845c-c5b3c529cc8a"
+      }
+    ],
+    "outbounds": [
+      {
+        "tag": "proxy-out",
+        "type": "selector",
+        "options": {
+          "interrupt_exist_connections": true
+        },
+        "outbounds": {
+          "proxies": {
+            "tag": "!/(🇷🇺)/i"
+          },
+          "addOutbounds": [
+            "direct-out",
+            "auto-proxy-out"
+          ],
+          "preferredDefault": {
+            "tag": "/Германия/i"
+          }
+        },
+        "comment": "Proxy group for international connections"
+      },
+      {
+        "tag": "ruvpn",
+        "type": "selector",
+        "outbounds": {
+          "proxies": {
+            "tag": "/🇷🇺/i"
+          }
+        },
+        "comment": "Proxy group for Russia"
+      },
+      {
+        "tag": "gemini-vpn",
+        "type": "selector",
+        "outbounds": {
+          "proxies": {
+            "comment": "/Gemini/i"
+          }
+        },
+        "comment": "Proxy group for Gemini"
+      },
+      {
+        "tag": "auto-proxy-out",
+        "type": "urltest",
+        "options": {
+          "interrupt_exist_connections": true,
+          "interval": "30s",
+          "tolerance": 100,
+          "url": "https://cp.cloudflare.com/generate_204"
+        },
+        "outbounds": {
+          "proxies": {
+            "tag": "!/(🇷🇺)/i"
+          }
+        },
+        "comment": "Proxy automated group for everything that should go through VPN"
+      }
+    ],
+    "parser": {
+      "last_updated": "2025-12-06T22:17:01Z"
+    }
+  }
+}
+*/
+
+  // БАЗА Читать:
+  // https://deepwiki.com/chika0801/sing-box-examples/4.3-dns-configuration-and-routing
+  // https://sing-box.sagernet.org/configuration/dns/server/
+  
+  //Downloads:
+  // https://github.com/SagerNet/sing-box/releases/
+  // https://www.wintun.net/
+  
+  
+  // --- НАСТРОЙКИ ЛОГИРОВАНИЯ ---
+  // Определяют уровень детализации логов, включение отметок времени и вывод в файл.
+  "log": {
+    // trace debug info warn error fatal panic.
+    "level": "warn",   // Уровень детализации: "info" для повседневной работы, "debug" для детальной отладки.
+                       // Оставлено "debug" для отладки. После успешной настройки рекомендуется "info".
+    "timestamp": true  // Добавлять отметку времени к каждой записи лога.
+   // "output": "singbox.log" // Вывод логов в файл "singbox.log" в той же папке, что и исполняемый файл.
+  },
+
+  // --- КОНФИГУРАЦИЯ DNS ---
+  // Определяет, как Sing-box будет разрешать доменные имена.
+  "dns": {
+    "servers": [
+      // Прямой DNS-резолвер по UDP (быстрый и надежный, но без шифрования).
+      {
+        "type": "udp",
+        "tag": "direct_dns_resolver",
+        "server": "9.9.9.9",      // Пример: Quad9 (без фильтрации). Можно использовать 1.1.1.1, 8.8.8.8 и т.д.
+        "server_port": 53
+      },
+      // DNS-over-HTTPS (DoH) для приватности (трафик DNS шифруется по HTTPS).
+      {
+        "type": "https",
+        "tag": "google_doh",
+        "server": "8.8.8.8",      // Пример: Google Public DNS.
+        "server_port": 443,
+        "path": "/dns-query",
+        "detour": "proxy-out"
+      },
+      {
+        "type": "https",
+        "tag": "yandex_doh",
+        "server": "77.88.8.88",
+        "server_port": 443,
+        "path": "/dns-query",
+        "detour": "ruvpn",
+        "domain_strategy": "prefer_ipv4"
+      },
+      {
+        "type": "udp",
+        "tag": "yandex_dns_ru_alt",
+        "server": "77.88.8.2",
+        "server_port": 53,
+        "detour": "ruvpn",
+        "domain_strategy": "prefer_ipv4"
+      }
+    ],
+    // Правила для обработки DNS-запросов. Обрабатываются сверху вниз.
+    "rules": [
+      // { "rule_set": "ads-rules", "action": "reject" },
+      { "rule_set": "ru-domains", "server": "yandex_doh" },
+      { "rule_set": "ru-domains", "server": "yandex_dns_ru_alt" },
+      { "server": "google_doh" }, // защищено
+      { "server": "direct_dns_resolver" } // не защищено
+    ],
+    // Все DNS-запросы направляем через прямой DNS-резолвер
+    "final": "google_doh",
+    "strategy": "ipv4_only", // Предпочитать IPv4 адреса при разрешении доменов.
+    "independent_cache": false // Так стабильнее скорость переключения VPN по API. Включать независимый кеш DNS для повышения производительности.
+  },
+
+  // --- ВХОДЯЩИЕ СОЕДИНЕНИЯ (INBOUNDS) ---
+  // Определяют, как Sing-box принимает входящие соединения от приложений и системы.
+  "inbounds": [
+    // TUN Интерфейс: для прозрачного проксирования всего системного трафика (работает как VPN).
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "singbox-tun0", // Имя виртуального сетевого адаптера, создаваемого Sing-box.
+      "address": [
+        "172.16.0.1/30"               // Внутренний IPv4 адрес для TUN-интерфейса.
+                                    // Используйте диапазон, который не пересекается с вашей реальной LAN.
+      ],
+      "mtu": 1492,                    // Максимальный размер передаваемого блока (стандартное значение для Ethernet).
+      "auto_route": true,             // Автоматически добавлять/удалять маршруты в системную таблицу маршрутизации.
+      "strict_route": false,           // На Windows: принудительно направлять весь трафик через TUN, помогает предотвратить утечки DNS.
+      "stack": "system"                // Использовать гибридный стек TCP/IP для обработки трафика на TUN интерфейсе.
+                                      // TCP - внутренний стек Sing-box, UDP - системный стек.
+      // Объект "platform" для Windows-специфичных настроек tun, таких как http_proxy,
+      // не поддерживается напрямую в этом контексте и удален.
+      // Параметр "strict_route" является прямым свойством "tun" входящего соединения.
+    }
+  ],
+
+  // --- ИСХОДЯЩИЕ СОЕДИНЕНИЯ (OUTBOUNDS) ---
+  // Определяют, как Sing-box отправляет трафик во внешнюю сеть (через прокси, напрямую, или блокирует).
+  
+  "outbounds": [
+    
+/** @ParserSTART */
+	// 🇱🇹Литва
+	{"tag":"🇱🇹Литва","type":"vless","server":"lt-cherry-01.com","server_port":8443,"uuid":"93194559-faa7-41e1-bdfb-2aa6ab04074a","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"L3X1eh1Jq_6PKJ6LlwjgiWq0XNaDOqCVKgIElJ5nkVA","short_id":"0d960275b7b0f9af"}}},
+	// 🇨🇦Канада|Gemini
+	{"tag":"🇨🇦Канада","type":"vless","server":"ca-dp-01.com","server_port":8443,"uuid":"5570e84e-3df7-4b32-8d9e-cc265f07e777","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"pPi-WO8qQFFZ9UJWNLW9YClbjcoAAZWJQ2_FM3Kjhz8","short_id":"da147b40372a5fed"}}},
+	// 🇭🇺Венгрия|Белые списки
+	{"tag":"🇭🇺Венгрия","type":"vless","server":"grinoree.ru","server_port":8443,"uuid":"530e754c-d866-46b7-900c-7848e49e94e9","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"7zd9mJilgjOrg_ohtw23Vmio-pdnYqeP_r-kiWt87Cg","short_id":"8ba12e75110b7a9c"}}},
+	// 🇹🇷Турция|Белые списки
+	{"tag":"🇹🇷Турция","type":"vless","server":"quarenty.site","server_port":8443,"uuid":"eebfe8d5-c259-4291-8b67-eb9052631213","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"zii4nGNapnFKL6SN8GzWNqFlElBvUCUFUThEP0kFH04","short_id":"205748bc0f24a747"}}},
+	// 🇪🇳Англия
+	{"tag":"🇬🇧Англия","type":"vless","server":"uk-gthost-01.com","server_port":8443,"uuid":"e21765bf-7d24-48a9-b741-44d9e892fdb0","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"dY9SNEllJMW63xo-JdXufhmjAxB_4uFw_QMjgufjiD8","short_id":"c20b1035d72d7793"}}},
+	// 🇯🇵Япония
+	{"tag":"🇯🇵Япония","type":"vless","server":"shimorra.site","server_port":8443,"uuid":"6a674764-3e3c-44af-a17f-183ef611e9b0","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"CwOLLTLuQN1SPzvenr_B_ErYYoOB_ScSvGvH-iYOtF8","short_id":"98f4e12d491b58ec"}}},
+	// 🇵🇱Польша|Белые списки
+	{"tag":"🇵🇱Польша","type":"vless","server":"norkello.online","server_port":8443,"uuid":"5d786b1e-63ad-4a24-82cf-6c822363467e","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"m.vk.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"Qddpg8luihgzgx4g4uMJklXzlrMCd8L1igJSWrRUvSc","short_id":"887c0d72e771a934"}}},
+	// 🇭🇰Гонконг
+	{"tag":"🇭🇰Гонконг","type":"vless","server":"merlinty.site","server_port":8443,"uuid":"08a29c80-7cf2-4050-8e68-216c4b1463a4","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"uWB8HfNVK_-9KtjDGjmBovnYxTh6wN95APRUBmCC30M","short_id":"fe31454fcc98d74d"}}},
+	// 🇱🇻Латвия|Torrent
+	{"tag":"🇱🇻Латвия","type":"vless","server":"braskivo.ru","server_port":8443,"uuid":"1d0ee35f-90a8-4260-a33e-be944382ecbc","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"ozon.ru","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"7HejPU15kdTl9QG_8AygEM3w0ythsbhG6q_SwUumyR0","short_id":"cf56dd583fdef457"}}},
+	// 🇮🇹Италия|Белые списки
+	{"tag":"🇮🇹Италия","type":"vless","server":"tralalero.site","server_port":8443,"uuid":"21aa358c-d7c7-4975-b09a-c6f6ceeee779","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"_CjW0Khlrr5z5oc9Oy6-w2ZEanz-zMBktVn5EOX9oTM","short_id":"f32140952ba18e18"}}},
+	// 🇩🇪Германия
+	{"tag":"🇩🇪Германия","type":"vless","server":"de-dp-01.com","server_port":8443,"uuid":"224144c2-41ea-4d87-9a8f-9056be4317c1","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"ISa-DZOI4LRRb9DHMFYm5oFqBXDjYzz0hVWUfWvzLmo","short_id":"dc8109baf0f607ea"}}},
+	// 🇪🇸Испания|Белые списки
+	{"tag":"🇪🇸Испания","type":"vless","server":"velsanto.online","server_port":8443,"uuid":"b7d9a094-9f29-458a-a442-c6e48f1aed2e","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"zr8_rtHm86s_G1gfRwNtunStGngYZSdYkA3PyBFXpDg","short_id":"48fccabc158a4c22"}}},
+	// 🇳🇱Нидерланды
+	{"tag":"🇳🇱Нидерланды","type":"vless","server":"midorinote.online","server_port":8443,"uuid":"fe088cff-5e26-4040-9365-9c10dab62a2b","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"sun6-22.userapi.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"Cxvc5bVMKln6RxPs5MtviUZNDsmpfuYUK8UFBlcBaS0","short_id":"331a8c3fe668c1ee"}}},
+	// 🇫🇷Франция
+	{"tag":"🇫🇷Франция","type":"vless","server":"fr-gt-01.com","server_port":8443,"uuid":"43c6be6b-d355-4293-b1e3-9f46eb50ddd4","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"1oUeBtHH4DskTM_jCh-6enWRkFMDX9l1OU5kWYl4kxA","short_id":"ece180c605b5453c"}}},
+	// 🇫🇮Финляндия
+	{"tag":"🇫🇮Финляндия","type":"vless","server":"fi-h2-01.com","server_port":8443,"uuid":"839e7c70-f541-4974-ba0b-020b3cd6c501","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"4gcDJumxa0bTaHvrZRL4Hb5ItXPha6ZYZ0fGmMD_k0A","short_id":"1afc9d750da1ba88"}}},
+	// 🇲🇩Молдова
+	{"tag":"🇲🇩Молдова","type":"vless","server":"elvintoma.ru","server_port":8443,"uuid":"5af253b8-4474-4a43-812b-10b2e748d381","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"UcXxe5DhOXmvSidTApgFLPIR6RM9aVGk4LaNrjUFeHc","short_id":"a7625e8e59293235"}}},
+	// 🇷🇺Россия|Torrent
+	{"tag":"🇷🇺Россия","type":"vless","server":"zolinder.online","server_port":8443,"uuid":"be836948-2eae-4500-a994-2a7e5732e6db","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"sun6-21.userapi.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"2566-27FWlgHXfhcbxCIZ2RTD_rqHzLhWfcvNuNpuGc","short_id":"abe01dc81d7c1117"}}},
+	// 🇰🇿Казахстан
+	{"tag":"🇰🇿Казахстан","type":"vless","server":"frinkory.ru","server_port":8443,"uuid":"43bf2b04-38e4-4fac-90f9-9715ed2e9dfa","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"nur.kz","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"TVgpeTzjU9fQNdJIW8WxAn_EC5FFxRQfadDjH30Xz3c","short_id":"d30c12192e643c91"}}},
+	// 🇨🇭Швейцария
+	{"tag":"🇨🇭Швейцария","type":"vless","server":"ch-gt-01.com","server_port":8443,"uuid":"a91fc646-2b5b-4567-a564-49759a954383","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"8qHRGcCezzSu4S-Cz9l19BNRLWm4MkaSwZV3dNrLEwc","short_id":"d515d6cfdfe60b02"}}},
+	// 🇺🇸США|Torrent
+	{"tag":"🇺🇸США","type":"vless","server":"jallermo.site","server_port":8443,"uuid":"b8978d2a-80c4-4b00-a484-5f3b331385ff","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"random"},"reality":{"enabled":true,"public_key":"61Svf2Pd08DRvSgCHyI_J-F7lhPLd_hg3mS_byFl_h0","short_id":"cefa7ca418bd0dcb"}}},
+	// Proxy group for international connections
+	{"tag":"proxy-out","type":"selector","default":"🇩🇪Германия","outbounds":["direct-out","auto-proxy-out","🇱🇹Литва","🇨🇦Канада","🇭🇺Венгрия","🇹🇷Турция","🇬🇧Англия","🇯🇵Япония","🇵🇱Польша","🇭🇰Гонконг","🇱🇻Латвия","🇮🇹Италия","🇩🇪Германия","🇪🇸Испания","🇳🇱Нидерланды","🇫🇷Франция","🇫🇮Финляндия","🇲🇩Молдова","🇰🇿Казахстан","🇨🇭Швейцария","🇺🇸США"],"interrupt_exist_connections":true},
+	// Proxy group for Russia
+	{"tag":"ruvpn","type":"selector","outbounds":["🇷🇺Россия"]},
+	// Proxy group for Gemini
+	{"tag":"gemini-vpn","type":"selector","outbounds":["🇨🇦Канада"]},
+	// Proxy automated group for everything that should go through VPN
+	{"tag":"auto-proxy-out","type":"urltest","outbounds":["🇱🇹Литва","🇨🇦Канада","🇭🇺Венгрия","🇹🇷Турция","🇬🇧Англия","🇯🇵Япония","🇵🇱Польша","🇭🇰Гонконг","🇱🇻Латвия","🇮🇹Италия","🇩🇪Германия","🇪🇸Испания","🇳🇱Нидерланды","🇫🇷Франция","🇫🇮Финляндия","🇲🇩Молдова","🇰🇿Казахстан","🇨🇭Швейцария","🇺🇸США"],"interrupt_exist_connections":true,"url":"https://cp.cloudflare.com/generate_204","interval":"30s","tolerance":100},
+/** @ParserEND */
+    
+    // Прямое исходящее соединение: трафик идет напрямую, без прокси.
+    { "type": "direct", "tag": "direct-out" }
+    // Исходящие соединения "dns" и "block" удалены, так как они теперь обрабатываются как действия в правилах маршрутизации.
+  ],
+
+  // --- ПРАВИЛА МАРШРУТИЗАЦИИ (ROUTE) ---
+  // Определяют, куда направлять трафик на основе различных условий.
+  // Правила обрабатываются сверху вниз; первое совпадение выигрывает.
+  "route": {
+    "default_domain_resolver": "direct_dns_resolver", // DNS-сервер по умолчанию для внутренних нужд Sing-box (если не совпал с правилами DNS).
+    
+    // --- ОПРЕДЕЛЕНИЕ НАБОРОВ ПРАВИЛ (RULE-SET) ---
+    // Sing-box автоматически загрузит эти файлы при первом запуске (и будет обновлять их).
+    // Это замена устаревшим файлам GeoIP и Geosite в формате .db для более эффективной работы.
+    // Внешние rule-sets (обновляемые списки)
+    // https://github.com/runetfreedom/russia-v2ray-rules-dat/tree/release/sing-box
+    "rule_set": [
+      { "tag": "ru-domains", "type": "inline", "format": "domain_suffix", "rules": [{"domain_suffix":["ru", "xn--p1ai", "su"]}] },
+      // { "tag": "ads-rules", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/TG-Twilight/AWAvenue-Ads-Rule/main/Filters/AWAvenue-Ads-Rule-Singbox.srs", "download_detour": "direct-out", "update_interval": "24h" },
+      { "tag": "ads-all", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-ads-all.srs", "download_detour": "direct-out", "update_interval": "24h" },
+      { "tag": "ru-inside", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-ru-available-only-inside.srs", "download_detour": "direct-out", "update_interval": "24h" },
+      { "tag": "ru-blocked-main", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked.srs", "download_detour": "direct-out", "update_interval": "24h" },
+      { "tag": "ru-blocked-community", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked-community.srs", "download_detour": "direct-out", "update_interval": "24h" },
+      { "tag": "israel-sites", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-il.srs", "download_detour": "direct-out", "update_interval": "24h" },
+      { "tag": "games", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-games.srs", "download_detour": "direct-out", "update_interval": "24h" },
+      { "tag": "messengers", "type": "inline", "format": "domain_suffix", "rules": [{ "domain_suffix": ["meet.google.com", "googlevideo.com", "gstatic.com", "googleusercontent.com", "googleapis.com", "web.whatsapp.com", "whatsapp.com", "whatsapp.net", "cdn.whatsapp.net", "mmg.whatsapp.net", "discord.com", "discordapp.com", "cdn.discordapp.com", "discord.gg", "gateway.discord.gg", "discord.media", "telegram.org", "t.me", "cdn-telegram.org"] }, { "process_name": ["Telegram.exe", "Discord.exe", "WhatsApp.exe", "Signal.exe", "Zoom.exe"] }] },
+      { "tag": "gemini", "type": "inline", "format": "domain_suffix", "rules": [{ "domain_suffix": ["generativelanguage.googleapis.com", "gemini.google.com", "ai.google.dev", "palm.googleapis.com"] }] }
+    ],
+
+    "rules": [
+      {
+        "inbound": "tun-in",
+        "action": "resolve",
+        "strategy": "prefer_ipv4" // по возможности перекинуть на ip v4
+      },
+      {
+        "inbound": "tun-in",
+        "action": "sniff", // востановить протоколы
+        "timeout": "1s"
+      },
+      { "protocol": "dns", "action": "hijack-dns" },
+ 
+      // QUIC не поддерживают проксирование UDP-трафика. Поэтому останавливаем HTTP/3
+      // Это может блокировать трафик QUIC (используемый Google, YouTube, Cloudflare и т.д.), что потенциально снизит скорость или доступность для этих сервисов.
+      { "action": "reject", "method": "drop", "network": ["udp"], "port": [443] },
+      // Это полезно для доступа к локальным сетевым ресурсам и устройствам.
+      { "ip_is_private": true, "outbound": "direct-out" },
+      { "domain_suffix": ["local"], "outbound": "direct-out" },
+      // БЛОКИРОВКА: Блокировать трафик, соответствующий правилам рекламы (из загруженного rule-set).
+      //    { "rule_set": "ads-rules", "action": "reject", "method": "drop" }, // более точечная
+      //  { "rule_set": "ads-all", "action": "reject", "method": "drop" }, // более широкая
+      // ПРЯМОЙ: Направлять BitTorrent трафик напрямую.
+      // Многие VPN-провайдеры блокируют или ограничивают BitTorrent через свои серверы.
+      { "protocol": ["bittorrent"], "outbound": "direct-out" },
+      // Разные тесты для разных маршрутов
+      { "domain": ["2ip.io"], "outbound": "direct-out" },
+      { "domain": ["2ip.me"], "outbound": "proxy-out" },
+      { "domain": ["2ip.ru"], "outbound": "ruvpn" },
+      // Israel специфичный трафик
+      { "rule_set": "israel-sites", "outbound": "proxy-out" },
+      // Русский не специфичный трафик
+      { "rule_set": "ru-domains", "outbound": "direct-out" },
+      // Русский специфичный трафик
+      { "rule_set": "ru-inside", "outbound": "ruvpn" },
+      // Запрещено в РФ
+      { "rule_set": [ "ru-blocked-main", "ru-blocked-community" ], "network": ["tcp", "udp"], "outbound": "proxy-out" },
+      // Игры
+      { "rule_set": "games", "network": ["tcp", "udp"], "outbound": "direct-out" },
+      // Gemini AI
+      { "rule_set": "gemini", "network": ["tcp", "udp"], "outbound": "gemini-vpn" },
+      // 🎮 Игровые порты (Steam, Dota, Valorant, Fortnite, Battle.net) — направляем напрямую без прокси
+      { "port": [
+          3659,                          // 🎮 EA Online / FIFA
+          1935,                          // 🎮 Twitch/YouTube live ingest (игровой стриминг)
+          5001,                          // 🎮 Call of Duty / Blizzard voice
+          5795, 5796,                    // 🎮 Epic/Fortnite
+          7000,                          // 🎮 PUBG / UE4
+          7777,                          // 🎮 Minecraft / ARK / Terraria
+          9000,                          // 🎮 Custom game ports
+          10039, 10040                   // 🎮 Riot / Valorant
+        ],
+        "port_range": "27000:27100", // 🎮 Steam/Dota/CS:GO/Source
+        "network": ["tcp", "udp"], "outbound": "direct-out" 
+      },
+      
+      { "rule_set": "messengers", "network": ["tcp", "udp"], "outbound": "proxy-out" }, // Все мессенджеры через прокси
+      // { "network": ["udp"], "outbound": "direct-out"}, // UDP напрямую
+      // { "network": ["udp"], "outbound": "proxy-out"}, // UDP в прокси
+      
+      // 🎯 IP-сети Steam/Valve — исключаем из VPN, чтобы не тормозило и не было потерь
+      { "ip_cidr": ["162.254.192.0/18", "208.64.200.0/22", "205.196.6.0/24", "208.64.204.0/22", "146.66.152.0/24"], "outbound": "direct-out" },
+      
+    ], 
+    // ПРОКСИ (по умолчанию): Все, что не попало под предыдущие правила, направлять через селектор "Proxy".
+    // Это конечное правило, которое весь оставшийся трафик (в основном TCP) отправляет через выбранный VLESS-сервер.
+    "final": "proxy-out",
+    "auto_detect_interface": true // Иначе не будет выходить за пределы TUN и будут петли
+  },
+  
+  "experimental": {
+    "clash_api": {
+      "external_controller": "127.0.0.1:9090",
+      "secret": "KKk3RxgSEsRxgcIaOYeNT3" 
+    }
+  }
+}
