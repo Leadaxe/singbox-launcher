@@ -54,6 +54,9 @@ build/dist/
 fyne-cross/
 releases/
 
+# Test directory with config files
+test/
+
 # Config files with sensitive data - DO NOT COMMIT!
 bin/config.json
 bin/*.exe
