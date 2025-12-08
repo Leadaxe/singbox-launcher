@@ -890,15 +890,7 @@ GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o singbox-launcher
 ## 📞 Поддержка
 
 - **Issues**: [GitHub Issues](https://github.com/Leadaxe/singbox-launcher/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/Leadaxe/singbox-launcher/discussions)
 
-## 🔮 Планы на будущее
-
-- [ ] Автоматическое обновление приложения
-- [ ] Темная тема
-- [ ] Мультиязычность
-- [ ] Графики статистики трафика
-- [ ] Интеграция с другими VPN протоколами
 
 ---
 

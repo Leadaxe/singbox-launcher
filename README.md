@@ -838,15 +838,7 @@ This project is distributed under the MIT license. See the [LICENSE](LICENSE) fi
 ## 📞 Support
 
 - **Issues**: [GitHub Issues](https://github.com/Leadaxe/singbox-launcher/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/Leadaxe/singbox-launcher/discussions)
 
-## 🔮 Future Plans
-
-- [ ] Automatic application updates
-- [ ] Dark theme
-- [ ] Multi-language support
-- [ ] Traffic statistics graphs
-- [ ] Integration with other VPN protocols
 
 ---
 
