@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -582,36 +581,37 @@ func (tab *CoreDashboardTab) updateVersionInfoAsync() {
 
 		// Если бинарник не найден, пытаемся получить последнюю версию для кнопки
 		if err != nil {
-			latest, latestErr := tab.controller.GetLatestCoreVersion()
-			fyne.Do(func() {
-				buttonText := "Download"
-				if latestErr == nil && latest != "" {
-					buttonText = fmt.Sprintf("Download v%s", latest)
-				}
-				tab.setSingboxState("", buttonText, -1)
-			})
+			// Проверяем кеш или запускаем проверку в фоне
+			cached := tab.controller.GetCachedVersion()
+			if cached != "" {
+				fyne.Do(func() {
+					tab.setSingboxState("", fmt.Sprintf("Download v%s", cached), -1)
+				})
+			} else {
+				// Запускаем проверку в фоне (внутри функции есть проверки на дубликаты)
+				tab.controller.CheckVersionInBackground()
+				fyne.Do(func() {
+					tab.setSingboxState("", "Download", -1)
+				})
+			}
 			return
 		}
 
-		// Получаем последнюю версию (сетевая операция, асинхронная)
-		latest, latestErr := tab.controller.GetLatestCoreVersion()
+		// Запускаем проверку в фоне (внутри функции есть проверки на дубликаты и необходимость проверки)
+		tab.controller.CheckVersionInBackground()
+
+		// Используем кешированную версию для отображения
+		latest := tab.controller.GetCachedVersion()
 
 		// Обновляем UI с результатом
 		fyne.Do(func() {
-			if latestErr != nil {
-				// Network error - not critical, just don't show update
-				// Log for debugging, but don't show to user
-				tab.setSingboxState("", "", -1)
-				return
-			}
-
-			// Сравниваем версии
-			if latest != "" && compareVersions(installedVersion, latest) < 0 {
+			// Сравниваем версии, если есть кеш
+			if latest != "" && core.CompareVersions(installedVersion, latest) < 0 {
 				// Есть обновление
 				tab.downloadButton.Importance = widget.HighImportance
 				tab.setSingboxState("", fmt.Sprintf("Update v%s", latest), -1)
 			} else {
-				// Версия актуальна
+				// Версия актуальна или кеша нет
 				tab.setSingboxState("", "", -1)
 			}
 		})
@@ -698,50 +698,16 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 	}()
 }
 
-// compareVersions сравнивает две версии (формат X.Y.Z)
-// Возвращает: -1 если v1 < v2, 0 если v1 == v2, 1 если v1 > v2
-func compareVersions(v1, v2 string) int {
-	parts1 := strings.Split(v1, ".")
-	parts2 := strings.Split(v2, ".")
-
-	maxLen := len(parts1)
-	if len(parts2) > maxLen {
-		maxLen = len(parts2)
-	}
-
-	for i := 0; i < maxLen; i++ {
-		var num1, num2 int
-		if i < len(parts1) {
-			fmt.Sscanf(parts1[i], "%d", &num1)
-		}
-		if i < len(parts2) {
-			fmt.Sscanf(parts2[i], "%d", &num2)
-		}
-
-		if num1 < num2 {
-			return -1
-		}
-		if num1 > num2 {
-			return 1
-		}
-	}
-
-	return 0
-}
-
 // handleDownload обрабатывает нажатие на кнопку Download
 func (tab *CoreDashboardTab) handleDownload() {
 	if tab.downloadInProgress {
 		return // Уже идет скачивание
 	}
 
-	// Get version information (local operation)
-	versionInfo := tab.controller.GetCoreVersionInfo()
-
-	targetVersion := versionInfo.LatestVersion
+	// Используем кешированную версию или получаем новую
+	targetVersion := tab.controller.GetCachedVersion()
 	if targetVersion == "" {
-		// Пытаемся получить последнюю версию асинхронно
-		// But for download we need version immediately, so do it synchronously in goroutine
+		// Если кеша нет, пытаемся получить версию синхронно (для скачивания нужна версия сразу)
 		go func() {
 			latest, err := tab.controller.GetLatestCoreVersion()
 			fyne.Do(func() {
@@ -751,7 +717,10 @@ func (tab *CoreDashboardTab) handleDownload() {
 					tab.setSingboxState("", "Download", -1)
 					return
 				}
-				// Запускаем скачивание с полученной версией
+				// Сохраняем в кеш и запускаем скачивание
+				if latest != "" && latest != core.FallbackVersion {
+					tab.controller.SetCachedVersion(latest)
+				}
 				tab.startDownloadWithVersion(latest)
 			})
 		}()

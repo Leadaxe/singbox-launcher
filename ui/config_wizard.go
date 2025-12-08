@@ -3,18 +3,14 @@ package ui
 import (
 	"bytes"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"image/color"
@@ -29,6 +25,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
 )
 
@@ -37,6 +34,21 @@ func safeFyneDo(window fyne.Window, fn func()) {
 	if window != nil {
 		fyne.Do(fn)
 	}
+}
+
+// debugLog logs a debug message using the debuglog subsystem
+func debugLog(format string, args ...interface{}) {
+	debuglog.Log("DEBUG", debuglog.LevelVerbose, debuglog.UseGlobal, format, args...)
+}
+
+// infoLog logs an info message using the debuglog subsystem
+func infoLog(format string, args ...interface{}) {
+	debuglog.Log("INFO", debuglog.LevelInfo, debuglog.UseGlobal, format, args...)
+}
+
+// errorLog logs an error message using the debuglog subsystem
+func errorLog(format string, args ...interface{}) {
+	debuglog.Log("ERROR", debuglog.LevelError, debuglog.UseGlobal, format, args...)
 }
 
 // WizardState хранит состояние мастера конфигурации
@@ -68,19 +80,16 @@ type WizardState struct {
 	SelectableRuleStates        []*SelectableRuleState
 	TemplatePreviewEntry        *widget.Entry
 	TemplatePreviewText         string
-	templatePreviewUpdating     bool
 	TemplatePreviewStatusLabel  *widget.Label
-	TemplatePreviewCache        string // Кэшированный текст превью
-	TemplatePreviewCacheHash    string // Хеш данных для проверки изменений
+	ShowPreviewButton           *widget.Button
 	FinalOutboundSelect         *widget.Select
 	SelectedFinalOutbound       string
 	previewNeedsParse           bool
 	autoParseInProgress         bool
 	previewGenerationInProgress bool
 
-	// Debounce timer for template preview updates
-	previewUpdateTimer *time.Timer
-	previewUpdateMutex sync.Mutex
+	// Flag to prevent callbacks during programmatic updates
+	updatingOutboundOptions bool
 
 	// Navigation buttons
 	CloseButton      *widget.Button
@@ -121,7 +130,7 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 	state.Window = wizardWindow
 
 	if templateData, err := loadTemplateData(controller.ExecDir); err != nil {
-		log.Printf("ConfigWizard: failed to load config_template.json from %s: %v", filepath.Join(controller.ExecDir, "bin", "config_template.json"), err)
+		errorLog("ConfigWizard: failed to load config_template.json from %s: %v", filepath.Join(controller.ExecDir, "bin", "config_template.json"), err)
 		// Show error to user
 		dialog.ShowError(fmt.Errorf("Failed to load template file:\n%v\n\nPlease ensure bin/config_template.json exists and is valid.", err), wizardWindow)
 	} else {
@@ -133,7 +142,7 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 
 	loadedConfig, err := loadConfigFromFile(state)
 	if err != nil {
-		log.Printf("ConfigWizard: Failed to load config: %v", err)
+		errorLog("ConfigWizard: Failed to load config: %v", err)
 		// Показываем ошибку, но продолжаем работу с дефолтными значениями
 		dialog.ShowError(fmt.Errorf("Failed to load existing config: %w", err), wizardWindow)
 	}
@@ -171,24 +180,11 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 
 	// Создаем кнопки навигации
 	state.CloseButton = widget.NewButton("Close", func() {
-		// Очищаем таймер обновления превью перед закрытием
-		state.previewUpdateMutex.Lock()
-		if state.previewUpdateTimer != nil {
-			state.previewUpdateTimer.Stop()
-			state.previewUpdateTimer = nil
-		}
-		state.previewUpdateMutex.Unlock()
 		wizardWindow.Close()
 	})
 
-	// Очищаем таймер при закрытии окна через X
+	// Закрытие окна через X
 	wizardWindow.SetCloseIntercept(func() {
-		state.previewUpdateMutex.Lock()
-		if state.previewUpdateTimer != nil {
-			state.previewUpdateTimer.Stop()
-			state.previewUpdateTimer = nil
-		}
-		state.previewUpdateMutex.Unlock()
 		wizardWindow.Close()
 	})
 	state.CloseButton.Importance = widget.HighImportance
@@ -220,10 +216,6 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 		}
 		if state.saveInProgress {
 			dialog.ShowInformation("Saving", "Save operation already in progress... Please wait.", state.Window)
-			return
-		}
-		if state.previewGenerationInProgress {
-			dialog.ShowInformation("Generating", "Preview generation in progress... Please wait.", state.Window)
 			return
 		}
 		if state.autoParseInProgress {
@@ -392,50 +384,9 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 			}
 		}
 		if item == previewTabItem {
-			// Проверяем, есть ли кэшированное превью
-			currentHash := state.calculatePreviewHash()
-			if currentHash == state.TemplatePreviewCacheHash && state.TemplatePreviewCache != "" {
-				// Показываем кэшированное превью сразу
-				if state.TemplatePreviewEntry != nil {
-					state.setTemplatePreviewText(state.TemplatePreviewCache)
-				}
-				if state.TemplatePreviewStatusLabel != nil {
-					state.TemplatePreviewStatusLabel.SetText("✅ Preview ready (cached)")
-				}
-				// Кнопка Save остается включенной
-			} else {
-				// Показываем индикацию загрузки только если нет кэша
-				if state.TemplatePreviewEntry != nil {
-					if state.TemplatePreviewCache != "" {
-						// Показываем старое превью пока генерируется новое
-						state.setTemplatePreviewText(state.TemplatePreviewCache)
-					} else {
-						state.setTemplatePreviewText("Loading preview...")
-					}
-				}
-				if state.TemplatePreviewStatusLabel != nil {
-					state.TemplatePreviewStatusLabel.SetText("⏳ Loading...")
-				}
-				// Отключаем кнопку Save только если идет генерация
-				if state.previewGenerationInProgress {
-					if state.SaveButton != nil {
-						state.SaveButton.Disable()
-					}
-				}
-			}
-
-			// Запускаем операции с задержкой 500мс после переключения вкладки для полной отрисовки
+			// Запускаем парсинг асинхронно (если нужно)
 			go func() {
-				time.Sleep(500 * time.Millisecond)
-
-				// Запускаем парсинг асинхронно (если нужно)
 				state.triggerParseForPreview()
-
-				// Обновляем превью только если данные изменились или кэша нет
-				// updateTemplatePreviewAsync сама проверит хеш и использует кэш если возможно
-				if currentHash != state.TemplatePreviewCacheHash || state.TemplatePreviewCache == "" {
-					state.updateTemplatePreviewAsync()
-				}
 			}()
 		}
 		updateNavigationButtons()
@@ -450,8 +401,7 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 		wizardWindow.SetContent(content)
 	}
 
-	// Обновляем предпросмотр после создания всех вкладок
-	state.updateTemplatePreview()
+	// Превью генерируется только по кнопке "Show Preview"
 
 	content := container.NewBorder(
 		nil,                    // top
@@ -563,18 +513,7 @@ func createVLESSSourceTab(state *WizardState) fyne.CanvasObject {
 		state.previewNeedsParse = true
 		state.refreshOutboundOptions()
 
-		// Debounce updateTemplatePreview - обновляем через 500ms после последнего изменения
-		// Это предотвращает 100% загрузку CPU при быстром вводе текста
-		state.previewUpdateMutex.Lock()
-		if state.previewUpdateTimer != nil {
-			state.previewUpdateTimer.Stop()
-		}
-		state.previewUpdateTimer = time.AfterFunc(500*time.Millisecond, func() {
-			safeFyneDo(state.Window, func() {
-				state.updateTemplatePreview()
-			})
-		})
-		state.previewUpdateMutex.Unlock()
+		// Статус превью будет обновлен при переключении на вкладку Preview
 	}
 
 	// Ограничиваем ширину и высоту поля ParserConfig
@@ -692,6 +631,9 @@ func createTemplateTab(state *WizardState) fyne.CanvasObject {
 		availableOutbounds = []string{defaultOutboundTag, rejectActionName}
 	}
 
+	// Устанавливаем флаг для блокировки callbacks при инициализации
+	state.updatingOutboundOptions = true
+
 	rulesBox := container.NewVBox()
 	if len(state.SelectableRuleStates) == 0 {
 		rulesBox.Add(widget.NewLabel("No selectable rules defined in template."))
@@ -712,8 +654,11 @@ func createTemplateTab(state *WizardState) fyne.CanvasObject {
 					}
 				}
 				outboundSelect = widget.NewSelect(availableOutbounds, func(value string) {
+					// Игнорируем callback при программном обновлении
+					if state.updatingOutboundOptions {
+						return
+					}
 					state.SelectableRuleStates[idx].SelectedOutbound = value
-					state.updateTemplatePreview()
 				})
 				outboundSelect.SetSelected(ruleState.SelectedOutbound)
 				if !ruleState.Enabled {
@@ -735,7 +680,6 @@ func createTemplateTab(state *WizardState) fyne.CanvasObject {
 						outboundSelect.Disable()
 					}
 				}
-				state.updateTemplatePreview()
 			})
 			checkbox.SetChecked(ruleState.Enabled)
 
@@ -759,14 +703,21 @@ func createTemplateTab(state *WizardState) fyne.CanvasObject {
 
 	state.ensureFinalSelected(availableOutbounds)
 	finalSelect := widget.NewSelect(availableOutbounds, func(value string) {
+		// Игнорируем callback при программном обновлении
+		if state.updatingOutboundOptions {
+			return
+		}
 		state.SelectedFinalOutbound = value
-		state.updateTemplatePreview()
+
+		// Статус превью будет обновлен при переключении на вкладку Preview
 	})
 	finalSelect.SetSelected(state.SelectedFinalOutbound)
 	state.FinalOutboundSelect = finalSelect
 
 	rulesScroll := createRulesScroll(state, rulesBox)
 
+	// Сбрасываем флаг перед refreshOutboundOptions, так как он сам установит его при необходимости
+	state.updatingOutboundOptions = false
 	state.refreshOutboundOptions()
 
 	return container.NewVBox(
@@ -786,10 +737,7 @@ func createPreviewTab(state *WizardState) fyne.CanvasObject {
 	state.TemplatePreviewEntry.SetPlaceHolder("Preview will appear here")
 	state.TemplatePreviewEntry.Wrapping = fyne.TextWrapOff
 	state.TemplatePreviewEntry.OnChanged = func(text string) {
-		if state.templatePreviewUpdating {
-			return
-		}
-		state.setTemplatePreviewText(state.TemplatePreviewText)
+		// Read-only поле, ничего не делаем при изменении
 	}
 	previewWithHeight := container.NewMax(
 		canvas.NewRectangle(color.Transparent),
@@ -804,14 +752,29 @@ func createPreviewTab(state *WizardState) fyne.CanvasObject {
 	}
 	previewScroll.SetMinSize(fyne.NewSize(0, maxHeight))
 
-	// Создаем статус-лейбл под полем превью
-	state.TemplatePreviewStatusLabel = widget.NewLabel("Ready")
+	// Создаем статус-лейбл и кнопку для генерации превью
+	state.TemplatePreviewStatusLabel = widget.NewLabel("Click 'Show Preview' to generate preview (this may take a long time for large configurations)")
 	state.TemplatePreviewStatusLabel.Wrapping = fyne.TextWrapWord
+
+	state.ShowPreviewButton = widget.NewButton("Show Preview", func() {
+		if state.ShowPreviewButton != nil {
+			state.ShowPreviewButton.Disable()
+		}
+		state.updateTemplatePreviewAsync()
+	})
+
+	// Контейнер со статусом (занимает всё доступное место) и кнопкой справа
+	statusRow := container.NewBorder(
+		nil, nil,
+		nil,                              // left
+		state.ShowPreviewButton,          // right - фиксированная ширина по содержимому
+		state.TemplatePreviewStatusLabel, // center - занимает всё доступное пространство
+	)
 
 	return container.NewVBox(
 		widget.NewLabel("Preview"),
 		previewScroll,
-		state.TemplatePreviewStatusLabel,
+		statusRow,
 	)
 }
 
@@ -942,7 +905,7 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 	// Проверяем наличие config.json
 	if _, err := os.Stat(state.Controller.ConfigPath); os.IsNotExist(err) {
 		// Конфиг не существует - оставляем значения по умолчанию
-		log.Println("ConfigWizard: config.json not found, using default values")
+		infoLog("ConfigWizard: config.json not found, using default values")
 		return false, nil
 	}
 
@@ -950,7 +913,7 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 	parserConfig, err := core.ExtractParcerConfig(state.Controller.ConfigPath)
 	if err != nil {
 		// Если не удалось извлечь - оставляем значения по умолчанию
-		log.Printf("ConfigWizard: Failed to extract ParserConfig: %v", err)
+		errorLog("ConfigWizard: Failed to extract ParserConfig: %v", err)
 		return false, nil // Не критическая ошибка
 	}
 
@@ -969,7 +932,7 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 
 	parserConfigJSON, err := serializeParserConfig(parserConfig)
 	if err != nil {
-		log.Printf("ConfigWizard: Failed to serialize ParserConfig: %v", err)
+		errorLog("ConfigWizard: Failed to serialize ParserConfig: %v", err)
 		return false, err
 	}
 
@@ -978,7 +941,7 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 	state.parserConfigUpdating = false
 	state.previewNeedsParse = true
 
-	log.Println("ConfigWizard: Successfully loaded config from file")
+	infoLog("ConfigWizard: Successfully loaded config from file")
 	return true, nil
 }
 
@@ -1090,8 +1053,12 @@ func (state *WizardState) setSaveState(buttonText string, progress float64) {
 
 // checkURL проверяет доступность URL подписки или валидность прямых ссылок
 func checkURL(state *WizardState) {
+	startTime := time.Now()
+	debugLog("checkURL: START at %s", startTime.Format("15:04:05.000"))
+
 	input := strings.TrimSpace(state.VLESSURLEntry.Text)
 	if input == "" {
+		debugLog("checkURL: Empty input, returning early")
 		safeFyneDo(state.Window, func() {
 			state.URLStatusLabel.SetText("❌ Please enter a URL or direct link")
 			state.setCheckURLState("", "Check", -1)
@@ -1107,15 +1074,25 @@ func checkURL(state *WizardState) {
 
 	// Разбиваем на строки для обработки
 	inputLines := strings.Split(input, "\n")
+	debugLog("checkURL: Processing %d input lines", len(inputLines))
 	totalValid := 0
 	previewLines := make([]string, 0)
 	errors := make([]string, 0)
 
 	for i, line := range inputLines {
+		lineStartTime := time.Now()
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
+
+		debugLog("checkURL: Processing line %d/%d: %s (elapsed: %v)", i+1, len(inputLines),
+			func() string {
+				if len(line) > 50 {
+					return line[:50] + "..."
+				}
+				return line
+			}(), time.Since(startTime))
 
 		safeFyneDo(state.Window, func() {
 			progress := float64(i+1) / float64(len(inputLines))
@@ -1124,14 +1101,21 @@ func checkURL(state *WizardState) {
 
 		if core.IsSubscriptionURL(line) {
 			// Это URL подписки - проверяем доступность
+			fetchStartTime := time.Now()
+			debugLog("checkURL: Fetching subscription %d/%d: %s", i+1, len(inputLines), line)
 			content, err := core.FetchSubscription(line)
+			fetchDuration := time.Since(fetchStartTime)
 			if err != nil {
+				debugLog("checkURL: Failed to fetch subscription %d/%d (took %v): %v", i+1, len(inputLines), fetchDuration, err)
 				errors = append(errors, fmt.Sprintf("Failed to fetch %s: %v", line, err))
 				continue
 			}
+			debugLog("checkURL: Fetched subscription %d/%d: %d bytes in %v", i+1, len(inputLines), len(content), fetchDuration)
 
 			// Проверяем содержимое подписки
+			parseStartTime := time.Now()
 			subLines := strings.Split(string(content), "\n")
+			debugLog("checkURL: Parsing subscription %d/%d: %d lines", i+1, len(inputLines), len(subLines))
 			validInSub := 0
 			for _, subLine := range subLines {
 				subLine = strings.TrimSpace(subLine)
@@ -1144,26 +1128,39 @@ func checkURL(state *WizardState) {
 					}
 				}
 			}
+			parseDuration := time.Since(parseStartTime)
+			debugLog("checkURL: Parsed subscription %d/%d: %d valid links in %v (line processing took %v total)",
+				i+1, len(inputLines), validInSub, parseDuration, time.Since(lineStartTime))
 			if validInSub == 0 {
 				errors = append(errors, fmt.Sprintf("Subscription %s contains no valid proxy links", line))
 			}
 		} else if core.IsDirectLink(line) {
 			// Это прямая ссылка - проверяем парсинг
+			parseStartTime := time.Now()
+			debugLog("checkURL: Parsing direct link %d/%d", i+1, len(inputLines))
 			_, err := core.ParseNode(line, nil)
+			parseDuration := time.Since(parseStartTime)
 			if err != nil {
+				debugLog("checkURL: Invalid direct link %d/%d (took %v): %v", i+1, len(inputLines), parseDuration, err)
 				errors = append(errors, fmt.Sprintf("Invalid direct link: %v", err))
 			} else {
 				totalValid++
+				debugLog("checkURL: Valid direct link %d/%d (took %v)", i+1, len(inputLines), parseDuration)
 				if len(previewLines) < 10 {
 					previewLines = append(previewLines, fmt.Sprintf("%d. %s", totalValid, line))
 				}
 			}
 		} else {
+			debugLog("checkURL: Unknown format for line %d/%d: %s", i+1, len(inputLines), line)
 			errors = append(errors, fmt.Sprintf("Unknown format: %s", line))
 		}
 	}
 
 	state.checkURLInProgress = false
+	totalDuration := time.Since(startTime)
+	debugLog("checkURL: Processed all lines in %v (total valid: %d, errors: %d)",
+		totalDuration, totalValid, len(errors))
+
 	safeFyneDo(state.Window, func() {
 		if totalValid == 0 {
 			errorMsg := "❌ No valid proxy links found"
@@ -1187,6 +1184,7 @@ func checkURL(state *WizardState) {
 		}
 		state.setCheckURLState("", "Check", -1)
 	})
+	debugLog("checkURL: END (total duration: %v)", totalDuration)
 }
 
 // min helper function
@@ -1199,7 +1197,12 @@ func min(a, b int) int {
 
 // parseAndPreview парсит ParserConfig и генерирует предпросмотр outbounds
 func parseAndPreview(state *WizardState) {
+	startTime := time.Now()
+	debugLog("parseAndPreview: START at %s", startTime.Format("15:04:05.000"))
+
 	defer func() {
+		totalDuration := time.Since(startTime)
+		debugLog("parseAndPreview: END (total duration: %v)", totalDuration)
 		safeFyneDo(state.Window, func() {
 			state.autoParseInProgress = false
 		})
@@ -1211,15 +1214,15 @@ func parseAndPreview(state *WizardState) {
 	})
 
 	// Парсим ParserConfig из поля
+	parseStartTime := time.Now()
 	parserConfigJSON := strings.TrimSpace(state.ParserConfigEntry.Text)
+	debugLog("parseAndPreview: ParserConfig text length: %d bytes", len(parserConfigJSON))
 	if parserConfigJSON == "" {
+		debugLog("parseAndPreview: ParserConfig is empty, returning early")
 		safeFyneDo(state.Window, func() {
 			setPreviewText(state, "Error: ParserConfig is empty")
 			state.ParseButton.Enable()
 			state.ParseButton.SetText("Parse")
-			if state.TemplatePreviewStatusLabel != nil {
-				state.TemplatePreviewStatusLabel.SetText("❌ Error: ParserConfig is empty")
-			}
 			if state.SaveButton != nil {
 				state.SaveButton.Enable()
 			}
@@ -1229,30 +1232,29 @@ func parseAndPreview(state *WizardState) {
 
 	var parserConfig core.ParserConfig
 	if err := json.Unmarshal([]byte(parserConfigJSON), &parserConfig); err != nil {
+		debugLog("parseAndPreview: Failed to parse ParserConfig JSON (took %v): %v", time.Since(parseStartTime), err)
 		safeFyneDo(state.Window, func() {
 			setPreviewText(state, fmt.Sprintf("Error: Failed to parse ParserConfig JSON: %v", err))
 			state.ParseButton.Enable()
 			state.ParseButton.SetText("Parse")
-			if state.TemplatePreviewStatusLabel != nil {
-				state.TemplatePreviewStatusLabel.SetText(fmt.Sprintf("❌ Error: Failed to parse ParserConfig JSON: %v", err))
-			}
 			if state.SaveButton != nil {
 				state.SaveButton.Enable()
 			}
 		})
 		return
 	}
+	debugLog("parseAndPreview: Parsed ParserConfig in %v (sources: %d, outbounds: %d)",
+		time.Since(parseStartTime), len(parserConfig.ParserConfig.Proxies), len(parserConfig.ParserConfig.Outbounds))
 
 	// Проверяем наличие URL или прямых ссылок
 	url := strings.TrimSpace(state.VLESSURLEntry.Text)
+	debugLog("parseAndPreview: URL text length: %d bytes", len(url))
 	if url == "" {
+		debugLog("parseAndPreview: URL is empty, returning early")
 		safeFyneDo(state.Window, func() {
 			setPreviewText(state, "Error: VLESS URL or direct links are empty")
 			state.ParseButton.Enable()
 			state.ParseButton.SetText("Parse")
-			if state.TemplatePreviewStatusLabel != nil {
-				state.TemplatePreviewStatusLabel.SetText("❌ Error: VLESS URL or direct links are empty")
-			}
 			if state.SaveButton != nil {
 				state.SaveButton.Enable()
 			}
@@ -1261,49 +1263,53 @@ func parseAndPreview(state *WizardState) {
 	}
 
 	// Обновляем конфиг через applyURLToParserConfig, который правильно разделяет подписки и connections
+	applyStartTime := time.Now()
+	debugLog("parseAndPreview: Applying URL to ParserConfig")
 	state.applyURLToParserConfig(url)
+	debugLog("parseAndPreview: Applied URL to ParserConfig in %v", time.Since(applyStartTime))
 
 	// Перезагружаем parserConfig после обновления
+	reloadStartTime := time.Now()
 	parserConfigJSON = strings.TrimSpace(state.ParserConfigEntry.Text)
 	if parserConfigJSON != "" {
 		if err := json.Unmarshal([]byte(parserConfigJSON), &parserConfig); err != nil {
+			debugLog("parseAndPreview: Failed to parse updated ParserConfig JSON (took %v): %v", time.Since(reloadStartTime), err)
 			safeFyneDo(state.Window, func() {
 				setPreviewText(state, fmt.Sprintf("Error: Failed to parse updated ParserConfig JSON: %v", err))
 				state.ParseButton.Enable()
 				state.ParseButton.SetText("Parse")
-				if state.TemplatePreviewStatusLabel != nil {
-					state.TemplatePreviewStatusLabel.SetText(fmt.Sprintf("❌ Error: Failed to parse updated ParserConfig JSON: %v", err))
-				}
 				if state.SaveButton != nil {
 					state.SaveButton.Enable()
 				}
 			})
 			return
 		}
+		debugLog("parseAndPreview: Reloaded ParserConfig in %v (sources: %d)",
+			time.Since(reloadStartTime), len(parserConfig.ParserConfig.Proxies))
 	}
 
 	// Парсим узлы используя новую логику (поддерживает и подписки и прямые ссылки)
 	safeFyneDo(state.Window, func() {
 		setPreviewText(state, "Processing sources...")
-		if state.TemplatePreviewStatusLabel != nil {
-			state.TemplatePreviewStatusLabel.SetText("⏳ Processing subscription sources...")
-		}
 	})
 
 	// Map to track unique tags and their counts (same logic as UpdateConfigFromSubscriptions)
 	tagCounts := make(map[string]int)
-	log.Printf("ConfigWizard: Initializing tag deduplication tracker")
+	debugLog("parseAndPreview: Initializing tag deduplication tracker")
 
 	allNodes := make([]*core.ParsedNode, 0)
 	totalSources := len(parserConfig.ParserConfig.Proxies)
+	debugLog("parseAndPreview: Processing %d sources", totalSources)
 
+	sourcesStartTime := time.Now()
 	for i, proxySource := range parserConfig.ParserConfig.Proxies {
+		sourceStartTime := time.Now()
 		sourceNum := i + 1
+		debugLog("parseAndPreview: Processing source %d/%d (elapsed: %v)",
+			sourceNum, totalSources, time.Since(sourcesStartTime))
+
 		safeFyneDo(state.Window, func() {
 			setPreviewText(state, fmt.Sprintf("Processing source %d/%d...", sourceNum, totalSources))
-			if state.TemplatePreviewStatusLabel != nil {
-				state.TemplatePreviewStatusLabel.SetText(fmt.Sprintf("⏳ Processing source %d/%d...", sourceNum, totalSources))
-			}
 		})
 
 		// Используем processProxySource для обработки (поддерживает подписки и прямые ссылки)
@@ -1311,16 +1317,15 @@ func parseAndPreview(state *WizardState) {
 			// Можно обновлять прогресс, но не обязательно для превью
 		}
 
+		processStartTime := time.Now()
 		nodesFromSource, err := core.ProcessProxySource(proxySource, tagCounts, progressCallback, i, totalSources)
+		processDuration := time.Since(processStartTime)
 		if err != nil {
-			log.Printf("ConfigWizard: Error processing source %d/%d: %v", i+1, totalSources, err)
+			debugLog("parseAndPreview: Error processing source %d/%d (took %v): %v", i+1, totalSources, processDuration, err)
 			safeFyneDo(state.Window, func() {
 				setPreviewText(state, fmt.Sprintf("Error: Failed to process source: %v", err))
 				state.ParseButton.Enable()
 				state.ParseButton.SetText("Parse")
-				if state.TemplatePreviewStatusLabel != nil {
-					state.TemplatePreviewStatusLabel.SetText(fmt.Sprintf("❌ Error: Failed to process source: %v", err))
-				}
 				if state.SaveButton != nil {
 					state.SaveButton.Enable()
 				}
@@ -1329,20 +1334,21 @@ func parseAndPreview(state *WizardState) {
 		}
 
 		allNodes = append(allNodes, nodesFromSource...)
-		log.Printf("ConfigWizard: Successfully parsed %d nodes from source %d/%d", len(nodesFromSource), i+1, totalSources)
+		debugLog("parseAndPreview: Source %d/%d: parsed %d nodes in %v (total nodes so far: %d, source processing took %v)",
+			i+1, totalSources, len(nodesFromSource), processDuration, len(allNodes), time.Since(sourceStartTime))
 	}
+	debugLog("parseAndPreview: Processed all %d sources in %v (total nodes: %d)",
+		totalSources, time.Since(sourcesStartTime), len(allNodes))
 
 	// Log statistics about duplicates
 	core.LogDuplicateTagStatistics(tagCounts, "ConfigWizard")
 
 	if len(allNodes) == 0 {
+		debugLog("parseAndPreview: No valid nodes found, returning early")
 		safeFyneDo(state.Window, func() {
 			setPreviewText(state, "Error: No valid nodes found in subscription")
 			state.ParseButton.Enable()
 			state.ParseButton.SetText("Parse")
-			if state.TemplatePreviewStatusLabel != nil {
-				state.TemplatePreviewStatusLabel.SetText("❌ Error: No valid nodes found in subscription")
-			}
 			if state.SaveButton != nil {
 				state.SaveButton.Enable()
 			}
@@ -1351,41 +1357,61 @@ func parseAndPreview(state *WizardState) {
 	}
 
 	// Генерируем JSON для узлов
+	generateStartTime := time.Now()
+	debugLog("parseAndPreview: Generating JSON for %d nodes", len(allNodes))
 	safeFyneDo(state.Window, func() {
 		setPreviewText(state, "Generating outbounds...")
-		if state.TemplatePreviewStatusLabel != nil {
-			state.TemplatePreviewStatusLabel.SetText("⏳ Generating outbounds...")
-		}
 	})
 
 	selectorsJSON := make([]string, 0)
 
 	// Генерируем JSON для всех узлов
-	for _, node := range allNodes {
+	nodesStartTime := time.Now()
+	for idx, node := range allNodes {
+		nodeStartTime := time.Now()
 		nodeJSON, err := generateNodeJSONForPreview(node)
 		if err != nil {
-			log.Printf("ConfigWizard: Failed to generate JSON for node: %v", err)
+			debugLog("parseAndPreview: Failed to generate JSON for node %d/%d (took %v): %v",
+				idx+1, len(allNodes), time.Since(nodeStartTime), err)
 			continue
 		}
 		selectorsJSON = append(selectorsJSON, nodeJSON)
+		if (idx+1)%100 == 0 || idx == len(allNodes)-1 {
+			debugLog("parseAndPreview: Generated JSON for %d/%d nodes (elapsed: %v)",
+				idx+1, len(allNodes), time.Since(nodesStartTime))
+		}
 	}
+	debugLog("parseAndPreview: Generated JSON for all %d nodes in %v", len(allNodes), time.Since(nodesStartTime))
 
 	// Генерируем селекторы
-	for _, outboundConfig := range parserConfig.ParserConfig.Outbounds {
+	selectorsStartTime := time.Now()
+	debugLog("parseAndPreview: Generating %d selectors", len(parserConfig.ParserConfig.Outbounds))
+	for idx, outboundConfig := range parserConfig.ParserConfig.Outbounds {
+		selectorStartTime := time.Now()
 		selectorJSON, err := generateSelectorForPreview(allNodes, outboundConfig)
 		if err != nil {
-			log.Printf("ConfigWizard: Failed to generate selector: %v", err)
+			debugLog("parseAndPreview: Failed to generate selector %d/%d (took %v): %v",
+				idx+1, len(parserConfig.ParserConfig.Outbounds), time.Since(selectorStartTime), err)
 			continue
 		}
 		if selectorJSON != "" {
 			selectorsJSON = append(selectorsJSON, selectorJSON)
 		}
+		debugLog("parseAndPreview: Generated selector %d/%d in %v",
+			idx+1, len(parserConfig.ParserConfig.Outbounds), time.Since(selectorStartTime))
 	}
+	debugLog("parseAndPreview: Generated all %d selectors in %v",
+		len(parserConfig.ParserConfig.Outbounds), time.Since(selectorsStartTime))
 
 	// Формируем итоговый текст для предпросмотра
+	joinStartTime := time.Now()
 	previewText := strings.Join(selectorsJSON, "\n")
+	debugLog("parseAndPreview: Joined %d JSON strings in %v (total preview text length: %d bytes)",
+		len(selectorsJSON), time.Since(joinStartTime), len(previewText))
+	debugLog("parseAndPreview: Total JSON generation took %v", time.Since(generateStartTime))
 
 	safeFyneDo(state.Window, func() {
+		uiUpdateStartTime := time.Now()
 		setPreviewText(state, previewText)
 		state.ParseButton.Enable()
 		state.ParseButton.SetText("Parse")
@@ -1393,37 +1419,53 @@ func parseAndPreview(state *WizardState) {
 		state.ParserConfig = &parserConfig
 		state.previewNeedsParse = false
 		state.refreshOutboundOptions()
-		// Обновляем статус после завершения парсинга
-		if state.TemplatePreviewStatusLabel != nil {
-			state.TemplatePreviewStatusLabel.SetText("⏳✅ Parsing complete, generating preview...")
+		debugLog("parseAndPreview: UI update took %v", time.Since(uiUpdateStartTime))
+		// Включаем кнопку Save после успешного парсинга (независимо от превью)
+		if state.SaveButton != nil {
+			state.SaveButton.Enable()
 		}
-		// Кнопка Save будет включена после завершения генерации превью
-		state.updateTemplatePreview()
 	})
 }
 
 func setPreviewText(state *WizardState, text string) {
 	state.OutboundsPreviewText = text
 	if state.OutboundsPreview != nil {
-		state.OutboundsPreview.SetText(text)
+		// Безопасный вызов SetText - функция уже вызывается из safeFyneDo в большинстве случаев,
+		// но для надежности оборачиваем в safeFyneDo
+		safeFyneDo(state.Window, func() {
+			state.OutboundsPreview.SetText(text)
+		})
 	}
 }
 
 func (state *WizardState) applyURLToParserConfig(input string) {
+	startTime := time.Now()
+	debugLog("applyURLToParserConfig: START at %s (input length: %d bytes)",
+		startTime.Format("15:04:05.000"), len(input))
+
 	if state.ParserConfigEntry == nil || input == "" {
+		debugLog("applyURLToParserConfig: ParserConfigEntry is nil or input is empty, returning early")
 		return
 	}
 	text := strings.TrimSpace(state.ParserConfigEntry.Text)
 	if text == "" {
-		return
-	}
-	var parserConfig core.ParserConfig
-	if err := json.Unmarshal([]byte(text), &parserConfig); err != nil {
+		debugLog("applyURLToParserConfig: ParserConfigEntry text is empty, returning early")
 		return
 	}
 
+	parseStartTime := time.Now()
+	var parserConfig core.ParserConfig
+	if err := json.Unmarshal([]byte(text), &parserConfig); err != nil {
+		debugLog("applyURLToParserConfig: Failed to parse ParserConfig (took %v): %v",
+			time.Since(parseStartTime), err)
+		return
+	}
+	debugLog("applyURLToParserConfig: Parsed ParserConfig in %v", time.Since(parseStartTime))
+
 	// Разделяем подписки и прямые ссылки
+	splitStartTime := time.Now()
 	lines := strings.Split(input, "\n")
+	debugLog("applyURLToParserConfig: Split input into %d lines", len(lines))
 	subscriptions := make([]string, 0)
 	connections := make([]string, 0)
 
@@ -1438,6 +1480,8 @@ func (state *WizardState) applyURLToParserConfig(input string) {
 			connections = append(connections, line)
 		}
 	}
+	debugLog("applyURLToParserConfig: Classified lines: %d subscriptions, %d connections (took %v)",
+		len(subscriptions), len(connections), time.Since(splitStartTime))
 
 	// Обновляем ProxySource
 	if len(parserConfig.ParserConfig.Proxies) == 0 {
@@ -1458,15 +1502,25 @@ func (state *WizardState) applyURLToParserConfig(input string) {
 	// Сохраняем прямые ссылки в connections
 	proxySource.Connections = connections
 
+	serializeStartTime := time.Now()
 	serialized, err := serializeParserConfig(&parserConfig)
 	if err != nil {
+		debugLog("applyURLToParserConfig: Failed to serialize ParserConfig (took %v): %v",
+			time.Since(serializeStartTime), err)
 		return
 	}
-	state.parserConfigUpdating = true
-	state.ParserConfigEntry.SetText(serialized)
-	state.parserConfigUpdating = false
+	debugLog("applyURLToParserConfig: Serialized ParserConfig in %v (result length: %d bytes)",
+		time.Since(serializeStartTime), len(serialized))
+
+	// Обновляем UI безопасно из любого потока
+	safeFyneDo(state.Window, func() {
+		state.parserConfigUpdating = true
+		state.ParserConfigEntry.SetText(serialized)
+		state.parserConfigUpdating = false
+	})
 	state.ParserConfig = &parserConfig
 	state.previewNeedsParse = true
+	debugLog("applyURLToParserConfig: END (total duration: %v)", time.Since(startTime))
 }
 
 func (state *WizardState) setTemplatePreviewText(text string) {
@@ -1485,63 +1539,47 @@ func (state *WizardState) setTemplatePreviewText(text string) {
 		return
 	}
 
-	state.templatePreviewUpdating = true
-	state.TemplatePreviewEntry.SetText(text)
-	state.templatePreviewUpdating = false
-}
+	debugLog("setTemplatePreviewText: Setting preview text (length: %d bytes)", len(text))
 
-// calculatePreviewHash вычисляет хеш всех данных, от которых зависит превью
-func (state *WizardState) calculatePreviewHash() string {
-	var data strings.Builder
-
-	// ПarserConfig
-	if state.ParserConfigEntry != nil {
-		data.WriteString(state.ParserConfigEntry.Text)
-	}
-
-	// GeneratedOutbounds
-	data.WriteString(fmt.Sprintf("%d", len(state.GeneratedOutbounds)))
-	for _, outbound := range state.GeneratedOutbounds {
-		data.WriteString(outbound)
-	}
-
-	// TemplateSectionSelections
-	if state.TemplateSectionSelections != nil {
-		keys := make([]string, 0, len(state.TemplateSectionSelections))
-		for k, v := range state.TemplateSectionSelections {
-			if v {
-				keys = append(keys, k)
+	// Для больших текстов (>50KB) показываем сообщение о загрузке перед вставкой
+	if len(text) > 50000 {
+		safeFyneDo(state.Window, func() {
+			state.TemplatePreviewEntry.SetText("Loading large preview...")
+			if state.TemplatePreviewStatusLabel != nil {
+				state.TemplatePreviewStatusLabel.SetText("⏳ Loading large preview...")
 			}
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			data.WriteString(k)
-		}
+		})
+
+		// Вставляем большой текст асинхронно
+		go func() {
+			safeFyneDo(state.Window, func() {
+				insertStartTime := time.Now()
+				state.TemplatePreviewEntry.SetText(text)
+				debugLog("setTemplatePreviewText: Large text inserted in %v", time.Since(insertStartTime))
+
+			})
+		}()
+	} else {
+		// Для обычных текстов используем синхронную вставку
+		safeFyneDo(state.Window, func() {
+			state.TemplatePreviewEntry.SetText(text)
+		})
 	}
-
-	// SelectedFinalOutbound
-	data.WriteString(state.SelectedFinalOutbound)
-
-	// SelectableRuleStates
-	if state.SelectableRuleStates != nil {
-		for _, ruleState := range state.SelectableRuleStates {
-			if ruleState.Enabled {
-				data.WriteString(ruleState.Rule.Label)
-				data.WriteString(ruleState.SelectedOutbound)
-			}
-		}
-	}
-
-	// Вычисляем SHA256 хеш
-	hash := sha256.Sum256([]byte(data.String()))
-	return hex.EncodeToString(hash[:])
 }
 
 func (state *WizardState) refreshOutboundOptions() {
+	startTime := time.Now()
+	debugLog("refreshOutboundOptions: START at %s", startTime.Format("15:04:05.000"))
+
 	if len(state.SelectableRuleStates) == 0 && state.FinalOutboundSelect == nil {
+		debugLog("refreshOutboundOptions: No rule states and no final select, returning early")
 		return
 	}
+
+	getOptionsStartTime := time.Now()
 	options := state.getAvailableOutbounds()
+	debugLog("refreshOutboundOptions: getAvailableOutbounds took %v (found %d options)",
+		time.Since(getOptionsStartTime), len(options))
 	if len(options) == 0 {
 		options = []string{defaultOutboundTag, rejectActionName}
 	}
@@ -1562,6 +1600,13 @@ func (state *WizardState) refreshOutboundOptions() {
 
 	state.ensureFinalSelected(options)
 
+	// Устанавливаем флаг, чтобы блокировать callbacks при программном обновлении
+	state.updatingOutboundOptions = true
+	defer func() {
+		state.updatingOutboundOptions = false
+	}()
+
+	uiUpdateStartTime := time.Now()
 	safeFyneDo(state.Window, func() {
 		for _, ruleState := range state.SelectableRuleStates {
 			if !ruleState.Rule.HasOutbound || ruleState.OutboundSelect == nil {
@@ -1578,6 +1623,8 @@ func (state *WizardState) refreshOutboundOptions() {
 			state.FinalOutboundSelect.Refresh()
 		}
 	})
+	debugLog("refreshOutboundOptions: UI update took %v", time.Since(uiUpdateStartTime))
+	debugLog("refreshOutboundOptions: END (total duration: %v)", time.Since(startTime))
 }
 
 func (state *WizardState) triggerParseForPreview() {
@@ -1596,9 +1643,6 @@ func (state *WizardState) triggerParseForPreview() {
 	state.autoParseInProgress = true
 	// Обновляем статус и отключаем кнопку Save при начале парсинга
 	safeFyneDo(state.Window, func() {
-		if state.TemplatePreviewStatusLabel != nil {
-			state.TemplatePreviewStatusLabel.SetText("⏳ Parsing subscription links...")
-		}
 		if state.SaveButton != nil {
 			state.SaveButton.Disable()
 		}
@@ -1606,33 +1650,12 @@ func (state *WizardState) triggerParseForPreview() {
 	go parseAndPreview(state)
 }
 
-// invalidatePreviewCache инвалидирует кэш превью (вызывается при изменениях данных)
-func (state *WizardState) invalidatePreviewCache() {
-	state.TemplatePreviewCache = ""
-	state.TemplatePreviewCacheHash = ""
-}
-
-func (state *WizardState) updateTemplatePreview() {
-	// Синхронная версия для вызова из других мест (не блокирует UI)
-	state.updateTemplatePreviewAsync()
-}
-
 func (state *WizardState) updateTemplatePreviewAsync() {
+	startTime := time.Now()
+	debugLog("updateTemplatePreviewAsync: START at %s", startTime.Format("15:04:05.000"))
+
 	if state.TemplateData == nil || state.TemplatePreviewEntry == nil {
-		return
-	}
-
-	// Вычисляем хеш текущих данных
-	currentHash := state.calculatePreviewHash()
-
-	// Если хеш не изменился и есть кэш, используем кэш
-	if currentHash == state.TemplatePreviewCacheHash && state.TemplatePreviewCache != "" {
-		safeFyneDo(state.Window, func() {
-			state.setTemplatePreviewText(state.TemplatePreviewCache)
-			if state.TemplatePreviewStatusLabel != nil {
-				state.TemplatePreviewStatusLabel.SetText("✅ Preview ready (cached)")
-			}
-		})
+		debugLog("updateTemplatePreviewAsync: TemplateData or TemplatePreviewEntry is nil, returning early")
 		return
 	}
 
@@ -1653,12 +1676,21 @@ func (state *WizardState) updateTemplatePreviewAsync() {
 
 	// Строим конфиг асинхронно
 	go func() {
+		goroutineStartTime := time.Now()
+		debugLog("updateTemplatePreviewAsync: Goroutine START at %s", goroutineStartTime.Format("15:04:05.000"))
+
 		defer func() {
+			totalDuration := time.Since(goroutineStartTime)
+			debugLog("updateTemplatePreviewAsync: Goroutine END (duration: %v)", totalDuration)
 			state.previewGenerationInProgress = false
 			safeFyneDo(state.Window, func() {
 				// Включаем кнопку Save после завершения
 				if state.SaveButton != nil {
 					state.SaveButton.Enable()
+				}
+				// Включаем кнопку Show Preview
+				if state.ShowPreviewButton != nil {
+					state.ShowPreviewButton.Enable()
 				}
 			})
 		}()
@@ -1670,8 +1702,12 @@ func (state *WizardState) updateTemplatePreviewAsync() {
 			}
 		})
 
+		buildStartTime := time.Now()
+		debugLog("updateTemplatePreviewAsync: Calling buildTemplateConfig")
 		text, err := buildTemplateConfig(state)
+		buildDuration := time.Since(buildStartTime)
 		if err != nil {
+			debugLog("updateTemplatePreviewAsync: buildTemplateConfig failed (took %v): %v", buildDuration, err)
 			safeFyneDo(state.Window, func() {
 				state.setTemplatePreviewText(fmt.Sprintf("Preview error: %v", err))
 				if state.TemplatePreviewStatusLabel != nil {
@@ -1680,53 +1716,86 @@ func (state *WizardState) updateTemplatePreviewAsync() {
 			})
 			return
 		}
+		debugLog("updateTemplatePreviewAsync: buildTemplateConfig completed in %v (result size: %d bytes)",
+			buildDuration, len(text))
 
-		// Сохраняем в кэш
-		state.TemplatePreviewCache = text
-		state.TemplatePreviewCacheHash = currentHash
-
-		// Обновляем статус: готово
+		// Обновляем текст превью
+		// Для больших текстов setTemplatePreviewText сам обновит статус после завершения
+		isLargeText := len(text) > 50000
 		safeFyneDo(state.Window, func() {
 			state.setTemplatePreviewText(text)
-			if state.TemplatePreviewStatusLabel != nil {
-				state.TemplatePreviewStatusLabel.SetText("✅ Preview ready")
+
+			// Обновляем статус только для небольших текстов
+			// Для больших текстов статус обновится после завершения асинхронной вставки
+			if !isLargeText {
+				if state.TemplatePreviewStatusLabel != nil {
+					state.TemplatePreviewStatusLabel.SetText("✅ Preview ready")
+				}
+				if state.ShowPreviewButton != nil {
+					state.ShowPreviewButton.Enable()
+				}
 			}
 		})
+		if !isLargeText {
+			debugLog("updateTemplatePreviewAsync: Preview text inserted")
+		} else {
+			debugLog("updateTemplatePreviewAsync: Large text insertion started (status will update when complete)")
+		}
 	}()
 }
 
 func buildTemplateConfig(state *WizardState) (string, error) {
+	startTime := time.Now()
+	debugLog("buildTemplateConfig: START at %s", startTime.Format("15:04:05.000"))
+
 	if state.TemplateData == nil {
+		debugLog("buildTemplateConfig: TemplateData is nil, returning error")
 		return "", fmt.Errorf("template data not available")
 	}
 	parserConfigText := strings.TrimSpace(state.ParserConfigEntry.Text)
+	debugLog("buildTemplateConfig: ParserConfig text length: %d bytes", len(parserConfigText))
 	if parserConfigText == "" {
+		debugLog("buildTemplateConfig: ParserConfig is empty, returning error")
 		return "", fmt.Errorf("ParserConfig is empty and no template available")
 	}
 
 	// Parse ParserConfig JSON to ensure it has version 2 and parser object
+	parseStartTime := time.Now()
 	var parserConfig core.ParserConfig
 	if err := json.Unmarshal([]byte(parserConfigText), &parserConfig); err != nil {
 		// If parsing fails, use text as-is (might be invalid JSON, but let user fix it)
-		log.Printf("buildTemplateConfig: Warning: Failed to parse ParserConfig JSON: %v", err)
+		debugLog("buildTemplateConfig: Failed to parse ParserConfig JSON (took %v): %v", time.Since(parseStartTime), err)
 	} else {
 		// Normalize ParserConfig (migrate version, set defaults, update last_updated)
+		normalizeStartTime := time.Now()
 		core.NormalizeParserConfig(&parserConfig, true)
+		debugLog("buildTemplateConfig: Normalized ParserConfig in %v", time.Since(normalizeStartTime))
 
 		// Serialize back to JSON with proper formatting (always version 2 format)
+		serializeStartTime := time.Now()
 		configToSerialize := map[string]interface{}{
 			"ParserConfig": parserConfig.ParserConfig,
 		}
 		serialized, err := json.MarshalIndent(configToSerialize, "", "  ")
 		if err == nil {
 			parserConfigText = string(serialized)
+			debugLog("buildTemplateConfig: Serialized ParserConfig in %v (new length: %d bytes)",
+				time.Since(serializeStartTime), len(parserConfigText))
 		} else {
-			log.Printf("buildTemplateConfig: Warning: Failed to serialize ParserConfig: %v", err)
+			debugLog("buildTemplateConfig: Failed to serialize ParserConfig (took %v): %v",
+				time.Since(serializeStartTime), err)
 		}
 	}
+	debugLog("buildTemplateConfig: ParserConfig processing took %v total", time.Since(parseStartTime))
+
+	sectionsStartTime := time.Now()
 	sections := make([]string, 0)
+	sectionCount := 0
+	debugLog("buildTemplateConfig: Processing %d sections", len(state.TemplateData.SectionOrder))
 	for _, key := range state.TemplateData.SectionOrder {
+		sectionStartTime := time.Now()
 		if selected, ok := state.TemplateSectionSelections[key]; !ok || !selected {
+			debugLog("buildTemplateConfig: Section '%s' not selected, skipping", key)
 			continue
 		}
 		raw := state.TemplateData.Sections[key]
@@ -1735,7 +1804,12 @@ func buildTemplateConfig(state *WizardState) (string, error) {
 		if key == "outbounds" && state.TemplateData.HasParserOutboundsBlock {
 			// If template had @PARSER_OUTBOUNDS_BLOCK marker, replace entire outbounds array
 			// with generated content
+			outboundsStartTime := time.Now()
+			debugLog("buildTemplateConfig: Building outbounds block (generated outbounds: %d)",
+				len(state.GeneratedOutbounds))
 			content := state.buildParserOutboundsBlock()
+			debugLog("buildTemplateConfig: Built outbounds block in %v (content length: %d bytes)",
+				time.Since(outboundsStartTime), len(content))
 
 			// Add elements after marker if they exist (any elements, not just direct-out)
 			if state.TemplateData.OutboundsAfterMarker != "" {
@@ -1754,26 +1828,45 @@ func buildTemplateConfig(state *WizardState) (string, error) {
 			// Wrap content in array brackets
 			formatted = "[\n" + content + "\n  ]"
 		} else if key == "route" {
+			routeStartTime := time.Now()
+			debugLog("buildTemplateConfig: Merging route section (rules: %d)",
+				len(state.SelectableRuleStates))
 			merged, err := mergeRouteSection(raw, state.SelectableRuleStates, state.SelectedFinalOutbound)
 			if err != nil {
+				debugLog("buildTemplateConfig: Route merge failed (took %v): %v",
+					time.Since(routeStartTime), err)
 				return "", fmt.Errorf("route merge failed: %w", err)
 			}
 			raw = merged
+			formatStartTime := time.Now()
 			formatted, err = formatSectionJSON(raw, 2)
 			if err != nil {
 				formatted = string(raw)
 			}
+			debugLog("buildTemplateConfig: Formatted route section in %v (total route processing: %v)",
+				time.Since(formatStartTime), time.Since(routeStartTime))
 		} else {
+			formatStartTime := time.Now()
 			formatted, err = formatSectionJSON(raw, 2)
 			if err != nil {
 				formatted = string(raw)
 			}
+			debugLog("buildTemplateConfig: Formatted section '%s' in %v", key, time.Since(formatStartTime))
 		}
 		sections = append(sections, fmt.Sprintf(`  "%s": %s`, key, formatted))
+		sectionCount++
+		debugLog("buildTemplateConfig: Processed section '%s' in %v (total sections processed: %d)",
+			key, time.Since(sectionStartTime), sectionCount)
 	}
+	debugLog("buildTemplateConfig: Processed all sections in %v (total: %d)",
+		time.Since(sectionsStartTime), sectionCount)
+
 	if len(sections) == 0 {
+		debugLog("buildTemplateConfig: No sections selected, returning error")
 		return "", fmt.Errorf("no sections selected")
 	}
+
+	buildStartTime := time.Now()
 	var builder strings.Builder
 	builder.WriteString("{\n")
 	builder.WriteString("/** @ParcerConfig\n")
@@ -1782,6 +1875,9 @@ func buildTemplateConfig(state *WizardState) (string, error) {
 	builder.WriteString(strings.Join(sections, ",\n"))
 	builder.WriteString("\n}\n")
 	result := builder.String()
+	debugLog("buildTemplateConfig: Built final config in %v (result length: %d bytes)",
+		time.Since(buildStartTime), len(result))
+	debugLog("buildTemplateConfig: END (total duration: %v)", time.Since(startTime))
 	return result, nil
 }
 

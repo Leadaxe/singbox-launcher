@@ -38,8 +38,11 @@ func parseEnvLevel(raw string) Level {
 		return LevelWarn
 	case "error":
 		return LevelError
-	default:
+	case "off":
 		return LevelOff
+	default:
+		// По умолчанию показываем DEBUG логи
+		return LevelVerbose
 	}
 }
 

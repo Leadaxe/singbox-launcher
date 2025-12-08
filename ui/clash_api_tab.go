@@ -117,19 +117,21 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		ac.SetProxiesList([]api.ProxyInfo{})
 		ac.SetActiveProxyName("")
 		ac.SetSelectedIndex(-1)
-		if ac.ApiStatusLabel != nil {
-			ac.ApiStatusLabel.SetText("Status: Not running")
-		}
-		if ac.ListStatusLabel != nil {
-			ac.ListStatusLabel.SetText("Sing-box is stopped.")
-		}
-		if ac.ProxiesListWidget != nil {
-			ac.ProxiesListWidget.Refresh()
-		}
-		// Update tray menu when API state is reset
-		if ac.UpdateTrayMenuFunc != nil {
-			ac.UpdateTrayMenuFunc()
-		}
+		fyne.Do(func() {
+			if ac.ApiStatusLabel != nil {
+				ac.ApiStatusLabel.SetText("Status: Not running")
+			}
+			if ac.ListStatusLabel != nil {
+				ac.ListStatusLabel.SetText("Sing-box is stopped.")
+			}
+			if ac.ProxiesListWidget != nil {
+				ac.ProxiesListWidget.Refresh()
+			}
+			// Update tray menu when API state is reset
+			if ac.UpdateTrayMenuFunc != nil {
+				ac.UpdateTrayMenuFunc()
+			}
+		})
 	}
 
 	// --- Регистрация колбэков в контроллере ---
@@ -280,8 +282,10 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		if ac.UpdateTrayMenuFunc != nil {
 			ac.UpdateTrayMenuFunc()
 		}
-		// Start auto-loading proxies for the new group
-		ac.AutoLoadProxies()
+		// Start auto-loading proxies for the new group only if sing-box is running
+		if ac.RunningState.IsRunning() {
+			ac.AutoLoadProxies()
+		}
 		onLoadAndRefreshProxies()
 	})
 	groupSelect.PlaceHolder = "Select selector group"

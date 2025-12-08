@@ -44,6 +44,9 @@ func DecodeSubscriptionContent(content []byte) ([]byte, error) {
 // FetchSubscription fetches subscription content from URL and decodes it
 // Returns decoded content and error if fetch or decode fails
 func FetchSubscription(url string) ([]byte, error) {
+	startTime := time.Now()
+	log.Printf("[DEBUG] FetchSubscription: START at %s, URL: %s", startTime.Format("15:04:05.000"), url)
+	
 	// Создаем контекст с таймаутом
 	ctx, cancel := context.WithTimeout(context.Background(), NetworkRequestTimeout)
 	defer cancel()
@@ -51,16 +54,23 @@ func FetchSubscription(url string) ([]byte, error) {
 	// Используем универсальный HTTP клиент
 	client := createHTTPClient(NetworkRequestTimeout)
 
+	requestStartTime := time.Now()
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
+		log.Printf("[DEBUG] FetchSubscription: Failed to create request (took %v): %v", time.Since(requestStartTime), err)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+	log.Printf("[DEBUG] FetchSubscription: Created request in %v", time.Since(requestStartTime))
 
 	// Set user agent to avoid blocking
 	req.Header.Set("User-Agent", "singbox-launcher/1.0")
 
+	doStartTime := time.Now()
+	log.Printf("[DEBUG] FetchSubscription: Sending HTTP request")
 	resp, err := client.Do(req)
+	doDuration := time.Since(doStartTime)
 	if err != nil {
+		log.Printf("[DEBUG] FetchSubscription: HTTP request failed (took %v): %v", doDuration, err)
 		// Проверяем тип ошибки
 		if IsNetworkError(err) {
 			return nil, fmt.Errorf("network error: %s", GetNetworkErrorMessage(err))
@@ -68,27 +78,44 @@ func FetchSubscription(url string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to fetch subscription: %w", err)
 	}
 	defer resp.Body.Close()
+	log.Printf("[DEBUG] FetchSubscription: Received HTTP response in %v (status: %d, content-length: %d)", 
+		doDuration, resp.StatusCode, resp.ContentLength)
 
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("[DEBUG] FetchSubscription: Non-OK status code: %d", resp.StatusCode)
 		return nil, fmt.Errorf("subscription server returned status %d", resp.StatusCode)
 	}
 
+	readStartTime := time.Now()
+	log.Printf("[DEBUG] FetchSubscription: Reading response body")
 	content, err := io.ReadAll(resp.Body)
+	readDuration := time.Since(readStartTime)
 	if err != nil {
+		log.Printf("[DEBUG] FetchSubscription: Failed to read response body (took %v): %v", readDuration, err)
 		return nil, fmt.Errorf("failed to read subscription content: %w", err)
 	}
+	log.Printf("[DEBUG] FetchSubscription: Read %d bytes in %v", len(content), readDuration)
 
 	// Check if content is empty
 	if len(content) == 0 {
+		log.Printf("[DEBUG] FetchSubscription: Empty content received")
 		return nil, fmt.Errorf("subscription returned empty content")
 	}
 
 	// Decode base64 if needed
+	decodeStartTime := time.Now()
+	log.Printf("[DEBUG] FetchSubscription: Decoding subscription content")
 	decoded, err := DecodeSubscriptionContent(content)
+	decodeDuration := time.Since(decodeStartTime)
 	if err != nil {
+		log.Printf("[DEBUG] FetchSubscription: Failed to decode content (took %v): %v", decodeDuration, err)
 		return nil, fmt.Errorf("failed to decode subscription content: %w", err)
 	}
-
+	log.Printf("[DEBUG] FetchSubscription: Decoded content in %v (original: %d bytes, decoded: %d bytes)", 
+		decodeDuration, len(content), len(decoded))
+	
+	totalDuration := time.Since(startTime)
+	log.Printf("[DEBUG] FetchSubscription: END (total duration: %v)", totalDuration)
 	return decoded, nil
 }
 

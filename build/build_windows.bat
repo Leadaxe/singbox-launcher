@@ -1,6 +1,13 @@
 @echo off
 setlocal enabledelayedexpansion
 
+:: Проверяем параметр для пропуска ожидания
+set "NO_PAUSE=0"
+if "%1"=="nopause" set "NO_PAUSE=1"
+if "%1"=="silent" set "NO_PAUSE=1"
+if "%1"=="/nopause" set "NO_PAUSE=1"
+if "%1"=="-nopause" set "NO_PAUSE=1"
+
 cd /d "%~dp0\.."
 
 echo.
@@ -13,14 +20,23 @@ echo === Tidying Go modules ===
 go mod tidy
 if %ERRORLEVEL% NEQ 0 (
     echo !!! Failed to tidy modules !!!
-    pause
+    if %NO_PAUSE%==0 pause
     exit /b %ERRORLEVEL%
 )
 
 :: Устанавливаем окружение для сборки
 echo.
 echo === Setting PATH and environment ===
+:: Устанавливаем GOROOT если не установлен
+if "%GOROOT%"=="" (
+    if exist "C:\Program Files\Go" (
+        set "GOROOT=C:\Program Files\Go"
+    )
+)
+:: Добавляем пути к Go, MinGW и Git в начало PATH
 set "PATH=C:\Program Files\Go\bin;%PATH%"
+set "PATH=C:\msys64\mingw64\bin;%PATH%"
+set "PATH=C:\Users\Admin\AppData\Local\Programs\Git\bin;%PATH%"
 set "PATH=%USERPROFILE%\go\bin;%PATH%"
 
 set CGO_ENABLED=1
@@ -77,7 +93,7 @@ go build -buildvcs=false -ldflags="-H windowsgui -s -w" -o "%OUTPUT_FILENAME%"
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo !!! Build failed !!!
-    pause
+    if %NO_PAUSE%==0 pause
     exit /b %ERRORLEVEL%
 )
 
@@ -86,5 +102,5 @@ echo ========================================
 echo   Build completed successfully!
 echo   Output: %OUTPUT_FILENAME%
 echo ========================================
-pause
+if %NO_PAUSE%==0 pause
 

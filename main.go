@@ -46,19 +46,41 @@ func main() {
 				})
 			}()
 			// Create the menu for the system tray with proxy selection submenu
+			// Safe wrapper that prevents concurrent menu updates
 			updateTrayMenu := func() {
+				// Check if update is already in progress
+				controller.TrayMenuUpdateMutex.Lock()
+				if controller.TrayMenuUpdateInProgress {
+					controller.TrayMenuUpdateMutex.Unlock()
+					return // Skip update if already in progress
+				}
+				controller.TrayMenuUpdateInProgress = true
+				controller.TrayMenuUpdateMutex.Unlock()
+
 				fyne.Do(func() {
+					defer func() {
+						// Reset flag after update completes
+						controller.TrayMenuUpdateMutex.Lock()
+						controller.TrayMenuUpdateInProgress = false
+						controller.TrayMenuUpdateMutex.Unlock()
+					}()
+
 					menu := controller.CreateTrayMenu()
-					desk.SetSystemTrayMenu(menu)
+					// Use recover to handle any panics during menu update
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								log.Printf("updateTrayMenu: Recovered from panic: %v", r)
+							}
+						}()
+						desk.SetSystemTrayMenu(menu)
+					}()
 				})
 			}
 			controller.UpdateTrayMenuFunc = updateTrayMenu
 
 			// Set initial menu
 			updateTrayMenu()
-
-			// Start auto-loading proxies after tray initialization
-			controller.AutoLoadProxies()
 
 			// Start automatic config reload scheduler
 			core.StartAutoReloadScheduler(controller)
@@ -87,11 +109,9 @@ func main() {
 	// This ensures menu is properly initialized even if SetOnStarted hasn't fired yet
 	go func() {
 		time.Sleep(200 * time.Millisecond) // Small delay to ensure callback is set
-		fyne.Do(func() {
-			if controller.UpdateTrayMenuFunc != nil {
-				controller.UpdateTrayMenuFunc()
-			}
-		})
+		if controller.UpdateTrayMenuFunc != nil {
+			controller.UpdateTrayMenuFunc()
+		}
 	}()
 
 	// Check if config.json exists and show a warning if it doesn't

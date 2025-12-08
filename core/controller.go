@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -27,6 +28,7 @@ import (
 	"singbox-launcher/internal/platform"
 
 	ps "github.com/mitchellh/go-ps"
+	"github.com/muhammadmuzzammil1998/jsonc"
 )
 
 // Constants for log file names
@@ -94,6 +96,16 @@ type AppController struct {
 	SelectedClashGroup string
 	AutoLoadInProgress bool       // Flag to prevent multiple auto-load attempts
 	AutoLoadMutex      sync.Mutex // Mutex for AutoLoadInProgress
+
+	// --- Tray menu update protection ---
+	TrayMenuUpdateInProgress bool       // Flag to prevent multiple simultaneous menu updates
+	TrayMenuUpdateMutex      sync.Mutex // Mutex for TrayMenuUpdateInProgress
+
+	// --- Version check caching ---
+	VersionCheckCache      string       // Cached latest version
+	VersionCheckCacheTime  time.Time    // Time when version was successfully checked
+	VersionCheckMutex      sync.RWMutex // Mutex for version check cache
+	VersionCheckInProgress bool         // Flag to prevent multiple version checks
 
 	// --- Context for goroutine cancellation ---
 	ctx        context.Context    // Context for cancellation
@@ -579,6 +591,106 @@ func checkAndShowSingBoxRunningWarning(ac *AppController, context string) bool {
 	return false
 }
 
+// getTunInterfaceName extracts TUN interface name from config.json
+func getTunInterfaceName(configPath string) (string, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read config: %w", err)
+	}
+
+	// Parse JSONC (with comments) to clean JSON
+	cleanData := jsonc.ToJSON(data)
+
+	var config map[string]interface{}
+	if err := json.Unmarshal(cleanData, &config); err != nil {
+		return "", fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	inbounds, ok := config["inbounds"].([]interface{})
+	if !ok {
+		return "", nil // No inbounds section, no TUN interface
+	}
+
+	for _, inbound := range inbounds {
+		inboundMap, ok := inbound.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		if inboundMap["type"] == "tun" {
+			if interfaceName, ok := inboundMap["interface_name"].(string); ok && interfaceName != "" {
+				return interfaceName, nil
+			}
+		}
+	}
+
+	return "", nil // No TUN interface found in config
+}
+
+// checkTunInterfaceExists checks if TUN interface exists on Windows
+func checkTunInterfaceExists(interfaceName string) (bool, error) {
+	if runtime.GOOS != "windows" {
+		// On Linux/macOS, TUN interfaces are managed by the OS
+		// and are automatically removed when the process exits
+		return false, nil
+	}
+
+	cmd := exec.Command("netsh", "interface", "show", "interface", fmt.Sprintf("name=%s", interfaceName))
+	platform.PrepareCommand(cmd) // Hide console window on Windows
+	output, err := cmd.Output()
+
+	if err != nil {
+		// Interface not found or command failed
+		return false, nil
+	}
+
+	// Check if interface name appears in output
+	outputStr := strings.ToLower(string(output))
+	return strings.Contains(outputStr, strings.ToLower(interfaceName)), nil
+}
+
+// removeTunInterface removes TUN interface on Windows before starting sing-box
+func removeTunInterface(interfaceName string) error {
+	if runtime.GOOS != "windows" {
+		// On Linux/macOS, interface is removed automatically
+		return nil
+	}
+
+	// Check if interface exists
+	exists, err := checkTunInterfaceExists(interfaceName)
+	if err != nil {
+		log.Printf("removeTunInterface: Failed to check interface existence: %v", err)
+		// Continue anyway - try to remove it
+	}
+
+	if !exists {
+		log.Printf("removeTunInterface: Interface '%s' does not exist, nothing to remove", interfaceName)
+		return nil
+	}
+
+	log.Printf("removeTunInterface: Removing existing TUN interface '%s'...", interfaceName)
+
+	// Remove the interface using netsh
+	cmd := exec.Command("netsh", "interface", "delete", "interface", fmt.Sprintf("name=%s", interfaceName))
+	platform.PrepareCommand(cmd) // Hide console window on Windows
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Interface might be in use or already deleted
+		log.Printf("removeTunInterface: Failed to remove interface '%s': %v, output: %s",
+			interfaceName, err, string(output))
+		// This is not a critical error - sing-box might handle it
+		return nil
+	}
+
+	log.Printf("removeTunInterface: Successfully removed interface '%s'", interfaceName)
+
+	// Give system time to release resources
+	time.Sleep(500 * time.Millisecond)
+
+	return nil
+}
+
 // StartSingBoxProcess launches the sing-box process.
 // skipRunningCheck: если true, пропускает проверку на уже запущенный процесс (для автоперезапуска)
 func StartSingBoxProcess(ac *AppController, skipRunningCheck ...bool) {
@@ -631,6 +743,21 @@ func StartSingBoxProcess(ac *AppController, skipRunningCheck ...bool) {
 		}
 	}
 
+	// Check and remove existing TUN interface before starting (prevents "file already exists" error)
+	if runtime.GOOS == "windows" {
+		interfaceName, err := getTunInterfaceName(ac.ConfigPath)
+		if err != nil {
+			log.Printf("startSingBox: Failed to get TUN interface name from config: %v", err)
+			// Continue anyway - maybe config doesn't have TUN
+		} else if interfaceName != "" {
+			log.Printf("startSingBox: Checking for existing TUN interface '%s'...", interfaceName)
+			if err := removeTunInterface(interfaceName); err != nil {
+				log.Printf("startSingBox: Warning: Failed to remove TUN interface: %v", err)
+				// Non-critical error - sing-box might handle existing interface
+			}
+		}
+	}
+
 	// Reset API cache before starting
 	if ac.ResetAPIStateFunc != nil {
 		log.Println("startSingBox: Resetting API state cache...")
@@ -662,6 +789,13 @@ func StartSingBoxProcess(ac *AppController, skipRunningCheck ...bool) {
 	ac.StoppedByUser = false
 	// Add log with PID
 	log.Printf("startSingBox: Sing-Box started. PID=%d", ac.SingboxCmd.Process.Pid)
+
+	// Start auto-loading proxies after sing-box is running
+	go func() {
+		// Small delay to ensure API is ready
+		time.Sleep(2 * time.Second)
+		ac.AutoLoadProxies()
+	}()
 
 	go MonitorSingBoxProcess(ac, ac.SingboxCmd)
 }
@@ -867,60 +1001,57 @@ func StartAutoReloadScheduler(ac *AppController) {
 				ac.ParserMutex.Lock()
 				if ac.ParserRunning {
 					ac.ParserMutex.Unlock()
-					log.Println("AutoReload: Parser already running, skipping this check")
 					continue
 				}
 				ac.ParserMutex.Unlock()
 
-			// Extract config to check reload settings
-			config, err := ExtractParcerConfig(ac.ConfigPath)
-			if err != nil {
-				log.Printf("AutoReload: Failed to extract config: %v", err)
-				continue
-			}
+				// Extract config to check reload settings
+				config, err := ExtractParcerConfig(ac.ConfigPath)
+				if err != nil {
+					log.Printf("AutoReload: Failed to extract config: %v", err)
+					continue
+				}
 
-			// Check if parser object exists and has reload setting
-			if config.ParserConfig.Parser.Reload == "" {
-				// No reload interval specified, skip
-				continue
-			}
+				// Check if parser object exists and has reload setting
+				if config.ParserConfig.Parser.Reload == "" {
+					// No reload interval specified, skip silently
+					continue
+				}
 
-			// Parse reload interval
-			reloadDuration, err := time.ParseDuration(config.ParserConfig.Parser.Reload)
-			if err != nil {
-				log.Printf("AutoReload: Error parsing reload interval '%s': %v", config.ParserConfig.Parser.Reload, err)
-				continue
-			}
+				// Parse reload interval
+				reloadDuration, err := time.ParseDuration(config.ParserConfig.Parser.Reload)
+				if err != nil {
+					log.Printf("AutoReload: Error parsing reload interval '%s': %v", config.ParserConfig.Parser.Reload, err)
+					continue
+				}
 
-			// Check if last_updated exists
-			if config.ParserConfig.Parser.LastUpdated == "" {
-				// No last_updated, trigger update
-				log.Printf("AutoReload: No last_updated found, triggering automatic config update (interval: %s)", config.ParserConfig.Parser.Reload)
-				go RunParserProcess(ac)
-				continue
-			}
+				// Check if last_updated exists
+				if config.ParserConfig.Parser.LastUpdated == "" {
+					// No last_updated, trigger update
+					log.Printf("AutoReload: No last_updated found, triggering automatic config update (interval: %s)", config.ParserConfig.Parser.Reload)
+					go RunParserProcess(ac)
+					continue
+				}
 
-			// Parse last_updated timestamp
-			lastUpdated, err := time.Parse(time.RFC3339, config.ParserConfig.Parser.LastUpdated)
-			if err != nil {
-				log.Printf("AutoReload: Error parsing last_updated '%s': %v", config.ParserConfig.Parser.LastUpdated, err)
-				// Treat as if update is needed
-				log.Printf("AutoReload: Triggering automatic config update due to invalid last_updated (interval: %s)", config.ParserConfig.Parser.Reload)
-				go RunParserProcess(ac)
-				continue
-			}
+				// Parse last_updated timestamp
+				lastUpdated, err := time.Parse(time.RFC3339, config.ParserConfig.Parser.LastUpdated)
+				if err != nil {
+					log.Printf("AutoReload: Error parsing last_updated '%s': %v", config.ParserConfig.Parser.LastUpdated, err)
+					// Treat as if update is needed
+					log.Printf("AutoReload: Triggering automatic config update due to invalid last_updated (interval: %s)", config.ParserConfig.Parser.Reload)
+					go RunParserProcess(ac)
+					continue
+				}
 
-			// Check if enough time has passed
-			nextUpdateTime := lastUpdated.Add(reloadDuration)
-			now := time.Now().UTC()
+				// Check if enough time has passed
+				nextUpdateTime := lastUpdated.Add(reloadDuration)
+				now := time.Now().UTC()
 
-			if now.After(nextUpdateTime) || now.Equal(nextUpdateTime) {
-				log.Printf("AutoReload: Triggering automatic config update (interval: %s, last_updated: %s)", config.ParserConfig.Parser.Reload, config.ParserConfig.Parser.LastUpdated)
-				go RunParserProcess(ac)
-			} else {
-				timeUntilUpdate := nextUpdateTime.Sub(now)
-				log.Printf("AutoReload: Next update in %v (last_updated: %s, interval: %s)", timeUntilUpdate, config.ParserConfig.Parser.LastUpdated, config.ParserConfig.Parser.Reload)
-			}
+				if now.After(nextUpdateTime) || now.Equal(nextUpdateTime) {
+					log.Printf("AutoReload: Triggering automatic config update (interval: %s, last_updated: %s)", config.ParserConfig.Parser.Reload, config.ParserConfig.Parser.LastUpdated)
+					go RunParserProcess(ac)
+				}
+				// Убрали лишний лог когда обновление не требуется - он засорял логи
 			}
 		}
 	}()
@@ -1096,6 +1227,13 @@ func (ac *AppController) AutoLoadProxies() {
 				}
 			}
 
+			// Check if sing-box is running before attempting to connect
+			if !ac.RunningState.IsRunning() {
+				log.Printf("AutoLoadProxies: Attempt %d/%d skipped - sing-box is not running", attempt+1, len(intervals))
+				// Continue to next attempt
+				continue
+			}
+
 			log.Printf("AutoLoadProxies: Attempt %d/%d to load proxies for group '%s'", attempt+1, len(intervals), selectedGroup)
 
 			// Get current group (it might have changed)
@@ -1235,14 +1373,17 @@ func (ac *AppController) CreateTrayMenu() *fyne.Menu {
 	// Auto-load proxies if list is empty and API is enabled
 	// Note: AutoLoadProxies has internal guard to prevent multiple simultaneous loads
 	if clashAPIEnabled && selectedGroup != "" && len(proxies) == 0 {
-		// Check if auto-load is already in progress to avoid duplicate calls
-		ac.AutoLoadMutex.Lock()
-		alreadyInProgress := ac.AutoLoadInProgress
-		ac.AutoLoadMutex.Unlock()
+		// Only auto-load if sing-box is running
+		if ac.RunningState.IsRunning() {
+			// Check if auto-load is already in progress to avoid duplicate calls
+			ac.AutoLoadMutex.Lock()
+			alreadyInProgress := ac.AutoLoadInProgress
+			ac.AutoLoadMutex.Unlock()
 
-		if !alreadyInProgress {
-			// Start auto-loading in background (non-blocking)
-			go ac.AutoLoadProxies()
+			if !alreadyInProgress {
+				// Start auto-loading in background (non-blocking)
+				go ac.AutoLoadProxies()
+			}
 		}
 	}
 

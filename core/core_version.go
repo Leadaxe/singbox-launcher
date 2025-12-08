@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"singbox-launcher/internal/platform"
 )
@@ -98,6 +99,123 @@ func (ac *AppController) GetLatestCoreVersion() (string, error) {
 	return FallbackVersion, nil
 }
 
+// ShouldCheckVersion проверяет, нужно ли проверять версию (не прошло ли 24 часа с последней успешной проверки)
+func (ac *AppController) ShouldCheckVersion() bool {
+	ac.VersionCheckMutex.RLock()
+	defer ac.VersionCheckMutex.RUnlock()
+
+	// Если кеш пустой или время не установлено - нужно проверить
+	if ac.VersionCheckCache == "" || ac.VersionCheckCacheTime.IsZero() {
+		return true
+	}
+
+	// Если прошло больше 24 часов - нужно проверить
+	timeSinceCheck := time.Since(ac.VersionCheckCacheTime)
+	if timeSinceCheck >= 24*time.Hour {
+		return true
+	}
+
+	// Иначе не нужно проверять
+	return false
+}
+
+// GetCachedVersion возвращает закешированную версию (если есть)
+func (ac *AppController) GetCachedVersion() string {
+	ac.VersionCheckMutex.RLock()
+	defer ac.VersionCheckMutex.RUnlock()
+	return ac.VersionCheckCache
+}
+
+// SetCachedVersion сохраняет версию в кеш
+func (ac *AppController) SetCachedVersion(version string) {
+	ac.VersionCheckMutex.Lock()
+	defer ac.VersionCheckMutex.Unlock()
+	ac.VersionCheckCache = version
+	ac.VersionCheckCacheTime = time.Now()
+}
+
+// CheckVersionInBackground запускает фоновую проверку версии с логикой повторных попыток
+func (ac *AppController) CheckVersionInBackground() {
+	// Сначала проверяем, нужно ли вообще проверять версию (если уже есть в кеше и не прошло 24 часа)
+	// Это нужно делать ДО блокировки мьютекса, чтобы избежать deadlock
+	if !ac.ShouldCheckVersion() {
+		return
+	}
+
+	// Теперь проверяем, не идет ли уже проверка (атомарно)
+	ac.VersionCheckMutex.Lock()
+	if ac.VersionCheckInProgress {
+		ac.VersionCheckMutex.Unlock()
+		return // Уже запущена проверка
+	}
+	// Устанавливаем флаг и освобождаем мьютекс
+	ac.VersionCheckInProgress = true
+	ac.VersionCheckMutex.Unlock()
+
+	go func() {
+		defer func() {
+			ac.VersionCheckMutex.Lock()
+			ac.VersionCheckInProgress = false
+			ac.VersionCheckMutex.Unlock()
+		}()
+
+		// Логика повторных попыток
+		maxQuickAttempts := 10
+		quickInterval := 1 * time.Minute
+		slowInterval := 5 * time.Minute
+
+		attemptCount := 0
+		for {
+			// Проверяем кеш перед каждой попыткой - возможно версия уже получена другой горутиной
+			if !ac.ShouldCheckVersion() {
+				log.Println("CheckVersionInBackground: Version already cached, stopping")
+				return
+			}
+
+			// Определяем интервал в зависимости от количества попыток
+			var interval time.Duration
+			if attemptCount < maxQuickAttempts {
+				interval = quickInterval
+			} else {
+				interval = slowInterval
+			}
+
+			// Ждем перед попыткой (кроме первой)
+			if attemptCount > 0 {
+				select {
+				case <-ac.ctx.Done():
+					log.Println("CheckVersionInBackground: Stopped (context cancelled)")
+					return
+				case <-time.After(interval):
+					// Continue
+				}
+			}
+
+			// Еще раз проверяем кеш после ожидания - возможно версия была получена во время ожидания
+			if !ac.ShouldCheckVersion() {
+				log.Println("CheckVersionInBackground: Version already cached during wait, stopping")
+				return
+			}
+
+			attemptCount++
+			log.Printf("CheckVersionInBackground: Attempt %d to get latest version", attemptCount)
+
+			// Пытаемся получить версию
+			version, err := ac.GetLatestCoreVersion()
+			if err == nil && version != FallbackVersion {
+				// Успех - сохраняем в кеш и выходим
+				ac.SetCachedVersion(version)
+				log.Printf("CheckVersionInBackground: Successfully cached version %s", version)
+				return
+			}
+
+			if err != nil {
+				log.Printf("CheckVersionInBackground: Attempt %d failed: %v", attemptCount, err)
+			}
+		}
+	}()
+}
+
 // getLatestVersionFromURL получает последнюю версию по конкретному URL
 func (ac *AppController) getLatestVersionFromURL(url string) (string, error) {
 	// Создаем контекст с таймаутом
@@ -148,6 +266,7 @@ func (ac *AppController) getLatestVersionFromURL(url string) (string, error) {
 }
 
 // GetCoreVersionInfo получает полную информацию о версии
+// Использует кешированную версию, если она доступна и валидна
 func (ac *AppController) GetCoreVersionInfo() CoreVersionInfo {
 	info := CoreVersionInfo{}
 
@@ -159,25 +278,25 @@ func (ac *AppController) GetCoreVersionInfo() CoreVersionInfo {
 	}
 	info.InstalledVersion = installed
 
-	// Получаем последнюю версию
-	latest, err := ac.GetLatestCoreVersion()
-	if err != nil {
-		// Не критично, если не удалось получить последнюю версию
-		log.Printf("GetCoreVersionInfo: failed to get latest version: %v", err)
+	// Используем кешированную версию, если она есть
+	latest := ac.GetCachedVersion()
+	if latest == "" {
+		// Если кеша нет, пытаемся получить версию (но не блокируем UI)
+		// В этом случае просто не показываем информацию об обновлении
 		info.LatestVersion = ""
 		return info
 	}
 	info.LatestVersion = latest
 
 	// Сравниваем версии
-	info.UpdateAvailable = compareVersions(installed, latest) < 0
+	info.UpdateAvailable = CompareVersions(installed, latest) < 0
 
 	return info
 }
 
-// compareVersions сравнивает две версии (формат X.Y.Z)
+// CompareVersions сравнивает две версии (формат X.Y.Z)
 // Возвращает: -1 если v1 < v2, 0 если v1 == v2, 1 если v1 > v2
-func compareVersions(v1, v2 string) int {
+func CompareVersions(v1, v2 string) int {
 	parts1 := strings.Split(v1, ".")
 	parts2 := strings.Split(v2, ".")
 
