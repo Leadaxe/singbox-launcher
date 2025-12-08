@@ -80,6 +80,10 @@ func IsSubscriptionURL(input string) bool {
 // - Also handles legacy format where direct links are in Source (backward compatibility)
 // Exported for use in UI
 func ProcessProxySource(proxySource ProxySource, tagCounts map[string]int, progressCallback func(float64, string), subscriptionIndex, totalSubscriptions int) ([]*ParsedNode, error) {
+	startTime := time.Now()
+	log.Printf("[DEBUG] ProcessProxySource: START source %d/%d at %s",
+		subscriptionIndex+1, totalSubscriptions, startTime.Format("15:04:05.000"))
+
 	nodes := make([]*ParsedNode, 0)
 	nodesFromThisSource := 0
 	skippedDueToLimit := 0
@@ -94,30 +98,52 @@ func ProcessProxySource(proxySource ProxySource, tagCounts map[string]int, progr
 					fmt.Sprintf("Downloading subscription %d/%d: %s", subscriptionIndex+1, totalSubscriptions, proxySource.Source))
 			}
 
+			fetchStartTime := time.Now()
+			log.Printf("[DEBUG] ProcessProxySource: Fetching subscription %d/%d: %s",
+				subscriptionIndex+1, totalSubscriptions, proxySource.Source)
 			content, err := FetchSubscription(proxySource.Source)
+			fetchDuration := time.Since(fetchStartTime)
 			if err != nil {
+				log.Printf("[DEBUG] ProcessProxySource: Failed to fetch subscription %d/%d (took %v): %v",
+					subscriptionIndex+1, totalSubscriptions, fetchDuration, err)
 				log.Printf("Parser: Error: Failed to fetch subscription from %s: %v", proxySource.Source, err)
 			} else if len(content) > 0 {
+				log.Printf("[DEBUG] ProcessProxySource: Fetched subscription %d/%d: %d bytes in %v",
+					subscriptionIndex+1, totalSubscriptions, len(content), fetchDuration)
+
 				if progressCallback != nil {
 					progressCallback(20+float64(subscriptionIndex)*50.0/float64(totalSubscriptions)+10.0/float64(totalSubscriptions),
 						fmt.Sprintf("Parsing subscription %d/%d: %s", subscriptionIndex+1, totalSubscriptions, proxySource.Source))
 				}
 
 				// Parse subscription content line by line
+				parseStartTime := time.Now()
 				subscriptionLines := strings.Split(string(content), "\n")
+				log.Printf("[DEBUG] ProcessProxySource: Parsing subscription %d/%d: %d lines",
+					subscriptionIndex+1, totalSubscriptions, len(subscriptionLines))
+
+				lineCount := 0
 				for _, subLine := range subscriptionLines {
 					subLine = strings.TrimSpace(subLine)
 					if subLine == "" {
 						continue
 					}
+					lineCount++
 
 					if nodesFromThisSource >= MaxNodesPerSubscription {
 						skippedDueToLimit++
+						if skippedDueToLimit == 1 {
+							log.Printf("[DEBUG] ProcessProxySource: Reached limit of %d nodes for subscription %d/%d",
+								MaxNodesPerSubscription, subscriptionIndex+1, totalSubscriptions)
+						}
 						continue
 					}
 
+					nodeStartTime := time.Now()
 					node, err := ParseNode(subLine, proxySource.Skip)
 					if err != nil {
+						log.Printf("[DEBUG] ProcessProxySource: Failed to parse node %d from subscription %d/%d (took %v): %v",
+							lineCount, subscriptionIndex+1, totalSubscriptions, time.Since(nodeStartTime), err)
 						log.Printf("Parser: Warning: Failed to parse node from subscription %s: %v", proxySource.Source, err)
 						continue
 					}
@@ -126,24 +152,36 @@ func ProcessProxySource(proxySource ProxySource, tagCounts map[string]int, progr
 						node.Tag = MakeTagUnique(node.Tag, tagCounts, "Parser")
 						nodes = append(nodes, node)
 						nodesFromThisSource++
+						if nodesFromThisSource%50 == 0 {
+							log.Printf("[DEBUG] ProcessProxySource: Parsed %d nodes from subscription %d/%d (elapsed: %v)",
+								nodesFromThisSource, subscriptionIndex+1, totalSubscriptions, time.Since(parseStartTime))
+						}
 					}
 				}
+				log.Printf("[DEBUG] ProcessProxySource: Parsed subscription %d/%d: %d nodes in %v (processed %d lines)",
+					subscriptionIndex+1, totalSubscriptions, nodesFromThisSource, time.Since(parseStartTime), lineCount)
 			}
 		} else if IsDirectLink(proxySource.Source) {
 			// Legacy формат: прямая ссылка в Source
+			log.Printf("[DEBUG] ProcessProxySource: Processing direct link in Source field for %d/%d",
+				subscriptionIndex+1, totalSubscriptions)
 			if progressCallback != nil {
 				progressCallback(20+float64(subscriptionIndex)*50.0/float64(totalSubscriptions),
 					fmt.Sprintf("Parsing direct link %d/%d", subscriptionIndex+1, totalSubscriptions))
 			}
 
 			if nodesFromThisSource < MaxNodesPerSubscription {
+				parseStartTime := time.Now()
 				node, err := ParseNode(proxySource.Source, proxySource.Skip)
 				if err != nil {
+					log.Printf("[DEBUG] ProcessProxySource: Failed to parse direct link (took %v): %v",
+						time.Since(parseStartTime), err)
 					log.Printf("Parser: Warning: Failed to parse direct link: %v", err)
 				} else if node != nil {
 					node.Tag = MakeTagUnique(node.Tag, tagCounts, "Parser")
 					nodes = append(nodes, node)
 					nodesFromThisSource++
+					log.Printf("[DEBUG] ProcessProxySource: Parsed direct link in %v", time.Since(parseStartTime))
 				}
 			} else {
 				skippedDueToLimit++
@@ -152,6 +190,9 @@ func ProcessProxySource(proxySource ProxySource, tagCounts map[string]int, progr
 	}
 
 	// Обрабатываем прямые ссылки из поля Connections
+	connectionsStartTime := time.Now()
+	log.Printf("[DEBUG] ProcessProxySource: Processing %d direct connections for source %d/%d",
+		len(proxySource.Connections), subscriptionIndex+1, totalSubscriptions)
 	for connIndex, connection := range proxySource.Connections {
 		connection = strings.TrimSpace(connection)
 		if connection == "" {
@@ -159,6 +200,8 @@ func ProcessProxySource(proxySource ProxySource, tagCounts map[string]int, progr
 		}
 
 		if !IsDirectLink(connection) {
+			log.Printf("[DEBUG] ProcessProxySource: Invalid direct link format in connections %d/%d: %s",
+				connIndex+1, len(proxySource.Connections), connection)
 			log.Printf("Parser: Warning: Invalid direct link format in connections: %s", connection)
 			continue
 		}
@@ -173,8 +216,11 @@ func ProcessProxySource(proxySource ProxySource, tagCounts map[string]int, progr
 			continue
 		}
 
+		parseStartTime := time.Now()
 		node, err := ParseNode(connection, proxySource.Skip)
 		if err != nil {
+			log.Printf("[DEBUG] ProcessProxySource: Failed to parse connection %d/%d (took %v): %v",
+				connIndex+1, len(proxySource.Connections), time.Since(parseStartTime), err)
 			log.Printf("Parser: Warning: Failed to parse direct link from connections: %v", err)
 			continue
 		}
@@ -185,12 +231,21 @@ func ProcessProxySource(proxySource ProxySource, tagCounts map[string]int, progr
 			nodesFromThisSource++
 		}
 	}
+	if len(proxySource.Connections) > 0 {
+		log.Printf("[DEBUG] ProcessProxySource: Processed %d connections in %v",
+			len(proxySource.Connections), time.Since(connectionsStartTime))
+	}
 
 	if skippedDueToLimit > 0 {
+		log.Printf("[DEBUG] ProcessProxySource: Source %d/%d exceeded limit, skipped %d nodes",
+			subscriptionIndex+1, totalSubscriptions, skippedDueToLimit)
 		log.Printf("Parser: Warning: Source exceeded limit of %d nodes. Skipped %d additional nodes.",
 			MaxNodesPerSubscription, skippedDueToLimit)
 	}
 
+	totalDuration := time.Since(startTime)
+	log.Printf("[DEBUG] ProcessProxySource: END source %d/%d (total duration: %v, nodes: %d)",
+		subscriptionIndex+1, totalSubscriptions, totalDuration, len(nodes))
 	return nodes, nil
 }
 
@@ -383,18 +438,36 @@ func ParseNode(uri string, skipFilters []map[string]string) (*ParsedNode, error)
 	// Handle VMess base64 format
 	if strings.HasPrefix(uri, "vmess://") {
 		scheme = "vmess"
-		// VMess might be in base64 format, decode if needed
+		// VMess is in base64 format, decode with padding support
 		base64Part := strings.TrimPrefix(uri, "vmess://")
-		decoded, err := DecodeSubscriptionContent([]byte(base64Part))
-		if err == nil && len(decoded) > 0 {
-			// Try to parse as JSON VMess config
-			var vmessConfig map[string]interface{}
-			if err := json.Unmarshal(decoded, &vmessConfig); err == nil {
-				// Convert VMess JSON to URI format (simplified)
-				// For now, we'll handle it as a special case
-				return parseVMessJSON(vmessConfig, skipFilters)
+
+		// Decode base64 with padding support
+		decoded, err := decodeBase64WithPadding(base64Part)
+		if err != nil {
+			uriPreview := uri
+			if len(uriPreview) > 50 {
+				uriPreview = uriPreview[:50] + "..."
 			}
+			log.Printf("Parser: Error: Failed to decode VMESS base64 (uri length: %d, base64 length: %d): %v. URI: %s. Skipping node.",
+				len(uri), len(base64Part), err, uriPreview)
+			return nil, fmt.Errorf("failed to decode VMESS base64: %w", err)
 		}
+
+		if len(decoded) == 0 {
+			log.Printf("Parser: Error: VMESS decoded content is empty. Skipping node.")
+			return nil, fmt.Errorf("VMESS decoded content is empty")
+		}
+
+		// Parse as JSON VMess config
+		var vmessConfig map[string]interface{}
+		if err := json.Unmarshal(decoded, &vmessConfig); err != nil {
+			log.Printf("Parser: Error: Failed to parse VMESS JSON (decoded length: %d): %v. Skipping node.",
+				len(decoded), err)
+			return nil, fmt.Errorf("failed to parse VMESS JSON: %w", err)
+		}
+
+		// Parse VMess JSON configuration
+		return parseVMessJSON(vmessConfig, skipFilters)
 	} else if strings.HasPrefix(uri, "vless://") {
 		scheme = "vless"
 	} else if strings.HasPrefix(uri, "trojan://") {
@@ -674,7 +747,83 @@ func buildOutbound(node *ParsedNode) map[string]interface{} {
 		outbound["tls"] = tlsData
 	} else if node.Scheme == "vmess" {
 		outbound["uuid"] = node.UUID
-		// Add VMess-specific fields if needed
+
+		// security
+		if security := node.Query.Get("security"); security != "" {
+			outbound["security"] = security
+		} else {
+			outbound["security"] = "auto" // default
+		}
+
+		// alter_id
+		if alterIDStr := node.Query.Get("alter_id"); alterIDStr != "" {
+			if alterID, err := strconv.Atoi(alterIDStr); err == nil {
+				outbound["alter_id"] = alterID
+			}
+		}
+		// If alter_id is not set, sing-box will use default 0
+
+		// network
+		network := node.Query.Get("network")
+		if network == "" {
+			network = "tcp" // default
+		}
+		// НЕ устанавливаем outbound["network"] для vmess - sing-box не поддерживает это поле
+		// Вместо этого используем transport для ws/http/grpc
+
+		// transport (for ws, http, grpc)
+		if network == "ws" || network == "http" || network == "grpc" {
+			transport := make(map[string]interface{})
+			transport["type"] = network
+
+			if path := node.Query.Get("path"); path != "" {
+				transport["path"] = path
+			}
+
+			if network == "ws" || network == "http" {
+				if host := node.Query.Get("host"); host != "" {
+					headers := map[string]string{"Host": host}
+					transport["headers"] = headers
+				}
+			}
+
+			// Всегда добавляем transport для ws/http/grpc, даже если только type
+			outbound["transport"] = transport
+		}
+		// Для tcp (default) не добавляем ничего - sing-box использует tcp по умолчанию
+
+		// TLS
+		if node.Query.Get("tls_enabled") == "true" {
+			tlsData := map[string]interface{}{
+				"enabled": true,
+			}
+
+			if sni := node.Query.Get("sni"); sni != "" {
+				tlsData["server_name"] = sni
+			}
+
+			if alpn := node.Query.Get("alpn"); alpn != "" {
+				// Split by comma and trim spaces
+				alpnList := strings.Split(alpn, ",")
+				for i, a := range alpnList {
+					alpnList[i] = strings.TrimSpace(a)
+				}
+				tlsData["alpn"] = alpnList
+			}
+
+			if fp := node.Query.Get("fp"); fp != "" {
+				tlsData["utls"] = map[string]interface{}{
+					"enabled":     true,
+					"fingerprint": fp,
+				}
+			}
+
+			if node.Query.Get("insecure") == "true" {
+				tlsData["insecure"] = true
+			}
+
+			outbound["tls"] = tlsData
+		}
 	} else if node.Scheme == "trojan" {
 		outbound["password"] = node.UUID
 		// Add Trojan-specific fields if needed
@@ -715,6 +864,44 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 	// 5. uuid (for vless/vmess) or password (for trojan) or method/password (for ss)
 	if node.Scheme == "vless" || node.Scheme == "vmess" {
 		parts = append(parts, fmt.Sprintf(`"uuid":%q`, node.UUID))
+
+		// For VMESS add additional fields
+		if node.Scheme == "vmess" {
+			// security
+			if security, ok := node.Outbound["security"].(string); ok && security != "" {
+				parts = append(parts, fmt.Sprintf(`"security":%q`, security))
+			}
+
+			// alter_id
+			if alterID, ok := node.Outbound["alter_id"].(int); ok {
+				parts = append(parts, fmt.Sprintf(`"alter_id":%d`, alterID))
+			}
+
+			// НЕ добавляем поле network - sing-box не поддерживает его для vmess
+			// Используем только transport для ws/http/grpc
+
+			// transport
+			if transport, ok := node.Outbound["transport"].(map[string]interface{}); ok && len(transport) > 0 {
+				var transportParts []string
+				if tType, ok := transport["type"].(string); ok {
+					transportParts = append(transportParts, fmt.Sprintf(`"type":%q`, tType))
+				}
+				if path, ok := transport["path"].(string); ok {
+					transportParts = append(transportParts, fmt.Sprintf(`"path":%q`, path))
+				}
+				if headers, ok := transport["headers"].(map[string]string); ok && len(headers) > 0 {
+					var headerParts []string
+					for k, v := range headers {
+						headerParts = append(headerParts, fmt.Sprintf(`%q:%q`, k, v))
+					}
+					transportParts = append(transportParts, fmt.Sprintf(`"headers":{%s}`, strings.Join(headerParts, ",")))
+				}
+				if len(transportParts) > 0 {
+					transportJSON := "{" + strings.Join(transportParts, ",") + "}"
+					parts = append(parts, fmt.Sprintf(`"transport":%s`, transportJSON))
+				}
+			}
+		}
 	} else if node.Scheme == "trojan" {
 		parts = append(parts, fmt.Sprintf(`"password":%q`, node.UUID))
 	} else if node.Scheme == "ss" {
@@ -746,6 +933,12 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 			tlsParts = append(tlsParts, fmt.Sprintf(`"server_name":%q`, serverName))
 		}
 
+		// alpn (for VMESS)
+		if alpn, ok := tlsData["alpn"].([]string); ok && len(alpn) > 0 {
+			alpnJSON, _ := json.Marshal(alpn)
+			tlsParts = append(tlsParts, fmt.Sprintf(`"alpn":%s`, string(alpnJSON)))
+		}
+
 		// utls
 		if utls, ok := tlsData["utls"].(map[string]interface{}); ok {
 			var utlsParts []string
@@ -757,6 +950,11 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 			}
 			utlsJSON := "{" + strings.Join(utlsParts, ",") + "}"
 			tlsParts = append(tlsParts, fmt.Sprintf(`"utls":%s`, utlsJSON))
+		}
+
+		// insecure (for VMESS)
+		if insecure, ok := tlsData["insecure"].(bool); ok && insecure {
+			tlsParts = append(tlsParts, fmt.Sprintf(`"insecure":%v`, insecure))
 		}
 
 		// reality
@@ -937,38 +1135,136 @@ func parseVMessJSON(vmessConfig map[string]interface{}, skipFilters []map[string
 		Query:  make(url.Values),
 	}
 
-	// Extract common fields
-	if add, ok := vmessConfig["add"].(string); ok {
+	// Validate required fields
+	var missingFields []string
+
+	// add (server) - required
+	if add, ok := vmessConfig["add"].(string); ok && add != "" {
 		node.Server = add
+	} else {
+		missingFields = append(missingFields, "add")
 	}
+
+	// port - required
 	if port, ok := vmessConfig["port"].(float64); ok {
 		node.Port = int(port)
+	} else if portStr, ok := vmessConfig["port"].(string); ok {
+		if p, err := strconv.Atoi(portStr); err == nil {
+			node.Port = p
+		} else {
+			missingFields = append(missingFields, "port (invalid format)")
+		}
 	} else {
-		node.Port = 443
+		missingFields = append(missingFields, "port")
 	}
-	if id, ok := vmessConfig["id"].(string); ok {
+
+	// id (uuid) - required
+	if id, ok := vmessConfig["id"].(string); ok && id != "" {
 		node.UUID = id
+	} else {
+		missingFields = append(missingFields, "id")
 	}
-	if ps, ok := vmessConfig["ps"].(string); ok {
+
+	// If missing required fields - skip node
+	if len(missingFields) > 0 {
+		log.Printf("Parser: Error: VMESS node missing required fields: %v. Skipping node.", missingFields)
+		return nil, fmt.Errorf("missing required fields: %v", missingFields)
+	}
+
+	// ps (label/tag)
+	if ps, ok := vmessConfig["ps"].(string); ok && ps != "" {
 		node.Label = ps
 		node.Tag, node.Comment = extractTagAndComment(ps)
 		node.Tag = normalizeFlagTag(node.Tag)
+	} else {
+		// Generate tag from server and port
+		node.Tag = fmt.Sprintf("vmess-%s-%d", node.Server, node.Port)
+		node.Comment = node.Tag
 	}
 
-	// Extract TLS settings
+	// security (scy)
+	if scy, ok := vmessConfig["scy"].(string); ok && scy != "" {
+		node.Query.Set("security", scy)
+	} else {
+		node.Query.Set("security", "auto") // default
+		log.Printf("Parser: Warning: VMESS node missing optional field 'scy', using default 'auto'. Tag: %s", node.Tag)
+	}
+
+	// alter_id (aid)
+	if aid, ok := vmessConfig["aid"].(string); ok && aid != "" && aid != "0" {
+		node.Query.Set("alter_id", aid)
+	} else if aidNum, ok := vmessConfig["aid"].(float64); ok && aidNum != 0 {
+		node.Query.Set("alter_id", strconv.Itoa(int(aidNum)))
+	}
+	// If aid is 0 or empty, we don't set it (sing-box default is 0)
+
+	// network (net) - handle xhttp as ws
+	net := ""
+	if netVal, ok := vmessConfig["net"].(string); ok && netVal != "" {
+		net = netVal
+		// xhttp is actually WebSocket
+		if net == "xhttp" {
+			net = "ws"
+		}
+		node.Query.Set("network", net)
+	} else {
+		net = "tcp" // default
+		node.Query.Set("network", net)
+		log.Printf("Parser: Warning: VMESS node missing optional field 'net', using default 'tcp'. Tag: %s", node.Tag)
+	}
+
+	// path for ws/http/grpc
+	if path, ok := vmessConfig["path"].(string); ok && path != "" {
+		node.Query.Set("path", path)
+	}
+
+	// host for ws/http
+	if host, ok := vmessConfig["host"].(string); ok && host != "" {
+		node.Query.Set("host", host)
+	}
+
+	// TLS settings
 	if tls, ok := vmessConfig["tls"].(string); ok && tls == "tls" {
-		if sni, ok := vmessConfig["sni"].(string); ok {
-			node.Query.Set("sni", sni)
+		node.Query.Set("tls_enabled", "true")
+
+		// sni (Server Name Indication)
+		sni := ""
+		if sniVal, ok := vmessConfig["sni"].(string); ok && sniVal != "" {
+			sni = sniVal
+		} else if host, ok := vmessConfig["host"].(string); ok && host != "" {
+			sni = host
+		} else {
+			sni = node.Server // fallback to server
+		}
+		node.Query.Set("sni", sni)
+
+		// alpn
+		if alpn, ok := vmessConfig["alpn"].(string); ok && alpn != "" {
+			node.Query.Set("alpn", alpn)
+		}
+
+		// fp (fingerprint for uTLS)
+		if fp, ok := vmessConfig["fp"].(string); ok && fp != "" {
+			node.Query.Set("fp", fp)
+		}
+
+		// insecure
+		if insecure, ok := vmessConfig["insecure"].(string); ok && insecure == "1" {
+			node.Query.Set("insecure", "true")
 		}
 	}
 
 	// Apply skip filters
 	if shouldSkipNode(node, skipFilters) {
-		return nil, nil
+		return nil, nil // Skip node
 	}
 
 	// Build outbound
 	node.Outbound = buildOutbound(node)
+
+	log.Printf("Parser: Debug: Successfully parsed VMESS node. Tag: %s, Server: %s:%d, Network: %s",
+		node.Tag, node.Server, node.Port, net)
+
 	return node, nil
 }
 
