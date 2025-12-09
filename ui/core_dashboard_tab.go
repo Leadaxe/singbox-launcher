@@ -498,6 +498,11 @@ func (tab *CoreDashboardTab) updateRunningStatus() {
 
 // readConfigOnDemand reads config when user clicks on config label/title
 func (tab *CoreDashboardTab) readConfigOnDemand() {
+	// Обновляем информацию о конфиге в UI
+	if tab.controller.UpdateConfigStatusFunc != nil {
+		tab.controller.UpdateConfigStatusFunc()
+	}
+
 	// Читаем конфиг
 	config, err := core.ExtractParcerConfig(tab.controller.ConfigPath)
 	if err != nil {
@@ -510,14 +515,15 @@ func (tab *CoreDashboardTab) readConfigOnDemand() {
 		config.ParserConfig.Version,
 		len(config.ParserConfig.Proxies),
 		len(config.ParserConfig.Outbounds))
-
-	// Обновляем информацию о конфиге в UI
-	if tab.controller.UpdateConfigStatusFunc != nil {
-		tab.controller.UpdateConfigStatusFunc()
-	}
 }
 
 func (tab *CoreDashboardTab) updateConfigInfo() {
+	// Обновляем статусы sing-box и wintun.dll
+	tab.updateVersionInfo()
+	if runtime.GOOS == "windows" {
+		tab.updateWintunStatus()
+	}
+
 	if tab.configStatusLabel == nil {
 		return
 	}

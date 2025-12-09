@@ -559,8 +559,5 @@ func (ac *AppController) installBinary(sourcePath, destPath string) error {
 	os.Remove(oldPath)
 
 	log.Printf("Binary installed successfully to %s", destPath)
-
-	// Очищаем кеш установленной версии, так как бинарник был обновлен
-	ac.ClearInstalledVersionCache()
 	return nil
 }

@@ -108,11 +108,6 @@ type AppController struct {
 	VersionCheckMutex      sync.RWMutex // Mutex for version check cache
 	VersionCheckInProgress bool         // Flag to prevent multiple version checks
 
-	// --- Installed version caching ---
-	InstalledVersionCache     string       // Cached installed version
-	InstalledVersionCacheTime time.Time    // Time when installed version was cached
-	InstalledVersionMutex     sync.RWMutex // Mutex for installed version cache
-
 	// --- Context for goroutine cancellation ---
 	ctx        context.Context    // Context for cancellation
 	cancelFunc context.CancelFunc // Cancel function for stopping goroutines

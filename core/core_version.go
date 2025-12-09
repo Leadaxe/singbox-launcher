@@ -19,15 +19,6 @@ import (
 
 // GetInstalledCoreVersion получает установленную версию sing-box
 func (ac *AppController) GetInstalledCoreVersion() (string, error) {
-	// Проверяем кеш (установленная версия не меняется часто, только при обновлении бинарника)
-	ac.InstalledVersionMutex.RLock()
-	if ac.InstalledVersionCache != "" && time.Since(ac.InstalledVersionCacheTime) < 24*time.Hour {
-		cached := ac.InstalledVersionCache
-		ac.InstalledVersionMutex.RUnlock()
-		return cached, nil
-	}
-	ac.InstalledVersionMutex.RUnlock()
-
 	// Проверяем существование бинарника
 	if _, err := os.Stat(ac.SingboxPath); os.IsNotExist(err) {
 		return "", fmt.Errorf("sing-box not found at %s", ac.SingboxPath)
@@ -52,26 +43,11 @@ func (ac *AppController) GetInstalledCoreVersion() (string, error) {
 	if len(matches) > 1 {
 		version := matches[1]
 		log.Printf("GetInstalledCoreVersion: found version: %s", version)
-
-		// Сохраняем в кеш
-		ac.InstalledVersionMutex.Lock()
-		ac.InstalledVersionCache = version
-		ac.InstalledVersionCacheTime = time.Now()
-		ac.InstalledVersionMutex.Unlock()
-
 		return version, nil
 	}
 
 	log.Printf("GetInstalledCoreVersion: unable to parse version from output: %q", outputStr)
 	return "", fmt.Errorf("unable to parse version from output: %s", outputStr)
-}
-
-// ClearInstalledVersionCache очищает кеш установленной версии (вызывать после обновления бинарника)
-func (ac *AppController) ClearInstalledVersionCache() {
-	ac.InstalledVersionMutex.Lock()
-	defer ac.InstalledVersionMutex.Unlock()
-	ac.InstalledVersionCache = ""
-	ac.InstalledVersionCacheTime = time.Time{}
 }
 
 // GetCoreBinaryPath возвращает путь к бинарнику sing-box для отображения
