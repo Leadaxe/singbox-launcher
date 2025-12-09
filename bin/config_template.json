@@ -9,44 +9,44 @@
         "proxies": [{ "source": "https://your-subscription-url-here" }],
         "outbounds": [
           {
+            "tag": "auto-proxy-out",
+            "type": "urltest",
+            "options": {
+              "url": "https://cp.cloudflare.com/generate_204",
+              "interval": "5m",
+              "tolerance": 100,
+              "interrupt_exist_connections": true
+            },
+            "outbounds": {
+              "proxies": { "tag": "!/(🇷🇺)/i" }
+            },
+			      "comment": "Proxy automated group for everything that should go through VPN"
+		      },
+          {
             "tag": "proxy-out",
             "type": "selector",
-			"outbounds": {
-				"addOutbounds": ["direct-out","auto-proxy-out"],
-				"proxies": { "tag": "!/(🇷🇺)/i" }
-			},
-            "options": { "interrupt_exist_connections": true },
+            "options": { "interrupt_exist_connections": true, "default": "auto-proxy-out"},
+            "outbounds": {
+            	"addOutbounds": ["direct-out","auto-proxy-out"],
+            	"proxies": { "tag": "!/(🇷🇺)/i" }
+            },
             "comment": "Proxy group for everything that should go through VPN"
           },
-		  {
-			"tag": "auto-proxy-out",
-			"type": "urltest",
-			"options": {
-				"url": "https://cp.cloudflare.com/generate_204",
-				"interval": "5m",
-				"tolerance": 100,
-				"interrupt_exist_connections": true
-			},
-			"outbounds": {
-			  "proxies": { "tag": "!/(🇷🇺)/i" }
-			},
-			"comment": "Proxy automated group for everything that should go through VPN"
-		  },
-		  {
-			"tag": "go-any-way-githubusercontent",
-			"type": "urltest",
-			"options": {
-				"url": "https://raw.githubusercontent.com/github/gitignore/main/Global/GPG.gitignore",
-				"interval": "1h",
-				"idle_timeout": "1h",
-				"tolerance": 1000,
-				"interrupt_exist_connections": true
-			},
-			"outbounds": {
-			  "addOutbounds": ["direct-out"]
-			},
-			"comment": "find any way"
-		  }
+          {
+            "tag": "go-any-way-githubusercontent",
+            "type": "urltest",
+            "options": {
+              "url": "https://raw.githubusercontent.com/github/gitignore/main/Global/GPG.gitignore",
+              "interval": "1h",
+              "idle_timeout": "1h",
+              "tolerance": 1000,
+              "interrupt_exist_connections": true
+            },
+            "outbounds": {
+              "addOutbounds": ["direct-out"]
+            },
+            "comment": "find any way"
+          }
         ]
       }
     }
