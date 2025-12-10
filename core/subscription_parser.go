@@ -119,7 +119,7 @@ func FetchSubscription(url string) ([]byte, error) {
 	return decoded, nil
 }
 
-// ParserConfig represents the configuration structure from @ParcerConfig block
+// ParserConfig represents the configuration structure from @ParserConfig block
 // Supports both version 1 (legacy) and version 2 (with parser settings)
 type ParserConfig struct {
 	// Version 1 structure (legacy support)
@@ -192,21 +192,21 @@ type OutboundConfig struct {
 	Comment string `json:"comment,omitempty"`
 }
 
-// ExtractParcerConfig extracts the @ParcerConfig block from config.json
+// ExtractParserConfig extracts the @ParserConfig block from config.json
 // Returns the parsed ParserConfig structure and error if extraction or parsing fails
-func ExtractParcerConfig(configPath string) (*ParserConfig, error) {
+func ExtractParserConfig(configPath string) (*ParserConfig, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config.json: %w", err)
 	}
 
-	// Find the @ParcerConfig block using regex
-	// Pattern matches: /** @ParcerConfig ... */
-	pattern := regexp.MustCompile(`/\*\*\s*@ParcerConfig\s*\n([\s\S]*?)\*/`)
+	// Find the @ParserConfig block using regex
+	// Pattern matches: /** @ParserConfig ... */
+	pattern := regexp.MustCompile(`/\*\*\s*@ParserConfig\s*\n([\s\S]*?)\*/`)
 	matches := pattern.FindSubmatch(data)
 
 	if len(matches) < 2 {
-		return nil, fmt.Errorf("@ParcerConfig block not found in config.json")
+		return nil, fmt.Errorf("@ParserConfig block not found in config.json")
 	}
 
 	// Extract the JSON content from the comment block
@@ -215,12 +215,12 @@ func ExtractParcerConfig(configPath string) (*ParserConfig, error) {
 	// Parse the JSON
 	var parserConfig ParserConfig
 	if err := json.Unmarshal([]byte(jsonContent), &parserConfig); err != nil {
-		return nil, fmt.Errorf("failed to parse @ParcerConfig JSON: %w", err)
+		return nil, fmt.Errorf("failed to parse @ParserConfig JSON: %w", err)
 	}
 
 	// Backward compatibility: if version is at top level (version 1), migrate to version 2
 	if parserConfig.Version > 0 && parserConfig.ParserConfig.Version == 0 {
-		log.Printf("ExtractParcerConfig: Detected version 1 format, migrating to version 2")
+		log.Printf("ExtractParserConfig: Detected version 1 format, migrating to version 2")
 		parserConfig.ParserConfig.Version = parserConfig.Version
 		parserConfig.Version = 0 // Clear top-level version
 	}
@@ -228,10 +228,10 @@ func ExtractParcerConfig(configPath string) (*ParserConfig, error) {
 	// If no version specified, set to current version
 	if parserConfig.ParserConfig.Version == 0 {
 		parserConfig.ParserConfig.Version = ParserConfigVersion
-		log.Printf("ExtractParcerConfig: No version specified, defaulting to version %d", ParserConfigVersion)
+		log.Printf("ExtractParserConfig: No version specified, defaulting to version %d", ParserConfigVersion)
 	}
 
-	log.Printf("ExtractParcerConfig: Successfully extracted @ParcerConfig (version %d) with %d proxy sources and %d outbounds",
+	log.Printf("ExtractParserConfig: Successfully extracted @ParserConfig (version %d) with %d proxy sources and %d outbounds",
 		parserConfig.ParserConfig.Version,
 		len(parserConfig.ParserConfig.Proxies),
 		len(parserConfig.ParserConfig.Outbounds))
@@ -239,7 +239,7 @@ func ExtractParcerConfig(configPath string) (*ParserConfig, error) {
 	return &parserConfig, nil
 }
 
-// UpdateLastUpdatedInConfig updates the last_updated field in the @ParcerConfig block
+// UpdateLastUpdatedInConfig updates the last_updated field in the @ParserConfig block
 func UpdateLastUpdatedInConfig(configPath string, lastUpdated time.Time) error {
 	log.Printf("UpdateLastUpdatedInConfig: Updating last_updated to %s", lastUpdated.Format(time.RFC3339))
 
@@ -249,12 +249,12 @@ func UpdateLastUpdatedInConfig(configPath string, lastUpdated time.Time) error {
 		return fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	// Find the @ParcerConfig block using regex
-	pattern := regexp.MustCompile(`(/\*\*\s*@ParcerConfig\s*\n)([\s\S]*?)(\*/)`)
+	// Find the @ParserConfig block using regex
+	pattern := regexp.MustCompile(`(/\*\*\s*@ParserConfig\s*\n)([\s\S]*?)(\*/)`)
 	matches := pattern.FindSubmatch(data)
 
 	if len(matches) < 4 {
-		return fmt.Errorf("@ParcerConfig block not found in config.json")
+		return fmt.Errorf("@ParserConfig block not found in config.json")
 	}
 
 	// Extract the JSON content from the comment block
@@ -263,7 +263,7 @@ func UpdateLastUpdatedInConfig(configPath string, lastUpdated time.Time) error {
 	// Parse the JSON
 	var parserConfig ParserConfig
 	if err := json.Unmarshal([]byte(jsonContent), &parserConfig); err != nil {
-		return fmt.Errorf("failed to parse @ParcerConfig JSON: %w", err)
+		return fmt.Errorf("failed to parse @ParserConfig JSON: %w", err)
 	}
 
 	// Backward compatibility: migrate version 1 to version 2 if needed
@@ -287,7 +287,7 @@ func UpdateLastUpdatedInConfig(configPath string, lastUpdated time.Time) error {
 	}
 	finalJSON, err := json.MarshalIndent(outerJSON, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal outer @ParcerConfig: %w", err)
+		return fmt.Errorf("failed to marshal outer @ParserConfig: %w", err)
 	}
 
 	newBlock := string(matches[1]) + string(finalJSON) + "\n" + string(matches[3])

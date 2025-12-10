@@ -4,6 +4,7 @@
 package platform
 
 import (
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -12,8 +13,8 @@ import (
 )
 
 // GetExecutableNames returns platform-specific executable names
-func GetExecutableNames() (singboxName, parserName string) {
-	return "sing-box", "parser"
+func GetExecutableNames() string {
+	return "sing-box"
 }
 
 // GetWintunPath returns empty string on macOS (wintun is Windows-only)
@@ -41,6 +42,12 @@ func KillProcessByPID(pid int) error {
 	return exec.Command("kill", "-9", strconv.Itoa(pid)).Run()
 }
 
+// SendCtrlBreak is not applicable on macOS; provided for interface parity.
+func SendCtrlBreak(pid int) error {
+	// CTRL_BREAK_EVENT is Windows-specific; callers should use SIGINT directly on macOS.
+	return fmt.Errorf("SendCtrlBreak not supported on darwin for pid %d", pid)
+}
+
 // PrepareCommand prepares a command with platform-specific attributes
 func PrepareCommand(cmd *exec.Cmd) {
 	// No special attributes needed for macOS
@@ -57,7 +64,6 @@ func GetRequiredFiles(execDir string) []struct {
 	}{
 		{"Sing-Box", filepath.Join(execDir, constants.BinDirName, constants.SingBoxExecName)},
 		{"Config.json", filepath.Join(execDir, constants.BinDirName, constants.ConfigFileName)},
-		{"Parser", filepath.Join(execDir, constants.BinDirName, constants.ParserExecName)},
 	}
 }
 

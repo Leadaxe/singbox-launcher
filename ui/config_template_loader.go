@@ -50,7 +50,7 @@ func loadTemplateData(execDir string) (*TemplateData, error) {
 	tplLog(debuglog.LevelVerbose, "Successfully read template file, size: %d bytes", len(raw))
 
 	rawStr := string(raw)
-	parserConfig, cleaned := extractCommentBlock(rawStr, "ParcerConfig")
+	parserConfig, cleaned := extractCommentBlock(rawStr, "ParserConfig")
 	tplLog(debuglog.LevelVerbose, "After extractCommentBlock, parserConfig length: %d, cleaned length: %d", len(parserConfig), len(cleaned))
 
 	selectableBlocks, cleaned := extractAllSelectableBlocks(cleaned)

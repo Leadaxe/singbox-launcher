@@ -25,95 +25,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
-	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/core/parsers"
 	"singbox-launcher/internal/platform"
-)
-
-// safeFyneDo safely calls fyne.Do only if window is still valid
-func safeFyneDo(window fyne.Window, fn func()) {
-	if window != nil {
-		fyne.Do(fn)
-	}
-}
-
-// debugLog logs a debug message using the debuglog subsystem
-func debugLog(format string, args ...interface{}) {
-	debuglog.Log("DEBUG", debuglog.LevelVerbose, debuglog.UseGlobal, format, args...)
-}
-
-// infoLog logs an info message using the debuglog subsystem
-func infoLog(format string, args ...interface{}) {
-	debuglog.Log("INFO", debuglog.LevelInfo, debuglog.UseGlobal, format, args...)
-}
-
-// errorLog logs an error message using the debuglog subsystem
-func errorLog(format string, args ...interface{}) {
-	debuglog.Log("ERROR", debuglog.LevelError, debuglog.UseGlobal, format, args...)
-}
-
-// WizardState хранит состояние мастера конфигурации
-type WizardState struct {
-	Controller *core.AppController
-	Window     fyne.Window
-
-	// Tab 1: VLESS Sources
-	VLESSURLEntry        *widget.Entry
-	URLStatusLabel       *widget.Label
-	ParserConfigEntry    *widget.Entry
-	OutboundsPreview     *widget.Entry
-	OutboundsPreviewText string // Храним текст для read-only режима
-	CheckURLButton       *widget.Button
-	CheckURLProgress     *widget.ProgressBar
-	CheckURLPlaceholder  *canvas.Rectangle
-	CheckURLContainer    fyne.CanvasObject
-	checkURLInProgress   bool
-	ParseButton          *widget.Button
-	parserConfigUpdating bool
-
-	// Parsed data
-	ParserConfig       *core.ParserConfig
-	GeneratedOutbounds []string
-
-	// Template data for second tab
-	TemplateData                *TemplateData
-	TemplateSectionSelections   map[string]bool
-	SelectableRuleStates        []*SelectableRuleState
-	TemplatePreviewEntry        *widget.Entry
-	TemplatePreviewText         string
-	TemplatePreviewStatusLabel  *widget.Label
-	ShowPreviewButton           *widget.Button
-	FinalOutboundSelect         *widget.Select
-	SelectedFinalOutbound       string
-	previewNeedsParse           bool
-	autoParseInProgress         bool
-	previewGenerationInProgress bool
-
-	// Flag to prevent callbacks during programmatic updates
-	updatingOutboundOptions bool
-
-	// Navigation buttons
-	CloseButton      *widget.Button
-	PrevButton       *widget.Button
-	NextButton       *widget.Button
-	SaveButton       *widget.Button
-	SaveProgress     *widget.ProgressBar
-	SavePlaceholder  *canvas.Rectangle
-	saveInProgress   bool
-	ButtonsContainer fyne.CanvasObject
-	tabs             *container.AppTabs
-}
-
-type SelectableRuleState struct {
-	Rule             TemplateSelectableRule
-	Enabled          bool
-	SelectedOutbound string
-	OutboundSelect   *widget.Select
-}
-
-const (
-	defaultOutboundTag = "direct-out"
-	rejectActionName   = "reject"
-	rejectActionMethod = "drop"
 )
 
 // ShowConfigWizard открывает окно мастера конфигурации
@@ -915,7 +828,7 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 	}
 
 	// Извлекаем ParserConfig
-	parserConfig, err := core.ExtractParcerConfig(state.Controller.ConfigPath)
+	parserConfig, err := core.ExtractParserConfig(state.Controller.ConfigPath)
 	if err != nil {
 		// Если не удалось извлечь - оставляем значения по умолчанию
 		errorLog("ConfigWizard: Failed to extract ParserConfig: %v", err)
@@ -1139,11 +1052,11 @@ func checkURL(state *WizardState) {
 			if validInSub == 0 {
 				errors = append(errors, fmt.Sprintf("Subscription %s contains no valid proxy links", line))
 			}
-		} else if core.IsDirectLink(line) {
+		} else if parsers.IsDirectLink(line) {
 			// Это прямая ссылка - проверяем парсинг
 			parseStartTime := time.Now()
 			debugLog("checkURL: Parsing direct link %d/%d", i+1, len(inputLines))
-			_, err := core.ParseNode(line, nil)
+			_, err := parsers.ParseNode(line, nil)
 			parseDuration := time.Since(parseStartTime)
 			if err != nil {
 				debugLog("checkURL: Invalid direct link %d/%d (took %v): %v", i+1, len(inputLines), parseDuration, err)
@@ -1302,7 +1215,7 @@ func parseAndPreview(state *WizardState) {
 	tagCounts := make(map[string]int)
 	debugLog("parseAndPreview: Initializing tag deduplication tracker")
 
-	allNodes := make([]*core.ParsedNode, 0)
+	allNodes := make([]*parsers.ParsedNode, 0)
 	totalSources := len(parserConfig.ParserConfig.Proxies)
 	debugLog("parseAndPreview: Processing %d sources", totalSources)
 
@@ -1323,7 +1236,8 @@ func parseAndPreview(state *WizardState) {
 		}
 
 		processStartTime := time.Now()
-		nodesFromSource, err := core.ProcessProxySource(proxySource, tagCounts, progressCallback, i, totalSources)
+		// Use ConfigService to process proxy source
+		nodesFromSource, err := state.Controller.ConfigService.ProcessProxySource(proxySource, tagCounts, progressCallback, i, totalSources)
 		processDuration := time.Since(processStartTime)
 		if err != nil {
 			debugLog("parseAndPreview: Error processing source %d/%d (took %v): %v", i+1, totalSources, processDuration, err)
@@ -1374,7 +1288,7 @@ func parseAndPreview(state *WizardState) {
 	nodesStartTime := time.Now()
 	for idx, node := range allNodes {
 		nodeStartTime := time.Now()
-		nodeJSON, err := generateNodeJSONForPreview(node)
+		nodeJSON, err := generateNodeJSONForPreview(state, node)
 		if err != nil {
 			debugLog("parseAndPreview: Failed to generate JSON for node %d/%d (took %v): %v",
 				idx+1, len(allNodes), time.Since(nodeStartTime), err)
@@ -1393,7 +1307,7 @@ func parseAndPreview(state *WizardState) {
 	debugLog("parseAndPreview: Generating %d selectors", len(parserConfig.ParserConfig.Outbounds))
 	for idx, outboundConfig := range parserConfig.ParserConfig.Outbounds {
 		selectorStartTime := time.Now()
-		selectorJSON, err := generateSelectorForPreview(allNodes, outboundConfig)
+		selectorJSON, err := generateSelectorForPreview(state, allNodes, outboundConfig)
 		if err != nil {
 			debugLog("parseAndPreview: Failed to generate selector %d/%d (took %v): %v",
 				idx+1, len(parserConfig.ParserConfig.Outbounds), time.Since(selectorStartTime), err)
@@ -1481,7 +1395,7 @@ func (state *WizardState) applyURLToParserConfig(input string) {
 		}
 		if core.IsSubscriptionURL(line) {
 			subscriptions = append(subscriptions, line)
-		} else if core.IsDirectLink(line) {
+		} else if parsers.IsDirectLink(line) {
 			connections = append(connections, line)
 		}
 	}
@@ -1874,7 +1788,7 @@ func buildTemplateConfig(state *WizardState) (string, error) {
 	buildStartTime := time.Now()
 	var builder strings.Builder
 	builder.WriteString("{\n")
-	builder.WriteString("/** @ParcerConfig\n")
+	builder.WriteString("/** @ParserConfig\n")
 	builder.WriteString(parserConfigText)
 	builder.WriteString("\n*/\n")
 	builder.WriteString(strings.Join(sections, ",\n"))
@@ -2104,19 +2018,25 @@ func (state *WizardState) getAvailableOutbounds() []string {
 	return result
 }
 
-// parseNodeFromString парсит узел из строки (обертка над core.ParseNode)
-func parseNodeFromString(uri string, skipFilters []map[string]string) (*core.ParsedNode, error) {
-	return core.ParseNode(uri, skipFilters)
+// parseNodeFromString парсит узел из строки (обертка над parsers.ParseNode)
+func parseNodeFromString(uri string, skipFilters []map[string]string) (*parsers.ParsedNode, error) {
+	return parsers.ParseNode(uri, skipFilters)
 }
 
-// generateNodeJSONForPreview генерирует JSON для узла (обертка над core.GenerateNodeJSON)
-func generateNodeJSONForPreview(node *core.ParsedNode) (string, error) {
-	return core.GenerateNodeJSON(node)
+// generateNodeJSONForPreview генерирует JSON для узла через ConfigService
+func generateNodeJSONForPreview(state *WizardState, node *parsers.ParsedNode) (string, error) {
+	if state.Controller == nil || state.Controller.ConfigService == nil {
+		return "", fmt.Errorf("ConfigService not available")
+	}
+	return state.Controller.ConfigService.GenerateNodeJSON(node)
 }
 
-// generateSelectorForPreview генерирует JSON для селектора (обертка над core.GenerateSelector)
-func generateSelectorForPreview(allNodes []*core.ParsedNode, outboundConfig core.OutboundConfig) (string, error) {
-	return core.GenerateSelector(allNodes, outboundConfig)
+// generateSelectorForPreview генерирует JSON для селектора через ConfigService
+func generateSelectorForPreview(state *WizardState, allNodes []*parsers.ParsedNode, outboundConfig core.OutboundConfig) (string, error) {
+	if state.Controller == nil || state.Controller.ConfigService == nil {
+		return "", fmt.Errorf("ConfigService not available")
+	}
+	return state.Controller.ConfigService.GenerateSelector(allNodes, outboundConfig)
 }
 
 func serializeParserConfig(parserConfig *core.ParserConfig) (string, error) {

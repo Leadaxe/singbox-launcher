@@ -6,7 +6,7 @@
 
 ## Формат конфигурации
 
-В файле `bin/config.json` должен быть блок комментария `/** @ParcerConfig ... */`, внутри которого размещается JSON следующей структуры:
+В файле `bin/config.json` должен быть блок комментария `/** @ParserConfig ... */`, внутри которого размещается JSON следующей структуры:
 
 ```json
 {
@@ -94,7 +94,7 @@
 
 ## Процесс обновления
 1. В UI нажать кнопку Parser/Update или вызвать `core.UpdateConfigFromSubscriptions`.
-2. Парсер читает `@ParcerConfig`, скачивает все `proxies[i].source`, обрабатывает прямые ссылки из `proxies[i].connections`, парсит узлы.
+2. Парсер читает `@ParserConfig`, скачивает все `proxies[i].source`, обрабатывает прямые ссылки из `proxies[i].connections`, парсит узлы.
 3. Применяются фильтры `skip`, `include`, `proxies`.
 4. Узлы сериализуются в JSON (VLESS/VMess/Trojan/SS), комментарии выводятся из `label`.
 5. Селекторы создаются согласно `outbounds`, комментарии берутся из поля `comment`. Порядок полей фиксирован (`tag`, `type`, `outbounds`, `default`, `interrupt_exist_connections`, остальные).
