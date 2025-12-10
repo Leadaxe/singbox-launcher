@@ -14,6 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"fyne.io/fyne/v2"
+
+	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/platform"
 )
 
@@ -52,7 +55,7 @@ func (ac *AppController) GetInstalledCoreVersion() (string, error) {
 
 // GetCoreBinaryPath возвращает путь к бинарнику sing-box для отображения
 func (ac *AppController) GetCoreBinaryPath() string {
-	singboxName, _ := platform.GetExecutableNames()
+	singboxName := platform.GetExecutableNames()
 	// Для отображения убираем полный путь, оставляем только bin/sing-box.exe или bin/sing-box
 	binDir := platform.GetBinDir(ac.ExecDir)
 	relPath, err := filepath.Rel(ac.ExecDir, binDir)
@@ -284,6 +287,60 @@ func (ac *AppController) getLatestVersionFromURL(url string) (string, error) {
 	// Убираем префикс "v" если есть
 	version := strings.TrimPrefix(release.TagName, "v")
 	return version, nil
+}
+
+// CheckForUpdates проверяет наличие обновлений и показывает результат пользователю.
+// Запускает синхронную проверку версии и отображает диалог с информацией.
+func (ac *AppController) CheckForUpdates() {
+	// Показываем информационное сообщение о начале проверки
+	dialogs.ShowInfo(ac.MainWindow, "Checking for Updates", "Checking for updates...")
+
+	// Запускаем проверку версии в фоне
+	go func() {
+		// Сбрасываем кеш, чтобы принудительно проверить версию
+		ac.VersionCheckMutex.Lock()
+		ac.VersionCheckCache = ""
+		ac.VersionCheckCacheTime = time.Time{}
+		ac.VersionCheckMutex.Unlock()
+
+		// Пытаемся получить последнюю версию
+		latest, err := ac.GetLatestCoreVersion()
+		if err != nil {
+			log.Printf("CheckForUpdates: Failed to get latest version: %v", err)
+			fyne.Do(func() {
+				dialogs.ShowError(ac.MainWindow, fmt.Errorf("Failed to check for updates: %v", err))
+			})
+			return
+		}
+
+		// Сохраняем версию в кеш перед получением информации
+		ac.SetCachedVersion(latest)
+
+		// Получаем информацию о версиях
+		info := ac.GetCoreVersionInfo()
+		if info.Error != "" {
+			fyne.Do(func() {
+				dialogs.ShowError(ac.MainWindow, fmt.Errorf("Error checking version: %s", info.Error))
+			})
+			return
+		}
+
+		// Формируем сообщение для пользователя
+		var message string
+		if info.UpdateAvailable {
+			message = fmt.Sprintf("Update available!\n\nInstalled: %s\nLatest: %s\n\nYou can download the update from the Core tab.",
+				info.InstalledVersion, info.LatestVersion)
+			fyne.Do(func() {
+				dialogs.ShowInfo(ac.MainWindow, "Update Available", message)
+			})
+		} else {
+			message = fmt.Sprintf("You are using the latest version.\n\nInstalled: %s\nLatest: %s",
+				info.InstalledVersion, info.LatestVersion)
+			fyne.Do(func() {
+				dialogs.ShowInfo(ac.MainWindow, "No Updates", message)
+			})
+		}
+	}()
 }
 
 // GetCoreVersionInfo получает полную информацию о версии

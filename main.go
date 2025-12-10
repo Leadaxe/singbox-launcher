@@ -119,7 +119,7 @@ func main() {
 			// Read config once at application startup
 			go func() {
 				log.Println("Application startup: Reading config...")
-				config, err := core.ExtractParcerConfig(controller.ConfigPath)
+				config, err := core.ExtractParserConfig(controller.ConfigPath)
 				if err != nil {
 					log.Printf("Application startup: Failed to read config: %v", err)
 					return

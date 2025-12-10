@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -33,18 +32,20 @@ import (
 
 // Constants for log file names
 const (
-	logFileName             = "logs/" + constants.MainLogFileName
-	childLogFileName        = "logs/" + constants.ChildLogFileName
-	parserLogFileName       = "logs/" + constants.ParserLogFileName
-	apiLogFileName          = "logs/" + constants.APILogFileName
-	restartAttempts         = 3
-	restartDelay            = 2 * time.Second
-	stabilityThreshold      = 180 * time.Second
-	gracefulShutdownTimeout = 2 * time.Second
-	maxLogFileSize          = 10 * 1024 * 1024 // 10 MB - maximum log file size before rotation
+	logFileName       = "logs/" + constants.MainLogFileName
+	childLogFileName  = "logs/" + constants.ChildLogFileName
+	parserLogFileName = "logs/" + constants.ParserLogFileName
+	apiLogFileName    = "logs/" + constants.APILogFileName
+	restartDelay      = 2 * time.Second
 )
 
 // AppController - the main structure encapsulating all application state and logic.
+// AppController is the central controller coordinating all application components.
+// It manages UI state, process lifecycle, configuration, API interactions, and logging.
+// The controller delegates specific responsibilities to specialized services:
+// - ProcessService: sing-box process management
+// - ConfigService: configuration parsing and updates
+// The controller maintains application-wide state and provides callbacks for UI updates.
 type AppController struct {
 	// --- Fyne Components ---
 	Application    fyne.App
@@ -78,11 +79,16 @@ type AppController struct {
 	ExecDir     string
 	ConfigPath  string
 	SingboxPath string
-	ParserPath  string
 	WintunPath  string
 
 	// --- VPN Operation State ---
 	RunningState *RunningState
+
+	// --- Services ---
+	// ProcessService manages sing-box process lifecycle (start, stop, monitor, auto-restart)
+	ProcessService *ProcessService
+	// ConfigService handles configuration parsing, subscription fetching, and JSON generation
+	ConfigService *ConfigService
 
 	// --- Logging ---
 	MainLogFile  *os.File
@@ -132,34 +138,6 @@ type RunningState struct {
 	controller *AppController
 }
 
-// checkAndRotateLogFile checks log file size and rotates if it exceeds maxLogFileSize
-func checkAndRotateLogFile(logPath string) {
-	info, err := os.Stat(logPath)
-	if err != nil {
-		return // File doesn't exist yet, nothing to rotate
-	}
-
-	if info.Size() > maxLogFileSize {
-		// Rotate: rename current file to .old
-		oldPath := logPath + ".old"
-		_ = os.Remove(oldPath) // Remove old backup if exists
-		if err := os.Rename(logPath, oldPath); err != nil {
-			log.Printf("checkAndRotateLogFile: Failed to rotate log file %s: %v", logPath, err)
-		} else {
-			log.Printf("checkAndRotateLogFile: Rotated log file %s (size: %d bytes)", logPath, info.Size())
-		}
-	}
-}
-
-// openLogFileWithRotation opens a log file and rotates it if it exceeds maxLogFileSize
-func openLogFileWithRotation(logPath string) (*os.File, error) {
-	checkAndRotateLogFile(logPath)
-
-	// Open file in append mode (not truncate) to preserve recent logs
-	// But if file was rotated, it will be a new file
-	return os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-}
-
 // NewAppController creates and initializes a new AppController instance.
 func NewAppController(appIconData, greyIconData, greenIconData, redIconData []byte) (*AppController, error) {
 	ac := &AppController{}
@@ -176,9 +154,8 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	}
 
 	ac.ConfigPath = platform.GetConfigPath(ac.ExecDir)
-	singboxName, parserName := platform.GetExecutableNames()
+	singboxName := platform.GetExecutableNames()
 	ac.SingboxPath = filepath.Join(ac.ExecDir, "bin", singboxName)
-	ac.ParserPath = filepath.Join(ac.ExecDir, "bin", parserName)
 	ac.WintunPath = platform.GetWintunPath(ac.ExecDir)
 
 	// Open log files with rotation support
@@ -216,6 +193,8 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	ac.RunningState = &RunningState{controller: ac}
 	ac.RunningState.Set(false) // Use Set() method instead of direct assignment
 	ac.ConsecutiveCrashAttempts = 0
+	ac.ProcessService = NewProcessService(ac)
+	ac.ConfigService = NewConfigService(ac)
 
 	if base, tok, err := api.LoadClashAPIConfig(ac.ConfigPath); err != nil {
 		log.Printf("NewAppController: Clash API config error: %v", err)
@@ -321,7 +300,8 @@ func (ac *AppController) GracefulExit() {
 	StopSingBoxProcess(ac)
 
 	log.Println("GracefulExit: Waiting for sing-box to stop...")
-	timeout := time.After(gracefulShutdownTimeout)
+	// Use ProcessService constant for timeout
+	timeout := time.After(2 * time.Second) // gracefulShutdownTimeout from ProcessService
 	for {
 		if !ac.RunningState.IsRunning() {
 			log.Println("GracefulExit: Sing-box confirmed stopped.")
@@ -702,319 +682,68 @@ func removeTunInterface(interfaceName string) error {
 
 // StartSingBoxProcess launches the sing-box process.
 // skipRunningCheck: если true, пропускает проверку на уже запущенный процесс (для автоперезапуска)
+// Note: ProcessService must be initialized in NewAppController. This is a wrapper for backward compatibility.
 func StartSingBoxProcess(ac *AppController, skipRunningCheck ...bool) {
-	if ac.RunningState.IsRunning() {
-		dialogs.ShowAutoHideInfo(ac.Application, ac.MainWindow, "Info", "Sing-Box already running (according to internal state).")
-		return
+	if ac.ProcessService == nil {
+		log.Printf("StartSingBoxProcess: ProcessService is nil, this should not happen. Initializing...")
+		ac.ProcessService = NewProcessService(ac)
 	}
-
-	// Проверяем, не запущен ли уже процесс на уровне ОС (пропускаем при автоперезапуске)
-	skipCheck := len(skipRunningCheck) > 0 && skipRunningCheck[0]
-	if !skipCheck {
-		if checkAndShowSingBoxRunningWarning(ac, "startSingBox") {
-			return
-		}
-	}
-
-	ac.CmdMutex.Lock()
-	defer ac.CmdMutex.Unlock()
-
-	// Check capabilities on Linux before starting
-	if suggestion := platform.CheckAndSuggestCapabilities(ac.SingboxPath); suggestion != "" {
-		log.Printf("startSingBox: Capabilities check failed: %s", suggestion)
-		dialogs.ShowError(ac.MainWindow, fmt.Errorf("Linux capabilities required\n\n%s", suggestion))
-		return
-	}
-
-	// Reload API config from config.json before starting (in case it was corrupted)
-	log.Println("startSingBox: Reloading API config from config.json...")
-	if base, tok, err := api.LoadClashAPIConfig(ac.ConfigPath); err != nil {
-		log.Printf("startSingBox: Clash API config error: %v", err)
-		ac.ClashAPIBaseURL = ""
-		ac.ClashAPIToken = ""
-		ac.ClashAPIEnabled = false
-	} else {
-		ac.ClashAPIBaseURL = base
-		ac.ClashAPIToken = tok
-		ac.ClashAPIEnabled = true
-		log.Printf("startSingBox: API config reloaded successfully")
-	}
-
-	// Reload SelectedClashGroup from config
-	if ac.ClashAPIEnabled {
-		_, defaultSelector, err := GetSelectorGroupsFromConfig(ac.ConfigPath)
-		if err != nil {
-			log.Printf("startSingBox: Failed to get selector groups: %v", err)
-			ac.SelectedClashGroup = "proxy-out" // Default fallback
-		} else {
-			ac.SelectedClashGroup = defaultSelector
-			log.Printf("startSingBox: SelectedClashGroup reloaded: %s", defaultSelector)
-		}
-	}
-
-	// Check and remove existing TUN interface before starting (prevents "file already exists" error)
-	if runtime.GOOS == "windows" {
-		interfaceName, err := getTunInterfaceName(ac.ConfigPath)
-		if err != nil {
-			log.Printf("startSingBox: Failed to get TUN interface name from config: %v", err)
-			// Continue anyway - maybe config doesn't have TUN
-		} else if interfaceName != "" {
-			log.Printf("startSingBox: Checking for existing TUN interface '%s'...", interfaceName)
-			if err := removeTunInterface(interfaceName); err != nil {
-				log.Printf("startSingBox: Warning: Failed to remove TUN interface: %v", err)
-				// Non-critical error - sing-box might handle existing interface
-			}
-		}
-	}
-
-	// Reset API cache before starting
-	if ac.ResetAPIStateFunc != nil {
-		log.Println("startSingBox: Resetting API state cache...")
-		ac.ResetAPIStateFunc()
-	}
-
-	log.Println("startSingBox: Starting Sing-Box...")
-	ac.SingboxCmd = exec.Command(ac.SingboxPath, "run", "-c", filepath.Base(ac.ConfigPath))
-	platform.PrepareCommand(ac.SingboxCmd)
-	ac.SingboxCmd.Dir = platform.GetBinDir(ac.ExecDir)
-	if ac.ChildLogFile != nil {
-		// Check and rotate log file before starting new process to prevent unbounded growth
-		checkAndRotateLogFile(filepath.Join(ac.ExecDir, childLogFileName))
-
-		// Write directly to file - no buffering in memory
-		// This prevents memory leaks from accumulating log output
-		// Logs are written immediately to disk, not stored in memory
-		ac.SingboxCmd.Stdout = ac.ChildLogFile
-		ac.SingboxCmd.Stderr = ac.ChildLogFile
-	} else {
-		log.Println("startSingBox: Warning: sing-box log file not available, output will not be logged.")
-	}
-	if err := ac.SingboxCmd.Start(); err != nil {
-		ac.ShowStartupError(fmt.Errorf("failed to start Sing-Box process: %w", err))
-		log.Printf("startSingBox: Failed to start Sing-Box: %v", err)
-		return
-	}
-	ac.RunningState.Set(true)
-	ac.StoppedByUser = false
-	// Add log with PID
-	log.Printf("startSingBox: Sing-Box started. PID=%d", ac.SingboxCmd.Process.Pid)
-
-	// Start auto-loading proxies after sing-box is running
-	go func() {
-		// Small delay to ensure API is ready
-		time.Sleep(2 * time.Second)
-		ac.AutoLoadProxies()
-	}()
-
-	go MonitorSingBoxProcess(ac, ac.SingboxCmd)
+	ac.ProcessService.Start(skipRunningCheck...)
 }
 
 // MonitorSingBoxProcess monitors the sing-box process.
+// Note: ProcessService must be initialized in NewAppController. This is a wrapper for backward compatibility.
 func MonitorSingBoxProcess(ac *AppController, cmdToMonitor *exec.Cmd) {
-	// Store the PID we're monitoring to avoid conflicts with restarted processes
-	monitoredPID := cmdToMonitor.Process.Pid
-
-	// Wait for process completion - no timeout for long-running processes
-	// The process should run until it exits or is stopped by user
-	err := cmdToMonitor.Wait()
-
-	ac.CmdMutex.Lock()
-	defer ac.CmdMutex.Unlock()
-
-	// GOLDEN STANDARD: Check order to prevent all race conditions
-	// 1. First PID (is this my process?)
-	if ac.SingboxCmd == nil || ac.SingboxCmd.Process == nil || ac.SingboxCmd.Process.Pid != monitoredPID {
-		log.Printf("monitorSingBox: Process was restarted (PID changed from %d). This monitor is obsolete. Exiting.", monitoredPID)
-		return
+	if ac.ProcessService == nil {
+		log.Printf("MonitorSingBoxProcess: ProcessService is nil, this should not happen. Initializing...")
+		ac.ProcessService = NewProcessService(ac)
 	}
-
-	// 2. Then StoppedByUser (did user stop it?)
-	if ac.StoppedByUser {
-		log.Println("monitorSingBox: Sing-Box exited as requested by user.")
-		ac.ConsecutiveCrashAttempts = 0
-		ac.RunningState.Set(false)
-		ac.StoppedByUser = false // Reset flag for next start
-		return
-	}
-
-	// 3. Then err == nil (exited normally?)
-	if err == nil {
-		log.Println("monitorSingBox: Sing-Box exited gracefully (exit code 0).")
-		ac.ConsecutiveCrashAttempts = 0
-		ac.RunningState.Set(false)
-		return
-	}
-
-	// 4. Only then — crash → restart
-	// Процесс завершился с ошибкой - проверяем лимит попыток
-	ac.RunningState.Set(false)
-	ac.ConsecutiveCrashAttempts++
-
-	if ac.ConsecutiveCrashAttempts > restartAttempts {
-		log.Printf("monitorSingBox: Maximum restart attempts (%d) reached. Stopping auto-restart.", restartAttempts)
-		dialogs.ShowError(ac.MainWindow, fmt.Errorf("Sing-Box failed to restart after %d attempts. Check sing-box.log for details.", restartAttempts))
-		ac.ConsecutiveCrashAttempts = 0
-		return
-	}
-
-	// Try to restart
-	log.Printf("monitorSingBox: Sing-Box crashed: %v, attempting auto-restart (attempt %d/%d)", err, ac.ConsecutiveCrashAttempts, restartAttempts)
-	dialogs.ShowAutoHideInfo(ac.Application, ac.MainWindow, "Crash", fmt.Sprintf("Sing-Box crashed, restarting... (attempt %d/%d)", ac.ConsecutiveCrashAttempts, restartAttempts))
-
-	// Wait 2 seconds before restart
-	ac.CmdMutex.Unlock()
-	time.Sleep(2 * time.Second)
-	StartSingBoxProcess(ac, true) // skipRunningCheck = true для автоперезапуска
-	ac.CmdMutex.Lock()
-
-	if ac.RunningState.IsRunning() {
-		log.Println("monitorSingBox: Sing-Box restarted successfully.")
-		currentAttemptCount := ac.ConsecutiveCrashAttempts
-		go func() {
-			select {
-			case <-ac.ctx.Done():
-				log.Println("monitorSingBox: Stability check cancelled (context cancelled)")
-				return
-			case <-time.After(stabilityThreshold):
-				ac.CmdMutex.Lock()
-				defer ac.CmdMutex.Unlock()
-
-				if ac.RunningState.IsRunning() && ac.ConsecutiveCrashAttempts == currentAttemptCount {
-					log.Printf("monitorSingBox: Process has been stable for %v. Resetting crash counter from %d to 0.", stabilityThreshold, ac.ConsecutiveCrashAttempts)
-					ac.ConsecutiveCrashAttempts = 0
-					// Обновляем UI, чтобы счетчик исчез из статуса на вкладке Core
-					if ac.UpdateCoreStatusFunc != nil {
-						ac.UpdateCoreStatusFunc()
-					}
-				} else {
-					log.Printf("monitorSingBox: Stability timer expired, but conditions for reset not met (running: %v, current attempts: %d, attempts at timer start: %d).", ac.RunningState.IsRunning(), ac.ConsecutiveCrashAttempts, currentAttemptCount)
-				}
-			}
-		}()
-	} else {
-		log.Printf("monitorSingBox: Restart attempt %d failed.", ac.ConsecutiveCrashAttempts)
-	}
+	ac.ProcessService.Monitor(cmdToMonitor)
 }
 
 // StopSingBoxProcess is the unified function to stop the sing-box process.
+// Note: ProcessService must be initialized in NewAppController. This is a wrapper for backward compatibility.
 func StopSingBoxProcess(ac *AppController) {
-	ac.CmdMutex.Lock()
-
-	// CRITICAL: Set flag BEFORE sending signal
-	// This ensures the monitor sees the flag even if the process exits very quickly
-	ac.StoppedByUser = true
-	ac.ConsecutiveCrashAttempts = 0
-
-	if !ac.RunningState.IsRunning() {
-		ac.StoppedByUser = false
-		ac.CmdMutex.Unlock()
-		return
+	if ac.ProcessService == nil {
+		log.Printf("StopSingBoxProcess: ProcessService is nil, this should not happen. Initializing...")
+		ac.ProcessService = NewProcessService(ac)
 	}
-
-	if ac.SingboxCmd == nil || ac.SingboxCmd.Process == nil {
-		log.Println("StopSingBoxProcess: Inconsistent state detected. Correcting state.")
-		ac.RunningState.Set(false)
-		ac.StoppedByUser = false
-		ac.CmdMutex.Unlock()
-		return
-	}
-
-	log.Println("stopSingBox: Attempting graceful shutdown...")
-	processToStop := ac.SingboxCmd.Process
-
-	// Разблокируем мьютекс перед отправкой сигнала, чтобы не блокировать
-	ac.CmdMutex.Unlock()
-
-	var err error
-	if runtime.GOOS == "windows" {
-		// sing-box ловит именно CTRL_BREAK_EVENT на Windows
-		dll := syscall.NewLazyDLL("kernel32.dll")
-		proc := dll.NewProc("GenerateConsoleCtrlEvent")
-		if r, _, e := proc.Call(uintptr(syscall.CTRL_BREAK_EVENT), uintptr(processToStop.Pid)); r == 0 {
-			err = e
-		}
-	} else {
-		err = processToStop.Signal(os.Interrupt)
-	}
-
-	if err != nil {
-		log.Printf("stopSingBox: Graceful signal failed: %v. Forcing kill.", err)
-		if killErr := processToStop.Kill(); killErr != nil {
-			log.Printf("stopSingBox: Failed to kill Sing-Box process: %v", killErr)
-		}
-	} else {
-		// Start watchdog timer that will kill the process if it doesn't close itself
-		log.Println("stopSingBox: Signal sent, starting watchdog timer...")
-		go func(pid int) {
-			time.Sleep(gracefulShutdownTimeout)
-			p, _ := ps.FindProcess(pid)
-			if p != nil {
-				log.Printf("stopSingBox watchdog: Process %d still running after timeout. Forcing kill.", pid)
-				// Reliably kill the process and its child processes
-				_ = platform.KillProcessByPID(pid)
-			}
-		}(processToStop.Pid)
-	}
+	ac.ProcessService.Stop()
 }
 
 // RunParserProcess starts the internal configuration update process.
+// Note: ConfigService must be initialized in NewAppController. This is a wrapper for backward compatibility.
 func RunParserProcess(ac *AppController) {
-	// Проверяем, не запущен ли уже парсинг
-	ac.ParserMutex.Lock()
-	if ac.ParserRunning {
-		ac.ParserMutex.Unlock()
-		dialogs.ShowAutoHideInfo(ac.Application, ac.MainWindow, "Parser Info", "Configuration update is already in progress.")
-		return
+	if ac.ConfigService == nil {
+		log.Printf("RunParserProcess: ConfigService is nil, this should not happen. Initializing...")
+		ac.ConfigService = NewConfigService(ac)
 	}
-	ac.ParserRunning = true
-	ac.ParserMutex.Unlock()
-
-	log.Println("RunParser: Starting internal configuration update...")
-	// Ensure flag is reset after completion, even if there's an error
-	defer func() {
-		ac.ParserMutex.Lock()
-		ac.ParserRunning = false
-		ac.ParserMutex.Unlock()
-	}()
-
-	// Call internal parser to update configuration
-	err := UpdateConfigFromSubscriptions(ac)
-
-	// Обрабатываем результат
-	if err != nil {
-		log.Printf("RunParser: Failed to update config: %v", err)
-		// Progress already updated in UpdateConfigFromSubscriptions with error status
-		ac.ShowParserError(fmt.Errorf("failed to update config: %w", err))
-	} else {
-		log.Println("RunParser: Config updated successfully.")
-		// Progress already updated in UpdateConfigFromSubscriptions with success status
-		dialogs.ShowAutoHideInfo(ac.Application, ac.MainWindow, "Parser", "Config updated successfully!")
-	}
+	ac.ConfigService.RunParserProcess()
 }
 
+// CheckIfSingBoxRunningAtStartUtil checks if sing-box is already running at application start.
+// Note: ProcessService must be initialized in NewAppController. This is a wrapper for backward compatibility.
 func CheckIfSingBoxRunningAtStartUtil(ac *AppController) {
-	checkAndShowSingBoxRunningWarning(ac, "CheckIfSingBoxRunningAtStart")
+	if ac.ProcessService == nil {
+		log.Printf("CheckIfSingBoxRunningAtStartUtil: ProcessService is nil, this should not happen. Initializing...")
+		ac.ProcessService = NewProcessService(ac)
+	}
+	ac.ProcessService.CheckIfRunningAtStart()
 }
 
 // CheckConfigFileExists checks if config.json exists and shows a warning if it doesn't
 func CheckConfigFileExists(ac *AppController) {
 	if _, err := os.Stat(ac.ConfigPath); os.IsNotExist(err) {
 		log.Printf("CheckConfigFileExists: config.json not found at %s", ac.ConfigPath)
-		examplePath := filepath.Join(platform.GetBinDir(ac.ExecDir), constants.ConfigExampleName)
 
 		message := fmt.Sprintf(
 			"⚠️ Configuration file not found!\n\n"+
 				"The file %s is missing from the bin/ folder.\n\n"+
 				"To get started:\n"+
-				"1. Copy the file %s to %s\n"+
-				"2. Open %s and fill it with your settings\n"+
-				"3. Restart the application\n\n"+
-				"Example configuration is located here:\n%s",
+				"1. download Wisard\n"+
+				"2. use Wisard to generate a configuration file\n"+
+				"3. press Start\n",
 			constants.ConfigFileName,
-			constants.ConfigExampleName,
-			constants.ConfigFileName,
-			constants.ConfigFileName,
-			examplePath,
 		)
 
 		dialogs.ShowInfo(ac.MainWindow, "Configuration Not Found", message)

@@ -313,7 +313,7 @@ The `config_template.json` file provides a template for the Config Wizard and de
 
 **Template Directives:**
 
-- `/** @ParcerConfig ... */` - Default parser configuration block
+- `/** @ParserConfig ... */` - Default parser configuration block
 - `/** @SelectableRule ... */` - Defines a selectable routing rule
   - `@label` - Display name for the rule (shown in wizard)
   - `@description` - Description shown in info tooltip (optional)
@@ -382,7 +382,7 @@ You can create your own `config_template.json` file to customize the rules avail
 1. **Start with the default template**: Download the default template using the **"Download Config Template"** button
 2. **Edit the template**: Modify `config_template.json` in the `bin/` folder
 3. **Add custom rules**: Use the `/** @SelectableRule ... */` syntax to add your own routing rules
-4. **Customize ParserConfig**: Modify the `/** @ParcerConfig ... */` block to set default subscription settings
+4. **Customize ParserConfig**: Modify the `/** @ParserConfig ... */` block to set default subscription settings
 5. **Save and use**: The wizard will automatically use your custom template
 
 **Template Structure:**
@@ -414,7 +414,7 @@ For automatic configuration updates from subscriptions, add at the beginning of 
 
 ```json
 {
-  /** @ParcerConfig
+  /** @ParserConfig
   {
     "ParserConfig": {
       "version": 2,
@@ -462,7 +462,7 @@ The subscription parser is a built-in feature that automatically updates the pro
 
 #### 1. Parser Configuration
 
-At the beginning of the `config.json` file, there should be a `/** @ParcerConfig ... */` block with JSON configuration.
+At the beginning of the `config.json` file, there should be a `/** @ParserConfig ... */` block with JSON configuration.
 
 **Version 2 (Current)**: The `version` field is now inside `ParserConfig`. Automatic configuration reload is supported via the `parser` object.
 
@@ -470,7 +470,7 @@ At the beginning of the `config.json` file, there should be a `/** @ParcerConfig
 
 ```json
 {
-  /** @ParcerConfig
+  /** @ParserConfig
   {
     "ParserConfig": {
       "version": 2,
@@ -511,7 +511,7 @@ At the beginning of the `config.json` file, there should be a `/** @ParcerConfig
 When you click the **"Update Config"** button in the "Core" tab (or use the Config Wizard):
 
 1. **Reading Configuration**
-   - Parser finds the `@ParcerConfig` block in `config.json`
+   - Parser finds the `@ParserConfig` block in `config.json`
    - Extracts subscription URLs from the `proxies[].source` field
    - Extracts direct links from the `proxies[].connections` field
 

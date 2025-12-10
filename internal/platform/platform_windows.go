@@ -13,8 +13,8 @@ import (
 )
 
 // GetExecutableNames returns platform-specific executable names
-func GetExecutableNames() (singboxName, parserName string) {
-	return "sing-box.exe", "parser.exe"
+func GetExecutableNames() string {
+	return "sing-box.exe"
 }
 
 // GetWintunPath returns the path to wintun.dll (Windows only)
@@ -42,6 +42,16 @@ func KillProcessByPID(pid int) error {
 	return exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F").Run()
 }
 
+// SendCtrlBreak sends CTRL_BREAK_EVENT to a process by PID.
+func SendCtrlBreak(pid int) error {
+	dll := syscall.NewLazyDLL("kernel32.dll")
+	proc := dll.NewProc("GenerateConsoleCtrlEvent")
+	if r, _, e := proc.Call(uintptr(syscall.CTRL_BREAK_EVENT), uintptr(pid)); r == 0 {
+		return e
+	}
+	return nil
+}
+
 // PrepareCommand prepares a command with platform-specific attributes
 func PrepareCommand(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
@@ -58,7 +68,6 @@ func GetRequiredFiles(execDir string) []struct {
 	}{
 		{"Sing-Box", filepath.Join(execDir, "bin", "sing-box.exe")},
 		{"Config.json", filepath.Join(execDir, "bin", "config.json")},
-		{"Parser", filepath.Join(execDir, "bin", "parser.exe")},
 		{"WinTun.dll", filepath.Join(execDir, "bin", "wintun.dll")},
 	}
 }

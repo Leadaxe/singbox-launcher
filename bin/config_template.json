@@ -2,7 +2,7 @@
   // Documentation:
   // https://github.com/Leadaxe/singbox-launcher/blob/main/README.md#configuring-configjson
   
-  /** @ParcerConfig
+  /** @ParserConfig
     {
       "ParserConfig": {
         "version": 2,

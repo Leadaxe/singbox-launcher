@@ -2,12 +2,10 @@ package constants
 
 // File names
 const (
-	WinTunDLLName     = "wintun.dll"
-	TunDLLName        = "tun.dll"
-	ConfigFileName    = "config.json"
-	ConfigExampleName = "config.example.json"
-	SingBoxExecName   = "sing-box"
-	ParserExecName    = "parser"
+	WinTunDLLName   = "wintun.dll"
+	TunDLLName      = "tun.dll"
+	ConfigFileName  = "config.json"
+	SingBoxExecName = "sing-box"
 )
 
 // Directory names

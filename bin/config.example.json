@@ -12,7 +12,7 @@
  *    - macOS/Linux: cp bin/config.example.json bin/config.json
  * 
  * 2. Open config.json in a text editor and fill in:
- *    - In the @ParcerConfig block, specify your subscription URL
+ *    - In the @ParserConfig block, specify your subscription URL
  *      Replace "https://your-subscription-url-here" with your actual subscription URL
  *    - In the experimental.clash_api section, change "secret" to your token
  *      Replace "CHANGE_THIS_TO_YOUR_SECRET_TOKEN" with a random string
@@ -36,7 +36,7 @@
  *   added between @ParserSTART and @ParserEND markers
  * 
  * CONFIGURATION STRUCTURE:
- * - @ParcerConfig - subscription parser settings (subscription URLs, filters, groups)
+ * - @ParserConfig - subscription parser settings (subscription URLs, filters, groups)
  * - log - logging settings
  * - dns - DNS server and rule settings
  * - inbounds - incoming connections (TUN interface for VPN)
@@ -48,7 +48,7 @@
  */
 
 {
-/** @ParcerConfig
+/** @ParserConfig
 
 {
   "version": 1,

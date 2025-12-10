@@ -504,7 +504,7 @@ func (tab *CoreDashboardTab) readConfigOnDemand() {
 	}
 
 	// Читаем конфиг
-	config, err := core.ExtractParcerConfig(tab.controller.ConfigPath)
+	config, err := core.ExtractParserConfig(tab.controller.ConfigPath)
 	if err != nil {
 		log.Printf("CoreDashboard: Failed to read config on demand: %v", err)
 		// Можно показать сообщение пользователю через dialog
