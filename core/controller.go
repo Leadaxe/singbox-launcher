@@ -78,7 +78,6 @@ type AppController struct {
 	ExecDir     string
 	ConfigPath  string
 	SingboxPath string
-	ParserPath  string
 	WintunPath  string
 
 	// --- VPN Operation State ---
@@ -176,9 +175,8 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	}
 
 	ac.ConfigPath = platform.GetConfigPath(ac.ExecDir)
-	singboxName, parserName := platform.GetExecutableNames()
+	singboxName := platform.GetExecutableNames()
 	ac.SingboxPath = filepath.Join(ac.ExecDir, "bin", singboxName)
-	ac.ParserPath = filepath.Join(ac.ExecDir, "bin", parserName)
 	ac.WintunPath = platform.GetWintunPath(ac.ExecDir)
 
 	// Open log files with rotation support
@@ -1000,21 +998,15 @@ func CheckIfSingBoxRunningAtStartUtil(ac *AppController) {
 func CheckConfigFileExists(ac *AppController) {
 	if _, err := os.Stat(ac.ConfigPath); os.IsNotExist(err) {
 		log.Printf("CheckConfigFileExists: config.json not found at %s", ac.ConfigPath)
-		examplePath := filepath.Join(platform.GetBinDir(ac.ExecDir), constants.ConfigExampleName)
 
 		message := fmt.Sprintf(
 			"⚠️ Configuration file not found!\n\n"+
 				"The file %s is missing from the bin/ folder.\n\n"+
 				"To get started:\n"+
-				"1. Copy the file %s to %s\n"+
-				"2. Open %s and fill it with your settings\n"+
-				"3. Restart the application\n\n"+
-				"Example configuration is located here:\n%s",
+				"1. download Wisard\n"+
+				"2. use Wisard to generate a configuration file\n"+
+				"3. press Start\n",
 			constants.ConfigFileName,
-			constants.ConfigExampleName,
-			constants.ConfigFileName,
-			constants.ConfigFileName,
-			examplePath,
 		)
 
 		dialogs.ShowInfo(ac.MainWindow, "Configuration Not Found", message)

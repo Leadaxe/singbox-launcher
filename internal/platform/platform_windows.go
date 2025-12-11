@@ -13,8 +13,8 @@ import (
 )
 
 // GetExecutableNames returns platform-specific executable names
-func GetExecutableNames() (singboxName, parserName string) {
-	return "sing-box.exe", "parser.exe"
+func GetExecutableNames() string {
+	return "sing-box.exe"
 }
 
 // GetWintunPath returns the path to wintun.dll (Windows only)
@@ -58,7 +58,6 @@ func GetRequiredFiles(execDir string) []struct {
 	}{
 		{"Sing-Box", filepath.Join(execDir, "bin", "sing-box.exe")},
 		{"Config.json", filepath.Join(execDir, "bin", "config.json")},
-		{"Parser", filepath.Join(execDir, "bin", "parser.exe")},
 		{"WinTun.dll", filepath.Join(execDir, "bin", "wintun.dll")},
 	}
 }

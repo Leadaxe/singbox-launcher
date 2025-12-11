@@ -424,7 +424,7 @@ func (ac *AppController) extractZip(archivePath, destDir string) (string, error)
 	}
 	defer r.Close()
 
-	singboxName, _ := platform.GetExecutableNames()
+	singboxName := platform.GetExecutableNames()
 	var binaryPath string
 
 	for _, f := range r.File {
@@ -477,7 +477,7 @@ func (ac *AppController) extractTarGz(archivePath, destDir string) (string, erro
 	defer gzr.Close()
 
 	tr := tar.NewReader(gzr)
-	singboxName, _ := platform.GetExecutableNames()
+	singboxName := platform.GetExecutableNames()
 	var binaryPath string
 
 	for {

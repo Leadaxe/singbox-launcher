@@ -12,8 +12,8 @@ import (
 )
 
 // GetExecutableNames returns platform-specific executable names
-func GetExecutableNames() (singboxName, parserName string) {
-	return "sing-box", "parser"
+func GetExecutableNames() string {
+	return "sing-box"
 }
 
 // GetWintunPath returns empty string on macOS (wintun is Windows-only)
@@ -57,7 +57,6 @@ func GetRequiredFiles(execDir string) []struct {
 	}{
 		{"Sing-Box", filepath.Join(execDir, constants.BinDirName, constants.SingBoxExecName)},
 		{"Config.json", filepath.Join(execDir, constants.BinDirName, constants.ConfigFileName)},
-		{"Parser", filepath.Join(execDir, constants.BinDirName, constants.ParserExecName)},
 	}
 }
 
