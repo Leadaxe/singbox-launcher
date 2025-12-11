@@ -71,7 +71,7 @@
         {
           "type": "udp",
           "tag": "direct_dns_resolver",
-          "server": "9.9.9.9",
+          "server": "1.1.1.1",
           "server_port": 53
         },
         {
@@ -114,11 +114,12 @@
         }
       ],
       "rules": [
+        { "domain_suffix": ["githubusercontent.com", "github.com"], "server": "direct_dns_resolver" },
         { "rule_set": "ru-domains", "server": "yandex_doh" },
         { "rule_set": "ru-domains", "server": "yandex_dns_vpn" },
         { "rule_set": "ru-domains", "server": "yandex_dns_direct" },
         { "server": "google_doh" },
-		{ "server": "google_doh_vpn" }
+        { "server": "google_doh_vpn" }
       ],
       "final": "direct_dns_resolver",
       "strategy": "ipv4_only",
