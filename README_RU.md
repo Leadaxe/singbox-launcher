@@ -857,6 +857,7 @@ GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o singbox-launcher
 
 ## 📞 Поддержка
 
+- **Telegram**: [@singbox_launcher](https://t.me/singbox_launcher) - Канал для обсуждений
 - **Issues**: [GitHub Issues](https://github.com/Leadaxe/singbox-launcher/issues)
 
 

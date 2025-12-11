@@ -46,6 +46,7 @@ logs/*.log
 # Temporary files
 *.tmp
 *.temp
+temp_*.txt
 compile_debug.txt
 
 # Build directories

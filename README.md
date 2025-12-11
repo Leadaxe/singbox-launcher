@@ -805,6 +805,7 @@ This project is distributed under the MIT license. See the [LICENSE](LICENSE) fi
 
 ## 📞 Support
 
+- **Telegram**: [@singbox_launcher](https://t.me/singbox_launcher) - Discussion channel
 - **Issues**: [GitHub Issues](https://github.com/Leadaxe/singbox-launcher/issues)
 
 

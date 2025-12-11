@@ -162,7 +162,7 @@
         { "inbound": "tun-in", "action": "sniff", "timeout": "1s" },
         { "protocol": "dns", "action": "hijack-dns" },
         { "ip_is_private": true, "outbound": "direct-out" },
-        { "domain_suffix": ["local"], "outbound": "direct-out" }
+        { "domain_suffix": ["local", "lan"], "outbound": "direct-out" }
   /**   @SelectableRule
         @label Block Ads (ads-all, soft)
         @default

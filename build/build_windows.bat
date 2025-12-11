@@ -16,6 +16,37 @@ echo   Building Sing-Box Launcher (Windows)
 echo ========================================
 echo.
 
+:: Устанавливаем окружение для сборки ПЕРЕД использованием go
+echo === Setting PATH and environment ===
+:: Устанавливаем GOROOT явно на правильную установку Go
+if exist "C:\Program Files\Go" (
+    set "GOROOT=C:\Program Files\Go"
+) else if exist "C:\Go" (
+    set "GOROOT=C:\Go"
+)
+:: Добавляем пути к Go, MinGW и Git в начало PATH (Go должен быть ПЕРВЫМ!)
+set "PATH=C:\Program Files\Go\bin;%PATH%"
+set "PATH=C:\msys64\mingw64\bin;%PATH%"
+if exist "%LOCALAPPDATA%\Programs\Git\bin" (
+    set "PATH=%LOCALAPPDATA%\Programs\Git\bin;%PATH%"
+) else if exist "C:\Program Files\Git\bin" (
+    set "PATH=C:\Program Files\Git\bin;%PATH%"
+) else if exist "C:\Program Files (x86)\Git\bin" (
+    set "PATH=C:\Program Files (x86)\Git\bin;%PATH%"
+)
+set "PATH=%USERPROFILE%\go\bin;%PATH%"
+
+:: Проверяем, что Go доступен
+where go >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo !!! Go not found in PATH !!!
+    if %NO_PAUSE%==0 pause
+    exit /b 1
+)
+
+echo GOROOT=%GOROOT%
+echo.
+
 echo === Tidying Go modules ===
 go mod tidy
 if %ERRORLEVEL% NEQ 0 (
@@ -24,24 +55,27 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b %ERRORLEVEL%
 )
 
-:: Устанавливаем окружение для сборки
-echo.
-echo === Setting PATH and environment ===
-:: Устанавливаем GOROOT если не установлен
-if "%GOROOT%"=="" (
-    if exist "C:\Program Files\Go" (
-        set "GOROOT=C:\Program Files\Go"
-    )
-)
-:: Добавляем пути к Go, MinGW и Git в начало PATH
-set "PATH=C:\Program Files\Go\bin;%PATH%"
-set "PATH=C:\msys64\mingw64\bin;%PATH%"
-set "PATH=C:\Users\Admin\AppData\Local\Programs\Git\bin;%PATH%"
-set "PATH=%USERPROFILE%\go\bin;%PATH%"
-
 set CGO_ENABLED=1
 set GOOS=windows
 set GOARCH=amd64
+
+:: Проверяем наличие gcc для CGO
+if %CGO_ENABLED%==1 (
+    where gcc >nul 2>&1
+    if %ERRORLEVEL% NEQ 0 (
+        echo !!! WARNING: GCC not found in PATH !!!
+        echo CGO requires GCC compiler. Checking common locations...
+        if exist "C:\msys64\mingw64\bin\gcc.exe" (
+            echo Found GCC at C:\msys64\mingw64\bin\gcc.exe
+        ) else (
+            echo !!! GCC not found. CGO build may fail !!!
+        )
+    ) else (
+        echo GCC found:
+        gcc --version | findstr /C:"gcc"
+    )
+    echo.
+)
 
 :: === Embed icon into the executable ===
 echo.
@@ -88,7 +122,11 @@ echo Using output file: "%OUTPUT_FILENAME%"
 :: Собираем проект
 echo.
 echo === Starting Build ===
-go build -buildvcs=false -ldflags="-H windowsgui -s -w" -o "%OUTPUT_FILENAME%"
+echo Building with CGO_ENABLED=%CGO_ENABLED%
+echo GOROOT=%GOROOT%
+echo.
+echo This may take a while on first build...
+go build -v -buildvcs=false -ldflags="-H windowsgui -s -w" -o "%OUTPUT_FILENAME%"
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
