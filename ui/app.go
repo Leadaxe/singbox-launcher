@@ -25,13 +25,13 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 
 	// Create tabs - Core is first (opens on startup)
 	// Создаем вкладку Core первой, чтобы её callback установился
-	coreTabItem := container.NewTabItem("Core", CreateCoreDashboardTab(controller))
-	app.clashAPITab = container.NewTabItem("Clash API", CreateClashAPITab(controller))
+	coreTabItem := container.NewTabItem("⚙️ Core", CreateCoreDashboardTab(controller))
+	app.clashAPITab = container.NewTabItem("🖥️ Servers", CreateClashAPITab(controller))
 	app.tabs = container.NewAppTabs(
 		coreTabItem,
 		app.clashAPITab,
-		container.NewTabItem("Diagnostics", CreateDiagnosticsTab(controller)),
-		container.NewTabItem("Tools", CreateToolsTab(controller)),
+		container.NewTabItem("🔍 Diagnostics", CreateDiagnosticsTab(controller)),
+		container.NewTabItem("❓ Help", CreateToolsTab(controller)),
 	)
 
 	// Set tab selection handler
@@ -52,13 +52,13 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	// Сохраняем оригинальный callback, который был установлен в CreateCoreDashboardTab
 	originalUpdateCoreStatusFunc := controller.UpdateCoreStatusFunc
 
-	// Регистрируем комбинированный callback для обновления состояния вкладки Clash API
+	// Регистрируем комбинированный callback для обновления состояния вкладки Servers
 	controller.UpdateCoreStatusFunc = func() {
 		// Вызываем оригинальный callback, если он есть
 		if originalUpdateCoreStatusFunc != nil {
 			originalUpdateCoreStatusFunc()
 		}
-		// Обновляем состояние вкладки Clash API
+		// Обновляем состояние вкладки Servers
 		fyne.Do(func() {
 			app.updateClashAPITabState()
 		})
@@ -85,7 +85,7 @@ func (a *App) GetController() *core.AppController {
 	return a.core
 }
 
-// updateClashAPITabState обновляет состояние вкладки Clash API в зависимости от статуса запуска
+// updateClashAPITabState обновляет состояние вкладки Servers в зависимости от статуса запуска
 func (a *App) updateClashAPITabState() {
 	if a.clashAPITab == nil || a.tabs == nil {
 		return
@@ -102,7 +102,7 @@ func (a *App) updateClashAPITabState() {
 		a.tabs.EnableItem(a.clashAPITab)
 	}
 
-	// Если sing-box не запущен и вкладка Clash API выбрана, переключаем на Core
+	// Если sing-box не запущен и вкладка Servers выбрана, переключаем на Core
 	if !isRunning && a.currentTab == a.clashAPITab {
 		if len(a.tabs.Items) > 0 {
 			coreTab := a.tabs.Items[0]

@@ -32,3 +32,8 @@ const (
 const (
 	DefaultSTUNServer = "stun.l.google.com:19302"
 )
+
+// Application version
+const (
+	AppVersion = "0.3.1"
+)
