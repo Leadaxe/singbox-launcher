@@ -61,6 +61,7 @@ test/
 
 # Config files with sensitive data - DO NOT COMMIT!
 bin/config.json
+bin/config-old.json
 bin/*.exe
 bin/*.dll
 
