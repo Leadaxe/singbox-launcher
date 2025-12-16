@@ -2,6 +2,7 @@ package main
 
 import (
 	_ "embed" // For embedding resource files (icons)
+	"flag"
 	"log"
 	"time"
 
@@ -26,6 +27,13 @@ var greenIconData []byte // Icon for "on" state
 
 // main is the application's entry point. It simply creates and runs the AppController.
 func main() {
+	// Parse command line arguments
+	autoStart := flag.Bool("start", false, "Automatically start VPN on launch")
+	flag.Parse()
+
+	// Track if auto-start has been triggered to avoid double-start
+	autoStartTriggered := false
+
 	// Create the application controller. If an error occurs, print it and exit the program.
 	// Use greyIconData for red icon (no separate red icon yet)
 	controller, err := core.NewAppController(appIconData, greyIconData, greenIconData, greyIconData)
@@ -129,6 +137,17 @@ func main() {
 					len(config.ParserConfig.Proxies),
 					len(config.ParserConfig.Outbounds))
 			}()
+
+			// Auto-start VPN if -start flag is provided
+			if *autoStart {
+				autoStartTriggered = true
+				go func() {
+					// Wait a bit for everything to initialize
+					time.Sleep(1 * time.Second)
+					log.Println("Auto-start: Starting VPN due to -start parameter")
+					core.StartSingBoxProcess(controller)
+				}()
+			}
 		})
 	}
 
@@ -167,6 +186,16 @@ func main() {
 
 	// Check if sing-box is running on startup and show a warning if it is.
 	core.CheckIfSingBoxRunningAtStartUtil(controller)
+
+	// Auto-start VPN if -start flag is provided (fallback if SetOnStarted doesn't fire)
+	if *autoStart && !autoStartTriggered {
+		go func() {
+			// Wait a bit for everything to initialize
+			time.Sleep(1 * time.Second)
+			log.Println("Auto-start: Starting VPN due to -start parameter (fallback)")
+			core.StartSingBoxProcess(controller)
+		}()
+	}
 
 	controller.MainWindow.ShowAndRun() // Show the main window and start the main Fyne event loop.
 	// The code below executes only after ShowAndRun() finishes.
