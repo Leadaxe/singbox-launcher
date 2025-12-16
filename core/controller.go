@@ -39,6 +39,14 @@ const (
 	restartDelay      = 2 * time.Second
 )
 
+// Constants for auto-update configuration
+const (
+	autoUpdateMinInterval   = 10 * time.Minute // Minimum check interval (constant)
+	autoUpdateRetryInterval = 10 * time.Second // Interval between retry attempts
+	autoUpdateMaxRetries    = 10               // Maximum consecutive failed attempts
+	autoUpdateDefaultReload = "4h"             // Default reload interval if not specified
+)
+
 // AppController - the main structure encapsulating all application state and logic.
 // AppController is the central controller coordinating all application components.
 // It manages UI state, process lifecycle, configuration, API interactions, and logging.
@@ -1160,13 +1168,6 @@ func (ac *AppController) CreateTrayMenu() *fyne.Menu {
 // Handles errors with retries (10 attempts, 10 seconds between retries)
 // Resumes after successful manual update
 func (ac *AppController) startAutoUpdateLoop() {
-	const (
-		minInterval   = 1 * time.Minute // Minimum interval (constant)
-		retryInterval = 1 * time.Second // Interval between retry attempts
-		maxRetries    = 10              // Maximum consecutive failed attempts
-		defaultReload = "4h"            // Default reload interval if not specified
-	)
-
 	log.Println("Auto-update: Starting auto-update loop")
 
 	for {
@@ -1197,18 +1198,18 @@ func (ac *AppController) startAutoUpdateLoop() {
 		checkInterval, err := ac.calculateAutoUpdateInterval()
 		if err != nil {
 			log.Printf("Auto-update: Failed to calculate interval: %v, using default", err)
-			checkInterval = minInterval
+			checkInterval = autoUpdateMinInterval
 		}
 
-		log.Printf("Auto-update: Calculated interval: %v (min: %v)", checkInterval, minInterval)
+		log.Printf("Auto-update: Calculated interval: %v (min: %v)", checkInterval, autoUpdateMinInterval)
 
 		// Check if update is needed immediately (before waiting)
 		requiredInterval, err := ac.calculateAutoUpdateInterval()
 		if err != nil {
 			log.Printf("Auto-update: Failed to calculate required interval: %v, using default", err)
-			requiredInterval = minInterval
+			requiredInterval = autoUpdateMinInterval
 		}
-		
+
 		needsUpdate, err := ac.shouldAutoUpdate(requiredInterval)
 		if err != nil {
 			log.Printf("Auto-update: Failed to check if update needed: %v, skipping this check", err)
@@ -1221,7 +1222,7 @@ func (ac *AppController) startAutoUpdateLoop() {
 
 			if !updateInProgress {
 				log.Println("Auto-update: Update needed, attempting update...")
-				success := ac.attemptAutoUpdateWithRetries(retryInterval, maxRetries)
+				success := ac.attemptAutoUpdateWithRetries(autoUpdateRetryInterval, autoUpdateMaxRetries)
 				if success {
 					// Success - error counter already reset in attemptAutoUpdateWithRetries
 					ac.AutoUpdateMutex.Lock()
@@ -1234,7 +1235,7 @@ func (ac *AppController) startAutoUpdateLoop() {
 				} else {
 					// Failed after all retries - check if we reached max consecutive failures
 					ac.AutoUpdateMutex.Lock()
-					if ac.AutoUpdateFailedAttempts >= maxRetries {
+					if ac.AutoUpdateFailedAttempts >= autoUpdateMaxRetries {
 						ac.AutoUpdateEnabled = false
 						ac.AutoUpdateMutex.Unlock()
 						log.Printf("Auto-update: Stopped after %d consecutive failed attempts", ac.AutoUpdateFailedAttempts)
@@ -1265,35 +1266,33 @@ func (ac *AppController) startAutoUpdateLoop() {
 // calculateAutoUpdateInterval calculates the check interval: max(10 minutes, parser.reload)
 // Returns the interval to use for checking if update is needed
 func (ac *AppController) calculateAutoUpdateInterval() (time.Duration, error) {
-	const minInterval = 10 * time.Minute
-	const defaultReload = "4h"
 
 	// Read ParserConfig from file
 	config, err := ExtractParserConfig(ac.ConfigPath)
 	if err != nil {
 		// If config doesn't exist or can't be read, use default
-		defaultDuration, _ := time.ParseDuration(defaultReload)
-		return maxDuration(minInterval, defaultDuration), nil
+		defaultDuration, _ := time.ParseDuration(autoUpdateDefaultReload)
+		return maxDuration(autoUpdateMinInterval, defaultDuration), nil
 	}
 
 	// Get reload value from config
 	reloadStr := config.ParserConfig.Parser.Reload
 	if reloadStr == "" {
 		// Use default if not specified
-		defaultDuration, _ := time.ParseDuration(defaultReload)
-		return maxDuration(minInterval, defaultDuration), nil
+		defaultDuration, _ := time.ParseDuration(autoUpdateDefaultReload)
+		return maxDuration(autoUpdateMinInterval, defaultDuration), nil
 	}
 
 	// Parse reload string to duration
 	reloadDuration, err := time.ParseDuration(reloadStr)
 	if err != nil {
 		log.Printf("Auto-update: Failed to parse reload duration '%s': %v, using default", reloadStr, err)
-		defaultDuration, _ := time.ParseDuration(defaultReload)
-		return maxDuration(minInterval, defaultDuration), nil
+		defaultDuration, _ := time.ParseDuration(autoUpdateDefaultReload)
+		return maxDuration(autoUpdateMinInterval, defaultDuration), nil
 	}
 
 	// Return max(10 minutes, reload)
-	return maxDuration(minInterval, reloadDuration), nil
+	return maxDuration(autoUpdateMinInterval, reloadDuration), nil
 }
 
 // maxDuration returns the maximum of two durations
