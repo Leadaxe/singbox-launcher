@@ -5,7 +5,7 @@
   /** @ParserConfig
     {
       "ParserConfig": {
-        "version": 3,
+        "version": 4,
         "proxies": [{ "source": "https://your-subscription-url-here" }],
         "outbounds": [
           {
@@ -30,6 +30,7 @@
           },
           {
             "tag": "go-any-way-githubusercontent",
+            "wizard":"hide",
             "type": "urltest",
             "options": {
               "url": "https://raw.githubusercontent.com/github/gitignore/main/Global/GPG.gitignore",

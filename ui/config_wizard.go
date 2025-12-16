@@ -2106,6 +2106,10 @@ func (state *WizardState) getAvailableOutbounds() []string {
 	if parserCfg != nil {
 		// Добавляем глобальные outbounds
 		for _, outbound := range parserCfg.ParserConfig.Outbounds {
+			// Пропускаем outbounds с "wizard":"hide"
+			if outbound.Wizard == "hide" {
+				continue
+			}
 			if outbound.Tag != "" {
 				tags[outbound.Tag] = struct{}{}
 			}
@@ -2116,6 +2120,10 @@ func (state *WizardState) getAvailableOutbounds() []string {
 		// Добавляем локальные outbounds из всех ProxySource
 		for _, proxySource := range parserCfg.ParserConfig.Proxies {
 			for _, outbound := range proxySource.Outbounds {
+				// Пропускаем outbounds с "wizard":"hide"
+				if outbound.Wizard == "hide" {
+					continue
+				}
 				if outbound.Tag != "" {
 					tags[outbound.Tag] = struct{}{}
 				}
@@ -2125,6 +2133,7 @@ func (state *WizardState) getAvailableOutbounds() []string {
 			}
 		}
 	}
+
 	result := make([]string, 0, len(tags))
 	for tag := range tags {
 		result = append(result, tag)

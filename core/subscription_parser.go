@@ -182,6 +182,7 @@ type OutboundConfig struct {
 	AddOutbounds     []string               `json:"addOutbounds,omitempty"`
 	PreferredDefault map[string]interface{} `json:"preferredDefault,omitempty"`
 	Comment          string                 `json:"comment,omitempty"`
+	Wizard           string                 `json:"wizard,omitempty"` // "hide" to hide from wizard second tab
 }
 
 // ExtractParserConfig extracts the @ParserConfig block from config.json
