@@ -31,7 +31,7 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 		coreTabItem,
 		app.clashAPITab,
 		container.NewTabItem("🔍 Diagnostics", CreateDiagnosticsTab(controller)),
-		container.NewTabItem("❓ Help", CreateToolsTab(controller)),
+		container.NewTabItem("❓ Help", CreateHelpTab(controller)),
 	)
 
 	// Set tab selection handler

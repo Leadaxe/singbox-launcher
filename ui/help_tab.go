@@ -15,8 +15,8 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
-// CreateToolsTab creates and returns the content for the "Help" tab.
-func CreateToolsTab(ac *core.AppController) fyne.CanvasObject {
+// CreateHelpTab creates and returns the content for the "Help" tab.
+func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
 	logsButton := widget.NewButton("📁 Open Logs Folder", func() {
 		logsDir := platform.GetLogsDir(ac.ExecDir)
 		if err := platform.OpenFolder(logsDir); err != nil {
@@ -56,7 +56,7 @@ func CreateToolsTab(ac *core.AppController) fyne.CanvasObject {
 	updateLauncherVersionInfo := func() {
 		latest := ac.GetCachedLauncherVersion()
 		current := constants.AppVersion
-		
+
 		if latest == "" {
 			launcherUpdateLabel.SetText("Unable to check for updates")
 			return
@@ -65,7 +65,7 @@ func CreateToolsTab(ac *core.AppController) fyne.CanvasObject {
 		// Сравниваем версии (убираем префикс v для сравнения)
 		currentClean := strings.TrimPrefix(current, "v")
 		latestClean := strings.TrimPrefix(latest, "v")
-		
+
 		compareResult := core.CompareVersions(currentClean, latestClean)
 		if compareResult < 0 {
 			// Новая версия доступна
