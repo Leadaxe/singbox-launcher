@@ -1,24 +1,25 @@
-name: release
+name: release-test
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
-
-permissions:
-  contents: write
-  id-token: write
 
 jobs:
-  build-and-publish:
-    name: build-and-publish
+  golangci-lint:
+    uses: ./.github/workflows/golangci-lint.yml
+
+  release-test:
+    name: release-test
+    permissions:
+      contents: write
+      id-token: write
     runs-on: macos-latest
+    needs: golangci-lint
     steps:
-      - name: Checkout
+      - name: Check out PR code
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0 # GoReleaser requires git history
 
       - name: Setup Linux OS dependencies
         if: runner.os == 'Linux'
@@ -26,10 +27,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xorg-dev libgl1-mesa-dev libglu1-mesa-dev
 
-      - name: Set up Go
+      - name: Setup Go
         uses: actions/setup-go@v6
         with:
           go-version: '1.25'
+          cache: true
 
       - name: Setup Go environment
         run: |
@@ -38,11 +40,11 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@v4.0.0
 
-      - name: Build Artifacts
+      - name: Run GoReleaser (Snapshot)
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean
+          args: release --snapshot --clean --skip=publish --verbose
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
