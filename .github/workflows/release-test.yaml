@@ -4,16 +4,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  golangci-lint:
-    uses: ./.github/workflows/golangci-lint.yml
-
   release-test:
     name: release-test
     permissions:
       contents: write
       id-token: write
     runs-on: macos-latest
-    needs: golangci-lint
     steps:
       - name: Check out PR code
         uses: actions/checkout@v6
