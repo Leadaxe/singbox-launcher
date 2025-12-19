@@ -47,6 +47,10 @@ jobs:
       - name: Verify Go Version
         run: go version
 
+      - name: Setup Go environment
+        run: |
+          go env -w GOFLAGS="-buildvcs=false"
+
       - name: Update dependencies
         run: go mod tidy
 
