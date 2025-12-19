@@ -12,6 +12,7 @@ import (
 
 	// Import our new packages
 	"singbox-launcher/core"
+	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui"
 )
 
@@ -190,7 +191,7 @@ func main() {
 	// Uses native NSApplicationDelegate to handle applicationShouldHandleReopen
 	// This is a workaround for Fyne issue #3845 (Dock click not showing hidden window)
 	if runtime.GOOS == "darwin" {
-		setupDockReopenHandler(func() {
+		platform.SetupDockReopenHandler(func() {
 			fyne.Do(func() {
 				// Show() is safe to call even if window is already visible
 				controller.MainWindow.Show()
@@ -232,7 +233,7 @@ func main() {
 	
 	// Cleanup platform-specific handlers
 	if runtime.GOOS == "darwin" {
-		cleanupDockReopenHandler()
+		platform.CleanupDockReopenHandler()
 	}
 	
 	controller.GracefulExit()

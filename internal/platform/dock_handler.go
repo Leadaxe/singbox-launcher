@@ -1,7 +1,7 @@
 //go:build darwin
 // +build darwin
 
-package main
+package platform
 
 /*
 #cgo CFLAGS: -x objective-c
@@ -117,15 +117,15 @@ func callGoDockCallback() {
 	}
 }
 
-// setupDockReopenHandler sets up macOS Dock icon click handler
+// SetupDockReopenHandler sets up macOS Dock icon click handler
 // When user clicks Dock icon and there are no visible windows,
 // the provided callback will be called to show the window
-func setupDockReopenHandler(showWindowCallback func()) {
+func SetupDockReopenHandler(showWindowCallback func()) {
 	if runtime.GOOS != "darwin" {
 		return
 	}
 	if showWindowCallback == nil {
-		log.Println("setupDockReopenHandler: callback is nil, skipping setup")
+		log.Println("SetupDockReopenHandler: callback is nil, skipping setup")
 		return
 	}
 
@@ -134,15 +134,15 @@ func setupDockReopenHandler(showWindowCallback func()) {
 
 	// Setup the handler
 	C.callSetupDockReopenHandler()
-	log.Println("setupDockReopenHandler: Dock reopen handler registered for macOS (using runtime API)")
+	log.Println("SetupDockReopenHandler: Dock reopen handler registered for macOS (using runtime API)")
 }
 
-// cleanupDockReopenHandler cleans up the Dock reopen handler
-func cleanupDockReopenHandler() {
+// CleanupDockReopenHandler cleans up the Dock reopen handler
+func CleanupDockReopenHandler() {
 	if runtime.GOOS != "darwin" {
 		return
 	}
 	C.callCleanupDockReopenHandler()
 	dockReopenCallback = nil
-	log.Println("cleanupDockReopenHandler: Dock reopen handler cleaned up")
+	log.Println("CleanupDockReopenHandler: Dock reopen handler cleaned up")
 }
