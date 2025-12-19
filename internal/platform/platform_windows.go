@@ -4,6 +4,8 @@
 package platform
 
 import (
+	"fmt"
+	"log"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -85,4 +87,21 @@ func GetBuildFlags() string {
 // CheckAndSuggestCapabilities is a no-op on Windows (capabilities not needed)
 func CheckAndSuggestCapabilities(singboxPath string) string {
 	return "" // Capabilities are Windows-specific, not needed here
+}
+
+// GetSystemSOCKSProxy returns system SOCKS proxy settings if enabled (SOCKS is macOS-specific)
+// On Windows, this is not currently implemented
+func GetSystemSOCKSProxy() (host string, port int, enabled bool, err error) {
+	log.Printf("platform: GetSystemSOCKSProxy is not implemented on Windows")
+	return "", 0, false, fmt.Errorf("GetSystemSOCKSProxy is not implemented on Windows")
+}
+
+// SetupDockReopenHandler is a no-op on Windows (Dock is macOS-specific)
+func SetupDockReopenHandler(showWindowCallback func()) {
+	log.Printf("platform: SetupDockReopenHandler is not implemented on Windows (Dock is macOS-specific)")
+}
+
+// CleanupDockReopenHandler is a no-op on Windows (Dock is macOS-specific)
+func CleanupDockReopenHandler() {
+	log.Printf("platform: CleanupDockReopenHandler is not implemented on Windows (Dock is macOS-specific)")
 }
