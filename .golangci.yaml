@@ -1,0 +1,69 @@
+version: "2"
+run:
+  go: "1.25"
+linters:
+  enable:
+    - govet
+    - ineffassign
+    #- staticcheck
+    - unused
+    #- gocritic
+    #- gosec # Security linter
+    - errcheck # Error checking
+    #- revive # Opinionated linter
+    - unused # Detect unused code
+    - whitespace # Enforce whitespace rules
+    - bodyclose # Ensure files/sockets are closed
+  disable:
+    - staticcheck
+  settings:
+    perfsprint:
+      int-conversion: false
+      err-error: false
+      errorf: true
+      sprintf1: false
+      strconcat: false
+    revive:
+      enable-all-rules: true
+    staticcheck:
+      checks:
+        - all
+        - -SA1019
+    tagliatelle:
+      case:
+        rules:
+          json: snake
+          yaml: snake
+        use-field-name: false
+    testifylint:
+      enable-all: true
+      disable:
+        - error-is-as
+    usetesting:
+      context-background: true
+      context-todo: true
+      os-chdir: true
+      os-mkdir-temp: true
+      os-setenv: true
+      os-create-temp: true
+      os-temp-dir: true
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - noctx
+          - perfsprint
+        path: _test\.go
+    paths:
+      - examples$
+#formatters:
+#  enable:
+#    - gofumpt
+#  exclusions:
+#    generated: lax
+#    paths:
+#      - examples$
