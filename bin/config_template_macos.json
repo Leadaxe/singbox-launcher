@@ -10,6 +10,7 @@
         "outbounds": [
           {
             "tag": "auto-proxy-out",
+            "wizard": {"required": 1},
             "type": "urltest",
             "options": {
               "url": "https://cp.cloudflare.com/generate_204",
@@ -22,6 +23,7 @@
           },
           {
             "tag": "proxy-out",
+            "wizard": {"required": 1},
             "type": "selector",
             "options": { "interrupt_exist_connections": true, "default": "auto-proxy-out"},
             "filters": { "tag": "!/(🇷🇺)/i" },
@@ -30,7 +32,7 @@
           },
           {
             "tag": "go-any-way-githubusercontent",
-            "wizard":"hide",
+            "wizard": {"hide": true, "required": 2},
             "type": "urltest",
             "options": {
               "url": "https://raw.githubusercontent.com/github/gitignore/main/Global/GPG.gitignore",

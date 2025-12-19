@@ -167,6 +167,7 @@
         {
           // Пример селектора с несколькими фильтрами
           "tag": "go-any-way-githubusercontent",
+          "wizard": {"hide": true, "required": 2},  // Скрыть из визарда и строгое соответствие шаблону
           "type": "urltest",
           "options": {
             "url": "https://raw.githubusercontent.com/github/gitignore/main/Global/GPG.gitignore",
@@ -358,6 +359,7 @@
 | `addOutbounds`    | array    | Нет          | Строки, которые добавляются в начало итогового списка outbounds (например `"direct-out"`). В версии 2 называлось `outbounds.addOutbounds`. |
 | `preferredDefault`| object   | Нет          | Фильтр для определения узла по умолчанию. Первый узел, совпавший с фильтром, станет значением поля `default` в селекторе. В версии 2 называлось `outbounds.preferredDefault`. |
 | `comment`         | string   | Нет          | Комментарий, выводится перед JSON селектора в результирующем файле. |
+| `wizard`          | string/object | Нет          | Параметр для скрытия outbound в визарде и управления обязательностью. Поддерживает два формата:<br/>- **Старый формат (обратная совместимость)**: `"wizard": "hide"` — скрывает outbound из списка доступных outbounds на второй вкладке (Rules) визарда<br/>- **Новый формат**: `"wizard": {"hide": true, "required": 2}` — объект с полями `hide` (boolean) и `required` (int). Поле `required` может иметь значения: `0` или отсутствует — игнорировать; `1` — проверить только наличие тега (если отсутствует, добавить из шаблона); `>1` (например, `2`) — строгое соответствие шаблону (если отсутствует или не совпадает, заменить/добавить из шаблона). |
 
 #### Логика фильтрации в `filters`
 
@@ -621,57 +623,78 @@ migrateV2ToV3() - если версия 2 (или после v1→v2)
 
 Config Wizard (мастер настройки) использует специальную логику загрузки ParserConfig для обеспечения согласованности конфигурации:
 
-### Загрузка из шаблона и config.json
+### Загрузка из config.json и шаблона
 
 При открытии Config Wizard:
 
-1. **Outbounds загружаются из шаблона** (`bin/config_template.json`)
-   - Все outbounds (селекторы, urltest и т.д.) берутся из блока `@ParserConfig` в шаблоне
-   - Это гарантирует, что все настроенные outbounds доступны, даже если они были удалены из `config.json`
-   - Предотвращает потерю outbounds при сохранении конфигурации
+1. **Приоритет: ParserConfig загружается из config.json** (если файл существует)
+   - Полный ParserConfig (включая все outbounds и настройки) загружается из существующего `config.json`
+   - Это сохраняет все персональные настройки пользователя, включая сложные конфигурации парсера
 
-2. **Proxies загружаются из config.json** (если файл существует)
-   - Подписки (`proxies[].source`) и прямые ссылки (`proxies[].connections`) берутся из существующего `config.json`
-   - Это сохраняет реальные URL подписок пользователя
-   - Если `config.json` не существует, используются proxies из шаблона
+2. **Проверка обязательных outbounds** (если config.json существует)
+   - Сначала читается шаблон (`bin/config_template.json` или `bin/config_template_macos.json`)
+   - В шаблоне находятся все outbounds с полем `wizard.required > 0`
+   - Для каждого такого outbound проверяется, есть ли он в текущем ParserConfig (загруженном из config.json)
+   - **Логика проверки:**
+     - **`required: 0` или отсутствует** — outbound игнорируется (не проверяется)
+     - **`required: 1`** — проверяется только наличие тега; если outbound отсутствует в config.json, он добавляется из шаблона; если присутствует, сохраняется существующая версия из config.json
+     - **`required > 1` (например, `2`)** — всегда переписывается из шаблона, независимо от наличия в config.json или соответствия шаблону
+   - **Формат**: Используйте формат `"wizard": {"hide": true, "required": 2}`. Старый формат `"wizard": "hide"` поддерживается для обратной совместимости, но без поля `required`.
 
-3. **Объединение конфигураций**
-   - Outbounds из шаблона + Proxies из config.json = финальная конфигурация в визарде
-   - Это позволяет обновлять список outbounds в шаблоне без потери пользовательских подписок
+3. **Fallback: использование шаблона** (если config.json не существует или не содержит ParserConfig)
+   - Если `config.json` не существует или не содержит валидный ParserConfig, используется шаблон (`bin/config_template.json`)
+   - Все outbounds и proxies берутся из шаблона
 
 ### Пример работы
 
-**Шаблон** (`config_template.json`):
+**Шаг 1: Чтение шаблона** (`config_template.json`):
+При открытии визарда сначала читается шаблон, в котором находится:
 ```json
 {
   "ParserConfig": {
     "outbounds": [
       {"tag": "proxy-out", "type": "selector", ...},
-      {"tag": "go-any-way-githubusercontent", "type": "urltest", ...}
+      {
+        "tag": "go-any-way-githubusercontent",
+        "wizard": {"hide": true, "required": 2},
+        "type": "urltest",
+        ...
+      }
     ],
     "proxies": [{"source": "https://your-subscription-url-here"}]
   }
 }
 ```
 
-**config.json** (существующий):
+**Шаг 2: Загрузка из config.json** (если файл существует):
+Загружается полный ParserConfig из существующего `config.json`, включая все outbounds, настройки и proxies:
 ```json
 {
   "ParserConfig": {
     "outbounds": [
       {"tag": "proxy-out", "type": "selector", ...}
-      // go-any-way-githubusercontent был удален
+      // go-any-way-githubusercontent был удален пользователем
     ],
     "proxies": [{"source": "https://real-subscription-url.com"}]
   }
 }
 ```
 
+**Шаг 3: Проверка обязательных outbounds**:
+Система находит в шаблоне outbound `"go-any-way-githubusercontent"` с `"wizard": {"hide": true, "required": 2}` и проверяет его наличие в загруженном ParserConfig.
+
+**Шаг 4: Действие**:
+- Не важно Outbound присутствует в config.json, важно что из-за `required: 2` в шаблоне → он насильно всегда переписывается из шаблона
+
+
 **Результат в визарде**:
-- Outbounds: оба из шаблона (`proxy-out` + `go-any-way-githubusercontent`)
+- ParserConfig: полностью из config.json (сохраняются все персональные настройки)
+- Обязательные outbounds: проверяются и добавляются/обновляются из шаблона согласно полю `wizard.required`
 - Proxies: из config.json (`https://real-subscription-url.com`)
 
-Это предотвращает ситуацию, когда outbound удаляется из `config.json` и больше не появляется в визарде, даже если он есть в шаблоне.
+Это гарантирует, что критически важные outbounds (например, для загрузки rule-sets) всегда присутствуют в конфигурации в правильном виде, даже если они были удалены или изменены пользователем.
+
+**Примечание**: Старый формат `"wizard": "hide"` поддерживается для обратной совместимости, но без поля `required` (только скрытие из визарда).
 
 ## Особенности и советы
 

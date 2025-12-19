@@ -175,6 +175,13 @@ type ProxySource struct {
 
 // OutboundConfig represents an outbound selector configuration (version 3)
 // Clean structure without legacy fields - used in main codebase
+// WizardConfig represents the wizard configuration for outbounds
+// Supports both old format ("wizard":"hide") and new format ("wizard":{"hide":true, "required":2})
+type WizardConfig struct {
+	Hide     bool `json:"hide,omitempty"`     // Hide outbound from wizard second tab
+	Required int  `json:"required,omitempty"` // Optional: 0 or missing=ignore, 1=check presence only, >1=strict match from template
+}
+
 type OutboundConfig struct {
 	Tag              string                 `json:"tag"`
 	Type             string                 `json:"type"`
@@ -183,7 +190,48 @@ type OutboundConfig struct {
 	AddOutbounds     []string               `json:"addOutbounds,omitempty"`
 	PreferredDefault map[string]interface{} `json:"preferredDefault,omitempty"`
 	Comment          string                 `json:"comment,omitempty"`
-	Wizard           string                 `json:"wizard,omitempty"` // "hide" to hide from wizard second tab
+	Wizard           interface{}            `json:"wizard,omitempty"` // Supports both "hide" (string) and {"hide":true, "required":2} (object) for backward compatibility
+}
+
+// IsWizardHidden checks if outbound should be hidden from wizard
+// Supports both old format ("wizard":"hide") and new format ("wizard":{"hide":true})
+func (oc *OutboundConfig) IsWizardHidden() bool {
+	if oc.Wizard == nil {
+		return false
+	}
+
+	// Old format: "wizard":"hide"
+	if wizardStr, ok := oc.Wizard.(string); ok {
+		return wizardStr == "hide"
+	}
+
+	// New format: "wizard":{"hide":true, ...}
+	if wizardMap, ok := oc.Wizard.(map[string]interface{}); ok {
+		if hideVal, ok := wizardMap["hide"]; ok {
+			if hideBool, ok := hideVal.(bool); ok {
+				return hideBool
+			}
+		}
+	}
+
+	return false
+}
+
+// GetWizardRequired returns the required value from wizard config
+// Only checks wizard.required from new format ("wizard": {"hide": true, "required": 2})
+func (oc *OutboundConfig) GetWizardRequired() int {
+	if oc.Wizard != nil {
+		if wizardMap, ok := oc.Wizard.(map[string]interface{}); ok {
+			if requiredVal, ok := wizardMap["required"]; ok {
+				if requiredInt, ok := requiredVal.(float64); ok {
+					return int(requiredInt)
+				}
+			}
+		}
+	}
+
+	// No required field found - return 0 (ignore)
+	return 0
 }
 
 // ExtractParserConfig extracts the @ParserConfig block from config.json

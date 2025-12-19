@@ -824,53 +824,258 @@ func (state *WizardState) nextBackupPath(path string) string {
 	}
 }
 
+// ensureRequiredOutbounds проверяет и добавляет/обновляет обязательные outbounds из шаблона
+//
+// ЛОГИКА РАБОТЫ:
+// 1. Парсим шаблон из templateParserConfigJSON для получения списка outbounds с wizard.required > 0
+// 2. Создаем карту существующих outbounds из parserConfig (загруженного из config.json) по тегу для быстрого поиска
+// 3. Проходим по всем outbounds из шаблона:
+//   - Если wizard.required == 0 или отсутствует → пропускаем (не проверяем)
+//   - Если wizard.required == 1:
+//   - Проверяем только наличие тега в config.json
+//   - Если отсутствует → добавляем из шаблона
+//   - Если присутствует → сохраняем существующую версию из config.json (не трогаем)
+//   - Если wizard.required > 1 (например, 2):
+//   - Всегда переписываем из шаблона, независимо от наличия в config.json
+//   - Если присутствует → заменяем через указатель (*existingOutbound = *cloned)
+//   - Если отсутствует → добавляем в список (append)
+//
+// ВАЖНО:
+// - При required > 1 не проверяем соответствие - всегда переписываем из шаблона
+// - При required == 1 проверяем только наличие тега, содержимое не трогаем
+// - Клонирование выполняется один раз перед проверкой exists для оптимизации
+func ensureRequiredOutbounds(parserConfig *core.ParserConfig, templateParserConfigJSON string) {
+	// ШАГ 1: Парсим шаблон для получения списка outbounds с wizard.required > 0
+	var templateParserConfig core.ParserConfig
+	if err := json.Unmarshal([]byte(templateParserConfigJSON), &templateParserConfig); err != nil {
+		errorLog("ConfigWizard: Failed to parse template ParserConfig for required outbounds: %v", err)
+		return
+	}
+
+	// ШАГ 2: Создаем карту существующих outbounds из parserConfig (загруженного из config.json) по тегу
+	// Это позволяет быстро проверить наличие outbound по тегу без полного перебора
+	existingOutbounds := make(map[string]*core.OutboundConfig)
+	for i := range parserConfig.ParserConfig.Outbounds {
+		tag := parserConfig.ParserConfig.Outbounds[i].Tag
+		if tag != "" {
+			existingOutbounds[tag] = &parserConfig.ParserConfig.Outbounds[i]
+		}
+	}
+
+	// ШАГ 3: Проходим по всем outbounds из шаблона и проверяем обязательные
+	for _, templateOutbound := range templateParserConfig.ParserConfig.Outbounds {
+		// Извлекаем значение required из wizard.required (новый формат) или игнорируем если отсутствует
+		required := templateOutbound.GetWizardRequired()
+		if required <= 0 {
+			continue // Пропускаем необязательные outbounds (required == 0 или отсутствует)
+		}
+
+		tag := templateOutbound.Tag
+		if tag == "" {
+			continue // Пропускаем outbounds без тега (не можем проверить наличие)
+		}
+
+		// Проверяем наличие outbound в текущем ParserConfig (из config.json)
+		existingOutbound, exists := existingOutbounds[tag]
+
+		if required == 1 {
+			// ЛОГИКА для required == 1: проверяем только наличие тега
+			if !exists {
+				// Outbound отсутствует в config.json → добавляем из шаблона
+				cloned := cloneOutbound(&templateOutbound)
+				parserConfig.ParserConfig.Outbounds = append(parserConfig.ParserConfig.Outbounds, *cloned)
+				infoLog("ConfigWizard: Added required outbound '%s' (required=1) from template", tag)
+			} else {
+				// Outbound присутствует в config.json → сохраняем существующую версию (не трогаем)
+				infoLog("ConfigWizard: Required outbound '%s' (required=1) already exists, keeping existing", tag)
+			}
+		} else if required > 1 {
+			// ЛОГИКА для required > 1: всегда переписываем из шаблона, независимо от наличия в config.json
+			// Клонируем один раз перед проверкой exists для оптимизации
+			cloned := cloneOutbound(&templateOutbound)
+			if exists {
+				// Outbound существует в config.json → заменяем через указатель на версию из шаблона
+				*existingOutbound = *cloned
+				infoLog("ConfigWizard: Replaced outbound '%s' (required=%d) with template version (always overwrite)", tag, required)
+			} else {
+				// Outbound отсутствует в config.json → добавляем из шаблона
+				parserConfig.ParserConfig.Outbounds = append(parserConfig.ParserConfig.Outbounds, *cloned)
+				infoLog("ConfigWizard: Added required outbound '%s' (required=%d) from template", tag, required)
+			}
+		}
+	}
+}
+
+// cloneOutbound создает глубокую копию OutboundConfig
+func cloneOutbound(src *core.OutboundConfig) *core.OutboundConfig {
+	dst := &core.OutboundConfig{
+		Tag:          src.Tag,
+		Type:         src.Type,
+		Comment:      src.Comment,
+		AddOutbounds: make([]string, len(src.AddOutbounds)),
+	}
+
+	// Копируем Wizard (поддерживаем оба формата)
+	if src.Wizard != nil {
+		// Если это map, создаем глубокую копию
+		if wizardMap, ok := src.Wizard.(map[string]interface{}); ok {
+			dst.Wizard = deepCopyValue(wizardMap)
+		} else {
+			// Если это строка, просто копируем
+			dst.Wizard = src.Wizard
+		}
+	}
+	copy(dst.AddOutbounds, src.AddOutbounds)
+
+	// Копируем Options
+	if src.Options != nil {
+		dst.Options = make(map[string]interface{})
+		for k, v := range src.Options {
+			dst.Options[k] = deepCopyValue(v)
+		}
+	}
+
+	// Копируем Filters
+	if src.Filters != nil {
+		dst.Filters = make(map[string]interface{})
+		for k, v := range src.Filters {
+			dst.Filters[k] = deepCopyValue(v)
+		}
+	}
+
+	// Копируем PreferredDefault
+	if src.PreferredDefault != nil {
+		dst.PreferredDefault = make(map[string]interface{})
+		for k, v := range src.PreferredDefault {
+			dst.PreferredDefault[k] = deepCopyValue(v)
+		}
+	}
+
+	return dst
+}
+
+// deepCopyValue создает глубокую копию значения (для map и slice)
+func deepCopyValue(v interface{}) interface{} {
+	switch val := v.(type) {
+	case map[string]interface{}:
+		result := make(map[string]interface{})
+		for k, vv := range val {
+			result[k] = deepCopyValue(vv)
+		}
+		return result
+	case []interface{}:
+		result := make([]interface{}, len(val))
+		for i, vv := range val {
+			result[i] = deepCopyValue(vv)
+		}
+		return result
+	default:
+		return v
+	}
+}
+
+// outboundsMatchStrict проверяет строгое соответствие двух outbounds
+func outboundsMatchStrict(existing, template *core.OutboundConfig) bool {
+	// Сравниваем основные поля
+	if existing.Tag != template.Tag ||
+		existing.Type != template.Type ||
+		existing.Comment != template.Comment {
+		return false
+	}
+
+	// Сравниваем Wizard (поддерживаем оба формата)
+	existingHide := existing.IsWizardHidden()
+	templateHide := template.IsWizardHidden()
+	if existingHide != templateHide {
+		return false
+	}
+
+	// Сравниваем AddOutbounds
+	if !stringSlicesEqual(existing.AddOutbounds, template.AddOutbounds) {
+		return false
+	}
+
+	// Сравниваем Options (глубокое сравнение)
+	if !mapsEqual(existing.Options, template.Options) {
+		return false
+	}
+
+	// Сравниваем Filters (глубокое сравнение)
+	if !mapsEqual(existing.Filters, template.Filters) {
+		return false
+	}
+
+	// Сравниваем PreferredDefault (глубокое сравнение)
+	if !mapsEqual(existing.PreferredDefault, template.PreferredDefault) {
+		return false
+	}
+
+	return true
+}
+
+// stringSlicesEqual проверяет равенство двух слайсов строк
+func stringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// mapsEqual проверяет глубокое равенство двух map[string]interface{}
+func mapsEqual(a, b map[string]interface{}) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, av := range a {
+		bv, ok := b[k]
+		if !ok {
+			return false
+		}
+		if !valuesEqual(av, bv) {
+			return false
+		}
+	}
+	return true
+}
+
+// valuesEqual проверяет равенство двух значений (рекурсивно для map и slice)
+func valuesEqual(a, b interface{}) bool {
+	// Сравниваем через JSON для надежности
+	aJSON, err := json.Marshal(a)
+	if err != nil {
+		return false
+	}
+	bJSON, err := json.Marshal(b)
+	if err != nil {
+		return false
+	}
+	return string(aJSON) == string(bJSON)
+}
+
 // loadConfigFromFile загружает данные из существующего config.json
 func loadConfigFromFile(state *WizardState) (bool, error) {
-	// Если есть шаблон с ParserConfig, используем его outbounds, но proxies берем из config.json
-	if state.TemplateData != nil && state.TemplateData.ParserConfig != "" {
-		infoLog("ConfigWizard: Using ParserConfig from template for outbounds")
-		// Парсим ParserConfig из шаблона
-		var templateParserConfig core.ParserConfig
-		if err := json.Unmarshal([]byte(state.TemplateData.ParserConfig), &templateParserConfig); err != nil {
-			errorLog("ConfigWizard: Failed to parse ParserConfig from template: %v", err)
-			// Fallback to config.json if template parsing fails
-		} else {
-			// Проверяем наличие config.json для получения proxies
-			var configParserConfig *core.ParserConfig
-			if _, err := os.Stat(state.Controller.ConfigPath); err == nil {
-				// config.json существует - берем proxies оттуда
-				configParserConfig, err = core.ExtractParserConfig(state.Controller.ConfigPath)
-				if err != nil {
-					infoLog("ConfigWizard: Failed to extract ParserConfig from config.json, using template proxies: %v", err)
-				}
+	// ПРИОРИТЕТ: Сначала проверяем наличие config.json и загружаем ParserConfig из него
+	// Только если config.json не существует или не содержит ParserConfig, используем шаблон
+	if _, err := os.Stat(state.Controller.ConfigPath); err == nil {
+		// config.json существует - пытаемся извлечь ParserConfig из него
+		parserConfig, err := core.ExtractParserConfig(state.Controller.ConfigPath)
+		if err == nil {
+			// Успешно извлекли ParserConfig из config.json - используем его полностью
+			infoLog("ConfigWizard: Using ParserConfig from config.json")
+			state.ParserConfig = parserConfig
+
+			// Проверяем и добавляем/обновляем обязательные outbounds из шаблона
+			if state.TemplateData != nil && state.TemplateData.ParserConfig != "" {
+				ensureRequiredOutbounds(parserConfig, state.TemplateData.ParserConfig)
 			}
 
-			// Объединяем: outbounds из шаблона, proxies из config.json (если есть)
-			proxiesFromConfig := false
-			if configParserConfig != nil && len(configParserConfig.ParserConfig.Proxies) > 0 {
-				// Используем proxies из config.json
-				templateParserConfig.ParserConfig.Proxies = configParserConfig.ParserConfig.Proxies
-				proxiesFromConfig = true
-				infoLog("ConfigWizard: Using proxies from config.json, outbounds from template")
-			} else {
-				infoLog("ConfigWizard: Using proxies from template (config.json not found or empty)")
-			}
-
-			state.ParserConfig = &templateParserConfig
-
-			// Заполняем поле URL только если proxies из реального config.json, а не из шаблона
-			if proxiesFromConfig && len(templateParserConfig.ParserConfig.Proxies) > 0 {
-				lines := make([]string, 0)
-				for _, proxySource := range templateParserConfig.ParserConfig.Proxies {
-					if proxySource.Source != "" {
-						lines = append(lines, proxySource.Source)
-					}
-					lines = append(lines, proxySource.Connections...)
-				}
-				state.VLESSURLEntry.SetText(strings.Join(lines, "\n"))
-			}
-
-			parserConfigJSON, err := serializeParserConfig(&templateParserConfig)
+			// Заполняем поле ParserConfig ПЕРВЫМ, чтобы applyURLToParserConfig мог его прочитать
+			parserConfigJSON, err := serializeParserConfig(parserConfig)
 			if err != nil {
 				errorLog("ConfigWizard: Failed to serialize ParserConfig: %v", err)
 				return false, err
@@ -879,55 +1084,66 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 			state.parserConfigUpdating = true
 			state.ParserConfigEntry.SetText(string(parserConfigJSON))
 			state.parserConfigUpdating = false
+
+			// Теперь заполняем поле URL - это вызовет applyURLToParserConfig, который прочитает уже заполненный ParserConfigEntry
+			// Вставляем все URL из реального config.json
+			if len(parserConfig.ParserConfig.Proxies) > 0 {
+				lines := make([]string, 0)
+				for _, proxySource := range parserConfig.ParserConfig.Proxies {
+					if proxySource.Source != "" {
+						lines = append(lines, proxySource.Source)
+					}
+					lines = append(lines, proxySource.Connections...)
+				}
+				state.VLESSURLEntry.SetText(strings.Join(lines, "\n"))
+			}
+
+			state.previewNeedsParse = true
+			infoLog("ConfigWizard: Successfully loaded config from file")
 			return true, nil
 		}
-	}
+		// Если не удалось извлечь ParserConfig из config.json, показываем ошибку пользователю
+		errorLog("ConfigWizard: Failed to extract ParserConfig from config.json: %v", err)
 
-	// Проверяем наличие config.json
-	if _, err := os.Stat(state.Controller.ConfigPath); os.IsNotExist(err) {
-		// Конфиг не существует - оставляем значения по умолчанию
-		infoLog("ConfigWizard: config.json not found, using default values")
-		return false, nil
-	}
-
-	// Извлекаем ParserConfig из config.json (fallback)
-	parserConfig, err := core.ExtractParserConfig(state.Controller.ConfigPath)
-	if err != nil {
-		// Если не удалось извлечь - оставляем значения по умолчанию
-		errorLog("ConfigWizard: Failed to extract ParserConfig: %v", err)
-		return false, nil // Не критическая ошибка
-	}
-
-	state.ParserConfig = parserConfig
-
-	// Заполняем поле ParserConfig ПЕРВЫМ, чтобы applyURLToParserConfig мог его прочитать
-	parserConfigJSON, err := serializeParserConfig(parserConfig)
-	if err != nil {
-		errorLog("ConfigWizard: Failed to serialize ParserConfig: %v", err)
-		return false, err
-	}
-
-	state.parserConfigUpdating = true
-	state.ParserConfigEntry.SetText(string(parserConfigJSON))
-	state.parserConfigUpdating = false
-
-	// Теперь заполняем поле URL - это вызовет applyURLToParserConfig, который прочитает уже заполненный ParserConfigEntry
-	// Вставляем все URL из реального config.json (не из шаблона)
-	if len(parserConfig.ParserConfig.Proxies) > 0 {
-		lines := make([]string, 0)
-		for _, proxySource := range parserConfig.ParserConfig.Proxies {
-			if proxySource.Source != "" {
-				lines = append(lines, proxySource.Source)
-			}
-			lines = append(lines, proxySource.Connections...)
+		// Показываем ошибку пользователю, если окно уже создано
+		if state.Window != nil {
+			errorMsg := fmt.Sprintf(
+				"Error in @ParserConfig block in config.json:\n\n%v\n\n"+
+					"Check JSON syntax in @ParserConfig block (e.g., trailing commas, invalid quotes, unclosed brackets).\n"+
+					"Default template will be used.",
+				err,
+			)
+			dialog.ShowError(fmt.Errorf(errorMsg), state.Window)
 		}
-		state.VLESSURLEntry.SetText(strings.Join(lines, "\n"))
 	}
 
-	state.previewNeedsParse = true
+	// Fallback: Если config.json не существует или не содержит ParserConfig, используем шаблон
+	if state.TemplateData != nil && state.TemplateData.ParserConfig != "" {
+		infoLog("ConfigWizard: Using ParserConfig from template (config.json not found or invalid)")
+		// Парсим ParserConfig из шаблона
+		var templateParserConfig core.ParserConfig
+		if err := json.Unmarshal([]byte(state.TemplateData.ParserConfig), &templateParserConfig); err != nil {
+			errorLog("ConfigWizard: Failed to parse ParserConfig from template: %v", err)
+			return false, nil
+		}
 
-	infoLog("ConfigWizard: Successfully loaded config from file")
-	return true, nil
+		state.ParserConfig = &templateParserConfig
+
+		parserConfigJSON, err := serializeParserConfig(&templateParserConfig)
+		if err != nil {
+			errorLog("ConfigWizard: Failed to serialize ParserConfig: %v", err)
+			return false, err
+		}
+
+		state.parserConfigUpdating = true
+		state.ParserConfigEntry.SetText(string(parserConfigJSON))
+		state.parserConfigUpdating = false
+		return true, nil
+	}
+
+	// Конфиг не существует и шаблона нет - оставляем значения по умолчанию
+	infoLog("ConfigWizard: config.json not found and no template available, using default values")
+	return false, nil
 }
 
 // setCheckURLState управляет состоянием кнопки Check и прогресс-бара
@@ -2111,8 +2327,8 @@ func (state *WizardState) getAvailableOutbounds() []string {
 	if parserCfg != nil {
 		// Добавляем глобальные outbounds
 		for _, outbound := range parserCfg.ParserConfig.Outbounds {
-			// Пропускаем outbounds с "wizard":"hide"
-			if outbound.Wizard == "hide" {
+			// Пропускаем outbounds с "wizard":"hide" или "wizard":{"hide":true}
+			if outbound.IsWizardHidden() {
 				continue
 			}
 			if outbound.Tag != "" {
@@ -2125,8 +2341,8 @@ func (state *WizardState) getAvailableOutbounds() []string {
 		// Добавляем локальные outbounds из всех ProxySource
 		for _, proxySource := range parserCfg.ParserConfig.Proxies {
 			for _, outbound := range proxySource.Outbounds {
-				// Пропускаем outbounds с "wizard":"hide"
-				if outbound.Wizard == "hide" {
+				// Пропускаем outbounds с "wizard":"hide" или "wizard":{"hide":true}
+				if outbound.IsWizardHidden() {
 					continue
 				}
 				if outbound.Tag != "" {
