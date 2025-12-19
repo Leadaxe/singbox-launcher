@@ -13,10 +13,10 @@ jobs:
         include:
           - os: ubuntu-latest
             cgo: '1'
-          #- os: macos-latest
-          #  cgo: '1'
-          #- os: windows-latest
-          #  cgo: '1'
+          - os: macos-latest
+            cgo: '1'
+          - os: windows-latest
+            cgo: '1'
     name: golangci-lint on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     steps:
@@ -58,7 +58,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     needs: golangci-lint
     steps:
       - name: Check out PR code
