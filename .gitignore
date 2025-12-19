@@ -29,6 +29,7 @@ rsrc.syso
 .idea/
 .vscode/
 .cursor/
+.cursor-worktree-backup/
 *.swp
 *.swo
 *~
@@ -64,7 +65,7 @@ test/
 
 # Config files with sensitive data - DO NOT COMMIT!
 bin/config.json
-bin/config-old*.json
+bin/config*.json
 bin/*.exe
 bin/*.dll
 # sing-box binary (downloaded artifact)

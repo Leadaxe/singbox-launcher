@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"image/color"
 	"log"
+	"sort"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -18,7 +20,7 @@ import (
 // CreateClashAPITab creates and returns the content for the "Clash API" tab.
 func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	ac.ApiStatusLabel = widget.NewLabel("Status: Not checked")
-	status := widget.NewLabel("Click 'Load Proxies' or 'Test API'")
+	status := widget.NewLabel("Click 'Load Proxies'")
 	ac.ListStatusLabel = status
 
 	selectorOptions, defaultSelector, err := core.GetSelectorGroupsFromConfig(ac.ConfigPath)
@@ -237,9 +239,9 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 		// Обновляем фон
 		if proxyInfo.Name == ac.GetActiveProxyName() {
-			background.FillColor = color.NRGBA{R: 144, G: 238, B: 144, A: 128}
+			background.FillColor = color.NRGBA{R: 144, G: 238, B: 144, A: 128} // Зеленый для активного
 		} else if id == ac.GetSelectedIndex() {
-			background.FillColor = color.Gray{0xDD}
+			background.FillColor = color.NRGBA{R: 135, G: 206, B: 250, A: 128} // Синий оттенок для выделенного
 		} else {
 			background.FillColor = color.Transparent
 		}
@@ -293,12 +295,170 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 	ac.ProxiesListWidget = proxiesListWidget
 
+	// Переменные для отслеживания направления сортировки
+	sortNameAscending := true
+	sortDelayAscending := true
+
+	// Функция сортировки по имени с указанным направлением
+	sortByName := func(ascending bool) {
+		proxies := ac.GetProxiesList()
+		if len(proxies) == 0 {
+			return
+		}
+		sorted := make([]api.ProxyInfo, len(proxies))
+		copy(sorted, proxies)
+		// Сортировка по имени
+		if ascending {
+			sort.Slice(sorted, func(i, j int) bool {
+				return sorted[i].Name < sorted[j].Name
+			})
+			status.SetText("Sorted by name (A-Z)")
+		} else {
+			sort.Slice(sorted, func(i, j int) bool {
+				return sorted[i].Name > sorted[j].Name
+			})
+			status.SetText("Sorted by name (Z-A)")
+		}
+		ac.SetProxiesList(sorted)
+		if ac.ProxiesListWidget != nil {
+			ac.ProxiesListWidget.Refresh()
+		}
+	}
+
+	// Функция сортировки по задержке с указанным направлением
+	sortByDelay := func(ascending bool) {
+		proxies := ac.GetProxiesList()
+		if len(proxies) == 0 {
+			return
+		}
+		sorted := make([]api.ProxyInfo, len(proxies))
+		copy(sorted, proxies)
+
+		if ascending {
+			// Сортировка по задержке (меньше - лучше), прокси без задержки в конец
+			sort.Slice(sorted, func(i, j int) bool {
+				delayI := sorted[i].Delay
+				delayJ := sorted[j].Delay
+				// Прокси без задержки (0 или отрицательная) идут в конец
+				if delayI <= 0 {
+					delayI = 999999
+				}
+				if delayJ <= 0 {
+					delayJ = 999999
+				}
+				return delayI < delayJ
+			})
+			status.SetText("Sorted by delay (fastest first)")
+		} else {
+			// Сортировка по задержке (больше - выше), прокси без задержки в начало
+			sort.Slice(sorted, func(i, j int) bool {
+				delayI := sorted[i].Delay
+				delayJ := sorted[j].Delay
+				// Прокси без задержки (0 или отрицательная) идут в начало
+				if delayI <= 0 {
+					delayI = -1
+				}
+				if delayJ <= 0 {
+					delayJ = -1
+				}
+				return delayI > delayJ
+			})
+			status.SetText("Sorted by delay (slowest first)")
+		}
+
+		ac.SetProxiesList(sorted)
+		if ac.ProxiesListWidget != nil {
+			ac.ProxiesListWidget.Refresh()
+		}
+	}
+
+	// --- Функция массового пинга всех прокси ---
+	pingAllProxies := func() {
+		if !ac.ClashAPIEnabled {
+			ShowErrorText(ac.MainWindow, "Clash API", "API is disabled: config error")
+			return
+		}
+		proxies := ac.GetProxiesList()
+		if len(proxies) == 0 {
+			status.SetText("No proxies to ping")
+			return
+		}
+		status.SetText(fmt.Sprintf("Pinging %d proxies...", len(proxies)))
+		go func() {
+			for i, proxy := range proxies {
+				delay, err := api.GetDelay(ac.ClashAPIBaseURL, ac.ClashAPIToken, proxy.Name, ac.ApiLogFile)
+				fyne.Do(func() {
+					// Обновляем задержку в списке прокси
+					updatedProxies := ac.GetProxiesList()
+					for j := range updatedProxies {
+						if updatedProxies[j].Name == proxy.Name {
+							if err != nil {
+								updatedProxies[j].Delay = -1 // Ошибка
+							} else {
+								updatedProxies[j].Delay = delay
+							}
+							break
+						}
+					}
+					ac.SetProxiesList(updatedProxies)
+					if ac.ProxiesListWidget != nil {
+						ac.ProxiesListWidget.Refresh()
+					}
+					status.SetText(fmt.Sprintf("Pinging %d/%d...", i+1, len(proxies)))
+				})
+				// Небольшая задержка между запросами, чтобы не перегружать API
+				time.Sleep(100 * time.Millisecond)
+			}
+			fyne.Do(func() {
+				status.SetText(fmt.Sprintf("Ping test completed for %d proxies", len(proxies)))
+			})
+		}()
+	}
+
 	// --- Сборка всего контента ---
 	scrollContainer := container.NewScroll(proxiesListWidget)
 	scrollContainer.SetMinSize(fyne.NewSize(0, 300))
 
-	loadButton := widget.NewButton("Load Proxies", onLoadAndRefreshProxies)
-	testAPIButton := widget.NewButton("Test API Connection", onTestAPIConnection)
+	// Кнопка сортировки по алфавиту (слева)
+	var sortByNameButton *widget.Button
+	sortByNameButton = widget.NewButton("↑", func() {
+		// Выполняем сортировку с текущим направлением
+		sortByName(sortNameAscending)
+		// Переключаем направление для следующего раза
+		sortNameAscending = !sortNameAscending
+		// Обновляем иконку для следующего нажатия
+		if sortNameAscending {
+			sortByNameButton.SetText("↑")
+		} else {
+			sortByNameButton.SetText("↓")
+		}
+	})
+	sortNameLabel := widget.NewLabel("A…Z")
+
+	// Кнопки пинга и сортировки по задержке (справа)
+	var sortByDelayButton *widget.Button
+	sortByDelayButton = widget.NewButton("↑", func() {
+		// Выполняем сортировку с текущим направлением
+		sortByDelay(sortDelayAscending)
+		// Переключаем направление для следующего раза
+		sortDelayAscending = !sortDelayAscending
+		// Обновляем иконку для следующего нажатия
+		if sortDelayAscending {
+			sortByDelayButton.SetText("↑")
+		} else {
+			sortByDelayButton.SetText("↓")
+		}
+	})
+	pingAllButton := widget.NewButton("test", pingAllProxies)
+
+	// Группа кнопок: слева сортировка, справа пинг и сортировка по задержке
+	buttonsRow := container.NewHBox(
+		sortByNameButton,
+		sortNameLabel,
+		layout.NewSpacer(),
+		sortByDelayButton,
+		pingAllButton,
+	)
 
 	groupSelect = widget.NewSelect(selectorOptions, func(value string) {
 		if value == "" {
@@ -330,14 +490,20 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	topControls := container.NewVBox(
 		ac.ApiStatusLabel,
 		container.NewHBox(widget.NewLabel("Selector group:"), groupSelect),
-		testAPIButton,
 		widget.NewSeparator(),
-		loadButton,
+		buttonsRow,
 	)
+
+	// Обертываем status label в контейнер с горизонтальной прокруткой
+	// Scroll контейнер ограничит ширину label и добавит прокрутку при необходимости
+	statusScroll := container.NewScroll(status)
+	statusScroll.Direction = container.ScrollBoth
+	// Ограничиваем только высоту, ширина будет ограничена родительским Border контейнером
+	statusScroll.SetMinSize(fyne.NewSize(0, status.MinSize().Height))
 
 	contentContainer := container.NewBorder(
 		topControls,
-		status,
+		statusScroll,
 		nil,
 		nil,
 		scrollContainer,

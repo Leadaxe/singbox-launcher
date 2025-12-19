@@ -8,6 +8,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
@@ -124,9 +125,11 @@ func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
 		launcherUpdateLabel,
 		widget.NewSeparator(),
 		container.NewHBox(
+			layout.NewSpacer(),
 			telegramLink,
 			widget.NewLabel(" | "),
 			githubLink,
+			layout.NewSpacer(),
 		),
 	)
 }

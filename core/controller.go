@@ -19,6 +19,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/api"
@@ -209,6 +210,15 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	log.Println("Application initializing...")
 	ac.Application = app.NewWithID("com.singbox.launcher")
 	ac.Application.SetIcon(ac.AppIconData)
+	// Set theme based on constants
+	switch constants.AppTheme {
+	case "dark":
+		ac.Application.Settings().SetTheme(theme.DarkTheme())
+	case "light":
+		ac.Application.Settings().SetTheme(theme.LightTheme())
+	default: // "default" or any other value uses system theme
+		ac.Application.Settings().SetTheme(theme.DefaultTheme())
+	}
 	ac.RunningState = &RunningState{controller: ac}
 	ac.RunningState.Set(false) // Use Set() method instead of direct assignment
 	ac.ConsecutiveCrashAttempts = 0

@@ -63,7 +63,7 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 
 	// Создаем новое окно для мастера
 	wizardWindow := controller.Application.NewWindow("Config Wizard")
-	wizardWindow.Resize(fyne.NewSize(920, 720))
+	wizardWindow.Resize(fyne.NewSize(620, 660))
 	wizardWindow.CenterOnScreen()
 	state.Window = wizardWindow
 
@@ -410,7 +410,7 @@ func createVLESSSourceTab(state *WizardState) fyne.CanvasObject {
 	urlEntryScroll.Direction = container.ScrollBoth
 	// Создаем фиктивный Rectangle для установки размера (высота 3 строки, ширина ограничена)
 	urlEntrySizeRect := canvas.NewRectangle(color.Transparent)
-	urlEntrySizeRect.SetMinSize(fyne.NewSize(900, 60)) // Ширина 900px, высота ~3 строки (примерно 20px на строку)
+	urlEntrySizeRect.SetMinSize(fyne.NewSize(0, 60)) // Ширина 900px, высота ~3 строки (примерно 20px на строку)
 	// Обертываем в Max контейнер с Rectangle для фиксации размера
 	// Scroll контейнер будет ограничен этим размером и покажет скроллбары, когда содержимое не помещается
 	urlEntryWithSize := container.NewMax(
@@ -509,7 +509,7 @@ func createVLESSSourceTab(state *WizardState) fyne.CanvasObject {
 	previewScroll.Direction = container.ScrollBoth
 	// Создаем фиктивный Rectangle для установки высоты через container.NewMax
 	previewHeightRect := canvas.NewRectangle(color.Transparent)
-	previewHeightRect.SetMinSize(fyne.NewSize(0, 200)) // ~10 строк
+	previewHeightRect.SetMinSize(fyne.NewSize(0, 90)) // ~8-9 строк (уменьшено на ~30px)
 	// Обертываем в Max контейнер с Rectangle для фиксации высоты
 	previewWithHeight := container.NewMax(
 		previewHeightRect,
@@ -534,7 +534,7 @@ func createVLESSSourceTab(state *WizardState) fyne.CanvasObject {
 
 	// Добавляем скролл для длинного контента
 	scrollContainer := container.NewScroll(content)
-	scrollContainer.SetMinSize(fyne.NewSize(900, 680))
+	scrollContainer.SetMinSize(fyne.NewSize(0, 620))
 
 	return scrollContainer
 }
@@ -703,9 +703,9 @@ func createPreviewTab(state *WizardState) fyne.CanvasObject {
 }
 
 func createRulesScroll(state *WizardState, content fyne.CanvasObject) fyne.CanvasObject {
-	maxHeight := state.Window.Canvas().Size().Height * 0.7
+	maxHeight := state.Window.Canvas().Size().Height * 0.65
 	if maxHeight <= 0 {
-		maxHeight = 480
+		maxHeight = 430
 	}
 	scroll := container.NewVScroll(content)
 	scroll.SetMinSize(fyne.NewSize(0, maxHeight))
@@ -846,9 +846,11 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 			}
 
 			// Объединяем: outbounds из шаблона, proxies из config.json (если есть)
+			proxiesFromConfig := false
 			if configParserConfig != nil && len(configParserConfig.ParserConfig.Proxies) > 0 {
 				// Используем proxies из config.json
 				templateParserConfig.ParserConfig.Proxies = configParserConfig.ParserConfig.Proxies
+				proxiesFromConfig = true
 				infoLog("ConfigWizard: Using proxies from config.json, outbounds from template")
 			} else {
 				infoLog("ConfigWizard: Using proxies from template (config.json not found or empty)")
@@ -856,8 +858,8 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 
 			state.ParserConfig = &templateParserConfig
 
-			// Заполняем поле URL - объединяем все Source и Connections из всех proxies
-			if len(templateParserConfig.ParserConfig.Proxies) > 0 {
+			// Заполняем поле URL только если proxies из реального config.json, а не из шаблона
+			if proxiesFromConfig && len(templateParserConfig.ParserConfig.Proxies) > 0 {
 				lines := make([]string, 0)
 				for _, proxySource := range templateParserConfig.ParserConfig.Proxies {
 					if proxySource.Source != "" {
@@ -910,6 +912,7 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 	state.parserConfigUpdating = false
 
 	// Теперь заполняем поле URL - это вызовет applyURLToParserConfig, который прочитает уже заполненный ParserConfigEntry
+	// Вставляем все URL из реального config.json (не из шаблона)
 	if len(parserConfig.ParserConfig.Proxies) > 0 {
 		lines := make([]string, 0)
 		for _, proxySource := range parserConfig.ParserConfig.Proxies {
