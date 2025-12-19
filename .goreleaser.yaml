@@ -1,0 +1,89 @@
+version: 2
+project_name: singbox-launcher
+
+before:
+  hooks:
+    - go mod tidy
+    - sh -c 'git describe --tags --always --dirty 2>/dev/null || echo "0.4.1" > VERSION'
+
+builds:
+  # ---------------------------------------------------------------------------
+  # Linux Builds (CGO Enabled)
+  # ---------------------------------------------------------------------------
+  - id: 'linux'
+    goos: [linux]
+    goarch: 
+      - amd64
+    env: [ "CGO_ENABLED=1" ]
+    ldflags:
+      - -s -w -X singbox-launcher/internal/constants.AppVersion={{.Version}}
+    main: ./
+    binary: '{{ .ProjectName }}'
+
+  # ---------------------------------------------------------------------------
+  # macOS Builds (CGO Enabled)
+  # ---------------------------------------------------------------------------
+  # Requires a macOS runner.
+  #- id: 'darwin'
+  #  goos: [darwin]
+  #  goarch: [amd64, arm64]
+  #  env: [ "CGO_ENABLED=1" ]
+  #  ldflags:
+  #    - -s -w -X singbox-launcher/internal/constants.AppVersion={{.Version}}
+  #  main: ./
+  #  binary: '{{ .ProjectName }}'
+
+  # ---------------------------------------------------------------------------
+  # Windows Builds (CGO Enabled)
+  # ---------------------------------------------------------------------------
+  - id: 'windows'
+    goos: [windows]
+    goarch: [amd64, arm64]
+    env: [ "CGO_ENABLED=1" ]
+    ldflags:
+      - -H windowsgui -s -w -X singbox-launcher/internal/constants.AppVersion={{.Version}}
+    main: ./
+    binary: '{{ .ProjectName }}'
+
+source:
+  enabled: true
+  prefix_template: '{{ .ProjectName }}-{{ .Version }}/'
+  files:
+  - VERSION
+
+archives:
+  - id: default
+    name_template: >-
+      {{- .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end -}}
+    formats: ['tar.gz']
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    # Explicitly list builds to include (optional but good for clarity)
+    ids: ['linux']
+
+# Generate Software Bill of Materials
+sboms:
+  - artifacts: archive
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: asc
+
+signs:
+- cmd: cosign
+  signature: "${artifact}.sigstore.json"
+  artifacts: checksum
+  args:
+    - sign-blob
+    - "--bundle=${signature}"
+    - "${artifact}"
+    - --yes
