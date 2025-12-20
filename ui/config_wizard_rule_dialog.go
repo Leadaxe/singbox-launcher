@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
 
 	"image/color"
@@ -9,7 +8,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
@@ -203,15 +201,11 @@ func showAddRuleDialog(state *WizardState, editRule *SelectableRuleState, ruleIn
 
 	saveRule = func() {
 		label := strings.TrimSpace(labelEntry.Text)
-		if label == "" {
-			dialog.ShowError(fmt.Errorf("Rule name cannot be empty"), state.Window)
-			return
-		}
-
 		selectedType := ruleTypeRadio.Selected
 		selectedOutbound := outboundSelect.Selected
-		if selectedOutbound == "" && len(availableOutbounds) > 0 {
-			selectedOutbound = availableOutbounds[0]
+		// Fallback: если outbound не выбран (например, при редактировании старого правила с несуществующим outbound)
+		if selectedOutbound == "" {
+			selectedOutbound = availableOutbounds[0] // availableOutbounds всегда не пустой (см. строки 107-109)
 		}
 
 		var ruleRaw map[string]interface{}
@@ -220,29 +214,12 @@ func showAddRuleDialog(state *WizardState, editRule *SelectableRuleState, ruleIn
 
 		if selectedType == ruleTypeIP {
 			ipText := strings.TrimSpace(ipEntry.Text)
-			if ipText == "" {
-				dialog.ShowError(fmt.Errorf("Please enter at least one IP address"), state.Window)
-				return
-			}
-			items = parseLines(ipText, false) // Для IP сохраняем обрезанные версии
+			items = parseLines(ipText, false) // Обрезаем пробелы
 			ruleKey = "ip_cidr"
 		} else {
 			urlText := strings.TrimSpace(urlEntry.Text)
-			if urlText == "" {
-				dialog.ShowError(fmt.Errorf("Please enter at least one domain"), state.Window)
-				return
-			}
-			items = parseLines(urlText, true) // Для доменов сохраняем оригинальные строки
+			items = parseLines(urlText, false) // Обрезаем пробелы
 			ruleKey = "domain"
-		}
-
-		if len(items) == 0 {
-			errMsg := "Please enter at least one valid IP address"
-			if ruleKey == "domain" {
-				errMsg = "Please enter at least one valid domain"
-			}
-			dialog.ShowError(fmt.Errorf(errMsg), state.Window)
-			return
 		}
 
 		ruleRaw = map[string]interface{}{
