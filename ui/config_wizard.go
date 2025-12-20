@@ -311,6 +311,12 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 			go func() {
 				state.triggerParseForPreview()
 			}()
+			// Проверяем нужен ли пересчет превью из-за изменений на вкладке Rules
+			if state.templatePreviewNeedsUpdate {
+				go func() {
+					state.updateTemplatePreviewAsync()
+				}()
+			}
 		}
 		updateNavigationButtons()
 		// Обновляем Border контейнер с новыми кнопками
@@ -550,13 +556,15 @@ func createTemplateTab(state *WizardState) fyne.CanvasObject {
 
 	state.initializeTemplateState()
 
-	availableOutbounds := state.getAvailableOutbounds()
-	if len(availableOutbounds) == 0 {
-		availableOutbounds = []string{defaultOutboundTag, rejectActionName}
-	}
+	availableOutbounds := ensureDefaultAvailableOutbounds(state.getAvailableOutbounds())
 
 	// Устанавливаем флаг для блокировки callbacks при инициализации
 	state.updatingOutboundOptions = true
+
+	// Инициализируем CustomRules если нужно
+	if state.CustomRules == nil {
+		state.CustomRules = make([]*SelectableRuleState, 0)
+	}
 
 	rulesBox := container.NewVBox()
 	if len(state.SelectableRuleStates) == 0 {
@@ -570,19 +578,14 @@ func createTemplateTab(state *WizardState) fyne.CanvasObject {
 			var outboundSelect *widget.Select
 			var outboundRow fyne.CanvasObject
 			if ruleState.Rule.HasOutbound {
-				if ruleState.SelectedOutbound == "" {
-					if ruleState.Rule.DefaultOutbound != "" {
-						ruleState.SelectedOutbound = ruleState.Rule.DefaultOutbound
-					} else {
-						ruleState.SelectedOutbound = availableOutbounds[0]
-					}
-				}
+				ensureDefaultOutbound(ruleState, availableOutbounds)
 				outboundSelect = widget.NewSelect(availableOutbounds, func(value string) {
 					// Игнорируем callback при программном обновлении
 					if state.updatingOutboundOptions {
 						return
 					}
 					state.SelectableRuleStates[idx].SelectedOutbound = value
+					state.templatePreviewNeedsUpdate = true
 				})
 				outboundSelect.SetSelected(ruleState.SelectedOutbound)
 				if !ruleState.Enabled {
@@ -597,6 +600,7 @@ func createTemplateTab(state *WizardState) fyne.CanvasObject {
 
 			checkbox := widget.NewCheck(ruleState.Rule.Label, func(val bool) {
 				state.SelectableRuleStates[idx].Enabled = val
+				state.templatePreviewNeedsUpdate = true
 				if outboundSelect != nil {
 					if val {
 						outboundSelect.Enable()
@@ -625,6 +629,68 @@ func createTemplateTab(state *WizardState) fyne.CanvasObject {
 		}
 	}
 
+	// Отображаем пользовательские правила
+	for i := range state.CustomRules {
+		customRule := state.CustomRules[i]
+		idx := i
+
+		ensureDefaultOutbound(customRule, availableOutbounds)
+
+		outboundSelect := widget.NewSelect(availableOutbounds, func(value string) {
+			if state.updatingOutboundOptions {
+				return
+			}
+			state.CustomRules[idx].SelectedOutbound = value
+			state.templatePreviewNeedsUpdate = true
+		})
+		outboundSelect.SetSelected(customRule.SelectedOutbound)
+		if !customRule.Enabled {
+			outboundSelect.Disable()
+		}
+
+		// Кнопка редактирования
+		editButton := widget.NewButton("✏️", func() {
+			showAddRuleDialog(state, customRule, idx)
+		})
+		editButton.Importance = widget.LowImportance
+
+		// Кнопка удаления
+		deleteButton := widget.NewButton("❌", func() {
+			// Создаем копию индекса для замыкания
+			deleteIdx := idx
+			// Удаляем правило
+			state.CustomRules = append(state.CustomRules[:deleteIdx], state.CustomRules[deleteIdx+1:]...)
+			state.templatePreviewNeedsUpdate = true
+			state.refreshRulesTab()
+		})
+		deleteButton.Importance = widget.LowImportance
+
+		checkbox := widget.NewCheck(customRule.Rule.Label, func(val bool) {
+			state.CustomRules[idx].Enabled = val
+			state.templatePreviewNeedsUpdate = true
+			if val {
+				outboundSelect.Enable()
+			} else {
+				outboundSelect.Disable()
+			}
+		})
+		checkbox.SetChecked(customRule.Enabled)
+
+		customRule.OutboundSelect = outboundSelect
+
+		rowContent := []fyne.CanvasObject{
+			checkbox,
+			editButton,
+			deleteButton,
+			layout.NewSpacer(),
+			container.NewHBox(
+				widget.NewLabel("Outbound:"),
+				outboundSelect,
+			),
+		}
+		rulesBox.Add(container.NewHBox(rowContent...))
+	}
+
 	state.ensureFinalSelected(availableOutbounds)
 	finalSelect := widget.NewSelect(availableOutbounds, func(value string) {
 		// Игнорируем callback при программном обновлении
@@ -632,11 +698,17 @@ func createTemplateTab(state *WizardState) fyne.CanvasObject {
 			return
 		}
 		state.SelectedFinalOutbound = value
-
-		// Статус превью будет обновлен при переключении на вкладку Preview
+		state.templatePreviewNeedsUpdate = true
 	})
 	finalSelect.SetSelected(state.SelectedFinalOutbound)
 	state.FinalOutboundSelect = finalSelect
+
+	// Кнопка Add Rule - добавляем внутрь rulesBox
+	addRuleButton := widget.NewButton("➕ Add Rule", func() {
+		showAddRuleDialog(state, nil, -1)
+	})
+	addRuleButton.Importance = widget.LowImportance
+	rulesBox.Add(addRuleButton)
 
 	rulesScroll := createRulesScroll(state, rulesBox)
 
@@ -1575,6 +1647,7 @@ func parseAndPreview(state *WizardState) {
 		}
 		// Автоматически генерируем превью на 3-й вкладке после успешного парсинга
 		if state.TemplateData != nil && len(state.GeneratedOutbounds) > 0 {
+			state.templatePreviewNeedsUpdate = true
 			go state.updateTemplatePreviewAsync()
 		}
 	})
@@ -1745,16 +1818,25 @@ func (state *WizardState) applyURLToParserConfig(input string) {
 func (state *WizardState) setTemplatePreviewText(text string) {
 	// Оптимизация: не обновляем, если текст не изменился
 	if state.TemplatePreviewText == text {
+		// Если текст не изменился, но превью было успешно установлено ранее,
+		// сбрасываем флаг (текст уже правильный, пересчет не нужен)
+		if state.templatePreviewNeedsUpdate && state.TemplatePreviewEntry != nil && state.TemplatePreviewEntry.Text == text {
+			state.templatePreviewNeedsUpdate = false
+		}
 		return
 	}
 
 	state.TemplatePreviewText = text
 	if state.TemplatePreviewEntry == nil {
+		// Если Entry еще не создан, сбрасываем флаг (будет установлен позже)
+		state.templatePreviewNeedsUpdate = false
 		return
 	}
 
 	// Проверяем, изменился ли текст в Entry
 	if state.TemplatePreviewEntry.Text == text {
+		// Текст уже установлен, сбрасываем флаг
+		state.templatePreviewNeedsUpdate = false
 		return
 	}
 
@@ -1774,14 +1856,17 @@ func (state *WizardState) setTemplatePreviewText(text string) {
 			safeFyneDo(state.Window, func() {
 				insertStartTime := time.Now()
 				state.TemplatePreviewEntry.SetText(text)
+				// Сбрасываем флаг после успешной вставки большого текста
+				state.templatePreviewNeedsUpdate = false
 				debugLog("setTemplatePreviewText: Large text inserted in %v", time.Since(insertStartTime))
-
 			})
 		}()
 	} else {
 		// Для обычных текстов используем синхронную вставку
 		safeFyneDo(state.Window, func() {
 			state.TemplatePreviewEntry.SetText(text)
+			// Сбрасываем флаг после успешной установки текста
+			state.templatePreviewNeedsUpdate = false
 		})
 	}
 }
@@ -1796,22 +1881,25 @@ func (state *WizardState) refreshOutboundOptions() {
 	}
 
 	getOptionsStartTime := time.Now()
-	options := state.getAvailableOutbounds()
+	options := ensureDefaultAvailableOutbounds(state.getAvailableOutbounds())
 	debugLog("refreshOutboundOptions: getAvailableOutbounds took %v (found %d options)",
 		time.Since(getOptionsStartTime), len(options))
-	if len(options) == 0 {
-		options = []string{defaultOutboundTag, rejectActionName}
+
+	// Создаем map для быстрого поиска (O(1) вместо O(n))
+	optionsMap := make(map[string]bool, len(options))
+	for _, opt := range options {
+		optionsMap[opt] = true
 	}
 
 	ensureSelected := func(ruleState *SelectableRuleState) {
 		if !ruleState.Rule.HasOutbound {
 			return
 		}
-		if ruleState.SelectedOutbound != "" && containsString(options, ruleState.SelectedOutbound) {
+		if ruleState.SelectedOutbound != "" && optionsMap[ruleState.SelectedOutbound] {
 			return
 		}
 		candidate := ruleState.Rule.DefaultOutbound
-		if candidate == "" || !containsString(options, candidate) {
+		if candidate == "" || !optionsMap[candidate] {
 			candidate = options[0]
 		}
 		ruleState.SelectedOutbound = candidate
@@ -1827,14 +1915,22 @@ func (state *WizardState) refreshOutboundOptions() {
 
 	uiUpdateStartTime := time.Now()
 	safeFyneDo(state.Window, func() {
-		for _, ruleState := range state.SelectableRuleStates {
+		// Обновляем селекторы outbound для всех правил единой логикой
+		updateOutboundSelect := func(ruleState *SelectableRuleState) {
 			if !ruleState.Rule.HasOutbound || ruleState.OutboundSelect == nil {
-				continue
+				return
 			}
 			ensureSelected(ruleState)
 			ruleState.OutboundSelect.Options = options
 			ruleState.OutboundSelect.SetSelected(ruleState.SelectedOutbound)
 			ruleState.OutboundSelect.Refresh()
+		}
+
+		for _, ruleState := range state.SelectableRuleStates {
+			updateOutboundSelect(ruleState)
+		}
+		for _, customRule := range state.CustomRules {
+			updateOutboundSelect(customRule)
 		}
 		if state.FinalOutboundSelect != nil {
 			state.FinalOutboundSelect.Options = options
@@ -1879,6 +1975,12 @@ func (state *WizardState) triggerParseForPreview() {
 func (state *WizardState) updateTemplatePreviewAsync() {
 	startTime := time.Now()
 	debugLog("updateTemplatePreviewAsync: START at %s", startTime.Format("15:04:05.000"))
+
+	// Предотвращаем множественные одновременные вызовы
+	if state.previewGenerationInProgress {
+		debugLog("updateTemplatePreviewAsync: Preview generation already in progress, skipping")
+		return
+	}
 
 	if state.TemplateData == nil || state.TemplatePreviewEntry == nil {
 		debugLog("updateTemplatePreviewAsync: TemplateData or TemplatePreviewEntry is nil, returning early")
@@ -1935,7 +2037,11 @@ func (state *WizardState) updateTemplatePreviewAsync() {
 		if err != nil {
 			debugLog("updateTemplatePreviewAsync: buildTemplateConfig failed (took %v): %v", buildDuration, err)
 			safeFyneDo(state.Window, func() {
-				state.setTemplatePreviewText(fmt.Sprintf("Preview error: %v", err))
+				errorText := fmt.Sprintf("Preview error: %v", err)
+				state.setTemplatePreviewText(errorText)
+				// Сбрасываем флаг даже при ошибке, чтобы не было повторных попыток при следующем открытии Preview
+				// (если пользователь ничего не изменил)
+				state.templatePreviewNeedsUpdate = false
 				if state.TemplatePreviewStatusLabel != nil {
 					state.TemplatePreviewStatusLabel.SetText(fmt.Sprintf("❌ Error: %v", err))
 				}
@@ -1946,7 +2052,7 @@ func (state *WizardState) updateTemplatePreviewAsync() {
 			buildDuration, len(text))
 
 		// Обновляем текст превью
-		// Для больших текстов setTemplatePreviewText сам обновит статус после завершения
+		// setTemplatePreviewText сам сбросит флаг templatePreviewNeedsUpdate после успешной установки текста
 		isLargeText := len(text) > 50000
 		safeFyneDo(state.Window, func() {
 			state.setTemplatePreviewText(text)
@@ -2055,9 +2161,9 @@ func buildTemplateConfig(state *WizardState, forPreview bool) (string, error) {
 			formatted = "[\n" + content + "\n  ]"
 		} else if key == "route" {
 			routeStartTime := time.Now()
-			debugLog("buildTemplateConfig: Merging route section (rules: %d)",
-				len(state.SelectableRuleStates))
-			merged, err := mergeRouteSection(raw, state.SelectableRuleStates, state.SelectedFinalOutbound)
+			debugLog("buildTemplateConfig: Merging route section (template rules: %d, custom rules: %d)",
+				len(state.SelectableRuleStates), len(state.CustomRules))
+			merged, err := mergeRouteSection(raw, state.SelectableRuleStates, state.CustomRules, state.SelectedFinalOutbound)
 			if err != nil {
 				debugLog("buildTemplateConfig: Route merge failed (took %v): %v",
 					time.Since(routeStartTime), err)
@@ -2107,7 +2213,7 @@ func buildTemplateConfig(state *WizardState, forPreview bool) (string, error) {
 	return result, nil
 }
 
-func mergeRouteSection(raw json.RawMessage, states []*SelectableRuleState, finalOutbound string) (json.RawMessage, error) {
+func mergeRouteSection(raw json.RawMessage, states []*SelectableRuleState, customRules []*SelectableRuleState, finalOutbound string) (json.RawMessage, error) {
 	var route map[string]interface{}
 	if err := json.Unmarshal(raw, &route); err != nil {
 		return nil, err
@@ -2120,18 +2226,9 @@ func mergeRouteSection(raw json.RawMessage, states []*SelectableRuleState, final
 			rules = []interface{}{existing}
 		}
 	}
-	for _, state := range states {
-		if !state.Enabled {
-			continue
-		}
-		cloned := cloneRule(state.Rule)
 
-		outbound := state.SelectedOutbound
-		if outbound == "" {
-			outbound = state.Rule.DefaultOutbound
-		}
-
-		// Handle reject and drop selections
+	// applyOutboundToRule применяет outbound к клонированному правилу (обрабатывает reject/drop)
+	applyOutboundToRule := func(cloned map[string]interface{}, outbound string) {
 		if outbound == rejectActionName {
 			// User selected reject - set action: reject without method, remove outbound
 			delete(cloned, "outbound")
@@ -2148,8 +2245,27 @@ func mergeRouteSection(raw json.RawMessage, states []*SelectableRuleState, final
 			delete(cloned, "action")
 			delete(cloned, "method")
 		}
+	}
+
+	// Обрабатываем шаблонные и пользовательские правила единой логикой
+	processRule := func(ruleState *SelectableRuleState) {
+		if !ruleState.Enabled {
+			return
+		}
+		cloned := cloneRule(ruleState.Rule)
+		outbound := getEffectiveOutbound(ruleState)
+		applyOutboundToRule(cloned, outbound)
 		rules = append(rules, cloned)
 	}
+
+	for _, state := range states {
+		processRule(state)
+	}
+
+	for _, customRule := range customRules {
+		processRule(customRule)
+	}
+
 	if len(rules) > 0 {
 		route["rules"] = rules
 	}
@@ -2167,6 +2283,7 @@ func cloneRule(rule TemplateSelectableRule) map[string]interface{} {
 	return cloned
 }
 
+// containsString проверяет наличие строки в слайсе
 func containsString(items []string, target string) bool {
 	for _, item := range items {
 		if item == target {
@@ -2174,6 +2291,33 @@ func containsString(items []string, target string) bool {
 		}
 	}
 	return false
+}
+
+// ensureDefaultOutbound устанавливает SelectedOutbound если он пустой
+func ensureDefaultOutbound(ruleState *SelectableRuleState, availableOutbounds []string) {
+	if ruleState.SelectedOutbound == "" {
+		if ruleState.Rule.DefaultOutbound != "" {
+			ruleState.SelectedOutbound = ruleState.Rule.DefaultOutbound
+		} else if len(availableOutbounds) > 0 {
+			ruleState.SelectedOutbound = availableOutbounds[0]
+		}
+	}
+}
+
+// getEffectiveOutbound возвращает эффективный outbound для правила (SelectedOutbound или DefaultOutbound)
+func getEffectiveOutbound(ruleState *SelectableRuleState) string {
+	if ruleState.SelectedOutbound != "" {
+		return ruleState.SelectedOutbound
+	}
+	return ruleState.Rule.DefaultOutbound
+}
+
+// ensureDefaultAvailableOutbounds устанавливает дефолтные outbounds если список пустой
+func ensureDefaultAvailableOutbounds(outbounds []string) []string {
+	if len(outbounds) == 0 {
+		return []string{defaultOutboundTag, rejectActionName}
+	}
+	return outbounds
 }
 
 func (state *WizardState) buildParserOutboundsBlock(forPreview bool) string {
@@ -2232,9 +2376,7 @@ func indentMultiline(text, indent string) string {
 }
 
 func (state *WizardState) ensureFinalSelected(options []string) {
-	if len(options) == 0 {
-		options = []string{defaultOutboundTag, rejectActionName}
-	}
+	options = ensureDefaultAvailableOutbounds(options)
 	preferred := state.SelectedFinalOutbound
 	if preferred == "" && state.TemplateData != nil && state.TemplateData.DefaultFinal != "" {
 		preferred = state.TemplateData.DefaultFinal
@@ -2275,10 +2417,7 @@ func (state *WizardState) initializeTemplateState() {
 			state.TemplateSectionSelections[key] = true
 		}
 	}
-	options := state.getAvailableOutbounds()
-	if len(options) == 0 {
-		options = []string{defaultOutboundTag, rejectActionName}
-	}
+	options := ensureDefaultAvailableOutbounds(state.getAvailableOutbounds())
 
 	if len(state.SelectableRuleStates) == 0 {
 		for _, rule := range state.TemplateData.SelectableRules {
@@ -2294,13 +2433,7 @@ func (state *WizardState) initializeTemplateState() {
 		}
 	} else {
 		for _, ruleState := range state.SelectableRuleStates {
-			if ruleState.SelectedOutbound == "" {
-				if ruleState.Rule.DefaultOutbound != "" {
-					ruleState.SelectedOutbound = ruleState.Rule.DefaultOutbound
-				} else {
-					ruleState.SelectedOutbound = options[0]
-				}
-			}
+			ensureDefaultOutbound(ruleState, options)
 		}
 	}
 

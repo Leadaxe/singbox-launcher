@@ -56,8 +56,8 @@ type WizardState struct {
 	GeneratedOutbounds []string
 	// Statistics for preview (used when nodes > maxNodesForFullPreview)
 	OutboundStats struct {
-		NodesCount          int
-		LocalSelectorsCount int
+		NodesCount           int
+		LocalSelectorsCount  int
 		GlobalSelectorsCount int
 	}
 
@@ -65,6 +65,7 @@ type WizardState struct {
 	TemplateData                *TemplateData
 	TemplateSectionSelections   map[string]bool
 	SelectableRuleStates        []*SelectableRuleState
+	CustomRules                 []*SelectableRuleState // User-defined custom rules
 	TemplatePreviewEntry        *widget.Entry
 	TemplatePreviewText         string
 	TemplatePreviewStatusLabel  *widget.Label
@@ -72,6 +73,7 @@ type WizardState struct {
 	FinalOutboundSelect         *widget.Select
 	SelectedFinalOutbound       string
 	previewNeedsParse           bool
+	templatePreviewNeedsUpdate  bool // Флаг для пересчета превью при изменениях на вкладке Rules
 	autoParseInProgress         bool
 	previewGenerationInProgress bool
 
@@ -88,6 +90,9 @@ type WizardState struct {
 	saveInProgress   bool
 	ButtonsContainer fyne.CanvasObject
 	tabs             *container.AppTabs
+
+	// Track open rule edit dialogs to prevent multiple dialogs for the same rule
+	openRuleDialogs map[int]fyne.Window // ruleIndex -> dialog window
 }
 
 // SelectableRuleState описывает состояние переключаемого правила.
