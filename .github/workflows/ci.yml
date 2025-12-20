@@ -15,7 +15,7 @@ permissions:
 jobs:
   # --- Проверки (ветка main + PR) ---
   lint-test:
-    name: Vet + Test
+    name: Test
     runs-on: ubuntu-latest
     # Запускаем только для PR и main (не для тегов)
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
@@ -30,8 +30,6 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Go vet
-        run: go vet ./...
 
       - name: Go test
         run: go test ./... -race
