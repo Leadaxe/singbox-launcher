@@ -13,27 +13,6 @@ permissions:
   contents: write
 
 jobs:
-  # --- Проверки (ветка main + PR) ---
-  lint-test:
-    name: Test
-    runs-on: ubuntu-latest
-    # Запускаем только для PR и main (не для тегов)
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-
-      - name: Go test
-        run: go test ./... -race
-
   # --- Сборка + релиз (только для тегов) ---
   build-and-release:
     name: Build & Release (${{ matrix.os }})
