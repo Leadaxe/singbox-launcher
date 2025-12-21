@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"singbox-launcher/core/config"
 )
 
 // NetworkRequestTimeout defines the timeout for network requests
@@ -41,7 +43,7 @@ func FetchSubscription(url string) ([]byte, error) {
 	}
 
 	// Set user agent to avoid server detecting sing-box and returning JSON config
-	req.Header.Set("User-Agent", "SubscriptionParserClient")
+	req.Header.Set("User-Agent", config.SubscriptionUserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
