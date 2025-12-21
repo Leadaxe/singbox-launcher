@@ -7,6 +7,7 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/subscription"
+	"singbox-launcher/core/services"
 )
 
 // TestIntegration_RealWorldSubscription tests parsing real-world subscription data
@@ -69,12 +70,16 @@ func TestIntegration_RealWorldSubscription(t *testing.T) {
 	})
 
 	t.Run("Process through ConfigService", func(t *testing.T) {
+		fileService, _ := services.NewFileService()
+		if fileService != nil {
+			fileService.ConfigPath = "/tmp/test-config.json"
+		}
 		ac := &AppController{
-			ConfigPath: "/tmp/test-config.json",
+			FileService: fileService,
 		}
 		svc := NewConfigService(ac)
 
-		proxySource := ProxySource{
+		proxySource := config.ProxySource{
 			Source:      "",
 			Connections: realWorldLinks,
 		}
@@ -148,7 +153,7 @@ func TestIntegration_SubscriptionDecoding(t *testing.T) {
 		// Encode as base64 (URL encoding)
 		encoded := base64.URLEncoding.EncodeToString([]byte(subscriptionContent))
 
-		decoded, err := DecodeSubscriptionContent([]byte(encoded))
+		decoded, err := subscription.DecodeSubscriptionContent([]byte(encoded))
 		if err != nil {
 			t.Fatalf("Failed to decode subscription: %v", err)
 		}
@@ -167,7 +172,7 @@ func TestIntegration_SubscriptionDecoding(t *testing.T) {
 	})
 
 	t.Run("Decode plain text subscription", func(t *testing.T) {
-		decoded, err := DecodeSubscriptionContent([]byte(subscriptionContent))
+		decoded, err := subscription.DecodeSubscriptionContent([]byte(subscriptionContent))
 		if err != nil {
 			t.Fatalf("Failed to decode plain text subscription: %v", err)
 		}
@@ -209,24 +214,24 @@ func TestIntegration_ParserConfigFlow(t *testing.T) {
 	}
 
 	t.Run("Create ParserConfig with real links", func(t *testing.T) {
-		parserConfig := &ParserConfig{
+		parserConfig := &config.ParserConfig{
 			ParserConfig: struct {
-				Version   int              `json:"version,omitempty"`
-				Proxies   []ProxySource    `json:"proxies"`
-				Outbounds []OutboundConfig `json:"outbounds"`
+				Version   int                     `json:"version,omitempty"`
+				Proxies   []config.ProxySource    `json:"proxies"`
+				Outbounds []config.OutboundConfig `json:"outbounds"`
 				Parser    struct {
 					Reload      string `json:"reload,omitempty"`
 					LastUpdated string `json:"last_updated,omitempty"`
 				} `json:"parser,omitempty"`
 			}{
 				Version: 3,
-				Proxies: []ProxySource{
+				Proxies: []config.ProxySource{
 					{
 						Source:      "",
 						Connections: realLinks,
 					},
 				},
-				Outbounds: []OutboundConfig{
+				Outbounds: []config.OutboundConfig{
 					{
 						Tag:  "proxy-out",
 						Type: "selector",
@@ -236,19 +241,23 @@ func TestIntegration_ParserConfigFlow(t *testing.T) {
 		}
 
 		// Normalize
-		NormalizeParserConfig(parserConfig, false)
+		config.NormalizeParserConfig(parserConfig, false)
 
 		// Verify normalization
-		if parserConfig.ParserConfig.Version != ParserConfigVersion {
-			t.Errorf("Expected version %d, got %d", ParserConfigVersion, parserConfig.ParserConfig.Version)
+		if parserConfig.ParserConfig.Version != config.ParserConfigVersion {
+			t.Errorf("Expected version %d, got %d", config.ParserConfigVersion, parserConfig.ParserConfig.Version)
 		}
 		if parserConfig.ParserConfig.Parser.Reload != "4h" {
 			t.Errorf("Expected default reload '4h', got '%s'", parserConfig.ParserConfig.Parser.Reload)
 		}
 
 		// Process through ConfigService
+		fileService, _ := services.NewFileService()
+		if fileService != nil {
+			fileService.ConfigPath = "/tmp/test-config.json"
+		}
 		ac := &AppController{
-			ConfigPath: "/tmp/test-config.json",
+			FileService: fileService,
 		}
 		svc := NewConfigService(ac)
 

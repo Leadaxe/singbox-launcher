@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"singbox-launcher/core/config"
+	wizardutils "singbox-launcher/ui/wizard/utils"
 )
 
 // TestSerializeParserConfig tests SerializeParserConfig function
