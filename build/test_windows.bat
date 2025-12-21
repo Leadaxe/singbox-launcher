@@ -16,58 +16,41 @@ echo   Running Tests for Sing-Box Launcher
 echo ========================================
 echo.
 
-:: Создаем и очищаем директорию для тестовых бинарников
+:: ========================================
+:: Очистка временных директорий В НАЧАЛЕ
+:: ========================================
+echo === Cleaning temporary directories ===
+
+:: Очищаем директорию проекта temp\windows
 set "TEST_OUTPUT_DIR=temp\windows"
-echo === Cleaning test output directory ===
 if exist "%TEST_OUTPUT_DIR%" (
-    echo Removing old test binaries from %TEST_OUTPUT_DIR%...
+    echo Removing project temp directory: %TEST_OUTPUT_DIR%...
     rmdir /s /q "%TEST_OUTPUT_DIR%" 2>nul
 )
-mkdir "%TEST_OUTPUT_DIR%" 2>nul
-echo Test output directory: %CD%\%TEST_OUTPUT_DIR%
-echo.
 
-:: Очищаем системные временные директории Go
-echo === Cleaning Go temporary directories ===
-if exist "%TEMP%\go-build" (
-    echo Cleaning %TEMP%\go-build...
-    rmdir /s /q "%TEMP%\go-build" 2>nul
+:: Очищаем системную временную директорию %TEMP%
+if defined TEMP (
+    echo Cleaning system temp directory: %TEMP%...
+    if exist "%TEMP%" (
+        for /d %%d in ("%TEMP%\*") do (
+            rmdir /s /q "%%d" 2>nul
+        )
+        del /q /f "%TEMP%\*" 2>nul
+    )
 )
+
+:: Очищаем директорию go-build в LocalAppData
 if exist "%LOCALAPPDATA%\go-build" (
     echo Cleaning %LOCALAPPDATA%\go-build...
     rmdir /s /q "%LOCALAPPDATA%\go-build" 2>nul
 )
-if exist "%TEMP%\go-test" (
-    echo Cleaning %TEMP%\go-test...
-    rmdir /s /q "%TEMP%\go-test" 2>nul
-)
-echo.
 
-:: Создаем и очищаем директорию для тестовых бинарников
-set "TEST_OUTPUT_DIR=temp\windows"
-echo === Cleaning test output directory ===
-if exist "%TEST_OUTPUT_DIR%" (
-    echo Removing old test binaries from %TEST_OUTPUT_DIR%...
-    rmdir /s /q "%TEST_OUTPUT_DIR%" 2>nul
-)
+:: Создаем чистую директорию для тестов
 mkdir "%TEST_OUTPUT_DIR%" 2>nul
+mkdir "%TEST_OUTPUT_DIR%\tmp" 2>nul
+mkdir "%TEST_OUTPUT_DIR%\cache" 2>nul
 echo Test output directory: %CD%\%TEST_OUTPUT_DIR%
-echo.
-
-:: Очищаем системные временные директории Go
-echo === Cleaning Go temporary directories ===
-if exist "%TEMP%\go-build" (
-    echo Cleaning %TEMP%\go-build...
-    rmdir /s /q "%TEMP%\go-build" 2>nul
-)
-if exist "%LOCALAPPDATA%\go-build" (
-    echo Cleaning %LOCALAPPDATA%\go-build...
-    rmdir /s /q "%LOCALAPPDATA%\go-build" 2>nul
-)
-if exist "%TEMP%\go-test" (
-    echo Cleaning %TEMP%\go-test...
-    rmdir /s /q "%TEMP%\go-test" 2>nul
-)
+echo Cleanup completed. You can inspect %TEST_OUTPUT_DIR% after tests run.
 echo.
 
 :: Устанавливаем окружение для тестов ПЕРЕД использованием go
@@ -109,8 +92,6 @@ set GOARCH=amd64
 :: Устанавливаем временную директорию для Go в папку проекта
 set "GOTMPDIR=%CD%\%TEST_OUTPUT_DIR%\tmp"
 set "GOCACHE=%CD%\%TEST_OUTPUT_DIR%\cache"
-mkdir "%GOTMPDIR%" 2>nul
-mkdir "%GOCACHE%" 2>nul
 
 :: Проверяем наличие gcc для CGO
 if %CGO_ENABLED%==1 (
@@ -163,12 +144,6 @@ if "%1"=="run" (
         set "TEST_PACKAGE=./..."
     )
 )
-
-:: Устанавливаем временную директорию для Go в папку проекта
-set "GOTMPDIR=%CD%\%TEST_OUTPUT_DIR%\tmp"
-set "GOCACHE=%CD%\%TEST_OUTPUT_DIR%\cache"
-mkdir "%GOTMPDIR%" 2>nul
-mkdir "%GOCACHE%" 2>nul
 
 :: Запускаем тесты
 echo.
