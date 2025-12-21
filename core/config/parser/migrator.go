@@ -285,7 +285,7 @@ func convertV2OutboundsToV3(v2Outbounds []v2OutboundConfig) []config.OutboundCon
 		}
 
 		// Migrate nested outbounds structure to flat structure
-		if v2.Outbounds.Proxies != nil && len(v2.Outbounds.Proxies) > 0 {
+		if len(v2.Outbounds.Proxies) > 0 {
 			// Create Filters field if it doesn't exist
 			if v3.Filters == nil {
 				v3.Filters = make(map[string]interface{})

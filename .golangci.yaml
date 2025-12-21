@@ -1,6 +1,7 @@
-version: "2"
 run:
-  go: "1.25"
+  go: "1.24"
+  build-tags:
+    - cgo
 linters:
   enable:
     - govet
@@ -47,6 +48,11 @@ linters:
       os-setenv: true
       os-create-temp: true
       os-temp-dir: true
+  exclude-dirs:
+    - vendor
+    - fyne-cross
+  exclude-files:
+    - ".*\\.pb\\.go$"
   exclusions:
     generated: lax
     presets:
@@ -58,6 +64,9 @@ linters:
           - noctx
           - perfsprint
         path: _test\.go
+      - linters:
+          - unused
+        path: main\.go$  # Skip unused check for main.go due to CGO/desktop import issues
     paths:
       - examples$
 #formatters:
