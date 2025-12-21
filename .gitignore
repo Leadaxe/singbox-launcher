@@ -63,6 +63,9 @@ releases/
 # Test directory with config files
 test/
 
+# Test output directory
+temp/
+
 # Config files with sensitive data - DO NOT COMMIT!
 bin/config.json
 bin/config*.json
