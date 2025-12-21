@@ -475,6 +475,7 @@ func extractOutboundsAfterMarker(src string) string {
 	return afterMarker
 }
 
+//nolint:unused
 func orderTemplateSections(sections map[string]json.RawMessage) []string {
 	defaultOrder := []string{"log", "dns", "inbounds", "outbounds", "route", "experimental", "rule_set", "rules"}
 	ordered := make([]string, 0, len(sections))

@@ -1,13 +1,9 @@
 package core
 
 import (
-	"encoding/base64"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"singbox-launcher/core/parsers"
 )
 
 // TestProcessProxySource_Subscription tests processing subscription URLs
@@ -21,10 +17,6 @@ func TestProcessProxySource_Subscription(t *testing.T) {
 		ConfigPath: configPath,
 	}
 	svc := NewConfigService(ac)
-
-	// Create a test subscription content (base64 encoded)
-	subscriptionContent := "vless://test-uuid@example.com:443#Test Server\nvmess://test-base64"
-	encodedContent := base64.URLEncoding.EncodeToString([]byte(subscriptionContent))
 
 	// Note: This test would require mocking HTTP requests or using a test HTTP server
 	// For now, we'll test the logic that doesn't require network access
@@ -46,7 +38,7 @@ func TestProcessProxySource_Subscription(t *testing.T) {
 
 	t.Run("ProcessProxySource with direct links", func(t *testing.T) {
 		proxySource := ProxySource{
-			Source:      "",
+			Source: "",
 			Connections: []string{
 				"vless://4a3ece53-6000-4ba3-a9fa-fd0d7ba61cf3@31.57.228.19:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=hls-svod.itunes.apple.com&fp=chrome&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=48720c&allowInsecure=1&type=tcp&headerType=none#🇦🇪 United Arab Emirates",
 				"vless://53fff6cc-b4ec-43e8-ade5-e0c42972fc33@152.53.227.159:80?encryption=none&security=none&type=ws&host=cdn.ir&path=%2Fnews#🇦🇹 Austria",
@@ -77,7 +69,7 @@ func TestProcessProxySource_Subscription(t *testing.T) {
 
 	t.Run("ProcessProxySource with skip filters", func(t *testing.T) {
 		proxySource := ProxySource{
-			Source:      "",
+			Source: "",
 			Connections: []string{
 				"vless://uuid1@example.com:443#🇩🇪 Germany",
 				"vless://uuid2@example.com:443#🇺🇸 USA",
@@ -102,7 +94,7 @@ func TestProcessProxySource_Subscription(t *testing.T) {
 
 	t.Run("ProcessProxySource with tag deduplication", func(t *testing.T) {
 		proxySource := ProxySource{
-			Source:      "",
+			Source: "",
 			Connections: []string{
 				"vless://uuid1@example.com:443#Test",
 				"vless://uuid2@example.com:443#Test", // Duplicate tag
@@ -273,4 +265,3 @@ func TestProcessProxySource_RealWorldExamples(t *testing.T) {
 		}
 	}
 }
-

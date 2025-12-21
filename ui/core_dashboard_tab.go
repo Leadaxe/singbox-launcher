@@ -163,7 +163,7 @@ func CreateCoreDashboardTab(ac *core.AppController) fyne.CanvasObject {
 
 	// Первоначальное обновление
 	tab.updateBinaryStatus() // Проверяет наличие бинарника и вызывает updateRunningStatus
-	tab.updateVersionInfo()
+	_ = tab.updateVersionInfo()
 	if runtime.GOOS == "windows" {
 		tab.updateWintunStatus() // Проверяет наличие wintun.dll
 	}
@@ -519,7 +519,7 @@ func (tab *CoreDashboardTab) readConfigOnDemand() {
 
 func (tab *CoreDashboardTab) updateConfigInfo() {
 	// Обновляем статусы sing-box и wintun.dll
-	tab.updateVersionInfo()
+	_ = tab.updateVersionInfo()
 	if runtime.GOOS == "windows" {
 		tab.updateWintunStatus()
 	}
@@ -800,7 +800,7 @@ func (tab *CoreDashboardTab) startDownloadWithVersion(targetVersion string) {
 				if progress.Status == "done" {
 					tab.downloadInProgress = false
 					// Обновляем статусы после успешного скачивания (это уберет ошибки и обновит статус)
-					tab.updateVersionInfo()
+					_ = tab.updateVersionInfo()
 					tab.updateBinaryStatus() // Это вызовет updateRunningStatus() и обновит статус
 					// Обновляем иконку трея (может измениться с красной на черную/зеленую)
 					tab.controller.UpdateUI()
@@ -841,7 +841,7 @@ func (tab *CoreDashboardTab) startAutoUpdate() {
 				case <-time.After(delay):
 					// Обновляем только версию асинхронно (не блокируем UI)
 					// updateVersionInfo теперь полностью асинхронная
-					tab.updateVersionInfo()
+					_ = tab.updateVersionInfo()
 					// Устанавливаем успех после небольшой задержки
 					// (в реальности нужно отслеживать через канал, но для простоты используем задержку)
 					go func() {

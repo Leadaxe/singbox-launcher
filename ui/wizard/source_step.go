@@ -22,7 +22,7 @@ import (
 func CreateVLESSSourceTab(state *ui.WizardState) fyne.CanvasObject {
 	// Секция 1: VLESS Subscription URL or Direct Links
 	state.CheckURLButton = widget.NewButton("Check", func() {
-		if state.checkURLInProgress {
+		if state.CheckURLInProgress {
 			return
 		}
 		go checkURL(state)
@@ -59,7 +59,7 @@ func CreateVLESSSourceTab(state *ui.WizardState) fyne.CanvasObject {
 		// Сбрасываем статус при изменении
 		state.URLStatusLabel.SetText("")
 		state.GeneratedOutbounds = nil // Reset generated outbounds
-		state.previewNeedsParse = true
+		state.PreviewNeedsParse = true
 	}
 
 	state.URLStatusLabel = widget.NewLabel("")
@@ -70,8 +70,8 @@ func CreateVLESSSourceTab(state *ui.WizardState) fyne.CanvasObject {
 	state.ParserConfigEntry.SetPlaceHolder("Parser configuration (JSON).\nThis will be generated automatically if template is loaded.")
 	state.ParserConfigEntry.SetMinRowsVisible(10)
 	state.ParserConfigEntry.OnChanged = func(s string) {
-		if !state.parserConfigUpdating {
-			state.previewNeedsParse = true
+		if !state.ParserConfigUpdating {
+			state.PreviewNeedsParse = true
 		}
 	}
 
@@ -103,7 +103,7 @@ func CreateVLESSSourceTab(state *ui.WizardState) fyne.CanvasObject {
 
 // checkURL проверяет доступность URL и тип контента
 func checkURL(state *ui.WizardState) {
-	state.checkURLInProgress = true
+	state.CheckURLInProgress = true
 	safeFyneDo(state.Window, func() {
 		state.CheckURLButton.Disable()
 		state.CheckURLPlaceholder.Hide()
@@ -121,7 +121,7 @@ func checkURL(state *ui.WizardState) {
 	}
 
 	defer func() {
-		state.checkURLInProgress = false
+		state.CheckURLInProgress = false
 		safeFyneDo(state.Window, func() {
 			state.CheckURLButton.Enable()
 			state.CheckURLProgress.Hide()

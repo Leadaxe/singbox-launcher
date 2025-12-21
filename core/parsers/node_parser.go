@@ -52,6 +52,7 @@ func ParseNode(uri string, skipFilters []map[string]string) (*ParsedNode, error)
 	switch {
 	case strings.HasPrefix(uri, "vmess://"):
 		scheme = "vmess"
+		// VMess is in base64 format, decode with padding support
 		base64Part := strings.TrimPrefix(uri, "vmess://")
 		decoded, err := decodeBase64WithPadding(base64Part)
 		if err != nil {

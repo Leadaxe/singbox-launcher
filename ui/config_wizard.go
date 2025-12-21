@@ -44,7 +44,7 @@ func generateTagPrefix(index int) string {
 func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 	state := &WizardState{
 		Controller:        controller,
-		previewNeedsParse: true,
+		PreviewNeedsParse: true,
 	}
 
 	if templateData, err := loadTemplateData(controller.ExecDir); err != nil {
@@ -154,7 +154,7 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 			})
 
 			// Шаг 0: Проверяем и ждем парсинг, если нужно (0-40%)
-			if state.previewNeedsParse || state.autoParseInProgress {
+			if state.PreviewNeedsParse || state.autoParseInProgress {
 				safeFyneDo(state.Window, func() {
 					state.SaveProgress.SetValue(0.05)
 				})
@@ -348,7 +348,7 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 func createVLESSSourceTab(state *WizardState) fyne.CanvasObject {
 	// Секция 1: VLESS Subscription URL or Direct Links
 	state.CheckURLButton = widget.NewButton("Check", func() {
-		if state.checkURLInProgress {
+		if state.CheckURLInProgress {
 			return
 		}
 		go checkURL(state)
@@ -391,7 +391,7 @@ func createVLESSSourceTab(state *WizardState) fyne.CanvasObject {
 	state.VLESSURLEntry.SetPlaceHolder("https://example.com/subscription\nor\nvless://...\nvmess://...\nhysteria2://...")
 	state.VLESSURLEntry.Wrapping = fyne.TextWrapOff
 	state.VLESSURLEntry.OnChanged = func(value string) {
-		state.previewNeedsParse = true
+		state.PreviewNeedsParse = true
 		state.applyURLToParserConfig(strings.TrimSpace(value))
 	}
 
@@ -436,10 +436,10 @@ func createVLESSSourceTab(state *WizardState) fyne.CanvasObject {
 	state.ParserConfigEntry.SetPlaceHolder("Enter ParserConfig JSON here...")
 	state.ParserConfigEntry.Wrapping = fyne.TextWrapOff
 	state.ParserConfigEntry.OnChanged = func(string) {
-		if state.parserConfigUpdating {
+		if state.ParserConfigUpdating {
 			return
 		}
-		state.previewNeedsParse = true
+		state.PreviewNeedsParse = true
 		state.refreshOutboundOptions()
 
 		// Статус превью будет обновлен при переключении на вкладку Preview
@@ -474,7 +474,7 @@ func createVLESSSourceTab(state *WizardState) fyne.CanvasObject {
 			return
 		}
 		state.autoParseInProgress = true
-		state.previewNeedsParse = true
+		state.PreviewNeedsParse = true
 		go parseAndPreview(state)
 	})
 	state.ParseButton.Importance = widget.MediumImportance
@@ -1153,9 +1153,9 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 				return false, err
 			}
 
-			state.parserConfigUpdating = true
+			state.ParserConfigUpdating = true
 			state.ParserConfigEntry.SetText(string(parserConfigJSON))
-			state.parserConfigUpdating = false
+			state.ParserConfigUpdating = false
 
 			// Теперь заполняем поле URL - это вызовет applyURLToParserConfig, который прочитает уже заполненный ParserConfigEntry
 			// Вставляем все URL из реального config.json
@@ -1170,7 +1170,7 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 				state.VLESSURLEntry.SetText(strings.Join(lines, "\n"))
 			}
 
-			state.previewNeedsParse = true
+			state.PreviewNeedsParse = true
 			infoLog("ConfigWizard: Successfully loaded config from file")
 			return true, nil
 		}
@@ -1207,9 +1207,9 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 			return false, err
 		}
 
-		state.parserConfigUpdating = true
+		state.ParserConfigUpdating = true
 		state.ParserConfigEntry.SetText(string(parserConfigJSON))
-		state.parserConfigUpdating = false
+		state.ParserConfigUpdating = false
 		return true, nil
 	}
 
@@ -1339,7 +1339,7 @@ func checkURL(state *WizardState) {
 		return
 	}
 
-	state.checkURLInProgress = true
+	state.CheckURLInProgress = true
 	safeFyneDo(state.Window, func() {
 		state.URLStatusLabel.SetText("⏳ Checking...")
 		state.setCheckURLState("", "", 0.0)
@@ -1428,7 +1428,7 @@ func checkURL(state *WizardState) {
 		}
 	}
 
-	state.checkURLInProgress = false
+	state.CheckURLInProgress = false
 	totalDuration := time.Since(startTime)
 	debugLog("checkURL: Processed all lines in %v (total valid: %d, errors: %d)",
 		totalDuration, totalValid, len(errors))
@@ -1638,7 +1638,7 @@ func parseAndPreview(state *WizardState) {
 		state.ParseButton.Enable()
 		state.ParseButton.SetText("Parse")
 		state.ParserConfig = &parserConfig
-		state.previewNeedsParse = false
+		state.PreviewNeedsParse = false
 		state.refreshOutboundOptions()
 		debugLog("parseAndPreview: UI update took %v", time.Since(uiUpdateStartTime))
 		// Включаем кнопку Save после успешного парсинга (независимо от превью)
@@ -1806,12 +1806,12 @@ func (state *WizardState) applyURLToParserConfig(input string) {
 
 	// Обновляем UI безопасно из любого потока
 	safeFyneDo(state.Window, func() {
-		state.parserConfigUpdating = true
+		state.ParserConfigUpdating = true
 		state.ParserConfigEntry.SetText(serialized)
-		state.parserConfigUpdating = false
+		state.ParserConfigUpdating = false
 	})
 	state.ParserConfig = &parserConfig
-	state.previewNeedsParse = true
+	state.PreviewNeedsParse = true
 	debugLog("applyURLToParserConfig: END (total duration: %v)", time.Since(startTime))
 }
 
@@ -1946,7 +1946,7 @@ func (state *WizardState) triggerParseForPreview() {
 	if state.autoParseInProgress {
 		return
 	}
-	if !state.previewNeedsParse && len(state.GeneratedOutbounds) > 0 {
+	if !state.PreviewNeedsParse && len(state.GeneratedOutbounds) > 0 {
 		return
 	}
 	if state.VLESSURLEntry == nil || state.ParserConfigEntry == nil {
@@ -2328,14 +2328,14 @@ func (state *WizardState) buildParserOutboundsBlock(forPreview bool) string {
 	// Если это для окна (forPreview == true) И узлов больше maxNodesForFullPreview, показываем статистику
 	if forPreview && state.OutboundStats.NodesCount > maxNodesForFullPreview {
 		statsComment := fmt.Sprintf(`%s// Generated: %d nodes, %d local selectors, %d global selectors
-%s// Total outbounds: %d
-`,
+	%s// Total outbounds: %d
+	`,
 			indent,
 			state.OutboundStats.NodesCount,
 			state.OutboundStats.LocalSelectorsCount,
 			state.OutboundStats.GlobalSelectorsCount,
-			len(state.GeneratedOutbounds),
-			indent)
+			indent,
+			len(state.GeneratedOutbounds))
 		builder.WriteString(statsComment)
 	} else {
 		// Для файла (forPreview == false) или для малого количества узлов - показываем полный список
@@ -2497,11 +2497,15 @@ func (state *WizardState) getAvailableOutbounds() []string {
 }
 
 // parseNodeFromString парсит узел из строки (обертка над parsers.ParseNode)
+//
+//nolint:unused
 func parseNodeFromString(uri string, skipFilters []map[string]string) (*parsers.ParsedNode, error) {
 	return parsers.ParseNode(uri, skipFilters)
 }
 
 // generateNodeJSONForPreview генерирует JSON для узла через ConfigService
+//
+//nolint:unused
 func generateNodeJSONForPreview(state *WizardState, node *parsers.ParsedNode) (string, error) {
 	if state.Controller == nil || state.Controller.ConfigService == nil {
 		return "", fmt.Errorf("ConfigService not available")
@@ -2510,6 +2514,8 @@ func generateNodeJSONForPreview(state *WizardState, node *parsers.ParsedNode) (s
 }
 
 // generateSelectorForPreview генерирует JSON для селектора через ConfigService
+//
+//nolint:unused
 func generateSelectorForPreview(state *WizardState, allNodes []*parsers.ParsedNode, outboundConfig core.OutboundConfig) (string, error) {
 	if state.Controller == nil || state.Controller.ConfigService == nil {
 		return "", fmt.Errorf("ConfigService not available")

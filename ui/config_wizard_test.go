@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"fyne.io/fyne/v2/widget"
+
 	"singbox-launcher/core"
 )
 
@@ -14,13 +16,15 @@ import (
 func TestApplyURLToParserConfig(t *testing.T) {
 	t.Run("Split subscriptions and connections", func(t *testing.T) {
 		state := &WizardState{}
-		state.ParserConfigEntry = &mockEntry{text: `{
-  "ParserConfig": {
-    "version": 2,
-    "proxies": [],
-    "outbounds": []
-  }
-}`}
+		entry := widget.NewMultiLineEntry()
+		entry.SetText(`{
+	"ParserConfig": {
+		"version": 2,
+		"proxies": [],
+		"outbounds": []
+	}
+}`)
+		state.ParserConfigEntry = entry
 
 		input := `https://example.com/subscription
 vless://uuid@server:443#Test
@@ -55,13 +59,15 @@ vmess://base64`
 
 	t.Run("Empty input", func(t *testing.T) {
 		state := &WizardState{}
-		state.ParserConfigEntry = &mockEntry{text: `{
-  "ParserConfig": {
-    "version": 2,
-    "proxies": [],
-    "outbounds": []
-  }
-}`}
+		entry := widget.NewMultiLineEntry()
+		entry.SetText(`{
+	"ParserConfig": {
+		"version": 2,
+		"proxies": [],
+		"outbounds": []
+	}
+}`)
+		state.ParserConfigEntry = entry
 
 		input := ""
 		lines := strings.Split(input, "\n")
@@ -94,8 +100,8 @@ func TestSerializeParserConfig(t *testing.T) {
 	t.Run("Valid ParserConfig", func(t *testing.T) {
 		parserConfig := &core.ParserConfig{
 			ParserConfig: struct {
-				Version   int                 `json:"version,omitempty"`
-				Proxies   []core.ProxySource   `json:"proxies"`
+				Version   int                   `json:"version,omitempty"`
+				Proxies   []core.ProxySource    `json:"proxies"`
 				Outbounds []core.OutboundConfig `json:"outbounds"`
 				Parser    struct {
 					Reload      string `json:"reload,omitempty"`
@@ -152,8 +158,8 @@ func TestSerializeParserConfig(t *testing.T) {
 	t.Run("ParserConfig with default reload", func(t *testing.T) {
 		parserConfig := &core.ParserConfig{
 			ParserConfig: struct {
-				Version   int                 `json:"version,omitempty"`
-				Proxies   []core.ProxySource   `json:"proxies"`
+				Version   int                   `json:"version,omitempty"`
+				Proxies   []core.ProxySource    `json:"proxies"`
 				Outbounds []core.OutboundConfig `json:"outbounds"`
 				Parser    struct {
 					Reload      string `json:"reload,omitempty"`
@@ -191,21 +197,21 @@ func TestGetAvailableOutbounds(t *testing.T) {
 		state := &WizardState{
 			ParserConfig: &core.ParserConfig{
 				ParserConfig: struct {
-					Version   int                 `json:"version,omitempty"`
-					Proxies   []core.ProxySource   `json:"proxies"`
+					Version   int                   `json:"version,omitempty"`
+					Proxies   []core.ProxySource    `json:"proxies"`
 					Outbounds []core.OutboundConfig `json:"outbounds"`
 					Parser    struct {
 						Reload      string `json:"reload,omitempty"`
 						LastUpdated string `json:"last_updated,omitempty"`
 					} `json:"parser,omitempty"`
 				}{
-				Outbounds: []core.OutboundConfig{
-					{
-						Tag:          "proxy-out",
-						Type:         "selector",
-						AddOutbounds: []string{"extra-outbound"},
+					Outbounds: []core.OutboundConfig{
+						{
+							Tag:          "proxy-out",
+							Type:         "selector",
+							AddOutbounds: []string{"extra-outbound"},
+						},
 					},
-				},
 				},
 			},
 		}
@@ -302,17 +308,7 @@ func TestEnsureFinalSelected(t *testing.T) {
 }
 
 // Mock entry for testing
-type mockEntry struct {
-	text string
-}
-
-func (m *mockEntry) SetText(text string) {
-	m.text = text
-}
-
-func (m *mockEntry) Text() string {
-	return m.text
-}
+// Using real fyne widgets in tests avoids type mismatch with `*widget.Entry`.
 
 // TestRealWorldSubscriptionParsing tests with real subscription examples
 func TestRealWorldSubscriptionParsing(t *testing.T) {
@@ -326,8 +322,8 @@ func TestRealWorldSubscriptionParsing(t *testing.T) {
 	// Test that these can be parsed and serialized in ParserConfig
 	parserConfig := &core.ParserConfig{
 		ParserConfig: struct {
-			Version   int                 `json:"version,omitempty"`
-			Proxies   []core.ProxySource   `json:"proxies"`
+			Version   int                   `json:"version,omitempty"`
+			Proxies   []core.ProxySource    `json:"proxies"`
 			Outbounds []core.OutboundConfig `json:"outbounds"`
 			Parser    struct {
 				Reload      string `json:"reload,omitempty"`
@@ -377,4 +373,3 @@ func TestRealWorldSubscriptionParsing(t *testing.T) {
 		t.Errorf("Expected %d connections, got %d", len(realLinks), len(connections))
 	}
 }
-

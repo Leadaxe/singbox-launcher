@@ -135,7 +135,7 @@ func LogDuplicateTagStatistics(tagCounts map[string]int, logPrefix string) {
 	if duplicateCount > 0 {
 		log.Printf("%s: Found %d tags with duplicates, all have been renamed", logPrefix, duplicateCount)
 	} else {
-		log.Printf("%s: No duplicate tags found, all tags are unique", logPrefix, duplicateCount)
+		log.Printf("%s: No duplicate tags found, all tags are unique", logPrefix)
 	}
 }
 
