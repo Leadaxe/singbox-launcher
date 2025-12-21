@@ -67,6 +67,8 @@ linters:
       - linters:
           - unused
         path: main\.go$  # Skip unused check for main.go due to CGO/desktop import issues
+      - text: "imported and not used"
+        path: main\.go$  # Skip typechecking error for desktop import (used in type assertion)
     paths:
       - examples$
 #formatters:
