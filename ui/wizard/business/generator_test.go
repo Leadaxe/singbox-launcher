@@ -1,6 +1,3 @@
-//go:build cgo
-// +build cgo
-
 package business
 
 import (
@@ -8,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"singbox-launcher/core/config"
 	wizardstate "singbox-launcher/ui/wizard/state"
 	wizardtemplate "singbox-launcher/ui/wizard/template"
 )

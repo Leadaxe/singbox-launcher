@@ -4,7 +4,7 @@
 
 ## Структура тестов
 
-### 1. Тесты парсера узлов (`core/parsers/node_parser_test.go`)
+### 1. Тесты парсера узлов (`core/config/subscription/node_parser_test.go`)
 
 Покрывают функциональность парсинга различных типов прокси-узлов:
 
@@ -17,7 +17,7 @@
 - **TestParseNode_RealWorldExamples** - парсинг реальных примеров из подписки
 - **TestBuildOutbound** - генерация outbound конфигураций для различных типов узлов
 
-### 2. Тесты парсера подписок (`core/subscription_parser_test.go`)
+### 2. Тесты парсера подписок (`core/config/subscription/subscription_parser_test.go`)
 
 Покрывают функциональность работы с подписками:
 
@@ -27,7 +27,7 @@
 - **TestUpdateLastUpdatedInConfig** - обновление поля last_updated в конфигурации
 - **TestIsSubscriptionURL** - определение URL подписок
 
-### 3. Тесты сервиса конфигурации (`core/config_service_impl_test.go`)
+### 3. Тесты сервиса конфигурации (`core/config_service_test.go`)
 
 Покрывают логику обработки прокси-источников:
 
@@ -38,15 +38,14 @@
 - **TestLogDuplicateTagStatistics** - логирование статистики дубликатов
 - **TestProcessProxySource_RealWorldExamples** - обработка реальных примеров
 
-### 4. Тесты визарда (`ui/config_wizard_test.go`)
+### 4. Тесты визарда (`ui/wizard/business/`)
 
 Покрывают логику мастера конфигурации:
 
-- **TestApplyURLToParserConfig** - разделение подписок и прямых ссылок
-- **TestSerializeParserConfig** - сериализация ParserConfig в JSON
-- **TestGetAvailableOutbounds** - получение доступных outbound опций
-- **TestEnsureFinalSelected** - выбор финального outbound
-- **TestRealWorldSubscriptionParsing** - парсинг реальных подписок
+- **TestValidateParserConfig** (`validator_test.go`) - валидация ParserConfig
+- **TestMergeRouteSection** (`generator_test.go`) - объединение правил маршрутизации
+- **TestApplyURLToParserConfig_Logic** (`parser_test.go`) - логика применения URL к конфигурации
+- **TestLoadConfigFromFile** (`loader_test.go`) - загрузка конфигурации из файла
 
 ### 5. Интеграционные тесты (`core/integration_test.go`)
 
@@ -58,29 +57,83 @@
 
 ## Запуск тестов
 
-### Запуск всех тестов
+### Запуск через батник (Windows, рекомендуется)
+
+Батник автоматически настраивает окружение (CGO, PATH, GCC) и запускает тесты.
+
+#### Запуск всех тестов
 ```bash
-go test ./...
+# С паузой в конце
+.\build\test_windows.bat
+
+# Без паузы
+.\build\test_windows.bat nopause
 ```
 
-### Запуск тестов конкретного модуля
+#### Запуск тестов конкретного пакета
 ```bash
 # Тесты парсера узлов
-go test ./core/parsers -v
+.\build\test_windows.bat nopause ./core/config/subscription
+
+# Тесты сервиса конфигурации
+.\build\test_windows.bat nopause ./core
+
+# Тесты визарда (требуют CGO)
+.\build\test_windows.bat nopause ./ui/wizard/business
+
+# Интеграционные тесты (требуют CGO)
+.\build\test_windows.bat nopause ./core
+```
+
+#### Запуск конкретного теста
+```bash
+# По имени теста
+.\build\test_windows.bat nopause run TestParseNode_VLESS ./core/config/subscription
+
+# Короткие тесты (если поддерживается)
+.\build\test_windows.bat nopause short
+```
+
+#### Параметры батника
+- `nopause` или `silent` - не ждать нажатия клавиши в конце
+- `short` - запустить только короткие тесты
+- `run TestName` - запустить конкретный тест (требует указания имени теста)
+- Второй параметр - путь к пакету (по умолчанию `./...` - все тесты)
+
+### Запуск через go test напрямую
+
+**Важно:** Для тестов, использующих Fyne (визард, интеграционные), требуется `CGO_ENABLED=1` и компилятор C (gcc).
+
+#### Запуск всех тестов
+```bash
+# С CGO (требуется для визарда и интеграционных тестов)
+set CGO_ENABLED=1
+go test ./...
+
+# Без CGO (только тесты без UI зависимостей)
+set CGO_ENABLED=0
+go test ./core/config/subscription
+```
+
+#### Запуск тестов конкретного модуля
+```bash
+# Тесты парсера узлов
+go test ./core/config/subscription -v
 
 # Тесты парсера подписок
-go test ./core -v -run TestDecodeSubscriptionContent
+go test ./core/config/subscription -v -run TestDecodeSubscriptionContent
 
 # Тесты сервиса конфигурации
 go test ./core -v -run TestProcessProxySource
 
-# Интеграционные тесты
+# Интеграционные тесты (требуют CGO)
+set CGO_ENABLED=1
 go test ./core -v -run TestIntegration
 ```
 
-### Запуск конкретного теста
+#### Запуск конкретного теста
 ```bash
-go test ./core/parsers -v -run TestIsDirectLink
+go test ./core/config/subscription -v -run TestParseNode_VLESS
 ```
 
 ## Покрытие тестами
@@ -119,9 +172,26 @@ go test ./core/parsers -v -run TestIsDirectLink
 - VLESS узлы с gRPC
 - Различные страны и теги
 
+## Требования для запуска тестов
+
+### Для всех тестов
+- Go 1.24.4 или выше
+- Установленные зависимости проекта (`go mod download`)
+
+### Для тестов с UI зависимостями (визард, интеграционные)
+- **CGO_ENABLED=1** (включен по умолчанию в батнике)
+- Компилятор C (gcc) - обычно устанавливается вместе с MinGW-w64 или TDM-GCC
+- Батник автоматически проверяет наличие GCC и добавляет его в PATH
+
+### Рекомендации
+- **Используйте батник** (`test_windows.bat`) для запуска тестов - он автоматически настраивает окружение
+- Если GCC не найден, батник попытается найти его в стандартных местах (C:\msys64\mingw64\bin)
+- Для ручного запуска через `go test` убедитесь, что `CGO_ENABLED=1` установлен для тестов визарда
+
 ## Примечания
 
-- Некоторые тесты требуют отсутствия UI зависимостей (fyne)
+- Тесты визарда (`ui/wizard/business`) и интеграционные тесты (`core/integration_test.go`) требуют CGO из-за зависимостей от Fyne
 - Интеграционные тесты могут требовать сетевого доступа для проверки подписок
 - Тесты используют временные файлы и директории для изоляции
+- Батник автоматически устанавливает правильные переменные окружения (CGO_ENABLED, PATH, GOROOT)
 

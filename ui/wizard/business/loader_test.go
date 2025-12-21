@@ -1,6 +1,3 @@
-//go:build cgo
-// +build cgo
-
 package business
 
 import (
@@ -92,9 +89,9 @@ func TestSerializeParserConfig(t *testing.T) {
 // TestCloneOutbound tests CloneOutbound function
 func TestCloneOutbound(t *testing.T) {
 	src := &config.OutboundConfig{
-		Tag:     "test-outbound",
-		Type:    "selector",
-		Comment: "Test comment",
+		Tag:          "test-outbound",
+		Type:         "selector",
+		Comment:      "Test comment",
 		AddOutbounds: []string{"outbound1", "outbound2"},
 		Options: map[string]interface{}{
 			"key1": "value1",
@@ -133,9 +130,9 @@ func TestCloneOutbound(t *testing.T) {
 		t.Error("Clone should not be affected by changes to original")
 	}
 
-	// Verify Options is a deep copy
-	if dst.Options == src.Options {
-		t.Error("Options should be a deep copy")
+	// Verify Options is a deep copy (check that modifying one doesn't affect the other)
+	if dst.Options == nil || src.Options == nil {
+		t.Error("Options should not be nil")
 	}
 	src.Options["key1"] = "modified"
 	if dst.Options["key1"] == "modified" {
@@ -373,4 +370,3 @@ func TestLoadConfigFromFile_FileSizeValidation(t *testing.T) {
 		t.Error("Test file should exceed size limit")
 	}
 }
-

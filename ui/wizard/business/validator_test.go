@@ -1,10 +1,6 @@
-//go:build cgo
-// +build cgo
-
 package business
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 

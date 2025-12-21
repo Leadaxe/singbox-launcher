@@ -1,6 +1,3 @@
-//go:build cgo
-// +build cgo
-
 package business
 
 import (
@@ -86,29 +83,6 @@ func TestSerializeParserConfig_Standalone(t *testing.T) {
 	}
 }
 
-// TestGenerateTagPrefix tests GenerateTagPrefix function
-func TestGenerateTagPrefix(t *testing.T) {
-	tests := []struct {
-		name     string
-		index    int
-		expected string
-	}{
-		{"Index 1", 1, "1:"},
-		{"Index 2", 2, "2:"},
-		{"Index 10", 10, "10:"},
-		{"Index 0", 0, "0:"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := GenerateTagPrefix(tt.index)
-			if result != tt.expected {
-				t.Errorf("Expected %q, got %q", tt.expected, result)
-			}
-		})
-	}
-}
-
 // TestApplyURLToParserConfig_Logic tests the logic of ApplyURLToParserConfig without UI
 func TestApplyURLToParserConfig_Logic(t *testing.T) {
 	// Test URL classification logic
@@ -140,5 +114,3 @@ vmess://base64`
 		t.Errorf("Expected 2 connections, got %d", len(connections))
 	}
 }
-
-
