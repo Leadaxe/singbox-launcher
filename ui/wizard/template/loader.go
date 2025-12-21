@@ -1,4 +1,4 @@
-package ui
+package template
 
 import (
 	"bytes"
@@ -21,6 +21,7 @@ func tplLog(level debuglog.Level, format string, args ...interface{}) {
 	debuglog.Log("TemplateLoader", level, templateLoaderLogLevel, format, args...)
 }
 
+// TemplateData represents the loaded template data.
 type TemplateData struct {
 	ParserConfig            string
 	Sections                map[string]json.RawMessage
@@ -31,6 +32,7 @@ type TemplateData struct {
 	OutboundsAfterMarker    string // Elements after @PARSER_OUTBOUNDS_BLOCK marker (e.g., direct-out)
 }
 
+// TemplateSelectableRule represents a rule that can be selected in the template.
 type TemplateSelectableRule struct {
 	Label           string
 	Description     string
@@ -55,7 +57,8 @@ func GetTemplateURL() string {
 	return fmt.Sprintf("https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/bin/%s", fileName)
 }
 
-func loadTemplateData(execDir string) (*TemplateData, error) {
+// LoadTemplateData loads template data from file.
+func LoadTemplateData(execDir string) (*TemplateData, error) {
 	templateFileName := GetTemplateFileName()
 	templatePath := filepath.Join(execDir, "bin", templateFileName)
 	tplLog(debuglog.LevelInfo, "Starting to load template from: %s", templatePath)
@@ -473,24 +476,6 @@ func extractOutboundsAfterMarker(src string) string {
 
 	tplLog(debuglog.LevelVerbose, "extractOutboundsAfterMarker: extracted %d chars", len(afterMarker))
 	return afterMarker
-}
-
-func orderTemplateSections(sections map[string]json.RawMessage) []string {
-	defaultOrder := []string{"log", "dns", "inbounds", "outbounds", "route", "experimental", "rule_set", "rules"}
-	ordered := make([]string, 0, len(sections))
-	seen := make(map[string]bool)
-	for _, key := range defaultOrder {
-		if _, ok := sections[key]; ok {
-			ordered = append(ordered, key)
-			seen[key] = true
-		}
-	}
-	for key := range sections {
-		if !seen[key] {
-			ordered = append(ordered, key)
-		}
-	}
-	return ordered
 }
 
 func extractDefaultFinal(sections map[string]json.RawMessage) string {

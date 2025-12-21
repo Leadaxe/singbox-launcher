@@ -116,7 +116,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 	// Кнопка для проверки STUN (Google STUN [UDP])
 	stunButton := widget.NewButton("Google STUN [UDP]", func() {
 		// Показываем диалог ожидания
-		waitDialog := dialog.NewCustomWithoutButtons("STUN Check", widget.NewLabel("Checking, please wait..."), ac.MainWindow)
+		waitDialog := dialog.NewCustomWithoutButtons("STUN Check", widget.NewLabel("Checking, please wait..."), ac.UIService.MainWindow)
 		waitDialog.Show()
 
 		go func() {
@@ -128,7 +128,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 				waitDialog.Hide()
 				if err != nil {
 					log.Printf("diagnosticsTab: STUN check failed: %v", err)
-					ShowError(ac.MainWindow, err)
+					ShowError(ac.UIService.MainWindow, err)
 				} else {
 					var connectionInfo string
 					if usedProxy {
@@ -141,11 +141,11 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 					// Создаем кастомный диалог с кнопкой "Copy"
 					resultLabel := widget.NewLabel(fmt.Sprintf("Your External IP: %s\n%s", ip, connectionInfo))
 					copyButton := widget.NewButton("Copy IP", func() {
-						ac.MainWindow.Clipboard().SetContent(ip)
-						ShowAutoHideInfo(ac.Application, ac.MainWindow, "Copied", "IP address copied to clipboard.")
+						ac.UIService.MainWindow.Clipboard().SetContent(ip)
+						ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, "Copied", "IP address copied to clipboard.")
 					})
 
-					ShowCustom(ac.MainWindow, "STUN Check Result", "Close", container.NewVBox(resultLabel, copyButton))
+					ShowCustom(ac.UIService.MainWindow, "STUN Check Result", "Close", container.NewVBox(resultLabel, copyButton))
 				}
 			})
 		}()
@@ -156,7 +156,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 		return widget.NewButton(label, func() {
 			if err := platform.OpenURL(url); err != nil {
 				log.Printf("diagnosticsTab: Failed to open URL %s: %v", url, err)
-				ShowError(ac.MainWindow, err)
+				ShowError(ac.UIService.MainWindow, err)
 			}
 		})
 	}

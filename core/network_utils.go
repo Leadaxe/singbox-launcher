@@ -17,8 +17,9 @@ const (
 	NetworkLongTimeout = 30 * time.Second
 )
 
-// createHTTPClient создает HTTP клиент с правильными таймаутами
-func createHTTPClient(timeout time.Duration) *http.Client {
+// CreateHTTPClient создает HTTP клиент с правильными таймаутами
+// Экспортировано для использования в parsers пакете
+func CreateHTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{

@@ -11,19 +11,19 @@ import (
 	"strings"
 )
 
-// WinTunVersion - версия wintun.dll для скачивания
+// WinTunVersion is the version of wintun.dll to download
 const WinTunVersion = "0.14.1"
 
-// WinTunDownloadURL - URL для скачивания wintun.dll
+// WinTunDownloadURL is the URL for downloading wintun.dll
 const WinTunDownloadURL = "https://www.wintun.net/builds/wintun-%s.zip"
 
-// CheckWintunDLL проверяет наличие wintun.dll
+// CheckWintunDLL checks for the presence of wintun.dll
 func (ac *AppController) CheckWintunDLL() (bool, error) {
 	if runtime.GOOS != "windows" {
-		return true, nil // На не-Windows системах wintun не нужен
+		return true, nil // wintun is not needed on non-Windows systems
 	}
 
-	if _, err := os.Stat(ac.WintunPath); os.IsNotExist(err) {
+	if _, err := os.Stat(ac.FileService.WintunPath); os.IsNotExist(err) {
 		return false, nil
 	}
 	return true, nil
@@ -43,8 +43,8 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 		return
 	}
 
-	// 1. Создаем временную директорию
-	tempDir := filepath.Join(ac.ExecDir, "temp")
+	// 1. Create temporary directory
+	tempDir := filepath.Join(ac.FileService.ExecDir, "temp")
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		progressChan <- DownloadProgress{
 			Progress: 0,
@@ -56,7 +56,7 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 	}
 	defer os.RemoveAll(tempDir)
 
-	// 2. Скачиваем ZIP архив
+	// 2. Download ZIP archive
 	zipURL := fmt.Sprintf(WinTunDownloadURL, WinTunVersion)
 	zipPath := filepath.Join(tempDir, fmt.Sprintf("wintun-%s.zip", WinTunVersion))
 
@@ -71,10 +71,10 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 		return
 	}
 
-	// 3. Распаковываем ZIP и извлекаем wintun.dll
+	// 3. Extract ZIP and extract wintun.dll
 	progressChan <- DownloadProgress{Progress: 80, Message: "Extracting wintun.dll...", Status: "extracting"}
 
-	// Определяем архитектуру
+	// Determine architecture
 	var archDir string
 	if runtime.GOARCH == "amd64" {
 		archDir = "amd64"
@@ -85,25 +85,25 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 			Progress: 0,
 			Message:  fmt.Sprintf("Unsupported architecture: %s", runtime.GOARCH),
 			Status:   "error",
-			Error:    fmt.Errorf("unsupported architecture: %s", runtime.GOARCH),
+			Error:    fmt.Errorf("DownloadWintunDLL: unsupported architecture: %s", runtime.GOARCH),
 		}
 		return
 	}
 
-	// Открываем ZIP
+	// Open ZIP
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
 		progressChan <- DownloadProgress{
 			Progress: 0,
 			Message:  fmt.Sprintf("Failed to open zip: %v", err),
 			Status:   "error",
-			Error:    err,
+			Error:    fmt.Errorf("DownloadWintunDLL: failed to open zip: %w", err),
 		}
 		return
 	}
 	defer r.Close()
 
-	// Ищем wintun.dll в нужной директории
+	// Search for wintun.dll in the correct directory
 	var dllPath string
 	targetPath := fmt.Sprintf("bin/%s/wintun.dll", archDir)
 
@@ -114,7 +114,7 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 				continue
 			}
 
-			// Извлекаем файл
+			// Extract the file
 			dllPath = filepath.Join(tempDir, "wintun.dll")
 			outFile, err := os.Create(dllPath)
 			if err != nil {
@@ -139,46 +139,46 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 			Progress: 0,
 			Message:  "wintun.dll not found in archive",
 			Status:   "error",
-			Error:    fmt.Errorf("wintun.dll not found in archive"),
+			Error:    fmt.Errorf("DownloadWintunDLL: wintun.dll not found in archive"),
 		}
 		return
 	}
 
-	// 4. Копируем wintun.dll в целевую директорию
+	// 4. Copy wintun.dll to target directory
 	progressChan <- DownloadProgress{Progress: 90, Message: "Installing wintun.dll...", Status: "extracting"}
 
-	// Создаем директорию bin если её нет
-	binDir := filepath.Dir(ac.WintunPath)
+	// Create bin directory if it doesn't exist
+	binDir := filepath.Dir(ac.FileService.WintunPath)
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		progressChan <- DownloadProgress{
 			Progress: 0,
 			Message:  fmt.Sprintf("Failed to create bin directory: %v", err),
 			Status:   "error",
-			Error:    err,
+			Error:    fmt.Errorf("DownloadWintunDLL: failed to create bin directory: %w", err),
 		}
 		return
 	}
 
-	// Копируем файл
+	// Copy the file
 	sourceFile, err := os.Open(dllPath)
 	if err != nil {
 		progressChan <- DownloadProgress{
 			Progress: 0,
 			Message:  fmt.Sprintf("Failed to open source file: %v", err),
 			Status:   "error",
-			Error:    err,
+			Error:    fmt.Errorf("DownloadWintunDLL: failed to open source file: %w", err),
 		}
 		return
 	}
 	defer sourceFile.Close()
 
-	destFile, err := os.Create(ac.WintunPath)
+	destFile, err := os.Create(ac.FileService.WintunPath)
 	if err != nil {
 		progressChan <- DownloadProgress{
 			Progress: 0,
 			Message:  fmt.Sprintf("Failed to create destination file: %v", err),
 			Status:   "error",
-			Error:    err,
+			Error:    fmt.Errorf("DownloadWintunDLL: failed to create destination file: %w", err),
 		}
 		return
 	}
@@ -190,12 +190,12 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 			Progress: 0,
 			Message:  fmt.Sprintf("Failed to copy file: %v", err),
 			Status:   "error",
-			Error:    err,
+			Error:    fmt.Errorf("DownloadWintunDLL: failed to copy file: %w", err),
 		}
 		return
 	}
 
-	// 5. Готово!
+	// 5. Done!
 	progressChan <- DownloadProgress{
 		Progress: 100,
 		Message:  fmt.Sprintf("wintun.dll v%s installed successfully!", WinTunVersion),

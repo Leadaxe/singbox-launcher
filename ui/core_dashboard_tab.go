@@ -21,6 +21,9 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
+	"singbox-launcher/core/config/parser"
+	"singbox-launcher/ui/wizard"
+	wizardtemplate "singbox-launcher/ui/wizard/template"
 )
 
 const downloadPlaceholderWidth = 180
@@ -99,8 +102,8 @@ func CreateCoreDashboardTab(ac *core.AppController) fyne.CanvasObject {
 
 	// Регистрируем callback для обновления статуса при изменении RunningState
 	// Сохраняем оригинальный callback, если он есть
-	originalUpdateCoreStatusFunc := tab.controller.UpdateCoreStatusFunc
-	tab.controller.UpdateCoreStatusFunc = func() {
+	originalUpdateCoreStatusFunc := tab.controller.UIService.UpdateCoreStatusFunc
+	tab.controller.UIService.UpdateCoreStatusFunc = func() {
 		// Вызываем оригинальный callback, если он есть
 		if originalUpdateCoreStatusFunc != nil {
 			originalUpdateCoreStatusFunc()
@@ -112,14 +115,14 @@ func CreateCoreDashboardTab(ac *core.AppController) fyne.CanvasObject {
 	}
 
 	// Регистрируем callback для обновления статуса конфига
-	tab.controller.UpdateConfigStatusFunc = func() {
+	tab.controller.UIService.UpdateConfigStatusFunc = func() {
 		fyne.Do(func() {
 			tab.updateConfigInfo()
 		})
 	}
 
 	// Регистрируем callback для обновления прогресса парсера
-	tab.controller.UpdateParserProgressFunc = func(progress float64, status string) {
+	tab.controller.UIService.UpdateParserProgressFunc = func(progress float64, status string) {
 		fyne.Do(func() {
 			if tab.parserProgressBar != nil {
 				if progress < 0 {
@@ -163,7 +166,7 @@ func CreateCoreDashboardTab(ac *core.AppController) fyne.CanvasObject {
 
 	// Первоначальное обновление
 	tab.updateBinaryStatus() // Проверяет наличие бинарника и вызывает updateRunningStatus
-	tab.updateVersionInfo()
+	_ = tab.updateVersionInfo()
 	if runtime.GOOS == "windows" {
 		tab.updateWintunStatus() // Проверяет наличие wintun.dll
 	}
@@ -257,7 +260,9 @@ func (tab *CoreDashboardTab) createConfigBlock() fyne.CanvasObject {
 	tab.updateConfigButton.Importance = widget.MediumImportance
 
 	tab.wizardButton = widget.NewButton("⚙️ Wizard", func() {
-		ShowConfigWizard(tab.controller.MainWindow, tab.controller)
+		// Get parent window from AppController
+		parentWindow := tab.controller.GetMainWindow()
+		wizard.ShowConfigWizard(parentWindow, tab.controller)
 	})
 	tab.wizardButton.Importance = widget.MediumImportance
 
@@ -439,14 +444,14 @@ func (tab *CoreDashboardTab) updateBinaryStatus() {
 	if _, err := tab.controller.GetInstalledCoreVersion(); err != nil {
 		tab.statusLabel.SetText("Core Status ❌ Error: sing-box not found")
 		tab.statusLabel.Importance = widget.MediumImportance // Текст всегда черный
-		// Обновляем иконку трея (красная при ошибке)
-		tab.controller.UpdateUI()
+		// UpdateUI will be called automatically by RunningState.Set() or other state changes
+		// Don't call UpdateUI() here to avoid infinite loop
 		return
 	}
 	// Если бинарник найден, обновляем статус запуска
 	tab.updateRunningStatus()
-	// Обновляем иконку трея (может измениться с красной на черную/зеленую)
-	tab.controller.UpdateUI()
+	// UpdateUI will be called automatically by RunningState.Set() or other state changes
+	// Don't call UpdateUI() here to avoid infinite loop
 }
 
 // updateRunningStatus обновляет статус Running/Stopped на основе RunningState
@@ -499,12 +504,12 @@ func (tab *CoreDashboardTab) updateRunningStatus() {
 // readConfigOnDemand reads config when user clicks on config label/title
 func (tab *CoreDashboardTab) readConfigOnDemand() {
 	// Обновляем информацию о конфиге в UI
-	if tab.controller.UpdateConfigStatusFunc != nil {
-		tab.controller.UpdateConfigStatusFunc()
+	if tab.controller.UIService != nil && tab.controller.UIService.UpdateConfigStatusFunc != nil {
+		tab.controller.UIService.UpdateConfigStatusFunc()
 	}
 
 	// Читаем конфиг
-	config, err := core.ExtractParserConfig(tab.controller.ConfigPath)
+	config, err := parser.ExtractParserConfig(tab.controller.FileService.ConfigPath)
 	if err != nil {
 		log.Printf("CoreDashboard: Failed to read config on demand: %v", err)
 		// Можно показать сообщение пользователю через dialog
@@ -519,7 +524,7 @@ func (tab *CoreDashboardTab) readConfigOnDemand() {
 
 func (tab *CoreDashboardTab) updateConfigInfo() {
 	// Обновляем статусы sing-box и wintun.dll
-	tab.updateVersionInfo()
+	_ = tab.updateVersionInfo()
 	if runtime.GOOS == "windows" {
 		tab.updateWintunStatus()
 	}
@@ -527,7 +532,7 @@ func (tab *CoreDashboardTab) updateConfigInfo() {
 	if tab.configStatusLabel == nil {
 		return
 	}
-	configPath := tab.controller.ConfigPath
+	configPath := tab.controller.FileService.ConfigPath
 	configExists := false
 	if info, err := os.Stat(configPath); err == nil {
 		modTime := info.ModTime().Format("2006-01-02")
@@ -541,8 +546,8 @@ func (tab *CoreDashboardTab) updateConfigInfo() {
 		configExists = false
 	}
 
-	templateFileName := GetTemplateFileName()
-	templatePath := filepath.Join(tab.controller.ExecDir, "bin", templateFileName)
+	templateFileName := wizardtemplate.GetTemplateFileName()
+	templatePath := filepath.Join(tab.controller.FileService.ExecDir, "bin", templateFileName)
 	if _, err := os.Stat(templatePath); err != nil {
 		// Template not found - show download button, hide wizard
 		if tab.templateDownloadButton != nil {
@@ -660,7 +665,7 @@ func (tab *CoreDashboardTab) updateVersionInfoAsync() {
 }
 
 func (tab *CoreDashboardTab) downloadConfigTemplate() {
-	configTemplateURL := GetTemplateURL()
+	configTemplateURL := wizardtemplate.GetTemplateURL()
 	if tab.templateDownloadButton != nil {
 		tab.templateDownloadButton.Disable()
 	}
@@ -674,7 +679,7 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 				if tab.templateDownloadButton != nil {
 					tab.templateDownloadButton.Enable()
 				}
-				ShowError(tab.controller.MainWindow, fmt.Errorf("failed to create request: %w", err))
+				ShowError(tab.controller.GetMainWindow(), fmt.Errorf("failed to create request: %w", err))
 			})
 			return
 		}
@@ -685,7 +690,7 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 				if tab.templateDownloadButton != nil {
 					tab.templateDownloadButton.Enable()
 				}
-				ShowError(tab.controller.MainWindow, fmt.Errorf("failed to download template: %w", err))
+				ShowError(tab.controller.GetMainWindow(), fmt.Errorf("failed to download template: %w", err))
 			})
 			return
 		}
@@ -695,7 +700,7 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 				if tab.templateDownloadButton != nil {
 					tab.templateDownloadButton.Enable()
 				}
-				ShowError(tab.controller.MainWindow, fmt.Errorf("download template failed: %s", resp.Status))
+				ShowError(tab.controller.GetMainWindow(), fmt.Errorf("download template failed: %s", resp.Status))
 			})
 			return
 		}
@@ -705,18 +710,18 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 				if tab.templateDownloadButton != nil {
 					tab.templateDownloadButton.Enable()
 				}
-				ShowError(tab.controller.MainWindow, fmt.Errorf("failed to read template: %w", err))
+				ShowError(tab.controller.GetMainWindow(), fmt.Errorf("failed to read template: %w", err))
 			})
 			return
 		}
-		templateFileName := GetTemplateFileName()
-		target := filepath.Join(tab.controller.ExecDir, "bin", templateFileName)
+		templateFileName := wizardtemplate.GetTemplateFileName()
+		target := filepath.Join(tab.controller.FileService.ExecDir, "bin", templateFileName)
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			fyne.Do(func() {
 				if tab.templateDownloadButton != nil {
 					tab.templateDownloadButton.Enable()
 				}
-				ShowError(tab.controller.MainWindow, fmt.Errorf("failed to create bin directory: %w", err))
+				ShowError(tab.controller.GetMainWindow(), fmt.Errorf("failed to create bin directory: %w", err))
 			})
 			return
 		}
@@ -725,7 +730,7 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 				if tab.templateDownloadButton != nil {
 					tab.templateDownloadButton.Enable()
 				}
-				ShowError(tab.controller.MainWindow, fmt.Errorf("failed to save template: %w", err))
+				ShowError(tab.controller.GetMainWindow(), fmt.Errorf("failed to save template: %w", err))
 			})
 			return
 		}
@@ -733,7 +738,7 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 			if tab.templateDownloadButton != nil {
 				tab.templateDownloadButton.Hide()
 			}
-			dialog.ShowInformation("Config Template", fmt.Sprintf("Template saved to %s", target), tab.controller.MainWindow)
+			dialog.ShowInformation("Config Template", fmt.Sprintf("Template saved to %s", target), tab.controller.GetMainWindow())
 			tab.updateConfigInfo()
 		})
 	}()
@@ -753,7 +758,7 @@ func (tab *CoreDashboardTab) handleDownload() {
 			latest, err := tab.controller.GetLatestCoreVersion()
 			fyne.Do(func() {
 				if err != nil {
-					ShowError(tab.controller.MainWindow, fmt.Errorf("failed to get latest version: %w", err))
+					ShowError(tab.controller.GetMainWindow(), fmt.Errorf("failed to get latest version: %w", err))
 					tab.downloadInProgress = false
 					tab.setSingboxState("", "Download", -1)
 					return
@@ -800,15 +805,15 @@ func (tab *CoreDashboardTab) startDownloadWithVersion(targetVersion string) {
 				if progress.Status == "done" {
 					tab.downloadInProgress = false
 					// Обновляем статусы после успешного скачивания (это уберет ошибки и обновит статус)
-					tab.updateVersionInfo()
+					_ = tab.updateVersionInfo()
 					tab.updateBinaryStatus() // Это вызовет updateRunningStatus() и обновит статус
-					// Обновляем иконку трея (может измениться с красной на черную/зеленую)
-					tab.controller.UpdateUI()
-					ShowInfo(tab.controller.MainWindow, "Download Complete", progress.Message)
+					// UpdateUI will be called automatically by RunningState.Set() or other state changes
+					// Don't call UpdateUI() here to avoid infinite loop
+					ShowInfo(tab.controller.GetMainWindow(), "Download Complete", progress.Message)
 				} else if progress.Status == "error" {
 					tab.downloadInProgress = false
 					tab.setSingboxState("", "Download", -1)
-					ShowError(tab.controller.MainWindow, progress.Error)
+					ShowError(tab.controller.GetMainWindow(), progress.Error)
 				}
 			})
 		}
@@ -841,7 +846,7 @@ func (tab *CoreDashboardTab) startAutoUpdate() {
 				case <-time.After(delay):
 					// Обновляем только версию асинхронно (не блокируем UI)
 					// updateVersionInfo теперь полностью асинхронная
-					tab.updateVersionInfo()
+					_ = tab.updateVersionInfo()
 					// Устанавливаем успех после небольшой задержки
 					// (в реальности нужно отслеживать через канал, но для простоты используем задержку)
 					go func() {
@@ -948,11 +953,11 @@ func (tab *CoreDashboardTab) handleWintunDownload() {
 				if progress.Status == "done" {
 					tab.wintunDownloadInProgress = false
 					tab.updateWintunStatus() // Обновляет статус и управляет кнопкой
-					ShowInfo(tab.controller.MainWindow, "Download Complete", progress.Message)
+					ShowInfo(tab.controller.GetMainWindow(), "Download Complete", progress.Message)
 				} else if progress.Status == "error" {
 					tab.wintunDownloadInProgress = false
 					tab.setWintunState("", "Download wintun.dll", -1)
-					ShowError(tab.controller.MainWindow, progress.Error)
+					ShowError(tab.controller.GetMainWindow(), progress.Error)
 				}
 			})
 		}

@@ -1,7 +1,7 @@
-// Package parsers provides parsing logic for various proxy node formats.
+// Package subscription provides parsing logic for various proxy node formats.
 // It supports VLESS, VMess, Trojan, Shadowsocks, and Hysteria2 protocols, handling
 // both direct links and subscription formats.
-package parsers
+package subscription
 
 import (
 	"encoding/base64"
@@ -12,23 +12,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-)
+	"unicode/utf8"
 
-// ParsedNode represents a parsed proxy node with all extracted information.
-// It contains protocol-specific fields (UUID, Flow, etc.) and the generated
-// outbound configuration ready for JSON serialization.
-type ParsedNode struct {
-	Tag      string
-	Scheme   string
-	Server   string
-	Port     int
-	UUID     string
-	Flow     string
-	Label    string
-	Comment  string
-	Query    url.Values
-	Outbound map[string]interface{}
-}
+	"singbox-launcher/core/config"
+)
 
 // IsDirectLink checks if the input string is a direct proxy link (vless://, vmess://, etc.)
 func IsDirectLink(input string) bool {
@@ -40,20 +27,25 @@ func IsDirectLink(input string) bool {
 		strings.HasPrefix(trimmed, "hysteria2://")
 }
 
+// MaxURILength defines the maximum allowed length for a proxy URI
+const MaxURILength = 8192 // 8 KB - reasonable limit for proxy URIs
+
 // ParseNode parses a single node URI and applies skip filters
-func ParseNode(uri string, skipFilters []map[string]string) (*ParsedNode, error) {
+func ParseNode(uri string, skipFilters []map[string]string) (*config.ParsedNode, error) {
+	// Validate URI length
+	if len(uri) > MaxURILength {
+		return nil, fmt.Errorf("URI length (%d) exceeds maximum (%d)", len(uri), MaxURILength)
+	}
+
 	// Determine scheme
 	scheme := ""
 	uriToParse := uri
 	var ssMethod, ssPassword string // For SS links: method and password extracted from base64
 
-	// Handle VMess base64 format
-	if strings.HasPrefix(uri, "vmess://") {
-		scheme = "vmess"
-		// VMess is in base64 format, decode with padding support
+	// Determine scheme and handle protocol-specific parsing
+	switch {
+	case strings.HasPrefix(uri, "vmess://"):
 		base64Part := strings.TrimPrefix(uri, "vmess://")
-
-		// Decode base64 with padding support
 		decoded, err := decodeBase64WithPadding(base64Part)
 		if err != nil {
 			uriPreview := uri
@@ -64,52 +56,39 @@ func ParseNode(uri string, skipFilters []map[string]string) (*ParsedNode, error)
 				len(uri), len(base64Part), err, uriPreview)
 			return nil, fmt.Errorf("failed to decode VMESS base64: %w", err)
 		}
-
 		if len(decoded) == 0 {
 			log.Printf("Parser: Error: VMESS decoded content is empty. Skipping node.")
 			return nil, fmt.Errorf("VMESS decoded content is empty")
 		}
-
-		// Parse as JSON VMess config
 		var vmessConfig map[string]interface{}
 		if err := json.Unmarshal(decoded, &vmessConfig); err != nil {
-			log.Printf("Parser: Error: Failed to parse VMESS JSON (decoded length: %d): %v. Skipping node.",
-				len(decoded), err)
+			log.Printf("Parser: Error: Failed to parse VMESS JSON (decoded length: %d): %v. Skipping node.", len(decoded), err)
 			return nil, fmt.Errorf("failed to parse VMESS JSON: %w", err)
 		}
-
-		// Parse VMess JSON configuration
 		return parseVMessJSON(vmessConfig, skipFilters)
-	} else if strings.HasPrefix(uri, "vless://") {
+
+	case strings.HasPrefix(uri, "vless://"):
 		scheme = "vless"
-	} else if strings.HasPrefix(uri, "trojan://") {
+
+	case strings.HasPrefix(uri, "trojan://"):
 		scheme = "trojan"
-	} else if strings.HasPrefix(uri, "ss://") {
+
+	case strings.HasPrefix(uri, "ss://"):
 		scheme = "ss"
-
-		// SS links in SIP002 format: ss://base64(method:password)@server:port#tag
 		ssPart := strings.TrimPrefix(uri, "ss://")
-
-		// Check if it's SIP002 format (has @)
 		if atIdx := strings.Index(ssPart, "@"); atIdx > 0 {
-			// SIP002: ss://base64(method:password)@server:port#tag
 			encodedUserinfo := ssPart[:atIdx]
 			rest := ssPart[atIdx+1:]
-
-			// Decode base64 userinfo (with padding support)
 			decoded, err := decodeBase64WithPadding(encodedUserinfo)
 			if err != nil {
 				log.Printf("Parser: Error: Failed to decode SS base64 userinfo. Encoded: %s, Error: %v", encodedUserinfo, err)
 			} else {
-				// Split method:password
 				decodedStr := string(decoded)
 				userinfoParts := strings.SplitN(decodedStr, ":", 2)
 				if len(userinfoParts) == 2 {
 					ssMethod = userinfoParts[0]
 					ssPassword = userinfoParts[1]
 					log.Printf("Parser: Successfully extracted SS credentials: method=%s, password length=%d", ssMethod, len(ssPassword))
-
-					// Validate encryption method to prevent sing-box crashes
 					if !isValidShadowsocksMethod(ssMethod) {
 						log.Printf("Parser: Warning: Invalid or unsupported Shadowsocks method '%s'. Skipping node.", ssMethod)
 						return nil, fmt.Errorf("unsupported Shadowsocks encryption method: %s", ssMethod)
@@ -118,15 +97,35 @@ func ParseNode(uri string, skipFilters []map[string]string) (*ParsedNode, error)
 					log.Printf("Parser: Error: SS decoded userinfo doesn't contain ':' separator. Decoded: %s", decodedStr)
 				}
 			}
-
-			// Reconstruct URI for standard parsing
 			uriToParse = "ss://" + rest
 		} else {
 			log.Printf("Parser: Warning: SS link is not in SIP002 format (no @ found): %s", uri)
 		}
-	} else if strings.HasPrefix(uri, "hysteria2://") {
+
+	case strings.HasPrefix(uri, "hysteria2://"):
 		scheme = "hysteria2"
-	} else {
+		base64Part := strings.TrimPrefix(uri, "hysteria2://")
+		decoded, err := decodeBase64WithPadding(base64Part)
+		if err == nil && len(decoded) > 0 {
+			decodedStr, valid := validateAndFixUTF8Bytes(decoded)
+			if !valid {
+				log.Printf("Parser: Error: Decoded base64 contains invalid UTF-8 that cannot be fixed. Skipping node.")
+				return nil, fmt.Errorf("decoded base64 contains invalid UTF-8")
+			}
+			if decodedStr != string(decoded) {
+				log.Printf("Parser: Fixed invalid UTF-8 in decoded base64 Hysteria2 link")
+			}
+			if strings.Contains(decodedStr, "@") {
+				uriToParse = "hysteria2://" + decodedStr
+				log.Printf("Parser: Successfully decoded base64 Hysteria2 link")
+			} else {
+				uriToParse = uri
+			}
+		} else {
+			uriToParse = uri
+		}
+
+	default:
 		return nil, fmt.Errorf("unsupported scheme")
 	}
 
@@ -136,8 +135,18 @@ func ParseNode(uri string, skipFilters []map[string]string) (*ParsedNode, error)
 		return nil, fmt.Errorf("failed to parse URI: %w", err)
 	}
 
+	// Validate VLESS/Trojan URI format (must have hostname and userinfo)
+	if scheme == "vless" || scheme == "trojan" {
+		if parsedURL.Hostname() == "" {
+			return nil, fmt.Errorf("invalid %s URI: missing hostname", scheme)
+		}
+		if parsedURL.User == nil || parsedURL.User.Username() == "" {
+			return nil, fmt.Errorf("invalid %s URI: missing userinfo (UUID/password)", scheme)
+		}
+	}
+
 	// Extract components
-	node := &ParsedNode{
+	node := &config.ParsedNode{
 		Scheme: scheme,
 		Server: parsedURL.Hostname(),
 		Query:  parsedURL.Query(),
@@ -154,15 +163,10 @@ func ParseNode(uri string, skipFilters []map[string]string) (*ParsedNode, error)
 	}
 
 	// Extract port
-	port := parsedURL.Port()
-	if port == "" {
-		// Default ports for all protocols
-		node.Port = 443
-	} else {
+	node.Port = 443 // Default port
+	if port := parsedURL.Port(); port != "" {
 		if p, err := strconv.Atoi(port); err == nil {
 			node.Port = p
-		} else {
-			node.Port = 443 // Fallback
 		}
 	}
 
@@ -170,14 +174,30 @@ func ParseNode(uri string, skipFilters []map[string]string) (*ParsedNode, error)
 	// For hysteria2, password is in username part of userinfo (hysteria2://password@server:port)
 	if parsedURL.User != nil {
 		node.UUID = parsedURL.User.Username()
+		// URL decode the username (password) if it contains encoded characters
+		if decoded, err := url.QueryUnescape(node.UUID); err == nil && decoded != node.UUID {
+			node.UUID = decoded
+		}
 	}
 
 	// Extract fragment (label)
 	node.Label = parsedURL.Fragment
-	// URL decode the fragment if needed
+	// URL decode and validate UTF-8
 	if node.Label != "" {
 		if decoded, err := url.QueryUnescape(node.Label); err == nil {
 			node.Label = decoded
+		}
+
+		// Validate and fix UTF-8 encoding
+		fixed, valid := validateAndFixUTF8(node.Label)
+		if !valid {
+			log.Printf("Parser: Error: Fragment contains invalid UTF-8 that cannot be fixed: %q. Skipping node.", parsedURL.Fragment)
+			return nil, fmt.Errorf("fragment contains invalid UTF-8: %q", parsedURL.Fragment)
+		}
+
+		if fixed != node.Label {
+			log.Printf("Parser: Fixed invalid UTF-8 in fragment: %q -> %q", parsedURL.Fragment, fixed)
+			node.Label = fixed
 		}
 	}
 
@@ -220,18 +240,28 @@ func ParseNode(uri string, skipFilters []map[string]string) (*ParsedNode, error)
 
 // Private helper functions (migrated from parser.go)
 
+// decodeBase64WithPadding attempts to decode base64 string with automatic padding
+// Uses the shared tryDecodeBase64 function from core package
+// Note: This creates a dependency on core package, but we can't import it due to circular dependency
+// So we keep a local implementation that matches the logic
 func decodeBase64WithPadding(s string) ([]byte, error) {
-	switch len(s) % 4 {
-	case 2:
-		s += "=="
-	case 3:
-		s += "="
+	// Try URL-safe base64 without padding first (most common)
+	if decoded, err := base64.URLEncoding.WithPadding(base64.NoPadding).DecodeString(s); err == nil {
+		return decoded, nil
 	}
-	decoded, err := base64.URLEncoding.DecodeString(s)
-	if err != nil {
-		decoded, err = base64.StdEncoding.DecodeString(s)
+
+	// Try standard base64 without padding
+	if decoded, err := base64.StdEncoding.WithPadding(base64.NoPadding).DecodeString(s); err == nil {
+		return decoded, nil
 	}
-	return decoded, err
+
+	// Try URL-safe base64 with padding
+	if decoded, err := base64.URLEncoding.DecodeString(s); err == nil {
+		return decoded, nil
+	}
+
+	// Try standard base64 with padding
+	return base64.StdEncoding.DecodeString(s)
 }
 
 // isValidShadowsocksMethod checks if the encryption method is supported by sing-box
@@ -260,18 +290,42 @@ func isValidHysteria2ObfsType(obfsType string) bool {
 	return obfsType == "salamander"
 }
 
-func extractTagAndComment(label string) (tag, comment string) {
-	// Tag should contain the full label (including part after |)
-	tag = label
-
-	// Comment contains only the part after | (if exists)
-	parts := strings.Split(label, "|")
-	if len(parts) > 1 {
-		comment = strings.Join(parts[1:], "|") // Join in case there are multiple |
-	} else {
-		comment = label // If no |, use full label as comment
+// validateAndFixUTF8 validates and fixes invalid UTF-8 in a string
+// Returns fixed string and true if valid, or original string and false if unfixable
+func validateAndFixUTF8(s string) (string, bool) {
+	if utf8.ValidString(s) {
+		return s, true
 	}
-	return strings.TrimSpace(tag), strings.TrimSpace(comment)
+	fixed := strings.ToValidUTF8(s, "")
+	if utf8.ValidString(fixed) {
+		return fixed, true
+	}
+	return s, false
+}
+
+// validateAndFixUTF8Bytes validates and fixes invalid UTF-8 in bytes
+// Returns fixed string and true if valid, or empty string and false if unfixable
+func validateAndFixUTF8Bytes(b []byte) (string, bool) {
+	if utf8.Valid(b) {
+		return string(b), true
+	}
+	fixed := strings.ToValidUTF8(string(b), "")
+	if utf8.ValidString(fixed) {
+		return fixed, true
+	}
+	return "", false
+}
+
+func extractTagAndComment(label string) (tag, comment string) {
+	tag = strings.TrimSpace(label)
+
+	// Comment is the part after | separator
+	if idx := strings.Index(label, "|"); idx >= 0 {
+		comment = strings.TrimSpace(label[idx+1:])
+	} else {
+		comment = tag // If no |, use full label as comment
+	}
+	return tag, comment
 }
 
 func normalizeFlagTag(tag string) string {
@@ -283,24 +337,8 @@ func generateDefaultTag(scheme, server string, port int) string {
 	return fmt.Sprintf("%s-%s-%d", scheme, server, port)
 }
 
-func shouldSkipNode(node *ParsedNode, skipFilters []map[string]string) bool {
-	for _, filter := range skipFilters {
-		allKeysMatch := true
-		for key, pattern := range filter {
-			value := getNodeValue(node, key)
-			if !matchesPattern(value, pattern) {
-				allKeysMatch = false
-				break
-			}
-		}
-		if allKeysMatch {
-			return true // Skip node
-		}
-	}
-	return false // Don't skip
-}
-
-func getNodeValue(node *ParsedNode, key string) string {
+// getNodeValue extracts a value from node by key (supports nested keys with dots)
+func getNodeValue(node *config.ParsedNode, key string) string {
 	switch key {
 	case "tag":
 		return node.Tag
@@ -321,6 +359,7 @@ func getNodeValue(node *ParsedNode, key string) string {
 	}
 }
 
+// matchesPattern checks if a value matches a pattern (supports regex and negation)
 func matchesPattern(value, pattern string) bool {
 	// Negation literal: !literal
 	if strings.HasPrefix(pattern, "!") && !strings.HasPrefix(pattern, "!/") {
@@ -352,11 +391,28 @@ func matchesPattern(value, pattern string) bool {
 		return re.MatchString(value)
 	}
 
-	// Literal match
+	// Literal match (case-sensitive)
 	return value == pattern
 }
 
-func buildOutbound(node *ParsedNode) map[string]interface{} {
+func shouldSkipNode(node *config.ParsedNode, skipFilters []map[string]string) bool {
+	for _, filter := range skipFilters {
+		allKeysMatch := true
+		for key, pattern := range filter {
+			value := getNodeValue(node, key)
+			if !matchesPattern(value, pattern) {
+				allKeysMatch = false
+				break
+			}
+		}
+		if allKeysMatch {
+			return true // Skip node
+		}
+	}
+	return false // Don't skip
+}
+
+func buildOutbound(node *config.ParsedNode) map[string]interface{} {
 	outbound := make(map[string]interface{})
 	outbound["tag"] = node.Tag
 	// Use "shadowsocks" instead of "ss" for sing-box
@@ -460,8 +516,8 @@ func buildOutbound(node *ParsedNode) map[string]interface{} {
 
 			if alpn := node.Query.Get("alpn"); alpn != "" {
 				alpnList := strings.Split(alpn, ",")
-				for i, a := range alpnList {
-					alpnList[i] = strings.TrimSpace(a)
+				for i := range alpnList {
+					alpnList[i] = strings.TrimSpace(alpnList[i])
 				}
 				tlsData["alpn"] = alpnList
 			}
@@ -496,7 +552,7 @@ func buildOutbound(node *ParsedNode) map[string]interface{} {
 }
 
 // buildHysteria2Outbound builds outbound configuration for Hysteria2 protocol
-func buildHysteria2Outbound(node *ParsedNode, outbound map[string]interface{}) {
+func buildHysteria2Outbound(node *config.ParsedNode, outbound map[string]interface{}) {
 	// Password is required (stored in UUID field from userinfo)
 	if node.UUID != "" {
 		outbound["password"] = node.UUID
@@ -504,9 +560,16 @@ func buildHysteria2Outbound(node *ParsedNode, outbound map[string]interface{}) {
 		log.Printf("Parser: Warning: Hysteria2 link missing password. URI might be invalid.")
 	}
 
-	// Optional: ports range (mport parameter)
+	// Optional: ports range (mport parameter) - converted to server_ports array for sing-box 1.9+
+	// Format: "27200-28000" or "27200:28000" -> ["27200:28000"]
 	if mport := node.Query.Get("mport"); mport != "" {
-		outbound["ports"] = mport
+		// Convert mport format (can be "27200-28000" or "27200:28000") to sing-box format
+		// sing-box expects array of port ranges in format "start:end"
+		portRange := strings.ReplaceAll(mport, "-", ":")
+		serverPorts := []string{portRange}
+		outbound["server_ports"] = serverPorts
+		// hop_interval is optional, default is "30s" in sing-box, so we can omit it
+		// or set it explicitly if needed in the future
 	}
 
 	// Optional: obfs (obfuscation)
@@ -542,7 +605,7 @@ func buildHysteria2Outbound(node *ParsedNode, outbound map[string]interface{}) {
 }
 
 // buildHysteria2TLS builds TLS configuration for Hysteria2
-func buildHysteria2TLS(node *ParsedNode, outbound map[string]interface{}) {
+func buildHysteria2TLS(node *config.ParsedNode, outbound map[string]interface{}) {
 	sni := node.Query.Get("sni")
 
 	// Handle insecure parameter (can be "1" or "true")
@@ -555,10 +618,10 @@ func buildHysteria2TLS(node *ParsedNode, outbound map[string]interface{}) {
 	}
 
 	// Set SNI if provided and valid (skip emoji or invalid values)
-	if sni != "" && sni != "🔒" && isValidSNI(sni) {
+	// SNI is valid if it contains dot (hostname) or colon (IPv6)
+	if sni != "" && sni != "🔒" && (strings.Contains(sni, ".") || strings.Contains(sni, ":")) {
 		tlsData["server_name"] = sni
 	} else if node.Server != "" {
-		// Use server hostname as fallback
 		tlsData["server_name"] = node.Server
 	}
 
@@ -566,16 +629,20 @@ func buildHysteria2TLS(node *ParsedNode, outbound map[string]interface{}) {
 		tlsData["insecure"] = true
 	}
 
+	// Handle ALPN parameter (for hysteria2, typically "h3")
+	if alpn := node.Query.Get("alpn"); alpn != "" {
+		alpnList := strings.Split(alpn, ",")
+		for i := range alpnList {
+			alpnList[i] = strings.TrimSpace(alpnList[i])
+		}
+		tlsData["alpn"] = alpnList
+	}
+
 	outbound["tls"] = tlsData
 }
 
-// isValidSNI checks if SNI value is valid (contains dot or colon for hostname/IP)
-func isValidSNI(sni string) bool {
-	return strings.Contains(sni, ".") || strings.Contains(sni, ":")
-}
-
-func parseVMessJSON(vmessConfig map[string]interface{}, skipFilters []map[string]string) (*ParsedNode, error) {
-	node := &ParsedNode{
+func parseVMessJSON(vmessConfig map[string]interface{}, skipFilters []map[string]string) (*config.ParsedNode, error) {
+	node := &config.ParsedNode{
 		Scheme: "vmess",
 		Query:  make(url.Values),
 	}

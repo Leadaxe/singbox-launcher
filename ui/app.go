@@ -45,15 +45,17 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 				// Можно показать сообщение пользователю
 				return
 			}
-			controller.RefreshAPIFunc()
+			if controller.UIService != nil && controller.UIService.RefreshAPIFunc != nil {
+				controller.UIService.RefreshAPIFunc()
+			}
 		}
 	}
 
 	// Сохраняем оригинальный callback, который был установлен в CreateCoreDashboardTab
-	originalUpdateCoreStatusFunc := controller.UpdateCoreStatusFunc
+	originalUpdateCoreStatusFunc := controller.UIService.UpdateCoreStatusFunc
 
 	// Регистрируем комбинированный callback для обновления состояния вкладки Servers
-	controller.UpdateCoreStatusFunc = func() {
+	controller.UIService.UpdateCoreStatusFunc = func() {
 		// Вызываем оригинальный callback, если он есть
 		if originalUpdateCoreStatusFunc != nil {
 			originalUpdateCoreStatusFunc()

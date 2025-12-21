@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"log"
 
+	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/parser"
+	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/dialogs"
 )
 
@@ -31,7 +34,9 @@ func (svc *ConfigService) RunParserProcess() {
 	ac.ParserMutex.Lock()
 	if ac.ParserRunning {
 		ac.ParserMutex.Unlock()
-		dialogs.ShowAutoHideInfo(ac.Application, ac.MainWindow, "Parser Info", "Configuration update is already in progress.")
+		if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
+			dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, "Parser Info", "Configuration update is already in progress.")
+		}
 		return
 	}
 	ac.ParserRunning = true
@@ -56,6 +61,74 @@ func (svc *ConfigService) RunParserProcess() {
 	} else {
 		log.Println("RunParser: Config updated successfully.")
 		// Progress already updated in UpdateConfigFromSubscriptions with success status
-		dialogs.ShowAutoHideInfo(ac.Application, ac.MainWindow, "Parser", "Config updated successfully!")
+		if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
+			dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, "Parser", "Config updated successfully!")
+		}
 	}
+}
+
+// updateParserProgress safely calls UpdateParserProgressFunc if it's not nil
+func updateParserProgress(ac *AppController, progress float64, status string) {
+	if ac.UIService != nil && ac.UIService.UpdateParserProgressFunc != nil {
+		ac.UIService.UpdateParserProgressFunc(progress, status)
+	}
+}
+
+// ProcessProxySource delegates to subscription.LoadNodesFromSource
+func (svc *ConfigService) ProcessProxySource(proxySource config.ProxySource, tagCounts map[string]int, progressCallback func(float64, string), subscriptionIndex, totalSubscriptions int) ([]*config.ParsedNode, error) {
+	return subscription.LoadNodesFromSource(proxySource, tagCounts, progressCallback, subscriptionIndex, totalSubscriptions)
+}
+
+// GenerateSelector delegates to config.GenerateSelector
+func (svc *ConfigService) GenerateSelector(allNodes []*config.ParsedNode, outboundConfig config.OutboundConfig) (string, error) {
+	return config.GenerateSelector(allNodes, outboundConfig)
+}
+
+// GenerateNodeJSON delegates to config.GenerateNodeJSON
+func (svc *ConfigService) GenerateNodeJSON(node *config.ParsedNode) (string, error) {
+	return config.GenerateNodeJSON(node)
+}
+
+// GenerateOutboundsFromParserConfig delegates to config.GenerateOutboundsFromParserConfig
+func (svc *ConfigService) GenerateOutboundsFromParserConfig(
+	parserConfig *config.ParserConfig,
+	tagCounts map[string]int,
+	progressCallback func(float64, string),
+) (*config.OutboundGenerationResult, error) {
+	// Create a wrapper function that matches the signature expected by config.GenerateOutboundsFromParserConfig
+	loadNodesFunc := func(ps config.ProxySource, tc map[string]int, pc func(float64, string), idx, total int) ([]*config.ParsedNode, error) {
+		return svc.ProcessProxySource(ps, tc, pc, idx, total)
+	}
+	return config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback, loadNodesFunc)
+}
+
+// UpdateConfigFromSubscriptions delegates to config.UpdateConfigFromSubscriptions
+func (svc *ConfigService) UpdateConfigFromSubscriptions() error {
+	ac := svc.ac
+
+	// Step 1: Extract configuration
+	parserConfig, err := parser.ExtractParserConfig(ac.FileService.ConfigPath)
+	if err != nil {
+		updateParserProgress(ac, -1, fmt.Sprintf("Error: %v", err))
+		return fmt.Errorf("failed to extract parser config: %w", err)
+	}
+
+	// Update progress: Step 1 completed
+	updateParserProgress(ac, 5, "Parsed ParserConfig block")
+
+	progressCallback := func(p float64, s string) {
+		updateParserProgress(ac, p, s)
+	}
+
+	// Create a wrapper function that matches the signature expected by config.UpdateConfigFromSubscriptions
+	loadNodesFunc := func(ps config.ProxySource, tc map[string]int, pc func(float64, string), idx, total int) ([]*config.ParsedNode, error) {
+		return svc.ProcessProxySource(ps, tc, pc, idx, total)
+	}
+
+	err = config.UpdateConfigFromSubscriptions(ac.FileService.ConfigPath, parserConfig, progressCallback, loadNodesFunc)
+	if err == nil {
+		// Resume auto-update after successful update
+		ac.resumeAutoUpdate()
+	}
+	return err
 }

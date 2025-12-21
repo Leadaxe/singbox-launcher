@@ -19,20 +19,20 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
-// ReleaseInfo содержит информацию о релизе GitHub
+// ReleaseInfo contains information about GitHub release
 type ReleaseInfo struct {
 	TagName string  `json:"tag_name"`
 	Assets  []Asset `json:"assets"`
 }
 
-// Asset содержит информацию об asset релиза
+// Asset contains information about release asset
 type Asset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
 	Size               int64  `json:"size"`
 }
 
-// DownloadProgress содержит информацию о прогрессе скачивания
+// DownloadProgress contains information about download progress
 type DownloadProgress struct {
 	Progress int // 0-100
 	Message  string
@@ -52,46 +52,46 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 		return
 	}
 
-	// 2. Находим правильный asset для платформы
+	// 2. Find correct asset for platform
 	progressChan <- DownloadProgress{Progress: 10, Message: "Finding platform asset...", Status: "downloading"}
 	asset, err := ac.findPlatformAsset(release.Assets)
 	if err != nil {
-		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Failed to find platform asset: %v", err), Status: "error", Error: err}
+		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Failed to find platform asset: %v", err), Status: "error", Error: fmt.Errorf("DownloadCore: %w", err)}
 		return
 	}
 
-	// 3. Создаем временную директорию
-	tempDir := filepath.Join(ac.ExecDir, "temp")
+	// 3. Create temporary directory
+	tempDir := filepath.Join(ac.FileService.ExecDir, "temp")
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
-		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Failed to create temp dir: %v", err), Status: "error", Error: err}
+		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Failed to create temp dir: %v", err), Status: "error", Error: fmt.Errorf("DownloadCore: failed to create temp dir: %w", err)}
 		return
 	}
-	defer os.RemoveAll(tempDir) // Удаляем временную директорию после завершения
+	defer os.RemoveAll(tempDir) // Remove temporary directory after completion
 
 	// 4. Download archive
 	archivePath := filepath.Join(tempDir, asset.Name)
 	progressChan <- DownloadProgress{Progress: 15, Message: fmt.Sprintf("Downloading %s...", asset.Name), Status: "downloading"}
 	if err := ac.downloadFile(ctx, asset.BrowserDownloadURL, archivePath, progressChan); err != nil {
-		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Download failed: %v", err), Status: "error", Error: err}
+		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Download failed: %v", err), Status: "error", Error: fmt.Errorf("DownloadCore: %w", err)}
 		return
 	}
 
-	// 5. Распаковываем архив
+	// 5. Extract archive
 	progressChan <- DownloadProgress{Progress: 80, Message: "Extracting archive...", Status: "extracting"}
 	binaryPath, err := ac.extractArchive(archivePath, tempDir)
 	if err != nil {
-		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Extraction failed: %v", err), Status: "error", Error: err}
+		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Extraction failed: %v", err), Status: "error", Error: fmt.Errorf("DownloadCore: %w", err)}
 		return
 	}
 
-	// 6. Копируем бинарник в целевую директорию
+	// 6. Copy binary to target directory
 	progressChan <- DownloadProgress{Progress: 90, Message: "Installing binary...", Status: "extracting"}
-	if err := ac.installBinary(binaryPath, ac.SingboxPath); err != nil {
-		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Installation failed: %v", err), Status: "error", Error: err}
+	if err := ac.installBinary(binaryPath, ac.FileService.SingboxPath); err != nil {
+		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Installation failed: %v", err), Status: "error", Error: fmt.Errorf("DownloadCore: %w", err)}
 		return
 	}
 
-	// 7. Готово!
+	// 7. Done!
 	progressChan <- DownloadProgress{Progress: 100, Message: fmt.Sprintf("sing-box v%s installed successfully!", version), Status: "done"}
 }
 
@@ -117,11 +117,11 @@ func (ac *AppController) getReleaseInfoFromGitHub(ctx context.Context, version s
 	}
 
 	// Используем универсальный HTTP клиент
-	client := createHTTPClient(NetworkRequestTimeout)
+	client := CreateHTTPClient(NetworkRequestTimeout)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("getReleaseInfoFromGitHub: failed to create request: %w", err)
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
@@ -129,26 +129,26 @@ func (ac *AppController) getReleaseInfoFromGitHub(ctx context.Context, version s
 
 	resp, err := client.Do(req)
 	if err != nil {
-		// Проверяем тип ошибки
+		// Check error type
 		if IsNetworkError(err) {
-			return nil, fmt.Errorf("network error: %s", GetNetworkErrorMessage(err))
+			return nil, fmt.Errorf("getReleaseInfoFromGitHub: network error: %s", GetNetworkErrorMessage(err))
 		}
-		return nil, fmt.Errorf("request failed: %w", err)
+		return nil, fmt.Errorf("getReleaseInfoFromGitHub: request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("getReleaseInfoFromGitHub: HTTP %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, fmt.Errorf("getReleaseInfoFromGitHub: failed to read response: %w", err)
 	}
 
 	var release ReleaseInfo
 	if err := json.Unmarshal(body, &release); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("getReleaseInfoFromGitHub: failed to parse response: %w", err)
 	}
 
 	return &release, nil
@@ -157,18 +157,18 @@ func (ac *AppController) getReleaseInfoFromGitHub(ctx context.Context, version s
 // getReleaseInfoFromSourceForge creates ReleaseInfo based on SourceForge (builds direct links)
 func (ac *AppController) getReleaseInfoFromSourceForge(ctx context.Context, version string) (*ReleaseInfo, error) {
 	if version == "" {
-		// Если версия не указана, пытаемся получить последнюю с GitHub
-		// Если не получилось, используем фиксированную версию
+		// If version is not specified, try to get latest from GitHub
+		// If that fails, use fixed version
 		latest, err := ac.GetLatestCoreVersion()
 		if err != nil {
-			log.Printf("Failed to get latest version, using fallback: %v", err)
+			log.Printf("getReleaseInfoFromSourceForge: failed to get latest version, using fallback: %v", err)
 			version = FallbackVersion
 		} else {
 			version = latest
 		}
 	}
 
-	// Строим список assets на основе известных платформ
+	// Build list of assets based on known platforms
 	assets := ac.buildSourceForgeAssets(version)
 
 	return &ReleaseInfo{
@@ -177,11 +177,11 @@ func (ac *AppController) getReleaseInfoFromSourceForge(ctx context.Context, vers
 	}, nil
 }
 
-// buildSourceForgeAssets строит список assets для SourceForge
+// buildSourceForgeAssets builds list of assets for SourceForge
 func (ac *AppController) buildSourceForgeAssets(version string) []Asset {
 	var assets []Asset
 
-	// Определяем нужный файл для текущей платформы
+	// Determine required file for current platform
 	var fileName string
 	switch runtime.GOOS {
 	case "windows":
@@ -210,19 +210,19 @@ func (ac *AppController) buildSourceForgeAssets(version string) []Asset {
 		return assets
 	}
 
-	// Строим прямую ссылку на SourceForge
+	// Build direct link to SourceForge
 	downloadURL := fmt.Sprintf("https://sourceforge.net/projects/sing-box.mirror/files/v%s/%s/download", version, fileName)
 
 	assets = append(assets, Asset{
 		Name:               fileName,
 		BrowserDownloadURL: downloadURL,
-		Size:               0, // Размер неизвестен заранее
+		Size:               0, // Size is unknown in advance
 	})
 
 	return assets
 }
 
-// findPlatformAsset находит правильный asset для текущей платформы
+// findPlatformAsset finds the correct asset for current platform
 func (ac *AppController) findPlatformAsset(assets []Asset) (*Asset, error) {
 	var platformPattern string
 
@@ -233,7 +233,7 @@ func (ac *AppController) findPlatformAsset(assets []Asset) (*Asset, error) {
 		} else if runtime.GOARCH == "arm64" {
 			platformPattern = "windows-arm64.zip"
 		} else {
-			return nil, fmt.Errorf("unsupported architecture: %s", runtime.GOARCH)
+			return nil, fmt.Errorf("findPlatformAsset: unsupported architecture: %s", runtime.GOARCH)
 		}
 	case "linux":
 		if runtime.GOARCH == "amd64" {
@@ -243,7 +243,7 @@ func (ac *AppController) findPlatformAsset(assets []Asset) (*Asset, error) {
 		} else if runtime.GOARCH == "arm" {
 			platformPattern = "linux-armv7.tar.gz"
 		} else {
-			return nil, fmt.Errorf("unsupported architecture: %s", runtime.GOARCH)
+			return nil, fmt.Errorf("findPlatformAsset: unsupported architecture: %s", runtime.GOARCH)
 		}
 	case "darwin":
 		if runtime.GOARCH == "amd64" {
@@ -251,10 +251,10 @@ func (ac *AppController) findPlatformAsset(assets []Asset) (*Asset, error) {
 		} else if runtime.GOARCH == "arm64" {
 			platformPattern = "darwin-arm64.tar.gz"
 		} else {
-			return nil, fmt.Errorf("unsupported architecture: %s", runtime.GOARCH)
+			return nil, fmt.Errorf("findPlatformAsset: unsupported architecture: %s", runtime.GOARCH)
 		}
 	default:
-		return nil, fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+		return nil, fmt.Errorf("findPlatformAsset: unsupported platform: %s", runtime.GOOS)
 	}
 
 	for i := range assets {
@@ -263,7 +263,7 @@ func (ac *AppController) findPlatformAsset(assets []Asset) (*Asset, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("asset not found for platform %s/%s", runtime.GOOS, runtime.GOARCH)
+	return nil, fmt.Errorf("findPlatformAsset: asset not found for platform %s/%s", runtime.GOOS, runtime.GOARCH)
 }
 
 // downloadFile downloads a file with progress tracking (with SourceForge fallback)
@@ -274,26 +274,26 @@ func (ac *AppController) downloadFile(ctx context.Context, url, destPath string,
 		return nil
 	}
 
-	log.Printf("Failed to download from original URL, trying mirrors...")
+	log.Printf("downloadFile: failed to download from original URL, trying mirrors...")
 
-	// Если не получилось, пробуем зеркала GitHub
+	// If that didn't work, try GitHub mirrors
 	mirrors := []string{
 		strings.Replace(url, "https://github.com/", "https://ghproxy.com/https://github.com/", 1),
 	}
 
 	for _, mirrorURL := range mirrors {
-		log.Printf("Trying mirror: %s", mirrorURL)
+		log.Printf("downloadFile: trying mirror: %s", mirrorURL)
 		err := ac.downloadFileFromURL(ctx, mirrorURL, destPath, progressChan)
 		if err == nil {
 			return nil
 		}
-		log.Printf("Mirror failed: %v", err)
+		log.Printf("downloadFile: mirror failed: %v", err)
 	}
 
-	// Если все зеркала GitHub не работают, пробуем SourceForge
+	// If all GitHub mirrors don't work, try SourceForge
 	if strings.Contains(url, "github.com") {
-		log.Printf("Trying SourceForge...")
-		// Извлекаем версию и имя файла из URL
+		log.Printf("downloadFile: trying SourceForge...")
+		// Extract version and file name from URL
 		version, fileName := ac.extractVersionAndFileName(url)
 		if version != "" && fileName != "" {
 			sourceForgeURL := fmt.Sprintf("https://sourceforge.net/projects/sing-box.mirror/files/v%s/%s/download", version, fileName)
@@ -301,11 +301,11 @@ func (ac *AppController) downloadFile(ctx context.Context, url, destPath string,
 			if err == nil {
 				return nil
 			}
-			log.Printf("SourceForge failed: %v", err)
+			log.Printf("downloadFile: SourceForge failed: %v", err)
 		}
 	}
 
-	return fmt.Errorf("all download sources failed, last error: %w", err)
+	return fmt.Errorf("downloadFile: all download sources failed, last error: %w", err)
 }
 
 // downloadFileFromURL downloads a file from a specific URL
@@ -319,32 +319,32 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 	}
 
 	// Use client with large timeout for download
-	client := createHTTPClient(downloadTimeout)
+	client := CreateHTTPClient(downloadTimeout)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("downloadFileFromURL: failed to create request: %w", err)
 	}
 
 	req.Header.Set("User-Agent", "singbox-launcher/1.0")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		// Проверяем тип ошибки
+		// Check error type
 		if IsNetworkError(err) {
-			return fmt.Errorf("network error: %s", GetNetworkErrorMessage(err))
+			return fmt.Errorf("downloadFileFromURL: network error: %s", GetNetworkErrorMessage(err))
 		}
-		return fmt.Errorf("request failed: %w", err)
+		return fmt.Errorf("downloadFileFromURL: request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
+		return fmt.Errorf("downloadFileFromURL: HTTP %d", resp.StatusCode)
 	}
 
 	file, err := os.Create(destPath)
 	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
+		return fmt.Errorf("downloadFileFromURL: failed to create file: %w", err)
 	}
 	defer file.Close()
 
@@ -357,7 +357,7 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 		// Check if context is cancelled
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("download cancelled: %w", ctx.Err())
+			return fmt.Errorf("downloadFileFromURL: download cancelled: %w", ctx.Err())
 		default:
 		}
 
@@ -365,7 +365,7 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 		if n > 0 {
 			written, writeErr := file.Write(buf[:n])
 			if writeErr != nil {
-				return fmt.Errorf("write failed: %w", writeErr)
+				return fmt.Errorf("downloadFileFromURL: write failed: %w", writeErr)
 			}
 			downloaded += int64(written)
 
@@ -383,16 +383,16 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("read failed: %w", err)
+			return fmt.Errorf("downloadFileFromURL: read failed: %w", err)
 		}
 	}
 
 	return nil
 }
 
-// extractVersionAndFileName извлекает версию и имя файла из GitHub URL
+// extractVersionAndFileName extracts version and file name from GitHub URL
 func (ac *AppController) extractVersionAndFileName(url string) (string, string) {
-	// Формат GitHub URL: https://github.com/SagerNet/sing-box/releases/download/v1.12.12/sing-box-1.12.12-windows-amd64.zip
+	// GitHub URL format: https://github.com/SagerNet/sing-box/releases/download/v1.12.12/sing-box-1.12.12-windows-amd64.zip
 	parts := strings.Split(url, "/")
 	for i, part := range parts {
 		if strings.HasPrefix(part, "v") && len(part) > 1 {
@@ -406,21 +406,21 @@ func (ac *AppController) extractVersionAndFileName(url string) (string, string) 
 	return "", ""
 }
 
-// extractArchive распаковывает архив и возвращает путь к бинарнику
+// extractArchive extracts archive and returns path to binary
 func (ac *AppController) extractArchive(archivePath, destDir string) (string, error) {
 	if strings.HasSuffix(archivePath, ".zip") {
 		return ac.extractZip(archivePath, destDir)
 	} else if strings.HasSuffix(archivePath, ".tar.gz") {
 		return ac.extractTarGz(archivePath, destDir)
 	}
-	return "", fmt.Errorf("unsupported archive format")
+	return "", fmt.Errorf("extractArchive: unsupported archive format")
 }
 
-// extractZip распаковывает ZIP архив (Windows)
+// extractZip extracts ZIP archive (Windows)
 func (ac *AppController) extractZip(archivePath, destDir string) (string, error) {
 	r, err := zip.OpenReader(archivePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to open zip: %w", err)
+		return "", fmt.Errorf("extractZip: failed to open zip: %w", err)
 	}
 	defer r.Close()
 
@@ -428,18 +428,18 @@ func (ac *AppController) extractZip(archivePath, destDir string) (string, error)
 	var binaryPath string
 
 	for _, f := range r.File {
-		// Ищем sing-box.exe в архиве
+		// Search for sing-box.exe in archive
 		if strings.HasSuffix(f.Name, singboxName) {
 			rc, err := f.Open()
 			if err != nil {
-				return "", fmt.Errorf("failed to open file in zip: %w", err)
+				return "", fmt.Errorf("extractZip: failed to open file in zip: %w", err)
 			}
 
 			binaryPath = filepath.Join(destDir, filepath.Base(f.Name))
 			outFile, err := os.Create(binaryPath)
 			if err != nil {
 				rc.Close()
-				return "", fmt.Errorf("failed to create output file: %w", err)
+				return "", fmt.Errorf("extractZip: failed to create output file: %w", err)
 			}
 
 			_, err = io.Copy(outFile, rc)
@@ -447,32 +447,32 @@ func (ac *AppController) extractZip(archivePath, destDir string) (string, error)
 			rc.Close()
 
 			if err != nil {
-				return "", fmt.Errorf("failed to copy file: %w", err)
+				return "", fmt.Errorf("extractZip: failed to copy file: %w", err)
 			}
 
-			// Устанавливаем права на выполнение (для Unix-подобных систем)
+			// Set execute permissions (for Unix-like systems)
 			if runtime.GOOS != "windows" {
-				os.Chmod(binaryPath, 0755)
+				_ = os.Chmod(binaryPath, 0755)
 			}
 
 			return binaryPath, nil
 		}
 	}
 
-	return "", fmt.Errorf("sing-box binary not found in archive")
+	return "", fmt.Errorf("extractZip: sing-box binary not found in archive")
 }
 
-// extractTarGz распаковывает tar.gz архив (Linux/macOS)
+// extractTarGz extracts tar.gz archive (Linux/macOS)
 func (ac *AppController) extractTarGz(archivePath, destDir string) (string, error) {
 	file, err := os.Open(archivePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to open archive: %w", err)
+		return "", fmt.Errorf("extractTarGz: failed to open archive: %w", err)
 	}
 	defer file.Close()
 
 	gzr, err := gzip.NewReader(file)
 	if err != nil {
-		return "", fmt.Errorf("failed to create gzip reader: %w", err)
+		return "", fmt.Errorf("extractTarGz: failed to create gzip reader: %w", err)
 	}
 	defer gzr.Close()
 
@@ -486,40 +486,40 @@ func (ac *AppController) extractTarGz(archivePath, destDir string) (string, erro
 			break
 		}
 		if err != nil {
-			return "", fmt.Errorf("failed to read tar: %w", err)
+			return "", fmt.Errorf("extractTarGz: failed to read tar: %w", err)
 		}
 
-		// Ищем sing-box в архиве
+		// Search for sing-box in archive
 		if strings.HasSuffix(header.Name, singboxName) || strings.HasSuffix(header.Name, "sing-box") {
 			binaryPath = filepath.Join(destDir, filepath.Base(header.Name))
 			outFile, err := os.Create(binaryPath)
 			if err != nil {
-				return "", fmt.Errorf("failed to create output file: %w", err)
+				return "", fmt.Errorf("extractTarGz: failed to create output file: %w", err)
 			}
 
 			_, err = io.Copy(outFile, tr)
 			outFile.Close()
 
 			if err != nil {
-				return "", fmt.Errorf("failed to copy file: %w", err)
+				return "", fmt.Errorf("extractTarGz: failed to copy file: %w", err)
 			}
 
-			// Устанавливаем права на выполнение
+			// Set execute permissions
 			os.Chmod(binaryPath, 0755)
 
 			return binaryPath, nil
 		}
 	}
 
-	return "", fmt.Errorf("sing-box binary not found in archive")
+	return "", fmt.Errorf("extractTarGz: sing-box binary not found in archive")
 }
 
-// installBinary копирует бинарник в целевую директорию
+// installBinary copies binary to target directory
 func (ac *AppController) installBinary(sourcePath, destPath string) error {
-	// Создаем директорию bin если её нет
+	// Create bin directory if it doesn't exist
 	binDir := filepath.Dir(destPath)
 	if err := os.MkdirAll(binDir, 0755); err != nil {
-		return fmt.Errorf("failed to create bin directory: %w", err)
+		return fmt.Errorf("installBinary: failed to create bin directory: %w", err)
 	}
 
 	// If old binary exists, rename it
@@ -534,30 +534,30 @@ func (ac *AppController) installBinary(sourcePath, destPath string) error {
 	// Copy new binary
 	sourceFile, err := os.Open(sourcePath)
 	if err != nil {
-		return fmt.Errorf("failed to open source file: %w", err)
+		return fmt.Errorf("installBinary: failed to open source file: %w", err)
 	}
 	defer sourceFile.Close()
 
 	destFile, err := os.Create(destPath)
 	if err != nil {
-		return fmt.Errorf("failed to create destination file: %w", err)
+		return fmt.Errorf("installBinary: failed to create destination file: %w", err)
 	}
 	defer destFile.Close()
 
 	_, err = io.Copy(destFile, sourceFile)
 	if err != nil {
-		return fmt.Errorf("failed to copy file: %w", err)
+		return fmt.Errorf("installBinary: failed to copy file: %w", err)
 	}
 
 	// Set execute permissions (for Unix)
 	if runtime.GOOS != "windows" {
-		os.Chmod(destPath, 0755)
+		_ = os.Chmod(destPath, 0755)
 	}
 
 	// Remove old backup
 	oldPath := destPath + ".old"
 	os.Remove(oldPath)
 
-	log.Printf("Binary installed successfully to %s", destPath)
+	log.Printf("installBinary: binary installed successfully to %s", destPath)
 	return nil
 }

@@ -23,12 +23,12 @@ import (
 // GetInstalledCoreVersion получает установленную версию sing-box
 func (ac *AppController) GetInstalledCoreVersion() (string, error) {
 	// Проверяем существование бинарника
-	if _, err := os.Stat(ac.SingboxPath); os.IsNotExist(err) {
-		return "", fmt.Errorf("sing-box not found at %s", ac.SingboxPath)
+	if _, err := os.Stat(ac.FileService.SingboxPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("sing-box not found at %s", ac.FileService.SingboxPath)
 	}
 
 	// Запускаем sing-box version
-	cmd := exec.Command(ac.SingboxPath, "version")
+	cmd := exec.Command(ac.FileService.SingboxPath, "version")
 	platform.PrepareCommand(cmd)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -57,8 +57,8 @@ func (ac *AppController) GetInstalledCoreVersion() (string, error) {
 func (ac *AppController) GetCoreBinaryPath() string {
 	singboxName := platform.GetExecutableNames()
 	// Для отображения убираем полный путь, оставляем только bin/sing-box.exe или bin/sing-box
-	binDir := platform.GetBinDir(ac.ExecDir)
-	relPath, err := filepath.Rel(ac.ExecDir, binDir)
+	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	relPath, err := filepath.Rel(ac.FileService.ExecDir, binDir)
 	if err != nil {
 		// Если не удалось получить относительный путь, возвращаем просто имя
 		return singboxName
@@ -128,35 +128,35 @@ func (ac *AppController) GetLatestLauncherVersion() (string, error) {
 
 // GetCachedLauncherVersion возвращает закешированную версию launcher (если есть)
 func (ac *AppController) GetCachedLauncherVersion() string {
-	ac.LauncherVersionCheckMutex.RLock()
-	defer ac.LauncherVersionCheckMutex.RUnlock()
-	return ac.LauncherVersionCheckCache
+	if ac.StateService != nil {
+		return ac.StateService.GetCachedLauncherVersion()
+	}
+	return ""
 }
 
 // SetCachedLauncherVersion сохраняет версию launcher в кеш
 func (ac *AppController) SetCachedLauncherVersion(version string) {
-	ac.LauncherVersionCheckMutex.Lock()
-	defer ac.LauncherVersionCheckMutex.Unlock()
-	ac.LauncherVersionCheckCache = version
-	ac.LauncherVersionCheckCacheTime = time.Now()
+	if ac.StateService != nil {
+		ac.StateService.SetCachedLauncherVersion(version)
+	}
 }
 
 // CheckLauncherVersionOnStartup выполняет разовую проверку версии launcher при старте
 func (ac *AppController) CheckLauncherVersionOnStartup() {
 	// Проверяем, не идет ли уже проверка
-	ac.LauncherVersionCheckMutex.Lock()
-	if ac.LauncherVersionCheckInProgress {
-		ac.LauncherVersionCheckMutex.Unlock()
+	if ac.StateService == nil {
 		return
 	}
-	ac.LauncherVersionCheckInProgress = true
-	ac.LauncherVersionCheckMutex.Unlock()
+	if ac.StateService.IsLauncherVersionCheckInProgress() {
+		return
+	}
+	ac.StateService.SetLauncherVersionCheckInProgress(true)
 
 	go func() {
 		defer func() {
-			ac.LauncherVersionCheckMutex.Lock()
-			ac.LauncherVersionCheckInProgress = false
-			ac.LauncherVersionCheckMutex.Unlock()
+			if ac.StateService != nil {
+				ac.StateService.SetLauncherVersionCheckInProgress(false)
+			}
 		}()
 
 		// Пытаемся получить последнюю версию
@@ -175,23 +175,27 @@ func (ac *AppController) CheckLauncherVersionOnStartup() {
 // ShouldCheckVersion проверяет, нужно ли проверять версию
 // Если версия успешно получена (не FallbackVersion), проверки прекращаются до перезапуска приложения
 func (ac *AppController) ShouldCheckVersion() bool {
-	ac.VersionCheckMutex.RLock()
-	defer ac.VersionCheckMutex.RUnlock()
+	if ac.StateService == nil {
+		return true
+	}
+
+	cachedVersion := ac.StateService.GetCachedVersion()
+	cacheTime := ac.StateService.GetCachedVersionTime()
 
 	// Если кеш пустой или время не установлено - нужно проверить
-	if ac.VersionCheckCache == "" || ac.VersionCheckCacheTime.IsZero() {
+	if cachedVersion == "" || cacheTime.IsZero() {
 		return true
 	}
 
 	// Если версия успешно получена (не FallbackVersion), прекращаем проверки до перезапуска
 	// Это означает, что версия была получена из GitHub, а не fallback
-	if ac.VersionCheckCache != FallbackVersion {
+	if cachedVersion != FallbackVersion {
 		return false // Версия успешно получена, не проверяем до перезапуска
 	}
 
 	// Если это FallbackVersion, проверяем периодически (каждые 24 часа)
 	// чтобы попытаться получить реальную версию
-	timeSinceCheck := time.Since(ac.VersionCheckCacheTime)
+	timeSinceCheck := time.Since(cacheTime)
 	if timeSinceCheck >= 24*time.Hour {
 		return true
 	}
@@ -202,17 +206,17 @@ func (ac *AppController) ShouldCheckVersion() bool {
 
 // GetCachedVersion возвращает закешированную версию (если есть)
 func (ac *AppController) GetCachedVersion() string {
-	ac.VersionCheckMutex.RLock()
-	defer ac.VersionCheckMutex.RUnlock()
-	return ac.VersionCheckCache
+	if ac.StateService != nil {
+		return ac.StateService.GetCachedVersion()
+	}
+	return ""
 }
 
 // SetCachedVersion сохраняет версию в кеш
 func (ac *AppController) SetCachedVersion(version string) {
-	ac.VersionCheckMutex.Lock()
-	defer ac.VersionCheckMutex.Unlock()
-	ac.VersionCheckCache = version
-	ac.VersionCheckCacheTime = time.Now()
+	if ac.StateService != nil {
+		ac.StateService.SetCachedVersion(version)
+	}
 }
 
 // CheckVersionInBackground запускает фоновую проверку версии с логикой повторных попыток
@@ -224,20 +228,20 @@ func (ac *AppController) CheckVersionInBackground() {
 	}
 
 	// Теперь проверяем, не идет ли уже проверка (атомарно)
-	ac.VersionCheckMutex.Lock()
-	if ac.VersionCheckInProgress {
-		ac.VersionCheckMutex.Unlock()
+	if ac.StateService == nil {
+		return
+	}
+	if ac.StateService.IsVersionCheckInProgress() {
 		return // Уже запущена проверка
 	}
-	// Устанавливаем флаг и освобождаем мьютекс
-	ac.VersionCheckInProgress = true
-	ac.VersionCheckMutex.Unlock()
+	// Устанавливаем флаг
+	ac.StateService.SetVersionCheckInProgress(true)
 
 	go func() {
 		defer func() {
-			ac.VersionCheckMutex.Lock()
-			ac.VersionCheckInProgress = false
-			ac.VersionCheckMutex.Unlock()
+			if ac.StateService != nil {
+				ac.StateService.SetVersionCheckInProgress(false)
+			}
 		}()
 
 		// Логика повторных попыток
@@ -323,7 +327,7 @@ func (ac *AppController) getLatestVersionFromURLWithPrefix(url string, keepPrefi
 	defer cancel()
 
 	// Используем универсальный HTTP клиент
-	client := createHTTPClient(NetworkRequestTimeout)
+	client := CreateHTTPClient(NetworkRequestTimeout)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -372,22 +376,25 @@ func (ac *AppController) getLatestVersionFromURLWithPrefix(url string, keepPrefi
 // Запускает синхронную проверку версии и отображает диалог с информацией.
 func (ac *AppController) CheckForUpdates() {
 	// Показываем информационное сообщение о начале проверки
-	dialogs.ShowInfo(ac.MainWindow, "Checking for Updates", "Checking for updates...")
+	if ac.UIService != nil && ac.UIService.MainWindow != nil {
+		dialogs.ShowInfo(ac.UIService.MainWindow, "Checking for Updates", "Checking for updates...")
+	}
 
 	// Запускаем проверку версии в фоне
 	go func() {
 		// Сбрасываем кеш, чтобы принудительно проверить версию
-		ac.VersionCheckMutex.Lock()
-		ac.VersionCheckCache = ""
-		ac.VersionCheckCacheTime = time.Time{}
-		ac.VersionCheckMutex.Unlock()
+		if ac.StateService != nil {
+			ac.StateService.SetCachedVersion("")
+		}
 
 		// Пытаемся получить последнюю версию
 		latest, err := ac.GetLatestCoreVersion()
 		if err != nil {
 			log.Printf("CheckForUpdates: Failed to get latest version: %v", err)
 			fyne.Do(func() {
-				dialogs.ShowError(ac.MainWindow, fmt.Errorf("Failed to check for updates: %v", err))
+				if ac.UIService != nil && ac.UIService.MainWindow != nil {
+					dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("Failed to check for updates: %v", err))
+				}
 			})
 			return
 		}
@@ -399,7 +406,9 @@ func (ac *AppController) CheckForUpdates() {
 		info := ac.GetCoreVersionInfo()
 		if info.Error != "" {
 			fyne.Do(func() {
-				dialogs.ShowError(ac.MainWindow, fmt.Errorf("Error checking version: %s", info.Error))
+				if ac.UIService != nil && ac.UIService.MainWindow != nil {
+					dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("Error checking version: %s", info.Error))
+				}
 			})
 			return
 		}
@@ -410,13 +419,17 @@ func (ac *AppController) CheckForUpdates() {
 			message = fmt.Sprintf("Update available!\n\nInstalled: %s\nLatest: %s\n\nYou can download the update from the Core tab.",
 				info.InstalledVersion, info.LatestVersion)
 			fyne.Do(func() {
-				dialogs.ShowInfo(ac.MainWindow, "Update Available", message)
+				if ac.UIService != nil && ac.UIService.MainWindow != nil {
+					dialogs.ShowInfo(ac.UIService.MainWindow, "Update Available", message)
+				}
 			})
 		} else {
 			message = fmt.Sprintf("You are using the latest version.\n\nInstalled: %s\nLatest: %s",
 				info.InstalledVersion, info.LatestVersion)
 			fyne.Do(func() {
-				dialogs.ShowInfo(ac.MainWindow, "No Updates", message)
+				if ac.UIService != nil && ac.UIService.MainWindow != nil {
+					dialogs.ShowInfo(ac.UIService.MainWindow, "No Updates", message)
+				}
 			})
 		}
 	}()
@@ -465,10 +478,10 @@ func CompareVersions(v1, v2 string) int {
 	for i := 0; i < maxLen; i++ {
 		var num1, num2 int
 		if i < len(parts1) {
-			fmt.Sscanf(parts1[i], "%d", &num1)
+			_, _ = fmt.Sscanf(parts1[i], "%d", &num1)
 		}
 		if i < len(parts2) {
-			fmt.Sscanf(parts2[i], "%d", &num2)
+			_, _ = fmt.Sscanf(parts2[i], "%d", &num2)
 		}
 
 		if num1 < num2 {

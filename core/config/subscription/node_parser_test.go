@@ -1,10 +1,12 @@
-package parsers
+package subscription
 
 import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"testing"
+
+	"singbox-launcher/core/config"
 )
 
 // TestIsDirectLink tests the IsDirectLink function
@@ -40,13 +42,13 @@ func TestParseNode_VLESS(t *testing.T) {
 		name        string
 		uri         string
 		expectError bool
-		checkFields func(*testing.T, *ParsedNode)
+		checkFields func(*testing.T, *config.ParsedNode)
 	}{
 		{
 			name:        "Basic VLESS with Reality",
 			uri:         "vless://4a3ece53-6000-4ba3-a9fa-fd0d7ba61cf3@31.57.228.19:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=hls-svod.itunes.apple.com&fp=chrome&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=48720c&allowInsecure=1&type=tcp&headerType=none#🇦🇪 United Arab Emirates",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -74,7 +76,7 @@ func TestParseNode_VLESS(t *testing.T) {
 			name:        "VLESS with default port",
 			uri:         "vless://uuid@example.com#Test",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -87,7 +89,7 @@ func TestParseNode_VLESS(t *testing.T) {
 			name:        "VLESS with custom port",
 			uri:         "vless://uuid@example.com:8443#Test",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -176,13 +178,13 @@ func TestParseNode_Trojan(t *testing.T) {
 		name        string
 		uri         string
 		expectError bool
-		checkFields func(*testing.T, *ParsedNode)
+		checkFields func(*testing.T, *config.ParsedNode)
 	}{
 		{
 			name:        "Basic Trojan",
 			uri:         "trojan://password123@example.com:443#Trojan Server",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -198,7 +200,7 @@ func TestParseNode_Trojan(t *testing.T) {
 			name:        "Trojan with default port",
 			uri:         "trojan://password@example.com#Test",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -270,7 +272,7 @@ func TestParseNode_SkipFilters(t *testing.T) {
 
 	t.Run("Skip by tag", func(t *testing.T) {
 		skipFilters := []map[string]string{
-			{"tag": "🇩🇪 Germany"},
+			{"tag": "/🇩🇪 Germany/i"},
 		}
 		node, err := ParseNode(uri, skipFilters)
 		if err != nil {
@@ -427,7 +429,7 @@ func TestParseNode_RealWorldExamples(t *testing.T) {
 // TestBuildOutbound tests outbound generation
 func TestBuildOutbound(t *testing.T) {
 	t.Run("VLESS with Reality", func(t *testing.T) {
-		node := &ParsedNode{
+		node := &config.ParsedNode{
 			Tag:    "test-vless",
 			Scheme: "vless",
 			Server: "example.com",
@@ -465,7 +467,7 @@ func TestBuildOutbound(t *testing.T) {
 	})
 
 	t.Run("Shadowsocks type conversion", func(t *testing.T) {
-		node := &ParsedNode{
+		node := &config.ParsedNode{
 			Tag:    "test-ss",
 			Scheme: "ss",
 			Server: "example.com",
@@ -484,6 +486,284 @@ func TestBuildOutbound(t *testing.T) {
 		}
 		if outbound["password"] != "test-password" {
 			t.Errorf("Expected password 'test-password', got '%v'", outbound["password"])
+		}
+	})
+}
+
+// TestParseNode_Hysteria2 tests parsing Hysteria2 nodes
+func TestParseNode_Hysteria2(t *testing.T) {
+	tests := []struct {
+		name        string
+		uri         string
+		expectError bool
+		checkFields func(*testing.T, *config.ParsedNode)
+	}{
+		{
+			name:        "Basic Hysteria2 plain URL",
+			uri:         "hysteria2://password123@example.com:443?sni=example.com#Test Server",
+			expectError: false,
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
+				if node == nil {
+					t.Fatal("Expected node, got nil")
+				}
+				if node.Scheme != "hysteria2" {
+					t.Errorf("Expected scheme 'hysteria2', got '%s'", node.Scheme)
+				}
+				if node.Server != "example.com" {
+					t.Errorf("Expected server 'example.com', got '%s'", node.Server)
+				}
+				if node.Port != 443 {
+					t.Errorf("Expected port 443, got %d", node.Port)
+				}
+				if node.UUID != "password123" {
+					t.Errorf("Expected password 'password123', got '%s'", node.UUID)
+				}
+				if node.Query.Get("sni") != "example.com" {
+					t.Errorf("Expected SNI 'example.com', got '%s'", node.Query.Get("sni"))
+				}
+			},
+		},
+		{
+			name:        "Hysteria2 with default port",
+			uri:         "hysteria2://password@example.com#Test",
+			expectError: false,
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
+				if node == nil {
+					t.Fatal("Expected node, got nil")
+				}
+				if node.Port != 443 {
+					t.Errorf("Expected default port 443, got %d", node.Port)
+				}
+			},
+		},
+		{
+			name:        "Hysteria2 base64-encoded URL",
+			uri:         "hysteria2://NDdkYjM3M2ItZDIzYy00YWNiLWJmZDktZGFjZTM5YzRmMWU0QGhsLmthaXhpbmNsb3VkLnRvcDoyNzIwMC8/aW5zZWN1cmU9MCZzbmk9aGwua2FpeGluY2xvdWQudG9wJm1wb3J0PTI3MjAwLTI4MDAwIyVFNSU4OSVBOSVFNCVCRCU5OSVFNiVCNSU4MSVFOSU4NyU4RiVFRiVCQyU5QTkyLjcyJTIwR0INCg==",
+			expectError: false,
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
+				if node == nil {
+					t.Fatal("Expected node, got nil")
+				}
+				if node.Scheme != "hysteria2" {
+					t.Errorf("Expected scheme 'hysteria2', got '%s'", node.Scheme)
+				}
+				if node.Server != "hl.kaixincloud.top" {
+					t.Errorf("Expected server 'hl.kaixincloud.top', got '%s'", node.Server)
+				}
+				if node.Port != 27200 {
+					t.Errorf("Expected port 27200, got %d", node.Port)
+				}
+				if node.UUID != "47db373b-d23c-4acb-bfd9-dace39c4f1e4" {
+					t.Errorf("Expected password '47db373b-d23c-4acb-bfd9-dace39c4f1e4', got '%s'", node.UUID)
+				}
+				if node.Query.Get("sni") != "hl.kaixincloud.top" {
+					t.Errorf("Expected SNI 'hl.kaixincloud.top', got '%s'", node.Query.Get("sni"))
+				}
+				if node.Query.Get("mport") != "27200-28000" {
+					t.Errorf("Expected mport '27200-28000', got '%s'", node.Query.Get("mport"))
+				}
+				if node.Query.Get("insecure") != "0" {
+					t.Errorf("Expected insecure '0', got '%s'", node.Query.Get("insecure"))
+				}
+			},
+		},
+		{
+			name:        "Hysteria2 with server_ports and ALPN",
+			uri:         "hysteria2://password@example.com:443?mport=10000-20000&sni=example.com&alpn=h3&insecure=0#Test",
+			expectError: false,
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
+				if node == nil {
+					t.Fatal("Expected node, got nil")
+				}
+				if node.Query.Get("mport") != "10000-20000" {
+					t.Errorf("Expected mport '10000-20000', got '%s'", node.Query.Get("mport"))
+				}
+				if node.Query.Get("alpn") != "h3" {
+					t.Errorf("Expected alpn 'h3', got '%s'", node.Query.Get("alpn"))
+				}
+			},
+		},
+		{
+			name:        "Hysteria2 with multiple ALPN values",
+			uri:         "hysteria2://password@example.com:443?alpn=h3,h2#Test",
+			expectError: false,
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
+				if node == nil {
+					t.Fatal("Expected node, got nil")
+				}
+				if node.Query.Get("alpn") != "h3,h2" {
+					t.Errorf("Expected alpn 'h3,h2', got '%s'", node.Query.Get("alpn"))
+				}
+			},
+		},
+		{
+			name:        "Hysteria2 without password (warning but valid)",
+			uri:         "hysteria2://@example.com:443#Test",
+			expectError: false,
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
+				if node == nil {
+					t.Fatal("Expected node, got nil")
+				}
+				// Password is empty, but node is still parsed (with warning)
+				if node.UUID != "" {
+					t.Errorf("Expected empty password, got '%s'", node.UUID)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node, err := ParseNode(tt.uri, nil)
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+			if tt.checkFields != nil {
+				tt.checkFields(t, node)
+			}
+		})
+	}
+}
+
+// TestBuildOutbound_Hysteria2 tests Hysteria2 outbound generation
+func TestBuildOutbound_Hysteria2(t *testing.T) {
+	t.Run("Hysteria2 with server_ports and ALPN", func(t *testing.T) {
+		node := &config.ParsedNode{
+			Tag:    "test-hysteria2",
+			Scheme: "hysteria2",
+			Server: "hl.kaixincloud.top",
+			Port:   27200,
+			UUID:   "47db373b-d23c-4acb-bfd9-dace39c4f1e4",
+			Query:  make(map[string][]string),
+		}
+		node.Query.Set("sni", "hl.kaixincloud.top")
+		node.Query.Set("mport", "27200-28000")
+		node.Query.Set("insecure", "0")
+		node.Query.Set("alpn", "h3")
+		node.Query.Set("upmbps", "100")
+		node.Query.Set("downmbps", "500")
+
+		outbound := buildOutbound(node)
+		if outbound["type"] != "hysteria2" {
+			t.Errorf("Expected type 'hysteria2', got '%v'", outbound["type"])
+		}
+		if outbound["password"] != "47db373b-d23c-4acb-bfd9-dace39c4f1e4" {
+			t.Errorf("Expected password '47db373b-d23c-4acb-bfd9-dace39c4f1e4', got '%v'", outbound["password"])
+		}
+		if outbound["server"] != "hl.kaixincloud.top" {
+			t.Errorf("Expected server 'hl.kaixincloud.top', got '%v'", outbound["server"])
+		}
+		if outbound["server_port"] != 27200 {
+			t.Errorf("Expected server_port 27200, got '%v'", outbound["server_port"])
+		}
+		// Check server_ports (array format for sing-box 1.9+)
+		serverPorts, ok := outbound["server_ports"].([]string)
+		if !ok {
+			t.Errorf("Expected server_ports to be []string, got '%v'", outbound["server_ports"])
+		} else if len(serverPorts) != 1 || serverPorts[0] != "27200:28000" {
+			t.Errorf("Expected server_ports ['27200:28000'], got '%v'", serverPorts)
+		}
+		if outbound["up_mbps"] != 100 {
+			t.Errorf("Expected up_mbps 100, got '%v'", outbound["up_mbps"])
+		}
+		if outbound["down_mbps"] != 500 {
+			t.Errorf("Expected down_mbps 500, got '%v'", outbound["down_mbps"])
+		}
+
+		tls, ok := outbound["tls"].(map[string]interface{})
+		if !ok {
+			t.Fatal("Expected TLS configuration")
+		}
+		if tls["enabled"] != true {
+			t.Errorf("Expected TLS enabled true, got '%v'", tls["enabled"])
+		}
+		if tls["server_name"] != "hl.kaixincloud.top" {
+			t.Errorf("Expected server_name 'hl.kaixincloud.top', got '%v'", tls["server_name"])
+		}
+		// insecure=0 means false, so insecure field should not be set (or be false)
+		if insecureVal, ok := tls["insecure"]; ok && insecureVal != false {
+			t.Errorf("Expected insecure false or not set, got '%v'", insecureVal)
+		}
+
+		alpn, ok := tls["alpn"].([]string)
+		if !ok {
+			t.Fatal("Expected ALPN array in TLS configuration")
+		}
+		if len(alpn) != 1 || alpn[0] != "h3" {
+			t.Errorf("Expected ALPN ['h3'], got '%v'", alpn)
+		}
+	})
+
+	t.Run("Hysteria2 with multiple ALPN values", func(t *testing.T) {
+		node := &config.ParsedNode{
+			Tag:    "test-hysteria2",
+			Scheme: "hysteria2",
+			Server: "example.com",
+			Port:   443,
+			UUID:   "password",
+			Query:  make(map[string][]string),
+		}
+		node.Query.Set("sni", "example.com")
+		node.Query.Set("alpn", "h3,h2")
+
+		outbound := buildOutbound(node)
+		tls, ok := outbound["tls"].(map[string]interface{})
+		if !ok {
+			t.Fatal("Expected TLS configuration")
+		}
+
+		alpn, ok := tls["alpn"].([]string)
+		if !ok {
+			t.Fatal("Expected ALPN array in TLS configuration")
+		}
+		if len(alpn) != 2 || alpn[0] != "h3" || alpn[1] != "h2" {
+			t.Errorf("Expected ALPN ['h3', 'h2'], got '%v'", alpn)
+		}
+	})
+
+	t.Run("Hysteria2 with insecure=1", func(t *testing.T) {
+		node := &config.ParsedNode{
+			Tag:    "test-hysteria2",
+			Scheme: "hysteria2",
+			Server: "example.com",
+			Port:   443,
+			UUID:   "password",
+			Query:  make(map[string][]string),
+		}
+		node.Query.Set("sni", "example.com")
+		node.Query.Set("insecure", "1")
+
+		outbound := buildOutbound(node)
+		tls, ok := outbound["tls"].(map[string]interface{})
+		if !ok {
+			t.Fatal("Expected TLS configuration")
+		}
+		if tls["insecure"] != true {
+			t.Errorf("Expected insecure true, got '%v'", tls["insecure"])
+		}
+	})
+
+	t.Run("Hysteria2 without password", func(t *testing.T) {
+		node := &config.ParsedNode{
+			Tag:    "test-hysteria2",
+			Scheme: "hysteria2",
+			Server: "example.com",
+			Port:   443,
+			UUID:   "",
+			Query:  make(map[string][]string),
+		}
+		node.Query.Set("sni", "example.com")
+
+		outbound := buildOutbound(node)
+		// Should still generate outbound, but password will be empty
+		if outbound["type"] != "hysteria2" {
+			t.Errorf("Expected type 'hysteria2', got '%v'", outbound["type"])
 		}
 	})
 }

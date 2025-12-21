@@ -55,7 +55,6 @@ func ShowErrorBanner(message string) *widget.Entry {
 }
 
 // ShowAutoHideInfo shows a temporary notification and dialog that auto-hides after 2 seconds
-// This is a wrapper for internal/dialogs.ShowAutoHideInfo to maintain backward compatibility
 func ShowAutoHideInfo(app fyne.App, window fyne.Window, title, message string) {
 	// Re-export from internal/dialogs to avoid import cycles
 	// This allows ui package to use the same function

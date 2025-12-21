@@ -1,7 +1,6 @@
 package core
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -12,9 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/muhammadmuzzammil1998/jsonc"
-
-	"singbox-launcher/api"
+	"singbox-launcher/core/config"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/platform"
 
@@ -51,7 +48,9 @@ func NewProcessService(ac *AppController) *ProcessService {
 func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 	ac := svc.ac
 	if ac.RunningState.IsRunning() {
-		dialogs.ShowAutoHideInfo(ac.Application, ac.MainWindow, "Info", "Sing-Box already running (according to internal state).")
+		if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
+			dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, "Info", "Sing-Box already running (according to internal state).")
+		}
 		return
 	}
 
@@ -67,41 +66,21 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 	defer ac.CmdMutex.Unlock()
 
 	// Check capabilities on Linux before starting
-	if suggestion := platform.CheckAndSuggestCapabilities(ac.SingboxPath); suggestion != "" {
+	if suggestion := platform.CheckAndSuggestCapabilities(ac.FileService.SingboxPath); suggestion != "" {
 		log.Printf("startSingBox: Capabilities check failed: %s", suggestion)
-		dialogs.ShowError(ac.MainWindow, fmt.Errorf("Linux capabilities required\n\n%s", suggestion))
+		if ac.UIService != nil && ac.UIService.MainWindow != nil {
+			dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("Linux capabilities required\n\n%s", suggestion))
+		}
 		return
 	}
 
-	// Reload API config from config.json before starting (in case it was corrupted)
-	log.Println("startSingBox: Reloading API config from config.json...")
-	if base, tok, err := api.LoadClashAPIConfig(ac.ConfigPath); err != nil {
-		log.Printf("startSingBox: Clash API config error: %v", err)
-		ac.ClashAPIBaseURL = ""
-		ac.ClashAPIToken = ""
-		ac.ClashAPIEnabled = false
-	} else {
-		ac.ClashAPIBaseURL = base
-		ac.ClashAPIToken = tok
-		ac.ClashAPIEnabled = true
-		log.Printf("startSingBox: API config reloaded successfully")
-	}
-
-	// Reload SelectedClashGroup from config
-	if ac.ClashAPIEnabled {
-		_, defaultSelector, err := GetSelectorGroupsFromConfig(ac.ConfigPath)
-		if err != nil {
-			log.Printf("startSingBox: Failed to get selector groups: %v", err)
-			ac.SelectedClashGroup = "proxy-out" // Default fallback
-		} else {
-			ac.SelectedClashGroup = defaultSelector
-			log.Printf("startSingBox: SelectedClashGroup reloaded: %s", defaultSelector)
-		}
-	}
+	// Note: APIService handles its own config loading in NewAPIService
+	// If config reload is needed, it should be done through APIService methods
+	// For now, we skip reload here as APIService loads config on initialization
 
 	// Check and remove existing TUN interface before starting (prevents "file already exists" error)
 	if runtime.GOOS == "windows" {
-		interfaceName, err := svc.getTunInterfaceName(ac.ConfigPath)
+		interfaceName, err := config.GetTunInterfaceName(ac.FileService.ConfigPath)
 		if err != nil {
 			log.Printf("startSingBox: Failed to get TUN interface name from config: %v", err)
 			// Continue anyway - maybe config doesn't have TUN
@@ -115,24 +94,24 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 	}
 
 	// Reset API cache before starting
-	if ac.ResetAPIStateFunc != nil {
+	if ac.UIService != nil && ac.UIService.ResetAPIStateFunc != nil {
 		log.Println("startSingBox: Resetting API state cache...")
-		ac.ResetAPIStateFunc()
+		ac.UIService.ResetAPIStateFunc()
 	}
 
 	log.Println("startSingBox: Starting Sing-Box...")
-	ac.SingboxCmd = exec.Command(ac.SingboxPath, "run", "-c", filepath.Base(ac.ConfigPath))
+	ac.SingboxCmd = exec.Command(ac.FileService.SingboxPath, "run", "-c", filepath.Base(ac.FileService.ConfigPath))
 	platform.PrepareCommand(ac.SingboxCmd)
-	ac.SingboxCmd.Dir = platform.GetBinDir(ac.ExecDir)
-	if ac.ChildLogFile != nil {
+	ac.SingboxCmd.Dir = platform.GetBinDir(ac.FileService.ExecDir)
+	if ac.FileService.ChildLogFile != nil {
 		// Check and rotate log file before starting new process to prevent unbounded growth
-		checkAndRotateLogFile(filepath.Join(ac.ExecDir, childLogFileName))
+		ac.FileService.CheckAndRotateLogFile(filepath.Join(ac.FileService.ExecDir, childLogFileName))
 
 		// Write directly to file - no buffering in memory
 		// This prevents memory leaks from accumulating log output
 		// Logs are written immediately to disk, not stored in memory
-		ac.SingboxCmd.Stdout = ac.ChildLogFile
-		ac.SingboxCmd.Stderr = ac.ChildLogFile
+		ac.SingboxCmd.Stdout = ac.FileService.ChildLogFile
+		ac.SingboxCmd.Stderr = ac.FileService.ChildLogFile
 	} else {
 		log.Println("startSingBox: Warning: sing-box log file not available, output will not be logged.")
 	}
@@ -200,14 +179,18 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 
 	if ac.ConsecutiveCrashAttempts > restartAttempts {
 		log.Printf("monitorSingBox: Maximum restart attempts (%d) reached. Stopping auto-restart.", restartAttempts)
-		dialogs.ShowError(ac.MainWindow, fmt.Errorf("Sing-Box failed to restart after %d attempts. Check sing-box.log for details.", restartAttempts))
+		if ac.UIService != nil && ac.UIService.MainWindow != nil {
+			dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("Sing-Box failed to restart after %d attempts. Check sing-box.log for details.", restartAttempts))
+		}
 		ac.ConsecutiveCrashAttempts = 0
 		return
 	}
 
 	// Try to restart
 	log.Printf("monitorSingBox: Sing-Box crashed: %v, attempting auto-restart (attempt %d/%d)", err, ac.ConsecutiveCrashAttempts, restartAttempts)
-	dialogs.ShowAutoHideInfo(ac.Application, ac.MainWindow, "Crash", fmt.Sprintf("Sing-Box crashed, restarting... (attempt %d/%d)", ac.ConsecutiveCrashAttempts, restartAttempts))
+	if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
+		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, "Crash", fmt.Sprintf("Sing-Box crashed, restarting... (attempt %d/%d)", ac.ConsecutiveCrashAttempts, restartAttempts))
+	}
 
 	// Wait 2 seconds before restart
 	ac.CmdMutex.Unlock()
@@ -231,8 +214,8 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 					log.Printf("monitorSingBox: Process has been stable for %v. Resetting crash counter from %d to 0.", stabilityThreshold, ac.ConsecutiveCrashAttempts)
 					ac.ConsecutiveCrashAttempts = 0
 					// Обновляем UI, чтобы счетчик исчез из статуса на вкладке Core
-					if ac.UpdateCoreStatusFunc != nil {
-						ac.UpdateCoreStatusFunc()
+					if ac.UIService != nil && ac.UIService.UpdateCoreStatusFunc != nil {
+						ac.UIService.UpdateCoreStatusFunc()
 					}
 				} else {
 					log.Printf("monitorSingBox: Stability timer expired, but conditions for reset not met (running: %v, current attempts: %d, attempts at timer start: %d).", ac.RunningState.IsRunning(), ac.ConsecutiveCrashAttempts, currentAttemptCount)
@@ -392,42 +375,6 @@ func (svc *ProcessService) isSingBoxProcessRunningWithPS(ourPID int) (bool, int)
 	}
 	log.Printf("isSingBoxProcessRunningWithPS: No sing-box process found (checked %d processes)", len(processes))
 	return false, -1
-}
-
-// getTunInterfaceName extracts TUN interface name from config.json
-func (svc *ProcessService) getTunInterfaceName(configPath string) (string, error) {
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read config: %w", err)
-	}
-
-	// Parse JSONC (with comments) to clean JSON
-	cleanData := jsonc.ToJSON(data)
-
-	var config map[string]interface{}
-	if err := json.Unmarshal(cleanData, &config); err != nil {
-		return "", fmt.Errorf("failed to parse config: %w", err)
-	}
-
-	inbounds, ok := config["inbounds"].([]interface{})
-	if !ok {
-		return "", nil // No inbounds section, no TUN interface
-	}
-
-	for _, inbound := range inbounds {
-		inboundMap, ok := inbound.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		if inboundMap["type"] == "tun" {
-			if interfaceName, ok := inboundMap["interface_name"].(string); ok && interfaceName != "" {
-				return interfaceName, nil
-			}
-		}
-	}
-
-	return "", nil // No TUN interface found in config
 }
 
 // checkTunInterfaceExists checks if TUN interface exists on Windows

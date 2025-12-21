@@ -256,10 +256,23 @@ The Config Wizard provides a visual interface for configuring sing-box without m
 
 ![Clash API in Tray](https://github.com/user-attachments/assets/9801820b-501c-4221-ba56-96f3442445b0)
 
-   - Select routing rules from template
-   - Configure outbound selectors for each rule
-   - Rules marked with `@default` directive are enabled by default
-   - Select final outbound for default route
+   - **Template Rules**: Select routing rules from template
+     - Rules marked with `@default` directive are enabled by default
+     - Configure outbound selectors for each rule
+     - Rules with `?` button have descriptions (hover or click to view)
+   
+   - **Custom Rules**: Create your own routing rules
+     - Click **"➕ Add Rule"** button to create a new rule
+     - Choose rule type: **IP Addresses (CIDR)** or **Domains/URLs**
+     - Enter rule name and IP addresses/domains (one per line)
+     - Select outbound for the rule
+     - Click **"Add"** to save the rule
+     - Click **"✏️"** (edit) button to modify an existing custom rule
+     - Click **"❌"** (delete) button to remove a custom rule
+     - Custom rules appear in the same list as template rules
+   
+   - **Final Outbound**: Select default outbound for unmatched traffic
+   - **Preview Auto-refresh**: Preview automatically regenerates when you switch to Preview tab after making changes
    - Scrollable list (70% of window height)
 
 3. **Preview**
@@ -271,6 +284,8 @@ The Config Wizard provides a visual interface for configuring sing-box without m
 **Features:**
 - Loads existing configuration if available
 - Uses `config_template.json` for default rules
+- Supports custom user-defined rules (IP addresses or domains/URLs)
+- Automatic preview regeneration when switching tabs after rule changes
 - Supports JSONC (JSON with comments)
 - Automatic backup before saving
 - Navigation: Close/Next buttons on first two tabs, Close/Save on last tab
@@ -368,6 +383,39 @@ You can create your own `config_template.json` file to customize the rules avail
 
 **Template Structure:**
 - Base configuration sections (log, dns, inbounds, route, etc.) are always included
+
+**User-Defined Custom Rules:**
+
+In addition to template rules, users can create their own rules directly in the wizard:
+
+- **IP Address Rules**: Specify IP addresses or CIDR ranges (e.g., `192.168.1.0/24`, `10.0.0.1`)
+- **Domain/URL Rules**: Specify domains or URLs (e.g., `example.com`, `*.example.com`)
+- Custom rules are saved in `config.json` and persist between wizard sessions
+- Custom rules appear alongside template rules in the Rules tab
+- Each custom rule can have its own outbound selector
+- Custom rules support the same outbound options as template rules (generated outbounds, `direct-out`, `reject`)
+
+**Rule Format in config.json:**
+
+Custom rules are saved in the standard sing-box rule format:
+
+```json
+{
+  "route": {
+    "rules": [
+      // Template rules...
+      {
+        "ip_cidr": ["192.168.1.0/24", "10.0.0.1"],
+        "outbound": "proxy-out"
+      },
+      {
+        "domain": ["example.com", "*.example.com"],
+        "outbound": "direct-out"
+      }
+    ]
+  }
+}
+```
 
 **📖 Complete Guide for VPN Providers:**
 

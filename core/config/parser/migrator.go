@@ -1,9 +1,11 @@
-package core
+package parser
 
 import (
 	"encoding/json"
 	"fmt"
 	"log"
+
+	"singbox-launcher/core/config"
 )
 
 // v1ParserConfig represents version 1 configuration structure
@@ -11,8 +13,8 @@ import (
 type v1ParserConfig struct {
 	Version      int `json:"version,omitempty"`
 	ParserConfig struct {
-		Proxies   []ProxySource    `json:"proxies"`
-		Outbounds []OutboundConfig `json:"outbounds"`
+		Proxies   []config.ProxySource    `json:"proxies"`
+		Outbounds []config.OutboundConfig `json:"outbounds"`
 		Parser    struct {
 			Reload      string `json:"reload,omitempty"`
 			LastUpdated string `json:"last_updated,omitempty"`
@@ -30,6 +32,7 @@ type v2OutboundConfig struct {
 	AddOutbounds     []string               `json:"addOutbounds,omitempty"`
 	PreferredDefault map[string]interface{} `json:"preferredDefault,omitempty"`
 	Comment          string                 `json:"comment,omitempty"`
+	Wizard           interface{}            `json:"wizard,omitempty"`
 	Outbounds        struct {
 		Proxies          map[string]interface{} `json:"proxies,omitempty"`
 		AddOutbounds     []string               `json:"addOutbounds,omitempty"`
@@ -41,9 +44,9 @@ type v2OutboundConfig struct {
 // Version 2 has version inside ParserConfig and outbounds with nested structure
 type v2ParserConfig struct {
 	ParserConfig struct {
-		Version   int                `json:"version,omitempty"`
-		Proxies   []ProxySource      `json:"proxies"`
-		Outbounds []v2OutboundConfig `json:"outbounds"` // Version 2 format with nested outbounds
+		Version   int                  `json:"version,omitempty"`
+		Proxies   []config.ProxySource `json:"proxies"`
+		Outbounds []v2OutboundConfig   `json:"outbounds"` // Version 2 format with nested outbounds
 		Parser    struct {
 			Reload      string `json:"reload,omitempty"`
 			LastUpdated string `json:"last_updated,omitempty"`
@@ -79,9 +82,10 @@ func (m *ConfigMigrator) RegisterMigration(fromVersion int, fn MigrationFunc) {
 	m.migrations[fromVersion] = fn
 }
 
-// extractVersion extracts version from JSON content string
+// ExtractVersion extracts version from JSON content string
 // Returns version from ParserConfig.version, or from top-level version (legacy v1), or 0 if not found
-func extractVersion(jsonContent string) int {
+// Exported for use in parsers package
+func ExtractVersion(jsonContent string) int {
 	type versionInfo struct {
 		Version      int `json:"version,omitempty"`
 		ParserConfig struct {
@@ -110,14 +114,14 @@ func extractVersion(jsonContent string) int {
 // MigrateRaw migrates JSON content from its current version to the target version
 // Accepts jsonContent string and currentVersion (0 if not determined)
 // Returns migrated clean ParserConfig
-func (m *ConfigMigrator) MigrateRaw(jsonContent string, currentVersion int, targetVersion int) (*ParserConfig, error) {
+func (m *ConfigMigrator) MigrateRaw(jsonContent string, currentVersion int, targetVersion int) (*config.ParserConfig, error) {
 	if jsonContent == "" {
 		return nil, fmt.Errorf("json content is empty")
 	}
 
 	// If version not provided, extract it from JSON
 	if currentVersion == 0 {
-		currentVersion = extractVersion(jsonContent)
+		currentVersion = ExtractVersion(jsonContent)
 	}
 
 	// Handle legacy version 1 format (version at top level)
@@ -153,7 +157,7 @@ func (m *ConfigMigrator) MigrateRaw(jsonContent string, currentVersion int, targ
 	}
 
 	// Parse final JSON into clean ParserConfig (version 3)
-	var parserConfig *ParserConfig
+	var parserConfig *config.ParserConfig
 	if err := json.Unmarshal([]byte(currentJSON), &parserConfig); err != nil {
 		return nil, fmt.Errorf("failed to parse migrated @ParserConfig JSON: %w", err)
 	}
@@ -174,9 +178,9 @@ func migrateV1ToV2(jsonContent string) (string, error) {
 	// Convert to version 2 structure
 	v2 := v2ParserConfig{
 		ParserConfig: struct {
-			Version   int                `json:"version,omitempty"`
-			Proxies   []ProxySource      `json:"proxies"`
-			Outbounds []v2OutboundConfig `json:"outbounds"`
+			Version   int                  `json:"version,omitempty"`
+			Proxies   []config.ProxySource `json:"proxies"`
+			Outbounds []v2OutboundConfig   `json:"outbounds"`
 			Parser    struct {
 				Reload      string `json:"reload,omitempty"`
 				LastUpdated string `json:"last_updated,omitempty"`
@@ -207,7 +211,7 @@ func migrateV1ToV2(jsonContent string) (string, error) {
 
 // convertV1OutboundsToV2 converts version 1 outbounds to version 2 format
 // Version 1 outbounds are already flat, version 2 keeps them flat (no nested structure yet)
-func convertV1OutboundsToV2(v1Outbounds []OutboundConfig) []v2OutboundConfig {
+func convertV1OutboundsToV2(v1Outbounds []config.OutboundConfig) []v2OutboundConfig {
 	v2Outbounds := make([]v2OutboundConfig, 0, len(v1Outbounds))
 	for _, v1 := range v1Outbounds {
 		v2 := v2OutboundConfig{
@@ -218,6 +222,7 @@ func convertV1OutboundsToV2(v1Outbounds []OutboundConfig) []v2OutboundConfig {
 			AddOutbounds:     v1.AddOutbounds,
 			PreferredDefault: v1.PreferredDefault,
 			Comment:          v1.Comment,
+			Wizard:           v1.Wizard,
 		}
 		v2Outbounds = append(v2Outbounds, v2)
 	}
@@ -235,11 +240,11 @@ func migrateV2ToV3(jsonContent string) (string, error) {
 	}
 
 	// Convert to version 3 structure (clean ParserConfig)
-	v3 := ParserConfig{
+	v3 := config.ParserConfig{
 		ParserConfig: struct {
-			Version   int              `json:"version,omitempty"`
-			Proxies   []ProxySource    `json:"proxies"`
-			Outbounds []OutboundConfig `json:"outbounds"`
+			Version   int                     `json:"version,omitempty"`
+			Proxies   []config.ProxySource    `json:"proxies"`
+			Outbounds []config.OutboundConfig `json:"outbounds"`
 			Parser    struct {
 				Reload      string `json:"reload,omitempty"`
 				LastUpdated string `json:"last_updated,omitempty"`
@@ -265,10 +270,10 @@ func migrateV2ToV3(jsonContent string) (string, error) {
 // convertV2OutboundsToV3 converts version 2 outbounds to version 3 format
 // Migrates nested "outbounds" structure to flat structure
 // This is the ONLY place where v2OutboundConfig is used
-func convertV2OutboundsToV3(v2Outbounds []v2OutboundConfig) []OutboundConfig {
-	v3Outbounds := make([]OutboundConfig, 0, len(v2Outbounds))
+func convertV2OutboundsToV3(v2Outbounds []v2OutboundConfig) []config.OutboundConfig {
+	v3Outbounds := make([]config.OutboundConfig, 0, len(v2Outbounds))
 	for _, v2 := range v2Outbounds {
-		v3 := OutboundConfig{
+		v3 := config.OutboundConfig{
 			Tag:              v2.Tag,
 			Type:             v2.Type,
 			Options:          v2.Options,
@@ -276,10 +281,11 @@ func convertV2OutboundsToV3(v2Outbounds []v2OutboundConfig) []OutboundConfig {
 			AddOutbounds:     v2.AddOutbounds,
 			PreferredDefault: v2.PreferredDefault,
 			Comment:          v2.Comment,
+			Wizard:           v2.Wizard,
 		}
 
 		// Migrate nested outbounds structure to flat structure
-		if v2.Outbounds.Proxies != nil && len(v2.Outbounds.Proxies) > 0 {
+		if len(v2.Outbounds.Proxies) > 0 {
 			// Create Filters field if it doesn't exist
 			if v3.Filters == nil {
 				v3.Filters = make(map[string]interface{})
@@ -312,7 +318,7 @@ func convertV2OutboundsToV3(v2Outbounds []v2OutboundConfig) []OutboundConfig {
 // Version 4 adds local outbounds to ProxySource, but the OutboundConfig structure remains the same.
 // Takes JSON string, returns migrated JSON string
 func migrateV3ToV4(jsonContent string) (string, error) {
-	var v3 ParserConfig
+	var v3 config.ParserConfig
 	if err := json.Unmarshal([]byte(jsonContent), &v3); err != nil {
 		return "", fmt.Errorf("failed to parse version 3 config: %w", err)
 	}

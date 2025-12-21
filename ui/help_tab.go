@@ -8,6 +8,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
@@ -18,18 +19,18 @@ import (
 // CreateHelpTab creates and returns the content for the "Help" tab.
 func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
 	logsButton := widget.NewButton("📁 Open Logs Folder", func() {
-		logsDir := platform.GetLogsDir(ac.ExecDir)
+		logsDir := platform.GetLogsDir(ac.FileService.ExecDir)
 		if err := platform.OpenFolder(logsDir); err != nil {
 			log.Printf("toolsTab: Failed to open logs folder: %v", err)
-			ShowError(ac.MainWindow, err)
+			ShowError(ac.UIService.MainWindow, err)
 		}
 	})
 
 	configButton := widget.NewButton("⚙️ Open Config Folder", func() {
-		binDir := platform.GetBinDir(ac.ExecDir)
+		binDir := platform.GetBinDir(ac.FileService.ExecDir)
 		if err := platform.OpenFolder(binDir); err != nil {
 			log.Printf("toolsTab: Failed to open config folder: %v", err)
-			ShowError(ac.MainWindow, err)
+			ShowError(ac.UIService.MainWindow, err)
 		}
 	})
 	killButton := widget.NewButton("🛑 Kill Sing-Box", func() {
@@ -37,7 +38,7 @@ func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
 			processName := platform.GetProcessNameForCheck()
 			_ = platform.KillProcess(processName)
 			fyne.Do(func() {
-				ShowAutoHideInfo(ac.Application, ac.MainWindow, "Kill", "Sing-Box killed if running.")
+				ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, "Kill", "Sing-Box killed if running.")
 				ac.RunningState.Set(false)
 			})
 		}()
@@ -98,20 +99,20 @@ func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
 	}()
 
 	telegramLink := widget.NewHyperlink("💬 Telegram Channel", nil)
-	telegramLink.SetURLFromString("https://t.me/singbox_launcher")
+	_ = telegramLink.SetURLFromString("https://t.me/singbox_launcher")
 	telegramLink.OnTapped = func() {
 		if err := platform.OpenURL("https://t.me/singbox_launcher"); err != nil {
 			log.Printf("toolsTab: Failed to open Telegram link: %v", err)
-			ShowError(ac.MainWindow, err)
+			ShowError(ac.UIService.MainWindow, err)
 		}
 	}
 
 	githubLink := widget.NewHyperlink("🐙 GitHub Repository", nil)
-	githubLink.SetURLFromString("https://github.com/Leadaxe/singbox-launcher")
+	_ = githubLink.SetURLFromString("https://github.com/Leadaxe/singbox-launcher")
 	githubLink.OnTapped = func() {
 		if err := platform.OpenURL("https://github.com/Leadaxe/singbox-launcher"); err != nil {
 			log.Printf("toolsTab: Failed to open GitHub link: %v", err)
-			ShowError(ac.MainWindow, err)
+			ShowError(ac.UIService.MainWindow, err)
 		}
 	}
 
@@ -124,9 +125,11 @@ func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
 		launcherUpdateLabel,
 		widget.NewSeparator(),
 		container.NewHBox(
+			layout.NewSpacer(),
 			telegramLink,
 			widget.NewLabel(" | "),
 			githubLink,
+			layout.NewSpacer(),
 		),
 	)
 }
