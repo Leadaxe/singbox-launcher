@@ -1,4 +1,4 @@
-package parsers
+package subscription
 
 import (
 	"encoding/base64"
@@ -79,4 +79,3 @@ func TestDecodeSubscriptionContent(t *testing.T) {
 		})
 	}
 }
-

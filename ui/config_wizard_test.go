@@ -8,6 +8,9 @@ import (
 	"testing"
 
 	"singbox-launcher/core"
+	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/parser"
+	"singbox-launcher/core/config/subscription"
 )
 
 // TestApplyURLToParserConfig tests the applyURLToParserConfig logic
@@ -38,7 +41,7 @@ vmess://base64`
 			if line == "" {
 				continue
 			}
-			if core.IsSubscriptionURL(line) {
+			if subscription.IsSubscriptionURL(line) {
 				subscriptions = append(subscriptions, line)
 			} else if strings.HasPrefix(line, "vless://") || strings.HasPrefix(line, "vmess://") {
 				connections = append(connections, line)
@@ -73,7 +76,7 @@ vmess://base64`
 			if line == "" {
 				continue
 			}
-			if core.IsSubscriptionURL(line) {
+			if subscription.IsSubscriptionURL(line) {
 				subscriptions = append(subscriptions, line)
 			} else if strings.HasPrefix(line, "vless://") || strings.HasPrefix(line, "vmess://") {
 				connections = append(connections, line)
@@ -92,24 +95,24 @@ vmess://base64`
 // TestSerializeParserConfig tests the serializeParserConfig function
 func TestSerializeParserConfig(t *testing.T) {
 	t.Run("Valid ParserConfig", func(t *testing.T) {
-		parserConfig := &core.ParserConfig{
+		parserConfig := &config.ParserConfig{
 			ParserConfig: struct {
-				Version   int                 `json:"version,omitempty"`
-				Proxies   []core.ProxySource   `json:"proxies"`
-				Outbounds []core.OutboundConfig `json:"outbounds"`
+				Version   int                     `json:"version,omitempty"`
+				Proxies   []config.ProxySource    `json:"proxies"`
+				Outbounds []config.OutboundConfig `json:"outbounds"`
 				Parser    struct {
 					Reload      string `json:"reload,omitempty"`
 					LastUpdated string `json:"last_updated,omitempty"`
 				} `json:"parser,omitempty"`
 			}{
 				Version: 2,
-				Proxies: []core.ProxySource{
+				Proxies: []config.ProxySource{
 					{
 						Source:      "https://example.com/subscription",
 						Connections: []string{"vless://uuid@server:443"},
 					},
 				},
-				Outbounds: []core.OutboundConfig{
+				Outbounds: []config.OutboundConfig{
 					{
 						Tag:  "proxy-out",
 						Type: "selector",
@@ -150,11 +153,11 @@ func TestSerializeParserConfig(t *testing.T) {
 	})
 
 	t.Run("ParserConfig with default reload", func(t *testing.T) {
-		parserConfig := &core.ParserConfig{
+		parserConfig := &config.ParserConfig{
 			ParserConfig: struct {
-				Version   int                 `json:"version,omitempty"`
-				Proxies   []core.ProxySource   `json:"proxies"`
-				Outbounds []core.OutboundConfig `json:"outbounds"`
+				Version   int                     `json:"version,omitempty"`
+				Proxies   []config.ProxySource    `json:"proxies"`
+				Outbounds []config.OutboundConfig `json:"outbounds"`
 				Parser    struct {
 					Reload      string `json:"reload,omitempty"`
 					LastUpdated string `json:"last_updated,omitempty"`
@@ -165,7 +168,7 @@ func TestSerializeParserConfig(t *testing.T) {
 		}
 
 		// Normalize should set default reload
-		core.NormalizeParserConfig(parserConfig, false)
+		config.NormalizeParserConfig(parserConfig, false)
 
 		result, err := serializeParserConfig(parserConfig)
 		if err != nil {
@@ -189,23 +192,23 @@ func TestSerializeParserConfig(t *testing.T) {
 func TestGetAvailableOutbounds(t *testing.T) {
 	t.Run("With ParserConfig", func(t *testing.T) {
 		state := &WizardState{
-			ParserConfig: &core.ParserConfig{
+			ParserConfig: &config.ParserConfig{
 				ParserConfig: struct {
-					Version   int                 `json:"version,omitempty"`
-					Proxies   []core.ProxySource   `json:"proxies"`
-					Outbounds []core.OutboundConfig `json:"outbounds"`
+					Version   int                     `json:"version,omitempty"`
+					Proxies   []config.ProxySource    `json:"proxies"`
+					Outbounds []config.OutboundConfig `json:"outbounds"`
 					Parser    struct {
 						Reload      string `json:"reload,omitempty"`
 						LastUpdated string `json:"last_updated,omitempty"`
 					} `json:"parser,omitempty"`
 				}{
-				Outbounds: []core.OutboundConfig{
-					{
-						Tag:          "proxy-out",
-						Type:         "selector",
-						AddOutbounds: []string{"extra-outbound"},
+					Outbounds: []config.OutboundConfig{
+						{
+							Tag:          "proxy-out",
+							Type:         "selector",
+							AddOutbounds: []string{"extra-outbound"},
+						},
 					},
-				},
 				},
 			},
 		}
@@ -324,24 +327,24 @@ func TestRealWorldSubscriptionParsing(t *testing.T) {
 	}
 
 	// Test that these can be parsed and serialized in ParserConfig
-	parserConfig := &core.ParserConfig{
+	parserConfig := &config.ParserConfig{
 		ParserConfig: struct {
-			Version   int                 `json:"version,omitempty"`
-			Proxies   []core.ProxySource   `json:"proxies"`
-			Outbounds []core.OutboundConfig `json:"outbounds"`
+			Version   int                     `json:"version,omitempty"`
+			Proxies   []config.ProxySource    `json:"proxies"`
+			Outbounds []config.OutboundConfig `json:"outbounds"`
 			Parser    struct {
 				Reload      string `json:"reload,omitempty"`
 				LastUpdated string `json:"last_updated,omitempty"`
 			} `json:"parser,omitempty"`
 		}{
 			Version: 2,
-			Proxies: []core.ProxySource{
+			Proxies: []config.ProxySource{
 				{
 					Source:      "",
 					Connections: realLinks,
 				},
 			},
-			Outbounds: []core.OutboundConfig{
+			Outbounds: []config.OutboundConfig{
 				{
 					Tag:  "proxy-out",
 					Type: "selector",
@@ -351,7 +354,7 @@ func TestRealWorldSubscriptionParsing(t *testing.T) {
 	}
 
 	// Normalize
-	core.NormalizeParserConfig(parserConfig, false)
+	config.NormalizeParserConfig(parserConfig, false)
 
 	// Serialize
 	result, err := serializeParserConfig(parserConfig)
@@ -377,4 +380,3 @@ func TestRealWorldSubscriptionParsing(t *testing.T) {
 		t.Errorf("Expected %d connections, got %d", len(realLinks), len(connections))
 	}
 }
-

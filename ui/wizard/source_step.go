@@ -12,8 +12,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
-	"singbox-launcher/core"
-	"singbox-launcher/core/parsers"
+	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/ui"
 )
@@ -150,10 +149,10 @@ func checkURL(state *ui.WizardState) {
 		if line == "" {
 			continue
 		}
-		if core.IsSubscriptionURL(line) {
+		if subscription.IsSubscriptionURL(line) {
 			isSubscription = true
 			validLinks++
-		} else if parsers.IsDirectLink(line) {
+		} else if subscription.IsDirectLink(line) {
 			validLinks++
 		}
 	}
@@ -171,18 +170,14 @@ func checkURL(state *ui.WizardState) {
 		// Если есть подписка, пробуем скачать первую
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
-			if core.IsSubscriptionURL(line) {
+			if subscription.IsSubscriptionURL(line) {
 				updateProgress(0.5)
 				// Use AppController to fetch (it has the logic)
 				// Ideally logic should be in a service, but for now we call the method if available or reimplement?
-				// Since we moved logic to ConfigService, we can't easily call it from here without instance.
-				// But we are inside ui/wizard, so we have access to core.
-				// Wait, ConfigService.ProcessProxySource is in core.
-				// We need a simple fetch check.
-				// We can reuse core.FetchSubscription (it's exported function)
+				// Fetch subscription content using subscription.FetchSubscription
 
 				// Fetch content
-				_, err := core.FetchSubscription(line)
+				_, err := subscription.FetchSubscription(line)
 				if err != nil {
 					safeFyneDo(state.Window, func() {
 						state.URLStatusLabel.SetText(fmt.Sprintf("Error fetching subscription: %v", err))

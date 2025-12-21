@@ -1,7 +1,6 @@
 package core
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -12,9 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/muhammadmuzzammil1998/jsonc"
-
 	"singbox-launcher/api"
+	"singbox-launcher/core/config"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/platform"
 
@@ -89,7 +87,7 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 
 	// Reload SelectedClashGroup from config
 	if ac.ClashAPIEnabled {
-		_, defaultSelector, err := GetSelectorGroupsFromConfig(ac.ConfigPath)
+		_, defaultSelector, err := config.GetSelectorGroupsFromConfig(ac.ConfigPath)
 		if err != nil {
 			log.Printf("startSingBox: Failed to get selector groups: %v", err)
 			ac.SelectedClashGroup = "proxy-out" // Default fallback
@@ -101,7 +99,7 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 
 	// Check and remove existing TUN interface before starting (prevents "file already exists" error)
 	if runtime.GOOS == "windows" {
-		interfaceName, err := svc.getTunInterfaceName(ac.ConfigPath)
+		interfaceName, err := config.GetTunInterfaceName(ac.ConfigPath)
 		if err != nil {
 			log.Printf("startSingBox: Failed to get TUN interface name from config: %v", err)
 			// Continue anyway - maybe config doesn't have TUN
@@ -392,42 +390,6 @@ func (svc *ProcessService) isSingBoxProcessRunningWithPS(ourPID int) (bool, int)
 	}
 	log.Printf("isSingBoxProcessRunningWithPS: No sing-box process found (checked %d processes)", len(processes))
 	return false, -1
-}
-
-// getTunInterfaceName extracts TUN interface name from config.json
-func (svc *ProcessService) getTunInterfaceName(configPath string) (string, error) {
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read config: %w", err)
-	}
-
-	// Parse JSONC (with comments) to clean JSON
-	cleanData := jsonc.ToJSON(data)
-
-	var config map[string]interface{}
-	if err := json.Unmarshal(cleanData, &config); err != nil {
-		return "", fmt.Errorf("failed to parse config: %w", err)
-	}
-
-	inbounds, ok := config["inbounds"].([]interface{})
-	if !ok {
-		return "", nil // No inbounds section, no TUN interface
-	}
-
-	for _, inbound := range inbounds {
-		inboundMap, ok := inbound.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		if inboundMap["type"] == "tun" {
-			if interfaceName, ok := inboundMap["interface_name"].(string); ok && interfaceName != "" {
-				return interfaceName, nil
-			}
-		}
-	}
-
-	return "", nil // No TUN interface found in config
 }
 
 // checkTunInterfaceExists checks if TUN interface exists on Windows

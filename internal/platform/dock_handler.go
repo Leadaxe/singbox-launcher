@@ -32,13 +32,13 @@ static void setupDockReopenHandlerImpl(void) {
     if (dockHandlerInstalled) {
         return;
     }
-    
+
     // Get NSObject class
     Class nsObjectClass = objc_getClass("NSObject");
     if (nsObjectClass == nil) {
         return;
     }
-    
+
     // Create a new class dynamically
     Class delegateClass = objc_allocateClassPair(nsObjectClass, "DockReopenHandler", 0);
     if (delegateClass == nil) {
@@ -59,11 +59,11 @@ static void setupDockReopenHandlerImpl(void) {
         class_addMethod(delegateClass, selector, (IMP)handleApplicationShouldHandleReopen, "c@:@c");
         objc_registerClassPair(delegateClass);
     }
-    
+
     // Create instance and set as delegate
     dockDelegate = [[delegateClass alloc] init];
     [NSApp setDelegate:dockDelegate];
-    
+
     dockHandlerInstalled = 1;
 }
 

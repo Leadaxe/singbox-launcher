@@ -21,6 +21,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
+	"singbox-launcher/core/config/parser"
 )
 
 const downloadPlaceholderWidth = 180
@@ -504,7 +505,7 @@ func (tab *CoreDashboardTab) readConfigOnDemand() {
 	}
 
 	// Читаем конфиг
-	config, err := core.ExtractParserConfig(tab.controller.ConfigPath)
+	config, err := parser.ExtractParserConfig(tab.controller.ConfigPath)
 	if err != nil {
 		log.Printf("CoreDashboard: Failed to read config on demand: %v", err)
 		// Можно показать сообщение пользователю через dialog

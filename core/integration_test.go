@@ -5,7 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"singbox-launcher/core/parsers"
+	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/subscription"
 )
 
 // TestIntegration_RealWorldSubscription tests parsing real-world subscription data
@@ -24,11 +25,11 @@ func TestIntegration_RealWorldSubscription(t *testing.T) {
 	}
 
 	t.Run("Parse all real-world links", func(t *testing.T) {
-		parsedNodes := make([]*parsers.ParsedNode, 0)
+		parsedNodes := make([]*config.ParsedNode, 0)
 		errors := make([]error, 0)
 
 		for i, link := range realWorldLinks {
-			node, err := parsers.ParseNode(link, nil)
+			node, err := subscription.ParseNode(link, nil)
 			if err != nil {
 				errors = append(errors, err)
 				t.Logf("Failed to parse link %d: %v", i+1, err)
@@ -106,7 +107,7 @@ func TestIntegration_RealWorldSubscription(t *testing.T) {
 		otherCount := 0
 
 		for _, link := range realWorldLinks {
-			node, err := parsers.ParseNode(link, skipFilters)
+			node, err := subscription.ParseNode(link, skipFilters)
 			if err != nil {
 				continue
 			}
@@ -186,8 +187,8 @@ func TestIntegration_SubscriptionDecoding(t *testing.T) {
 			if line == "" {
 				continue
 			}
-			if parsers.IsDirectLink(line) {
-				node, err := parsers.ParseNode(line, nil)
+			if subscription.IsDirectLink(line) {
+				node, err := subscription.ParseNode(line, nil)
 				if err == nil && node != nil {
 					parsedCount++
 				}
@@ -269,4 +270,3 @@ func TestIntegration_ParserConfigFlow(t *testing.T) {
 		}
 	})
 }
-

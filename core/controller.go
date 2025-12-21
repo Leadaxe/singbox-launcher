@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -23,12 +22,13 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/api"
+	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/parser"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/platform"
 
 	ps "github.com/mitchellh/go-ps"
-	"github.com/muhammadmuzzammil1998/jsonc"
 )
 
 // Constants for log file names
@@ -238,7 +238,7 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 
 	// Initialize SelectedClashGroup from config (needed for auto-loading proxies)
 	if ac.ClashAPIEnabled {
-		_, defaultSelector, err := GetSelectorGroupsFromConfig(ac.ConfigPath)
+		_, defaultSelector, err := config.GetSelectorGroupsFromConfig(ac.ConfigPath)
 		if err != nil {
 			log.Printf("NewAppController: Failed to get selector groups: %v", err)
 			ac.SelectedClashGroup = "proxy-out" // Default fallback
@@ -623,42 +623,6 @@ func checkAndShowSingBoxRunningWarning(ac *AppController, context string) bool {
 	}
 	log.Printf("%s: No sing-box process found", context)
 	return false
-}
-
-// getTunInterfaceName extracts TUN interface name from config.json
-func getTunInterfaceName(configPath string) (string, error) {
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read config: %w", err)
-	}
-
-	// Parse JSONC (with comments) to clean JSON
-	cleanData := jsonc.ToJSON(data)
-
-	var config map[string]interface{}
-	if err := json.Unmarshal(cleanData, &config); err != nil {
-		return "", fmt.Errorf("failed to parse config: %w", err)
-	}
-
-	inbounds, ok := config["inbounds"].([]interface{})
-	if !ok {
-		return "", nil // No inbounds section, no TUN interface
-	}
-
-	for _, inbound := range inbounds {
-		inboundMap, ok := inbound.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		if inboundMap["type"] == "tun" {
-			if interfaceName, ok := inboundMap["interface_name"].(string); ok && interfaceName != "" {
-				return interfaceName, nil
-			}
-		}
-	}
-
-	return "", nil // No TUN interface found in config
 }
 
 // checkTunInterfaceExists checks if TUN interface exists on Windows
@@ -1289,7 +1253,7 @@ func (ac *AppController) startAutoUpdateLoop() {
 func (ac *AppController) calculateAutoUpdateInterval() (time.Duration, error) {
 
 	// Read ParserConfig from file
-	config, err := ExtractParserConfig(ac.ConfigPath)
+	config, err := parser.ExtractParserConfig(ac.ConfigPath)
 	if err != nil {
 		// If config doesn't exist or can't be read, use default
 		defaultDuration, _ := time.ParseDuration(autoUpdateDefaultReload)
@@ -1328,7 +1292,7 @@ func maxDuration(a, b time.Duration) time.Duration {
 // Returns true if elapsed time since last_updated >= required interval
 func (ac *AppController) shouldAutoUpdate(requiredInterval time.Duration) (bool, error) {
 	// Read ParserConfig from file
-	config, err := ExtractParserConfig(ac.ConfigPath)
+	config, err := parser.ExtractParserConfig(ac.ConfigPath)
 	if err != nil {
 		// If config doesn't exist, update is needed
 		return true, nil

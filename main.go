@@ -12,6 +12,7 @@ import (
 
 	// Import our new packages
 	"singbox-launcher/core"
+	"singbox-launcher/core/config/parser"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui"
 )
@@ -134,7 +135,7 @@ func main() {
 			// Read config once at application startup
 			go func() {
 				log.Println("Application startup: Reading config...")
-				config, err := core.ExtractParserConfig(controller.ConfigPath)
+				config, err := parser.ExtractParserConfig(controller.ConfigPath)
 				if err != nil {
 					log.Printf("Application startup: Failed to read config: %v", err)
 					return
@@ -230,12 +231,12 @@ func main() {
 	// The code below executes only after app.Run() finishes (when app.Quit() is called).
 	// This is where final cleanup is performed.
 	log.Println("Application shutting down.")
-	
+
 	// Cleanup platform-specific handlers
 	if runtime.GOOS == "darwin" {
 		platform.CleanupDockReopenHandler()
 	}
-	
+
 	controller.GracefulExit()
 
 	if controller.MainLogFile != nil {

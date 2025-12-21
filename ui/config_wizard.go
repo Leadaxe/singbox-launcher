@@ -25,7 +25,9 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
-	"singbox-launcher/core/parsers"
+	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/parser"
+	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/platform"
 )
 
@@ -916,9 +918,9 @@ func (state *WizardState) nextBackupPath(path string) string {
 // - При required > 1 не проверяем соответствие - всегда переписываем из шаблона
 // - При required == 1 проверяем только наличие тега, содержимое не трогаем
 // - Клонирование выполняется один раз перед проверкой exists для оптимизации
-func ensureRequiredOutbounds(parserConfig *core.ParserConfig, templateParserConfigJSON string) {
+func ensureRequiredOutbounds(parserConfig *config.ParserConfig, templateParserConfigJSON string) {
 	// ШАГ 1: Парсим шаблон для получения списка outbounds с wizard.required > 0
-	var templateParserConfig core.ParserConfig
+	var templateParserConfig config.ParserConfig
 	if err := json.Unmarshal([]byte(templateParserConfigJSON), &templateParserConfig); err != nil {
 		errorLog("ConfigWizard: Failed to parse template ParserConfig for required outbounds: %v", err)
 		return
@@ -926,7 +928,7 @@ func ensureRequiredOutbounds(parserConfig *core.ParserConfig, templateParserConf
 
 	// ШАГ 2: Создаем карту существующих outbounds из parserConfig (загруженного из config.json) по тегу
 	// Это позволяет быстро проверить наличие outbound по тегу без полного перебора
-	existingOutbounds := make(map[string]*core.OutboundConfig)
+	existingOutbounds := make(map[string]*config.OutboundConfig)
 	for i := range parserConfig.ParserConfig.Outbounds {
 		tag := parserConfig.ParserConfig.Outbounds[i].Tag
 		if tag != "" {
@@ -979,8 +981,8 @@ func ensureRequiredOutbounds(parserConfig *core.ParserConfig, templateParserConf
 }
 
 // cloneOutbound создает глубокую копию OutboundConfig
-func cloneOutbound(src *core.OutboundConfig) *core.OutboundConfig {
-	dst := &core.OutboundConfig{
+func cloneOutbound(src *config.OutboundConfig) *config.OutboundConfig {
+	dst := &config.OutboundConfig{
 		Tag:          src.Tag,
 		Type:         src.Type,
 		Comment:      src.Comment,
@@ -1047,7 +1049,7 @@ func deepCopyValue(v interface{}) interface{} {
 }
 
 // outboundsMatchStrict проверяет строгое соответствие двух outbounds
-func outboundsMatchStrict(existing, template *core.OutboundConfig) bool {
+func outboundsMatchStrict(existing, template *config.OutboundConfig) bool {
 	// Сравниваем основные поля
 	if existing.Tag != template.Tag ||
 		existing.Type != template.Type ||
@@ -1135,7 +1137,7 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 	// Только если config.json не существует или не содержит ParserConfig, используем шаблон
 	if _, err := os.Stat(state.Controller.ConfigPath); err == nil {
 		// config.json существует - пытаемся извлечь ParserConfig из него
-		parserConfig, err := core.ExtractParserConfig(state.Controller.ConfigPath)
+		parserConfig, err := parser.ExtractParserConfig(state.Controller.ConfigPath)
 		if err == nil {
 			// Успешно извлекли ParserConfig из config.json - используем его полностью
 			infoLog("ConfigWizard: Using ParserConfig from config.json")
@@ -1193,7 +1195,7 @@ func loadConfigFromFile(state *WizardState) (bool, error) {
 	if state.TemplateData != nil && state.TemplateData.ParserConfig != "" {
 		infoLog("ConfigWizard: Using ParserConfig from template (config.json not found or invalid)")
 		// Парсим ParserConfig из шаблона
-		var templateParserConfig core.ParserConfig
+		var templateParserConfig config.ParserConfig
 		if err := json.Unmarshal([]byte(state.TemplateData.ParserConfig), &templateParserConfig); err != nil {
 			errorLog("ConfigWizard: Failed to parse ParserConfig from template: %v", err)
 			return false, nil
@@ -1372,11 +1374,11 @@ func checkURL(state *WizardState) {
 			state.setCheckURLState(fmt.Sprintf("⏳ Checking... (%d/%d)", i+1, len(inputLines)), "", progress)
 		})
 
-		if core.IsSubscriptionURL(line) {
+		if subscription.IsSubscriptionURL(line) {
 			// Это URL подписки - проверяем доступность
 			fetchStartTime := time.Now()
 			debugLog("checkURL: Fetching subscription %d/%d: %s", i+1, len(inputLines), line)
-			content, err := core.FetchSubscription(line)
+			content, err := subscription.FetchSubscription(line)
 			fetchDuration := time.Since(fetchStartTime)
 			if err != nil {
 				debugLog("checkURL: Failed to fetch subscription %d/%d (took %v): %v", i+1, len(inputLines), fetchDuration, err)
@@ -1392,7 +1394,7 @@ func checkURL(state *WizardState) {
 			validInSub := 0
 			for _, subLine := range subLines {
 				subLine = strings.TrimSpace(subLine)
-				if subLine != "" && parsers.IsDirectLink(subLine) {
+				if subLine != "" && subscription.IsDirectLink(subLine) {
 					validInSub++
 					totalValid++
 					if len(previewLines) < 10 { // Ограничиваем превью
@@ -1406,11 +1408,11 @@ func checkURL(state *WizardState) {
 			if validInSub == 0 {
 				errors = append(errors, fmt.Sprintf("Subscription %s contains no valid proxy links", line))
 			}
-		} else if parsers.IsDirectLink(line) {
+		} else if subscription.IsDirectLink(line) {
 			// Это прямая ссылка - проверяем парсинг
 			parseStartTime := time.Now()
 			debugLog("checkURL: Parsing direct link %d/%d", i+1, len(inputLines))
-			_, err := parsers.ParseNode(line, nil)
+			_, err := subscription.ParseNode(line, nil)
 			parseDuration := time.Since(parseStartTime)
 			if err != nil {
 				debugLog("checkURL: Invalid direct link %d/%d (took %v): %v", i+1, len(inputLines), parseDuration, err)
@@ -1502,7 +1504,7 @@ func parseAndPreview(state *WizardState) {
 		return
 	}
 
-	var parserConfig core.ParserConfig
+	var parserConfig config.ParserConfig
 	if err := json.Unmarshal([]byte(parserConfigJSON), &parserConfig); err != nil {
 		debugLog("parseAndPreview: Failed to parse ParserConfig JSON (took %v): %v", time.Since(parseStartTime), err)
 		safeFyneDo(state.Window, func() {
@@ -1599,7 +1601,7 @@ func parseAndPreview(state *WizardState) {
 	}
 
 	// Log statistics about duplicates
-	core.LogDuplicateTagStatistics(tagCounts, "ConfigWizard")
+	subscription.LogDuplicateTagStatistics(tagCounts, "ConfigWizard")
 
 	// Сохраняем статистику для использования в buildParserOutboundsBlock
 	state.OutboundStats.NodesCount = result.NodesCount
@@ -1680,7 +1682,7 @@ func (state *WizardState) applyURLToParserConfig(input string) {
 	}
 
 	parseStartTime := time.Now()
-	var parserConfig core.ParserConfig
+	var parserConfig config.ParserConfig
 	if err := json.Unmarshal([]byte(text), &parserConfig); err != nil {
 		debugLog("applyURLToParserConfig: Failed to parse ParserConfig (took %v): %v",
 			time.Since(parseStartTime), err)
@@ -1701,9 +1703,9 @@ func (state *WizardState) applyURLToParserConfig(input string) {
 		if line == "" {
 			continue
 		}
-		if core.IsSubscriptionURL(line) {
+		if subscription.IsSubscriptionURL(line) {
 			subscriptions = append(subscriptions, line)
-		} else if parsers.IsDirectLink(line) {
+		} else if subscription.IsDirectLink(line) {
 			connections = append(connections, line)
 		}
 	}
@@ -1712,7 +1714,7 @@ func (state *WizardState) applyURLToParserConfig(input string) {
 
 	// Сохраняем существующие локальные outbounds, tag_prefix и tag_postfix для каждого источника
 	// Используем source URL как ключ для сопоставления
-	existingOutboundsMap := make(map[string][]core.OutboundConfig)
+	existingOutboundsMap := make(map[string][]config.OutboundConfig)
 	existingTagPrefixMap := make(map[string]string)
 	existingTagPostfixMap := make(map[string]string)
 	for i, existingProxy := range parserConfig.ParserConfig.Proxies {
@@ -1738,14 +1740,14 @@ func (state *WizardState) applyURLToParserConfig(input string) {
 	}
 
 	// Создаем новый массив ProxySource
-	newProxies := make([]core.ProxySource, 0)
+	newProxies := make([]config.ProxySource, 0)
 
 	// Автоматически добавляем tag_prefix с порядковым номером только если подписок несколько
 	autoAddPrefix := len(subscriptions) > 1
 
 	// Создаем отдельный ProxySource для каждой подписки
 	for idx, sub := range subscriptions {
-		proxySource := core.ProxySource{
+		proxySource := config.ProxySource{
 			Source: sub,
 		}
 		// Восстанавливаем локальные outbounds, если они были для этого источника
@@ -1772,7 +1774,7 @@ func (state *WizardState) applyURLToParserConfig(input string) {
 
 	// Если есть прямые ссылки, создаем отдельный ProxySource для них
 	if len(connections) > 0 {
-		proxySource := core.ProxySource{
+		proxySource := config.ProxySource{
 			Connections: connections,
 		}
 		// Если был первый proxy без source, но с outbounds, восстанавливаем их
@@ -1786,7 +1788,7 @@ func (state *WizardState) applyURLToParserConfig(input string) {
 
 	// Если нет ни подписок, ни connections, создаем пустой массив
 	if len(newProxies) == 0 {
-		newProxies = []core.ProxySource{{}}
+		newProxies = []config.ProxySource{{}}
 	}
 
 	// Обновляем массив proxies
@@ -2093,14 +2095,14 @@ func buildTemplateConfig(state *WizardState, forPreview bool) (string, error) {
 
 	// Parse ParserConfig JSON to ensure it has version 2 and parser object
 	parseStartTime := time.Now()
-	var parserConfig core.ParserConfig
+	var parserConfig config.ParserConfig
 	if err := json.Unmarshal([]byte(parserConfigText), &parserConfig); err != nil {
 		// If parsing fails, use text as-is (might be invalid JSON, but let user fix it)
 		debugLog("buildTemplateConfig: Failed to parse ParserConfig JSON (took %v): %v", time.Since(parseStartTime), err)
 	} else {
 		// Normalize ParserConfig (migrate version, set defaults, update last_updated)
 		normalizeStartTime := time.Now()
-		core.NormalizeParserConfig(&parserConfig, true)
+		config.NormalizeParserConfig(&parserConfig, true)
 		debugLog("buildTemplateConfig: Normalized ParserConfig in %v", time.Since(normalizeStartTime))
 
 		// Serialize back to JSON with proper formatting (always version 2 format)
@@ -2448,11 +2450,11 @@ func (state *WizardState) getAvailableOutbounds() []string {
 		"drop":             {}, // Always include "drop" in available options
 	}
 
-	var parserCfg *core.ParserConfig
+	var parserCfg *config.ParserConfig
 	if state.ParserConfig != nil {
 		parserCfg = state.ParserConfig
 	} else if state.ParserConfigEntry != nil && state.ParserConfigEntry.Text != "" {
-		var parsed core.ParserConfig
+		var parsed config.ParserConfig
 		if err := json.Unmarshal([]byte(state.ParserConfigEntry.Text), &parsed); err == nil {
 			parserCfg = &parsed
 		}
@@ -2496,13 +2498,13 @@ func (state *WizardState) getAvailableOutbounds() []string {
 	return result
 }
 
-// parseNodeFromString парсит узел из строки (обертка над parsers.ParseNode)
-func parseNodeFromString(uri string, skipFilters []map[string]string) (*parsers.ParsedNode, error) {
-	return parsers.ParseNode(uri, skipFilters)
+// parseNodeFromString парсит узел из строки (обертка над subscription.ParseNode)
+func parseNodeFromString(uri string, skipFilters []map[string]string) (*config.ParsedNode, error) {
+	return subscription.ParseNode(uri, skipFilters)
 }
 
 // generateNodeJSONForPreview генерирует JSON для узла через ConfigService
-func generateNodeJSONForPreview(state *WizardState, node *parsers.ParsedNode) (string, error) {
+func generateNodeJSONForPreview(state *WizardState, node *config.ParsedNode) (string, error) {
 	if state.Controller == nil || state.Controller.ConfigService == nil {
 		return "", fmt.Errorf("ConfigService not available")
 	}
@@ -2510,20 +2512,20 @@ func generateNodeJSONForPreview(state *WizardState, node *parsers.ParsedNode) (s
 }
 
 // generateSelectorForPreview генерирует JSON для селектора через ConfigService
-func generateSelectorForPreview(state *WizardState, allNodes []*parsers.ParsedNode, outboundConfig core.OutboundConfig) (string, error) {
+func generateSelectorForPreview(state *WizardState, allNodes []*config.ParsedNode, outboundConfig config.OutboundConfig) (string, error) {
 	if state.Controller == nil || state.Controller.ConfigService == nil {
 		return "", fmt.Errorf("ConfigService not available")
 	}
 	return state.Controller.ConfigService.GenerateSelector(allNodes, outboundConfig)
 }
 
-func serializeParserConfig(parserConfig *core.ParserConfig) (string, error) {
+func serializeParserConfig(parserConfig *config.ParserConfig) (string, error) {
 	if parserConfig == nil {
 		return "", fmt.Errorf("parserConfig is nil")
 	}
 
 	// Normalize ParserConfig (migrate version, set defaults, but don't update last_updated)
-	core.NormalizeParserConfig(parserConfig, false)
+	config.NormalizeParserConfig(parserConfig, false)
 
 	// Serialize in version 2 format (version inside ParserConfig, not at top level)
 	configToSerialize := map[string]interface{}{

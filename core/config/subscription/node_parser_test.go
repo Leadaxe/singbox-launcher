@@ -1,10 +1,12 @@
-package parsers
+package subscription
 
 import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"testing"
+
+	"singbox-launcher/core/config"
 )
 
 // TestIsDirectLink tests the IsDirectLink function
@@ -40,13 +42,13 @@ func TestParseNode_VLESS(t *testing.T) {
 		name        string
 		uri         string
 		expectError bool
-		checkFields func(*testing.T, *ParsedNode)
+		checkFields func(*testing.T, *config.ParsedNode)
 	}{
 		{
 			name:        "Basic VLESS with Reality",
 			uri:         "vless://4a3ece53-6000-4ba3-a9fa-fd0d7ba61cf3@31.57.228.19:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=hls-svod.itunes.apple.com&fp=chrome&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&sid=48720c&allowInsecure=1&type=tcp&headerType=none#🇦🇪 United Arab Emirates",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -74,7 +76,7 @@ func TestParseNode_VLESS(t *testing.T) {
 			name:        "VLESS with default port",
 			uri:         "vless://uuid@example.com#Test",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -87,7 +89,7 @@ func TestParseNode_VLESS(t *testing.T) {
 			name:        "VLESS with custom port",
 			uri:         "vless://uuid@example.com:8443#Test",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -176,13 +178,13 @@ func TestParseNode_Trojan(t *testing.T) {
 		name        string
 		uri         string
 		expectError bool
-		checkFields func(*testing.T, *ParsedNode)
+		checkFields func(*testing.T, *config.ParsedNode)
 	}{
 		{
 			name:        "Basic Trojan",
 			uri:         "trojan://password123@example.com:443#Trojan Server",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -198,7 +200,7 @@ func TestParseNode_Trojan(t *testing.T) {
 			name:        "Trojan with default port",
 			uri:         "trojan://password@example.com#Test",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -427,7 +429,7 @@ func TestParseNode_RealWorldExamples(t *testing.T) {
 // TestBuildOutbound tests outbound generation
 func TestBuildOutbound(t *testing.T) {
 	t.Run("VLESS with Reality", func(t *testing.T) {
-		node := &ParsedNode{
+		node := &config.ParsedNode{
 			Tag:    "test-vless",
 			Scheme: "vless",
 			Server: "example.com",
@@ -465,7 +467,7 @@ func TestBuildOutbound(t *testing.T) {
 	})
 
 	t.Run("Shadowsocks type conversion", func(t *testing.T) {
-		node := &ParsedNode{
+		node := &config.ParsedNode{
 			Tag:    "test-ss",
 			Scheme: "ss",
 			Server: "example.com",
@@ -494,13 +496,13 @@ func TestParseNode_Hysteria2(t *testing.T) {
 		name        string
 		uri         string
 		expectError bool
-		checkFields func(*testing.T, *ParsedNode)
+		checkFields func(*testing.T, *config.ParsedNode)
 	}{
 		{
 			name:        "Basic Hysteria2 plain URL",
 			uri:         "hysteria2://password123@example.com:443?sni=example.com#Test Server",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -525,7 +527,7 @@ func TestParseNode_Hysteria2(t *testing.T) {
 			name:        "Hysteria2 with default port",
 			uri:         "hysteria2://password@example.com#Test",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -538,7 +540,7 @@ func TestParseNode_Hysteria2(t *testing.T) {
 			name:        "Hysteria2 base64-encoded URL",
 			uri:         "hysteria2://NDdkYjM3M2ItZDIzYy00YWNiLWJmZDktZGFjZTM5YzRmMWU0QGhsLmthaXhpbmNsb3VkLnRvcDoyNzIwMC8/aW5zZWN1cmU9MCZzbmk9aGwua2FpeGluY2xvdWQudG9wJm1wb3J0PTI3MjAwLTI4MDAwIyVFNSU4OSVBOSVFNCVCRCU5OSVFNiVCNSU4MSVFOSU4NyU4RiVFRiVCQyU5QTkyLjcyJTIwR0INCg==",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -569,7 +571,7 @@ func TestParseNode_Hysteria2(t *testing.T) {
 			name:        "Hysteria2 with server_ports and ALPN",
 			uri:         "hysteria2://password@example.com:443?mport=10000-20000&sni=example.com&alpn=h3&insecure=0#Test",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -585,7 +587,7 @@ func TestParseNode_Hysteria2(t *testing.T) {
 			name:        "Hysteria2 with multiple ALPN values",
 			uri:         "hysteria2://password@example.com:443?alpn=h3,h2#Test",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -598,7 +600,7 @@ func TestParseNode_Hysteria2(t *testing.T) {
 			name:        "Hysteria2 without password (warning but valid)",
 			uri:         "hysteria2://@example.com:443#Test",
 			expectError: false,
-			checkFields: func(t *testing.T, node *ParsedNode) {
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
 				if node == nil {
 					t.Fatal("Expected node, got nil")
 				}
@@ -632,7 +634,7 @@ func TestParseNode_Hysteria2(t *testing.T) {
 // TestBuildOutbound_Hysteria2 tests Hysteria2 outbound generation
 func TestBuildOutbound_Hysteria2(t *testing.T) {
 	t.Run("Hysteria2 with server_ports and ALPN", func(t *testing.T) {
-		node := &ParsedNode{
+		node := &config.ParsedNode{
 			Tag:    "test-hysteria2",
 			Scheme: "hysteria2",
 			Server: "hl.kaixincloud.top",
@@ -699,7 +701,7 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 	})
 
 	t.Run("Hysteria2 with multiple ALPN values", func(t *testing.T) {
-		node := &ParsedNode{
+		node := &config.ParsedNode{
 			Tag:    "test-hysteria2",
 			Scheme: "hysteria2",
 			Server: "example.com",
@@ -726,7 +728,7 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 	})
 
 	t.Run("Hysteria2 with insecure=1", func(t *testing.T) {
-		node := &ParsedNode{
+		node := &config.ParsedNode{
 			Tag:    "test-hysteria2",
 			Scheme: "hysteria2",
 			Server: "example.com",
@@ -748,7 +750,7 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 	})
 
 	t.Run("Hysteria2 without password", func(t *testing.T) {
-		node := &ParsedNode{
+		node := &config.ParsedNode{
 			Tag:    "test-hysteria2",
 			Scheme: "hysteria2",
 			Server: "example.com",

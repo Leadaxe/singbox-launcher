@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
+	"singbox-launcher/core/config"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -52,7 +53,7 @@ type WizardState struct {
 	parserConfigUpdating bool
 
 	// Parsed data
-	ParserConfig       *core.ParserConfig
+	ParserConfig       *config.ParserConfig
 	GeneratedOutbounds []string
 	// Statistics for preview (used when nodes > maxNodesForFullPreview)
 	OutboundStats struct {

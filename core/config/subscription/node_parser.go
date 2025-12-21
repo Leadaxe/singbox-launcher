@@ -1,7 +1,7 @@
-// Package parsers provides parsing logic for various proxy node formats.
+// Package subscription provides parsing logic for various proxy node formats.
 // It supports VLESS, VMess, Trojan, Shadowsocks, and Hysteria2 protocols, handling
 // both direct links and subscription formats.
-package parsers
+package subscription
 
 import (
 	"encoding/base64"
@@ -13,23 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
-)
 
-// ParsedNode represents a parsed proxy node with all extracted information.
-// It contains protocol-specific fields (UUID, Flow, etc.) and the generated
-// outbound configuration ready for JSON serialization.
-type ParsedNode struct {
-	Tag      string
-	Scheme   string
-	Server   string
-	Port     int
-	UUID     string
-	Flow     string
-	Label    string
-	Comment  string
-	Query    url.Values
-	Outbound map[string]interface{}
-}
+	"singbox-launcher/core/config"
+)
 
 // IsDirectLink checks if the input string is a direct proxy link (vless://, vmess://, etc.)
 func IsDirectLink(input string) bool {
@@ -42,7 +28,7 @@ func IsDirectLink(input string) bool {
 }
 
 // ParseNode parses a single node URI and applies skip filters
-func ParseNode(uri string, skipFilters []map[string]string) (*ParsedNode, error) {
+func ParseNode(uri string, skipFilters []map[string]string) (*config.ParsedNode, error) {
 	// Determine scheme
 	scheme := ""
 	uriToParse := uri
@@ -143,7 +129,7 @@ func ParseNode(uri string, skipFilters []map[string]string) (*ParsedNode, error)
 	}
 
 	// Extract components
-	node := &ParsedNode{
+	node := &config.ParsedNode{
 		Scheme: scheme,
 		Server: parsedURL.Hostname(),
 		Query:  parsedURL.Query(),
@@ -334,7 +320,63 @@ func generateDefaultTag(scheme, server string, port int) string {
 	return fmt.Sprintf("%s-%s-%d", scheme, server, port)
 }
 
-func shouldSkipNode(node *ParsedNode, skipFilters []map[string]string) bool {
+// getNodeValue extracts a value from node by key (supports nested keys with dots)
+func getNodeValue(node *config.ParsedNode, key string) string {
+	switch key {
+	case "tag":
+		return node.Tag
+	case "host":
+		return node.Server
+	case "label":
+		return node.Label
+	case "scheme":
+		return node.Scheme
+	case "fragment":
+		return node.Label // fragment == label
+	case "comment":
+		return node.Comment
+	default:
+		return ""
+	}
+}
+
+// matchesPattern checks if a value matches a pattern (supports regex and negation)
+func matchesPattern(value, pattern string) bool {
+	// Negation literal: !literal
+	if strings.HasPrefix(pattern, "!") && !strings.HasPrefix(pattern, "!/") {
+		literal := strings.TrimPrefix(pattern, "!")
+		return value != literal
+	}
+
+	// Negation regex: !/regex/i
+	if strings.HasPrefix(pattern, "!/") && strings.HasSuffix(pattern, "/i") {
+		regexStr := strings.TrimPrefix(pattern, "!/")
+		regexStr = strings.TrimSuffix(regexStr, "/i")
+		re, err := regexp.Compile("(?i)" + regexStr)
+		if err != nil {
+			log.Printf("Parser: Invalid regex pattern %s: %v", pattern, err)
+			return false
+		}
+		return !re.MatchString(value)
+	}
+
+	// Regex: /regex/i
+	if strings.HasPrefix(pattern, "/") && strings.HasSuffix(pattern, "/i") {
+		regexStr := strings.TrimPrefix(pattern, "/")
+		regexStr = strings.TrimSuffix(regexStr, "/i")
+		re, err := regexp.Compile("(?i)" + regexStr)
+		if err != nil {
+			log.Printf("Parser: Invalid regex pattern %s: %v", pattern, err)
+			return false
+		}
+		return re.MatchString(value)
+	}
+
+	// Literal match (case-sensitive)
+	return value == pattern
+}
+
+func shouldSkipNode(node *config.ParsedNode, skipFilters []map[string]string) bool {
 	for _, filter := range skipFilters {
 		allKeysMatch := true
 		for key, pattern := range filter {
@@ -351,60 +393,7 @@ func shouldSkipNode(node *ParsedNode, skipFilters []map[string]string) bool {
 	return false // Don't skip
 }
 
-func getNodeValue(node *ParsedNode, key string) string {
-	switch key {
-	case "tag":
-		return node.Tag
-	case "host":
-		return node.Server
-	case "label":
-		return node.Label
-	case "scheme":
-		return node.Scheme
-	case "fragment":
-		return node.Label // fragment == label
-	case "comment":
-		return node.Comment
-	case "flow":
-		return node.Flow
-	default:
-		return ""
-	}
-}
-
-func matchesPattern(value, pattern string) bool {
-	// Negation literal: !literal
-	if len(pattern) > 1 && pattern[0] == '!' && pattern[1] != '/' {
-		return value != pattern[1:]
-	}
-
-	// Regex patterns: /regex/i or !/regex/i
-	if len(pattern) > 3 && pattern[0] == '/' && strings.HasSuffix(pattern, "/i") {
-		regexStr := pattern[1 : len(pattern)-2] // Remove leading / and trailing /i
-		re, err := regexp.Compile("(?i)" + regexStr)
-		if err != nil {
-			log.Printf("Parser: Invalid regex pattern %s: %v", pattern, err)
-			return false
-		}
-		return re.MatchString(value)
-	}
-
-	// Negation regex: !/regex/i
-	if len(pattern) > 4 && strings.HasPrefix(pattern, "!/") && strings.HasSuffix(pattern, "/i") {
-		regexStr := pattern[2 : len(pattern)-2] // Remove leading !/ and trailing /i
-		re, err := regexp.Compile("(?i)" + regexStr)
-		if err != nil {
-			log.Printf("Parser: Invalid regex pattern %s: %v", pattern, err)
-			return false
-		}
-		return !re.MatchString(value)
-	}
-
-	// Literal match
-	return value == pattern
-}
-
-func buildOutbound(node *ParsedNode) map[string]interface{} {
+func buildOutbound(node *config.ParsedNode) map[string]interface{} {
 	outbound := make(map[string]interface{})
 	outbound["tag"] = node.Tag
 	// Use "shadowsocks" instead of "ss" for sing-box
@@ -544,7 +533,7 @@ func buildOutbound(node *ParsedNode) map[string]interface{} {
 }
 
 // buildHysteria2Outbound builds outbound configuration for Hysteria2 protocol
-func buildHysteria2Outbound(node *ParsedNode, outbound map[string]interface{}) {
+func buildHysteria2Outbound(node *config.ParsedNode, outbound map[string]interface{}) {
 	// Password is required (stored in UUID field from userinfo)
 	if node.UUID != "" {
 		outbound["password"] = node.UUID
@@ -597,7 +586,7 @@ func buildHysteria2Outbound(node *ParsedNode, outbound map[string]interface{}) {
 }
 
 // buildHysteria2TLS builds TLS configuration for Hysteria2
-func buildHysteria2TLS(node *ParsedNode, outbound map[string]interface{}) {
+func buildHysteria2TLS(node *config.ParsedNode, outbound map[string]interface{}) {
 	sni := node.Query.Get("sni")
 
 	// Handle insecure parameter (can be "1" or "true")
@@ -633,8 +622,8 @@ func buildHysteria2TLS(node *ParsedNode, outbound map[string]interface{}) {
 	outbound["tls"] = tlsData
 }
 
-func parseVMessJSON(vmessConfig map[string]interface{}, skipFilters []map[string]string) (*ParsedNode, error) {
-	node := &ParsedNode{
+func parseVMessJSON(vmessConfig map[string]interface{}, skipFilters []map[string]string) (*config.ParsedNode, error) {
+	node := &config.ParsedNode{
 		Scheme: "vmess",
 		Query:  make(url.Values),
 	}

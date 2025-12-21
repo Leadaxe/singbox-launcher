@@ -15,6 +15,7 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core"
+	"singbox-launcher/core/config"
 )
 
 // CreateClashAPITab creates and returns the content for the "Clash API" tab.
@@ -23,7 +24,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	status := widget.NewLabel("Click 'Load Proxies'")
 	ac.ListStatusLabel = status
 
-	selectorOptions, defaultSelector, err := core.GetSelectorGroupsFromConfig(ac.ConfigPath)
+	selectorOptions, defaultSelector, err := config.GetSelectorGroupsFromConfig(ac.ConfigPath)
 	if err != nil {
 		log.Printf("clash_api_tab: failed to get selector groups: %v", err)
 	}
@@ -97,7 +98,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 	// Функция для обновления списка селекторов из конфига (вызывается когда sing-box запущен и конфиг загружен)
 	updateSelectorList := func() {
-		updatedSelectorOptions, updatedDefaultSelector, err := core.GetSelectorGroupsFromConfig(ac.ConfigPath)
+		updatedSelectorOptions, updatedDefaultSelector, err := config.GetSelectorGroupsFromConfig(ac.ConfigPath)
 		if err == nil && len(updatedSelectorOptions) > 0 && groupSelect != nil {
 			groupSelect.SetOptions(updatedSelectorOptions)
 
