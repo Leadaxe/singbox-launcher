@@ -227,7 +227,7 @@ func (ac *AppController) findPlatformAsset(assets []Asset) (*Asset, error) {
 	var platformPattern string
 
 	switch runtime.GOOS {
-		case "windows":
+	case "windows":
 		if runtime.GOARCH == "amd64" {
 			platformPattern = "windows-amd64.zip"
 		} else if runtime.GOARCH == "arm64" {

@@ -252,10 +252,10 @@ func main() {
 	if controller.FileService != nil {
 		if controller.FileService.MainLogFile != nil {
 			controller.FileService.MainLogFile.Close()
-		}
+	}
 		if controller.FileService.ChildLogFile != nil {
 			controller.FileService.ChildLogFile.Close()
-		}
+	}
 		if controller.FileService.ApiLogFile != nil {
 			controller.FileService.ApiLogFile.Close()
 		}
