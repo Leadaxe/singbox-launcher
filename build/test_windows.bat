@@ -28,23 +28,6 @@ if exist "%TEST_OUTPUT_DIR%" (
     rmdir /s /q "%TEST_OUTPUT_DIR%" 2>nul
 )
 
-:: Очищаем системную временную директорию %TEMP%
-if defined TEMP (
-    echo Cleaning system temp directory: %TEMP%...
-    if exist "%TEMP%" (
-        for /d %%d in ("%TEMP%\*") do (
-            rmdir /s /q "%%d" 2>nul
-        )
-        del /q /f "%TEMP%\*" 2>nul
-    )
-)
-
-:: Очищаем директорию go-build в LocalAppData
-if exist "%LOCALAPPDATA%\go-build" (
-    echo Cleaning %LOCALAPPDATA%\go-build...
-    rmdir /s /q "%LOCALAPPDATA%\go-build" 2>nul
-)
-
 :: Создаем чистую директорию для тестов
 mkdir "%TEST_OUTPUT_DIR%" 2>nul
 mkdir "%TEST_OUTPUT_DIR%\tmp" 2>nul
@@ -187,8 +170,6 @@ for /f "delims=" %%p in ('go list %TEST_PACKAGE% 2^>nul') do (
     )
 )
 echo.
-
-set TEST_EXIT_CODE=%ERRORLEVEL%
 
 echo.
 echo ========================================
