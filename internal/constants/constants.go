@@ -36,7 +36,7 @@ const (
 // Application version
 // Can be overridden at build time using -ldflags="-X singbox-launcher/internal/constants.AppVersion=..."
 var (
-	AppVersion = "v0.5.1" // Default version, overridden by build scripts from git tag
+	AppVersion = "v0.6.0" // Default version, overridden by build scripts from git tag
 )
 
 // UI Theme settings
