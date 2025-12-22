@@ -1,0 +1,164 @@
+name: Build Only
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build'
+        required: true
+        type: choice
+        options:
+          - all
+          - linux
+          - macos
+          - windows
+
+jobs:
+  build:
+    name: Build ${{ inputs.platform || 'all' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - platform: linux
+            os: ubuntu-latest
+            condition: ${{ inputs.platform == 'all' || inputs.platform == 'linux' }}
+          - platform: macos
+            os: macos-latest
+            condition: ${{ inputs.platform == 'all' || inputs.platform == 'macos' }}
+          - platform: windows
+            os: windows-latest
+            condition: ${{ inputs.platform == 'all' || inputs.platform == 'windows' }}
+    
+    if: matrix.condition
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Install build dependencies (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libgtk-3-dev
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build Linux
+        if: matrix.platform == 'linux'
+        env:
+          CGO_ENABLED: 1
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          go build -buildvcs=false \
+            -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" \
+            -o singbox-launcher-linux-amd64
+
+      - name: Build macOS
+        if: matrix.platform == 'macos'
+        env:
+          CGO_ENABLED: 1
+          GOOS: darwin
+          SDKROOT: $(xcrun --show-sdk-path)
+        run: |
+          # Build arm64
+          GOARCH=arm64 go build -buildvcs=false \
+            -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" \
+            -o singbox-launcher-macos-arm64
+          
+          # Build amd64
+          GOARCH=amd64 go build -buildvcs=false \
+            -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" \
+            -o singbox-launcher-macos-amd64
+          
+          # Create universal binary
+          lipo -create -output singbox-launcher-macos-universal \
+            singbox-launcher-macos-arm64 singbox-launcher-macos-amd64
+          
+          # Create .app bundle
+          APP_NAME="singbox-launcher.app"
+          APP_CONTENTS="$APP_NAME/Contents"
+          APP_MACOS="$APP_CONTENTS/MacOS"
+          APP_RESOURCES="$APP_CONTENTS/Resources"
+          
+          mkdir -p "$APP_MACOS"
+          mkdir -p "$APP_RESOURCES"
+          
+          mv singbox-launcher-macos-universal "$APP_MACOS/singbox-launcher"
+          chmod +x "$APP_MACOS/singbox-launcher"
+          
+          if [ -f "assets/app.icns" ]; then
+            cp "assets/app.icns" "$APP_RESOURCES/app.icns"
+          fi
+          
+          cat > "$APP_CONTENTS/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>singbox-launcher</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.singbox.launcher</string>
+              <key>CFBundleName</key>
+              <string>Sing-Box Launcher</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleIconFile</key>
+              <string>app</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${{ steps.version.outputs.version }}</string>
+              <key>CFBundleVersion</key>
+              <string>${{ steps.version.outputs.version }}</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>11.0</string>
+              <key>LSArchitecturePriority</key>
+              <array>
+                  <string>arm64</string>
+                  <string>x86_64</string>
+              </array>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+              <key>LSUIElement</key>
+              <false/>
+          </dict>
+          </plist>
+          EOF
+          
+          zip -r singbox-launcher-macos-universal.zip "$APP_NAME"
+          
+          rm -f singbox-launcher-macos-arm64 singbox-launcher-macos-amd64
+
+      - name: Build Windows
+        if: matrix.platform == 'windows'
+        env:
+          CGO_ENABLED: 1
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          go build -buildvcs=false \
+            -ldflags="-H windowsgui -s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" \
+            -o singbox-launcher-windows-amd64.exe
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.platform }}
+          path: |
+            singbox-launcher*
+            *.app
+            *.zip
+          retention-days: 7
+
