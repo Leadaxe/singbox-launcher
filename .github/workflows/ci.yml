@@ -84,10 +84,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            goos: linux
-            goarch: amd64
-            artifact_name: singbox-launcher-linux-amd64
+          # Linux сборка временно отключена - ищем тестировщика
+          # - os: ubuntu-latest
+          #   goos: linux
+          #   goarch: amd64
+          #   artifact_name: singbox-launcher-linux-amd64
           - os: macos-latest
             goos: darwin
             goarch: amd64
@@ -112,13 +113,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-
-      # Установка зависимостей для CGO на Linux
-      - name: Install build dependencies (Linux)
-        if: matrix.goos == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libgtk-3-dev
 
       # macOS уже имеет clang и Xcode Command Line Tools
       # Windows runner уже имеет MinGW-w64 в PATH
@@ -145,25 +139,12 @@ jobs:
 
       - name: Verify C compiler
         run: |
-          if [ "${{ matrix.goos }}" == "linux" ]; then
-            gcc --version
-          elif [ "${{ matrix.goos }}" == "darwin" ]; then
+          if [ "${{ matrix.goos }}" == "darwin" ]; then
             clang --version
             xcrun --show-sdk-path
           elif [ "${{ matrix.goos }}" == "windows" ]; then
             gcc --version || echo "GCC check skipped on Windows"
           fi
-
-      - name: Build for Linux
-        if: matrix.goos == 'linux'
-        env:
-          CGO_ENABLED: 1
-          GOOS: linux
-          GOARCH: amd64
-        run: |
-          go build -buildvcs=false \
-            -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" \
-            -o ${{ matrix.artifact_name }}
 
       - name: Build for macOS (Intel)
         if: matrix.goos == 'darwin' && matrix.goarch == 'amd64'
@@ -289,26 +270,27 @@ jobs:
     name: Build & Release (${{ matrix.os }})
     # Запускается только если это push тега
     if: startsWith(github.ref, 'refs/tags/')
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            goos: linux
-            goarch: amd64
-            artifact_name: singbox-launcher-linux-amd64
-          - os: macos-latest
-            goos: darwin
-            goarch: amd64
-            artifact_name: singbox-launcher-macos-amd64
-          - os: macos-latest
-            goos: darwin
-            goarch: arm64
-            artifact_name: singbox-launcher-macos-arm64
-          - os: windows-latest
-            goos: windows
-            goarch: amd64
-            artifact_name: singbox-launcher-windows-amd64.exe
+      strategy:
+        fail-fast: false
+        matrix:
+          include:
+            # Linux сборка временно отключена - ищем тестировщика
+            # - os: ubuntu-latest
+            #   goos: linux
+            #   goarch: amd64
+            #   artifact_name: singbox-launcher-linux-amd64
+            - os: macos-latest
+              goos: darwin
+              goarch: amd64
+              artifact_name: singbox-launcher-macos-amd64
+            - os: macos-latest
+              goos: darwin
+              goarch: arm64
+              artifact_name: singbox-launcher-macos-arm64
+            - os: windows-latest
+              goos: windows
+              goarch: amd64
+              artifact_name: singbox-launcher-windows-amd64.exe
     
     runs-on: ${{ matrix.os }}
     
@@ -324,31 +306,12 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # Установка зависимостей для CGO на Linux
-      - name: Install build dependencies (Linux)
-        if: matrix.goos == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libgtk-3-dev
-
       - name: Get version from tag
         id: version
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
-
-      - name: Build for Linux
-        if: matrix.goos == 'linux'
-        env:
-          CGO_ENABLED: 1
-          GOOS: linux
-          GOARCH: amd64
-        run: |
-          mkdir -p dist
-          go build -buildvcs=false \
-            -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" \
-            -o "dist/${{ matrix.artifact_name }}"
 
       - name: Build for macOS (Intel)
         if: matrix.goos == 'darwin' && matrix.goarch == 'amd64'
@@ -496,8 +459,10 @@ jobs:
             
             ### Downloads
             - **macOS (Universal)**: `singbox-launcher-macos-universal.zip` - Supports both Apple Silicon and Intel
-            - **Linux (amd64)**: `singbox-launcher-linux-amd64`
             - **Windows (amd64)**: `singbox-launcher-windows-amd64.exe`
+            
+            ### Linux Support
+            ⚠️ **Linux сборка временно недоступна** - ищем тестировщика для ручного тестирования перед включением автоматической сборки.
             
             ### Checksums
             See `checksums.txt` for SHA256 checksums of all files.
@@ -542,8 +507,10 @@ jobs:
             
             ### Downloads
             - **macOS (Universal)**: `singbox-launcher-macos-universal.zip` - Supports both Apple Silicon and Intel
-            - **Linux (amd64)**: `singbox-launcher-linux-amd64`
             - **Windows (amd64)**: `singbox-launcher-windows-amd64.exe`
+            
+            ### Linux Support
+            ⚠️ **Linux сборка временно недоступна** - ищем тестировщика для ручного тестирования перед включением автоматической сборки.
             
             ### Checksums
             See `checksums.txt` for SHA256 checksums of all files.
