@@ -1,0 +1,519 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main, master, develop ]
+    # Теги, на которых будет релиз-сборка (автоматически создаст Release)
+    tags:
+      - "v*"
+  pull_request:
+    branches: [ main, master, develop ]
+  release:
+    types: [ created ]
+  workflow_dispatch:
+
+# Для релиза нужны права записи в contents (чтобы создать release и прикрепить файлы)
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test
+    # Тесты не запускаются для тегов (для ускорения релизов)
+    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go-version: ['1.24']
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Нужно для git describe
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Установка компилятора C для Linux
+      - name: Install build dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libgtk-3-dev
+
+      # macOS уже имеет clang в Xcode Command Line Tools
+      # Windows runner уже имеет MinGW-w64
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run tests
+        env:
+          CGO_ENABLED: 1
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        if: matrix.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.out
+          flags: unittests
+          name: codecov-umbrella
+
+  build:
+    name: Build ${{ matrix.os }}
+    # Запускается после тестов для обычных push и PR (не для тегов)
+    needs: test
+    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # Linux сборка временно отключена - ищем тестировщика
+          # - os: ubuntu-latest
+          #   goos: linux
+          #   goarch: amd64
+          #   artifact_name: singbox-launcher-linux-amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            artifact_name: singbox-launcher-macos-amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            artifact_name: singbox-launcher-macos-arm64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            artifact_name: singbox-launcher-windows-amd64.exe
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # macOS уже имеет clang и Xcode Command Line Tools
+      # Windows runner уже имеет MinGW-w64 в PATH
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Verify C compiler
+        run: |
+          if [ "${{ matrix.goos }}" == "darwin" ]; then
+            clang --version
+            xcrun --show-sdk-path
+          elif [ "${{ matrix.goos }}" == "windows" ]; then
+            gcc --version || echo "GCC check skipped on Windows"
+          fi
+
+      - name: Build for macOS (Intel)
+        if: matrix.goos == 'darwin' && matrix.goarch == 'amd64'
+        env:
+          CGO_ENABLED: 1
+          GOOS: darwin
+          GOARCH: amd64
+          SDKROOT: $(xcrun --show-sdk-path)
+        run: |
+          go build -buildvcs=false \
+            -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" \
+            -o ${{ matrix.artifact_name }}
+
+      - name: Build for macOS (Apple Silicon)
+        if: matrix.goos == 'darwin' && matrix.goarch == 'arm64'
+        env:
+          CGO_ENABLED: 1
+          GOOS: darwin
+          GOARCH: arm64
+          SDKROOT: $(xcrun --show-sdk-path)
+        run: |
+          go build -buildvcs=false \
+            -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" \
+            -o ${{ matrix.artifact_name }}
+
+      - name: Create macOS universal binary
+        if: matrix.goos == 'darwin' && matrix.goarch == 'amd64'
+        run: |
+          # Собираем arm64 версию для universal binary
+          GOARCH=arm64 CGO_ENABLED=1 SDKROOT=$(xcrun --show-sdk-path) \
+            go build -buildvcs=false \
+            -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" \
+            -o singbox-launcher-macos-arm64-temp
+          
+          # Создаем universal binary
+          lipo -create -output singbox-launcher-macos-universal \
+            singbox-launcher-macos-amd64 singbox-launcher-macos-arm64-temp
+          
+          # Проверяем архитектуры
+          lipo -info singbox-launcher-macos-universal
+          
+          # Удаляем временные файлы
+          rm -f singbox-launcher-macos-amd64 singbox-launcher-macos-arm64-temp
+
+      - name: Build for Windows
+        if: matrix.goos == 'windows'
+        env:
+          CGO_ENABLED: 1
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          go build -buildvcs=false \
+            -ldflags="-H windowsgui -s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" \
+            -o ${{ matrix.artifact_name }}
+
+      - name: Create macOS .app bundle
+        if: matrix.goos == 'darwin' && matrix.goarch == 'amd64'
+        run: |
+          APP_NAME="singbox-launcher.app"
+          APP_CONTENTS="$APP_NAME/Contents"
+          APP_MACOS="$APP_CONTENTS/MacOS"
+          APP_RESOURCES="$APP_CONTENTS/Resources"
+          
+          mkdir -p "$APP_MACOS"
+          mkdir -p "$APP_RESOURCES"
+          
+          mv singbox-launcher-macos-universal "$APP_MACOS/singbox-launcher"
+          chmod +x "$APP_MACOS/singbox-launcher"
+          
+          if [ -f "assets/app.icns" ]; then
+            cp "assets/app.icns" "$APP_RESOURCES/app.icns"
+          fi
+          
+          cat > "$APP_CONTENTS/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>singbox-launcher</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.singbox.launcher</string>
+              <key>CFBundleName</key>
+              <string>Sing-Box Launcher</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleIconFile</key>
+              <string>app</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${{ steps.version.outputs.version }}</string>
+              <key>CFBundleVersion</key>
+              <string>${{ steps.version.outputs.version }}</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>11.0</string>
+              <key>LSArchitecturePriority</key>
+              <array>
+                  <string>arm64</string>
+                  <string>x86_64</string>
+              </array>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+              <key>LSUIElement</key>
+              <false/>
+          </dict>
+          </plist>
+          EOF
+          
+          # Создаем zip архив
+          zip -r singbox-launcher-macos-universal.zip "$APP_NAME"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            ${{ matrix.artifact_name }}
+            singbox-launcher-macos-universal.zip
+            singbox-launcher.app
+          retention-days: 30
+
+  # Сборка и релиз для тегов (автоматически создает Release при push тега)
+  build-and-release:
+    name: Build & Release (${{ matrix.os }})
+    # Запускается только если это push тега
+    if: startsWith(github.ref, 'refs/tags/')
+      strategy:
+        fail-fast: false
+        matrix:
+          include:
+            # Linux сборка временно отключена - ищем тестировщика
+            # - os: ubuntu-latest
+            #   goos: linux
+            #   goarch: amd64
+            #   artifact_name: singbox-launcher-linux-amd64
+            - os: macos-latest
+              goos: darwin
+              goarch: amd64
+              artifact_name: singbox-launcher-macos-amd64
+            - os: macos-latest
+              goos: darwin
+              goarch: arm64
+              artifact_name: singbox-launcher-macos-arm64
+            - os: windows-latest
+              goos: windows
+              goarch: amd64
+              artifact_name: singbox-launcher-windows-amd64.exe
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Build for macOS (Intel)
+        if: matrix.goos == 'darwin' && matrix.goarch == 'amd64'
+        env:
+          CGO_ENABLED: 1
+          GOOS: darwin
+          GOARCH: amd64
+          SDKROOT: $(xcrun --show-sdk-path)
+        run: |
+          mkdir -p dist
+          go build -buildvcs=false \
+            -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" \
+            -o "dist/${{ matrix.artifact_name }}"
+
+      - name: Build for macOS (Apple Silicon)
+        if: matrix.goos == 'darwin' && matrix.goarch == 'arm64'
+        env:
+          CGO_ENABLED: 1
+          GOOS: darwin
+          GOARCH: arm64
+          SDKROOT: $(xcrun --show-sdk-path)
+        run: |
+          mkdir -p dist
+          go build -buildvcs=false \
+            -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" \
+            -o "dist/${{ matrix.artifact_name }}"
+
+      - name: Create macOS universal binary and .app bundle
+        if: matrix.goos == 'darwin' && matrix.goarch == 'amd64'
+        run: |
+          mkdir -p dist
+          # Создаем universal binary
+          lipo -create -output dist/singbox-launcher-macos-universal \
+            "dist/singbox-launcher-macos-amd64" "dist/singbox-launcher-macos-arm64"
+          
+          # Создаем .app bundle
+          APP_NAME="singbox-launcher.app"
+          APP_CONTENTS="$APP_NAME/Contents"
+          APP_MACOS="$APP_CONTENTS/MacOS"
+          APP_RESOURCES="$APP_CONTENTS/Resources"
+          
+          mkdir -p "$APP_MACOS"
+          mkdir -p "$APP_RESOURCES"
+          
+          mv dist/singbox-launcher-macos-universal "$APP_MACOS/singbox-launcher"
+          chmod +x "$APP_MACOS/singbox-launcher"
+          
+          if [ -f "assets/app.icns" ]; then
+            cp "assets/app.icns" "$APP_RESOURCES/app.icns"
+          fi
+          
+          cat > "$APP_CONTENTS/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>singbox-launcher</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.singbox.launcher</string>
+              <key>CFBundleName</key>
+              <string>Sing-Box Launcher</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleIconFile</key>
+              <string>app</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${{ steps.version.outputs.version }}</string>
+              <key>CFBundleVersion</key>
+              <string>${{ steps.version.outputs.version }}</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>11.0</string>
+              <key>LSArchitecturePriority</key>
+              <array>
+                  <string>arm64</string>
+                  <string>x86_64</string>
+              </array>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+              <key>LSUIElement</key>
+              <false/>
+          </dict>
+          </plist>
+          EOF
+          
+          # Создаем zip архив
+          zip -r "dist/singbox-launcher-macos-universal.zip" "$APP_NAME"
+          mv "$APP_NAME" dist/
+
+      - name: Build for Windows
+        if: matrix.goos == 'windows'
+        env:
+          CGO_ENABLED: 1
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          mkdir -p dist
+          go build -buildvcs=false \
+            -ldflags="-H windowsgui -s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" \
+            -o "dist/${{ matrix.artifact_name }}"
+
+      # Сохраняем артефакты для последующей загрузки в релиз
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          retention-days: 1
+
+  # Создание релиза со всеми артефактами (после завершения всех сборок)
+  create-release:
+    name: Create Release
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Create checksums
+        run: |
+          cd release-artifacts
+          find . -type f \( -name "singbox-launcher-*" -o -name "*.zip" -o -name "*.app" \) -exec sha256sum {} \; > checksums.txt
+
+      # Прикрепляем все файлы к GitHub Release (создаст релиз, если его нет)
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/**/*
+          body: |
+            ## Release ${{ steps.version.outputs.version }}
+            
+            ### Downloads
+            - **macOS (Universal)**: `singbox-launcher-macos-universal.zip` - Supports both Apple Silicon and Intel
+            - **Windows (amd64)**: `singbox-launcher-windows-amd64.exe`
+            
+            ### Linux Support
+            ⚠️ **Linux сборка временно недоступна** - ищем тестировщика для ручного тестирования перед включением автоматической сборки.
+            
+            ### Checksums
+            See `checksums.txt` for SHA256 checksums of all files.
+          draft: false
+          prerelease: false
+
+  # Релиз для ручного создания через GitHub UI (старый способ)
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.action == 'created'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create checksums
+        run: |
+          cd artifacts
+          find . -type f \( -name "singbox-launcher-*" -o -name "*.zip" -o -name "*.app" \) -exec sha256sum {} \; > checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*
+          body: |
+            ## Release ${{ steps.version.outputs.version }}
+            
+            ### Downloads
+            - **macOS (Universal)**: `singbox-launcher-macos-universal.zip` - Supports both Apple Silicon and Intel
+            - **Windows (amd64)**: `singbox-launcher-windows-amd64.exe`
+            
+            ### Linux Support
+            ⚠️ **Linux сборка временно недоступна** - ищем тестировщика для ручного тестирования перед включением автоматической сборки.
+            
+            ### Checksums
+            See `checksums.txt` for SHA256 checksums of all files.
+          draft: false
+          prerelease: false
+
