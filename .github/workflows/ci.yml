@@ -241,10 +241,20 @@ jobs:
           
           echo "✓ .app bundle created successfully"
           ls -lh singbox-launcher.app
+          echo ""
           
           # Создаем zip архив для удобства скачивания
+          echo "=== Creating zip archive ==="
           zip -r singbox-launcher-macos-universal.zip singbox-launcher.app
+          
+          # Проверяем, что zip создан
+          if [ ! -f "singbox-launcher-macos-universal.zip" ]; then
+            echo "Error: zip archive not created!"
+            exit 1
+          fi
+          
           echo "✓ Created zip archive: singbox-launcher-macos-universal.zip"
+          ls -lh singbox-launcher-macos-universal.zip
 
       - name: Build for Windows
         if: matrix.goos == 'windows'
@@ -411,10 +421,20 @@ jobs:
           
           echo "✓ .app bundle created successfully"
           ls -lh singbox-launcher.app
+          echo ""
           
           # Создаем zip архив для удобства скачивания
+          echo "=== Creating zip archive ==="
           zip -r singbox-launcher-macos-universal.zip singbox-launcher.app
+          
+          # Проверяем, что zip создан
+          if [ ! -f "singbox-launcher-macos-universal.zip" ]; then
+            echo "Error: zip archive not created!"
+            exit 1
+          fi
+          
           echo "✓ Created zip archive: singbox-launcher-macos-universal.zip"
+          ls -lh singbox-launcher-macos-universal.zip
 
       - name: Build for Windows
         if: matrix.goos == 'windows'
