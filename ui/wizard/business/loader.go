@@ -26,12 +26,11 @@ func LoadConfigFromFile(state *wizardstate.WizardState) (bool, error) {
 		if fileInfo.Size() > wizardutils.MaxJSONConfigSize {
 			wizardstate.ErrorLog("ConfigWizard: config.json file size (%d bytes) exceeds maximum (%d bytes)", fileInfo.Size(), wizardutils.MaxJSONConfigSize)
 			if state.Window != nil {
-				errorMsg := fmt.Sprintf(
+				dialog.ShowError(fmt.Errorf(
 					"config.json file is too large (%d bytes, maximum %d bytes).\n"+
 						"Please check the file size and content.",
 					fileInfo.Size(), wizardutils.MaxJSONConfigSize,
-				)
-				dialog.ShowError(fmt.Errorf(errorMsg), state.Window)
+				), state.Window)
 			}
 			return false, fmt.Errorf("config.json file too large: %d bytes", fileInfo.Size())
 		}
@@ -81,13 +80,12 @@ func LoadConfigFromFile(state *wizardstate.WizardState) (bool, error) {
 
 		// Show error to user if window is already created
 		if state.Window != nil {
-			errorMsg := fmt.Sprintf(
+			dialog.ShowError(fmt.Errorf(
 				"Error in @ParserConfig block in config.json:\n\n%v\n\n"+
 					"Check JSON syntax in @ParserConfig block (e.g., trailing commas, invalid quotes, unclosed brackets).\n"+
 					"Default template will be used.",
 				err,
-			)
-			dialog.ShowError(fmt.Errorf(errorMsg), state.Window)
+			), state.Window)
 		}
 	}
 

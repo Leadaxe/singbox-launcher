@@ -106,7 +106,8 @@ This launcher solves all of that. Everything is controlled from one clean GUI:
 ### macOS
 
 **Requirements:**
-- macOS 10.15+ (Catalina or newer)
+- **Universal build** (recommended): macOS 11.0+ (Big Sur or newer) - supports both Apple Silicon and Intel Macs
+- **Intel-only build**: macOS 10.15+ (Catalina or newer) - Intel Macs only
 - [sing-box](https://github.com/SagerNet/sing-box/releases) (executable file)
 
 ### Linux
@@ -639,21 +640,46 @@ go build -buildvcs=false -ldflags="-H windowsgui -s -w" -o singbox-launcher.exe
 
 ### macOS
 
-**macOS:**
+**Requirements:**
+- Full Xcode (not just Command Line Tools) - required for universal binary builds
+- Go 1.24 or newer
+
+**Build options:**
+
+1. **Universal binary** (recommended - default):
+   - Supports both Apple Silicon (arm64) and Intel (x86_64) Macs
+   - Requires macOS 11.0+ (Big Sur or newer)
+   - Creates `.app` bundle with proper Info.plist configuration
+
 ```bash
 # Clone the repository
 git clone https://github.com/Leadaxe/singbox-launcher.git
 cd singbox-launcher
 
-# Install dependencies
-go mod download
-
-# Build the project
+# Build universal binary (default)
 chmod +x build/build_darwin.sh
 ./build/build_darwin.sh
+# or explicitly:
+./build/build_darwin.sh universal
 ```
 
-Or manually:
+2. **Intel-only binary** (for older Macs):
+   - Supports Intel Macs only
+   - Requires macOS 10.15+ (Catalina or newer)
+   - Useful if you need to support older Intel Macs
+
+```bash
+# Build Intel-only binary
+./build/build_darwin.sh intel
+```
+
+**Build script features:**
+- Automatically creates universal binary (arm64 + x86_64) or Intel-only binary
+- Creates proper `.app` bundle structure with Info.plist
+- Sets correct `LSMinimumSystemVersion` and architecture priorities
+- Includes application icon if available
+
+**Manual build** (not recommended - won't create .app bundle):
 ```bash
 GOOS=darwin GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o singbox-launcher
 ```
