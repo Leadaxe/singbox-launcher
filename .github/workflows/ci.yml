@@ -256,7 +256,7 @@ jobs:
           echo "✓ Created zip archive: singbox-launcher-macos-universal.zip"
           ls -lh singbox-launcher-macos-universal.zip
 
-      - name: Build for Windows
+      - name: Build for Windows using build script
         if: matrix.goos == 'windows'
         shell: cmd
         env:
@@ -264,31 +264,66 @@ jobs:
           GOOS: windows
           GOARCH: amd64
         run: |
-          echo === Build environment ===
-          echo GOOS: %GOOS%
-          echo GOARCH: %GOARCH%
-          echo CGO_ENABLED: %CGO_ENABLED%
+          echo === Building Windows executable using build_windows.bat ===
           echo Version: ${{ steps.version.outputs.version }}
-          echo Output file: ${{ matrix.artifact_name }}
+          echo Working directory: %CD%
           echo.
-          echo === Verifying C compiler ===
-          gcc --version || echo Warning: gcc check failed
+          
+          :: Проверяем наличие необходимых инструментов
+          echo === Verifying dependencies ===
+          where go >nul 2>&1 || (echo Error: go not found && exit /b 1)
+          where gcc >nul 2>&1 || echo Warning: gcc not found, but continuing...
+          where git >nul 2>&1 || (echo Error: git not found && exit /b 1)
+          echo All dependencies found
           echo.
-          echo === Building ===
-          go build -buildvcs=false -ldflags="-H windowsgui -s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" -o ${{ matrix.artifact_name }}
+          
+          :: Проверяем наличие скрипта
+          if not exist "build\build_windows.bat" (
+            echo Error: build\build_windows.bat not found!
+            dir /b build\*.bat 2>nul || echo build\ directory not found
+            exit /b 1
+          )
+          echo Script found: build\build_windows.bat
+          echo.
+          
+          :: Проверяем наличие иконки (опционально)
+          if exist "assets\app.ico" (
+            echo Icon found: assets\app.ico
+          ) else (
+            echo Warning: Icon not found: assets\app.ico (will be skipped)
+          )
+          echo.
+          
+          :: Запускаем скрипт сборки с параметром silent (без pause)
+          :: Скрипт сам переходит в корень проекта через cd /d "%~dp0\.."
+          build\build_windows.bat silent
           
           if %ERRORLEVEL% NEQ 0 (
-            echo Error: Build failed with exit code %ERRORLEVEL%
+            echo Error: Build script failed with exit code %ERRORLEVEL%
             exit /b %ERRORLEVEL%
           )
           
-          if not exist "${{ matrix.artifact_name }}" (
-            echo Error: Build output file not found: ${{ matrix.artifact_name }}
+          :: Проверяем, что файл создан
+          if not exist "singbox-launcher.exe" (
+            echo Error: singbox-launcher.exe not found!
             dir /b *.exe 2>nul || echo No .exe files found
             exit /b 1
           )
           
-          echo Build successful: ${{ matrix.artifact_name }}
+          echo Build successful: singbox-launcher.exe
+          dir singbox-launcher.exe
+          
+          :: Переименовываем в ожидаемое имя для артефактов
+          echo.
+          echo === Renaming to expected artifact name ===
+          move /y singbox-launcher.exe ${{ matrix.artifact_name }}
+          
+          if not exist "${{ matrix.artifact_name }}" (
+            echo Error: Failed to rename file to ${{ matrix.artifact_name }}
+            exit /b 1
+          )
+          
+          echo Renamed successfully: ${{ matrix.artifact_name }}
           dir "${{ matrix.artifact_name }}"
 
       - name: Upload artifacts
@@ -436,7 +471,7 @@ jobs:
           echo "✓ Created zip archive: singbox-launcher-macos-universal.zip"
           ls -lh singbox-launcher-macos-universal.zip
 
-      - name: Build for Windows
+      - name: Build for Windows using build script
         if: matrix.goos == 'windows'
         shell: cmd
         env:
@@ -444,31 +479,66 @@ jobs:
           GOOS: windows
           GOARCH: amd64
         run: |
-          echo === Build environment ===
-          echo GOOS: %GOOS%
-          echo GOARCH: %GOARCH%
-          echo CGO_ENABLED: %CGO_ENABLED%
+          echo === Building Windows executable using build_windows.bat ===
           echo Version: ${{ steps.version.outputs.version }}
-          echo Output file: ${{ matrix.artifact_name }}
+          echo Working directory: %CD%
           echo.
-          echo === Verifying C compiler ===
-          gcc --version || echo Warning: gcc check failed
+          
+          :: Проверяем наличие необходимых инструментов
+          echo === Verifying dependencies ===
+          where go >nul 2>&1 || (echo Error: go not found && exit /b 1)
+          where gcc >nul 2>&1 || echo Warning: gcc not found, but continuing...
+          where git >nul 2>&1 || (echo Error: git not found && exit /b 1)
+          echo All dependencies found
           echo.
-          echo === Building ===
-          go build -buildvcs=false -ldflags="-H windowsgui -s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" -o ${{ matrix.artifact_name }}
+          
+          :: Проверяем наличие скрипта
+          if not exist "build\build_windows.bat" (
+            echo Error: build\build_windows.bat not found!
+            dir /b build\*.bat 2>nul || echo build\ directory not found
+            exit /b 1
+          )
+          echo Script found: build\build_windows.bat
+          echo.
+          
+          :: Проверяем наличие иконки (опционально)
+          if exist "assets\app.ico" (
+            echo Icon found: assets\app.ico
+          ) else (
+            echo Warning: Icon not found: assets\app.ico (will be skipped)
+          )
+          echo.
+          
+          :: Запускаем скрипт сборки с параметром silent (без pause)
+          :: Скрипт сам переходит в корень проекта через cd /d "%~dp0\.."
+          build\build_windows.bat silent
           
           if %ERRORLEVEL% NEQ 0 (
-            echo Error: Build failed with exit code %ERRORLEVEL%
+            echo Error: Build script failed with exit code %ERRORLEVEL%
             exit /b %ERRORLEVEL%
           )
           
-          if not exist "${{ matrix.artifact_name }}" (
-            echo Error: Build output file not found: ${{ matrix.artifact_name }}
+          :: Проверяем, что файл создан
+          if not exist "singbox-launcher.exe" (
+            echo Error: singbox-launcher.exe not found!
             dir /b *.exe 2>nul || echo No .exe files found
             exit /b 1
           )
           
-          echo Build successful: ${{ matrix.artifact_name }}
+          echo Build successful: singbox-launcher.exe
+          dir singbox-launcher.exe
+          
+          :: Переименовываем в ожидаемое имя для артефактов
+          echo.
+          echo === Renaming to expected artifact name ===
+          move /y singbox-launcher.exe ${{ matrix.artifact_name }}
+          
+          if not exist "${{ matrix.artifact_name }}" (
+            echo Error: Failed to rename file to ${{ matrix.artifact_name }}
+            exit /b 1
+          )
+          
+          echo Renamed successfully: ${{ matrix.artifact_name }}
           dir "${{ matrix.artifact_name }}"
 
       - name: Upload artifacts
@@ -731,4 +801,5 @@ jobs:
             See `checksums.txt` for SHA256 checksums of all files.
           draft: false
           prerelease: false
+
 
