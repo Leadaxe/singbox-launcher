@@ -51,9 +51,9 @@ jobs:
 
       - name: Verify C compiler (Windows)
         if: matrix.os == 'windows-latest'
-        shell: pwsh
+        shell: cmd
         run: |
-          gcc --version 2>$null || Write-Host "GCC check failed, but continuing..."
+          gcc --version || echo GCC check failed, but continuing...
 
       - name: Cache Go build cache
         uses: actions/cache@v4
@@ -76,11 +76,11 @@ jobs:
 
       - name: Clean previous coverage files (Windows)
         if: matrix.os == 'windows-latest'
-        shell: pwsh
+        shell: cmd
         run: |
-          if (Test-Path coverage.out) { Remove-Item coverage.out -ErrorAction SilentlyContinue }
-          if (Test-Path coverage.txt) { Remove-Item coverage.txt -ErrorAction SilentlyContinue }
-          if (Test-Path coverage.html) { Remove-Item coverage.html -ErrorAction SilentlyContinue }
+          if exist coverage.out del /q coverage.out
+          if exist coverage.txt del /q coverage.txt
+          if exist coverage.html del /q coverage.html
 
       - name: Run tests (Linux/macOS with race detector)
         if: matrix.os != 'windows-latest'
@@ -90,10 +90,9 @@ jobs:
 
       - name: Run tests (Windows without race detector)
         if: matrix.os == 'windows-latest'
-        shell: pwsh
         env:
           CGO_ENABLED: 1
-        run: go test -v -coverprofile=coverage.out -count=1 ./...
+        run: go test -v -coverprofile=coverage.out ./...
 
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest'
