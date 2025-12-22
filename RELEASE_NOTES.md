@@ -39,6 +39,7 @@
   - Переименован файл tools_tab.go в help_tab.go
   - Переименована функция CreateToolsTab в CreateHelpTab
   - Обновлены все ссылки на переименованные компоненты
+  - Проект прошел значительный рефакторинг для улучшения архитектуры. Подробности архитектуры доступны в [документации](https://github.com/Leadaxe/singbox-launcher/blob/main/docs/ARCHITECTURE.md)
 
 - **Документация** / **Documentation**
   - Обновлена документация: ParserConfig.md, README.md, README_RU.md
