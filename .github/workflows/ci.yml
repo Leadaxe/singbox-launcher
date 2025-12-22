@@ -126,6 +126,7 @@ jobs:
     if: (github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')) && (github.event_name != 'workflow_dispatch' || github.event.inputs.skip_tests != 'true')
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           # Linux сборка временно отключена - ищем тестировщика
@@ -184,10 +185,11 @@ jobs:
 
       - name: Verify C compiler
         shell: bash
+        continue-on-error: true
         run: |
           if [ "${{ matrix.goos }}" == "darwin" ]; then
-            clang --version
-            xcrun --show-sdk-path
+            clang --version || echo "Warning: clang check failed, but continuing..."
+            xcrun --show-sdk-path || echo "Warning: xcrun check failed, but continuing..."
           elif [ "${{ matrix.goos }}" == "windows" ]; then
             gcc --version || echo "GCC check skipped on Windows"
           fi
@@ -198,8 +200,8 @@ jobs:
           CGO_ENABLED: 1
           GOOS: darwin
           GOARCH: amd64
-          SDKROOT: $(xcrun --show-sdk-path)
         run: |
+          export SDKROOT=$(xcrun --show-sdk-path)
           echo "=== Build environment ==="
           echo "GOOS: $GOOS"
           echo "GOARCH: $GOARCH"
@@ -232,8 +234,8 @@ jobs:
           CGO_ENABLED: 1
           GOOS: darwin
           GOARCH: arm64
-          SDKROOT: $(xcrun --show-sdk-path)
         run: |
+          export SDKROOT=$(xcrun --show-sdk-path)
           echo "=== Build environment ==="
           echo "GOOS: $GOOS"
           echo "GOARCH: $GOARCH"
@@ -441,6 +443,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.skip_tests == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           # Linux сборка временно отключена - ищем тестировщика
@@ -499,10 +502,11 @@ jobs:
 
       - name: Verify C compiler
         shell: bash
+        continue-on-error: true
         run: |
           if [ "${{ matrix.goos }}" == "darwin" ]; then
-            clang --version
-            xcrun --show-sdk-path
+            clang --version || echo "Warning: clang check failed, but continuing..."
+            xcrun --show-sdk-path || echo "Warning: xcrun check failed, but continuing..."
           elif [ "${{ matrix.goos }}" == "windows" ]; then
             gcc --version || echo "GCC check skipped on Windows"
           fi
@@ -513,8 +517,8 @@ jobs:
           CGO_ENABLED: 1
           GOOS: darwin
           GOARCH: amd64
-          SDKROOT: $(xcrun --show-sdk-path)
         run: |
+          export SDKROOT=$(xcrun --show-sdk-path)
           echo "=== Build environment ==="
           echo "GOOS: $GOOS"
           echo "GOARCH: $GOARCH"
@@ -547,8 +551,8 @@ jobs:
           CGO_ENABLED: 1
           GOOS: darwin
           GOARCH: arm64
-          SDKROOT: $(xcrun --show-sdk-path)
         run: |
+          export SDKROOT=$(xcrun --show-sdk-path)
           echo "=== Build environment ==="
           echo "GOOS: $GOOS"
           echo "GOARCH: $GOARCH"
@@ -804,8 +808,8 @@ jobs:
           CGO_ENABLED: 1
           GOOS: darwin
           GOARCH: amd64
-          SDKROOT: $(xcrun --show-sdk-path)
         run: |
+          export SDKROOT=$(xcrun --show-sdk-path)
           mkdir -p dist
           go build -buildvcs=false \
             -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" \
@@ -817,8 +821,8 @@ jobs:
           CGO_ENABLED: 1
           GOOS: darwin
           GOARCH: arm64
-          SDKROOT: $(xcrun --show-sdk-path)
         run: |
+          export SDKROOT=$(xcrun --show-sdk-path)
           mkdir -p dist
           go build -buildvcs=false \
             -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=${{ steps.version.outputs.version }}" \
