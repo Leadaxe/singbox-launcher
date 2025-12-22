@@ -67,6 +67,11 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Clean previous coverage files
+        shell: bash
+        run: |
+          rm -f coverage.out coverage.txt coverage.html || true
+
       - name: Run tests (Linux/macOS with race detector)
         if: matrix.os != 'windows-latest'
         env:
