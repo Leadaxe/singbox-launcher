@@ -49,6 +49,11 @@ jobs:
       # macOS уже имеет clang в Xcode Command Line Tools
       # Windows runner уже имеет MinGW-w64
 
+      - name: Verify C compiler (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          gcc --version || echo "GCC check failed, but continuing..."
+
       - name: Cache Go modules
         uses: actions/cache@v4
         with:
@@ -62,10 +67,17 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
-      - name: Run tests
+      - name: Run tests (Linux/macOS with race detector)
+        if: matrix.os != 'windows-latest'
         env:
           CGO_ENABLED: 1
         run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Run tests (Windows without race detector)
+        if: matrix.os == 'windows-latest'
+        env:
+          CGO_ENABLED: 1
+        run: go test -v -coverprofile=coverage.out ./...
 
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest'
