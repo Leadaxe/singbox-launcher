@@ -54,15 +54,15 @@ jobs:
         run: |
           gcc --version || echo "GCC check failed, but continuing..."
 
-      - name: Cache Go modules
+      - name: Cache Go build cache
         uses: actions/cache@v4
+        continue-on-error: true
         with:
           path: |
             ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-
+            ${{ runner.os }}-go-build-
 
       - name: Install dependencies
         run: go mod download
@@ -130,15 +130,15 @@ jobs:
       # macOS уже имеет clang и Xcode Command Line Tools
       # Windows runner уже имеет MinGW-w64 в PATH
 
-      - name: Cache Go modules
+      - name: Cache Go build cache
         uses: actions/cache@v4
+        continue-on-error: true
         with:
           path: |
             ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-
+            ${{ runner.os }}-go-build-
 
       - name: Get version
         id: version
