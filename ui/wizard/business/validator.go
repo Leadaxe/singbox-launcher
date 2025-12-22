@@ -10,6 +10,17 @@ import (
 	wizardutils "singbox-launcher/ui/wizard/utils"
 )
 
+// ValidateStringLength validates string length against min and max bounds.
+func ValidateStringLength(s, fieldName string, min, max int) error {
+	if len(s) > max {
+		return fmt.Errorf("%s length (%d) exceeds maximum (%d)", fieldName, len(s), max)
+	}
+	if len(s) < min {
+		return fmt.Errorf("%s length (%d) is less than minimum (%d)", fieldName, len(s), min)
+	}
+	return nil
+}
+
 // ValidateParserConfig validates ParserConfig structure and content.
 func ValidateParserConfig(parserConfig *config.ParserConfig) error {
 	if parserConfig == nil {
@@ -59,12 +70,8 @@ func ValidateURL(urlStr string) error {
 		return fmt.Errorf("URL is empty")
 	}
 
-	if len(urlStr) > wizardutils.MaxURILength {
-		return fmt.Errorf("URL length (%d) exceeds maximum (%d)", len(urlStr), wizardutils.MaxURILength)
-	}
-
-	if len(urlStr) < wizardutils.MinURILength {
-		return fmt.Errorf("URL length (%d) is less than minimum (%d)", len(urlStr), wizardutils.MinURILength)
+	if err := ValidateStringLength(urlStr, "URL", wizardutils.MinURILength, wizardutils.MaxURILength); err != nil {
+		return err
 	}
 
 	parsedURL, err := url.Parse(urlStr)
@@ -89,12 +96,8 @@ func ValidateURI(uri string) error {
 		return fmt.Errorf("URI is empty")
 	}
 
-	if len(uri) > wizardutils.MaxURILength {
-		return fmt.Errorf("URI length (%d) exceeds maximum (%d)", len(uri), wizardutils.MaxURILength)
-	}
-
-	if len(uri) < wizardutils.MinURILength {
-		return fmt.Errorf("URI length (%d) is less than minimum (%d)", len(uri), wizardutils.MinURILength)
+	if err := ValidateStringLength(uri, "URI", wizardutils.MinURILength, wizardutils.MaxURILength); err != nil {
+		return err
 	}
 
 	// Basic URI format check (should start with protocol)
@@ -120,8 +123,8 @@ func ValidateOutbound(outbound *config.OutboundConfig) error {
 	}
 
 	// Validate tag length
-	if len(outbound.Tag) > 256 {
-		return fmt.Errorf("outbound tag length (%d) exceeds maximum (256)", len(outbound.Tag))
+	if err := ValidateStringLength(outbound.Tag, "outbound tag", 1, 256); err != nil {
+		return err
 	}
 
 	return nil
@@ -189,4 +192,3 @@ func ValidateParserConfigJSON(jsonText string) error {
 
 	return ValidateParserConfig(&parserConfig)
 }
-

@@ -41,14 +41,28 @@ echo "=== Setting build environment ==="
 export CGO_ENABLED=1
 export GOOS=darwin
 
-# Check for lipo (required for universal binary)
-if ! command -v lipo &> /dev/null; then
-    echo "ERROR: lipo not found. Please install Xcode or Command Line Tools:"
-    echo "  xcode-select --install"
+# Determine build type: universal (default) or intel-only
+BUILD_TYPE="${1:-universal}"
+if [ "$BUILD_TYPE" != "universal" ] && [ "$BUILD_TYPE" != "intel" ]; then
+    echo "Usage: $0 [universal|intel]"
+    echo "  universal - Build universal binary for Apple Silicon + Intel (requires macOS 11.0+)"
+    echo "  intel     - Build Intel-only binary (supports macOS 10.15+)"
     exit 1
 fi
 
-echo "Building universal binary for both architectures (arm64 + amd64)..."
+if [ "$BUILD_TYPE" = "universal" ]; then
+    # Check for lipo (required for universal binary)
+    if ! command -v lipo &> /dev/null; then
+        echo "ERROR: lipo not found. Please install Xcode or Command Line Tools:"
+        echo "  xcode-select --install"
+        exit 1
+    fi
+    echo "Building universal binary for both architectures (arm64 + amd64)..."
+    MIN_MACOS_VERSION="11.0"
+else
+    echo "Building Intel-only binary (amd64)..."
+    MIN_MACOS_VERSION="10.15"
+fi
 
 # Check if full Xcode is required (Command Line Tools have incomplete SDK)
 UTCORETYPES_H="$SDK_PATH/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Headers/UTCoreTypes.h"
@@ -105,45 +119,61 @@ echo ""
 echo "=== Getting version from git tag ==="
 VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.4.1")
 echo "Version: $VERSION"
+echo "Minimum macOS version: $MIN_MACOS_VERSION"
 
-echo ""
-echo "=== Building for arm64 (Apple Silicon) ==="
-TEMP_ARM64="${BASE_NAME}_arm64"
-GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION" -o "$TEMP_ARM64"
+if [ "$BUILD_TYPE" = "universal" ]; then
+    echo ""
+    echo "=== Building for arm64 (Apple Silicon) ==="
+    TEMP_ARM64="${BASE_NAME}_arm64"
+    GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION" -o "$TEMP_ARM64"
 
-if [ $? -ne 0 ]; then
-    echo "!!! Build failed for arm64 !!!"
-    exit 1
+    if [ $? -ne 0 ]; then
+        echo "!!! Build failed for arm64 !!!"
+        exit 1
+    fi
+
+    echo ""
+    echo "=== Building for amd64 (Intel) ==="
+    TEMP_AMD64="${BASE_NAME}_amd64"
+    GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION" -o "$TEMP_AMD64"
+
+    if [ $? -ne 0 ]; then
+        echo "!!! Build failed for amd64 !!!"
+        rm -f "$TEMP_ARM64"
+        exit 1
+    fi
+
+    echo ""
+    echo "=== Creating universal binary ==="
+    lipo -create -output "$OUTPUT_FILENAME" "$TEMP_ARM64" "$TEMP_AMD64"
+    LIPO_STATUS=$?
+
+    # Clean up temporary binaries
+    rm -f "$TEMP_ARM64" "$TEMP_AMD64"
+
+    if [ $LIPO_STATUS -ne 0 ]; then
+        echo "!!! Failed to create universal binary !!!"
+        exit 1
+    fi
+
+    echo "Universal binary created: $OUTPUT_FILENAME"
+    # Verify the binary contains both architectures
+    echo "Binary architectures:"
+    lipo -info "$OUTPUT_FILENAME"
+else
+    echo ""
+    echo "=== Building for amd64 (Intel) ==="
+    GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION" -o "$OUTPUT_FILENAME"
+
+    if [ $? -ne 0 ]; then
+        echo "!!! Build failed for amd64 !!!"
+        exit 1
+    fi
+
+    echo "Intel binary created: $OUTPUT_FILENAME"
+    echo "Binary architecture:"
+    file "$OUTPUT_FILENAME"
 fi
-
-echo ""
-echo "=== Building for amd64 (Intel) ==="
-TEMP_AMD64="${BASE_NAME}_amd64"
-GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION" -o "$TEMP_AMD64"
-
-if [ $? -ne 0 ]; then
-    echo "!!! Build failed for amd64 !!!"
-    rm -f "$TEMP_ARM64"
-    exit 1
-fi
-
-echo ""
-echo "=== Creating universal binary ==="
-lipo -create -output "$OUTPUT_FILENAME" "$TEMP_ARM64" "$TEMP_AMD64"
-LIPO_STATUS=$?
-
-# Clean up temporary binaries
-rm -f "$TEMP_ARM64" "$TEMP_AMD64"
-
-if [ $LIPO_STATUS -ne 0 ]; then
-    echo "!!! Failed to create universal binary !!!"
-    exit 1
-fi
-
-echo "Universal binary created: $OUTPUT_FILENAME"
-# Verify the binary contains both architectures
-echo "Binary architectures:"
-lipo -info "$OUTPUT_FILENAME"
 
 echo ""
 echo "=== Creating .app bundle ==="
@@ -202,7 +232,14 @@ fi
     echo '    <key>CFBundleVersion</key>'
     echo "    <string>$VERSION</string>"
     echo '    <key>LSMinimumSystemVersion</key>'
-    echo '    <string>10.15</string>'
+    echo "    <string>$MIN_MACOS_VERSION</string>"
+    if [ "$BUILD_TYPE" = "universal" ]; then
+        echo '    <key>LSArchitecturePriority</key>'
+        echo '    <array>'
+        echo '        <string>arm64</string>'
+        echo '        <string>x86_64</string>'
+        echo '    </array>'
+    fi
     echo '    <key>NSHighResolutionCapable</key>'
     echo '    <true/>'
     echo '    <key>LSUIElement</key>'
@@ -215,7 +252,15 @@ echo "Created .app bundle: $APP_NAME"
 echo ""
 echo "========================================"
 echo "  Build completed successfully!"
-echo "  Output: $APP_NAME (universal binary: arm64 + amd64)"
+if [ "$BUILD_TYPE" = "universal" ]; then
+    echo "  Output: $APP_NAME (universal binary: arm64 + amd64)"
+    echo "  Minimum macOS: $MIN_MACOS_VERSION (Big Sur+)"
+    echo "  Supports: Apple Silicon and Intel Macs"
+else
+    echo "  Output: $APP_NAME (Intel-only binary: amd64)"
+    echo "  Minimum macOS: $MIN_MACOS_VERSION (Catalina+)"
+    echo "  Supports: Intel Macs only"
+fi
 echo "  Run with: open $APP_NAME"
 echo "========================================"
 
