@@ -5,6 +5,29 @@ import (
 	"singbox-launcher/internal/debuglog"
 )
 
+// LogLevel represents the logging level.
+type LogLevel = debuglog.Level
+
+// Log level constants
+const (
+	LogLevelOff     = debuglog.LevelOff
+	LogLevelError   = debuglog.LevelError
+	LogLevelWarn    = debuglog.LevelWarn
+	LogLevelInfo    = debuglog.LevelInfo
+	LogLevelVerbose = debuglog.LevelVerbose
+	LogLevelTrace   = debuglog.LevelTrace
+)
+
+// SetLogLevel sets the global logging level.
+func SetLogLevel(level LogLevel) {
+	debuglog.GlobalLevel = level
+}
+
+// GetLogLevel returns the current global logging level.
+func GetLogLevel() LogLevel {
+	return debuglog.GlobalLevel
+}
+
 // SafeFyneDo safely calls fyne.Do only if window is still valid.
 func SafeFyneDo(window fyne.Window, fn func()) {
 	if window != nil {

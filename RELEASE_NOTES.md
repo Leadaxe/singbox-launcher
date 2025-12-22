@@ -1,0 +1,377 @@
+
+# What's New
+
+
+<details>
+<summary><b>🇷🇺 Русская версия / Russian Version</b></summary>
+
+## 🚀 CI/CD и автоматизация сборки
+
+### Основная инфраструктура CI/CD
+- Добавлена полная инфраструктура CI/CD с GitHub Actions
+- Автоматическая сборка для Windows, macOS (Universal) и Linux
+- Автоматическое создание релизов при создании git тега (v*)
+- Поддержка опционального создания релиза через флаг `add_release` (по умолчанию false)
+- Объединение build-only.yml в ci.yml (удален дублирующий workflow)
+
+### Улучшения сборки Windows
+- Использование build_windows.bat скрипта для всех Windows сборок в CI
+- Исправлен путь к артефактам: `dist/singbox-launcher.exe` вместо `dist/*`
+- Добавлена установка rsrc для встраивания иконки и манифеста
+- Создание Windows ZIP только с exe файлом (без структуры директорий, без папки logs)
+- Исправлена кодировка кириллицы в workflow комментариях (mojibake)
+
+### Улучшения сборки macOS
+- Использование build_darwin.sh скрипта для всех macOS сборок
+- Создание универсального бинарника (universal binary) для arm64 и amd64
+- .app bundle как основной артефакт для macOS
+- Проверка зависимостей (Xcode, SDK, инструменты) перед сборкой
+- Исправлена совместимость с Apple Silicon (Sequoia 15.7.3)
+- Обновлен LSMinimumSystemVersion до 11.0 для universal builds
+- Сбои сборки macOS не блокируют Windows сборки (fail-fast: false)
+
+### Релизы и артефакты
+- Создание версионированных ZIP архивов: `singbox-launcher-VERSION-macos.zip`, `singbox-launcher-VERSION-win64.zip`
+- Очистка логов и ненужных файлов перед созданием релизных архивов
+- Фильтрация пустых файлов при загрузке релизов
+- Автоматическая генерация checksums для артефактов
+- Стандартизация имен артефактов: `singbox-launcher-macos-universal`, `singbox-launcher-windows-amd64`
+- Использование последнего существующего тега для создания релиза в workflow_dispatch
+
+### Тестирование в CI
+- Оптимизация Windows тестов: использование PowerShell вместо bash
+- Отключение race detector для Windows тестов (исправление сбоев CI)
+- Использование cmd вместо pwsh для совместимости Windows команд
+- Очистка coverage файлов перед тестами (предотвращение ошибок интерпретации пакетов)
+- Исправление конфигурации Go cache для предотвращения ошибок restore
+- Добавлен скрипт test_darwin.sh для macOS тестов
+- Добавлена опция skip_tests в workflow_dispatch
+
+### Исправления workflow
+- Исправлена индентация strategy в build-and-release job
+- Удален matrix.os из имени job (переменные матрицы недоступны в имени)
+- Исправлено использование needs.*.result вместо result() функции в условиях
+- Упрощены условия build job на основе рабочей логики
+- Ограничение триггеров workflow только веткой main
+- Добавлены проверки существования файлов для предотвращения сбоев сборки
+
+## 🔧 Рефакторинг и улучшения кода
+
+### Архитектура и структура
+- Рефакторинг структуры config пакетов: удалены все wrapper файлы и type aliases
+- Консолидация config_service_impl.go в config_service.go
+- Перемещение логики парсинга подписок в пакет parsers
+- Централизация логирования в FileService (удален дублирующий core/logging.go)
+- Уменьшен лимит размера лог-файла с 10 MB до 2 MB
+- Удалено 170+ строк мертвого кода (неиспользуемые функции)
+
+### Оптимизация кода
+- Добавлено условное логирование: SetLogLevel() и GetLogLevel()
+- Консолидация валидации: ValidateStringLength() для общих проверок длины строк
+- Рефакторинг ValidateURL(), ValidateURI(), ValidateOutbound() для использования общей функции валидации
+- Уменьшено дублирование кода на ~50 строк
+- Оптимизация config wizard: извлечение дублирующейся логики в helper функции
+- Замена O(n) containsString() на O(1) map lookup в refreshOutboundOptions()
+- Удалено ~40+ строк дублирующегося кода в mergeRouteSection()
+
+### Исправления линтера
+- Добавлена конфигурация golangci-lint (.golangci.yaml)
+- Исправлено 13 проблем fmt.Fprint(fmt.Sprintf(...)) → fmt.Fprintf
+- Исправлена ненужная проверка nil для map
+- Исправлена неэффективная присваивание
+- Исправлены неконстантные format strings в fmt.Errorf вызовах
+- Добавлен nolint комментарий для desktop import в main.go
+- Удалены неиспользуемые импорты
+
+### Улучшения валидации
+- Улучшена валидация VLESS/Trojan URI: строгая проверка формата
+- Исправлена фильтрация flow: добавлен case 'flow' в getNodeValue
+- Добавлена проверка HTTP status code перед парсингом JSON в GetProxiesInGroup
+- Обработка 401 Unauthorized и других кодов ошибок
+
+## 🐛 Исправления ошибок
+
+### Критические исправления
+- Исправлен бесконечный цикл обновления UI: удалены UpdateUI() вызовы из updateBinaryStatus()
+- Удален OnStateChange() вызов из UpdateUI() для разрыва циклической зависимости
+- Исправлено замораживание приложения при запуске
+
+### Парсинг и обработка данных
+- Улучшен парсинг подписок: поддержка base64 без padding (URL-safe и Standard)
+- Добавлена валидация и исправление невалидного UTF-8 в URL fragments
+- Валидация UTF-8 для декодированного base64 контента
+- Пропуск узлов с неисправимым невалидным UTF-8
+- Нормализация окончаний строк (\r\n, \r → \n) перед разбиением на строки
+- Улучшена обработка ошибок парсинга @ParserConfig блока с понятными сообщениями пользователю
+
+### Конфигурация Hysteria2
+- Заменено поле masquerade_ports на server_ports (массив строк)
+- Поддержка формата server_ports: ["27200:28000"] для sing-box 1.9+
+- Корректное преобразование параметра mport из URL в server_ports
+
+## ✨ Новые функции
+
+### Config Wizard
+- Добавлена функция пользовательских правил (custom rules):
+  * Кнопка 'Add Rule' для создания пользовательских правил маршрутизации
+  * Поддержка IP адресов (CIDR формат) и доменов/URL типов правил
+  * Кнопки редактирования и удаления для управления custom rules
+  * Правила сохраняются в config.json и сохраняются между сессиями визарда
+- Автоматическое обновление превью шаблона при переключении на Preview вкладку
+- Уменьшена высота окна визарда на ~60px (с 720 до 660)
+- Исправлена логика загрузки URL: placeholder'ы из шаблона больше не вставляются в поле
+
+### UI улучшения (Servers/Clash API вкладка)
+- Убрана кнопка 'Test API Connection' (функция вызывается автоматически)
+- Изменен цвет выделенного сервера с серого на синий оттенок
+- Заменена кнопка 'Load Proxies' на группу кнопок управления:
+  * Кнопка сортировки по алфавиту [↑/↓] с лейблом A…Z (переключаемое направление)
+  * Кнопка сортировки по задержке [↑/↓]
+  * Кнопка 'test' для массового пинга всех прокси
+- Добавлена функция массового пинга всех прокси в группе с обновлением задержек в реальном времени
+- Добавлены функции сортировки по алфавиту и по задержке с переключаемым направлением
+- Статус-лейбл внизу теперь не растягивает окно (добавлена горизонтальная прокрутка)
+
+### Общие улучшения
+- Обновлена версия приложения до 0.5.1
+- Добавлена поддержка темной темы по умолчанию (константа AppTheme)
+- Центрирован блок с ссылками на Telegram и GitHub на вкладке Help
+
+## 📚 Документация
+
+### Обновления документации
+- Обновлен RELEASE_NOTES.md для v0.5.2 и v0.5.1
+- Обновлен ARCHITECTURE.md с информацией о рефакторинге
+- Добавлена поддержка RELEASE_NOTES.md для кастомных релизных заметок
+- Реорганизована структура документации: перемещение файлов в docs/
+- Перемещен TEST_README.md в docs/
+- Перемещен MIGRATION_V2_TO_V3.md в docs/
+- Перемещен ARCHITECTURE.md из todo/ в docs/
+- Добавлен REMAINING_TASKS.md с анализом pending оптимизаций
+- Обновлен README: уточнено автоматическое создание релизов
+- Улучшено выравнивание в ARCHITECTURE.md
+
+### Очистка документации
+- Удалены устаревшие файлы из todo/:
+  * CODE_INSPECTION_REPORT.md
+  * OPTIMIZATION_RECOMMENDATIONS.md
+  * REFACTOR_UI_WIZARD_STRUCTURE.md
+- Перемещены завершенные документы рефакторинга в todo/complete/
+- Очистка todo директории
+
+## 🧪 Тестирование
+
+### Улучшения тестов
+- Создан батник build/test_windows.bat для удобного запуска тестов
+- Улучшен скрипт тестов: рефакторинг логики очистки
+- Добавлена очистка temp директории перед тестами
+- Добавлен temp/ в .gitignore для тестовых выходных файлов
+- Улучшен вывод прогресса тестов: список пакетов, временные метки, лог файл
+- Удалены build constraints из тестов визарда
+- Исправлены импорты в тестах: обновлены префиксы пакетов
+
+### Исправления тестов
+- Исправлен exit code overwrite bug в тестовом скрипте
+- Удалена очистка системных директорий из тестового скрипта (слишком агрессивно)
+- Удалена очистка %LOCALAPPDATA%\go-build (системный кеш, замедляет сборки)
+
+## 📦 Зависимости
+
+- Обновлен fyne.io/fyne/v2 с 2.6.1 до 2.7.1
+- Добавлена конфигурация Dependabot для автоматических обновлений зависимостей
+
+## 🔄 Прочее
+
+- Исправление git (CRLF vs LF)
+- Отключены Linux сборки (ищется тестер)
+- Объединение веток release/v0.6 и ci-cd
+- Объединение PR #15: Интеграция auto-release на тегах
+- Объединение PR-13: Исправления golangci-lint
+- Объединение refactor/config-structure: завершение рефакторинга
+
+</details>
+
+
+## 🚀 CI/CD and Build Automation
+
+### Main CI/CD Infrastructure
+- Added full CI/CD infrastructure with GitHub Actions
+- Automatic builds for Windows, macOS (Universal) and Linux
+- Automatic release creation when git tag is created (v*)
+- Support for optional release creation via `add_release` flag (default: false)
+- Merged build-only.yml into ci.yml (removed duplicate workflow)
+
+### Windows Build Improvements
+- Using build_windows.bat script for all Windows builds in CI
+- Fixed artifact path: `dist/singbox-launcher.exe` instead of `dist/*`
+- Added rsrc installation for icon and manifest embedding
+- Windows ZIP creation with only exe file (no directory structure, no logs folder)
+- Fixed Cyrillic encoding in workflow comments (mojibake)
+
+### macOS Build Improvements
+- Using build_darwin.sh script for all macOS builds
+- Universal binary creation for arm64 and amd64
+- .app bundle as primary artifact for macOS
+- Dependency checks (Xcode, SDK, tools) before building
+- Fixed Apple Silicon compatibility (Sequoia 15.7.3)
+- Updated LSMinimumSystemVersion to 11.0 for universal builds
+- macOS build failures don't block Windows builds (fail-fast: false)
+
+### Releases and Artifacts
+- Versioned ZIP archives creation: `singbox-launcher-VERSION-macos.zip`, `singbox-launcher-VERSION-win64.zip`
+- Cleanup of logs and unwanted files before creating release archives
+- Filter empty files when uploading releases
+- Automatic checksums generation for artifacts
+- Standardized artifact names: `singbox-launcher-macos-universal`, `singbox-launcher-windows-amd64`
+- Using latest existing tag for release creation in workflow_dispatch
+
+### Testing in CI
+- Windows tests optimization: using PowerShell instead of bash
+- Disabled race detector for Windows tests (fixes CI failures)
+- Using cmd instead of pwsh for Windows commands compatibility
+- Cleanup coverage files before tests (prevents package interpretation errors)
+- Fixed Go cache configuration to prevent restore errors
+- Added test_darwin.sh script for macOS tests
+- Added skip_tests option in workflow_dispatch
+
+### Workflow Fixes
+- Fixed strategy indentation in build-and-release job
+- Removed matrix.os from job name (matrix variables not available in name)
+- Fixed using needs.*.result instead of result() function in conditions
+- Simplified build job conditions based on working build workflow logic
+- Limited workflow triggers to main branch only
+- Added file existence checks to prevent build failures
+
+## 🔧 Code Refactoring and Improvements
+
+### Architecture and Structure
+- Config packages structure refactoring: removed all wrapper files and type aliases
+- Consolidated config_service_impl.go into config_service.go
+- Moved subscription parsing logic to parsers package
+- Centralized logging in FileService (removed duplicate core/logging.go)
+- Reduced log file size limit from 10 MB to 2 MB
+- Removed 170+ lines of dead code (unused functions)
+
+### Code Optimization
+- Added conditional logging: SetLogLevel() and GetLogLevel()
+- Validation consolidation: ValidateStringLength() for common string length checks
+- Refactored ValidateURL(), ValidateURI(), ValidateOutbound() to use common validation function
+- Reduced code duplication by ~50 lines
+- Config wizard optimization: extracted duplicate logic into helper functions
+- Replaced O(n) containsString() with O(1) map lookup in refreshOutboundOptions()
+- Removed ~40+ lines of duplicate code in mergeRouteSection()
+
+### Linter Fixes
+- Added golangci-lint configuration (.golangci.yaml)
+- Fixed 13 fmt.Fprint(fmt.Sprintf(...)) → fmt.Fprintf issues
+- Fixed unnecessary nil check for map
+- Fixed ineffectual assignment
+- Fixed non-constant format strings in fmt.Errorf calls
+- Added nolint comment for desktop import in main.go
+- Removed unused imports
+
+### Validation Improvements
+- Improved VLESS/Trojan URI validation: strict format checking
+- Fixed flow filtering: added case 'flow' in getNodeValue
+- Added HTTP status code check before JSON parsing in GetProxiesInGroup
+- Handling 401 Unauthorized and other error codes
+
+## 🐛 Bug Fixes
+
+### Critical Fixes
+- Fixed infinite loop in UI update: removed UpdateUI() calls from updateBinaryStatus()
+- Removed OnStateChange() call from UpdateUI() to break circular dependency
+- Fixed application freeze on startup
+
+### Parsing and Data Processing
+- Improved subscription parsing: support for base64 without padding (URL-safe and Standard)
+- Added validation and fixing of invalid UTF-8 in URL fragments
+- UTF-8 validation for decoded base64 content
+- Skip nodes with unfixable invalid UTF-8
+- Normalization of line endings (\r\n, \r → \n) before splitting into lines
+- Improved @ParserConfig block parsing error handling with user-friendly messages
+
+### Hysteria2 Configuration
+- Replaced masquerade_ports field with server_ports (array of strings)
+- Support for server_ports format: ["27200:28000"] for sing-box 1.9+
+- Correct conversion of mport parameter from URL to server_ports
+
+## ✨ New Features
+
+### Config Wizard
+- Added custom rules feature:
+  * 'Add Rule' button to create user-defined routing rules
+  * Support for IP addresses (CIDR format) and domains/URLs rule types
+  * Edit and delete buttons for managing custom rules
+  * Rules are saved in config.json and persist between wizard sessions
+- Automatic template preview refresh when switching to Preview tab
+- Reduced wizard window height by ~60px (from 720 to 660)
+- Fixed URL loading logic: template placeholders no longer inserted into field
+
+### UI Improvements (Servers/Clash API Tab)
+- Removed 'Test API Connection' button (function called automatically)
+- Changed selected server color from gray to blue tint
+- Replaced 'Load Proxies' button with control button group:
+  * Alphabetical sorting button [↑/↓] with A…Z label (toggleable direction)
+  * Latency sorting button [↑/↓]
+  * 'test' button for mass pinging all proxies
+- Added mass ping function for all proxies in group with real-time latency updates
+- Added sorting functions by alphabet and by latency with toggleable direction
+- Status label at bottom no longer stretches window (added horizontal scroll)
+
+### General Improvements
+- Updated application version to 0.5.1
+- Added dark theme support by default (AppTheme constant)
+- Centered links block to Telegram and GitHub on Help tab
+
+## 📚 Documentation
+
+### Documentation Updates
+- Updated RELEASE_NOTES.md for v0.5.2 and v0.5.1
+- Updated ARCHITECTURE.md with refactoring information
+- Added RELEASE_NOTES.md support for custom release notes
+- Reorganized documentation structure: moved files to docs/
+- Moved TEST_README.md to docs/
+- Moved MIGRATION_V2_TO_V3.md to docs/
+- Moved ARCHITECTURE.md from todo/ to docs/
+- Added REMAINING_TASKS.md with pending optimizations analysis
+- Updated README: clarified automatic release creation
+- Improved alignment in ARCHITECTURE.md
+
+### Documentation Cleanup
+- Removed obsolete files from todo/:
+  * CODE_INSPECTION_REPORT.md
+  * OPTIMIZATION_RECOMMENDATIONS.md
+  * REFACTOR_UI_WIZARD_STRUCTURE.md
+- Moved completed refactoring documents to todo/complete/
+- Cleaned up todo directory
+
+## 🧪 Testing
+
+### Test Improvements
+- Created build/test_windows.bat script for convenient test execution
+- Improved test script: refactored cleanup logic
+- Added temp directory cleanup before tests
+- Added temp/ to .gitignore for test output files
+- Improved test progress output: package list, timestamps, log file
+- Removed build constraints from wizard tests
+- Fixed test imports: updated package prefixes
+
+### Test Fixes
+- Fixed exit code overwrite bug in test script
+- Removed system directory cleanup from test script (too aggressive)
+- Removed cleanup of %LOCALAPPDATA%\go-build (system cache, slows down builds)
+
+## 📦 Dependencies
+
+- Updated fyne.io/fyne/v2 from 2.6.1 to 2.7.1
+- Added Dependabot configuration for automatic dependency updates
+
+## 🔄 Miscellaneous
+
+- Git fix (CRLF vs LF)
+- Disabled Linux builds (looking for tester)
+- Merged release/v0.6 and ci-cd branches
+- Merged PR #15: Integrate auto-release on tags
+- Merged PR-13: golangci-lint fixes
+- Merged refactor/config-structure: complete refactoring

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/driver/desktop" //nolint // Used for type assertion desktop.App (typechecking false positive)
 
 	// Import our new packages
 	"singbox-launcher/core"

@@ -113,7 +113,8 @@
 ### macOS
 
 **Требования:**
-- macOS 10.15+ (Catalina или новее)
+- **Универсальная сборка** (рекомендуется): macOS 11.0+ (Big Sur или новее) - поддерживает Apple Silicon и Intel Mac
+- **Сборка только для Intel**: macOS 10.15+ (Catalina или новее) - только Intel Mac
 - [sing-box](https://github.com/SagerNet/sing-box/releases) (исполняемый файл)
 
 ### Linux
@@ -849,20 +850,47 @@ go build -ldflags="-H windowsgui -s -w" -o singbox-launcher.exe
 ### macOS
 
 **macOS:**
+
+**Требования:**
+- Полный Xcode (не только Command Line Tools) - требуется для универсальных сборок
+- Go 1.24 или новее
+
+**Варианты сборки:**
+
+1. **Универсальный бинарник** (рекомендуется - по умолчанию):
+   - Поддерживает как Apple Silicon (arm64), так и Intel (x86_64) Mac
+   - Требует macOS 11.0+ (Big Sur или новее)
+   - Создает `.app` бандл с правильной конфигурацией Info.plist
+
 ```bash
 # Клонируйте репозиторий
 git clone https://github.com/Leadaxe/singbox-launcher.git
 cd singbox-launcher
 
-# Установите зависимости
-go mod download
-
-# Соберите проект
+# Соберите универсальный бинарник (по умолчанию)
 chmod +x build/build_darwin.sh
 ./build/build_darwin.sh
+# или явно:
+./build/build_darwin.sh universal
 ```
 
-Или вручную:
+2. **Бинарник только для Intel** (для старых Mac):
+   - Поддерживает только Intel Mac
+   - Требует macOS 10.15+ (Catalina или новее)
+   - Полезно, если нужно поддерживать старые Intel Mac
+
+```bash
+# Соберите бинарник только для Intel
+./build/build_darwin.sh intel
+```
+
+**Возможности скрипта сборки:**
+- Автоматически создает универсальный бинарник (arm64 + x86_64) или только для Intel
+- Создает правильную структуру `.app` бандла с Info.plist
+- Устанавливает правильный `LSMinimumSystemVersion` и приоритеты архитектур
+- Включает иконку приложения, если доступна
+
+**Ручная сборка** (не рекомендуется - не создает .app бандл):
 ```bash
 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o singbox-launcher
 ```

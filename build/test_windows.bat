@@ -134,6 +134,14 @@ echo ========================================
 echo   Running Tests
 echo ========================================
 echo.
+
+:: Показываем список пакетов, которые будут тестироваться
+echo === Packages to test ===
+for /f "delims=" %%p in ('go list %TEST_PACKAGE% 2^>nul') do (
+    echo   - %%p
+)
+echo.
+
 echo CGO_ENABLED=%CGO_ENABLED%
 echo GOROOT=%GOROOT%
 echo GOTMPDIR=%GOTMPDIR%
@@ -143,10 +151,27 @@ echo Test flags: %TEST_FLAGS%
 echo Test binaries will be saved to: %CD%\%TEST_OUTPUT_DIR%
 echo.
 
-echo This may take a while...
-go test %TEST_FLAGS% %TEST_PACKAGE%
+:: Показываем время начала и создаем лог-файл
+set "TEST_LOG=%CD%\%TEST_OUTPUT_DIR%\test_output.log"
+echo Test started at: %DATE% %TIME%
+echo Test log will be saved to: %TEST_LOG%
+echo.
+echo Starting tests...
+echo.
 
+:: Запускаем тесты с выводом в файл и на экран одновременно
+go test %TEST_FLAGS% -count=1 %TEST_PACKAGE% > "%TEST_LOG%" 2>&1
 set TEST_EXIT_CODE=%ERRORLEVEL%
+
+:: Показываем содержимое лога на экране
+type "%TEST_LOG%"
+
+:: Показываем время окончания
+echo.
+echo ========================================
+echo Test finished at: %DATE% %TIME%
+echo Full test log: %TEST_LOG%
+echo ========================================
 
 :: После тестов компилируем бинарники для сохранения и проверки
 echo.

@@ -105,16 +105,12 @@ if %ERRORLEVEL% EQU 0 (
 :: Определяем имя выходного файла
 echo.
 echo === Determining output filename ===
-set "BASE_NAME=singbox-launcher"
-set "EXTENSION=.exe"
-set "OUTPUT_FILENAME=%BASE_NAME%%EXTENSION%"
-set "COUNTER=0"
+set "OUTPUT_FILENAME=singbox-launcher.exe"
 
-:FIND_UNIQUE_FILENAME
+:: Удаляем старый файл, если существует
 if exist "%OUTPUT_FILENAME%" (
-    set /a COUNTER+=1
-    set "OUTPUT_FILENAME=%BASE_NAME%-!COUNTER!%EXTENSION%"
-    goto :FIND_UNIQUE_FILENAME
+    echo Removing old file: %OUTPUT_FILENAME%
+    del /q "%OUTPUT_FILENAME%"
 )
 
 echo Using output file: "%OUTPUT_FILENAME%"
