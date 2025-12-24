@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -114,6 +115,13 @@ func TestAPIConnection(baseURL, token string, logFile *os.File) error {
 		}
 		if opErr, ok := err.(*net.OpError); ok && opErr.Op == "dial" {
 			return fmt.Errorf("network error: cannot connect to server")
+		}
+		// Проверяем Windows-специфичные ошибки (connectex, actively refused) - только на Windows
+		if runtime.GOOS == "windows" {
+			errStr := err.Error()
+			if strings.Contains(errStr, "connectex") || strings.Contains(errStr, "actively refused") || strings.Contains(errStr, "connection refused") {
+				return fmt.Errorf("failed to execute API test request: %w \n Please wait 15 seconds and try again", err)
+			}
 		}
 		return fmt.Errorf("failed to execute API test request: %w", err)
 	}
