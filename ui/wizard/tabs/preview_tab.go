@@ -58,5 +58,3 @@ func CreatePreviewTab(state *wizardstate.WizardState) fyne.CanvasObject {
 		statusRow,
 	)
 }
-
-

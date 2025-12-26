@@ -215,4 +215,3 @@ func CreateRulesScroll(state *wizardstate.WizardState, content fyne.CanvasObject
 	scroll.SetMinSize(fyne.NewSize(0, maxHeight))
 	return scroll
 }
-

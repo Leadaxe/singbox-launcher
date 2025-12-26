@@ -18,9 +18,9 @@ import (
 	wizardstate "singbox-launcher/ui/wizard/state"
 )
 
-// CreateVLESSSourceTab creates the VLESS Source tab UI.
-func CreateVLESSSourceTab(state *wizardstate.WizardState) fyne.CanvasObject {
-	// Section 1: VLESS Subscription URL or Direct Links
+// CreateSourceTab creates the Sources & ParserConfig tab UI.
+func CreateSourceTab(state *wizardstate.WizardState) fyne.CanvasObject {
+	// Section 1: Subscription URL or Direct Links
 	state.CheckURLButton = widget.NewButton("Check", func() {
 		if state.CheckURLInProgress {
 			return
@@ -58,19 +58,19 @@ func CreateVLESSSourceTab(state *wizardstate.WizardState) fyne.CanvasObject {
 		paddingRect,   // Right padding
 	)
 
-	urlLabel := widget.NewLabel("VLESS Subscription URL or Direct Links:")
+	urlLabel := widget.NewLabel("Subscription URL or Direct Links:")
 	urlLabel.Importance = widget.MediumImportance
 
-	state.VLESSURLEntry = widget.NewMultiLineEntry()
-	state.VLESSURLEntry.SetPlaceHolder("https://example.com/subscription\nor\nvless://...\nvmess://...\nhysteria2://...")
-	state.VLESSURLEntry.Wrapping = fyne.TextWrapOff
-	state.VLESSURLEntry.OnChanged = func(value string) {
+	state.SourceURLEntry = widget.NewMultiLineEntry()
+	state.SourceURLEntry.SetPlaceHolder("https://example.com/subscription\nor\nvless://...\nvmess://...\nhysteria2://...\nssh://...")
+	state.SourceURLEntry.Wrapping = fyne.TextWrapOff
+	state.SourceURLEntry.OnChanged = func(value string) {
 		state.PreviewNeedsParse = true
 		wizardbusiness.ApplyURLToParserConfig(state, strings.TrimSpace(value))
 	}
 
 	// Hint under input field with Check button on right
-	hintLabel := widget.NewLabel("Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria2://).\nFor multiple links, use a new line for each.")
+	hintLabel := widget.NewLabel("Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://).\nFor multiple links, use a new line for each.")
 	hintLabel.Wrapping = fyne.TextWrapWord
 
 	hintRow := container.NewBorder(
@@ -86,7 +86,7 @@ func CreateVLESSSourceTab(state *wizardstate.WizardState) fyne.CanvasObject {
 
 	// Limit width and height of URL input field (3 lines)
 	// Wrap MultiLineEntry in Scroll container to show scrollbars
-	urlEntryScroll := container.NewScroll(state.VLESSURLEntry)
+	urlEntryScroll := container.NewScroll(state.SourceURLEntry)
 	urlEntryScroll.Direction = container.ScrollBoth
 	// Create dummy Rectangle to set size (height 3 lines, width limited)
 	urlEntrySizeRect := canvas.NewRectangle(color.Transparent)
@@ -218,5 +218,3 @@ func CreateVLESSSourceTab(state *wizardstate.WizardState) fyne.CanvasObject {
 
 	return scrollContainer
 }
-
-

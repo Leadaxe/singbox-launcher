@@ -144,15 +144,40 @@
 
 ### macOS
 
-1. Скачайте последний релиз для macOS
-2. Распакуйте архив
-3. Для .app bundle: Двойной клик на `singbox-launcher.app` для запуска
+Есть два способа установки на macOS:
 
-   Для командной строки:
+#### Вариант 1: Скрипт установки (Рекомендуется)
+
+Самый простой способ - использовать скрипт установки:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- 0.6.2
+```
+
+Замените `0.6.2` на нужную версию (или оставьте пустым для версии по умолчанию).
+
+Скрипт:
+- Скачает архив релиза
+- Распакует и установит в `~/Applications/Singbox-Launcher/`
+- Исправит атрибуты quarantine и права доступа macOS
+- Автоматически запустит приложение
+
+#### Вариант 2: Ручная установка
+
+1. Скачайте последний релиз для macOS с [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases)
+2. Распакуйте ZIP архив
+3. Удалите атрибут quarantine (требуется на macOS):
    ```bash
-   chmod +x singbox-launcher.app
+   xattr -cr "singbox-launcher.app" && chmod +x "singbox-launcher.app/Contents/MacOS/singbox-launcher"
+   ```
+4. Для .app bundle: Двойной клик на `singbox-launcher.app` для запуска
+
+   Или из командной строки:
+   ```bash
    open singbox-launcher.app
    ```
+
+   Если macOS всё ещё блокирует приложение, перейдите в **Системные настройки → Конфиденциальность и безопасность** и нажмите **"Открыть всё равно"**, или щёлкните правой кнопкой мыши по приложению и выберите **"Открыть"** (только при первом запуске).
 
 ### Linux
 
@@ -186,7 +211,7 @@
    - Если `config.json` отсутствует, нажмите синюю кнопку **"Wizard"** (⚙️) на вкладке **"Core"**
    - Если `config_template.json` отсутствует, сначала нажмите **"Download Config Template"**
    - Следуйте шагам визарда:
-     - **Вкладка 1 (VLESS Sources & ParserConfig)**: Введите URL подписки, настройте ParserConfig
+     - **Вкладка 1 (Sources & ParserConfig)**: Введите URL подписки, настройте ParserConfig
      - **Вкладка 2 (Rules)**: Выберите правила маршрутизации, настройте селекторы outbound
      - **Вкладка 3 (Preview)**: Просмотрите сгенерированный конфиг и сохраните
    - Визард автоматически создаст `config.json`
@@ -254,8 +279,8 @@ Config Wizard предоставляет визуальный интерфейс
 
 **Вкладки визарда:**
 
-1. **VLESS Sources & ParserConfig**
-   - Введите URL подписки или прямые ссылки (vless://, vmess://, trojan://, ss://, hysteria2://) и проверьте доступность
+1. **Sources & ParserConfig**
+   - Введите URL подписки или прямые ссылки (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://) и проверьте доступность
    - Поддерживаются как URL подписок, так и прямые ссылки (можно комбинировать, разделяя переносами строк)
    - Настройте ParserConfig JSON в визуальном редакторе
    - Просмотрите сгенерированные outbounds
@@ -589,7 +614,7 @@ singbox-launcher/
 ### Краткое описание
 
 Парсер:
-- Загружает подписки VLESS/VMess/Trojan/Shadowsocks из URL
+- Загружает подписки (поддерживаются протоколы: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH) из URL
 - Фильтрует узлы по заданным правилам
 - Группирует их в селекторы
 - Записывает результат в секцию между маркерами `/** @ParserSTART */` и `/** @ParserEND */`

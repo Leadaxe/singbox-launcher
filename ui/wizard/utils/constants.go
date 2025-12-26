@@ -58,5 +58,3 @@ const (
 	// MediumDelay is a medium delay for UI updates
 	MediumDelay = 200 * time.Millisecond
 )
-
-

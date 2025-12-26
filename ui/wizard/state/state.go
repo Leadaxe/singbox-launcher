@@ -35,8 +35,8 @@ type WizardState struct {
 	Controller *core.AppController
 	Window     fyne.Window
 
-	// Tab 1: VLESS Sources
-	VLESSURLEntry        *widget.Entry
+	// Tab 1: Sources & ParserConfig
+	SourceURLEntry       *widget.Entry
 	URLStatusLabel       *widget.Label
 	ParserConfigEntry    *widget.Entry
 	OutboundsPreview     *widget.Entry
@@ -429,7 +429,6 @@ func (state *WizardState) RefreshOutboundOptions() {
 	DebugLog("refreshOutboundOptions: UI update took %v", time.Since(uiUpdateStartTime))
 	DebugLog("refreshOutboundOptions: END (total duration: %v)", time.Since(startTime))
 }
-
 
 // EnsureFinalSelected ensures that the final outbound is selected from available options.
 func (state *WizardState) EnsureFinalSelected(options []string) {

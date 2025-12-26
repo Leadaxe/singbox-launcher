@@ -137,15 +137,40 @@ If you can help test on Linux, please open an issue or pull request on GitHub!
 
 ### macOS
 
-1. Download the latest release for macOS
-2. Extract the archive
-3. For .app bundle: Double-click `singbox-launcher.app` to run
+There are two ways to install on macOS:
 
-   For command line:
+#### Option 1: Installation Script (Recommended)
+
+The easiest way to install is using the installation script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- 0.6.2
+```
+
+Replace `0.6.2` with the version you want to install (or omit for the default version).
+
+The script will:
+- Download the release archive
+- Extract and install to `~/Applications/Singbox-Launcher/`
+- Fix macOS quarantine attributes and permissions
+- Launch the application automatically
+
+#### Option 2: Manual Installation
+
+1. Download the latest release for macOS from [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases)
+2. Extract the ZIP archive
+3. Remove quarantine attribute (required on macOS):
    ```bash
-   chmod +x singbox-launcher.app
-   ./open singbox-launcher.app
+   xattr -cr "singbox-launcher.app" && chmod +x "singbox-launcher.app/Contents/MacOS/singbox-launcher"
    ```
+4. For .app bundle: Double-click `singbox-launcher.app` to run
+
+   Or from command line:
+   ```bash
+   open singbox-launcher.app
+   ```
+
+   If macOS still blocks the app, go to **System Settings → Privacy & Security** and click **"Open Anyway"**, or right-click the app and select **"Open"** (first time only).
 
 ### Linux
 
@@ -179,7 +204,7 @@ If you can help test on Linux, please open an issue or pull request on GitHub!
    - If `config.json` is missing, click the blue **"Wizard"** button in the **"Core"** tab
    - If `config_template.json` is missing, click **"Download Config Template"** first
    - Follow the wizard steps:
-     - **Tab 1 (VLESS Sources & ParserConfig)**: Enter subscription URL, configure ParserConfig
+     - **Tab 1 (Sources & ParserConfig)**: Enter subscription URL, configure ParserConfig
      - **Tab 2 (Rules)**: Select routing rules, configure outbound selectors
      - **Tab 3 (Preview)**: Review generated configuration and save
    - The wizard will create `config.json` automatically
@@ -246,8 +271,8 @@ The Config Wizard provides a visual interface for configuring sing-box without m
 
 **Wizard Tabs:**
 
-1. **VLESS Sources & ParserConfig**
-   - Enter subscription URL or direct links (vless://, vmess://, trojan://, ss://, hysteria2://) and validate connectivity
+1. **Sources & ParserConfig**
+   - Enter subscription URL or direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://) and validate connectivity
    - Supports both subscription URLs and direct links (can be combined, separated by line breaks)
    - Configure ParserConfig JSON with visual editor
    - Preview generated outbounds
@@ -498,7 +523,7 @@ The subscription parser automatically updates the proxy server list in `config.j
 The parser reads the `/** @ParserConfig ... */` block at the beginning of `config.json`, downloads subscriptions, filters nodes, and generates selectors according to your configuration.
 
 **Key Features:**
-- Supports multiple subscription URLs and direct links (vless://, vmess://, trojan://, ss://, hysteria2://)
+- Supports multiple subscription URLs and direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://)
 - Flexible filtering by tags, protocols, and other parameters
 - Automatic grouping into selectors
 - Automatic configuration reload based on time intervals

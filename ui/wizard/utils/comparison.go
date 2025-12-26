@@ -88,5 +88,3 @@ func ValuesEqual(a, b interface{}) bool {
 	}
 	return string(aJSON) == string(bJSON)
 }
-
-

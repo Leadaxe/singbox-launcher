@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"singbox-launcher/core/config"
@@ -20,6 +21,9 @@ func TestIsDirectLink(t *testing.T) {
 		{"VMess link", "vmess://base64", true},
 		{"Trojan link", "trojan://password@server:443", true},
 		{"Shadowsocks link", "ss://method:password@server:443", true},
+		{"Hysteria2 link", "hysteria2://password@server:443", true},
+		{"Hysteria2 short form (hy2://)", "hy2://password@server:443", true},
+		{"SSH link", "ssh://user@server:22", true},
 		{"HTTP URL", "https://example.com/subscription", false},
 		{"Empty string", "", false},
 		{"Whitespace VLESS", "  vless://uuid@server:443  ", true},
@@ -597,6 +601,25 @@ func TestParseNode_Hysteria2(t *testing.T) {
 			},
 		},
 		{
+			name:        "Hysteria2 with hy2:// scheme (short form)",
+			uri:         "hy2://password123@example.com:443?sni=example.com#Test Server",
+			expectError: false,
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
+				if node == nil {
+					t.Fatal("Expected node, got nil")
+				}
+				if node.Scheme != "hysteria2" {
+					t.Errorf("Expected scheme 'hysteria2', got '%s'", node.Scheme)
+				}
+				if node.Server != "example.com" {
+					t.Errorf("Expected server 'example.com', got '%s'", node.Server)
+				}
+				if node.UUID != "password123" {
+					t.Errorf("Expected password 'password123', got '%s'", node.UUID)
+				}
+			},
+		},
+		{
 			name:        "Hysteria2 without password (warning but valid)",
 			uri:         "hysteria2://@example.com:443#Test",
 			expectError: false,
@@ -764,6 +787,290 @@ func TestBuildOutbound_Hysteria2(t *testing.T) {
 		// Should still generate outbound, but password will be empty
 		if outbound["type"] != "hysteria2" {
 			t.Errorf("Expected type 'hysteria2', got '%v'", outbound["type"])
+		}
+	})
+}
+
+// TestParseNode_SSH tests parsing SSH nodes
+func TestParseNode_SSH(t *testing.T) {
+	tests := []struct {
+		name        string
+		uri         string
+		expectError bool
+		checkFields func(*testing.T, *config.ParsedNode)
+	}{
+		{
+			name:        "Basic SSH with user and password",
+			uri:         "ssh://root:admin@127.0.0.1:22#Local SSH",
+			expectError: false,
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
+				if node.Scheme != "ssh" {
+					t.Errorf("Expected scheme 'ssh', got '%s'", node.Scheme)
+				}
+				if node.Server != "127.0.0.1" {
+					t.Errorf("Expected server '127.0.0.1', got '%s'", node.Server)
+				}
+				if node.Port != 22 {
+					t.Errorf("Expected port 22, got %d", node.Port)
+				}
+				if node.UUID != "root" {
+					t.Errorf("Expected user 'root', got '%s'", node.UUID)
+				}
+				if node.Query.Get("password") != "admin" {
+					t.Errorf("Expected password 'admin', got '%s'", node.Query.Get("password"))
+				}
+				if node.Tag != "Local SSH" {
+					t.Errorf("Expected tag 'Local SSH', got '%s'", node.Tag)
+				}
+			},
+		},
+		{
+			name:        "SSH with user only (no password)",
+			uri:         "ssh://user@example.com:2222#SSH Server",
+			expectError: false,
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
+				if node.UUID != "user" {
+					t.Errorf("Expected user 'user', got '%s'", node.UUID)
+				}
+				if node.Port != 2222 {
+					t.Errorf("Expected port 2222, got %d", node.Port)
+				}
+				if node.Query.Get("password") != "" {
+					t.Errorf("Expected empty password, got '%s'", node.Query.Get("password"))
+				}
+			},
+		},
+		{
+			name:        "SSH with private key path",
+			uri:         "ssh://deploy@git.example.com:22?private_key_path=$HOME/.ssh/deploy_key#Git Server",
+			expectError: false,
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
+				if node.UUID != "deploy" {
+					t.Errorf("Expected user 'deploy', got '%s'", node.UUID)
+				}
+				if node.Query.Get("private_key_path") != "$HOME/.ssh/deploy_key" {
+					t.Errorf("Expected private_key_path '$HOME/.ssh/deploy_key', got '%s'", node.Query.Get("private_key_path"))
+				}
+			},
+		},
+		{
+			name:        "SSH with full configuration",
+			uri:         "ssh://root:password@192.168.1.1:22?private_key_path=/home/user/.ssh/id_rsa&private_key_passphrase=myphrase&host_key=ecdsa-sha2-nistp256%20AAAAE2VjZHNhLXNoYTItbmlzdH...&client_version=SSH-2.0-OpenSSH_7.4p1#My SSH Server",
+			expectError: false,
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
+				if node.Query.Get("password") != "password" {
+					t.Errorf("Expected password 'password', got '%s'", node.Query.Get("password"))
+				}
+				if node.Query.Get("private_key_path") != "/home/user/.ssh/id_rsa" {
+					t.Errorf("Expected private_key_path '/home/user/.ssh/id_rsa', got '%s'", node.Query.Get("private_key_path"))
+				}
+				if node.Query.Get("private_key_passphrase") != "myphrase" {
+					t.Errorf("Expected private_key_passphrase 'myphrase', got '%s'", node.Query.Get("private_key_passphrase"))
+				}
+				if !strings.Contains(node.Query.Get("host_key"), "ecdsa-sha2-nistp256") {
+					t.Errorf("Expected host_key to contain 'ecdsa-sha2-nistp256', got '%s'", node.Query.Get("host_key"))
+				}
+				if node.Query.Get("client_version") != "SSH-2.0-OpenSSH_7.4p1" {
+					t.Errorf("Expected client_version 'SSH-2.0-OpenSSH_7.4p1', got '%s'", node.Query.Get("client_version"))
+				}
+			},
+		},
+		{
+			name:        "SSH with multiple host keys",
+			uri:         "ssh://user@server.com:22?host_key=key1,key2,key3#Multi Key Server",
+			expectError: false,
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
+				hostKey := node.Query.Get("host_key")
+				if !strings.Contains(hostKey, "key1") || !strings.Contains(hostKey, "key2") || !strings.Contains(hostKey, "key3") {
+					t.Errorf("Expected host_key to contain 'key1', 'key2', 'key3', got '%s'", hostKey)
+				}
+			},
+		},
+		{
+			name:        "SSH with default port (22)",
+			uri:         "ssh://admin@server.com#Default Port",
+			expectError: false,
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
+				if node.Port != 22 {
+					t.Errorf("Expected default port 22, got %d", node.Port)
+				}
+			},
+		},
+		{
+			name:        "SSH with invalid URI (missing hostname)",
+			uri:         "ssh://user@",
+			expectError: true,
+		},
+		{
+			name:        "SSH with invalid URI (missing user)",
+			uri:         "ssh://@server.com:22",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node, err := ParseNode(tt.uri, nil)
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("Expected error for URI %q, but got none", tt.uri)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("Unexpected error for URI %q: %v", tt.uri, err)
+				return
+			}
+
+			if node == nil {
+				t.Errorf("Expected node, got nil for URI %q", tt.uri)
+				return
+			}
+
+			if tt.checkFields != nil {
+				tt.checkFields(t, node)
+			}
+
+			// Verify outbound was built
+			if node.Outbound == nil {
+				t.Errorf("Expected outbound to be built, got nil")
+				return
+			}
+
+			// Verify outbound type
+			if outboundType, ok := node.Outbound["type"].(string); !ok || outboundType != "ssh" {
+				t.Errorf("Expected outbound type 'ssh', got '%v'", node.Outbound["type"])
+			}
+
+			// Verify basic outbound fields
+			if server, ok := node.Outbound["server"].(string); !ok || server != node.Server {
+				t.Errorf("Expected outbound server '%s', got '%v'", node.Server, node.Outbound["server"])
+			}
+
+			if serverPort, ok := node.Outbound["server_port"].(int); !ok || serverPort != node.Port {
+				t.Errorf("Expected outbound server_port %d, got '%v'", node.Port, node.Outbound["server_port"])
+			}
+
+			if user, ok := node.Outbound["user"].(string); !ok || user != node.UUID {
+				t.Errorf("Expected outbound user '%s', got '%v'", node.UUID, node.Outbound["user"])
+			}
+		})
+	}
+}
+
+// TestBuildOutbound_SSH tests SSH outbound building
+func TestBuildOutbound_SSH(t *testing.T) {
+	t.Run("SSH outbound with password", func(t *testing.T) {
+		node := &config.ParsedNode{
+			Scheme: "ssh",
+			Server: "example.com",
+			Port:   22,
+			UUID:   "root",
+			Tag:    "SSH Server",
+			Query:  make(map[string][]string),
+		}
+		node.Query.Set("password", "secret123")
+
+		outbound := buildOutbound(node)
+
+		if outbound["type"] != "ssh" {
+			t.Errorf("Expected type 'ssh', got '%v'", outbound["type"])
+		}
+		if outbound["server"] != "example.com" {
+			t.Errorf("Expected server 'example.com', got '%v'", outbound["server"])
+		}
+		if outbound["server_port"] != 22 {
+			t.Errorf("Expected server_port 22, got '%v'", outbound["server_port"])
+		}
+		if outbound["user"] != "root" {
+			t.Errorf("Expected user 'root', got '%v'", outbound["user"])
+		}
+		if outbound["password"] != "secret123" {
+			t.Errorf("Expected password 'secret123', got '%v'", outbound["password"])
+		}
+	})
+
+	t.Run("SSH outbound with private key path", func(t *testing.T) {
+		node := &config.ParsedNode{
+			Scheme: "ssh",
+			Server: "server.com",
+			Port:   22,
+			UUID:   "deploy",
+			Tag:    "Deploy Server",
+			Query:  make(map[string][]string),
+		}
+		node.Query.Set("private_key_path", "/home/user/.ssh/id_rsa")
+		node.Query.Set("private_key_passphrase", "mypassphrase")
+
+		outbound := buildOutbound(node)
+
+		if outbound["private_key_path"] != "/home/user/.ssh/id_rsa" {
+			t.Errorf("Expected private_key_path '/home/user/.ssh/id_rsa', got '%v'", outbound["private_key_path"])
+		}
+		if outbound["private_key_passphrase"] != "mypassphrase" {
+			t.Errorf("Expected private_key_passphrase 'mypassphrase', got '%v'", outbound["private_key_passphrase"])
+		}
+	})
+
+	t.Run("SSH outbound with host keys", func(t *testing.T) {
+		node := &config.ParsedNode{
+			Scheme: "ssh",
+			Server: "server.com",
+			Port:   22,
+			UUID:   "user",
+			Tag:    "Verified Server",
+			Query:  make(map[string][]string),
+		}
+		node.Query.Set("host_key", "key1,key2,key3")
+
+		outbound := buildOutbound(node)
+
+		hostKeys, ok := outbound["host_key"].([]string)
+		if !ok {
+			t.Errorf("Expected host_key to be []string, got '%T'", outbound["host_key"])
+			return
+		}
+		if len(hostKeys) != 3 {
+			t.Errorf("Expected 3 host keys, got %d", len(hostKeys))
+		}
+		if hostKeys[0] != "key1" || hostKeys[1] != "key2" || hostKeys[2] != "key3" {
+			t.Errorf("Expected host keys ['key1', 'key2', 'key3'], got %v", hostKeys)
+		}
+	})
+
+	t.Run("SSH outbound with client version", func(t *testing.T) {
+		node := &config.ParsedNode{
+			Scheme: "ssh",
+			Server: "server.com",
+			Port:   22,
+			UUID:   "user",
+			Tag:    "Custom Client",
+			Query:  make(map[string][]string),
+		}
+		node.Query.Set("client_version", "SSH-2.0-OpenSSH_7.4p1")
+
+		outbound := buildOutbound(node)
+
+		if outbound["client_version"] != "SSH-2.0-OpenSSH_7.4p1" {
+			t.Errorf("Expected client_version 'SSH-2.0-OpenSSH_7.4p1', got '%v'", outbound["client_version"])
+		}
+	})
+
+	t.Run("SSH outbound without user (should use default)", func(t *testing.T) {
+		node := &config.ParsedNode{
+			Scheme: "ssh",
+			Server: "server.com",
+			Port:   22,
+			UUID:   "", // No user
+			Tag:    "Default User",
+			Query:  make(map[string][]string),
+		}
+
+		outbound := buildOutbound(node)
+
+		if outbound["user"] != "root" {
+			t.Errorf("Expected default user 'root', got '%v'", outbound["user"])
 		}
 	})
 }

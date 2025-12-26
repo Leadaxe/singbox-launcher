@@ -102,7 +102,7 @@ func ValidateURI(uri string) error {
 
 	// Basic URI format check (should start with protocol)
 	if !strings.Contains(uri, "://") {
-		return fmt.Errorf("URI must contain protocol (e.g., vless://, vmess://)")
+		return fmt.Errorf("URI must contain protocol (e.g., vless://, vmess://, ssh://)")
 	}
 
 	return nil

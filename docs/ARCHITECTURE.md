@@ -221,8 +221,8 @@ singbox-launcher/
 │       │       │   - DebugLog(), InfoLog(), ErrorLog()       # Логирование
 │       │       │
 │       ├── tabs/               # UI компоненты вкладок
-│       │   ├── source_tab.go   # Вкладка источников (VLESS)
-│       │   │   │   - createVLESSSourceTab()                  # Создание вкладки источников
+│       │   ├── source_tab.go   # Вкладка Sources & ParserConfig
+│       │   │   │   - createSourceTab()                       # Создание вкладки Sources & ParserConfig
 │       │   │   │
 │       │   ├── rules_tab.go    # Вкладка правил
 │       │   │   │   - createTemplateTab()                     # Создание вкладки правил
@@ -489,7 +489,7 @@ singbox-launcher/
 
 **tabs/** - UI вкладок
 - `source_tab.go`:
-  - `createVLESSSourceTab()` - создание вкладки источников VLESS
+  - `createSourceTab()` - создание вкладки Sources & ParserConfig
   - UI компоненты первой вкладки (URL поля, кнопки)
 - `rules_tab.go`:
   - `createTemplateTab()` - создание вкладки правил
@@ -611,7 +611,7 @@ singbox-launcher/
 │    • Ping Proxy                                             │
 │                                                             │
 │  Config Wizard:                                             │
-│    • Add VLESS Source                                       │
+│    • Add Source                                             │
 │    • Add/Edit Rules                                         │
 │    • Preview Config                                         │
 │    • Save Config                                            │
@@ -801,7 +801,7 @@ UI (core_dashboard_tab.go)
 ```
 UI (core_dashboard_tab.go)
   └─> wizard.ShowConfigWizard()
-      ├─> wizard/tabs/source_tab.go: createVLESSSourceTab()
+      ├─> wizard/tabs/source_tab.go: createSourceTab()
       ├─> wizard/tabs/rules_tab.go: createTemplateTab()
       ├─> wizard/tabs/preview_tab.go: createPreviewTab()
       │

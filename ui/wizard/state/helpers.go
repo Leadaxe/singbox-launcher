@@ -49,4 +49,3 @@ func InfoLog(format string, args ...interface{}) {
 func ErrorLog(format string, args ...interface{}) {
 	debuglog.Log("ERROR", debuglog.LevelError, debuglog.UseGlobal, format, args...)
 }
-

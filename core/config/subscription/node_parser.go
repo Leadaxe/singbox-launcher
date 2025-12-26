@@ -1,5 +1,5 @@
 // Package subscription provides parsing logic for various proxy node formats.
-// It supports VLESS, VMess, Trojan, Shadowsocks, and Hysteria2 protocols, handling
+// It supports VLESS, VMess, Trojan, Shadowsocks, Hysteria2, and SSH protocols, handling
 // both direct links and subscription formats.
 package subscription
 
@@ -24,7 +24,9 @@ func IsDirectLink(input string) bool {
 		strings.HasPrefix(trimmed, "vmess://") ||
 		strings.HasPrefix(trimmed, "trojan://") ||
 		strings.HasPrefix(trimmed, "ss://") ||
-		strings.HasPrefix(trimmed, "hysteria2://")
+		strings.HasPrefix(trimmed, "hysteria2://") ||
+		strings.HasPrefix(trimmed, "hy2://") ||
+		strings.HasPrefix(trimmed, "ssh://")
 }
 
 // MaxURILength defines the maximum allowed length for a proxy URI
@@ -40,6 +42,7 @@ func ParseNode(uri string, skipFilters []map[string]string) (*config.ParsedNode,
 	// Determine scheme
 	scheme := ""
 	uriToParse := uri
+	defaultPort := 443              // Default port for most protocols
 	var ssMethod, ssPassword string // For SS links: method and password extracted from base64
 
 	// Determine scheme and handle protocol-specific parsing
@@ -65,6 +68,10 @@ func ParseNode(uri string, skipFilters []map[string]string) (*config.ParsedNode,
 			log.Printf("Parser: Error: Failed to parse VMESS JSON (decoded length: %d): %v. Skipping node.", len(decoded), err)
 			return nil, fmt.Errorf("failed to parse VMESS JSON: %w", err)
 		}
+		// VMess uses base64-encoded JSON format instead of standard URI format,
+		// so it requires separate parsing logic and cannot use the common URI parser.
+		// All other protocols (VLESS, Trojan, SS, Hysteria2, SSH) use standard URI format
+		// and are processed through the common parsing path below.
 		return parseVMessJSON(vmessConfig, skipFilters)
 
 	case strings.HasPrefix(uri, "vless://"):
@@ -102,9 +109,20 @@ func ParseNode(uri string, skipFilters []map[string]string) (*config.ParsedNode,
 			log.Printf("Parser: Warning: SS link is not in SIP002 format (no @ found): %s", uri)
 		}
 
-	case strings.HasPrefix(uri, "hysteria2://"):
+	case strings.HasPrefix(uri, "hysteria2://"), strings.HasPrefix(uri, "hy2://"):
 		scheme = "hysteria2"
-		base64Part := strings.TrimPrefix(uri, "hysteria2://")
+		// Handle both hysteria2:// and hy2:// schemes (hy2 is official short form)
+		// Normalize to hysteria2:// for parsing
+		uriToParse = uri
+		var base64Part string
+		if strings.HasPrefix(uri, "hy2://") {
+			base64Part = strings.TrimPrefix(uri, "hy2://")
+			uriToParse = strings.Replace(uri, "hy2://", "hysteria2://", 1)
+		} else {
+			base64Part = strings.TrimPrefix(uri, "hysteria2://")
+		}
+
+		// Try to decode base64 (some Hysteria2 links are base64-encoded)
 		decoded, err := decodeBase64WithPadding(base64Part)
 		if err == nil && len(decoded) > 0 {
 			decodedStr, valid := validateAndFixUTF8Bytes(decoded)
@@ -118,12 +136,12 @@ func ParseNode(uri string, skipFilters []map[string]string) (*config.ParsedNode,
 			if strings.Contains(decodedStr, "@") {
 				uriToParse = "hysteria2://" + decodedStr
 				log.Printf("Parser: Successfully decoded base64 Hysteria2 link")
-			} else {
-				uriToParse = uri
 			}
-		} else {
-			uriToParse = uri
 		}
+
+	case strings.HasPrefix(uri, "ssh://"):
+		scheme = "ssh"
+		defaultPort = 22 // Default port for SSH
 
 	default:
 		return nil, fmt.Errorf("unsupported scheme")
@@ -135,13 +153,13 @@ func ParseNode(uri string, skipFilters []map[string]string) (*config.ParsedNode,
 		return nil, fmt.Errorf("failed to parse URI: %w", err)
 	}
 
-	// Validate VLESS/Trojan URI format (must have hostname and userinfo)
-	if scheme == "vless" || scheme == "trojan" {
+	// Validate VLESS/Trojan/SSH URI format (must have hostname and userinfo)
+	if scheme == "vless" || scheme == "trojan" || scheme == "ssh" {
 		if parsedURL.Hostname() == "" {
 			return nil, fmt.Errorf("invalid %s URI: missing hostname", scheme)
 		}
 		if parsedURL.User == nil || parsedURL.User.Username() == "" {
-			return nil, fmt.Errorf("invalid %s URI: missing userinfo (UUID/password)", scheme)
+			return nil, fmt.Errorf("invalid %s URI: missing userinfo (UUID/password/user)", scheme)
 		}
 	}
 
@@ -162,8 +180,8 @@ func ParseNode(uri string, skipFilters []map[string]string) (*config.ParsedNode,
 		node.Query.Set("password", ssPassword)
 	}
 
-	// Extract port
-	node.Port = 443 // Default port
+	// Extract port (defaultPort was set in scheme detection)
+	node.Port = defaultPort
 	if port := parsedURL.Port(); port != "" {
 		if p, err := strconv.Atoi(port); err == nil {
 			node.Port = p
@@ -172,11 +190,22 @@ func ParseNode(uri string, skipFilters []map[string]string) (*config.ParsedNode,
 
 	// Extract UUID/user
 	// For hysteria2, password is in username part of userinfo (hysteria2://password@server:port)
+	// For SSH and Trojan, password can be in userinfo (user:password@server:port)
 	if parsedURL.User != nil {
 		node.UUID = parsedURL.User.Username()
 		// URL decode the username (password) if it contains encoded characters
 		if decoded, err := url.QueryUnescape(node.UUID); err == nil && decoded != node.UUID {
 			node.UUID = decoded
+		}
+		// Extract password for SSH and Trojan (user:password@server)
+		if scheme == "ssh" || scheme == "trojan" {
+			if password, hasPassword := parsedURL.User.Password(); hasPassword {
+				if decodedPassword, err := url.QueryUnescape(password); err == nil {
+					node.Query.Set("password", decodedPassword)
+				} else {
+					node.Query.Set("password", password)
+				}
+			}
 		}
 	}
 
@@ -546,6 +575,8 @@ func buildOutbound(node *config.ParsedNode) map[string]interface{} {
 		}
 	} else if node.Scheme == "hysteria2" {
 		buildHysteria2Outbound(node, outbound)
+	} else if node.Scheme == "ssh" {
+		buildSSHOutbound(node, outbound)
 	}
 
 	return outbound
@@ -641,6 +672,101 @@ func buildHysteria2TLS(node *config.ParsedNode, outbound map[string]interface{})
 	outbound["tls"] = tlsData
 }
 
+// buildSSHOutbound builds outbound configuration for SSH protocol
+func buildSSHOutbound(node *config.ParsedNode, outbound map[string]interface{}) {
+	// User is required (stored in UUID field from userinfo)
+	if node.UUID != "" {
+		outbound["user"] = node.UUID
+	} else {
+		outbound["user"] = "root" // Default user for SSH
+		log.Printf("Parser: Warning: SSH link missing user, using default 'root'")
+	}
+
+	// Password is optional (can be in query params from userinfo)
+	if password := node.Query.Get("password"); password != "" {
+		outbound["password"] = password
+	}
+
+	// Private key (inline) - if provided, takes precedence over private_key_path
+	if privateKey := node.Query.Get("private_key"); privateKey != "" {
+		// URL decode if needed
+		if decoded, err := url.QueryUnescape(privateKey); err == nil {
+			outbound["private_key"] = decoded
+		} else {
+			outbound["private_key"] = privateKey
+		}
+	} else if privateKeyPath := node.Query.Get("private_key_path"); privateKeyPath != "" {
+		// Private key path
+		if decoded, err := url.QueryUnescape(privateKeyPath); err == nil {
+			outbound["private_key_path"] = decoded
+		} else {
+			outbound["private_key_path"] = privateKeyPath
+		}
+	}
+
+	// Private key passphrase
+	if passphrase := node.Query.Get("private_key_passphrase"); passphrase != "" {
+		if decoded, err := url.QueryUnescape(passphrase); err == nil {
+			outbound["private_key_passphrase"] = decoded
+		} else {
+			outbound["private_key_passphrase"] = passphrase
+		}
+	}
+
+	// Host key (can be multiple, comma-separated)
+	if hostKey := node.Query.Get("host_key"); hostKey != "" {
+		// Split by comma if multiple keys provided
+		hostKeys := strings.Split(hostKey, ",")
+		// Trim spaces and decode each key
+		decodedKeys := make([]string, 0, len(hostKeys))
+		for _, key := range hostKeys {
+			key = strings.TrimSpace(key)
+			if key != "" {
+				if decoded, err := url.QueryUnescape(key); err == nil {
+					decodedKeys = append(decodedKeys, decoded)
+				} else {
+					decodedKeys = append(decodedKeys, key)
+				}
+			}
+		}
+		if len(decodedKeys) > 0 {
+			outbound["host_key"] = decodedKeys
+		}
+	}
+
+	// Host key algorithms (can be multiple, comma-separated)
+	if algorithms := node.Query.Get("host_key_algorithms"); algorithms != "" {
+		algList := strings.Split(algorithms, ",")
+		for i := range algList {
+			algList[i] = strings.TrimSpace(algList[i])
+		}
+		// Remove empty strings
+		filteredAlgs := make([]string, 0, len(algList))
+		for _, alg := range algList {
+			if alg != "" {
+				filteredAlgs = append(filteredAlgs, alg)
+			}
+		}
+		if len(filteredAlgs) > 0 {
+			outbound["host_key_algorithms"] = filteredAlgs
+		}
+	}
+
+	// Client version
+	if clientVersion := node.Query.Get("client_version"); clientVersion != "" {
+		if decoded, err := url.QueryUnescape(clientVersion); err == nil {
+			outbound["client_version"] = decoded
+		} else {
+			outbound["client_version"] = clientVersion
+		}
+	}
+}
+
+// parseVMessJSON parses VMess configuration from decoded JSON.
+// VMess protocol uses base64-encoded JSON format (vmess://base64(json)) instead of
+// standard URI format used by other protocols (vless://, trojan://, ssh://, etc.).
+// This is why VMess requires separate parsing logic and cannot use the common
+// URI parsing path that other protocols share.
 func parseVMessJSON(vmessConfig map[string]interface{}, skipFilters []map[string]string) (*config.ParsedNode, error) {
 	node := &config.ParsedNode{
 		Scheme: "vmess",

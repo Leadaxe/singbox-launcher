@@ -12,8 +12,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	wizardstate "singbox-launcher/ui/wizard/state"
-	wizardtemplate "singbox-launcher/ui/wizard/template"
 	wizardtabs "singbox-launcher/ui/wizard/tabs"
+	wizardtemplate "singbox-launcher/ui/wizard/template"
 )
 
 // ShowAddRuleDialog opens a dialog for adding or editing a custom rule.
@@ -293,5 +293,3 @@ func ShowAddRuleDialog(state *wizardstate.WizardState, editRule *wizardstate.Sel
 	updateButtonState()
 	dialogWindow.Show()
 }
-
-

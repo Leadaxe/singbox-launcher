@@ -490,7 +490,7 @@ func TestValidateRule(t *testing.T) {
 		{
 			name: "Valid rule with domain",
 			rule: map[string]interface{}{
-				"domain": []string{"example.com"},
+				"domain":   []string{"example.com"},
 				"outbound": "proxy-out",
 			},
 			expectError: false,
@@ -498,7 +498,7 @@ func TestValidateRule(t *testing.T) {
 		{
 			name: "Valid rule with ip_cidr",
 			rule: map[string]interface{}{
-				"ip_cidr": []string{"192.168.1.0/24"},
+				"ip_cidr":  []string{"192.168.1.0/24"},
 				"outbound": "proxy-out",
 			},
 			expectError: false,
@@ -530,4 +530,3 @@ func TestValidateRule(t *testing.T) {
 		})
 	}
 }
-

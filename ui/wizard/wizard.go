@@ -48,7 +48,7 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 	state.Window = wizardWindow
 
 	// Create first tab
-	tab1 := wizardtabs.CreateVLESSSourceTab(state)
+	tab1 := wizardtabs.CreateSourceTab(state)
 
 	loadedConfig, err := wizardbusiness.LoadConfigFromFile(state)
 	if err != nil {
@@ -69,7 +69,7 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 	state.InitializeTemplateState()
 
 	// Create container with tabs (only one for now)
-	tab1Item := container.NewTabItem("VLESS Sources & ParserConfig", tab1)
+	tab1Item := container.NewTabItem("Sources & ParserConfig", tab1)
 	tabs := container.NewAppTabs(tab1Item)
 	var rulesTabItem *container.TabItem
 	var previewTabItem *container.TabItem
@@ -115,7 +115,7 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 			dialog.ShowError(fmt.Errorf("ParserConfig is empty"), state.Window)
 			return
 		}
-		if strings.TrimSpace(state.VLESSURLEntry.Text) == "" {
+		if strings.TrimSpace(state.SourceURLEntry.Text) == "" {
 			dialog.ShowError(fmt.Errorf("VLESS URL is empty"), state.Window)
 			return
 		}
@@ -325,4 +325,3 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 	wizardWindow.SetContent(content)
 	wizardWindow.Show()
 }
-

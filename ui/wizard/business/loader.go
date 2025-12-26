@@ -68,7 +68,7 @@ func LoadConfigFromFile(state *wizardstate.WizardState) (bool, error) {
 					}
 					lines = append(lines, proxySource.Connections...)
 				}
-				state.VLESSURLEntry.SetText(strings.Join(lines, "\n"))
+				state.SourceURLEntry.SetText(strings.Join(lines, "\n"))
 			}
 
 			state.PreviewNeedsParse = true
@@ -273,4 +273,3 @@ func deepCopyValue(v interface{}) interface{} {
 		return v
 	}
 }
-

@@ -301,10 +301,10 @@ func TriggerParseForPreview(state *wizardstate.WizardState) {
 	if !state.PreviewNeedsParse && len(state.GeneratedOutbounds) > 0 {
 		return
 	}
-	if state.VLESSURLEntry == nil || state.ParserConfigEntry == nil {
+	if state.SourceURLEntry == nil || state.ParserConfigEntry == nil {
 		return
 	}
-	if strings.TrimSpace(state.VLESSURLEntry.Text) == "" || strings.TrimSpace(state.ParserConfigEntry.Text) == "" {
+	if strings.TrimSpace(state.SourceURLEntry.Text) == "" || strings.TrimSpace(state.ParserConfigEntry.Text) == "" {
 		return
 	}
 	state.AutoParseInProgress = true

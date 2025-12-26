@@ -136,8 +136,27 @@ func WriteToConfig(configPath string, content string, parserConfig *ParserConfig
 				return fmt.Errorf("failed to marshal outer @ParserConfig: %w", err)
 			}
 
-			parserConfigBlock := string(matches[1]) + string(finalJSON) + "\n" + string(matches[3])
-			newContent = pattern.ReplaceAllString(newContent, parserConfigBlock)
+			// Build replacement block as []byte to avoid $ interpretation
+			// When using ReplaceAllString, Go interprets $ as special character for regex groups
+			// This causes placeholders like {$num} and {$scheme} to be corrupted to {}
+			var parserConfigBlock []byte
+			parserConfigBlock = append(parserConfigBlock, matches[1]...)
+			parserConfigBlock = append(parserConfigBlock, finalJSON...)
+			parserConfigBlock = append(parserConfigBlock, '\n')
+			parserConfigBlock = append(parserConfigBlock, matches[3]...)
+
+			// Manual replacement to avoid $ interpretation by regexp.ReplaceAll/ReplaceAllString
+			// Find the match location in the content
+			newContentBytes := []byte(newContent)
+			matchLoc := pattern.FindIndex(newContentBytes)
+			if matchLoc != nil {
+				// Replace manually: before match + replacement block + after match
+				var result []byte
+				result = append(result, newContentBytes[:matchLoc[0]]...)
+				result = append(result, parserConfigBlock...)
+				result = append(result, newContentBytes[matchLoc[1]:]...)
+				newContent = string(result)
+			}
 		}
 	}
 

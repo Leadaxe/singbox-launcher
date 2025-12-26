@@ -27,7 +27,7 @@ func TestMergeRouteSection(t *testing.T) {
 			Rule: wizardtemplate.TemplateSelectableRule{
 				Label: "Test Rule",
 				Raw: map[string]interface{}{
-					"domain": []string{"test.com"},
+					"domain":   []string{"test.com"},
 					"outbound": "proxy-out",
 				},
 				HasOutbound:     true,
@@ -44,7 +44,7 @@ func TestMergeRouteSection(t *testing.T) {
 			Rule: wizardtemplate.TemplateSelectableRule{
 				Label: "Custom Rule",
 				Raw: map[string]interface{}{
-					"ip_cidr": []string{"192.168.1.0/24"},
+					"ip_cidr":  []string{"192.168.1.0/24"},
 					"outbound": "direct-out",
 				},
 				HasOutbound:     true,
@@ -145,7 +145,7 @@ func TestMergeRouteSection_DisabledRules(t *testing.T) {
 			Rule: wizardtemplate.TemplateSelectableRule{
 				Label: "Disabled Rule",
 				Raw: map[string]interface{}{
-					"domain": []string{"test.com"},
+					"domain":   []string{"test.com"},
 					"outbound": "proxy-out",
 				},
 				HasOutbound:     true,
@@ -304,4 +304,3 @@ func TestGenerateTagPrefix(t *testing.T) {
 		})
 	}
 }
-

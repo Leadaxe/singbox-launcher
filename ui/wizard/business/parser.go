@@ -18,7 +18,7 @@ func CheckURL(state *wizardstate.WizardState) {
 	startTime := time.Now()
 	wizardstate.DebugLog("checkURL: START at %s", startTime.Format("15:04:05.000"))
 
-	input := strings.TrimSpace(state.VLESSURLEntry.Text)
+	input := strings.TrimSpace(state.SourceURLEntry.Text)
 	if input == "" {
 		wizardstate.DebugLog("checkURL: Empty input, returning early")
 		wizardstate.SafeFyneDo(state.Window, func() {
@@ -259,7 +259,7 @@ func ParseAndPreview(state *wizardstate.WizardState) {
 		time.Since(parseStartTime), len(parserConfig.ParserConfig.Proxies), len(parserConfig.ParserConfig.Outbounds))
 
 	// Check for URL or direct links
-	url := strings.TrimSpace(state.VLESSURLEntry.Text)
+	url := strings.TrimSpace(state.SourceURLEntry.Text)
 	wizardstate.DebugLog("parseAndPreview: URL text length: %d bytes", len(url))
 	if url == "" {
 		wizardstate.DebugLog("parseAndPreview: URL is empty, returning early")
@@ -458,7 +458,9 @@ func ApplyURLToParserConfig(state *wizardstate.WizardState, input string) {
 	existingOutboundsMap := make(map[string][]config.OutboundConfig)
 	existingTagPrefixMap := make(map[string]string)
 	existingTagPostfixMap := make(map[string]string)
-	for i, existingProxy := range parserConfig.ParserConfig.Proxies {
+	// Preserve all ProxySource entries without source (with connections)
+	existingConnectionsProxies := make([]config.ProxySource, 0)
+	for _, existingProxy := range parserConfig.ParserConfig.Proxies {
 		if existingProxy.Source != "" {
 			existingOutboundsMap[existingProxy.Source] = existingProxy.Outbounds
 			if existingProxy.TagPrefix != "" {
@@ -467,16 +469,9 @@ func ApplyURLToParserConfig(state *wizardstate.WizardState, input string) {
 			if existingProxy.TagPostfix != "" {
 				existingTagPostfixMap[existingProxy.Source] = existingProxy.TagPostfix
 			}
-		} else if i == 0 && len(existingProxy.Outbounds) > 0 {
-			// If first proxy had no source but had outbounds, preserve them
-			// This can be a case when there was only connections without source
-			existingOutboundsMap[""] = existingProxy.Outbounds
-			if existingProxy.TagPrefix != "" {
-				existingTagPrefixMap[""] = existingProxy.TagPrefix
-			}
-			if existingProxy.TagPostfix != "" {
-				existingTagPostfixMap[""] = existingProxy.TagPostfix
-			}
+		} else if len(existingProxy.Connections) > 0 {
+			// Preserve all ProxySource entries with connections but no source
+			existingConnectionsProxies = append(existingConnectionsProxies, existingProxy)
 		}
 	}
 
@@ -485,6 +480,18 @@ func ApplyURLToParserConfig(state *wizardstate.WizardState, input string) {
 
 	// Automatically add tag_prefix with sequential number only if there are multiple subscriptions
 	autoAddPrefix := len(subscriptions) > 1
+
+	// Helper function to restore tag_prefix and tag_postfix
+	restoreTagPrefixAndPostfix := func(proxySource *config.ProxySource, lookupKey string, logContext string) {
+		if existingTagPrefix, ok := existingTagPrefixMap[lookupKey]; ok {
+			proxySource.TagPrefix = existingTagPrefix
+			wizardstate.DebugLog("applyURLToParserConfig: Restored tag_prefix '%s' for %s", existingTagPrefix, logContext)
+		}
+		if existingTagPostfix, ok := existingTagPostfixMap[lookupKey]; ok {
+			proxySource.TagPostfix = existingTagPostfix
+			wizardstate.DebugLog("applyURLToParserConfig: Restored tag_postfix '%s' for %s", existingTagPostfix, logContext)
+		}
+	}
 
 	// Create separate ProxySource for each subscription
 	for idx, sub := range subscriptions {
@@ -496,35 +503,86 @@ func ApplyURLToParserConfig(state *wizardstate.WizardState, input string) {
 			proxySource.Outbounds = existingOutbounds
 			wizardstate.DebugLog("applyURLToParserConfig: Restored %d local outbounds for subscription: %s", len(existingOutbounds), sub)
 		}
-		// Restore tag_prefix if it was set for this source
-		if existingTagPrefix, ok := existingTagPrefixMap[sub]; ok {
-			proxySource.TagPrefix = existingTagPrefix
-			wizardstate.DebugLog("applyURLToParserConfig: Restored tag_prefix '%s' for subscription: %s", existingTagPrefix, sub)
-		} else if autoAddPrefix {
-			// Automatically add tag_prefix with sequential number for new subscriptions (only if multiple subscriptions)
+		// Restore tag_prefix and tag_postfix
+		restoreTagPrefixAndPostfix(&proxySource, sub, fmt.Sprintf("subscription: %s", sub))
+		// Automatically add tag_prefix if not restored and auto-add is enabled
+		if proxySource.TagPrefix == "" && autoAddPrefix {
 			proxySource.TagPrefix = GenerateTagPrefix(idx + 1)
 			wizardstate.DebugLog("applyURLToParserConfig: Added automatic tag_prefix '%s' for subscription: %s", proxySource.TagPrefix, sub)
-		}
-		// Restore tag_postfix if it was set for this source
-		if existingTagPostfix, ok := existingTagPostfixMap[sub]; ok {
-			proxySource.TagPostfix = existingTagPostfix
-			wizardstate.DebugLog("applyURLToParserConfig: Restored tag_postfix '%s' for subscription: %s", existingTagPostfix, sub)
 		}
 		newProxies = append(newProxies, proxySource)
 	}
 
-	// If there are direct links, create separate ProxySource for them
+	// Helper function to check if two connection arrays match (order-independent)
+	connectionsMatch := func(conn1, conn2 []string) bool {
+		if len(conn1) != len(conn2) {
+			return false
+		}
+		// Create maps for comparison
+		map1 := make(map[string]int)
+		map2 := make(map[string]int)
+		for _, c := range conn1 {
+			map1[strings.TrimSpace(c)]++
+		}
+		for _, c := range conn2 {
+			map2[strings.TrimSpace(c)]++
+		}
+		if len(map1) != len(map2) {
+			return false
+		}
+		for k, v := range map1 {
+			if map2[k] != v {
+				return false
+			}
+		}
+		return true
+	}
+
+	// If there are new direct links from input, try to match with existing or create new
 	if len(connections) > 0 {
-		proxySource := config.ProxySource{
-			Connections: connections,
+		// Try to match with existing connections proxy by comparing connections
+		matched := false
+		for _, existingConnectionsProxy := range existingConnectionsProxies {
+			if connectionsMatch(existingConnectionsProxy.Connections, connections) {
+				// Matched existing proxy - update connections but preserve all other properties
+				matchedProxy := config.ProxySource{
+					Connections: connections, // Update with potentially reordered connections
+					Outbounds:   existingConnectionsProxy.Outbounds,
+					TagPrefix:   existingConnectionsProxy.TagPrefix,
+					TagPostfix:  existingConnectionsProxy.TagPostfix,
+					TagMask:     existingConnectionsProxy.TagMask,
+					Skip:        existingConnectionsProxy.Skip,
+				}
+				newProxies = append(newProxies, matchedProxy)
+				matched = true
+				wizardstate.DebugLog("applyURLToParserConfig: Matched existing connections proxy, preserved tag_prefix '%s', tag_postfix '%s', tag_mask '%s'",
+					matchedProxy.TagPrefix, matchedProxy.TagPostfix, matchedProxy.TagMask)
+				break
+			}
 		}
-		// If first proxy had no source but had outbounds, restore them
-		if existingOutbounds, ok := existingOutboundsMap[""]; ok && len(newProxies) == 0 {
-			// If there were no subscriptions but there were connections with outbounds
-			proxySource.Outbounds = existingOutbounds
-			wizardstate.DebugLog("applyURLToParserConfig: Restored %d local outbounds for connections", len(existingOutbounds))
+		if !matched {
+			// New connections - add as new ProxySource
+			proxySource := config.ProxySource{
+				Connections: connections,
+			}
+			wizardstate.DebugLog("applyURLToParserConfig: Adding new ProxySource with %d connections", len(connections))
+			newProxies = append(newProxies, proxySource)
 		}
-		newProxies = append(newProxies, proxySource)
+		// Preserve all other existing ProxySource entries with connections (that weren't matched)
+		for _, existingConnectionsProxy := range existingConnectionsProxies {
+			if !connectionsMatch(existingConnectionsProxy.Connections, connections) {
+				newProxies = append(newProxies, existingConnectionsProxy)
+				wizardstate.DebugLog("applyURLToParserConfig: Preserved ProxySource with %d connections, tag_prefix '%s', tag_postfix '%s', tag_mask '%s'",
+					len(existingConnectionsProxy.Connections), existingConnectionsProxy.TagPrefix, existingConnectionsProxy.TagPostfix, existingConnectionsProxy.TagMask)
+			}
+		}
+	} else {
+		// No new connections from input - preserve all existing ProxySource entries with connections
+		for _, existingConnectionsProxy := range existingConnectionsProxies {
+			newProxies = append(newProxies, existingConnectionsProxy)
+			wizardstate.DebugLog("applyURLToParserConfig: Preserved ProxySource with %d connections, tag_prefix '%s', tag_postfix '%s', tag_mask '%s'",
+				len(existingConnectionsProxy.Connections), existingConnectionsProxy.TagPrefix, existingConnectionsProxy.TagPostfix, existingConnectionsProxy.TagMask)
+		}
 	}
 
 	// If there are no subscriptions or connections, create empty array
@@ -584,4 +642,3 @@ func SerializeParserConfig(parserConfig *config.ParserConfig) (string, error) {
 func GenerateTagPrefix(index int) string {
 	return fmt.Sprintf("%d:", index)
 }
-
