@@ -32,8 +32,29 @@ if [[ -z "${app_path}" ]]; then
 fi
 
 target="${INSTALL_DIR}/${APP_NAME}"
-rm -rf "$target"
+config_path="${target}/Contents/MacOS/bin/config.json"
+config_backup="${tmp}/config.json.backup"
+
+# Backup config if exists
+if [[ -d "$target" ]]; then
+  echo "Removing existing installation..."
+  if [[ -f "$config_path" ]]; then
+    echo "Backing up config.json..."
+    cp "$config_path" "$config_backup"
+  fi
+  rm -rf "$target"
+fi
+
+echo "Installing..."
 cp -R "$app_path" "$target"
+
+# Restore config if it was backed up
+if [[ -f "$config_backup" ]]; then
+  echo "Restoring config.json..."
+  mkdir -p "$(dirname "$config_path")"
+  cp "$config_backup" "$config_path"
+  echo "Config restored successfully"
+fi
 
 echo "Fixing macOS attributes and permissions..."
 xattr -cr "$target" || true
