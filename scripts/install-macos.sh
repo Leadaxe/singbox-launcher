@@ -39,8 +39,7 @@ echo "Fixing macOS attributes and permissions..."
 xattr -cr "$target" || true
 chmod +x "$target/$BIN_REL"
 
-echo "Launching..."
-open "$target"
-
 echo "Installed: $target"
+echo "Opening Finder..."
+open "$INSTALL_DIR"
 
