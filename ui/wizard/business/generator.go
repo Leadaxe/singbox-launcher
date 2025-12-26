@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -263,12 +264,52 @@ func MergeRouteSection(raw json.RawMessage, states []*wizardstate.SelectableRule
 }
 
 // cloneRule creates a deep copy of a rule from its raw data.
+// It normalizes process_name fields based on the platform (removes .exe on macOS/Linux).
 func cloneRule(rule wizardtemplate.TemplateSelectableRule) map[string]interface{} {
 	cloned := make(map[string]interface{}, len(rule.Raw))
 	for key, value := range rule.Raw {
-		cloned[key] = value
+		// Normalize process_name field for non-Windows platforms
+		if key == "process_name" && runtime.GOOS != "windows" {
+			normalized := normalizeProcessNames(value)
+			cloned[key] = normalized
+		} else {
+			cloned[key] = value
+		}
 	}
 	return cloned
+}
+
+// normalizeProcessNames removes .exe extensions from process names on non-Windows platforms.
+// It handles both single string values and arrays of strings.
+func normalizeProcessNames(value interface{}) interface{} {
+	switch v := value.(type) {
+	case []interface{}:
+		// Array of process names
+		normalized := make([]interface{}, 0, len(v))
+		for _, item := range v {
+			if str, ok := item.(string); ok {
+				normalizedName := strings.TrimSuffix(str, ".exe")
+				normalized = append(normalized, normalizedName)
+			} else {
+				normalized = append(normalized, item)
+			}
+		}
+		return normalized
+	case []string:
+		// Array of strings (direct type)
+		normalized := make([]string, 0, len(v))
+		for _, str := range v {
+			normalizedName := strings.TrimSuffix(str, ".exe")
+			normalized = append(normalized, normalizedName)
+		}
+		return normalized
+	case string:
+		// Single string value
+		return strings.TrimSuffix(v, ".exe")
+	default:
+		// Unknown type, return as-is
+		return value
+	}
 }
 
 // IndentMultiline indents each line of multiline text with the specified indent string.
