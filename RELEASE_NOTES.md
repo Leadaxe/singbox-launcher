@@ -7,6 +7,14 @@
 
 ### ✨ Новые функции
 
+#### Поддержка протокола SSH
+- **Добавлена поддержка протокола SSH**: Теперь можно использовать SSH-туннели через формат `ssh://`
+  - Поддерживается формат URI: `ssh://user:password@server:port#Tag`
+  - Поддержка приватных ключей через параметр `private_key_path`
+  - Поддержка host keys для проверки подлинности сервера
+  - Поддержка passphrase для приватных ключей
+  - Настраиваемая версия клиента SSH
+
 #### macOS Installation Script
 - **Добавлен скрипт установки для macOS**: Теперь можно установить приложение одной командой
   ```bash
@@ -16,72 +24,40 @@
 - Автоматически исправляет атрибуты quarantine и права доступа macOS
 - Устанавливает приложение в `~/Applications/Singbox-Launcher/`
 
-</details>
+### 🔧 Улучшения
 
-<details>
-<summary><b>🇬🇧 English Version</b></summary>
-
-### ✨ New Features
-
-#### macOS Installation Script
-- **Added installation script for macOS**: Now you can install the app with a single command
-  ```bash
-  curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- 0.6.2
-  ```
-- Script automatically downloads, extracts, installs, and launches the application
-- Automatically fixes macOS quarantine attributes and permissions
-- Installs to `~/Applications/Singbox-Launcher/`
-
-</details>
-
----
-
-См. [v0.6.1](#v061) для подробностей о предыдущем релизе.
-
-See [v0.6.1](#v061) for details about the previous release.
-
-## v0.6.1
-
-<details>
-<summary><b>🇷🇺 Русская версия / Russian Version</b></summary>
+#### Hysteria2
+- **Улучшена поддержка Hysteria2**: Добавлена поддержка короткого формата `hy2://` (официальная спецификация Hysteria 2)
+- **Обновлена документация**: Добавлена подробная документация по формату URI для всех протоколов
+  - Документированы все поддерживаемые параметры для каждого протокола
+  - Добавлены примеры для каждого формата протокола
+  - Обновлена документация Hysteria2 согласно официальной спецификации
+  - Добавлен параметр `pinSHA256` для Hysteria2
+  - Документирована поддержка формата multi-port
 
 ### 🐛 Исправления ошибок
 
-#### Clash API
-- **Исправлена проблема с перечитыванием конфигурации Clash API**: Теперь конфигурация API перечитывается из config.json при каждом запуске sing-box (Start), что позволяет подхватывать изменения, сделанные через визард
-- **Улучшены сообщения об ошибках подключения**: На Windows теперь показывается понятное сообщение с предложением подождать 15 секунд и попробовать снова при ошибках подключения к Clash API
-
-#### Технические улучшения
-- Добавлен метод `ReloadClashAPIConfig()` в `APIService` для перечитывания конфигурации из файла
-- Улучшена обработка ошибок подключения к Clash API с учетом платформы
-
-### ✨ Новые функции
-
-#### macOS Installation Script
-- **Добавлен скрипт установки для macOS**: Теперь можно установить приложение одной командой
-  ```bash
-  curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- 0.6.2
-  ```
-- Скрипт автоматически скачивает, распаковывает, устанавливает и запускает приложение
-- Автоматически исправляет атрибуты quarantine и права доступа macOS
-- Устанавливает приложение в `~/Applications/Singbox-Launcher/`
+#### Парсер подписок
+- **Исправлено сохранение всех ProxySource entries**: Теперь все записи с `connections` (без `source`) сохраняются, а не только первая
+- **Исправлено сохранение tag_prefix и tag_postfix**: Исправлена ошибка, при которой терялись `tag_prefix` и `tag_postfix` для ProxySource с `connections` при навигации между окнами визарда
+- **Исправлено сохранение плейсхолдеров**: Исправлена ошибка, при которой плейсхолдеры вроде `{$tag}`, `{$scheme}` в `tag_prefix`/`tag_postfix`/`tag_mask` повреждались при обновлении конфигурации
+- Добавлена логика сопоставления connections для обновления существующих записей вместо замены
+- Сохраняются все существующие connections при отсутствии новых connections из ввода
 
 </details>
 
 <details>
 <summary><b>🇬🇧 English Version</b></summary>
 
-### 🐛 Bug Fixes
-
-#### Clash API
-- **Fixed Clash API config reload issue**: API configuration is now reloaded from config.json on every sing-box start, allowing to pick up changes made via wizard
-- **Improved connection error messages**: On Windows, a clear message with suggestion to wait 15 seconds and try again is shown for Clash API connection errors
-
-#### Technical Improvements
-- Added `ReloadClashAPIConfig()` method to `APIService` for reloading configuration from file
-- Improved Clash API connection error handling with platform detection
-
 ### ✨ New Features
+
+#### SSH Protocol Support
+- **Added SSH protocol support**: Now you can use SSH tunnels via `ssh://` format
+  - Supports URI format: `ssh://user:password@server:port#Tag`
+  - Support for private keys via `private_key_path` parameter
+  - Support for host keys for server authentication
+  - Support for passphrase for private keys
+  - Configurable SSH client version
 
 #### macOS Installation Script
 - **Added installation script for macOS**: Now you can install the app with a single command
@@ -91,6 +67,26 @@ See [v0.6.1](#v061) for details about the previous release.
 - Script automatically downloads, extracts, installs, and launches the application
 - Automatically fixes macOS quarantine attributes and permissions
 - Installs to `~/Applications/Singbox-Launcher/`
+
+### 🔧 Improvements
+
+#### Hysteria2
+- **Improved Hysteria2 support**: Added support for short format `hy2://` (official Hysteria 2 specification)
+- **Updated documentation**: Added detailed URI format documentation for all protocols
+  - Documented all supported parameters for each protocol
+  - Added examples for each protocol format
+  - Updated Hysteria2 documentation according to official specification
+  - Added `pinSHA256` parameter for Hysteria2
+  - Documented multi-port format support
+
+### 🐛 Bug Fixes
+
+#### Subscription Parser
+- **Fixed preservation of all ProxySource entries**: All entries with `connections` (without `source`) are now preserved, not just the first one
+- **Fixed preservation of tag_prefix and tag_postfix**: Fixed bug where `tag_prefix` and `tag_postfix` were lost for ProxySource with `connections` when navigating between wizard windows
+- **Fixed placeholder preservation**: Fixed bug where placeholders like `{$tag}`, `{$scheme}` in `tag_prefix`/`tag_postfix`/`tag_mask` were corrupted during configuration update
+- Added connection matching logic to update existing entries instead of replacing
+- Preserve all existing connections when no new connections from input
 
 </details>
 
