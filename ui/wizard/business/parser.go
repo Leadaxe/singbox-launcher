@@ -486,6 +486,18 @@ func ApplyURLToParserConfig(state *wizardstate.WizardState, input string) {
 	// Automatically add tag_prefix with sequential number only if there are multiple subscriptions
 	autoAddPrefix := len(subscriptions) > 1
 
+	// Helper function to restore tag_prefix and tag_postfix
+	restoreTagPrefixAndPostfix := func(proxySource *config.ProxySource, lookupKey string, logContext string) {
+		if existingTagPrefix, ok := existingTagPrefixMap[lookupKey]; ok {
+			proxySource.TagPrefix = existingTagPrefix
+			wizardstate.DebugLog("applyURLToParserConfig: Restored tag_prefix '%s' for %s", existingTagPrefix, logContext)
+		}
+		if existingTagPostfix, ok := existingTagPostfixMap[lookupKey]; ok {
+			proxySource.TagPostfix = existingTagPostfix
+			wizardstate.DebugLog("applyURLToParserConfig: Restored tag_postfix '%s' for %s", existingTagPostfix, logContext)
+		}
+	}
+
 	// Create separate ProxySource for each subscription
 	for idx, sub := range subscriptions {
 		proxySource := config.ProxySource{
@@ -496,19 +508,12 @@ func ApplyURLToParserConfig(state *wizardstate.WizardState, input string) {
 			proxySource.Outbounds = existingOutbounds
 			wizardstate.DebugLog("applyURLToParserConfig: Restored %d local outbounds for subscription: %s", len(existingOutbounds), sub)
 		}
-		// Restore tag_prefix if it was set for this source
-		if existingTagPrefix, ok := existingTagPrefixMap[sub]; ok {
-			proxySource.TagPrefix = existingTagPrefix
-			wizardstate.DebugLog("applyURLToParserConfig: Restored tag_prefix '%s' for subscription: %s", existingTagPrefix, sub)
-		} else if autoAddPrefix {
-			// Automatically add tag_prefix with sequential number for new subscriptions (only if multiple subscriptions)
+		// Restore tag_prefix and tag_postfix
+		restoreTagPrefixAndPostfix(&proxySource, sub, fmt.Sprintf("subscription: %s", sub))
+		// Automatically add tag_prefix if not restored and auto-add is enabled
+		if proxySource.TagPrefix == "" && autoAddPrefix {
 			proxySource.TagPrefix = GenerateTagPrefix(idx + 1)
 			wizardstate.DebugLog("applyURLToParserConfig: Added automatic tag_prefix '%s' for subscription: %s", proxySource.TagPrefix, sub)
-		}
-		// Restore tag_postfix if it was set for this source
-		if existingTagPostfix, ok := existingTagPostfixMap[sub]; ok {
-			proxySource.TagPostfix = existingTagPostfix
-			wizardstate.DebugLog("applyURLToParserConfig: Restored tag_postfix '%s' for subscription: %s", existingTagPostfix, sub)
 		}
 		newProxies = append(newProxies, proxySource)
 	}
@@ -524,6 +529,8 @@ func ApplyURLToParserConfig(state *wizardstate.WizardState, input string) {
 			proxySource.Outbounds = existingOutbounds
 			wizardstate.DebugLog("applyURLToParserConfig: Restored %d local outbounds for connections", len(existingOutbounds))
 		}
+		// Restore tag_prefix and tag_postfix
+		restoreTagPrefixAndPostfix(&proxySource, "", "connections")
 		newProxies = append(newProxies, proxySource)
 	}
 
