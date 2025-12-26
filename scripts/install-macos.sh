@@ -3,8 +3,8 @@ set -euo pipefail
 
 VERSION="${1:-0.6.2}"
 REPO="Leadaxe/singbox-launcher"
-ASSET="singbox-launcher-v${VERSION}-macos.zip"
-URL="https://github.com/${REPO}/releases/download/v${VERSION}/${ASSET}"
+ASSET="singbox-launcher-${VERSION}-macos.zip"
+URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}"
 
 INSTALL_DIR="${HOME}/Applications/Singbox-Launcher"
 APP_NAME="singbox-launcher.app"
