@@ -1,5 +1,45 @@
 # Release Notes
 
+## v0.6.2
+
+<details>
+<summary><b>🇷🇺 Русская версия / Russian Version</b></summary>
+
+### ✨ Новые функции
+
+#### macOS Installation Script
+- **Добавлен скрипт установки для macOS**: Теперь можно установить приложение одной командой
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- 0.6.2
+  ```
+- Скрипт автоматически скачивает, распаковывает, устанавливает и запускает приложение
+- Автоматически исправляет атрибуты quarantine и права доступа macOS
+- Устанавливает приложение в `~/Applications/Singbox-Launcher/`
+
+</details>
+
+<details>
+<summary><b>🇬🇧 English Version</b></summary>
+
+### ✨ New Features
+
+#### macOS Installation Script
+- **Added installation script for macOS**: Now you can install the app with a single command
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- 0.6.2
+  ```
+- Script automatically downloads, extracts, installs, and launches the application
+- Automatically fixes macOS quarantine attributes and permissions
+- Installs to `~/Applications/Singbox-Launcher/`
+
+</details>
+
+---
+
+См. [v0.6.1](#v061) для подробностей о предыдущем релизе.
+
+See [v0.6.1](#v061) for details about the previous release.
+
 ## v0.6.1
 
 <details>
@@ -20,7 +60,7 @@
 #### macOS Installation Script
 - **Добавлен скрипт установки для macOS**: Теперь можно установить приложение одной командой
   ```bash
-  curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- 0.6.1
+  curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- 0.6.2
   ```
 - Скрипт автоматически скачивает, распаковывает, устанавливает и запускает приложение
 - Автоматически исправляет атрибуты quarantine и права доступа macOS
@@ -46,7 +86,7 @@
 #### macOS Installation Script
 - **Added installation script for macOS**: Now you can install the app with a single command
   ```bash
-  curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- 0.6.1
+  curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- 0.6.2
   ```
 - Script automatically downloads, extracts, installs, and launches the application
 - Automatically fixes macOS quarantine attributes and permissions
