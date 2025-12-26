@@ -151,10 +151,10 @@
 Самый простой способ - использовать скрипт установки:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- 0.6.1
+curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- 0.6.2
 ```
 
-Замените `0.6.1` на нужную версию (или оставьте пустым для версии по умолчанию).
+Замените `0.6.2` на нужную версию (или оставьте пустым для версии по умолчанию).
 
 Скрипт:
 - Скачает архив релиза

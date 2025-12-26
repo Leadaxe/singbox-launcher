@@ -144,10 +144,10 @@ There are two ways to install on macOS:
 The easiest way to install is using the installation script:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- 0.6.1
+curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- 0.6.2
 ```
 
-Replace `0.6.1` with the version you want to install (or omit for the default version).
+Replace `0.6.2` with the version you want to install (or omit for the default version).
 
 The script will:
 - Download the release archive
