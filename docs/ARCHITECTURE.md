@@ -47,8 +47,6 @@ singbox-launcher/
 │   │   │   - NewConfigService()                    # Создание сервиса
 │   │   │   - RunParserProcess()                    # Запуск парсинга
 │   │   │   - UpdateConfigFromSubscriptions()        # Обновление из подписок
-│   │   │   - GenerateSelector()                    # Генерация селектора
-│   │   │   - GenerateNodeJSON()                    # Генерация JSON узла
 │   │   │
 │   ├── process_service.go    # Сервис управления процессом sing-box
 │   │   │   - NewProcessService()                  # Создание сервиса
@@ -126,10 +124,12 @@ singbox-launcher/
 │       │   │   - cleanJSONC()                       # Очистка JSONC
 │       │   │
 │       ├── generator.go        # Генерация конфигурации
-│       │   │   - GenerateNodeJSON()                     # Генерация JSON узла
-│       │   │   - GenerateSelector()                     # Генерация селектора
-│       │   │   - GenerateOutboundsFromParserConfig()    # Генерация outbounds
-│       │   │   - OutboundGenerationResult struct        # Результат генерации
+│       │   │   - GenerateNodeJSON()                          # Генерация JSON узла
+│       │   │   - GenerateSelector()                          # Генерация селектора (legacy)
+│       │   │   - GenerateSelectorWithFilteredAddOutbounds()  # Генерация селектора с фильтрацией
+│       │   │   - GenerateOutboundsFromParserConfig()         # Генерация outbounds (трехпроходный алгоритм)
+│       │   │   - OutboundGenerationResult struct             # Результат генерации
+│       │   │   - outboundInfo struct                         # Информация о динамическом селекторе
 │       │   │
 │       ├── updater.go          # Обновление конфигурации
 │       │   │   - UpdateConfigFromSubscriptions()        # Обновление из подписок
@@ -374,11 +374,17 @@ singbox-launcher/
 - `cleanJSONC()` - очистка JSONC от комментариев
 
 **generator.go**
-- `GenerateNodeJSON()` - генерация JSON узла из URI
-- `GenerateSelector()` - генерация селектора из узлов
-- `GenerateOutboundsFromParserConfig()` - генерация outbounds из конфигурации
-- `OutboundGenerationResult` struct - результат генерации
+- `GenerateNodeJSON()` - генерация JSON узла из ParsedNode (vless, vmess, trojan, shadowsocks, hysteria2)
+- `GenerateSelector()` - генерация селектора из узлов (legacy, для обратной совместимости)
+- `GenerateSelectorWithFilteredAddOutbounds()` - генерация селектора с фильтрацией addOutbounds (новый метод)
+- `GenerateOutboundsFromParserConfig()` - генерация outbounds из конфигурации (трехпроходный алгоритм)
+  - Pass 1: Создание outboundsInfo и подсчет узлов
+  - Pass 2: Топологическая сортировка зависимостей и расчет валидности
+  - Pass 3: Генерация JSON только для валидных селекторов
+- `OutboundGenerationResult` struct - результат генерации (статистика и JSON строки)
+- `outboundInfo` struct - информация о динамическом селекторе (для трехпроходного алгоритма)
 - `filterNodesForSelector()` - фильтрация узлов для селектора
+- `matchesFilter()`, `getNodeValue()`, `matchesPattern()` - вспомогательные функции фильтрации
 
 **updater.go**
 - `UpdateConfigFromSubscriptions()` - обновление config.json из подписок
@@ -433,11 +439,10 @@ singbox-launcher/
 - `RunParserProcess()` - запуск процесса парсинга конфигурации
 - `UpdateConfigFromSubscriptions()` - обновление конфигурации из подписок
 
-**Генерация конфигурации:**
-- `ProcessProxySource()` - обработка источника прокси
-- `GenerateSelector()` - генерация селектора
+**Примечание:** Генерация конфигурации выполняется функциями из пакета `core/config/generator.go`:
+- `GenerateOutboundsFromParserConfig()` - генерация outbounds из конфигурации (трехпроходный алгоритм)
+- `GenerateSelectorWithFilteredAddOutbounds()` - генерация селектора с фильтрацией addOutbounds
 - `GenerateNodeJSON()` - генерация JSON узла
-- `GenerateOutboundsFromParserConfig()` - генерация outbounds из конфигурации
 
 ### UI Layer (Пользовательский интерфейс)
 
@@ -698,8 +703,9 @@ singbox-launcher/
 │  │                                                      │   │
 │  │  generator.go:                                       │   │
 │  │  • Генерация JSON узлов                              │   │
-│  │  • Генерация селекторов                              │   │
-│  │  • Генерация outbounds                               │   │
+│  │  • Генерация селекторов (с фильтрацией addOutbounds) │   │
+│  │  • Генерация outbounds (трехпроходный алгоритм)      │   │
+│  │  • Топологическая сортировка зависимостей            │   │
 │  │                                                      │   │
 │  │  updater.go:                                         │   │
 │  │  • Обновление config.json из подписок                │   │
