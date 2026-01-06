@@ -1,3 +1,19 @@
+// Package utils содержит утилиты и константы для визарда конфигурации.
+//
+// Файл comparison.go содержит функции для сравнения структур данных:
+//   - OutboundsMatchStrict - строгое сравнение двух OutboundConfig (tag, type, comment, wizard, JSON)
+//   - StringSlicesEqual - сравнение двух слайсов строк
+//   - MapsEqual - сравнение двух map[string]interface{}
+//   - ValuesEqual - сравнение двух interface{} значений (поддержка разных типов)
+//
+// Эти функции используются в бизнес-логике для проверки эквивалентности конфигураций,
+// например, при сравнении outbounds из template и загруженной конфигурации.
+//
+// Функции сравнения - это утилиты, отдельные от валидации (validator.go).
+// Они работают только с данными, без зависимостей от GUI.
+//
+// Используется в:
+//   - business/loader.go - OutboundsMatchStrict используется при EnsureRequiredOutbounds для проверки существующих outbounds
 package utils
 
 import (

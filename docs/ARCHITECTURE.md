@@ -208,17 +208,63 @@ singbox-launcher/
 │       ├── wizard.go           # Точка входа (ShowConfigWizard)
 │       │   │   - ShowConfigWizard()                     # Точка входа визарда
 │       │   │
-│       ├── state/              # Управление состоянием визарда
-│       │   ├── state.go        # WizardState, SelectableRuleState
-│       │   │   │   - WizardState struct                 # Состояние визарда
-│       │   │   │   - SelectableRuleState struct         # Состояние правила
-│       │   │   │   - ContainsString()                   # Проверка строки
-│       │   │   │   - EnsureDefaultOutbound()            # Установка дефолтного outbound
-│       │   │   │   - GetEffectiveOutbound()             # Получение эффективного outbound
+│       ├── models/             # Модели данных визарда (без GUI зависимостей)
+│       │   ├── wizard_model.go # WizardModel
+│       │   │   │   - WizardModel struct                 # Модель данных визарда
+│       │   │   │   - NewWizardModel()                   # Создание модели
 │       │   │   │
-│       │   └── helpers.go      # Вспомогательные функции
-│       │       │   - SafeFyneDo()                            # Безопасный вызов Fyne
-│       │       │   - DebugLog(), InfoLog(), ErrorLog()       # Логирование
+│       │   ├── rule_state.go   # RuleState
+│       │   │   │   - RuleState struct                   # Состояние правила
+│       │   │   │
+│       │   ├── rule_state_utils.go # Утилиты для RuleState
+│       │   │   │   - GetEffectiveOutbound()             # Получение эффективного outbound
+│       │   │   │   - EnsureDefaultOutbound()            # Установка дефолтного outbound
+│       │   │   │
+│       │   └── constants.go    # Константы
+│       │       │   - DefaultOutboundTag                 # Дефолтный outbound
+│       │       │   - RejectActionName                   # Действие reject
+│       │       │
+│       ├── presentation/       # Слой представления (MVP Presenter)
+│       │   ├── presenter.go    # WizardPresenter
+│       │   │   │   - WizardPresenter struct             # Презентер визарда
+│       │   │   │   - NewWizardPresenter()               # Создание презентера
+│       │   │   │
+│       │   ├── gui_state.go    # GUIState
+│       │   │   │   - GUIState struct                    # Состояние GUI (только виджеты)
+│       │   │   │   - RuleWidget struct                  # Виджет правила
+│       │   │   │
+│       │   ├── presenter_methods.go # Методы управления UI
+│       │   │   │   - SetCheckURLState()                 # Состояние кнопки Check
+│       │   │   │   - SetSaveState()                     # Состояние кнопки Save
+│       │   │   │   - RefreshOutboundOptions()           # Обновление опций outbound
+│       │   │   │   - InitializeTemplateState()          # Инициализация шаблона
+│       │   │   │   - SetTemplatePreviewText()           # Установка preview
+│       │   │   │
+│       │   ├── presenter_sync.go # Синхронизация модели и GUI
+│       │   │   │   - SyncModelToGUI()                   # Синхронизация модели → GUI
+│       │   │   │   - SyncGUIToModel()                   # Синхронизация GUI → модели
+│       │   │   │
+│       │   ├── presenter_async.go # Асинхронные операции
+│       │   │   │   - TriggerParseForPreview()           # Парсинг для preview
+│       │   │   │   - UpdateTemplatePreviewAsync()       # Обновление preview
+│       │   │   │
+│       │   ├── presenter_save.go # Сохранение конфигурации
+│       │   │   │   - SaveConfig()                       # Сохранение конфигурации
+│       │   │   │
+│       │   ├── presenter_rules.go # Работа с правилами
+│       │   │   │   - RefreshRulesTab()                  # Обновление таба правил
+│       │   │   │   - OpenRuleDialogs()                  # Открытые диалоги
+│       │   │   │
+│       │   ├── presenter_ui_updater.go # Реализация UIUpdater
+│       │   │   │   - UpdateURLStatus()                  # Обновление статуса URL
+│       │   │   │   - UpdateCheckURLProgress()           # Прогресс проверки URL
+│       │   │   │   - UpdateOutboundsPreview()           # Preview outbounds
+│       │   │   │   - UpdateParserConfig()               # Обновление ParserConfig
+│       │   │   │   - UpdateTemplatePreview()            # Обновление preview
+│       │   │   │   - UpdateSaveProgress()               # Прогресс сохранения
+│       │   │   │
+│       │   └── utils.go        # Утилиты
+│       │       │   - SafeFyneDo()                       # Безопасный вызов Fyne
 │       │       │
 │       ├── tabs/               # UI компоненты вкладок
 │       │   ├── source_tab.go   # Вкладка Sources & ParserConfig
@@ -239,12 +285,11 @@ singbox-launcher/
 │       │       │   - extractStringArray()                    # Извлечение массива строк
 │       │       │   - parseLines()                            # Парсинг строк
 │       │       │
-│       ├── business/           # Бизнес-логика
+│       ├── business/           # Бизнес-логика (без GUI зависимостей)
 │       │   ├── parser.go       # Парсинг URL и конфигурации
 │       │   │   │   - ParseAndPreview()                       # Парсинг и превью
 │       │   │   │   - CheckURL()                              # Проверка URL
 │       │   │   │   - ApplyURLToParserConfig()                # Применение URL
-│       │   │   │   - SetPreviewText()                         # Установка текста превью
 │       │   │   │
 │       │   ├── generator.go    # Генерация конфигурации
 │       │   │   │   - BuildTemplateConfig()                   # Построение конфигурации
@@ -257,10 +302,31 @@ singbox-launcher/
 │       │   │   │   - ValidateURI()                             # Валидация URI
 │       │   │   │   - ValidateJSONSize()                        # Валидация размера JSON
 │       │   │   │
-│       │   └── loader.go       # Загрузка и сохранение
-│       │       │   - LoadConfigFromFile()                      # Загрузка из файла
-│       │       │   - SerializeParserConfig()                   # Сериализация конфигурации
-│       │       │   - EnsureRequiredOutbounds()                 # Обеспечение outbounds
+│       │   ├── loader.go       # Загрузка конфигурации
+│       │   │   │   - LoadConfigFromFile()                      # Загрузка из файла
+│       │   │   │   - EnsureRequiredOutbounds()                 # Обеспечение outbounds
+│       │   │   │   - CloneOutbound()                           # Клонирование outbound
+│       │   │   │
+│       │   ├── saver.go        # Сохранение конфигурации
+│       │   │   │   - SaveConfigWithBackup()                    # Сохранение с бэкапом
+│       │   │   │   - NextBackupPath()                          # Путь для бэкапа
+│       │   │   │   - FileServiceAdapter                        # Адаптер FileService
+│       │   │   │
+│       │   ├── outbound.go     # Работа с outbounds
+│       │   │   │   - GetAvailableOutbounds()                   # Получение доступных outbounds
+│       │   │   │   - EnsureDefaultAvailableOutbounds()         # Обеспечение дефолтных
+│       │   │   │   - EnsureFinalSelected()                     # Обеспечение выбранного final
+│       │   │   │
+│       │   ├── ui_updater.go   # Интерфейс UIUpdater
+│       │   │   │   - UIUpdater interface                       # Интерфейс обновления GUI
+│       │   │   │
+│       │   ├── config_service.go # Адаптер ConfigService
+│       │   │   │   - ConfigService interface                   # Интерфейс ConfigService
+│       │   │   │   - ConfigServiceAdapter                      # Адаптер для core.ConfigService
+│       │   │   │
+│       │   └── template_loader.go # Адаптер TemplateLoader
+│       │       │   - TemplateLoader interface                  # Интерфейс TemplateLoader
+│       │       │   - DefaultTemplateLoader                     # Реализация по умолчанию
 │       │       │
 │       ├── template/            # Работа с шаблонами
 │       │   └── loader.go        # Загрузка шаблонов
@@ -474,23 +540,59 @@ singbox-launcher/
 
 #### Wizard (`ui/wizard/`)
 
+Визард следует архитектуре MVP (Model-View-Presenter) с четким разделением ответственности:
+- **Model** (`models/`) - чистые бизнес-данные без GUI зависимостей
+- **View** (`tabs/`, `dialogs/`, `GUIState`) - только GUI виджеты и их компоновка
+- **Presenter** (`presentation/`) - связывает модель и представление, координирует бизнес-логику
+
 **wizard.go**
 - `ShowConfigWizard()` - точка входа, создание окна визарда
-- Инициализация визарда
-- Координация шагов и навигация
+- Создание модели (`WizardModel`), GUI-состояния (`GUIState`) и презентера (`WizardPresenter`)
+- Инициализация табов и координация шагов
+- Настройка обработчиков событий и навигация
 
-**state/** - Управление состоянием
-- `state.go`:
-  - `WizardState` struct - состояние визарда
-  - `SelectableRuleState` struct - состояние правила
-  - Константы: `defaultOutboundTag`, `rejectActionName`
-  - `ContainsString()` - проверка наличия строки в слайсе
-  - `EnsureDefaultAvailableOutbounds()` - установка дефолтных outbounds
+**models/** - Модели данных (без GUI зависимостей)
+- `wizard_model.go`:
+  - `WizardModel` struct - модель данных визарда (ParserConfig, SourceURLs, GeneratedOutbounds, TemplateData, Rules и т.д.)
+  - `NewWizardModel()` - создание новой модели
+- `rule_state.go`:
+  - `RuleState` struct - состояние правила маршрутизации (Rule, Enabled, SelectedOutbound)
+- `rule_state_utils.go`:
+  - `GetEffectiveOutbound()` - получение эффективного outbound для правила
   - `EnsureDefaultOutbound()` - установка дефолтного outbound
-  - `GetEffectiveOutbound()` - получение эффективного outbound
-- `helpers.go`:
-  - `SafeFyneDo()` - безопасный вызов Fyne функций
-  - `DebugLog()`, `InfoLog()`, `ErrorLog()` - логирование
+- `constants.go`:
+  - `DefaultOutboundTag`, `RejectActionName`, `RejectActionMethod` - константы для правил
+
+**presentation/** - Слой представления (MVP Presenter)
+- `presenter.go`:
+  - `WizardPresenter` struct - презентер, связывающий модель, GUI и бизнес-логику
+  - `NewWizardPresenter()` - создание презентера
+  - Методы доступа: `Model()`, `GUIState()`, `ConfigServiceAdapter()`, `Controller()`
+- `gui_state.go`:
+  - `GUIState` struct - состояние GUI (только Fyne виджеты: Entry, Label, Button, Select и т.д.)
+  - `RuleWidget` struct - связь между виджетом Select и правилом из модели
+- `presenter_methods.go`:
+  - `SetCheckURLState()` - управление состоянием кнопки Check и прогресс-бара
+  - `SetSaveState()` - управление состоянием кнопки Save и прогресс-бара
+  - `RefreshOutboundOptions()` - обновление опций outbound для правил
+  - `InitializeTemplateState()` - инициализация состояния шаблона
+  - `SetTemplatePreviewText()` - установка текста preview
+- `presenter_sync.go`:
+  - `SyncModelToGUI()` - синхронизация данных из модели в GUI
+  - `SyncGUIToModel()` - синхронизация данных из GUI в модель
+- `presenter_async.go`:
+  - `TriggerParseForPreview()` - запуск парсинга конфигурации для preview асинхронно
+  - `UpdateTemplatePreviewAsync()` - обновление preview шаблона асинхронно
+- `presenter_save.go`:
+  - `SaveConfig()` - сохранение конфигурации с прогресс-баром и проверками
+- `presenter_rules.go`:
+  - `RefreshRulesTab()` - обновление содержимого таба Rules
+  - `OpenRuleDialogs()` - возврат карты открытых диалогов правил
+- `presenter_ui_updater.go`:
+  - Реализация интерфейса `UIUpdater` для обновления GUI из бизнес-логики
+  - Методы: `UpdateURLStatus()`, `UpdateCheckURLProgress()`, `UpdateOutboundsPreview()`, `UpdateParserConfig()`, `UpdateTemplatePreview()`, `UpdateSaveProgress()`
+- `utils.go`:
+  - `SafeFyneDo()` - безопасный вызов Fyne функций из других горутин
 
 **tabs/** - UI вкладок
 - `source_tab.go`:
@@ -511,43 +613,52 @@ singbox-launcher/
   - `extractStringArray()` - извлечение массива строк
   - `parseLines()` - парсинг строк
 
-**business/** - Бизнес-логика
+**business/** - Бизнес-логика (без GUI зависимостей)
 - `parser.go`:
-  - `ParseAndPreview()` - парсинг URL и превью конфигурации
-  - `CheckURL()` - проверка URL
-  - `ApplyURLToParserConfig()` - применение URL к конфигурации
-  - `SetPreviewText()` - установка текста превью
-  - `SerializeParserConfig()` - сериализация конфигурации
-  - `GenerateTagPrefix()` - генерация префикса тега
+  - `ParseAndPreview()` - парсинг URL и генерация outbounds через ConfigService
+  - `CheckURL()` - проверка URL подписки или прямой ссылки
+  - `ApplyURLToParserConfig()` - применение URL к ParserConfig
+  - Все функции работают с `WizardModel` и используют `UIUpdater` для обновления GUI
 - `generator.go`:
-  - `BuildTemplateConfig()` - построение конфигурации из шаблона
-  - `BuildParserOutboundsBlock()` - построение блока outbounds
-  - `MergeRouteSection()` - объединение секции route
-  - `cloneRule()` - клонирование правила
-  - `getEffectiveOutbound()` - получение эффективного outbound
-  - `IndentMultiline()` - форматирование многострочного текста
-  - `FormatSectionJSON()` - форматирование JSON секции
+  - `BuildTemplateConfig()` - построение финальной конфигурации из шаблона и модели
+  - `BuildParserOutboundsBlock()` - формирование блока outbounds из сгенерированных outbounds
+  - `MergeRouteSection()` - объединение правил маршрутизации из шаблона и пользовательских правил
+  - `FormatSectionJSON()`, `IndentMultiline()` - вспомогательные функции форматирования JSON
 - `validator.go`:
-  - `ValidateParserConfig()` - валидация конфигурации парсера
-  - `ValidateURL()` - валидация URL
-  - `ValidateURI()` - валидация URI
-  - `ValidateOutbound()` - валидация outbound
-  - `ValidateRule()` - валидация правила
-  - `ValidateJSONSize()` - валидация размера JSON
-  - `ValidateJSON()` - валидация JSON
-  - `ValidateHTTPResponseSize()` - валидация размера HTTP ответа
+  - `ValidateParserConfig()` - валидация структуры и содержимого ParserConfig
+  - `ValidateURL()` - валидация URL подписок (формат, схема, хост)
+  - `ValidateURI()` - валидация URI для прямых ссылок (vless://, vmess:// и т.д.)
+  - `ValidateOutbound()`, `ValidateRule()` - валидация outbound и правил
+  - `ValidateJSON()`, `ValidateJSONSize()`, `ValidateHTTPResponseSize()` - валидация JSON и размеров
 - `loader.go`:
-  - `LoadConfigFromFile()` - загрузка конфигурации из файла
-  - `EnsureRequiredOutbounds()` - обеспечение необходимых outbounds
-  - `CloneOutbound()` - клонирование outbound
-  - `SerializeParserConfig()` - сериализация конфигурации
+  - `LoadConfigFromFile()` - загрузка ParserConfig из config.json (приоритет) или template (fallback)
+  - `EnsureRequiredOutbounds()` - обеспечение наличия требуемых outbounds из template
+  - `CloneOutbound()` - создание глубокой копии OutboundConfig
+- `saver.go`:
+  - `SaveConfigWithBackup()` - сохранение конфигурации с созданием бэкапа и генерацией secret для Clash API
+  - `NextBackupPath()` - генерация пути для следующего бэкапа
+  - `FileServiceAdapter` - адаптер для services.FileService
+- `outbound.go`:
+  - `GetAvailableOutbounds()` - получение списка доступных outbound тегов из модели
+  - `EnsureDefaultAvailableOutbounds()` - обеспечение наличия обязательных outbounds (direct-out, reject, drop)
+  - `EnsureFinalSelected()` - обеспечение выбранного final outbound в модели
+- `ui_updater.go`:
+  - `UIUpdater` interface - интерфейс для обновления GUI из бизнес-логики (реализуется в презентере)
+- `config_service.go`:
+  - `ConfigService` interface - интерфейс для генерации outbounds из ParserConfig
+  - `ConfigServiceAdapter` - адаптер для core.ConfigService
+- `template_loader.go`:
+  - `TemplateLoader` interface - интерфейс для загрузки TemplateData
+  - `DefaultTemplateLoader` - реализация по умолчанию
 
-**template/** - Шаблоны
+**template/** - Работа с шаблонами конфигурации
 - `loader.go`:
-  - `LoadTemplateData()` - загрузка данных шаблона
-  - `GetTemplateURL()` - получение URL шаблона
-  - `TemplateData` struct - структура данных шаблона
-  - `TemplateSelectableRule` struct - правило из шаблона
+  - `LoadTemplateData()` - загрузка шаблона из файла и парсинг его частей
+  - `GetTemplateFileName()` - возврат имени файла шаблона для текущей платформы
+  - `GetTemplateURL()` - возврат URL для загрузки шаблона с GitHub
+  - `TemplateData` struct - структура данных шаблона (ParserConfig, секции, правила, defaultFinal)
+  - `TemplateSelectableRule` struct - структура правила, которое может быть выбрано в визарде
+  - Извлечение специальных блоков: @ParserConfig, @SelectableRule, @PARSER_OUTBOUNDS_BLOCK
 
 **utils/** - Утилиты
 - `comparison.go`:
@@ -742,34 +853,49 @@ singbox-launcher/
 │  └──────────────────────────────────────────────────────┘   │
 │                                                             │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │  Wizard Package [ui/wizard/]                         │   │
+│  │  Wizard Package [ui/wizard/] (MVP Architecture)      │   │
 │  │                                                      │   │
 │  │  wizard.go:                                          │   │
 │  │  • Координация шагов визарда                         │   │
-│  │  • Инициализация визарда                             │   │
+│  │  • Создание Model, GUIState и Presenter              │   │
+│  │  • Инициализация табов                               │   │
 │  │                                                      │   │
-│  │  state/:                                             │   │
-│  │  • Управление состоянием визарда                     │   │
-│  │  • WizardState, SelectableRuleState                  │   │
+│  │  models/:                                            │   │
+│  │  • WizardModel - чистые бизнес-данные                │   │
+│  │  • RuleState - состояние правил маршрутизации        │   │
+│  │  • Константы для правил и outbounds                  │   │
 │  │                                                      │   │
-│  │  tabs/:                                              │   │
-│  │  • UI компоненты вкладок                             │   │
-│  │  • Source, Rules, Preview                            │   │
+│  │  presentation/:                                      │   │
+│  │  • WizardPresenter - связывает модель и GUI          │   │
+│  │  • GUIState - только Fyne виджеты                    │   │
+│  │  • Синхронизация данных (Model ↔ GUI)                │   │
+│  │  • Асинхронные операции (парсинг, preview)           │   │
+│  │  • Сохранение конфигурации                           │   │
+│  │  • Реализация UIUpdater для бизнес-логики            │   │
 │  │                                                      │   │
 │  │  business/:                                          │   │
-│  │  • Парсинг URL и конфигурации                        │   │
-│  │  • Генерация конфигурации                            │   │
-│  │  • Валидация данных                                  │   │
-│  │  • Загрузка и сохранение                             │   │
+│  │  • Парсинг URL и конфигурации (parser.go)            │   │
+│  │  • Генерация конфигурации (generator.go)             │   │
+│  │  • Валидация данных (validator.go)                   │   │
+│  │  • Загрузка конфигурации (loader.go)                 │   │
+│  │  • Сохранение конфигурации (saver.go)                │   │
+│  │  • Работа с outbounds (outbound.go)                  │   │
+│  │  • Интерфейсы: UIUpdater, ConfigService, TemplateLoader│ │
 │  │                                                      │   │
-│  │  template/:                                          │   │
-│  │  • Загрузка шаблонов                                 │   │
+│  │  tabs/:                                              │   │
+│  │  • UI компоненты вкладок (Source, Rules, Preview)    │   │
+│  │  • Все взаимодействие через Presenter                │   │
 │  │                                                      │   │
 │  │  dialogs/:                                           │   │
-│  │  • Диалоги визарда                                   │   │
+│  │  • Диалоги визарда (добавление/редактирование правил)│   │
+│  │  • Взаимодействие через Presenter                    │   │
+│  │                                                      │   │
+│  │  template/:                                          │   │
+│  │  • Загрузка и парсинг шаблонов конфигурации          │   │
+│  │  • Извлечение @ParserConfig, @SelectableRule блоков  │   │
 │  │                                                      │   │
 │  │  utils/:                                             │   │
-│  │  • Утилиты и константы                               │   │
+│  │  • Утилиты и константы (сравнение, лимиты, таймауты) │   │
 │  └──────────────────────────────────────────────────────┘   │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
@@ -807,14 +933,21 @@ UI (core_dashboard_tab.go)
 ```
 UI (core_dashboard_tab.go)
   └─> wizard.ShowConfigWizard()
-      ├─> wizard/tabs/source_tab.go: createSourceTab()
-      ├─> wizard/tabs/rules_tab.go: createTemplateTab()
-      ├─> wizard/tabs/preview_tab.go: createPreviewTab()
+      ├─> wizard/models: NewWizardModel()
+      ├─> wizard/presentation: NewGUIState(), NewWizardPresenter()
+      ├─> wizard/template/loader.go: LoadTemplateData()
+      ├─> wizard/tabs/source_tab.go: CreateSourceTab(presenter)
+      ├─> wizard/tabs/rules_tab.go: CreateRulesTab(presenter)
+      ├─> wizard/tabs/preview_tab.go: CreatePreviewTab(presenter)
       │
-      ├─> wizard/business/parser.go: ParseAndPreview()
-      ├─> wizard/business/validator.go: ValidateParserConfig()
-      ├─> wizard/business/generator.go: BuildTemplateConfig()
-      └─> wizard/business/loader.go: SerializeParserConfig()
+      ├─> wizard/business/loader.go: LoadConfigFromFile()
+      ├─> wizard/presentation/presenter_async.go: TriggerParseForPreview()
+      │   └─> wizard/business/parser.go: ParseAndPreview()
+      ├─> wizard/presentation/presenter_async.go: UpdateTemplatePreviewAsync()
+      │   └─> wizard/business/generator.go: BuildTemplateConfig()
+      ├─> wizard/presentation/presenter_save.go: SaveConfig()
+      │   ├─> wizard/business/generator.go: BuildTemplateConfig()
+      │   └─> wizard/business/saver.go: SaveConfigWithBackup()
 ```
 
 ## Принципы организации кода
@@ -870,10 +1003,11 @@ main.go
       │   └─> core/config/subscription
       └─> ui
           └─> ui/wizard
-              ├─> ui/wizard/state
+              ├─> ui/wizard/models
+              ├─> ui/wizard/presentation
+              ├─> ui/wizard/business
               ├─> ui/wizard/tabs
               ├─> ui/wizard/dialogs
-              ├─> ui/wizard/business
               ├─> ui/wizard/template
               └─> ui/wizard/utils
 ```

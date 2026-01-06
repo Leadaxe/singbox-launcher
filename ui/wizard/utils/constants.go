@@ -1,3 +1,19 @@
+// Package utils содержит утилиты и константы для визарда конфигурации.
+//
+// Файл constants.go содержит константы таймаутов и лимитов для операций визарда:
+//   - Таймауты: HTTPRequestTimeout, SubscriptionFetchTimeout, URIParseTimeout, MaxWaitTime
+//   - Лимиты размеров: MaxSubscriptionSize, MaxJSONConfigSize, MaxURILength, MinURILength
+//
+// Эти константы используются в бизнес-логике (validator.go, parser.go) для валидации
+// и ограничения размеров данных, а также для установки таймаутов сетевых операций.
+//
+// Константы визарда могут отличаться от констант в core/config, так как они специфичны
+// для операций в UI контексте (например, более строгие лимиты для preview в визарде).
+//
+// Используется в:
+//   - business/validator.go - для валидации размеров JSON, URI, HTTP ответов
+//   - business/parser.go - для установки таймаутов при проверке URL
+//   - presentation/presenter_save.go - MaxWaitTime для таймаута парсинга при сохранении
 package utils
 
 import "time"

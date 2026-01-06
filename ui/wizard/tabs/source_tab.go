@@ -1,3 +1,20 @@
+// Package tabs содержит UI компоненты для табов визарда конфигурации.
+//
+// Файл source_tab.go содержит функцию CreateSourceTab, которая создает UI первого таба визарда:
+//   - Ввод URL подписки или прямых ссылок (SourceURLEntry)
+//   - Проверка URL (CheckURLButton, URLStatusLabel, CheckURLProgress)
+//   - Редактирование ParserConfig (ParserConfigEntry)
+//   - Preview сгенерированных outbounds (OutboundsPreview)
+//   - Кнопка парсинга (ParseButton)
+//
+// Каждый таб визарда имеет свою отдельную ответственность и логику UI.
+//
+// Используется в:
+//   - wizard.go - при создании окна визарда, вызывается CreateSourceTab(presenter)
+//
+// Взаимодействует с:
+//   - presenter - все действия пользователя (нажатия кнопок, ввод текста) обрабатываются через методы presenter
+//   - business - вызывает CheckURL, ParseAndPreview через presenter
 package tabs
 
 import (
@@ -15,45 +32,47 @@ import (
 
 	"singbox-launcher/internal/platform"
 	wizardbusiness "singbox-launcher/ui/wizard/business"
-	wizardstate "singbox-launcher/ui/wizard/state"
+	wizardpresentation "singbox-launcher/ui/wizard/presentation"
 )
 
 // CreateSourceTab creates the Sources & ParserConfig tab UI.
-func CreateSourceTab(state *wizardstate.WizardState) fyne.CanvasObject {
+func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObject {
+	guiState := presenter.GUIState()
+	
 	// Section 1: Subscription URL or Direct Links
-	state.CheckURLButton = widget.NewButton("Check", func() {
-		if state.CheckURLInProgress {
+	guiState.CheckURLButton = widget.NewButton("Check", func() {
+		if guiState.CheckURLInProgress {
 			return
 		}
-		go wizardbusiness.CheckURL(state)
+		go wizardbusiness.CheckURL(presenter.Model(), presenter)
 	})
 
 	// Create progress bar for Check button
-	state.CheckURLProgress = widget.NewProgressBar()
-	state.CheckURLProgress.Hide()
-	state.CheckURLProgress.SetValue(0)
+	guiState.CheckURLProgress = widget.NewProgressBar()
+	guiState.CheckURLProgress.Hide()
+	guiState.CheckURLProgress.SetValue(0)
 
 	// Set fixed size via placeholder
 	checkButtonWidth := float32(180)
-	checkButtonHeight := state.CheckURLButton.MinSize().Height + 4 // Slightly taller
+	checkButtonHeight := guiState.CheckURLButton.MinSize().Height + 4 // Slightly taller
 
 	// Create placeholder to preserve size (always show to preserve size)
-	state.CheckURLPlaceholder = canvas.NewRectangle(color.Transparent)
-	state.CheckURLPlaceholder.SetMinSize(fyne.NewSize(checkButtonWidth, checkButtonHeight))
-	state.CheckURLPlaceholder.Show() // Always show to preserve size
+	checkURLPlaceholder := canvas.NewRectangle(color.Transparent)
+	checkURLPlaceholder.SetMinSize(fyne.NewSize(checkButtonWidth, checkButtonHeight))
+	checkURLPlaceholder.Show() // Always show to preserve size
 
 	// Create container with stack (placeholder, button, progress)
 	checkURLStack := container.NewStack(
-		state.CheckURLPlaceholder,
-		state.CheckURLButton,
-		state.CheckURLProgress,
+		checkURLPlaceholder,
+		guiState.CheckURLButton,
+		guiState.CheckURLProgress,
 	)
 
 	// Add padding from right edge (10 units in Fyne)
 	// Use empty Rectangle to create padding
 	paddingRect := canvas.NewRectangle(color.Transparent)
 	paddingRect.SetMinSize(fyne.NewSize(10, 0)) // 10px padding on right
-	state.CheckURLContainer = container.NewHBox(
+	guiState.CheckURLContainer = container.NewHBox(
 		checkURLStack, // Button/progress
 		paddingRect,   // Right padding
 	)
@@ -61,12 +80,13 @@ func CreateSourceTab(state *wizardstate.WizardState) fyne.CanvasObject {
 	urlLabel := widget.NewLabel("Subscription URL or Direct Links:")
 	urlLabel.Importance = widget.MediumImportance
 
-	state.SourceURLEntry = widget.NewMultiLineEntry()
-	state.SourceURLEntry.SetPlaceHolder("https://example.com/subscription\nor\nvless://...\nvmess://...\nhysteria2://...\nssh://...")
-	state.SourceURLEntry.Wrapping = fyne.TextWrapOff
-	state.SourceURLEntry.OnChanged = func(value string) {
-		state.PreviewNeedsParse = true
-		wizardbusiness.ApplyURLToParserConfig(state, strings.TrimSpace(value))
+	guiState.SourceURLEntry = widget.NewMultiLineEntry()
+	guiState.SourceURLEntry.SetPlaceHolder("https://example.com/subscription\nor\nvless://...\nvmess://...\nhysteria2://...\nssh://...")
+	guiState.SourceURLEntry.Wrapping = fyne.TextWrapOff
+	guiState.SourceURLEntry.OnChanged = func(value string) {
+		model := presenter.Model()
+		model.PreviewNeedsParse = true
+		wizardbusiness.ApplyURLToParserConfig(model, presenter, strings.TrimSpace(value))
 	}
 
 	// Hint under input field with Check button on right
@@ -74,19 +94,19 @@ func CreateSourceTab(state *wizardstate.WizardState) fyne.CanvasObject {
 	hintLabel.Wrapping = fyne.TextWrapWord
 
 	hintRow := container.NewBorder(
-		nil,                     // top
-		nil,                     // bottom
-		nil,                     // left
-		state.CheckURLContainer, // right - button/progress
-		hintLabel,               // center - hint takes all available space
+		nil,                       // top
+		nil,                       // bottom
+		nil,                       // left
+		guiState.CheckURLContainer, // right - button/progress
+		hintLabel,                 // center - hint takes all available space
 	)
 
-	state.URLStatusLabel = widget.NewLabel("")
-	state.URLStatusLabel.Wrapping = fyne.TextWrapWord
+	guiState.URLStatusLabel = widget.NewLabel("")
+	guiState.URLStatusLabel.Wrapping = fyne.TextWrapWord
 
 	// Limit width and height of URL input field (3 lines)
 	// Wrap MultiLineEntry in Scroll container to show scrollbars
-	urlEntryScroll := container.NewScroll(state.SourceURLEntry)
+	urlEntryScroll := container.NewScroll(guiState.SourceURLEntry)
 	urlEntryScroll.Direction = container.ScrollBoth
 	// Create dummy Rectangle to set size (height 3 lines, width limited)
 	urlEntrySizeRect := canvas.NewRectangle(color.Transparent)
@@ -99,28 +119,29 @@ func CreateSourceTab(state *wizardstate.WizardState) fyne.CanvasObject {
 	)
 
 	urlContainer := container.NewVBox(
-		urlLabel,             // Header
-		urlEntryWithSize,     // Input field with size limit (3 lines)
-		hintRow,              // Hint with button on right
-		state.URLStatusLabel, // Status
+		urlLabel,               // Header
+		urlEntryWithSize,       // Input field with size limit (3 lines)
+		hintRow,                // Hint with button on right
+		guiState.URLStatusLabel, // Status
 	)
 
 	// Section 2: ParserConfig
-	state.ParserConfigEntry = widget.NewMultiLineEntry()
-	state.ParserConfigEntry.SetPlaceHolder("Enter ParserConfig JSON here...")
-	state.ParserConfigEntry.Wrapping = fyne.TextWrapOff
-	state.ParserConfigEntry.OnChanged = func(string) {
-		if state.ParserConfigUpdating {
+	guiState.ParserConfigEntry = widget.NewMultiLineEntry()
+	guiState.ParserConfigEntry.SetPlaceHolder("Enter ParserConfig JSON here...")
+	guiState.ParserConfigEntry.Wrapping = fyne.TextWrapOff
+	guiState.ParserConfigEntry.OnChanged = func(string) {
+		if guiState.ParserConfigUpdating {
 			return
 		}
-		state.PreviewNeedsParse = true
-		state.RefreshOutboundOptions()
+		model := presenter.Model()
+		model.PreviewNeedsParse = true
+		presenter.RefreshOutboundOptions()
 
 		// Preview status will be updated when switching to Preview tab
 	}
 
 	// Limit width and height of ParserConfig field
-	parserConfigScroll := container.NewScroll(state.ParserConfigEntry)
+	parserConfigScroll := container.NewScroll(guiState.ParserConfigEntry)
 	parserConfigScroll.Direction = container.ScrollBoth
 	// Create dummy Rectangle to set height via container.NewMax
 	parserHeightRect := canvas.NewRectangle(color.Transparent)
@@ -135,7 +156,7 @@ func CreateSourceTab(state *wizardstate.WizardState) fyne.CanvasObject {
 	docButton := widget.NewButton("📖 Documentation", func() {
 		docURL := "https://github.com/Leadaxe/singbox-launcher/blob/main/README.md#configuring-configjson"
 		if err := platform.OpenURL(docURL); err != nil {
-			dialog.ShowError(fmt.Errorf("failed to open documentation: %w", err), state.Window)
+			dialog.ShowError(fmt.Errorf("failed to open documentation: %w", err), guiState.Window)
 		}
 	})
 
@@ -143,20 +164,22 @@ func CreateSourceTab(state *wizardstate.WizardState) fyne.CanvasObject {
 	parserLabel.Importance = widget.MediumImportance
 
 	// Parse button (positioned to left of ParserConfig)
-	state.ParseButton = widget.NewButton("Parse", func() {
-		if state.AutoParseInProgress {
+	guiState.ParseButton = widget.NewButton("Parse", func() {
+		model := presenter.Model()
+		if model.AutoParseInProgress {
 			return
 		}
-		state.AutoParseInProgress = true
-		state.PreviewNeedsParse = true
-		go wizardbusiness.ParseAndPreview(state)
+		model.AutoParseInProgress = true
+		model.PreviewNeedsParse = true
+		configService := presenter.ConfigServiceAdapter()
+		go wizardbusiness.ParseAndPreview(model, presenter, configService)
 	})
-	state.ParseButton.Importance = widget.MediumImportance
+	guiState.ParseButton.Importance = widget.MediumImportance
 
 	headerRow := container.NewHBox(
 		parserLabel,
 		widget.NewLabel("  "), // small spacing between text and button
-		state.ParseButton,
+		guiState.ParseButton,
 		layout.NewSpacer(),
 		docButton,
 	)
@@ -171,21 +194,21 @@ func CreateSourceTab(state *wizardstate.WizardState) fyne.CanvasObject {
 	previewLabel.Importance = widget.MediumImportance
 
 	// Use Entry without Disable for black text, but make it read-only via OnChanged
-	state.OutboundsPreview = widget.NewMultiLineEntry()
-	state.OutboundsPreview.SetPlaceHolder("Generated outbounds will appear here after clicking Parse...")
-	state.OutboundsPreview.Wrapping = fyne.TextWrapOff
-	state.OutboundsPreviewText = "Generated outbounds will appear here after clicking Parse..."
-	state.OutboundsPreview.SetText(state.OutboundsPreviewText)
+	guiState.OutboundsPreview = widget.NewMultiLineEntry()
+	guiState.OutboundsPreview.SetPlaceHolder("Generated outbounds will appear here after clicking Parse...")
+	guiState.OutboundsPreview.Wrapping = fyne.TextWrapOff
+	previewText := "Generated outbounds will appear here after clicking Parse..."
+	guiState.OutboundsPreview.SetText(previewText)
 	// Make field read-only, but text remains black (not disabled)
-	state.OutboundsPreview.OnChanged = func(text string) {
+	guiState.OutboundsPreview.OnChanged = func(text string) {
 		// Restore saved text when trying to edit
-		if text != state.OutboundsPreviewText {
-			state.OutboundsPreview.SetText(state.OutboundsPreviewText)
+		if text != previewText {
+			guiState.OutboundsPreview.SetText(previewText)
 		}
 	}
 
 	// Limit width and height of Preview field
-	previewScroll := container.NewScroll(state.OutboundsPreview)
+	previewScroll := container.NewScroll(guiState.OutboundsPreview)
 	previewScroll.Direction = container.ScrollBoth
 	// Create dummy Rectangle to set height via container.NewMax
 	previewHeightRect := canvas.NewRectangle(color.Transparent)
