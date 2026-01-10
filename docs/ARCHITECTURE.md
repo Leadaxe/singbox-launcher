@@ -294,6 +294,10 @@ singbox-launcher/
 │       │   │   │   - BuildParserOutboundsBlock()             # Построение блока outbounds
 │       │   │   │   - MergeRouteSection()                      # Объединение route секции
 │       │   │   │
+│       │   ├── formatting.go   # Форматирование и константы
+│       │   │   │   - IndentBase const                         # Базовый отступ (2 пробела)
+│       │   │   │   - Indent(level)                            # Генерация отступа для уровня
+│       │   │   │
 │       │   ├── validator.go    # Валидация данных
 │       │   │   │   - ValidateParserConfig()                   # Валидация конфигурации
 │       │   │   │   - ValidateURL()                             # Валидация URL
@@ -307,6 +311,7 @@ singbox-launcher/
 │       │   │   │
 │       │   ├── saver.go        # Сохранение конфигурации
 │       │   │   │   - SaveConfigWithBackup()                    # Сохранение с бэкапом
+│       │   │   │   - ValidateConfigWithSingBox()              # Валидация через sing-box check
 │       │   │   │   - NextBackupPath()                          # Путь для бэкапа
 │       │   │   │   - FileServiceAdapter                        # Адаптер FileService
 │       │   │   │
@@ -355,8 +360,20 @@ singbox-launcher/
 │       │
 ├── internal/                   # Внутренние пакеты
 │   ├── constants/              # Константы приложения
+│   │   │   - ConfigFileName                    # Имя файла конфигурации
+│   │   │   - различные константы приложения
+│   │   │
+│   ├── debuglog/               # Логирование с уровнями
+│   │   │   - Log()                             # Основная функция логирования
+│   │   │   - LogTextFragment()                 # Логирование больших текстов (с обрезкой)
+│   │   │   - ShouldLog()                       # Проверка уровня логирования
+│   │   │   - Level enum (Off/Error/Warn/Info/Verbose/Trace)
+│   │   │
 │   ├── dialogs/                # Утилиты диалогов
+│   │   │   - различные утилиты для диалогов
+│   │   │
 │   └── platform/              # Платформо-зависимый код
+│       │   - платформо-специфичные функции
 │
 └── assets/                     # Ресурсы (иконки)
 ```

@@ -739,6 +739,29 @@ GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o singbox-lau
 
 ## 🤝 Contributing
 
+## 🧪 Running tests
+
+- **Preferred (recommended):** use the centralized test scripts in `build/` which explicitly filter GUI packages that require OpenGL/`fyne`.
+
+- Linux (runner / local):
+  ```bash
+  ./build/test_linux.sh
+  ```
+
+- macOS:
+  ```bash
+  ./build/test_darwin.sh
+  ```
+
+- Windows:
+  ```bat
+  build\test_windows.bat
+  ```
+
+- These scripts exclude UI packages (`/ui/`) and packages importing `fyne.io` to avoid CI failures on headless runners. If you need to run GUI/integration tests locally, run `build/test_windows.bat run <TestName>` or set `TEST_PACKAGE` manually in the script.
+
+Note: root-level `test.sh`/`test.bat` were replaced with lightweight wrappers delegating to `build/`.
+
 We welcome contributions to the project! Please:
 
 1. Fork the repository

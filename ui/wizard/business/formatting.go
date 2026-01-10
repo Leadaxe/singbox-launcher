@@ -22,4 +22,3 @@ func Indent(level int) string {
 	}
 	return strings.Repeat(IndentBase, level)
 }
-

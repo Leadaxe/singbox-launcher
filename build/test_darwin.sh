@@ -153,8 +153,17 @@ echo ""
 echo "Starting tests..."
 echo ""
 
+# Compute package list excluding UI packages and fyne imports
+PKGS=$(go list $TEST_PACKAGE 2>/dev/null | grep -v '/ui/' | grep -v 'fyne.io' || true)
+if [ -z "$PKGS" ]; then
+    echo "No packages to test after filtering. Exiting."
+    exit 0
+fi
+
 # Run tests with output to both file and screen
-go test $TEST_FLAGS -count=1 $TEST_PACKAGE 2>&1 | tee "$TEST_LOG"
+echo "Packages to be tested:" 
+echo "$PKGS"
+go test $TEST_FLAGS -count=1 $PKGS 2>&1 | tee "$TEST_LOG"
 TEST_EXIT_CODE=${PIPESTATUS[0]}
 
 # Show finish time
