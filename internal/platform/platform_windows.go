@@ -56,7 +56,10 @@ func SendCtrlBreak(pid int) error {
 
 // PrepareCommand prepares a command with platform-specific attributes
 func PrepareCommand(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
+	}
 }
 
 // GetRequiredFiles returns platform-specific required files

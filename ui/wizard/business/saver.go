@@ -34,15 +34,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/muhammadmuzzammil1998/jsonc"
 
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/platform"
 )
 
 // FileServiceAdapter адаптирует services.FileService для использования в бизнес-логике.
@@ -169,7 +168,7 @@ func ValidateConfigWithSingBox(configPath, singBoxPath string) error {
 	cmd := exec.Command(singBoxPath, "check", "-c", configPath)
 
 	// Hide console window on all platforms
-	hideConsoleWindow(cmd)
+	platform.PrepareCommand(cmd)
 
 	// Capture output
 	var stdout, stderr bytes.Buffer
@@ -206,16 +205,3 @@ func ValidateConfigWithSingBox(configPath, singBoxPath string) error {
 	return nil
 }
 
-// hideConsoleWindow configures command to run without showing console window.
-// Works on Windows, macOS, and Linux.
-func hideConsoleWindow(cmd *exec.Cmd) {
-	if runtime.GOOS == "windows" {
-		// Windows: use SysProcAttr to hide window
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow:    true,
-			CreationFlags: 0x08000000, // CREATE_NO_WINDOW
-		}
-	}
-	// Note: On macOS and Linux, exec.Command doesn't create visible windows by default,
-	// so no special handling needed
-}
