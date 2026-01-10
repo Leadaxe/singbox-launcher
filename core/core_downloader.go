@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
 )
 
@@ -139,11 +140,7 @@ func (ac *AppController) getReleaseInfoFromGitHub(ctx context.Context, version s
 		}
 		return nil, fmt.Errorf("getReleaseInfoFromGitHub: request failed: %w", err)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			log.Printf("getReleaseInfoFromGitHub: failed to close response body: %v", err)
-		}
-	}()
+	defer debuglog.CloseWithLog("getReleaseInfoFromGitHub: response body", resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("getReleaseInfoFromGitHub: HTTP %d", resp.StatusCode)
@@ -344,11 +341,7 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 		}
 		return fmt.Errorf("downloadFileFromURL: request failed: %w", err)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			log.Printf("downloadFileFromURL: failed to close response body for %s: %v", url, err)
-		}
-	}()
+	defer debuglog.CloseWithLog(fmt.Sprintf("downloadFileFromURL: response body %s", url), resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("downloadFileFromURL: HTTP %d", resp.StatusCode)
@@ -358,11 +351,7 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 	if err != nil {
 		return fmt.Errorf("downloadFileFromURL: failed to create file: %w", err)
 	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			log.Printf("downloadFileFromURL: failed to close file %s: %v", destPath, err)
-		}
-	}()
+	defer debuglog.CloseWithLog(fmt.Sprintf("downloadFileFromURL: file %s", destPath), file)
 
 	totalSize := resp.ContentLength
 	var downloaded int64
@@ -438,11 +427,7 @@ func (ac *AppController) extractZip(archivePath, destDir string) (string, error)
 	if err != nil {
 		return "", fmt.Errorf("extractZip: failed to open zip: %w", err)
 	}
-	defer func() {
-		if err := r.Close(); err != nil {
-			log.Printf("extractZip: failed to close zip reader %s: %v", archivePath, err)
-		}
-	}()
+	defer debuglog.CloseWithLog(fmt.Sprintf("extractZip: zip reader %s", archivePath), r)
 
 	singboxName := platform.GetExecutableNames()
 	var binaryPath string
@@ -458,19 +443,13 @@ func (ac *AppController) extractZip(archivePath, destDir string) (string, error)
 			binaryPath = filepath.Join(destDir, filepath.Base(f.Name))
 			outFile, err := os.Create(binaryPath)
 			if err != nil {
-				if closeErr := rc.Close(); closeErr != nil {
-					log.Printf("extractZip: failed to close zip entry %s after create error: %v", f.Name, closeErr)
-				}
+				debuglog.CloseWithLog(fmt.Sprintf("extractZip: zip entry %s after create error", f.Name), rc)
 				return "", fmt.Errorf("extractZip: failed to create output file: %w", err)
 			}
 
 			_, err = io.Copy(outFile, rc)
-			if closeErr := outFile.Close(); closeErr != nil {
-				log.Printf("extractZip: failed to close output file %s: %v", binaryPath, closeErr)
-			}
-			if closeErr := rc.Close(); closeErr != nil {
-				log.Printf("extractZip: failed to close zip entry %s: %v", f.Name, closeErr)
-			}
+			debuglog.CloseWithLog(fmt.Sprintf("extractZip: output file %s", binaryPath), outFile)
+			debuglog.CloseWithLog(fmt.Sprintf("extractZip: zip entry %s", f.Name), rc)
 
 			if err != nil {
 				return "", fmt.Errorf("extractZip: failed to copy file: %w", err)
@@ -496,21 +475,13 @@ func (ac *AppController) extractTarGz(archivePath, destDir string) (string, erro
 	if err != nil {
 		return "", fmt.Errorf("extractTarGz: failed to open archive: %w", err)
 	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			log.Printf("extractTarGz: failed to close archive %s: %v", archivePath, err)
-		}
-	}()
+	defer debuglog.CloseWithLog(fmt.Sprintf("extractTarGz: archive %s", archivePath), file)
 
 	gzr, err := gzip.NewReader(file)
 	if err != nil {
 		return "", fmt.Errorf("extractTarGz: failed to create gzip reader: %w", err)
 	}
-	defer func() {
-		if err := gzr.Close(); err != nil {
-			log.Printf("extractTarGz: failed to close gzip reader for %s: %v", archivePath, err)
-		}
-	}()
+	defer debuglog.CloseWithLog(fmt.Sprintf("extractTarGz: gzip reader %s", archivePath), gzr)
 
 	tr := tar.NewReader(gzr)
 	singboxName := platform.GetExecutableNames()
@@ -534,9 +505,7 @@ func (ac *AppController) extractTarGz(archivePath, destDir string) (string, erro
 			}
 
 			_, err = io.Copy(outFile, tr)
-			if closeErr := outFile.Close(); closeErr != nil {
-				log.Printf("extractTarGz: failed to close output file %s: %v", binaryPath, closeErr)
-			}
+			debuglog.CloseWithLog(fmt.Sprintf("extractTarGz: output file %s", binaryPath), outFile)
 
 			if err != nil {
 				return "", fmt.Errorf("extractTarGz: failed to copy file: %w", err)
@@ -578,21 +547,13 @@ func (ac *AppController) installBinary(sourcePath, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("installBinary: failed to open source file: %w", err)
 	}
-	defer func() {
-		if err := sourceFile.Close(); err != nil {
-			log.Printf("installBinary: failed to close source file %s: %v", sourcePath, err)
-		}
-	}()
+	defer debuglog.CloseWithLog(fmt.Sprintf("installBinary: source file %s", sourcePath), sourceFile)
 
 	destFile, err := os.Create(destPath)
 	if err != nil {
 		return fmt.Errorf("installBinary: failed to create destination file: %w", err)
 	}
-	defer func() {
-		if err := destFile.Close(); err != nil {
-			log.Printf("installBinary: failed to close destination file %s: %v", destPath, err)
-		}
-	}()
+	defer debuglog.CloseWithLog(fmt.Sprintf("installBinary: destination file %s", destPath), destFile)
 
 	_, err = io.Copy(destFile, sourceFile)
 	if err != nil {

@@ -26,6 +26,7 @@ func (ac *AppController) GetInstalledCoreVersion() (string, error) {
 	if _, err := os.Stat(ac.FileService.SingboxPath); os.IsNotExist(err) {
 		return "", fmt.Errorf("sing-box not found at %s", ac.FileService.SingboxPath)
 	}
+	"singbox-launcher/internal/debuglog"
 
 	// Запускаем sing-box version
 	cmd := exec.Command(ac.FileService.SingboxPath, "version")
@@ -345,11 +346,7 @@ func (ac *AppController) getLatestVersionFromURLWithPrefix(url string, keepPrefi
 		}
 		return "", fmt.Errorf("check failed: %w", err)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			log.Printf("getLatestVersionFromURLWithPrefix: failed to close response body: %v", err)
-		}
-	}()
+	defer debuglog.CloseWithLog("getLatestVersionFromURLWithPrefix: response body", resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("check failed: HTTP %d", resp.StatusCode)

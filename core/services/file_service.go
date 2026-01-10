@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
 )
 
@@ -81,21 +82,15 @@ func (fs *FileService) OpenLogFiles(logFileName, childLogFileName, apiLogFileNam
 // CloseLogFiles closes all log files.
 func (fs *FileService) CloseLogFiles() {
 	if fs.MainLogFile != nil {
-		if err := fs.MainLogFile.Close(); err != nil {
-			log.Printf("CloseLogFiles: failed to close main log file: %v", err)
-		}
+		debuglog.CloseWithLog("CloseLogFiles: main log file", fs.MainLogFile)
 		fs.MainLogFile = nil
 	}
 	if fs.ChildLogFile != nil {
-		if err := fs.ChildLogFile.Close(); err != nil {
-			log.Printf("CloseLogFiles: failed to close child log file: %v", err)
-		}
+		debuglog.CloseWithLog("CloseLogFiles: child log file", fs.ChildLogFile)
 		fs.ChildLogFile = nil
 	}
 	if fs.ApiLogFile != nil {
-		if err := fs.ApiLogFile.Close(); err != nil {
-			log.Printf("CloseLogFiles: failed to close API log file: %v", err)
-		}
+		debuglog.CloseWithLog("CloseLogFiles: API log file", fs.ApiLogFile)
 		fs.ApiLogFile = nil
 	}
 }

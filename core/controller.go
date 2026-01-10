@@ -16,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
+	"singbox-launcher/internal/debuglog"
 
 	"singbox-launcher/api"
 	"singbox-launcher/core/config/parser"
@@ -284,11 +285,7 @@ func (ac *AppController) RunHidden(name string, args []string, logPath string, d
 			if err != nil {
 				return fmt.Errorf("RunHidden: cannot open log file '%s': %w", logPath, err)
 			}
-			defer func() {
-				if err := logFile.Close(); err != nil {
-					log.Printf("RunHidden: failed to close log file %s: %v", logPath, err)
-				}
-			}()
+			defer debuglog.CloseWithLog(fmt.Sprintf("RunHidden: log file %s", logPath), logFile)
 			cmd.Stdout = logFile
 			cmd.Stderr = logFile
 		}

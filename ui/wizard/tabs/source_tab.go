@@ -45,7 +45,11 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 		if guiState.CheckURLInProgress {
 			return
 		}
-		go wizardbusiness.CheckURL(presenter.Model(), presenter)
+		go func() {
+			if err := wizardbusiness.CheckURL(presenter.Model(), presenter); err != nil {
+				log.Printf("source_tab: CheckURL failed: %v", err)
+			}
+		}()
 	})
 
 	// Create progress bar for Check button
@@ -175,7 +179,11 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 		model.AutoParseInProgress = true
 		model.PreviewNeedsParse = true
 		configService := presenter.ConfigServiceAdapter()
-		go wizardbusiness.ParseAndPreview(model, presenter, configService)
+		go func() {
+			if err := wizardbusiness.ParseAndPreview(model, presenter, configService); err != nil {
+				log.Printf("source_tab: ParseAndPreview failed: %v", err)
+			}
+		}()
 	})
 	guiState.ParseButton.Importance = widget.MediumImportance
 

@@ -12,6 +12,7 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/config/parser"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui"
 )
@@ -251,19 +252,13 @@ func main() {
 	// Close log files through FileService
 	if controller.FileService != nil {
 		if controller.FileService.MainLogFile != nil {
-			if err := controller.FileService.MainLogFile.Close(); err != nil {
-				log.Printf("main: failed to close main log file: %v", err)
-			}
+			debuglog.CloseWithLog("main: main log file", controller.FileService.MainLogFile)
 		}
 		if controller.FileService.ChildLogFile != nil {
-			if err := controller.FileService.ChildLogFile.Close(); err != nil {
-				log.Printf("main: failed to close child log file: %v", err)
-			}
+			debuglog.CloseWithLog("main: child log file", controller.FileService.ChildLogFile)
 		}
 		if controller.FileService.ApiLogFile != nil {
-			if err := controller.FileService.ApiLogFile.Close(); err != nil {
-				log.Printf("main: failed to close API log file: %v", err)
-			}
+			debuglog.CloseWithLog("main: API log file", controller.FileService.ApiLogFile)
 		}
 	}
 }

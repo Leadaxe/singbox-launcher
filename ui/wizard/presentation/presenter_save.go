@@ -27,6 +27,7 @@ package presentation
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -71,7 +72,11 @@ func (p *WizardPresenter) SaveConfig() {
 				configService := &wizardbusiness.ConfigServiceAdapter{
 					CoreConfigService: p.controller.ConfigService,
 				}
-				go wizardbusiness.ParseAndPreview(p.model, p, configService)
+				go func() {
+					if err := wizardbusiness.ParseAndPreview(p.model, p, configService); err != nil {
+						log.Printf("presenter_save: ParseAndPreview failed: %v", err)
+					}
+				}()
 			}
 
 			maxWaitTime := 60 * time.Second

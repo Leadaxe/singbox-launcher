@@ -22,6 +22,7 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/config/parser"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/ui/wizard"
 	wizardtemplate "singbox-launcher/ui/wizard/template"
 )
@@ -694,7 +695,7 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 			})
 			return
 		}
-		defer resp.Body.Close()
+		defer debuglog.CloseWithLog("downloadConfigTemplate: response body", resp.Body)
 		if resp.StatusCode != http.StatusOK {
 			fyne.Do(func() {
 				if tab.templateDownloadButton != nil {
