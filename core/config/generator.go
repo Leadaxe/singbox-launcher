@@ -16,6 +16,19 @@ type OutboundGenerationResult struct {
 	GlobalSelectorsCount int      // Number of global selectors
 }
 
+// outboundInfo stores information about a dynamically created outbound selector.
+// This structure is used during the three-pass generation process to:
+// - Pass 1: Store filtered nodes and initial node count
+// - Pass 2: Calculate total outboundCount (nodes + valid addOutbounds) and validity
+// - Pass 3: Generate JSON only for valid selectors with filtered addOutbounds
+type outboundInfo struct {
+	config        OutboundConfig // Original outbound configuration
+	filteredNodes []*ParsedNode  // Nodes that match this selector's filters
+	outboundCount int            // Total count: filteredNodes + valid addOutbounds (calculated in pass 2)
+	isValid       bool           // true if outboundCount > 0 (set in pass 2)
+	isLocal       bool           // true if it's a local selector (from proxySource.Outbounds), false if global
+}
+
 // GenerateNodeJSON generates JSON string for a parsed node with correct field order.
 // Handles all proxy types (vless, vmess, trojan, shadowsocks) and includes
 // TLS configuration, transport settings, and other protocol-specific fields.
@@ -213,10 +226,166 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 	return fmt.Sprintf("\t// %s\n\t%s,", node.Label, jsonStr), nil
 }
 
+// GenerateSelectorWithFilteredAddOutbounds generates JSON string for a selector with filtered addOutbounds.
+// This function implements the third pass of the three-pass generation algorithm:
+//   - Filters nodes based on outboundConfig.Filters
+//   - Adds addOutbounds, but only includes dynamic outbounds that are valid (isValid == true)
+//   - Constants (not in outboundsInfo, e.g., "direct-out", "auto-proxy-out") are always added
+//   - Determines default outbound from preferredDefault if specified
+//   - Builds the selector JSON with correct field order
+//
+// Parameters:
+//   - allNodes: All available parsed nodes to filter from
+//   - outboundConfig: The selector configuration to generate JSON for
+//   - outboundsInfo: Map of tag -> outboundInfo for all dynamically created selectors (used to check validity)
+//
+// Returns:
+//   - JSON string representation of the selector, or empty string if no valid outbounds found
+//   - error if JSON generation fails
+func GenerateSelectorWithFilteredAddOutbounds(
+	allNodes []*ParsedNode,
+	outboundConfig OutboundConfig,
+	outboundsInfo map[string]*outboundInfo,
+) (string, error) {
+	// Filter nodes based on filters (version 3)
+	filterMap := outboundConfig.Filters
+	log.Printf("Parser: GenerateSelectorWithFilteredAddOutbounds for '%s' (type: %s): filters=%v, addOutbounds=%v, allNodes=%d",
+		outboundConfig.Tag, outboundConfig.Type, filterMap, outboundConfig.AddOutbounds, len(allNodes))
+
+	filteredNodes := filterNodesForSelector(allNodes, filterMap)
+	log.Printf("Parser: filterNodesForSelector returned %d nodes for '%s'", len(filteredNodes), outboundConfig.Tag)
+
+	// Build outbounds list with unique tags
+	// Pre-allocate with estimated capacity to reduce allocations
+	estimatedSize := len(outboundConfig.AddOutbounds) + len(filteredNodes)
+	outboundsList := make([]string, 0, estimatedSize)
+	seenTags := make(map[string]bool, estimatedSize)
+	duplicateCountInSelector := 0
+
+	// Add addOutbounds first (version 3) - only valid dynamic ones + all constants
+	addOutboundsList := outboundConfig.AddOutbounds
+	if len(addOutboundsList) > 0 {
+		log.Printf("Parser: Processing %d addOutbounds for selector '%s'", len(addOutboundsList), outboundConfig.Tag)
+		for _, tag := range addOutboundsList {
+			if seenTags[tag] {
+				duplicateCountInSelector++
+				log.Printf("Parser: Skipping duplicate tag '%s' in addOutbounds for selector '%s'", tag, outboundConfig.Tag)
+				continue
+			}
+
+			if addInfo, exists := outboundsInfo[tag]; exists {
+				// This is a dynamically created outbound - check if it's valid
+				if addInfo.isValid {
+					outboundsList = append(outboundsList, tag)
+					seenTags[tag] = true
+					log.Printf("Parser: Adding valid dynamic addOutbound '%s' to selector '%s'", tag, outboundConfig.Tag)
+				} else {
+					log.Printf("Parser: Skipping invalid (empty) dynamic addOutbound '%s' for selector '%s'", tag, outboundConfig.Tag)
+				}
+			} else {
+				// This is a constant from template (direct-out, auto-proxy-out, etc.)
+				// Constants always exist, always add them
+				outboundsList = append(outboundsList, tag)
+				seenTags[tag] = true
+				log.Printf("Parser: Adding constant addOutbound '%s' to selector '%s'", tag, outboundConfig.Tag)
+			}
+		}
+	}
+
+	// Add filtered node tags (without duplicates)
+	log.Printf("Parser: Processing %d filtered nodes for selector '%s'", len(filteredNodes), outboundConfig.Tag)
+	for _, node := range filteredNodes {
+		if !seenTags[node.Tag] {
+			outboundsList = append(outboundsList, node.Tag)
+			seenTags[node.Tag] = true
+		} else {
+			duplicateCountInSelector++
+			log.Printf("Parser: Skipping duplicate tag '%s' in filtered nodes for selector '%s'", node.Tag, outboundConfig.Tag)
+		}
+	}
+
+	// Check if we have any outbounds at all (addOutbounds + filteredNodes)
+	if len(outboundsList) == 0 {
+		log.Printf("Parser: No outbounds (neither addOutbounds nor filteredNodes) for %s '%s'", outboundConfig.Type, outboundConfig.Tag)
+		return "", nil
+	}
+
+	if duplicateCountInSelector > 0 {
+		log.Printf("Parser: Removed %d duplicate tags from selector '%s' outbounds list", duplicateCountInSelector, outboundConfig.Tag)
+	}
+	log.Printf("Parser: Selector '%s' will have %d unique outbounds", outboundConfig.Tag, len(outboundsList))
+
+	// Determine default - only if preferredDefault is specified in config (version 3)
+	preferredDefaultMap := outboundConfig.PreferredDefault
+	defaultTag := ""
+	if len(preferredDefaultMap) > 0 {
+		// Find first node matching preferredDefault filter
+		preferredFilter := convertFilterToStringMap(preferredDefaultMap)
+		for _, node := range filteredNodes {
+			if matchesFilter(node, preferredFilter) {
+				defaultTag = node.Tag
+				break
+			}
+		}
+	}
+	// Note: We do NOT automatically set default to first node if preferredDefault is not specified
+	// This allows urltest/selector to work without a default value when preferredDefault is not configured
+
+	// Build selector JSON with correct field order
+	var parts []string
+
+	// 1. tag
+	parts = append(parts, fmt.Sprintf(`"tag":%q`, outboundConfig.Tag))
+
+	// 2. type
+	parts = append(parts, fmt.Sprintf(`"type":%q`, outboundConfig.Type))
+
+	// 3. default (if present) - BEFORE outbounds
+	if defaultTag != "" {
+		parts = append(parts, fmt.Sprintf(`"default":%q`, defaultTag))
+	}
+
+	// 4. outbounds
+	outboundsJSON, _ := json.Marshal(outboundsList)
+	parts = append(parts, fmt.Sprintf(`"outbounds":%s`, string(outboundsJSON)))
+
+	// 5. interrupt_exist_connections (if present)
+	if val, ok := outboundConfig.Options["interrupt_exist_connections"]; ok {
+		if boolVal, ok := val.(bool); ok {
+			parts = append(parts, fmt.Sprintf(`"interrupt_exist_connections":%v`, boolVal))
+		} else {
+			valJSON, _ := json.Marshal(val)
+			parts = append(parts, fmt.Sprintf(`"interrupt_exist_connections":%s`, string(valJSON)))
+		}
+	}
+
+	// 6. Other options (in order they appear)
+	for key, value := range outboundConfig.Options {
+		if key != "interrupt_exist_connections" {
+			valJSON, _ := json.Marshal(value)
+			parts = append(parts, fmt.Sprintf(`%q:%s`, key, string(valJSON)))
+		}
+	}
+
+	// Build final JSON
+	jsonStr := "{" + strings.Join(parts, ",") + "}"
+
+	// Add comment if present
+	result := ""
+	if outboundConfig.Comment != "" {
+		result = fmt.Sprintf("\t// %s\n", outboundConfig.Comment)
+	}
+	result += fmt.Sprintf("\t%s,", jsonStr)
+
+	return result, nil
+}
+
 // GenerateSelector generates JSON string for a selector from filtered nodes.
 // Filters nodes based on outboundConfig.Filters, adds addOutbounds,
 // determines default outbound from preferredDefault if specified, and builds
 // the selector JSON with correct field order.
+// NOTE: This function is kept for backward compatibility but doesn't filter addOutbounds.
+// Use GenerateSelectorWithFilteredAddOutbounds for new code that needs filtering.
 func GenerateSelector(allNodes []*ParsedNode, outboundConfig OutboundConfig) (string, error) {
 	// Filter nodes based on filters (version 3)
 	filterMap := outboundConfig.Filters
@@ -334,9 +503,32 @@ func GenerateSelector(allNodes []*ParsedNode, outboundConfig OutboundConfig) (st
 	return result, nil
 }
 
-// GenerateOutboundsFromParserConfig processes ParserConfig and generates all outbounds.
+// GenerateOutboundsFromParserConfig processes ParserConfig and generates all outbounds using a three-pass algorithm.
+//
+// The three-pass algorithm ensures that dynamic addOutbounds are only added if they are valid (non-empty):
+//
+// Pass 1: Creates outboundsInfo map for all selectors and counts only filtered nodes (without addOutbounds).
+//
+// Pass 2: Performs topological sorting to process selectors in dependency order, then calculates total
+//
+//	outboundCount for each selector (filteredNodes + valid addOutbounds). Sets isValid flag for each selector.
+//
+// Pass 3: Generates JSON only for valid selectors, filtering addOutbounds to include only:
+//   - Dynamic selectors that are valid (isValid == true)
+//   - Constants (always included, e.g., "direct-out", "auto-proxy-out")
+//
 // Returns array of JSON strings: first all nodes, then local selectors (per source), then global selectors.
 // This function eliminates code duplication between UpdateConfigFromSubscriptions and parseAndPreview.
+//
+// Parameters:
+//   - parserConfig: The parser configuration containing proxy sources and outbound definitions
+//   - tagCounts: Map for tracking tag usage counts (passed to loadNodesFunc)
+//   - progressCallback: Optional callback for progress updates (progress 0-100, status message)
+//   - loadNodesFunc: Function to load and parse nodes from a ProxySource
+//
+// Returns:
+//   - OutboundGenerationResult with generated JSON strings and statistics
+//   - error if no nodes are parsed or if generation fails
 func GenerateOutboundsFromParserConfig(
 	parserConfig *ParserConfig,
 	tagCounts map[string]int,
@@ -392,24 +584,209 @@ func GenerateOutboundsFromParserConfig(
 		nodesCount++
 	}
 
-	// Step 3: Generate local selectors for each source (if they have local outbounds)
-	localSelectorsCount := 0
+	// Step 3: Pass 1 - Create outboundsInfo and count nodes only
+	// Build map of all dynamically created outbounds (local + global)
+	outboundsInfo := make(map[string]*outboundInfo)
+
 	if progressCallback != nil {
-		progressCallback(60, "Generating local selectors...")
+		progressCallback(60, "Analyzing outbounds (pass 1)...")
 	}
 
+	// Process local selectors (per source)
 	for i, proxySource := range parserConfig.ParserConfig.Proxies {
 		if len(proxySource.Outbounds) == 0 {
 			continue
 		}
 
 		sourceNodes, ok := nodesBySource[i]
-		if !ok || len(sourceNodes) == 0 {
-			continue
+		if !ok {
+			sourceNodes = []*ParsedNode{}
 		}
 
 		for _, outboundConfig := range proxySource.Outbounds {
-			selectorJSON, err := GenerateSelector(sourceNodes, outboundConfig)
+			filteredNodes := filterNodesForSelector(sourceNodes, outboundConfig.Filters)
+
+			// Check for duplicate tags (local selector with same tag as existing one)
+			if existingInfo, exists := outboundsInfo[outboundConfig.Tag]; exists {
+				selectorType := "global"
+				if existingInfo.isLocal {
+					selectorType = "local"
+				}
+				log.Printf("GenerateOutboundsFromParserConfig: Warning: Duplicate tag '%s' detected. "+
+					"Local selector from source %d will overwrite %s selector. This may cause unexpected behavior.",
+					outboundConfig.Tag, i+1, selectorType)
+				_ = existingInfo // Suppress unused variable warning (used in log message construction)
+			}
+
+			outboundsInfo[outboundConfig.Tag] = &outboundInfo{
+				config:        outboundConfig,
+				filteredNodes: filteredNodes,
+				outboundCount: len(filteredNodes), // Pass 1: only nodes, no addOutbounds yet
+				isValid:       false,              // Will be set in pass 2
+				isLocal:       true,
+			}
+		}
+	}
+
+	// Process global selectors
+	for _, outboundConfig := range parserConfig.ParserConfig.Outbounds {
+		filteredNodes := filterNodesForSelector(allNodes, outboundConfig.Filters)
+
+		// Check for duplicate tags (global selector with same tag as existing local one)
+		if existingInfo, exists := outboundsInfo[outboundConfig.Tag]; exists {
+			if existingInfo.isLocal {
+				log.Printf("GenerateOutboundsFromParserConfig: Warning: Duplicate tag '%s' detected. "+
+					"Global selector will overwrite local selector. This may cause unexpected behavior.",
+					outboundConfig.Tag)
+			} else {
+				log.Printf("GenerateOutboundsFromParserConfig: Warning: Duplicate tag '%s' detected. "+
+					"Multiple global selectors with same tag. This may cause unexpected behavior.",
+					outboundConfig.Tag)
+			}
+			_ = existingInfo // Suppress unused variable warning
+		}
+
+		outboundsInfo[outboundConfig.Tag] = &outboundInfo{
+			config:        outboundConfig,
+			filteredNodes: filteredNodes,
+			outboundCount: len(filteredNodes), // Pass 1: only nodes, no addOutbounds yet
+			isValid:       false,              // Will be set in pass 2
+			isLocal:       false,
+		}
+	}
+
+	// Step 4: Pass 2 - Topological sort and count total outboundCount (nodes + valid addOutbounds)
+	// This pass uses Kahn's algorithm for topological sorting to ensure dependencies are processed
+	// before dependents. This is necessary because the outboundCount of a selector depends on
+	// the outboundCount of its addOutbounds (if they are dynamic selectors).
+	if progressCallback != nil {
+		progressCallback(70, "Calculating outbound dependencies (pass 2)...")
+	}
+
+	// Build dependency graph (only dynamic dependencies, not constants)
+	// dependents: tag -> list of outbounds that depend on it (reverse dependency graph)
+	// inDegree: tag -> number of unprocessed dependencies (incoming edges count)
+	dependents := make(map[string][]string, len(outboundsInfo))
+	inDegree := make(map[string]int, len(outboundsInfo))
+
+	// Initialize all nodes with zero dependencies
+	for tag := range outboundsInfo {
+		inDegree[tag] = 0
+		dependents[tag] = []string{}
+	}
+
+	// Build graph: for each outbound, find its dynamic dependencies
+	for tag, info := range outboundsInfo {
+		for _, addTag := range info.config.AddOutbounds {
+			if _, exists := outboundsInfo[addTag]; exists {
+				// Dynamic dependency - add to graph (addTag is a dependency of tag)
+				dependents[addTag] = append(dependents[addTag], tag)
+				inDegree[tag]++
+			}
+			// Constants are not in outboundsInfo, so they don't affect the graph
+		}
+	}
+
+	// Topological sort: process leaves first (outbounds with no dependencies)
+	// Pre-allocate queue with estimated size
+	queue := make([]string, 0, len(outboundsInfo))
+	for tag, degree := range inDegree {
+		if degree == 0 {
+			queue = append(queue, tag)
+		}
+	}
+
+	// Process in topological order
+	processedCount := 0
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		info := outboundsInfo[current]
+
+		// Calculate total outboundCount: nodes + valid addOutbounds
+		// Start with the number of filtered nodes
+		totalCount := len(info.filteredNodes)
+
+		// Add valid addOutbounds to the count
+		for _, addTag := range info.config.AddOutbounds {
+			if addInfo, exists := outboundsInfo[addTag]; exists {
+				// Dynamic outbound - check if it's valid (already calculated due to topological order)
+				// Topological sorting guarantees that addInfo.outboundCount is already calculated
+				if addInfo.outboundCount > 0 {
+					totalCount++ // Add the selector itself as one outbound
+				}
+				// If outboundCount == 0, skip (empty selector is not added)
+			} else {
+				// Constant from template (direct-out, auto-proxy-out, etc.)
+				// Constants always exist and are always added
+				totalCount++
+			}
+		}
+
+		// Update the outbound info with calculated values
+		info.outboundCount = totalCount
+		info.isValid = (totalCount > 0)
+		processedCount++
+
+		// Update inDegree for dependents
+		for _, dependent := range dependents[current] {
+			inDegree[dependent]--
+			if inDegree[dependent] == 0 {
+				// All dependencies processed - can process this one now
+				queue = append(queue, dependent)
+			}
+		}
+	}
+
+	// Check: all should be processed (no cycles)
+	// If not all outbounds were processed, it indicates a cycle in the dependency graph
+	// Cycles are not allowed in the parser configuration
+	if processedCount != len(outboundsInfo) {
+		unprocessed := make([]string, 0)
+		for tag := range outboundsInfo {
+			// Check which outbounds still have unprocessed dependencies
+			if inDegree[tag] > 0 {
+				unprocessed = append(unprocessed, tag)
+			}
+		}
+		log.Printf("GenerateOutboundsFromParserConfig: Warning: Not all outbounds processed (processed: %d, total: %d). "+
+			"Possible cycles in dependency graph. Unprocessed outbounds: %v",
+			processedCount, len(outboundsInfo), unprocessed)
+	}
+
+	// Step 5: Pass 3 - Generate JSON only for valid selectors with filtered addOutbounds
+	localSelectorsCount := 0
+	globalSelectorsCount := 0
+
+	if progressCallback != nil {
+		progressCallback(80, "Generating selectors (pass 3)...")
+	}
+
+	// Generate local selectors (per source)
+	for i, proxySource := range parserConfig.ParserConfig.Proxies {
+		if len(proxySource.Outbounds) == 0 {
+			continue
+		}
+
+		sourceNodes, ok := nodesBySource[i]
+		if !ok {
+			sourceNodes = []*ParsedNode{}
+		}
+
+		for _, outboundConfig := range proxySource.Outbounds {
+			info, exists := outboundsInfo[outboundConfig.Tag]
+			if !exists {
+				continue
+			}
+
+			// Only generate if valid
+			if !info.isValid {
+				log.Printf("GenerateOutboundsFromParserConfig: Skipping empty local selector '%s'", outboundConfig.Tag)
+				continue
+			}
+
+			selectorJSON, err := GenerateSelectorWithFilteredAddOutbounds(sourceNodes, outboundConfig, outboundsInfo)
 			if err != nil {
 				log.Printf("GenerateOutboundsFromParserConfig: Warning: Failed to generate local selector %s for source %d: %v",
 					outboundConfig.Tag, i+1, err)
@@ -422,14 +799,20 @@ func GenerateOutboundsFromParserConfig(
 		}
 	}
 
-	// Step 4: Generate global selectors (using all nodes)
-	globalSelectorsCount := 0
-	if progressCallback != nil {
-		progressCallback(80, "Generating global selectors...")
-	}
-
+	// Generate global selectors
 	for _, outboundConfig := range parserConfig.ParserConfig.Outbounds {
-		selectorJSON, err := GenerateSelector(allNodes, outboundConfig)
+		info, exists := outboundsInfo[outboundConfig.Tag]
+		if !exists {
+			continue
+		}
+
+		// Only generate if valid
+		if !info.isValid {
+			log.Printf("GenerateOutboundsFromParserConfig: Skipping empty global selector '%s'", outboundConfig.Tag)
+			continue
+		}
+
+		selectorJSON, err := GenerateSelectorWithFilteredAddOutbounds(allNodes, outboundConfig, outboundsInfo)
 		if err != nil {
 			log.Printf("GenerateOutboundsFromParserConfig: Warning: Failed to generate global selector %s: %v",
 				outboundConfig.Tag, err)

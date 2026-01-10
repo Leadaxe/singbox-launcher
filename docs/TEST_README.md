@@ -46,6 +46,8 @@
 - **TestMergeRouteSection** (`generator_test.go`) - объединение правил маршрутизации
 - **TestApplyURLToParserConfig_Logic** (`parser_test.go`) - логика применения URL к конфигурации
 - **TestLoadConfigFromFile** (`loader_test.go`) - загрузка конфигурации из файла
+- **TestDefaultWizardFlow_NextNextFinish** (`wizard_integration_test.go`) - интеграционный тест полного wizard flow
+- **TestWizardFlowWithCustomRules** (`wizard_integration_test.go`) - wizard flow с кастомными правилами
 
 ### 5. Интеграционные тесты (`core/integration_test.go`)
 
@@ -57,7 +59,26 @@
 
 ## Запуск тестов
 
-### Запуск через батник (Windows, рекомендуется)
+### Быстрый запуск (рекомендуется)
+
+Для быстрого запуска всех unit-тестов (без GUI зависимостей):
+
+**Windows:**
+```bash
+.\test.bat
+```
+
+**macOS/Linux:**
+```bash
+chmod +x test.sh
+./test.sh
+```
+
+Эти скрипты тестируют только бизнес-логику (без CGO), что быстро и работает везде.
+
+---
+
+### Запуск через батник (Windows, полное тестирование)
 
 Батник автоматически настраивает окружение (CGO, PATH, GCC) и запускает тесты.
 
@@ -193,7 +214,16 @@ go test ./core/config/subscription -v -run TestParseNode_VLESS
    - Генерация селекторов
    - Нормализация ParserConfig
 
-5. **Реальные данные**:
+5. **Wizard flow**:
+   - Полный цикл работы визарда от загрузки шаблона до генерации конфига
+   - Эмуляция ввода URL подписки
+   - Проверка валидности генерируемого конфига
+
+6. **Валидация конфига**:
+   - Проверка через sing-box check (если доступен)
+   - Кросс-платформенная поддержка (Windows/macOS/Linux)
+
+7. **Реальные данные**:
    - Использование примеров из BLACK_VLESS_RUS.txt
    - Проверка работы с реальными подписками
 
@@ -223,10 +253,31 @@ go test ./core/config/subscription -v -run TestParseNode_VLESS
 
 ## Примечания
 
+- Для быстрого запуска unit-тестов используйте `test.bat` (Windows) или `test.sh` (macOS/Linux)
 - Тесты визарда (`ui/wizard/business`) и интеграционные тесты (`core/integration_test.go`) требуют CGO из-за зависимостей от Fyne
 - Интеграционные тесты могут требовать сетевого доступа для проверки подписок
 - Тесты используют временные файлы и директории для изоляции
 - Батник автоматически устанавливает правильные переменные окружения (CGO_ENABLED, PATH, GOROOT)
 - Полный лог тестов сохраняется в `temp\windows\test_output.log` для последующего анализа
 - Батник показывает список пакетов перед запуском и временные метки для удобного отслеживания прогресса
+- См. также `TESTING.md` в корне проекта для подробной информации о тестировании
+
+## Быстрая справка
+
+**Запуск всех unit-тестов (без CGO):**
+```bash
+# Windows
+.\test.bat
+
+# macOS/Linux  
+./test.sh
+
+# Везде
+go test ./core/config/... ./ui/wizard/business/... ./ui/wizard/models/...
+```
+
+**Полное тестирование (с CGO):**
+```bash
+.\build\test_windows.bat
+```
 

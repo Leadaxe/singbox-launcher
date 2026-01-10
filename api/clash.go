@@ -11,7 +11,6 @@ import (
 	"os"
 	"regexp"
 	"runtime"
-	"sort"
 	"strings"
 	"time"
 
@@ -271,9 +270,7 @@ func GetProxiesInGroup(baseURL, token, groupName string, logFile *os.File) ([]Pr
 		proxies = append(proxies, pi)
 	}
 
-	sort.Slice(proxies, func(i, j int) bool {
-		return proxies[i].Name < proxies[j].Name
-	})
+	// Сортировка убрана - UI управляет сортировкой самостоятельно
 
 	logMsg("GetProxiesInGroup: Successfully parsed %d proxies from group '%s'.", len(proxies), groupName)
 	return proxies, nowProxy, nil

@@ -107,6 +107,25 @@ func TestParseNode_VLESS(t *testing.T) {
 			uri:         "vless://invalid",
 			expectError: true,
 		},
+		{
+			name:        "VLESS with control chars in fragment (should be sanitized)",
+			uri:         "vless://a1b2c3d4-e5f6-7890-abcd-ef1234567890@test.example.com:443?encryption=none&security=none&type=tcp#MyServer\x00\x01\x02WithNUL",
+			expectError: false,
+			checkFields: func(t *testing.T, node *config.ParsedNode) {
+				if node == nil {
+					t.Fatal("Expected node, got nil")
+				}
+				// Verify that control characters (NUL, SOH, STX) are removed
+				// Fragment should contain "MyServerWithNUL" (control chars stripped)
+				if strings.Contains(node.Label, "\x00") || strings.Contains(node.Label, "\x01") || strings.Contains(node.Label, "\x02") {
+					t.Errorf("Fragment contains control characters that should have been sanitized: %q", node.Label)
+				}
+				// Verify the readable part is preserved
+				if !strings.Contains(node.Label, "MyServer") {
+					t.Errorf("Expected 'MyServer' in sanitized fragment, got %q", node.Label)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {

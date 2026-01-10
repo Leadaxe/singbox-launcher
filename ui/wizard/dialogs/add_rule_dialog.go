@@ -1,3 +1,26 @@
+// Package dialogs содержит диалоговые окна визарда конфигурации.
+//
+// Файл add_rule_dialog.go содержит функцию ShowAddRuleDialog, которая создает диалоговое окно
+// для добавления или редактирования пользовательского правила маршрутизации:
+//   - Ввод домена, IP, порта и других критериев правила
+//   - Выбор outbound для правила (включая reject/drop)
+//   - Валидация введенных данных
+//   - Сохранение правила в модель через presenter
+//
+// Диалог поддерживает два режима:
+//   - Добавление нового правила (editRule == nil)
+//   - Редактирование существующего правила (editRule != nil, ruleIndex указывает индекс)
+//
+// Диалоговые окна имеют отдельную ответственность от основных табов.
+// Содержит сложную логику валидации и обработки ввода пользователя.
+//
+// Используется в:
+//   - tabs/rules_tab.go - вызывается при нажатии кнопок "Add Rule" и "Edit" для правил
+//
+// Взаимодействует с:
+//   - presenter - все действия пользователя обрабатываются через методы presenter
+//   - models.RuleState - работает с данными правил из модели
+//   - business - использует валидацию и утилиты из business пакета
 package dialogs
 
 import (
@@ -11,14 +34,19 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
-	wizardstate "singbox-launcher/ui/wizard/state"
+	wizardbusiness "singbox-launcher/ui/wizard/business"
+	wizardmodels "singbox-launcher/ui/wizard/models"
+	wizardpresentation "singbox-launcher/ui/wizard/presentation"
 	wizardtabs "singbox-launcher/ui/wizard/tabs"
 	wizardtemplate "singbox-launcher/ui/wizard/template"
 )
 
 // ShowAddRuleDialog opens a dialog for adding or editing a custom rule.
-func ShowAddRuleDialog(state *wizardstate.WizardState, editRule *wizardstate.SelectableRuleState, ruleIndex int) {
-	if state.Window == nil {
+func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *wizardmodels.RuleState, ruleIndex int) {
+	guiState := presenter.GUIState()
+	model := presenter.Model()
+
+	if guiState.Window == nil {
 		return
 	}
 
@@ -29,16 +57,14 @@ func ShowAddRuleDialog(state *wizardstate.WizardState, editRule *wizardstate.Sel
 	}
 
 	// Check if dialog is already open for this rule
-	if state.OpenRuleDialogs == nil {
-		state.OpenRuleDialogs = make(map[int]fyne.Window)
-	}
+	openDialogs := presenter.OpenRuleDialogs()
 	dialogKey := ruleIndex
 	if !isEdit {
 		dialogKey = -1
 	}
-	if existingDialog, exists := state.OpenRuleDialogs[dialogKey]; exists {
+	if existingDialog, exists := openDialogs[dialogKey]; exists {
 		existingDialog.Close()
-		delete(state.OpenRuleDialogs, dialogKey)
+		delete(openDialogs, dialogKey)
 	}
 
 	// Input field height
@@ -68,9 +94,9 @@ func ShowAddRuleDialog(state *wizardstate.WizardState, editRule *wizardstate.Sel
 	urlContainer := container.NewMax(urlSizeRect, urlScroll)
 
 	// Outbound selector
-	availableOutbounds := state.GetAvailableOutbounds()
+	availableOutbounds := wizardbusiness.EnsureDefaultAvailableOutbounds(wizardbusiness.GetAvailableOutbounds(model))
 	if len(availableOutbounds) == 0 {
-		availableOutbounds = []string{wizardstate.DefaultOutboundTag, wizardstate.RejectActionName}
+		availableOutbounds = []string{wizardmodels.DefaultOutboundTag, wizardmodels.RejectActionName}
 	}
 	outboundSelect := widget.NewSelect(availableOutbounds, func(string) {})
 	if len(availableOutbounds) > 0 {
@@ -200,7 +226,7 @@ func ShowAddRuleDialog(state *wizardstate.WizardState, editRule *wizardstate.Sel
 			editRule.Rule.DefaultOutbound = selectedOutbound
 			editRule.SelectedOutbound = selectedOutbound
 		} else {
-			newRule := &wizardstate.SelectableRuleState{
+			newRule := &wizardmodels.RuleState{
 				Rule: wizardtemplate.TemplateSelectableRule{
 					Label:           label,
 					Raw:             ruleRaw,
@@ -211,20 +237,20 @@ func ShowAddRuleDialog(state *wizardstate.WizardState, editRule *wizardstate.Sel
 				Enabled:          true,
 				SelectedOutbound: selectedOutbound,
 			}
-			if state.CustomRules == nil {
-				state.CustomRules = make([]*wizardstate.SelectableRuleState, 0)
+			if model.CustomRules == nil {
+				model.CustomRules = make([]*wizardmodels.RuleState, 0)
 			}
-			state.CustomRules = append(state.CustomRules, newRule)
+			model.CustomRules = append(model.CustomRules, newRule)
 		}
 
 		// Set flag for preview recalculation
-		state.TemplatePreviewNeedsUpdate = true
+		model.TemplatePreviewNeedsUpdate = true
 		// Refresh rules tab
-		refreshWrapper := func(state *wizardstate.WizardState) fyne.CanvasObject {
-			return wizardtabs.CreateRulesTab(state, ShowAddRuleDialog)
+		refreshWrapper := func(p *wizardpresentation.WizardPresenter) fyne.CanvasObject {
+			return wizardtabs.CreateRulesTab(p, ShowAddRuleDialog)
 		}
-		state.RefreshRulesTab(refreshWrapper)
-		delete(state.OpenRuleDialogs, dialogKey)
+		presenter.RefreshRulesTab(refreshWrapper)
+		delete(openDialogs, dialogKey)
 		dialogWindow.Close()
 	}
 
@@ -236,7 +262,7 @@ func ShowAddRuleDialog(state *wizardstate.WizardState, editRule *wizardstate.Sel
 	confirmButton.Importance = widget.HighImportance
 
 	cancelButton := widget.NewButton("Cancel", func() {
-		delete(state.OpenRuleDialogs, dialogKey)
+		delete(openDialogs, dialogKey)
 		dialogWindow.Close()
 	})
 
@@ -276,17 +302,21 @@ func ShowAddRuleDialog(state *wizardstate.WizardState, editRule *wizardstate.Sel
 		container.NewScroll(inputContainer),
 	)
 
-	// Create window
-	dialogWindow = state.Controller.UIService.Application.NewWindow(dialogTitle)
+	// Create window - get Application from presenter's controller
+	controller := presenter.Controller()
+	if controller == nil || controller.UIService == nil {
+		return
+	}
+	dialogWindow = controller.UIService.Application.NewWindow(dialogTitle)
 	dialogWindow.Resize(fyne.NewSize(500, 600))
 	dialogWindow.CenterOnScreen()
 	dialogWindow.SetContent(mainContent)
 
 	// Register dialog
-	state.OpenRuleDialogs[dialogKey] = dialogWindow
+	openDialogs[dialogKey] = dialogWindow
 
 	dialogWindow.SetCloseIntercept(func() {
-		delete(state.OpenRuleDialogs, dialogKey)
+		delete(openDialogs, dialogKey)
 		dialogWindow.Close()
 	})
 

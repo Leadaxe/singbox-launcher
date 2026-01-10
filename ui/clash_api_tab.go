@@ -49,6 +49,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	var (
 		groupSelect            *widget.Select
 		suppressSelectCallback bool
+		applySavedSort         func() // Объявляем переменную заранее, значение будет присвоено позже
 	)
 
 	// --- Логика обновления и сброса ---
@@ -88,6 +89,14 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 				ac.SetProxiesList(proxies)
 				ac.SetActiveProxyName(now)
+
+				// Применяем сохраненную сортировку после загрузки
+				if applySavedSort != nil {
+					applySavedSort()
+				}
+
+				// Примечание: автоматическое переключение на сохраненный прокси выполняется
+				// только в AutoLoadProxies при старте sing-box, здесь только обновляем список
 
 				if ac.UIService.ProxiesListWidget != nil {
 					ac.UIService.ProxiesListWidget.Refresh()
@@ -324,6 +333,11 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	// Переменные для отслеживания направления сортировки
 	sortNameAscending := true
 	sortDelayAscending := true
+	// Переменная для отслеживания текущего типа сортировки ("" - нет сортировки, "name" - по имени, "delay" - по задержке)
+	currentSortType := ""
+	// Сохраненное направление сортировки (используется при восстановлении сортировки)
+	savedSortNameAscending := true
+	savedSortDelayAscending := true
 
 	// Функция сортировки по имени с указанным направлением
 	sortByName := func(ascending bool) {
@@ -345,6 +359,8 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			})
 			status.SetText("Sorted by name (Z-A)")
 		}
+		currentSortType = "name"
+		savedSortNameAscending = ascending // Сохраняем направление для восстановления
 		ac.SetProxiesList(sorted)
 		if ac.UIService.ProxiesListWidget != nil {
 			ac.UIService.ProxiesListWidget.Refresh()
@@ -392,9 +408,23 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			status.SetText("Sorted by delay (slowest first)")
 		}
 
+		currentSortType = "delay"
+		savedSortDelayAscending = ascending // Сохраняем направление для восстановления
 		ac.SetProxiesList(sorted)
 		if ac.UIService.ProxiesListWidget != nil {
 			ac.UIService.ProxiesListWidget.Refresh()
+		}
+	}
+
+	// Функция для применения сохраненной сортировки (присваиваем значение переменной, объявленной ранее)
+	applySavedSort = func() {
+		if currentSortType == "" {
+			return // Сортировка не применялась, оставляем список как есть
+		}
+		if currentSortType == "name" {
+			sortByName(savedSortNameAscending) // Используем сохраненное направление
+		} else if currentSortType == "delay" {
+			sortByDelay(savedSortDelayAscending) // Используем сохраненное направление
 		}
 	}
 
@@ -454,7 +484,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	// Кнопка сортировки по алфавиту (слева)
 	var sortByNameButton *widget.Button
 	sortByNameButton = widget.NewButton("↑", func() {
-		// Выполняем сортировку с текущим направлением
+		// Применяем сортировку с текущим направлением (сохранит его в savedSortNameAscending)
 		sortByName(sortNameAscending)
 		// Переключаем направление для следующего раза
 		sortNameAscending = !sortNameAscending
@@ -470,7 +500,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	// Кнопки пинга и сортировки по задержке (справа)
 	var sortByDelayButton *widget.Button
 	sortByDelayButton = widget.NewButton("↑", func() {
-		// Выполняем сортировку с текущим направлением
+		// Применяем сортировку с текущим направлением (сохранит его в savedSortDelayAscending)
 		sortByDelay(sortDelayAscending)
 		// Переключаем направление для следующего раза
 		sortDelayAscending = !sortDelayAscending

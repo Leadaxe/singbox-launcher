@@ -46,7 +46,7 @@ BUILD_TYPE="${1:-universal}"
 if [ "$BUILD_TYPE" != "universal" ] && [ "$BUILD_TYPE" != "intel" ]; then
     echo "Usage: $0 [universal|intel]"
     echo "  universal - Build universal binary for Apple Silicon + Intel (requires macOS 11.0+)"
-    echo "  intel     - Build Intel-only binary (supports macOS 10.15+)"
+    echo "  intel     - Build Intel-only binary (supports macOS 11.0+)"
     exit 1
 fi
 
@@ -61,7 +61,7 @@ if [ "$BUILD_TYPE" = "universal" ]; then
     MIN_MACOS_VERSION="11.0"
 else
     echo "Building Intel-only binary (amd64)..."
-    MIN_MACOS_VERSION="10.15"
+    MIN_MACOS_VERSION="11.0"
 fi
 
 # Check if full Xcode is required (Command Line Tools have incomplete SDK)
@@ -101,6 +101,10 @@ fi
 
 # Set SDK path for CGO compiler
 export SDKROOT="$SDK_PATH"
+
+# Set minimum macOS version for CGO compiler
+export CGO_CFLAGS="-mmacosx-version-min=$MIN_MACOS_VERSION"
+export CGO_LDFLAGS="-mmacosx-version-min=$MIN_MACOS_VERSION"
 
 # Determine output filename
 BASE_NAME="singbox-launcher"
@@ -258,7 +262,7 @@ if [ "$BUILD_TYPE" = "universal" ]; then
     echo "  Supports: Apple Silicon and Intel Macs"
 else
     echo "  Output: $APP_NAME (Intel-only binary: amd64)"
-    echo "  Minimum macOS: $MIN_MACOS_VERSION (Catalina+)"
+    echo "  Minimum macOS: $MIN_MACOS_VERSION (Big Sur+)"
     echo "  Supports: Intel Macs only"
 fi
 echo "  Run with: open $APP_NAME"

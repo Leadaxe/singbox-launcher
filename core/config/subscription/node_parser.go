@@ -228,6 +228,11 @@ func ParseNode(uri string, skipFilters []map[string]string) (*config.ParsedNode,
 			log.Printf("Parser: Fixed invalid UTF-8 in fragment: %q -> %q", parsedURL.Fragment, fixed)
 			node.Label = fixed
 		}
+
+		// Sanitize control characters (NUL and other C0 controls) which may
+		// cause GUI toolkits or serializers to misbehave. Remove runes < 0x20
+		// (except common whitespace) and delete DEL (0x7F).
+		node.Label = sanitizeForDisplay(node.Label)
 	}
 
 	// For some formats, label might be in path or userinfo
@@ -343,6 +348,33 @@ func validateAndFixUTF8Bytes(b []byte) (string, bool) {
 		return fixed, true
 	}
 	return "", false
+}
+
+// sanitizeForDisplay removes control characters that are unsafe for UI
+// and other consumers (notably NUL). It removes runes in the C0 control
+// range (U+0000..U+001F) and DEL (U+007F). Keeps common whitespace
+// characters (tab, newline, carriage return) if present.
+func sanitizeForDisplay(s string) string {
+	if s == "" {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		// Keep tab/newline/carriage return
+		if r == '\t' || r == '\n' || r == '\r' {
+			b.WriteRune(r)
+			continue
+		}
+		// Skip C0 controls and DEL
+		if r >= 0 && r <= 0x1F {
+			continue
+		}
+		if r == 0x7F {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func extractTagAndComment(label string) (tag, comment string) {

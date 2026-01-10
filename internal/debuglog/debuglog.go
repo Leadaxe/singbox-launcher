@@ -69,3 +69,33 @@ func ShouldLog(level Level, local Level) bool {
 	}
 	return level <= effective
 }
+
+// LogTextFragment логирует фрагмент текста с автоматической обрезкой для читаемости.
+// Для больших текстов показывает начало и конец, избегая захламления логов.
+//
+// Параметры:
+//   - prefix: префикс модуля для логов
+//   - level: уровень логирования
+//   - local: локальный уровень (или UseGlobal)
+//   - description: описание фрагмента
+//   - text: текст для логирования
+//   - maxChars: максимум символов для показа (рекомендуется 500-1000)
+func LogTextFragment(prefix string, level Level, local Level, description, text string, maxChars int) {
+	if !ShouldLog(level, local) {
+		return
+	}
+
+	textLen := len(text)
+
+	// Если текст короткий, показываем полностью
+	if textLen <= maxChars*2 {
+		Log(prefix, level, local, "%s (len=%d): %s", description, textLen, text)
+		return
+	}
+
+	// Для длинных текстов показываем начало и конец
+	Log(prefix, level, local, "%s (len=%d): first %d chars: %s",
+		description, textLen, maxChars, text[:maxChars])
+	Log(prefix, level, local, "%s (len=%d): last %d chars: %s",
+		description, textLen, maxChars, text[textLen-maxChars:])
+}

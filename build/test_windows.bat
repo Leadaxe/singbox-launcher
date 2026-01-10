@@ -160,7 +160,27 @@ echo Starting tests...
 echo.
 
 :: Запускаем тесты с выводом в файл и на экран одновременно
-go test %TEST_FLAGS% -count=1 %TEST_PACKAGE% > "%TEST_LOG%" 2>&1
+:: Compute package list excluding UI packages and fyne imports
+set "PKGS="
+for /f "delims=" %%p in ('go list %TEST_PACKAGE% 2^>nul ^| findstr /V /C:"/ui/" /C:"fyne.io"') do (
+    if defined PKGS (
+        set "PKGS=!PKGS! %%p"
+    ) else (
+        set "PKGS=%%p"
+    )
+)
+
+if not defined PKGS (
+    echo No packages to test after filtering. Exiting.
+    exit /b 0
+)
+
+echo Packages to be tested:
+echo %PKGS%
+
+:: Run tests with output to file and on screen simultaneously
+go test %TEST_FLAGS% -count=1 %PKGS% > "%TEST_LOG%" 2>&1
+set TEST_EXIT_CODE=%ERRORLEVEL%
 set TEST_EXIT_CODE=%ERRORLEVEL%
 
 :: Показываем содержимое лога на экране
