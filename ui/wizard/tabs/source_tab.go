@@ -20,6 +20,7 @@ package tabs
 import (
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 
 	"image/color"
@@ -100,11 +101,52 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 	hintLabel := widget.NewLabel("Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://).\nFor multiple links, use a new line for each.")
 	hintLabel.Wrapping = fyne.TextWrapWord
 
+	var freeVPNDialog dialog.Dialog
+	var freeVPNDialogOpen bool
+	getFreeVPNButton := widget.NewButton("Get free VPN!", func() {
+		if freeVPNDialogOpen {
+			return
+		}
+		thanks := widget.NewLabel("Thank @igareck for providing VPN lists:")
+		thanks.Wrapping = fyne.TextWrapWord
+		linkURL, _ := url.Parse("https://github.com/igareck/vpn-configs-for-russia?tab=readme-ov-file#-%D1%87%D0%B5%D1%80%D0%BD%D1%8B%D0%B9-%D1%81%D0%BF%D0%B8%D1%81%D0%BE%D0%BA-")
+		link := widget.NewHyperlink("https://github.com/igareck/vpn-configs-for-russia", linkURL)
+		addButton := widget.NewButton("Add links", func() {
+			urls := []string{
+				"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt",
+				"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Cable.txt",
+				"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Mobile.txt",
+			}
+			current := strings.TrimSpace(guiState.SourceURLEntry.Text)
+			linksText := strings.Join(urls, "\n")
+			if current != "" {
+				guiState.SourceURLEntry.SetText(current + "\n" + linksText)
+			} else {
+				guiState.SourceURLEntry.SetText(linksText)
+			}
+			if freeVPNDialog != nil {
+				freeVPNDialog.Hide()
+			}
+		})
+		spacer := canvas.NewRectangle(color.Transparent)
+		spacer.SetMinSize(fyne.NewSize(0, addButton.MinSize().Height))
+		content := container.NewVBox(
+			thanks,
+			link,
+			spacer,
+			addButton,
+		)
+		freeVPNDialog = dialog.NewCustom("Get free VPN", "Close", content, guiState.Window)
+		freeVPNDialog.SetOnClosed(func() { freeVPNDialogOpen = false })
+		freeVPNDialogOpen = true
+		freeVPNDialog.Show()
+	})
+
 	hintRow := container.NewBorder(
 		nil,                        // top
 		nil,                        // bottom
 		nil,                        // left
-		guiState.CheckURLContainer, // right - button/progress
+		guiState.CheckURLContainer, // right - actions
 		hintLabel,                  // center - hint takes all available space
 	)
 
@@ -125,8 +167,15 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 		urlEntryScroll,
 	)
 
+	// Header row with action on the right
+	urlHeader := container.NewHBox(
+		urlLabel,
+		layout.NewSpacer(),
+		getFreeVPNButton,
+	)
+
 	urlContainer := container.NewVBox(
-		urlLabel,                // Header
+		urlHeader,               // Header with action
 		urlEntryWithSize,        // Input field with size limit (3 lines)
 		hintRow,                 // Hint with button on right
 		guiState.URLStatusLabel, // Status
