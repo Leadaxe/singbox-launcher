@@ -27,7 +27,6 @@ func (ac *AppController) GetInstalledCoreVersion() (string, error) {
 	if _, err := os.Stat(ac.FileService.SingboxPath); os.IsNotExist(err) {
 		return "", fmt.Errorf("sing-box not found at %s", ac.FileService.SingboxPath)
 	}
-	"singbox-launcher/internal/debuglog"
 
 	// Запускаем sing-box version
 	cmd := exec.Command(ac.FileService.SingboxPath, "version")
