@@ -32,5 +32,3 @@ func EnsureDefaultOutbound(ruleState *RuleState, availableOutbounds []string) {
 		}
 	}
 }
-
-

@@ -39,7 +39,7 @@ import (
 // CreateSourceTab creates the Sources & ParserConfig tab UI.
 func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObject {
 	guiState := presenter.GUIState()
-	
+
 	// Section 1: Subscription URL or Direct Links
 	guiState.CheckURLButton = widget.NewButton("Check", func() {
 		if guiState.CheckURLInProgress {
@@ -97,11 +97,11 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 	hintLabel.Wrapping = fyne.TextWrapWord
 
 	hintRow := container.NewBorder(
-		nil,                       // top
-		nil,                       // bottom
-		nil,                       // left
+		nil,                        // top
+		nil,                        // bottom
+		nil,                        // left
 		guiState.CheckURLContainer, // right - button/progress
-		hintLabel,                 // center - hint takes all available space
+		hintLabel,                  // center - hint takes all available space
 	)
 
 	guiState.URLStatusLabel = widget.NewLabel("")
@@ -122,9 +122,9 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 	)
 
 	urlContainer := container.NewVBox(
-		urlLabel,               // Header
-		urlEntryWithSize,       // Input field with size limit (3 lines)
-		hintRow,                // Hint with button on right
+		urlLabel,                // Header
+		urlEntryWithSize,        // Input field with size limit (3 lines)
+		hintRow,                 // Hint with button on right
 		guiState.URLStatusLabel, // Status
 	)
 

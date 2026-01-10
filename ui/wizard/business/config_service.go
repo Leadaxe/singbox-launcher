@@ -30,4 +30,3 @@ type ConfigServiceAdapter struct {
 func (a *ConfigServiceAdapter) GenerateOutboundsFromParserConfig(parserConfig *config.ParserConfig, tagCounts map[string]int, progressCallback func(float64, string)) (*config.OutboundGenerationResult, error) {
 	return a.CoreConfigService.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback)
 }
-

@@ -26,5 +26,3 @@ type DefaultTemplateLoader struct{}
 func (l *DefaultTemplateLoader) LoadTemplateData(execDir string) (*wizardtemplate.TemplateData, error) {
 	return wizardtemplate.LoadTemplateData(execDir)
 }
-
-

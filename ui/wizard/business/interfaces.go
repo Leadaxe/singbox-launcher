@@ -22,4 +22,3 @@ type FileServiceInterface interface {
 	ConfigPath() string
 	ExecDir() string
 }
-

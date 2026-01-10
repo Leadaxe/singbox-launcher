@@ -36,7 +36,7 @@ import (
 // CreatePreviewTab creates the Preview tab UI.
 func CreatePreviewTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObject {
 	guiState := presenter.GUIState()
-	
+
 	guiState.TemplatePreviewEntry = widget.NewMultiLineEntry()
 	guiState.TemplatePreviewEntry.SetPlaceHolder("Preview will appear here")
 	guiState.TemplatePreviewEntry.Wrapping = fyne.TextWrapOff
@@ -70,8 +70,8 @@ func CreatePreviewTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// Container with status (takes all available space) and button on right
 	statusRow := container.NewBorder(
 		nil, nil,
-		nil,                              // left
-		guiState.ShowPreviewButton,       // right - fixed width by content
+		nil,                                 // left
+		guiState.ShowPreviewButton,          // right - fixed width by content
 		guiState.TemplatePreviewStatusLabel, // center - takes all available space
 	)
 

@@ -6,11 +6,11 @@
 //   - CloneOutbound - создает глубокую копию OutboundConfig для безопасного изменения
 //
 // LoadConfigFromFile выполняет:
-//   1. Проверку размера файла config.json (не должен превышать MaxJSONConfigSize)
-//   2. Извлечение @ParserConfig блока из config.json через parser.ExtractParserConfig()
-//   3. Если @ParserConfig не найден в config.json, использует ParserConfig из template
-//   4. Извлечение source URLs из @ParserConfig (если есть)
-//   5. Возврат загруженных данных или ошибки
+//  1. Проверку размера файла config.json (не должен превышать MaxJSONConfigSize)
+//  2. Извлечение @ParserConfig блока из config.json через parser.ExtractParserConfig()
+//  3. Если @ParserConfig не найден в config.json, использует ParserConfig из template
+//  4. Извлечение source URLs из @ParserConfig (если есть)
+//  5. Возврат загруженных данных или ошибки
 //
 // Файл является оркестратором, который координирует загрузку конфигурации:
 // использует parser.ExtractParserConfig() из core/config/parser для извлечения @ParserConfig блока,

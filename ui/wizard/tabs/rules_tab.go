@@ -42,7 +42,7 @@ type ShowAddRuleDialogFunc func(p *wizardpresentation.WizardPresenter, editRule 
 func CreateRulesTab(presenter *wizardpresentation.WizardPresenter, showAddRuleDialog ShowAddRuleDialogFunc) fyne.CanvasObject {
 	model := presenter.Model()
 	guiState := presenter.GUIState()
-	
+
 	if model.TemplateData == nil {
 		templateFileName := wizardtemplate.GetTemplateFileName()
 		return container.NewVBox(
