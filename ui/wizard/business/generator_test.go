@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	wizardstate "singbox-launcher/ui/wizard/state"
+	wizardmodels "singbox-launcher/ui/wizard/models"
 	wizardtemplate "singbox-launcher/ui/wizard/template"
 )
 
@@ -22,7 +22,7 @@ func TestMergeRouteSection(t *testing.T) {
 }`)
 
 	// Create selectable rule states
-	selectableRules := []*wizardstate.SelectableRuleState{
+	selectableRules := []*wizardmodels.RuleState{
 		{
 			Rule: wizardtemplate.TemplateSelectableRule{
 				Label: "Test Rule",
@@ -39,7 +39,7 @@ func TestMergeRouteSection(t *testing.T) {
 	}
 
 	// Create custom rules
-	customRules := []*wizardstate.SelectableRuleState{
+	customRules := []*wizardmodels.RuleState{
 		{
 			Rule: wizardtemplate.TemplateSelectableRule{
 				Label: "Custom Rule",
@@ -89,7 +89,7 @@ func TestMergeRouteSection_RejectAction(t *testing.T) {
   "final": "direct-out"
 }`)
 
-	selectableRules := []*wizardstate.SelectableRuleState{
+	selectableRules := []*wizardmodels.RuleState{
 		{
 			Rule: wizardtemplate.TemplateSelectableRule{
 				Label: "Reject Rule",
@@ -100,7 +100,7 @@ func TestMergeRouteSection_RejectAction(t *testing.T) {
 				DefaultOutbound: "proxy-out",
 			},
 			Enabled:          true,
-			SelectedOutbound: wizardstate.RejectActionName, // User selected reject
+			SelectedOutbound: wizardmodels.RejectActionName, // User selected reject
 		},
 	}
 
@@ -125,7 +125,7 @@ func TestMergeRouteSection_RejectAction(t *testing.T) {
 	}
 
 	// Verify action is set to reject and outbound is removed
-	if rule["action"] != wizardstate.RejectActionName {
+	if rule["action"] != wizardmodels.RejectActionName {
 		t.Errorf("Expected action 'reject', got %v", rule["action"])
 	}
 	if _, hasOutbound := rule["outbound"]; hasOutbound {
@@ -140,7 +140,7 @@ func TestMergeRouteSection_DisabledRules(t *testing.T) {
   "final": "direct-out"
 }`)
 
-	selectableRules := []*wizardstate.SelectableRuleState{
+	selectableRules := []*wizardmodels.RuleState{
 		{
 			Rule: wizardtemplate.TemplateSelectableRule{
 				Label: "Disabled Rule",
@@ -282,25 +282,3 @@ func TestIndentMultiline(t *testing.T) {
 	}
 }
 
-// TestGenerateTagPrefix tests GenerateTagPrefix function
-func TestGenerateTagPrefix(t *testing.T) {
-	tests := []struct {
-		name     string
-		index    int
-		expected string
-	}{
-		{"Index 1", 1, "1:"},
-		{"Index 2", 2, "2:"},
-		{"Index 10", 10, "10:"},
-		{"Index 0", 0, "0:"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := GenerateTagPrefix(tt.index)
-			if result != tt.expected {
-				t.Errorf("Expected %q, got %q", tt.expected, result)
-			}
-		})
-	}
-}

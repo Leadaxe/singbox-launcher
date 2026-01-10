@@ -1,3 +1,27 @@
+// Package business содержит бизнес-логику визарда конфигурации.
+//
+// Файл validator.go содержит функции валидации для различных структур данных визарда:
+//   - ValidateParserConfig - валидация структуры и содержимого ParserConfig
+//   - ValidateURL - валидация URL подписок (проверка формата, схемы, хоста)
+//   - ValidateURI - валидация URI для прямых ссылок (vless://, vmess://, ssh:// и т.д.)
+//   - ValidateOutbound - валидация конфигурации outbound (tag, type, длина)
+//   - ValidateRule - валидация правил маршрутизации
+//   - ValidateJSON - валидация JSON структуры и размера
+//   - ValidateJSONSize, ValidateHTTPResponseSize - проверка размеров данных
+//
+// Эти функции являются чистыми функциями валидации (pure functions) - они не зависят от GUI
+// и могут быть использованы для тестирования бизнес-логики без Fyne.
+//
+// Валидаторы находятся в wizard/business, а не в core/config:
+// используют константы из wizard/utils (MaxJSONConfigSize, MaxURILength и т.д.)
+// которые специфичны для визарда (лимиты для UI операций),
+// используются только в контексте визарда (parser.go, loader.go, generator.go).
+// В core/config/parser есть своя валидация с другими лимитами (MaxConfigFileSize).
+//
+// Они используются в:
+//   - parser.go - для валидации URL и ParserConfig перед обработкой
+//   - loader.go - для валидации при загрузке конфигурации
+//   - generator.go - для валидации данных перед генерацией конфигурации
 package business
 
 import (
@@ -146,6 +170,10 @@ func ValidateRule(rule map[string]interface{}) error {
 }
 
 // ValidateJSONSize validates that JSON data size is within limits.
+//
+// TODO: Устранить дублирование - использовать parser.MaxConfigFileSize из core/config/parser
+// вместо wizardutils.MaxJSONConfigSize (оба имеют одинаковое значение 50MB).
+// См. docs/wizard_refactoring.md раздел "Дублирование констант и валидации".
 func ValidateJSONSize(jsonData []byte) error {
 	if len(jsonData) > wizardutils.MaxJSONConfigSize {
 		return fmt.Errorf("JSON size (%d bytes) exceeds maximum (%d bytes)", len(jsonData), wizardutils.MaxJSONConfigSize)

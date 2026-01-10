@@ -358,6 +358,21 @@ func (ac *AppController) GetActiveProxyName() string {
 	return ""
 }
 
+// SetLastSelectedProxy safely sets the last selected proxy name with mutex protection.
+func (ac *AppController) SetLastSelectedProxy(name string) {
+	if ac.APIService != nil {
+		ac.APIService.SetLastSelectedProxy(name)
+	}
+}
+
+// GetLastSelectedProxy safely gets the last selected proxy name with mutex protection.
+func (ac *AppController) GetLastSelectedProxy() string {
+	if ac.APIService != nil {
+		return ac.APIService.GetLastSelectedProxy()
+	}
+	return ""
+}
+
 // SetSelectedIndex safely sets the selected index with mutex protection.
 func (ac *AppController) SetSelectedIndex(index int) {
 	if ac.APIService != nil {

@@ -8,9 +8,8 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/driver/desktop" //nolint // Used for type assertion desktop.App (typechecking false positive)
+	"fyne.io/fyne/v2/driver/desktop"
 
-	// Import our new packages
 	"singbox-launcher/core"
 	"singbox-launcher/core/config/parser"
 	"singbox-launcher/internal/platform"
@@ -51,6 +50,7 @@ func main() {
 	controller.CheckLauncherVersionOnStartup()
 
 	// Configure the system tray if the application is running on a Desktop platform.
+	//nolint:unused // desktop is used for type assertion, even if linter can't detect it
 	if desk, ok := controller.UIService.Application.(desktop.App); ok {
 		log.Println("System tray: Desktop platform detected, initializing...")
 		// Create the menu update function for the system tray with proxy selection submenu
@@ -252,10 +252,10 @@ func main() {
 	if controller.FileService != nil {
 		if controller.FileService.MainLogFile != nil {
 			controller.FileService.MainLogFile.Close()
-	}
+		}
 		if controller.FileService.ChildLogFile != nil {
 			controller.FileService.ChildLogFile.Close()
-	}
+		}
 		if controller.FileService.ApiLogFile != nil {
 			controller.FileService.ApiLogFile.Close()
 		}

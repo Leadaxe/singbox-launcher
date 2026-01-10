@@ -1,11 +1,38 @@
+// Package wizard содержит точку входа и координацию компонентов визарда конфигурации.
+//
+// Файл wizard.go содержит функцию ShowConfigWizard - главную точку входа визарда конфигурации.
+// Она координирует создание всех компонентов визарда:
+//   - Создание модели (WizardModel) и GUI-состояния (GUIState)
+//   - Загрузку данных шаблона (TemplateData)
+//   - Создание презентера (WizardPresenter), связывающего модель, GUI и бизнес-логику
+//   - Создание табов (Source, Rules, Preview) и их содержимого
+//   - Настройку обработчиков событий и навигации
+//   - Инициализацию данных (загрузка конфигурации из файла, установка начальных значений)
+//
+// Визард следует архитектуре MVP (Model-View-Presenter):
+//   - Model (models.WizardModel) - чистые бизнес-данные без GUI зависимостей
+//   - View (GUIState + tabs/dialogs) - только GUI виджеты и их компоновка
+//   - Presenter (WizardPresenter) - связывает модель и представление, координирует бизнес-логику
+//
+// Файл содержит высокоуровневую координацию всех компонентов визарда.
+// Определяет жизненный цикл визарда (создание, инициализация, закрытие).
+// Является единственным местом, где создаются все основные компоненты вместе.
+//
+// Используется в:
+//   - core/ui/ui.go - вызывается при открытии визарда из главного окна приложения
+//
+// Координирует:
+//   - models - создает WizardModel
+//   - presentation - создает GUIState и WizardPresenter
+//   - tabs - создает все три таба визарда
+//   - dialogs - настраивает вызовы диалогов
+//   - business - инициализирует загрузку конфигурации через presenter
 package wizard
 
 import (
 	"fmt"
 	"image/color"
 	"path/filepath"
-	"strings"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -15,49 +42,57 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
+	"singbox-launcher/internal/debuglog"
 	wizardbusiness "singbox-launcher/ui/wizard/business"
 	wizarddialogs "singbox-launcher/ui/wizard/dialogs"
-	wizardstate "singbox-launcher/ui/wizard/state"
+	wizardpresentation "singbox-launcher/ui/wizard/presentation"
+	wizardmodels "singbox-launcher/ui/wizard/models"
 	wizardtabs "singbox-launcher/ui/wizard/tabs"
 	wizardtemplate "singbox-launcher/ui/wizard/template"
 )
 
 // ShowConfigWizard opens the configuration wizard window.
 func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
-	state := &wizardstate.WizardState{
-		Controller:        controller,
-		PreviewNeedsParse: true,
-	}
+	// Create model and GUI state
+	model := wizardmodels.NewWizardModel()
+	guiState := &wizardpresentation.GUIState{}
 
-	if templateData, err := wizardtemplate.LoadTemplateData(controller.FileService.ExecDir); err != nil {
+	// Load template data
+	templateLoader := &wizardbusiness.DefaultTemplateLoader{}
+	templateData, err := templateLoader.LoadTemplateData(controller.FileService.ExecDir)
+	if err != nil {
 		templateFileName := wizardtemplate.GetTemplateFileName()
-		wizardstate.ErrorLog("ConfigWizard: failed to load %s from %s: %v", templateFileName, filepath.Join(controller.FileService.ExecDir, "bin", templateFileName), err)
-		// Update config status in Core Dashboard (similar to UpdateConfigStatusFunc)
+		debuglog.Log("ERROR", debuglog.LevelError, debuglog.UseGlobal, "ConfigWizard: failed to load %s from %s: %v", templateFileName, filepath.Join(controller.FileService.ExecDir, "bin", templateFileName), err)
+		// Update config status in Core Dashboard
 		if controller.UIService != nil && controller.UIService.UpdateConfigStatusFunc != nil {
 			controller.UIService.UpdateConfigStatusFunc()
 		}
 		return
-	} else {
-		state.TemplateData = templateData
 	}
+	model.TemplateData = templateData
 
 	// Create new window for wizard
 	wizardWindow := controller.UIService.Application.NewWindow("Config Wizard")
 	wizardWindow.Resize(fyne.NewSize(620, 660))
 	wizardWindow.CenterOnScreen()
-	state.Window = wizardWindow
+	guiState.Window = wizardWindow
 
-	// Create first tab
-	tab1 := wizardtabs.CreateSourceTab(state)
+	// Create presenter
+	presenter := wizardpresentation.NewWizardPresenter(model, guiState, controller, templateLoader)
 
-	loadedConfig, err := wizardbusiness.LoadConfigFromFile(state)
+	// Load config from file
+	fileService := &wizardbusiness.FileServiceAdapter{FileService: controller.FileService}
+	loadedConfig, parserConfigJSON, sourceURLs, err := wizardbusiness.LoadConfigFromFile(fileService, templateData)
 	if err != nil {
-		wizardstate.ErrorLog("ConfigWizard: Failed to load config: %v", err)
+		debuglog.Log("ERROR", debuglog.LevelError, debuglog.UseGlobal, "ConfigWizard: Failed to load config: %v", err)
 		dialog.ShowError(fmt.Errorf("Failed to load existing config: %w", err), wizardWindow)
 	}
-	if !loadedConfig {
+	if loadedConfig {
+		model.ParserConfigJSON = parserConfigJSON
+		model.SourceURLs = sourceURLs
+	} else {
 		// If we didn't load from template or config.json - show error
-		if state.TemplateData == nil || state.TemplateData.ParserConfig == "" {
+		if model.TemplateData == nil || model.TemplateData.ParserConfig == "" {
 			templateFileName := wizardtemplate.GetTemplateFileName()
 			dialog.ShowError(fmt.Errorf("No config found and template file (bin/%s) is missing or invalid.\nPlease create %s or ensure config.json exists.", templateFileName, templateFileName), wizardWindow)
 			wizardWindow.Close()
@@ -66,25 +101,31 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 	}
 
 	// Initialize template state
-	state.InitializeTemplateState()
+	presenter.InitializeTemplateState()
+
+	// Create first tab
+	tab1 := wizardtabs.CreateSourceTab(presenter)
 
 	// Create container with tabs (only one for now)
 	tab1Item := container.NewTabItem("Sources & ParserConfig", tab1)
 	tabs := container.NewAppTabs(tab1Item)
+	guiState.Tabs = tabs
 	var rulesTabItem *container.TabItem
 	var previewTabItem *container.TabItem
 	var currentTabIndex int = 0
 	// Use ShowAddRuleDialog from wizard/dialogs directly
-	showAddRuleDialogWrapper := wizarddialogs.ShowAddRuleDialog
-	if templateTab := wizardtabs.CreateRulesTab(state, showAddRuleDialogWrapper); templateTab != nil {
+	showAddRuleDialogWrapper := func(p *wizardpresentation.WizardPresenter, editRule *wizardmodels.RuleState, ruleIndex int) {
+		wizarddialogs.ShowAddRuleDialog(p, editRule, ruleIndex)
+	}
+	if templateTab := wizardtabs.CreateRulesTab(presenter, showAddRuleDialogWrapper); templateTab != nil {
 		rulesTabItem = container.NewTabItem("Rules", templateTab)
-		previewTabItem = container.NewTabItem("Preview", wizardtabs.CreatePreviewTab(state))
+		previewTabItem = container.NewTabItem("Preview", wizardtabs.CreatePreviewTab(presenter))
 		tabs.Append(rulesTabItem)
 		tabs.Append(previewTabItem)
 	}
 
 	// Create navigation buttons
-	state.CloseButton = widget.NewButton("Close", func() {
+	guiState.CloseButton = widget.NewButton("Close", func() {
 		wizardWindow.Close()
 	})
 
@@ -92,156 +133,49 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 	wizardWindow.SetCloseIntercept(func() {
 		wizardWindow.Close()
 	})
-	state.CloseButton.Importance = widget.HighImportance
+	guiState.CloseButton.Importance = widget.HighImportance
 
-	state.PrevButton = widget.NewButton("Prev", func() {
+	guiState.PrevButton = widget.NewButton("Prev", func() {
 		if currentTabIndex > 0 {
 			currentTabIndex--
 			tabs.SelectTab(tabs.Items[currentTabIndex])
 		}
 	})
-	state.PrevButton.Importance = widget.HighImportance
+	guiState.PrevButton.Importance = widget.HighImportance
 
-	state.NextButton = widget.NewButton("Next", func() {
+	guiState.NextButton = widget.NewButton("Next", func() {
 		if currentTabIndex < len(tabs.Items)-1 {
 			currentTabIndex++
 			tabs.SelectTab(tabs.Items[currentTabIndex])
 		}
 	})
-	state.NextButton.Importance = widget.HighImportance
+	guiState.NextButton.Importance = widget.HighImportance
 
-	state.SaveButton = widget.NewButton("Save", func() {
-		if strings.TrimSpace(state.ParserConfigEntry.Text) == "" {
-			dialog.ShowError(fmt.Errorf("ParserConfig is empty"), state.Window)
-			return
-		}
-		if strings.TrimSpace(state.SourceURLEntry.Text) == "" {
-			dialog.ShowError(fmt.Errorf("VLESS URL is empty"), state.Window)
-			return
-		}
-		if state.SaveInProgress {
-			dialog.ShowInformation("Saving", "Save operation already in progress... Please wait.", state.Window)
-			return
-		}
-		if state.AutoParseInProgress {
-			dialog.ShowInformation("Parsing", "Parsing in progress... Please wait.", state.Window)
-			return
-		}
-
-		// Start async save with progress indication
-		state.SetSaveState("", 0.0) // Show progress bar
-		go func() {
-			defer wizardstate.SafeFyneDo(state.Window, func() {
-				state.SetSaveState("Save", -1) // Hide progress, show button
-			})
-
-			// Step 0: Check and wait for parsing if needed (0-40%)
-			if state.PreviewNeedsParse || state.AutoParseInProgress {
-				wizardstate.SafeFyneDo(state.Window, func() {
-					state.SaveProgress.SetValue(0.05)
-				})
-
-				// If parsing hasn't started yet, start it
-				if !state.AutoParseInProgress {
-					state.AutoParseInProgress = true
-					go wizardbusiness.ParseAndPreview(state)
-				}
-
-				// Wait for parsing to complete (check every 100ms)
-				maxWaitTime := 60 * time.Second // Maximum wait time
-				startTime := time.Now()
-				iterations := 0
-				for state.AutoParseInProgress {
-					if time.Since(startTime) > maxWaitTime {
-						wizardstate.SafeFyneDo(state.Window, func() {
-							dialog.ShowError(fmt.Errorf("Parsing timeout: operation took too long"), state.Window)
-						})
-						return
-					}
-					time.Sleep(100 * time.Millisecond)
-					iterations++
-					// Update progress smoothly (0.05 - 0.40)
-					// Show that process is running
-					progressRange := 0.35
-					baseProgress := 0.05
-					// Smooth forward movement with cyclic effect
-					cycleProgress := float64(iterations%40) / 40.0
-					currentProgress := baseProgress + cycleProgress*progressRange
-					wizardstate.SafeFyneDo(state.Window, func() {
-						state.SaveProgress.SetValue(currentProgress)
-					})
-				}
-				wizardstate.SafeFyneDo(state.Window, func() {
-					state.SaveProgress.SetValue(0.4)
-				})
-			}
-
-			// Step 1: Build config (40-80%)
-			wizardstate.SafeFyneDo(state.Window, func() {
-				state.SaveProgress.SetValue(0.4)
-			})
-			text, err := wizardbusiness.BuildTemplateConfig(state, false)
-			if err != nil {
-				wizardstate.SafeFyneDo(state.Window, func() {
-					dialog.ShowError(err, state.Window)
-				})
-				return
-			}
-			wizardstate.SafeFyneDo(state.Window, func() {
-				state.SaveProgress.SetValue(0.8)
-			})
-
-			// Step 2: Save file (80-95%)
-			path, err := state.SaveConfigWithBackup(text)
-			if err != nil {
-				wizardstate.SafeFyneDo(state.Window, func() {
-					dialog.ShowError(err, state.Window)
-				})
-				return
-			}
-			wizardstate.SafeFyneDo(state.Window, func() {
-				state.SaveProgress.SetValue(0.95)
-			})
-
-			// Step 3: Completion (95-100%)
-			time.Sleep(100 * time.Millisecond)
-			wizardstate.SafeFyneDo(state.Window, func() {
-				state.SaveProgress.SetValue(1.0)
-			})
-			// Small delay so user sees progress
-			time.Sleep(200 * time.Millisecond)
-
-			// Successfully saved
-			wizardstate.SafeFyneDo(state.Window, func() {
-				dialog.ShowInformation("Config Saved", fmt.Sprintf("Config written to %s", path), state.Window)
-				state.Window.Close()
-			})
-		}()
+	guiState.SaveButton = widget.NewButton("Save", func() {
+		presenter.SaveConfig()
 	})
-	state.SaveButton.Importance = widget.HighImportance
+	guiState.SaveButton.Importance = widget.HighImportance
 
 	// Create ProgressBar for Save button
-	state.SaveProgress = widget.NewProgressBar()
-	state.SaveProgress.Hide()
-	state.SaveProgress.SetValue(0)
+	guiState.SaveProgress = widget.NewProgressBar()
+	guiState.SaveProgress.Hide()
+	guiState.SaveProgress.SetValue(0)
 
 	// Set fixed size via placeholder (same as button)
-	saveButtonWidth := state.SaveButton.MinSize().Width
-	saveButtonHeight := state.SaveButton.MinSize().Height
+	saveButtonWidth := guiState.SaveButton.MinSize().Width
+	saveButtonHeight := guiState.SaveButton.MinSize().Height
 
 	// Create placeholder to preserve size
-	state.SavePlaceholder = canvas.NewRectangle(color.Transparent)
-	state.SavePlaceholder.SetMinSize(fyne.NewSize(saveButtonWidth, saveButtonHeight))
-	state.SavePlaceholder.Show()
-
-	// Save tabs reference in state
-	state.Tabs = tabs
+	guiState.SavePlaceholder = canvas.NewRectangle(color.Transparent)
+	guiState.SavePlaceholder.SetMinSize(fyne.NewSize(saveButtonWidth, saveButtonHeight))
+	guiState.SavePlaceholder.Show()
 
 	// Create container with stack for Save button (placeholder, button, progress)
+	// Create container with stack for Save button (placeholder, button, progress)
 	saveButtonStack := container.NewStack(
-		state.SavePlaceholder,
-		state.SaveButton,
-		state.SaveProgress,
+		guiState.SavePlaceholder,
+		guiState.SaveButton,
+		guiState.SaveProgress,
 	)
 
 	// Function to update buttons based on tab
@@ -252,35 +186,41 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 		if currentTabIndex == totalTabs-1 {
 			// Last tab (Preview): Close on left, Prev and Save on right
 			buttonsContent = container.NewHBox(
-				state.CloseButton,
+				guiState.CloseButton,
 				layout.NewSpacer(),
-				state.PrevButton,
+				guiState.PrevButton,
 				saveButtonStack, // Use stack with ProgressBar
 			)
 		} else if currentTabIndex == 0 {
 			// First tab: Close on left, Next on right (Prev hidden)
 			buttonsContent = container.NewHBox(
-				state.CloseButton,
+				guiState.CloseButton,
 				layout.NewSpacer(),
-				state.NextButton,
+				guiState.NextButton,
 			)
 		} else {
 			// Middle tabs: Close on left, Prev and Next on right
 			buttonsContent = container.NewHBox(
-				state.CloseButton,
+				guiState.CloseButton,
 				layout.NewSpacer(),
-				state.PrevButton,
-				state.NextButton,
+				guiState.PrevButton,
+				guiState.NextButton,
 			)
 		}
-		state.ButtonsContainer = buttonsContent
+		guiState.ButtonsContainer = buttonsContent
 	}
 
 	// Initialize button container
 	updateNavigationButtons()
 
+	// Sync model to GUI after initial setup
+	presenter.SyncModelToGUI()
+
 	// Update buttons when switching tabs
 	tabs.OnChanged = func(item *container.TabItem) {
+		// Sync GUI to model before switching
+		presenter.SyncGUIToModel()
+
 		// Update current tab index
 		for i, tabItem := range tabs.Items {
 			if tabItem == item {
@@ -290,24 +230,20 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 		}
 		if item == previewTabItem {
 			// Trigger async parsing (if needed)
-			go func() {
-				wizardbusiness.TriggerParseForPreview(state)
-			}()
+			presenter.TriggerParseForPreview()
 			// Check if preview needs recalculation due to changes on Rules tab
-			if state.TemplatePreviewNeedsUpdate {
-				go func() {
-					wizardbusiness.UpdateTemplatePreviewAsync(state)
-				}()
+			if model.TemplatePreviewNeedsUpdate {
+				presenter.UpdateTemplatePreviewAsync()
 			}
 		}
 		updateNavigationButtons()
 		// Update Border container with new buttons
 		content := container.NewBorder(
-			nil,                    // top
-			state.ButtonsContainer, // bottom
-			nil,                    // left
-			nil,                    // right
-			tabs,                   // center
+			nil,                      // top
+			guiState.ButtonsContainer, // bottom
+			nil,                      // left
+			nil,                      // right
+			tabs,                     // center
 		)
 		wizardWindow.SetContent(content)
 	}
@@ -315,11 +251,11 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 	// Preview is generated only via "Show Preview" button
 
 	content := container.NewBorder(
-		nil,                    // top
-		state.ButtonsContainer, // bottom
-		nil,                    // left
-		nil,                    // right
-		tabs,                   // center
+		nil,                      // top
+		guiState.ButtonsContainer, // bottom
+		nil,                      // left
+		nil,                      // right
+		tabs,                     // center
 	)
 
 	wizardWindow.SetContent(content)

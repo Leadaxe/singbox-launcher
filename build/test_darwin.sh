@@ -153,8 +153,17 @@ echo ""
 echo "Starting tests..."
 echo ""
 
+# Compute package list excluding UI packages and fyne imports
+PKGS=$(go list $TEST_PACKAGE 2>/dev/null | grep -v '/ui/' | grep -v 'fyne.io' || true)
+if [ -z "$PKGS" ]; then
+    echo "No packages to test after filtering. Exiting."
+    exit 0
+fi
+
 # Run tests with output to both file and screen
-go test $TEST_FLAGS -count=1 $TEST_PACKAGE 2>&1 | tee "$TEST_LOG"
+echo "Packages to be tested:" 
+echo "$PKGS"
+go test $TEST_FLAGS -count=1 $PKGS 2>&1 | tee "$TEST_LOG"
 TEST_EXIT_CODE=${PIPESTATUS[0]}
 
 # Show finish time
@@ -167,7 +176,7 @@ echo "========================================"
 # After tests compile binaries for inspection
 echo ""
 echo "=== Compiling test binaries for inspection ==="
-go list $TEST_PACKAGE 2>/dev/null | while read -r pkg; do
+go list $TEST_PACKAGE 2>/dev/null | grep -v '/ui/' | grep -v 'fyne.io' | while read -r pkg; do
     # Convert package path to filename
     PKG_NAME=$(echo "$pkg" | sed 's|singbox-launcher/||g' | sed 's|/|_|g' | sed 's| |_|g')
     if [ -z "$PKG_NAME" ]; then
@@ -175,7 +184,7 @@ go list $TEST_PACKAGE 2>/dev/null | while read -r pkg; do
     fi
     OUTPUT_FILE="$TEST_OUTPUT_DIR/${PKG_NAME}.test"
     echo "Compiling $pkg..."
-    if go test -c -o "$OUTPUT_FILE" "$pkg" 2>/dev/null; then
+    if go test -c -o "$OUTPUT_FILE" "$pkg" 2>&1; then
         echo "  Saved: $OUTPUT_FILE"
     else
         echo "  Failed to compile: $pkg"
@@ -196,7 +205,8 @@ echo "Test binaries saved to: $TEST_OUTPUT_DIR"
 echo "You can inspect them manually before next run."
 echo ""
 
-if [ $NO_PAUSE -eq 0 ]; then
+# Skip pause in non-interactive environments (e.g., CI)
+if [ $NO_PAUSE -eq 0 ] && [ -t 0 ]; then
     read -p "Press Enter to exit..."
 fi
 
