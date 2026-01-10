@@ -176,7 +176,7 @@ echo "========================================"
 # After tests compile binaries for inspection
 echo ""
 echo "=== Compiling test binaries for inspection ==="
-go list $TEST_PACKAGE 2>/dev/null | while read -r pkg; do
+go list $TEST_PACKAGE 2>/dev/null | grep -v '/ui/' | grep -v 'fyne.io' | while read -r pkg; do
     # Convert package path to filename
     PKG_NAME=$(echo "$pkg" | sed 's|singbox-launcher/||g' | sed 's|/|_|g' | sed 's| |_|g')
     if [ -z "$PKG_NAME" ]; then
@@ -205,7 +205,8 @@ echo "Test binaries saved to: $TEST_OUTPUT_DIR"
 echo "You can inspect them manually before next run."
 echo ""
 
-if [ $NO_PAUSE -eq 0 ]; then
+# Skip pause in non-interactive environments (e.g., CI)
+if [ $NO_PAUSE -eq 0 ] && [ -t 0 ]; then
     read -p "Press Enter to exit..."
 fi
 
