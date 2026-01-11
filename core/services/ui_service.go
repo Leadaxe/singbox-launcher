@@ -43,9 +43,6 @@ type UIService struct {
 	TrayMenuUpdateMutex      sync.Mutex
 	TrayMenuUpdateTimer      *time.Timer
 
-	// Dock icon visibility state (macOS only)
-	HideAppFromDock bool
-
 	// Callbacks for UI logic
 	RefreshAPIFunc           func()
 	ResetAPIStateFunc        func()
