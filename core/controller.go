@@ -674,7 +674,29 @@ func (ac *AppController) addHideDockMenuItem(menuItems []*fyne.MenuItem) []*fyne
 	}
 
 	menuItems = append(menuItems, fyne.NewMenuItem(hideDockLabel, func() {
+		// Toggle the preference
 		ac.UIService.HideAppFromDock = !ac.UIService.HideAppFromDock
+
+		// Apply the change immediately on macOS
+		if runtime.GOOS == "darwin" {
+			if ac.UIService.HideAppFromDock {
+				platform.HideDockIcon()
+				// Also hide the main window when hiding from Dock
+				if ac.UIService.MainWindow != nil {
+					ac.UIService.MainWindow.Hide()
+				}
+				log.Println("Tray: Hide app from Dock enabled — Dock hidden and window hidden")
+			} else {
+				platform.RestoreDockIcon()
+				// Restore and show the main window when unchecking
+				if ac.UIService.MainWindow != nil {
+					ac.UIService.MainWindow.Show()
+					ac.UIService.MainWindow.RequestFocus()
+				}
+				log.Println("Tray: Hide app from Dock disabled — Dock restored and window shown")
+			}
+		}
+
 		if ac.UIService.UpdateTrayMenuFunc != nil {
 			ac.UIService.UpdateTrayMenuFunc()
 		}
@@ -686,6 +708,9 @@ func (ac *AppController) addHideDockMenuItem(menuItems []*fyne.MenuItem) []*fyne
 
 // CreateTrayMenu creates the system tray menu with proxy selection submenu
 func (ac *AppController) CreateTrayMenu() *fyne.Menu {
+	/**
+	@TODO:if ac.APIService == nil { кажется это приводит к дублированию кода, может лучше бы делать if ac.APIService != nil {
+	*/
 	if ac.APIService == nil {
 		// Return minimal menu if APIService is not initialized
 		menuItems := []*fyne.MenuItem{
@@ -697,7 +722,9 @@ func (ac *AppController) CreateTrayMenu() *fyne.Menu {
 			fyne.NewMenuItemSeparator(),
 		}
 
-		menuItems = ac.addHideDockMenuItem(menuItems)
+		if runtime.GOOS == "darwin" {
+			menuItems = ac.addHideDockMenuItem(menuItems)
+		}
 		menuItems = append(menuItems, fyne.NewMenuItem("Quit", ac.GracefulExit))
 		return fyne.NewMenu("Singbox Launcher", menuItems...)
 	}
@@ -809,7 +836,9 @@ func (ac *AppController) CreateTrayMenu() *fyne.Menu {
 	}
 
 	// Add "Hide app from Dock" toggle (macOS only) before Quit
-	menuItems = ac.addHideDockMenuItem(menuItems)
+	if runtime.GOOS == "darwin" {
+		menuItems = ac.addHideDockMenuItem(menuItems)
+	}
 
 	// Add Quit item
 	menuItems = append(menuItems, fyne.NewMenuItem("Quit", ac.GracefulExit))
