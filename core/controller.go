@@ -661,19 +661,45 @@ func (ac *AppController) GetVPNButtonState() VPNButtonState {
 	return state
 }
 
+// addHideDockMenuItem adds "Hide app from Dock" toggle menu item (macOS only)
+func (ac *AppController) addHideDockMenuItem(menuItems []*fyne.MenuItem) []*fyne.MenuItem {
+	if runtime.GOOS != "darwin" {
+		return menuItems
+	}
+
+	hideDockEnabled := ac.UIService.HideAppFromDock
+	hideDockLabel := "Hide app from Dock"
+	if hideDockEnabled {
+		hideDockLabel = "✓ " + hideDockLabel
+	}
+
+	menuItems = append(menuItems, fyne.NewMenuItem(hideDockLabel, func() {
+		ac.UIService.HideAppFromDock = !ac.UIService.HideAppFromDock
+		if ac.UIService.UpdateTrayMenuFunc != nil {
+			ac.UIService.UpdateTrayMenuFunc()
+		}
+	}))
+	menuItems = append(menuItems, fyne.NewMenuItemSeparator())
+
+	return menuItems
+}
+
 // CreateTrayMenu creates the system tray menu with proxy selection submenu
 func (ac *AppController) CreateTrayMenu() *fyne.Menu {
 	if ac.APIService == nil {
 		// Return minimal menu if APIService is not initialized
-		return fyne.NewMenu("Singbox Launcher", []*fyne.MenuItem{
+		menuItems := []*fyne.MenuItem{
 			fyne.NewMenuItem("Open", func() {
 				if ac.UIService != nil && ac.UIService.MainWindow != nil {
 					ac.UIService.MainWindow.Show()
 				}
 			}),
 			fyne.NewMenuItemSeparator(),
-			fyne.NewMenuItem("Quit", ac.GracefulExit),
-		}...)
+		}
+
+		menuItems = ac.addHideDockMenuItem(menuItems)
+		menuItems = append(menuItems, fyne.NewMenuItem("Quit", ac.GracefulExit))
+		return fyne.NewMenu("Singbox Launcher", menuItems...)
 	}
 
 	// Get proxies from current group
@@ -781,6 +807,9 @@ func (ac *AppController) CreateTrayMenu() *fyne.Menu {
 		menuItems = append(menuItems, selectProxyItem)
 		menuItems = append(menuItems, fyne.NewMenuItemSeparator())
 	}
+
+	// Add "Hide app from Dock" toggle (macOS only) before Quit
+	menuItems = ac.addHideDockMenuItem(menuItems)
 
 	// Add Quit item
 	menuItems = append(menuItems, fyne.NewMenuItem("Quit", ac.GracefulExit))
