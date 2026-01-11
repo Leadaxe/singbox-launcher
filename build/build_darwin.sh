@@ -33,8 +33,12 @@ echo "SDK Path: $SDK_PATH"
 echo "SDK Version: $SDK_VERSION"
 
 echo ""
-echo "=== Tidying Go modules ==="
-go mod tidy
+if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+  echo "=== Skipping 'go mod tidy' in CI (GITHUB_ACTIONS=true) ==="
+else
+  echo "=== Tidying Go modules ==="
+  go mod tidy
+fi
 
 echo ""
 echo "=== Setting build environment ==="

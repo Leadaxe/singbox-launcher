@@ -19,31 +19,43 @@ echo.
 :: Устанавливаем окружение для сборки ПЕРВЫМ делом (локально), но НЕ в CI
 echo === Setting PATH and environment ===
 if defined GITHUB_ACTIONS (
-    echo === CI detected (GITHUB_ACTIONS=true). Skipping GOROOT/PATH override ===
+    echo === CI detected ^(GITHUB_ACTIONS=true^). Skipping GOROOT/PATH override ===
 ) else (
-    :: Устанавливаем GOROOT явно на правильную установку Go
+    rem --- Pick GOROOT (local only) ---
     if exist "C:\Program Files\Go" (
         set "GOROOT=C:\Program Files\Go"
     ) else if exist "C:\Go" (
         set "GOROOT=C:\Go"
     )
-    :: Добавляем пути к Go, MinGW и Git в начало PATH (Go должен быть ПЕРВЫМ!)
-    set "PATH=C:\Program Files\Go\bin;%PATH%"
-    set "PATH=C:\msys64\mingw64\bin;%PATH%"
-    if exist "%LOCALAPPDATA%\Programs\Git\bin" (
-        set "PATH=%LOCALAPPDATA%\Programs\Git\bin;%PATH%"
+
+    rem --- Prepend toolchains to PATH safely inside parentheses ---
+    rem Use CALL SET with %%PATH%% to avoid parsing issues with parentheses in PATH
+    call set "PATH=C:\Program Files\Go\bin;%%PATH%%"
+    call set "PATH=C:\msys64\mingw64\bin;%%PATH%%"
+
+    if exist "%LOCALAPPDATA%\Programs\Git\cmd" (
+        call set "PATH=%LOCALAPPDATA%\Programs\Git\cmd;%%PATH%%"
+    ) else if exist "%LOCALAPPDATA%\Programs\Git\bin" (
+        call set "PATH=%LOCALAPPDATA%\Programs\Git\bin;%%PATH%%"
+    ) else if exist "C:\Program Files\Git\cmd" (
+        call set "PATH=C:\Program Files\Git\cmd;%%PATH%%"
     ) else if exist "C:\Program Files\Git\bin" (
-        set "PATH=C:\Program Files\Git\bin;%PATH%"
+        call set "PATH=C:\Program Files\Git\bin;%%PATH%%"
+    ) else if exist "C:\Program Files (x86)\Git\cmd" (
+        call set "PATH=C:\Program Files (x86)\Git\cmd;%%PATH%%"
     ) else if exist "C:\Program Files (x86)\Git\bin" (
-        set "PATH=C:\Program Files (x86)\Git\bin;%PATH%"
+        call set "PATH=C:\Program Files (x86)\Git\bin;%%PATH%%"
     )
-    set "PATH=%USERPROFILE%\go\bin;%PATH%"
+
+    call set "PATH=%USERPROFILE%\go\bin;%%PATH%%"
+
+    echo Updated PATH and GOROOT for local build
 )
 
 if defined GOROOT (
     echo GOROOT=%GOROOT%
 ) else (
-    echo GOROOT is not set (OK in CI with actions/setup-go)
+    echo GOROOT is not set ^(OK in CI with actions/setup-go^)
 )
 echo.
 
@@ -67,7 +79,7 @@ echo.
 
 :: === Go modules tidy (skip in CI) ===
 if defined GITHUB_ACTIONS (
-    echo === Skipping "go mod tidy" in CI (GITHUB_ACTIONS=true) ===
+    echo === Skipping "go mod tidy" in CI ^(GITHUB_ACTIONS=true^) ===
 ) else (
     echo === Tidying Go modules ===
     echo Note: go mod tidy may modify go.mod/go.sum files.
@@ -87,7 +99,7 @@ set GOARCH=amd64
 :: Проверяем наличие gcc для CGO
 if %CGO_ENABLED%==1 (
     where gcc >nul 2>&1
-    if %ERRORLEVEL% NEQ 0 (
+    if !ERRORLEVEL! NEQ 0 (
         echo !!! WARNING: GCC not found in PATH !!!
         echo CGO requires GCC compiler. Checking common locations...
         if exist "C:\msys64\mingw64\bin\gcc.exe" (
@@ -97,7 +109,7 @@ if %CGO_ENABLED%==1 (
         )
     ) else (
         echo GCC found:
-        gcc --version | findstr /C:"gcc"
+        gcc --version 2>nul | findstr /I /C:"gcc"
     )
     echo.
 )
@@ -106,10 +118,10 @@ if %CGO_ENABLED%==1 (
 echo.
 if defined APP_VERSION (
     set "VERSION=%APP_VERSION%"
-    echo Version (from APP_VERSION): !VERSION!
+    echo Version ^(from APP_VERSION^): !VERSION!
 ) else (
     for /f "delims=" %%v in ('git describe --tags --always --dirty 2^>nul') do set "VERSION=%%v"
-    echo Version (from git describe): !VERSION!
+    echo Version ^(from git describe^): !VERSION!
 )
 if not defined VERSION (
     set "VERSION=unnamed-dev"
@@ -156,9 +168,9 @@ if %ERRORLEVEL% EQU 0 (
 
 :: Post-check: did we actually produce rsrc.syso?
 if exist rsrc.syso (
-    echo === Resource file rsrc.syso is present (resources will be embedded) ===
+    echo === Resource file rsrc.syso is present ^(resources will be embedded^) ===
 ) else (
-    echo === Resource file rsrc.syso is NOT present (building without embedded icon/manifest) ===
+    echo === Resource file rsrc.syso is NOT present ^(building without embedded icon/manifest^) ===
 )
 
 :: Определяем имя выходного файла
