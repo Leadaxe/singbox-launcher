@@ -360,17 +360,17 @@ func (ac *AppController) GetActiveProxyName() string {
 	return ""
 }
 
-// SetLastSelectedProxy safely sets the last selected proxy name with mutex protection.
-func (ac *AppController) SetLastSelectedProxy(name string) {
+// SetLastSelectedProxyForGroup sets the last selected proxy name for a specific selector group.
+func (ac *AppController) SetLastSelectedProxyForGroup(group, name string) {
 	if ac.APIService != nil {
-		ac.APIService.SetLastSelectedProxy(name)
+		ac.APIService.SetLastSelectedProxyForGroup(group, name)
 	}
 }
 
-// GetLastSelectedProxy safely gets the last selected proxy name with mutex protection.
-func (ac *AppController) GetLastSelectedProxy() string {
+// GetLastSelectedProxyForGroup gets the last selected proxy name for a specific selector group.
+func (ac *AppController) GetLastSelectedProxyForGroup(group string) string {
 	if ac.APIService != nil {
-		return ac.APIService.GetLastSelectedProxy()
+		return ac.APIService.GetLastSelectedProxyForGroup(group)
 	}
 	return ""
 }

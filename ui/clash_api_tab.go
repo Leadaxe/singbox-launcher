@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
@@ -522,6 +523,51 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		pingAllButton,
 	)
 
+	// Mapping button for showing selector -> currently active outbound (queried from Clash API)
+	mapButton := widget.NewButton("⇄", func() {
+		if ac.APIService == nil {
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", "API service is not initialized")
+			return
+		}
+		baseURL, token, enabled := ac.APIService.GetClashAPIConfig()
+		if !enabled {
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", "API is disabled: config error")
+			return
+		}
+
+		// Run queries in background to avoid blocking UI
+		go func() {
+			results := make([]string, 0, len(selectorOptions))
+			for _, sel := range selectorOptions {
+				_, now, err := api.GetProxiesInGroup(baseURL, token, sel, ac.FileService.ApiLogFile)
+				if err != nil {
+					results = append(results, fmt.Sprintf("%s → error: %v", sel, err))
+					continue
+				}
+				if now == "" {
+					results = append(results, fmt.Sprintf("%s → (no active outbound)", sel))
+				} else {
+					results = append(results, fmt.Sprintf("%s → %s", sel, now))
+				}
+			}
+
+			// Show dialog on UI thread
+			fyne.Do(func() {
+				content := container.NewVBox()
+				for _, line := range results {
+					lbl := widget.NewLabel(line)
+					content.Add(lbl)
+				}
+				scroll := container.NewVScroll(content)
+				scroll.SetMinSize(fyne.NewSize(480, 260))
+				dlg := dialog.NewCustom("Selector → Active Outbound", "Close", scroll, ac.UIService.MainWindow)
+				dlg.Show()
+			})
+		}()
+	})
+	// subtle importance to avoid visual noise
+	mapButton.Importance = widget.LowImportance
+
 	groupSelect = widget.NewSelect(selectorOptions, func(value string) {
 		if value == "" {
 			return
@@ -533,7 +579,13 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		if suppressSelectCallback {
 			return
 		}
-		status.SetText(fmt.Sprintf("Selected group '%s'.", value))
+		// Update status to show selected group and last used proxy for the group (if any)
+		lastUsed := ac.GetLastSelectedProxyForGroup(value)
+		if lastUsed != "" {
+			status.SetText(fmt.Sprintf("Selected group '%s'. Last used proxy: %s", value, lastUsed))
+		} else {
+			status.SetText(fmt.Sprintf("Selected group '%s'.", value))
+		}
 		// Update tray menu when group changes
 		if ac.UIService != nil && ac.UIService.UpdateTrayMenuFunc != nil {
 			ac.UIService.UpdateTrayMenuFunc()
@@ -553,7 +605,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 	topControls := container.NewVBox(
 		ac.UIService.ApiStatusLabel,
-		container.NewHBox(widget.NewLabel("Selector group:"), groupSelect),
+		container.NewHBox(widget.NewLabel("Selector group:"), groupSelect, mapButton),
 		widget.NewSeparator(),
 		buttonsRow,
 	)

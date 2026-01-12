@@ -35,3 +35,9 @@ https://github.com/Leadaxe/singbox-launcher/pull/23 thnx https://github.com/Must
 - **Wizard**: automatic URL checking on input change with a 2s debounce; the manual **Check** button was removed to prevent excessive calls and improve UX.
 
 - **Chat GPT button**: added a "Chat GPT" quick action in Sources tab that builds a URL-encoded prompt using the ParserConfig and the ParserConfig docs link and opens ChatGPT (also copies prompt to clipboard when the web interface cannot accept prompts directly).
+
+## Servers (Clash API)
+- **Per-selector last proxy**: the app now remembers the last selected proxy _per selector group_ (instead of a single global value), and restores the previous proxy per group when available.
+- **Selector → Active Outbound (live)**: added an info icon next to the selector dropdown that queries the Clash API and shows the current active outbound for each selector (format: `selector.tag → active_outbound`). Errors are shown inline per selector. Selector mapping icon ⇄
+- **Cleanup**: removed unused config-based selector→outbounds helper and deprecated global last-proxy functions; introduced `SetLastSelectedProxyForGroup` / `GetLastSelectedProxyForGroup` for explicit per-group state.
+- **UX**: the Servers tab status now displays the "Last used proxy" for the currently selected group.

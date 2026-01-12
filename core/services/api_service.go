@@ -28,11 +28,13 @@ type APIService struct {
 	AutoLoadMutex      sync.Mutex
 
 	// Proxy list state (protected by StateMutex)
-	StateMutex        sync.RWMutex
-	ProxiesList       []api.ProxyInfo
-	ActiveProxyName   string
-	SelectedIndex     int
-	LastSelectedProxy string // Последний выбранный пользователем прокси (для автоматического переключения при старте)
+	StateMutex      sync.RWMutex
+	ProxiesList     []api.ProxyInfo
+	ActiveProxyName string
+	SelectedIndex   int
+	// LastSelectedProxyByGroup maps selector group -> last selected proxy name.
+	// This allows remembering the last proxy per selector (group) independently.
+	LastSelectedProxyByGroup map[string]string
 
 	// Dependencies (passed from AppController)
 	ConfigPath            string
@@ -82,7 +84,7 @@ func NewAPIService(configPath string, apiLogFile *os.File,
 	apiSvc.SetProxiesList([]api.ProxyInfo{})
 	apiSvc.SetSelectedIndex(-1)
 	apiSvc.SetActiveProxyName("")
-	apiSvc.SetLastSelectedProxy("")
+	apiSvc.LastSelectedProxyByGroup = make(map[string]string)
 
 	return apiSvc, nil
 }
@@ -132,18 +134,24 @@ func (apiSvc *APIService) GetSelectedIndex() int {
 	return apiSvc.SelectedIndex
 }
 
-// SetLastSelectedProxy safely sets the last selected proxy name with mutex protection.
-func (apiSvc *APIService) SetLastSelectedProxy(name string) {
+// SetLastSelectedProxyForGroup safely sets the last selected proxy name for a selector group with mutex protection.
+func (apiSvc *APIService) SetLastSelectedProxyForGroup(group, name string) {
 	apiSvc.StateMutex.Lock()
 	defer apiSvc.StateMutex.Unlock()
-	apiSvc.LastSelectedProxy = name
+	if apiSvc.LastSelectedProxyByGroup == nil {
+		apiSvc.LastSelectedProxyByGroup = make(map[string]string)
+	}
+	apiSvc.LastSelectedProxyByGroup[group] = name
 }
 
-// GetLastSelectedProxy safely gets the last selected proxy name with mutex protection.
-func (apiSvc *APIService) GetLastSelectedProxy() string {
+// GetLastSelectedProxyForGroup safely gets the last selected proxy name for a selector group with mutex protection.
+func (apiSvc *APIService) GetLastSelectedProxyForGroup(group string) string {
 	apiSvc.StateMutex.RLock()
 	defer apiSvc.StateMutex.RUnlock()
-	return apiSvc.LastSelectedProxy
+	if apiSvc.LastSelectedProxyByGroup == nil {
+		return ""
+	}
+	return apiSvc.LastSelectedProxyByGroup[group]
 }
 
 // GetSelectedClashGroup safely gets the selected Clash group.
@@ -304,9 +312,9 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 				}
 			})
 
-			// Проверяем, есть ли сохраненный прокси, и переключаемся на него, если он отличается от текущего
+			// Проверяем, есть ли сохраненный прокси для текущей группы, и переключаемся на него, если он отличается от текущего
 			// Делаем это после обновления UI, чтобы не блокировать
-			lastSelected := apiSvc.GetLastSelectedProxy()
+			lastSelected := apiSvc.GetLastSelectedProxyForGroup(currentGroup)
 			if lastSelected != "" && lastSelected != now {
 				// Проверяем, что сохраненный прокси существует в списке
 				proxyExists := false
@@ -317,10 +325,10 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 					}
 				}
 				if proxyExists {
-					log.Printf("AutoLoadProxies: Switching to saved proxy '%s' (current: '%s')", lastSelected, now)
+					log.Printf("AutoLoadProxies: Switching to saved proxy '%s' (current: '%s') for group '%s'", lastSelected, now, currentGroup)
 					// Переключаемся на сохраненный прокси (мы уже в goroutine, дополнительная не нужна)
 					if err := apiSvc.SwitchProxy(currentGroup, lastSelected); err != nil {
-						log.Printf("AutoLoadProxies: Failed to switch to saved proxy '%s': %v", lastSelected, err)
+						log.Printf("AutoLoadProxies: Failed to switch to saved proxy '%s' for group '%s': %v", lastSelected, currentGroup, err)
 						// Не критично, продолжаем с текущим прокси
 					}
 				}
@@ -354,8 +362,8 @@ func (apiSvc *APIService) SwitchProxy(group, proxyName string) error {
 	}
 
 	apiSvc.SetActiveProxyName(proxyName)
-	// Сохраняем последний выбранный прокси для автоматического переключения при следующем старте
-	apiSvc.SetLastSelectedProxy(proxyName)
+	// Сохраняем последний выбранный прокси для текущей группы для автоматического переключения при следующем старте
+	apiSvc.SetLastSelectedProxyForGroup(group, proxyName)
 
 	// Notify about proxy switch
 	if apiSvc.OnProxySwitched != nil {
