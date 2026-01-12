@@ -20,4 +20,8 @@ https://github.com/Leadaxe/singbox-launcher/pull/23 thnx https://github.com/Must
 - Fixed multiple `golangci-lint` issues across the codebase (typecheck/import errors, platform stubs, and formatting), improving CI lint pass reliability.
 
 
+## Fixes
+- Fix: Config Wizard now properly removes deleted subscription URLs and direct links when editing input in the wizard. Previously removed lines could remain in the generated `ParserConfig`; this has been fixed to respect full and partial deletions and preserve existing settings only for matching entries.
+
+
 
