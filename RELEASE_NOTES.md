@@ -16,5 +16,8 @@ See [docs/release_notes/0-7-0.md](docs/release_notes/0-7-0.md) for detailed rele
 - Added "Hide app from Dock" feature: user can toggle hiding the app from the Dock. When hidden, the app continues running in the tray; opening the app restores the Dock icon. Implementation uses a darwin-specific CGO helper with safe non-darwin stubs.
 https://github.com/Leadaxe/singbox-launcher/pull/23 thnx https://github.com/MustDie-green
 
+## Linting
+- Fixed multiple `golangci-lint` issues across the codebase (typecheck/import errors, platform stubs, and formatting), improving CI lint pass reliability.
+
 
 
