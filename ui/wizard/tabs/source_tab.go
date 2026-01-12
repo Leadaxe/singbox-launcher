@@ -46,6 +46,8 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 		if guiState.CheckURLInProgress {
 			return
 		}
+		// Sync GUI to model before checking URL
+		presenter.SyncGUIToModel()
 		go func() {
 			if err := wizardbusiness.CheckURL(presenter.Model(), presenter); err != nil {
 				log.Printf("source_tab: CheckURL failed: %v", err)
@@ -221,6 +223,8 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 
 	// Parse button (positioned to left of ParserConfig)
 	guiState.ParseButton = widget.NewButton("Parse", func() {
+		// Sync GUI to model before parsing
+		presenter.SyncGUIToModel()
 		model := presenter.Model()
 		if model.AutoParseInProgress {
 			return
