@@ -117,8 +117,7 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 		link := widget.NewHyperlink("https://github.com/igareck/vpn-configs-for-russia", linkURL)
 		addButton := widget.NewButton("Add links", func() {
 			urls := []string{
-				"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt",
-				"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Cable.txt",
+				"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS_mobile.txt",
 				"https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Mobile.txt",
 			}
 			current := strings.TrimSpace(guiState.SourceURLEntry.Text)
