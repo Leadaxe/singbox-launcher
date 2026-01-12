@@ -1,4 +1,4 @@
-﻿//go:build !darwin
+//go:build !darwin
 // +build !darwin
 
 package platform
@@ -14,4 +14,3 @@ func HideDockIcon() {
 func RestoreDockIcon() {
 	log.Printf("platform: RestoreDockIcon is not implemented on non-darwin platforms")
 }
-
