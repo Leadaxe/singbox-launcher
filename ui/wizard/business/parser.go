@@ -516,22 +516,10 @@ func ApplyURLToParserConfig(model *wizardmodels.WizardModel, updater UIUpdater, 
 			debuglog.Log("DEBUG", debuglog.LevelVerbose, debuglog.UseGlobal, "applyURLToParserConfig: Adding new ProxySource with %d connections", len(connections))
 			newProxies = append(newProxies, proxySource)
 		}
-		// Preserve all other existing ProxySource entries with connections (that weren't matched)
-		for _, existingConnectionsProxy := range existingConnectionsProxies {
-			if !connectionsMatch(existingConnectionsProxy.Connections, connections) {
-				newProxies = append(newProxies, existingConnectionsProxy)
-				debuglog.Log("DEBUG", debuglog.LevelVerbose, debuglog.UseGlobal, "applyURLToParserConfig: Preserved ProxySource with %d connections, tag_prefix '%s', tag_postfix '%s', tag_mask '%s'",
-					len(existingConnectionsProxy.Connections), existingConnectionsProxy.TagPrefix, existingConnectionsProxy.TagPostfix, existingConnectionsProxy.TagMask)
-			}
-		}
-	} else {
-		// No new connections from input - preserve all existing ProxySource entries with connections
-		for _, existingConnectionsProxy := range existingConnectionsProxies {
-			newProxies = append(newProxies, existingConnectionsProxy)
-			debuglog.Log("DEBUG", debuglog.LevelVerbose, debuglog.UseGlobal, "applyURLToParserConfig: Preserved ProxySource with %d connections, tag_prefix '%s', tag_postfix '%s', tag_mask '%s'",
-				len(existingConnectionsProxy.Connections), existingConnectionsProxy.TagPrefix, existingConnectionsProxy.TagPostfix, existingConnectionsProxy.TagMask)
-		}
 	}
+	// Note: If len(connections) == 0, we don't preserve existing connection entries
+	// This allows users to remove direct links by deleting them from the input
+	// If len(connections) > 0, we only use the current input connections, not preserving old ones
 
 	// If there are no subscriptions or connections, create empty array
 	if len(newProxies) == 0 {
