@@ -1,8 +1,10 @@
 # Release Notes
+
 See [docs/release_notes/0-7-0.md](docs/release_notes/0-7-0.md) for detailed release notes 
 
-## Testing
-- Validate FREE VPN feature (dialog, links insertion)
+## Validate FREE VPN feature 
+With sincere thanks to igareck for the project vpn-configs-for-russia,
+whose ideas and contributions provided valuable inspiration for this release.
 
 ## CI / CD
 - Updated CI/CD logic: added cross-platform Go build cache (GOCACHE and module cache), skipped `go mod tidy` in CI, and standardized action versions (`actions/checkout@v6`, `actions/setup-go@v6`) to speed up and stabilize builds.
@@ -29,5 +31,8 @@ https://github.com/Leadaxe/singbox-launcher/pull/23 thnx https://github.com/Must
 - **Open from tray**: при выборе "Open" в трее главное окно всегда восстанавливается; если визард открыт — он отображается поверх главного окна и получает фокус.
 - **Рефакторинг**: логика оверлея вынесена в `ui/components/ClickRedirect`, инициализация — в `ui/wizard_overlay.go`, а общее поведение интегрировано через `UIService` (метод `ShowMainWindowOrFocusWizard`).
 
+
+## Unreleased (2026-01-12)
+- **Wizard**: automatic URL checking on input change with a 2s debounce; the manual **Check** button was removed to prevent excessive calls and improve UX.
 
 
