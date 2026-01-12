@@ -77,5 +77,7 @@ type GUIState struct {
 	CheckURLTimer           *time.Timer
 	SaveInProgress          bool
 	ParserConfigUpdating    bool
+	OutboundsPreviewUpdating bool
+	OutboundsPreviewLastText string
 	UpdatingOutboundOptions bool
 }

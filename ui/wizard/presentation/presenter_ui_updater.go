@@ -69,9 +69,14 @@ func (p *WizardPresenter) UpdateCheckURLButtonText(text string) {
 // UpdateOutboundsPreview обновляет текст preview outbounds.
 func (p *WizardPresenter) UpdateOutboundsPreview(text string) {
 	SafeFyneDo(p.guiState.Window, func() {
-		if p.guiState.OutboundsPreview != nil {
-			p.guiState.OutboundsPreview.SetText(text)
+		if p.guiState.OutboundsPreview == nil {
+			return
 		}
+		// Mark updating to prevent OnChanged from treating this as user edit
+		p.guiState.OutboundsPreviewUpdating = true
+		p.guiState.OutboundsPreviewLastText = text
+		p.guiState.OutboundsPreview.SetText(text)
+		p.guiState.OutboundsPreviewUpdating = false
 	})
 }
 

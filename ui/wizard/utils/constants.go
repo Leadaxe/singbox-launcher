@@ -46,7 +46,7 @@ const (
 const (
 	// MaxNodesForFullPreview is the maximum number of nodes to show full preview
 	// If nodes count exceeds this value, statistics comment will be shown instead
-	MaxNodesForFullPreview = 20
+	MaxNodesForFullPreview = 30
 	// WizardWindowWidth is the default width of wizard window
 	WizardWindowWidth = 620
 	// WizardWindowHeight is the default height of wizard window

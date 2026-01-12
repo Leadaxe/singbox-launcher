@@ -102,7 +102,7 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 	}
 
 	// Hint under input field with Check button on right
-	hintLabel := widget.NewLabel("Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://).\nFor multiple links, use a new line for each.")
+	hintLabel := widget.NewLabel("Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://). For multiple links, use a new line for each.")
 	hintLabel.Wrapping = fyne.TextWrapWord
 
 	var freeVPNDialog dialog.Dialog
@@ -228,6 +228,18 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 		// Sync GUI to model before parsing
 		presenter.SyncGUIToModel()
 		model := presenter.Model()
+		// Quick validation: ensure ParserConfig is not empty to provide immediate feedback.
+		if strings.TrimSpace(model.ParserConfigJSON) == "" {
+			// Show an error dialog and update preview with a clear message
+			fyne.Do(func() {
+				dialog.ShowError(fmt.Errorf("ParserConfig is empty. Please enter ParserConfig JSON or load a template."), guiState.Window)
+				if guiState.OutboundsPreview != nil {
+					presenter.UpdateOutboundsPreview("Error: ParserConfig is empty")
+				}
+			})
+			return
+		}
+		log.Printf("source_tab: Parse clicked, parser length=%d", len(strings.TrimSpace(model.ParserConfigJSON)))
 		if model.AutoParseInProgress {
 			return
 		}
@@ -237,6 +249,12 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 		go func() {
 			if err := wizardbusiness.ParseAndPreview(model, presenter, configService); err != nil {
 				log.Printf("source_tab: ParseAndPreview failed: %v", err)
+				// Show error to user in case of parse failure
+				fyne.Do(func() {
+					if guiState.OutboundsPreview != nil {
+						presenter.UpdateOutboundsPreview("Error: Failed to parse ParserConfig - see logs for details")
+					}
+				})
 			}
 		}()
 	})
@@ -265,10 +283,17 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 	guiState.OutboundsPreview.Wrapping = fyne.TextWrapOff
 	previewText := "Generated outbounds will appear here after clicking Parse..."
 	guiState.OutboundsPreview.SetText(previewText)
-	// Make field read-only, but text remains black (not disabled)
+	guiState.OutboundsPreviewLastText = previewText
+	// Make field effectively read-only: ignore programmatic updates, restore last preview on user edits
 	guiState.OutboundsPreview.OnChanged = func(text string) {
-		// Restore saved text when trying to edit
-		if text != previewText {
+		if guiState.OutboundsPreviewUpdating {
+			// Ignore programmatic updates
+			return
+		}
+		// Restore last known preview text
+		if guiState.OutboundsPreviewLastText != "" {
+			guiState.OutboundsPreview.SetText(guiState.OutboundsPreviewLastText)
+		} else {
 			guiState.OutboundsPreview.SetText(previewText)
 		}
 	}
