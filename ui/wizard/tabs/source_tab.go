@@ -212,7 +212,7 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 
 	// Documentation button
 	docButton := widget.NewButton("📖 Documentation", func() {
-		docURL := "https://github.com/Leadaxe/singbox-launcher/blob/main/README.md#configuring-configjson"
+		docURL := "https://github.com/Leadaxe/singbox-launcher/blob/main/docs/ParserConfig.md"
 		if err := platform.OpenURL(docURL); err != nil {
 			dialog.ShowError(fmt.Errorf("failed to open documentation: %w", err), guiState.Window)
 		}
