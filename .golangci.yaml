@@ -1,20 +1,18 @@
+version: "2"
+
 run:
   go: "1.24"
   build-tags:
     - cgo
+
 linters:
   enable:
     - govet
     - ineffassign
-    #- staticcheck
     - unused
-    #- gocritic
-    #- gosec # Security linter
-    - errcheck # Error checking
-    #- revive # Opinionated linter
-    - unused # Detect unused code
-    - whitespace # Enforce whitespace rules
-    - bodyclose # Ensure files/sockets are closed
+    - errcheck
+    - whitespace
+    - bodyclose
   disable:
     - staticcheck
   settings:
@@ -35,7 +33,6 @@ linters:
         rules:
           json: snake
           yaml: snake
-        use-field-name: false
     testifylint:
       enable-all: true
       disable:
@@ -48,17 +45,12 @@ linters:
       os-setenv: true
       os-create-temp: true
       os-temp-dir: true
-  exclude-dirs:
-    - vendor
-    - fyne-cross
-  exclude-files:
-    - ".*\\.pb\\.go$"
   exclusions:
     generated: lax
-    presets:
-      - common-false-positives
-      - legacy
-      - std-error-handling
+    paths:
+      - vendor
+      - fyne-cross
+      - examples
     rules:
       - linters:
           - noctx
@@ -66,15 +58,6 @@ linters:
         path: _test\.go
       - linters:
           - unused
-        path: main\.go$  # Skip unused check for main.go due to CGO/desktop import issues
+        path: main\.go$
       - text: "imported and not used"
-        path: main\.go$  # Skip typechecking error for desktop import (used in type assertion)
-    paths:
-      - examples$
-#formatters:
-#  enable:
-#    - gofumpt
-#  exclusions:
-#    generated: lax
-#    paths:
-#      - examples$
+        path: main\.go$

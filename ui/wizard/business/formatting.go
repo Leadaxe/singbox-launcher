@@ -12,10 +12,11 @@ const (
 // Использует IndentBase как базовую единицу.
 //
 // Примеры:
-//   Indent(0) = ""
-//   Indent(1) = "  " (2 пробела)
-//   Indent(2) = "    " (4 пробела)
-//   Indent(3) = "      " (6 пробелов)
+//
+//	Indent(0) = ""
+//	Indent(1) = "  " (2 пробела)
+//	Indent(2) = "    " (4 пробела)
+//	Indent(3) = "      " (6 пробелов)
 func Indent(level int) string {
 	if level <= 0 {
 		return ""

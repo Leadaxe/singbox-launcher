@@ -4,11 +4,11 @@
 //   - SaveConfig - асинхронное сохранение конфигурации с прогресс-баром и проверками
 //
 // SaveConfig выполняет следующие шаги:
-//   1. Проверяет, что ParserConfig и SourceURLs заполнены
-//   2. При необходимости запускает парсинг конфигурации (если PreviewNeedsParse)
-//   3. Генерирует финальную конфигурацию из шаблона и модели (BuildTemplateConfig)
-//   4. Сохраняет конфигурацию в файл с созданием бэкапа (SaveConfigWithBackup)
-//   5. Показывает диалог успешного сохранения и закрывает визард
+//  1. Проверяет, что ParserConfig и SourceURLs заполнены
+//  2. При необходимости запускает парсинг конфигурации (если PreviewNeedsParse)
+//  3. Генерирует финальную конфигурацию из шаблона и модели (BuildTemplateConfig)
+//  4. Сохраняет конфигурацию в файл с созданием бэкапа (SaveConfigWithBackup)
+//  5. Показывает диалог успешного сохранения и закрывает визард
 //
 // Все операции выполняются асинхронно в отдельной горутине с обновлением прогресс-бара.
 //
@@ -27,6 +27,7 @@ package presentation
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -71,7 +72,11 @@ func (p *WizardPresenter) SaveConfig() {
 				configService := &wizardbusiness.ConfigServiceAdapter{
 					CoreConfigService: p.controller.ConfigService,
 				}
-				go wizardbusiness.ParseAndPreview(p.model, p, configService)
+				go func() {
+					if err := wizardbusiness.ParseAndPreview(p.model, p, configService); err != nil {
+						log.Printf("presenter_save: ParseAndPreview failed: %v", err)
+					}
+				}()
 			}
 
 			maxWaitTime := 60 * time.Second
@@ -152,4 +157,3 @@ func (p *WizardPresenter) SaveConfig() {
 		})
 	}()
 }
-

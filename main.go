@@ -12,6 +12,7 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/config/parser"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui"
 )
@@ -188,6 +189,9 @@ func main() {
 	if controller.UIService.MainWindow != nil {
 		controller.UIService.MainWindow.SetCloseIntercept(func() {
 			controller.UIService.MainWindow.Hide()
+			if controller.UIService.HideAppFromDock {
+				platform.HideDockIcon()
+			}
 		})
 	}
 
@@ -201,9 +205,11 @@ func main() {
 			fyne.Do(func() {
 				// Show() is safe to call even if window is already visible
 				if controller.UIService.MainWindow != nil {
+					// Ensure Dock is restored before showing the window
+					platform.RestoreDockIcon()
 					controller.UIService.MainWindow.Show()
 					controller.UIService.MainWindow.RequestFocus()
-					log.Println("Dock icon clicked (native handler): Window shown and focused")
+					log.Println("Dock icon clicked (native handler): Dock restored, window shown and focused")
 				}
 			})
 		})
@@ -251,13 +257,13 @@ func main() {
 	// Close log files through FileService
 	if controller.FileService != nil {
 		if controller.FileService.MainLogFile != nil {
-			controller.FileService.MainLogFile.Close()
+			debuglog.RunAndLog("main: close main log file", controller.FileService.MainLogFile.Close)
 		}
 		if controller.FileService.ChildLogFile != nil {
-			controller.FileService.ChildLogFile.Close()
+			debuglog.RunAndLog("main: close child log file", controller.FileService.ChildLogFile.Close)
 		}
 		if controller.FileService.ApiLogFile != nil {
-			controller.FileService.ApiLogFile.Close()
+			debuglog.RunAndLog("main: close API log file", controller.FileService.ApiLogFile.Close)
 		}
 	}
 }

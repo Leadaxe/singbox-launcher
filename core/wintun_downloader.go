@@ -5,10 +5,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"singbox-launcher/internal/debuglog"
 )
 
 // WinTunVersion is the version of wintun.dll to download
@@ -54,7 +57,11 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 		}
 		return
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			log.Printf("DownloadWintunDLL: failed to remove temp dir %s: %v", tempDir, err)
+		}
+	}()
 
 	// 2. Download ZIP archive
 	zipURL := fmt.Sprintf(WinTunDownloadURL, WinTunVersion)
@@ -101,7 +108,7 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 		}
 		return
 	}
-	defer r.Close()
+	defer debuglog.RunAndLog("DownloadWintunDLL: close zip reader", r.Close)
 
 	// Search for wintun.dll in the correct directory
 	var dllPath string
@@ -118,13 +125,13 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 			dllPath = filepath.Join(tempDir, "wintun.dll")
 			outFile, err := os.Create(dllPath)
 			if err != nil {
-				rc.Close()
+				debuglog.RunAndLog(fmt.Sprintf("DownloadWintunDLL: close zip entry %s after create error", f.Name), rc.Close)
 				continue
 			}
 
 			_, err = io.Copy(outFile, rc)
-			outFile.Close()
-			rc.Close()
+			debuglog.RunAndLog(fmt.Sprintf("DownloadWintunDLL: close output file %s", dllPath), outFile.Close)
+			debuglog.RunAndLog("DownloadWintunDLL: close zip entry", rc.Close)
 
 			if err != nil {
 				continue
@@ -170,7 +177,7 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 		}
 		return
 	}
-	defer sourceFile.Close()
+	defer debuglog.RunAndLog(fmt.Sprintf("DownloadWintunDLL: close source file %s", dllPath), sourceFile.Close)
 
 	destFile, err := os.Create(ac.FileService.WintunPath)
 	if err != nil {
@@ -182,7 +189,7 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 		}
 		return
 	}
-	defer destFile.Close()
+	defer debuglog.RunAndLog(fmt.Sprintf("DownloadWintunDLL: close destination file %s", ac.FileService.WintunPath), destFile.Close)
 
 	_, err = io.Copy(destFile, sourceFile)
 	if err != nil {

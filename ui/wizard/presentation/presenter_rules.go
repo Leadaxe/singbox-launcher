@@ -56,5 +56,3 @@ func (p *WizardPresenter) RefreshRulesTab(createRulesTab func(*WizardPresenter) 
 func (p *WizardPresenter) OpenRuleDialogs() map[int]fyne.Window {
 	return p.openRuleDialogs
 }
-
-

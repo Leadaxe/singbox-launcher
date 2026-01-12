@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"singbox-launcher/internal/debuglog"
+
 	"github.com/muhammadmuzzammil1998/jsonc"
 )
 
@@ -84,30 +86,37 @@ var httpClient = &http.Client{
 	},
 }
 
+// writeLog writes formatted output to the provided file and ignores write errors.
+func writeLog(logFile *os.File, format string, args ...interface{}) {
+	if logFile == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(logFile, format, args...)
+}
+
 // TestAPIConnection attempts to connect to the Clash API.
 func TestAPIConnection(baseURL, token string, logFile *os.File) error {
 	logMessage := fmt.Sprintf("[%s] GET /version request started for API test.\n", time.Now().Format("2006-01-02 15:04:05"))
-	if logFile != nil {
-		fmt.Fprint(logFile, logMessage)
-	}
+	writeLog(logFile, "%s", logMessage)
 
 	url := fmt.Sprintf("%s/version", baseURL)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(httpRequestTimeoutSeconds)*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		if logFile != nil {
-			fmt.Fprintf(logFile, "[%s] Error creating API test request: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
-		}
+		writeLog(logFile, "[%s] Error creating API test request: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
 		return fmt.Errorf("failed to create API test request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := httpClient.Do(req)
-	if err != nil {
-		if logFile != nil {
-			fmt.Fprintf(logFile, "[%s] Error executing API test request: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
+	defer func() {
+		if resp != nil {
+			debuglog.RunAndLog("TestAPIConnection: close response body", resp.Body.Close)
 		}
+	}()
+	if err != nil {
+		writeLog(logFile, "[%s] Error executing API test request: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
 		// Проверяем тип ошибки для более понятного сообщения
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			return fmt.Errorf("network timeout: connection timed out")
@@ -121,22 +130,15 @@ func TestAPIConnection(baseURL, token string, logFile *os.File) error {
 		}
 		return fmt.Errorf("failed to execute API test request: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if logFile != nil {
-		fmt.Fprintf(logFile, "[%s] GET /version response status for API test: %d\n", time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode)
-	}
+	writeLog(logFile, "[%s] GET /version response status for API test: %d\n", time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		if logFile != nil {
-			fmt.Fprintf(logFile, "[%s] Unexpected status code for API test: %d, body: %s\n", time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode, string(bodyBytes))
-		}
+		writeLog(logFile, "[%s] Unexpected status code for API test: %d, body: %s\n", time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode, string(bodyBytes))
 		return fmt.Errorf("unexpected status code for API test: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
-	if logFile != nil {
-		fmt.Fprintf(logFile, "[%s] Clash API connection successful.\n", time.Now().Format("2006-01-02 15:04:05"))
-	}
+	writeLog(logFile, "[%s] Clash API connection successful.\n", time.Now().Format("2006-01-02 15:04:05"))
 	return nil
 }
 
@@ -151,10 +153,8 @@ type ProxyInfo struct {
 func GetProxiesInGroup(baseURL, token, groupName string, logFile *os.File) ([]ProxyInfo, string, error) {
 	// --- Helper function for logging ---
 	logMsg := func(format string, a ...interface{}) {
-		if logFile != nil {
-			timestamp := time.Now().Format("2006-01-02 15:04:05")
-			fmt.Fprintf(logFile, "[%s] "+format+"\n", append([]interface{}{timestamp}, a...)...)
-		}
+		timestamp := time.Now().Format("2006-01-02 15:04:05")
+		writeLog(logFile, "[%s] "+format+"\n", append([]interface{}{timestamp}, a...)...)
 	}
 
 	logMsg("GetProxiesInGroup: Starting request for group '%s'", groupName)
@@ -172,6 +172,11 @@ func GetProxiesInGroup(baseURL, token, groupName string, logFile *os.File) ([]Pr
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := httpClient.Do(req)
+	defer func() {
+		if resp != nil {
+			debuglog.RunAndLog("GetProxiesInGroup: close response body", resp.Body.Close)
+		}
+	}()
 	if err != nil {
 		logMsg("GetProxiesInGroup: ERROR: Failed to execute request: %v", err)
 		// Проверяем тип ошибки для более понятного сообщения
@@ -183,7 +188,6 @@ func GetProxiesInGroup(baseURL, token, groupName string, logFile *os.File) ([]Pr
 		}
 		return nil, "", fmt.Errorf("failed to execute /proxies request: %w", err)
 	}
-	defer resp.Body.Close()
 
 	logMsg("GetProxiesInGroup: Response status: %s", resp.Status)
 
@@ -280,9 +284,7 @@ func GetProxiesInGroup(baseURL, token, groupName string, logFile *os.File) ([]Pr
 func SwitchProxy(baseURL, token, group, proxy string, logFile *os.File) error {
 	payloadStr := fmt.Sprintf("{\"name\":\"%s\"}", proxy)
 	logMessage := fmt.Sprintf("[%s] PUT /proxies/%s request started with payload: %s\n", time.Now().Format("2006-01-02 15:04:05"), group, payloadStr)
-	if logFile != nil {
-		fmt.Fprint(logFile, logMessage)
-	}
+	writeLog(logFile, "%s", logMessage)
 
 	url := fmt.Sprintf("%s/proxies/%s", baseURL, group)
 	payload := strings.NewReader(payloadStr)
@@ -291,9 +293,7 @@ func SwitchProxy(baseURL, token, group, proxy string, logFile *os.File) error {
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "PUT", url, payload)
 	if err != nil {
-		if logFile != nil {
-			fmt.Fprintf(logFile, "[%s] Error creating switch request for %s/%s: %v\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy, err)
-		}
+		writeLog(logFile, "[%s] Error creating switch request for %s/%s: %v\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy, err)
 		return fmt.Errorf("failed to create switch request: %w", err)
 	}
 
@@ -301,10 +301,13 @@ func SwitchProxy(baseURL, token, group, proxy string, logFile *os.File) error {
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := httpClient.Do(req)
-	if err != nil {
-		if logFile != nil {
-			fmt.Fprintf(logFile, "[%s] Error executing switch request for %s/%s: %v\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy, err)
+	defer func() {
+		if resp != nil {
+			debuglog.RunAndLog("SwitchProxy: close response body", resp.Body.Close)
 		}
+	}()
+	if err != nil {
+		writeLog(logFile, "[%s] Error executing switch request for %s/%s: %v\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy, err)
 		// Проверяем тип ошибки для более понятного сообщения
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			return fmt.Errorf("network timeout: connection timed out")
@@ -314,50 +317,42 @@ func SwitchProxy(baseURL, token, group, proxy string, logFile *os.File) error {
 		}
 		return fmt.Errorf("failed to execute switch request: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if logFile != nil {
-		fmt.Fprintf(logFile, "[%s] PUT /proxies/%s response status: %d\n", time.Now().Format("2006-01-02 15:04:05"), group, resp.StatusCode)
-	}
+	writeLog(logFile, "[%s] PUT /proxies/%s response status: %d\n", time.Now().Format("2006-01-02 15:04:05"), group, resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		if logFile != nil {
-			fmt.Fprintf(logFile, "[%s] Unexpected status code for switch %s/%s: %d, body: %s\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy, resp.StatusCode, string(bodyBytes))
-		}
+		writeLog(logFile, "[%s] Unexpected status code for switch %s/%s: %d, body: %s\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy, resp.StatusCode, string(bodyBytes))
 		return fmt.Errorf("unexpected status code for switch: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
-	if logFile != nil {
-		fmt.Fprintf(logFile, "[%s] Successfully switched group '%s' to '%s'.\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy)
-	}
+	writeLog(logFile, "[%s] Successfully switched group '%s' to '%s'.\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy)
 	return nil
 }
 
 // GetDelay gets the delay for the specified proxy node.
 func GetDelay(baseURL, token, proxyName string, logFile *os.File) (int64, error) {
 	logMessage := fmt.Sprintf("[%s] GET /proxies/%s/delay request started.\n", time.Now().Format("2006-01-02 15:04:05"), proxyName)
-	if logFile != nil {
-		fmt.Fprint(logFile, logMessage)
-	}
+	writeLog(logFile, "%s", logMessage)
 
 	url := fmt.Sprintf("%s/proxies/%s/delay?timeout=5000&url=http://www.gstatic.com/generate_204", baseURL, proxyName)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(httpRequestTimeoutSeconds)*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		if logFile != nil {
-			fmt.Fprintf(logFile, "[%s] Error creating delay request for %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
-		}
+		writeLog(logFile, "[%s] Error creating delay request for %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
 		return 0, fmt.Errorf("failed to create delay request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := httpClient.Do(req)
-	if err != nil {
-		if logFile != nil {
-			fmt.Fprintf(logFile, "[%s] Error executing delay request for %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
+	defer func() {
+		if resp != nil {
+			debuglog.RunAndLog("GetDelay: close response body", resp.Body.Close)
 		}
+	}()
+	if err != nil {
+		writeLog(logFile, "[%s] Error executing delay request for %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
 		// Проверяем тип ошибки для более понятного сообщения
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			return 0, fmt.Errorf("network timeout: connection timed out")
@@ -367,51 +362,36 @@ func GetDelay(baseURL, token, proxyName string, logFile *os.File) (int64, error)
 		}
 		return 0, fmt.Errorf("failed to execute delay request: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if logFile != nil {
-		fmt.Fprintf(logFile, "[%s] GET /proxies/%s/delay response status: %d\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, resp.StatusCode)
-	}
+	writeLog(logFile, "[%s] GET /proxies/%s/delay response status: %d\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		if logFile != nil {
-			fmt.Fprintf(logFile, "[%s] Unexpected status code for delay %s: %d, body: %s\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, resp.StatusCode, string(bodyBytes))
-		}
+		writeLog(logFile, "[%s] Unexpected status code for delay %s: %d, body: %s\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, resp.StatusCode, string(bodyBytes))
 		return 0, fmt.Errorf("unexpected status code for delay: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if logFile != nil {
-			fmt.Fprintf(logFile, "[%s] Error reading response body for delay %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
-		}
+		writeLog(logFile, "[%s] Error reading response body for delay %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
 		return 0, fmt.Errorf("failed to read response body for delay: %w", err)
 	}
 
-	if logFile != nil {
-		fmt.Fprintf(logFile, "[%s] GET /proxies/%s/delay response body: %s\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, string(body))
-	}
+	writeLog(logFile, "[%s] GET /proxies/%s/delay response body: %s\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, string(body))
 
 	var data map[string]interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
-		if logFile != nil {
-			fmt.Fprintf(logFile, "[%s] Error unmarshalling JSON for delay %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
-		}
+		writeLog(logFile, "[%s] Error unmarshalling JSON for delay %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
 		return 0, fmt.Errorf("failed to unmarshal JSON for delay: %w", err)
 	}
 
 	delay, ok := data["delay"].(float64)
 	if !ok {
-		if logFile != nil {
-			fmt.Fprintf(logFile, "[%s] Unexpected response structure for delay %s, 'delay' field missing or wrong type\n", time.Now().Format("2006-01-02 15:04:05"), proxyName)
-		}
+		writeLog(logFile, "[%s] Unexpected response structure for delay %s, 'delay' field missing or wrong type\n", time.Now().Format("2006-01-02 15:04:05"), proxyName)
 		return 0, fmt.Errorf("unexpected response structure, 'delay' field missing or wrong type")
 	}
 
-	if logFile != nil {
-		fmt.Fprintf(logFile, "[%s] Successfully got delay for %s: %d ms.\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, int64(delay))
-	}
+	writeLog(logFile, "[%s] Successfully got delay for %s: %d ms.\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, int64(delay))
 
 	return int64(delay), nil
 }

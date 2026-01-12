@@ -16,6 +16,7 @@ import (
 
 	"fyne.io/fyne/v2"
 
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/platform"
 )
@@ -338,6 +339,11 @@ func (ac *AppController) getLatestVersionFromURLWithPrefix(url string, keepPrefi
 	req.Header.Set("User-Agent", "singbox-launcher/1.0")
 
 	resp, err := client.Do(req)
+	defer func() {
+		if resp != nil {
+			debuglog.RunAndLog("getLatestVersionFromURLWithPrefix: close response body", resp.Body.Close)
+		}
+	}()
 	if err != nil {
 		// Проверяем тип ошибки
 		if IsNetworkError(err) {
@@ -345,7 +351,6 @@ func (ac *AppController) getLatestVersionFromURLWithPrefix(url string, keepPrefi
 		}
 		return "", fmt.Errorf("check failed: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("check failed: HTTP %d", resp.StatusCode)

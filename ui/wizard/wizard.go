@@ -45,8 +45,8 @@ import (
 	"singbox-launcher/internal/debuglog"
 	wizardbusiness "singbox-launcher/ui/wizard/business"
 	wizarddialogs "singbox-launcher/ui/wizard/dialogs"
-	wizardpresentation "singbox-launcher/ui/wizard/presentation"
 	wizardmodels "singbox-launcher/ui/wizard/models"
+	wizardpresentation "singbox-launcher/ui/wizard/presentation"
 	wizardtabs "singbox-launcher/ui/wizard/tabs"
 	wizardtemplate "singbox-launcher/ui/wizard/template"
 )
@@ -239,11 +239,11 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 		updateNavigationButtons()
 		// Update Border container with new buttons
 		content := container.NewBorder(
-			nil,                      // top
+			nil,                       // top
 			guiState.ButtonsContainer, // bottom
-			nil,                      // left
-			nil,                      // right
-			tabs,                     // center
+			nil,                       // left
+			nil,                       // right
+			tabs,                      // center
 		)
 		wizardWindow.SetContent(content)
 	}
@@ -251,11 +251,11 @@ func ShowConfigWizard(parent fyne.Window, controller *core.AppController) {
 	// Preview is generated only via "Show Preview" button
 
 	content := container.NewBorder(
-		nil,                      // top
+		nil,                       // top
 		guiState.ButtonsContainer, // bottom
-		nil,                      // left
-		nil,                      // right
-		tabs,                     // center
+		nil,                       // left
+		nil,                       // right
+		tabs,                      // center
 	)
 
 	wizardWindow.SetContent(content)

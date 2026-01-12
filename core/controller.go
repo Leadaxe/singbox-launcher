@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"singbox-launcher/internal/debuglog"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
@@ -284,7 +286,7 @@ func (ac *AppController) RunHidden(name string, args []string, logPath string, d
 			if err != nil {
 				return fmt.Errorf("RunHidden: cannot open log file '%s': %w", logPath, err)
 			}
-			defer logFile.Close()
+			defer debuglog.RunAndLog(fmt.Sprintf("RunHidden: close log file %s", logPath), logFile.Close)
 			cmd.Stdout = logFile
 			cmd.Stderr = logFile
 		}
@@ -659,19 +661,73 @@ func (ac *AppController) GetVPNButtonState() VPNButtonState {
 	return state
 }
 
+// addHideDockMenuItem adds "Hide app from Dock" toggle menu item (macOS only)
+func (ac *AppController) addHideDockMenuItem(menuItems []*fyne.MenuItem) []*fyne.MenuItem {
+	if runtime.GOOS != "darwin" {
+		return menuItems
+	}
+
+	hideDockEnabled := ac.UIService.HideAppFromDock
+	hideDockLabel := "Hide app from Dock"
+	if hideDockEnabled {
+		hideDockLabel = "✓ " + hideDockLabel
+	}
+
+	menuItems = append(menuItems, fyne.NewMenuItem(hideDockLabel, func() {
+		// Toggle the preference
+		ac.UIService.HideAppFromDock = !ac.UIService.HideAppFromDock
+
+		// Apply the change immediately on macOS
+		if runtime.GOOS == "darwin" {
+			if ac.UIService.HideAppFromDock {
+				platform.HideDockIcon()
+				// Also hide the main window when hiding from Dock
+				if ac.UIService.MainWindow != nil {
+					ac.UIService.MainWindow.Hide()
+				}
+				log.Println("Tray: Hide app from Dock enabled — Dock hidden and window hidden")
+			} else {
+				platform.RestoreDockIcon()
+				// Restore and show the main window when unchecking
+				if ac.UIService.MainWindow != nil {
+					ac.UIService.MainWindow.Show()
+					ac.UIService.MainWindow.RequestFocus()
+				}
+				log.Println("Tray: Hide app from Dock disabled — Dock restored and window shown")
+			}
+		}
+
+		if ac.UIService.UpdateTrayMenuFunc != nil {
+			ac.UIService.UpdateTrayMenuFunc()
+		}
+	}))
+	menuItems = append(menuItems, fyne.NewMenuItemSeparator())
+
+	return menuItems
+}
+
 // CreateTrayMenu creates the system tray menu with proxy selection submenu
 func (ac *AppController) CreateTrayMenu() *fyne.Menu {
+	/**
+	@TODO:if ac.APIService == nil { кажется это приводит к дублированию кода, может лучше бы делать if ac.APIService != nil {
+	*/
 	if ac.APIService == nil {
 		// Return minimal menu if APIService is not initialized
-		return fyne.NewMenu("Singbox Launcher", []*fyne.MenuItem{
+		menuItems := []*fyne.MenuItem{
 			fyne.NewMenuItem("Open", func() {
 				if ac.UIService != nil && ac.UIService.MainWindow != nil {
+					platform.RestoreDockIcon()
 					ac.UIService.MainWindow.Show()
 				}
 			}),
 			fyne.NewMenuItemSeparator(),
-			fyne.NewMenuItem("Quit", ac.GracefulExit),
-		}...)
+		}
+
+		if runtime.GOOS == "darwin" {
+			menuItems = ac.addHideDockMenuItem(menuItems)
+		}
+		menuItems = append(menuItems, fyne.NewMenuItem("Quit", ac.GracefulExit))
+		return fyne.NewMenu("Singbox Launcher", menuItems...)
 	}
 
 	// Get proxies from current group
@@ -747,6 +803,7 @@ func (ac *AppController) CreateTrayMenu() *fyne.Menu {
 	menuItems := []*fyne.MenuItem{
 		fyne.NewMenuItem("Open", func() {
 			if ac.UIService != nil && ac.UIService.MainWindow != nil {
+				platform.RestoreDockIcon()
 				ac.UIService.MainWindow.Show()
 			}
 		}),
@@ -778,6 +835,11 @@ func (ac *AppController) CreateTrayMenu() *fyne.Menu {
 		selectProxyItem.ChildMenu = proxySubmenu
 		menuItems = append(menuItems, selectProxyItem)
 		menuItems = append(menuItems, fyne.NewMenuItemSeparator())
+	}
+
+	// Add "Hide app from Dock" toggle (macOS only) before Quit
+	if runtime.GOOS == "darwin" {
+		menuItems = ac.addHideDockMenuItem(menuItems)
 	}
 
 	// Add Quit item

@@ -32,5 +32,3 @@ type UIUpdater interface {
 	// UpdateSaveButtonText обновляет текст кнопки Save (пустая строка для скрытия)
 	UpdateSaveButtonText(text string)
 }
-
-

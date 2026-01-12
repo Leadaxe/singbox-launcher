@@ -290,6 +290,10 @@
     "clash_api": {
       "external_controller": "127.0.0.1:9090",
       "secret": "CHANGE_THIS_TO_YOUR_SECRET_TOKEN" 
+    },
+    "cache_file": {
+      "enabled": true,          // Обязательно — включает кеш для remote rule-set (и FakeIP, если используешь)
+      "path": "cache.db"        // Опционально: имя файла (по умолчанию cache.db)
     }
   }
 }

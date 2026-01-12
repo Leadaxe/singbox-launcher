@@ -20,6 +20,7 @@ package business
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -262,7 +263,10 @@ func ParseAndPreview(model *wizardmodels.WizardModel, updater UIUpdater, configS
 	// Update config through ApplyURLToParserConfig, which correctly separates subscriptions and connections
 	applyStartTime := time.Now()
 	debuglog.Log("DEBUG", debuglog.LevelVerbose, debuglog.UseGlobal, "parseAndPreview: Applying URL to ParserConfig")
-	ApplyURLToParserConfig(model, updater, url)
+	if err := ApplyURLToParserConfig(model, updater, url); err != nil {
+		debuglog.Log("DEBUG", debuglog.LevelVerbose, debuglog.UseGlobal, "parseAndPreview: Failed to apply URL to ParserConfig: %v", err)
+		log.Printf("parseAndPreview: error applying URL to ParserConfig: %v", err)
+	}
 	debuglog.Log("DEBUG", debuglog.LevelVerbose, debuglog.UseGlobal, "parseAndPreview: Applied URL to ParserConfig in %v", time.Since(applyStartTime))
 
 	// Reload parserConfig after update

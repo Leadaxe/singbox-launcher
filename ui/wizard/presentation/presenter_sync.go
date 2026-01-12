@@ -50,4 +50,3 @@ func (p *WizardPresenter) SyncGUIToModel() {
 		p.model.SelectedFinalOutbound = p.guiState.FinalOutboundSelect.Selected
 	}
 }
-

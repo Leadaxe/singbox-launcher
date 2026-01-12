@@ -22,6 +22,7 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/config/parser"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/ui/wizard"
 	wizardtemplate "singbox-launcher/ui/wizard/template"
 )
@@ -685,6 +686,11 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 		}
 
 		resp, err := http.DefaultClient.Do(req)
+		defer func() {
+			if resp != nil {
+				debuglog.RunAndLog("downloadConfigTemplate: close response body", resp.Body.Close)
+			}
+		}()
 		if err != nil {
 			fyne.Do(func() {
 				if tab.templateDownloadButton != nil {
@@ -694,7 +700,6 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 			})
 			return
 		}
-		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			fyne.Do(func() {
 				if tab.templateDownloadButton != nil {

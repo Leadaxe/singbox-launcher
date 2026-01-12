@@ -26,7 +26,7 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 	tags := map[string]struct{}{
 		wizardmodels.DefaultOutboundTag: {},
 		wizardmodels.RejectActionName:   {},
-		"drop": {}, // Always include "drop" in available options
+		"drop":                          {}, // Always include "drop" in available options
 	}
 
 	var parserCfg *config.ParserConfig
@@ -115,4 +115,3 @@ func containsString(items []string, target string) bool {
 	}
 	return false
 }
-

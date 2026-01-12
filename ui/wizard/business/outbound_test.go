@@ -117,9 +117,9 @@ func TestEnsureDefaultAvailableOutbounds(t *testing.T) {
 // TestEnsureFinalSelected tests EnsureFinalSelected function
 func TestEnsureFinalSelected(t *testing.T) {
 	tests := []struct {
-		name                string
-		model               *wizardmodels.WizardModel
-		options             []string
+		name                  string
+		model                 *wizardmodels.WizardModel
+		options               []string
 		expectedFinalOutbound string
 	}{
 		{
@@ -127,7 +127,7 @@ func TestEnsureFinalSelected(t *testing.T) {
 			model: &wizardmodels.WizardModel{
 				SelectedFinalOutbound: "test-outbound",
 			},
-			options:             []string{"direct-out", "test-outbound", "reject"},
+			options:               []string{"direct-out", "test-outbound", "reject"},
 			expectedFinalOutbound: "test-outbound",
 		},
 		// Note: TemplateData is a pointer to template.TemplateData which we can't easily create in test
@@ -137,7 +137,7 @@ func TestEnsureFinalSelected(t *testing.T) {
 			model: &wizardmodels.WizardModel{
 				SelectedFinalOutbound: "",
 			},
-			options:             []string{"direct-out", "test-outbound", "reject"},
+			options:               []string{"direct-out", "test-outbound", "reject"},
 			expectedFinalOutbound: "direct-out",
 		},
 		{
@@ -145,7 +145,7 @@ func TestEnsureFinalSelected(t *testing.T) {
 			model: &wizardmodels.WizardModel{
 				SelectedFinalOutbound: "not-in-options",
 			},
-			options:             []string{"direct-out", "test-outbound"},
+			options:               []string{"direct-out", "test-outbound"},
 			expectedFinalOutbound: "direct-out",
 		},
 	}
@@ -159,4 +159,3 @@ func TestEnsureFinalSelected(t *testing.T) {
 		})
 	}
 }
-

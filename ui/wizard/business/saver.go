@@ -204,4 +204,3 @@ func ValidateConfigWithSingBox(configPath, singBoxPath string) error {
 
 	return nil
 }
-

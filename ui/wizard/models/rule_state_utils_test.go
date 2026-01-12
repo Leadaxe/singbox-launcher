@@ -9,9 +9,9 @@ import (
 // TestGetEffectiveOutbound tests GetEffectiveOutbound function
 func TestGetEffectiveOutbound(t *testing.T) {
 	tests := []struct {
-		name     string
+		name      string
 		ruleState *RuleState
-		expected string
+		expected  string
 	}{
 		{
 			name: "Has SelectedOutbound",
@@ -58,10 +58,10 @@ func TestGetEffectiveOutbound(t *testing.T) {
 // TestEnsureDefaultOutbound tests EnsureDefaultOutbound function
 func TestEnsureDefaultOutbound(t *testing.T) {
 	tests := []struct {
-		name              string
-		ruleState         *RuleState
+		name               string
+		ruleState          *RuleState
 		availableOutbounds []string
-		expectedSelected  string
+		expectedSelected   string
 	}{
 		{
 			name: "Already has SelectedOutbound",
@@ -118,4 +118,3 @@ func TestEnsureDefaultOutbound(t *testing.T) {
 		})
 	}
 }
-

@@ -80,6 +80,20 @@ static void cleanupDockReopenHandlerImpl(void) {
     dockHandlerInstalled = 0;
 }
 
+// hideDockIconImpl hides the Dock icon by setting activation policy to Accessory
+// NSApplicationActivationPolicyAccessory makes the app run without showing in Dock
+// This is used for tray-only mode when user wants to hide the app from Dock
+static void hideDockIconImpl(void) {
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+}
+
+// restoreDockIconImpl restores the Dock icon by setting activation policy to Regular
+// NSApplicationActivationPolicyRegular makes the app appear in the Dock and behave normally
+// This is used when dynamically restoring Dock visibility during a session
+static void restoreDockIconImpl(void) {
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+}
+
 // Export functions for Go - using inline to avoid duplicate symbols
 // CGO compiles code multiple times, so we use inline to avoid symbol duplication
 static inline void singboxLauncherSetupDockReopenHandler(void) {
@@ -88,6 +102,14 @@ static inline void singboxLauncherSetupDockReopenHandler(void) {
 
 static inline void singboxLauncherCleanupDockReopenHandler(void) {
     cleanupDockReopenHandlerImpl();
+}
+
+static inline void singboxLauncherHideDockIcon(void) {
+    hideDockIconImpl();
+}
+
+static inline void singboxLauncherRestoreDockIcon(void) {
+    restoreDockIconImpl();
 }
 
 // Non-inline wrappers for Go to call (inline functions can't be called from Go)
@@ -99,6 +121,14 @@ __attribute__((weak)) void callSetupDockReopenHandler(void) {
 
 __attribute__((weak)) void callCleanupDockReopenHandler(void) {
     singboxLauncherCleanupDockReopenHandler();
+}
+
+__attribute__((weak)) void callHideDockIcon(void) {
+    singboxLauncherHideDockIcon();
+}
+
+__attribute__((weak)) void callRestoreDockIcon(void) {
+    singboxLauncherRestoreDockIcon();
 }
 */
 import "C"
@@ -145,4 +175,22 @@ func CleanupDockReopenHandler() {
 	C.callCleanupDockReopenHandler()
 	dockReopenCallback = nil
 	log.Println("CleanupDockReopenHandler: Dock reopen handler cleaned up")
+}
+
+// HideDockIcon hides the Dock icon on macOS (tray-only mode)
+func HideDockIcon() {
+	if runtime.GOOS != "darwin" {
+		return
+	}
+	C.callHideDockIcon()
+	log.Println("HideDockIcon: Dock icon hidden (NSApplicationActivationPolicyAccessory)")
+}
+
+// RestoreDockIcon restores the Dock icon on macOS (makes app appear in Dock again)
+func RestoreDockIcon() {
+	if runtime.GOOS != "darwin" {
+		return
+	}
+	C.callRestoreDockIcon()
+	log.Println("RestoreDockIcon: Dock icon restored (NSApplicationActivationPolicyRegular)")
 }

@@ -36,5 +36,3 @@ type RuleState struct {
 	// SelectedOutbound - выбранный outbound для правила
 	SelectedOutbound string
 }
-
-

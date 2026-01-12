@@ -16,44 +16,81 @@ echo   Building Sing-Box Launcher (Windows)
 echo ========================================
 echo.
 
-:: Устанавливаем окружение для сборки ПЕРЕД использованием go
+:: Устанавливаем окружение для сборки ПЕРВЫМ делом (локально), но НЕ в CI
 echo === Setting PATH and environment ===
-:: Устанавливаем GOROOT явно на правильную установку Go
-if exist "C:\Program Files\Go" (
-    set "GOROOT=C:\Program Files\Go"
-) else if exist "C:\Go" (
-    set "GOROOT=C:\Go"
-)
-:: Добавляем пути к Go, MinGW и Git в начало PATH (Go должен быть ПЕРВЫМ!)
-set "PATH=C:\Program Files\Go\bin;%PATH%"
-set "PATH=C:\msys64\mingw64\bin;%PATH%"
-if exist "%LOCALAPPDATA%\Programs\Git\bin" (
-    set "PATH=%LOCALAPPDATA%\Programs\Git\bin;%PATH%"
-) else if exist "C:\Program Files\Git\bin" (
-    set "PATH=C:\Program Files\Git\bin;%PATH%"
-) else if exist "C:\Program Files (x86)\Git\bin" (
-    set "PATH=C:\Program Files (x86)\Git\bin;%PATH%"
-)
-set "PATH=%USERPROFILE%\go\bin;%PATH%"
+if defined GITHUB_ACTIONS (
+    echo === CI detected ^(GITHUB_ACTIONS=true^). Skipping GOROOT/PATH override ===
+) else (
+    rem --- Pick GOROOT (local only) ---
+    if exist "C:\Program Files\Go" (
+        set "GOROOT=C:\Program Files\Go"
+    ) else if exist "C:\Go" (
+        set "GOROOT=C:\Go"
+    )
 
-:: Проверяем, что Go доступен
+    rem --- Prepend toolchains to PATH safely inside parentheses ---
+    rem Use CALL SET with %%PATH%% to avoid parsing issues with parentheses in PATH
+    call set "PATH=C:\Program Files\Go\bin;%%PATH%%"
+    call set "PATH=C:\msys64\mingw64\bin;%%PATH%%"
+
+    if exist "%LOCALAPPDATA%\Programs\Git\cmd" (
+        call set "PATH=%LOCALAPPDATA%\Programs\Git\cmd;%%PATH%%"
+    ) else if exist "%LOCALAPPDATA%\Programs\Git\bin" (
+        call set "PATH=%LOCALAPPDATA%\Programs\Git\bin;%%PATH%%"
+    ) else if exist "C:\Program Files\Git\cmd" (
+        call set "PATH=C:\Program Files\Git\cmd;%%PATH%%"
+    ) else if exist "C:\Program Files\Git\bin" (
+        call set "PATH=C:\Program Files\Git\bin;%%PATH%%"
+    ) else if exist "C:\Program Files (x86)\Git\cmd" (
+        call set "PATH=C:\Program Files (x86)\Git\cmd;%%PATH%%"
+    ) else if exist "C:\Program Files (x86)\Git\bin" (
+        call set "PATH=C:\Program Files (x86)\Git\bin;%%PATH%%"
+    )
+
+    call set "PATH=%USERPROFILE%\go\bin;%%PATH%%"
+
+    echo Updated PATH and GOROOT for local build
+)
+
+if defined GOROOT (
+    echo GOROOT=%GOROOT%
+) else (
+    echo GOROOT is not set ^(OK in CI with actions/setup-go^)
+)
+echo.
+
+:: Проверяем, что Go доступен (до любых команд go)
 where go >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo !!! Go not found in PATH !!!
     if %NO_PAUSE%==0 pause
     exit /b 1
+) else (
+    echo Go found
+    set "GO_VER="
+    for /f "delims=" %%v in ('go version 2^>nul') do set "GO_VER=%%v"
+    if defined GO_VER (
+        echo !GO_VER!
+    ) else (
+        echo Warning: failed to run "go version"
+    )
 )
-
-echo GOROOT=%GOROOT%
 echo.
 
-echo === Tidying Go modules ===
-go mod tidy
-if %ERRORLEVEL% NEQ 0 (
-    echo !!! Failed to tidy modules !!!
-    if %NO_PAUSE%==0 pause
-    exit /b %ERRORLEVEL%
+:: === Go modules tidy (skip in CI) ===
+if defined GITHUB_ACTIONS (
+    echo === Skipping "go mod tidy" in CI ^(GITHUB_ACTIONS=true^) ===
+) else (
+    echo === Tidying Go modules ===
+    echo Note: go mod tidy may modify go.mod/go.sum files.
+    go mod tidy
+    if %ERRORLEVEL% NEQ 0 (
+        echo !!! Failed to tidy modules !!!
+        if %NO_PAUSE%==0 pause
+        exit /b %ERRORLEVEL%
+    )
 )
+echo.
 
 set CGO_ENABLED=1
 set GOOS=windows
@@ -62,7 +99,7 @@ set GOARCH=amd64
 :: Проверяем наличие gcc для CGO
 if %CGO_ENABLED%==1 (
     where gcc >nul 2>&1
-    if %ERRORLEVEL% NEQ 0 (
+    if !ERRORLEVEL! NEQ 0 (
         echo !!! WARNING: GCC not found in PATH !!!
         echo CGO requires GCC compiler. Checking common locations...
         if exist "C:\msys64\mingw64\bin\gcc.exe" (
@@ -72,10 +109,30 @@ if %CGO_ENABLED%==1 (
         )
     ) else (
         echo GCC found:
-        gcc --version | findstr /C:"gcc"
+        gcc --version 2>nul | findstr /I /C:"gcc"
     )
     echo.
 )
+
+:: === Getting version ===
+echo.
+if defined APP_VERSION (
+    set "VERSION=%APP_VERSION%"
+    echo Version ^(from APP_VERSION^): !VERSION!
+) else (
+    for /f "delims=" %%v in ('git describe --tags --always --dirty 2^>nul') do set "VERSION=%%v"
+    echo Version ^(from git describe^): !VERSION!
+)
+if not defined VERSION (
+    set "VERSION=unnamed-dev"
+    echo Version default: !VERSION!
+)
+
+:: Determine GOPATH (for tools like rsrc)
+for /f "delims=" %%g in ('go env GOPATH 2^>nul') do set "GOPATH=%%g"
+
+:: Clean old resource object to avoid stale embedding
+if exist rsrc.syso del /q rsrc.syso
 
 :: === Embed icon into the executable ===
 echo.
@@ -89,8 +146,8 @@ if %ERRORLEVEL% EQU 0 (
     ) else (
         echo Icon embedded successfully.
     )
-) else if exist "%USERPROFILE%\go\bin\rsrc.exe" (
-    "%USERPROFILE%\go\bin\rsrc.exe" -ico assets/app.ico -manifest app.manifest -o rsrc.syso
+) else if defined GOPATH if exist "%GOPATH%\bin\rsrc.exe" (
+    "%GOPATH%\bin\rsrc.exe" -ico assets/app.ico -manifest app.manifest -o rsrc.syso
     if %ERRORLEVEL% NEQ 0 (
         echo !!! Failed to embed icon. Skipping... !!!
     ) else (
@@ -99,7 +156,21 @@ if %ERRORLEVEL% EQU 0 (
 ) else (
     echo rsrc.exe not found. Icon embedding skipped.
     echo To embed icons, install rsrc: go install github.com/akavel/rsrc@latest
-    echo Then add %USERPROFILE%\go\bin to your PATH or restart command prompt.
+    if not defined GITHUB_ACTIONS (
+        if defined GOPATH (
+            echo Then add !GOPATH!\bin to your PATH or restart command prompt.
+        ) else (
+            echo Then add ^<GOPATH^>\bin to your PATH or restart command prompt.
+            echo You can check GOPATH with: go env GOPATH
+        )
+    )
+)
+
+:: Post-check: did we actually produce rsrc.syso?
+if exist rsrc.syso (
+    echo === Resource file rsrc.syso is present ^(resources will be embedded^) ===
+) else (
+    echo === Resource file rsrc.syso is NOT present ^(building without embedded icon/manifest^) ===
 )
 
 :: Определяем имя выходного файла
@@ -115,23 +186,20 @@ if exist "%OUTPUT_FILENAME%" (
 
 echo Using output file: "%OUTPUT_FILENAME%"
 
-:: Получаем версию из git тега
-echo.
-echo === Getting version from git tag ===
-for /f "delims=" %%v in ('git describe --tags --always --dirty 2^>nul') do set VERSION=%%v
-echo Version: %VERSION%
-
 :: Формируем ldflags с версией
-set "LDFLAGS=-H windowsgui -s -w -X singbox-launcher/internal/constants.AppVersion=%VERSION%"
+set "LDFLAGS=-H windowsgui -s -w -X singbox-launcher/internal/constants.AppVersion=!VERSION!"
+
+:: Уровень шумности
+set "BUILD_VERBOSE=-v"
+if defined GITHUB_ACTIONS set "BUILD_VERBOSE="
 
 :: Собираем проект
 echo.
 echo === Starting Build ===
 echo Building with CGO_ENABLED=%CGO_ENABLED%
-echo GOROOT=%GOROOT%
 echo.
 echo This may take a while on first build...
-go build -v -buildvcs=false -ldflags="%LDFLAGS%" -o "%OUTPUT_FILENAME%"
+go build %BUILD_VERBOSE% -buildvcs=false -ldflags="%LDFLAGS%" -o "%OUTPUT_FILENAME%"
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
