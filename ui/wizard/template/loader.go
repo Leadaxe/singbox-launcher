@@ -84,6 +84,25 @@ func GetTemplateURL() string {
 	return fmt.Sprintf("https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/bin/%s", fileName)
 }
 
+// stripUTF8BOM removes UTF-8 BOM (EF BB BF) from the beginning of the byte slice if present.
+// Returns the (possibly) trimmed slice and whether BOM was removed.
+// Some editors/tools may add UTF-8 BOM, which breaks json.Valid/jsonc parsing.
+func stripUTF8BOM(b []byte) ([]byte, bool) {
+	removed := false
+	if len(b) >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF {
+		b = b[3:]
+		removed = true
+	}
+	if len(b) >= 3 {
+		n := len(b)
+		if b[n-3] == 0xEF && b[n-2] == 0xBB && b[n-1] == 0xBF {
+			b = b[:n-3]
+			removed = true
+		}
+	}
+	return b, removed
+}
+
 // LoadTemplateData loads template data from file.
 func LoadTemplateData(execDir string) (*TemplateData, error) {
 	templateFileName := GetTemplateFileName()
@@ -93,6 +112,11 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 	if err != nil {
 		tplLog(debuglog.LevelError, "Failed to read template file: %v", err)
 		return nil, err
+	}
+	// Remove UTF-8 BOM if present to avoid JSON validation errors
+	if trimmed, removed := stripUTF8BOM(raw); removed {
+		tplLog(debuglog.LevelWarn, "Detected and removed UTF-8 BOM from template file: %s", templateFileName)
+		raw = trimmed
 	}
 	tplLog(debuglog.LevelVerbose, "Successfully read template file, size: %d bytes", len(raw))
 
