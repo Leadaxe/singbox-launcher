@@ -31,7 +31,11 @@ func OpenFolder(path string) error {
 
 // OpenURL opens a URL in the default browser
 func OpenURL(url string) error {
-	return exec.Command("explorer", url).Start()
+	return exec.Command(
+		"rundll32",
+		"url.dll,FileProtocolHandler",
+		url,
+	).Start()
 }
 
 // KillProcess kills a process by name

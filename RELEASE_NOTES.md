@@ -34,4 +34,4 @@ https://github.com/Leadaxe/singbox-launcher/pull/23 thnx https://github.com/Must
 - **Рефакторинг**: логика оверлея вынесена в `ui/components/ClickRedirect`, инициализация — в `ui/wizard_overlay.go`, а общее поведение интегрировано через `UIService` (метод `ShowMainWindowOrFocusWizard`).
 - **Wizard**: automatic URL checking on input change with a 2s debounce; the manual **Check** button was removed to prevent excessive calls and improve UX.
 
-
+- **Chat GPT button**: added a "Chat GPT" quick action in Sources tab that builds a URL-encoded prompt using the ParserConfig and the ParserConfig docs link and opens ChatGPT (also copies prompt to clipboard when the web interface cannot accept prompts directly).

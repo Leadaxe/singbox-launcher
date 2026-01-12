@@ -73,11 +73,11 @@ type GUIState struct {
 	Tabs             *container.AppTabs
 
 	// UI-флаги состояния операций
-	CheckURLInProgress      bool
-	CheckURLTimer           *time.Timer
-	SaveInProgress          bool
-	ParserConfigUpdating    bool
+	CheckURLInProgress       bool
+	CheckURLTimer            *time.Timer
+	SaveInProgress           bool
+	ParserConfigUpdating     bool
 	OutboundsPreviewUpdating bool
 	OutboundsPreviewLastText string
-	UpdatingOutboundOptions bool
+	UpdatingOutboundOptions  bool
 }

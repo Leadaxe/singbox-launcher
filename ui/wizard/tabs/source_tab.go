@@ -219,6 +219,85 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 		}
 	})
 
+	// ChatGPT button: opens ChatGPT with a structured review prompt
+	chatButton := widget.NewButton("🧠 ChatGPT", func() {
+
+		promptHeader := `
+ou are a senior sing-box and ParserConfig v4 expert.
+
+Reference documentation (must be followed):
+https://github.com/Leadaxe/singbox-launcher/blob/main/docs/ParserConfig.md
+
+Goal:
+Produce a final, production-ready ParserConfig that is logically structured, safe at runtime, and GUI-friendly.
+
+Hard requirements (must follow exactly):
+
+1. Use ParserConfig version 4.
+2. Use multiple proxy sources.
+3. For EACH proxy source:
+   - Define a meaningful "tag_prefix" that clearly reflects:
+     - actual source identity shortly (use 1-3 letters and relevant emoji)
+   - Define LOCAL outbounds inside the proxy object:
+     - one "urltest" outbound
+     - one "selector" outbound
+     - use relevant emoji ina tag of outbounds
+   - Local outbound tags MUST be:
+     - globally unique
+     - semantically derived from "tag_prefix"
+     - consistent across all sources
+
+4. Do NOT use regex-based filtering in global outbounds.
+   Source isolation must be achieved via local outbounds.
+
+5. In top-level "ParserConfig.outbounds":
+   - Create a global "urltest" outbound that aggregates ALL local "*-auto" outbounds.
+   - Create a global "selector" outbound that aggregates:
+     - all local "*-select" outbounds
+     - the global auto outbound
+     - "direct-out"
+     - do not change "go-any-way-githubusercontent" 
+     - Create default a global selector "proxy-out" and copy this for "output-proxy-1", "output-proxy-2", "output-proxy-3" this global selectors output-proxy-1, output-proxy-2, output-proxy-3 MUST be fully independent selectors, not wrappers and not references to proxy-out. For EACH of them: Repeat the SAME addOutbounds list as proxy-out
+6. Preserve GUI/UX-related fields and intent.
+   Do NOT remove fields just because they look optional.
+
+OUTPUT INSTRUCTIONS (VERY IMPORTANT):
+
+- You MUST respond with ONLY a single code block.
+- The code block language MUST be "json".
+- The code block MUST contain ONLY the final ParserConfig JSON.
+- URLs MUST be clean and exact, with no hidden characters.
+- Do NOT include explanations, comments, markdown, or extra text.
+- The output MUST be directly copy-pastable into singbox-launcher without edits.
+
+VERY IMPORTANT:
+Please respond in the language you usually use when communicating with this user.
+
+Here is the current configuration to review:
+`
+
+		parserText := strings.TrimSpace(guiState.ParserConfigEntry.Text)
+
+		// лёгкая защита от совсем пустого конфига
+		if parserText == "" {
+			dialog.ShowError(fmt.Errorf("ParserConfig is empty"), guiState.Window)
+			return
+		}
+
+		fullPrompt := promptHeader +
+			"\n<CONFIG>\n" +
+			parserText +
+			"\n</CONFIG>"
+
+		encoded := url.QueryEscape(fullPrompt)
+		chatURL := "https://chat.openai.com/?prompt=" + encoded
+
+		if err := platform.OpenURL(chatURL); err != nil {
+			dialog.ShowError(fmt.Errorf("failed to open ChatGPT: %w", err), guiState.Window)
+		}
+	})
+	chatButton.Importance = widget.MediumImportance
+
 	parserLabel := widget.NewLabel("ParserConfig:")
 	parserLabel.Importance = widget.MediumImportance
 
@@ -264,6 +343,7 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 		widget.NewLabel("  "), // small spacing between text and button
 		guiState.ParseButton,
 		layout.NewSpacer(),
+		chatButton,
 		docButton,
 	)
 
