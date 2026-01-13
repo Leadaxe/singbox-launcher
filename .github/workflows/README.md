@@ -52,6 +52,8 @@
   gh workflow run ci.yml --ref develop -f run_mode=prerelease -f skip_tests=true
 - Ручной build:
   gh workflow run ci.yml --ref develop -f run_mode=build -f skip_tests=true
+- Ручной build (Win7 only):
+  gh workflow run ci.yml --ref develop -f run_mode=build -f skip_tests=true -f target=win7
 - Тесты вручную:
   gh workflow run ci.yml --ref develop -f run_mode=tests
 
