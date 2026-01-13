@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
-echo "\n\n #############################\nsingbox-launcher MacOS Installer Script (0.2)\n project url: https://github.com/Leadaxe/singbox-launcher/\n #############################\n"
+echo "--------------------------------------------------------------"
+echo " "
+echo "Singbox-launcher MacOS Installer Script (0.2)"
+echo "Project url: https://github.com/Leadaxe/singbox-launcher/"
+echo " "
+echo "--------------------------------------------------------------"
+echo " "
 set -euo pipefail
 
 VERSION="${1:-0.6.2}"
