@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+echo "singbox-launcher MAC Installer Script (0.2) project url: https://github.com/Leadaxe/singbox-launcher/"
 set -euo pipefail
 
 VERSION="${1:-0.6.2}"
@@ -67,12 +68,32 @@ curl -fL "$URL" -o "$tmp/$ASSET"
 echo "Unpacking..."
 unzip -q "$tmp/$ASSET" -d "$tmp/unpacked"
 
-app_path="$(find "$tmp/unpacked" -maxdepth 3 -name "$APP_NAME" -type d | head -n 1)"
+# Locate .app bundle (handle Catalina naming differences and tolerantly fallback)
+app_path=""
+if [[ "$ASSET" == "$ASSET_CATALINA" ]]; then
+  # Prefer explicit catalina-named app when downloading catalina asset
+  app_path="$(find "$tmp/unpacked" -maxdepth 3 -name "singbox-launcher-macos-catalina.app" -type d | head -n 1 || true)"
+  if [[ -z "$app_path" ]]; then
+    app_path="$(find "$tmp/unpacked" -maxdepth 3 -name "$APP_NAME" -type d | head -n 1 || true)"
+  fi
+else
+  app_path="$(find "$tmp/unpacked" -maxdepth 3 -name "$APP_NAME" -type d | head -n 1 || true)"
+  if [[ -z "$app_path" ]]; then
+    # Fallback: accept any .app in the archive
+    app_path="$(find "$tmp/unpacked" -maxdepth 3 -name "*macos-catalina.app" -type d | head -n 1 || true)"
+    if [[ -z "$app_path" ]]; then
+      app_path="$(find "$tmp/unpacked" -maxdepth 3 -name "*.app" -type d | head -n 1 || true)"
+    fi
+  fi
+fi
+
 if [[ -z "${app_path}" ]]; then
-  echo "Error: ${APP_NAME} not found in archive"
+  echo "Error: .app not found in archive"
   find "$tmp/unpacked" -maxdepth 3 -name "*.app" -type d -print || true
   exit 1
 fi
+
+echo "Found app in archive: $app_path"
 
 target="${INSTALL_DIR}/${APP_NAME}"
 config_path="${target}/Contents/MacOS/bin/config.json"
