@@ -14,8 +14,7 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/platform"
-
-	ps "github.com/mitchellh/go-ps"
+	"singbox-launcher/internal/process"
 )
 
 const (
@@ -280,11 +279,14 @@ func (svc *ProcessService) Stop() {
 		log.Println("stopSingBox: Signal sent, starting watchdog timer...")
 		go func(pid int) {
 			time.Sleep(gracefulShutdownTimeout)
-			p, _ := ps.FindProcess(pid)
-			if p != nil {
+			pInfo, found, err := process.FindProcess(pid)
+			if err == nil && found {
+				_ = pInfo // pInfo is the process info; we only need to know it exists
 				log.Printf("stopSingBox watchdog: Process %d still running after timeout. Forcing kill.", pid)
 				// Reliably kill the process and its child processes
 				_ = platform.KillProcessByPID(pid)
+			} else if err != nil {
+				log.Printf("stopSingBox watchdog: error checking process %d: %v", pid, err)
 			}
 		}(processToStop.Pid)
 	}
@@ -363,7 +365,7 @@ func (svc *ProcessService) isSingBoxProcessRunning() (bool, int) {
 
 // isSingBoxProcessRunningWithPS uses ps library to check for running process
 func (svc *ProcessService) isSingBoxProcessRunningWithPS(ourPID int) (bool, int) {
-	processes, err := ps.Processes()
+	processes, err := process.GetProcesses()
 	if err != nil {
 		log.Printf("isSingBoxProcessRunningWithPS: error listing processes: %v", err)
 		return false, -1
@@ -371,11 +373,11 @@ func (svc *ProcessService) isSingBoxProcessRunningWithPS(ourPID int) (bool, int)
 	processName := platform.GetProcessNameForCheck()
 
 	for _, p := range processes {
-		execName := p.Executable()
+		execName := p.Name
 		if strings.EqualFold(execName, processName) {
-			foundPID := p.Pid()
+			foundPID := p.PID
 			isOurProcess := (ourPID != -1 && foundPID == ourPID)
-			log.Printf("isSingBoxProcessRunningWithPS: Found process: PID=%d, executable='%s' (our tracked PID=%d, isOurProcess=%v)", foundPID, execName, ourPID, isOurProcess)
+			log.Printf("isSingBoxProcessRunningWithPS: Found process: PID=%d, name='%s' (our tracked PID=%d, isOurProcess=%v)", foundPID, execName, ourPID, isOurProcess)
 			return true, foundPID
 		}
 	}

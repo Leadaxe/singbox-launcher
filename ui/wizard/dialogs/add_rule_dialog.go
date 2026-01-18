@@ -24,6 +24,7 @@
 package dialogs
 
 import (
+	"sort"
 	"strings"
 
 	"image/color"
@@ -33,6 +34,8 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+
+	"singbox-launcher/internal/process"
 
 	wizardbusiness "singbox-launcher/ui/wizard/business"
 	wizardmodels "singbox-launcher/ui/wizard/models"
@@ -93,6 +96,52 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	urlSizeRect.SetMinSize(fyne.NewSize(0, inputFieldHeight))
 	urlContainer := container.NewMax(urlSizeRect, urlScroll)
 
+	// Processes selector (selected items and popup)
+	processesSelected := make([]string, 0)
+	processesContainer := container.NewVBox()
+	processesScroll := container.NewVScroll(processesContainer)
+	// Make processes field display ~4 lines high
+	processesSizeRect := canvas.NewRectangle(color.Transparent)
+	processesSizeRect.SetMinSize(fyne.NewSize(0, inputFieldHeight))
+	processesContainerWrap := container.NewMax(processesSizeRect, processesScroll)
+	processesLabel := widget.NewLabel("Processes (select one or more via popup):")
+	selectProcessesButton := widget.NewButton("Select Processes...", func() {})
+
+	// Helper to normalize process name (strip legacy "PID: name" format)
+	normalizeProcName := func(s string) string {
+		parts := strings.SplitN(strings.TrimSpace(s), ": ", 2)
+		if len(parts) == 2 {
+			return strings.TrimSpace(parts[1])
+		}
+		return strings.TrimSpace(s)
+	}
+
+	// Sort helper for process strings (by name)
+	sortProcessStrings := func(items []string) {
+		sort.Slice(items, func(i, j int) bool {
+			return strings.ToLower(items[i]) < strings.ToLower(items[j])
+		})
+	}
+
+	// Dedupe helper for process names (case-insensitive)
+	dedupeProcessStrings := func(items []string) []string {
+		seen := make(map[string]struct{}, len(items))
+		out := make([]string, 0, len(items))
+		for _, item := range items {
+			n := normalizeProcName(item)
+			key := strings.ToLower(n)
+			if n == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, n)
+		}
+		return out
+	}
+
 	// Outbound selector
 	availableOutbounds := wizardbusiness.EnsureDefaultAvailableOutbounds(wizardbusiness.GetAvailableOutbounds(model))
 	if len(availableOutbounds) == 0 {
@@ -117,7 +166,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			outboundSelect.SetSelected(editRule.SelectedOutbound)
 		}
 
-		// Load IP or domains
+		// Load IP, domains or processes
 		if ipVal, hasIP := editRule.Rule.Raw["ip_cidr"]; hasIP {
 			ruleType = RuleTypeIP
 			if ips := ExtractStringArray(ipVal); len(ips) > 0 {
@@ -128,6 +177,12 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			if domains := ExtractStringArray(domainVal); len(domains) > 0 {
 				urlEntry.SetText(strings.Join(domains, "\n"))
 			}
+		} else if procVal, hasProc := editRule.Rule.Raw["process"]; hasProc {
+			ruleType = RuleTypeProcess
+			if procs := ExtractStringArray(procVal); len(procs) > 0 {
+				processesSelected = dedupeProcessStrings(procs)
+				sortProcessStrings(processesSelected)
+			}
 		}
 	}
 
@@ -136,16 +191,31 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	urlLabel := widget.NewLabel("Domains/URLs (one per line):")
 	updateVisibility := func(selectedType string) {
 		isIP := selectedType == RuleTypeIP
+		isProcess := selectedType == RuleTypeProcess
 		if isIP {
 			ipLabel.Show()
 			ipContainer.Show()
 			urlLabel.Hide()
 			urlContainer.Hide()
+			processesLabel.Hide()
+			processesContainerWrap.Hide()
+			selectProcessesButton.Hide()
+		} else if isProcess {
+			ipLabel.Hide()
+			ipContainer.Hide()
+			urlLabel.Hide()
+			urlContainer.Hide()
+			processesLabel.Show()
+			processesContainerWrap.Show()
+			selectProcessesButton.Show()
 		} else {
 			ipLabel.Hide()
 			ipContainer.Hide()
 			urlLabel.Show()
 			urlContainer.Show()
+			processesLabel.Hide()
+			processesContainerWrap.Hide()
+			selectProcessesButton.Hide()
 		}
 	}
 
@@ -167,6 +237,9 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		if selectedType == RuleTypeIP {
 			return strings.TrimSpace(ipEntry.Text) != ""
 		}
+		if selectedType == RuleTypeProcess {
+			return len(processesSelected) > 0
+		}
 		return strings.TrimSpace(urlEntry.Text) != ""
 	}
 
@@ -181,7 +254,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	}
 
 	// RadioGroup for rule type selection
-	ruleTypeRadio = widget.NewRadioGroup([]string{RuleTypeIP, RuleTypeDomain}, func(selected string) {
+	ruleTypeRadio = widget.NewRadioGroup([]string{RuleTypeIP, RuleTypeDomain, RuleTypeProcess}, func(selected string) {
 		updateVisibility(selected)
 		if updateButtonState != nil {
 			updateButtonState()
@@ -207,6 +280,11 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			ipText := strings.TrimSpace(ipEntry.Text)
 			items = ParseLines(ipText, false) // Trim spaces
 			ruleKey = "ip_cidr"
+		} else if selectedType == RuleTypeProcess {
+			// processesSelected already contains process names; store as-is
+			items = make([]string, len(processesSelected))
+			copy(items, processesSelected)
+			ruleKey = "process"
 		} else {
 			urlText := strings.TrimSpace(urlEntry.Text)
 			items = ParseLines(urlText, false) // Trim spaces
@@ -271,6 +349,100 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	ipEntry.OnChanged = func(string) { updateButtonState() }
 	urlEntry.OnChanged = func(string) { updateButtonState() }
 
+	// Helper to refresh selected processes UI (sorted by name)
+	var refreshSelectedProcessesUI func()
+	refreshSelectedProcessesUI = func() {
+		processesSelected = dedupeProcessStrings(processesSelected)
+		// sort selected items by process name
+		sortProcessStrings(processesSelected)
+		processesContainer.Objects = nil
+		for i := range processesSelected {
+			idx := i
+			p := processesSelected[i]
+			lbl := widget.NewLabel(p)
+			removeBtn := widget.NewButton("−", func() {
+				// remove item at idx
+				processesSelected = append(processesSelected[:idx], processesSelected[idx+1:]...)
+				refreshSelectedProcessesUI()
+				updateButtonState()
+			})
+			processesContainer.Add(container.NewHBox(lbl, layout.NewSpacer(), removeBtn))
+		}
+		processesContainer.Refresh()
+	}
+
+	// Open process selector popup
+	openProcessSelector := func() {
+		controller := presenter.Controller()
+		if controller == nil || controller.UIService == nil {
+			return
+		}
+		w := controller.UIService.Application.NewWindow("Select Processes")
+		w.Resize(fyne.NewSize(500, 400))
+
+		// Load process list using process package (names only, deduped)
+		getProcesses := func() []string {
+			procs, err := process.GetProcesses()
+			if err != nil {
+				return []string{}
+			}
+			items := make([]string, 0, len(procs))
+			for _, p := range procs {
+				items = append(items, p.Name)
+			}
+			items = dedupeProcessStrings(items)
+			sortProcessStrings(items)
+			return items
+		}
+
+		listData := getProcesses()
+		selectedIdx := -1
+		procList := widget.NewList(
+			func() int { return len(listData) },
+			func() fyne.CanvasObject { return container.NewHBox(widget.NewLabel(""), layout.NewSpacer()) },
+			func(i widget.ListItemID, o fyne.CanvasObject) {
+				lbl := o.(*fyne.Container).Objects[0].(*widget.Label)
+				lbl.SetText(listData[i])
+			},
+		)
+		procList.OnSelected = func(id widget.ListItemID) {
+			selectedIdx = id
+		}
+
+		addBtn := widget.NewButton("+ Add", func() {
+			if selectedIdx >= 0 && selectedIdx < len(listData) {
+				item := normalizeProcName(listData[selectedIdx])
+				// avoid duplicates (case-insensitive)
+				found := false
+				for _, s := range processesSelected {
+					if strings.EqualFold(s, item) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					processesSelected = append(processesSelected, item)
+					refreshSelectedProcessesUI()
+					updateButtonState()
+				}
+			}
+		})
+
+		refreshBtn := widget.NewButton("Refresh", func() {
+			listData = getProcesses()
+			procList.Refresh()
+		})
+
+		closeBtn := widget.NewButton("Close", func() { w.Close() })
+
+		content := container.NewBorder(nil, container.NewHBox(layout.NewSpacer(), refreshBtn, addBtn, closeBtn), nil, nil, container.NewScroll(procList))
+		w.SetContent(content)
+		w.Show()
+	}
+
+	// wire selector button
+	selectProcessesButton.OnTapped = func() { openProcessSelector() }
+
 	// Content container
 	inputContainer := container.NewVBox(
 		widget.NewLabel("Rule Name:"),
@@ -283,6 +455,9 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		ipContainer,
 		urlLabel,
 		urlContainer,
+		processesLabel,
+		processesContainerWrap,
+		selectProcessesButton,
 		widget.NewSeparator(),
 		widget.NewLabel("Outbound:"),
 		outboundSelect,
@@ -320,6 +495,8 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		dialogWindow.Close()
 	})
 
+	// Refresh selected processes UI in case we loaded existing values
+	refreshSelectedProcessesUI()
 	updateButtonState()
 	dialogWindow.Show()
 }

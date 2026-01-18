@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	RuleTypeIP     = "IP Addresses (CIDR)"
-	RuleTypeDomain = "Domains/URLs"
+	RuleTypeIP      = "IP Addresses (CIDR)"
+	RuleTypeDomain  = "Domains/URLs"
+	RuleTypeProcess = "Processes"
 )
 
 // ExtractStringArray extracts []string from interface{} (supports []interface{} and []string).

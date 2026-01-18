@@ -25,8 +25,7 @@ import (
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/platform"
-
-	ps "github.com/mitchellh/go-ps"
+	"singbox-launcher/internal/process"
 )
 
 // Constants for log file names
@@ -510,17 +509,17 @@ func CheckIfLauncherAlreadyRunningUtil(ac *AppController) {
 	execName := strings.ToLower(filepath.Base(execPath))
 	currentPID := os.Getpid()
 
-	processes, err := ps.Processes()
+	processes, err := process.GetProcesses()
 	if err != nil {
 		log.Printf("CheckIfLauncherAlreadyRunning: error listing processes: %v", err)
 		return
 	}
 
 	for _, p := range processes {
-		if p.Pid() == currentPID {
+		if p.PID == currentPID {
 			continue
 		}
-		if strings.EqualFold(p.Executable(), execName) {
+		if strings.EqualFold(p.Name, execName) {
 			if ac.UIService != nil && ac.UIService.MainWindow != nil {
 				dialogs.ShowInfo(ac.UIService.MainWindow, "Information", "The application is already running. Use the existing instance or close it before starting a new one.")
 			}
