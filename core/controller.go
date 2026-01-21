@@ -713,7 +713,16 @@ func (ac *AppController) CreateTrayMenu() *fyne.Menu {
 	*/
 	if ac.APIService == nil {
 		// Return minimal menu if APIService is not initialized
-		menuItems := []*fyne.MenuItem{
+		menuItems := []*fyne.MenuItem{}
+		
+		// On macOS, add a separator at the beginning to fix menu positioning
+		// This prevents the first item from being hidden behind the scroll arrow
+		// by increasing the menu height and ensuring proper positioning
+		if runtime.GOOS == "darwin" {
+			menuItems = append(menuItems, fyne.NewMenuItemSeparator())
+		}
+		
+		menuItems = append(menuItems,
 			fyne.NewMenuItem("Open", func() {
 				if ac.UIService != nil && ac.UIService.MainWindow != nil {
 					platform.RestoreDockIcon()
@@ -721,7 +730,7 @@ func (ac *AppController) CreateTrayMenu() *fyne.Menu {
 				}
 			}),
 			fyne.NewMenuItemSeparator(),
-		}
+		)
 
 		if runtime.GOOS == "darwin" {
 			menuItems = ac.addHideDockMenuItem(menuItems)
@@ -800,7 +809,16 @@ func (ac *AppController) CreateTrayMenu() *fyne.Menu {
 	buttonState := ac.GetVPNButtonState()
 
 	// Create main menu items
-	menuItems := []*fyne.MenuItem{
+	menuItems := []*fyne.MenuItem{}
+	
+	// On macOS, add a separator at the beginning to fix menu positioning
+	// This prevents the first item from being hidden behind the scroll arrow
+	// by increasing the menu height and ensuring proper positioning
+	if runtime.GOOS == "darwin" {
+		menuItems = append(menuItems, fyne.NewMenuItemSeparator())
+	}
+	
+	menuItems = append(menuItems,
 		fyne.NewMenuItem("Open", func() {
 			if ac.UIService != nil && ac.UIService.MainWindow != nil {
 				platform.RestoreDockIcon()
@@ -808,7 +826,7 @@ func (ac *AppController) CreateTrayMenu() *fyne.Menu {
 			}
 		}),
 		fyne.NewMenuItemSeparator(),
-	}
+	)
 
 	// Add Start/Stop VPN buttons based on centralized state
 	if buttonState.StartEnabled {
