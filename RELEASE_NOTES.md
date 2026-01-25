@@ -25,7 +25,6 @@ https://github.com/Leadaxe/singbox-launcher/pull/23 thnx https://github.com/Must
 ## Fixes
 - Fix: Config Wizard now properly removes deleted subscription URLs and direct links when editing input in the wizard. Previously removed lines could remain in the generated `ParserConfig`; this has been fixed to respect full and partial deletions and preserve existing settings only for matching entries.
 
-# Unreleased (2026-01-12)
 
 ## UI
 - **Wizard single-instance**: окно конфигурационного визарда теперь может быть открыто только в одном экземпляре — повторный вызов фокусирует существующее окно вместо создания нового.
