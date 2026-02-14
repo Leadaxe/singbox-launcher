@@ -104,13 +104,20 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 		ac.UIService.ResetAPIStateFunc()
 	}
 
-	// On macOS, start sing-box with elevated privileges (prompts for password) so TUN and other privileged features work
+	// On macOS, use privileged start only when config has TUN (so password is asked only when needed)
 	if runtime.GOOS == "darwin" {
-		if err := svc.startSingBoxPrivileged(); err != nil {
-			ac.ShowStartupError(err)
+		hasTun, err := config.ConfigHasTun(ac.FileService.ConfigPath)
+		if err != nil {
+			debuglog.WarnLog("startSingBox: Could not check TUN in config: %v; using privileged start.", err)
+			hasTun = true
+		}
+		if hasTun {
+			if err := svc.startSingBoxPrivileged(); err != nil {
+				ac.ShowStartupError(err)
+				return
+			}
 			return
 		}
-		return
 	}
 
 	debuglog.InfoLog("startSingBox: Starting Sing-Box...")

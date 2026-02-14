@@ -138,3 +138,30 @@ func GetTunInterfaceName(configPath string) (string, error) {
 
 	return "", nil // No TUN interface found in config
 }
+
+// ConfigHasTun returns true if config has any TUN inbound (used to decide if privilege escalation is needed on macOS).
+func ConfigHasTun(configPath string) (bool, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return false, fmt.Errorf("failed to read config: %w", err)
+	}
+	cleanData := jsonc.ToJSON(data)
+	var config map[string]interface{}
+	if err := json.Unmarshal(cleanData, &config); err != nil {
+		return false, fmt.Errorf("failed to parse config: %w", err)
+	}
+	inbounds, ok := config["inbounds"].([]interface{})
+	if !ok {
+		return false, nil
+	}
+	for _, inbound := range inbounds {
+		inboundMap, ok := inbound.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if inboundMap["type"] == "tun" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
