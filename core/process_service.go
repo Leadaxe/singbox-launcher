@@ -104,6 +104,15 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 		ac.UIService.ResetAPIStateFunc()
 	}
 
+	// On macOS, start sing-box with elevated privileges (prompts for password) so TUN and other privileged features work
+	if runtime.GOOS == "darwin" {
+		if err := svc.startSingBoxPrivileged(); err != nil {
+			ac.ShowStartupError(err)
+			return
+		}
+		return
+	}
+
 	debuglog.InfoLog("startSingBox: Starting Sing-Box...")
 	ac.SingboxCmd = exec.Command(ac.FileService.SingboxPath, "run", "-c", filepath.Base(ac.FileService.ConfigPath))
 	platform.PrepareCommand(ac.SingboxCmd)
@@ -138,6 +147,133 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 	}()
 
 	go svc.Monitor(ac.SingboxCmd)
+}
+
+// startSingBoxPrivileged starts sing-box with elevated privileges on macOS (for TUN).
+// The script writes its own PID ($$) then runs sing-box in foreground; we run the script
+// in a goroutine so the launcher doesn't block. On Stop we kill the script's process group
+// so both the script and sing-box exit.
+func (svc *ProcessService) startSingBoxPrivileged() error {
+	ac := svc.ac
+	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	configName := filepath.Base(ac.FileService.ConfigPath)
+	logPath := filepath.Join(ac.FileService.ExecDir, childLogFileName)
+	if ac.FileService.ChildLogFile != nil {
+		ac.FileService.CheckAndRotateLogFile(logPath)
+	}
+
+	scriptPath := filepath.Join(binDir, "start-singbox-privileged.sh")
+	pidFilePath := filepath.Join(binDir, "singbox.pid")
+
+	// Script: print PID on first line (so RunWithPrivileges can return it), redirect stdout so pipe closes, then run sing-box in foreground
+	scriptBody := fmt.Sprintf(`#!/bin/sh
+echo $$
+exec 1>>%s 2>&1
+cd %s && %s run -c %s >> %s 2>&1
+`, strconv.Quote(logPath), strconv.Quote(binDir), strconv.Quote(ac.FileService.SingboxPath), strconv.Quote(configName), strconv.Quote(logPath))
+	if err := os.WriteFile(scriptPath, []byte(scriptBody), 0700); err != nil {
+		return fmt.Errorf("failed to write script %s: %w", scriptPath, err)
+	}
+
+	debuglog.InfoLog("startSingBox: Starting Sing-Box with elevated privileges (TUN)...")
+	pidCh := make(chan int, 1)
+	go func() {
+		scriptPID, runErr := platform.RunWithPrivileges("/bin/sh", []string{scriptPath})
+		if runErr != nil {
+			pidCh <- 0
+			ac.CmdMutex.Lock()
+			if ac.SingboxPrivilegedMode {
+				ac.CmdMutex.Unlock()
+				return
+			}
+			ac.CmdMutex.Unlock()
+			debuglog.WarnLog("startSingBox: privileged run failed: %v", runErr)
+			return
+		}
+		pidCh <- scriptPID
+		if scriptPID <= 0 {
+			return
+		}
+		ac.CmdMutex.Lock()
+		ac.SingboxCmd = nil
+		ac.SingboxPrivilegedMode = true
+		ac.SingboxPrivilegedPID = scriptPID
+		ac.SingboxPrivilegedPIDFile = pidFilePath
+		ac.RunningState.Set(true)
+		ac.StoppedByUser = false
+		ac.CmdMutex.Unlock()
+		_ = os.WriteFile(pidFilePath, []byte(strconv.Itoa(scriptPID)), 0644)
+		debuglog.DebugLog("startSingBox: Sing-Box started with privileges (script PID=%d).", scriptPID)
+		platform.WaitForPrivilegedExit(scriptPID)
+		svc.onPrivilegedScriptExited()
+	}()
+
+	scriptPID := <-pidCh
+	if scriptPID <= 0 {
+		return fmt.Errorf("privileged start failed or cancelled (no PID)")
+	}
+
+	go func() {
+		<-time.After(2 * time.Second)
+		ac.AutoLoadProxies()
+	}()
+	return nil
+}
+
+// onPrivilegedScriptExited is called when the privileged script process exits (RunWithPrivileges returned).
+// The script runs sing-box in foreground, so when the script exits, sing-box has exited too.
+func (svc *ProcessService) onPrivilegedScriptExited() {
+	ac := svc.ac
+	ac.CmdMutex.Lock()
+	defer ac.CmdMutex.Unlock()
+	if !ac.SingboxPrivilegedMode {
+		return
+	}
+	ac.SingboxPrivilegedMode = false
+	ac.SingboxPrivilegedPID = 0
+	ac.SingboxPrivilegedPIDFile = ""
+	ac.RunningState.Set(false)
+	if ac.StoppedByUser {
+		ac.StoppedByUser = false
+		ac.ConsecutiveCrashAttempts = 0
+		debuglog.InfoLog("onPrivilegedScriptExited: Stopped by user.")
+		return
+	}
+	ac.ConsecutiveCrashAttempts++
+	if ac.ConsecutiveCrashAttempts > restartAttempts {
+		debuglog.DebugLog("onPrivilegedScriptExited: Max restart attempts reached.")
+		if ac.UIService != nil && ac.UIService.MainWindow != nil {
+			dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("Sing-Box failed to restart after %d attempts. Check sing-box.log for details.", restartAttempts))
+		}
+		ac.ConsecutiveCrashAttempts = 0
+		return
+	}
+	debuglog.WarnLog("onPrivilegedScriptExited: Sing-Box exited, auto-restart (attempt %d/%d)", ac.ConsecutiveCrashAttempts, restartAttempts)
+	if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
+		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, "Crash", fmt.Sprintf("Sing-Box crashed, restarting... (attempt %d/%d)", ac.ConsecutiveCrashAttempts, restartAttempts))
+	}
+	ac.CmdMutex.Unlock()
+	<-time.After(2 * time.Second)
+	svc.Start(true)
+	ac.CmdMutex.Lock()
+	if ac.RunningState.IsRunning() {
+		currentAttemptCount := ac.ConsecutiveCrashAttempts
+		go func() {
+			select {
+			case <-ac.ctx.Done():
+				return
+			case <-time.After(stabilityThreshold):
+				ac.CmdMutex.Lock()
+				defer ac.CmdMutex.Unlock()
+				if ac.RunningState.IsRunning() && ac.ConsecutiveCrashAttempts == currentAttemptCount {
+					ac.ConsecutiveCrashAttempts = 0
+					if ac.UIService != nil && ac.UIService.UpdateCoreStatusFunc != nil {
+						ac.UIService.UpdateCoreStatusFunc()
+					}
+				}
+			}
+		}()
+	}
 }
 
 // Monitor tracks the sing-box process and auto-restarts on crash (same logic as before).
@@ -248,6 +384,26 @@ func (svc *ProcessService) Stop() {
 		return
 	}
 
+	// Privileged mode (macOS TUN): kill script's process group (script + sing-box) via RunWithPrivileges
+	if ac.SingboxPrivilegedMode && ac.SingboxPrivilegedPID != 0 && ac.SingboxPrivilegedPIDFile != "" {
+		pidFile := ac.SingboxPrivilegedPIDFile
+		scriptPID := ac.SingboxPrivilegedPID
+		ac.CmdMutex.Unlock()
+		debuglog.InfoLog("stopSingBox: Stopping privileged Sing-Box (script PID %d, killing process group)...", scriptPID)
+		killScript := fmt.Sprintf("kill -TERM -%d 2>/dev/null; rm -f %s", scriptPID, strconv.Quote(pidFile))
+		if _, err := platform.RunWithPrivileges("/bin/sh", []string{"-c", killScript}); err != nil {
+			debuglog.WarnLog("stopSingBox: Privileged kill failed (process may have already exited): %v", err)
+		}
+		ac.CmdMutex.Lock()
+		ac.SingboxPrivilegedMode = false
+		ac.SingboxPrivilegedPID = 0
+		ac.SingboxPrivilegedPIDFile = ""
+		ac.RunningState.Set(false)
+		ac.StoppedByUser = false
+		ac.CmdMutex.Unlock()
+		return
+	}
+
 	if ac.SingboxCmd == nil || ac.SingboxCmd.Process == nil {
 		debuglog.InfoLog("StopSingBoxProcess: Inconsistent state detected. Correcting state.")
 		ac.RunningState.Set(false)
@@ -321,6 +477,9 @@ func (svc *ProcessService) checkAndShowSingBoxRunningWarning(ctx string) bool {
 func (svc *ProcessService) getTrackedPID() int {
 	svc.ac.CmdMutex.Lock()
 	defer svc.ac.CmdMutex.Unlock()
+	if svc.ac.SingboxPrivilegedMode && svc.ac.SingboxPrivilegedPID != 0 {
+		return svc.ac.SingboxPrivilegedPID
+	}
 	if svc.ac.SingboxCmd != nil && svc.ac.SingboxCmd.Process != nil {
 		return svc.ac.SingboxCmd.Process.Pid
 	}
