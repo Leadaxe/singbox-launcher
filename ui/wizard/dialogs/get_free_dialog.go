@@ -38,6 +38,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/ui/components"
 	wizardmodels "singbox-launcher/ui/wizard/models"
@@ -82,8 +83,8 @@ func downloadGetFreeJSON(presenter *wizardpresentation.WizardPresenter, force bo
 		}
 	}
 
-	// Download from GitHub
-	downloadURL := "https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/bin/get_free.json"
+	// Download from GitHub (ветка main или develop в зависимости от версии приложения)
+	downloadURL := fmt.Sprintf("https://raw.githubusercontent.com/Leadaxe/singbox-launcher/%s/bin/get_free.json", constants.GetMyBranch())
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

@@ -1,5 +1,7 @@
 package constants
 
+import "strings"
+
 // File names
 const (
 	WinTunDLLName   = "wintun.dll"
@@ -38,6 +40,16 @@ const (
 var (
 	AppVersion = "v0.6.0" // Default version, overridden by build scripts from git tag
 )
+
+// GetMyBranch возвращает ветку репозитория для загрузки ассетов (wizard_template.json, get_free.json).
+// Если в версии приложения есть суффикс после номера (например 0.7.1-96-gc1343cc или 0.7.1-dev), возвращает "develop", иначе "main".
+func GetMyBranch() string {
+	v := strings.TrimPrefix(AppVersion, "v")
+	if strings.Contains(v, "-") {
+		return "develop"
+	}
+	return "main"
+}
 
 // UI Theme settings
 const (
