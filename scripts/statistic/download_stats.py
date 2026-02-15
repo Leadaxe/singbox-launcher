@@ -105,11 +105,34 @@ def main():
     print(f"   Average downloads per release: {format_number(total_downloads // len(releases) if releases else 0)}")
     print()
     
-    # Top 5 releases
-    top_releases = sorted(release_stats, key=lambda x: x['downloads'], reverse=True)[:5]
-    print("🏆 Top 5 Releases by Downloads:")
-    for i, stat in enumerate(top_releases, 1):
-        print(f"   {i}. {stat['version']}: {format_number(stat['downloads'])} downloads")
+    # Latest release (first in sorted list)
+    if release_stats:
+        latest = release_stats[0]
+        print("=" * 90)
+        print("🆕 Latest Release")
+        print("=" * 90)
+        print(f"   🏷️  Version:     {latest['version']}")
+        print(f"   📅 Date:         {latest['date']}")
+        print(f"   ⬇️  Downloads:    {format_number(latest['downloads'])}")
+        print(f"   📦 Assets:       {latest['assets_count']}")
+        platforms = []
+        if latest['win']:
+            platforms.append("Windows")
+        if latest['mac']:
+            platforms.append("macOS")
+        platform_str = ", ".join(platforms) if platforms else "N/A"
+        print(f"   💻 Platforms:    {platform_str}")
+        print()
+    
+    # Top 3 releases
+    top_releases = sorted(release_stats, key=lambda x: x['downloads'], reverse=True)[:3]
+    print("=" * 90)
+    print("🏆 Top 3 Releases by Downloads")
+    print("=" * 90)
+    medals = ["🥇", "🥈", "🥉"]
+    for i, stat in enumerate(top_releases):
+        medal = medals[i] if i < len(medals) else "  "
+        print(f"{medal} {stat['version']:<12} {format_number(stat['downloads']):>12} downloads ({stat['date']})")
     print()
 
 if __name__ == "__main__":
