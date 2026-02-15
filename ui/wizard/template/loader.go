@@ -30,6 +30,7 @@ import (
 	"runtime"
 	"strings"
 
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -119,9 +120,18 @@ func GetTemplateFileName() string {
 	return TemplateFileName
 }
 
-// GetTemplateURL возвращает URL для загрузки шаблона с GitHub.
+// templateBranch возвращает ветку GitHub для шаблона: если в версии приложения есть суффикс после номера (например 0.7.1-96-gc1343cc или 0.7.1-dev), то develop, иначе main.
+func templateBranch() string {
+	v := strings.TrimPrefix(constants.AppVersion, "v")
+	if strings.Contains(v, "-") {
+		return "develop"
+	}
+	return "main"
+}
+
+// GetTemplateURL возвращает URL для загрузки шаблона с GitHub (ветка main или develop в зависимости от версии приложения).
 func GetTemplateURL() string {
-	return fmt.Sprintf("https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/bin/%s", TemplateFileName)
+	return fmt.Sprintf("https://raw.githubusercontent.com/Leadaxe/singbox-launcher/%s/bin/%s", templateBranch(), TemplateFileName)
 }
 
 // LoadTemplateData загружает и обрабатывает шаблон конфигурации.
