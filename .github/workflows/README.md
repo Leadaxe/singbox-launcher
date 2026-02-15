@@ -13,7 +13,9 @@
   - `build` — сборка артефактов (без релиза)
   - `prerelease` — сборка + создание prerelease (аннотированный тег + релиз)
 
-Параметры: `run_mode` (обязательный выбор), `skip_tests` (boolean).
+Параметры: `run_mode` (обязательный выбор), `skip_tests` (boolean), `target` (строка, необязательно).
+
+**target** — какие сборки запускать (через пробел: `macOS`, `Win64`, `Win7`). Пусто = все три. Пример: `macOS Win64` — только macOS и Win64, без Win7.
 
 ---
 
@@ -37,10 +39,14 @@
 ## 🚀 Job‑ы и артефакты
 
 - Test job: запускается по push в main, PR, или вручную (run_mode=tests).
-- Build job: запускается при теге `v*` или вручную (run_mode=build|prerelease). macOS и Windows всегда кладут результат в `dist/`. На `macos-latest` теперь формируются два macOS артефакта: универсальный (arm64+amd64) и Catalina‑targeted Intel-only (`*-macos-catalina.zip`).
-- Release job: запускается после успешного build для тегов (stable) или при ручном `run_mode=prerelease`.
+- Build job'ы (при теге `v*` или run_mode=build|prerelease):
+  - **build-darwin** — macOS (универсальный .app + Catalina Intel-only); запускается, если `target` пусто или содержит `macOS`.
+  - **build-windows** — Win64 (.exe); если `target` пусто или содержит `Win64`.
+  - **build-win7** — Win7 x86; если `target` пусто или содержит `Win7`.
+  На `macos-latest` два артефакта: универсальный и `*-macos-catalina.zip`.
+- Release job: запускается после успешного выполнения хотя бы одного build для тегов (stable) или при ручном `run_mode=prerelease`; подтягивает только артефакты тех сборок, что реально запускались.
 
-Артефакты размещаются в `dist/*` и загружаются как `artifacts-{os}`.
+Артефакты: `artifacts-darwin`, `artifacts-windows`, `artifacts-macos-catalina`, `artifacts-windows-win7-32`.
 
 ---
 
@@ -52,8 +58,10 @@
   gh workflow run ci.yml --ref develop -f run_mode=prerelease -f skip_tests=true
 - Ручной build:
   gh workflow run ci.yml --ref develop -f run_mode=build -f skip_tests=true
-- Ручной build (Win7 only):
-  gh workflow run ci.yml --ref develop -f run_mode=build -f skip_tests=true -f target=win7
+- Ручной build только Win7:
+  gh workflow run ci.yml --ref develop -f run_mode=build -f skip_tests=true -f target=Win7
+- Ручной build только macOS и Win64 (без Win7):
+  gh workflow run ci.yml --ref develop -f run_mode=build -f skip_tests=true -f "target=macOS Win64"
 - Тесты вручную:
   gh workflow run ci.yml --ref develop -f run_mode=tests
 
