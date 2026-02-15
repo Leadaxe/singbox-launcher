@@ -128,7 +128,8 @@ func buildConfigSections(model *wizardmodels.WizardModel, forPreview bool, timin
 	return sections, nil
 }
 
-// buildOutboundsSection строит секцию outbounds: сгенерированные + статические из шаблона.
+// buildOutboundsSection строит секцию outbounds: динамические между @ParserSTART/@ParserEND и статические из шаблона.
+// Между блоками ставится запятая только если есть оба.
 func buildOutboundsSection(model *wizardmodels.WizardModel, templateOutbounds json.RawMessage, forPreview bool, timing *debuglog.TimingContext) (string, error) {
 	start := time.Now()
 	defer func() { timing.LogTiming("build outbounds", time.Since(start)) }()
@@ -137,44 +138,37 @@ func buildOutboundsSection(model *wizardmodels.WizardModel, templateOutbounds js
 	var builder strings.Builder
 	builder.WriteString("[\n")
 
-	// 1. Сгенерированные outbounds
+	// 1. Динамические outbounds между маркерами
 	builder.WriteString(indent + "/** @ParserSTART */\n")
-
 	if forPreview && model.OutboundStats.NodesCount > wizardutils.MaxNodesForFullPreview {
-		// Для preview с большим количеством нод — показываем статистику
 		builder.WriteString(fmt.Sprintf("%s// Generated: %d nodes, %d local selectors, %d global selectors\n",
 			indent, model.OutboundStats.NodesCount, model.OutboundStats.LocalSelectorsCount, model.OutboundStats.GlobalSelectorsCount))
 		builder.WriteString(fmt.Sprintf("%s// Total outbounds: %d\n", indent, len(model.GeneratedOutbounds)))
 	} else {
-		// Полный список сгенерированных outbounds
 		for idx, entry := range model.GeneratedOutbounds {
 			cleaned := strings.TrimRight(entry, ",\n\r\t ")
-			indented := IndentMultiline(cleaned, indent)
-			builder.WriteString(indented)
+			builder.WriteString(IndentMultiline(cleaned, indent))
 			if idx < len(model.GeneratedOutbounds)-1 {
 				builder.WriteString(",")
 			}
 			builder.WriteString("\n")
 		}
 	}
-
 	builder.WriteString(indent + "/** @ParserEND */")
 
-	// 2. Статические outbounds из шаблона
-	hasGenerated := len(model.GeneratedOutbounds) > 0
+	// 2. Статические outbounds: запятая только если есть и динамические, и статические
 	var staticOutbounds []json.RawMessage
 	if err := json.Unmarshal(templateOutbounds, &staticOutbounds); err == nil && len(staticOutbounds) > 0 {
+		needComma := len(model.GeneratedOutbounds) > 0
 		for i, item := range staticOutbounds {
-			formatted, err := formatCompactJSON(item, indent)
-			if err != nil {
-				formatted = string(item)
-			}
-			// Запятая нужна перед элементом, если перед ним есть сгенерированные outbounds
-			// или это не первый статический outbound
-			if hasGenerated || i > 0 {
+			if needComma || i > 0 {
 				builder.WriteString(",\n")
 			} else {
 				builder.WriteString("\n")
+			}
+			formatted, err := formatCompactJSON(item, indent)
+			if err != nil {
+				formatted = string(item)
 			}
 			builder.WriteString(indent + formatted)
 		}
