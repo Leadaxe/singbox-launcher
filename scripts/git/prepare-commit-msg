@@ -1,0 +1,13 @@
+#!/bin/sh
+# Remove Co-authored-by: Cursor line (only sh built-ins, works in Git Bash on Windows)
+COMMIT_MSG_FILE="$1"
+[ -z "$COMMIT_MSG_FILE" ] || [ ! -f "$COMMIT_MSG_FILE" ] && exit 0
+tmp="$COMMIT_MSG_FILE.$$"
+: > "$tmp"
+while IFS= read -r line; do
+  case "$line" in
+    *Co-authored-by:\ Cursor*) ;;
+    *) echo "$line" >> "$tmp" ;;
+  esac
+done < "$COMMIT_MSG_FILE"
+mv "$tmp" "$COMMIT_MSG_FILE"
