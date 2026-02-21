@@ -84,6 +84,7 @@ func ShowConfigWizard(parent fyne.Window) {
 	if err != nil {
 		templateFileName := wizardtemplate.GetTemplateFileName()
 		debuglog.ErrorLog("ConfigWizard: failed to load %s from %s: %v", templateFileName, filepath.Join(ac.FileService.ExecDir, "bin", templateFileName), err)
+		debuglog.DebugLog("wizard: showing download failed manual (template load on open)")
 		binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
 		dialogs.ShowDownloadFailedManual(parent, "Config template failed to load", wizardtemplate.GetTemplateURL(), binDir)
 		if ac.UIService != nil && ac.UIService.UpdateConfigStatusFunc != nil {
@@ -166,7 +167,7 @@ func loadConfigFromFile(presenter *wizardpresentation.WizardPresenter, fileServi
 	loadedConfig, parserConfigJSON, sourceURLs, err := wizardbusiness.LoadConfigFromFile(fileService, templateData)
 	if err != nil {
 		debuglog.ErrorLog("loadConfigFromFile: Failed to load config: %v", err)
-		dialog.ShowError(fmt.Errorf("Failed to load existing config: %w", err), wizardWindow)
+		dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to load existing config: %w", err))
 	}
 	if loadedConfig {
 		model.ParserConfigJSON = parserConfigJSON
@@ -176,6 +177,7 @@ func loadConfigFromFile(presenter *wizardpresentation.WizardPresenter, fileServi
 		if model.TemplateData == nil || model.TemplateData.ParserConfig == "" {
 			ac := core.GetController()
 			binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
+			debuglog.DebugLog("wizard: showing download failed manual (template missing)")
 			dialogs.ShowDownloadFailedManual(wizardWindow, "Config template missing", wizardtemplate.GetTemplateURL(), binDir)
 			wizardWindow.Close()
 			return
@@ -204,7 +206,7 @@ func loadStateFromFile(presenter *wizardpresentation.WizardPresenter, stateStore
 
 	if err != nil {
 		debuglog.ErrorLog("loadStateFromFile: failed to load state: %v", err)
-		dialog.ShowError(fmt.Errorf("Failed to load state: %w", err), wizardWindow)
+		dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to load state: %w", err))
 		// Fallback to config.json/template
 		fileServiceAdapter := &wizardbusiness.FileServiceAdapter{FileService: presenter.Controller().FileService}
 		loadConfigFromFile(presenter, fileServiceAdapter, templateData, model, wizardWindow)
@@ -214,7 +216,7 @@ func loadStateFromFile(presenter *wizardpresentation.WizardPresenter, stateStore
 	// Load state into model
 	if err := presenter.LoadState(stateFile); err != nil {
 		debuglog.ErrorLog("loadStateFromFile: failed to load state into model: %v", err)
-		dialog.ShowError(fmt.Errorf("Failed to restore state: %w", err), wizardWindow)
+		dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to restore state: %w", err))
 		// Fallback to config.json/template
 		fileServiceAdapter := &wizardbusiness.FileServiceAdapter{FileService: presenter.Controller().FileService}
 		loadConfigFromFile(presenter, fileServiceAdapter, templateData, model, wizardWindow)
@@ -479,7 +481,7 @@ func handleReadButton(presenter *wizardpresentation.WizardPresenter, wizardWindo
 					wizarddialogs.ShowSaveStateDialog(presenter, func(result wizarddialogs.SaveStateResult) {
 						if result.Action == "save" {
 							if err := presenter.SaveStateAs(result.Comment, result.ID); err != nil {
-								dialog.ShowError(fmt.Errorf("Failed to save state: %w", err), wizardWindow)
+								dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to save state: %w", err))
 								return
 							}
 							// Continue loading after saving
@@ -518,6 +520,7 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 				templateData, err := templateLoader.LoadTemplateData(ac.FileService.ExecDir)
 				if err != nil {
 					binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
+					debuglog.DebugLog("wizard: showing download failed manual (template load on New)")
 					dialogs.ShowDownloadFailedManual(wizardWindow, "Config template failed to load", wizardtemplate.GetTemplateURL(), binDir)
 					return
 				}
@@ -555,13 +558,13 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 		}
 
 		if loadErr != nil {
-			dialog.ShowError(fmt.Errorf("Failed to load state: %w", loadErr), wizardWindow)
+			dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to load state: %w", loadErr))
 			return
 		}
 
 		// Загружаем состояние в модель
 		if err := presenter.LoadState(stateFile); err != nil {
-			dialog.ShowError(fmt.Errorf("Failed to restore state: %w", err), wizardWindow)
+			dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to restore state: %w", err))
 			return
 		}
 
@@ -575,7 +578,7 @@ func handleSaveAsButton(presenter *wizardpresentation.WizardPresenter, wizardWin
 	wizarddialogs.ShowSaveStateDialog(presenter, func(result wizarddialogs.SaveStateResult) {
 		if result.Action == "save" {
 			if err := presenter.SaveStateAs(result.Comment, result.ID); err != nil {
-				dialog.ShowError(fmt.Errorf("Failed to save state: %w", err), wizardWindow)
+				dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to save state: %w", err))
 				return
 			}
 			// Закрываем визард после успешного сохранения
@@ -611,7 +614,7 @@ func handleCloseButton(presenter *wizardpresentation.WizardPresenter, guiState *
 			}
 			// Save to state.json
 			if err := presenter.SaveCurrentState(); err != nil {
-				dialog.ShowError(fmt.Errorf("Failed to save state: %w", err), wizardWindow)
+				dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to save state: %w", err))
 				return
 			}
 			wizardWindow.Close()

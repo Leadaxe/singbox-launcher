@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
 )
 
@@ -91,6 +92,7 @@ func NewCustom(title string, mainContent fyne.CanvasObject, buttons fyne.CanvasO
 // Always displays the same short message, a link to download manually, and a button to open
 // the target folder. downloadURL and targetDir may be empty to hide the link or "Open folder" button.
 func ShowDownloadFailedManual(window fyne.Window, title, downloadURL, targetDir string) {
+	debuglog.DebugLog("dialogs: ShowDownloadFailedManual start title=%s", title)
 	fyne.Do(func() {
 		mainContent := container.NewVBox()
 		msgLabel := widget.NewLabel(downloadFailedMessage)
@@ -104,7 +106,11 @@ func ShowDownloadFailedManual(window fyne.Window, title, downloadURL, targetDir 
 			link := widget.NewHyperlink("Open download page", nil)
 			if err := link.SetURLFromString(downloadURL); err == nil {
 				link.OnTapped = func() {
-					_ = platform.OpenURL(downloadURL)
+					if err := platform.OpenURL(downloadURL); err != nil {
+						debuglog.ErrorLog("dialogs: OpenURL failed: %v", err)
+						ShowError(window, fmt.Errorf("failed to open link: %w", err))
+						return
+					}
 				}
 			}
 			copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
@@ -133,6 +139,7 @@ func ShowDownloadFailedManual(window fyne.Window, title, downloadURL, targetDir 
 
 		d := NewCustom(title, mainContent, buttons, "Close", window)
 		d.Show()
+		debuglog.DebugLog("dialogs: ShowDownloadFailedManual shown")
 	})
 }
 

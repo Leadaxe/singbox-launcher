@@ -288,6 +288,7 @@ func createSRSButton(
 					if len(srsEntries) > 0 {
 						downloadURL = srsEntries[0].URL
 					}
+					debuglog.DebugLog("rules_tab: showing download failed manual (SRS)")
 					dialogs.ShowDownloadFailedManual(guiState.Window, "Rule-set (SRS) download failed", downloadURL, ruleSetsDir)
 					return
 				}

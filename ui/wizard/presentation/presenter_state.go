@@ -338,11 +338,10 @@ func (p *WizardPresenter) getDefaultFinalOutbound() string {
 // GetStateStore создает новый StateStore для работы с состояниями.
 // Публичный метод для использования в диалогах и других компонентах.
 //
-// Примечание: FileServiceAdapter находится в файле с build tag cgo (saver.go),
+// Примечание: FileServiceAdapter определён в business/file_service_adapter.go (без build tag).
 // но это не проблема, так как весь визард компилируется с cgo.
 func (p *WizardPresenter) GetStateStore() *wizardbusiness.StateStore {
-	// FileServiceAdapter определен в business/saver.go с build tag cgo
-	// При компиляции с cgo (как в проекте) всё работает корректно
+	// FileServiceAdapter в business/file_service_adapter.go (без cgo tag)
 	ac := core.GetController()
 	fileServiceAdapter := &wizardbusiness.FileServiceAdapter{FileService: ac.FileService}
 	return wizardbusiness.NewStateStore(fileServiceAdapter)
