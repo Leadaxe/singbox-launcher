@@ -22,10 +22,14 @@
 
 ## Текущие фичи
 
+- **DIAGNOSTICS_LOG_VIEWER/** — отдельное окно просмотра логов (Internal/Core), открываемое с вкладки Diagnostics; перехват internal-логов через debuglog sink в реальном времени
 - **DOWNLOAD_FAILED_MANUAL/** — единая подсистема: при ошибке загрузки (sing-box, wintun, wizard_template, SRS) показ диалога с ссылкой и кнопкой «Open folder»
-- **SRS_LOCAL_DOWNLOAD/** — локальное скачивание SRS, устранение зависимости от raw.githubusercontent.com
 - **RULE_TYPE_SRS_URL/** — тип пользовательского правила «SRS (URL)»: вставка своей ссылки на SRS в диалоге Add Rule
 - **TELEMETRY/** — система статистики (opt-in, allowlist, relay)
+
+## Сделанное (todo/complete/)
+
+- **SRS_LOCAL_DOWNLOAD/** — локальное скачивание SRS, устранение зависимости от raw.githubusercontent.com
 
 ## Workflow
 
