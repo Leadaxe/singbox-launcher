@@ -10,7 +10,9 @@
 
 | Папка | Описание |
 |-------|----------|
+| **DIAGNOSTICS_LOG_VIEWER/** | Окно просмотра логов (Internal, Core, API) с вкладки Diagnostics; sink в debuglog и api, tail для Core, автообновление 5 с |
 | **DOWNLOAD_FAILED_MANUAL/** | Единая подсистема: при ошибке загрузки (sing-box, wintun, wizard_template, SRS) — диалог с ссылкой и кнопкой «Open folder» |
+| **PING_ERROR_TOOLTIP/** | Ошибка Ping: tooltip при наведении на кнопку "Error" вместо отдельного окна с ошибкой (Clash API) |
 | **SRS_LOCAL_DOWNLOAD/** | Локальное скачивание SRS, устранение зависимости от raw.githubusercontent.com |
 | **UNIFIED_CONFIG_TEMPLATE/** | Единый шаблон конфигурации (JSON schema, имплементация) |
 | **WIZARD_STATE/** | Управление состоянием визарда (спека, схема, отчёт, код-ревью) |

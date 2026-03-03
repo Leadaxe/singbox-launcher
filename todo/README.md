@@ -22,13 +22,14 @@
 
 ## Текущие фичи
 
-- **DIAGNOSTICS_LOG_VIEWER/** — отдельное окно просмотра логов (Internal/Core), открываемое с вкладки Diagnostics; перехват internal-логов через debuglog sink в реальном времени
+- **OUTBOUNDS_CONFIGURATOR/** — кнопка «Config Outbounds» у ParserConfig в визарде; окно со списком outbounds (глобальные + по источникам), Edit/Delete/Add и диалог настройки (scope, type, filters, default, addOutbounds)
 - **DOWNLOAD_FAILED_MANUAL/** — единая подсистема: при ошибке загрузки (sing-box, wintun, wizard_template, SRS) показ диалога с ссылкой и кнопкой «Open folder»
 - **RULE_TYPE_SRS_URL/** — тип пользовательского правила «SRS (URL)»: вставка своей ссылки на SRS в диалоге Add Rule
 - **TELEMETRY/** — система статистики (opt-in, allowlist, relay)
 
 ## Сделанное (todo/complete/)
 
+- **DIAGNOSTICS_LOG_VIEWER/** — окно просмотра логов (Internal, Core, API) с вкладки Diagnostics; sink в debuglog и api, tail для Core, автообновление 5 с
 - **SRS_LOCAL_DOWNLOAD/** — локальное скачивание SRS, устранение зависимости от raw.githubusercontent.com
 
 ## Workflow
