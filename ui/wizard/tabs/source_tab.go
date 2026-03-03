@@ -18,6 +18,7 @@
 package tabs
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -32,10 +33,12 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/config"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
 	wizardbusiness "singbox-launcher/ui/wizard/business"
 	wizarddialogs "singbox-launcher/ui/wizard/dialogs"
+	"singbox-launcher/ui/wizard/outbounds_configurator"
 	wizardpresentation "singbox-launcher/ui/wizard/presentation"
 )
 
@@ -267,6 +270,31 @@ Here is the current configuration to review:
 	parserLabel := widget.NewLabel("ParserConfig:")
 	parserLabel.Importance = widget.MediumImportance
 
+	configOutboundsBtn := widget.NewButton("Config Outbounds", func() {
+		presenter.SyncGUIToModel()
+		model := presenter.Model()
+		raw := strings.TrimSpace(model.ParserConfigJSON)
+		if raw == "" {
+			dialog.ShowError(fmt.Errorf("ParserConfig is empty. Enter or load config first"), guiState.Window)
+			return
+		}
+		var pc config.ParserConfig
+		if err := json.Unmarshal([]byte(raw), &pc); err != nil {
+			dialog.ShowError(fmt.Errorf("invalid ParserConfig JSON: %w", err), guiState.Window)
+			return
+		}
+		outbounds_configurator.Show(guiState.Window, &pc, func(updated *config.ParserConfig) {
+			serialized, err := wizardbusiness.SerializeParserConfig(updated)
+			if err != nil {
+				dialog.ShowError(err, guiState.Window)
+				return
+			}
+			model.ParserConfigJSON = serialized
+			model.ParserConfig = updated
+			presenter.UpdateParserConfig(serialized)
+		})
+	})
+
 	// Parse button (positioned to left of ParserConfig)
 	guiState.ParseButton = widget.NewButton("Parse", func() {
 		// Sync GUI to model before parsing
@@ -306,8 +334,9 @@ Here is the current configuration to review:
 
 	headerRow := container.NewHBox(
 		parserLabel,
-		widget.NewLabel("  "), // small spacing between text and button
+		widget.NewLabel("  "),
 		guiState.ParseButton,
+		configOutboundsBtn,
 		layout.NewSpacer(),
 		chatButton,
 		docButton,

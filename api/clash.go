@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"singbox-launcher/internal/debuglog"
@@ -135,20 +136,45 @@ var httpClient = &http.Client{
 // apiLogFile is the target for API request logging (api.log). Set via SetAPILogFile.
 var apiLogFile *os.File
 
+var (
+	apiLogSinkMu sync.RWMutex
+	apiLogSink   func(debuglog.Level, string)
+)
+
 // SetAPILogFile sets the log file for API requests. Call after opening log files, pass nil before closing.
 func SetAPILogFile(f *os.File) {
 	apiLogFile = f
 }
 
+// SetAPILogSink sets an optional callback for the diagnostics log viewer (API tab).
+// The callback receives (level, line) for each writeLog() and must not block.
+// Call ClearAPILogSink when the log viewer window is closed.
+func SetAPILogSink(fn func(debuglog.Level, string)) {
+	apiLogSinkMu.Lock()
+	defer apiLogSinkMu.Unlock()
+	apiLogSink = fn
+}
+
+// ClearAPILogSink removes the API log sink (e.g. when the log viewer is closed).
+func ClearAPILogSink() {
+	SetAPILogSink(nil)
+}
+
 // writeLog writes to api.log when level <= GlobalLevel (same rule as debuglog.Log).
 func writeLog(level debuglog.Level, format string, args ...interface{}) {
-	if apiLogFile == nil {
-		return
-	}
 	if level > debuglog.GlobalLevel {
 		return
 	}
-	_, _ = fmt.Fprintf(apiLogFile, format, args...)
+	line := fmt.Sprintf(format, args...)
+	if apiLogFile != nil {
+		_, _ = fmt.Fprintf(apiLogFile, format, args...)
+	}
+	apiLogSinkMu.RLock()
+	fn := apiLogSink
+	apiLogSinkMu.RUnlock()
+	if fn != nil {
+		fn(level, line)
+	}
 }
 
 // TestAPIConnection attempts to connect to the Clash API.

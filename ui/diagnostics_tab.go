@@ -161,7 +161,14 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 		})
 	}
 
+	openLogsButton := widget.NewButton("Open logs", func() {
+		OpenLogViewerWindow(ac)
+	})
+
 	return container.NewVBox(
+		widget.NewLabel(" "),
+		openLogsButton,
+		//widget.NewLabel(" "),
 		widget.NewLabel("IP Check Services:"),
 		stunButton, // Google STUN [UDP] перенесен в секцию IP Check Services
 		openBrowserButton("2ip.ru", "https://2ip.ru"),
