@@ -31,22 +31,7 @@
 
 - **DIAGNOSTICS_LOG_VIEWER/** — окно просмотра логов (Internal, Core, API) с вкладки Diagnostics; sink в debuglog и api, tail для Core, автообновление 5 с
 - **SRS_LOCAL_DOWNLOAD/** — локальное скачивание SRS, устранение зависимости от raw.githubusercontent.com
-- **FEATURES_2025/** — лог завершённых фич 2025 года (агрегирующий список без переноса файлов):
-  - `complete/2026-02-10-get-free-vpn-button.md`
-  - `complete/2026-02-15-ci-cd-workflow.md`
-  - `complete/GET_FREE_JSON_REFACTOR.md`
-  - `complete/improvements_implementation_report.md`
-  - `complete/LOGGING_CENTRALIZATION_REPORT.md`
-  - `complete/MACOS_TUN_PRIVILEGED_LAUNCH_REPORT.md`
-  - `complete/MIGRATION_V2_TO_V3.md`
-  - `complete/OPTIMIZATION_RECOMMENDATIONS.md`
-  - `complete/REFACTOR_CONFIG_STRUCTURE.md`
-  - `complete/REFACTOR_UI_WIZARD_STRUCTURE.md`
-  - `complete/SINGLETON_CONTROLLER.md`
-  - `complete/SOCKS5_UDP_STUN.md`
-  - `complete/text_based_config_experiment.md`
-  - `complete/UPDATE_CHECK_POPUP.md`
-  - `complete/wizard_refactoring.md`
+- **complete/FEATURES_2025/** — отчёты и спеки 2025 года (15 документов: Get free VPN, CI/CD, рефакторинги, логирование, TUN, миграция v2→v3 и др.). Подробнее — [complete/README.md](complete/README.md#features_2025--отчёты-и-задачи-одиночные-документы).
 
 ## Workflow
 

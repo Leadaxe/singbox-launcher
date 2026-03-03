@@ -19,24 +19,24 @@
 
 ---
 
-## FEATURES_2025 — отчёты и задачи (одиночные документы)
+## FEATURES_2025/ — отчёты и задачи (одиночные документы)
 
-Отдельные документы 2025 года — отчёты о реализации, рефакторинги, задачи без полного Spec Kit:
+Отдельные документы 2025 года в папке **FEATURES_2025/** — отчёты о реализации, рефакторинги, задачи без полного Spec Kit:
 
 | Документ | Кратко |
 |----------|--------|
-| **2026-02-10-get-free-vpn-button.md** | Кнопка «Get free VPN» и связанный функционал |
-| **2026-02-15-ci-cd-workflow.md** | CI/CD workflow |
-| **GET_FREE_JSON_REFACTOR.md** | Рефакторинг Get Free JSON |
-| **LOGGING_CENTRALIZATION_REPORT.md** | Централизация логирования (debuglog) |
-| **MACOS_TUN_PRIVILEGED_LAUNCH_REPORT.md** | Запуск sing-box с привилегиями (TUN) на macOS |
-| **MIGRATION_V2_TO_V3.md** | Миграция v2 → v3 |
-| **OPTIMIZATION_RECOMMENDATIONS.md** | Рекомендации по оптимизации |
-| **REFACTOR_CONFIG_STRUCTURE.md** | Рефакторинг структуры конфига |
-| **REFACTOR_UI_WIZARD_STRUCTURE.md** | Рефакторинг структуры UI визарда |
-| **SINGLETON_CONTROLLER.md** | Singleton AppController |
-| **SOCKS5_UDP_STUN.md** | STUN-тест через системный SOCKS5 прокси (macOS) |
-| **UPDATE_CHECK_POPUP.md** | Проверка обновлений с попапом при запуске |
-| **improvements_implementation_report.md** | Отчёт по улучшениям |
-| **text_based_config_experiment.md** | Эксперимент с текстовым конфигом |
-| **wizard_refactoring.md** | Рефакторинг визарда |
+| **FEATURES_2025/2026-02-10-get-free-vpn-button.md** | Кнопка «Get free VPN» и связанный функционал |
+| **FEATURES_2025/2026-02-15-ci-cd-workflow.md** | CI/CD workflow |
+| **FEATURES_2025/GET_FREE_JSON_REFACTOR.md** | Рефакторинг Get Free JSON |
+| **FEATURES_2025/LOGGING_CENTRALIZATION_REPORT.md** | Централизация логирования (debuglog) |
+| **FEATURES_2025/MACOS_TUN_PRIVILEGED_LAUNCH_REPORT.md** | Запуск sing-box с привилегиями (TUN) на macOS |
+| **FEATURES_2025/MIGRATION_V2_TO_V3.md** | Миграция v2 → v3 |
+| **FEATURES_2025/OPTIMIZATION_RECOMMENDATIONS.md** | Рекомендации по оптимизации |
+| **FEATURES_2025/REFACTOR_CONFIG_STRUCTURE.md** | Рефакторинг структуры конфига |
+| **FEATURES_2025/REFACTOR_UI_WIZARD_STRUCTURE.md** | Рефакторинг структуры UI визарда |
+| **FEATURES_2025/SINGLETON_CONTROLLER.md** | Singleton AppController |
+| **FEATURES_2025/SOCKS5_UDP_STUN.md** | STUN-тест через системный SOCKS5 прокси (macOS) |
+| **FEATURES_2025/UPDATE_CHECK_POPUP.md** | Проверка обновлений с попапом при запуске |
+| **FEATURES_2025/improvements_implementation_report.md** | Отчёт по улучшениям |
+| **FEATURES_2025/text_based_config_experiment.md** | Эксперимент с текстовым конфигом |
+| **FEATURES_2025/wizard_refactoring.md** | Рефакторинг визарда |
