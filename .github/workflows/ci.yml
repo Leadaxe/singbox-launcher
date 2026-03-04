@@ -410,7 +410,7 @@ jobs:
           (github.event.inputs.run_mode == 'build' || github.event.inputs.run_mode == 'prerelease') &&
           (github.event.inputs.target == '' || contains(github.event.inputs.target, 'Win7')))
     needs: meta
-    runs-on: windows-2019
+    runs-on: windows-latest
 
     steps:
       - name: Checkout code
