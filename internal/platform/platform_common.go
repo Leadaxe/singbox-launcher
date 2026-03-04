@@ -17,6 +17,11 @@ func GetBinDir(execDir string) string {
 	return filepath.Join(execDir, constants.BinDirName)
 }
 
+// GetRuleSetsDir returns the path to bin/rule-sets directory (локальные SRS файлы)
+func GetRuleSetsDir(execDir string) string {
+	return filepath.Join(execDir, constants.BinDirName, constants.RuleSetsDirName)
+}
+
 // GetLogsDir returns the path to logs directory
 func GetLogsDir(execDir string) string {
 	return filepath.Join(execDir, constants.LogsDirName)
@@ -27,6 +32,7 @@ func EnsureDirectories(execDir string) error {
 	dirs := []string{
 		GetLogsDir(execDir),
 		GetBinDir(execDir),
+		GetRuleSetsDir(execDir),
 	}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, os.ModePerm); err != nil {

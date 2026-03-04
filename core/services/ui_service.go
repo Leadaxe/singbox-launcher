@@ -58,7 +58,7 @@ type UIService struct {
 	UpdateConfigStatusFunc   func()
 	UpdateTrayMenuFunc       func()
 	UpdateParserProgressFunc func(progress float64, status string)
-	FocusOpenRuleDialogs     func()
+	FocusOpenChildWindows    func() // Focus one of wizard child windows (View, Outbound Edit, rule dialog) when user clicks wizard
 	ShowUpdatePopupFunc      func(currentVersion, latestVersion string) // Called to show update popup
 
 	// Dependencies (passed from AppController)
@@ -107,7 +107,7 @@ func NewUIService(appIconData, greyIconData, greenIconData, redIconData []byte,
 	// Initialize callbacks with default no-op handlers
 	ui.RefreshAPIFunc = func() { debuglog.DebugLog("RefreshAPIFunc handler is not set yet.") }
 	ui.ResetAPIStateFunc = func() { debuglog.DebugLog("ResetAPIStateFunc handler is not set yet.") }
-	ui.UpdateCoreStatusFunc = func() { debuglog.DebugLog("UpdateCoreStatusFunc handler is not set yet.") }
+	ui.UpdateCoreStatusFunc = func() {} // placeholder until dashboard sets real handler
 	ui.UpdateConfigStatusFunc = func() { debuglog.DebugLog("UpdateConfigStatusFunc handler is not set yet.") }
 	ui.UpdateTrayMenuFunc = func() { debuglog.DebugLog("UpdateTrayMenuFunc handler is not set yet.") }
 	ui.UpdateParserProgressFunc = func(progress float64, status string) {
@@ -152,11 +152,11 @@ func (ui *UIService) UpdateUI() {
 	fyne.Do(func() {
 		// Update tray icon
 		if desk, ok := ui.Application.(desktop.App); ok {
-		// Check that icons are initialized
-		if ui.GreenIconData == nil || ui.GreyIconData == nil || ui.RedIconData == nil {
-			debuglog.WarnLog("UpdateUI: Icons not initialized, skipping icon update")
-			return
-		}
+			// Check that icons are initialized
+			if ui.GreenIconData == nil || ui.GreyIconData == nil || ui.RedIconData == nil {
+				debuglog.WarnLog("UpdateUI: Icons not initialized, skipping icon update")
+				return
+			}
 
 			var iconToSet fyne.Resource
 

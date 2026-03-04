@@ -52,8 +52,8 @@ func (w *ClickRedirect) Tapped(e *fyne.PointEvent) {
 			if w.controller.UIService.WizardWindow != nil {
 				w.controller.UIService.WizardWindow.Show()
 				w.controller.UIService.WizardWindow.RequestFocus()
-				if w.controller.UIService.FocusOpenRuleDialogs != nil {
-					w.controller.UIService.FocusOpenRuleDialogs()
+				if w.controller.UIService.FocusOpenChildWindows != nil {
+					w.controller.UIService.FocusOpenChildWindows()
 				}
 			}
 		})

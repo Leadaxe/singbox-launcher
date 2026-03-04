@@ -12,8 +12,9 @@ const (
 
 // Directory names
 const (
-	BinDirName  = "bin"
-	LogsDirName = "logs"
+	BinDirName     = "bin"
+	LogsDirName    = "logs"
+	RuleSetsDirName = "rule-sets"
 )
 
 // Log file names
@@ -35,10 +36,16 @@ const (
 	DefaultSTUNServer = "stun.l.google.com:19302"
 )
 
+// Manual download URLs (shown when automatic download fails)
+const (
+	SingboxReleasesURL = "https://github.com/SagerNet/sing-box/releases"
+	WintunHomeURL      = "https://www.wintun.net/"
+)
+
 // Application version
 // Can be overridden at build time using -ldflags="-X singbox-launcher/internal/constants.AppVersion=..."
 var (
-	AppVersion = "v0.6.0" // Default version, overridden by build scripts from git tag
+	AppVersion = "v-local-test" // Default version, overridden by build scripts from git tag
 )
 
 // GetMyBranch возвращает ветку репозитория для загрузки ассетов (wizard_template.json, get_free.json).

@@ -2,7 +2,6 @@
 //
 // Файл parser.go является оркестратором/координатором, который вызывает реальные парсеры
 // из core-модулей, но сам не содержит логику парсинга. Его функции:
-//   - CheckURL - координирует проверку URL через subscription.FetchSubscription, subscription.ParseNode
 //   - ParseAndPreview - координирует генерацию outbounds через ConfigService.GenerateOutboundsFromParserConfig
 //   - ApplyURLToParserConfig - применяет URL к ParserConfig (работает со структурами config.ParserConfig)
 //   - SerializeParserConfig - сериализует через config.NormalizeParserConfig
@@ -30,269 +29,6 @@ import (
 	wizardutils "singbox-launcher/ui/wizard/utils"
 )
 
-// CheckURL validates subscription URLs or direct links and updates the model through UIUpdater.
-// It checks availability of subscription URLs and validates direct links.
-func CheckURL(model *wizardmodels.WizardModel, updater UIUpdater) error {
-	timing := debuglog.StartTiming("checkURL")
-	defer timing.EndWithDefer()
-
-	input := strings.TrimSpace(model.SourceURLs)
-	if input == "" {
-		debuglog.DebugLog("checkURL: Empty input, returning early")
-		updater.UpdateURLStatus("❌ Please enter a URL or direct link")
-		updater.UpdateCheckURLButtonText("Check")
-		updater.UpdateCheckURLProgress(-1)
-		return fmt.Errorf("empty input")
-	}
-
-	// Initialize UI state
-	initializeCheckURLUI(updater)
-
-	// Process all input lines
-	inputLines := strings.Split(input, "\n")
-	debuglog.DebugLog("checkURL: Processing %d input lines", len(inputLines))
-
-	// Pre-allocate slices with estimated capacity
-	estimatedPreview := min(len(inputLines), wizardutils.MaxPreviewLines)
-	estimatedErrors := len(inputLines) / 4
-	if estimatedErrors < 1 {
-		estimatedErrors = 1
-	}
-	previewLines := make([]string, 0, estimatedPreview)
-	errors := make([]string, 0, estimatedErrors)
-
-	// Process each line
-	totalValid := processAllInputLines(inputLines, updater, &previewLines, &errors)
-
-	// Build and display result
-	buildAndDisplayCheckResult(totalValid, previewLines, errors, updater)
-
-	return nil
-}
-
-// initializeCheckURLUI инициализирует UI для проверки URL.
-func initializeCheckURLUI(updater UIUpdater) {
-	updater.UpdateURLStatus("⏳ Checking...")
-	updater.UpdateCheckURLButtonText("")
-	updater.UpdateCheckURLProgress(0.0)
-}
-
-// processAllInputLines обрабатывает все входные строки.
-// Возвращает общее количество валидных ссылок.
-func processAllInputLines(inputLines []string, updater UIUpdater, previewLines *[]string, errors *[]string) int {
-	totalValid := 0
-
-	for i, line := range inputLines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		// Update progress
-		updateCheckProgress(updater, i+1, len(inputLines))
-
-		// Process line based on type
-		validCount := processInputLine(line, i+1, len(inputLines), previewLines, errors, totalValid)
-		totalValid += validCount
-	}
-
-	debuglog.DebugLog("checkURL: Processed all lines (total valid: %d, errors: %d)", totalValid, len(*errors))
-	return totalValid
-}
-
-// updateCheckProgress обновляет прогресс проверки.
-func updateCheckProgress(updater UIUpdater, current, total int) {
-	progress := float64(current) / float64(total)
-	updater.UpdateURLStatus(fmt.Sprintf("⏳ Checking... (%d/%d)", current, total))
-	updater.UpdateCheckURLProgress(progress)
-}
-
-// processInputLine обрабатывает одну входную строку.
-// Возвращает количество валидных ссылок, найденных в этой строке.
-// currentValidCount используется для правильной нумерации в previewLines.
-func processInputLine(line string, lineNum, totalLines int, previewLines *[]string, errors *[]string, currentValidCount int) int {
-	lineStartTime := time.Now()
-		linePreview := line
-		if len(line) > 50 {
-			linePreview = line[:50] + "..."
-		}
-	debuglog.DebugLog("checkURL: Processing line %d/%d: %s", lineNum, totalLines, linePreview)
-
-		if subscription.IsSubscriptionURL(line) {
-		return processSubscriptionURL(line, lineNum, totalLines, previewLines, errors, lineStartTime, currentValidCount)
-	} else if subscription.IsDirectLink(line) {
-		return processDirectLink(line, lineNum, totalLines, previewLines, errors, lineStartTime, currentValidCount)
-	} else {
-		debuglog.DebugLog("checkURL: Unknown format for line %d/%d: %s", lineNum, totalLines, line)
-		*errors = append(*errors, fmt.Sprintf("Unknown format: %s", line))
-		return 0
-	}
-}
-
-// processSubscriptionURL обрабатывает subscription URL.
-// Возвращает количество валидных ссылок, найденных в подписке.
-func processSubscriptionURL(
-	line string,
-	lineNum, totalLines int,
-	previewLines *[]string,
-	errors *[]string,
-	lineStartTime time.Time,
-	currentValidCount int,
-) int {
-			// Validate URL before fetching
-			if err := ValidateURL(line); err != nil {
-		debuglog.DebugLog("checkURL: Invalid subscription URL %d/%d: %v", lineNum, totalLines, err)
-		*errors = append(*errors, fmt.Sprintf("Invalid subscription URL: %v", err))
-		return 0
-			}
-
-	// Fetch subscription
-			fetchStartTime := time.Now()
-	debuglog.DebugLog("checkURL: Fetching subscription %d/%d: %s", lineNum, totalLines, line)
-			content, err := subscription.FetchSubscription(line)
-			fetchDuration := time.Since(fetchStartTime)
-			if err != nil {
-		debuglog.DebugLog("checkURL: Failed to fetch subscription %d/%d (took %v): %v", lineNum, totalLines, fetchDuration, err)
-		*errors = append(*errors, fmt.Sprintf("Failed to fetch %s: %v", line, err))
-		return 0
-			}
-
-			// Validate response size
-			if err := ValidateHTTPResponseSize(int64(len(content))); err != nil {
-		debuglog.DebugLog("checkURL: Subscription response too large %d/%d: %v", lineNum, totalLines, err)
-		*errors = append(*errors, fmt.Sprintf("Subscription response too large: %v", err))
-		return 0
-			}
-
-	debuglog.DebugLog("checkURL: Fetched subscription %d/%d: %d bytes in %v", lineNum, totalLines, len(content), fetchDuration)
-
-	// Parse subscription content and count valid links
-	validCount := parseSubscriptionContent(content, lineNum, totalLines, previewLines, errors, lineStartTime, currentValidCount)
-	if validCount == 0 {
-		*errors = append(*errors, fmt.Sprintf("Subscription %s contains no valid proxy links", line))
-	}
-
-	return validCount
-}
-
-// parseSubscriptionContent парсит содержимое подписки и подсчитывает валидные ссылки.
-func parseSubscriptionContent(
-	content []byte,
-	lineNum, totalLines int,
-	previewLines *[]string,
-	errors *[]string,
-	lineStartTime time.Time,
-	currentValidCount int,
-) int {
-			parseStartTime := time.Now()
-			subLines := strings.Split(string(content), "\n")
-	debuglog.DebugLog("checkURL: Parsing subscription %d/%d: %d lines", lineNum, totalLines, len(subLines))
-
-			validInSub := 0
-	validCount := currentValidCount
-
-			for _, subLine := range subLines {
-				subLine = strings.TrimSpace(subLine)
-				if subLine != "" && subscription.IsDirectLink(subLine) {
-					validInSub++
-			validCount++
-			if len(*previewLines) < wizardutils.MaxPreviewLines {
-				*previewLines = append(*previewLines, fmt.Sprintf("%d. %s", validCount, subLine))
-					}
-				}
-			}
-
-			parseDuration := time.Since(parseStartTime)
-			debuglog.DebugLog("checkURL: Parsed subscription %d/%d: %d valid links in %v (line processing took %v total)",
-		lineNum, totalLines, validInSub, parseDuration, time.Since(lineStartTime))
-
-	return validInSub
-}
-
-// processDirectLink обрабатывает прямую ссылку.
-// Возвращает 1, если ссылка валидна, иначе 0.
-func processDirectLink(
-	line string,
-	lineNum, totalLines int,
-	previewLines *[]string,
-	errors *[]string,
-	lineStartTime time.Time,
-	currentValidCount int,
-) int {
-			// Validate URI before parsing
-			if err := ValidateURI(line); err != nil {
-		debuglog.DebugLog("checkURL: Invalid URI format %d/%d: %v", lineNum, totalLines, err)
-		*errors = append(*errors, fmt.Sprintf("Invalid URI format: %v", err))
-		return 0
-			}
-
-	// Validate parsing
-			parseStartTime := time.Now()
-	debuglog.DebugLog("checkURL: Parsing direct link %d/%d", lineNum, totalLines)
-			_, err := subscription.ParseNode(line, nil)
-			parseDuration := time.Since(parseStartTime)
-
-			if err != nil {
-		debuglog.DebugLog("checkURL: Invalid direct link %d/%d (took %v): %v", lineNum, totalLines, parseDuration, err)
-		*errors = append(*errors, fmt.Sprintf("Invalid direct link: %v", err))
-		return 0
-	}
-
-	debuglog.DebugLog("checkURL: Valid direct link %d/%d (took %v)", lineNum, totalLines, parseDuration)
-	if len(*previewLines) < wizardutils.MaxPreviewLines {
-		validCount := currentValidCount + 1
-		*previewLines = append(*previewLines, fmt.Sprintf("%d. %s", validCount, line))
-				}
-	return 1
-}
-
-// buildAndDisplayCheckResult строит и отображает результат проверки.
-func buildAndDisplayCheckResult(totalValid int, previewLines []string, errors []string, updater UIUpdater) {
-	if totalValid == 0 {
-		buildErrorResult(errors, updater)
-	} else {
-		buildSuccessResult(totalValid, previewLines, errors, updater)
-	}
-
-	// Restore UI state
-	updater.UpdateCheckURLButtonText("Check")
-	updater.UpdateCheckURLProgress(-1)
-}
-
-// buildErrorResult строит сообщение об ошибке.
-func buildErrorResult(errors []string, updater UIUpdater) {
-		errorMsg := "❌ No valid proxy links found"
-		if len(errors) > 0 {
-			errorMsg += "\n" + strings.Join(errors[:min(3, len(errors))], "\n")
-		}
-		updater.UpdateURLStatus(errorMsg)
-}
-
-// buildSuccessResult строит сообщение об успешной проверке.
-func buildSuccessResult(totalValid int, previewLines []string, errors []string, updater UIUpdater) {
-		statusMsg := fmt.Sprintf("✅ Working! Found %d valid proxy link(s)", totalValid)
-		if len(errors) > 0 {
-			statusMsg += fmt.Sprintf("\n⚠️ %d error(s)", len(errors))
-		}
-		updater.UpdateURLStatus(statusMsg)
-
-		if len(previewLines) > 0 {
-			previewText := strings.Join(previewLines, "\n")
-			if totalValid > len(previewLines) {
-				previewText += fmt.Sprintf("\n... and %d more", totalValid-len(previewLines))
-			}
-			updater.UpdateOutboundsPreview(previewText)
-		}
-}
-
-// min helper function
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // ParseAndPreview parses ParserConfig and generates outbounds preview.
 // It updates the model and UI through UIUpdater.
 func ParseAndPreview(model *wizardmodels.WizardModel, updater UIUpdater, configService ConfigService) error {
@@ -302,9 +38,7 @@ func ParseAndPreview(model *wizardmodels.WizardModel, updater UIUpdater, configS
 		model.AutoParseInProgress = false
 	}()
 
-	updater.UpdateSaveButtonText("") // Hide save button during parsing
-	updater.UpdateOutboundsPreview("Parsing configuration...")
-	updater.UpdateCheckURLButtonText("") // Hide check URL button during parsing
+	// Save button stays visible; save flow waits for parse if needed (waitForParsingIfNeeded)
 
 	// Parse ParserConfig from field
 	parseStartTime := time.Now()
@@ -312,17 +46,13 @@ func ParseAndPreview(model *wizardmodels.WizardModel, updater UIUpdater, configS
 	debuglog.DebugLog("parseAndPreview: ParserConfig text length: %d bytes", len(parserConfigJSON))
 	if parserConfigJSON == "" {
 		debuglog.DebugLog("parseAndPreview: ParserConfig is empty, returning early")
-		updater.UpdateOutboundsPreview("Error: ParserConfig is empty")
-		updater.UpdateCheckURLButtonText("Check") // Restore check URL button
-		updater.UpdateSaveButtonText("Save")      // Restore save button
+		updater.UpdateSaveButtonText("Save")
 		return fmt.Errorf("parserConfig is empty")
 	}
 
 	// Validate JSON size before parsing
 	if err := ValidateJSONSize([]byte(parserConfigJSON)); err != nil {
 		debuglog.DebugLog("parseAndPreview: ParserConfig JSON size validation failed: %v", err)
-		updater.UpdateOutboundsPreview(fmt.Sprintf("Error: %v", err))
-		updater.UpdateCheckURLButtonText("Check")
 		updater.UpdateSaveButtonText("Save")
 		return err
 	}
@@ -331,8 +61,6 @@ func ParseAndPreview(model *wizardmodels.WizardModel, updater UIUpdater, configS
 	if err := json.Unmarshal([]byte(parserConfigJSON), &parserConfig); err != nil {
 		timing.LogTiming("parse ParserConfig JSON", time.Since(parseStartTime))
 		debuglog.DebugLog("parseAndPreview: Failed to parse ParserConfig JSON: %v", err)
-		updater.UpdateOutboundsPreview(fmt.Sprintf("Error: Failed to parse ParserConfig JSON: %v", err))
-		updater.UpdateCheckURLButtonText("Check")
 		updater.UpdateSaveButtonText("Save")
 		return fmt.Errorf("failed to parse ParserConfig JSON: %w", err)
 	}
@@ -340,8 +68,6 @@ func ParseAndPreview(model *wizardmodels.WizardModel, updater UIUpdater, configS
 	// Validate ParserConfig structure
 	if err := ValidateParserConfig(&parserConfig); err != nil {
 		debuglog.DebugLog("parseAndPreview: ParserConfig validation failed: %v", err)
-		updater.UpdateOutboundsPreview(fmt.Sprintf("Error: Invalid ParserConfig: %v", err))
-		updater.UpdateCheckURLButtonText("Check")
 		updater.UpdateSaveButtonText("Save")
 		return err
 	}
@@ -354,8 +80,6 @@ func ParseAndPreview(model *wizardmodels.WizardModel, updater UIUpdater, configS
 	debuglog.DebugLog("parseAndPreview: URL text length: %d bytes", len(url))
 	if url == "" {
 		debuglog.DebugLog("parseAndPreview: URL is empty, returning early")
-		updater.UpdateOutboundsPreview("Error: VLESS URL or direct links are empty")
-		updater.UpdateCheckURLButtonText("Check")
 		updater.UpdateSaveButtonText("Save")
 		return fmt.Errorf("VLESS URL or direct links are empty")
 	}
@@ -375,8 +99,6 @@ func ParseAndPreview(model *wizardmodels.WizardModel, updater UIUpdater, configS
 		if err := json.Unmarshal([]byte(parserConfigJSON), &parserConfig); err != nil {
 			timing.LogTiming("reload ParserConfig JSON", time.Since(reloadStartTime))
 			debuglog.DebugLog("parseAndPreview: Failed to parse updated ParserConfig JSON: %v", err)
-			updater.UpdateOutboundsPreview(fmt.Sprintf("Error: Failed to parse updated ParserConfig JSON: %v", err))
-			updater.UpdateCheckURLButtonText("Check")
 			updater.UpdateSaveButtonText("Save")
 			return fmt.Errorf("failed to parse updated ParserConfig JSON: %w", err)
 		}
@@ -400,7 +122,8 @@ func ParseAndPreview(model *wizardmodels.WizardModel, updater UIUpdater, configS
 			return
 		}
 		lastProgressUpdate = now
-		updater.UpdateOutboundsPreview(s)
+		// Progress no longer shown in UI (Outbounds preview removed)
+		_ = s
 	}
 
 	result, err := configService.GenerateOutboundsFromParserConfig(
@@ -408,8 +131,6 @@ func ParseAndPreview(model *wizardmodels.WizardModel, updater UIUpdater, configS
 	if err != nil {
 		timing.LogTiming("generate outbounds", time.Since(generateStartTime))
 		debuglog.DebugLog("parseAndPreview: Failed to generate outbounds: %v", err)
-		updater.UpdateOutboundsPreview(fmt.Sprintf("Error: Failed to generate outbounds: %v", err))
-		updater.UpdateCheckURLButtonText("Check")
 		updater.UpdateSaveButtonText("Save")
 		return fmt.Errorf("failed to generate outbounds: %w", err)
 	}
@@ -421,31 +142,8 @@ func ParseAndPreview(model *wizardmodels.WizardModel, updater UIUpdater, configS
 	model.OutboundStats.GlobalSelectorsCount = result.GlobalSelectorsCount
 	model.GeneratedOutbounds = result.OutboundsJSON
 
-	var previewText string
-	if result.NodesCount > wizardutils.MaxNodesForFullPreview {
-		joinStartTime := time.Now()
-		statsComment := fmt.Sprintf(`/** @ParserSTART */
-	// Generated: %d nodes, %d local selectors, %d global selectors
-	// Total outbounds: %d
-/** @ParserEND */`,
-			result.NodesCount,
-			result.LocalSelectorsCount,
-			result.GlobalSelectorsCount,
-			len(result.OutboundsJSON))
-		previewText = statsComment
-		timing.LogTiming("generate statistics comment", time.Since(joinStartTime))
-		debuglog.DebugLog("parseAndPreview: Generated statistics comment (nodes: %d > %d)", result.NodesCount, wizardutils.MaxNodesForFullPreview)
-	} else {
-		joinStartTime := time.Now()
-		previewText = strings.Join(result.OutboundsJSON, "\n")
-		timing.LogTiming("join JSON strings", time.Since(joinStartTime))
-		debuglog.DebugLog("parseAndPreview: Joined %d JSON strings (total preview text length: %d bytes)",
-			len(result.OutboundsJSON), len(previewText))
-	}
 	timing.LogTiming("total outbound generation", time.Since(generateStartTime))
 
-	updater.UpdateOutboundsPreview(previewText)
-	updater.UpdateCheckURLButtonText("Check")
 	updater.UpdateSaveButtonText("Save")
 	model.ParserConfig = &parserConfig
 	model.PreviewNeedsParse = false
@@ -494,6 +192,63 @@ func ApplyURLToParserConfig(model *wizardmodels.WizardModel, updater UIUpdater, 
 
 	// Update and serialize
 	return updateAndSerializeParserConfig(parserConfig, newProxies, subscriptions, connections, model, updater, timing)
+}
+
+// AppendURLsToParserConfig appends URL(s) from input to existing ParserConfig proxies.
+// Existing sources are kept; only Del button removes them.
+func AppendURLsToParserConfig(model *wizardmodels.WizardModel, updater UIUpdater, input string) error {
+	timing := debuglog.StartTiming("appendURLsToParserConfig")
+	defer timing.EndWithDefer()
+	debuglog.DebugLog("appendURLsToParserConfig: input length: %d bytes", len(input))
+
+	if err := validateApplyURLInput(input, model.ParserConfigJSON); err != nil {
+		return err
+	}
+
+	parserConfig, err := parseParserConfigForApply(model.ParserConfigJSON, timing)
+	if err != nil {
+		return err
+	}
+
+	subscriptions, connections := classifyInputLines(input, timing)
+	if len(subscriptions) == 0 && len(connections) == 0 {
+		debuglog.DebugLog("appendURLsToParserConfig: no valid URLs to add")
+		return fmt.Errorf("no valid URLs to add")
+	}
+
+	existingProxies := parserConfig.ParserConfig.Proxies
+	existingProps := preserveExistingProperties(parserConfig)
+
+	// Skip subscription URLs that already exist (no duplicates)
+	existingSources := make(map[string]bool)
+	for _, p := range existingProxies {
+		if p.Source != "" {
+			existingSources[p.Source] = true
+		}
+	}
+	var uniqueSubs []string
+	for _, s := range subscriptions {
+		if !existingSources[s] {
+			uniqueSubs = append(uniqueSubs, s)
+		}
+	}
+
+	additionalProxies := createSubscriptionProxies(uniqueSubs, existingProps)
+	connProxies := matchOrCreateConnectionProxy(connections, existingProps, []config.ProxySource{})
+	// Append connection proxy only if not already present (same connections)
+	for _, cp := range connProxies {
+		if !proxyListHasConnections(existingProxies, cp.Connections) {
+			additionalProxies = append(additionalProxies, cp)
+		}
+	}
+
+	if len(additionalProxies) == 0 {
+		debuglog.DebugLog("appendURLsToParserConfig: all URLs already present, nothing to add")
+		return nil
+	}
+
+	newProxies := append(existingProxies, additionalProxies...)
+	return updateAndSerializeParserConfig(parserConfig, newProxies, uniqueSubs, connections, model, updater, timing)
 }
 
 // validateApplyURLInput проверяет входные данные перед применением URL.
@@ -592,9 +347,7 @@ func preserveExistingProperties(parserConfig *config.ParserConfig) *existingProp
 func createSubscriptionProxies(subscriptions []string, existingProps *existingProperties) []config.ProxySource {
 	newProxies := make([]config.ProxySource, 0, len(subscriptions))
 
-	// Automatically add tag_prefix with sequential number only if there are multiple subscriptions
-	autoAddPrefix := len(subscriptions) > 1
-
+	// By default assign tag_prefix (1:, 2:, 3:, ...) for each added subscription when not restored from existing
 	for idx, sub := range subscriptions {
 		proxySource := config.ProxySource{
 			Source: sub,
@@ -606,13 +359,13 @@ func createSubscriptionProxies(subscriptions []string, existingProps *existingPr
 			debuglog.DebugLog("applyURLToParserConfig: Restored %d local outbounds for subscription: %s", len(existingOutbounds), sub)
 		}
 
-		// Restore tag_prefix and tag_postfix
+		// Restore tag_prefix and tag_postfix from existing props
 		restoreTagPrefixAndPostfix(&proxySource, sub, existingProps, fmt.Sprintf("subscription: %s", sub))
 
-		// Automatically add tag_prefix if not restored and auto-add is enabled
-		if proxySource.TagPrefix == "" && autoAddPrefix {
+		// Default tag_prefix if not restored (e.g. new subscription)
+		if proxySource.TagPrefix == "" {
 			proxySource.TagPrefix = GenerateTagPrefix(idx + 1)
-			debuglog.DebugLog("applyURLToParserConfig: Added automatic tag_prefix '%s' for subscription: %s", proxySource.TagPrefix, sub)
+			debuglog.DebugLog("applyURLToParserConfig: Added default tag_prefix '%s' for subscription: %s", proxySource.TagPrefix, sub)
 		}
 
 		newProxies = append(newProxies, proxySource)
@@ -631,6 +384,16 @@ func restoreTagPrefixAndPostfix(proxySource *config.ProxySource, lookupKey strin
 		proxySource.TagPostfix = existingTagPostfix
 		debuglog.DebugLog("applyURLToParserConfig: Restored tag_postfix '%s' for %s", existingTagPostfix, logContext)
 	}
+}
+
+// proxyListHasConnections returns true if proxies contains a proxy with the same connections.
+func proxyListHasConnections(proxies []config.ProxySource, connections []string) bool {
+	for _, p := range proxies {
+		if connectionsMatch(p.Connections, connections) {
+			return true
+		}
+	}
+	return false
 }
 
 // connectionsMatch проверяет, совпадают ли два массива connections (порядок не важен).

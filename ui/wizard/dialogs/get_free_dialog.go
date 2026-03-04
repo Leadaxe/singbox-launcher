@@ -40,7 +40,7 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
-	"singbox-launcher/ui/components"
+	internaldialogs "singbox-launcher/internal/dialogs"
 	wizardmodels "singbox-launcher/ui/wizard/models"
 	wizardpresentation "singbox-launcher/ui/wizard/presentation"
 )
@@ -308,6 +308,11 @@ func ShowGetFreeVPNDialog(presenter *wizardpresentation.WizardPresenter) {
 				}
 
 				debuglog.InfoLog("Successfully applied configuration from get_free.json")
+				// Clear URL field and model so links from get_free do not remain (SyncModelToGUI would refill from model otherwise)
+				presenter.Model().SourceURLs = ""
+				if guiState.SourceURLEntry != nil {
+					guiState.SourceURLEntry.SetText("")
+				}
 				dialog.ShowInformation("Success", "Configuration from get_free.json has been applied successfully!", guiState.Window)
 
 				// Close the dialog
@@ -325,7 +330,7 @@ func ShowGetFreeVPNDialog(presenter *wizardpresentation.WizardPresenter) {
 				applyButton,
 			)
 
-			freeVPNDialog = components.NewCustom("Get free VPN", mainContent, nil, "Close", guiState.Window)
+			freeVPNDialog = internaldialogs.NewCustom("Get free VPN", mainContent, nil, "Close", guiState.Window)
 			freeVPNDialog.SetOnClosed(func() {
 				// Dialog closed
 			})

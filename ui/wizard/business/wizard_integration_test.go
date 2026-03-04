@@ -32,6 +32,7 @@ func TestDefaultWizardFlow_NextNextFinish(t *testing.T) {
 	// Initialize wizard model
 	model := wizardmodels.NewWizardModel()
 	model.TemplateData = templateData
+	model.ExecDir = execDir
 	model.ParserConfigJSON = strings.TrimSpace(templateData.ParserConfig)
 
 	// Emulate user entering subscription URL (Page 1 of wizard)
@@ -97,6 +98,7 @@ func TestWizardFlowWithCustomRules(t *testing.T) {
 
 	model := wizardmodels.NewWizardModel()
 	model.TemplateData = templateData
+	model.ExecDir = execDir
 	model.ParserConfigJSON = strings.TrimSpace(templateData.ParserConfig)
 
 	// Emulate user entering subscription URL

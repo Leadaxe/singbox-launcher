@@ -1,17 +1,9 @@
 // Package debuglog provides a centralized logging system with configurable log levels.
 //
-// The package supports multiple log levels (Off, Error, Warn, Info, Verbose/Debug, Trace)
-// and can be controlled globally via the SINGBOX_DEBUG environment variable.
+// The package supports multiple log levels (Off, Error, Warn, Info, Verbose/Debug, Trace).
+// Level is set at build time: release (tag) builds use Warn, dev (GH prerelease/local) builds use Debug.
 //
 // Usage:
-//
-//	// Set environment variable to control log level:
-//	// (default: warn - shows warnings and errors only)
-//	// SINGBOX_DEBUG=debug  (shows debug and above)
-//	// SINGBOX_DEBUG=info   (shows info and above)
-//	// SINGBOX_DEBUG=warn   (shows warnings and errors, default)
-//	// SINGBOX_DEBUG=error  (shows only errors)
-//	// SINGBOX_DEBUG=off    (disables all logs)
 //
 //	debuglog.DebugLog("Processing item %d", 42)
 //	debuglog.InfoLog("Operation completed successfully")
@@ -24,14 +16,19 @@
 //
 //	// Log large text fragments with automatic truncation
 //	debuglog.LogTextFragment("Parser", debuglog.LevelVerbose, "Config content", configText, 500)
+//
+// Optional internal log sink: SetInternalLogSink sets a callback that receives (level, line) for every
+// Log() call; used by the diagnostics log viewer window. The callback is invoked from any goroutine
+// and must not block (e.g. push to a channel; UI updates via fyne.Async). The viewer filters by level.
 package debuglog
 
 import (
 	"fmt"
 	"log"
-	"os"
-	"strings"
+	"sync"
 	"time"
+
+	"singbox-launcher/internal/constants"
 )
 
 // Level represents the log level threshold.
@@ -39,56 +36,41 @@ import (
 type Level uint8
 
 const (
-	// LevelOff disables all logging.
+	// LevelOff (0) disables all logging.
 	LevelOff Level = iota
 
-	// LevelError shows only error messages.
+	// LevelError (1) shows only error messages.
 	LevelError
 
-	// LevelWarn shows warnings and errors.
+	// LevelWarn (2) shows warnings and errors.
 	LevelWarn
 
-	// LevelInfo shows informational messages, warnings, and errors.
+	// LevelInfo (3) shows informational messages, warnings, and errors.
 	LevelInfo
 
-	// LevelVerbose (also known as Debug) shows detailed debug information.
-	// This is the default level and shows all logs except trace.
+	// LevelVerbose (4, also known as Debug) shows detailed debug information.
 	LevelVerbose
 
-	// LevelTrace shows the most detailed information including trace logs.
+	// LevelTrace (5) shows the most detailed information including trace logs.
 	LevelTrace
 )
 
-const envKey = "SINGBOX_DEBUG"
-
 var (
-	// GlobalLevel is the global log level threshold controlled by SINGBOX_DEBUG environment variable.
-	// By default, it is set to LevelWarn (warnings and errors only).
-	GlobalLevel = parseEnvLevel(os.Getenv(envKey))
+	// GlobalLevel is the global log level threshold.
+	// Release (tag) builds: LevelWarn. Dev (GH prerelease/local) builds: LevelVerbose (debug).
+	GlobalLevel = defaultLevelByBuild()
+
+	internalLogSinkMu sync.RWMutex
+	internalLogSink   func(Level, string)
 )
 
-// parseEnvLevel parses the log level from environment variable string.
-// Valid values: "trace", "verbose"/"debug", "info", "warn", "error", "off".
-// Returns LevelWarn by default if the value is not recognized.
-func parseEnvLevel(raw string) Level {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "trace":
-		return LevelTrace
-	case "verbose", "debug":
-		return LevelVerbose
-	case "info":
-		return LevelInfo
-	case "warn":
+// defaultLevelByBuild returns LevelWarn for release builds (version from tag, no "-"),
+// LevelVerbose (debug) for dev builds (prerelease, local, version with "-").
+func defaultLevelByBuild() Level {
+	if constants.GetMyBranch() == "main" {
 		return LevelWarn
-	case "error":
-		return LevelError
-	case "off":
-		return LevelOff
-	default:
-		// Default level: warn (LevelWarn)
-		// Shows only warnings and errors by default
-		return LevelTrace
 	}
+	return LevelVerbose
 }
 
 // Log writes a log message with the specified prefix and level.
@@ -104,11 +86,36 @@ func Log(prefix string, level Level, format string, args ...interface{}) {
 		return
 	}
 	message := fmt.Sprintf(format, args...)
+	var line string
 	if prefix != "" {
+		line = fmt.Sprintf("[%s] %s", prefix, message)
 		log.Printf("[%s] %s", prefix, message)
 	} else {
+		line = message
 		log.Print(message)
 	}
+	internalLogSinkMu.RLock()
+	fn := internalLogSink
+	internalLogSinkMu.RUnlock()
+	if fn != nil {
+		// Include timestamp for the log viewer (file log uses log package's default format)
+		lineWithTime := fmt.Sprintf("%s %s", time.Now().Format("2006-01-02 15:04:05"), line)
+		fn(level, lineWithTime)
+	}
+}
+
+// SetInternalLogSink sets an optional callback for the diagnostics log viewer.
+// The callback receives (level, line) for every Log() call and must not block.
+// Call ClearInternalLogSink when the viewer window is closed.
+func SetInternalLogSink(fn func(Level, string)) {
+	internalLogSinkMu.Lock()
+	defer internalLogSinkMu.Unlock()
+	internalLogSink = fn
+}
+
+// ClearInternalLogSink removes the internal log sink (e.g. when the log viewer is closed).
+func ClearInternalLogSink() {
+	SetInternalLogSink(nil)
 }
 
 // ShouldLog checks if a message with the given level would be logged.

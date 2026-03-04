@@ -38,14 +38,30 @@ func OpenURL(url string) error {
 	).Start()
 }
 
-// KillProcess kills a process by name
+// KillProcess kills a process by name. Tries without /F first; on error retries with /F.
 func KillProcess(processName string) error {
-	return exec.Command("taskkill", "/IM", processName, "/F").Run()
+	cmd := exec.Command("taskkill", "/IM", processName)
+	PrepareCommand(cmd)
+	if err := cmd.Run(); err != nil {
+		debuglog.DebugLog("KillProcess: taskkill without /F failed for %s: %v, retrying with /F", processName, err)
+		cmd = exec.Command("taskkill", "/IM", processName, "/F")
+		PrepareCommand(cmd)
+		return cmd.Run()
+	}
+	return nil
 }
 
-// KillProcessByPID kills a process and its children by PID
+// KillProcessByPID kills a process by PID. Tries without /F first; on error retries with /F.
 func KillProcessByPID(pid int) error {
-	return exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F").Run()
+	cmd := exec.Command("taskkill", "/PID", strconv.Itoa(pid))
+	PrepareCommand(cmd)
+	if err := cmd.Run(); err != nil {
+		debuglog.DebugLog("KillProcessByPID: taskkill without /F failed for PID %d: %v, retrying with /F", pid, err)
+		cmd = exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/F")
+		PrepareCommand(cmd)
+		return cmd.Run()
+	}
+	return nil
 }
 
 // SendCtrlBreak sends CTRL_BREAK_EVENT to a process by PID.
@@ -61,8 +77,8 @@ func SendCtrlBreak(pid int) error {
 // PrepareCommand prepares a command with platform-specific attributes
 func PrepareCommand(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
+		HideWindow: true,
+		//	CreationFlags: 0x08000000, // CREATE_NO_WINDOW
 	}
 }
 

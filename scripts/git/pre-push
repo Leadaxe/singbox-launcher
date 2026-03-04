@@ -1,0 +1,14 @@
+#!/bin/sh
+# Run go test before push. Skip with SKIP_GO_HOOKS=1.
+root=$(git rev-parse --show-toplevel) || exit 1
+cd "$root" || exit 1
+[ -n "$SKIP_GO_HOOKS" ] && exit 0
+exec 1>&2
+echo "pre-push: go test ./..."
+go test ./...
+test_ok=$?
+if [ $test_ok -ne 0 ]; then
+  echo "pre-push: tests failed; push aborted."
+  exit 1
+fi
+exit 0

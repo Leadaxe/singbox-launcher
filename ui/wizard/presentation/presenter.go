@@ -36,12 +36,14 @@ import (
 
 // WizardPresenter связывает GUI и бизнес-логику визарда.
 type WizardPresenter struct {
-	model              *wizardmodels.WizardModel
-	guiState           *GUIState
-	templateLoader     wizardbusiness.TemplateLoader
-	openRuleDialogs    map[int]fyne.Window
-	hasChanges         bool                                     // Отслеживает наличие несохранённых изменений
-	createRulesTabFunc func(*WizardPresenter) fyne.CanvasObject // Функция для создания вкладки Rules (устанавливается при инициализации)
+	model                  *wizardmodels.WizardModel
+	guiState               *GUIState
+	templateLoader         wizardbusiness.TemplateLoader
+	openRuleDialogs        map[int]fyne.Window
+	openViewWindow         fyne.Window // single View (source servers) window
+	openOutboundEditWindow fyne.Window // single Outbound Edit/Add window
+	hasChanges             bool                                     // Отслеживает наличие несохранённых изменений
+	createRulesTabFunc     func(*WizardPresenter) fyne.CanvasObject // Функция для создания вкладки Rules (устанавливается при инициализации)
 }
 
 // NewWizardPresenter создает новый презентер визарда.
@@ -99,4 +101,38 @@ func SafeFyneDo(window fyne.Window, fn func()) {
 // Инкапсулирует доступ к guiState.Window внутри презентера.
 func (p *WizardPresenter) UpdateUI(fn func()) {
 	SafeFyneDo(p.guiState.Window, fn)
+}
+
+// Child windows contract: see docs/WIZARD_CHILD_WINDOWS.md (register on open, unregister on close, UpdateChildOverlay, single instance for View/Edit).
+
+// OpenViewWindow returns the open View (source servers) window if any.
+func (p *WizardPresenter) OpenViewWindow() fyne.Window { return p.openViewWindow }
+
+// SetViewWindow registers the View window; call ClearViewWindow when it closes.
+func (p *WizardPresenter) SetViewWindow(w fyne.Window) { p.openViewWindow = w }
+
+// ClearViewWindow unregisters the View window.
+func (p *WizardPresenter) ClearViewWindow() { p.openViewWindow = nil }
+
+// OpenOutboundEditWindow returns the open Outbound Edit/Add window if any.
+func (p *WizardPresenter) OpenOutboundEditWindow() fyne.Window { return p.openOutboundEditWindow }
+
+// SetOutboundEditWindow registers the Outbound Edit window; call ClearOutboundEditWindow when it closes.
+func (p *WizardPresenter) SetOutboundEditWindow(w fyne.Window) { p.openOutboundEditWindow = w }
+
+// ClearOutboundEditWindow unregisters the Outbound Edit window.
+func (p *WizardPresenter) ClearOutboundEditWindow() { p.openOutboundEditWindow = nil }
+
+// UpdateChildOverlay shows or hides the child-windows overlay based on open rule dialogs, View window, and Outbound Edit window.
+func (p *WizardPresenter) UpdateChildOverlay() {
+	if p.guiState == nil || p.guiState.ChildWindowsOverlay == nil {
+		return
+	}
+	anyOpen := len(p.openRuleDialogs) > 0 || p.openViewWindow != nil || p.openOutboundEditWindow != nil
+	if anyOpen {
+		p.guiState.ChildWindowsOverlay.Show()
+	} else {
+		p.guiState.ChildWindowsOverlay.Hide()
+	}
+	p.guiState.ChildWindowsOverlay.Refresh()
 }

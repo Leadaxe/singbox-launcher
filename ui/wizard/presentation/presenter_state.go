@@ -28,6 +28,7 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
 	wizardbusiness "singbox-launcher/ui/wizard/business"
 	wizardmodels "singbox-launcher/ui/wizard/models"
@@ -185,8 +186,9 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 		return err
 	}
 
-	// Извлечение SourceURLs (шаг 3)
-	p.model.SourceURLs = p.extractSourceURLsFromParserConfig(&stateFile.ParserConfig)
+	// Step 3: Keep source URL entry empty on load so the field is for adding new URLs only.
+	// Existing sources are already in ParserConfig and shown in the Sources list.
+	p.model.SourceURLs = ""
 
 	// Восстановление config_params (шаг 4)
 	p.restoreConfigParams(stateFile.ConfigParams)
@@ -255,14 +257,16 @@ func (p *WizardPresenter) restoreSelectableRuleStates(persistedRules []wizardmod
 		}
 
 		if saved, ok := savedByLabel[rule.Label]; ok {
-			// Восстанавливаем выбор пользователя
 			rs.Enabled = saved.Enabled
 			rs.SelectedOutbound = saved.SelectedOutbound
 			debuglog.DebugLog("restoreSelectableRuleStates: matched rule label=%s, enabled=%v, selected_outbound=%s", rule.Label, saved.Enabled, saved.SelectedOutbound)
 		} else {
-			// Новое правило — используем default из шаблона
 			rs.Enabled = rule.IsDefault
 			rs.SelectedOutbound = rule.DefaultOutbound
+		}
+
+		if !services.AllSRSDownloaded(p.model.ExecDir, rule.RuleSets) {
+			rs.Enabled = false
 		}
 
 		p.model.SelectableRuleStates = append(p.model.SelectableRuleStates, rs)
@@ -335,11 +339,10 @@ func (p *WizardPresenter) getDefaultFinalOutbound() string {
 // GetStateStore создает новый StateStore для работы с состояниями.
 // Публичный метод для использования в диалогах и других компонентах.
 //
-// Примечание: FileServiceAdapter находится в файле с build tag cgo (saver.go),
+// Примечание: FileServiceAdapter определён в business/file_service_adapter.go (без build tag).
 // но это не проблема, так как весь визард компилируется с cgo.
 func (p *WizardPresenter) GetStateStore() *wizardbusiness.StateStore {
-	// FileServiceAdapter определен в business/saver.go с build tag cgo
-	// При компиляции с cgo (как в проекте) всё работает корректно
+	// FileServiceAdapter в business/file_service_adapter.go (без cgo tag)
 	ac := core.GetController()
 	fileServiceAdapter := &wizardbusiness.FileServiceAdapter{FileService: ac.FileService}
 	return wizardbusiness.NewStateStore(fileServiceAdapter)

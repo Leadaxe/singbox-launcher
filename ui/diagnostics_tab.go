@@ -16,8 +16,8 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/platform"
-	"singbox-launcher/ui/components"
 )
 
 // checkSTUN performs a STUN request to determine the external IP address.
@@ -116,7 +116,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 	// Кнопка для проверки STUN (Google STUN [UDP])
 	stunButton := widget.NewButton("Google STUN [UDP]", func() {
 		// Показываем диалог ожидания
-		waitDialog := components.NewCustom("STUN Check", widget.NewLabel("Checking, please wait..."), nil, "", ac.UIService.MainWindow)
+		waitDialog := dialogs.NewCustom("STUN Check", widget.NewLabel("Checking, please wait..."), nil, "", ac.UIService.MainWindow)
 		waitDialog.Show()
 
 		go func() {
@@ -161,7 +161,14 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 		})
 	}
 
+	openLogsButton := widget.NewButton("Open logs", func() {
+		OpenLogViewerWindow(ac)
+	})
+
 	return container.NewVBox(
+		widget.NewLabel(" "),
+		openLogsButton,
+		//widget.NewLabel(" "),
 		widget.NewLabel("IP Check Services:"),
 		stunButton, // Google STUN [UDP] перенесен в секцию IP Check Services
 		openBrowserButton("2ip.ru", "https://2ip.ru"),

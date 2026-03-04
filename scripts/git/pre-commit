@@ -1,0 +1,18 @@
+#!/bin/sh
+# Run go vet before commit. Skip with SKIP_GO_HOOKS=1.
+# Run from repo root (Git sets GIT_DIR; we chdir to work tree root).
+[ -n "$SKIP_GO_HOOKS" ] && exit 0
+root=$(git rev-parse --show-toplevel) || exit 1
+cd "$root" || exit 1
+exec 1>&2
+echo "pre-commit: go vet ./..."
+go vet ./...
+vet_ok=$?
+if [ $vet_ok -ne 0 ]; then
+  echo "pre-commit: go vet failed; commit aborted."
+  exit 1
+fi
+# Optional: go build (may fail without CGO on Windows). Uncomment if you have CGO.
+# echo "pre-commit: go build ./..."
+# go build ./... || exit 1
+exit 0

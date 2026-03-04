@@ -8,7 +8,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
-	"singbox-launcher/ui/components"
+	"singbox-launcher/internal/dialogs"
 )
 
 // ShowError shows an error dialog to the user
@@ -46,6 +46,11 @@ func ShowConfirm(window fyne.Window, title, message string, onConfirm func(bool)
 	})
 }
 
+// ShowDownloadFailedManual re-exports internal/dialogs.ShowDownloadFailedManual for UI callers.
+func ShowDownloadFailedManual(window fyne.Window, title, downloadURL, targetDir string) {
+	dialogs.ShowDownloadFailedManual(window, title, downloadURL, targetDir)
+}
+
 // ShowErrorBanner shows an error banner (widget.Entry with error styling)
 // This can be used for inline error display in forms
 func ShowErrorBanner(message string) *widget.Entry {
@@ -62,7 +67,7 @@ func ShowAutoHideInfo(app fyne.App, window fyne.Window, title, message string) {
 	// This allows ui package to use the same function
 	app.SendNotification(&fyne.Notification{Title: title, Content: message})
 		fyne.Do(func() {
-			d := components.NewCustom(title, widget.NewLabel(message), nil, "", window)
+			d := dialogs.NewCustom(title, widget.NewLabel(message), nil, "", window)
 			d.Show()
 			go func() {
 				<-time.After(2 * time.Second)

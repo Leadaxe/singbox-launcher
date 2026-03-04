@@ -17,6 +17,13 @@
 package presentation
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"fyne.io/fyne/v2/dialog"
+
+	"singbox-launcher/core/config"
 	wizardbusiness "singbox-launcher/ui/wizard/business"
 )
 
@@ -28,6 +35,10 @@ func (p *WizardPresenter) SyncModelToGUI() {
 		}
 		if p.guiState.ParserConfigEntry != nil {
 			p.guiState.ParserConfigEntry.SetText(p.model.ParserConfigJSON)
+			p.guiState.LastValidParserConfigJSON = p.model.ParserConfigJSON
+		}
+		if p.guiState.RefreshSourcesList != nil {
+			p.guiState.RefreshSourcesList()
 		}
 		if p.guiState.FinalOutboundSelect != nil {
 			options := wizardbusiness.EnsureDefaultAvailableOutbounds(wizardbusiness.GetAvailableOutbounds(p.model))
@@ -81,4 +92,51 @@ func (p *WizardPresenter) SyncGUIToModel() {
 	if changed {
 		p.MarkAsChanged()
 	}
+}
+
+// ValidateAndApplyParserConfigFromEntry parses ParserConfig from the entry, validates it,
+// and on success updates model and LastValidParserConfigJSON; on error shows dialog and reverts entry.
+// Call when leaving the Outbounds and ParserConfig tab so manual JSON edits are applied or reverted.
+func (p *WizardPresenter) ValidateAndApplyParserConfigFromEntry() {
+	if p.guiState.ParserConfigEntry == nil {
+		return
+	}
+	text := strings.TrimSpace(p.guiState.ParserConfigEntry.Text)
+	if text == "" {
+		p.model.ParserConfigJSON = ""
+		p.model.ParserConfig = nil
+		p.guiState.LastValidParserConfigJSON = ""
+		return
+	}
+	pc := &config.ParserConfig{}
+	if err := json.Unmarshal([]byte(text), pc); err != nil {
+		dialog.ShowError(fmt.Errorf("Invalid ParserConfig JSON: %w", err), p.guiState.Window)
+		revert := p.guiState.LastValidParserConfigJSON
+		p.guiState.ParserConfigUpdating = true
+		p.guiState.ParserConfigEntry.SetText(revert)
+		p.guiState.ParserConfigUpdating = false
+		return
+	}
+	if err := wizardbusiness.ValidateParserConfig(pc); err != nil {
+		dialog.ShowError(fmt.Errorf("Invalid ParserConfig: %w", err), p.guiState.Window)
+		revert := p.guiState.LastValidParserConfigJSON
+		p.guiState.ParserConfigUpdating = true
+		p.guiState.ParserConfigEntry.SetText(revert)
+		p.guiState.ParserConfigUpdating = false
+		return
+	}
+	serialized, err := wizardbusiness.SerializeParserConfig(pc)
+	if err != nil {
+		dialog.ShowError(fmt.Errorf("Failed to serialize ParserConfig: %w", err), p.guiState.Window)
+		return
+	}
+	p.model.ParserConfig = pc
+	p.model.ParserConfigJSON = serialized
+	p.guiState.LastValidParserConfigJSON = serialized
+	p.UpdateParserConfig(serialized)
+	p.RefreshOutboundOptions()
+	if p.guiState.RefreshSourcesList != nil {
+		p.guiState.RefreshSourcesList()
+	}
+	p.model.PreviewNeedsParse = true
 }

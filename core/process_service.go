@@ -365,9 +365,8 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 					if ac.UIService != nil && ac.UIService.UpdateCoreStatusFunc != nil {
 						ac.UIService.UpdateCoreStatusFunc()
 					}
-				} else {
-					debuglog.DebugLog("monitorSingBox: Stability timer expired, but conditions for reset not met (running: %v, current attempts: %d, attempts at timer start: %d).", ac.RunningState.IsRunning(), ac.ConsecutiveCrashAttempts, currentAttemptCount)
 				}
+				// Когда сброс не выполнен (процесс уже остановлен или счётчик изменился), не логируем — избегаем шума по таймеру
 			}
 		}()
 	} else {
@@ -433,7 +432,8 @@ func (svc *ProcessService) Stop() {
 
 	var err error
 	if runtime.GOOS == "windows" {
-		err = platform.SendCtrlBreak(processToStop.Pid)
+		debuglog.InfoLog("stopSingBox: Stopping Sing-Box PID %d...", processToStop.Pid)
+		err = platform.KillProcessByPID(processToStop.Pid)
 	} else {
 		err = processToStop.Signal(os.Interrupt)
 	}
@@ -445,7 +445,6 @@ func (svc *ProcessService) Stop() {
 		}
 	} else {
 		// Start watchdog timer that will kill the process if it doesn't close itself
-		debuglog.InfoLog("stopSingBox: Signal sent, starting watchdog timer...")
 		go func(pid int) {
 			<-time.After(gracefulShutdownTimeout)
 			pInfo, found, err := process.FindProcess(pid)

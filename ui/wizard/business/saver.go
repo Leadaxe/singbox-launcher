@@ -4,7 +4,6 @@
 //
 // Файл saver.go содержит функции для сохранения конфигурации:
 //   - SaveConfigWithBackup - сохранение конфигурации с созданием бэкапа и генерацией случайного secret для Clash API
-//   - FileServiceAdapter - адаптер для services.FileService, предоставляющий доступ к путям и файловым операциям
 //
 // SaveConfigWithBackup выполняет:
 //  1. Валидацию JSON конфигурации (включая поддержку JSONC с комментариями)
@@ -42,20 +41,6 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
 )
-
-// FileServiceAdapter адаптирует services.FileService для использования в бизнес-логике.
-// Реализует интерфейс FileServiceInterface, определенный в interfaces.go.
-type FileServiceAdapter struct {
-	FileService *services.FileService
-}
-
-func (a *FileServiceAdapter) ConfigPath() string {
-	return a.FileService.ConfigPath
-}
-
-func (a *FileServiceAdapter) ExecDir() string {
-	return a.FileService.ExecDir
-}
 
 // SaveConfigWithBackup сохраняет конфигурацию с созданием бэкапа.
 func SaveConfigWithBackup(fileService FileServiceInterface, configText string) (string, error) {

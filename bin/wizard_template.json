@@ -55,20 +55,6 @@
         },
         "addOutbounds": ["direct-out", "proxy-out"],
         "comment": "Proxy group 2"
-      },
-      {
-        "tag": "go-any-way-githubusercontent",
-        "wizard": { "hide": true, "required": 2 },
-        "type": "urltest",
-        "options": {
-          "url": "https://raw.githubusercontent.com/github/gitignore/main/Global/GPG.gitignore",
-          "interval": "1h",
-          "idle_timeout": "1h",
-          "tolerance": 1000,
-          "interrupt_exist_connections": true
-        },
-        "addOutbounds": ["direct-out"],
-        "comment": "find any way"
       }
     ],
     "parser": {
@@ -176,7 +162,7 @@
       "description": "Soft-block ads by rejecting connections instead of dropping packets",
       "default": true,
       "rule_set": [
-        { "tag": "ads-all", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-ads-all.srs", "download_detour": "go-any-way-githubusercontent", "update_interval": "24h" }
+        { "tag": "ads-all", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-ads-all.srs" }
       ],
       "rule": { "rule_set": "ads-all", "action": "reject" }
     },
@@ -189,7 +175,7 @@
       "label": "Russia-only services",
       "description": "Use Russian VPN group for services available only inside Russia.",
       "rule_set": [
-        { "tag": "ru-inside", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-ru-available-only-inside.srs", "download_detour": "go-any-way-githubusercontent", "update_interval": "24h" }
+        { "tag": "ru-inside", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-ru-available-only-inside.srs" }
       ],
       "rule": { "rule_set": "ru-inside", "outbound": "direct-out" }
     },
@@ -197,8 +183,8 @@
       "label": "Russian blocked resources",
       "description": "Detour resources blocked in Russia through proxy selector.",
       "rule_set": [
-        { "tag": "ru-blocked-main", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked.srs", "download_detour": "go-any-way-githubusercontent", "update_interval": "24h" },
-        { "tag": "ru-blocked-community", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked-community.srs", "download_detour": "go-any-way-githubusercontent", "update_interval": "24h" }
+        { "tag": "ru-blocked-main", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked.srs" },
+        { "tag": "ru-blocked-community", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked-community.srs" }
       ],
       "rule": { "rule_set": ["ru-blocked-main", "ru-blocked-community"], "network": ["tcp", "udp"], "outbound": "proxy-out" }
     },
@@ -206,7 +192,7 @@
       "label": "Israel-specific sites",
       "description": "Send Israel-focused traffic via main proxy selector.",
       "rule_set": [
-        { "tag": "israel-sites", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-il.srs", "download_detour": "go-any-way-githubusercontent", "update_interval": "24h" }
+        { "tag": "israel-sites", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-il.srs" }
       ],
       "rule": { "rule_set": "israel-sites", "outbound": "proxy-out" }
     },
@@ -361,7 +347,7 @@
       "description": "Send gaming rule set traffic directly for lower latency.",
       "default": true,
       "rule_set": [
-        { "tag": "games", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-games.srs", "download_detour": "go-any-way-githubusercontent", "update_interval": "24h" }
+        { "tag": "games", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-games.srs" }
       ],
       "rule": { "rule_set": "games", "network": ["tcp", "udp"], "outbound": "direct-out" }
     },

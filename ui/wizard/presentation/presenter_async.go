@@ -44,7 +44,7 @@ func (p *WizardPresenter) TriggerParseForPreview() {
 	}
 
 	p.model.AutoParseInProgress = true
-	p.UpdateSaveButtonText("")
+	// Keep Save button visible; if user clicks Save during parse, save flow will wait (waitForParsingIfNeeded)
 	if p.guiState.TemplatePreviewStatusLabel != nil {
 		p.guiState.TemplatePreviewStatusLabel.SetText("⏳ Parsing subscriptions and generating outbounds...")
 	}
@@ -88,14 +88,12 @@ func (p *WizardPresenter) UpdateTemplatePreviewAsync() {
 	if p.guiState.TemplatePreviewStatusLabel != nil {
 		p.guiState.TemplatePreviewStatusLabel.SetText("⏳ Building preview configuration...")
 	}
-	p.UpdateSaveButtonText("")
 
 	go func() {
 		goroutineTiming := debuglog.StartTiming("UpdateTemplatePreviewAsync: Goroutine")
 		defer func() {
 			goroutineTiming.End()
 			p.model.PreviewGenerationInProgress = false
-			p.UpdateSaveButtonText("Save")
 			SafeFyneDo(p.guiState.Window, func() {
 			if p.guiState.ShowPreviewButton != nil {
 				p.guiState.ShowPreviewButton.Enable()

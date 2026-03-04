@@ -55,7 +55,7 @@ func TestMergeRouteSection(t *testing.T) {
 		},
 	}
 
-	result, err := MergeRouteSection(rawRoute, selectableRules, customRules, "final-out")
+	result, err := MergeRouteSection(rawRoute, selectableRules, customRules, "final-out", "")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestMergeRouteSection_RejectAction(t *testing.T) {
 		},
 	}
 
-	result, err := MergeRouteSection(rawRoute, selectableRules, nil, "")
+	result, err := MergeRouteSection(rawRoute, selectableRules, nil, "", "")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestMergeRouteSection_DisabledRules(t *testing.T) {
 		},
 	}
 
-	result, err := MergeRouteSection(rawRoute, selectableRules, nil, "")
+	result, err := MergeRouteSection(rawRoute, selectableRules, nil, "", "")
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}

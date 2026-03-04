@@ -69,6 +69,9 @@ type WizardModel struct {
 
 	// Template preview текст (кэш для оптимизации)
 	TemplatePreviewText string
+
+	// ExecDir — директория исполняемого файла (для путей к SRS и т.д.)
+	ExecDir string
 }
 
 // NewWizardModel создает новую модель визарда с начальными значениями.

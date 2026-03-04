@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
 	wizardmodels "singbox-launcher/ui/wizard/models"
 	wizardtemplate "singbox-launcher/ui/wizard/template"
@@ -197,7 +198,7 @@ func buildRouteSection(model *wizardmodels.WizardModel, raw json.RawMessage, tim
 	start := time.Now()
 	defer func() { timing.LogTiming("build route", time.Since(start)) }()
 
-	merged, err := MergeRouteSection(raw, model.SelectableRuleStates, model.CustomRules, model.SelectedFinalOutbound)
+	merged, err := MergeRouteSection(raw, model.SelectableRuleStates, model.CustomRules, model.SelectedFinalOutbound, model.ExecDir)
 	if err != nil {
 		return "", fmt.Errorf("route merge failed: %w", err)
 	}
@@ -210,7 +211,8 @@ func buildRouteSection(model *wizardmodels.WizardModel, raw json.RawMessage, tim
 }
 
 // MergeRouteSection объединяет selectable rules, custom rules и rule_set в секцию route.
-func MergeRouteSection(raw json.RawMessage, states []*wizardmodels.RuleState, customRules []*wizardmodels.RuleState, finalOutbound string) (json.RawMessage, error) {
+// execDir — директория исполняемого файла; для remote SRS с raw.githubusercontent.com подставляется type: local, path.
+func MergeRouteSection(raw json.RawMessage, states []*wizardmodels.RuleState, customRules []*wizardmodels.RuleState, finalOutbound string, execDir string) (json.RawMessage, error) {
 	var route map[string]interface{}
 	if err := json.Unmarshal(raw, &route); err != nil {
 		return nil, err
@@ -261,8 +263,8 @@ func MergeRouteSection(raw json.RawMessage, states []*wizardmodels.RuleState, cu
 
 		// Добавляем rule_set от этого правила
 		for _, rs := range ruleState.Rule.RuleSets {
-			var rsObj interface{}
-			if err := json.Unmarshal(rs, &rsObj); err == nil {
+			rsObj := convertRuleSetToLocalIfNeeded(rs, execDir)
+			if rsObj != nil {
 				ruleSets = append(ruleSets, rsObj)
 			}
 		}
@@ -299,6 +301,27 @@ func MergeRouteSection(raw json.RawMessage, states []*wizardmodels.RuleState, cu
 	}
 
 	return json.Marshal(route)
+}
+
+// convertRuleSetToLocalIfNeeded для remote SRS с raw.githubusercontent.com подставляет type: local, path.
+func convertRuleSetToLocalIfNeeded(rs json.RawMessage, execDir string) interface{} {
+	var m map[string]interface{}
+	if err := json.Unmarshal(rs, &m); err != nil {
+		return nil
+	}
+	typ, _ := m["type"].(string)
+	url, _ := m["url"].(string)
+	tag, _ := m["tag"].(string)
+	if typ == "remote" && tag != "" && strings.Contains(url, "raw.githubusercontent.com") && execDir != "" {
+		path := services.RuleSRSPath(execDir, tag)
+		return map[string]interface{}{
+			"tag":    tag,
+			"type":   "local",
+			"format": "binary",
+			"path":   path,
+		}
+	}
+	return m
 }
 
 // copyMap создаёт поверхностную копию map (достаточно для модификации outbound).

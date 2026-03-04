@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
-import urllib.request
-import urllib.error
-import ssl
 import json
+import subprocess
 import sys
 from datetime import datetime
 
@@ -13,29 +11,41 @@ def format_date(date_str):
     try:
         dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
         return dt.strftime('%Y-%m-%d %H:%M')
-    except:
+    except Exception:
         return date_str
 
-def main():
+def fetch_releases():
+    """Fetch releases JSON via curl (uses system CA store; works on macOS and elsewhere)."""
     url = "https://api.github.com/repos/Leadaxe/singbox-launcher/releases"
-    
-    req = urllib.request.Request(url)
-    req.add_header("Accept", "application/vnd.github.v3+json")
-    req.add_header("User-Agent", "singbox-launcher/1.0")
-    
-    # Create SSL context that doesn't verify certificates (for sandbox environments)
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    
     try:
-        with urllib.request.urlopen(req, timeout=30, context=ctx) as response:
-            releases = json.loads(response.read().decode())
-    except urllib.error.URLError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        result = subprocess.run(
+            [
+                "curl", "-sS", "-L",
+                "-H", "Accept: application/vnd.github.v3+json",
+                "-H", "User-Agent: singbox-launcher/1.0",
+                "--connect-timeout", "15", "--max-time", "30",
+                url,
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return json.loads(result.stdout)
+    except FileNotFoundError:
+        print("Error: curl is required. Install curl or run on a system with curl.", file=sys.stderr)
+        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        print(f"Error: curl failed: {e.stderr or e}", file=sys.stderr)
         sys.exit(1)
     except json.JSONDecodeError as e:
         print(f"Error parsing JSON: {e}", file=sys.stderr)
+        sys.exit(1)
+
+def main():
+    try:
+        releases = fetch_releases()
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
     
     if not releases:

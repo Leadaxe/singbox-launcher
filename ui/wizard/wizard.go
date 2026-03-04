@@ -40,9 +40,12 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+	fynetooltip "github.com/dweymouth/fyne-tooltip"
 
 	"singbox-launcher/core"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/wizard/business"
 	wizarddialogs "singbox-launcher/ui/wizard/dialogs"
@@ -82,13 +85,16 @@ func ShowConfigWizard(parent fyne.Window) {
 	if err != nil {
 		templateFileName := wizardtemplate.GetTemplateFileName()
 		debuglog.ErrorLog("ConfigWizard: failed to load %s from %s: %v", templateFileName, filepath.Join(ac.FileService.ExecDir, "bin", templateFileName), err)
-		// Update config status in Core Dashboard
+		debuglog.DebugLog("wizard: showing download failed manual (template load on open)")
+		binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
+		dialogs.ShowDownloadFailedManual(parent, "Config template failed to load", wizardtemplate.GetTemplateURL(), binDir)
 		if ac.UIService != nil && ac.UIService.UpdateConfigStatusFunc != nil {
 			ac.UIService.UpdateConfigStatusFunc()
 		}
 		return
 	}
 	model.TemplateData = templateData
+	model.ExecDir = ac.FileService.ExecDir
 
 	// Create new window for wizard
 	wizardWindow := ac.UIService.Application.NewWindow("Config Wizard")
@@ -108,18 +114,29 @@ func ShowConfigWizard(parent fyne.Window) {
 	// Create presenter
 	presenter := wizardpresentation.NewWizardPresenter(model, guiState, templateLoader)
 	if ac.UIService != nil {
-		ac.UIService.FocusOpenRuleDialogs = func() {
+		// Focus any open child window (View, Outbound Edit, or rule dialog) so click on wizard brings focus to it
+		ac.UIService.FocusOpenChildWindows = func() {
+			if w := presenter.OpenViewWindow(); w != nil {
+				w.RequestFocus()
+				return
+			}
+			if w := presenter.OpenOutboundEditWindow(); w != nil {
+				w.RequestFocus()
+				return
+			}
 			openDialogs := presenter.OpenRuleDialogs()
 			for _, dlg := range openDialogs {
 				if dlg != nil {
 					dlg.Show()
 					dlg.RequestFocus()
+					return
 				}
 			}
 		}
 		wizardWindow.SetOnClosed(func() {
+			fynetooltip.DestroyWindowToolTipLayer(wizardWindow.Canvas())
 			ac.UIService.WizardWindow = nil
-			ac.UIService.FocusOpenRuleDialogs = nil
+			ac.UIService.FocusOpenChildWindows = nil
 			if ac.UIService.OnStateChange != nil {
 				ac.UIService.OnStateChange()
 			}
@@ -162,16 +179,18 @@ func loadConfigFromFile(presenter *wizardpresentation.WizardPresenter, fileServi
 	loadedConfig, parserConfigJSON, sourceURLs, err := wizardbusiness.LoadConfigFromFile(fileService, templateData)
 	if err != nil {
 		debuglog.ErrorLog("loadConfigFromFile: Failed to load config: %v", err)
-		dialog.ShowError(fmt.Errorf("Failed to load existing config: %w", err), wizardWindow)
+		dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to load existing config: %w", err))
 	}
 	if loadedConfig {
 		model.ParserConfigJSON = parserConfigJSON
 		model.SourceURLs = sourceURLs
 	} else {
-		// If we didn't load from template or config.json - show error
+		// If we didn't load from template or config.json - show manual download dialog
 		if model.TemplateData == nil || model.TemplateData.ParserConfig == "" {
-			templateFileName := wizardtemplate.GetTemplateFileName()
-			dialog.ShowError(fmt.Errorf("No config found and template file (bin/%s) is missing or invalid.\nPlease create %s or ensure config.json exists.", templateFileName, templateFileName), wizardWindow)
+			ac := core.GetController()
+			binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
+			debuglog.DebugLog("wizard: showing download failed manual (template missing)")
+			dialogs.ShowDownloadFailedManual(wizardWindow, "Config template missing", wizardtemplate.GetTemplateURL(), binDir)
 			wizardWindow.Close()
 			return
 		}
@@ -199,7 +218,7 @@ func loadStateFromFile(presenter *wizardpresentation.WizardPresenter, stateStore
 
 	if err != nil {
 		debuglog.ErrorLog("loadStateFromFile: failed to load state: %v", err)
-		dialog.ShowError(fmt.Errorf("Failed to load state: %w", err), wizardWindow)
+		dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to load state: %w", err))
 		// Fallback to config.json/template
 		fileServiceAdapter := &wizardbusiness.FileServiceAdapter{FileService: presenter.Controller().FileService}
 		loadConfigFromFile(presenter, fileServiceAdapter, templateData, model, wizardWindow)
@@ -209,7 +228,7 @@ func loadStateFromFile(presenter *wizardpresentation.WizardPresenter, stateStore
 	// Load state into model
 	if err := presenter.LoadState(stateFile); err != nil {
 		debuglog.ErrorLog("loadStateFromFile: failed to load state into model: %v", err)
-		dialog.ShowError(fmt.Errorf("Failed to restore state: %w", err), wizardWindow)
+		dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to restore state: %w", err))
 		// Fallback to config.json/template
 		fileServiceAdapter := &wizardbusiness.FileServiceAdapter{FileService: presenter.Controller().FileService}
 		loadConfigFromFile(presenter, fileServiceAdapter, templateData, model, wizardWindow)
@@ -249,16 +268,19 @@ func initializeWizardContent(presenter *wizardpresentation.WizardPresenter, guiS
 // createWizardTabs создает табы визарда.
 // Возвращает контейнер табов и ссылки на Rules и Preview табы.
 func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState) (*container.AppTabs, *container.TabItem, *container.TabItem) {
-	// Create first tab
-	tab1 := wizardtabs.CreateSourceTab(presenter)
-	tab1Item := container.NewTabItem("Sources & ParserConfig", tab1)
-	tabs := container.NewAppTabs(tab1Item)
+	// Create first two tabs: Sources and Outbounds
+	sourcesTab := wizardtabs.CreateSourcesTab(presenter)
+	sourcesTabItem := container.NewTabItem("Sources", sourcesTab)
+	outboundsTab := wizardtabs.CreateOutboundsAndParserConfigTab(presenter)
+	outboundsTabItem := container.NewTabItem("Outbounds", outboundsTab)
+
+	tabs := container.NewAppTabs(sourcesTabItem, outboundsTabItem)
 	guiState.Tabs = tabs
 
 	// Overlay that redirects clicks to open rule dialog when present
 	ac := core.GetController()
-	guiState.RuleDialogOverlay = components.NewClickRedirect(ac)
-	guiState.RuleDialogOverlay.Hide()
+	guiState.ChildWindowsOverlay = components.NewClickRedirect(ac)
+	guiState.ChildWindowsOverlay.Hide()
 
 	var rulesTabItem *container.TabItem
 	var previewTabItem *container.TabItem
@@ -362,6 +384,9 @@ func createSaveButtonWithProgress(presenter *wizardpresentation.WizardPresenter,
 	guiState.SavePlaceholder = canvas.NewRectangle(color.Transparent)
 	guiState.SavePlaceholder.SetMinSize(fyne.NewSize(saveButtonWidth, saveButtonHeight))
 	guiState.SavePlaceholder.Show()
+
+	guiState.SaveStatusLabel = widget.NewLabel("")
+	guiState.SaveStatusLabel.Hide()
 }
 
 // updateNavigationButtons обновляет контейнер кнопок в зависимости от текущего таба.
@@ -377,11 +402,12 @@ func updateNavigationButtons(guiState *wizardpresentation.GUIState, tabs *contai
 
 	var buttonsContent fyne.CanvasObject
 	if currentTabIndex == totalTabs-1 {
-		// Last tab (Preview): Close, Save As on left, Prev, Save on right
+		// Last tab (Preview): Close, Save As on left, status label + Prev + Save on right
 		buttonsContent = container.NewHBox(
 			guiState.CloseButton,
 			guiState.SaveAsButton,
 			layout.NewSpacer(),
+			guiState.SaveStatusLabel,
 			guiState.PrevButton,
 			saveButtonStack,
 		)
@@ -410,18 +436,28 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 	// Initialize button container
 	updateNavigationButtons(guiState, tabs, *currentTabIndex)
 
+	var previousTabIndex int = -1
+
 	// Update buttons when switching tabs
 	tabs.OnChanged = func(item *container.TabItem) {
 		// Sync GUI to model before switching
 		presenter.SyncGUIToModel()
 
 		// Update current tab index
+		var newIndex int
 		for i, tabItem := range tabs.Items {
 			if tabItem == item {
+				newIndex = i
 				*currentTabIndex = i
 				break
 			}
 		}
+
+		// When leaving Outbounds tab: validate JSON, apply or revert
+		if previousTabIndex >= 0 && previousTabIndex < len(tabs.Items) && tabs.Items[previousTabIndex].Text == "Outbounds" {
+			presenter.ValidateAndApplyParserConfigFromEntry()
+		}
+		previousTabIndex = newIndex
 
 		// Handle tab-specific actions
 		if item == rulesTabItem {
@@ -456,10 +492,10 @@ func setWindowContent(guiState *wizardpresentation.GUIState, wizardWindow fyne.W
 		nil,                       // right
 		tabs,                      // center
 	)
-	if guiState.RuleDialogOverlay != nil {
-		content = container.NewMax(content, guiState.RuleDialogOverlay)
+	if guiState.ChildWindowsOverlay != nil {
+		content = container.NewMax(content, guiState.ChildWindowsOverlay)
 	}
-	wizardWindow.SetContent(content)
+	wizardWindow.SetContent(fynetooltip.AddWindowToolTipLayer(content, wizardWindow.Canvas()))
 }
 
 // handleReadButton обрабатывает нажатие кнопки "Read".
@@ -474,7 +510,7 @@ func handleReadButton(presenter *wizardpresentation.WizardPresenter, wizardWindo
 					wizarddialogs.ShowSaveStateDialog(presenter, func(result wizarddialogs.SaveStateResult) {
 						if result.Action == "save" {
 							if err := presenter.SaveStateAs(result.Comment, result.ID); err != nil {
-								dialog.ShowError(fmt.Errorf("Failed to save state: %w", err), wizardWindow)
+								dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to save state: %w", err))
 								return
 							}
 							// Continue loading after saving
@@ -512,7 +548,9 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 				templateLoader := &wizardbusiness.DefaultTemplateLoader{}
 				templateData, err := templateLoader.LoadTemplateData(ac.FileService.ExecDir)
 				if err != nil {
-					dialog.ShowError(fmt.Errorf("Failed to load template: %w", err), wizardWindow)
+					binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
+					debuglog.DebugLog("wizard: showing download failed manual (template load on New)")
+					dialogs.ShowDownloadFailedManual(wizardWindow, "Config template failed to load", wizardtemplate.GetTemplateURL(), binDir)
 					return
 				}
 				model.TemplateData = templateData
@@ -549,13 +587,13 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 		}
 
 		if loadErr != nil {
-			dialog.ShowError(fmt.Errorf("Failed to load state: %w", loadErr), wizardWindow)
+			dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to load state: %w", loadErr))
 			return
 		}
 
 		// Загружаем состояние в модель
 		if err := presenter.LoadState(stateFile); err != nil {
-			dialog.ShowError(fmt.Errorf("Failed to restore state: %w", err), wizardWindow)
+			dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to restore state: %w", err))
 			return
 		}
 
@@ -569,7 +607,7 @@ func handleSaveAsButton(presenter *wizardpresentation.WizardPresenter, wizardWin
 	wizarddialogs.ShowSaveStateDialog(presenter, func(result wizarddialogs.SaveStateResult) {
 		if result.Action == "save" {
 			if err := presenter.SaveStateAs(result.Comment, result.ID); err != nil {
-				dialog.ShowError(fmt.Errorf("Failed to save state: %w", err), wizardWindow)
+				dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to save state: %w", err))
 				return
 			}
 			// Закрываем визард после успешного сохранения
@@ -605,7 +643,7 @@ func handleCloseButton(presenter *wizardpresentation.WizardPresenter, guiState *
 			}
 			// Save to state.json
 			if err := presenter.SaveCurrentState(); err != nil {
-				dialog.ShowError(fmt.Errorf("Failed to save state: %w", err), wizardWindow)
+				dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to save state: %w", err))
 				return
 			}
 			wizardWindow.Close()
@@ -627,7 +665,7 @@ func handleCloseButton(presenter *wizardpresentation.WizardPresenter, guiState *
 			discardButton,
 		)
 
-		d = components.NewCustom("Confirmation", messageLabel, buttonsRow, "Cancel", wizardWindow)
+		d = dialogs.NewCustom("Confirmation", messageLabel, buttonsRow, "Cancel", wizardWindow)
 		d.Show()
 	} else {
 		// Нет изменений - закрываем без диалога

@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -36,21 +35,22 @@ type APIService struct {
 	// This allows remembering the last proxy per selector (group) independently.
 	LastSelectedProxyByGroup map[string]string
 
+	// LastPingError maps proxy name -> last ping error message (for tooltip when button shows "Error").
+	LastPingError map[string]string
+
 	// Dependencies (passed from AppController)
 	ConfigPath            string
-	ApiLogFile            *os.File
 	RunningStateIsRunning func() bool
 	OnProxiesUpdated      func() // Called when proxies are updated
 	OnProxySwitched       func() // Called when proxy is switched
 }
 
 // NewAPIService creates and initializes a new APIService instance.
-func NewAPIService(configPath string, apiLogFile *os.File,
+func NewAPIService(configPath string,
 	runningStateIsRunning func() bool,
 	onProxiesUpdated func(), onProxySwitched func()) (*APIService, error) {
 	apiSvc := &APIService{
 		ConfigPath:            configPath,
-		ApiLogFile:            apiLogFile,
 		RunningStateIsRunning: runningStateIsRunning,
 		OnProxiesUpdated:      onProxiesUpdated,
 		OnProxySwitched:       onProxySwitched,
@@ -85,6 +85,7 @@ func NewAPIService(configPath string, apiLogFile *os.File,
 	apiSvc.SetSelectedIndex(-1)
 	apiSvc.SetActiveProxyName("")
 	apiSvc.LastSelectedProxyByGroup = make(map[string]string)
+	apiSvc.LastPingError = make(map[string]string)
 
 	return apiSvc, nil
 }
@@ -152,6 +153,30 @@ func (apiSvc *APIService) GetLastSelectedProxyForGroup(group string) string {
 		return ""
 	}
 	return apiSvc.LastSelectedProxyByGroup[group]
+}
+
+// SetLastPingError stores the last ping error message for a proxy (for tooltip when button shows "Error").
+func (apiSvc *APIService) SetLastPingError(proxyName, errMsg string) {
+	apiSvc.StateMutex.Lock()
+	defer apiSvc.StateMutex.Unlock()
+	if apiSvc.LastPingError == nil {
+		apiSvc.LastPingError = make(map[string]string)
+	}
+	if errMsg == "" {
+		delete(apiSvc.LastPingError, proxyName)
+	} else {
+		apiSvc.LastPingError[proxyName] = errMsg
+	}
+}
+
+// GetLastPingError returns the last ping error message for a proxy, or empty string.
+func (apiSvc *APIService) GetLastPingError(proxyName string) string {
+	apiSvc.StateMutex.RLock()
+	defer apiSvc.StateMutex.RUnlock()
+	if apiSvc.LastPingError == nil {
+		return ""
+	}
+	return apiSvc.LastPingError[proxyName]
 }
 
 // GetSelectedClashGroup safely gets the selected Clash group.
@@ -294,7 +319,7 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 		}
 
 		// Try to load proxies
-		proxies, now, err := api.GetProxiesInGroup(baseURL, token, currentGroup, apiSvc.ApiLogFile)
+		proxies, now, err := api.GetProxiesInGroup(baseURL, token, currentGroup)
 		if err != nil {
 			debuglog.DebugLog("AutoLoadProxies: Attempt %d failed: %v", attempt+1, err)
 			// Continue to next attempt
@@ -356,7 +381,7 @@ func (apiSvc *APIService) SwitchProxy(group, proxyName string) error {
 		return fmt.Errorf("Clash API is disabled")
 	}
 
-	err := api.SwitchProxy(baseURL, token, group, proxyName, apiSvc.ApiLogFile)
+	err := api.SwitchProxy(baseURL, token, group, proxyName)
 	if err != nil {
 		return fmt.Errorf("failed to switch proxy: %w", err)
 	}

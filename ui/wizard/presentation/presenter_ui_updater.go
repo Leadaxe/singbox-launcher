@@ -3,9 +3,6 @@
 // Файл presenter_ui_updater.go содержит реализацию UIUpdater интерфейса в WizardPresenter.
 //
 // Методы UIUpdater:
-//   - UpdateURLStatus - обновляет статус проверки URL
-//   - UpdateCheckURLProgress, UpdateCheckURLButtonText - управление прогрессом и кнопкой Check
-//   - UpdateOutboundsPreview - обновляет preview сгенерированных outbounds
 //   - UpdateParserConfig - обновляет текст ParserConfig
 //   - UpdateTemplatePreview - обновляет preview шаблона (с обработкой больших текстов)
 //   - UpdateSaveProgress, UpdateSaveButtonText - управление прогрессом и кнопкой Save
@@ -24,61 +21,6 @@
 //   - business/loader.go - вызывает методы UIUpdater при загрузке конфигурации
 //   - presenter_async.go - вызывает UpdateTemplatePreview при обновлении preview
 package presentation
-
-// UpdateURLStatus обновляет статус проверки URL.
-func (p *WizardPresenter) UpdateURLStatus(status string) {
-	p.UpdateUI(func() {
-		if p.guiState.URLStatusLabel != nil {
-			p.guiState.URLStatusLabel.SetText(status)
-		}
-	})
-}
-
-// UpdateCheckURLProgress обновляет прогресс проверки URL (0.0-1.0, -1 для скрытия).
-func (p *WizardPresenter) UpdateCheckURLProgress(progress float64) {
-	p.UpdateUI(func() {
-		if p.guiState.CheckURLProgress == nil {
-			return
-		}
-		if progress < 0 {
-			p.guiState.CheckURLProgress.Hide()
-			p.guiState.CheckURLProgress.SetValue(0)
-		} else {
-			p.guiState.CheckURLProgress.SetValue(progress)
-			p.guiState.CheckURLProgress.Show()
-		}
-	})
-}
-
-// UpdateCheckURLButtonText обновляет текст кнопки Check (пустая строка для скрытия).
-func (p *WizardPresenter) UpdateCheckURLButtonText(text string) {
-	p.UpdateUI(func() {
-		if p.guiState.CheckURLButton == nil {
-			return
-		}
-		if text == "" {
-			p.guiState.CheckURLButton.Hide()
-		} else {
-			p.guiState.CheckURLButton.SetText(text)
-			p.guiState.CheckURLButton.Show()
-			p.guiState.CheckURLButton.Enable()
-		}
-	})
-}
-
-// UpdateOutboundsPreview обновляет текст preview outbounds.
-func (p *WizardPresenter) UpdateOutboundsPreview(text string) {
-	p.UpdateUI(func() {
-		if p.guiState.OutboundsPreview == nil {
-			return
-		}
-		// Mark updating to prevent OnChanged from treating this as user edit
-		p.guiState.OutboundsPreviewUpdating = true
-		p.guiState.OutboundsPreviewLastText = text
-		p.guiState.OutboundsPreview.SetText(text)
-		p.guiState.OutboundsPreviewUpdating = false
-	})
-}
 
 // UpdateParserConfig обновляет текст ParserConfig.
 func (p *WizardPresenter) UpdateParserConfig(text string) {
@@ -133,6 +75,22 @@ func (p *WizardPresenter) UpdateSaveProgress(progress float64) {
 			p.guiState.SaveProgress.SetValue(progress)
 			p.guiState.SaveProgress.Show()
 			p.guiState.SaveInProgress = true
+		}
+	})
+}
+
+// UpdateSaveStatusText sets the status label (left of Prev). Empty string hides it.
+func (p *WizardPresenter) UpdateSaveStatusText(text string) {
+	p.UpdateUI(func() {
+		if p.guiState.SaveStatusLabel == nil {
+			return
+		}
+		if text == "" {
+			p.guiState.SaveStatusLabel.SetText("")
+			p.guiState.SaveStatusLabel.Hide()
+		} else {
+			p.guiState.SaveStatusLabel.SetText(text)
+			p.guiState.SaveStatusLabel.Show()
 		}
 	})
 }

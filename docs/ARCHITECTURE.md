@@ -26,6 +26,21 @@
 - Сервисы делегируют специфические задачи
 - Централизованное управление состоянием
 
+## Используемые библиотеки
+
+Основные внешние зависимости (прямые из `go.mod`):
+
+- **fyne.io/fyne/v2** — GUI: окна, виджеты, layout, приложение. Основа интерфейса лаунчера и визарда конфигурации.
+- **github.com/dweymouth/fyne-tooltip** — тултипы для Fyne. В проекте:
+  - Слой тултипов в окне: `fynetooltip.AddWindowToolTipLayer(content, canvas)` при установке контента главного окна и окна визарда; при закрытии визарда вызывается `DestroyWindowToolTipLayer`.
+  - Виджеты с тултипами из `github.com/dweymouth/fyne-tooltip/widget`: кнопка Ping на вкладке Servers (Clash API), кнопка SRS в визарде (Rules). Ошибки Ping (одиночный и массовый `test`) хранятся в `APIService.LastPingError` и показываются в tooltip кнопки Ping.
+- **github.com/muhammadmuzzammil1998/jsonc** — парсинг JSON с комментариями (JSONC) при чтении config.json.
+- **github.com/mitchellh/go-ps** — список процессов (проверка запущенного sing-box и т.п.).
+- **github.com/pion/stun** — STUN-запросы (проверка доступности сети).
+- **github.com/txthinking/socks5** — клиент SOCKS5 для подписок и парсера.
+
+Косвенные зависимости (драйверы Fyne, системный трей и т.д.) перечислены в `go.mod` в блоке `require` и не описаны здесь.
+
 ## Структура проекта
 
 ```
@@ -204,12 +219,14 @@ singbox-launcher/
 │   ├── help_tab.go             # Вкладка помощи
 │   │   │   - CreateHelpTab()                           # Создание вкладки помощи
 │   │   │
-│   ├── dialogs.go              # Общие диалоги
+│   ├── dialogs.go              # Общие диалоги (реэкспорт из internal/dialogs)
 │   │   │   - ShowError()                                # Показать ошибку
 │   │   │   - ShowErrorText()                            # Показать текст ошибки
 │   │   │   - ShowInfo()                                 # Показать информацию
 │   │   │   - ShowConfirm()                              # Показать подтверждение
 │   │   │   - ShowAutoHideInfo()                         # Автоскрываемая информация
+│   │   │   - ShowDownloadFailedManual()                 # Диалог «загрузка не удалась — скачайте вручную» (ссылка, копирование, Open folder)
+│   │   │   - ShowCustom() / NewCustom()                  # Кастомный диалог (через internal/dialogs)
 │   │   │
 │   ├── error_banner.go         # Баннеры ошибок
 │   │   │   - NewErrorBanner()                           # Создание баннера ошибки
@@ -259,7 +276,6 @@ singbox-launcher/
 │       │   │   │   - RuleWidget struct                  # Виджет правила (Select, Checkbox, RuleState)
 │       │   │   │
 │       │   ├── presenter_methods.go # Методы управления UI
-│       │   │   │   - SetCheckURLState()                 # Состояние кнопки Check
 │       │   │   │   - SetSaveState()                     # Состояние кнопки Save
 │       │   │   │   - RefreshOutboundOptions()           # Обновление опций outbound
 │       │   │   │   - InitializeTemplateState()          # Инициализация шаблона
@@ -302,9 +318,6 @@ singbox-launcher/
 │       │   │   │   - OpenRuleDialogs()                  # Открытые диалоги
 │       │   │   │
 │       │   ├── presenter_ui_updater.go # Реализация UIUpdater
-│       │   │   │   - UpdateURLStatus()                  # Обновление статуса URL
-│       │   │   │   - UpdateCheckURLProgress()           # Прогресс проверки URL
-│       │   │   │   - UpdateOutboundsPreview()           # Preview outbounds
 │       │   │   │   - UpdateParserConfig()               # Обновление ParserConfig
 │       │   │   │   - UpdateTemplatePreview()            # Обновление preview
 │       │   │   │   - UpdateSaveProgress()               # Прогресс сохранения
@@ -347,16 +360,6 @@ singbox-launcher/
 │       ├── business/           # Бизнес-логика (без GUI зависимостей)
 │       │   ├── parser.go       # Парсинг URL и конфигурации
 │       │   │   │   - ParseAndPreview()                       # Парсинг и превью
-│       │   │   │   - CheckURL()                              # Проверка URL (основная функция)
-│       │   │   │   - initializeCheckURLUI()                 # Инициализация UI для проверки
-│       │   │   │   - processAllInputLines()                 # Обработка всех входных строк
-│       │   │   │   - processInputLine()                     # Обработка одной строки
-│       │   │   │   - processSubscriptionURL()               # Обработка subscription URL
-│       │   │   │   - parseSubscriptionContent()            # Парсинг содержимого подписки
-│       │   │   │   - processDirectLink()                    # Обработка прямой ссылки
-│       │   │   │   - buildAndDisplayCheckResult()           # Построение и отображение результата
-│       │   │   │   - buildErrorResult()                     # Сообщение об ошибке
-│       │   │   │   - buildSuccessResult()                    # Сообщение об успехе
 │       │   │   │   - ApplyURLToParserConfig()                # Применение URL (основная функция)
 │       │   │   │   - validateApplyURLInput()                # Валидация входных данных
 │       │   │   │   - parseParserConfigForApply()            # Парсинг ParserConfig
@@ -468,8 +471,10 @@ singbox-launcher/
 │   │   │   - ShouldLog()                       # Проверка уровня логирования
 │   │   │   - Level enum (Off/Error/Warn/Info/Verbose/Trace)
 │   │   │
-│   ├── dialogs/                # Утилиты диалогов
-│   │   │   - различные утилиты для диалогов
+│   ├── dialogs/                # Диалоги (без зависимости от ui)
+│   │   │   - NewCustom()                                # Кастомный диалог: mainContent (центр), buttons (низ), Border; ESC закрывает
+│   │   │   - ShowDownloadFailedManual()                 # Единый диалог при ошибке загрузки (sing-box, wintun, шаблон, SRS): короткое сообщение, ссылка «Open download page» + кнопка копирования URL, «Open folder», «Close»
+│   │   │   - ShowError() / ShowErrorText()              # Показать ошибку (используются из ui/dialogs)
 │   │   │
 │   └── platform/              # Платформо-зависимый код
 │       │   - платформо-специфичные функции
@@ -506,7 +511,9 @@ singbox-launcher/
 - `UpdateUI()` - обновление всех UI элементов
 - `StopTrayMenuUpdateTimer()` - остановка таймера обновления меню
 - `QuitApplication()` - выход из приложения
+- `FocusOpenChildWindows` - callback для переноса фокуса на одно из дочерних окон визарда (View, Outbound Edit, rule dialog) при клике по окну визарда; устанавливается в `wizard.go`, вызывается из `ui/components/click_redirect.go`
 - Структуры: `UIService` с полями для Fyne компонентов и callbacks
+- Тултипы: см. раздел «Используемые библиотеки» (fyne-tooltip).
 
 **APIService** (`api_service.go`)
 - `NewAPIService()` - создание сервиса
@@ -517,6 +524,7 @@ singbox-launcher/
 - `SetActiveProxyName()` - установка активного прокси
 - `SwitchProxy()` - переключение прокси
 - `AutoLoadProxies()` - автозагрузка прокси
+- `SetLastPingError()` / `GetLastPingError()` - хранение текста последней ошибки Ping для прокси (показывается в tooltip кнопки Ping)
 
 **StateService** (`state_service.go`)
 - `NewStateService()` - создание сервиса
@@ -693,9 +701,9 @@ singbox-launcher/
   - Методы доступа: `Model()`, `GUIState()`, `ConfigServiceAdapter()`, `Controller()`
 - `gui_state.go`:
   - `GUIState` struct - состояние GUI (только Fyne виджеты: Entry, Label, Button, Select и т.д.)
+  - `ChildWindowsOverlay` - полупрозрачный слой поверх контента визарда при открытых дочерних окнах (Rule, View, Outbound Edit); показ/скрытие через `UpdateChildOverlay()`
   - `RuleWidget` struct - связь между виджетом Select, Checkbox и правилом из модели (для обновления UI после LoadState)
 - `presenter_methods.go`:
-  - `SetCheckURLState()` - управление состоянием кнопки Check и прогресс-бара
   - `SetSaveState()` - управление состоянием кнопки Save и прогресс-бара
   - `RefreshOutboundOptions()` - обновление опций outbound для правил
   - `InitializeTemplateState()` - инициализация состояния шаблона
@@ -708,28 +716,13 @@ singbox-launcher/
   - `UpdateTemplatePreviewAsync()` - обновление preview шаблона асинхронно
 - `presenter_save.go`:
   - `SaveConfig()` - сохранение конфигурации с прогресс-баром и проверками (основная функция)
-  - `validateSaveInput()` - валидация входных данных перед сохранением
-  - `checkSaveOperationState()` - проверка состояния операции сохранения
-  - `executeSaveOperation()` - выполнение операции сохранения в отдельной горутине
+  - `validateSaveInput()`, `checkSaveOperationState()` - проверки перед сохранением
+  - `executeSaveOperation()` - выполнение сохранения в горутине: сборка конфига из текущей модели (без ожидания парсинга outbounds), запись файла, валидация, state.json, диалог; по завершении в фоне вызывается `core.RunParserProcess()` (обновление конфига из подписок)
   - `finalizeSaveOperation()` - завершение операции и восстановление UI
-  - `waitForParsingIfNeeded()` - ожидание завершения парсинга, если он необходим
   - `buildConfigForSave()` - построение конфигурации из шаблона и модели
-  - `saveConfigFile()` - сохранение конфигурации в файл с созданием бэкапа
-  - `validateConfigFile()` - валидация сохраненного конфига с помощью sing-box
-  - `saveStateAndShowSuccessDialog()` - сохранение state.json и показ диалога успешного сохранения
-  - `showSaveSuccessDialog()` - показ диалога успешного сохранения с результатами валидации
-  - `completeSaveOperation()` - завершение операции сохранения с небольшой задержкой (основная функция)
-  - `validateSaveInput()` - валидация входных данных перед сохранением
-  - `checkSaveOperationState()` - проверка состояния операции сохранения
-  - `executeSaveOperation()` - выполнение операции сохранения в отдельной горутине
-  - `finalizeSaveOperation()` - завершение операции и восстановление UI
-  - `waitForParsingIfNeeded()` - ожидание завершения парсинга, если он необходим
-  - `buildConfigForSave()` - построение конфигурации из шаблона и модели
-  - `saveConfigFile()` - сохранение конфигурации в файл с созданием бэкапа
-  - `validateConfigFile()` - валидация сохраненного конфига с помощью sing-box
-  - `saveStateAndShowSuccessDialog()` - сохранение state.json и показ диалога успешного сохранения
-  - `showSaveSuccessDialog()` - показ диалога успешного сохранения с результатами валидации
-  - `completeSaveOperation()` - завершение операции сохранения с небольшой задержкой
+  - `saveConfigFile()`, `validateConfigFile()` - запись в файл и валидация sing-box
+  - `saveStateAndShowSuccessDialog()`, `showSaveSuccessDialog()` - сохранение state и диалог успеха
+  - `completeSaveOperation()` - финализация и запуск RunParserProcess в фоне
 - `presenter_state.go`:
   - `CreateStateFromModel()` - создание WizardStateFile из текущей модели
   - `SaveCurrentState()` - сохранение текущего состояния в state.json
@@ -744,12 +737,13 @@ singbox-launcher/
   - `OpenRuleDialogs()` - возврат карты открытых диалогов правил
 - `presenter_ui_updater.go`:
   - Реализация интерфейса `UIUpdater` для обновления GUI из бизнес-логики
-  - Методы: `UpdateURLStatus()`, `UpdateCheckURLProgress()`, `UpdateOutboundsPreview()`, `UpdateParserConfig()`, `UpdateTemplatePreview()`, `UpdateSaveProgress()`
+  - Методы: `UpdateParserConfig()`, `UpdateTemplatePreview()`, `UpdateSaveProgress()`, `UpdateSaveStatusText()` (статус слева от Prev при Save), `UpdateSaveButtonText()`
 - `presenter.go`:
   - `WizardPresenter` struct - структура презентера
   - `NewWizardPresenter()` - создание презентера
   - `SetCreateRulesTabFunc()` - установка функции создания вкладки Rules через DI (для пересоздания после LoadState)
   - `SafeFyneDo()` - безопасный вызов Fyne функций из других горутин (утилита для всех методов презентера)
+  - Дочерние окна: `SetViewWindow`/`ClearViewWindow`, `SetOutboundEditWindow`/`ClearOutboundEditWindow`, `UpdateChildOverlay()` — контракт и порядок фокуса см. **docs/WIZARD_CHILD_WINDOWS.md**
 
 **tabs/** - UI вкладок
 - `source_tab.go`:
@@ -788,18 +782,7 @@ singbox-launcher/
 
 **business/** - Бизнес-логика (без GUI зависимостей)
 - `parser.go`:
-  - `ParseAndPreview()` - парсинг URL и генерация outbounds через ConfigService
-  - `CheckURL()` - проверка URL подписки или прямой ссылки (основная функция)
-    - `initializeCheckURLUI()` - инициализация UI для проверки URL
-    - `processAllInputLines()` - обработка всех входных строк
-    - `updateCheckProgress()` - обновление прогресса проверки
-    - `processInputLine()` - обработка одной входной строки
-    - `processSubscriptionURL()` - обработка subscription URL (загрузка и парсинг)
-    - `parseSubscriptionContent()` - парсинг содержимого подписки и подсчет валидных ссылок
-    - `processDirectLink()` - обработка прямой ссылки (валидация и парсинг)
-    - `buildAndDisplayCheckResult()` - построение и отображение результата проверки
-    - `buildErrorResult()` - построение сообщения об ошибке
-    - `buildSuccessResult()` - построение сообщения об успешной проверке
+  - `ParseAndPreview()` - парсинг ParserConfig и генерация outbounds через ConfigService
   - `ApplyURLToParserConfig()` - применение URL к ParserConfig (основная функция)
     - `validateApplyURLInput()` - проверка входных данных перед применением URL
     - `parseParserConfigForApply()` - парсинг ParserConfig из JSON строки
@@ -931,7 +914,7 @@ singbox-launcher/
 │    • Load Proxies                                           │
 │    • Switch Proxy                                           │
 │    • Test Connection                                        │
-│    • Ping Proxy                                             │
+│    • Ping Proxy (single & mass ping with tooltips for errors)│
 │                                                             │
 │  Config Wizard:                                             │
 │    • Add Source                                             │

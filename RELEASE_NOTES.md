@@ -2,32 +2,39 @@
 
 ## Последний релиз / Latest release
 
-**v0.8.1** — полное описание (full details): [docs/release_notes/0-8-1.md](docs/release_notes/0-8-1.md)
-
-**v0.8.0** — полное описание (full details): [docs/release_notes/0-8-0.md](docs/release_notes/0-8-0.md)
-
-## Что не вошло в релиз / Not yet released
-
-Изменения после v0.8.0 (changes since v0.8.0): [upcoming.md](docs/release_notes/upcoming.md)
-
----
+**v0.8.2** — полное описание (full details): [docs/release_notes/0-8-2.md](docs/release_notes/0-8-2.md)
 
 <details>
-<summary><b>🇬🇧 English</b></summary>
+<summary><b>🇷🇺 Кратко (v0.8.2)</b></summary>
 
-### Highlights
-- **Fix** — Config no longer corrupted after "Update" or timer refresh ([#31](https://github.com/Leadaxe/singbox-launcher/issues/31)).
-- **macOS TUN** — privileged launch path for TUN on macOS; optional system helper for reliable TUN when running without full admin rights.
-- **Refactoring** — `core/config/generator.go` → `outbound_generator.go`, `ui/wizard/business/generator.go` → `create_config.go`; simplified outbounds assembly (dynamic between @ParserSTART/@ParserEND + static, comma only when both present).
+- Единый диалог «загрузка не удалась» для sing-box, wintun, шаблона, SRS
+- Локальное скачивание SRS в `bin/rule-sets/`; кнопка SRS во вкладке Rules
+- Windows: стабильнее start/stop (AttachConsole + taskkill)
+- Логи: уровень по сборке (release = Warn); окно логов Diagnostics (Internal, Core, API)
+- Clash API: ошибки Ping в tooltip; параллельный test; настраиваемый endpoint; закрепление direct-out и активного прокси
+- Визард: вкладка Outbounds, Edit Outbound (Settings + Raw), Save без сети и Update в фоне, статус при сохранении, пустое поле URL при загрузке, префиксы по умолчанию, копирование источника по клику
 
 </details>
 
 <details>
-<summary><b>🇷🇺 Русская версия</b></summary>
+<summary><b>🇬🇧 Summary (v0.8.2)</b></summary>
 
-### Основное
-- **Исправление** — конфиг больше не портится после «Обновить» или обновления по таймеру ([#31](https://github.com/Leadaxe/singbox-launcher/issues/31)).
-- **TUN на macOS** — привилегированный запуск для TUN на macOS; опциональный системный хелпер для стабильной работы TUN без полных прав администратора.
-- **Рефакторинг** — переименование генераторов: `core/config/generator.go` → `outbound_generator.go`, `ui/wizard/business/generator.go` → `create_config.go`; упрощённая сборка outbounds (динамические между @ParserSTART/@ParserEND и статические, запятая только при наличии обоих блоков).
+- Unified “download failed” dialog for sing-box, wintun, template, SRS
+- SRS local download to `bin/rule-sets/`; SRS button in Rules tab
+- Windows: more stable start/stop (AttachConsole + taskkill)
+- Logging: build-based level (release = Warn); Diagnostics log viewer (Internal, Core, API)
+- Clash API: Ping errors in tooltip; parallel test; configurable endpoint; pin direct-out and active proxy
+- Wizard: Outbounds tab, Edit Outbound (Settings + Raw), Save without network and background Update, save status, empty URL field on load, default prefixes, copy source on click
+
+</details>
+
+**v0.8.1** — полное описание (full details): [docs/release_notes/0-8-1.md](docs/release_notes/0-8-1.md)
+
+**v0.8.0** — полное описание (full details): [docs/release_notes/0-8-0.md](docs/release_notes/0-8-0.md)
+
+<details>
+<summary><b>Что не вошло в релиз / Not yet released</b></summary>
+
+Черновик следующего релиза (draft): [upcoming.md](docs/release_notes/upcoming.md)
 
 </details>

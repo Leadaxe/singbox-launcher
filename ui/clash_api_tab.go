@@ -4,20 +4,80 @@ import (
 	"fmt"
 	"image/color"
 	"sort"
-	"time"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/api"
 	"singbox-launcher/core"
 	"singbox-launcher/core/config"
 	"singbox-launcher/internal/debuglog"
-	"singbox-launcher/ui/components"
+	"singbox-launcher/internal/dialogs"
 )
+
+// Maximum number of concurrent ping requests for "test" button.
+const pingAllConcurrency = 20
+
+// reorderWithPinned moves special proxies to the top of the list while
+// preserving relative order of the rest:
+//   - "direct-out" (if present)
+//   - currently active proxy (if set and different from direct-out)
+func reorderWithPinned(ac *core.AppController, list []api.ProxyInfo) []api.ProxyInfo {
+	if len(list) == 0 {
+		return list
+	}
+	const directName = "direct-out"
+	activeName := ac.GetActiveProxyName()
+
+	hasDirect := false
+	hasActive := false
+	for i := range list {
+		if list[i].Name == directName {
+			hasDirect = true
+		}
+		if activeName != "" && list[i].Name == activeName {
+			hasActive = true
+		}
+	}
+	if !hasDirect && (!hasActive || activeName == "") {
+		return list
+	}
+
+	result := make([]api.ProxyInfo, 0, len(list))
+	used := make(map[string]struct{}, 2)
+
+	if hasDirect {
+		for i := range list {
+			if list[i].Name == directName {
+				result = append(result, list[i])
+				used[directName] = struct{}{}
+				break
+			}
+		}
+	}
+	if hasActive && activeName != directName {
+		for i := range list {
+			if list[i].Name == activeName {
+				result = append(result, list[i])
+				used[activeName] = struct{}{}
+				break
+			}
+		}
+	}
+	for i := range list {
+		if _, ok := used[list[i].Name]; ok {
+			continue
+		}
+		result = append(result, list[i])
+	}
+	return result
+}
 
 // CreateClashAPITab creates and returns the content for the "Clash API" tab.
 func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
@@ -78,7 +138,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		}
 		go func(group string) {
 			baseURL, token, _ := ac.APIService.GetClashAPIConfig()
-			proxies, now, err := api.GetProxiesInGroup(baseURL, token, group, ac.FileService.ApiLogFile)
+			proxies, now, err := api.GetProxiesInGroup(baseURL, token, group)
 			fyne.Do(func() {
 				if err != nil {
 					ShowError(ac.UIService.MainWindow, err)
@@ -88,7 +148,18 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 					return
 				}
 
-				ac.SetProxiesList(proxies)
+				// Preserve local ping state (Delay / Error) when refreshing from API so switching tabs does not reset button text.
+				oldProxies := ac.GetProxiesList()
+				for i := range proxies {
+					for _, old := range oldProxies {
+						if old.Name == proxies[i].Name {
+							proxies[i].Delay = old.Delay
+							break
+						}
+					}
+				}
+				// Keep "direct-out" and active proxy at the top regardless of sort.
+				ac.SetProxiesList(reorderWithPinned(ac, proxies))
 				ac.SetActiveProxyName(now)
 
 				// Применяем сохраненную сортировку после загрузки
@@ -161,7 +232,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		}
 		go func() {
 			baseURL, token, _ := ac.APIService.GetClashAPIConfig()
-			err := api.TestAPIConnection(baseURL, token, ac.FileService.ApiLogFile)
+			err := api.TestAPIConnection(baseURL, token)
 			fyne.Do(func() {
 				if err != nil {
 					ac.UIService.ApiStatusLabel.SetText("❌ Clash API Off (Error)")
@@ -205,19 +276,41 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	}
 
 	// --- Вспомогательная функция для пинга ---
-	pingProxy := func(proxyName string, button *widget.Button) {
+	// Delay in ProxyInfo: >0 = ms, 0 = not pinged, -1 = error (so updateItem shows correct text after list refresh).
+	pingProxy := func(proxyName string, button interface{ SetText(string) }) {
 		go func() {
 			fyne.Do(func() { button.SetText("...") })
 			baseURL, token, _ := ac.APIService.GetClashAPIConfig()
-			delay, err := api.GetDelay(baseURL, token, proxyName, ac.FileService.ApiLogFile)
+			delay, err := api.GetDelay(baseURL, token, proxyName)
 			fyne.Do(func() {
-				if err != nil {
-					button.SetText("Error")
-					status.SetText("Delay error: " + err.Error())
-					ShowError(ac.UIService.MainWindow, err)
-				} else {
-					button.SetText(fmt.Sprintf("%d ms", delay))
-					status.SetText(fmt.Sprintf("Delay: %d ms for %s", delay, proxyName))
+				proxies := ac.GetProxiesList()
+				for i := range proxies {
+					if proxies[i].Name == proxyName {
+						if err != nil {
+							proxies[i].Delay = -1
+							if ac.APIService != nil {
+								ac.APIService.SetLastPingError(proxyName, err.Error())
+							}
+							button.SetText("Error")
+							// Set tooltip immediately so hover shows error without needing a list refresh.
+							if tb, ok := button.(interface{ SetToolTip(string) }); ok && ac.APIService != nil {
+								tb.SetToolTip(ac.APIService.GetLastPingError(proxyName))
+							}
+							status.SetText("Delay error: " + err.Error())
+						} else {
+							proxies[i].Delay = delay
+							if ac.APIService != nil {
+								ac.APIService.SetLastPingError(proxyName, "")
+							}
+							button.SetText(fmt.Sprintf("%d ms", delay))
+							if tb, ok := button.(interface{ SetToolTip(string) }); ok {
+								tb.SetToolTip("")
+							}
+							status.SetText(fmt.Sprintf("Delay: %d ms for %s", delay, proxyName))
+						}
+						ac.SetProxiesList(proxies)
+						break
+					}
 				}
 			})
 		}()
@@ -232,7 +325,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		nameLabel := widget.NewLabel("Proxy Name")
 		nameLabel.TextStyle.Bold = true
 
-		pingButton := widget.NewButton("Ping", nil)
+		pingButton := ttwidget.NewButton("Ping", nil)
 		switchButton := widget.NewButton("▶️", nil)
 
 		content := container.NewHBox(
@@ -259,13 +352,20 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		content := paddedContent.Objects[0].(*fyne.Container)
 
 		nameLabel := content.Objects[0].(*widget.Label)
-		pingButton := content.Objects[2].(*widget.Button)
+		pingButton := content.Objects[2].(*ttwidget.Button)
+		if ac.APIService != nil {
+			pingButton.SetToolTip(ac.APIService.GetLastPingError(proxyInfo.Name))
+		} else {
+			pingButton.SetToolTip("")
+		}
 		switchButton := content.Objects[3].(*widget.Button)
 
 		nameLabel.SetText(proxyInfo.Name)
 
 		if proxyInfo.Delay > 0 {
 			pingButton.SetText(fmt.Sprintf("%d ms", proxyInfo.Delay))
+		} else if proxyInfo.Delay == -1 {
+			pingButton.SetText("Error")
 		} else {
 			pingButton.SetText("Ping")
 		}
@@ -364,7 +464,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		}
 		currentSortType = "name"
 		savedSortNameAscending = ascending // Сохраняем направление для восстановления
-		ac.SetProxiesList(sorted)
+		ac.SetProxiesList(reorderWithPinned(ac, sorted))
 		if ac.UIService.ProxiesListWidget != nil {
 			ac.UIService.ProxiesListWidget.Refresh()
 		}
@@ -413,7 +513,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 		currentSortType = "delay"
 		savedSortDelayAscending = ascending // Сохраняем направление для восстановления
-		ac.SetProxiesList(sorted)
+		ac.SetProxiesList(reorderWithPinned(ac, sorted))
 		if ac.UIService.ProxiesListWidget != nil {
 			ac.UIService.ProxiesListWidget.Refresh()
 		}
@@ -448,32 +548,71 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			return
 		}
 		status.SetText(fmt.Sprintf("Pinging %d proxies...", len(proxies)))
+
 		go func() {
-			for i, proxy := range proxies {
-				baseURL, token, _ := ac.APIService.GetClashAPIConfig()
-				delay, err := api.GetDelay(baseURL, token, proxy.Name, ac.FileService.ApiLogFile)
-				fyne.Do(func() {
-					// Обновляем задержку в списке прокси
-					updatedProxies := ac.GetProxiesList()
-					for j := range updatedProxies {
-						if updatedProxies[j].Name == proxy.Name {
-							if err != nil {
-								updatedProxies[j].Delay = -1 // Ошибка
-							} else {
-								updatedProxies[j].Delay = delay
-							}
-							break
-						}
-					}
-					ac.SetProxiesList(updatedProxies)
-					if ac.UIService.ProxiesListWidget != nil {
-						ac.UIService.ProxiesListWidget.Refresh()
-					}
-					status.SetText(fmt.Sprintf("Pinging %d/%d...", i+1, len(proxies)))
-				})
-				// Небольшая задержка между запросами, чтобы не перегружать API
-				<-time.After(100 * time.Millisecond)
+			baseURL, token, _ := ac.APIService.GetClashAPIConfig()
+
+			type pingJob struct {
+				Name string
 			}
+
+			jobs := make(chan pingJob)
+			done := make(chan struct{})
+			total := len(proxies)
+			completed := 0
+			concurrency := pingAllConcurrency
+			if concurrency <= 0 {
+				concurrency = 1
+			}
+			if concurrency > total {
+				concurrency = total
+			}
+
+			worker := func() {
+				for job := range jobs {
+					delay, err := api.GetDelay(baseURL, token, job.Name)
+					fyne.Do(func() {
+						updatedProxies := ac.GetProxiesList()
+						for j := range updatedProxies {
+							if updatedProxies[j].Name == job.Name {
+								if err != nil {
+									updatedProxies[j].Delay = -1
+									if ac.APIService != nil {
+										ac.APIService.SetLastPingError(job.Name, err.Error())
+									}
+								} else {
+									updatedProxies[j].Delay = delay
+									if ac.APIService != nil {
+										ac.APIService.SetLastPingError(job.Name, "")
+									}
+								}
+								break
+							}
+						}
+						ac.SetProxiesList(updatedProxies)
+						if ac.UIService.ProxiesListWidget != nil {
+							ac.UIService.ProxiesListWidget.Refresh()
+						}
+						completed++
+						status.SetText(fmt.Sprintf("Pinging %d/%d...", completed, total))
+					})
+				}
+				done <- struct{}{}
+			}
+
+			for i := 0; i < concurrency; i++ {
+				go worker()
+			}
+
+			for _, proxy := range proxies {
+				jobs <- pingJob{Name: proxy.Name}
+			}
+			close(jobs)
+
+			for i := 0; i < concurrency; i++ {
+				<-done
+			}
+
 			fyne.Do(func() {
 				status.SetText(fmt.Sprintf("Ping test completed for %d proxies", len(proxies)))
 			})
@@ -516,13 +655,91 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	})
 	pingAllButton := widget.NewButton("test", pingAllProxies)
 
-	// Группа кнопок: слева сортировка, справа пинг и сортировка по задержке
+	// Настройки Ping test (endpoint для delay).
+	pingSettingsButton := widget.NewButton("⚙", func() {
+		currentURL := api.GetPingTestURL()
+
+		// Predefined endpoints with titles from api package.
+		endpoints := []api.PingTestEndpoint{
+			api.PingTestEndpointGStatic,
+			api.PingTestEndpointGoogle,
+			api.PingTestEndpointGosuslugi,
+			api.PingTestEndpointYaStaticICO,
+		}
+
+		const customMode = "Custom"
+
+		options := make([]string, 0, len(endpoints)+1)
+		selected := customMode
+		for _, ep := range endpoints {
+			options = append(options, ep.Title)
+			if currentURL == ep.URL {
+				selected = ep.Title
+			}
+		}
+		options = append(options, customMode)
+
+		radio := widget.NewRadioGroup(options, nil)
+		radio.Selected = selected
+
+		urlEntry := widget.NewEntry()
+		urlEntry.SetPlaceHolder("https://example.com/generate_204")
+		urlEntry.SetText(currentURL)
+		if selected != customMode {
+			urlEntry.Disable()
+		}
+
+		content := container.NewVBox(
+			widget.NewLabel("Ping test URL"),
+			radio,
+			widget.NewLabel("Custom URL:"),
+			urlEntry,
+			widget.NewLabel(" "),
+		)
+
+		d := dialog.NewCustomConfirm("Ping test settings", "Save", "Cancel", content, func(ok bool) {
+			if !ok {
+				return
+			}
+			selectedMode := radio.Selected
+			newURL := currentURL
+
+			if selectedMode == customMode {
+				if strings.TrimSpace(urlEntry.Text) != "" {
+					newURL = strings.TrimSpace(urlEntry.Text)
+				}
+			} else {
+				for _, ep := range endpoints {
+					if ep.Title == selectedMode {
+						newURL = ep.URL
+						break
+					}
+				}
+			}
+
+			api.SetPingTestURL(newURL)
+			status.SetText(fmt.Sprintf("Ping test URL updated: %s", newURL))
+		}, ac.UIService.MainWindow)
+
+		radio.OnChanged = func(val string) {
+			if val == customMode {
+				urlEntry.Enable()
+			} else {
+				urlEntry.Disable()
+			}
+		}
+
+		d.Show()
+	})
+
+	// Группа кнопок: слева сортировка, справа пинг, настройки и сортировка по задержке
 	buttonsRow := container.NewHBox(
 		sortByNameButton,
 		sortNameLabel,
 		layout.NewSpacer(),
 		sortByDelayButton,
 		pingAllButton,
+		pingSettingsButton,
 	)
 
 	// Mapping button for showing selector -> currently active outbound (queried from Clash API)
@@ -559,7 +776,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 			results := make([]string, 0, len(currentSelectorOptions))
 			for _, sel := range currentSelectorOptions {
-				_, now, err := api.GetProxiesInGroup(baseURL, token, sel, ac.FileService.ApiLogFile)
+				_, now, err := api.GetProxiesInGroup(baseURL, token, sel)
 				if err != nil {
 					results = append(results, fmt.Sprintf("%s → error: %v", sel, err))
 					continue
@@ -580,7 +797,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 				}
 				scroll := container.NewVScroll(content)
 				scroll.SetMinSize(fyne.NewSize(480, 260))
-				dlg := components.NewCustom("Selector → Active Outbound", scroll, nil, "Close", ac.UIService.MainWindow)
+				dlg := dialogs.NewCustom("Selector → Active Outbound", scroll, nil, "Close", ac.UIService.MainWindow)
 				dlg.Show()
 			})
 		}()

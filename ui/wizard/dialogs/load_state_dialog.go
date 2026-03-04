@@ -26,7 +26,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/internal/debuglog"
-	"singbox-launcher/ui/components"
+	internaldialogs "singbox-launcher/internal/dialogs"
 	wizardpresentation "singbox-launcher/ui/wizard/presentation"
 )
 
@@ -246,11 +246,11 @@ func ShowLoadStateDialog(presenter *wizardpresentation.WizardPresenter, onResult
 	originalOnTypedKey := guiState.Window.Canvas().OnTypedKey()
 
 	// Create dialog with simplified API (cancelButton через dismissText, ESC обрабатывается автоматически)
-	dialogWindow = components.NewCustom("Load State", scrollList, buttonsContainer, "Cancel", guiState.Window)
+	dialogWindow = internaldialogs.NewCustom("Load State", scrollList, buttonsContainer, "Cancel", guiState.Window)
 	dialogWindow.Resize(fyne.NewSize(300, 220))
 
 	// Обработчик для cancelButton через dismissText и ESC
-	// components.NewCustom уже устанавливает обработчик для восстановления клавиатуры,
+	// internaldialogs.NewCustom уже устанавливает обработчик для восстановления клавиатуры,
 	// поэтому мы перезаписываем его, но сохраняем логику восстановления
 	dialogWindow.SetOnClosed(func() {
 		// Восстанавливаем оригинальный обработчик клавиатуры

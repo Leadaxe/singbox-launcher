@@ -9,7 +9,9 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/desktop"
+	fynetooltip "github.com/dweymouth/fyne-tooltip"
 
+	"singbox-launcher/api"
 	"singbox-launcher/core"
 	"singbox-launcher/core/config/parser"
 	"singbox-launcher/internal/debuglog"
@@ -179,7 +181,7 @@ func main() {
 
 	// Create App structure to manage UI
 	app := ui.NewApp(controller.UIService.MainWindow, controller)
-	controller.UIService.MainWindow.SetContent(app.GetContent())   // Set the window's content (with click redirect overlay)
+	controller.UIService.MainWindow.SetContent(fynetooltip.AddWindowToolTipLayer(app.GetContent(), controller.UIService.MainWindow.Canvas()))
 	controller.UIService.MainWindow.Resize(fyne.NewSize(350, 450)) // initial window size
 	controller.UIService.MainWindow.CenterOnScreen()               // Center the window on the screen
 
@@ -262,6 +264,7 @@ func main() {
 			debuglog.RunAndLog("main: close child log file", controller.FileService.ChildLogFile.Close)
 		}
 		if controller.FileService.ApiLogFile != nil {
+			api.SetAPILogFile(nil)
 			debuglog.RunAndLog("main: close API log file", controller.FileService.ApiLogFile.Close)
 		}
 	}

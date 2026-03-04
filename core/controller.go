@@ -53,16 +53,16 @@ type AppController struct {
 	ConfigService *ConfigService
 
 	// --- Process State ---
-	SingboxCmd               *exec.Cmd
-	SingboxPrivilegedMode        bool   // true when sing-box was started with RunWithPrivileges (macOS TUN)
-	SingboxPrivilegedPID         int    // PID of the start script (for wait/exit handling)
-	SingboxPrivilegedSingboxPID  int    // PID of the sing-box process (for privileged kill)
-	SingboxPrivilegedPIDFile     string // temp file path holding both PIDs (for diagnostics)
-	CmdMutex                 sync.Mutex
-	ParserMutex              sync.Mutex // Mutex for ParserRunning
-	ParserRunning            bool
-	StoppedByUser            bool
-	ConsecutiveCrashAttempts int
+	SingboxCmd                  *exec.Cmd
+	SingboxPrivilegedMode       bool   // true when sing-box was started with RunWithPrivileges (macOS TUN)
+	SingboxPrivilegedPID        int    // PID of the start script (for wait/exit handling)
+	SingboxPrivilegedSingboxPID int    // PID of the sing-box process (for privileged kill)
+	SingboxPrivilegedPIDFile    string // temp file path holding both PIDs (for diagnostics)
+	CmdMutex                    sync.Mutex
+	ParserMutex                 sync.Mutex // Mutex for ParserRunning
+	ParserRunning               bool
+	StoppedByUser               bool
+	ConsecutiveCrashAttempts    int
 
 	// --- VPN Operation State ---
 	RunningState *RunningState
@@ -74,6 +74,10 @@ type AppController struct {
 	// --- Update popup state ---
 	updatePopupShown bool         // Флаг, что попап обновления уже был показан в этой сессии
 	updatePopupMutex sync.RWMutex // Мьютекс для защиты updatePopupShown
+
+	// --- Installed core version cache (one successful check per run) ---
+	installedCoreVersionCache   string // после первой успешной проверки — без повторных запусков sing-box version
+	installedCoreVersionCacheMu sync.Mutex
 }
 
 // RunningState - structure for tracking the VPN's running state.
@@ -148,6 +152,7 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	if err := ac.FileService.OpenLogFiles(logFileName, childLogFileName, apiLogFileName); err != nil {
 		return nil, fmt.Errorf("NewAppController: cannot open log files: %w", err)
 	}
+	api.SetAPILogFile(ac.FileService.ApiLogFile)
 
 	// Initialize RunningState before UIService (needed for callback)
 	ac.RunningState = &RunningState{controller: ac}
@@ -176,7 +181,6 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	// Initialize APIService
 	apiService, err := services.NewAPIService(
 		ac.FileService.ConfigPath,
-		ac.FileService.ApiLogFile,
 		func() bool { return ac.RunningState.IsRunning() },
 		func() {
 			// OnProxiesUpdated callback
@@ -217,7 +221,7 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	// Initialize UI callbacks (delegated to UIService)
 	ac.UIService.RefreshAPIFunc = func() { debuglog.DebugLog("RefreshAPIFunc handler is not set yet.") }
 	ac.UIService.ResetAPIStateFunc = func() { debuglog.DebugLog("ResetAPIStateFunc handler is not set yet.") }
-	ac.UIService.UpdateCoreStatusFunc = func() { debuglog.DebugLog("UpdateCoreStatusFunc handler is not set yet.") }
+	ac.UIService.UpdateCoreStatusFunc = func() {} // placeholder until UI sets real handler
 	ac.UIService.UpdateConfigStatusFunc = func() { debuglog.DebugLog("UpdateConfigStatusFunc handler is not set yet.") }
 	ac.UIService.UpdateTrayMenuFunc = func() { debuglog.DebugLog("UpdateTrayMenuFunc handler is not set yet.") }
 	ac.UIService.UpdateParserProgressFunc = func(progress float64, status string) {
@@ -323,6 +327,7 @@ func (ac *AppController) GracefulExit() {
 end_loop:
 
 	if ac.FileService != nil {
+		api.SetAPILogFile(nil)
 		ac.FileService.CloseLogFiles()
 	}
 

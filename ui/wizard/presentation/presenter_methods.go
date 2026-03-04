@@ -1,7 +1,6 @@
 // Package presentation содержит слой представления визарда конфигурации.
 //
 // Файл presenter_methods.go содержит методы управления UI и инициализации:
-//   - SetCheckURLState - управление состоянием кнопки Check и прогресс-бара проверки URL
 //   - SetSaveState - управление состоянием кнопки Save и прогресс-бара сохранения
 //   - RefreshOutboundOptions - обновление опций outbound для всех правил маршрутизации
 //   - InitializeTemplateState - инициализация состояния шаблона (секции, правила, outbounds)
@@ -19,59 +18,11 @@
 package presentation
 
 import (
+	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
 	wizardbusiness "singbox-launcher/ui/wizard/business"
 	wizardmodels "singbox-launcher/ui/wizard/models"
 )
-
-// SetCheckURLState управляет состоянием кнопки Check и прогресс-бара.
-func (p *WizardPresenter) SetCheckURLState(statusText string, buttonText string, progress float64) {
-	p.UpdateUI(func() {
-		if statusText != "" && p.guiState.URLStatusLabel != nil {
-			p.guiState.URLStatusLabel.SetText(statusText)
-		}
-
-		progressVisible := false
-		if progress < 0 {
-			if p.guiState.CheckURLProgress != nil {
-				p.guiState.CheckURLProgress.Hide()
-				p.guiState.CheckURLProgress.SetValue(0)
-			}
-		} else {
-			if p.guiState.CheckURLProgress != nil {
-				p.guiState.CheckURLProgress.SetValue(progress)
-				p.guiState.CheckURLProgress.Show()
-			}
-			progressVisible = true
-		}
-
-		buttonVisible := false
-		if progressVisible {
-			if p.guiState.CheckURLButton != nil {
-				p.guiState.CheckURLButton.Hide()
-			}
-		} else if buttonText == "" {
-			if p.guiState.CheckURLButton != nil {
-				p.guiState.CheckURLButton.Hide()
-			}
-		} else {
-			if p.guiState.CheckURLButton != nil {
-				p.guiState.CheckURLButton.SetText(buttonText)
-				p.guiState.CheckURLButton.Show()
-				p.guiState.CheckURLButton.Enable()
-			}
-			buttonVisible = true
-		}
-
-		if p.guiState.CheckURLPlaceholder != nil {
-			if buttonVisible || progressVisible {
-				p.guiState.CheckURLPlaceholder.Show()
-			} else {
-				p.guiState.CheckURLPlaceholder.Hide()
-			}
-		}
-	})
-}
 
 // SetSaveState управляет состоянием кнопки Save и прогресс-бара.
 func (p *WizardPresenter) SetSaveState(buttonText string, progress float64) {
@@ -205,10 +156,14 @@ func (p *WizardPresenter) InitializeTemplateState() {
 			if outbound == "" {
 				outbound = options[0]
 			}
+			enabled := rule.IsDefault
+			if !services.AllSRSDownloaded(p.model.ExecDir, rule.RuleSets) {
+				enabled = false
+			}
 			p.model.SelectableRuleStates = append(p.model.SelectableRuleStates, &wizardmodels.RuleState{
 				Rule:             rule,
 				SelectedOutbound: outbound,
-				Enabled:          rule.IsDefault,
+				Enabled:          enabled,
 			})
 		}
 	} else {

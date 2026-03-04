@@ -21,14 +21,21 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
-// GetInstalledCoreVersion получает установленную версию sing-box
+// GetInstalledCoreVersion получает установленную версию sing-box.
+// После первой успешной проверки в этой сессии возвращает закешированное значение без повторного запуска sing-box version.
 func (ac *AppController) GetInstalledCoreVersion() (string, error) {
+	ac.installedCoreVersionCacheMu.Lock()
+	defer ac.installedCoreVersionCacheMu.Unlock()
+	if ac.installedCoreVersionCache != "" {
+		return ac.installedCoreVersionCache, nil
+	}
+
 	// Проверяем существование бинарника
 	if _, err := os.Stat(ac.FileService.SingboxPath); os.IsNotExist(err) {
 		return "", fmt.Errorf("sing-box not found at %s", ac.FileService.SingboxPath)
 	}
 
-	// Запускаем sing-box version
+	// Запускаем sing-box version (один раз за сессию при успехе)
 	cmd := exec.Command(ac.FileService.SingboxPath, "version")
 	platform.PrepareCommand(cmd)
 	output, err := cmd.CombinedOutput()
@@ -39,15 +46,11 @@ func (ac *AppController) GetInstalledCoreVersion() (string, error) {
 
 	// Парсим вывод - формат: "sing-box version 1.12.12"
 	outputStr := strings.TrimSpace(string(output))
-	debuglog.DebugLog("GetInstalledCoreVersion: raw output: %q", outputStr)
-
-	// Ищем версию после "sing-box version" до конца строки
 	versionRegex := regexp.MustCompile(`sing-box version\s+(\S+)`)
 	matches := versionRegex.FindStringSubmatch(outputStr)
 	if len(matches) > 1 {
-		version := matches[1]
-		debuglog.DebugLog("GetInstalledCoreVersion: found version: %s", version)
-		return version, nil
+		ac.installedCoreVersionCache = matches[1]
+		return ac.installedCoreVersionCache, nil
 	}
 
 	debuglog.WarnLog("GetInstalledCoreVersion: unable to parse version from output: %q", outputStr)

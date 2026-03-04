@@ -23,7 +23,9 @@
 package services
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -63,6 +65,10 @@ type FileService struct {
 
 	// ApiLogFile — лог API-запросов (api.log).
 	ApiLogFile *os.File
+
+	// ChildLogRelativePath is the relative path to the sing-box log file (e.g. "logs/sing-box.log").
+	// Set when OpenLogFiles is called; used by the log viewer to build the full path without duplicating the constant.
+	ChildLogRelativePath string
 }
 
 // NewFileService создаёт и инициализирует FileService.
@@ -94,6 +100,7 @@ func NewFileService() (*FileService, error) {
 // Ошибки открытия ChildLogFile и ApiLogFile не являются критическими —
 // приложение продолжает работу без них.
 func (fs *FileService) OpenLogFiles(logFileName, childLogFileName, apiLogFileName string) error {
+	fs.ChildLogRelativePath = childLogFileName
 	logFile, err := fs.OpenLogFileWithRotation(filepath.Join(fs.ExecDir, logFileName))
 	if err != nil {
 		return fmt.Errorf("OpenLogFiles: cannot open main log file: %w", err)
@@ -173,6 +180,67 @@ func BackupPath(path string) string {
 	ext := filepath.Ext(path)
 	base := strings.TrimSuffix(filepath.Base(path), ext)
 	return filepath.Join(dir, fmt.Sprintf("%s-old%s", base, ext))
+}
+
+// ReadLastLines reads up to maxLines last lines from the file at path.
+// Used by the diagnostics log viewer (Core tab) for tail-style display.
+// Returns (nil, nil) if the file does not exist; returns (nil, err) on read errors.
+func ReadLastLines(path string, maxLines int) ([]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("ReadLastLines: %s is a directory", path)
+	}
+	size := info.Size()
+	if size == 0 {
+		return []string{}, nil
+	}
+	// Read backwards in chunks to collect last N lines
+	const chunkSize = 4096
+	var buf []byte
+	pos := size
+	for pos > 0 && len(buf) < 2*1024*1024 { // cap total read at 2MB
+		readSize := chunkSize
+		if int64(readSize) > pos {
+			readSize = int(pos)
+		}
+		pos -= int64(readSize)
+		_, err := f.Seek(pos, io.SeekStart)
+		if err != nil {
+			return nil, err
+		}
+		chunk := make([]byte, readSize)
+		_, err = io.ReadFull(f, chunk)
+		if err != nil {
+			return nil, err
+		}
+		buf = append(chunk, buf...)
+	}
+	// buf is now the last min(2MB, size) of the file
+	// Split into lines and take last maxLines
+	scanner := bufio.NewScanner(strings.NewReader(string(buf)))
+	scanner.Buffer(nil, 512*1024)
+	var lines []string
+	for scanner.Scan() {
+		lines = append(lines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	if len(lines) <= maxLines {
+		return lines, nil
+	}
+	return lines[len(lines)-maxLines:], nil
 }
 
 // BackupFile создаёт резервную копию файла (file.ext → file-old.ext).

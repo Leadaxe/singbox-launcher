@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"singbox-launcher/internal/debuglog"
@@ -75,6 +76,53 @@ const (
 	httpRequestTimeoutSeconds = 20 // Increased to 20 seconds for better reliability
 )
 
+// PingTestEndpoint describes a single HTTP endpoint that Clash uses
+// for delay measurement via /proxies/{name}/delay (url query param).
+type PingTestEndpoint struct {
+	Title string
+	URL   string
+}
+
+// Default endpoints for ping delay measurement (Clash /proxies/{name}/delay url param).
+// Titles are used in the UI; URLs are passed to Clash as-is.
+var (
+	PingTestEndpointGStatic = PingTestEndpoint{
+		Title: "GStatic",
+		URL:   "http://www.gstatic.com/generate_204",
+	}
+	PingTestEndpointGoogle = PingTestEndpoint{
+		Title: "Google",
+		URL:   "https://www.google.com/generate_204",
+	}
+	PingTestEndpointGosuslugi = PingTestEndpoint{
+		Title: "Gosuslugi",
+		URL:   "https://gosuslugi.ru/favicon.ico",
+	}
+	PingTestEndpointYaStaticICO = PingTestEndpoint{
+		Title: "YaStatic",
+		URL:   "https://yastatic.net/s3/home-misc/favicon.ico",
+	}
+)
+
+// pingTestURL is the current endpoint used for delay checks.
+// It is process-wide and can be overridden at runtime from the UI.
+var pingTestURL = PingTestEndpointGoogle.URL
+
+// GetPingTestURL returns the current endpoint used for delay checks.
+func GetPingTestURL() string {
+	return pingTestURL
+}
+
+// SetPingTestURL sets the endpoint used for delay checks.
+// If url is empty or only whitespace, it falls back to PingTestEndpointGoogle.URL.
+func SetPingTestURL(url string) {
+	if strings.TrimSpace(url) == "" {
+		pingTestURL = PingTestEndpointGoogle.URL
+		return
+	}
+	pingTestURL = url
+}
+
 // Global HTTP client with timeout for all HTTP requests
 var httpClient = &http.Client{
 	Timeout: time.Duration(httpRequestTimeoutSeconds) * time.Second,
@@ -85,25 +133,61 @@ var httpClient = &http.Client{
 	},
 }
 
-// writeLog writes formatted output to the provided file and ignores write errors.
-func writeLog(logFile *os.File, format string, args ...interface{}) {
-	if logFile == nil {
+// apiLogFile is the target for API request logging (api.log). Set via SetAPILogFile.
+var apiLogFile *os.File
+
+var (
+	apiLogSinkMu sync.RWMutex
+	apiLogSink   func(debuglog.Level, string)
+)
+
+// SetAPILogFile sets the log file for API requests. Call after opening log files, pass nil before closing.
+func SetAPILogFile(f *os.File) {
+	apiLogFile = f
+}
+
+// SetAPILogSink sets an optional callback for the diagnostics log viewer (API tab).
+// The callback receives (level, line) for each writeLog() and must not block.
+// Call ClearAPILogSink when the log viewer window is closed.
+func SetAPILogSink(fn func(debuglog.Level, string)) {
+	apiLogSinkMu.Lock()
+	defer apiLogSinkMu.Unlock()
+	apiLogSink = fn
+}
+
+// ClearAPILogSink removes the API log sink (e.g. when the log viewer is closed).
+func ClearAPILogSink() {
+	SetAPILogSink(nil)
+}
+
+// writeLog writes to api.log when level <= GlobalLevel (same rule as debuglog.Log).
+func writeLog(level debuglog.Level, format string, args ...interface{}) {
+	if level > debuglog.GlobalLevel {
 		return
 	}
-	_, _ = fmt.Fprintf(logFile, format, args...)
+	line := fmt.Sprintf(format, args...)
+	if apiLogFile != nil {
+		_, _ = fmt.Fprintf(apiLogFile, format, args...)
+	}
+	apiLogSinkMu.RLock()
+	fn := apiLogSink
+	apiLogSinkMu.RUnlock()
+	if fn != nil {
+		fn(level, line)
+	}
 }
 
 // TestAPIConnection attempts to connect to the Clash API.
-func TestAPIConnection(baseURL, token string, logFile *os.File) error {
+func TestAPIConnection(baseURL, token string) error {
 	logMessage := fmt.Sprintf("[%s] GET /version request started for API test.\n", time.Now().Format("2006-01-02 15:04:05"))
-	writeLog(logFile, "%s", logMessage)
+	writeLog(debuglog.LevelVerbose, "%s", logMessage)
 
 	url := fmt.Sprintf("%s/version", baseURL)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(httpRequestTimeoutSeconds)*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		writeLog(logFile, "[%s] Error creating API test request: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
+		writeLog(debuglog.LevelInfo, "[%s] Error creating API test request: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
 		return fmt.Errorf("failed to create API test request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -115,7 +199,7 @@ func TestAPIConnection(baseURL, token string, logFile *os.File) error {
 		}
 	}()
 	if err != nil {
-		writeLog(logFile, "[%s] Error executing API test request: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
+		writeLog(debuglog.LevelInfo, "[%s] Error executing API test request: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
 		// Проверяем тип ошибки для более понятного сообщения
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			return fmt.Errorf("network timeout: connection timed out")
@@ -130,14 +214,14 @@ func TestAPIConnection(baseURL, token string, logFile *os.File) error {
 		return fmt.Errorf("failed to execute API test request: %w", err)
 	}
 
-	writeLog(logFile, "[%s] GET /version response status for API test: %d\n", time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode)
+	writeLog(debuglog.LevelVerbose, "[%s] GET /version response status for API test: %d\n", time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		writeLog(logFile, "[%s] Unexpected status code for API test: %d, body: %s\n", time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode, string(bodyBytes))
+		writeLog(debuglog.LevelInfo, "[%s] Unexpected status code for API test: %d, body: %s\n", time.Now().Format("2006-01-02 15:04:05"), resp.StatusCode, string(bodyBytes))
 		return fmt.Errorf("unexpected status code for API test: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
-	writeLog(logFile, "[%s] Clash API connection successful.\n", time.Now().Format("2006-01-02 15:04:05"))
+	writeLog(debuglog.LevelVerbose, "[%s] Clash API connection successful.\n", time.Now().Format("2006-01-02 15:04:05"))
 	return nil
 }
 
@@ -149,23 +233,22 @@ type ProxyInfo struct {
 }
 
 // GetProxiesInGroup retrieves proxies from a group, their traffic stats, and last delay from the Clash API.
-func GetProxiesInGroup(baseURL, token, groupName string, logFile *os.File) ([]ProxyInfo, string, error) {
-	// --- Helper function for logging ---
-	logMsg := func(format string, a ...interface{}) {
+func GetProxiesInGroup(baseURL, token, groupName string) ([]ProxyInfo, string, error) {
+	logMsg := func(level debuglog.Level, format string, a ...interface{}) {
 		timestamp := time.Now().Format("2006-01-02 15:04:05")
-		writeLog(logFile, "[%s] "+format+"\n", append([]interface{}{timestamp}, a...)...)
+		writeLog(level, "[%s] "+format+"\n", append([]interface{}{timestamp}, a...)...)
 	}
 
-	logMsg("GetProxiesInGroup: Starting request for group '%s'", groupName)
+	logMsg(debuglog.LevelVerbose, "GetProxiesInGroup: Starting request for group '%s'", groupName)
 
 	url := fmt.Sprintf("%s/proxies", baseURL)
-	logMsg("GetProxiesInGroup: Request URL: %s", url)
+	logMsg(debuglog.LevelTrace, "GetProxiesInGroup: Request URL: %s", url)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(httpRequestTimeoutSeconds)*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		logMsg("GetProxiesInGroup: ERROR: Failed to create request: %v", err)
+		logMsg(debuglog.LevelInfo, "GetProxiesInGroup: ERROR: Failed to create request: %v", err)
 		return nil, "", fmt.Errorf("failed to create /proxies request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -177,7 +260,7 @@ func GetProxiesInGroup(baseURL, token, groupName string, logFile *os.File) ([]Pr
 		}
 	}()
 	if err != nil {
-		logMsg("GetProxiesInGroup: ERROR: Failed to execute request: %v", err)
+		logMsg(debuglog.LevelInfo, "GetProxiesInGroup: ERROR: Failed to execute request: %v", err)
 		// Проверяем тип ошибки для более понятного сообщения
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			return nil, "", fmt.Errorf("network timeout: connection timed out")
@@ -188,39 +271,39 @@ func GetProxiesInGroup(baseURL, token, groupName string, logFile *os.File) ([]Pr
 		return nil, "", fmt.Errorf("failed to execute /proxies request: %w", err)
 	}
 
-	logMsg("GetProxiesInGroup: Response status: %s", resp.Status)
+	logMsg(debuglog.LevelVerbose, "GetProxiesInGroup: Response status: %s", resp.Status)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logMsg("GetProxiesInGroup: ERROR: Failed to read response body: %v", err)
+		logMsg(debuglog.LevelInfo, "GetProxiesInGroup: ERROR: Failed to read response body: %v", err)
 		return nil, "", fmt.Errorf("failed to read /proxies response: %w", err)
 	}
 
-	logMsg("GetProxiesInGroup: Raw response body:\n%s", string(body))
+	logMsg(debuglog.LevelTrace, "GetProxiesInGroup: Raw response body:\n%s", string(body))
 
 	// Проверяем статус-код перед парсингом JSON
 	if resp.StatusCode != http.StatusOK {
 		var errorResp map[string]interface{}
 		if err := json.Unmarshal(body, &errorResp); err == nil {
 			if message, ok := errorResp["message"].(string); ok {
-				logMsg("GetProxiesInGroup: ERROR: API returned error: %s (status: %d)", message, resp.StatusCode)
+				logMsg(debuglog.LevelInfo, "GetProxiesInGroup: ERROR: API returned error: %s (status: %d)", message, resp.StatusCode)
 				return nil, "", fmt.Errorf("API error (status %d): %s", resp.StatusCode, message)
 			}
 		}
-		logMsg("GetProxiesInGroup: ERROR: Unexpected status code: %d, body: %s", resp.StatusCode, string(body))
+		logMsg(debuglog.LevelInfo, "GetProxiesInGroup: ERROR: Unexpected status code: %d, body: %s", resp.StatusCode, string(body))
 		return nil, "", fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body))
 	}
 
 	// Теперь безопасно парсим успешный ответ
 	var raw map[string]map[string]interface{}
 	if err := json.Unmarshal(body, &raw); err != nil {
-		logMsg("GetProxiesInGroup: ERROR: Failed to unmarshal JSON: %v", err)
+		logMsg(debuglog.LevelInfo, "GetProxiesInGroup: ERROR: Failed to unmarshal JSON: %v", err)
 		return nil, "", fmt.Errorf("failed to unmarshal /proxies response: %w", err)
 	}
 
 	proxiesMap, ok := raw["proxies"]
 	if !ok {
-		logMsg("GetProxiesInGroup: ERROR: 'proxies' key not found in the response.")
+		logMsg(debuglog.LevelInfo, "GetProxiesInGroup: ERROR: 'proxies' key not found in the response.")
 		return nil, "", fmt.Errorf("'proxies' key not found in the response")
 	}
 
@@ -232,18 +315,18 @@ func GetProxiesInGroup(baseURL, token, groupName string, logFile *os.File) ([]Pr
 				availableGroups = append(availableGroups, name)
 			}
 		}
-		logMsg("GetProxiesInGroup: ERROR: Proxy group '%s' not found. Available groups: %v", groupName, availableGroups)
+		logMsg(debuglog.LevelInfo, "GetProxiesInGroup: ERROR: Proxy group '%s' not found. Available groups: %v", groupName, availableGroups)
 		return nil, "", fmt.Errorf("proxy group '%s' not found", groupName)
 	}
 
 	rawList, ok := group["all"].([]interface{})
 	if !ok {
-		logMsg("GetProxiesInGroup: ERROR: Invalid or missing 'all' field for group '%s'", groupName)
+		logMsg(debuglog.LevelInfo, "GetProxiesInGroup: ERROR: Invalid or missing 'all' field for group '%s'", groupName)
 		return nil, "", fmt.Errorf("invalid or missing 'all' field for group %s", groupName)
 	}
 
 	nowProxy, _ := group["now"].(string)
-	logMsg("GetProxiesInGroup: Current active proxy in group '%s' is '%s'", groupName, nowProxy)
+	logMsg(debuglog.LevelVerbose, "GetProxiesInGroup: Current active proxy in group '%s' is '%s'", groupName, nowProxy)
 
 	var proxies []ProxyInfo
 	for _, v := range rawList {
@@ -275,15 +358,15 @@ func GetProxiesInGroup(baseURL, token, groupName string, logFile *os.File) ([]Pr
 
 	// Сортировка убрана - UI управляет сортировкой самостоятельно
 
-	logMsg("GetProxiesInGroup: Successfully parsed %d proxies from group '%s'.", len(proxies), groupName)
+	logMsg(debuglog.LevelVerbose, "GetProxiesInGroup: Successfully parsed %d proxies from group '%s'.", len(proxies), groupName)
 	return proxies, nowProxy, nil
 }
 
 // SwitchProxy switches the active proxy within the specified group.
-func SwitchProxy(baseURL, token, group, proxy string, logFile *os.File) error {
+func SwitchProxy(baseURL, token, group, proxy string) error {
 	payloadStr := fmt.Sprintf("{\"name\":\"%s\"}", proxy)
 	logMessage := fmt.Sprintf("[%s] PUT /proxies/%s request started with payload: %s\n", time.Now().Format("2006-01-02 15:04:05"), group, payloadStr)
-	writeLog(logFile, "%s", logMessage)
+	writeLog(debuglog.LevelVerbose, "%s", logMessage)
 
 	url := fmt.Sprintf("%s/proxies/%s", baseURL, group)
 	payload := strings.NewReader(payloadStr)
@@ -292,7 +375,7 @@ func SwitchProxy(baseURL, token, group, proxy string, logFile *os.File) error {
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "PUT", url, payload)
 	if err != nil {
-		writeLog(logFile, "[%s] Error creating switch request for %s/%s: %v\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy, err)
+		writeLog(debuglog.LevelInfo, "[%s] Error creating switch request for %s/%s: %v\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy, err)
 		return fmt.Errorf("failed to create switch request: %w", err)
 	}
 
@@ -306,7 +389,7 @@ func SwitchProxy(baseURL, token, group, proxy string, logFile *os.File) error {
 		}
 	}()
 	if err != nil {
-		writeLog(logFile, "[%s] Error executing switch request for %s/%s: %v\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy, err)
+		writeLog(debuglog.LevelInfo, "[%s] Error executing switch request for %s/%s: %v\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy, err)
 		// Проверяем тип ошибки для более понятного сообщения
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			return fmt.Errorf("network timeout: connection timed out")
@@ -317,28 +400,33 @@ func SwitchProxy(baseURL, token, group, proxy string, logFile *os.File) error {
 		return fmt.Errorf("failed to execute switch request: %w", err)
 	}
 
-	writeLog(logFile, "[%s] PUT /proxies/%s response status: %d\n", time.Now().Format("2006-01-02 15:04:05"), group, resp.StatusCode)
+	writeLog(debuglog.LevelVerbose, "[%s] PUT /proxies/%s response status: %d\n", time.Now().Format("2006-01-02 15:04:05"), group, resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		writeLog(logFile, "[%s] Unexpected status code for switch %s/%s: %d, body: %s\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy, resp.StatusCode, string(bodyBytes))
+		writeLog(debuglog.LevelInfo, "[%s] Unexpected status code for switch %s/%s: %d, body: %s\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy, resp.StatusCode, string(bodyBytes))
 		return fmt.Errorf("unexpected status code for switch: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
-	writeLog(logFile, "[%s] Successfully switched group '%s' to '%s'.\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy)
+	writeLog(debuglog.LevelVerbose, "[%s] Successfully switched group '%s' to '%s'.\n", time.Now().Format("2006-01-02 15:04:05"), group, proxy)
 	return nil
 }
 
-// GetDelay gets the delay for the specified proxy node.
-func GetDelay(baseURL, token, proxyName string, logFile *os.File) (int64, error) {
+// GetDelay asks Clash to measure latency for the specified proxy node
+// using the currently configured ping test endpoint (GetPingTestURL).
+func GetDelay(baseURL, token, proxyName string) (int64, error) {
 	logMessage := fmt.Sprintf("[%s] GET /proxies/%s/delay request started.\n", time.Now().Format("2006-01-02 15:04:05"), proxyName)
-	writeLog(logFile, "%s", logMessage)
+	writeLog(debuglog.LevelVerbose, "%s", logMessage)
 
-	url := fmt.Sprintf("%s/proxies/%s/delay?timeout=5000&url=http://www.gstatic.com/generate_204", baseURL, proxyName)
+	// url param: connectivity check endpoint (configurable via SetPingTestURL).
+	// Default endpoints:
+	// - DefaultPingTestURLGStatic = "http://www.gstatic.com/generate_204"
+	// - DefaultPingTestURLGoogle  = "https://www.google.com/generate_204"
+	url := fmt.Sprintf("%s/proxies/%s/delay?timeout=5000&url=%s", baseURL, proxyName, GetPingTestURL())
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(httpRequestTimeoutSeconds)*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		writeLog(logFile, "[%s] Error creating delay request for %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
+		writeLog(debuglog.LevelInfo, "[%s] Error creating delay request for %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
 		return 0, fmt.Errorf("failed to create delay request: %w", err)
 	}
 
@@ -351,7 +439,7 @@ func GetDelay(baseURL, token, proxyName string, logFile *os.File) (int64, error)
 		}
 	}()
 	if err != nil {
-		writeLog(logFile, "[%s] Error executing delay request for %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
+		writeLog(debuglog.LevelInfo, "[%s] Error executing delay request for %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
 		// Проверяем тип ошибки для более понятного сообщения
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 			return 0, fmt.Errorf("network timeout: connection timed out")
@@ -362,35 +450,35 @@ func GetDelay(baseURL, token, proxyName string, logFile *os.File) (int64, error)
 		return 0, fmt.Errorf("failed to execute delay request: %w", err)
 	}
 
-	writeLog(logFile, "[%s] GET /proxies/%s/delay response status: %d\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, resp.StatusCode)
+	writeLog(debuglog.LevelVerbose, "[%s] GET /proxies/%s/delay response status: %d\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		writeLog(logFile, "[%s] Unexpected status code for delay %s: %d, body: %s\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, resp.StatusCode, string(bodyBytes))
+		writeLog(debuglog.LevelInfo, "[%s] Unexpected status code for delay %s: %d, body: %s\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, resp.StatusCode, string(bodyBytes))
 		return 0, fmt.Errorf("unexpected status code for delay: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		writeLog(logFile, "[%s] Error reading response body for delay %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
+		writeLog(debuglog.LevelInfo, "[%s] Error reading response body for delay %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
 		return 0, fmt.Errorf("failed to read response body for delay: %w", err)
 	}
 
-	writeLog(logFile, "[%s] GET /proxies/%s/delay response body: %s\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, string(body))
+	writeLog(debuglog.LevelTrace, "[%s] GET /proxies/%s/delay response body: %s\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, string(body))
 
 	var data map[string]interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
-		writeLog(logFile, "[%s] Error unmarshalling JSON for delay %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
+		writeLog(debuglog.LevelInfo, "[%s] Error unmarshalling JSON for delay %s: %v\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, err)
 		return 0, fmt.Errorf("failed to unmarshal JSON for delay: %w", err)
 	}
 
 	delay, ok := data["delay"].(float64)
 	if !ok {
-		writeLog(logFile, "[%s] Unexpected response structure for delay %s, 'delay' field missing or wrong type\n", time.Now().Format("2006-01-02 15:04:05"), proxyName)
+		writeLog(debuglog.LevelInfo, "[%s] Unexpected response structure for delay %s, 'delay' field missing or wrong type\n", time.Now().Format("2006-01-02 15:04:05"), proxyName)
 		return 0, fmt.Errorf("unexpected response structure, 'delay' field missing or wrong type")
 	}
 
-	writeLog(logFile, "[%s] Successfully got delay for %s: %d ms.\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, int64(delay))
+	writeLog(debuglog.LevelVerbose, "[%s] Successfully got delay for %s: %d ms.\n", time.Now().Format("2006-01-02 15:04:05"), proxyName, int64(delay))
 
 	return int64(delay), nil
 }
