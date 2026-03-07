@@ -13,6 +13,7 @@
 - Визард: кеш превью, View по источнику из кеша, Get free VPN — подтверждение, диалог Outbound (Raw→Settings), конфигуратор синхронно, смена Scope при редактировании
 - Визард: модель как источник истины (Model(), единый префикс 1:/2:/3:, унифицированная сборка прокси)
 - Диагностика: настройки STUN (свой сервер, на Mac — SOCKS5/напрямую), ссылка на список STUN-серверов
+- Diagnostics: две кнопки (окно логов, папка логов) с иконками; повторное нажатие — фокус на открытое окно; в Help убрана кнопка «Open Logs Folder»
 - Исправлено исчезновение источников после reopen визарда, смены префиксов и сохранения
 
 </details>
@@ -26,6 +27,7 @@
 - Wizard: preview cache, View uses cache, Get free VPN confirmation, Outbound dialog (Raw→Settings), configurator sync, Scope when editing
 - Wizard: model as source of truth (Model(), unified prefix 1:/2:/3:, proxy list building)
 - Diagnostics: STUN settings (custom server, on Mac SOCKS5/direct), link to STUN server list
+- Diagnostics: two buttons (log window, logs folder) with icons; reopening focuses existing window; Help «Open Logs Folder» removed
 - Fixed sources disappearing after reopen, changing prefixes, and save
 
 </details>

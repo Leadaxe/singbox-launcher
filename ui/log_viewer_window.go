@@ -24,6 +24,11 @@ const (
 	coreRefreshSec    = 5
 )
 
+var (
+	logViewerMu     sync.Mutex
+	logViewerWindow fyne.Window
+)
+
 type logEntry struct {
 	level debuglog.Level
 	line  string
@@ -68,8 +73,18 @@ func levelColor(l debuglog.Level) string {
 }
 
 // OpenLogViewerWindow opens a separate window with Internal, Core, and API log tabs.
+// If the window is already open, focuses it instead of opening a duplicate.
 // Registers sinks on show and clears them on close. Core tab uses ChildLogRelativePath from FileService.
 func OpenLogViewerWindow(ac *core.AppController) {
+	logViewerMu.Lock()
+	if logViewerWindow != nil {
+		w := logViewerWindow
+		logViewerMu.Unlock()
+		w.RequestFocus()
+		return
+	}
+	logViewerMu.Unlock()
+
 	app := ac.UIService.Application
 	win := app.NewWindow("Logs")
 	win.Resize(fyne.NewSize(700, 500))
@@ -356,6 +371,11 @@ func OpenLogViewerWindow(ac *core.AppController) {
 	debuglog.DebugLog("logViewer: Logs window opened, sinks registered")
 
 	win.SetOnClosed(func() {
+		logViewerMu.Lock()
+		if logViewerWindow == win {
+			logViewerWindow = nil
+		}
+		logViewerMu.Unlock()
 		if coreTickStop != nil {
 			coreTickStop()
 		}
@@ -364,5 +384,8 @@ func OpenLogViewerWindow(ac *core.AppController) {
 		close(apiCh)
 	})
 
+	logViewerMu.Lock()
+	logViewerWindow = win
+	logViewerMu.Unlock()
 	win.Show()
 }

@@ -18,14 +18,6 @@ import (
 
 // CreateHelpTab creates and returns the content for the "Help" tab.
 func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
-	logsButton := widget.NewButton("📁 Open Logs Folder", func() {
-		logsDir := platform.GetLogsDir(ac.FileService.ExecDir)
-		if err := platform.OpenFolder(logsDir); err != nil {
-			debuglog.ErrorLog("toolsTab: Failed to open logs folder: %v", err)
-			ShowError(ac.UIService.MainWindow, err)
-		}
-	})
-
 	configButton := widget.NewButton("⚙️ Open Config Folder", func() {
 		binDir := platform.GetBinDir(ac.FileService.ExecDir)
 		if err := platform.OpenFolder(binDir); err != nil {
@@ -121,7 +113,6 @@ func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
 	}
 
 	return container.NewVBox(
-		logsButton,
 		configButton,
 		killButton,
 		widget.NewSeparator(),
