@@ -610,10 +610,23 @@ jobs:
             find . -name "*.exe" -type f || echo "No .exe files found"
           fi
 
+          WIN7_EXE=$(find . -name "singbox-launcher-win7-32.exe" -type f -size +0 | head -1 || true)
+          if [ -n "${WIN7_EXE:-}" ]; then
+            echo "✓ Found singbox-launcher-win7-32.exe at: $WIN7_EXE"
+            EXE_DIR=$(dirname "$WIN7_EXE")
+            EXE_NAME=$(basename "$WIN7_EXE")
+            ORIGINAL_DIR=$(pwd)
+            cd "$EXE_DIR"
+            zip -j "${ORIGINAL_DIR}/singbox-launcher-${VERSION}-win7-32.zip" "$EXE_NAME"
+            cd "$ORIGINAL_DIR"
+            echo "✓ Created: singbox-launcher-${VERSION}-win7-32.zip"
+          else
+            echo "⚠ Warning: singbox-launcher-win7-32.exe not found (Win7 build may have been skipped)"
+          fi
+
           echo ""
           echo "=== Creating checksums ==="
-          # Include both macos and macos-catalina zips if present
-          find . -name "singbox-launcher-${VERSION}-macos*.zip" -type f -size +0 -exec sha256sum {} \; > checksums.txt
+          find . -name "singbox-launcher-${VERSION}-*.zip" -type f -size +0 -exec sha256sum {} \; > checksums.txt
           if [ -f checksums.txt ] && [ -s checksums.txt ]; then
             echo "Checksums created:"
             cat checksums.txt
@@ -692,6 +705,12 @@ jobs:
                - You may need administrator rights to install to Program Files
                - The launcher will automatically download `sing-box` and `wintun.dll` on first launch
 
+            #### Windows 7 (x86, legacy)
+
+            1. Download: `singbox-launcher-${{ needs.meta.outputs.version }}-win7-32.zip`
+            2. Extract the ZIP file to a folder and run `singbox-launcher-win7-32.exe`
+               - For Windows 7 / 32-bit or legacy compatibility only
+
             #### Linux Support
 
             ⚠️ **Linux build temporarily unavailable** - мы ищем тестировщика для ручного тестирования перед включением автоматической сборки.
@@ -705,6 +724,7 @@ jobs:
             release-artifacts/singbox-launcher-${{ needs.meta.outputs.version }}-macos.zip
             release-artifacts/singbox-launcher-${{ needs.meta.outputs.version }}-macos-catalina.zip
             release-artifacts/singbox-launcher-${{ needs.meta.outputs.version }}-win64.zip
+            release-artifacts/singbox-launcher-${{ needs.meta.outputs.version }}-win7-32.zip
             release-artifacts/checksums.txt
           draft: true
           prerelease: ${{ needs.meta.outputs.prerelease }}
