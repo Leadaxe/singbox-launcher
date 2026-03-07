@@ -646,18 +646,26 @@ func (tab *CoreDashboardTab) updateConfigInfo() {
 }
 
 // updateVersionInfo обновляет информацию о версии (по аналогии с updateWintunStatus).
-// Сначала синхронно получает установленную версию, чтобы она отображалась сразу; затем в фоне — кеш для кнопки Update/Download.
+// Весь сценарий выполняется в одной горутине: GetInstalledCoreVersion() может долго выполняться (запуск sing-box version
+// на медленной системе), поэтому вызов в UI-потоке приводил бы к краткому «зависанию» при открытии вкладки. Здесь
+// версия запрашивается в фоне, UI обновляется через fyne.Do; затем в той же горутине вызывается updateVersionInfoAsync
+// для подписи кнопки Download/Update по кешу. Итог: вкладка открывается без блокировки, статус и кнопка появляются
+// с небольшой задержкой.
 func (tab *CoreDashboardTab) updateVersionInfo() error {
-	installedVersion, err := tab.controller.GetInstalledCoreVersion()
-	if err != nil {
-		tab.singboxStatusLabel.Importance = widget.MediumImportance
-		tab.downloadButton.Importance = widget.HighImportance
-		tab.setSingboxState("❌ not found", "Download", -1)
-	} else {
-		tab.singboxStatusLabel.Importance = widget.MediumImportance
-		tab.setSingboxState(installedVersion, "", -1)
-	}
-	go tab.updateVersionInfoAsync(installedVersion, err != nil)
+	go func() {
+		installedVersion, err := tab.controller.GetInstalledCoreVersion()
+		fyne.Do(func() {
+			if err != nil {
+				tab.singboxStatusLabel.Importance = widget.MediumImportance
+				tab.downloadButton.Importance = widget.HighImportance
+				tab.setSingboxState("❌ not found", "Download", -1)
+			} else {
+				tab.singboxStatusLabel.Importance = widget.MediumImportance
+				tab.setSingboxState(installedVersion, "", -1)
+			}
+		})
+		tab.updateVersionInfoAsync(installedVersion, err != nil)
+	}()
 	return nil
 }
 
