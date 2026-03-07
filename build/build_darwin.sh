@@ -290,5 +290,11 @@ else
     echo "  Supports: Intel Macs only"
 fi
 echo "  Run with: open $APP_NAME"
+echo ""
+echo "To install or update the app in /Applications, run:"
+echo "  cp -R \"$(pwd)/$APP_NAME\" /Applications/"
+echo ""
+echo "Or to update only the binary (if the app is already in /Applications):"
+echo "  cp \"$(pwd)/$APP_NAME/Contents/MacOS/$BASE_NAME\" \"/Applications/$APP_NAME/Contents/MacOS/$BASE_NAME\""
 echo "========================================"
 
