@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"singbox-launcher/internal/debuglog"
@@ -363,6 +364,36 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 	totalSize := resp.ContentLength
 	var downloaded int64
 
+	// Idle timeout: if no data received for 1 minute, abort (avoids hanging on stalled connections).
+	const idleTimeout = 1 * time.Minute
+	lastRead := time.Now()
+	var lastReadMu sync.Mutex
+	var stallAbort bool
+	var stallMu sync.Mutex
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				lastReadMu.Lock()
+				t := lastRead
+				lastReadMu.Unlock()
+				if time.Since(t) > idleTimeout {
+					stallMu.Lock()
+					stallAbort = true
+					stallMu.Unlock()
+					_ = resp.Body.Close()
+					return
+				}
+			}
+		}
+	}()
+
 	// Download with progress tracking
 	buf := make([]byte, 32*1024) // 32KB buffer
 	for {
@@ -375,6 +406,9 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
+			lastReadMu.Lock()
+			lastRead = time.Now()
+			lastReadMu.Unlock()
 			written, writeErr := file.Write(buf[:n])
 			if writeErr != nil {
 				return fmt.Errorf("downloadFileFromURL: write failed: %w", writeErr)
@@ -395,6 +429,12 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 			break
 		}
 		if err != nil {
+			stallMu.Lock()
+			aborted := stallAbort
+			stallMu.Unlock()
+			if aborted {
+				return fmt.Errorf("downloadFileFromURL: no data received for 1 minute (connection stalled)")
+			}
 			return fmt.Errorf("downloadFileFromURL: read failed: %w", err)
 		}
 	}

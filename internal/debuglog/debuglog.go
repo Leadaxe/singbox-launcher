@@ -74,7 +74,9 @@ func defaultLevelByBuild() Level {
 }
 
 // Log writes a log message with the specified prefix and level.
-// The message is only logged if the level is less than or equal to GlobalLevel.
+// The message is written to the log file only if level <= GlobalLevel.
+// When the diagnostics log viewer is open (internal log sink set), the sink receives
+// all messages up to LevelTrace so the viewer can show Trace/Verbose/Info regardless of GlobalLevel.
 //
 // Parameters:
 //   - prefix: log prefix (e.g., "DEBUG", "ERROR"). If empty, no prefix is added.
@@ -82,25 +84,33 @@ func defaultLevelByBuild() Level {
 //   - format: format string (same as fmt.Printf).
 //   - args: arguments for the format string.
 func Log(prefix string, level Level, format string, args ...interface{}) {
-	if level > GlobalLevel {
+	internalLogSinkMu.RLock()
+	sink := internalLogSink
+	internalLogSinkMu.RUnlock()
+
+	// Skip only if neither file nor sink will receive this message.
+	fileLog := level <= GlobalLevel
+	viewerWants := sink != nil && level <= LevelTrace
+	if !fileLog && !viewerWants {
 		return
 	}
+
 	message := fmt.Sprintf(format, args...)
 	var line string
 	if prefix != "" {
 		line = fmt.Sprintf("[%s] %s", prefix, message)
-		log.Printf("[%s] %s", prefix, message)
+		if fileLog {
+			log.Printf("[%s] %s", prefix, message)
+		}
 	} else {
 		line = message
-		log.Print(message)
+		if fileLog {
+			log.Print(message)
+		}
 	}
-	internalLogSinkMu.RLock()
-	fn := internalLogSink
-	internalLogSinkMu.RUnlock()
-	if fn != nil {
-		// Include timestamp for the log viewer (file log uses log package's default format)
+	if viewerWants {
 		lineWithTime := fmt.Sprintf("%s %s", time.Now().Format("2006-01-02 15:04:05"), line)
-		fn(level, lineWithTime)
+		sink(level, lineWithTime)
 	}
 }
 
