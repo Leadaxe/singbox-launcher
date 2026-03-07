@@ -39,7 +39,8 @@ func (p *WizardPresenter) TriggerParseForPreview() {
 		return
 	}
 	p.SyncGUIToModel()
-	if strings.TrimSpace(p.model.SourceURLs) == "" || strings.TrimSpace(p.model.ParserConfigJSON) == "" {
+	// Only ParserConfig is required; SourceURLs is not used (sources come from ParserConfig.Proxies).
+	if strings.TrimSpace(p.model.ParserConfigJSON) == "" {
 		return
 	}
 

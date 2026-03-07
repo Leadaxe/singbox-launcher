@@ -185,8 +185,8 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 		return err
 	}
 
-	// Step 3: Keep source URL entry empty on load so the field is for adding new URLs only.
-	// Existing sources are already in ParserConfig and shown in the Sources list.
+	// Step 3: SourceURLs is only the input field for "Add"; source of truth for existing sources is ParserConfig.Proxies.
+	// Keep it empty on load so the field is for adding new URLs only; existing sources are shown from Proxies.
 	p.model.SourceURLs = ""
 
 	// Восстановление config_params (шаг 4)
@@ -282,8 +282,8 @@ func (p *WizardPresenter) restoreCustomRules(persistedRules []wizardmodels.Persi
 	}
 }
 
-// extractSourceURLsFromParserConfig извлекает SourceURLs из модели (p.model.ParserConfig).
-// Объединяет Source и Connections из всех ProxySource в одну строку, разделенную переносами строк.
+// extractSourceURLsFromParserConfig derives a single string from model (p.model.ParserConfig.Proxies).
+// Combines Source and Connections from all ProxySource; for display/export only, not used to overwrite config.
 func (p *WizardPresenter) extractSourceURLsFromParserConfig() string {
 	if p.model.ParserConfig == nil || len(p.model.ParserConfig.ParserConfig.Proxies) == 0 {
 		return ""

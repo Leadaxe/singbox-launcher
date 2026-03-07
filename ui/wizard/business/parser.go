@@ -77,37 +77,9 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 	debuglog.DebugLog("parseAndPreview: Parsed ParserConfig (sources: %d, outbounds: %d)",
 		len(parserConfig.ParserConfig.Proxies), len(parserConfig.ParserConfig.Outbounds))
 
-	// Check for URL or direct links
-	url := strings.TrimSpace(model.SourceURLs)
-	debuglog.DebugLog("parseAndPreview: URL text length: %d bytes", len(url))
-	if url == "" {
-		debuglog.DebugLog("parseAndPreview: URL is empty, returning early")
-		updater.UpdateSaveButtonText("Save")
-		return fmt.Errorf("VLESS URL or direct links are empty")
-	}
-
-	// Update config through ApplyURLToParserConfig, which correctly separates subscriptions and connections
-	applyStartTime := time.Now()
-	debuglog.DebugLog("parseAndPreview: Applying URL to ParserConfig")
-	if err := ApplyURLToParserConfig(ctx, url); err != nil {
-		debuglog.DebugLog("parseAndPreview: Failed to apply URL to ParserConfig: %v", err)
-	}
-	timing.LogTiming("apply URL to ParserConfig", time.Since(applyStartTime))
-
-	// Reload parserConfig after update
-	reloadStartTime := time.Now()
-	parserConfigJSON = strings.TrimSpace(model.ParserConfigJSON)
-	if parserConfigJSON != "" {
-		if err := json.Unmarshal([]byte(parserConfigJSON), &parserConfig); err != nil {
-			timing.LogTiming("reload ParserConfig JSON", time.Since(reloadStartTime))
-			debuglog.DebugLog("parseAndPreview: Failed to parse updated ParserConfig JSON: %v", err)
-			updater.UpdateSaveButtonText("Save")
-			return fmt.Errorf("failed to parse updated ParserConfig JSON: %w", err)
-		}
-		timing.LogTiming("reload ParserConfig", time.Since(reloadStartTime))
-		debuglog.DebugLog("parseAndPreview: Reloaded ParserConfig (sources: %d)",
-			len(parserConfig.ParserConfig.Proxies))
-	}
+	// Generate outbounds from current ParserConfig only. Do not apply SourceURLs here:
+	// applying would replace all proxies with the URL field content and drop other sources
+	// (e.g. after reopening wizard and editing prefixes, switching to Preview would overwrite).
 
 	// Generate all outbounds using unified function
 	// This eliminates code duplication and adds support for local outbounds

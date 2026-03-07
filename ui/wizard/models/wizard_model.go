@@ -3,8 +3,8 @@
 // Файл wizard_model.go определяет WizardModel — чистую модель данных визарда без GUI зависимостей.
 //
 // WizardModel содержит только бизнес-данные (без Fyne виджетов):
-//   - ParserConfig данные (ParserConfigJSON, ParserConfig)
-//   - Источники (SourceURLs)
+//   - ParserConfig данные (ParserConfigJSON, ParserConfig) — источник истины для списка источников (Proxies)
+//   - SourceURLs — поле ввода для добавления новых URL (кнопка Add); не источник истины для существующих источников
 //   - Сгенерированные outbounds (GeneratedOutbounds, OutboundStats)
 //   - Template данные (TemplateData)
 //   - Правила (SelectableRuleStates, CustomRules, SelectedFinalOutbound)
@@ -42,11 +42,11 @@ type OutboundStats struct {
 
 // WizardModel — модель данных визарда конфигурации.
 type WizardModel struct {
-	// ParserConfig данные
+	// ParserConfig данные (источник истины для списка источников Proxies)
 	ParserConfigJSON string
 	ParserConfig     *config.ParserConfig
 
-	// Источники
+	// SourceURLs — текст в поле "Subscription URL or Direct Links" (ввод для кнопки Add); не используется для замены Proxies
 	SourceURLs string
 
 	// Сгенерированные outbounds и endpoints (WireGuard)

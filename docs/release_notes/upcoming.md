@@ -34,6 +34,10 @@
 - Wizard: proxy list building unified — one type (proxyInput) and one function (buildProxiesFromInputs) for both subscriptions and connection block; createSubscriptionProxies and matchOrCreateConnectionProxy removed. Apply and Append use the same builder with startIndex and skipConnectionsIfIn.
 - Wizard/parser: dead code removed (countConnectionOnlyProxies); isConnectionOnlyProxy() used for connection-only detection; "Not preserving other connection ProxySources" log only in Apply mode.
 
+**Fixes**
+
+- Wizard: fixed sources disappearing after reopening wizard, changing prefixes, and saving. ParseAndPreview no longer applies the URL field to ParserConfig (which was replacing all proxies with a single source); preview and save use only ParserConfig.Proxies as the source of truth. TriggerParseForPreview no longer requires the URL field to be non-empty.
+
 ---
 
 ## RU
@@ -63,3 +67,7 @@
 - Визард: префикс тега для новых источников — общий числовой индекс (1:, 2:, 3:, …) для подписок и connection-only блоков. При Append новые прокси получают индексы после существующих (например 4:, 5: при трёх уже существующих).
 - Визард: сборка списка прокси унифицирована — один тип (proxyInput) и одна функция (buildProxiesFromInputs) для подписок и блока connections; createSubscriptionProxies и matchOrCreateConnectionProxy удалены. Apply и Append используют один и тот же построитель с startIndex и skipConnectionsIfIn.
 - Визард/parser: удалён мёртвый код (countConnectionOnlyProxies); введена isConnectionOnlyProxy(); лог «Not preserving other connection ProxySources» только в режиме Apply.
+
+**Исправления**
+
+- Визард: исправлено исчезновение источников после повторного открытия визарда, смены префиксов и сохранения. ParseAndPreview больше не подставляет поле URL в ParserConfig (из-за этого все прокси заменялись одним источником); превью и сохранение используют только ParserConfig.Proxies как источник истины. Для запуска парсинга превью поле URL больше не обязательно.

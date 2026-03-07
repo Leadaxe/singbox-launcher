@@ -4,7 +4,7 @@
 //   - SaveConfig - асинхронное сохранение конфигурации с прогресс-баром и проверками
 //
 // SaveConfig выполняет следующие шаги:
-//  1. Проверяет, что ParserConfig и SourceURLs заполнены
+//  1. Проверяет, что ParserConfig заполнен (хотя бы один proxy с Source или Connections)
 //  2. Генерирует конфигурацию из текущей модели (BuildTemplateConfig; без ожидания парсинга outbounds)
 //  3. Сохраняет конфигурацию в файл с созданием бэкапа (SaveConfigWithBackup)
 //  4. Показывает диалог успешного сохранения; после сохранения в фоне запускается RunParserProcess (update from subscriptions)

@@ -11,7 +11,7 @@
 //
 // Взаимодействует с:
 //   - presenter - все действия пользователя (нажатия кнопок, ввод текста) обрабатываются через методы presenter
-//   - business - вызывает ParseAndPreview через presenter (ApplyURLToParserConfig и т.д.)
+//   - business - AppendURLsToParserConfig по кнопке Add; список источников из model.ParserConfig.Proxies
 package tabs
 
 import (
