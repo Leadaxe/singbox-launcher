@@ -114,7 +114,7 @@ func ShowDownloadFailedManual(window fyne.Window, title, downloadURL, targetDir 
 				}
 			}
 			copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
-				window.Clipboard().SetContent(downloadURL)
+				fyne.CurrentApp().Clipboard().SetContent(downloadURL)
 			})
 			copyBtn.Importance = widget.LowImportance
 			linkRow := container.NewHBox(link, copyBtn)
@@ -147,6 +147,36 @@ func ShowDownloadFailedManual(window fyne.Window, title, downloadURL, targetDir 
 func ShowError(window fyne.Window, err error) {
 	fyne.Do(func() {
 		dialog.ShowError(err, window)
+	})
+}
+
+// ShowLinuxCapabilitiesRequired shows a dialog for the Linux capabilities message
+// with the setcap command in a selectable entry and a Copy button (issue #34).
+// title is the dialog title (e.g. "Error" or "Linux Capabilities"); message is the full
+// text (warning + explanation); command is the single line to copy (e.g. sudo setcap ...).
+func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command string) {
+	fyne.Do(func() {
+		mainContent := container.NewVBox()
+		msgLabel := widget.NewLabel(message)
+		msgLabel.Wrapping = fyne.TextWrapWord
+		mainContent.Add(msgLabel)
+
+		// Selectable command line and Copy button
+		entry := widget.NewEntry()
+		entry.SetText(command)
+		entry.Disable()
+		entry.Wrapping = fyne.TextWrapOff
+		copyBtn := widget.NewButtonWithIcon("Copy", theme.ContentCopyIcon(), func() {
+			if command != "" {
+				fyne.CurrentApp().Clipboard().SetContent(command)
+			}
+		})
+		copyBtn.Importance = widget.LowImportance
+		cmdRow := container.NewBorder(nil, nil, nil, copyBtn, entry)
+		mainContent.Add(cmdRow)
+
+		d := NewCustom(title, mainContent, nil, "OK", window)
+		d.Show()
 	})
 }
 

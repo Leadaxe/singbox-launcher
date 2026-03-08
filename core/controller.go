@@ -375,9 +375,10 @@ func CheckLinuxCapabilities() {
 	}
 	if suggestion := platform.CheckAndSuggestCapabilities(ac.FileService.SingboxPath); suggestion != "" {
 		debuglog.InfoLog("CheckLinuxCapabilities: %s", suggestion)
-		// Show info dialog (not error) - capabilities can be set later
+		// Show dialog with selectable command and Copy button (issue #34)
 		if ac.hasUI() {
-			dialogs.ShowInfo(ac.UIService.MainWindow, "Linux Capabilities", suggestion)
+			cmd := platform.GetSetCapCommand(ac.FileService.SingboxPath)
+			dialogs.ShowLinuxCapabilitiesRequired(ac.UIService.MainWindow, "Linux Capabilities", suggestion, cmd)
 		}
 	}
 }

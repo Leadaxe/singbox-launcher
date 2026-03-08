@@ -66,6 +66,11 @@ func CheckAndSuggestCapabilities(singboxPath string) string {
 	return "" // Capabilities are Linux-specific, not needed on macOS
 }
 
+// GetSetCapCommand returns empty on macOS (capabilities are Linux-only).
+func GetSetCapCommand(singboxPath string) string {
+	return ""
+}
+
 // GetSystemSOCKSProxy returns system SOCKS proxy settings if enabled
 // Returns proxy host, port, and enabled status
 // Checks network interfaces in priority order and returns the first interface with enabled proxy

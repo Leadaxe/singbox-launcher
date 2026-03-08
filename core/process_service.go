@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/internal/ctxutil"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/platform"
@@ -78,7 +79,8 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 	if suggestion := platform.CheckAndSuggestCapabilities(ac.FileService.SingboxPath); suggestion != "" {
 		debuglog.WarnLog("startSingBox: Capabilities check failed: %s", suggestion)
 		if ac.UIService != nil && ac.UIService.MainWindow != nil {
-			dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("Linux capabilities required\n\n%s", suggestion))
+			cmd := platform.GetSetCapCommand(ac.FileService.SingboxPath)
+			dialogs.ShowLinuxCapabilitiesRequired(ac.UIService.MainWindow, "Error", "Linux capabilities required\n\n"+suggestion, cmd)
 		}
 		return
 	}
@@ -268,17 +270,15 @@ func (svc *ProcessService) onPrivilegedScriptExited() {
 	if ac.RunningState.IsRunning() {
 		currentAttemptCount := ac.ConsecutiveCrashAttempts
 		go func() {
-			select {
-			case <-ac.ctx.Done():
+			if ctxutil.SleepWithContext(ac.ctx, stabilityThreshold) != nil {
 				return
-			case <-time.After(stabilityThreshold):
-				ac.CmdMutex.Lock()
-				defer ac.CmdMutex.Unlock()
-				if ac.RunningState.IsRunning() && ac.ConsecutiveCrashAttempts == currentAttemptCount {
-					ac.ConsecutiveCrashAttempts = 0
-					if ac.UIService != nil && ac.UIService.UpdateCoreStatusFunc != nil {
-						ac.UIService.UpdateCoreStatusFunc()
-					}
+			}
+			ac.CmdMutex.Lock()
+			defer ac.CmdMutex.Unlock()
+			if ac.RunningState.IsRunning() && ac.ConsecutiveCrashAttempts == currentAttemptCount {
+				ac.ConsecutiveCrashAttempts = 0
+				if ac.UIService != nil && ac.UIService.UpdateCoreStatusFunc != nil {
+					ac.UIService.UpdateCoreStatusFunc()
 				}
 			}
 		}()
@@ -352,23 +352,18 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 		debuglog.InfoLog("monitorSingBox: Sing-Box restarted successfully.")
 		currentAttemptCount := ac.ConsecutiveCrashAttempts
 		go func() {
-			select {
-			case <-ac.ctx.Done():
+			if ctxutil.SleepWithContext(ac.ctx, stabilityThreshold) != nil {
 				debuglog.InfoLog("monitorSingBox: Stability check cancelled (context cancelled)")
 				return
-			case <-time.After(stabilityThreshold):
-				ac.CmdMutex.Lock()
-				defer ac.CmdMutex.Unlock()
-
-				if ac.RunningState.IsRunning() && ac.ConsecutiveCrashAttempts == currentAttemptCount {
-					debuglog.DebugLog("monitorSingBox: Process has been stable for %v. Resetting crash counter from %d to 0.", stabilityThreshold, ac.ConsecutiveCrashAttempts)
-					ac.ConsecutiveCrashAttempts = 0
-					// Обновляем UI, чтобы счетчик исчез из статуса на вкладке Core
-					if ac.UIService != nil && ac.UIService.UpdateCoreStatusFunc != nil {
-						ac.UIService.UpdateCoreStatusFunc()
-					}
+			}
+			ac.CmdMutex.Lock()
+			defer ac.CmdMutex.Unlock()
+			if ac.RunningState.IsRunning() && ac.ConsecutiveCrashAttempts == currentAttemptCount {
+				debuglog.DebugLog("monitorSingBox: Process has been stable for %v. Resetting crash counter from %d to 0.", stabilityThreshold, ac.ConsecutiveCrashAttempts)
+				ac.ConsecutiveCrashAttempts = 0
+				if ac.UIService != nil && ac.UIService.UpdateCoreStatusFunc != nil {
+					ac.UIService.UpdateCoreStatusFunc()
 				}
-				// Когда сброс не выполнен (процесс уже остановлен или счётчик изменился), не логируем — избегаем шума по таймеру
 			}
 		}()
 	} else {
