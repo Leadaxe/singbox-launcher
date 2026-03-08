@@ -20,6 +20,10 @@
 | **constitution.md** | Неизменяемые принципы проекта — приоритеты, архитектура, ограничения, запреты |
 | **IMPLEMENTATION_PROMPT.md** | Универсальный промпт для реализации — философия разработки, требования к коду, Definition of Done, ограничения (Git, консоль). Используется при реализации задач из SPEC/PLAN/TASKS |
 
+## Баги и мелочи (issues/)
+
+Папка **issues/** — баги и мелкие улучшения в том же формате Spec Kit, что и фичи. Каждый issue — папка `issues/NNN-short-name/` с документами **SPEC → PLAN → TASKS → IMPLEMENTATION_REPORT**. SPEC описывает проблему (симптомы, воспроизведение, гипотезы), цель и требования; PLAN/TASKS заполняются при принятии в работу. Подробнее: [issues/README.md](issues/README.md).
+
 ## Текущие фичи
 
 - **WIREGUARD_URI/** — поддержка формата `wireguard://` в Source, Connections и подписке (парсинг в ParsedNode и генерация sing-box endpoint)

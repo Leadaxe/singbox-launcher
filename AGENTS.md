@@ -37,7 +37,7 @@
 
 ## 2. Формат задач (Spec Kit)
 
-Крупные фичи описаны в `todo/{FEATURE_NAME}/`:
+Крупные фичи описаны в `todo/{FEATURE_NAME}/`. Баги и мелочи — в `todo/issues/NNN-short-name/` с тем же набором SPEC, PLAN, TASKS, IMPLEMENTATION_REPORT (см. todo/issues/README.md).
 
 | Файл | Содержит |
 |------|----------|
@@ -96,7 +96,7 @@
 
 - **Архитектура и потоки:** `docs/ARCHITECTURE.md`
 - **Принципы и запреты:** `todo/constitution.md`
-- **Текущие фичи и задачи:** `todo/README.md`, затем `todo/{FEATURE}/SPEC.md`, `PLAN.md`, `TASKS.md`
+- **Текущие фичи и задачи:** `todo/README.md`, затем `todo/{FEATURE}/` или `todo/issues/NNN-name/` (SPEC.md, PLAN.md, TASKS.md)
 - **Правила реализации и DoD:** `todo/IMPLEMENTATION_PROMPT.md`
 - **Сборка, тесты:** `docs/BUILD_WINDOWS.md`, `docs/TEST_README.md`; тесты — рядом с кодом (`*_test.go`), GUI-пакеты исключены из `go test` (см. constitution).
 - **Конфиг парсера:** `docs/ParserConfig.md`; шаблон визарда — `bin/wizard_template.json`.
