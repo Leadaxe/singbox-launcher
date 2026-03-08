@@ -195,8 +195,8 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				if copyText == "" {
 					return
 				}
-				if guiState.Window != nil && guiState.Window.Clipboard() != nil {
-					guiState.Window.Clipboard().SetContent(copyText)
+				if guiState.Window != nil {
+					fyne.CurrentApp().Clipboard().SetContent(copyText)
 					dialogs.ShowAutoHideInfo(fyne.CurrentApp(), guiState.Window, "Copied", "Source copied to clipboard.")
 				}
 			})
