@@ -64,3 +64,13 @@
 ## Assumptions
 
 - ReloadClashAPIConfig по логике нужен только при запуске sing-box; после Update не вызывается.
+
+## По ходу сделано дополнительно
+
+- **Кнопка Restart (Core):** между Start и Stop добавлена кнопка перезапуска (🔄). Убивает процесс sing-box без флага StoppedByUser; вотчер перезапускает его. Флаг `RestartRequestedByUser` в контроллере; в Monitor и onPrivilegedScriptExited при этом флаге вызывается `Start(true)`. В UI при нажатии — статус «Restarting...», кратко показывается состояние кнопок «Stopped» (Start активна, Stop неактивна), затем снова «Running». Файлы: `core/controller.go`, `core/process_service.go`, `ui/core_dashboard_tab.go`.
+- **Привилегированный старт в platform:** имена скрипта/PID/pattern и создание скрипта запуска вынесены в `internal/platform`: константы `PrivilegedScriptName`, `PrivilegedPidFileName`, `PrivilegedPkillPattern`, функция `WritePrivilegedStartScript(...)` в `privileged_darwin.go`; заглушки в `privileged_stub.go`. В `core/process_service.go` остаётся оркестрация: вызов platform для записи скрипта, RunWithPrivileges, состояние, WaitForPrivilegedExit, onPrivilegedScriptExited.
+- **Release notes:** в `docs/release_notes/upcoming.md` добавлен пункт про кнопку Restart (EN и RU).
+
+## Статус
+
+- Задача 012 реализована и закрыта.
