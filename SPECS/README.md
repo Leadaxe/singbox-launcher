@@ -47,6 +47,7 @@
 - **001–010** — завершённые фичи (F-C): FEATURES_2025, WIZARD_STATE, UNIFIED_CONFIG_TEMPLATE, SRS_LOCAL_DOWNLOAD, DOWNLOAD_FAILED_MANUAL, PING_ERROR_TOOLTIP, DIAGNOSTICS_LOG_VIEWER, OUTBOUNDS_CONFIGURATOR, WIREGUARD_URI, OUTBOUND_EDIT_PREVIEW_TAB
 - **011–012** — баги (B): launcher-freeze-after-sleep (C), update-reload-clash-config (O)
 - **013–014, 016** — фичи в работе/плане (F-N): LOCALIZATION, RULE_TYPE_SRS_URL, SUBSCRIPTION_JSON_ARRAY
+- **017** — фича завершена (F-C): RULE_TYPE_PROCESS_PATH_REGEX (Match by path)
 - **015** — исследование закрыто (Q-C): TELEMETRY
 
 Подробное описание каждой задачи — в SPEC.md соответствующей папки.
