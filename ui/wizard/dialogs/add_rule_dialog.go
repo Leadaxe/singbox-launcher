@@ -120,6 +120,18 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	processesLabel := widget.NewLabel("Processes (select one or more via popup):")
 	selectProcessesButton := widget.NewButton("Select Processes...", func() {})
 
+	// Match by path: checkbox, Simple/Regex radio, path patterns multiline
+	matchByPathCheck := widget.NewCheck("Match by path", func(bool) {})
+	pathModeRadio := widget.NewRadioGroup([]string{"Simple", "Regex"}, func(string) {})
+	pathPatternsEntry := widget.NewMultiLineEntry()
+	pathPatternsEntry.SetPlaceHolder("One per line. Use * as wildcard (e.g. */steam/* or *\\Steam\\*).")
+	pathPatternsEntry.Wrapping = fyne.TextWrapWord
+	pathPatternsScroll := container.NewScroll(pathPatternsEntry)
+	pathPatternsSizeRect := canvas.NewRectangle(color.Transparent)
+	pathPatternsSizeRect.SetMinSize(fyne.NewSize(0, inputFieldHeight))
+	pathPatternsContainer := container.NewMax(pathPatternsSizeRect, pathPatternsScroll)
+	pathPatternsLabel := widget.NewLabel("Path patterns (one per line):")
+
 	// Custom JSON field (initialised early so it can be loaded when editing)
 	customEntry := widget.NewMultiLineEntry()
 	customEntry.SetPlaceHolder("Custom JSON (e.g., {})")
@@ -182,10 +194,12 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		outboundMap[opt] = true
 	}
 
-	// Determine initial rule type and load data
+	// Determine initial rule type and load data (для нового правила — первая позиция: IP)
 	domainRegexInitial := ""
 	domainRegexInitialSet := false
-	ruleType := RuleTypeDomain
+	pathPatternsInitial := ""
+	matchByPathInitial := false
+	ruleType := RuleTypeIP // при создании по умолчанию первая позиция
 	if isEdit {
 		labelEntry.SetText(editRule.Rule.Label)
 		if editRule.SelectedOutbound != "" && outboundMap[editRule.SelectedOutbound] {
@@ -225,10 +239,16 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 					processesSelected = dedupeProcessStrings(procs)
 					sortProcessStrings(processesSelected)
 				}
+			} else if pathVal, ok := ruleData[ProcessPathRegexKey]; ok {
+				matchByPathInitial = true
+				ruleType = RuleTypeProcess
+				if arr := ExtractStringArray(pathVal); len(arr) > 0 {
+					pathPatternsInitial = strings.Join(arr, "\n")
+				}
 			}
 		}
 
-		if !hasIP && !hasDomain && !hasDomainRegex && !hasProc {
+		if !hasIP && !hasDomain && !hasDomainRegex && !hasProc && !matchByPathInitial {
 			// Custom rule: use Rule data (minus outbound) as JSON content
 			ruleType = RuleTypeCustom
 			if ruleData != nil {
@@ -245,6 +265,57 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			}
 		}
 	}
+
+	// Rule type selection: микро-модель + 4 checkboxes, "Match by path" по центру в строке Processes
+	ruleSel := NewRuleTypeSelection(ruleType)
+	var syncingRuleType bool // guard: при синхронизации чекбоксов из модели не реагировать на OnChanged
+	typeIPCheck := widget.NewCheck(RuleTypeIP, func(bool) {})
+	typeDomainCheck := widget.NewCheck(RuleTypeDomain, func(bool) {})
+	typeProcessCheck := widget.NewCheck(RuleTypeProcess, func(bool) {})
+	typeCustomCheck := widget.NewCheck(RuleTypeCustom, func(bool) {})
+	typeIPCheck.OnChanged = func(checked bool) {
+		if syncingRuleType {
+			return
+		}
+		if checked {
+			ruleSel.SetType(RuleTypeIP)
+		} else if ruleSel.Type() == RuleTypeIP {
+			typeIPCheck.SetChecked(true) // повторное нажатие на выбранную — оставить как есть
+		}
+		// снять у другого нельзя — выбран только один
+	}
+	typeDomainCheck.OnChanged = func(checked bool) {
+		if syncingRuleType {
+			return
+		}
+		if checked {
+			ruleSel.SetType(RuleTypeDomain)
+		} else if ruleSel.Type() == RuleTypeDomain {
+			typeDomainCheck.SetChecked(true)
+		}
+	}
+	typeProcessCheck.OnChanged = func(checked bool) {
+		if syncingRuleType {
+			return
+		}
+		if checked {
+			ruleSel.SetType(RuleTypeProcess)
+		} else if ruleSel.Type() == RuleTypeProcess {
+			typeProcessCheck.SetChecked(true)
+		}
+	}
+	typeCustomCheck.OnChanged = func(checked bool) {
+		if syncingRuleType {
+			return
+		}
+		if checked {
+			ruleSel.SetType(RuleTypeCustom)
+		} else if ruleSel.Type() == RuleTypeCustom {
+			typeCustomCheck.SetChecked(true)
+		}
+	}
+	processTypeRow := container.NewHBox(typeProcessCheck, layout.NewSpacer(), matchByPathCheck, layout.NewSpacer())
+	ruleTypeContainer := container.NewVBox(typeIPCheck, typeDomainCheck, processTypeRow, typeCustomCheck)
 
 	// Manage field visibility
 	ipLabel := widget.NewLabel("IP Addresses (one per line, CIDR format):")
@@ -271,9 +342,32 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			processesLabel.Hide()
 			processesContainerWrap.Hide()
 			selectProcessesButton.Hide()
+			matchByPathCheck.Hide()
+			pathPatternsLabel.Hide()
+			pathPatternsContainer.Hide()
+			pathModeRadio.Hide()
 			customContainer.Hide()
 			customLabel.Hide()
-
+		}
+		updateProcessModeVisibility := func() {
+			if ruleSel.Type() != RuleTypeProcess {
+				return
+			}
+			if matchByPathCheck.Checked {
+				processesLabel.Hide()
+				processesContainerWrap.Hide()
+				selectProcessesButton.Hide()
+				pathPatternsLabel.Show()
+				pathPatternsContainer.Show()
+				pathModeRadio.Show()
+			} else {
+				processesLabel.Show()
+				processesContainerWrap.Show()
+				selectProcessesButton.Show()
+				pathPatternsLabel.Hide()
+				pathPatternsContainer.Hide()
+				pathModeRadio.Hide()
+			}
 		}
 		showProcess := func() {
 			ipLabel.Hide()
@@ -282,11 +376,10 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			urlContainer.Hide()
 			domainRegexCheck.Hide()
 			domainRegexEntry.Hide()
-			processesLabel.Show()
-			processesContainerWrap.Show()
-			selectProcessesButton.Show()
+			matchByPathCheck.Show()
 			customContainer.Hide()
 			customLabel.Hide()
+			updateProcessModeVisibility()
 		}
 		showDomain := func() {
 			ipLabel.Hide()
@@ -304,6 +397,10 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			processesLabel.Hide()
 			processesContainerWrap.Hide()
 			selectProcessesButton.Hide()
+			matchByPathCheck.Hide()
+			pathPatternsLabel.Hide()
+			pathPatternsContainer.Hide()
+			pathModeRadio.Hide()
 			customContainer.Hide()
 			customLabel.Hide()
 		}
@@ -317,6 +414,10 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			processesLabel.Hide()
 			processesContainerWrap.Hide()
 			selectProcessesButton.Hide()
+			matchByPathCheck.Hide()
+			pathPatternsLabel.Hide()
+			pathPatternsContainer.Hide()
+			pathModeRadio.Hide()
 			customContainer.Show()
 			customLabel.Show()
 		}
@@ -337,7 +438,6 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	var confirmButton *widget.Button
 	var saveRule func()
 	var updateButtonState func()
-	var ruleTypeRadio *widget.RadioGroup
 	var dialogWindow fyne.Window
 
 	parseCustomJSON := func() (map[string]interface{}, error) {
@@ -365,6 +465,34 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				"outbound": selectedOutbound,
 			}, nil
 		case RuleTypeProcess:
+			if matchByPathCheck.Checked {
+				lines := ParseLines(pathPatternsEntry.Text, false)
+				if len(lines) == 0 {
+					return nil, errors.New("enter at least one path pattern")
+				}
+				regexList := make([]string, 0, len(lines))
+				isSimple := pathModeRadio.Selected != "Regex"
+				for _, line := range lines {
+					var re string
+					if isSimple {
+						var err error
+						re, err = SimplePatternToRegex(line)
+						if err != nil {
+							return nil, err
+						}
+					} else {
+						if _, err := regexp.Compile(line); err != nil {
+							return nil, err
+						}
+						re = line
+					}
+					regexList = append(regexList, re)
+				}
+				return map[string]interface{}{
+					ProcessPathRegexKey: regexList,
+					"outbound":         selectedOutbound,
+				}, nil
+			}
 			items := make([]string, len(processesSelected))
 			copy(items, processesSelected)
 			return map[string]interface{}{
@@ -399,13 +527,29 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		if strings.TrimSpace(labelEntry.Text) == "" {
 			return false
 		}
-		if ruleTypeRadio == nil {
-			return false
-		}
-		switch ruleTypeRadio.Selected {
+		switch ruleSel.Type() {
 		case RuleTypeIP:
 			return strings.TrimSpace(ipEntry.Text) != ""
 		case RuleTypeProcess:
+			if matchByPathCheck.Checked {
+				lines := ParseLines(pathPatternsEntry.Text, false)
+				if len(lines) == 0 {
+					return false
+				}
+				isSimple := pathModeRadio.Selected != "Regex"
+				for _, line := range lines {
+					if isSimple {
+						if _, err := SimplePatternToRegex(line); err != nil {
+							return false
+						}
+					} else {
+						if _, err := regexp.Compile(line); err != nil {
+							return false
+						}
+					}
+				}
+				return true
+			}
 			return len(processesSelected) > 0
 		case RuleTypeCustom:
 			return strings.TrimSpace(customEntry.Text) != ""
@@ -435,19 +579,54 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		}
 	}
 
-	// RadioGroup for rule type selection
-	ruleTypeRadio = widget.NewRadioGroup([]string{RuleTypeIP, RuleTypeDomain, RuleTypeProcess, RuleTypeCustom}, func(selected string) {
-		updateVisibility(selected)
+	// Синхронизация чекбоксов и UI при смене типа из модели (одно место, с guard)
+	onRuleTypeChange := func(s string) {
+		syncingRuleType = true
+		defer func() { syncingRuleType = false }()
+		typeIPCheck.SetChecked(s == RuleTypeIP)
+		typeDomainCheck.SetChecked(s == RuleTypeDomain)
+		typeProcessCheck.SetChecked(s == RuleTypeProcess)
+		typeCustomCheck.SetChecked(s == RuleTypeCustom)
+		updateVisibility(s)
 		if updateButtonState != nil {
 			updateButtonState()
 		}
-	})
-	ruleTypeRadio.SetSelected(ruleType)
-	updateVisibility(ruleType)
+	}
+	ruleSel.SetOnChange(onRuleTypeChange)
+	onRuleTypeChange(ruleSel.Type()) // начальная синхронизация при открытии (SetType не дергает OnChange, т.к. тип уже тот же)
+
+	// Default for path mode: Simple for new rules
+	pathModeRadio.SetSelected("Simple")
+
+	// When Match by path is toggled, refresh Process UI (name vs path) and validation
+	matchByPathCheck.OnChanged = func(bool) {
+		updateVisibility(ruleSel.Type())
+		if updateButtonState != nil {
+			updateButtonState()
+		}
+	}
+	pathModeRadio.OnChanged = func(selected string) {
+		if selected == "Regex" {
+			pathPatternsEntry.SetPlaceHolder("One per line. Full regex as-is (no /regex/i wrapping). E.g. ^C:\\\\Games\\\\.* or .*steam.*")
+		} else {
+			pathPatternsEntry.SetPlaceHolder("One per line. Use * as wildcard (e.g. */steam/* or *\\Steam\\*).")
+		}
+		if updateButtonState != nil {
+			updateButtonState()
+		}
+	}
+
+	// Restore Match by path state when editing rule with process_path_regex
+	if matchByPathInitial {
+		matchByPathCheck.SetChecked(true)
+		pathPatternsEntry.SetText(pathPatternsInitial)
+		pathModeRadio.SetSelected("Regex")
+		updateVisibility(ruleSel.Type())
+	}
 
 	saveRule = func() {
 		label := strings.TrimSpace(labelEntry.Text)
-		selectedType := ruleTypeRadio.Selected
+		selectedType := ruleSel.Type()
 		selectedOutbound := outboundSelect.Selected
 		// Fallback: if outbound not selected (e.g., when editing old rule with non-existent outbound)
 		if selectedOutbound == "" {
@@ -516,7 +695,8 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	ipEntry.OnChanged = func(string) { updateButtonState() }
 	urlEntry.OnChanged = func(string) { updateButtonState() }
 	domainRegexEntry.OnChanged = func(string) { updateButtonState() }
-	domainRegexCheck.OnChanged = func(bool) { updateVisibility(ruleTypeRadio.Selected); updateButtonState() }
+	domainRegexCheck.OnChanged = func(bool) { updateVisibility(ruleSel.Type()); updateButtonState() }
+	pathPatternsEntry.OnChanged = func(string) { updateButtonState() }
 
 	// Helper to refresh selected processes UI (sorted by name)
 	var refreshSelectedProcessesUI func()
@@ -612,12 +792,12 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	// wire selector button
 	selectProcessesButton.OnTapped = func() { openProcessSelector() }
 
-	// Content container
+	// Content container: rule type = 4 rows, "Match by path" on same row as Processes
 	inputContainer := container.NewVBox(
 		widget.NewLabel("Rule Name:"),
 		labelEntry,
 		widget.NewLabel("Rule Type:"),
-		ruleTypeRadio,
+		ruleTypeContainer,
 		widget.NewSeparator(),
 		ipLabel,
 		ipContainer,
@@ -627,6 +807,9 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		processesLabel,
 		processesContainerWrap,
 		selectProcessesButton,
+		pathPatternsLabel,
+		pathPatternsContainer,
+		pathModeRadio,
 		customLabel,
 		customContainer,
 		widget.NewSeparator(),
@@ -654,7 +837,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		return
 	}
 	dialogWindow = controller.UIService.Application.NewWindow(dialogTitle)
-	dialogWindow.Resize(fyne.NewSize(500, 600))
+	dialogWindow.Resize(fyne.NewSize(500, 640))
 	dialogWindow.CenterOnScreen()
 	dialogWindow.SetContent(mainContent)
 

@@ -235,6 +235,9 @@ func DetermineRuleType(rule map[string]interface{}) string {
 	if _, ok := rule["process_name"]; ok {
 		return "Processes"
 	}
+	if _, ok := rule["process_path_regex"]; ok {
+		return "Processes"
+	}
 	return "System"
 }
 

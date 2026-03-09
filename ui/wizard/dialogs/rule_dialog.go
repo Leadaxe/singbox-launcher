@@ -15,6 +15,7 @@
 package dialogs
 
 import (
+	"regexp"
 	"strings"
 )
 
@@ -25,6 +26,8 @@ const (
 	RuleTypeCustom  = "Custom JSON"
 	// ProcessKey is the key used in saved rules and config for process-based rules
 	ProcessKey = "process_name"
+	// ProcessPathRegexKey is the key for process path regex rules (match by path)
+	ProcessPathRegexKey = "process_path_regex"
 )
 
 // ExtractStringArray extracts []string from interface{} (supports []interface{} and []string).
@@ -59,4 +62,25 @@ func ParseLines(text string, preserveOriginal bool) []string {
 		}
 	}
 	return result
+}
+
+// SimplePatternToRegex converts a simple pattern (with * as wildcard) to a valid regex string.
+// * is replaced by (.*); other regex metacharacters are escaped.
+func SimplePatternToRegex(pattern string) (string, error) {
+	var b strings.Builder
+	for _, r := range pattern {
+		if r == '*' {
+			b.WriteString("(.*)")
+		} else if strings.ContainsRune(`\.+?()[]{}^$|`, r) {
+			b.WriteByte('\\')
+			b.WriteRune(r)
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	s := b.String()
+	if _, err := regexp.Compile(s); err != nil {
+		return "", err
+	}
+	return s, nil
 }
