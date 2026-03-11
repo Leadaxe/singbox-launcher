@@ -99,8 +99,8 @@ func runPowerResumeListener() {
 	registerClassExW := user32.NewProc("RegisterClassExW")
 	createWindowExW := user32.NewProc("CreateWindowExW")
 	getMessageW := user32.NewProc("GetMessageW")
-	translateMessage := user32.NewProc("TranslateMessage")
-	dispatchMessageW := user32.NewProc("DispatchMessageW")
+		translateMessage := user32.NewProc("TranslateMessage")
+		dispatchMessageW := user32.NewProc("DispatchMessageW")
 	defWindowProcWProc := user32.NewProc("DefWindowProcW")
 
 	defWindowProcW = func(hwnd windows.HWND, msg uint32, wParam, lParam uintptr) uintptr {
@@ -179,8 +179,12 @@ func runPowerResumeListener() {
 			debuglog.ErrorLog("power: GetMessage failed")
 			break
 		}
-		translateMessage.Call(uintptr(unsafe.Pointer(&msg)))
-		dispatchMessageW.Call(uintptr(unsafe.Pointer(&msg)))
+		if _, _, err := translateMessage.Call(uintptr(unsafe.Pointer(&msg))); err != nil && err != windows.ERROR_SUCCESS {
+			debuglog.WarnLog("power: TranslateMessage failed: %v", err)
+		}
+		if _, _, err := dispatchMessageW.Call(uintptr(unsafe.Pointer(&msg))); err != nil && err != windows.ERROR_SUCCESS {
+			debuglog.WarnLog("power: DispatchMessageW failed: %v", err)
+		}
 	}
 }
 
@@ -231,7 +235,10 @@ func StopPowerResumeListener() {
 	postThreadMessageW := windows.NewLazySystemDLL("user32.dll").NewProc("PostThreadMessageW")
 	tid := powerResumeThreadId
 	if tid != 0 {
-		postThreadMessageW.Call(uintptr(tid), wmQuit, 0, 0)
-		debuglog.DebugLog("power: posted WM_QUIT to thread %d", tid)
+		if _, _, err := postThreadMessageW.Call(uintptr(tid), wmQuit, 0, 0); err != nil && err != windows.ERROR_SUCCESS {
+			debuglog.WarnLog("power: PostThreadMessageW failed for thread %d: %v", tid, err)
+		} else {
+			debuglog.DebugLog("power: posted WM_QUIT to thread %d", tid)
+		}
 	}
 }

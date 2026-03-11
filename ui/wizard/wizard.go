@@ -197,45 +197,6 @@ func loadConfigFromFile(presenter *wizardpresentation.WizardPresenter, fileServi
 	}
 }
 
-// loadStateFromFile загружает состояние из файла.
-func loadStateFromFile(presenter *wizardpresentation.WizardPresenter, stateStore *wizardbusiness.StateStore, stateID string, templateData *wizardtemplate.TemplateData, model *wizardmodels.WizardModel, wizardWindow fyne.Window) {
-	var stateFile *wizardmodels.WizardStateFile
-	var err error
-
-	if stateID == "" {
-		// Load state.json
-		stateFile, err = stateStore.LoadCurrentState()
-	} else {
-		// Load named state
-		stateFile, err = stateStore.LoadWizardState(stateID)
-		if err == nil {
-			// Copy to state.json
-			if err := stateStore.SaveCurrentState(stateFile); err != nil {
-				debuglog.WarnLog("loadStateFromFile: failed to copy state to state.json: %v", err)
-			}
-		}
-	}
-
-	if err != nil {
-		debuglog.ErrorLog("loadStateFromFile: failed to load state: %v", err)
-		dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to load state: %w", err))
-		// Fallback to config.json/template
-		fileServiceAdapter := &wizardbusiness.FileServiceAdapter{FileService: presenter.Controller().FileService}
-		loadConfigFromFile(presenter, fileServiceAdapter, templateData, model, wizardWindow)
-		return
-	}
-
-	// Load state into model
-	if err := presenter.LoadState(stateFile); err != nil {
-		debuglog.ErrorLog("loadStateFromFile: failed to load state into model: %v", err)
-		dialogs.ShowError(wizardWindow, fmt.Errorf("Failed to restore state: %w", err))
-		// Fallback to config.json/template
-		fileServiceAdapter := &wizardbusiness.FileServiceAdapter{FileService: presenter.Controller().FileService}
-		loadConfigFromFile(presenter, fileServiceAdapter, templateData, model, wizardWindow)
-		return
-	}
-}
-
 // initializeWizardContent инициализирует содержимое визарда (табы, кнопки и т.д.).
 func initializeWizardContent(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState, wizardWindow fyne.Window, model *wizardmodels.WizardModel, templateData *wizardtemplate.TemplateData) {
 	// Initialize template state

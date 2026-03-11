@@ -104,7 +104,11 @@ func downloadGetFreeJSON(presenter *wizardpresentation.WizardPresenter, force bo
 		}
 		return fmt.Errorf("failed to download: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			debuglog.WarnLog("downloadGetFreeJSON: failed to close response body: %v", cerr)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download failed: server returned status %d. Please try again later", resp.StatusCode)

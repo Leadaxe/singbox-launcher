@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"time"
 
 	"singbox-launcher/core"
@@ -280,24 +279,6 @@ func (p *WizardPresenter) restoreCustomRules(persistedRules []wizardmodels.Persi
 		ruleState := persistedRules[i].ToRuleState()
 		p.model.CustomRules = append(p.model.CustomRules, ruleState)
 	}
-}
-
-// extractSourceURLsFromParserConfig derives a single string from model (p.model.ParserConfig.Proxies).
-// Combines Source and Connections from all ProxySource; for display/export only, not used to overwrite config.
-func (p *WizardPresenter) extractSourceURLsFromParserConfig() string {
-	if p.model.ParserConfig == nil || len(p.model.ParserConfig.ParserConfig.Proxies) == 0 {
-		return ""
-	}
-
-	lines := make([]string, 0)
-	for _, proxySource := range p.model.ParserConfig.ParserConfig.Proxies {
-		if proxySource.Source != "" {
-			lines = append(lines, proxySource.Source)
-		}
-		lines = append(lines, proxySource.Connections...)
-	}
-
-	return strings.Join(lines, "\n")
 }
 
 // restoreConfigParams восстанавливает config_params и маппинг в модель.

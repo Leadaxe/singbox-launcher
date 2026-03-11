@@ -55,7 +55,6 @@
 - ✅ `HasUnsavedChanges()` — проверка наличия несохранённых изменений
 - ✅ `MarkAsChanged()` — установка флага изменений
 - ✅ `MarkAsSaved()` — сброс флага изменений
-- ✅ `extractSourceURLsFromParserConfig()` — извлечение SourceURLs из ParserConfig
 - ✅ `restoreConfigParams()` — восстановление параметров конфигурации
 - ✅ Отслеживание изменений через поле `hasChanges` в `WizardPresenter`
 - ✅ Флаг `UpdatingOutboundOptions` для предотвращения ложных срабатываний при инициализации

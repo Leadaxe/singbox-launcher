@@ -61,7 +61,11 @@ func SaveConfigWithBackup(fileService FileServiceInterface, configText string) (
 	singBoxPath := fileService.SingboxPath()
 	if singBoxPath != "" {
 		tmpPath := filepath.Join(filepath.Dir(configPath), tempConfigFileName)
-		defer os.Remove(tmpPath)
+		defer func() {
+			if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
+				debuglog.WarnLog("SaveConfigWithBackup: failed to remove temp config %s: %v", tmpPath, err)
+			}
+		}()
 		if err := os.WriteFile(tmpPath, []byte(finalText), 0o644); err != nil {
 			return "", fmt.Errorf("write temp config: %w", err)
 		}

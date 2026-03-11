@@ -193,7 +193,11 @@ func ReadLastLines(path string, maxLines int) ([]string, error) {
 		}
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		if cerr := f.Close(); cerr != nil {
+			debuglog.WarnLog("ReadLastLines: failed to close file %s: %v", path, cerr)
+		}
+	}()
 	info, err := f.Stat()
 	if err != nil {
 		return nil, err
