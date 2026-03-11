@@ -20,6 +20,10 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
+// Win7LegacyVersion — фиксированная версия sing-box для Windows 7 (legacy build).
+// Используется только для Win7-сборки лаунчера (GOOS=windows, GOARCH=386).
+const Win7LegacyVersion = "1.13.2"
+
 // ReleaseInfo contains information about GitHub release
 type ReleaseInfo struct {
 	TagName string  `json:"tag_name"`
@@ -44,6 +48,11 @@ type DownloadProgress struct {
 // DownloadCore downloads and installs sing-box
 func (ac *AppController) DownloadCore(ctx context.Context, version string, progressChan chan DownloadProgress) {
 	defer close(progressChan)
+
+	// For Windows 7 (32-bit launcher build) always use fixed legacy core version.
+	if runtime.GOOS == "windows" && runtime.GOARCH == "386" {
+		version = Win7LegacyVersion
+	}
 
 	// 1. Get release information
 	progressChan <- DownloadProgress{Progress: 5, Message: "Getting release information...", Status: "downloading"}
@@ -198,6 +207,8 @@ func (ac *AppController) buildSourceForgeAssets(version string) []Asset {
 			fileName = fmt.Sprintf("sing-box-%s-windows-amd64.zip", version)
 		} else if runtime.GOARCH == "arm64" {
 			fileName = fmt.Sprintf("sing-box-%s-windows-arm64.zip", version)
+		} else if runtime.GOARCH == "386" {
+			fileName = fmt.Sprintf("sing-box-%s-windows-386-legacy-windows-7.zip", version)
 		}
 	case "linux":
 		if runtime.GOARCH == "amd64" {
@@ -241,6 +252,9 @@ func SingboxAssetSuffix() string {
 		}
 		if runtime.GOARCH == "arm64" {
 			return "windows-arm64.zip"
+		}
+		if runtime.GOARCH == "386" {
+			return "windows-386-legacy-windows-7.zip"
 		}
 		return ""
 	case "linux":

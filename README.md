@@ -99,7 +99,9 @@ This launcher solves all of that. Everything is controlled from one clean GUI:
 ## 📋 Requirements
 
 ### Windows
-- Windows 10/11 (x64)
+- **Recommended systems:** Windows 10/11 (x64)
+- **Compatibility mode:** Windows 7 (x86/x64) via a separate legacy build `singbox-launcher-<version>-win7-32.zip`  
+  In this mode the launcher uses a fixed legacy `sing-box` version (1.13.2, 32-bit) and 32-bit `wintun.dll`, both working on Win7 x86 and Win7 x64.
 - [sing-box](https://github.com/SagerNet/sing-box/releases) (executable file)
 - [WinTun](https://www.wintun.net/) (wintun.dll) - MIT license, can be distributed
 
@@ -124,15 +126,17 @@ If you can help test on Linux, please open an issue or pull request on GitHub!
 
 ### Windows
 
-1. Download the latest release from [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases)
+1. Download the latest release from [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases)  
+   - for Windows 10/11 (x64) — regular Windows release archive;
+   - for Windows 7 (x86/x64) — `singbox-launcher-<version>-win7-32.zip` legacy build.
 2. Extract the archive to any folder (e.g., `C:\Program Files\singbox-launcher`)
 3. Place `config.json` in the `bin\` folder:
    - Copy `config.example.json` to `config.json` and configure it
 4. Run `singbox-launcher.exe`
 5. **Automatic download** (recommended):
    - Go to the **"Core"** tab
-   - Click **"Download"** to download `sing-box.exe` (automatically downloads the correct version for your system)
-   - Click **"Download wintun.dll"** if needed (automatically downloads the correct architecture)
+   - Click **"Download"** to download `sing-box.exe` (the launcher will automatically choose a compatible binary for your platform; on Windows 7 it always uses the fixed 32-bit 1.13.2 legacy build)
+   - Click **"Download wintun.dll"** if needed (automatically downloads the correct architecture; on Windows 7 — 32-bit `wintun.dll`)
    - The launcher will automatically download from GitHub or SourceForge mirror if GitHub is unavailable
 
 ### macOS

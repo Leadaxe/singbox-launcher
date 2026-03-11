@@ -106,7 +106,9 @@
 ## 📋 Требования
 
 ### Windows
-- Windows 10/11 (x64)
+- **Рекомендуемые системы:** Windows 10/11 (x64)
+- **Режим совместимости:** Windows 7 (x86/x64) через отдельную сборку лаунчера `singbox-launcher-<version>-win7-32.zip`  
+  В этом режиме лаунчер использует фиксированную legacy-версию `sing-box` (1.13.2, 32-bit) и 32-битный `wintun.dll`, работающие как на Win7 x86, так и на Win7 x64.
 - [sing-box](https://github.com/SagerNet/sing-box/releases) (исполняемый файл)
 - [WinTun](https://www.wintun.net/) (wintun.dll) - лицензия MIT, можно распространять
 
@@ -131,15 +133,17 @@
 
 ### Windows
 
-1. Скачайте последний релиз с [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases)
+1. Скачайте последний релиз с [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases)  
+   - для Windows 10/11 (x64) — обычный релизный архив для Windows;
+   - для Windows 7 (x86/x64) — архив `singbox-launcher-<version>-win7-32.zip` (отдельная legacy-сборка).
 2. Распакуйте архив в любую папку (например, `C:\Program Files\singbox-launcher`)
 3. Поместите `config.json` в папку `bin\`:
    - Скопируйте `config.example.json` в `config.json` и настройте под себя
 4. Запустите `singbox-launcher.exe`
 5. **Автоматическое скачивание** (рекомендуется):
    - Перейдите на вкладку **"Core"**
-   - Нажмите **"Download"** для скачивания `sing-box.exe` (автоматически скачает правильную версию для вашей системы)
-   - Нажмите **"Download wintun.dll"** при необходимости (автоматически скачает правильную архитектуру)
+   - Нажмите **"Download"** для скачивания `sing-box.exe` (лаунчер автоматически подберёт совместимый бинарник для вашей платформы; на Windows 7 используется фиксированная 32-битная версия 1.13.2)
+   - Нажмите **"Download wintun.dll"** при необходимости (автоматически скачает правильную архитектуру; на Windows 7 — 32-битный `wintun.dll`)
    - Лаунчер автоматически скачает с GitHub или зеркала SourceForge, если GitHub недоступен
 
 ### macOS

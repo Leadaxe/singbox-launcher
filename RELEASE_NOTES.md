@@ -79,6 +79,7 @@
 - **Кнопка перезапуска:** На дашборде Core между Start и Stop — кнопка перезапуска (🔄). Завершает процесс sing-box, вотчер поднимает снова; в UI кратко «Restarting...», смена состояния кнопок, затем «Running».
 - **Сохранение в визарде:** Только запись файлов и Update (без перезапуска sing-box). Конфиг валидируется через `sing-box check` по временному `config-check.json` до записи в `config.json`; при ошибке — сообщение пользователю, рабочий конфиг не перезаписывается. Clash API перечитывается из `config.json` только при запуске sing-box.
 - **Диалог Linux capabilities (issue #34):** Команда setcap в выделяемом поле, кнопка «Copy» в буфер обмена.
+- **Поддержка Windows 7 (legacy):** Отдельная сборка `singbox-launcher-<version>-win7-32.zip`; для Win7 используется фиксированная 32-битная версия `sing-box` 1.13.2 и 32-битный `wintun.dll`, а визард применяет секции шаблона для платформ `windows` и `win7`.
 
 **🇬🇧 Summary (draft):**
 - **Custom Rule refactor (018):** Rule type constants (ips, urls, processes, srs, raw). Add/Edit Rule: name above Form/Raw tabs; Domains mode (Exact/Suffix/Keyword/Regex); SRS type with runetfreedom hint; Raw→Form restores outbound and fields. UI state in params.
@@ -86,5 +87,6 @@
 - **Restart button:** On Core dashboard between Start and Stop; kills sing-box, watcher restarts it; UI shows «Restarting...» then «Running».
 - **Wizard save:** Write files and Update only (no sing-box restart). Config validated with `sing-box check` before overwrite; on failure user sees error. Clash API reloaded from `config.json` only when sing-box starts.
 - **Linux capabilities dialog (#34):** setcap command in selectable field, «Copy» button.
+- **Windows 7 (legacy) support:** Separate `singbox-launcher-<version>-win7-32.zip` build; on Win7 the launcher always uses a fixed 32-bit `sing-box` 1.13.2 legacy binary and 32-bit `wintun.dll`, and the wizard applies both `windows` and `win7` template sections.
 
 </details>

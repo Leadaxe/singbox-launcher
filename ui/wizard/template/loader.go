@@ -330,7 +330,9 @@ func GetEffectiveConfig(rawConfig json.RawMessage, params []TemplateParam, goos 
 	return parseJSONWithOrder(applied)
 }
 
-// matchesPlatform проверяет, подходит ли текущая платформа. При goos=="darwin" и enableTunForDarwin также матчится "darwin-tun".
+// matchesPlatform проверяет, подходит ли текущая платформа.
+// При goos=="darwin" и enableTunForDarwin также матчится "darwin-tun".
+// При сборке Win7 (GOOS=windows, GOARCH=386) также матчится "win7" вместе с "windows".
 func matchesPlatform(platforms []string, goos string, enableTunForDarwin bool) bool {
 	if len(platforms) == 0 {
 		return true
@@ -340,6 +342,9 @@ func matchesPlatform(platforms []string, goos string, enableTunForDarwin bool) b
 			return true
 		}
 		if goos == "darwin" && enableTunForDarwin && p == "darwin-tun" {
+			return true
+		}
+		if goos == "windows" && runtime.GOARCH == "386" && p == "win7" {
 			return true
 		}
 	}
