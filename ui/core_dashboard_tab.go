@@ -1098,7 +1098,7 @@ func (tab *CoreDashboardTab) showUpdatePopup(currentVersion, latestVersion strin
 		downloadLink.OnTapped = func() {
 			if err := platform.OpenURL(downloadURL); err != nil {
 				debuglog.ErrorLog("showUpdatePopup: Failed to open download URL: %v", err)
-				dialogs.ShowError(tab.controller.UIService.MainWindow, fmt.Errorf("Failed to open link: %v", err))
+				dialogs.ShowError(tab.controller.UIService.MainWindow, fmt.Errorf("Failed to open link: %w", err))
 			}
 		}
 

@@ -72,7 +72,7 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 
 	// 3. Create temporary directory
 	tempDir := filepath.Join(ac.FileService.ExecDir, "temp")
-	if err := os.MkdirAll(tempDir, 0755); err != nil {
+	if err := os.MkdirAll(tempDir, platform.DefaultDirMode); err != nil {
 		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Failed to create temp dir: %v", err), Status: "error", Error: fmt.Errorf("DownloadCore: failed to create temp dir: %w", err)}
 		return
 	}
@@ -524,11 +524,8 @@ func (ac *AppController) extractZip(archivePath, destDir string) (string, error)
 				return "", fmt.Errorf("extractZip: failed to copy file: %w", err)
 			}
 
-			// Set execute permissions (for Unix-like systems)
-			if runtime.GOOS != "windows" {
-				if err := os.Chmod(binaryPath, 0755); err != nil {
-					debuglog.WarnLog("extractZip: failed to chmod %s: %v", binaryPath, err)
-				}
+			if err := platform.ChmodExecutable(binaryPath); err != nil {
+				debuglog.WarnLog("extractZip: failed to chmod %s: %v", binaryPath, err)
 			}
 
 			return binaryPath, nil
@@ -580,8 +577,7 @@ func (ac *AppController) extractTarGz(archivePath, destDir string) (string, erro
 				return "", fmt.Errorf("extractTarGz: failed to copy file: %w", err)
 			}
 
-			// Set execute permissions
-			if err := os.Chmod(binaryPath, 0755); err != nil {
+			if err := platform.ChmodExecutable(binaryPath); err != nil {
 				debuglog.WarnLog("extractTarGz: failed to chmod %s: %v", binaryPath, err)
 			}
 
@@ -596,7 +592,7 @@ func (ac *AppController) extractTarGz(archivePath, destDir string) (string, erro
 func (ac *AppController) installBinary(sourcePath, destPath string) error {
 	// Create bin directory if it doesn't exist
 	binDir := filepath.Dir(destPath)
-	if err := os.MkdirAll(binDir, 0755); err != nil {
+	if err := os.MkdirAll(binDir, platform.DefaultDirMode); err != nil {
 		return fmt.Errorf("installBinary: failed to create bin directory: %w", err)
 	}
 
@@ -629,11 +625,8 @@ func (ac *AppController) installBinary(sourcePath, destPath string) error {
 		return fmt.Errorf("installBinary: failed to copy file: %w", err)
 	}
 
-	// Set execute permissions (for Unix)
-	if runtime.GOOS != "windows" {
-		if err := os.Chmod(destPath, 0755); err != nil {
-			debuglog.WarnLog("installBinary: failed to chmod %s: %v", destPath, err)
-		}
+	if err := platform.ChmodExecutable(destPath); err != nil {
+		debuglog.WarnLog("installBinary: failed to chmod %s: %v", destPath, err)
 	}
 
 	// Remove old backup

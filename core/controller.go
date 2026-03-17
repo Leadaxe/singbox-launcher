@@ -355,7 +355,7 @@ func (ac *AppController) RunHidden(name string, args []string, logPath string, d
 			cmd.Stderr = logFile
 		} else {
 			// For other logs (parser), use truncate mode for clean start
-			logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+			logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, platform.DefaultFileMode)
 			if err != nil {
 				return fmt.Errorf("RunHidden: cannot open log file '%s': %w", logPath, err)
 			}

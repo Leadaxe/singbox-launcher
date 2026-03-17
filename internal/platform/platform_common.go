@@ -7,6 +7,14 @@ import (
 	"singbox-launcher/internal/constants"
 )
 
+// DefaultDirMode — права по умолчанию для создания директорий (rwxr-xr-x).
+// На Windows значение игнорируется ОС, но Go требует параметр в os.MkdirAll.
+const DefaultDirMode os.FileMode = 0755
+
+// DefaultFileMode — права по умолчанию для создания/записи файлов (rw-r--r--).
+// На Windows Go смотрит только на бит 0200 (owner write) для read-only флага.
+const DefaultFileMode os.FileMode = 0644
+
 // GetConfigPath returns the path to config.json
 func GetConfigPath(execDir string) string {
 	return filepath.Join(execDir, constants.BinDirName, constants.ConfigFileName)
@@ -35,7 +43,7 @@ func EnsureDirectories(execDir string) error {
 		GetRuleSetsDir(execDir),
 	}
 	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		if err := os.MkdirAll(dir, DefaultDirMode); err != nil {
 			return err
 		}
 	}

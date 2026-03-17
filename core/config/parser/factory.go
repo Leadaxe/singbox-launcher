@@ -3,10 +3,10 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/internal/debuglog"
 )
 
 // MaxConfigFileSize defines the maximum allowed size for config.json file
@@ -70,7 +70,7 @@ func ExtractParserConfig(configPath string) (*config.ParserConfig, error) {
 	// Normalize defaults (but don't update last_updated - this is loading existing config)
 	config.NormalizeParserConfig(parserConfig, false)
 
-	log.Printf("ExtractParserConfig: Successfully extracted @ParserConfig (version %d) with %d proxy sources and %d outbounds",
+	debuglog.DebugLog("ExtractParserConfig: Successfully extracted @ParserConfig (version %d) with %d proxy sources and %d outbounds",
 		parserConfig.ParserConfig.Version,
 		len(parserConfig.ParserConfig.Proxies),
 		len(parserConfig.ParserConfig.Outbounds))

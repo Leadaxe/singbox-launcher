@@ -403,7 +403,7 @@ func (ac *AppController) CheckForUpdates() {
 			debuglog.WarnLog("CheckForUpdates: Failed to get latest version: %v", err)
 			fyne.Do(func() {
 				if ac.UIService != nil && ac.UIService.MainWindow != nil {
-					dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("Failed to check for updates: %v", err))
+					dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("Failed to check for updates: %w", err))
 				}
 			})
 			return

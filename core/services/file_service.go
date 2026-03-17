@@ -149,7 +149,7 @@ func (fs *FileService) CloseLogFiles() {
 // Файл открывается в режиме append (O_APPEND) — новые записи добавляются в конец.
 func (fs *FileService) OpenLogFileWithRotation(logPath string) (*os.File, error) {
 	fs.CheckAndRotateLogFile(logPath)
-	return os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	return os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, platform.DefaultFileMode)
 }
 
 // CheckAndRotateLogFile проверяет размер лог-файла и выполняет ротацию при необходимости.

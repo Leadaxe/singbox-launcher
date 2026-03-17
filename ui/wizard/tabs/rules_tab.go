@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -48,9 +49,10 @@ type ShowAddRuleDialogFunc func(p *wizardpresentation.WizardPresenter, editRule 
 
 // SRS button labels (managed in one place)
 const (
-	srsBtnDownload = "⬇ srs"
-	srsBtnLoading  = "🔄 srs"
-	srsBtnDone     = "✔️ srs"
+	srsBtnDownload       = "⬇ srs"
+	srsBtnLoading        = "🔄 srs"
+	srsBtnDone           = "✔️ srs"
+	srsGroupDownloadTimeout = 90 * time.Second
 )
 
 // srsEntriesTooltip возвращает строку URL для tooltip кнопки SRS.
@@ -81,7 +83,9 @@ func runSRSDownloadAsync(
 	btn.Disable()
 	btn.SetText(srsBtnLoading)
 	go func() {
-		err := services.DownloadSRSGroup(context.Background(), model.ExecDir, srsEntries)
+		ctx, cancel := context.WithTimeout(context.Background(), srsGroupDownloadTimeout)
+		defer cancel()
+		err := services.DownloadSRSGroup(ctx, model.ExecDir, srsEntries)
 		presenter.UpdateUI(func() {
 			btn.Enable()
 			if err != nil {

@@ -3,9 +3,9 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/internal/debuglog"
 )
 
 // v1ParserConfig represents version 1 configuration structure
@@ -128,7 +128,7 @@ func (m *ConfigMigrator) MigrateRaw(jsonContent string, currentVersion int, targ
 	if currentVersion == 0 {
 		// No version specified - treat as version 1 and migrate from there
 		currentVersion = 1
-		log.Printf("ConfigMigrator: No version specified, treating as version 1 and migrating to version %d", targetVersion)
+		debuglog.InfoLog("ConfigMigrator: No version specified, treating as version 1 and migrating to version %d", targetVersion)
 	}
 
 	// Check if version is too new
@@ -145,7 +145,7 @@ func (m *ConfigMigrator) MigrateRaw(jsonContent string, currentVersion int, targ
 			return nil, fmt.Errorf("migration from version %d to %d not found", version, version+1)
 		}
 
-		log.Printf("ConfigMigrator: Migrating from version %d to version %d", version, version+1)
+		debuglog.InfoLog("ConfigMigrator: Migrating from version %d to version %d", version, version+1)
 
 		var err error
 		currentJSON, err = migration(currentJSON)
@@ -153,7 +153,7 @@ func (m *ConfigMigrator) MigrateRaw(jsonContent string, currentVersion int, targ
 			return nil, fmt.Errorf("failed to migrate from version %d to %d: %w", version, version+1, err)
 		}
 
-		log.Printf("ConfigMigrator: Successfully migrated to version %d", version+1)
+		debuglog.InfoLog("ConfigMigrator: Successfully migrated to version %d", version+1)
 	}
 
 	// Parse final JSON into clean ParserConfig (version 3)
@@ -196,7 +196,7 @@ func migrateV1ToV2(jsonContent string) (string, error) {
 	// Ensure parser object exists and set default reload
 	if v2.ParserConfig.Parser.Reload == "" {
 		v2.ParserConfig.Parser.Reload = "4h"
-		log.Printf("migrateV1ToV2: Set default reload to '4h'")
+		debuglog.DebugLog("migrateV1ToV2: Set default reload to '4h'")
 	}
 
 	// Serialize to JSON
@@ -205,7 +205,7 @@ func migrateV1ToV2(jsonContent string) (string, error) {
 		return "", fmt.Errorf("failed to marshal version 2 config: %w", err)
 	}
 
-	log.Printf("migrateV1ToV2: Successfully migrated from version 1 to version 2")
+	debuglog.InfoLog("migrateV1ToV2: Successfully migrated from version 1 to version 2")
 	return string(resultJSON), nil
 }
 
@@ -263,7 +263,7 @@ func migrateV2ToV3(jsonContent string) (string, error) {
 		return "", fmt.Errorf("failed to marshal version 3 config: %w", err)
 	}
 
-	log.Printf("migrateV2ToV3: Successfully migrated from version 2 to version 3")
+	debuglog.InfoLog("migrateV2ToV3: Successfully migrated from version 2 to version 3")
 	return string(resultJSON), nil
 }
 
@@ -294,19 +294,19 @@ func convertV2OutboundsToV3(v2Outbounds []v2OutboundConfig) []config.OutboundCon
 			for k, v := range v2.Outbounds.Proxies {
 				v3.Filters[k] = v
 			}
-			log.Printf("migrateV2ToV3: Migrated 'outbounds.proxies' to 'filters' for outbound '%s'", v2.Tag)
+			debuglog.DebugLog("migrateV2ToV3: Migrated 'outbounds.proxies' to 'filters' for outbound '%s'", v2.Tag)
 		}
 
 		if len(v2.Outbounds.AddOutbounds) > 0 {
 			// Copy addOutbounds to top level
 			v3.AddOutbounds = v2.Outbounds.AddOutbounds
-			log.Printf("migrateV2ToV3: Migrated 'outbounds.addOutbounds' to top level for outbound '%s'", v2.Tag)
+			debuglog.DebugLog("migrateV2ToV3: Migrated 'outbounds.addOutbounds' to top level for outbound '%s'", v2.Tag)
 		}
 
 		if len(v2.Outbounds.PreferredDefault) > 0 {
 			// Copy preferredDefault to top level
 			v3.PreferredDefault = v2.Outbounds.PreferredDefault
-			log.Printf("migrateV2ToV3: Migrated 'outbounds.preferredDefault' to top level for outbound '%s'", v2.Tag)
+			debuglog.DebugLog("migrateV2ToV3: Migrated 'outbounds.preferredDefault' to top level for outbound '%s'", v2.Tag)
 		}
 
 		v3Outbounds = append(v3Outbounds, v3)
@@ -327,6 +327,6 @@ func migrateV3ToV4(jsonContent string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal version 4 config: %w", err)
 	}
-	log.Printf("migrateV3ToV4: Successfully migrated from version 3 to version 4")
+	debuglog.InfoLog("migrateV3ToV4: Successfully migrated from version 3 to version 4")
 	return string(resultJSON), nil
 }

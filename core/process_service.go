@@ -198,7 +198,7 @@ func (svc *ProcessService) startSingBoxPrivileged() error {
 		ac.StoppedByUser = false
 		ac.StateService.ResetAutoUpdateFailedAttempts() // Reset so auto-update can retry after successful Start
 		ac.CmdMutex.Unlock()
-		_ = os.WriteFile(pidFilePath, []byte(fmt.Sprintf("%d\n%d", scriptPID, singboxPID)), 0644)
+		_ = os.WriteFile(pidFilePath, []byte(fmt.Sprintf("%d\n%d", scriptPID, singboxPID)), platform.DefaultFileMode)
 		debuglog.DebugLog("startSingBox: Sing-Box started with privileges (script PID=%d, sing-box PID=%d).", scriptPID, singboxPID)
 		platform.WaitForPrivilegedExit(scriptPID)
 		svc.onPrivilegedScriptExited()

@@ -2,12 +2,12 @@ package subscription
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 	"time"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/internal/debuglog"
 )
 
 // IsSubscriptionURL checks if the input string is a subscription URL (http:// or https://)
@@ -25,7 +25,7 @@ func MakeTagUnique(tag string, tagCounts map[string]int, logPrefix string) strin
 		// Tag already exists, make it unique
 		tagCounts[tag]++
 		uniqueTag := fmt.Sprintf("%s-%d", tag, tagCounts[tag])
-		log.Printf("%s: Duplicate tag '%s' found (occurrence #%d), renamed to '%s'", logPrefix, tag, tagCounts[tag], uniqueTag)
+		debuglog.WarnLog("%s: Duplicate tag '%s' found (occurrence #%d), renamed to '%s'", logPrefix, tag, tagCounts[tag], uniqueTag)
 		return uniqueTag
 	}
 
@@ -40,14 +40,14 @@ func LogDuplicateTagStatistics(tagCounts map[string]int, logPrefix string) {
 	for tag, count := range tagCounts {
 		if count > 1 {
 			if !duplicatesFound {
-				log.Printf("%s: === Duplicate Tag Statistics ===", logPrefix)
+				debuglog.DebugLog("%s: === Duplicate Tag Statistics ===", logPrefix)
 				duplicatesFound = true
 			}
-			log.Printf("%s: Tag '%s' appeared %d times (original + %d duplicates)", logPrefix, tag, count, count-1)
+			debuglog.WarnLog("%s: Tag '%s' appeared %d times (original + %d duplicates)", logPrefix, tag, count, count-1)
 		}
 	}
 	if duplicatesFound {
-		log.Printf("%s: === End of Duplicate Tag Statistics ===", logPrefix)
+		debuglog.DebugLog("%s: === End of Duplicate Tag Statistics ===", logPrefix)
 	}
 }
 
@@ -61,7 +61,7 @@ func LoadNodesFromSource(
 	subscriptionIndex, totalSubscriptions int,
 ) ([]*config.ParsedNode, error) {
 	startTime := time.Now()
-	log.Printf("[DEBUG] LoadNodesFromSource: START source %d/%d at %s",
+	debuglog.DebugLog("LoadNodesFromSource: START source %d/%d at %s",
 		subscriptionIndex+1, totalSubscriptions, startTime.Format("15:04:05.000"))
 
 	nodes := make([]*config.ParsedNode, 0)
@@ -79,16 +79,16 @@ func LoadNodesFromSource(
 			}
 
 			fetchStartTime := time.Now()
-			log.Printf("[DEBUG] LoadNodesFromSource: Fetching subscription %d/%d: %s",
+			debuglog.DebugLog("LoadNodesFromSource: Fetching subscription %d/%d: %s",
 				subscriptionIndex+1, totalSubscriptions, proxySource.Source)
 			content, err := FetchSubscription(proxySource.Source)
 			fetchDuration := time.Since(fetchStartTime)
 			if err != nil {
-				log.Printf("[DEBUG] LoadNodesFromSource: Failed to fetch subscription %d/%d (took %v): %v",
+				debuglog.DebugLog("LoadNodesFromSource: Failed to fetch subscription %d/%d (took %v): %v",
 					subscriptionIndex+1, totalSubscriptions, fetchDuration, err)
-				log.Printf("Parser: Error: Failed to fetch subscription from %s: %v", proxySource.Source, err)
+				debuglog.ErrorLog("Parser: Failed to fetch subscription from %s: %v", proxySource.Source, err)
 			} else if len(content) > 0 {
-				log.Printf("[DEBUG] LoadNodesFromSource: Fetched subscription %d/%d: %d bytes in %v",
+				debuglog.DebugLog("LoadNodesFromSource: Fetched subscription %d/%d: %d bytes in %v",
 					subscriptionIndex+1, totalSubscriptions, len(content), fetchDuration)
 
 				if progressCallback != nil {
@@ -103,7 +103,7 @@ func LoadNodesFromSource(
 				contentStr = strings.ReplaceAll(contentStr, "\r\n", "\n")
 				contentStr = strings.ReplaceAll(contentStr, "\r", "\n")
 				subscriptionLines := strings.Split(contentStr, "\n")
-				log.Printf("[DEBUG] LoadNodesFromSource: Parsing subscription %d/%d: %d lines",
+				debuglog.DebugLog("LoadNodesFromSource: Parsing subscription %d/%d: %d lines",
 					subscriptionIndex+1, totalSubscriptions, len(subscriptionLines))
 
 				lineCount := 0
@@ -117,8 +117,8 @@ func LoadNodesFromSource(
 					if nodesFromThisSource >= config.MaxNodesPerSubscription {
 						skippedDueToLimit++
 						if skippedDueToLimit == 1 {
-							log.Printf("[DEBUG] LoadNodesFromSource: Reached limit of %d nodes for subscription %d/%d",
-								config.MaxNodesPerSubscription, subscriptionIndex+1, totalSubscriptions)
+						debuglog.DebugLog("LoadNodesFromSource: Reached limit of %d nodes for subscription %d/%d",
+							config.MaxNodesPerSubscription, subscriptionIndex+1, totalSubscriptions)
 						}
 						continue
 					}
@@ -126,9 +126,9 @@ func LoadNodesFromSource(
 					nodeStartTime := time.Now()
 					node, err := ParseNode(subLine, proxySource.Skip)
 					if err != nil {
-						log.Printf("[DEBUG] LoadNodesFromSource: Failed to parse node %d from subscription %d/%d (took %v): %v",
-							lineCount, subscriptionIndex+1, totalSubscriptions, time.Since(nodeStartTime), err)
-						log.Printf("Parser: Warning: Failed to parse node from subscription %s: %v", proxySource.Source, err)
+					debuglog.DebugLog("LoadNodesFromSource: Failed to parse node %d from subscription %d/%d (took %v): %v",
+						lineCount, subscriptionIndex+1, totalSubscriptions, time.Since(nodeStartTime), err)
+					debuglog.WarnLog("Parser: Failed to parse node from subscription %s: %v", proxySource.Source, err)
 						continue
 					}
 
@@ -139,18 +139,18 @@ func LoadNodesFromSource(
 						nodes = append(nodes, node)
 						nodesFromThisSource++
 						if nodesFromThisSource%50 == 0 {
-							log.Printf("[DEBUG] LoadNodesFromSource: Parsed %d nodes from subscription %d/%d (elapsed: %v)",
-								nodesFromThisSource, subscriptionIndex+1, totalSubscriptions, time.Since(parseStartTime))
+						debuglog.DebugLog("LoadNodesFromSource: Parsed %d nodes from subscription %d/%d (elapsed: %v)",
+							nodesFromThisSource, subscriptionIndex+1, totalSubscriptions, time.Since(parseStartTime))
 						}
 					}
 				}
-				log.Printf("[DEBUG] LoadNodesFromSource: Parsed subscription %d/%d: %d nodes in %v (processed %d lines)",
-					subscriptionIndex+1, totalSubscriptions, nodesFromThisSource, time.Since(parseStartTime), lineCount)
+			debuglog.DebugLog("LoadNodesFromSource: Parsed subscription %d/%d: %d nodes in %v (processed %d lines)",
+				subscriptionIndex+1, totalSubscriptions, nodesFromThisSource, time.Since(parseStartTime), lineCount)
 			}
 		} else if IsDirectLink(proxySource.Source) {
 			// Legacy format: direct link in Source
-			log.Printf("[DEBUG] LoadNodesFromSource: Processing direct link in Source field for %d/%d",
-				subscriptionIndex+1, totalSubscriptions)
+		debuglog.DebugLog("LoadNodesFromSource: Processing direct link in Source field for %d/%d",
+			subscriptionIndex+1, totalSubscriptions)
 			if progressCallback != nil {
 				progressCallback(20+float64(subscriptionIndex)*50.0/float64(totalSubscriptions),
 					fmt.Sprintf("Parsing direct link %d/%d", subscriptionIndex+1, totalSubscriptions))
@@ -160,16 +160,16 @@ func LoadNodesFromSource(
 				parseStartTime := time.Now()
 				node, err := ParseNode(proxySource.Source, proxySource.Skip)
 				if err != nil {
-					log.Printf("[DEBUG] LoadNodesFromSource: Failed to parse direct link (took %v): %v",
-						time.Since(parseStartTime), err)
-					log.Printf("Parser: Warning: Failed to parse direct link: %v", err)
+				debuglog.DebugLog("LoadNodesFromSource: Failed to parse direct link (took %v): %v",
+					time.Since(parseStartTime), err)
+				debuglog.WarnLog("Parser: Failed to parse direct link: %v", err)
 				} else if node != nil {
 					// Apply prefix, postfix, or mask to tag if specified (with variable substitution)
 					node.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, proxySource.TagMask, nodesFromThisSource+1)
 					node.Tag = MakeTagUnique(node.Tag, tagCounts, "Parser")
 					nodes = append(nodes, node)
 					nodesFromThisSource++
-					log.Printf("[DEBUG] LoadNodesFromSource: Parsed direct link in %v", time.Since(parseStartTime))
+					debuglog.DebugLog("LoadNodesFromSource: Parsed direct link in %v", time.Since(parseStartTime))
 				}
 			} else {
 				skippedDueToLimit++
@@ -179,7 +179,7 @@ func LoadNodesFromSource(
 
 	// Process direct links from Connections field
 	connectionsStartTime := time.Now()
-	log.Printf("[DEBUG] LoadNodesFromSource: Processing %d direct connections for source %d/%d",
+	debuglog.DebugLog("LoadNodesFromSource: Processing %d direct connections for source %d/%d",
 		len(proxySource.Connections), subscriptionIndex+1, totalSubscriptions)
 	for connIndex, connection := range proxySource.Connections {
 		connection = strings.TrimSpace(connection)
@@ -188,9 +188,9 @@ func LoadNodesFromSource(
 		}
 
 		if !IsDirectLink(connection) {
-			log.Printf("[DEBUG] LoadNodesFromSource: Invalid direct link format in connections %d/%d: %s",
-				connIndex+1, len(proxySource.Connections), connection)
-			log.Printf("Parser: Warning: Invalid direct link format in connections: %s", connection)
+		debuglog.DebugLog("LoadNodesFromSource: Invalid direct link format in connections %d/%d: %s",
+			connIndex+1, len(proxySource.Connections), connection)
+		debuglog.WarnLog("Parser: Invalid direct link format in connections: %s", connection)
 			continue
 		}
 
@@ -207,9 +207,9 @@ func LoadNodesFromSource(
 		parseStartTime := time.Now()
 		node, err := ParseNode(connection, proxySource.Skip)
 		if err != nil {
-			log.Printf("[DEBUG] LoadNodesFromSource: Failed to parse connection %d/%d (took %v): %v",
-				connIndex+1, len(proxySource.Connections), time.Since(parseStartTime), err)
-			log.Printf("Parser: Warning: Failed to parse direct link from connections: %v", err)
+		debuglog.DebugLog("LoadNodesFromSource: Failed to parse connection %d/%d (took %v): %v",
+			connIndex+1, len(proxySource.Connections), time.Since(parseStartTime), err)
+		debuglog.WarnLog("Parser: Failed to parse direct link from connections: %v", err)
 			continue
 		}
 
@@ -222,19 +222,19 @@ func LoadNodesFromSource(
 		}
 	}
 	if len(proxySource.Connections) > 0 {
-		log.Printf("[DEBUG] LoadNodesFromSource: Processed %d connections in %v",
+		debuglog.DebugLog("LoadNodesFromSource: Processed %d connections in %v",
 			len(proxySource.Connections), time.Since(connectionsStartTime))
 	}
 
 	if skippedDueToLimit > 0 {
-		log.Printf("[DEBUG] LoadNodesFromSource: Source %d/%d exceeded limit, skipped %d nodes",
+		debuglog.DebugLog("LoadNodesFromSource: Source %d/%d exceeded limit, skipped %d nodes",
 			subscriptionIndex+1, totalSubscriptions, skippedDueToLimit)
-		log.Printf("Parser: Warning: Source exceeded limit of %d nodes. Skipped %d additional nodes.",
+		debuglog.WarnLog("Parser: Source exceeded limit of %d nodes. Skipped %d additional nodes.",
 			config.MaxNodesPerSubscription, skippedDueToLimit)
 	}
 
 	totalDuration := time.Since(startTime)
-	log.Printf("[DEBUG] LoadNodesFromSource: END source %d/%d (total duration: %v, nodes: %d)",
+	debuglog.DebugLog("LoadNodesFromSource: END source %d/%d (total duration: %v, nodes: %d)",
 		subscriptionIndex+1, totalSubscriptions, totalDuration, len(nodes))
 	return nodes, nil
 }

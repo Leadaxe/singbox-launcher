@@ -19,6 +19,7 @@ import (
 
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/platform"
 )
 
 // RuleSRSPath возвращает путь к локальному SRS файлу: {ExecDir}/bin/rule-sets/{tag}.srs
@@ -76,7 +77,7 @@ func DownloadSRS(ctx context.Context, url string, destPath string) error {
 
 	// Пишем во временный файл, затем переименовываем атомарно
 	dir := filepath.Dir(destPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, platform.DefaultDirMode); err != nil {
 		return fmt.Errorf("DownloadSRS: failed to create directory: %w", err)
 	}
 
@@ -86,25 +87,32 @@ func DownloadSRS(ctx context.Context, url string, destPath string) error {
 		return fmt.Errorf("DownloadSRS: failed to create file: %w", err)
 	}
 
+	// defer гарантирует закрытие файла и удаление tmp при любом выходе (включая панику)
+	closed := false
+	defer func() {
+		if !closed {
+			_ = destFile.Close()
+		}
+		if _, statErr := os.Stat(tmpPath); statErr == nil {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
 	written, err := io.Copy(destFile, resp.Body)
 	if err != nil {
-		_ = destFile.Close()
-		_ = os.Remove(tmpPath)
 		return fmt.Errorf("DownloadSRS: write error: %w", err)
 	}
 
 	if err := destFile.Close(); err != nil {
-		_ = os.Remove(tmpPath)
 		return fmt.Errorf("DownloadSRS: failed to close file: %w", err)
 	}
+	closed = true
 
 	if ctx.Err() != nil {
-		_ = os.Remove(tmpPath)
 		return ctx.Err()
 	}
 
 	if err := os.Rename(tmpPath, destPath); err != nil {
-		_ = os.Remove(tmpPath)
 		return fmt.Errorf("DownloadSRS: failed to save file: %w", err)
 	}
 

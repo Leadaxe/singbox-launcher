@@ -125,6 +125,7 @@ func buildConfigSections(model *wizardmodels.WizardModel, forPreview bool, timin
 		default:
 			formatted, err = FormatSectionJSON(raw, 2)
 			if err != nil {
+				debuglog.WarnLog("buildConfigSections: FormatSectionJSON failed for key %q, using raw: %v", key, err)
 				formatted = string(raw)
 				err = nil
 			}

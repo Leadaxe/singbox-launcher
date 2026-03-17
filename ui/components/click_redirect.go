@@ -21,7 +21,7 @@ import (
 //     интегрируется в Fyne layout и не ломает систему событий.
 //   - CreateRenderer возвращает прозрачный прямоугольник — оверлей визуально
 //     не видим, но принимает события кликов.
-//   - Tapped использует fyne.Do для выполнения Show/RequestFocus в UI-потоке.
+//   - Tapped вызывается Fyne в UI-потоке, поэтому Show/RequestFocus безопасны напрямую.
 //
 // Место использования: создаётся в InitWizardOverlay() и помещается поверх вкладок.
 // ClickRedirect — невидимый tappable-оverlay, который перехватывает клики
@@ -48,15 +48,11 @@ func (w *ClickRedirect) Tapped(e *fyne.PointEvent) {
 		return
 	}
 	if w.controller.UIService.WizardWindow != nil {
-		fyne.Do(func() {
-			if w.controller.UIService.WizardWindow != nil {
-				w.controller.UIService.WizardWindow.Show()
-				w.controller.UIService.WizardWindow.RequestFocus()
-				if w.controller.UIService.FocusOpenChildWindows != nil {
-					w.controller.UIService.FocusOpenChildWindows()
-				}
-			}
-		})
+		w.controller.UIService.WizardWindow.Show()
+		w.controller.UIService.WizardWindow.RequestFocus()
+		if w.controller.UIService.FocusOpenChildWindows != nil {
+			w.controller.UIService.FocusOpenChildWindows()
+		}
 	}
 }
 

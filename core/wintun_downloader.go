@@ -13,6 +13,7 @@ import (
 
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/platform"
 )
 
 // WinTunVersion is the version of wintun.dll to download
@@ -55,7 +56,7 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 
 	// 1. Create temporary directory
 	tempDir := filepath.Join(ac.FileService.ExecDir, "temp")
-	if err := os.MkdirAll(tempDir, 0755); err != nil {
+	if err := os.MkdirAll(tempDir, platform.DefaultDirMode); err != nil {
 		progressChan <- DownloadProgress{
 			Progress: 0,
 			Message:  fmt.Sprintf("Failed to create temp dir: %v", err),
@@ -171,7 +172,7 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 
 	// Create bin directory if it doesn't exist
 	binDir := filepath.Dir(ac.FileService.WintunPath)
-	if err := os.MkdirAll(binDir, 0755); err != nil {
+	if err := os.MkdirAll(binDir, platform.DefaultDirMode); err != nil {
 		progressChan <- DownloadProgress{
 			Progress: 0,
 			Message:  fmt.Sprintf("Failed to create bin directory: %v", err),

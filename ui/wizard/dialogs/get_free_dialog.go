@@ -22,14 +22,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image/color"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"time"
-
-	"image/color"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -40,6 +39,7 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/platform"
 	internaldialogs "singbox-launcher/internal/dialogs"
 	wizardmodels "singbox-launcher/ui/wizard/models"
 	wizardpresentation "singbox-launcher/ui/wizard/presentation"
@@ -69,7 +69,7 @@ func downloadGetFreeJSON(presenter *wizardpresentation.WizardPresenter, force bo
 	}
 
 	binDir := filepath.Join(ac.FileService.ExecDir, "bin")
-	if err := os.MkdirAll(binDir, 0755); err != nil {
+	if err := os.MkdirAll(binDir, platform.DefaultDirMode); err != nil {
 		return fmt.Errorf("failed to create bin directory: %w", err)
 	}
 
@@ -137,7 +137,7 @@ func downloadGetFreeJSON(presenter *wizardpresentation.WizardPresenter, force bo
 	}
 
 	// Write to file
-	if err := os.WriteFile(targetPath, data, 0644); err != nil {
+	if err := os.WriteFile(targetPath, data, platform.DefaultFileMode); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 

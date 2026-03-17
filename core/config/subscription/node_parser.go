@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -57,17 +56,17 @@ func ParseNode(uri string, skipFilters []map[string]string) (*config.ParsedNode,
 			if len(uriPreview) > 50 {
 				uriPreview = uriPreview[:50] + "..."
 			}
-			log.Printf("Parser: Error: Failed to decode VMESS base64 (uri length: %d, base64 length: %d): %v. URI: %s. Skipping node.",
+			debuglog.ErrorLog("Parser: Failed to decode VMESS base64 (uri length: %d, base64 length: %d): %v. URI: %s. Skipping node.",
 				len(uri), len(base64Part), err, uriPreview)
 			return nil, fmt.Errorf("failed to decode VMESS base64: %w", err)
 		}
 		if len(decoded) == 0 {
-			log.Printf("Parser: Error: VMESS decoded content is empty. Skipping node.")
+			debuglog.ErrorLog("Parser: VMESS decoded content is empty. Skipping node.")
 			return nil, fmt.Errorf("VMESS decoded content is empty")
 		}
 		var vmessConfig map[string]interface{}
 		if err := json.Unmarshal(decoded, &vmessConfig); err != nil {
-			log.Printf("Parser: Error: Failed to parse VMESS JSON (decoded length: %d): %v. Skipping node.", len(decoded), err)
+			debuglog.ErrorLog("Parser: Failed to parse VMESS JSON (decoded length: %d): %v. Skipping node.", len(decoded), err)
 			return nil, fmt.Errorf("failed to parse VMESS JSON: %w", err)
 		}
 		// VMess uses base64-encoded JSON format instead of standard URI format,
@@ -90,25 +89,25 @@ func ParseNode(uri string, skipFilters []map[string]string) (*config.ParsedNode,
 			rest := ssPart[atIdx+1:]
 			decoded, err := decodeBase64WithPadding(encodedUserinfo)
 			if err != nil {
-				log.Printf("Parser: Error: Failed to decode SS base64 userinfo. Encoded: %s, Error: %v", encodedUserinfo, err)
+				debuglog.ErrorLog("Parser: Failed to decode SS base64 userinfo. Encoded: %s, Error: %v", encodedUserinfo, err)
 			} else {
 				decodedStr := string(decoded)
 				userinfoParts := strings.SplitN(decodedStr, ":", 2)
 				if len(userinfoParts) == 2 {
 					ssMethod = userinfoParts[0]
 					ssPassword = userinfoParts[1]
-					log.Printf("Parser: Successfully extracted SS credentials: method=%s, password length=%d", ssMethod, len(ssPassword))
+					debuglog.DebugLog("Parser: Successfully extracted SS credentials: method=%s, password length=%d", ssMethod, len(ssPassword))
 					if !isValidShadowsocksMethod(ssMethod) {
-						log.Printf("Parser: Warning: Invalid or unsupported Shadowsocks method '%s'. Skipping node.", ssMethod)
+						debuglog.WarnLog("Parser: Invalid or unsupported Shadowsocks method '%s'. Skipping node.", ssMethod)
 						return nil, fmt.Errorf("unsupported Shadowsocks encryption method: %s", ssMethod)
 					}
 				} else {
-					log.Printf("Parser: Error: SS decoded userinfo doesn't contain ':' separator. Decoded: %s", decodedStr)
+					debuglog.ErrorLog("Parser: SS decoded userinfo doesn't contain ':' separator. Decoded: %s", decodedStr)
 				}
 			}
 			uriToParse = "ss://" + rest
 		} else {
-			log.Printf("Parser: Warning: SS link is not in SIP002 format (no @ found): %s", uri)
+			debuglog.WarnLog("Parser: SS link is not in SIP002 format (no @ found): %s", uri)
 		}
 
 	case strings.HasPrefix(uri, "hysteria2://"), strings.HasPrefix(uri, "hy2://"):
@@ -129,15 +128,15 @@ func ParseNode(uri string, skipFilters []map[string]string) (*config.ParsedNode,
 		if err == nil && len(decoded) > 0 {
 			decodedStr, valid := validateAndFixUTF8Bytes(decoded)
 			if !valid {
-				log.Printf("Parser: Error: Decoded base64 contains invalid UTF-8 that cannot be fixed. Skipping node.")
+				debuglog.ErrorLog("Parser: Decoded base64 contains invalid UTF-8 that cannot be fixed. Skipping node.")
 				return nil, fmt.Errorf("decoded base64 contains invalid UTF-8")
 			}
 			if decodedStr != string(decoded) {
-				log.Printf("Parser: Fixed invalid UTF-8 in decoded base64 Hysteria2 link")
+				debuglog.DebugLog("Parser: Fixed invalid UTF-8 in decoded base64 Hysteria2 link")
 			}
 			if strings.Contains(decodedStr, "@") {
 				uriToParse = "hysteria2://" + decodedStr
-				log.Printf("Parser: Successfully decoded base64 Hysteria2 link")
+				debuglog.DebugLog("Parser: Successfully decoded base64 Hysteria2 link")
 			}
 		}
 
@@ -178,7 +177,7 @@ func ParseNode(uri string, skipFilters []map[string]string) (*config.ParsedNode,
 	// For SS, store method and password in Query (if extracted during parsing)
 	if scheme == "ss" {
 		if ssMethod == "" || ssPassword == "" {
-			log.Printf("Parser: Error: SS link missing method or password. URI: %s", uri)
+			debuglog.ErrorLog("Parser: SS link missing method or password. URI: %s", uri)
 			return nil, fmt.Errorf("SS link missing required method or password")
 		}
 		node.Query.Set("method", ssMethod)
@@ -225,12 +224,12 @@ func ParseNode(uri string, skipFilters []map[string]string) (*config.ParsedNode,
 		// Validate and fix UTF-8 encoding
 		fixed, valid := validateAndFixUTF8(node.Label)
 		if !valid {
-			log.Printf("Parser: Error: Fragment contains invalid UTF-8 that cannot be fixed: %q. Skipping node.", parsedURL.Fragment)
+			debuglog.ErrorLog("Parser: Fragment contains invalid UTF-8 that cannot be fixed: %q. Skipping node.", parsedURL.Fragment)
 			return nil, fmt.Errorf("fragment contains invalid UTF-8: %q", parsedURL.Fragment)
 		}
 
 		if fixed != node.Label {
-			log.Printf("Parser: Fixed invalid UTF-8 in fragment: %q -> %q", parsedURL.Fragment, fixed)
+			debuglog.DebugLog("Parser: Fixed invalid UTF-8 in fragment: %q -> %q", parsedURL.Fragment, fixed)
 			node.Label = fixed
 		}
 
@@ -439,7 +438,7 @@ func matchesPattern(value, pattern string) bool {
 		regexStr = strings.TrimSuffix(regexStr, "/i")
 		re, err := regexp.Compile("(?i)" + regexStr)
 		if err != nil {
-			log.Printf("Parser: Invalid regex pattern %s: %v", pattern, err)
+			debuglog.WarnLog("Parser: Invalid regex pattern %s: %v", pattern, err)
 			return false
 		}
 		return !re.MatchString(value)
@@ -451,7 +450,7 @@ func matchesPattern(value, pattern string) bool {
 		regexStr = strings.TrimSuffix(regexStr, "/i")
 		re, err := regexp.Compile("(?i)" + regexStr)
 		if err != nil {
-			log.Printf("Parser: Invalid regex pattern %s: %v", pattern, err)
+			debuglog.WarnLog("Parser: Invalid regex pattern %s: %v", pattern, err)
 			return false
 		}
 		return re.MatchString(value)
@@ -823,7 +822,7 @@ func buildHysteria2Outbound(node *config.ParsedNode, outbound map[string]interfa
 	if node.UUID != "" {
 		outbound["password"] = node.UUID
 	} else {
-		log.Printf("Parser: Warning: Hysteria2 link missing password. URI might be invalid.")
+		debuglog.WarnLog("Parser: Hysteria2 link missing password. URI might be invalid.")
 	}
 
 	// Optional: ports range (mport parameter) - converted to server_ports array for sing-box 1.9+
@@ -842,7 +841,7 @@ func buildHysteria2Outbound(node *config.ParsedNode, outbound map[string]interfa
 	if obfs := node.Query.Get("obfs"); obfs != "" {
 		// Validate obfs type to prevent sing-box crashes
 		if !isValidHysteria2ObfsType(obfs) {
-			log.Printf("Parser: Warning: Invalid or unsupported Hysteria2 obfs type '%s'. Only 'salamander' is supported. Skipping obfs.", obfs)
+			debuglog.WarnLog("Parser: Invalid or unsupported Hysteria2 obfs type '%s'. Only 'salamander' is supported. Skipping obfs.", obfs)
 		} else {
 			obfsConfig := map[string]interface{}{
 				"type": obfs,
@@ -914,7 +913,7 @@ func buildSSHOutbound(node *config.ParsedNode, outbound map[string]interface{}) 
 		outbound["user"] = node.UUID
 	} else {
 		outbound["user"] = "root" // Default user for SSH
-		log.Printf("Parser: Warning: SSH link missing user, using default 'root'")
+		debuglog.WarnLog("Parser: SSH link missing user, using default 'root'")
 	}
 
 	// Password is optional (can be in query params from userinfo)

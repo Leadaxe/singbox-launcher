@@ -3,9 +3,10 @@ package subscription
 import (
 	"encoding/base64"
 	"fmt"
-	"log"
 	"strings"
 	"unicode/utf8"
+
+	"singbox-launcher/internal/debuglog"
 )
 
 // tryDecodeBase64 attempts to decode base64 string using multiple encoding variants
@@ -66,19 +67,19 @@ func DecodeSubscriptionContent(content []byte) ([]byte, error) {
 			lineCount++ // Count last line if no newline or doesn't end with newline
 		}
 
-		log.Printf("[DEBUG] DecodeSubscriptionContent: %s: successfully decoded: %d node(s)", source, lineCount)
+		debuglog.DebugLog("DecodeSubscriptionContent: %s: successfully decoded: %d node(s)", source, lineCount)
 		return decoded, nil
 	}
 
 	// Check if it's JSON configuration (not a subscription)
 	if strings.HasPrefix(contentStr, "{") || strings.HasPrefix(contentStr, "[") {
-		log.Printf("[DEBUG] DecodeSubscriptionContent: Content is JSON configuration, not a subscription list")
+		debuglog.DebugLog("DecodeSubscriptionContent: Content is JSON configuration, not a subscription list")
 		return nil, fmt.Errorf("subscription URL returned JSON configuration instead of subscription list (base64 or plain text links)")
 	}
 
 	// Check if it's plain text links
 	if strings.Contains(contentStr, "://") {
-		log.Printf("[DEBUG] DecodeSubscriptionContent: Detected plain text subscription (contains '://')")
+		debuglog.DebugLog("DecodeSubscriptionContent: Detected plain text subscription (contains '://')")
 		return content, nil
 	}
 

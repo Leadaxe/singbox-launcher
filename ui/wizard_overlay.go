@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 
 	"singbox-launcher/core"
@@ -28,9 +27,8 @@ func InitWizardOverlay(app *App, controller *core.AppController) {
 			if origOnState != nil {
 				origOnState()
 			}
-			fyne.Do(func() {
-				app.updateWizardOverlay()
-			})
+			// OnStateChange вызывается из wizard.go на UI-потоке — fyne.Do не нужен
+			app.updateWizardOverlay()
 		}
 		// Set initial overlay visibility
 		app.updateWizardOverlay()

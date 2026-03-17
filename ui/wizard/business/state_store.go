@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/platform"
 	wizardmodels "singbox-launcher/ui/wizard/models"
 )
 
@@ -54,7 +55,7 @@ func NewStateStore(fileService FileServiceInterface) *StateStore {
 // ensureStatesDir создает директорию состояний, если она не существует.
 // Используется перед сохранением и загрузкой состояний.
 func (ss *StateStore) ensureStatesDir() error {
-	if err := os.MkdirAll(ss.statesDir, 0755); err != nil {
+	if err := os.MkdirAll(ss.statesDir, platform.DefaultDirMode); err != nil {
 		return fmt.Errorf("failed to create wizard states directory: %w", err)
 	}
 	return nil
@@ -121,7 +122,7 @@ func (ss *StateStore) SaveWizardState(state *wizardmodels.WizardStateFile, id st
 	filePath := ss.getStateFilePath(id)
 
 	// Сохраняем в файл
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, platform.DefaultFileMode); err != nil {
 		return fmt.Errorf("failed to write state file: %w", err)
 	}
 
