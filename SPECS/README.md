@@ -16,7 +16,7 @@
 | | C | Complete — сделано |
 | **NAME** | UPPER_SNAKE или kebab-case | Название задачи |
 
-Примеры: `001-F-C-FEATURES_2025`, `011-B-C-launcher-freeze-after-sleep`, `013-F-N-LOCALIZATION`.
+Примеры: `001-F-C-FEATURES_2025`, `011-B-C-launcher-freeze-after-sleep`, `013-F-C-LOCALIZATION`.
 
 ## Формат Spec Kit (внутри папки)
 
@@ -46,7 +46,8 @@
 
 - **001–010** — завершённые фичи (F-C): FEATURES_2025, WIZARD_STATE, UNIFIED_CONFIG_TEMPLATE, SRS_LOCAL_DOWNLOAD, DOWNLOAD_FAILED_MANUAL, PING_ERROR_TOOLTIP, DIAGNOSTICS_LOG_VIEWER, OUTBOUNDS_CONFIGURATOR, WIREGUARD_URI, OUTBOUND_EDIT_PREVIEW_TAB
 - **011–012** — баги (B): launcher-freeze-after-sleep (C), update-reload-clash-config (O)
-- **013, 016** — фичи в работе/плане (F-N): LOCALIZATION, SUBSCRIPTION_JSON_ARRAY
+- **013** — фича завершена (F-C): LOCALIZATION
+- **016** — фича в работе/плане (F-N): SUBSCRIPTION_JSON_ARRAY
 - **014** — фича закрыта без отдельной реализации (F-C): RULE_TYPE_SRS_URL (содержание перенесено в 018)
 - **017** — фича завершена (F-C): RULE_TYPE_PROCESS_PATH_REGEX (Match by path)
 - **018** — фича в плане (F-N): CUSTOM_RULE_SUBSYSTEM_REFACTOR (объединяющая: константы типов ips/urls/processes/raw, вкладка Raw, params в custom_rules, документация по state в docs/)
