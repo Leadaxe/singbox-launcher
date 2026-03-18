@@ -62,3 +62,4 @@ jobs:
           skip-cache: true
         env:
           CGO_ENABLED: ${{ matrix.cgo }}
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true

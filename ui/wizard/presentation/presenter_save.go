@@ -75,7 +75,7 @@ func (p *WizardPresenter) SaveConfig() {
 func (p *WizardPresenter) validateSaveInput() bool {
 	if strings.TrimSpace(p.model.ParserConfigJSON) == "" {
 		debuglog.WarnLog("SaveConfig: ParserConfig is empty")
-		dialog.ShowError(fmt.Errorf(locale.T("wizard.save.error_config_empty")), p.guiState.Window)
+		dialog.ShowError(errors.New(locale.T("wizard.save.error_config_empty")), p.guiState.Window)
 		return false
 	}
 	var pc config.ParserConfig
@@ -90,7 +90,7 @@ func (p *WizardPresenter) validateSaveInput() bool {
 		}
 	}
 	debuglog.WarnLog("SaveConfig: no proxy with source or connections in ParserConfig")
-	dialog.ShowError(fmt.Errorf(locale.T("wizard.save.error_no_sources")), p.guiState.Window)
+	dialog.ShowError(errors.New(locale.T("wizard.save.error_no_sources")), p.guiState.Window)
 	return false
 }
 
@@ -244,7 +244,7 @@ func (p *WizardPresenter) saveConfigFile(configText string) (string, error) {
 	if ac == nil || ac.FileService == nil {
 		debuglog.WarnLog("SaveConfig: controller or FileService not available")
 		p.UpdateUI(func() {
-			dialog.ShowError(fmt.Errorf(locale.T("wizard.save.error_controller")), p.guiState.Window)
+			dialog.ShowError(errors.New(locale.T("wizard.save.error_controller")), p.guiState.Window)
 		})
 		return "", fmt.Errorf("controller not available")
 	}
