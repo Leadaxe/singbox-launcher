@@ -945,18 +945,45 @@ chmod +x build/build_darwin.sh
 ./build/build_darwin.sh universal
 ```
 
-2. **Бинарник только для Intel** (для старых Mac):
-   - Поддерживает только Intel Mac
-   - Требует macOS 10.15+ (Catalina или новее)
-   - Полезно, если нужно поддерживать старые Intel Mac
+2. **Только Apple Silicon** (`arm64`, быстрее — один `go build`, без `lipo`):
+   - Только для Mac на M-серии; минимум macOS 11.0+
 
 ```bash
-# Соберите бинарник только для Intel
+./build/build_darwin.sh arm64
+```
+
+3. **Только Intel** (`intel`, amd64, macOS 11.0+):
+   - Одна архитектура, без сборки universal
+
+```bash
 ./build/build_darwin.sh intel
 ```
 
+4. **Intel под Catalina** (`catalina`):
+   - amd64, минимум macOS 10.15
+
+```bash
+./build/build_darwin.sh catalina
+```
+
+**Установка / обновление в /Applications** (`-i`):
+
+- Если **`singbox-launcher.app` уже есть** в `/Applications`, меняется только исполняемый файл **`Contents/MacOS/singbox-launcher`** — каталоги **`Contents/MacOS/bin/`** (в т.ч. `config.json`) и **`logs/`** сохраняются.
+- Если приложения **ещё нет**, копируется **весь** `.app` (первая установка).
+- После успешного **`-i`** собранный **`singbox-launcher.app` в каталоге проекта удаляется** (в дереве репозитория от этой сборки ничего не остаётся).
+
+```bash
+./build/build_darwin.sh -i arm64
+# или: ./build/build_darwin.sh -i universal
+```
+
+Не перезаписывайте весь `.app` через `cp -R`, если важны данные: лаунчер хранит конфиг рядом с бинарником (`…/Contents/MacOS/bin/`).
+
+Список опций: `./build/build_darwin.sh --help`.
+
 **Возможности скрипта сборки:**
-- Автоматически создает универсальный бинарник (arm64 + x86_64) или только для Intel
+- Universal (`arm64` + `amd64`) или одна архитектура: `arm64` / `intel` / `catalina`
+- Флаг `-i` — установка/обновление в `/Applications` (при уже установленном приложении — только бинарник)
 - Создает правильную структуру `.app` бандла с Info.plist
 - Устанавливает правильный `LSMinimumSystemVersion` и приоритеты архитектур
 - Включает иконку приложения, если доступна

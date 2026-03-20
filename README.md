@@ -743,18 +743,45 @@ chmod +x build/build_darwin.sh
 ./build/build_darwin.sh universal
 ```
 
-2. **Intel-only binary** (for older Macs):
-   - Supports Intel Macs only
-   - Requires macOS 10.15+ (Catalina or newer)
-   - Useful if you need to support older Intel Macs
+2. **Apple Silicon only** (`arm64`, faster — one `go build`, no `lipo`):
+   - For M-series Macs only; minimum macOS 11.0+
 
 ```bash
-# Build Intel-only binary
+./build/build_darwin.sh arm64
+```
+
+3. **Intel-only binary** (`intel`, amd64, macOS 11.0+):
+   - Single-architecture build (no universal merge)
+
+```bash
 ./build/build_darwin.sh intel
 ```
 
+4. **Catalina Intel** (`catalina`):
+   - amd64 with minimum macOS 10.15
+
+```bash
+./build/build_darwin.sh catalina
+```
+
+**Install / update in /Applications** (`-i`):
+
+- If `singbox-launcher.app` is **already** in `/Applications`, only **`Contents/MacOS/singbox-launcher`** is replaced — your **`Contents/MacOS/bin/`** (e.g. `config.json`) and **`logs/`** stay.
+- If the app is **not** there yet, the **full** `.app` is copied (first install).
+- The **`singbox-launcher.app` in the project directory is deleted** after a successful `-i` (nothing left in the repo tree from this build).
+
+```bash
+./build/build_darwin.sh -i arm64
+# or: ./build/build_darwin.sh -i universal
+```
+
+Avoid `cp -R` over the whole `.app` if you care about data: the launcher stores config next to the binary (`…/Contents/MacOS/bin/`).
+
+See `./build/build_darwin.sh --help` for all options.
+
 **Build script features:**
-- Automatically creates universal binary (arm64 + x86_64) or Intel-only binary
+- Universal (`arm64` + `amd64`), or single-arch `arm64` / `intel` / `catalina`
+- Optional `-i` to install/update in `/Applications` (binary-only update when the app already exists)
 - Creates proper `.app` bundle structure with Info.plist
 - Sets correct `LSMinimumSystemVersion` and architecture priorities
 - Includes application icon if available

@@ -55,5 +55,6 @@
 - **019** — фича завершена (F-C): WIN7_ADAPTATION
 - **020** — фича завершена (F-C): CUSTOM_SRS_LOCAL_DOWNLOAD
 - **021** — фича завершена (F-C): SOCKS5_URI (парсинг socks5:// и socks:// в Source/Connections)
+- **022** — фича в плане (F-N): MACOS_APP_SUPPORT_DIRECTORIES (данные в `~/Library` при запуске из `.app`, изменяемый Bundle ID, по умолчанию `com.singbox-launcher`)
 
 Подробное описание каждой задачи — в SPEC.md соответствующей папки.

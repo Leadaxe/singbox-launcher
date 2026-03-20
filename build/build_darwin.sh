@@ -6,6 +6,54 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+# Parse args first so --help exits without go mod tidy / full checks
+BUILD_TYPE="universal"
+COPY_TO_APPLICATIONS=false
+BUILD_TYPE_SET=false
+
+print_usage() {
+    echo "Usage: $0 [options] [universal|intel|arm64|catalina]"
+    echo ""
+    echo "Build types:"
+    echo "  universal - Universal binary (arm64 + amd64), slower; default if omitted"
+    echo "  intel     - amd64 only (macOS 11.0+)"
+    echo "  arm64     - Apple Silicon only (macOS 11.0+), fast on M-series Macs"
+    echo "  catalina  - amd64 only, minimum macOS 10.15"
+    echo ""
+    echo "Options:"
+    echo "  -i                                  Install/update in /Applications: if the app already"
+    echo "                                      exists, only the executable is replaced (bin/, logs/ kept);"
+    echo "                                      otherwise the full .app bundle is copied (first install)."
+    echo "                                      The built .app in the repo directory is removed afterward."
+    echo "  -h, --help                          Show this help"
+}
+
+for arg in "$@"; do
+    case "$arg" in
+        -h|--help)
+            print_usage
+            exit 0
+            ;;
+        -i)
+            COPY_TO_APPLICATIONS=true
+            ;;
+        universal|intel|arm64|catalina)
+            if [ "$BUILD_TYPE_SET" = true ]; then
+                echo "ERROR: build type specified more than once (already: $BUILD_TYPE)"
+                exit 1
+            fi
+            BUILD_TYPE="$arg"
+            BUILD_TYPE_SET=true
+            ;;
+        *)
+            echo "ERROR: unknown argument: $arg"
+            echo ""
+            print_usage
+            exit 1
+            ;;
+    esac
+done
+
 echo ""
 echo "========================================"
 echo "  Building Sing-Box Launcher (macOS)"
@@ -45,16 +93,6 @@ echo "=== Setting build environment ==="
 export CGO_ENABLED=1
 export GOOS=darwin
 
-# Determine build type: universal (default), intel-only, or catalina
-BUILD_TYPE="${1:-universal}"
-if [ "$BUILD_TYPE" != "universal" ] && [ "$BUILD_TYPE" != "intel" ] && [ "$BUILD_TYPE" != "catalina" ]; then
-    echo "Usage: $0 [universal|intel|catalina]"
-    echo "  universal - Build universal binary for Apple Silicon + Intel (requires macOS 11.0+)"
-    echo "  intel     - Build Intel-only binary (supports macOS 11.0+ by default)"
-    echo "  catalina  - Intel-only build targeting macOS 10.15 (Catalina)"
-    exit 1
-fi
-
 if [ "$BUILD_TYPE" = "universal" ]; then
     # Check for lipo (required for universal binary)
     if ! command -v lipo &> /dev/null; then
@@ -66,6 +104,9 @@ if [ "$BUILD_TYPE" = "universal" ]; then
     MIN_MACOS_VERSION="11.0"
 elif [ "$BUILD_TYPE" = "intel" ]; then
     echo "Building Intel-only binary (amd64)..."
+    MIN_MACOS_VERSION="11.0"
+elif [ "$BUILD_TYPE" = "arm64" ]; then
+    echo "Building Apple Silicon-only binary (arm64)..."
     MIN_MACOS_VERSION="11.0"
 else
     echo "Building Intel-only Catalina binary (amd64) targeting macOS 10.15..."
@@ -182,6 +223,19 @@ if [ "$BUILD_TYPE" = "universal" ]; then
     # Verify the binary contains both architectures
     echo "Binary architectures:"
     lipo -info "$OUTPUT_FILENAME"
+elif [ "$BUILD_TYPE" = "arm64" ]; then
+    echo ""
+    echo "=== Building for arm64 (Apple Silicon) ==="
+    GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION" -o "$OUTPUT_FILENAME"
+
+    if [ $? -ne 0 ]; then
+        echo "!!! Build failed for arm64 !!!"
+        exit 1
+    fi
+
+    echo "Apple Silicon binary created: $OUTPUT_FILENAME"
+    echo "Binary architecture:"
+    file "$OUTPUT_FILENAME"
 else
     echo ""
     echo "=== Building for amd64 (Intel) ==="
@@ -267,6 +321,11 @@ fi
         echo '        <string>arm64</string>'
         echo '        <string>x86_64</string>'
         echo '    </array>'
+    elif [ "$BUILD_TYPE" = "arm64" ]; then
+        echo '    <key>LSArchitecturePriority</key>'
+        echo '    <array>'
+        echo '        <string>arm64</string>'
+        echo '    </array>'
     fi
     echo '    <key>NSHighResolutionCapable</key>'
     echo '    <true/>'
@@ -284,17 +343,51 @@ if [ "$BUILD_TYPE" = "universal" ]; then
     echo "  Output: $APP_NAME (universal binary: arm64 + amd64)"
     echo "  Minimum macOS: $MIN_MACOS_VERSION (Big Sur+)"
     echo "  Supports: Apple Silicon and Intel Macs"
+elif [ "$BUILD_TYPE" = "arm64" ]; then
+    echo "  Output: $APP_NAME (Apple Silicon-only: arm64)"
+    echo "  Minimum macOS: $MIN_MACOS_VERSION (Big Sur+)"
+    echo "  Supports: Apple Silicon Macs only"
 else
     echo "  Output: $APP_NAME (Intel-only binary: amd64)"
-    echo "  Minimum macOS: $MIN_MACOS_VERSION (Big Sur+)"
+    if [ "$BUILD_TYPE" = "catalina" ]; then
+        echo "  Minimum macOS: $MIN_MACOS_VERSION (Catalina+)"
+    else
+        echo "  Minimum macOS: $MIN_MACOS_VERSION (Big Sur+)"
+    fi
     echo "  Supports: Intel Macs only"
 fi
-echo "  Run with: open $APP_NAME"
+if [ "$COPY_TO_APPLICATIONS" = true ]; then
+    echo "  Run with: open /Applications/$APP_NAME"
+else
+    echo "  Run with: open $APP_NAME"
+fi
 echo ""
-echo "To install or update the app in /Applications, run:"
-echo "  cp -R \"$(pwd)/$APP_NAME\" /Applications/"
-echo ""
-echo "Or to update only the binary (if the app is already in /Applications):"
-echo "  cp \"$(pwd)/$APP_NAME/Contents/MacOS/$BASE_NAME\" \"/Applications/$APP_NAME/Contents/MacOS/$BASE_NAME\""
-echo "========================================"
+
+if [ "$COPY_TO_APPLICATIONS" = true ]; then
+    echo "=== Installing to /Applications ==="
+    DEST_APP="/Applications/$APP_NAME"
+    DEST_BIN="$DEST_APP/Contents/MacOS/$BASE_NAME"
+    SRC_BIN="$(pwd)/$APP_NAME/Contents/MacOS/$BASE_NAME"
+
+    if [ -d "$DEST_APP" ]; then
+        echo "Existing $APP_NAME found — updating executable only (Contents/MacOS/bin/, logs/ unchanged)."
+        cp "$SRC_BIN" "$DEST_BIN"
+        chmod +x "$DEST_BIN"
+        echo "Updated: $DEST_BIN"
+    else
+        echo "No $APP_NAME in /Applications — copying full bundle (first install)."
+        cp -R "$APP_NAME" /Applications/
+        echo "Installed: $DEST_APP"
+    fi
+    rm -rf "$APP_NAME"
+    echo "Removed local bundle: $(pwd)/$APP_NAME"
+    echo "========================================"
+else
+    echo "To install or update in /Applications:"
+    echo "  $0 -i $BUILD_TYPE   # updates binary only if the app is already there; else full .app"
+    echo ""
+    echo "Manual full copy (replaces entire app, wipes data in Contents/MacOS/bin/):"
+    echo "  cp -R \"$(pwd)/$APP_NAME\" /Applications/"
+    echo "========================================"
+fi
 
