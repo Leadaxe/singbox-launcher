@@ -398,6 +398,7 @@ func fetchAndParseSource(sourceURL string, skip []map[string]string) ([]*config.
 		return nil, fmt.Errorf("empty source URL")
 	}
 	var nodes []*config.ParsedNode
+	tagCounts := make(map[string]int)
 	if subscription.IsSubscriptionURL(sourceURL) {
 		content, err := subscription.FetchSubscription(sourceURL)
 		if err != nil {
@@ -416,6 +417,7 @@ func fetchAndParseSource(sourceURL string, skip []map[string]string) ([]*config.
 				continue
 			}
 			if node != nil {
+				node.Tag = subscription.MakeTagUnique(node.Tag, tagCounts, "ConfigWizard")
 				nodes = append(nodes, node)
 			}
 		}
@@ -427,6 +429,7 @@ func fetchAndParseSource(sourceURL string, skip []map[string]string) ([]*config.
 			return nil, err
 		}
 		if node != nil {
+			node.Tag = subscription.MakeTagUnique(node.Tag, tagCounts, "ConfigWizard")
 			nodes = append(nodes, node)
 		}
 		return nodes, nil

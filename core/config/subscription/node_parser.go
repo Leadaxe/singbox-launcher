@@ -505,37 +505,17 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 				outbound["flow"] = node.Flow
 			}
 		}
-
-		// Build TLS structure with correct field order
-		sni := node.Query.Get("sni")
-		if sni == "" {
-			sni = node.Server // Fallback to server hostname
-		}
-		fp := node.Query.Get("fp")
-		if fp == "" {
-			fp = "random"
-		}
-		pbk := node.Query.Get("pbk")
-		sid := node.Query.Get("sid")
-
-		tlsData := map[string]interface{}{
-			"enabled":     true,
-			"server_name": sni,
-			"utls": map[string]interface{}{
-				"enabled":     true,
-				"fingerprint": fp,
-			},
+		if pe := strings.TrimSpace(queryGetFold(node.Query, "packetEncoding")); pe != "" {
+			outbound["packet_encoding"] = pe
 		}
 
-		if pbk != "" {
-			tlsData["reality"] = map[string]interface{}{
-				"enabled":    true,
-				"public_key": pbk,
-				"short_id":   sid,
-			}
+		if t, ok := uriTransportFromQuery(node.Query); ok {
+			outbound["transport"] = t
 		}
 
-		outbound["tls"] = tlsData
+		if tlsData, ok := vlessTLSFromNode(node); ok {
+			outbound["tls"] = tlsData
+		}
 	} else if node.Scheme == "vmess" {
 		outbound["uuid"] = node.UUID
 
@@ -560,14 +540,22 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 			transport := make(map[string]interface{})
 			transport["type"] = network
 
-			if path := node.Query.Get("path"); path != "" {
+			if network == "grpc" {
+				if path := node.Query.Get("path"); path != "" {
+					transport["service_name"] = path
+				}
+			} else if path := node.Query.Get("path"); path != "" {
 				transport["path"] = path
 			}
 
-			if network == "ws" || network == "http" {
+			if network == "ws" {
 				if host := node.Query.Get("host"); host != "" {
-					headers := map[string]string{"Host": host}
-					transport["headers"] = headers
+					transport["headers"] = map[string]string{"Host": host}
+				}
+			}
+			if network == "http" {
+				if host := node.Query.Get("host"); host != "" {
+					transport["host"] = []string{host}
 				}
 			}
 
@@ -606,6 +594,10 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 		}
 	} else if node.Scheme == "trojan" {
 		outbound["password"] = node.UUID
+		if t, ok := uriTransportFromQuery(node.Query); ok {
+			outbound["transport"] = t
+		}
+		outbound["tls"] = trojanTLSFromNode(node)
 	} else if node.Scheme == "ss" {
 		if method := node.Query.Get("method"); method != "" {
 			outbound["method"] = method

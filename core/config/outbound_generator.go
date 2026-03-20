@@ -63,6 +63,52 @@ type outboundInfo struct {
 	isLocal       bool           // true if it's a local selector (from proxySource.Outbounds), false if global
 }
 
+// appendOutboundTransportParts appends a sing-box "transport" object from node.Outbound (VLESS, VMess, Trojan).
+func appendOutboundTransportParts(parts []string, outbound map[string]interface{}) []string {
+	if outbound == nil {
+		return parts
+	}
+	transport, ok := outbound["transport"].(map[string]interface{})
+	if !ok || len(transport) == 0 {
+		return parts
+	}
+	var transportParts []string
+	if tType, ok := transport["type"].(string); ok && tType != "" {
+		transportParts = append(transportParts, fmt.Sprintf(`"type":%q`, tType))
+	}
+	if path, ok := transport["path"].(string); ok && path != "" {
+		transportParts = append(transportParts, fmt.Sprintf(`"path":%q`, path))
+	}
+	switch hostVal := transport["host"].(type) {
+	case string:
+		if hostVal != "" {
+			transportParts = append(transportParts, fmt.Sprintf(`"host":%q`, hostVal))
+		}
+	case []string:
+		if len(hostVal) > 0 {
+			hostJSON, err := json.Marshal(hostVal)
+			if err == nil {
+				transportParts = append(transportParts, fmt.Sprintf(`"host":%s`, string(hostJSON)))
+			}
+		}
+	}
+	if serviceName, ok := transport["service_name"].(string); ok && serviceName != "" {
+		transportParts = append(transportParts, fmt.Sprintf(`"service_name":%q`, serviceName))
+	}
+	if headers, ok := transport["headers"].(map[string]string); ok && len(headers) > 0 {
+		var headerParts []string
+		for k, v := range headers {
+			headerParts = append(headerParts, fmt.Sprintf(`%q:%q`, k, v))
+		}
+		transportParts = append(transportParts, fmt.Sprintf(`"headers":{%s}`, strings.Join(headerParts, ",")))
+	}
+	if len(transportParts) > 0 {
+		transportJSON := "{" + strings.Join(transportParts, ",") + "}"
+		parts = append(parts, fmt.Sprintf(`"transport":%s`, transportJSON))
+	}
+	return parts
+}
+
 // GenerateNodeJSON returns a single JSON object string for one proxy node (sing-box outbound).
 // Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria2, ssh.
 // Includes optional TLS (including reality), transport (ws/http/grpc), and protocol-specific options.
@@ -97,41 +143,12 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 	if node.Scheme == "vless" || node.Scheme == "vmess" {
 		parts = append(parts, fmt.Sprintf(`"uuid":%q`, node.UUID))
 
-		// For VMESS add additional fields
 		if node.Scheme == "vmess" {
-			// security
 			if security, ok := node.Outbound["security"].(string); ok && security != "" {
 				parts = append(parts, fmt.Sprintf(`"security":%q`, security))
 			}
-
-			// alter_id
 			if alterID, ok := node.Outbound["alter_id"].(int); ok {
 				parts = append(parts, fmt.Sprintf(`"alter_id":%d`, alterID))
-			}
-
-			// НЕ добавляем поле network - sing-box не поддерживает его для vmess
-			// Используем только transport для ws/http/grpc
-
-			// transport
-			if transport, ok := node.Outbound["transport"].(map[string]interface{}); ok && len(transport) > 0 {
-				var transportParts []string
-				if tType, ok := transport["type"].(string); ok {
-					transportParts = append(transportParts, fmt.Sprintf(`"type":%q`, tType))
-				}
-				if path, ok := transport["path"].(string); ok {
-					transportParts = append(transportParts, fmt.Sprintf(`"path":%q`, path))
-				}
-				if headers, ok := transport["headers"].(map[string]string); ok && len(headers) > 0 {
-					var headerParts []string
-					for k, v := range headers {
-						headerParts = append(headerParts, fmt.Sprintf(`%q:%q`, k, v))
-					}
-					transportParts = append(transportParts, fmt.Sprintf(`"headers":{%s}`, strings.Join(headerParts, ",")))
-				}
-				if len(transportParts) > 0 {
-					transportJSON := "{" + strings.Join(transportParts, ",") + "}"
-					parts = append(parts, fmt.Sprintf(`"transport":%s`, transportJSON))
-				}
 			}
 		}
 	} else if node.Scheme == "trojan" {
@@ -216,62 +233,64 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 		}
 	}
 
+	parts = appendOutboundTransportParts(parts, node.Outbound)
+
 	// 7. tls (if present) - with correct field order
-	if tlsData, ok := node.Outbound["tls"].(map[string]interface{}); ok {
-		var tlsParts []string
+	if node.Outbound != nil {
+		if tlsData, ok := node.Outbound["tls"].(map[string]interface{}); ok {
+			if disabled, ok := tlsData["enabled"].(bool); ok && !disabled {
+				parts = append(parts, `"tls":{"enabled":false}`)
+			} else {
+				var tlsParts []string
 
-		// enabled
-		if enabled, ok := tlsData["enabled"].(bool); ok {
-			tlsParts = append(tlsParts, fmt.Sprintf(`"enabled":%v`, enabled))
-		}
+				if enabled, ok := tlsData["enabled"].(bool); ok {
+					tlsParts = append(tlsParts, fmt.Sprintf(`"enabled":%v`, enabled))
+				}
 
-		// server_name
-		if serverName, ok := tlsData["server_name"].(string); ok {
-			tlsParts = append(tlsParts, fmt.Sprintf(`"server_name":%q`, serverName))
-		}
+				if serverName, ok := tlsData["server_name"].(string); ok && serverName != "" {
+					tlsParts = append(tlsParts, fmt.Sprintf(`"server_name":%q`, serverName))
+				}
 
-		// alpn (for VMESS and Hysteria2)
-		if alpn, ok := tlsData["alpn"].([]string); ok && len(alpn) > 0 {
-			alpnJSON, _ := json.Marshal(alpn)
-			tlsParts = append(tlsParts, fmt.Sprintf(`"alpn":%s`, string(alpnJSON)))
-		}
+				if alpn, ok := tlsData["alpn"].([]string); ok && len(alpn) > 0 {
+					alpnJSON, _ := json.Marshal(alpn)
+					tlsParts = append(tlsParts, fmt.Sprintf(`"alpn":%s`, string(alpnJSON)))
+				}
 
-		// utls
-		if utls, ok := tlsData["utls"].(map[string]interface{}); ok {
-			var utlsParts []string
-			if utlsEnabled, ok := utls["enabled"].(bool); ok {
-				utlsParts = append(utlsParts, fmt.Sprintf(`"enabled":%v`, utlsEnabled))
+				if utls, ok := tlsData["utls"].(map[string]interface{}); ok {
+					var utlsParts []string
+					if utlsEnabled, ok := utls["enabled"].(bool); ok {
+						utlsParts = append(utlsParts, fmt.Sprintf(`"enabled":%v`, utlsEnabled))
+					}
+					if fingerprint, ok := utls["fingerprint"].(string); ok {
+						utlsParts = append(utlsParts, fmt.Sprintf(`"fingerprint":%q`, fingerprint))
+					}
+					utlsJSON := "{" + strings.Join(utlsParts, ",") + "}"
+					tlsParts = append(tlsParts, fmt.Sprintf(`"utls":%s`, utlsJSON))
+				}
+
+				if insecure, ok := tlsData["insecure"].(bool); ok && insecure {
+					tlsParts = append(tlsParts, fmt.Sprintf(`"insecure":%v`, insecure))
+				}
+
+				if reality, ok := tlsData["reality"].(map[string]interface{}); ok {
+					var realityParts []string
+					if realityEnabled, ok := reality["enabled"].(bool); ok {
+						realityParts = append(realityParts, fmt.Sprintf(`"enabled":%v`, realityEnabled))
+					}
+					if publicKey, ok := reality["public_key"].(string); ok {
+						realityParts = append(realityParts, fmt.Sprintf(`"public_key":%q`, publicKey))
+					}
+					if shortID, ok := reality["short_id"].(string); ok {
+						realityParts = append(realityParts, fmt.Sprintf(`"short_id":%q`, shortID))
+					}
+					realityJSON := "{" + strings.Join(realityParts, ",") + "}"
+					tlsParts = append(tlsParts, fmt.Sprintf(`"reality":%s`, realityJSON))
+				}
+
+				tlsJSON := "{" + strings.Join(tlsParts, ",") + "}"
+				parts = append(parts, fmt.Sprintf(`"tls":%s`, tlsJSON))
 			}
-			if fingerprint, ok := utls["fingerprint"].(string); ok {
-				utlsParts = append(utlsParts, fmt.Sprintf(`"fingerprint":%q`, fingerprint))
-			}
-			utlsJSON := "{" + strings.Join(utlsParts, ",") + "}"
-			tlsParts = append(tlsParts, fmt.Sprintf(`"utls":%s`, utlsJSON))
 		}
-
-		// insecure (for VMESS and Hysteria2)
-		if insecure, ok := tlsData["insecure"].(bool); ok && insecure {
-			tlsParts = append(tlsParts, fmt.Sprintf(`"insecure":%v`, insecure))
-		}
-
-		// reality
-		if reality, ok := tlsData["reality"].(map[string]interface{}); ok {
-			var realityParts []string
-			if realityEnabled, ok := reality["enabled"].(bool); ok {
-				realityParts = append(realityParts, fmt.Sprintf(`"enabled":%v`, realityEnabled))
-			}
-			if publicKey, ok := reality["public_key"].(string); ok {
-				realityParts = append(realityParts, fmt.Sprintf(`"public_key":%q`, publicKey))
-			}
-			if shortID, ok := reality["short_id"].(string); ok {
-				realityParts = append(realityParts, fmt.Sprintf(`"short_id":%q`, shortID))
-			}
-			realityJSON := "{" + strings.Join(realityParts, ",") + "}"
-			tlsParts = append(tlsParts, fmt.Sprintf(`"reality":%s`, realityJSON))
-		}
-
-		tlsJSON := "{" + strings.Join(tlsParts, ",") + "}"
-		parts = append(parts, fmt.Sprintf(`"tls":%s`, tlsJSON))
 	}
 
 	// Build final JSON

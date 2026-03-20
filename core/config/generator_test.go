@@ -299,3 +299,22 @@ func TestGenerateNodeJSON_VLESS_XtlsVisionUDP443(t *testing.T) {
 		t.Fatalf("must not emit unsupported Xray flow in JSON:\n%s", jsonStr)
 	}
 }
+
+// GenerateNodeJSON must emit transport for VLESS ws and omit tls when security=none.
+func TestGenerateNodeJSON_VLESS_WSTransportNoTLS(t *testing.T) {
+	uri := "vless://a0ee37a5-1844-4087-bc5c-1db6f416d38c@cdn.example.com:8880?encryption=none&type=ws&path=%2F&host=h.cdn&security=none#t"
+	node, err := subscription.ParseNode(uri, nil)
+	if err != nil || node == nil {
+		t.Fatalf("ParseNode: %v", err)
+	}
+	jsonStr, err := GenerateNodeJSON(node)
+	if err != nil {
+		t.Fatalf("GenerateNodeJSON: %v", err)
+	}
+	if !strings.Contains(jsonStr, `"transport":`) || !strings.Contains(jsonStr, `"type":"ws"`) {
+		t.Fatalf("expected ws transport in JSON:\n%s", jsonStr)
+	}
+	if strings.Contains(jsonStr, `"tls":`) {
+		t.Fatalf("unexpected tls for security=none:\n%s", jsonStr)
+	}
+}

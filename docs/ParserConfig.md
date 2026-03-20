@@ -465,19 +465,24 @@
 ### VLESS (`vless://`)
 Стандартный URI формат: `vless://uuid@server:port?params#tag`
 
-**Параметры query string:**
-- `encryption` - метод шифрования (например, `none`)
-- `flow` - поток (например, `xtls-rprx-vision`)
-- `security` - тип безопасности (например, `reality`, `tls`)
-- `sni` - Server Name Indication
-- `fp` - TLS fingerprint (например, `chrome`, `safari`, `random`)
-- `pbk` - Public key для Reality
-- `sid` - Short ID для Reality
-- `type` - тип транспорта (`tcp`, `ws`, `grpc`)
-- `path` - путь (для `ws`/`grpc`)
-- `host` - хост заголовок (для `ws`/`grpc`)
-- `serviceName` - имя сервиса (для `grpc`)
-- `mode` - режим (для `grpc`, например, `gun`)
+**Соответствие query → полям outbound sing-box** (TLS, [V2Ray transport](https://sing-box.sagernet.org/configuration/shared/v2ray-transport/), Reality, `security=none`, нормализация ключей): подробный справочник и таблицы — в репозитории `SPECS/023-F-C-SUBSCRIPTION_TRANSPORT_VLESS_TROJAN/SUBSCRIPTION_PARAMS_REPORT.md` (раздел «Справочник» и § 1а).
+
+**Параметры query string (типичные):**
+- `encryption` — в ссылках Xray часто `none`; в JSON outbound VLESS отдельным полем не дублируется
+- `flow` — подпротокол VLESS в sing-box (например `xtls-rprx-vision`), см. [доку VLESS](https://sing-box.sagernet.org/configuration/outbound/vless/)
+- `security` — `none` | `tls` | `reality`; при `none` TLS в outbound не добавляется
+- `sni` — имя для SNI / проверки сертификата → `tls.server_name`
+- `fp` — отпечаток uTLS → `tls.utls.fingerprint` (значения: `chrome`, `firefox`, `qq`, `random`, …)
+- `alpn` — список через запятую → `tls.alpn`
+- `insecure`, `allowInsecure` / `allowinsecure` — при `1` / `true` → `tls.insecure`
+- `pbk`, `sid` — Reality → `tls.reality.public_key`, `short_id`
+- `type` — транспорт: `tcp` / `raw`, `ws`, `grpc`, `http`, `xhttp` (в sing-box `xhttp` маппится в transport `httpupgrade`), реже `quic`
+- `path` — путь WebSocket / HTTP / httpupgrade или fallback имени сервиса для gRPC
+- `host` / `Host` — для WS → заголовок `Host`; для HTTP/httpupgrade — поле `host` транспорта (регистр ключа учитывается)
+- `headerType` — вместе с `type=raw` или `tcp` и значением `http` задаёт транспорт типа HTTP (обфускация), см. отчёт 023
+- `serviceName` / `service_name` — имя gRPC-сервиса → `transport.service_name`
+- `packetEncoding` — например `xudp` → поле outbound `packet_encoding`, см. [доку VLESS](https://sing-box.sagernet.org/configuration/outbound/vless/)
+- `mode`, `spx`, `extra`, `quicSecurity`, `authority` — часто встречаются в ссылках Xray/панелей; в документированный клиентский JSON sing-box **не переносятся**, на разбор ссылки не влияют
 
 **Пример:**
 ```
@@ -514,11 +519,14 @@ vmess://eyJ2IjoiMiIsInBzIjoiVGVzdCIsImFkZCI6InNlcnZlci5jb20iLCJwb3J0Ijo0NDMsImlk
 ### Trojan (`trojan://`)
 Стандартный URI формат: `trojan://password@server:port?params#tag`
 
-**Параметры query string:**
-- `security` - тип безопасности (например, `tls`)
-- `sni` - Server Name Indication
-- `alpn` - ALPN (через запятую для нескольких значений)
-- `fp` - TLS fingerprint
+Те же правила **TLS** и **[V2Ray transport](https://sing-box.sagernet.org/configuration/shared/v2ray-transport/)**, что и для VLESS (в т.ч. `type=ws`, `path`, `host` / `Host`), см. `SPECS/023-F-C-SUBSCRIPTION_TRANSPORT_VLESS_TROJAN/SUBSCRIPTION_PARAMS_REPORT.md`.
+
+**Параметры query string (типичные):**
+- `security` — например `tls` или `none` (без TLS)
+- `sni`, `host` — SNI / имя сертификата; для WS также заголовок Host
+- `type` — при `ws` добавляется WebSocket-транспорт
+- `path` — путь WebSocket
+- `alpn`, `fp`, `insecure` / `allowInsecure` — как у VLESS
 
 **Пример:**
 ```

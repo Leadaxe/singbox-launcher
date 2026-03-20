@@ -518,6 +518,212 @@ func TestBuildOutbound(t *testing.T) {
 	})
 }
 
+// TestParseNode_VLESS_TransportAndTLS checks ws/grpc/xhttp transport and conditional TLS.
+func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
+	t.Run("WS security none — transport, no TLS", func(t *testing.T) {
+		uri := "vless://a0ee37a5-1844-4087-bc5c-1db6f416d38c@example.com:80?encryption=none&type=ws&path=%2Fvless%2F&host=cdn.test&security=none#plain-ws"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v node=%v", err, node)
+		}
+		tr, ok := node.Outbound["transport"].(map[string]interface{})
+		if !ok || tr["type"] != "ws" || tr["path"] != "/vless/" {
+			t.Fatalf("transport: %+v", node.Outbound["transport"])
+		}
+		h, _ := tr["headers"].(map[string]string)
+		if h["Host"] != "cdn.test" {
+			t.Fatalf("headers Host: %+v", h)
+		}
+		if _, has := node.Outbound["tls"]; has {
+			t.Fatal("expected no tls for security=none")
+		}
+	})
+
+	t.Run("gRPC with serviceName and TLS", func(t *testing.T) {
+		uri := "vless://a0ee37a5-1844-4087-bc5c-1db6f416d38c@example.com:443?encryption=none&type=grpc&serviceName=grpc&sni=example.com&security=tls&fp=chrome#gr"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		tr, ok := node.Outbound["transport"].(map[string]interface{})
+		if !ok || tr["type"] != "grpc" || tr["service_name"] != "grpc" {
+			t.Fatalf("transport: %+v", tr)
+		}
+		tls, ok := node.Outbound["tls"].(map[string]interface{})
+		if !ok || tls["enabled"] != true {
+			t.Fatalf("tls: %+v", tls)
+		}
+		if _, has := tls["reality"]; has {
+			t.Fatal("unexpected reality for plain tls")
+		}
+	})
+
+	t.Run("http transport uses host list per sing-box schema", func(t *testing.T) {
+		uri := "vless://a0ee37a5-1844-4087-bc5c-1db6f416d38c@example.com:80?type=http&path=%2Fapi&host=cdn.example&security=none#h"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		tr := node.Outbound["transport"].(map[string]interface{})
+		if tr["type"] != "http" {
+			t.Fatalf("transport: %+v", tr)
+		}
+		hosts, ok := tr["host"].([]string)
+		if !ok || len(hosts) != 1 || hosts[0] != "cdn.example" {
+			t.Fatalf("host list: %+v", tr["host"])
+		}
+	})
+
+	t.Run("xhttp maps to httpupgrade (sing-box schema: host/path only)", func(t *testing.T) {
+		uri := "vless://a0ee37a5-1844-4087-bc5c-1db6f416d38c@example.com:443?type=xhttp&path=%2F&host=h.test&mode=auto&security=tls&sni=h.test#xh"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		tr := node.Outbound["transport"].(map[string]interface{})
+		if tr["type"] != "httpupgrade" || tr["host"] != "h.test" || tr["path"] != "/" {
+			t.Fatalf("transport: %+v", tr)
+		}
+		if _, has := tr["mode"]; has {
+			t.Fatal("xhttp mode is not part of sing-box httpupgrade transport")
+		}
+	})
+
+	t.Run("allowinsecure=0 lowercase does not set tls.insecure", func(t *testing.T) {
+		uri := "vless://52dbc2d8-00c5-2710-a898-22718fb85c12@ing.anti-vpn.ru:52006?security=reality&encryption=none&pbk=4CH3o5zOMcFNMbnwXnkAg0FFepmsc0QzhahXkUzb1ik&headerType=none&fp=qq&allowinsecure=0&type=tcp&flow=xtls-rprx-vision&sni=max.ru&sid=d8c6b58bcbb0c323#t"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		tls := node.Outbound["tls"].(map[string]interface{})
+		if ins, ok := tls["insecure"].(bool); ok && ins {
+			t.Fatalf("expected insecure omitted or false, got %+v", tls)
+		}
+		ut := tls["utls"].(map[string]interface{})
+		if ut["fingerprint"] != "qq" {
+			t.Fatalf("fp qq lowercase: %+v", ut)
+		}
+	})
+
+	t.Run("multiply-encoded alpn decodes to http/1.1", func(t *testing.T) {
+		uri := "vless://946cbe56-5e60-4d04-ace7-6e105a19d566@95.163.208.37:8443?security=reality&alpn=http%2525252F1.1&encryption=none&pbk=g_CJpYLqRg7bpisGdpQ5bt6uajJ-UT7-4HKuvyswiBo&headerType=none&fp=random&type=tcp&flow=xtls-rprx-vision&sni=rbc.ru&sid=9083951b754b4254#t"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		tls := node.Outbound["tls"].(map[string]interface{})
+		alpn, _ := tls["alpn"].([]string)
+		if len(alpn) != 1 || alpn[0] != "http/1.1" {
+			t.Fatalf("alpn: %+v", tls["alpn"])
+		}
+	})
+
+	t.Run("packetEncoding from query", func(t *testing.T) {
+		uri := "vless://e81b43d3-bb75-07d0-8b11-f526aef4fef4@lk-cdn.deploy-assure.ru:443/?type=ws&encryption=none&flow=&host=lk-cdn.deploy-assure.ru&path=%2F%2F&security=tls&sni=lk-cdn.deploy-assure.ru&fp=chrome&packetEncoding=xudp#t"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		if node.Outbound["packet_encoding"] != "xudp" {
+			t.Fatalf("packet_encoding: %+v", node.Outbound["packet_encoding"])
+		}
+	})
+
+	t.Run("tcp raw headerType=http → http transport (goida-style)", func(t *testing.T) {
+		uri := "vless://c060fdda-385d-aea1-3982-5a6c92876481@85.133.249.43:58387?encryption=none&type=raw&headerType=http&host=arvancloud.ir&path=%2F&security=none#t"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		tr := node.Outbound["transport"].(map[string]interface{})
+		if tr["type"] != "http" {
+			t.Fatalf("transport: %+v", tr)
+		}
+		hosts := tr["host"].([]string)
+		if len(hosts) != 1 || hosts[0] != "arvancloud.ir" {
+			t.Fatalf("host: %+v", tr["host"])
+		}
+		if _, has := node.Outbound["tls"]; has {
+			t.Fatal("expected no tls for security=none")
+		}
+	})
+
+	t.Run("query ?&security=tls parses (igareck BLACK list style)", func(t *testing.T) {
+		uri := "vless://14b02e2a-8930-4afb-8412-ea4a4954ca5b@198.204.227.171:2053?&security=tls&fp=chrome&sni=ylnhh.cc.cd&type=ws&headerType=none&host=ylnhh.cc.cd&path=%2Fpath#t"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		if node.Outbound["transport"] == nil {
+			t.Fatal("expected transport")
+		}
+	})
+
+	t.Run("abvpn-style grpc reality", func(t *testing.T) {
+		uri := "vless://f4294d89-874b-4d9b-ab85-ddbc29bd87e2@de48.lowlatency.cloud:443?security=reality&type=grpc&fp=firefox&sni=www.samsung.com&pbk=VtJwEawq78BmyQOoohfjwiVxqOiJNiDJNZcL8934hQQ&serviceName=grpc&sid=d8e0f4c2#t"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		tr := node.Outbound["transport"].(map[string]interface{})
+		if tr["type"] != "grpc" || tr["service_name"] != "grpc" {
+			t.Fatalf("transport: %+v", tr)
+		}
+		tls := node.Outbound["tls"].(map[string]interface{})
+		rel := tls["reality"].(map[string]interface{})
+		if rel["public_key"] == nil || rel["short_id"] != "d8e0f4c2" {
+			t.Fatalf("reality: %+v", rel)
+		}
+	})
+
+	t.Run("xhttp reality (BLACK list)", func(t *testing.T) {
+		uri := "vless://bf263367-bb63-4663-b4a1-34946107a72e@45.148.101.124:443?type=xhttp&security=reality&encryption=none&fp=chrome&pbk=wID5u27KRxoiyXEKClM7M3o_lAb9hITHZQsqJ2-Jknc&sid=7a18cff76f11&sni=autotuojat.fi&path=/illusion-finland&mode=auto#t"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		tr := node.Outbound["transport"].(map[string]interface{})
+		if tr["type"] != "httpupgrade" || tr["path"] != "/illusion-finland" {
+			t.Fatalf("transport: %+v", tr)
+		}
+		if node.Outbound["tls"] == nil {
+			t.Fatal("expected tls")
+		}
+	})
+}
+
+// TestParseNode_Trojan_WebSocket checks trojan + ws + tls from query.
+func TestParseNode_Trojan_WebSocket(t *testing.T) {
+	t.Run("lowercase host", func(t *testing.T) {
+		uri := "trojan://secretpass@example.com:443?type=ws&path=%2Ftjw&host=m.example.com&security=tls&sni=m.example.com&fp=chrome#tr"
+		testTrojanWSOne(t, uri, "m.example.com", "/tjw")
+	})
+	t.Run("Host key uppercase (igareck-style)", func(t *testing.T) {
+		uri := "trojan://secretpass@example.com:443?security=tls&sni=jflsjlaf.pages.dev&type=ws&path=%2F&Host=jflsjlaf.pages.dev#tr"
+		testTrojanWSOne(t, uri, "jflsjlaf.pages.dev", "/")
+	})
+}
+
+func testTrojanWSOne(t *testing.T, uri, wantHost, wantPath string) {
+	t.Helper()
+	node, err := ParseNode(uri, nil)
+	if err != nil || node == nil {
+		t.Fatalf("ParseNode: err=%v", err)
+	}
+	tr, ok := node.Outbound["transport"].(map[string]interface{})
+	if !ok || tr["type"] != "ws" || tr["path"] != wantPath {
+		t.Fatalf("transport: %+v", tr)
+	}
+	h, _ := tr["headers"].(map[string]string)
+	if h["Host"] != wantHost {
+		t.Fatalf("headers Host want %q got %+v", wantHost, tr)
+	}
+	tls, ok := node.Outbound["tls"].(map[string]interface{})
+	if !ok || tls["enabled"] != true || tls["server_name"] != wantHost {
+		t.Fatalf("tls: %+v", tls)
+	}
+}
+
 // TestParseNode_Hysteria2 tests parsing Hysteria2 nodes
 func TestParseNode_Hysteria2(t *testing.T) {
 	tests := []struct {
