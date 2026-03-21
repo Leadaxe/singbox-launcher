@@ -44,6 +44,8 @@ func tooltipForDNSServerCheck(locked bool) string {
 
 // dnsRowSummary — подпись сервера в списке DNS; клик по тексту и свободной части центральной ячейки строки
 // переключает галочку «включён» (как клик по самой галочке). Скелетные заблокированные строки не реагируют.
+// Hover на подписи: ttwidget.Label перехватывает desktop.Hoverable, поэтому OnMouseIn/OnMouseMoved/OnMouseOut
+// пробрасывают подсветку в связанный Check слева (см. forwardHoverToCheck).
 type dnsRowSummary struct {
 	widget.BaseWidget
 
@@ -59,6 +61,9 @@ func newDNSRowSummary(sum string, enCheck *widget.Check, desc string) *dnsRowSum
 	}
 	s := &dnsRowSummary{label: l, check: enCheck}
 	s.ExtendBaseWidget(s)
+	l.OnMouseIn = func(*desktop.MouseEvent) { s.forwardHoverToCheck(true) }
+	l.OnMouseMoved = func(*desktop.MouseEvent) { s.forwardHoverToCheck(true) }
+	l.OnMouseOut = func() { s.forwardHoverToCheck(false) }
 	return s
 }
 
@@ -83,6 +88,24 @@ func (s *dnsRowSummary) Cursor() desktop.Cursor {
 		return desktop.PointerCursor
 	}
 	return desktop.DefaultCursor
+}
+
+// forwardHoverToCheck вызывает Hoverable у Check с позицией (0,0) в координатах Check — внутри minSize, hovered станет true.
+func (s *dnsRowSummary) forwardHoverToCheck(hover bool) {
+	if s.check == nil || s.check.Disabled() {
+		return
+	}
+	h, ok := interface{}(s.check).(desktop.Hoverable)
+	if !ok {
+		return
+	}
+	if hover {
+		h.MouseIn(&desktop.MouseEvent{
+			PointEvent: fyne.PointEvent{Position: fyne.NewPos(0, 0)},
+		})
+		return
+	}
+	h.MouseOut()
 }
 
 func (s *dnsRowSummary) CreateRenderer() fyne.WidgetRenderer {
@@ -338,10 +361,16 @@ func dnsServerSummaryFromObj(obj map[string]interface{}) string {
 	if tag == "" {
 		tag = locale.T("wizard.dns.no_tag")
 	}
+	var sum string
 	if server != "" {
-		return fmt.Sprintf("%s  ·  %s  ·  %s", tag, typ, server)
+		sum = fmt.Sprintf("%s  ·  %s  ·  %s", tag, typ, server)
+	} else {
+		sum = fmt.Sprintf("%s  ·  %s", tag, typ)
 	}
-	return fmt.Sprintf("%s  ·  %s", tag, typ)
+	if det := strings.TrimSpace(dnsJSONStringField(obj, "detour")); det != "" {
+		sum += " [" + det + "]"
+	}
+	return sum
 }
 
 // dnsJSONStringField reads a string-like value from unmarshaled JSON (tag/type/server are strings in sing-box).

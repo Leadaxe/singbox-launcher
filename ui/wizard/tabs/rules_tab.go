@@ -468,11 +468,12 @@ func createCustomRuleActionButtons(
 		moveDownButton.Disable()
 	}
 
-	// Edit button
-	editButton := widget.NewButton(locale.T("wizard.rules.button_edit"), func() {
+	// Edit — только иконка (подпись в tooltip, как у удаления)
+	editButton := widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), func() {
 		showAddRuleDialog(presenter, customRule, idx)
 	})
 	editButton.Importance = widget.LowImportance
+	setTooltip(editButton, locale.T("wizard.shared.button_edit"))
 
 	// Delete button (standard trash icon; confirmation before removal)
 	deleteButton := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
@@ -596,18 +597,14 @@ func createCustomRuleRowContent(
 	deleteButton *widget.Button,
 	outboundSelect *widget.Select,
 ) []fyne.CanvasObject {
-	// Порядок: checkbox, up/down, label, srs, edit, delete, outbound.
+	// Порядок: checkbox, up/down, label, srs, spacer, edit/delete, затем блок outbound (если есть).
 	row := []fyne.CanvasObject{checkbox, moveUpButton, moveDownButton, widget.NewLabel(ruleLabel)}
 
 	if srsButton != nil {
 		row = append(row, srsButton)
 	}
 
-	row = append(row,
-		editButton,
-		deleteButton,
-		layout.NewSpacer(),
-	)
+	row = append(row, layout.NewSpacer(), editButton, deleteButton)
 
 	if outboundSelect != nil {
 		row = append(row, container.NewHBox(
