@@ -27,13 +27,16 @@ package presentation
     – SyncGUIToModel()        — слить виджеты в p.model; при любом расхождении MarkAsChanged().
     – MergeGUIToModel()      — то же слияние без MarkAsChanged (смена вкладок, закрытие, parse preview).
     Пока WizardWidgetsReady == false, MergeGUIToModel сразу выходит (не трогаем модель при первом кадре).
+    SyncGUIToModel при !WizardWidgetsReady всё же выполняется (сохранение не должно блокироваться) — с теми же
+    по-полевым ветками «keep model», что и после ready.
 
   • Подавление ложных срабатываний при программной записи в виджеты:
     ParserConfigUpdating, DNSSelectsProgrammatic, UpdatingOutboundOptions,
     SourceURLsProgrammatic, DNSRulesProgrammatic — OnChanged/селекты не должны звать MarkAsChanged.
 
   • Пустой текст/выбор у Select до отрисовки: в syncGUIToModel специальные ветки «keep model»,
-    см. dnsSelectReadLooksStale / dnsSelectOptionsMissingModelTag и аналоги для Entry/Outbound.
+    см. dnsSelectReadLooksStale / dnsSelectOptionsMissingModelTag; Entry / strategy / Final outbound —
+    internal/wizardsync (GuiTextAwaitingProgrammaticFill, FinalOutboundSelectReadLooksStale), юнит-тесты без Fyne.
 */
 import (
 	"encoding/json"
@@ -44,6 +47,7 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/wizardsync"
 	wizardbusiness "singbox-launcher/ui/wizard/business"
 	wizardmodels "singbox-launcher/ui/wizard/models"
 )
@@ -249,55 +253,67 @@ func (p *WizardPresenter) syncGUIToModel(markDirty bool) {
 		return
 	}
 	ready := p.guiState.WizardWidgetsReady
-	changed := false
+	changed := p.syncGUIToModelSourceParserFinal(ready) || p.syncGUIToModelDNS(ready)
 
-	// --- Source URL ---
-	if p.guiState.SourceURLEntry != nil {
-		newValue := p.guiState.SourceURLEntry.Text
-		if !ready && strings.TrimSpace(newValue) == "" && strings.TrimSpace(p.model.SourceURLs) != "" {
+	if changed && markDirty {
+		p.MarkAsChanged()
+	}
+}
+
+// syncGUIToModelSourceParserFinal переносит поля Sources / Parser / Final outbound (риск: затереть модель
+// пустыми виджетами до конца applyWizardWidgetsFromModel или до SetSelected у Select).
+func (p *WizardPresenter) syncGUIToModelSourceParserFinal(ready bool) bool {
+	gs := p.guiState
+	var changed bool
+
+	if gs.SourceURLEntry != nil {
+		newValue := gs.SourceURLEntry.Text
+		if wizardsync.GuiTextAwaitingProgrammaticFill(ready, newValue, p.model.SourceURLs) {
 			// ждём SetText из SyncModelToGUI
 		} else if p.model.SourceURLs != newValue {
 			p.model.SourceURLs = newValue
 			changed = true
 		}
 	}
-	// --- Parser JSON ---
-	if p.guiState.ParserConfigEntry != nil {
-		newValue := p.guiState.ParserConfigEntry.Text
-		if !ready && strings.TrimSpace(newValue) == "" && strings.TrimSpace(p.model.ParserConfigJSON) != "" {
+	if gs.ParserConfigEntry != nil {
+		newValue := gs.ParserConfigEntry.Text
+		if wizardsync.GuiTextAwaitingProgrammaticFill(ready, newValue, p.model.ParserConfigJSON) {
 			// ждём SetText из SyncModelToGUI
 		} else if p.model.ParserConfigJSON != newValue {
 			p.model.ParserConfigJSON = newValue
 			changed = true
 		}
 	}
-	// --- Final outbound (async: Select может ещё не иметь выбора при том, что в модели уже тег) ---
-	if p.guiState.FinalOutboundSelect != nil {
-		newValue := p.guiState.FinalOutboundSelect.Selected
-		opts := p.guiState.FinalOutboundSelect.Options
-		mo := strings.TrimSpace(p.model.SelectedFinalOutbound)
-		if newValue == "" && mo != "" && (len(opts) == 0 || stringSliceContains(opts, mo)) {
-			// Select ещё без выбора, в модели уже значение из state
+	if gs.FinalOutboundSelect != nil {
+		newValue := gs.FinalOutboundSelect.Selected
+		opts := gs.FinalOutboundSelect.Options
+		if wizardsync.FinalOutboundSelectReadLooksStale(ready, newValue, p.model.SelectedFinalOutbound, opts) {
+			// keep model
 		} else if p.model.SelectedFinalOutbound != newValue {
 			p.model.SelectedFinalOutbound = newValue
 			changed = true
 		}
 	}
-	// --- DNS rules text ---
-	if p.guiState.DNSRulesEntry != nil {
-		newValue := p.guiState.DNSRulesEntry.Text
-		// Model→GUI идёт через fyne.Do; до отрисовки кадра Text может быть пустым — не затирать модель.
-		if strings.TrimSpace(newValue) == "" && strings.TrimSpace(p.model.DNSRulesText) != "" {
+	return changed
+}
+
+// syncGUIToModelDNS переносит вкладку DNS (риск: те же гонки fyne + рассинхрон Options селектов с моделью).
+func (p *WizardPresenter) syncGUIToModelDNS(ready bool) bool {
+	gs := p.guiState
+	var changed bool
+
+	if gs.DNSRulesEntry != nil {
+		newValue := gs.DNSRulesEntry.Text
+		if wizardsync.GuiTextAwaitingProgrammaticFill(ready, newValue, p.model.DNSRulesText) {
 			// keep model
 		} else if p.model.DNSRulesText != newValue {
 			p.model.DNSRulesText = newValue
 			changed = true
 		}
 	}
-	// --- DNS Final tag ---
-	if p.guiState.DNSFinalSelect != nil {
-		newValue := p.guiState.DNSFinalSelect.Selected
-		opts := p.guiState.DNSFinalSelect.Options
+	if gs.DNSFinalSelect != nil {
+		newValue := gs.DNSFinalSelect.Selected
+		opts := gs.DNSFinalSelect.Options
 		mf := strings.TrimSpace(p.model.DNSFinal)
 		if dnsSelectOptionsMissingModelTag(opts, mf) {
 			// keep model — список тегов ещё не из той же модели
@@ -308,11 +324,10 @@ func (p *WizardPresenter) syncGUIToModel(markDirty bool) {
 			changed = true
 		}
 	}
-	// --- DNS default domain resolver ---
-	if p.guiState.DNSDefaultResolverSelect != nil {
+	if gs.DNSDefaultResolverSelect != nil {
 		notSet := locale.T("wizard.dns.resolver_not_set")
-		sel := p.guiState.DNSDefaultResolverSelect.Selected
-		opts := p.guiState.DNSDefaultResolverSelect.Options
+		sel := gs.DNSDefaultResolverSelect.Selected
+		opts := gs.DNSDefaultResolverSelect.Options
 		mt := strings.TrimSpace(p.model.DefaultDomainResolver)
 		if !p.model.DefaultDomainResolverUnset && dnsSelectOptionsMissingModelTag(opts, mt) {
 			// keep model — резолвер из state/шаблона ещё не попал в Options
@@ -332,11 +347,10 @@ func (p *WizardPresenter) syncGUIToModel(markDirty bool) {
 			}
 		}
 	}
-	// --- DNS strategy ---
-	if p.guiState.DNSStrategySelect != nil {
+	if gs.DNSStrategySelect != nil {
 		def := locale.T("wizard.dns.strategy_default")
-		sel := p.guiState.DNSStrategySelect.Selected
-		if strings.TrimSpace(sel) == "" && strings.TrimSpace(p.model.DNSStrategy) != "" {
+		sel := gs.DNSStrategySelect.Selected
+		if wizardsync.GuiTextAwaitingProgrammaticFill(ready, sel, p.model.DNSStrategy) {
 			// выпадающий список ещё не получил SetSelected
 		} else {
 			newStr := ""
@@ -349,9 +363,8 @@ func (p *WizardPresenter) syncGUIToModel(markDirty bool) {
 			}
 		}
 	}
-	// --- DNS independent cache (только после ready: до инициализации чекбокс может врать) ---
-	if p.guiState.DNSIndependentCacheCheck != nil && ready {
-		v := p.guiState.DNSIndependentCacheCheck.Checked
+	if gs.DNSIndependentCacheCheck != nil && ready {
+		v := gs.DNSIndependentCacheCheck.Checked
 		cur := false
 		if p.model.DNSIndependentCache != nil {
 			cur = *p.model.DNSIndependentCache
@@ -362,10 +375,7 @@ func (p *WizardPresenter) syncGUIToModel(markDirty bool) {
 			changed = true
 		}
 	}
-
-	if changed && markDirty {
-		p.MarkAsChanged()
-	}
+	return changed
 }
 
 // ValidateAndApplyParserConfigFromEntry parses ParserConfig from the entry, validates it,

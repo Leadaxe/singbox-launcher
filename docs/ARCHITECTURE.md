@@ -519,6 +519,9 @@ singbox-launcher/
 │   │   │   - NewCheckWithContent()                     # Пустой Check + произвольный контент: тап/hover с контента на галку; опциональный тултип на контенте
 │   │   │   - NewSecondaryTapWrap()                     # Обёртка строки: `TappedSecondary` (контекстное меню на вкладке Servers)
 │   │   │
+│   ├── wizardsync/             # Предикаты слияния GUI→модель визарда без Fyne (тестируемо без CGO/GL)
+│   │   │   - GuiTextAwaitingProgrammaticFill() / FinalOutboundSelectReadLooksStale()
+│   │   │
 │   └── platform/              # Платформо-зависимый код
 │       │   - платформо-специфичные функции (пути, трей, Dock и т.д.)
 │       │   - события питания (Windows): sleep / resume, статус sleep — см. ниже «Platform: события питания»
@@ -780,7 +783,8 @@ singbox-launcher/
   - `SetTemplatePreviewText()` - установка текста preview
 - `presenter_sync.go`:
   - `SyncModelToGUI()` - синхронизация данных из модели в GUI (обновляет текстовые поля, селекторы, пересоздаёт вкладку Rules при необходимости)
-  - `SyncGUIToModel()` - синхронизация данных из GUI в модель
+  - `SyncGUIToModel()` / `MergeGUIToModel()` - GUI→модель с `MarkAsChanged` или без (смена вкладок, закрытие, preview)
+  - Внутри: `syncGUIToModelSourceParserFinal` / `syncGUIToModelDNS`; предикаты «не затирать модель пустым виджетом» — **`internal/wizardsync`** (`GuiTextAwaitingProgrammaticFill`, `FinalOutboundSelectReadLooksStale`), без Fyne для юнит-тестов
 - `presenter_async.go`:
   - `TriggerParseForPreview()` - запуск парсинга конфигурации для preview асинхронно
   - `UpdateTemplatePreviewAsync()` - обновление preview шаблона асинхронно

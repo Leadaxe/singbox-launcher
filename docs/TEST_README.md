@@ -278,7 +278,7 @@ go test ./core/config/subscription -v -run TestParseNode_VLESS
 ./test.sh
 
 # Везде
-go test ./core/config/... ./ui/wizard/business/... ./ui/wizard/models/...
+go test ./core/config/... ./internal/wizardsync/... ./ui/wizard/business/... ./ui/wizard/models/...
 ```
 
 **Полное тестирование (с CGO):**
