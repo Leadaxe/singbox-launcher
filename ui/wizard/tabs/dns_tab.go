@@ -11,13 +11,13 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/internal/dialogs"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	wizardbusiness "singbox-launcher/ui/wizard/business"
@@ -40,76 +40,6 @@ func tooltipForDNSServerCheck(locked bool) string {
 		return "wizard.dns.tooltip_server_locked"
 	}
 	return "wizard.dns.tooltip_server_enabled"
-}
-
-// dnsRowSummary — подпись сервера в списке DNS; клик по тексту и свободной части центральной ячейки строки
-// переключает галочку «включён» (как клик по самой галочке). Скелетные заблокированные строки не реагируют.
-// Hover на подписи: ttwidget.Label перехватывает desktop.Hoverable, поэтому OnMouseIn/OnMouseMoved/OnMouseOut
-// пробрасывают подсветку в связанный Check слева (см. forwardHoverToCheck).
-type dnsRowSummary struct {
-	widget.BaseWidget
-
-	label *ttwidget.Label
-	check *widget.Check
-}
-
-func newDNSRowSummary(sum string, enCheck *widget.Check, desc string) *dnsRowSummary {
-	l := ttwidget.NewLabel(sum)
-	l.Wrapping = fyne.TextTruncate
-	if d := strings.TrimSpace(desc); d != "" {
-		l.SetToolTip(d)
-	}
-	s := &dnsRowSummary{label: l, check: enCheck}
-	s.ExtendBaseWidget(s)
-	l.OnMouseIn = func(*desktop.MouseEvent) { s.forwardHoverToCheck(true) }
-	l.OnMouseMoved = func(*desktop.MouseEvent) { s.forwardHoverToCheck(true) }
-	l.OnMouseOut = func() { s.forwardHoverToCheck(false) }
-	return s
-}
-
-func (s *dnsRowSummary) MinSize() fyne.Size {
-	if s.label == nil {
-		return fyne.NewSize(0, 0)
-	}
-	return s.label.MinSize()
-}
-
-func (s *dnsRowSummary) Tapped(*fyne.PointEvent) {
-	if s.check == nil || s.check.Disabled() {
-		return
-	}
-	s.check.SetChecked(!s.check.Checked)
-}
-
-func (s *dnsRowSummary) TappedSecondary(e *fyne.PointEvent) { s.Tapped(e) }
-
-func (s *dnsRowSummary) Cursor() desktop.Cursor {
-	if s.check != nil && !s.check.Disabled() {
-		return desktop.PointerCursor
-	}
-	return desktop.DefaultCursor
-}
-
-// forwardHoverToCheck вызывает Hoverable у Check с позицией (0,0) в координатах Check — внутри minSize, hovered станет true.
-func (s *dnsRowSummary) forwardHoverToCheck(hover bool) {
-	if s.check == nil || s.check.Disabled() {
-		return
-	}
-	h, ok := interface{}(s.check).(desktop.Hoverable)
-	if !ok {
-		return
-	}
-	if hover {
-		h.MouseIn(&desktop.MouseEvent{
-			PointEvent: fyne.PointEvent{Position: fyne.NewPos(0, 0)},
-		})
-		return
-	}
-	h.MouseOut()
-}
-
-func (s *dnsRowSummary) CreateRenderer() fyne.WidgetRenderer {
-	return widget.NewSimpleRenderer(s.label)
 }
 
 // CreateDNSTab builds the DNS tab: servers list, strategy + cache, rules, then final + default resolver on one row.
@@ -159,10 +89,13 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				locked := wizardbusiness.DNSTagLocked(m, tag)
 
 				// Не вызывать SyncModelToGUI здесь — он пересобирает весь список и все вкладки; только обновить селекты.
-				enCheck := widget.NewCheck("", func(checked bool) {
+				sumLabel := ttwidget.NewLabel(sum)
+				sumLabel.Wrapping = fyne.TextTruncate
+				cwc := fynewidget.NewCheckWithContent(func(checked bool) {
 					setDNSServerEnabledAt(presenter, idx, checked)
 					presenter.RefreshDNSDependentSelectsOnly()
-				})
+				}, sumLabel, fynewidget.CheckWithContentConfig{ContentToolTip: desc})
+				enCheck := cwc.Check
 				enCheck.SetChecked(wizardbusiness.DNSServerWizardEnabledRaw(raw))
 				if locked {
 					// Скелет config.dns: строка зафиксирована; галочка только показывает включение в конфиг (из state/шаблона), без переключения в UI.
@@ -190,9 +123,8 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				rowGutter := canvas.NewRectangle(color.Transparent)
 				rowGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
 				right := container.NewHBox(editBtn, delBtn, rowGutter)
-				summary := newDNSRowSummary(sum, enCheck, desc)
-				// Border: check left, summary center (tap = toggle enabled), buttons right — avoids zero-width label in HBox-only row.
-				row := container.NewBorder(nil, nil, enCheck, right, summary)
+				// Border: check left, content center (tap/hover → check via fynewidget), buttons right — avoids zero-width label in HBox-only row.
+				row := container.NewBorder(nil, nil, enCheck, right, cwc.Content)
 				serversBox.Add(row)
 			}(i)
 		}

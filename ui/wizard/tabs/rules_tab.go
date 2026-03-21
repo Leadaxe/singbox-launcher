@@ -4,7 +4,7 @@
 //   - Отображение правил маршрутизации из шаблона (SelectableRuleStates)
 //   - Выбор outbound для каждого правила через Select виджеты
 //   - Отображение пользовательских правил (CustomRules)
-//   - Кнопки добавления, редактирования и удаления правил
+//   - Кнопки добавления, редактирования и удаления правил; описания правил и TUN (macOS) — тултипы на подписи (fynewidget.CheckWithContent)
 //   - Выбор финального outbound (FinalOutboundSelect)
 //
 // Каждый таб визарда имеет свою отдельную ответственность и логику UI.
@@ -40,6 +40,7 @@ import (
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	wizardbusiness "singbox-launcher/ui/wizard/business"
 	wizardmodels "singbox-launcher/ui/wizard/models"
@@ -190,7 +191,8 @@ func createSelectableRulesUI(presenter *wizardpresentation.WizardPresenter, mode
 
 		var srsButton *ttwidget.Button
 		enableRuleOnSRSSuccess := new(bool)
-		checkbox := createSelectableRuleCheckbox(presenter, model, guiState, ruleState, idx, outboundSelect, &srsButton, enableRuleOnSRSSuccess)
+		cwc := createSelectableRuleCheckWithContent(presenter, model, guiState, ruleState, idx, outboundSelect, &srsButton, enableRuleOnSRSSuccess)
+		checkbox := cwc.Check
 		if len(srsEntries) > 0 {
 			srsButton = createSRSButton(presenter, model, guiState, ruleState, idx, srsEntries, checkbox, outboundSelect, enableRuleOnSRSSuccess)
 		}
@@ -202,7 +204,7 @@ func createSelectableRulesUI(presenter *wizardpresentation.WizardPresenter, mode
 			RuleState: ruleState,
 		}
 		guiState.RuleOutboundSelects = append(guiState.RuleOutboundSelects, ruleWidget)
-		rowContent := createSelectableRuleRowContent(ruleState, guiState, checkbox, outboundRow, srsButton)
+		rowContent := createSelectableRuleRowContent(cwc, outboundRow, srsButton)
 		rulesBox.Add(container.NewHBox(rowContent...))
 	}
 
@@ -249,10 +251,10 @@ func createOutboundSelectorForSelectableRule(
 	return outboundSelect, outboundRow
 }
 
-// createSelectableRuleCheckbox создает checkbox для selectable rule.
+// createSelectableRuleCheckWithContent — пустой Check + подпись правила; описание в тултипе (без кнопки «?»).
 // When user checks the box and SRS is not downloaded, we start download and set enableRuleOnSRSSuccess
 // so that on success the rule is enabled (checkbox stays checked).
-func createSelectableRuleCheckbox(
+func createSelectableRuleCheckWithContent(
 	presenter *wizardpresentation.WizardPresenter,
 	model *wizardmodels.WizardModel,
 	guiState *wizardpresentation.GUIState,
@@ -261,18 +263,22 @@ func createSelectableRuleCheckbox(
 	outboundSelect *widget.Select,
 	srsButtonRef **ttwidget.Button,
 	enableRuleOnSRSSuccess *bool,
-) *widget.Check {
-	var checkbox *widget.Check
-	checkbox = widget.NewCheck(ruleState.Rule.Label, func(val bool) {
+) *fynewidget.CheckWithContent {
+	label := ttwidget.NewLabel(ruleState.Rule.Label)
+	// TextTruncate при узком minSize центра Border даёт пустую строку; Off + Border дают нормальную ширину подписи.
+	label.Wrapping = fyne.TextWrapOff
+
+	var cwc *fynewidget.CheckWithContent
+	onChanged := func(val bool) {
+		ch := cwc.Check
 		if val && !services.AllSRSDownloaded(model.ExecDir, ruleState.Rule.RuleSets) {
 			if !guiState.UpdatingOutboundOptions && srsButtonRef != nil && *srsButtonRef != nil {
 				*enableRuleOnSRSSuccess = true // on 🔄→✔️ success we will set the checkbox
 				(*srsButtonRef).OnTapped()
 			}
-			checkbox.SetChecked(false)
+			ch.SetChecked(false)
 			return
 		}
-		// Always update model and UI state to keep them in sync
 		model.SelectableRuleStates[idx].Enabled = val
 		model.TemplatePreviewNeedsUpdate = true
 
@@ -284,14 +290,16 @@ func createSelectableRuleCheckbox(
 			}
 		}
 
-		// Only mark as changed if not during programmatic update
 		if !guiState.UpdatingOutboundOptions {
 			presenter.MarkAsChanged()
 		}
+	}
+	cwc = fynewidget.NewCheckWithContent(onChanged, label, fynewidget.CheckWithContentConfig{
+		ContentToolTip: strings.TrimSpace(ruleState.Rule.Description),
 	})
-	checkbox.SetChecked(ruleState.Enabled)
-	checkbox.Refresh() // Обновляем визуальное состояние чекбокса
-	return checkbox
+	cwc.Check.SetChecked(ruleState.Enabled)
+	cwc.Check.Refresh()
+	return cwc
 }
 
 // createSRSButton создает кнопку ⬇/🔄/✔️ для скачивания SRS (selectable rules).
@@ -338,25 +346,18 @@ func createSRSButton(
 
 // createSelectableRuleRowContent создает содержимое строки для selectable rule.
 func createSelectableRuleRowContent(
-	ruleState *wizardmodels.RuleState,
-	guiState *wizardpresentation.GUIState,
-	checkbox *widget.Check,
+	cwc *fynewidget.CheckWithContent,
 	outboundRow fyne.CanvasObject,
 	srsButton *ttwidget.Button,
 ) []fyne.CanvasObject {
-	checkboxContainer := container.NewHBox(checkbox)
-	if ruleState.Rule.Description != "" {
-		infoButton := widget.NewButton(locale.T("wizard.rules.button_info"), func() {
-			dialog.ShowInformation(ruleState.Rule.Label, ruleState.Rule.Description, guiState.Window)
-		})
-		infoButton.Importance = widget.LowImportance
-		checkboxContainer.Add(infoButton)
-	}
+	// Один Border (как DNS): слева Check, справа SRS, по центру подпись — без лишнего HBox(Border), иначе центр мог схлопываться.
+	var right fyne.CanvasObject
 	if srsButton != nil {
-		checkboxContainer.Add(srsButton)
+		right = srsButton
 	}
+	rowLeft := container.NewBorder(nil, nil, cwc.Check, right, cwc.Content)
 
-	rowContent := []fyne.CanvasObject{checkboxContainer, layout.NewSpacer()}
+	rowContent := []fyne.CanvasObject{rowLeft, layout.NewSpacer()}
 	if outboundRow != nil {
 		rowContent = append(rowContent, outboundRow)
 	}
@@ -391,7 +392,8 @@ func createCustomRulesUI(
 
 		var srsButton *ttwidget.Button
 		enableRuleOnSRSSuccess := new(bool)
-		checkbox := createCustomRuleCheckbox(presenter, model, guiState, customRule, idx, outboundSelect, &srsButton, enableRuleOnSRSSuccess)
+		cwc := createCustomRuleCheckWithContent(presenter, model, guiState, customRule, idx, outboundSelect, &srsButton, enableRuleOnSRSSuccess)
+		checkbox := cwc.Check
 		if isSRSRule && len(srsEntries) > 0 {
 			srsButton = createCustomRuleSRSButton(presenter, model, guiState, customRule, idx, srsEntries, checkbox, outboundSelect, enableRuleOnSRSSuccess)
 		}
@@ -411,7 +413,7 @@ func createCustomRulesUI(
 		guiState.RuleOutboundSelects = append(guiState.RuleOutboundSelects, customRuleWidget)
 
 		// Create row content
-		rowContent := createCustomRuleRowContent(checkbox, customRule.Rule.Label, srsButton, moveUpButton, moveDownButton, editButton, deleteButton, outboundSelect)
+		rowContent := createCustomRuleRowContent(cwc, srsButton, moveUpButton, moveDownButton, editButton, deleteButton, outboundSelect)
 		rulesBox.Add(container.NewHBox(rowContent...))
 	}
 }
@@ -534,8 +536,8 @@ func deleteCustomRule(
 	presenter.RefreshRulesTab(refreshWrapper)
 }
 
-// createCustomRuleCheckbox создает checkbox для custom rule.
-func createCustomRuleCheckbox(
+// createCustomRuleCheckWithContent — пустой Check + подпись; описание правила в тултипе.
+func createCustomRuleCheckWithContent(
 	presenter *wizardpresentation.WizardPresenter,
 	model *wizardmodels.WizardModel,
 	guiState *wizardpresentation.GUIState,
@@ -544,28 +546,27 @@ func createCustomRuleCheckbox(
 	outboundSelect *widget.Select,
 	srsButtonRef **ttwidget.Button,
 	enableRuleOnSRSSuccess *bool,
-) *widget.Check {
-	checkbox := widget.NewCheck("", nil)
-	checkbox.OnChanged = func(val bool) {
-		// Для SRS-правил при включении и отсутствии локальных SRS запускаем скачивание (кнопка SRS создаётся всегда при isSRSRule и ненулевых entries).
+) *fynewidget.CheckWithContent {
+	label := ttwidget.NewLabel(customRule.Rule.Label)
+	label.Wrapping = fyne.TextWrapOff
+
+	var cwc *fynewidget.CheckWithContent
+	onChanged := func(val bool) {
+		ch := cwc.Check
 		if val &&
 			wizardmodels.DetermineRuleType(customRule.Rule.Rule) == wizardmodels.RuleTypeSRS &&
 			len(customRule.Rule.RuleSets) > 0 {
 			entries := services.GetSRSEntries(customRule.Rule.RuleSets)
 			if len(entries) > 0 && !services.AllSRSDownloadedForEntries(model.ExecDir, entries) {
-				// Важно: при инициализации UI (SetChecked ниже) кнопка SRS ещё может быть nil,
-				// поэтому любые вызовы OnTapped должны быть защищены, иначе визард падает,
-				// если пользователь удалил файлы из bin/rule-sets вручную.
 				if !guiState.UpdatingOutboundOptions && srsButtonRef != nil && *srsButtonRef != nil {
 					*enableRuleOnSRSSuccess = true
 					(*srsButtonRef).OnTapped()
 				}
-				checkbox.SetChecked(false)
+				ch.SetChecked(false)
 				return
 			}
 		}
 
-		// Always update model and UI state to keep them in sync
 		model.CustomRules[idx].Enabled = val
 		model.TemplatePreviewNeedsUpdate = true
 
@@ -577,19 +578,20 @@ func createCustomRuleCheckbox(
 			}
 		}
 
-		// Only mark as changed if not during programmatic update
 		if !guiState.UpdatingOutboundOptions {
 			presenter.MarkAsChanged()
 		}
 	}
-	checkbox.SetChecked(customRule.Enabled)
-	return checkbox
+	cwc = fynewidget.NewCheckWithContent(onChanged, label, fynewidget.CheckWithContentConfig{
+		ContentToolTip: strings.TrimSpace(customRule.Rule.Description),
+	})
+	cwc.Check.SetChecked(customRule.Enabled)
+	return cwc
 }
 
 // createCustomRuleRowContent создает содержимое строки для custom rule.
 func createCustomRuleRowContent(
-	checkbox *widget.Check,
-	ruleLabel string,
+	cwc *fynewidget.CheckWithContent,
 	srsButton *ttwidget.Button,
 	moveUpButton *widget.Button,
 	moveDownButton *widget.Button,
@@ -597,12 +599,13 @@ func createCustomRuleRowContent(
 	deleteButton *widget.Button,
 	outboundSelect *widget.Select,
 ) []fyne.CanvasObject {
-	// Порядок: checkbox, up/down, label, srs, spacer, edit/delete, затем блок outbound (если есть).
-	row := []fyne.CanvasObject{checkbox, moveUpButton, moveDownButton, widget.NewLabel(ruleLabel)}
-
+	var right fyne.CanvasObject
 	if srsButton != nil {
-		row = append(row, srsButton)
+		right = srsButton
 	}
+	core := container.NewBorder(nil, nil, cwc.Check, right, cwc.Content)
+	// Порядок: (галочка+подпись[+SRS в right у Border]), up/down, spacer, edit/delete, затем outbound.
+	row := []fyne.CanvasObject{core, moveUpButton, moveDownButton}
 
 	row = append(row, layout.NewSpacer(), editButton, deleteButton)
 
@@ -748,17 +751,18 @@ func buildRulesTabContainer(presenter *wizardpresentation.WizardPresenter, rules
 		layout.NewSpacer(),
 	)
 	if runtime.GOOS == "darwin" {
-		tunCheck := widget.NewCheck(locale.T("wizard.rules.checkbox_tun"), func(checked bool) {
+		tunLabel := ttwidget.NewLabel(locale.T("wizard.rules.checkbox_tun"))
+		tunLabel.Wrapping = fyne.TextWrapOff
+		tunCwc := fynewidget.NewCheckWithContent(func(checked bool) {
 			model.EnableTunForMacOS = checked
 			model.TemplatePreviewNeedsUpdate = true
 			presenter.MarkAsChanged()
+		}, tunLabel, fynewidget.CheckWithContentConfig{
+			ContentToolTip: locale.T("wizard.rules.tun_help"),
 		})
-		tunCheck.SetChecked(model.EnableTunForMacOS)
-		helpBtn := widget.NewButton(locale.T("wizard.rules.button_info"), func() {
-			dialog.ShowInformation(locale.T("wizard.rules.checkbox_tun"), locale.T("wizard.rules.tun_help"), presenter.GUIState().Window)
-		})
-		row.Add(tunCheck)
-		row.Add(helpBtn)
+		tunCwc.Check.SetChecked(model.EnableTunForMacOS)
+		tunBlock := container.NewBorder(nil, nil, tunCwc.Check, nil, tunCwc.Content)
+		row.Add(tunBlock)
 	}
 	return container.NewVBox(
 		widget.NewLabel(locale.T("wizard.rules.label_selectable")),

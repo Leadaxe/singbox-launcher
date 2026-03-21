@@ -344,7 +344,8 @@ singbox-launcher/
 │       │   │   │   - createCustomRulesUI()                  # UI для пользовательских правил
 │       │   │   │   - createFinalOutboundSelect()           # Селектор финального outbound
 │       │   │   │   - createOutboundSelectorForSelectableRule() # Селектор outbound для правила
-│       │   │   │   - createSelectableRuleCheckbox()         # Checkbox для selectable rule
+│       │   │   │   - createSelectableRuleCheckWithContent() # Check + подпись (fynewidget), описание в тултипе
+│       │   │   │   - createCustomRuleCheckWithContent()    # То же для пользовательского правила
 │       │   │   │   - createOutboundSelectorForCustomRule()  # Селектор outbound для custom rule
 │       │   │   │   - createCustomRuleActionButtons()        # Кнопки редактирования/удаления
 │       │   │   │   - deleteCustomRule()                     # Удаление пользовательского правила
@@ -499,6 +500,9 @@ singbox-launcher/
 │   │   │   - ShowDownloadFailedManual()                 # Единый диалог при ошибке загрузки (sing-box, wintun, шаблон, SRS, локали): короткое сообщение, ссылка «Open download page» + кнопка копирования URL, «Open folder», «Close»
 │   │   │   - ShowAutoHideInfo()                         # Уведомление + диалог на ~2 с (core, визард, вкладки)
 │   │   │   - ShowError() / ShowErrorText()              # Показать ошибку (используются из ui/dialogs)
+│   │   │
+│   ├── fynewidget/             # Переиспользуемые мелкие Fyne-виджеты
+│   │   │   - NewCheckWithContent()                     # Пустой Check + произвольный контент: тап/hover с контента на галку; опциональный тултип на контенте
 │   │   │
 │   └── platform/              # Платформо-зависимый код
 │       │   - платформо-специфичные функции (пути, трей, Dock и т.д.)

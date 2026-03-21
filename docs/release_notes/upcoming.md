@@ -52,6 +52,8 @@
 
 - **Wizard — DNS server row:** Non-empty **`detour`** in server JSON is shown at the end of the **list line** as **`[detour]`** (after `tag · type · server`). Row **tooltip** shows **`description`** only (no duplicate **`detour`**).
 
+- **internal/fynewidget:** **`NewCheckWithContent`** — empty **`Check`** plus arbitrary **`CanvasObject`**: primary tap on the content toggles the check; hover on the content mirrors the check hover ( **`ttwidget.Label`** uses its **`OnMouseIn`/`Out`** hooks). Optional **`ContentToolTip`** when the child implements **`SetToolTip`**. **DNS** server rows and **Rules** tab (selectable + custom rule rows, macOS **TUN**) use it; rule **`description`** / TUN help moved from **`?`** dialogs to **tooltips** on the label.
+
 - **Wizard state — DNS resolver:** **`route.default_domain_resolver`** is no longer duplicated in **`config_params`**; **`dns_options`** is the only persistence path. Legacy **`config_params`** entries are applied once in **`restoreDNS`** if the model resolver is still empty after **`dns_options`**. See **docs/WIZARD_STATE.md**.
 
 - **Wizard state — DNS rules:** In **`dns_options`**, rules are persisted as a JSON **`rules`** array (same shape as sing-box `dns.rules`). The **`rules_text`** key is not used; invalid editor lines omit **`rules`** on save. Comments `#` and blank lines are not preserved when round-tripping through **`rules`**.
@@ -65,6 +67,8 @@
 ### Внутреннее / Рефакторинг
 
 - **Презентер визарда:** `SyncGUIToModelWithoutDirtyFlag` переименован в **`MergeGUIToModel`** (яснее: слить виджеты в модель без **`hasChanges`**). Единый блок комментариев-контракта в **`ui/wizard/presentation/presenter_sync.go`**.
+
+- **`internal/fynewidget`:** **`NewCheckWithContent`** — пустой **`Check`** + произвольный контент: тап по контенту переключает галку, hover дублируется на галку; опциональный тултип на контенте. Строки **DNS**, вкладка **Rules** (шаблонные и пользовательские правила, **TUN** на macOS) на этом helper; тексты из диалогов по **`?`** перенесены в **тултипы** подписи.
 
 ### Основное
 
