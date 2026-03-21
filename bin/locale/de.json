@@ -216,6 +216,8 @@
   "wizard.dialog_save_before_close": "Änderungen vor dem Schließen speichern?",
   "wizard.dialog_discard": "Verwerfen",
   "wizard.dialog_cancel": "Abbrechen",
+  "wizard.shared.button_edit": "Bearbeiten",
+  "wizard.shared.button_del": "Entf",
   "wizard.error_load_config": "Vorhandene Config konnte nicht geladen werden",
   "wizard.error_save_state": "Zustand konnte nicht gespeichert werden",
   "wizard.error_load_state": "Zustand konnte nicht geladen werden",
@@ -266,7 +268,9 @@
   "wizard.rules.label_outbound": "Outbound:",
   "wizard.rules.button_info": "?",
   "wizard.rules.button_edit": "✏️",
-  "wizard.rules.button_delete": "❌",
+  "wizard.rules.button_delete": "Delete rule",
+  "wizard.rules.dialog_delete_unnamed": "(unnamed rule)",
+  "wizard.rules.dialog_delete_confirm": "Delete custom rule \"%s\"?",
   "wizard.rules.button_add_rule": "➕ Regel hinzufügen",
   "wizard.rules.label_final_outbound": "Finaler Outbound:",
   "wizard.rules.checkbox_tun": "TUN",
@@ -452,7 +456,5 @@
   "wizard.outbound.error_tag_required": "Tag ist erforderlich",
   "wizard.outbound.error_open_docs": "Dokumentation konnte nicht geöffnet werden",
   "wizard.outbound.configurator_label": "Outbounds:",
-  "wizard.outbound.button_add": "Hinzufügen",
-  "wizard.outbound.button_edit": "Bearbeiten",
-  "wizard.outbound.button_del": "Entf"
+  "wizard.outbound.button_add": "Hinzufügen"
 }

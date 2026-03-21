@@ -36,14 +36,14 @@ import (
 // RuleWidget связывает виджеты Select, Check и SRS button с правилом из модели.
 type RuleWidget struct {
 	Select    *widget.Select
-	Checkbox  *widget.Check // Может быть nil, если правило не имеет чекбокса
+	Checkbox  *widget.Check    // Может быть nil, если правило не имеет чекбокса
 	SRSButton *ttwidget.Button // Кнопка ⬇/🔄/✔️ для правил с SRS (ttwidget для tooltip)
-	RuleState interface{}   // *models.RuleState - используется interface{} чтобы избежать циклических зависимостей
+	RuleState interface{}      // *models.RuleState - используется interface{} чтобы избежать циклических зависимостей
 }
 
 // GUIState содержит только GUI-виджеты и UI-флаги состояния.
 type GUIState struct {
-	Window            fyne.Window
+	Window              fyne.Window
 	ChildWindowsOverlay fyne.CanvasObject
 
 	// Tab 1: Sources & ParserConfig
@@ -59,34 +59,36 @@ type GUIState struct {
 	RuleOutboundSelects        []*RuleWidget
 
 	// Navigation buttons
-	ReadButton       *widget.Button
-	SaveAsButton     *widget.Button
-	CloseButton      *widget.Button
-	PrevButton       *widget.Button
-	NextButton       *widget.Button
-	SaveButton       *widget.Button
-	SaveProgress     *widget.ProgressBar
-	SavePlaceholder  *canvas.Rectangle
-	SaveStatusLabel  *widget.Label // Status text left of Prev (e.g. "Building config...")
-	ButtonsContainer fyne.CanvasObject
-	Tabs             *container.AppTabs
+	ReadButton        *widget.Button
+	SaveAsButton      *widget.Button
+	CloseButton       *widget.Button
+	PrevButton        *widget.Button
+	NextButton        *widget.Button
+	SaveButton        *widget.Button
+	SaveProgress      *widget.ProgressBar
+	SavePlaceholder   *canvas.Rectangle
+	SaveStatusLabel   *widget.Label // Status text left of Prev (e.g. "Building config...")
+	ButtonsContainer  fyne.CanvasObject
+	Tabs              *container.AppTabs
+	RulesScroll       *container.Scroll
+	RulesScrollOffset fyne.Position
 
 	// Optional refresh for Sources list (set by CreateSourcesTab); called from SyncModelToGUI.
 	RefreshSourcesList func()
 
 	// DNS tab
-	DNSRulesEntry              *widget.Entry
-	DNSFinalSelect             *widget.Select
-	DNSDefaultResolverSelect   *widget.Select
+	DNSRulesEntry            *widget.Entry
+	DNSFinalSelect           *widget.Select
+	DNSDefaultResolverSelect *widget.Select
 	DNSStrategySelect        *widget.Select
 	DNSIndependentCacheCheck *widget.Check
-	RefreshDNSList             func()
+	RefreshDNSList           func()
 
 	// Last valid ParserConfig JSON for revert on validation error (e.g. on tab switch from Outbounds tab).
 	LastValidParserConfigJSON string
 
 	// UI-флаги состояния операций
-	SaveInProgress           bool
+	SaveInProgress          bool
 	ParserConfigUpdating    bool
 	UpdatingOutboundOptions bool
 	// DNSSelectsProgrammatic: SetSelected в refreshDNSSelectsFromModel — не писать модель из OnChanged селектов.

@@ -177,6 +177,64 @@ func TestMergeRouteSection_DisabledRules(t *testing.T) {
 	}
 }
 
+func TestMergeRouteSection_CustomRulesOrderPreserved(t *testing.T) {
+	rawRoute := json.RawMessage(`{"rules":[],"final":"direct-out"}`)
+
+	customRules := []*wizardmodels.RuleState{
+		{
+			Rule: wizardtemplate.TemplateSelectableRule{
+				Label: "First custom",
+				Rule: map[string]interface{}{
+					"domain": []string{"first.example"},
+				},
+			},
+			Enabled:          true,
+			SelectedOutbound: "proxy-a",
+		},
+		{
+			Rule: wizardtemplate.TemplateSelectableRule{
+				Label: "Second custom",
+				Rule: map[string]interface{}{
+					"domain": []string{"second.example"},
+				},
+			},
+			Enabled:          true,
+			SelectedOutbound: "proxy-b",
+		},
+	}
+
+	result, err := MergeRouteSection(rawRoute, nil, customRules, "", "", "", false)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	var route map[string]interface{}
+	if err := json.Unmarshal(result, &route); err != nil {
+		t.Fatalf("Result is not valid JSON: %v", err)
+	}
+
+	rules, ok := route["rules"].([]interface{})
+	if !ok || len(rules) != 2 {
+		t.Fatalf("Expected 2 rules, got %v", route["rules"])
+	}
+
+	firstRule, ok := rules[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected first rule map")
+	}
+	secondRule, ok := rules[1].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected second rule map")
+	}
+
+	if firstRule["outbound"] != "proxy-a" {
+		t.Fatalf("Expected first rule outbound proxy-a, got %v", firstRule["outbound"])
+	}
+	if secondRule["outbound"] != "proxy-b" {
+		t.Fatalf("Expected second rule outbound proxy-b, got %v", secondRule["outbound"])
+	}
+}
+
 // TestFormatSectionJSON tests FormatSectionJSON function
 func TestFormatSectionJSON(t *testing.T) {
 	tests := []struct {

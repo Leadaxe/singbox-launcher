@@ -223,7 +223,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 				downBtn.Disable()
 			}
 
-			editBtn := widget.NewButtonWithIcon(locale.T("wizard.outbound.button_edit"), theme.DocumentCreateIcon(), func() {
+			editBtn := widget.NewButtonWithIcon(locale.T("wizard.shared.button_edit"), theme.DocumentCreateIcon(), func() {
 				parserConfig := getParserConfig(editPresenter.Model())
 				if parserConfig == nil {
 					return
@@ -266,7 +266,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 				})
 			})
 
-			delBtn := widget.NewButtonWithIcon(locale.T("wizard.outbound.button_del"), theme.DeleteIcon(), func() {
+			delBtn := widget.NewButtonWithIcon(locale.T("wizard.shared.button_del"), theme.DeleteIcon(), func() {
 				parserConfig := getParserConfig(editPresenter.Model())
 				if parserConfig == nil {
 					return

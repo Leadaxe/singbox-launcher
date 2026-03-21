@@ -216,6 +216,8 @@
   "wizard.dialog_save_before_close": "关闭前是否保存修改？",
   "wizard.dialog_discard": "丢弃",
   "wizard.dialog_cancel": "取消",
+  "wizard.shared.button_edit": "编辑",
+  "wizard.shared.button_del": "删除",
   "wizard.error_load_config": "加载现有配置失败",
   "wizard.error_save_state": "保存状态失败",
   "wizard.error_load_state": "加载状态失败",
@@ -266,7 +268,9 @@
   "wizard.rules.label_outbound": "出站：",
   "wizard.rules.button_info": "?",
   "wizard.rules.button_edit": "✏️",
-  "wizard.rules.button_delete": "❌",
+  "wizard.rules.button_delete": "Delete rule",
+  "wizard.rules.dialog_delete_unnamed": "(unnamed rule)",
+  "wizard.rules.dialog_delete_confirm": "Delete custom rule \"%s\"?",
   "wizard.rules.button_add_rule": "➕ 添加规则",
   "wizard.rules.label_final_outbound": "最终出站：",
   "wizard.rules.checkbox_tun": "TUN",
@@ -452,7 +456,5 @@
   "wizard.outbound.error_tag_required": "必须填写 tag",
   "wizard.outbound.error_open_docs": "无法打开文档",
   "wizard.outbound.configurator_label": "Outbounds：",
-  "wizard.outbound.button_add": "添加",
-  "wizard.outbound.button_edit": "编辑",
-  "wizard.outbound.button_del": "删除"
+  "wizard.outbound.button_add": "添加"
 }

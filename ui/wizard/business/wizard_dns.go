@@ -1,7 +1,6 @@
 package business
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"runtime"
@@ -605,27 +604,64 @@ func PersistedDNSRulesForState(rulesText string) []json.RawMessage {
 	return rules
 }
 
-// DNSRulesToText formats dns.rules as one JSON object per line.
+// DNSRulesToText formats dns.rules as a single JSON object: {"rules":[...]}.
 func DNSRulesToText(rules []interface{}) string {
 	if len(rules) == 0 {
 		return ""
 	}
-	var buf bytes.Buffer
-	for i, r := range rules {
-		line, err := json.Marshal(r)
-		if err != nil {
-			continue
-		}
-		if i > 0 {
-			buf.WriteByte('\n')
-		}
-		buf.Write(line)
+	out := map[string]interface{}{
+		"rules": rules,
 	}
-	return buf.String()
+	b, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
-// ParseDNSRulesText parses multiline rules: one JSON object per line; # and blank lines are comments.
+func parseDNSRulesArray(arr []interface{}) ([]interface{}, error) {
+	rules := make([]interface{}, 0, len(arr))
+	for i, item := range arr {
+		if _, ok := item.(map[string]interface{}); !ok {
+			return nil, fmt.Errorf("rules[%d]: expected JSON object", i+1)
+		}
+		rules = append(rules, item)
+	}
+	return rules, nil
+}
+
+// ParseDNSRulesText parses DNS rules editor text.
+// Preferred format: full JSON object {"rules":[...]}.
+// For backward compatibility, it also accepts:
+//   - plain JSON array [...]
+//   - legacy multiline JSON (one object per line; # comments allowed)
 func ParseDNSRulesText(text string) ([]interface{}, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, nil
+	}
+
+	var root interface{}
+	if err := json.Unmarshal([]byte(text), &root); err == nil {
+		switch v := root.(type) {
+		case map[string]interface{}:
+			if rulesVal, ok := v["rules"]; ok {
+				arr, ok := rulesVal.([]interface{})
+				if !ok {
+					return nil, fmt.Errorf(`field "rules": expected JSON array`)
+				}
+				return parseDNSRulesArray(arr)
+			}
+			// Single object is treated as one rule for convenience.
+			return []interface{}{v}, nil
+		case []interface{}:
+			return parseDNSRulesArray(v)
+		default:
+			return nil, fmt.Errorf("expected JSON object or array")
+		}
+	}
+
+	// Legacy fallback: one JSON object per line; # and blank lines are comments.
 	lines := strings.Split(text, "\n")
 	var rules []interface{}
 	for lineNum, line := range lines {

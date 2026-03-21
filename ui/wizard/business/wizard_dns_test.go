@@ -35,9 +35,13 @@ func TestLoadPersistedWizardDNS_FromRulesArray(t *testing.T) {
 		},
 	}
 	LoadPersistedWizardDNS(m, p)
-	want := `{"rule_set":"x","server":"a"}` + "\n" + `{"server":"b"}`
-	if m.DNSRulesText != want {
-		t.Fatalf("DNSRulesText:\n got %q\nwant %q", m.DNSRulesText, want)
+	var root map[string]interface{}
+	if err := json.Unmarshal([]byte(m.DNSRulesText), &root); err != nil {
+		t.Fatalf("DNSRulesText must be valid JSON object, got err: %v; text=%q", err, m.DNSRulesText)
+	}
+	arr, ok := root["rules"].([]interface{})
+	if !ok || len(arr) != 2 {
+		t.Fatalf("DNSRulesText.rules: got %v, want array of 2 elements", root["rules"])
 	}
 }
 

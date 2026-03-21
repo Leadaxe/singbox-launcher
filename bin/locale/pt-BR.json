@@ -216,6 +216,8 @@
   "wizard.dialog_save_before_close": "Salvar as alterações antes de fechar?",
   "wizard.dialog_discard": "Descartar",
   "wizard.dialog_cancel": "Cancelar",
+  "wizard.shared.button_edit": "Editar",
+  "wizard.shared.button_del": "Del",
   "wizard.error_load_config": "Falha ao carregar a configuração existente",
   "wizard.error_save_state": "Falha ao salvar o estado",
   "wizard.error_load_state": "Falha ao carregar o estado",
@@ -266,7 +268,9 @@
   "wizard.rules.label_outbound": "Outbound:",
   "wizard.rules.button_info": "?",
   "wizard.rules.button_edit": "✏️",
-  "wizard.rules.button_delete": "❌",
+  "wizard.rules.button_delete": "Delete rule",
+  "wizard.rules.dialog_delete_unnamed": "(unnamed rule)",
+  "wizard.rules.dialog_delete_confirm": "Delete custom rule \"%s\"?",
   "wizard.rules.button_add_rule": "➕ Adicionar regra",
   "wizard.rules.label_final_outbound": "Outbound final:",
   "wizard.rules.checkbox_tun": "TUN",
@@ -452,7 +456,5 @@
   "wizard.outbound.error_tag_required": "o tag é obrigatório",
   "wizard.outbound.error_open_docs": "falha ao abrir a documentação",
   "wizard.outbound.configurator_label": "Outbounds:",
-  "wizard.outbound.button_add": "Adicionar",
-  "wizard.outbound.button_edit": "Editar",
-  "wizard.outbound.button_del": "Del"
+  "wizard.outbound.button_add": "Adicionar"
 }

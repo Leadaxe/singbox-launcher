@@ -26,6 +26,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config"
@@ -149,135 +150,141 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				proxyPtr := &m.ParserConfig.ParserConfig.Proxies[sourceIndex]
 				proxy := *proxyPtr
 
-			label := proxy.Source
-			if label == "" {
-				// Prefer first node's tag/label from preview when block has only Connections (no URL)
-				if len(proxy.Connections) > 0 && m.PreviewNodesBySource != nil &&
-					sourceIndex < len(m.PreviewNodesBySource) && len(m.PreviewNodesBySource[sourceIndex]) > 0 {
-					first := m.PreviewNodesBySource[sourceIndex][0]
-					if first.Tag != "" {
-						label = first.Tag
-					} else if first.Label != "" {
-						label = first.Label
-					}
-				}
+				label := proxy.Source
 				if label == "" {
-					// Connection-only block (no subscription URL): show as "Connections" or "Connections N"
-					if len(proxy.Connections) > 0 {
-					label = locale.Tf("wizard.source.connections_n", sourceIndex+1)
-				} else {
-					label = locale.Tf("wizard.source.source_n", sourceIndex+1)
+					// Prefer first node's tag/label from preview when block has only Connections (no URL)
+					if len(proxy.Connections) > 0 && m.PreviewNodesBySource != nil &&
+						sourceIndex < len(m.PreviewNodesBySource) && len(m.PreviewNodesBySource[sourceIndex]) > 0 {
+						first := m.PreviewNodesBySource[sourceIndex][0]
+						if first.Tag != "" {
+							label = first.Tag
+						} else if first.Label != "" {
+							label = first.Label
+						}
+					}
+					if label == "" {
+						// Connection-only block (no subscription URL): show as "Connections" or "Connections N"
+						if len(proxy.Connections) > 0 {
+							label = locale.Tf("wizard.source.connections_n", sourceIndex+1)
+						} else {
+							label = locale.Tf("wizard.source.source_n", sourceIndex+1)
+						}
 					}
 				}
-			}
-			label = wizardutils.TruncateStringEllipsis(label, wizardutils.MaxLabelRunes, "...")
-			shortLabel := label
+				label = wizardutils.TruncateStringEllipsis(label, wizardutils.MaxLabelRunes, "...")
+				shortLabel := label
 
-			fullURL := proxy.Source
-			tagPrefix := proxy.TagPrefix
-			tagPostfix := proxy.TagPostfix
-			tagMask := proxy.TagMask
+				fullURL := proxy.Source
+				tagPrefix := proxy.TagPrefix
+				tagPostfix := proxy.TagPostfix
+				tagMask := proxy.TagMask
 
-			localTags := make([]string, 0, len(proxy.Outbounds))
-			for _, ob := range proxy.Outbounds {
-				if ob.Tag != "" {
-					localTags = append(localTags, ob.Tag)
+				localTags := make([]string, 0, len(proxy.Outbounds))
+				for _, ob := range proxy.Outbounds {
+					if ob.Tag != "" {
+						localTags = append(localTags, ob.Tag)
+					}
 				}
-			}
 
-			tooltipLines := []string{
-				fmt.Sprintf("URL: %s", fullURL),
-				fmt.Sprintf("tag_prefix: %s", tagPrefix),
-				fmt.Sprintf("tag_postfix: %s", tagPostfix),
-				fmt.Sprintf("tag_mask: %s", tagMask),
-				fmt.Sprintf("local outbounds: %d", len(localTags)),
-			}
-			if len(localTags) > 0 {
-				tooltipLines = append(tooltipLines, "tags: "+strings.Join(localTags, ", "))
-			}
-			tooltipText := strings.Join(tooltipLines, "\n")
+				tooltipLines := []string{
+					fmt.Sprintf("URL: %s", fullURL),
+					fmt.Sprintf("tag_prefix: %s", tagPrefix),
+					fmt.Sprintf("tag_postfix: %s", tagPostfix),
+					fmt.Sprintf("tag_mask: %s", tagMask),
+					fmt.Sprintf("local outbounds: %d", len(localTags)),
+				}
+				if len(localTags) > 0 {
+					tooltipLines = append(tooltipLines, "tags: "+strings.Join(localTags, ", "))
+				}
+				tooltipText := strings.Join(tooltipLines, "\n")
 
-			copyText := fullURL
-			if copyText == "" && len(proxy.Connections) > 0 {
-				copyText = strings.Join(proxy.Connections, "\n")
-			}
-			sourceButton := widget.NewButton(shortLabel, func() {
-				if copyText == "" {
-					return
+				copyText := fullURL
+				if copyText == "" && len(proxy.Connections) > 0 {
+					copyText = strings.Join(proxy.Connections, "\n")
 				}
-				if guiState.Window != nil {
-					fyne.CurrentApp().Clipboard().SetContent(copyText)
-					dialogs.ShowAutoHideInfo(fyne.CurrentApp(), guiState.Window, locale.T("wizard.source.dialog_copied_title"), locale.T("wizard.source.dialog_copied_message"))
-				}
-			})
-			sourceButton.Importance = widget.LowImportance
-			if tb, ok := interface{}(sourceButton).(interface{ SetToolTip(string) }); ok {
-				tb.SetToolTip(tooltipText)
-			}
+				sourceLabel := widget.NewLabel(shortLabel)
+				sourceLabel.Truncation = fyne.TextTruncateEllipsis
 
-			prefixEntry := widget.NewEntry()
-			prefixEntry.SetText(proxy.TagPrefix)
-			prefixEntry.SetPlaceHolder(locale.T("wizard.source.placeholder_prefix"))
-			prefixEntry.OnChanged = func(s string) {
-				m := presenter.Model()
-				if m.ParserConfig == nil || sourceIndex >= len(m.ParserConfig.ParserConfig.Proxies) {
-					return
+				copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+					if copyText == "" {
+						return
+					}
+					if guiState.Window != nil {
+						fyne.CurrentApp().Clipboard().SetContent(copyText)
+						dialogs.ShowAutoHideInfo(fyne.CurrentApp(), guiState.Window, locale.T("wizard.source.dialog_copied_title"), locale.T("wizard.source.dialog_copied_message"))
+					}
+				})
+				copyBtn.Importance = widget.LowImportance
+				if tb, ok := interface{}(sourceLabel).(interface{ SetToolTip(string) }); ok {
+					tb.SetToolTip(tooltipText)
 				}
-				m.ParserConfig.ParserConfig.Proxies[sourceIndex].TagPrefix = strings.TrimSpace(s)
-				serialized, err := wizardbusiness.SerializeParserConfig(m.ParserConfig)
-				if err != nil {
-					debuglog.ErrorLog("source_tab: SerializeParserConfig after prefix change: %v", err)
-					return
+				if tb, ok := interface{}(copyBtn).(interface{ SetToolTip(string) }); ok {
+					tb.SetToolTip(tooltipText)
 				}
-				m.ParserConfigJSON = serialized
-				m.PreviewNeedsParse = true
-				wizardbusiness.InvalidatePreviewCache(m)
-				presenter.UpdateParserConfig(serialized)
-				presenter.RefreshOutboundOptions()
-			}
 
-			viewBtn := widget.NewButton(locale.T("wizard.source.button_view"), func() {
-				m := presenter.Model()
-				if m.ParserConfig == nil || sourceIndex >= len(m.ParserConfig.ParserConfig.Proxies) {
-					return
+				prefixEntry := widget.NewEntry()
+				prefixEntry.SetText(proxy.TagPrefix)
+				prefixEntry.SetPlaceHolder(locale.T("wizard.source.placeholder_prefix"))
+				prefixEntry.OnChanged = func(s string) {
+					m := presenter.Model()
+					if m.ParserConfig == nil || sourceIndex >= len(m.ParserConfig.ParserConfig.Proxies) {
+						return
+					}
+					m.ParserConfig.ParserConfig.Proxies[sourceIndex].TagPrefix = strings.TrimSpace(s)
+					serialized, err := wizardbusiness.SerializeParserConfig(m.ParserConfig)
+					if err != nil {
+						debuglog.ErrorLog("source_tab: SerializeParserConfig after prefix change: %v", err)
+						return
+					}
+					m.ParserConfigJSON = serialized
+					m.PreviewNeedsParse = true
+					wizardbusiness.InvalidatePreviewCache(m)
+					presenter.UpdateParserConfig(serialized)
+					presenter.RefreshOutboundOptions()
 				}
-				prox := &m.ParserConfig.ParserConfig.Proxies[sourceIndex]
-				showSourceServersWindow(presenter, guiState.Window, shortLabel, prox.Source, prox.Skip)
-			})
 
-			delBtn := widget.NewButton(locale.T("wizard.source.button_del"), func() {
-				m := presenter.Model()
-				if m.ParserConfig == nil || sourceIndex >= len(m.ParserConfig.ParserConfig.Proxies) {
-					return
-				}
-				proxies := &m.ParserConfig.ParserConfig.Proxies
-				*proxies = append((*proxies)[:sourceIndex], (*proxies)[sourceIndex+1:]...)
-				serialized, err := wizardbusiness.SerializeParserConfig(m.ParserConfig)
-				if err != nil {
-					debuglog.ErrorLog("source_tab: SerializeParserConfig after Del source: %v", err)
-					return
-				}
-				m.ParserConfigJSON = serialized
-				m.PreviewNeedsParse = true
-				wizardbusiness.InvalidatePreviewCache(m)
-				presenter.UpdateParserConfig(serialized)
-				presenter.RefreshOutboundOptions()
-				if guiState.RefreshSourcesList != nil {
-					guiState.RefreshSourcesList()
-				}
-			})
+				viewBtn := widget.NewButton(locale.T("wizard.source.button_view"), func() {
+					m := presenter.Model()
+					if m.ParserConfig == nil || sourceIndex >= len(m.ParserConfig.ParserConfig.Proxies) {
+						return
+					}
+					prox := &m.ParserConfig.ParserConfig.Proxies[sourceIndex]
+					showSourceServersWindow(presenter, guiState.Window, shortLabel, prox.Source, prox.Skip)
+				})
 
-			rowGutter := canvas.NewRectangle(color.Transparent)
-			rowGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
-			row := container.NewHBox(
-				sourceButton,
-				layout.NewSpacer(),
-				prefixEntry,
-				viewBtn,
-				delBtn,
-				rowGutter,
-			)
-			sourcesBox.Add(row)
+				delBtn := widget.NewButton(locale.T("wizard.source.button_del"), func() {
+					m := presenter.Model()
+					if m.ParserConfig == nil || sourceIndex >= len(m.ParserConfig.ParserConfig.Proxies) {
+						return
+					}
+					proxies := &m.ParserConfig.ParserConfig.Proxies
+					*proxies = append((*proxies)[:sourceIndex], (*proxies)[sourceIndex+1:]...)
+					serialized, err := wizardbusiness.SerializeParserConfig(m.ParserConfig)
+					if err != nil {
+						debuglog.ErrorLog("source_tab: SerializeParserConfig after Del source: %v", err)
+						return
+					}
+					m.ParserConfigJSON = serialized
+					m.PreviewNeedsParse = true
+					wizardbusiness.InvalidatePreviewCache(m)
+					presenter.UpdateParserConfig(serialized)
+					presenter.RefreshOutboundOptions()
+					if guiState.RefreshSourcesList != nil {
+						guiState.RefreshSourcesList()
+					}
+				})
+
+				rowGutter := canvas.NewRectangle(color.Transparent)
+				rowGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+				rightControls := container.NewHBox(
+					copyBtn,
+					prefixEntry,
+					viewBtn,
+					delBtn,
+					rowGutter,
+				)
+				row := container.NewBorder(nil, nil, nil, rightControls, sourceLabel)
+				sourcesBox.Add(row)
 			}(i)
 		}
 

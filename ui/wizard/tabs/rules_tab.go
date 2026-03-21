@@ -21,15 +21,18 @@ package tabs
 
 import (
 	"context"
+	"image/color"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
@@ -394,7 +397,7 @@ func createCustomRulesUI(
 		}
 
 		// Create action buttons
-		editButton, deleteButton := createCustomRuleActionButtons(
+		moveUpButton, moveDownButton, editButton, deleteButton := createCustomRuleActionButtons(
 			presenter, model, guiState, customRule, idx, showAddRuleDialog,
 		)
 
@@ -408,7 +411,7 @@ func createCustomRulesUI(
 		guiState.RuleOutboundSelects = append(guiState.RuleOutboundSelects, customRuleWidget)
 
 		// Create row content
-		rowContent := createCustomRuleRowContent(checkbox, srsButton, editButton, deleteButton, outboundSelect)
+		rowContent := createCustomRuleRowContent(checkbox, customRule.Rule.Label, srsButton, moveUpButton, moveDownButton, editButton, deleteButton, outboundSelect)
 		rulesBox.Add(container.NewHBox(rowContent...))
 	}
 }
@@ -448,20 +451,51 @@ func createCustomRuleActionButtons(
 	customRule *wizardmodels.RuleState,
 	idx int,
 	showAddRuleDialog ShowAddRuleDialogFunc,
-) (*widget.Button, *widget.Button) {
+) (*widget.Button, *widget.Button, *widget.Button, *widget.Button) {
+	moveUpButton := widget.NewButton("↑", func() {
+		moveCustomRuleUp(presenter, model, guiState, idx, showAddRuleDialog)
+	})
+	moveUpButton.Importance = widget.LowImportance
+	if idx <= 0 {
+		moveUpButton.Disable()
+	}
+
+	moveDownButton := widget.NewButton("↓", func() {
+		moveCustomRuleDown(presenter, model, guiState, idx, showAddRuleDialog)
+	})
+	moveDownButton.Importance = widget.LowImportance
+	if idx >= len(model.CustomRules)-1 {
+		moveDownButton.Disable()
+	}
+
 	// Edit button
 	editButton := widget.NewButton(locale.T("wizard.rules.button_edit"), func() {
 		showAddRuleDialog(presenter, customRule, idx)
 	})
 	editButton.Importance = widget.LowImportance
 
-	// Delete button
-	deleteButton := widget.NewButton(locale.T("wizard.rules.button_delete"), func() {
-		deleteCustomRule(presenter, model, guiState, customRule, showAddRuleDialog)
+	// Delete button (standard trash icon; confirmation before removal)
+	deleteButton := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
+		ruleLabel := strings.TrimSpace(customRule.Rule.Label)
+		if ruleLabel == "" {
+			ruleLabel = locale.T("wizard.rules.dialog_delete_unnamed")
+		}
+		dialog.ShowConfirm(
+			locale.T("wizard.dialog_confirmation"),
+			locale.Tf("wizard.rules.dialog_delete_confirm", ruleLabel),
+			func(ok bool) {
+				if !ok {
+					return
+				}
+				deleteCustomRule(presenter, model, guiState, customRule, showAddRuleDialog)
+			},
+			guiState.Window,
+		)
 	})
 	deleteButton.Importance = widget.LowImportance
+	setTooltip(deleteButton, locale.T("wizard.rules.button_delete"))
 
-	return editButton, deleteButton
+	return moveUpButton, moveDownButton, editButton, deleteButton
 }
 
 // deleteCustomRule удаляет пользовательское правило.
@@ -510,7 +544,7 @@ func createCustomRuleCheckbox(
 	srsButtonRef **ttwidget.Button,
 	enableRuleOnSRSSuccess *bool,
 ) *widget.Check {
-	checkbox := widget.NewCheck(customRule.Rule.Label, nil)
+	checkbox := widget.NewCheck("", nil)
 	checkbox.OnChanged = func(val bool) {
 		// Для SRS-правил при включении и отсутствии локальных SRS запускаем скачивание (кнопка SRS создаётся всегда при isSRSRule и ненулевых entries).
 		if val &&
@@ -554,13 +588,16 @@ func createCustomRuleCheckbox(
 // createCustomRuleRowContent создает содержимое строки для custom rule.
 func createCustomRuleRowContent(
 	checkbox *widget.Check,
+	ruleLabel string,
 	srsButton *ttwidget.Button,
+	moveUpButton *widget.Button,
+	moveDownButton *widget.Button,
 	editButton *widget.Button,
 	deleteButton *widget.Button,
 	outboundSelect *widget.Select,
 ) []fyne.CanvasObject {
-	// Блок с чекбоксом и, опционально, кнопкой SRS.
-	row := []fyne.CanvasObject{checkbox}
+	// Порядок: checkbox, up/down, label, srs, edit, delete, outbound.
+	row := []fyne.CanvasObject{checkbox, moveUpButton, moveDownButton, widget.NewLabel(ruleLabel)}
 
 	if srsButton != nil {
 		row = append(row, srsButton)
@@ -580,6 +617,52 @@ func createCustomRuleRowContent(
 	}
 
 	return row
+}
+
+func moveCustomRuleUp(
+	presenter *wizardpresentation.WizardPresenter,
+	model *wizardmodels.WizardModel,
+	guiState *wizardpresentation.GUIState,
+	idx int,
+	showAddRuleDialog ShowAddRuleDialogFunc,
+) {
+	if idx <= 0 || idx >= len(model.CustomRules) {
+		return
+	}
+	if guiState != nil && guiState.RulesScroll != nil {
+		guiState.RulesScrollOffset = guiState.RulesScroll.Offset
+	}
+	model.CustomRules[idx], model.CustomRules[idx-1] = model.CustomRules[idx-1], model.CustomRules[idx]
+	model.TemplatePreviewNeedsUpdate = true
+	presenter.MarkAsChanged()
+
+	refreshWrapper := func(p *wizardpresentation.WizardPresenter) fyne.CanvasObject {
+		return CreateRulesTab(p, showAddRuleDialog)
+	}
+	presenter.RefreshRulesTab(refreshWrapper)
+}
+
+func moveCustomRuleDown(
+	presenter *wizardpresentation.WizardPresenter,
+	model *wizardmodels.WizardModel,
+	guiState *wizardpresentation.GUIState,
+	idx int,
+	showAddRuleDialog ShowAddRuleDialogFunc,
+) {
+	if idx < 0 || idx >= len(model.CustomRules)-1 {
+		return
+	}
+	if guiState != nil && guiState.RulesScroll != nil {
+		guiState.RulesScrollOffset = guiState.RulesScroll.Offset
+	}
+	model.CustomRules[idx], model.CustomRules[idx+1] = model.CustomRules[idx+1], model.CustomRules[idx]
+	model.TemplatePreviewNeedsUpdate = true
+	presenter.MarkAsChanged()
+
+	refreshWrapper := func(p *wizardpresentation.WizardPresenter) fyne.CanvasObject {
+		return CreateRulesTab(p, showAddRuleDialog)
+	}
+	presenter.RefreshRulesTab(refreshWrapper)
 }
 
 // createCustomRuleSRSButton создает кнопку ⬇/🔄/✔️ для пользовательского SRS-правила.
@@ -694,7 +777,14 @@ func CreateRulesScroll(guiState *wizardpresentation.GUIState, content fyne.Canva
 	if maxHeight <= 0 {
 		maxHeight = 430
 	}
-	scroll := container.NewVScroll(content)
+	scrollGutter := canvas.NewRectangle(color.Transparent)
+	scrollGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+	contentWithGutter := container.NewBorder(nil, nil, nil, scrollGutter, content)
+	scroll := container.NewVScroll(contentWithGutter)
 	scroll.SetMinSize(fyne.NewSize(0, maxHeight))
+	if guiState != nil {
+		scroll.Offset = guiState.RulesScrollOffset
+		guiState.RulesScroll = scroll
+	}
 	return scroll
 }

@@ -205,6 +205,8 @@
     "wizard.dialog_save_before_close":  "Save changes before closing?",
     "wizard.dialog_discard":  "Discard",
     "wizard.dialog_cancel":  "キャンセル",
+    "wizard.shared.button_edit":  "Edit",
+    "wizard.shared.button_del":  "Del",
     "wizard.error_load_config":  "Failed to load existing config",
     "wizard.error_save_state":  "Failed to save state",
     "wizard.error_load_state":  "Failed to load state",
@@ -252,7 +254,9 @@
     "wizard.rules.label_outbound":  "Outbound:",
     "wizard.rules.button_info":  "?",
     "wizard.rules.button_edit":  "✏️",
-    "wizard.rules.button_delete":  "❌",
+    "wizard.rules.button_delete":  "Delete rule",
+    "wizard.rules.dialog_delete_unnamed":  "(unnamed rule)",
+    "wizard.rules.dialog_delete_confirm":  "Delete custom rule \"%s\"?",
     "wizard.rules.button_add_rule":  "➕ Add Rule",
     "wizard.rules.label_final_outbound":  "Final outbound:",
     "wizard.rules.checkbox_tun":  "TUN",
@@ -431,7 +435,5 @@
     "wizard.outbound.error_tag_required":  "tag is required",
     "wizard.outbound.error_open_docs":  "failed to open documentation",
     "wizard.outbound.configurator_label":  "Outbounds:",
-    "wizard.outbound.button_add":  "Add",
-    "wizard.outbound.button_edit":  "Edit",
-    "wizard.outbound.button_del":  "Del"
+    "wizard.outbound.button_add":  "Add"
 }

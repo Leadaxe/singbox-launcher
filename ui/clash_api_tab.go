@@ -26,6 +26,14 @@ import (
 // Maximum number of concurrent ping requests for "test" button.
 const pingAllConcurrency = 20
 
+// serversTabScrollbarGutterWidth reserves space to the right of scrollable content so the
+// native scrollbar strip does not overlap list rows or status text (same idea as wizard Sources/Rules).
+const serversTabScrollbarGutterWidth = 10
+
+// serversScrollGutterWidth reserves space to the right of scrollable content so the
+// native scrollbar strip does not overlap list rows or status text (same idea as wizard tabs).
+const serversScrollGutterWidth = 10
+
 // reorderWithPinned moves special proxies to the top of the list while
 // preserving relative order of the rest:
 //   - "direct-out" (if present)
@@ -631,7 +639,10 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	}
 
 	// --- Сборка всего контента ---
-	scrollContainer := container.NewScroll(proxiesListWidget)
+	listScrollGutter := canvas.NewRectangle(color.Transparent)
+	listScrollGutter.SetMinSize(fyne.NewSize(serversTabScrollbarGutterWidth, 0))
+	proxiesListWithGutter := container.NewBorder(nil, nil, nil, listScrollGutter, proxiesListWidget)
+	scrollContainer := container.NewScroll(proxiesListWithGutter)
 	scrollContainer.SetMinSize(fyne.NewSize(0, 300))
 
 	// Кнопка сортировки по алфавиту (слева)
@@ -860,7 +871,10 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 	// Обертываем status label в контейнер с горизонтальной прокруткой
 	// Scroll контейнер ограничит ширину label и добавит прокрутку при необходимости
-	statusScroll := container.NewScroll(status)
+	statusScrollGutter := canvas.NewRectangle(color.Transparent)
+	statusScrollGutter.SetMinSize(fyne.NewSize(serversTabScrollbarGutterWidth, 0))
+	statusWithGutter := container.NewBorder(nil, nil, nil, statusScrollGutter, status)
+	statusScroll := container.NewScroll(statusWithGutter)
 	statusScroll.Direction = container.ScrollBoth
 	// Ограничиваем только высоту, ширина будет ограничена родительским Border контейнером
 	statusScroll.SetMinSize(fyne.NewSize(0, status.MinSize().Height))

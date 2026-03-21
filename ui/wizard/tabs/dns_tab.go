@@ -12,11 +12,13 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/platform"
 	wizardbusiness "singbox-launcher/ui/wizard/business"
 	wizardpresentation "singbox-launcher/ui/wizard/presentation"
 )
@@ -29,6 +31,8 @@ func setTooltip(o fyne.CanvasObject, text string) {
 		tb.SetToolTip(text)
 	}
 }
+
+const dnsIndependentCacheDocURL = "https://sing-box.sagernet.org/configuration/dns/#independent_cache"
 
 func tooltipForDNSServerCheck(locked bool) string {
 	if locked {
@@ -102,13 +106,15 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				}
 				setTooltip(enCheck, locale.T(tooltipForDNSServerCheck(locked)))
 
-				editBtn := ttwidget.NewButton(locale.T("wizard.dns.button_edit"), func() {
+				editBtn := widget.NewButtonWithIcon(locale.T("wizard.shared.button_edit"), theme.DocumentCreateIcon(), func() {
 					showDNSServerEditor(presenter, dialogParent(), idx)
 				})
-				delBtn := ttwidget.NewButton(locale.T("wizard.dns.button_del"), func() {
+				editBtn.Importance = widget.LowImportance
+				delBtn := widget.NewButtonWithIcon(locale.T("wizard.shared.button_del"), theme.DeleteIcon(), func() {
 					deleteDNSServerAt(presenter, idx)
 					presenter.RefreshDNSListAndSelects()
 				})
+				delBtn.Importance = widget.LowImportance
 				if locked {
 					editBtn.Disable()
 					delBtn.Disable()
@@ -184,10 +190,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		presenter.Model().TemplatePreviewNeedsUpdate = true
 		presenter.MarkAsChanged()
 	}
-	rulesGutter := canvas.NewRectangle(color.Transparent)
-	rulesGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
-	rulesInner := container.NewBorder(nil, nil, nil, rulesGutter, guiState.DNSRulesEntry)
-	rulesScroll := container.NewScroll(rulesInner)
+	rulesScroll := container.NewScroll(guiState.DNSRulesEntry)
 	rulesScroll.Direction = container.ScrollBoth
 	rulesHeight := canvas.NewRectangle(color.Transparent)
 	rulesHeight.SetMinSize(fyne.NewSize(0, 120))
@@ -213,9 +216,9 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		}
 	})
 	strategyLabel := widget.NewLabel(locale.T("wizard.dns.label_strategy"))
-	strategyRow := container.NewHBox(strategyLabel, guiState.DNSStrategySelect)
 
-	guiState.DNSIndependentCacheCheck = widget.NewCheck(locale.T("wizard.dns.label_independent_cache"), func(checked bool) {
+	independentCacheLabel := widget.NewLabel(locale.T("wizard.dns.label_independent_cache"))
+	guiState.DNSIndependentCacheCheck = widget.NewCheck("", func(checked bool) {
 		if guiState.DNSSelectsProgrammatic {
 			return
 		}
@@ -231,6 +234,20 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 			presenter.MarkAsChanged()
 		}
 	})
+	independentCacheHelp := widget.NewButton(locale.T("wizard.rules.button_info"), func() {
+		if err := platform.OpenURL(dnsIndependentCacheDocURL); err != nil {
+			dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.outbounds.error_open_docs"), err), dialogParent())
+		}
+	})
+	independentCacheHelp.Importance = widget.LowImportance
+	independentCacheRow := container.NewHBox(independentCacheLabel, independentCacheHelp, guiState.DNSIndependentCacheCheck)
+
+	strategyAndCacheRow := container.NewHBox(
+		strategyLabel,
+		guiState.DNSStrategySelect,
+		layout.NewSpacer(),
+		independentCacheRow,
+	)
 
 	// Final и default_domain_resolver — одна строка: две группы (лейбл+селект), spacer между ними.
 	// Плоский HBox с одним Spacer между четырьмя виджетами даёт селектам нулевую ширину в Fyne.
@@ -244,8 +261,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		serversHeader,
 		serversScroll,
 		widget.NewSeparator(),
-		strategyRow,
-		guiState.DNSIndependentCacheCheck,
+		strategyAndCacheRow,
 		widget.NewSeparator(),
 		rulesLabel,
 		rulesBlock,
