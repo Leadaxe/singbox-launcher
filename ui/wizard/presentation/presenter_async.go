@@ -9,12 +9,12 @@
 //
 // Асинхронные операции имеют отдельную ответственность от синхронных методов.
 // Содержат сложную логику управления состоянием прогресса и блокировками.
-// Обрабатывают ошибки асинхронных операций и показывают диалоги пользователю.
+// Ошибки парсинга в TriggerParseForPreview пишутся в лог; UpdateTemplatePreviewAsync может отразить ошибку в тексте preview.
 //
 // Используется в:
-//   - wizard.go - UpdateTemplatePreviewAsync вызывается при изменении данных, требующих обновления preview
-//   - presenter_save.go - TriggerParseForPreview вызывается при сохранении, если нужен парсинг
-//   - tabs/source_tab.go - UpdateTemplatePreviewAsync вызывается после успешного парсинга
+//   - wizard.go — TriggerParseForPreview при смене вкладок; UpdateTemplatePreviewAsync при необходимости обновить preview
+//   - tabs/source_tab.go — UpdateTemplatePreviewAsync после успешного парсинга
+// Сохранение конфига ждёт/запускает парсинг через presenter_save.ensureOutboundsParsed, не через TriggerParseForPreview.
 package presentation
 
 import (
@@ -45,7 +45,7 @@ func (p *WizardPresenter) TriggerParseForPreview() {
 	}
 
 	p.model.AutoParseInProgress = true
-	// Keep Save button visible; if user clicks Save during parse, save flow will wait (waitForParsingIfNeeded)
+	// Save остаётся доступной; при нажатии Save ensureOutboundsParsed ждёт окончания AutoParseInProgress.
 	if p.guiState.TemplatePreviewStatusLabel != nil {
 		p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_parsing"))
 	}

@@ -1,8 +1,8 @@
 // Package presentation содержит слой представления визарда конфигурации.
 //
 // Файл presenter_sync.go содержит методы синхронизации данных между моделью и GUI:
-//   - SyncModelToGUI - обновляет виджеты GUI из модели данных (SourceURLs, ParserConfigJSON, SelectedFinalOutbound)
-//   - SyncGUIToModel / MergeGUIToModel - GUI → модель (первый — с MarkAsChanged при отличиях, второй — только слияние)
+//   - SyncModelToGUI — модель → виджеты (источники, ParserConfig, DNS, Final outbound и связанные поля)
+//   - SyncGUIToModel / MergeGUIToModel — GUI → модель (первый с MarkAsChanged при отличиях, второй только слияние)
 //
 // Эти методы обеспечивают двустороннюю синхронизацию между WizardModel и GUIState,
 // что является ключевой частью архитектуры MVP.
@@ -11,9 +11,10 @@
 // Методы синхронизации используются в разных местах (перед сохранением, при инициализации).
 //
 // Используется в:
-//   - wizard.go - SyncModelToGUI вызывается при инициализации визарда для установки начальных значений
-//   - presenter_save.go - SyncGUIToModel вызывается перед сохранением для получения актуальных данных
-//   - presenter_async.go - MergeGUIToModel вызывается перед парсингом (без hasChanges)
+//   - wizard.go — SyncModelToGUI при инициализации и после загрузки state
+//   - presenter_save.go — SyncGUIToModel в начале SaveConfig
+//   - presenter_state.go — SyncGUIToModel в CreateStateFromModel перед сборкой state
+//   - presenter_async.go, wizard.go, tabs/source_tab.go — MergeGUIToModel (смена вкладок, закрытие, парсинг preview без hasChanges)
 package presentation
 
 /*

@@ -322,7 +322,7 @@ singbox-launcher/
 │       │   │   │   - checkSaveOperationState()         # Проверка состояния операции
 │       │   │   │   - executeSaveOperation()            # Выполнение операции сохранения
 │       │   │   │   - finalizeSaveOperation()           # Завершение операции
-│       │   │   │   - waitForParsingIfNeeded()          # Ожидание парсинга при необходимости
+│       │   │   │   - ensureOutboundsParsed()           # Ждёт фоновый парсинг или запускает ParseAndPreview перед сборкой конфига
 │       │   │   │   - buildConfigForSave()              # Построение конфигурации
 │       │   │   │   - saveConfigFile()                  # Валидация по временному файлу (config-check.json) и запись config.json с бэкапом
 │       │   │   │   - saveStateAndShowSuccessDialog()   # Сохранение state и показ диалога
@@ -778,7 +778,8 @@ singbox-launcher/
   - `RuleWidget` struct - связь между виджетом Select, Checkbox и правилом из модели (для обновления UI после LoadState)
 - `presenter_methods.go`:
   - `SetSaveState()` - управление состоянием кнопки Save и прогресс-бара
-  - `RefreshOutboundOptions()` - обновление опций outbound для правил
+  - `RefreshOutboundOptions()` - обновление опций outbound для правил (немедленно; отменяет отложенный таймер)
+  - `ScheduleRefreshOutboundOptionsDebounced()` / `CancelDebouncedOutboundRefresh()` - debounce ~300 ms при наборе JSON/prefix на вкладке Outbounds
   - `InitializeTemplateState()` - инициализация состояния шаблона
   - `SetTemplatePreviewText()` - установка текста preview
 - `presenter_sync.go`:
@@ -791,7 +792,7 @@ singbox-launcher/
 - `presenter_save.go`:
   - `SaveConfig()` - сохранение конфигурации с прогресс-баром и проверками (основная функция)
   - `validateSaveInput()`, `checkSaveOperationState()` - проверки перед сохранением
-  - `executeSaveOperation()` - выполнение сохранения в горутине: сборка конфига, валидация по временному файлу (config-check.json) и запись config.json, state.json, диалог; перезапуск sing-box не выполняется; по завершении в фоне вызывается `core.RunParserProcess()` (обновление конфига из подписок)
+  - `executeSaveOperation()` - выполнение сохранения в горутине: `ensureOutboundsParsed` (ожидание/парсинг outbounds), сборка конфига, валидация по временному файлу (config-check.json) и запись config.json, state.json, диалог; перезапуск sing-box не выполняется; по завершении в фоне вызывается `core.RunParserProcess()` (обновление конфига из подписок)
   - `finalizeSaveOperation()` - завершение операции и восстановление UI
   - `buildConfigForSave()` - построение конфигурации из шаблона и модели
   - `saveConfigFile()` - валидация sing-box check по временному файлу (config-check.json) и при успехе запись в config.json с бэкапом (вызов SaveConfigWithBackup)
@@ -857,7 +858,7 @@ singbox-launcher/
 
 **business/** - Бизнес-логика (без GUI зависимостей)
 - `parser.go`:
-  - `ParseAndPreview()` - парсинг ParserConfig и генерация outbounds/endpoints через ConfigService (модель берётся из `UIUpdater.Model()`)
+  - `ParseAndPreview()` - парсинг ParserConfig и генерация outbounds/endpoints через ConfigService (модель берётся из `UIUpdater.Model()`); после генерации сравнивается снимок JSON со старта с текущим `model.ParserConfigJSON` — при расхождении (правки во время долгой генерации) сгенерированные outbounds/endpoints сбрасываются и выставляется `PreviewNeedsParse`, чтобы Save не смешивал ревизии
   - `ApplyURLToParserConfig()` / `AppendURLsToParserConfig()` - применение/добавление URL к ParserConfig
     - `validateApplyURLInput()` - проверка входных данных перед применением URL
     - `parseParserConfigForApply()` - парсинг ParserConfig из JSON строки
@@ -1235,7 +1236,7 @@ UI (core_dashboard_tab.go)
       ├─> wizard/presentation/presenter_save.go: SaveConfig()
       │   ├─> validateSaveInput() / checkSaveOperationState()
       │   ├─> executeSaveOperation()
-      │   │   ├─> waitForParsingIfNeeded()
+      │   │   ├─> ensureOutboundsParsed()
       │   │   ├─> buildConfigForSave()
       │   │   │   └─> wizard/business/create_config.go: BuildTemplateConfig()
       │   │   ├─> saveConfigFile()

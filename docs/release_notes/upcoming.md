@@ -56,6 +56,10 @@
 
 ### Technical / Internal
 
+- **Wizard — Outbounds tab responsiveness:** While typing **ParserConfig JSON** or **tag prefix**, **`RefreshOutboundOptions`** is **debounced** (~**300 ms**) so each keystroke no longer runs **`json.Unmarshal`** (inside **`GetAvailableOutbounds`**) and a full refresh of every rules/Final **Select**; immediate refresh still runs after **Apply** in the configurator, **Del** source, tab switch to **Rules**, parse completion, etc. Pending debounce is **cancelled** when the wizard window closes.
+
+- **Wizard — parse vs edit race:** After **`GenerateOutboundsFromParserConfig`**, **`ParseAndPreview`** compares the current **`model.ParserConfigJSON`** to the snapshot taken at parse start; if the user changed the Outbounds JSON while generation was running (Entry **`OnChanged`** → **`MergeGUIToModel`**), the stale outbound results are **discarded**, generated slices cleared, **`PreviewNeedsParse`** set so **Save** (or the next parse) rebuilds from the current config — avoids writing **config.json** with markers from one revision and outbounds from another.
+
 - **Clash API:** `GET /proxies/{name}/delay` and `PUT /proxies/{group}` now **percent-encode** proxy/group names (spaces, `>`, Unicode, etc.); delay `url` query uses `QueryEscape`. Switch payload uses `json.Marshal` for `name`. Fixes 404 «Resource not found» when pinging tags like `abvpn:… > …`.
 
 - **Servers — share URI & menu (internals):** `GET /proxies` fills **`ProxyInfo.ClashType`**; first context-menu line uses **`ProxyInfo.ContextMenuTypeLine`**. Row-level ПКМ via **`internal/fynewidget.NewSecondaryTapWrap`**; **`serversProxyContextMenu`** / **`serversRunCopyShareURIToClipboard`** in **`ui/clash_api_tab.go`**. Reverse encoding: **`subscription.ShareURIFromOutbound`**, **`ShareURIFromWireGuardEndpoint`**, **`config.ShareProxyURIForOutboundTag`** (**one** parse of `config.json` root per **Copy link**). Tests: **`share_uri_encode_test.go`**, **`outbound_share_test.go`**, **`api/proxyinfo_test.go`**.
@@ -135,6 +139,10 @@
 - **Шаблон визарда — DNS:** в дефолтном `bin/wizard_template.json` сильно переработана секция DNS: локальный резолвер, отдельные UDP-серверы (в т.ч. Cloudflare 1.1.1.1 и UDP-bootstrap под Google DoH), для Google DoH указан хост `dns.google` с `domain_resolver`, `dns.final` ведёт на системный локальный DNS. Из репозитория убраны устаревшие `bin/config_template.json` и `bin/config_template_macos.json`. **Рекомендация:** удалить или сбросить сохранённый шаблон визарда/парсера в каталоге данных приложения, чтобы при следующем запуске подтянулся встроенный шаблон и новые настройки DNS (иначе останется старая копия с прежней DNS-секцией).
 
 ### Техническое / Внутреннее
+
+- **Визард — отзывчивость вкладки Outbounds:** при наборе **JSON ParserConfig** или **префикса тега** вызов **`RefreshOutboundOptions`** **откладывается** (~**300 ms**), чтобы не выполнять на каждый символ **`json.Unmarshal`** (в **`GetAvailableOutbounds`**) и полный проход по **Select** правил/Final; мгновенное обновление по-прежнему после **Apply** конфигуратора, **Del** источника, перехода на **Rules**, завершения парсинга и т.д. При закрытии окна визарда отложенный таймер **отменяется**.
+
+- **Визард — гонка парсинга и правок:** после **`GenerateOutboundsFromParserConfig`** **`ParseAndPreview`** сравнивает текущий **`model.ParserConfigJSON`** со снимком на старте парсинга; если пользователь менял JSON на вкладке Outbounds во время генерации (**`OnChanged`** → **`MergeGUIToModel`**), результаты парсинга **отбрасываются**, слайсы outbounds очищаются, **`PreviewNeedsParse`** — чтобы **Save** или следующий парсинг пересобрали данные по актуальному конфигу и не записали в **config.json** маркеры одной ревизии и outbounds другой.
 
 - **Clash API:** для `GET /proxies/{name}/delay` и `PUT /proxies/{group}` имена прокси/группы **кодируются** (`PathEscape`), параметр `url` в delay — `QueryEscape`; тело переключения — `json.Marshal` для поля `name`. Устраняет 404 при пинге тегов с пробелами и `>` (например abvpn после нормализации).
 

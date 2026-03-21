@@ -27,6 +27,9 @@
 package presentation
 
 import (
+	"sync"
+	"time"
+
 	"fyne.io/fyne/v2"
 
 	"singbox-launcher/core"
@@ -44,6 +47,10 @@ type WizardPresenter struct {
 	openOutboundEditWindow fyne.Window // single Outbound Edit/Add window
 	hasChanges             bool                                     // Отслеживает наличие несохранённых изменений
 	createRulesTabFunc     func(*WizardPresenter) fyne.CanvasObject // Функция для создания вкладки Rules (устанавливается при инициализации)
+
+	// outboundOptionsDebounce: отложенный RefreshOutboundOptions при частых правках JSON/prefix (ScheduleRefreshOutboundOptionsDebounced).
+	outboundOptionsDebounceMu    sync.Mutex
+	outboundOptionsDebounceTimer *time.Timer
 }
 
 // NewWizardPresenter создает новый презентер визарда.

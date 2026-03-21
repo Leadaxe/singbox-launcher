@@ -249,7 +249,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					m.PreviewNeedsParse = true
 					wizardbusiness.InvalidatePreviewCache(m)
 					presenter.UpdateParserConfig(serialized)
-					presenter.RefreshOutboundOptions()
+					presenter.ScheduleRefreshOutboundOptionsDebounced()
 				}
 
 				viewBtn := widget.NewButton(locale.T("wizard.source.button_view"), func() {
@@ -581,7 +581,7 @@ func CreateOutboundsAndParserConfigTab(presenter *wizardpresentation.WizardPrese
 		// Sync GUI to model to update ParserConfigJSON before refreshing outbound options
 		presenter.MergeGUIToModel()
 		presenter.MarkAsChanged()
-		presenter.RefreshOutboundOptions()
+		presenter.ScheduleRefreshOutboundOptionsDebounced()
 		// Preview status will be updated when switching to Preview tab
 	}
 

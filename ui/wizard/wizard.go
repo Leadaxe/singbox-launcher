@@ -135,6 +135,7 @@ func ShowConfigWizard(parent fyne.Window) {
 			}
 		}
 		wizardWindow.SetOnClosed(func() {
+			presenter.CancelDebouncedOutboundRefresh()
 			fynetooltip.DestroyWindowToolTipLayer(wizardWindow.Canvas())
 			ac.UIService.WizardWindow = nil
 			ac.UIService.FocusOpenChildWindows = nil

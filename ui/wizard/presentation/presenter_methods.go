@@ -18,6 +18,8 @@
 package presentation
 
 import (
+	"time"
+
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
@@ -82,8 +84,42 @@ func (p *WizardPresenter) CancelSaveOperation() {
 	})
 }
 
+const outboundOptionsRefreshDebounce = 300 * time.Millisecond
+
+func (p *WizardPresenter) cancelOutboundOptionsDebounce() {
+	p.outboundOptionsDebounceMu.Lock()
+	defer p.outboundOptionsDebounceMu.Unlock()
+	if p.outboundOptionsDebounceTimer != nil {
+		p.outboundOptionsDebounceTimer.Stop()
+		p.outboundOptionsDebounceTimer = nil
+	}
+}
+
+// CancelDebouncedOutboundRefresh отменяет отложенное обновление outbound-селектов (например при закрытии визарда).
+func (p *WizardPresenter) CancelDebouncedOutboundRefresh() {
+	p.cancelOutboundOptionsDebounce()
+}
+
+// ScheduleRefreshOutboundOptionsDebounced планирует RefreshOutboundOptions после паузы ввода.
+// При наборе ParserConfig или tag prefix на каждый символ иначе вызываются json.Unmarshal (в GetAvailableOutbounds) и обход всех RuleOutboundSelect — сильно тормозит UI.
+func (p *WizardPresenter) ScheduleRefreshOutboundOptionsDebounced() {
+	p.outboundOptionsDebounceMu.Lock()
+	if p.outboundOptionsDebounceTimer != nil {
+		p.outboundOptionsDebounceTimer.Stop()
+	}
+	p.outboundOptionsDebounceTimer = time.AfterFunc(outboundOptionsRefreshDebounce, func() {
+		p.outboundOptionsDebounceMu.Lock()
+		p.outboundOptionsDebounceTimer = nil
+		p.outboundOptionsDebounceMu.Unlock()
+		p.RefreshOutboundOptions()
+	})
+	p.outboundOptionsDebounceMu.Unlock()
+}
+
 // RefreshOutboundOptions обновляет опции outbound для всех правил.
 func (p *WizardPresenter) RefreshOutboundOptions() {
+	p.cancelOutboundOptionsDebounce()
+
 	options := wizardbusiness.EnsureDefaultAvailableOutbounds(wizardbusiness.GetAvailableOutbounds(p.model))
 	optionsMap := make(map[string]bool, len(options))
 	for _, opt := range options {

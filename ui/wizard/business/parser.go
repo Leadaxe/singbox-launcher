@@ -8,7 +8,7 @@
 //
 // Файл работает в контексте визарда (использует WizardModel и UIUpdater для обновления GUI).
 // Координирует вызовы реальных парсеров из core/config/subscription и core/config.
-// Интегрирован с GUI через UIUpdater (обновляет GUI прогресс, статусы и preview).
+// Интегрирован с GUI через UIUpdater (статусы/preview шаблона, текст кнопки Save; без отдельного прогресс-бара парсинга на вкладке Outbounds).
 //
 // Реальная логика парсинга находится в:
 //   - core/config/parser - парсинг @ParserConfig блоков из файлов
@@ -43,7 +43,7 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 		model.AutoParseInProgress = false
 	}()
 
-	// Save button stays visible; save flow waits for parse if needed (waitForParsingIfNeeded)
+	// Save остаётся доступной; при сохранении presenter_save.ensureOutboundsParsed ждёт AutoParseInProgress и при необходимости вызывает ParseAndPreview.
 
 	// Parse ParserConfig from field
 	parseStartTime := time.Now()
@@ -99,7 +99,7 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 			return
 		}
 		lastProgressUpdate = now
-		// Progress no longer shown in UI (Outbounds preview removed)
+		// Колбэк прогресса от генератора не выводится отдельным UI на вкладке Outbounds (только throttling по времени).
 		_ = s
 	}
 
@@ -110,6 +110,18 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 		debuglog.DebugLog("parseAndPreview: Failed to generate outbounds: %v", err)
 		updater.UpdateSaveButtonText("Save")
 		return fmt.Errorf("failed to generate outbounds: %w", err)
+	}
+
+	// Риск: пока шла генерация, пользователь мог изменить ParserConfig (OnChanged → MergeGUIToModel).
+	// Запись outbounds от старого снимка при новом JSON даёт несогласованный config при Save
+	// (ensureOutboundsParsed увидит непустые outbounds и не перепарсит).
+	if strings.TrimSpace(model.ParserConfigJSON) != parserConfigJSON {
+		debuglog.InfoLog("parseAndPreview: ParserConfigJSON changed during generation, discarding outbound results")
+		model.GeneratedOutbounds = nil
+		model.GeneratedEndpoints = nil
+		model.PreviewNeedsParse = true
+		updater.UpdateSaveButtonText("Save")
+		return nil
 	}
 
 	subscription.LogDuplicateTagStatistics(tagCounts, "ConfigWizard")
