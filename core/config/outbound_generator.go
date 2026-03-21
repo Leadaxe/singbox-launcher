@@ -38,12 +38,34 @@ import (
 	"singbox-launcher/internal/debuglog"
 )
 
+// marshalJSONString returns s as a JSON string literal (including quotes).
+// encoding/json replaces invalid UTF-8 with U+FFFD, unlike fmt %q / strconv.Quote which can emit
+// escapes that are invalid in JSON (e.g. \xNN) and break sing-box decode.
+func marshalJSONString(s string) string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return `""`
+	}
+	return string(b)
+}
+
+// sanitizeOutboundLineComment removes newlines so a // comment does not swallow the next JSON line
+// (subscription fragments may contain raw line breaks). Invalid UTF-8 is replaced so the whole
+// config file stays valid UTF-8 for strict decoders (comments are not JSON string literals).
+func sanitizeOutboundLineComment(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.TrimSpace(s)
+	return strings.ToValidUTF8(s, "\uFFFD")
+}
+
 // OutboundGenerationResult is the return value of GenerateOutboundsFromParserConfig: slice of JSON strings
 // (nodes, then local selectors, then global selectors) and counts for each category.
 // WireGuard nodes go to EndpointsJSON (sing-box endpoints), not OutboundsJSON.
 type OutboundGenerationResult struct {
 	OutboundsJSON        []string // Generated JSON lines for outbounds array (nodes, then local, then global selectors)
-	EndpointsJSON       []string // Generated JSON lines for endpoints array (WireGuard nodes only)
+	EndpointsJSON        []string // Generated JSON lines for endpoints array (WireGuard nodes only)
 	NodesCount           int      // Number of node outbounds (non-WireGuard)
 	EndpointsCount       int      // Number of WireGuard endpoint nodes
 	LocalSelectorsCount  int      // Number of local (per-source) selectors
@@ -74,15 +96,15 @@ func appendOutboundTransportParts(parts []string, outbound map[string]interface{
 	}
 	var transportParts []string
 	if tType, ok := transport["type"].(string); ok && tType != "" {
-		transportParts = append(transportParts, fmt.Sprintf(`"type":%q`, tType))
+		transportParts = append(transportParts, fmt.Sprintf(`"type":%s`, marshalJSONString(tType)))
 	}
 	if path, ok := transport["path"].(string); ok && path != "" {
-		transportParts = append(transportParts, fmt.Sprintf(`"path":%q`, path))
+		transportParts = append(transportParts, fmt.Sprintf(`"path":%s`, marshalJSONString(path)))
 	}
 	switch hostVal := transport["host"].(type) {
 	case string:
 		if hostVal != "" {
-			transportParts = append(transportParts, fmt.Sprintf(`"host":%q`, hostVal))
+			transportParts = append(transportParts, fmt.Sprintf(`"host":%s`, marshalJSONString(hostVal)))
 		}
 	case []string:
 		if len(hostVal) > 0 {
@@ -93,12 +115,12 @@ func appendOutboundTransportParts(parts []string, outbound map[string]interface{
 		}
 	}
 	if serviceName, ok := transport["service_name"].(string); ok && serviceName != "" {
-		transportParts = append(transportParts, fmt.Sprintf(`"service_name":%q`, serviceName))
+		transportParts = append(transportParts, fmt.Sprintf(`"service_name":%s`, marshalJSONString(serviceName)))
 	}
 	if headers, ok := transport["headers"].(map[string]string); ok && len(headers) > 0 {
 		var headerParts []string
 		for k, v := range headers {
-			headerParts = append(headerParts, fmt.Sprintf(`%q:%q`, k, v))
+			headerParts = append(headerParts, fmt.Sprintf(`%s:%s`, marshalJSONString(k), marshalJSONString(v)))
 		}
 		transportParts = append(transportParts, fmt.Sprintf(`"headers":{%s}`, strings.Join(headerParts, ",")))
 	}
@@ -118,19 +140,19 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 	var parts []string
 
 	// 1. tag
-	parts = append(parts, fmt.Sprintf(`"tag":%q`, node.Tag))
+	parts = append(parts, fmt.Sprintf(`"tag":%s`, marshalJSONString(node.Tag)))
 
 	// 2. type (sing-box uses "socks" + version for SOCKS5 URIs, not a separate socks5 type)
 	if node.Scheme == "ss" {
-		parts = append(parts, fmt.Sprintf(`"type":%q`, "shadowsocks"))
+		parts = append(parts, fmt.Sprintf(`"type":%s`, marshalJSONString("shadowsocks")))
 	} else if node.Scheme == "socks" || node.Scheme == "socks5" {
-		parts = append(parts, fmt.Sprintf(`"type":%q`, "socks"))
+		parts = append(parts, fmt.Sprintf(`"type":%s`, marshalJSONString("socks")))
 	} else {
-		parts = append(parts, fmt.Sprintf(`"type":%q`, node.Scheme))
+		parts = append(parts, fmt.Sprintf(`"type":%s`, marshalJSONString(node.Scheme)))
 	}
 
 	// 3. server
-	parts = append(parts, fmt.Sprintf(`"server":%q`, node.Server))
+	parts = append(parts, fmt.Sprintf(`"server":%s`, marshalJSONString(node.Server)))
 
 	// 4. server_port (prefer outbound map: buildOutbound may adjust port, e.g. vision-udp443 → 443)
 	serverPort := node.Port
@@ -143,18 +165,18 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 
 	// 5. uuid (for vless/vmess) or password (for trojan) or method/password (for ss)
 	if node.Scheme == "vless" || node.Scheme == "vmess" {
-		parts = append(parts, fmt.Sprintf(`"uuid":%q`, node.UUID))
+		parts = append(parts, fmt.Sprintf(`"uuid":%s`, marshalJSONString(node.UUID)))
 
 		if node.Scheme == "vmess" {
 			if security, ok := node.Outbound["security"].(string); ok && security != "" {
-				parts = append(parts, fmt.Sprintf(`"security":%q`, security))
+				parts = append(parts, fmt.Sprintf(`"security":%s`, marshalJSONString(security)))
 			}
 			if alterID, ok := node.Outbound["alter_id"].(int); ok {
 				parts = append(parts, fmt.Sprintf(`"alter_id":%d`, alterID))
 			}
 		}
 	} else if node.Scheme == "trojan" {
-		parts = append(parts, fmt.Sprintf(`"password":%q`, node.UUID))
+		parts = append(parts, fmt.Sprintf(`"password":%s`, marshalJSONString(node.UUID)))
 	} else if node.Scheme == "hysteria2" {
 		// Password is required for Hysteria2
 		if password, ok := node.Outbound["password"].(string); ok && password != "" {
@@ -184,7 +206,7 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 		if obfs, ok := node.Outbound["obfs"].(map[string]interface{}); ok && len(obfs) > 0 {
 			var obfsParts []string
 			if obfsType, ok := obfs["type"].(string); ok {
-				obfsParts = append(obfsParts, fmt.Sprintf(`"type":%q`, obfsType))
+				obfsParts = append(obfsParts, fmt.Sprintf(`"type":%s`, marshalJSONString(obfsType)))
 			}
 			if obfsPassword, ok := obfs["password"].(string); ok && obfsPassword != "" {
 				obfsPasswordJSON, err := json.Marshal(obfsPassword)
@@ -218,7 +240,7 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 		}
 	} else if (node.Scheme == "socks" || node.Scheme == "socks5") && node.Outbound != nil {
 		if ver, ok := node.Outbound["version"].(string); ok && ver != "" {
-			parts = append(parts, fmt.Sprintf(`"version":%q`, ver))
+			parts = append(parts, fmt.Sprintf(`"version":%s`, marshalJSONString(ver)))
 		}
 		if username, ok := node.Outbound["username"].(string); ok && username != "" {
 			usernameJSON, err := json.Marshal(username)
@@ -245,11 +267,11 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 		}
 	}
 	if flowOut != "" {
-		parts = append(parts, fmt.Sprintf(`"flow":%q`, flowOut))
+		parts = append(parts, fmt.Sprintf(`"flow":%s`, marshalJSONString(flowOut)))
 	}
 	if node.Scheme == "vless" && node.Outbound != nil {
 		if pe, ok := node.Outbound["packet_encoding"].(string); ok && pe != "" {
-			parts = append(parts, fmt.Sprintf(`"packet_encoding":%q`, pe))
+			parts = append(parts, fmt.Sprintf(`"packet_encoding":%s`, marshalJSONString(pe)))
 		}
 	}
 
@@ -268,7 +290,7 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 				}
 
 				if serverName, ok := tlsData["server_name"].(string); ok && serverName != "" {
-					tlsParts = append(tlsParts, fmt.Sprintf(`"server_name":%q`, serverName))
+					tlsParts = append(tlsParts, fmt.Sprintf(`"server_name":%s`, marshalJSONString(serverName)))
 				}
 
 				if alpn, ok := tlsData["alpn"].([]string); ok && len(alpn) > 0 {
@@ -282,7 +304,7 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 						utlsParts = append(utlsParts, fmt.Sprintf(`"enabled":%v`, utlsEnabled))
 					}
 					if fingerprint, ok := utls["fingerprint"].(string); ok {
-						utlsParts = append(utlsParts, fmt.Sprintf(`"fingerprint":%q`, fingerprint))
+						utlsParts = append(utlsParts, fmt.Sprintf(`"fingerprint":%s`, marshalJSONString(fingerprint)))
 					}
 					utlsJSON := "{" + strings.Join(utlsParts, ",") + "}"
 					tlsParts = append(tlsParts, fmt.Sprintf(`"utls":%s`, utlsJSON))
@@ -298,10 +320,10 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 						realityParts = append(realityParts, fmt.Sprintf(`"enabled":%v`, realityEnabled))
 					}
 					if publicKey, ok := reality["public_key"].(string); ok {
-						realityParts = append(realityParts, fmt.Sprintf(`"public_key":%q`, publicKey))
+						realityParts = append(realityParts, fmt.Sprintf(`"public_key":%s`, marshalJSONString(publicKey)))
 					}
 					if shortID, ok := reality["short_id"].(string); ok {
-						realityParts = append(realityParts, fmt.Sprintf(`"short_id":%q`, shortID))
+						realityParts = append(realityParts, fmt.Sprintf(`"short_id":%s`, marshalJSONString(shortID)))
 					}
 					realityJSON := "{" + strings.Join(realityParts, ",") + "}"
 					tlsParts = append(tlsParts, fmt.Sprintf(`"reality":%s`, realityJSON))
@@ -315,7 +337,7 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 
 	// Build final JSON
 	jsonStr := "{" + strings.Join(parts, ",") + "}"
-	return fmt.Sprintf("\t// %s\n\t%s,", node.Label, jsonStr), nil
+	return fmt.Sprintf("\t// %s\n\t%s,", sanitizeOutboundLineComment(node.Label), jsonStr), nil
 }
 
 // GenerateSelectorWithFilteredAddOutbounds builds one selector/urltest outbound as a JSON string.
@@ -416,14 +438,14 @@ func GenerateSelectorWithFilteredAddOutbounds(
 	var parts []string
 
 	// 1. tag
-	parts = append(parts, fmt.Sprintf(`"tag":%q`, outboundConfig.Tag))
+	parts = append(parts, fmt.Sprintf(`"tag":%s`, marshalJSONString(outboundConfig.Tag)))
 
 	// 2. type
-	parts = append(parts, fmt.Sprintf(`"type":%q`, outboundConfig.Type))
+	parts = append(parts, fmt.Sprintf(`"type":%s`, marshalJSONString(outboundConfig.Type)))
 
 	// 3. default (if present) - BEFORE outbounds
 	if defaultTag != "" {
-		parts = append(parts, fmt.Sprintf(`"default":%q`, defaultTag))
+		parts = append(parts, fmt.Sprintf(`"default":%s`, marshalJSONString(defaultTag)))
 	}
 
 	// 4. outbounds
@@ -444,7 +466,7 @@ func GenerateSelectorWithFilteredAddOutbounds(
 	for key, value := range outboundConfig.Options {
 		if key != "interrupt_exist_connections" {
 			valJSON, _ := json.Marshal(value)
-			parts = append(parts, fmt.Sprintf(`%q:%s`, key, string(valJSON)))
+			parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), string(valJSON)))
 		}
 	}
 
@@ -454,7 +476,7 @@ func GenerateSelectorWithFilteredAddOutbounds(
 	// Add comment if present
 	result := ""
 	if outboundConfig.Comment != "" {
-		result = fmt.Sprintf("\t// %s\n", outboundConfig.Comment)
+		result = fmt.Sprintf("\t// %s\n", sanitizeOutboundLineComment(outboundConfig.Comment))
 	}
 	result += fmt.Sprintf("\t%s,", jsonStr)
 
@@ -483,7 +505,7 @@ func GenerateEndpointJSON(node *ParsedNode) (string, error) {
 	}
 	result := ""
 	if node.Comment != "" {
-		result = "// " + node.Comment + "\n"
+		result = "// " + sanitizeOutboundLineComment(node.Comment) + "\n"
 	}
 	result += string(jsonBytes)
 	return result, nil
@@ -783,5 +805,3 @@ func GenerateOutboundsFromParserConfig(
 		GlobalSelectorsCount: globalSelectorsCount,
 	}, nil
 }
-
-

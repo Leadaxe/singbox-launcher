@@ -11,6 +11,16 @@ import (
 	"singbox-launcher/internal/textnorm"
 )
 
+// NormalizeSubscriptionTextLine trims whitespace, drops invalid UTF-8 byte sequences, and replaces
+// HTML-escaped "&amp;" with "&". Some public lists are HTML-exported; without this, query parameters
+// stay merged and URI parsing breaks.
+func NormalizeSubscriptionTextLine(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.ToValidUTF8(s, "")
+	s = strings.ReplaceAll(s, "&amp;", "&")
+	return s
+}
+
 // IsSubscriptionURL checks if the input string is a subscription URL (http:// or https://)
 func IsSubscriptionURL(input string) bool {
 	trimmed := strings.TrimSpace(input)
@@ -109,13 +119,7 @@ func LoadNodesFromSource(
 
 				lineCount := 0
 				for _, subLine := range subscriptionLines {
-					subLine = strings.TrimSpace(subLine)
-					if subLine == "" {
-						continue
-					}
-					// Drop invalid UTF-8 in the line before URI parsing so url.Parse / fragment
-					// handling does not combine with sanitizeForDisplay to produce U+FFFD artifacts.
-					subLine = strings.ToValidUTF8(subLine, "")
+					subLine = NormalizeSubscriptionTextLine(subLine)
 					if subLine == "" {
 						continue
 					}
@@ -166,7 +170,7 @@ func LoadNodesFromSource(
 
 			if nodesFromThisSource < configtypes.MaxNodesPerSubscription {
 				parseStartTime := time.Now()
-				src := strings.ToValidUTF8(strings.TrimSpace(proxySource.Source), "")
+				src := NormalizeSubscriptionTextLine(proxySource.Source)
 				node, err := ParseNode(src, proxySource.Skip)
 				if err != nil {
 					debuglog.DebugLog("LoadNodesFromSource: Failed to parse direct link (took %v): %v",
@@ -192,8 +196,7 @@ func LoadNodesFromSource(
 	debuglog.DebugLog("LoadNodesFromSource: Processing %d direct connections for source %d/%d",
 		len(proxySource.Connections), subscriptionIndex+1, totalSubscriptions)
 	for connIndex, connection := range proxySource.Connections {
-		connection = strings.TrimSpace(connection)
-		connection = strings.ToValidUTF8(connection, "")
+		connection = NormalizeSubscriptionTextLine(connection)
 		if connection == "" {
 			continue
 		}

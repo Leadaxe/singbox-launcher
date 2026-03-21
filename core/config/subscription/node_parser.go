@@ -87,9 +87,19 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	case strings.HasPrefix(uri, "ss://"):
 		scheme = "ss"
 		ssPart := strings.TrimPrefix(uri, "ss://")
+		var fragSuffix string
+		if i := strings.Index(ssPart, "#"); i >= 0 {
+			fragSuffix = ssPart[i:]
+			ssPart = ssPart[:i]
+		}
+		ssPart = strings.TrimSpace(ssPart)
+
 		if atIdx := strings.Index(ssPart, "@"); atIdx > 0 {
 			encodedUserinfo := ssPart[:atIdx]
 			rest := ssPart[atIdx+1:]
+			if dec, err := url.PathUnescape(encodedUserinfo); err == nil {
+				encodedUserinfo = dec
+			}
 			decoded, err := decodeBase64WithPadding(encodedUserinfo)
 			if err != nil {
 				debuglog.ErrorLog("Parser: Failed to decode SS base64 userinfo. Encoded: %s, Error: %v", encodedUserinfo, err)
@@ -108,9 +118,37 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 					debuglog.ErrorLog("Parser: SS decoded userinfo doesn't contain ':' separator. Decoded: %s", decodedStr)
 				}
 			}
-			uriToParse = "ss://" + rest
+			uriToParse = "ss://" + rest + fragSuffix
 		} else {
-			debuglog.WarnLog("Parser: SS link is not in SIP002 format (no @ found): %s", uri)
+			// Legacy Shadowsocks URI: ss://base64("method:password@host:port")#tag (no userinfo@host before decoding).
+			bare := ssPart
+			if dec, err := url.PathUnescape(bare); err == nil {
+				bare = dec
+			}
+			if decoded, err := decodeBase64WithPadding(bare); err != nil {
+				debuglog.WarnLog("Parser: SS link is not SIP002 and legacy base64 decode failed: %v", err)
+			} else {
+				decStr := string(decoded)
+				at := strings.Index(decStr, "@")
+				if at > 0 {
+					left := decStr[:at]
+					right := strings.TrimSpace(decStr[at+1:])
+					userinfoParts := strings.SplitN(left, ":", 2)
+					if len(userinfoParts) == 2 && right != "" {
+						ssMethod = strings.TrimSpace(userinfoParts[0])
+						ssPassword = userinfoParts[1]
+						if !isValidShadowsocksMethod(ssMethod) {
+							debuglog.WarnLog("Parser: Invalid or unsupported Shadowsocks method '%s'. Skipping node.", ssMethod)
+							return nil, fmt.Errorf("unsupported Shadowsocks encryption method: %s", ssMethod)
+						}
+						debuglog.DebugLog("Parser: Decoded legacy SS (method:password@host:port in one blob), host part length=%d", len(right))
+						uriToParse = "ss://" + right + fragSuffix
+					}
+				}
+			}
+			if ssMethod == "" {
+				debuglog.WarnLog("Parser: SS link is not in SIP002 format (no @ found): %s", uri)
+			}
 		}
 
 	case strings.HasPrefix(uri, "hysteria2://"), strings.HasPrefix(uri, "hy2://"):
@@ -537,11 +575,7 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 	} else if node.Scheme == "vmess" {
 		outbound["uuid"] = node.UUID
 
-		if security := node.Query.Get("security"); security != "" {
-			outbound["security"] = security
-		} else {
-			outbound["security"] = "auto" // default
-		}
+		outbound["security"] = normalizeVMessSecurity(node.Query.Get("security"))
 
 		if alterIDStr := node.Query.Get("alter_id"); alterIDStr != "" {
 			if alterID, err := strconv.Atoi(alterIDStr); err == nil {
@@ -601,7 +635,7 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 				tlsData["alpn"] = alpnList
 			}
 
-			if fp := node.Query.Get("fp"); fp != "" {
+			if fp := normalizeUTLSFingerprint(node.Query.Get("fp")); fp != "" {
 				tlsData["utls"] = map[string]interface{}{
 					"enabled":     true,
 					"fingerprint": fp,

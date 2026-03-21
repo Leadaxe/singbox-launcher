@@ -18,7 +18,7 @@ const SubscriptionUserAgent = "SubscriptionParserClient"
 
 // MaxNodesPerSubscription limits the maximum number of nodes parsed from a single subscription
 // This prevents memory issues with very large subscriptions
-const MaxNodesPerSubscription = 500
+const MaxNodesPerSubscription = 3000
 
 // ParserConfig represents the configuration structure from @ParserConfig block
 // Clean structure for version 4 (legacy versions are migrated automatically)

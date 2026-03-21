@@ -654,7 +654,7 @@ singbox-launcher/
   - после префикса: **`textnorm.NormalizeProxyDisplay` на тег, затем `MakeTagUnique`** (уникальность по нормализованным строкам)
   - `MakeTagUnique()` - обеспечение уникальности тегов
   - `IsSubscriptionURL()` - проверка URL подписки
-  - `MaxNodesPerSubscription` const - лимит узлов
+  - `MaxNodesPerSubscription` const - лимит узлов на один источник подписки (3000)
 - `node_parser_transport.go`:
   - `uriTransportFromQuery()` — VLESS/Trojan: ws/http/grpc/xhttp→httpupgrade; **ws: `headers.Host` из `host` или `sni`**
   - `vlessTLSFromNode()`, `trojanTLSFromNode()` — TLS / Reality по query

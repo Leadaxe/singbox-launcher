@@ -43,6 +43,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/textnorm"
 	wizardbusiness "singbox-launcher/ui/wizard/business"
 	wizardmodels "singbox-launcher/ui/wizard/models"
 )
@@ -296,9 +297,45 @@ func (p *WizardPresenter) showValidationErrorDialog(valErr *wizardbusiness.Valid
 	if p.guiState.Window == nil {
 		return
 	}
-	msg := valErr.Error()
+	msg := textnorm.StripANSI(valErr.Error())
 	messageLabel := widget.NewLabel(msg)
 	messageLabel.Wrapping = fyne.TextWrapWord
+
+	scroll := container.NewScroll(messageLabel)
+	// Message area: capped so the dialog stays usable without dominating the wizard.
+	const maxScrollW, maxScrollH = float32(500), float32(180)
+	const minScrollW, minScrollH = float32(130), float32(50)
+	scrollW := maxScrollW
+	scrollH := maxScrollH
+	if p.guiState.Window != nil {
+		sz := p.guiState.Window.Canvas().Size()
+		if sz.Width > 100 {
+			availW := sz.Width - 72
+			if availW < scrollW {
+				scrollW = availW
+			}
+		}
+		if sz.Height > 160 {
+			availH := sz.Height - 140
+			if availH < scrollH {
+				scrollH = availH
+			}
+		}
+	}
+	if scrollW < minScrollW {
+		scrollW = minScrollW
+	}
+	if scrollH < minScrollH {
+		scrollH = minScrollH
+	}
+	if scrollW > maxScrollW {
+		scrollW = maxScrollW
+	}
+	if scrollH > maxScrollH {
+		scrollH = maxScrollH
+	}
+	scroll.SetMinSize(fyne.NewSize(scrollW, scrollH))
+	mainArea := container.NewPadded(scroll)
 
 	var d dialog.Dialog
 	copyBtn := widget.NewButton(locale.T("wizard.save.button_copy"), func() {
@@ -318,9 +355,24 @@ func (p *WizardPresenter) showValidationErrorDialog(valErr *wizardbusiness.Valid
 	closeBtn.Importance = widget.HighImportance
 
 	buttons := container.NewHBox(layout.NewSpacer(), copyBtn, closeBtn)
-	content := container.NewBorder(nil, buttons, nil, nil, messageLabel)
-	d = dialog.NewCustomWithoutButtons(locale.T("wizard.save.dialog_validation_failed"), content, p.guiState.Window)
+	d = dialogs.NewCustom(locale.T("wizard.save.dialog_validation_failed"), mainArea, buttons, "", p.guiState.Window)
 	d.Show()
+	// Whole popup size (title + padding + button row); content min alone is sometimes under-applied until shown.
+	if p.guiState.Window != nil {
+		ws := p.guiState.Window.Canvas().Size()
+		const chromeW, chromeH = float32(32), float32(32)
+		rw := scrollW + chromeW
+		rh := scrollH + chromeH
+		if rw > ws.Width-24 {
+			rw = ws.Width - 24
+		}
+		if rh > ws.Height-24 {
+			rh = ws.Height - 24
+		}
+		if rw >= 100 && rh >= 65 {
+			d.Resize(fyne.NewSize(rw, rh))
+		}
+	}
 }
 
 // saveStateAndShowSuccessDialog сохраняет state.json и показывает диалог успешного сохранения.

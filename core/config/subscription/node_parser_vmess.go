@@ -4,10 +4,37 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/textnorm"
 )
+
+// normalizeVMessSecurity maps subscription / JSON values to sing-box vmess outbound security.
+// See: https://sing-box.sagernet.org/configuration/outbound/vmess/
+func normalizeVMessSecurity(raw string) string {
+	s := strings.TrimSpace(strings.ToLower(raw))
+	if s == "" || s == "null" || s == "undefined" {
+		return "auto"
+	}
+	switch s {
+	case "auto", "none", "zero", "aes-128-gcm", "chacha20-poly1305", "aes-128-ctr":
+		return s
+	case "chacha20-ietf-poly1305":
+		return "chacha20-poly1305"
+	default:
+		return "auto"
+	}
+}
+
+func vmessStringField(m map[string]interface{}, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := m[k].(string); ok {
+			return v
+		}
+	}
+	return ""
+}
 
 // parseVMessJSON parses VMess configuration from decoded JSON.
 // VMess protocol uses base64-encoded JSON format (vmess://base64(json)) instead of
@@ -61,11 +88,8 @@ func parseVMessJSON(vmessConfig map[string]interface{}, skipFilters []map[string
 		node.Comment = node.Tag
 	}
 
-	if scy, ok := vmessConfig["scy"].(string); ok && scy != "" {
-		node.Query.Set("security", scy)
-	} else {
-		node.Query.Set("security", "auto")
-	}
+	secRaw := vmessStringField(vmessConfig, "scy", "security")
+	node.Query.Set("security", normalizeVMessSecurity(secRaw))
 
 	if aid, ok := vmessConfig["aid"].(string); ok && aid != "" && aid != "0" {
 		node.Query.Set("alter_id", aid)

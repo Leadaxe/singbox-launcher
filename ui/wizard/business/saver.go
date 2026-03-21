@@ -39,6 +39,7 @@ import (
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
+	"singbox-launcher/internal/textnorm"
 )
 
 // tempConfigFileName — имя временного файла для валидации конфига перед записью (создаётся в той же директории, затем удаляется).
@@ -174,9 +175,9 @@ func ValidateConfigWithSingBox(configPath, singBoxPath string) error {
 	debuglog.DebugLog("Running validation: %s check -c %s", singBoxPath, configPath)
 
 	if err := cmd.Run(); err != nil {
-		errorMsg := stderr.String()
+		errorMsg := textnorm.StripANSI(stderr.String())
 		if errorMsg == "" {
-			errorMsg = stdout.String()
+			errorMsg = textnorm.StripANSI(stdout.String())
 		}
 		if errorMsg == "" {
 			errorMsg = err.Error()

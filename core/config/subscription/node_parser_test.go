@@ -212,6 +212,52 @@ func TestParseNode_VMess(t *testing.T) {
 			t.Error("Expected error for invalid base64, got nil")
 		}
 	})
+
+	t.Run("VMess scy null normalizes to auto", func(t *testing.T) {
+		vmessConfig := map[string]interface{}{
+			"v":    "2",
+			"ps":   "null-scy",
+			"add":  "example.com",
+			"port": "80",
+			"id":   "12345678-1234-1234-1234-123456789abc",
+			"net":  "tcp",
+			"scy":  "null",
+		}
+		vmessJSON, _ := json.Marshal(vmessConfig)
+		vmessURI := "vmess://" + base64.URLEncoding.EncodeToString(vmessJSON)
+		node, err := ParseNode(vmessURI, nil)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		sec, _ := node.Outbound["security"].(string)
+		if sec != "auto" {
+			t.Errorf("expected security auto, got %q", sec)
+		}
+	})
+
+	t.Run("VMess security JSON key null normalizes to auto", func(t *testing.T) {
+		vmessConfig := map[string]interface{}{
+			"v":         "2",
+			"ps":        "sec-key",
+			"add":       "example.com",
+			"port":      "443",
+			"id":        "12345678-1234-1234-1234-123456789abc",
+			"net":       "tcp",
+			"security":  "null",
+			"tls":       "tls",
+			"serverName": "example.com",
+		}
+		vmessJSON, _ := json.Marshal(vmessConfig)
+		vmessURI := "vmess://" + base64.URLEncoding.EncodeToString(vmessJSON)
+		node, err := ParseNode(vmessURI, nil)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		sec, _ := node.Outbound["security"].(string)
+		if sec != "auto" {
+			t.Errorf("expected security auto, got %q", sec)
+		}
+	})
 }
 
 // TestParseNode_Trojan tests parsing Trojan nodes
@@ -304,6 +350,44 @@ func TestParseNode_Shadowsocks(t *testing.T) {
 		_, err := ParseNode("ss://@example.com:443", nil)
 		if err == nil {
 			t.Error("Expected error for missing credentials, got nil")
+		}
+	})
+
+	t.Run("SIP002 userinfo with URL-escaped base64 padding", func(t *testing.T) {
+		rawB64 := base64.StdEncoding.EncodeToString([]byte("chacha20-ietf-poly1305:testpwd"))
+		esc := strings.ReplaceAll(rawB64, "=", "%3D")
+		uri := "ss://" + esc + "@203.0.113.5:990#EscapedPadding"
+		node, err := ParseNode(uri, nil)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if node == nil || node.Scheme != "ss" {
+			t.Fatalf("Expected ss node, got %#v", node)
+		}
+		if node.Query.Get("method") != "chacha20-ietf-poly1305" || node.Query.Get("password") != "testpwd" {
+			t.Errorf("method/password: %q / %q", node.Query.Get("method"), node.Query.Get("password"))
+		}
+		if node.Server != "203.0.113.5" || node.Port != 990 {
+			t.Errorf("server/port: %s:%d", node.Server, node.Port)
+		}
+	})
+
+	t.Run("Legacy SS base64(method:password@host:port)", func(t *testing.T) {
+		inner := "chacha20-ietf-poly1305:secret-pass@192.0.2.10:8388"
+		b64 := base64.StdEncoding.EncodeToString([]byte(inner))
+		uri := "ss://" + b64 + "#LegacyTag"
+		node, err := ParseNode(uri, nil)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if node == nil || node.Scheme != "ss" {
+			t.Fatalf("Expected ss node, got %#v", node)
+		}
+		if node.Query.Get("method") != "chacha20-ietf-poly1305" || node.Query.Get("password") != "secret-pass" {
+			t.Errorf("method/password: %q / %q", node.Query.Get("method"), node.Query.Get("password"))
+		}
+		if node.Server != "192.0.2.10" || node.Port != 8388 {
+			t.Errorf("server/port: %s:%d", node.Server, node.Port)
 		}
 	})
 }

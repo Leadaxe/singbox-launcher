@@ -131,6 +131,35 @@ func uriTransportFromQuery(q url.Values) (map[string]interface{}, bool) {
 	}
 }
 
+// maxRealityShortIDHexLen is the maximum hex character count sing-box accepts for outbound
+// tls.reality.short_id (8 bytes). Longer values from broken lists are truncated.
+const maxRealityShortIDHexLen = 16
+
+// normalizeRealityShortID keeps only hex digits for sing-box REALITY short_id decoding.
+// Public lists sometimes paste mojibake (e.g. UTF-8 bytes misread as Latin-1 → U+00C2 in sid),
+// spaces, or punctuation; sing-box uses encoding/hex and fails on any non-hex rune.
+func normalizeRealityShortID(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.ToValidUTF8(s, "")
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r >= 'a' && r <= 'f':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'F':
+			b.WriteRune(r - 'A' + 'a')
+		}
+	}
+	out := b.String()
+	if len(out) > maxRealityShortIDHexLen {
+		out = out[:maxRealityShortIDHexLen]
+	}
+	return out
+}
+
 func applyTLSQueryExtras(q url.Values, tlsData map[string]interface{}) {
 	if alpn := queryGetFold(q, "alpn"); alpn != "" {
 		alpn = normalizePercentDecodeLoop(alpn)
@@ -175,7 +204,7 @@ func vlessTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, boo
 			"reality": map[string]interface{}{
 				"enabled":    true,
 				"public_key": pbk,
-				"short_id":   queryGetFold(q, "sid"),
+				"short_id":   normalizeRealityShortID(queryGetFold(q, "sid")),
 			},
 		}
 		applyTLSQueryExtras(q, tlsData)

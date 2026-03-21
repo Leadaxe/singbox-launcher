@@ -6,6 +6,18 @@ import (
 	"testing"
 )
 
+func TestNormalizeSubscriptionTextLine(t *testing.T) {
+	in := "  vless://x@y?a=1&amp;b=2  "
+	got := NormalizeSubscriptionTextLine(in)
+	want := "vless://x@y?a=1&b=2"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+	if NormalizeSubscriptionTextLine("") != "" {
+		t.Fatal("empty in should be empty out")
+	}
+}
+
 // TestDecodeSubscriptionContent tests the DecodeSubscriptionContent function
 func TestDecodeSubscriptionContent(t *testing.T) {
 	tests := []struct {

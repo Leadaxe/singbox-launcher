@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -347,5 +348,76 @@ func TestGenerateNodeJSON_SOCKS5_WithAuth(t *testing.T) {
 	}
 	if !strings.Contains(jsonStr, `"password":"mypass"`) {
 		t.Fatalf("expected password in JSON:\n%s", jsonStr)
+	}
+}
+
+// Large subscription lists may carry invalid UTF-8 in query/path and line breaks in #fragment labels.
+// fmt %q is not JSON-safe; sing-box decode must accept the object line.
+func TestGenerateNodeJSON_InvalidUTF8PathAndNewlineLabelStillValidJSON(t *testing.T) {
+	node := &ParsedNode{
+		Scheme: "vless",
+		Tag:    "t-invalid-utf8",
+		Server: "1.2.3.4",
+		Port:   443,
+		UUID:   "00000000-0000-0000-0000-000000000001",
+		Label:  "line1\nline2",
+		Outbound: map[string]interface{}{
+			"transport": map[string]interface{}{
+				"type": "ws",
+				"path": "/prefix\xff\xfe/suffix",
+			},
+		},
+	}
+	s, err := GenerateNodeJSON(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(s, "// line1 line2") {
+		t.Fatalf("expected newline sanitized in comment, got:\n%s", s)
+	}
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected comment + JSON line: %q", s)
+	}
+	jsonLine := strings.TrimSuffix(strings.TrimSpace(lines[len(lines)-1]), ",")
+	var obj map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonLine), &obj); err != nil {
+		t.Fatalf("object line must be valid JSON: %v\n%s", err, jsonLine)
+	}
+}
+
+// WireGuard endpoints use a leading // comment; subscription metadata must not break JSONC structure or UTF-8.
+func TestGenerateEndpointJSON_CommentSanitized(t *testing.T) {
+	node := &ParsedNode{
+		Scheme:  "wireguard",
+		Tag:     "wg-test-tag",
+		Comment: "line1\nline2\xff\xfe",
+		Outbound: map[string]interface{}{
+			"private_key": "YFabc1234567890123456789012345678901234567890=",
+			"address":     []string{"10.0.0.2/32"},
+			"peers": []interface{}{
+				map[string]interface{}{
+					"address":     "203.0.113.1:51820",
+					"public_key":  "YFpeerpub9876543210987654321098765432109876543210=",
+					"allowed_ips": []string{"0.0.0.0/0"},
+				},
+			},
+		},
+	}
+	s, err := GenerateEndpointJSON(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(s, "// line1 line2") {
+		t.Fatalf("expected newline/invalid UTF-8 sanitized in comment prefix, got prefix:\n%.80q", s)
+	}
+	idx := strings.Index(s, "\n")
+	if idx < 0 {
+		t.Fatalf("expected newline after comment: %q", s)
+	}
+	jsonPart := strings.TrimSpace(s[idx+1:])
+	var obj map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonPart), &obj); err != nil {
+		t.Fatalf("endpoint JSON must parse: %v\n%s", err, jsonPart)
 	}
 }

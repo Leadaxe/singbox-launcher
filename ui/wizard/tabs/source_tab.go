@@ -30,6 +30,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
@@ -427,13 +428,14 @@ func fetchAndParseSource(sourceURL string, skip []map[string]string) ([]*config.
 		contentStr = strings.ReplaceAll(contentStr, "\r\n", "\n")
 		contentStr = strings.ReplaceAll(contentStr, "\r", "\n")
 		for _, line := range strings.Split(contentStr, "\n") {
-			line = strings.TrimSpace(line)
+			line = subscription.NormalizeSubscriptionTextLine(line)
 			if line == "" {
 				continue
 			}
-			line = strings.ToValidUTF8(line, "")
-			if line == "" {
-				continue
+			if len(nodes) >= configtypes.MaxNodesPerSubscription {
+				debuglog.WarnLog("source_tab: fetchAndParseSource truncated at %d nodes (same limit as subscription loader)",
+					configtypes.MaxNodesPerSubscription)
+				break
 			}
 			node, err := subscription.ParseNode(line, skip)
 			if err != nil {
