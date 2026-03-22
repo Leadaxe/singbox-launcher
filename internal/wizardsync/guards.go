@@ -3,10 +3,7 @@
 // applyWizardWidgetsFromModel или до того, как Select отразит загруженный state.
 package wizardsync
 
-import (
-	"slices"
-	"strings"
-)
+import "strings"
 
 // GuiTextAwaitingProgrammaticFill: пустой Entry/strategy до WizardWidgetsReady при непустой модели —
 // это «ещё не SetText/SetSelected», а не очистка пользователем.
@@ -26,5 +23,14 @@ func FinalOutboundSelectReadLooksStale(ready bool, widgetSelected, modelOutbound
 	if !ready {
 		return true
 	}
-	return len(opts) == 0 || slices.Contains(opts, mo)
+	return len(opts) == 0 || stringSliceContains(opts, mo)
+}
+
+func stringSliceContains(opts []string, v string) bool {
+	for _, o := range opts {
+		if o == v {
+			return true
+		}
+	}
+	return false
 }

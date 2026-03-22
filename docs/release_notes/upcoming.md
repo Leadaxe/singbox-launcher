@@ -10,7 +10,7 @@
 
 ### Internal / Refactoring
 
-- **Wizard presenter:** `SyncGUIToModelWithoutDirtyFlag` renamed to **`MergeGUIToModel`** (clearer: merge widgets into model without touching **`hasChanges`**). Single contract comment block in **`ui/wizard/presentation/presenter_sync.go`**. GUI→model: **`syncGUIToModelSourceParserFinal`** / **`syncGUIToModelDNS`** (less merge-risk than one huge function). Predicates **`internal/wizardsync`**: **`GuiTextAwaitingProgrammaticFill`** (Entry + DNS rules/strategy), **`FinalOutboundSelectReadLooksStale`** (empty Final **Select** no longer clears the model before **`WizardWidgetsReady`** or when options already contain the saved tag). Unit tests for **`wizardsync`** run without Fyne/CGO.
+- **Wizard presenter:** `SyncGUIToModelWithoutDirtyFlag` renamed to **`MergeGUIToModel`** (clearer: merge widgets into model without touching **`hasChanges`**). Single contract comment block in **`ui/wizard/presentation/presenter_sync.go`**. GUI→model: **`syncGUIToModelSourceParserFinal`** / **`syncGUIToModelDNS`** (less merge-risk than one huge function). Predicates **`internal/wizardsync`**: **`GuiTextAwaitingProgrammaticFill`** (Entry + DNS rules/strategy), **`FinalOutboundSelectReadLooksStale`** (empty Final **Select** no longer clears the model before **`WizardWidgetsReady`** or when options already contain the saved tag). Unit tests for **`wizardsync`** run without Fyne/CGO. **`internal/wizardsync`** avoids **`slices`** (Go 1.21+) so the Win7 CI job (**Go 1.20**) can run **`go get -modfile=go.win7.mod ./...`** again.
 
 ### Highlights
 
@@ -100,7 +100,7 @@
 
 ### Внутреннее / Рефакторинг
 
-- **Презентер визарда:** `SyncGUIToModelWithoutDirtyFlag` переименован в **`MergeGUIToModel`** (яснее: слить виджеты в модель без **`hasChanges`**). Единый блок комментариев-контракта в **`ui/wizard/presentation/presenter_sync.go`**. GUI→модель разнесена на **`syncGUIToModelSourceParserFinal`** и **`syncGUIToModelDNS`**. Предикаты в **`internal/wizardsync`**: **`GuiTextAwaitingProgrammaticFill`**, **`FinalOutboundSelectReadLooksStale`** (пустой **Select** Final outbound не затирает модель до готовности виджетов и в согласованном случае после); для DNS rules/strategy — та же логика **`!WizardWidgetsReady`**, что у Source/Parser. Тесты **`wizardsync`** без Fyne/CGO.
+- **Презентер визарда:** `SyncGUIToModelWithoutDirtyFlag` переименован в **`MergeGUIToModel`** (яснее: слить виджеты в модель без **`hasChanges`**). Единый блок комментариев-контракта в **`ui/wizard/presentation/presenter_sync.go`**. GUI→модель разнесена на **`syncGUIToModelSourceParserFinal`** и **`syncGUIToModelDNS`**. Предикаты в **`internal/wizardsync`**: **`GuiTextAwaitingProgrammaticFill`**, **`FinalOutboundSelectReadLooksStale`** (пустой **Select** Final outbound не затирает модель до готовности виджетов и в согласованном случае после); для DNS rules/strategy — та же логика **`!WizardWidgetsReady`**, что у Source/Parser. Тесты **`wizardsync`** без Fyne/CGO. В **`internal/wizardsync`** не используется стандартный пакет **`slices`** (Go 1.21+), чтобы job Win7 в CI (**Go 1.20**) снова проходил шаг **`go get -modfile=go.win7.mod ./...`**.
 
 - **`internal/fynewidget`:** **`NewCheckWithContent`** — пустой **`Check`** + произвольный контент: тап по контенту переключает галку, hover дублируется на галку; опциональный тултип на контенте. Строки **DNS**, вкладка **Rules** (шаблонные и пользовательские правила, **TUN** на macOS) на этом helper; тексты из диалогов по **`?`** перенесены в **тултипы** подписи.
 
