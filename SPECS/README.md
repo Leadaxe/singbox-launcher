@@ -59,5 +59,6 @@
 - **023** — фича завершена (F-C): SUBSCRIPTION_TRANSPORT_VLESS_TROJAN (transport/TLS для VLESS и Trojan из подписки по схеме sing-box, VMess gRPC `service_name`, MakeTagUnique в превью визарда)
 - **024** — фича завершена (F-C): WIZARD_DNS_SECTION (вкладка DNS в визарде; см. **SPEC.md**)
 - **025** — фича завершена (F-C): SERVERS_CONTEXT_MENU_SHARE_URI (ПКМ на вкладке Servers, share URI из config.json outbounds/endpoints; см. **IMPLEMENTATION_REPORT.md**)
+- **026** — фича в плане (F-N): WIZARD_SOURCE_EDIT_LOCAL_OUTBOUNDS (первая вкладка: **Edit** с подвкладками Настройки/Просмотр; локальные auto/select; `exclude_from_global` для нод в глобальных селекторах; см. **SPEC.md**)
 
 Подробное описание каждой задачи — в SPEC.md соответствующей папки.
