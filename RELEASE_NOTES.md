@@ -7,7 +7,7 @@
 ### Выжимка (RU)
 
 - **Визард и главное окно**  
-  Отступ под скролл (Rules, Sources, DNS — только список серверов, вкладка **Servers** — внутри строки прокси). **Rules:** один список **`custom_rules`** в `state.json` (v3, **Add from library**), см. **docs/WIZARD_STATE.md**; порядок ↑/↓, удаление с подтверждением; обновление outbound не сбрасывает несохранённые правки. Sources: компактно «подпись + копирование»; **Изменить** — окно источника (настройки; просмотр: локальные outbounds и серверы; JSON только чтение; **исключить из глобальных**, **теги в глобальных группах** — см. **docs/ParserConfig.md**). Тихий sync при смене вкладок и корректный **hasChanges**, в том числе после правок списка Outbounds.
+  Отступ под скролл (Rules, Sources, DNS — только список серверов, вкладка **Servers** — внутри строки прокси). **Rules:** один список **`custom_rules`** в `state.json` (v3, **Add from library**), см. **docs/WIZARD_STATE.md**; порядок ↑/↓, удаление с подтверждением; обновление outbound не сбрасывает несохранённые правки. Sources: компактно «подпись + копирование»; **Изменить** — окно источника (настройки; просмотр: локальные outbounds и серверы; JSON только чтение; **исключить из глобальных**, **теги в глобальных группах** — см. **docs/ParserConfig.md**). Тихий sync при смене вкладок и корректный **hasChanges**, в том числе после правок списка Outbounds. Списки строк (Rules, Sources, outbounds на вкладке Outbounds, DNS, библиотека правил): лёгкая подсветка при наведении (**`HoverRow`**).
 
 - **Вкладка DNS**  
   `dns.servers`, `dns.rules` одним JSON `{"rules":[...]}`, final, strategy, кэш, default domain resolver. Состояние в **`dns_options`** в `state.json`. Чекбоксы **enabled**, скелетные строки из шаблона, тултипы, частичный refresh селектов вместо полной пересборки списка.
@@ -31,11 +31,11 @@
   Переработан блок DNS в `bin/wizard_template.json`; рекомендуется сбросить сохранённый шаблон в каталоге данных приложения.
 
 - **Внутреннее**  
-  `MergeGUIToModel`, `NewCheckWithContent`, `NewSecondaryTapWrap`, `ShareURIFromOutbound` / `outbound_share`, обновления документации и локалей.
+  `MergeGUIToModel`, `NewCheckWithContent`, **`HoverRow`** / **`HoverForward*`** (визард), `NewSecondaryTapWrap`, `ShareURIFromOutbound` / `outbound_share`, обновления документации и локалей.
 
 ### Draft highlights (EN)
 
-- **Wizard & UI:** Scrollbar gutters; **Rules** — single **`custom_rules`** list, **Add from library**, state v3 (**docs/WIZARD_STATE.md**); Sources / DNS UX; **Edit** per source (settings + preview with local outbounds + servers + read-only JSON, `exclude_from_global`, `expose_group_tags_to_global` — **docs/ParserConfig.md**); DNS tab with JSON `dns.rules`, `dns_options` in state, enabled servers, tooltips, faster DNS-related updates.
+- **Wizard & UI:** Scrollbar gutters; **Rules** — single **`custom_rules`** list, **Add from library**, state v3 (**docs/WIZARD_STATE.md**); Sources / DNS UX; **Edit** per source (settings + preview with local outbounds + servers + read-only JSON, `exclude_from_global`, `expose_group_tags_to_global` — **docs/ParserConfig.md**); DNS tab with JSON `dns.rules`, `dns_options` in state, enabled servers, tooltips, faster DNS-related updates. List rows (Rules, Sources, Outbounds list, DNS, library modal): **hover row highlight** (**`internal/fynewidget.HoverRow`**).
 - **Unsaved changes:** Quieter tab sync; Outbounds list correctly marks config dirty after edits.
 - **Parser:** VLESS/Trojan/VMess transports & TLS from URI; vision-udp443 → sing-box–compatible JSON; SOCKS5 with credentials and `version: "5"`; subscription `#fragment` → `tag_prefix`; UTF-8 and tag normalization.
 - **Clash API:** Encoded proxy/group names in API paths.

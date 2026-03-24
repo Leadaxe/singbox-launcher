@@ -49,6 +49,7 @@
 | DNS (список серверов) | `ui/wizard/tabs/dns_tab.go` — `HoverRow`, `WireTooltipLabelHover` для summary-лейбла (после `CheckWithContent`), Edit/Del через `HoverForward*` |
 | Библиотека правил | `ui/wizard/tabs/library_rules_dialog.go` |
 | Состояние GUI | `ui/wizard/presentation/gui_state.go` (комментарий к `SRSButton` и `*ttwidget.Button` через `TTWidget`) |
+| Документация репозитория | `docs/ARCHITECTURE.md` (узел `internal/fynewidget`, абзац про списки визарда в разделе Wizard), `docs/release_notes/upcoming.md`, `RELEASE_NOTES.md` |
 
 ---
 
@@ -60,6 +61,7 @@
 - [x] Кнопка SRS не «прыгает» по layout при hover/out; тултип URL сохраняется.
 - [x] Подсветка визуально **не серая**, а слегка **с холодным оттенком** (через `ColorNamePrimary`).
 - [x] Паттерн задокументирован для повторного использования (`doc.go`).
+- [x] Обновлены `docs/ARCHITECTURE.md`, черновик `docs/release_notes/upcoming.md` и `RELEASE_NOTES.md`.
 
 ---
 

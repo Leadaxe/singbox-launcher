@@ -528,6 +528,9 @@ singbox-launcher/
 │   │   │
 │   ├── fynewidget/             # Переиспользуемые мелкие Fyne-виджеты
 │   │   │   - NewCheckWithContent()                     # Пустой Check + произвольный контент: тап/hover с контента на галку; опциональный тултип на контенте
+│   │   │   - HoverRow / HoverRowConfig                 # Фон под строкой списка: hover (смесь theme ColorNameBackground + ColorNamePrimary), опционально выделение по cfg; WireTooltipLabelHover(ttwidget.Label) — проброс hover к строке с сохранением колбэков лейбла
+│   │   │   - HoverForwardButton, HoverForwardSelect, HoverForwardTTButton  # Кнопка/Select/ttwidget.Button по значению + RowHoverGetter → те же MouseIn/Out на HoverRow; TTWidget() → *ttwidget.Button для async/API
+│   │   │   - doc.go                                    # Package comment: порядок row / rowGetter, запрет оборачивать только *widget.Button от NewButton
 │   │   │   - NewSecondaryTapWrap()                     # Обёртка строки: `MouseDown` сохраняет модификаторы, `Tapped`/`OnPrimary(mods)` — выбор (Ctrl/Cmd/Shift надёжнее, чем `CurrentKeyModifiers` на отпускании в Windows); `TappedSecondary` → контекстное меню
 │   │   │
 │   ├── wizardsync/             # Предикаты слияния GUI→модель визарда без Fyne (тестируемо без CGO/GL)
@@ -757,6 +760,8 @@ singbox-launcher/
 - **Model** (`models/`) - чистые бизнес-данные без GUI зависимостей
 - **View** (`tabs/`, `dialogs/`, `GUIState`) - только GUI виджеты и их компоновка
 - **Presenter** (`presentation/`) - связывает модель и представление, координирует бизнес-логику
+
+Списочные строки (вкладки **Rules**, **Sources**, список outbounds в конфигураторе на **Outbounds**, **DNS**, модал **Add from library**) используют **`internal/fynewidget.HoverRow`**, **`WireTooltipLabelHover`** для **`ttwidget.Label`** и **`HoverForward*`** для кнопок/селектов; см. **`internal/fynewidget/doc.go`**, **SPECS/028-F-C-WIZARD_LIST_ROW_HOVER/SPEC.md**.
 
 **wizard.go**
 - `ShowConfigWizard()` - точка входа, создание окна визарда
