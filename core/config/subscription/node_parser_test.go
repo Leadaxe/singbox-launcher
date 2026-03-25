@@ -237,14 +237,14 @@ func TestParseNode_VMess(t *testing.T) {
 
 	t.Run("VMess security JSON key null normalizes to auto", func(t *testing.T) {
 		vmessConfig := map[string]interface{}{
-			"v":         "2",
-			"ps":        "sec-key",
-			"add":       "example.com",
-			"port":      "443",
-			"id":        "12345678-1234-1234-1234-123456789abc",
-			"net":       "tcp",
-			"security":  "null",
-			"tls":       "tls",
+			"v":          "2",
+			"ps":         "sec-key",
+			"add":        "example.com",
+			"port":       "443",
+			"id":         "12345678-1234-1234-1234-123456789abc",
+			"net":        "tcp",
+			"security":   "null",
+			"tls":        "tls",
 			"serverName": "example.com",
 		}
 		vmessJSON, _ := json.Marshal(vmessConfig)
@@ -256,6 +256,85 @@ func TestParseNode_VMess(t *testing.T) {
 		sec, _ := node.Outbound["security"].(string)
 		if sec != "auto" {
 			t.Errorf("expected security auto, got %q", sec)
+		}
+	})
+
+	t.Run("VMess JSON net=xhttp uses httpupgrade transport", func(t *testing.T) {
+		vmessConfig := map[string]interface{}{
+			"v": "2", "ps": "xh", "add": "vm.example.com", "port": float64(443),
+			"id":  "bf000d23-0752-40b4-affe-68f7707a9661",
+			"net": "xhttp", "path": "/hx", "host": "h.vm", "tls": "tls",
+		}
+		raw, _ := json.Marshal(vmessConfig)
+		uri := "vmess://" + base64.URLEncoding.EncodeToString(raw)
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: %v", err)
+		}
+		tr := node.Outbound["transport"].(map[string]interface{})
+		if tr["type"] != "httpupgrade" || tr["path"] != "/hx" || tr["host"] != "h.vm" {
+			t.Fatalf("transport: %+v", tr)
+		}
+	})
+
+	t.Run("VMess JSON net=h2 uses http transport and tls", func(t *testing.T) {
+		vmessConfig := map[string]interface{}{
+			"v": "2", "ps": "h2n", "add": "vm.example.com", "port": float64(443),
+			"id":  "bf000d23-0752-40b4-affe-68f7707a9661",
+			"net": "h2", "path": "/", "host": "cdn.h2", "tls": "tls",
+		}
+		raw, _ := json.Marshal(vmessConfig)
+		uri := "vmess://" + base64.URLEncoding.EncodeToString(raw)
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: %v", err)
+		}
+		tr := node.Outbound["transport"].(map[string]interface{})
+		if tr["type"] != "http" {
+			t.Fatalf("transport type: %+v", tr)
+		}
+		hosts, _ := tr["host"].([]string)
+		if len(hosts) != 1 || hosts[0] != "cdn.h2" {
+			t.Fatalf("host: %+v", tr["host"])
+		}
+		if node.Outbound["tls"] == nil {
+			t.Fatal("expected tls for h2+tls")
+		}
+	})
+
+	t.Run("VMess legacy cleartext method:uuid@host:port", func(t *testing.T) {
+		plain := "aes-128-gcm:bf000d23-0752-40b4-affe-68f7707a9661@203.0.113.7:8443?type=ws&path=%2Fws&tls=1"
+		uri := "vmess://" + base64.StdEncoding.EncodeToString([]byte(plain)) + "#LegacyVMess"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: %v", err)
+		}
+		if node.Server != "203.0.113.7" || node.Port != 8443 {
+			t.Fatalf("host/port: %s:%d", node.Server, node.Port)
+		}
+		tr := node.Outbound["transport"].(map[string]interface{})
+		if tr["type"] != "ws" || tr["path"] != "/ws" {
+			t.Fatalf("transport: %+v", tr)
+		}
+		if node.Outbound["tls"] == nil {
+			t.Fatal("expected tls")
+		}
+	})
+
+	t.Run("vmess URI fragment does not break base64 decode", func(t *testing.T) {
+		vmessConfig := map[string]interface{}{
+			"v": "2", "ps": "frag", "add": "a.example.com", "port": float64(443),
+			"id": "bf000d23-0752-40b4-affe-68f7707a9661",
+		}
+		raw, _ := json.Marshal(vmessConfig)
+		b64 := base64.URLEncoding.EncodeToString(raw)
+		uri := "vmess://" + b64 + "#MyNodeName"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: %v", err)
+		}
+		if node.Server != "a.example.com" {
+			t.Fatalf("server: %s", node.Server)
 		}
 	})
 }
@@ -711,6 +790,43 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 		}
 	})
 
+	t.Run("type=httpupgrade alias maps to httpupgrade transport", func(t *testing.T) {
+		uri := "vless://a0ee37a5-1844-4087-bc5c-1db6f416d38c@example.com:443?type=httpupgrade&path=%2Fp&host=h2.test&security=tls&sni=h2.test#t"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		tr := node.Outbound["transport"].(map[string]interface{})
+		if tr["type"] != "httpupgrade" || tr["host"] != "h2.test" {
+			t.Fatalf("transport: %+v", tr)
+		}
+	})
+
+	t.Run("VLESS TLS server_name from peer when sni missing", func(t *testing.T) {
+		uri := "vless://a0ee37a5-1844-4087-bc5c-1db6f416d38c@198.51.100.1:443?encryption=none&security=tls&peer=cdn.example&type=tcp#t"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		tls := node.Outbound["tls"].(map[string]interface{})
+		if tls["server_name"] != "cdn.example" {
+			t.Fatalf("server_name: %+v", tls["server_name"])
+		}
+	})
+
+	t.Run("WS Host from obfsParam when host and sni missing", func(t *testing.T) {
+		uri := "vless://a0ee37a5-1844-4087-bc5c-1db6f416d38c@example.com:443?type=ws&path=%2F&obfsParam=obs.example&security=tls#t"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		tr := node.Outbound["transport"].(map[string]interface{})
+		h, _ := tr["headers"].(map[string]string)
+		if h["Host"] != "obs.example" {
+			t.Fatalf("want obfsParam as Host, got %+v", tr)
+		}
+	})
+
 	t.Run("allowinsecure=0 lowercase does not set tls.insecure", func(t *testing.T) {
 		uri := "vless://52dbc2d8-00c5-2710-a898-22718fb85c12@ing.anti-vpn.ru:52006?security=reality&encryption=none&pbk=4CH3o5zOMcFNMbnwXnkAg0FFepmsc0QzhahXkUzb1ik&headerType=none&fp=qq&allowinsecure=0&type=tcp&flow=xtls-rprx-vision&sni=max.ru&sid=d8c6b58bcbb0c323#t"
 		node, err := ParseNode(uri, nil)
@@ -826,6 +942,10 @@ func TestParseNode_Trojan_WebSocket(t *testing.T) {
 	t.Run("Host key uppercase (igareck-style)", func(t *testing.T) {
 		uri := "trojan://secretpass@example.com:443?security=tls&sni=jflsjlaf.pages.dev&type=ws&path=%2F&Host=jflsjlaf.pages.dev#tr"
 		testTrojanWSOne(t, uri, "jflsjlaf.pages.dev", "/")
+	})
+	t.Run("TLS server_name from peer when sni missing", func(t *testing.T) {
+		uri := "trojan://secretpass@198.51.100.2:443?security=tls&peer=tr.peer.test&type=ws&path=%2F&host=tr.peer.test#tr"
+		testTrojanWSOne(t, uri, "tr.peer.test", "/")
 	})
 }
 
@@ -1007,6 +1127,35 @@ func TestParseNode_Hysteria2(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("Hysteria2 allowInsecure=1 maps to tls.insecure", func(t *testing.T) {
+		uri := "hysteria2://secret@203.0.113.1:443?sni=hy.example&allowInsecure=1#h"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: %v", err)
+		}
+		tls := node.Outbound["tls"].(map[string]interface{})
+		if !tls["insecure"].(bool) {
+			t.Fatalf("expected tls.insecure, got %+v", tls)
+		}
+	})
+
+	t.Run("Hysteria2 fingerprint and pinSHA256 in outbound tls", func(t *testing.T) {
+		uri := "hysteria2://secret@203.0.113.1:443?sni=hy.example&fingerprint=firefox&pinSHA256=YWJjZGVmZ2g=#h"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: %v", err)
+		}
+		tls := node.Outbound["tls"].(map[string]interface{})
+		ut, _ := tls["utls"].(map[string]interface{})
+		if ut["fingerprint"] != "firefox" {
+			t.Fatalf("utls: %+v", ut)
+		}
+		pins, _ := tls["certificate_public_key_sha256"].([]string)
+		if len(pins) != 1 || pins[0] != "YWJjZGVmZ2g=" {
+			t.Fatalf("pins: %+v", tls["certificate_public_key_sha256"])
+		}
+	})
 }
 
 // TestBuildOutbound_Hysteria2 tests Hysteria2 outbound generation

@@ -66,11 +66,8 @@ func buildHysteria2Outbound(node *configtypes.ParsedNode, outbound map[string]in
 
 // buildHysteria2TLS builds TLS configuration for Hysteria2
 func buildHysteria2TLS(node *configtypes.ParsedNode, outbound map[string]interface{}) {
-	sni := node.Query.Get("sni")
-
-	// Handle insecure parameter (can be "1" or "true")
-	insecure := node.Query.Get("insecure") == "true" || node.Query.Get("insecure") == "1"
-	skipCertVerify := node.Query.Get("skip-cert-verify") == "true" || node.Query.Get("skip-cert-verify") == "1"
+	q := node.Query
+	sni := queryGetFold(q, "sni")
 
 	// Always enable TLS for hysteria2 (required by protocol)
 	tlsData := map[string]interface{}{
@@ -85,12 +82,29 @@ func buildHysteria2TLS(node *configtypes.ParsedNode, outbound map[string]interfa
 		tlsData["server_name"] = node.Server
 	}
 
-	if insecure || skipCertVerify {
+	if tlsInsecureTrue(q) {
+		tlsData["insecure"] = true
+	} else if queryGetFold(q, "skip-cert-verify") == "true" || queryGetFold(q, "skip-cert-verify") == "1" {
 		tlsData["insecure"] = true
 	}
 
+	fp := normalizeUTLSFingerprint(queryGetFold(q, "fp"))
+	if fp == "" {
+		fp = normalizeUTLSFingerprint(queryGetFold(q, "fingerprint"))
+	}
+	if fp != "" {
+		tlsData["utls"] = map[string]interface{}{
+			"enabled":     true,
+			"fingerprint": fp,
+		}
+	}
+
+	if pin := strings.TrimSpace(queryGetFold(q, "pinSHA256")); pin != "" {
+		tlsData["certificate_public_key_sha256"] = []string{pin}
+	}
+
 	// Handle ALPN parameter (for hysteria2, typically "h3")
-	if alpn := node.Query.Get("alpn"); alpn != "" {
+	if alpn := queryGetFold(q, "alpn"); alpn != "" {
 		alpnList := strings.Split(alpn, ",")
 		for i := range alpnList {
 			alpnList[i] = strings.TrimSpace(alpnList[i])

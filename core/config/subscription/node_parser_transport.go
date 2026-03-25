@@ -88,6 +88,9 @@ func uriTransportFromQuery(q url.Values) (map[string]interface{}, bool) {
 		if host == "" {
 			host = strings.TrimSpace(queryGetFold(q, "sni"))
 		}
+		if host == "" {
+			host = strings.TrimSpace(queryGetFold(q, "obfsParam"))
+		}
 		if host != "" {
 			t["headers"] = map[string]string{"Host": host}
 		}
@@ -114,8 +117,8 @@ func uriTransportFromQuery(q url.Values) (map[string]interface{}, bool) {
 			t["host"] = []string{host}
 		}
 		return t, true
-	case "xhttp":
-		// Xray sharing label "xhttp" → sing-box "httpupgrade" (host/path/headers only; no "mode" in schema).
+	case "xhttp", "httpupgrade":
+		// Xray "xhttp" and subscription alias "httpupgrade" → sing-box "httpupgrade".
 		t := map[string]interface{}{"type": "httpupgrade"}
 		if p := queryGetFold(q, "path"); p != "" {
 			t["path"] = p
@@ -186,6 +189,9 @@ func vlessTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, boo
 
 	sni := queryGetFold(q, "sni")
 	if sni == "" {
+		sni = queryGetFold(q, "peer")
+	}
+	if sni == "" {
 		sni = node.Server
 	}
 	fp := normalizeUTLSFingerprint(queryGetFold(q, "fp"))
@@ -251,6 +257,9 @@ func trojanTLSFromNode(node *configtypes.ParsedNode) map[string]interface{} {
 	}
 
 	sni := queryGetFold(q, "sni")
+	if sni == "" {
+		sni = queryGetFold(q, "peer")
+	}
 	if sni == "" {
 		sni = queryGetFold(q, "host")
 	}

@@ -4,6 +4,15 @@
 
 Парсер обновляет файл `bin/config.json`, загружая подписки (поддерживаются протоколы: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, WireGuard), фильтруя и группируя их в селекторы. Результат записывается в секции между маркерами `/** @ParserSTART */` и `/** @ParserEND */` (outbounds), а узлы WireGuard — между `/** @ParserSTART_E */` и `/** @ParserEND_E */` (endpoints). Секция **endpoints** (WireGuard) поддерживается в sing-box начиная с версии **1.11**.
 
+## Документы и исходный код парсера URI
+
+| Документ / место | Содержание |
+|------------------|------------|
+| **Этот файл** (`docs/ParserConfig.md`) | Форматы прямых ссылок в `connections`, Share URI, структура ParserConfig, пайплайн обновления. |
+| **`SPECS/023-F-C-SUBSCRIPTION_TRANSPORT_VLESS_TROJAN/SUBSCRIPTION_PARAMS_REPORT.md`** | Таблицы: query VLESS/Trojan → поля sing-box; примеры из публичных подписок; ключи query. |
+| **`SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY/SPEC.md`** | Расширения совместимости (029): `type=httpupgrade`, `peer`, `obfsParam`, VMess legacy / `httpupgrade` / `h2`, Hysteria2 TLS; сверка со схемой sing-box. |
+| Пакет **`core/config/subscription`** | `ParseNode`, `buildOutbound` — `node_parser.go`; VLESS/Trojan transport+TLS — `node_parser_transport.go`; VMess — `node_parser_vmess.go` (`parseVMessDecoded`, `parseVMessJSON`, `parseVMessLegacyCleartext`); Hysteria2 — `node_parser_hysteria2.go`; WireGuard / SSH — `node_parser_wireguard.go`, `node_parser_ssh.go`; share URI — `share_uri_encode.go`. |
+
 ## Share URI из outbound и WireGuard endpoint (обратно к ссылке)
 
 Спецификация фичи (ПКМ на вкладке Servers, контекстное меню, детали реализации): **`SPECS/025-F-C-SERVERS_CONTEXT_MENU_SHARE_URI/`** (SPEC, PLAN, IMPLEMENTATION_REPORT).
@@ -14,7 +23,7 @@
 
 - **Вход кодировщика:** один элемент массива `outbounds` **или** один элемент `endpoints[]` с `type: wireguard` (тот же набор полей, что даёт `parseWireGuardURI` / `GenerateEndpointJSON`).
 - **Выход:** одна строка URI в форматах, которые снова понимает этот проект: `vless://`, `vmess://` (base64 JSON), `trojan://`, `ss://` (SIP002), `socks5://`, `hysteria2://`, `ssh://`, **`wireguard://`**.
-- **Query / transport / TLS:** для VLESS и Trojan при кодировании используются те же соглашения, что и при разборе (`uriTransportFromQuery`, `vlessTLSFromNode`, `trojanTLSFromNode` в `core/config/subscription/node_parser_transport.go`). Подробный справочник query-параметров: **`SPECS/023-F-C-SUBSCRIPTION_TRANSPORT_VLESS_TROJAN/SUBSCRIPTION_PARAMS_REPORT.md`** и разделы URI ниже в этом файле.
+- **Query / transport / TLS:** для VLESS и Trojan при кодировании используются те же соглашения, что и при разборе (`uriTransportFromQuery`, `vlessTLSFromNode`, `trojanTLSFromNode` в `node_parser_transport.go`). VMess при разборе не использует стандартный URI-query в основном формате (JSON в base64); legacy и поля JSON — в `node_parser_vmess.go`. Подробный справочник VLESS/Trojan: **`SUBSCRIPTION_PARAMS_REPORT.md`** (023); расширения 029 — спека **`029-Q-С-…/SPEC.md`** и разделы URI ниже.
 
 ### API в коде
 
@@ -529,16 +538,16 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 
 **Параметры query string (типичные):**
 - `encryption` — в ссылках Xray часто `none`; в JSON outbound VLESS отдельным полем не дублируется
-- `flow` — подпротокол VLESS в sing-box (например `xtls-rprx-vision`), см. [доку VLESS](https://sing-box.sagernet.org/configuration/outbound/vless/). Если в ссылке **нет** `flow`, но задан **REALITY** (`pbk` + обычно `sid`) и транспорт **не** `ws` / `grpc` / `http` / `xhttp` (только «голый» TCP), в outbound подставляется `flow: xtls-rprx-vision` — многие серверы без этого не поднимают сессию.
+- `flow` — подпротокол VLESS в sing-box (например `xtls-rprx-vision`), см. [доку VLESS](https://sing-box.sagernet.org/configuration/outbound/vless/). Если в ссылке **нет** `flow`, но задан **REALITY** (`pbk` + обычно `sid`) и транспорт **не** `ws` / `grpc` / `http` / `xhttp` / `httpupgrade` (только «голый» TCP), в outbound подставляется `flow: xtls-rprx-vision` — многие серверы без этого не поднимают сессию.
 - `security` — `none` | `tls` | `reality`; при `none` TLS в outbound не добавляется
-- `sni` — имя для SNI / проверки сертификата → `tls.server_name`
+- `sni` — имя для SNI / проверки сертификата → `tls.server_name`; при пустом `sni` используется **`peer`** (тот же смысл в части подписок)
 - `fp` — отпечаток uTLS → `tls.utls.fingerprint` (значения: `chrome`, `firefox`, `qq`, `random`, …)
 - `alpn` — список через запятую → `tls.alpn`
 - `insecure`, `allowInsecure` / `allowinsecure` — при `1` / `true` → `tls.insecure`
 - `pbk`, `sid` — Reality → `tls.reality.public_key`, `short_id`
-- `type` — транспорт: `tcp` / `raw`, `ws`, `grpc`, `http`, `xhttp` (в sing-box `xhttp` маппится в transport `httpupgrade`), реже `quic`
+- `type` — транспорт: `tcp` / `raw`, `ws`, `grpc`, `http`, `xhttp`, **`httpupgrade`** (синоним `xhttp` → sing-box `httpupgrade`), реже `quic`
 - `path` — путь WebSocket / HTTP / httpupgrade или fallback имени сервиса для gRPC
-- `host` / `Host` — для WS → заголовок `Host`; если `host` в query нет, для WS используется **`sni`** (часто в подписках задают только `sni=…` при `type=ws`). Для HTTP/httpupgrade — поле `host` транспорта (регистр ключа `Host` в query учитывается)
+- `host` / `Host` — для WS → заголовок `Host`; если `host` и `sni` в query нет, для WS используется **`obfsParam`**. Если есть `host` или `sni`, они имеют приоритет. Для HTTP/httpupgrade — поле `host` транспорта (регистр ключа `Host` в query учитывается)
 - `headerType` — вместе с `type=raw` или `tcp` и значением `http` задаёт транспорт типа HTTP (обфускация), см. отчёт 023
 - `serviceName` / `service_name` — имя gRPC-сервиса → `transport.service_name`
 - `packetEncoding` — например `xudp` → поле outbound `packet_encoding`, см. [доку VLESS](https://sing-box.sagernet.org/configuration/outbound/vless/)
@@ -550,9 +559,9 @@ vless://uuid@server.com:443?encryption=none&flow=xtls-rprx-vision&security=reali
 ```
 
 ### VMess (`vmess://`)
-**⚠️ Особенность:** VMess использует base64-закодированный JSON, а не стандартный URI формат.
+**⚠️ Особенность:** обычно VMess — base64(JSON); поддерживается и **legacy**-строка после base64: `method:uuid@host:port` с опциональным `?query` (как в части клиентов). Фрагмент `#tag` отрезается **до** декодирования base64.
 
-Формат: `vmess://base64(json)`
+Формат: `vmess://base64(json)` или `vmess://base64(cleartext)#tag`
 
 JSON должен содержать поля:
 - `v` - версия (обычно `"2"`)
@@ -562,7 +571,7 @@ JSON должен содержать поля:
 - `id` - UUID клиента
 - `aid` - alterId (опционально)
 - `scy` - метод шифрования (опционально)
-- `net` - тип сети (`tcp`, `ws`, `http`, `grpc`)
+- `net` - тип сети (`tcp`, `ws`, `http`, `grpc`, **`xhttp`/`httpupgrade`** → sing-box transport `httpupgrade`; **`h2`** → transport `http` + TLS по схеме sing-box)
 - `type` - тип заголовка (для `tcp`)
 - `host` - хост (для `ws`/`http`; для WS при пустом `host` подставляется SNI из TLS, если есть)
 - `path` - путь (для `ws`/`http`/`grpc`)
@@ -570,6 +579,11 @@ JSON должен содержать поля:
 - `sni` - SNI (опционально)
 - `alpn` - ALPN (опционально)
 - `fp` - fingerprint (опционально)
+- `insecure` в JSON (`"1"`) — небезопасный TLS, как у VLESS
+
+**Сборка outbound с TLS для VMess:** `tls.server_name` берётся из `sni`, при отсутствии — из поля **`peer`** в query (если провайдер продублировал имя в `peer`), иначе — **адрес сервера** (`add`). Флаги **`insecure` / `allowInsecure` / `allowinsecure`** в query обрабатываются так же, как для VLESS (`tlsInsecureTrue`).
+
+**Legacy (не JSON):** в query допускаются, например, `type=ws`, `path`, `tls=1` — они маппятся в `transport` и `tls` так же, как у URI-протоколов с query.
 
 **Пример:**
 ```
@@ -579,12 +593,12 @@ vmess://eyJ2IjoiMiIsInBzIjoiVGVzdCIsImFkZCI6InNlcnZlci5jb20iLCJwb3J0Ijo0NDMsImlk
 ### Trojan (`trojan://`)
 Стандартный URI формат: `trojan://password@server:port?params#tag`
 
-Те же правила **TLS** и **[V2Ray transport](https://sing-box.sagernet.org/configuration/shared/v2ray-transport/)**, что и для VLESS (в т.ч. `type=ws`, `path`, `host` / `Host`), см. `SPECS/023-F-C-SUBSCRIPTION_TRANSPORT_VLESS_TROJAN/SUBSCRIPTION_PARAMS_REPORT.md`.
+Те же правила **TLS** и **[V2Ray transport](https://sing-box.sagernet.org/configuration/shared/v2ray-transport/)**, что и для VLESS (в т.ч. `type=ws`, `path`, `host` / `Host`, **`type=httpupgrade`** как у `xhttp`), см. **`SUBSCRIPTION_PARAMS_REPORT.md`** (023) и спеку **029**.
 
 **Параметры query string (типичные):**
 - `security` — например `tls` или `none` (без TLS)
-- `sni`, `host` — SNI / имя сертификата; для WS также заголовок Host
-- `type` — при `ws` добавляется WebSocket-транспорт
+- `sni`, `host`, **`peer`** — SNI / имя сертификата (приоритет `sni`, затем `peer`, затем `host`); для WS также заголовок Host
+- `type` — `ws`, `grpc`, `http`, `xhttp`, **`httpupgrade`**, `tcp`/`raw` (+ при необходимости `headerType=http`) — как у VLESS
 - `path` — путь WebSocket
 - `alpn`, `fp`, `insecure` / `allowInsecure` — как у VLESS
 
@@ -627,8 +641,9 @@ ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@server.com:443#Shadowsocks Server
 - `obfs` - тип обфускации (в настоящее время поддерживается только `salamander`)
 - `obfs-password` - пароль для указанного типа обфускации
 - `sni` - Server Name Indication для TLS соединений
-- `insecure` - разрешить небезопасные TLS соединения (принимает `"1"` для true или `"0"` для false)
-- `pinSHA256` - SHA-256 fingerprint сертификата сервера для привязки
+- `insecure`, **`allowInsecure` / `allowinsecure`** — небезопасный TLS (как у VLESS: `1` / `true` / `yes`); также учитываются `skip-cert-verify`
+- `fingerprint` / `fp` — uTLS fingerprint → `tls.utls` в sing-box
+- `pinSHA256` — base64 SHA-256 публичного ключа сертификата → `tls.certificate_public_key_sha256` в sing-box
 
 **⚠️ Важно:** Параметры полосы пропускания (`upmbps`, `downmbps`) и режимы клиента (HTTP, SOCKS5) **не должны** быть в URI, так как это клиентские настройки, специфичные для каждого пользователя.
 

@@ -11,6 +11,22 @@
 
 ---
 
+## Дополнения после спецификации 029 (реализовано в парсере)
+
+Сводка расширений под sing-box; детали и ссылки на доку sing-box — в **`SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY/SPEC.md`**. Обзор URI, Share URI и пайплайн ParserConfig — **`docs/ParserConfig.md`**.
+
+| Тема | Поведение |
+|------|-----------|
+| VLESS/Trojan `type` | **`httpupgrade`** в query — синоним **`xhttp`**, в outbound transport `type: httpupgrade`. |
+| VLESS/Trojan TLS `server_name` | VLESS: `sni` → **`peer`** → адрес сервера. Trojan: `sni` → **`peer`** → **`host`** → адрес сервера. |
+| VLESS WS `Host` | После `host` и `sni` — fallback на **`obfsParam`**. |
+| VMess base64 | Сначала JSON; иначе legacy **`cipher:uuid@host:port`** + опциональный `?query`; **`#fragment`** отрезается до base64. |
+| VMess JSON `net` | **`xhttp`/`httpupgrade`** → transport `httpupgrade`; **`h2`** → transport `http` + TLS; при `h2` без `tls` в JSON TLS включается по умолчанию. |
+| VMess TLS в outbound | `server_name`: `sni` → **`peer`** → адрес сервера (`add`); insecure как у VLESS. |
+| Hysteria2 `tls` | **`allowInsecure`/`allowinsecure`**; **`fingerprint`/`fp`** → `utls`; **`pinSHA256`** → `certificate_public_key_sha256`. |
+
+---
+
 ## Справочник: поля sing-box и связь с URI подписки (Xray/V2Ray style)
 
 Источники определений: [VLESS outbound](https://sing-box.sagernet.org/configuration/outbound/vless/), [Trojan outbound](https://sing-box.sagernet.org/configuration/outbound/trojan/), [TLS (outbound)](https://sing-box.sagernet.org/configuration/shared/tls/#outbound), [V2Ray Transport](https://sing-box.sagernet.org/configuration/shared/v2ray-transport/).
@@ -45,7 +61,7 @@
 | Поле | По доке (смысл) | Типичный query в подписке |
 |------|------------------|---------------------------|
 | `enabled` | Включение TLS. | Логика: `security=none` → TLS не добавляем; иначе `true` (Trojan при `security=none` — явный `enabled: false`). |
-| `server_name` | Имя хоста для проверки сертификата и SNI (если не IP). | `sni`; если пусто — часто подставляется host сервера. |
+| `server_name` | Имя хоста для проверки сертификата и SNI (если не IP). | VLESS: `sni` → **`peer`** → адрес сервера. Trojan: `sni` → **`peer`** → **`host`** → адрес сервера. VMess (при TLS): см. **`docs/ParserConfig.md`** (`sni` → `peer` → `add`). |
 | `insecure` | Принимать любой сертификат сервера. | `insecure` / `allowInsecure` / `allowinsecure` = `1` / `true` / `yes`. |
 | `alpn` | Список ALPN, порядок предпочтений. | `alpn` (список через запятую; в лаунчере — нормализация percent-encoding). |
 | `utls` | Клиентский uTLS: `fingerprint` имитирует ClientHello. | `fp` → `utls.fingerprint` (значения: `chrome`, `firefox`, `qq`, `random`, … — см. [доку TLS](https://sing-box.sagernet.org/configuration/shared/tls/#outbound)). |
@@ -65,7 +81,7 @@
 | `httpupgrade` | HTTP Upgrade (в подписках Xray часто подписан как `xhttp`). | `host` (строка), `path`, `headers`. |
 | `quic` | QUIC (без доп. полей в схеме). | Только `type`. |
 
-В подписке Xray поле **`type=xhttp`** маппится в sing-box в **`httpupgrade`**; параметр **`mode`** из Xray **отсутствует** в документированной схеме `httpupgrade` и **не переносится**.
+В подписке Xray поля **`type=xhttp`** и **`type=httpupgrade`** маппятся в sing-box в **`httpupgrade`**; параметр **`mode`** из Xray **отсутствует** в документированной схеме `httpupgrade` и **не переносится**.
 
 ### Параметры URI без поля в sing-box (Xray-специфика)
 
@@ -202,10 +218,14 @@
 
 ---
 
-## 5. Ссылки на документацию sing-box
+## 5. Ссылки на документацию sing-box и проект
 
 - [V2Ray Transport](https://sing-box.sagernet.org/configuration/shared/v2ray-transport/)
 - [TLS outbound](https://sing-box.sagernet.org/configuration/shared/tls/#outbound)
 - [VLESS outbound](https://sing-box.sagernet.org/configuration/outbound/vless/)
+- [Trojan outbound](https://sing-box.sagernet.org/configuration/outbound/trojan/)
+- [VMess outbound](https://sing-box.sagernet.org/configuration/outbound/vmess/)
+- **`docs/ParserConfig.md`** — прямые ссылки, Share URI, маркеры ParserConfig
+- **`SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY/SPEC.md`** — расширения парсера 029
 
 

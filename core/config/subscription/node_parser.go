@@ -5,7 +5,6 @@ package subscription
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -53,6 +52,11 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	switch {
 	case strings.HasPrefix(uri, "vmess://"):
 		base64Part := strings.TrimPrefix(uri, "vmess://")
+		fragment := ""
+		if i := strings.Index(base64Part, "#"); i >= 0 {
+			fragment = base64Part[i+1:]
+			base64Part = base64Part[:i]
+		}
 		decoded, err := decodeBase64WithPadding(base64Part)
 		if err != nil {
 			uriPreview := uri
@@ -67,16 +71,13 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 			debuglog.ErrorLog("Parser: VMESS decoded content is empty. Skipping node.")
 			return nil, fmt.Errorf("VMESS decoded content is empty")
 		}
-		var vmessConfig map[string]interface{}
-		if err := json.Unmarshal(decoded, &vmessConfig); err != nil {
-			debuglog.ErrorLog("Parser: Failed to parse VMESS JSON (decoded length: %d): %v. Skipping node.", len(decoded), err)
-			return nil, fmt.Errorf("failed to parse VMESS JSON: %w", err)
+		// VMess: base64(JSON) or legacy cleartext method:uuid@host:port (see parseVMessDecoded).
+		if fragment != "" {
+			if dec, err := url.PathUnescape(fragment); err == nil {
+				fragment = dec
+			}
 		}
-		// VMess uses base64-encoded JSON format instead of standard URI format,
-		// so it requires separate parsing logic and cannot use the common URI parser.
-		// All other protocols (VLESS, Trojan, SS, Hysteria2, SSH) use standard URI format
-		// and are processed through the common parsing path below.
-		return parseVMessJSON(vmessConfig, skipFilters)
+		return parseVMessDecoded(decoded, fragment, skipFilters)
 
 	case strings.HasPrefix(uri, "vless://"):
 		scheme = "vless"
@@ -562,7 +563,7 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 				outbound["flow"] = node.Flow
 			}
 		} else if strings.TrimSpace(queryGetFold(node.Query, "pbk")) != "" && !hasTransport {
-			// REALITY over plain TCP: URI often omits flow=; sing-box accepts xtls-rprx-vision (skip for ws/grpc/xhttp/…).
+			// REALITY over plain TCP: URI often omits flow=; sing-box accepts xtls-rprx-vision (skip for ws/grpc/http/httpupgrade/…).
 			outbound["flow"] = "xtls-rprx-vision"
 		}
 		if pe := strings.TrimSpace(queryGetFold(node.Query, "packetEncoding")); pe != "" {
@@ -583,12 +584,47 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 			}
 		}
 
-		network := node.Query.Get("network")
+		network := strings.ToLower(strings.TrimSpace(node.Query.Get("network")))
 		if network == "" {
-			network = "tcp" // default
+			network = "tcp"
+		}
+		if network == "xhttp" {
+			network = "httpupgrade"
 		}
 
-		if network == "ws" || network == "http" || network == "grpc" {
+		switch {
+		case network == "httpupgrade":
+			tr := map[string]interface{}{"type": "httpupgrade"}
+			if p := node.Query.Get("path"); p != "" {
+				tr["path"] = p
+			}
+			h := queryGetFold(node.Query, "host")
+			if h == "" {
+				h = queryGetFold(node.Query, "sni")
+			}
+			if h != "" {
+				tr["host"] = h
+			}
+			outbound["transport"] = tr
+
+		case network == "h2":
+			tr := map[string]interface{}{"type": "http"}
+			if p := node.Query.Get("path"); p != "" {
+				tr["path"] = p
+			}
+			hostStr := queryGetFold(node.Query, "host")
+			if hostStr == "" {
+				hostStr = queryGetFold(node.Query, "sni")
+			}
+			if hostStr == "" {
+				hostStr = node.Server
+			}
+			if hostStr != "" {
+				tr["host"] = []string{hostStr}
+			}
+			outbound["transport"] = tr
+
+		case network == "ws" || network == "http" || network == "grpc":
 			transport := make(map[string]interface{})
 			transport["type"] = network
 
@@ -623,7 +659,14 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 				"enabled": true,
 			}
 
-			if sni := node.Query.Get("sni"); sni != "" {
+			sni := queryGetFold(node.Query, "sni")
+			if sni == "" {
+				sni = queryGetFold(node.Query, "peer")
+			}
+			if sni == "" {
+				sni = node.Server
+			}
+			if sni != "" {
 				tlsData["server_name"] = sni
 			}
 
@@ -642,7 +685,7 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 				}
 			}
 
-			if node.Query.Get("insecure") == "true" {
+			if tlsInsecureTrue(node.Query) {
 				tlsData["insecure"] = true
 			}
 
@@ -676,4 +719,3 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 
 	return outbound
 }
-

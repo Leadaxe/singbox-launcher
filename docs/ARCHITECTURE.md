@@ -207,9 +207,9 @@ singbox-launcher/
 │           │   │   - ErrShareURINotSupported                    # селекторы, multi-peer WG и пр.
 │           │   │
 │           ├── node_parser_transport.go # VLESS/Trojan: transport и TLS из URI query
-│           │   │   - uriTransportFromQuery() / vlessTLSFromNode() / trojanTLSFromNode()  # зеркало для encode
+│           │   │   - uriTransportFromQuery() / vlessTLSFromNode() / trojanTLSFromNode()  # зеркало для encode; xhttp/httpupgrade; WS Host: host/sni → obfsParam
 │           │   │
-│           ├── node_parser_vmess.go     # VMess протокол
+│           ├── node_parser_vmess.go     # VMess: parseVMessDecoded (JSON + legacy), нормализация net (httpupgrade, h2)
 │           ├── node_parser_wireguard.go # WireGuard протокол
 │           ├── node_parser_hysteria2.go # Hysteria2 протокол
 │           ├── node_parser_ssh.go       # SSH протокол
@@ -670,7 +670,7 @@ singbox-launcher/
 - `block_extractor.go`:
   - `ExtractParserConfigBlock()` - извлечение блока из JSON
 
-**subscription/** - Работа с подписками (см. SPECS/023-F-C-SUBSCRIPTION_TRANSPORT_VLESS_TROJAN)
+**subscription/** - Работа с подписками (см. SPECS/023-F-C-SUBSCRIPTION_TRANSPORT_VLESS_TROJAN; расширения парсера URI — SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY, **docs/ParserConfig.md**)
 - `source_loader.go`:
   - `LoadNodesFromSource()` - загрузка узлов из источника
   - `applyTagPrefixPostfix()` - применение префикса/постфикса к тегам
@@ -680,12 +680,16 @@ singbox-launcher/
   - `IsSubscriptionURL()` - проверка URL подписки
   - `MaxNodesPerSubscription` const - лимит узлов на один источник подписки (3000)
 - `node_parser_transport.go`:
-  - `uriTransportFromQuery()` — VLESS/Trojan: ws/http/grpc/xhttp→httpupgrade; **ws: `headers.Host` из `host` или `sni`**
-  - `vlessTLSFromNode()`, `trojanTLSFromNode()` — TLS / Reality по query
+  - `uriTransportFromQuery()` — VLESS/Trojan: ws/http/grpc; **`xhttp` и `httpupgrade` → httpupgrade**; **ws: `headers.Host` из `host`, `sni` или `obfsParam`**
+  - `vlessTLSFromNode()`, `trojanTLSFromNode()` — TLS / Reality по query; **`server_name`: `sni` → `peer` → (Trojan: `host`) → сервер**
 - `node_parser.go`:
-  - `ParseNode()` - парсинг URI узла прокси; **VLESS:** REALITY без транспорта и без `flow` → `flow: xtls-rprx-vision`; лейбл после sanitize — **textnorm**; **VMess ws:** Host из `host` или `sni`
+  - `ParseNode()` - парсинг URI узла прокси; **VLESS:** REALITY без транспорта и без `flow` → `flow: xtls-rprx-vision`; лейбл после sanitize — **textnorm**; **VMess:** JSON в base64, legacy cleartext, отрезание `#` до base64
   - `buildOutbound()` — сборка outbound-мапы для sing-box
   - `IsDirectLink()` - проверка прямого линка
+- `node_parser_vmess.go`:
+  - `parseVMessDecoded`, `parseVMessJSON`, `parseVMessLegacyCleartext` — разбор payload после base64; в `buildOutbound` для VMess — транспорты **ws/http/grpc/httpupgrade/h2** и TLS (`sni` → `peer` → сервер)
+- `node_parser_hysteria2.go`:
+  - TLS: insecure, `fp`/`fingerprint` → utls, `pinSHA256` → `certificate_public_key_sha256` (см. **docs/ParserConfig.md**)
 - `share_uri_encode.go`:
   - `ShareURIFromOutbound()` — map outbound (как в config.json) → share URI; для `type: wireguard` — `ShareURIFromWireGuardEndpoint`; см. **docs/ParserConfig.md** (раздел Share URI)
   - `ShareURIFromWireGuardEndpoint()` — `wireguard://` из объекта endpoint (один элемент в `peers[]`)

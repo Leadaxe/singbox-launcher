@@ -10,12 +10,18 @@
 
 - **TestIsDirectLink** - проверка определения прямых ссылок (VLESS, VMess, Trojan, Shadowsocks)
 - **TestParseNode_VLESS** - парсинг VLESS узлов с различными параметрами (Reality, TLS, порты)
-- **TestParseNode_VMess** - парсинг VMess узлов из base64 формата
+- **TestParseNode_VMess** - парсинг VMess (base64 JSON, legacy, фрагмент `#`, транспорты в т.ч. httpupgrade/h2)
 - **TestParseNode_Trojan** - парсинг Trojan узлов
 - **TestParseNode_Shadowsocks** - парсинг Shadowsocks узлов (SIP002 формат)
 - **TestParseNode_SkipFilters** - тестирование фильтров пропуска узлов (по тегу, хосту, regex)
 - **TestParseNode_RealWorldExamples** - парсинг реальных примеров из подписки
 - **TestBuildOutbound** - генерация outbound конфигураций для различных типов узлов
+- **TestParseNode_VLESS_TransportAndTLS** - VLESS: ws/grpc/http/httpupgrade, `peer`, `obfsParam`, TLS/Reality
+- **TestParseNode_Trojan_WebSocket** - Trojan + WebSocket и TLS (`peer` и др.)
+- **TestParseNode_Hysteria2** / **TestBuildOutbound_Hysteria2** - Hysteria2 URI и outbound (TLS, pinSHA256, fp)
+- **TestParseNode_SSH**, **TestBuildOutbound_SSH** - SSH
+- **TestParseNode_SOCKS5**, **TestParseNode_Wireguard** - SOCKS5, WireGuard
+- **TestSanitizeForDisplay_stripsInvalidUTF8WithoutFFFD** - санитизация отображения
 
 **Дополнительно (обратная операция — outbound → share URI):**
 

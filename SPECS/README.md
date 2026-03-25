@@ -62,5 +62,6 @@
 - **026** — закрыта (F-C): WIZARD_SOURCE_EDIT_LOCAL_OUTBOUNDS (вкладка Sources: **Edit** — Настройки/Просмотр; локальные auto/select с маркерами **WIZARD:**; `exclude_from_global` / `expose_group_tags_to_global`; см. **SPEC.md**)
 - **027** — завершена (F-C): WIZARD_RULES_LIBRARY (единый **`custom_rules`**, библиотека пресетов **Add from library**, миграция v2→v3; **`selectable_rules`** в шаблоне — пресеты; см. **SPECS/027-F-C-WIZARD_RULES_LIBRARY/SPEC.md**, **docs/WIZARD_STATE.md**)
 - **028** — завершена (F-C): WIZARD_LIST_ROW_HOVER (подсветка строк списка при наведении: **Rules**, **Sources**, **Outbounds** (конфигуратор), **DNS**, модал библиотеки; **HoverRow** + **WireTooltipLabelHover** + **HoverForward*** / **HoverForwardTTButton** для SRS; **SPECS/028-F-C-WIZARD_LIST_ROW_HOVER/SPEC.md**)
+- **029** — исследование (Q-С): SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY (доработки парсера подписок под **sing-box**, реализованы; папка исторически от сравнения с [clash-convertor](https://github.com/DikozImpact/clash-convertor); **SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY/SPEC.md**)
 
 Подробное описание каждой задачи — в SPEC.md соответствующей папки.
