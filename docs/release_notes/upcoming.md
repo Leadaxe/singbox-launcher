@@ -12,6 +12,8 @@
 
 ### Highlights
 
+- **Win7 wizard template:** Loading `wizard_template.json` no longer fails on the Win7 x86 build: `inbounds` is a JSON array, so the old `inbounds.stack` param could not be applied after the TUN block. Win7 now uses a dedicated full `inbounds` replace with `stack: gvisor` (after the shared `windows`/`linux` entry).
+
 - **Linux:** If `sing-box` is on `PATH` (e.g. installed from your distro package), the launcher uses it automatically; otherwise it uses `bin/sing-box` next to the launcher. **Core → Download** still installs into local `bin/` only ([issue #48](https://github.com/Leadaxe/singbox-launcher/issues/48)).
 
 ### Technical / Internal
@@ -25,6 +27,8 @@
 ### Внутреннее / Рефакторинг
 
 ### Основное
+
+- **Визард Win7:** Загрузка `wizard_template.json` на сборке Win7 x86 больше не падает: у `inbounds` массив, поэтому параметр `inbounds.stack` после блока TUN давал ошибку парсера. Для Win7 — отдельная полная замена `inbounds` со `stack: gvisor` (после общего параметра для `windows`/`linux`).
 
 - **Linux:** если `sing-box` есть в `PATH` (например, из пакета дистрибутива), лаунчер использует его; иначе — `bin/sing-box` рядом с лаунчером. Кнопка **Core → Download** по-прежнему кладёт бинарник только в локальный `bin/` ([issue #48](https://github.com/Leadaxe/singbox-launcher/issues/48)).
 

@@ -444,9 +444,20 @@
       ]
     },
     {
-      "name": "inbounds.stack",
+      "name": "inbounds",
       "platforms": ["win7"],
-      "value": "gvisor"
+      "value": [
+        {
+          "type": "tun",
+          "tag": "tun-in",
+          "interface_name": "singbox-tun0",
+          "address": ["172.16.0.1/30"],
+          "mtu": 1492,
+          "auto_route": true,
+          "strict_route": false,
+          "stack": "gvisor"
+        }
+      ]
     },
     {
       "name": "inbounds",
