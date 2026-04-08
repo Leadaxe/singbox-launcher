@@ -1,6 +1,36 @@
 package template
 
-import "testing"
+import (
+	"encoding/json"
+	"runtime"
+	"testing"
+)
+
+func TestVarDefaultValueForPlatform_win7AndOther(t *testing.T) {
+	v := VarDefaultValue{PerPlatform: map[string]string{"win7": "gvisor", "default": "system"}}
+	if got := v.ForPlatform("windows", "386"); got != "gvisor" {
+		t.Fatalf("windows/386: %q", got)
+	}
+	if got := v.ForPlatform("linux", "amd64"); got != "system" {
+		t.Fatalf("linux: %q", got)
+	}
+}
+
+func TestResolveTemplateVars_tunStackPerPlatformDefault(t *testing.T) {
+	raw := `[{"name":"tun_stack","type":"enum","default_value":{"win7":"gvisor","default":"system"}}]`
+	var vars []TemplateVar
+	if err := json.Unmarshal([]byte(raw), &vars); err != nil {
+		t.Fatal(err)
+	}
+	res := ResolveTemplateVars(vars, nil, nil)
+	want := "system"
+	if runtime.GOOS == "windows" && runtime.GOARCH == "386" {
+		want = "gvisor"
+	}
+	if res["tun_stack"].Scalar != want {
+		t.Fatalf("tun_stack: got %q want %q", res["tun_stack"].Scalar, want)
+	}
+}
 
 func TestParamIfSatisfied(t *testing.T) {
 	vars := []TemplateVar{

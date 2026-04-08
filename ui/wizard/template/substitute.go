@@ -78,6 +78,12 @@ func replacementForPlaceholder(name string, varTypes map[string]string, resolved
 		return out
 	}
 	s := strings.TrimSpace(r.Scalar)
+	if typ == "bool" {
+		if s == "" {
+			return false
+		}
+		return strings.EqualFold(s, "true")
+	}
 	if s == "" {
 		debuglog.WarnLog("substitute: empty scalar @%s", name)
 		if name == "tun_mtu" || name == "mixed_listen_port" {

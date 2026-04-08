@@ -6,7 +6,7 @@
 - `.github/workflows/ci.yml` — job `build-win7`, блоки с упаковкой `singbox-launcher-<version>-win7-32.zip` и раздел install instructions для Win7.
 - `.github/workflows/README.md` и `SPECS/001-F-C-FEATURES_2025/2026-02-15-ci-cd-workflow.md` — описание новой схемы CI/CD, параметра `target` и артефактов `artifacts-windows-win7-32`.
 - `core/core_downloader.go` — логика выбора версии `sing-box` и ассетов для Win7.
-- `ui/wizard/template/loader.go` и `bin/wizard_template.json` — фильтрация по `platforms`, поведение для `windows`/`win7`.
+- `ui/wizard/template/loader.go`, `vars_resolve.go` и `bin/wizard_template.json` — фильтрация по `platforms` (**GOOS**), дефолт **`tun_stack`** на **windows/386**.
 
 1.2. Зафиксировать в этом SPEC/PLAN, какие части уже реализованы (ядро, визард, CI) и какие ещё остаются задачами.
 
@@ -23,22 +23,16 @@
 ### 3. Визард и шаблон под Win7
 
 3.1. **Фильтрация платформ**
-- Проверить и при необходимости доработать `matchesPlatform` в `ui/wizard/template/loader.go`, чтобы:
-  - при `GOOS=windows`, `GOARCH=386` платформа `win7` обрабатывалась вместе с `windows`;
-  - для остальных платформ поведение не менялось.
+- `matchesPlatform` в `ui/wizard/template/loader.go` сопоставляет **`goos`** со списком **`platforms`** (без псевдо-тега **`win7`** в JSON).
+- Win7-сборка: **GOOS=windows**, **GOARCH=386** — матчит секции с **`"windows"`** так же, как Win64.
 
 3.2. **Шаблон `wizard_template.json`**
-- Проверить, что в `bin/wizard_template.json` корректно размечены секции `params` и `selectable_rules` с `platforms`:
-  - общие секции для `["windows"]`;
-  - специфические секции для `["win7"]` (если нужны отдельные отличия).
-- При необходимости добавить/скорректировать секции `platforms` так, чтобы Win7-сборка получала нужные опции без влияния на Win64.
+- Секции `params` / `selectable_rules` с **`"platforms": ["windows"]`** покрывают и Win7 x86-сборку; отдельные блоки только под **`win7`** не используются.
+- Отличия Win7 (например **`tun_stack`**) — через объект **`default_value`** в шаблоне и **`VarDefaultValue.ForPlatform`** в **`vars_resolve`**, плюс настройки пользователя.
 
 3.3. **Тесты / проверки**
-- Добавить/обновить юнит-тесты для логики фильтрации по платформам (если такие тесты уже есть рядом с визардом).
-- Минимальные сценарии:
-  - Win64 (GOOS=windows, amd64) — только `windows`;
-  - Win7 (GOOS=windows, 386) — `windows` + `win7`;
-  - macOS — `darwin` в `platforms` и условные `params` (`if` / `if_or`); без синтетической платформы.
+- Юнит-тесты **`VarDefaultValue`** / **`ResolveTemplateVars`** с **`default_value`**-объектом (см. **`vars_default_test.go`**, **`vars_resolve_test.go`**).
+- Сценарии: Win64 — обычный **`windows`**; Win7 — тот же шаблон + дефолт **`tun_stack`**; macOS — **`darwin`** и **`if`** / **`if_or`**.
 
 ### 4. CI/CD под Win7
 
@@ -65,7 +59,7 @@
 - Явно описать:
   - наличие отдельной Win7-сборки лаунчера (`singbox-launcher-<version>-win7-32.zip`);
   - использование legacy-версии `sing-box` для Win7;
-  - особенности визарда на Win7 (совместное применение `windows`/`win7`).
+  - особенности визарда на Win7 (те же `platforms`, что **windows**, дефолт **`tun_stack`** в **`vars_resolve`**).
 
 5.2. При необходимости добавить краткое описание Win7-режима в основную документацию (`docs/`, README_RU/README_EN).
 
@@ -74,6 +68,6 @@
 - `go build ./...`, `go test ./...`, `go vet ./...` — проходят локально.
 - CI jobs (как минимум build-win7) успешно выполняются на GitHub Actions.
 - Поведение лаунчера на Win7 и Win64 не конфликтует: Win7 использует legacy-режим, Win64 — обычный.
-- Визард на Win7 корректно применяет нужные секции шаблона.
+- Визард на Win7 корректно применяет секции шаблона для **windows** и дефолты vars при необходимости.
 - Релизные заметки и документация отражают текущее состояние поддержки Win7.
 

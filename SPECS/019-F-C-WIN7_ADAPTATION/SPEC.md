@@ -6,7 +6,7 @@
 - В релизных заметках и SPECS описана общая схема CI/CD (`SPECS/001-F-C-FEATURES_2025/2026-02-15-ci-cd-workflow.md`, `docs/release_notes/0-8-1.md`, `.github/workflows/README.md`), но Win7 до недавнего времени фактически воспринимался как «отдельная сборка лаунчера» без полноценной интеграции с шаблоном визарда и выбором версии `sing-box`.
 - В проект добавлены первые изменения под Win7:
   - фиксированная версия `sing-box` для Win7 (`core/core_downloader.go`, `Win7LegacyVersion` и выбор ассетов `windows-386-legacy-windows-7.zip`);
-  - поддержка платформы `win7` в фильтрации шаблона визарда (`ui/wizard/template/loader.go`, `matchesPlatform` + описание в `docs/release_notes/upcoming.md`);
+  - фильтрация шаблона по **`runtime.GOOS`** (`matchesPlatform` в `loader.go`); отдельная метка **`win7`** в JSON шаблона **не** используется — Win7-сборка (**windows/386**) матчит **`"windows"`**; незаданный **`tun_stack`** по умолчанию **`gvisor`** — объект **`default_value`** в **`wizard_template.json`** (**`VarDefaultValue`** в **`vars_default.go`**, разрешение в **`vars_resolve.go`**; см. **`docs/CREATE_WIZARD_TEMPLATE.md`**);
   - использование 32-битного ядра `sing-box` и 32-битного Wintun (архитектура 386) как для Win7 x86, так и для Win7 x64 (через WoW64).
 - Требуется оформить и доработать эту работу как отдельную фичу: адаптация лаунчера под Windows 7, синхронизированная с существующим CI/CD и шаблоном визарда.
 
@@ -15,7 +15,7 @@
 Обеспечить предсказуемую и поддерживаемую работу лаунчера на Windows 7 (x86, legacy build) с учётом:
 
 - фиксированной и проверенной версии ядра `sing-box` для Win7;
-- корректной фильтрации и применения параметров/правил визарда под платформу Win7 (включая совместное применение секций `windows` и `win7` при сборке Win7 из CI);
+- корректной фильтрации и применения параметров/правил визарда на Win7-сборке (**GOOS=windows**, **GOARCH=386**): те же секции **`platforms`** с **`"windows"`**, что и для Win64, плюс дефолты vars для Win7 где нужно (например **`tun_stack`**);
 - понятного поведения CI/CD (build, артефакты, release, install instructions) и отражения этого в документации.
 
 ### 3. Область охвата (scope)
@@ -26,7 +26,7 @@
    - Выбор версии и ассетов (GitHub / SourceForge) для Windows 7 / GOARCH=386.
    - Обоснование и фиксация legacy-версии (с учётом совместимости с Win7).
 2. **Визард и шаблон конфигурации**
-   - Поддержка платформы `win7` в `bin/wizard_template.json` и фильтрующей логике (`ui/wizard/template/loader.go`).
+   - Секции шаблона с **`"platforms": ["windows"]`** применяются и на Win7-сборке (**windows/386**); отдельные **`params`** только под **`win7`** не требуются.
    - Поведение при сборке из CI (GOOS=windows, GOARCH=386; job `build-win7`).
 3. **CI/CD под Win7**
    - Текущая схема: job `build-win7`, артефакты (`artifacts-windows-win7-32`), включение в release (`singbox-launcher-<version>-win7-32.zip` и install instructions).
@@ -51,8 +51,8 @@
    - Win7-режим предполагает запуск 32-битного `sing-box` и 32-битного Wintun как на Win7 x86, так и на Win7 x64.
 
 3. **Работа визарда на Win7**
-   - При запуске Win7-сборки лаунчера визард применяет секции шаблона с `"platforms": ["windows"]` и `"platforms": ["win7"]` (по аналогии с несколькими значениями `platforms` на других ОС), как описано в `docs/release_notes/upcoming.md`.
-   - Функция `matchesPlatform` в `ui/wizard/template/loader.go` корректно обрабатывает Win7 (GOOS=windows, GOARCH=386) без влияния на другие платформы.
+   - При запуске Win7-сборки лаунчера визард применяет секции с `"platforms": ["windows"]` (и при необходимости `linux`/`darwin` по смыслу секции), как обычный **windows**-клиент по **GOOS**; см. актуально **`docs/CREATE_WIZARD_TEMPLATE.md`**, **`docs/release_notes/upcoming.md`**.
+   - Функция `matchesPlatform` в `ui/wizard/template/loader.go` сопоставляет только **`goos`** со списком **`platforms`**; Win7 отличается **GOARCH=386**, а не отдельной меткой в JSON.
 
 4. **Документация**
    - В `docs/release_notes/upcoming.md` кратко описаны изменения по Win7 (ядро, визард, CI/CD).
@@ -70,7 +70,7 @@
   - `SPECS/001-F-C-FEATURES_2025/2026-02-15-ci-cd-workflow.md` — детальное ТЗ по обновлённому workflow (включая `target`, раздельные build jobs и release).
 - Визард и шаблоны:
   - `bin/wizard_template.json` — шаблон визарда, секции `params` и `selectable_rules` с фильтрацией по полю `platforms`.
-  - `ui/wizard/template/loader.go` — логика загрузки шаблона, применения `platforms` (включая Win7).
+  - `ui/wizard/template/loader.go` — логика загрузки шаблона и **`platforms`**; `ui/wizard/template/vars_default.go` / **`vars_resolve.go`** — платформенный **`default_value`** для **windows/386** (**`tun_stack`**).
 - Ядро и релизные заметки:
   - `core/core_downloader.go` — загрузка `sing-box`, выбор ассетов и версия для Win7.
   - `docs/release_notes/0-8-1.md` и `docs/release_notes/upcoming.md` — релизные заметки, включая разделы про CI и Win7.

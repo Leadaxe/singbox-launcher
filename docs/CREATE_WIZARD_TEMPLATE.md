@@ -393,11 +393,31 @@ The unified template consists of five main sections:
 
 **`params.if_or`:** Optional array of boolean variable names, e.g. `"if_or": ["tun_builtin", "tun"]`. The param is applied if **at least one** listed variable is true on the current OS. **`if`** and **`if_or`** cannot be set on the same param.
 
-**How `vars[].platforms` interacts with `if` / `if_or`:** For each name in **`if`** or **`if_or`**, the launcher checks whether that variable **applies to the current OS** (empty **`platforms`** → all OSes; otherwise **`runtime.GOOS`** must appear in the list, with **`win7`** also matching **Windows x86** builds). If the variable does **not** apply, it contributes **`false`** to the AND/OR — **before** reading the resolved value from wizard state. A saved **`"true"`** in **`state.vars`** for e.g. **`tun`** does **not** make **`if: ["tun"]`** pass on Linux if **`tun`** is **`darwin`**-only in the template. (Implementation: **`VarAppliesOnGOOS`** / **`ParamBoolVarTrue`** in **`ui/wizard/template/vars_resolve.go`**.)
+**How `vars[].platforms` interacts with `if` / `if_or`:** For each name in **`if`** or **`if_or`**, the launcher checks whether that variable **applies to the current OS** (empty **`platforms`** → all OSes; otherwise **`runtime.GOOS`** must appear in the list). The legacy Win7 launcher binary is **`windows`** with **`386`** — use **`"windows"`** in **`params` / `selectable_rules`**, not a separate **`win7`** tag in **`platforms`**. The stock **`tun_stack`** var uses **`default_value`** as a JSON object, e.g. **`{"win7":"gvisor","default":"system"}`**, so unset stack defaults to **`gvisor`** on that build and **`system`** elsewhere (see **`VarDefaultValue`** in **`ui/wizard/template/vars_default.go`**). If the variable does **not** apply, it contributes **`false`** to the AND/OR — **before** reading the resolved value from wizard state. A saved **`"true"`** in **`state.vars`** for e.g. **`tun`** does **not** make **`if: ["tun"]`** pass on Linux if **`tun`** is **`darwin`**-only in the template. (Implementation: **`VarAppliesOnGOOS`** / **`ParamBoolVarTrue`** in **`ui/wizard/template/vars_resolve.go`**.)
 
 The stock template uses **`"if": ["tun"]`** with **`"platforms": ["darwin"]`** for macOS TUN **inbounds**, and a single **`route.rules`** prepend with **`"if_or": ["tun_builtin", "tun"]`** and **`"platforms": ["windows", "linux", "darwin"]`**. Do not use the legacy label **`darwin-tun`** in **`platforms`**: it never equals **`runtime.GOOS`** on macOS (**`darwin`**). Use **`darwin`** with **`if`** / **`if_or`** for TUN-specific blocks.
 
-**Variable fields (in `vars` array):** `name` (recommended: `[A-Za-z_][A-Za-z0-9_]*` — enforced at load), `type` (`text`, `bool`, `enum`, `text_list`, `custom`), `default_value`, optional `default_node`, `options` (for `enum`), `platforms`, `wizard_ui` (`edit` / `view` read-only / `hidden`), **`title`** (short row label on **Settings**; if omitted or blank, **`name`** is shown), **`tooltip`** (optional hover hint on supported widgets). Optional **`if`** / **`if_or`** (same semantics as **`params`**, mutually exclusive): on the **Settings** tab the row stays visible (subject to **`platforms`** / **`wizard_ui`**) but **controls are disabled** until the condition is met — e.g. TUN address/MTU with **`"if_or": ["tun_builtin", "tun"]`** until the platform-relevant TUN flag is on. Changing a bool var that others reference **refreshes** dependent rows. Type **`custom`** does not create a row on Settings **except** the built-in pair **`name`: `clash_secret`**, **`type`: `custom`** (Clash API secret: same resolution as `text`, dedicated regenerate control). Other `custom` vars are for `if` / internal markers only.
+**Variable fields (in `vars` array):** `name` (recommended: `[A-Za-z_][A-Za-z0-9_]*` — enforced at load), `type` (`text`, `bool`, `enum`, `text_list`, `custom`), **`default_value`** (JSON string, number, boolean, or **object** of platform key → string — see **Platform keys for `default_value` objects** below), optional `default_node`, `options` (for `enum`), `platforms`, `wizard_ui` (`edit` / `view` read-only / `hidden`), **`title`** (short row label on **Settings**; if omitted or blank, **`name`** is shown), **`tooltip`** (optional hover hint on supported widgets). Optional **`if`** / **`if_or`** (same semantics as **`params`**, mutually exclusive): on the **Settings** tab the row stays visible (subject to **`platforms`** / **`wizard_ui`**) but **controls are disabled** until the condition is met — e.g. TUN address/MTU with **`"if_or": ["tun_builtin", "tun"]`** until the platform-relevant TUN flag is on. Changing a bool var that others reference **refreshes** dependent rows. Type **`custom`** does not create a row on Settings **except** the built-in pair **`name`: `clash_secret`**, **`type`: `custom`** (Clash API secret: same resolution as `text`, dedicated regenerate control). Other `custom` vars are for `if` / internal markers only.
+
+#### Platform keys for `default_value` objects
+
+**Scope:** This subsection is **only** for keys inside a **`vars[].default_value`** JSON **object**.
+
+**Supported OS targets for this project** are **Windows**, **macOS**, and **Linux**. In docs and templates you can treat platform strings as:
+
+- **`params[].platforms`**, **`selectable_rules[].platforms`**, **`vars[].platforms`**: **`windows`**, **`linux`**, **`darwin`** (must match **`runtime.GOOS`**). Do **not** use **`win7`** or **`default`** there. Implementation: **`matchesPlatform`** in **`ui/wizard/template/loader.go`**.
+
+- **`default_value` object** (**`VarDefaultValue.ForPlatform`** / **`defaultValueKeyOrder`** in **`vars_default.go`**): keys are normalized to **lowercase**. Meaningful keys for shipped builds:
+
+| Key | Role |
+|-----|------|
+| **`win7`** | Legacy Win7 x86 binary only (**`windows`/`386`**), checked **before** **`windows`**. |
+| **`windows`**, **`linux`**, **`darwin`** | Same meaning as in **`platforms`** (**`GOARCH`** is not part of the key; no **`linux_amd64`**). |
+| **`default`** | Fallback if nothing above matched or values were empty. |
+
+**Lookup order:** **`win7`** (if **`windows`/`386`**) → current **`GOOS`** (**`windows`**, **`linux`**, or **`darwin`**) → **`default`**.
+
+Other keys in the JSON (typos, old **`goos_goarch`**) are **ignored** for resolution. The engine still compares against whatever **`runtime.GOOS`** is if you run on another OS; this project’s releases and examples assume **linux / darwin / windows** only.
 
 The stock app template **`bin/wizard_template.json`** includes a full example (`tun`, `tun_address`, `tun_mtu`, `mixed_listen_port`, `log_level`, `clash_api`, `clash_secret`).
 

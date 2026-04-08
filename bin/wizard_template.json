@@ -101,6 +101,33 @@
       "tooltip": "Maximum transmission unit for the TUN interface (numeric value in JSON)."
     },
     {
+      "name": "strict_route",
+      "type": "bool",
+      "default_value": "false",
+      "wizard_ui": "edit",
+      "if_or": ["tun_builtin", "tun"],
+      "title": "TUN strict route",
+      "tooltip": "sing-box tun strict_route: stricter routing (fewer leaks); may break some LAN or split setups when enabled."
+    },
+    {
+      "name": "tun_stack",
+      "type": "enum",
+      "default_value": {"win7": "gvisor", "default": "system"},
+      "options": ["system", "gvisor", "mixed"],
+      "wizard_ui": "edit",
+      "if_or": ["tun_builtin", "tun"],
+      "title": "TUN stack",
+      "tooltip": "sing-box inbound tun stack (system, gvisor, mixed). Mixed uses system TCP stack and gvisor UDP stack."
+    },
+    {
+      "name": "auto_detect_interface",
+      "type": "bool",
+      "default_value": "true",
+      "wizard_ui": "edit",
+      "title": "Auto-detect outbound interface",
+      "tooltip": "sing-box route.auto_detect_interface: detect default interface for outbound; turn off if routing is wrong with multiple uplinks."
+    },
+    {
       "name": "mixed_listen_port",
       "type": "text",
       "default_value": "7890",
@@ -184,7 +211,7 @@
         { "protocol": "dns", "action": "hijack-dns" }
       ],
       "final": "proxy-out",
-      "auto_detect_interface": true
+      "auto_detect_interface": "@auto_detect_interface"
     },
     "experimental": {
       "clash_api": {
@@ -520,24 +547,8 @@
           "address": ["@tun_address"],
           "mtu": "@tun_mtu",
           "auto_route": true,
-          "strict_route": false,
-          "stack": "system"
-        }
-      ]
-    },
-    {
-      "name": "inbounds",
-      "platforms": ["win7"],
-      "value": [
-        {
-          "type": "tun",
-          "tag": "tun-in",
-          "interface_name": "singbox-tun0",
-          "address": ["@tun_address"],
-          "mtu": "@tun_mtu",
-          "auto_route": true,
-          "strict_route": false,
-          "stack": "gvisor"
+          "strict_route": "@strict_route",
+          "stack": "@tun_stack"
         }
       ]
     },
@@ -552,8 +563,8 @@
           "address": ["@tun_address"],
           "mtu": "@tun_mtu",
           "auto_route": true,
-          "strict_route": false,
-          "stack": "system"
+          "strict_route": "@strict_route",
+          "stack": "@tun_stack"
         }
       ]
     },

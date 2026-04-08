@@ -5,12 +5,12 @@
 
 ### 1. Summary
 
-Адаптация лаунчера под Windows 7 (x86, legacy): зафиксированы версия `sing-box` (Win7LegacyVersion), фильтрация шаблона визарда (`windows` + `win7`), восстановлена и стабилизирована сборка в CI (job `build-win7`), артефакт и release.
+Адаптация лаунчера под Windows 7 (x86, legacy): зафиксированы версия `sing-box` (Win7LegacyVersion), шаблон визарда для Win7-сборки через те же секции **`windows`**, что и для Win64 (без отдельной метки **`win7`** в JSON; дефолт **`tun_stack`** — **`vars_resolve`**), восстановлена и стабилизирована сборка в CI (job `build-win7`), артефакт и release.
 
 ### 2. Implemented changes
 
 **Спецификация и план:**
-- Создана задача `SPECS/019-F-C-WIN7_ADAPTATION` (SPEC.md, PLAN.md, TASKS.md). Зафиксированы уже имевшиеся изменения: `core/core_downloader.go` (Win7LegacyVersion, ассеты), `ui/wizard/template/loader.go` (win7 в matchesPlatform), пункт в `docs/release_notes/upcoming.md` про платформу win7.
+- Создана задача `SPECS/019-F-C-WIN7_ADAPTATION` (SPEC.md, PLAN.md, TASKS.md). Зафиксированы изменения: `core/core_downloader.go` (Win7LegacyVersion, ассеты), `loader.go` / `vars_resolve.go` и шаблон (актуально — см. SPEC и **`docs/CREATE_WIZARD_TEMPLATE.md`**).
 
 **CI/CD под Win7 (основной объём работ):**
 - Введён отдельный модуль для Win7: `go.win7.mod` с `go 1.20` и `golang.org/x/sys v0.25.0` (совместимость с Go 1.20; основной go.mod остаётся на Go 1.25 и x/sys v0.42).

@@ -387,17 +387,13 @@ func GetEffectiveConfig(rawConfig json.RawMessage, params []TemplateParam, goos 
 	return parseJSONWithOrder(applied)
 }
 
-// matchesPlatform проверяет, подходит ли текущая платформа.
-// При сборке Win7 (GOOS=windows, GOARCH=386) также матчится "win7" вместе с "windows".
+// matchesPlatform проверяет, подходит ли текущая платформа (GOOS; Win7-сборка — это windows/386).
 func matchesPlatform(platforms []string, goos string) bool {
 	if len(platforms) == 0 {
 		return true
 	}
 	for _, p := range platforms {
 		if p == goos {
-			return true
-		}
-		if goos == "windows" && runtime.GOARCH == "386" && p == "win7" {
 			return true
 		}
 	}

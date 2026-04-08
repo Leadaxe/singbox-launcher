@@ -180,7 +180,7 @@
 
 К записи **`params`** опционально добавляется **`if`**: массив имён из **`vars`**. Запись применяется, если совпала платформа **и** все перечисленные переменные истинны **на текущей ОС** (учёт **`vars[].platforms`** — PLAN). Опционально **`if_or`**: истинна **хотя бы одна** из перечисленных bool-переменных; **`if`** и **`if_or`** в одной записи не сочетаются.
 
-**Уточнение (контракт):** для каждого имени в **`if`** / **`if_or`** сначала проверяется **`VarAppliesOnGOOS(vars[].platforms, runtime.GOOS)`** (пустой список **`platforms`** → переменная на всех ОС; иначе только перечисленные ОС; для **windows/386** также матчится **`win7`**). Если переменная **не** объявлена на текущей ОС, она для условия считается **ложной** (как «нет истинной переменной»), **независимо** от строки в **`state.vars`** и от **`ResolveTemplateVars`**. Так **`tun_builtin`** с **`platforms`: [`windows`, `linux`]** на **darwin** не даёт истины в **`if_or`**, а **`tun`** только под **darwin** на **linux** не проходит **`if`**. Код: **`ParamBoolVarTrue`** / **`ParamIfSatisfied`** / **`ParamIfOrSatisfied`** в **`ui/wizard/template/vars_resolve.go`**; тесты **`TestParamBoolVarTrue_respectsVarPlatforms`**, **`TestParamIfSatisfied_falseWhenVarNotOnGOOSEvenIfResolvedTrue`**, **`TestParamIfSatisfied_AND_falseWhenOneOperandNotOnGOOS`**.
+**Уточнение (контракт):** для каждого имени в **`if`** / **`if_or`** сначала проверяется **`VarAppliesOnGOOS(vars[].platforms, runtime.GOOS)`** (пустой список **`platforms`** → переменная на всех ОС; иначе только совпадение с **`runtime.GOOS`**, без отдельной метки **`win7`** в шаблоне — legacy-сборка Win7 это **windows/386**). Если переменная **не** объявлена на текущей ОС, она для условия считается **ложной** (как «нет истинной переменной»), **независимо** от строки в **`state.vars`** и от **`ResolveTemplateVars`**. Так **`tun_builtin`** с **`platforms`: [`windows`, `linux`]** на **darwin** не даёт истины в **`if_or`**, а **`tun`** только под **darwin** на **linux** не проходит **`if`**. Код: **`ParamBoolVarTrue`** / **`ParamIfSatisfied`** / **`ParamIfOrSatisfied`** в **`ui/wizard/template/vars_resolve.go`**; тесты **`TestParamBoolVarTrue_respectsVarPlatforms`**, **`TestParamIfSatisfied_falseWhenVarNotOnGOOSEvenIfResolvedTrue`**, **`TestParamIfSatisfied_AND_falseWhenOneOperandNotOnGOOS`**.
 
 Без **`if`** / **`if_or`** — фильтр только по **`platforms`**. Для macOS TUN: переменная **`tun`** (**`type`: `bool`**, **`platforms`: [`darwin`]**) и блок TUN-**`inbounds`** с **`"platforms": ["darwin"]`**, **`"if": ["tun"]`** (см. **`bin/wizard_template.json`**).
 
@@ -302,7 +302,7 @@
 
 **2) TUN в `params`**
 
-Для **одного** CIDR (**`type: text`**, **`tun_address`**) во всех записях с **`type: "tun"`** (платформы **`windows`/`linux`**, **`win7`**, **`darwin`** с **`if`**) используйте один плейсхолдер в **`address`**:
+Для **одного** CIDR (**`type: text`**, **`tun_address`**) во всех записях с **`type: "tun"`** (платформы **`windows`/`linux`**, **`darwin`** с **`if`**) используйте один плейсхолдер в **`address`**:
 
 ```json
 {
@@ -323,7 +323,7 @@
 }
 ```
 
-Для **`win7`** и **macOS TUN** — тот же приём с **`address": ["@tun_address"]`** (отличаются **`platforms`**, **`stack`**, наличие **`interface_name`** — как в текущем шаблоне). **`@…`** не ставить в **`parser_config`**.
+Для **macOS TUN** — тот же приём с **`address": ["@tun_address"]`** (отличаются **`platforms`**, **`if`**, наличие **`interface_name`** — как в **`bin/wizard_template.json`**). Win7-сборка лаунчера (**windows/386**) использует тот же TUN-блок, что и **`windows`/`linux`**; незаданный **`tun_stack`** по умолчанию **`gvisor`** — через **`default_value`**-объект в шаблоне (**`VarDefaultValue`**). **`@…`** не ставить в **`parser_config`**.
 
 **macOS, TUN-inbound:** запись **`"name": "inbounds"`**, **`"platforms": ["darwin"]`**, **`"if": ["tun"]`** (см. **`bin/wizard_template.json`**).
 
@@ -483,7 +483,7 @@
 - Режим шаблона не хранится в **state**: нет записи в **`state.vars`**; в памяти — признак дефолта; при вводе — запись и «Сброс» (где применимо); **`value: ""`** допустим как явное значение.
 - **`clash_api`**, **`clash_secret`** (в т.ч. дефолт-случайная строка — PLAN), **`log_level`**, **`tun_address`**, **`tun_mtu`** влияют на конфиг; на macOS — **`tun`**, **`mixed_listen_port`**; пустое разрешение у **`@…`** → **warn** в лог (**`name`**, поле); для скалярных типов подстановка **`""`**, для **`text_list`** — пустой массив (PLAN); сырых **`@…`** в выдаче нет.
 - TUN macOS на **Settings**, не на **Rules**.
-- Регрессий нет: **`applyParams`**, win7/gvisor **`inbounds`**, darwin без TUN.
+- Регрессий нет: **`applyParams`**, TUN **`inbounds`** (в т.ч. **windows/386** и дефолт **`tun_stack`**), darwin без TUN.
 - Локали — CONSTITUTION.
 - **docs/release_notes/upcoming.md**; при необходимости **ARCHITECTURE.md** (IMPLEMENTATION_PROMPT).
 

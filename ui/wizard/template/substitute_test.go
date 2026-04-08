@@ -32,6 +32,29 @@ func TestSubstituteVarsInJSON_scalars(t *testing.T) {
 	}
 }
 
+func TestSubstituteVarsInJSON_bool(t *testing.T) {
+	vars := []TemplateVar{{Name: "strict_route", Type: "bool"}, {Name: "auto", Type: "bool"}}
+	resolved := map[string]ResolvedVar{
+		"strict_route": {Scalar: "true"},
+		"auto":         {Scalar: "false"},
+	}
+	raw := json.RawMessage(`{"strict_route":"@strict_route","auto":"@auto"}`)
+	out, err := SubstituteVarsInJSON(raw, vars, resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["strict_route"] != true {
+		t.Fatalf("strict_route: %T %v want bool true", m["strict_route"], m["strict_route"])
+	}
+	if m["auto"] != false {
+		t.Fatalf("auto: %T %v want bool false", m["auto"], m["auto"])
+	}
+}
+
 func TestSubstituteVarsInJSON_textList(t *testing.T) {
 	vars := []TemplateVar{{Name: "addrs", Type: "text_list"}}
 	resolved := map[string]ResolvedVar{

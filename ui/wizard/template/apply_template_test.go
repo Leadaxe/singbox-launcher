@@ -7,7 +7,7 @@ import (
 
 func TestApplyTemplateWithVars_emptyParamsSubstitutesConfig(t *testing.T) {
 	rawCfg := json.RawMessage(`{"log":{"level":"@log_level"},"x":1}`)
-	vars := []TemplateVar{{Name: "log_level", Type: "text", DefaultValue: "debug"}}
+	vars := []TemplateVar{{Name: "log_level", Type: "text", DefaultValue: VarDefaultValue{Scalar: "debug"}}}
 	out, err := ApplyTemplateWithVars(rawCfg, nil, "linux", vars, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -25,8 +25,8 @@ func TestApplyTemplateWithVars_emptyParamsSubstitutesConfig(t *testing.T) {
 func TestApplyTemplateWithVars_ifOr_prependsRouteRules(t *testing.T) {
 	rawCfg := json.RawMessage(`{"route":{"rules":[{"outbound":"direct-out"}]}}`)
 	vars := []TemplateVar{
-		{Name: "tun_builtin", Type: "bool", DefaultValue: "true", Platforms: []string{"windows"}},
-		{Name: "tun", Type: "bool", DefaultValue: "true", Platforms: []string{"darwin"}},
+		{Name: "tun_builtin", Type: "bool", DefaultValue: VarDefaultValue{Scalar: "true"}, Platforms: []string{"windows"}},
+		{Name: "tun", Type: "bool", DefaultValue: VarDefaultValue{Scalar: "true"}, Platforms: []string{"darwin"}},
 	}
 	params := []TemplateParam{
 		{

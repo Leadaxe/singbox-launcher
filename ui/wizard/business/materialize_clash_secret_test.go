@@ -16,7 +16,7 @@ func TestMaterializeClashSecretIfNeeded_idempotent(t *testing.T) {
 	rawFull := json.RawMessage(`{"vars":[{"name":"clash_secret","type":"custom","default_value":"CHANGE_THIS_X"}]}`)
 	td := &wizardtemplate.TemplateData{
 		Vars: []wizardtemplate.TemplateVar{
-			{Name: "clash_secret", Type: "custom", DefaultValue: "CHANGE_THIS_X"},
+			{Name: "clash_secret", Type: "custom", DefaultValue: wizardtemplate.VarDefaultValue{Scalar: "CHANGE_THIS_X"}},
 		},
 		RawTemplate: rawFull,
 	}
@@ -43,7 +43,7 @@ func TestMaterializeClashSecretIfNeeded_placeholderKeyStabilizes(t *testing.T) {
 	rawFull := json.RawMessage(`{"vars":[{"name":"clash_secret","type":"custom","default_value":"CHANGE_THIS_X"}]}`)
 	td := &wizardtemplate.TemplateData{
 		Vars: []wizardtemplate.TemplateVar{
-			{Name: "clash_secret", Type: "custom", DefaultValue: "CHANGE_THIS_X"},
+			{Name: "clash_secret", Type: "custom", DefaultValue: wizardtemplate.VarDefaultValue{Scalar: "CHANGE_THIS_X"}},
 		},
 		RawTemplate: rawFull,
 	}

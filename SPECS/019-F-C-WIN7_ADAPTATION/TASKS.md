@@ -6,9 +6,10 @@
   - `.github/workflows/ci.yml` — job `build-win7`, release job и упаковка `singbox-launcher-<version>-win7-32.zip`.
   - `.github/workflows/README.md` и `SPECS/001-F-C-FEATURES_2025/2026-02-15-ci-cd-workflow.md` — общая схема, параметр `target`, артефакты.
 - [x] Зафиксировать текущие изменения по Win7:
-  - `core/core_downloader.go` — `Win7LegacyVersion`, выбор ассетов `windows-amd64-legacy-windows-7.zip`.
-  - `ui/wizard/template/loader.go` — поддержка `win7` в `matchesPlatform`.
-  - `docs/release_notes/upcoming.md` — пункт про визард и платформу `win7`.
+  - `core/core_downloader.go` — `Win7LegacyVersion`, выбор legacy-ассетов **386** (актуальное имя архива — в коде).
+  - `ui/wizard/template/loader.go` — `matchesPlatform` по **GOOS**; без метки **`win7`** в JSON.
+  - `ui/wizard/template/vars_default.go` / **`vars_resolve.go`** — **`default_value`**-объект (например **`tun_stack`**) для **windows/386**.
+  - `docs/release_notes/upcoming.md` — актуальное описание Win7 и шаблона.
 - [x] Создать Spec Kit для задачи: `SPECS/019-F-C-WIN7_ADAPTATION` (`SPEC.md`, `PLAN.md`, `TASKS.md`).
 
 ### B. Ядро sing-box для Win7
@@ -24,14 +25,9 @@
 
 ### C. Визард и шаблон под Win7
 
-- [ ] Проверить `matchesPlatform` в `ui/wizard/template/loader.go`:
-  - Win64 (amd64) — поведение без изменений;
-  - Win7 (386) — матч `windows` + `win7`;
-  - macOS — только `darwin` в `platforms` для params (TUN — через `if`); поведение без изменений для Win7-задачи.
-- [ ] Аудит `bin/wizard_template.json`:
-  - убедиться, что секции `params` и `selectable_rules` с `platforms` для Win7 размечены корректно;
-  - при необходимости добавить/скорректировать секции `"platforms": ["win7"]` и общие `"platforms": ["windows"]`.
-- [ ] (Опционально) Добавить/обновить тесты для платформенной фильтрации (если в пакете визарда есть тесты).
+- [x] `matchesPlatform` в `loader.go`: Win7 (**windows/386**) матчит **`"windows"`** в шаблоне; отдельная **`win7`** в JSON не используется.
+- [x] `bin/wizard_template.json`: один TUN-блок для **`windows`/`linux`**, без дублирующего **`params`** под **`win7`**.
+- [x] `vars_resolve` + **`VarDefaultValue`**: платформенный **`default_value`**, тесты **`TestVarDefaultValueForPlatform_*`**, **`TestResolveTemplateVars_tunStackPerPlatformDefault`**.
 
 ### D. CI/CD для Win7
 
@@ -47,7 +43,7 @@
 
 - [x] Актуализировать `docs/release_notes/upcoming.md` по Win7:
   - ядро `sing-box` (legacy-версия и ассеты);
-  - поведение визарда и платформ `windows`/`win7`;
+  - поведение визарда на Win7-сборке (секции **`windows`**, **`tun_stack`** в **`vars_resolve`**);
   - особенности CI/CD и артефактов для Win7.
 - [ ] При необходимости добавить краткое описание Win7-режима в основную документацию (`docs/`/README), с указанием ограничений.
 

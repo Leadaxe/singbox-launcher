@@ -27,10 +27,10 @@ func ClashSecretUnresolved(s string) bool {
 
 // TemplateVar описывает элемент секции vars шаблона.
 type TemplateVar struct {
-	Name         string   `json:"name"`
-	Type         string   `json:"type"`
-	DefaultValue string   `json:"default_value,omitempty"`
-	DefaultNode  string   `json:"default_node,omitempty"`
+	Name         string          `json:"name"`
+	Type         string          `json:"type"`
+	DefaultValue VarDefaultValue `json:"default_value,omitempty"`
+	DefaultNode  string          `json:"default_node,omitempty"`
 	Options      []string `json:"options,omitempty"`
 	WizardUI     string   `json:"wizard_ui,omitempty"`
 	Platforms    []string `json:"platforms,omitempty"`
@@ -149,8 +149,11 @@ func resolveOneVar(v TemplateVar, stateVal string, root map[string]json.RawMessa
 			}
 			return ResolvedVar{List: nonEmpty}
 		}
-		if v.DefaultValue != "" {
-			return resolveOneVar(TemplateVar{Name: v.Name, Type: "text_list"}, v.DefaultValue, root)
+		if !v.DefaultValue.IsEmpty() {
+			def := v.DefaultValue.ForPlatform(runtime.GOOS, runtime.GOARCH)
+			if def != "" {
+				return resolveOneVar(TemplateVar{Name: v.Name, Type: "text_list"}, def, root)
+			}
 		}
 		if v.DefaultNode != "" && root != nil {
 			raw := getRawAtPath(root, v.DefaultNode)
@@ -167,8 +170,11 @@ func resolveOneVar(v TemplateVar, stateVal string, root map[string]json.RawMessa
 		if s != "" {
 			return ResolvedVar{Scalar: s}
 		}
-		if v.DefaultValue != "" {
-			return ResolvedVar{Scalar: v.DefaultValue}
+		if !v.DefaultValue.IsEmpty() {
+			dv := v.DefaultValue.ForPlatform(runtime.GOOS, runtime.GOARCH)
+			if dv != "" {
+				return ResolvedVar{Scalar: dv}
+			}
 		}
 		if v.DefaultNode != "" && root != nil {
 			if lit := readJSONLiteralAsString(getRawAtPath(root, v.DefaultNode)); lit != "" {
@@ -225,7 +231,7 @@ func readJSONLiteralAsString(raw json.RawMessage) string {
 	return ""
 }
 
-// VarAppliesOnGOOS: пустой platforms — на всех ОС; иначе goos или win7 при windows/386.
+// VarAppliesOnGOOS: пустой platforms — на всех ОС; иначе только совпадение с goos (Win7-сборка — windows/386).
 // Если текущая ОС не входит в список, переменная для params.if / if_or считается ложной (см. ParamBoolVarTrue),
 // даже если в resolved осталось значение из state с другой платформы.
 func VarAppliesOnGOOS(platforms []string, goos string) bool {
@@ -234,9 +240,6 @@ func VarAppliesOnGOOS(platforms []string, goos string) bool {
 	}
 	for _, p := range platforms {
 		if p == goos {
-			return true
-		}
-		if goos == "windows" && runtime.GOARCH == "386" && p == "win7" {
 			return true
 		}
 	}

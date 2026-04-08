@@ -161,6 +161,6 @@
 - **core/config/config_loader.go** — **ConfigHasTun(configPath)** для выбора привилегированного старта на darwin.
 - **internal/platform/privileged_darwin.go** — кэш **g_privilegedAuthRef**, runWithPrivileges (две строки из pipe, без Free после использования), **freePrivilegedAuthorization**; Go: **FreePrivilegedAuthorization()**, **WaitForPrivilegedExit(pid)**.
 - **internal/platform/privileged_stub.go** — заглушки RunWithPrivileges (0, 0, err), WaitForPrivilegedExit, FreePrivilegedAuthorization.
-- **ui/wizard** (конфиг с TUN): **template/loader.go** — **GetEffectiveConfig**, **matchesPlatform** (в т.ч. **win7**), **`if` / `if_or`**; **SettingsVars**, **MaterializeClashSecretIfNeeded**; шаблон **bin/wizard_template.json**: **darwin** + **`if`** для TUN/mixed и **`if_or`** для **route.rules** (см. актуальный JSON).
+- **ui/wizard** (конфиг с TUN): **template/loader.go** — **GetEffectiveConfig**, **matchesPlatform** (**GOOS**; Win7-сборка матчит **windows**), **`if` / `if_or`**; **vars_default.go** / **vars_resolve.go** — платформенный **`default_value`** (**windows/386**, **`tun_stack`**); **SettingsVars**, **MaterializeClashSecretIfNeeded**; шаблон **bin/wizard_template.json**: **darwin** + **`if`** для TUN/mixed и **`if_or`** для **route.rules** (см. актуальный JSON).
 
 Сборка: `CGO_ENABLED=1 GOOS=darwin go build .` проходит успешно; возможны предупреждения линкера (например, дубликат `-lobjc`), на работу не влияют.
