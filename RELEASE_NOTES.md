@@ -14,7 +14,7 @@
 
 **Полный список изменений:** [docs/release_notes/0-8-6.md](docs/release_notes/0-8-6.md).
 
-### Draft highlights (EN) — v0.8.6
+### Highlights (EN) — v0.8.6
 
 Wizard **Settings** tab (`vars`, **`@name`** placeholders, optional row separators); DNS scalars in **`state.vars`** (**`dns_*`**, **`@dns_*`** in template, **`dns_options`** holds servers/rules only, migration on load); wizard **`state.json`** version **4** on save (reads **2–4**). On **macOS**, **TUN** moved from **Rules** to **Settings**; guards (no TUN off while core/sing-box is up), honest **Stop**, optional post-stop cleanup of **`bin/`** cache and **logs**. **Win7 x86** shares the Windows/Linux **`params`** TUN block, platform **`default_value`** (default **`gvisor`** on 32-bit), fixed **`wizard_template.json`** fetch without nested **`inbounds.stack`**. **Linux:** use **`sing-box`** from **`PATH`** if present, else **`bin/`**. Outbound HTTP: **`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`**, shared transport, credential redaction in errors, **SRS** download failures log a **warning** on **Rules**. **Hysteria2** subscription ports → sing-box **`server_ports`** normalization ([#58](https://github.com/Leadaxe/singbox-launcher/issues/58)). Specs: [**032**](SPECS/032-F-C-WIZARD_SETTINGS_TAB/), [**034**](SPECS/034-F-C-HTTP_ENV_PROXY/), [**019**](SPECS/019-F-C-WIN7_ADAPTATION/); [**035** VLESS `flow` notes](SPECS/035-Q-C-VLESS_SINGBOX_FLOW_FIELD/SPEC.md).
 
