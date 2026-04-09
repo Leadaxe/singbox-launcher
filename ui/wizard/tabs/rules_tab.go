@@ -108,7 +108,7 @@ func runSRSDownloadAsync(
 				if len(srsEntries) > 0 {
 					downloadURL = srsEntries[0].URL
 				}
-				debuglog.DebugLog("rules_tab: SRS download failed")
+				debuglog.WarnLog("rules_tab: SRS download failed: %v", err)
 				dialogs.ShowDownloadFailedManual(guiState.Window, locale.T("wizard.rules.error_srs_failed"), downloadURL, ruleSetsDir)
 				return
 			}

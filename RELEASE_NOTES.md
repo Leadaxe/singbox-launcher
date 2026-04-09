@@ -2,9 +2,9 @@
 
 Полный черновик следующего релиза: [docs/release_notes/upcoming.md](docs/release_notes/upcoming.md)
 
-**Черновик (следующий релиз), кратко:** вкладка визарда **«Настройки»** (Settings), переменные шаблона **`vars`** и **`state.vars`**, перенос переключателя TUN для macOS с **«Правил»** на **«Настройки»** — подробности в [upcoming.md](docs/release_notes/upcoming.md) (и **SPECS/032-F-C-WIZARD_SETTINGS_TAB/**).
+**Черновик (следующий релиз), кратко:** вкладка визарда **«Настройки»** (Settings), переменные шаблона **`vars`** и **`state.vars`**, перенос переключателя TUN для macOS с **«Правил»** на **«Настройки»**; исходящий HTTP лаунчера учитывает **`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`** — подробности в [upcoming.md](docs/release_notes/upcoming.md) (в т.ч. **SPECS/032-F-C-WIZARD_SETTINGS_TAB/**, **SPECS/034-F-C-HTTP_ENV_PROXY/**).
 
-**Draft (next release), short:** wizard **Settings** tab, template **`vars`** and **`state.vars`**, macOS TUN toggle moved from **Rules** to **Settings** — see [upcoming.md](docs/release_notes/upcoming.md) and **SPECS/032-F-C-WIZARD_SETTINGS_TAB/**.
+**Draft (next release), short:** wizard **Settings** tab, template **`vars`** and **`state.vars`**, macOS TUN toggle moved from **Rules** to **Settings**; launcher outbound HTTP respects **`HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`** — see [upcoming.md](docs/release_notes/upcoming.md) (incl. **SPECS/032-F-C-WIZARD_SETTINGS_TAB/**, **SPECS/034-F-C-HTTP_ENV_PROXY/**).
 
 ---
 

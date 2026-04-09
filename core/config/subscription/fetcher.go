@@ -34,7 +34,12 @@ func FetchSubscription(url string) ([]byte, error) {
 	if CreateHTTPClientFunc != nil {
 		client = CreateHTTPClientFunc(NetworkRequestTimeout)
 	} else {
-		client = &http.Client{Timeout: NetworkRequestTimeout}
+		client = &http.Client{
+			Timeout: NetworkRequestTimeout,
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
+			},
+		}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)

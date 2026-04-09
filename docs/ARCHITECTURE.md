@@ -100,9 +100,10 @@ singbox-launcher/
 │   │   │   - showErrorUI()                   # Единый метод отображения ошибок
 │   │   │
 │   ├── network_utils.go       # Сетевые утилиты
-│   │   │   - CreateHTTPClient()                     # Создание HTTP клиента
+│   │   │   - CreateHTTPClient()                     # Клиент с общим Transport (пул соединений, ProxyFromEnvironment)
+│   │   │   - GetURLBytes()                          # GET по URL тем же клиентом (UI через AppController)
 │   │   │   - IsNetworkError()                       # Проверка сетевой ошибки
-│   │   │   - GetNetworkErrorMessage()               # Сообщение об ошибке
+│   │   │   - GetNetworkErrorMessage()               # Сообщение об ошибке (+ redact URL userinfo)
 │   │   │
 │   ├── uiservice/             # UI-сервис (Fyne-зависимый, отдельный пакет)
 │   │   └── ui_service.go      # Управление UI состоянием и callbacks

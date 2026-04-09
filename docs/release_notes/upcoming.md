@@ -20,11 +20,15 @@
 
 - **Linux:** If `sing-box` is on `PATH` (e.g. installed from your distro package), the launcher uses it automatically; otherwise it uses `bin/sing-box` next to the launcher. **Core → Download** still installs into local `bin/` only ([issue #48](https://github.com/Leadaxe/singbox-launcher/issues/48)).
 
-- **Closed specs:** [032 — WIZARD_SETTINGS_TAB](https://github.com/Leadaxe/singbox-launcher/blob/develop/SPECS/032-F-C-WIZARD_SETTINGS_TAB/SPEC.md), [019 — WIN7_ADAPTATION](https://github.com/Leadaxe/singbox-launcher/blob/develop/SPECS/019-F-C-WIN7_ADAPTATION/SPEC.md).
+- **Closed specs:** [032 — WIZARD_SETTINGS_TAB](https://github.com/Leadaxe/singbox-launcher/blob/develop/SPECS/032-F-C-WIZARD_SETTINGS_TAB/SPEC.md), [034 — HTTP_ENV_PROXY](https://github.com/Leadaxe/singbox-launcher/blob/develop/SPECS/034-F-C-HTTP_ENV_PROXY/SPEC.md), [019 — WIN7_ADAPTATION](https://github.com/Leadaxe/singbox-launcher/blob/develop/SPECS/019-F-C-WIN7_ADAPTATION/SPEC.md).
+
+- **HTTP proxy (environment):** Outbound HTTP(S) from the launcher (subscriptions, SRS rule-sets, locale files, wizard template download from Core Dashboard) respects **`HTTP_PROXY`**, **`HTTPS_PROXY`**, and **`NO_PROXY`** (Go `http.ProxyFromEnvironment`). Local Clash/Mihomo API traffic is unchanged (still direct to localhost). Network error messages redact `user:password@` in URLs shown to the user.
 
 ### Technical / Internal
 
 - **`vars[].default_value` object keys:** resolution matches **`params[].platforms`** semantics — **`GOOS`** names only (**`windows`**, **`linux`**, **`darwin`**, …), plus explicit **`win7`** ( **`windows`/`386`** only, before **`windows`**), then **`default`**. Combined keys like **`linux_amd64`** are no longer used in lookup (use **`linux`**).
+
+- **HTTP outbound:** All `CreateHTTPClient` callers share one `http.Transport` (connection pooling and TLS reuse across subscriptions, SRS, locales, downloads). `MaxIdleConnsPerHost` is 32 (default Go transport uses 2).
 
 - **Hysteria2 ports from subscriptions:** `mport` / `ports` now follow the official Hysteria 2 list format (comma-separated ports and `start-end` ranges). Multi-port in the URI authority (e.g. `host:443,20000-30000`) is recovered when `net/url` cannot parse it. Bare single ports map to `low:high` for sing-box `server_ports`.
 
@@ -46,11 +50,15 @@
 
 - **Linux:** если `sing-box` есть в `PATH` (например, из пакета дистрибутива), лаунчер использует его; иначе — `bin/sing-box` рядом с лаунчером. Кнопка **Core → Download** по-прежнему кладёт бинарник только в локальный `bin/` ([issue #48](https://github.com/Leadaxe/singbox-launcher/issues/48)).
 
-- **Закрытые спеки:** [032 — WIZARD_SETTINGS_TAB](https://github.com/Leadaxe/singbox-launcher/blob/develop/SPECS/032-F-C-WIZARD_SETTINGS_TAB/SPEC.md), [019 — WIN7_ADAPTATION](https://github.com/Leadaxe/singbox-launcher/blob/develop/SPECS/019-F-C-WIN7_ADAPTATION/SPEC.md).
+- **Закрытые спеки:** [032 — WIZARD_SETTINGS_TAB](https://github.com/Leadaxe/singbox-launcher/blob/develop/SPECS/032-F-C-WIZARD_SETTINGS_TAB/SPEC.md), [034 — HTTP_ENV_PROXY](https://github.com/Leadaxe/singbox-launcher/blob/develop/SPECS/034-F-C-HTTP_ENV_PROXY/SPEC.md), [019 — WIN7_ADAPTATION](https://github.com/Leadaxe/singbox-launcher/blob/develop/SPECS/019-F-C-WIN7_ADAPTATION/SPEC.md).
+
+- **Прокси по переменным окружения:** Исходящие HTTP(S) лаунчера (подписки, SRS, локали, скачивание шаблона визарда с вкладки Core) учитывают **`HTTP_PROXY`**, **`HTTPS_PROXY`**, **`NO_PROXY`** (как в стандартной библиотеке Go). Запросы к локальному Clash/Mihomo API по-прежнему без этого прокси (прямо на localhost). В текстах сетевых ошибок пароли в URL скрываются.
 
 ### Техническое / Внутреннее
 
 - **Ключи объекта `vars[].default_value`:** как у **`params[].platforms`** — только имена **`GOOS`** (**`windows`**, **`linux`**, **`darwin`**, …), плюс явный **`win7`** (только **windows/386**, раньше **`windows`**), затем **`default`**. Комбинированные ключи (**`linux_amd64`** и т.п.) в переборе не участвуют (используйте **`linux`**).
+
+- **Исходящий HTTP:** Все вызовы `CreateHTTPClient` используют один общий `http.Transport` (пул соединений и повторное использование TLS между подписками, SRS, локалями и загрузками). `MaxIdleConnsPerHost` = 32 (у дефолтного транспорта Go — 2).
 
 - **Hysteria2 порты из подписок:** Параметры `mport` / `ports` разбираются в официальном формате Hysteria 2 (список через запятую: порты и диапазоны `начало-конец`). Multi-port в authority URI (например `host:443,20000-30000`) восстанавливается, если стандартный парсер URL не принимает строку. Одиночный порт даёт диапазон `n:n` для sing-box `server_ports`.
 
