@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"image/color"
-	"io"
 	"math/rand"
 	"net/http"
 	"os"
@@ -738,56 +737,25 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		req, err := http.NewRequestWithContext(ctx, "GET", configTemplateURL, nil)
+		data, status, err := tab.controller.GetURLBytes(ctx, configTemplateURL, 30*time.Second)
 		if err != nil {
 			fyne.Do(func() {
 				if tab.templateDownloadButton != nil {
 					tab.templateDownloadButton.Enable()
 				}
 				binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
-				debuglog.DebugLog("core_dashboard: showing download failed manual (template, NewRequest error)")
+				debuglog.DebugLog("core_dashboard: showing download failed manual (template, GetURLBytes error)")
 				dialogs.ShowDownloadFailedManual(tab.controller.GetMainWindow(), "Config template download failed", configTemplateURL, binDir)
 			})
 			return
 		}
-
-		client := core.CreateHTTPClient(30 * time.Second)
-		resp, err := client.Do(req)
-		defer func() {
-			if resp != nil {
-				debuglog.RunAndLog("downloadConfigTemplate: close response body", resp.Body.Close)
-			}
-		}()
-		if err != nil {
-			fyne.Do(func() {
-				if tab.templateDownloadButton != nil {
-					tab.templateDownloadButton.Enable()
-				}
-				binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
-				debuglog.DebugLog("core_dashboard: showing download failed manual (template, Do error)")
-				dialogs.ShowDownloadFailedManual(tab.controller.GetMainWindow(), "Config template download failed", configTemplateURL, binDir)
-			})
-			return
-		}
-		if resp.StatusCode != http.StatusOK {
+		if status != http.StatusOK {
 			fyne.Do(func() {
 				if tab.templateDownloadButton != nil {
 					tab.templateDownloadButton.Enable()
 				}
 				binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
 				debuglog.DebugLog("core_dashboard: showing download failed manual (template, status not OK)")
-				dialogs.ShowDownloadFailedManual(tab.controller.GetMainWindow(), "Config template download failed", configTemplateURL, binDir)
-			})
-			return
-		}
-		data, err := io.ReadAll(resp.Body)
-		if err != nil {
-			fyne.Do(func() {
-				if tab.templateDownloadButton != nil {
-					tab.templateDownloadButton.Enable()
-				}
-				binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
-				debuglog.DebugLog("core_dashboard: showing download failed manual (template, ReadAll error)")
 				dialogs.ShowDownloadFailedManual(tab.controller.GetMainWindow(), "Config template download failed", configTemplateURL, binDir)
 			})
 			return

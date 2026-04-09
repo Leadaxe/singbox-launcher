@@ -6,6 +6,7 @@
 //   - Метаданные (version, id, comment, created_at, updated_at)
 //   - ParserConfig — конфигурация парсера (в памяти как config.ParserConfig, в JSON — упрощенная структура без обертки)
 //   - ConfigParams — параметры конфигурации (route.final и др.)
+//   - Vars — переопределения переменных шаблона (вкладка Settings, state.vars)
 //   - SelectableRuleStates — упрощённые состояния правил из шаблона (только label, enabled, selected_outbound)
 //   - CustomRules — пользовательские правила (полная структура)
 //   - DNSOptions — вкладка DNS визарда в JSON под ключом dns_options
@@ -35,7 +36,8 @@ import (
 const (
 	// WizardStateVersion — версия формата файла состояния.
 	// 3 — rules library: единый custom_rules, rules_library_merged, без маршрутного слоя selectable.
-	WizardStateVersion = 3
+	// 4 — эпоха SPECS/032: в state — ключ **vars** (переопределения Settings); в wizard_template.json — массив **vars**, литералы **@name** в config/params, условия **if** / **if_or** у params (и при необходимости у строк vars). Наследует v3 (rules library). Чтение 2–4; снимок v3 без **vars** остаётся валидным.
+	WizardStateVersion = 4
 
 	// MaxStateIDLength — максимальная длина ID состояния.
 	MaxStateIDLength = 50

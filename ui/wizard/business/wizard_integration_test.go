@@ -54,6 +54,7 @@ func TestDefaultWizardFlow_NextNextFinish(t *testing.T) {
 
 	EnsureFinalSelected(model, options)
 	ApplyWizardDNSTemplate(model)
+	ApplyDNSVarsFromSettingsToModel(model)
 
 	// Generate preview config (page 3 of wizard)
 	previewText, err := BuildTemplateConfig(model, true)

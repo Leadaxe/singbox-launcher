@@ -92,7 +92,7 @@
   },
   {
     "name": "feature_x_flag",
-    "type": "custom",
+    "type": "bool",
     "default_value": "false",
     "wizard_ui": "hidden",
     "comment": "Без автостроки Settings"
@@ -497,6 +497,7 @@
 
 - `bin/wizard_template.json`, `ui/wizard/template/loader.go`, `create_config.go`, `wizard_model.go`, `ui/wizard/tabs/settings_tab.go`, `rules_tab.go`.
 - sing-box: [Configuration](https://sing-box.sagernet.org/configuration/), [TUN](https://sing-box.sagernet.org/configuration/inbound/tun/), [Mixed](https://sing-box.sagernet.org/configuration/inbound/mixed/), [Listen Fields](https://sing-box.sagernet.org/configuration/shared/listen/#structure).
+- DNS через **`vars`:** перенос полей вкладки **DNS** (strategy, independent cache, default domain resolver, **final**) на **`vars` + `@…` в `config`** и персист только в **`state.vars`** — ТЗ в **[SUB_SPEC_DNS_TAB_VARS.md](./SUB_SPEC_DNS_TAB_VARS.md)** (после реализации обновить **docs/WIZARD_STATE.md**, **CREATE_WIZARD_TEMPLATE**.md / **_RU.md**).
 
 ---
 
@@ -505,3 +506,4 @@
 - Полное редактирование всех `inbounds` / произвольных `params` с нуля.
 - DNS и маршруты (отдельные вкладки).
 - Детали UX показа/копирования **`clash_secret`** и аудита без согласования с CONSTITUTION / security — PLAN.
+

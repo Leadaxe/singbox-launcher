@@ -114,6 +114,7 @@ func GetController() *AppController {
 			instance = &AppController{
 				FileService: fileService,
 			}
+			locale.CreateHTTPClientFunc = CreateHTTPClient
 			instance.RunningState = &RunningState{controller: instance}
 			instance.ProcessService = NewProcessService(instance)
 			instance.ConfigService = NewConfigService(instance)
@@ -136,6 +137,12 @@ func (ac *AppController) isUpdatePopupShown() bool {
 	ac.updatePopupMutex.RLock()
 	defer ac.updatePopupMutex.RUnlock()
 	return ac.updatePopupShown
+}
+
+// GetURLBytes loads url via the standard app HTTP client (timeouts, HTTP(S)_PROXY).
+// UI and other layers should use this instead of calling CreateHTTPClient directly.
+func (_ *AppController) GetURLBytes(ctx context.Context, url string, timeout time.Duration) ([]byte, int, error) {
+	return GetURLBytes(ctx, url, timeout)
 }
 
 // NewAppController creates and initializes a new AppController instance.

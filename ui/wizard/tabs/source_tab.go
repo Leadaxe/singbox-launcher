@@ -50,6 +50,7 @@ import (
 // CreateSourcesTab creates the Sources tab UI (URLs, URL status and preview).
 func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObject {
 	guiState := presenter.GUIState()
+	const directLinksDocURL = "https://github.com/Leadaxe/singbox-launcher/blob/6beb136b9082823699c6509d32e62f212fd7ff90/docs/ParserConfig.md#%D1%84%D0%BE%D1%80%D0%BC%D0%B0%D1%82%D1%8B-uri-%D0%B4%D0%BB%D1%8F-%D0%BF%D1%80%D1%8F%D0%BC%D1%8B%D1%85-%D1%81%D1%81%D1%8B%D0%BB%D0%BE%D0%BA"
 
 	// Section 1: Subscription URL or Direct Links
 	urlLabel := widget.NewLabel(locale.T("wizard.source.label_url"))
@@ -69,7 +70,15 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 	hintLabel := widget.NewLabel(locale.T("wizard.source.hint"))
 	hintLabel.Wrapping = fyne.TextWrapWord
-
+	wireguardHelpButton := widget.NewButton("?", func() {
+		if err := platform.OpenURL(directLinksDocURL); err != nil {
+			dialog.ShowError(fmt.Errorf("failed to open docs: %w", err), guiState.Window)
+		}
+	})
+	wireguardHelpButton.Importance = widget.LowImportance
+	// Keep help button compact (single-symbol width) and pinned to the right.
+	helpButtonCompact := container.NewGridWrap(fyne.NewSize(24, 24), wireguardHelpButton)
+	hintRow := container.NewBorder(nil, nil, nil, helpButtonCompact, hintLabel)
 	addURLButton := widget.NewButton(locale.T("wizard.source.button_add"), func() {
 		presenter.MergeGUIToModel()
 		trimmed := strings.TrimSpace(guiState.SourceURLEntry.Text)
@@ -131,7 +140,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	urlContainer := container.NewVBox(
 		urlHeader,   // Header with Get free VPN
 		urlEntryRow, // Input field + Add button on the right
-		hintLabel,   // Hint
+		hintRow,     // Hint + docs button
 	)
 
 	// Section 2: Sources list (based on ParserConfig.ParserConfig.Proxies)

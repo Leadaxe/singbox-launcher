@@ -60,6 +60,20 @@ func VarDisplayTooltip(v TemplateVar) string {
 	return strings.TrimSpace(v.Tooltip)
 }
 
+// VarByName finds a non-separator var by name.
+func VarByName(vars []TemplateVar, name string) (TemplateVar, bool) {
+	n := strings.TrimSpace(name)
+	for _, v := range vars {
+		if v.Separator {
+			continue
+		}
+		if strings.TrimSpace(v.Name) == n {
+			return v, true
+		}
+	}
+	return TemplateVar{}, false
+}
+
 // VarUISatisfied: условие показа/включения строки Settings для этой var (пустые If/IfOr → всегда true).
 // Семантика совпадает с params.if / if_or (ParamBoolVarTrue, VarAppliesOnGOOS).
 func VarUISatisfied(v TemplateVar, varByName map[string]TemplateVar, resolved map[string]ResolvedVar, goos string) bool {

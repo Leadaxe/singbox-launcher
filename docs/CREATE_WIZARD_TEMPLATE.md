@@ -19,6 +19,8 @@ Users simply:
 2. Choose which optional rules to enable
 3. Click "Save" to generate their `config.json`
 
+**Wizard `state.json` (not part of the template file):** The launcher saves snapshots under `bin/wizard_states/`. The **root** JSON field **`version`** is the **wizard state format** (currently **4** on new saves; **2–4** when loading). Version **4** marks the **032** era: **`state.vars`**, template **`vars`**, **`@name`** placeholders in **`config`**/**`params`**, and conditional **`if`**/**`if_or`** on **params**. This is **separate** from **`parser_config.version`** in the same file or in **`wizard_template.json`**. See **docs/WIZARD_STATE.md**.
+
 ---
 
 ## Quick Start
@@ -267,29 +269,41 @@ The unified template consists of five main sections:
 - `endpoints`: (Optional.) Empty array `[]` by default. WireGuard nodes from sources are written between `/** @ParserSTART_E */` and `/** @ParserEND_E */`. Requires sing-box 1.11+. See [ParserConfig.md](ParserConfig.md) for `wireguard://` links.
 - `route.rules`: Contains only basic universal rules (hijack-dns, ip_is_private, local). Per-user routing presets are authored in **`selectable_rules`**; the wizard merges **enabled** copies into `route` from a single saved list **`custom_rules`** (see **docs/WIZARD_STATE.md**), not as a second parallel `route` layer
 - `route.rule_set`: Contains only shared rule sets used by multiple rules or DNS rules. Rule sets specific to individual selectable rules are defined within those rules
-- `route.default_domain_resolver`: Tag of a DNS server from `config.dns.servers` used to resolve domain names inside the route engine. The wizard’s DNS tab also reads the default from **`dns_options`** (below) when present.
+- `route.default_domain_resolver`: Tag of a DNS server from `config.dns.servers` used to resolve domain names inside the route engine. In the current model this value is controlled by DNS-tab variable **`dns_default_domain_resolver`** (stored in `state.vars`, applied via `@dns_default_domain_resolver`).
 
 ---
 
 ### 3. `dns_options` Section
 
-**Purpose**: Wizard-only defaults for the DNS tab that are **not** passed to sing-box as a separate object. Values here seed the UI and `state.json`; the generated `config.json` still uses `config.route` / `config.dns` as built by the wizard.
+**Purpose**: Wizard-only DNS list defaults. In the current model `dns_options` contains only:
+- `servers`
+- `rules`
+
+Scalars edited on the DNS tab are template vars (with `wizard_ui: "fix"`):
+- `dns_strategy` -> `config.dns.strategy`
+- `dns_independent_cache` -> `config.dns.independent_cache`
+- `dns_final` -> `config.dns.final`
+- `dns_default_domain_resolver` -> `config.route.default_domain_resolver`
 
 **Structure**:
 ```json
 {
   "dns_options": {
-    "strategy": "prefer_ipv4",
-    "default_domain_resolver": "direct_dns_resolver"
+    "servers": [
+      { "type": "udp", "tag": "direct_dns_resolver", "server": "8.8.8.8", "server_port": 53, "enabled": true }
+    ],
+    "rules": [
+      { "server": "direct_dns_resolver" }
+    ]
   }
 }
 ```
 
-**Fields**:
-- `strategy` (optional, string): Wizard DNS tab **strategy** (`dns.strategy` in sing-box: e.g. `prefer_ipv4`, `ipv4_only`, …). When the model’s strategy is still empty after load, the wizard fills it as: base from **`config.dns.strategy`**, then override with **`dns_options.strategy`** if set (template `dns_options` wins over the skeleton). Keep both in sync unless you intentionally differ.
-- `default_domain_resolver` (optional, string): Tag of a server listed in `config.dns.servers`. If set, it takes **precedence** over `config.route.default_domain_resolver` for the wizard default. Keep both in sync with the same tag unless you intentionally differ.
+**Storage**:
+- `state.json -> dns_options`: `servers` and `rules` only
+- `state.json -> vars`: DNS scalar values (`dns_*`)
 
-**Storage**: The DNS tab snapshot in `state.json` lives under root **`dns_options`**: **`servers`**, **`rules`** (JSON array, same objects as sing-box `dns.rules`; the wizard editor uses multiline text, which is parsed into this array on save), **`final`**, **`strategy`**, **`independent_cache`**, **`default_domain_resolver`** / **`default_domain_resolver_unset`**. The **`rules_text`** field is not used. See **docs/WIZARD_STATE.md**.
+Legacy `dns_options` scalar keys (`strategy`, `final`, `independent_cache`, `default_domain_resolver`, `default_domain_resolver_unset`) are migrated on load into `state.vars` and are not written back by new saves.
 
 ---
 
@@ -389,6 +403,8 @@ The unified template consists of five main sections:
 
 **Purpose:** Declare values that appear on the wizard **Settings** tab and are stored in `state.json` under **`vars`** as `{ "name", "value" }` strings. In **`config`** and **`params`**, string literals like `"@var_name"` (and single-element arrays `["@var_name"]` where supported) are replaced when building the effective config. Numeric template fields use **`@tun_mtu`** and **`@mixed_listen_port`** (resolved as integers).
 
+**DNS tab uses `vars` (`dns_*`) now:** Wizard DNS scalars are template vars and use `@dns_*` substitution in `config`. `dns_options` remains only for `servers` / `rules`. See **`docs/WIZARD_STATE.md`** and **`SPECS/032-F-C-WIZARD_SETTINGS_TAB/SUB_SPEC_DNS_TAB_VARS.md`**.
+
 **`params.if`:** Optional array of **boolean** variable names, e.g. `"if": ["tun"]`. The param is applied only if **every** listed variable is true **on the current OS** (see **`vars[].platforms`**: if the var is scoped to other platforms, it counts as false here).
 
 **`params.if_or`:** Optional array of boolean variable names, e.g. `"if_or": ["tun_builtin", "tun"]`. The param is applied if **at least one** listed variable is true on the current OS. **`if`** and **`if_or`** cannot be set on the same param.
@@ -397,7 +413,7 @@ The unified template consists of five main sections:
 
 The stock template uses **`"if": ["tun"]`** with **`"platforms": ["darwin"]`** for macOS TUN **inbounds**, and a single **`route.rules`** prepend with **`"if_or": ["tun_builtin", "tun"]`** and **`"platforms": ["windows", "linux", "darwin"]`**. Do not use the legacy label **`darwin-tun`** in **`platforms`**: it never equals **`runtime.GOOS`** on macOS (**`darwin`**). Use **`darwin`** with **`if`** / **`if_or`** for TUN-specific blocks.
 
-**Variable fields (in `vars` array):** `name` (recommended: `[A-Za-z_][A-Za-z0-9_]*` — enforced at load), `type` (`text`, `bool`, `enum`, `text_list`, `custom`), **`default_value`** (JSON string, number, boolean, or **object** of platform key → string — see **Platform keys for `default_value` objects** below), optional `default_node`, `options` (for `enum`), `platforms`, `wizard_ui` (`edit` / `view` read-only / `hidden`), **`title`** (short row label on **Settings**; if omitted or blank, **`name`** is shown), **`tooltip`** (optional hover hint on supported widgets). Optional **`if`** / **`if_or`** (same semantics as **`params`**, mutually exclusive): on the **Settings** tab the row stays visible (subject to **`platforms`** / **`wizard_ui`**) but **controls are disabled** until the condition is met — e.g. TUN address/MTU with **`"if_or": ["tun_builtin", "tun"]`** until the platform-relevant TUN flag is on. Changing a bool var that others reference **refreshes** dependent rows. Type **`custom`** does not create a row on Settings **except** the built-in pair **`name`: `clash_secret`**, **`type`: `custom`** (Clash API secret: same resolution as `text`, dedicated regenerate control). Other `custom` vars are for `if` / internal markers only.
+**Variable fields (in `vars` array):** `name` (recommended: `[A-Za-z_][A-Za-z0-9_]*` — enforced at load), `type` (`text`, `bool`, `enum`, `text_list`, `secret`), **`default_value`** (JSON string, number, boolean, or **object** of platform key → string — see **Platform keys for `default_value` objects** below), optional `default_node`, `options` (for `enum`), `platforms`, `wizard_ui` (`edit` / `view` read-only / `hidden` / `fix`), **`title`** (short row label on **Settings**; if omitted or blank, **`name`** is shown), **`tooltip`** (optional hover hint on supported widgets). Optional **`if`** / **`if_or`** (same semantics as **`params`**, mutually exclusive): on the **Settings** tab the row stays visible (subject to **`platforms`** / **`wizard_ui`**) but **controls are disabled** until the condition is met — e.g. TUN address/MTU with **`"if_or": ["tun_builtin", "tun"]`** until the platform-relevant TUN flag is on. Changing a bool var that others reference **refreshes** dependent rows. Type **`secret`** is reserved for the built-in pair **`name`: `clash_secret`**, **`type`: `secret`** (Clash API secret: behaves like `text` with a dedicated regenerate control). Use `text` / `enum` / `bool` / `text_list` for other variables. `wizard_ui: "fix"` means the variable is edited on a dedicated tab/flow (not Settings); `hidden` remains the generic "do not show on Settings" mode.
 
 **Separator (layout only):** an entry **`{"separator": true}`** renders a horizontal rule on **Settings** between rows. Do **not** set **`name`**, **`type`**, **`default_value`**, **`default_node`**, **`options`**, **`title`**, **`tooltip`**, **`if`**, or **`if_or`**. Optional **`platforms`** (same as other vars) and **`wizard_ui`**: only **`hidden`** is allowed besides empty — to hide the rule on some OSes. Separators are not variables: no **`@`** placeholders and nothing is stored in wizard state. **macOS `.app`:** the running binary loads **`Contents/MacOS/bin/wizard_template.json`** inside the bundle — not the repo copy. After editing the template in the repository, **rebuild/reinstall** or **copy** the file into the app bundle so separators (and other JSON changes) appear.
 
@@ -1350,7 +1366,7 @@ cat wizard_template.json | jq . > /dev/null
 The wizard preserves your section order. Organize logically:
 1. `parser_config` - Parser configuration
 2. `config` - Main sing-box configuration
-3. `dns_options` - Wizard defaults for DNS tab (`default_domain_resolver`, optional)
+3. `dns_options` - Wizard DNS list defaults (`servers` / `rules`, optional)
 4. `selectable_rules` - User-selectable rules
 5. `params` - Platform-specific parameters
 
@@ -1419,7 +1435,7 @@ Put `wizard_template.json` in the `bin/` folder next to the executable.
 - Ensure file is in `bin/` folder
 - Validate JSON syntax (use `jq` or online validator)
 - Check for trailing commas or syntax errors
-- Ensure all required sections (`parser_config`, `config`, `selectable_rules`, `params`) are present; optional `dns_options` is recommended if you use the wizard DNS tab (`default_domain_resolver`)
+- Ensure all required sections (`parser_config`, `config`, `selectable_rules`, `params`) are present; optional `dns_options` may provide DNS list defaults (`servers` / `rules`)
 
 ### Generated Outbounds Not Appearing
 
@@ -1586,3 +1602,5 @@ When distributing your customized launcher:
 ---
 
 **Note**: This wizard template system is designed to make configuration easier for end users. As a provider, you maintain full control over the default configuration while giving users flexibility to customize their setup. The unified template structure eliminates platform-specific files and comment-based directives, making templates easier to maintain and validate.
+
+

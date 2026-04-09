@@ -2,6 +2,7 @@ package dialogs
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"image/color"
@@ -10,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -152,25 +154,46 @@ func ShowError(window fyne.Window, err error) {
 func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command string) {
 	fyne.Do(func() {
 		mainContent := container.NewVBox()
-		msgLabel := widget.NewLabel(message)
-		msgLabel.Wrapping = fyne.TextWrapWord
-		mainContent.Add(msgLabel)
+
+		// Use selectable multiline text so users can copy the full error details.
+		msgEntry := widget.NewMultiLineEntry()
+		msgEntry.SetText(message)
+		msgEntry.Disable()
+		msgEntry.Wrapping = fyne.TextWrapWord
+		msgEntry.SetMinRowsVisible(10)
+		msgScroll := container.NewScroll(msgEntry)
+		msgScroll.SetMinSize(fyne.NewSize(520, 220))
+		mainContent.Add(msgScroll)
 
 		// Selectable command line and Copy button
 		entry := widget.NewEntry()
 		entry.SetText(command)
 		entry.Disable()
 		entry.Wrapping = fyne.TextWrapOff
+		entry.SetMinRowsVisible(1)
 		copyBtn := widget.NewButtonWithIcon(locale.T("dialog.copy"), theme.ContentCopyIcon(), func() {
-			if command != "" {
-				fyne.CurrentApp().Clipboard().SetContent(command)
+			fullText := message
+			if command != "" && fullText != "" && !strings.Contains(fullText, command) {
+				fullText += "\n\n" + command
+			} else if fullText == "" {
+				fullText = command
+			}
+			if fullText != "" {
+				fyne.CurrentApp().Clipboard().SetContent(fullText)
 			}
 		})
 		copyBtn.Importance = widget.LowImportance
-		cmdRow := container.NewBorder(nil, nil, nil, copyBtn, entry)
+		cmdRow := container.NewVBox(
+			entry,
+			container.NewHBox(layout.NewSpacer(), copyBtn),
+		)
 		mainContent.Add(cmdRow)
+		// Reserve extra vertical space so the bottom dialog bar never overlaps the command row.
+		bottomSpacer := canvas.NewRectangle(color.Transparent)
+		bottomSpacer.SetMinSize(fyne.NewSize(1, 8))
+		mainContent.Add(bottomSpacer)
 
-		d := NewCustom(title, mainContent, nil, locale.T("dialog.ok"), window)
+		d := dialog.NewCustom(title, locale.T("dialog.ok"), mainContent, window)
 		d.Show()
 	})
 }

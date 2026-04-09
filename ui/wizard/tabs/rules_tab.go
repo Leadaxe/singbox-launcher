@@ -108,7 +108,7 @@ func runSRSDownloadAsync(
 				if len(srsEntries) > 0 {
 					downloadURL = srsEntries[0].URL
 				}
-				debuglog.DebugLog("rules_tab: SRS download failed")
+				debuglog.WarnLog("rules_tab: SRS download failed: %v", err)
 				dialogs.ShowDownloadFailedManual(guiState.Window, locale.T("wizard.rules.error_srs_failed"), downloadURL, ruleSetsDir)
 				return
 			}
@@ -232,7 +232,7 @@ func createRulesEmptyState() fyne.CanvasObject {
 	return msg
 }
 
-// buildCustomRuleRows строит строки правил: чекбокс, ↑↓, подпись (центр Border), SRS, справа Edit, Del, Select (подпись Outbound — в шапке над скроллом).
+// buildCustomRuleRows строит строки правил: ↑↓, чекбокс, подпись (центр Border), SRS, справа Edit, Del, Select (подпись Outbound — в шапке над скроллом).
 func buildCustomRuleRows(
 	presenter *wizardpresentation.WizardPresenter,
 	model *wizardmodels.WizardModel,
@@ -286,7 +286,7 @@ func buildCustomRuleRows(
 		guiState.RuleOutboundSelects = append(guiState.RuleOutboundSelects, customRuleWidget)
 
 		// Border: центр под подпись (HBox(left, Spacer, …) давал left только MinSize → «…» у label).
-		leftLead := container.NewHBox(checkbox, moveUpButton, moveDownButton)
+		leftLead := container.NewHBox(moveUpButton, moveDownButton, fynewidget.CheckLeadingWrap(checkbox))
 		rightCluster := container.NewHBox(editButton, deleteButton, outboundWidget)
 
 		labelTap := fynewidget.NewTapWrap(label, func() {

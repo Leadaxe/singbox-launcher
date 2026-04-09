@@ -13,10 +13,10 @@ func TestMaterializeClashSecretIfNeeded_idempotent(t *testing.T) {
 	defer func() { wizardtemplate.ClashSecretReader = old }()
 	wizardtemplate.ClashSecretReader = fixedReaderForClashTest()
 
-	rawFull := json.RawMessage(`{"vars":[{"name":"clash_secret","type":"custom","default_value":"CHANGE_THIS_X"}]}`)
+	rawFull := json.RawMessage(`{"vars":[{"name":"clash_secret","type":"secret","default_value":"CHANGE_THIS_X"}]}`)
 	td := &wizardtemplate.TemplateData{
 		Vars: []wizardtemplate.TemplateVar{
-			{Name: "clash_secret", Type: "custom", DefaultValue: wizardtemplate.VarDefaultValue{Scalar: "CHANGE_THIS_X"}},
+			{Name: "clash_secret", Type: "secret", DefaultValue: wizardtemplate.VarDefaultValue{Scalar: "CHANGE_THIS_X"}},
 		},
 		RawTemplate: rawFull,
 	}
@@ -40,10 +40,10 @@ func TestMaterializeClashSecretIfNeeded_placeholderKeyStabilizes(t *testing.T) {
 	defer func() { wizardtemplate.ClashSecretReader = old }()
 	wizardtemplate.ClashSecretReader = fixedReaderForClashTest()
 
-	rawFull := json.RawMessage(`{"vars":[{"name":"clash_secret","type":"custom","default_value":"CHANGE_THIS_X"}]}`)
+	rawFull := json.RawMessage(`{"vars":[{"name":"clash_secret","type":"secret","default_value":"CHANGE_THIS_X"}]}`)
 	td := &wizardtemplate.TemplateData{
 		Vars: []wizardtemplate.TemplateVar{
-			{Name: "clash_secret", Type: "custom", DefaultValue: wizardtemplate.VarDefaultValue{Scalar: "CHANGE_THIS_X"}},
+			{Name: "clash_secret", Type: "secret", DefaultValue: wizardtemplate.VarDefaultValue{Scalar: "CHANGE_THIS_X"}},
 		},
 		RawTemplate: rawFull,
 	}

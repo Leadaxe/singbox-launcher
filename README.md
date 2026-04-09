@@ -3,7 +3,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-Leadaxe%2Fsingbox--launcher-blue)](https://github.com/Leadaxe/singbox-launcher)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-blue)](https://golang.org/)
-[![Version](https://img.shields.io/badge/version-0.8.5-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
+[![Version](https://img.shields.io/badge/version-0.8.6-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
 
 Cross-platform GUI launcher for [sing-box](https://github.com/SagerNet/sing-box) - universal proxy client.
 
@@ -168,10 +168,10 @@ The script will automatically:
 **Install Specific Version:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- v0.8.5
+curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- v0.8.6
 ```
 
-Replace `v0.8.5` with the version you want to install.
+Replace `v0.8.6` with the version you want to install.
 
 #### Option 2: Manual Installation
 

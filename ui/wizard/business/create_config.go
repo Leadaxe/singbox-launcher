@@ -73,6 +73,7 @@ func BuildTemplateConfig(model *wizardmodels.WizardModel, forPreview bool) (stri
 		return "", fmt.Errorf("template data not available")
 	}
 
+	SyncDNSModelToSettingsVars(model)
 	MaterializeClashSecretIfNeeded(model)
 
 	parserConfigText := strings.TrimSpace(model.ParserConfigJSON)

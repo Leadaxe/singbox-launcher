@@ -100,9 +100,10 @@ singbox-launcher/
 │   │   │   - showErrorUI()                   # Единый метод отображения ошибок
 │   │   │
 │   ├── network_utils.go       # Сетевые утилиты
-│   │   │   - CreateHTTPClient()                     # Создание HTTP клиента
+│   │   │   - CreateHTTPClient()                     # Клиент с общим Transport (пул соединений, ProxyFromEnvironment)
+│   │   │   - GetURLBytes()                          # GET по URL тем же клиентом (UI через AppController)
 │   │   │   - IsNetworkError()                       # Проверка сетевой ошибки
-│   │   │   - GetNetworkErrorMessage()               # Сообщение об ошибке
+│   │   │   - GetNetworkErrorMessage()               # Сообщение об ошибке (+ redact URL userinfo)
 │   │   │
 │   ├── uiservice/             # UI-сервис (Fyne-зависимый, отдельный пакет)
 │   │   └── ui_service.go      # Управление UI состоянием и callbacks
@@ -838,7 +839,7 @@ singbox-launcher/
   - `HasUnsavedChanges()` - проверка наличия несохранённых изменений
   - `MarkAsChanged()` - установка флага изменений
   - `MarkAsSaved()` - сброс флага изменений
-  - **Хранение и загрузка state:** состояние хранится в `bin/wizard_states/state.json` (текущее) и в `bin/wizard_states/<id>.json` (именованные). При сохранении презентер вызывает `CreateStateFromModel()` (внутри — `SyncGUIToModel`), затем state_store записывает файл. При загрузке state_store читает файл, вызывается `LoadState()`: миграции JSON (MigrateCustomRules, MigrateSelectableRuleStates), затем **`ApplyRulesLibraryMigration`**, **`SelectableRuleStates` в модели всегда nil**, **`restoreCustomRules`**, **`EnsureCustomRulesDefaultOutbounds`** (outbound после миграции), DNS (`restoreDNS` / **`ApplyWizardDNSTemplate`**). При первой миграции library успешная запись state на диск сбрасывает dirty-флаг. Резолвер по умолчанию в state — только в **`dns_options`**. Подробно — **docs/WIZARD_STATE.md**.
+  - **Хранение и загрузка state:** состояние хранится в `bin/wizard_states/state.json` (текущее) и в `bin/wizard_states/<id>.json` (именованные). При сохранении презентер вызывает `CreateStateFromModel()` (внутри — `SyncGUIToModel`), затем state_store записывает файл. При загрузке state_store читает файл, вызывается `LoadState()`: миграции JSON (MigrateCustomRules, MigrateSelectableRuleStates), затем **`ApplyRulesLibraryMigration`**, **`SelectableRuleStates` в модели всегда nil**, **`restoreCustomRules`**, **`EnsureCustomRulesDefaultOutbounds`** (outbound после миграции), DNS (`restoreDNS` / **`ApplyWizardDNSTemplate`** / **`ApplyDNSVarsFromSettingsToModel`**). При первой миграции library успешная запись state на диск сбрасывает dirty-флаг. В текущей DNS-модели в state: **`dns_options`** хранит только **`servers`**/**`rules`**, а скаляры DNS-вкладки (`dns_strategy`, `dns_independent_cache`, `dns_final`, `dns_default_domain_resolver`) живут в **`vars`**; устаревшие ключи `dns_options` мигрируют при загрузке. Подробно — **docs/WIZARD_STATE.md**, **`SPECS/032-F-C-WIZARD_SETTINGS_TAB/SUB_SPEC_DNS_TAB_VARS.md`**.
 - `presenter_rules.go`:
   - `RefreshRulesTab()` - обновление содержимого таба Rules (принимает функцию создания вкладки)
   - `RefreshRulesTabAfterLoadState()` - пересоздание вкладки Rules после LoadState (использует сохранённую функцию через DI)

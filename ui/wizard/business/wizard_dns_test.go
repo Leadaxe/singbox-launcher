@@ -93,8 +93,9 @@ func TestApplyWizardDNSTemplate_StrategyFromSkeleton(t *testing.T) {
 	m := wizardmodels.NewWizardModel()
 	m.TemplateData = td
 	ApplyWizardDNSTemplate(m)
-	if got := strings.TrimSpace(m.DNSStrategy); got != "prefer_ipv4" {
-		t.Fatalf("DNSStrategy: got %q want prefer_ipv4 (config.dns / dns_options)", got)
+	ApplyDNSVarsFromSettingsToModel(m)
+	if got := strings.TrimSpace(m.DNSStrategy); got != "" {
+		t.Fatalf("DNSStrategy: with dns_strategy var and no state.vars override, model stays empty (effective value from template @dns_strategy); got %q", got)
 	}
 }
 

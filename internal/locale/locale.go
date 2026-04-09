@@ -239,7 +239,12 @@ func createLocaleHTTPClient(timeout time.Duration) *http.Client {
 	if CreateHTTPClientFunc != nil {
 		return CreateHTTPClientFunc(timeout)
 	}
-	return &http.Client{Timeout: timeout}
+	return &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+		},
+	}
 }
 
 // DownloadAllRemoteLocales downloads all known remote languages.

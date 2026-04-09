@@ -89,7 +89,7 @@ func ShowRulesLibraryDialog(p *wizardpresentation.WizardPresenter, showAddRuleDi
 		})
 
 		// Border: чекбокс слева, подпись в центре получает оставшуюся ширину (HBox даёт лейблу ~0 → только «…»).
-		rowLeft := container.NewBorder(nil, nil, chk, nil, labelTap)
+		rowLeft := container.NewBorder(nil, nil, fynewidget.CheckLeadingWrap(chk), nil, labelTap)
 		padded := container.NewPadded(rowLeft)
 		minH := canvas.NewRectangle(color.Transparent)
 		minH.SetMinSize(fyne.NewSize(0, 36))

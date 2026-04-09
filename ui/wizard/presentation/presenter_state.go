@@ -84,18 +84,11 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 		state.CustomRules = append(state.CustomRules, persisted)
 	}
 
-	dnsState := &wizardmodels.PersistedDNSState{
-		Servers:          append([]json.RawMessage(nil), p.model.DNSServers...),
-		Rules:            wizardbusiness.PersistedDNSRulesForState(p.model.DNSRulesText),
-		Final:            p.model.DNSFinal,
-		Strategy:         p.model.DNSStrategy,
-		IndependentCache: copyBoolPtrForState(p.model.DNSIndependentCache),
-		ResolverUnset:    p.model.DefaultDomainResolverUnset,
+	// dns_options в state — только servers и rules; скаляры DNS — в state.vars (dns_*).
+	state.DNSOptions = &wizardmodels.PersistedDNSState{
+		Servers: append([]json.RawMessage(nil), p.model.DNSServers...),
+		Rules:   wizardbusiness.PersistedDNSRulesForState(p.model.DNSRulesText),
 	}
-	if !p.model.DefaultDomainResolverUnset && strings.TrimSpace(p.model.DefaultDomainResolver) != "" {
-		dnsState.DefaultDomainResolver = strings.TrimSpace(p.model.DefaultDomainResolver)
-	}
-	state.DNSOptions = dnsState
 
 	if p.model.TemplateData != nil {
 		for _, vd := range p.model.TemplateData.Vars {
@@ -109,14 +102,6 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	}
 
 	return state
-}
-
-func copyBoolPtrForState(p *bool) *bool {
-	if p == nil {
-		return nil
-	}
-	v := *p
-	return &v
 }
 
 // extractConfigParams извлекает параметры конфигурации из модели.
@@ -137,7 +122,7 @@ func (p *WizardPresenter) extractConfigParams() []wizardmodels.ConfigParam {
 		})
 	}
 
-	// route.default_domain_resolver не дублируем в config_params — только dns_options в state.json (см. docs/WIZARD_STATE.md).
+	// route.default_domain_resolver — в state.vars (dns_default_domain_resolver), не в config_params.
 
 	return params
 }
@@ -147,7 +132,7 @@ func (p *WizardPresenter) SaveCurrentState() error {
 	debuglog.InfoLog("SaveCurrentState: called")
 	// CreateStateFromModel вызывает SyncGUIToModel — не дублировать.
 	state := p.CreateStateFromModel("", "")
-	stateStore := p.getStateStore()
+	stateStore := p.GetStateStore()
 
 	ac := core.GetController()
 	// Получаем путь к state.json для логирования
@@ -173,7 +158,7 @@ func (p *WizardPresenter) SaveStateAs(comment, id string) error {
 	}
 
 	state := p.CreateStateFromModel(comment, id)
-	stateStore := p.getStateStore()
+	stateStore := p.GetStateStore()
 
 	if err := stateStore.SaveWizardState(state, id); err != nil {
 		return fmt.Errorf("failed to save state: %w", err)
@@ -236,7 +221,7 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 
 	// Сразу записать мигрированный state.json, иначе повторное открытие снова склеит selectable+custom
 	if !hadRulesLibraryMerged {
-		if err := p.getStateStore().SaveWizardState(stateFile, stateFile.ID); err != nil {
+		if err := p.GetStateStore().SaveWizardState(stateFile, stateFile.ID); err != nil {
 			debuglog.WarnLog("LoadState: persist rules library migration: %v", err)
 			p.MarkAsChanged()
 		} else {
@@ -307,7 +292,6 @@ func (p *WizardPresenter) restoreConfigParams(stateFile *wizardmodels.WizardStat
 		p.model.SettingsVars[x.Name] = x.Value // при дубликатах name в массиве JSON — последняя запись выигрывает
 	}
 
-	// Резолвер по умолчанию — только из dns_options (+ миграция из config_params в restoreDNS для старых файлов).
 }
 
 // restoreDNS loads dns_options from state (if any) and merges with the current wizard_template.json.
@@ -315,10 +299,17 @@ func (p *WizardPresenter) restoreDNS(sf *wizardmodels.WizardStateFile) {
 	if sf == nil {
 		return
 	}
+	if p.model.TemplateData != nil {
+		wizardbusiness.MigrateDNSScalarsFromPersistedToSettingsVars(sf.DNSOptions, p.model.SettingsVars, p.model.TemplateData.Vars)
+	}
+	if sf.DNSOptions != nil && sf.DNSOptions.ResolverUnset {
+		p.model.DefaultDomainResolverUnset = true
+		p.model.DefaultDomainResolver = ""
+	}
 	if sf.DNSOptions != nil {
 		wizardbusiness.LoadPersistedWizardDNS(p.model, sf.DNSOptions)
 	}
-	// Старые state.json: до отказа от дублирования тег лежал только в config_params.
+	// Старые state.json: тег только в config_params (до dns_* vars).
 	if !p.model.DefaultDomainResolverUnset && strings.TrimSpace(p.model.DefaultDomainResolver) == "" {
 		if dr := p.findConfigParamValue(sf.ConfigParams, "route.default_domain_resolver"); dr != "" {
 			p.model.DefaultDomainResolver = dr
@@ -326,6 +317,7 @@ func (p *WizardPresenter) restoreDNS(sf *wizardmodels.WizardStateFile) {
 		}
 	}
 	wizardbusiness.ApplyWizardDNSTemplate(p.model)
+	wizardbusiness.ApplyDNSVarsFromSettingsToModel(p.model)
 }
 
 // findConfigParamValue ищет значение параметра по имени.
@@ -352,9 +344,4 @@ func (p *WizardPresenter) GetStateStore() *wizardbusiness.StateStore {
 	ac := core.GetController()
 	fileServiceAdapter := &wizardbusiness.FileServiceAdapter{FileService: ac.FileService}
 	return wizardbusiness.NewStateStore(fileServiceAdapter)
-}
-
-// getStateStore - приватный алиас для внутреннего использования в презентере.
-func (p *WizardPresenter) getStateStore() *wizardbusiness.StateStore {
-	return p.GetStateStore()
 }

@@ -55,6 +55,7 @@ import (
 	"singbox-launcher/internal/wizardsync"
 	wizardbusiness "singbox-launcher/ui/wizard/business"
 	wizardmodels "singbox-launcher/ui/wizard/models"
+	wizardtemplate "singbox-launcher/ui/wizard/template"
 )
 
 // SyncModelToGUI синхронизирует данные из модели в GUI.
@@ -162,31 +163,44 @@ func (p *WizardPresenter) refreshDNSSelectsFromModel() {
 		p.guiState.DNSFinalSelect.Refresh()
 	}
 	if p.guiState.DNSDefaultResolverSelect != nil {
-		notSet := locale.T("wizard.dns.resolver_not_set")
-		opts := append([]string{notSet}, tags...)
+		opts := append([]string(nil), tags...)
 		p.guiState.DNSDefaultResolverSelect.Options = opts
-		if p.model.DefaultDomainResolverUnset || p.model.DefaultDomainResolver == "" {
-			p.guiState.DNSDefaultResolverSelect.SetSelected(notSet)
-		} else {
-			sel := strings.TrimSpace(p.model.DefaultDomainResolver)
-			if !stringSliceContains(tags, sel) {
-				p.model.DefaultDomainResolver = ""
-				p.model.DefaultDomainResolverUnset = true
-				p.guiState.DNSDefaultResolverSelect.SetSelected(notSet)
+		sel := strings.TrimSpace(p.model.DefaultDomainResolver)
+		if !stringSliceContains(tags, sel) {
+			if len(tags) > 0 {
+				sel = tags[0]
+				p.model.DefaultDomainResolver = sel
+				p.model.DefaultDomainResolverUnset = false
 			} else {
-				p.guiState.DNSDefaultResolverSelect.SetSelected(sel)
+				sel = ""
 			}
+		}
+		if sel != "" {
+			p.guiState.DNSDefaultResolverSelect.SetSelected(sel)
 		}
 		p.guiState.DNSDefaultResolverSelect.Refresh()
 	}
 	if p.guiState.DNSStrategySelect != nil {
-		def := locale.T("wizard.dns.strategy_default")
-		strOpts := []string{def, "ipv4_only", "ipv6_only", "prefer_ipv4", "prefer_ipv6"}
+		strOpts := []string{"ipv4_only", "ipv6_only", "prefer_ipv4", "prefer_ipv6"}
+		if vd, ok := wizardtemplate.VarByName(p.model.TemplateData.Vars, wizardmodels.VarDNSStrategy); ok && strings.EqualFold(strings.TrimSpace(vd.Type), "enum") && len(vd.Options) > 0 {
+			strOpts = append([]string(nil), vd.Options...)
+		}
 		p.guiState.DNSStrategySelect.Options = strOpts
-		if p.model.DNSStrategy == "" {
-			p.guiState.DNSStrategySelect.SetSelected(def)
-		} else {
-			p.guiState.DNSStrategySelect.SetSelected(p.model.DNSStrategy)
+		sel := strings.TrimSpace(p.model.DNSStrategy)
+		if sel == "" && p.model.TemplateData != nil {
+			sel = strings.TrimSpace(wizardtemplate.DisplaySettingValue(
+				p.model.TemplateData.Vars,
+				p.model.SettingsVars,
+				p.model.TemplateData.RawTemplate,
+				wizardmodels.VarDNSStrategy,
+			))
+		}
+		if len(strOpts) > 0 && !stringSliceContains(strOpts, sel) {
+			sel = strOpts[0]
+		}
+		if sel != "" {
+			p.guiState.DNSStrategySelect.SetSelected(sel)
+			p.model.DNSStrategy = sel
 		}
 		p.guiState.DNSStrategySelect.Refresh()
 	}
@@ -197,6 +211,7 @@ func (p *WizardPresenter) refreshDNSSelectsFromModel() {
 		}
 		p.guiState.DNSIndependentCacheCheck.SetChecked(v)
 	}
+	wizardbusiness.SyncDNSModelToSettingsVars(p.model)
 }
 
 // RefreshDNSDependentSelectsOnly обновляет только селекты Final / resolver / strategy и галочку кэша,
@@ -293,6 +308,9 @@ func (p *WizardPresenter) syncGUIToModel(markDirty bool) {
 	}
 	ready := p.guiState.WizardWidgetsReady
 	changed := p.syncGUIToModelSourceParserFinal(ready) || p.syncGUIToModelDNS(ready)
+	if ready {
+		wizardbusiness.SyncDNSModelToSettingsVars(p.model)
+	}
 
 	if changed && markDirty {
 		p.MarkAsChanged()
@@ -364,19 +382,12 @@ func (p *WizardPresenter) syncGUIToModelDNS(ready bool) bool {
 		}
 	}
 	if gs.DNSDefaultResolverSelect != nil {
-		notSet := locale.T("wizard.dns.resolver_not_set")
 		sel := gs.DNSDefaultResolverSelect.Selected
 		opts := gs.DNSDefaultResolverSelect.Options
 		mt := strings.TrimSpace(p.model.DefaultDomainResolver)
-		if !p.model.DefaultDomainResolverUnset && dnsSelectOptionsMissingModelTag(opts, mt) {
+		if dnsSelectOptionsMissingModelTag(opts, mt) {
 			// keep model — резолвер из state/шаблона ещё не попал в Options
-		} else if sel == notSet {
-			if p.model.DefaultDomainResolver != "" || !p.model.DefaultDomainResolverUnset {
-				p.model.DefaultDomainResolver = ""
-				p.model.DefaultDomainResolverUnset = true
-				changed = true
-			}
-		} else {
+		} else if sel != "" {
 			if dnsSelectReadLooksStale(sel, mt, p.model) {
 				// keep model
 			} else if p.model.DefaultDomainResolver != sel || p.model.DefaultDomainResolverUnset {
@@ -387,19 +398,12 @@ func (p *WizardPresenter) syncGUIToModelDNS(ready bool) bool {
 		}
 	}
 	if gs.DNSStrategySelect != nil {
-		def := locale.T("wizard.dns.strategy_default")
 		sel := gs.DNSStrategySelect.Selected
 		if wizardsync.GuiTextAwaitingProgrammaticFill(ready, sel, p.model.DNSStrategy) {
 			// выпадающий список ещё не получил SetSelected
-		} else {
-			newStr := ""
-			if sel != def {
-				newStr = sel
-			}
-			if p.model.DNSStrategy != newStr {
-				p.model.DNSStrategy = newStr
-				changed = true
-			}
+		} else if p.model.DNSStrategy != sel {
+			p.model.DNSStrategy = sel
+			changed = true
 		}
 	}
 	if gs.DNSIndependentCacheCheck != nil && ready {

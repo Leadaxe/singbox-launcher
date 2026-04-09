@@ -32,7 +32,7 @@
 
 ### Документация
 
-- **`docs/WIZARD_STATE.md`** — формат **3**, поток **`LoadState`** / **`InitializeTemplateState`**, миграция **v2→v3**.
+- **`docs/WIZARD_STATE.md`** — формат снимка **3** (rules library) / **4** (актуальная запись при **`state.vars`**), поток **`LoadState`** / **`InitializeTemplateState`**, миграция **v2→v3**.
 - **`docs/ARCHITECTURE.md`** — вкладка Rules, **`library_rules_dialog`**, **`rules_library.go`**, **`MergeRouteSection`**, загрузка state.
 - **`docs/release_notes/upcoming.md`**, **`docs/TEST_README.md`**, **`docs/CREATE_WIZARD_TEMPLATE.md`** / **`_RU.md`**, **`SPECS/002-.../WIZARD_STATE_JSON_SCHEMA.md`**, **`SPECS/024-.../SPEC.md`**, **`RELEASE_NOTES.md`**, **`SPECS/README.md`** (строка **027**).
 

@@ -48,6 +48,7 @@ func createSRSHTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
+			Proxy:       http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
 		},
 	}
@@ -233,7 +234,7 @@ func DownloadSRSGroup(ctx context.Context, execDir string, entries []SRSEntry) e
 	for _, e := range entries {
 		destPath := RuleSRSPath(execDir, e.Tag)
 		if err := DownloadSRS(ctx, e.URL, destPath); err != nil {
-			return err
+			return fmt.Errorf("DownloadSRSGroup tag=%q url=%s: %w", e.Tag, e.URL, err)
 		}
 	}
 	return nil

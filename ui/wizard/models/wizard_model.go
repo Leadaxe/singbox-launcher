@@ -97,7 +97,7 @@ type WizardModel struct {
 	DNSStrategy                string
 	DNSIndependentCache        *bool
 	DefaultDomainResolver      string
-	DefaultDomainResolverUnset bool // user chose "not set"; omit route.default_domain_resolver in output
+	DefaultDomainResolverUnset bool // resolver explicitly omitted; omit route.default_domain_resolver in output
 }
 
 // NewWizardModel создает новую модель визарда с начальными значениями.

@@ -67,7 +67,7 @@
     {
       "name": "tun",
       "type": "bool",
-      "default_value": "true",
+      "default_value": {"darwin": "true", "default": "false"},
       "wizard_ui": "edit",
       "platforms": ["darwin"],
       "title": "Enable TUN (macOS)",
@@ -76,7 +76,7 @@
     {
       "name": "tun_builtin",
       "type": "bool",
-      "default_value": "true",
+      "default_value": {"windows": "true", "linux": "true", "default": "false"},
       "wizard_ui": "hidden",
       "platforms": ["windows", "linux"],
       "title": "TUN (Windows/Linux)",
@@ -167,11 +167,48 @@
     },
     {
       "name": "clash_secret",
-      "type": "custom",
+      "type": "secret",
       "default_value": "CHANGE_THIS_TO_YOUR_SECRET_TOKEN",
       "wizard_ui": "edit",
       "title": "Clash API secret",
       "tooltip": "Secret for the Clash API. Use the refresh button to generate a random value."
+    },
+    {
+      "name": "dns_strategy",
+      "type": "enum",
+      "default_value": "prefer_ipv4",
+      "options": ["prefer_ipv4", "prefer_ipv6", "ipv4_only", "ipv6_only"],
+      "wizard_ui": "fix",
+      "title": "Strategy",
+      "comment": "DNS tab only: sing-box config.dns.strategy.",
+      "tooltip":"sing-box config.dns.strategy."
+    },
+    {
+      "name": "dns_independent_cache",
+      "type": "bool",
+      "default_value": "false",
+      "wizard_ui": "fix",
+      "title": "Independent cache",
+      "tooltip": "sing-box config.dns.independent_cache.",
+      "comment": "DNS tab only: config.dns.independent_cache; same bool+fix pattern for dedicated DNS-tab editing (not shown on Settings)."
+    },
+    {
+      "name": "dns_default_domain_resolver",
+      "type": "text",
+      "default_value": "direct_dns_resolver",
+      "wizard_ui": "fix",
+      "title": "Default DNS domain resolver",
+      "tooltip": "sing-box config.route.default_domain_resolver (server tag).",
+      "comment": "DNS tab only: route.default_domain_resolver (server tag)."
+    },
+    {
+      "name": "dns_final",
+      "type": "text",
+      "default_value": "direct_dns_resolver",
+      "wizard_ui": "fix",
+      "title": "Final",
+      "tooltip": "sing-box config.dns.final (server tag).",
+      "comment": "DNS tab only: config.dns.final (server tag)."
     }
   ],
 
@@ -196,9 +233,9 @@
       "rules": [
         { "server": "direct_dns_resolver" }
       ],
-      "final": "local_dns_resolver",
-      "strategy": "prefer_ipv4",
-      "independent_cache": true
+      "final": "@dns_final",
+      "strategy": "@dns_strategy",
+      "independent_cache": "@dns_independent_cache"
     },
     "inbounds": [],
     "endpoints": [],
@@ -206,7 +243,7 @@
       { "type": "direct", "tag": "direct-out" }
     ],
     "route": {
-      "default_domain_resolver": "local_dns_resolver",
+      "default_domain_resolver": "@dns_default_domain_resolver",
       "rule_set": [
         { "tag": "ru-domains", "type": "inline", "format": "domain_suffix", "rules": [{ "domain_suffix": ["ru", "xn--p1ai", "su"] }] }
       ],
@@ -229,7 +266,6 @@
   },
 
   "dns_options": {
-    "independent_cache": false,
     "servers": [
       {
         "type": "udp",
@@ -313,9 +349,7 @@
     "rules": [
       { "rule_set": "ru-domains", "server": "yandex_doh" },
       { "server": "google_doh" }
-    ],
-    "dns.final": "direct_dns_resolver",
-    "route.default_domain_resolver": "direct_dns_resolver"
+    ]
   },
 
   "selectable_rules": [
@@ -606,3 +640,6 @@
     }
   ]
 }
+
+
+

@@ -35,15 +35,7 @@ func LoadPersistedWizardDNS(model *wizardmodels.WizardModel, p *wizardmodels.Per
 	} else {
 		model.DNSRulesText = ""
 	}
-	model.DNSFinal = p.Final
-	model.DNSStrategy = p.Strategy
-	model.DNSIndependentCache = copyBoolPtr(p.IndependentCache)
-	model.DefaultDomainResolverUnset = p.ResolverUnset
-	if model.DefaultDomainResolverUnset {
-		model.DefaultDomainResolver = ""
-	} else if dr := strings.TrimSpace(p.DefaultDomainResolver); dr != "" {
-		model.DefaultDomainResolver = dr
-	}
+	// Скаляры strategy/final/cache/resolver — только state.vars (dns_*); см. MigrateDNSScalarsFromPersistedToSettingsVars + ApplyDNSVarsFromSettingsToModel.
 }
 
 func copyBoolPtr(p *bool) *bool {
@@ -353,21 +345,27 @@ func dnsRulesTextNeedsFill(s string) bool {
 }
 
 func fillDNSAuxiliaryIfEmpty(model *wizardmodels.WizardModel, cfg map[string]json.RawMessage, dnsObj map[string]interface{}, optsMap map[string]json.RawMessage) {
+	if model == nil || model.TemplateData == nil {
+		return
+	}
+	vd := model.TemplateData.Vars
 	hasOpts := optsMap != nil
 
 	if dnsRulesTextNeedsFill(model.DNSRulesText) {
 		model.DNSRulesText = pickDNSRulesText(hasOpts, optsMap, dnsObj)
 	}
-	if strings.TrimSpace(model.DNSFinal) == "" {
+	if !templateDeclaresDNSWizardVar(vd, wizardmodels.VarDNSFinal) && strings.TrimSpace(model.DNSFinal) == "" {
 		model.DNSFinal = pickDNSFinal(hasOpts, optsMap, dnsObj)
 	}
-	if strings.TrimSpace(model.DNSStrategy) == "" {
+	if !templateDeclaresDNSWizardVar(vd, wizardmodels.VarDNSStrategy) && strings.TrimSpace(model.DNSStrategy) == "" {
 		model.DNSStrategy = pickDNSStrategy(hasOpts, optsMap, dnsObj)
 	}
-	if model.DNSIndependentCache == nil {
+	if !templateDeclaresDNSWizardVar(vd, wizardmodels.VarDNSIndependentCache) && model.DNSIndependentCache == nil {
 		model.DNSIndependentCache = pickDNSIndependentCache(hasOpts, optsMap, dnsObj)
 	}
-	fillDefaultDomainResolverIfEmpty(model, cfg, optsMap)
+	if !templateDeclaresDNSWizardVar(vd, wizardmodels.VarDNSDefaultDomainResolver) {
+		fillDefaultDomainResolverIfEmpty(model, cfg, optsMap)
+	}
 }
 
 func pickDNSRulesText(hasOpts bool, optsMap map[string]json.RawMessage, dnsObj map[string]interface{}) string {

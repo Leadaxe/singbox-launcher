@@ -22,7 +22,8 @@ import (
 )
 
 func settingsVarVisible(v wizardtemplate.TemplateVar, goos string) bool {
-	if strings.EqualFold(strings.TrimSpace(v.WizardUI), "hidden") {
+	ui := strings.ToLower(strings.TrimSpace(v.WizardUI))
+	if ui == "hidden" || ui == "fix" {
 		return false
 	}
 	if len(v.Platforms) == 0 {
@@ -45,9 +46,9 @@ func enumListContains(opts []string, v string) bool {
 	return false
 }
 
-// clashSecretCustomVar — единственный поддерживаемый в Settings тип "custom": отдельная строка и кнопка перегенерации.
-func clashSecretCustomVar(v wizardtemplate.TemplateVar) bool {
-	return strings.EqualFold(strings.TrimSpace(v.Type), "custom") && v.Name == "clash_secret"
+// clashSecretSecretVar — единственный поддерживаемый в Settings тип "secret": отдельная строка и кнопка перегенерации.
+func clashSecretSecretVar(v wizardtemplate.TemplateVar) bool {
+	return strings.EqualFold(strings.TrimSpace(v.Type), "secret") && v.Name == "clash_secret"
 }
 
 // templateVarUsedInAnotherVarConditional: имя bool-переменной в if/if_or другой var — после её смены нужно пересобрать Settings.
@@ -159,7 +160,7 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 				box.Add(settingsSeparatorBlock())
 				continue
 			}
-			if strings.EqualFold(strings.TrimSpace(vd.Type), "custom") && !clashSecretCustomVar(vd) {
+			if strings.EqualFold(strings.TrimSpace(vd.Type), "secret") && !clashSecretSecretVar(vd) {
 				continue
 			}
 			title := wizardtemplate.VarDisplayTitle(vd)
@@ -188,8 +189,8 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 	raw := td.RawTemplate
 	vars := td.Vars
 
-	if clashSecretCustomVar(vd) {
-		return buildClashSecretCustomRow(presenter, model, td, vd, title, toolTip, viewMode, rowEnabled)
+	if clashSecretSecretVar(vd) {
+		return buildClashSecretSecretRow(presenter, model, td, vd, title, toolTip, viewMode, rowEnabled)
 	}
 
 	reset := func() {
@@ -255,7 +256,7 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		}
 		chk.SetChecked(checked)
 		prog = false
-		row := container.NewBorder(nil, nil, chk, resetBtn, cwc.Content)
+		row := container.NewBorder(nil, nil, cwc.CheckLeading, resetBtn, cwc.Content)
 		setVarFieldToolTip(toolTip, titleLbl, chk)
 		applySettingsRowDisabled(rowEnabled, resetBtn, chk)
 		return row
@@ -324,7 +325,7 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 	}
 }
 
-func buildClashSecretCustomRow(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, td *wizardtemplate.TemplateData, vd wizardtemplate.TemplateVar, title, toolTip string, viewMode bool, rowEnabled bool) fyne.CanvasObject {
+func buildClashSecretSecretRow(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, td *wizardtemplate.TemplateData, vd wizardtemplate.TemplateVar, title, toolTip string, viewMode bool, rowEnabled bool) fyne.CanvasObject {
 	name := vd.Name
 	st := model.SettingsVars
 	raw := td.RawTemplate
@@ -380,3 +381,4 @@ func buildClashSecretCustomRow(presenter *wizardpresentation.WizardPresenter, mo
 	applySettingsRowDisabled(rowEnabled, regenBtn, e)
 	return row
 }
+

@@ -283,7 +283,7 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 			}
 			parts = append(parts, fmt.Sprintf(`"password":%s`, string(passwordJSON)))
 		}
-		// server_ports (optional) - array of port ranges for sing-box 1.9+
+		// server_ports (optional): sing-box expects each entry as low:high; normalize bare ports from sources.
 		if serverPorts, ok := node.Outbound["server_ports"].([]string); ok && len(serverPorts) > 0 {
 			serverPorts = subscription.NormalizeHysteria2ServerPortsSlice(serverPorts)
 			serverPortsJSON, err := json.Marshal(serverPorts)

@@ -3,7 +3,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-Leadaxe%2Fsingbox--launcher-blue)](https://github.com/Leadaxe/singbox-launcher)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-blue)](https://golang.org/)
-[![Version](https://img.shields.io/badge/version-0.8.5-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
+[![Version](https://img.shields.io/badge/version-0.8.6-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
 
 Кроссплатформенный графический лаунчер для [sing-box](https://github.com/SagerNet/sing-box) - универсального прокси-клиента.
 
@@ -175,10 +175,10 @@ curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scrip
 **Установка конкретной версии:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- v0.8.5
+curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- v0.8.6
 ```
 
-Замените `v0.8.5` на нужную версию.
+Замените `v0.8.6` на нужную версию.
 
 #### Вариант 2: Ручная установка
 

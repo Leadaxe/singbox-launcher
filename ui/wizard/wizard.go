@@ -208,6 +208,7 @@ func initializeWizardContent(presenter *wizardpresentation.WizardPresenter, guiS
 	if len(model.DNSServers) == 0 {
 		wizardbusiness.ApplyWizardDNSTemplate(model)
 	}
+	wizardbusiness.ApplyDNSVarsFromSettingsToModel(model)
 
 	// Create tabs
 	tabs, rulesTabItem, previewTabItem := createWizardTabs(presenter, guiState)

@@ -5,20 +5,28 @@ import (
 	"strings"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 )
+
+// checkLeadingOverlap — насколько уменьшаем заявленную ширину пустой галки (см. trailingShrinkLayout).
+const checkLeadingOverlap float32 = 15
 
 // CheckWithContent groups an empty-label Check and a content area that toggles
 // the check on tap and mirrors hover onto the check (so the row reads as one control).
 //
 // Typical layout:
 //
-//	container.NewBorder(nil, nil, c.Check, trailing, c.Content)
+//	container.NewBorder(nil, nil, c.CheckLeading, trailing, c.Content)
+//
+// CheckLeading — та же галка в контейнере с trailingShrinkLayout (заявленная ширина меньше, правый край
+// может заходить на Content). Disable/SetChecked — только на поле Check.
 type CheckWithContent struct {
-	Check   *widget.Check
-	Content fyne.CanvasObject
+	Check        *widget.Check
+	Content      fyne.CanvasObject
+	CheckLeading fyne.CanvasObject
 }
 
 // CheckWithContentConfig configures NewCheckWithContent.
@@ -39,7 +47,46 @@ func NewCheckWithContent(onChanged func(bool), content fyne.CanvasObject, cfg Ch
 	}
 	ch := widget.NewCheck("", onChanged)
 	wrapped := newCheckContentWrap(ch, content, strings.TrimSpace(cfg.ContentToolTip))
-	return &CheckWithContent{Check: ch, Content: wrapped}
+	checkLeading := CheckLeadingWrap(ch)
+
+	return &CheckWithContent{Check: ch, Content: wrapped, CheckLeading: checkLeading}
+}
+
+// CheckLeadingWrap оборачивает пустую галку так же, как поле CheckLeading у CheckWithContent.
+func CheckLeadingWrap(ch *widget.Check) fyne.CanvasObject {
+	if ch == nil {
+		return nil
+	}
+	return container.New(trailingShrinkLayout{overlap: checkLeadingOverlap}, ch)
+}
+
+// trailingShrinkLayout: MinSize по ширине = child.MinSize().Width − overlap; в Layout child получает полную ширину
+// (может вылезать вправо под соседа).
+type trailingShrinkLayout struct {
+	overlap float32
+}
+
+func (l trailingShrinkLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	if len(objects) == 0 {
+		return fyne.NewSize(0, 0)
+	}
+	ms := objects[0].MinSize()
+	w := ms.Width - l.overlap
+	if w < 1 {
+		w = 1
+	}
+	return fyne.NewSize(w, ms.Height)
+}
+
+func (l trailingShrinkLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	if len(objects) == 0 {
+		return
+	}
+	ch := objects[0]
+	ms := ch.MinSize()
+	h := fyne.Max(ms.Height, size.Height)
+	ch.Resize(fyne.NewSize(ms.Width, h))
+	ch.Move(fyne.NewPos(0, (size.Height-h)/2))
 }
 
 // --- internal wrap ---
