@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -161,7 +162,7 @@ func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command s
 		msgEntry.Wrapping = fyne.TextWrapWord
 		msgEntry.SetMinRowsVisible(10)
 		msgScroll := container.NewScroll(msgEntry)
-		msgScroll.SetMinSize(fyne.NewSize(780, 280))
+		msgScroll.SetMinSize(fyne.NewSize(520, 220))
 		mainContent.Add(msgScroll)
 
 		// Selectable command line and Copy button
@@ -182,12 +183,17 @@ func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command s
 			}
 		})
 		copyBtn.Importance = widget.LowImportance
-		cmdRow := container.NewBorder(nil, nil, nil, copyBtn, entry)
+		cmdRow := container.NewVBox(
+			entry,
+			container.NewHBox(layout.NewSpacer(), copyBtn),
+		)
 		mainContent.Add(cmdRow)
+		// Reserve extra vertical space so the bottom dialog bar never overlaps the command row.
+		bottomSpacer := canvas.NewRectangle(color.Transparent)
+		bottomSpacer.SetMinSize(fyne.NewSize(1, 8))
+		mainContent.Add(bottomSpacer)
 
-		d := NewCustom(title, mainContent, nil, locale.T("dialog.ok"), window)
-		// Force a readable default window size for long Linux capability messages.
-		d.Resize(fyne.NewSize(860, 460))
+		d := dialog.NewCustom(title, locale.T("dialog.ok"), mainContent, window)
 		d.Show()
 	})
 }
