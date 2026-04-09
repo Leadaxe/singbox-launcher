@@ -2,6 +2,7 @@ package dialogs
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"image/color"
@@ -152,18 +153,32 @@ func ShowError(window fyne.Window, err error) {
 func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command string) {
 	fyne.Do(func() {
 		mainContent := container.NewVBox()
-		msgLabel := widget.NewLabel(message)
-		msgLabel.Wrapping = fyne.TextWrapWord
-		mainContent.Add(msgLabel)
+
+		// Use selectable multiline text so users can copy the full error details.
+		msgEntry := widget.NewMultiLineEntry()
+		msgEntry.SetText(message)
+		msgEntry.Disable()
+		msgEntry.Wrapping = fyne.TextWrapWord
+		msgEntry.SetMinRowsVisible(10)
+		msgScroll := container.NewScroll(msgEntry)
+		msgScroll.SetMinSize(fyne.NewSize(780, 280))
+		mainContent.Add(msgScroll)
 
 		// Selectable command line and Copy button
 		entry := widget.NewEntry()
 		entry.SetText(command)
 		entry.Disable()
 		entry.Wrapping = fyne.TextWrapOff
+		entry.SetMinRowsVisible(1)
 		copyBtn := widget.NewButtonWithIcon(locale.T("dialog.copy"), theme.ContentCopyIcon(), func() {
-			if command != "" {
-				fyne.CurrentApp().Clipboard().SetContent(command)
+			fullText := message
+			if command != "" && fullText != "" && !strings.Contains(fullText, command) {
+				fullText += "\n\n" + command
+			} else if fullText == "" {
+				fullText = command
+			}
+			if fullText != "" {
+				fyne.CurrentApp().Clipboard().SetContent(fullText)
 			}
 		})
 		copyBtn.Importance = widget.LowImportance
@@ -171,6 +186,8 @@ func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command s
 		mainContent.Add(cmdRow)
 
 		d := NewCustom(title, mainContent, nil, locale.T("dialog.ok"), window)
+		// Force a readable default window size for long Linux capability messages.
+		d.Resize(fyne.NewSize(860, 460))
 		d.Show()
 	})
 }

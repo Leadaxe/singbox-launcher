@@ -260,7 +260,7 @@
 
   "wizard.source.label_url": "URL подписки или прямые ссылки:",
   "wizard.source.placeholder_url": "https://ваш-url-подписки",
-  "wizard.source.hint": "Поддерживаются URL подписок (http/https) или прямые ссылки (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://). Для нескольких ссылок — по одной на строку.",
+  "wizard.source.hint": "Поддерживаются URL подписок (http/https) или прямые ссылки (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://). Для нескольких ссылок — по одной на строку.",
   "wizard.source.button_add": "Добавить",
   "wizard.source.button_get_free": "Бесплатный VPN!",
   "wizard.source.label_sources": "Источники",

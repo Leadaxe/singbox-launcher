@@ -260,7 +260,7 @@
 
   "wizard.source.label_url": "Subscription URL or Direct Links:",
   "wizard.source.placeholder_url": "https://your-subscription-url-here",
-  "wizard.source.hint": "Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://). For multiple links, use a new line for each.",
+  "wizard.source.hint": "Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://). For multiple links, use a new line for each.",
   "wizard.source.button_add": "Add",
   "wizard.source.button_get_free": "Get free VPN!",
   "wizard.source.label_sources": "Sources",
