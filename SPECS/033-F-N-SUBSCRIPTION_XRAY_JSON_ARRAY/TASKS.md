@@ -1,36 +1,37 @@
 # TASKS: 033 — SUBSCRIPTION_XRAY_JSON_ARRAY
 
-## Этап 0 — согласование с 016 (референс)
+## Этап 0 — декодер и ветка массива (MVP)
 
-- [ ] **016** закрыта без кода: правку `decoder.go` и ветку `[` делать **в рамках 033** (см. **016-F-C IMPLEMENTATION_REPORT**).
-- [ ] Порядок: сначала общий JSON-массив, внутри — классификатор sing-box vs Xray.
+- [x] **016** без кода: правку `decoder.go` (тело `[` + валидный JSON-массив не отклонять) и ветку загрузчика/визарда делать **в рамках 033** (см. **016-F-C IMPLEMENTATION_REPORT**).
+- [x] **MVP:** обрабатывать только **Xray**-элементы массива; элементы в стиле sing-box (016) — пропуск + `debuglog`, реализация 016 — **follow-up**.
 
 ## Этап 1 — модель и генерация
 
-- [ ] Расширить `configtypes.ParsedNode` (или согласованную структуру) полями для **jump** (SOCKS) при наличии цепочки.
-- [ ] Добавить в `GenerateNodeJSON` (или вспомогательную функцию, вызываемую из `GenerateOutboundsFromParserConfig`) поддержку **`detour`** и при `jump` — **две** JSON-строки в правильном порядке.
-- [ ] Убедиться, что селекторы перечисляют только теги **основных** нод (jump не дублирует строки в списке серверов Clash API — уточнить по текущему коду отображения).
+- [x] Расширить `configtypes.ParsedNode` (или согласованную структуру) полями для **jump** (SOCKS) при наличии цепочки.
+- [x] Добавить в `GenerateNodeJSON` (или вспомогательную функцию, вызываемую из `GenerateOutboundsFromParserConfig`) поддержку **`detour`** и при `jump` — **две** JSON-строки в правильном порядке.
+- [x] Селекторы / списки: одна запись `ParsedNode` на логическую ноду; jump не добавляет вторую строку в список серверов (только второй outbound в JSON).
 
 ## Этап 2 — парсер Xray элемента
 
-- [ ] Реализовать разбор одного элемента массива: `outbounds`, индекс по `tag`, выбор основного VLESS по **PLAN §3**.
-- [ ] Реализовать извлечение SOCKS jump по `dialerProxy` и маппинг в sing-box `socks` outbound map.
-- [ ] Реализовать конвертацию VLESS (`vnext`, `streamSettings`, reality) → поля, совместимые с `GenerateNodeJSON`.
+- [x] Реализовать разбор одного элемента массива: `outbounds`, индекс по `tag`, выбор основного VLESS по **PLAN §3**.
+- [x] Реализовать извлечение SOCKS jump по `dialerProxy` и маппинг в sing-box `socks` outbound map; **без** `username`/`password`, если в Xray нет пользователя.
+- [x] При отсутствии outbound с тегом `dialerProxy` или при типе не SOCKS: **пропуск ноды для этого элемента** + **`WarnLog`** (SPEC §2.4).
+- [x] Реализовать конвертацию VLESS (`vnext`, `streamSettings`, reality) → поля, совместимые с `GenerateNodeJSON`.
 
 ## Этап 3 — интеграция подписки
 
-- [ ] Подключить парсер в `LoadNodesFromSource` при теле `[...]` после декодера.
-- [ ] Подключить ту же ветку в `ui/wizard/business/parser.go` (CheckURL, подсчёт нод).
-- [ ] Применить `MakeTagUnique`, TagPrefix/Postfix/Mask, `MaxNodesPerSubscription`, Skip — как у обычных подписок.
+- [x] Подключить парсер в `LoadNodesFromSource` при теле `[...]` после декодера.
+- [x] Просмотр источников визарда: `ui/wizard/tabs/source_tab.go` — `fetchAndParseSource` (тот же сценарий, что превью по URL).
+- [x] Применить `MakeTagUnique`, TagPrefix/Postfix/Mask, `MaxNodesPerSubscription`, Skip — как у обычных подписок (`applyTagsToXrayNode`).
 
 ## Этап 4 — Share URI и границы
 
-- [ ] Определить поведение «Копировать ссылку» для chained-нод: `ErrShareURINotSupported` или документированное ограничение.
-- [ ] При необходимости обновить `share_uri_encode.go` / тесты на явный отказ.
+- [x] «Копировать ссылку»: outbound с **`detour`** → `ErrShareURINotSupported` (`ShareURIFromOutbound`).
+- [x] Тест на явный отказ в `share_uri_encode_test.go`.
 
 ## Этап 5 — тесты и документация
 
-- [ ] Юнит-тесты: анонимизированный JSON-массив (≥2 элемента, разные jump); проверка наличия `detour` и разных SOCKS `server`.
-- [ ] `go test ./...`, `go vet ./...`, `go build ./...`.
-- [ ] Обновить `docs/ParserConfig.md`, `docs/release_notes/upcoming.md`.
-- [ ] Заполнить `IMPLEMENTATION_REPORT.md` по закрытию задачи.
+- [x] Юнит-тесты: `xray_json_array_test.go`, `detour` в `generator_test.go`, decoder, share URI.
+- [x] `go test`, `go vet`, `go build` (проверено в сессии).
+- [x] Обновить `docs/ParserConfig.md`, `docs/release_notes/upcoming.md`, пример `docs/examples/xray_subscription_array_sample.json`.
+- [x] `IMPLEMENTATION_REPORT.md`.

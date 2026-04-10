@@ -74,6 +74,20 @@ func TestShareURIFromOutbound_Selector(t *testing.T) {
 	}
 }
 
+func TestShareURIFromOutbound_DetourChain(t *testing.T) {
+	_, err := ShareURIFromOutbound(map[string]interface{}{
+		"type":        "vless",
+		"tag":         "main",
+		"detour":      "jump",
+		"server":      "example.com",
+		"server_port": 443,
+		"uuid":        "00000000-0000-0000-0000-000000000001",
+	})
+	if !errors.Is(err, ErrShareURINotSupported) {
+		t.Fatalf("want ErrShareURINotSupported, got %v", err)
+	}
+}
+
 func TestShareURIFromOutbound_Socks(t *testing.T) {
 	out := map[string]interface{}{
 		"type":        "socks",

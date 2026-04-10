@@ -23,6 +23,9 @@ func ShareURIFromOutbound(out map[string]interface{}) (string, error) {
 	if out == nil {
 		return "", fmt.Errorf("%w: nil outbound", ErrShareURINotSupported)
 	}
+	if d := strings.TrimSpace(mapGetString(out, "detour")); d != "" {
+		return "", fmt.Errorf("%w: outbound uses detour (chained)", ErrShareURINotSupported)
+	}
 	typ := strings.ToLower(strings.TrimSpace(mapGetString(out, "type")))
 	switch typ {
 	case "vless":

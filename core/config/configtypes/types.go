@@ -111,6 +111,18 @@ func (oc *OutboundConfig) GetWizardRequired() int {
 // UnsetSourceIndex means SourceIndex was not assigned; exclude_from_global must not apply.
 const UnsetSourceIndex = -1
 
+// ParsedJump is an optional first hop for Xray dialerProxy → sing-box detour (SOCKS, VLESS, …).
+// Scheme empty means "socks" (backward compatibility). UUID/Flow are set for vless/vmess hops when GenerateNodeJSON needs them.
+type ParsedJump struct {
+	Tag      string
+	Scheme   string // socks, vless, …
+	Server   string
+	Port     int
+	UUID     string
+	Flow     string
+	Outbound map[string]interface{}
+}
+
 // ParsedNode represents a parsed proxy node with all extracted information.
 // It contains protocol-specific fields (UUID, Flow, etc.) and the generated
 // outbound configuration ready for JSON serialization.
@@ -125,6 +137,8 @@ type ParsedNode struct {
 	Comment  string
 	Query    url.Values
 	Outbound map[string]interface{}
+	// Jump is set when the subscription node uses a chain (e.g. Xray dialerProxy → SOCKS before main outbound).
+	Jump *ParsedJump
 	// SourceIndex is the index into ParserConfig.proxies for this node; UnsetSourceIndex if unknown.
 	SourceIndex int
 }

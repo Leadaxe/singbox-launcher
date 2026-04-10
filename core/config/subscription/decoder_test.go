@@ -71,6 +71,16 @@ func TestDecodeSubscriptionContent(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:        "JSON array subscription (Xray-style)",
+			content:     []byte(`[ {"remarks":"a","outbounds":[]} ]`),
+			expectError: false,
+			checkResult: func(t *testing.T, decoded []byte) {
+				if !strings.HasPrefix(string(decoded), "[") {
+					t.Errorf("expected JSON array, got %q", string(decoded))
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {

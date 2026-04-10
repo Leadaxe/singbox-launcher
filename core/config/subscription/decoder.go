@@ -2,6 +2,7 @@ package subscription
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -71,8 +72,20 @@ func DecodeSubscriptionContent(content []byte) ([]byte, error) {
 		return decoded, nil
 	}
 
-	// Check if it's JSON configuration (not a subscription)
-	if strings.HasPrefix(contentStr, "{") || strings.HasPrefix(contentStr, "[") {
+	// JSON array of full configs (Xray-style subscription): pass through as subscription body.
+	if strings.HasPrefix(strings.TrimSpace(contentStr), "[") {
+		trimmed := strings.TrimSpace(contentStr)
+		if json.Valid([]byte(trimmed)) {
+			var elems []json.RawMessage
+			if err := json.Unmarshal([]byte(trimmed), &elems); err == nil {
+				debuglog.DebugLog("DecodeSubscriptionContent: JSON array subscription (%d element(s))", len(elems))
+				return []byte(trimmed), nil
+			}
+		}
+	}
+
+	// Single JSON object or invalid JSON array: not a supported subscription list
+	if strings.HasPrefix(strings.TrimSpace(contentStr), "{") || strings.HasPrefix(strings.TrimSpace(contentStr), "[") {
 		debuglog.DebugLog("DecodeSubscriptionContent: Content is JSON configuration, not a subscription list")
 		return nil, fmt.Errorf("subscription URL returned JSON configuration instead of subscription list (base64 or plain text links)")
 	}

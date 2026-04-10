@@ -107,57 +107,85 @@ func LoadNodesFromSource(
 						fmt.Sprintf("Parsing subscription %d/%d: %s", subscriptionIndex+1, totalSubscriptions, proxySource.Source))
 				}
 
-				// Parse subscription content line by line
+				// Parse subscription content: JSON array of Xray configs, or line-by-line URIs
 				parseStartTime := time.Now()
-				// Normalize line endings (handle \r\n, \r, \n)
 				contentStr := string(content)
 				contentStr = strings.ReplaceAll(contentStr, "\r\n", "\n")
 				contentStr = strings.ReplaceAll(contentStr, "\r", "\n")
-				subscriptionLines := strings.Split(contentStr, "\n")
-				debuglog.DebugLog("LoadNodesFromSource: Parsing subscription %d/%d: %d lines",
-					subscriptionIndex+1, totalSubscriptions, len(subscriptionLines))
+				contentStr = strings.TrimSpace(contentStr)
 
-				lineCount := 0
-				for _, subLine := range subscriptionLines {
-					subLine = NormalizeSubscriptionTextLine(subLine)
-					if subLine == "" {
-						continue
-					}
-					lineCount++
-
-					if nodesFromThisSource >= configtypes.MaxNodesPerSubscription {
-						skippedDueToLimit++
-						if skippedDueToLimit == 1 {
-							debuglog.DebugLog("LoadNodesFromSource: Reached limit of %d nodes for subscription %d/%d",
-								configtypes.MaxNodesPerSubscription, subscriptionIndex+1, totalSubscriptions)
-						}
-						continue
-					}
-
-					nodeStartTime := time.Now()
-					node, err := ParseNode(subLine, proxySource.Skip)
+				if IsXrayJSONArrayBody(contentStr) {
+					arrayNodes, err := ParseNodesFromXrayJSONArray(contentStr, proxySource.Skip)
 					if err != nil {
-						debuglog.DebugLog("LoadNodesFromSource: Failed to parse node %d from subscription %d/%d (took %v): %v",
-							lineCount, subscriptionIndex+1, totalSubscriptions, time.Since(nodeStartTime), err)
-						debuglog.WarnLog("Parser: Failed to parse node from subscription %s: %v", proxySource.Source, err)
-						continue
-					}
-
-					if node != nil {
-						// Apply prefix, postfix, or mask to tag if specified (with variable substitution)
-						node.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, proxySource.TagMask, nodesFromThisSource+1)
-						node.Tag = textnorm.NormalizeProxyDisplay(node.Tag)
-						node.Tag = MakeTagUnique(node.Tag, tagCounts, "Parser")
-						nodes = append(nodes, node)
-						nodesFromThisSource++
-						if nodesFromThisSource%50 == 0 {
-							debuglog.DebugLog("LoadNodesFromSource: Parsed %d nodes from subscription %d/%d (elapsed: %v)",
-								nodesFromThisSource, subscriptionIndex+1, totalSubscriptions, time.Since(parseStartTime))
+						debuglog.WarnLog("Parser: Xray JSON array subscription %s: %v", proxySource.Source, err)
+					} else {
+						debuglog.DebugLog("LoadNodesFromSource: Xray JSON array subscription %d/%d: %d node(s)",
+							subscriptionIndex+1, totalSubscriptions, len(arrayNodes))
+						nodeNum := 0
+						for _, node := range arrayNodes {
+							if nodesFromThisSource >= configtypes.MaxNodesPerSubscription {
+								skippedDueToLimit++
+								if skippedDueToLimit == 1 {
+									debuglog.DebugLog("LoadNodesFromSource: Reached limit of %d nodes for subscription %d/%d",
+										configtypes.MaxNodesPerSubscription, subscriptionIndex+1, totalSubscriptions)
+								}
+								continue
+							}
+							nodeNum++
+							applyTagsToXrayNode(node, proxySource, nodeNum, tagCounts)
+							nodes = append(nodes, node)
+							nodesFromThisSource++
 						}
 					}
+					debuglog.DebugLog("LoadNodesFromSource: Parsed subscription %d/%d: %d nodes in %v (Xray JSON array)",
+						subscriptionIndex+1, totalSubscriptions, nodesFromThisSource, time.Since(parseStartTime))
+				} else {
+					subscriptionLines := strings.Split(contentStr, "\n")
+					debuglog.DebugLog("LoadNodesFromSource: Parsing subscription %d/%d: %d lines",
+						subscriptionIndex+1, totalSubscriptions, len(subscriptionLines))
+
+					lineCount := 0
+					for _, subLine := range subscriptionLines {
+						subLine = NormalizeSubscriptionTextLine(subLine)
+						if subLine == "" {
+							continue
+						}
+						lineCount++
+
+						if nodesFromThisSource >= configtypes.MaxNodesPerSubscription {
+							skippedDueToLimit++
+							if skippedDueToLimit == 1 {
+								debuglog.DebugLog("LoadNodesFromSource: Reached limit of %d nodes for subscription %d/%d",
+									configtypes.MaxNodesPerSubscription, subscriptionIndex+1, totalSubscriptions)
+							}
+							continue
+						}
+
+						nodeStartTime := time.Now()
+						node, err := ParseNode(subLine, proxySource.Skip)
+						if err != nil {
+							debuglog.DebugLog("LoadNodesFromSource: Failed to parse node %d from subscription %d/%d (took %v): %v",
+								lineCount, subscriptionIndex+1, totalSubscriptions, time.Since(nodeStartTime), err)
+							debuglog.WarnLog("Parser: Failed to parse node from subscription %s: %v", proxySource.Source, err)
+							continue
+						}
+
+						if node != nil {
+							// Apply prefix, postfix, or mask to tag if specified (with variable substitution)
+							node.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, proxySource.TagMask, nodesFromThisSource+1)
+							node.Tag = textnorm.NormalizeProxyDisplay(node.Tag)
+							node.Tag = MakeTagUnique(node.Tag, tagCounts, "Parser")
+							nodes = append(nodes, node)
+							nodesFromThisSource++
+							if nodesFromThisSource%50 == 0 {
+								debuglog.DebugLog("LoadNodesFromSource: Parsed %d nodes from subscription %d/%d (elapsed: %v)",
+									nodesFromThisSource, subscriptionIndex+1, totalSubscriptions, time.Since(parseStartTime))
+							}
+						}
+					}
+					debuglog.DebugLog("LoadNodesFromSource: Parsed subscription %d/%d: %d nodes in %v (processed %d lines)",
+						subscriptionIndex+1, totalSubscriptions, nodesFromThisSource, time.Since(parseStartTime), lineCount)
 				}
-				debuglog.DebugLog("LoadNodesFromSource: Parsed subscription %d/%d: %d nodes in %v (processed %d lines)",
-					subscriptionIndex+1, totalSubscriptions, nodesFromThisSource, time.Since(parseStartTime), lineCount)
 			}
 		} else if IsDirectLink(proxySource.Source) {
 			// Legacy format: direct link in Source
@@ -252,6 +280,29 @@ func LoadNodesFromSource(
 	debuglog.DebugLog("LoadNodesFromSource: END source %d/%d (total duration: %v, nodes: %d)",
 		subscriptionIndex+1, totalSubscriptions, totalDuration, len(nodes))
 	return nodes, nil
+}
+
+// applyTagsToXrayNode applies tag_prefix/tag_postfix/tag_mask and MakeTagUnique to main and jump tags.
+func applyTagsToXrayNode(node *configtypes.ParsedNode, proxySource configtypes.ProxySource, nodeNum int, tagCounts map[string]int) {
+	if node.Jump != nil {
+		saved := node.Tag
+		node.Tag = node.Jump.Tag
+		node.Jump.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, proxySource.TagMask, nodeNum)
+		node.Tag = saved
+	}
+	node.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, proxySource.TagMask, nodeNum)
+	node.Tag = textnorm.NormalizeProxyDisplay(node.Tag)
+	node.Tag = MakeTagUnique(node.Tag, tagCounts, "Parser")
+	if node.Jump != nil {
+		node.Jump.Tag = textnorm.NormalizeProxyDisplay(node.Jump.Tag)
+		node.Jump.Tag = MakeTagUnique(node.Jump.Tag, tagCounts, "Parser")
+		if node.Jump.Outbound != nil {
+			node.Jump.Outbound["tag"] = node.Jump.Tag
+		}
+	}
+	if node.Outbound != nil {
+		node.Outbound["tag"] = node.Tag
+	}
 }
 
 // applyTagPrefixPostfix applies prefix and postfix to a node tag if specified in ProxySource.

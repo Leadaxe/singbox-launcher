@@ -85,8 +85,9 @@
 - **030** — баг в плане (B-N): WINDOWS_FOREGROUND_FOCUS_LOSS (Windows: периодический слёт фокуса ввода в других приложениях при работающем лаунчере; поиск причины и корреляция с UI/треем; **SPECS/030-B-N-WINDOWS_FOREGROUND_FOCUS_LOSS/SPEC.md**)
 - **031** — фича завершена (F-С): LINUX_SINGBOX_LOOKPATH (Linux: сначала `exec.LookPath("sing-box")`, иначе `<ExecDir>/bin/sing-box`; установка ядра из лаунчера — только в локальный `bin/`; **SPECS/031-F-С-LINUX_SINGBOX_LOOKPATH/SPEC.md**)
 - **032** — фича завершена (F-C): WIZARD_SETTINGS_TAB (вкладка **Settings**, **`vars`** в шаблоне и state, TUN macOS с **Rules** на **Settings**; **SPECS/032-F-C-WIZARD_SETTINGS_TAB/**)
-- **033** — фича в плане (F-N): SUBSCRIPTION_XRAY_JSON_ARRAY (подписка как JSON-массив **Xray/V2Ray** полных конфигов, `dialerProxy` + пер-серверный SOCKS → sing-box **`detour`**; **SPECS/033-F-N-SUBSCRIPTION_XRAY_JSON_ARRAY/SPEC.md**)
+- **033** — фича завершена (F-N): SUBSCRIPTION_XRAY_JSON_ARRAY (подписка как JSON-массив **Xray/V2Ray** полных конфигов, `remarks` → Label и slug-теги, `dialerProxy`/`dialer` + SOCKS → sing-box **`detour`**; **SPECS/033-F-N-SUBSCRIPTION_XRAY_JSON_ARRAY/**, **IMPLEMENTATION_REPORT.md**)
 - **034** — фича завершена (F-C): HTTP_ENV_PROXY (исходящие HTTP(S) через `HTTP_PROXY`/`HTTPS_PROXY`; единый клиент; маскировка паролей в ошибках; UI — `GetURLBytes`; **SPECS/034-F-C-HTTP_ENV_PROXY/SPEC.md**)
 - **035** — исследование завершено (Q-C): VLESS_SINGBOX_FLOW_FIELD (поле `flow` у VLESS outbound: исходники sing-box/sing-vmess, отсутствие требования явного ключа в JSON, откат эксперимента с `flow: ""`; **SPECS/035-Q-C-VLESS_SINGBOX_FLOW_FIELD/SPEC.md**, **IMPLEMENTATION_REPORT.md**)
+- **036** — фича завершена (F-C): XRAY_JUMP_ANY_PROTOCOL (Xray JSON-массив: hop **`socks`** или **`vless`** по `dialerProxy`; follow-up к **033**; **SPECS/036-F-C-XRAY_JUMP_ANY_PROTOCOL/**)
 
 Подробное описание каждой задачи — в SPEC.md соответствующей папки.

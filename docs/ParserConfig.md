@@ -4,6 +4,33 @@
 
 Парсер обновляет файл `bin/config.json`, загружая подписки (поддерживаются протоколы: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, WireGuard), фильтруя и группируя их в селекторы. Результат записывается в секции между маркерами `/** @ParserSTART */` и `/** @ParserEND */` (outbounds), а узлы WireGuard — между `/** @ParserSTART_E */` и `/** @ParserEND_E */` (endpoints). Секция **endpoints** (WireGuard) поддерживается в sing-box начиная с версии **1.11**.
 
+### JSON-массив полных конфигов Xray/V2Ray
+
+Если тело подписки (plain или после декодирования Base64) — **валидный JSON-массив** `[...]`, а элементы похожи на Xray (`outbounds[].protocol`, VLESS с `settings.vnext`), лаунчер обрабатывает его как подписку: из **каждого элемента** извлекается **одна** логическая нода. Для разбора используются поля **`outbounds`** и (при наличии) **`remarks`**; корневые **`dns`**, **`routing`**, **`inbounds`** и прочее из элемента **не** подмешиваются в общий конфиг лаунчера.
+
+**Как отличить Xray-массив от sing-box-массива (016, не реализовано)**
+
+| Шаг | Эвристика |
+|-----|-----------|
+| Декодер | После trim строка начинается с **`[`**, **`json.Valid`**, успешный `json.Unmarshal` в массив — тело не отвергается как «не подписка» (`DecodeSubscriptionContent`). |
+| Вход в парсер | **`IsXrayJSONArrayBody`**: то же — префикс `[`, валидный JSON, массив объектов. |
+| Элемент массива | **`xrayElementHasProtocolOutbounds`**: в **`outbounds`** есть хотя бы один объект с полем **`protocol`** (строка) — признак **Xray-диалекта**. Элементы только с sing-box **`type`** без **`protocol`** не считаются Xray для этой ветки и **пропускаются** с `debuglog` (ожидается follow-up **016**). |
+| Нода | Среди VLESS с **`settings.vnext`** выбирается основной outbound (`pickMainXrayVLESS`); при **`dialerProxy`** hop разбирается как **`socks`** или **`vless`** (`xrayBuildJumpFromOutbound`); иные `protocol` у hop — пропуск элемента (`WarnLog`). |
+
+**`remarks` и теги sing-box**
+
+- В **`ParsedNode.Label`** попадает полный текст **`remarks`** (если пусто — запасной вариант: тег основного Xray-outbound или `xray-{индекс}`).
+- **Теги** генерируемых outbound в sing-box: если **`remarks`** непустой, из него строится **slug** (буквы/цифры в любой скрипте, **символы региональных индикаторов** для UTF-флагов, нормализация через `textnorm`, обрезка длины; прочие знаки и emoji кроме флагов в slug не входят). **Основной** outbound получает тег **`{slug}`**; при цепочке через SOCKS второй outbound (jump) — **`{slug}_jump_server`**, а у основного в JSON задаётся **`detour`** на этот тег. Если **`remarks`** пустой — **`xray-{индекс}`** и **`xray-{индекс}_jump_server`**. Далее, как у обычных подписок, применяются **`tag_prefix` / `tag_postfix` / `tag_mask`**, **`textnorm.NormalizeProxyDisplay`** и **`MakeTagUnique`** (в т.ч. для jump).
+- В сгенерированном фрагменте `config.json` над outbound по-прежнему пишется **комментарий** `// …` из **`Label`** (полный `remarks`), т.к. у sing-box нет поля «remarks» в outbound.
+
+**Цепочка `dialerProxy`**
+
+При **`streamSettings.sockopt.dialerProxy`** (или **`dialer`**) → outbound с тем же **`tag`**: поддерживаются hop’ы **`protocol: socks`** и **`protocol: vless`**; в `config.json` сначала генерируется outbound hop’а, затем основной (VLESS и т.д.) с полем **`detour`** на тег hop’а. Если outbound по тегу не найден или **`protocol`** hop’а не **socks** / не **vless** — элемент массива **не** даёт ноды (`WarnLog`). Детали и расширение на другие типы: **`SPECS/036-F-C-XRAY_JUMP_ANY_PROTOCOL/SPEC.md`**. Массив конфигов **только в формате sing-box** (`type` в outbounds без Xray-`protocol`) в MVP **не** разбирается (follow-up **016**).
+
+**Пример и код**
+
+Структура как у публичных Xray-подписок (**`dns`**, **`inbounds`**, **`log`**, **`mux`**, **`tcpSettings`**, **`routing`**, **`freedom`/`blackhole`**), с вымышленными данными: **`docs/examples/xray_subscription_array_sample.json`**. Тот же сценарий в тестах: **`core/config/subscription/testdata/xray_provider_anon.json`** (`go:embed` в **`xray_json_array_test.go`**). Реализация: **`xray_json_array.go`**, **`xray_outbound_convert.go`**, **`decoder.go`** (`DecodeSubscriptionContent`), **`source_loader.go`** (`LoadNodesFromSource`, **`applyTagsToXrayNode`**), визард: **`ui/wizard/tabs/source_tab.go`** (`fetchAndParseSource`).
+
 ## Документы и исходный код парсера URI
 
 | Документ / место | Содержание |
@@ -11,7 +38,9 @@
 | **Этот файл** (`docs/ParserConfig.md`) | Форматы прямых ссылок в `connections`, Share URI, структура ParserConfig, пайплайн обновления. |
 | **`SPECS/023-F-C-SUBSCRIPTION_TRANSPORT_VLESS_TROJAN/SUBSCRIPTION_PARAMS_REPORT.md`** | Таблицы: query VLESS/Trojan → поля sing-box; примеры из публичных подписок; ключи query. |
 | **`SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY/SPEC.md`** | Расширения совместимости (029): `type=httpupgrade`, `peer`, `obfsParam`, VMess legacy / `httpupgrade` / `h2`, Hysteria2 TLS; сверка со схемой sing-box. |
-| Пакет **`core/config/subscription`** | `ParseNode`, `buildOutbound` — `node_parser.go`; VLESS/Trojan transport+TLS — `node_parser_transport.go`; VMess — `node_parser_vmess.go` (`parseVMessDecoded`, `parseVMessJSON`, `parseVMessLegacyCleartext`); Hysteria2 — `node_parser_hysteria2.go`; WireGuard / SSH — `node_parser_wireguard.go`, `node_parser_ssh.go`; share URI — `share_uri_encode.go`. |
+| **`SPECS/033-F-N-SUBSCRIPTION_XRAY_JSON_ARRAY/SPEC.md`** | Подписка как JSON-массив полных конфигов Xray: `remarks`, slug-теги, `dialerProxy` → `detour`, границы MVP (sing-box-массив — **016**, follow-up). |
+| **`SPECS/036-F-C-XRAY_JUMP_ANY_PROTOCOL/SPEC.md`** | `dialerProxy`: hop **SOCKS** или **VLESS**; прочие протоколы — по мере маппинга (**завершено** по объёму SPEC). |
+| Пакет **`core/config/subscription`** | `ParseNode`, `buildOutbound` — `node_parser.go`; VLESS/Trojan transport+TLS — `node_parser_transport.go`; VMess — `node_parser_vmess.go` (`parseVMessDecoded`, `parseVMessJSON`, `parseVMessLegacyCleartext`); Hysteria2 — `node_parser_hysteria2.go`; WireGuard / SSH — `node_parser_wireguard.go`, `node_parser_ssh.go`; share URI — `share_uri_encode.go`; JSON-массив Xray — `xray_json_array.go`, `xray_outbound_convert.go`. |
 
 ## Share URI из outbound и WireGuard endpoint (обратно к ссылке)
 
@@ -50,7 +79,7 @@
 | `ssh` | `ssh://` | **Нет** кодирования inline `private_key` в URI; путь к ключу и прочие поля — в query, как в документации SSH URI |
 | `wireguard` | `wireguard://` | Обычно узел только в `endpoints[]`; формат и query — раздел **WireGuard** ниже. **Один URI ↔ один удалённый peer:** при нескольких элементах в `peers[]` кодирование не поддерживается (`ErrShareURINotSupported`). |
 
-**Не кодируются в один share URI:** `selector`, `urltest`, `direct`, `block`, `dns`, произвольные служебные типы; WireGuard с **несколькими** `peers`.
+**Не кодируются в один share URI:** `selector`, `urltest`, `direct`, `block`, `dns`, произвольные служебные типы; WireGuard с **несколькими** `peers`; outbound с непустым **`detour`** (цепочка через jump из подписки Xray JSON).
 
 ### GUI
 
@@ -242,7 +271,7 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 
 | Поле          | Тип      | Обязательное | Описание |
 |---------------|----------|--------------|----------|
-| `source`      | string   | Да           | URL подписки (поддерживаются протоколы: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, WireGuard). Допускаются Base64 и plain-текст. |
+| `source`      | string   | Да           | URL подписки (поддерживаются протоколы: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, WireGuard). Допускаются Base64 и plain-текст; также **JSON-массив** полных конфигов Xray (`[ {...}, ... ]`), см. выше. |
 | `connections` | array    | Нет          | Массив прямых ссылок (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, socks5:// или socks://, wireguard://). Можно комбинировать с подписками. Узлы WireGuard попадают в секцию `endpoints` конфига (требуется sing-box 1.11+). Подробнее о форматах URI см. раздел [Форматы URI для прямых ссылок](#форматы-uri-для-прямых-ссылок). |
 | `skip`        | array    | Нет          | Список фильтров. Если хотя бы один совпал — узел пропускается. |
 | `tag_prefix`  | string   | Нет          | Префикс, добавляемый ко всем тегам узлов из этого источника (версия 4). Применяется перед оригинальным тегом. Поддерживает переменные: `{$tag}`, `{$scheme}`, `{$protocol}`, `{$server}`, `{$port}`, `{$label}`, `{$comment}`, `{$num}`. Игнорируется, если указан `tag_mask`. |

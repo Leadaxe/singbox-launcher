@@ -1,0 +1,174 @@
+[
+  {
+    "dns": {
+      "hosts": {
+        "dns.example.invalid": ["198.51.100.1", "198.51.100.2"]
+      },
+      "servers": ["8.8.8.8"]
+    },
+    "inbounds": [
+      {
+        "listen": "127.0.0.1",
+        "port": 10808,
+        "protocol": "socks",
+        "settings": { "auth": "noauth", "udp": true, "userLevel": 8 },
+        "sniffing": {
+          "destOverride": ["http", "tls"],
+          "enabled": true,
+          "routeOnly": false
+        },
+        "tag": "socks"
+      },
+      {
+        "listen": "127.0.0.1",
+        "port": 10809,
+        "protocol": "http",
+        "settings": { "userLevel": 8 },
+        "tag": "http"
+      }
+    ],
+    "log": { "loglevel": "info" },
+    "outbounds": [
+      {
+        "mux": { "concurrency": -1, "enabled": false },
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "exit-node-a.example.invalid",
+              "port": 443,
+              "users": [
+                {
+                  "encryption": "none",
+                  "flow": "xtls-rprx-vision",
+                  "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                  "level": 8
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "reality",
+          "realitySettings": {
+            "allowInsecure": false,
+            "fingerprint": "random",
+            "publicKey": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+            "serverName": "sni.example.invalid",
+            "shortId": "0123456789abcdef",
+            "show": false
+          },
+          "tcpSettings": { "header": { "type": "none" } },
+          "sockopt": { "dialerProxy": "ru-upstream" }
+        },
+        "tag": "proxy"
+      },
+      {
+        "protocol": "socks",
+        "settings": {
+          "servers": [
+            {
+              "address": "198.51.100.10",
+              "port": 61000,
+              "users": [{ "user": "anonuser", "pass": "anonpass" }]
+            }
+          ]
+        },
+        "tag": "ru-upstream"
+      },
+      {
+        "protocol": "freedom",
+        "settings": { "domainStrategy": "UseIP" },
+        "tag": "direct"
+      },
+      {
+        "protocol": "blackhole",
+        "settings": { "response": { "type": "http" } },
+        "tag": "block"
+      }
+    ],
+    "remarks": "🇱🇻 Sample-A | fixture",
+    "routing": {
+      "domainStrategy": "AsIs",
+      "rules": [
+        {
+          "ip": ["8.8.8.8"],
+          "outboundTag": "proxy",
+          "port": "53",
+          "type": "field"
+        },
+        {
+          "ip": ["223.5.5.5"],
+          "outboundTag": "direct",
+          "port": "53",
+          "type": "field"
+        }
+      ]
+    }
+  },
+  {
+    "dns": {
+      "hosts": { "dns.example.invalid": ["198.51.100.3"] },
+      "servers": ["8.8.8.8"]
+    },
+    "inbounds": [
+      {
+        "listen": "127.0.0.1",
+        "port": 10808,
+        "protocol": "socks",
+        "settings": { "auth": "noauth", "udp": true, "userLevel": 8 },
+        "tag": "socks"
+      }
+    ],
+    "log": { "loglevel": "info" },
+    "outbounds": [
+      {
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "exit-node-b.example.invalid",
+              "port": 443,
+              "users": [
+                {
+                  "encryption": "none",
+                  "flow": "xtls-rprx-vision",
+                  "id": "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+                  "level": 8
+                }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "reality",
+          "realitySettings": {
+            "fingerprint": "chrome",
+            "publicKey": "YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY",
+            "serverName": "sni.example.invalid",
+            "shortId": "fedcba9876543210"
+          },
+          "tcpSettings": { "header": { "type": "none" } },
+          "sockopt": { "dialerProxy": "ru-upstream" }
+        },
+        "tag": "proxy"
+      },
+      {
+        "protocol": "socks",
+        "settings": {
+          "servers": [{ "address": "198.51.100.11", "port": 61001 }]
+        },
+        "tag": "ru-upstream"
+      },
+      {
+        "protocol": "freedom",
+        "settings": { "domainStrategy": "UseIP" },
+        "tag": "direct"
+      }
+    ],
+    "remarks": "🇫🇷 Sample-B | anonymous jump",
+    "routing": { "domainStrategy": "AsIs", "rules": [] }
+  }
+]

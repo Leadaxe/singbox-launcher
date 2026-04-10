@@ -495,6 +495,26 @@ func fetchAndParseSource(sourceURL string, skip []map[string]string) ([]*config.
 		contentStr := string(content)
 		contentStr = strings.ReplaceAll(contentStr, "\r\n", "\n")
 		contentStr = strings.ReplaceAll(contentStr, "\r", "\n")
+		contentStr = strings.TrimSpace(contentStr)
+		if subscription.IsXrayJSONArrayBody(contentStr) {
+			arrayNodes, err := subscription.ParseNodesFromXrayJSONArray(contentStr, skip)
+			if err != nil {
+				return nil, err
+			}
+			for _, node := range arrayNodes {
+				if len(nodes) >= configtypes.MaxNodesPerSubscription {
+					debuglog.WarnLog("source_tab: fetchAndParseSource truncated at %d nodes (same limit as subscription loader)",
+						configtypes.MaxNodesPerSubscription)
+					break
+				}
+				if node.Jump != nil {
+					node.Jump.Tag = subscription.MakeTagUnique(node.Jump.Tag, tagCounts, "ConfigWizard")
+				}
+				node.Tag = subscription.MakeTagUnique(node.Tag, tagCounts, "ConfigWizard")
+				nodes = append(nodes, node)
+			}
+			return nodes, nil
+		}
 		for _, line := range strings.Split(contentStr, "\n") {
 			line = subscription.NormalizeSubscriptionTextLine(line)
 			if line == "" {

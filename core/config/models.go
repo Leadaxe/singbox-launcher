@@ -10,6 +10,7 @@ type ProxySource = configtypes.ProxySource
 type OutboundConfig = configtypes.OutboundConfig
 type WizardConfig = configtypes.WizardConfig
 type ParsedNode = configtypes.ParsedNode
+type ParsedJump = configtypes.ParsedJump
 
 const ParserConfigVersion = configtypes.ParserConfigVersion
 const SubscriptionUserAgent = configtypes.SubscriptionUserAgent

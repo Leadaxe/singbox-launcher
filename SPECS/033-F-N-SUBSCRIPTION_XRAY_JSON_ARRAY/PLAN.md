@@ -2,20 +2,19 @@
 
 ## 1. Связь с 016
 
-- **016-F-C-SUBSCRIPTION_JSON_ARRAY** закрыта **без реализации**; SPEC/PLAN остаются референсом: общая ветка «тело с `[` не отклонять в декодере; загрузчик различает строки URI vs JSON-массив».
-- **033** вводит реализацию и добавляет **подтип** элемента массива: если outbounds в форме **Xray** (`protocol`, `vnext`, …), **нормализовать** в ноды sing-box и обработать **dialerProxy**.
+- **016-F-C-SUBSCRIPTION_JSON_ARRAY** закрыта **без реализации**; SPEC/PLAN 016 остаются референсом для будущего **follow-up**: разбор массива конфигов **sing-box**.
+- **033 (MVP):** изменение `decoder.go` — тело с **`[`** и валидным JSON-массивом **не** отклонять; в `LoadNodesFromSource` / визард — ветка «массив конфигов» → разбор **только Xray-элементов** (см. §2). Разбор sing-box-массива по 016 **не** входит в MVP 033.
 
-В реализации **033** включить изменение `decoder.go` и ветвление в `LoadNodesFromSource` / визард по **016 PLAN §1.1–2.1** там, где это ещё не сделано, и реализовать разбор sing-box-массива (`type` в outbounds), как в **016 TASKS** (функция уровня `ParseNodesFromJSONArrayConfigs` или общий парсер с классификатором).
-
-## 2. Классификация элемента массива
+## 2. Классификация элемента массива (MVP)
 
 После `json.Unmarshal` в `[]interface{}` или `[]json.RawMessage` для каждого элемента:
 
 1. Привести к `map[string]interface{}`.
 2. Взять `outbounds` — только массив.
-3. Если любой outbound содержит **`protocol`** (строка) → трактовать блок как **Xray** и вызвать `parseXraySubscriptionConfigElement` (имя условное).
-4. Иначе если outbound содержит **`type`** (sing-box) → делегировать в логику разбора по **016** (референс: `ParseNodesFromJSONArrayConfigs` / эквивалент в коде 033).
-5. Иначе — пропустить элемент с предупреждением в `debuglog`.
+3. Если элемент удовлетворяет эвристике **Xray** из SPEC §2.2 (например, в outbounds есть **`protocol`** как строка и кандидат на извлечение ноды) → вызвать `parseXraySubscriptionConfigElement` (имя условное).
+4. Иначе — **пропустить элемент** с записью в `debuglog` (в т.ч. «чистый» sing-box из 016 — до реализации follow-up).
+
+**Follow-up (016):** отдельная ветка для элементов с sing-box `type` в outbounds без Xray-диалекта.
 
 ## 3. Выбор основного outbound (Xray)
 
@@ -30,11 +29,11 @@
 
 ## 4. Разбор jump
 
-- Прочитать строку `dialerProxy` (или поле Xray, фактически используемое в образце).
+- Прочитать строку `dialerProxy` (или поле Xray, фактически используемое в образце; в PLAN §3 учитывать и **`dialer`**, если встретится).
 - Найти outbound с `tag == dialerProxy` и `protocol == socks`.
-- Извлечь `settings.servers[0]`: `address`, `port`, `users[0]` → user/pass для sing-box `socks` (`username`, `password`, `version: "5"`).
+- Извлечь `settings.servers[0]`: `address`, `port`; учётные данные — из `users[0]` **если есть**, иначе SOCKS **без** `username`/`password` (анонимный SOCKS допустим).
 
-Если jump не найден или тип не SOCKS — **PLAN B** в TASKS: либо ошибка на элемент, либо нода без цепочки + `WarnLog` (выбрать одно).
+**Если** outbound с тегом не найден **или** `protocol != socks`: **не создавать ноду из этого элемента** (пропуск элемента), **`WarnLog`** с понятным контекстом (тег, индекс элемента).
 
 ## 5. Маппинг VLESS Xray → sing-box outbound map
 
@@ -67,8 +66,8 @@
 ## 7. Уникальность тегов
 
 - Базовые теги из Xray (`proxy`, `ru-upstream`) часто **совпадают** между элементами массива.
-- Перед/после `MakeTagUnique`: формировать стабильные теги вида `<prefix>-jump` / `<prefix>-main`, где `prefix` из санитизированного `remarks` или индекса элемента `i` (например `sub0-proxy`, `sub0-jump`).
-- Документировать в коде, что **detour** ссылается на **нормализованный** jump-тег после уникализации.
+- Базовые теги sing-box до префикса: из **slug** непустого **`remarks`** → основной **`{slug}`**, jump **`{slug}_jump_server`**; при пустом `remarks` → **`xray-{i}`** / **`xray-{i}_jump_server`**. Затем **`tag_prefix` / `tag_postfix` / `tag_mask`**, **`textnorm.NormalizeProxyDisplay`**, **`MakeTagUnique`** для main и jump (как в **`applyTagsToXrayNode`**).
+- Поле **`detour`** в основном outbound ссылается на **итоговый** (уникализированный) тег jump.
 
 ## 8. Файлы (ориентировочно)
 
@@ -78,7 +77,7 @@
 | `core/config/subscription/source_loader.go` | Ветка: массив → парсер нод |
 | `core/config/configtypes/types.go` | Опциональные поля для jump / цепочки |
 | `core/config/outbound_generator.go` | `detour` + двойная строка при jump |
-| `core/config/subscription/xray_json_array.go` (новый) | Парсинг массива, диспетчер sing-box vs Xray |
+| `core/config/subscription/xray_json_array.go` (новый) | Парсинг массива, разбор Xray-элементов (sing-box — follow-up) |
 | `core/config/subscription/xray_outbound_convert.go` (новый) | VLESS (+ SOCKS jump) → maps |
 | `ui/wizard/business/parser.go` | Та же ветка при CheckURL / превью |
 | Тесты | `*_test.go`: золотой фрагмент JSON (без секретов — фиктивные UUID/ключи) |

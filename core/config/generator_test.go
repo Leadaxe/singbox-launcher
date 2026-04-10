@@ -466,3 +466,34 @@ func TestGenerateEndpointJSON_CommentSanitized(t *testing.T) {
 		t.Fatalf("endpoint JSON must parse: %v\n%s", err, jsonPart)
 	}
 }
+
+func TestGenerateNodeJSON_DetourEmitted(t *testing.T) {
+	node := &ParsedNode{
+		Scheme: "vless",
+		Tag:    "main-tag",
+		Server: "example.com",
+		Port:   443,
+		UUID:   "00000000-0000-0000-0000-000000000099",
+		Flow:   "xtls-rprx-vision",
+		Label:  "chain",
+		Outbound: map[string]interface{}{
+			"detour": "jump-tag",
+			"tls": map[string]interface{}{
+				"enabled":     true,
+				"server_name": "sni.test",
+				"reality": map[string]interface{}{
+					"enabled":    true,
+					"public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+					"short_id":   "0123456789abcdef",
+				},
+			},
+		},
+	}
+	s, err := GenerateNodeJSON(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(s, `"detour":"jump-tag"`) {
+		t.Fatalf("expected detour in JSON: %s", s)
+	}
+}

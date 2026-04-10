@@ -192,6 +192,8 @@ singbox-launcher/
 │       └── subscription/       # Работа с подписками
 │           ├── source_loader.go    # Загрузка узлов из источников
 │           │   │   - LoadNodesFromSource()                   # Загрузка узлов
+│           │   │   - IsXrayJSONArrayBody / ParseNodesFromXrayJSONArray  # JSON-массив Xray
+│           │   │   - applyTagsToXrayNode()                   # prefix/postfix/mask + MakeTagUnique для main/jump
 │           │   │   - applyTagPrefixPostfix()                 # Применение префикса/постфикса
 │           │   │   - replaceTagVariables()                   # Замена переменных
 │           │   │   - MakeTagUnique()                         # Уникальность тегов
@@ -216,8 +218,11 @@ singbox-launcher/
 │           ├── node_parser_ssh.go       # SSH протокол
 │           │
 │           ├── decoder.go          # Декодирование подписок
-│           │   │   - DecodeSubscriptionContent()              # Декодирование (base64, yaml)
+│           │   │   - DecodeSubscriptionContent()              # base64, yaml; валидный JSON-массив [...] — как тело подписки
 │           │   │
+│           ├── xray_json_array.go   # Парсинг массива полных конфигов Xray (элемент → ParsedNode; remarks → Label + slug-теги)
+│           ├── xray_outbound_convert.go  # VLESS (+REALITY); jump (SOCKS / VLESS) → outbound map для sing-box
+│           │
 │           └── fetcher.go          # Загрузка подписок
 │               │   - FetchSubscription()                      # Загрузка по HTTP
 │               │
@@ -646,6 +651,7 @@ singbox-launcher/
 - `GenerateEndpointJSON()` - генерация JSON строки для WireGuard endpoint (ноды с Scheme wireguard)
 - `GenerateSelectorWithFilteredAddOutbounds()` - генерация селектора с фильтрацией addOutbounds; опционально глобальный режим и кандидаты **expose** (теги локальных групп источника)
 - `GenerateOutboundsFromParserConfig()` - генерация outbounds и endpoints (wireguard-ноды → EndpointsJSON, остальные → OutboundsJSON; трёхпроходный алгоритм для селекторов)
+  - При **`ParsedNode.Jump`** (подписка Xray JSON-массив): две строки JSON — сначала hop (**`Jump.Scheme`**: socks / vless), затем основной outbound с **`detour`** на тег hop’а
   - На нодах выставляется `SourceIndex`; пул для глобальных outbound — без узлов из источников с `exclude_from_global`
   - Pass 1: Создание outboundsInfo и подсчет узлов
   - Pass 2: Топологическая сортировка зависимостей и расчет валидности; рёбра **expose** → глобальные селекторы
@@ -675,15 +681,17 @@ singbox-launcher/
 - `block_extractor.go`:
   - `ExtractParserConfigBlock()` - извлечение блока из JSON
 
-**subscription/** - Работа с подписками (см. SPECS/023-F-C-SUBSCRIPTION_TRANSPORT_VLESS_TROJAN; расширения парсера URI — SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY, **docs/ParserConfig.md**)
+**subscription/** - Работа с подписками (см. SPECS/023-F-C-SUBSCRIPTION_TRANSPORT_VLESS_TROJAN; расширения парсера URI — SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY; Xray JSON-массив — **SPECS/033-F-N-SUBSCRIPTION_XRAY_JSON_ARRAY**, **docs/ParserConfig.md**)
 - `source_loader.go`:
-  - `LoadNodesFromSource()` - загрузка узлов из источника
+  - `LoadNodesFromSource()` - загрузка узлов из источника; при **`IsXrayJSONArrayBody`** — **`ParseNodesFromXrayJSONArray`**, затем **`applyTagsToXrayNode`** для каждой ноды (в т.ч. jump)
   - `applyTagPrefixPostfix()` - применение префикса/постфикса к тегам
   - `replaceTagVariables()` - замена переменных в тегах
   - после префикса: **`textnorm.NormalizeProxyDisplay` на тег, затем `MakeTagUnique`** (уникальность по нормализованным строкам)
   - `MakeTagUnique()` - обеспечение уникальности тегов
   - `IsSubscriptionURL()` - проверка URL подписки
   - `MaxNodesPerSubscription` const - лимит узлов на один источник подписки (3000)
+- `xray_json_array.go` / `xray_outbound_convert.go`:
+  - разбор элемента массива Xray → **`ParsedNode`** + опционально **`Jump`** (hop socks/vless по `dialerProxy`); **`remarks`** → **`Label`**; базовые теги **`{slug}`** / **`{slug}_jump_server`** или **`xray-{i}`** / **`xray-{i}_jump_server`**
 - `node_parser_transport.go`:
   - `uriTransportFromQuery()` — VLESS/Trojan: ws/http/grpc; **`xhttp` и `httpupgrade` → httpupgrade**; **ws: `headers.Host` из `host`, `sni` или `obfsParam`**
   - `vlessTLSFromNode()`, `trojanTLSFromNode()` — TLS / Reality по query; **`server_name`: `sni` → `peer` → (Trojan: `host`) → сервер**
@@ -698,9 +706,9 @@ singbox-launcher/
 - `share_uri_encode.go`:
   - `ShareURIFromOutbound()` — map outbound (как в config.json) → share URI; для `type: wireguard` — `ShareURIFromWireGuardEndpoint`; см. **docs/ParserConfig.md** (раздел Share URI)
   - `ShareURIFromWireGuardEndpoint()` — `wireguard://` из объекта endpoint (один элемент в `peers[]`)
-  - `ErrShareURINotSupported` — селекторы, multi-peer WG, нехватка полей, inline SSH key и т.д.
+  - `ErrShareURINotSupported` — селекторы, multi-peer WG, нехватка полей, inline SSH key, непустой **`detour`** и т.д.
 - `decoder.go`:
-  - `DecodeSubscriptionContent()` - декодирование подписки (base64, yaml)
+  - `DecodeSubscriptionContent()` — декодирование подписки: base64, yaml; **валидный JSON-массив** `[...]` возвращается как plain-текст тела (дальше — ветка Xray в `LoadNodesFromSource`)
 - `fetcher.go`:
   - `FetchSubscription()` - загрузка подписки по HTTP
 
@@ -1245,7 +1253,9 @@ UI (core_dashboard_tab.go)
       └─> config/updater.go: UpdateConfigFromSubscriptions()
           ├─> subscription/fetcher.go: FetchSubscription()
           ├─> subscription/decoder.go: DecodeSubscriptionContent()
-          ├─> subscription/node_parser.go: ParseNode()
+          ├─> subscription/source_loader.go: LoadNodesFromSource()
+          │     ├─> (строки URI) subscription/node_parser.go: ParseNode()
+          │     └─> (JSON-массив Xray) subscription/xray_json_array.go: ParseNodesFromXrayJSONArray()
           └─> config/outbound_generator.go: GenerateOutboundsFromParserConfig()
 ```
 

@@ -172,11 +172,11 @@ func ShowEditDialog(
 	initialConfig := existing
 	if initialConfig == nil {
 		initialConfig = &config.OutboundConfig{
-			Tag:           "",
-			Type:          "selector",
-			Comment:       "",
-			Options:       map[string]interface{}{"interrupt_exist_connections": true},
-			AddOutbounds:  nil,
+			Tag:          "",
+			Type:         "selector",
+			Comment:      "",
+			Options:      map[string]interface{}{"interrupt_exist_connections": true},
+			AddOutbounds: nil,
 		}
 	}
 	rawJSONBytes, _ := json.MarshalIndent(initialConfig, "", "  ")
@@ -261,7 +261,7 @@ func ShowEditDialog(
 			cfg.Options = map[string]interface{}{"interrupt_exist_connections": true}
 		} else {
 			cfg.Options = map[string]interface{}{
-				"url": "https://cp.cloudflare.com/generate_204",
+				"url":      "https://cp.cloudflare.com/generate_204",
 				"interval": "5m", "tolerance": 100,
 				"interrupt_exist_connections": true,
 			}
@@ -467,7 +467,6 @@ func ShowEditDialog(
 			}
 			text := node.Tag
 			if text == "" {
-				// Fallback formatting when tag is empty.
 				if node.Label != "" {
 					text = node.Label
 				} else if node.Server != "" {
