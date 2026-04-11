@@ -404,6 +404,11 @@
       "rule": { "rule_set": "israel-sites", "outbound": "proxy-out" }
     },
     {
+      "label": "Drop RU DNS over UDP",
+      "description": "Block UDP DNS queries that target Russian domains.",
+      "rule": { "rule_set": "ru-domains", "action": "reject", "method": "drop", "network": ["udp"], "port": [53] }
+    },
+    {
       "label": "BitTorrent direct",
       "description": "Route BitTorrent traffic directly to avoid VPN throttling.",
       "default": true,
