@@ -129,13 +129,39 @@
       "tooltip": "sing-box route.auto_detect_interface: detect default interface for outbound; turn off if routing is wrong with multiple uplinks."
     },
     {
-      "name": "mixed_listen_port",
+      "name": "enable_proxy_in",
+      "type": "bool",
+      "default_value": {"darwin": "true", "default": "false"},
+      "wizard_ui": "edit",
+      "title": "Enable proxy-in",
+      "tooltip": "Adds mixed inbound proxy-in and route.rules for proxy-in. Can be enabled on any platform for experiments."
+    },
+    {
+      "name": "proxy_in_listen",
+      "type": "text",
+      "default_value": "127.0.0.1",
+      "wizard_ui": "edit",
+      "if": ["enable_proxy_in"],
+      "title": "Proxy-in listen address",
+      "tooltip": "Listen address for mixed inbound proxy-in."
+    },
+    {
+      "name": "proxy_in_listen_port",
       "type": "text",
       "default_value": "7890",
       "wizard_ui": "edit",
-      "platforms": ["darwin"],
-      "title": "Mixed inbound port",
-      "tooltip": "Listen port for the mixed inbound when TUN is off (macOS only)."
+      "if": ["enable_proxy_in"],
+      "title": "Proxy-in listen port",
+      "tooltip": "Listen port for mixed inbound proxy-in."
+    },
+    {
+      "name": "proxy_in_set_system_proxy",
+      "type": "bool",
+      "default_value": {"darwin": "true", "default": "false"},
+      "wizard_ui": "edit",
+      "if": ["enable_proxy_in"],
+      "title": "Proxy-in set system proxy",
+      "tooltip": "Set system proxy through mixed inbound proxy-in. Some platforms require elevated privileges."
     },
     {
       "name": "resolve_strategy",
@@ -602,14 +628,14 @@
     },
     {
       "name": "inbounds",
-      "platforms": ["darwin"],
+      "if": ["enable_proxy_in"],
       "value": [
         {
           "type": "mixed",
           "tag": "proxy-in",
-          "listen": "127.0.0.1",
-          "listen_port": "@mixed_listen_port",
-          "set_system_proxy": true
+          "listen": "@proxy_in_listen",
+          "listen_port": "@proxy_in_listen_port",
+          "set_system_proxy": "@proxy_in_set_system_proxy"
         }
       ],
       "mode": "prepend"
@@ -626,7 +652,7 @@
     },
     {
       "name": "route.rules",
-      "platforms": ["darwin"],
+      "if": ["enable_proxy_in"],
       "mode": "prepend",
       "value": [
         { "inbound": "proxy-in", "action": "resolve", "strategy": "@resolve_strategy" },
