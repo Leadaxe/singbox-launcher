@@ -38,14 +38,6 @@ func LoadPersistedWizardDNS(model *wizardmodels.WizardModel, p *wizardmodels.Per
 	// Скаляры strategy/final/cache/resolver — только state.vars (dns_*); см. MigrateDNSScalarsFromPersistedToSettingsVars + ApplyDNSVarsFromSettingsToModel.
 }
 
-func copyBoolPtr(p *bool) *bool {
-	if p == nil {
-		return nil
-	}
-	v := *p
-	return &v
-}
-
 // ApplyWizardDNSTemplate reconciles dns.servers with the effective template (config.dns + dns_options),
 // prepends missing type=local from config if needed, and fills empty auxiliary fields
 // (rules, final, strategy, independent_cache, default_domain_resolver) from dns_options / config.dns.

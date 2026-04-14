@@ -291,7 +291,6 @@ func (p *WizardPresenter) restoreConfigParams(stateFile *wizardmodels.WizardStat
 		}
 		p.model.SettingsVars[x.Name] = x.Value // при дубликатах name в массиве JSON — последняя запись выигрывает
 	}
-
 }
 
 // restoreDNS loads dns_options from state (if any) and merges with the current wizard_template.json.

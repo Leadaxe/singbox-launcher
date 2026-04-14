@@ -300,7 +300,6 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 			debuglog.DebugLog("Parser: Fixed invalid UTF-8 in fragment: %q -> %q", parsedURL.Fragment, fixed)
 			node.Label = fixed
 		}
-
 	}
 
 	// For some formats, label might be in path or userinfo

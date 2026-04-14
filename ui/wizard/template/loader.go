@@ -250,11 +250,6 @@ func ApplyTemplateWithVars(configJSON json.RawMessage, params []TemplateParam, g
 	return SubstituteVarsInJSON(out, vars, resolved)
 }
 
-// applyParams применяет платформозависимые параметры к config (без if и без подстановки @).
-func applyParams(configJSON json.RawMessage, params []TemplateParam, goos string) (json.RawMessage, error) {
-	return applyParamsFiltered(configJSON, params, goos, nil, nil)
-}
-
 func applyParamsFiltered(configJSON json.RawMessage, params []TemplateParam, goos string, vi map[string]TemplateVar, resolved map[string]ResolvedVar) (json.RawMessage, error) {
 	if len(params) == 0 {
 		return configJSON, nil
