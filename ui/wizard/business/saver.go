@@ -91,7 +91,16 @@ func SaveConfigWithBackup(fileService FileServiceInterface, configText string, p
 	if err := services.BackupFile(configPath); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(configPath, []byte(finalText), 0o644); err != nil {
+	// Atomic swap: stage to .swap then rename over configPath. BackupFile
+	// above keeps the prior version for manual restore, but we still prefer
+	// not to leave config.json truncated on crash — sing-box refuses to start
+	// on malformed JSON and a non-technical user has no obvious recovery path.
+	swapPath := configPath + ".swap"
+	if err := os.WriteFile(swapPath, []byte(finalText), 0o644); err != nil {
+		return "", err
+	}
+	if err := os.Rename(swapPath, configPath); err != nil {
+		_ = os.Remove(swapPath)
 		return "", err
 	}
 	return configPath, nil

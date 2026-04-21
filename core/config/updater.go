@@ -167,8 +167,19 @@ func WriteToConfig(configPath string, content string, endpointsContent string, p
 		}
 	}
 
-	if err := os.WriteFile(configPath, []byte(newContent), platform.DefaultFileMode); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
+	// Atomic write: stage to .tmp then rename over configPath. A crash or
+	// power loss mid-WriteFile would otherwise truncate the user's config.json
+	// to zero bytes, which makes sing-box refuse to start and forces the user
+	// back through the Wizard. Rename is atomic on POSIX and on Windows NTFS
+	// since MoveFileEx with MOVEFILE_REPLACE_EXISTING is the default for
+	// os.Rename on Go 1.22+.
+	tmp := configPath + ".tmp"
+	if err := os.WriteFile(tmp, []byte(newContent), platform.DefaultFileMode); err != nil {
+		return fmt.Errorf("failed to write temp config: %w", err)
+	}
+	if err := os.Rename(tmp, configPath); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("failed to replace config file: %w", err)
 	}
 
 	return nil
