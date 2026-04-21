@@ -220,9 +220,13 @@
   "servers.selector_error": "%s → ошибка: %v",
   "servers.selector_active": "%s → %s",
   "servers.menu_copy_link": "Копировать ссылку",
+  "servers.menu_copy_server_link": "Копировать ссылку сервера",
+  "servers.menu_copy_jump_server_link": "Копировать ссылку jump-сервера",
   "servers.menu_context_type_unknown": "Тип неизвестен",
   "servers.copy_link_resolving": "Сборка share URI из outbound…",
   "servers.copy_link_done": "Share URI скопирован в буфер обмена",
+  "servers.copy_jump_link_resolving": "Сборка share URI для jump-outbound…",
+  "servers.copy_jump_link_done": "Jump share URI скопирован в буфер обмена",
   "servers.copy_link_not_supported": "Этот outbound нельзя преобразовать в share-ссылку (селектор, direct-out или поля не поддерживаются кодировщиком URI).",
 
   "wizard.window_title": "Мастер конфигурации",
