@@ -65,7 +65,15 @@ func (svc *ConfigService) RunParserProcess() {
 		ac.ShowParserError(fmt.Errorf("failed to update config: %w", err))
 	} else {
 		debuglog.InfoLog("RunParser: Config updated successfully.")
-		// Progress already updated in UpdateConfigFromSubscriptions with success status
+		// Progress already updated in UpdateConfigFromSubscriptions with success status.
+		// Running config now reflects whatever template state the wizard had saved;
+		// clear the dirty marker so the Update button loses its "*" decoration.
+		if ac.StateService != nil {
+			ac.StateService.SetTemplateDirty(false)
+		}
+		if ac.UIService != nil && ac.UIService.UpdateConfigStatusFunc != nil {
+			ac.UIService.UpdateConfigStatusFunc()
+		}
 		if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
 			dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, "Parser", "Config updated successfully!")
 		}

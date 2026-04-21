@@ -395,6 +395,11 @@ func (p *WizardPresenter) saveStateAndShowSuccessDialog(configPath string) {
 	statePath := filepath.Join(statesDir, wizardmodels.StateFileName)
 
 	p.UpdateUI(func() {
+		// Wizard committed new template/state. Mark config dirty so the Update
+		// button shows an asterisk until the next parser run reflects the change.
+		if ac.StateService != nil {
+			ac.StateService.SetTemplateDirty(true)
+		}
 		// Update config status in Core Dashboard
 		if ac.UIService != nil && ac.UIService.UpdateConfigStatusFunc != nil {
 			ac.UIService.UpdateConfigStatusFunc()

@@ -28,6 +28,12 @@ type StateService struct {
 	// Auto-ping proxies 5s after VPN connects (default on).
 	AutoPingAfterConnect      bool
 	AutoPingAfterConnectMutex sync.RWMutex
+
+	// TemplateDirty is set when the wizard saved config changes but the parser
+	// has not run since. The Update button decorates its label with "*" so
+	// users see that the running config may lag the saved template.
+	TemplateDirty      bool
+	TemplateDirtyMutex sync.RWMutex
 }
 
 // NewStateService creates and initializes a new StateService instance.
@@ -52,6 +58,22 @@ func (s *StateService) SetAutoPingAfterConnectEnabled(enabled bool) {
 	s.AutoPingAfterConnectMutex.Lock()
 	defer s.AutoPingAfterConnectMutex.Unlock()
 	s.AutoPingAfterConnect = enabled
+}
+
+// IsTemplateDirty reports whether the wizard has committed template / state
+// changes that the parser has not yet incorporated into the running config.
+func (s *StateService) IsTemplateDirty() bool {
+	s.TemplateDirtyMutex.RLock()
+	defer s.TemplateDirtyMutex.RUnlock()
+	return s.TemplateDirty
+}
+
+// SetTemplateDirty flags or clears the dirty-template marker.
+// Setters of record: wizard Save (sets true), successful parser run (sets false).
+func (s *StateService) SetTemplateDirty(dirty bool) {
+	s.TemplateDirtyMutex.Lock()
+	defer s.TemplateDirtyMutex.Unlock()
+	s.TemplateDirty = dirty
 }
 
 // GetCachedVersion safely gets the cached version with mutex protection.

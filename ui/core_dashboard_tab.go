@@ -704,6 +704,18 @@ func (tab *CoreDashboardTab) updateConfigInfo() {
 			} else {
 				tab.updateConfigButton.Disable()
 			}
+			// Dirty marker: wizard saved new template/state since last successful
+			// parser run → prepend "*" to the button label so it's obvious that
+			// the generated config may lag the saved template. Cleared when the
+			// parser completes successfully (see RunParserProcess success path).
+			base := locale.T("core.button_update")
+			if tab.controller.StateService != nil && tab.controller.StateService.IsTemplateDirty() {
+				tab.updateConfigButton.SetText("* " + base)
+				tab.updateConfigButton.Importance = widget.HighImportance
+			} else {
+				tab.updateConfigButton.SetText(base)
+				tab.updateConfigButton.Importance = widget.MediumImportance
+			}
 		}
 	}
 
