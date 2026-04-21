@@ -184,33 +184,30 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 			widget.NewLabel(locale.T("diag.stun_server_label")),
 			container.NewBorder(nil, nil, nil, stunHelpButton, serverEntry),
 		)
+		var socksCheck *widget.Check
 		if runtime.GOOS == "darwin" {
-			socksCheck := widget.NewCheck(locale.T("diag.use_system_socks5"), func(bool) {})
+			socksCheck = widget.NewCheck(locale.T("diag.use_system_socks5"), func(bool) {})
 			socksCheck.SetChecked(stunUseSOCKS5OnMac)
 			content.Add(socksCheck)
-			content.Add(widget.NewLabel(" "))
-			dialog.ShowCustomConfirm(locale.T("diag.stun_settings"), locale.T("diag.save"), locale.T("diag.cancel"), content, func(ok bool) {
-				if !ok {
-					return
-				}
-				stunServerAddr = strings.TrimSpace(serverEntry.Text)
-				if stunServerAddr == "" {
-					stunServerAddr = constants.DefaultSTUNServer
-				}
-				stunUseSOCKS5OnMac = socksCheck.Checked
-			}, ac.UIService.MainWindow)
-		} else {
-			content.Add(widget.NewLabel(" "))
-			dialog.ShowCustomConfirm(locale.T("diag.stun_settings"), locale.T("diag.save"), locale.T("diag.cancel"), content, func(ok bool) {
-				if !ok {
-					return
-				}
-				stunServerAddr = strings.TrimSpace(serverEntry.Text)
-				if stunServerAddr == "" {
-					stunServerAddr = constants.DefaultSTUNServer
-				}
-			}, ac.UIService.MainWindow)
 		}
+		content.Add(widget.NewLabel(" "))
+
+		d := dialog.NewCustomConfirm(locale.T("diag.stun_settings"), locale.T("diag.save"), locale.T("diag.cancel"), content, func(ok bool) {
+			if !ok {
+				return
+			}
+			stunServerAddr = strings.TrimSpace(serverEntry.Text)
+			if stunServerAddr == "" {
+				stunServerAddr = constants.DefaultSTUNServer
+			}
+			if socksCheck != nil {
+				stunUseSOCKS5OnMac = socksCheck.Checked
+			}
+		}, ac.UIService.MainWindow)
+		// Fyne auto-sizes to content, which clips the URL entry on Windows
+		// (issue #54). Force a readable width so a 40-char STUN URL fits.
+		d.Resize(fyne.NewSize(520, 0))
+		d.Show()
 	})
 
 	// STUN button fills width, gear on the right
