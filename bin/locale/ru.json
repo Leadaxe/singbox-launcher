@@ -22,6 +22,7 @@
   "core.status_config_error": "Ошибка конфига: %v",
   "core.status_parser_starting": "Запуск...",
   "core.button_update": "🔄 Обновить",
+  "core.auto_update_subs_label": "Автообновление подписок",
   "core.button_wizard": "⚙️ Мастер",
   "core.button_download_template": "Скачать шаблон конфига",
   "core.label_singbox": "Sing-box",

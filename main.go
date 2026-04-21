@@ -61,6 +61,12 @@ func main() {
 	if settings.PingTestAllConcurrency != 0 {
 		api.SetPingTestAllConcurrency(settings.PingTestAllConcurrency)
 	}
+	// Honor persisted opt-out of subscription auto-update. The loop is started
+	// unconditionally later; this just flips the in-memory gate so it skips work.
+	if settings.SubscriptionAutoUpdateDisabled {
+		controller.StateService.SetAutoUpdateEnabled(false)
+		debuglog.InfoLog("Auto-update: disabled by user setting (subscription_auto_update_disabled=true)")
+	}
 	debuglog.InfoLog("Locale: language set to %q, available: %v", locale.GetLang(), locale.Languages())
 
 	// Check launcher version on startup (always checks, popup shown on first window display)

@@ -17,6 +17,10 @@ type Settings struct {
 	PingTestURL string `json:"ping_test_url,omitempty"`
 	// PingTestAllConcurrency — число параллельных delay-запросов для «test» на вкладке Servers; 0 = не переопредлять.
 	PingTestAllConcurrency int `json:"ping_test_all_concurrency,omitempty"`
+	// SubscriptionAutoUpdateDisabled — пользователь явно выключил автоматическое обновление
+	// подписок. По умолчанию (отсутствует / false) — автообновление включено, как раньше.
+	// Manual Update всегда работает независимо от флага.
+	SubscriptionAutoUpdateDisabled bool `json:"subscription_auto_update_disabled,omitempty"`
 }
 
 // LoadSettings reads settings from binDir/settings.json.

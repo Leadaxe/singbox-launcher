@@ -321,6 +321,32 @@ func (tab *CoreDashboardTab) createConfigBlock() fyne.CanvasObject {
 		),
 	)
 
+	// Global opt-out for scheduled subscription fetches. Manual Update (the
+	// button above) always works. Persisted in bin/settings.json.
+	binDir := platform.GetBinDir(tab.controller.FileService.ExecDir)
+	autoUpdateCheck := widget.NewCheck(locale.T("core.auto_update_subs_label"), nil)
+	autoUpdateCheck.SetChecked(tab.controller.StateService.IsAutoUpdateEnabled())
+	autoUpdateCheck.OnChanged = func(enabled bool) {
+		tab.controller.StateService.SetAutoUpdateEnabled(enabled)
+		// On re-enable from UI, reset the consecutive-failure counter so the
+		// loop doesn't immediately disable itself again. Mirrors ResumeAutoUpdate
+		// semantics but without the "refresh just happened" side effect.
+		if enabled {
+			tab.controller.StateService.ResetAutoUpdateFailedAttempts()
+		}
+		st := locale.LoadSettings(binDir)
+		st.SubscriptionAutoUpdateDisabled = !enabled
+		if err := locale.SaveSettings(binDir, st); err != nil {
+			debuglog.WarnLog("core_dashboard: failed to persist subscription_auto_update_disabled: %v", err)
+		}
+		if enabled {
+			debuglog.InfoLog("Auto-update: enabled by user (from Core Dashboard)")
+		} else {
+			debuglog.InfoLog("Auto-update: disabled by user (from Core Dashboard)")
+		}
+	}
+	autoUpdateRow := container.NewCenter(autoUpdateCheck)
+
 	// Отдельная строка для прогрессбара и статуса парсера (под кнопками)
 	parserProgressRow := container.NewVBox(
 		tab.parserProgressBar,
@@ -330,6 +356,7 @@ func (tab *CoreDashboardTab) createConfigBlock() fyne.CanvasObject {
 	return container.NewVBox(
 		statusRow,
 		buttonsRow,
+		autoUpdateRow,
 		parserProgressRow, // Прогрессбар и статус парсера в отдельной строке
 	)
 }

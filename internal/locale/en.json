@@ -22,6 +22,7 @@
   "core.status_config_error": "Config error: %v",
   "core.status_parser_starting": "Starting...",
   "core.button_update": "🔄 Update",
+  "core.auto_update_subs_label": "Auto-update subscriptions",
   "core.button_wizard": "⚙️ Wizard",
   "core.button_download_template": "Download Config Template",
   "core.label_singbox": "Sing-box",
