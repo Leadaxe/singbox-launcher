@@ -9,6 +9,16 @@ import (
 	"singbox-launcher/internal/debuglog"
 )
 
+// isIntCastVar: вары, которые в sing-box JSON ожидаются как числа, а не строки.
+// Плейсхолдер "@name" в шаблоне подменяется целым числом (strconv.Atoi).
+func isIntCastVar(name string) bool {
+	switch name {
+	case "tun_mtu", "mixed_listen_port", "proxy_in_listen_port", "urltest_tolerance":
+		return true
+	}
+	return false
+}
+
 // SubstituteVarsInJSON заменяет литералы "@name" в дереве JSON на разрешённые значения.
 func SubstituteVarsInJSON(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar) ([]byte, error) {
 	varTypes := make(map[string]string, len(vars))
@@ -89,12 +99,12 @@ func replacementForPlaceholder(name string, varTypes map[string]string, resolved
 	}
 	if s == "" {
 		debuglog.WarnLog("substitute: empty scalar @%s", name)
-		if name == "tun_mtu" || name == "mixed_listen_port" || name == "proxy_in_listen_port" {
+		if isIntCastVar(name) {
 			return 0
 		}
 		return ""
 	}
-	if name == "tun_mtu" || name == "mixed_listen_port" || name == "proxy_in_listen_port" {
+	if isIntCastVar(name) {
 		n, err := strconv.Atoi(s)
 		if err != nil {
 			debuglog.WarnLog("substitute: invalid int @%s: %v", name, err)

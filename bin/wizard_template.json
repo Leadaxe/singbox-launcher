@@ -8,9 +8,9 @@
         "wizard": { "required": 1 },
         "type": "urltest",
         "options": {
-          "url": "https://cp.cloudflare.com/generate_204",
-          "interval": "5m",
-          "tolerance": 100,
+          "url": "@urltest_url",
+          "interval": "@urltest_interval",
+          "tolerance": "@urltest_tolerance",
           "interrupt_exist_connections": true
         },
         "filters": { "tag": "!/(🇷🇺)/i" },
@@ -172,6 +172,39 @@
       "wizard_ui": "edit",
       "title": "Auto-detect outbound interface",
       "tooltip": "sing-box route.auto_detect_interface: detect default interface for outbound; turn off if routing is wrong with multiple uplinks."
+    },
+    {"separator": true},
+    {
+      "name": "urltest_url",
+      "type": "text",
+      "default_value": "https://cp.cloudflare.com/generate_204",
+      "options": [
+        "https://cp.cloudflare.com/generate_204",
+        "http://www.gstatic.com/generate_204",
+        "https://www.google.com/generate_204",
+        "http://connectivitycheck.gstatic.com/generate_204"
+      ],
+      "wizard_ui": "edit",
+      "title": "URLTest URL",
+      "tooltip": "sing-box urltest.url — endpoint to probe for latency when selecting the fastest node in auto-proxy-out. Pick a preset or type any HTTP(S) URL that returns a quick response."
+    },
+    {
+      "name": "urltest_interval",
+      "type": "text",
+      "default_value": "5m",
+      "options": ["1m", "5m", "10m", "30m", "1h"],
+      "wizard_ui": "edit",
+      "title": "URLTest interval",
+      "tooltip": "sing-box urltest.interval — how often to re-probe all nodes in auto-proxy-out (Go duration string: 30s, 1m, 5m, ...)."
+    },
+    {
+      "name": "urltest_tolerance",
+      "type": "text",
+      "default_value": "100",
+      "options": ["50", "100", "200", "500"],
+      "wizard_ui": "edit",
+      "title": "URLTest tolerance (ms)",
+      "tooltip": "sing-box urltest.tolerance — don't switch node unless the new fastest one beats the current by this many milliseconds. Higher = less flap."
     },
     {"separator": true},
     {

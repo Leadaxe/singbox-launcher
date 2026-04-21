@@ -307,17 +307,31 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 
 	default: // text
 		titleLab := newSettingsTitleLabel(title)
-		e := widget.NewEntry()
 		disp := wizardtemplate.DisplaySettingValue(vars, st, raw, name)
 		if v, ok := model.SettingsVars[name]; ok {
 			disp = v
 		}
-		e.SetText(disp)
-		e.OnChanged = func(s string) {
+		onChanged := func(s string) {
 			model.SettingsVars[name] = s
 			model.TemplatePreviewNeedsUpdate = true
 			presenter.MarkAsChanged()
 		}
+		// If the var declares `options` on a text type, render a combo-dropdown
+		// (free text + preset suffix menu) instead of a plain entry. Ported from
+		// LxBox — turns "Test URL" / "Test interval" / "Tolerance" from a typo
+		// minefield into tap-to-pick-or-edit.
+		if len(options) > 0 {
+			se := widget.NewSelectEntry(options)
+			se.SetText(disp)
+			se.OnChanged = onChanged
+			row := container.NewBorder(nil, nil, titleLab, resetBtn, se)
+			setVarFieldToolTip(toolTip, titleLab, se)
+			applySettingsRowDisabled(rowEnabled, resetBtn, se)
+			return row
+		}
+		e := widget.NewEntry()
+		e.SetText(disp)
+		e.OnChanged = onChanged
 		row := container.NewBorder(nil, nil, titleLab, resetBtn, e)
 		setVarFieldToolTip(toolTip, titleLab, e)
 		applySettingsRowDisabled(rowEnabled, resetBtn, e)
