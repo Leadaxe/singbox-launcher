@@ -238,6 +238,37 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					rowCenter = container.NewBorder(nil, nil, prefixLabel, nil, sourceLabel)
 				}
 
+				// Enable/disable toggle — persists to ProxySource.Disabled,
+				// parser skips disabled sources. Dim the label importance so
+				// disabled rows are visibly inactive in the list.
+				enableCheck := widget.NewCheck("", nil)
+				enableCheck.SetChecked(!proxyPtr.Disabled)
+				if proxyPtr.Disabled {
+					sourceLabel.Importance = widget.LowImportance
+					if prefixLabel != nil {
+						prefixLabel.Importance = widget.LowImportance
+					}
+				}
+				enableCheck.OnChanged = func(enabled bool) {
+					m := presenter.Model()
+					if m.ParserConfig == nil || sourceIndex >= len(m.ParserConfig.ParserConfig.Proxies) {
+						return
+					}
+					m.ParserConfig.ParserConfig.Proxies[sourceIndex].Disabled = !enabled
+					serialized, err := wizardbusiness.SerializeParserConfig(m.ParserConfig)
+					if err != nil {
+						debuglog.ErrorLog("source_tab: SerializeParserConfig after toggle: %v", err)
+						return
+					}
+					m.ParserConfigJSON = serialized
+					m.PreviewNeedsParse = true
+					wizardbusiness.InvalidatePreviewCache(m)
+					presenter.UpdateParserConfig(serialized)
+					if guiState.RefreshSourcesList != nil {
+						guiState.RefreshSourcesList()
+					}
+				}
+
 				copyBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.ContentCopyIcon(), func() {
 					if copyText == "" {
 						return
@@ -302,7 +333,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					delBtn,
 					rowGutter,
 				)
-				rowInner := container.NewBorder(nil, nil, nil, rightControls, rowCenter)
+				rowInner := container.NewBorder(nil, nil, enableCheck, rightControls, rowCenter)
 				row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
 				row.WireTooltipLabelHover(sourceLabel)
 				if prefixLabel != nil {

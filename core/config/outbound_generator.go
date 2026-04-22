@@ -888,17 +888,32 @@ func GenerateOutboundsFromParserConfig(
 	allNodes := make([]*ParsedNode, 0)
 	nodesBySource := make(map[int][]*ParsedNode) // Map source index to its nodes
 
-	totalSources := len(parserConfig.ParserConfig.Proxies)
+	// Count only enabled sources as "total" for progress + summary purposes.
+	// Disabled sources are skipped entirely (no fetch, no parse) and don't
+	// participate in the success/failure counts — they're not something the
+	// user is currently trying to get nodes from.
+	totalSources := 0
+	for _, p := range parserConfig.ParserConfig.Proxies {
+		if !p.Disabled {
+			totalSources++
+		}
+	}
 	if progressCallback != nil {
 		progressCallback(10, fmt.Sprintf("Processing %d sources...", totalSources))
 	}
 
 	var succeededSources, failedSources int
+	processedIdx := 0
 	for i, proxySource := range parserConfig.ParserConfig.Proxies {
-		if progressCallback != nil {
-			progressCallback(10+float64(i)*30.0/float64(totalSources),
-				fmt.Sprintf("Processing source %d/%d...", i+1, totalSources))
+		if proxySource.Disabled {
+			debuglog.DebugLog("GenerateOutboundsFromParserConfig: skipping source %d (disabled)", i+1)
+			continue
 		}
+		if progressCallback != nil && totalSources > 0 {
+			progressCallback(10+float64(processedIdx)*30.0/float64(totalSources),
+				fmt.Sprintf("Processing source %d/%d...", processedIdx+1, totalSources))
+		}
+		processedIdx++
 
 		nodesFromSource, err := loadNodesFunc(proxySource, tagCounts, progressCallback, i, totalSources)
 		if err != nil {
@@ -924,6 +939,9 @@ func GenerateOutboundsFromParserConfig(
 	}
 
 	if len(allNodes) == 0 {
+		if totalSources == 0 {
+			return nil, fmt.Errorf("no enabled sources (all subscriptions disabled in wizard)")
+		}
 		return nil, fmt.Errorf("no nodes parsed from any source")
 	}
 

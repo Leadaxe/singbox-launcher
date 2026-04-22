@@ -47,6 +47,13 @@ type ProxySource struct {
 	ExcludeFromGlobal bool `json:"exclude_from_global,omitempty"`
 	// ExposeGroupTagsToGlobal: when true, tags of wizard-marked local outbounds are merged into each global outbound at generation time (SPEC 026).
 	ExposeGroupTagsToGlobal bool `json:"expose_group_tags_to_global,omitempty"`
+	// Disabled: quick on/off toggle exposed in the wizard Sources list.
+	// When true, the parser pipeline skips this source entirely (no fetch,
+	// no parse, no nodes generated). The source stays in the file so the
+	// user can re-enable it without re-entering its URL / skip rules / etc.
+	// Omit-when-default so legacy ParserConfig files (no field) are treated
+	// as enabled, matching prior behavior.
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 // WizardConfig represents the wizard configuration for outbounds
