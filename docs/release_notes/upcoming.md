@@ -17,30 +17,29 @@
 
 - **Licensing:** the project is now under **GPL-3.0** with optional commercial licensing from Leadaxe (see `LICENSING.md`); previously MIT.
 
-### Added — Mobile parity pass (2026-04-22 night-work)
+### Added — Mobile parity pass (2026-04-22)
 
-- **Debug API (localhost-only):** optional HTTP server on `127.0.0.1:9269`. Off by default. Endpoints `/ping`, `/version`, `/state`, `/proxies`, `/action/{start,stop,update-subs}`. Bearer-token auth (32-byte random), generated on first enable, surfaced via Copy-token button on the Diagnostics tab. Ported from LxBox spec 031, trimmed for desktop (no rules/subs CRUD, no `/config` dump, no `/logs` tail).
-- **Auto-ping after VPN connect (default ON):** 5 s after sing-box enters the running state, the Servers tab auto-runs Test on all proxies so latency is fresh when the user switches tabs. Toggle on Core Dashboard, persisted in `settings.json`.
-- **Subscription auto-update global toggle:** dedicated checkbox on Core Dashboard (default ON). Off skips all scheduled refreshes; manual Update always works. Re-enabling from UI also resets the auto-disable-on-failure counter.
-- **URLTest parameters as template vars with preset dropdowns:** `auto-proxy-out.url / interval / tolerance` hoisted to `@urltest_url` / `@urltest_interval` / `@urltest_tolerance`, each with a `{title, value}` preset dropdown (Cloudflare / GStatic / Google connectivitycheck; 1m / 5m (default) / 10m / 30m / 1h; 50 / 100 / 200 / 500 ms).
-- **Template `vars[].options` accepts `{title, value}` form:** user-visible labels can differ from substitution values. Legacy string-list form still works (title == value). Mixed arrays also supported.
-- **Right-click menu on the Update button:** Reconnect / Restart / Start / Stop / Update-subs in one explicit popup. Primary-tap still runs Update as before.
-- **Keyboard shortcuts:** `Cmd/Ctrl+R` reconnect, `Cmd/Ctrl+U` update-subs.
-- **Power-resume hooks:** on wake, reset Clash API HTTP transport, schedule `RefreshAPIFunc` + auto-ping-after-connect so latency is fresh. Linux gained native support via systemd-logind `PrepareForSleep` over DBus (reuses existing indirect dep, no new deps). macOS still stubbed — IOKit cgo follow-up. Spec 011 partial closure.
+- **Debug API (localhost-only):** optional HTTP server on `127.0.0.1:9269`. Off by default. Endpoints `/ping`, `/version`, `/state`, `/proxies`, `/action/{start,stop,update-subs,ping-all}`. Bearer-token auth (32-byte `crypto/rand`, constant-time compare), generated on first enable, surfaced via Copy-token button on the Diagnostics tab (with confirmation toast). Ported from LxBox spec 031, trimmed for desktop (no rules/subs CRUD, no `/config` dump, no `/logs` tail). Use-case — backing service for MCP wrappers so AI agents can check / drive the launcher. See `SPECS/038-F-C-DEBUG_API/`.
+- **Settings tab:** new `⚙️ Settings` tab between Servers and Diagnostics. Consolidates language selector (moved from Help), subscription auto-update toggle, auto-ping-on-connect toggle. Also fixes a latent data-loss bug in the old language handler: `SaveSettings({Lang: code})` used to wipe every other settings field; now load-mutate-save. See `SPECS/039-F-C-SETTINGS_TAB_PREFERENCES/`.
+- **Subscription auto-update global toggle** (default ON). Off skips scheduled refreshes; manual Update always works. Re-enabling from UI also resets the auto-disable-on-failure counter. Persisted as `subscription_auto_update_disabled` in `settings.json`.
+- **Auto-ping after VPN connect** (default ON). 5 s after sing-box enters the running state, the Servers tab auto-runs Test on all proxies. Timer is cancelled if user stops sing-box inside the window. Persisted as `auto_ping_after_connect_disabled`.
+- **Subscription source toggle:** per-row on/off checkbox in the Wizard → Sources list. Disabled sources stay in the file (URL / skip / tag prefix preserved) but are skipped by the parser entirely. `ProxySource.Disabled bool json:"disabled,omitempty"`; legacy configs stay compatible. See `SPECS/037-F-C-SUBSCRIPTION_SOURCE_TOGGLE/`.
+- **URLTest parameters as template vars with preset dropdowns:** `auto-proxy-out.url / interval / tolerance` hoisted to `@urltest_url / @urltest_interval / @urltest_tolerance`. See `SPECS/040-F-C-WIZARD_TEMPLATE_OPTION_TITLES/` (note: widget rendering has a known gap and will be reworked before the next release — see the spec).
+- **Template `vars[].options` accepts `{title, value}` form:** user-visible labels can differ from substitution values. Legacy string-list form still works (title == value). See `SPECS/040-F-C-WIZARD_TEMPLATE_OPTION_TITLES/`.
+- **Keyboard shortcuts:** `Cmd/Ctrl+R` reconnect, `Cmd/Ctrl+U` update-subs, `Cmd/Ctrl+P` ping-all. Tooltip hints on the affected buttons are a TODO for the next pass. See `SPECS/042-F-C-KEYBOARD_SHORTCUTS/`.
+- **Power-resume hooks (Windows + Linux):** on wake, the launcher resets the Clash API HTTP transport, then refreshes the proxies list and (if the tunnel is up) re-pings nodes so latency numbers aren't stuck pre-sleep. Linux gained native support via **systemd-logind `PrepareForSleep`** on system DBus (reuses the existing `github.com/godbus/dbus/v5` indirect dep, no new deps). macOS still stubbed — IOKit cgo hook is a tracked follow-up. See `SPECS/011-B-C-launcher-freeze-after-sleep/` (extension section).
 
 ### Added — Resilience & observability
 
-- **Atomic writes** for `config.json` (scheduled parser + wizard save) and `settings.json` — stage to `.tmp` / `.swap` then rename, so a crash mid-write can't truncate the live file.
-- **100 MB download cap** on sing-box core downloads (pre-flight Content-Length + mid-stream cumulative) to contain a compromised or misconfigured mirror.
-- **Per-source parser summary:** success toast now reads `"Configuration updated: 2/3 source(s) succeeded (1 failed)"` when any subscription source fails or returns zero nodes.
-- **Last-auto-update failure pill** on Core Dashboard — shows the actual error message (with HTTP status humanization: `401 → "token may have expired"`, `429 → "rate limited — try again later"`, etc.) for up to 24 h after a scheduled-update failure, auto-clears on next success.
-- **"(subs: Xh ago)"** hint next to the config modTime on Core Dashboard.
-- **Dirty-config marker (`*`)** on the Update button whenever wizard has saved template/state changes that the parser has not yet applied.
+- **Atomic writes** for `config.json` (scheduled parser + wizard save) and `settings.json` — stage to `.tmp` / `.swap` then rename. Crash / kill -9 / power-loss mid-write can no longer truncate the live file. See `SPECS/041-F-C-ATOMIC_FILE_WRITES/`.
+- **100 MB download cap** on sing-box core downloads (pre-flight Content-Length + mid-stream cumulative) — contains a compromised or misconfigured mirror from filling the user's drive.
+- **HTTP status humanization** in subscription-fetch errors: `401 → "unauthorized — subscription token may have expired"`, `429 → "rate limited — try again later"`, `5xx → "server error — provider is having issues"`, etc. Helps users triage without googling.
+- **"(subs: Xh ago)"** hint next to the config file row on Core Dashboard — freshness of the last successful subscription update. Session-scoped.
+- **Dirty-config marker (`*`)** on the Update button when wizard has saved changes not yet applied by the parser. See `SPECS/043-F-C-DIRTY_CONFIG_MARKER/` — current impl is the minimal version; redesign (separate sources-dirty vs runtime-dirty signals, long-term: state/config separation as in LxBox mobile) is tracked in the spec.
 
 ### Added — Security hygiene
 
-- **Clash API token redaction** in debug logs — no more full-secret leak when users paste diag logs into GitHub issues.
-- **Ping-all button lock** while a test is in flight (prevents duplicate workers on spam-click).
+- **Clash API token redaction** in debug logs — `token=ab***89` instead of full secret. Safe to paste logs into GitHub issues.
 
 ### Fixed
 
@@ -50,6 +49,16 @@
 ### Changed — Template defaults
 
 - **Russian & Cyrillic TLDs expanded** in `ru-domains` rule-set: added `.рус / .москва / moscow / tatar / .дети / .сайт / .орг / .ком`.
+
+### Not in this release (tracked as TODO — see `SPECS/` and per-night retrospective)
+
+These were prototyped during the 2026-04-22 pass but rejected in review for redesign:
+
+- **Right-click menu on Update** — `SecondaryTapWrap` doesn't route secondary taps into a `widget.Button`. Needs a custom `RightClickableButton` that implements `fyne.SecondaryTappable` directly.
+- **Per-source parser success/failure summary** — counters land in `OutboundGenerationResult`, but the user-visible toast still says "Config updated successfully" regardless. Needs the breakdown piped into the toast.
+- **Last-auto-update failure pill** on Core Dashboard — wired but not visible in practice (layout / flag-path diagnosis pending).
+- **Ping-all button lock during test** — disable-button design blocks cancellation. Will rework as click-to-cancel with `pingAllInFlight` / `pingAllCancelled` atomics + button label swap to "Cancel" / "Cancelling…".
+- **Wizard URLTest vars widget rendering** — `{title, value}` with editable SelectEntry is semantically broken (user can type arbitrary text into a labeled preset). Rule for next pass: `enum` → pure Select (titles allowed); `text` + options → SelectEntry (plain strings only); `text` + `{title, value}` → validator error.
 
 ---
 
@@ -64,30 +73,29 @@
 
 - **Лицензия:** репозиторий под **GPL-3.0**, при необходимости коммерческая лицензия — см. `LICENSING.md` (ранее MIT).
 
-### Добавлено — паритет с мобильным клиентом (ночь 2026-04-22)
+### Добавлено — паритет с мобильным клиентом (2026-04-22)
 
-- **Debug API (локальный HTTP):** опциональный сервер на `127.0.0.1:9269`. По умолчанию выключен. Эндпоинты `/ping`, `/version`, `/state`, `/proxies`, `/action/{start,stop,update-subs}`. Bearer-токен (32 байта crypto/rand), генерируется при первом включении, показывается кнопкой «Копировать токен» на вкладке Диагностика. Портировано из LxBox spec 031 в урезанном виде (без CRUD правил/подписок, без `/config`, без `/logs`).
-- **Автопинг после подключения VPN (по умолчанию ВКЛ):** через 5 секунд после входа sing-box в running-статус вкладка Servers автоматически пингует все прокси — когда пользователь переключится туда, задержки уже свежие. Чекбокс в Core Dashboard, сохраняется в `settings.json`.
-- **Глобальный выключатель автообновления подписок:** чекбокс в Core Dashboard (по умолчанию ВКЛ). OFF — все плановые обновления пропускаются; ручной Update всегда работает. Включение вручную также сбрасывает счётчик последовательных ошибок.
-- **Параметры URLTest как шаблонные vars с preset-дропдаунами:** `auto-proxy-out.url / interval / tolerance` вынесены в `@urltest_url` / `@urltest_interval` / `@urltest_tolerance` с `{title, value}` пресетами (Cloudflare / GStatic / Google connectivitycheck; 1m / 5m (default) / 10m / 30m / 1h; 50 / 100 / 200 / 500 мс).
-- **`vars[].options` поддерживает форму `{title, value}`:** подписи для дропдаунов отдельно от подставляемых значений. Старая форма (массив строк) продолжает работать — title == value. Смешанные массивы тоже можно.
-- **Правый клик по кнопке Update:** popup-меню Reconnect / Restart / Start / Stop / Update-subs — явный доступ ко всем операциям в один клик. Левый клик по-прежнему запускает Update.
-- **Горячие клавиши:** `Cmd/Ctrl+R` — reconnect, `Cmd/Ctrl+U` — update-subs.
-- **Обработка wake-from-sleep:** на резюм сбрасываются HTTP-соединения Clash API, затем `RefreshAPIFunc` и автопинг. Linux получил нативную поддержку через systemd-logind `PrepareForSleep` по DBus (использует существующий indirect-dep, новых зависимостей нет). macOS пока stub — IOKit cgo в следующий релиз. Частичное закрытие spec 011.
+- **Debug API (локальный HTTP):** опциональный сервер на `127.0.0.1:9269`. По умолчанию выключен. Эндпоинты `/ping`, `/version`, `/state`, `/proxies`, `/action/{start,stop,update-subs,ping-all}`. Bearer-токен (32 байта `crypto/rand`, constant-time compare), генерируется при первом включении, копируется кнопкой с подтверждением-тостом на вкладке Диагностика. Портировано из LxBox spec 031 в урезанном виде (без CRUD правил/подписок, без `/config`, без `/logs`). Основной use-case — backing-service для MCP-обёрток, чтобы AI-агенты могли читать/дёргать лаунчер. Детали — `SPECS/038-F-C-DEBUG_API/`.
+- **Вкладка Settings:** новая `⚙️ Settings` между Servers и Diagnostics. Собраны launcher-wide preferences: язык (перенесён из Help), глобальный выключатель автообновления подписок, автопинг-после-подключения. Попутно починен data-loss баг старого language-handler'а: `SaveSettings({Lang: code})` затирал ВСЕ остальные поля; теперь — load-mutate-save. См. `SPECS/039-F-C-SETTINGS_TAB_PREFERENCES/`.
+- **Глобальный выключатель автообновления подписок** (по умолчанию ВКЛ). OFF — плановые обновления пропускаются; ручной Update всегда работает. Повторное включение сбрасывает счётчик последовательных ошибок. Хранится как `subscription_auto_update_disabled` в `settings.json`.
+- **Автопинг после подключения VPN** (по умолчанию ВКЛ). Через 5 с после перехода sing-box в running вкладка Servers авто-запускает Test. Таймер отменяется, если пользователь нажал Stop внутри окна. Хранится как `auto_ping_after_connect_disabled`.
+- **Переключатель подписки:** чекбокс слева в каждой строке Sources-таба визарда. Отключённые источники остаются в файле (URL / skip / tag prefix), но полностью пропускаются парсером. `ProxySource.Disabled bool json:"disabled,omitempty"`; legacy-конфиги совместимы. См. `SPECS/037-F-C-SUBSCRIPTION_SOURCE_TOGGLE/`.
+- **Параметры URLTest как шаблонные vars с preset-дропдаунами:** `auto-proxy-out.url / interval / tolerance` вынесены в `@urltest_url / @urltest_interval / @urltest_tolerance`. См. `SPECS/040-F-C-WIZARD_TEMPLATE_OPTION_TITLES/` (известный пробел в рендере виджета — правка перед релизом).
+- **`vars[].options` поддерживает форму `{title, value}`:** подписи для дропдаунов отдельно от подставляемых значений. Старая форма (массив строк) работает как раньше (title == value). См. `SPECS/040-F-C-WIZARD_TEMPLATE_OPTION_TITLES/`.
+- **Горячие клавиши:** `Cmd/Ctrl+R` — reconnect, `Cmd/Ctrl+U` — update-subs, `Cmd/Ctrl+P` — ping-all. Tooltip-подсказки на кнопках — TODO на следующий pass. См. `SPECS/042-F-C-KEYBOARD_SHORTCUTS/`.
+- **Обработка wake-from-sleep (Windows + Linux):** на резюм лаунчер сбрасывает HTTP-соединения Clash API, затем перечитывает список прокси и (если VPN работает) re-пингует ноды — задержки больше не застывают до сна. Linux получил нативную поддержку через **systemd-logind `PrepareForSleep`** на system DBus (используется уже существующий `github.com/godbus/dbus/v5` indirect-dep, новых зависимостей нет). macOS пока stub — IOKit cgo hook в отслеживаемом TODO. См. `SPECS/011-B-C-launcher-freeze-after-sleep/` (раздел Расширение).
 
 ### Добавлено — устойчивость и наблюдаемость
 
-- **Атомарные записи** `config.json` (парсер + визард) и `settings.json` — сначала `.tmp` / `.swap`, потом `os.Rename`. Падение/обесточивание посреди записи больше не обнулит живой файл.
-- **Лимит 100 МБ** на загрузку sing-box core (проверка Content-Length до скачивания + кумулятивный счётчик во время). Скомпрометированное или неправильно настроенное зеркало не может залить гигабайты на диск пользователя.
-- **Сводка по источникам в парсере:** успех теперь пишет `"Configuration updated: 2/3 source(s) succeeded (1 failed)"`, если какая-то подписка вернула ошибку или ноль нод.
-- **Плитка последней ошибки автообновления** в Core Dashboard — показывает фактическое сообщение (с расшифровкой HTTP-кодов: `401 → "токен может быть просрочен"`, `429 → "rate limited — try again later"`). Висит до 24 ч после ошибки, очищается при следующем успехе.
-- **Подсказка «(подписки: X ч назад)»** рядом с датой модификации конфига.
-- **Маркер `*`** на кнопке Update, если визард сохранил изменения, а парсер ещё не прокатал.
+- **Атомарные записи** `config.json` (парсер + визард) и `settings.json` — сначала `.tmp` / `.swap`, потом `os.Rename`. Падение / kill -9 / обесточивание посреди записи больше не обнулит живой файл. См. `SPECS/041-F-C-ATOMIC_FILE_WRITES/`.
+- **Лимит 100 МБ** на загрузку sing-box core (проверка Content-Length до скачивания + кумулятивный счётчик во время). Скомпрометированное или неправильно настроенное зеркало не может залить диск пользователя.
+- **Расшифровка HTTP-статусов** в ошибках fetch'а подписок: `401 → "unauthorized — subscription token may have expired"`, `429 → "rate limited — try again later"`, `5xx → "server error — provider is having issues"` и т.д. Помогает триажить без Google.
+- **Подсказка «(подписки: X ч назад)»** рядом с config.json на Core Dashboard — свежесть последнего успешного Update. В рамках сессии.
+- **Маркер `*`** на кнопке Update, если визард сохранил изменения, а парсер ещё не прокатал. См. `SPECS/043-F-C-DIRTY_CONFIG_MARKER/` — текущая реализация минимальна; редизайн (отдельные sources-dirty vs runtime-dirty сигналы; в дальней перспективе — разделение state/config как в мобильном LxBox) — в спеке.
 
 ### Добавлено — безопасность
 
-- **Редакция токена Clash API** в debug-логах — больше не утекает целиком при публикации логов в GitHub issues.
-- **Блокировка кнопки Ping-all** на время работы теста (не плодит параллельных воркеров на спам-клик).
+- **Редакция токена Clash API** в debug-логах — `token=ab***89` вместо полного секрета. Безопасно вставлять логи в GitHub issues.
 
 ### Исправлено
 
@@ -97,3 +105,13 @@
 ### Изменено — шаблон
 
 - **Список русских и кириллических TLD расширен** в `ru-domains` rule-set: добавлены `.рус / .москва / moscow / tatar / .дети / .сайт / .орг / .ком`.
+
+### Не в этом релизе (отложено на редизайн — см. `SPECS/` и retrospective-отчёт)
+
+Прототипы были написаны 2026-04-22, но отклонены в ревью и отложены:
+
+- **Меню по правому клику на Update** — `SecondaryTapWrap` не маршрутизирует secondary-тапы в `widget.Button`. Нужен кастомный `RightClickableButton`, реализующий `fyne.SecondaryTappable` напрямую.
+- **Сводка по источникам «N из M»** — счётчики доходят до `OutboundGenerationResult`, но user-visible тост по-прежнему пишет «Config updated successfully». Нужно пробросить разбивку в тост.
+- **Плитка последней ошибки автообновления** на Core Dashboard — wired, но в UI не видна (диагностика layout / flag-path нужна).
+- **Блокировка кнопки Ping-all во время теста** — полное Disable ломает возможность прервать текущий прогон. Будет переделано как click-to-cancel с `pingAllInFlight` / `pingAllCancelled` + swap лейбла на «Cancel» / «Cancelling…».
+- **Рендеринг виджетов URLTest-vars в визарде** — `{title, value}` + editable SelectEntry семантически некорректен (пользователь может напечатать произвольный текст в поле с пресет-подписью). Правило для следующего pass'а: `enum` → чистый Select (titles допустимы); `text` + options → SelectEntry (только plain strings); `text` + `{title, value}` → ошибка валидатора.

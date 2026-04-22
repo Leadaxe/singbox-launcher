@@ -66,8 +66,66 @@
 
 ## Критерии приёмки
 
-- [ ] На Windows при выходе из сна/гибернации выполняется обработка события resume (подписка на power/session события).
-- [ ] При resume сбрасывается HTTP-транспорт к Clash API (новый клиент или новый Transport), чтобы не использовать «протухшие» соединения.
-- [ ] В `api/clash.go` у Transport задан IdleConnTimeout (конкретное значение — в PLAN).
-- [ ] Сборка и тесты проходят; линтер без новых ошибок. В новых путях кода — debuglog при start/success/error.
-- [ ] (Желательно) После resume лаунчер не показывает «Не отвечает» или восстанавливается заметно быстрее; при невозможности устранить блокировку в драйвере — документировать в IMPLEMENTATION_REPORT ограничения.
+- [x] На Windows при выходе из сна/гибернации выполняется обработка события resume (подписка на power/session события).
+- [x] При resume сбрасывается HTTP-транспорт к Clash API (новый клиент или новый Transport), чтобы не использовать «протухшие» соединения.
+- [x] В `api/clash.go` у Transport задан IdleConnTimeout (конкретное значение — в PLAN).
+- [x] Сборка и тесты проходят; линтер без новых ошибок. В новых путях кода — debuglog при start/success/error.
+- [x] (Желательно) После resume лаунчер не показывает «Не отвечает» или восстанавливается заметно быстрее; при невозможности устранить блокировку в драйвере — документировать в IMPLEMENTATION_REPORT ограничения.
+
+---
+
+## Расширение (2026-04-22)
+
+Исходная SPEC была Windows-only. Ночной проход 2026-04-22 добавил две важные вещи:
+
+### Р1. UI re-sync после resume (коммит `735cebe`)
+
+До: resume-callback только сбрасывал HTTP-транспорт. UI продолжал показывать pre-sleep latency и оставался с «мёртвыми» Clash-соединениями в списке.
+
+Сейчас (`main.go`):
+
+1. `api.ResetClashHTTPTransport()` — как было.
+2. `time.AfterFunc(3 * time.Second, ...)` → `fyne.Do(controller.UIService.RefreshAPIFunc)` — пере-тестить Clash API, перезагрузить `/proxies` список.
+3. Ещё через 2 с, если `RunningState.IsRunning()` и `StateService.IsAutoPingAfterConnectEnabled()` → `fyne.Do(controller.UIService.AutoPingAfterConnectFunc)` — свежий ping для всех нод.
+
+3 секунды / 5 секунд общей задержки — чтобы дать сетевым интерфейсам реально подняться после wake.
+
+Обе функции оборачиваются в `fyne.Do` (коммит `76e5628`) из соображений race-safety — `time.AfterFunc` запускает callback в goroutine, а `RefreshAPIFunc` (`onTestAPIConnection` в `clash_api_tab.go`) мутирует labels напрямую до диспатча своей внутренней goroutine.
+
+### Р2. Linux-поддержка через systemd-logind (коммит `3d31687`)
+
+До: `power_stub.go` покрывал всё не-Windows. Linux-пользователи получали такой же «лаунчер не отвечает» как прежде Windows.
+
+Сейчас (`internal/platform/power_linux.go`, build tag `linux`):
+
+- Подписка на `org.freedesktop.login1.Manager.PrepareForSleep` через system DBus (пакет `github.com/godbus/dbus/v5` — уже indirect-dep, новых зависимостей не добавляем).
+- Signal payload — bool. `true` → sleep callbacks + `sleepingFlag.Store(true)` + cancel текущего `powerCtx`. `false` → wake callbacks + `sleepingFlag.Store(false)` + новый `powerCtx`.
+- `startListenerLocked()` создаётся lazy — только при первой регистрации callback'а. Goroutine обрабатывает сигналы в бесконечном цикле `for sig := range ch`.
+- Если `SystemBus()` недоступна (минимальный дистрибутив, WSL без logind) — DebugLog + silent no-op. Никакой регрессии.
+- `power_stub.go` build tag сужен: был `!windows`, стал `!windows && !linux`.
+
+Контракт API (`IsSleeping`, `PowerContext`, `RegisterSleepCallback`, `RegisterPowerResumeCallback`, `StopPowerResumeListener`) — тот же, что в Windows. Клиенты не меняются.
+
+### Р3. macOS — **TODO**
+
+macOS остаётся на stub. Полное решение требует cgo через IOKit framework:
+
+- Отдельный `internal/platform/power_darwin.go` с build tag `darwin`.
+- Cgo: `#cgo darwin LDFLAGS: -framework IOKit -framework CoreFoundation`.
+- `IORegisterForSystemPower(refcon, &notifyPortRef, &callback, &notifierObject)`.
+- Callback получает:
+  - `kIOMessageSystemWillSleep` → отвечать `IOAllowPowerChange`, затем sleep-callbacks.
+  - `kIOMessageSystemHasPoweredOn` → wake-callbacks.
+- Отдельный goroutine с `runtime.LockOSThread()` + CFRunLoop (по образцу Windows, которая тоже `LockOSThread`).
+- `power_stub.go` build tag сужается до `!windows && !linux && !darwin`.
+- Ручной тест: `pmset sleepnow`, проверить что хуки стрельнули.
+
+Реализовать отдельной веткой — cgo meaningful risk.
+
+### Новые критерии приёмки
+
+- [x] UI re-sync после wake (3s→RefreshAPIFunc, 5s→AutoPingAfterConnect).
+- [x] Linux: поддержка через systemd-logind / DBus, no-op при отсутствии logind.
+- [ ] macOS: IOKit-хук (отдельной веткой).
+- [ ] Ручной тест на Linux (`systemctl suspend` + проверка логов).
+- [ ] Ручной тест на macOS (после реализации IOKit).

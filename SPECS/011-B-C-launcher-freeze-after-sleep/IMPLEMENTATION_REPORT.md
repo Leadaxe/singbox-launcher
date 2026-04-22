@@ -31,3 +31,57 @@
 - `go build ./api/... ./internal/platform/...` — успешно (Windows).
 - `go vet ./api/ ./internal/platform/` — без замечаний.
 - Вручную: запуск лаунчера на Windows, переход в сон/гибернацию, пробуждение — в логе должно появиться сообщение «Power resume: Clash API HTTP transport reset».
+
+## Дополнение (2026-04-22): UI re-sync + Linux
+
+### Коммит `735cebe` — UI re-sync после resume
+
+До: resume только `ResetClashHTTPTransport()`. UI оставался с pre-sleep данными.
+Стало (`main.go` resume-callback):
+
+```go
+platform.RegisterPowerResumeCallback(func() {
+    api.ResetClashHTTPTransport()
+    time.AfterFunc(3*time.Second, func() {
+        fyne.Do(controller.UIService.RefreshAPIFunc)  // /proxies перезагрузка
+        if controller.RunningState.IsRunning() &&
+           controller.StateService.IsAutoPingAfterConnectEnabled() {
+            time.AfterFunc(2*time.Second, func() {
+                if controller.RunningState.IsRunning() {
+                    fyne.Do(controller.UIService.AutoPingAfterConnectFunc)
+                }
+            })
+        }
+    })
+})
+```
+
+3s/5s задержки — дать сетевым интерфейсам реально встать после wake.
+`fyne.Do` обёртки (коммит `76e5628`) — потому что `time.AfterFunc` в goroutine,
+а `RefreshAPIFunc` мутирует labels напрямую до диспатча.
+
+### Коммит `3d31687` — Linux systemd-logind
+
+Новый файл `internal/platform/power_linux.go`:
+- Build tag `linux`.
+- `startListenerLocked()` — lazy init на первой регистрации callback'а.
+- `dbus.SystemBus()` + `AddMatch` на `org.freedesktop.login1.Manager.PrepareForSleep`.
+- Goroutine `for sig := range ch` — обработка сигналов.
+- `true` payload → sleep callbacks, `powerCtxCancel()`, `sleepingFlag.Store(true)`.
+- `false` payload → resume callbacks, новый `powerCtx`, `sleepingFlag.Store(false)`.
+- `SystemBus()` fail → silent no-op (минимальный дистрибутив без logind, WSL).
+- `power_stub.go` build tag сужен с `!windows` до `!windows && !linux`.
+
+Используется уже присутствующий `github.com/godbus/dbus/v5` — **новых зависимостей не добавляем**.
+
+### macOS — не сделано, отдельной веткой
+
+Требует cgo (IOKit framework) + CFRunLoop + `runtime.LockOSThread`.
+Список задач — в TASKS.md, Этап 2 / macOS IOKit.
+
+### Проверки
+
+- `go build ./...` на macOS — успешно (linux-файл исключён build tag'ом).
+- `go build ./internal/platform/` c `GOOS=linux` — успешно.
+- `go test ./...` — зелёные.
+- Ручной тест Linux: **TODO**.
