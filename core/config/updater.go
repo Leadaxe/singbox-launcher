@@ -79,7 +79,15 @@ func UpdateConfigFromSubscriptions(
 	debuglog.DebugLog("Parser: Successfully updated last_updated timestamp")
 
 	if progressCallback != nil {
-		progressCallback(100, "Configuration updated successfully!")
+		// Include the per-source breakdown so the dashboard can distinguish
+		// "full success" from "partial" — one bad subscription server out of
+		// three shouldn't read the same as everything-green.
+		msg := fmt.Sprintf("Configuration updated: %d source(s) succeeded", result.SucceededSources)
+		if result.FailedSources > 0 {
+			msg = fmt.Sprintf("Configuration updated: %d/%d source(s) succeeded (%d failed)",
+				result.SucceededSources, result.TotalSources, result.FailedSources)
+		}
+		progressCallback(100, msg)
 	}
 
 	return nil
