@@ -3,6 +3,7 @@ package ui
 import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/driver/desktop"
 
 	"singbox-launcher/core"
 	"singbox-launcher/internal/locale"
@@ -80,7 +81,30 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	// (реализация в ui/wizard_overlay.go)
 	InitWizardOverlay(app, controller)
 
+	// Main-window keyboard shortcuts for power users — matches the
+	// right-click menu on the Update button (core_dashboard_tab.go).
+	// Modifier is ShortcutDefault which maps to Super on macOS, Control on
+	// Linux/Windows. Registered on the Canvas so they fire regardless of
+	// which tab has focus, unless a text field is actively consuming input.
+	app.registerShortcuts()
+
 	return app
+}
+
+// registerShortcuts wires keyboard accelerators for the most common daily
+// power-user actions: reconnect sing-box, update subscriptions.
+func (a *App) registerShortcuts() {
+	if a.window == nil || a.window.Canvas() == nil {
+		return
+	}
+	reconnect := &desktop.CustomShortcut{KeyName: fyne.KeyR, Modifier: fyne.KeyModifierShortcutDefault}
+	a.window.Canvas().AddShortcut(reconnect, func(fyne.Shortcut) {
+		core.KillSingBoxForRestart()
+	})
+	updateSubs := &desktop.CustomShortcut{KeyName: fyne.KeyU, Modifier: fyne.KeyModifierShortcutDefault}
+	a.window.Canvas().AddShortcut(updateSubs, func(fyne.Shortcut) {
+		core.RunParserProcess()
+	})
 }
 
 // GetTabs returns the tabs container
