@@ -316,7 +316,7 @@
     "route": {
       "default_domain_resolver": "@dns_default_domain_resolver",
       "rule_set": [
-        { "tag": "ru-domains", "type": "inline", "format": "domain_suffix", "rules": [{ "domain_suffix": ["ru", "xn--p1ai", "su"] }] }
+        { "tag": "ru-domains", "type": "inline", "format": "domain_suffix", "rules": [{ "domain_suffix": ["ru", "xn--p1ai", "su", "xn--p1acf", "xn--80adxhks", "moscow", "tatar", "xn--d1acj3b", "xn--80aswg", "xn--c1avg", "xn--j1aef"] }] }
       ],
       "rules": [
         { "protocol": "dns", "action": "hijack-dns" }
