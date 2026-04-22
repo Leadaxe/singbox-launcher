@@ -273,7 +273,9 @@ func main() {
 		//     pre-sleep values.
 		time.AfterFunc(3*time.Second, func() {
 			if controller.UIService != nil && controller.UIService.RefreshAPIFunc != nil {
-				controller.UIService.RefreshAPIFunc()
+				// RefreshAPIFunc (onTestAPIConnection) mutates labels directly
+				// before dispatching its goroutine, so call from UI thread.
+				fyne.Do(controller.UIService.RefreshAPIFunc)
 			}
 			if controller.RunningState != nil && controller.RunningState.IsRunning() &&
 				controller.StateService != nil && controller.StateService.IsAutoPingAfterConnectEnabled() &&
@@ -282,7 +284,12 @@ func main() {
 				time.AfterFunc(2*time.Second, func() {
 					if controller.RunningState.IsRunning() {
 						debuglog.DebugLog("Power resume: triggering post-resume auto-ping")
-						controller.UIService.AutoPingAfterConnectFunc()
+						// AutoPingAfterConnectFunc already wraps pingAllProxies
+						// in fyne.Do internally (clash_api_tab.go registers it
+						// that way), but double-wrapping is a harmless no-op if
+						// we're already on the UI thread and cheap insurance
+						// otherwise.
+						fyne.Do(controller.UIService.AutoPingAfterConnectFunc)
 					}
 				})
 			}
