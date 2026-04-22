@@ -18,6 +18,7 @@ package debugapi
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -157,11 +158,20 @@ func (s *Server) routes() http.Handler {
 
 // authMiddleware requires "Authorization: Bearer <token>" on every protected
 // route. 401 with a JSON body, not HTML — this API is for machine callers.
+// Comparison is constant-time so an attacker on the same host can't learn
+// token bytes by timing the 401 response. On a real loopback interface this
+// leak is theoretical, but ConstantTimeCompare costs nothing and removes the
+// class of bug outright.
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := r.Header.Get("Authorization")
 		const prefix = "Bearer "
-		if !strings.HasPrefix(h, prefix) || strings.TrimSpace(h[len(prefix):]) != s.token {
+		if !strings.HasPrefix(h, prefix) {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+			return
+		}
+		got := strings.TrimSpace(h[len(prefix):])
+		if subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) != 1 {
 			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
 			return
 		}
