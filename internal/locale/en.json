@@ -3,8 +3,8 @@
 
   "app.tab.core": "⚙️ Core",
   "app.tab.servers": "🖥️ Servers",
-  "app.tab.diagnostics": "🔍 Diagnostics",
-  "app.tab.help": "❓ Help",
+  "app.tab.diagnostics": "🔍",
+  "app.tab.help": "❓",
   "app.tab.settings": "⚙️ Settings",
   "settings.section_subscriptions": "Subscriptions",
   "settings.section_language": "Language",
