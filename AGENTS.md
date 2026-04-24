@@ -58,11 +58,15 @@
 | Архитектура, потоки | **docs/ARCHITECTURE.md** (и др. в docs/ при необходимости) |
 | Выжимка для пользователя | **RELEASE_NOTES.md** (при значимых изменениях UX) |
 
+> **Выпуск релиза или пререлиза — отдельная процедура:** см. **[docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)**. Перед пушем stable-тега обязательно `upcoming.md` → `docs/release_notes/X-Y-Z.md` (+ пустой `upcoming.md`). Для пререлиза — создать `docs/release_notes/<SLUG>.md` с вычисленным локально slug'ом. CI падает, если файла нет.
+
 ---
 
 ## 5. Где что искать
 
 - **Релизные заметки (черновик):** `docs/release_notes/upcoming.md`
+- **Протокол выпуска релиза / пререлиза:** `docs/RELEASE_PROCESS.md`
+- **CI (run-modes, команды):** `.github/workflows/README.md`
 - **Архитектура:** `docs/ARCHITECTURE.md`
 - **Принципы и запреты:** `SPECS/CONSTITUTION.md`
 - **Задачи:** `SPECS/README.md`, папки `SPECS/NNN-T-S-NAME/`
@@ -82,3 +86,4 @@
 - [ ] **docs/release_notes/upcoming.md** обновлён.
 - [ ] При изменении архитектуры/потоков — обновлён **docs/ARCHITECTURE.md**.
 - [ ] При значимых изменениях UX — пункт в **RELEASE_NOTES.md**.
+- [ ] Если задача инициирует выпуск — следовать **[docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)** (перенос `upcoming.md` → `X-Y-Z.md` для stable / создание `<SLUG>.md` для prerelease).
