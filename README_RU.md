@@ -680,7 +680,7 @@ singbox-launcher/
 ### Краткое описание
 
 Парсер:
-- Загружает подписки (поддерживаются протоколы: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH) из URL
+- Загружает подписки (поддерживаются протоколы: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, WireGuard, **NaïveProxy**) из URL
 - Фильтрует узлы по заданным правилам
 - Группирует их в селекторы
 - Вставляет сгенерированные outbounds в начало массива `outbounds` в `config.json`
