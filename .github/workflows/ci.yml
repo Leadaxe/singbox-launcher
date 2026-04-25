@@ -681,12 +681,11 @@ jobs:
 
           NOTES_FILE="$(mktemp)"
           if [ "$PRERELEASE" = "true" ]; then
-            cat >> "$NOTES_FILE" <<BANNER_EOF
-> ⚠️ **Pre-release build** off \`$VERSION\` — for testing only, not for production. Use the latest stable release on the Releases page if you're not sure.
-
----
-
-BANNER_EOF
+            # printf instead of heredoc — heredoc body un-indented inside a
+            # YAML block scalar collides with YAML structural characters
+            # (leading `>` parses as folded scalar, leading `---` as document
+            # separator). printf keeps the script entirely on indented lines.
+            printf '> :warning: **Pre-release build** off `%s` — for testing only, not for production. Use the latest stable release on the Releases page if you are not sure.\n\n---\n\n' "$VERSION" >> "$NOTES_FILE"
           fi
           cat "$SRC" >> "$NOTES_FILE"
 
