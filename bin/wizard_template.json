@@ -179,10 +179,10 @@
       "type": "text",
       "default_value": "https://cp.cloudflare.com/generate_204",
       "options": [
-        {"title": "Cloudflare (HTTPS, default)", "value": "https://cp.cloudflare.com/generate_204"},
-        {"title": "Google (HTTP)",               "value": "http://www.gstatic.com/generate_204"},
-        {"title": "Google (HTTPS)",              "value": "https://www.google.com/generate_204"},
-        {"title": "Google connectivitycheck",    "value": "http://connectivitycheck.gstatic.com/generate_204"}
+        "https://cp.cloudflare.com/generate_204",
+        "http://www.gstatic.com/generate_204",
+        "https://www.google.com/generate_204",
+        "http://connectivitycheck.gstatic.com/generate_204"
       ],
       "wizard_ui": "edit",
       "title": "URLTest URL",
@@ -190,7 +190,7 @@
     },
     {
       "name": "urltest_interval",
-      "type": "text",
+      "type": "enum",
       "default_value": "5m",
       "options": [
         {"title": "1m (aggressive)",      "value": "1m"},
@@ -201,11 +201,11 @@
       ],
       "wizard_ui": "edit",
       "title": "URLTest interval",
-      "tooltip": "sing-box urltest.interval — how often to re-probe all nodes in auto-proxy-out (Go duration string: 30s, 1m, 5m, ...)."
+      "tooltip": "sing-box urltest.interval — how often to re-probe all nodes in auto-proxy-out. Pick a preset."
     },
     {
       "name": "urltest_tolerance",
-      "type": "text",
+      "type": "enum",
       "default_value": "100",
       "options": [
         {"title": "50 ms (twitchy)",     "value": "50"},
