@@ -29,7 +29,9 @@ func IsDirectLink(input string) bool {
 		strings.HasPrefix(trimmed, "ssh://") ||
 		strings.HasPrefix(trimmed, "wireguard://") ||
 		strings.HasPrefix(trimmed, "socks5://") ||
-		strings.HasPrefix(trimmed, "socks://")
+		strings.HasPrefix(trimmed, "socks://") ||
+		strings.HasPrefix(trimmed, "naive+https://") ||
+		strings.HasPrefix(trimmed, "naive+quic://")
 }
 
 // MaxURILength defines the maximum allowed length for a proxy URI
@@ -196,6 +198,18 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	case strings.HasPrefix(uri, "wireguard://"):
 		return parseWireGuardURI(uri, skipFilters)
 
+	case strings.HasPrefix(uri, "naive+https://"), strings.HasPrefix(uri, "naive+quic://"):
+		// NaïveProxy URI (de-facto spec: DuckSoft 2020).
+		// Replace "naive+xxx" prefix with "https" so net/url can parse the rest;
+		// transport mode (HTTP/2 vs QUIC) is remembered in node.Query["quic"].
+		scheme = "naive"
+		defaultPort = 443
+		if strings.HasPrefix(uri, "naive+quic://") {
+			uriToParse = strings.Replace(uri, "naive+quic://", "https://", 1)
+		} else {
+			uriToParse = strings.Replace(uri, "naive+https://", "https://", 1)
+		}
+
 	default:
 		return nil, fmt.Errorf("unsupported scheme")
 	}
@@ -268,8 +282,8 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		if decoded, err := url.QueryUnescape(node.UUID); err == nil && decoded != node.UUID {
 			node.UUID = decoded
 		}
-		// Extract password for SSH, Trojan and SOCKS (user:password@server)
-		if scheme == "ssh" || scheme == "trojan" || scheme == "socks" || scheme == "socks5" {
+		// Extract password for SSH, Trojan, SOCKS and Naive (user:password@server)
+		if scheme == "ssh" || scheme == "trojan" || scheme == "socks" || scheme == "socks5" || scheme == "naive" {
 			if password, hasPassword := parsedURL.User.Password(); hasPassword {
 				if decodedPassword, err := url.QueryUnescape(password); err == nil {
 					node.Query.Set("password", decodedPassword)
@@ -277,6 +291,19 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 					node.Query.Set("password", password)
 				}
 			}
+		}
+	}
+
+	// Naive-specific: remember transport mode (HTTP/2 vs QUIC) from the original
+	// scheme prefix, and strip the `padding` query param which has no sing-box
+	// equivalent and would otherwise leak into logs as an "unknown option".
+	if scheme == "naive" {
+		if strings.HasPrefix(uri, "naive+quic://") {
+			node.Query.Set("quic", "true")
+		}
+		if node.Query.Has("padding") {
+			debuglog.WarnLog("Parser: naive: 'padding' URI parameter has no sing-box equivalent, ignoring (value=%q)", node.Query.Get("padding"))
+			node.Query.Del("padding")
 		}
 	}
 
@@ -307,8 +334,9 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		// Try to extract from path (some formats use path for label)
 		if parsedURL.Path != "" && parsedURL.Path != "/" {
 			node.Label = strings.TrimPrefix(parsedURL.Path, "/")
-		} else if parsedURL.User != nil && scheme != "hysteria2" {
-			// Some formats encode label in username (but not for hysteria2, where it's the password)
+		} else if parsedURL.User != nil && scheme != "hysteria2" && scheme != "naive" {
+			// Some formats encode label in username (but not for hysteria2 where
+			// it's the password, and not for naive where user is the auth user).
 			node.Label = parsedURL.User.Username()
 		}
 	}
@@ -718,6 +746,8 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 		buildHysteria2Outbound(node, outbound)
 	} else if node.Scheme == "ssh" {
 		buildSSHOutbound(node, outbound)
+	} else if node.Scheme == "naive" {
+		buildNaiveOutbound(node, outbound)
 	} else if node.Scheme == "socks" || node.Scheme == "socks5" {
 		if node.UUID != "" {
 			outbound["username"] = node.UUID

@@ -19,6 +19,8 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
+
 	"singbox-launcher/core"
 	"singbox-launcher/core/config/parser"
 	"singbox-launcher/internal/constants"
@@ -46,7 +48,7 @@ type CoreDashboardTab struct {
 	downloadPlaceholder       *canvas.Rectangle   // keeps width when button hidden
 	startButton               *widget.Button      // Start button
 	stopButton                *widget.Button      // Stop button
-	restartButton             *widget.Button      // Restart (kill, watcher restarts)
+	restartButton             *ttwidget.Button    // Restart (kill, watcher restarts) — tooltip carries shortcut
 	wintunStatusLabel         *widget.Label       // wintun.dll status
 	wintunHelpBtn             *widget.Button      // "?" help button, hidden when Download is hidden
 	wintunDownloadButton      *widget.Button      // wintun.dll download button
@@ -56,7 +58,7 @@ type CoreDashboardTab struct {
 	configStatusLabel         *widget.Button      // Используем Button для возможности клика
 	templateDownloadButton    *widget.Button
 	wizardButton              *widget.Button
-	updateConfigButton        *widget.Button
+	updateConfigButton        *ttwidget.Button // tooltip carries shortcut hint
 	parserProgressBar         *widget.ProgressBar // Progress bar for parser
 	parserStatusLabel         *widget.Label       // Status label for parser
 
@@ -220,8 +222,9 @@ func (tab *CoreDashboardTab) createStatusRow() fyne.CanvasObject {
 		core.StopSingBoxProcess()
 	})
 
-	restartButton := widget.NewButton("🔄", nil)
+	restartButton := ttwidget.NewButton("🔄", nil)
 	restartButton.Importance = widget.MediumImportance
+	restartButton.SetToolTip(fmt.Sprintf(locale.T("core.button_restart_tooltip"), platform.ShortcutModifierLabel()))
 	tab.startButton = startButton
 	tab.stopButton = stopButton
 	tab.restartButton = restartButton
@@ -290,7 +293,7 @@ func (tab *CoreDashboardTab) createConfigBlock() fyne.CanvasObject {
 	tab.parserStatusLabel.Alignment = fyne.TextAlignCenter
 
 	// Кнопка Update
-	tab.updateConfigButton = widget.NewButton(locale.T("core.button_update"), func() {
+	tab.updateConfigButton = ttwidget.NewButton(locale.T("core.button_update"), func() {
 		// Деактивируем кнопку и показываем прогрессбар
 		tab.updateConfigButton.Disable()
 		tab.parserProgressBar.Show()
@@ -302,6 +305,7 @@ func (tab *CoreDashboardTab) createConfigBlock() fyne.CanvasObject {
 		go core.RunParserProcess()
 	})
 	tab.updateConfigButton.Importance = widget.MediumImportance
+	tab.updateConfigButton.SetToolTip(fmt.Sprintf(locale.T("core.button_update_tooltip"), platform.ShortcutModifierLabel()))
 
 	tab.wizardButton = widget.NewButton(locale.T("core.button_wizard"), func() {
 		// Get parent window from AppController

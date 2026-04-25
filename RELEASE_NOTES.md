@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v0.8.8
+
+Кратко: **поддержка NaïveProxy** в парсере подписок и share-URI энкодере (`naive+https://` / `naive+quic://`, требует sing-box ≥ 1.13.0 со сборкой `with_naive_proxy`); **macOS wake-from-sleep re-sync** через IOKit `IORegisterForSystemPower` — закрытие SPEC 011 на всех платформах. **Честный тост Update**: при failures показывает `2/3 source(s) succeeded (1 failed)` вместо общего «successfully»; «молчаливый ноль» считается failure. **Tooltips на Update / Restart** показывают горячие клавиши (Cmd/Ctrl + U/R). **Фикс шаблона визарда**: object-форма `options: [{title, value}]` теперь принудительно даёт `type: "enum"` (строгий дропдаун) — лечит баг URLTest, когда подпись «5m (default)» уезжала в config вместо значения `5m`. URLTest-vars в `bin/wizard_template.json` приведены в порядок: `urltest_url` plain-string options + combo, `urltest_interval/tolerance` явно `enum`. **CI**: per-version release-notes файл обязателен, новый runbook `docs/RELEASE_PROCESS.md`. `FallbackVersion` 1.13.6 → 1.13.11. Заведены спеки на v0.9.x: [**045** state/config decoupling](SPECS/045-F-N-STATE_CONFIG_DECOUPLING/SPEC.md) (по образцу LxBox), [**046** pinned core + template](SPECS/046-F-N-PINNED_CORE_AND_TEMPLATE/SPEC.md).
+
+**Полный список изменений:** [docs/release_notes/0-8-8.md](docs/release_notes/0-8-8.md).
+
+### Highlights (EN) — v0.8.8
+
+In short: **NaïveProxy support** in the subscription parser and share-URI encoder (`naive+https://` / `naive+quic://`, requires sing-box ≥ 1.13.0 with `with_naive_proxy`); **macOS wake-from-sleep re-sync** via IOKit `IORegisterForSystemPower` — closes SPEC 011 on all platforms. **Honest Update toast**: on failures shows `2/3 source(s) succeeded (1 failed)` instead of a blanket "successfully"; silent-empty is failure. **Tooltips on Update / Restart** reveal keyboard shortcuts (Cmd/Ctrl + U/R). **Wizard template fix**: object-form `options: [{title, value}]` is now force-normalized to `type: "enum"` (strict dropdown) — fixes the URLTest bug where the label "5m (default)" leaked into the config instead of the value `5m`. URLTest vars in `bin/wizard_template.json` cleaned up: `urltest_url` plain-string options + combo; `urltest_interval / tolerance` explicit `enum`. **CI**: per-version release-notes file required, new `docs/RELEASE_PROCESS.md` runbook. `FallbackVersion` 1.13.6 → 1.13.11. SPEC groundwork for v0.9.x: [**045** state/config decoupling](SPECS/045-F-N-STATE_CONFIG_DECOUPLING/SPEC.md) (LxBox-style), [**046** pinned core + template](SPECS/046-F-N-PINNED_CORE_AND_TEMPLATE/SPEC.md).
+
+**Full changelog:** [docs/release_notes/0-8-8.md](docs/release_notes/0-8-8.md).
+
+---
+
 ### Выжимка (RU) — v0.8.7
 
 Кратко: новая вкладка **⚙️ Settings** (язык, автообновление подписок, автопинг после подключения); data-loss баг языка починен (load-mutate-save). Локальный **Debug API** `127.0.0.1:9269` (off by default, Bearer-токен, read/action-эндпоинты) — backing-service для MCP-обёрток, чтобы AI-агенты могли читать и дёргать лаунчер. В визарде — **переключатель ON/OFF для каждой подписки** (не удаляя URL). **URLTest-параметры** (url/interval/tolerance) выведены из `auto-proxy-out` в шаблонные `vars` с preset-дропдаунами; `vars[].options` теперь поддерживает форму `{title, value}`. Горячие клавиши `Cmd/Ctrl+R / U / P`. **Wake-from-sleep re-sync** (Windows + Linux: `systemd-logind PrepareForSleep`, macOS пока stub) — после резюма сбрасываются соединения Clash API, список прокси обновляется, пинг освежается. **Атомарные записи** `config.json` и `settings.json` (stage+rename). **Лимит 100 МБ** на загрузку sing-box core. **Расшифровка HTTP-кодов** в ошибках подписок (401 → «token may have expired» и т.д.). **Подсказка «(подписки: X ч назад)»** и **dirty-marker `*`** на кнопке Update. **Редакция токена Clash API** в debug-логах. Расширены кириллические TLD в `ru-domains` (`.рус / .москва / .дети / .сайт / .орг / .ком` и др.). Спеки: [**037** — toggle подписки](SPECS/037-F-C-SUBSCRIPTION_SOURCE_TOGGLE/SPEC.md), [**038** — Debug API](SPECS/038-F-C-DEBUG_API/SPEC.md), [**039** — Settings-tab](SPECS/039-F-C-SETTINGS_TAB_PREFERENCES/SPEC.md), [**040** — option titles + URLTest](SPECS/040-F-C-WIZARD_TEMPLATE_OPTION_TITLES/SPEC.md), [**041** — атомарные записи](SPECS/041-F-C-ATOMIC_FILE_WRITES/SPEC.md), [**042** — keyboard shortcuts](SPECS/042-F-C-KEYBOARD_SHORTCUTS/SPEC.md), [**043** — dirty-marker](SPECS/043-F-C-DIRTY_CONFIG_MARKER/SPEC.md); расширена [**011** — wake-from-sleep](SPECS/011-B-C-launcher-freeze-after-sleep/SPEC.md).
@@ -56,6 +70,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v0.8.8** | [docs/release_notes/0-8-8.md](docs/release_notes/0-8-8.md) |
 | **v0.8.7** | [docs/release_notes/0-8-7.md](docs/release_notes/0-8-7.md) |
 | **v0.8.6** | [docs/release_notes/0-8-6.md](docs/release_notes/0-8-6.md) |
 | **v0.8.5** | [docs/release_notes/0-8-5.md](docs/release_notes/0-8-5.md) |

@@ -108,7 +108,7 @@ func (v *TemplateVar) UnmarshalJSON(data []byte) error {
 	}
 	values := make([]string, 0, len(raws))
 	titles := make([]string, 0, len(raws))
-	var anyTitle bool
+	var anyTitle, anyObjectForm bool
 	for _, r := range raws {
 		var s string
 		if err := json.Unmarshal(r, &s); err == nil {
@@ -123,6 +123,7 @@ func (v *TemplateVar) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(r, &obj); err != nil {
 			return err
 		}
+		anyObjectForm = true
 		values = append(values, obj.Value)
 		if strings.TrimSpace(obj.Title) == "" {
 			titles = append(titles, obj.Value)
@@ -134,6 +135,17 @@ func (v *TemplateVar) UnmarshalJSON(data []byte) error {
 	v.Options = values
 	if anyTitle {
 		v.OptionTitles = titles
+	}
+	// Object-form options (`[{title, value}]`) imply a closed-set semantic by
+	// definition — titles are display-only labels, the substituted value is
+	// the `value` field. Combining this with `type:"text"` (free-text combo)
+	// is unsafe: free-typed text bypasses the title→value mapping and lands
+	// in the config as the literal display string. Same risk for any other
+	// type. Normalize to `enum` regardless of the declared type so all code
+	// paths (renderer, validator, preview, substitute) see one consistent
+	// invariant.
+	if anyObjectForm {
+		v.Type = "enum"
 	}
 	return nil
 }

@@ -3,9 +3,21 @@ package platform
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"singbox-launcher/internal/constants"
 )
+
+// ShortcutModifierLabel returns the human-visible label for the platform's
+// keyboard shortcut modifier — "⌘" on macOS, "Ctrl" on Windows/Linux. Used in
+// tooltips and similar surface text. Mirrors what fyne.KeyModifierShortcutDefault
+// resolves to per platform.
+func ShortcutModifierLabel() string {
+	if runtime.GOOS == "darwin" {
+		return "⌘"
+	}
+	return "Ctrl"
+}
 
 // DefaultDirMode — права по умолчанию для создания директорий (rwxr-xr-x).
 // На Windows значение игнорируется ОС, но Go требует параметр в os.MkdirAll.

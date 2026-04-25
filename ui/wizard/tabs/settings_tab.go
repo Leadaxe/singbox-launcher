@@ -182,33 +182,14 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, td *wizardtemplate.TemplateData, vd wizardtemplate.TemplateVar, title, toolTip string, rowEnabled bool, gs *wizardpresentation.GUIState) fyne.CanvasObject {
 	name := vd.Name
 	typ := vd.Type
-	// Options carry actual values; titles (if any) are what the user sees in
-	// dropdowns. For templates using the legacy `["a","b"]` form, title==value.
-	// Object form `[{title:"5m (default)", value:"5m"}]` surfaces richer labels.
+	// Options carry actual values for substitution. Object-form options
+	// (`[{title, value}]`) are normalized to `type:"enum"` at unmarshal
+	// time (see TemplateVar.UnmarshalJSON), so:
+	//   - enum branch may have title != value and uses titleForValue /
+	//     valueForTitle to map dropdown picks back to values;
+	//   - text branch only ever sees plain-string options (title==value),
+	//     so no title↔value mapping is needed there.
 	options := vd.Options
-	optionTitles := make([]string, len(options))
-	for i := range options {
-		optionTitles[i] = vd.OptionTitle(i)
-	}
-	// title → value map for mapping user's dropdown pick back to the value
-	// that ends up in SettingsVars / config substitution. When titles are
-	// identical to values (the legacy case) this is a no-op identity map.
-	valueForTitle := func(t string) string {
-		for i, ot := range optionTitles {
-			if ot == t {
-				return options[i]
-			}
-		}
-		return t
-	}
-	titleForValue := func(val string) string {
-		for i, v := range options {
-			if v == val {
-				return optionTitles[i]
-			}
-		}
-		return val
-	}
 	viewMode := strings.EqualFold(strings.TrimSpace(vd.WizardUI), "view")
 
 	st := model.SettingsVars
@@ -289,6 +270,29 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 
 	case "enum":
 		titleLab := newSettingsTitleLabel(title)
+		// Object-form options surface display titles distinct from values;
+		// legacy string-list form sets title == value. Map both directions
+		// for the dropdown.
+		optionTitles := make([]string, len(options))
+		for i := range options {
+			optionTitles[i] = vd.OptionTitle(i)
+		}
+		valueForTitle := func(t string) string {
+			for i, ot := range optionTitles {
+				if ot == t {
+					return options[i]
+				}
+			}
+			return t
+		}
+		titleForValue := func(val string) string {
+			for i, v := range options {
+				if v == val {
+					return optionTitles[i]
+				}
+			}
+			return val
+		}
 		sel := widget.NewSelect(optionTitles, func(pickedTitle string) {
 			model.SettingsVars[name] = valueForTitle(pickedTitle)
 			model.TemplatePreviewNeedsUpdate = true
@@ -342,21 +346,15 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 			model.TemplatePreviewNeedsUpdate = true
 			presenter.MarkAsChanged()
 		}
-		// If the var declares `options` on a text type, render a combo-dropdown
-		// (free text + preset suffix menu) instead of a plain entry. Ported from
-		// LxBox — turns "Test URL" / "Test interval" / "Tolerance" from a typo
-		// minefield into tap-to-pick-or-edit.
-		//
-		// Titles vs values: `optionTitles` is what the user picks; a wrapper
-		// OnChanged maps back to the raw value (identity-mapped for legacy
-		// string-list options). The entry's displayed text is the title when
-		// the current value is a known preset; otherwise raw user text.
+		// `type:"text"` + options always means plain-string options
+		// (title==value): object-form options force the var to enum at
+		// unmarshal time. So the SelectEntry combo can use options
+		// directly without any title↔value mapping — what the user sees
+		// in the dropdown is what gets substituted.
 		if len(options) > 0 {
-			se := widget.NewSelectEntry(optionTitles)
-			se.SetText(titleForValue(disp))
-			se.OnChanged = func(s string) {
-				onChanged(valueForTitle(s))
-			}
+			se := widget.NewSelectEntry(options)
+			se.SetText(disp)
+			se.OnChanged = onChanged
 			row := container.NewBorder(nil, nil, titleLab, resetBtn, se)
 			setVarFieldToolTip(toolTip, titleLab, se)
 			applySettingsRowDisabled(rowEnabled, resetBtn, se)

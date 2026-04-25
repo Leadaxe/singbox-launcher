@@ -2,7 +2,7 @@
 
 ## Назначение
 
-Парсер обновляет файл `bin/config.json`, загружая подписки (поддерживаются протоколы: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, WireGuard), фильтруя и группируя их в селекторы. Результат записывается в секции между маркерами `/** @ParserSTART */` и `/** @ParserEND */` (outbounds), а узлы WireGuard — между `/** @ParserSTART_E */` и `/** @ParserEND_E */` (endpoints). Секция **endpoints** (WireGuard) поддерживается в sing-box начиная с версии **1.11**.
+Парсер обновляет файл `bin/config.json`, загружая подписки (поддерживаются протоколы: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, WireGuard, **NaïveProxy**), фильтруя и группируя их в селекторы. Результат записывается в секции между маркерами `/** @ParserSTART */` и `/** @ParserEND */` (outbounds), а узлы WireGuard — между `/** @ParserSTART_E */` и `/** @ParserEND_E */` (endpoints). Секция **endpoints** (WireGuard) поддерживается в sing-box начиная с версии **1.11**.
 
 ### JSON-массив полных конфигов Xray/V2Ray
 
@@ -77,6 +77,7 @@
 | `socks` | `socks5://` | `version` 5; user/password при наличии |
 | `hysteria2` | `hysteria2://` | TLS SNI, `mport`, obfs и т.д. по возможности |
 | `ssh` | `ssh://` | **Нет** кодирования inline `private_key` в URI; путь к ключу и прочие поля — в query, как в документации SSH URI |
+| `naive` | `naive+https://` / `naive+quic://` | HTTP/2 (`naive+https`) или QUIC (`naive+quic`); user/pass в userinfo; `extra-headers` в query с `\r\n`-разделёнными парами (см. раздел **NaïveProxy** ниже). Требует sing-box **≥ 1.13.0** с `with_naive_proxy` build tag. |
 | `wireguard` | `wireguard://` | Обычно узел только в `endpoints[]`; формат и query — раздел **WireGuard** ниже. **Один URI ↔ один удалённый peer:** при нескольких элементах в `peers[]` кодирование не поддерживается (`ErrShareURINotSupported`). |
 
 **Не кодируются в один share URI:** `selector`, `urltest`, `direct`, `block`, `dns`, произвольные служебные типы; WireGuard с **несколькими** `peers`; outbound с непустым **`detour`** (цепочка через jump из подписки Xray JSON).
@@ -724,6 +725,59 @@ socks5://myuser:mypass@proxy.example.com:1080#Office SOCKS5
 socks5://proxy.example.com:1080
 socks://127.0.0.1:1080#Local
 ```
+
+### NaïveProxy (`naive+https://` / `naive+quic://`)
+
+**Требование:** sing-box должен быть собран с поддержкой NaïveProxy (build tag `with_naive_proxy`). Официальные релизы `SagerNet/sing-box` для **Apple, Android, Windows и отдельных Linux-сборок** включают эту поддержку; на минимальных сборках парсинг URI пройдёт, но `sing-box check` при запуске отклонит конфиг как «unknown outbound type 'naive'».
+
+**Схема URI** (де-факто, DuckSoft 2020 — [gist](https://gist.github.com/DuckSoft/ca03913b0a26fc77a1da4d01cc6ab2f1)):
+
+```
+naive+https://<user>:<pass>@<host>:<port>/?<params>#<label>
+naive+quic://<user>:<pass>@<host>:<port>/?<params>#<label>
+```
+
+- **Схема:** `naive+https` — транспорт HTTP/2; `naive+quic` — QUIC (с автоматическим `quic_congestion_control: bbr` в JSON).
+- **Userinfo:** `<user>:<pass>` или только `<pass>` (тогда ложится в user-slot — как у hysteria2). Anonymous-режим — без userinfo.
+- **Port:** опциональный, default **443**.
+- **Query:**
+  - `padding=true|false` — **игнорируется** с warning (в sing-box нет соответствующего поля).
+  - `extra-headers=<urlencoded "Header1: Value1\r\nHeader2: Value2">` — дополнительные HTTP-заголовки; невалидные пары (неправильный charset имени, CR/LF/NUL в значении) пропускаются с warning, остальные сохраняются.
+- **Fragment (`#label`):** URL-decoded, UTF-8-fixup — стандартно.
+
+**Примеры:**
+
+```
+naive+https://what:happened@test.someone.cf?padding=false#Naive!
+naive+https://some.public.rs?padding=true#Public-01
+naive+quic://manhole:114514@quic.test.me
+naive+https://some.what?extra-headers=X-Username%3Auser%0D%0AX-Password%3Apassword
+```
+
+**Результирующий JSON outbound** (sing-box ≥ 1.13.0, [doc](https://sing-box.sagernet.org/configuration/outbound/naive/)):
+
+```json
+{
+  "type": "naive",
+  "tag": "…",
+  "server": "test.someone.cf",
+  "server_port": 443,
+  "username": "what",
+  "password": "happened",
+  "tls": { "enabled": true, "server_name": "test.someone.cf" }
+}
+```
+
+Для `naive+quic://` добавляются `"quic": true` и `"quic_congestion_control": "bbr"`. Блок `extra-headers` разворачивается в `"extra_headers": {"X-Username": "user", "X-Password": "password"}`.
+
+**TLS-блок:** sing-box naive outbound поддерживает **только** `server_name`, `certificate`, `certificate_path`, `ech` — `alpn / utls / reality / min_version` для этого типа не применимы и не эмитятся парсером. Custom SNI в URI пока не поддерживается (v1); `tls.server_name` = `host`. Для ручного переопределения — правка `config.json` после wizard Save.
+
+**Share URI (обратная сборка)** — `ShareURIFromOutbound` для `type: "naive"`:
+- `naive+https://` или `naive+quic://` в зависимости от `quic: true/false`.
+- `extra_headers` map'а сортируется лексикографически по ключам (для детерминизма round-trip'а), склеивается `\r\n`, шифруется в query.
+- `padding` **не восстанавливается** (не хранится в outbound).
+
+Реализация: `core/config/subscription/node_parser_naive.go` (helpers), `node_parser.go` (dispatch), `share_uri_encode.go` (`shareURIFromNaive`). Спека: [**SPECS/044-F-C-NAIVE_PROXY_PARSER/SPEC.md**](../SPECS/044-F-C-NAIVE_PROXY_PARSER/SPEC.md).
 
 ### WireGuard (`wireguard://`)
 **⚠️ Особенность:** Узлы WireGuard записываются в секцию **endpoints** конфига (не в outbounds). Требуется **sing-box 1.11+**.

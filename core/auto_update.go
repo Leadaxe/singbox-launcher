@@ -185,8 +185,10 @@ func (ac *AppController) attemptAutoUpdateWithRetries(retryInterval time.Duratio
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		debuglog.InfoLog("Auto-update: Attempting update (attempt %d/%d)", attempt, maxRetries)
 
-		// Call UpdateConfigFromSubscriptions synchronously
-		err := ac.ConfigService.UpdateConfigFromSubscriptions()
+		// Call UpdateConfigFromSubscriptions synchronously. The per-source
+		// result is irrelevant for the auto-update retry loop — only the
+		// error matters; toasts are not shown from this background path.
+		_, err := ac.ConfigService.UpdateConfigFromSubscriptions()
 		if err == nil {
 			// Success - reset error counter
 			ac.StateService.ResetAutoUpdateFailedAttempts()

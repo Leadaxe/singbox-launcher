@@ -71,6 +71,13 @@ type OutboundGenerationResult struct {
 	EndpointsCount       int      // Number of WireGuard endpoint nodes
 	LocalSelectorsCount  int      // Number of local (per-source) selectors
 	GlobalSelectorsCount int      // Number of global selectors
+	// Per-source outcomes (only enabled sources are counted; disabled sources
+	// don't participate). A source counts as failed if loadNodesFunc returned
+	// an error OR returned zero nodes — silent-empty is failure from the
+	// user's point of view.
+	TotalSources     int
+	SucceededSources int
+	FailedSources    int
 }
 
 // outboundInfo stores information about a dynamically created outbound selector.
@@ -897,6 +904,8 @@ func GenerateOutboundsFromParserConfig(
 	}
 
 	processedIdx := 0
+	succeededSources := 0
+	failedSources := 0
 	for i, proxySource := range parserConfig.ParserConfig.Proxies {
 		if proxySource.Disabled {
 			debuglog.DebugLog("GenerateOutboundsFromParserConfig: skipping source %d (disabled)", i+1)
@@ -911,6 +920,7 @@ func GenerateOutboundsFromParserConfig(
 		nodesFromSource, err := loadNodesFunc(proxySource, tagCounts, progressCallback, i, totalSources)
 		if err != nil {
 			debuglog.ErrorLog("GenerateOutboundsFromParserConfig: Error processing source %d/%d: %v", i+1, totalSources, err)
+			failedSources++
 			continue
 		}
 
@@ -920,6 +930,13 @@ func GenerateOutboundsFromParserConfig(
 			}
 			allNodes = append(allNodes, nodesFromSource...)
 			nodesBySource[i] = nodesFromSource
+			succeededSources++
+		} else {
+			// Silent-empty: source fetched OK but parsed zero nodes. From
+			// the user's perspective this is indistinguishable from a hard
+			// failure — they expected nodes, got none.
+			debuglog.WarnLog("GenerateOutboundsFromParserConfig: source %d/%d returned zero nodes (counted as failed)", i+1, totalSources)
+			failedSources++
 		}
 	}
 
@@ -1024,5 +1041,8 @@ func GenerateOutboundsFromParserConfig(
 		EndpointsCount:       endpointsCount,
 		LocalSelectorsCount:  localSelectorsCount,
 		GlobalSelectorsCount: globalSelectorsCount,
+		TotalSources:         totalSources,
+		SucceededSources:     succeededSources,
+		FailedSources:        failedSources,
 	}, nil
 }

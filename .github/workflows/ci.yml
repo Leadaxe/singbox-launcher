@@ -653,22 +653,50 @@ jobs:
       - name: Read release notes
         id: release_notes
         shell: bash
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+          PRERELEASE: ${{ needs.meta.outputs.prerelease }}
         run: |
-          if [ -f "RELEASE_NOTES.md" ]; then
-            TEMP_FILE=$(mktemp)
-            cat RELEASE_NOTES.md > "$TEMP_FILE"
-            DELIMITER="RELEASE_NOTES_EOF_b8f0dt821h7"
-            {
-              echo "notes<<${DELIMITER}"
-              cat "$TEMP_FILE"
-              echo "${DELIMITER}"
-            } >> $GITHUB_OUTPUT
-            rm -f "$TEMP_FILE"
-            echo "✓ Found RELEASE_NOTES.md"
-          else
-            echo "notes=" >> $GITHUB_OUTPUT
-            echo "⚠ RELEASE_NOTES.md not found, skipping custom notes"
+          set -euo pipefail
+
+          # Slug: v0.8.7 -> 0-8-7;  v0.8.7-1-g50c7352-prerelease -> 0-8-7-1-g50c7352-prerelease
+          SLUG="${VERSION#v}"
+          SLUG="${SLUG//./-}"
+          SRC="docs/release_notes/${SLUG}.md"
+
+          if [ ! -f "$SRC" ]; then
+            echo "::error file=$SRC::Release notes file not found for version '$VERSION'."
+            echo "::error::Expected path: $SRC"
+            echo "::error::Create this file BEFORE triggering the release. See docs/RELEASE_PROCESS.md."
+            if [ "$PRERELEASE" = "true" ]; then
+              echo "::error::For a prerelease, compute the slug locally with:"
+              echo "::error::  VER=\"\$(git describe --tags --always --exclude='*-prerelease')-prerelease\""
+              echo "::error::  SLUG=\"\${VER#v}\"; SLUG=\"\${SLUG//./-}\""
+              echo "::error::  echo \"docs/release_notes/\${SLUG}.md\""
+            fi
+            exit 1
           fi
+
+          echo "✓ Using release notes from: $SRC"
+
+          NOTES_FILE="$(mktemp)"
+          if [ "$PRERELEASE" = "true" ]; then
+            cat >> "$NOTES_FILE" <<BANNER_EOF
+> ⚠️ **Pre-release build** off \`$VERSION\` — for testing only, not for production. Use the latest stable release on the Releases page if you're not sure.
+
+---
+
+BANNER_EOF
+          fi
+          cat "$SRC" >> "$NOTES_FILE"
+
+          DELIMITER="RELEASE_NOTES_EOF_b8f0dt821h7"
+          {
+            echo "notes<<${DELIMITER}"
+            cat "$NOTES_FILE"
+            echo "${DELIMITER}"
+          } >> "$GITHUB_OUTPUT"
+          rm -f "$NOTES_FILE"
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2

@@ -581,7 +581,7 @@ The subscription parser automatically updates the proxy server list in `config.j
 The parser reads the `ParserConfig` section from `config.json` (or `wizard_template.json`), downloads subscriptions, filters nodes, and generates selectors according to your configuration.
 
 **Key Features:**
-- Supports multiple subscription URLs and direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://)
+- Supports multiple subscription URLs and direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://, **naive+https:// / naive+quic://**)
 - Flexible filtering by tags, protocols, and other parameters
 - Automatic grouping into selectors
 - Automatic configuration reload based on time intervals
