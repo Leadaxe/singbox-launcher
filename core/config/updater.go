@@ -24,14 +24,17 @@ func indentEndpointsBlock(s, indent string) string {
 	return strings.Join(lines, "\n")
 }
 
-// UpdateConfigFromSubscriptions updates config.json from subscriptions
-// This is the main function that coordinates the update process
+// UpdateConfigFromSubscriptions updates config.json from subscriptions.
+// This is the main function that coordinates the update process. The returned
+// *OutboundGenerationResult carries per-source success/failure counts so the
+// caller can build a truthful toast (e.g. "2/3 source(s) succeeded"); it is
+// non-nil on success and may be non-nil with partial counts on early errors.
 func UpdateConfigFromSubscriptions(
 	configPath string,
 	parserConfig *ParserConfig,
 	progressCallback func(float64, string),
 	loadNodesFunc func(ProxySource, map[string]int, func(float64, string), int, int) ([]*ParsedNode, error),
-) error {
+) (*OutboundGenerationResult, error) {
 	debuglog.InfoLog("Parser: Starting configuration update...")
 
 	tagCounts := make(map[string]int)
@@ -42,13 +45,14 @@ func UpdateConfigFromSubscriptions(
 		if progressCallback != nil {
 			progressCallback(-1, fmt.Sprintf("Error: %v", err))
 		}
-		return fmt.Errorf("failed to generate outbounds: %w", err)
+		return result, fmt.Errorf("failed to generate outbounds: %w", err)
 	}
 
 	subscription.LogDuplicateTagStatistics(tagCounts, "Parser")
 
-	debuglog.InfoLog("Parser: Generated %d nodes, %d local selectors, %d global selectors",
-		result.NodesCount, result.LocalSelectorsCount, result.GlobalSelectorsCount)
+	debuglog.InfoLog("Parser: Generated %d nodes, %d local selectors, %d global selectors (sources: %d/%d succeeded, %d failed)",
+		result.NodesCount, result.LocalSelectorsCount, result.GlobalSelectorsCount,
+		result.SucceededSources, result.TotalSources, result.FailedSources)
 
 	selectorsJSON := result.OutboundsJSON
 
@@ -57,7 +61,7 @@ func UpdateConfigFromSubscriptions(
 		if progressCallback != nil {
 			progressCallback(-1, "Error: nothing to write to configuration")
 		}
-		return fmt.Errorf("no content generated - cannot write empty result to config")
+		return result, fmt.Errorf("no content generated - cannot write empty result to config")
 	}
 
 	// Step 3: Write to file
@@ -72,7 +76,7 @@ func UpdateConfigFromSubscriptions(
 		if progressCallback != nil {
 			progressCallback(-1, fmt.Sprintf("Write error: %v", err))
 		}
-		return fmt.Errorf("failed to write to config: %w", err)
+		return result, fmt.Errorf("failed to write to config: %w", err)
 	}
 
 	debuglog.InfoLog("Parser: Done! File %s successfully updated.", configPath)
@@ -82,7 +86,7 @@ func UpdateConfigFromSubscriptions(
 		progressCallback(100, "Configuration updated successfully!")
 	}
 
-	return nil
+	return result, nil
 }
 
 // PopulateParserMarkers replaces content between @ParserSTART/@ParserEND (and optionally

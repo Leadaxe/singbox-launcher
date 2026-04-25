@@ -25,6 +25,8 @@
   "core.status_config_error": "Config error: %v",
   "core.status_parser_starting": "Starting...",
   "core.button_update": "🔄 Update",
+  "core.button_update_tooltip": "Update subscriptions (%s+U)",
+  "core.button_restart_tooltip": "Restart sing-box (%s+R)",
   "core.auto_update_subs_label": "Auto-update subscriptions",
   "core.auto_ping_label": "Auto-ping on connect",
   "core.subs_updated_just_now": "(subs: just now)",

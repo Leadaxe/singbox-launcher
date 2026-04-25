@@ -56,7 +56,7 @@ func (svc *ConfigService) RunParserProcess() {
 	}()
 
 	// Call internal parser to update configuration
-	err := svc.UpdateConfigFromSubscriptions()
+	result, err := svc.UpdateConfigFromSubscriptions()
 
 	// Обрабатываем результат
 	if err != nil {
@@ -76,9 +76,24 @@ func (svc *ConfigService) RunParserProcess() {
 			ac.UIService.UpdateConfigStatusFunc()
 		}
 		if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
-			dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, "Parser", "Config updated successfully!")
+			dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, "Parser", parserSuccessToastMessage(result))
 		}
 	}
+}
+
+// parserSuccessToastMessage formats the toast shown after a successful parser
+// run. Truthful about partial failures: if any source returned an error or
+// silently produced zero nodes, surface the count instead of a blanket
+// "successfully" message.
+func parserSuccessToastMessage(result *config.OutboundGenerationResult) string {
+	if result == nil || result.TotalSources <= 0 {
+		return "Config updated successfully!"
+	}
+	if result.FailedSources == 0 {
+		return "Config updated successfully!"
+	}
+	return fmt.Sprintf("Config updated: %d/%d source(s) succeeded (%d failed)",
+		result.SucceededSources, result.TotalSources, result.FailedSources)
 }
 
 // updateParserProgress safely calls UpdateParserProgressFunc if it's not nil
@@ -112,14 +127,16 @@ func (svc *ConfigService) GenerateOutboundsFromParserConfig(
 }
 
 // UpdateConfigFromSubscriptions delegates to config.UpdateConfigFromSubscriptions
-func (svc *ConfigService) UpdateConfigFromSubscriptions() error {
+// and returns the per-source result (counts) along with any error so the caller
+// can craft an honest user-facing message (e.g. "2/3 succeeded").
+func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGenerationResult, error) {
 	ac := svc.ac
 
 	// Step 1: Extract configuration
 	parserConfig, err := parser.ExtractParserConfig(ac.FileService.ConfigPath)
 	if err != nil {
 		updateParserProgress(ac, -1, fmt.Sprintf("Error: %v", err))
-		return fmt.Errorf("failed to extract parser config: %w", err)
+		return nil, fmt.Errorf("failed to extract parser config: %w", err)
 	}
 
 	// Update progress: Step 1 completed
@@ -134,10 +151,10 @@ func (svc *ConfigService) UpdateConfigFromSubscriptions() error {
 		return svc.ProcessProxySource(ps, tc, pc, idx, total)
 	}
 
-	err = config.UpdateConfigFromSubscriptions(ac.FileService.ConfigPath, parserConfig, progressCallback, loadNodesFunc)
+	result, err := config.UpdateConfigFromSubscriptions(ac.FileService.ConfigPath, parserConfig, progressCallback, loadNodesFunc)
 	if err == nil {
 		// Resume auto-update after successful update
 		ac.resumeAutoUpdate()
 	}
-	return err
+	return result, err
 }

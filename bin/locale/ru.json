@@ -25,6 +25,8 @@
   "core.status_config_error": "Ошибка конфига: %v",
   "core.status_parser_starting": "Запуск...",
   "core.button_update": "🔄 Обновить",
+  "core.button_update_tooltip": "Обновить подписки (%s+U)",
+  "core.button_restart_tooltip": "Перезапустить sing-box (%s+R)",
   "core.auto_update_subs_label": "Автообновление подписок",
   "core.auto_ping_label": "Автопинг после подключения",
   "core.subs_updated_just_now": "(подписки: только что)",

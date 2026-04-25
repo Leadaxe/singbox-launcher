@@ -88,7 +88,10 @@ func (f *debugAPIFacade) UpdateSubscriptions() error {
 		return errors.New("config service not initialized")
 	}
 	// Run synchronously so the HTTP caller learns success/failure in-band.
-	return f.ac.ConfigService.UpdateConfigFromSubscriptions()
+	// Per-source counts are exposed to humans through toasts, not through
+	// the JSON action contract — discard the result here.
+	_, err := f.ac.ConfigService.UpdateConfigFromSubscriptions()
+	return err
 }
 
 // debugAPIState holds a singleton-ish handle so main.go can Start/Stop it.
