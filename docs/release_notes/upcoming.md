@@ -12,6 +12,8 @@
 
 - **NaïveProxy (`naive+https://` / `naive+quic://`) support** in subscription parser and share-URI encoder. Parses user/pass, `extra-headers`, and QUIC vs HTTP/2 transport per the de-facto DuckSoft URI spec; emits sing-box `"type": "naive"` outbound with TLS block limited to `server_name` (matching sing-box naive capabilities). `padding=` URI param is logged and ignored (no sing-box equivalent). Right-click → Copy link round-trips back to a valid URI (keys in `extra-headers` sorted lexicographically for determinism). Requires sing-box ≥ 1.13.0 built with `with_naive_proxy`. See [SPEC 044](../../SPECS/044-F-C-NAIVE_PROXY_PARSER/SPEC.md) and `docs/ParserConfig.md` → **NaïveProxy**.
 
+- **Wizard template — auto-degrade `type` to `enum` when `options` use object form `[{title, value}]`.** The free-text combo widget (used for `type: "text"`) cannot safely round-trip object-form options: typed text bypasses the title→value mapping and lands in `config.json` as the literal display label. The fix normalizes `Type` at JSON-unmarshal time — once any option element is `{title, value}`, the var is treated as `enum` (strict dropdown) regardless of the declared type. Legacy plain-string options (`["a","b"]`) are unaffected. Fixes the URLTest preset bug where picking «5m (default)» from the dropdown left the literal string «5m (default)» in the config instead of `5m`.
+
 ### Technical / Internal
 
 -
@@ -23,6 +25,8 @@
 ### Основное
 
 - **Поддержка NaïveProxy (`naive+https://` / `naive+quic://`)** в парсере подписок и share-URI энкодере. Парсятся user/pass, `extra-headers` и выбор транспорта (HTTP/2 vs QUIC) по де-факто спеке DuckSoft; собирается sing-box outbound `"type": "naive"` с TLS-блоком только `server_name` (ровно то, что поддерживает sing-box naive). Параметр `padding=` логируется и игнорируется (нет соответствия в sing-box). ПКМ → «Copy link» корректно round-trip'ит обратно в валидный URI (ключи `extra-headers` сортируются лексикографически). Требует sing-box ≥ 1.13.0 со сборкой `with_naive_proxy`. См. [SPEC 044](../../SPECS/044-F-C-NAIVE_PROXY_PARSER/SPEC.md) и `docs/ParserConfig.md` → **NaïveProxy**.
+
+- **Шаблон визарда — автоматическая деградация `type` в `enum` для object-формы `options: [{title, value}]`.** Combo-виджет (`type: "text"` со свободным вводом) не может безопасно round-trip'ить object-форму: вписанный пользователем текст обходит маппинг title→value и попадает в `config.json` буквальной display-подписью. Фикс нормализует `Type` на этапе JSON unmarshal: как только хотя бы один элемент `options` в форме `{title, value}` — переменная трактуется как `enum` (строгий дропдаун), независимо от заявленного типа. Legacy plain-string options (`["a","b"]`) не затронуты. Лечит баг URLTest: выбор «5m (default)» из дропдауна оставлял в конфиге буквальную строку «5m (default)» вместо `5m`.
 
 ### Техническое / Внутреннее
 
