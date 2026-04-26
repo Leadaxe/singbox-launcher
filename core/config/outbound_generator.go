@@ -885,6 +885,12 @@ func GenerateOutboundsFromParserConfig(
 	progressCallback func(float64, string),
 	loadNodesFunc func(ProxySource, map[string]int, func(float64, string), int, int) ([]*ParsedNode, error),
 ) (*OutboundGenerationResult, error) {
+	// Hotfix v0.8.8.1 — substitute `@varname` placeholders in
+	// parser_config.outbounds[].options before generating selector JSONs. See
+	// varsubst.go for the rationale; nil substituter falls back to v0.8.6
+	// hard-coded defaults for the three known URLTest placeholders.
+	SubstituteParserConfigPlaceholders(parserConfig, nil)
+
 	// Step 1: Process all proxy sources and collect nodes
 	allNodes := make([]*ParsedNode, 0)
 	nodesBySource := make(map[int][]*ParsedNode) // Map source index to its nodes

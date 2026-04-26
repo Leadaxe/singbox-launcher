@@ -4,6 +4,7 @@ package core
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/parser"
@@ -113,13 +114,19 @@ func (svc *ConfigService) GenerateNodeJSON(node *config.ParsedNode) (string, err
 	return config.GenerateNodeJSON(node)
 }
 
-// GenerateOutboundsFromParserConfig delegates to config.GenerateOutboundsFromParserConfig
+// GenerateOutboundsFromParserConfig delegates to config.GenerateOutboundsFromParserConfig.
+// Hotfix v0.8.8.1: resolves `@varname` placeholders in parser_config.outbounds[]
+// options (template defaults from wizard_template.json + user overrides from
+// state.json settings_vars) before generation. See core/config/varsubst.go.
 func (svc *ConfigService) GenerateOutboundsFromParserConfig(
 	parserConfig *config.ParserConfig,
 	tagCounts map[string]int,
 	progressCallback func(float64, string),
 ) (*config.OutboundGenerationResult, error) {
-	// Create a wrapper function that matches the signature expected by config.GenerateOutboundsFromParserConfig
+	binDir := filepath.Join(svc.ac.FileService.ExecDir, "bin")
+	subst := config.BuildVarSubstituterFromDisk(binDir)
+	config.SubstituteParserConfigPlaceholders(parserConfig, subst)
+
 	loadNodesFunc := func(ps config.ProxySource, tc map[string]int, pc func(float64, string), idx, total int) ([]*config.ParsedNode, error) {
 		return svc.ProcessProxySource(ps, tc, pc, idx, total)
 	}
@@ -138,6 +145,12 @@ func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGener
 		updateParserProgress(ac, -1, fmt.Sprintf("Error: %v", err))
 		return nil, fmt.Errorf("failed to extract parser config: %w", err)
 	}
+
+	// Hotfix v0.8.8.1: resolve `@varname` placeholders in parser_config.outbounds
+	// options before generating selector JSONs. See core/config/varsubst.go.
+	binDir := filepath.Join(ac.FileService.ExecDir, "bin")
+	subst := config.BuildVarSubstituterFromDisk(binDir)
+	config.SubstituteParserConfigPlaceholders(parserConfig, subst)
 
 	// Update progress: Step 1 completed
 	updateParserProgress(ac, 5, "Parsed ParserConfig block")
