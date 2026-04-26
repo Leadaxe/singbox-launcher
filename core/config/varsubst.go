@@ -232,9 +232,13 @@ func readVarDefaultValue(raw json.RawMessage) (string, bool) {
 	return "", false
 }
 
-// loadStateSettingsVars reads `settings_vars` from the wizard state file.
-// Layout matches WizardStateFile in ui/wizard/models/wizard_state_file.go:
-// settings_vars is a JSON array of {name, value} objects, NOT a map.
+// loadStateSettingsVars reads the `vars` field from the wizard state file.
+// Layout matches WizardStateFile.Vars in ui/wizard/models/wizard_state_file.go:
+//   - top-level JSON key is "vars" (NOT "settings_vars" — that was a
+//     misreading on my part during v0.8.8.1/.2; the field is named Vars
+//     in Go, but only because the wider docs talk about "settings vars" —
+//     the on-disk key is "vars");
+//   - value is an array of {name, value} objects (PersistedSettingVar).
 //
 // Path resolution: platform.GetWizardStatePath — the canonical
 // <execDir>/bin/wizard_states/state.json. Do not hard-code this.
@@ -250,21 +254,17 @@ func loadStateSettingsVars(execDir string) map[string]string {
 		return out
 	}
 	var root struct {
-		// settings_vars is the canonical key (snake_case via the SettingVar
-		// JSON tag); SettingsVars is also accepted for older files that
-		// happened to be saved before the tag was added.
-		SettingsVarsSnake []settingVarEntry `json:"settings_vars"`
-		SettingsVarsCamel []settingVarEntry `json:"SettingsVars"`
+		// "vars" is the on-disk key — see WizardStateFile.Vars in
+		// ui/wizard/models/wizard_state_file.go (json:"vars"). No legacy
+		// aliases: any other key would be a refactor mistake somewhere
+		// upstream and deserves to fail loudly, not be silently absorbed.
+		Vars []settingVarEntry `json:"vars"`
 	}
 	if err := json.Unmarshal(raw, &root); err != nil {
 		debuglog.DebugLog("varsubst: cannot parse %s: %v", path, err)
 		return out
 	}
-	entries := root.SettingsVarsSnake
-	if len(entries) == 0 {
-		entries = root.SettingsVarsCamel
-	}
-	for _, e := range entries {
+	for _, e := range root.Vars {
 		if e.Name == "" || e.Value == "" {
 			continue
 		}
@@ -273,7 +273,7 @@ func loadStateSettingsVars(execDir string) map[string]string {
 	return out
 }
 
-// settingVarEntry mirrors the SettingVar struct in ui/wizard/models — kept
+// settingVarEntry mirrors PersistedSettingVar in ui/wizard/models — kept
 // local to avoid importing the ui-side package from core/config.
 type settingVarEntry struct {
 	Name  string `json:"name"`

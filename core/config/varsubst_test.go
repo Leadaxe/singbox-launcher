@@ -196,7 +196,9 @@ func TestBuildVarSubstituterFromDisk_StateOverridesTemplate(t *testing.T) {
 	})
 	// Real state.json schema: settings_vars is an array of {name, value}, not a map.
 	writeStateFile(t, execDir, map[string]interface{}{
-		"settings_vars": []interface{}{
+		// On-disk key is "vars" — see WizardStateFile.Vars in
+		// ui/wizard/models/wizard_state_file.go (json:"vars").
+		"vars": []interface{}{
 			map[string]string{"name": "urltest_interval", "value": "30m"},
 		},
 	})
@@ -220,7 +222,7 @@ func TestBuildVarSubstituterFromDisk_StateOverrideRealSchema(t *testing.T) {
 	writeStateFile(t, execDir, map[string]interface{}{
 		"version": 4,
 		"id":      "test",
-		"settings_vars": []interface{}{
+		"vars": []interface{}{
 			map[string]string{"name": "urltest_interval", "value": "1m"},
 			map[string]string{"name": "urltest_url", "value": "https://www.google.com/generate_204"},
 		},
@@ -293,7 +295,7 @@ func TestSubstituteParserConfigPlaceholders_EndToEndWithDiskSubstituter(t *testi
 		},
 	})
 	writeStateFile(t, execDir, map[string]interface{}{
-		"settings_vars": []interface{}{
+		"vars": []interface{}{
 			map[string]string{"name": "urltest_interval", "value": "1m"},
 		},
 	})
@@ -315,6 +317,47 @@ func TestSubstituteParserConfigPlaceholders_EndToEndWithDiskSubstituter(t *testi
 	}
 	if got := opts["tolerance"]; got != 100 {
 		t.Errorf("tolerance: %v (%T), want int 100", got, got)
+	}
+}
+
+// TestBuildVarSubstituterFromDisk_RealFixture loads a fixture captured from
+// an actual user's state.json and asserts that values defined under the
+// real on-disk JSON key (`vars`) are picked up. If somebody refactors
+// loadStateSettingsVars and gets the JSON tag wrong AGAIN (this happened
+// twice during the v0.8.8.1/.2 cycle), this test fails loudly.
+//
+// Fixture lives in testdata/state-real.json — derived from a real install,
+// edited only to anonymize ID. To regenerate from a live launcher:
+//
+//   python3 -c '...' > core/config/testdata/state-real.json
+func TestBuildVarSubstituterFromDisk_RealFixture(t *testing.T) {
+	fixtureRaw, err := os.ReadFile("testdata/state-real.json")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	execDir := newTestLayout(t)
+	statePath := filepath.Join(execDir, "bin", "wizard_states", "state.json")
+	if err := os.WriteFile(statePath, fixtureRaw, 0644); err != nil {
+		t.Fatalf("write state: %v", err)
+	}
+	// Minimal template so var lookups don't trigger template fallback —
+	// we want to verify the OVERRIDE path explicitly.
+	writeTemplateFile(t, execDir, map[string]interface{}{
+		"vars": []interface{}{
+			map[string]interface{}{"name": "tun", "type": "bool", "default_value": "false"},
+			map[string]interface{}{"name": "tun_stack", "type": "enum", "default_value": "mixed"},
+		},
+	})
+
+	subst := BuildVarSubstituterFromDisk(execDir)
+
+	// Fixture has tun=true (overrides template default false).
+	if val, ok := subst("tun"); !ok || val != true {
+		t.Errorf("tun: %v (%T) ok=%v, want bool true from real state.json", val, val, ok)
+	}
+	// Fixture has tun_stack=system (overrides template default mixed).
+	if val, ok := subst("tun_stack"); !ok || val != "system" {
+		t.Errorf("tun_stack: %v ok=%v, want %q from real state.json", val, ok, "system")
 	}
 }
 
