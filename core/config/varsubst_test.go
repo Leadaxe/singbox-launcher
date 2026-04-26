@@ -164,7 +164,7 @@ func TestKnownPlaceholderFallback_UnknownReturnsFalse(t *testing.T) {
 }
 
 func TestBuildVarSubstituterFromDisk_TemplateDefaults(t *testing.T) {
-	binDir := t.TempDir()
+	execDir := newTestLayout(t)
 	template := map[string]interface{}{
 		"vars": []interface{}{
 			map[string]interface{}{"name": "urltest_interval", "type": "enum", "default_value": "10m"},
@@ -172,9 +172,9 @@ func TestBuildVarSubstituterFromDisk_TemplateDefaults(t *testing.T) {
 			map[string]interface{}{"name": "tun_stack", "type": "enum", "default_value": "system"},
 		},
 	}
-	writeJSON(t, filepath.Join(binDir, "wizard_template.json"), template)
+	writeTemplateFile(t, execDir, template)
 
-	subst := BuildVarSubstituterFromDisk(binDir)
+	subst := BuildVarSubstituterFromDisk(execDir)
 
 	if val, ok := subst("urltest_interval"); !ok || val != "10m" {
 		t.Errorf("urltest_interval: %v ok=%v, want %q", val, ok, "10m")
@@ -188,34 +188,63 @@ func TestBuildVarSubstituterFromDisk_TemplateDefaults(t *testing.T) {
 }
 
 func TestBuildVarSubstituterFromDisk_StateOverridesTemplate(t *testing.T) {
-	binDir := t.TempDir()
-	writeJSON(t, filepath.Join(binDir, "wizard_template.json"), map[string]interface{}{
+	execDir := newTestLayout(t)
+	writeTemplateFile(t, execDir, map[string]interface{}{
 		"vars": []interface{}{
 			map[string]interface{}{"name": "urltest_interval", "type": "enum", "default_value": "5m"},
 		},
 	})
-	writeJSON(t, filepath.Join(binDir, "state.json"), map[string]interface{}{
-		"settings_vars": map[string]string{
-			"urltest_interval": "30m",
+	// Real state.json schema: settings_vars is an array of {name, value}, not a map.
+	writeStateFile(t, execDir, map[string]interface{}{
+		"settings_vars": []interface{}{
+			map[string]string{"name": "urltest_interval", "value": "30m"},
 		},
 	})
 
-	subst := BuildVarSubstituterFromDisk(binDir)
+	subst := BuildVarSubstituterFromDisk(execDir)
 	if val, ok := subst("urltest_interval"); !ok || val != "30m" {
 		t.Errorf("urltest_interval: %v ok=%v, want user override %q", val, ok, "30m")
 	}
 }
 
+func TestBuildVarSubstituterFromDisk_StateOverrideRealSchema(t *testing.T) {
+	// Belt-and-braces: the *exact* on-disk schema seen in production state.json.
+	// If this test passes, the v0.8.8.1 path-typo regression cannot reappear.
+	execDir := newTestLayout(t)
+	writeTemplateFile(t, execDir, map[string]interface{}{
+		"vars": []interface{}{
+			map[string]interface{}{"name": "urltest_interval", "type": "enum", "default_value": "5m"},
+			map[string]interface{}{"name": "urltest_url", "type": "text", "default_value": "https://cp.cloudflare.com/generate_204"},
+		},
+	})
+	writeStateFile(t, execDir, map[string]interface{}{
+		"version": 4,
+		"id":      "test",
+		"settings_vars": []interface{}{
+			map[string]string{"name": "urltest_interval", "value": "1m"},
+			map[string]string{"name": "urltest_url", "value": "https://www.google.com/generate_204"},
+		},
+	})
+
+	subst := BuildVarSubstituterFromDisk(execDir)
+	if val, ok := subst("urltest_interval"); !ok || val != "1m" {
+		t.Errorf("interval override: %v ok=%v, want %q", val, ok, "1m")
+	}
+	if val, ok := subst("urltest_url"); !ok || val != "https://www.google.com/generate_204" {
+		t.Errorf("url override: %v ok=%v", val, ok)
+	}
+}
+
 func TestBuildVarSubstituterFromDisk_BoolCoercion(t *testing.T) {
-	binDir := t.TempDir()
-	writeJSON(t, filepath.Join(binDir, "wizard_template.json"), map[string]interface{}{
+	execDir := newTestLayout(t)
+	writeTemplateFile(t, execDir, map[string]interface{}{
 		"vars": []interface{}{
 			map[string]interface{}{"name": "tun_enabled", "type": "bool", "default_value": "true"},
 			map[string]interface{}{"name": "tun_disabled", "type": "bool", "default_value": "false"},
 		},
 	})
 
-	subst := BuildVarSubstituterFromDisk(binDir)
+	subst := BuildVarSubstituterFromDisk(execDir)
 	if val, ok := subst("tun_enabled"); !ok || val != true {
 		t.Errorf("tun_enabled: %v (%T) ok=%v, want bool true", val, val, ok)
 	}
@@ -225,18 +254,18 @@ func TestBuildVarSubstituterFromDisk_BoolCoercion(t *testing.T) {
 }
 
 func TestBuildVarSubstituterFromDisk_MissingFiles(t *testing.T) {
-	binDir := t.TempDir()
+	execDir := newTestLayout(t)
 	// No template, no state. Should not panic; returns ok=false for everything.
-	subst := BuildVarSubstituterFromDisk(binDir)
+	subst := BuildVarSubstituterFromDisk(execDir)
 	if val, ok := subst("urltest_interval"); ok {
 		t.Errorf("missing files: ok=true val=%v, want ok=false", val)
 	}
 }
 
 func TestBuildVarSubstituterFromDisk_PlatformObjectDefault(t *testing.T) {
-	binDir := t.TempDir()
+	execDir := newTestLayout(t)
 	// `default_value` as object (per-platform) — pick "default" key.
-	writeJSON(t, filepath.Join(binDir, "wizard_template.json"), map[string]interface{}{
+	writeTemplateFile(t, execDir, map[string]interface{}{
 		"vars": []interface{}{
 			map[string]interface{}{
 				"name":          "tun_stack",
@@ -246,7 +275,7 @@ func TestBuildVarSubstituterFromDisk_PlatformObjectDefault(t *testing.T) {
 		},
 	})
 
-	subst := BuildVarSubstituterFromDisk(binDir)
+	subst := BuildVarSubstituterFromDisk(execDir)
 	if val, ok := subst("tun_stack"); !ok || val != "system" {
 		t.Errorf("tun_stack: %v ok=%v, want %q (default key)", val, ok, "system")
 	}
@@ -255,17 +284,17 @@ func TestBuildVarSubstituterFromDisk_PlatformObjectDefault(t *testing.T) {
 func TestSubstituteParserConfigPlaceholders_EndToEndWithDiskSubstituter(t *testing.T) {
 	// Verifies the full path: template + state on disk → BuildVarSubstituterFromDisk
 	// → SubstituteParserConfigPlaceholders → resolved options.
-	binDir := t.TempDir()
-	writeJSON(t, filepath.Join(binDir, "wizard_template.json"), map[string]interface{}{
+	execDir := newTestLayout(t)
+	writeTemplateFile(t, execDir, map[string]interface{}{
 		"vars": []interface{}{
 			map[string]interface{}{"name": "urltest_url", "type": "text", "default_value": "https://1.1.1.1"},
 			map[string]interface{}{"name": "urltest_interval", "type": "enum", "default_value": "5m"},
 			map[string]interface{}{"name": "urltest_tolerance", "type": "enum", "default_value": "100"},
 		},
 	})
-	writeJSON(t, filepath.Join(binDir, "state.json"), map[string]interface{}{
-		"settings_vars": map[string]string{
-			"urltest_interval": "1m",
+	writeStateFile(t, execDir, map[string]interface{}{
+		"settings_vars": []interface{}{
+			map[string]string{"name": "urltest_interval", "value": "1m"},
 		},
 	})
 
@@ -274,7 +303,7 @@ func TestSubstituteParserConfigPlaceholders_EndToEndWithDiskSubstituter(t *testi
 		"interval":  "@urltest_interval",
 		"tolerance": "@urltest_tolerance",
 	})
-	subst := BuildVarSubstituterFromDisk(binDir)
+	subst := BuildVarSubstituterFromDisk(execDir)
 	SubstituteParserConfigPlaceholders(pc, subst)
 
 	opts := pc.ParserConfig.Outbounds[0].Options
@@ -287,6 +316,28 @@ func TestSubstituteParserConfigPlaceholders_EndToEndWithDiskSubstituter(t *testi
 	if got := opts["tolerance"]; got != 100 {
 		t.Errorf("tolerance: %v (%T), want int 100", got, got)
 	}
+}
+
+// newTestLayout creates a fake exec directory with the on-disk layout
+// expected by BuildVarSubstituterFromDisk: bin/ and bin/wizard_states/.
+// Returns the execDir; both subdirs are created.
+func newTestLayout(t *testing.T) string {
+	t.Helper()
+	execDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(execDir, "bin", "wizard_states"), 0755); err != nil {
+		t.Fatalf("mkdirall: %v", err)
+	}
+	return execDir
+}
+
+func writeTemplateFile(t *testing.T, execDir string, v interface{}) {
+	t.Helper()
+	writeJSON(t, filepath.Join(execDir, "bin", "wizard_template.json"), v)
+}
+
+func writeStateFile(t *testing.T, execDir string, v interface{}) {
+	t.Helper()
+	writeJSON(t, filepath.Join(execDir, "bin", "wizard_states", "state.json"), v)
 }
 
 func writeJSON(t *testing.T, path string, v interface{}) {

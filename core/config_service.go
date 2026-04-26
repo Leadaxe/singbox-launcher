@@ -4,7 +4,6 @@ package core
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/parser"
@@ -123,8 +122,7 @@ func (svc *ConfigService) GenerateOutboundsFromParserConfig(
 	tagCounts map[string]int,
 	progressCallback func(float64, string),
 ) (*config.OutboundGenerationResult, error) {
-	binDir := filepath.Join(svc.ac.FileService.ExecDir, "bin")
-	subst := config.BuildVarSubstituterFromDisk(binDir)
+	subst := config.BuildVarSubstituterFromDisk(svc.ac.FileService.ExecDir)
 	config.SubstituteParserConfigPlaceholders(parserConfig, subst)
 
 	loadNodesFunc := func(ps config.ProxySource, tc map[string]int, pc func(float64, string), idx, total int) ([]*config.ParsedNode, error) {
@@ -148,8 +146,7 @@ func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGener
 
 	// Hotfix v0.8.8.1: resolve `@varname` placeholders in parser_config.outbounds
 	// options before generating selector JSONs. See core/config/varsubst.go.
-	binDir := filepath.Join(ac.FileService.ExecDir, "bin")
-	subst := config.BuildVarSubstituterFromDisk(binDir)
+	subst := config.BuildVarSubstituterFromDisk(ac.FileService.ExecDir)
 	config.SubstituteParserConfigPlaceholders(parserConfig, subst)
 
 	// Update progress: Step 1 completed

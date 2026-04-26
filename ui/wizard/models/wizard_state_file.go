@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/internal/constants"
 	wizardtemplate "singbox-launcher/ui/wizard/template"
 )
 
@@ -43,7 +44,8 @@ const (
 	MaxStateIDLength = 50
 
 	// StateFileName — имя файла текущего состояния.
-	StateFileName = "state.json"
+	// Re-export of constants.WizardStateFileName for back-compat.
+	StateFileName = constants.WizardStateFileName
 )
 
 var (
