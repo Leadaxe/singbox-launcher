@@ -7,13 +7,11 @@ import (
 
 // StateService manages application state including version caches and auto-update state.
 // It encapsulates state management to reduce AppController complexity.
+//
+// Sing-box version is NOT cached here: the launcher pins it via
+// constants.RequiredCoreVersion (SPEC 046). The cache below is only for the
+// **launcher**'s own self-update check.
 type StateService struct {
-	// Version check caching
-	VersionCheckCache      string
-	VersionCheckCacheTime  time.Time
-	VersionCheckMutex      sync.RWMutex
-	VersionCheckInProgress bool
-
 	// Launcher version check caching
 	LauncherVersionCheckCache      string
 	LauncherVersionCheckCacheTime  time.Time
@@ -88,42 +86,6 @@ func (s *StateService) RecordUpdateSuccess() {
 	s.LastUpdateMutex.Lock()
 	defer s.LastUpdateMutex.Unlock()
 	s.LastUpdateSucceededAt = time.Now()
-}
-
-// GetCachedVersion safely gets the cached version with mutex protection.
-func (s *StateService) GetCachedVersion() string {
-	s.VersionCheckMutex.RLock()
-	defer s.VersionCheckMutex.RUnlock()
-	return s.VersionCheckCache
-}
-
-// SetCachedVersion safely sets the cached version with mutex protection.
-func (s *StateService) SetCachedVersion(version string) {
-	s.VersionCheckMutex.Lock()
-	defer s.VersionCheckMutex.Unlock()
-	s.VersionCheckCache = version
-	s.VersionCheckCacheTime = time.Now()
-}
-
-// GetCachedVersionTime safely gets the cached version time.
-func (s *StateService) GetCachedVersionTime() time.Time {
-	s.VersionCheckMutex.RLock()
-	defer s.VersionCheckMutex.RUnlock()
-	return s.VersionCheckCacheTime
-}
-
-// SetVersionCheckInProgress safely sets the version check in progress flag.
-func (s *StateService) SetVersionCheckInProgress(inProgress bool) {
-	s.VersionCheckMutex.Lock()
-	defer s.VersionCheckMutex.Unlock()
-	s.VersionCheckInProgress = inProgress
-}
-
-// IsVersionCheckInProgress safely checks if version check is in progress.
-func (s *StateService) IsVersionCheckInProgress() bool {
-	s.VersionCheckMutex.RLock()
-	defer s.VersionCheckMutex.RUnlock()
-	return s.VersionCheckInProgress
 }
 
 // GetCachedLauncherVersion safely gets the cached launcher version with mutex protection.

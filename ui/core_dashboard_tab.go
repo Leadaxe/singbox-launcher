@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"image/color"
-	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -63,8 +62,6 @@ type CoreDashboardTab struct {
 	parserStatusLabel         *widget.Label       // Status label for parser
 
 	// Data
-	stopAutoUpdate           chan bool
-	lastUpdateSuccess        bool // Track success of last version update
 	downloadInProgress       bool // Flag for sing-box download process
 	wintunDownloadInProgress bool // Flag for wintun.dll download process
 }
@@ -87,8 +84,7 @@ func formatRelativeAge(d time.Duration) string {
 
 func CreateCoreDashboardTab(ac *core.AppController) fyne.CanvasObject {
 	tab := &CoreDashboardTab{
-		controller:     ac,
-		stopAutoUpdate: make(chan bool),
+		controller: ac,
 	}
 
 	// Status block with buttons in one row
@@ -196,8 +192,9 @@ func CreateCoreDashboardTab(ac *core.AppController) fyne.CanvasObject {
 	}
 	tab.updateConfigInfo()
 
-	// Запускаем автообновление версии
-	tab.startAutoUpdate()
+	// Sing-box version is pinned via constants.RequiredCoreVersion (SPEC 046)
+	// — no background latest-version polling here. Launcher self-update check
+	// is independent (CheckLauncherVersionOnStartup, called from main.go).
 
 	// Регистрируем callback для показа попапа обновления
 	tab.controller.UIService.ShowUpdatePopupFunc = tab.showUpdatePopup
@@ -364,10 +361,9 @@ func (tab *CoreDashboardTab) createVersionBlock() fyne.CanvasObject {
 	singboxHelpBtn := widget.NewButton("?", func() {
 		msg := locale.T("core.singbox_help_msg")
 		if suffix := core.SingboxAssetSuffix(); suffix != "" {
-			fileName := "sing-box-*-" + suffix
-			if v := tab.controller.GetCachedVersion(); v != "" {
-				fileName = fmt.Sprintf("sing-box-%s-%s", v, suffix)
-			}
+			// Use the pinned RequiredCoreVersion in the filename hint — this
+			// is exactly what the Download button installs.
+			fileName := fmt.Sprintf("sing-box-%s-%s", constants.RequiredCoreVersion, suffix)
 			msg += locale.Tf("core.singbox_help_look_for", fileName)
 		}
 		msg += locale.T("core.singbox_help_extract") +
@@ -720,58 +716,46 @@ func (tab *CoreDashboardTab) updateConfigInfo() {
 	tab.updateRunningStatus()
 }
 
-// updateVersionInfo обновляет информацию о версии (по аналогии с updateWintunStatus).
-// Весь сценарий выполняется в одной горутине: GetInstalledCoreVersion() может долго выполняться (запуск sing-box version
-// на медленной системе), поэтому вызов в UI-потоке приводил бы к краткому «зависанию» при открытии вкладки. Здесь
-// версия запрашивается в фоне, UI обновляется через fyne.Do; затем в той же горутине вызывается updateVersionInfoAsync
-// для подписи кнопки Download/Update по кешу. Итог: вкладка открывается без блокировки, статус и кнопка появляются
-// с небольшой задержкой.
+// updateVersionInfo обновляет информацию о версии sing-box и подпись кнопки
+// Download/Reinstall по сравнению с pinned `constants.RequiredCoreVersion`
+// (SPEC 046).
+//
+// `GetInstalledCoreVersion()` может долго выполняться (запуск
+// `sing-box version` на медленной системе), поэтому вызов вынесен в
+// горутину; UI обновляется через fyne.Do. Никаких сетевых походов отсюда
+// не делается — версия pinned, не «свежайшая из GitHub».
 func (tab *CoreDashboardTab) updateVersionInfo() error {
 	go func() {
 		installedVersion, err := tab.controller.GetInstalledCoreVersion()
+		required := constants.RequiredCoreVersion
 		fyne.Do(func() {
-			if err != nil {
-				tab.singboxStatusLabel.Importance = widget.MediumImportance
+			tab.singboxStatusLabel.Importance = widget.MediumImportance
+			switch {
+			case err != nil:
+				// Бинарника нет — синяя «Download vX.Y.Z», подталкиваем к
+				// первичной установке.
 				tab.downloadButton.Importance = widget.HighImportance
-				tab.setSingboxState(locale.T("core.singbox_status_not_found"), locale.T("core.button_download"), -1)
-			} else {
-				tab.singboxStatusLabel.Importance = widget.MediumImportance
+				tab.setSingboxState(
+					locale.T("core.singbox_status_not_found"),
+					locale.Tf("core.button_download_version", required),
+					-1,
+				)
+			case installedVersion != required:
+				// Стоит другая версия — нейтральная «Reinstall vX.Y.Z», без
+				// подталкивания: пользователь мог поставить вручную.
+				tab.downloadButton.Importance = widget.MediumImportance
+				tab.setSingboxState(
+					installedVersion,
+					locale.Tf("core.button_reinstall_version", required),
+					-1,
+				)
+			default:
+				// Версия совпадает — кнопка скрыта.
 				tab.setSingboxState(installedVersion, "", -1)
 			}
 		})
-		tab.updateVersionInfoAsync(installedVersion, err != nil)
 	}()
 	return nil
-}
-
-// updateVersionInfoAsync обновляет кнопку Download/Update по закешированной последней версии (не блокирует UI).
-func (tab *CoreDashboardTab) updateVersionInfoAsync(installedVersion string, binaryNotFound bool) {
-	if binaryNotFound {
-		cached := tab.controller.GetCachedVersion()
-		if cached != "" {
-			fyne.Do(func() {
-				tab.setSingboxState("", locale.Tf("core.button_download_version", cached), -1)
-			})
-		} else {
-			tab.controller.CheckVersionInBackground()
-			fyne.Do(func() {
-				tab.setSingboxState("", locale.T("core.button_download"), -1)
-			})
-		}
-		return
-	}
-	latest := tab.controller.GetCachedVersion()
-	if tab.controller.ShouldCheckVersion() {
-		tab.controller.CheckVersionInBackground()
-	}
-	fyne.Do(func() {
-		if latest != "" && core.CompareVersions(installedVersion, latest) < 0 {
-			tab.downloadButton.Importance = widget.HighImportance
-			tab.setSingboxState("", locale.Tf("core.button_update_version", latest), -1)
-		} else {
-			tab.setSingboxState("", "", -1)
-		}
-	})
 }
 
 func (tab *CoreDashboardTab) downloadConfigTemplate() {
@@ -840,121 +824,47 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 	}()
 }
 
-// handleDownload обрабатывает нажатие на кнопку Download
+// handleDownload обрабатывает нажатие на кнопку Download/Reinstall.
+// Версия не выбирается пользователем — DownloadCore сам подставит pinned
+// `constants.RequiredCoreVersion` (или Win7Legacy для windows/386), см. SPEC 046.
 func (tab *CoreDashboardTab) handleDownload() {
 	if tab.downloadInProgress {
-		return // Уже идет скачивание
-	}
-
-	// Используем кешированную версию или получаем новую
-	targetVersion := tab.controller.GetCachedVersion()
-	if targetVersion == "" {
-		// Если кеша нет, пытаемся получить версию синхронно (для скачивания нужна версия сразу)
-		go func() {
-			latest, err := tab.controller.GetLatestCoreVersion()
-			fyne.Do(func() {
-				if err != nil {
-					ShowError(tab.controller.GetMainWindow(), fmt.Errorf("failed to get latest version: %w", err))
-					tab.downloadInProgress = false
-					tab.setSingboxState("", locale.T("core.button_download"), -1)
-					return
-				}
-				// Сохраняем в кеш и запускаем скачивание
-				if latest != "" && latest != core.FallbackVersion {
-					tab.controller.SetCachedVersion(latest)
-				}
-				tab.startDownloadWithVersion(latest)
-			})
-		}()
 		return
 	}
-
-	// Запускаем скачивание с известной версией
-	tab.startDownloadWithVersion(targetVersion)
-}
-
-// startDownloadWithVersion запускает процесс скачивания с указанной версией
-func (tab *CoreDashboardTab) startDownloadWithVersion(targetVersion string) {
-	// Запускаем скачивание в отдельной горутине
 	tab.downloadInProgress = true
 	tab.downloadButton.Disable()
 	tab.setSingboxState("", "", 0.0)
 
-	// Создаем канал для прогресса
 	progressChan := make(chan core.DownloadProgress, 10)
 
-	// Start download in separate goroutine with context
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
-		tab.controller.DownloadCore(ctx, targetVersion, progressChan)
+		// Empty version → DownloadCore uses constants.RequiredCoreVersion.
+		tab.controller.DownloadCore(ctx, "", progressChan)
 	}()
 
-	// Обрабатываем прогресс в отдельной горутине
 	go func() {
 		for progress := range progressChan {
 			fyne.Do(func() {
-				// Обновляем прогресс-бар
 				progressValue := float64(progress.Progress) / 100.0
 				tab.setSingboxState("", "", progressValue)
 
-				if progress.Status == "done" {
+				switch progress.Status {
+				case "done":
 					tab.downloadInProgress = false
-					// Обновляем статусы после успешного скачивания (это уберет ошибки и обновит статус)
+					// Refresh: clears binary-not-found state + button label.
 					_ = tab.updateVersionInfo()
-					tab.updateBinaryStatus() // Это вызовет updateRunningStatus() и обновит статус
-					// UpdateUI will be called automatically by RunningState.Set() or other state changes
-					// Don't call UpdateUI() here to avoid infinite loop
+					tab.updateBinaryStatus()
 					ShowInfo(tab.controller.GetMainWindow(), locale.T("core.dialog_download_complete_title"), progress.Message)
-				} else if progress.Status == "error" {
+				case "error":
 					tab.downloadInProgress = false
-					tab.setSingboxState("", locale.T("core.button_download"), -1)
+					tab.setSingboxState("", locale.Tf("core.button_download_version", constants.RequiredCoreVersion), -1)
 					binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
 					debuglog.DebugLog("core_dashboard: showing download failed manual (sing-box)")
 					dialogs.ShowDownloadFailedManual(tab.controller.GetMainWindow(), "sing-box download failed", constants.SingboxReleasesURL, binDir)
 				}
 			})
-		}
-	}()
-}
-
-// startAutoUpdate запускает автообновление версии (статус управляется через RunningState)
-func (tab *CoreDashboardTab) startAutoUpdate() {
-	// Запускаем периодическое обновление с умной логикой
-	go func() {
-		rand.Seed(time.Now().UnixNano()) // Инициализация генератора случайных чисел
-
-		for {
-			select {
-			case <-tab.stopAutoUpdate:
-				return
-			default:
-				// Ждем перед следующим обновлением
-				var delay time.Duration
-				if tab.lastUpdateSuccess {
-					// Если последнее обновление было успешным - не повторяем автоматически
-					// Ждем очень долго (или можно вообще не повторять)
-					delay = 10 * time.Minute
-				} else {
-					// Если была ошибка - повторяем через случайный интервал 20-35 секунд
-					delay = time.Duration(20+rand.Intn(16)) * time.Second // 20-35 секунд
-				}
-
-				select {
-				case <-time.After(delay):
-					// Обновляем только версию асинхронно (не блокируем UI)
-					// updateVersionInfo теперь полностью асинхронная
-					_ = tab.updateVersionInfo()
-					// Устанавливаем успех после небольшой задержки
-					// (в реальности нужно отслеживать через канал, но для простоты используем задержку)
-					go func() {
-						<-time.After(2 * time.Second)
-						tab.lastUpdateSuccess = true // Упрощенная логика
-					}()
-				case <-tab.stopAutoUpdate:
-					return
-				}
-			}
 		}
 	}()
 }

@@ -53,6 +53,7 @@
   "core.button_download": "Download",
   "core.button_download_version": "Download v%s",
   "core.button_update_version": "Update v%s",
+  "core.button_reinstall_version": "Reinstall v%s",
   "core.dialog_singbox_title": "Sing-box",
   "core.dialog_singbox_close": "Close",
   "core.button_open_bin": "Open bin folder",

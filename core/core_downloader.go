@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
 )
@@ -45,13 +46,21 @@ type DownloadProgress struct {
 	Error    error
 }
 
-// DownloadCore downloads and installs sing-box
+// DownloadCore downloads and installs sing-box.
+// Per SPEC 046, the launcher pins a specific core version for each build:
+//   - windows/386 (Win7 legacy): hard-pinned to Win7LegacyVersion;
+//   - all other platforms: empty `version` falls back to constants.RequiredCoreVersion.
+//
+// Callers always pass "" — the explicit-version path is kept only for tests
+// and forced reinstall flows that target a specific tag.
 func (ac *AppController) DownloadCore(ctx context.Context, version string, progressChan chan DownloadProgress) {
 	defer close(progressChan)
 
 	// For Windows 7 (32-bit launcher build) always use fixed legacy core version.
 	if runtime.GOOS == "windows" && runtime.GOARCH == "386" {
 		version = Win7LegacyVersion
+	} else if version == "" {
+		version = constants.RequiredCoreVersion
 	}
 
 	// 1. Get release information
@@ -123,12 +132,11 @@ func (ac *AppController) getReleaseInfo(ctx context.Context, version string) (*R
 	return ac.getReleaseInfoFromSourceForge(ctx, version)
 }
 
-// getReleaseInfoFromGitHub gets release information from GitHub
+// getReleaseInfoFromGitHub gets release information from GitHub. `version`
+// must be non-empty (DownloadCore guarantees this since SPEC 046 — there is
+// no longer a /releases/latest path).
 func (ac *AppController) getReleaseInfoFromGitHub(ctx context.Context, version string) (*ReleaseInfo, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/SagerNet/sing-box/releases/tags/v%s", version)
-	if version == "" {
-		url = "https://api.github.com/repos/SagerNet/sing-box/releases/latest"
-	}
 
 	// Используем универсальный HTTP клиент
 	client := CreateHTTPClient(NetworkRequestTimeout)
@@ -172,20 +180,10 @@ func (ac *AppController) getReleaseInfoFromGitHub(ctx context.Context, version s
 	return &release, nil
 }
 
-// getReleaseInfoFromSourceForge creates ReleaseInfo based on SourceForge (builds direct links)
+// getReleaseInfoFromSourceForge creates ReleaseInfo based on SourceForge
+// (builds direct download links). `version` is guaranteed non-empty by
+// DownloadCore (SPEC 046 — no implicit "latest" lookup).
 func (ac *AppController) getReleaseInfoFromSourceForge(ctx context.Context, version string) (*ReleaseInfo, error) {
-	if version == "" {
-		// If version is not specified, try to get latest from GitHub
-		// If that fails, use fixed version
-		latest, err := ac.GetLatestCoreVersion()
-		if err != nil {
-			debuglog.WarnLog("getReleaseInfoFromSourceForge: failed to get latest version, using fallback: %v", err)
-			version = FallbackVersion
-		} else {
-			version = latest
-		}
-	}
-
 	// Build list of assets based on known platforms
 	assets := ac.buildSourceForgeAssets(version)
 
