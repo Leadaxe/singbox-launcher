@@ -13,8 +13,8 @@
 
 ## Фаза 3 — Фундамент (новые независимые пакеты)
 
-### 3.1 `core/events` — typed event-bus (SPEC 046)
-- [ ] SPEC 046 заведён.
+### 3.1 `core/events` — typed event-bus (SPEC 047)
+- [ ] SPEC 047 заведён.
 - [ ] Пакет `core/events/`: `Bus` интерфейс, `MemoryBus` реализация (sync dispatch), типы событий, `Cancel` token.
 - [ ] Тесты: subscribe/publish, multiple handlers, cancel, panic-isolation handler'а.
 - [ ] Зелёный `go build ./core/events && go test ./core/events`.
@@ -114,7 +114,7 @@
 ### 8.3 SPEC closure
 - [ ] `IMPLEMENTATION_REPORT.md` со сводкой фактических решений и отклонений от PLAN.
 - [ ] Переименовать папку `SPECS/045-F-N-STATE_CONFIG_DECOUPLING` → `SPECS/045-F-C-STATE_CONFIG_DECOUPLING`.
-- [ ] SPEC 046 (events) — закрытие отдельным IMPLEMENTATION_REPORT в его папке.
+- [ ] SPEC 047 (events) — закрытие отдельным IMPLEMENTATION_REPORT в его папке.
 
 ## Гейты качества (на каждом коммите)
 

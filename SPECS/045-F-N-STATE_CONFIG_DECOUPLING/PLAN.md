@@ -7,7 +7,7 @@
 | 1 | Имя контейнера UI после переименования | **Configurator** (`ui/configurator/`); вкладки внутри остаются (Settings, DNS, Rules, Sources) |
 | 2 | Кэш outbounds | **Файл** `bin/outbounds.cache.json` (атомарная запись `.tmp` → rename) |
 | 3 | Переименование Wizard → Configurator | Делаем **сразу**, в этом же SPEC'е |
-| 4 | Typed events (SPEC 046) | Заводим **сразу**, ставим как зависимость 045 |
+| 4 | Typed events (SPEC 047) | Заводим **сразу**, ставим как зависимость 045 |
 | 5 | Темп поставки | **Один большой шаг** (одна фича-ветка / один PR), но внутри чистая многоуровневая декомпозиция (см. ниже) |
 
 ---
@@ -25,7 +25,7 @@ core/
 ├── state/                  — НОВОЕ: чистая модель state, Load/Save, миграции v4 → v5
 ├── build/                  — НОВОЕ: BuildConfig — единственная функция-генератор config.json
 ├── outboundscache/         — НОВОЕ: чтение/запись outbounds.cache.json
-├── events/                 — НОВОЕ: типизированный event-bus (SPEC 046)
+├── events/                 — НОВОЕ: типизированный event-bus (SPEC 047)
 ├── services/
 │   └── state_service.go    — расширен: два независимых dirty-флага
 ├── config/                 — упрощён: WriteToConfig переезжает в build/
@@ -105,7 +105,7 @@ func (s *Snapshot) IsEmpty() bool
 
 Парсер пишет cache → BuildConfig читает. `WizardModel.GeneratedOutbounds[]` становится **read-only зеркалом** этого snapshot'а для UI preview, не источником правды.
 
-### Контракт `events` (SPEC 046)
+### Контракт `events` (SPEC 047)
 
 ```go
 package events
@@ -126,7 +126,7 @@ const (
 )
 ```
 
-Реализация — sync dispatch (handlers вызываются в той же goroutine, что публикует). Подробнее — SPEC 046.
+Реализация — sync dispatch (handlers вызываются в той же goroutine, что публикует). Подробнее — SPEC 047.
 
 ### Два dirty-маркера в `StateService`
 
@@ -217,7 +217,7 @@ type Diff struct {
 
 Шаги независимы и каждый компилится зелёным:
 
-1. **Фундамент 1 — `core/events`** (зависимостей ноль; реализация SPEC 046 stub).
+1. **Фундамент 1 — `core/events`** (зависимостей ноль; реализация SPEC 047 stub).
 2. **Фундамент 2 — `core/state`** (чистая модель state, миграции v3/v4/v5; параллельная с существующим `WizardStateFile`, ещё не подключённая).
 3. **Фундамент 3 — `core/outboundscache`** (snapshot reader/writer).
 4. **Фундамент 4 — `core/build`** (BuildConfig как чистая функция; принимает на вход state + cache + template, отдаёт JSON; тесты на нескольких сценариях).

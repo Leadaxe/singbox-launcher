@@ -1,4 +1,4 @@
-# SPEC 046 — TYPED_EVENT_BUS
+# SPEC 047 — TYPED_EVENT_BUS
 
 **Тип:** F (Feature) · **Статус:** N (New) · **Сопутствует:** SPEC 045.
 
