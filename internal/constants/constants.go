@@ -7,15 +7,17 @@ const (
 	WinTunDLLName          = "wintun.dll"
 	TunDLLName             = "tun.dll"
 	ConfigFileName         = "config.json"
-	WizardTemplateFileName = "wizard_template.json"
 	SingBoxExecName        = "sing-box"
+	WizardTemplateFileName = "wizard_template.json"
+	WizardStateFileName    = "state.json"
 )
 
 // Directory names
 const (
-	BinDirName     = "bin"
-	LogsDirName    = "logs"
-	RuleSetsDirName = "rule-sets"
+	BinDirName          = "bin"
+	LogsDirName         = "logs"
+	RuleSetsDirName     = "rule-sets"
+	WizardStatesDirName = "wizard_states"
 )
 
 // Log file names

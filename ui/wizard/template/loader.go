@@ -27,17 +27,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/platform"
 )
 
 // TemplateFileName — единственный файл шаблона для всех платформ.
-// Re-exported from internal/constants so existing callers in ui/wizard
-// don't have to import that package directly.
+// Re-export of constants.WizardTemplateFileName so callers in ui/wizard
+// don't have to import internal/constants directly.
 const TemplateFileName = constants.WizardTemplateFileName
 
 // TemplateData — данные шаблона, подготовленные для визарда.
@@ -158,7 +158,7 @@ func GetTemplateURL() string {
 // LoadTemplateData загружает и обрабатывает шаблон конфигурации.
 // Применяет params для текущей платформы, фильтрует selectable_rules.
 func LoadTemplateData(execDir string) (*TemplateData, error) {
-	templatePath := filepath.Join(execDir, "bin", TemplateFileName)
+	templatePath := platform.GetWizardTemplatePath(execDir)
 	debuglog.InfoLog("TemplateLoader: загрузка шаблона из: %s", templatePath)
 
 	raw, err := os.ReadFile(templatePath)

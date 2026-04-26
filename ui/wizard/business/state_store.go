@@ -24,14 +24,16 @@ import (
 	"strings"
 	"time"
 
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
 	wizardmodels "singbox-launcher/ui/wizard/models"
 )
 
 const (
-	// WizardStatesDir - имя директории для хранения состояний визарда
-	WizardStatesDir = "wizard_states"
+	// WizardStatesDir - имя директории для хранения состояний визарда.
+	// Re-export of constants.WizardStatesDirName for back-compat.
+	WizardStatesDir = constants.WizardStatesDirName
 
 	// MaxStateFileSize - максимальный размер файла состояния (256 KB)
 	MaxStateFileSize = 256 * 1024
@@ -45,7 +47,7 @@ type StateStore struct {
 
 // NewStateStore создает новый StateStore.
 func NewStateStore(fileService FileServiceInterface) *StateStore {
-	statesDir := filepath.Join(fileService.ExecDir(), "bin", WizardStatesDir)
+	statesDir := platform.GetWizardStatesDir(fileService.ExecDir())
 	return &StateStore{
 		fileService: fileService,
 		statesDir:  statesDir,

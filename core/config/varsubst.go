@@ -29,11 +29,11 @@ package config
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/platform"
 )
 
 // VarSubstituter resolves a single `@name` placeholder. Returns the resolved
@@ -105,13 +105,13 @@ func knownPlaceholderFallback(name string) (interface{}, bool) {
 	return nil, false
 }
 
-// BuildVarSubstituterFromDisk reads `bin/wizard_template.json` (for `vars`
-// definitions: name / type / default_value) and `bin/state.json` (for
-// `settings_vars` user overrides) and returns a VarSubstituter that resolves
-// `@name` placeholders against them.
+// BuildVarSubstituterFromDisk reads the wizard template and state files via
+// canonical path helpers (platform.GetWizardTemplatePath /
+// GetWizardStatePath) and returns a VarSubstituter that resolves `@name`
+// placeholders against them.
 //
 // Resolution order per name:
-//  1. `state.json` `settings_vars[name]` (user override from Settings tab).
+//  1. `state.json` settings_vars override (user choice from Settings tab).
 //  2. `wizard_template.json` `vars[].default_value` matching `name`.
 //  3. ok=false → caller falls back to `knownPlaceholderFallback`.
 //
@@ -122,9 +122,9 @@ func knownPlaceholderFallback(name string) (interface{}, bool) {
 //
 // Failure to read either file is non-fatal — substituter then knows nothing
 // and the caller falls through to the hard-coded URLTest fallback.
-func BuildVarSubstituterFromDisk(binDir string) VarSubstituter {
-	defaults := loadTemplateVarDefaults(binDir)
-	overrides := loadStateSettingsVars(binDir)
+func BuildVarSubstituterFromDisk(execDir string) VarSubstituter {
+	defaults := loadTemplateVarDefaults(execDir)
+	overrides := loadStateSettingsVars(execDir)
 	intVars := intCastVarNames()
 	boolVars := defaults.boolNames
 
@@ -153,12 +153,12 @@ type templateVarDefaults struct {
 //
 // Robust to missing file / parse errors — returns empty maps and lets the
 // caller fall through to defaults.
-func loadTemplateVarDefaults(binDir string) templateVarDefaults {
+func loadTemplateVarDefaults(execDir string) templateVarDefaults {
 	out := templateVarDefaults{
 		values:    map[string]string{},
 		boolNames: map[string]struct{}{},
 	}
-	path := filepath.Join(binDir, "wizard_template.json")
+	path := platform.GetWizardTemplatePath(execDir)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		debuglog.DebugLog("varsubst: cannot read %s: %v", path, err)
@@ -232,39 +232,52 @@ func readVarDefaultValue(raw json.RawMessage) (string, bool) {
 	return "", false
 }
 
-// loadStateSettingsVars reads `settings_vars` from `bin/state.json`. The state
-// layout matches WizardStateFile (camelCase JSON keys aren't consistent
-// historically; we accept both `settings_vars` and `SettingsVars`).
-func loadStateSettingsVars(binDir string) map[string]string {
+// loadStateSettingsVars reads the `vars` field from the wizard state file.
+// Layout matches WizardStateFile.Vars in ui/wizard/models/wizard_state_file.go:
+//   - top-level JSON key is "vars" (NOT "settings_vars" — that was a
+//     misreading on my part during v0.8.8.1/.2; the field is named Vars
+//     in Go, but only because the wider docs talk about "settings vars" —
+//     the on-disk key is "vars");
+//   - value is an array of {name, value} objects (PersistedSettingVar).
+//
+// Path resolution: platform.GetWizardStatePath — the canonical
+// <execDir>/bin/wizard_states/state.json. Do not hard-code this.
+//
+// Robust to missing file / parse errors — returns empty map and lets the
+// caller fall through to template defaults / hard-coded fallback.
+func loadStateSettingsVars(execDir string) map[string]string {
 	out := map[string]string{}
-	path := filepath.Join(binDir, "state.json")
+	path := platform.GetWizardStatePath(execDir)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		debuglog.DebugLog("varsubst: cannot read %s: %v", path, err)
 		return out
 	}
-	var root map[string]json.RawMessage
+	var root struct {
+		// "vars" is the on-disk key — see WizardStateFile.Vars in
+		// ui/wizard/models/wizard_state_file.go (json:"vars"). No legacy
+		// aliases: any other key would be a refactor mistake somewhere
+		// upstream and deserves to fail loudly, not be silently absorbed.
+		Vars []settingVarEntry `json:"vars"`
+	}
 	if err := json.Unmarshal(raw, &root); err != nil {
 		debuglog.DebugLog("varsubst: cannot parse %s: %v", path, err)
 		return out
 	}
-	candidates := []string{"settings_vars", "SettingsVars"}
-	for _, key := range candidates {
-		blob, ok := root[key]
-		if !ok {
+	for _, e := range root.Vars {
+		if e.Name == "" || e.Value == "" {
 			continue
 		}
-		var m map[string]string
-		if err := json.Unmarshal(blob, &m); err != nil {
-			continue
-		}
-		for k, v := range m {
-			if v != "" {
-				out[k] = v
-			}
-		}
+		out[e.Name] = e.Value
 	}
 	return out
+}
+
+// settingVarEntry mirrors PersistedSettingVar in ui/wizard/models — kept
+// local to avoid importing the ui-side package from core/config.
+type settingVarEntry struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 // intCastVarNames is the canonical set of vars that ship as JSON numbers in

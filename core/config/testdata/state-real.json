@@ -1,0 +1,58 @@
+{
+  "version": 4,
+  "id": "test-fixture",
+  "vars": [
+    {
+      "name": "tun",
+      "value": "true"
+    },
+    {
+      "name": "tun_address",
+      "value": "172.16.0.1/30"
+    },
+    {
+      "name": "tun_stack",
+      "value": "system"
+    },
+    {
+      "name": "resolve_strategy",
+      "value": "prefer_ipv4"
+    },
+    {
+      "name": "urltest_url",
+      "value": "http://www.gstatic.com/generate_204"
+    },
+    {
+      "name": "urltest_interval",
+      "value": "5m"
+    },
+    {
+      "name": "urltest_tolerance",
+      "value": "50"
+    },
+    {
+      "name": "log_level",
+      "value": "info"
+    },
+    {
+      "name": "clash_secret",
+      "value": "gIVcGiXsAQ3lZSQQ"
+    },
+    {
+      "name": "dns_strategy",
+      "value": "prefer_ipv4"
+    },
+    {
+      "name": "dns_independent_cache",
+      "value": "false"
+    },
+    {
+      "name": "dns_default_domain_resolver",
+      "value": "cloudflare_udp"
+    },
+    {
+      "name": "dns_final",
+      "value": "direct_dns_resolver"
+    }
+  ]
+}

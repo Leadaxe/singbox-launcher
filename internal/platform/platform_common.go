@@ -42,6 +42,28 @@ func GetRuleSetsDir(execDir string) string {
 	return filepath.Join(execDir, constants.BinDirName, constants.RuleSetsDirName)
 }
 
+// GetWizardTemplatePath returns the canonical path of wizard_template.json:
+// <execDir>/bin/wizard_template.json. This is the only sanctioned way for the
+// rest of the codebase to locate the template file — do NOT compose the path
+// from string literals.
+func GetWizardTemplatePath(execDir string) string {
+	return filepath.Join(execDir, constants.BinDirName, constants.WizardTemplateFileName)
+}
+
+// GetWizardStatesDir returns the directory holding all wizard states:
+// <execDir>/bin/wizard_states/. The "current" state file (state.json) lives
+// inside this directory; named state snapshots also live here.
+func GetWizardStatesDir(execDir string) string {
+	return filepath.Join(execDir, constants.BinDirName, constants.WizardStatesDirName)
+}
+
+// GetWizardStatePath returns the canonical path of the current wizard state:
+// <execDir>/bin/wizard_states/state.json. The only sanctioned way to locate
+// state.json — do NOT compose from string literals.
+func GetWizardStatePath(execDir string) string {
+	return filepath.Join(GetWizardStatesDir(execDir), constants.WizardStateFileName)
+}
+
 // GetLogsDir returns the path to logs directory
 func GetLogsDir(execDir string) string {
 	return filepath.Join(execDir, constants.LogsDirName)
