@@ -32,6 +32,26 @@ type Settings struct {
 	DebugAPIToken string `json:"debug_api_token,omitempty"`
 	// DebugAPIPort — порт для debug-API; 0 / отсутствует означает DefaultPort.
 	DebugAPIPort int `json:"debug_api_port,omitempty"`
+	// LastTemplateLauncherVersion — версия лаунчера, которая в последний раз
+	// успешно скачала bin/wizard_template.json. На старте сравнивается с
+	// текущей AppVersion: если меньше → шаблон удаляется как протухший
+	// (формат шаблона мог разойтись между версиями). См. SPEC 046.
+	LastTemplateLauncherVersion string `json:"last_template_launcher_version,omitempty"`
+}
+
+// MarkTemplateInstalled persists the launcher version that just installed the
+// template. Called after a successful template download — see SPEC 046.
+//
+// Failure to persist is non-fatal for the immediate operation but logged: if
+// the version isn't recorded the next launcher upgrade will re-invalidate the
+// template once more (cosmetic UX nuisance, not a correctness issue).
+func MarkTemplateInstalled(binDir, appVersion string) error {
+	s := LoadSettings(binDir)
+	if s.LastTemplateLauncherVersion == appVersion {
+		return nil
+	}
+	s.LastTemplateLauncherVersion = appVersion
+	return SaveSettings(binDir, s)
 }
 
 // LoadSettings reads settings from binDir/settings.json.

@@ -137,9 +137,20 @@ func GetTemplateFileName() string {
 	return TemplateFileName
 }
 
-// GetTemplateURL возвращает URL для загрузки шаблона с GitHub (ветка main или develop в зависимости от версии приложения).
+// GetTemplateURL возвращает URL загрузки шаблона с GitHub, pinned на коммит,
+// под который собран этот лаунчер (`constants.RequiredTemplateRef`).
+//
+// Для CI-сборок ref инжектится через -ldflags = `git rev-parse HEAD`. Для
+// локальных `go run` ref берётся из source-default (последний коммит main на
+// момент бампа в RELEASE_PROCESS §1.5). Ветки HEAD здесь не используются —
+// иначе лаунчер собирается под одну версию шаблона, а в runtime получает
+// другую. См. SPEC 046.
 func GetTemplateURL() string {
-	return fmt.Sprintf("https://raw.githubusercontent.com/Leadaxe/singbox-launcher/%s/bin/%s", constants.GetMyBranch(), TemplateFileName)
+	return fmt.Sprintf(
+		"https://raw.githubusercontent.com/Leadaxe/singbox-launcher/%s/bin/%s",
+		constants.RequiredTemplateRef,
+		TemplateFileName,
+	)
 }
 
 // LoadTemplateData загружает и обрабатывает шаблон конфигурации.

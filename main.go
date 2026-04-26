@@ -50,6 +50,15 @@ func main() {
 		log.Fatalf("Failed to initialize application: %v", err)
 	}
 
+	// Force-invalidate the wizard template if it was last installed by an
+	// older launcher version (SPEC 046). Has to run before LoadSettings is
+	// reused downstream and before any UI consults bin/wizard_template.json.
+	// Failure here is non-fatal — UI will simply show the existing-template
+	// path, and the next manual Download Template will resync the marker.
+	if err := core.InvalidateTemplateIfStale(controller.FileService.ExecDir); err != nil {
+		debuglog.WarnLog("template: stale-check failed: %v", err)
+	}
+
 	// Load locale settings and external translations
 	binDir := platform.GetBinDir(controller.FileService.ExecDir)
 	locale.LoadExternalLocales(locale.GetLocaleDir(binDir))

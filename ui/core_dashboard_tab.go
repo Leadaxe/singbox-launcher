@@ -814,6 +814,14 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 			})
 			return
 		}
+		// Pin install: record which launcher version installed this template so
+		// the next launcher upgrade knows to invalidate it (SPEC 046). Best
+		// effort — failure here doesn't undo the file write, just risks
+		// re-invalidation on next upgrade.
+		binDirForMark := filepath.Dir(target)
+		if err := locale.MarkTemplateInstalled(binDirForMark, constants.AppVersion); err != nil {
+			debuglog.WarnLog("template: failed to record install version: %v", err)
+		}
 		fyne.Do(func() {
 			if tab.templateDownloadButton != nil {
 				tab.templateDownloadButton.Hide()
