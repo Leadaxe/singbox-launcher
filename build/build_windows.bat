@@ -130,6 +130,14 @@ if not defined VERSION (
     echo Version default: !VERSION!
 )
 
+:: RequiredTemplateRef pinned to commit being built -- see SPEC 046.
+for /f "delims=" %%g in ('git rev-parse HEAD 2^>nul') do set "TEMPLATE_REF=%%g"
+if not defined TEMPLATE_REF (
+    echo !!! Could not resolve git HEAD for RequiredTemplateRef; aborting !!!
+    exit /b 1
+)
+echo Template ref: !TEMPLATE_REF!
+
 :: Determine GOPATH (for tools like rsrc)
 for /f "delims=" %%g in ('go env GOPATH 2^>nul') do set "GOPATH=%%g"
 
@@ -188,8 +196,8 @@ if exist "%OUTPUT_FILENAME%" (
 
 echo Using output file: "%OUTPUT_FILENAME%"
 
-:: Формируем ldflags с версией
-set "LDFLAGS=-H windowsgui -s -w -X singbox-launcher/internal/constants.AppVersion=!VERSION!"
+:: Формируем ldflags с версией и pinned template ref
+set "LDFLAGS=-H windowsgui -s -w -X singbox-launcher/internal/constants.AppVersion=!VERSION! -X singbox-launcher/internal/constants.RequiredTemplateRef=!TEMPLATE_REF!"
 
 :: Уровень шумности
 set "BUILD_VERBOSE=-v"

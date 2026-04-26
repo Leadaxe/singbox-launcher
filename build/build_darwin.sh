@@ -184,11 +184,23 @@ else
 fi
 echo "Minimum macOS version: $MIN_MACOS_VERSION"
 
+# RequiredTemplateRef is pinned to the exact commit being built. Each release
+# binary thus fetches wizard_template.json from that frozen commit, never the
+# branch HEAD — see SPEC 046.
+TEMPLATE_REF=$(git rev-parse HEAD 2>/dev/null || echo "")
+if [ -z "$TEMPLATE_REF" ]; then
+    echo "!!! Could not resolve git HEAD for RequiredTemplateRef; aborting !!!"
+    exit 1
+fi
+echo "Template ref: $TEMPLATE_REF"
+
+LDFLAGS="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION -X singbox-launcher/internal/constants.RequiredTemplateRef=$TEMPLATE_REF"
+
 if [ "$BUILD_TYPE" = "universal" ]; then
     echo ""
     echo "=== Building for arm64 (Apple Silicon) ==="
     TEMP_ARM64="${BASE_NAME}_arm64"
-    GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION" -o "$TEMP_ARM64"
+    GOARCH=arm64 go build -buildvcs=false -ldflags="$LDFLAGS" -o "$TEMP_ARM64"
 
     if [ $? -ne 0 ]; then
         echo "!!! Build failed for arm64 !!!"
@@ -198,7 +210,7 @@ if [ "$BUILD_TYPE" = "universal" ]; then
     echo ""
     echo "=== Building for amd64 (Intel) ==="
     TEMP_AMD64="${BASE_NAME}_amd64"
-    GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION" -o "$TEMP_AMD64"
+    GOARCH=amd64 go build -buildvcs=false -ldflags="$LDFLAGS" -o "$TEMP_AMD64"
 
     if [ $? -ne 0 ]; then
         echo "!!! Build failed for amd64 !!!"
@@ -226,7 +238,7 @@ if [ "$BUILD_TYPE" = "universal" ]; then
 elif [ "$BUILD_TYPE" = "arm64" ]; then
     echo ""
     echo "=== Building for arm64 (Apple Silicon) ==="
-    GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION" -o "$OUTPUT_FILENAME"
+    GOARCH=arm64 go build -buildvcs=false -ldflags="$LDFLAGS" -o "$OUTPUT_FILENAME"
 
     if [ $? -ne 0 ]; then
         echo "!!! Build failed for arm64 !!!"
@@ -239,7 +251,7 @@ elif [ "$BUILD_TYPE" = "arm64" ]; then
 else
     echo ""
     echo "=== Building for amd64 (Intel) ==="
-    GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION" -o "$OUTPUT_FILENAME"
+    GOARCH=amd64 go build -buildvcs=false -ldflags="$LDFLAGS" -o "$OUTPUT_FILENAME"
 
     if [ $? -ne 0 ]; then
         echo "!!! Build failed for amd64 !!!"

@@ -89,9 +89,17 @@ echo "=== Getting version from git tag ==="
 VERSION=$(git describe --tags --always --dirty --exclude='*-prerelease' 2>/dev/null || echo "0.4.1")
 echo "Version: $VERSION"
 
+# RequiredTemplateRef pinned to commit being built — see SPEC 046.
+TEMPLATE_REF=$(git rev-parse HEAD 2>/dev/null || echo "")
+if [ -z "$TEMPLATE_REF" ]; then
+    echo "!!! Could not resolve git HEAD for RequiredTemplateRef; aborting !!!"
+    exit 1
+fi
+echo "Template ref: $TEMPLATE_REF"
+
 echo ""
 echo "=== Starting Build ==="
-go build -buildvcs=false -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION" -o "$OUTPUT_FILENAME"
+go build -buildvcs=false -ldflags="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION -X singbox-launcher/internal/constants.RequiredTemplateRef=$TEMPLATE_REF" -o "$OUTPUT_FILENAME"
 
 if [ $? -eq 0 ]; then
     echo ""
