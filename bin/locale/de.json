@@ -33,7 +33,6 @@
   "core.singbox_status_not_found": "❌ nicht gefunden",
   "core.button_download": "Herunterladen",
   "core.button_download_version": "Herunterladen v%s",
-  "core.button_update_version": "Aktualisieren v%s",
   "core.dialog_singbox_title": "Sing-box",
   "core.dialog_singbox_close": "Schließen",
   "core.button_open_bin": "bin-Ordner öffnen",

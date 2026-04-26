@@ -52,7 +52,6 @@
   "core.singbox_status_not_found": "❌ не найден",
   "core.button_download": "Скачать",
   "core.button_download_version": "Скачать v%s",
-  "core.button_update_version": "Обновить v%s",
   "core.button_reinstall_version": "Переустановить v%s",
   "core.dialog_singbox_title": "Sing-box",
   "core.dialog_singbox_close": "Закрыть",

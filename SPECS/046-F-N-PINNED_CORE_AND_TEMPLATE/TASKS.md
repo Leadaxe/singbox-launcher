@@ -6,7 +6,7 @@
 
 ## Слой 1 — константы и CI-инжекция
 
-- [ ] `internal/constants/constants.go`: добавить `const RequiredCoreVersion = "1.13.6"`.
+- [ ] `internal/constants/constants.go`: добавить `const RequiredCoreVersion = "1.13.11"` (актуальный QA-версии sing-box на момент имплементации).
 - [ ] `internal/constants/constants.go`: добавить `var RequiredTemplateRef = "<актуальный SHA>"` — перед коммитом сделать `git fetch origin main && git rev-parse origin/main`, подставить полный 40-символьный SHA. Перезатирается ldflags в CI.
 - [ ] `internal/constants/constants_test.go`: minimal sanity-test (формат версии).
 - [ ] `build/build_darwin.sh`: объявить `TEMPLATE_REF=$(git rev-parse HEAD)`, добавить `-X ...RequiredTemplateRef=$TEMPLATE_REF` во все `go build`.

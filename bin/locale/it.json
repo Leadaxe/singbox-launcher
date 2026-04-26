@@ -32,7 +32,6 @@
   "core.singbox_status_not_found": "❌ non trovato",
   "core.button_download": "Scarica",
   "core.button_download_version": "Scarica v%s",
-  "core.button_update_version": "Aggiorna v%s",
   "core.dialog_singbox_title": "Sing-box",
   "core.dialog_singbox_close": "Chiudi",
   "core.button_open_bin": "Apri cartella bin",

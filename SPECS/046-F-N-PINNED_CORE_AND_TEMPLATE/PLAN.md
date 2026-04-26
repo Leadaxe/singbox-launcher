@@ -13,7 +13,7 @@
 ### 1.1 Изменения в коде
 
 - `internal/constants/constants.go`:
-  - `+ const RequiredCoreVersion = "1.13.6"` (стартовое значение = текущий `FallbackVersion`).
+  - `+ const RequiredCoreVersion = "1.13.11"` (стартовое значение = текущий `FallbackVersion` на момент имплементации; синхронно с QA-версией релиза).
   - `+ var RequiredTemplateRef = "<актуализировать на момент имплементации: git rev-parse origin/main>"` (CI перетирает через ldflags; для dev-сборок остаётся source-default).
   - Краткий package-comment, что это инвариант релиза.
 

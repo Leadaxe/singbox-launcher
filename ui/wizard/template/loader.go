@@ -36,7 +36,9 @@ import (
 )
 
 // TemplateFileName — единственный файл шаблона для всех платформ.
-const TemplateFileName = "wizard_template.json"
+// Re-exported from internal/constants so existing callers in ui/wizard
+// don't have to import that package directly.
+const TemplateFileName = constants.WizardTemplateFileName
 
 // TemplateData — данные шаблона, подготовленные для визарда.
 type TemplateData struct {

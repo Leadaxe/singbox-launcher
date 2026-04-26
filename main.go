@@ -51,10 +51,14 @@ func main() {
 	}
 
 	// Force-invalidate the wizard template if it was last installed by an
-	// older launcher version (SPEC 046). Has to run before LoadSettings is
-	// reused downstream and before any UI consults bin/wizard_template.json.
-	// Failure here is non-fatal — UI will simply show the existing-template
-	// path, and the next manual Download Template will resync the marker.
+	// older launcher version (SPEC 046). Has to run before any UI consults
+	// bin/wizard_template.json — the Core Dashboard tab's "Download Template"
+	// flow relies on the file being absent.
+	//
+	// Failure here is non-fatal: a stat/remove error means the user keeps
+	// running with the existing (possibly mismatched) template, which is a
+	// degraded but not broken state. The next manual Download Template will
+	// resync `last_template_launcher_version`.
 	if err := core.InvalidateTemplateIfStale(controller.FileService.ExecDir); err != nil {
 		debuglog.WarnLog("template: stale-check failed: %v", err)
 	}

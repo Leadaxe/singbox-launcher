@@ -76,12 +76,18 @@ singbox-launcher/
 │   │   │   - Asset struct                          # Информация об ассете
 │   │   │   - DownloadProgress struct               # Прогресс загрузки
 │   │   │
-│   ├── core_version.go       # Работа с версиями sing-box
-│   │   │   - GetInstalledCoreVersion()             # Получение установленной версии
-│   │   │   - GetLatestCoreVersion()                 # Получение последней версии
-│   │   │   - CheckVersionInBackground()             # Проверка версии в фоне
+│   ├── core_version.go       # Версии: установленная sing-box + launcher self-update
+│   │   │   - GetInstalledCoreVersion()             # Получение установленной версии sing-box
+│   │   │   - GetLatestLauncherVersion()             # Получение последней версии лаунчера (для self-update)
+│   │   │   - CheckLauncherVersionOnStartup()        # Разовая проверка self-update при старте
 │   │   │   - CompareVersions()                      # Сравнение версий
-│   │   │   - CoreVersionInfo struct                 # Информация о версии
+│   │   │   - ShowUpdatePopupIfAvailable()           # Попап self-update
+│   │   │   # SPEC 046: версия sing-box pinned через constants.RequiredCoreVersion;
+│   │   │   # latest-походы и core-side cache удалены.
+│   │   │
+│   ├── template_migration.go  # SPEC 046: инвалидация локального шаблона на апгрейде
+│   │   │   - InvalidateTemplateIfStale()           # Удалить bin/wizard_template.json,
+│   │   │                                            #   если он установлен предыдущей версией лаунчера
 │   │   │
 │   ├── wintun_downloader.go   # Загрузка wintun.dll
 │   │   │   - DownloadWintunDLL()                     # Загрузка wintun.dll
@@ -122,10 +128,12 @@ singbox-launcher/
 │   │   │   │
 │   │   ├── state_service.go   # Управление состоянием приложения
 │   │   │   │   - NewStateService()                  # Создание сервиса
-│   │   │   │   - GetCachedVersion()                  # Получение кешированной версии
-│   │   │   │   - SetCachedVersion()                  # Установка кешированной версии
-│   │   │   │   - IsAutoUpdateEnabled()               # Проверка автообновления
-│   │   │   │   - SetAutoUpdateEnabled()             # Установка автообновления
+│   │   │   │   - GetCachedLauncherVersion()         # Кеш версии лаунчера для self-update попапа
+│   │   │   │   - SetCachedLauncherVersion()         # Запись кеша версии лаунчера
+│   │   │   │   - IsAutoUpdateEnabled()               # Проверка автообновления подписок
+│   │   │   │   - SetAutoUpdateEnabled()             # Установка автообновления подписок
+│   │   │   │   # SPEC 046: core-version cache удалён — версия sing-box pinned
+│   │   │   │   # через constants.RequiredCoreVersion
 │   │   │   │
 │   │   └── file_service.go    # Управление файлами и путями
 │   │       │   - NewFileService()                   # Создание сервиса
@@ -607,12 +615,13 @@ singbox-launcher/
 
 **StateService** (`state_service.go`)
 - `NewStateService()` - создание сервиса
-- `GetCachedVersion()` - получение кешированной версии
-- `SetCachedVersion()` - установка кешированной версии
-- `IsAutoUpdateEnabled()` - проверка автообновления
-- `SetAutoUpdateEnabled()` - установка автообновления
+- `GetCachedLauncherVersion()` - кеш последней версии лаунчера для self-update попапа
+- `SetCachedLauncherVersion()` - запись кеша версии лаунчера
+- `IsAutoUpdateEnabled()` - проверка автообновления подписок
+- `SetAutoUpdateEnabled()` - установка автообновления подписок
 - `GetLastUpdatedTime()` - получение времени последнего обновления
 - `SetLastUpdatedTime()` - установка времени обновления
+- (SPEC 046: core-version cache `GetCachedVersion`/`SetCachedVersion` удалён — версия sing-box pinned через `constants.RequiredCoreVersion`)
 
 **FileService** (`file_service.go`)
 - `NewFileService()` - создание сервиса

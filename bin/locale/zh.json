@@ -33,7 +33,6 @@
   "core.singbox_status_not_found": "❌ 未找到",
   "core.button_download": "下载",
   "core.button_download_version": "下载 v%s",
-  "core.button_update_version": "更新 v%s",
   "core.dialog_singbox_title": "Sing-box",
   "core.dialog_singbox_close": "关闭",
   "core.button_open_bin": "打开 bin 文件夹",

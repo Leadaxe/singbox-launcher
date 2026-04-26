@@ -72,8 +72,8 @@ SPEC 045 (`STATE_CONFIG_DECOUPLING`) переоформляет, **что** пи
 
 ```go
 // internal/constants/constants.go
-const RequiredCoreVersion = "1.13.6"                                 // обновляется вручную в источнике
-var   RequiredTemplateRef = "<actualize-at-implementation>"          // дефолт = последний коммит main на момент реализации; CI перетирает через ldflags
+const RequiredCoreVersion = "1.13.11"                                  // обновляется вручную в источнике
+var   RequiredTemplateRef = "<actualize-at-implementation>"            // дефолт = последний коммит main на момент реализации; CI перетирает через ldflags
 ```
 
 **Почему дефолт — реальный SHA, а не `""`:** без ldflags (локальный `go run .`, нестандартный билд) лаунчер всё равно получает рабочий pinned-ref, а не плавающий branch HEAD. Maintainer бампит этот дефолт при каждом merge `develop → main` (см. §4). Пустой ref как fallback не нужен.

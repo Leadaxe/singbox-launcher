@@ -17,7 +17,6 @@
   "core.button_start": "Démarrer",
   "core.button_stop": "Arrêter",
   "core.button_update": "🔄 Mettre à jour",
-  "core.button_update_version": "Mettre à jour v%s",
   "core.button_wizard": "⚙️ Assistant",
   "core.config_not_found_message": "⚠️ Fichier de configuration introuvable !\n\nLe fichier %s est absent du dossier bin.\n\nPour commencer :\n1. télécharger l'Assistant\n2. utilisez l'Assistant pour générer un fichier de configuration\n3. appuyez sur Démarrer\n",
   "core.config_not_found_title": "Configuration introuvable",

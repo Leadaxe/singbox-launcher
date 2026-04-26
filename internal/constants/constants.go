@@ -4,10 +4,11 @@ import "strings"
 
 // File names
 const (
-	WinTunDLLName   = "wintun.dll"
-	TunDLLName      = "tun.dll"
-	ConfigFileName  = "config.json"
-	SingBoxExecName = "sing-box"
+	WinTunDLLName          = "wintun.dll"
+	TunDLLName             = "tun.dll"
+	ConfigFileName         = "config.json"
+	WizardTemplateFileName = "wizard_template.json"
+	SingBoxExecName        = "sing-box"
 )
 
 // Directory names
@@ -42,27 +43,24 @@ const (
 	WintunHomeURL      = "https://www.wintun.net/"
 )
 
-// Application version + pinned dependency refs (see SPEC 046).
+// Pinned sing-box version for this launcher build (SPEC 046). Manually
+// bumped per release as a deliberate engineering decision; the source-of-
+// truth lives here, not in auto-discovered GitHub latest. See
+// docs/RELEASE_PROCESS.md §5.1.
+const RequiredCoreVersion = "1.13.11"
+
+// AppVersion — git describe output. Set by build scripts via -ldflags.
 //
-// AppVersion — git describe output, set by build scripts via -ldflags.
-//
-// RequiredCoreVersion — pinned sing-box version for this launcher build.
-// Manually bumped per release; the source-of-truth lives here, not in
-// auto-discovered GitHub latest. See docs/RELEASE_PROCESS.md.
-//
-// RequiredTemplateRef — pinned commit ref of wizard_template.json. CI
-// build scripts overwrite the source-default via -ldflags using
+// RequiredTemplateRef — pinned commit ref of wizard_template.json. CI build
+// scripts overwrite the source-default via `-ldflags` using
 // `git rev-parse HEAD`, so each release ships a binary that fetches the
 // exact template snapshot it was tested against. The source-default below
-// is updated by the maintainer in §1.5 of RELEASE_PROCESS.md after every
-// merge of main back into develop, so that local `go run .` builds (which
-// don't pass ldflags) still get a stable pinned ref instead of a moving
-// branch HEAD.
+// is bumped by the maintainer in §1.5 of RELEASE_PROCESS.md after every
+// merge of main back into develop — local `go run .` builds (which don't
+// pass ldflags) thus get a stable pinned ref instead of a moving branch
+// HEAD. See docs/RELEASE_PROCESS.md §5.2.
 var (
 	AppVersion          = "v-local-test"
-	RequiredCoreVersion = "1.13.11"
-	// Source-default = origin/main HEAD at the time this constant was last
-	// bumped. Overwritten by build scripts via -ldflags.
 	RequiredTemplateRef = "e6f2fb1b0f38547412623aeb3af7f0aea5223fd7"
 )
 

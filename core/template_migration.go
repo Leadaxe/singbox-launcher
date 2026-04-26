@@ -12,10 +12,6 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
-// templateFileName mirrors ui/wizard/template.TemplateFileName. Duplicated
-// here to keep core/ free of a downstream dependency on ui/.
-const templateFileName = "wizard_template.json"
-
 // InvalidateTemplateIfStale removes bin/wizard_template.json when it was last
 // installed by an older launcher version. Idempotent and called once on
 // startup, before any UI is built.
@@ -50,7 +46,7 @@ func InvalidateTemplateIfStale(execDir string) error {
 		return nil
 	}
 
-	templatePath := filepath.Join(binDir, templateFileName)
+	templatePath := filepath.Join(binDir, constants.WizardTemplateFileName)
 	if _, err := os.Stat(templatePath); err != nil {
 		if os.IsNotExist(err) {
 			return nil // nothing to invalidate
