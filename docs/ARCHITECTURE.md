@@ -970,7 +970,7 @@ singbox-launcher/
   - `LoadTemplateData()` - загрузка единого JSON-шаблона (`wizard_template.json`), парсинг секций, применение `params` по текущей платформе, фильтрация `selectable_rules` по `platforms`; условия **`params.if`** / **`params.if_or`** смотрят на bool-**`vars`**: при несовпадении **`vars[].platforms`** с текущей ОС переменная даёт **false** в условии (см. **`VarAppliesOnGOOS`** / **`ParamBoolVarTrue`** в **`ui/wizard/template/vars_resolve.go`**, **docs/CREATE_WIZARD_TEMPLATE.md**)
   - `GetTemplateFileName()` - возврат имени файла шаблона (`wizard_template.json`, единый для всех платформ)
   - Объектные **`vars[].default_value`**: **`VarDefaultValue`** / **`defaultValueKeyOrder`** в **`ui/wizard/template/vars_default.go`** (как **`platforms`**: только **`GOOS`**, плюс **`win7`** для **windows/386**, затем **`default`**), разрешение в **`vars_resolve.go`** — **docs/CREATE_WIZARD_TEMPLATE.md** / **_RU.md**
-  - `GetTemplateURL()` - возврат URL для загрузки шаблона с GitHub
+  - `GetTemplateURL()` - URL шаблона на GitHub, pinned на коммит сборки через **`constants.RequiredTemplateRef`** (CI инжектит SHA через **-ldflags**, локальные сборки берут source-default = последний `main` HEAD; см. **SPEC 046**, `docs/RELEASE_PROCESS.md §5`)
   - `UnifiedTemplate` struct - структура JSON-шаблона (`parser_config`, `config`, `selectable_rules`, `params`)
   - `UnifiedSelectableRule` struct - правило в шаблоне (label, description, default, platforms, rule_set, rule/rules)
   - `UnifiedTemplateParam` struct - платформенный параметр (name, platforms, mode, value)
@@ -1003,6 +1003,8 @@ singbox-launcher/
 │                                                              │
 │  1. main() [main.go]                                         │
 │     └─> Создание AppController                               │
+│     └─> InvalidateTemplateIfStale (SPEC 046)                 │
+│     └─> LoadSettings + LoadExternalLocales                   │
 │     └─> Инициализация UI                                     │
 │     └─> Запуск приложения                                    │
 │                                                              │
