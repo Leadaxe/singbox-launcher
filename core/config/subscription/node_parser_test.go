@@ -870,6 +870,59 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 		}
 	})
 
+	// Sanitization tests for packetEncoding (SPEC 049): sing-box v1.13.x
+	// panics on any value other than "", "xudp", "packetaddr". Some xray-style
+	// subscriptions emit "none" (igareck/vpn-configs-for-russia caused the
+	// 0.8.8.x crash reports) or other freeform values. Allow-list those we
+	// know, drop the rest with a warning instead of forwarding to sing-box.
+
+	t.Run("packetEncoding=none: dropped, no field in outbound", func(t *testing.T) {
+		// Repro of the 2026-04-27 sing-box panic ("unknown value" inside
+		// vless.NewOutbound). After this fix the field is omitted, sing-box
+		// applies its default and starts cleanly.
+		uri := "vless://60ae82da-f839-4125-aa1e-3df0e2a5c30c@5.188.224.73:2083?type=tcp&security=reality&encryption=none&fp=chrome&pbk=J6NuOlIq3ypdTFc1TMhDDKmF8BWPnNWZq1EkxD7K-lQ&sid=6da16b1335651b38&sni=ir.ozone.ru&packetEncoding=none#t"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		if v, has := node.Outbound["packet_encoding"]; has {
+			t.Fatalf("expected packet_encoding to be omitted for packetEncoding=none, got %q", v)
+		}
+	})
+
+	t.Run("packetEncoding=PacketAddr: normalized to lowercase packetaddr", func(t *testing.T) {
+		uri := "vless://e81b43d3-bb75-07d0-8b11-f526aef4fef4@example.com:443?type=tcp&encryption=none&security=none&packetEncoding=PacketAddr#t"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		if node.Outbound["packet_encoding"] != "packetaddr" {
+			t.Fatalf("packet_encoding: %+v (want lowercased packetaddr)", node.Outbound["packet_encoding"])
+		}
+	})
+
+	t.Run("packetEncoding=XUDP: normalized to lowercase xudp", func(t *testing.T) {
+		uri := "vless://e81b43d3-bb75-07d0-8b11-f526aef4fef4@example.com:443?type=tcp&encryption=none&security=none&packetEncoding=XUDP#t"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		if node.Outbound["packet_encoding"] != "xudp" {
+			t.Fatalf("packet_encoding: %+v (want lowercased xudp)", node.Outbound["packet_encoding"])
+		}
+	})
+
+	t.Run("packetEncoding=garbage: dropped with warning", func(t *testing.T) {
+		uri := "vless://e81b43d3-bb75-07d0-8b11-f526aef4fef4@example.com:443?type=tcp&encryption=none&security=none&packetEncoding=somethingweird#t"
+		node, err := ParseNode(uri, nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v", err)
+		}
+		if v, has := node.Outbound["packet_encoding"]; has {
+			t.Fatalf("expected packet_encoding to be omitted for unknown value, got %q", v)
+		}
+	})
+
 	t.Run("tcp raw headerType=http → http transport (goida-style)", func(t *testing.T) {
 		uri := "vless://c060fdda-385d-aea1-3982-5a6c92876481@85.133.249.43:58387?encryption=none&type=raw&headerType=http&host=arvancloud.ir&path=%2F&security=none#t"
 		node, err := ParseNode(uri, nil)

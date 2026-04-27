@@ -605,7 +605,20 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 			}
 		}
 		if pe := strings.TrimSpace(queryGetFold(node.Query, "packetEncoding")); pe != "" {
-			outbound["packet_encoding"] = pe
+			// sing-box accepts only "xudp" / "packetaddr" (or empty/omitted).
+			// Some xray-style subscriptions emit packetEncoding=none for
+			// nodes that don't need xtls — semantically equivalent to
+			// omitting the field. v1.13.x sing-box panics on any other
+			// value (see SPEC 049 upstream report), so filter to the
+			// allow-list and drop everything else with a warning.
+			switch strings.ToLower(pe) {
+			case "xudp", "packetaddr":
+				outbound["packet_encoding"] = strings.ToLower(pe)
+			case "none":
+				// silently drop — common, by-design "no special encoding"
+			default:
+				debuglog.WarnLog("Parser: unknown packetEncoding %q in %s URI %s — dropping field", pe, node.Scheme, node.Tag)
+			}
 		}
 
 		if tlsData, ok := vlessTLSFromNode(node); ok {
