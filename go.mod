@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	fyne.io/fyne/v2 v2.7.3
 	github.com/dweymouth/fyne-tooltip v0.4.0
-	github.com/godbus/dbus/v5 v5.1.0
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/muhammadmuzzammil1998/jsonc v1.0.0
 	github.com/pion/stun v0.6.1
