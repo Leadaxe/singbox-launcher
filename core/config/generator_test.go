@@ -467,6 +467,110 @@ func TestGenerateEndpointJSON_CommentSanitized(t *testing.T) {
 	}
 }
 
+// GenerateNodeJSON must emit username/password (and optional quic/extra_headers) for naive nodes,
+// otherwise sing-box receives a credential-less outbound and authentication fails.
+func TestGenerateNodeJSON_Naive_HTTPS_WithAuth(t *testing.T) {
+	uri := "naive+https://7c4e9a2bd1f3068a:b3f8c1a05e9d2746a8b1c0e3f5d9742a@naive.example.test:9443/?padding=true#naive-smoke-test"
+	node, err := subscription.ParseNode(uri, nil)
+	if err != nil || node == nil {
+		t.Fatalf("ParseNode: %v", err)
+	}
+	jsonStr, err := GenerateNodeJSON(node)
+	if err != nil {
+		t.Fatalf("GenerateNodeJSON: %v", err)
+	}
+	for _, want := range []string{
+		`"type":"naive"`,
+		`"server":"naive.example.test"`,
+		`"server_port":9443`,
+		`"username":"7c4e9a2bd1f3068a"`,
+		`"password":"b3f8c1a05e9d2746a8b1c0e3f5d9742a"`,
+		`"server_name":"naive.example.test"`,
+	} {
+		if !strings.Contains(jsonStr, want) {
+			t.Errorf("expected %s in JSON:\n%s", want, jsonStr)
+		}
+	}
+	if strings.Contains(jsonStr, `"quic":true`) {
+		t.Errorf("naive+https must not emit quic:true, got:\n%s", jsonStr)
+	}
+
+	lines := strings.Split(strings.TrimSpace(jsonStr), "\n")
+	jsonLine := strings.TrimSuffix(strings.TrimSpace(lines[len(lines)-1]), ",")
+	var obj map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonLine), &obj); err != nil {
+		t.Fatalf("naive object line must be valid JSON: %v\n%s", err, jsonLine)
+	}
+}
+
+// naive+quic must emit quic:true and quic_congestion_control on top of username/password.
+func TestGenerateNodeJSON_Naive_QUIC(t *testing.T) {
+	uri := "naive+quic://u:p@quic.example.com:443#q"
+	node, err := subscription.ParseNode(uri, nil)
+	if err != nil || node == nil {
+		t.Fatalf("ParseNode: %v", err)
+	}
+	jsonStr, err := GenerateNodeJSON(node)
+	if err != nil {
+		t.Fatalf("GenerateNodeJSON: %v", err)
+	}
+	for _, want := range []string{
+		`"type":"naive"`,
+		`"username":"u"`,
+		`"password":"p"`,
+		`"quic":true`,
+		`"quic_congestion_control":"bbr"`,
+	} {
+		if !strings.Contains(jsonStr, want) {
+			t.Errorf("expected %s in JSON:\n%s", want, jsonStr)
+		}
+	}
+}
+
+// naive extra_headers must round-trip from the URI into the sing-box JSON.
+func TestGenerateNodeJSON_Naive_ExtraHeaders(t *testing.T) {
+	uri := "naive+https://u:p@host.tld/?extra-headers=X-Username%3Auser%0D%0AX-Password%3Apassword#h"
+	node, err := subscription.ParseNode(uri, nil)
+	if err != nil || node == nil {
+		t.Fatalf("ParseNode: %v", err)
+	}
+	jsonStr, err := GenerateNodeJSON(node)
+	if err != nil {
+		t.Fatalf("GenerateNodeJSON: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(jsonStr), "\n")
+	jsonLine := strings.TrimSuffix(strings.TrimSpace(lines[len(lines)-1]), ",")
+	var obj map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonLine), &obj); err != nil {
+		t.Fatalf("naive object line must be valid JSON: %v\n%s", err, jsonLine)
+	}
+	hdrs, ok := obj["extra_headers"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("extra_headers missing or wrong type: %T (%v)", obj["extra_headers"], obj["extra_headers"])
+	}
+	if hdrs["X-Username"] != "user" || hdrs["X-Password"] != "password" {
+		t.Errorf("extra_headers content unexpected: %v", hdrs)
+	}
+}
+
+// Anonymous naive URI must omit username and password entirely (neither field set).
+func TestGenerateNodeJSON_Naive_Anonymous(t *testing.T) {
+	node, err := subscription.ParseNode("naive+https://host.tld#a", nil)
+	if err != nil || node == nil {
+		t.Fatalf("ParseNode: %v", err)
+	}
+	jsonStr, err := GenerateNodeJSON(node)
+	if err != nil {
+		t.Fatalf("GenerateNodeJSON: %v", err)
+	}
+	if strings.Contains(jsonStr, `"username"`) {
+		t.Errorf("anonymous naive must not emit username:\n%s", jsonStr)
+	}
+	if strings.Contains(jsonStr, `"password"`) {
+		t.Errorf("anonymous naive must not emit password:\n%s", jsonStr)
+	}
+}
+
 func TestGenerateNodeJSON_DetourEmitted(t *testing.T) {
 	node := &ParsedNode{
 		Scheme: "vless",
