@@ -16,18 +16,28 @@ func TestAutoPingAfterConnectDefaultEnabled(t *testing.T) {
 	}
 }
 
-func TestTemplateDirtyRoundTrip(t *testing.T) {
+func TestAutoPingMaxProxiesDefault(t *testing.T) {
 	s := NewStateService()
-	if s.IsTemplateDirty() {
-		t.Error("template dirty should default to false")
+	if got := s.GetAutoPingMaxProxies(); got != DefaultAutoPingMaxProxies {
+		t.Errorf("default max-proxies = %d, want %d", got, DefaultAutoPingMaxProxies)
 	}
-	s.SetTemplateDirty(true)
-	if !s.IsTemplateDirty() {
-		t.Error("template dirty should be true after Set(true)")
+}
+
+func TestAutoPingMaxProxiesOverride(t *testing.T) {
+	s := NewStateService()
+	s.SetAutoPingMaxProxies(300)
+	if got := s.GetAutoPingMaxProxies(); got != 300 {
+		t.Errorf("after Set(300), got %d, want 300", got)
 	}
-	s.SetTemplateDirty(false)
-	if s.IsTemplateDirty() {
-		t.Error("template dirty should be false after Set(false)")
+	s.SetAutoPingMaxProxies(0)
+	if got := s.GetAutoPingMaxProxies(); got != 0 {
+		t.Errorf("after Set(0) (no cap), got %d, want 0", got)
+	}
+	// Negative clamps to 0 — defensive guard so a malformed settings.json
+	// can't put the field in a confusing state.
+	s.SetAutoPingMaxProxies(-1)
+	if got := s.GetAutoPingMaxProxies(); got != 0 {
+		t.Errorf("after Set(-1), got %d, want 0 (clamped)", got)
 	}
 }
 
@@ -64,8 +74,12 @@ func TestStateServiceConcurrency(t *testing.T) {
 			}
 			s.SetAutoPingAfterConnectEnabled(i%2 == 0)
 			_ = s.IsAutoPingAfterConnectEnabled()
-			s.SetTemplateDirty(i%2 == 0)
-			_ = s.IsTemplateDirty()
+			if i%2 == 0 {
+				s.MarkCacheStale()
+			} else {
+				s.ClearCacheStale()
+			}
+			_ = s.IsCacheStale()
 		}(i)
 	}
 	wg.Wait()

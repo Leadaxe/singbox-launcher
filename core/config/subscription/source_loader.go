@@ -11,6 +11,21 @@ import (
 	"singbox-launcher/internal/textnorm"
 )
 
+// LookupCachedBody — package-level hook, позволяющий вызывающему слою
+// (Update / Rebuild в core) подать pre-fetched body для подписок без
+// network call'а.
+//
+// Контракт:
+//   - URL — Source.URL текущей подписки.
+//   - Возвращает (decoded body, true) если cache hit; (_, false) — fallback
+//     на стандартный FetchSubscription.
+//   - SPEC 052 phase 6: Update пишет `bin/subscriptions/<id>.raw`, потом
+//     устанавливает hook чтобы парсер не дёргал сеть второй раз. Rebuild
+//     ставит hook → читает raw → парсит без сети.
+//
+// nil → стандартное поведение (FetchSubscription).
+var LookupCachedBody func(url string) ([]byte, bool)
+
 // NormalizeSubscriptionTextLine trims whitespace, drops invalid UTF-8 byte sequences, and replaces
 // HTML-escaped "&amp;" with "&". Some public lists are HTML-exported; without this, query parameters
 // stay merged and URI parsing breaks.
@@ -90,9 +105,23 @@ func LoadNodesFromSource(
 			}
 
 			fetchStartTime := time.Now()
-			debuglog.DebugLog("LoadNodesFromSource: Fetching subscription %d/%d: %s",
-				subscriptionIndex+1, totalSubscriptions, proxySource.Source)
-			content, err := FetchSubscription(proxySource.Source)
+			var content []byte
+			var err error
+
+			// SPEC 052: если caller установил cache-hook (Rebuild без сети
+			// или Update после refresh), берём оттуда — экономит fetch.
+			if LookupCachedBody != nil {
+				if cached, ok := LookupCachedBody(proxySource.Source); ok && len(cached) > 0 {
+					content = cached
+					debuglog.DebugLog("LoadNodesFromSource: Using cached body for subscription %d/%d (%d bytes)",
+						subscriptionIndex+1, totalSubscriptions, len(content))
+				}
+			}
+			if content == nil {
+				debuglog.DebugLog("LoadNodesFromSource: Fetching subscription %d/%d: %s",
+					subscriptionIndex+1, totalSubscriptions, proxySource.Source)
+				content, err = FetchSubscription(proxySource.Source)
+			}
 			fetchDuration := time.Since(fetchStartTime)
 			if err != nil {
 				debuglog.DebugLog("LoadNodesFromSource: Failed to fetch subscription %d/%d (took %v): %v",

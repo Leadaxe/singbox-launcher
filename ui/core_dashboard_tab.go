@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -21,14 +22,15 @@ import (
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core"
-	"singbox-launcher/core/config/parser"
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
-	"singbox-launcher/ui/wizard"
-	wizardtemplate "singbox-launcher/ui/wizard/template"
+	"singbox-launcher/ui/configurator"
+	wizardtemplate "singbox-launcher/core/template"
 )
 
 const downloadPlaceholderWidth = 120
@@ -57,7 +59,9 @@ type CoreDashboardTab struct {
 	configStatusLabel         *widget.Button      // Используем Button для возможности клика
 	templateDownloadButton    *widget.Button
 	wizardButton              *widget.Button
-	updateConfigButton        *ttwidget.Button // tooltip carries shortcut hint
+	stateSelect               *widget.Select // dropdown of saved named states (bottom row)
+	updateConfigButton        *ttwidget.Button // icon-only refresh-subs button (tooltip carries shortcut hint)
+	updateAndRebuildButton    *ttwidget.Button // icon-only refresh+rebuild combo (right-click → autoRebuild toggle)
 	parserProgressBar         *widget.ProgressBar // Progress bar for parser
 	parserStatusLabel         *widget.Label       // Status label for parser
 
@@ -110,6 +114,8 @@ func CreateCoreDashboardTab(ac *core.AppController) fyne.CanvasObject {
 		widget.NewSeparator(),
 		coreInfo,
 		widget.NewSeparator(),
+		tab.createStateBlock(),
+		widget.NewSeparator(),
 	}
 
 	// Горизонтальная линия и кнопка Exit в конце списка
@@ -144,42 +150,30 @@ func CreateCoreDashboardTab(ac *core.AppController) fyne.CanvasObject {
 	// Регистрируем callback для обновления прогресса парсера
 	tab.controller.UIService.UpdateParserProgressFunc = func(progress float64, status string) {
 		fyne.Do(func() {
-			if tab.parserProgressBar != nil {
-				if progress < 0 {
-					// Error state - hide progress bar
-					tab.parserProgressBar.Hide()
-					tab.parserStatusLabel.Hide()
-					// Проверяем, не запущен ли парсер
-					tab.controller.ParserMutex.Lock()
-					parserRunning := tab.controller.ParserRunning
-					tab.controller.ParserMutex.Unlock()
-					if !parserRunning {
-						tab.updateConfigButton.Enable()
-					}
-				} else {
-					// Show progress
-					tab.parserProgressBar.Show()
-					tab.parserStatusLabel.Show()
-					tab.parserProgressBar.SetValue(progress / 100.0)
-					tab.parserStatusLabel.SetText(status)
-					if progress >= 100 {
-						// Completed - hide after a short delay
-						go func() {
-							<-time.After(1 * time.Second)
-							fyne.Do(func() {
-								tab.parserProgressBar.Hide()
-								tab.parserStatusLabel.Hide()
-								// Проверяем, не запущен ли парсер
-								tab.controller.ParserMutex.Lock()
-								parserRunning := tab.controller.ParserRunning
-								tab.controller.ParserMutex.Unlock()
-								if !parserRunning {
-									tab.updateConfigButton.Enable()
-								}
-							})
-						}()
-					}
-				}
+			if tab.parserProgressBar == nil {
+				return
+			}
+			if progress < 0 {
+				// Error state — hide progress, refresh кнопки (Update сам
+				// re-enable'ится через updateConfigInfo: ParserRunning=false).
+				tab.parserProgressBar.Hide()
+				tab.parserStatusLabel.Hide()
+				tab.updateConfigInfo()
+				return
+			}
+			tab.parserProgressBar.Show()
+			tab.parserStatusLabel.Show()
+			tab.parserProgressBar.SetValue(progress / 100.0)
+			tab.parserStatusLabel.SetText(status)
+			if progress >= 100 {
+				go func() {
+					<-time.After(1 * time.Second)
+					fyne.Do(func() {
+						tab.parserProgressBar.Hide()
+						tab.parserStatusLabel.Hide()
+						tab.updateConfigInfo()
+					})
+				}()
 			}
 		})
 	}
@@ -225,8 +219,21 @@ func (tab *CoreDashboardTab) createStatusRow() fyne.CanvasObject {
 	tab.startButton = startButton
 	tab.stopButton = stopButton
 	tab.restartButton = restartButton
-	restartButton.OnTapped = func() {
-		// Brief "Stopped" look: Start on, Stop off — then Restarting...; watcher will bring process back and UpdateCoreStatusFunc will show "Running"
+	// Restart-кнопка теперь — split-control: тап показывает popup-menu с
+	// двумя опциями (SPEC 045 §6.4):
+	//   1. «Только пересобрать config» — RebuildConfigIfDirty без kill+start.
+	//      Полезно когда пользователь хочет проверить, что state.json даёт
+	//      валидный config.json, не дёргая работающий sing-box. Скрипты
+	//      аналогично ходят через POST /action/rebuild-config.
+	//   2. «Пересобрать и перезапустить» — старое поведение Restart:
+	//      kill → ProcessService.Start (внутри RebuildConfigIfDirty) → новый
+	//      процесс с актуальным config.
+	//
+	// До 045 явная кнопка «rebuild only» отсутствовала — пользователю
+	// приходилось нажимать Restart и ждать секундный fallout от kill+start.
+	doRestartFull := func() {
+		// Brief "Stopped" look: Start on, Stop off — then Restarting…; watcher
+		// will bring process back and UpdateCoreStatusFunc will show "Running".
 		if tab.startButton != nil {
 			tab.startButton.Enable()
 			tab.startButton.Importance = widget.HighImportance
@@ -244,6 +251,58 @@ func (tab *CoreDashboardTab) createStatusRow() fyne.CanvasObject {
 		tab.restartButton.Disable()
 		tab.restartButton.Refresh()
 		core.KillSingBoxForRestart()
+	}
+
+	doRebuildOnly := func() {
+		ac := tab.controller
+		if ac == nil {
+			return
+		}
+		if err := ac.RebuildConfigIfDirty(); err != nil {
+			debuglog.WarnLog("CoreDashboard: RebuildConfigIfDirty failed: %v", err)
+			ShowError(ac.UIService.MainWindow, err)
+			return
+		}
+		// Refresh dirty markers — RebuildConfigIfDirty снимает оба
+		// (CacheStale + ConfigStale), кнопки должны посереть.
+		if ac.UIService != nil {
+			if ac.UIService.UpdateConfigStatusFunc != nil {
+				ac.UIService.UpdateConfigStatusFunc()
+			}
+			if ac.UIService.UpdateCoreStatusFunc != nil {
+				ac.UIService.UpdateCoreStatusFunc()
+			}
+		}
+	}
+
+	restartButton.OnTapped = func() {
+		ac := tab.controller
+		if ac == nil || ac.UIService == nil || ac.UIService.MainWindow == nil {
+			return
+		}
+
+		// Кнопка enabled => state.json точно есть (см. updateRunningStatus).
+		// Поэтому первый пункт всегда активен. Второй — два лейбла в
+		// зависимости от running:
+		//   sing-box работает   → «Rebuild & restart» (kill + rebuild + start)
+		//   sing-box не запущен → «Rebuild & start»   (start: pre-rebuild
+		//                          сработает внутри ProcessService.Start
+		//                          по dirty-маркерам)
+		rebuildItem := fyne.NewMenuItem(locale.T("core.restart_menu_rebuild"), doRebuildOnly)
+
+		var fullItem *fyne.MenuItem
+		if ac.RunningState.IsRunning() {
+			fullItem = fyne.NewMenuItem(locale.T("core.restart_menu_full"), doRestartFull)
+		} else {
+			fullItem = fyne.NewMenuItem(locale.T("core.restart_menu_full_when_stopped"), func() {
+				core.StartSingBoxProcess()
+			})
+		}
+		menu := fyne.NewMenu("", rebuildItem, fullItem)
+		pop := widget.NewPopUpMenu(menu, ac.UIService.MainWindow.Canvas())
+		// Показываем popup сразу под кнопкой.
+		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(restartButton)
+		pop.ShowAtPosition(fyne.NewPos(pos.X, pos.Y+restartButton.Size().Height))
 	}
 
 	statusContainer := container.NewHBox(
@@ -289,18 +348,41 @@ func (tab *CoreDashboardTab) createConfigBlock() fyne.CanvasObject {
 	tab.parserStatusLabel.Wrapping = fyne.TextWrapWord
 	tab.parserStatusLabel.Alignment = fyne.TextAlignCenter
 
-	// Кнопка Update
-	tab.updateConfigButton = ttwidget.NewButton(locale.T("core.button_update"), func() {
-		// Деактивируем кнопку и показываем прогрессбар
-		tab.updateConfigButton.Disable()
+	// Update-кнопка — icon-only (ViewRefreshIcon).
+	//   • Левый клик: ↻ refresh subscriptions only (cache → диск; config
+	//     не трогается, ConfigStale взлетает → 🔄 синяя).
+	//   • Правый клик: popup menu с двумя пунктами:
+	//       — «Refresh subscriptions only» (то же что левый клик)
+	//       — «Refresh & rebuild config» (chain Update + Rebuild)
+	// SPEC 045 invariant: Update сам config.json НЕ пишет; rebuild делает
+	// `RebuildConfigIfDirty` — единственный writer config'а.
+	startProgress := func() {
 		tab.parserProgressBar.Show()
 		tab.parserProgressBar.SetValue(0)
 		tab.parserStatusLabel.Show()
 		tab.parserStatusLabel.SetText(locale.T("core.status_parser_starting"))
+	}
 
-		// Запускаем парсер в отдельной горутине
+	doRefreshOnly := func() {
+		startProgress()
 		go core.RunParserProcess()
-	})
+	}
+
+	doRefreshAndRebuild := func() {
+		startProgress()
+		go func() {
+			core.RunParserProcess()
+			ac := core.GetController()
+			if ac == nil {
+				return
+			}
+			if err := ac.RebuildConfigIfDirty(); err != nil {
+				debuglog.WarnLog("CoreDashboard: refresh+rebuild: rebuild step failed: %v", err)
+			}
+		}()
+	}
+
+	tab.updateConfigButton = ttwidget.NewButtonWithIcon("", theme.ViewRefreshIcon(), doRefreshOnly)
 	tab.updateConfigButton.Importance = widget.MediumImportance
 	tab.updateConfigButton.SetToolTip(fmt.Sprintf(locale.T("core.button_update_tooltip"), platform.ShortcutModifierLabel()))
 
@@ -308,7 +390,7 @@ func (tab *CoreDashboardTab) createConfigBlock() fyne.CanvasObject {
 		// Get parent window from AppController
 		ac := core.GetController()
 		parentWindow := ac.GetMainWindow()
-		wizard.ShowConfigWizard(parentWindow)
+		configurator.ShowConfigWizard(parentWindow)
 	})
 	tab.wizardButton.Importance = widget.MediumImportance
 
@@ -328,11 +410,41 @@ func (tab *CoreDashboardTab) createConfigBlock() fyne.CanvasObject {
 		tab.configStatusLabel,
 	)
 
-	// Кнопки под статусом (по центру) - только кнопки, без прогрессбара
+	// Update + Rebuild combo — отдельная icon-only кнопка справа от Update.
+	// Левый клик: refresh subscriptions ПЛЮС rebuild config (chain).
+	// Правый клик (через SecondaryTapWrap): popup-меню с check-item
+	// «Auto rebuild on change» — если включён, любое успешное Update
+	// (а также Configurator Save) автоматически триггерит Rebuild.
+	tab.updateAndRebuildButton = ttwidget.NewButtonWithIcon("", theme.MediaReplayIcon(), doRefreshAndRebuild)
+	tab.updateAndRebuildButton.Importance = widget.MediumImportance
+	tab.updateAndRebuildButton.SetToolTip(locale.T("core.button_update_rebuild_tooltip"))
+
+	binDirForSettings := platform.GetBinDir(tab.controller.FileService.ExecDir)
+	updateAndRebuildWrap := fynewidget.NewSecondaryTapWrap(tab.updateAndRebuildButton)
+	updateAndRebuildWrap.OnSecondary = func(pe *fyne.PointEvent) {
+		if tab.controller == nil || tab.controller.UIService == nil || tab.controller.UIService.MainWindow == nil {
+			return
+		}
+		st := locale.LoadSettings(binDirForSettings)
+		toggleItem := fyne.NewMenuItem(locale.T("core.update_autorebuild_label"), func() {
+			cur := locale.LoadSettings(binDirForSettings)
+			cur.AutoRebuildOnChange = !cur.AutoRebuildOnChange
+			if err := locale.SaveSettings(binDirForSettings, cur); err != nil {
+				debuglog.WarnLog("CoreDashboard: save AutoRebuildOnChange: %v", err)
+			}
+		})
+		toggleItem.Checked = st.AutoRebuildOnChange
+		menu := fyne.NewMenu("", toggleItem)
+		pop := widget.NewPopUpMenu(menu, tab.controller.UIService.MainWindow.Canvas())
+		pop.ShowAtPosition(pe.AbsolutePosition)
+	}
+
+	// Кнопки под статусом (по центру). Cmd/Ctrl+U shortcut → refresh-only.
 	buttonsRow := container.NewCenter(
 		container.NewHBox(
-			tab.updateConfigButton,
 			tab.wizardButton,
+			tab.updateConfigButton,
+			updateAndRebuildWrap,
 			tab.templateDownloadButton,
 		),
 	)
@@ -590,35 +702,175 @@ func (tab *CoreDashboardTab) updateRunningStatus() {
 		}
 	}
 	if tab.restartButton != nil {
-		if buttonState.StopEnabled {
+		// Кнопка 🔄 — split-control «Rebuild …». Имеет смысл только когда
+		// есть `state.json`, потому что **оба** пункта меню в семантике
+		// SPEC 045 включают rebuild (state → config). Без state rebuild =
+		// no-op, а «start без rebuild» — это уже отдельная кнопка Start
+		// слева, дублировать не надо. Поэтому условие enable:
+		//   binary есть AND state.json есть
+		hasState := false
+		if tab.controller != nil && tab.controller.FileService != nil {
+			if _, err := os.Stat(platform.GetWizardStatePath(tab.controller.FileService.ExecDir)); err == nil {
+				hasState = true
+			}
+		}
+		if buttonState.BinaryExists && hasState {
 			tab.restartButton.Enable()
-			tab.restartButton.Refresh()
 		} else {
 			tab.restartButton.Disable()
-			tab.restartButton.Refresh()
 		}
+		// Dirty marker: state edited → нужно перезапустить sing-box чтобы
+		// применить. HighImportance (синий) даёт явный визуальный сигнал.
+		//
+		// Намеренно НЕ guard'им через IsRunning: если новый launcher не сам
+		// запустил sing-box (например, sing-box крутится из другой установки
+		// лаунчера), Enable/Disable кнопки управляется отдельно через
+		// `buttonState.StopEnabled`. Цвет dirty-маркера должен ставиться
+		// независимо — даже у disabled-кнопки видно что state ждёт рестарта.
+		// Сбрасывается ProcessService.Start после RebuildConfigIfDirty
+		// (см. core/rebuild.go).
+		restartTooltip := fmt.Sprintf(locale.T("core.button_restart_tooltip"), platform.ShortcutModifierLabel())
+		tab.restartButton.SetText("🔄")
+		if tab.controller.StateService != nil && tab.controller.StateService.IsConfigStale() {
+			tab.restartButton.Importance = widget.HighImportance
+			tab.restartButton.SetToolTip(locale.T("core.restart_dirty_tooltip") + " — " + restartTooltip)
+		} else {
+			tab.restartButton.Importance = widget.MediumImportance
+			tab.restartButton.SetToolTip(restartTooltip)
+		}
+		tab.restartButton.Refresh()
 	}
 }
 
-// readConfigOnDemand reads config when user clicks on config label/title
+// readConfigOnDemand triggers a UI status refresh and logs the canonical
+// state.json snapshot when the user clicks the config label. Pure
+// informational — does not mutate anything. Reads from state.json (SPEC 045
+// canonical source); legacy `@ParserConfig` reading из config.json удалено.
 func (tab *CoreDashboardTab) readConfigOnDemand() {
-	// Обновляем информацию о конфиге в UI
 	if tab.controller.UIService != nil && tab.controller.UIService.UpdateConfigStatusFunc != nil {
 		tab.controller.UIService.UpdateConfigStatusFunc()
 	}
 
-	// Читаем конфиг
-	config, err := parser.ExtractParserConfig(tab.controller.FileService.ConfigPath)
-	if err != nil {
-		debuglog.ErrorLog("CoreDashboard: Failed to read config on demand: %v", err)
-		// Можно показать сообщение пользователю через dialog
+	if tab.controller.FileService == nil {
 		return
 	}
+	statePath := platform.GetWizardStatePath(tab.controller.FileService.ExecDir)
+	s, err := state.Load(statePath)
+	if err != nil {
+		debuglog.WarnLog("CoreDashboard: state.json not loaded on demand: %v", err)
+		return
+	}
+	debuglog.InfoLog("CoreDashboard: state.json snapshot (parser_config v%d, %d proxy sources, %d outbounds, %d custom rules)",
+		s.ParserConfig.ParserConfig.Version,
+		len(s.ParserConfig.ParserConfig.Proxies),
+		len(s.ParserConfig.ParserConfig.Outbounds),
+		len(s.CustomRules))
+}
 
-	debuglog.InfoLog("CoreDashboard: Config read successfully on demand (version %d, %d proxy sources, %d outbounds)",
-		config.ParserConfig.Version,
-		len(config.ParserConfig.Proxies),
-		len(config.ParserConfig.Outbounds))
+// createStateBlock — секция «Saved states» внизу дашборда: dropdown со
+// списком именованных состояний (`bin/wizard_states/<id>.json`). Save-as /
+// rename / delete делаются внутри Configurator (где есть полный workflow);
+// здесь — только быстрое переключение между уже сохранёнными snapshot'ами.
+func (tab *CoreDashboardTab) createStateBlock() fyne.CanvasObject {
+	label := widget.NewLabelWithStyle(locale.T("core.state_section_label"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+
+	tab.stateSelect = widget.NewSelect(nil, nil)
+	tab.stateSelect.PlaceHolder = locale.T("core.state_select_placeholder")
+	tab.stateSelect.OnChanged = func(selectedID string) {
+		if selectedID == "" || tab.controller == nil || tab.controller.FileService == nil {
+			return
+		}
+		if err := tab.switchToNamedState(selectedID); err != nil {
+			debuglog.WarnLog("CoreDashboard: switchToNamedState(%q): %v", selectedID, err)
+			if tab.controller.UIService != nil && tab.controller.UIService.MainWindow != nil {
+				ShowError(tab.controller.UIService.MainWindow, err)
+			}
+			return
+		}
+		// state.json — копия выбранного → cache и config устарели.
+		if tab.controller.StateService != nil {
+			tab.controller.StateService.MarkCacheStale()
+			tab.controller.StateService.MarkConfigStale()
+		}
+		tab.refreshStateSelector()
+		if tab.controller.UIService != nil {
+			if tab.controller.UIService.UpdateConfigStatusFunc != nil {
+				tab.controller.UIService.UpdateConfigStatusFunc()
+			}
+			if tab.controller.UIService.UpdateCoreStatusFunc != nil {
+				tab.controller.UIService.UpdateCoreStatusFunc()
+			}
+		}
+	}
+	tab.refreshStateSelector()
+
+	return container.NewHBox(label, layout.NewSpacer(), tab.stateSelect)
+}
+
+// refreshStateSelector перечитывает `bin/wizard_states/` и обновляет options
+// dropdown'а. Текущая state.json не входит в список — она и есть «куда
+// мы сейчас попали»; селектор показывает чем её заменить. Selected сбрасывается
+// в plareholder, чтобы повторный выбор того же ID мог сработать.
+func (tab *CoreDashboardTab) refreshStateSelector() {
+	if tab.stateSelect == nil || tab.controller == nil || tab.controller.FileService == nil {
+		return
+	}
+	dir := platform.GetWizardStatesDir(tab.controller.FileService.ExecDir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		tab.stateSelect.Options = nil
+		tab.stateSelect.Refresh()
+		return
+	}
+	options := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		// Пропускаем только активный state.json — нет смысла «переключаться
+		// на себя». Все остальные .json — пользовательские «Save As»,
+		// показываем в dropdown'е.
+		if name == "state.json" {
+			continue
+		}
+		options = append(options, strings.TrimSuffix(name, ".json"))
+	}
+	tab.stateSelect.Options = options
+	if tab.stateSelect.Selected != "" {
+		// SetSelected без триггера OnChanged: clearing.
+		tab.stateSelect.ClearSelected()
+	}
+	tab.stateSelect.Refresh()
+}
+
+// switchToNamedState атомарно копирует `<id>.json` в state.json. Не
+// трогает кэш / config — за это отвечают rebuild-flow + dirty-маркеры,
+// которые caller выставит после успешного switch'а.
+func (tab *CoreDashboardTab) switchToNamedState(id string) error {
+	if tab.controller == nil || tab.controller.FileService == nil {
+		return fmt.Errorf("file service not initialized")
+	}
+	statesDir := platform.GetWizardStatesDir(tab.controller.FileService.ExecDir)
+	src := filepath.Join(statesDir, id+".json")
+	dst := platform.GetWizardStatePath(tab.controller.FileService.ExecDir)
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", src, err)
+	}
+	tmp := dst + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename %s → %s: %w", tmp, dst, err)
+	}
+	debuglog.InfoLog("CoreDashboard: switched state.json → %q", id)
+	return nil
 }
 
 func (tab *CoreDashboardTab) updateConfigInfo() {
@@ -627,6 +879,10 @@ func (tab *CoreDashboardTab) updateConfigInfo() {
 	if runtime.GOOS == "windows" {
 		tab.updateWintunStatus()
 	}
+
+	// State selector — пере-сканить sources, новые "Save As" из визарда
+	// должны появляться в dropdown'е без перезапуска.
+	tab.refreshStateSelector()
 
 	if tab.configStatusLabel == nil {
 		return
@@ -660,11 +916,10 @@ func (tab *CoreDashboardTab) updateConfigInfo() {
 	templateFileName := wizardtemplate.GetTemplateFileName()
 	templatePath := filepath.Join(tab.controller.FileService.ExecDir, "bin", templateFileName)
 	if _, err := os.Stat(templatePath); err != nil {
-		// Template not found - show download button, hide wizard
+		// Template not found — show download button, hide configurator + update.
 		if tab.templateDownloadButton != nil {
 			tab.templateDownloadButton.Show()
 			tab.templateDownloadButton.Enable()
-			// Если шаблона нет, делаем кнопку синей (HighImportance)
 			tab.templateDownloadButton.Importance = widget.HighImportance
 		}
 		if tab.wizardButton != nil {
@@ -674,41 +929,45 @@ func (tab *CoreDashboardTab) updateConfigInfo() {
 			tab.updateConfigButton.Disable()
 		}
 	} else {
-		// Template found - show wizard, hide download button
+		// Template found — show configurator, hide download button.
 		if tab.templateDownloadButton != nil {
 			tab.templateDownloadButton.Hide()
 		}
 		if tab.wizardButton != nil {
 			tab.wizardButton.Show()
-			// Если конфига нет, делаем кнопку Wizard синей (HighImportance)
+			// Configurator-кнопка синеет когда нет config.json (свежий
+			// install, надо пройти конфигуратор и Save'нуть).
 			if !configExists {
 				tab.wizardButton.Importance = widget.HighImportance
 			} else {
 				tab.wizardButton.Importance = widget.MediumImportance
 			}
+			tab.wizardButton.Refresh()
 		}
-		// Update кнопка активна только если конфиг существует и парсер не запущен
+		// Update icon: enabled когда есть откуда читать parser_config
+		// (state.json — canonical) и парсер сейчас не работает.
+		// Синяя при IsCacheStale (state менялся → жми чтобы fetchнуть).
 		if tab.updateConfigButton != nil {
 			tab.controller.ParserMutex.Lock()
 			parserRunning := tab.controller.ParserRunning
 			tab.controller.ParserMutex.Unlock()
-			if configExists && !parserRunning {
+			hasState := false
+			if tab.controller.FileService != nil {
+				if _, err := os.Stat(platform.GetWizardStatePath(tab.controller.FileService.ExecDir)); err == nil {
+					hasState = true
+				}
+			}
+			if hasState && !parserRunning {
 				tab.updateConfigButton.Enable()
 			} else {
 				tab.updateConfigButton.Disable()
 			}
-			// Dirty marker: wizard saved new template/state since last successful
-			// parser run → prepend "*" to the button label so it's obvious that
-			// the generated config may lag the saved template. Cleared when the
-			// parser completes successfully (see RunParserProcess success path).
-			base := locale.T("core.button_update")
-			if tab.controller.StateService != nil && tab.controller.StateService.IsTemplateDirty() {
-				tab.updateConfigButton.SetText("* " + base)
+			if tab.controller.StateService != nil && tab.controller.StateService.IsCacheStale() {
 				tab.updateConfigButton.Importance = widget.HighImportance
 			} else {
-				tab.updateConfigButton.SetText(base)
 				tab.updateConfigButton.Importance = widget.MediumImportance
 			}
+			tab.updateConfigButton.Refresh()
 		}
 	}
 

@@ -13,7 +13,7 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core"
-	"singbox-launcher/core/config/parser"
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
@@ -83,6 +83,10 @@ func main() {
 	if settings.AutoPingAfterConnectDisabled {
 		controller.StateService.SetAutoPingAfterConnectEnabled(false)
 		debuglog.InfoLog("Auto-ping: disabled by user setting (auto_ping_after_connect_disabled=true)")
+	}
+	if settings.AutoPingAfterConnectMaxProxies > 0 {
+		controller.StateService.SetAutoPingMaxProxies(settings.AutoPingAfterConnectMaxProxies)
+		debuglog.InfoLog("Auto-ping: max-proxies cap overridden by user setting (auto_ping_after_connect_max_proxies=%d)", settings.AutoPingAfterConnectMaxProxies)
 	}
 	// Optional debug-API (localhost:9269 by default). Off unless user toggled
 	// it on in the Diagnostics tab; token is generated on first enable.
@@ -183,18 +187,23 @@ func main() {
 
 		// Set a handler that fires when the application is fully ready
 		controller.UIService.Application.Lifecycle().SetOnStarted(func() {
-			// Read config once at application startup
+			// Read state at startup (informational log only). state.json is the
+			// canonical source of parser_config since SPEC 045; reading from
+			// config.json's @ParserConfig comment-block is gone (block removed
+			// during the same cleanup).
 			go func() {
-				debuglog.InfoLog("Application startup: Reading config...")
-				config, err := parser.ExtractParserConfig(controller.FileService.ConfigPath)
+				debuglog.InfoLog("Application startup: Reading state...")
+				statePath := platform.GetWizardStatePath(controller.FileService.ExecDir)
+				s, err := state.Load(statePath)
 				if err != nil {
-					debuglog.WarnLog("Application startup: Failed to read config: %v", err)
+					debuglog.WarnLog("Application startup: state.json not loaded: %v", err)
 					return
 				}
-				debuglog.InfoLog("Application startup: Config read successfully (version %d, %d proxy sources, %d outbounds)",
-					config.ParserConfig.Version,
-					len(config.ParserConfig.Proxies),
-					len(config.ParserConfig.Outbounds))
+				debuglog.InfoLog("Application startup: state.json loaded (parser_config v%d, %d proxy sources, %d outbounds, %d custom rules)",
+					s.ParserConfig.ParserConfig.Version,
+					len(s.ParserConfig.ParserConfig.Proxies),
+					len(s.ParserConfig.ParserConfig.Outbounds),
+					len(s.CustomRules))
 			}()
 
 			// Auto-start VPN if -start flag is provided
@@ -295,15 +304,25 @@ func main() {
 				controller.UIService != nil && controller.UIService.AutoPingAfterConnectFunc != nil {
 				// Another 2s beyond the Refresh so /proxies has repopulated.
 				time.AfterFunc(2*time.Second, func() {
-					if controller.RunningState.IsRunning() {
-						debuglog.DebugLog("Power resume: triggering post-resume auto-ping")
-						// AutoPingAfterConnectFunc already wraps pingAllProxies
-						// in fyne.Do internally (clash_api_tab.go registers it
-						// that way), but double-wrapping is a harmless no-op if
-						// we're already on the UI thread and cheap insurance
-						// otherwise.
-						fyne.Do(controller.UIService.AutoPingAfterConnectFunc)
+					if !controller.RunningState.IsRunning() {
+						return
 					}
+					// Soft-cap (mirror of RunningState.Set timer): skip auto-ping
+					// on huge subscriptions — same TUN-stampede risk as the
+					// connect-time path. SPEC 039 §1.3.
+					if max := controller.StateService.GetAutoPingMaxProxies(); max > 0 {
+						if count := len(controller.GetProxiesList()); count > max {
+							debuglog.InfoLog("auto-ping: skipped post-resume (proxies=%d > cap=%d); use Servers → Test or Cmd/Ctrl+P for manual ping", count, max)
+							return
+						}
+					}
+					debuglog.DebugLog("Power resume: triggering post-resume auto-ping")
+					// AutoPingAfterConnectFunc already wraps pingAllProxies
+					// in fyne.Do internally (clash_api_tab.go registers it
+					// that way), but double-wrapping is a harmless no-op if
+					// we're already on the UI thread and cheap insurance
+					// otherwise.
+					fyne.Do(controller.UIService.AutoPingAfterConnectFunc)
 				})
 			}
 		})

@@ -5,7 +5,7 @@ import (
 
 	"fyne.io/fyne/v2"
 
-	"singbox-launcher/core/config/parser"
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/ctxutil"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
@@ -108,18 +108,20 @@ func (ac *AppController) startAutoUpdateLoop() {
 }
 
 // calculateAutoUpdateInterval calculates the check interval: max(10 minutes, parser.reload)
-// Returns the interval to use for checking if update is needed
+// Returns the interval to use for checking if update is needed.
+//
+// Reads parser.reload из state.json (canonical source с SPEC 045).
+// Если state.json отсутствует — fallback на default-интервал.
 func (ac *AppController) calculateAutoUpdateInterval() (time.Duration, error) {
-	// Read ParserConfig from file
-	config, err := parser.ExtractParserConfig(ac.FileService.ConfigPath)
+	statePath := platform.GetWizardStatePath(ac.FileService.ExecDir)
+	s, err := state.Load(statePath)
 	if err != nil {
-		// If config doesn't exist or can't be read, use default
+		// state.json doesn't exist or can't be read — use default
 		defaultDuration, _ := time.ParseDuration(autoUpdateDefaultReload)
 		return maxDuration(autoUpdateMinInterval, defaultDuration), nil
 	}
 
-	// Get reload value from config
-	reloadStr := config.ParserConfig.Parser.Reload
+	reloadStr := s.ParserConfig.ParserConfig.Parser.Reload
 	if reloadStr == "" {
 		// Use default if not specified
 		defaultDuration, _ := time.ParseDuration(autoUpdateDefaultReload)
@@ -146,34 +148,50 @@ func maxDuration(a, b time.Duration) time.Duration {
 	return b
 }
 
-// shouldAutoUpdate checks if configuration update is needed
-// Returns true if elapsed time since last_updated >= required interval
+// shouldAutoUpdate checks if configuration update is needed.
+//
+// SPEC 052: legacy `parser.last_updated` поле удалено; теперь свежесть
+// определяется через per-source `Meta.LastFetchedAt`. Логика:
+//   - state.json missing → fresh install, update needed
+//   - нет enabled subscription source'ов → update НЕ нужен (нет работы)
+//   - хоть один enabled source без meta или с last_fetched_at >= reload
+//     назад → update needed
 func (ac *AppController) shouldAutoUpdate(requiredInterval time.Duration) (bool, error) {
-	// Read ParserConfig from file
-	config, err := parser.ExtractParserConfig(ac.FileService.ConfigPath)
+	statePath := platform.GetWizardStatePath(ac.FileService.ExecDir)
+	s, err := state.Load(statePath)
 	if err != nil {
-		// If config doesn't exist, update is needed
 		return true, nil
 	}
 
-	// Check last_updated
-	lastUpdatedStr := config.ParserConfig.Parser.LastUpdated
-	if lastUpdatedStr == "" {
-		// No last_updated - update is needed
-		return true, nil
+	// Найти "самый свежий" last_fetched_at среди enabled subscription'ов;
+	// если хоть один без meta — считаем что update нужен.
+	var newestFetch time.Time
+	hasEnabledSubs := false
+	for _, src := range s.Connections.Sources {
+		if src.Type != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
+			continue
+		}
+		hasEnabledSubs = true
+		if src.Meta == nil || src.Meta.LastFetchedAt == "" {
+			// Хоть одна без meta → нужен fetch.
+			return true, nil
+		}
+		t, perr := time.Parse(time.RFC3339, src.Meta.LastFetchedAt)
+		if perr != nil {
+			return true, nil
+		}
+		if t.After(newestFetch) {
+			newestFetch = t
+		}
+	}
+	if !hasEnabledSubs {
+		// Нечего обновлять (нет enabled subscription'ов).
+		return false, nil
 	}
 
-	// Parse last_updated timestamp
-	lastUpdated, err := time.Parse(time.RFC3339, lastUpdatedStr)
-	if err != nil {
-		debuglog.WarnLog("Auto-update: Failed to parse last_updated '%s': %v", lastUpdatedStr, err)
-		// If parsing fails, assume update is needed
-		return true, nil
-	}
-
-	// Calculate elapsed time
-	elapsed := time.Since(lastUpdated.UTC())
-	debuglog.DebugLog("Auto-update: Checking if update needed (last_updated: %s, elapsed: %v, required: %v)", lastUpdatedStr, elapsed, requiredInterval)
+	// Update needed if самый свежий fetch старше required interval.
+	elapsed := time.Since(newestFetch.UTC())
+	debuglog.DebugLog("Auto-update: Checking if update needed (newest_fetch: %s, elapsed: %v, required: %v)", newestFetch.Format(time.RFC3339), elapsed, requiredInterval)
 
 	// Check if elapsed >= required interval
 	return elapsed >= requiredInterval, nil

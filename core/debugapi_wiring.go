@@ -50,6 +50,13 @@ func (f *debugAPIFacade) GetConfigPath() string {
 	return f.ac.FileService.ConfigPath
 }
 
+func (f *debugAPIFacade) GetExecDir() string {
+	if f.ac.FileService == nil {
+		return ""
+	}
+	return f.ac.FileService.ExecDir
+}
+
 func (f *debugAPIFacade) GetLauncherVersion() string {
 	return constants.AppVersion
 }
@@ -81,6 +88,10 @@ func (f *debugAPIFacade) PingAllProxies() error {
 	}
 	f.ac.UIService.AutoPingAfterConnectFunc()
 	return nil
+}
+
+func (f *debugAPIFacade) RebuildConfigIfDirty() error {
+	return f.ac.RebuildConfigIfDirty()
 }
 
 func (f *debugAPIFacade) UpdateSubscriptions() error {

@@ -45,3 +45,22 @@ func TestGetConfigPath(t *testing.T) {
 		t.Errorf("GetConfigPath = %q, want %q", got, want)
 	}
 }
+
+func TestGetOutboundsCachePath(t *testing.T) {
+	got := GetOutboundsCachePath("/opt/sbl")
+	want := filepath.Join("/opt/sbl", "bin", "outbounds.cache.json")
+	if got != want {
+		t.Errorf("GetOutboundsCachePath = %q, want %q", got, want)
+	}
+}
+
+// TestOutboundsCachePathSiblingOfConfig — инвариант: outbounds.cache.json
+// лежит в той же директории, что и config.json (а не в wizard_states/).
+// Cache — общий артефакт парсера, не часть state'а (SPEC 045 PLAN.md).
+func TestOutboundsCachePathSiblingOfConfig(t *testing.T) {
+	cfg := GetConfigPath("/x")
+	cache := GetOutboundsCachePath("/x")
+	if filepath.Dir(cfg) != filepath.Dir(cache) {
+		t.Errorf("config and outbounds-cache must share dir; got config=%q cache=%q", cfg, cache)
+	}
+}

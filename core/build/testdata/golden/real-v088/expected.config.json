@@ -1,0 +1,251 @@
+{
+  "dns": {
+    "final": "direct_dns_resolver",
+    "independent_cache": false,
+    "rules": [
+      {
+        "rule_set": "ru-domains",
+        "server": "yandex_doh"
+      },
+      {
+        "server": "google_doh"
+      }
+    ],
+    "servers": [
+      {
+        "tag": "local_dns_resolver",
+        "type": "local"
+      },
+      {
+        "server": "8.8.8.8",
+        "server_port": 53,
+        "tag": "direct_dns_resolver",
+        "type": "udp"
+      },
+      {
+        "server": "1.1.1.1",
+        "server_port": 53,
+        "tag": "cloudflare_udp",
+        "type": "udp"
+      },
+      {
+        "domain_resolver": "direct_dns_resolver",
+        "path": "/dns-query",
+        "server": "dns.google",
+        "server_port": 443,
+        "tag": "google_doh",
+        "type": "https"
+      },
+      {
+        "domain_strategy": "prefer_ipv4",
+        "path": "/dns-query",
+        "server": "77.88.8.88",
+        "server_port": 443,
+        "tag": "yandex_doh",
+        "type": "https"
+      }
+    ],
+    "strategy": "prefer_ipv4"
+  },
+  "endpoints": [
+    /** @ParserSTART_E */
+    // wg-parnas
+    {
+      "address": [
+        "10.10.10.2/32"
+      ],
+      "mtu": 1420,
+      "name": "singbox-wg0",
+      "peers": [
+        {
+          "address": "212.232.78.237",
+          "allowed_ips": [
+            "0.0.0.0/0",
+            "::/0"
+          ],
+          "persistent_keepalive_interval": 25,
+          "port": 51820,
+          "public_key": "fiK9ZG990zunr5cpRnx+SOVW2rVKKqFoVxmHMHAvAFk="
+        }
+      ],
+      "private_key": "aDHCHnkcdMjnq0bF+V4fARkbJBW8cWjuYoVjKfUwsXo=",
+      "system": false,
+      "tag": "WG:wg-parnas",
+      "type": "wireguard"
+    }
+/** @ParserEND_E */
+  ],
+  "experimental": {
+    "cache_file": {
+      "enabled": true,
+      "path": "cache.db"
+    },
+    "clash_api": {
+      "external_controller": "127.0.0.1:9090",
+      "secret": "gIVcGiXsAQ3lZSQQ"
+    }
+  },
+  "inbounds": [
+    {
+      "listen": "127.0.0.1",
+      "listen_port": 7890,
+      "set_system_proxy": true,
+      "tag": "proxy-in",
+      "type": "mixed"
+    },
+    {
+      "address": "172.16.0.1/30",
+      "auto_route": true,
+      "mtu": 1492,
+      "stack": "system",
+      "strict_route": false,
+      "tag": "tun-in",
+      "type": "tun"
+    }
+  ],
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "outbounds": [
+    /** @ParserSTART */
+	// 🇵🇱Польша
+	{"tag":"AL:🇵🇱Польша","type":"vless","server":"pl-dp-01.online","server_port":8443,"uuid":"981c2a6d-da16-43a4-a4e1-245305ce13dd","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"9Y-_jCI3Z1x6SXK2tHdZ6V1CN9IJPNPnoxSW0cbXxD8","short_id":"50e09046c0c00159"}}},
+	// 🇷🇺Россия
+	{"tag":"AL:🇷🇺Россия","type":"vless","server":"ru-selectel-01.com","server_port":8443,"uuid":"98261b92-b34d-40a1-b115-a3601233b2e2","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"sni.ru-selectel-01.com","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"rZgu2lJcC2yrYnx66znee-Z75mW6m4TRfWt7_neoEVI","short_id":"caa0a516476ad539"}}},
+	// 🇯🇵Япония
+	{"tag":"AL:🇯🇵Япония","type":"vless","server":"shimorra.site","server_port":8443,"uuid":"1fd43080-9151-43a4-8a4c-e4234da5eaae","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"tradingview.com","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"CwOLLTLuQN1SPzvenr_B_ErYYoOB_ScSvGvH-iYOtF8","short_id":"98f4e12d491b58ec"}}},
+	// 🇺🇸США
+	{"tag":"AL:🇺🇸США","type":"vless","server":"us-cherry-01.com","server_port":8443,"uuid":"b27f4f59-fcf7-4eb0-aa27-a8b081939930","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"EMS0wzISeSbEe4JABPD8EgDnyLXgDmrX4_lcfG6VVX4","short_id":"c76ba2c2fb172e8b"}}},
+	// 🇳🇱Нидерланды
+	{"tag":"AL:🇳🇱Нидерланды","type":"vless","server":"midorinote.online","server_port":8443,"uuid":"4cafddb7-c3d9-4ae3-b592-d0cafad759aa","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"Cxvc5bVMKln6RxPs5MtviUZNDsmpfuYUK8UFBlcBaS0","short_id":"808e2d36726ee97e"}}},
+	// 🇱🇹Литва
+	{"tag":"AL:🇱🇹Литва","type":"vless","server":"lt-cherry-01.com","server_port":8443,"uuid":"4bf9142c-d6a5-4f0a-960a-39118a95e77b","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"L3X1eh1Jq_6PKJ6LlwjgiWq0XNaDOqCVKgIElJ5nkVA","short_id":"0d960275b7b0f9af"}}},
+	// 🇪🇸Испания
+	{"tag":"AL:🇪🇸Испания","type":"vless","server":"velsanto.online","server_port":8443,"uuid":"de61c199-6f65-469a-8106-b42dbace1141","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"zr8_rtHm86s_G1gfRwNtunStGngYZSdYkA3PyBFXpDg","short_id":"48fccabc158a4c22"}}},
+	// 🇭🇺Венгрия
+	{"tag":"AL:🇭🇺Венгрия","type":"vless","server":"grinoree.ru","server_port":8443,"uuid":"2069da71-3911-48db-82c3-c09e2ec28f7f","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"7zd9mJilgjOrg_ohtw23Vmio-pdnYqeP_r-kiWt87Cg","short_id":"2715592069f36fe7"}}},
+	// 🇮🇳Индия
+	{"tag":"AL:🇮🇳Индия","type":"vless","server":"in-pq-01.info","server_port":8443,"uuid":"179fe240-4ba5-4458-8432-722f8cb17796","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"yOWj4KtHTjRo6SutNETYUgiNUXES0NY-PcpE9a4MqFM","short_id":"8ad0b8c7e0e5ff8b"}}},
+	// 🇺🇸США-2
+	{"tag":"AL:🇺🇸США-2","type":"vless","server":"us-pq-01.org","server_port":8443,"uuid":"2fe56d9f-666b-47ef-9ca3-8a02742bfa1b","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"FaBVSYwrzKIeWSY3H6yilF9XviVLwcHrTByqDc_EljA","short_id":"6da52441bfcfd863"}}},
+	// 🇫🇷Франция
+	{"tag":"AL:🇫🇷Франция","type":"vless","server":"fr-gt-01.com","server_port":8443,"uuid":"51f4e58b-66af-4b2d-9990-5896224ccc1d","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"1oUeBtHH4DskTM_jCh-6enWRkFMDX9l1OU5kWYl4kxA","short_id":"364994a6f61fc955"}}},
+	// 🇫🇮Финляндия
+	{"tag":"AL:🇫🇮Финляндия","type":"vless","server":"fi-m247-01.com","server_port":8443,"uuid":"ace46bb9-ab53-4da4-bae2-f1d5e8b092f6","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"KYlgK96xPZJq10GbhF-BaCXRxXc9XzxzfICdooYvMlg","short_id":"f45c9665f3261108"}}},
+	// 🇹🇷Турция
+	{"tag":"AL:🇹🇷Турция","type":"vless","server":"quarenty.site","server_port":8443,"uuid":"ef5c94b4-3a7d-48d0-93e8-058fd06572a7","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"zii4nGNapnFKL6SN8GzWNqFlElBvUCUFUThEP0kFH04","short_id":"205748bc0f24a747"}}},
+	// 🇲🇩Молдова
+	{"tag":"AL:🇲🇩Молдова","type":"vless","server":"md-alex-01.com","server_port":8443,"uuid":"2b884f5c-a84e-4d95-b85e-56bc5cf24b92","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"NtsJnsHr8a9mPDr0SPxdJlSRbdUVmR_-Rq5RVT-3KzA","short_id":"9f4263b353817e73"}}},
+	// 🇨🇦Канада
+	{"tag":"AL:🇨🇦Канада","type":"vless","server":"ca-dp-01.com","server_port":8443,"uuid":"7c221cba-85e7-47a5-a1f0-bdebfd7c8683","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"pPi-WO8qQFFZ9UJWNLW9YClbjcoAAZWJQ2_FM3Kjhz8","short_id":"d3ee47fc2f553c44"}}},
+	// 🇨🇭Швейцария
+	{"tag":"AL:🇨🇭Швейцария","type":"vless","server":"ch-gt-01.com","server_port":8443,"uuid":"ced1d993-87d5-4cd2-a69e-862d93419fe8","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"8qHRGcCezzSu4S-Cz9l19BNRLWm4MkaSwZV3dNrLEwc","short_id":"d515d6cfdfe60b02"}}},
+	// 🇭🇰Гонконг
+	{"tag":"AL:🇭🇰Гонконг","type":"vless","server":"merlinty.site","server_port":8443,"uuid":"c6fc0c10-b547-46f4-9118-42e29817dfce","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"uWB8HfNVK_-9KtjDGjmBovnYxTh6wN95APRUBmCC30M","short_id":"fe31454fcc98d74d"}}},
+	// 🇩🇪Германия
+	{"tag":"AL:🇩🇪Германия","type":"vless","server":"de-dp-01.com","server_port":8443,"uuid":"5914c54c-58ad-41f6-a45a-91c67fed2a82","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"ISa-DZOI4LRRb9DHMFYm5oFqBXDjYzz0hVWUfWvzLmo","short_id":"8d3293f0066e129a"}}},
+	// 🇱🇻Латвия
+	{"tag":"AL:🇱🇻Латвия","type":"vless","server":"braskivo.ru","server_port":8443,"uuid":"3e76d300-43e9-4789-a4cf-bda069e1e765","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"7HejPU15kdTl9QG_8AygEM3w0ythsbhG6q_SwUumyR0","short_id":"cf56dd583fdef457"}}},
+	// 🇮🇹Италия
+	{"tag":"AL:🇮🇹Италия","type":"vless","server":"tralalero.site","server_port":8443,"uuid":"324e1699-51b7-4a05-8239-7288cad7dc06","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"bitrix24.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"_CjW0Khlrr5z5oc9Oy6-w2ZEanz-zMBktVn5EOX9oTM","short_id":"4ffc99daad0f261f"}}},
+	// 🇧🇷Бразилия
+	{"tag":"AL:🇧🇷Бразилия","type":"vless","server":"br-m247-01.com","server_port":8443,"uuid":"b5f20c1e-68bf-40b3-8a9a-394ee43df429","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"_0HnraldEtXmJMu7t3nEm8VmQXkMWF7dX1Dmz5KceSw","short_id":"b4f3a05896b60039"}}},
+	// 🇬🇧Англия
+	{"tag":"AL:🇬🇧Англия","type":"vless","server":"uk-gthost-01.com","server_port":8443,"uuid":"3866384d-ff62-4f1d-9810-f4a1123c78c7","flow":"xtls-rprx-vision","tls":{"enabled":true,"server_name":"rbc.ru","utls":{"enabled":true,"fingerprint":"chrome"},"reality":{"enabled":true,"public_key":"dY9SNEllJMW63xo-JdXufhmjAxB_4uFw_QMjgufjiD8","short_id":"c20b1035d72d7793"}}},
+	// local auto WIZARD:auto
+	{"tag":"AL:auto","type":"urltest","outbounds":["AL:🇵🇱Польша","AL:🇷🇺Россия","AL:🇯🇵Япония","AL:🇺🇸США","AL:🇳🇱Нидерланды","AL:🇱🇹Литва","AL:🇪🇸Испания","AL:🇭🇺Венгрия","AL:🇮🇳Индия","AL:🇺🇸США-2","AL:🇫🇷Франция","AL:🇫🇮Финляндия","AL:🇹🇷Турция","AL:🇲🇩Молдова","AL:🇨🇦Канада","AL:🇨🇭Швейцария","AL:🇭🇰Гонконг","AL:🇩🇪Германия","AL:🇱🇻Латвия","AL:🇮🇹Италия","AL:🇧🇷Бразилия","AL:🇬🇧Англия"],"interrupt_exist_connections":true,"interval":"5m","tolerance":100,"url":"https://cp.cloudflare.com/generate_204"},
+	// local select WIZARD:selector
+	{"tag":"AL:select","type":"selector","outbounds":["AL:auto","AL:🇵🇱Польша","AL:🇷🇺Россия","AL:🇯🇵Япония","AL:🇺🇸США","AL:🇳🇱Нидерланды","AL:🇱🇹Литва","AL:🇪🇸Испания","AL:🇭🇺Венгрия","AL:🇮🇳Индия","AL:🇺🇸США-2","AL:🇫🇷Франция","AL:🇫🇮Финляндия","AL:🇹🇷Турция","AL:🇲🇩Молдова","AL:🇨🇦Канада","AL:🇨🇭Швейцария","AL:🇭🇰Гонконг","AL:🇩🇪Германия","AL:🇱🇻Латвия","AL:🇮🇹Италия","AL:🇧🇷Бразилия","AL:🇬🇧Англия"],"interrupt_exist_connections":true,"default":"AL:auto"},
+	// Proxy automated group for everything that should go through VPN
+	{"tag":"auto-proxy-out","type":"urltest","outbounds":["AL:🇵🇱Польша","AL:🇯🇵Япония","AL:🇺🇸США","AL:🇳🇱Нидерланды","AL:🇱🇹Литва","AL:🇪🇸Испания","AL:🇭🇺Венгрия","AL:🇮🇳Индия","AL:🇺🇸США-2","AL:🇫🇷Франция","AL:🇫🇮Финляндия","AL:🇹🇷Турция","AL:🇲🇩Молдова","AL:🇨🇦Канада","AL:🇨🇭Швейцария","AL:🇭🇰Гонконг","AL:🇩🇪Германия","AL:🇱🇻Латвия","AL:🇮🇹Италия","AL:🇧🇷Бразилия","AL:🇬🇧Англия","WG:wg-parnas","AL:auto","AL:select"],"interrupt_exist_connections":true,"interval":"5m","tolerance":100,"url":"https://cp.cloudflare.com/generate_204"},
+	// Proxy group for everything that should go through VPN
+	{"tag":"proxy-out","type":"selector","outbounds":["direct-out","auto-proxy-out","AL:🇵🇱Польша","AL:🇯🇵Япония","AL:🇺🇸США","AL:🇳🇱Нидерланды","AL:🇱🇹Литва","AL:🇪🇸Испания","AL:🇭🇺Венгрия","AL:🇮🇳Индия","AL:🇺🇸США-2","AL:🇫🇷Франция","AL:🇫🇮Финляндия","AL:🇹🇷Турция","AL:🇲🇩Молдова","AL:🇨🇦Канада","AL:🇨🇭Швейцария","AL:🇭🇰Гонконг","AL:🇩🇪Германия","AL:🇱🇻Латвия","AL:🇮🇹Италия","AL:🇧🇷Бразилия","AL:🇬🇧Англия","WG:wg-parnas","AL:auto","AL:select"],"interrupt_exist_connections":true,"default":"auto-proxy-out"},
+	// Proxy group for russian VPN
+	{"tag":"ru VPN 🇷🇺","type":"selector","outbounds":["direct-out","AL:🇷🇺Россия"],"interrupt_exist_connections":true,"default":"direct-out"},
+	// Proxy group 1
+	{"tag":"vpn ①","type":"selector","outbounds":["direct-out","proxy-out","AL:🇵🇱Польша","AL:🇷🇺Россия","AL:🇯🇵Япония","AL:🇺🇸США","AL:🇳🇱Нидерланды","AL:🇱🇹Литва","AL:🇪🇸Испания","AL:🇭🇺Венгрия","AL:🇮🇳Индия","AL:🇺🇸США-2","AL:🇫🇷Франция","AL:🇫🇮Финляндия","AL:🇹🇷Турция","AL:🇲🇩Молдова","AL:🇨🇦Канада","AL:🇨🇭Швейцария","AL:🇭🇰Гонконг","AL:🇩🇪Германия","AL:🇱🇻Латвия","AL:🇮🇹Италия","AL:🇧🇷Бразилия","AL:🇬🇧Англия","WG:wg-parnas","AL:auto","AL:select"],"interrupt_exist_connections":true,"default":"proxy-out"},
+	// Proxy group 2
+	{"tag":"vpn ②","type":"selector","outbounds":["direct-out","proxy-out","AL:🇵🇱Польша","AL:🇷🇺Россия","AL:🇯🇵Япония","AL:🇺🇸США","AL:🇳🇱Нидерланды","AL:🇱🇹Литва","AL:🇪🇸Испания","AL:🇭🇺Венгрия","AL:🇮🇳Индия","AL:🇺🇸США-2","AL:🇫🇷Франция","AL:🇫🇮Финляндия","AL:🇹🇷Турция","AL:🇲🇩Молдова","AL:🇨🇦Канада","AL:🇨🇭Швейцария","AL:🇭🇰Гонконг","AL:🇩🇪Германия","AL:🇱🇻Латвия","AL:🇮🇹Италия","AL:🇧🇷Бразилия","AL:🇬🇧Англия","WG:wg-parnas","AL:auto","AL:select"],"interrupt_exist_connections":true,"default":"proxy-out"},
+/** @ParserEND */
+    {"tag":"direct-out","type":"direct"}
+  ],
+  "route": {
+    "auto_detect_interface": true,
+    "default_domain_resolver": "cloudflare_udp",
+    "final": "proxy-out",
+    "rule_set": [
+      {
+        "format": "domain_suffix",
+        "rules": [
+          {
+            "domain_suffix": [
+              "ru",
+              "xn--p1ai",
+              "su",
+              "xn--p1acf",
+              "xn--80adxhks",
+              "moscow",
+              "tatar",
+              "xn--d1acj3b",
+              "xn--80aswg",
+              "xn--c1avg",
+              "xn--j1aef"
+            ]
+          }
+        ],
+        "tag": "ru-domains",
+        "type": "inline"
+      }
+    ],
+    "rules": [
+      {
+        "action": "resolve",
+        "inbound": "proxy-in",
+        "strategy": "prefer_ipv4"
+      },
+      {
+        "action": "sniff",
+        "inbound": "proxy-in",
+        "timeout": "1s"
+      },
+      {
+        "action": "resolve",
+        "inbound": "tun-in",
+        "strategy": "prefer_ipv4"
+      },
+      {
+        "action": "sniff",
+        "inbound": "tun-in",
+        "timeout": "1s"
+      },
+      {
+        "action": "hijack-dns",
+        "protocol": "dns"
+      },
+      {
+        "domain_suffix": [
+          "ypncdn.com",
+          "adtng.com"
+        ],
+        "outbound": "direct-out"
+      },
+      {
+        "outbound": "direct-out",
+        "process_path_regex": [
+          ".*(dota|steam|Steam).*"
+        ]
+      },
+      {
+        "outbound": "direct-out",
+        "protocol": [
+          "bittorrent"
+        ]
+      },
+      {
+        "outbound": "direct-out",
+        "rule_set": "ru-domains"
+      }
+    ]
+  }
+}

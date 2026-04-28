@@ -1,0 +1,35 @@
+{
+  "version": 3,
+  "id": "test-v3",
+  "created_at": "2025-12-01T10:00:00Z",
+  "updated_at": "2025-12-15T10:00:00Z",
+  "parser_config": {
+    "version": 3,
+    "proxies": [
+      {"source": "https://legacy.example/sub"}
+    ],
+    "outbounds": []
+  },
+  "config_params": [],
+  "selectable_rule_states": [
+    {
+      "rule": {"label": "block-ads"},
+      "enabled": true,
+      "selected_outbound": "block"
+    }
+  ],
+  "custom_rules": [
+    {
+      "type": "ips",
+      "enabled": true,
+      "selected_outbound": "vpn-1",
+      "rule": {
+        "label": "private-net",
+        "description": "RFC1918",
+        "raw": {"ip_cidr": ["10.0.0.0/8", "192.168.0.0/16"]},
+        "default_outbound": "vpn-1",
+        "has_outbound": true
+      }
+    }
+  ]
+}

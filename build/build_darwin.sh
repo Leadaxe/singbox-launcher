@@ -393,6 +393,32 @@ if [ "$COPY_TO_APPLICATIONS" = true ]; then
     fi
     rm -rf "$APP_NAME"
     echo "Removed local bundle: $(pwd)/$APP_NAME"
+
+    # macOS Sonoma+ kills binaries with invalid code signatures (SIGKILL
+    # "Code Signature Invalid"). After replacing the executable in-place,
+    # we ad-hoc resign it so launches work without manual intervention.
+    #
+    # Direct codesign on a path inside .app fails because codesign treats
+    # the bundle as context and tries to sign every Contents/MacOS/* file
+    # — which includes root-owned `bin/logs/sing-box.log` and `.raw` files.
+    # Workaround: copy binary out of bundle, sign standalone with explicit
+    # identifier, copy back.
+    echo "=== Re-signing executable (ad-hoc) ==="
+    SIGN_TMP="/tmp/${BASE_NAME}_sign_$$"
+    if cp "$DEST_BIN" "$SIGN_TMP" && \
+       codesign --remove-signature "$SIGN_TMP" 2>/dev/null ; \
+       codesign --force --sign - --identifier com.singbox.launcher "$SIGN_TMP" 2>&1 ; \
+    then
+        cp "$SIGN_TMP" "$DEST_BIN" && chmod +x "$DEST_BIN"
+        rm -f "$SIGN_TMP"
+        echo "Re-signed: $DEST_BIN"
+    else
+        rm -f "$SIGN_TMP"
+        echo "WARNING: ad-hoc resign failed; macOS may refuse to launch the app"
+        echo "  Try manually: sudo codesign --force --deep --sign - $DEST_APP"
+    fi
+    # Strip quarantine attribute (just in case it got added by some flow).
+    xattr -dr com.apple.quarantine "$DEST_APP" 2>/dev/null || true
     echo "========================================"
 else
     echo "To install or update in /Applications:"

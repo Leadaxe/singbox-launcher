@@ -72,6 +72,18 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 	ac.CmdMutex.Lock()
 	defer ac.CmdMutex.Unlock()
 
+	// SPEC 045 phase 5.C — pre-start config rebuild:
+	// если Wizard Save поднял dirty-маркеры (CacheStale / ConfigStale),
+	// перед запуском sing-box пересобираем config.json из state + cache.
+	// Это компенсирует UX-регрессию фазы 5.B: Wizard Save больше не пишет
+	// config.json, и без этого хука sing-box стартовал бы со старым.
+	//
+	// Best-effort: на ошибке rebuild — логируем и продолжаем со старым
+	// config.json. Лучше стартануть с чем есть, чем не стартовать вообще.
+	if err := ac.RebuildConfigIfDirty(); err != nil {
+		debuglog.WarnLog("startSingBox: config rebuild failed (%v); proceeding with existing config.json", err)
+	}
+
 	// Check capabilities on Linux before starting
 	if suggestion := platform.CheckAndSuggestCapabilities(ac.FileService.SingboxPath); suggestion != "" {
 		debuglog.WarnLog("startSingBox: Capabilities check failed: %s", suggestion)

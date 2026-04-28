@@ -64,6 +64,21 @@ func GetWizardStatePath(execDir string) string {
 	return filepath.Join(GetWizardStatesDir(execDir), constants.WizardStateFileName)
 }
 
+// GetOutboundsCachePath returns the canonical path of the outbounds cache:
+// <execDir>/bin/outbounds.cache.json. SPEC 045 phase 5.1. The only sanctioned
+// way to locate the cache — do NOT compose from string literals.
+func GetOutboundsCachePath(execDir string) string {
+	return filepath.Join(execDir, constants.BinDirName, constants.OutboundsCacheFileName)
+}
+
+// GetSubscriptionsDir returns the directory for raw subscription bodies:
+// <execDir>/bin/subscriptions/. One file per Source(id) — see SPEC 052.
+// The only sanctioned way to locate this dir — do NOT compose from string
+// literals.
+func GetSubscriptionsDir(execDir string) string {
+	return filepath.Join(execDir, constants.BinDirName, constants.SubscriptionsDirName)
+}
+
 // GetLogsDir returns the path to logs directory
 func GetLogsDir(execDir string) string {
 	return filepath.Join(execDir, constants.LogsDirName)

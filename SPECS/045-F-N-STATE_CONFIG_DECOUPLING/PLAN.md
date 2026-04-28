@@ -87,23 +87,42 @@ func (s *State) Diff(prev *State) Diff            // для dirty-маркеро
 
 ### Контракт `outboundscache`
 
+**Scope = последний активный state.** Один файл `bin/outbounds.cache.json`, общий для всех state'ов. Парсер полностью перезаписывает его при каждом Update текущего активного state. На переключении state'а файл **не инвалидируется** — он остаётся advisory-снимком предыдущего активного state.
+
+Поведение в граничных случаях:
+- **Cache отсутствует** (первый запуск, удалили вручную): `Load` возвращает пустой `*Snapshot{}` без ошибки; `BuildConfig` собирает config без outbounds (sing-box стартанёт, но без подписочных нод — пользователь запустит Update).
+- **Cache от другого state**: `cache.StateID != activeState.ID`. `BuildConfig` собирает из stale-cache как ни в чём ни бывало; `StateService.UpdateDirty` поднимается → `*` на Update горит сразу после переключения; пользователь жмёт Update — cache перезаписывается под текущий state.
+- **Cache от текущего state, но устарел по времени** — поведение определяется auto-update'ом, отдельной логики stale-by-time не вводим.
+- **Удалили state, который владел cache'ем**: cache не трогаем; на следующем Update любого state'а перепишется.
+
 ```go
 package outboundscache
 
 type Snapshot struct {
-    Version      int
-    UpdatedAt    time.Time
-    Outbounds    []json.RawMessage    // готовые JSON-блоки sing-box outbound
-    Endpoints    []json.RawMessage
-    SourceStats  map[string]SourceStat
+    Version     int
+    StateID     string                       // ID state'а, чей snapshot последний раз сохранили
+    UpdatedAt   time.Time
+    SourceTags  []string                     // подписки, попавшие в snapshot
+    Outbounds   []json.RawMessage            // готовые JSON-блоки sing-box outbound
+    Endpoints   []json.RawMessage            // WireGuard endpoints
+    SourceStats map[string]SourceStat
 }
 
-func Load(path string) (*Snapshot, error)
-func (s *Snapshot) Save(path string) error
+type SourceStat struct {
+    Succeeded int
+    Failed    int
+    LastError string
+}
+
+func Load(path string) (*Snapshot, error)   // missing-file → &Snapshot{}, IsEmpty()==true, без error
+func (s *Snapshot) Save(path string) error  // атомарно: .tmp → rename
 func (s *Snapshot) IsEmpty() bool
+func (s *Snapshot) IsForState(id string) bool
 ```
 
 Парсер пишет cache → BuildConfig читает. `WizardModel.GeneratedOutbounds[]` становится **read-only зеркалом** этого snapshot'а для UI preview, не источником правды.
+
+Размер файла на практике: 4000-нод подписка ≈ 1.5 МБ JSON; типичные 3–5 подписок дают 5–10 МБ. Atomic write per-Update — приемлемо для desktop SSD; auto-update пишет максимум раз в 30 минут.
 
 ### Контракт `events` (SPEC 047)
 

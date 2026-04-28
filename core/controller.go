@@ -16,6 +16,7 @@ import (
 	"fyne.io/fyne/v2"
 
 	"singbox-launcher/api"
+	"singbox-launcher/core/events"
 	"singbox-launcher/core/services"
 	"singbox-launcher/core/uiservice"
 	"singbox-launcher/internal/constants"
@@ -53,6 +54,10 @@ type AppController struct {
 	ProcessService *ProcessService
 	// ConfigService handles configuration parsing, subscription fetching, and JSON generation
 	ConfigService *ConfigService
+	// EventBus — типизированный sync event-bus (SPEC 047). Передаётся в
+	// сервисы при их создании, чтобы UI-слой мог точечно подписываться
+	// на изменения состояния вместо broadcast-callback'ов.
+	EventBus events.Bus
 
 	// --- Process State ---
 	SingboxCmd                  *exec.Cmd
@@ -129,7 +134,9 @@ func GetController() *AppController {
 			instance.ProcessService = NewProcessService(instance)
 			instance.ConfigService = NewConfigService(instance)
 			instance.ctx, instance.cancelFunc = context.WithCancel(context.Background())
+			instance.EventBus = events.NewMemoryBus()
 			instance.StateService = services.NewStateService()
+			instance.StateService.EventBus = instance.EventBus
 		})
 	}
 	return instance
@@ -252,8 +259,12 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	// Initialize context for goroutine cancellation
 	ac.ctx, ac.cancelFunc = context.WithCancel(context.Background())
 
-	// Initialize StateService
+	// Initialize EventBus + StateService (SPEC 045/047 — typed events
+	// заменят coarse-grained UpdateConfigStatusFunc/UpdateCoreStatusFunc
+	// в фазе 6; пока bus используется только для StateChanged из StateService).
+	ac.EventBus = events.NewMemoryBus()
 	ac.StateService = services.NewStateService()
+	ac.StateService.EventBus = ac.EventBus
 
 	// Check if config file exists before starting auto-update
 	if _, err := os.Stat(ac.FileService.ConfigPath); os.IsNotExist(err) {
@@ -426,6 +437,16 @@ func (r *RunningState) Set(value bool) {
 				// Re-check running: user may have hit Stop inside the 5s window.
 				if !r.IsRunning() {
 					return
+				}
+				// Soft-cap: skip auto-ping on huge subscriptions — opening hundreds
+				// of TCP+TLS handshakes through TUN starves in-flight game / app
+				// traffic in the connect window. Manual «Test» / Cmd+P / debug-API
+				// are unaffected. See SPEC 039 §1.3.
+				if max := ac.StateService.GetAutoPingMaxProxies(); max > 0 {
+					if count := len(ac.GetProxiesList()); count > max {
+						debuglog.InfoLog("auto-ping: skipped on connect (proxies=%d > cap=%d); use Servers → Test or Cmd/Ctrl+P for manual ping", count, max)
+						return
+					}
 				}
 				if ac.UIService != nil && ac.UIService.AutoPingAfterConnectFunc != nil {
 					debuglog.DebugLog("auto-ping: triggering after %v of running state", autoPingDelayAfterConnect)
@@ -669,29 +690,18 @@ func (ac *AppController) GetVPNButtonState() VPNButtonState {
 		IsRunning:    isRunning,
 	}
 
-	// Determine button states based on all requirements
-	// Start button is enabled only if:
-	// - sing-box binary exists
-	// - config.json exists
-	// - wintun.dll exists (on Windows)
-	// - VPN is not already running
-	allRequirementsMet := binaryExists && configExists && wintunExists
-
-	if allRequirementsMet {
-		if isRunning {
-			// VPN is running - Start disabled, Stop enabled
-			state.StartEnabled = false
-			state.StopEnabled = true
-		} else {
-			// VPN is not running and all requirements met - Start enabled, Stop disabled
-			state.StartEnabled = true
-			state.StopEnabled = false
-		}
-	} else {
-		// Requirements not met - both buttons disabled
-		state.StartEnabled = false
-		state.StopEnabled = false
-	}
+	// Invariants (SPEC 045):
+	//
+	//   * Start  = есть binary + config + wintun (Win) + НЕ running.
+	//             Не зависит от state.json (start умеет работать на legacy
+	//             config'е без state); не зависит от template.
+	//
+	//   * Stop   = ТОЛЬКО running. Если sing-box работает — стопнуть всегда
+	//             должно быть можно, даже если в этот момент config.json
+	//             удалили или wintun.dll исчез. Иначе пользователь может
+	//             залипнуть с running-процессом без UI-способа его убить.
+	state.StartEnabled = binaryExists && configExists && wintunExists && !isRunning
+	state.StopEnabled = isRunning
 
 	return state
 }

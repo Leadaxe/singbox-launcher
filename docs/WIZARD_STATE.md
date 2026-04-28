@@ -48,27 +48,69 @@
 
 ## Версия формата
 
-- **version** (корень **`state.json`**): целое число. Чтение поддерживает **`2`**, **`3`** и **`4`**; **новые сохранения** пишут **`4`**. Версия **`3`** — rules library (единый **`custom_rules`**, **`rules_library_merged`**). Версия **`4`** — тот же каркас **плюс** закреплённая модель **переменных шаблона** (**SPECS/032**): в снимке — опциональный массив **`vars`**; в **`wizard_template.json`** — объявления **`vars`**, подстановки **`@<name>`** в **`config`**/**`params`**, условные **`if`** / **`if_or`**. Старые файлы **`3`** без ключа **`vars`** по-прежнему загружаются. **Не путать** с **`parser_config.version`** внутри того же файла (см. **`docs/ParserConfig.md`**).
-- **`rules_library_merged`** (обычно `true` у актуальных снимков): маршрут собирается **только** из **`custom_rules`**. Ключ **`selectable_rule_states`** в новых файлах не используется (может отсутствовать). Пресеты шаблона **`selectable_rules`** остаются **библиотекой** в UI («Add from library»), а не отдельным слоем в state. При первом открытии файла версии **2** без флага выполняется однократная миграция: содержимое **`selectable_rule_states`** сливается в начало **`custom_rules`**, затем state перезаписывается на диск.
+- **`meta.version`** (внутри top-level объекта **`meta`**): целое число. Чтение поддерживает **`2`**, **`3`**, **`4`** (legacy top-level **`version`**) и **`5`** (новый layout с **`meta`** / **`connections`**); **новые сохранения** пишут **`5`** (**SPEC 052**). Старые версии auto-migrate в v5 при первом Load.
+- **v5 (текущий)** — **SPEC 052 CONNECTIONS_REDESIGN**:
+  - Top-level `meta { version, comment, created_at, updated_at }` вместо разбросанных полей.
+  - Top-level `connections { sources, outbounds, defaults }` вместо `parser_config` обёртки.
+  - `connections.sources[]` — first-class объект Source с дискриминатором `type=subscription|server`.
+  - Per-source `meta { profile_title, userinfo, last_status, last_fetched_at, ... }` — заполняется при Update; используется UI (квота / expire / status badge).
+  - `bin/subscriptions/<source.id>.raw` — per-source raw body cache (atomic .tmp+Rename); Rebuild парсит .raw напрямую без сети.
+  - `bin/outbounds.cache.json` удалён (Phase 6 cleanup).
+  - Top-level `id` удалён (snapshot-имена живут в имени файла `bin/wizard_states/<name>.json`).
+  - `rules_library_merged` / `selectable_rule_states` не сериализуются в v5 (всегда `true` после миграции).
+- **v4** — SPEC 032: модель переменных шаблона (`vars` массив, `@<name>` подстановки в `config`/`params`, `if`/`if_or` условия).
+- **v3** — rules library (единый `custom_rules`, `rules_library_merged`).
+- **v2** — самый старый поддерживаемый формат.
+- **`rules_library_merged`** (legacy v3-v4): маршрут собирается **только** из **`custom_rules`**. В v5 не сериализуется (всегда true). Пресеты шаблона **`selectable_rules`** остаются **библиотекой** в UI («Add from library»), а не отдельным слоем в state. При первом открытии файла версии **2** без флага выполняется однократная миграция: содержимое **`selectable_rule_states`** сливается в начало **`custom_rules`**, затем state перезаписывается на диск (v5).
 
-## Структура JSON
+## Структура JSON (v5)
 
 Корневой объект содержит:
 
 | Поле | Тип | Описание |
 |------|-----|----------|
-| `version` | int | Версия формата **снимка визарда** (обязательное). Текущая запись: **`4`**. |
-| `id` | string | Идентификатор состояния (для именованных состояний; опционально для state.json) |
-| `comment` | string | Комментарий (опционально) |
-| `created_at` | string | RFC3339 (обязательное) |
-| `updated_at` | string | RFC3339 (обязательное) |
-| `parser_config` | object | Конфигурация парсера (proxies, outbounds, parser); см. **`parser_config.version`** в **`docs/ParserConfig.md`** |
-| `config_params` | array | Параметры без отдельной секции в state (в первую очередь **`route.final`**). Устаревший **`enable_tun_macos`** читается только для миграции в **`vars`**. Устаревший **`route.default_domain_resolver`** — одноразовая миграция в **`vars`** / модель (**`restoreDNS`**). |
-| `vars` | array | Переопределения шаблонных переменных (**Settings** и скрытые **`dns_*`** с вкладки DNS): объекты **`{ "name": string, "value": string }`**. TUN на macOS — **`tun`**. Переменная **`dns_independent_cache`** в шаблоне объявлена как **`type: bool`** (как **`tun_builtin`**), в файле по-прежнему строки **`"true"`** / **`"false"`**. |
-| `dns_options` | object | Состояние вкладки DNS визарда (опционально; см. ниже). Имя ключа совпадает с секцией шаблона `wizard_template.json`. |
-| `selectable_rule_states` | array | Устарело при **`rules_library_merged`**: в актуальном формате не используется для route (миграция с версии **2**) |
-| `rules_library_merged` | bool | **`true`** после миграции/нового формата: только **`custom_rules`** задают порядок правил в маршруте |
-| `custom_rules` | array | Все правила маршрута (полная структура), порядок = порядок в `route.rules` |
+| `meta` | object | Версия / comment / timestamps (обязательное в v5) — см. ниже |
+| `connections` | object | `sources[]`, `outbounds[]`, `defaults{}` — first-class модель подключений (SPEC 052) |
+| `config_params` | array | Параметры (в первую очередь **`route.final`**). Устаревшие `enable_tun_macos` / `route.default_domain_resolver` — однократная миграция в **`vars`**. |
+| `vars` | array | Переопределения шаблонных переменных (Settings + скрытые `dns_*`). Объекты `{name, value}`. |
+| `dns_options` | object | Состояние вкладки DNS визарда: `servers`, `rules` (только; скаляры — в `vars`). |
+| `custom_rules` | array | Все правила маршрута, порядок = порядок в `route.rules`. |
+
+### `meta`
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `version` | int | **`5`** в актуальных файлах. |
+| `comment` | string | Опционально. |
+| `created_at` | string | RFC3339 UTC. |
+| `updated_at` | string | RFC3339 UTC. |
+
+### `connections`
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `sources` | array | Список подключений. Каждый Source — `subscription` (URL → пачка нод) или `server` (один URI). |
+| `outbounds` | array | Глобальные группы (`selector` / `urltest`) — отображаются в `outbounds[]` config.json. |
+| `defaults` | object | `reload` (string, по умолчанию `4h`), `max_nodes` (int, default 3000). |
+
+#### `connections.sources[i]`
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | string | ULID (Crockford-base32, 26 символов). Стабильный — переживает Save/Load. Имя файла `bin/subscriptions/<id>.raw`. |
+| `type` | string | `subscription` или `server`. |
+| `enabled` | bool | Источник активен. |
+| `label` | string | Опционально для server (человекочитаемое имя; для subscription заполняется из `meta.profile_title`). |
+| `exclude_from_global` | bool | Исключить из global outbounds. |
+| `url` | string | Только для type=subscription. |
+| `skip` | array | Только для subscription: skip-rules (см. ParserConfig). |
+| `tag` | object | `prefix`/`postfix`/`mask` (только для subscription). |
+| `outbounds` | array | Local outbounds подписки (urltest/selector с тэгами `BL:auto` etc.). |
+| `expose_group_tags_to_global` | bool | См. SPEC 026. |
+| `update` | object | `interval_hours`, `auto_refresh` — per-source overrides defaults.reload. |
+| `max_nodes` | int | Per-source override defaults.max_nodes. |
+| `meta` | object | Runtime: profile_title, userinfo (квота), last_status, last_fetched_at, error_count, http_status_code, raw_body_bytes, nodes_count_fetched, truncated, preview_nodes[]. |
+| `uri` | string | Только для type=server (vless://, vmess://, wireguard://, ...). |
 
 Краткие резюме по ключам JSON (детали — в разделах ниже и в **«Резюме по блокам»**):
 

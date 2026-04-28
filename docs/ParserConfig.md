@@ -1,5 +1,7 @@
 # Документация парсера подписок singbox-launcher
 
+> **SPEC 052 update (state.json v5):** top-level ключ `parser_config` в state.json **удалён**. Список подписок теперь в `connections.sources[]` (см. `docs/WIZARD_STATE.md`); per-source `tag_prefix`, `skip`, `outbounds`, `disabled` живут на уровне Source и сохраняют ту же семантику. Раздел `parser_config.outbounds[]` переехал в `connections.outbounds[]`. Документ ниже описывает **формат полей и логику парсинга** — она актуальна для v5 connections.sources / connections.outbounds 1:1.
+
 ## Назначение
 
 Парсер обновляет файл `bin/config.json`, загружая подписки (поддерживаются протоколы: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, WireGuard, **NaïveProxy**), фильтруя и группируя их в селекторы. Результат записывается в секции между маркерами `/** @ParserSTART */` и `/** @ParserEND */` (outbounds), а узлы WireGuard — между `/** @ParserSTART_E */` и `/** @ParserEND_E */` (endpoints). Секция **endpoints** (WireGuard) поддерживается в sing-box начиная с версии **1.11**.

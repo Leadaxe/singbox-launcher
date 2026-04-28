@@ -2,6 +2,7 @@ package subscription
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/debuglog"
+	v5 "singbox-launcher/core/state/v5"
 )
 
 // NetworkRequestTimeout defines the timeout for network requests
@@ -49,8 +51,147 @@ var IsNetworkErrorFunc func(err error) bool
 // GetNetworkErrorMessageFunc is a function variable that should be set to core.GetNetworkErrorMessage
 var GetNetworkErrorMessageFunc func(err error) string
 
-// FetchSubscription fetches subscription content from URL and decodes it
-// Returns decoded content and error if fetch or decode fails
+// MaxSubscriptionResponseSize — лимит размера ответа от провайдера подписки.
+// Защита от memory exhaustion на патологически больших телах.
+const MaxSubscriptionResponseSize = 10 * 1024 * 1024 // 10 MB
+
+// FetchResult — результат FetchSubscriptionWithMeta.
+//
+//   - Body — декодированное содержимое подписки (base64 → plain text URIs);
+//   - RawBody — оригинальные байты ответа сервера ДО декодирования; именно
+//     они кладутся в bin/subscriptions/<id>.raw, чтобы при следующем
+//     Rebuild парсер мог повторно дёрнуть DecodeSubscriptionContent;
+//   - Meta — заполненные header-derived поля (UserInfo, ProfileTitle, ...);
+//     fetch history (LastFetchedAt и т.д.) — заполняет вызывающий слой;
+//   - HTTPStatus — код ответа сервера (200 на success);
+//   - RawBodyBytes — len(RawBody), pre-decoded размер для UI.
+type FetchResult struct {
+	Body         []byte
+	RawBody      []byte
+	Meta         v5.SubscriptionMeta
+	HTTPStatus   int
+	RawBodyBytes int64
+}
+
+// FetchHTTPError — ошибка с не-200 status code; можно использовать
+// errors.As для извлечения StatusCode при формировании meta.error_count.
+type FetchHTTPError struct {
+	StatusCode int
+	Hint       string
+}
+
+func (e *FetchHTTPError) Error() string {
+	if e.Hint == "" {
+		return fmt.Sprintf("subscription server returned status %d", e.StatusCode)
+	}
+	return fmt.Sprintf("subscription server returned status %d (%s)", e.StatusCode, e.Hint)
+}
+
+// FetchSubscriptionWithMeta — расширенная версия FetchSubscription,
+// возвращающая raw body, decoded body и распарсенные header-derived
+// поля subscription metadata.
+//
+// Производит:
+//
+//  1. HTTP GET с timeout / User-Agent SubscriptionParserClient;
+//  2. чтение тела с лимитом MaxSubscriptionResponseSize;
+//  3. ParseHeaders(resp.Header) → meta (header-derived поля);
+//  4. ParseInlineComments(rawBody) → fallback meta;
+//  5. MergeMeta(headers_meta, inline_meta);
+//  6. DecodeSubscriptionContent(rawBody) → Body (base64 strip etc.);
+//
+// На любой ошибке (network/HTTP/decode) возвращает (*FetchResult с
+// HTTPStatus заполненным если был ответ, без Body, без Meta) + error.
+func FetchSubscriptionWithMeta(url string) (*FetchResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), NetworkRequestTimeout)
+	defer cancel()
+
+	client := newHTTPClient()
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("User-Agent", configtypes.SubscriptionUserAgent)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		if IsNetworkErrorFunc != nil && IsNetworkErrorFunc(err) {
+			return nil, fmt.Errorf("network error: %s", GetNetworkErrorMessageFunc(err))
+		}
+		return nil, fmt.Errorf("fetch subscription: %w", err)
+	}
+	defer func() {
+		debuglog.RunAndLog("FetchSubscriptionWithMeta: close body", resp.Body.Close)
+	}()
+
+	result := &FetchResult{HTTPStatus: resp.StatusCode}
+
+	if resp.StatusCode != http.StatusOK {
+		return result, &FetchHTTPError{
+			StatusCode: resp.StatusCode,
+			Hint:       explainHTTPStatus(resp.StatusCode),
+		}
+	}
+
+	limited := io.LimitReader(resp.Body, MaxSubscriptionResponseSize+1)
+	rawBody, err := io.ReadAll(limited)
+	if err != nil {
+		return result, fmt.Errorf("read body: %w", err)
+	}
+	if len(rawBody) == 0 {
+		return result, fmt.Errorf("empty subscription body")
+	}
+	if int64(len(rawBody)) > MaxSubscriptionResponseSize {
+		return result, fmt.Errorf("subscription body exceeds %d bytes", MaxSubscriptionResponseSize)
+	}
+	result.RawBody = rawBody
+	result.RawBodyBytes = int64(len(rawBody))
+
+	// Headers + inline + merge.
+	headersMeta := ParseHeaders(resp.Header)
+	inlineMeta := ParseInlineComments(rawBody)
+	result.Meta = MergeMeta(headersMeta, inlineMeta)
+
+	// Decoded body для парсера.
+	decoded, decErr := DecodeSubscriptionContent(rawBody)
+	if decErr != nil {
+		return result, fmt.Errorf("decode subscription: %w", decErr)
+	}
+	result.Body = decoded
+	return result, nil
+}
+
+// newHTTPClient — общая фабрика HTTP-клиента для подписок.
+// Использует CreateHTTPClientFunc если задан (обходит system proxy
+// настройки лаунчера), иначе fallback на дефолтный.
+func newHTTPClient() *http.Client {
+	if CreateHTTPClientFunc != nil {
+		return CreateHTTPClientFunc(NetworkRequestTimeout)
+	}
+	return &http.Client{
+		Timeout: NetworkRequestTimeout,
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+		},
+	}
+}
+
+// IsHTTPError — convenience-обёртка для callsite'ов, чтобы вытащить
+// StatusCode из ошибки FetchSubscriptionWithMeta для записи в meta.
+func IsHTTPError(err error) (*FetchHTTPError, bool) {
+	var httpErr *FetchHTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr, true
+	}
+	return nil, false
+}
+
+// FetchSubscription fetches subscription content from URL and decodes it.
+//
+// Deprecated: use FetchSubscriptionWithMeta — оно возвращает meta и
+// raw body, нужные для SPEC 052 (cache + per-source metadata).
+// Старый wrapper сохранён для backward-compat callsite'ов; будет удалён
+// после Phase 7 cleanup.
 func FetchSubscription(url string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), NetworkRequestTimeout)
 	defer cancel()

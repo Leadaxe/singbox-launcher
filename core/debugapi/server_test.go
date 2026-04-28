@@ -20,6 +20,7 @@ type fakeFacade struct {
 	version     string
 	lastSuccess time.Time
 	updateErr   error
+	execDir     string // optional; only used by snapshot tests
 }
 
 func (f *fakeFacade) IsRunning() bool                    { return f.running }
@@ -28,12 +29,14 @@ func (f *fakeFacade) GetActiveProxyName() string         { return f.active }
 func (f *fakeFacade) GetSelectedClashGroup() string      { return f.group }
 func (f *fakeFacade) GetSingboxVersion() string          { return f.version }
 func (f *fakeFacade) GetConfigPath() string              { return "/tmp/config.json" }
+func (f *fakeFacade) GetExecDir() string                 { return f.execDir }
 func (f *fakeFacade) GetLauncherVersion() string         { return "v-test" }
 func (f *fakeFacade) GetLastUpdateSucceededAt() time.Time { return f.lastSuccess }
 func (f *fakeFacade) StartSingBox() error                { return nil }
 func (f *fakeFacade) StopSingBox() error                 { return nil }
 func (f *fakeFacade) UpdateSubscriptions() error         { return f.updateErr }
 func (f *fakeFacade) PingAllProxies() error              { return nil }
+func (f *fakeFacade) RebuildConfigIfDirty() error        { return nil }
 
 // freeLocalPort binds :0 then closes, returning the port. Good enough for
 // server-under-test tests on a dev box.
@@ -116,6 +119,62 @@ func TestServerAuthAndState(t *testing.T) {
 	}
 	if resp.StatusCode != 405 {
 		t.Errorf("action GET: status %d, want 405", resp.StatusCode)
+	}
+	resp.Body.Close()
+}
+
+// TestRebuildConfigEndpoint — POST /action/rebuild-config: 200 OK на успех,
+// 405 на GET, 401 без токена, 500 на ошибку фасада.
+func TestRebuildConfigEndpoint(t *testing.T) {
+	port := freeLocalPort(t)
+	ff := &fakeFacade{}
+	srv, err := New(ff, port, "tok")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	srv.Start()
+	defer srv.Stop()
+
+	base := "http://127.0.0.1:" + itoa(port)
+	// Дать listener'у время.
+	time.Sleep(50 * time.Millisecond)
+
+	// 1. POST с токеном — 200.
+	req, _ := http.NewRequest("POST", base+"/action/rebuild-config", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("post: %v", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Errorf("rebuild-config: status %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(body), `"ok":true`) {
+		t.Errorf("rebuild-config body: %s", string(body))
+	}
+
+	// 2. GET — 405.
+	req, _ = http.NewRequest("GET", base+"/action/rebuild-config", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if resp.StatusCode != 405 {
+		t.Errorf("rebuild-config GET: status %d, want 405", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	// 3. POST без токена — 401.
+	req, _ = http.NewRequest("POST", base+"/action/rebuild-config", nil)
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("noauth: %v", err)
+	}
+	if resp.StatusCode != 401 {
+		t.Errorf("rebuild-config noauth: status %d, want 401", resp.StatusCode)
 	}
 	resp.Body.Close()
 }

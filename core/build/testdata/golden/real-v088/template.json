@@ -1,0 +1,711 @@
+{
+  "parser_config": {
+    "version": 5,
+    "proxies": [],
+    "outbounds": [
+      {
+        "tag": "auto-proxy-out",
+        "wizard": { "required": 1 },
+        "type": "urltest",
+        "options": {
+          "url": "@urltest_url",
+          "interval": "@urltest_interval",
+          "tolerance": "@urltest_tolerance",
+          "interrupt_exist_connections": true
+        },
+        "filters": { "tag": "!/(🇷🇺)/i" },
+        "comment": "Proxy automated group for everything that should go through VPN"
+      },
+      {
+        "tag": "proxy-out",
+        "wizard": { "required": 1 },
+        "type": "selector",
+        "options": { "interrupt_exist_connections": true, "default": "auto-proxy-out" },
+        "filters": { "tag": "!/(🇷🇺)/i" },
+        "addOutbounds": ["direct-out", "auto-proxy-out"],
+        "comment": "Proxy group for everything that should go through VPN"
+      },
+      {
+        "tag": "ru VPN 🇷🇺",
+        "type": "selector",
+        "options": {
+          "default": "direct-out",
+          "interrupt_exist_connections": true
+        },
+        "filters": { "tag": "/(🇷🇺)/i" },
+        "addOutbounds": ["direct-out"],
+        "comment": "Proxy group for russian VPN"
+      },
+      {
+        "tag": "vpn ①",
+        "type": "selector",
+        "options": {
+          "default": "proxy-out",
+          "interrupt_exist_connections": true
+        },
+        "addOutbounds": ["direct-out", "proxy-out"],
+        "comment": "Proxy group 1"
+      },
+      {
+        "tag": "vpn ②",
+        "type": "selector",
+        "options": {
+          "default": "proxy-out",
+          "interrupt_exist_connections": true
+        },
+        "addOutbounds": ["direct-out", "proxy-out"],
+        "comment": "Proxy group 2"
+      }
+    ],
+    "parser": {
+      "reload": "12h",
+      "last_updated": "2026-04-11T12:00:00Z"
+    }
+  },
+
+  "vars": [
+    {
+      "name": "tun",
+      "type": "bool",
+      "default_value": {"darwin": "true", "default": "false"},
+      "wizard_ui": "edit",
+      "platforms": ["darwin"],
+      "title": "Enable TUN (macOS)",
+      "tooltip": "Route traffic through sing-box TUN. Requires administrator privileges on macOS."
+    },
+    {
+      "name": "tun_builtin",
+      "type": "bool",
+      "default_value": {"windows": "true", "linux": "true", "default": "false"},
+      "wizard_ui": "hidden",
+      "platforms": ["windows", "linux"],
+      "title": "TUN (Windows/Linux)",
+      "tooltip": "TUN inbound is always merged on these platforms. Used for template conditions (params.if); not user-editable."
+    },
+    {
+      "name": "tun_address",
+      "type": "text",
+      "default_value": "172.16.0.1/30",
+      "wizard_ui": "edit",
+      "if_or": ["tun_builtin", "tun"],
+      "title": "TUN interface address",
+      "tooltip": "IPv4 CIDR for the TUN interface (inbounds address). Enabled when TUN is on for this platform."
+    },
+    {
+      "name": "tun_mtu",
+      "type": "text",
+      "default_value": "1492",
+      "wizard_ui": "edit",
+      "if_or": ["tun_builtin", "tun"],
+      "title": "TUN MTU",
+      "tooltip": "Maximum transmission unit for the TUN interface (numeric value in JSON)."
+    },
+    {
+      "name": "strict_route",
+      "type": "bool",
+      "default_value": "false",
+      "wizard_ui": "edit",
+      "if_or": ["tun_builtin", "tun"],
+      "title": "TUN strict route",
+      "tooltip": "sing-box tun strict_route: stricter routing (fewer leaks); may break some LAN or split setups when enabled."
+    },
+    {
+      "name": "tun_stack",
+      "type": "enum",
+      "default_value": {"win7": "gvisor", "default": "system"},
+      "options": ["system", "gvisor", "mixed"],
+      "wizard_ui": "edit",
+      "if_or": ["tun_builtin", "tun"],
+      "title": "TUN stack",
+      "tooltip": "sing-box inbound tun stack (system, gvisor, mixed). Mixed uses system TCP stack and gvisor UDP stack."
+    },
+    {"separator": true},
+    {
+      "name": "enable_proxy_in",
+      "type": "bool",
+      "default_value": {"darwin": "true", "default": "false"},
+      "wizard_ui": "edit",
+      "title": "Enable proxy-in",
+      "tooltip": "Adds mixed inbound proxy-in and route.rules for proxy-in. Can be enabled on any platform for experiments."
+    },
+    {
+      "name": "proxy_in_listen",
+      "type": "text",
+      "default_value": "127.0.0.1",
+      "wizard_ui": "edit",
+      "if": ["enable_proxy_in"],
+      "title": "Proxy-in listen address",
+      "tooltip": "Listen address for mixed inbound proxy-in."
+    },
+    {
+      "name": "proxy_in_listen_port",
+      "type": "text",
+      "default_value": "7890",
+      "wizard_ui": "edit",
+      "if": ["enable_proxy_in"],
+      "title": "Proxy-in listen port",
+      "tooltip": "Listen port for mixed inbound proxy-in."
+    },
+    {
+      "name": "proxy_in_set_system_proxy",
+      "type": "bool",
+      "default_value": {"darwin": "true", "default": "false"},
+      "wizard_ui": "edit",
+      "if": ["enable_proxy_in"],
+      "title": "Proxy-in set system proxy",
+      "tooltip": "Set system proxy through mixed inbound proxy-in. Some platforms require elevated privileges."
+    },
+    {"separator": true},
+    {
+      "name": "resolve_strategy",
+      "type": "enum",
+      "default_value": "prefer_ipv4",
+      "options": ["prefer_ipv4", "prefer_ipv6", "ipv4_only", "ipv6_only"],
+      "wizard_ui": "edit",
+      "title": "Route resolve strategy",
+      "tooltip": "Resolution strategy for route rules with action resolve on tun-in and proxy-in (sing-box: prefer_ipv4, prefer_ipv6, ipv4_only, ipv6_only)."
+    },
+    {
+      "name": "auto_detect_interface",
+      "type": "bool",
+      "default_value": "true",
+      "wizard_ui": "edit",
+      "title": "Auto-detect outbound interface",
+      "tooltip": "sing-box route.auto_detect_interface: detect default interface for outbound; turn off if routing is wrong with multiple uplinks."
+    },
+    {"separator": true},
+    {
+      "name": "urltest_url",
+      "type": "text",
+      "default_value": "https://cp.cloudflare.com/generate_204",
+      "options": [
+        "https://cp.cloudflare.com/generate_204",
+        "http://www.gstatic.com/generate_204",
+        "https://www.google.com/generate_204",
+        "http://connectivitycheck.gstatic.com/generate_204"
+      ],
+      "wizard_ui": "edit",
+      "title": "URLTest URL",
+      "tooltip": "sing-box urltest.url — endpoint to probe for latency when selecting the fastest node in auto-proxy-out. Pick a preset or type any HTTP(S) URL that returns a quick response."
+    },
+    {
+      "name": "urltest_interval",
+      "type": "enum",
+      "default_value": "5m",
+      "options": [
+        {"title": "1m (aggressive)",      "value": "1m"},
+        {"title": "5m (default)",         "value": "5m"},
+        {"title": "10m",                  "value": "10m"},
+        {"title": "30m (battery-sparing)","value": "30m"},
+        {"title": "1h",                   "value": "1h"}
+      ],
+      "wizard_ui": "edit",
+      "title": "URLTest interval",
+      "tooltip": "sing-box urltest.interval — how often to re-probe all nodes in auto-proxy-out. Pick a preset."
+    },
+    {
+      "name": "urltest_tolerance",
+      "type": "enum",
+      "default_value": "100",
+      "options": [
+        {"title": "50 ms (twitchy)",     "value": "50"},
+        {"title": "100 ms (default)",    "value": "100"},
+        {"title": "200 ms",              "value": "200"},
+        {"title": "500 ms (stable)",     "value": "500"}
+      ],
+      "wizard_ui": "edit",
+      "title": "URLTest tolerance (ms)",
+      "tooltip": "sing-box urltest.tolerance — don't switch node unless the new fastest one beats the current by this many milliseconds. Higher = less flap."
+    },
+    {"separator": true},
+    {
+      "name": "log_level",
+      "type": "enum",
+      "default_value": "warn",
+      "options": ["trace", "debug", "info", "warn", "error", "fatal", "panic"],
+      "wizard_ui": "edit",
+      "title": "Log level",
+      "tooltip": "Sing-box log.level (trace, debug, info, warn, error, fatal, panic)."
+    },
+    {"separator": true},
+    {
+      "name": "clash_api",
+      "type": "text",
+      "default_value": "127.0.0.1:9090",
+      "wizard_ui": "edit",
+      "title": "Clash API address",
+      "tooltip": "Host:port for external_controller (Clash-compatible REST API)."
+    },
+    {
+      "name": "clash_secret",
+      "type": "secret",
+      "default_value": "CHANGE_THIS_TO_YOUR_SECRET_TOKEN",
+      "wizard_ui": "edit",
+      "title": "Clash API secret",
+      "tooltip": "Secret for the Clash API. Use the refresh button to generate a random value."
+    },
+    {
+      "name": "dns_strategy",
+      "type": "enum",
+      "default_value": "prefer_ipv4",
+      "options": ["prefer_ipv4", "prefer_ipv6", "ipv4_only", "ipv6_only"],
+      "wizard_ui": "fix",
+      "title": "Strategy",
+      "comment": "DNS tab only: sing-box config.dns.strategy.",
+      "tooltip":"sing-box config.dns.strategy."
+    },
+    {
+      "name": "dns_independent_cache",
+      "type": "bool",
+      "default_value": "false",
+      "wizard_ui": "fix",
+      "title": "Independent cache",
+      "tooltip": "sing-box config.dns.independent_cache.",
+      "comment": "DNS tab only: config.dns.independent_cache; same bool+fix pattern for dedicated DNS-tab editing (not shown on Settings)."
+    },
+    {
+      "name": "dns_default_domain_resolver",
+      "type": "text",
+      "default_value": "direct_dns_resolver",
+      "wizard_ui": "fix",
+      "title": "Default DNS domain resolver",
+      "tooltip": "sing-box config.route.default_domain_resolver (server tag).",
+      "comment": "DNS tab only: route.default_domain_resolver (server tag)."
+    },
+    {
+      "name": "dns_final",
+      "type": "text",
+      "default_value": "direct_dns_resolver",
+      "wizard_ui": "fix",
+      "title": "Final",
+      "tooltip": "sing-box config.dns.final (server tag).",
+      "comment": "DNS tab only: config.dns.final (server tag)."
+    }
+  ],
+
+  "config": {
+    "log": {
+      "level": "@log_level",
+      "timestamp": true
+    },
+    "dns": {
+      "servers": [
+        {
+          "type": "local",
+          "tag": "local_dns_resolver"
+        },
+        {
+          "type": "udp",
+          "tag": "direct_dns_resolver",
+          "server": "8.8.8.8",
+          "server_port": 53
+        }
+      ],
+      "rules": [
+        { "server": "direct_dns_resolver" }
+      ],
+      "final": "@dns_final",
+      "strategy": "@dns_strategy",
+      "independent_cache": "@dns_independent_cache"
+    },
+    "inbounds": [],
+    "endpoints": [],
+    "outbounds": [
+      { "type": "direct", "tag": "direct-out" }
+    ],
+    "route": {
+      "default_domain_resolver": "@dns_default_domain_resolver",
+      "rule_set": [
+        { "tag": "ru-domains", "type": "inline", "format": "domain_suffix", "rules": [{ "domain_suffix": ["ru", "xn--p1ai", "su", "xn--p1acf", "xn--80adxhks", "moscow", "tatar", "xn--d1acj3b", "xn--80aswg", "xn--c1avg", "xn--j1aef"] }] }
+      ],
+      "rules": [
+        { "protocol": "dns", "action": "hijack-dns" }
+      ],
+      "final": "proxy-out",
+      "auto_detect_interface": "@auto_detect_interface"
+    },
+    "experimental": {
+      "clash_api": {
+        "external_controller": "@clash_api",
+        "secret": "@clash_secret"
+      },
+      "cache_file": {
+        "enabled": true,
+        "path": "cache.db"
+      }
+    }
+  },
+
+  "dns_options": {
+    "servers": [
+      {
+        "type": "udp",
+        "tag": "direct_dns_resolver",
+        "server": "8.8.8.8",
+        "server_port": 53,
+        "description": "Direct DNS resolver",
+        "enabled": true
+      },
+      {
+        "type": "udp",
+        "tag": "cloudflare_udp",
+        "server": "1.1.1.1",
+        "server_port": 53,
+        "description": "Cloudflare DNS resolver",
+        "enabled": false
+      },
+      {
+        "type": "https",
+        "tag": "cloudflare_doh",
+        "server": "1.1.1.1",
+        "server_port": 443,
+        "path": "/dns-query",
+        "tls": {
+          "server_name": "cloudflare-dns.com"
+        },
+        "description": "Cloudflare DNS over HTTPS resolver",
+        "enabled": false
+      },
+      {
+        "type": "https",
+        "tag": "google_doh",
+        "server": "dns.google",
+        "server_port": 443,
+        "path": "/dns-query",
+        "domain_resolver": "direct_dns_resolver",
+        "description": "Google DNS over HTTPS resolver",
+        "enabled": true
+      },
+      {
+        "type": "https",
+        "tag": "google_doh_vpn",
+        "server": "dns.google",
+        "server_port": 443,
+        "path": "/dns-query",
+        "domain_resolver": "direct_dns_resolver",
+        "detour": "proxy-out",
+        "description": "Google DNS over HTTPS resolver",
+        "enabled": false
+      },
+      {
+        "type": "https",
+        "tag": "yandex_doh",
+        "server": "77.88.8.88",
+        "server_port": 443,
+        "path": "/dns-query",
+        "domain_strategy": "prefer_ipv4",
+        "description": "Yandex DNS over HTTPS resolver",
+        "enabled": true
+      },
+      {
+        "type": "udp",
+        "tag": "yandex_dns_vpn",
+        "server": "77.88.8.2",
+        "server_port": 53,
+        "detour": "proxy-out",
+        "domain_strategy": "prefer_ipv4",
+        "description": "Yandex DNS over UDP resolver",
+        "enabled": false
+      },
+      {
+        "type": "udp",
+        "tag": "yandex_dns_direct",
+        "server": "77.88.8.2",
+        "server_port": 53,
+        "domain_strategy": "prefer_ipv4",
+        "description": "Yandex 2 DNS over UDP resolver",
+        "enabled": false
+      }
+    ],
+    "rules": [
+      { "rule_set": "ru-domains", "server": "yandex_doh" },
+      { "server": "google_doh" }
+    ]
+  },
+
+  "selectable_rules": [
+    {
+      "label": "Private IPs direct",
+      "description": "Route private IP ranges (LAN, etc.) directly to guarantee local network access.",
+      "rule": { "ip_is_private": true, "outbound": "direct-out" }
+    },
+    {
+      "label": "Local/LAN domains direct",
+      "description": "Route .local and .lan domains directly for LAN access.",
+      "rule": { "domain_suffix": ["local", "lan"], "outbound": "direct-out" }
+    },
+    {
+      "label": "Block Ads (ads-all, soft)",
+      "description": "Soft-block ads by rejecting connections instead of dropping packets",
+      "default": true,
+      "rule_set": [
+        { "tag": "ads-all", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-ads-all.srs"}
+      ],
+      "rule": { "rule_set": "ads-all", "action": "reject" }
+    },
+    {
+      "label": "Russian domains direct",
+      "description": "Route Russian domains directly.",
+      "default": true,
+      "rule": { "rule_set": "ru-domains", "outbound": "direct-out" }
+    },
+    {
+      "label": "Russia-only services",
+      "description": "Use Russian VPN group for services available only inside Russia.",
+      "rule_set": [
+        { "tag": "ru-inside", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-ru-available-only-inside.srs"}
+      ],
+      "rule": { "rule_set": "ru-inside", "outbound": "direct-out" }
+    },
+    {
+      "label": "Russian blocked resources",
+      "description": "Detour resources blocked in Russia through proxy selector.",
+      "rule_set": [
+        { "tag": "ru-blocked-main", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked.srs"},
+        { "tag": "ru-blocked-community", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked-community.srs"}
+      ],
+      "rule": { "rule_set": ["ru-blocked-main", "ru-blocked-community"], "network": ["tcp", "udp"], "outbound": "proxy-out" }
+    },
+    {
+      "label": "Israel-specific sites",
+      "description": "Send Israel-focused traffic via main proxy selector.",
+      "rule_set": [
+        { "tag": "israel-sites", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-il.srs"}
+      ],
+      "rule": { "rule_set": "israel-sites", "outbound": "proxy-out" }
+    },
+    {
+      "label": "BitTorrent direct",
+      "description": "Route BitTorrent traffic directly to avoid VPN throttling.",
+      "default": true,
+      "rule": { "protocol": ["bittorrent"], "outbound": "direct-out" }
+    },
+    {
+      "label": "2ip.io for VPN IP test",
+      "description": "Route for 2ip.io to check VPN IP.",
+      "rule": { "domain": ["2ip.io"], "outbound": "proxy-out" }
+    },
+    {
+      "label": "2ip.me via proxy",
+      "description": "Route 2ip.me through proxy to verify VPN IP.",
+      "rule": { "domain": ["2ip.me"], "outbound": "proxy-out" }
+    },
+    {
+      "label": "2ip.ru your direct ip test",
+      "description": "Route for 2ip.ru to check your IP.",
+      "rule": { "domain": ["2ip.ru"], "outbound": "direct-out" }
+    },
+    {
+      "label": "Gemini via Gemini VPN",
+      "description": "Use dedicated Gemini VPN selector for Gemini rule set.",
+      "rule_set": [
+        {
+          "tag": "gemini",
+          "type": "inline",
+          "format": "domain_suffix",
+          "rules": [
+            {
+              "domain_suffix": [
+                "generativelanguage.googleapis.com",
+                "gemini.google.com",
+                "ai.google.dev",
+                "palm.googleapis.com"
+              ]
+            }
+          ]
+        }
+      ],
+      "rule": { "rule_set": "gemini", "network": ["tcp", "udp"], "outbound": "proxy-out" }
+    },
+    {
+      "label": "Messengers via proxy",
+      "description": "Send messenger traffic through proxy selector.",
+      "platforms": ["windows"],
+      "rule_set": [
+        {
+          "tag": "messengers",
+          "type": "inline",
+          "format": "domain_suffix",
+          "rules": [
+            {
+              "domain_suffix": [
+                "meet.google.com",
+                "googlevideo.com",
+                "gstatic.com",
+                "googleusercontent.com",
+                "googleapis.com",
+                "web.whatsapp.com",
+                "whatsapp.com",
+                "whatsapp.net",
+                "cdn.whatsapp.net",
+                "mmg.whatsapp.net",
+                "discord.com",
+                "discordapp.com",
+                "cdn.discordapp.com",
+                "discord.gg",
+                "gateway.discord.gg",
+                "discord.media",
+                "telegram.org",
+                "t.me",
+                "cdn-telegram.org"
+              ]
+            },
+            {
+              "process_name": [
+                "Telegram.exe",
+                "Discord.exe",
+                "WhatsApp.exe",
+                "Signal.exe",
+                "Zoom.exe"
+              ]
+            }
+          ]
+        }
+      ],
+      "rule": { "rule_set": "messengers", "network": ["tcp", "udp"], "outbound": "proxy-out" }
+    },
+    {
+      "label": "Messengers via proxy",
+      "description": "Send messenger traffic through proxy selector.",
+      "platforms": ["darwin", "linux"],
+      "rule_set": [
+        {
+          "tag": "messengers",
+          "type": "inline",
+          "format": "domain_suffix",
+          "rules": [
+            {
+              "domain_suffix": [
+                "meet.google.com",
+                "googlevideo.com",
+                "gstatic.com",
+                "googleusercontent.com",
+                "googleapis.com",
+                "web.whatsapp.com",
+                "whatsapp.com",
+                "whatsapp.net",
+                "cdn.whatsapp.net",
+                "mmg.whatsapp.net",
+                "discord.com",
+                "discordapp.com",
+                "cdn.discordapp.com",
+                "discord.gg",
+                "gateway.discord.gg",
+                "discord.media",
+                "telegram.org",
+                "t.me",
+                "cdn-telegram.org"
+              ]
+            },
+            {
+              "process_name": [
+                "Telegram",
+                "Discord",
+                "WhatsApp",
+                "Signal",
+                "zoom.us"
+              ]
+            }
+          ]
+        }
+      ],
+      "rule": { "rule_set": "messengers", "network": ["tcp", "udp"], "outbound": "proxy-out" }
+    },
+    {
+      "label": "Games direct",
+      "description": "Send gaming rule set traffic directly for lower latency.",
+      "default": true,
+      "rule_set": [
+        { "tag": "games", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-games.srs"}
+      ],
+      "rule": { "rule_set": "games", "network": ["tcp", "udp"], "outbound": "direct-out" }
+    },
+    {
+      "label": "Gaming ports direct",
+      "description": "Keep popular gaming ports and Steam ranges outside VPN.",
+      "default": true,
+      "rule": {
+        "port": [3659, 1935, 5001, 5795, 5796, 7000, 7777, 9000, 10039, 10040],
+        "port_range": "27000:27100",
+        "network": ["tcp", "udp"],
+        "outbound": "direct-out"
+      }
+    },
+    {
+      "label": "stop HTTP/3",
+      "description": "QUIC does not support UDP traffic proxying. Therefore, we stop HTTP/3. This may block QUIC traffic (used by Google, YouTube, Cloudflare, etc.), which may potentially reduce speed or availability for these services.",
+      "rule": { "action": "reject", "method": "drop", "network": ["udp"], "port": [443] }
+    }
+  ],
+
+  "params": [
+    {
+      "name": "inbounds",
+      "platforms": ["windows", "linux"],
+      "value": [
+        {
+          "type": "tun",
+          "tag": "tun-in",
+          "interface_name": "singbox-tun0",
+          "address": ["@tun_address"],
+          "mtu": "@tun_mtu",
+          "auto_route": true,
+          "strict_route": "@strict_route",
+          "stack": "@tun_stack"
+        }
+      ]
+    },
+    {
+      "name": "inbounds",
+      "platforms": ["darwin"],
+      "if": ["tun"],
+      "value": [
+        {
+          "type": "tun",
+          "tag": "tun-in",
+          "address": ["@tun_address"],
+          "mtu": "@tun_mtu",
+          "auto_route": true,
+          "strict_route": "@strict_route",
+          "stack": "@tun_stack"
+        }
+      ]
+    },
+    {
+      "name": "inbounds",
+      "if": ["enable_proxy_in"],
+      "value": [
+        {
+          "type": "mixed",
+          "tag": "proxy-in",
+          "listen": "@proxy_in_listen",
+          "listen_port": "@proxy_in_listen_port",
+          "set_system_proxy": "@proxy_in_set_system_proxy"
+        }
+      ],
+      "mode": "prepend"
+    },
+    {
+      "name": "route.rules",
+      "platforms": ["windows", "linux", "darwin"],
+      "if_or": ["tun_builtin", "tun"],
+      "mode": "prepend",
+      "value": [
+        { "inbound": "tun-in", "action": "resolve", "strategy": "@resolve_strategy" },
+        { "inbound": "tun-in", "action": "sniff", "timeout": "1s" }
+      ]
+    },
+    {
+      "name": "route.rules",
+      "if": ["enable_proxy_in"],
+      "mode": "prepend",
+      "value": [
+        { "inbound": "proxy-in", "action": "resolve", "strategy": "@resolve_strategy" },
+        { "inbound": "proxy-in", "action": "sniff", "timeout": "1s" }
+      ]
+    }
+  ]
+}
+
+
+

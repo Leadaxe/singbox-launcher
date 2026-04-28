@@ -1,0 +1,30 @@
+{
+  "version": 4,
+  "id": "test-state",
+  "comment": "Minimal v4 fixture",
+  "created_at": "2026-04-01T10:00:00Z",
+  "updated_at": "2026-04-26T20:00:00Z",
+  "parser_config": {
+    "version": 4,
+    "proxies": [
+      {
+        "source": "https://example.com/sub-a",
+        "tag_prefix": "[A] "
+      }
+    ],
+    "outbounds": []
+  },
+  "config_params": [
+    {"name": "route_final", "value": "vpn-1"}
+  ],
+  "vars": [
+    {"name": "tun_stack", "value": "system"},
+    {"name": "log_level", "value": "info"}
+  ],
+  "rules_library_merged": true,
+  "custom_rules": [],
+  "dns_options": {
+    "servers": [],
+    "rules": []
+  }
+}

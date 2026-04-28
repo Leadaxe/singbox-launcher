@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -295,10 +296,41 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 		copyTokenBtn.Disable()
 	}
 
+	// Port entry: пользователь может задать кастомный порт. 0/empty =
+	// debugapi.DefaultPort. Меняется только когда API выключен (иначе
+	// гонка между Stop старого listener'а и Start нового на занятом порту);
+	// поле disable'ится при чекбоксе ON.
+	portEntry := widget.NewEntry()
+	portEntry.SetPlaceHolder(fmt.Sprintf("%d", debugapi.DefaultPort))
+	if st.DebugAPIPort > 0 {
+		portEntry.SetText(fmt.Sprintf("%d", st.DebugAPIPort))
+	}
+	if st.DebugAPIEnabled {
+		portEntry.Disable()
+	}
+
 	check := widget.NewCheck(locale.T("diag.debug_api_enable"), nil)
 	check.SetChecked(st.DebugAPIEnabled)
 	check.OnChanged = func(enabled bool) {
 		cur := locale.LoadSettings(binDir)
+		// Парсим порт из поля; пустое = default. Невалидное → дёргаем
+		// диалог и откатываем чекбокс.
+		portText := strings.TrimSpace(portEntry.Text)
+		port := 0
+		if portText != "" {
+			p, err := strconv.Atoi(portText)
+			if err != nil || p < 1024 || p > 65535 {
+				dialog.ShowInformation(
+					locale.T("diag.debug_api_port_invalid_title"),
+					locale.T("diag.debug_api_port_invalid_msg"),
+					ac.UIService.MainWindow,
+				)
+				check.SetChecked(false)
+				return
+			}
+			port = p
+		}
+		cur.DebugAPIPort = port
 		cur.DebugAPIEnabled = enabled
 		if enabled {
 			// Lazy-generate token on first enable so tokens don't exist in
@@ -327,6 +359,7 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 				return
 			}
 			copyTokenBtn.Enable()
+			portEntry.Disable()
 		} else {
 			ac.StopDebugAPI()
 			// Keep the token in settings.json so re-enabling doesn't rotate
@@ -335,14 +368,19 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 			if err := locale.SaveSettings(binDir, cur); err != nil {
 				debuglog.WarnLog("diag.debug_api: save settings: %v", err)
 			}
+			portEntry.Enable()
 		}
 		refreshStatus()
 	}
+
+	portLabel := widget.NewLabel(locale.T("diag.debug_api_port_label"))
+	portRow := container.NewBorder(nil, nil, portLabel, nil, portEntry)
 
 	row := container.NewVBox(
 		title,
 		hint,
 		container.NewHBox(check, copyTokenBtn),
+		portRow,
 		status,
 	)
 	return row

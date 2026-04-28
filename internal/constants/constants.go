@@ -10,6 +10,11 @@ const (
 	SingBoxExecName        = "sing-box"
 	WizardTemplateFileName = "wizard_template.json"
 	WizardStateFileName    = "state.json"
+	// OutboundsCacheFileName — кеш-файл outbounds (SPEC 045 phase 5.1).
+	// Лежит в <execDir>/bin/. Scope = последний активный state. Парсер
+	// перезаписывает его при каждом успешном Update; на переключении
+	// state'а файл не инвалидируется (см. PLAN.md outboundscache).
+	OutboundsCacheFileName = "outbounds.cache.json"
 )
 
 // Directory names
@@ -18,6 +23,10 @@ const (
 	LogsDirName         = "logs"
 	RuleSetsDirName     = "rule-sets"
 	WizardStatesDirName = "wizard_states"
+	// SubscriptionsDirName — каталог raw-body cache подписок (SPEC 052):
+	// <execDir>/bin/subscriptions/<source-id>.raw. Один файл per Source(id),
+	// атомарная запись через .tmp + Rename, lazy GC orphan-файлов.
+	SubscriptionsDirName = "subscriptions"
 )
 
 // Log file names
@@ -67,8 +76,8 @@ var (
 )
 
 // GetMyBranch возвращает ветку репозитория для загрузки ассетов, у которых нет
-// pinned-ref модели (например, get_free.json). wizard_template.json больше не
-// использует эту функцию — он pin'ится через RequiredTemplateRef.
+// pinned-ref модели (например, переводы локалей, wintun zip). wizard_template.json
+// больше не использует эту функцию — он pin'ится через RequiredTemplateRef.
 //
 // Если в версии приложения есть суффикс после номера (например 0.7.1-96-gc1343cc или 0.7.1-dev), возвращает "develop", иначе "main".
 func GetMyBranch() string {

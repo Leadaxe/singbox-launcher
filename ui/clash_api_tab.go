@@ -1051,6 +1051,12 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	// in the list is fresh when the user looks. Runs on the UI thread via
 	// fyne.Do because AutoPingAfterConnectFunc is called from a time.AfterFunc
 	// goroutine deep inside RunningState.Set.
+	//
+	// This hook is intentionally uncapped — it's also bound to Cmd/Ctrl+P and
+	// the /action/ping-all debug-API endpoint, both of which are explicit user
+	// requests. The soft cap for the *automatic* (timer-driven) path lives at
+	// the timer call sites in controller.go and main.go (resume). See SPEC 039
+	// §1.3 / §2.7.
 	ac.UIService.AutoPingAfterConnectFunc = func() {
 		fyne.Do(pingAllProxies)
 	}
