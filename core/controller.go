@@ -86,6 +86,13 @@ type AppController struct {
 	// --- Installed core version cache (one successful check per run) ---
 	installedCoreVersionCache   string // после первой успешной проверки — без повторных запусков sing-box version
 	installedCoreVersionCacheMu sync.Mutex
+
+	// --- Auto-update per-source retry timers (SPEC 052 phase 8 event model) ---
+	// Map source.ID → pending retry timer. Один retry на 15 секунд после
+	// failed fetch; следующая попытка — на следующем heartbeat'е (1ч) или
+	// при VPN-event'е (proxy switch / VPN on-off).
+	autoUpdateRetryTimers map[string]*time.Timer
+	autoUpdateRetryMu     sync.Mutex
 }
 
 // RunningState - structure for tracking the VPN's running state.
