@@ -46,6 +46,12 @@ const (
 	// autoUpdateDefaultReload — fallback для source'ов без явного
 	// `update.interval_hours` и без global `defaults.reload`.
 	autoUpdateDefaultReload = 1 * time.Hour
+
+	// autoUpdateEventCooldown — минимальный интервал между fetch-попытками
+	// одного source через VPN-event handler (защита от storm'а при rapid
+	// proxy-switch / VPN on-off). Manual Refresh и heartbeat — без cooldown'а
+	// (юзер явно кликнул / редкое событие).
+	autoUpdateEventCooldown = 5 * time.Second
 )
 
 // startAutoUpdateLoop запускает периодический heartbeat + подписку на
@@ -56,6 +62,9 @@ func (ac *AppController) startAutoUpdateLoop() {
 
 	if ac.autoUpdateRetryTimers == nil {
 		ac.autoUpdateRetryTimers = make(map[string]*time.Timer)
+	}
+	if ac.autoUpdateEventLastFetch == nil {
+		ac.autoUpdateEventLastFetch = make(map[string]time.Time)
 	}
 
 	// Subscribe to VPN events — trigger immediate retry for failed source'ов.
@@ -227,6 +236,11 @@ func (ac *AppController) cancelAllRetryTimers() {
 // triggerRetryForFailedSources — на VPN-event пробегаемся по source'ам с
 // `last_status="err"` и инициируем досрочный refresh.
 //
+// **Cooldown 5s per source**: rapid VPN switches / power events не должны
+// генерировать N×fetches одной и той же подписки. Если последний event-
+// triggered fetch < 5 сек назад — skip; остальные пути (manual Refresh,
+// heartbeat) cooldown не затрагивает.
+//
 // Лёгкая операция (один state.Load + map look-ups + per-source goroutine
 // внутри refreshSourceWithRetry); event handler в bus синхронный, так
 // что мы не блокируем publisher'а — RefreshSingleSubscription идёт в
@@ -243,6 +257,7 @@ func (ac *AppController) triggerRetryForFailedSources(trigger string) {
 	if err != nil {
 		return
 	}
+	now := time.Now()
 	for _, src := range s.Connections.Sources {
 		if src.Type != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
 			continue
@@ -250,9 +265,34 @@ func (ac *AppController) triggerRetryForFailedSources(trigger string) {
 		if src.Meta == nil || src.Meta.LastStatus != "err" {
 			continue
 		}
+		if !ac.eventCooldownAllow(src.ID, now) {
+			debuglog.DebugLog("Auto-update[%s]: cooldown skip for source %s (<5s since last event-fetch)",
+				trigger, src.ID)
+			continue
+		}
 		// Запускаем в отдельной goroutine — event-bus handler не должен ждать сети.
 		go ac.refreshSourceWithRetry(src.ID, trigger)
 	}
+}
+
+// eventCooldownAllow возвращает true и обновляет timestamp если с
+// последнего event-triggered fetch'а данного source прошло >= 5 сек;
+// иначе false (skip).
+//
+// Использует ту же mutex что и retry timers — операции дешёвые,
+// дополнительный mutex ради них ставить избыточно.
+func (ac *AppController) eventCooldownAllow(sourceID string, now time.Time) bool {
+	ac.autoUpdateRetryMu.Lock()
+	defer ac.autoUpdateRetryMu.Unlock()
+	if ac.autoUpdateEventLastFetch == nil {
+		ac.autoUpdateEventLastFetch = make(map[string]time.Time)
+	}
+	last, ok := ac.autoUpdateEventLastFetch[sourceID]
+	if ok && now.Sub(last) < autoUpdateEventCooldown {
+		return false
+	}
+	ac.autoUpdateEventLastFetch[sourceID] = now
+	return true
 }
 
 // resumeAutoUpdate — вызывается после успешного manual Update'а; сбрасывает

@@ -93,6 +93,23 @@ type AppController struct {
 	// при VPN-event'е (proxy switch / VPN on-off).
 	autoUpdateRetryTimers map[string]*time.Timer
 	autoUpdateRetryMu     sync.Mutex
+
+	// autoUpdateEventLastFetch — per-source timestamp последнего
+	// event-triggered fetch'а; используется eventCooldownAllow чтобы
+	// rapid VPN/proxy events не дублировали fetch одной подписки
+	// в рамках 5-сек окна. Защищён той же autoUpdateRetryMu.
+	autoUpdateEventLastFetch map[string]time.Time
+
+	// SubscriptionMu — state-level lock на load→mutate→save цикл при
+	// мутации Meta подписок. Любые конкурентные пути (heartbeat refresh
+	// всех source'ов, UI per-source Refresh, VPN-event triggered retry,
+	// manual Update) сериализуются через этот mutex — иначе вторая save
+	// перетирает изменения первой по полям, которых не касалась.
+	//
+	// UI handler'ы вызывают через async goroutine (presenter.UpdateUI),
+	// поэтому ожидание lock'а не блокирует main thread; пользователь
+	// видит spinner на per-source Refresh кнопке до освобождения.
+	SubscriptionMu sync.Mutex
 }
 
 // RunningState - structure for tracking the VPN's running state.

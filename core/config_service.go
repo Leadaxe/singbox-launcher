@@ -167,9 +167,12 @@ func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGener
 
 	// SPEC 052: per-source meta refresh + raw body cache. Происходит
 	// до парсера; результат сохраняем в state.json (Connections.Sources[i].Meta).
-	// На этом шаге fetch выполняется отдельно от старого parser-pipeline'а;
-	// в Phase 6 парсер будет читать `.raw` напрямую (deduplicate fetch).
+	//
+	// **Lock**: SubscriptionMu сериализует с UI per-source Refresh'ами
+	// и event-triggered retry'ями (см. controller.go SubscriptionMu).
+	ac.SubscriptionMu.Lock()
 	refreshSubscriptionsMetaAndCache(stateRef, execDir)
+	ac.SubscriptionMu.Unlock()
 
 	subst := config.BuildVarSubstituterFromDisk(execDir)
 	config.SubstituteParserConfigPlaceholders(parserConfig, subst)
@@ -383,6 +386,11 @@ func atomicWriteConfig(path string, data []byte) error {
 // → парсинг metadata (headers + inline #-comments) → запись raw body в
 // `bin/subscriptions/<id>.raw`, заполнение `Source.Meta`.
 //
+// **Concurrency**: caller (`UpdateConfigFromSubscriptions`) держит
+// `ac.SubscriptionMu` на весь load→mutate→save цикл, чтобы конкурентные
+// per-source Refresh'и из UI не теряли изменения этой sweep'а. См. SPEC 052
+// phase 8 race-fix.
+//
 // Поведение:
 //   - Идём по `state.Connections.Sources` (только subscription, enabled, URL ≠ "");
 //   - На success: атомарная запись raw + обновлённая Meta (headers, last_status="ok",
@@ -393,11 +401,6 @@ func atomicWriteConfig(path string, data []byte) error {
 //   - После всех источников — DeleteOrphans: убираем `.raw` файлы id'ов
 //     которых больше нет в state;
 //   - Persist state.json через `state.Save` (atomic).
-//
-// Best-effort: ошибки записи raw / state не отменяют дальнейший parser-pipeline.
-// Phase 5 ИНТЕНЦИОНАЛЬНО оставляет parser-pipeline нетронутым для byte-equal
-// golden-теста. Phase 6 переключит парсер на `.raw` cache, что устранит
-// double-fetch.
 func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 	if s == nil {
 		return
@@ -558,6 +561,12 @@ func (svc *ConfigService) RefreshSingleSubscription(sourceID string) (*state.Sou
 	}
 	execDir := svc.ac.FileService.ExecDir
 	statePath := platform.GetWizardStatePath(execDir)
+
+	// SPEC 052 phase 8 race-fix: load+mutate+save сериализуем через
+	// SubscriptionMu — параллельный heartbeat/manual Update обновляющий
+	// другие source'ы не должен потеряться от этой single-source save'ы.
+	svc.ac.SubscriptionMu.Lock()
+	defer svc.ac.SubscriptionMu.Unlock()
 
 	s, err := state.Load(statePath)
 	if err != nil {
