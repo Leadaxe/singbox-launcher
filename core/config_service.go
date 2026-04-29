@@ -70,17 +70,22 @@ func (svc *ConfigService) RunParserProcess() {
 	// Call internal parser to update configuration
 	result, err := svc.UpdateConfigFromSubscriptions()
 
-	// Обрабатываем результат
+	// Обрабатываем результат — финальный статус идёт в новый
+	// in-place toast под Exit'ом (SPEC 052 phase 8 polish), а не popup.
 	if err != nil {
 		debuglog.ErrorLog("RunParser: subscriptions refresh failed: %v", err)
-		ac.ShowParserError(fmt.Errorf("refresh subscriptions: %w", err))
+		if ac.UIService != nil && ac.UIService.ShowSubsResultFunc != nil {
+			ac.UIService.ShowSubsResultFunc(false, err.Error())
+		} else {
+			// Fallback: legacy popup (если новый callback не зарегистрирован).
+			ac.ShowParserError(fmt.Errorf("refresh subscriptions: %w", err))
+		}
 		return
 	}
 	debuglog.InfoLog("RunParser: cache refreshed; config.json will be rebuilt on next Restart/Rebuild")
-	// Dirty-маркеры и UI-callback уже выставлены внутри
-	// UpdateConfigFromSubscriptions (ClearCacheStale + MarkConfigStale
-	// + Update*StatusFunc). Здесь только toast.
-	if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
+	if ac.UIService != nil && ac.UIService.ShowSubsResultFunc != nil {
+		ac.UIService.ShowSubsResultFunc(true, parserSuccessToastMessage(result))
+	} else if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
 		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, "Subscriptions", parserSuccessToastMessage(result))
 	}
 }

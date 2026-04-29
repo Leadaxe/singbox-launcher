@@ -60,6 +60,12 @@ type UIService struct {
 	UpdateConfigStatusFunc   func()
 	UpdateTrayMenuFunc       func()
 	UpdateParserProgressFunc func(progress float64, status string)
+
+	// ShowSubsResultFunc — финальный статус subscription operation
+	// (success/error). Вызывается из core/config_service.go вместо
+	// legacy `dialogs.ShowAutoHideInfo` popup'а — результат рендерится
+	// in-place под Exit-кнопкой (см. ui/core_dashboard_subs_status.go).
+	ShowSubsResultFunc func(success bool, message string)
 	// AutoPingAfterConnectFunc is scheduled by the controller ~5s after sing-box
 	// transitions into the running state, so node latency in the Servers tab is
 	// fresh by the time the user looks at it. Registered by the Servers tab;
