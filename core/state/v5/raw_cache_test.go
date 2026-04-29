@@ -158,36 +158,6 @@ func TestDeleteOrphans(t *testing.T) {
 	}
 }
 
-// TestDeleteOrphans_PreservesInvalidIDFiles — файлы с не-ULID именами
-// (user manual drops, чужие процессы) не должны удаляться при GC.
-func TestDeleteOrphans_PreservesInvalidIDFiles(t *testing.T) {
-	dir := t.TempDir()
-	// Валидный orphan + файлы с невалидными именами (включая один с пробелом).
-	_ = WriteRawBody(dir, "01ORPHAN-X", []byte("o"))
-	thirdParty := filepath.Join(dir, "has space.raw")
-	if err := os.WriteFile(thirdParty, []byte("user manual drop"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	thirdParty2 := filepath.Join(dir, "../weirdpath.raw")
-	_ = os.WriteFile(thirdParty2, []byte("invalid"), 0o644)
-
-	deleted, err := DeleteOrphans(dir, []string{}) // ничего нет в known set
-	if err != nil {
-		t.Fatalf("DeleteOrphans: %v", err)
-	}
-	// Только валидный orphan должен удалиться.
-	if len(deleted) != 1 || deleted[0] != "01ORPHAN-X" {
-		t.Errorf("expected only valid orphan deleted; got %v", deleted)
-	}
-	// 3rd-party файл с пробелом — на месте.
-	if _, err := os.Stat(thirdParty); err != nil {
-		t.Errorf("3rd-party file 'has space.raw' was deleted: %v", err)
-	}
-	// Очистим оставшиеся 3rd-party.
-	_ = os.Remove(thirdParty)
-	_ = os.Remove(thirdParty2)
-}
-
 // TestValidateID_Rejects — id с path separator / spaces / unicode → error.
 func TestValidateID_Rejects(t *testing.T) {
 	cases := []string{

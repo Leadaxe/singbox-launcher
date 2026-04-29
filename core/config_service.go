@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -403,13 +404,10 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 	}
 	subsDir := platform.GetSubscriptionsDir(execDir)
 
-	knownIDs := make([]string, 0, len(s.Connections.Sources))
 	dirty := false
 
 	for i := range s.Connections.Sources {
 		src := &s.Connections.Sources[i]
-		knownIDs = append(knownIDs, src.ID)
-
 		if src.Type != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
 			continue
 		}
@@ -418,7 +416,12 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 		}
 	}
 
-	// Lazy GC: убираем orphan'ы (.raw файлы для удалённых source'ов).
+	// Lazy GC: known set = ОБЪЕДИНЕНИЕ Source.ID'ов из ВСЕХ state'ов
+	// (active state.json + named snapshots). `.raw` файл шарится между
+	// stages если Source с тем же ID присутствует в нескольких — удаляем
+	// только когда ID не упомянут НИГДЕ. Это защищает от случая «Update
+	// активного state'а сносит данные неактивного stage'а».
+	knownIDs := collectAllStageSourceIDs(execDir)
 	if _, gcErr := v5.DeleteOrphans(subsDir, knownIDs); gcErr != nil {
 		debuglog.WarnLog("refreshSubscriptionsMetaAndCache: DeleteOrphans: %v", gcErr)
 	}
@@ -430,6 +433,54 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 			debuglog.WarnLog("refreshSubscriptionsMetaAndCache: state.Save: %v", err)
 		}
 	}
+}
+
+// collectAllStageSourceIDs возвращает объединение Source.ID'ов из ВСЕХ
+// state-файлов в `bin/wizard_states/` (active state.json + named snapshots).
+//
+// SPEC 052 phase 8 fix: bin/subscriptions/<id>.raw шарится между stages,
+// если Source с тем же ID есть в нескольких state-файлах. DeleteOrphans
+// должен сравнивать с union ID'ов всех stage'ов, а не только active —
+// иначе Update активного state'а удалит .raw файлы, нужные другому
+// (неактивному) stage'у.
+//
+// Read-only: errors per-file логируются и пропускаются (битый файл одного
+// snapshot'а не должен блокировать GC).
+func collectAllStageSourceIDs(execDir string) []string {
+	statesDir := platform.GetWizardStatesDir(execDir)
+	entries, err := os.ReadDir(statesDir)
+	if err != nil {
+		debuglog.WarnLog("collectAllStageSourceIDs: readdir %s: %v", statesDir, err)
+		return nil
+	}
+
+	idSet := make(map[string]struct{})
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		path := filepath.Join(statesDir, name)
+		s, loadErr := state.Load(path)
+		if loadErr != nil {
+			debuglog.DebugLog("collectAllStageSourceIDs: skip %s: %v", path, loadErr)
+			continue
+		}
+		for _, src := range s.Connections.Sources {
+			if src.ID != "" {
+				idSet[src.ID] = struct{}{}
+			}
+		}
+	}
+
+	out := make([]string, 0, len(idSet))
+	for id := range idSet {
+		out = append(out, id)
+	}
+	return out
 }
 
 // refreshOneSubscriptionSource — атомарный fetch+meta+raw-cache для

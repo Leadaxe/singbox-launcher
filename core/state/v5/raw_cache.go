@@ -204,16 +204,12 @@ func DeleteOrphans(subsDir string, knownIDs []string) ([]string, error) {
 			continue
 		}
 		id := strings.TrimSuffix(name, rawSuffix)
-		// Defensive: deletion ограничена на файлы с валидными ULID-id'ами.
-		// Файлы с произвольными именами (user manual drops, чужие процессы,
-		// corrupt FS) не наши — оставляем нетронутыми.
-		if err := validateID(id); err != nil {
-			continue
-		}
 		if _, ok := knownSet[id]; ok {
 			continue
 		}
-		// id не в known → orphan, удаляем
+		// id не в known → orphan, удаляем. bin/subscriptions/ —
+		// managed cache: содержимое должно быть консистентно state'у,
+		// чужих файлов тут не предполагается.
 		if err := os.Remove(filepath.Join(subsDir, name)); err == nil {
 			deleted = append(deleted, id)
 		}
