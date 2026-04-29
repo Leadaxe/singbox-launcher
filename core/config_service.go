@@ -414,11 +414,36 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 
 	dirty := false
 
+	// Считаем enabled subscriptions для progress reporting.
+	enabledCount := 0
+	for _, src := range s.Connections.Sources {
+		if src.Type == state.SourceTypeSubscription && src.Enabled && src.URL != "" {
+			enabledCount++
+		}
+	}
+
+	ac := GetController()
+	progress := func(p float64, msg string) {
+		if ac != nil && ac.UIService != nil && ac.UIService.UpdateParserProgressFunc != nil {
+			ac.UIService.UpdateParserProgressFunc(p, msg)
+		}
+	}
+
+	idx := 0
 	for i := range s.Connections.Sources {
 		src := &s.Connections.Sources[i]
 		if src.Type != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
 			continue
 		}
+		idx++
+		// Progress: 0..70% — fetch phase (до старого parser-pipeline'а который покрывает 70..100).
+		pct := float64(idx) / float64(enabledCount) * 70.0
+		shortURL := src.URL
+		if len(shortURL) > 60 {
+			shortURL = shortURL[:60] + "…"
+		}
+		progress(pct, fmt.Sprintf("Fetching %d/%d: %s", idx, enabledCount, shortURL))
+
 		if refreshOneSubscriptionSource(src, s.Connections.Defaults, subsDir) {
 			dirty = true
 		}

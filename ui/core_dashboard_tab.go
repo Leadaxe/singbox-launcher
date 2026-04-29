@@ -488,17 +488,14 @@ func (tab *CoreDashboardTab) createConfigBlock() fyne.CanvasObject {
 
 	// auto-update / auto-ping checkboxes moved to the dedicated Settings tab
 	// (ui/settings_tab.go) so Core Dashboard stays focused on the sing-box lifecycle.
-
-	// Отдельная строка для прогрессбара и статуса парсера (под кнопками)
-	parserProgressRow := container.NewVBox(
-		tab.parserProgressBar,
-		tab.parserStatusLabel,
-	)
+	//
+	// SPEC 052 phase 8 polish: parserProgressBar / parserStatusLabel
+	// перенесены ВНУТРЬ subscription status panel под Exit-кнопкой.
+	// См. createSubsStatusBlock в core_dashboard_subs_status.go.
 
 	return container.NewVBox(
 		statusRow,
 		buttonsRow,
-		parserProgressRow, // Прогрессбар и статус парсера в отдельной строке
 	)
 }
 

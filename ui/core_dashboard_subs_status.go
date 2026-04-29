@@ -25,18 +25,29 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// createSubsStatusBlock — VBox под Exit кнопкой: лог + место под финальный
-// тост. На старте обе секции пустые (collapsed); появляются по мере операций.
+// createSubsStatusBlock — VBox под Exit кнопкой:
+//
+//   1. Progress bar + current-status label (active во время операции)
+//   2. Лог стрима (по строке на каждый status callback)
+//   3. Финальный тост (✓/✗ + ×, auto-hide 20s)
+//
+// На старте все три секции пустые (collapsed); появляются по мере операций.
 func (tab *CoreDashboardTab) createSubsStatusBlock() fyne.CanvasObject {
 	tab.subsLogBox = container.NewVBox()
 	tab.subsLogScroll = container.NewVScroll(tab.subsLogBox)
-	tab.subsLogScroll.SetMinSize(fyne.NewSize(0, 0)) // grow-only до фактического контента
+	tab.subsLogScroll.SetMinSize(fyne.NewSize(0, 0))
 	tab.subsLogScroll.Hide()
 
 	tab.subsToastBox = container.NewMax()
 	tab.subsToastBox.Hide()
 
+	progressBlock := container.NewVBox(
+		tab.parserProgressBar,
+		tab.parserStatusLabel,
+	)
+
 	return container.NewVBox(
+		progressBlock,
 		tab.subsLogScroll,
 		tab.subsToastBox,
 	)
@@ -104,31 +115,32 @@ func (tab *CoreDashboardTab) showSubsToast(message string, success bool) {
 		tab.subsToastTimer = nil
 	}
 
-	icon := theme.ConfirmIcon()
-	bgColor := color.NRGBA{R: 32, G: 90, B: 40, A: 255} // dark green
-	if !success {
-		icon = theme.ErrorIcon()
-		bgColor = color.NRGBA{R: 120, G: 40, B: 40, A: 255}
+	// Цветной только icon (зелёная ✓ / красный ✗); фон — нейтральный.
+	var coloredIcon fyne.CanvasObject
+	if success {
+		t := canvas.NewText("✓", color.NRGBA{R: 60, G: 200, B: 80, A: 255})
+		t.TextSize = 20
+		t.TextStyle = fyne.TextStyle{Bold: true}
+		coloredIcon = t
+	} else {
+		t := canvas.NewText("✗", color.NRGBA{R: 220, G: 70, B: 70, A: 255})
+		t.TextSize = 20
+		t.TextStyle = fyne.TextStyle{Bold: true}
+		coloredIcon = t
 	}
 
-	bg := canvas.NewRectangle(bgColor)
-	bg.CornerRadius = 6
-
-	iconCanvas := widget.NewIcon(icon)
 	msg := widget.NewLabel(message)
 	msg.Wrapping = fyne.TextWrapWord
-	msg.Importance = widget.HighImportance
 
 	closeBtn := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		tab.hideSubsToast()
 	})
 	closeBtn.Importance = widget.LowImportance
 
-	body := container.NewBorder(nil, nil, iconCanvas, closeBtn, msg)
+	body := container.NewBorder(nil, nil, coloredIcon, closeBtn, msg)
 	padded := container.NewPadded(body)
-	stacked := container.NewMax(bg, padded)
 
-	tab.subsToastBox.Objects = []fyne.CanvasObject{stacked}
+	tab.subsToastBox.Objects = []fyne.CanvasObject{padded}
 	tab.subsToastBox.Show()
 	tab.subsToastBox.Refresh()
 
