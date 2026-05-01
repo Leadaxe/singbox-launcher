@@ -96,11 +96,21 @@ singbox-launcher/
 │   │   │   - CreateTrayMenu()                # Создание меню трея
 │   │   │   - addHideDockMenuItem()           # Скрытие Dock (macOS)
 │   │   │
-│   ├── auto_update.go         # Автообновление конфигурации
-│   │   │   - startAutoUpdateLoop()           # Цикл автообновления
-│   │   │   - shouldAutoUpdate()              # Проверка необходимости обновления
-│   │   │   - attemptAutoUpdateWithRetries()  # Обновление с ретраями
-│   │   │   - resumeAutoUpdate()              # Возобновление автообновления
+│   ├── auto_update.go         # SPEC 052: per-source event-driven auto-update
+│   │   │   - startAutoUpdateLoop()           # 1h heartbeat по каждому источнику
+│   │   │   - effectiveReload()               # per-source interval → defaults.reload → 1h fallback
+│   │   │   - triggerRetryForFailedSources()  # immediate retry по VPN-events
+│   │   │   - eventCooldownAllow()            # 5s per-source cooldown (anti-storm)
+│   │   │   - cancelAllRetryTimers()          # Cleanup на shutdown
+│   │   │   - resumeAutoUpdate()              # Возобновление после wake
+│   │   │   # State-level lock — AppController.SubscriptionMu serializes
+│   │   │   # load→mutate→save cycles в refreshSubscriptionsMetaAndCache /
+│   │   │   # RefreshSingleSubscription. UI per-source Refresh ждёт heartbeat.
+│   │   │   #
+│   │   │   # Удалено в SPEC 052: shouldAutoUpdate (читал v4 parser.last_updated),
+│   │   │   # attemptAutoUpdateWithRetries (all-or-nothing цикл),
+│   │   │   # calculateAutoUpdateInterval. Per-source meta.last_fetched_at
+│   │   │   # — единственный источник правды о свежести.
 │   │   │
 │   ├── error_handler.go       # Обработка ошибок
 │   │   │   - showErrorUI()                   # Единый метод отображения ошибок
