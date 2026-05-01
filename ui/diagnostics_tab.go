@@ -256,7 +256,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 
 // buildDebugAPIRow renders the local HTTP Debug API toggle + token copy.
 // Off by default. First enable generates a random Bearer token; persists to
-// bin/settings.json. UI shows bound address ("127.0.0.1:9269") while running.
+// bin/settings.json. UI shows bound address ("127.0.0.1:9263") while running.
 func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 	binDir := platform.GetBinDir(ac.FileService.ExecDir)
 	st := locale.LoadSettings(binDir)

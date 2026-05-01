@@ -88,7 +88,7 @@ func main() {
 		controller.StateService.SetAutoPingMaxProxies(settings.AutoPingAfterConnectMaxProxies)
 		debuglog.InfoLog("Auto-ping: max-proxies cap overridden by user setting (auto_ping_after_connect_max_proxies=%d)", settings.AutoPingAfterConnectMaxProxies)
 	}
-	// Optional debug-API (localhost:9269 by default). Off unless user toggled
+	// Optional debug-API (localhost:9263 by default). Off unless user toggled
 	// it on in the Diagnostics tab; token is generated on first enable.
 	if settings.DebugAPIEnabled && settings.DebugAPIToken != "" {
 		if err := controller.StartDebugAPI(settings.DebugAPIPort, settings.DebugAPIToken); err != nil {

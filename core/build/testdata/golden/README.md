@@ -49,7 +49,7 @@ Regression-protection harness для strangler-fig порта (SPEC 045 phase 5.
 С dev-машины:
 ```bash
 TOKEN=$(jq -r '.debug_api_token' /Applications/singbox-launcher.app/Contents/MacOS/bin/settings.json)
-curl -sH "Authorization: Bearer $TOKEN" http://127.0.0.1:9269/debug/snapshot \
+curl -sH "Authorization: Bearer $TOKEN" http://127.0.0.1:9263/debug/snapshot \
   > /tmp/snap.json
 DST=core/build/testdata/golden/<scenario>
 mkdir -p "$DST"

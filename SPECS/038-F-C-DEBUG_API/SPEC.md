@@ -48,7 +48,7 @@
 - Новые поля в `bin/settings.json`:
   - `debug_api_enabled bool omitempty` — пользовательский выключатель.
   - `debug_api_token string omitempty` — Bearer-токен. Генерируется при первом `debug_api_enabled = true`, сохраняется между off/on (чтобы скрипты не ломались при rotate). Ротация — только через ручное удаление поля в `settings.json`.
-  - `debug_api_port int omitempty` — порт. `0` / отсутствует → `DefaultPort = 9269` (совпадает с LxBox мобильным).
+  - `debug_api_port int omitempty` — порт. `0` / отсутствует → `DefaultPort = 9263`. Десктоп изначально использовал 9269 (LxBox мобильный), но был перенесён на 9263, чтобы на одном хосте мобильный (через `adb forward`) и десктопный API могли жить параллельно без `address in use`.
 
 ### 2.3 Endpoints (v1)
 
@@ -103,7 +103,7 @@
 - **Заголовок:** `locale.T("diag.debug_api_title")` — жирный.
 - **Хинт:** `locale.T("diag.debug_api_hint")` — multi-line, `TextWrapWord` (иначе пинает ширину окна).
 - **Строка действий:** `[Enable ☐] [Copy token 📋]` в HBox.
-- **Статус-строка:** «Status: Off» / «Status: Listening on 127.0.0.1:9269» — обновляется на toggle.
+- **Статус-строка:** «Status: Off» / «Status: Listening on 127.0.0.1:9263» — обновляется на toggle.
 
 Toggle:
 1. OFF → ON: если `DebugAPIToken == ""`, генерируется через `debugapi.GenerateToken()` и сохраняется. Затем `StartDebugAPI(port, token)`. При ошибке — чекбокс откатывается в OFF, сохраняется OFF в settings.
@@ -215,6 +215,6 @@ Copy-token:
 
 ### 8.3 Ручной
 
-- Включить в UI → `curl http://127.0.0.1:9269/ping` → `{"ok":true}`.
-- `curl -H "Authorization: Bearer <token>" http://127.0.0.1:9269/state` → JSON со state'ом.
-- `curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:9269/action/ping-all` → `{"ok":true}`, в UI отрабатывает ping-all.
+- Включить в UI → `curl http://127.0.0.1:9263/ping` → `{"ok":true}`.
+- `curl -H "Authorization: Bearer <token>" http://127.0.0.1:9263/state` → JSON со state'ом.
+- `curl -X POST -H "Authorization: Bearer <token>" http://127.0.0.1:9263/action/ping-all` → `{"ok":true}`, в UI отрабатывает ping-all.

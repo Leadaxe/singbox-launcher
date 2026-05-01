@@ -35,7 +35,7 @@
 
 - `Settings.DebugAPIEnabled bool json:"debug_api_enabled,omitempty"`
 - `Settings.DebugAPIToken string json:"debug_api_token,omitempty"`
-- `Settings.DebugAPIPort int json:"debug_api_port,omitempty"` (0 = default 9269)
+- `Settings.DebugAPIPort int json:"debug_api_port,omitempty"` (0 = default 9263; ранее был 9269, изменено чтобы LxBox мобильный + десктоп могли жить рядом)
 
 ## 6. Startup
 

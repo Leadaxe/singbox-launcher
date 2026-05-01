@@ -33,9 +33,10 @@ import (
 	"singbox-launcher/internal/debuglog"
 )
 
-// DefaultPort matches LxBox spec 031 so scripts already written against
-// mobile work unchanged when pointed at the desktop.
-const DefaultPort = 9269
+// DefaultPort — desktop debug-API default. Mobile LxBox uses 9269; we
+// chose a separate port so a single host can run both in parallel
+// without `lsof: address in use`.
+const DefaultPort = 9263
 
 // ControllerFacade is the narrow surface the debug-api needs from the
 // singleton AppController. Declared here (not in core) to keep debugapi

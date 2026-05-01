@@ -32,7 +32,7 @@ type Settings struct {
 	// после connect перегружал TUN-стек и подвешивал игры. См. SPEC 039 §1.3.
 	AutoPingAfterConnectMaxProxies int `json:"auto_ping_after_connect_max_proxies,omitempty"`
 	// DebugAPIEnabled — пользователь явно включил локальный HTTP debug-API
-	// (127.0.0.1:9269 по умолчанию). Off by default.
+	// (127.0.0.1:9263 по умолчанию). Off by default.
 	DebugAPIEnabled bool `json:"debug_api_enabled,omitempty"`
 	// DebugAPIToken — Bearer-токен для debug-API. Генерируется при первом
 	// включении, больше не меняется (кроме явной регенерации через UI).
