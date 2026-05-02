@@ -576,6 +576,53 @@ func refreshOneSubscriptionSource(src *state.Source, defaults state.Defaults, su
 	return true
 }
 
+// RefreshSourceInPlace — SPEC 052 phase 7 cold-start path: fetch+raw+meta для
+// одного source, переданного по pointer'у из in-memory wizard model. Не делает
+// state.Load и не пишет state.json — caller (Wizard) сам решает, когда
+// persist'ить через свой Save flow. Это даёт корректный UX в трёх сценариях:
+//
+//  1. Cold start, state.json ещё нет (свежая инсталляция, шаблон с дефолтными
+//     URL'ами в model). Refresh должен работать без принуждения к Save.
+//  2. Существующий state, пользователь добавил новый URL и сразу кликнул
+//     Refresh — fetch на in-memory URL, не на старый из state.json.
+//  3. Пользователь редактирует URL существующего source и кликает Refresh —
+//     то же самое, актуальный URL побеждает.
+//
+// Что трогаем на диске: только bin/subscriptions/<id>.raw (atomic .tmp+Rename).
+// Это per-source файл, конфликта с state.json нет.
+//
+// Concurrency: SubscriptionMu НЕ берётся — мы не модифицируем state.json. Если
+// одновременно сработает heartbeat / manual Update, они работают со state.json
+// со своей версией Source — наш in-memory pointer им не виден. UI button-state
+// блокирует двойной клик по той же row.
+//
+// Возвращает (changed, err): changed=true если src.Meta изменился (caller
+// должен пере-рендерить row); err — fetch/write ошибки.
+func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) {
+	if src == nil {
+		return false, fmt.Errorf("RefreshSourceInPlace: nil source")
+	}
+	if src.Type != state.SourceTypeSubscription {
+		return false, fmt.Errorf("source %s is not a subscription (type=%q)", src.ID, src.Type)
+	}
+	if src.URL == "" {
+		return false, fmt.Errorf("source %s has empty URL", src.ID)
+	}
+	execDir := svc.ac.FileService.ExecDir
+	subsDir := platform.GetSubscriptionsDir(execDir)
+
+	// Defaults для MaxNodes truncation: пытаемся прочитать из state.json,
+	// если он есть. Иначе refreshOneSubscriptionSource fallback'нется на
+	// v5.DefaultMaxNodes — нормально для cold-start.
+	var defaults state.Defaults
+	if s, err := state.Load(platform.GetWizardStatePath(execDir)); err == nil {
+		defaults = s.Connections.Defaults
+	}
+
+	changed := refreshOneSubscriptionSource(src, defaults, subsDir)
+	return changed, nil
+}
+
 // RefreshSingleSubscription — SPEC 052 phase 7: per-source manual refresh,
 // триггеренный из UI (кнопка Refresh per row). Делает fetch+meta+raw для
 // одного source, обновляет state.json (atomic).

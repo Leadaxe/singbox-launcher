@@ -18,9 +18,16 @@ type ConfigService interface {
 	GenerateOutboundsFromParserConfig(parserConfig *config.ParserConfig, tagCounts map[string]int, progressCallback func(float64, string)) (*config.OutboundGenerationResult, error)
 
 	// RefreshSingleSubscription — SPEC 052 phase 7: триггерит fetch+meta+raw
-	// для одного source по ID, обновляет state.json. Используется кнопкой
-	// «Refresh» в UI визарда per-row.
+	// для одного source по ID. Делает state.Load+Save — требует
+	// существующего state.json. Используется auto-update heartbeat'ом и
+	// VPN-event retry'ями (там state всегда уже есть).
 	RefreshSingleSubscription(sourceID string) (*corestate.Source, error)
+
+	// RefreshSourceInPlace — cold-start path: fetch+raw+meta для in-memory
+	// Source pointer'а, без обращения к state.json. Используется UI Refresh
+	// button'ом, чтобы работало на свежей инсталляции (без state.json) или
+	// на не-сохранённых правках в визарде.
+	RefreshSourceInPlace(src *corestate.Source) (bool, error)
 }
 
 // FileServiceInterface предоставляет доступ к путям конфигурации и sing-box.

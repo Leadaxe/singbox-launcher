@@ -36,3 +36,9 @@ func (a *ConfigServiceAdapter) GenerateOutboundsFromParserConfig(parserConfig *c
 func (a *ConfigServiceAdapter) RefreshSingleSubscription(sourceID string) (*corestate.Source, error) {
 	return a.CoreConfigService.RefreshSingleSubscription(sourceID)
 }
+
+// RefreshSourceInPlace — proxy в core.ConfigService. Cold-start path для
+// UI Refresh button'а; не требует state.json на диске.
+func (a *ConfigServiceAdapter) RefreshSourceInPlace(src *corestate.Source) (bool, error) {
+	return a.CoreConfigService.RefreshSourceInPlace(src)
+}
