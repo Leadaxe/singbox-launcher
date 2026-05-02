@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 	"image/color"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -116,7 +117,15 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 	selectorOptions, defaultSelector, err := config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
 	if err != nil {
-		debuglog.ErrorLog("clash_api_tab: failed to get selector groups: %v", err)
+		// Cold-start: config.json ещё не существует (пользователь не нажал
+		// Save). Сваливаемся на "proxy-out" дефолт ниже — не повод писать
+		// ERROR. На любую другую ошибку (битый JSON, нет experimental.clash_api)
+		// логируем громко.
+		if os.IsNotExist(err) {
+			debuglog.DebugLog("clash_api_tab: config.json not present yet (cold start): %v", err)
+		} else {
+			debuglog.ErrorLog("clash_api_tab: failed to get selector groups: %v", err)
+		}
 	}
 	if len(selectorOptions) == 0 {
 		selectorOptions = []string{"proxy-out"}
@@ -1200,7 +1209,11 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 				// Fallback: перечитываем из конфига, если groupSelect еще не инициализирован
 				updatedOptions, _, err := config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
 				if err != nil {
-					debuglog.ErrorLog("clash_api_tab: failed to get selector groups for popup: %v", err)
+					if os.IsNotExist(err) {
+						debuglog.DebugLog("clash_api_tab: config.json not present yet (popup): %v", err)
+					} else {
+						debuglog.ErrorLog("clash_api_tab: failed to get selector groups for popup: %v", err)
+					}
 					currentSelectorOptions = selectorOptions // Используем старый список как fallback
 				} else if len(updatedOptions) > 0 {
 					currentSelectorOptions = updatedOptions

@@ -30,6 +30,7 @@
 package configurator
 
 import (
+	"encoding/json"
 	"fmt"
 	"image/color"
 	"path/filepath"
@@ -43,6 +44,7 @@ import (
 	fynetooltip "github.com/dweymouth/fyne-tooltip"
 
 	"singbox-launcher/core"
+	"singbox-launcher/core/config"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/debuglog"
@@ -186,6 +188,20 @@ func loadConfigFromFile(presenter *wizardpresentation.WizardPresenter, fileServi
 	if loadedConfig {
 		model.ParserConfigJSON = parserConfigJSON
 		model.SourceURLs = sourceURLs
+		// SPEC 052 fix: ParserConfigJSON это derived view; canonical для
+		// outbounds — model.GlobalOutbounds. Если оставить пустым, на первом
+		// Save в state.json уедут пустые connections.outbounds, и Rebuild
+		// сгенерирует config.json без proxy-out / auto-proxy-out / других
+		// селекторов из шаблона — sing-box упадёт с FATAL "default outbound
+		// not found: proxy-out". Парсим JSON один раз, копируем outbounds
+		// в canonical place.
+		var parsed config.ParserConfig
+		if err := json.Unmarshal([]byte(parserConfigJSON), &parsed); err != nil {
+			debuglog.WarnLog("loadConfigFromFile: failed to parse template parser_config for GlobalOutbounds seed: %v", err)
+		} else {
+			model.GlobalOutbounds = append([]config.OutboundConfig(nil), parsed.ParserConfig.Outbounds...)
+			debuglog.InfoLog("loadConfigFromFile: seeded %d global outbounds from template", len(model.GlobalOutbounds))
+		}
 	} else {
 		// If we didn't load from template or config.json - show manual download dialog
 		if model.TemplateData == nil || model.TemplateData.ParserConfig == "" {

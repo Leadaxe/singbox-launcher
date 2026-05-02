@@ -55,7 +55,7 @@
   "core.dialog_update_close": "关闭",
   "core.button_download_from_github": "从 GitHub 下载",
   "core.config_not_found_title": "未找到配置",
-  "core.config_not_found_message": "⚠️ 未找到配置文件！\n\n文件 %s 缺失于 bin/ 文件夹。\n\n开始使用：\n1. 下载向导\n2. 使用向导生成配置文件\n3. 点击“启动”\n",
+  "core.config_not_found_message": "⚠️ 未找到配置文件！\n\n文件 %s 缺失于 bin/ 文件夹。\n\n开始使用：\n1. 打开 ⚙️ 配置器\n2. 在 Sources 标签添加订阅 URL 并点击 Save\n3. 在主面板点击 🔄 Update — 拉取订阅并生成配置\n4. 点击 Start\n",
   "core.already_running_app_title": "信息",
   "core.already_running_app_message": "应用已在运行。请使用现有实例，或在启动新实例前先关闭它。",
   "core.info_title": "信息",

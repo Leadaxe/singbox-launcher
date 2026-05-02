@@ -764,5 +764,11 @@ jobs:
             release-artifacts/singbox-launcher-${{ needs.meta.outputs.version }}-win64.zip
             release-artifacts/singbox-launcher-${{ needs.meta.outputs.version }}-win7-32.zip
             release-artifacts/checksums.txt
-          draft: true
+          # Publish immediately. RELEASE_PROCESS §1.6 / §2.4 promise the release is
+          # ready out of the box (no manual un-draft step). Historical default was
+          # `draft: true` from Feb 2026 when the release-notes pipeline was less
+          # trustworthy and a maintainer needed to eyeball the body before
+          # publishing. With per-version <slug>.md mandatory + the auto-banner for
+          # prereleases, that gate is no longer earning its keep.
+          draft: false
           prerelease: ${{ needs.meta.outputs.prerelease }}

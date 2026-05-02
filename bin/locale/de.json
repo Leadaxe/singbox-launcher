@@ -55,7 +55,7 @@
   "core.dialog_update_close": "Schließen",
   "core.button_download_from_github": "Von GitHub herunterladen",
   "core.config_not_found_title": "Konfiguration nicht gefunden",
-  "core.config_not_found_message": "⚠️ Konfigurationsdatei nicht gefunden!\n\nDie Datei %s fehlt im Ordner bin/.\n\nSo geht's los:\n1. Assistent herunterladen\n2. mit dem Assistenten eine Konfiguration erzeugen\n3. auf Starten klicken\n",
+  "core.config_not_found_message": "⚠️ Konfigurationsdatei nicht gefunden!\n\nDie Datei %s fehlt im Ordner bin/.\n\nSo geht's los:\n1. ⚙️ Konfigurator öffnen\n2. Abo-URLs im Tab «Sources» eingeben und «Save» klicken\n3. auf 🔄 Update im Dashboard klicken — Abos werden geholt und die Config gebaut\n4. Start drücken\n",
   "core.already_running_app_title": "Information",
   "core.already_running_app_message": "Die Anwendung läuft bereits. Nutze die vorhandene Instanz oder schließe sie, bevor du eine neue startest.",
   "core.info_title": "Info",

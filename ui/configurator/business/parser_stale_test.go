@@ -41,6 +41,11 @@ func (m *blockingGenMock) RefreshSingleSubscription(string) (*corestate.Source, 
 	return nil, nil
 }
 
+// RefreshSourceInPlace — no-op stub (тесты parser_stale не используют per-source refresh).
+func (m *blockingGenMock) RefreshSourceInPlace(*corestate.Source) (bool, error) {
+	return false, nil
+}
+
 const staleTestJSONA = `{"ParserConfig":{"version":1,"proxies":[{"source":"https://example.com/a"}],"outbounds":[]}}`
 const staleTestJSONB = `{"ParserConfig":{"version":1,"proxies":[{"source":"https://example.org/b"}],"outbounds":[]}}`
 

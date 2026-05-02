@@ -275,6 +275,22 @@ func (p *WizardPresenter) restoreParserConfig(stateFile *wizardmodels.WizardStat
 		p.model.GlobalOutbounds = []configtypes.OutboundConfig{}
 	}
 
+	// Heal-on-empty: state.json мог быть сохранён (баг до v0.9.0.1) с пустыми
+	// connections.outbounds — Rebuild сгенерирует config.json без proxy-out /
+	// auto-proxy-out селекторов, sing-box упадёт FATAL "default outbound not
+	// found: proxy-out". Если state пустой, заполняем из template (как делает
+	// loader.go LoadConfigFromFile на cold-start). Не трогаем не-пустой
+	// state — пользователь мог явно отредактировать список.
+	if len(p.model.GlobalOutbounds) == 0 && p.model.TemplateData != nil && p.model.TemplateData.ParserConfig != "" {
+		var parsed configtypes.ParserConfig
+		if err := json.Unmarshal([]byte(p.model.TemplateData.ParserConfig), &parsed); err != nil {
+			debuglog.WarnLog("restoreParserConfig: heal-empty: failed to parse template parser_config: %v", err)
+		} else if len(parsed.ParserConfig.Outbounds) > 0 {
+			p.model.GlobalOutbounds = append([]configtypes.OutboundConfig(nil), parsed.ParserConfig.Outbounds...)
+			debuglog.InfoLog("restoreParserConfig: heal-empty: seeded %d global outbounds from template (state had empty connections.outbounds)", len(p.model.GlobalOutbounds))
+		}
+	}
+
 	// Refresh derived view (ParserConfig + ParserConfigJSON) для UI.
 	p.model.RefreshDerivedParserConfig()
 	wizardbusiness.InvalidatePreviewCache(p.model)

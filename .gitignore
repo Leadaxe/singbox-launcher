@@ -30,6 +30,9 @@ rsrc.syso
 .vscode/
 .cursor/
 .cursor-worktree-backup/
+# Claude Code session state — runtime locks, schedules, transcripts.
+# Lives in repo root for convenience but is per-machine, never shared.
+.claude/
 *.swp
 *.swo
 *~

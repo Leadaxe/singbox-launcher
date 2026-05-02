@@ -55,7 +55,7 @@
   "core.dialog_update_close": "Fechar",
   "core.button_download_from_github": "Baixar do GitHub",
   "core.config_not_found_title": "Configuração não encontrada",
-  "core.config_not_found_message": "⚠️ Arquivo de configuração não encontrado!\n\nO arquivo %s está faltando na pasta bin/.\n\nPara começar:\n1. baixe o Assistente\n2. use o Assistente para gerar um arquivo de configuração\n3. pressione Iniciar\n",
+  "core.config_not_found_message": "⚠️ Arquivo de configuração não encontrado!\n\nO arquivo %s está faltando na pasta bin/.\n\nPara começar:\n1. abra o ⚙️ Configurador\n2. adicione URLs de assinatura na aba Sources e clique em Save\n3. clique em 🔄 Update no painel — assinaturas são baixadas e a config gerada\n4. pressione Start\n",
   "core.already_running_app_title": "Informação",
   "core.already_running_app_message": "O aplicativo já está em execução. Use a instância existente ou feche-a antes de iniciar uma nova.",
   "core.info_title": "Info",

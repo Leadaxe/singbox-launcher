@@ -741,17 +741,48 @@ func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 }
 
 // refreshOneSourceFromUI — SPEC 052 phase 7: per-source Refresh button click handler.
-// Запускает ConfigService.RefreshSingleSubscription в фоне, по успеху обновляет
-// model.Sources (свежая meta), пере-рендерит список. Все UI-update'ы — через
-// presenter.UpdateUI.
+//
+// Использует RefreshSourceInPlace (in-memory path) вместо
+// RefreshSingleSubscription (state.json path), чтобы Refresh работал на cold
+// start — когда state.json ещё нет, потому что пользователь не нажимал Save.
+// Каноничный Source хранится в model; refresh fetch'ит, пишет .raw на диск,
+// и обновляет Meta в нашей snapshot-копии. На UI thread snapshot ассайнится
+// обратно в model. State.json не трогается — он запишется при следующем Save
+// пользователем (теперь уже со свежей Meta).
+//
+// Race protection: snapshot источника берётся на UI thread (включая deep-copy
+// Meta), goroutine мутирует свою копию, на UI thread snapshot переезжает в
+// model. Параллельный Add нового source не разваливается — slice может
+// reallocate'нуться, мы по ID находим место заново.
 func refreshOneSourceFromUI(
 	presenter *wizardpresentation.WizardPresenter,
 	guiState *wizardpresentation.GUIState,
 	sourceID string,
 ) {
+	// UI thread: snapshot Source из model. Deep-copy Meta — иначе goroutine
+	// мутирует общий объект (refreshOneSubscriptionSource на failure-path
+	// дёргает src.Meta.X = ... через pointer).
+	m := presenter.Model()
+	var snapshot corestate.Source
+	found := false
+	for i := range m.Sources {
+		if m.Sources[i].ID == sourceID {
+			snapshot = m.Sources[i]
+			if snapshot.Meta != nil {
+				metaCopy := *snapshot.Meta
+				snapshot.Meta = &metaCopy
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		return
+	}
+
 	configService := presenter.ConfigServiceAdapter()
 	go func() {
-		updated, err := configService.RefreshSingleSubscription(sourceID)
+		_, err := configService.RefreshSourceInPlace(&snapshot)
 		presenter.UpdateUI(func() {
 			if err != nil {
 				if guiState != nil && guiState.Window != nil && fyne.CurrentApp() != nil {
@@ -761,14 +792,13 @@ func refreshOneSourceFromUI(
 				}
 				return
 			}
-			// Replace the matching Source in model.Sources to reflect new Meta.
-			if updated != nil {
-				m := presenter.Model()
-				for i := range m.Sources {
-					if m.Sources[i].ID == updated.ID {
-						m.Sources[i] = *updated
-						break
-					}
+			// Snapshot обратно в model. Slice мог reallocate'нуться (Add /
+			// Del между snapshot-таймом и сейчас), поэтому ищем по ID заново.
+			m := presenter.Model()
+			for i := range m.Sources {
+				if m.Sources[i].ID == sourceID {
+					m.Sources[i] = snapshot
+					break
 				}
 			}
 			if guiState != nil && guiState.RefreshSourcesList != nil {
@@ -779,8 +809,10 @@ func refreshOneSourceFromUI(
 					locale.T("wizard.source.button_refresh_one"),
 					locale.T("wizard.source.refresh_succeeded"))
 			}
-			// Mark dirty: meta пишется в state.json напрямую refreshOneSubscriptionSource;
-			// presenter не должен помечать UI-changes (это не пользовательский edit).
+			// Mark dirty: model.Sources[].Meta изменился, при следующем Save
+			// эти изменения уедут в state.json. Это пользовательский edit-ish
+			// — даём ему dirty marker, чтобы Save-кнопка светилась.
+			presenter.MarkAsChanged()
 		})
 	}()
 }

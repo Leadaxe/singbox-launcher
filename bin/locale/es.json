@@ -55,7 +55,7 @@
   "core.dialog_update_close": "Cerrar",
   "core.button_download_from_github": "Descargar desde GitHub",
   "core.config_not_found_title": "Configuración no encontrada",
-  "core.config_not_found_message": "⚠️ ¡Archivo de configuración no encontrado!\n\nEl archivo %s falta en la carpeta bin.\n\nPara comenzar:\n1. descargar Asistente\n2. usar el Asistente para generar un archivo de configuración\n3. presionar Iniciar\n",
+  "core.config_not_found_message": "⚠️ ¡Archivo de configuración no encontrado!\n\nEl archivo %s falta en la carpeta bin.\n\nPara comenzar:\n1. abrir ⚙️ Configurador\n2. añadir URLs de suscripción en la pestaña Sources y pulsar Save\n3. pulsar 🔄 Update en el panel — se descargan las suscripciones y se construye la config\n4. pulsar Start\n",
   "core.already_running_app_title": "Información",
   "core.already_running_app_message": "La aplicación ya está en ejecución. Usa la instancia existente o ciérrala antes de iniciar una nueva.",
   "core.info_title": "Info",

@@ -29,7 +29,16 @@ var ErrPlatformInterrupt = errors.New("platform: interrupt")
 func LoadClashAPIConfig(configPath string) (baseURL, token string, err error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		debuglog.ErrorLog("LoadClashAPIConfig: Failed to read config.json: %v", err)
+		// Cold-start logging: на свежей инсталляции config.json ещё не существует
+		// (пользователь не нажал Save → не пересобирали через RunParser). Это не
+		// ошибка приложения, а ожидаемое первое-запуск состояние. Логируем как
+		// DEBUG, чтобы не пугать пользователя красным ERROR в логах. Все callers
+		// обрабатывают возвращаемую error как «нет clash API» и продолжают работу.
+		if os.IsNotExist(err) {
+			debuglog.DebugLog("LoadClashAPIConfig: config.json not present yet (cold start): %v", err)
+		} else {
+			debuglog.ErrorLog("LoadClashAPIConfig: Failed to read config.json: %v", err)
+		}
 		return "", "", fmt.Errorf("failed to read config.json: %w", err)
 	}
 	cleanData := jsonc.ToJSON(data)

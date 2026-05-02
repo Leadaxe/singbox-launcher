@@ -55,7 +55,7 @@
   "core.dialog_update_close": "Chiudi",
   "core.button_download_from_github": "Scarica da GitHub",
   "core.config_not_found_title": "Configurazione non trovata",
-  "core.config_not_found_message": "⚠️ File di configurazione non trovato!\n\nIl file %s manca nella cartella bin/.\n\nPer iniziare:\n1. scarica la Procedura guidata\n2. usa la Procedura guidata per generare una configurazione\n3. premi Avvia\n",
+  "core.config_not_found_message": "⚠️ File di configurazione non trovato!\n\nIl file %s manca nella cartella bin/.\n\nPer iniziare:\n1. apri il ⚙️ Configuratore\n2. aggiungi gli URL di abbonamento nella scheda Sources e premi Save\n3. clicca su 🔄 Update nel pannello — gli abbonamenti vengono scaricati e la config compilata\n4. premi Start\n",
   "core.already_running_app_title": "Informazione",
   "core.already_running_app_message": "L'applicazione è già in esecuzione. Usa l'istanza esistente o chiudila prima di avviarne una nuova.",
   "core.info_title": "Informazioni",

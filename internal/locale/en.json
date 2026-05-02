@@ -77,7 +77,7 @@
   "core.dialog_update_close": "Close",
   "core.button_download_from_github": "Download from GitHub",
   "core.config_not_found_title": "Configuration Not Found",
-  "core.config_not_found_message": "⚠️ Configuration file not found!\n\nThe file %s is missing from the bin/ folder.\n\nTo get started:\n1. download Wizard\n2. use Wizard to generate a configuration file\n3. press Start\n",
+  "core.config_not_found_message": "⚠️ Configuration file not found!\n\nThe file %s is missing from the bin/ folder.\n\nTo get started:\n1. open ⚙️ Configurator\n2. add subscription URLs in the Sources tab and click Save\n3. click 🔄 Update on this dashboard to fetch and build config\n4. press Start\n",
   "core.already_running_app_title": "Information",
   "core.already_running_app_message": "The application is already running. Use the existing instance or close it before starting a new one.",
   "core.info_title": "Info",
