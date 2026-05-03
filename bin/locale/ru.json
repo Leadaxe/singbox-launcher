@@ -629,8 +629,6 @@
   "core.restart_menu_full_hint": "Собрать config и kill+restart процесса",
   "core.restart_menu_full_when_stopped": "Пересобрать и запустить sing-box",
   "wizard.source.button_refresh_tooltip": "Заново скачать URL'ы подписок и пересобрать config.json (Cmd/Ctrl+U тоже работает)",
-  "core.button_update_rebuild_tooltip": "Обновить подписки и сразу пересобрать config",
-  "core.update_autorebuild_label": "Автопересборка при изменениях",
   "core.state_select_placeholder": "Сменить state…",
   "core.state_save_as_button": "💾 Сохранить state как…",
   "core.state_save_as_dialog_title": "Сохранить текущий state",

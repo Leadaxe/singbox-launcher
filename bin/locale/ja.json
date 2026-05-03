@@ -460,8 +460,6 @@
   "core.restart_menu_full_hint": "Rebuild config and kill+restart the running process",
   "core.restart_menu_full_when_stopped": "Rebuild & start sing-box",
   "wizard.source.button_refresh_tooltip": "Re-fetch subscription URLs over the network and rebuild config.json (Cmd/Ctrl+U also works)",
-  "core.button_update_rebuild_tooltip": "Refresh subscriptions and rebuild config in one click",
-  "core.update_autorebuild_label": "Auto rebuild on change",
   "core.state_select_placeholder": "Switch state…",
   "core.state_save_as_button": "💾 Save state as…",
   "core.state_save_as_dialog_title": "Save current state",
