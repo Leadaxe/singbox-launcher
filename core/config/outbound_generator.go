@@ -361,6 +361,38 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 			}
 			parts = append(parts, fmt.Sprintf(`"password":%s`, string(passwordJSON)))
 		}
+	} else if node.Scheme == "naive" && node.Outbound != nil {
+		// buildNaiveOutbound (node_parser_naive.go) populates username/password and
+		// optional quic / quic_congestion_control / extra_headers; emit them here so
+		// sing-box receives a complete naive outbound. Anonymous URIs (no userinfo)
+		// legitimately have neither username nor password — both are emitted only when set.
+		if username, ok := node.Outbound["username"].(string); ok && username != "" {
+			usernameJSON, err := json.Marshal(username)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal naive username: %w", err)
+			}
+			parts = append(parts, fmt.Sprintf(`"username":%s`, string(usernameJSON)))
+		}
+		if password, ok := node.Outbound["password"].(string); ok && password != "" {
+			passwordJSON, err := json.Marshal(password)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal naive password: %w", err)
+			}
+			parts = append(parts, fmt.Sprintf(`"password":%s`, string(passwordJSON)))
+		}
+		if quic, ok := node.Outbound["quic"].(bool); ok && quic {
+			parts = append(parts, `"quic":true`)
+			if cc, ok := node.Outbound["quic_congestion_control"].(string); ok && cc != "" {
+				parts = append(parts, fmt.Sprintf(`"quic_congestion_control":%s`, marshalJSONString(cc)))
+			}
+		}
+		if hdrs, ok := node.Outbound["extra_headers"].(map[string]interface{}); ok && len(hdrs) > 0 {
+			hdrJSON, err := json.Marshal(hdrs)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal naive extra_headers: %w", err)
+			}
+			parts = append(parts, fmt.Sprintf(`"extra_headers":%s`, string(hdrJSON)))
+		}
 	}
 
 	// 6. flow (if present) — use node.Outbound["flow"] when set so Xray-only values like
