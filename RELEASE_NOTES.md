@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v0.9.3
+
+Точечный релиз с одним фиксом: **NaïveProxy outbound'ы теперь авторизуются** ([#69](https://github.com/Leadaxe/singbox-launcher/issues/69), [PR #67](https://github.com/Leadaxe/singbox-launcher/pull/67)). На v0.8.8 — v0.9.2 `GenerateNodeJSON` не эмитил `username` / `password` / `quic` / `extra_headers` для naive — sing-box молча получал outbound без credentials и не подключался. Добавлен emit-блок по образцу vless/trojan/hysteria. Спасибо [@hippus](https://github.com/hippus) за отчёт и PR.
+
+**Полный список изменений:** [docs/release_notes/0-9-3.md](docs/release_notes/0-9-3.md).
+
+### Highlights (EN) — v0.9.3
+
+Single-fix point release: **NaïveProxy outbounds now actually authenticate** ([#69](https://github.com/Leadaxe/singbox-launcher/issues/69), [PR #67](https://github.com/Leadaxe/singbox-launcher/pull/67)). On v0.8.8 — v0.9.2, `GenerateNodeJSON` had no naive case-block — sing-box silently received a credential-less outbound and refused to connect. Adds the missing emit branch mirroring vless / trojan / hysteria patterns. Thanks to [@hippus](https://github.com/hippus) for the report and the PR.
+
+**Full changelog:** [docs/release_notes/0-9-3.md](docs/release_notes/0-9-3.md).
+
+---
+
 ### Выжимка (RU) — v0.9.2
 
 Hotfix-релиз. SRS rule-sets снова попадают в `config.json` только как `type: local` — восстановлено поведение v0.8.x, потерянное в v0.9.0/v0.9.1 рефакторе. На cold-start v0.9.x sing-box падал с `FATAL: start service: initialize rule-set ... v2ray-http-upgrade: unexpected status: 404` потому что пытался скачивать remote rule-sets через VPN-прокси. Build pipeline теперь эмитит local-only (с проверкой существования файла, error если нет), UI gate блокирует enable rule до успешного download. **Auto-rebuild после Save / Update**: убран toggle `Auto Rebuild on Change` и дублирующая кнопка `Refresh & Rebuild` — обычный Update делает оба прохода. **Content-addressed SRS tag** для user-added rules (`<filename>-<hash8(URL)>`), коллизии невозможны. **Orphan GC** для `bin/rule-sets/` после каждого rebuild с union тегов из всех `wizard_states/*.json`. Существующие сломанные установки лечатся автоматически на следующем Save.
