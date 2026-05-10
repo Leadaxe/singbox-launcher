@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v0.9.5
+
+Точечный фикс — продолжение чистки последствий двойного хранилища из SPEC 045/052. Configurator → Outbounds: добавление нового outbound со Scope ≠ "For All" или edit с переключением Scope теперь сохраняются при Save (раньше запись пропадала). Корень тот же что у v0.9.4 `route.final` — Outbounds tab был единственным surface, мутирующим legacy ParserConfig напрямую без обратной sync в canonical `Sources[i].Outbounds`. Аудит остальных tabs показал что больше дыр того же класса нет. Миграция не нужна — баг был строго на write-side, существующие state.json грузятся корректно. Спасибо Michael M за очередной точный репорт.
+
+**Полный список изменений:** [docs/release_notes/0-9-5.md](docs/release_notes/0-9-5.md).
+
+### Highlights (EN) — v0.9.5
+
+Single-fix point release — continuing cleanup of dual-storage residue from SPEC 045/052. Configurator → Outbounds: adding a new outbound with Scope ≠ "For All", or editing existing with a Scope switch, now persists on Save (previously vanished from list). Root cause same family as v0.9.4 `route.final` — Outbounds tab was the only surface mutating legacy ParserConfig directly without back-sync to canonical `Sources[i].Outbounds`. Audit of other tabs confirms no other dual-book patterns remain. No migration needed — the bug was strictly write-side, existing state.json files load fine. Thanks Michael M for another precise report.
+
+**Full changelog:** [docs/release_notes/0-9-5.md](docs/release_notes/0-9-5.md).
+
+---
+
 ### Выжимка (RU) — v0.9.4
 
 Два фикса. **`route.final` из Configurator → Rules → Final outbound теперь действительно применяется** — раньше выбор пользователя молча игнорировался и весь не-матченный трафик уходил через template-default `proxy-out` (репорт от Michael M). Корень: presenter писал в `config_params`, build pipeline имел TODO на чтение этого поля, плюс template хардкодил `final` вместо substitution `@route_final`. Унифицировано через template-var канал (как `dns_final`); существующие state.json мигрируются автоматически на первом Save. **Новый dropdown «TLS root certificate store»** в Configurator → Settings (System / Mozilla CA bundle / Chrome Root Store) — однокликовый escape от сломанного Windows cert store ([sing-box `certificate.store`](https://sing-box.sagernet.org/configuration/certificate/)). Default `system` сохраняет текущее поведение.

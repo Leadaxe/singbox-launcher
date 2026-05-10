@@ -688,10 +688,22 @@ func CreateOutboundsAndParserConfigTab(presenter *wizardpresentation.WizardPrese
 	onConfiguratorApply := func() {
 		m := presenter.Model()
 		// SPEC 052 phase 8: outbounds-configurator мутирует m.ParserConfig
-		// (legacy view); переносим назад в canonical GlobalOutbounds, потом
-		// re-derive ParserConfig (round-trip).
+		// (legacy view); переносим назад в canonical Sources/GlobalOutbounds,
+		// потом re-derive ParserConfig (round-trip).
 		if m.ParserConfig != nil {
 			m.GlobalOutbounds = append([]configtypes.OutboundConfig(nil), m.ParserConfig.ParserConfig.Outbounds...)
+			// Per-source outbounds: ParserConfig.Proxies[i] построен из
+			// m.Sources[i] через AsParserConfig (1:1 порядок), поэтому
+			// обратный sync безопасен по тому же индексу. Без этого правки
+			// в Outbounds tab при Scope ≠ "For All" терялись на Save —
+			// state.json пишет m.Sources[i].Outbounds, а они не обновлялись.
+			proxies := m.ParserConfig.ParserConfig.Proxies
+			for i := range m.Sources {
+				if i >= len(proxies) {
+					break
+				}
+				m.Sources[i].Outbounds = append([]configtypes.OutboundConfig(nil), proxies[i].Outbounds...)
+			}
 		}
 		m.RefreshDerivedParserConfig()
 		m.PreviewNeedsParse = true
