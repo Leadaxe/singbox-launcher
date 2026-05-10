@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v0.9.4
+
+Два фикса. **`route.final` из Configurator → Rules → Final outbound теперь действительно применяется** — раньше выбор пользователя молча игнорировался и весь не-матченный трафик уходил через template-default `proxy-out` (репорт от Michael M). Корень: presenter писал в `config_params`, build pipeline имел TODO на чтение этого поля, плюс template хардкодил `final` вместо substitution `@route_final`. Унифицировано через template-var канал (как `dns_final`); существующие state.json мигрируются автоматически на первом Save. **Новый dropdown «TLS root certificate store»** в Configurator → Settings (System / Mozilla CA bundle / Chrome Root Store) — однокликовый escape от сломанного Windows cert store ([sing-box `certificate.store`](https://sing-box.sagernet.org/configuration/certificate/)). Default `system` сохраняет текущее поведение.
+
+**Полный список изменений:** [docs/release_notes/0-9-4.md](docs/release_notes/0-9-4.md).
+
+### Highlights (EN) — v0.9.4
+
+Two fixes. **`route.final` from Configurator → Rules → Final outbound is now actually applied** — previously the user's choice was silently ignored and all unmatched traffic went via template default `proxy-out` (reported by Michael M). Root cause: presenter wrote to `config_params`, build pipeline had a TODO for reading it, plus the template hardcoded `final` instead of using `@route_final` substitution. Unified via the template-var channel (matching `dns_final`); existing state.json files migrate silently on first Save. **New «TLS root certificate store» dropdown** in Configurator → Settings (System / Mozilla CA bundle / Chrome Root Store) — one-click escape from broken Windows cert stores ([sing-box `certificate.store`](https://sing-box.sagernet.org/configuration/certificate/)). Default `system` keeps current behavior.
+
+**Full changelog:** [docs/release_notes/0-9-4.md](docs/release_notes/0-9-4.md).
+
+---
+
 ### Выжимка (RU) — v0.9.3
 
 Точечный релиз с одним фиксом: **NaïveProxy outbound'ы теперь авторизуются** ([#69](https://github.com/Leadaxe/singbox-launcher/issues/69), [PR #67](https://github.com/Leadaxe/singbox-launcher/pull/67)). На v0.8.8 — v0.9.2 `GenerateNodeJSON` не эмитил `username` / `password` / `quic` / `extra_headers` для naive — sing-box молча получал outbound без credentials и не подключался. Добавлен emit-блок по образцу vless/trojan/hysteria. Спасибо [@hippus](https://github.com/hippus) за отчёт и PR.
