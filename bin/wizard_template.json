@@ -173,6 +173,19 @@
       "title": "Auto-detect outbound interface",
       "tooltip": "sing-box route.auto_detect_interface: detect default interface for outbound; turn off if routing is wrong with multiple uplinks."
     },
+    {
+      "name": "cert_store",
+      "type": "enum",
+      "default_value": "system",
+      "options": [
+        { "title": "System (default — OS trust store)", "value": "system" },
+        { "title": "Mozilla CA bundle (built-in)", "value": "mozilla" },
+        { "title": "Chrome Root Store (built-in)", "value": "chrome" }
+      ],
+      "wizard_ui": "edit",
+      "title": "TLS root certificate store",
+      "tooltip": "sing-box certificate.store — which CA bundle to trust for outbound TLS validation. 'system' uses your OS cert store. 'mozilla' / 'chrome' use built-in bundles, useful when the OS store is broken (e.g. Windows updates not applied, or x509 'unknown authority' errors). 'none' disables CA validation entirely — only for testing. https://sing-box.sagernet.org/configuration/certificate/"
+    },
     {"separator": true},
     {
       "name": "urltest_url",
@@ -280,6 +293,14 @@
       "title": "Final",
       "tooltip": "sing-box config.dns.final (server tag).",
       "comment": "DNS tab only: config.dns.final (server tag)."
+    },
+    {
+      "name": "route_final",
+      "type": "text",
+      "default_value": "proxy-out",
+      "wizard_ui": "hidden",
+      "title": "Final outbound",
+      "tooltip": "sing-box config.route.final — the outbound used for any traffic that didn't match any rule. Edited via Configurator → Rules tab → 'Final outbound' dropdown (UI surface lives there because the available choices depend on the current outbound list, which is dynamic)."
     }
   ],
 
@@ -287,6 +308,9 @@
     "log": {
       "level": "@log_level",
       "timestamp": true
+    },
+    "certificate": {
+      "store": "@cert_store"
     },
     "dns": {
       "servers": [
@@ -321,7 +345,7 @@
       "rules": [
         { "protocol": "dns", "action": "hijack-dns" }
       ],
-      "final": "proxy-out",
+      "final": "@route_final",
       "auto_detect_interface": "@auto_detect_interface"
     },
     "experimental": {

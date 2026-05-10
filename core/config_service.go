@@ -360,9 +360,11 @@ func dnsConfigForUpdate(s *state.State) build.DNSConfig {
 }
 
 // routeConfigForUpdate — конвертит state.CustomRules в build.RouteConfig.
-// SelectedFinalOutbound и DefaultDomainResolver — позже, требуют доступа
-// к UI-state (model.SelectedFinalOutbound и проч.); для Update path шаблонные
-// дефолты обычно в порядке.
+//
+// `route.final` НЕ читается здесь: он подставляется на этапе
+// template-substitution через `@route_final` (state.vars["route_final"] →
+// template substituter → финальный config.json). MergeRouteSection видит
+// пустой FinalOutbound и оставляет уже-substituted шаблонное значение.
 func routeConfigForUpdate(s *state.State) build.RouteConfig {
 	rules := make([]build.RouteRule, 0, len(s.CustomRules))
 	for _, cr := range s.CustomRules {
