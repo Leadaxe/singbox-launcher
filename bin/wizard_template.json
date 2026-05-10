@@ -293,6 +293,14 @@
       "title": "Final",
       "tooltip": "sing-box config.dns.final (server tag).",
       "comment": "DNS tab only: config.dns.final (server tag)."
+    },
+    {
+      "name": "route_final",
+      "type": "text",
+      "default_value": "proxy-out",
+      "wizard_ui": "hidden",
+      "title": "Final outbound",
+      "tooltip": "sing-box config.route.final — the outbound used for any traffic that didn't match any rule. Edited via Configurator → Rules tab → 'Final outbound' dropdown (UI surface lives there because the available choices depend on the current outbound list, which is dynamic)."
     }
   ],
 
@@ -337,7 +345,7 @@
       "rules": [
         { "protocol": "dns", "action": "hijack-dns" }
       ],
-      "final": "proxy-out",
+      "final": "@route_final",
       "auto_detect_interface": "@auto_detect_interface"
     },
     "experimental": {

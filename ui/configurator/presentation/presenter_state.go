@@ -109,6 +109,17 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	}
 
 	if p.model.TemplateData != nil {
+		// Sync model.SelectedFinalOutbound → SettingsVars["route_final"] before
+		// emitting state.Vars. This is the canonical channel for `route.final`
+		// (template uses `"final": "@route_final"`); old config_params channel
+		// stays for backward-compat read on legacy state.json files but is no
+		// longer written.
+		if p.model.SelectedFinalOutbound != "" {
+			if p.model.SettingsVars == nil {
+				p.model.SettingsVars = make(map[string]string)
+			}
+			p.model.SettingsVars["route_final"] = p.model.SelectedFinalOutbound
+		}
 		for _, vd := range p.model.TemplateData.Vars {
 			if vd.Separator {
 				continue
@@ -123,26 +134,17 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 }
 
 // extractConfigParams извлекает параметры конфигурации из модели.
+//
+// Сейчас config_params не используется ни для одного параметра в новых
+// state.json: route.final мигрирован в state.vars["route_final"] (template
+// делает substitution через @route_final), DNS-параметры — в state.vars
+// тоже (dns_default_domain_resolver и т.п.).
+//
+// Поле остаётся в state schema для backward-compat чтения старых state.json
+// (см. restoreConfigParams) и для возможных будущих параметров, которые не
+// уложатся в template-vars модель.
 func (p *WizardPresenter) extractConfigParams() []wizardmodels.ConfigParam {
-	params := make([]wizardmodels.ConfigParam, 0)
-
-	// Добавляем route.final
-	if p.model.SelectedFinalOutbound != "" {
-		params = append(params, wizardmodels.ConfigParam{
-			Name:  "route.final",
-			Value: p.model.SelectedFinalOutbound,
-		})
-	} else if p.model.TemplateData != nil && p.model.TemplateData.DefaultFinal != "" {
-		// Используем значение по умолчанию из шаблона
-		params = append(params, wizardmodels.ConfigParam{
-			Name:  "route.final",
-			Value: p.model.TemplateData.DefaultFinal,
-		})
-	}
-
-	// route.default_domain_resolver — в state.vars (dns_default_domain_resolver), не в config_params.
-
-	return params
+	return []wizardmodels.ConfigParam{}
 }
 
 // SaveCurrentState сохраняет текущее состояние в state.json.
@@ -307,18 +309,15 @@ func (p *WizardPresenter) restoreCustomRules(persistedRules []wizardmodels.Persi
 }
 
 // restoreConfigParams восстанавливает config_params и vars в модель.
+//
+// route.final ищется в порядке приоритета:
+//  1. state.vars["route_final"] (canonical, новые state.json)
+//  2. state.config_params["route.final"] (legacy, для миграции v0.9.3-)
+//  3. template default (fallback, чистый старт)
+//
+// Это автоматически мигрирует старые state.json: при следующем Save запись
+// уйдёт в state.vars, а config_params останется чистым.
 func (p *WizardPresenter) restoreConfigParams(stateFile *wizardmodels.WizardStateFile) {
-	configParams := stateFile.ConfigParams
-	// Ищем route.final в параметрах
-	finalOutbound := p.findConfigParamValue(configParams, "route.final")
-
-	// Используем значение из параметров, если задано, иначе fallback на шаблон
-	if finalOutbound != "" {
-		p.model.SelectedFinalOutbound = finalOutbound
-	} else {
-		p.model.SelectedFinalOutbound = p.getDefaultFinalOutbound()
-	}
-
 	allowed := make(map[string]struct{})
 	if p.model.TemplateData != nil {
 		for _, vd := range p.model.TemplateData.Vars {
@@ -334,6 +333,18 @@ func (p *WizardPresenter) restoreConfigParams(stateFile *wizardmodels.WizardStat
 			continue // сироты: имя не из текущего шаблона (SPEC 032)
 		}
 		p.model.SettingsVars[x.Name] = x.Value // при дубликатах name в массиве JSON — последняя запись выигрывает
+	}
+
+	// route.final: vars[route_final] → legacy config_params[route.final] → template default.
+	if v, ok := p.model.SettingsVars["route_final"]; ok && v != "" {
+		p.model.SelectedFinalOutbound = v
+	} else if legacy := p.findConfigParamValue(stateFile.ConfigParams, "route.final"); legacy != "" {
+		p.model.SelectedFinalOutbound = legacy
+		// Eager-write into vars so the next save persists in canonical channel
+		// and the legacy config_params entry can be dropped.
+		p.model.SettingsVars["route_final"] = legacy
+	} else {
+		p.model.SelectedFinalOutbound = p.getDefaultFinalOutbound()
 	}
 }
 
