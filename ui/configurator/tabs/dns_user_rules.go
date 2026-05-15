@@ -69,6 +69,22 @@ func userDNSRulesSerialize(rules []map[string]interface{}) string {
 	return string(out)
 }
 
+// setUserDNSRulesText — пишет text и в model.DNSRulesText, и в legacy
+// hidden DNSRulesEntry виджет. Без второго на Save SyncGUIToModel перетёр
+// бы model.DNSRulesText стейлом старого виджета (entry не видим, но
+// `gs.DNSRulesEntry.Text` остаётся со значением load-time).
+func setUserDNSRulesText(presenter *wizardpresentation.WizardPresenter, text string) {
+	if presenter == nil {
+		return
+	}
+	if m := presenter.Model(); m != nil {
+		m.DNSRulesText = text
+	}
+	if gs := presenter.GUIState(); gs != nil && gs.DNSRulesEntry != nil {
+		gs.DNSRulesEntry.SetText(text)
+	}
+}
+
 // dnsRuleSummary — human-readable краткое описание rule для tile.
 // Берёт match-поля + server. Tooltip полный JSON.
 func dnsRuleSummary(rule map[string]interface{}) (title, tooltip string) {
@@ -158,7 +174,7 @@ func renderUserDNSRulesRows(
 						return
 					}
 					list = append(list[:idx], list[idx+1:]...)
-					presenter.Model().DNSRulesText = userDNSRulesSerialize(list)
+					setUserDNSRulesText(presenter, userDNSRulesSerialize(list))
 					presenter.MarkAsChanged()
 					if onChanged != nil {
 						onChanged()
@@ -310,8 +326,8 @@ func showEditUserDNSRuleDialog(
 	}
 	refreshJSON()
 
-	formTab := container.NewTabItem("Form", container.NewScroll(formContent))
-	jsonTab := container.NewTabItem("JSON", container.NewScroll(jsonEntry))
+	formTab := container.NewTabItem("Form", container.NewScroll(container.NewPadded(formContent)))
+	jsonTab := container.NewTabItem("JSON", container.NewScroll(container.NewPadded(jsonEntry)))
 	tabs := container.NewAppTabs(formTab, jsonTab)
 	tabs.OnSelected = func(t *container.TabItem) {
 		if t == jsonTab {
@@ -354,7 +370,7 @@ func showEditUserDNSRuleDialog(
 		} else {
 			current = append(current, finalRule)
 		}
-		presenter.Model().DNSRulesText = userDNSRulesSerialize(current)
+		setUserDNSRulesText(presenter, userDNSRulesSerialize(current))
 		presenter.MarkAsChanged()
 		editWin.Close()
 		if onChanged != nil {

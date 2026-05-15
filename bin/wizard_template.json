@@ -326,7 +326,6 @@
         }
       ],
       "rules": [
-        { "server": "direct_dns_resolver" }
       ],
       "final": "@dns_final",
       "strategy": "@dns_strategy",
