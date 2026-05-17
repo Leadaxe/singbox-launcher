@@ -468,7 +468,7 @@
     {
       "id": "russian",
       "label": "Russian domains & IPs",
-      "description": "Route Russian TLDs (.ru/.su/IDN), service CDNs (Yandex/VK/Avito/2GIS/banks/etc) and Russian IP ranges directly.",
+      "description": "Route Russian TLDs (.ru/.su/IDN), service CDNs (Yandex/VK/Avito/2GIS/banks/etc) and Russian IP ranges directly. Also brings the 'ru VPN 🇷🇺' selector (RU proxies only) and adds an !RU filter to proxy-out/auto-proxy-out so Russian traffic doesn't accidentally exit through a Russian proxy when the main proxy group is used.",
       "vars": [
         { "name": "out", "type": "outbound", "default": "direct-out",
           "title": "Outbound",
@@ -540,6 +540,18 @@
           "title":       "Yandex DoT",
           "description": "Yandex Safe DoT (77.88.8.88:853, SNI safe.dot.dns.yandex.net).",
           "if": ["use_dns_override"] }
+      ],
+      "outbounds": [
+        { "mode": "update", "tag": "proxy-out",      "filters": { "tag": "!/(🇷🇺)/i" } },
+        { "mode": "update", "tag": "auto-proxy-out", "filters": { "tag": "!/(🇷🇺)/i" } },
+        {
+          "tag": "ru VPN 🇷🇺",
+          "type": "selector",
+          "options": { "default": "direct-out", "interrupt_exist_connections": true },
+          "filters": { "tag": "/(🇷🇺)/i" },
+          "addOutbounds": ["direct-out"],
+          "comment": "Proxy group for russian VPN (SPEC 055: emitted by russian preset; identical-shared with ru-inside if both enabled)"
+        }
       ],
       "rule":     { "rule_set": ["ru-domains", "ru-services", "geoip-ru"], "outbound": "@out" },
       "dns_rule": { "rule_set": ["ru-domains", "ru-services"], "server": "@dns_server", "if": ["use_dns_override"] }
