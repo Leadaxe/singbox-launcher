@@ -13,28 +13,15 @@
           "tolerance": "@urltest_tolerance",
           "interrupt_exist_connections": true
         },
-        "filters": { "tag": "!/(🇷🇺)/i" },
-        "comment": "Proxy automated group for everything that should go through VPN"
+        "comment": "Proxy automated group for everything that should go through VPN. SPEC 055: filters !RU moved into ru-inside preset (applied via mode=update when preset enabled)."
       },
       {
         "tag": "proxy-out",
         "wizard": { "required": 1 },
         "type": "selector",
         "options": { "interrupt_exist_connections": true, "default": "auto-proxy-out" },
-        "filters": { "tag": "!/(🇷🇺)/i" },
         "addOutbounds": ["direct-out", "auto-proxy-out"],
-        "comment": "Proxy group for everything that should go through VPN"
-      },
-      {
-        "tag": "ru VPN 🇷🇺",
-        "type": "selector",
-        "options": {
-          "default": "direct-out",
-          "interrupt_exist_connections": true
-        },
-        "filters": { "tag": "/(🇷🇺)/i" },
-        "addOutbounds": ["direct-out"],
-        "comment": "Proxy group for russian VPN"
+        "comment": "Proxy group for everything that should go through VPN. SPEC 055: filters !RU moved into ru-inside preset."
       },
       {
         "tag": "vpn ①",
@@ -560,13 +547,25 @@
     {
       "id": "ru-inside",
       "label": "Russia-only services",
-      "description": "Services available only inside Russia — direct (geosite-ru-available-only-inside).",
+      "description": "Services available only inside Russia — direct (geosite-ru-available-only-inside). Also brings the 'ru VPN 🇷🇺' selector (RU proxies only) and adds an !RU filter to proxy-out/auto-proxy-out so RU traffic goes through ru VPN, not the main proxy.",
       "vars": [
-        { "name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound" }
+        { "name": "out", "type": "outbound", "default": "ru VPN 🇷🇺", "title": "Outbound" }
       ],
       "rule_set": [
         { "tag": "ru-inside", "type": "remote", "format": "binary",
           "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-ru-available-only-inside.srs" }
+      ],
+      "outbounds": [
+        { "mode": "update", "tag": "proxy-out",      "filters": { "tag": "!/(🇷🇺)/i" } },
+        { "mode": "update", "tag": "auto-proxy-out", "filters": { "tag": "!/(🇷🇺)/i" } },
+        {
+          "tag": "ru VPN 🇷🇺",
+          "type": "selector",
+          "options": { "default": "direct-out", "interrupt_exist_connections": true },
+          "filters": { "tag": "/(🇷🇺)/i" },
+          "addOutbounds": ["direct-out"],
+          "comment": "Proxy group for russian VPN (SPEC 055: emitted by ru-inside preset)"
+        }
       ],
       "rule": { "rule_set": "ru-inside", "outbound": "@out" }
     },

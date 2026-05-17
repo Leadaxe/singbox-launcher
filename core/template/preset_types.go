@@ -57,6 +57,71 @@ type Preset struct {
 
 	// DNSRule — DNS-rule preset'а. Опциональный, имеет свой `if`.
 	DNSRule map[string]interface{} `json:"dns_rule,omitempty"`
+
+	// Outbounds — preset-emitted outbound groups (SPEC 055). Каждый элемент
+	// — либо новый outbound (mode="add", default), либо патч существующего
+	// (mode="update"). Tag user-facing, без префикса preset_id.
+	Outbounds []PresetOutbound `json:"outbounds,omitempty"`
+}
+
+// PresetOutbound — определение outbound внутри preset'а (SPEC 055).
+//
+// Mode семантика:
+//
+//	"add" (default) — новый outbound; tag-collision = first-wins + warning.
+//	"update"        — патч существующего outbound (из parser_config.outbounds
+//	                  или ранее-эмитнутого preset'ом).
+//
+// При update'е поля сливаются по правилам:
+//
+//	filters       → replace whole map
+//	addOutbounds  → union (append unique)
+//	options.*     → replace per-field только тех что заданы
+//	wizard.*      → replace per-field
+//	type          → запрещено менять (drop + warning)
+//	tag           → запрещено менять (drop)
+//	comment       → replace
+//
+// Tag НЕ префиксуется preset_id (в отличие от rule_set/dns_servers) —
+// outbounds это user-facing dropdown options, имена должны быть стабильны
+// и понятны пользователю (`ru VPN 🇷🇺`, не `ru-inside:ru VPN 🇷🇺`).
+type PresetOutbound struct {
+	// Mode — "add" (default if empty) | "update". Любое другое значение
+	// → loader warning, outbound пропускается.
+	Mode string `json:"mode,omitempty"`
+
+	// Tag — идентификатор outbound'а в финальном config.outbounds[].
+	Tag string `json:"tag"`
+
+	// Type — sing-box outbound type ("selector", "urltest", "shadowsocks",
+	// "direct", "http", "socks", "wireguard", "tor", ...). Required для
+	// mode="add". Для mode="update" должно быть пустым (иначе drop + warning).
+	Type string `json:"type,omitempty"`
+
+	// Options — outbound-type-specific опции (например {default, interrupt_exist_connections}
+	// для selector / urltest). Содержимое может содержать @var-плейсхолдеры
+	// для substitution через PresetVar.
+	Options map[string]interface{} `json:"options,omitempty"`
+
+	// Filters — фильтры для subscription proxies (например {"tag": "/(🇷🇺)/i"}).
+	// При mode="update" — replace whole filters map.
+	Filters map[string]interface{} `json:"filters,omitempty"`
+
+	// AddOutbounds — список outbound тегов которые добавляются в selector/urltest
+	// помимо отфильтрованных. При mode="update" — union с existing.
+	AddOutbounds []string `json:"addOutbounds,omitempty"`
+
+	// Comment — свободный комментарий (попадает в emit).
+	Comment string `json:"comment,omitempty"`
+
+	// Wizard — launcher-specific метаданные (wizard.required, ...).
+	// Не нативное sing-box поле, обрабатывается parser_config builder'ом.
+	Wizard map[string]interface{} `json:"wizard,omitempty"`
+
+	// If/IfOr — условный outbound (например только при включённой var).
+	// Семантика та же что для PresetRuleSet.If/IfOr.
+	If   []string `json:"if,omitempty"`
+	IfOr []string `json:"if_or,omitempty"`
 }
 
 // PresetVar — типизированная переменная preset'а.

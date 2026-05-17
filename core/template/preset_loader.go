@@ -168,7 +168,89 @@ func validatePreset(p *Preset, globalVars map[string]bool) ([]PresetWarning, boo
 		warns = append(warns, ws...)
 	}
 
+	// SPEC 055: outbounds validation
+	if ws := validatePresetOutbounds(p); len(ws) > 0 {
+		warns = append(warns, ws...)
+	}
+
 	return warns, true
+}
+
+// validatePresetOutbounds — SPEC 055. Проверки:
+//   - mode ∈ {"", "add", "update"}; пусто = "add". Иначе skip + warning.
+//   - tag non-empty.
+//   - mode="add" → type required.
+//   - mode="update" → type должен быть пустым (если задан → drop + warning).
+//   - Tag uniqueness ВНУТРИ preset'а (нельзя дважды объявить).
+//
+// In-place strip невалидных элементов в p.Outbounds.
+//
+// Cross-preset / preset-vs-globals tag collisions НЕ валидируются здесь —
+// loader не знает ни порядок enablement, ни глобальные tag'и. Это runtime
+// check в core/build/preset_merge.go::MergePresetsIntoOutbounds.
+func validatePresetOutbounds(p *Preset) []PresetWarning {
+	if len(p.Outbounds) == 0 {
+		return nil
+	}
+	var warns []PresetWarning
+	seen := make(map[string]bool, len(p.Outbounds))
+	kept := make([]PresetOutbound, 0, len(p.Outbounds))
+	for i := range p.Outbounds {
+		ob := p.Outbounds[i]
+		mode := ob.Mode
+		if mode == "" {
+			mode = "add"
+		}
+		if mode != "add" && mode != "update" {
+			warns = append(warns, PresetWarning{
+				PresetID: p.ID,
+				Message:  fmt.Sprintf("outbounds[%d] tag=%q: unknown mode %q (allowed: add, update) — entry skipped", i, ob.Tag, ob.Mode),
+				Action:   "strip",
+			})
+			continue
+		}
+		if ob.Tag == "" {
+			warns = append(warns, PresetWarning{
+				PresetID: p.ID,
+				Message:  fmt.Sprintf("outbounds[%d]: empty tag — entry skipped", i),
+				Action:   "strip",
+			})
+			continue
+		}
+		if mode == "add" && ob.Type == "" {
+			warns = append(warns, PresetWarning{
+				PresetID: p.ID,
+				Message:  fmt.Sprintf("outbounds[%d] tag=%q: mode=add requires 'type' — entry skipped", i, ob.Tag),
+				Action:   "strip",
+			})
+			continue
+		}
+		if mode == "update" && ob.Type != "" {
+			warns = append(warns, PresetWarning{
+				PresetID: p.ID,
+				Message:  fmt.Sprintf("outbounds[%d] tag=%q: mode=update cannot change 'type' — field will be dropped at build", i, ob.Tag),
+				Action:   "warn",
+			})
+			// Type оставляем — build pipeline сам отбросит при update.
+			// Здесь только warning, не strip.
+		}
+		if seen[ob.Tag] {
+			warns = append(warns, PresetWarning{
+				PresetID: p.ID,
+				Message:  fmt.Sprintf("outbounds[%d] tag=%q: duplicated within preset — entry skipped", i, ob.Tag),
+				Action:   "strip",
+			})
+			continue
+		}
+		seen[ob.Tag] = true
+		// Normalize mode для последующего использования (avoid empty string ambiguity).
+		if ob.Mode == "" {
+			ob.Mode = "add"
+		}
+		kept = append(kept, ob)
+	}
+	p.Outbounds = kept
+	return warns
 }
 
 // validateVarsNames — уникальность имён + collision с globals.

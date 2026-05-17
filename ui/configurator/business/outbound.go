@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 
+	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -88,12 +89,64 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 		}
 	}
 
+	// SPEC 055: добавляем preset-emitted outbound tags (mode=add) от active
+	// preset-ref'ов. Mode=update не вводит новых тегов — только патчит существующие.
+	for _, tag := range collectActivePresetOutboundTags(model) {
+		tags[tag] = struct{}{}
+	}
+
 	result := sortedOutboundTagSlice(tags)
 	if model.ParserConfig == nil && jsonKey != "" {
 		model.AvailableOutboundsMemoKey = jsonKey
 		model.AvailableOutboundsMemoTags = append([]string(nil), result...)
 	}
 	return result
+}
+
+// collectActivePresetOutboundTags — SPEC 055. Возвращает теги outbound'ов
+// которые **активные** preset-ref'ы добавляют (mode=add) в финальный config.
+// mode=update пропускается (он только патчит существующие, не добавляет тегов).
+//
+// Используется для UI outbound-picker'ов: юзер должен видеть `ru VPN 🇷🇺`
+// в dropdown'е только когда `ru-inside` preset enabled.
+//
+// Disabled preset-refs пропускаются. Сами теги НЕ префиксуются preset_id —
+// они user-facing (см. ExpandedOutbound.Tag в core/build/preset_expand.go).
+func collectActivePresetOutboundTags(model *wizardmodels.WizardModel) []string {
+	if model == nil || model.TemplateData == nil || len(model.PresetRefs) == 0 {
+		return nil
+	}
+	presetByID := make(map[string]int, len(model.TemplateData.Presets))
+	for i := range model.TemplateData.Presets {
+		presetByID[model.TemplateData.Presets[i].ID] = i
+	}
+	seen := make(map[string]bool)
+	var out []string
+	for _, pr := range model.PresetRefs {
+		if pr == nil || !pr.Enabled || pr.Ref == "" {
+			continue
+		}
+		idx, ok := presetByID[pr.Ref]
+		if !ok {
+			continue
+		}
+		tpl := &model.TemplateData.Presets[idx]
+		if len(tpl.Outbounds) == 0 {
+			continue
+		}
+		frags, _, ok := build.ExpandPreset(tpl, pr.Vars)
+		if !ok {
+			continue
+		}
+		for _, ob := range frags.Outbounds {
+			if ob.Mode != "add" || ob.Tag == "" || seen[ob.Tag] {
+				continue
+			}
+			seen[ob.Tag] = true
+			out = append(out, ob.Tag)
+		}
+	}
+	return out
 }
 
 func sortedOutboundTagSlice(tags map[string]struct{}) []string {

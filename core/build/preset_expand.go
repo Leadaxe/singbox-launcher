@@ -49,6 +49,19 @@ type PresetFragments struct {
 	// DNSServers — bundled DNS-серверы, отфильтрованные через @dns_server var.
 	// Только tag'и упомянутые в emit'ах попадают сюда. С префиксом `<preset_id>:`.
 	DNSServers []map[string]interface{}
+
+	// Outbounds — preset-emitted outbound entries (SPEC 055). Каждый имеет
+	// Mode и Body (готовый JSON-ready outbound dict после @var-substitution).
+	// Tag НЕ префиксуется preset_id — outbound'ы это user-facing global namespace.
+	// Mode семантика обрабатывается в MergePresetsIntoOutbounds (core/build/preset_merge.go).
+	Outbounds []ExpandedOutbound
+}
+
+// ExpandedOutbound — один outbound после ExpandPreset.
+type ExpandedOutbound struct {
+	Mode string                 // "add" | "update"
+	Tag  string                 // user-facing tag (без preset prefix)
+	Body map[string]interface{} // готовый dict — все @var resolved, if/if_or/mode уже stripped
 }
 
 // ExpandWarning — non-fatal предупреждение expansion engine'а.
@@ -234,6 +247,49 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string) (*PresetF
 		localTag, _ := m["tag"].(string)
 		m["tag"] = preset.ID + TagSeparator + localTag
 		frags.DNSServers = append(frags.DNSServers, m)
+	}
+
+	// === 7. SPEC 055: outbounds ===
+	// Tag НЕ префиксуется (user-facing). Substitute @var в options/filters/addOutbounds.
+	// Для mode=update drop'аем поле type (loader уже warned). Strip if/if_or/mode из Body.
+	for _, ob := range preset.Outbounds {
+		if !evalIf(ob.If, ob.IfOr, varsMap) {
+			continue
+		}
+		raw, err := deepCopy(ob)
+		if err != nil {
+			warnings = append(warnings, ExpandWarning{preset.ID,
+				fmt.Sprintf("deep copy outbound %q: %v", ob.Tag, err)})
+			continue
+		}
+		substituted, ok := substituteAny(raw, varsMap)
+		if !ok {
+			warnings = append(warnings, ExpandWarning{preset.ID,
+				fmt.Sprintf("unresolved @var in outbound %q", ob.Tag)})
+			return nil, warnings, false
+		}
+		m, _ := substituted.(map[string]interface{})
+		mode, _ := m["mode"].(string)
+		if mode == "" {
+			mode = "add"
+		}
+		tag, _ := m["tag"].(string)
+		if tag == "" {
+			continue
+		}
+		// Drop control / launcher-only fields из body — они не нужны merge'у.
+		delete(m, "mode")
+		delete(m, "if")
+		delete(m, "if_or")
+		// Для mode=update запретить смену type — loader уже warned.
+		if mode == "update" {
+			delete(m, "type")
+		}
+		frags.Outbounds = append(frags.Outbounds, ExpandedOutbound{
+			Mode: mode,
+			Tag:  tag,
+			Body: m,
+		})
 	}
 
 	return frags, warnings, true

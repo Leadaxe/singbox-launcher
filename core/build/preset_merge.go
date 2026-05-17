@@ -344,6 +344,63 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 	return out, nil
 }
 
+// CleanDanglingOutboundsInRouteRules — SPEC 055 cleanup pass. Применяется к
+// route.rules[] после того как MergePresetsIntoOutbounds уже определил финальный
+// набор tag'ов в config.outbounds. Если rule ссылается на outbound вне этого set
+// — fallback на routeFinal (или drop rule если final пустой).
+//
+// Вызывается из build.go ПОСЛЕ MergePresetsIntoOutbounds и ПОСЛЕ
+// MergePresetsIntoRoute (когда обе секции уже merged).
+func CleanDanglingOutboundsInRouteRules(routeRaw json.RawMessage, emittedOutboundTags map[string]bool, routeFinal string) (json.RawMessage, error) {
+	var route map[string]interface{}
+	if err := json.Unmarshal(routeRaw, &route); err != nil {
+		return routeRaw, nil // graceful — пропустим cleanup, лучше чем сломаться
+	}
+	rules, ok := route["rules"].([]interface{})
+	if !ok || len(rules) == 0 {
+		return routeRaw, nil
+	}
+	cleaned := make([]interface{}, 0, len(rules))
+	for _, r := range rules {
+		m, ok := r.(map[string]interface{})
+		if !ok {
+			cleaned = append(cleaned, r)
+			continue
+		}
+		patched := cleanDanglingOutboundRefInRule(m, emittedOutboundTags, routeFinal)
+		if patched == nil {
+			continue // drop
+		}
+		cleaned = append(cleaned, patched)
+	}
+	route["rules"] = cleaned
+	out, err := json.MarshalIndent(route, "", "  ")
+	if err != nil {
+		return routeRaw, nil
+	}
+	return out, nil
+}
+
+// CollectOutboundTagsFromRaw — извлекает tag'и из json.RawMessage outbounds-секции.
+// Используется для построения emittedOutboundTags set перед CleanDanglingOutboundsInRouteRules.
+func CollectOutboundTagsFromRaw(outboundsRaw json.RawMessage) map[string]bool {
+	tags := make(map[string]bool)
+	var arr []interface{}
+	if err := json.Unmarshal(outboundsRaw, &arr); err != nil {
+		return tags
+	}
+	for _, x := range arr {
+		m, ok := x.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if t, ok := m["tag"].(string); ok && t != "" {
+			tags[t] = true
+		}
+	}
+	return tags
+}
+
 // MergePresetsIntoDNS — дополняет dns-секцию template-overrides + bundled DNS
 // от active presets + extras.
 //
@@ -498,6 +555,227 @@ func CollectSrsCachedPaths(rules []v6.Rule, execDir string) map[string]string {
 		out[r.ID] = execDir + "/bin/rule-sets/" + r.ID + ".srs"
 	}
 	return out
+}
+
+// MergePresetsIntoOutbounds — SPEC 055. Применяет preset-emitted outbounds к
+// уже-собранной outbounds-секции (после resolveFilters / build base outbounds).
+//
+// Алгоритм:
+//  1. Парсит outboundsRaw → []map.
+//  2. Строит index tag→outbound, сохраняет original order.
+//  3. Обходит state.RulesV6 enabled preset-refs (RuleOrder в state определяет
+//     порядок применения update'ов; для add — fall-through).
+//  4. Для каждого preset → ExpandPreset → frags.Outbounds:
+//     - mode="add"    → если tag нет в index → append; если есть и identical → skip;
+//                       иначе → first-wins + warning, skip.
+//     - mode="update" → если tag нет → warning + skip; иначе applyOutboundUpdate.
+//  5. Re-marshal sorted by emitted order.
+//
+// Если ctx.RulesV6 не содержит enabled preset-ref'ов с outbounds → noop.
+func MergePresetsIntoOutbounds(outboundsRaw json.RawMessage, ctx PresetMergeContext) (json.RawMessage, error) {
+	if !hasAnyV6Rule(ctx.RulesV6) {
+		return outboundsRaw, nil
+	}
+
+	var outboundsList []interface{}
+	if err := json.Unmarshal(outboundsRaw, &outboundsList); err != nil {
+		return nil, fmt.Errorf("preset merge outbounds: parse: %w", err)
+	}
+
+	// Build index tag → outbound (mutable copies) + preserved order.
+	emitted := make(map[string]map[string]interface{}, len(outboundsList))
+	order := make([]string, 0, len(outboundsList))
+	for _, raw := range outboundsList {
+		m, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		tag, _ := m["tag"].(string)
+		if tag == "" {
+			continue
+		}
+		emitted[tag] = m
+		order = append(order, tag)
+	}
+
+	presetByID := make(map[string]*template.Preset, len(ctx.Presets))
+	for i := range ctx.Presets {
+		presetByID[ctx.Presets[i].ID] = &ctx.Presets[i]
+	}
+
+	for _, rule := range ctx.RulesV6 {
+		if !rule.Enabled || rule.Kind != v6.RuleKindPreset {
+			continue
+		}
+		preset, ok := presetByID[rule.Ref]
+		if !ok {
+			continue
+		}
+		if len(preset.Outbounds) == 0 {
+			continue
+		}
+		body, err := rule.DecodeBody()
+		if err != nil {
+			continue
+		}
+		pb := body.(*v6.PresetBody)
+		frags, _, ok := ExpandPreset(preset, pb.Vars)
+		if !ok {
+			continue
+		}
+		for _, ob := range frags.Outbounds {
+			switch ob.Mode {
+			case "add":
+				if existing, exists := emitted[ob.Tag]; exists {
+					if outboundBodiesIdentical(existing, ob.Body) {
+						continue
+					}
+					debuglog.WarnLog("preset merge outbounds: preset %q add tag %q already exists (first-wins, this add ignored)", preset.ID, ob.Tag)
+					continue
+				}
+				emitted[ob.Tag] = ob.Body
+				order = append(order, ob.Tag)
+			case "update":
+				existing, exists := emitted[ob.Tag]
+				if !exists {
+					debuglog.WarnLog("preset merge outbounds: preset %q update target %q not found in current outbounds (skipped)", preset.ID, ob.Tag)
+					continue
+				}
+				applyOutboundUpdate(existing, ob.Body, preset.ID)
+			}
+		}
+	}
+
+	// Re-build outbounds list in original order + new appends.
+	result := make([]interface{}, 0, len(order))
+	for _, tag := range order {
+		if m, ok := emitted[tag]; ok {
+			result = append(result, m)
+		}
+	}
+	out, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("preset merge outbounds: marshal: %w", err)
+	}
+	return out, nil
+}
+
+// applyOutboundUpdate патчит target по правилам SPEC 055 (in-place mutation):
+//
+//	filters       → replace whole map
+//	addOutbounds  → union (append unique)
+//	options.*     → replace per-field только тех что заданы в patch
+//	wizard.*      → replace per-field
+//	type          → drop (запрещено менять)
+//	tag           → drop (нельзя переименовать)
+//	comment       → replace
+//	прочие        → replace whole field
+func applyOutboundUpdate(target, patch map[string]interface{}, presetID string) {
+	for k, v := range patch {
+		switch k {
+		case "tag", "type":
+			// Запрещено менять — пропускаем. Type already dropped at expand time.
+		case "filters":
+			target["filters"] = v
+		case "addOutbounds":
+			target["addOutbounds"] = unionStringList(target["addOutbounds"], v)
+		case "options":
+			patchMap, _ := v.(map[string]interface{})
+			tgtMap, _ := target["options"].(map[string]interface{})
+			if tgtMap == nil {
+				tgtMap = map[string]interface{}{}
+			}
+			for pk, pv := range patchMap {
+				tgtMap[pk] = pv
+			}
+			target["options"] = tgtMap
+		case "wizard":
+			patchMap, _ := v.(map[string]interface{})
+			tgtMap, _ := target["wizard"].(map[string]interface{})
+			if tgtMap == nil {
+				tgtMap = map[string]interface{}{}
+			}
+			for pk, pv := range patchMap {
+				tgtMap[pk] = pv
+			}
+			target["wizard"] = tgtMap
+		default:
+			target[k] = v
+		}
+	}
+}
+
+// unionStringList объединяет existing []string и patch []string без дубликатов,
+// preserving order: сначала existing, потом новые из patch. Принимает interface{}
+// чтобы работать с JSON-decoded значениями ([]interface{}).
+func unionStringList(existing, patch interface{}) []interface{} {
+	seen := make(map[string]bool)
+	out := make([]interface{}, 0)
+	collect := func(v interface{}) {
+		arr, ok := v.([]interface{})
+		if !ok {
+			return
+		}
+		for _, x := range arr {
+			s, ok := x.(string)
+			if !ok || s == "" || seen[s] {
+				continue
+			}
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	collect(existing)
+	collect(patch)
+	return out
+}
+
+// outboundBodiesIdentical — true если два outbound body имеют одинаковый JSON-state
+// (для identical-skip при mode=add на same tag).
+func outboundBodiesIdentical(a, b map[string]interface{}) bool {
+	ja, err1 := json.Marshal(a)
+	jb, err2 := json.Marshal(b)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return string(ja) == string(jb)
+}
+
+// cleanDanglingOutboundRefInRule — если rule.outbound указывает на tag НЕ в
+// emittedTags → заменить на fallback (route.final). Если fallback пустой → return nil
+// (drop rule entirely).
+//
+// Используется в MergePresetsIntoRoute для cleanup'а после того как все preset
+// outbounds эмитнуты — если юзер сослался на tag preset'а который теперь
+// disabled/removed, rule не должен указывать на unknown outbound (sing-box
+// упадёт на validation).
+func cleanDanglingOutboundRefInRule(rule map[string]interface{}, emittedTags map[string]bool, fallback string) map[string]interface{} {
+	if rule == nil {
+		return nil
+	}
+	out, _ := rule["outbound"].(string)
+	if out == "" {
+		return rule // нет outbound ссылки — нечего чистить (action-based rule)
+	}
+	// reject/drop sentinels — это action, не outbound; legacy путь резолвит
+	// их через outboundutilApply. Но если sentinel попал в outbound поле
+	// напрямую — оставляем (sing-box обработает).
+	if out == "reject" || out == "drop" {
+		return rule
+	}
+	if emittedTags[out] {
+		return rule
+	}
+	debuglog.WarnLog("preset merge outbounds: rule references unknown outbound %q — fallback to %q", out, fallback)
+	if fallback == "" {
+		return nil // drop rule entirely
+	}
+	patched := make(map[string]interface{}, len(rule))
+	for k, v := range rule {
+		patched[k] = v
+	}
+	patched["outbound"] = fallback
+	return patched
 }
 
 // hasAnyV6Rule — true если в state.RulesV6 есть хоть один enabled rule

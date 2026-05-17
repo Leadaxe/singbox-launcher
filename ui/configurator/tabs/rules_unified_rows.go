@@ -191,6 +191,12 @@ func buildSinglePresetRefRow(
 		// enable toggle (renderPresetBundledDNSRows пропускает !pr.Enabled).
 		// Без RefreshDNSListAndSelects юзер видит stale entries в DNS tab.
 		presenter.RefreshDNSListAndSelects()
+		// SPEC 055: если preset имеет outbounds[] — toggle меняет available
+		// outbound tags для ВСЕХ rules tab dropdowns. Rebuild всего таба
+		// чтобы каждый inline outbound select увидел новый/убранный tag.
+		if tplPreset != nil && len(tplPreset.Outbounds) > 0 {
+			refreshRulesTabFromPresenter(presenter, showAddRuleDialog)
+		}
 	})
 	enableCh.SetChecked(pr.Enabled)
 	setTooltip(enableCh, locale.T("wizard.rules.tooltip_rule_enabled"))
