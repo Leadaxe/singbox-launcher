@@ -210,22 +210,15 @@ func (p *WizardPresenter) InitializeTemplateState() {
 }
 
 // SetTemplatePreviewText устанавливает текст предпросмотра шаблона.
+//
+// Без optimization-проверок на `model.TemplatePreviewText == text` или
+// `entry.Text == text` — раньше второе сравнение делалось из горутины и
+// возможно гонялось с UI-update'ами других путей, давая стейл-стейт где
+// model думает что текст обновлён, а entry визуально показывает старый.
+// Теперь всегда queue'им UpdateUI с SetText + Refresh.
 func (p *WizardPresenter) SetTemplatePreviewText(text string) {
-	// Optimization: don't update if text hasn't changed
-	if p.model.TemplatePreviewText == text {
-		if p.model.TemplatePreviewNeedsUpdate && p.guiState.TemplatePreviewEntry != nil && p.guiState.TemplatePreviewEntry.Text == text {
-			p.model.TemplatePreviewNeedsUpdate = false
-		}
-		return
-	}
-
 	p.model.TemplatePreviewText = text
 	if p.guiState.TemplatePreviewEntry == nil {
-		p.model.TemplatePreviewNeedsUpdate = false
-		return
-	}
-
-	if p.guiState.TemplatePreviewEntry.Text == text {
 		p.model.TemplatePreviewNeedsUpdate = false
 		return
 	}
@@ -242,12 +235,14 @@ func (p *WizardPresenter) SetTemplatePreviewText(text string) {
 		go func() {
 			p.UpdateUI(func() {
 				p.guiState.TemplatePreviewEntry.SetText(text)
+				p.guiState.TemplatePreviewEntry.Refresh()
 				p.model.TemplatePreviewNeedsUpdate = false
 			})
 		}()
 	} else {
 		p.UpdateUI(func() {
 			p.guiState.TemplatePreviewEntry.SetText(text)
+			p.guiState.TemplatePreviewEntry.Refresh()
 			p.model.TemplatePreviewNeedsUpdate = false
 		})
 	}
