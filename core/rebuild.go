@@ -108,7 +108,7 @@ func (ac *AppController) RebuildConfigIfDirty() error {
 	// refreshSubscriptionsMetaAndCache делает для bin/subscriptions/.
 	// Live tags = union из всех stages (multi-stage safety). Удаляем
 	// .srs файлы которые уже не упоминаются ни одним stage'ом.
-	knownTags := collectAllStageRuleSetTags(execDir)
+	knownTags := collectAllStageRuleSetTags(execDir, td)
 	if deleted, gcErr := services.DeleteOrphanRuleSets(execDir, knownTags); gcErr != nil {
 		debuglog.WarnLog("RebuildConfigIfDirty: DeleteOrphanRuleSets: %v", gcErr)
 	} else if len(deleted) > 0 {

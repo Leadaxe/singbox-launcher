@@ -552,9 +552,13 @@ func collectAllStageSourceIDs(execDir string) []string {
 }
 
 // collectAllStageRuleSetTags возвращает объединение rule-set tags из ВСЕХ
-// state-файлов в `bin/wizard_states/`. Для каждой CustomRule (и enabled, и
-// disabled — пользователь может перетоггнуть обратно, лишний download только
-// раздражает) обходит embedded rule_set[] и собирает поле `tag`.
+// state-файлов в `bin/wizard_states/`. Источники tag'ов:
+//   - CustomRule[i].RuleSet[].tag (legacy / user inline/srs правила; и enabled,
+//     и disabled — пользователь может перетоггнуть, лишний download раздражает)
+//   - RulesV6[i] Kind=preset → lookup template preset → для каждого
+//     rule_set type=remote → content-addressed tag (SRSTagFromURL). Без
+//     if/if_or-фильтрации (consciously keep more — лучше держать .srs который
+//     потенциально нужен под другим var-комбо, чем потом качать снова).
 //
 // Используется для orphan GC `bin/rule-sets/` после Rebuild: live множество
 // = это объединение, всё за пределами — orphan.
@@ -564,8 +568,12 @@ func collectAllStageSourceIDs(execDir string) []string {
 // нужные другому (неактивному) stage'у — переключение обратно требует
 // заново открыть Configurator и скачать.
 //
+// td (nil-safe) — TemplateData для resolve preset.Ref → rule_set[]. Если nil
+// или preset не найден — preset-теги пропускаются (тот же fallback что для
+// broken preset-ref'а в UI).
+//
 // Read-only: errors per-file логируются и пропускаются.
-func collectAllStageRuleSetTags(execDir string) []string {
+func collectAllStageRuleSetTags(execDir string, td *template.TemplateData) []string {
 	statesDir := platform.GetWizardStatesDir(execDir)
 	entries, err := os.ReadDir(statesDir)
 	if err != nil {
@@ -573,7 +581,22 @@ func collectAllStageRuleSetTags(execDir string) []string {
 		return nil
 	}
 
+	// Pre-build preset lookup map by ID для быстрого resolve.
+	var presetByID map[string]*template.Preset
+	if td != nil {
+		presetByID = make(map[string]*template.Preset, len(td.Presets))
+		for i := range td.Presets {
+			presetByID[td.Presets[i].ID] = &td.Presets[i]
+		}
+	}
+
 	tagSet := make(map[string]struct{})
+	addTag := func(tag string) {
+		if tag != "" {
+			tagSet[tag] = struct{}{}
+		}
+	}
+
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -588,14 +611,33 @@ func collectAllStageRuleSetTags(execDir string) []string {
 			debuglog.DebugLog("collectAllStageRuleSetTags: skip %s: %v", path, loadErr)
 			continue
 		}
+		// Legacy CustomRule rule_set tags.
 		for i := range s.CustomRules {
 			for _, rs := range s.CustomRules[i].RuleSet {
 				var m map[string]interface{}
 				if err := json.Unmarshal(rs, &m); err != nil {
 					continue
 				}
-				if tag, ok := m["tag"].(string); ok && tag != "" {
-					tagSet[tag] = struct{}{}
+				if tag, ok := m["tag"].(string); ok {
+					addTag(tag)
+				}
+			}
+		}
+		// SPEC 053: preset-ref bundled remote rule_set'ы. content-addressed tag'и.
+		if presetByID != nil {
+			for _, r := range s.RulesV6 {
+				if r.Kind != "preset" || r.Ref == "" {
+					continue
+				}
+				tpl, ok := presetByID[r.Ref]
+				if !ok {
+					continue
+				}
+				for _, rs := range tpl.RuleSet {
+					if rs.Type != "remote" || rs.URL == "" {
+						continue
+					}
+					addTag(build.SRSTagFromURL(rs.URL))
 				}
 			}
 		}

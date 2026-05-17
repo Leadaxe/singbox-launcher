@@ -141,10 +141,13 @@ func cleanDanglingRuleSetInRule(rule map[string]interface{}, emittedTags map[str
 	return out
 }
 
-// srsTagFromURLLocal — content-addressed tag (same logic as
+// SRSTagFromURL — content-addressed tag (same logic as
 // ui/configurator/dialogs.SRSTagFromURL — продублировано тут чтобы избежать
-// импорта UI пакета в core/build). Должно быть вынесено в internal/srstag/
+// импорта UI пакета в core). Используется как core/build, так и core (orphan
+// GC через collectAllStageRuleSetTags). Должно быть вынесено в internal/srstag/
 // если будет ещё одна копия.
+func SRSTagFromURL(urlStr string) string { return srsTagFromURLLocal(urlStr) }
+
 func srsTagFromURLLocal(urlStr string) string {
 	u, err := urlParseLocal(urlStr)
 	if err != nil {

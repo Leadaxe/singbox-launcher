@@ -11,12 +11,9 @@
 package tabs
 
 import (
-	"context"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -27,9 +24,6 @@ import (
 
 	"singbox-launcher/core/services"
 	wizardtemplate "singbox-launcher/core/template"
-	"singbox-launcher/internal/constants"
-	"singbox-launcher/internal/debuglog"
-	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -56,7 +50,7 @@ func buildUnifiedRuleRows(
 			if slot.Index < 0 || slot.Index >= len(model.PresetRefs) {
 				continue
 			}
-			buildSinglePresetRefRow(presenter, model, guiState, showAddRuleDialog, rulesBox, slot.Index, slotIdx)
+			buildSinglePresetRefRow(presenter, model, guiState, availableOutbounds, showAddRuleDialog, rulesBox, slot.Index, slotIdx)
 		}
 	}
 }
@@ -64,10 +58,16 @@ func buildUnifiedRuleRows(
 // buildSinglePresetRefRow рисует tile для одного preset-ref'а (kind=preset).
 // Tile match что у CustomRule tile: drag ↑↓ / enable / label+summary / edit / delete.
 // Drag оперирует индексами model.RuleOrder.
+//
+// availableOutbounds — список outbound tag'ов; если preset имеет **ровно одну**
+// var типа "outbound", показываем inline-selector справа (по образу custom rule
+// tile). Multi-outbound presets (split-all-traffic) inline-selector не получают —
+// только через edit-dialog.
 func buildSinglePresetRefRow(
 	presenter *wizardpresentation.WizardPresenter,
 	model *wizardmodels.WizardModel,
 	guiState *wizardpresentation.GUIState,
+	availableOutbounds []string,
 	showAddRuleDialog ShowAddRuleDialogFunc,
 	rulesBox *fyne.Container,
 	refIdx int,
@@ -87,33 +87,131 @@ func buildSinglePresetRefRow(
 	}
 
 	labelText, brokenRef := presetTileLabel(pr, tplPreset)
+	srsEntries := presetRefSRSEntries(pr, tplPreset)
 
-	label := widget.NewLabel(labelText)
+	// HoverRow + rowGetter — тот же паттерн что в buildSingleCustomRuleRow
+	// (rules_tab.go::247): hover-подсветка всего ряда, label с tooltip,
+	// HoverForwardButton'ы прокидывают hover-event'ы из дочерних виджетов на
+	// HoverRow, чтобы вся строка подсвечивалась при наведении на любую кнопку.
+	var row *fynewidget.HoverRow
+	rowGetter := func() *fynewidget.HoverRow { return row }
+
+	label := ttwidget.NewLabel(labelText)
+	label.Wrapping = fyne.TextWrapOff
 	label.Truncation = fyne.TextTruncateEllipsis
+	if tplPreset != nil {
+		if d := strings.TrimSpace(tplPreset.Description); d != "" {
+			label.SetToolTip(d)
+		}
+	}
 
-	enableCh := widget.NewCheck("", func(on bool) {
+	// Inline outbound selector: показываем если у preset'а **ровно одна** var
+	// типа "outbound" (типичный кейс — `out`). Multi-outbound presets
+	// (split-all-traffic с out_a + out_b) — только через edit dialog.
+	var soloOutVar *wizardtemplate.PresetVar
+	if tplPreset != nil {
+		outCount := 0
+		for i := range tplPreset.Vars {
+			if tplPreset.Vars[i].Type == "outbound" {
+				outCount++
+				if soloOutVar == nil {
+					soloOutVar = &tplPreset.Vars[i]
+				}
+			}
+		}
+		if outCount != 1 {
+			soloOutVar = nil
+		}
+	}
+	var outSel *fynewidget.HoverForwardSelect
+	if soloOutVar != nil {
+		options := append([]string(nil), availableOutbounds...)
+		currentVal := pr.Vars[soloOutVar.Name]
+		if currentVal == "" {
+			currentVal = soloOutVar.Default
+		}
+		// Если текущий outbound отсутствует в options (например sentinel "drop"
+		// для stop-http3 не входит в обычный proxy-list) — добавляем впереди,
+		// чтобы Select мог его отобразить.
+		seen := false
+		for _, o := range options {
+			if o == currentVal {
+				seen = true
+				break
+			}
+		}
+		if !seen && currentVal != "" {
+			options = append([]string{currentVal}, options...)
+		}
+		outSel = fynewidget.NewHoverForwardSelect(options, func(value string) {
+			if pr.Vars == nil {
+				pr.Vars = make(map[string]string)
+			}
+			pr.Vars[soloOutVar.Name] = value
+			model.TemplatePreviewNeedsUpdate = true
+			presenter.MarkAsChanged()
+		}, rowGetter)
+		outSel.SetSelected(currentVal)
+	}
+
+	// SRS download-on-enable flow (тот же паттерн что в rules_tab.go::332-360
+	// для legacy custom rules):
+	//   - srsBtn создаётся ниже (облачко справа), его OnTapped запускает download
+	//   - checkbox callback при click ON + SRS missing: взвести флаг + триггернуть
+	//     srsBtn.OnTapped() + откатить визуально в OFF
+	//   - srsBtn на success колбэке: если флаг взведён → pr.Enabled = true,
+	//     refresh tab (rebuild row уже покажет checkbox ON через SetChecked)
+	var srsBtn *ttwidget.Button
+	enableOnSRSSuccess := false
+
+	var enableCh *widget.Check
+	enableCh = widget.NewCheck("", func(on bool) {
+		if on && len(srsEntries) > 0 && model.ExecDir != "" &&
+			!services.AllSRSDownloadedForEntries(model.ExecDir, srsEntries) {
+			if srsBtn != nil {
+				enableOnSRSSuccess = true
+				srsBtn.OnTapped()
+			}
+			enableCh.SetChecked(false)
+			return
+		}
 		pr.Enabled = on
 		presenter.MarkAsChanged()
 		model.TemplatePreviewNeedsUpdate = true
+		// Sync inline outbound selector enable-state с preset toggle (как в
+		// legacy custom rule tile: outboundSelect.Enable/Disable в callback'е).
+		if outSel != nil {
+			if on {
+				outSel.Enable()
+			} else {
+				outSel.Disable()
+			}
+		}
 		// Бандлd DNS-серверы и dns_rule preset'а появляются/исчезают вместе с
 		// enable toggle (renderPresetBundledDNSRows пропускает !pr.Enabled).
 		// Без RefreshDNSListAndSelects юзер видит stale entries в DNS tab.
 		presenter.RefreshDNSListAndSelects()
 	})
 	enableCh.SetChecked(pr.Enabled)
+	setTooltip(enableCh, locale.T("wizard.rules.tooltip_rule_enabled"))
 	if brokenRef {
 		enableCh.Disable()
 	}
+	// Initial disable если preset выключен.
+	if outSel != nil && (brokenRef || !pr.Enabled) {
+		outSel.Disable()
+	}
 
-	editBtn := widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), func() {
+	editBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DocumentCreateIcon(), func() {
 		showEditPresetRefDialog(presenter, model, guiState, refIdx, showAddRuleDialog)
-	})
+	}, rowGetter)
 	editBtn.Importance = widget.LowImportance
+	setTooltip(editBtn, locale.T("wizard.shared.button_edit"))
 	if brokenRef {
 		editBtn.Disable()
 	}
 
-	delBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
+	delBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DeleteIcon(), func() {
 		dialog.ShowConfirm(
 			"Confirmation",
 			fmt.Sprintf("Delete preset '%s'?", labelText),
@@ -130,23 +228,30 @@ func buildSinglePresetRefRow(
 			},
 			guiState.Window,
 		)
-	})
+	}, rowGetter)
 	delBtn.Importance = widget.LowImportance
+	setTooltip(delBtn, locale.T("wizard.rules.button_delete"))
 
-	upBtn := widget.NewButton("↑", func() {
+	upBtn := fynewidget.NewHoverForwardButton("↑", func() {
 		moveSlotUp(presenter, model, slotIdx, showAddRuleDialog)
-	})
+	}, rowGetter)
 	upBtn.Importance = widget.LowImportance
 	if slotIdx <= 0 {
 		upBtn.Disable()
+		setTooltip(upBtn, locale.T("wizard.rules.tooltip_move_up_off"))
+	} else {
+		setTooltip(upBtn, locale.T("wizard.rules.tooltip_move_up"))
 	}
 
-	downBtn := widget.NewButton("↓", func() {
+	downBtn := fynewidget.NewHoverForwardButton("↓", func() {
 		moveSlotDown(presenter, model, slotIdx, showAddRuleDialog)
-	})
+	}, rowGetter)
 	downBtn.Importance = widget.LowImportance
 	if slotIdx >= len(model.RuleOrder)-1 {
 		downBtn.Disable()
+		setTooltip(downBtn, locale.T("wizard.rules.tooltip_move_down_off"))
+	} else {
+		setTooltip(downBtn, locale.T("wizard.rules.tooltip_move_down"))
 	}
 
 	// SRS-облачко: показываем если preset (с учётом текущих vars) содержит
@@ -154,72 +259,77 @@ func buildSinglePresetRefRow(
 	// remote rule_set'ов preset'а через services.DownloadSRSGroup.
 	// Когда юзер выключит var управляющий remote rule_set (например geoip_enabled)
 	// → presetRefSRSEntries вернёт пустой list → облачко исчезнет.
-	var srsBtn *ttwidget.Button
-	if entries := presetRefSRSEntries(pr, tplPreset); len(entries) > 0 && model.ExecDir != "" {
-		srsBtn = makePresetSRSButton(presenter, model, guiState, entries, showAddRuleDialog)
+	var srsHF *fynewidget.HoverForwardTTButton
+	if len(srsEntries) > 0 && model.ExecDir != "" {
+		srsHF = makePresetSRSButton(presenter, model, guiState, srsEntries, showAddRuleDialog, pr, &enableOnSRSSuccess, rowGetter)
+		srsBtn = srsHF.TTWidget()
 	}
 
-	leftCluster := container.NewHBox(upBtn, downBtn, fynewidget.CheckLeadingWrap(enableCh))
+	// Клик по label — тоггл checkbox'а (как в legacy custom rule row).
+	labelTap := fynewidget.NewTapWrap(label, func() {
+		if enableCh.Disabled() {
+			return
+		}
+		enableCh.SetChecked(!enableCh.Checked)
+	})
+
+	leftLead := container.NewHBox(upBtn, downBtn, fynewidget.CheckLeadingWrap(enableCh))
 	var rightCluster *fyne.Container
-	if srsBtn != nil {
-		rightCluster = container.NewHBox(srsBtn, editBtn, delBtn)
+	if outSel != nil {
+		rightCluster = container.NewHBox(editBtn, delBtn, outSel)
 	} else {
 		rightCluster = container.NewHBox(editBtn, delBtn)
 	}
-	row := container.NewBorder(nil, nil, leftCluster, rightCluster, label)
+	var center fyne.CanvasObject = labelTap
+	if srsHF != nil {
+		center = container.NewBorder(nil, nil, nil, srsHF, labelTap)
+	}
+	rowInner := container.NewBorder(nil, nil, leftLead, rightCluster, center)
+	row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
+	row.WireTooltipLabelHover(label)
 	rulesBox.Add(row)
 }
 
 // makePresetSRSButton — облачко скачивания remote rule_set'ов preset'а.
 // Текст кнопки: "Download" если не все скачаны, "Downloaded ✓" если все есть.
-// На клик — параллельный download с timeout, status update после завершения.
+// Download-flow делегирован в общий runSRSDownloadAsync (см. rules_tab.go).
+//
+// enableOnSuccess (nil-safe) — указатель на флаг "если успех, включить preset".
+// Взводится из callback'а enable-checkbox'а (download-on-enable flow). Сбрасывается
+// в onSuccess (одноразовый). На failure runSRSDownloadAsync не вызывает onSuccess —
+// флаг остаётся взведённым (тот же паттерн что в legacy custom rules tile).
 func makePresetSRSButton(
 	presenter *wizardpresentation.WizardPresenter,
 	model *wizardmodels.WizardModel,
 	guiState *wizardpresentation.GUIState,
 	entries []services.SRSEntry,
 	showAddRuleDialog ShowAddRuleDialogFunc,
-) *ttwidget.Button {
-	initialText := locale.T("wizard.rules.button_srs_download")
+	pr *wizardmodels.PresetRefState,
+	enableOnSuccess *bool,
+	rowGetter fynewidget.RowHoverGetter,
+) *fynewidget.HoverForwardTTButton {
+	initialText := srsBtnDownload()
 	if services.AllSRSDownloadedForEntries(model.ExecDir, entries) {
-		initialText = locale.T("wizard.rules.button_srs_done")
+		initialText = srsBtnDone()
 	}
-	btn := ttwidget.NewButton(initialText, nil)
+	btn := fynewidget.NewHoverForwardTTButton(initialText, nil, rowGetter)
 	btn.Importance = widget.LowImportance
-	tipURLs := make([]string, 0, len(entries))
-	for _, e := range entries {
-		tipURLs = append(tipURLs, e.URL)
-	}
-	if len(tipURLs) > 0 {
-		btn.SetToolTip(strings.Join(tipURLs, "\n"))
+	if tip := srsEntriesTooltip(entries); tip != "" {
+		btn.TTWidget().SetToolTip(tip)
 	}
 	btn.OnTapped = func() {
-		btn.Disable()
-		btn.SetText(locale.T("wizard.rules.button_srs_loading"))
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-			defer cancel()
-			err := services.DownloadSRSGroup(ctx, model.ExecDir, entries)
-			presenter.UpdateUI(func() {
-				btn.Enable()
-				if err != nil {
-					btn.SetText(locale.T("wizard.rules.button_srs_download"))
-					ruleSetsDir := filepath.Join(model.ExecDir, constants.BinDirName, constants.RuleSetsDirName)
-					firstURL := ""
-					if len(entries) > 0 {
-						firstURL = entries[0].URL
-					}
-					debuglog.WarnLog("preset_srs: download failed: %v", err)
-					dialogs.ShowDownloadFailedManual(guiState.Window, locale.T("wizard.rules.error_srs_failed"), firstURL, ruleSetsDir)
-					return
+		runSRSDownloadAsync(presenter, model, guiState, entries, btn.TTWidget(), nil /* no outboundSelect */, func() {
+			model.TemplatePreviewNeedsUpdate = true
+			if enableOnSuccess != nil && *enableOnSuccess {
+				*enableOnSuccess = false
+				if pr != nil {
+					pr.Enabled = true
+					presenter.RefreshDNSListAndSelects()
 				}
-				btn.SetText(locale.T("wizard.rules.button_srs_done"))
-				// Refresh tab to recompute "Downloaded ✓" state and re-emit config.
-				model.TemplatePreviewNeedsUpdate = true
-				presenter.MarkAsChanged()
-				refreshRulesTabFromPresenter(presenter, showAddRuleDialog)
-			})
-		}()
+			}
+			presenter.MarkAsChanged()
+			refreshRulesTabFromPresenter(presenter, showAddRuleDialog)
+		})
 	}
 	return btn
 }

@@ -441,8 +441,8 @@
 
   "presets": [
     {
-      "id": "private-ips-direct",
-      "label": "Private IPs direct",
+      "id": "private-ips",
+      "label": "Private IPs",
       "description": "Route private IP ranges (LAN, etc.) directly to guarantee local network access.",
       "default_enabled": true,
       "vars": [
@@ -452,8 +452,9 @@
     },
     {
       "id": "local-lan-domains",
-      "label": "Local/LAN domains direct",
+      "label": "Local/LAN domains",
       "description": "Route .local and .lan domains directly for LAN access.",
+      "default_enabled": true,
       "vars": [
         { "name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound" }
       ],
@@ -478,10 +479,9 @@
       "rule": { "rule_set": "ads", "outbound": "@out" }
     },
     {
-      "id": "ru-direct",
+      "id": "russian",
       "label": "Russian domains & IPs",
       "description": "Route Russian TLDs (.ru/.su/IDN), service CDNs (Yandex/VK/Avito/2GIS/banks/etc) and Russian IP ranges directly.",
-      "default_enabled": true,
       "vars": [
         { "name": "out", "type": "outbound", "default": "direct-out",
           "title": "Outbound",
@@ -559,7 +559,7 @@
     },
     {
       "id": "ru-inside",
-      "label": "Russia-only services direct",
+      "label": "Russia-only services",
       "description": "Services available only inside Russia — direct (geosite-ru-available-only-inside).",
       "vars": [
         { "name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound" }
@@ -599,8 +599,8 @@
       "rule": { "rule_set": "il", "outbound": "@out" }
     },
     {
-      "id": "bittorrent-direct",
-      "label": "BitTorrent direct",
+      "id": "bittorrent",
+      "label": "BitTorrent",
       "description": "Route BitTorrent traffic directly to avoid VPN throttling.",
       "default_enabled": true,
       "vars": [
@@ -609,54 +609,37 @@
       "rule": { "protocol": ["bittorrent"], "outbound": "@out" }
     },
     {
-      "id": "ip-test-2ipio",
-      "label": "2ip.io via proxy (VPN IP check)",
-      "description": "Route 2ip.io through proxy to verify VPN IP.",
-      "vars": [
-        { "name": "out", "type": "outbound", "default": "proxy-out", "title": "Outbound" }
-      ],
-      "rule": { "domain": ["2ip.io"], "outbound": "@out" }
-    },
-    {
-      "id": "ip-test-2ipme",
-      "label": "2ip.me via proxy (VPN IP check)",
-      "description": "Route 2ip.me through proxy to verify VPN IP.",
-      "vars": [
-        { "name": "out", "type": "outbound", "default": "proxy-out", "title": "Outbound" }
-      ],
-      "rule": { "domain": ["2ip.me"], "outbound": "@out" }
-    },
-    {
-      "id": "ip-test-2ipru",
-      "label": "2ip.ru direct (your direct IP check)",
-      "description": "Route 2ip.ru directly to check your IP.",
-      "vars": [
-        { "name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound" }
-      ],
-      "rule": { "domain": ["2ip.ru"], "outbound": "@out" }
-    },
-    {
-      "id": "gemini",
-      "label": "Gemini via Gemini VPN",
-      "description": "Send Gemini (Google AI) traffic through selected outbound.",
+      "id": "ai-services",
+      "label": "AI services (Claude, ChatGPT, Perplexity, Gemini)",
+      "description": "Route major AI chat services (Anthropic Claude, OpenAI ChatGPT, Perplexity, Google Gemini) through selected outbound. Useful when these services are geo-restricted or require clean IP.",
       "vars": [
         { "name": "out", "type": "outbound", "default": "proxy-out", "title": "Outbound" }
       ],
       "rule_set": [
-        { "tag": "gemini", "type": "inline", "format": "domain_suffix",
+        { "tag": "ai-services", "type": "inline", "format": "domain_suffix",
           "rules": [{ "domain_suffix": [
+            "anthropic.com",
+            "claude.ai",
+            "claudeusercontent.com",
+            "openai.com",
+            "chatgpt.com",
+            "oaistatic.com",
+            "oaiusercontent.com",
+            "perplexity.ai",
+            "pplx.ai",
             "generativelanguage.googleapis.com",
             "gemini.google.com",
+            "aistudio.google.com",
             "ai.google.dev",
             "palm.googleapis.com"
           ] }]
         }
       ],
-      "rule": { "rule_set": "gemini", "network": ["tcp", "udp"], "outbound": "@out" }
+      "rule": { "rule_set": "ai-services", "network": ["tcp", "udp"], "outbound": "@out" }
     },
     {
       "id": "messengers-windows",
-      "label": "Messengers via proxy",
+      "label": "Messengers",
       "description": "Send messenger traffic (Telegram, WhatsApp, Discord, Signal, Zoom) through proxy. Windows process names.",
       "platforms": ["windows"],
       "vars": [
@@ -680,7 +663,7 @@
     },
     {
       "id": "messengers-unix",
-      "label": "Messengers via proxy",
+      "label": "Messengers",
       "description": "Send messenger traffic (Telegram, WhatsApp, Discord, Signal, Zoom) through proxy. macOS/Linux process names.",
       "platforms": ["darwin", "linux"],
       "vars": [
@@ -703,10 +686,9 @@
       "rule": { "rule_set": "messengers", "network": ["tcp", "udp"], "outbound": "@out" }
     },
     {
-      "id": "games-direct",
-      "label": "Games direct",
+      "id": "games",
+      "label": "Games",
       "description": "Send gaming rule set traffic directly for lower latency.",
-      "default_enabled": true,
       "vars": [
         { "name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound" }
       ],
@@ -717,10 +699,9 @@
       "rule": { "rule_set": "games", "network": ["tcp", "udp"], "outbound": "@out" }
     },
     {
-      "id": "gaming-ports-direct",
-      "label": "Gaming ports direct",
+      "id": "gaming-ports",
+      "label": "Gaming ports",
       "description": "Keep popular gaming ports and Steam ranges outside VPN.",
-      "default_enabled": true,
       "vars": [
         { "name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound" }
       ],
@@ -739,6 +720,34 @@
         { "name": "out", "type": "outbound", "default": "drop", "title": "Action" }
       ],
       "rule": { "network": ["udp"], "port": [443], "outbound": "@out" }
+    },
+    {
+      "id": "split-all-traffic-mac-win",
+      "label": "Split all traffic 50/50 across two outbounds",
+      "description": "Distribute proxy-bound traffic across two outbounds by OS source-port (ephemeral range 49152-65535 split in half). Per-connection sticky: one TCP/UDP session stays on one side, one origin (HTTP/2 multiplex) → one outbound. Heavy single-stream traffic (video, large download) does NOT split across both. Enable AFTER all direct/reject presets — this preset acts as catch-all for proxy-bound traffic. macOS / Windows ephemeral range only.",
+      "platforms": ["darwin", "windows"],
+      "vars": [
+        { "name": "out_a", "type": "outbound", "default": "proxy-out", "title": "Outbound A" },
+        { "name": "out_b", "type": "outbound", "default": "proxy-out", "title": "Outbound B" }
+      ],
+      "rule": [
+        { "source_port_range": ["49152:57343"], "outbound": "@out_a" },
+        { "source_port_range": ["57344:65535"], "outbound": "@out_b" }
+      ]
+    },
+    {
+      "id": "split-all-traffic-linux",
+      "label": "Split all traffic 50/50 across two outbounds",
+      "description": "Distribute proxy-bound traffic across two outbounds by OS source-port (Linux ephemeral range 32768-60999 split in half). Per-connection sticky: one TCP/UDP session stays on one side, one origin (HTTP/2 multiplex) → one outbound. Heavy single-stream traffic (video, large download) does NOT split across both. Enable AFTER all direct/reject presets — this preset acts as catch-all for proxy-bound traffic. Linux ephemeral range only.",
+      "platforms": ["linux"],
+      "vars": [
+        { "name": "out_a", "type": "outbound", "default": "proxy-out", "title": "Outbound A" },
+        { "name": "out_b", "type": "outbound", "default": "proxy-out", "title": "Outbound B" }
+      ],
+      "rule": [
+        { "source_port_range": ["32768:46883"], "outbound": "@out_a" },
+        { "source_port_range": ["46884:60999"], "outbound": "@out_b" }
+      ]
     }
   ],
 
