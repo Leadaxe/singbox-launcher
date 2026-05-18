@@ -11,50 +11,49 @@
 - [x] `SPECS/055-F-N-PRESET_OUTBOUNDS/TASKS.md` — все статусы сброшены в TODO
 - [x] `SPECS/055-F-N-PRESET_OUTBOUNDS/IMPLEMENTATION_REPORT.md` — удалён
 
-## Phase 1 — Surgical revert хаоса 055
+## Phase 1 — Surgical revert хаоса 055 — [COMPLETED `098c5e1`]
 
 ### Удаление файлов (созданы 055)
 
-- [ ] `core/build/preset_outbounds_test.go` — удалён
-- [ ] `core/template/preset_outbounds_test.go` — удалён
+- [x] `core/build/preset_outbounds_test.go` — удалён
+- [x] `core/template/preset_outbounds_test.go` — удалён
 
-### Откат до `f665c27` (без сохранения параллельных правок)
+### Откат до `f665c27`
 
-- [ ] `core/build/build.go` ← `f665c27`, потом cherry-pick `0c3dce5` (P8)
-- [ ] `core/build/dns_merge.go` ← `f665c27`, потом cherry-pick `b03fd5b` (P7)
-- [ ] `core/build/preset_expand.go` ← `f665c27`
-- [ ] `core/build/preset_merge.go` ← `f665c27`
-- [ ] `core/build/rules_pipeline.go` ← `f665c27`
-- [ ] `core/template/preset_loader.go` ← `f665c27`
-- [ ] `core/template/preset_types.go` ← `f665c27`
-- [ ] `bin/wizard_template.json` ← `f665c27`
+- [x] `core/build/build.go` ← `f665c27` (cherry-pick P8 отложен — restored в Phase 5)
+- [x] `core/build/dns_merge.go` ← `f665c27`, поверх применён `b03fd5b` (P7)
+- [x] `core/build/preset_expand.go` ← `f665c27`
+- [x] `core/build/preset_merge.go` ← `f665c27`
+- [x] `core/build/rules_pipeline.go` ← `f665c27`
+- [x] `core/template/preset_loader.go` ← `f665c27`
+- [x] `core/template/preset_types.go` ← `f665c27`
+- [x] `ui/configurator/business/outbound.go` ← `f665c27`
+- [x] `bin/wizard_template.json` ← `f665c27`
 
 ### Частичный откат (mixed commits — рукой)
 
-- [ ] `core/rebuild.go` — снести 055 куски из `15b217c`; **сохранить** `validateConfigViaSingBox` + `stripANSI` + Step 5.4 + `forced` flag из `5e56c0b` (P2)
-- [ ] `core/config_service.go` — снести `AllNodeTags` и `collectAllNodeTagsFromCache`; **сохранить** SPEC 054 кусок (P1) и BuildContext init
-- [ ] `ui/configurator/business/create_config.go` — снести `AllNodeTags` и `collectAllNodeTagsFromCacheLocal`; **сохранить** `d36a257` preview applies preset-refs (P4)
-- [ ] `ui/configurator/tabs/rules_unified_rows.go` — снести `refreshRulesTabFromPresenter` при toggle outbound preset; **сохранить** `dc4cf09` (P5) + `0ecc403` (P6) anti-loop фиксы
-- [ ] `ui/configurator/business/outbound.go` — удалить файл целиком (создан 055)
-- [ ] `docs/release_notes/upcoming.md` — снести 055 entry; **сохранить** 054 entry (P1)
+- [x] `core/rebuild.go` — никаких 055-кусков нет (только `15b217c` sing-box check + `5e56c0b` forced flag — оба сохранены)
+- [x] `core/config_service.go` — снесён `AllNodeTags` + `collectAllNodeTagsFromCache`; сохранены SPEC 054 (P1) и BuildContext init
+- [x] `ui/configurator/business/create_config.go` — снесён `AllNodeTags` + `collectAllNodeTagsFromCacheLocal`; сохранены `d36a257` (P4) preset-ref sync
+- [x] `ui/configurator/tabs/rules_unified_rows.go` — снесён `refreshRulesTabFromPresenter` при toggle outbound preset; сохранены `dc4cf09` (P5) + `0ecc403` (P6) anti-loop
+- [x] `docs/release_notes/upcoming.md` — снесён 055 entry; сохранён 054 entry
 
-### Verify P1–P10 untouched
+### Verify P1–P10 untouched (через `git diff f665c27..HEAD`)
 
-- [ ] `git diff f665c27..HEAD -- core/preview_nodes_test.go` — НЕ изменилось (P1)
-- [ ] `git diff f665c27..HEAD -- ui/core_dashboard_tab.go` — содержит только P2
-- [ ] `git diff f665c27..HEAD -- ui/configurator/presentation/presenter_methods.go` — содержит только P3
-- [ ] `git diff f665c27..HEAD -- bin/locale/ru.json` — содержит только P4
-- [ ] `git diff f665c27..HEAD -- internal/locale/en.json` — содержит только P9 ключи
-- [ ] `git diff f665c27..HEAD -- internal/textnorm/proxy_display.go` — содержит только P10
-- [ ] `git diff f665c27..HEAD -- ui/configurator/tabs/source_edit_*.go` — содержит только P9
+- [x] `core/preview_nodes_test.go` — 186 lines (P1)
+- [x] `ui/core_dashboard_tab.go` — 17 lines (P2)
+- [x] `ui/configurator/presentation/presenter_methods.go` — 52 lines (P3)
+- [x] `bin/locale/ru.json` — 15 lines (P4)
+- [x] `internal/locale/en.json` — 15 lines (P9)
+- [x] `internal/textnorm/proxy_display.go` — 35 lines (P10)
+- [x] `ui/configurator/tabs/source_edit_*.go` — 396 lines (P9)
 
 ### Acceptance Phase 1
 
-- [ ] `go build ./...` зелёный
-- [ ] `go vet ./...` зелёный
-- [ ] `go test ./...` зелёный (все существующие тесты включая P1/P4/P5/P6/P7/P8)
-- [ ] Manual sanity: запустить app, рестарт connect, убедиться что
-      preset bundles работают как в `f665c27`
+- [x] `go build ./...` зелёный
+- [x] `go vet ./...` зелёный
+- [x] `go test ./...` зелёный (24/24 packages)
+- [ ] Manual sanity: запустить app, рестарт connect, убедиться что preset bundles работают как в `f665c27`
 
 ## Phase 2 — Types & loader
 
