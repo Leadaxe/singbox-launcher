@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+	fynetooltip "github.com/dweymouth/fyne-tooltip"
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
@@ -217,6 +218,7 @@ func showSourceEditWindow(
 	win := app.NewWindow(title)
 	presenter.SetViewWindow(win)
 	win.SetOnClosed(func() {
+		fynetooltip.DestroyWindowToolTipLayer(win.Canvas())
 		presenter.ClearViewWindow()
 		presenter.UpdateChildOverlay()
 	})
@@ -682,7 +684,11 @@ func showSourceEditWindow(
 	buttonsRow := container.NewHBox(layout.NewSpacer(), cancelBtn, saveBtn)
 	root := container.NewBorder(nil, buttonsRow, nil, nil, tabs)
 
-	win.SetContent(root)
+	// fynetooltip layer обязателен для каждого окна — без него
+	// ttwidget tooltips не работают в этом окне (fyne-tooltip пишет в логи
+	// "no tool tip layer created for current overlay"). Главное окно и
+	// Configurator wizard окно делают то же самое.
+	win.SetContent(fynetooltip.AddWindowToolTipLayer(root, win.Canvas()))
 	win.Resize(fyne.NewSize(880, 600))
 	win.CenterOnScreen()
 	syncFormFromModel()

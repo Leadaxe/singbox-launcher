@@ -2,6 +2,8 @@ package tabs
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -17,7 +19,6 @@ import (
 
 	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
-	v5 "singbox-launcher/core/state/v5"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -167,22 +168,37 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 		if execDir != "" {
 			subsDir := platform.GetSubscriptionsDir(execDir)
 			rawPath := filepath.Join(subsDir, src.ID+".raw")
-			if raw, rerr := v5.ReadRawBody(subsDir, src.ID); rerr == nil && len(raw) > 0 {
+			// Partial read: вместо `os.ReadFile` всего файла (~1 MB для Xray JSON)
+			// + DecodeSubscriptionContent на нём (`json.Valid` + `Unmarshal` —
+			// ~100ms на MB) читаем только prefix `rawBodyMaxDisplay + 1`. Это:
+			//  - быстро (< 1ms даже на медленном диске);
+			//  - достаточно для рендера в Entry;
+			//  - +1 байт позволяет понять truncated (если файл больше).
+			// totalSize берём через os.Stat — для отображения "of N bytes".
+			display, totalSize, ok := readRawBodyPartial(rawPath, rawBodyMaxDisplay+1)
+			if ok && len(display) > 0 {
 				body.Add(widget.NewSeparator())
 
-				// Раскодируем base64-обёрнутые subscription'ы (Liberty etc.) —
-				// без этого MultiLineEntry с TextWrapOff уносит body за экран
-				// одной длинной строкой. На plain-text bodies (BL/WL) с
-				// #-comments DecodeSubscriptionContent — identity, без изменений.
-				display := raw
-				if decoded, derr := subscription.DecodeSubscriptionContent(raw); derr == nil && len(decoded) > 0 {
-					display = decoded
+				// DecodeSubscriptionContent ТОЛЬКО если хвост base64 — попытка
+				// декодировать обрезанную base64 даст garbage. Для JSON / plain
+				// URI body показываем как есть.
+				// Эвристика: если первый non-whitespace == '[' или содержит '://' —
+				// уже decoded, не трогаем. Иначе пробуем base64 (только prefix).
+				trimmed := strings.TrimLeft(string(display), " \t\n\r")
+				looksDecoded := strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") ||
+					strings.Contains(trimmed[:minInt(len(trimmed), 1024)], "://")
+				if !looksDecoded {
+					if decoded, derr := subscription.DecodeSubscriptionContent(display); derr == nil && len(decoded) > 0 {
+						display = decoded
+					}
 				}
 
 				truncatedNote := ""
-				if len(display) > rawBodyMaxDisplay {
-					display = display[:rawBodyMaxDisplay]
-					truncatedNote = locale.Tf("wizard.source.raw_body_truncated", rawBodyMaxDisplay, len(raw))
+				if totalSize > rawBodyMaxDisplay {
+					if len(display) > rawBodyMaxDisplay {
+						display = display[:rawBodyMaxDisplay]
+					}
+					truncatedNote = locale.Tf("wizard.source.raw_body_truncated", rawBodyMaxDisplay, totalSize)
 				}
 
 				// Header: title + icon-кнопки сразу справа от него (inline HBox).
@@ -268,6 +284,43 @@ func kvRow(key, value string) fyne.CanvasObject {
 	valueLabel := widget.NewLabel(value)
 	valueLabel.Wrapping = fyne.TextWrapBreak
 	return container.NewBorder(nil, nil, keyLabel, nil, valueLabel)
+}
+
+// readRawBodyPartial читает первые `maxBytes` байт файла + возвращает total
+// size через os.Stat. Не тащит всю мегабайтную body в память.
+// Возвращает (prefix, totalSize, true) на успех; (nil, 0, false) если файл
+// не существует / нечитаем.
+func readRawBodyPartial(path string, maxBytes int) ([]byte, int, bool) {
+	stat, err := os.Stat(path)
+	if err != nil {
+		return nil, 0, false
+	}
+	total := int(stat.Size())
+	if total == 0 {
+		return nil, 0, false
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, total, false
+	}
+	defer f.Close()
+	readN := maxBytes
+	if readN > total {
+		readN = total
+	}
+	buf := make([]byte, readN)
+	n, err := io.ReadFull(f, buf)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return nil, total, false
+	}
+	return buf[:n], total, true
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // openInFileManager открывает path в системном file-manager'е (Finder/Explorer/xdg-open).
