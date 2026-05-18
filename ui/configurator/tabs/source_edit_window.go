@@ -600,25 +600,32 @@ func showSourceEditWindow(
 				} else {
 					previewStatus.SetText(locale.Tf("wizard.source.preview_servers", len(nodes), 1))
 				}
-				body := container.NewVBox()
 				if err == nil {
 					if len(nodes) == 0 {
-						body.Add(widget.NewLabel(locale.T("wizard.source.view_no_servers")))
+						lbl := widget.NewLabel(locale.T("wizard.source.view_no_servers"))
+						lbl.Importance = widget.LowImportance
+						// Spacer below pushes label to top instead of centering blank space.
+						previewListHost.Add(container.NewVBox(lbl, layout.NewSpacer()))
 					} else {
 						nn := nodes
+						// widget.List сам виртуализирует scroll — не оборачиваем в
+						// NewScroll/NewVScroll (двойной scroll + ограничивающий
+						// MinSize 280px не давал списку расти на всю высоту).
+						// Truncation=Ellipsis для длинных тегов → "...".
 						srvList := widget.NewList(
 							func() int { return len(nn) },
-							func() fyne.CanvasObject { return widget.NewLabel("") },
+							func() fyne.CanvasObject {
+								l := widget.NewLabel("")
+								l.Truncation = fyne.TextTruncateEllipsis
+								return l
+							},
 							func(id int, o fyne.CanvasObject) {
 								o.(*widget.Label).SetText(nodeDisplayLine(nn[id]))
 							},
 						)
-						sc := container.NewScroll(srvList)
-						sc.SetMinSize(fyne.NewSize(0, 280))
-						body.Add(sc)
+						previewListHost.Add(srvList)
 					}
 				}
-				previewListHost.Add(container.NewVScroll(body))
 				previewListHost.Refresh()
 			})
 		}()
