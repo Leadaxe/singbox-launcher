@@ -132,9 +132,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string) (*PresetF
 		if m == nil {
 			continue
 		}
-		// Strip if/if_or (уже резолвлено) — не нужны в sing-box config.
-		delete(m, "if")
-		delete(m, "if_or")
+		stripWizardOnlyFields(m)
 		// Prefix tag.
 		localTag, _ := m["tag"].(string)
 		prefixed := preset.ID + TagSeparator + localTag
@@ -158,8 +156,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string) (*PresetF
 					return nil, warnings, false
 				}
 				m, _ := substituted.(map[string]interface{})
-				delete(m, "if")
-				delete(m, "if_or")
+				stripWizardOnlyFields(m)
 				// Rewrite rule_set refs: local → prefixed, filter dangling.
 				rewriteRuleSetRefs(m, preset.ID, emittedTags)
 				// Apply outbound sentinels (reject/drop) — shared util с UI.
@@ -191,8 +188,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string) (*PresetF
 					return nil, warnings, false
 				}
 				m, _ := substituted.(map[string]interface{})
-				delete(m, "if")
-				delete(m, "if_or")
+				stripWizardOnlyFields(m)
 				rewriteRuleSetRefs(m, preset.ID, emittedTags)
 				// dns_rule.server — может быть локальный bundled tag (без префикса), prefix'ить.
 				if srv, ok := m["server"].(string); ok && srv != "" && !strings.HasPrefix(srv, "@") {
@@ -235,15 +231,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string) (*PresetF
 			return nil, warnings, false
 		}
 		m, _ := substituted.(map[string]interface{})
-		// Strip UI-only / control fields.
-		delete(m, "if")
-		delete(m, "if_or")
-		delete(m, "title")
-		// sing-box 1.12+ rejects unknown DNS-server fields ("description: unknown
-		// field"). Even though earlier docs called description a valid sing-box
-		// field, the new strict decoder fails on it. Strip — UI-only metadata
-		// for tooltips/debug, not for sing-box.
-		delete(m, "description")
+		stripWizardOnlyFields(m)
 		// Strip detour=direct-out (sing-box резолвит без forwarding).
 		if det, ok := m["detour"].(string); ok && det == "direct-out" {
 			delete(m, "detour")
@@ -282,10 +270,12 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string) (*PresetF
 		if tag == "" {
 			continue
 		}
-		// Drop control / launcher-only fields из body — они не нужны merge'у.
-		delete(m, "mode")
-		delete(m, "if")
-		delete(m, "if_or")
+		// Strip wizard-only + preset-control fields. NB: для outbound body
+		// `wizard` блок легитимный (хранит wizard.required marker) — для
+		// эмита в финальный config он не нужен, но parser_config layer
+		// его обрабатывает раньше. На preset-emit пути просто стрипаем.
+		stripWizardOnlyFields(m)
+		delete(m, "mode") // preset-control, не для финального config
 		// Для mode=update запретить смену type — loader уже warned.
 		if mode == "update" {
 			delete(m, "type")
@@ -298,6 +288,33 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string) (*PresetF
 	}
 
 	return frags, warnings, true
+}
+
+// stripWizardOnlyFields удаляет поля, нужные только launcher/UI и не валидные
+// в финальном sing-box config:
+//
+//	if / if_or   — conditional control (resolved already by evalIf)
+//	title        — UI label
+//	description  — UI tooltip (sing-box 1.12+ строгий decoder отвергает)
+//	enabled      — UI checkbox state
+//	wizard       — launcher metadata block (например `wizard.required`)
+//
+// Единая точка стрипа для preset rule_set / rule / dns_rule / dns_server /
+// outbound — раньше эти `delete(m, ...)` повторялись в 5 местах и расходились
+// в наборе полей (description стрипался только у dns_server).
+//
+// Note: `mode` (preset.outbounds control) и `type` (для mode=update) — это
+// preset-specific, стрипаются отдельно в outbound emit path.
+func stripWizardOnlyFields(m map[string]interface{}) {
+	if m == nil {
+		return
+	}
+	delete(m, "if")
+	delete(m, "if_or")
+	delete(m, "title")
+	delete(m, "description")
+	delete(m, "enabled")
+	delete(m, "wizard")
 }
 
 // filterActiveVars — оценивает if/if_or каждой var'ы. Возвращает set активных имён.

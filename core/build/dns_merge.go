@@ -136,16 +136,15 @@ func dnsServerEnabled(m map[string]interface{}) bool {
 }
 
 // stripDNSWizardOnlyFields убирает wizard-only ключи перед merge'ом в
-// финальный config.json: "description" (текст в UI) и "enabled" (UI-чекбокс).
-// sing-box их не понимает; не убирать → конфиг отвалится при `sing-box check`.
+// финальный config.json. Делегирует в общий stripWizardOnlyFields
+// (преsetting / dns / outbound — все стрипают одинаковый набор полей:
+// if/if_or/title/description/enabled/wizard).
 func stripDNSWizardOnlyFields(m map[string]interface{}) map[string]interface{} {
 	out := make(map[string]interface{}, len(m))
 	for k, v := range m {
-		if k == "description" || k == "enabled" {
-			continue
-		}
 		out[k] = v
 	}
+	stripWizardOnlyFields(out)
 	return out
 }
 
