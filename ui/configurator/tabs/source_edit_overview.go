@@ -19,6 +19,7 @@ import (
 
 	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -39,6 +40,10 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 	rootWithGutter := container.NewBorder(nil, nil, nil, gutter, scroll)
 
 	refresh := func() {
+		t0 := time.Now()
+		defer func() {
+			debuglog.DebugLog("buildOverviewTab: refresh took %v", time.Since(t0))
+		}()
 		body.Objects = body.Objects[:0]
 		m := presenter.Model()
 		if m == nil || sourceIndex >= len(m.Sources) {
@@ -175,7 +180,9 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 			//  - достаточно для рендера в Entry;
 			//  - +1 байт позволяет понять truncated (если файл больше).
 			// totalSize берём через os.Stat — для отображения "of N bytes".
+			tRead := time.Now()
 			display, totalSize, ok := readRawBodyPartial(rawPath, rawBodyMaxDisplay+1)
+			debuglog.DebugLog("buildOverviewTab: readRawBodyPartial took %v (size=%d, ok=%v)", time.Since(tRead), len(display), ok)
 			if ok && len(display) > 0 {
 				body.Add(widget.NewSeparator())
 
@@ -239,9 +246,16 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 				// далеко вправо за viewport — юзер видит чёрное пустое поле.
 				// Break wrap'ает по любому символу (JSON без пробелов
 				// нормально не break'ается по слову).
+				// Pre-wrap: компактный JSON / base64 одной строкой Fyne wrap'ает
+				// посимвольно (TextWrapBreak без виртуализации — 9+ сек на 4 KB).
+				// Вставляем \n каждые wrapEvery символов вручную и снимаем
+				// Fyne-wrap (TextWrapOff) — мгновенно.
+				displayStr := wrapLongLines(string(display), 100)
+				tEntry := time.Now()
 				bodyEntry := widget.NewMultiLineEntry()
-				bodyEntry.Wrapping = fyne.TextWrapBreak
-				bodyEntry.SetText(string(display))
+				bodyEntry.Wrapping = fyne.TextWrapOff
+				bodyEntry.SetText(displayStr)
+				debuglog.DebugLog("buildOverviewTab: bodyEntry.SetText(%d bytes, pre-wrapped %d lines) took %v", len(displayStr), strings.Count(displayStr, "\n")+1, time.Since(tEntry))
 				bodyEntry.OnChanged = func(s string) {
 					if s != string(display) {
 						bodyEntry.SetText(string(display))
@@ -321,6 +335,45 @@ func minInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// wrapLongLines вставляет '\n' каждые `every` символов в строки, длиннее
+// этого порога. Строки с уже-имеющимися переводами оставляет как есть.
+//
+// Цель: убрать стоимость Fyne text-wrap (TextWrapBreak без виртуализации) —
+// сами заранее разбиваем длинные строки на короткие. SetText на pre-wrapped
+// тексте с TextWrapOff летает.
+//
+// Используется для компактных JSON / base64 raw bodies подписок.
+func wrapLongLines(s string, every int) string {
+	if every <= 0 || len(s) < every {
+		return s
+	}
+	// Если уже есть переводы строк и средняя строка короче порога — не трогаем.
+	if nl := strings.Count(s, "\n"); nl > 0 && len(s)/(nl+1) < every {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s) + len(s)/every + 16)
+	for _, line := range strings.SplitAfter(s, "\n") {
+		if len(line) <= every {
+			b.WriteString(line)
+			continue
+		}
+		// Разбиваем длинную строку (без переводов) на куски.
+		for i := 0; i < len(line); i += every {
+			end := i + every
+			if end > len(line) {
+				end = len(line)
+			}
+			b.WriteString(line[i:end])
+			// Не дублируем \n если он уже на конце последнего куска.
+			if end < len(line) || (end == len(line) && !strings.HasSuffix(line, "\n")) {
+				b.WriteByte('\n')
+			}
+		}
+	}
+	return b.String()
 }
 
 // openInFileManager открывает path в системном file-manager'е (Finder/Explorer/xdg-open).

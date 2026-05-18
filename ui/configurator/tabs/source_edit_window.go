@@ -63,9 +63,26 @@ func formatLocalOutboundPreviewLine(ob *config.OutboundConfig) string {
 	return fmt.Sprintf("%s  [%s]  %s", ob.Tag, typ, comment)
 }
 
-// parsePreviewNodesFromBody — простой парсер decoded body для Preview tab:
-// идём построчно, парсим URI'ы. Не network, не tag-prefix (preview-only).
+// parsePreviewNodesFromBody — парсер decoded body для Preview tab.
+//
+// Dispatcher по формату body (так же как SPEC 054 для preview_nodes):
+//   - Xray JSON array (Liberty VPN и подобные): ParseNodesFromXrayJSONArray
+//     (body — `[{"outbounds":...},...]`, без \n-разделения)
+//   - base64 / plain text-line (vless://...): построчно через ParseNode
+//
+// Без диспатча Xray JSON давал 0 нод (split по \n → 1 строка, не URI).
 func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.ParsedNode {
+	bodyStr := strings.TrimSpace(string(body))
+	if subscription.IsXrayJSONArrayBody(bodyStr) {
+		nodes, err := subscription.ParseNodesFromXrayJSONArray(bodyStr, skip)
+		if err != nil {
+			return nil
+		}
+		if len(nodes) > 200 {
+			nodes = nodes[:200]
+		}
+		return nodes
+	}
 	out := make([]*config.ParsedNode, 0)
 	tagCounts := make(map[string]int)
 	contentStr := strings.ReplaceAll(string(body), "\r\n", "\n")
