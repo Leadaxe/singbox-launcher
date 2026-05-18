@@ -177,6 +177,24 @@ func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGener
 	subst := config.BuildVarSubstituterFromDisk(execDir)
 	config.SubstituteParserConfigPlaceholders(parserConfig, subst)
 
+	// SPEC 056: pre-patch parser_config с preset.outbounds[] от enabled
+	// preset-refs ДО запуска generator'а. На failure (template missing /
+	// preset broken) — warning + fallback на оригинальный parser_config:
+	// Update должен работать даже если preset bundles повреждены, иначе
+	// юзер не сможет обновить подписки.
+	if td, terr := template.LoadTemplateData(execDir); terr == nil {
+		if patched, warnings, perr := build.ApplyPresetOutboundsToParserConfig(parserConfig, td.Presets, stateRef.RulesV6); perr == nil {
+			for _, w := range warnings {
+				debuglog.WarnLog("UpdateConfigFromSubscriptions: %s", w)
+			}
+			*parserConfig = *patched
+		} else {
+			debuglog.WarnLog("UpdateConfigFromSubscriptions: preset.outbounds pre-patch failed (using original): %v", perr)
+		}
+	} else {
+		debuglog.WarnLog("UpdateConfigFromSubscriptions: LoadTemplateData failed (skip preset.outbounds pre-patch): %v", terr)
+	}
+
 	updateParserProgress(ac, 5, "Parsed ParserConfig block")
 
 	progressCallback := func(p float64, s string) {

@@ -113,8 +113,16 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		return fmt.Errorf("load state: %w", err)
 	}
 
+	// Step 1.5: load template — нужен раньше (SPEC 056) для preset.outbounds
+	// pre-patch внутри buildSnapshotFromRawCache. Это лёгкая операция (file
+	// read + JSON parse), переиспользуется в Step 4 для BuildConfig.
+	td, err := template.LoadTemplateData(execDir)
+	if err != nil {
+		return fmt.Errorf("load template: %w", err)
+	}
+
 	// Step 2: попытаться построить snapshot из raw cache.
-	cacheSnap, snapErr := buildSnapshotFromRawCache(s, execDir, nil)
+	cacheSnap, snapErr := buildSnapshotFromRawCache(s, execDir, nil, td)
 	cacheMissing := errors.Is(snapErr, ErrRawCacheIncomplete)
 	if snapErr != nil && !cacheMissing {
 		return fmt.Errorf("build snapshot from raw cache: %w", snapErr)
@@ -133,7 +141,7 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		if err != nil {
 			return fmt.Errorf("reload state after auto-update: %w", err)
 		}
-		cacheSnap, snapErr = buildSnapshotFromRawCache(s, execDir, nil)
+		cacheSnap, snapErr = buildSnapshotFromRawCache(s, execDir, nil, td)
 		if snapErr != nil {
 			return fmt.Errorf("rebuild snapshot after auto-update: %w", snapErr)
 		}
@@ -148,11 +156,6 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 
 	debuglog.InfoLog("RebuildConfigIfDirty: rebuilding config.json (forced=%v update_dirty=%v restart_dirty=%v cache_missing_initially=%v)",
 		isForced, ac.StateService.IsCacheStale(), ac.StateService.IsConfigStale(), cacheMissing)
-
-	td, err := template.LoadTemplateData(execDir)
-	if err != nil {
-		return fmt.Errorf("load template: %w", err)
-	}
 
 	// Step 4: build.
 	parserCfg := s.ParserConfig

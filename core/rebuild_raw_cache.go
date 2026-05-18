@@ -11,6 +11,7 @@ import (
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
 	v5 "singbox-launcher/core/state/v5"
+	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
 )
@@ -24,7 +25,13 @@ import (
 //   - Server source'ы парсятся напрямую из URI (не нуждаются в .raw);
 //   - Если хоть один enabled subscription без `.raw` — возвращает (nil, ErrRawCacheIncomplete);
 //     caller делает auto-Update fallback.
-func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarSubstituter) (*build.ParsedCache, error) {
+//
+// SPEC 056: параметр td (nil-safe) подаёт template для pre-patch
+// parser_config с preset.outbounds[] перед запуском native outbound
+// generator'а. td=nil → no preset processing (тесты, legacy fallback);
+// non-nil → ApplyPresetOutboundsToParserConfig применяет mode=add/update
+// от enabled preset-refs в s.RulesV6.
+func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarSubstituter, td *template.TemplateData) (*build.ParsedCache, error) {
 	if s == nil {
 		return nil, fmt.Errorf("buildSnapshotFromRawCache: nil state")
 	}
@@ -63,6 +70,23 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 		// Caller не передал — берём дефолтный (template + state vars с диска).
 		def := config.BuildVarSubstituterFromDisk(execDir)
 		config.SubstituteParserConfigPlaceholders(&parserCfg, def)
+	}
+
+	// SPEC 056: pre-patch parser_config с preset.outbounds[] (mode=add/update)
+	// от enabled preset-refs ДО запуска native GenerateOutboundsFromParserConfig.
+	// Native generator потом сам делает options-flatten, filters/addOutbounds
+	// резолв, comment-prefix — никаких post-merge strip'ов в финале.
+	// td=nil → quiet skip (тесты, legacy fallback path).
+	if td != nil {
+		patched, warnings, err := build.ApplyPresetOutboundsToParserConfig(&parserCfg, td.Presets, s.RulesV6)
+		if err != nil {
+			debuglog.WarnLog("buildSnapshotFromRawCache: preset.outbounds pre-patch failed (using original parser_config): %v", err)
+		} else {
+			for _, w := range warnings {
+				debuglog.WarnLog("buildSnapshotFromRawCache: %s", w)
+			}
+			parserCfg = *patched
+		}
 	}
 
 	tagCounts := make(map[string]int)

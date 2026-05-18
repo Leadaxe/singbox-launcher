@@ -29,6 +29,7 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/debuglog"
+	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardutils "singbox-launcher/ui/configurator/utils"
 )
 
@@ -79,6 +80,27 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 	timing.LogTiming("parse ParserConfig", time.Since(parseStartTime))
 	debuglog.DebugLog("parseAndPreview: Parsed ParserConfig (sources: %d, outbounds: %d)",
 		len(parserConfig.ParserConfig.Proxies), len(parserConfig.ParserConfig.Outbounds))
+
+	// SPEC 056: pre-patch parser_config с preset.outbounds[] ДО запуска
+	// generator'а, чтобы preview-cache (model.GeneratedOutbounds) совпадал
+	// с тем, что Save/Rebuild сгенерируют. Без этого Preview tab и финальный
+	// config расходятся: preview без preset.outbounds-эффекта, реальный
+	// config с ним. Reconcile RuleOrder сначала — порядок preset-ref'ов
+	// важен для tag-collision first-wins семантики.
+	if model.TemplateData != nil {
+		wizardmodels.ReconcileRuleOrder(model)
+		rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
+			model.RuleOrder, model.PresetRefs, model.CustomRules,
+		)
+		if patched, warnings, perr := build.ApplyPresetOutboundsToParserConfig(&parserConfig, model.TemplateData.Presets, rulesV6); perr == nil {
+			for _, w := range warnings {
+				debuglog.WarnLog("parseAndPreview: %s", w)
+			}
+			parserConfig = *patched
+		} else {
+			debuglog.WarnLog("parseAndPreview: preset.outbounds pre-patch failed (using original): %v", perr)
+		}
+	}
 
 	// Generate outbounds from current ParserConfig only. Do not apply SourceURLs here:
 	// applying would replace all proxies with the URL field content and drop other sources
