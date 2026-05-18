@@ -210,7 +210,11 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 		body.Refresh()
 	}
 
-	refresh()
+	// Lazy: НЕ вызываем refresh() здесь. Overview по дефолту неактивный таб
+	// (Settings — первый в NewAppTabs), а refresh() тянет ReadRawBody +
+	// DecodeSubscriptionContent для подписки с 1 MB Xray JSON body — это
+	// ~10 сек на открытии окна. Refresh вызывается из tabs.OnSelected когда
+	// юзер реально кликает Overview. До этого таб показывает пустой VBox.
 	return rootWithGutter, refresh
 }
 
