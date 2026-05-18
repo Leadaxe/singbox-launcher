@@ -127,13 +127,13 @@
 
 ## Phase 7 — Template content migration
 
-- [ ] `bin/wizard_template.json::parser_config.outbounds` — снять `filters: !RU` из `proxy-out` и `auto-proxy-out`
-- [ ] `bin/wizard_template.json::parser_config.outbounds` — удалить global `ru VPN 🇷🇺` selector
-- [ ] `bin/wizard_template.json::presets[ru-inside].outbounds` — добавить `mode=update` для proxy-out + auto-proxy-out + `mode=add` для `ru VPN 🇷🇺`
-- [ ] `bin/wizard_template.json::presets[russian].outbounds` — добавить `mode=update` для proxy-out + auto-proxy-out
-- [ ] `bin/wizard_template.json::presets[ru-blocked].outbounds` — то же
-- [ ] `internal/constants/constants.go::RequiredTemplateRef` — bump
-- [ ] Manual QA 1–5 из PLAN.md Phase 7
+- [x] `bin/wizard_template.json::parser_config.outbounds` — снять `filters: !RU` из `proxy-out` и `auto-proxy-out`
+- [x] `bin/wizard_template.json::parser_config.outbounds` — удалить global `ru VPN 🇷🇺` selector
+- [x] `bin/wizard_template.json::presets[ru-inside].outbounds` — `mode=update` + `mode=add` для `ru VPN 🇷🇺`, default `@out` = `ru VPN 🇷🇺`
+- [x] `bin/wizard_template.json::presets[russian].outbounds` — `mode=update` + `mode=add` ru VPN
+- [x] `bin/wizard_template.json::presets[ru-blocked].outbounds` — только `mode=update` !RU
+- [ ] `internal/constants/constants.go::RequiredTemplateRef` — bump при коммите (SHA коммита с этим template)
+- [ ] Manual QA 1–5 из PLAN.md Phase 7 — **после Phases 2–4** (pre-patch в коде)
 
 ## Phase 8 — Golden fixtures + docs
 

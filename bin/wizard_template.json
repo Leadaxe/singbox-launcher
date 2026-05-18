@@ -13,28 +13,15 @@
           "tolerance": "@urltest_tolerance",
           "interrupt_exist_connections": true
         },
-        "filters": { "tag": "!/(🇷🇺)/i" },
-        "comment": "Proxy automated group for everything that should go through VPN"
+        "comment": "Proxy automated group for everything that should go through VPN. !RU filter is applied via preset.outbounds when ru-inside / russian / ru-blocked is enabled."
       },
       {
         "tag": "proxy-out",
         "wizard": { "required": 1 },
         "type": "selector",
         "options": { "interrupt_exist_connections": true, "default": "auto-proxy-out" },
-        "filters": { "tag": "!/(🇷🇺)/i" },
         "addOutbounds": ["direct-out", "auto-proxy-out"],
-        "comment": "Proxy group for everything that should go through VPN"
-      },
-      {
-        "tag": "ru VPN 🇷🇺",
-        "type": "selector",
-        "options": {
-          "default": "direct-out",
-          "interrupt_exist_connections": true
-        },
-        "filters": { "tag": "/(🇷🇺)/i" },
-        "addOutbounds": ["direct-out"],
-        "comment": "Proxy group for russian VPN"
+        "comment": "Proxy group for everything that should go through VPN. !RU filter is applied via preset.outbounds when ru-inside / russian / ru-blocked is enabled."
       },
       {
         "tag": "vpn ①",
@@ -481,7 +468,7 @@
     {
       "id": "russian",
       "label": "Russian domains & IPs",
-      "description": "Route Russian TLDs (.ru/.su/IDN), service CDNs (Yandex/VK/Avito/2GIS/banks/etc) and Russian IP ranges directly.",
+      "description": "Route Russian TLDs (.ru/.su/IDN), service CDNs (Yandex/VK/Avito/2GIS/banks/etc) and Russian IP ranges directly. Also brings the 'ru VPN 🇷🇺' selector (RU proxies only) and adds an !RU filter to proxy-out/auto-proxy-out so Russian traffic doesn't accidentally exit through a Russian proxy when the main proxy group is used.",
       "vars": [
         { "name": "out", "type": "outbound", "default": "direct-out",
           "title": "Outbound",
@@ -554,26 +541,50 @@
           "description": "Yandex Safe DoT (77.88.8.88:853, SNI safe.dot.dns.yandex.net).",
           "if": ["use_dns_override"] }
       ],
+      "outbounds": [
+        { "mode": "update", "tag": "proxy-out",      "filters": { "tag": "!/(🇷🇺)/i" } },
+        { "mode": "update", "tag": "auto-proxy-out", "filters": { "tag": "!/(🇷🇺)/i" } },
+        {
+          "tag": "ru VPN 🇷🇺",
+          "type": "selector",
+          "options": { "default": "direct-out", "interrupt_exist_connections": true },
+          "filters": { "tag": "/(🇷🇺)/i" },
+          "addOutbounds": ["direct-out"],
+          "comment": "RU-only proxy selector (preset.outbounds mode=add; identical body shared with ru-inside when both enabled)"
+        }
+      ],
       "rule":     { "rule_set": ["ru-domains", "ru-services", "geoip-ru"], "outbound": "@out" },
       "dns_rule": { "rule_set": ["ru-domains", "ru-services"], "server": "@dns_server", "if": ["use_dns_override"] }
     },
     {
       "id": "ru-inside",
       "label": "Russia-only services",
-      "description": "Services available only inside Russia — direct (geosite-ru-available-only-inside).",
+      "description": "Services available only inside Russia — direct (geosite-ru-available-only-inside). Also brings the 'ru VPN 🇷🇺' selector (RU proxies only) and adds an !RU filter to proxy-out/auto-proxy-out so RU traffic goes through ru VPN, not the main proxy.",
       "vars": [
-        { "name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound" }
+        { "name": "out", "type": "outbound", "default": "ru VPN 🇷🇺", "title": "Outbound" }
       ],
       "rule_set": [
         { "tag": "ru-inside", "type": "remote", "format": "binary",
           "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-ru-available-only-inside.srs" }
+      ],
+      "outbounds": [
+        { "mode": "update", "tag": "proxy-out",      "filters": { "tag": "!/(🇷🇺)/i" } },
+        { "mode": "update", "tag": "auto-proxy-out", "filters": { "tag": "!/(🇷🇺)/i" } },
+        {
+          "tag": "ru VPN 🇷🇺",
+          "type": "selector",
+          "options": { "default": "direct-out", "interrupt_exist_connections": true },
+          "filters": { "tag": "/(🇷🇺)/i" },
+          "addOutbounds": ["direct-out"],
+          "comment": "RU-only proxy selector (preset.outbounds mode=add, emitted by ru-inside preset)"
+        }
       ],
       "rule": { "rule_set": "ru-inside", "outbound": "@out" }
     },
     {
       "id": "ru-blocked",
       "label": "Russian blocked resources",
-      "description": "Detour resources blocked in Russia (geoip-ru-blocked + community list) through proxy selector.",
+      "description": "Detour resources blocked in Russia (geoip-ru-blocked + community list) through proxy selector. Also adds an !RU filter to proxy-out/auto-proxy-out so traffic doesn't accidentally exit through a Russian proxy — that would hit the same blocks you're trying to escape.",
       "vars": [
         { "name": "out", "type": "outbound", "default": "proxy-out", "title": "Outbound" }
       ],
@@ -582,6 +593,10 @@
           "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked.srs" },
         { "tag": "community", "type": "remote", "format": "binary",
           "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked-community.srs" }
+      ],
+      "outbounds": [
+        { "mode": "update", "tag": "proxy-out",      "filters": { "tag": "!/(🇷🇺)/i" } },
+        { "mode": "update", "tag": "auto-proxy-out", "filters": { "tag": "!/(🇷🇺)/i" } }
       ],
       "rule": { "rule_set": ["main", "community"], "network": ["tcp", "udp"], "outbound": "@out" }
     },
