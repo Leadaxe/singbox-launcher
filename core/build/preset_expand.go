@@ -290,48 +290,17 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string) (*PresetF
 	return frags, warnings, true
 }
 
-// stripWizardOnlyFields удаляет поля, нужные только launcher/UI/template
-// документации и не валидные в финальном sing-box config:
-//
-//	if / if_or    — conditional control (resolved already by evalIf)
-//	title         — UI label
-//	description   — UI tooltip (sing-box 1.12+ строгий decoder отвергает)
-//	comment       — template/JSON-doc комментарий (тот же strict decoder)
-//	enabled       — UI checkbox state (только top-level; tls.enabled etc
-//	                во вложенных не затрагиваются)
-//	wizard        — launcher metadata block (`wizard.required` etc)
-//
-// **НЕ** трогает `filters` / `addOutbounds` — они должны быть РЕЗОЛВЛЕНЫ в
-// `outbounds` list (через resolveAddFiltersIntoOutbounds / applyOutboundUpdate
-// в merge path) ДО strip'а. Если после merge поля всё ещё на месте —
-// finalStripLauncherFields в final pass их зачистит как fallback.
-//
-// Note: `mode` (preset.outbounds control) и `type` (для mode=update) —
-// preset-specific, стрипаются отдельно в outbound emit path.
+// stripWizardOnlyFields — thin wrapper над общим SanitizeMap (см.
+// rules_pipeline.go). Оставлен для callsite'ов preset_expand.go;
+// семантика identical — все strip'ы делегируют в единую точку истины.
 func stripWizardOnlyFields(m map[string]interface{}) {
-	if m == nil {
-		return
-	}
-	delete(m, "if")
-	delete(m, "if_or")
-	delete(m, "title")
-	delete(m, "description")
-	delete(m, "comment")
-	delete(m, "enabled")
-	delete(m, "wizard")
+	SanitizeMap(m)
 }
 
-// finalStripLauncherFields — расширенный strip для **финального** emit pass
-// (после того как merge функции должны были сконсумировать filters/addOutbounds).
-// Belt & suspenders: если поля остались — значит merge не отработал
-// (например cache был nil в preview), дропаем их чтобы sing-box не упал.
+// finalStripLauncherFields — wrapper над SanitizeMapFinal (post-merge pass:
+// strip launcher-only + filters/addOutbounds как safety-net).
 func finalStripLauncherFields(m map[string]interface{}) {
-	if m == nil {
-		return
-	}
-	stripWizardOnlyFields(m)
-	delete(m, "filters")
-	delete(m, "addOutbounds")
+	SanitizeMapFinal(m)
 }
 
 // filterActiveVars — оценивает if/if_or каждой var'ы. Возвращает set активных имён.

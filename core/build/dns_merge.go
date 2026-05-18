@@ -135,16 +135,14 @@ func dnsServerEnabled(m map[string]interface{}) bool {
 	return b
 }
 
-// stripDNSWizardOnlyFields убирает wizard-only ключи перед merge'ом в
-// финальный config.json. Делегирует в общий stripWizardOnlyFields
-// (преsetting / dns / outbound — все стрипают одинаковый набор полей:
-// if/if_or/title/description/enabled/wizard).
+// stripDNSWizardOnlyFields — wrapper над общим SanitizeMap.
+// Single source of truth для emit-cleanup — см. rules_pipeline.go::SanitizeMap.
 func stripDNSWizardOnlyFields(m map[string]interface{}) map[string]interface{} {
 	out := make(map[string]interface{}, len(m))
 	for k, v := range m {
 		out[k] = v
 	}
-	stripWizardOnlyFields(out)
+	SanitizeMap(out)
 	return out
 }
 
