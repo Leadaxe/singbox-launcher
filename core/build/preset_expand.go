@@ -239,6 +239,11 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string) (*PresetF
 		delete(m, "if")
 		delete(m, "if_or")
 		delete(m, "title")
+		// sing-box 1.12+ rejects unknown DNS-server fields ("description: unknown
+		// field"). Even though earlier docs called description a valid sing-box
+		// field, the new strict decoder fails on it. Strip — UI-only metadata
+		// for tooltips/debug, not for sing-box.
+		delete(m, "description")
 		// Strip detour=direct-out (sing-box резолвит без forwarding).
 		if det, ok := m["detour"].(string); ok && det == "direct-out" {
 			delete(m, "detour")
