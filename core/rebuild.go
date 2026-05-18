@@ -87,12 +87,14 @@ func stripANSI(s string) string {
 // сначала зовёт `ConfigService.UpdateConfigFromSubscriptions` (network),
 // затем продолжает.
 //
-// No-op условие: оба dirty-маркера чисты И полный raw cache на диске.
+// No-op условие: оба dirty-маркера чисты И полный raw cache на диске
+// (skipped when forced=true — UI кнопка Rebuild всегда полностью пересобирает).
 //
 // Возвращает:
 //   - nil — успех (или nothing-to-do);
 //   - error — fatal на этапе сборки/записи.
-func (ac *AppController) RebuildConfigIfDirty() error {
+func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
+	isForced := len(forced) > 0 && forced[0]
 	if ac == nil || ac.StateService == nil {
 		return nil
 	}
@@ -137,13 +139,15 @@ func (ac *AppController) RebuildConfigIfDirty() error {
 		}
 	}
 
-	// Step 3: noop fast-path.
-	if !cacheMissing && !ac.StateService.IsCacheStale() && !ac.StateService.IsConfigStale() {
+	// Step 3: noop fast-path (skipped when forced=true — user explicitly
+	// pressed Rebuild button и ожидает полный rebuild + sing-box check
+	// даже если dirty markers чистые).
+	if !isForced && !cacheMissing && !ac.StateService.IsCacheStale() && !ac.StateService.IsConfigStale() {
 		return nil
 	}
 
-	debuglog.InfoLog("RebuildConfigIfDirty: rebuilding config.json (update_dirty=%v restart_dirty=%v cache_missing_initially=%v)",
-		ac.StateService.IsCacheStale(), ac.StateService.IsConfigStale(), cacheMissing)
+	debuglog.InfoLog("RebuildConfigIfDirty: rebuilding config.json (forced=%v update_dirty=%v restart_dirty=%v cache_missing_initially=%v)",
+		isForced, ac.StateService.IsCacheStale(), ac.StateService.IsConfigStale(), cacheMissing)
 
 	td, err := template.LoadTemplateData(execDir)
 	if err != nil {

@@ -265,7 +265,11 @@ func (tab *CoreDashboardTab) createStatusRow() fyne.CanvasObject {
 		if ac == nil {
 			return
 		}
-		if err := ac.RebuildConfigIfDirty(); err != nil {
+		// forced=true: юзер явно нажал Rebuild — пересобираем даже если
+		// dirty-markers чистые. Это гарантирует пробег sing-box check и
+		// показ ошибок popup'ом (см. validateConfigViaSingBox), независимо
+		// от того успел ли config.json обновиться от прошлых правок.
+		if err := ac.RebuildConfigIfDirty(true); err != nil {
 			debuglog.WarnLog("CoreDashboard: RebuildConfigIfDirty failed: %v", err)
 			ShowError(ac.UIService.MainWindow, err)
 			return
