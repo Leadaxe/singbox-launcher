@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
@@ -184,26 +185,26 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 					truncatedNote = locale.Tf("wizard.source.raw_body_truncated", rawBodyMaxDisplay, len(raw))
 				}
 
-				// Header: title слева, icon-кнопки справа (open folder + copy path).
+				// Header: title + icon-кнопки сразу справа от него (inline HBox).
 				// Кнопки показываем всегда — путь полезен и когда body не truncated
 				// (юзер может захотеть открыть в внешнем editor'е).
-				openBtn := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
+				// ttwidget.NewButtonWithIcon — поддерживает SetToolTip (обычный
+				// widget.Button его не поддерживает, поэтому setTooltip был no-op).
+				openBtn := ttwidget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
 					openInFileManager(subsDir)
 				})
 				openBtn.Importance = widget.LowImportance
-				copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+				openBtn.SetToolTip(locale.T("wizard.source.raw_open_folder") + "\n" + subsDir)
+				copyBtn := ttwidget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
 					if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
 						app.Clipboard().SetContent(rawPath)
 					}
 				})
 				copyBtn.Importance = widget.LowImportance
-				setTooltip(openBtn, locale.T("wizard.source.raw_open_folder")+" — "+subsDir)
-				setTooltip(copyBtn, locale.T("wizard.source.raw_copy_path")+" — "+rawPath)
-				headerRow := container.NewBorder(
-					nil, nil,
-					sectionHeader(locale.T("wizard.source.raw_section_body")), // left
-					container.NewHBox(openBtn, copyBtn),                       // right
-					nil,
+				copyBtn.SetToolTip(locale.T("wizard.source.raw_copy_path") + "\n" + rawPath)
+				headerRow := container.NewHBox(
+					sectionHeader(locale.T("wizard.source.raw_section_body")),
+					openBtn, copyBtn,
 				)
 				body.Add(headerRow)
 
