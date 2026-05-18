@@ -30,6 +30,22 @@ import (
 	"singbox-launcher/core/template"
 )
 
+// outboundSentinelLiterals — теги, которые типично преобразуются upstream
+// в action-based rule (reject/block) или sing-box well-known outbound'ы
+// (direct/dns-out). Если они оказываются в rule.outbound — НЕ считаем
+// dangling даже если их нет в финальном outbounds[].
+//
+// Защита от ложных drop'ов: preset/user может эмитить rule с outbound:"reject"
+// напрямую (без прохождения через outboundutil.ApplyOutboundToRule),
+// и cleanup не должен убирать такие rule из конфига.
+var outboundSentinelLiterals = map[string]bool{
+	"reject":  true,
+	"block":   true,
+	"drop":    true,
+	"direct":  true,
+	"dns-out": true,
+}
+
 // presetOutboundEntry — internal: разделяет режим применения и сам
 // configtypes.OutboundConfig (без control-полей mode/if/if_or).
 //
@@ -401,6 +417,149 @@ func cloneOptions(m map[string]interface{}) map[string]interface{} {
 		return nil
 	}
 	return out
+}
+
+// CleanDanglingOutboundsInRouteRules чистит rule.outbound ссылки в
+// route.rules[], которых нет в finalTags (т.е. tag отсутствует в финальном
+// config.outbounds[]).
+//
+// Сценарий: юзер сохранил кастом-rule с outbound="ru VPN 🇷🇺", потом
+// disable ru-inside preset → tag "ru VPN 🇷🇺" исчез из outbounds[]. Без
+// cleanup'а sing-box валится на unknown outbound. Cleanup либо подменяет
+// на fallback (если непустой и сам валидный), либо drop'ает rule.
+//
+// Параметры:
+//   - routeRaw — раскрытая route-секция (после MergeRouteSection + MergePresetsIntoRoute);
+//   - finalTags — set всех outbound-тегов которые попадут в финальный config;
+//   - fallback — обычно route.final; non-empty И ∈ finalTags → подменяется,
+//     иначе rule drop'ается.
+//
+// Возвращает (newRoute, warnings, err). routeRaw НЕ мутируется.
+// Sentinel-теги (reject/block/drop/direct/dns-out) и rules без outbound
+// (action-based) пропускаются без изменений.
+//
+// Skip в preview mode — caller отвечает за условие (наследие 0c3dce5 / P8:
+// ctx.Cache в preview может быть неполный, false-positive dangling).
+func CleanDanglingOutboundsInRouteRules(routeRaw json.RawMessage, finalTags map[string]bool, fallback string) (json.RawMessage, []string, error) {
+	if len(routeRaw) == 0 {
+		return routeRaw, nil, nil
+	}
+	var route map[string]interface{}
+	if err := json.Unmarshal(routeRaw, &route); err != nil {
+		return nil, nil, fmt.Errorf("clean dangling outbounds: parse route: %w", err)
+	}
+	rulesRaw, _ := route["rules"].([]interface{})
+	if len(rulesRaw) == 0 {
+		return routeRaw, nil, nil
+	}
+
+	var warnings []string
+	kept := make([]interface{}, 0, len(rulesRaw))
+	for _, item := range rulesRaw {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			// Не-объект rule — пропускаем как есть (defensive).
+			kept = append(kept, item)
+			continue
+		}
+		cleaned, drop, warn := cleanDanglingOutboundRefInRule(m, finalTags, fallback)
+		if warn != "" {
+			warnings = append(warnings, warn)
+		}
+		if !drop {
+			kept = append(kept, cleaned)
+		}
+	}
+	if len(kept) > 0 {
+		route["rules"] = kept
+	} else {
+		delete(route, "rules")
+	}
+
+	out, err := json.MarshalIndent(route, "", "  ")
+	if err != nil {
+		return nil, warnings, fmt.Errorf("clean dangling outbounds: marshal: %w", err)
+	}
+	return out, warnings, nil
+}
+
+// cleanDanglingOutboundRefInRule — per-rule cleanup. Возвращает:
+//   - (rule, false, "")            — rule keep'ается без изменений (no outbound,
+//     sentinel, или outbound ∈ finalTags)
+//   - (clonedRule, false, warning) — rule keep'ается, outbound подменён на fallback
+//   - (nil, true, warning)         — rule drop'ается (fallback пуст или сам dangling)
+//
+// Pure: не мутирует rule на месте — clone'ит когда нужно подменить outbound.
+func cleanDanglingOutboundRefInRule(rule map[string]interface{}, finalTags map[string]bool, fallback string) (map[string]interface{}, bool, string) {
+	outRaw, has := rule["outbound"]
+	if !has {
+		return rule, false, "" // action-based rule (reject/block через "action") — не трогаем
+	}
+	outStr, _ := outRaw.(string)
+	if outStr == "" {
+		return rule, false, ""
+	}
+	if outboundSentinelLiterals[outStr] {
+		return rule, false, "" // reject/block/direct/dns-out literal — преобразуется upstream
+	}
+	if finalTags[outStr] {
+		return rule, false, "" // valid
+	}
+
+	// Dangling. Подменяем на fallback если он сам валидный.
+	if fallback != "" && finalTags[fallback] {
+		cloned := make(map[string]interface{}, len(rule))
+		for k, v := range rule {
+			cloned[k] = v
+		}
+		cloned["outbound"] = fallback
+		return cloned, false, fmt.Sprintf(
+			"route.rules: dangling outbound %q → replaced with fallback %q",
+			outStr, fallback)
+	}
+	return nil, true, fmt.Sprintf(
+		"route.rules: dangling outbound %q → rule dropped (no valid fallback)",
+		outStr)
+}
+
+// collectAllFinalOutboundTags — set всех outbound-тегов, которые попадут
+// в финальный `config.outbounds[]`.
+//
+// Источники:
+//   - cfg["outbounds"] — template static outbounds (direct-out etc.) ПОСЛЕ
+//     applied preset.outbounds pre-patch'а (потому что preset.outbounds
+//     mode=add цели тоже идут через native generator → попадают в Cache).
+//   - ctx.Cache.Outbounds — все parser-generated outbounds (proxy-out,
+//     auto-proxy-out, vpn ①/②, ноды с tag_prefix'ами, добавленные preset'ом
+//     "ru VPN 🇷🇺", etc.).
+//
+// Sentinel-теги (reject/block/drop) НЕ включены — они обрабатываются отдельно
+// в cleanDanglingOutboundRefInRule через outboundSentinelLiterals lookup.
+func collectAllFinalOutboundTags(ctx BuildContext, cfg map[string]json.RawMessage) map[string]bool {
+	tags := make(map[string]bool, 32)
+
+	if raw, ok := cfg["outbounds"]; ok && len(raw) > 0 {
+		var arr []map[string]interface{}
+		if err := json.Unmarshal(raw, &arr); err == nil {
+			for _, ob := range arr {
+				if tag, _ := ob["tag"].(string); tag != "" {
+					tags[tag] = true
+				}
+			}
+		}
+	}
+	if ctx.Cache != nil {
+		for _, raw := range ctx.Cache.Outbounds {
+			var ob map[string]interface{}
+			if err := json.Unmarshal(raw, &ob); err != nil {
+				continue
+			}
+			if tag, _ := ob["tag"].(string); tag != "" {
+				tags[tag] = true
+			}
+		}
+	}
+	return tags
 }
 
 // unionStringList — union двух []string preserving первое вхождение
