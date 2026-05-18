@@ -474,6 +474,10 @@ func ApplyPresetUpdatesToGeneratedOutbounds(cacheStrings []string, ctx PresetMer
 		for _, p := range patches {
 			applyOutboundUpdate(m, p.body, p.presetID)
 		}
+		// Финальная зачистка launcher-only полей. applyOutboundUpdate уже
+		// consumed filters/addOutbounds (резолвил в outbounds list), но
+		// belt-and-suspenders на случай, если что-то затекло.
+		finalStripLauncherFields(m)
 		patched, err := json.Marshal(m)
 		if err != nil {
 			out[i] = raw
@@ -759,10 +763,15 @@ func MergePresetsIntoOutbounds(outboundsRaw json.RawMessage, ctx PresetMergeCont
 		}
 	}
 
-	// Re-build outbounds list in original order + new appends.
+	// Re-build outbounds list in original order + new appends. Final strip:
+	// убираем launcher-only поля (comment/wizard/filters/addOutbounds/etc)
+	// со всех entries — template-original могли иметь их (parser_config
+	// builder обычно их потребляет, но static outbounds типа direct-out
+	// эмитятся как есть и могут таскать `comment`).
 	result := make([]interface{}, 0, len(order))
 	for _, tag := range order {
 		if m, ok := emitted[tag]; ok {
+			finalStripLauncherFields(m)
 			result = append(result, m)
 		}
 	}
