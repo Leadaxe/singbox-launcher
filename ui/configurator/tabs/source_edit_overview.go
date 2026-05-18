@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config/subscription"
@@ -167,7 +168,6 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 			rawPath := filepath.Join(subsDir, src.ID+".raw")
 			if raw, rerr := v5.ReadRawBody(subsDir, src.ID); rerr == nil && len(raw) > 0 {
 				body.Add(widget.NewSeparator())
-				body.Add(sectionHeader(locale.T("wizard.source.raw_section_body")))
 
 				// Раскодируем base64-обёрнутые subscription'ы (Liberty etc.) —
 				// без этого MultiLineEntry с TextWrapOff уносит body за экран
@@ -178,29 +178,39 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 					display = decoded
 				}
 
+				truncatedNote := ""
 				if len(display) > rawBodyMaxDisplay {
 					display = display[:rawBodyMaxDisplay]
-					truncated := widget.NewLabel(locale.Tf("wizard.source.raw_body_truncated", rawBodyMaxDisplay, len(raw)))
-					truncated.Importance = widget.LowImportance
-					body.Add(truncated)
+					truncatedNote = locale.Tf("wizard.source.raw_body_truncated", rawBodyMaxDisplay, len(raw))
+				}
 
-					// Кнопки + путь к полному файлу (для просмотра через
-					// системный editor когда 4 KB preview не хватает).
-					openBtn := widget.NewButton(locale.T("wizard.source.raw_open_folder"), func() {
-						openInFileManager(subsDir)
-					})
-					openBtn.Importance = widget.LowImportance
-					copyBtn := widget.NewButton(locale.T("wizard.source.raw_copy_path"), func() {
-						if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
-							app.Clipboard().SetContent(rawPath)
-						}
-					})
-					copyBtn.Importance = widget.LowImportance
-					pathLabel := widget.NewLabel(rawPath)
-					pathLabel.Importance = widget.LowImportance
-					pathLabel.Wrapping = fyne.TextWrapBreak
-					body.Add(container.NewHBox(openBtn, copyBtn))
-					body.Add(pathLabel)
+				// Header: title слева, icon-кнопки справа (open folder + copy path).
+				// Кнопки показываем всегда — путь полезен и когда body не truncated
+				// (юзер может захотеть открыть в внешнем editor'е).
+				openBtn := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
+					openInFileManager(subsDir)
+				})
+				openBtn.Importance = widget.LowImportance
+				copyBtn := widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+					if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
+						app.Clipboard().SetContent(rawPath)
+					}
+				})
+				copyBtn.Importance = widget.LowImportance
+				setTooltip(openBtn, locale.T("wizard.source.raw_open_folder")+" — "+subsDir)
+				setTooltip(copyBtn, locale.T("wizard.source.raw_copy_path")+" — "+rawPath)
+				headerRow := container.NewBorder(
+					nil, nil,
+					sectionHeader(locale.T("wizard.source.raw_section_body")), // left
+					container.NewHBox(openBtn, copyBtn),                       // right
+					nil,
+				)
+				body.Add(headerRow)
+
+				if truncatedNote != "" {
+					tr := widget.NewLabel(truncatedNote)
+					tr.Importance = widget.LowImportance
+					body.Add(tr)
 				}
 
 				// MultiLineEntry без Disable() — на macOS Fyne disabled-text
