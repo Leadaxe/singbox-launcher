@@ -2,6 +2,9 @@ package tabs
 
 import (
 	"fmt"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -161,6 +164,7 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 		execDir := m.ExecDir
 		if execDir != "" {
 			subsDir := platform.GetSubscriptionsDir(execDir)
+			rawPath := filepath.Join(subsDir, src.ID+".raw")
 			if raw, rerr := v5.ReadRawBody(subsDir, src.ID); rerr == nil && len(raw) > 0 {
 				body.Add(widget.NewSeparator())
 				body.Add(sectionHeader(locale.T("wizard.source.raw_section_body")))
@@ -179,6 +183,24 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 					truncated := widget.NewLabel(locale.Tf("wizard.source.raw_body_truncated", rawBodyMaxDisplay, len(raw)))
 					truncated.Importance = widget.LowImportance
 					body.Add(truncated)
+
+					// Кнопки + путь к полному файлу (для просмотра через
+					// системный editor когда 4 KB preview не хватает).
+					openBtn := widget.NewButton(locale.T("wizard.source.raw_open_folder"), func() {
+						openInFileManager(subsDir)
+					})
+					openBtn.Importance = widget.LowImportance
+					copyBtn := widget.NewButton(locale.T("wizard.source.raw_copy_path"), func() {
+						if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
+							app.Clipboard().SetContent(rawPath)
+						}
+					})
+					copyBtn.Importance = widget.LowImportance
+					pathLabel := widget.NewLabel(rawPath)
+					pathLabel.Importance = widget.LowImportance
+					pathLabel.Wrapping = fyne.TextWrapBreak
+					body.Add(container.NewHBox(openBtn, copyBtn))
+					body.Add(pathLabel)
 				}
 
 				// MultiLineEntry без Disable() — на macOS Fyne disabled-text
@@ -235,6 +257,21 @@ func kvRow(key, value string) fyne.CanvasObject {
 	valueLabel := widget.NewLabel(value)
 	valueLabel.Wrapping = fyne.TextWrapBreak
 	return container.NewBorder(nil, nil, keyLabel, nil, valueLabel)
+}
+
+// openInFileManager открывает path в системном file-manager'е (Finder/Explorer/xdg-open).
+// Best-effort: ошибки игнорируются (logged debuglog'ом нет смысла).
+func openInFileManager(path string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", path)
+	case "windows":
+		cmd = exec.Command("explorer", path)
+	default: // linux, *bsd
+		cmd = exec.Command("xdg-open", path)
+	}
+	_ = cmd.Start()
 }
 
 func boolStr(b bool) string {
