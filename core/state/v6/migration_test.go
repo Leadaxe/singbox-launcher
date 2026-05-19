@@ -227,29 +227,17 @@ func TestMigrate_DNS_Split(t *testing.T) {
 		t.Error("cloudflare_udp override should be enabled=false")
 	}
 
-	// Extras: только my-pihole
-	if len(new.DNS.ExtraServers) != 1 {
-		t.Errorf("extras: %+v", new.DNS.ExtraServers)
-	}
-	if new.DNS.ExtraServers[0]["tag"] != "my-pihole" {
-		t.Errorf("extras tag: %v", new.DNS.ExtraServers[0])
-	}
-	// enabled должно быть удалено из extras
-	if _, has := new.DNS.ExtraServers[0]["enabled"]; has {
-		t.Errorf("extras should not have 'enabled': %+v", new.DNS.ExtraServers[0])
-	}
-
-	// Extra rules
-	if len(new.DNS.ExtraRules) != 1 {
-		t.Errorf("extra_rules: %+v", new.DNS.ExtraRules)
-	}
+	// SPEC 057: extras dropped + warned. my-pihole (non-template) → drop, no
+	// state field. Rules → drop (no way to convert inline body to ref).
+	// migration should emit warnings — they're returned from MigrateV5ToV6
+	// but this test focuses on what STAYS in v6 state, not on warning text.
 }
 
 // TestMigrate_NoDNSOptions — отсутствие DNSOptions → пустой DNSConfig без паники.
 func TestMigrate_NoDNSOptions(t *testing.T) {
 	old := v5.State{}
 	new, _ := MigrateV5ToV6(old, nil, nil)
-	if len(new.DNS.TemplateServers) != 0 || len(new.DNS.ExtraServers) != 0 {
+	if len(new.DNS.TemplateServers) != 0 {
 		t.Errorf("DNS should be empty: %+v", new.DNS)
 	}
 }

@@ -118,8 +118,9 @@ func TestSyncAllRulesToStateRulesV6_Mixed(t *testing.T) {
 	}
 }
 
-// TestSyncDNSFullToStateV6_Split — template servers → overrides, user-added → extras.
-func TestSyncDNSFullToStateV6_Split(t *testing.T) {
+// TestSyncDNSFullToStateV6_TemplateOnly — SPEC 057: template servers → overrides,
+// user-added servers тихо игнорируются (state хранит только refs, не body).
+func TestSyncDNSFullToStateV6_TemplateOnly(t *testing.T) {
 	servers := []json.RawMessage{
 		json.RawMessage(`{"tag":"google_doh","type":"https","enabled":true}`),
 		json.RawMessage(`{"tag":"my-pihole","type":"udp","server":"192.168.1.5","enabled":true}`),
@@ -133,16 +134,9 @@ func TestSyncDNSFullToStateV6_Split(t *testing.T) {
 	if !cfg.TemplateServers["google_doh"].Enabled {
 		t.Error("google_doh override should be true")
 	}
-	if len(cfg.ExtraServers) != 1 {
-		t.Fatalf("extra count: %+v", cfg.ExtraServers)
-	}
-	extra := cfg.ExtraServers[0]
-	if extra["tag"] != "my-pihole" {
-		t.Errorf("extra tag: %v", extra)
-	}
-	if _, has := extra["enabled"]; has {
-		t.Errorf("enabled should be stripped from extras: %v", extra)
-	}
+	// SPEC 057: my-pihole (non-template) больше не попадает в state.
+	// State поле ExtraServers удалено; такие серверы должны жить в template
+	// или preset.dns_servers, иначе их вообще нет.
 }
 
 // TestSyncDNSFullToStateV6_ExplicitOverridesWin — DNSTemplateOverrides приоритетнее
@@ -160,15 +154,15 @@ func TestSyncDNSFullToStateV6_ExplicitOverridesWin(t *testing.T) {
 	}
 }
 
-// TestSyncDNSFullToStateV6_RulesText — extra rules парсятся из JSON text.
-func TestSyncDNSFullToStateV6_RulesText(t *testing.T) {
+// TestSyncDNSFullToStateV6_RulesTextIgnored — SPEC 057: dnsRulesText аргумент
+// сохранён для backward-compat, но игнорируется (state не хранит user DNS rules).
+func TestSyncDNSFullToStateV6_RulesTextIgnored(t *testing.T) {
 	rulesText := `{"rules":[{"server":"x","domain_suffix":["a.com"]}]}`
 	cfg := SyncDNSFullToStateV6(nil, rulesText, nil, nil)
-	if len(cfg.ExtraRules) != 1 {
-		t.Fatalf("expected 1 extra rule: %+v", cfg.ExtraRules)
-	}
-	if cfg.ExtraRules[0]["server"] != "x" {
-		t.Errorf("extra rule content: %v", cfg.ExtraRules[0])
+	// Никаких полей в v6.DNSConfig для DNS rules больше нет.
+	// Проверяем что функция не паникует и возвращает пустой config.
+	if len(cfg.TemplateServers) != 0 {
+		t.Errorf("no template servers expected when only rulesText: %+v", cfg.TemplateServers)
 	}
 }
 

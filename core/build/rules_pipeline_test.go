@@ -230,29 +230,9 @@ func TestPipeline_UserSrs_WithCache(t *testing.T) {
 	}
 }
 
-// TestPipeline_ExtraServersAndRules — user-defined extra DNS из state.DNS.
-func TestPipeline_ExtraServersAndRules(t *testing.T) {
-	state := &v6.State{
-		DNS: v6.DNSConfig{
-			ExtraServers: []map[string]interface{}{
-				{"tag": "my-pihole", "type": "udp", "server": "192.168.1.5"},
-			},
-			ExtraRules: []map[string]interface{}{
-				{"server": "my-pihole", "domain_suffix": []interface{}{"internal.local"}},
-			},
-		},
-	}
-	result := BuildRulesAndDNS(nil, nil, state, nil)
-	if len(result.DNSServers) != 1 {
-		t.Fatalf("expected 1 extra server, got %d", len(result.DNSServers))
-	}
-	if result.DNSServers[0]["tag"] != "my-pihole" {
-		t.Errorf("extra server tag: %v", result.DNSServers[0])
-	}
-	if len(result.DNSRules) != 1 {
-		t.Fatalf("expected 1 extra rule")
-	}
-}
+// SPEC 057: TestPipeline_ExtraServersAndRules removed — extras dropped from
+// v6.DNSConfig. State holds only TemplateServers refs + scalars; user-defined
+// DNS bodies live in template.dns_options / preset.dns_servers / preset.dns_rule.
 
 // TestPipeline_MixedKinds — preset + inline + srs одновременно.
 func TestPipeline_MixedKinds(t *testing.T) {

@@ -171,22 +171,35 @@ func (r *Rule) DecodeBody() (interface{}, error) {
 	}
 }
 
-// DNSConfig — раздел DNS в state.json (SPEC 053).
+// DNSConfig — раздел DNS в state.json (SPEC 053 + SPEC 057 cleanup).
 //
-// Разделяет два класса DNS-серверов:
-//   - template_servers — overrides для template.dns_defaults.servers[]
-//     (только tag'и где юзер изменил default_enabled). Thin diff.
-//   - extra_servers    — user-defined серверы, добавленные через DNS tab UI.
-//   - bundled (от active presets) — не хранится в state; материализуется при build.
+// Invariant (SPEC 057): **state хранит только REF'ы на template entities, не
+// копии тел**. DNS-серверы и DNS-правила, которые юзер видит в UI, целиком
+// определены template (config.dns.servers + dns_options.servers + presets.
+// dns_servers + presets.dns_rule). State хранит только:
+//   - scalars: strategy / independent_cache / final / default_domain_resolver
+//   - TemplateServers — override `{enabled}` для template-defined серверов
+//     (thin diff: не trustworthy копии тел, а только тогглы)
+//
+// extra_servers / extra_rules были изначальной ошибкой SPEC 053 — они хранили
+// **копии template body** (server config'и, dns rule'ы) inline. Это давало:
+//   - dangling refs когда template менялся (ru-domains tag исчез — rule остался)
+//   - double-emit (build видел extras дважды: через legacy view + через v6)
+//   - синхронизация двух источников истины
+// → удалены полностью (SPEC 057). UI больше не позволяет добавлять кастомный
+// DNS-сервер или DNS-rule напрямую; всё через preset.dns_servers / preset.dns_rule.
 //
 // При build:
 //
-//	dns.servers[] = template.dns_defaults.servers[].filter(effective_enabled)
+//	dns.servers[] = template.dns_options.servers[].filter(effective_enabled)
 //	              + bundled из active preset-refs
-//	              + state.dns.extra_servers
+//	              (никаких extras)
+//
+//	dns.rules[] = preset.dns_rule от каждого active preset-ref
+//	            (никаких extras)
 //
 //	effective_enabled(tag) = state.dns.template_servers[tag].enabled
-//	                     ?? template.dns_defaults.servers[tag].default_enabled
+//	                     ?? template.dns_options.servers[tag].default_enabled
 //	                     ?? true
 type DNSConfig struct {
 	Strategy              string                       `json:"strategy,omitempty"`
@@ -194,8 +207,6 @@ type DNSConfig struct {
 	Final                 string                       `json:"final,omitempty"`
 	DefaultDomainResolver string                       `json:"default_domain_resolver,omitempty"`
 	TemplateServers       map[string]TemplateServerOvr `json:"template_servers,omitempty"`
-	ExtraServers          []map[string]interface{}     `json:"extra_servers,omitempty"`
-	ExtraRules            []map[string]interface{}     `json:"extra_rules,omitempty"`
 }
 
 // TemplateServerOvr — override для template-defined DNS-сервера.

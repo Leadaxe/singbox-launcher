@@ -170,30 +170,10 @@ func TestMergePresets_DNSTemplateServerOverrideDisabled(t *testing.T) {
 	}
 }
 
-// TestMergePresets_DNSExtraServers — extra_servers добавляются.
-func TestMergePresets_DNSExtraServers(t *testing.T) {
-	dnsRaw := json.RawMessage(`{"servers":[]}`)
-	ctx := PresetMergeContext{
-		DNS: v6.DNSConfig{
-			ExtraServers: []map[string]interface{}{
-				{"tag": "my-pihole", "type": "udp", "server": "192.168.1.5"},
-			},
-			ExtraRules: []map[string]interface{}{
-				{"server": "my-pihole", "domain_suffix": []interface{}{"internal.local"}},
-			},
-		},
-	}
-	out, err := MergePresetsIntoDNS(dnsRaw, ctx)
-	if err != nil {
-		t.Fatalf("dns merge: %v", err)
-	}
-	if !strings.Contains(string(out), "my-pihole") {
-		t.Errorf("extra server should appear: %s", out)
-	}
-	if !strings.Contains(string(out), "internal.local") {
-		t.Errorf("extra rule should appear: %s", out)
-	}
-}
+// SPEC 057: DNSExtraServers/Rules test removed - extras dropped from v6.DNSConfig.
+// State holds only refs (TemplateServers overrides + scalars); user-defined DNS
+// servers/rules must live in template.dns_options or preset.dns_servers /
+// preset.dns_rule, never inline in state. See SPECS/057-*.
 
 // TestHasAnyPresetRef — sanity на helper.
 func TestHasAnyPresetRef(t *testing.T) {

@@ -267,21 +267,23 @@ func stripOutboundAction(rule map[string]interface{}) map[string]interface{} {
 
 // SyncDNSFullToStateV6 — full sync model DNS → state.DNSV6.
 //
-// Помимо TemplateServers overrides (которые уже handled через SyncDNSToStateV6),
-// конвертит model.DNSServers (legacy []json.RawMessage) в:
-//   - TemplateServers если tag совпадает с template-defined (overrides если != default_enabled)
-//   - ExtraServers иначе (user-added)
+// Помимо TemplateServers overrides конвертит model.DNSServers (legacy
+// []json.RawMessage) в TemplateServers если tag совпадает с template-defined.
 //
-// model.DNSRulesText (если задан) — парсится и кладётся в ExtraRules.
+// SPEC 057: extras удалены. Серверы с tag'ом НЕ из template — игнорируются
+// (раньше попадали в ExtraServers). dnsRulesText целиком игнорируется —
+// state не хранит user-defined DNS rules; они должны жить в preset.dns_rule.
 //
 // templateDNSTags — set tag'ов известных template-defined серверов.
-// Если nil — все серверы считаются extra (защитное поведение).
+// Параметр dnsRulesText сохранён в сигнатуре для backward-compat callsite'ов
+// (parser.go / create_config.go), но не используется.
 func SyncDNSFullToStateV6(
 	dnsServers []json.RawMessage,
 	dnsRulesText string,
 	templateOverrides map[string]bool,
 	templateDNSTags map[string]bool,
 ) v6.DNSConfig {
+	_ = dnsRulesText // SPEC 057: extra rules dropped — no state field
 	cfg := v6.DNSConfig{}
 
 	// 1. Apply explicit overrides (юзер кликал чекбокс template-сервера).
@@ -292,7 +294,7 @@ func SyncDNSFullToStateV6(
 		}
 	}
 
-	// 2. Walk model.DNSServers — split на template-overrides + extras.
+	// 2. Walk model.DNSServers — template-overrides only (extras dropped).
 	for _, raw := range dnsServers {
 		var srv map[string]interface{}
 		if err := json.Unmarshal(raw, &srv); err != nil {
@@ -303,37 +305,18 @@ func SyncDNSFullToStateV6(
 			continue
 		}
 		if templateDNSTags != nil && templateDNSTags[tag] {
-			// Template-defined: пишем override если есть enabled flag.
 			if enabled, ok := srv["enabled"].(bool); ok {
 				if cfg.TemplateServers == nil {
 					cfg.TemplateServers = make(map[string]v6.TemplateServerOvr)
 				}
-				// Override уже мог быть из templateOverrides — этот append безопасен (один tag).
 				if _, alreadySet := cfg.TemplateServers[tag]; !alreadySet {
 					cfg.TemplateServers[tag] = v6.TemplateServerOvr{Enabled: enabled}
 				}
 			}
-		} else {
-			// User-added → extra_servers. Strip "enabled" (это legacy v5 поле, для extras не нужно).
-			clone := make(map[string]interface{}, len(srv))
-			for k, v := range srv {
-				if k == "enabled" {
-					continue
-				}
-				clone[k] = v
-			}
-			cfg.ExtraServers = append(cfg.ExtraServers, clone)
 		}
-	}
-
-	// 3. DNS rules из dnsRulesText (если есть).
-	if text := dnsRulesText; text != "" {
-		var parsed struct {
-			Rules []map[string]interface{} `json:"rules"`
-		}
-		if err := json.Unmarshal([]byte(text), &parsed); err == nil {
-			cfg.ExtraRules = parsed.Rules
-		}
+		// SPEC 057: non-template tag — silently dropped (UI must not let user
+		// add custom DNS servers anymore; if a legacy save sneaks one in, we
+		// drop it on next save).
 	}
 
 	return cfg

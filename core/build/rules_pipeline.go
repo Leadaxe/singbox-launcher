@@ -163,28 +163,11 @@ func BuildRulesAndDNS(
 		}
 	}
 
-	// Pass 2: template DNS defaults (с effective_enabled override из state)
+	// Pass 2: template DNS defaults (с effective_enabled override из state).
+	// SPEC 057: extras удалены — это последний source for DNSServers.
+	// DNSRules заполняется только preset.dns_rule из Pass 1.
 	tplDNS := emitTemplateDNSDefaults(templateDNSDefaults, state.DNS.TemplateServers)
-	// Prepend template defaults: они должны идти первыми, bundled и extras следом.
 	result.DNSServers = append(tplDNS, result.DNSServers...)
-
-	// Pass 3: extra DNS servers (user-defined через DNS tab UI)
-	for _, extra := range state.DNS.ExtraServers {
-		copy := make(map[string]interface{}, len(extra))
-		for k, v := range extra {
-			copy[k] = v
-		}
-		result.DNSServers = append(result.DNSServers, copy)
-	}
-
-	// Pass 4: extra DNS rules
-	for _, extra := range state.DNS.ExtraRules {
-		copy := make(map[string]interface{}, len(extra))
-		for k, v := range extra {
-			copy[k] = v
-		}
-		result.DNSRules = append(result.DNSRules, copy)
-	}
 
 	return result
 }

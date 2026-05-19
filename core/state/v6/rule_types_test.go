@@ -222,7 +222,10 @@ func TestRule_OmitEmpty(t *testing.T) {
 	}
 }
 
-// TestDNSConfig_RoundTrip — DNS section с template_servers overrides + extras.
+// TestDNSConfig_RoundTrip — DNS section с template_servers overrides.
+// SPEC 057: extras удалены; unmarshal источника с `extra_servers`/`extra_rules`
+// должен ТИХО проглотить эти поля (Go JSON decode игнорирует unknown fields
+// в struct unmarshal — bonus к forward-compat: старые state.json грузятся).
 func TestDNSConfig_RoundTrip(t *testing.T) {
 	raw := []byte(`{
 		"strategy": "prefer_ipv4",
@@ -254,12 +257,12 @@ func TestDNSConfig_RoundTrip(t *testing.T) {
 	if d.TemplateServers["yandex_doh"].Enabled {
 		t.Error("yandex_doh override should be enabled=false")
 	}
-	if len(d.ExtraServers) != 1 {
-		t.Errorf("extra_servers count: got %d", len(d.ExtraServers))
-	}
+	// extras в raw — должны быть проглочены без ошибки. SPEC 057: state их
+	// не хранит, любые extras от старых сборок тихо теряются на load.
 }
 
-// TestDNSConfig_OmitEmpty — пустые TemplateServers/ExtraServers/ExtraRules не пишутся.
+// TestDNSConfig_OmitEmpty — пустой TemplateServers не пишется + удалённые
+// поля extra_servers / extra_rules не появляются в выводе (SPEC 057).
 func TestDNSConfig_OmitEmpty(t *testing.T) {
 	d := DNSConfig{Strategy: "prefer_ipv4", Final: "google_doh"}
 	out, _ := json.Marshal(d)

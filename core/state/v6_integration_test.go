@@ -74,7 +74,10 @@ func TestParseV6_MetaAndConnections(t *testing.T) {
 	}
 }
 
-// TestParseV6_DNSLegacyView — legacy DNSOptions view содержит template_servers + extras.
+// TestParseV6_DNSLegacyView — legacy DNSOptions view содержит ТОЛЬКО
+// template_servers overrides (SPEC 057: extras dropped из state schema).
+// Старые state.json с extras: поля тихо игнорируются на load — Go JSON
+// unmarshal не падает на unknown fields в struct.
 func TestParseV6_DNSLegacyView(t *testing.T) {
 	raw := []byte(`{
 		"meta": {"version": 6, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"},
@@ -94,11 +97,12 @@ func TestParseV6_DNSLegacyView(t *testing.T) {
 	if s.DNSOptions == nil {
 		t.Fatal("legacy DNSOptions view should be present")
 	}
-	if len(s.DNSOptions.Servers) != 3 { // 2 template overrides + 1 extra
-		t.Errorf("legacy servers count: %d (want 3)", len(s.DNSOptions.Servers))
+	// SPEC 057: legacy view содержит только override-маркеры от template_servers.
+	if len(s.DNSOptions.Servers) != 2 {
+		t.Errorf("legacy servers count: %d (want 2 = template overrides only, extras dropped)", len(s.DNSOptions.Servers))
 	}
-	if len(s.DNSOptions.Rules) != 1 {
-		t.Errorf("legacy rules count: %d", len(s.DNSOptions.Rules))
+	if len(s.DNSOptions.Rules) != 0 {
+		t.Errorf("legacy rules count: %d (want 0, extras dropped per SPEC 057)", len(s.DNSOptions.Rules))
 	}
 }
 
