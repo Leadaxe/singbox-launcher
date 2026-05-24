@@ -1,9 +1,10 @@
 # Data flow
 
 Сводные диаграммы load / save / build / preset-toggle для Configurator'а
-после SPEC 053 + 056-R-N + 057-R-N. Дополняет [WIZARD_STATE.md](WIZARD_STATE.md)
-и [TEMPLATE_REFERENCE.md](TEMPLATE_REFERENCE.md) (там — спецификация секций
-state и template; здесь — как они вместе двигаются по времени).
+после SPEC 053 + 056-R-N + 057-R-N + 058-R-N. Дополняет
+[WIZARD_STATE.md](WIZARD_STATE.md) и [TEMPLATE_REFERENCE.md](TEMPLATE_REFERENCE.md)
+(там — спецификация секций state и template; здесь — как они вместе
+двигаются по времени).
 
 ---
 
@@ -36,6 +37,12 @@ model.TemplateData (immutable for session)
      │     probe meta.version                                │
      │     parseV6 / parseV5 / parseLegacyAndMigrate         │
      │     legacyDevDNSToOptions (if dev-shape `dns.{...}`)  │
+     │     MigrateOutboundsToReferencedShape(state, tpl)    │  ◄── SPEC 058 one-shot
+     │       walk outbounds with empty Ref:                  │      empty Ref + tag in template
+     │         tag in template.parser_config.outbounds       │      → Ref="#TEMPLATE#" + diff
+     │           → Ref="#TEMPLATE#", diff→USER patch,        │      stripped to {tag, ref, updates}
+     │             strip body fields                         │      idempotent on re-load
+     │         else keep direct (ref="", body inline)        │
      │   → state.State {Connections, RulesV6, DNS, Vars}     │
      │                                                       │
      │   presenter.LoadState(stateFile)                      │
@@ -73,6 +80,13 @@ UI renders (Sources / Outbounds / Rules / DNS / Settings tabs)
 жили как обычные globals) получает корректный `Ref` без юзерского
 вмешательства.
 
+**SPEC 058 migration** работает на load до presenter'а: legacy SPEC 057
+state хранит template-derived outbound с пустым `ref` и snapshot'нутым
+body — `MigrateOutboundsToReferencedShape` переводит такие entries в
+referenced shape (`ref="#TEMPLATE#"` + diff поверх template defaults в
+`updates[].patch` с `ref="#USER#"`). Migration идемпотентна; entries
+без template match (true direct outbounds) остаются как есть.
+
 ---
 
 ## 2. Save flow
@@ -106,6 +120,9 @@ presenter.CreateStateFromModel(comment, id)
 state.State.Save(path)
      │   syncConnectionsFromLegacy             — copies ParserConfig.Outbounds → Connections
      │                                          (synced version wins; не затирает updates[])
+     │   hasReferencedOutbounds(Connections) ? maybeBackupPre058(path) : skip
+     │                                          ◄── SPEC 058 one-shot state.json.pre-058.bak
+     │                                          (на первом save после migration)
      │   hasPresetRefs(RulesV6) ? marshalDiskV6 : marshalDisk
      │     marshalDiskV6 = v6 layout (meta.version=6, schema=presets_v1)
      │     marshalDisk   = v5 layout (auto-pick if no kind=preset rules)
@@ -150,18 +167,25 @@ core/build entry (BuildAndWriteConfig)
      │       inline → emit body.match + outbound
      │       srs    → emit body.srs_url + outbound (downloaded .srs path)
      │
-     ├─► ResolveOutbounds(state, template)        — pure func
+     ├─► ResolveOutbounds(state, template)        — pure func (SPEC 058)
      │     walk state.connections.outbounds[]
-     │     для каждой: mergeOutboundUpdates(base, Updates[]) → merged body
-     │     attach metadata: IsPreset / HasPresetUpdates / Required / PresetLabel
+     │     для каждой: lookup base by Ref
+     │       ref=""           → direct entry, body inline в state
+     │       ref="#TEMPLATE#" → template.parser_config.outbounds[tag]
+     │       ref=<preset_id>  → template.presets[id].outbounds (mode=add)
+     │     mergeOutboundUpdates(base, Updates[]) → merged body
+     │       preset patches в rule order, USER patch (ref="#USER#") последним
+     │     attach metadata: IsDirect / IsTemplate / IsPreset / HasUserPatch /
+     │                      HasPresetUpdates / Required / PresetLabel
      │
      ├─► (headless paths only) ────────────────────────────────────
      │   SyncOutboundsWithActivePresets(rules, &parserCfg.Outbounds, presets)
      │     ensures parserCfg view синхронизирована (defensive — UI-paths
      │     уже sync'нули в CreateStateFromModel)
-     │   MergeOutboundUpdatesInPlace(parserCfg)
-     │     материализует Updates[] стек в base body
-     │     (generator не знает поле Updates)
+     │   MergeOutboundUpdatesInPlace(parserCfg, template)
+     │     SPEC 058 pipeline: для referenced entries резолвит template body,
+     │     для direct берёт inline; затем apply Updates[] стек в order
+     │     (preset patches → USER patch). Generator не знает ни Ref, ни Updates.
      │
      ▼
 GenerateOutboundsFromParserConfig
@@ -233,7 +257,57 @@ Eager sync (а не lazy на Save) — потому что юзеру нужн�
 
 ---
 
-## 5. Cross-references
+## 5. Edit dialog flow (SPEC 058)
+
+Outbound Edit dialog с SPEC 058 учитывает три класса entries (direct /
+referenced template / referenced preset) и хранит USER edit как
+field-level diff поверх merged base.
+
+```
+Open Edit dialog (Outbounds tab → Edit button)
+     │
+     ▼
+ResolveMergedOutbound(state, template, tag)
+     │   case ref="":          merged_base = body inline в state
+     │   case ref="#TEMPLATE#": merged_base = template.parser_config.outbounds[tag]
+     │                                       + apply все active preset patches
+     │   case ref=<preset_id>: merged_base = template.presets[id].outbounds(tag)
+     │                                       + apply все active preset patches
+     │   displayBody = merged_base + apply existing USER patch (если есть)
+     ▼
+populate form fields из displayBody
+     │
+     │   юзер правит filters / options / addOutbounds / ...
+     │
+     ▼
+[Settings tab ↔ JSON tab переключение]
+     │   syncFormToRaw(): показывает save-shape (thin для referenced —
+     │     только diff-ные поля; full body для direct)
+     │   syncRawToForm(): берёт raw JSON, re-merge с template body для
+     │     referenced entries → form populate показывает merged view
+     │
+     ▼
+Save → applyEditedConfig
+     │   form_value = собранный body из формы
+     │   case referenced (ref != ""):
+     │     USER_patch = field_diff(form_value, merged_base)
+     │     if diff пуст → drop existing USER patch (no-op Save)
+     │     else replace USER patch в updates[] (всегда один, всегда последний)
+     │   case direct (ref=""):
+     │     body перезаписывается напрямую (нет diff, нет USER patch)
+     │
+     ▼
+MarkAsChanged → Save кнопка enable
+```
+
+`syncFormToRaw` / `syncRawToForm` критичны для two-tab UX: state хранит
+thin shape, но юзер в Settings tab видит merged view. Re-merge на
+переключение гарантирует, что form всегда показывает то, что попадёт в
+emit, а не stale snapshot.
+
+---
+
+## 6. Cross-references
 
 | Аспект | Документ |
 |--------|----------|
@@ -250,3 +324,4 @@ Eager sync (а не lazy на Save) — потому что юзеру нужн�
 | SPECS/055-F-S-PRESET_OUTBOUNDS | `preset.outbounds[]` design (add/update modes) |
 | SPECS/056-R-N-DNS_SCHEMA_REDESIGN | Flat `dns_options.servers/rules[]` kind discriminator + Resolver pattern |
 | SPECS/057-R-N-OUTBOUNDS_PRESET_BINDING | Outbound `Ref` + `Updates[]` schema + lifecycle Sync |
+| SPECS/058-R-N-STATE_AS_TEMPLATE_DIFF | State outbounds — thin refs (`#TEMPLATE#`/preset_id) + USER patch (`#USER#`); migration + auto-upgrade |

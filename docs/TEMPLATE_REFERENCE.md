@@ -45,7 +45,7 @@
 
 | Top-level key | Содержит | Куда попадает в runtime | UI tab где видно |
 |---------------|----------|--------------------------|------------------|
-| `parser_config` | Default ParserConfig skeleton: outbounds (`proxy-out`, `direct-out`, `auto-proxy-out`), optional `required: true` маркеры | На fresh install (нет state.json) — в `model.ParserConfigJSON`. При LoadState не используется (state перекрывает). | Outbounds tab (renders model.GlobalOutbounds) |
+| `parser_config` | Default ParserConfig skeleton: outbounds (`proxy-out`, `direct-out`, `auto-proxy-out`) с top-level `required: true` маркерами (см. §5). После SPEC 058 — **live source-of-truth** для body referenced template outbound'ов (state хранит только thin `{tag, ref: "#TEMPLATE#"}`). | На fresh install — в `model.ParserConfigJSON`. При LoadState body для `ref="#TEMPLATE#"` entries резолвится отсюда на каждый render/build. | Outbounds tab (renders model.GlobalOutbounds) |
 | `config` | Sing-box config skeleton: `log`, `dns`, `inbounds`, `outbounds`, `route`, `experimental`. Содержит `@var` плейсхолдеры. | После `applyParams(GOOS) + substitute @vars` → `TemplateData.Config` (по секциям). При build merge'ится с state-derived sections. | Никакая напрямую; преview через Edit dialog | 
 | `params` | Platform-conditional patches (`if`/`if_or` + `replace`/`prepend`/`append`) | Применяются в `LoadTemplateData` (GetEffectiveConfig) — продьюсят `Config` под текущий runtime.GOOS | — |
 | `dns_options.servers` | Library template DNS servers (cloudflare, google, yandex, ...) + mandatory `required:true` entries (`local_dns_resolver`, `direct_dns_resolver`) | `TemplateData.DNSOptionsRaw` → используется `ResolveDNS` для резолва body kind=template entries в state | DNS tab (renders kind=template entries) |
@@ -136,6 +136,26 @@ state не персистит. Применим к:
 | `parser_config.outbounds[].required` | Outbounds tab: Up/Down + Edit + Reset; Del не рендерится |
 | `dns_options.servers[].required` | DNS tab: enabled+lock (toggle blocked); Edit/Del заблокированы |
 
+**Shape (после SPEC 058):** `required` — top-level поле прямо на outbound
+entry, не вложенное в обёртку:
+
+```jsonc
+"parser_config": {
+  "outbounds": [
+    { "tag": "auto-proxy-out", "type": "urltest", "required": true,
+      "options": { "url": "@urltest_url", "interval": "@urltest_interval" } },
+    { "tag": "proxy-out", "type": "selector", "required": true,
+      "options": { "outbounds": ["auto-proxy-out", "direct-out"] } },
+    { "tag": "direct-out", "type": "direct" }
+  ]
+}
+```
+
+**DEPRECATED:** старая форма `{ "wizard": { "required": 1 } }` всё ещё
+парсится через legacy fallback в `td.RequiredOutboundTags()` —
+исключительно для обратной совместимости со старыми template-форками.
+Новые template'ы должны использовать top-level `required: true`.
+
 Read live на каждый UI render через helpers:
 - `wizardbusiness.DNSTagLocked(model, tag)` — для DNS
 - `templateRequiredTags(model)` → используется `ResolveOutbounds` для outbound
@@ -173,6 +193,17 @@ model.TemplateData (in-memory, immutable)
 ```
 
 TemplateData immutable после load; модификация template requires app restart.
+
+**SPEC 058 — template body как live source.** Outbound entries в
+`state.connections.outbounds[]` хранятся как **thin refs**
+(`{tag, ref: "#TEMPLATE#", updates: [...]}`) — body отсутствует. На
+каждый render/build body резолвится из `template.parser_config.outbounds[tag]`
+через `ResolveOutbounds`. Template-author эффект: правка
+`parser_config.outbounds[].options` / `addOutbounds` / `comment` в новом
+билде доезжает до юзера автоматически (без manual Reset на каждой
+референсной entry). User edits хранятся как field-level diff в
+`updates[].patch` с `ref="#USER#"`. См. SPEC 058 + [DATA_FLOW.md](DATA_FLOW.md)
+для подробностей resolver pipeline'а.
 
 ---
 
