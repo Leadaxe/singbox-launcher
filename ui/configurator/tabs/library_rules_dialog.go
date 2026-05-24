@@ -102,6 +102,11 @@ func ShowRulesLibraryDialog(p *wizardpresentation.WizardPresenter, showAddRuleDi
 			refreshAddBtn(addBtn)
 		})
 		if already {
+			// Pre-checked + disabled: visual cue "уже в списке, действие
+			// невозможно". `picked[i]` остаётся false — OnTapped не добавит
+			// дубль (защита в addBtn.OnTapped: `if existingRefs[pr.ID] continue`).
+			// Set Checked field прямо до Disable — callback не сработает.
+			chk.Checked = true
 			chk.Disable()
 		}
 

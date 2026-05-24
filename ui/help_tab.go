@@ -12,32 +12,16 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
-	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 )
 
 // CreateHelpTab creates and returns the content for the "Help" tab.
+//
+// v0.9.6: "Open Config Folder" + "Kill Sing-Box" buttons moved to the
+// Diagnostics tab (🔍) — they're service/maintenance actions, semantically
+// closer to logs/STUN/debug-api там, чем к информации о версии и ссылкам.
 func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
-	configButton := widget.NewButton(locale.T("help.open_config_folder"), func() {
-		binDir := platform.GetBinDir(ac.FileService.ExecDir)
-		if err := platform.OpenFolder(binDir); err != nil {
-			debuglog.ErrorLog("toolsTab: Failed to open config folder: %v", err)
-			ShowError(ac.UIService.MainWindow, err)
-		}
-	})
-	killButton := widget.NewButton(locale.T("help.kill_singbox"), func() {
-		go func() {
-			processName := platform.GetProcessNameForCheck()
-			_ = platform.KillProcess(processName)
-			fyne.Do(func() {
-				dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
-					locale.T("help.kill_title"), locale.T("help.kill_result"))
-				ac.RunningState.Set(false)
-			})
-		}()
-	})
-
 	// Version and links section
 	versionLabel := widget.NewLabel(locale.Tf("help.version_label", constants.AppVersion))
 	versionLabel.Alignment = fyne.TextAlignCenter
@@ -115,9 +99,6 @@ func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
 	// (ui/settings_tab.go) so all launcher-wide preferences live together.
 
 	return container.NewVBox(
-		configButton,
-		killButton,
-		widget.NewSeparator(),
 		versionLabel,
 		launcherUpdateLabel,
 		widget.NewSeparator(),

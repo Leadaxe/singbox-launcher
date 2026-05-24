@@ -26,6 +26,35 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
+// killSingBoxPanic — force-kill всех sing-box процессов на машине.
+// На Darwin использует AuthorizationExecuteWithPrivileges (тот же механизм
+// что запуск sing-box с TUN, и тот же что в "Sing-Box already running"
+// dialog'е через ShowProcessKillConfirmation) — иначе privileged sing-box
+// (запущенный с sudo для TUN) не убивается обычным `killall sing-box`.
+// Если в текущей session уже был privileged запуск, кэшированный
+// AuthorizationRef переиспользуется (без повторного prompt'а). Иначе macOS
+// покажет sudo-prompt — это ожидаемо.
+//
+// Pattern `sing-box run|start-singbox-privileged` cовпадает с
+// platform.PrivilegedPkillPattern — ловит и сам sing-box, и shell-script
+// враппер с правами.
+//
+// На других OS — обычный `killall`/`taskkill`, прав root не нужно
+// (sing-box на Linux/Windows запускается без elevation в нашем launcher'е,
+// privileges идут через capability/manifest).
+func killSingBoxPanic(ac *core.AppController) {
+	_ = ac // зарезервировано для UI feedback в будущем
+	if runtime.GOOS == "darwin" {
+		killCmd := "pkill -TERM -f " + strconv.Quote(platform.PrivilegedPkillPattern) + " 2>/dev/null"
+		if _, _, err := platform.RunWithPrivileges("/bin/sh", []string{"-c", killCmd}); err != nil {
+			debuglog.WarnLog("killSingBoxPanic: privileged pkill failed (%v); falling back to non-privileged", err)
+			_ = platform.KillProcess(platform.GetProcessNameForCheck())
+		}
+		return
+	}
+	_ = platform.KillProcess(platform.GetProcessNameForCheck())
+}
+
 // STUN settings (process-wide, overridable from Diagnostics tab).
 var (
 	stunServerAddr = constants.DefaultSTUNServer
@@ -215,15 +244,39 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 	// STUN button fills width, gear on the right
 	stunRow := container.NewBorder(nil, nil, nil, stunSettingsButton, stunButton)
 
-	// Helper function to create "Open in Browser" buttons
-	openBrowserButton := func(label, url string) fyne.CanvasObject {
-		return widget.NewButton(label, func() {
-			if err := platform.OpenURL(url); err != nil {
-				debuglog.ErrorLog("diagnosticsTab: Failed to open URL %s: %v", url, err)
-				ShowError(ac.UIService.MainWindow, err)
-			}
-		})
+	// IP check services — Select + Open кнопка вместо 6 отдельных rows
+	// (раньше каждый сервис был отдельной кнопкой, занимали полэкрана).
+	ipCheckServices := []struct{ Label, URL string }{
+		{"2ip.ru", "https://2ip.ru"},
+		{"2ip.io", "https://2ip.io"},
+		{"2ip.me", "https://2ip.me"},
+		{"Yandex Internet", "https://yandex.ru/internet/"},
+		{"SpeedTest", "https://www.speedtest.net/"},
+		{"WhatIsMyIPAddress", "https://whatismyipaddress.com"},
 	}
+	ipServiceLabels := make([]string, len(ipCheckServices))
+	for i, s := range ipCheckServices {
+		ipServiceLabels[i] = s.Label
+	}
+	ipServiceSelect := widget.NewSelect(ipServiceLabels, nil)
+	ipServiceSelect.SetSelectedIndex(0)
+	ipServiceOpenBtn := widget.NewButtonWithIcon(locale.T("diag.open_browser"), theme.ComputerIcon(), func() {
+		idx := -1
+		for i, label := range ipServiceLabels {
+			if label == ipServiceSelect.Selected {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return
+		}
+		if err := platform.OpenURL(ipCheckServices[idx].URL); err != nil {
+			debuglog.ErrorLog("diagnosticsTab: Failed to open URL %s: %v", ipCheckServices[idx].URL, err)
+			ShowError(ac.UIService.MainWindow, err)
+		}
+	})
+	ipServicesRow := container.NewBorder(nil, nil, nil, ipServiceOpenBtn, ipServiceSelect)
 
 	openLogWindowButton := widget.NewButtonWithIcon(locale.T("diag.open_log_window"), theme.ViewRestoreIcon(), func() {
 		OpenLogViewerWindow(ac)
@@ -236,19 +289,47 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 		}
 	})
 
+	// v0.9.6: service actions перенесены из Help tab — это maintenance/
+	// troubleshooting действия, по семантике ближе к logs/STUN/debug-api,
+	// чем к информации о версии и ссылкам.
+	openConfigFolderButton := widget.NewButtonWithIcon(locale.T("help.open_config_folder"), theme.FolderOpenIcon(), func() {
+		binDir := platform.GetBinDir(ac.FileService.ExecDir)
+		if err := platform.OpenFolder(binDir); err != nil {
+			debuglog.ErrorLog("diagnosticsTab: Failed to open config folder: %v", err)
+			ShowError(ac.UIService.MainWindow, err)
+		}
+	})
+	// Без иконки — в locale string уже есть 🛑 (по требованию юзера).
+	// MediaStopIcon (⏹) дублировал бы visual.
+	killSingBoxButton := widget.NewButton(locale.T("help.kill_singbox"), func() {
+		go func() {
+			killSingBoxPanic(ac)
+			fyne.Do(func() {
+				dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
+					locale.T("help.kill_title"), locale.T("help.kill_result"))
+				ac.RunningState.Set(false)
+			})
+		}()
+	})
+
 	debugAPIRow := buildDebugAPIRow(ac)
+
+	// Layout: 3 строки (per user request).
+	//   Row 1: Log window (full width — самое частое действие при дебаге)
+	//   Row 2: Logs folder | Config folder (file-system explorer пара)
+	//   Row 3: Kill Sing-Box (full width, destructive — отдельная строка)
+	logWindowRow := openLogWindowButton
+	foldersRow := container.NewGridWithColumns(2, openLogsFolderButton, openConfigFolderButton)
+	killRow := killSingBoxButton
 
 	return container.NewVBox(
 		widget.NewLabel(" "),
-		container.NewHBox(openLogWindowButton, openLogsFolderButton),
+		logWindowRow,
+		foldersRow,
+		killRow,
 		widget.NewLabel(locale.T("diag.ip_check_services")),
 		stunRow,
-		openBrowserButton("2ip.ru", "https://2ip.ru"),
-		openBrowserButton("2ip.io", "https://2ip.io"),
-		openBrowserButton("2ip.me", "https://2ip.me"),
-		openBrowserButton("Yandex Internet", "https://yandex.ru/internet/"),
-		openBrowserButton("SpeedTest", "https://www.speedtest.net/"),
-		openBrowserButton("WhatIsMyIPAddress", "https://whatismyipaddress.com"),
+		ipServicesRow,
 		widget.NewSeparator(),
 		debugAPIRow,
 	)
