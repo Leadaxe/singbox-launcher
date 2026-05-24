@@ -429,7 +429,8 @@
         }
       ],
       "final": "@route_final",
-      "auto_detect_interface": "@auto_detect_interface"
+      "auto_detect_interface": "@auto_detect_interface",
+      "find_process": true
     },
     "experimental": {
       "clash_api": {

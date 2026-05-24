@@ -305,6 +305,12 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 		mgr.Show()
 		refreshTrafficBtn()
 	})
+	// Hook profiler session change → button label refresh so the ⚡
+	// badge appears/disappears even when the Traffic Profiler window is
+	// closed (recording continues in the background per SPEC §"Lifecycle").
+	wireTrafficBadgeToProfiler(func() {
+		fyne.Do(refreshTrafficBtn)
+	})
 	refreshTrafficBtn()
 	openLogsFolderButton := widget.NewButtonWithIcon(locale.T("diag.open_logs_folder"), theme.FolderOpenIcon(), func() {
 		logsDir := platform.GetLogsDir(ac.FileService.ExecDir)
