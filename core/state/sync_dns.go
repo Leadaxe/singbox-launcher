@@ -6,7 +6,7 @@
 // эмитится в финальный config.
 //
 // Вызывается:
-//   - на load (после parseV6, idempotent)
+//   - на load (после parseCurrent, idempotent)
 //   - на каждый toggle preset enable/disable в Rules tab UI
 //   - перед Save (defensive — гарантия что entries синхронизированы)
 //
@@ -24,7 +24,7 @@
 //     - DNS.Rules где Ref == "<disabled_preset_id>"
 //
 // Idempotency: повторный вызов с тем же состоянием не меняет ничего.
-package v6
+package state
 
 import (
 	"strings"

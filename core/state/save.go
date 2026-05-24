@@ -10,7 +10,6 @@ import (
 
 	"singbox-launcher/core/config/configtypes"
 	v5 "singbox-launcher/core/state/v5"
-	v6 "singbox-launcher/core/state/v6"
 )
 
 // Save атомарно записывает s в path.
@@ -41,7 +40,7 @@ func (s *State) Save(path string) error {
 	useV6 := hasPresetRefs(s.RulesV6)
 
 	if useV6 {
-		s.Version = v6.SchemaVersion
+		s.Version = SchemaVersionV6
 		// Backup перед первым перезаписыванием с v5 на v6.
 		if err := maybeBackupV5(path); err != nil {
 			// Backup failure non-fatal — продолжаем save (warning логируется
@@ -126,7 +125,7 @@ func (s *State) marshalDisk() ([]byte, error) {
 		ConfigParams []ConfigParam         `json:"config_params"`
 		CustomRules  []CustomRule          `json:"custom_rules"`
 		Vars         []SettingVar          `json:"vars,omitempty"`
-		DNSOptions   *DNSOptions           `json:"dns_options"`
+		DNSOptions   *legacyDNSOptionsV5   `json:"dns_options"`
 	}{
 		Meta: v5.MetaSection{
 			Version:   SchemaVersion,
@@ -170,16 +169,10 @@ func (s *State) marshalDisk() ([]byte, error) {
 //
 // legacy CustomRules / DNSOptions в v6 не сериализуются (источник — RulesV6 / DNSV6).
 func (s *State) marshalDiskV6() ([]byte, error) {
-	out := struct {
-		Meta        v6.MetaSection        `json:"meta"`
-		Connections v5.ConnectionsSection `json:"connections"`
-		Rules       []v6.Rule             `json:"rules"`
-		Vars        []SettingVar          `json:"vars,omitempty"`
-		DNSOptions  v6.DNSOptions         `json:"dns_options"`
-	}{
-		Meta: v6.MetaSection{
-			Version:   v6.SchemaVersion,
-			Schema:    v6.SchemaName,
+	out := diskStateV6{
+		Meta: MetaSection{
+			Version:   SchemaVersionV6,
+			Schema:    SchemaName,
 			Comment:   s.Comment,
 			CreatedAt: s.CreatedAt.Format(time.RFC3339),
 			UpdatedAt: s.UpdatedAt.Format(time.RFC3339),
@@ -190,7 +183,7 @@ func (s *State) marshalDiskV6() ([]byte, error) {
 		DNSOptions:  s.DNS,
 	}
 	if out.Rules == nil {
-		out.Rules = []v6.Rule{}
+		out.Rules = []Rule{}
 	}
 	if out.Connections.Sources == nil {
 		out.Connections.Sources = []Source{}
@@ -203,9 +196,9 @@ func (s *State) marshalDiskV6() ([]byte, error) {
 
 // hasPresetRefs — true если state имеет хотя бы одно правило kind=preset.
 // Триггер для v6 save.
-func hasPresetRefs(rules []v6.Rule) bool {
+func hasPresetRefs(rules []Rule) bool {
 	for _, r := range rules {
-		if r.Kind == v6.RuleKindPreset {
+		if r.Kind == RuleKindPreset {
 			return true
 		}
 	}
@@ -274,7 +267,7 @@ func maybeBackupV5(path string) error {
 	head := make([]byte, 4096)
 	n, _ := src.Read(head)
 	head = head[:n]
-	if v6.IsV6(head) {
+	if isV6(head) {
 		return nil
 	}
 	if _, err := src.Seek(0, 0); err != nil {

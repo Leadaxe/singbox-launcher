@@ -224,7 +224,7 @@ func sameRuleSet(a, b []json.RawMessage) bool {
 	return true
 }
 
-func sameDNSOptions(a, b *DNSOptions) bool {
+func sameDNSOptions(a, b *legacyDNSOptionsV5) bool {
 	if a == nil && b == nil {
 		return true
 	}

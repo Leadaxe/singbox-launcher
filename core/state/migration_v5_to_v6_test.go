@@ -1,4 +1,4 @@
-package v6
+package state
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 
 func TestMigrate_BumpsVersionAndSchema(t *testing.T) {
 	old := v5.State{Meta: v5.MetaSection{Version: 5, CreatedAt: "2026-01-01T00:00:00Z"}}
-	new, _ := MigrateV5ToV6(old, nil, nil)
+	new, _ := migrateV5ToV6(old, nil, nil)
 	if new.Meta.Version != 6 {
 		t.Errorf("Version: got %d want 6", new.Meta.Version)
 	}
@@ -33,7 +33,7 @@ func TestMigrate_PreservesConnectionsAndVars(t *testing.T) {
 		},
 		Vars: []v5.SettingVar{{Name: "cert_store", Value: "mozilla"}},
 	}
-	new, _ := MigrateV5ToV6(old, nil, nil)
+	new, _ := migrateV5ToV6(old, nil, nil)
 	if len(new.Connections.Sources) != 1 || new.Connections.Sources[0].ID != "abc" {
 		t.Errorf("connections.sources lost: %+v", new.Connections.Sources)
 	}
@@ -61,7 +61,7 @@ func TestMigrate_CustomRule_Inline(t *testing.T) {
 			},
 		},
 	}
-	new, _ := MigrateV5ToV6(old, nil, nil)
+	new, _ := migrateV5ToV6(old, nil, nil)
 	if len(new.Rules) != 1 {
 		t.Fatalf("expected 1 rule, got %d", len(new.Rules))
 	}
@@ -113,7 +113,7 @@ func TestMigrate_CustomRule_Srs(t *testing.T) {
 			},
 		},
 	}
-	new, _ := MigrateV5ToV6(old, nil, nil)
+	new, _ := migrateV5ToV6(old, nil, nil)
 	if len(new.Rules) != 1 {
 		t.Fatalf("expected 1 rule")
 	}
@@ -149,7 +149,7 @@ func TestMigrate_CustomRule_PresetMatch(t *testing.T) {
 	presetMap := map[string]string{
 		"Russian domains direct": "ru-direct",
 	}
-	new, _ := MigrateV5ToV6(old, nil, presetMap)
+	new, _ := migrateV5ToV6(old, nil, presetMap)
 	if len(new.Rules) != 1 {
 		t.Fatalf("expected 1 rule")
 	}
@@ -174,7 +174,7 @@ func TestMigrate_CustomRule_NoMatchFields(t *testing.T) {
 			},
 		},
 	}
-	new, warns := MigrateV5ToV6(old, nil, nil)
+	new, warns := migrateV5ToV6(old, nil, nil)
 	if len(new.Rules) != 0 {
 		t.Errorf("expected 0 rules after skipping bare: %+v", new.Rules)
 	}
@@ -209,7 +209,7 @@ func TestMigrate_DNS_Split(t *testing.T) {
 		"google_doh":     true,
 		"cloudflare_udp": true,
 	}
-	new, _ := MigrateV5ToV6(old, templateDefaults, nil)
+	new, _ := migrateV5ToV6(old, templateDefaults, nil)
 
 	if new.DNSOptions.Strategy != "prefer_ipv4" || new.DNSOptions.Final != "google_doh" {
 		t.Errorf("DNS scalars: %+v", new.DNSOptions)
@@ -258,7 +258,7 @@ func TestMigrate_DNS_Split(t *testing.T) {
 // TestMigrate_NoDNSOptions — отсутствие DNSOptions → пустой DNSOptions без паники.
 func TestMigrate_NoDNSOptions(t *testing.T) {
 	old := v5.State{}
-	new, _ := MigrateV5ToV6(old, nil, nil)
+	new, _ := migrateV5ToV6(old, nil, nil)
 	if len(new.DNSOptions.Servers) != 0 || len(new.DNSOptions.Rules) != 0 {
 		t.Errorf("DNS should be empty: %+v", new.DNSOptions)
 	}
@@ -277,12 +277,12 @@ func TestMigrate_RoundTrip_JSON(t *testing.T) {
 			},
 		},
 	}
-	state1, _ := MigrateV5ToV6(old, nil, nil)
+	state1, _ := migrateV5ToV6(old, nil, nil)
 	raw, err := json.Marshal(state1)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var state2 State
+	var state2 diskStateV6
 	if err := json.Unmarshal(raw, &state2); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -297,11 +297,11 @@ func TestIsV6_IsV5(t *testing.T) {
 	v6Raw := []byte(`{"meta":{"version":6}}`)
 	bad := []byte(`{not json`)
 
-	if !IsV5(v5Raw) || IsV5(v6Raw) || IsV5(bad) {
-		t.Errorf("IsV5 misbehaving")
+	if !isV5(v5Raw) || isV5(v6Raw) || isV5(bad) {
+		t.Errorf("isV5 misbehaving")
 	}
-	if !IsV6(v6Raw) || IsV6(v5Raw) || IsV6(bad) {
-		t.Errorf("IsV6 misbehaving")
+	if !isV6(v6Raw) || isV6(v5Raw) || isV6(bad) {
+		t.Errorf("isV6 misbehaving")
 	}
 }
 
@@ -313,8 +313,8 @@ func TestMigrate_IdempotentRules(t *testing.T) {
 		Meta:        v5.MetaSection{Version: 5, CreatedAt: "2026-01-01T00:00:00Z"},
 		CustomRules: []v5.CustomRule{{Label: "A", Enabled: true, SelectedOutbound: "direct-out", Rule: map[string]interface{}{"ip_is_private": true}}},
 	}
-	new1, _ := MigrateV5ToV6(old, nil, nil)
-	new2, _ := MigrateV5ToV6(old, nil, nil)
+	new1, _ := migrateV5ToV6(old, nil, nil)
+	new2, _ := migrateV5ToV6(old, nil, nil)
 	if new1.Meta.Version != new2.Meta.Version {
 		t.Error("Version differs")
 	}

@@ -1,45 +1,10 @@
-// Package v6 — on-disk-схема state.json (SPEC 053 + SPEC 056-R-N).
-//
-// Расширяет v5. Из v5 переиспользуются MetaSection, ConnectionsSection, Source
-// и SubscriptionMeta — они без изменений.
-//
-// Изменения:
-//
-//   - state.custom_rules[] → state.rules[] с kind discriminator
-//     (preset / inline / srs) — SPEC 053
-//   - state.config_params[] удалено — vars живут в preset.body.vars — SPEC 053
-//   - state.dns → state.dns_options с flat kind discriminator (template / preset / user)
-//     для servers/rules — SPEC 056-R-N. Старое разделение template_servers /
-//     extra_servers / extra_rules удалено.
-//   - state.vars[] остаётся (глобальные template vars: cert_store, tun, dns_*, ...)
-//
-// Top-level layout:
-//
-//	{
-//	  "meta":        { version: 6, schema: "presets_v1", ... },
-//	  "connections": { ... },         // как в v5
-//	  "rules":       [...],           // header/body kind discriminator
-//	  "vars":        [...],           // глобальные wizard vars (включая dns_*)
-//	  "dns_options": {                // SPEC 056-R-N
-//	    "servers": [{kind, tag|ref, enabled, ...body}],
-//	    "rules":   [{kind, ref|..., enabled, ...body}]
-//	  }
-//	}
-//
-// См. SPECS/053-F-N-PRESET_BUNDLES/SPEC.md, SPECS/056-R-N-DNS_SCHEMA_REDESIGN/SPEC.md.
-package v6
+// File rule_types.go — Rule, RuleKind, PresetBody, InlineBody, SrsBody (SPEC 053).
+package state
 
 import (
 	"encoding/json"
 	"fmt"
 )
-
-// SchemaVersion — формат файла state.json, который пишет v6.
-const SchemaVersion = 6
-
-// SchemaName — внутренний идентификатор схемы (хранится в meta.schema).
-// Используется для диагностики и future-proof'инга.
-const SchemaName = "presets_v1"
 
 // RuleKind — дискриминатор типа правила в state.rules[].
 type RuleKind string
@@ -175,9 +140,3 @@ func (r *Rule) DecodeBody() (interface{}, error) {
 		return nil, fmt.Errorf("unknown rule kind: %q", r.Kind)
 	}
 }
-
-// DNSConfig — УДАЛЁН в SPEC 056-R-N.
-//
-// Старая 3-collection схема (template_servers map + extra_servers + extra_rules)
-// заменена на flat `DNSOptions` с `kind` discriminator (template/preset/user).
-// См. dns_options.go и SPECS/056-R-N-DNS_SCHEMA_REDESIGN/SPEC.md.

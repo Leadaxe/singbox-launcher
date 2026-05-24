@@ -1,4 +1,4 @@
-package v6
+package state
 
 import (
 	"encoding/json"
@@ -12,9 +12,9 @@ type fakePreset struct {
 	hasRule    bool
 }
 
-func (p *fakePreset) PresetID() string                  { return p.id }
-func (p *fakePreset) PresetDNSServerTags() []string     { return p.serverTags }
-func (p *fakePreset) PresetHasDNSRule() bool            { return p.hasRule }
+func (p *fakePreset) PresetID() string              { return p.id }
+func (p *fakePreset) PresetDNSServerTags() []string { return p.serverTags }
+func (p *fakePreset) PresetHasDNSRule() bool        { return p.hasRule }
 
 func presetMap(presets ...*fakePreset) map[string]PresetLite {
 	out := make(map[string]PresetLite, len(presets))
@@ -194,9 +194,9 @@ func TestSync_DisableEnableRoundtrip(t *testing.T) {
 // TestPresetIDFromServerRef / LocalTagFromServerRef — helpers.
 func TestPresetRefHelpers(t *testing.T) {
 	cases := []struct {
-		ref       string
-		presetID  string
-		localTag  string
+		ref      string
+		presetID string
+		localTag string
 	}{
 		{"russian:yandex_udp", "russian", "yandex_udp"},
 		{"ru-direct:domains", "ru-direct", "domains"},

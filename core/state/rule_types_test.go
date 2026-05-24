@@ -1,4 +1,4 @@
-package v6
+package state
 
 import (
 	"encoding/json"
@@ -300,8 +300,8 @@ func TestDNSOptions_OmitEmpty(t *testing.T) {
 
 // TestSchemaConstants — sanity для констант версии и schema name.
 func TestSchemaConstants(t *testing.T) {
-	if SchemaVersion != 6 {
-		t.Errorf("SchemaVersion should be 6, got %d", SchemaVersion)
+	if SchemaVersionV6 != 6 {
+		t.Errorf("SchemaVersionV6 should be 6, got %d", SchemaVersionV6)
 	}
 	if SchemaName != "presets_v1" {
 		t.Errorf("SchemaName mismatch: %q", SchemaName)

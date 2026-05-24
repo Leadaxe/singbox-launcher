@@ -1,7 +1,7 @@
-// Package v6 — SPEC 056-R-N: DNS_SCHEMA_REDESIGN.
+// File dns_options.go — SPEC 056-R-N: DNS_SCHEMA_REDESIGN.
 //
-// Файл dns_options.go — новая flat-схема DNS-секции state.json через
-// kind discriminator (template/preset/user) для servers, (preset/user) для rules.
+// Новая flat-схема DNS-секции state.json через kind discriminator
+// (template/preset/user) для servers, (preset/user) для rules.
 //
 // JSON layout:
 //
@@ -29,7 +29,7 @@
 //  3. kind=user — полное тело сериализуется flat'ом рядом с kind/tag/enabled.
 //
 // См. SPECS/056-R-N-DNS_SCHEMA_REDESIGN/SPEC.md.
-package v6
+package state
 
 import (
 	"encoding/json"

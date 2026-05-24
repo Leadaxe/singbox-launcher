@@ -1,4 +1,8 @@
-package v6
+// File migration_v5_to_v6.go — конверсия legacy v5 in-memory shape → canonical (v6).
+//
+// Pure helper, не экспортируется. Используется только Parse в случае
+// legacy v5 файла (meta.version == 5).
+package state
 
 import (
 	"encoding/json"
@@ -9,13 +13,13 @@ import (
 	v5 "singbox-launcher/core/state/v5"
 )
 
-// MigrateWarning — non-fatal warning при миграции v5 → v6.
-type MigrateWarning struct {
+// migrateWarning — non-fatal warning при миграции v5 → v6.
+type migrateWarning struct {
 	RuleLabel string
 	Message   string
 }
 
-func (w MigrateWarning) String() string {
+func (w migrateWarning) String() string {
 	prefix := ""
 	if w.RuleLabel != "" {
 		prefix = fmt.Sprintf("rule %q: ", w.RuleLabel)
@@ -23,37 +27,22 @@ func (w MigrateWarning) String() string {
 	return prefix + w.Message
 }
 
-// MigrateV5ToV6 — pure func. Конвертит v5.State в v6.State.
-//
-// Преобразования:
-//  1. meta.version: 5 → 6, meta.schema = "presets_v1"
-//  2. custom_rules[] → rules[]:
-//     - Если в template есть preset с подходящим id (по label-match) → kind=preset (TODO: phase 8)
-//     - Если rule имеет remote rule_set'ы (URL) → kind=srs
-//     - Иначе → kind=inline (snapshot match-полей)
-//  3. dns_options → dns:
-//     - servers[] split: tag совпадает с template-defined → template_servers override; иначе → extra_servers
-//     - rules[] → extra_rules
+// migrateV5ToV6 — pure func. Конвертит v5.State в canonical (v6) форму
+// через приватный diskStateV6 — но возвращает разложенные поля удобные для
+// сборки State.
 //
 // templateDNSDefaults — карта template.dns_defaults.servers[tag] → default_enabled.
-// Используется чтобы решить какие из v5 серверов это template-defined (override) а какие user-added (extra).
-// Пустая карта = все серверы считаются user-added (extras). Для production migration'а Phase 8 заполняем
-// реальными tag'ами из bundled template.
-//
-// templatePresetIDsByLabel — карта template.presets[].label → preset.id для миграции legacy
-// selectable_rule_states по label (если у юзера v5 правило с label "Block Ads", а в template
-// есть preset_id "block-ads" с label "Block Ads" — мигрируем как preset-ref).
-// Пустая карта = всё мигрируем как user-defined inline/srs.
-func MigrateV5ToV6(
+// templatePresetIDsByLabel — карта template.presets[].label → preset.id.
+func migrateV5ToV6(
 	old v5.State,
 	templateDNSDefaults map[string]bool,
 	templatePresetIDsByLabel map[string]string,
-) (State, []MigrateWarning) {
-	var warnings []MigrateWarning
+) (diskStateV6, []migrateWarning) {
+	var warnings []migrateWarning
 
-	newState := State{
+	newState := diskStateV6{
 		Meta: MetaSection{
-			Version:   SchemaVersion,
+			Version:   SchemaVersionV6,
 			Schema:    SchemaName,
 			Comment:   old.Meta.Comment,
 			CreatedAt: old.Meta.CreatedAt,
@@ -78,20 +67,17 @@ func MigrateV5ToV6(
 	return newState, warnings
 }
 
-// migrateCustomRule — конвертит один v5.CustomRule в v6.Rule.
+// migrateCustomRule — конвертит один v5.CustomRule в Rule.
 //
 // Эвристика kind:
 //  1. label совпадает с template-preset → kind=preset с пустым varsValues
 //  2. rule_set[0].type == "remote" → kind=srs (URL берётся из rule_set[0].url)
 //  3. иначе → kind=inline (rule как snapshot, без outbound поля)
-//
-// Возвращает (rule, warnings). rule может быть nil если миграция невозможна
-// (warning будет).
 func migrateCustomRule(
 	cr v5.CustomRule,
 	presetIDsByLabel map[string]string,
-) (*Rule, []MigrateWarning) {
-	var warns []MigrateWarning
+) (*Rule, []migrateWarning) {
+	var warns []migrateWarning
 
 	// 1. preset-ref candidate
 	if presetID, ok := presetIDsByLabel[cr.Label]; ok {
@@ -118,7 +104,7 @@ func migrateCustomRule(
 			})
 			return &Rule{
 				Kind:    RuleKindSrs,
-				ID:      generateULID(),
+				ID:      generateMigrationULID(),
 				Enabled: cr.Enabled,
 				Body:    body,
 			}, nil
@@ -128,7 +114,7 @@ func migrateCustomRule(
 	// 3. inline
 	match := stripOutboundFromRule(cr.Rule)
 	if len(match) == 0 {
-		warns = append(warns, MigrateWarning{
+		warns = append(warns, migrateWarning{
 			RuleLabel: cr.Label,
 			Message:   "no match fields after stripping outbound — skipped",
 		})
@@ -141,7 +127,7 @@ func migrateCustomRule(
 	})
 	return &Rule{
 		Kind:    RuleKindInline,
-		ID:      generateULID(),
+		ID:      generateMigrationULID(),
 		Enabled: cr.Enabled,
 		Body:    body,
 	}, nil
@@ -161,7 +147,7 @@ func stripOutboundFromRule(rule map[string]interface{}) map[string]interface{} {
 	return out
 }
 
-// migrateDNS — конвертит v5.DNSOptions в v6.DNSOptions (SPEC 056-R-N).
+// migrateDNS — конвертит v5.DNSOptions в canonical DNSOptions (SPEC 056-R-N).
 //
 // servers[] split:
 //   - tag ∈ templateDefaults → DNSServer{Kind:template, Tag, Enabled}
@@ -176,7 +162,7 @@ func stripOutboundFromRule(rule map[string]interface{}) map[string]interface{} {
 // Invariant: template tag НИКОГДА не попадает в kind=user — для template-defined
 // tag'ов используется kind=template override. Эта функция держит invariant
 // через `templateDefaults` check.
-func migrateDNS(old *v5.DNSOptions, templateDefaults map[string]bool) (DNSOptions, []MigrateWarning) {
+func migrateDNS(old *v5.DNSOptions, templateDefaults map[string]bool) (DNSOptions, []migrateWarning) {
 	d := DNSOptions{}
 	if old == nil {
 		return d, nil
@@ -246,12 +232,10 @@ func migrateDNS(old *v5.DNSOptions, templateDefaults map[string]bool) (DNSOption
 	return d, nil
 }
 
-// generateULID — placeholder для миграции (использует v5.ulid пакет уже существующий).
-// Для production миграции должен генерить настоящий ULID.
-// Здесь упрощённо: timestamp-based unique ID.
-func generateULID() string {
-	// Берём микросекундный timestamp + counter — достаточно для миграции
-	// (она одноразовая, в той же сессии ULID'ы не должны коллидить).
+// generateMigrationULID — placeholder для миграции v5→v6. Используется только
+// внутри migration helpers; для UI/runtime используется MakeULID (полноценный
+// ULID). Простой timestamp + counter — достаточно для миграции (она одноразовая).
+func generateMigrationULID() string {
 	now := time.Now().UnixNano()
 	migrationCounter++
 	return fmt.Sprintf("01J%X%X", now, migrationCounter)
@@ -259,8 +243,8 @@ func generateULID() string {
 
 var migrationCounter uint64
 
-// IsV6 — детект schema version по сырому state JSON.
-func IsV6(raw []byte) bool {
+// isV6 — детект schema version по сырому state JSON.
+func isV6(raw []byte) bool {
 	var probe struct {
 		Meta struct {
 			Version int `json:"version"`
@@ -269,11 +253,11 @@ func IsV6(raw []byte) bool {
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		return false
 	}
-	return probe.Meta.Version == SchemaVersion
+	return probe.Meta.Version == SchemaVersionV6
 }
 
-// IsV5 — детект v5 schema.
-func IsV5(raw []byte) bool {
+// isV5 — детект v5 schema.
+func isV5(raw []byte) bool {
 	var probe struct {
 		Meta struct {
 			Version int `json:"version"`

@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	v6 "singbox-launcher/core/state/v6"
 )
 
 // TestParseV6_MetaAndConnections — базовый v6 файл с новым dns_options shape.
@@ -101,7 +99,7 @@ func TestParseV6_LegacyDevShapeConversion(t *testing.T) {
 	// Spot-check каждого entry: ровно один user-server с tag=my-pihole.
 	foundUserPihole := false
 	for _, srv := range s.DNS.Servers {
-		if srv.Kind == v6.DNSServerKindUser && srv.Tag == "my-pihole" {
+		if srv.Kind == DNSServerKindUser && srv.Tag == "my-pihole" {
 			foundUserPihole = true
 			if srv.Body["server"] != "192.168.1.5" {
 				t.Errorf("user body lost: %+v", srv.Body)
@@ -114,7 +112,7 @@ func TestParseV6_LegacyDevShapeConversion(t *testing.T) {
 	if len(s.DNS.Rules) != 1 {
 		t.Errorf("rules count: %+v", s.DNS.Rules)
 	}
-	if s.DNS.Rules[0].Kind != v6.DNSRuleKindUser {
+	if s.DNS.Rules[0].Kind != DNSRuleKindUser {
 		t.Errorf("rule kind: %v", s.DNS.Rules[0].Kind)
 	}
 }
@@ -160,9 +158,9 @@ func TestSave_V6_WhenHasPresetRef(t *testing.T) {
 	path := filepath.Join(dir, "state.json")
 
 	s := New()
-	s.RulesV6 = []v6.Rule{
+	s.RulesV6 = []Rule{
 		{
-			Kind:    v6.RuleKindPreset,
+			Kind:    RuleKindPreset,
 			Ref:     "ru-direct",
 			Enabled: true,
 			Body:    json.RawMessage(`{"vars":{}}`),
@@ -205,8 +203,8 @@ func TestSave_BackupV5OnFirstUpgrade(t *testing.T) {
 	}
 
 	// Step 2: добавляем preset-ref → второй Save должен переключиться на v6 + создать backup.
-	s.RulesV6 = []v6.Rule{
-		{Kind: v6.RuleKindPreset, Ref: "ru-direct", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+	s.RulesV6 = []Rule{
+		{Kind: RuleKindPreset, Ref: "ru-direct", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 	}
 	if err := s.Save(path); err != nil {
 		t.Fatalf("upgrade save: %v", err)
@@ -219,7 +217,7 @@ func TestSave_BackupV5OnFirstUpgrade(t *testing.T) {
 
 	// Главный файл — теперь v6.
 	raw, _ := os.ReadFile(path)
-	if !v6.IsV6(raw) {
+	if !isV6(raw) {
 		t.Errorf("main file should be v6 after upgrade")
 	}
 
@@ -240,18 +238,18 @@ func TestRoundTrip_V6_LoadSaveLoad(t *testing.T) {
 	path := filepath.Join(dir, "state.json")
 
 	original := New()
-	original.RulesV6 = []v6.Rule{
-		{Kind: v6.RuleKindPreset, Ref: "ru-direct", Enabled: true,
+	original.RulesV6 = []Rule{
+		{Kind: RuleKindPreset, Ref: "ru-direct", Enabled: true,
 			Body: json.RawMessage(`{"vars":{"dns_ip":"77.88.8.7"}}`)},
-		{Kind: v6.RuleKindInline, ID: "u1", Enabled: true,
+		{Kind: RuleKindInline, ID: "u1", Enabled: true,
 			Body: json.RawMessage(`{"name":"X","match":{"port":[443]},"outbound":"proxy-out"}`)},
 	}
-	original.DNS = v6.DNSOptions{
+	original.DNS = DNSOptions{
 		Strategy: "prefer_ipv4",
 		Final:    "google_doh",
-		Servers: []v6.DNSServer{
-			{Kind: v6.DNSServerKindTemplate, Tag: "cloudflare_udp", Enabled: true},
-			{Kind: v6.DNSServerKindUser, Tag: "my-pihole", Enabled: true, Body: map[string]interface{}{
+		Servers: []DNSServer{
+			{Kind: DNSServerKindTemplate, Tag: "cloudflare_udp", Enabled: true},
+			{Kind: DNSServerKindUser, Tag: "my-pihole", Enabled: true, Body: map[string]interface{}{
 				"tag": "my-pihole", "type": "udp", "server": "192.168.1.5", "server_port": float64(53),
 			}},
 		},
@@ -278,12 +276,12 @@ func TestRoundTrip_V6_LoadSaveLoad(t *testing.T) {
 	if len(loaded.DNS.Servers) != 2 {
 		t.Errorf("servers round-trip: %+v", loaded.DNS.Servers)
 	}
-	if loaded.DNS.Servers[0].Kind != v6.DNSServerKindTemplate ||
+	if loaded.DNS.Servers[0].Kind != DNSServerKindTemplate ||
 		loaded.DNS.Servers[0].Tag != "cloudflare_udp" ||
 		!loaded.DNS.Servers[0].Enabled {
 		t.Errorf("template entry lost: %+v", loaded.DNS.Servers[0])
 	}
-	if loaded.DNS.Servers[1].Kind != v6.DNSServerKindUser ||
+	if loaded.DNS.Servers[1].Kind != DNSServerKindUser ||
 		loaded.DNS.Servers[1].Body["server"] != "192.168.1.5" {
 		t.Errorf("user entry body lost: %+v", loaded.DNS.Servers[1])
 	}
@@ -293,7 +291,7 @@ func TestRoundTrip_V6_LoadSaveLoad(t *testing.T) {
 		t.Fatalf("save 2: %v", err)
 	}
 	raw, _ := os.ReadFile(path)
-	if !v6.IsV6(raw) {
+	if !isV6(raw) {
 		t.Error("should remain v6 after re-save")
 	}
 }
