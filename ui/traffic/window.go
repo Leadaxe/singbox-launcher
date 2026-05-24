@@ -103,6 +103,11 @@ func (m *Manager) IsRecording() bool {
 }
 
 func (m *Manager) build() {
+	// Snapshot deps + abort early without holding the lock across all the
+	// sub-builds. Sub-views (buildPerProcessView) may invoke m.refreshTitle
+	// transitively which itself takes m.mu — holding it here = deadlock.
+	// Show() is always called from the UI thread (button OnTap), so we
+	// don't need a mutex to serialize concurrent build() calls.
 	m.mu.Lock()
 	if m.win != nil {
 		m.mu.Unlock()
@@ -112,17 +117,26 @@ func (m *Manager) build() {
 		m.mu.Unlock()
 		return
 	}
-	win := m.deps.App.NewWindow("Traffic Profiler")
+	deps := m.deps
+	m.mu.Unlock()
 
-	live := buildLiveView(m.deps)
-	perProcess := buildPerProcessView(m.deps, func() { m.refreshTitle() })
+	win := deps.App.NewWindow("Traffic Profiler")
+
+	live := buildLiveView(deps)
+	perProcess := buildPerProcessView(deps, func() {
+		// Defer to avoid synchronous re-entry into m.refreshTitle's mutex
+		// while we're still inside build()'s UI-thread stack. The first
+		// real refresh fires from startTitleTimer / profiler subscriber
+		// shortly anyway.
+		go func() { fyne.Do(func() { m.refreshTitle() }) }()
+	})
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Live", live.Content),
 		container.NewTabItem("Per-process", perProcess.Content),
 	)
 
-	toolbar := buildWindowToolbar(m.deps, win)
+	toolbar := buildWindowToolbar(deps, win)
 	root := container.NewBorder(toolbar, nil, nil, nil, tabs)
 
 	// Wrap with tooltip layer so ttwidget tooltips work inside the window
@@ -143,18 +157,27 @@ func (m *Manager) build() {
 		m.win = nil
 		m.mu.Unlock()
 		m.stopTitleTimer()
-		if m.deps.ParentRefresh != nil {
-			m.deps.ParentRefresh()
+		if deps.ParentRefresh != nil {
+			deps.ParentRefresh()
 		}
 	})
 
+	m.mu.Lock()
 	m.win = win
 	m.mu.Unlock()
 
 	// Drive a once-per-second window title refresh while open so the
 	// recording timer ticks up in the title bar.
 	m.startTitleTimer()
-	m.refreshTitle()
+	// Initial title — defer to next UI tick via goroutine + fyne.Do.
+	// CRITICAL: m.refreshTitle() invokes m.deps.ParentRefresh() which
+	// dispatches fyne.Do(...). Calling fyne.Do FROM the UI thread (we are
+	// here — button OnTap → Show() → build()) deadlocks Fyne 2.7 because
+	// fyne.Do blocks waiting for the UI thread, which is busy in this
+	// stack. Wrap in goroutine to ensure fyne.Do runs after Show() returns.
+	go func() {
+		fyne.Do(func() { m.refreshTitle() })
+	}()
 
 	win.Show()
 }
