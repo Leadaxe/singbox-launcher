@@ -603,7 +603,7 @@ toggle'ом).
 Per-server toggle внутри активного preset (юзер может скрыть отдельный
 сервер из bundle) преserve'ится при sync.
 
-Реализация: `core/state/v6/sync_dns.go::SyncDNSOptionsWithActivePresets`.
+Реализация: `core/state/sync_dns.go::SyncDNSOptionsWithActivePresets`.
 
 ### 5.4 Required entries (template)
 
@@ -634,13 +634,14 @@ dropped через `_ = raw.IndependentCache` в `legacyDevDNSToOptions`),
 
 Order = order рендера в UI Rules tab (включая drag-reordering) = order эмита
 в `config.json::route.rules[]`. Сохраняется через
-`SyncRulesByOrderToStateRulesV6(model.RuleOrder, ...)` в `CreateStateFromModel`.
+`SyncRulesByOrderToStateRulesV6(model.RuleOrder, ...)` в `CreateStateFromModel`
+(имя функции легасийное; результат пишется в `state.Rules`).
 
 Match-поля и rule_set'ы для kind=preset живут **в template** — bump
 `RequiredTemplateRef` → юзеры автоматически получают новые match-поля.
 Body хранит только diff vars; пустой `vars: {}` = preset на template defaults.
 
-См. `core/state/v6/rule_types.go` (DecodeBody dispatcher) +
+См. `core/state/rule_types.go` (DecodeBody dispatcher) +
 `core/build/preset_expand.go` (build-time substitute + tag-prefix).
 
 ---
@@ -658,7 +659,7 @@ core/state.Load(path)
         │   legacyDevDNSToOptions if старый dev-shape `dns.{template_servers,extras}`
         │   sanitizeOutboundRefs (SPEC 058: reject невалидные ref по позиции)
         ▼
-state.State{Connections, RulesV6, DNS, Vars, ...}
+state.State{Connections, Rules, DNS, Vars, ...}
         │
         ▼
 presenter.LoadState(stateFile)
@@ -686,16 +687,16 @@ model.WizardModel
 presenter.CreateStateFromModel(comment, id)
         │   SyncGUIToModel
         │   build WizardStateFile (legacy view + Connections canonical)
-        │   ReconcileRuleOrder + SyncRulesByOrderToStateRulesV6  → state.RulesV6
+        │   ReconcileRuleOrder + SyncRulesByOrderToStateRulesV6  → state.Rules
         │   SyncDNSFullToStateV6                                  → state.DNS
-        │   v6.SyncDNSOptionsWithActivePresets(state.RulesV6, &state.DNS, presets)
+        │   state.SyncDNSOptionsWithActivePresets(state.Rules, &state.DNS, presets)
         │   applyPresetEnabledOverrides (UI toggle → entry.Enabled)
         │   build.SyncOutboundsWithActivePresets ×2 view (Connections + ParserConfig)  ◄── обязательно на обе!
         ▼
 state.State.Save(path)
         │   maybeBackupSPEC058 (SPEC 058: .pre-058.bak на первом save после migration)
         │   syncConnectionsFromLegacy (ParserConfig → Connections; уже sync'нутая версия побеждает)
-        │   hasPresetRefs(RulesV6) ? marshalDiskV6 : marshalDisk (v5)
+        │   marshalDisk (single canonical-v6 path после SPEC 060; dual write убран)
         │   atomic write (.tmp + Rename) + fsync
         ▼
 disk: bin/wizard_states/state.json
@@ -755,7 +756,9 @@ patch поверх template body, что даёт template auto-upgrade авто
 | SPEC 057 outbounds → SPEC 058 | Direct entries с full body, совпадающим по `tag` с template/preset → referenced thin entries (`ref=#TEMPLATE#` / `ref=<preset_id>`) + USER patch с field-level diff против merged_base. Идемпотентно, lossless. Также: legacy `wizard.required` map → top-level `required bool`; поле `wizard interface{}` удалено из struct. | **`state.json.pre-058.bak`** на первом save после migration |
 | sing-box 1.14 | `dns_options.independent_cache` silently dropped (legacy state читается, новый не пишется) | нет |
 
-Save выбирает формат автоматически: `hasPresetRefs(RulesV6)` → v6, иначе v5.
+Save всегда пишет canonical (v6) shape (SPEC 060 убрал dual write path).
+Legacy v5 файлы по-прежнему читаются через `parseV5Legacy` и нормализуются
+в `State` на load; следующий Save перезаписывает их в v6 layout.
 Юзеры с pure inline/srs rules остаются на v5 пока не добавят первый preset.
 
 ---
@@ -764,14 +767,20 @@ Save выбирает формат автоматически: `hasPresetRefs(Ru
 
 | Файл | Что |
 |------|-----|
-| `core/state/load.go` | `Load` / `Parse` / `parseV6` / `parseV5` / `parseLegacyAndMigrate` / `legacyDevDNSToOptions` + `sanitizeOutboundRefs` (SPEC 058: drops entries с невалидным `ref` по позиции) |
-| `core/state/save.go` | `Save` / `marshalDisk` (v5) / `marshalDiskV6` / `maybeBackupV5` / `maybeBackupSPEC058` (SPEC 058: `.pre-058.bak` на первом save после referenced-shape migration) |
+| `core/state/load.go` | `Load` / `Parse` / `parseCurrent` / `parseV5Legacy` / `parseLegacyAndMigrate` / `legacyDevDNSToOptions` + `sanitizeOutboundRefs` (SPEC 058: drops entries с невалидным `ref` по позиции) |
+| `core/state/save.go` | `Save` / `marshalDisk` (single canonical-v6 write path после SPEC 060) / `maybeBackupSPEC058` (SPEC 058: `.pre-058.bak` на первом save после referenced-shape migration) |
 | `core/state/adapter.go` | `syncConnectionsFromLegacy` / `syncLegacyFromConnections` (обмен legacy ParserConfig ↔ canonical Connections) |
-| `core/state/v6/state.go` | v6 State struct + MetaSection |
-| `core/state/v6/rule_types.go` | Rule + PresetBody/InlineBody/SrsBody + DecodeBody |
-| `core/state/v6/dns_options.go` | DNSServer + DNSRule + flat Marshal/Unmarshal |
-| `core/state/v6/sync_dns.go` | `SyncDNSOptionsWithActivePresets` |
-| `core/state/v6/migration.go` | `MigrateV5ToV6` (pure func) |
+| `core/state/disk_v6.go` | `diskStateV6` (private write-shape) + `MetaSection` + `SchemaVersionV6` |
+| `core/state/rule_types.go` | `Rule` + `PresetBody`/`InlineBody`/`SrsBody` + `DecodeBody` |
+| `core/state/dns_options.go` | `DNSServer` + `DNSRule` + flat `MarshalJSON`/`UnmarshalJSON` |
+| `core/state/sync_dns.go` | `SyncDNSOptionsWithActivePresets` |
+| `core/state/migration_v5_to_v6.go` | `migrateV5ToV6` (private helper) + `isV5`/`isV6` detection |
+| `core/state/legacy_migration.go` | `migrateV4ToV5` (private) + `IDGenerator` |
+| `core/state/legacy_v4.go` | `v4File` (private) + `parseV4File` |
+| `core/state/legacy_types.go` | `LegacyDNSOptionsV5` (для backward-compat parse path и UI `PersistedDNSState`) |
+| `core/state/connections.go` | `ConnectionsSection`/`Source`/`Defaults`/`TagSpec`/`SubscriptionMeta`/`UserInfo` |
+| `core/state/raw_cache.go` | `WriteRawBody`/`ReadRawBody`/`DeleteOrphans` |
+| `core/state/ulid.go` | `MakeULID` |
 | `core/build/sync_outbounds.go` | `SyncOutboundsWithActivePresets` (lifecycle) + `stripReferencedBody` + `reorderUpdates` + `outboundConfigToPatchMap` |
 | `core/build/migrate_outbounds_spec058.go` | **SPEC 058.** `MigrateOutboundsToReferencedShape` — one-shot direct→referenced + USER patch на первом load |
 | `core/build/outbound_diff.go` | **SPEC 058.** `OutboundFieldDiff` (field-level diff против merged_base), `UpsertUserPatch`, `applyUpdatesToBase` |

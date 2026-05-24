@@ -43,7 +43,7 @@ model.TemplateData (immutable for session)
      │           → Ref="#TEMPLATE#", diff→USER patch,        │      stripped to {tag, ref, updates}
      │             strip body fields                         │      idempotent on re-load
      │         else keep direct (ref="", body inline)        │
-     │   → state.State {Connections, RulesV6, DNS, Vars}     │
+     │   → state.State {Connections, Rules, DNS, Vars}        │
      │                                                       │
      │   presenter.LoadState(stateFile)                      │
      │     restoreParserConfig (legacy view)                 │
@@ -52,7 +52,7 @@ model.TemplateData (immutable for session)
      │     ApplyRulesLibraryMigration (idempotent)           │
      │     restoreCustomRules + restorePresetRefs            │
      │     build.SyncOutboundsWithActivePresets             │  ◄── adopt-on-first-sync
-     │       (state.RulesV6, &model.GlobalOutbounds, presets)│      legacy → preset-bound
+     │       (state.Rules, &model.GlobalOutbounds, presets)   │      legacy → preset-bound
      │     RefreshDerivedParserConfig                        │
      │                                                       │
      │   model.WizardModel populated                         │
@@ -103,13 +103,13 @@ presenter.CreateStateFromModel(comment, id)
      │   extractConfigParams                  — empty in v6 (vars moved to state.vars)
      │
      │   ReconcileRuleOrder(model)            — collapse RuleOrder vs PresetRefs/CustomRules
-     │   SyncRulesByOrderToStateRulesV6       — produces state.RulesV6 (preserves UI order)
+     │   SyncRulesByOrderToStateRulesV6       — produces state.Rules (preserves UI order; helper name is legacy)
      │
      │   extractTemplateDNSTags(TemplateData)
      │   SyncDNSFullToStateV6(...)            — DNS UI list → flat state.DNS.servers/rules
      │
-     │   v6.SyncDNSOptionsWithActivePresets   — ensure kind=preset DNS entries match active preset-refs
-     │     (state.RulesV6, &state.DNS, presetMap)
+     │   state.SyncDNSOptionsWithActivePresets — ensure kind=preset DNS entries match active preset-refs
+     │     (state.Rules, &state.DNS, presetMap)
      │   applyPresetEnabledOverrides          — UI toggle for kind=preset → entry.Enabled
      │
      │   build.SyncOutboundsWithActivePresets — TWICE: on both views
@@ -123,10 +123,9 @@ state.State.Save(path)
      │   hasReferencedOutbounds(Connections) ? maybeBackupPre058(path) : skip
      │                                          ◄── SPEC 058 one-shot state.json.pre-058.bak
      │                                          (на первом save после migration)
-     │   hasPresetRefs(RulesV6) ? marshalDiskV6 : marshalDisk
-     │     marshalDiskV6 = v6 layout (meta.version=6, schema=presets_v1)
-     │     marshalDisk   = v5 layout (auto-pick if no kind=preset rules)
-     │   maybeBackupV5(path)                   — one-shot state.json.v5.bak on first v5→v6
+     │   marshalDisk                          — single canonical (v6) write path
+     │                                          (meta.version=6, schema=presets_v1)
+     │                                          dual write path удалён в SPEC 060
      │
      │   atomic write: open .tmp, write+fsync, Rename .tmp → path, fsync(dir)
      ▼
@@ -139,8 +138,9 @@ disk: bin/wizard_states/state.json
 Решение: sync обе view'а в `CreateStateFromModel`, тогда адаптер копирует
 уже-корректную версию.
 
-Format auto-pick: `hasPresetRefs(RulesV6)` решает v5 vs v6. Юзеры с pure
-inline/srs rules остаются на v5 пока не добавят первый preset.
+После SPEC 060 Save всегда пишет canonical (v6) shape. Legacy v5 файлы
+читаются `parseV5Legacy` на load и нормализуются в `State`; ближайший
+Save перезаписывает их в v6 layout.
 
 ---
 
@@ -221,7 +221,7 @@ UI: Rules tab — checkbox toggle на preset row
      │   handler в rules_unified_rows.go (one-liner после рефактора)
      ▼
 mutate model:
-     state.RulesV6 = update Enabled flag
+     state.Rules = update Enabled flag
      PresetRefs[i].Enabled = new value
      │
      ▼

@@ -22,6 +22,7 @@
 - Sentinel constants `RefTemplate = "#TEMPLATE#"`, `RefUser = "#USER#"` in `core/config/configtypes`. State loader validates positional rules (entry-level vs updates-level).
 - New helpers: `core/build/migrate_outbounds_spec058.go`, `core/build/outbound_diff.go`. Resolver expansion in `core/build/resolve_outbounds.go` (3-way classify: direct/template/preset).
 - UI: collectRows shows ✏ badge on referenced entries with USER patch. Reset button clears USER patch (not body replace). Edit dialog: form populated via `wizardbusiness.ResolveMergedOutbound` (same pipeline as Preview/build emit). Settings ↔ JSON tab sync handles thin shape correctly.
+- **SPEC 060 STATE_NAMESPACE_COLLAPSE.** `core/state/v5/` and `core/state/v6/` subpackages collapsed into unified `core/state/`. `State.RulesV6` → `State.Rules` (~50+ callsites updated). Dual write path (`useV6` gate, `marshalDiskV6` vs `marshalDisk`) removed — Save always writes canonical v6 shape. Wire format on disk unchanged; v5 files still read correctly via `parseV5Legacy`. Legacy DNS shape exposed as `state.LegacyDNSOptionsV5` for UI back-compat. `parseV6` renamed to `parseCurrent`. ~26 import callsites in `core/` and `ui/` updated.
 
 ## RU
 ### Основное
@@ -41,3 +42,4 @@
 - Sentinel константы `RefTemplate = "#TEMPLATE#"`, `RefUser = "#USER#"` в `core/config/configtypes`. State loader валидирует positional rules (entry-level vs updates-level).
 - Новые helpers: `core/build/migrate_outbounds_spec058.go`, `core/build/outbound_diff.go`. Resolver расширен в `core/build/resolve_outbounds.go` (3-way classify: direct/template/preset).
 - UI: collectRows показывает ✏ badge для ссылочных entries с USER patch'ем. Reset кнопка чистит USER patch (не replace body). Edit диалог: форма заполняется через `wizardbusiness.ResolveMergedOutbound` (тот же pipeline что Preview/build emit). Settings ↔ JSON tab sync корректно обрабатывает thin shape.
+- **SPEC 060 STATE_NAMESPACE_COLLAPSE.** Подпакеты `core/state/v5/` и `core/state/v6/` свёрнуты в единый `core/state/`. `State.RulesV6` → `State.Rules` (~50+ callsite'ов). Dual write path (`useV6` gate, `marshalDiskV6` vs `marshalDisk`) удалён — Save всегда пишет canonical v6 shape. Wire format на диске не меняется; v5 файлы по-прежнему читаются через `parseV5Legacy`. Legacy DNS shape остался доступен как `state.LegacyDNSOptionsV5` (для UI backward-compat). `parseV6` → `parseCurrent`. ~26 import-callsite'ов в `core/` и `ui/` обновлены.
