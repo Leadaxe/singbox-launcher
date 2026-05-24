@@ -8,10 +8,10 @@ import (
 )
 
 func TestMigrateDNSScalarsFromPersistedToSettingsVars_Idempotent(t *testing.T) {
+	// SPEC: VarDNSIndependentCache УДАЛЕНО — sing-box 1.14 deprecation.
 	vars := []wizardtemplate.TemplateVar{
 		{Name: wizardmodels.VarDNSStrategy, Type: "enum"},
 		{Name: wizardmodels.VarDNSFinal, Type: "text"},
-		{Name: wizardmodels.VarDNSIndependentCache, Type: "bool"},
 		{Name: wizardmodels.VarDNSDefaultDomainResolver, Type: "text"},
 	}
 	st := map[string]string{}
@@ -20,8 +20,6 @@ func TestMigrateDNSScalarsFromPersistedToSettingsVars_Idempotent(t *testing.T) {
 		Final:                 "google_doh",
 		DefaultDomainResolver: "direct_dns_resolver",
 	}
-	b := true
-	p.IndependentCache = &b
 
 	MigrateDNSScalarsFromPersistedToSettingsVars(p, st, vars)
 	if st[wizardmodels.VarDNSStrategy] != "prefer_ipv6" {

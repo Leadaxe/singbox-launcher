@@ -6,6 +6,207 @@
 
 Файл `state.json` (и именованные состояния `<id>.json`) хранит полное состояние визарда: выбранные источники прокси, outbounds, правила маршрутизации (в т.ч. пользовательские), параметры конфигурации. При открытии визарда состояние загружается из текущего файла; при сохранении — записывается обратно.
 
+## Версии формата
+
+| meta.version | Schema name | Статус | Где |
+|---|---|---|---|
+| 2-4 | `version: N` (top-level) | Legacy | parser auto-migrate на Load |
+| **5** | top-level `meta.version: 5` | **Текущий релизный** | shipped в `v0.9.5` |
+| **6** | `meta.version: 6` + `meta.schema: "presets_v1"` | **Dev** (HEAD-of-develop) | SPEC 053 + SPEC 056-R-N — добавился preset bundles + flat DNS schema |
+
+**Save logic (SPEC 053):** если `state.RulesV6` содержит хоть один `kind=preset`,
+пишем v6; иначе v5. v6 → v5 backup создаётся при первом upgrade
+(`state.json.v5.bak`). v6 → v6 in-place dev rewrite (SPEC 056-R-N) — backup
+конверсия дев-формата на лету (read-старого-shape, write-нового на Save; backup не делаем — v6 не релизился, lossless).
+
+---
+
+## v6 layout (SPEC 053 + SPEC 056-R-N)
+
+Top-level:
+
+```json
+{
+  "meta":        { "version": 6, "schema": "presets_v1", "created_at": "...", "updated_at": "..." },
+  "connections": { "sources": [...], "outbounds": [...], "defaults": {...} },
+  "rules":       [ ... ],            // kind discriminator (preset/inline/srs)
+  "vars":        [ { "name": "...", "value": "..." }, ... ],   // включая dns_*
+  "dns_options": {                                              // SPEC 056-R-N
+    "strategy":                "...",   // дублирует state.vars["dns_strategy"] для in-memory
+    "final":                   "...",
+    // independent_cache УДАЛЕНО — sing-box 1.14 deprecation (cache always per-transport).
+    "default_domain_resolver": "...",
+    "servers": [ { kind, ref|tag, enabled, ...body }, ... ],
+    "rules":   [ { kind, ref|...,  enabled, ...body }, ... ]
+  }
+}
+```
+
+### `rules[]` — kind discriminator (SPEC 053)
+
+| kind   | header fields                         | body schema                         |
+|--------|---------------------------------------|--------------------------------------|
+| preset | `{ref, enabled}` — ref = `<preset_id>` | `{vars: {<name>: <value>, ...}}` — только diff от template defaults |
+| inline | `{id, enabled}`                       | `{name, match, outbound}` — sing-box match-keys + outbound tag |
+| srs    | `{id, enabled}`                       | `{name, srs_url, outbound}` |
+
+### `dns_options.servers[]` — SPEC 056-R-N
+
+| kind     | header fields                          | resolve тела                          |
+|----------|----------------------------------------|----------------------------------------|
+| template | `{tag, enabled}`                       | `template.dns_options.servers[tag]`   |
+| preset   | `{ref, enabled}` — ref = `<preset_id>:<local_tag>` | `template.presets[id].dns_servers[local_tag]` + Vars substitute |
+| user     | `{tag, enabled, ...body}` flat         | self-contained body (type/server/...) |
+
+### `dns_options.rules[]`
+
+| kind   | header fields                | resolve тела                        |
+|--------|------------------------------|--------------------------------------|
+| preset | `{ref, enabled}` ref = `<preset_id>` (один dns_rule на preset) | `template.presets[id].dns_rule` |
+| user   | `{enabled, ...body}` flat    | self-contained body                  |
+
+### Lifecycle entries kind=preset (SPEC 056-R-N)
+
+**Memory == disk** invariant: state.dns_options.servers[] + .rules[] всегда
+содержит ровно тот набор `kind=preset` entries что соответствует активным
+preset-ref'ам в state.rules[]. **`SyncDNSOptionsWithActivePresets`** —
+единая точка lifecycle:
+
+- **Enable preset** в Rules tab → создаются entries `{kind:preset, ref}` для
+  каждого `template.presets[id].dns_servers[]` + если есть dns_rule → entry в
+  rules. Default `Enabled=true`.
+- **Disable preset** → **все** entries с этим ref удаляются.
+- **Per-server toggle** внутри активного preset разрешён (юзер может скрыть
+  отдельный сервер из bundle, ставя `Enabled=false` — value preservируется
+  при sync). На disable preset все entries удаляются → re-enable = свежие
+  дефолты.
+
+### v6 → v6 in-place dev rewrite (SPEC 056-R-N)
+
+v6 никогда не релизился — это HEAD-of-develop формат после SPEC 053.
+SPEC 056-R-N переписывает схему в том же v6/`presets_v1` без bump'а:
+
+- **Старый дев-shape (SPEC 053):** `dns.template_servers` (map) +
+  `dns.extra_servers` (array) + `dns.extra_rules` (array).
+- **Новый shape (SPEC 056-R-N):** `dns_options.servers[]` + `.rules[]`
+  с kind discriminator.
+
+`parseV6` детектит старый shape (через `legacyDevDNSToOptions` fallback)
+и конвертит в memory в новый shape. На ближайшем `Save` файл перезаписывается
+в новом layout'е. Backup не создаётся — конверсия lossless, v6 не релизился.
+
+### Unified resolver pattern (SPEC 056-R-N Phase B)
+
+Build pipeline и UI render оба consume единую pure-func `ResolveDNS()`
+(аналогично `ResolveRoute()`) — нет divergence между preview и финальным
+config.
+
+```
+state + template + vars
+        │
+        ▼
+   ResolveDNS() / ResolveRoute()  ◄── pure, single source of truth
+        │
+   ┌────┴────┐
+   ▼         ▼
+[UI render] [build emit]
+показ всех   эмит где Active && Enabled
+с badges
+```
+
+`ResolvedDNSServer{Kind, Tag, LocalTag, Body, Source, PresetID, PresetLabel,
+Active, Enabled, Locked, InactiveReason}` несёт всю информацию для
+обоих consumers. Build emit фильтрует `Active && Enabled && !Source=Core`;
+UI рендерит **все** entries с visual hint'ом для `!Active` (disabled checkbox
++ tooltip с InactiveReason).
+
+См. `core/build/resolve_dns.go` и `core/build/resolve_route.go`.
+
+### Template DNS unify через `required: true` (SPEC 056-R-N Phase C)
+
+`template.config.dns.servers[]` теперь **пустой массив**. Все DNS-серверы
+(включая mandatory `local_dns_resolver` / `direct_dns_resolver`) живут в
+**одном** `template.dns_options.servers[]`. Mandatory entries маркируются
+полем `required: true` — UI блокирует toggle/edit/del, в config.json всегда
+эмитятся.
+
+```json
+"dns_options": {
+  "servers": [
+    {"tag":"local_dns_resolver",  "type":"local",   "required":true, "enabled":true},
+    {"tag":"direct_dns_resolver", "type":"udp", ..., "required":true, "enabled":true},
+    {"tag":"cloudflare_udp", ...}
+  ]
+}
+```
+
+UI `wizardbusiness.DNSTagLocked(model, tag)` живо смотрит в template'е
+без кеширования в `model.DNSLockedTags` (удалено как dead channel).
+
+### Outbound `required: true` (SPEC 056-R-N Phase E)
+
+Аналогично для template-mandated outbound'ов (`proxy-out` и т.п.):
+```json
+"parser_config": {
+  "outbounds": [
+    {"tag":"proxy-out", "required":true, "type":"selector", ...}
+  ]
+}
+```
+
+`OutboundConfig` **не имеет** `Required` field в struct — флаг живёт ТОЛЬКО
+в template, читается live через `templateRequiredTags(model)` на каждый
+UI render. State.json не персистит `required` (иначе нельзя было бы снять
+флаг в template и увидеть эффект).
+
+UI для required outbound: Up/Down ✅, Edit ✅, **Reset 🔄** (откат body к
+template defaults), Del не рендерится.
+
+### Preset bundled outbounds в Outbounds tab (SPEC 057-R-N — supersedes 056-R-N Phase E)
+
+`preset.outbounds[]` теперь живут **в state** через два новых поля на `OutboundConfig`:
+
+- **`Ref string`** (`json:"ref,omitempty"`) — entry создан через `preset.outbounds[mode=add]`. Значение = `preset.id` владельца. UI: row read-only (View вместо Edit, без Del), 🔒 + preset label.
+- **`Updates []OutboundUpdate`** (`json:"updates,omitempty"`) — стек patches от `preset.outbounds[mode=update]`. Каждая запись `{Ref string, Patch map[string]interface{}}`. На emit финальное body = base + apply patches в order.
+
+```json
+"outbounds": [
+  {
+    "tag": "proxy-out", "type": "selector",
+    "options": {...}, "addOutbounds": [...],
+    "updates": [
+      {"ref": "russian",   "patch": {"filters": {"tag": "!/(🇷🇺)/i"}}},
+      {"ref": "ru-inside", "patch": {"filters": {"tag": "!/(🇷🇺)/i"}}}
+    ]
+  },
+  {
+    "tag": "ru VPN 🇷🇺", "type": "selector",
+    "options": {...}, "filters": {...}, "addOutbounds": [...],
+    "ref": "russian"
+  }
+]
+```
+
+Lifecycle через `SyncOutboundsWithActivePresets` (idempotent): вызывается на Load, preset toggle (`RefreshAfterPresetToggle`), перед Save (`CreateStateFromModel` — на обе view'а: Connections + ParserConfig), в headless runtime path'ах (rebuild_raw_cache, UpdateConfigFromSubscriptions, parseAndPreview). Adopt-on-first-sync: existing global без `Ref` с tag совпадающим с preset.add → entry adopt'ится (для legacy state).
+
+Runtime emit: `MergeOutboundUpdatesInPlace(parserCfg)` флэттенит `Updates[]` стек в body перед `GenerateOutboundsFromParserConfig` (generator не знает про Updates).
+
+### Disabled subscription cascade
+
+Toggle off подписки в Sources tab → её per-source outbound'ы (BL:auto/select
+и т.д.) исчезают из 4 точек:
+- Outbounds tab UI (`collectRows`, `collectAllTags`)
+- Rules tab outbound dropdowns (`business.GetAvailableOutbounds`)
+- Preview cache (`RebuildPreviewCache`)
+- Финальный config.json (`GenerateOutboundsFromParserConfig` — reference)
+
+Все 4 точки симметричны.
+
+---
+
+## v5 layout (shipped)
+
+
 ## Резюме по блокам (чтение)
 
 Ниже — **кто главный** при восстановлении модели. «Шаблон» = актуальный **`bin/wizard_template.json`** после **`LoadTemplateData`**. **State** = загруженный снимок (`state.json` или `<id>.json`). Порядок вызовов при **`LoadState`** — в разделе **«Поток чтения»**.
@@ -30,7 +231,7 @@
 
 **UI:** автогенерируемые строки на вкладке **Settings** (плюс особые случаи вроде **`clash_secret`**). Метаданные переменной (**тип**, подписи) всегда из шаблона; в файле state — только пары **`name` / `value`**.
 
-**DNS и `vars`:** скаляры вкладки **DNS** (**strategy**, **independent_cache**, **final**, **default domain resolver**) объявляются в шаблоне как скрытые переменные **`dns_*`** с литералами **`@dns_*`** в **`config`**; пользовательские значения — в **`state.vars`**. Подробнее — **`SPECS/032-F-C-WIZARD_SETTINGS_TAB/SUB_SPEC_DNS_TAB_VARS.md`**.
+**DNS и `vars`:** скаляры вкладки **DNS** (**strategy**, **final**, **default domain resolver**) объявляются в шаблоне как скрытые переменные **`dns_*`** с литералами **`@dns_*`** в **`config`**; пользовательские значения — в **`state.vars`**. (Скаляр **`independent_cache`** удалён в связи с deprecation в sing-box 1.14.0.) Подробнее — **`SPECS/032-F-C-WIZARD_SETTINGS_TAB/SUB_SPEC_DNS_TAB_VARS.md`**.
 
 #### `vars` и условия `params.if` / `params.if_or`
 
@@ -38,7 +239,7 @@
 
 ### Вкладка DNS: `dns_options` (servers/rules) и скаляры в `vars` (`dns_*`)
 
-Вкладка **DNS** управляет списком серверов и **`rules`** через **`dns_options`** в **`state.json`** и **шаблон**; **strategy**, **independent_cache**, **`dns.final`**, **`route.default_domain_resolver`** — через скрытые переменные **`dns_*`** в **`wizard_template.json` → `vars`** и переопределения в **`state.vars`** (литералы **`@dns_*`** в **`config`**). Флаг **«резолвер не задан»** остаётся в модели (**`DefaultDomainResolverUnset`**), не кодируется одной пустой строкой в **`vars`**.
+Вкладка **DNS** управляет списком серверов и **`rules`** через **`dns_options`** в **`state.json`** и **шаблон**; **strategy**, **`dns.final`**, **`route.default_domain_resolver`** — через скрытые переменные **`dns_*`** в **`wizard_template.json` → `vars`** и переопределения в **`state.vars`** (литералы **`@dns_*`** в **`config`**). Флаг **«резолвер не задан»** остаётся в модели (**`DefaultDomainResolverUnset`**), не кодируется одной пустой строкой в **`vars`**. (Раньше тут был ещё **`independent_cache`** — удалён в связи с deprecation в sing-box 1.14.0; legacy state с этим полем парсится без ошибок, новые saves поле не пишут.)
 
 **Принцип работы:** **`LoadPersistedWizardDNS`** копирует только **`servers`** и **`rules`**; устаревшие ключи в старом **`dns_options`** при **`LoadState`** однократно мигрируют в **`state.vars`** (**`MigrateDNSScalarsFromPersistedToSettingsVars`**). Далее **`ApplyWizardDNSTemplate`**, затем **`ApplyDNSVarsFromSettingsToModel`**. Перед сохранением и сборкой конфига **`SyncDNSModelToSettingsVars`** синхронизирует модель → **`SettingsVars`**. Итоговый **`config.json`**: **`MergeDNSSection`** / **`MergeRouteSection`**.
 
@@ -124,7 +325,7 @@
 
 ## dns_options (объект в state.json)
 
-> **Резюме (чтение):** в **новых** снимках в **`dns_options`** только **`servers`** и **`rules`**. Старые файлы могут содержать **`strategy`**, **`final`**, **`independent_cache`**, **`default_domain_resolver`**, **`default_domain_resolver_unset`** — они при **`LoadState`** мигрируют в **`state.vars`** (**`dns_*`**) и при следующем сохранении из **`dns_options`** исчезают. Далее **`ApplyWizardDNSTemplate`** + **`ApplyDNSVarsFromSettingsToModel`**.
+> **Резюме (чтение):** в **новых** снимках в **`dns_options`** только **`servers`** и **`rules`**. Старые файлы могут содержать **`strategy`**, **`final`**, **`default_domain_resolver`**, **`default_domain_resolver_unset`** — они при **`LoadState`** мигрируют в **`state.vars`** (**`dns_*`**) и при следующем сохранении из **`dns_options`** исчезают. Ключ **`independent_cache`** (если есть в старых файлах) silently дропается — поле снято в связи с deprecation в sing-box 1.14.0. Далее **`ApplyWizardDNSTemplate`** + **`ApplyDNSVarsFromSettingsToModel`**.
 
 Корневой ключ **`dns_options`** — снимок списка серверов и правил DNS визарда (то же имя, что у секции дефолтов в шаблоне). Правила — массив **`rules`**; в редакторе — построчный текст; при сохранении state текст **парсится** в **`rules`**. Ключ **`rules_text`** в старых `state.json` **не читается**.
 
@@ -132,7 +333,8 @@
 |------|-----|----------|
 | `servers` | array | Список объектов DNS-сервера (sing-box + **`description`**, **`enabled`** для визарда). |
 | `rules` | array | Правила DNS (как `dns.rules` в sing-box). |
-| *устаревшие* | | **`final`**, **`strategy`**, **`independent_cache`**, **`default_domain_resolver`**, **`default_domain_resolver_unset`** — читаются для миграции в **`vars`**, в новых сохранениях не пишутся. |
+| *устаревшие* | | **`final`**, **`strategy`**, **`default_domain_resolver`**, **`default_domain_resolver_unset`** — читаются для миграции в **`vars`**, в новых сохранениях не пишутся. |
+| *удалено* | | **`independent_cache`** — поле снято в связи с deprecation в sing-box 1.14.0. Legacy state с этим ключом парсится без ошибок (silently dropped). |
 
 **`config_params`:** **`route.default_domain_resolver`** не используется как постоянное хранилище; старые файлы — одноразовый подхват в **`restoreDNS`**, если в **`vars`** ещё нет **`dns_default_domain_resolver`**.
 

@@ -44,13 +44,8 @@ func MigrateDNSScalarsFromPersistedToSettingsVars(p *wizardmodels.PersistedDNSSt
 	if p.Final != "" {
 		setIf(wizardmodels.VarDNSFinal, p.Final)
 	}
-	if p.IndependentCache != nil {
-		s := "false"
-		if *p.IndependentCache {
-			s = "true"
-		}
-		setIf(wizardmodels.VarDNSIndependentCache, s)
-	}
+	// SPEC: DNSIndependentCache removed — independent_cache deprecated в
+	// sing-box 1.14.0 (кэш всегда per-transport). Поле снято из UI/model/emit.
 	if !p.ResolverUnset && strings.TrimSpace(p.DefaultDomainResolver) != "" {
 		setIf(wizardmodels.VarDNSDefaultDomainResolver, strings.TrimSpace(p.DefaultDomainResolver))
 	}
@@ -75,14 +70,7 @@ func ApplyDNSVarsFromSettingsToModel(model *wizardmodels.WizardModel) {
 			model.DNSStrategy = ""
 		}
 	}
-	if templateDeclaresDNSWizardVar(td.Vars, wizardmodels.VarDNSIndependentCache) {
-		if v, ok := model.SettingsVars[wizardmodels.VarDNSIndependentCache]; ok {
-			b := strings.EqualFold(strings.TrimSpace(v), "true")
-			model.DNSIndependentCache = ptrBool(b)
-		} else {
-			model.DNSIndependentCache = nil
-		}
-	}
+	// SPEC: DNSIndependentCache removed (sing-box 1.14 deprecation).
 	if templateDeclaresDNSWizardVar(td.Vars, wizardmodels.VarDNSFinal) {
 		if v, ok := model.SettingsVars[wizardmodels.VarDNSFinal]; ok {
 			model.DNSFinal = strings.TrimSpace(v)
@@ -115,7 +103,6 @@ func SyncDNSModelToSettingsVars(model *wizardmodels.WizardModel) {
 	}
 	build.ApplyDNSScalarsToVars(model.TemplateData, build.DNSScalars{
 		Strategy:                   model.DNSStrategy,
-		IndependentCache:           model.DNSIndependentCache,
 		Final:                      model.DNSFinal,
 		DefaultDomainResolver:      model.DefaultDomainResolver,
 		DefaultDomainResolverUnset: model.DefaultDomainResolverUnset,

@@ -1,9 +1,13 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
+	"time"
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/events"
@@ -11,8 +15,63 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/platform"
 )
+
+// validateConfigViaSingBox runs `sing-box check -c <configPath>` with a short
+// timeout and returns nil if config is valid, error with sing-box stderr
+// otherwise. If sing-box binary не существует / нечитаем → nil (graceful skip,
+// чтобы старые установки без bundled binary не падали).
+func validateConfigViaSingBox(singboxPath, configPath string) error {
+	if singboxPath == "" {
+		return nil
+	}
+	if _, err := os.Stat(singboxPath); err != nil {
+		return nil // graceful skip
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, singboxPath, "check", "-c", configPath)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	// Strip ANSI color codes from sing-box output.
+	msg := stripANSI(string(out))
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		msg = err.Error()
+	}
+	// Cap output length для popup display.
+	if len(msg) > 1500 {
+		msg = msg[:1500] + "\n... (truncated, see sing-box.log)"
+	}
+	return fmt.Errorf("%s", msg)
+}
+
+// stripANSI removes ANSI escape sequences (ESC [ ... m) from output.
+func stripANSI(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	i := 0
+	for i < len(s) {
+		if s[i] == 0x1b && i+1 < len(s) && s[i+1] == '[' {
+			// Skip until terminator letter.
+			i += 2
+			for i < len(s) && (s[i] < 0x40 || s[i] > 0x7e) {
+				i++
+			}
+			if i < len(s) {
+				i++
+			}
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
+}
 
 // RebuildConfigIfDirty — **единственный writer `config.json`** (SPEC 045 invariant).
 //
@@ -28,12 +87,14 @@ import (
 // сначала зовёт `ConfigService.UpdateConfigFromSubscriptions` (network),
 // затем продолжает.
 //
-// No-op условие: оба dirty-маркера чисты И полный raw cache на диске.
+// No-op условие: оба dirty-маркера чисты И полный raw cache на диске
+// (skipped when forced=true — UI кнопка Rebuild всегда полностью пересобирает).
 //
 // Возвращает:
 //   - nil — успех (или nothing-to-do);
 //   - error — fatal на этапе сборки/записи.
-func (ac *AppController) RebuildConfigIfDirty() error {
+func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
+	isForced := len(forced) > 0 && forced[0]
 	if ac == nil || ac.StateService == nil {
 		return nil
 	}
@@ -52,8 +113,16 @@ func (ac *AppController) RebuildConfigIfDirty() error {
 		return fmt.Errorf("load state: %w", err)
 	}
 
+	// Step 1.5: load template — нужен раньше (SPEC 056) для preset.outbounds
+	// pre-patch внутри buildSnapshotFromRawCache. Это лёгкая операция (file
+	// read + JSON parse), переиспользуется в Step 4 для BuildConfig.
+	td, err := template.LoadTemplateData(execDir)
+	if err != nil {
+		return fmt.Errorf("load template: %w", err)
+	}
+
 	// Step 2: попытаться построить snapshot из raw cache.
-	cacheSnap, snapErr := buildSnapshotFromRawCache(s, execDir, nil)
+	cacheSnap, snapErr := buildSnapshotFromRawCache(s, execDir, nil, td)
 	cacheMissing := errors.Is(snapErr, ErrRawCacheIncomplete)
 	if snapErr != nil && !cacheMissing {
 		return fmt.Errorf("build snapshot from raw cache: %w", snapErr)
@@ -72,24 +141,21 @@ func (ac *AppController) RebuildConfigIfDirty() error {
 		if err != nil {
 			return fmt.Errorf("reload state after auto-update: %w", err)
 		}
-		cacheSnap, snapErr = buildSnapshotFromRawCache(s, execDir, nil)
+		cacheSnap, snapErr = buildSnapshotFromRawCache(s, execDir, nil, td)
 		if snapErr != nil {
 			return fmt.Errorf("rebuild snapshot after auto-update: %w", snapErr)
 		}
 	}
 
-	// Step 3: noop fast-path.
-	if !cacheMissing && !ac.StateService.IsCacheStale() && !ac.StateService.IsConfigStale() {
+	// Step 3: noop fast-path (skipped when forced=true — user explicitly
+	// pressed Rebuild button и ожидает полный rebuild + sing-box check
+	// даже если dirty markers чистые).
+	if !isForced && !cacheMissing && !ac.StateService.IsCacheStale() && !ac.StateService.IsConfigStale() {
 		return nil
 	}
 
-	debuglog.InfoLog("RebuildConfigIfDirty: rebuilding config.json (update_dirty=%v restart_dirty=%v cache_missing_initially=%v)",
-		ac.StateService.IsCacheStale(), ac.StateService.IsConfigStale(), cacheMissing)
-
-	td, err := template.LoadTemplateData(execDir)
-	if err != nil {
-		return fmt.Errorf("load template: %w", err)
-	}
+	debuglog.InfoLog("RebuildConfigIfDirty: rebuilding config.json (forced=%v update_dirty=%v restart_dirty=%v cache_missing_initially=%v)",
+		isForced, ac.StateService.IsCacheStale(), ac.StateService.IsConfigStale(), cacheMissing)
 
 	// Step 4: build.
 	parserCfg := s.ParserConfig
@@ -104,11 +170,36 @@ func (ac *AppController) RebuildConfigIfDirty() error {
 		return fmt.Errorf("write config: %w", err)
 	}
 
+	// Step 5.4: sing-box check — валидация только что записанного config.json
+	// через сам sing-box (`sing-box check -c config.json`). Catches schema
+	// violations (unknown fields, legacy DNS format, type mismatches) ДО того
+	// как юзер нажмёт Connect и получит non-obvious "FATAL: ..." в логе.
+	// Ошибка → ErrorLog + popup через UIService.
+	if checkErr := validateConfigViaSingBox(ac.FileService.SingboxPath, ac.FileService.ConfigPath); checkErr != nil {
+		debuglog.ErrorLog("RebuildConfigIfDirty: sing-box check failed: %v", checkErr)
+		if ac.UIService != nil && ac.UIService.MainWindow != nil {
+			dialogs.ShowErrorText(ac.UIService.MainWindow,
+				"Config validation failed",
+				fmt.Sprintf("sing-box rejected the generated config.json:\n\n%v\n\nConnect won't work until this is fixed. See logs for details.", checkErr))
+		}
+		if ac.EventBus != nil {
+			ac.EventBus.Publish(events.Event{
+				Kind: events.ConfigBuilt,
+				Payload: events.ConfigBuiltPayload{
+					OK:       false,
+					Warnings: []string{fmt.Sprintf("sing-box check: %v", checkErr)},
+				},
+			})
+		}
+		// Не return error — config записан, юзер видит проблему. State
+		// остаётся ConfigStale=false (мы попытались rebuild'нуть).
+	}
+
 	// Step 5.5: orphan GC для bin/rule-sets/. Параллельно тому что
 	// refreshSubscriptionsMetaAndCache делает для bin/subscriptions/.
 	// Live tags = union из всех stages (multi-stage safety). Удаляем
 	// .srs файлы которые уже не упоминаются ни одним stage'ом.
-	knownTags := collectAllStageRuleSetTags(execDir)
+	knownTags := collectAllStageRuleSetTags(execDir, td)
 	if deleted, gcErr := services.DeleteOrphanRuleSets(execDir, knownTags); gcErr != nil {
 		debuglog.WarnLog("RebuildConfigIfDirty: DeleteOrphanRuleSets: %v", gcErr)
 	} else if len(deleted) > 0 {

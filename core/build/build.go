@@ -45,6 +45,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/template"
+	"singbox-launcher/internal/debuglog"
 )
 
 // BuildContext — все данные, нужные для одной сборки config.json.
@@ -81,6 +82,11 @@ type BuildContext struct {
 
 	// Route — параметры merge'а route-секции. См. RouteConfig.
 	Route RouteConfig
+
+	// Preset (SPEC 053) — дополнительный merge pass поверх MergeRouteSection
+	// и MergeDNSSection. Активируется когда RulesV6 содержит preset-ref'ы или
+	// DNS имеет template_servers/extra_servers/extra_rules. Иначе noop.
+	Preset PresetMergeContext
 }
 
 // Result — итог сборки.
@@ -188,14 +194,26 @@ func effectiveConfig(td *template.TemplateData, vars map[string]string, res *Res
 // buildOrderedSections итерирует order и форматирует каждую секцию.
 // Для каждой секции — указанный обработчик из orchestrator-маппинга
 // (см. BuildConfig godoc); неизвестные ключи идут через `FormatSectionJSON`.
+//
+// SPEC 056: перед итерацией precompute'им set всех outbound-тегов которые
+// попадут в финальный config (template static + cache parser-generated) —
+// нужно route-секции для cleanup'а dangling outbound refs. В preview режиме
+// skipping: cache может быть неполный, false-positive drop'ы хуже чем
+// dangling в неприменяемом preview.
 func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, order []string) ([]string, error) {
 	out := make([]string, 0, len(order))
+
+	var finalOutboundTags map[string]bool
+	if !ctx.ForPreview {
+		finalOutboundTags = collectAllFinalOutboundTags(ctx, cfg)
+	}
+
 	for _, key := range order {
 		raw, ok := cfg[key]
 		if !ok {
 			continue
 		}
-		formatted, err := buildSection(ctx, key, raw)
+		formatted, err := buildSection(ctx, key, raw, finalOutboundTags)
 		if err != nil {
 			return nil, fmt.Errorf("build: section %q: %w", key, err)
 		}
@@ -206,7 +224,10 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 
 // buildSection — диспетчер для одной секции. Pure: state хранится только
 // внутри ctx (никаких side effects вне результата).
-func buildSection(ctx BuildContext, key string, raw json.RawMessage) (string, error) {
+//
+// finalOutboundTags — set всех outbound-тегов в финальном config (или nil
+// в preview-режиме). Используется только для case "route" cleanup'а.
+func buildSection(ctx BuildContext, key string, raw json.RawMessage, finalOutboundTags map[string]bool) (string, error) {
 	switch key {
 	case "outbounds":
 		return BuildOutboundsSection(raw, cacheOutboundsAsStrings(ctx.Cache), ctx.ForPreview, ctx.Stats)
@@ -217,11 +238,37 @@ func buildSection(ctx BuildContext, key string, raw json.RawMessage) (string, er
 		if err != nil {
 			return "", err
 		}
+		// SPEC 053: append bundled DNS from active presets + extras + filter by overrides.
+		merged, err = MergePresetsIntoDNS(merged, ctx.Preset)
+		if err != nil {
+			return "", err
+		}
 		return FormatSectionJSON(merged, 2)
 	case "route":
 		merged, err := MergeRouteSection(raw, ctx.Route)
 		if err != nil {
 			return "", err
+		}
+		// SPEC 053: append preset-ref fragments (rule_set + routing rule).
+		merged, err = MergePresetsIntoRoute(merged, ctx.Preset)
+		if err != nil {
+			return "", err
+		}
+		// SPEC 056: drop/fallback dangling outbound refs. Skip в preview
+		// (finalOutboundTags=nil) — наследие 0c3dce5 / P8, cache может быть
+		// неполный. Save/Update path: fallback = route.final (читается из
+		// уже-merged route после substitution).
+		if !ctx.ForPreview && len(finalOutboundTags) > 0 {
+			fallback := extractRouteFinal(merged)
+			cleaned, warnings, cerr := CleanDanglingOutboundsInRouteRules(merged, finalOutboundTags, fallback)
+			if cerr != nil {
+				debuglog.WarnLog("build: dangling outbound cleanup failed: %v", cerr)
+			} else {
+				for _, w := range warnings {
+					debuglog.WarnLog("build: %s", w)
+				}
+				merged = cleaned
+			}
 		}
 		return FormatSectionJSON(merged, 2)
 	default:
@@ -232,6 +279,24 @@ func buildSection(ctx BuildContext, key string, raw json.RawMessage) (string, er
 		}
 		return formatted, nil
 	}
+}
+
+// extractRouteFinal — достаёт route.final из merged route JSON.
+// Используется как fallback в CleanDanglingOutboundsInRouteRules: dangling
+// outbound rule подменяется на route.final (если сам route.final валидный).
+// Пустая строка → fallback недоступен → cleanup drop'нет rule.
+func extractRouteFinal(routeRaw json.RawMessage) string {
+	if len(routeRaw) == 0 {
+		return ""
+	}
+	var route map[string]interface{}
+	if err := json.Unmarshal(routeRaw, &route); err != nil {
+		return ""
+	}
+	if final, ok := route["final"].(string); ok {
+		return final
+	}
+	return ""
 }
 
 // cacheOutboundsAsStrings конвертит []json.RawMessage cache в []string,

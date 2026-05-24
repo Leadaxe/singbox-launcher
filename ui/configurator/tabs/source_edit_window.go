@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+	fynetooltip "github.com/dweymouth/fyne-tooltip"
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
@@ -62,9 +63,26 @@ func formatLocalOutboundPreviewLine(ob *config.OutboundConfig) string {
 	return fmt.Sprintf("%s  [%s]  %s", ob.Tag, typ, comment)
 }
 
-// parsePreviewNodesFromBody — простой парсер decoded body для Preview tab:
-// идём построчно, парсим URI'ы. Не network, не tag-prefix (preview-only).
+// parsePreviewNodesFromBody — парсер decoded body для Preview tab.
+//
+// Dispatcher по формату body (так же как SPEC 054 для preview_nodes):
+//   - Xray JSON array (Liberty VPN и подобные): ParseNodesFromXrayJSONArray
+//     (body — `[{"outbounds":...},...]`, без \n-разделения)
+//   - base64 / plain text-line (vless://...): построчно через ParseNode
+//
+// Без диспатча Xray JSON давал 0 нод (split по \n → 1 строка, не URI).
 func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.ParsedNode {
+	bodyStr := strings.TrimSpace(string(body))
+	if subscription.IsXrayJSONArrayBody(bodyStr) {
+		nodes, err := subscription.ParseNodesFromXrayJSONArray(bodyStr, skip)
+		if err != nil {
+			return nil
+		}
+		if len(nodes) > 200 {
+			nodes = nodes[:200]
+		}
+		return nodes
+	}
 	out := make([]*config.ParsedNode, 0)
 	tagCounts := make(map[string]int)
 	contentStr := strings.ReplaceAll(string(body), "\r\n", "\n")
@@ -217,6 +235,7 @@ func showSourceEditWindow(
 	win := app.NewWindow(title)
 	presenter.SetViewWindow(win)
 	win.SetOnClosed(func() {
+		fynetooltip.DestroyWindowToolTipLayer(win.Canvas())
 		presenter.ClearViewWindow()
 		presenter.UpdateChildOverlay()
 	})
@@ -581,25 +600,32 @@ func showSourceEditWindow(
 				} else {
 					previewStatus.SetText(locale.Tf("wizard.source.preview_servers", len(nodes), 1))
 				}
-				body := container.NewVBox()
 				if err == nil {
 					if len(nodes) == 0 {
-						body.Add(widget.NewLabel(locale.T("wizard.source.view_no_servers")))
+						lbl := widget.NewLabel(locale.T("wizard.source.view_no_servers"))
+						lbl.Importance = widget.LowImportance
+						// Spacer below pushes label to top instead of centering blank space.
+						previewListHost.Add(container.NewVBox(lbl, layout.NewSpacer()))
 					} else {
 						nn := nodes
+						// widget.List сам виртуализирует scroll — не оборачиваем в
+						// NewScroll/NewVScroll (двойной scroll + ограничивающий
+						// MinSize 280px не давал списку расти на всю высоту).
+						// Truncation=Ellipsis для длинных тегов → "...".
 						srvList := widget.NewList(
 							func() int { return len(nn) },
-							func() fyne.CanvasObject { return widget.NewLabel("") },
+							func() fyne.CanvasObject {
+								l := widget.NewLabel("")
+								l.Truncation = fyne.TextTruncateEllipsis
+								return l
+							},
 							func(id int, o fyne.CanvasObject) {
 								o.(*widget.Label).SetText(nodeDisplayLine(nn[id]))
 							},
 						)
-						sc := container.NewScroll(srvList)
-						sc.SetMinSize(fyne.NewSize(0, 280))
-						body.Add(sc)
+						previewListHost.Add(srvList)
 					}
 				}
-				previewListHost.Add(container.NewVScroll(body))
 				previewListHost.Refresh()
 			})
 		}()
@@ -682,7 +708,11 @@ func showSourceEditWindow(
 	buttonsRow := container.NewHBox(layout.NewSpacer(), cancelBtn, saveBtn)
 	root := container.NewBorder(nil, buttonsRow, nil, nil, tabs)
 
-	win.SetContent(root)
+	// fynetooltip layer обязателен для каждого окна — без него
+	// ttwidget tooltips не работают в этом окне (fyne-tooltip пишет в логи
+	// "no tool tip layer created for current overlay"). Главное окно и
+	// Configurator wizard окно делают то же самое.
+	win.SetContent(fynetooltip.AddWindowToolTipLayer(root, win.Canvas()))
 	win.Resize(fyne.NewSize(880, 600))
 	win.CenterOnScreen()
 	syncFormFromModel()

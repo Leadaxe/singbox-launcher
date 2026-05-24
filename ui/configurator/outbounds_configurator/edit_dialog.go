@@ -17,6 +17,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
@@ -293,6 +294,20 @@ func ShowEditDialog(
 		return cfg, nil
 	}
 
+	// SPEC 057-R-N: preserveStateMetadata копирует preset binding (Ref +
+	// Updates) от existing → cfg. Эти поля state-managed (SyncOutboundsWithActivePresets),
+	// не user-editable. Без preserve юзерское Save затирает preset привязку
+	// и Updates стек → preset patches теряются на следующем emit.
+	preserveStateMetadata := func(cfg *config.OutboundConfig) {
+		if existing == nil {
+			return
+		}
+		cfg.Ref = existing.Ref
+		if len(existing.Updates) > 0 {
+			cfg.Updates = append([]config.OutboundUpdate(nil), existing.Updates...)
+		}
+	}
+
 	save := func() {
 		if currentTab == "raw" {
 			var cfg config.OutboundConfig
@@ -308,6 +323,10 @@ func ShowEditDialog(
 			if existing != nil && existing.Wizard != nil {
 				cfg.Wizard = wizardbusiness.CloneOutbound(existing).Wizard
 			}
+			// SPEC 057-R-N: Raw tab показывает ref/updates юзеру (они в JSON),
+			// но юзерский edit мог их случайно изменить/удалить. Преимущество
+			// state-managed полей: оверрайдим тем что в state, игнорируем raw edit.
+			preserveStateMetadata(&cfg)
 			onSave(&cfg, scopeKind, idx)
 			if dialogWin != nil {
 				dialogWin.Close()
@@ -326,6 +345,9 @@ func ShowEditDialog(
 		if existing != nil && existing.Wizard != nil {
 			cfg.Wizard = wizardbusiness.CloneOutbound(existing).Wizard
 		}
+		// SPEC 057-R-N: preserve preset binding (Form tab их не показывает,
+		// но они должны "пережить" Form-edit).
+		preserveStateMetadata(cfg)
 		onSave(cfg, scopeKind, idx)
 		if dialogWin != nil {
 			dialogWin.Close()
@@ -408,6 +430,17 @@ func ShowEditDialog(
 		if err != nil {
 			previewStatusLabel.SetText(locale.T("wizard.outbound.preview_invalid_json"))
 			return
+		}
+
+		// SPEC 057-R-N: preview должен показывать final emit. Form/Raw отдают
+		// base body (без Updates[] стека), но emit применяет patches от preset'ов.
+		// Подмешиваем Updates от existing → merge → preview через final body.
+		// Без этого preview proxy-out не отфильтрует RU ноды (filters лежат в
+		// Updates[].patch, а cfg.Filters пуст), хотя в config.json фильтр сработает.
+		if existing != nil && len(existing.Updates) > 0 {
+			cfg.Updates = append([]config.OutboundUpdate(nil), existing.Updates...)
+			merged := build.MergeOutboundUpdates(*cfg)
+			cfg = &merged
 		}
 
 		// Ensure preview cache is up to date.

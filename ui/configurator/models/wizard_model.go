@@ -96,6 +96,32 @@ type WizardModel struct {
 	RulesLibraryMerged     bool // true после миграции/засева; сериализуется в state.json
 	SelectedFinalOutbound string
 
+	// PresetRefs — preset-ref правила (kind=preset). Хранятся параллельно
+	// CustomRules (которые держат kind=inline/srs). При Save копируются в
+	// state.RulesV6; на Load восстанавливаются из state.RulesV6.
+	// Каждый элемент — {Ref, Enabled, Vars}.
+	PresetRefs []*PresetRefState
+
+	// DNSTemplateOverrides — overrides для template-defined DNS-серверов.
+	// Map tag → enabled. Только tag'и где юзер изменил default_enabled.
+	DNSTemplateOverrides map[string]bool
+
+	// SPEC 057-R-N: preset outbound binding live в state.connections.outbounds[]
+	// напрямую через `ref` field (см. configtypes.OutboundConfig.Ref + .Updates).
+	// Display order = natural slice order — больше нет вспомогательной in-memory
+	// карты OutboundDisplayOrder. Up/Down работают через swap в slice
+	// (moveOutboundUp/Down), reorder автоматически персистится при сохранении.
+
+	// SPEC 056-R-N follow-up: per-server toggle для preset-bundled DNS-серверов
+	// и dns_rule живут внутри PresetRefState (DNSServerEnabled + DNSRuleEnabled).
+	// Раньше были отдельные карты в model; теперь scope естественно привязан
+	// к preset-ref instance — lifecycle автоматический.
+
+	// RuleOrder — единый упорядоченный список slot'ов, определяющий порядок
+	// отображения правил в Rules tab и порядок эмита в config.json::route.rules[].
+	// См. rule_slot.go для подробностей.
+	RuleOrder []RuleSlot
+
 	// SettingsVars — переопределения вкладки Settings (name → value); пустое значение ключа = дефолт шаблона.
 	SettingsVars map[string]string `json:"-"`
 
@@ -121,12 +147,13 @@ type WizardModel struct {
 
 	// DNS tab (sing-box config.dns + route.default_domain_resolver)
 	DNSServers                 []json.RawMessage
-	// DNSLockedTags — теги из config.dns.servers шаблона: строки не удаляются и не редактируются (json не сериализуется).
-	DNSLockedTags              map[string]struct{} `json:"-"`
+	// DNSLockedTags — УДАЛЕНО в SPEC unify. Lock-channel живёт в template
+	// через `required: true` в dns_options.servers[]. См. wizardbusiness.DNSTagLocked.
 	DNSRulesText               string
 	DNSFinal                   string
 	DNSStrategy                string
-	DNSIndependentCache        *bool
+	// DNSIndependentCache — УДАЛЕНО: independent_cache deprecated в sing-box
+	// 1.14.0 (кэш всегда per-transport). Поле снято из UI/model/emit.
 	DefaultDomainResolver      string
 	DefaultDomainResolverUnset bool // resolver explicitly omitted; omit route.default_domain_resolver in output
 }

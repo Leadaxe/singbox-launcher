@@ -2,7 +2,6 @@ package business
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -123,56 +122,11 @@ func TestApplyWizardDNSTemplate_OrderAndLocks(t *testing.T) {
 	}
 }
 
-func TestApplyWizardDNSTemplate_LockedTagUsesOptsWhenEnabled(t *testing.T) {
-	root := findWizardTemplateRoot(t)
-	td, err := wizardtemplate.LoadTemplateData(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	m := wizardmodels.NewWizardModel()
-	m.TemplateData = td
-	ApplyWizardDNSTemplate(m)
-
-	idxDirect := -1
-	for i, raw := range m.DNSServers {
-		if tagFromRaw(raw) == "direct_dns_resolver" {
-			idxDirect = i
-			break
-		}
-	}
-	if idxDirect < 0 {
-		t.Fatal("direct_dns_resolver not found")
-	}
-	obj := make(map[string]interface{})
-	if err := json.Unmarshal(m.DNSServers[idxDirect], &obj); err != nil {
-		t.Fatal(err)
-	}
-	obj["enabled"] = false
-	b, _ := json.Marshal(obj)
-	m.DNSServers[idxDirect] = b
-
-	ApplyWizardDNSTemplate(m)
-	obj = make(map[string]interface{})
-	if err := json.Unmarshal(m.DNSServers[idxDirect], &obj); err != nil {
-		t.Fatal(err)
-	}
-	if _, has := obj["description"]; has {
-		t.Fatal("disabled locked row should follow config shape without wizard description")
-	}
-
-	obj["enabled"] = true
-	b, _ = json.Marshal(obj)
-	m.DNSServers[idxDirect] = b
-	ApplyWizardDNSTemplate(m)
-	obj = make(map[string]interface{})
-	if err := json.Unmarshal(m.DNSServers[idxDirect], &obj); err != nil {
-		t.Fatal(err)
-	}
-	desc := strings.TrimSpace(fmt.Sprint(obj["description"]))
-	if desc == "" {
-		t.Fatal("enabled locked row with dns_options should carry description from template")
-	}
-}
+// TestApplyWizardDNSTemplate_LockedTagUsesOptsWhenEnabled — DELETED в SPEC unify.
+// Старая логика: mergeLockedRow менял body locked row'а в зависимости от enabled
+// (disabled → bare config.dns shape, enabled → full dns_options body). Теперь
+// config.dns.servers пуст, все entries приходят из dns_options.servers[] с
+// description всегда. Locked entries (required:true) UI не даёт toggle'нуть.
 
 func TestDNSEnabledTagOptions_ExcludesDisabledLockedAndCustom(t *testing.T) {
 	root := findWizardTemplateRoot(t)

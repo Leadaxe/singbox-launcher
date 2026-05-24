@@ -135,11 +135,14 @@ func CreateRulesTab(presenter *wizardpresentation.WizardPresenter, showAddRuleDi
 	initializeRulesTabState(presenter, model, guiState)
 	availableOutbounds := wizardbusiness.EnsureDefaultAvailableOutbounds(wizardbusiness.GetAvailableOutbounds(model))
 
+	// Ensure RuleOrder synced with current CustomRules/PresetRefs.
+	wizardmodels.ReconcileRuleOrder(model)
+
 	rulesBox := container.NewVBox()
-	if len(model.CustomRules) == 0 {
+	if len(model.RuleOrder) == 0 {
 		rulesBox.Add(createRulesEmptyState())
 	} else {
-		buildCustomRuleRows(presenter, model, guiState, availableOutbounds, showAddRuleDialog, rulesBox)
+		buildUnifiedRuleRows(presenter, model, guiState, availableOutbounds, showAddRuleDialog, rulesBox)
 	}
 
 	finalSelect := createFinalOutboundSelect(presenter, model, guiState, availableOutbounds)
@@ -181,6 +184,10 @@ func refreshRulesTabFromPresenter(presenter *wizardpresentation.WizardPresenter,
 	presenter.RefreshRulesTab(func(p *wizardpresentation.WizardPresenter) fyne.CanvasObject {
 		return CreateRulesTab(p, showAddRuleDialog)
 	})
+	// SPEC 053: любое изменение rules (add/edit/delete/enable preset-ref) может
+	// поменять bundled DNS от active preset'ов → пересобираем DNS tab read-only
+	// секцию. Без этого юзер видит DNS изменения только после Save+reload.
+	presenter.RefreshDNSListAndSelects()
 }
 
 func rulesToolbarButtons(
@@ -232,78 +239,82 @@ func createRulesEmptyState() fyne.CanvasObject {
 	return msg
 }
 
-// buildCustomRuleRows строит строки правил: ↑↓, чекбокс, подпись (центр Border), SRS, справа Edit, Del, Select (подпись Outbound — в шапке над скроллом).
-func buildCustomRuleRows(
+// buildSingleCustomRuleRow строит ОДНУ строку для CustomRule из model.CustomRules[customIdx].
+// Move ↑↓ работают на индексах model.RuleOrder (через slotIdx). Drag перемещает
+// строку между slot'ами; CustomRule остаётся на месте в model.CustomRules.
+//
+// Delete удаляет правило из model.CustomRules и сжимает RuleOrder через CompactRuleOrderIndices.
+func buildSingleCustomRuleRow(
 	presenter *wizardpresentation.WizardPresenter,
 	model *wizardmodels.WizardModel,
 	guiState *wizardpresentation.GUIState,
 	availableOutbounds []string,
 	showAddRuleDialog ShowAddRuleDialogFunc,
 	rulesBox *fyne.Container,
+	customIdx int,
+	slotIdx int,
 ) {
-	for i := range model.CustomRules {
-		customRule := model.CustomRules[i]
-		idx := i
-		srsEntries, isSRSRule := customRuleSRSEntries(customRule)
+	customRule := model.CustomRules[customIdx]
+	srsEntries, isSRSRule := customRuleSRSEntries(customRule)
 
-		var row *fynewidget.HoverRow
-		rowGetter := func() *fynewidget.HoverRow { return row }
+	var row *fynewidget.HoverRow
+	rowGetter := func() *fynewidget.HoverRow { return row }
 
-		outboundWidget := createOutboundSelectorForCustomRule(
-			presenter, model, guiState, customRule, idx, availableOutbounds, rowGetter,
-		)
-		outboundSelect := &outboundWidget.Select
-		if isSRSRule && len(srsEntries) > 0 && !services.AllSRSDownloadedForEntries(model.ExecDir, srsEntries) {
-			outboundSelect.Disable()
-		}
-
-		var srsButton *ttwidget.Button
-		enableRuleOnSRSSuccess := new(bool)
-		checkbox := createRuleEnableCheckbox(presenter, model, guiState, customRule, idx, outboundSelect, &srsButton, enableRuleOnSRSSuccess)
-		label := ttwidget.NewLabel(customRule.Rule.Label)
-		label.Wrapping = fyne.TextWrapOff
-		label.Truncation = fyne.TextTruncateEllipsis
-		if d := strings.TrimSpace(customRule.Rule.Description); d != "" {
-			label.SetToolTip(d)
-		}
-		var srsHF *fynewidget.HoverForwardTTButton
-		if isSRSRule && len(srsEntries) > 0 {
-			srsBtn := createCustomRuleSRSButton(presenter, model, guiState, customRule, idx, srsEntries, checkbox, outboundSelect, enableRuleOnSRSSuccess, rowGetter)
-			srsButton = srsBtn.TTWidget()
-			srsHF = srsBtn
-		}
-
-		moveUpButton, moveDownButton, editButton, deleteButton := createCustomRuleActionButtons(
-			presenter, model, guiState, customRule, idx, showAddRuleDialog, rowGetter,
-		)
-
-		customRuleWidget := &wizardpresentation.RuleWidget{
-			Select:    outboundSelect,
-			Checkbox:  checkbox,
-			SRSButton: srsButton,
-			RuleState: customRule,
-		}
-		guiState.RuleOutboundSelects = append(guiState.RuleOutboundSelects, customRuleWidget)
-
-		// Border: центр под подпись (HBox(left, Spacer, …) давал left только MinSize → «…» у label).
-		leftLead := container.NewHBox(moveUpButton, moveDownButton, fynewidget.CheckLeadingWrap(checkbox))
-		rightCluster := container.NewHBox(editButton, deleteButton, outboundWidget)
-
-		labelTap := fynewidget.NewTapWrap(label, func() {
-			if checkbox.Disabled() {
-				return
-			}
-			checkbox.SetChecked(!checkbox.Checked)
-		})
-		var center fyne.CanvasObject = labelTap
-		if srsHF != nil {
-			center = container.NewBorder(nil, nil, nil, srsHF, labelTap)
-		}
-		rowInner := container.NewBorder(nil, nil, leftLead, rightCluster, center)
-		row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
-		row.WireTooltipLabelHover(label)
-		rulesBox.Add(row)
+	outboundWidget := createOutboundSelectorForCustomRule(
+		presenter, model, guiState, customRule, customIdx, availableOutbounds, rowGetter,
+	)
+	outboundSelect := &outboundWidget.Select
+	if isSRSRule && len(srsEntries) > 0 && !services.AllSRSDownloadedForEntries(model.ExecDir, srsEntries) {
+		outboundSelect.Disable()
 	}
+
+	var srsButton *ttwidget.Button
+	enableRuleOnSRSSuccess := new(bool)
+	checkbox := createRuleEnableCheckbox(presenter, model, guiState, customRule, customIdx, outboundSelect, &srsButton, enableRuleOnSRSSuccess)
+	label := ttwidget.NewLabel(customRule.Rule.Label)
+	label.Wrapping = fyne.TextWrapOff
+	label.Truncation = fyne.TextTruncateEllipsis
+	if d := strings.TrimSpace(customRule.Rule.Description); d != "" {
+		label.SetToolTip(d)
+	}
+	var srsHF *fynewidget.HoverForwardTTButton
+	if isSRSRule && len(srsEntries) > 0 {
+		srsBtn := createCustomRuleSRSButton(presenter, model, guiState, customRule, customIdx, srsEntries, checkbox, outboundSelect, enableRuleOnSRSSuccess, rowGetter)
+		srsButton = srsBtn.TTWidget()
+		srsHF = srsBtn
+	}
+
+	// Slot-based move + edit + delete. Move через RuleOrder (не через CustomRules),
+	// delete через CompactRuleOrderIndices чтобы остальные slot'ы остались валидны.
+	moveUpButton, moveDownButton, editButton, deleteButton := createCustomRuleSlotActionButtons(
+		presenter, model, guiState, customRule, customIdx, slotIdx, showAddRuleDialog, rowGetter,
+	)
+
+	customRuleWidget := &wizardpresentation.RuleWidget{
+		Select:    outboundSelect,
+		Checkbox:  checkbox,
+		SRSButton: srsButton,
+		RuleState: customRule,
+	}
+	guiState.RuleOutboundSelects = append(guiState.RuleOutboundSelects, customRuleWidget)
+
+	leftLead := container.NewHBox(moveUpButton, moveDownButton, fynewidget.CheckLeadingWrap(checkbox))
+	rightCluster := container.NewHBox(editButton, deleteButton, outboundWidget)
+
+	labelTap := fynewidget.NewTapWrap(label, func() {
+		if checkbox.Disabled() {
+			return
+		}
+		checkbox.SetChecked(!checkbox.Checked)
+	})
+	var center fyne.CanvasObject = labelTap
+	if srsHF != nil {
+		center = container.NewBorder(nil, nil, nil, srsHF, labelTap)
+	}
+	rowInner := container.NewBorder(nil, nil, leftLead, rightCluster, center)
+	row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
+	row.WireTooltipLabelHover(label)
+	rulesBox.Add(row)
 }
 
 // createRuleEnableCheckbox — чекбокс вкл/выкл; подпись правила обёрнута в TapWrap и тоже переключает состояние.
@@ -438,6 +449,100 @@ func createCustomRuleActionButtons(
 	setTooltip(deleteButton, locale.T("wizard.rules.button_delete"))
 
 	return moveUpButton, moveDownButton, editButton, deleteButton
+}
+
+// createCustomRuleSlotActionButtons — версия action кнопок, где move ↑↓ работают
+// на индексах model.RuleOrder, а delete сжимает RuleOrder после удаления записи
+// из model.CustomRules. Используется новым unified renderer (rules_unified_rows.go).
+func createCustomRuleSlotActionButtons(
+	presenter *wizardpresentation.WizardPresenter,
+	model *wizardmodels.WizardModel,
+	guiState *wizardpresentation.GUIState,
+	customRule *wizardmodels.RuleState,
+	customIdx int,
+	slotIdx int,
+	showAddRuleDialog ShowAddRuleDialogFunc,
+	rowGetter fynewidget.RowHoverGetter,
+) (*fynewidget.HoverForwardButton, *fynewidget.HoverForwardButton, *fynewidget.HoverForwardButton, *fynewidget.HoverForwardButton) {
+	moveUpButton := fynewidget.NewHoverForwardButton("↑", func() {
+		moveSlotUp(presenter, model, slotIdx, showAddRuleDialog)
+	}, rowGetter)
+	moveUpButton.Importance = widget.LowImportance
+	if slotIdx <= 0 {
+		moveUpButton.Disable()
+		setTooltip(moveUpButton, locale.T("wizard.rules.tooltip_move_up_off"))
+	} else {
+		setTooltip(moveUpButton, locale.T("wizard.rules.tooltip_move_up"))
+	}
+
+	moveDownButton := fynewidget.NewHoverForwardButton("↓", func() {
+		moveSlotDown(presenter, model, slotIdx, showAddRuleDialog)
+	}, rowGetter)
+	moveDownButton.Importance = widget.LowImportance
+	if slotIdx >= len(model.RuleOrder)-1 {
+		moveDownButton.Disable()
+		setTooltip(moveDownButton, locale.T("wizard.rules.tooltip_move_down_off"))
+	} else {
+		setTooltip(moveDownButton, locale.T("wizard.rules.tooltip_move_down"))
+	}
+
+	editButton := fynewidget.NewHoverForwardButtonWithIcon("", theme.DocumentCreateIcon(), func() {
+		showAddRuleDialog(presenter, customRule, customIdx)
+	}, rowGetter)
+	editButton.Importance = widget.LowImportance
+	setTooltip(editButton, locale.T("wizard.shared.button_edit"))
+
+	deleteButton := fynewidget.NewHoverForwardButtonWithIcon("", theme.DeleteIcon(), func() {
+		ruleLabel := strings.TrimSpace(customRule.Rule.Label)
+		if ruleLabel == "" {
+			ruleLabel = locale.T("wizard.rules.dialog_delete_unnamed")
+		}
+		dialog.ShowConfirm(
+			locale.T("wizard.dialog_confirmation"),
+			locale.Tf("wizard.rules.dialog_delete_confirm", ruleLabel),
+			func(ok bool) {
+				if !ok {
+					return
+				}
+				deleteCustomRuleSlot(presenter, model, guiState, customIdx, showAddRuleDialog)
+			},
+			guiState.Window,
+		)
+	}, rowGetter)
+	deleteButton.Importance = widget.LowImportance
+	setTooltip(deleteButton, locale.T("wizard.rules.button_delete"))
+
+	return moveUpButton, moveDownButton, editButton, deleteButton
+}
+
+// deleteCustomRuleSlot — slot-aware delete: убирает запись из model.CustomRules
+// + сжимает индексы RuleOrder для kind=Custom.
+func deleteCustomRuleSlot(
+	presenter *wizardpresentation.WizardPresenter,
+	model *wizardmodels.WizardModel,
+	guiState *wizardpresentation.GUIState,
+	customIdx int,
+	showAddRuleDialog ShowAddRuleDialogFunc,
+) {
+	if customIdx < 0 || customIdx >= len(model.CustomRules) {
+		return
+	}
+	deleted := model.CustomRules[customIdx]
+	model.CustomRules = append(model.CustomRules[:customIdx], model.CustomRules[customIdx+1:]...)
+	wizardmodels.CompactRuleOrderIndices(model, wizardmodels.SlotKindCustom, customIdx)
+
+	// Remove widget reference (legacy housekeeping).
+	newRuleWidgets := make([]*wizardpresentation.RuleWidget, 0, len(guiState.RuleOutboundSelects))
+	for _, rw := range guiState.RuleOutboundSelects {
+		if rw.RuleState != deleted {
+			newRuleWidgets = append(newRuleWidgets, rw)
+		}
+	}
+	guiState.RuleOutboundSelects = newRuleWidgets
+
+	model.TemplatePreviewNeedsUpdate = true
+	presenter.MarkAsChanged()
+	refreshRulesTabFromPresenter(presenter, showAddRuleDialog)
 }
 
 // deleteCustomRule удаляет пользовательское правило.

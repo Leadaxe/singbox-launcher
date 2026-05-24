@@ -85,7 +85,6 @@ type GUIState struct {
 	DNSFinalSelect           *widget.Select
 	DNSDefaultResolverSelect *widget.Select
 	DNSStrategySelect        *widget.Select
-	DNSIndependentCacheCheck *widget.Check
 	RefreshDNSList           func()
 
 	// RefreshSettingsFromModel пересобирает вкладку Settings из model.TemplateData.Vars (после LoadState / шаблона).

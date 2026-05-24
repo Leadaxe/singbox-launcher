@@ -13,28 +13,16 @@
           "tolerance": "@urltest_tolerance",
           "interrupt_exist_connections": true
         },
-        "filters": { "tag": "!/(🇷🇺)/i" },
-        "comment": "Proxy automated group for everything that should go through VPN"
+        "comment": "Proxy automated group for everything that should go through VPN."
       },
       {
+        "required": true,
         "tag": "proxy-out",
         "wizard": { "required": 1 },
         "type": "selector",
         "options": { "interrupt_exist_connections": true, "default": "auto-proxy-out" },
-        "filters": { "tag": "!/(🇷🇺)/i" },
         "addOutbounds": ["direct-out", "auto-proxy-out"],
-        "comment": "Proxy group for everything that should go through VPN"
-      },
-      {
-        "tag": "ru VPN 🇷🇺",
-        "type": "selector",
-        "options": {
-          "default": "direct-out",
-          "interrupt_exist_connections": true
-        },
-        "filters": { "tag": "/(🇷🇺)/i" },
-        "addOutbounds": ["direct-out"],
-        "comment": "Proxy group for russian VPN"
+        "comment": "Proxy group for everything that should go through VPN."
       },
       {
         "tag": "vpn ①",
@@ -268,15 +256,6 @@
       "tooltip":"sing-box config.dns.strategy."
     },
     {
-      "name": "dns_independent_cache",
-      "type": "bool",
-      "default_value": "false",
-      "wizard_ui": "fix",
-      "title": "Independent cache",
-      "tooltip": "sing-box config.dns.independent_cache.",
-      "comment": "DNS tab only: config.dns.independent_cache; same bool+fix pattern for dedicated DNS-tab editing (not shown on Settings)."
-    },
-    {
       "name": "dns_default_domain_resolver",
       "type": "text",
       "default_value": "direct_dns_resolver",
@@ -313,24 +292,11 @@
       "store": "@cert_store"
     },
     "dns": {
-      "servers": [
-        {
-          "type": "local",
-          "tag": "local_dns_resolver"
-        },
-        {
-          "type": "udp",
-          "tag": "direct_dns_resolver",
-          "server": "8.8.8.8",
-          "server_port": 53
-        }
-      ],
+      "servers": [],
       "rules": [
-        { "server": "direct_dns_resolver" }
       ],
       "final": "@dns_final",
-      "strategy": "@dns_strategy",
-      "independent_cache": "@dns_independent_cache"
+      "strategy": "@dns_strategy"
     },
     "inbounds": [],
     "endpoints": [],
@@ -339,9 +305,6 @@
     ],
     "route": {
       "default_domain_resolver": "@dns_default_domain_resolver",
-      "rule_set": [
-        { "tag": "ru-domains", "type": "inline", "format": "domain_suffix", "rules": [{ "domain_suffix": ["ru", "xn--p1ai", "su", "xn--p1acf", "xn--80adxhks", "moscow", "tatar", "xn--d1acj3b", "xn--80aswg", "xn--c1avg", "xn--j1aef"] }] }
-      ],
       "rules": [
         { "protocol": "dns", "action": "hijack-dns" }
       ],
@@ -363,11 +326,19 @@
   "dns_options": {
     "servers": [
       {
+        "type": "local",
+        "tag": "local_dns_resolver",
+        "description": "OS system resolver",
+        "required": true,
+        "enabled": true
+      },
+      {
         "type": "udp",
         "tag": "direct_dns_resolver",
         "server": "8.8.8.8",
         "server_port": 53,
         "description": "Direct DNS resolver",
+        "required": true,
         "enabled": true
       },
       {
@@ -410,255 +381,347 @@
         "detour": "proxy-out",
         "description": "Google DNS over HTTPS resolver",
         "enabled": false
-      },
-      {
-        "type": "https",
-        "tag": "yandex_doh",
-        "server": "77.88.8.88",
-        "server_port": 443,
-        "path": "/dns-query",
-        "domain_strategy": "prefer_ipv4",
-        "description": "Yandex DNS over HTTPS resolver",
-        "enabled": true
-      },
-      {
-        "type": "udp",
-        "tag": "yandex_dns_vpn",
-        "server": "77.88.8.2",
-        "server_port": 53,
-        "detour": "proxy-out",
-        "domain_strategy": "prefer_ipv4",
-        "description": "Yandex DNS over UDP resolver",
-        "enabled": false
-      },
-      {
-        "type": "udp",
-        "tag": "yandex_dns_direct",
-        "server": "77.88.8.2",
-        "server_port": 53,
-        "domain_strategy": "prefer_ipv4",
-        "description": "Yandex 2 DNS over UDP resolver",
-        "enabled": false
       }
-    ],
-    "rules": [
-      { "rule_set": "ru-domains", "server": "yandex_doh" },
-      { "server": "google_doh" }
     ]
   },
 
-  "selectable_rules": [
+  "presets": [
     {
-      "label": "Private IPs direct",
+      "id": "private-ips",
+      "label": "Private IPs",
       "description": "Route private IP ranges (LAN, etc.) directly to guarantee local network access.",
-      "rule": { "ip_is_private": true, "outbound": "direct-out" }
+      "default_enabled": true,
+      "vars": [
+        { "name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound" }
+      ],
+      "rule": { "ip_is_private": true, "outbound": "@out" }
     },
     {
-      "label": "Local/LAN domains direct",
+      "id": "local-lan-domains",
+      "label": "Local/LAN domains",
       "description": "Route .local and .lan domains directly for LAN access.",
-      "rule": { "domain_suffix": ["local", "lan"], "outbound": "direct-out" }
+      "default_enabled": true,
+      "vars": [
+        { "name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound" }
+      ],
+      "rule_set": [
+        { "tag": "lan", "type": "inline", "format": "domain_suffix",
+          "rules": [{ "domain_suffix": ["local", "lan"] }] }
+      ],
+      "rule": { "rule_set": "lan", "outbound": "@out" }
     },
     {
+      "id": "block-ads",
       "label": "Block Ads (ads-all, soft)",
-      "description": "Soft-block ads by rejecting connections instead of dropping packets",
-      "default": true,
-      "rule_set": [
-        { "tag": "ads-all", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-ads-all.srs"}
+      "description": "Soft-block ads by rejecting connections instead of dropping packets.",
+      "default_enabled": true,
+      "vars": [
+        { "name": "out", "type": "outbound", "default": "reject", "title": "Action" }
       ],
-      "rule": { "rule_set": "ads-all", "action": "reject" }
+      "rule_set": [
+        { "tag": "ads", "type": "remote", "format": "binary",
+          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-ads-all.srs" }
+      ],
+      "rule": { "rule_set": "ads", "outbound": "@out" }
     },
     {
-      "label": "Russian domains direct",
-      "description": "Route Russian domains directly.",
-      "default": true,
-      "rule": { "rule_set": "ru-domains", "outbound": "direct-out" }
+      "id": "russian",
+      "label": "Russian domains & IPs",
+      "description": "Route Russian TLDs (.ru/.su/IDN), service CDNs (Yandex/VK/Avito/2GIS/banks/etc) and Russian IP ranges directly. Also brings the 'ru VPN 🇷🇺' selector (RU proxies only) and adds an !RU filter to proxy-out/auto-proxy-out so Russian traffic doesn't accidentally exit through a Russian proxy when the main proxy group is used.",
+      "vars": [
+        { "name": "out", "type": "outbound", "default": "direct-out",
+          "title": "Outbound",
+          "tooltip": "Where to route traffic for Russian domains and IPs." },
+        { "name": "use_dns_override", "type": "bool", "default": "true",
+          "title": "Use Yandex DNS for these domains",
+          "tooltip": "Override DNS for matched domains. Disable to resolve via global DNS." },
+        { "name": "dns_server", "type": "dns_server", "default": "yandex_udp",
+          "if": ["use_dns_override"], "select": "local",
+          "title": "DNS server",
+          "tooltip": "Recommended: UDP — most stable. DoH/DoT may be filtered by ISPs." },
+        { "name": "dns_ip", "type": "enum", "default": "77.88.8.8",
+          "if": ["use_dns_override"], "title": "UDP server IP",
+          "tooltip": "Applies to UDP only. DoH and DoT are pinned to 77.88.8.88 with SNI safe.dot.dns.yandex.net.",
+          "options": [
+            { "title": "77.88.8.8 · Base",                     "value": "77.88.8.8" },
+            { "title": "77.88.8.1 · Base alt",                 "value": "77.88.8.1" },
+            { "title": "2a02:6b8::feed:0ff · Base v6",         "value": "2a02:6b8::feed:0ff" },
+            { "title": "77.88.8.88 · Safe",                    "value": "77.88.8.88" },
+            { "title": "77.88.8.2 · Safe alt",                 "value": "77.88.8.2" },
+            { "title": "2a02:6b8::feed:bad · Safe v6",         "value": "2a02:6b8::feed:bad" },
+            { "title": "2a02:6b8:0:1::feed:bad · Safe v6 alt", "value": "2a02:6b8:0:1::feed:bad" },
+            { "title": "77.88.8.7 · Family",                   "value": "77.88.8.7" },
+            { "title": "77.88.8.3 · Family alt",               "value": "77.88.8.3" },
+            { "title": "2a02:6b8::feed:a11 · Family v6",       "value": "2a02:6b8::feed:a11" }
+          ]
+        },
+        { "name": "geoip_enabled", "type": "bool", "default": "true",
+          "title": "GeoIP IP-range fallback",
+          "tooltip": "Match Russian-AS IPs as well as domains — catches CDN/QUIC/ECH cases where domain detection fails. Requires downloading geoip-ru.srs (~150 KB) via the cloud icon next to the rule." }
+      ],
+      "rule_set": [
+        { "tag": "ru-domains", "type": "inline", "format": "domain_suffix",
+          "rules": [{ "domain_suffix": [
+            "ru", "su", "xn--p1ai", "xn--p1acf", "xn--80adxhks", "moscow",
+            "tatar", "xn--d1acj3b", "xn--80asehdb", "xn--80aswg",
+            "xn--c1avg", "xn--j1aef"
+          ] }]
+        },
+        { "tag": "ru-services", "type": "inline", "format": "domain_suffix",
+          "rules": [{ "domain_suffix": [
+            "userapi.com", "avito.st", "yandex.net", "yandex.com", "yastatic.net",
+            "2gis.com", "okko.tv", "premier.one", "lenta.com", "vk.com",
+            "vk-portal.net", "gismeteo.com", "lmru.tech", "mradx.net",
+            "wbstatic.net", "wildberries.by", "trbcdn.net", "sberbank.com"
+          ] }]
+        },
+        { "tag": "geoip-ru", "type": "remote", "format": "binary",
+          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru.srs",
+          "if": ["geoip_enabled"] }
+      ],
+      "dns_servers": [
+        { "tag": "yandex_udp", "type": "udp",   "server": "@dns_ip",
+          "server_port": 53,  "detour": "@out",
+          "title":       "Yandex UDP",
+          "description": "Yandex public DNS over UDP (port 53). IP from var dns_ip.",
+          "if": ["use_dns_override"] },
+        { "tag": "yandex_doh", "type": "https", "server": "77.88.8.88",
+          "server_port": 443, "path": "/dns-query",
+          "tls": { "enabled": true, "server_name": "safe.dot.dns.yandex.net" },
+          "detour": "@out",
+          "title":       "Yandex DoH",
+          "description": "Yandex Safe DoH (77.88.8.88, SNI safe.dot.dns.yandex.net).",
+          "if": ["use_dns_override"] },
+        { "tag": "yandex_dot", "type": "tls",   "server": "77.88.8.88",
+          "server_port": 853,
+          "tls": { "enabled": true, "server_name": "safe.dot.dns.yandex.net" },
+          "detour": "@out",
+          "title":       "Yandex DoT",
+          "description": "Yandex Safe DoT (77.88.8.88:853, SNI safe.dot.dns.yandex.net).",
+          "if": ["use_dns_override"] }
+      ],
+      "outbounds": [
+        { "mode": "update", "tag": "proxy-out",      "filters": { "tag": "!/(🇷🇺)/i" } },
+        { "mode": "update", "tag": "auto-proxy-out", "filters": { "tag": "!/(🇷🇺)/i" } },
+        {
+          "tag": "ru VPN 🇷🇺",
+          "type": "selector",
+          "options": { "default": "direct-out", "interrupt_exist_connections": true },
+          "filters": { "tag": "/(🇷🇺)/i" },
+          "addOutbounds": ["direct-out"],
+          "comment": "RU-only proxy selector (preset.outbounds mode=add; identical body shared with ru-inside when both enabled)"
+        }
+      ],
+      "rule":     { "rule_set": ["ru-domains", "ru-services", "geoip-ru"], "outbound": "@out" },
+      "dns_rule": { "rule_set": ["ru-domains", "ru-services"], "server": "@dns_server", "if": ["use_dns_override"] }
     },
     {
+      "id": "ru-inside",
       "label": "Russia-only services",
-      "description": "Use Russian VPN group for services available only inside Russia.",
-      "rule_set": [
-        { "tag": "ru-inside", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-ru-available-only-inside.srs"}
+      "description": "Services available only inside Russia — direct (geosite-ru-available-only-inside). Also brings the 'ru VPN 🇷🇺' selector (RU proxies only) and adds an !RU filter to proxy-out/auto-proxy-out so RU traffic goes through ru VPN, not the main proxy.",
+      "vars": [
+        { "name": "out", "type": "outbound", "default": "ru VPN 🇷🇺", "title": "Outbound" }
       ],
-      "rule": { "rule_set": "ru-inside", "outbound": "direct-out" }
+      "rule_set": [
+        { "tag": "ru-inside", "type": "remote", "format": "binary",
+          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-ru-available-only-inside.srs" }
+      ],
+      "outbounds": [
+        { "mode": "update", "tag": "proxy-out",      "filters": { "tag": "!/(🇷🇺)/i" } },
+        { "mode": "update", "tag": "auto-proxy-out", "filters": { "tag": "!/(🇷🇺)/i" } },
+        {
+          "tag": "ru VPN 🇷🇺",
+          "type": "selector",
+          "options": { "default": "direct-out", "interrupt_exist_connections": true },
+          "filters": { "tag": "/(🇷🇺)/i" },
+          "addOutbounds": ["direct-out"],
+          "comment": "RU-only proxy selector (preset.outbounds mode=add, emitted by ru-inside preset)"
+        }
+      ],
+      "rule": { "rule_set": "ru-inside", "outbound": "@out" }
     },
     {
+      "id": "ru-blocked",
       "label": "Russian blocked resources",
-      "description": "Detour resources blocked in Russia through proxy selector.",
-      "rule_set": [
-        { "tag": "ru-blocked-main", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked.srs"},
-        { "tag": "ru-blocked-community", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked-community.srs"}
+      "description": "Detour resources blocked in Russia (geoip-ru-blocked + community list) through proxy selector. Also adds an !RU filter to proxy-out/auto-proxy-out so traffic doesn't accidentally exit through a Russian proxy — that would hit the same blocks you're trying to escape.",
+      "vars": [
+        { "name": "out", "type": "outbound", "default": "proxy-out", "title": "Outbound" }
       ],
-      "rule": { "rule_set": ["ru-blocked-main", "ru-blocked-community"], "network": ["tcp", "udp"], "outbound": "proxy-out" }
+      "rule_set": [
+        { "tag": "main",      "type": "remote", "format": "binary",
+          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked.srs" },
+        { "tag": "community", "type": "remote", "format": "binary",
+          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked-community.srs" }
+      ],
+      "outbounds": [
+        { "mode": "update", "tag": "proxy-out",      "filters": { "tag": "!/(🇷🇺)/i" } },
+        { "mode": "update", "tag": "auto-proxy-out", "filters": { "tag": "!/(🇷🇺)/i" } }
+      ],
+      "rule": { "rule_set": ["main", "community"], "network": ["tcp", "udp"], "outbound": "@out" }
     },
     {
+      "id": "israel-sites",
       "label": "Israel-specific sites",
-      "description": "Send Israel-focused traffic via main proxy selector.",
-      "rule_set": [
-        { "tag": "israel-sites", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-il.srs"}
+      "description": "Send Israel-focused traffic via main proxy selector (geoip-il).",
+      "vars": [
+        { "name": "out", "type": "outbound", "default": "proxy-out", "title": "Outbound" }
       ],
-      "rule": { "rule_set": "israel-sites", "outbound": "proxy-out" }
+      "rule_set": [
+        { "tag": "il", "type": "remote", "format": "binary",
+          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-il.srs" }
+      ],
+      "rule": { "rule_set": "il", "outbound": "@out" }
     },
     {
-      "label": "BitTorrent direct",
+      "id": "bittorrent",
+      "label": "BitTorrent",
       "description": "Route BitTorrent traffic directly to avoid VPN throttling.",
-      "default": true,
-      "rule": { "protocol": ["bittorrent"], "outbound": "direct-out" }
+      "default_enabled": true,
+      "vars": [
+        { "name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound" }
+      ],
+      "rule": { "protocol": ["bittorrent"], "outbound": "@out" }
     },
     {
-      "label": "2ip.io for VPN IP test",
-      "description": "Route for 2ip.io to check VPN IP.",
-      "rule": { "domain": ["2ip.io"], "outbound": "proxy-out" }
-    },
-    {
-      "label": "2ip.me via proxy",
-      "description": "Route 2ip.me through proxy to verify VPN IP.",
-      "rule": { "domain": ["2ip.me"], "outbound": "proxy-out" }
-    },
-    {
-      "label": "2ip.ru your direct ip test",
-      "description": "Route for 2ip.ru to check your IP.",
-      "rule": { "domain": ["2ip.ru"], "outbound": "direct-out" }
-    },
-    {
-      "label": "Gemini via Gemini VPN",
-      "description": "Use dedicated Gemini VPN selector for Gemini rule set.",
+      "id": "ai-services",
+      "label": "AI services (Claude, ChatGPT, Perplexity, Gemini)",
+      "description": "Route major AI chat services (Anthropic Claude, OpenAI ChatGPT, Perplexity, Google Gemini) through selected outbound. Useful when these services are geo-restricted or require clean IP.",
+      "vars": [
+        { "name": "out", "type": "outbound", "default": "proxy-out", "title": "Outbound" }
+      ],
       "rule_set": [
-        {
-          "tag": "gemini",
-          "type": "inline",
-          "format": "domain_suffix",
-          "rules": [
-            {
-              "domain_suffix": [
-                "generativelanguage.googleapis.com",
-                "gemini.google.com",
-                "ai.google.dev",
-                "palm.googleapis.com"
-              ]
-            }
-          ]
+        { "tag": "ai-services", "type": "inline", "format": "domain_suffix",
+          "rules": [{ "domain_suffix": [
+            "anthropic.com",
+            "claude.ai",
+            "claudeusercontent.com",
+            "openai.com",
+            "chatgpt.com",
+            "oaistatic.com",
+            "oaiusercontent.com",
+            "perplexity.ai",
+            "pplx.ai",
+            "generativelanguage.googleapis.com",
+            "gemini.google.com",
+            "aistudio.google.com",
+            "ai.google.dev",
+            "palm.googleapis.com"
+          ] }]
         }
       ],
-      "rule": { "rule_set": "gemini", "network": ["tcp", "udp"], "outbound": "proxy-out" }
+      "rule": { "rule_set": "ai-services", "network": ["tcp", "udp"], "outbound": "@out" }
     },
     {
-      "label": "Messengers via proxy",
-      "description": "Send messenger traffic through proxy selector.",
+      "id": "messengers-windows",
+      "label": "Messengers",
+      "description": "Send messenger traffic (Telegram, WhatsApp, Discord, Signal, Zoom) through proxy. Windows process names.",
       "platforms": ["windows"],
+      "vars": [
+        { "name": "out", "type": "outbound", "default": "proxy-out", "title": "Outbound" }
+      ],
       "rule_set": [
-        {
-          "tag": "messengers",
-          "type": "inline",
-          "format": "domain_suffix",
+        { "tag": "messengers", "type": "inline", "format": "domain_suffix",
           "rules": [
-            {
-              "domain_suffix": [
-                "meet.google.com",
-                "googlevideo.com",
-                "gstatic.com",
-                "googleusercontent.com",
-                "googleapis.com",
-                "web.whatsapp.com",
-                "whatsapp.com",
-                "whatsapp.net",
-                "cdn.whatsapp.net",
-                "mmg.whatsapp.net",
-                "discord.com",
-                "discordapp.com",
-                "cdn.discordapp.com",
-                "discord.gg",
-                "gateway.discord.gg",
-                "discord.media",
-                "telegram.org",
-                "t.me",
-                "cdn-telegram.org"
-              ]
-            },
-            {
-              "process_name": [
-                "Telegram.exe",
-                "Discord.exe",
-                "WhatsApp.exe",
-                "Signal.exe",
-                "Zoom.exe"
-              ]
-            }
+            { "domain_suffix": [
+                "meet.google.com", "googlevideo.com", "gstatic.com",
+                "googleusercontent.com", "googleapis.com",
+                "web.whatsapp.com", "whatsapp.com", "whatsapp.net", "cdn.whatsapp.net", "mmg.whatsapp.net",
+                "discord.com", "discordapp.com", "cdn.discordapp.com", "discord.gg", "gateway.discord.gg", "discord.media",
+                "telegram.org", "t.me", "cdn-telegram.org"
+              ] },
+            { "process_name": ["Telegram.exe", "Discord.exe", "WhatsApp.exe", "Signal.exe", "Zoom.exe"] }
           ]
         }
       ],
-      "rule": { "rule_set": "messengers", "network": ["tcp", "udp"], "outbound": "proxy-out" }
+      "rule": { "rule_set": "messengers", "network": ["tcp", "udp"], "outbound": "@out" }
     },
     {
-      "label": "Messengers via proxy",
-      "description": "Send messenger traffic through proxy selector.",
+      "id": "messengers-unix",
+      "label": "Messengers",
+      "description": "Send messenger traffic (Telegram, WhatsApp, Discord, Signal, Zoom) through proxy. macOS/Linux process names.",
       "platforms": ["darwin", "linux"],
+      "vars": [
+        { "name": "out", "type": "outbound", "default": "proxy-out", "title": "Outbound" }
+      ],
       "rule_set": [
-        {
-          "tag": "messengers",
-          "type": "inline",
-          "format": "domain_suffix",
+        { "tag": "messengers", "type": "inline", "format": "domain_suffix",
           "rules": [
-            {
-              "domain_suffix": [
-                "meet.google.com",
-                "googlevideo.com",
-                "gstatic.com",
-                "googleusercontent.com",
-                "googleapis.com",
-                "web.whatsapp.com",
-                "whatsapp.com",
-                "whatsapp.net",
-                "cdn.whatsapp.net",
-                "mmg.whatsapp.net",
-                "discord.com",
-                "discordapp.com",
-                "cdn.discordapp.com",
-                "discord.gg",
-                "gateway.discord.gg",
-                "discord.media",
-                "telegram.org",
-                "t.me",
-                "cdn-telegram.org"
-              ]
-            },
-            {
-              "process_name": [
-                "Telegram",
-                "Discord",
-                "WhatsApp",
-                "Signal",
-                "zoom.us"
-              ]
-            }
+            { "domain_suffix": [
+                "meet.google.com", "googlevideo.com", "gstatic.com",
+                "googleusercontent.com", "googleapis.com",
+                "web.whatsapp.com", "whatsapp.com", "whatsapp.net", "cdn.whatsapp.net", "mmg.whatsapp.net",
+                "discord.com", "discordapp.com", "cdn.discordapp.com", "discord.gg", "gateway.discord.gg", "discord.media",
+                "telegram.org", "t.me", "cdn-telegram.org"
+              ] },
+            { "process_name": ["Telegram", "Discord", "WhatsApp", "Signal", "zoom.us"] }
           ]
         }
       ],
-      "rule": { "rule_set": "messengers", "network": ["tcp", "udp"], "outbound": "proxy-out" }
+      "rule": { "rule_set": "messengers", "network": ["tcp", "udp"], "outbound": "@out" }
     },
     {
-      "label": "Games direct",
+      "id": "games",
+      "label": "Games",
       "description": "Send gaming rule set traffic directly for lower latency.",
-      "default": true,
-      "rule_set": [
-        { "tag": "games", "type": "remote", "format": "binary", "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-games.srs"}
+      "vars": [
+        { "name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound" }
       ],
-      "rule": { "rule_set": "games", "network": ["tcp", "udp"], "outbound": "direct-out" }
+      "rule_set": [
+        { "tag": "games", "type": "remote", "format": "binary",
+          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-games.srs" }
+      ],
+      "rule": { "rule_set": "games", "network": ["tcp", "udp"], "outbound": "@out" }
     },
     {
-      "label": "Gaming ports direct",
+      "id": "gaming-ports",
+      "label": "Gaming ports",
       "description": "Keep popular gaming ports and Steam ranges outside VPN.",
-      "default": true,
+      "vars": [
+        { "name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound" }
+      ],
       "rule": {
         "port": [3659, 1935, 5001, 5795, 5796, 7000, 7777, 9000, 10039, 10040],
         "port_range": "27000:27100",
         "network": ["tcp", "udp"],
-        "outbound": "direct-out"
+        "outbound": "@out"
       }
     },
     {
-      "label": "stop HTTP/3",
-      "description": "QUIC does not support UDP traffic proxying. Therefore, we stop HTTP/3. This may block QUIC traffic (used by Google, YouTube, Cloudflare, etc.), which may potentially reduce speed or availability for these services.",
-      "rule": { "action": "reject", "method": "drop", "network": ["udp"], "port": [443] }
+      "id": "stop-http3",
+      "label": "Stop HTTP/3",
+      "description": "QUIC does not support UDP traffic proxying — drop HTTP/3 (UDP/443). May reduce speed for Google/YouTube/Cloudflare.",
+      "vars": [
+        { "name": "out", "type": "outbound", "default": "drop", "title": "Action" }
+      ],
+      "rule": { "network": ["udp"], "port": [443], "outbound": "@out" }
+    },
+    {
+      "id": "split-all-traffic-mac-win",
+      "label": "Split all traffic 50/50 across two outbounds",
+      "description": "Distribute proxy-bound traffic across two outbounds by OS source-port (ephemeral range 49152-65535 split in half). Per-connection sticky: one TCP/UDP session stays on one side, one origin (HTTP/2 multiplex) → one outbound. Heavy single-stream traffic (video, large download) does NOT split across both. Enable AFTER all direct/reject presets — this preset acts as catch-all for proxy-bound traffic. macOS / Windows ephemeral range only.",
+      "platforms": ["darwin", "windows"],
+      "vars": [
+        { "name": "out_a", "type": "outbound", "default": "proxy-out", "title": "Outbound A" },
+        { "name": "out_b", "type": "outbound", "default": "proxy-out", "title": "Outbound B" }
+      ],
+      "rule": [
+        { "source_port_range": ["49152:57343"], "outbound": "@out_a" },
+        { "source_port_range": ["57344:65535"], "outbound": "@out_b" }
+      ]
+    },
+    {
+      "id": "split-all-traffic-linux",
+      "label": "Split all traffic 50/50 across two outbounds",
+      "description": "Distribute proxy-bound traffic across two outbounds by OS source-port (Linux ephemeral range 32768-60999 split in half). Per-connection sticky: one TCP/UDP session stays on one side, one origin (HTTP/2 multiplex) → one outbound. Heavy single-stream traffic (video, large download) does NOT split across both. Enable AFTER all direct/reject presets — this preset acts as catch-all for proxy-bound traffic. Linux ephemeral range only.",
+      "platforms": ["linux"],
+      "vars": [
+        { "name": "out_a", "type": "outbound", "default": "proxy-out", "title": "Outbound A" },
+        { "name": "out_b", "type": "outbound", "default": "proxy-out", "title": "Outbound B" }
+      ],
+      "rule": [
+        { "source_port_range": ["32768:46883"], "outbound": "@out_a" },
+        { "source_port_range": ["46884:60999"], "outbound": "@out_b" }
+      ]
     }
   ],
 

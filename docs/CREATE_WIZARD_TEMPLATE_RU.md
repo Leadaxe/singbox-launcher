@@ -287,9 +287,12 @@
 
 Скаляры DNS-вкладки задаются переменными `vars` (с `wizard_ui: "fix"`):
 - `dns_strategy` -> `config.dns.strategy`
-- `dns_independent_cache` -> `config.dns.independent_cache`
 - `dns_final` -> `config.dns.final`
 - `dns_default_domain_resolver` -> `config.route.default_domain_resolver`
+
+> `dns_independent_cache` удалена — `config.dns.independent_cache`
+> deprecated в sing-box 1.14.0 (cache всегда per-transport). Legacy шаблоны
+> с переменной / placeholder'ом всё ещё парсятся; emit silently дропает поле.
 
 **Структура**:
 ```json
@@ -309,7 +312,7 @@
 - `state.json -> dns_options`: только `servers` и `rules`
 - `state.json -> vars`: значения скаляров DNS (`dns_*`)
 
-Устаревшие ключи скаляров в `dns_options` (`strategy`, `final`, `independent_cache`, `default_domain_resolver`, `default_domain_resolver_unset`) мигрируют при загрузке в `state.vars` и в новых сохранениях обратно не пишутся.
+Устаревшие ключи скаляров в `dns_options` (`strategy`, `final`, `default_domain_resolver`, `default_domain_resolver_unset`) мигрируют при загрузке в `state.vars` и в новых сохранениях обратно не пишутся. Ключ `independent_cache` (если есть в legacy файлах) silently дропается — см. note выше про deprecation.
 
 ---
 
@@ -758,10 +761,10 @@
 - Полезно, если ваша сеть или VPN не поддерживает IPv6
 - Снижает накладные расходы на DNS-разрешение
 
-**`independent_cache: false`:**
-- Кэш DNS общий для всех DNS-серверов
-- Когда вы переключаете VPN-серверы, кэшированные DNS-результаты остаются действительными
-- Установите `true`, если хотите отдельный кэш для каждого DNS-сервера (обычно не нужно)
+> `independent_cache` удалена — sing-box 1.14.0 задеприкейтил опцию
+> ([migration guide](https://sing-box.sagernet.org/migration/#migrate-independent-dns-cache)).
+> DNS-кэш теперь всегда keys by transport name автоматически, юзерская
+> конфигурация не нужна.
 
 ---
 

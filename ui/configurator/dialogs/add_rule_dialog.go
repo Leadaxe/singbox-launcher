@@ -323,68 +323,47 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	// Rule type selection: микро-модель + 5 типов (подписи человекочитаемые, значения — константы)
 	ruleSel := NewRuleTypeSelection(ruleType)
 	var syncingRuleType bool
-	typeIPCheck := widget.NewCheck(locale.T("wizard.add_rule.type_ip"), func(bool) {})
-	typeDomainCheck := widget.NewCheck(locale.T("wizard.add_rule.type_domain"), func(bool) {})
-	typeProcessCheck := widget.NewCheck(locale.T("wizard.add_rule.type_process"), func(bool) {})
-	typeSRSCheck := widget.NewCheck(locale.T("wizard.add_rule.type_srs"), func(bool) {})
-	typeCustomCheck := widget.NewCheck(locale.T("wizard.add_rule.type_custom"), func(bool) {})
-	typeIPCheck.OnChanged = func(checked bool) {
-		if syncingRuleType {
-			return
-		}
-		if checked {
-			ruleSel.SetType(wizardmodels.RuleTypeIPS)
-		} else if ruleSel.Type() == wizardmodels.RuleTypeIPS {
-			typeIPCheck.SetChecked(true) // повторное нажатие на выбранную — оставить как есть
-		}
-		// снять у другого нельзя — выбран только один
-	}
-	typeDomainCheck.OnChanged = func(checked bool) {
-		if syncingRuleType {
-			return
-		}
-		if checked {
-			ruleSel.SetType(wizardmodels.RuleTypeURLs)
-		} else if ruleSel.Type() == wizardmodels.RuleTypeURLs {
-			typeDomainCheck.SetChecked(true)
-		}
-	}
-	typeProcessCheck.OnChanged = func(checked bool) {
-		if syncingRuleType {
-			return
-		}
-		if checked {
-			ruleSel.SetType(wizardmodels.RuleTypeProcesses)
-		} else if ruleSel.Type() == wizardmodels.RuleTypeProcesses {
-			typeProcessCheck.SetChecked(true)
-		}
-	}
-	typeSRSCheck.OnChanged = func(checked bool) {
-		if syncingRuleType {
-			return
-		}
-		if checked {
-			ruleSel.SetType(wizardmodels.RuleTypeSRS)
-		} else if ruleSel.Type() == wizardmodels.RuleTypeSRS {
-			typeSRSCheck.SetChecked(true)
-		}
-	}
-	typeCustomCheck.OnChanged = func(checked bool) {
-		if syncingRuleType {
-			return
-		}
-		if checked {
-			ruleSel.SetType(wizardmodels.RuleTypeRaw)
-		} else if ruleSel.Type() == wizardmodels.RuleTypeRaw {
-			typeCustomCheck.SetChecked(true)
-		}
-	}
-	processTypeRow := container.NewHBox(typeProcessCheck, layout.NewSpacer(), matchByPathCheck, layout.NewSpacer())
-	// Domains/URLs: выпадающий список схемы (exact / suffix / keyword / regex) справа от типа, как у Processes
+	// Single RadioGroup для всех 5 типов — настоящий radio с круглыми маркерами
+	// (раньше были 5 NewCheck с mutex-логикой через OnChanged → визуально галки).
+	typeLabelIP := locale.T("wizard.add_rule.type_ip")
+	typeLabelDomain := locale.T("wizard.add_rule.type_domain")
+	typeLabelProcess := locale.T("wizard.add_rule.type_process")
+	typeLabelSRS := locale.T("wizard.add_rule.type_srs")
+	typeLabelCustom := locale.T("wizard.add_rule.type_custom")
+
+	ruleTypeRadio := widget.NewRadioGroup(
+		[]string{typeLabelIP, typeLabelDomain, typeLabelProcess, typeLabelSRS, typeLabelCustom},
+		func(sel string) {
+			if syncingRuleType {
+				return
+			}
+			switch sel {
+			case typeLabelIP:
+				ruleSel.SetType(wizardmodels.RuleTypeIPS)
+			case typeLabelDomain:
+				ruleSel.SetType(wizardmodels.RuleTypeURLs)
+			case typeLabelProcess:
+				ruleSel.SetType(wizardmodels.RuleTypeProcesses)
+			case typeLabelSRS:
+				ruleSel.SetType(wizardmodels.RuleTypeSRS)
+			case typeLabelCustom:
+				ruleSel.SetType(wizardmodels.RuleTypeRaw)
+			}
+		},
+	)
+
+	// Domains/URLs: domainModeSelect (exact / suffix / keyword / regex).
+	// Раньше был справа от Domain checkbox; теперь — отдельная строка под radio,
+	// показывается только когда выбран Domain тип (видимость управляется в
+	// updateFieldsVisibility — см. ниже legacy syncFormToRaw path).
 	domainModeOptions := []string{locale.T("wizard.add_rule.domain_exact"), locale.T("wizard.add_rule.domain_suffix"), locale.T("wizard.add_rule.domain_keyword"), locale.T("wizard.add_rule.domain_regex")}
 	domainModeSelect := widget.NewSelect(domainModeOptions, nil)
-	domainTypeRow := container.NewHBox(typeDomainCheck, layout.NewSpacer(), domainModeSelect, layout.NewSpacer())
-	ruleTypeContainer := container.NewVBox(typeIPCheck, domainTypeRow, processTypeRow, typeSRSCheck, typeCustomCheck)
+	domainModeRow := container.NewHBox(widget.NewLabel(locale.T("wizard.add_rule.domain_mode_label")), domainModeSelect)
+
+	// matchByPathCheck (для Process) — аналогично, под radio, не inline.
+	processOptionsRow := container.NewHBox(matchByPathCheck)
+
+	ruleTypeContainer := container.NewVBox(ruleTypeRadio, domainModeRow, processOptionsRow)
 
 	// Manage field visibility
 	ipLabel := widget.NewLabel(locale.T("wizard.add_rule.label_ip"))
@@ -713,11 +692,19 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	onRuleTypeChange := func(s string) {
 		syncingRuleType = true
 		defer func() { syncingRuleType = false }()
-		typeIPCheck.SetChecked(s == wizardmodels.RuleTypeIPS)
-		typeDomainCheck.SetChecked(s == wizardmodels.RuleTypeURLs)
-		typeProcessCheck.SetChecked(s == wizardmodels.RuleTypeProcesses)
-		typeSRSCheck.SetChecked(s == wizardmodels.RuleTypeSRS)
-		typeCustomCheck.SetChecked(s == wizardmodels.RuleTypeRaw)
+		// Map model rule-type → radio label.
+		switch s {
+		case wizardmodels.RuleTypeIPS:
+			ruleTypeRadio.SetSelected(typeLabelIP)
+		case wizardmodels.RuleTypeURLs:
+			ruleTypeRadio.SetSelected(typeLabelDomain)
+		case wizardmodels.RuleTypeProcesses:
+			ruleTypeRadio.SetSelected(typeLabelProcess)
+		case wizardmodels.RuleTypeSRS:
+			ruleTypeRadio.SetSelected(typeLabelSRS)
+		case wizardmodels.RuleTypeRaw:
+			ruleTypeRadio.SetSelected(typeLabelCustom)
+		}
 		updateVisibility(s)
 		if updateButtonState != nil {
 			updateButtonState()

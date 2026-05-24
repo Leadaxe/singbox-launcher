@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v0.9.6
+
+Две архитектурные поставки одновременно. **SPEC 057-R-N** закрывает историю preset-bundles — outbound preset binding теперь живёт в самом state через поля `ref` + `updates[]` на `OutboundConfig`. Bundled outbound'ы вроде `ru VPN 🇷🇺` персистятся в `state.json`, reorder через ↑/↓ сохраняется, disable preset'а чисто откатывает patches без residue в base body. Параллельно убран давно задеприкейтенный DNS-флаг **`independent_cache`** (sing-box 1.14 перевёл DNS-кэш на per-transport keying). Плюс UI-фиксы: «Restore missing» кнопка для template outbound'ов, 4-я точка фикса каскада disabled подписки, library dialog "already added" преsets теперь визуально как required DNS.
+
+**Полный список изменений:** [docs/release_notes/0-9-6.md](docs/release_notes/0-9-6.md).
+
+### Highlights (EN) — v0.9.6
+
+Two architectural deliveries in one release. **SPEC 057-R-N** closes the preset-bundles story by moving outbound preset binding into state itself via `ref` + `updates[]` fields on `OutboundConfig`. Bundled outbounds like `ru VPN 🇷🇺` persist in `state.json`, reorder via ↑/↓ is durable, and disabling a preset cleanly tears down its patches without residue in the base body. Alongside, the long-deprecated DNS **`independent_cache`** option is removed (sing-box 1.14 moved DNS cache to per-transport keying). Plus UI fixes: "Restore missing" button for template outbounds, 4th fix point for disabled-subscription cascade, library dialog "already added" presets now visually mirror required DNS rows.
+
+**Full changelog:** [docs/release_notes/0-9-6.md](docs/release_notes/0-9-6.md).
+
+---
+
 ### Выжимка (RU) — v0.9.5
 
 Точечный фикс — продолжение чистки последствий двойного хранилища из SPEC 045/052. Configurator → Outbounds: добавление нового outbound со Scope ≠ "For All" или edit с переключением Scope теперь сохраняются при Save (раньше запись пропадала). Корень тот же что у v0.9.4 `route.final` — Outbounds tab был единственным surface, мутирующим legacy ParserConfig напрямую без обратной sync в canonical `Sources[i].Outbounds`. Аудит остальных tabs показал что больше дыр того же класса нет. Миграция не нужна — баг был строго на write-side, существующие state.json грузятся корректно. Спасибо Michael M за очередной точный репорт.

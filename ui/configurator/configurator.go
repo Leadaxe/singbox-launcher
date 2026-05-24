@@ -253,15 +253,14 @@ func initializeWizardContent(presenter *wizardpresentation.WizardPresenter, guiS
 // createWizardTabs создает табы визарда.
 // Возвращает контейнер табов и ссылки на Rules и Preview табы.
 func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState) (*container.AppTabs, *container.TabItem, *container.TabItem) {
-	// Create first two tabs: Sources and Outbounds
+	// Tab order: Sources → Outbounds → Rules → DNS → Settings → Preview.
+	// DNS goes AFTER Rules (per user request: DNS depends on which preset rules are active).
 	sourcesTab := wizardtabs.CreateSourcesTab(presenter)
 	sourcesTabItem := container.NewTabItem(locale.T("wizard.tab_sources"), sourcesTab)
 	outboundsTab := wizardtabs.CreateOutboundsAndParserConfigTab(presenter)
 	outboundsTabItem := container.NewTabItem(locale.T("wizard.tab_outbounds"), outboundsTab)
-	dnsTab := wizardtabs.CreateDNSTab(presenter)
-	dnsTabItem := container.NewTabItem(locale.T("wizard.tab_dns"), dnsTab)
 
-	tabs := container.NewAppTabs(sourcesTabItem, outboundsTabItem, dnsTabItem)
+	tabs := container.NewAppTabs(sourcesTabItem, outboundsTabItem)
 	guiState.Tabs = tabs
 
 	// Overlay that redirects clicks to open rule dialog when present
@@ -292,10 +291,13 @@ func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *w
 
 	if templateTab := wizardtabs.CreateRulesTab(presenter, showAddRuleDialogWrapper); templateTab != nil {
 		rulesTabItem = container.NewTabItem(locale.T("wizard.tab_rules"), templateTab)
+		dnsTab := wizardtabs.CreateDNSTab(presenter)
+		dnsTabItem := container.NewTabItem(locale.T("wizard.tab_dns"), dnsTab)
 		settingsTab := wizardtabs.CreateSettingsTab(presenter)
 		settingsTabItem := container.NewTabItem(locale.T("wizard.tab_settings"), settingsTab)
 		previewTabItem = container.NewTabItem(locale.T("wizard.tab_preview"), wizardtabs.CreatePreviewTab(presenter))
 		tabs.Append(rulesTabItem)
+		tabs.Append(dnsTabItem)
 		tabs.Append(settingsTabItem)
 		tabs.Append(previewTabItem)
 	}

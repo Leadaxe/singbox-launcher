@@ -56,14 +56,28 @@ type ProxySource struct {
 	Disabled bool `json:"disabled,omitempty"`
 }
 
-// WizardConfig represents the wizard configuration for outbounds
-// Supports both old format ("wizard":"hide") and new format ("wizard":{"hide":true, "required":2})
+// WizardConfig represents the wizard configuration for outbounds.
+// Supports both old format ("wizard":"hide") and new format ("wizard":{"hide":true}).
+//
+// SPEC unify: поле Required удалено — было dead code (GetWizardRequired
+// нигде не вызывался). Lock-семантика теперь через top-level OutboundConfig.Required.
 type WizardConfig struct {
-	Hide     bool `json:"hide,omitempty"`     // Hide outbound from wizard second tab
-	Required int  `json:"required,omitempty"` // Optional: 0 or missing=ignore, 1=check presence only, >1=strict match from template
+	Hide bool `json:"hide,omitempty"` // Hide outbound from wizard second tab
 }
 
-// OutboundConfig represents an outbound selector configuration (version 3)
+// OutboundConfig represents an outbound selector configuration (version 3).
+//
+// **Preset binding (SPEC 057-R-N):**
+//   - `Ref` — id preset'а владельца, если entry создан через `preset.outbounds[mode=add]`.
+//     Пусто для template/user globals. Lifecycle через SyncOutboundsWithActivePresets.
+//   - `Updates` — стек patches от `preset.outbounds[mode=update]`. Merged body
+//     для emit вычисляется через ResolveOutbound (base + apply updates в order).
+//
+// **Required (SPEC 056-R-N):** НЕ хранится здесь как поле struct — это
+// template-only concern, читается live через templateRequiredTags на UI render
+// time. Если бы Required был в struct, state.json мог бы персистить устаревшее
+// значение (юзер сохранил v1 template'а где required=true, в v2 template author
+// убрал — state продолжил бы держать stale true). Source of truth = template.
 type OutboundConfig struct {
 	Tag              string                 `json:"tag"`
 	Type             string                 `json:"type"`
@@ -72,7 +86,24 @@ type OutboundConfig struct {
 	AddOutbounds     []string               `json:"addOutbounds,omitempty"`
 	PreferredDefault map[string]interface{} `json:"preferredDefault,omitempty"`
 	Comment          string                 `json:"comment,omitempty"`
-	Wizard           interface{}            `json:"wizard,omitempty"` // Supports both "hide" (string) and {"hide":true, "required":2} (object) for backward compatibility
+	Wizard           interface{}            `json:"wizard,omitempty"` // Supports both "hide" (string) and {"hide":true} (object) for backward compatibility
+
+	// SPEC 057-R-N: preset binding.
+	Ref     string           `json:"ref,omitempty"`     // preset.id для mode=add entries; пусто для globals
+	Updates []OutboundUpdate `json:"updates,omitempty"` // стек patches от preset.outbounds[mode=update]
+}
+
+// OutboundUpdate — одна запись в стеке `OutboundConfig.Updates` (SPEC 057-R-N).
+//
+// Каждая запись — patch от одного активного preset'а через `preset.outbounds[
+// mode=update]`. Merged body вычисляется через ResolveOutbound:
+// `merged = base; for each u in Updates: merged = applyOutboundUpdatePatch(merged, u.Patch)`.
+//
+// На disable parent preset (SyncOutboundsWithActivePresets): запись с этим Ref
+// удаляется из стека → merged пересчитывается → state самонастраивается.
+type OutboundUpdate struct {
+	Ref   string                 `json:"ref"`   // preset.id
+	Patch map[string]interface{} `json:"patch"` // patch fields (filters, options, addOutbounds, ...)
 }
 
 // IsWizardHidden checks if outbound should be hidden from wizard
@@ -97,22 +128,6 @@ func (oc *OutboundConfig) IsWizardHidden() bool {
 	}
 
 	return false
-}
-
-// GetWizardRequired returns the required value from wizard config
-// Only checks wizard.required from new format ("wizard": {"hide": true, "required": 2})
-func (oc *OutboundConfig) GetWizardRequired() int {
-	if oc.Wizard != nil {
-		if wizardMap, ok := oc.Wizard.(map[string]interface{}); ok {
-			if requiredVal, ok := wizardMap["required"]; ok {
-				if requiredInt, ok := requiredVal.(float64); ok {
-					return int(requiredInt)
-				}
-			}
-		}
-	}
-
-	return 0
 }
 
 // UnsetSourceIndex means SourceIndex was not assigned; exclude_from_global must not apply.

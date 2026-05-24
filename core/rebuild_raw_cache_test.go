@@ -50,7 +50,7 @@ func TestBuildSnapshotFromRawCache_HappyPath(t *testing.T) {
 		t.Fatalf("reload state: %v", err)
 	}
 
-	snap, err := buildSnapshotFromRawCache(loaded, execDir, nil)
+	snap, err := buildSnapshotFromRawCache(loaded, execDir, nil, nil)
 	if err != nil {
 		t.Fatalf("buildSnapshotFromRawCache: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestBuildSnapshotFromRawCache_IncompleteCache(t *testing.T) {
 	}
 	loaded, _ := state.Load(platform.GetWizardStatePath(execDir))
 
-	_, err := buildSnapshotFromRawCache(loaded, execDir, nil)
+	_, err := buildSnapshotFromRawCache(loaded, execDir, nil, nil)
 	if !errors.Is(err, ErrRawCacheIncomplete) {
 		t.Errorf("expected ErrRawCacheIncomplete, got %v", err)
 	}
@@ -124,7 +124,7 @@ func TestBuildSnapshotFromRawCache_DisabledSubscriptionsIgnored(t *testing.T) {
 	}
 	loaded, _ := state.Load(platform.GetWizardStatePath(execDir))
 
-	snap, err := buildSnapshotFromRawCache(loaded, execDir, nil)
+	snap, err := buildSnapshotFromRawCache(loaded, execDir, nil, nil)
 	if err != nil {
 		t.Fatalf("rebuild with mix enabled/disabled: %v", err)
 	}

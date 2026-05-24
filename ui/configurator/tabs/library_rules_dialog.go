@@ -16,7 +16,6 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
-	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
@@ -32,7 +31,10 @@ func boolSliceAnyTrue(values []bool) bool {
 	return false
 }
 
-// ShowRulesLibraryDialog shows presets from the template; user checks rows and taps Add selected.
+// ShowRulesLibraryDialog shows preset list from the template; user checks rows and taps Add selected.
+// One unified section — Library is just a catalog of presets from template.presets[].
+// On Add: preset-ref `{kind: preset, ref: <id>, body: {vars: {}}}` is appended to state.rules[].
+// If the same ref already exists in state — the checkbox is disabled and the row is marked.
 func ShowRulesLibraryDialog(p *wizardpresentation.WizardPresenter, showAddRuleDialog ShowAddRuleDialogFunc) {
 	guiState := p.GUIState()
 	model := p.Model()
@@ -41,13 +43,13 @@ func ShowRulesLibraryDialog(p *wizardpresentation.WizardPresenter, showAddRuleDi
 		debuglog.DebugLog("library_rules_dialog: skip (nil window or template)")
 		return
 	}
-	rules := model.TemplateData.SelectableRules
-	if len(rules) == 0 {
-		debuglog.DebugLog("library_rules_dialog: no selectable_rules in template")
+	presets := model.TemplateData.Presets
+	if len(presets) == 0 {
+		debuglog.DebugLog("library_rules_dialog: no presets in template")
 		return
 	}
 
-	picked := make([]bool, len(rules))
+	picked := make([]bool, len(presets))
 	listBox := container.NewVBox()
 
 	addBtn := widget.NewButton(locale.T("wizard.rules.library_add_selected"), nil)
@@ -62,24 +64,51 @@ func ShowRulesLibraryDialog(p *wizardpresentation.WizardPresenter, showAddRuleDi
 		}
 	}
 
-	for i := range rules {
-		i, tr := i, &rules[i]
+	existingRefs := make(map[string]bool, len(model.PresetRefs))
+	for _, pr := range model.PresetRefs {
+		if pr != nil {
+			existingRefs[pr.Ref] = true
+		}
+	}
 
-		lbl := ttwidget.NewLabel(tr.Label)
+	for i := range presets {
+		i, pr := i, &presets[i]
+		labelText := pr.Label
+		if labelText == "" {
+			labelText = pr.ID
+		}
+		already := existingRefs[pr.ID]
+		if already {
+			labelText += "  · already added"
+		}
+
+		lbl := ttwidget.NewLabel(labelText)
 		lbl.Wrapping = fyne.TextWrapOff
 		lbl.Truncation = fyne.TextTruncateEllipsis
-		if d := strings.TrimSpace(tr.Description); d != "" {
+		if d := strings.TrimSpace(pr.Description); d != "" {
 			lbl.SetToolTip(d)
 		}
 
 		var row *fynewidget.HoverRow
 		chk := widget.NewCheck("", func(on bool) {
+			if already {
+				picked[i] = false
+				return
+			}
 			picked[i] = on
 			if row != nil {
 				row.Refresh()
 			}
 			refreshAddBtn(addBtn)
 		})
+		if already {
+			// Pre-checked + disabled: visual cue "уже в списке, действие
+			// невозможно". `picked[i]` остаётся false — OnTapped не добавит
+			// дубль (защита в addBtn.OnTapped: `if existingRefs[pr.ID] continue`).
+			// Set Checked field прямо до Disable — callback не сработает.
+			chk.Checked = true
+			chk.Disable()
+		}
 
 		labelTap := fynewidget.NewTapWrap(lbl, func() {
 			if chk.Disabled() {
@@ -88,7 +117,6 @@ func ShowRulesLibraryDialog(p *wizardpresentation.WizardPresenter, showAddRuleDi
 			chk.SetChecked(!chk.Checked)
 		})
 
-		// Border: чекбокс слева, подпись в центре получает оставшуюся ширину (HBox даёт лейблу ~0 → только «…»).
 		rowLeft := container.NewBorder(nil, nil, fynewidget.CheckLeadingWrap(chk), nil, labelTap)
 		padded := container.NewPadded(rowLeft)
 		minH := canvas.NewRectangle(color.Transparent)
@@ -117,9 +145,21 @@ func ShowRulesLibraryDialog(p *wizardpresentation.WizardPresenter, showAddRuleDi
 	main := container.NewVBox(hint, scrollBlock)
 	var dlg dialog.Dialog
 	addBtn.OnTapped = func() {
-		added := wizardbusiness.AppendClonedPresetsToCustomRules(model, rules, picked)
+		added := 0
+		for i, pr := range presets {
+			if !picked[i] || existingRefs[pr.ID] {
+				continue
+			}
+			ref := wizardpresentation.PresetRefForUI{
+				Ref:     pr.ID,
+				Enabled: true,
+				Vars:    map[string]string{},
+			}
+			ref.AppendTo(model)
+			added++
+		}
 		if added == 0 {
-			debuglog.WarnLog("library_rules_dialog: no rules appended (selection present but clone failed?)")
+			debuglog.WarnLog("library_rules_dialog: no presets added (all already present?)")
 		}
 		model.TemplatePreviewNeedsUpdate = true
 		p.MarkAsChanged()

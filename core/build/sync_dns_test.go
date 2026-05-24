@@ -48,37 +48,14 @@ func TestApplyDNSScalarsToVars_StrategyEmptyDeletes(t *testing.T) {
 	}
 }
 
-// TestApplyDNSScalarsToVars_IndependentCacheTristate — nil/true/false поведение.
-func TestApplyDNSScalarsToVars_IndependentCacheTristate(t *testing.T) {
-	td := tdWithVars("dns_independent_cache")
-
-	// nil → удаление
-	{
-		vars := map[string]string{"dns_independent_cache": "true"}
-		ApplyDNSScalarsToVars(td, DNSScalars{IndependentCache: nil}, vars)
-		if _, has := vars["dns_independent_cache"]; has {
-			t.Errorf("nil → delete: %v", vars)
-		}
-	}
-
-	// true → "true"
-	{
-		v := true
-		vars := map[string]string{}
-		ApplyDNSScalarsToVars(td, DNSScalars{IndependentCache: &v}, vars)
-		if vars["dns_independent_cache"] != "true" {
-			t.Errorf("want true, got %q", vars["dns_independent_cache"])
-		}
-	}
-
-	// false → "false"
-	{
-		v := false
-		vars := map[string]string{}
-		ApplyDNSScalarsToVars(td, DNSScalars{IndependentCache: &v}, vars)
-		if vars["dns_independent_cache"] != "false" {
-			t.Errorf("want false, got %q", vars["dns_independent_cache"])
-		}
+// TestApplyDNSScalarsToVars_IndependentCacheCleanup — sing-box 1.14 deprecation.
+// Любые legacy dns_independent_cache в vars должны strip'аться.
+func TestApplyDNSScalarsToVars_IndependentCacheCleanup(t *testing.T) {
+	td := tdWithVars("dns_strategy") // td не объявляет dns_independent_cache
+	vars := map[string]string{"dns_independent_cache": "true"}
+	ApplyDNSScalarsToVars(td, DNSScalars{}, vars)
+	if _, has := vars["dns_independent_cache"]; has {
+		t.Errorf("legacy dns_independent_cache must be cleaned up: %v", vars)
 	}
 }
 

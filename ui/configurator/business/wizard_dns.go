@@ -41,7 +41,7 @@ func LoadPersistedWizardDNS(model *wizardmodels.WizardModel, p *wizardmodels.Per
 
 // ApplyWizardDNSTemplate reconciles dns.servers with the effective template (config.dns + dns_options),
 // prepends missing type=local from config if needed, and fills empty auxiliary fields
-// (rules, final, strategy, independent_cache, default_domain_resolver) from dns_options / config.dns.
+// (rules, final, strategy, default_domain_resolver) from dns_options / config.dns.
 //
 // Typical use:
 //   - After LoadPersistedWizardDNS (persisted row wins until reconcile merges tags with template).
@@ -83,59 +83,88 @@ func effectiveWizardConfig(model *wizardmodels.WizardModel) map[string]json.RawM
 	return config
 }
 
-// DNSTagLocked is true for tags listed in template config.dns.servers (not editable / not deletable in UI).
+// DNSTagLocked — true для tag'ов с `required: true` в template.dns_options.servers[].
+// Locked entries нельзя toggle'нуть в UI (чекбокс greyed).
+//
+// SPEC unify: семантика "toggle block" (только required). Для "edit/delete block"
+// (любой template entry) используй DNSTagFromTemplate.
 func DNSTagLocked(model *wizardmodels.WizardModel, tag string) bool {
-	if model == nil || model.DNSLockedTags == nil {
-		return false
-	}
 	tag = strings.TrimSpace(tag)
 	if tag == "" {
 		return false
 	}
-	_, ok := model.DNSLockedTags[tag]
-	return ok
+	for _, s := range templateDNSServersOf(model) {
+		if t, _ := s["tag"].(string); t == tag {
+			if r, ok := s["required"].(bool); ok && r {
+				return true
+			}
+			return false
+		}
+	}
+	return false
+}
+
+// DNSTagFromTemplate — true для любого tag'а присутствующего в
+// template.dns_options.servers[]. Template-owned entries нельзя
+// editировать/удалять (юзер может только toggle если не required).
+//
+// SPEC unify: семантика "edit/delete block" (все template entries).
+// Для "toggle block" (только required) используй DNSTagLocked.
+func DNSTagFromTemplate(model *wizardmodels.WizardModel, tag string) bool {
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return false
+	}
+	for _, s := range templateDNSServersOf(model) {
+		if t, _ := s["tag"].(string); t == tag {
+			return true
+		}
+	}
+	return false
+}
+
+// templateDNSServersOf — общий helper для DNSTagLocked / DNSTagFromTemplate.
+// Парсит template.DNSOptionsRaw → servers list. Возвращает nil если template нет.
+func templateDNSServersOf(model *wizardmodels.WizardModel) []map[string]interface{} {
+	if model == nil || model.TemplateData == nil {
+		return nil
+	}
+	if len(model.TemplateData.DNSOptionsRaw) == 0 {
+		return nil
+	}
+	var dnsOpt struct {
+		Servers []map[string]interface{} `json:"servers"`
+	}
+	if err := json.Unmarshal(model.TemplateData.DNSOptionsRaw, &dnsOpt); err != nil {
+		return nil
+	}
+	return dnsOpt.Servers
 }
 
 // -----------------------------------------------------------------------------
-// Reconcile servers: config.dns order (locked) + dns_options-only tags + orphan saved tags
+// Reconcile servers: единый template-list (dns_options) → in-memory model.DNSServers
+// + orphan saved tags
 // -----------------------------------------------------------------------------
+//
+// SPEC unify: больше нет config.dns.servers (он пуст) — все DNS-серверы
+// живут в template.dns_options.servers[]. Раньше reconcileDNSServers
+// учитывал tag-collision между config.dns.servers и dns_options.servers
+// (mergeLockedRow); теперь этот сценарий невозможен — функция упростилась.
 
 func reconcileDNSServers(model *wizardmodels.WizardModel, dnsObj map[string]interface{}, optsMap map[string]json.RawMessage) {
+	_ = dnsObj // dnsObj.servers пуст в новой схеме; параметр оставлен для backward-compat сигнатуры.
+
 	saved := append([]json.RawMessage(nil), model.DNSServers...)
 	byTag, order := indexDNSStateByTag(saved)
 
 	optsByTag, optsOrder := dnsOptionsServersByTag(optsMap)
 
-	locked := make(map[string]struct{})
 	var out []json.RawMessage
 	seen := make(map[string]struct{})
 
-	if dnsObj != nil {
-		if arr, ok := dnsObj["servers"].([]interface{}); ok {
-			for _, s := range arr {
-				row, ok := s.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				tag := strings.TrimSpace(jsonString(row["tag"]))
-				if tag == "" {
-					continue
-				}
-				locked[tag] = struct{}{}
-				raw := mergeLockedRow(row, optsByTag[tag], byTag[tag])
-				if len(raw) == 0 {
-					continue
-				}
-				out = append(out, raw)
-				seen[tag] = struct{}{}
-			}
-		}
-	}
-
+	// Pass 1: template dns_options порядок (required entries приходят первыми
+	// в template'е и сохраняют этот порядок здесь).
 	for _, tag := range optsOrder {
-		if _, isLocked := locked[tag]; isLocked {
-			continue
-		}
 		if _, done := seen[tag]; done {
 			continue
 		}
@@ -149,6 +178,7 @@ func reconcileDNSServers(model *wizardmodels.WizardModel, dnsObj map[string]inte
 		seen[tag] = struct{}{}
 	}
 
+	// Pass 2: orphan saved tags (user-added servers с tag'ом которого нет в template).
 	for _, tag := range order {
 		if _, ok := seen[tag]; ok {
 			continue
@@ -160,7 +190,6 @@ func reconcileDNSServers(model *wizardmodels.WizardModel, dnsObj map[string]inte
 	}
 
 	model.DNSServers = out
-	model.DNSLockedTags = locked
 }
 
 func indexDNSStateByTag(servers []json.RawMessage) (byTag map[string]json.RawMessage, order []string) {
@@ -208,71 +237,8 @@ func dnsOptionsServersByTag(optsMap map[string]json.RawMessage) (byTag map[strin
 	return byTag, order
 }
 
-// mergeLockedRow: при совпадении tag между config.dns.servers (скелет) и dns_options.servers —
-// тело строки берётся из dns_options, если для строки включена галочка «в конфиг» (enabled в state или true по умолчанию в dns_options);
-// иначе остаётся форма скелета из config.dns.
-func mergeLockedRow(configRow map[string]interface{}, opt map[string]interface{}, stateRaw json.RawMessage) json.RawMessage {
-	var st map[string]interface{}
-	if len(stateRaw) > 0 {
-		_ = json.Unmarshal(stateRaw, &st)
-	}
-	var userEnabled *bool
-	if st != nil {
-		if v, ok := st["enabled"]; ok {
-			if b, ok := v.(bool); ok {
-				userEnabled = &b
-			}
-		}
-	}
-	wantOptsBody := false
-	if opt != nil {
-		if userEnabled != nil {
-			wantOptsBody = *userEnabled
-		} else {
-			wantOptsBody = dnsServerEnabledInWizard(opt)
-		}
-	}
-	if wantOptsBody && opt != nil {
-		m := shallowCopyMap(opt)
-		if userEnabled != nil {
-			m["enabled"] = *userEnabled
-		}
-		b, err := json.Marshal(m)
-		if err != nil {
-			return nil
-		}
-		return json.RawMessage(b)
-	}
-	if configRow == nil {
-		if opt != nil {
-			m := shallowCopyMap(opt)
-			if userEnabled != nil {
-				m["enabled"] = *userEnabled
-			} else {
-				m["enabled"] = false
-			}
-			b, err := json.Marshal(m)
-			if err != nil {
-				return nil
-			}
-			return json.RawMessage(b)
-		}
-		return nil
-	}
-	m := stripWizardOnlyServerFields(shallowCopyMap(configRow))
-	if userEnabled != nil {
-		m["enabled"] = *userEnabled
-	} else if opt != nil {
-		m["enabled"] = dnsServerEnabledInWizard(opt)
-	} else {
-		m["enabled"] = true
-	}
-	b, err := json.Marshal(m)
-	if err != nil {
-		return nil
-	}
-	return json.RawMessage(b)
-}
+// mergeLockedRow — УДАЛЕНА в SPEC unify. Tag-collision между config.dns.servers
+// и dns_options.servers больше невозможна (config.dns.servers пуст).
 
 // -----------------------------------------------------------------------------
 // Local resolver from config.dns (if missing after reconcile)
@@ -353,9 +319,7 @@ func fillDNSAuxiliaryIfEmpty(model *wizardmodels.WizardModel, cfg map[string]jso
 	if !templateDeclaresDNSWizardVar(vd, wizardmodels.VarDNSStrategy) && strings.TrimSpace(model.DNSStrategy) == "" {
 		model.DNSStrategy = pickDNSStrategy(hasOpts, optsMap, dnsObj)
 	}
-	if !templateDeclaresDNSWizardVar(vd, wizardmodels.VarDNSIndependentCache) && model.DNSIndependentCache == nil {
-		model.DNSIndependentCache = pickDNSIndependentCache(hasOpts, optsMap, dnsObj)
-	}
+	// SPEC: independent_cache deprecated в sing-box 1.14.0 — extract удалён.
 	if !templateDeclaresDNSWizardVar(vd, wizardmodels.VarDNSDefaultDomainResolver) {
 		fillDefaultDomainResolverIfEmpty(model, cfg, optsMap)
 	}
@@ -413,24 +377,8 @@ func pickDNSStrategy(hasOpts bool, optsMap map[string]json.RawMessage, dnsObj ma
 	return base
 }
 
-func pickDNSIndependentCache(hasOpts bool, optsMap map[string]json.RawMessage, dnsObj map[string]interface{}) *bool {
-	if hasOpts {
-		if raw, ok := optsMap["independent_cache"]; ok {
-			var b bool
-			if json.Unmarshal(raw, &b) == nil {
-				return ptrBool(b)
-			}
-		}
-	}
-	if dnsObj != nil {
-		if b, ok := dnsObj["independent_cache"].(bool); ok {
-			return ptrBool(b)
-		}
-	}
-	return nil
-}
-
-func ptrBool(b bool) *bool { return &b }
+// pickDNSIndependentCache + ptrBool УДАЛЕНЫ: independent_cache deprecated
+// в sing-box 1.14.0.
 
 func fillDefaultDomainResolverIfEmpty(model *wizardmodels.WizardModel, cfg map[string]json.RawMessage, optsMap map[string]json.RawMessage) {
 	if model == nil || model.DefaultDomainResolverUnset {
@@ -707,6 +655,12 @@ func routeDefaultDomainResolver(route map[string]interface{}) string {
 }
 
 // DNSEnabledTagOptions returns tags for enabled servers in list order.
+// Включает: (1) tagи enabled legacy DNS servers из model.DNSServers,
+// (2) tagи bundled DNS-серверов от активных preset-ref'ов (читается через
+// PresetBundledDNSTags helper). Это даёт юзеру выбрать `final` /
+// `default_domain_resolver` в том числе из bundled DNS-серверов preset'а
+// (например `ru-direct:yandex_udp`).
+//
 // Выпадающие dns.final и route.default_domain_resolver показывают только эти теги: строка из скелета
 // без галочки «в конфиг» в список не попадает; при включённой галочке тело может браться из dns_options (см. mergeLockedRow).
 func DNSEnabledTagOptions(model *wizardmodels.WizardModel) []string {
@@ -715,6 +669,17 @@ func DNSEnabledTagOptions(model *wizardmodels.WizardModel) []string {
 	}
 	seen := make(map[string]struct{})
 	var out []string
+	addTag := func(tag string) {
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			return
+		}
+		if _, ok := seen[tag]; ok {
+			return
+		}
+		seen[tag] = struct{}{}
+		out = append(out, tag)
+	}
 	for _, raw := range model.DNSServers {
 		var m map[string]interface{}
 		if json.Unmarshal(raw, &m) != nil {
@@ -724,15 +689,11 @@ func DNSEnabledTagOptions(model *wizardmodels.WizardModel) []string {
 			continue
 		}
 		tag, _ := m["tag"].(string)
-		tag = strings.TrimSpace(tag)
-		if tag == "" {
-			continue
-		}
-		if _, ok := seen[tag]; ok {
-			continue
-		}
-		seen[tag] = struct{}{}
-		out = append(out, tag)
+		addTag(tag)
+	}
+	// Bundled DNS servers from active preset-refs.
+	for _, tag := range PresetBundledDNSTags(model) {
+		addTag(tag)
 	}
 	return out
 }

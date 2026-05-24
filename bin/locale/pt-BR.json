@@ -359,7 +359,7 @@
   "wizard.add_rule.label_name": "Nome da regra:",
   "wizard.add_rule.label_type": "Tipo de regra:",
   "wizard.add_rule.tab_form": "Form",
-  "wizard.add_rule.tab_raw": "Raw",
+  "wizard.add_rule.tab_raw": "JSON",
   "wizard.add_rule.error_name_required": "O nome da regra é obrigatório",
   "wizard.add_rule.error_raw_empty": "O JSON raw está vazio",
   "wizard.add_rule.error_must_be_object": "a regra deve ser um objeto JSON",
@@ -428,7 +428,7 @@
   "wizard.outbound.preview_also_includes": " | Também inclui: %s",
   "wizard.outbound.preview_source_errors": " | ⚠️ %d erro(s) de fonte",
   "wizard.outbound.tab_settings": "Configurações",
-  "wizard.outbound.tab_raw": "Raw",
+  "wizard.outbound.tab_raw": "JSON",
   "wizard.outbound.tab_preview": "Prévia",
   "wizard.outbound.button_cancel": "Cancelar",
   "wizard.outbound.button_save": "Salvar",
@@ -470,5 +470,10 @@
   "core.state_save_as_success": "Saved state as \"%s\"",
   "core.state_section_label": "Saved states",
   "dialog.button_save": "Save",
-  "dialog.button_cancel": "Cancel"
+  "dialog.button_cancel": "Cancel",
+  "wizard.shared.button_save": "Save",
+  "wizard.rules.button_convert_to_user": "Convert to user rule(s)",
+  "wizard.rules.dialog_edit_rule_title": "Edit rule",
+  "wizard.dns.section_from_active_presets": "From active presets (read-only)",
+  "wizard.add_rule.domain_mode_label": "Domain mode:"
 }

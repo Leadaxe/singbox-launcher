@@ -56,6 +56,12 @@ func RebuildPreviewCache(model *wizardmodels.WizardModel) (int, error) {
 	debuglog.DebugLog("wizardPreviewCache: starting LoadNodesFromSource for %d sources", totalSources)
 
 	for i, ps := range proxies {
+		// Skip disabled sources — UI preview должен совпадать с build pipeline
+		// (GenerateOutboundsFromParserConfig тоже скипает disabled). Без этого
+		// юзер видит outbound'ы от выключенных подписок в Outbounds tab.
+		if ps.Disabled {
+			continue
+		}
 		nodes, err := subscription.LoadNodesFromSource(ps, tagCounts, nil, i, totalSources)
 		if err != nil {
 			errorCount++

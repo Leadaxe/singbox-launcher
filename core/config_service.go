@@ -177,6 +177,19 @@ func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGener
 	subst := config.BuildVarSubstituterFromDisk(execDir)
 	config.SubstituteParserConfigPlaceholders(parserConfig, subst)
 
+	// SPEC 057-R-N: ensure parser_config.outbounds в правильном shape:
+	//   Sync — приводит slice в соответствие с active preset refs
+	//          (template might have changed since last UI save).
+	//   Merge — flatten Updates[] стеки в финальное body для generator'а.
+	// На failure LoadTemplateData (template missing) — warning + skip;
+	// Update должен работать даже без template'а (legacy юзеры).
+	if td, terr := template.LoadTemplateData(execDir); terr == nil {
+		build.SyncOutboundsWithActivePresets(stateRef.RulesV6, &parserConfig.ParserConfig.Outbounds, td.Presets)
+		build.MergeOutboundUpdatesInPlace(parserConfig)
+	} else {
+		debuglog.WarnLog("UpdateConfigFromSubscriptions: LoadTemplateData failed (skip preset.outbounds sync): %v", terr)
+	}
+
 	updateParserProgress(ac, 5, "Parsed ParserConfig block")
 
 	progressCallback := func(p float64, s string) {
@@ -325,19 +338,80 @@ func (ac *AppController) buildContextFromState(s *state.State, cache *build.Pars
 	if ac != nil && ac.FileService != nil {
 		ctx.Route.ExecDir = ac.FileService.ExecDir
 	}
+	// SPEC 053: preset bundle merge — все правила из state.RulesV6 в порядке.
+	// Если state.RulesV6 не пуст, MergePresetsIntoRoute берёт на себя весь emit
+	// (preset/inline/srs). Noop когда RulesV6 пуст (legacy v5-only flow).
+	ctx.Preset = build.PresetMergeContext{
+		Presets:             td.Presets,
+		RulesV6:             s.RulesV6,
+		DNS:                 s.DNS,
+		SrsCachedPaths:      build.CollectSrsCachedPaths(s.RulesV6, ac.FileService.ExecDir),
+		TemplateDNSDefaults: parseTemplateDNSDefaultsFromTD(td),
+	}
+	if ac != nil && ac.FileService != nil {
+		ctx.Preset.ExecDir = ac.FileService.ExecDir
+	}
 	return ctx
 }
 
+// parseTemplateDNSDefaultsFromTD — извлекает dns_options.servers[] из template
+// и парсит в []build.TemplateDNSServer. Используется MergePresetsIntoDNS для
+// материализации DNS-библиотеки (без этого юзерский DNS tab override на
+// cloudflare_udp/google_doh/yandex_doh ничего не делает — server не в config).
+//
+// Возвращает nil если td nil / нет dns_options / парс не удался.
+func parseTemplateDNSDefaultsFromTD(td *template.TemplateData) []build.TemplateDNSServer {
+	if td == nil || len(td.DNSOptionsRaw) == 0 {
+		return nil
+	}
+	var dnsOpt struct {
+		Servers []json.RawMessage `json:"servers"`
+	}
+	if err := json.Unmarshal(td.DNSOptionsRaw, &dnsOpt); err != nil {
+		return nil
+	}
+	parsed := build.ParseTemplateDNSDefaults(dnsOpt.Servers)
+	// Validation warnings — non-fatal; logged для debug.
+	for _, w := range build.ValidateTemplateDNSServers(parsed) {
+		debuglog.WarnLog("template validation: %s", w)
+	}
+	return parsed
+}
+
 // dnsConfigForUpdate — извлекает DNS-related данные из state в build.DNSConfig.
-// state.DNSOptions содержит servers/rules; final/strategy/independent_cache
-// исторически живут в state.Vars (dns_*) после миграции SPEC 032.
+//
+// Schema distinction:
+//   - v6 state — `state.DNS` (v6.DNSOptions) — flat servers[]/rules[] через
+//     kind discriminator. Servers/Rules эмитятся через `ctx.Preset.DNS`
+//     в MergePresetsIntoDNS. Здесь читаем только scalars (Final/Strategy)
+//     — но они в state живут в Vars[].
+//   - pure-v5 state — DNSOptions единственный источник данных, читаем
+//     cfg.Servers/RulesText.
+//
+// v6 active iff len(s.RulesV6) > 0 OR len(s.DNS.Servers/Rules) > 0.
+//
+// dns_* scalars из state.Vars[] всегда побеждают (SPEC 056-R-N: единый
+// KV-store для всех wizard vars, включая dns_*).
+//
+// SPEC: independent_cache УДАЛЕНО — deprecated в sing-box 1.14.0; legacy
+// state.Vars[dns_independent_cache] и DNSOptions.IndependentCache игнорируются.
 func dnsConfigForUpdate(s *state.State) build.DNSConfig {
 	cfg := build.DNSConfig{}
-	if s.DNSOptions != nil {
-		cfg.Servers = s.DNSOptions.Servers
+
+	v6Active := s != nil &&
+		(len(s.RulesV6) > 0 ||
+			len(s.DNS.Servers) > 0 ||
+			len(s.DNS.Rules) > 0)
+
+	if v6Active {
+		// v6 path: scalars из DNSV6; servers/rules идут через ctx.Preset.DNS.
+		cfg.Final = s.DNS.Final
+		cfg.Strategy = s.DNS.Strategy
+	} else if s.DNSOptions != nil {
+		// pure-v5 path
 		cfg.Final = s.DNSOptions.Final
 		cfg.Strategy = s.DNSOptions.Strategy
-		cfg.IndependentCache = s.DNSOptions.IndependentCache
+		cfg.Servers = s.DNSOptions.Servers
 		if len(s.DNSOptions.Rules) > 0 {
 			raw, err := json.Marshal(map[string]interface{}{"rules": s.DNSOptions.Rules})
 			if err == nil {
@@ -345,15 +419,14 @@ func dnsConfigForUpdate(s *state.State) build.DNSConfig {
 			}
 		}
 	}
+
+	// dns_* scalars из vars[] (источник истины; SPEC 032 + SPEC 056-R-N).
 	for _, v := range s.Vars {
 		switch v.Name {
 		case "dns_final":
 			cfg.Final = v.Value
 		case "dns_strategy":
 			cfg.Strategy = v.Value
-		case "dns_independent_cache":
-			b := v.Value == "true"
-			cfg.IndependentCache = &b
 		}
 	}
 	return cfg
@@ -361,11 +434,20 @@ func dnsConfigForUpdate(s *state.State) build.DNSConfig {
 
 // routeConfigForUpdate — конвертит state.CustomRules в build.RouteConfig.
 //
+// SPEC 053: если state.RulesV6 содержит правила — legacy CustomRules emit
+// **скипается** (RouteConfig.Rules = nil). Все правила (preset/inline/srs)
+// эмитятся через MergePresetsIntoRoute в правильном порядке из state.RulesV6.
+// Это избегает double-emit (правило не появится дважды в route.rules[]).
+//
 // `route.final` НЕ читается здесь: он подставляется на этапе
 // template-substitution через `@route_final` (state.vars["route_final"] →
 // template substituter → финальный config.json). MergeRouteSection видит
 // пустой FinalOutbound и оставляет уже-substituted шаблонное значение.
 func routeConfigForUpdate(s *state.State) build.RouteConfig {
+	if len(s.RulesV6) > 0 {
+		// v6 path: rules эмитятся через MergePresetsIntoRoute в правильном порядке.
+		return build.RouteConfig{}
+	}
 	rules := make([]build.RouteRule, 0, len(s.CustomRules))
 	for _, cr := range s.CustomRules {
 		outbound := cr.SelectedOutbound
@@ -531,9 +613,13 @@ func collectAllStageSourceIDs(execDir string) []string {
 }
 
 // collectAllStageRuleSetTags возвращает объединение rule-set tags из ВСЕХ
-// state-файлов в `bin/wizard_states/`. Для каждой CustomRule (и enabled, и
-// disabled — пользователь может перетоггнуть обратно, лишний download только
-// раздражает) обходит embedded rule_set[] и собирает поле `tag`.
+// state-файлов в `bin/wizard_states/`. Источники tag'ов:
+//   - CustomRule[i].RuleSet[].tag (legacy / user inline/srs правила; и enabled,
+//     и disabled — пользователь может перетоггнуть, лишний download раздражает)
+//   - RulesV6[i] Kind=preset → lookup template preset → для каждого
+//     rule_set type=remote → content-addressed tag (SRSTagFromURL). Без
+//     if/if_or-фильтрации (consciously keep more — лучше держать .srs который
+//     потенциально нужен под другим var-комбо, чем потом качать снова).
 //
 // Используется для orphan GC `bin/rule-sets/` после Rebuild: live множество
 // = это объединение, всё за пределами — orphan.
@@ -543,8 +629,12 @@ func collectAllStageSourceIDs(execDir string) []string {
 // нужные другому (неактивному) stage'у — переключение обратно требует
 // заново открыть Configurator и скачать.
 //
+// td (nil-safe) — TemplateData для resolve preset.Ref → rule_set[]. Если nil
+// или preset не найден — preset-теги пропускаются (тот же fallback что для
+// broken preset-ref'а в UI).
+//
 // Read-only: errors per-file логируются и пропускаются.
-func collectAllStageRuleSetTags(execDir string) []string {
+func collectAllStageRuleSetTags(execDir string, td *template.TemplateData) []string {
 	statesDir := platform.GetWizardStatesDir(execDir)
 	entries, err := os.ReadDir(statesDir)
 	if err != nil {
@@ -552,7 +642,22 @@ func collectAllStageRuleSetTags(execDir string) []string {
 		return nil
 	}
 
+	// Pre-build preset lookup map by ID для быстрого resolve.
+	var presetByID map[string]*template.Preset
+	if td != nil {
+		presetByID = make(map[string]*template.Preset, len(td.Presets))
+		for i := range td.Presets {
+			presetByID[td.Presets[i].ID] = &td.Presets[i]
+		}
+	}
+
 	tagSet := make(map[string]struct{})
+	addTag := func(tag string) {
+		if tag != "" {
+			tagSet[tag] = struct{}{}
+		}
+	}
+
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -567,14 +672,33 @@ func collectAllStageRuleSetTags(execDir string) []string {
 			debuglog.DebugLog("collectAllStageRuleSetTags: skip %s: %v", path, loadErr)
 			continue
 		}
+		// Legacy CustomRule rule_set tags.
 		for i := range s.CustomRules {
 			for _, rs := range s.CustomRules[i].RuleSet {
 				var m map[string]interface{}
 				if err := json.Unmarshal(rs, &m); err != nil {
 					continue
 				}
-				if tag, ok := m["tag"].(string); ok && tag != "" {
-					tagSet[tag] = struct{}{}
+				if tag, ok := m["tag"].(string); ok {
+					addTag(tag)
+				}
+			}
+		}
+		// SPEC 053: preset-ref bundled remote rule_set'ы. content-addressed tag'и.
+		if presetByID != nil {
+			for _, r := range s.RulesV6 {
+				if r.Kind != "preset" || r.Ref == "" {
+					continue
+				}
+				tpl, ok := presetByID[r.Ref]
+				if !ok {
+					continue
+				}
+				for _, rs := range tpl.RuleSet {
+					if rs.Type != "remote" || rs.URL == "" {
+						continue
+					}
+					addTag(build.SRSTagFromURL(rs.URL))
 				}
 			}
 		}
@@ -631,8 +755,16 @@ func refreshOneSubscriptionSource(src *state.Source, defaults state.Defaults, su
 	merged.LastErrorMsg = ""
 	merged.HTTPStatusCode = res.HTTPStatus
 	merged.RawBodyBytes = res.RawBodyBytes
-	merged.PreviewNodes = extractPreviewNodes(res.Body, 50)
-	merged.NodesCountFetched = countURIs(res.Body)
+	// SPEC 054: для Xray JSON array подписок line-based extractPreviewNodes
+	// раздувал preview_nodes в 50 раз (одна "line" = весь JSON body ~1MB).
+	// Сначала пробуем формат-aware path через xray JSON parser; fallback на
+	// line-based для base64/text-line подписок.
+	if subscription.IsXrayJSONArrayBody(string(res.Body)) {
+		merged.PreviewNodes, merged.NodesCountFetched = extractXrayJSONPreviewNodes(res.Body, 50)
+	} else {
+		merged.PreviewNodes = extractPreviewNodes(res.Body, 50)
+		merged.NodesCountFetched = countURIs(res.Body)
+	}
 
 	effectiveMax := src.MaxNodes
 	if effectiveMax == 0 {
@@ -742,6 +874,43 @@ func (svc *ConfigService) RefreshSingleSubscription(sourceID string) (*state.Sou
 		}
 	}
 	return src, nil
+}
+
+// extractXrayJSONPreviewNodes — SPEC 054. Для Xray JSON array подписок:
+// парсит body через subscription.ParseNodesFromXrayJSONArray и эмитит первые
+// `limit` нод в URI-like формате `<scheme>://<server>:<port>#<tag>`.
+//
+// Возвращает (previewNodes, totalCount). totalCount — реальное количество
+// нод в JSON array (для meta.nodes_count_fetched).
+//
+// На parse-error → возвращает (nil, 0) — caller должен решить fallback (но
+// caller сначала вызывает IsXrayJSONArrayBody, так что path должен совпадать).
+func extractXrayJSONPreviewNodes(body []byte, limit int) ([]string, int) {
+	nodes, err := subscription.ParseNodesFromXrayJSONArray(string(body), nil)
+	if err != nil {
+		debuglog.WarnLog("extractXrayJSONPreviewNodes: parse failed: %v", err)
+		return nil, 0
+	}
+	total := len(nodes)
+	if total == 0 {
+		return nil, 0
+	}
+	n := limit
+	if n > total {
+		n = total
+	}
+	out := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		node := nodes[i]
+		if node == nil {
+			continue
+		}
+		// URI-like preview: `<scheme>://<server>:<port>#<tag>` (~50-150 байт).
+		// Server/Port дают связь с реальной нодой, tag — human-readable label.
+		// UUID/Flow намеренно не включаем — это секреты, в preview не место.
+		out = append(out, fmt.Sprintf("%s://%s:%d#%s", node.Scheme, node.Server, node.Port, node.Tag))
+	}
+	return out, total
 }
 
 // extractPreviewNodes — первые `limit` URI-like строк из decoded body.

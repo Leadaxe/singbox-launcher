@@ -259,7 +259,7 @@
   "wizard.add_rule.srs_dialog_title": "Jeux de règles SRS",
   "wizard.add_rule.srs_hint": "Nous recommandons de rechercher des fichiers de jeu de règles (SRS) adaptés dans le projet :",
   "wizard.add_rule.tab_form": "Formulaire",
-  "wizard.add_rule.tab_raw": "Brut",
+  "wizard.add_rule.tab_raw": "JSON",
   "wizard.add_rule.title_add": "Ajouter une règle",
   "wizard.add_rule.title_edit": "Modifier la règle",
   "wizard.add_rule.type_custom": "JSON personnalisé",
@@ -335,7 +335,7 @@
   "wizard.outbound.scope_all": "Pour tout",
   "wizard.outbound.scope_source": "Pour la source : ",
   "wizard.outbound.tab_preview": "Aperçu",
-  "wizard.outbound.tab_raw": "Brut",
+  "wizard.outbound.tab_raw": "JSON",
   "wizard.outbound.tab_settings": "Paramètres",
   "wizard.outbound.title_add": "Ajouter une sortie",
   "wizard.outbound.title_edit": "Modifier la sortie",
@@ -470,5 +470,10 @@
   "core.state_save_as_success": "Saved state as \"%s\"",
   "core.state_section_label": "Saved states",
   "dialog.button_save": "Save",
-  "dialog.button_cancel": "Cancel"
+  "dialog.button_cancel": "Cancel",
+  "wizard.shared.button_save": "Save",
+  "wizard.rules.button_convert_to_user": "Convert to user rule(s)",
+  "wizard.rules.dialog_edit_rule_title": "Edit rule",
+  "wizard.dns.section_from_active_presets": "From active presets (read-only)",
+  "wizard.add_rule.domain_mode_label": "Domain mode:"
 }

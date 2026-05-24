@@ -26,6 +26,12 @@ import (
 //
 // Извлечён из ShowAddRuleDialog в отдельную функцию для unit-тестирования
 // (SPEC 045 фаза 9).
+// SRSTagFromURL — публичная обёртка для использования из других пакетов
+// (preset_ref UI tile, build pipeline). См. srsTagFromURL для деталей.
+func SRSTagFromURL(urlStr string) string {
+	return srsTagFromURL(urlStr)
+}
+
 func srsTagFromURL(urlStr string) string {
 	u, err := url.Parse(urlStr)
 	if err != nil {

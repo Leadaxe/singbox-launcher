@@ -136,37 +136,13 @@ func TestMergeDNSSection_StrategyOverride(t *testing.T) {
 	}
 }
 
-// TestMergeDNSSection_IndependentCacheTristate — nil/true/false поведение.
-func TestMergeDNSSection_IndependentCacheTristate(t *testing.T) {
-	// nil → ключ не выставляется
-	{
-		got, _ := MergeDNSSection(json.RawMessage(`{}`), DNSConfig{})
-		m := unmarshalDNS(t, got)
-		if _, has := m["independent_cache"]; has {
-			t.Errorf("nil → key must not appear: %v", m)
-		}
-	}
-	// true
-	{
-		v := true
-		got, _ := MergeDNSSection(json.RawMessage(`{}`), DNSConfig{IndependentCache: &v})
-		m := unmarshalDNS(t, got)
-		if b, _ := m["independent_cache"].(bool); !b {
-			t.Errorf("true → independent_cache=true: %v", m)
-		}
-	}
-	// false
-	{
-		v := false
-		got, _ := MergeDNSSection(json.RawMessage(`{}`), DNSConfig{IndependentCache: &v})
-		m := unmarshalDNS(t, got)
-		raw, has := m["independent_cache"]
-		if !has {
-			t.Errorf("false → key must appear: %v", m)
-		}
-		if b, _ := raw.(bool); b {
-			t.Errorf("false → independent_cache=false")
-		}
+// TestMergeDNSSection_IndependentCacheStripped — sing-box 1.14 deprecation.
+// independent_cache в шаблоне должен strip'аться, не пробрасываться в emit.
+func TestMergeDNSSection_IndependentCacheStripped(t *testing.T) {
+	got, _ := MergeDNSSection(json.RawMessage(`{"independent_cache":true}`), DNSConfig{})
+	m := unmarshalDNS(t, got)
+	if _, has := m["independent_cache"]; has {
+		t.Errorf("independent_cache must be stripped from emit: %v", m)
 	}
 }
 

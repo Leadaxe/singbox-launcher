@@ -359,7 +359,7 @@
   "wizard.add_rule.label_name": "Nombre de la regla:",
   "wizard.add_rule.label_type": "Tipo de regla:",
   "wizard.add_rule.tab_form": "Formulario",
-  "wizard.add_rule.tab_raw": "Bruto",
+  "wizard.add_rule.tab_raw": "JSON",
   "wizard.add_rule.error_name_required": "El nombre de la regla es obligatorio",
   "wizard.add_rule.error_raw_empty": "El JSON bruto está vacío",
   "wizard.add_rule.error_must_be_object": "la regla debe ser un objeto JSON",
@@ -428,7 +428,7 @@
   "wizard.outbound.preview_also_includes": " | También incluye: %s",
   "wizard.outbound.preview_source_errors": " | ⚠️ %d error(es) de fuente",
   "wizard.outbound.tab_settings": "Ajustes",
-  "wizard.outbound.tab_raw": "Bruto",
+  "wizard.outbound.tab_raw": "JSON",
   "wizard.outbound.tab_preview": "Vista previa",
   "wizard.outbound.button_cancel": "Cancelar",
   "wizard.outbound.button_save": "Guardar",
@@ -470,5 +470,10 @@
   "core.state_save_as_success": "Saved state as \"%s\"",
   "core.state_section_label": "Saved states",
   "dialog.button_save": "Save",
-  "dialog.button_cancel": "Cancel"
+  "dialog.button_cancel": "Cancel",
+  "wizard.shared.button_save": "Save",
+  "wizard.rules.button_convert_to_user": "Convert to user rule(s)",
+  "wizard.rules.dialog_edit_rule_title": "Edit rule",
+  "wizard.dns.section_from_active_presets": "From active presets (read-only)",
+  "wizard.add_rule.domain_mode_label": "Domain mode:"
 }

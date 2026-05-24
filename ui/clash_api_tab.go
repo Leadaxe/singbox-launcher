@@ -1275,11 +1275,14 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		if ac.UIService != nil && ac.UIService.UpdateTrayMenuFunc != nil {
 			ac.UIService.UpdateTrayMenuFunc()
 		}
-		// Start auto-loading proxies for the new group only if sing-box is running
+		// Start auto-loading proxies for the new group only if sing-box is running.
+		// Same guard для onLoadAndRefreshProxies — без этого при cold start (state
+		// restore установил selectedGroup) callback дёргает Clash API, который
+		// возвращает "API disabled" → пугающий popup. См. user-feedback 2026-05-15.
 		if ac.RunningState.IsRunning() {
 			ac.AutoLoadProxies()
+			onLoadAndRefreshProxies()
 		}
-		onLoadAndRefreshProxies()
 	})
 	groupSelect.PlaceHolder = locale.T("servers.placeholder_select_group")
 	if selectedGroup != "" {

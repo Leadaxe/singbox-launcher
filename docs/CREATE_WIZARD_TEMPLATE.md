@@ -281,9 +281,12 @@ The unified template consists of five main sections:
 
 Scalars edited on the DNS tab are template vars (with `wizard_ui: "fix"`):
 - `dns_strategy` -> `config.dns.strategy`
-- `dns_independent_cache` -> `config.dns.independent_cache`
 - `dns_final` -> `config.dns.final`
 - `dns_default_domain_resolver` -> `config.route.default_domain_resolver`
+
+> `dns_independent_cache` was removed — `config.dns.independent_cache` is
+> deprecated in sing-box 1.14.0 (cache always keys by transport name). Legacy
+> templates with the var / placeholder are still parsed; emit silently drops it.
 
 **Structure**:
 ```json
@@ -303,7 +306,7 @@ Scalars edited on the DNS tab are template vars (with `wizard_ui: "fix"`):
 - `state.json -> dns_options`: `servers` and `rules` only
 - `state.json -> vars`: DNS scalar values (`dns_*`)
 
-Legacy `dns_options` scalar keys (`strategy`, `final`, `independent_cache`, `default_domain_resolver`, `default_domain_resolver_unset`) are migrated on load into `state.vars` and are not written back by new saves.
+Legacy `dns_options` scalar keys (`strategy`, `final`, `default_domain_resolver`, `default_domain_resolver_unset`) are migrated on load into `state.vars` and are not written back by new saves. The `independent_cache` key (if present in legacy files) is silently dropped — see the deprecation note above.
 
 ---
 
@@ -752,10 +755,10 @@ In the example template, DNS servers are configured as follows:
 - Useful if your network or VPN doesn't support IPv6
 - Reduces DNS resolution overhead
 
-**`independent_cache: false`:**
-- DNS cache is shared across all DNS servers
-- When you switch VPN servers, cached DNS results are still valid
-- Set to `true` if you want separate cache per DNS server (usually not needed)
+> `independent_cache` was removed — sing-box 1.14.0 deprecates the option
+> ([migration guide](https://sing-box.sagernet.org/migration/#migrate-independent-dns-cache)).
+> DNS cache now always keys by transport name automatically; no user
+> configuration is needed.
 
 ---
 

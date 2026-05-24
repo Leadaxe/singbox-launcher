@@ -67,6 +67,15 @@ type TemplateData struct {
 	// SelectableRules — правила маршрутизации для визарда (уже отфильтрованные по платформе).
 	SelectableRules []TemplateSelectableRule
 
+	// Presets — параметризованные preset bundles (SPEC 053). Параллельно SelectableRules.
+	// Каждый Preset имеет id, vars, rule_set/dns_servers, rule/dns_rule. UI Library dialog
+	// показывает обе секции; preset-ref правила хранятся в state.RulesV6 (kind=preset).
+	Presets []Preset
+
+	// PresetWarnings — non-fatal warnings от LoadPresets (validation issues).
+	// Логируются callsite'ом через debuglog.
+	PresetWarnings []PresetWarning
+
 	// DefaultFinal — outbound по умолчанию из config.route.final.
 	DefaultFinal string
 
@@ -169,12 +178,15 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 	// Удаление UTF-8 BOM если присутствует
 	raw = stripUTF8BOM(raw)
 
-	// Десериализация корневой структуры шаблона
+	// Десериализация корневой структуры шаблона.
+	// selectable_rules[] удалено (SPEC 053): rules теперь только через presets[].
+	// Парсер старых шаблонов с selectable_rules — игнорирует поле + warning.
 	var root struct {
 		ParserConfig    json.RawMessage      `json:"parser_config"`
 		Config          json.RawMessage      `json:"config"`
 		DNSOptions      json.RawMessage      `json:"dns_options,omitempty"`
-		SelectableRules []jsonSelectableRule `json:"selectable_rules"`
+		LegacySelRules  json.RawMessage      `json:"selectable_rules,omitempty"` // deprecated
+		Presets         json.RawMessage      `json:"presets,omitempty"`
 		Params          []TemplateParam      `json:"params"`
 		Vars            []TemplateVar        `json:"vars"`
 	}
@@ -228,10 +240,24 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 	debuglog.DebugLog("TemplateLoader: defaultFinal: %s", defaultFinal)
 	debuglog.DebugLog("TemplateLoader: defaultDomainResolver: %s", defaultDomainResolver)
 
-	// 5. Фильтрация selectable_rules по платформе и преобразование
+	// 5. Legacy selectable_rules — deprecated since SPEC 053, ignored with warning.
 	platform := runtime.GOOS
-	selectableRules := filterAndConvertRules(root.SelectableRules, platform)
-	debuglog.InfoLog("TemplateLoader: загружено %d selectable rules для платформы %s", len(selectableRules), platform)
+	if len(root.LegacySelRules) > 0 && string(root.LegacySelRules) != "null" {
+		debuglog.WarnLog("TemplateLoader: template contains deprecated selectable_rules[] — ignored. Use presets[] instead.")
+	}
+
+	// 6. Parse presets[] section + filter by current platform.
+	globalVarNames := make(map[string]bool, len(root.Vars))
+	for _, v := range root.Vars {
+		globalVarNames[v.Name] = true
+	}
+	allPresets, presetWarns := LoadPresets(root.Presets, globalVarNames)
+	for _, w := range presetWarns {
+		debuglog.WarnLog("TemplateLoader: preset validation %s", w.String())
+	}
+	presets := filterPresetsByPlatform(allPresets, platform)
+	debuglog.InfoLog("TemplateLoader: %d presets loaded (filtered %d → %d for %s)",
+		len(presets), len(allPresets), len(presets), platform)
 
 	return &TemplateData{
 		ParserConfig:            parserConfigStr,
@@ -241,7 +267,8 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 		Params:                  root.Params,
 		Vars:                    root.Vars,
 		RawTemplate:             rawFull,
-		SelectableRules:         selectableRules,
+		Presets:                 presets,
+		PresetWarnings:          presetWarns,
 		DefaultFinal:            defaultFinal,
 		DefaultDomainResolver:   defaultDomainResolver,
 		DNSOptionsRaw:           root.DNSOptions,
@@ -406,6 +433,18 @@ func matchesPlatform(platforms []string, goos string) bool {
 		}
 	}
 	return false
+}
+
+// filterPresetsByPlatform — отбирает presets совместимые с runtime ОС.
+// Пустой Platforms list = доступно везде.
+func filterPresetsByPlatform(presets []Preset, goos string) []Preset {
+	out := make([]Preset, 0, len(presets))
+	for _, p := range presets {
+		if matchesPlatform(p.Platforms, goos) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // filterAndConvertRules фильтрует правила по платформе и конвертирует в TemplateSelectableRule.

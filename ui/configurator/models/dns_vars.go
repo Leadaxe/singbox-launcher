@@ -4,7 +4,8 @@ package models
 // См. SPECS/032-F-C-WIZARD_SETTINGS_TAB/SUB_SPEC_DNS_TAB_VARS.md
 const (
 	VarDNSStrategy              = "dns_strategy"
-	VarDNSIndependentCache      = "dns_independent_cache"
+	// VarDNSIndependentCache — УДАЛЕНО: independent_cache deprecated в
+	// sing-box 1.14.0. Поле снято из template/state/UI.
 	VarDNSDefaultDomainResolver = "dns_default_domain_resolver"
 	VarDNSFinal                 = "dns_final"
 )

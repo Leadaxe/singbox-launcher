@@ -150,8 +150,9 @@
     ],
     // All DNS queries are routed through the direct DNS resolver
     "final": "google_doh",
-    "strategy": "ipv4_only", // Prefer IPv4 addresses when resolving domains.
-    "independent_cache": false // More stable VPN switching speed via API. Enable independent DNS cache for better performance.
+    "strategy": "ipv4_only" // Prefer IPv4 addresses when resolving domains.
+    // Note: "independent_cache" was removed — deprecated in sing-box 1.14.0
+    // (cache now always keys by transport name automatically).
   },
 
   // --- INCOMING CONNECTIONS (INBOUNDS) ---

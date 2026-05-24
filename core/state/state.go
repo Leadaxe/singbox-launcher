@@ -19,6 +19,7 @@ import (
 
 	"singbox-launcher/core/config/configtypes"
 	v5 "singbox-launcher/core/state/v5"
+	v6 "singbox-launcher/core/state/v6"
 )
 
 // SchemaVersion — версия on-disk-формата state.json, которую пишет Save.
@@ -129,6 +130,25 @@ type State struct {
 
 	// DNSOptions — снимок вкладки DNS визарда.
 	DNSOptions *DNSOptions
+
+	// === SPEC 053: v6 preset bundles (opt-in) ===
+
+	// RulesV6 — новая модель правил (kind discriminator: preset/inline/srs).
+	// SPEC 053: thin-ref preset bundles. Заполняется при load v6 файлов;
+	// при load v5 — derived из CustomRules через MigrateV5ToV6.
+	//
+	// Если ни одно правило не имеет kind=preset, Save выбирает v5-формат
+	// для backward-compat. При появлении хотя бы одного preset-ref Save
+	// автоматически переключается на v6-формат + создаёт state.json.v5.bak.
+	RulesV6 []v6.Rule
+
+	// DNS — новая DNS-секция (SPEC 056-R-N: flat kind discriminator
+	// template/preset/user для servers и preset/user для rules).
+	// Параллельно DNSOptions (legacy v5) для одностороннего sync на Save.
+	// JSON-ключ на диске: "dns_options" (см. state.marshalDiskV6).
+	// Историческое имя поля было DNSV6 (когда v5/v6 co-existed); после
+	// SPEC 056-R-N оба формата это v6 internally, суффикс выкинут.
+	DNS v6.DNSOptions
 }
 
 // SelectableRuleState — выбор пользователя для правила, определённого в шаблоне.

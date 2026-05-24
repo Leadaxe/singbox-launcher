@@ -2,17 +2,24 @@ package tabs
 
 import (
 	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
-	v5 "singbox-launcher/core/state/v5"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -33,6 +40,10 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 	rootWithGutter := container.NewBorder(nil, nil, nil, gutter, scroll)
 
 	refresh := func() {
+		t0 := time.Now()
+		defer func() {
+			debuglog.DebugLog("buildOverviewTab: refresh took %v", time.Since(t0))
+		}()
 		body.Objects = body.Objects[:0]
 		m := presenter.Model()
 		if m == nil || sourceIndex >= len(m.Sources) {
@@ -161,32 +172,76 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 		execDir := m.ExecDir
 		if execDir != "" {
 			subsDir := platform.GetSubscriptionsDir(execDir)
-			if raw, rerr := v5.ReadRawBody(subsDir, src.ID); rerr == nil && len(raw) > 0 {
+			rawPath := filepath.Join(subsDir, src.ID+".raw")
+			// Read strategy зависит от размера файла:
+			//   - small (<= rawBodyFullReadLimit, типичный base64 / text-line) —
+			//     читаем целиком, DecodeSubscriptionContent декодирует base64
+			//     или возвращает body как есть (для JSON / plain URI).
+			//   - large (Xray JSON ~1 MB) — partial read, skip decode (тяжёлый
+			//     json.Valid+Unmarshal на МБ; для preview достаточно prefix).
+			// В обоих случаях finally truncate to rawBodyMaxDisplay.
+			tRead := time.Now()
+			display, totalSize, ok := readRawBodySmart(rawPath, rawBodyMaxDisplay+1)
+			debuglog.DebugLog("buildOverviewTab: readRawBodySmart took %v (size=%d, total=%d, ok=%v)", time.Since(tRead), len(display), totalSize, ok)
+			if ok && len(display) > 0 {
 				body.Add(widget.NewSeparator())
-				body.Add(sectionHeader(locale.T("wizard.source.raw_section_body")))
 
-				// Раскодируем base64-обёрнутые subscription'ы (Liberty etc.) —
-				// без этого MultiLineEntry с TextWrapOff уносит body за экран
-				// одной длинной строкой. На plain-text bodies (BL/WL) с
-				// #-comments DecodeSubscriptionContent — identity, без изменений.
-				display := raw
-				if decoded, derr := subscription.DecodeSubscriptionContent(raw); derr == nil && len(decoded) > 0 {
-					display = decoded
+				truncatedNote := ""
+				if totalSize > rawBodyMaxDisplay {
+					if len(display) > rawBodyMaxDisplay {
+						display = display[:rawBodyMaxDisplay]
+					}
+					truncatedNote = locale.Tf("wizard.source.raw_body_truncated", rawBodyMaxDisplay, totalSize)
 				}
 
-				if len(display) > rawBodyMaxDisplay {
-					display = display[:rawBodyMaxDisplay]
-					truncated := widget.NewLabel(locale.Tf("wizard.source.raw_body_truncated", rawBodyMaxDisplay, len(raw)))
-					truncated.Importance = widget.LowImportance
-					body.Add(truncated)
+				// Header: title + icon-кнопки сразу справа от него (inline HBox).
+				// Кнопки показываем всегда — путь полезен и когда body не truncated
+				// (юзер может захотеть открыть в внешнем editor'е).
+				// ttwidget.NewButtonWithIcon — поддерживает SetToolTip (обычный
+				// widget.Button его не поддерживает, поэтому setTooltip был no-op).
+				openBtn := ttwidget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
+					openInFileManager(subsDir)
+				})
+				openBtn.Importance = widget.LowImportance
+				openBtn.SetToolTip(locale.T("wizard.source.raw_open_folder") + "\n" + subsDir)
+				copyBtn := ttwidget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+					if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
+						app.Clipboard().SetContent(rawPath)
+					}
+				})
+				copyBtn.Importance = widget.LowImportance
+				copyBtn.SetToolTip(locale.T("wizard.source.raw_copy_path") + "\n" + rawPath)
+				headerRow := container.NewHBox(
+					sectionHeader(locale.T("wizard.source.raw_section_body")),
+					openBtn, copyBtn,
+				)
+				body.Add(headerRow)
+
+				if truncatedNote != "" {
+					tr := widget.NewLabel(truncatedNote)
+					tr.Importance = widget.LowImportance
+					body.Add(tr)
 				}
 
 				// MultiLineEntry без Disable() — на macOS Fyne disabled-text
 				// рендерится цветом фона (невидимо). Оставляем editable
 				// на ввод, но без OnChanged — мутации игнорятся.
+				//
+				// TextWrapBreak (не Off): compact JSON подписки (типа Xray)
+				// идут одной длинной строкой без переводов, без wrap'а уходят
+				// далеко вправо за viewport — юзер видит чёрное пустое поле.
+				// Break wrap'ает по любому символу (JSON без пробелов
+				// нормально не break'ается по слову).
+				// Pre-wrap: компактный JSON / base64 одной строкой Fyne wrap'ает
+				// посимвольно (TextWrapBreak без виртуализации — 9+ сек на 4 KB).
+				// Вставляем \n каждые wrapEvery символов вручную и снимаем
+				// Fyne-wrap (TextWrapOff) — мгновенно.
+				displayStr := wrapLongLines(string(display), 100)
+				tEntry := time.Now()
 				bodyEntry := widget.NewMultiLineEntry()
 				bodyEntry.Wrapping = fyne.TextWrapOff
-				bodyEntry.SetText(string(display))
+				bodyEntry.SetText(displayStr)
+				debuglog.DebugLog("buildOverviewTab: bodyEntry.SetText(%d bytes, pre-wrapped %d lines) took %v", len(displayStr), strings.Count(displayStr, "\n")+1, time.Since(tEntry))
 				bodyEntry.OnChanged = func(s string) {
 					if s != string(display) {
 						bodyEntry.SetText(string(display))
@@ -204,7 +259,11 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 		body.Refresh()
 	}
 
-	refresh()
+	// Lazy: НЕ вызываем refresh() здесь. Overview по дефолту неактивный таб
+	// (Settings — первый в NewAppTabs), а refresh() тянет ReadRawBody +
+	// DecodeSubscriptionContent для подписки с 1 MB Xray JSON body — это
+	// ~10 сек на открытии окна. Refresh вызывается из tabs.OnSelected когда
+	// юзер реально кликает Overview. До этого таб показывает пустой VBox.
 	return rootWithGutter, refresh
 }
 
@@ -225,6 +284,115 @@ func kvRow(key, value string) fyne.CanvasObject {
 	valueLabel := widget.NewLabel(value)
 	valueLabel.Wrapping = fyne.TextWrapBreak
 	return container.NewBorder(nil, nil, keyLabel, nil, valueLabel)
+}
+
+// rawBodyFullReadLimit — лимит «маленького» файла. Файлы <= лимита читаются
+// целиком + декодируются нормально (base64/plain text). Файлы больше — partial
+// read только prefix (для Xray JSON 1 MB кейса — без декода).
+//
+// 256 KB покрывает типичные base64-encoded подписки (50-100 нод × ~300 байт ×
+// 4/3 base64 overhead = ~20 KB). Xray JSON редко меньше — обычно от 500 KB.
+const rawBodyFullReadLimit = 256 * 1024
+
+// readRawBodySmart выбирает стратегию по размеру файла:
+//   - file <= rawBodyFullReadLimit → read whole + DecodeSubscriptionContent
+//     (для base64 / plain text);
+//   - file >  rawBodyFullReadLimit → read first `displayPrefixBytes` без
+//     декода (для Xray JSON / огромных bodies).
+//
+// Возвращает (display-ready bytes, totalFileSize, ok).
+func readRawBodySmart(path string, displayPrefixBytes int) ([]byte, int, bool) {
+	stat, err := os.Stat(path)
+	if err != nil {
+		return nil, 0, false
+	}
+	total := int(stat.Size())
+	if total == 0 {
+		return nil, 0, false
+	}
+	if total <= rawBodyFullReadLimit {
+		// Small body: read all + decode normally.
+		full, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return nil, total, false
+		}
+		// Try decode (base64 / json-passthrough / plain text). Best-effort:
+		// если decode упал — отдаём raw.
+		if decoded, derr := subscription.DecodeSubscriptionContent(full); derr == nil && len(decoded) > 0 {
+			return decoded, total, true
+		}
+		return full, total, true
+	}
+	// Large body: read only prefix, no decode (предполагаем JSON / уже-decoded).
+	f, ferr := os.Open(path)
+	if ferr != nil {
+		return nil, total, false
+	}
+	defer f.Close()
+	readN := displayPrefixBytes
+	if readN > total {
+		readN = total
+	}
+	buf := make([]byte, readN)
+	n, rerr := io.ReadFull(f, buf)
+	if rerr != nil && rerr != io.ErrUnexpectedEOF && rerr != io.EOF {
+		return nil, total, false
+	}
+	return buf[:n], total, true
+}
+
+// wrapLongLines вставляет '\n' каждые `every` символов в строки, длиннее
+// этого порога. Строки с уже-имеющимися переводами оставляет как есть.
+//
+// Цель: убрать стоимость Fyne text-wrap (TextWrapBreak без виртуализации) —
+// сами заранее разбиваем длинные строки на короткие. SetText на pre-wrapped
+// тексте с TextWrapOff летает.
+//
+// Используется для компактных JSON / base64 raw bodies подписок.
+func wrapLongLines(s string, every int) string {
+	if every <= 0 || len(s) < every {
+		return s
+	}
+	// Если уже есть переводы строк и средняя строка короче порога — не трогаем.
+	if nl := strings.Count(s, "\n"); nl > 0 && len(s)/(nl+1) < every {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s) + len(s)/every + 16)
+	for _, line := range strings.SplitAfter(s, "\n") {
+		if len(line) <= every {
+			b.WriteString(line)
+			continue
+		}
+		// Разбиваем длинную строку (без переводов) на куски.
+		for i := 0; i < len(line); i += every {
+			end := i + every
+			if end > len(line) {
+				end = len(line)
+			}
+			b.WriteString(line[i:end])
+			// Не дублируем \n если он уже на конце последнего куска.
+			if end < len(line) || (end == len(line) && !strings.HasSuffix(line, "\n")) {
+				b.WriteByte('\n')
+			}
+		}
+	}
+	return b.String()
+}
+
+// openInFileManager открывает path в системном file-manager'е (Finder/Explorer/xdg-open).
+// Best-effort: ошибки игнорируются (logged debuglog'ом нет смысла).
+func openInFileManager(path string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", path)
+	case "windows":
+		cmd = exec.Command("explorer", path)
+	default: // linux, *bsd
+		cmd = exec.Command("xdg-open", path)
+	}
+	_ = cmd.Start()
 }
 
 func boolStr(b bool) string {

@@ -50,6 +50,7 @@ import (
 
 	"fyne.io/fyne/v2/dialog"
 
+	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/wizardsync"
@@ -204,13 +205,6 @@ func (p *WizardPresenter) refreshDNSSelectsFromModel() {
 		}
 		p.guiState.DNSStrategySelect.Refresh()
 	}
-	if p.guiState.DNSIndependentCacheCheck != nil {
-		v := false
-		if p.model.DNSIndependentCache != nil {
-			v = *p.model.DNSIndependentCache
-		}
-		p.guiState.DNSIndependentCacheCheck.SetChecked(v)
-	}
 	wizardbusiness.SyncDNSModelToSettingsVars(p.model)
 }
 
@@ -237,6 +231,55 @@ func (p *WizardPresenter) RefreshDNSListAndSelects() {
 		}
 		p.refreshDNSSelectsFromModel()
 	})
+}
+
+// RefreshAfterPresetToggle — единая точка вызова для всех преsentation
+// эффектов от preset enable/disable toggle (Rules tab чекбокс на preset-ref
+// tile, Edit Preset dialog Apply, и т.п.).
+//
+// Делает:
+//  1. DNS UI refresh — bundled DNS-серверы и dns_rule preset'а появляются/
+//     исчезают (renderer фильтрует по pr.Enabled на render-time, SPEC 056-R-N).
+//  2. **Outbounds eager sync** (SPEC 057-R-N) — preset outbound binding живёт
+//     в state.connections.outbounds[]: при disable preset entries с ref
+//     должны быть удалены из state immediately, иначе Outbounds tab показывает
+//     stale (а Save запишет orphan entries). Sync идемпотентен.
+//  3. Outbounds UI refresh — RefreshOutboundsConfiguratorList пересобирает
+//     список в Outbounds tab из обновлённого state.
+//  4. RefreshOutboundOptions — обновляет available outbounds в Rules/Final
+//     селектах (preset add tag'и становятся доступны/недоступны).
+//
+// **Не** трогает hasChanges — caller обычно сам MarkAsChanged'ит.
+func (p *WizardPresenter) RefreshAfterPresetToggle() {
+	if p.model == nil {
+		return
+	}
+	// === 1. DNS UI ===
+	p.RefreshDNSListAndSelects()
+
+	// === 2. Outbounds eager sync ===
+	if p.model.TemplateData != nil {
+		wizardmodels.ReconcileRuleOrder(p.model)
+		rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
+			p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules,
+		)
+		build.SyncOutboundsWithActivePresets(rulesV6, &p.model.GlobalOutbounds, p.model.TemplateData.Presets)
+		if p.model.ParserConfig != nil {
+			build.SyncOutboundsWithActivePresets(rulesV6, &p.model.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets)
+		}
+		p.model.RefreshDerivedParserConfig()
+		p.UpdateParserConfig(p.model.ParserConfigJSON)
+	}
+
+	// === 3. Outbounds tab UI refresh ===
+	p.UpdateUI(func() {
+		if p.guiState != nil && p.guiState.RefreshOutboundsConfiguratorList != nil {
+			p.guiState.RefreshOutboundsConfiguratorList()
+		}
+	})
+
+	// === 4. Available outbounds (Rules/Final dropdowns) ===
+	p.RefreshOutboundOptions()
 }
 
 // dnsSelectReadLooksStale: SyncGUIToModel до отработки fyne.Do — Select ещё без выбора, модель уже с тегом.
@@ -403,18 +446,6 @@ func (p *WizardPresenter) syncGUIToModelDNS(ready bool) bool {
 			// выпадающий список ещё не получил SetSelected
 		} else if p.model.DNSStrategy != sel {
 			p.model.DNSStrategy = sel
-			changed = true
-		}
-	}
-	if gs.DNSIndependentCacheCheck != nil && ready {
-		v := gs.DNSIndependentCacheCheck.Checked
-		cur := false
-		if p.model.DNSIndependentCache != nil {
-			cur = *p.model.DNSIndependentCache
-		}
-		if cur != v {
-			nv := v
-			p.model.DNSIndependentCache = &nv
 			changed = true
 		}
 	}

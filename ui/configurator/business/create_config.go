@@ -27,6 +27,49 @@ import (
 	wizardtemplate "singbox-launcher/core/template"
 )
 
+// parsePreviewTemplateDNSDefaults — то же что core_service.parseTemplateDNSDefaultsFromTD,
+// продублировано здесь чтобы business не импортировал core (избегаем import cycle).
+// Используется BuildPreviewConfig: preview tab визарда должен показывать тот же
+// config, что Save/Rebuild — материализованную template DNS library из dns_options.
+//
+// Возвращает nil если td nil / нет dns_options / парс не удался — caller
+// (MergePresetsIntoDNS) тогда просто не материализует, остальные DNS-сервера
+// (template config.dns.servers + bundled + extras) работают как раньше.
+func parsePreviewTemplateDNSDefaults(td *wizardtemplate.TemplateData) []build.TemplateDNSServer {
+	if td == nil || len(td.DNSOptionsRaw) == 0 {
+		return nil
+	}
+	var dnsOpt struct {
+		Servers []json.RawMessage `json:"servers"`
+	}
+	if err := json.Unmarshal(td.DNSOptionsRaw, &dnsOpt); err != nil {
+		return nil
+	}
+	return build.ParseTemplateDNSDefaults(dnsOpt.Servers)
+}
+
+// extractTemplateDNSTagsLocal — выдаёт set template-defined DNS server tag'ов
+// из TemplateData.DNSOptionsRaw. Дубль логики из presentation/preset_ref_helpers.go,
+// чтобы не тянуть presentation в business package (avoid import cycle).
+func extractTemplateDNSTagsLocal(td *wizardtemplate.TemplateData) map[string]bool {
+	if td == nil || len(td.DNSOptionsRaw) == 0 {
+		return nil
+	}
+	var dnsOpt struct {
+		Servers []map[string]interface{} `json:"servers"`
+	}
+	if err := json.Unmarshal(td.DNSOptionsRaw, &dnsOpt); err != nil {
+		return nil
+	}
+	out := make(map[string]bool, len(dnsOpt.Servers))
+	for _, s := range dnsOpt.Servers {
+		if tag, ok := s["tag"].(string); ok && tag != "" {
+			out[tag] = true
+		}
+	}
+	return out
+}
+
 // MaterializeClashSecretIfNeeded гарантирует SettingsVars непустую map'у и
 // делегирует материализацию clash_secret в `core/build`. Тонкая обёртка для
 // двух callsites — preview build + EffectiveConfigSection.
@@ -74,13 +117,39 @@ func BuildPreviewConfig(model *wizardmodels.WizardModel) (string, error) {
 		},
 		ForPreview: true,
 		DNS: build.DNSConfig{
-			Servers:          model.DNSServers,
-			RulesText:        model.DNSRulesText,
-			Final:            model.DNSFinal,
-			Strategy:         model.DNSStrategy,
-			IndependentCache: model.DNSIndependentCache,
+			Servers:   model.DNSServers,
+			RulesText: model.DNSRulesText,
+			Final:     model.DNSFinal,
+			Strategy:  model.DNSStrategy,
+			// SPEC: IndependentCache removed (sing-box 1.14 deprecation).
 		},
 		Route: routeConfigFromModel(model),
+	}
+
+	// SPEC 053/055: Preview tab must show the SAME config that Save/Apply
+	// would produce — preset-refs (Block Ads, Russian, etc) need to appear
+	// in route.rules. Previously ctx.Preset was zero-value → presets ignored
+	// in preview → user thought config was broken.
+	// Reconcile model.RuleOrder → v6.Rule[] via same Sync helpers that
+	// CreateStateFromModel uses on Save.
+	wizardmodels.ReconcileRuleOrder(model)
+	rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
+		model.RuleOrder, model.PresetRefs, model.CustomRules,
+	)
+	templateDNSTags := extractTemplateDNSTagsLocal(model.TemplateData)
+	dnsV6 := wizardmodels.SyncDNSFullToStateV6(
+		model.DNSServers,
+		model.DNSRulesText,
+		model.DNSTemplateOverrides,
+		templateDNSTags,
+	)
+	ctx.Preset = build.PresetMergeContext{
+		Presets:             model.TemplateData.Presets,
+		RulesV6:             rulesV6,
+		DNS:                 dnsV6,
+		SrsCachedPaths:      build.CollectSrsCachedPaths(rulesV6, model.ExecDir),
+		ExecDir:             model.ExecDir,
+		TemplateDNSDefaults: parsePreviewTemplateDNSDefaults(model.TemplateData),
 	}
 
 	res, err := build.BuildConfig(ctx)
