@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	v5 "singbox-launcher/core/state/v5"
 )
 
 // migrateWarning — non-fatal warning при миграции v5 → v6.
@@ -27,14 +25,14 @@ func (w migrateWarning) String() string {
 	return prefix + w.Message
 }
 
-// migrateV5ToV6 — pure func. Конвертит v5.State в canonical (v6) форму
+// migrateV5ToV6 — pure func. Конвертит diskStateV5 в canonical (v6) форму
 // через приватный diskStateV6 — но возвращает разложенные поля удобные для
 // сборки State.
 //
 // templateDNSDefaults — карта template.dns_defaults.servers[tag] → default_enabled.
 // templatePresetIDsByLabel — карта template.presets[].label → preset.id.
 func migrateV5ToV6(
-	old v5.State,
+	old diskStateV5,
 	templateDNSDefaults map[string]bool,
 	templatePresetIDsByLabel map[string]string,
 ) (diskStateV6, []migrateWarning) {
@@ -67,14 +65,14 @@ func migrateV5ToV6(
 	return newState, warnings
 }
 
-// migrateCustomRule — конвертит один v5.CustomRule в Rule.
+// migrateCustomRule — конвертит один CustomRule в Rule.
 //
 // Эвристика kind:
 //  1. label совпадает с template-preset → kind=preset с пустым varsValues
 //  2. rule_set[0].type == "remote" → kind=srs (URL берётся из rule_set[0].url)
 //  3. иначе → kind=inline (rule как snapshot, без outbound поля)
 func migrateCustomRule(
-	cr v5.CustomRule,
+	cr CustomRule,
 	presetIDsByLabel map[string]string,
 ) (*Rule, []migrateWarning) {
 	var warns []migrateWarning
@@ -147,7 +145,7 @@ func stripOutboundFromRule(rule map[string]interface{}) map[string]interface{} {
 	return out
 }
 
-// migrateDNS — конвертит v5.DNSOptions в canonical DNSOptions (SPEC 056-R-N).
+// migrateDNS — конвертит legacy v5 DNSOptions в canonical DNSOptions (SPEC 056-R-N).
 //
 // servers[] split:
 //   - tag ∈ templateDefaults → DNSServer{Kind:template, Tag, Enabled}
@@ -162,7 +160,7 @@ func stripOutboundFromRule(rule map[string]interface{}) map[string]interface{} {
 // Invariant: template tag НИКОГДА не попадает в kind=user — для template-defined
 // tag'ов используется kind=template override. Эта функция держит invariant
 // через `templateDefaults` check.
-func migrateDNS(old *v5.DNSOptions, templateDefaults map[string]bool) (DNSOptions, []migrateWarning) {
+func migrateDNS(old *LegacyDNSOptionsV5, templateDefaults map[string]bool) (DNSOptions, []migrateWarning) {
 	d := DNSOptions{}
 	if old == nil {
 		return d, nil
@@ -266,7 +264,7 @@ func isV5(raw []byte) bool {
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		return false
 	}
-	return probe.Meta.Version == v5.SchemaVersion
+	return probe.Meta.Version == legacySchemaVersionV5
 }
 
 // isLikelyLegacyLabel — heuristic для определения legacy-label'а.

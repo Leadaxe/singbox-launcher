@@ -1,10 +1,15 @@
-package v5
+// File adapter_source.go — Source → ProxySource (legacy view) helper.
+//
+// Note: основной адаптер ParserConfig ↔ Connections живёт в adapter.go.
+// Эта функция — single-source конверсия (один Source → ProxySource) для
+// callsite'ов которые работают с одиночными Source.
+package state
 
 import (
 	"singbox-launcher/core/config/configtypes"
 )
 
-// ToProxySourceV4 — конвертит v5.Source в legacy configtypes.ProxySource
+// ToProxySourceV4 — конвертит Source в legacy configtypes.ProxySource
 // для совместимости с существующим парсером (core/config/subscription).
 //
 //   - subscription → ProxySource{Source, Skip, Outbounds, Tag*, Disabled, ...}

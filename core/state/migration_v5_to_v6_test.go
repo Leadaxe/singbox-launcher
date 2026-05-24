@@ -4,12 +4,10 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-
-	v5 "singbox-launcher/core/state/v5"
 )
 
 func TestMigrate_BumpsVersionAndSchema(t *testing.T) {
-	old := v5.State{Meta: v5.MetaSection{Version: 5, CreatedAt: "2026-01-01T00:00:00Z"}}
+	old := diskStateV5{Meta: metaSectionV5{Version: 5, CreatedAt: "2026-01-01T00:00:00Z"}}
 	new, _ := migrateV5ToV6(old, nil, nil)
 	if new.Meta.Version != 6 {
 		t.Errorf("Version: got %d want 6", new.Meta.Version)
@@ -26,12 +24,12 @@ func TestMigrate_BumpsVersionAndSchema(t *testing.T) {
 }
 
 func TestMigrate_PreservesConnectionsAndVars(t *testing.T) {
-	old := v5.State{
-		Connections: v5.ConnectionsSection{
-			Sources:  []v5.Source{{ID: "abc", Type: v5.SourceTypeSubscription, URL: "https://x"}},
-			Defaults: v5.Defaults{MaxNodes: 100},
+	old := diskStateV5{
+		Connections: ConnectionsSection{
+			Sources:  []Source{{ID: "abc", Type: SourceTypeSubscription, URL: "https://x"}},
+			Defaults: Defaults{MaxNodes: 100},
 		},
-		Vars: []v5.SettingVar{{Name: "cert_store", Value: "mozilla"}},
+		Vars: []SettingVar{{Name: "cert_store", Value: "mozilla"}},
 	}
 	new, _ := migrateV5ToV6(old, nil, nil)
 	if len(new.Connections.Sources) != 1 || new.Connections.Sources[0].ID != "abc" {
@@ -47,8 +45,8 @@ func TestMigrate_PreservesConnectionsAndVars(t *testing.T) {
 
 // TestMigrate_CustomRule_Inline — простое inline правило → kind=inline.
 func TestMigrate_CustomRule_Inline(t *testing.T) {
-	old := v5.State{
-		CustomRules: []v5.CustomRule{
+	old := diskStateV5{
+		CustomRules: []CustomRule{
 			{
 				Label:            "Firefox через VPN",
 				Enabled:          true,
@@ -100,8 +98,8 @@ func TestMigrate_CustomRule_Inline(t *testing.T) {
 
 // TestMigrate_CustomRule_Srs — правило с remote rule_set → kind=srs.
 func TestMigrate_CustomRule_Srs(t *testing.T) {
-	old := v5.State{
-		CustomRules: []v5.CustomRule{
+	old := diskStateV5{
+		CustomRules: []CustomRule{
 			{
 				Label:            "Custom block list",
 				Enabled:          true,
@@ -133,8 +131,8 @@ func TestMigrate_CustomRule_Srs(t *testing.T) {
 
 // TestMigrate_CustomRule_PresetMatch — label совпадает с template-preset → kind=preset.
 func TestMigrate_CustomRule_PresetMatch(t *testing.T) {
-	old := v5.State{
-		CustomRules: []v5.CustomRule{
+	old := diskStateV5{
+		CustomRules: []CustomRule{
 			{
 				Label:            "Russian domains direct",
 				Enabled:          true,
@@ -164,8 +162,8 @@ func TestMigrate_CustomRule_PresetMatch(t *testing.T) {
 
 // TestMigrate_CustomRule_NoMatchFields — rule только с outbound → skip + warning.
 func TestMigrate_CustomRule_NoMatchFields(t *testing.T) {
-	old := v5.State{
-		CustomRules: []v5.CustomRule{
+	old := diskStateV5{
+		CustomRules: []CustomRule{
 			{
 				Label:            "Bare",
 				Enabled:          true,
@@ -189,8 +187,8 @@ func TestMigrate_DNS_Split(t *testing.T) {
 	// SPEC: IndependentCache УДАЛЕНО — sing-box 1.14 deprecation; legacy v5
 	// поле игнорируется на миграции (его не должно быть в v6 state).
 	indep := true
-	old := v5.State{
-		DNSOptions: &v5.DNSOptions{
+	old := diskStateV5{
+		DNSOptions: &LegacyDNSOptionsV5{
 			Strategy:              "prefer_ipv4",
 			Final:                 "google_doh",
 			DefaultDomainResolver: "google_doh",
@@ -257,7 +255,7 @@ func TestMigrate_DNS_Split(t *testing.T) {
 
 // TestMigrate_NoDNSOptions — отсутствие DNSOptions → пустой DNSOptions без паники.
 func TestMigrate_NoDNSOptions(t *testing.T) {
-	old := v5.State{}
+	old := diskStateV5{}
 	new, _ := migrateV5ToV6(old, nil, nil)
 	if len(new.DNSOptions.Servers) != 0 || len(new.DNSOptions.Rules) != 0 {
 		t.Errorf("DNS should be empty: %+v", new.DNSOptions)
@@ -266,9 +264,9 @@ func TestMigrate_NoDNSOptions(t *testing.T) {
 
 // TestMigrate_RoundTrip_JSON — migrate → marshal → unmarshal → identical.
 func TestMigrate_RoundTrip_JSON(t *testing.T) {
-	old := v5.State{
-		Meta: v5.MetaSection{Version: 5, CreatedAt: "2026-01-01T00:00:00Z"},
-		CustomRules: []v5.CustomRule{
+	old := diskStateV5{
+		Meta: metaSectionV5{Version: 5, CreatedAt: "2026-01-01T00:00:00Z"},
+		CustomRules: []CustomRule{
 			{
 				Label:            "X",
 				Enabled:          true,
@@ -309,9 +307,9 @@ func TestMigrate_IdempotentRules(t *testing.T) {
 	// Идемпотентность тут означает: один и тот же v5 inputs → одинаковая
 	// структура rules (минус ULID'ы которые генерятся). Просто sanity что
 	// функция детерминированна по schema/header.
-	old := v5.State{
-		Meta:        v5.MetaSection{Version: 5, CreatedAt: "2026-01-01T00:00:00Z"},
-		CustomRules: []v5.CustomRule{{Label: "A", Enabled: true, SelectedOutbound: "direct-out", Rule: map[string]interface{}{"ip_is_private": true}}},
+	old := diskStateV5{
+		Meta:        metaSectionV5{Version: 5, CreatedAt: "2026-01-01T00:00:00Z"},
+		CustomRules: []CustomRule{{Label: "A", Enabled: true, SelectedOutbound: "direct-out", Rule: map[string]interface{}{"ip_is_private": true}}},
 	}
 	new1, _ := migrateV5ToV6(old, nil, nil)
 	new2, _ := migrateV5ToV6(old, nil, nil)

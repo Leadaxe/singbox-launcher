@@ -1,4 +1,4 @@
-package v5
+package state
 
 import (
 	"fmt"
@@ -20,17 +20,17 @@ const (
 	rawFileMode os.FileMode = 0o644
 )
 
-// validateID проверяет что id безопасен для использования как имя файла:
+// validateRawID проверяет что id безопасен для использования как имя файла:
 // только Crockford-base32 символы (исключает path traversal, separator'ы).
 //
 // MakeULID генерирует ровно такие id; ручные тесты могут передавать
 // "id-1" — для этого тоже допускаем '-' и нижний регистр.
-func validateID(id string) error {
+func validateRawID(id string) error {
 	if id == "" {
-		return fmt.Errorf("v5.raw_cache: empty source id")
+		return fmt.Errorf("state.raw_cache: empty source id")
 	}
 	if len(id) > 128 {
-		return fmt.Errorf("v5.raw_cache: source id too long (%d chars)", len(id))
+		return fmt.Errorf("state.raw_cache: source id too long (%d chars)", len(id))
 	}
 	for i := 0; i < len(id); i++ {
 		c := id[i]
@@ -41,7 +41,7 @@ func validateID(id string) error {
 			c == '-', c == '_':
 			// allowed
 		default:
-			return fmt.Errorf("v5.raw_cache: source id %q has forbidden char %q", id, c)
+			return fmt.Errorf("state.raw_cache: source id %q has forbidden char %q", id, c)
 		}
 	}
 	return nil
@@ -50,7 +50,7 @@ func validateID(id string) error {
 // rawPath возвращает абсолютный путь bin/subscriptions/<id>.raw
 // (или error если id невалиден).
 func rawPath(subsDir, id string) (string, error) {
-	if err := validateID(id); err != nil {
+	if err := validateRawID(id); err != nil {
 		return "", err
 	}
 	return filepath.Join(subsDir, id+rawSuffix), nil
@@ -72,31 +72,31 @@ func WriteRawBody(subsDir, id string, body []byte) error {
 		return err
 	}
 	if err := os.MkdirAll(subsDir, rawDirMode); err != nil {
-		return fmt.Errorf("v5.raw_cache: mkdir %s: %w", subsDir, err)
+		return fmt.Errorf("state.raw_cache: mkdir %s: %w", subsDir, err)
 	}
 	tmp := target + ".tmp" // <id>.raw.tmp
 
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, rawFileMode)
 	if err != nil {
-		return fmt.Errorf("v5.raw_cache: open %s: %w", tmp, err)
+		return fmt.Errorf("state.raw_cache: open %s: %w", tmp, err)
 	}
 	if _, err := f.Write(body); err != nil {
 		_ = f.Close()
 		_ = os.Remove(tmp)
-		return fmt.Errorf("v5.raw_cache: write %s: %w", tmp, err)
+		return fmt.Errorf("state.raw_cache: write %s: %w", tmp, err)
 	}
 	if err := f.Sync(); err != nil {
 		_ = f.Close()
 		_ = os.Remove(tmp)
-		return fmt.Errorf("v5.raw_cache: fsync %s: %w", tmp, err)
+		return fmt.Errorf("state.raw_cache: fsync %s: %w", tmp, err)
 	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(tmp)
-		return fmt.Errorf("v5.raw_cache: close %s: %w", tmp, err)
+		return fmt.Errorf("state.raw_cache: close %s: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, target); err != nil {
 		_ = os.Remove(tmp)
-		return fmt.Errorf("v5.raw_cache: rename %s → %s: %w", tmp, target, err)
+		return fmt.Errorf("state.raw_cache: rename %s → %s: %w", tmp, target, err)
 	}
 	return nil
 }
@@ -113,13 +113,13 @@ func ReadRawBody(subsDir, id string) ([]byte, error) {
 		if os.IsNotExist(err) {
 			return nil, ErrRawNotFound
 		}
-		return nil, fmt.Errorf("v5.raw_cache: read %s: %w", target, err)
+		return nil, fmt.Errorf("state.raw_cache: read %s: %w", target, err)
 	}
 	return body, nil
 }
 
 // ErrRawNotFound — raw body для данного source id не существует на диске.
-var ErrRawNotFound = fmt.Errorf("v5.raw_cache: raw body not found")
+var ErrRawNotFound = fmt.Errorf("state.raw_cache: raw body not found")
 
 // DeleteRawBody удаляет bin/subscriptions/<id>.raw, если он есть.
 // Отсутствие файла — не ошибка.
@@ -129,7 +129,7 @@ func DeleteRawBody(subsDir, id string) error {
 		return err
 	}
 	if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("v5.raw_cache: remove %s: %w", target, err)
+		return fmt.Errorf("state.raw_cache: remove %s: %w", target, err)
 	}
 	return nil
 }
@@ -142,7 +142,7 @@ func ListRawBodyIDs(subsDir string) ([]string, error) {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("v5.raw_cache: readdir %s: %w", subsDir, err)
+		return nil, fmt.Errorf("state.raw_cache: readdir %s: %w", subsDir, err)
 	}
 	out := make([]string, 0, len(entries))
 	for _, e := range entries {
@@ -160,7 +160,7 @@ func ListRawBodyIDs(subsDir string) ([]string, error) {
 		id := strings.TrimSuffix(name, rawSuffix)
 		// Defensive: пропускаем файлы с невалидными именами
 		// (artefacts чужих процессов / corrupt FS).
-		if err := validateID(id); err != nil {
+		if err := validateRawID(id); err != nil {
 			continue
 		}
 		out = append(out, id)
@@ -184,7 +184,7 @@ func DeleteOrphans(subsDir string, knownIDs []string) ([]string, error) {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("v5.raw_cache: readdir %s: %w", subsDir, err)
+		return nil, fmt.Errorf("state.raw_cache: readdir %s: %w", subsDir, err)
 	}
 
 	deleted := make([]string, 0)

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"singbox-launcher/core/config/configtypes"
-	v5 "singbox-launcher/core/state/v5"
 )
 
 // ErrNotFound — state-файл не существует. Вызывающий обычно интерпретирует
@@ -99,11 +98,11 @@ func Parse(data []byte) (*State, error) {
 // через новый dialog).
 func parseV6(data []byte) (*State, error) {
 	var raw struct {
-		Meta        MetaSection           `json:"meta"`
-		Connections v5.ConnectionsSection `json:"connections"`
-		Rules       []Rule                `json:"rules"`
-		Vars        []SettingVar          `json:"vars"`
-		DNSOptions  DNSOptions            `json:"dns_options"`
+		Meta        MetaSection        `json:"meta"`
+		Connections ConnectionsSection `json:"connections"`
+		Rules       []Rule             `json:"rules"`
+		Vars        []SettingVar       `json:"vars"`
+		DNSOptions  DNSOptions         `json:"dns_options"`
 		// Legacy dev-shape (SPEC 053). Читаем для одноразовой in-place миграции.
 		LegacyDNS json.RawMessage `json:"dns"`
 	}
@@ -301,12 +300,12 @@ func cloneMap(in map[string]interface{}) map[string]interface{} {
 // parseV5 — прямой read v5-формата.
 func parseV5(data []byte) (*State, error) {
 	var raw struct {
-		Meta         v5.MetaSection        `json:"meta"`
-		Connections  v5.ConnectionsSection `json:"connections"`
-		ConfigParams []ConfigParam         `json:"config_params"`
-		CustomRules  []CustomRule          `json:"custom_rules"`
-		Vars         []SettingVar          `json:"vars"`
-		DNSOptions   *legacyDNSOptionsV5   `json:"dns_options"`
+		Meta         metaSectionV5       `json:"meta"`
+		Connections  ConnectionsSection  `json:"connections"`
+		ConfigParams []ConfigParam       `json:"config_params"`
+		CustomRules  []CustomRule        `json:"custom_rules"`
+		Vars         []SettingVar        `json:"vars"`
+		DNSOptions   *LegacyDNSOptionsV5 `json:"dns_options"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("state: parse v5 json: %w", err)
@@ -364,7 +363,7 @@ func parseLegacyAndMigrate(data []byte) (*State, error) {
 	}
 
 	// 3. Собираем v4-snapshot для v5-миграции.
-	v4 := &v5.V4File{
+	v4 := &v4File{
 		Version:      raw.Version,
 		ID:           raw.ID,
 		Comment:      raw.Comment,
@@ -374,17 +373,17 @@ func parseLegacyAndMigrate(data []byte) (*State, error) {
 		Vars:         raw.Vars,
 		CustomRules:  custom,
 		DNSOptions:   raw.DNSOptions,
-		ParserConfig: v5.V4ParserConfig{
+		ParserConfig: v4ParserConfig{
 			Version:   pc.ParserConfig.Version,
 			Proxies:   pc.ParserConfig.Proxies,
 			Outbounds: pc.ParserConfig.Outbounds,
-			Parser: v5.V4Parser{
+			Parser: v4Parser{
 				Reload:      pc.ParserConfig.Parser.Reload,
 				LastUpdated: pc.ParserConfig.Parser.LastUpdated,
 			},
 		},
 	}
-	migrated := v5.MigrateV4ToV5(v4, nil) // production: ULID
+	migrated := migrateV4ToV5(v4, nil) // production: ULID
 
 	s := &State{
 		Version:              SchemaVersion,
@@ -421,7 +420,7 @@ type rawLegacyFile struct {
 	SelectableRuleStates json.RawMessage     `json:"selectable_rule_states"`
 	CustomRules          json.RawMessage     `json:"custom_rules"`
 	RulesLibraryMerged   bool                `json:"rules_library_merged"`
-	DNSOptions           *legacyDNSOptionsV5 `json:"dns_options"`
+	DNSOptions           *LegacyDNSOptionsV5 `json:"dns_options"`
 	Vars                 []SettingVar        `json:"vars"`
 }
 

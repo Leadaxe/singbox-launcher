@@ -11,7 +11,6 @@ package v6
 import (
 	"encoding/json"
 
-	v5 "singbox-launcher/core/state/v5"
 	state "singbox-launcher/core/state"
 )
 
@@ -44,11 +43,11 @@ type (
 // for resolver/build pipeline pass-through). In Phase 4 callsites switch
 // to `state.State` directly (which has a superset of fields).
 type State struct {
-	Meta        MetaSection           `json:"meta"`
-	Connections v5.ConnectionsSection `json:"connections"`
-	Rules       []Rule                `json:"rules"`
-	Vars        []v5.SettingVar       `json:"vars,omitempty"`
-	DNSOptions  DNSOptions            `json:"dns_options"`
+	Meta        MetaSection              `json:"meta"`
+	Connections state.ConnectionsSection `json:"connections"`
+	Rules       []Rule                   `json:"rules"`
+	Vars        []state.SettingVar       `json:"vars,omitempty"`
+	DNSOptions  DNSOptions               `json:"dns_options"`
 }
 
 // ── Constants ────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-package v5
+package state
 
 import (
 	"encoding/json"
@@ -23,11 +23,11 @@ func fixedIDGen() IDGenerator {
 // TestMigrate_RealFixture — реальный v4 state.json (5 sub + 1 server +
 // DNS + custom_rules + vars) → v5. Проверяем форму, не байт-в-байт.
 func TestMigrate_RealFixture(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("testdata", "v4_real.json"))
+	data, err := os.ReadFile(filepath.Join("testdata_legacy", "v4_real.json"))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
-	old, err := ParseV4(data)
+	old, err := parseV4File(data)
 	if err != nil {
 		t.Fatalf("parse v4: %v", err)
 	}
@@ -35,11 +35,11 @@ func TestMigrate_RealFixture(t *testing.T) {
 		t.Fatalf("fixture is not v4 (version=%d)", old.Version)
 	}
 
-	state := MigrateV4ToV5(old, fixedIDGen())
+	state := migrateV4ToV5(old, fixedIDGen())
 
 	// 1. Meta — version бамплен на 5, timestamps скопированы.
-	if state.Meta.Version != SchemaVersion {
-		t.Errorf("Meta.Version = %d, want %d", state.Meta.Version, SchemaVersion)
+	if state.Meta.Version != legacySchemaVersionV5 {
+		t.Errorf("Meta.Version = %d, want %d", state.Meta.Version, legacySchemaVersionV5)
 	}
 	if state.Meta.CreatedAt != "2026-04-26T19:36:59Z" {
 		t.Errorf("Meta.CreatedAt = %q, want fixture timestamp", state.Meta.CreatedAt)
@@ -141,7 +141,7 @@ func TestMigrate_RealFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var decoded State
+	var decoded diskStateV5
 	if err := json.Unmarshal(encoded, &decoded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -152,9 +152,9 @@ func TestMigrate_RealFixture(t *testing.T) {
 
 // TestMigrate_SubscriptionOnly — простая subscription без connections.
 func TestMigrate_SubscriptionOnly(t *testing.T) {
-	old := &V4File{
+	old := &v4File{
 		Version: 4,
-		ParserConfig: V4ParserConfig{
+		ParserConfig: v4ParserConfig{
 			Proxies: []configtypes.ProxySource{{
 				Source:    "https://example.com/sub",
 				TagPrefix: "S:",
@@ -162,7 +162,7 @@ func TestMigrate_SubscriptionOnly(t *testing.T) {
 			}},
 		},
 	}
-	state := MigrateV4ToV5(old, fixedIDGen())
+	state := migrateV4ToV5(old, fixedIDGen())
 	if len(state.Connections.Sources) != 1 {
 		t.Fatalf("got %d sources, want 1", len(state.Connections.Sources))
 	}
@@ -177,9 +177,9 @@ func TestMigrate_SubscriptionOnly(t *testing.T) {
 
 // TestMigrate_ServerOnly — connections без source = массив server-источников.
 func TestMigrate_ServerOnly(t *testing.T) {
-	old := &V4File{
+	old := &v4File{
 		Version: 4,
-		ParserConfig: V4ParserConfig{
+		ParserConfig: v4ParserConfig{
 			Proxies: []configtypes.ProxySource{{
 				Connections: []string{
 					"vless://uuid@host:443#node-A",
@@ -190,7 +190,7 @@ func TestMigrate_ServerOnly(t *testing.T) {
 			}},
 		},
 	}
-	state := MigrateV4ToV5(old, fixedIDGen())
+	state := migrateV4ToV5(old, fixedIDGen())
 	if len(state.Connections.Sources) != 2 {
 		t.Fatalf("got %d sources, want 2", len(state.Connections.Sources))
 	}
@@ -211,9 +211,9 @@ func TestMigrate_ServerOnly(t *testing.T) {
 
 // TestMigrate_Mixed — source + connections в одном ProxySource → emit оба.
 func TestMigrate_Mixed(t *testing.T) {
-	old := &V4File{
+	old := &v4File{
 		Version: 4,
-		ParserConfig: V4ParserConfig{
+		ParserConfig: v4ParserConfig{
 			Proxies: []configtypes.ProxySource{{
 				Source:      "https://example.com/sub",
 				Connections: []string{"vless://uuid@host:443#manual"},
@@ -221,7 +221,7 @@ func TestMigrate_Mixed(t *testing.T) {
 			}},
 		},
 	}
-	state := MigrateV4ToV5(old, fixedIDGen())
+	state := migrateV4ToV5(old, fixedIDGen())
 	if len(state.Connections.Sources) != 2 {
 		t.Fatalf("got %d, want 2 (subscription + server)", len(state.Connections.Sources))
 	}
@@ -236,14 +236,14 @@ func TestMigrate_Mixed(t *testing.T) {
 // TestMigrate_Idempotent — миграция одной и той же v4-фикстуры дважды
 // (с одинаковым gen) даёт идентичный output.
 func TestMigrate_Idempotent(t *testing.T) {
-	old := &V4File{
+	old := &v4File{
 		Version: 4,
-		ParserConfig: V4ParserConfig{
+		ParserConfig: v4ParserConfig{
 			Proxies: []configtypes.ProxySource{{Source: "https://example.com/sub"}},
 		},
 	}
-	a := MigrateV4ToV5(old, fixedIDGen())
-	b := MigrateV4ToV5(old, fixedIDGen())
+	a := migrateV4ToV5(old, fixedIDGen())
+	b := migrateV4ToV5(old, fixedIDGen())
 
 	ja, _ := json.Marshal(a)
 	jb, _ := json.Marshal(b)
@@ -254,26 +254,26 @@ func TestMigrate_Idempotent(t *testing.T) {
 
 // TestMigrate_NilInput — nil input → nil output, no panic.
 func TestMigrate_NilInput(t *testing.T) {
-	if got := MigrateV4ToV5(nil, fixedIDGen()); got != nil {
-		t.Errorf("MigrateV4ToV5(nil) = %+v, want nil", got)
+	if got := migrateV4ToV5(nil, fixedIDGen()); got != nil {
+		t.Errorf("migrateV4ToV5(nil) = %+v, want nil", got)
 	}
 }
 
 // TestExtractFragment — corner cases для парсера URL fragment.
 func TestExtractFragment(t *testing.T) {
 	cases := map[string]string{
-		"vless://uuid@host:443#hello":           "hello",
-		"wireguard://x@y:51820#wg-parnas":       "wg-parnas",
-		"vless://uuid@host:443#hello%20world":   "hello world",
-		"vless://uuid@host:443":                 "",
-		"plain":                                 "",
-		"#":                                     "",
-		"":                                      "",
+		"vless://uuid@host:443#hello":         "hello",
+		"wireguard://x@y:51820#wg-parnas":     "wg-parnas",
+		"vless://uuid@host:443#hello%20world": "hello world",
+		"vless://uuid@host:443":               "",
+		"plain":                               "",
+		"#":                                   "",
+		"":                                    "",
 	}
 	for in, want := range cases {
-		got := extractFragment(in)
+		got := extractLegacyFragment(in)
 		if got != want {
-			t.Errorf("extractFragment(%q) = %q, want %q", in, got, want)
+			t.Errorf("extractLegacyFragment(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

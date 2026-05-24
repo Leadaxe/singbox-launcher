@@ -29,10 +29,6 @@
 // См. SPECS/053-F-N-PRESET_BUNDLES/SPEC.md, SPECS/056-R-N-DNS_SCHEMA_REDESIGN/SPEC.md.
 package state
 
-import (
-	v5 "singbox-launcher/core/state/v5"
-)
-
 // SchemaVersionV6 — формат файла state.json, который пишет v6 path.
 // Видимо как SchemaVersionV6 пока v5/v6 namespaces co-exist в Phase 2.
 // В Phase 5 переименовывается в SchemaVersion (после удаления v5 пакета).
@@ -54,11 +50,11 @@ const SchemaName = "presets_v1"
 //   - config_params[] удалено (vars per-preset в body.vars) (SPEC 053)
 //   - dns → dns_options (flat kind discriminator) (SPEC 056-R-N)
 type diskStateV6 struct {
-	Meta        MetaSection           `json:"meta"`
-	Connections v5.ConnectionsSection `json:"connections"`
-	Rules       []Rule                `json:"rules"`
-	Vars        []v5.SettingVar       `json:"vars,omitempty"`
-	DNSOptions  DNSOptions            `json:"dns_options"`
+	Meta        MetaSection        `json:"meta"`
+	Connections ConnectionsSection `json:"connections"`
+	Rules       []Rule             `json:"rules"`
+	Vars        []SettingVar       `json:"vars,omitempty"`
+	DNSOptions  DNSOptions         `json:"dns_options"`
 }
 
 // MetaSection — мета v6 (заменяет v5.MetaSection). Добавлено поле Schema для

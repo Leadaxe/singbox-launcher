@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"singbox-launcher/core/config/configtypes"
-	v5 "singbox-launcher/core/state/v5"
 )
 
 // Save атомарно записывает s в path.
@@ -48,7 +47,7 @@ func (s *State) Save(path string) error {
 			_ = err
 		}
 	} else {
-		s.Version = v5.SchemaVersion
+		s.Version = SchemaVersion
 	}
 
 	// SPEC 058-R-N: backup перед первым перезаписыванием когда outbounds
@@ -120,14 +119,14 @@ func (s *State) Save(path string) error {
 // в v5 не сериализуются.
 func (s *State) marshalDisk() ([]byte, error) {
 	out := struct {
-		Meta         v5.MetaSection        `json:"meta"`
-		Connections  v5.ConnectionsSection `json:"connections"`
-		ConfigParams []ConfigParam         `json:"config_params"`
-		CustomRules  []CustomRule          `json:"custom_rules"`
-		Vars         []SettingVar          `json:"vars,omitempty"`
-		DNSOptions   *legacyDNSOptionsV5   `json:"dns_options"`
+		Meta         metaSectionV5       `json:"meta"`
+		Connections  ConnectionsSection  `json:"connections"`
+		ConfigParams []ConfigParam       `json:"config_params"`
+		CustomRules  []CustomRule        `json:"custom_rules"`
+		Vars         []SettingVar        `json:"vars,omitempty"`
+		DNSOptions   *LegacyDNSOptionsV5 `json:"dns_options"`
 	}{
-		Meta: v5.MetaSection{
+		Meta: metaSectionV5{
 			Version:   SchemaVersion,
 			Comment:   s.Comment,
 			CreatedAt: s.CreatedAt.Format(time.RFC3339),

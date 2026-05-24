@@ -1,4 +1,9 @@
-package v5
+// File legacy_migration.go — v4 → v5 migration (private helper).
+//
+// Используется только Parse при чтении legacy v2/v3/v4 файлов. Результат
+// migrateV4ToV5 — приватный diskStateV5; вызывающий разворачивает его в
+// канонический State.
+package state
 
 import (
 	"fmt"
@@ -13,28 +18,31 @@ import (
 // MakeULID; тесты подменяют детерминированным счётчиком для golden-тестов.
 type IDGenerator func() string
 
-// MigrateV4ToV5 преобразует v4-форму state.json в v5.
+// diskStateV5 — promoted private shape v5 (использовался ранее как v5.State).
+// Поля идентичны top-level layout'у v5 файла. После SPEC 060 collapse доступен
+// только внутри package state как промежуточная форма для migrateV4ToV5.
+type diskStateV5 struct {
+	Meta         metaSectionV5       `json:"meta"`
+	Connections  ConnectionsSection  `json:"connections"`
+	ConfigParams []ConfigParam       `json:"config_params"`
+	CustomRules  []CustomRule        `json:"custom_rules"`
+	Vars         []SettingVar        `json:"vars,omitempty"`
+	DNSOptions   *LegacyDNSOptionsV5 `json:"dns_options"`
+}
+
+// metaSectionV5 — мета v5 (без поля Schema, в отличие от canonical MetaSection v6).
+type metaSectionV5 struct {
+	Version   int    `json:"version"`
+	Comment   string `json:"comment,omitempty"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// migrateV4ToV5 преобразует v4-форму state.json в v5.
 //
 // Pure-функция, детерминирована относительно (input, gen). Если gen=nil,
 // используется MakeULID (недетерминированный — для production-flow).
-//
-// Семантика:
-//
-//   - top-level meta заполняется из old.{Version=5, Comment, CreatedAt, UpdatedAt}
-//   - config_params, custom_rules, vars, dns_options — копируются как есть
-//   - rules_library_merged — выпилено (v5 не использует флаг)
-//   - selectable_rule_states — выпилено
-//   - id (top-level) — выпилен (snapshot-имена живут в имени файла)
-//   - parser_config.parser.last_updated — выпилен (per-source meta теперь)
-//
-//   - parser_config.proxies[i] разворачивается в один или более Source:
-//     • если old.source != "" и connections пустой → один Source(subscription)
-//     • если len(connections) > 0 → один Source(server) на каждый URI
-//     • если оба заданы → emit оба варианта (mixed legacy)
-//
-// MaxNodes (per-source) НЕ копируется из v4 (поля не было); 0 = inherit
-// from Defaults.MaxNodes (DefaultMaxNodes=3000).
-func MigrateV4ToV5(old *V4File, gen IDGenerator) *State {
+func migrateV4ToV5(old *v4File, gen IDGenerator) *diskStateV5 {
 	if old == nil {
 		return nil
 	}
@@ -52,15 +60,15 @@ func MigrateV4ToV5(old *V4File, gen IDGenerator) *State {
 		updatedAt = now
 	}
 
-	out := &State{
-		Meta: MetaSection{
-			Version:   SchemaVersion,
+	out := &diskStateV5{
+		Meta: metaSectionV5{
+			Version:   legacySchemaVersionV5,
 			Comment:   old.Comment,
 			CreatedAt: createdAt,
 			UpdatedAt: updatedAt,
 		},
 		Connections: ConnectionsSection{
-			Sources:   migrateSources(old.ParserConfig.Proxies, gen),
+			Sources:   migrateLegacySources(old.ParserConfig.Proxies, gen),
 			Outbounds: append([]configtypes.OutboundConfig(nil), old.ParserConfig.Outbounds...),
 			Defaults: Defaults{
 				Reload:   old.ParserConfig.Parser.Reload,
@@ -88,14 +96,14 @@ func MigrateV4ToV5(old *V4File, gen IDGenerator) *State {
 	return out
 }
 
-// migrateSources разворачивает legacy ProxySource[] в новые Source[].
+// migrateLegacySources разворачивает legacy ProxySource[] в новые Source[].
 // Один input может породить несколько output'ов (mixed source+connections).
-func migrateSources(proxies []configtypes.ProxySource, gen IDGenerator) []Source {
+func migrateLegacySources(proxies []configtypes.ProxySource, gen IDGenerator) []Source {
 	out := make([]Source, 0, len(proxies))
 	for _, ps := range proxies {
 		// 1. type=subscription (если задан source URL)
 		if ps.Source != "" {
-			tag := buildTagSpec(ps.TagPrefix, ps.TagPostfix, ps.TagMask)
+			tag := buildLegacyTagSpec(ps.TagPrefix, ps.TagPostfix, ps.TagMask)
 			s := Source{
 				ID:                      gen(),
 				Type:                    SourceTypeSubscription,
@@ -112,7 +120,7 @@ func migrateSources(proxies []configtypes.ProxySource, gen IDGenerator) []Source
 
 		// 2. type=server (один Source per URI в connections[])
 		for j, uri := range ps.Connections {
-			label := serverLabel(uri, j+1, ps.TagPrefix, ps.TagPostfix)
+			label := legacyServerLabel(uri, j+1, ps.TagPrefix, ps.TagPostfix)
 			s := Source{
 				ID:                gen(),
 				Type:              SourceTypeServer,
@@ -127,8 +135,8 @@ func migrateSources(proxies []configtypes.ProxySource, gen IDGenerator) []Source
 	return out
 }
 
-// buildTagSpec возвращает *TagSpec (или nil если все три поля пустые).
-func buildTagSpec(prefix, postfix, mask string) *TagSpec {
+// buildLegacyTagSpec возвращает *TagSpec (или nil если все три поля пустые).
+func buildLegacyTagSpec(prefix, postfix, mask string) *TagSpec {
 	if prefix == "" && postfix == "" && mask == "" {
 		return nil
 	}
@@ -139,19 +147,15 @@ func buildTagSpec(prefix, postfix, mask string) *TagSpec {
 	}
 }
 
-// serverLabel формирует label для Source(server) из:
+// legacyServerLabel формирует label для Source(server) из:
 //   - URI fragment (после #) — это «человекочитаемое имя» от провайдера;
 //   - tag_prefix/tag_postfix — из v4 ProxySource (применялись на parsed
 //     node tag; чтобы сохранить визуальную идентичность config.json
 //     после миграции, переносим их в label).
 //
 // Если fragment пуст — fallback "server-N" (1-based).
-//
-// Variables substitution ({$tag}, {$server} ...) НЕ выполняется при
-// миграции — только plain concat. Кейс с переменными в tag_prefix
-// для connections-source встречается крайне редко.
-func serverLabel(uri string, oneBasedIndex int, tagPrefix, tagPostfix string) string {
-	base := extractFragment(uri)
+func legacyServerLabel(uri string, oneBasedIndex int, tagPrefix, tagPostfix string) string {
+	base := extractLegacyFragment(uri)
 	if base == "" {
 		base = fmt.Sprintf("server-%d", oneBasedIndex)
 	}
@@ -164,9 +168,9 @@ func serverLabel(uri string, oneBasedIndex int, tagPrefix, tagPostfix string) st
 	return base
 }
 
-// extractFragment вытаскивает URL fragment (после #) и percent-decoded'ит.
+// extractLegacyFragment вытаскивает URL fragment (после #) и percent-decoded'ит.
 // Не паникует на malformed URI — возвращает "".
-func extractFragment(s string) string {
+func extractLegacyFragment(s string) string {
 	hashAt := strings.Index(s, "#")
 	if hashAt < 0 {
 		return ""

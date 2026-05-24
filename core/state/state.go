@@ -1,12 +1,11 @@
 // Package state — модель декларативного состояния Configurator (бывшего
 // Wizard) без UI-зависимостей.
 //
-// SPEC 052 (CONNECTIONS_REDESIGN): на диск пишется v5-схема (на текущем шаге
-// — v6-схема, SPEC 053+056). Поверхностный in-memory тип State сохраняет
-// legacy-форму (ParserConfig.ParserConfig.Proxies, Vars, CustomRules,
-// DNSOptions) для совместимости с существующими callsite'ами; v5-canonical-
-// секция Connections живёт параллельно и синхронизируется на Save (UI-edits
-// ParserConfig → Sync → write).
+// SPEC 052 (CONNECTIONS_REDESIGN): на диск пишется v5/v6-схема. Поверхностный
+// in-memory тип State сохраняет legacy-форму (ParserConfig.ParserConfig.Proxies,
+// Vars, CustomRules, DNSOptions) для совместимости с существующими
+// callsite'ами; canonical секция Connections живёт параллельно и
+// синхронизируется на Save (UI-edits ParserConfig → Sync → write).
 //
 // SPEC 060: v5/ и v6/ subpackages collapsed в единый core/state/. Wire format
 // не меняется. Историческое имя поля RulesV6 сохранено в Phase 2/3/4 и
@@ -23,10 +22,10 @@ import (
 	"time"
 
 	"singbox-launcher/core/config/configtypes"
-	v5 "singbox-launcher/core/state/v5"
 )
 
-// SchemaVersion — версия on-disk-формата state.json, которую пишет Save.
+// SchemaVersion — версия on-disk-формата state.json, которую пишет Save
+// (для v5 write path). v6 path пишет SchemaVersionV6 (см. disk_v6.go).
 //
 // История:
 //   - v2 — самый ранний формат;
@@ -37,44 +36,7 @@ import (
 //
 // Load принимает v2/v3/v4 (с авто-миграцией в v5); Save всегда пишет в текущей
 // шкале (v5 если только pure inline/srs; v6 если есть preset-ref).
-const SchemaVersion = v5.SchemaVersion
-
-// DefaultMaxNodes — re-export of v5.DefaultMaxNodes (3000) для callsite'ов
-// которые работают через core/state без прямого импорта v5.
-const DefaultMaxNodes = v5.DefaultMaxNodes
-
-// ── Type aliases на v5-типы ──────────────────────────────────────
-// Чтобы callsite'ы могли работать как через state.X, так и через v5.X.
-//
-// SPEC 060 Phase 2/3: v5 ещё в подпакете, мы временно держим alias'ы.
-// На Phase 3 (move v5/ → core/state/) эти алиасы исчезнут — типы станут
-// definitions внутри core/state.
-
-type (
-	ConfigParam        = v5.ConfigParam
-	SettingVar         = v5.SettingVar
-	CustomRule         = v5.CustomRule
-	Source             = v5.Source
-	SourceType         = v5.SourceType
-	SubscriptionMeta   = v5.SubscriptionMeta
-	UserInfo           = v5.UserInfo
-	TagSpec            = v5.TagSpec
-	UpdateSpec         = v5.UpdateSpec
-	Defaults           = v5.Defaults
-	ConnectionsSection = v5.ConnectionsSection
-)
-
-// legacyDNSOptionsV5 — алиас на v5 DNSOptions. Этот тип использовался ранее
-// как `state.DNSOptions` через type-alias. После SPEC 060 collapse canonical
-// `DNSOptions` живёт в `core/state/dns_options.go` (v6 shape). Legacy v5
-// форма доступна только через `State.DNSOptions` field — это всё ещё нужно
-// для backward-compat при чтении v5 файлов и UI который ещё на legacy-shape.
-type legacyDNSOptionsV5 = v5.DNSOptions
-
-const (
-	SourceTypeSubscription = v5.SourceTypeSubscription
-	SourceTypeServer       = v5.SourceTypeServer
-)
+const SchemaVersion = legacySchemaVersionV5
 
 // ── State ────────────────────────────────────────────────────────
 
@@ -119,7 +81,7 @@ type State struct {
 	// Connections — sources + global outbounds + defaults в v5-форме.
 	// Источник истины для нового кода (parser adapter / Rebuild / UI после
 	// Phase 7).
-	Connections v5.ConnectionsSection
+	Connections ConnectionsSection
 
 	// === Common (template / rules) ===
 
@@ -144,9 +106,9 @@ type State struct {
 	RulesLibraryMerged bool
 
 	// DNSOptions — снимок вкладки DNS визарда (v5 legacy shape).
-	// Тип — alias на v5.DNSOptions, оставлен для backward-compat с UI кодом
-	// который ещё работает через legacy view. В v6 path обычно nil.
-	DNSOptions *legacyDNSOptionsV5
+	// Приватный тип LegacyDNSOptionsV5 — оставлен для backward-compat с UI
+	// кодом который ещё работает через legacy view. В v6 path обычно nil.
+	DNSOptions *LegacyDNSOptionsV5
 
 	// === SPEC 053: v6 preset bundles (opt-in) ===
 
@@ -177,18 +139,6 @@ type SelectableRuleState struct {
 	Enabled          bool   `json:"enabled"`
 	SelectedOutbound string `json:"selected_outbound"`
 }
-
-// Известные константы типов правил (зеркало v5.RuleType*).
-const (
-	RuleTypeIPS       = v5.RuleTypeIPS
-	RuleTypeURLs      = v5.RuleTypeURLs
-	RuleTypeProcesses = v5.RuleTypeProcesses
-	RuleTypeSRS       = v5.RuleTypeSRS
-	RuleTypeRaw       = v5.RuleTypeRaw
-)
-
-// IsKnownRuleType — true, если s — одна из актуальных констант типов.
-func IsKnownRuleType(s string) bool { return v5.IsKnownRuleType(s) }
 
 // New создаёт новый State с актуальной SchemaVersion и текущим UTC-временем.
 func New() *State {

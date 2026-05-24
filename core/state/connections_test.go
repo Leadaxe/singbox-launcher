@@ -1,4 +1,4 @@
-package v5
+package state
 
 import (
 	"encoding/json"
@@ -7,12 +7,14 @@ import (
 )
 
 // TestStateJSONRoundTrip — encode/decode цикл сохраняет данные.
+//
+// Тест диск-shape v5 (diskStateV5) — нужен для legacy parse path.
 func TestStateJSONRoundTrip(t *testing.T) {
 	tr := true
 	expire := int64(1717171717)
-	src := State{
-		Meta: MetaSection{
-			Version:   SchemaVersion,
+	src := diskStateV5{
+		Meta: metaSectionV5{
+			Version:   legacySchemaVersionV5,
 			Comment:   "test snapshot",
 			CreatedAt: "2026-04-28T10:00:00Z",
 			UpdatedAt: "2026-04-28T10:00:00Z",
@@ -54,13 +56,13 @@ func TestStateJSONRoundTrip(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	var got State
+	var got diskStateV5
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatalf("unmarshal: %v\n%s", err, b)
 	}
 
-	if got.Meta.Version != SchemaVersion {
-		t.Errorf("Version: got %d, want %d", got.Meta.Version, SchemaVersion)
+	if got.Meta.Version != legacySchemaVersionV5 {
+		t.Errorf("Version: got %d, want %d", got.Meta.Version, legacySchemaVersionV5)
 	}
 	if len(got.Connections.Sources) != 2 {
 		t.Fatalf("Sources len: got %d, want 2", len(got.Connections.Sources))

@@ -15,7 +15,6 @@ import (
 	"time"
 
 	corestate "singbox-launcher/core/state"
-	v5 "singbox-launcher/core/state/v5"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
 )
@@ -36,9 +35,9 @@ type (
 	PersistedCustomRule          = corestate.CustomRule
 	// SPEC 060: PersistedDNSState is v5-legacy DNSOptions shape (with
 	// []json.RawMessage Servers/Rules). After collapse, core/state.DNSOptions
-	// is the v6 canonical shape — so PersistedDNSState points at v5.DNSOptions
-	// directly to preserve callsite expectations.
-	PersistedDNSState = v5.DNSOptions
+	// is the v6 canonical shape — so PersistedDNSState points at the renamed
+	// state.LegacyDNSOptionsV5 to preserve callsite expectations.
+	PersistedDNSState = corestate.LegacyDNSOptionsV5
 
 	// SPEC 052 phase 7: v5-источники в wizard model.
 	Source             = corestate.Source

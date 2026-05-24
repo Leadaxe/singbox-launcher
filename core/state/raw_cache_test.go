@@ -1,4 +1,4 @@
-package v5
+package state
 
 import (
 	"errors"
@@ -158,8 +158,8 @@ func TestDeleteOrphans(t *testing.T) {
 	}
 }
 
-// TestValidateID_Rejects — id с path separator / spaces / unicode → error.
-func TestValidateID_Rejects(t *testing.T) {
+// TestValidateRawID_Rejects — id с path separator / spaces / unicode → error.
+func TestValidateRawID_Rejects(t *testing.T) {
 	cases := []string{
 		"",
 		"foo bar",
@@ -169,14 +169,14 @@ func TestValidateID_Rejects(t *testing.T) {
 		"привет",
 	}
 	for _, id := range cases {
-		if err := validateID(id); err == nil {
-			t.Errorf("validateID(%q) accepted, want reject", id)
+		if err := validateRawID(id); err == nil {
+			t.Errorf("validateRawID(%q) accepted, want reject", id)
 		}
 	}
 }
 
-// TestValidateID_Accepts — стандартные ULID-формы и тестовые "id-N" формы.
-func TestValidateID_Accepts(t *testing.T) {
+// TestValidateRawID_Accepts — стандартные ULID-формы и тестовые "id-N" формы.
+func TestValidateRawID_Accepts(t *testing.T) {
 	cases := []string{
 		"01HQRX9P3DQM2BR4Y8WG3SE0XK",
 		"id-1",
@@ -184,8 +184,8 @@ func TestValidateID_Accepts(t *testing.T) {
 		"foo_bar",
 	}
 	for _, id := range cases {
-		if err := validateID(id); err != nil {
-			t.Errorf("validateID(%q) rejected: %v", id, err)
+		if err := validateRawID(id); err != nil {
+			t.Errorf("validateRawID(%q) rejected: %v", id, err)
 		}
 	}
 }
