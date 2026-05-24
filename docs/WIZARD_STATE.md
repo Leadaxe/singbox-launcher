@@ -97,16 +97,6 @@ Top-level keys, отсутствующие в v6 (vs предыдущих рев
 | `meta` | `SubscriptionMeta` | subscription | Runtime данные (см. ниже), заполняется Update'ом. |
 | `uri` | string | server | vless:// / vmess:// / wireguard:// / etc. — один сервер. |
 
-**`meta` (subscription runtime данные):**
-
-| Поле | Описание |
-|------|----------|
-| `profile_title` | Из `subscription-profile-title` header или inline `#profile_title:` в первой строке body. |
-| `profile_update_interval_hours`, `support_url`, `profile_web_page_url`, `content_disposition_filename` | Headers (response + inline body). |
-| `userinfo` | `{upload_bytes, download_bytes, total_bytes, expire_unix}` — раскрытый `subscription-userinfo` header (V2Board/Xboard). |
-| `url_at_fetch`, `last_fetched_at`, `last_status`, `error_count`, `last_error_msg`, `http_status_code`, `raw_body_bytes` | Fetch history. |
-| `nodes_count_fetched`, `truncated`, `preview_nodes` | Результат парсинга. `truncated` = обрезали по `max_nodes`. |
-
 **JSON example — subscription source:**
 ```jsonc
 {
@@ -156,6 +146,16 @@ Top-level keys, отсутствующие в v6 (vs предыдущих рев
   "uri": "vless://uuid@host:443?type=tcp&security=reality&pbk=...#MyServer"
 }
 ```
+
+**Drilldown — поле `meta` (subscription runtime данные):**
+
+| Поле | Описание |
+|------|----------|
+| `profile_title` | Из `subscription-profile-title` header или inline `#profile_title:` в первой строке body. |
+| `profile_update_interval_hours`, `support_url`, `profile_web_page_url`, `content_disposition_filename` | Headers (response + inline body). |
+| `userinfo` | `{upload_bytes, download_bytes, total_bytes, expire_unix}` — раскрытый `subscription-userinfo` header (V2Board/Xboard). |
+| `url_at_fetch`, `last_fetched_at`, `last_status`, `error_count`, `last_error_msg`, `http_status_code`, `raw_body_bytes` | Fetch history. |
+| `nodes_count_fetched`, `truncated`, `preview_nodes` | Результат парсинга. `truncated` = обрезали по `max_nodes`. |
 
 ### 3.2 `connections.outbounds[i]` — `OutboundConfig`
 
