@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"fyne.io/fyne/v2"
+
 	"singbox-launcher/core"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
@@ -73,10 +75,24 @@ func trafficWindowManager(ac *core.AppController, parentRefresh func()) *uitraff
 		App:      ac.UIService.Application,
 		Profiler: tprof.GetInstance(),
 		ConfigReader: func() (string, bool) {
-			// Phase 6 plugs the wizard model in here.
-			return "", false
+			level, set, err := ReadCurrentLogLevel(ac)
+			if err != nil {
+				return "", false
+			}
+			if !set {
+				// Fall back to wizard_template.json default — for the
+				// purposes of "is verbose on?" treat any non-debug as
+				// no.
+				return "warn", true
+			}
+			return level, true
 		},
-		ConfigWriter:       nil,
+		ConfigWriter: func(level string) error {
+			return ApplyLogLevelAndReload(ac, level)
+		},
+		ConfigConfirmApply: func(level string, parent fyne.Window, done func()) {
+			ConfirmAndApplyLogLevel(ac, parent, level, done)
+		},
 		FindProcessEnabled: func() bool { return true }, // phase 7 reads from template
 		ParentRefresh:      parentRefresh,
 		SingBoxRunning: func() bool {

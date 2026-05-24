@@ -29,14 +29,17 @@ type WindowDeps struct {
 	App      fyne.App
 	Profiler *tprof.TrafficProfiler
 
-	// ConfigReader returns current Clash API config + sing-box log path
-	// so the per-process view's verbose toggle can act without holding a
-	// reference to controller. Pass nil if verbose toggle is disabled
-	// (e.g. before sing-box is wired).
+	// ConfigReader returns the current sing-box log level. Used by the
+	// verbose toggle to render its checkbox state. nil → toggle hidden.
 	ConfigReader func() (logLevel string, ok bool)
 	// ConfigWriter applies a new log level and triggers a sing-box
-	// rebuild + restart. May be nil; if so, the verbose toggle is hidden.
+	// rebuild + restart. Use ConfigConfirmApply in UI code — this raw
+	// writer is for advanced callers that handle their own dialog.
 	ConfigWriter func(level string) error
+	// ConfigConfirmApply shows the "active connections will reset"
+	// confirmation modal and applies on user confirm. Recommended UI
+	// path. May be nil.
+	ConfigConfirmApply func(level string, parent fyne.Window, done func())
 
 	// FindProcessEnabled returns true if the active config has
 	// route.find_process: true. Used to decide whether to show the
@@ -119,11 +122,14 @@ func (m *Manager) build() {
 		container.NewTabItem("Per-process", perProcess.Content),
 	)
 
+	toolbar := buildWindowToolbar(m.deps, win)
+	root := container.NewBorder(toolbar, nil, nil, nil, tabs)
+
 	// Wrap with tooltip layer so ttwidget tooltips work inside the window
 	// (otherwise fyne-tooltip warns "no tool tip layer for current
 	// overlay"). Same pattern as ui/configurator/configurator.go and
 	// source_edit_window.go.
-	win.SetContent(fynetooltip.AddWindowToolTipLayer(tabs, win.Canvas()))
+	win.SetContent(fynetooltip.AddWindowToolTipLayer(root, win.Canvas()))
 	win.Resize(fyne.NewSize(720, 520))
 	win.CenterOnScreen()
 
