@@ -10,7 +10,6 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/state"
-	v5 "singbox-launcher/core/state/v5"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
 )
@@ -69,7 +68,7 @@ func ApplyLogLevelAndReload(ac *core.AppController, level string) error {
 		}
 	}
 	if !found {
-		s.Vars = append(s.Vars, v5.SettingVar{Name: trafficLogLevelVar, Value: level})
+		s.Vars = append(s.Vars, state.SettingVar{Name: trafficLogLevelVar, Value: level})
 	}
 	if err := s.Save(statePath); err != nil {
 		return fmt.Errorf("save state: %w", err)
