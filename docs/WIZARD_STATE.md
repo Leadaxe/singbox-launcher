@@ -35,31 +35,7 @@ release-сборке это `~/Library/Application Support/singbox-launcher/bin/
 
   "connections": {
     "sources":   [ ... ],     // per-source subscription / server entries
-    "outbounds": [
-      // обычный user/template global — без preset binding
-      { "tag": "direct-out", "type": "direct" },
-
-      // template global С update-патчами от 1+ preset'ов
-      // Финальное body на emit = base + apply patches в order.
-      {
-        "tag": "proxy-out",
-        "type": "selector",
-        "options": { ... }, "addOutbounds": [ ... ],
-        "updates": [
-          { "ref": "<preset_id_A>", "patch": { "filters": { ... } } },
-          { "ref": "<preset_id_B>", "patch": { "addOutbounds": [ ... ] } }
-        ]
-      },
-
-      // preset add entry — body от preset'а, ref привязка к нему
-      // На disable preset → entry удаляется автоматически.
-      {
-        "tag": "<preset-defined tag>",
-        "type": "selector",
-        "options": { ... }, "filters": { ... },
-        "ref": "<preset_id>"
-      }
-    ],
+    "outbounds": [ ... ],     // global outbound selectors / urltests
     "defaults":  { "reload": "4h", "max_nodes": 3000 }
   },
 
@@ -98,7 +74,156 @@ Top-level keys, отсутствующие в v6 (vs предыдущих рев
 
 ---
 
-## 3. Per-block storage rules
+## 3. Детальные схемы по секциям
+
+### 3.1 `connections.sources[i]`
+
+Дискриминатор `type`: `subscription` (URL → пачка нод) или `server` (один URI → один outbound).
+
+| Поле | Тип | Когда | Описание |
+|------|-----|-------|----------|
+| `id` | string | всегда | ULID (Crockford-base32, 26 символов). Стабильный — переживает Save/Load. Имя файла `bin/subscriptions/<id>.raw`. |
+| `type` | string | всегда | `subscription` \| `server`. |
+| `enabled` | bool | всегда | Source активен. Disabled → его outbound'ы не попадают в финальный config. |
+| `label` | string | опц. | Display name (для server обязательно для UX; для subscription — fallback из `meta.profile_title`). |
+| `exclude_from_global` | bool | опц. | Исключить из global `proxy-out` / `auto-proxy-out`. |
+| `url` | string | subscription | URL подписки. |
+| `skip` | `[]map[string]string` | subscription | Skip-rules (имена нод которые не парсить). |
+| `tag` | `{prefix, postfix, mask}` | subscription | Преобразование tag'ов нод (BL: префиксы и т.п.). `mask` overrides prefix+postfix. |
+| `outbounds` | `[]OutboundConfig` | subscription | Per-source local outbound'ы (BL:auto / BL:select urltest+selector). |
+| `expose_group_tags_to_global` | bool | subscription | Выставлять локальные group-tag'и в global selector. См. SPEC 026. |
+| `update` | `{interval_hours, auto_refresh}` | subscription | Per-source override default reload interval. |
+| `max_nodes` | int | subscription | Per-source override `defaults.max_nodes`. |
+| `meta` | `SubscriptionMeta` | subscription | Runtime данные (см. ниже), заполняется Update'ом. |
+| `uri` | string | server | vless:// / vmess:// / wireguard:// / etc. — один сервер. |
+
+**`meta` (subscription runtime данные):**
+
+| Поле | Описание |
+|------|----------|
+| `profile_title` | Из `subscription-profile-title` header или inline `#profile_title:` в первой строке body. |
+| `profile_update_interval_hours`, `support_url`, `profile_web_page_url`, `content_disposition_filename` | Headers (response + inline body). |
+| `userinfo` | `{upload_bytes, download_bytes, total_bytes, expire_unix}` — раскрытый `subscription-userinfo` header (V2Board/Xboard). |
+| `url_at_fetch`, `last_fetched_at`, `last_status`, `error_count`, `last_error_msg`, `http_status_code`, `raw_body_bytes` | Fetch history. |
+| `nodes_count_fetched`, `truncated`, `preview_nodes` | Результат парсинга. `truncated` = обрезали по `max_nodes`. |
+
+### 3.2 `connections.outbounds[i]` — `OutboundConfig`
+
+Top-level entry в global outbounds. Может быть трёх типов:
+- **обычный global** (template/user) — без `ref`, без `updates`
+- **preset add** — `ref = "<preset_id>"`, body от preset'а, UI read-only
+- **target preset update** — без `ref`, но с `updates[]` стеком от preset'ов
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `tag` | string | Display tag, уникальный в рамках global outbounds. |
+| `type` | string | sing-box type: `selector` / `urltest` / `direct` / `vless` / etc. |
+| `options` | `map[string]interface{}` | sing-box options (default, interrupt_exist_connections, interval, ...) — emit'ятся flat в финальный outbound JSON. |
+| `filters` | `map[string]interface{}` | UI/build-only: regex-фильтры по tag нод (`{"tag": "!/(RU)/i"}`). Не попадает в sing-box; используется `filterNodesForSelector` в generator. |
+| `addOutbounds` | `[]string` | UI/build-only: дополнительные tag'и которые включить в `selector.outbounds[]` (union с подходящими по filter нодами). |
+| `preferredDefault` | `map[string]interface{}` | UI/build-only: метаданные предпочтительного default для selector'а. |
+| `comment` | string | UI/build-only: comment-prefix эмитится как `// <comment>\n` перед outbound JSON. |
+| `wizard` | `string` \| `{hide: bool}` | UI: hide entry из Wizard (legacy "hide" string или новый object). |
+| `ref` | string (omitempty) | **SPEC 057.** Не пусто → entry от preset add. Значение = `preset.id`. Lifecycle: enable preset → entry создаётся, disable → удаляется. UI: read-only (View вместо Edit, без Del). |
+| `updates` | `[]OutboundUpdate` (omitempty) | **SPEC 057.** Стек patches от preset'ов через `mode=update`. Финальное body = base + apply patches в order. Lifecycle: enable/disable preset → push/drop entry с этим `ref`. |
+
+**`OutboundUpdate{ref, patch}`** — одна запись в `updates[]`:
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `ref` | string | `preset.id` owner'а patch'а. |
+| `patch` | `map[string]interface{}` | Сами поля для merge (filters / options / addOutbounds / preferredDefault / wizard / comment). `tag` и `type` immutable, не в patch'е. |
+
+Merge semantics (см. `core/build/resolve_outbounds.go::applyOutboundUpdate`):
+- `filters` — full replace если в patch
+- `options.*` — per-key replace (не глубокий merge)
+- `addOutbounds` — union с dedup
+- `preferredDefault`, `wizard`, `comment` — replace
+
+**Псевдо-поле `required`:**
+Не существует в struct `OutboundConfig`. Читается live из `template.parser_config.outbounds[].required` каждый UI render (`templateRequiredTags` в `outbounds_configurator`). State.json НЕ сохраняет — иначе нельзя было бы снять флаг в template и увидеть эффект.
+
+### 3.3 `connections.defaults`
+
+| Поле | Тип | Default | Описание |
+|------|-----|---------|----------|
+| `reload` | string | `"4h"` | Default reload interval подписок (per-source override через `Source.Update.IntervalHours`). |
+| `max_nodes` | int | `3000` | Default cap нод на subscription (per-source override через `Source.MaxNodes`). |
+
+### 3.4 `rules[i]` — `v6.Rule` (SPEC 053)
+
+Дискриминатор `kind`: `preset` / `inline` / `srs`. Один упорядоченный массив; порядок = порядок эмита в `config.json::route.rules[]`.
+
+| Поле | Тип | Когда | Описание |
+|------|-----|-------|----------|
+| `kind` | string | всегда | Discriminator. |
+| `ref` | string | `kind=preset` | Ссылка на `template.presets[].id`. |
+| `id` | string | `kind=inline` \| `srs` | ULID. |
+| `enabled` | bool | всегда | Общий toggle. |
+| `body` | raw JSON | всегда | Kind-specific payload, декодируется через `DecodeBody`. |
+
+**Body schemas:**
+
+| Kind | Body shape |
+|------|------------|
+| `preset` | `{ vars: { <name>: <value>, ... } }` — **только diff** от template default'ов. Пустой map = всё дефолтное. Bump'нули template → юзер автоматически получает новые дефолты для var'ов которые не трогал. |
+| `inline` | `{ name: string, match: { <sing-box match keys> }, outbound: string }` — outbound = tag или зарезервированный литерал (`reject` / `drop`). |
+| `srs` | `{ name: string, srs_url: string, outbound: string }` — URL .srs файла + outbound tag/литерал. |
+
+### 3.5 `vars[i]`
+
+Простой KV-список — overrides для всех template-объявленных vars.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `name` | string | Имя из `template.vars[].name`. |
+| `value` | string | User-overrides (значение всегда строка; типизация — на template-стороне через `vars[].type`). |
+
+Типичные ключи (определяются template'ом):
+- `tun` (bool-as-string: `"true"`/`"false"`) — TUN mode toggle
+- `route_final` — выбор final outbound в Rules tab
+- `dns_strategy`, `dns_final`, `dns_default_domain_resolver` — DNS scalars
+- `clash_secret` — автогенерируемый bearer для Debug API
+- Любые user-определённые в template
+
+Записи без `name` (template `{separator: true}`) НЕ попадают в state. Сироты (имена не из текущего template) НЕ грузятся в model и НЕ пишутся обратно.
+
+### 3.6 `dns_options`
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `strategy` | string (omitempty) | Fallback дубль `vars["dns_strategy"]` для in-memory. Source of truth — `vars`. На диск не пишется если == zero. |
+| `final` | string (omitempty) | То же, дубль `vars["dns_final"]`. |
+| `default_domain_resolver` | string (omitempty) | То же, дубль `vars["dns_default_domain_resolver"]`. |
+| `servers` | `[]DNSServer` | Энтрии с `kind` discriminator (см. ниже). |
+| `rules` | `[]DNSRule` | Энтрии с `kind` discriminator. |
+
+**`servers[i]` — `v6.DNSServer` (SPEC 056-R-N):**
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `kind` | `DNSServerKind` | `template` \| `preset` \| `user`. |
+| `tag` | string | Для `kind=template` (lookup ключ в `template.dns_options.servers[tag]`) и `kind=user` (display tag в финальном `config.dns.servers[].tag`). Пуст для `preset`. |
+| `ref` | string | Только для `kind=preset`, формат `"<preset_id>:<local_tag>"`. Пуст для остальных. |
+| `enabled` | bool | Toggle. Build pipeline пропускает entry если `false`. |
+| `body` | `map[string]interface{}` | Только для `kind=user` — полные DNS-server поля (type / server / server_port / tls / detour / ...). Для `template` / `preset` — nil (body резолвится из template). |
+
+**`rules[i]` — `v6.DNSRule` (SPEC 056-R-N):**
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `kind` | `DNSRuleKind` | `preset` \| `user`. |
+| `ref` | string | Только для `kind=preset`, формат `"<preset_id>"` (один dns_rule на preset). |
+| `enabled` | bool | Toggle. |
+| `body` | `map[string]interface{}` | Только для `kind=user` — полное sing-box dns rule body (rule_set / server / domain_* / ip_cidr / port / network / ...). nil для preset. |
+
+**Удалено:**
+- `independent_cache` — deprecated в sing-box 1.14.0 (cache всегда per-transport). Legacy state с этим ключом парсится без ошибок (unknown field ignored), новые saves не пишут.
+- `extra_servers[]`, `extra_rules[]`, `template_servers` map — старая dev-схема SPEC 053, заменена flat-list'ом с kind discriminator (SPEC 056-R-N).
+
+---
+
+## 4. Per-block storage rules
 
 | Секция | Содержит | Источник истины | Кто пишет | Кто читает |
 |--------|----------|-----------------|-----------|------------|
@@ -115,7 +240,7 @@ Top-level keys, отсутствующие в v6 (vs предыдущих рев
 
 ---
 
-## 4. Outbound preset binding (SPEC 057-R-N)
+## 5. Outbound preset binding lifecycle (SPEC 057-R-N)
 
 Outbound entries в `connections.outbounds[]` могут быть тремя типами:
 обычный global (template или user), **preset-add** (entry создан preset'ом),
@@ -174,7 +299,7 @@ generator получает flat'нутую копию.
 
 ---
 
-## 5. DNS preset binding (SPEC 056-R-N)
+## 6. DNS preset binding lifecycle (SPEC 056-R-N)
 
 Симметрично outbound binding. `dns_options.servers[]` и `dns_options.rules[]`
 — flat array с `kind` discriminator.
@@ -228,7 +353,7 @@ dropped через `_ = raw.IndependentCache` в `legacyDevDNSToOptions`),
 
 ---
 
-## 6. Rule preset binding (SPEC 053)
+## 7. Rule preset binding lifecycle (SPEC 053)
 
 `rules[]` — единый упорядоченный массив через `kind` discriminator.
 
@@ -251,7 +376,7 @@ Body хранит только diff vars; пустой `vars: {}` = preset на 
 
 ---
 
-## 7. Data flow
+## 8. Data flow
 
 ### 7.1 Load: `state.json` → model
 
@@ -331,7 +456,7 @@ Resolve* функции — single source of truth для UI и build (нет di
 
 ---
 
-## 8. Required vs preset-locked entries
+## 9. Required vs preset-locked entries
 
 Три класса entries в UI с разной семантикой управления:
 
@@ -346,7 +471,7 @@ Resolve* функции — single source of truth для UI и build (нет di
 
 ---
 
-## 9. Миграции
+## 10. Миграции
 
 | From → To | Что мигрирует | Backup |
 |-----------|---------------|--------|
@@ -360,7 +485,7 @@ Save выбирает формат автоматически: `hasPresetRefs(Ru
 
 ---
 
-## 10. Где лежит реализация
+## 11. Где лежит реализация
 
 | Файл | Что |
 |------|-----|
