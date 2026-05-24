@@ -222,7 +222,7 @@ func convertV1OutboundsToV2(v1Outbounds []config.OutboundConfig) []v2OutboundCon
 			AddOutbounds:     v1.AddOutbounds,
 			PreferredDefault: v1.PreferredDefault,
 			Comment:          v1.Comment,
-			Wizard:           v1.Wizard,
+			// Wizard removed — поле выпилено из OutboundConfig.
 		}
 		v2Outbounds = append(v2Outbounds, v2)
 	}
@@ -281,7 +281,7 @@ func convertV2OutboundsToV3(v2Outbounds []v2OutboundConfig) []config.OutboundCon
 			AddOutbounds:     v2.AddOutbounds,
 			PreferredDefault: v2.PreferredDefault,
 			Comment:          v2.Comment,
-			Wizard:           v2.Wizard,
+			// Wizard removed — поле выпилено из OutboundConfig.
 		}
 
 		// Migrate nested outbounds structure to flat structure

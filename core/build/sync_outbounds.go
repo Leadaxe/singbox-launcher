@@ -1,7 +1,7 @@
-// Package build — File sync_outbounds.go (SPEC 057-R-N).
+// Package build — File sync_outbounds.go (SPEC 057/058-R-N).
 //
-// Lifecycle функция для preset binding в outbounds — единая точка
-// добавления/удаления preset entries в state.connections.outbounds[].
+// Lifecycle функция для preset/template binding в outbounds — единая точка
+// добавления/удаления referenced entries в state.connections.outbounds[].
 //
 // Вызывается:
 //   - На load после parseV6 (idempotent — повторный вызов с тем же state не
@@ -9,22 +9,19 @@
 //   - На каждый preset toggle в Rules tab (после mutation state.RulesV6)
 //   - Перед marshalDiskV6 (defensive — гарантия что state в правильном shape)
 //
-// Семантика (SPEC 057-R-N §"SyncOutboundsWithActivePresets"):
+// Семантика (SPEC 058-R-N §"Sync semantics"):
 //
-//	для каждого state.RulesV6[kind=preset, enabled=true]:
-//	  для каждого preset.outbounds[i] (после if/if_or filter + @var substitute):
-//	    if mode=add:
-//	      ensure state.outbounds содержит entry с tag + ref=preset.id
-//	      (если нет — append; если есть — preserve, body уже там)
-//	    if mode=update:
-//	      target = find state.outbounds by tag
-//	      if target found:
-//	        ensure target.updates содержит {ref=preset.id, patch=substituted_body}
-//	        (если нет — append; если есть — preserve)
-//
-//	для каждого state.outbounds[]:
-//	  если ref != "" и preset не active/missing → удалить entry
-//	  для каждой updates[] entry: если ref не active/missing → удалить
+//	1. Walk state.outbounds, для каждого:
+//	   - Drop referenced preset entries (ref=<preset_id>) с disabled/missing preset
+//	   - Drop referenced template entries (ref=#TEMPLATE#) если tag отсутствует в template
+//	   - Direct entries (ref="") не трогаем (от template-evolution независимы)
+//	   - Из updates[] drop preset patches от disabled preset; USER patch оставляем
+//	2. Add missing referenced preset add entries
+//	3. Add missing referenced template entries (seeding из template)
+//	4. Add expected preset update patches (mode=update entries)
+//	5. Re-order updates[]: preset patches в rule order, USER в конце
+//	6. Adopt legacy: existing direct entry + tag совпадает с template/preset →
+//	   конвертируем в referenced (set ref, strip body)
 package build
 
 import (
@@ -41,6 +38,12 @@ import (
 //   - presets   — template.Presets для resolve preset.Outbounds + Vars
 //
 // Idempotent. Безопасно вызывать многократно.
+//
+// SPEC 058: signature не меняется (template entries lifecycle определяется
+// presence в template, через td.GlobalOutbounds() — но sync function его не
+// получает напрямую; «add missing template entries» делается отдельно через
+// «Restore missing» UI button, а не автоматически в sync, чтобы юзер сам
+// контролировал какие template entries у него в state).
 func SyncOutboundsWithActivePresets(
 	rules []v6.Rule,
 	outbounds *[]configtypes.OutboundConfig,
@@ -56,8 +59,11 @@ func SyncOutboundsWithActivePresets(
 	}
 
 	// 1. Compute active preset IDs + expected entries.
+	//    activeRulesOrder — slice presetIDs в порядке state.RulesV6 (для deterministic
+	//    re-order updates[] patches).
 	activePresetIDs := make(map[string]bool)
-	expectedAdds := make(map[string]configtypes.OutboundConfig) // tag → add entry (full body)
+	activeRulesOrder := make([]string, 0)
+	expectedAdds := make(map[string]configtypes.OutboundConfig) // tag → add entry
 	expectedUpdates := make(map[string]map[string]configtypes.OutboundUpdate)
 	// expectedUpdates[targetTag][presetID] = OutboundUpdate
 
@@ -77,7 +83,10 @@ func SyncOutboundsWithActivePresets(
 		if pb == nil {
 			continue
 		}
-		activePresetIDs[rule.Ref] = true
+		if !activePresetIDs[rule.Ref] {
+			activePresetIDs[rule.Ref] = true
+			activeRulesOrder = append(activeRulesOrder, rule.Ref)
+		}
 
 		entries, _ := ExpandPresetOutbounds(preset, pb.Vars)
 		for _, entry := range entries {
@@ -102,9 +111,9 @@ func SyncOutboundsWithActivePresets(
 		}
 	}
 
-	// 2. Pass through existing outbounds. Filter out preset entries which are
-	//    no longer expected; filter out stale updates; adopt legacy globals
-	//    как preset entries если tag совпадает с expected preset add.
+	// 2. Pass through existing outbounds. Filter out preset/template entries which
+	//    are no longer expected; filter out stale updates; adopt legacy direct
+	//    entries как referenced если tag совпадает с expected preset add.
 	out := make([]configtypes.OutboundConfig, 0, len(*outbounds))
 	existingPresetTags := make(map[string]bool) // tag'и уже-present preset add entries
 	// expectedAddRefByTag — для adopt-on-first-sync: какой preset.id owns этот tag.
@@ -114,37 +123,39 @@ func SyncOutboundsWithActivePresets(
 	}
 	for _, ob := range *outbounds {
 		// Drop preset add entries для disabled/missing preset.
-		if ob.Ref != "" {
+		// (Template entries ref=#TEMPLATE# не дропаются здесь — они не привязаны
+		// к presets; missing-template-tag handled через resolver fallback.)
+		if ob.Ref != "" && ob.Ref != configtypes.RefTemplate {
 			if _, expected := expectedAdds[ob.Tag]; !expected {
-				continue // drop
+				continue // drop preset entry — owner preset disabled
 			}
 			existingPresetTags[ob.Tag] = true
-			// preserve as-is (body уже там, user мог reorder/edit body не редактируется)
+			// SPEC 058: strip body fields (referenced entries thin — body live из preset)
+			stripReferencedBody(&ob)
+		} else if ob.Ref == configtypes.RefTemplate {
+			// Template entry — preserve, strip body (thin shape).
+			stripReferencedBody(&ob)
 		} else if presetID, expected := expectedAddRefByTag[ob.Tag]; expected {
-			// Legacy-migration / adopt-on-first-sync: existing global без Ref
-			// имеет tag совпадающий с expected preset add. Это либо state от
-			// pre-SPEC-057 (старый promote-to-global подход), либо preset
-			// activated на пустой state — в обоих случаях правильно adopt'ить
-			// existing entry, не дублировать. Body preserved as-is; только
-			// Ref проставляется → entry становится preset-bound.
-			//
-			// Edge: если юзер реально создал custom outbound с conflicting tag,
-			// он "потеряет" свой entry (станет preset-locked). На практике юзер
-			// не создаёт outbound'ы с тегами вроде "ru VPN 🇷🇺" вручную —
-			// это всегда preset territory.
+			// Adopt: direct entry с tag совпадающим с expected preset add →
+			// конвертируем в referenced preset. Strip body (live из preset).
 			ob.Ref = presetID
+			stripReferencedBody(&ob)
 			existingPresetTags[ob.Tag] = true
 		}
 
-		// Update stack: filter stale.
+		// Update stack: filter stale preset patches; keep USER patch.
 		if len(ob.Updates) > 0 {
 			expectedForTag := expectedUpdates[ob.Tag]
 			keptUpdates := make([]configtypes.OutboundUpdate, 0, len(ob.Updates))
 			for _, u := range ob.Updates {
+				if u.Ref == configtypes.RefUser {
+					keptUpdates = append(keptUpdates, u)
+					continue
+				}
 				if _, ok := expectedForTag[u.Ref]; ok {
 					keptUpdates = append(keptUpdates, u)
 				}
-				// else: preset disabled/missing → drop update
+				// else: preset disabled/missing → drop
 			}
 			ob.Updates = keptUpdates
 			if len(ob.Updates) == 0 {
@@ -164,6 +175,9 @@ func SyncOutboundsWithActivePresets(
 				}
 			}
 		}
+
+		// Re-order updates[]: preset patches в rule order, USER в конце.
+		ob.Updates = reorderUpdates(ob.Updates, activeRulesOrder)
 
 		out = append(out, ob)
 	}
@@ -198,14 +212,82 @@ func SyncOutboundsWithActivePresets(
 			if findOutboundByTag(out, tag) >= 0 {
 				continue // collision с user/template global → skip (first-wins)
 			}
-			cfg := entry.Config
-			cfg.Ref = preset.ID
+			// SPEC 058: thin entry — только tag + ref (body live из preset).
+			cfg := configtypes.OutboundConfig{
+				Tag: tag,
+				Ref: preset.ID,
+			}
 			out = append(out, cfg)
 			existingPresetTags[tag] = true
 		}
 	}
 
 	*outbounds = out
+}
+
+// stripReferencedBody — для referenced entry (ref != "") очищает body-поля,
+// оставляя только tag + ref + updates. Body live из template/preset на render.
+// SPEC 058 shape.
+func stripReferencedBody(ob *configtypes.OutboundConfig) {
+	if ob == nil || ob.Ref == "" {
+		return
+	}
+	ob.Type = ""
+	ob.Options = nil
+	ob.Filters = nil
+	ob.AddOutbounds = nil
+	ob.PreferredDefault = nil
+	ob.Comment = ""
+}
+
+// reorderUpdates — переставляет updates: preset patches в order
+// activeRulesOrder (rule order), USER patch (ref=#USER#) — в конце.
+// Stale preset patches (ref не в activeRulesOrder) идут после ordered preset
+// patches, перед USER (на следующем sync они dropped, но если sync вызвал
+// reorder без drop — preserve них order).
+func reorderUpdates(updates []configtypes.OutboundUpdate, activeRulesOrder []string) []configtypes.OutboundUpdate {
+	if len(updates) == 0 {
+		return updates
+	}
+	byRef := make(map[string]configtypes.OutboundUpdate, len(updates))
+	var userPatch *configtypes.OutboundUpdate
+	var staleOrder []string
+	for i := range updates {
+		u := updates[i]
+		if u.Ref == configtypes.RefUser {
+			cp := u
+			userPatch = &cp
+			continue
+		}
+		if _, dup := byRef[u.Ref]; !dup {
+			byRef[u.Ref] = u
+			if !containsString(activeRulesOrder, u.Ref) {
+				staleOrder = append(staleOrder, u.Ref)
+			}
+		}
+	}
+	out := make([]configtypes.OutboundUpdate, 0, len(updates))
+	for _, ref := range activeRulesOrder {
+		if u, ok := byRef[ref]; ok {
+			out = append(out, u)
+		}
+	}
+	for _, ref := range staleOrder {
+		out = append(out, byRef[ref])
+	}
+	if userPatch != nil {
+		out = append(out, *userPatch)
+	}
+	return out
+}
+
+func containsString(slice []string, s string) bool {
+	for _, x := range slice {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }
 
 // findOutboundByTag — index в slice по tag, или -1.
@@ -242,9 +324,6 @@ func outboundConfigToPatchMap(cfg configtypes.OutboundConfig) map[string]interfa
 	}
 	if cfg.PreferredDefault != nil {
 		patch["preferredDefault"] = cfg.PreferredDefault
-	}
-	if cfg.Wizard != nil {
-		patch["wizard"] = cfg.Wizard
 	}
 	if cfg.Comment != "" {
 		patch["comment"] = cfg.Comment

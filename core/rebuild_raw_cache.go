@@ -80,8 +80,10 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 	//      body — generator про эти поля не знает, видит уже merged.
 	// td=nil → quiet skip (тесты, legacy fallback path).
 	if td != nil {
+		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.
+		_ = build.MigrateOutboundsToReferencedShape(&parserCfg.ParserConfig.Outbounds, s.RulesV6, td)
 		build.SyncOutboundsWithActivePresets(s.RulesV6, &parserCfg.ParserConfig.Outbounds, td.Presets)
-		build.MergeOutboundUpdatesInPlace(&parserCfg)
+		build.MergeOutboundUpdatesInPlace(&parserCfg, td)
 	}
 
 	tagCounts := make(map[string]int)

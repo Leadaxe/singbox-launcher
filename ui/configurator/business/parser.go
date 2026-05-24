@@ -103,6 +103,9 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 		rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
 			model.RuleOrder, model.PresetRefs, model.CustomRules,
 		)
+		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.
+		// Передаём rulesV6 для computing merged_base = template + active preset patches.
+		_ = build.MigrateOutboundsToReferencedShape(&parserConfig.ParserConfig.Outbounds, rulesV6, model.TemplateData)
 		build.SyncOutboundsWithActivePresets(rulesV6, &parserConfig.ParserConfig.Outbounds, model.TemplateData.Presets)
 		// Deep-copy outbounds slice для generator-only Merge.
 		// Per-element copy чтобы Updates[] стек не shared.
@@ -114,7 +117,7 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 			}
 		}
 		parserConfigForGen.ParserConfig.Outbounds = genOutbounds
-		build.MergeOutboundUpdatesInPlace(&parserConfigForGen)
+		build.MergeOutboundUpdatesInPlace(&parserConfigForGen, model.TemplateData)
 	}
 
 	// Generate outbounds from current ParserConfig only. Do not apply SourceURLs here:

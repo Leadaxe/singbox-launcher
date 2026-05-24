@@ -18,10 +18,51 @@ import (
 	"sort"
 	"strings"
 
+	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
 	wizardtemplate "singbox-launcher/core/template"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
+
+// ResolveMergedOutbound — возвращает merged view одного global outbound по tag.
+// Для referenced entries (ref != "") выполняет тот же pipeline что parseAndPreview
+// делает для emit: deep-copy outbounds slice → MergeOutboundUpdatesInPlace
+// (резолвит base из template/preset + flatten Updates). Returns копию body
+// готовую для display в Edit dialog.
+//
+// SPEC 058-R-N: единая точка merge — не дублируем resolve логику в UI.
+//
+// Returns nil если model/template отсутствуют или entry с таким tag не найден.
+func ResolveMergedOutbound(model *wizardmodels.WizardModel, tag string) *config.OutboundConfig {
+	if model == nil || model.TemplateData == nil {
+		return nil
+	}
+	// Найдём индекс в model.GlobalOutbounds (canonical view).
+	idx := -1
+	for i := range model.GlobalOutbounds {
+		if model.GlobalOutbounds[i].Tag == tag {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return nil
+	}
+	// Deep-copy entry чтобы Merge не мутировал state. Wrap в minimal ParserConfig
+	// чтобы переиспользовать MergeOutboundUpdatesInPlace.
+	entry := model.GlobalOutbounds[idx]
+	if len(entry.Updates) > 0 {
+		entry.Updates = append([]config.OutboundUpdate(nil), entry.Updates...)
+	}
+	pc := &config.ParserConfig{}
+	pc.ParserConfig.Outbounds = []config.OutboundConfig{entry}
+	build.MergeOutboundUpdatesInPlace(pc, model.TemplateData)
+	if len(pc.ParserConfig.Outbounds) == 0 {
+		return nil
+	}
+	merged := pc.ParserConfig.Outbounds[0]
+	return &merged
+}
 
 // GetAvailableOutbounds возвращает список доступных outbound тегов из модели.
 // При model.ParserConfig == nil и непустом ParserConfigJSON результат кэшируется по строке JSON (сброс — InvalidatePreviewCache).
@@ -61,11 +102,8 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 	}
 
 	if parserCfg != nil {
-		// Add global outbounds
+		// Add global outbounds.
 		for _, outbound := range parserCfg.ParserConfig.Outbounds {
-			if outbound.IsWizardHidden() {
-				continue
-			}
 			if outbound.Tag != "" {
 				tags[outbound.Tag] = struct{}{}
 			}
@@ -83,9 +121,6 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 				continue
 			}
 			for _, outbound := range proxySource.Outbounds {
-				if outbound.IsWizardHidden() {
-					continue
-				}
 				if outbound.Tag != "" {
 					tags[outbound.Tag] = struct{}{}
 				}
@@ -124,8 +159,6 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 //     mode="update" патчит existing — не возвращает.
 //   - Per-entry if/if_or фильтруется по varsMap (user override + preset.vars[].Default).
 //   - @var в Tag-поле резолвится (rare, обычно tag — литерал).
-//   - wizard.hide=true → tag НЕ показывается в picker'е (consistent с
-//     OutboundConfig.IsWizardHidden() для template-defined outbound'ов).
 //
 // Дедуп делает caller (sortedOutboundTagSlice). Возвращает nil если нет
 // active preset-refs или ни один не имеет preset.outbounds[].
@@ -169,9 +202,6 @@ func collectActivePresetOutboundTags(model *wizardmodels.WizardModel) []string {
 			if !evalPresetOutboundIf(ob.If, ob.IfOr, varsMap) {
 				continue
 			}
-			if isPresetOutboundHidden(ob.Wizard) {
-				continue
-			}
 			tag := ob.Tag
 			if strings.HasPrefix(tag, "@") {
 				if val, has := varsMap[tag[1:]]; has {
@@ -208,26 +238,6 @@ func evalPresetOutboundIf(ifList, ifOrList []string, varsMap map[string]string) 
 		}
 	}
 	return true
-}
-
-// isPresetOutboundHidden — true если preset.outbound.wizard указывает hide.
-// Зеркало OutboundConfig.IsWizardHidden() — поддерживает обе формы
-// ("hide" string-shorthand и {"hide":true} map).
-func isPresetOutboundHidden(wizard interface{}) bool {
-	if wizard == nil {
-		return false
-	}
-	if s, ok := wizard.(string); ok {
-		return s == "hide"
-	}
-	if m, ok := wizard.(map[string]interface{}); ok {
-		if hideVal, has := m["hide"]; has {
-			if b, ok := hideVal.(bool); ok {
-				return b
-			}
-		}
-	}
-	return false
 }
 
 func sortedOutboundTagSlice(tags map[string]struct{}) []string {

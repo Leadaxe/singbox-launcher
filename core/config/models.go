@@ -9,7 +9,6 @@ type ParserConfig = configtypes.ParserConfig
 type ProxySource = configtypes.ProxySource
 type OutboundConfig = configtypes.OutboundConfig
 type OutboundUpdate = configtypes.OutboundUpdate
-type WizardConfig = configtypes.WizardConfig
 type ParsedNode = configtypes.ParsedNode
 type ParsedJump = configtypes.ParsedJump
 
@@ -17,6 +16,10 @@ const ParserConfigVersion = configtypes.ParserConfigVersion
 const SubscriptionUserAgent = configtypes.SubscriptionUserAgent
 const MaxNodesPerSubscription = configtypes.MaxNodesPerSubscription
 const UnsetSourceIndex = configtypes.UnsetSourceIndex
+
+// SPEC 058-R-N: sentinel ref values, re-exported for UI/test callsites.
+const RefTemplate = configtypes.RefTemplate
+const RefUser = configtypes.RefUser
 
 // NormalizeParserConfig delegates to configtypes.NormalizeParserConfig.
 func NormalizeParserConfig(parserConfig *ParserConfig, updateLastUpdated bool) {

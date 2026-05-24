@@ -30,6 +30,7 @@ import (
 	"runtime"
 	"strings"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
@@ -84,6 +85,74 @@ type TemplateData struct {
 
 	// DNSOptionsRaw — секция dns_options из шаблона (не sing-box); визард читает отсюда список DNS-серверов и правила при наличии.
 	DNSOptionsRaw json.RawMessage `json:"-"`
+}
+
+// GlobalOutbounds возвращает типизированный slice template's global outbounds
+// (template.parser_config.outbounds[]). Decodes lazily из ParserConfig JSON
+// строки. Используется resolver'ом для lookup body referenced template entries
+// (SPEC 058-R-N), а также UI код'ом для seed/restore.
+//
+// Возвращает nil если ParserConfig пуст или не парсится.
+func (td *TemplateData) GlobalOutbounds() []configtypes.OutboundConfig {
+	if td == nil || td.ParserConfig == "" {
+		return nil
+	}
+	var pc configtypes.ParserConfig
+	if err := json.Unmarshal([]byte(td.ParserConfig), &pc); err != nil {
+		return nil
+	}
+	return pc.ParserConfig.Outbounds
+}
+
+// RequiredOutboundTags возвращает set tag'ов с `required: true` в
+// template.parser_config.outbounds[]. Читает через типизированный
+// GlobalOutbounds() — OutboundConfig имеет top-level Required field.
+//
+// Legacy fallback: если в template'е остались entries с устаревшим
+// `wizard.required: 1` (до wizard wrapper cleanup'а), парсим их через
+// raw map'у в fallback.
+func (td *TemplateData) RequiredOutboundTags() map[string]bool {
+	if td == nil || td.ParserConfig == "" {
+		return nil
+	}
+	out := make(map[string]bool)
+	// Primary path — typed Required field.
+	for _, ob := range td.GlobalOutbounds() {
+		if ob.Required && ob.Tag != "" {
+			out[ob.Tag] = true
+		}
+	}
+	// Legacy fallback — wizard.required:1 (только для tag'ов которых ещё нет в out).
+	var raw struct {
+		ParserConfig struct {
+			Outbounds []map[string]interface{} `json:"outbounds"`
+		} `json:"ParserConfig"`
+	}
+	if err := json.Unmarshal([]byte(td.ParserConfig), &raw); err != nil {
+		return out
+	}
+	for _, ob := range raw.ParserConfig.Outbounds {
+		tag, _ := ob["tag"].(string)
+		if tag == "" || out[tag] {
+			continue
+		}
+		wiz, _ := ob["wizard"].(map[string]interface{})
+		if wiz == nil {
+			continue
+		}
+		// wizard.required может быть bool true ИЛИ числовая 1 (legacy template'ы).
+		isReq := false
+		switch v := wiz["required"].(type) {
+		case bool:
+			isReq = v
+		case float64:
+			isReq = v != 0
+		}
+		if isReq {
+			out[tag] = true
+		}
+	}
+	return out
 }
 
 // TemplateSelectableRule — правило маршрутизации, управляемое пользователем в визарде.

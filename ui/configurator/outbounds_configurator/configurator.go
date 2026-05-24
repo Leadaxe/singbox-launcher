@@ -16,7 +16,6 @@ import (
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
-	templatepkg "singbox-launcher/core/template"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -35,6 +34,11 @@ type OutboundEditPresenter interface {
 }
 
 // outboundRow identifies one outbound in the list (global or per-source).
+//
+// SPEC 058-R-N: entry-level shape вычисляется из ob.Ref:
+//   - ref="" → direct (full Edit/Del, body inline)
+//   - ref="#TEMPLATE#" → referenced template (Edit+Reset+Del, body live)
+//   - ref="<preset_id>" → referenced preset (View, Del нет; lifecycle через preset toggle)
 type outboundRow struct {
 	IsGlobal     bool
 	SourceIndex  int
@@ -42,18 +46,22 @@ type outboundRow struct {
 	Outbound     *config.OutboundConfig
 	SourceLabel  string
 
-	// IsPreset — true для outbound'ов добавленных через `preset.outbounds[]`
-	// (kind=preset rule в state.RulesV6). Read-only: no Edit/Del/reorder.
-	// Visual: label с 🔒 + preset label. Подключаются автоматически на render
-	// (ApplyPresetOutboundsToParserConfig на патче model.ParserConfig).
+	// IsPreset — true для referenced preset entries (ref != "" && ref != #TEMPLATE#).
+	// Read-only с возможным USER patch'ем сверху; Del запрещён (lifecycle через preset toggle).
 	IsPreset    bool
 	PresetID    string
 	PresetLabel string
 
-	// IsRequired — true для outbound'ов с `required: true` в template
-	// (proxy-out и т.п.). UI блокирует Edit/Del, но Up/Down остаются —
-	// порядок visual-only concern, body — template-owned. Не путать с IsPreset
-	// (тот синтетический; IsRequired entry — реальный global outbound).
+	// IsTemplate — true для referenced template entries (ref="#TEMPLATE#").
+	// Edit с diff'ом в USER patch; Del разрешён (можно вернуть через «Restore missing»).
+	IsTemplate bool
+
+	// HasUserPatch — true если в Updates[] есть USER patch (ref=#USER#).
+	// Visual: badge ✏ к SourceLabel. Reset button становится enabled (clear USER patch).
+	HasUserPatch bool
+
+	// IsRequired — true для template outbound'ов с `required: true`. UI блокирует Del
+	// полностью (button hidden). Edit + Reset работают. Релевантно только для IsTemplate.
 	IsRequired bool
 }
 
@@ -95,39 +103,50 @@ func collectRows(pc *config.ParserConfig, presetTagToLabel map[string]string, re
 	}
 	for i := range pc.ParserConfig.Outbounds {
 		ob := &pc.ParserConfig.Outbounds[i]
-		// Required: ТОЛЬКО live из template (state не источник истины — иначе
-		// snять `required` в template'е после сохранения было бы невозможно).
-		isRequired := requiredTags != nil && requiredTags[ob.Tag]
-		// 🔒 visual marker для locked rows (preset OR required). Параллельный
-		// семантический класс: preset = "владеет body, Del удаляется через
-		// toggle", required = "tag обязателен в template, Del запрещён вообще,
-		// body editable + Reset". Оба не-removable обычным Del'ом, что
-		// оправдывает общий значок.
-		sourceLabel := "Global"
-		if isRequired {
-			sourceLabel = "🔒 Global"
+		// HasUserPatch — есть ли в Updates[] entry с RefUser.
+		hasUserPatch := false
+		for _, u := range ob.Updates {
+			if u.Ref == config.RefUser {
+				hasUserPatch = true
+				break
+			}
 		}
 		row := outboundRow{
 			IsGlobal:     true,
 			IndexInSlice: i,
 			Outbound:     ob,
-			SourceLabel:  sourceLabel,
-			IsRequired:   isRequired,
+			HasUserPatch: hasUserPatch,
 		}
-		// SPEC 057-R-N: preset binding по ref field на OutboundConfig.
-		if ob.Ref != "" {
+		// SPEC 058-R-N: classify по ref.
+		switch {
+		case ob.Ref == "":
+			// Direct — full ownership.
+			row.SourceLabel = "Global"
+		case ob.Ref == config.RefTemplate:
+			// Referenced template.
+			row.IsTemplate = true
+			row.IsRequired = requiredTags != nil && requiredTags[ob.Tag]
+			row.SourceLabel = "Global"
+			if row.IsRequired {
+				row.SourceLabel = "🔒 Global"
+			}
+		default:
+			// Referenced preset.
 			row.IsPreset = true
+			row.PresetID = ob.Ref
 			if presetTagToLabel != nil {
 				if lbl, ok := presetTagToLabel[ob.Ref]; ok {
 					row.PresetLabel = lbl
 				}
 			}
 			if row.PresetLabel == "" {
-				row.PresetLabel = ob.Ref // fallback
+				row.PresetLabel = ob.Ref // fallback (dangling)
 			}
-			// Preset label overrides — у preset'а свой источник (имя preset'а),
-			// а не "Global". Замок при этом остаётся.
 			row.SourceLabel = "🔒 " + row.PresetLabel
+		}
+		// USER patch badge (✏) — для referenced entries с пользовательской правкой.
+		if hasUserPatch && (row.IsTemplate || row.IsPreset) {
+			row.SourceLabel += " ✏"
 		}
 		rows = append(rows, row)
 	}
@@ -150,60 +169,10 @@ func templateGlobalOutbounds(model *wizardmodels.WizardModel) []config.OutboundC
 	return parsed.ParserConfig.Outbounds
 }
 
-// templateOutboundByTag — ищет original (template-defined) body для outbound с
-// указанным tag в model.TemplateData.ParserConfig. Возвращает nil если template
-// не загружен или tag не найден.
-//
-// Используется кнопкой Reset для required outbound'ов — replace body с template'а.
-func templateOutboundByTag(model *wizardmodels.WizardModel, tag string) *config.OutboundConfig {
-	if model == nil || model.TemplateData == nil || model.TemplateData.ParserConfig == "" {
-		return nil
-	}
-	var parsed config.ParserConfig
-	if err := json.Unmarshal([]byte(model.TemplateData.ParserConfig), &parsed); err != nil {
-		return nil
-	}
-	for i := range parsed.ParserConfig.Outbounds {
-		if parsed.ParserConfig.Outbounds[i].Tag == tag {
-			ob := parsed.ParserConfig.Outbounds[i]
-			return &ob
-		}
-	}
-	return nil
-}
-
-// presetOutboundByRefTag — ищет original preset-defined body для outbound с
-// указанным tag в preset.Outbounds[mode=add]. Vars берутся из текущего
-// model.PresetRefs (т.е. с учётом user-overrides если preset variable юзер
-// поменял). Возвращает nil если preset/tag не найден.
-//
-// Используется кнопкой Reset для preset outbound'ов — replace body с preset
-// definition (после vars-substitution + if/if_or в build.PresetOutboundAddByTag).
-func presetOutboundByRefTag(model *wizardmodels.WizardModel, ref, tag string) *config.OutboundConfig {
-	if model == nil || model.TemplateData == nil || ref == "" {
-		return nil
-	}
-	// 1. Find preset by ref.
-	var preset *templatepkg.Preset
-	for i := range model.TemplateData.Presets {
-		if model.TemplateData.Presets[i].ID == ref {
-			preset = &model.TemplateData.Presets[i]
-			break
-		}
-	}
-	if preset == nil {
-		return nil
-	}
-	// 2. Find user-vars override (если есть).
-	var vars map[string]string
-	for _, pr := range model.PresetRefs {
-		if pr != nil && pr.Ref == ref {
-			vars = pr.Vars
-			break
-		}
-	}
-	return build.PresetOutboundAddByTag(preset, vars, tag)
-}
+// SPEC 058-R-N: helpers templateOutboundByTag/presetOutboundByRefTag удалены.
+// Новый Reset button не replaceит body — он чистит USER patch из Updates[]
+// (build.UpsertUserPatch с nil). Body для referenced entries резолвится из
+// template/preset через MergeOutboundUpdatesInPlace на render/build.
 
 // templateRequiredTags — set tag'ов с `required: true` в template.parser_config.
 // outbounds[]. Live lookup на каждый render — template **единственный** источник
@@ -311,6 +280,27 @@ func tagsAbove(rows []outboundRow, rowIndex int) []string {
 	return tags
 }
 
+// syncOutboundsLocal — local sync helper: вызывает SyncOutboundsWithActivePresets
+// на обоих outbound views модели (GlobalOutbounds canonical + ParserConfig
+// derived view). Используется refreshList после любой UI-мутации, чтобы новые
+// entries получали expected preset patches, stale entries — дропались.
+// Idempotent — safe для repeated calls.
+//
+// SPEC 058-R-N: фикс для сценария «удалил template entry → Restore missing →
+// новый thin entry не имел preset updates пока юзер не toggle'нул preset».
+func syncOutboundsLocal(model *wizardmodels.WizardModel) {
+	if model == nil || model.TemplateData == nil {
+		return
+	}
+	rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
+		model.RuleOrder, model.PresetRefs, model.CustomRules,
+	)
+	build.SyncOutboundsWithActivePresets(rulesV6, &model.GlobalOutbounds, model.TemplateData.Presets)
+	if model.ParserConfig != nil {
+		build.SyncOutboundsWithActivePresets(rulesV6, &model.ParserConfig.ParserConfig.Outbounds, model.TemplateData.Presets)
+	}
+}
+
 // getParserConfig returns the model's ParserConfig, ensuring it is set from ParserConfigJSON when nil.
 func getParserConfig(model *wizardmodels.WizardModel) *config.ParserConfig {
 	if model == nil {
@@ -389,6 +379,11 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			listContent.Refresh()
 			return
 		}
+		// SPEC 058-R-N: re-sync на каждый refresh — после любой мутации
+		// (Restore missing / Add / Edit / Del / preset toggle) приводит
+		// state в правильный shape: новые outbounds получают expected
+		// preset update patches; orphan entries дропаются. Idempotent.
+		syncOutboundsLocal(model)
 		rows := collectRowsForUI(model)
 		items := make([]fyne.CanvasObject, 0, len(rows))
 		setReorderBtnTip := func(w fyne.CanvasObject, tip string) {
@@ -498,15 +493,13 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 							parserConfig.ParserConfig.Proxies[sourceIndex].Outbounds = append(parserConfig.ParserConfig.Proxies[sourceIndex].Outbounds, *updated)
 						}
 					} else {
-						// In-place body update. Preserve sync-managed metadata
-						// (Ref + Updates) — диалог их не редактирует и не
-						// возвращает в `updated`, прямое присвоение wipe'нуло
-						// бы preset binding на любом Edit.
-						preservedRef := r2.Outbound.Ref
-						preservedUpdates := r2.Outbound.Updates
+						// In-place body update. SPEC 058-R-N: для referenced
+						// entries Edit dialog (Phase 4 applyEditedConfig) уже
+						// вычислил USER patch и put его в updated.Updates +
+						// strip'нул body. Для direct entries — updated имеет
+						// full body inline + сохранённые Updates. В обоих
+						// случаях просто перезаписываем r2.Outbound = *updated.
 						*r2.Outbound = *updated
-						r2.Outbound.Ref = preservedRef
-						r2.Outbound.Updates = preservedUpdates
 					}
 					refreshList()
 					if onApply != nil {
@@ -534,35 +527,31 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 				}
 			}, rowGetter)
 
-			// Reset button — replace body с "source of truth":
-			//   - required → template body (templateOutboundByTag)
-			//   - preset   → preset definition (presetOutboundByRefTag)
-			// Preserve Ref/Updates (sync-managed metadata).
+			// Reset button — clear USER patch для referenced entries (SPEC 058-R-N).
+			// После Reset body возвращается к live template/preset defaults
+			// (без USER override). Создаём всегда для referenced (чтобы row layout
+			// не прыгал), но disable если HasUserPatch=false — нечего ресетить.
+			// Для direct entries вообще не создаём (нет base для reset).
 			var resetBtn *fynewidget.HoverForwardButton
-			switch {
-			case r.IsPreset:
+			if r.IsTemplate || r.IsPreset {
 				resetBtn = fynewidget.NewHoverForwardButtonWithIcon("Reset", theme.ViewRefreshIcon(), func() {
 					rowsNow := collectRowsForUI(editPresenter.Model())
 					if rowIdx >= len(rowsNow) {
 						return
 					}
 					r2 := rowsNow[rowIdx]
-					if !r2.IsPreset || !r2.IsGlobal || r2.IndexInSlice < 0 {
-						return
-					}
-					fresh := presetOutboundByRefTag(editPresenter.Model(), r2.Outbound.Ref, r2.Outbound.Tag)
-					if fresh == nil {
+					if !(r2.IsTemplate || r2.IsPreset) || !r2.IsGlobal || r2.IndexInSlice < 0 {
 						return
 					}
 					pc := getParserConfig(editPresenter.Model())
 					if pc == nil || r2.IndexInSlice >= len(pc.ParserConfig.Outbounds) {
 						return
 					}
-					preservedRef := pc.ParserConfig.Outbounds[r2.IndexInSlice].Ref
-					preservedUpdates := pc.ParserConfig.Outbounds[r2.IndexInSlice].Updates
-					pc.ParserConfig.Outbounds[r2.IndexInSlice] = *fresh
-					pc.ParserConfig.Outbounds[r2.IndexInSlice].Ref = preservedRef
-					pc.ParserConfig.Outbounds[r2.IndexInSlice].Updates = preservedUpdates
+					// Strip USER patch из Updates[]; preset patches preserve.
+					pc.ParserConfig.Outbounds[r2.IndexInSlice].Updates = build.UpsertUserPatch(
+						pc.ParserConfig.Outbounds[r2.IndexInSlice].Updates,
+						nil,
+					)
 					refreshList()
 					if onApply != nil {
 						onApply()
@@ -570,35 +559,10 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 				}, rowGetter)
 				resetBtn.Importance = widget.LowImportance
 				if rb, ok := interface{}(resetBtn).(interface{ SetToolTip(string) }); ok {
-					rb.SetToolTip("Reset to preset defaults")
+					rb.SetToolTip("Reset — clear your changes, revert to defaults")
 				}
-			case r.IsRequired:
-				resetBtn = fynewidget.NewHoverForwardButtonWithIcon("Reset", theme.ViewRefreshIcon(), func() {
-					rowsNow := collectRowsForUI(editPresenter.Model())
-					if rowIdx >= len(rowsNow) {
-						return
-					}
-					r2 := rowsNow[rowIdx]
-					if !r2.IsRequired || !r2.IsGlobal || r2.IndexInSlice < 0 {
-						return
-					}
-					tmpl := templateOutboundByTag(editPresenter.Model(), r2.Outbound.Tag)
-					if tmpl == nil {
-						return
-					}
-					pc := getParserConfig(editPresenter.Model())
-					if pc == nil || r2.IndexInSlice >= len(pc.ParserConfig.Outbounds) {
-						return
-					}
-					pc.ParserConfig.Outbounds[r2.IndexInSlice] = *tmpl
-					refreshList()
-					if onApply != nil {
-						onApply()
-					}
-				}, rowGetter)
-				resetBtn.Importance = widget.LowImportance
-				if rb, ok := interface{}(resetBtn).(interface{ SetToolTip(string) }); ok {
-					rb.SetToolTip("Reset to template defaults")
+				if !r.HasUserPatch {
+					resetBtn.Disable()
 				}
 			}
 
@@ -678,7 +642,12 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			if tmplOb.Tag == "" || existing[tmplOb.Tag] {
 				continue
 			}
-			pc.ParserConfig.Outbounds = append(pc.ParserConfig.Outbounds, tmplOb)
+			// SPEC 058-R-N: добавляем thin referenced entry (только tag + ref),
+			// body live из template на render. Не копируем полный body.
+			pc.ParserConfig.Outbounds = append(pc.ParserConfig.Outbounds, config.OutboundConfig{
+				Tag: tmplOb.Tag,
+				Ref: config.RefTemplate,
+			})
 			existing[tmplOb.Tag] = true
 			added++
 		}

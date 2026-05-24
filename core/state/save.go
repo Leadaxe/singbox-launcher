@@ -52,6 +52,16 @@ func (s *State) Save(path string) error {
 		s.Version = v5.SchemaVersion
 	}
 
+	// SPEC 058-R-N: backup перед первым перезаписыванием когда outbounds
+	// содержат referenced entries (post-migration shape). Gate idempotent
+	// (maybeBackupSPEC058 skip если .pre-058.bak уже есть) — backup создаётся
+	// единственный раз. Lossless rollback гарантирован.
+	if hasReferencedOutbounds(s) {
+		if err := maybeBackupSPEC058(path); err != nil {
+			_ = err // non-fatal
+		}
+	}
+
 	var data []byte
 	var err error
 	if useV6 {
@@ -200,6 +210,45 @@ func hasPresetRefs(rules []v6.Rule) bool {
 		}
 	}
 	return false
+}
+
+// hasReferencedOutbounds — true если хотя бы один outbound в state.Connections.Outbounds
+// имеет непустой Ref (referenced shape, SPEC 058).
+func hasReferencedOutbounds(s *State) bool {
+	for _, ob := range s.Connections.Outbounds {
+		if ob.Ref != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// maybeBackupSPEC058 — копирует существующий state.json в state.json.pre-058.bak,
+// если backup ещё не создан. Создаётся однократно перед первым перезаписыванием
+// после миграции в SPEC 058 referenced shape (Lossless rollback гарантирован —
+// юзер может вернуть .bak → state.json и установить предыдущий build).
+//
+// Идемпотентно: повторные вызовы — no-op.
+func maybeBackupSPEC058(path string) error {
+	backupPath := path + ".pre-058.bak"
+	if _, err := os.Stat(backupPath); err == nil {
+		return nil // backup уже есть
+	}
+	src, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // fresh install
+		}
+		return err
+	}
+	defer src.Close()
+	dst, err := os.OpenFile(backupPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+	_, err = io.Copy(dst, src)
+	return err
 }
 
 // maybeBackupV5 — копирует существующий state.json в state.json.v5.bak,

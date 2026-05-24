@@ -184,8 +184,10 @@ func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGener
 	// На failure LoadTemplateData (template missing) — warning + skip;
 	// Update должен работать даже без template'а (legacy юзеры).
 	if td, terr := template.LoadTemplateData(execDir); terr == nil {
+		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.
+		_ = build.MigrateOutboundsToReferencedShape(&parserConfig.ParserConfig.Outbounds, stateRef.RulesV6, td)
 		build.SyncOutboundsWithActivePresets(stateRef.RulesV6, &parserConfig.ParserConfig.Outbounds, td.Presets)
-		build.MergeOutboundUpdatesInPlace(parserConfig)
+		build.MergeOutboundUpdatesInPlace(parserConfig, td)
 	} else {
 		debuglog.WarnLog("UpdateConfigFromSubscriptions: LoadTemplateData failed (skip preset.outbounds sync): %v", terr)
 	}

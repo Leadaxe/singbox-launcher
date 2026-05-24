@@ -282,10 +282,21 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 	// SPEC 053: restore preset-ref правила (kind=preset из state.RulesV6).
 	p.restorePresetRefs(stateFile)
 
-	// SPEC 057-R-N: sync preset binding в model.GlobalOutbounds после load.
-	// Если state без ref/updates (legacy) — добавит entries для active preset'ов.
-	// Idempotent: повторный вызов с уже-synced state — noop.
+	// SPEC 058-R-N: migration direct→referenced shape. Legacy state.json (SPEC 057
+	// и раньше) хранил template/preset-derived entries с full body inline; новый
+	// shape — thin tag+ref. Migration однопроходная, lossless (Backup .pre-058.bak
+	// создаётся на следующем Save). Idempotent.
+	//
+	// SPEC 057-R-N: sync preset binding после migration. Sync приведёт slice в
+	// правильный referenced shape (drop stale, add missing, reorder updates).
+	// Idempotent.
 	if p.model.TemplateData != nil {
+		// MigrateOutboundsToReferencedShape возвращает true если конвертировал
+		// хоть один entry. Backup gate в Save проверяет outbounds.Ref напрямую,
+		// флаг здесь не нужен. Rules нужны migration'у для computing merged_base
+		// = template + active preset patches (чтобы USER patch не over-include
+		// preset edits которые УЖЕ были materialized в legacy body).
+		_ = build.MigrateOutboundsToReferencedShape(&p.model.GlobalOutbounds, stateFile.RulesV6, p.model.TemplateData)
 		build.SyncOutboundsWithActivePresets(stateFile.RulesV6, &p.model.GlobalOutbounds, p.model.TemplateData.Presets)
 		p.model.RefreshDerivedParserConfig()
 	}

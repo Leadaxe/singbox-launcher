@@ -31,13 +31,6 @@ func OutboundsMatchStrict(existing, template *config.OutboundConfig) bool {
 		return false
 	}
 
-	// Compare Wizard (support both formats)
-	existingHide := existing.IsWizardHidden()
-	templateHide := template.IsWizardHidden()
-	if existingHide != templateHide {
-		return false
-	}
-
 	// Compare AddOutbounds
 	if !StringSlicesEqual(existing.AddOutbounds, template.AddOutbounds) {
 		return false
