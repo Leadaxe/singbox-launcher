@@ -281,6 +281,31 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 	openLogWindowButton := widget.NewButtonWithIcon(locale.T("diag.open_log_window"), theme.ViewRestoreIcon(), func() {
 		OpenLogViewerWindow(ac)
 	})
+
+	// Traffic Profiler button (SPEC 059). The ⚡ badge in the label
+	// indicates an active recording session — refreshed by the
+	// ParentRefresh callback the window manager invokes on session
+	// start/stop. Button itself is a singleton-window opener: repeat
+	// click focuses the existing window rather than spawning a second.
+	var trafficProfilerBtn *widget.Button
+	refreshTrafficBtn := func() {
+		if trafficProfilerBtn == nil {
+			return
+		}
+		label := locale.T("diag.traffic_profiler")
+		if trafficManager != nil && trafficManager.IsRecording() {
+			label += " ⚡"
+		}
+		trafficProfilerBtn.SetText(label)
+	}
+	trafficProfilerBtn = widget.NewButtonWithIcon(locale.T("diag.traffic_profiler"), theme.SearchIcon(), func() {
+		mgr := trafficWindowManager(ac, func() {
+			fyne.Do(refreshTrafficBtn)
+		})
+		mgr.Show()
+		refreshTrafficBtn()
+	})
+	refreshTrafficBtn()
 	openLogsFolderButton := widget.NewButtonWithIcon(locale.T("diag.open_logs_folder"), theme.FolderOpenIcon(), func() {
 		logsDir := platform.GetLogsDir(ac.FileService.ExecDir)
 		if err := platform.OpenFolder(logsDir); err != nil {
@@ -327,6 +352,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 		logWindowRow,
 		foldersRow,
 		killRow,
+		trafficProfilerBtn,
 		widget.NewLabel(locale.T("diag.ip_check_services")),
 		stunRow,
 		ipServicesRow,

@@ -138,6 +138,7 @@
   "diag.cancel": "Отмена",
   "diag.open_log_window": "Окно логов",
   "diag.open_logs_folder": "Папка логов",
+  "diag.traffic_profiler": "Профайлер трафика",
   "diag.ip_check_services": "Сервисы проверки IP:",
   "diag.open_browser": "Открыть в браузере",
   "log.window_title": "Логи",

@@ -138,6 +138,7 @@
   "diag.cancel": "Cancel",
   "diag.open_log_window": "Log window",
   "diag.open_logs_folder": "Logs folder",
+  "diag.traffic_profiler": "Traffic Profiler",
   "diag.ip_check_services": "IP Check Services:",
   "diag.open_browser": "Open in browser",
   "log.window_title": "Logs",
