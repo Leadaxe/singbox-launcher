@@ -302,12 +302,15 @@ func stateVarsToMap(s *state.State) map[string]string {
 
 // dnsConfigFromState — извлекает DNS-related поля из state в DNSConfig.
 //
-// state.DNSOptions хранит servers / rules; final / strategy / independent_cache
-// исторически живут как `dns_*` записи в state.Vars (ApplyDNSVarsFromSettingsToModel
+// state.DNSOptions хранит servers / rules; final / strategy исторически
+// живут как `dns_*` записи в state.Vars (ApplyDNSVarsFromSettingsToModel
 // в wizard читает их при load). Соответственно — берём оба источника.
 //
 // `RulesText` reconstructируется как JSON-объект {"rules": [...]} для парсера
 // в MergeDNSSection.
+//
+// SPEC: independent_cache УДАЛЕНО — deprecated в sing-box 1.14.0; legacy
+// dns_independent_cache в state.Vars игнорируется.
 func dnsConfigFromState(s *state.State) DNSConfig {
 	if s == nil {
 		return DNSConfig{}
@@ -316,11 +319,8 @@ func dnsConfigFromState(s *state.State) DNSConfig {
 	if s.DNSOptions != nil {
 		d := s.DNSOptions
 		cfg.Servers = d.Servers
-		// state.DNSOptions.Final/Strategy/IndependentCache — могут быть пустыми
-		// (после миграции в state.Vars); если заполнены — используем как fallback.
 		cfg.Final = d.Final
 		cfg.Strategy = d.Strategy
-		cfg.IndependentCache = d.IndependentCache
 		if len(d.Rules) > 0 {
 			raw, err := json.Marshal(map[string]interface{}{"rules": d.Rules})
 			if err == nil {
@@ -335,9 +335,6 @@ func dnsConfigFromState(s *state.State) DNSConfig {
 			cfg.Final = v.Value
 		case "dns_strategy":
 			cfg.Strategy = v.Value
-		case "dns_independent_cache":
-			b := v.Value == "true"
-			cfg.IndependentCache = &b
 		}
 	}
 	return cfg

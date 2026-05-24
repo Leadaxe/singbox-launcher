@@ -198,15 +198,13 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string) (*PresetF
 		}
 	}
 
-	// === 6. Filter + substitute dns_servers ===
-	// Сначала собираем какие bundled DNS-теги «потребляются» (через @dns_server var ИЛИ литерал в dns_rule.server).
-	consumedBundled := collectConsumedBundledDNSTags(preset, varsMap, frags.DNSRule)
-
+	// === 6. dns_servers — БЕЗ consumption-filter (SPEC 056-R-N follow-up).
+	// Все bundled DNS-серверы preset'а (с if/if_or filter) попадают в frags.
+	// Per-server enable управляется через state.DNS.Servers[kind=preset].Enabled,
+	// который применяется в ResolveDNS → MergePresetsIntoDNS. Здесь только
+	// материализуем body + substitute.
 	for _, ds := range preset.DNSServers {
 		if !evalIf(ds.If, ds.IfOr, varsMap) {
-			continue
-		}
-		if !consumedBundled[ds.Tag] {
 			continue
 		}
 		raw, err := deepCopy(ds)
@@ -421,51 +419,9 @@ func isDNSRuleEmpty(m map[string]interface{}, _ map[string]bool) bool {
 	return matchFields == 0
 }
 
-// collectConsumedBundledDNSTags — какие bundled DNS-теги используются в emit:
-//  1. @dns_server var (с type=dns_server) резолвится в local tag → используется
-//  2. dns_rule.server (literal, не @-prefix) ссылается на local tag
-//
-// Если ни то ни другое — bundled DNS-сервер мёртвый код, не эмитится.
-func collectConsumedBundledDNSTags(p *template.Preset, varsMap map[string]string, expandedDNSRule map[string]interface{}) map[string]bool {
-	out := make(map[string]bool)
-
-	// Locally bundled tag set.
-	bundled := make(map[string]bool, len(p.DNSServers))
-	for _, ds := range p.DNSServers {
-		bundled[ds.Tag] = true
-	}
-
-	// 1. @dns_server-var resolutions
-	for _, v := range p.Vars {
-		if v.Type != "dns_server" {
-			continue
-		}
-		val, ok := varsMap[v.Name]
-		if !ok || val == "" {
-			continue
-		}
-		if bundled[val] {
-			out[val] = true
-		}
-		// если val ссылается на template/extra DNS — bundled тут не consumed
-	}
-
-	// 2. Literal server в expanded dns_rule (после rewrite это уже prefixed,
-	//    надо проверить наличие префикса для определения bundled-ли это).
-	if expandedDNSRule != nil {
-		if srv, ok := expandedDNSRule["server"].(string); ok {
-			prefix := p.ID + TagSeparator
-			if strings.HasPrefix(srv, prefix) {
-				localTag := srv[len(prefix):]
-				if bundled[localTag] {
-					out[localTag] = true
-				}
-			}
-		}
-	}
-
-	return out
-}
+// collectConsumedBundledDNSTags — УДАЛЕНА в SPEC 056-R-N follow-up.
+// Consumption-filter заменён per-server enable toggle в state.DNS.Servers
+// (см. ResolveDNS + MergePresetsIntoDNS).
 
 // deepCopy — JSON round-trip копия любой структуры.
 func deepCopy(in interface{}) (interface{}, error) {

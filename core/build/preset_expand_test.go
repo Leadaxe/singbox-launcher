@@ -112,20 +112,40 @@ func TestExpand_RuDirect_Default(t *testing.T) {
 		t.Errorf("dns_rule.rule_set should have 2 refs (no geoip-ru), got %v", dnsRefs)
 	}
 
-	// dns_servers: только yandex_udp (yandex_doh/dot не выбраны через @dns_server, не используются в dns_rule.server)
-	if len(frags.DNSServers) != 1 {
-		t.Fatalf("expected 1 dns_server (only yandex_udp), got %d: %v", len(frags.DNSServers), frags.DNSServers)
+	// dns_servers: ВСЕ 3 yandex_* (SPEC 056-R-N follow-up: consumption-filter
+	// удалён, per-server enable управляется через state.DNS.Servers).
+	if len(frags.DNSServers) != 3 {
+		t.Fatalf("expected 3 dns_servers (yandex_udp/doh/dot), got %d: %v", len(frags.DNSServers), frags.DNSServers)
 	}
-	ds := frags.DNSServers[0]
-	if ds["tag"] != "ru-direct:yandex_udp" {
-		t.Errorf("dns_server.tag: %v", ds["tag"])
+	// Все должны иметь preset-prefix tag.
+	tagSet := map[string]bool{}
+	for _, ds := range frags.DNSServers {
+		if t, _ := ds["tag"].(string); t != "" {
+			tagSet[t] = true
+		}
 	}
-	if ds["server"] != "77.88.8.8" {
-		t.Errorf("dns_server.server should be substituted to default dns_ip 77.88.8.8: %v", ds["server"])
+	for _, want := range []string{"ru-direct:yandex_udp", "ru-direct:yandex_doh", "ru-direct:yandex_dot"} {
+		if !tagSet[want] {
+			t.Errorf("missing tag: %s (got: %v)", want, tagSet)
+		}
+	}
+	// Найдём yandex_udp для substitute проверки.
+	var udp map[string]interface{}
+	for _, ds := range frags.DNSServers {
+		if ds["tag"] == "ru-direct:yandex_udp" {
+			udp = ds
+			break
+		}
+	}
+	if udp == nil {
+		t.Fatal("ru-direct:yandex_udp missing")
+	}
+	if udp["server"] != "77.88.8.8" {
+		t.Errorf("dns_server.server should be substituted to default dns_ip 77.88.8.8: %v", udp["server"])
 	}
 	// detour должен быть удалён (@out=direct-out)
-	if _, hasDetour := ds["detour"]; hasDetour {
-		t.Errorf("detour should be stripped when @out=direct-out: %v", ds)
+	if _, hasDetour := udp["detour"]; hasDetour {
+		t.Errorf("detour should be stripped when @out=direct-out: %v", udp)
 	}
 }
 
@@ -193,8 +213,8 @@ func TestExpand_RuDirect_NoGeoip(t *testing.T) {
 	}
 }
 
-// TestExpand_RuDirect_DifferentDNSServer — юзер выбрал yandex_doh.
-// Ожидание: в dns_servers попадает yandex_doh вместо yandex_udp.
+// TestExpand_RuDirect_DifferentDNSServer — юзер выбрал yandex_doh для dns_rule.server.
+// SPEC 056-R-N: все 3 yandex_* в frags.DNSServers; @dns_server влияет только на dns_rule.server.
 func TestExpand_RuDirect_DifferentDNSServer(t *testing.T) {
 	p := ruDirectPreset(t)
 	frags, _, ok := ExpandPreset(p, map[string]string{
@@ -204,17 +224,9 @@ func TestExpand_RuDirect_DifferentDNSServer(t *testing.T) {
 		t.Fatal("expand failed")
 	}
 
-	if len(frags.DNSServers) != 1 {
-		t.Fatalf("expected 1 dns_server, got %d", len(frags.DNSServers))
+	if len(frags.DNSServers) != 3 {
+		t.Fatalf("expected 3 dns_servers (all bundled), got %d", len(frags.DNSServers))
 	}
-	ds := frags.DNSServers[0]
-	if ds["tag"] != "ru-direct:yandex_doh" {
-		t.Errorf("dns_server.tag should be yandex_doh: %v", ds["tag"])
-	}
-	if ds["type"] != "https" {
-		t.Errorf("dns_server.type: %v", ds["type"])
-	}
-
 	// dns_rule.server подставился из @dns_server
 	if srv := frags.DNSRule["server"]; srv != "ru-direct:yandex_doh" {
 		t.Errorf("dns_rule.server: %v", srv)
@@ -234,11 +246,21 @@ func TestExpand_RuDirect_OutboundOverride(t *testing.T) {
 	if frags.RoutingRule["outbound"] != "proxy-out" {
 		t.Errorf("rule.outbound: %v", frags.RoutingRule["outbound"])
 	}
-	// detour в yandex_udp = "proxy-out" → ключ ОСТАЁТСЯ
-	if len(frags.DNSServers) != 1 {
-		t.Fatal("expected 1 dns_server")
+	// detour в yandex_udp = "proxy-out" → ключ ОСТАЁТСЯ (SPEC 056-R-N: все 3 yandex_* в frags)
+	if len(frags.DNSServers) != 3 {
+		t.Fatalf("expected 3 dns_servers, got %d", len(frags.DNSServers))
 	}
-	if det := frags.DNSServers[0]["detour"]; det != "proxy-out" {
+	var udp map[string]interface{}
+	for _, ds := range frags.DNSServers {
+		if ds["tag"] == "ru-direct:yandex_udp" {
+			udp = ds
+			break
+		}
+	}
+	if udp == nil {
+		t.Fatal("yandex_udp missing")
+	}
+	if det := udp["detour"]; det != "proxy-out" {
 		t.Errorf("detour should be 'proxy-out', not stripped: %v", det)
 	}
 }
@@ -342,11 +364,22 @@ func TestExpand_UserVarsOverride(t *testing.T) {
 	if !ok {
 		t.Fatal("expand failed")
 	}
-	if len(frags.DNSServers) != 1 {
-		t.Fatal("expected 1 dns_server")
+	if len(frags.DNSServers) != 3 {
+		t.Fatalf("expected 3 dns_servers, got %d", len(frags.DNSServers))
 	}
-	if frags.DNSServers[0]["server"] != "77.88.8.7" {
-		t.Errorf("user override didn't apply: %v", frags.DNSServers[0]["server"])
+	// yandex_udp.server = @dns_ip — должен подставиться в user value.
+	var udp map[string]interface{}
+	for _, ds := range frags.DNSServers {
+		if ds["tag"] == "ru-direct:yandex_udp" {
+			udp = ds
+			break
+		}
+	}
+	if udp == nil {
+		t.Fatal("yandex_udp missing")
+	}
+	if udp["server"] != "77.88.8.7" {
+		t.Errorf("user override didn't apply: %v", udp["server"])
 	}
 }
 

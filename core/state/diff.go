@@ -235,24 +235,15 @@ func sameDNSOptions(a, b *DNSOptions) bool {
 		a.DefaultDomainResolver != b.DefaultDomainResolver || a.ResolverUnset != b.ResolverUnset {
 		return false
 	}
-	if !boolPtrEqual(a.IndependentCache, b.IndependentCache) {
-		return false
-	}
+	// SPEC: IndependentCache diff УДАЛЁН — sing-box 1.14 deprecation.
 	if !sameRawMessageSlice(a.Servers, b.Servers) {
 		return false
 	}
 	return sameRawMessageSlice(a.Rules, b.Rules)
 }
 
-func boolPtrEqual(a, b *bool) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil || b == nil {
-		return false
-	}
-	return *a == *b
-}
+// boolPtrEqual УДАЛЁН — был нужен только для IndependentCache diff
+// (sing-box 1.14 deprecation).
 
 func sameRawMessageSlice(a, b []json.RawMessage) bool {
 	if len(a) != len(b) {

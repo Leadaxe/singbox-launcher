@@ -9,7 +9,7 @@ import (
 	v6 "singbox-launcher/core/state/v6"
 )
 
-// TestParseV6_MetaAndConnections — базовый v6 файл парсится корректно.
+// TestParseV6_MetaAndConnections — базовый v6 файл с новым dns_options shape.
 func TestParseV6_MetaAndConnections(t *testing.T) {
 	raw := []byte(`{
 		"meta": {
@@ -30,12 +30,12 @@ func TestParseV6_MetaAndConnections(t *testing.T) {
 			}}
 		],
 		"vars": [{"name": "cert_store", "value": "mozilla"}],
-		"dns": {
+		"dns_options": {
 			"strategy": "prefer_ipv4",
 			"final":    "google_doh",
-			"template_servers": {"cloudflare_udp": {"enabled": true}},
-			"extra_servers":    [],
-			"extra_rules":      []
+			"servers": [
+				{"kind":"template", "tag":"cloudflare_udp", "enabled":true}
+			]
 		}
 	}`)
 	s, err := Parse(raw)
@@ -54,12 +54,11 @@ func TestParseV6_MetaAndConnections(t *testing.T) {
 	if len(s.Vars) != 1 || s.Vars[0].Name != "cert_store" {
 		t.Errorf("vars lost: %+v", s.Vars)
 	}
-	// DNSV6
-	if s.DNSV6.Strategy != "prefer_ipv4" || s.DNSV6.Final != "google_doh" {
-		t.Errorf("DNSV6 scalars: %+v", s.DNSV6)
+	if s.DNS.Strategy != "prefer_ipv4" || s.DNS.Final != "google_doh" {
+		t.Errorf("DNSV6 scalars: %+v", s.DNS)
 	}
-	if !s.DNSV6.TemplateServers["cloudflare_udp"].Enabled {
-		t.Error("template_servers override lost")
+	if len(s.DNS.Servers) != 1 || s.DNS.Servers[0].Tag != "cloudflare_udp" || !s.DNS.Servers[0].Enabled {
+		t.Errorf("dns_options.servers lost: %+v", s.DNS.Servers)
 	}
 
 	// Legacy view: inline видна в CustomRules, preset-ref скрыт
@@ -74,8 +73,10 @@ func TestParseV6_MetaAndConnections(t *testing.T) {
 	}
 }
 
-// TestParseV6_DNSLegacyView — legacy DNSOptions view содержит template_servers + extras.
-func TestParseV6_DNSLegacyView(t *testing.T) {
+// TestParseV6_LegacyDevShapeConversion — старый дев-shape `dns` со SPEC 053
+// (template_servers / extra_servers / extra_rules) конвертится в новый
+// flat dns_options при parseV6.
+func TestParseV6_LegacyDevShapeConversion(t *testing.T) {
 	raw := []byte(`{
 		"meta": {"version": 6, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"},
 		"connections": {"sources": [], "outbounds": [], "defaults": {}},
@@ -91,14 +92,30 @@ func TestParseV6_DNSLegacyView(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if s.DNSOptions == nil {
-		t.Fatal("legacy DNSOptions view should be present")
+	if s.DNS.Strategy != "prefer_ipv4" {
+		t.Errorf("strategy lost: %+v", s.DNS)
 	}
-	if len(s.DNSOptions.Servers) != 3 { // 2 template overrides + 1 extra
-		t.Errorf("legacy servers count: %d (want 3)", len(s.DNSOptions.Servers))
+	if len(s.DNS.Servers) != 3 {
+		t.Errorf("expected 3 servers (2 template + 1 user), got: %+v", s.DNS.Servers)
 	}
-	if len(s.DNSOptions.Rules) != 1 {
-		t.Errorf("legacy rules count: %d", len(s.DNSOptions.Rules))
+	// Spot-check каждого entry: ровно один user-server с tag=my-pihole.
+	foundUserPihole := false
+	for _, srv := range s.DNS.Servers {
+		if srv.Kind == v6.DNSServerKindUser && srv.Tag == "my-pihole" {
+			foundUserPihole = true
+			if srv.Body["server"] != "192.168.1.5" {
+				t.Errorf("user body lost: %+v", srv.Body)
+			}
+		}
+	}
+	if !foundUserPihole {
+		t.Error("user my-pihole entry not converted")
+	}
+	if len(s.DNS.Rules) != 1 {
+		t.Errorf("rules count: %+v", s.DNS.Rules)
+	}
+	if s.DNS.Rules[0].Kind != v6.DNSRuleKindUser {
+		t.Errorf("rule kind: %v", s.DNS.Rules[0].Kind)
 	}
 }
 
@@ -217,7 +234,7 @@ func TestSave_BackupV5OnFirstUpgrade(t *testing.T) {
 	}
 }
 
-// TestRoundTrip_V6_LoadSaveLoad — Save v6 → Load → Save → identical.
+// TestRoundTrip_V6_LoadSaveLoad — Save v6 → Load → Save → identical (SPEC 056-R-N).
 func TestRoundTrip_V6_LoadSaveLoad(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
@@ -229,11 +246,14 @@ func TestRoundTrip_V6_LoadSaveLoad(t *testing.T) {
 		{Kind: v6.RuleKindInline, ID: "u1", Enabled: true,
 			Body: json.RawMessage(`{"name":"X","match":{"port":[443]},"outbound":"proxy-out"}`)},
 	}
-	original.DNSV6 = v6.DNSConfig{
+	original.DNS = v6.DNSOptions{
 		Strategy: "prefer_ipv4",
 		Final:    "google_doh",
-		TemplateServers: map[string]v6.TemplateServerOvr{
-			"cloudflare_udp": {Enabled: true},
+		Servers: []v6.DNSServer{
+			{Kind: v6.DNSServerKindTemplate, Tag: "cloudflare_udp", Enabled: true},
+			{Kind: v6.DNSServerKindUser, Tag: "my-pihole", Enabled: true, Body: map[string]interface{}{
+				"tag": "my-pihole", "type": "udp", "server": "192.168.1.5", "server_port": float64(53),
+			}},
 		},
 	}
 
@@ -252,11 +272,20 @@ func TestRoundTrip_V6_LoadSaveLoad(t *testing.T) {
 	if loaded.RulesV6[0].Ref != "ru-direct" {
 		t.Errorf("ref lost: %+v", loaded.RulesV6[0])
 	}
-	if loaded.DNSV6.Final != "google_doh" {
-		t.Errorf("DNS round-trip lost: %+v", loaded.DNSV6)
+	if loaded.DNS.Final != "google_doh" {
+		t.Errorf("DNS round-trip lost: %+v", loaded.DNS)
 	}
-	if !loaded.DNSV6.TemplateServers["cloudflare_udp"].Enabled {
-		t.Error("template_servers override lost")
+	if len(loaded.DNS.Servers) != 2 {
+		t.Errorf("servers round-trip: %+v", loaded.DNS.Servers)
+	}
+	if loaded.DNS.Servers[0].Kind != v6.DNSServerKindTemplate ||
+		loaded.DNS.Servers[0].Tag != "cloudflare_udp" ||
+		!loaded.DNS.Servers[0].Enabled {
+		t.Errorf("template entry lost: %+v", loaded.DNS.Servers[0])
+	}
+	if loaded.DNS.Servers[1].Kind != v6.DNSServerKindUser ||
+		loaded.DNS.Servers[1].Body["server"] != "192.168.1.5" {
+		t.Errorf("user entry body lost: %+v", loaded.DNS.Servers[1])
 	}
 
 	// Re-save и проверка что Version остаётся v6.

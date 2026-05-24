@@ -11,19 +11,19 @@ import (
 // core/build не импортировал ui/.
 const (
 	varDNSStrategy              = "dns_strategy"
-	varDNSIndependentCache      = "dns_independent_cache"
+	// varDNSIndependentCache УДАЛЕНО — sing-box 1.14 deprecation.
 	varDNSDefaultDomainResolver = "dns_default_domain_resolver"
 	varDNSFinal                 = "dns_final"
 )
 
 // DNSScalars — DNS-поля state, которые материализуются в template vars.
 //
-// Соответствует полям WizardModel.DNS* (`DNSStrategy`, `DNSIndependentCache`,
-// `DNSFinal`, `DefaultDomainResolver`, `DefaultDomainResolverUnset`); вызывающий
+// Соответствует полям WizardModel.DNS* (`DNSStrategy`, `DNSFinal`,
+// `DefaultDomainResolver`, `DefaultDomainResolverUnset`); вызывающий
 // слой извлекает их в эту структуру перед передачей в core/build.
+// (IndependentCache УДАЛЕНО — sing-box 1.14 deprecation.)
 type DNSScalars struct {
 	Strategy              string
-	IndependentCache      *bool
 	Final                 string
 	DefaultDomainResolver string
 
@@ -57,15 +57,10 @@ func ApplyDNSScalarsToVars(td *template.TemplateData, cfg DNSScalars, vars map[s
 		}
 	}
 
-	if templateDeclaresVar(td.Vars, varDNSIndependentCache) {
-		if cfg.IndependentCache == nil {
-			delete(vars, varDNSIndependentCache)
-		} else if *cfg.IndependentCache {
-			vars[varDNSIndependentCache] = "true"
-		} else {
-			vars[varDNSIndependentCache] = "false"
-		}
-	}
+	// SPEC: varDNSIndependentCache УДАЛЕНО — sing-box 1.14 deprecation.
+	// Если в state.Vars осталось dns_independent_cache (legacy state) —
+	// игнорируем; defensive cleanup на читателе.
+	delete(vars, "dns_independent_cache")
 
 	if templateDeclaresVar(td.Vars, varDNSFinal) {
 		if v := strings.TrimSpace(cfg.Final); v != "" {

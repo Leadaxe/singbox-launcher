@@ -118,7 +118,8 @@ func TestSyncAllRulesToStateRulesV6_Mixed(t *testing.T) {
 	}
 }
 
-// TestSyncDNSFullToStateV6_Split — template servers → overrides, user-added → extras.
+// TestSyncDNSFullToStateV6_Split — SPEC 056-R-N: template tags → kind=template,
+// user-added → kind=user в flat servers[].
 func TestSyncDNSFullToStateV6_Split(t *testing.T) {
 	servers := []json.RawMessage{
 		json.RawMessage(`{"tag":"google_doh","type":"https","enabled":true}`),
@@ -127,21 +128,27 @@ func TestSyncDNSFullToStateV6_Split(t *testing.T) {
 	templateTags := map[string]bool{"google_doh": true}
 	cfg := SyncDNSFullToStateV6(servers, "", nil, templateTags)
 
-	if len(cfg.TemplateServers) != 1 {
-		t.Errorf("template_servers count: %+v", cfg.TemplateServers)
+	var tplGoogle, userPiHole *v6.DNSServer
+	for i := range cfg.Servers {
+		s := &cfg.Servers[i]
+		if s.Kind == v6.DNSServerKindTemplate && s.Tag == "google_doh" {
+			tplGoogle = s
+		}
+		if s.Kind == v6.DNSServerKindUser && s.Tag == "my-pihole" {
+			userPiHole = s
+		}
 	}
-	if !cfg.TemplateServers["google_doh"].Enabled {
-		t.Error("google_doh override should be true")
+	if tplGoogle == nil || !tplGoogle.Enabled {
+		t.Errorf("google_doh template entry should be enabled: %+v", tplGoogle)
 	}
-	if len(cfg.ExtraServers) != 1 {
-		t.Fatalf("extra count: %+v", cfg.ExtraServers)
+	if userPiHole == nil {
+		t.Fatalf("my-pihole user entry missing: %+v", cfg.Servers)
 	}
-	extra := cfg.ExtraServers[0]
-	if extra["tag"] != "my-pihole" {
-		t.Errorf("extra tag: %v", extra)
+	if userPiHole.Body["server"] != "192.168.1.5" {
+		t.Errorf("user body lost server: %+v", userPiHole.Body)
 	}
-	if _, has := extra["enabled"]; has {
-		t.Errorf("enabled should be stripped from extras: %v", extra)
+	if _, has := userPiHole.Body["enabled"]; has {
+		t.Errorf("enabled should be stripped from user body: %v", userPiHole.Body)
 	}
 }
 
@@ -155,20 +162,20 @@ func TestSyncDNSFullToStateV6_ExplicitOverridesWin(t *testing.T) {
 	overrides := map[string]bool{"google_doh": true} // явный override Enabled=true
 
 	cfg := SyncDNSFullToStateV6(servers, "", overrides, templateTags)
-	if !cfg.TemplateServers["google_doh"].Enabled {
-		t.Errorf("explicit override should win: %+v", cfg.TemplateServers)
+	if len(cfg.Servers) != 1 || cfg.Servers[0].Kind != v6.DNSServerKindTemplate || !cfg.Servers[0].Enabled {
+		t.Errorf("explicit override should win: %+v", cfg.Servers)
 	}
 }
 
-// TestSyncDNSFullToStateV6_RulesText — extra rules парсятся из JSON text.
+// TestSyncDNSFullToStateV6_RulesText — user rules парсятся из JSON text.
 func TestSyncDNSFullToStateV6_RulesText(t *testing.T) {
 	rulesText := `{"rules":[{"server":"x","domain_suffix":["a.com"]}]}`
 	cfg := SyncDNSFullToStateV6(nil, rulesText, nil, nil)
-	if len(cfg.ExtraRules) != 1 {
-		t.Fatalf("expected 1 extra rule: %+v", cfg.ExtraRules)
+	if len(cfg.Rules) != 1 {
+		t.Fatalf("expected 1 user rule: %+v", cfg.Rules)
 	}
-	if cfg.ExtraRules[0]["server"] != "x" {
-		t.Errorf("extra rule content: %v", cfg.ExtraRules[0])
+	if cfg.Rules[0].Kind != v6.DNSRuleKindUser || cfg.Rules[0].Body["server"] != "x" {
+		t.Errorf("rule shape: %+v", cfg.Rules[0])
 	}
 }
 

@@ -23,7 +23,6 @@ import (
 
 	"singbox-launcher/core/template"
 	v6 "singbox-launcher/core/state/v6"
-	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/outboundutil"
 )
 
@@ -173,7 +172,7 @@ func srsTagFromURLLocal(urlStr string) string {
 type PresetMergeContext struct {
 	Presets        []template.Preset
 	RulesV6        []v6.Rule
-	DNS            v6.DNSConfig
+	DNS            v6.DNSOptions
 	SrsCachedPaths map[string]string
 
 	// ExecDir — для резолва local SRS paths (kind=srs / preset remote rule_set).
@@ -181,21 +180,19 @@ type PresetMergeContext struct {
 
 	// TemplateDNSDefaults — раскрытые dns_defaults.servers[] из template.
 	// Используется для materialization template-серверов с применением
-	// effective_enabled (от state.dns.template_servers).
+	// effective_enabled (от state.dns_options.servers[kind=template]).
 	TemplateDNSDefaults []TemplateDNSServer
 }
 
-// MergePresetsIntoRoute — append'ит preset-ref + user inline/srs fragments
-// в уже-смержанную route-секцию.
+// MergePresetsIntoRoute — единый emit-путь route через ResolveRoute()
+// (SPEC 056-R-N follow-up). Симметрично MergePresetsIntoDNS.
 //
-// Алгоритм:
-//   1. Парсит routeRaw → map.
-//   2. Для каждого active preset-ref вызывает ExpandPreset → получает fragments.
-//   3. Append fragments.RuleSets в route.rule_set[] (с identical-skip / first-wins).
-//   4. Append fragments.RoutingRule в route.rules[].
-//   5. Re-marshal в RawMessage.
+// Алгоритм: ResolveRoute → filter Enabled (Active всегда true для inline/srs;
+// для preset уже отфильтровано ExpandPreset через if/if_or) → merge с уже
+// эмитнутыми из template (dedup по tag).
 //
-// Если ctx.RulesV6 не содержит enabled rules → noop (возвращает routeRaw как есть).
+// Skipped rule_sets (remote .srs не cached) пропускаются; dangling rule_set
+// refs в routing rule уже очищены resolver'ом через cleanDanglingRuleSetInRule.
 func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (json.RawMessage, error) {
 	if !hasAnyV6Rule(ctx.RulesV6) {
 		return routeRaw, nil
@@ -209,11 +206,11 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 	rules, _ := route["rules"].([]interface{})
 	ruleSets, _ := route["rule_set"].([]interface{})
 
-	presetByID := make(map[string]*template.Preset, len(ctx.Presets))
-	for i := range ctx.Presets {
-		presetByID[ctx.Presets[i].ID] = &ctx.Presets[i]
-	}
+	state := &v6.State{Rules: ctx.RulesV6, DNSOptions: ctx.DNS}
+	tdVal := template.TemplateData{Presets: ctx.Presets}
+	resolved := ResolveRoute(state, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths)
 
+	// Dedup по tag (template уже мог эмитить rule_sets).
 	emittedTags := make(map[string]bool)
 	for _, rs := range ruleSets {
 		if m, ok := rs.(map[string]interface{}); ok {
@@ -223,115 +220,25 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 		}
 	}
 
-	// Обход state.RulesV6 в порядке. Для каждого rule по kind dispatch:
-	//   kind=preset → ExpandPreset → fragments append
-	//   kind=inline → headless rule_set "user:<id>" + route rule
-	//   kind=srs    → local rule_set "user:<id>" (path к скачанному файлу) + route rule
-	for _, rule := range ctx.RulesV6 {
-		if !rule.Enabled {
+	// Emit rule_sets: skip Skipped, dedup.
+	for _, rs := range resolved.RuleSets {
+		if rs.Skipped {
 			continue
 		}
-		switch rule.Kind {
-		case v6.RuleKindPreset:
-			preset, ok := presetByID[rule.Ref]
-			if !ok {
-				debuglog.WarnLog("preset merge: ref %q not found in template (skipped)", rule.Ref)
-				continue
-			}
-			body, err := rule.DecodeBody()
-			if err != nil {
-				debuglog.WarnLog("preset merge: decode body for %q: %v", rule.Ref, err)
-				continue
-			}
-			pb := body.(*v6.PresetBody)
-			frags, warns, ok := ExpandPreset(preset, pb.Vars)
-			for _, w := range warns {
-				debuglog.WarnLog("preset merge: %s", w.String())
-			}
-			if !ok {
-				continue
-			}
-			for _, rs := range frags.RuleSets {
-				tag, _ := rs["tag"].(string)
-				if tag == "" || emittedTags[tag] {
-					continue
-				}
-				// Remote rule_set → local: launcher должен скачать .srs (см.
-				// services.DownloadSRSGroup, triggered через UI cloud button)
-				// и эмитить type=local с path. Без скачанного файла rule_set
-				// **скипается** (как для legacy user srs rules) — preset частично
-				// работает на inline rule_set'ах, но без remote данные не маршрутизируются.
-				converted, skip := convertPresetRuleSetRemoteToLocal(rs, ctx.ExecDir)
-				if skip {
-					debuglog.WarnLog("preset merge: rule_set %q remote .srs not cached — rule_set skipped", tag)
-					continue
-				}
-				ruleSets = append(ruleSets, converted)
-				emittedTags[tag] = true
-			}
-			// Routing rule может ссылаться на пропущенные tag'и (если remote rule_set
-			// не скачан) — вычищаем dangling refs из rule.rule_set.
-			if frags.RoutingRule != nil {
-				cleanedRule := cleanDanglingRuleSetInRule(frags.RoutingRule, emittedTags)
-				if cleanedRule != nil {
-					rules = append(rules, cleanedRule)
-				}
-			}
-		case v6.RuleKindInline:
-			body, err := rule.DecodeBody()
-			if err != nil {
-				debuglog.WarnLog("preset merge: decode inline body: %v", err)
-				continue
-			}
-			ib := body.(*v6.InlineBody)
-			// SPEC 056 follow-up: emit user inline match DIRECTLY в route.rules[],
-			// без обёртки в rule_set type=inline. Причина: sing-box headless
-			// rule_set принимает только connection-independent match-поля
-			// (domain/ip/port/network/process_*), но НЕ connection-level
-			// (protocol/inbound/outbound/action/...). User'ское правило
-			// {protocol: bittorrent, outbound: direct-out} крашилось на
-			// `route.rule_set[N].rules[0].protocol: unknown field`.
-			//
-			// Прямая эмиссия в route.rules[] поддерживает union всех match
-			// типов. Никакой потери функциональности — каждое user inline
-			// правило уникально по tag (user:<id>), reuse нет.
-			match := ib.Match
-			if match == nil {
-				match = map[string]interface{}{}
-			}
-			routeRule := make(map[string]interface{}, len(match)+1)
-			for k, v := range match {
-				routeRule[k] = v
-			}
-			routeRule = outboundutilApply(routeRule, ib.Outbound)
-			rules = append(rules, routeRule)
-		case v6.RuleKindSrs:
-			body, err := rule.DecodeBody()
-			if err != nil {
-				debuglog.WarnLog("preset merge: decode srs body: %v", err)
-				continue
-			}
-			sb := body.(*v6.SrsBody)
-			path, hasCache := ctx.SrsCachedPaths[rule.ID]
-			if !hasCache {
-				debuglog.WarnLog("preset merge: srs rule %q skipped: no cached file", sb.Name)
-				continue
-			}
-			tag := "user:" + rule.ID
-			if !emittedTags[tag] {
-				rs := map[string]interface{}{
-					"tag":    tag,
-					"type":   "local",
-					"format": "binary",
-					"path":   path,
-				}
-				ruleSets = append(ruleSets, rs)
-				emittedTags[tag] = true
-			}
-			routeRule := map[string]interface{}{"rule_set": tag}
-			routeRule = outboundutilApply(routeRule, sb.Outbound)
-			rules = append(rules, routeRule)
+		if emittedTags[rs.Tag] {
+			continue
 		}
+		ruleSets = append(ruleSets, rs.Body)
+		emittedTags[rs.Tag] = true
+	}
+
+	// Emit rules: Active && Enabled. (Active=true для inline/srs always;
+	// для preset — уже отфильтрован в ResolveRoute.)
+	for _, r := range resolved.Rules {
+		if !r.Active || !r.Enabled {
+			continue
+		}
+		rules = append(rules, r.Body)
 	}
 
 	if len(rules) > 0 {
@@ -348,23 +255,24 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 	return out, nil
 }
 
-// MergePresetsIntoDNS — дополняет dns-секцию template-overrides + bundled DNS
-// от active presets + extras.
+// MergePresetsIntoDNS — единый emit-путь DNS через ResolveDNS() (SPEC 056-R-N
+// follow-up).
 //
-// Алгоритм:
-//   1. Парсит dnsRaw → map.
-//   2. Filter template servers по effective_enabled (state.dns.template_servers overrides).
-//   3. Append bundled dns_servers от active presets.
-//   4. Append state.dns.extra_servers / extra_rules.
-//   5. Re-marshal.
+// Алгоритм: ResolveDNS → filter (Active && Enabled) → strip wizard fields →
+// merge с уже эмитнутыми из template (dedup по tag).
 //
-// Если ctx пуст (нет v6-правил и нет overrides/extras) → noop.
+// Если ResolveDNS вернёт пустой результат И в template dns nothing — noop.
+//
+// Dangling rule_set refs в kind=user dns rules чистятся через
+// cleanDanglingDNSRule.
 func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.RawMessage, error) {
-	hasV6 := hasAnyV6Rule(ctx.RulesV6) ||
-		len(ctx.DNS.TemplateServers) > 0 ||
-		len(ctx.DNS.ExtraServers) > 0 ||
-		len(ctx.DNS.ExtraRules) > 0
-	if !hasV6 {
+	// ResolveDNS — единая точка резолва. Принимает state-like контекст
+	// (RulesV6 + DNS), строит ResolvedDNS на лету.
+	state := &v6.State{Rules: ctx.RulesV6, DNSOptions: ctx.DNS}
+	tdVal := templateLikeFromCtx(ctx)
+	resolved := ResolveDNS(state, &tdVal, nil)
+
+	if len(resolved.Servers) == 0 && len(resolved.Rules) == 0 && !hasAnyV6Rule(ctx.RulesV6) {
 		return dnsRaw, nil
 	}
 
@@ -379,27 +287,7 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 	servers, _ := dns["servers"].([]interface{})
 	dnsRules, _ := dns["rules"].([]interface{})
 
-	// Filter existing servers по effective_enabled (если они соответствуют
-	// template_servers override'ам). Серверы НЕ из overrides остаются.
-	if len(ctx.DNS.TemplateServers) > 0 {
-		filtered := make([]interface{}, 0, len(servers))
-		for _, s := range servers {
-			m, ok := s.(map[string]interface{})
-			if !ok {
-				filtered = append(filtered, s)
-				continue
-			}
-			tag, _ := m["tag"].(string)
-			if ovr, has := ctx.DNS.TemplateServers[tag]; has {
-				if !ovr.Enabled {
-					continue
-				}
-			}
-			filtered = append(filtered, s)
-		}
-		servers = filtered
-	}
-
+	// Dedup по tag (template уже эмитнул local_dns_resolver/direct_dns_resolver).
 	emittedTags := make(map[string]bool)
 	for _, s := range servers {
 		if m, ok := s.(map[string]interface{}); ok {
@@ -409,90 +297,44 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 		}
 	}
 
-	// SPEC 056 follow-up: материализуем template DNS library (template.dns_options.
-	// servers[]) — без этого юзер не видит cloudflare_udp/google_doh/yandex_doh
-	// и т.д. в финальном config'е, даже если в DNS tab он их включил
-	// (state.dns.template_servers override'ы существуют, но без библиотеки
-	// серверов из template это бессмысленно).
-	//
-	// Filter: effective_enabled = override.Enabled OR (no override → DefaultEnabled).
-	// Dedup по tag — template config.dns.servers могут содержать тот же tag.
-	if len(ctx.TemplateDNSDefaults) > 0 {
-		emitted := emitTemplateDNSDefaults(ctx.TemplateDNSDefaults, ctx.DNS.TemplateServers)
-		for _, m := range emitted {
-			tag, _ := m["tag"].(string)
-			if tag == "" || emittedTags[tag] {
-				continue
-			}
-			servers = append(servers, m)
-			emittedTags[tag] = true
+	// Emit servers: Active && Enabled, skip Source=Core (уже в template).
+	for _, srv := range resolved.Servers {
+		if !srv.Active || !srv.Enabled {
+			continue
+		}
+		// (SPEC unify: больше нет CORE источника — required entries имеют
+		// Source=template + Locked=true; они эмитятся как и любые template.)
+		if srv.Tag != "" && emittedTags[srv.Tag] {
+			continue
+		}
+		servers = append(servers, srv.Body)
+		if srv.Tag != "" {
+			emittedTags[srv.Tag] = true
 		}
 	}
 
-	// Append bundled DNS-сервера от active presets.
-	// SPEC 056-pattern: ВСЕ added entries проходят через stripDNSWizardOnlyFields
-	// на копии. Native pipeline (sing-box) видит чистый JSON без launcher-only
-	// полей (description/enabled/title/if/if_or/...) — никакой пост-strip
-	// фазы в финальном эмите быть не должно.
+	// Build emittedRuleSetTags для dangling-cleanup в DNS user rules.
 	presetByID := make(map[string]*template.Preset, len(ctx.Presets))
 	for i := range ctx.Presets {
 		presetByID[ctx.Presets[i].ID] = &ctx.Presets[i]
 	}
-	for _, rule := range ctx.RulesV6 {
-		if !rule.Enabled || rule.Kind != v6.RuleKindPreset {
-			continue
-		}
-		preset, ok := presetByID[rule.Ref]
-		if !ok {
-			continue
-		}
-		body, err := rule.DecodeBody()
-		if err != nil {
-			continue
-		}
-		pb := body.(*v6.PresetBody)
-		frags, _, ok := ExpandPreset(preset, pb.Vars)
-		if !ok {
-			continue
-		}
-		for _, ds := range frags.DNSServers {
-			tag, _ := ds["tag"].(string)
-			if tag == "" || emittedTags[tag] {
-				continue
-			}
-			// Strip + copy. ExpandPreset уже стрипает if/if_or/title, но
-			// description пропускает (sing-box 1.12+ его не принимает).
-			// stripDNSWizardOnlyFields — single source of truth для всех
-			// DNS emit-путей.
-			servers = append(servers, stripDNSWizardOnlyFields(ds))
-			emittedTags[tag] = true
-		}
-		if frags.DNSRule != nil {
-			dnsRules = append(dnsRules, frags.DNSRule)
-		}
-	}
-
-	// Append extra_servers (user-defined). Через stripDNSWizardOnlyFields
-	// на копии — single source of truth для cleanup'а DNS server fields
-	// (description/enabled/title/if/if_or/_*).
-	for _, extra := range ctx.DNS.ExtraServers {
-		servers = append(servers, stripDNSWizardOnlyFields(extra))
-	}
-
-	// Build emittedRuleSetTags для dangling-cleanup в DNS rules. Источники
-	// валидных tag'ов: rule_set'ы от active preset-refs (после auto-prefix).
-	// Юзерский DNS-rule может ссылаться на preset rule_set (`russian:ru-domains`)
-	// или на dangling tag (если preset выключен) — cleanDanglingDNSRule
-	// аккуратно подрежет `rule_set` ссылку оставляя rule валидным.
 	emittedRuleSetTags := collectRuleSetTagsFromPresets(presetByID, ctx.RulesV6)
 
-	// Append extra_rules (user-defined DNS rules через UI).
-	for _, extra := range ctx.DNS.ExtraRules {
-		cleaned := cleanDanglingDNSRule(extra, emittedRuleSetTags)
-		if cleaned == nil {
+	// Emit rules: Active && Enabled. User → dangling cleanup; preset → as is.
+	for _, dr := range resolved.Rules {
+		if !dr.Active || !dr.Enabled {
 			continue
 		}
-		dnsRules = append(dnsRules, cleaned)
+		switch dr.Source {
+		case DNSSourcePreset:
+			dnsRules = append(dnsRules, dr.Body)
+		case DNSSourceUser:
+			cleaned := cleanDanglingDNSRule(dr.Body, emittedRuleSetTags)
+			if cleaned == nil {
+				continue
+			}
+			dnsRules = append(dnsRules, cleaned)
+		}
 	}
 
 	if len(servers) > 0 {
@@ -507,6 +349,45 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 		return nil, fmt.Errorf("preset merge dns: marshal: %w", err)
 	}
 	return out, nil
+}
+
+// templateLikeFromCtx — собирает временный TemplateData из PresetMergeContext
+// для передачи в ResolveDNS. ctx содержит presets и (через TemplateDNSDefaults)
+// раскрытые template DNS-серверы, но не config.dns.servers (core).
+// Core минимум доступен через сам caller (он уже в dnsRaw).
+func templateLikeFromCtx(ctx PresetMergeContext) template.TemplateData {
+	// Восстанавливаем DNSOptionsRaw как JSON массив из ctx.TemplateDNSDefaults
+	// (чтобы ResolveDNS мог пройтись по template library).
+	var libRaw []map[string]interface{}
+	for _, d := range ctx.TemplateDNSDefaults {
+		libRaw = append(libRaw, d.Raw)
+	}
+	dnsOpt := map[string]interface{}{"servers": libRaw}
+	raw, _ := json.Marshal(dnsOpt)
+	td := template.TemplateData{
+		Presets:       ctx.Presets,
+		DNSOptionsRaw: raw,
+	}
+	return td
+}
+
+// resolvePresetDNSRule — резолвит preset.DNSRule в готовый rule body
+// (после Vars substitute, if-filter, rewrite rule_set refs).
+//
+// Возвращает (rule, true) если dns_rule определён и активен; (nil, false) иначе.
+func resolvePresetDNSRule(preset *template.Preset, userVars map[string]string) (map[string]interface{}, bool) {
+	if preset == nil || preset.DNSRule == nil {
+		return nil, false
+	}
+	frags, _, ok := ExpandPreset(preset, userVars)
+	if !ok || frags == nil || frags.DNSRule == nil {
+		return nil, false
+	}
+	out := make(map[string]interface{}, len(frags.DNSRule))
+	for k, v := range frags.DNSRule {
+		out[k] = v
+	}
+	return out, true
 }
 
 // collectRuleSetTagsFromPresets — set rule_set tag'ов от ВСЕХ enabled

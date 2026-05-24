@@ -29,8 +29,8 @@ type DNSConfig struct {
 	// Strategy — необязательное переопределение dns.strategy.
 	Strategy string
 
-	// IndependentCache — tristate (nil / true / false). nil → ключ не выставляется.
-	IndependentCache *bool
+	// SPEC: IndependentCache УДАЛЕНО — deprecated в sing-box 1.14.0
+	// (кэш всегда per-transport). Emit поля прекращён, поле сняти из конфига.
 }
 
 // MergeDNSSection накладывает DNSConfig поверх шаблонного `dns` JSON-объекта,
@@ -45,7 +45,7 @@ type DNSConfig struct {
 //  4. cfg.Final (или fallback — тег первого enabled-сервера) → "final";
 //     пусто и нет fallback'а — ключ удаляется из map;
 //  5. cfg.Strategy непустой → "strategy"; иначе ключ из шаблона остаётся;
-//  6. cfg.IndependentCache != nil → "independent_cache" = bool.
+// (SPEC: independent_cache emit удалён — sing-box 1.14 deprecation.)
 //
 // Pure: без I/O, без shared state.
 func MergeDNSSection(templateDNS json.RawMessage, cfg DNSConfig) (json.RawMessage, error) {
@@ -102,9 +102,10 @@ func MergeDNSSection(templateDNS json.RawMessage, cfg DNSConfig) (json.RawMessag
 	if s := strings.TrimSpace(cfg.Strategy); s != "" {
 		dnsObj["strategy"] = s
 	}
-	if cfg.IndependentCache != nil {
-		dnsObj["independent_cache"] = *cfg.IndependentCache
-	}
+	// SPEC: independent_cache emit удалён (sing-box 1.14 deprecation).
+	// Если в шаблоне случайно остался ключ — defensive cleanup, чтобы emit
+	// не содержал deprecated поле.
+	delete(dnsObj, "independent_cache")
 	return json.Marshal(dnsObj)
 }
 
@@ -136,10 +137,11 @@ func dnsServerEnabled(m map[string]interface{}) bool {
 }
 
 // stripDNSWizardOnlyFields убирает wizard-only ключи перед merge'ом в
-// финальный config.json: "description"/"enabled" (UI поля), "title"
-// (preset UI label), "if"/"if_or" (preset условия — уже резолвлены к моменту
-// эмита), "default_enabled" (template default), и любые ключи с префиксом "_"
-// (sing-box их отвергает strict-decoder'ом начиная с 1.12+).
+// финальный config.json: "description"/"enabled"/"required" (UI поля),
+// "title" (preset UI label), "if"/"if_or" (preset условия — уже резолвлены
+// к моменту эмита), "default_enabled" (legacy template default — keep for
+// backward compat), и любые ключи с префиксом "_" (sing-box их отвергает
+// strict-decoder'ом начиная с 1.12+).
 //
 // **Always returns a NEW map** — caller'у безопасно передавать оригинал из
 // state/template без боязни мутировать его (SPEC 056 pattern: immutable
@@ -155,7 +157,7 @@ func stripDNSWizardOnlyFields(m map[string]interface{}) map[string]interface{} {
 	out := make(map[string]interface{}, len(m))
 	for k, v := range m {
 		switch k {
-		case "description", "enabled", "title", "if", "if_or", "default_enabled":
+		case "description", "enabled", "required", "title", "if", "if_or", "default_enabled":
 			continue
 		}
 		if len(k) > 0 && k[0] == '_' {

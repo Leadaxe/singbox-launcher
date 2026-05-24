@@ -76,10 +76,12 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 			serversBox.Refresh()
 			return
 		}
-		// Bundled DNS-серверы от активных preset'ов (read-only секция).
-		// Юзер видит что preset реально добавляет в config.json::dns.servers[],
-		// но менять/удалять не может — это контент template'а.
-		bundledRows := renderPresetBundledDNSRows(m, dialogParent())
+		// Bundled DNS-серверы от активных preset'ов — добавляются В КОНЕЦ
+		// единого списка серверов (SPEC 056-R-N: убрали отдельную секцию,
+		// 🔒 рядом с tag'ом и так показывает что сервер пришёл из preset).
+		bundledRows := renderPresetBundledDNSRows(m, dialogParent(), func() {
+			presenter.MarkAsChanged()
+		})
 
 		for i := range m.DNSServers {
 			func(idx int) {
@@ -103,7 +105,11 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				if obj != nil {
 					desc = strings.TrimSpace(dnsJSONStringField(obj, "description"))
 				}
+				// SPEC unify: "locked" (toggle block) — только required entries.
+				// "templateOwned" (edit/del block) — любая template entry. Юзер
+				// своего DNS-сервера → editable + deletable.
 				locked := wizardbusiness.DNSTagLocked(m, tag)
+				templateOwned := wizardbusiness.DNSTagFromTemplate(m, tag)
 
 				// Не вызывать SyncModelToGUI здесь — он пересобирает весь список и все вкладки; только обновить селекты.
 				sumLabel := ttwidget.NewLabel(sum)
@@ -115,31 +121,36 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				enCheck := cwc.Check
 				enCheck.SetChecked(wizardbusiness.DNSServerWizardEnabledRaw(raw))
 				if locked {
-					// Скелет config.dns: строка зафиксирована; галочка только показывает включение в конфиг (из state/шаблона), без переключения в UI.
+					// required entry — toggle заблокирован (всегда вкл).
 					enCheck.Disable()
 				}
 				setTooltip(enCheck, locale.T(tooltipForDNSServerCheck(locked)))
 
-				editBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("wizard.shared.button_edit"), theme.DocumentCreateIcon(), func() {
-					showDNSServerEditor(presenter, dialogParent(), idx)
-				}, rowGetter)
-				editBtn.Importance = widget.LowImportance
-				delBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("wizard.shared.button_del"), theme.DeleteIcon(), func() {
-					deleteDNSServerAt(presenter, idx)
-					presenter.RefreshDNSListAndSelects()
-				}, rowGetter)
-				delBtn.Importance = widget.LowImportance
-				if locked {
-					editBtn.Disable()
-					delBtn.Disable()
-					hint := locale.T("wizard.dns.tooltip_server_locked")
-					setTooltip(editBtn, hint)
-					setTooltip(delBtn, hint)
-				}
-
 				rowGutter := canvas.NewRectangle(color.Transparent)
 				rowGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
-				right := container.NewHBox(editBtn, delBtn, rowGutter)
+
+				// SPEC unify: Edit/Del — только для user-added entries.
+				// Template entries (read-only) получают View JSON вместо Edit.
+				var right *fyne.Container
+				if templateOwned {
+					bodyCopy := obj
+					viewBtn := fynewidget.NewHoverForwardButtonWithIcon("View", theme.SearchIcon(), func() {
+						showTemplateDNSDetailsDialog(dialogParent(), bodyCopy, locked)
+					}, rowGetter)
+					viewBtn.Importance = widget.LowImportance
+					right = container.NewHBox(viewBtn, rowGutter)
+				} else {
+					editBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("wizard.shared.button_edit"), theme.DocumentCreateIcon(), func() {
+						showDNSServerEditor(presenter, dialogParent(), idx)
+					}, rowGetter)
+					editBtn.Importance = widget.LowImportance
+					delBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("wizard.shared.button_del"), theme.DeleteIcon(), func() {
+						deleteDNSServerAt(presenter, idx)
+						presenter.RefreshDNSListAndSelects()
+					}, rowGetter)
+					delBtn.Importance = widget.LowImportance
+					right = container.NewHBox(editBtn, delBtn, rowGutter)
+				}
 				// Border: check left, content center (tap/hover → check via fynewidget), buttons right — avoids zero-width label in HBox-only row.
 				rowInner := container.NewBorder(nil, nil, cwc.CheckLeading, right, cwc.Content)
 				row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
@@ -147,17 +158,10 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				serversBox.Add(row)
 			}(i)
 		}
-		// Append bundled-preset section header + rows (если есть).
-		if len(bundledRows) > 0 {
-			serversBox.Add(widget.NewSeparator())
-			header := widget.NewLabelWithStyle(
-				locale.T("wizard.dns.section_from_active_presets"),
-				fyne.TextAlignLeading, fyne.TextStyle{Bold: true},
-			)
-			serversBox.Add(header)
-			for _, r := range bundledRows {
-				serversBox.Add(r)
-			}
+		// Append bundled-preset rows в общий список (без заголовка — 🔒 в label
+		// показывает source).
+		for _, r := range bundledRows {
+			serversBox.Add(r)
 		}
 		serversBox.Refresh()
 	}
@@ -278,32 +282,11 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	})
 	setTooltip(guiState.DNSStrategySelect, varTooltip(wizardmodels.VarDNSStrategy))
 
-	cacheLabelText := varTitle(wizardmodels.VarDNSIndependentCache, locale.T("wizard.dns.label_independent_cache"))
-	cacheTip := varTooltip(wizardmodels.VarDNSIndependentCache)
-	cacheTitleLbl := ttwidget.NewLabel(cacheLabelText)
-	indepCacheCWC := fynewidget.NewCheckWithContent(func(checked bool) {
-		if guiState.DNSSelectsProgrammatic {
-			return
-		}
-		cur := false
-		if mod.DNSIndependentCache != nil {
-			cur = *mod.DNSIndependentCache
-		}
-		if cur != checked {
-			nv := checked
-			mod.DNSIndependentCache = &nv
-			mod.TemplatePreviewNeedsUpdate = true
-			presenter.MarkAsChanged()
-		}
-	}, cacheTitleLbl, fynewidget.CheckWithContentConfig{ContentToolTip: cacheTip})
-	guiState.DNSIndependentCacheCheck = indepCacheCWC.Check
-
+	// SPEC: independent_cache deprecated в sing-box 1.14.0 (cache always keys
+	// by transport name). UI checkbox удалён, поле не персистится, не эмитится.
 	strategyAndCacheRow := container.NewHBox(
 		strategyLabel,
 		guiState.DNSStrategySelect,
-		layout.NewSpacer(),
-		indepCacheCWC.CheckLeading,
-		indepCacheCWC.Content,
 	)
 
 	// Final и default_domain_resolver — одна строка: две группы (лейбл+селект), spacer между ними.
@@ -321,7 +304,9 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 
 	var refreshAll func()
 	rebuildBundledRules := func() {
-		rows := renderPresetBundledDNSRulesRows(presenter.Model(), dialogParent())
+		rows := renderPresetBundledDNSRulesRows(presenter.Model(), dialogParent(), func() {
+			presenter.MarkAsChanged()
+		})
 		objs := make([]fyne.CanvasObject, 0, len(rows))
 		objs = append(objs, rows...)
 		bundledRulesBox.Objects = objs
@@ -436,7 +421,7 @@ func setDNSServerEnabledAt(p *wizardpresentation.WizardPresenter, index int, ena
 	p.MarkAsChanged()
 
 	// SPEC 053: параллельно пишем override в model.DNSTemplateOverrides по tag'у.
-	// На Save синхронизируется в state.DNSV6.TemplateServers через SyncDNSToStateV6.
+	// На Save синхронизируется в state.DNS.TemplateServers через SyncDNSToStateV6.
 	// Если у юзера есть preset-ref'ы → save переключится на v6, и override повлияет
 	// через MergePresetsIntoDNS на финальный config.json::dns.servers[].
 	if tag, ok := obj["tag"].(string); ok && tag != "" {
@@ -488,7 +473,7 @@ func deleteDNSServerAt(p *wizardpresentation.WizardPresenter, index int) {
 	}
 	var deleted map[string]interface{}
 	_ = json.Unmarshal(m.DNSServers[index], &deleted)
-	if wizardbusiness.DNSTagLocked(m, dnsJSONStringField(deleted, "tag")) {
+	if wizardbusiness.DNSTagFromTemplate(m, dnsJSONStringField(deleted, "tag")) {
 		return
 	}
 	delTag, _ := deleted["tag"].(string)
@@ -543,7 +528,7 @@ func applyDNSServerJSON(p *wizardpresentation.WizardPresenter, w fyne.Window, te
 	if editIndex >= 0 && editIndex < len(mod.DNSServers) {
 		var cur map[string]interface{}
 		_ = json.Unmarshal(mod.DNSServers[editIndex], &cur)
-		if wizardbusiness.DNSTagLocked(mod, dnsJSONStringField(cur, "tag")) {
+		if wizardbusiness.DNSTagFromTemplate(mod, dnsJSONStringField(cur, "tag")) {
 			dialog.ShowError(fmt.Errorf("%s", locale.T("wizard.dns.error_locked_edit")), w)
 			return false
 		}
@@ -633,7 +618,7 @@ func showDNSServerEditor(p *wizardpresentation.WizardPresenter, w fyne.Window, i
 	}
 	var cur map[string]interface{}
 	_ = json.Unmarshal(m.DNSServers[index], &cur)
-	if wizardbusiness.DNSTagLocked(m, dnsJSONStringField(cur, "tag")) {
+	if wizardbusiness.DNSTagFromTemplate(m, dnsJSONStringField(cur, "tag")) {
 		return
 	}
 	entry := widget.NewMultiLineEntry()

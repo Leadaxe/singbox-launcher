@@ -142,9 +142,13 @@ type State struct {
 	// автоматически переключается на v6-формат + создаёт state.json.v5.bak.
 	RulesV6 []v6.Rule
 
-	// DNSV6 — новая DNS-секция (template_servers overrides + extras).
-	// SPEC 053. Параллельно DNSOptions для одностороннего sync на Save.
-	DNSV6 v6.DNSConfig
+	// DNS — новая DNS-секция (SPEC 056-R-N: flat kind discriminator
+	// template/preset/user для servers и preset/user для rules).
+	// Параллельно DNSOptions (legacy v5) для одностороннего sync на Save.
+	// JSON-ключ на диске: "dns_options" (см. state.marshalDiskV6).
+	// Историческое имя поля было DNSV6 (когда v5/v6 co-existed); после
+	// SPEC 056-R-N оба формата это v6 internally, суффикс выкинут.
+	DNS v6.DNSOptions
 }
 
 // SelectableRuleState — выбор пользователя для правила, определённого в шаблоне.

@@ -17,113 +17,298 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core/build"
+	corev6 "singbox-launcher/core/state/v6"
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/fynewidget"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
-
-// lockLeading — visual placeholder под местом checkbox'а в DNS row.
-// Возвращает 🔒 emoji с padding-spacer'ом справа, выровненный по ширине
-// под checkbox. Используется вместо галочки для read-only bundled rows —
-// одна позиция в left-edge как у обычных DNS-серверов с галочкой.
-func lockLeading() fyne.CanvasObject {
-	lockLabel := widget.NewLabel("🔒")
-	// Spacer вдогонку чтобы emoji не прилипал к контенту справа —
-	// match width стандартного CheckLeading (~28-32px).
-	spacer := canvas.NewRectangle(color.Transparent)
-	spacer.SetMinSize(fyne.NewSize(4, 0))
-	return container.NewHBox(lockLabel, spacer)
-}
 
 // jsonMarshalIndent — thin alias for jsonPrettyMarshal callers (encapsulates std import).
 func jsonMarshalIndent(v interface{}, prefix, indent string) ([]byte, error) {
 	return json.MarshalIndent(v, prefix, indent)
 }
 
-// renderPresetBundledDNSRows — собирает read-only DNS server rows для всех
-// активных preset-ref'ов. Возвращает список widget'ов готовых к Add в VBox.
+// renderPresetBundledDNSRows — собирает DNS server rows для всех активных
+// preset-ref'ов через ResolveDNS (SPEC 056-R-N follow-up).
 //
-// parentWindow — для view dialog'а (показывает read-only детали bundled DNS).
+// Использует resolver чтобы:
+//  - Получить ВСЕ bundled servers (без consumption-фильтра)
+//  - Получить Active flag (прошёл if/if_or)
+//  - Получить InactiveReason для tooltip когда !Active
 //
-// Только те bundled DNS-серверы которые ФАКТИЧЕСКИ попадают в config (то есть
-// прошли через `filterDnsServers` в ExpandPreset — выбранные через @dns_server
-// или указанные литералом в dns_rule.server). Преcет с use_dns_override=false
-// не покажет никаких rows.
-func renderPresetBundledDNSRows(m *wizardmodels.WizardModel, parentWindow fyne.Window) []fyne.CanvasObject {
+// onChanged — callback после toggle чекбокса.
+// parentWindow — для View JSON dialog'а.
+func renderPresetBundledDNSRows(m *wizardmodels.WizardModel, parentWindow fyne.Window, onChanged func()) []fyne.CanvasObject {
 	if m == nil || m.TemplateData == nil {
 		return nil
 	}
+	// Build shadow state из model для передачи в ResolveDNS.
+	shadowState := buildShadowStateForResolve(m)
+	resolved := build.ResolveDNS(shadowState, m.TemplateData, gatherTemplateVars(m))
+
 	presetByID := make(map[string]*wizardtemplate.Preset, len(m.TemplateData.Presets))
 	for i := range m.TemplateData.Presets {
 		presetByID[m.TemplateData.Presets[i].ID] = &m.TemplateData.Presets[i]
 	}
 
 	var rows []fyne.CanvasObject
-	for _, pr := range m.PresetRefs {
-		if pr == nil || !pr.Enabled {
+	for _, srv := range resolved.Servers {
+		if srv.Source != build.DNSSourcePreset {
 			continue
 		}
-		tpl := presetByID[pr.Ref]
+		tpl := presetByID[srv.PresetID]
 		if tpl == nil {
 			continue
 		}
-		frags, _, ok := build.ExpandPreset(tpl, pr.Vars)
-		if !ok || len(frags.DNSServers) == 0 {
-			continue
-		}
-		for _, ds := range frags.DNSServers {
-			dsCopy := ds
-			tplCopy := tpl
-			onView := func() { showBundledDNSDetailsDialog(parentWindow, tplCopy, dsCopy) }
-			row := buildPresetBundledDNSRow(tplCopy, dsCopy, onView)
-			if row != nil {
-				rows = append(rows, row)
+		srvCopy := srv
+		tplCopy := tpl
+		// Найти PresetRefState для записи toggle (lazy lookup на каждый toggle —
+		// model.PresetRefs может пересоздаваться).
+		onToggle := func(v bool) {
+			for _, pr := range m.PresetRefs {
+				if pr != nil && pr.Ref == srvCopy.PresetID {
+					pr.SetDNSServerEnabled(srvCopy.LocalTag, v)
+					break
+				}
+			}
+			if onChanged != nil {
+				onChanged()
 			}
 		}
+		onView := func() {
+			body, _ := jsonPrettyMarshal(srvCopy.Body)
+			header := widget.NewLabelWithStyle(
+				"🔒  From preset: "+presetDisplayLabel(tplCopy),
+				fyne.TextAlignLeading, fyne.TextStyle{Bold: true},
+			)
+			helpLabel := widget.NewLabelWithStyle(
+				"Read-only preset DNS server. Toggle on/off via checkbox.",
+				fyne.TextAlignLeading, fyne.TextStyle{Italic: true},
+			)
+			helpLabel.Wrapping = fyne.TextWrapWord
+			showJSONReadOnlyDialog(parentWindow, "DNS server details", header, helpLabel, body)
+		}
+		row := buildPresetBundledDNSRowFromResolved(tplCopy, srvCopy, onToggle, onView)
+		if row != nil {
+			rows = append(rows, row)
+		}
 	}
 	return rows
 }
 
-// renderPresetBundledDNSRulesRows — собирает read-only DNS rule rows для всех
-// активных preset-ref'ов которые имеют preset.dns_rule.
-func renderPresetBundledDNSRulesRows(m *wizardmodels.WizardModel, parentWindow fyne.Window) []fyne.CanvasObject {
+// presetDisplayLabel — helper для UI: label или fallback на ID.
+func presetDisplayLabel(p *wizardtemplate.Preset) string {
+	if p.Label != "" {
+		return p.Label
+	}
+	return p.ID
+}
+
+// buildShadowStateForResolve — конструирует временный v6.State из model для
+// передачи в build.ResolveDNS на render-time. Не полностью equivalent тому
+// что напишется на диск — нам нужны только Rules (для preset-ref discovery)
+// и DNS.Servers/Rules (для enabled overrides).
+//
+// SPEC 056-R-N follow-up: enabled читаем из PresetRefState.DNSServerEnabled /
+// DNSRuleEnabled (default true). Раньше были отдельные карты в model.
+func buildShadowStateForResolve(m *wizardmodels.WizardModel) *corev6.State {
+	if m == nil {
+		return nil
+	}
+	state := &corev6.State{}
+	state.Rules = wizardmodels.SyncPresetRefsToStateRules(m.PresetRefs)
+	// Для каждого PresetRefState собираем preset DNS entries с toggle'ами.
+	// Render использует это для visualisation (ResolveDNS читает Enabled).
+	for _, pr := range m.PresetRefs {
+		if pr == nil || pr.Ref == "" {
+			continue
+		}
+		for localTag, enabled := range pr.DNSServerEnabled {
+			state.DNSOptions.Servers = append(state.DNSOptions.Servers, corev6.DNSServer{
+				Kind:    corev6.DNSServerKindPreset,
+				Ref:     pr.Ref + ":" + localTag,
+				Enabled: enabled,
+			})
+		}
+		if pr.DNSRuleEnabled != nil {
+			state.DNSOptions.Rules = append(state.DNSOptions.Rules, corev6.DNSRule{
+				Kind:    corev6.DNSRuleKindPreset,
+				Ref:     pr.Ref,
+				Enabled: *pr.DNSRuleEnabled,
+			})
+		}
+	}
+	return state
+}
+
+// gatherTemplateVars — собирает global template vars из model для substitute
+// на render-time. Объединяет SettingsVars и фиксированные dns_* scalars.
+func gatherTemplateVars(m *wizardmodels.WizardModel) map[string]string {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]string, len(m.SettingsVars))
+	for k, v := range m.SettingsVars {
+		out[k] = v
+	}
+	return out
+}
+
+// renderPresetBundledDNSRulesRows — собирает DNS rule rows через ResolveDNS.
+// SPEC 056-R-N follow-up: единая логика с server rendering.
+func renderPresetBundledDNSRulesRows(m *wizardmodels.WizardModel, parentWindow fyne.Window, onChanged func()) []fyne.CanvasObject {
 	if m == nil || m.TemplateData == nil {
 		return nil
 	}
+	shadowState := buildShadowStateForResolve(m)
+	resolved := build.ResolveDNS(shadowState, m.TemplateData, gatherTemplateVars(m))
+
 	presetByID := make(map[string]*wizardtemplate.Preset, len(m.TemplateData.Presets))
 	for i := range m.TemplateData.Presets {
 		presetByID[m.TemplateData.Presets[i].ID] = &m.TemplateData.Presets[i]
 	}
 
 	var rows []fyne.CanvasObject
-	for _, pr := range m.PresetRefs {
-		if pr == nil || !pr.Enabled {
+	for _, dr := range resolved.Rules {
+		if dr.Source != build.DNSSourcePreset {
 			continue
 		}
-		tpl := presetByID[pr.Ref]
+		tpl := presetByID[dr.PresetID]
 		if tpl == nil {
 			continue
 		}
-		frags, _, ok := build.ExpandPreset(tpl, pr.Vars)
-		if !ok || frags.DNSRule == nil {
-			continue
-		}
-		ruleCopy := frags.DNSRule
+		ruleCopy := dr.Body
 		tplCopy := tpl
+		ref := tplCopy.ID
+		drCopy := dr
+		onToggle := func(v bool) {
+			for _, pr := range m.PresetRefs {
+				if pr != nil && pr.Ref == ref {
+					pr.SetDNSRuleEnabled(v)
+					break
+				}
+			}
+			if onChanged != nil {
+				onChanged()
+			}
+		}
 		onView := func() { showBundledDNSRuleDetailsDialog(parentWindow, tplCopy, ruleCopy) }
-		rows = append(rows, buildPresetBundledDNSRuleRow(tplCopy, ruleCopy, onView))
+		rows = append(rows, buildPresetBundledDNSRuleRowFromResolved(tplCopy, drCopy, onToggle, onView))
 	}
 	return rows
 }
 
-// buildPresetBundledDNSRuleRow — read-only одна строка для bundled DNS-rule preset'а.
+// buildPresetBundledDNSRuleRowFromResolved — SPEC 056-R-N: row из ResolvedDNSRule.
+// Active=false → checkbox disabled + tooltip с InactiveReason.
+func buildPresetBundledDNSRuleRowFromResolved(
+	tpl *wizardtemplate.Preset,
+	dr build.ResolvedDNSRule,
+	onToggle func(bool),
+	onView func(),
+) fyne.CanvasObject {
+	// rule_set summary (local tag'и без preset-prefix).
+	ruleSetSummary := ""
+	switch v := dr.Body["rule_set"].(type) {
+	case string:
+		ruleSetSummary = stripPresetPrefix(v, tpl.ID)
+	case []interface{}:
+		parts := make([]string, 0, len(v))
+		for _, x := range v {
+			if s, ok := x.(string); ok {
+				parts = append(parts, stripPresetPrefix(s, tpl.ID))
+			}
+		}
+		ruleSetSummary = joinSep(parts, ", ")
+	}
+
+	presetLabel := tpl.Label
+	if presetLabel == "" {
+		presetLabel = tpl.ID
+	}
+
+	rowText := "🔒 " + presetLabel
+	if ruleSetSummary != "" {
+		rowText += " (" + ruleSetSummary + ")"
+	}
+	titleLabel := ttwidget.NewLabel(rowText)
+	titleLabel.Wrapping = fyne.TextTruncate
+
+	// Tooltip: server + rule_set + inactive reason если применимо.
+	server, _ := dr.Body["server"].(string)
+	server = stripPresetPrefix(server, tpl.ID)
+	tipParts := []string{}
+	if server != "" {
+		tipParts = append(tipParts, "server="+server)
+	}
+	if ruleSetSummary != "" {
+		tipParts = append(tipParts, "rule_set="+ruleSetSummary)
+	}
+	if !dr.Active && dr.InactiveReason != "" {
+		tipParts = append(tipParts, "inactive ("+dr.InactiveReason+")")
+	}
+	tip := joinSep(tipParts, " · ")
+
+	var row *fynewidget.HoverRow
+	rowGetter := func() *fynewidget.HoverRow { return row }
+
+	cwc := fynewidget.NewCheckWithContent(func(checked bool) {
+		if onToggle != nil {
+			onToggle(checked)
+		}
+	}, titleLabel, fynewidget.CheckWithContentConfig{ContentToolTip: tip})
+	cwc.Check.SetChecked(dr.Enabled)
+	if !dr.Active {
+		cwc.Check.Disable()
+	}
+
+	var right *fyne.Container
+	if onView != nil {
+		viewBtn := fynewidget.NewHoverForwardButtonWithIcon("View JSON", theme.SearchIcon(), onView, rowGetter)
+		viewBtn.Importance = widget.LowImportance
+		right = container.NewHBox(viewBtn)
+	} else {
+		right = container.NewHBox()
+	}
+
+	rowInner := container.NewBorder(nil, nil, cwc.CheckLeading, right, cwc.Content)
+	row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
+	row.WireTooltipLabelHover(titleLabel)
+	return row
+}
+
+// lookupPresetEnabled — default true (preset включает все свои entries по умолчанию).
+// Юзер может выключить отдельный через UI → key=false.
+func lookupPresetEnabled(m map[string]bool, key string) bool {
+	if m == nil {
+		return true
+	}
+	v, has := m[key]
+	if !has {
+		return true
+	}
+	return v
+}
+
+// buildPresetBundledDNSRuleRow — одна строка для bundled DNS-rule preset'а
+// (SPEC 056-R-N kind=preset).
 //
-// Layout: `🔒  <preset-label> DNS rule (<rule_set_tags>)         [View]`
-// Tooltip: `server=<server> · rule_set=<full-list>`
-func buildPresetBundledDNSRuleRow(tpl *wizardtemplate.Preset, rule map[string]interface{}, onView func()) fyne.CanvasObject {
+// Layout: `[✅] 🔒 <preset-label> (<rule_set_tags>)         [View JSON]`
+// Tooltip: `server=<server> · rule_set=<full-list>` (детали в tooltip).
+// Используется тот же widget pattern что и обычные DNS-server rows
+// (NewCheckWithContent + HoverRow + WireTooltipLabelHover) — clickable
+// hover-row, tooltip на hover label.
+func buildPresetBundledDNSRuleRow(
+	tpl *wizardtemplate.Preset,
+	rule map[string]interface{},
+	enabled bool,
+	onToggle func(bool),
+	onView func(),
+) fyne.CanvasObject {
 	// Соберём rule_set summary (local tag'и без preset-prefix).
 	ruleSetSummary := ""
 	switch v := rule["rule_set"].(type) {
@@ -144,7 +329,7 @@ func buildPresetBundledDNSRuleRow(tpl *wizardtemplate.Preset, rule map[string]in
 		presetLabel = tpl.ID
 	}
 
-	rowText := presetLabel + " — DNS rule"
+	rowText := "🔒 " + presetLabel
 	if ruleSetSummary != "" {
 		rowText += " (" + ruleSetSummary + ")"
 	}
@@ -161,26 +346,31 @@ func buildPresetBundledDNSRuleRow(tpl *wizardtemplate.Preset, rule map[string]in
 	if ruleSetSummary != "" {
 		tipParts = append(tipParts, "rule_set="+ruleSetSummary)
 	}
-	if tip := joinSep(tipParts, " · "); tip != "" {
-		titleLabel.SetToolTip(tip)
-	}
+	tip := joinSep(tipParts, " · ")
 
-	var rightCluster *fyne.Container
+	var row *fynewidget.HoverRow
+	rowGetter := func() *fynewidget.HoverRow { return row }
+
+	cwc := fynewidget.NewCheckWithContent(func(checked bool) {
+		if onToggle != nil {
+			onToggle(checked)
+		}
+	}, titleLabel, fynewidget.CheckWithContentConfig{ContentToolTip: tip})
+	cwc.Check.SetChecked(enabled)
+
+	var right *fyne.Container
 	if onView != nil {
-		viewBtn := widget.NewButton("View JSON", onView)
+		viewBtn := fynewidget.NewHoverForwardButtonWithIcon("View JSON", theme.SearchIcon(), onView, rowGetter)
 		viewBtn.Importance = widget.LowImportance
-		rightCluster = container.NewHBox(viewBtn)
+		right = container.NewHBox(viewBtn)
 	} else {
-		rightCluster = container.NewHBox()
+		right = container.NewHBox()
 	}
 
-	return container.NewBorder(nil, nil, lockLeading(), rightCluster, titleLabel)
-}
-
-// showBundledDNSDetailsDialog — read-only modal с full JSON bundled DNS server.
-func showBundledDNSDetailsDialog(parent fyne.Window, tpl *wizardtemplate.Preset, ds map[string]interface{}) {
-	body, _ := jsonPrettyMarshal(ds)
-	showBundledReadOnlyDetails(parent, tpl, "DNS server details", body)
+	rowInner := container.NewBorder(nil, nil, cwc.CheckLeading, right, cwc.Content)
+	row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
+	row.WireTooltipLabelHover(titleLabel)
+	return row
 }
 
 // showBundledDNSRuleDetailsDialog — read-only modal с DNS-rule preset'а.
@@ -211,6 +401,43 @@ func showBundledReadOnlyDetails(parent fyne.Window, tpl *wizardtemplate.Preset, 
 		fyne.TextAlignLeading, fyne.TextStyle{Italic: true},
 	)
 	helpLabel.Wrapping = fyne.TextWrapWord
+	showJSONReadOnlyDialog(parent, title, header, helpLabel, jsonBody)
+}
+
+// showTemplateDNSDetailsDialog — read-only modal для template DNS-сервера
+// (entries из template.dns_options.servers[]).
+//
+// Header показывает tag + 🔒 (или ⛔ если required). Body — pretty JSON.
+func showTemplateDNSDetailsDialog(parent fyne.Window, body map[string]interface{}, required bool) {
+	if parent == nil || body == nil {
+		return
+	}
+	tag, _ := body["tag"].(string)
+	icon := "🔒"
+	helpText := "Read-only template DNS server. Toggle on/off via checkbox."
+	if required {
+		icon = "⛔"
+		helpText = "Required template DNS server: always enabled, always emitted."
+	}
+	header := widget.NewLabelWithStyle(
+		icon+"  Template DNS server: "+tag,
+		fyne.TextAlignLeading, fyne.TextStyle{Bold: true},
+	)
+	helpLabel := widget.NewLabelWithStyle(
+		helpText,
+		fyne.TextAlignLeading, fyne.TextStyle{Italic: true},
+	)
+	helpLabel.Wrapping = fyne.TextWrapWord
+	jsonBody, _ := jsonPrettyMarshal(body)
+	showJSONReadOnlyDialog(parent, "DNS server details", header, helpLabel, jsonBody)
+}
+
+// showJSONReadOnlyDialog — общий low-level: title + header + helpLabel + JSON pretty.
+// Используется обоими: showBundledReadOnlyDetails (preset) + showTemplateDNSDetailsDialog (template).
+func showJSONReadOnlyDialog(parent fyne.Window, title string, header, helpLabel fyne.CanvasObject, jsonBody string) {
+	if parent == nil {
+		return
+	}
 
 	jsonRich := widget.NewRichTextFromMarkdown("```json\n" + jsonBody + "\n```")
 	jsonRich.Wrapping = fyne.TextWrapWord
@@ -235,11 +462,90 @@ func jsonPrettyMarshal(v interface{}) (string, error) {
 	return string(b), nil
 }
 
-// buildPresetBundledDNSRow — read-only одна строка для bundled DNS-сервера.
+// buildPresetBundledDNSRowFromResolved — кладёт ResolvedDNSServer в widget row.
+// SPEC 056-R-N: Active=false → checkbox disabled + tooltip с InactiveReason.
+// View JSON кнопка справа — read-only inspect body (нет Edit/Del у preset entries).
+func buildPresetBundledDNSRowFromResolved(
+	tpl *wizardtemplate.Preset,
+	srv build.ResolvedDNSServer,
+	onToggle func(bool),
+	onView func(),
+) fyne.CanvasObject {
+	presetLabel := tpl.Label
+	if presetLabel == "" {
+		presetLabel = tpl.ID
+	}
+
+	rowText := srv.LocalTag
+	if rowText == "" {
+		rowText = srv.Tag
+	}
+	rowText += " · 🔒 " + presetLabel
+
+	titleLabel := ttwidget.NewLabel(rowText)
+	titleLabel.Wrapping = fyne.TextTruncate
+
+	tipParts := []string{}
+	if typ, ok := srv.Body["type"].(string); ok && typ != "" {
+		tipParts = append(tipParts, typ)
+	}
+	if s, ok := srv.Body["server"].(string); ok && s != "" {
+		tipParts = append(tipParts, s)
+	}
+	if desc, ok := srv.Body["description"].(string); ok && desc != "" {
+		tipParts = append(tipParts, desc)
+	}
+	if !srv.Active && srv.InactiveReason != "" {
+		tipParts = append(tipParts, "inactive ("+srv.InactiveReason+")")
+	}
+	tip := joinSep(tipParts, " · ")
+
+	var row *fynewidget.HoverRow
+	rowGetter := func() *fynewidget.HoverRow { return row }
+
+	cwc := fynewidget.NewCheckWithContent(func(checked bool) {
+		if onToggle != nil {
+			onToggle(checked)
+		}
+	}, titleLabel, fynewidget.CheckWithContentConfig{ContentToolTip: tip})
+	cwc.Check.SetChecked(srv.Enabled)
+	if !srv.Active {
+		cwc.Check.Disable()
+	}
+
+	// rowGutter — reserved space под scrollbar (visual паритет с template-rows).
+	rowGutter := canvas.NewRectangle(color.Transparent)
+	rowGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+
+	var right *fyne.Container
+	if onView != nil {
+		viewBtn := fynewidget.NewHoverForwardButtonWithIcon("View", theme.SearchIcon(), onView, rowGetter)
+		viewBtn.Importance = widget.LowImportance
+		right = container.NewHBox(viewBtn, rowGutter)
+	} else {
+		right = container.NewHBox(rowGutter)
+	}
+
+	rowInner := container.NewBorder(nil, nil, cwc.CheckLeading, right, cwc.Content)
+	row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
+	row.WireTooltipLabelHover(titleLabel)
+	return row
+}
+
+// buildPresetBundledDNSRow — legacy entry point (используется renderPresetBundledDNSRulesRows
+// и тестами). Будет удалён вместе с Phase 6.
 //
-// Layout: `🔒  <preset-label> (<tag>)                        [View]`
-// Tooltip: `type · server[:port] · description` (детали скрыты до hover).
-func buildPresetBundledDNSRow(tpl *wizardtemplate.Preset, ds map[string]interface{}, onView func()) fyne.CanvasObject {
+// SPEC 056-R-N kind=preset.
+//
+// Layout: `[✅] <tag> · 🔒 <preset-label>`
+// Tooltip: `type · server[:port] · description` (детали в tooltip).
+// Используется тот же widget pattern что и обычные DNS-server rows.
+func buildPresetBundledDNSRow(
+	tpl *wizardtemplate.Preset,
+	ds map[string]interface{},
+	enabled bool,
+	onToggle func(bool),
+) fyne.CanvasObject {
 	tag, _ := ds["tag"].(string)
 	typ, _ := ds["type"].(string)
 	server, _ := ds["server"].(string)
@@ -251,17 +557,15 @@ func buildPresetBundledDNSRow(tpl *wizardtemplate.Preset, ds map[string]interfac
 		presetLabel = tpl.ID
 	}
 
-	// Single-line title: "<preset-label> (<tag>)". 🔒 идёт **слева** на месте
-	// чекбокса (через lockLeading), не в самом тексте — visual consistency
-	// с обычными DNS-server rows которые имеют checkbox в той же позиции.
-	rowText := presetLabel
-	if localTag != "" {
-		rowText += " (" + localTag + ")"
+	rowText := localTag
+	if rowText == "" {
+		rowText = tag
 	}
+	rowText += " · 🔒 " + presetLabel
+
 	titleLabel := ttwidget.NewLabel(rowText)
 	titleLabel.Wrapping = fyne.TextTruncate
 
-	// Tooltip: details (type, server, description) — hover to see.
 	tipParts := []string{}
 	if typ != "" {
 		tipParts = append(tipParts, typ)
@@ -272,21 +576,21 @@ func buildPresetBundledDNSRow(tpl *wizardtemplate.Preset, ds map[string]interfac
 	if desc != "" {
 		tipParts = append(tipParts, desc)
 	}
-	if tip := joinSep(tipParts, " · "); tip != "" {
-		titleLabel.SetToolTip(tip)
-	}
+	tip := joinSep(tipParts, " · ")
 
-	var rightCluster *fyne.Container
-	if onView != nil {
-		viewBtn := widget.NewButton("View JSON", onView)
-		viewBtn.Importance = widget.LowImportance
-		rightCluster = container.NewHBox(viewBtn)
-	} else {
-		rightCluster = container.NewHBox()
-	}
+	var row *fynewidget.HoverRow
 
-	// Border: left = 🔒 (вместо чекбокса), center = title, right = View.
-	return container.NewBorder(nil, nil, lockLeading(), rightCluster, titleLabel)
+	cwc := fynewidget.NewCheckWithContent(func(checked bool) {
+		if onToggle != nil {
+			onToggle(checked)
+		}
+	}, titleLabel, fynewidget.CheckWithContentConfig{ContentToolTip: tip})
+	cwc.Check.SetChecked(enabled)
+
+	rowInner := container.NewBorder(nil, nil, cwc.CheckLeading, nil, cwc.Content)
+	row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
+	row.WireTooltipLabelHover(titleLabel)
+	return row
 }
 
 // stripPresetPrefix — убирает `<preset_id>:` префикс из tag'а если он там есть.
