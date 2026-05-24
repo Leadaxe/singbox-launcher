@@ -56,18 +56,18 @@
 | App picker icons | Android PackageManager + AppInfoCache | macOS NSWorkspace `iconForFile`; win `SHGetFileInfo`; linux `.desktop`/freedesktop icon lookup | Best-effort через platform code; fallback на generic file icon |
 | Log stream source | In-app `ClashLogPump` (Flutter notifier) | sing-box.log file (Go process) | Tail `bin/logs/sing-box.log` через `fsnotify` (rename-rotation safe) или периодический `os.Open + Seek + ReadFrom` |
 | Live event push | Server-Sent Events (Flutter http) | Go channel + Fyne `fyne.Do()` UI thread schedule | `chan TrafficEvent` буфер N=256, goroutine drainer → UI |
-| Verbose toggle | Setting `vars.log_level=debug` через Debug API + reload | Edit `vars.log_level` через configurator + reload sing-box | Кнопка «🔬 Debug DNS» в Traffic tab toolbar — на ON делает `vars[log_level] = debug` + рестарт; на OFF revert |
+| Verbose toggle | Setting `vars.log_level=debug` через Debug API + reload | Edit `vars.log_level` через configurator + reload sing-box | Кнопка «🔬 Debug DNS» в toolbar Traffic Profiler окна — на ON делает `vars[log_level] = debug` + рестарт; на OFF revert |
 | Recording indicator | ⚡ chip на HomeScreen + Stats tab title | ⚡ badge на кнопке «Traffic Profiler» в Diagnostics tab когда recording active; ⚡ в title окна когда оно открыто | Update button label + window title через TrafficProfiler listener |
 | Connection close trigger | Clash API DELETE `/connections/<id>` (есть в LxBox) | Не в MVP скоупе (можно добавить как secondary feature) | Post-MVP |
 | Polling cadence | Clash `/connections` poll 1s + log-stream | Идентично — `/connections` poll 1s + log tail | Same |
 
 ## Pre-requisites
 
-1. **`route.find_process: true`** в дефолтном wizard_template.json. Если выключено — Traffic tab показывает баннер «Process detection disabled in template — install / update template to enable». На macOS sing-box запускается с правами, на Windows — admin: в обоих случаях `find_process` доступен.
+1. **`route.find_process: true`** в `bin/wizard_template.json` (уже стоит — см. `wizard_template.json:433`). Detection вычисляется per-application через `readFindProcessFromConfig()` в `ui/traffic_bootstrap.go`: читаем актуальный `bin/config.json` и смотрим `route.find_process`. Если выключено (юзер вручную поправил template / отключил) — Live view рендерит banner «Process detection disabled in template — events will lack process attribution. Enable route.find_process and Save in the wizard.» (см. `ui/traffic/live_view.go:145`). Banner enforcement пассивный — юзер сам идёт в wizard и включает. Auto-fix кнопки нет (не в скоупе MVP).
 
 2. **`experimental.clash_api.external_controller`** должен быть настроен (уже есть в template — `127.0.0.1:9090` + secret). Используется как сегодня для `/proxies`, добавляется new endpoint usage `/connections`.
 
-3. **`log.level=info`** минимум; для DNS chain детектирования нужен `debug`. Без debug DNS-уровневые события могут быть неполные — Traffic tab показывает баннер «Switch to debug logs for full DNS visibility» с кнопкой включения (см. Verbose toggle).
+3. **`log.level=info`** минимум; для DNS chain детектирования нужен `debug`. Без debug DNS-уровневые события могут быть неполные — Traffic Profiler окно показывает баннер «Switch to debug logs for full DNS visibility» с кнопкой включения (см. Verbose toggle).
 
 ---
 
@@ -212,74 +212,164 @@ Tooltip над badge'ом показывает `matched_via` (как срабо�
 
 ## Архитектура
 
-### Сервис `TrafficProfiler` (новый, Go)
+### Сервис `TrafficProfiler` (`internal/traffic/profiler.go`)
 
-`internal/traffic/profiler.go` — singleton, lifetime app'а.
+Singleton, lifetime app'а. Доступ через `traffic.GetInstance()` (`singleton.go` — `sync.Once`-guarded). Поднимается на app startup (см. `ui/traffic_bootstrap.go::startProfiler`), runs до app quit.
 
 ```go
 type TrafficProfiler struct {
-    mu          sync.Mutex
-    rollingBuf  *ringBuffer  // last 60s × ~3000 events (system-wide)
-    active      *Session     // current recording or nil
-    completed   []*Session   // ring max 5
-    listeners   []chan<- TrafficEvent  // UI subscribers
-    
-    clashAPI    *clashClient
-    logTail     *logTailReader
-    stopCh      chan struct{}
+    mu sync.Mutex
+
+    // pipeline pieces (nil until Start)
+    poller *ConnPoller   // Clash API /connections 1s poll
+    tailer *LogTailer    // sing-box.log file tail + rotation detection
+
+    // rolling buffer of recent events (all processes, system-wide)
+    roll []TrafficEvent  // 60s window, max 3000
+
+    // active session + ring of completed
+    active    *Session
+    completed []*Session  // FIFO max 5
+
+    // cross-source join state — sing-box conn_id is the key
+    connProcessMap map[string]string          // conn_id → process_path (from `router: found process name`)
+    dnsAccum       map[string][]string        // conn_id → CNAME chain in arrival order
+    dnsByIP        map[string]dnsAttribution  // dest IP → recent DNS + process (10s inferred window)
+
+    // subscribers for live UI streaming — index-keyed for cheap Unsubscribe
+    subs    map[int]chan TrafficEvent
+    nextSub int
+
+    // lifecycle hooks (window title timer / button label badge)
+    onSessionChange func()
+
+    stopCh chan struct{}
+    bgCtx    context.Context
+    bgCancel context.CancelFunc
 }
 
+// Lifecycle
+func NewTrafficProfiler() *TrafficProfiler
+func GetInstance() *TrafficProfiler  // singleton accessor
+func (p *TrafficProfiler) Start(cfg StartConfig, logPath string, httpClient *http.Client)
+func (p *TrafficProfiler) Stop()
+func (p *TrafficProfiler) SetOnSessionChange(fn func())
+
+// Sessions
 func (p *TrafficProfiler) StartSession(processPath string, verbose bool) (*Session, error)
-func (p *TrafficProfiler) StopSession() (*Session, error)
+func (p *TrafficProfiler) StopSession() *Session
 func (p *TrafficProfiler) ActiveSession() *Session
 func (p *TrafficProfiler) CompletedSessions() []*Session
 func (p *TrafficProfiler) DeleteSession(id string)
 func (p *TrafficProfiler) ClearAll()
 
-func (p *TrafficProfiler) Subscribe() (<-chan TrafficEvent, func())  // returns unsub func
+// UI feed
+func (p *TrafficProfiler) Subscribe() (id int, ch <-chan TrafficEvent)
+func (p *TrafficProfiler) Unsubscribe(id int)
 func (p *TrafficProfiler) Snapshot(lastN time.Duration) []TrafficEvent  // for late-join UI
+
+// Constants — internal limits
+const (
+    rollingBufferWindow = 60 * time.Second
+    rollingBufferMax    = 3000
+    dnsInferWindow      = 10 * time.Second  // inferred-confidence DNS→IP window
+)
 ```
 
-Singleton живёт пока приложение запущено. На startup app'а: подключается к Clash API, начинает log tail, начинает rolling buffer. Идёт ровно один tailer лог-файла и одна 1-сек poll-loop `/connections`.
+Идёт ровно один tailer лог-файла и одна 1-сек poll-loop `/connections`. Goroutines управляются через `bgCtx/bgCancel`; `Stop()` cancel'ит контекст и ждёт graceful shutdown через `stopCh`.
 
-### Data model
+### Data model (`internal/traffic/types.go` + `session.go`)
 
 ```go
-type Session struct {
-    ID            string
-    TargetProcess string         // canonical executable path
-    StartedAt     time.Time
-    FinishedAt    *time.Time
-    WasVerbose    bool           // log.level was bumped to debug
-    Events        []TrafficEvent // ring 50000 / 3h sliding window
-    // aggregated views computed on-demand:
-    domainCache   map[string]*DomainStats
-    ipCache       map[string]*IpStats
-    connCache     []*ConnRecord
+// EventKind — colored row label + filter chip identifier
+type EventKind string
+const (
+    EventDNSResolve   EventKind = "DNSResolve"
+    EventDNSFail      EventKind = "DNSFail"
+    EventTCPOpen      EventKind = "TCPOpen"
+    EventTCPClose     EventKind = "TCPClose"
+    EventUDPOpen      EventKind = "UDPOpen"
+    EventUDPClose     EventKind = "UDPClose"
+    EventRouterMatch  EventKind = "RouterMatch"  // not surfaced in UI; feeds Rule label
+)
+
+// Confidence — attribution strength
+type Confidence string
+const (
+    ConfVerified     Confidence = "verified"      // router_log match
+    ConfInferred     Confidence = "inferred"      // prior_dns_10s match — marker 〽
+    ConfUnattributed Confidence = "unattributed"  // none — marker ?, Live system-wide only
+)
+
+// IssueKind — ⚠ diagnostic markers (kept short, locale-agnostic)
+type IssueKind string
+const (
+    IssueDnsTimeout  IssueKind = "DnsTimeout"
+    IssueTcpRstEarly IssueKind = "TcpRstEarly"
+)
+
+type ConnectionIssue struct {
+    Kind        IssueKind
+    Description string
 }
 
 type TrafficEvent struct {
     TS             time.Time
-    Kind           EventKind        // DNSResolve / DNSFail / TCPOpen / TCPClose / UDPOpen
-    ProcessPath    string           // empty if unattributed
-    Confidence     Confidence       // verified / inferred / unattributed
-    MatchedVia     string           // "router_log" / "prior_dns_10s" / ""
-    Domain         string           // sniffed/resolved hostname (empty if hostless)
-    CnameChain     []string         // [t-bank-app.ru, edgecdn.ru, ...]
+    Kind           EventKind
+    ConnID         string             // sing-box conn id; "" for events without one
+    ProcessPath    string             // canonical executable path; "" if unattributed
+    ProcessName    string             // short display name from Clash API metadata.process
+    Confidence     Confidence
+    MatchedVia     string             // "router_log" / "prior_dns_10s" / "" — debug aid
+    Domain         string             // sniffed/resolved hostname; "" for hostless
+    CnameChain     []string           // accumulated CNAME chain ending in A-record IP
     IP             string
     Port           int
-    OutboundChain  []string         // [vpn-1, 🇫🇮 Финляндия, vless-server]
+    Network        string             // "tcp" / "udp"
+    OutboundChain  []string           // leaf→root order, from Clash API `chains`
+    Rule           string             // matched router rule name
     UpBytes        int64
     DownBytes      int64
-    Duration       time.Duration    // for TCPClose
+    Duration       time.Duration      // only for *Close events
     Issues         []ConnectionIssue
-    RawLogLine     string           // debug only
+    RawLogLine     string             // debug only
+    Backfilled     bool               // copied from pre-session rolling buffer (marker 〽)
 }
 
-type ConnectionIssue struct {
-    Kind        IssueKind  // DnsTimeout / TcpRstEarly
-    Description string
+func (e TrafficEvent) HasIssue(k IssueKind) bool  // helper for issue chip widget
+
+type Session struct {
+    mu sync.RWMutex
+
+    ID                 string       // formatted StartedAt: "20060102T150405" (max 6 alive at once)
+    TargetProcess      string       // canonical executable path the user picked
+    StartedAt          time.Time
+    FinishedAt         *time.Time
+    WasVerbose         bool
+    VerboseToggleTimes []time.Time  // mid-session toggles for forensics
+
+    events        []TrafficEvent  // private, accessed via Events()/Append()
+    eventsDropped int             // counter shown in UI footer
 }
+
+// Caps — see SPEC §"Edge cases & limits"
+const (
+    maxEventsPerSession  = 50000
+    maxSessionAge        = 3 * time.Hour
+    maxCompletedSessions = 5
+)
+
+func NewSession(target string, verbose bool) *Session
+func (s *Session) Append(e TrafficEvent)        // overflow-safe; evicts head on age + count caps
+func (s *Session) Events() []TrafficEvent       // returns a copy (caller iteration without locks)
+func (s *Session) EventsDropped() int
+func (s *Session) Finalize()                    // idempotent
+func (s *Session) Duration() time.Duration      // wall-clock (or since-start if active)
+
+// Aggregates — recomputed on each UI tick from events (no cached fields, simpler than indexing)
+func (s *Session) AggregateDomains() []DomainStats
+func (s *Session) AggregateIPs() []IPStats
+func (s *Session) AggregateConns() []ConnRecord
 
 type DomainStats struct {
     Domain      string
@@ -288,12 +378,39 @@ type DomainStats struct {
     DownBytes   int64
     FirstSeen   time.Time
     LastSeen    time.Time
-    IPs         map[string]struct{}
-    Outbounds   map[string]struct{}
+    IPs         []string
+    Outbounds   []string
     Issues      []ConnectionIssue
     CnameChain  []string  // first observed chain
 }
+
+type IPStats struct {
+    IP          string
+    Port        int
+    Connections int
+    UpBytes     int64
+    DownBytes   int64
+    Domain      string    // first observed domain that resolved to this IP
+    Outbounds   []string
+}
+
+type ConnRecord struct {
+    ConnID    string
+    Domain    string
+    IP        string
+    Port      int
+    Network   string
+    OpenedAt  time.Time
+    ClosedAt  *time.Time
+    UpBytes   int64
+    DownBytes int64
+    Outbounds []string
+    Rule      string
+    Issues    []ConnectionIssue
+}
 ```
+
+**Aggregation strategy:** не храним cached индексы (`ipCache`/`connCache` etc) — пересчитываем on-demand из `events` slice при каждом UI refresh tick. Для ≤50k events это microseconds; гораздо проще чем поддерживать invalidation.
 
 ### Data sources
 
@@ -333,9 +450,9 @@ Diff с предыдущим snapshot:
 - Существующий id → update bytes (without emit if no kind-change)
 - Исчез id → emit `TCPClose` / `UDPClose` с duration = now - start
 
-**2. sing-box.log tail (fsnotify)**
+**2. sing-box.log tail (`internal/traffic/logtail.go` + `parser.go`)**
 
-Tail `bin/logs/sing-box.log`. Парсим regex'ами:
+Tail `bin/logs/sing-box.log`. Парсим regex'ами в `internal/traffic/parser.go` (`parser_test.go` — zoo of log samples):
 
 ```
 [id] dns: exchanged|cached <type> <domain>. -> <ip>|<cname>.
@@ -345,9 +462,9 @@ Tail `bin/logs/sing-box.log`. Парсим regex'ами:
 [id] inbound/tun[<id>]: outbound connection to <host>:<port>
 ```
 
-Patterns могут разойтись между minor sing-box releases — log format не stable. Регекс'ы вынесены в `internal/traffic/parser.go` с unit-тестами на zoo of log samples (как в LxBox).
+Patterns могут разойтись между minor sing-box releases — log format не stable. Регекс'ы изолированы в одном файле + unit-тесты, регрессию ловим до релиза (LxBox §044 impl bug #2/#3 — `dns: cached` пропускался, length-diff scan ломался при ring overflow).
 
-`fsnotify` подписка следит за rotate / truncate. На rotate — reopen.
+**Rotation detection** — через file identity (inode на Unix, FileIndex/VolumeSerialNumber на Windows). Платформенный код в `internal/traffic/inode_unix.go` / `inode_windows.go`. На каждом read tick сравниваем identity текущего открытого FD с identity файла по path: если разошлись (mv rotate) — reopen с начала; если truncate (тот же FD, размер стал меньше нашего offset'а) — seek to 0. `fsnotify` не используется (он шумит на write events и не покрывает все edge cases переименований на macOS).
 
 **3. Cross-source join**
 
@@ -360,62 +477,115 @@ CNAME chain reconstruction: первое `dns: exchanged` для conn_id — э�
 
 ### Verbose toggle
 
-Toggle ON:
-1. Read current `vars[log_level]`, save → `_savedLogLevel`
-2. Set `vars[log_level]=debug` через configurator
-3. `core.ReloadSingBox()` — light reload (без TUN teardown)
-4. Banner shows
-5. Profiler начинает capture'ить debug-уровень events
+Реализован в `ui/traffic_bootstrap.go` через три функции:
 
-Toggle OFF: revert log_level → reload → banner hides.
+- `ReadCurrentLogLevel(ac) (level string, set bool, err error)` — читает `vars[log_level]` из активного state; fallback на template default `"warn"` если в vars не задано.
+- `ApplyLogLevelAndReload(ac, level) error` — устанавливает `vars[log_level]` и инициирует rebuild config.json + sing-box restart через `ac.ProcessService.KillForRestart()` (sing-box watcher автоматически restart'ит с new config). Никакого вымышленного `core.ReloadSingBox()` — используем существующий KillForRestart pipeline.
+- `ConfirmAndApplyLogLevel(ac, parent, level, done)` — обёртка с user-confirmation dialog: «Reloading sing-box — active connections will reset. Continue?». UI вызывает этот wrapper, не raw `ApplyLogLevelAndReload`, чтобы юзер был предупреждён.
 
-⚠ Reload разрывает active TCP-соединения. UI диалог-warning при первом toggle: «Reloading sing-box — active connections will reset. Continue?».
+Эти три функции передаются в `uitraffic.WindowDeps`: `ConfigReader` / `ConfigWriter` / `ConfigConfirmApply`. Window-side toolbar дёргает только их — knows nothing про `ac.ProcessService` детали.
+
+Toggle ON flow:
+1. `ConfigReader()` → читаем текущий `log_level`, сохраняем в state toolbar'а как `_savedLogLevel`
+2. `ConfigConfirmApply("debug", win, done)` → показывает confirmation dialog, на confirm:
+   - Set `vars[log_level]=debug`
+   - Rebuild config.json + KillForRestart sing-box
+3. Banner «Verbose logs active — battery/CPU impact» рендерится внутри окна
+4. Profiler начинает захватывать debug-уровень DNS events (cached / chain traversal)
+
+Toggle OFF: revert `log_level` к `_savedLogLevel` через `ConfigConfirmApply` → banner hides.
 
 ---
 
 ## UI компоненты
 
-Новые widgets (в `ui/traffic/`):
+Файлы в `ui/traffic/`:
 
-- `TrafficWindow` — singleton `fyne.Window` с двумя view'ами (Live / Per-process) внутри `container.AppTabs`
-- `liveView` — system-wide stream + фильтры
-- `perProcessView` — target picker + ▶/⏹ + 4 sub-tab'а (Live/Domains/IPs/Connections)
-- `processPickerDialog` — список бегущих process'ов с executable path + icon (через platform code)
-- `_IssueChip` — ⚠ visual marker
-- `_VerboseLogsBanner` — banner внутри окна сверху
+- `window.go` — `Manager` (window-singleton lifecycle wrapper) + `WindowDeps` (dependency bundle) + `formatEventRow` / `formatBytes` helpers
+- `live_view.go` — system-wide stream + фильтры; subscribe на profiler
+- `per_process_view.go` — target picker + ▶/⏹ + 4 sub-tab'а (Live/Domains/IPs/Connections)
+- `process_picker.go` — диалог выбора процесса (список с executable path + display name через `internal/platform/proclist.go`)
+- `toolbar.go` — window toolbar с verbose toggle, overflow menu, banner стек
 
-**Точка входа** в `ui/diagnostics_tab.go`: button «Traffic Profiler» в существующей секции tab'а (рядом с Kill sing-box etc). Tooltip объясняет назначение.
+Bootstrap в `ui/traffic_bootstrap.go`:
+- `startProfiler(ac)` — запускает singleton TrafficProfiler на старте app, передаёт log path + http client
+- `trafficWindowManager(ac, parentRefresh)` — lazy creation Manager singleton с `sync.Once` (`trafficManagerOnce`); каждый клик кнопки делает `SetDeps()` с актуальным `ac` для freshness
+- `ReadCurrentLogLevel` / `ApplyLogLevelAndReload` / `ConfirmAndApplyLogLevel` — verbose toggle internals
+- `readFindProcessFromConfig(path)` — banner driver
 
-Window registration через `UIService` (или подобный singleton manager):
+### Window singleton — `uitraffic.Manager` pattern
+
+Внешний по отношению к `UIService` объект (НЕ поле `UIService.TrafficWindow`). Один `Manager` per app process; `trafficManagerOnce sync.Once` в bootstrap'е гарантирует одну instance.
 
 ```go
-type UIService struct {
-    ...
-    TrafficWindow fyne.Window  // nil if not open
+package traffic // package alias `uitraffic` from ui/
+
+type WindowDeps struct {
+    App      fyne.App
+    Profiler *tprof.TrafficProfiler
+
+    // verbose toggle wiring
+    ConfigReader       func() (logLevel string, ok bool)
+    ConfigWriter       func(level string) error
+    ConfigConfirmApply func(level string, parent fyne.Window, done func())
+
+    // banner state
+    FindProcessEnabled func() bool   // nil → assume true
+    SingBoxRunning     func() bool
+
+    // Diagnostics tab callback: re-render button label after ⚡ badge state change
+    ParentRefresh func()
 }
 
-func (s *UIService) ShowTrafficWindow() {
-    if s.TrafficWindow != nil {
-        s.TrafficWindow.RequestFocus()
-        return
-    }
-    win := s.app.NewWindow("Traffic Profiler")
-    // ... setup content
-    win.SetOnClosed(func() {
-        // unsubscribe from profiler, stop live capture if no session
-        s.TrafficWindow = nil
-    })
-    s.TrafficWindow = win
-    win.Show()
+type Manager struct {
+    mu          sync.Mutex
+    win         fyne.Window
+    deps        WindowDeps
+    titleStopCh chan struct{}  // 1-Hz title refresh ticker
 }
+
+func NewManager(deps WindowDeps) *Manager
+func (m *Manager) SetDeps(deps WindowDeps)
+func (m *Manager) Show()         // create or focus singleton, UI-thread only
+func (m *Manager) IsRecording() bool  // for Diagnostics button label
 ```
 
-Process picker:
-- macOS: enumerate via `ps -axco command,pid` + `osascript` для bundle path / `NSWorkspace.runningApplications`
-- Windows: `EnumProcesses` + `QueryFullProcessImageName`
-- Linux: `/proc/<pid>/exe` + `.desktop` lookup для display name
+`Manager.Show()`:
+1. Если `win != nil` → `win.Show() + RequestFocus()`. No deadlock guard needed — Show всегда вызывается из UI thread (Diagnostics button OnTap).
+2. Иначе `build()`: создаём window, wrap'аем content в `fynetooltip.AddWindowToolTipLayer` (ttwidget tooltips otherwise warn «no tooltip layer»), tab-bar с Live / Per-process, toolbar сверху, hookup `SetOnClosed` для cleanup + 1-Hz title refresh timer.
 
-Encapsulated в `internal/platform/proclist.go` (новый file, build-tag separated).
+`build()` имеет важный нюанс: `m.refreshTitle()` дёргает `ParentRefresh()` → `fyne.Do(...)`. Вызывать `fyne.Do` из UI thread (а build уже на UI thread) = deadlock в Fyne 2.7. Поэтому initial refresh откладывается в `go func() { fyne.Do(...) }()`.
+
+`SetOnClosed`:
+- Останавливает live/per-process subscribers (`live.Stop()` + `perProcess.Stop()`)
+- `m.win = nil` → следующий Show создаст заново
+- `stopTitleTimer()` → останавливает 1-Hz ticker
+- `deps.ParentRefresh()` → пере-render кнопки в Diagnostics (badge может остаться ⚡ если recording continues)
+
+**Profiler не останавливается** на window close — singleton TrafficProfiler работает all-app-lifetime; rolling buffer + active session continue в background.
+
+### Точка входа — Diagnostics tab
+
+`ui/diagnostics_tab.go:302` — button «Traffic Profiler ⚡?» в Diagnostics section (рядом с Kill sing-box):
+
+```go
+btn := widget.NewButton("Traffic Profiler", func() {
+    mgr := trafficWindowManager(ac, func() { refreshBtnLabel() })
+    mgr.Show()
+})
+// refreshBtnLabel toggles "Traffic Profiler" ⟷ "Traffic Profiler ⚡"
+// based on mgr.IsRecording()
+```
+
+### Process picker (`internal/platform/proclist.go`)
+
+Build-tag separated impl:
+- `proclist_darwin.go` — `NSWorkspace.runningApplications` через cgo для GUI apps; CLI tools — fallback на `ps`
+- `proclist_windows.go` — `EnumProcesses` + `QueryFullProcessImageName` via win32 API
+- `proclist_linux.go` — walk `/proc/<pid>/exe` + readlink; display name из `comm`
+- `proclist_unix_test.go` — smoke test через faking `/proc` fixtures
+
+Icon: на MVP — generic file icon (cgo для NSWorkspace iconForFile не trivial, отложено).
 
 ### Recording indicator
 
@@ -429,10 +599,10 @@ Update wiring: TrafficProfiler exposes channel событий lifecycle (start/s
 
 ### Lifecycle
 
-- **App start** → TrafficProfiler singleton init'ится (rolling buffer + log tail + Clash poll always-on). Окно не показывается.
-- **Юзер жмёт «Traffic Profiler» в Diagnostics** → ShowTrafficWindow() → окно создаётся → subscribe на profiler events.
-- **Юзер закрывает окно (X)** → unsubscribe → window = nil. Profiler singleton продолжает работать (если active session — recording продолжается; rolling buffer тоже не останавливается, т.к. он дешёвый и нужен для следующего open).
-- **App quit** → all sessions wiped (in-memory only). Profiler goroutines stop.
+- **App start** → `startProfiler(ac)` (`ui/traffic_bootstrap.go`) поднимает singleton TrafficProfiler: rolling buffer + log tail + Clash poll always-on. Окно не показывается.
+- **Юзер жмёт «Traffic Profiler» в Diagnostics** → `trafficWindowManager(ac, refresh).Show()` → `Manager.build()` создаёт singleton window → live/per-process view'ы subscribe на profiler.
+- **Юзер закрывает окно (X)** → `SetOnClosed` → live/per-process Stop (unsubscribe) → `win = nil`. Profiler singleton продолжает работать (если active session — recording продолжается; rolling buffer не останавливается, т.к. он дешёвый и нужен для re-open UX).
+- **App quit** → `Profiler.Stop()` через `bgCancel()` → graceful shutdown goroutines. Все sessions wiped (in-memory only).
 
 Отличие vs «Live tab всегда on while window open» (LxBox): мы оставляем background capture (rolling buffer + clash poll) всегда on на app lifetime — это дёшево и решает «открыл окно, увидел уже накопленное» UX. CPU/battery impact мизерный без verbose toggle (regex-парсинг ~50-200 строк/сек).
 
