@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -24,13 +23,10 @@ import (
 // macOS + APFS clones). Failures from fsnotify are non-fatal — the polling
 // path keeps us correct, just less responsive.
 type LogTailer struct {
-	path     string
+	path      string
 	pollEvery time.Duration
 
 	out chan LogLine
-
-	mu     sync.Mutex
-	stopCh chan struct{}
 }
 
 // NewLogTailer creates a tailer for the given path. The file does not need
@@ -65,7 +61,7 @@ func (t *LogTailer) Run(ctx context.Context) {
 
 	watcher, _ := fsnotify.NewWatcher() // err is non-fatal
 	if watcher != nil {
-		defer watcher.Close()
+		defer func() { _ = watcher.Close() }()
 	}
 
 	var (

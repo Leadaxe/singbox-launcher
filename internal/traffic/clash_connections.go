@@ -238,7 +238,7 @@ func fetchSnapshot(ctx context.Context, httpc *http.Client, baseURL, token strin
 	if err != nil {
 		return ClashConnSnapshot{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		return ClashConnSnapshot{}, fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))

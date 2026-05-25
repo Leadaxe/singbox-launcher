@@ -17,7 +17,7 @@ func TestParseLogLine_KnownSamples(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sample log: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	want := []struct {
 		kind        EventKind

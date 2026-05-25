@@ -123,7 +123,7 @@ func TestServerAuthAndState(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Errorf("ping: status %d, want 200", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// /state without auth → 401.
 	resp, err = http.Get(base + "/state")
@@ -133,7 +133,7 @@ func TestServerAuthAndState(t *testing.T) {
 	if resp.StatusCode != 401 {
 		t.Errorf("state noauth: status %d, want 401", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// /state with wrong token → 401.
 	req, _ := http.NewRequest("GET", base+"/state", nil)
@@ -145,7 +145,7 @@ func TestServerAuthAndState(t *testing.T) {
 	if resp.StatusCode != 401 {
 		t.Errorf("state wrong: status %d, want 401", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// /state with correct token → 200 + body contains "JP-01".
 	req, _ = http.NewRequest("GET", base+"/state", nil)
@@ -158,7 +158,7 @@ func TestServerAuthAndState(t *testing.T) {
 		t.Fatalf("state ok: status %d, want 200", resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if !strings.Contains(string(body), `"active_proxy":"JP-01"`) {
 		t.Errorf("state body: %s", string(body))
 	}
@@ -173,7 +173,7 @@ func TestServerAuthAndState(t *testing.T) {
 	if resp.StatusCode != 405 {
 		t.Errorf("action GET: status %d, want 405", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // TestRebuildConfigEndpoint — POST /action/rebuild-config: 200 OK на успех,
@@ -203,7 +203,7 @@ func TestRebuildConfigEndpoint(t *testing.T) {
 		t.Errorf("rebuild-config: status %d, want 200", resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if !strings.Contains(string(body), `"ok":true`) {
 		t.Errorf("rebuild-config body: %s", string(body))
 	}
@@ -218,7 +218,7 @@ func TestRebuildConfigEndpoint(t *testing.T) {
 	if resp.StatusCode != 405 {
 		t.Errorf("rebuild-config GET: status %d, want 405", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// 3. POST без токена — 401.
 	req, _ = http.NewRequest("POST", base+"/action/rebuild-config", nil)
@@ -229,7 +229,7 @@ func TestRebuildConfigEndpoint(t *testing.T) {
 	if resp.StatusCode != 401 {
 		t.Errorf("rebuild-config noauth: status %d, want 401", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestGenerateTokenUnique(t *testing.T) {

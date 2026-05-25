@@ -50,8 +50,6 @@ type TrafficProfiler struct {
 	// lifecycle hooks (window title timer / button label badge)
 	onSessionChange func()
 
-	stopCh chan struct{}
-
 	// background context for poller/tailer
 	bgCtx    context.Context
 	bgCancel context.CancelFunc

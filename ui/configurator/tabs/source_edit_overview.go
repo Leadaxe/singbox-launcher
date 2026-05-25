@@ -328,7 +328,7 @@ func readRawBodySmart(path string, displayPrefixBytes int) ([]byte, int, bool) {
 	if ferr != nil {
 		return nil, total, false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	readN := displayPrefixBytes
 	if readN > total {
 		readN = total

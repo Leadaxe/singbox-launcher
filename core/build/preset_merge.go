@@ -23,7 +23,6 @@ import (
 
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
-	"singbox-launcher/internal/outboundutil"
 )
 
 // Local stdlib wrappers used by srsTagFromURLLocal / convertPresetRuleSetRemoteToLocal.
@@ -31,11 +30,6 @@ import (
 func osStatLocal(p string) (os.FileInfo, error) { return os.Stat(p) }
 func urlParseLocal(s string) (*url.URL, error)  { return url.Parse(s) }
 func sha256SumLocal(b []byte) [sha256.Size]byte { return sha256.Sum256(b) }
-
-// outboundutilApply — короткий wrapper для read-friendliness в этом файле.
-func outboundutilApply(r map[string]interface{}, outbound string) map[string]interface{} {
-	return outboundutil.ApplyOutboundToRule(r, outbound)
-}
 
 // convertPresetRuleSetRemoteToLocal — резолвит remote rule_set из preset'а в
 // type=local с path к скачанному файлу.
@@ -369,25 +363,6 @@ func templateLikeFromCtx(ctx PresetMergeContext) template.TemplateData {
 		DNSOptionsRaw: raw,
 	}
 	return td
-}
-
-// resolvePresetDNSRule — резолвит preset.DNSRule в готовый rule body
-// (после Vars substitute, if-filter, rewrite rule_set refs).
-//
-// Возвращает (rule, true) если dns_rule определён и активен; (nil, false) иначе.
-func resolvePresetDNSRule(preset *template.Preset, userVars map[string]string) (map[string]interface{}, bool) {
-	if preset == nil || preset.DNSRule == nil {
-		return nil, false
-	}
-	frags, _, ok := ExpandPreset(preset, userVars)
-	if !ok || frags == nil || frags.DNSRule == nil {
-		return nil, false
-	}
-	out := make(map[string]interface{}, len(frags.DNSRule))
-	for k, v := range frags.DNSRule {
-		out[k] = v
-	}
-	return out, true
 }
 
 // collectRuleSetTagsFromPresets — set rule_set tag'ов от ВСЕХ enabled

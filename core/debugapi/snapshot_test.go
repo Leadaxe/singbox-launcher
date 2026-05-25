@@ -74,7 +74,7 @@ func snapshotGET(t *testing.T, base, token string) (int, snapshot.Snapshot) {
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		return resp.StatusCode, snapshot.Snapshot{}
@@ -236,7 +236,7 @@ func TestSnapshot_AuthRequired(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("status: want 401, got %d", resp.StatusCode)
 	}
@@ -252,7 +252,7 @@ func TestSnapshot_GETOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("status: want 405, got %d", resp.StatusCode)
 	}

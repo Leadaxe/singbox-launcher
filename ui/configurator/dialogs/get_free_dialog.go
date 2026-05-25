@@ -99,7 +99,7 @@ func downloadGetFree(target string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP %s", resp.Status)
 	}
@@ -110,11 +110,13 @@ func downloadGetFree(target string) error {
 		return err
 	}
 	if _, err := f.ReadFrom(resp.Body); err != nil {
-		f.Close()
-		os.Remove(tmp)
+		_ = f.Close()
+		_ = os.Remove(tmp) // best-effort cleanup of partial write
 		return err
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		return err
+	}
 	return os.Rename(tmp, target)
 }
 

@@ -198,7 +198,7 @@ func exportSessionJSON(deps WindowDeps, win fyne.Window) {
 		if uc == nil {
 			return
 		}
-		defer uc.Close()
+		defer func() { _ = uc.Close() }()
 		if _, werr := uc.Write(data); werr != nil {
 			dialog.ShowError(werr, win)
 			return

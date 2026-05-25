@@ -145,7 +145,9 @@ func TestSave_AlwaysWritesV6(t *testing.T) {
 			Schema  string `json:"schema"`
 		} `json:"meta"`
 	}
-	json.Unmarshal(raw, &probe)
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		t.Fatalf("unmarshal probe: %v", err)
+	}
 	if probe.Meta.Version != 6 {
 		t.Errorf("expected v6 save (single write path), got version=%d", probe.Meta.Version)
 	}
@@ -180,7 +182,9 @@ func TestSave_V6_WhenHasPresetRef(t *testing.T) {
 			Schema  string `json:"schema"`
 		} `json:"meta"`
 	}
-	json.Unmarshal(raw, &probe)
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		t.Fatalf("unmarshal probe: %v", err)
+	}
 	if probe.Meta.Version != 6 {
 		t.Errorf("expected v6 save, got %d", probe.Meta.Version)
 	}

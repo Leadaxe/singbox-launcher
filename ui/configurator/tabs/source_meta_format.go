@@ -235,29 +235,3 @@ func formatSourceSubtitle(meta *corestate.SubscriptionMeta, update *corestate.Up
 	return strings.Join(parts, "  •  ")
 }
 
-// findSourceByURL ищет v5 Source по URL из snapshot model.Sources.
-// Возвращает nil если не найден (типичный случай — server-type).
-func findSourceByURL(sources []corestate.Source, url string) *corestate.Source {
-	if url == "" {
-		return nil
-	}
-	for i := range sources {
-		if sources[i].Type == corestate.SourceTypeSubscription && sources[i].URL == url {
-			return &sources[i]
-		}
-	}
-	return nil
-}
-
-// findSourceByURI ищет v5 Source(server) по URI.
-func findSourceByURI(sources []corestate.Source, uri string) *corestate.Source {
-	if uri == "" {
-		return nil
-	}
-	for i := range sources {
-		if sources[i].Type == corestate.SourceTypeServer && sources[i].URI == uri {
-			return &sources[i]
-		}
-	}
-	return nil
-}

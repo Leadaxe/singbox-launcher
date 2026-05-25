@@ -62,7 +62,7 @@ func doJSON(t *testing.T, req *http.Request, out any) (status int, raw []byte) {
 	if err != nil {
 		t.Fatalf("Do %s %s: %v", req.Method, req.URL.Path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, _ = io.ReadAll(resp.Body)
 	if out != nil && len(raw) > 0 {
 		if err := json.Unmarshal(raw, out); err != nil {
@@ -347,7 +347,7 @@ func TestTrafficAuthGuard(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Do: %v", err)
 			}
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode != 401 {
 				t.Errorf("status: want 401, got %d", resp.StatusCode)
 			}

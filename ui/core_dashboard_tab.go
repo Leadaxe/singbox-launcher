@@ -1007,7 +1007,7 @@ func (tab *CoreDashboardTab) copyCurrentStateAs(id string) error {
 		return fmt.Errorf("write %s: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, dst); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp) // best-effort cleanup of partial write
 		return fmt.Errorf("rename %s → %s: %w", tmp, dst, err)
 	}
 	debuglog.InfoLog("CoreDashboard: saved current state.json → %q.json", id)
@@ -1033,7 +1033,7 @@ func (tab *CoreDashboardTab) switchToNamedState(id string) error {
 		return fmt.Errorf("write %s: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, dst); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp) // best-effort cleanup of partial write
 		return fmt.Errorf("rename %s → %s: %w", tmp, dst, err)
 	}
 	debuglog.InfoLog("CoreDashboard: switched state.json → %q", id)

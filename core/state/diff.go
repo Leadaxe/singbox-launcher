@@ -3,7 +3,6 @@ package state
 import (
 	"encoding/json"
 	"reflect"
-	"sort"
 
 	"singbox-launcher/core/config/configtypes"
 )
@@ -259,13 +258,3 @@ func sameRawMessageSlice(a, b []json.RawMessage) bool {
 	return true
 }
 
-// --- утилита для тестов: stable-sort imports без побочных эффектов ---
-
-// sortConfigParams возвращает копию входного слайса, отсортированную по Name.
-// Полезно для нормализации ожидаемых значений в тестах; не используется
-// в основном коде Diff (там сравнение по множествам).
-func sortConfigParams(in []ConfigParam) []ConfigParam {
-	out := append([]ConfigParam(nil), in...)
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
-}

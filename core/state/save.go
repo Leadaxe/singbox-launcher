@@ -155,12 +155,12 @@ func maybeBackupSPEC058(path string) error {
 		}
 		return err
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 	dst, err := os.OpenFile(backupPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return err
 	}
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 	_, err = io.Copy(dst, src)
 	return err
 }

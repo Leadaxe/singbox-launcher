@@ -42,27 +42,6 @@ func setFyneWidgetToolTip(w fyne.CanvasObject, tip string) {
 	}
 }
 
-// formatLocalOutboundPreviewLine is a one-line summary for proxies[i].outbounds[] in the Edit → Preview tab.
-func formatLocalOutboundPreviewLine(ob *config.OutboundConfig) string {
-	if ob == nil {
-		return ""
-	}
-	typ := ob.Type
-	if typ == "" {
-		typ = "?"
-	}
-	comment := strings.TrimSpace(ob.Comment)
-	rs := []rune(comment)
-	const maxR = 96
-	if len(rs) > maxR {
-		comment = string(rs[:maxR-1]) + "…"
-	}
-	if ob.Tag == "" {
-		return fmt.Sprintf("[%s]  %s", typ, comment)
-	}
-	return fmt.Sprintf("%s  [%s]  %s", ob.Tag, typ, comment)
-}
-
 // parsePreviewNodesFromBody — парсер decoded body для Preview tab.
 //
 // Dispatcher по формату body (так же как SPEC 054 для preview_nodes):

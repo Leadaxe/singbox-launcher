@@ -480,17 +480,6 @@ func tagFromServerJSON(raw json.RawMessage) string {
 	return strings.TrimSpace(jsonString(m["tag"]))
 }
 
-func shallowCopyMap(m map[string]interface{}) map[string]interface{} {
-	if m == nil {
-		return nil
-	}
-	out := make(map[string]interface{}, len(m))
-	for k, v := range m {
-		out[k] = v
-	}
-	return out
-}
-
 // -----------------------------------------------------------------------------
 // Sing-box merge / validation / enabled tags (unchanged behaviour)
 // -----------------------------------------------------------------------------
@@ -515,17 +504,6 @@ func DNSServerWizardEnabledRaw(raw json.RawMessage) bool {
 		return true
 	}
 	return dnsServerEnabledInWizard(m)
-}
-
-func stripWizardOnlyServerFields(m map[string]interface{}) map[string]interface{} {
-	out := make(map[string]interface{}, len(m))
-	for k, v := range m {
-		if k == "description" || k == "enabled" {
-			continue
-		}
-		out[k] = v
-	}
-	return out
 }
 
 // PersistedDNSRulesForState builds dns_options.rules from the multiline editor text.

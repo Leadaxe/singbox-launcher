@@ -29,7 +29,9 @@ func TestMergePresets_AppendsActivePresetRule(t *testing.T) {
 		"rule": {"ip_is_private": true, "outbound": "direct-out"}
 	}`
 	var p template.Preset
-	json.Unmarshal([]byte(presetJSON), &p)
+	if err := json.Unmarshal([]byte(presetJSON), &p); err != nil {
+		t.Fatalf("unmarshal preset: %v", err)
+	}
 
 	raw := json.RawMessage(`{"rules":[{"protocol":"dns","action":"hijack-dns"}],"rule_set":[]}`)
 	ctx := PresetMergeContext{
@@ -43,7 +45,9 @@ func TestMergePresets_AppendsActivePresetRule(t *testing.T) {
 		t.Fatalf("merge: %v", err)
 	}
 	var route map[string]interface{}
-	json.Unmarshal(out, &route)
+	if err := json.Unmarshal(out, &route); err != nil {
+		t.Fatalf("unmarshal route: %v", err)
+	}
 	rules := route["rules"].([]interface{})
 	if len(rules) != 2 {
 		t.Fatalf("expected 2 rules (hijack + preset), got %d", len(rules))
@@ -93,7 +97,9 @@ func TestMergePresets_BrokenRefWarningSkip(t *testing.T) {
 		t.Fatalf("should not fail on broken ref: %v", err)
 	}
 	var route map[string]interface{}
-	json.Unmarshal(out, &route)
+	if err := json.Unmarshal(out, &route); err != nil {
+		t.Fatalf("unmarshal route: %v", err)
+	}
 	rules, _ := route["rules"].([]interface{})
 	if len(rules) != 0 {
 		t.Errorf("broken ref should not emit: %+v", rules)
@@ -116,7 +122,9 @@ func TestMergePresets_DNSBundledServer(t *testing.T) {
 		"dns_rule": {"rule_set": "domains", "server": "@dns_server"}
 	}`
 	var p template.Preset
-	json.Unmarshal([]byte(presetJSON), &p)
+	if err := json.Unmarshal([]byte(presetJSON), &p); err != nil {
+		t.Fatalf("unmarshal preset: %v", err)
+	}
 
 	dnsRaw := json.RawMessage(`{"servers":[{"tag":"google_doh","type":"https"}],"rules":[]}`)
 	ctx := PresetMergeContext{
@@ -136,7 +144,9 @@ func TestMergePresets_DNSBundledServer(t *testing.T) {
 		t.Fatalf("dns merge: %v", err)
 	}
 	var dns map[string]interface{}
-	json.Unmarshal(out, &dns)
+	if err := json.Unmarshal(out, &dns); err != nil {
+		t.Fatalf("unmarshal dns: %v", err)
+	}
 	servers := dns["servers"].([]interface{})
 	if len(servers) != 2 { // google_doh + ru-direct:yandex_udp
 		t.Fatalf("expected 2 servers, got %d: %+v", len(servers), servers)

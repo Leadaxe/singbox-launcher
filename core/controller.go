@@ -333,11 +333,6 @@ func (ac *AppController) hasUI() bool {
 	return ac.UIService != nil && ac.UIService.MainWindow != nil
 }
 
-// hasUIWithApp проверяет, доступен ли UI с Application (для ShowAutoHideInfo)
-func (ac *AppController) hasUIWithApp() bool {
-	return ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil
-}
-
 // GracefulExit performs a graceful shutdown of the application.
 func (ac *AppController) GracefulExit() {
 	// Cancel context to signal all goroutines to stop
