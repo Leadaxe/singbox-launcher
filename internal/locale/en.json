@@ -300,6 +300,8 @@
   "wizard.source.button_refresh": "🔄 Refresh from sources",
   "wizard.source.button_refresh_one": "Refresh",
   "wizard.source.tooltip_refresh_one": "Fetch this subscription now",
+  "wizard.source.tooltip_error_details": "Subscription update failed — click for details",
+  "wizard.source.tooltip_provider_notice": "Provider sent a notice — click to read",
   "wizard.source.type_subscription": "📡",
   "wizard.source.type_server": "🔌",
   "wizard.source.type_subscription_label": "Subscription",

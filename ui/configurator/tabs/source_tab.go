@@ -355,9 +355,39 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					}
 				}
 
+				// SPEC 061 Phase 3: ⚠ / 📢 icon-button — persistent affordance to
+				// open the source-error dialog when meta carries an error or a
+				// provider announce. Placed to the LEFT of copy/edit so the
+				// row's edit/delete cluster keeps a stable visual position.
+				var noticeBtn *fynewidget.HoverForwardButton
+				if isSubscription && meta != nil && (meta.LastStatus == "err" || (meta.ProviderAnnounce != nil && !meta.ProviderAnnounce.IsEmpty())) {
+					icon := theme.WarningIcon()
+					tooltipKey := "wizard.source.tooltip_error_details"
+					if meta.LastStatus != "err" {
+						// Success-with-notice path: provider sent content + announce.
+						// Use info-styled icon. We don't have an info-theme icon
+						// in our minimal set, fall back to QuestionIcon (📢-ish).
+						icon = theme.QuestionIcon()
+						tooltipKey = "wizard.source.tooltip_provider_notice"
+					}
+					srcLabel := shortLabel
+					metaCopy := meta // capture by value for closure (meta is *SubscriptionMeta, stable)
+					noticeBtn = fynewidget.NewHoverForwardButtonWithIcon("", icon, func() {
+						wizarddialogs.ShowSourceErrorDialog(guiState.Window, srcLabel, metaCopy)
+					}, rowGetter)
+					noticeBtn.Importance = widget.LowImportance
+					if nb, ok := interface{}(noticeBtn).(interface{ SetToolTip(string) }); ok {
+						nb.SetToolTip(locale.T(tooltipKey))
+					}
+				}
+
 				rowGutter := canvas.NewRectangle(color.Transparent)
 				rowGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
-				rightControlsItems := []fyne.CanvasObject{copyBtn, editBtn}
+				rightControlsItems := []fyne.CanvasObject{}
+				if noticeBtn != nil {
+					rightControlsItems = append(rightControlsItems, noticeBtn)
+				}
+				rightControlsItems = append(rightControlsItems, copyBtn, editBtn)
 				if refreshBtn != nil {
 					rightControlsItems = append(rightControlsItems, refreshBtn)
 				}
