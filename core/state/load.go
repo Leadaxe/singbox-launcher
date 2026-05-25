@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
+	"strings"
 	"time"
 
 	"singbox-launcher/core/config/configtypes"
-	v5 "singbox-launcher/core/state/v5"
-	v6 "singbox-launcher/core/state/v6"
 )
 
 // ErrNotFound — state-файл не существует. Вызывающий обычно интерпретирует
@@ -26,7 +26,7 @@ var ErrNotFound = errors.New("state: file not found")
 //   - битый JSON → ошибка с понятным контекстом.
 //
 // SPEC 056-R-N: при загрузке v6 файла со старым дев-shape (`dns.template_servers`/
-// `extra_servers`/`extra_rules`) `parseV6` читает его через legacyDevDNSToOptions
+// `extra_servers`/`extra_rules`) `parseCurrent` читает его через legacyDevDNSToOptions
 // fallback и конвертит in-memory в новый flat shape. На ближайшем Save файл
 // перезаписывается в новом layout'е. Никакого backup'а не делаем — конверсия
 // lossless (TestRoundTrip покрывает), v6 не релизился (только dev-state).
@@ -62,9 +62,9 @@ func Parse(data []byte) (*State, error) {
 
 	switch {
 	case probe.Meta.Version >= 6:
-		return parseV6(data)
+		return parseCurrent(data)
 	case probe.Meta.Version == 5:
-		return parseV5(data)
+		return parseV5Legacy(data)
 	case probe.TopLevelVersion >= 2 && probe.TopLevelVersion <= 4:
 		return parseLegacyAndMigrate(data)
 	case probe.TopLevelVersion == 0 && probe.Meta.Version == 0:
@@ -75,7 +75,7 @@ func Parse(data []byte) (*State, error) {
 	}
 }
 
-// parseV6 — прямой read v6-формата (SPEC 053 + SPEC 056-R-N).
+// parseCurrent — прямой read canonical (v6) формата (SPEC 053 + SPEC 056-R-N).
 //
 // v6.State содержит:
 //   - meta {version: 6, schema: "presets_v1", ...}
@@ -96,13 +96,13 @@ func Parse(data []byte) (*State, error) {
 // Для backward-compat UI callsite'ов (DNS tab пока на v5-моделях) генерируется
 // legacy CustomRules view (preset-ref пропускается — UI Phase 6 покажет
 // через новый dialog).
-func parseV6(data []byte) (*State, error) {
+func parseCurrent(data []byte) (*State, error) {
 	var raw struct {
-		Meta        v6.MetaSection        `json:"meta"`
-		Connections v5.ConnectionsSection `json:"connections"`
-		Rules       []v6.Rule             `json:"rules"`
-		Vars        []SettingVar          `json:"vars"`
-		DNSOptions  v6.DNSOptions         `json:"dns_options"`
+		Meta        MetaSection        `json:"meta"`
+		Connections ConnectionsSection `json:"connections"`
+		Rules       []Rule             `json:"rules"`
+		Vars        []SettingVar       `json:"vars"`
+		DNSOptions  DNSOptions         `json:"dns_options"`
 		// Legacy dev-shape (SPEC 053). Читаем для одноразовой in-place миграции.
 		LegacyDNS json.RawMessage `json:"dns"`
 	}
@@ -121,7 +121,7 @@ func parseV6(data []byte) (*State, error) {
 		Comment:            raw.Meta.Comment,
 		Connections:        raw.Connections,
 		Vars:               raw.Vars,
-		RulesV6:            raw.Rules,
+		Rules:              raw.Rules,
 		DNS:                dnsOpts,
 		RulesLibraryMerged: true,
 	}
@@ -153,32 +153,32 @@ func parseV6(data []byte) (*State, error) {
 //   - dns.extra_rules array    → rules[] kind=user (enabled=true, ...body)
 //   - kind=preset entries создаются позже через SyncDNSOptionsWithActivePresets
 //     (см. caller в Load).
-func legacyDevDNSToOptions(legacy json.RawMessage) v6.DNSOptions {
+func legacyDevDNSToOptions(legacy json.RawMessage) DNSOptions {
 	var raw struct {
-		Strategy              string `json:"strategy"`
-		Final                 string `json:"final"`
+		Strategy string `json:"strategy"`
+		Final    string `json:"final"`
 		// SPEC: independent_cache в JSON всё ещё парсим (legacy state read),
 		// но в v6 DNSOptions не переносим — sing-box 1.14 deprecation.
-		IndependentCache      bool                         `json:"independent_cache"`
-		DefaultDomainResolver string                       `json:"default_domain_resolver"`
-		TemplateServers       map[string]struct{
+		IndependentCache      bool   `json:"independent_cache"`
+		DefaultDomainResolver string `json:"default_domain_resolver"`
+		TemplateServers       map[string]struct {
 			Enabled bool `json:"enabled"`
 		} `json:"template_servers"`
 		ExtraServers []map[string]interface{} `json:"extra_servers"`
 		ExtraRules   []map[string]interface{} `json:"extra_rules"`
 	}
 	if err := json.Unmarshal(legacy, &raw); err != nil {
-		return v6.DNSOptions{}
+		return DNSOptions{}
 	}
 	_ = raw.IndependentCache // intentionally dropped on migration
-	out := v6.DNSOptions{
+	out := DNSOptions{
 		Strategy:              raw.Strategy,
 		Final:                 raw.Final,
 		DefaultDomainResolver: raw.DefaultDomainResolver,
 	}
 	for tag, ovr := range raw.TemplateServers {
-		out.Servers = append(out.Servers, v6.DNSServer{
-			Kind:    v6.DNSServerKindTemplate,
+		out.Servers = append(out.Servers, DNSServer{
+			Kind:    DNSServerKindTemplate,
 			Tag:     tag,
 			Enabled: ovr.Enabled,
 		})
@@ -196,8 +196,8 @@ func legacyDevDNSToOptions(legacy json.RawMessage) v6.DNSOptions {
 			}
 			clean[k] = v
 		}
-		out.Servers = append(out.Servers, v6.DNSServer{
-			Kind:    v6.DNSServerKindUser,
+		out.Servers = append(out.Servers, DNSServer{
+			Kind:    DNSServerKindUser,
 			Tag:     tag,
 			Enabled: enabled,
 			Body:    clean,
@@ -211,8 +211,8 @@ func legacyDevDNSToOptions(legacy json.RawMessage) v6.DNSOptions {
 			}
 			clean[k] = v
 		}
-		out.Rules = append(out.Rules, v6.DNSRule{
-			Kind:    v6.DNSRuleKindUser,
+		out.Rules = append(out.Rules, DNSRule{
+			Kind:    DNSRuleKindUser,
 			Enabled: true,
 			Body:    clean,
 		})
@@ -220,12 +220,12 @@ func legacyDevDNSToOptions(legacy json.RawMessage) v6.DNSOptions {
 	return out
 }
 
-// legacyCustomRulesFromV6 — конвертирует v6.Rules[] в legacy CustomRule view.
+// legacyCustomRulesFromV6 — конвертирует Rules[] в legacy CustomRule view.
 //
 // Только kind=inline/srs конвертируются. kind=preset пропускается (не имеет
 // сериализованных match-полей — они в template; UI Phase 6 будет работать
 // с RulesV6 напрямую через новый edit dialog).
-func legacyCustomRulesFromV6(rules []v6.Rule) []CustomRule {
+func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 	out := make([]CustomRule, 0, len(rules))
 	for _, r := range rules {
 		body, err := r.DecodeBody()
@@ -233,8 +233,8 @@ func legacyCustomRulesFromV6(rules []v6.Rule) []CustomRule {
 			continue
 		}
 		switch r.Kind {
-		case v6.RuleKindInline:
-			ib := body.(*v6.InlineBody)
+		case RuleKindInline:
+			ib := body.(*InlineBody)
 			cr := CustomRule{
 				Label:            ib.Name,
 				Enabled:          r.Enabled,
@@ -248,8 +248,8 @@ func legacyCustomRulesFromV6(rules []v6.Rule) []CustomRule {
 			}
 			cr.Rule["outbound"] = ib.Outbound
 			out = append(out, cr)
-		case v6.RuleKindSrs:
-			sb := body.(*v6.SrsBody)
+		case RuleKindSrs:
+			sb := body.(*SrsBody)
 			rsRaw, _ := json.Marshal(map[string]interface{}{
 				"type":   "remote",
 				"format": "binary",
@@ -267,7 +267,7 @@ func legacyCustomRulesFromV6(rules []v6.Rule) []CustomRule {
 				},
 			}
 			out = append(out, cr)
-		case v6.RuleKindPreset:
+		case RuleKindPreset:
 			// preset-ref пропускается в legacy view (UI Phase 6 покажет через новый dialog).
 			// При сохранении preset-ref'ы сохраняются обратно в RulesV6 без потери.
 		}
@@ -297,15 +297,17 @@ func cloneMap(in map[string]interface{}) map[string]interface{} {
 	return out
 }
 
-// parseV5 — прямой read v5-формата.
-func parseV5(data []byte) (*State, error) {
+// parseV5Legacy — прямой read v5-формата (legacy). После SPEC 060 Phase 5
+// canonical write всегда v6, но v5-файлы юзеров читаются здесь и нормализуются
+// в State. На следующем Save перезаписываются в v6 shape.
+func parseV5Legacy(data []byte) (*State, error) {
 	var raw struct {
-		Meta         v5.MetaSection         `json:"meta"`
-		Connections  v5.ConnectionsSection  `json:"connections"`
-		ConfigParams []ConfigParam          `json:"config_params"`
-		CustomRules  []CustomRule           `json:"custom_rules"`
-		Vars         []SettingVar           `json:"vars"`
-		DNSOptions   *DNSOptions            `json:"dns_options"`
+		Meta         metaSectionV5       `json:"meta"`
+		Connections  ConnectionsSection  `json:"connections"`
+		ConfigParams []ConfigParam       `json:"config_params"`
+		CustomRules  []CustomRule        `json:"custom_rules"`
+		Vars         []SettingVar        `json:"vars"`
+		DNSOptions   *LegacyDNSOptionsV5 `json:"dns_options"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("state: parse v5 json: %w", err)
@@ -363,7 +365,7 @@ func parseLegacyAndMigrate(data []byte) (*State, error) {
 	}
 
 	// 3. Собираем v4-snapshot для v5-миграции.
-	v4 := &v5.V4File{
+	v4 := &v4File{
 		Version:      raw.Version,
 		ID:           raw.ID,
 		Comment:      raw.Comment,
@@ -373,17 +375,17 @@ func parseLegacyAndMigrate(data []byte) (*State, error) {
 		Vars:         raw.Vars,
 		CustomRules:  custom,
 		DNSOptions:   raw.DNSOptions,
-		ParserConfig: v5.V4ParserConfig{
+		ParserConfig: v4ParserConfig{
 			Version:   pc.ParserConfig.Version,
 			Proxies:   pc.ParserConfig.Proxies,
 			Outbounds: pc.ParserConfig.Outbounds,
-			Parser: v5.V4Parser{
+			Parser: v4Parser{
 				Reload:      pc.ParserConfig.Parser.Reload,
 				LastUpdated: pc.ParserConfig.Parser.LastUpdated,
 			},
 		},
 	}
-	migrated := v5.MigrateV4ToV5(v4, nil) // production: ULID
+	migrated := migrateV4ToV5(v4, nil) // production: ULID
 
 	s := &State{
 		Version:              SchemaVersion,
@@ -410,18 +412,18 @@ func parseLegacyAndMigrate(data []byte) (*State, error) {
 
 // rawLegacyFile — JSON-форма v2/v3/v4 для устойчивого декодирования.
 type rawLegacyFile struct {
-	Version              int             `json:"version"`
-	ID                   string          `json:"id,omitempty"`
-	Comment              string          `json:"comment,omitempty"`
-	CreatedAt            string          `json:"created_at"`
-	UpdatedAt            string          `json:"updated_at"`
-	ParserConfig         json.RawMessage `json:"parser_config"`
-	ConfigParams         []ConfigParam   `json:"config_params"`
-	SelectableRuleStates json.RawMessage `json:"selectable_rule_states"`
-	CustomRules          json.RawMessage `json:"custom_rules"`
-	RulesLibraryMerged   bool            `json:"rules_library_merged"`
-	DNSOptions           *DNSOptions     `json:"dns_options"`
-	Vars                 []SettingVar    `json:"vars"`
+	Version              int                 `json:"version"`
+	ID                   string              `json:"id,omitempty"`
+	Comment              string              `json:"comment,omitempty"`
+	CreatedAt            string              `json:"created_at"`
+	UpdatedAt            string              `json:"updated_at"`
+	ParserConfig         json.RawMessage     `json:"parser_config"`
+	ConfigParams         []ConfigParam       `json:"config_params"`
+	SelectableRuleStates json.RawMessage     `json:"selectable_rule_states"`
+	CustomRules          json.RawMessage     `json:"custom_rules"`
+	RulesLibraryMerged   bool                `json:"rules_library_merged"`
+	DNSOptions           *LegacyDNSOptionsV5 `json:"dns_options"`
+	Vars                 []SettingVar        `json:"vars"`
 }
 
 // decodeParserConfig — поддерживает два on-disk формата:
@@ -542,4 +544,71 @@ func normalizeNilSlices(s *State) {
 	if s.Connections.Sources == nil {
 		s.Connections.Sources = []Source{}
 	}
+	sanitizeOutboundRefs(&s.Connections.Outbounds)
+	for i := range s.Connections.Sources {
+		sanitizeOutboundRefs(&s.Connections.Sources[i].Outbounds)
+	}
+}
+
+// sanitizeOutboundRefs валидирует позиционные правила для `ref` полей в outbound
+// entries (SPEC 058-R-N). Лениво — дропает невалидные entries / updates и логирует
+// в stderr, вместо fail-load. Это безопаснее против hand-edited state.json и
+// forward-compat с будущими sentinel'ами.
+//
+// Правила:
+//   - `outbounds[].ref`: принимаем "" (direct), RefTemplate (#TEMPLATE#), либо
+//     любое непустое значение НЕ начинающееся на `#` (preset_id). Reject RefUser
+//     и unknown #...# sentinel'ы.
+//   - `outbounds[].updates[].ref`: принимаем RefUser (#USER#) или любое
+//     непустое значение НЕ начинающееся на `#` (preset_id). Reject "",
+//     RefTemplate, unknown #...# sentinel'ы.
+func sanitizeOutboundRefs(outbounds *[]configtypes.OutboundConfig) {
+	if outbounds == nil || *outbounds == nil {
+		return
+	}
+	cleaned := (*outbounds)[:0]
+	for _, ob := range *outbounds {
+		if !validEntryRef(ob.Ref) {
+			log.Printf("state: dropping outbound %q with invalid ref=%q (sentinel rules SPEC 058)", ob.Tag, ob.Ref)
+			continue
+		}
+		if len(ob.Updates) > 0 {
+			validUpdates := ob.Updates[:0]
+			for _, u := range ob.Updates {
+				if !validUpdateRef(u.Ref) {
+					log.Printf("state: dropping update on outbound %q with invalid ref=%q", ob.Tag, u.Ref)
+					continue
+				}
+				validUpdates = append(validUpdates, u)
+			}
+			ob.Updates = validUpdates
+		}
+		cleaned = append(cleaned, ob)
+	}
+	*outbounds = cleaned
+}
+
+// validEntryRef — допустимые значения state.outbounds[].ref:
+// "", RefTemplate, или любая non-#-prefixed строка (preset_id).
+func validEntryRef(ref string) bool {
+	if ref == "" || ref == configtypes.RefTemplate {
+		return true
+	}
+	if strings.HasPrefix(ref, "#") {
+		// #USER# (patch-level only) или unknown sentinel
+		return false
+	}
+	return true // preset_id; validation regex живёт в template loader
+}
+
+// validUpdateRef — допустимые значения state.outbounds[].updates[].ref:
+// RefUser или любая non-#-prefixed строка (preset_id).
+func validUpdateRef(ref string) bool {
+	if ref == configtypes.RefUser {
+		return true
+	}
+	if ref == "" || strings.HasPrefix(ref, "#") {
+		return false
+	}
+	return true
 }

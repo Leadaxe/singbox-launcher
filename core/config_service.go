@@ -17,7 +17,6 @@ import (
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/services"
 	"singbox-launcher/core/state"
-	v5 "singbox-launcher/core/state/v5"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
@@ -184,8 +183,10 @@ func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGener
 	// На failure LoadTemplateData (template missing) — warning + skip;
 	// Update должен работать даже без template'а (legacy юзеры).
 	if td, terr := template.LoadTemplateData(execDir); terr == nil {
-		build.SyncOutboundsWithActivePresets(stateRef.RulesV6, &parserConfig.ParserConfig.Outbounds, td.Presets)
-		build.MergeOutboundUpdatesInPlace(parserConfig)
+		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.
+		_ = build.MigrateOutboundsToReferencedShape(&parserConfig.ParserConfig.Outbounds, stateRef.Rules, td)
+		build.SyncOutboundsWithActivePresets(stateRef.Rules, &parserConfig.ParserConfig.Outbounds, td.Presets)
+		build.MergeOutboundUpdatesInPlace(parserConfig, td)
 	} else {
 		debuglog.WarnLog("UpdateConfigFromSubscriptions: LoadTemplateData failed (skip preset.outbounds sync): %v", terr)
 	}
@@ -338,14 +339,14 @@ func (ac *AppController) buildContextFromState(s *state.State, cache *build.Pars
 	if ac != nil && ac.FileService != nil {
 		ctx.Route.ExecDir = ac.FileService.ExecDir
 	}
-	// SPEC 053: preset bundle merge — все правила из state.RulesV6 в порядке.
-	// Если state.RulesV6 не пуст, MergePresetsIntoRoute берёт на себя весь emit
+	// SPEC 053: preset bundle merge — все правила из state.Rules в порядке.
+	// Если state.Rules не пуст, MergePresetsIntoRoute берёт на себя весь emit
 	// (preset/inline/srs). Noop когда RulesV6 пуст (legacy v5-only flow).
 	ctx.Preset = build.PresetMergeContext{
 		Presets:             td.Presets,
-		RulesV6:             s.RulesV6,
+		Rules:               s.Rules,
 		DNS:                 s.DNS,
-		SrsCachedPaths:      build.CollectSrsCachedPaths(s.RulesV6, ac.FileService.ExecDir),
+		SrsCachedPaths:      build.CollectSrsCachedPaths(s.Rules, ac.FileService.ExecDir),
 		TemplateDNSDefaults: parseTemplateDNSDefaultsFromTD(td),
 	}
 	if ac != nil && ac.FileService != nil {
@@ -381,14 +382,14 @@ func parseTemplateDNSDefaultsFromTD(td *template.TemplateData) []build.TemplateD
 // dnsConfigForUpdate — извлекает DNS-related данные из state в build.DNSConfig.
 //
 // Schema distinction:
-//   - v6 state — `state.DNS` (v6.DNSOptions) — flat servers[]/rules[] через
+//   - v6 state — `state.DNS` (state.DNSOptions) — flat servers[]/rules[] через
 //     kind discriminator. Servers/Rules эмитятся через `ctx.Preset.DNS`
 //     в MergePresetsIntoDNS. Здесь читаем только scalars (Final/Strategy)
 //     — но они в state живут в Vars[].
 //   - pure-v5 state — DNSOptions единственный источник данных, читаем
 //     cfg.Servers/RulesText.
 //
-// v6 active iff len(s.RulesV6) > 0 OR len(s.DNS.Servers/Rules) > 0.
+// v6 active iff len(s.Rules) > 0 OR len(s.DNS.Servers/Rules) > 0.
 //
 // dns_* scalars из state.Vars[] всегда побеждают (SPEC 056-R-N: единый
 // KV-store для всех wizard vars, включая dns_*).
@@ -399,7 +400,7 @@ func dnsConfigForUpdate(s *state.State) build.DNSConfig {
 	cfg := build.DNSConfig{}
 
 	v6Active := s != nil &&
-		(len(s.RulesV6) > 0 ||
+		(len(s.Rules) > 0 ||
 			len(s.DNS.Servers) > 0 ||
 			len(s.DNS.Rules) > 0)
 
@@ -434,9 +435,9 @@ func dnsConfigForUpdate(s *state.State) build.DNSConfig {
 
 // routeConfigForUpdate — конвертит state.CustomRules в build.RouteConfig.
 //
-// SPEC 053: если state.RulesV6 содержит правила — legacy CustomRules emit
+// SPEC 053: если state.Rules содержит правила — legacy CustomRules emit
 // **скипается** (RouteConfig.Rules = nil). Все правила (preset/inline/srs)
-// эмитятся через MergePresetsIntoRoute в правильном порядке из state.RulesV6.
+// эмитятся через MergePresetsIntoRoute в правильном порядке из state.Rules.
 // Это избегает double-emit (правило не появится дважды в route.rules[]).
 //
 // `route.final` НЕ читается здесь: он подставляется на этапе
@@ -444,7 +445,7 @@ func dnsConfigForUpdate(s *state.State) build.DNSConfig {
 // template substituter → финальный config.json). MergeRouteSection видит
 // пустой FinalOutbound и оставляет уже-substituted шаблонное значение.
 func routeConfigForUpdate(s *state.State) build.RouteConfig {
-	if len(s.RulesV6) > 0 {
+	if len(s.Rules) > 0 {
 		// v6 path: rules эмитятся через MergePresetsIntoRoute в правильном порядке.
 		return build.RouteConfig{}
 	}
@@ -480,8 +481,6 @@ func atomicWriteConfig(path string, data []byte) error {
 	}
 	return nil
 }
-
-
 
 // refreshSubscriptionsMetaAndCache — SPEC 052 phase 5: per-source HTTP fetch
 // → парсинг metadata (headers + inline #-comments) → запись raw body в
@@ -551,7 +550,7 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 	// только когда ID не упомянут НИГДЕ. Это защищает от случая «Update
 	// активного state'а сносит данные неактивного stage'а».
 	knownIDs := collectAllStageSourceIDs(execDir)
-	if _, gcErr := v5.DeleteOrphans(subsDir, knownIDs); gcErr != nil {
+	if _, gcErr := state.DeleteOrphans(subsDir, knownIDs); gcErr != nil {
 		debuglog.WarnLog("refreshSubscriptionsMetaAndCache: DeleteOrphans: %v", gcErr)
 	}
 
@@ -686,7 +685,7 @@ func collectAllStageRuleSetTags(execDir string, td *template.TemplateData) []str
 		}
 		// SPEC 053: preset-ref bundled remote rule_set'ы. content-addressed tag'и.
 		if presetByID != nil {
-			for _, r := range s.RulesV6 {
+			for _, r := range s.Rules {
 				if r.Kind != "preset" || r.Ref == "" {
 					continue
 				}
@@ -743,7 +742,7 @@ func refreshOneSubscriptionSource(src *state.Source, defaults state.Defaults, su
 		return true
 	}
 
-	if writeErr := v5.WriteRawBody(subsDir, src.ID, res.RawBody); writeErr != nil {
+	if writeErr := state.WriteRawBody(subsDir, src.ID, res.RawBody); writeErr != nil {
 		debuglog.WarnLog("refreshOneSubscriptionSource: WriteRawBody for %s: %v", src.ID, writeErr)
 	}
 
@@ -771,7 +770,7 @@ func refreshOneSubscriptionSource(src *state.Source, defaults state.Defaults, su
 		effectiveMax = defaults.MaxNodes
 	}
 	if effectiveMax == 0 {
-		effectiveMax = v5.DefaultMaxNodes
+		effectiveMax = state.DefaultMaxNodes
 	}
 	merged.Truncated = merged.NodesCountFetched > effectiveMax
 
@@ -816,7 +815,7 @@ func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) 
 
 	// Defaults для MaxNodes truncation: пытаемся прочитать из state.json,
 	// если он есть. Иначе refreshOneSubscriptionSource fallback'нется на
-	// v5.DefaultMaxNodes — нормально для cold-start.
+	// state.DefaultMaxNodes — нормально для cold-start.
 	var defaults state.Defaults
 	if s, err := state.Load(platform.GetWizardStatePath(execDir)); err == nil {
 		defaults = s.Connections.Defaults

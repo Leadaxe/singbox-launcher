@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
-	v5 "singbox-launcher/core/state/v5"
 )
 
 // NetworkRequestTimeout defines the timeout for network requests
@@ -68,7 +68,7 @@ const MaxSubscriptionResponseSize = 10 * 1024 * 1024 // 10 MB
 type FetchResult struct {
 	Body         []byte
 	RawBody      []byte
-	Meta         v5.SubscriptionMeta
+	Meta         state.SubscriptionMeta
 	HTTPStatus   int
 	RawBodyBytes int64
 }

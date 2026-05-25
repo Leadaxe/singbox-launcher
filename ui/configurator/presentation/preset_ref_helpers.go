@@ -7,8 +7,10 @@ package presentation
 
 import (
 	"encoding/json"
+	"strings"
 
-	corev6 "singbox-launcher/core/state/v6"
+	"singbox-launcher/core/build"
+	"singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -38,7 +40,7 @@ func extractTemplateDNSTags(td *wizardtemplate.TemplateData) map[string]bool {
 // проходит по kind=preset entries в state.DNS и применяет toggle overrides
 // из PresetRefState.DNSServerEnabled / DNSRuleEnabled.
 // (SPEC 056-R-N follow-up: per-server toggle живёт в PresetRefState.)
-func applyPresetEnabledOverrides(dns *corev6.DNSOptions, presetRefs []*wizardmodels.PresetRefState) {
+func applyPresetEnabledOverrides(dns *state.DNSOptions, presetRefs []*wizardmodels.PresetRefState) {
 	if dns == nil {
 		return
 	}
@@ -50,11 +52,11 @@ func applyPresetEnabledOverrides(dns *corev6.DNSOptions, presetRefs []*wizardmod
 	}
 	for i := range dns.Servers {
 		s := &dns.Servers[i]
-		if s.Kind != corev6.DNSServerKindPreset {
+		if s.Kind != state.DNSServerKindPreset {
 			continue
 		}
-		presetID := corev6.PresetIDFromServerRef(s.Ref)
-		localTag := corev6.LocalTagFromServerRef(s.Ref)
+		presetID := state.PresetIDFromServerRef(s.Ref)
+		localTag := state.LocalTagFromServerRef(s.Ref)
 		pr, ok := refByPresetID[presetID]
 		if !ok || localTag == "" {
 			continue
@@ -63,7 +65,7 @@ func applyPresetEnabledOverrides(dns *corev6.DNSOptions, presetRefs []*wizardmod
 	}
 	for i := range dns.Rules {
 		r := &dns.Rules[i]
-		if r.Kind != corev6.DNSRuleKindPreset {
+		if r.Kind != state.DNSRuleKindPreset {
 			continue
 		}
 		pr, ok := refByPresetID[r.Ref]
@@ -78,7 +80,7 @@ func applyPresetEnabledOverrides(dns *corev6.DNSOptions, presetRefs []*wizardmod
 // из state.DNS.{Servers,Rules}[kind=preset] заполняет PresetRefState.
 // Default true (отсутствие в map) — но если в state Enabled=false,
 // явно записываем false чтобы UI чекбокс показал правильное состояние.
-func populatePresetEnabledFromState(presetRefs []*wizardmodels.PresetRefState, dns corev6.DNSOptions) {
+func populatePresetEnabledFromState(presetRefs []*wizardmodels.PresetRefState, dns state.DNSOptions) {
 	refByPresetID := make(map[string]*wizardmodels.PresetRefState, len(presetRefs))
 	for _, pr := range presetRefs {
 		if pr != nil && pr.Ref != "" {
@@ -86,11 +88,11 @@ func populatePresetEnabledFromState(presetRefs []*wizardmodels.PresetRefState, d
 		}
 	}
 	for _, s := range dns.Servers {
-		if s.Kind != corev6.DNSServerKindPreset || s.Ref == "" {
+		if s.Kind != state.DNSServerKindPreset || s.Ref == "" {
 			continue
 		}
-		presetID := corev6.PresetIDFromServerRef(s.Ref)
-		localTag := corev6.LocalTagFromServerRef(s.Ref)
+		presetID := state.PresetIDFromServerRef(s.Ref)
+		localTag := state.LocalTagFromServerRef(s.Ref)
 		pr, ok := refByPresetID[presetID]
 		if !ok || localTag == "" {
 			continue
@@ -98,7 +100,7 @@ func populatePresetEnabledFromState(presetRefs []*wizardmodels.PresetRefState, d
 		pr.SetDNSServerEnabled(localTag, s.Enabled)
 	}
 	for _, r := range dns.Rules {
-		if r.Kind != corev6.DNSRuleKindPreset || r.Ref == "" {
+		if r.Kind != state.DNSRuleKindPreset || r.Ref == "" {
 			continue
 		}
 		pr, ok := refByPresetID[r.Ref]
@@ -106,6 +108,108 @@ func populatePresetEnabledFromState(presetRefs []*wizardmodels.PresetRefState, d
 			continue
 		}
 		pr.SetDNSRuleEnabled(r.Enabled)
+	}
+}
+
+// populateUserDNSFromState — restore kind=user DNS servers/rules из v6
+// state.DNS обратно в model.DNSServers / model.DNSRulesText.
+//
+// SPEC 056 phase 7 (rename DNSV6→DNS) regression fix: legacy v5 path
+// (LoadPersistedWizardDNS, читающий sf.DNSOptions) для v6-файлов больше
+// не срабатывает — parseCurrent заполняет только sf.DNS, оставляя
+// sf.DNSOptions == nil. Без этого helper'а user-added DNS-сервера и
+// user DNS rules терялись после Save+reopen, потому что
+// ApplyWizardDNSTemplate перезаполняет model.DNSServers только из
+// template-секции (kind=template), а kind=user никем не восстанавливается.
+//
+// Идемпотентно:
+//   - Server skip'аем если такой tag уже есть в model.DNSServers (legacy
+//     v5 path мог уже его положить во время v5→v6 round-trip миграции —
+//     не делаем double-add).
+//   - DNSRulesText трогаем только если он пустой (legacy v5 путь может
+//     уже его выставить из sf.DNSOptions.Rules).
+//
+// kind=template/preset entries здесь НЕ обрабатываются:
+//   - template servers заполняются ApplyWizardDNSTemplate из шаблона;
+//     их enabled-state восстанавливается через SyncStateV6ToDNSOverrides →
+//     DNSTemplateOverrides;
+//   - preset servers/rules — через populatePresetEnabledFromState.
+func populateUserDNSFromState(model *wizardmodels.WizardModel, dns state.DNSOptions) {
+	if model == nil {
+		return
+	}
+
+	// 1. Servers — append kind=user в model.DNSServers, дедупликация по tag.
+	existingTags := make(map[string]struct{}, len(model.DNSServers))
+	for _, raw := range model.DNSServers {
+		var m map[string]interface{}
+		if json.Unmarshal(raw, &m) != nil {
+			continue
+		}
+		if t, ok := m["tag"].(string); ok {
+			if t = strings.TrimSpace(t); t != "" {
+				existingTags[t] = struct{}{}
+			}
+		}
+	}
+	for _, s := range dns.Servers {
+		if s.Kind != state.DNSServerKindUser {
+			continue
+		}
+		tag := strings.TrimSpace(s.Tag)
+		if tag == "" {
+			continue
+		}
+		if _, dup := existingTags[tag]; dup {
+			continue
+		}
+		// Reconstruct wizard JSON shape (inverse of SyncDNSFullToStateV6's
+		// kind=user branch in preset_ref_sync.go): tag + enabled top-level,
+		// плюс flatten Body. Body уже не содержит kind/ref/enabled
+		// (Unmarshal в DNSServer их выкидывает), но защищаемся от tag-
+		// коллизии (поле Tag — source of truth).
+		entry := make(map[string]interface{}, 2+len(s.Body))
+		entry["tag"] = tag
+		entry["enabled"] = s.Enabled
+		for k, v := range s.Body {
+			switch k {
+			case "kind", "ref", "enabled", "tag":
+				continue
+			}
+			entry[k] = v
+		}
+		b, err := json.Marshal(entry)
+		if err != nil {
+			continue
+		}
+		model.DNSServers = append(model.DNSServers, json.RawMessage(b))
+		existingTags[tag] = struct{}{}
+	}
+
+	// 2. Rules — overwrite DNSRulesText только если оно пустое.
+	if strings.TrimSpace(model.DNSRulesText) != "" {
+		return
+	}
+	var userRules []interface{}
+	for _, r := range dns.Rules {
+		if r.Kind != state.DNSRuleKindUser {
+			continue
+		}
+		if len(r.Body) == 0 {
+			continue
+		}
+		body := make(map[string]interface{}, len(r.Body))
+		for k, v := range r.Body {
+			switch k {
+			case "kind", "ref", "enabled":
+				continue
+			}
+			body[k] = v
+		}
+		userRules = append(userRules, body)
+	}
+	if len(userRules) > 0 {
+		model.DNSRulesText = build.DNSRulesToText(userRules)
 	}
 }
 

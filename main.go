@@ -100,6 +100,13 @@ func main() {
 	// Check launcher version on startup (always checks, popup shown on first window display)
 	controller.CheckLauncherVersionOnStartup()
 
+	// SPEC 059: spin up the always-on Traffic Profiler service. It tails
+	// sing-box.log + polls Clash /connections in the background so when
+	// the user opens the Traffic Profiler window from Diagnostics they
+	// immediately see the rolling 60s buffer instead of waiting for
+	// events. Recording sessions survive window close.
+	ui.EnsureTrafficProfilerStarted(controller)
+
 	// Configure the system tray if the application is running on a Desktop platform.
 	//nolint:unused // desktop is used for type assertion, even if linter can't detect it
 	if desk, ok := controller.UIService.Application.(desktop.App); ok {

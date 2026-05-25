@@ -1,11 +1,15 @@
 // Package state — модель декларативного состояния Configurator (бывшего
 // Wizard) без UI-зависимостей.
 //
-// SPEC 052 (CONNECTIONS_REDESIGN): на диск пишется v5-схема. Поверхностный
+// SPEC 052 (CONNECTIONS_REDESIGN): на диск пишется v5/v6-схема. Поверхностный
 // in-memory тип State сохраняет legacy-форму (ParserConfig.ParserConfig.Proxies,
 // Vars, CustomRules, DNSOptions) для совместимости с существующими
-// callsite'ами; v5-canonical-секция Connections живёт параллельно и
-// синхронизируется на Save (UI-edits ParserConfig → Sync → write v5).
+// callsite'ами; canonical секция Connections живёт параллельно и
+// синхронизируется на Save (UI-edits ParserConfig → Sync → write).
+//
+// SPEC 060: v5/ и v6/ subpackages collapsed в единый core/state/. Wire format
+// не меняется. Историческое имя поля RulesV6 сохранено в Phase 2/3/4 и
+// переименовано в Rules на Phase 5.
 //
 // Этот пакет НЕ:
 //   - не зависит от UI / Fyne;
@@ -18,8 +22,6 @@ import (
 	"time"
 
 	"singbox-launcher/core/config/configtypes"
-	v5 "singbox-launcher/core/state/v5"
-	v6 "singbox-launcher/core/state/v6"
 )
 
 // SchemaVersion — версия on-disk-формата state.json, которую пишет Save.
@@ -29,43 +31,17 @@ import (
 //   - v3 — rules library: единый custom_rules + rules_library_merged;
 //   - v4 — SPEC 032 (vars + literals + if/if_or в params);
 //   - v5 — SPEC 052: top-level meta + connections, per-source meta/raw cache.
+//   - v6 — SPEC 053/056: rules[] kind discriminator, dns_options flat shape.
 //
-// Load принимает v2/v3/v4 (с авто-миграцией в v5); Save всегда пишет v5.
-const SchemaVersion = v5.SchemaVersion
-
-// DefaultMaxNodes — re-export of v5.DefaultMaxNodes (3000) для callsite'ов
-// которые работают через core/state без прямого импорта v5.
-const DefaultMaxNodes = v5.DefaultMaxNodes
-
-// ── Type aliases на v5-типы ──────────────────────────────────────
-// Чтобы callsite'ы могли работать как через state.X, так и через v5.X.
-
-type (
-	ConfigParam        = v5.ConfigParam
-	SettingVar         = v5.SettingVar
-	CustomRule         = v5.CustomRule
-	DNSOptions         = v5.DNSOptions
-	Source             = v5.Source
-	SourceType         = v5.SourceType
-	SubscriptionMeta   = v5.SubscriptionMeta
-	UserInfo           = v5.UserInfo
-	TagSpec            = v5.TagSpec
-	UpdateSpec         = v5.UpdateSpec
-	Defaults           = v5.Defaults
-	ConnectionsSection = v5.ConnectionsSection
-	MetaSection        = v5.MetaSection
-)
-
-const (
-	SourceTypeSubscription = v5.SourceTypeSubscription
-	SourceTypeServer       = v5.SourceTypeServer
-)
+// SPEC 060 Phase 5: SchemaVersion теперь всегда v6 — dual write path удалён.
+// Load принимает v2/v3/v4/v5 (с авто-миграцией); Save всегда пишет v6.
+const SchemaVersion = SchemaVersionV6
 
 // ── State ────────────────────────────────────────────────────────
 
 // State — корневая декларативная модель.
 //
-// Изменения этого типа должны быть JSON-обратно совместимы с v5.
+// Изменения этого типа должны быть JSON-обратно совместимы с v5/v6.
 // Top-level legacy-поля (ID, RulesLibraryMerged, SelectableRuleStates) не
 // сериализуются в v5 — оставлены в памяти только для backward-compat
 // callsite'ов и одноразовой миграции с v3/v4.
@@ -104,7 +80,7 @@ type State struct {
 	// Connections — sources + global outbounds + defaults в v5-форме.
 	// Источник истины для нового кода (parser adapter / Rebuild / UI после
 	// Phase 7).
-	Connections v5.ConnectionsSection
+	Connections ConnectionsSection
 
 	// === Common (template / rules) ===
 
@@ -128,27 +104,27 @@ type State struct {
 	// чтобы UI-код не ре-запускал миграцию каждый Load.
 	RulesLibraryMerged bool
 
-	// DNSOptions — снимок вкладки DNS визарда.
-	DNSOptions *DNSOptions
+	// DNSOptions — снимок вкладки DNS визарда (v5 legacy shape).
+	// Приватный тип LegacyDNSOptionsV5 — оставлен для backward-compat с UI
+	// кодом который ещё работает через legacy view. В v6 path обычно nil.
+	DNSOptions *LegacyDNSOptionsV5
 
-	// === SPEC 053: v6 preset bundles (opt-in) ===
+	// === SPEC 053: v6 preset bundles ===
 
-	// RulesV6 — новая модель правил (kind discriminator: preset/inline/srs).
+	// Rules — новая модель правил (kind discriminator: preset/inline/srs).
 	// SPEC 053: thin-ref preset bundles. Заполняется при load v6 файлов;
-	// при load v5 — derived из CustomRules через MigrateV5ToV6.
+	// при load v5 — derived из CustomRules через migrateV5ToV6.
 	//
-	// Если ни одно правило не имеет kind=preset, Save выбирает v5-формат
-	// для backward-compat. При появлении хотя бы одного preset-ref Save
-	// автоматически переключается на v6-формат + создаёт state.json.v5.bak.
-	RulesV6 []v6.Rule
+	// SPEC 060 Phase 5: rename RulesV6 → Rules. JSON tag всё ещё "rules".
+	Rules []Rule
 
 	// DNS — новая DNS-секция (SPEC 056-R-N: flat kind discriminator
 	// template/preset/user для servers и preset/user для rules).
 	// Параллельно DNSOptions (legacy v5) для одностороннего sync на Save.
-	// JSON-ключ на диске: "dns_options" (см. state.marshalDiskV6).
+	// JSON-ключ на диске: "dns_options" (см. state.marshalDisk).
 	// Историческое имя поля было DNSV6 (когда v5/v6 co-existed); после
 	// SPEC 056-R-N оба формата это v6 internally, суффикс выкинут.
-	DNS v6.DNSOptions
+	DNS DNSOptions
 }
 
 // SelectableRuleState — выбор пользователя для правила, определённого в шаблоне.
@@ -158,18 +134,6 @@ type SelectableRuleState struct {
 	Enabled          bool   `json:"enabled"`
 	SelectedOutbound string `json:"selected_outbound"`
 }
-
-// Известные константы типов правил (зеркало v5.RuleType*).
-const (
-	RuleTypeIPS       = v5.RuleTypeIPS
-	RuleTypeURLs      = v5.RuleTypeURLs
-	RuleTypeProcesses = v5.RuleTypeProcesses
-	RuleTypeSRS       = v5.RuleTypeSRS
-	RuleTypeRaw       = v5.RuleTypeRaw
-)
-
-// IsKnownRuleType — true, если s — одна из актуальных констант типов.
-func IsKnownRuleType(s string) bool { return v5.IsKnownRuleType(s) }
 
 // New создаёт новый State с актуальной SchemaVersion и текущим UTC-временем.
 func New() *State {

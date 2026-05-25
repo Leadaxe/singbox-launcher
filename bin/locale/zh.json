@@ -267,7 +267,6 @@
   "wizard.rules.button_srs_done": "✔️ srs",
   "wizard.rules.template_not_found": "未找到模板文件 bin/%s。",
   "wizard.rules.template_create_hint": "创建模板文件以启用此标签页。",
-  "wizard.rules.no_selectable_rules": "模板中未定义可选择的规则。",
   "wizard.rules.label_outbound": "出站：",
   "wizard.rules.button_info": "?",
   "wizard.rules.button_edit": "✏️",

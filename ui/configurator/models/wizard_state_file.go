@@ -33,7 +33,11 @@ type (
 	PersistedSettingVar          = corestate.SettingVar
 	PersistedSelectableRuleState = corestate.SelectableRuleState
 	PersistedCustomRule          = corestate.CustomRule
-	PersistedDNSState            = corestate.DNSOptions
+	// SPEC 060: PersistedDNSState is v5-legacy DNSOptions shape (with
+	// []json.RawMessage Servers/Rules). After collapse, core/state.DNSOptions
+	// is the v6 canonical shape — so PersistedDNSState points at the renamed
+	// state.LegacyDNSOptionsV5 to preserve callsite expectations.
+	PersistedDNSState = corestate.LegacyDNSOptionsV5
 
 	// SPEC 052 phase 7: v5-источники в wizard model.
 	Source             = corestate.Source

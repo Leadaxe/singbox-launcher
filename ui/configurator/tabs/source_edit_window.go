@@ -18,7 +18,7 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
-	v5 "singbox-launcher/core/state/v5"
+	"singbox-launcher/core/state"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
@@ -571,7 +571,7 @@ func showSourceEditWindow(
 					}
 				case wizardmodels.SourceTypeSubscription:
 					subsDir := platform.GetSubscriptionsDir(model.ExecDir)
-					if raw, rerr := v5.ReadRawBody(subsDir, src.ID); rerr == nil && len(raw) > 0 {
+					if raw, rerr := state.ReadRawBody(subsDir, src.ID); rerr == nil && len(raw) > 0 {
 						decoded, decErr := subscription.DecodeSubscriptionContent(raw)
 						if decErr != nil {
 							err = decErr

@@ -81,6 +81,13 @@ func srsEntriesTooltip(entries []services.SRSEntry) string {
 }
 
 // runSRSDownloadAsync запускает скачивание SRS в горутине и по завершении обновляет UI (кнопка, outbound, onSuccess).
+//
+// silent=true подавляет фейл-диалог `ShowDownloadFailedManual` — нужно для
+// auto-download-on-open сценария (open configurator → preset enabled но SRS
+// потёрты): мы тихо пробуем скачать, на failure только лог. Иначе при
+// каждом открытии configurator'а без сети юзера бы засыпало popup'ами.
+// Button text всё равно вернётся к "⬇ srs" — юзер увидит что не скачано и
+// может попробовать вручную.
 func runSRSDownloadAsync(
 	presenter *wizardpresentation.WizardPresenter,
 	model *wizardmodels.WizardModel,
@@ -89,6 +96,7 @@ func runSRSDownloadAsync(
 	btn *ttwidget.Button,
 	outboundSelect *widget.Select,
 	onSuccess func(),
+	silent bool,
 ) {
 	if model.ExecDir == "" {
 		return
@@ -109,7 +117,9 @@ func runSRSDownloadAsync(
 					downloadURL = srsEntries[0].URL
 				}
 				debuglog.WarnLog("rules_tab: SRS download failed: %v", err)
-				dialogs.ShowDownloadFailedManual(guiState.Window, locale.T("wizard.rules.error_srs_failed"), downloadURL, ruleSetsDir)
+				if !silent {
+					dialogs.ShowDownloadFailedManual(guiState.Window, locale.T("wizard.rules.error_srs_failed"), downloadURL, ruleSetsDir)
+				}
 				return
 			}
 			btn.SetText(srsBtnDone())
@@ -654,7 +664,7 @@ func createCustomRuleSRSButton(
 				model.TemplatePreviewNeedsUpdate = true
 				presenter.MarkAsChanged()
 			}
-		})
+		}, false /* manual click — показываем фейл-диалог */)
 	}
 	return btn
 }

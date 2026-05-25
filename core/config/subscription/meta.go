@@ -6,11 +6,10 @@ import (
 	"encoding/base64"
 	"mime"
 	"net/http"
+	"singbox-launcher/core/state"
 	"strconv"
 	"strings"
 	"unicode/utf8"
-
-	v5 "singbox-launcher/core/state/v5"
 )
 
 // inlineCommentScanLimit — сколько первых строк тела сканировать в поисках
@@ -21,12 +20,12 @@ const inlineCommentScanLimit = 100
 // canonical-имена headers (RFC-стиль). http.Header.Get их нормализует
 // до Title-case, поэтому достаточно объявить ровно эти ключи.
 const (
-	headerSubscriptionUserInfo   = "Subscription-Userinfo"
-	headerProfileTitle           = "Profile-Title"
-	headerProfileUpdateInterval  = "Profile-Update-Interval"
-	headerSupportURL             = "Support-Url"
-	headerProfileWebPageURL      = "Profile-Web-Page-Url"
-	headerContentDisposition     = "Content-Disposition"
+	headerSubscriptionUserInfo  = "Subscription-Userinfo"
+	headerProfileTitle          = "Profile-Title"
+	headerProfileUpdateInterval = "Profile-Update-Interval"
+	headerSupportURL            = "Support-Url"
+	headerProfileWebPageURL     = "Profile-Web-Page-Url"
+	headerContentDisposition    = "Content-Disposition"
 )
 
 // ParseHeaders — извлекает метаданные подписки из HTTP response headers.
@@ -37,8 +36,8 @@ const (
 //
 // Headers контракт: см. SPEC 052 §"Headers контракт"
 // (https://github.com/Leadaxe/LxBox/blob/main/docs/PROTOCOLS.md).
-func ParseHeaders(h http.Header) v5.SubscriptionMeta {
-	var m v5.SubscriptionMeta
+func ParseHeaders(h http.Header) state.SubscriptionMeta {
+	var m state.SubscriptionMeta
 	if h == nil {
 		return m
 	}
@@ -75,8 +74,8 @@ func ParseHeaders(h http.Header) v5.SubscriptionMeta {
 // Останавливается при первой непустой строке без `#` префикса (это уже
 // нодовая часть). Headers здесь те же что в HTTP, но без Title-case
 // (case-insensitive matching).
-func ParseInlineComments(body []byte) v5.SubscriptionMeta {
-	var m v5.SubscriptionMeta
+func ParseInlineComments(body []byte) state.SubscriptionMeta {
+	var m state.SubscriptionMeta
 	if len(body) == 0 {
 		return m
 	}
@@ -141,7 +140,7 @@ func ParseInlineComments(body []byte) v5.SubscriptionMeta {
 //
 // Поля fetch history (LastFetchedAt, ErrorCount, ...) не трогаются —
 // они никогда не приходят из header'ов.
-func MergeMeta(headers, inline v5.SubscriptionMeta) v5.SubscriptionMeta {
+func MergeMeta(headers, inline state.SubscriptionMeta) state.SubscriptionMeta {
 	out := headers // copy by value
 	if out.UserInfo == nil && inline.UserInfo != nil {
 		out.UserInfo = inline.UserInfo
@@ -170,11 +169,11 @@ func MergeMeta(headers, inline v5.SubscriptionMeta) v5.SubscriptionMeta {
 //
 // Allows ";" or "," as разделитель, whitespace tolerant. Возвращает nil
 // если ни одно поле не распозналось (malformed input).
-func parseSubscriptionUserinfo(s string) *v5.UserInfo {
+func parseSubscriptionUserinfo(s string) *state.UserInfo {
 	if s == "" {
 		return nil
 	}
-	ui := &v5.UserInfo{}
+	ui := &state.UserInfo{}
 	any := false
 	parts := strings.FieldsFunc(s, func(r rune) bool {
 		return r == ';' || r == ','
@@ -315,7 +314,7 @@ func hasControlChars(s string) bool {
 //	attachment; filename*=UTF-8''My%20Profile.txt   (RFC 5987)
 //
 // Использует mime.ParseMediaType — он handle'ит и quoted, и raw,
-// и filename* (UTF-8'')-форму (через automatic decode в mime).
+// и filename* (UTF-8”)-форму (через automatic decode в mime).
 func parseContentDispositionFilename(s string) string {
 	if s == "" {
 		return ""

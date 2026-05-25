@@ -3,7 +3,7 @@
 // Sync функции вызываются на Save (UI → state) и Load (state → UI). Это два
 // независимых поля рядом со старыми CustomRules/DNSOptions:
 //
-//	UI model.PresetRefs            <-> state.RulesV6 (kind=preset entries)
+//	UI model.PresetRefs            <-> state.Rules (kind=preset entries)
 //	UI model.DNSTemplateOverrides  <-> state.DNS.TemplateServers
 //
 // Подход «параллельное хранилище» нужен пока UI Rules tab продолжает
@@ -13,21 +13,20 @@ package models
 
 import (
 	"encoding/json"
-
-	v6 "singbox-launcher/core/state/v6"
+	"singbox-launcher/core/state"
 )
 
-// SyncAllRulesToStateRulesV6 — full sync model rules → state.RulesV6 (БЕЗ порядка).
+// SyncAllRulesToStateRulesV6 — full sync model rules → state.Rules (БЕЗ порядка).
 //
-// Кладёт в state.RulesV6:
+// Кладёт в state.Rules:
 //   - preset-ref'ы из model.PresetRefs как kind=preset (сначала)
 //   - inline/srs правила из model.CustomRules как kind=inline/srs (после)
 //
 // **Не сохраняет порядок RuleOrder.** Для save с правильным порядком
 // используется SyncRulesByOrderToStateRulesV6 (см. ниже). Эта функция —
 // fallback для случаев когда RuleOrder не заполнен (нечасто).
-func SyncAllRulesToStateRulesV6(presetRefs []*PresetRefState, customRules []*RuleState) []v6.Rule {
-	out := make([]v6.Rule, 0, len(presetRefs)+len(customRules))
+func SyncAllRulesToStateRulesV6(presetRefs []*PresetRefState, customRules []*RuleState) []state.Rule {
+	out := make([]state.Rule, 0, len(presetRefs)+len(customRules))
 
 	// 1. Preset-refs
 	out = append(out, SyncPresetRefsToStateRules(presetRefs)...)
@@ -47,17 +46,17 @@ func SyncAllRulesToStateRulesV6(presetRefs []*PresetRefState, customRules []*Rul
 }
 
 // SyncRulesByOrderToStateRulesV6 — sync с сохранением порядка RuleOrder.
-// Обходит slots в порядке RuleOrder, dispatch'ит по kind, эмитит v6.Rule.
+// Обходит slots в порядке RuleOrder, dispatch'ит по kind, эмитит state.Rule.
 //
-// Гарантирует что state.RulesV6 имеет тот же порядок что UI Rules tab видит.
+// Гарантирует что state.Rules имеет тот же порядок что UI Rules tab видит.
 // Это критично для build pipeline (emit в правильном порядке) и round-trip
 // load→save→load (порядок не теряется).
-func SyncRulesByOrderToStateRulesV6(order []RuleSlot, presetRefs []*PresetRefState, customRules []*RuleState) []v6.Rule {
+func SyncRulesByOrderToStateRulesV6(order []RuleSlot, presetRefs []*PresetRefState, customRules []*RuleState) []state.Rule {
 	if len(order) == 0 {
 		// Fallback: используем legacy concat если RuleOrder пуст.
 		return SyncAllRulesToStateRulesV6(presetRefs, customRules)
 	}
-	out := make([]v6.Rule, 0, len(order))
+	out := make([]state.Rule, 0, len(order))
 	for _, slot := range order {
 		switch slot.Kind {
 		case SlotKindPresetRef:
@@ -73,8 +72,8 @@ func SyncRulesByOrderToStateRulesV6(order []RuleSlot, presetRefs []*PresetRefSta
 				vars = map[string]string{}
 			}
 			body, _ := jsonMarshalPreset(vars)
-			out = append(out, v6.Rule{
-				Kind:    v6.RuleKindPreset,
+			out = append(out, state.Rule{
+				Kind:    state.RuleKindPreset,
 				Ref:     pr.Ref,
 				Enabled: pr.Enabled,
 				Body:    body,
@@ -99,11 +98,11 @@ func SyncRulesByOrderToStateRulesV6(order []RuleSlot, presetRefs []*PresetRefSta
 // jsonMarshalPreset — helper для serialization PresetBody (избавляет от
 // дублирования в SyncPresetRefsToStateRules / SyncRulesByOrderToStateRulesV6).
 func jsonMarshalPreset(vars map[string]string) ([]byte, error) {
-	return json.Marshal(v6.PresetBody{Vars: vars})
+	return json.Marshal(state.PresetBody{Vars: vars})
 }
 
 // RuleOrderFromStateRulesV6 — обратная конверсия: восстанавливает model.RuleOrder
-// из state.RulesV6, чтобы UI после load увидел правила в том же порядке как
+// из state.Rules, чтобы UI после load увидел правила в том же порядке как
 // они были при save.
 //
 // Параметры (presetRefs, customRules) должны быть уже заполнены (после
@@ -112,7 +111,7 @@ func jsonMarshalPreset(vars map[string]string) ([]byte, error) {
 //
 // Возвращает order. Если совпадения по ref/id нет (e.g. legacy state v5
 // без RulesV6), возвращает пустой list → caller должен сделать RebuildRuleOrder.
-func RuleOrderFromStateRulesV6(rules []v6.Rule, presetRefs []*PresetRefState, customRules []*RuleState) []RuleSlot {
+func RuleOrderFromStateRulesV6(rules []state.Rule, presetRefs []*PresetRefState, customRules []*RuleState) []RuleSlot {
 	if len(rules) == 0 {
 		return nil
 	}
@@ -141,11 +140,11 @@ func RuleOrderFromStateRulesV6(rules []v6.Rule, presetRefs []*PresetRefState, cu
 	out := make([]RuleSlot, 0, len(rules))
 	for _, r := range rules {
 		switch r.Kind {
-		case v6.RuleKindPreset:
+		case state.RuleKindPreset:
 			if idx, ok := prByRef[r.Ref]; ok {
 				out = append(out, RuleSlot{Kind: SlotKindPresetRef, Index: idx})
 			}
-		case v6.RuleKindInline, v6.RuleKindSrs:
+		case state.RuleKindInline, state.RuleKindSrs:
 			if r.ID != "" {
 				if idx, ok := crByID[r.ID]; ok {
 					out = append(out, RuleSlot{Kind: SlotKindCustom, Index: idx})
@@ -156,9 +155,9 @@ func RuleOrderFromStateRulesV6(rules []v6.Rule, presetRefs []*PresetRefState, cu
 			if body, err := r.DecodeBody(); err == nil {
 				var name string
 				switch b := body.(type) {
-				case *v6.InlineBody:
+				case *state.InlineBody:
 					name = b.Name
-				case *v6.SrsBody:
+				case *state.SrsBody:
 					name = b.Name
 				}
 				if name != "" {
@@ -172,8 +171,8 @@ func RuleOrderFromStateRulesV6(rules []v6.Rule, presetRefs []*PresetRefState, cu
 	return out
 }
 
-// customRuleStateToV6Rule — конверсия RuleState (legacy) → v6.Rule (kind=inline|srs).
-func customRuleStateToV6Rule(rs *RuleState) *v6.Rule {
+// customRuleStateToV6Rule — конверсия RuleState (legacy) → state.Rule (kind=inline|srs).
+func customRuleStateToV6Rule(rs *RuleState) *state.Rule {
 	if rs == nil {
 		return nil
 	}
@@ -188,14 +187,14 @@ func customRuleStateToV6Rule(rs *RuleState) *v6.Rule {
 				URL  string `json:"url"`
 			}
 			if err := json.Unmarshal(rsRaw, &probe); err == nil && probe.Type == "remote" && probe.URL != "" {
-				body, _ := json.Marshal(v6.SrsBody{
+				body, _ := json.Marshal(state.SrsBody{
 					Name:     label,
 					SrsURL:   probe.URL,
 					Outbound: outbound,
 				})
 				id := stableRuleID(rs)
-				return &v6.Rule{
-					Kind:    v6.RuleKindSrs,
+				return &state.Rule{
+					Kind:    state.RuleKindSrs,
 					ID:      id,
 					Enabled: rs.Enabled,
 					Body:    body,
@@ -209,14 +208,14 @@ func customRuleStateToV6Rule(rs *RuleState) *v6.Rule {
 	if len(match) == 0 {
 		return nil
 	}
-	body, _ := json.Marshal(v6.InlineBody{
+	body, _ := json.Marshal(state.InlineBody{
 		Name:     label,
 		Match:    match,
 		Outbound: outbound,
 	})
 	id := stableRuleID(rs)
-	return &v6.Rule{
-		Kind:    v6.RuleKindInline,
+	return &state.Rule{
+		Kind:    state.RuleKindInline,
 		ID:      id,
 		Enabled: rs.Enabled,
 		Body:    body,
@@ -268,7 +267,7 @@ func stripOutboundAction(rule map[string]interface{}) map[string]interface{} {
 // SyncDNSFullToStateV6 — full sync model DNS → state.DNS (SPEC 056-R-N).
 //
 // Конвертит model.DNSServers (legacy []json.RawMessage) + DNSTemplateOverrides
-// в flat `v6.DNSOptions.Servers[]` через kind discriminator.
+// в flat `state.DNSOptions.Servers[]` через kind discriminator.
 //
 // Алгоритм для каждого сервера:
 //   - tag ∈ templateDNSTags                   → kind=template (Tag, Enabled)
@@ -289,8 +288,8 @@ func SyncDNSFullToStateV6(
 	dnsRulesText string,
 	templateOverrides map[string]bool,
 	templateDNSTags map[string]bool,
-) v6.DNSOptions {
-	cfg := v6.DNSOptions{}
+) state.DNSOptions {
+	cfg := state.DNSOptions{}
 
 	// Apply explicit overrides first — они побеждают enabled-флаг в raw body.
 	// (Юзер кликнул чекбокс — это явное волеизъявление.)
@@ -328,8 +327,8 @@ func SyncDNSFullToStateV6(
 				if e, ok := srv["enabled"].(bool); ok {
 					enabled = e
 				}
-				cfg.Servers = append(cfg.Servers, v6.DNSServer{
-					Kind:    v6.DNSServerKindPreset,
+				cfg.Servers = append(cfg.Servers, state.DNSServer{
+					Kind:    state.DNSServerKindPreset,
 					Ref:     ref,
 					Enabled: enabled,
 				})
@@ -348,8 +347,8 @@ func SyncDNSFullToStateV6(
 			} else if e, ok := srv["enabled"].(bool); ok {
 				enabled = e
 			}
-			cfg.Servers = append(cfg.Servers, v6.DNSServer{
-				Kind:    v6.DNSServerKindTemplate,
+			cfg.Servers = append(cfg.Servers, state.DNSServer{
+				Kind:    state.DNSServerKindTemplate,
 				Tag:     tag,
 				Enabled: enabled,
 			})
@@ -369,8 +368,8 @@ func SyncDNSFullToStateV6(
 				}
 				body[k] = v
 			}
-			cfg.Servers = append(cfg.Servers, v6.DNSServer{
-				Kind:    v6.DNSServerKindUser,
+			cfg.Servers = append(cfg.Servers, state.DNSServer{
+				Kind:    state.DNSServerKindUser,
 				Tag:     tag,
 				Enabled: enabled,
 				Body:    body,
@@ -389,8 +388,8 @@ func SyncDNSFullToStateV6(
 		if templateDNSTags != nil && !templateDNSTags[tag] {
 			continue
 		}
-		cfg.Servers = append(cfg.Servers, v6.DNSServer{
-			Kind:    v6.DNSServerKindTemplate,
+		cfg.Servers = append(cfg.Servers, state.DNSServer{
+			Kind:    state.DNSServerKindTemplate,
 			Tag:     tag,
 			Enabled: enabled,
 		})
@@ -411,8 +410,8 @@ func SyncDNSFullToStateV6(
 					}
 					clean[k] = v
 				}
-				cfg.Rules = append(cfg.Rules, v6.DNSRule{
-					Kind:    v6.DNSRuleKindUser,
+				cfg.Rules = append(cfg.Rules, state.DNSRule{
+					Kind:    state.DNSRuleKindUser,
 					Enabled: true,
 					Body:    clean,
 				})
@@ -433,12 +432,12 @@ func indexColon(s string) int {
 	return -1
 }
 
-// SyncPresetRefsToStateRules — UI → state. Конвертит model.PresetRefs в []v6.Rule.
-func SyncPresetRefsToStateRules(refs []*PresetRefState) []v6.Rule {
+// SyncPresetRefsToStateRules — UI → state. Конвертит model.PresetRefs в []state.Rule.
+func SyncPresetRefsToStateRules(refs []*PresetRefState) []state.Rule {
 	if len(refs) == 0 {
 		return nil
 	}
-	out := make([]v6.Rule, 0, len(refs))
+	out := make([]state.Rule, 0, len(refs))
 	for _, r := range refs {
 		if r == nil || r.Ref == "" {
 			continue
@@ -447,9 +446,9 @@ func SyncPresetRefsToStateRules(refs []*PresetRefState) []v6.Rule {
 		if vars == nil {
 			vars = map[string]string{}
 		}
-		body, _ := json.Marshal(v6.PresetBody{Vars: vars})
-		out = append(out, v6.Rule{
-			Kind:    v6.RuleKindPreset,
+		body, _ := json.Marshal(state.PresetBody{Vars: vars})
+		out = append(out, state.Rule{
+			Kind:    state.RuleKindPreset,
 			Ref:     r.Ref,
 			Enabled: r.Enabled,
 			Body:    body,
@@ -458,23 +457,23 @@ func SyncPresetRefsToStateRules(refs []*PresetRefState) []v6.Rule {
 	return out
 }
 
-// SyncStateRulesToPresetRefs — state → UI. Возвращает model.PresetRefs из state.RulesV6.
+// SyncStateRulesToPresetRefs — state → UI. Возвращает model.PresetRefs из state.Rules.
 // Только kind=preset попадают; остальные kind'ы (inline/srs) идут через legacy CustomRules
 // path (см. core/state/load.go::legacyCustomRulesFromV6).
-func SyncStateRulesToPresetRefs(rules []v6.Rule) []*PresetRefState {
+func SyncStateRulesToPresetRefs(rules []state.Rule) []*PresetRefState {
 	if len(rules) == 0 {
 		return nil
 	}
 	out := make([]*PresetRefState, 0, len(rules))
 	for _, r := range rules {
-		if r.Kind != v6.RuleKindPreset || r.Ref == "" {
+		if r.Kind != state.RuleKindPreset || r.Ref == "" {
 			continue
 		}
 		body, err := r.DecodeBody()
 		if err != nil {
 			continue
 		}
-		pb, _ := body.(*v6.PresetBody)
+		pb, _ := body.(*state.PresetBody)
 		if pb == nil {
 			continue
 		}
@@ -494,13 +493,13 @@ func SyncStateRulesToPresetRefs(rules []v6.Rule) []*PresetRefState {
 //
 // Используется UI DNS tab чтобы восстановить состояние чекбоксов template-серверов
 // после load state'а.
-func SyncStateV6ToDNSOverrides(dns v6.DNSOptions) map[string]bool {
+func SyncStateV6ToDNSOverrides(dns state.DNSOptions) map[string]bool {
 	if len(dns.Servers) == 0 {
 		return nil
 	}
 	out := make(map[string]bool, len(dns.Servers))
 	for _, s := range dns.Servers {
-		if s.Kind != v6.DNSServerKindTemplate {
+		if s.Kind != state.DNSServerKindTemplate {
 			continue
 		}
 		out[s.Tag] = s.Enabled

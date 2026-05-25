@@ -237,9 +237,6 @@ func applyOutboundUpdate(target, patch configtypes.OutboundConfig) configtypes.O
 	if patch.PreferredDefault != nil {
 		out.PreferredDefault = cloneOptions(patch.PreferredDefault)
 	}
-	if patch.Wizard != nil {
-		out.Wizard = patch.Wizard
-	}
 	if patch.Comment != "" {
 		out.Comment = patch.Comment
 	}

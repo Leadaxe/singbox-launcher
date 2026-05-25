@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"singbox-launcher/api"
+	"singbox-launcher/core/state"
+	"singbox-launcher/core/template"
 )
 
 // fakeFacade lets tests drive the server without booting a whole controller.
@@ -21,6 +23,19 @@ type fakeFacade struct {
 	lastSuccess time.Time
 	updateErr   error
 	execDir     string // optional; only used by snapshot tests
+
+	// state surface (SPEC 053/056/057/058 endpoints)
+	stateValue    *state.State
+	stateLoadErr  error
+	saveStateErr  error
+	savedState    *state.State
+	templateValue *template.TemplateData
+	templateErr   error
+	logLevel      string
+	logLevelSet   bool
+	logLevelErr   error
+	applyLevelErr error
+	appliedLevel  string
 }
 
 func (f *fakeFacade) IsRunning() bool                    { return f.running }
@@ -37,6 +52,44 @@ func (f *fakeFacade) StopSingBox() error                 { return nil }
 func (f *fakeFacade) UpdateSubscriptions() error         { return f.updateErr }
 func (f *fakeFacade) PingAllProxies() error              { return nil }
 func (f *fakeFacade) RebuildConfigIfDirty() error        { return nil }
+
+func (f *fakeFacade) LoadState() (*state.State, error) {
+	if f.stateLoadErr != nil {
+		return nil, f.stateLoadErr
+	}
+	if f.stateValue == nil {
+		return state.New(), nil
+	}
+	return f.stateValue, nil
+}
+
+func (f *fakeFacade) SaveState(s *state.State) error {
+	if f.saveStateErr != nil {
+		return f.saveStateErr
+	}
+	f.savedState = s
+	f.stateValue = s
+	return nil
+}
+
+func (f *fakeFacade) LoadTemplate() (*template.TemplateData, error) {
+	if f.templateErr != nil {
+		return nil, f.templateErr
+	}
+	if f.templateValue == nil {
+		return &template.TemplateData{}, nil
+	}
+	return f.templateValue, nil
+}
+
+func (f *fakeFacade) ApplyLogLevelAndReload(level string) error {
+	f.appliedLevel = level
+	return f.applyLevelErr
+}
+
+func (f *fakeFacade) ReadCurrentLogLevel() (string, bool, error) {
+	return f.logLevel, f.logLevelSet, f.logLevelErr
+}
 
 // freeLocalPort binds :0 then closes, returning the port. Good enough for
 // server-under-test tests on a dev box.

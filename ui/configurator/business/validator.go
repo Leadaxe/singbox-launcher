@@ -133,6 +133,12 @@ func ValidateURI(uri string) error {
 }
 
 // ValidateOutbound validates an OutboundConfig.
+//
+// SPEC 058-R-N: referenced entries (Ref != "") хранятся thin — только tag + ref,
+// body live из template/preset. Type/Options/etc. отсутствуют — это валидное
+// состояние, не ошибка. Валидируется только tag (всё ещё обязателен).
+// Body validity проверяется при resolve через template — broken refs handled
+// в MergeOutboundUpdatesInPlace fallback.
 func ValidateOutbound(outbound *config.OutboundConfig) error {
 	if outbound == nil {
 		return fmt.Errorf("outbound is nil")
@@ -142,13 +148,19 @@ func ValidateOutbound(outbound *config.OutboundConfig) error {
 		return fmt.Errorf("outbound tag is empty")
 	}
 
-	if outbound.Type == "" {
-		return fmt.Errorf("outbound type is empty")
-	}
-
 	// Validate tag length
 	if err := ValidateStringLength(outbound.Tag, "outbound tag", 1, 256); err != nil {
 		return err
+	}
+
+	// Referenced entries (template/preset) — body live, type can be empty by design.
+	if outbound.Ref != "" {
+		return nil
+	}
+
+	// Direct entries — body inline, type обязателен.
+	if outbound.Type == "" {
+		return fmt.Errorf("outbound type is empty")
 	}
 
 	return nil

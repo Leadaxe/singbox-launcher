@@ -63,18 +63,8 @@ func CloneOutbound(src *config.OutboundConfig) *config.OutboundConfig {
 		Tag:          src.Tag,
 		Type:         src.Type,
 		Comment:      src.Comment,
+		Required:     src.Required,
 		AddOutbounds: make([]string, len(src.AddOutbounds)),
-	}
-
-	// Copy Wizard (support both formats)
-	if src.Wizard != nil {
-		// If it's a map, create deep copy
-		if wizardMap, ok := src.Wizard.(map[string]interface{}); ok {
-			dst.Wizard = deepCopyValue(wizardMap)
-		} else {
-			// If it's a string, just copy
-			dst.Wizard = src.Wizard
-		}
 	}
 	copy(dst.AddOutbounds, src.AddOutbounds)
 

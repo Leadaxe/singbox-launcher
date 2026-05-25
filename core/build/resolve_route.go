@@ -11,7 +11,7 @@ package build
 import (
 	"encoding/json"
 
-	v6 "singbox-launcher/core/state/v6"
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/outboundutil"
@@ -100,7 +100,7 @@ type ResolvedRoute struct {
 // Возвращает ResolvedRoute. RuleSets дедуплицированы по tag (first-wins);
 // Rules в порядке state.Rules.
 func ResolveRoute(
-	state *v6.State,
+	state *corestate.State,
 	td *template.TemplateData,
 	execDir string,
 	srsCachedPaths map[string]string,
@@ -119,11 +119,11 @@ func ResolveRoute(
 
 	for _, rule := range state.Rules {
 		switch rule.Kind {
-		case v6.RuleKindPreset:
+		case corestate.RuleKindPreset:
 			resolvePresetRouteRule(&out, presetByID, rule, execDir, emittedTags)
-		case v6.RuleKindInline:
+		case corestate.RuleKindInline:
 			resolveInlineRouteRule(&out, rule)
-		case v6.RuleKindSrs:
+		case corestate.RuleKindSrs:
 			resolveSrsRouteRule(&out, rule, srsCachedPaths, emittedTags)
 		}
 	}
@@ -135,7 +135,7 @@ func ResolveRoute(
 func resolvePresetRouteRule(
 	out *ResolvedRoute,
 	presetByID map[string]*template.Preset,
-	rule v6.Rule,
+	rule corestate.Rule,
 	execDir string,
 	emittedTags map[string]bool,
 ) {
@@ -149,7 +149,7 @@ func resolvePresetRouteRule(
 		debuglog.WarnLog("route resolve: decode preset body for %q: %v", rule.Ref, err)
 		return
 	}
-	pb := body.(*v6.PresetBody)
+	pb := body.(*corestate.PresetBody)
 	frags, warns, ok := ExpandPreset(p, pb.Vars)
 	for _, w := range warns {
 		debuglog.WarnLog("route resolve: %s", w.String())
@@ -207,13 +207,13 @@ func resolvePresetRouteRule(
 }
 
 // resolveInlineRouteRule — kind=inline → direct route rule, no rule_set.
-func resolveInlineRouteRule(out *ResolvedRoute, rule v6.Rule) {
+func resolveInlineRouteRule(out *ResolvedRoute, rule corestate.Rule) {
 	body, err := rule.DecodeBody()
 	if err != nil {
 		debuglog.WarnLog("route resolve: decode inline body: %v", err)
 		return
 	}
-	ib := body.(*v6.InlineBody)
+	ib := body.(*corestate.InlineBody)
 	match := ib.Match
 	if match == nil {
 		match = map[string]interface{}{}
@@ -235,7 +235,7 @@ func resolveInlineRouteRule(out *ResolvedRoute, rule v6.Rule) {
 // resolveSrsRouteRule — kind=srs → local rule_set (from cache) + route rule.
 func resolveSrsRouteRule(
 	out *ResolvedRoute,
-	rule v6.Rule,
+	rule corestate.Rule,
 	srsCachedPaths map[string]string,
 	emittedTags map[string]bool,
 ) {
@@ -244,7 +244,7 @@ func resolveSrsRouteRule(
 		debuglog.WarnLog("route resolve: decode srs body: %v", err)
 		return
 	}
-	sb := body.(*v6.SrsBody)
+	sb := body.(*corestate.SrsBody)
 	path, hasCache := srsCachedPaths[rule.ID]
 	tag := "user:" + rule.ID
 	if !hasCache {

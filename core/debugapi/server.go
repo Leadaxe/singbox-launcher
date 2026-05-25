@@ -30,6 +30,8 @@ import (
 	"time"
 
 	"singbox-launcher/api"
+	"singbox-launcher/core/state"
+	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -70,6 +72,19 @@ type ControllerFacade interface {
 	// sing-box process. The file write is atomic; on error nothing is
 	// committed.
 	RebuildConfigIfDirty() error
+
+	// State / config surface (SPEC 053/056/057/058 endpoints).
+	//
+	// LoadState reads state.json from canonical path; SaveState writes it
+	// atomically (.tmp + Rename, fsync) — matches StateService semantics.
+	// LogLevel helpers proxy to core.{Read,Apply}LogLevel* — used by
+	// /traffic/verbose. Template loader exposes preset bundles so
+	// /state/outbounds/resolved can render merged bodies.
+	LoadState() (*state.State, error)
+	SaveState(*state.State) error
+	LoadTemplate() (*template.TemplateData, error)
+	ApplyLogLevelAndReload(level string) error
+	ReadCurrentLogLevel() (string, bool, error)
 }
 
 // Server owns the listener, shutdown context, and auth config.
@@ -165,6 +180,24 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("/action/stop", s.handleStop)
 	protected.HandleFunc("/action/ping-all", s.handlePingAll)
 	protected.HandleFunc("/action/rebuild-config", s.handleRebuildConfig)
+
+	// SPEC 053/056/057/058: structured state read + targeted mutations.
+	protected.HandleFunc("/state/full", s.handleStateFull)
+	protected.HandleFunc("/state/rules", s.handleStateRules)
+	protected.HandleFunc("/state/dns", s.handleStateDNS)
+	protected.HandleFunc("/state/dns/rules", s.handleStateDNSRules)
+	protected.HandleFunc("/state/outbounds/resolved", s.handleStateOutboundsResolved)
+
+	// SPEC 059: Traffic Profiler.
+	protected.HandleFunc("/traffic/status", s.handleTrafficStatus)
+	protected.HandleFunc("/traffic/live", s.handleTrafficLive)
+	protected.HandleFunc("/traffic/sessions", s.handleTrafficSessions)
+	protected.HandleFunc("/traffic/sessions/", s.handleTrafficSessionByID)
+	protected.HandleFunc("/traffic/processes", s.handleTrafficProcesses)
+	protected.HandleFunc("/traffic/start", s.handleTrafficStart)
+	protected.HandleFunc("/traffic/stop", s.handleTrafficStop)
+	protected.HandleFunc("/traffic/clear", s.handleTrafficClear)
+	protected.HandleFunc("/traffic/verbose", s.handleTrafficVerbose)
 
 	mux.Handle("/", s.authMiddleware(protected))
 	return mux

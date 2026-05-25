@@ -6,7 +6,10 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core/debugapi"
+	"singbox-launcher/core/state"
+	"singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/platform"
 )
 
 // debugAPIFacade adapts *AppController to debugapi.ControllerFacade.
@@ -92,6 +95,61 @@ func (f *debugAPIFacade) PingAllProxies() error {
 
 func (f *debugAPIFacade) RebuildConfigIfDirty() error {
 	return f.ac.RebuildConfigIfDirty()
+}
+
+// LoadState reads state.json from the canonical wizard path. Returns
+// state.ErrNotFound if the file isn't present yet (fresh install).
+func (f *debugAPIFacade) LoadState() (*state.State, error) {
+	if f.ac.FileService == nil {
+		return nil, errors.New("FileService not initialized")
+	}
+	return state.Load(platform.GetWizardStatePath(f.ac.FileService.ExecDir))
+}
+
+// SaveState atomically writes state.json (SPEC 050 invariant — single
+// .tmp + Rename, fsync). We then mark the StateService dirty markers so
+// the next RebuildConfigIfDirty / Restart sees the change.
+func (f *debugAPIFacade) SaveState(s *state.State) error {
+	if f.ac.FileService == nil {
+		return errors.New("FileService not initialized")
+	}
+	if s == nil {
+		return errors.New("nil state")
+	}
+	path := platform.GetWizardStatePath(f.ac.FileService.ExecDir)
+	if err := s.Save(path); err != nil {
+		return err
+	}
+	if f.ac.StateService != nil {
+		// SPEC 050 invariant 3: any external mutation flips both dirty
+		// markers (better-safe — we don't classify rules-vs-template
+		// changes at the API boundary). Each Mark publishes a
+		// StateChanged event via the bus internally.
+		f.ac.StateService.MarkCacheStale()
+		f.ac.StateService.MarkConfigStale()
+	}
+	return nil
+}
+
+// LoadTemplate proxies to the canonical loader so /state/outbounds/resolved
+// can resolve referenced bodies.
+func (f *debugAPIFacade) LoadTemplate() (*template.TemplateData, error) {
+	if f.ac.FileService == nil {
+		return nil, errors.New("FileService not initialized")
+	}
+	return template.LoadTemplateData(f.ac.FileService.ExecDir)
+}
+
+// ApplyLogLevelAndReload — proxy to core.ApplyLogLevelAndReloadCore (the
+// helper extracted from ui/traffic_verbose.go in this SPEC). Resets active
+// connections.
+func (f *debugAPIFacade) ApplyLogLevelAndReload(level string) error {
+	return ApplyLogLevelAndReloadCore(f.ac, level)
+}
+
+// ReadCurrentLogLevel — proxy to core.ReadCurrentLogLevelFromState.
+func (f *debugAPIFacade) ReadCurrentLogLevel() (string, bool, error) {
+	return ReadCurrentLogLevelFromState(f.ac)
 }
 
 func (f *debugAPIFacade) UpdateSubscriptions() error {

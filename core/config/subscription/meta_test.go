@@ -2,9 +2,8 @@ package subscription
 
 import (
 	"net/http"
+	"singbox-launcher/core/state"
 	"testing"
-
-	v5 "singbox-launcher/core/state/v5"
 )
 
 // TestParseHeaders_V2BoardLike — типичный V2Board / Xboard response.
@@ -137,10 +136,10 @@ func TestParseInlineComments_Empty(t *testing.T) {
 
 // TestMergeMeta_HeadersWin — HTTP headers приоритетнее inline.
 func TestMergeMeta_HeadersWin(t *testing.T) {
-	headers := v5.SubscriptionMeta{
+	headers := state.SubscriptionMeta{
 		ProfileTitle: "FromHeader",
 	}
-	inline := v5.SubscriptionMeta{
+	inline := state.SubscriptionMeta{
 		ProfileTitle: "FromInline",
 		SupportURL:   "https://inline.example/",
 	}
@@ -156,9 +155,9 @@ func TestMergeMeta_HeadersWin(t *testing.T) {
 // TestMergeMeta_UserInfoFallback — UserInfo берётся из inline, если
 // в headers nil.
 func TestMergeMeta_UserInfoFallback(t *testing.T) {
-	headers := v5.SubscriptionMeta{}
-	inline := v5.SubscriptionMeta{
-		UserInfo: &v5.UserInfo{TotalBytes: 100},
+	headers := state.SubscriptionMeta{}
+	inline := state.SubscriptionMeta{
+		UserInfo: &state.UserInfo{TotalBytes: 100},
 	}
 	got := MergeMeta(headers, inline)
 	if got.UserInfo == nil || got.UserInfo.TotalBytes != 100 {
@@ -171,32 +170,32 @@ func TestParseSubscriptionUserinfo_Various(t *testing.T) {
 	cases := []struct {
 		name string
 		in   string
-		want *v5.UserInfo
+		want *state.UserInfo
 	}{
 		{
 			"all fields semicolon",
 			"upload=1; download=2; total=3; expire=4",
-			&v5.UserInfo{UploadBytes: 1, DownloadBytes: 2, TotalBytes: 3, ExpireUnix: 4},
+			&state.UserInfo{UploadBytes: 1, DownloadBytes: 2, TotalBytes: 3, ExpireUnix: 4},
 		},
 		{
 			"all fields comma",
 			"upload=1,download=2,total=3,expire=4",
-			&v5.UserInfo{UploadBytes: 1, DownloadBytes: 2, TotalBytes: 3, ExpireUnix: 4},
+			&state.UserInfo{UploadBytes: 1, DownloadBytes: 2, TotalBytes: 3, ExpireUnix: 4},
 		},
 		{
 			"partial",
 			"total=999",
-			&v5.UserInfo{TotalBytes: 999},
+			&state.UserInfo{TotalBytes: 999},
 		},
 		{
 			"extra whitespace",
 			"  upload=1  ;  download=2  ",
-			&v5.UserInfo{UploadBytes: 1, DownloadBytes: 2},
+			&state.UserInfo{UploadBytes: 1, DownloadBytes: 2},
 		},
 		{
 			"unknown keys ignored",
 			"upload=1; foobar=999",
-			&v5.UserInfo{UploadBytes: 1},
+			&state.UserInfo{UploadBytes: 1},
 		},
 		{
 			"all garbage",
@@ -228,9 +227,9 @@ func TestDecodeProfileTitle_Base64Variants(t *testing.T) {
 	encoded := "SGVsbG8g0LzQuNGA"
 
 	cases := map[string]string{
-		"plain ASCII":        "My VPN",
-		"plain UTF-8":        plainUTF8,
-		"base64 prefix":      "base64:" + encoded,
+		"plain ASCII":          "My VPN",
+		"plain UTF-8":          plainUTF8,
+		"base64 prefix":        "base64:" + encoded,
 		"raw base64 no prefix": encoded,
 		"garbage that looks like base64 but decodes to junk": "ABCD", // короткое, decode='\x00\x10\x83'
 	}
@@ -255,11 +254,11 @@ func TestDecodeProfileTitle_Base64Variants(t *testing.T) {
 // TestParseContentDispositionFilename_Variants — quoted, raw, RFC5987.
 func TestParseContentDispositionFilename_Variants(t *testing.T) {
 	cases := map[string]string{
-		`attachment; filename="my profile.txt"`:       "my profile.txt",
-		`attachment; filename=plain.txt`:              "plain.txt",
+		`attachment; filename="my profile.txt"`:         "my profile.txt",
+		`attachment; filename=plain.txt`:                "plain.txt",
 		`attachment; filename*=UTF-8''My%20Profile.txt`: "My Profile.txt",
-		``:           "",
-		`garbage`:    "",
+		``:        "",
+		`garbage`: "",
 	}
 	for in, want := range cases {
 		got := parseContentDispositionFilename(in)
@@ -270,7 +269,7 @@ func TestParseContentDispositionFilename_Variants(t *testing.T) {
 }
 
 // isEmptyMeta — true если все поля meta пусты.
-func isEmptyMeta(m v5.SubscriptionMeta) bool {
+func isEmptyMeta(m state.SubscriptionMeta) bool {
 	return m.UserInfo == nil &&
 		m.ProfileTitle == "" &&
 		m.ProfileUpdateIntervalHours == 0 &&

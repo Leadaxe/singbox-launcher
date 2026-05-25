@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"singbox-launcher/core/config/configtypes"
-	v6 "singbox-launcher/core/state/v6"
+	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 )
 
@@ -32,8 +32,8 @@ func TestSyncOutbounds_EnableAddEntry(t *testing.T) {
 	outbounds := []configtypes.OutboundConfig{
 		{Tag: "proxy-out", Type: "selector"},
 	}
-	rules := []v6.Rule{
-		{Kind: v6.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+	rules := []state.Rule{
+		{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 	}
 	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset})
 
@@ -53,7 +53,7 @@ func TestSyncOutbounds_DisableRemovesEntry(t *testing.T) {
 		{Tag: "ru VPN 🇷🇺", Type: "selector", Ref: "russian"},
 	}
 	// No active rules → preset entry должна исчезнуть.
-	rules := []v6.Rule{}
+	rules := []state.Rule{}
 	SyncOutboundsWithActivePresets(rules, &outbounds, nil)
 
 	if len(outbounds) != 1 || outbounds[0].Tag != "proxy-out" {
@@ -69,8 +69,8 @@ func TestSyncOutbounds_UpdateStack(t *testing.T) {
 	outbounds := []configtypes.OutboundConfig{
 		{Tag: "proxy-out", Type: "selector"},
 	}
-	rules := []v6.Rule{
-		{Kind: v6.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+	rules := []state.Rule{
+		{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 	}
 	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset})
 
@@ -103,8 +103,8 @@ func TestSyncOutbounds_DisableUpdateRemovesFromStack(t *testing.T) {
 	ruInsidePreset := makeSyncTestPreset(t, "ru-inside", `[
 		{"mode":"update","tag":"proxy-out","filters":{"tag":"bar"}}
 	]`)
-	rules := []v6.Rule{
-		{Kind: v6.RuleKindPreset, Ref: "ru-inside", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+	rules := []state.Rule{
+		{Kind: state.RuleKindPreset, Ref: "ru-inside", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 	}
 	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{russianPreset, ruInsidePreset})
 
@@ -125,8 +125,8 @@ func TestSyncOutbounds_Idempotent(t *testing.T) {
 	outbounds := []configtypes.OutboundConfig{
 		{Tag: "proxy-out", Type: "selector"},
 	}
-	rules := []v6.Rule{
-		{Kind: v6.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+	rules := []state.Rule{
+		{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 	}
 	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset})
 	snapshot, _ := json.Marshal(outbounds)
@@ -145,8 +145,8 @@ func TestSyncOutbounds_PreserveOrder(t *testing.T) {
 	outbounds := []configtypes.OutboundConfig{
 		{Tag: "proxy-out", Type: "selector"},
 	}
-	rules := []v6.Rule{
-		{Kind: v6.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+	rules := []state.Rule{
+		{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 	}
 	// Initial sync — preset entry appended at end.
 	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset})
@@ -185,8 +185,8 @@ func TestSyncOutbounds_AdoptLegacyGlobal(t *testing.T) {
 		// (промоутнут старым "promote-to-global" подходом до SPEC 057).
 		{Tag: "ru VPN 🇷🇺", Type: "selector", Options: map[string]interface{}{"default": "direct-out"}},
 	}
-	rules := []v6.Rule{
-		{Kind: v6.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+	rules := []state.Rule{
+		{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 	}
 	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset})
 

@@ -8,8 +8,8 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/state"
 	corestate "singbox-launcher/core/state"
-	v5 "singbox-launcher/core/state/v5"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -135,7 +135,7 @@ func buildRawTab(presenter *wizardpresentation.WizardPresenter, sourceIndex int)
 			return
 		}
 		subsDir := platform.GetSubscriptionsDir(execDir)
-		raw, rerr := v5.ReadRawBody(subsDir, src.ID)
+		raw, rerr := state.ReadRawBody(subsDir, src.ID)
 		if rerr != nil {
 			lbl := widget.NewLabel(locale.T("wizard.source.raw_no_body"))
 			lbl.Importance = widget.LowImportance

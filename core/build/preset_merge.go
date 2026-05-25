@@ -8,7 +8,7 @@
 // Также подключает state.dns.template_servers overrides + bundled DNS-серверы
 // от active presets в финальный dns.servers/dns.rules.
 //
-// Активируется когда state.RulesV6 содержит хотя бы один preset-ref. Пустой
+// Активируется когда state.Rules содержит хотя бы один preset-ref. Пустой
 // список → noop (state.json остаётся в v5, поведение неизменно).
 package build
 
@@ -21,16 +21,16 @@ import (
 	"os"
 	"strings"
 
+	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
-	v6 "singbox-launcher/core/state/v6"
 	"singbox-launcher/internal/outboundutil"
 )
 
 // Local stdlib wrappers used by srsTagFromURLLocal / convertPresetRuleSetRemoteToLocal.
 // (Inline aliases — избавляют функции от длинных fully-qualified имен.)
-func osStatLocal(p string) (os.FileInfo, error)             { return os.Stat(p) }
-func urlParseLocal(s string) (*url.URL, error)              { return url.Parse(s) }
-func sha256SumLocal(b []byte) [sha256.Size]byte             { return sha256.Sum256(b) }
+func osStatLocal(p string) (os.FileInfo, error) { return os.Stat(p) }
+func urlParseLocal(s string) (*url.URL, error)  { return url.Parse(s) }
+func sha256SumLocal(b []byte) [sha256.Size]byte { return sha256.Sum256(b) }
 
 // outboundutilApply — короткий wrapper для read-friendliness в этом файле.
 func outboundutilApply(r map[string]interface{}, outbound string) map[string]interface{} {
@@ -171,8 +171,8 @@ func srsTagFromURLLocal(urlStr string) string {
 // PresetMergeContext — input для MergePresetsIntoRoute/DNS.
 type PresetMergeContext struct {
 	Presets        []template.Preset
-	RulesV6        []v6.Rule
-	DNS            v6.DNSOptions
+	Rules          []state.Rule
+	DNS            state.DNSOptions
 	SrsCachedPaths map[string]string
 
 	// ExecDir — для резолва local SRS paths (kind=srs / preset remote rule_set).
@@ -194,7 +194,7 @@ type PresetMergeContext struct {
 // Skipped rule_sets (remote .srs не cached) пропускаются; dangling rule_set
 // refs в routing rule уже очищены resolver'ом через cleanDanglingRuleSetInRule.
 func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (json.RawMessage, error) {
-	if !hasAnyV6Rule(ctx.RulesV6) {
+	if !hasAnyV6Rule(ctx.Rules) {
 		return routeRaw, nil
 	}
 
@@ -206,9 +206,9 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 	rules, _ := route["rules"].([]interface{})
 	ruleSets, _ := route["rule_set"].([]interface{})
 
-	state := &v6.State{Rules: ctx.RulesV6, DNSOptions: ctx.DNS}
+	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
 	tdVal := template.TemplateData{Presets: ctx.Presets}
-	resolved := ResolveRoute(state, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths)
+	resolved := ResolveRoute(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths)
 
 	// Dedup по tag (template уже мог эмитить rule_sets).
 	emittedTags := make(map[string]bool)
@@ -268,11 +268,11 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.RawMessage, error) {
 	// ResolveDNS — единая точка резолва. Принимает state-like контекст
 	// (RulesV6 + DNS), строит ResolvedDNS на лету.
-	state := &v6.State{Rules: ctx.RulesV6, DNSOptions: ctx.DNS}
+	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
 	tdVal := templateLikeFromCtx(ctx)
-	resolved := ResolveDNS(state, &tdVal, nil)
+	resolved := ResolveDNS(st, &tdVal, nil)
 
-	if len(resolved.Servers) == 0 && len(resolved.Rules) == 0 && !hasAnyV6Rule(ctx.RulesV6) {
+	if len(resolved.Servers) == 0 && len(resolved.Rules) == 0 && !hasAnyV6Rule(ctx.Rules) {
 		return dnsRaw, nil
 	}
 
@@ -318,7 +318,7 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 	for i := range ctx.Presets {
 		presetByID[ctx.Presets[i].ID] = &ctx.Presets[i]
 	}
-	emittedRuleSetTags := collectRuleSetTagsFromPresets(presetByID, ctx.RulesV6)
+	emittedRuleSetTags := collectRuleSetTagsFromPresets(presetByID, ctx.Rules)
 
 	// Emit rules: Active && Enabled. User → dangling cleanup; preset → as is.
 	for _, dr := range resolved.Rules {
@@ -396,10 +396,10 @@ func resolvePresetDNSRule(preset *template.Preset, userVars map[string]string) (
 // Используется в DNS rules dangling-cleanup: extra_rule с `rule_set` ссылкой
 // должен матчиться с реально-эмитнутым rule_set tag'ом. Иначе sing-box упадёт
 // на `start service: initialize DNS rule[N]: rule-set not found: <X>`.
-func collectRuleSetTagsFromPresets(presetByID map[string]*template.Preset, rules []v6.Rule) map[string]bool {
+func collectRuleSetTagsFromPresets(presetByID map[string]*template.Preset, rules []state.Rule) map[string]bool {
 	tags := make(map[string]bool)
 	for _, rule := range rules {
-		if !rule.Enabled || rule.Kind != v6.RuleKindPreset {
+		if !rule.Enabled || rule.Kind != state.RuleKindPreset {
 			continue
 		}
 		preset, ok := presetByID[rule.Ref]
@@ -410,7 +410,7 @@ func collectRuleSetTagsFromPresets(presetByID map[string]*template.Preset, rules
 		if err != nil {
 			continue
 		}
-		pb := body.(*v6.PresetBody)
+		pb := body.(*state.PresetBody)
 		frags, _, ok := ExpandPreset(preset, pb.Vars)
 		if !ok {
 			continue
@@ -485,7 +485,7 @@ func cleanDanglingDNSRule(rule map[string]interface{}, validTags map[string]bool
 }
 
 // CollectSrsCachedPaths — собирает map[user-rule-id]→абсолютный путь к скачанному
-// .srs файлу для всех kind=srs правил в state.RulesV6.
+// .srs файлу для всех kind=srs правил в state.Rules.
 //
 // Каждый kind=srs rule имеет user ID; .srs файл лежит в <execDir>/bin/rule-sets/
 // под content-addressed tag'ом (см. SPEC 020 / dialogs/srs_tag.go).
@@ -495,13 +495,13 @@ func cleanDanglingDNSRule(rule map[string]interface{}, validTags map[string]bool
 // Для preset-ref'ов с remote rule_set'ами SRS-кэш не нужен: ExpandPreset
 // эмитит rule_set с type=remote URL, а sing-box сам качает. Но если хотим
 // emit type=local — нужен path map (TODO для phase 9).
-func CollectSrsCachedPaths(rules []v6.Rule, execDir string) map[string]string {
+func CollectSrsCachedPaths(rules []state.Rule, execDir string) map[string]string {
 	if execDir == "" || len(rules) == 0 {
 		return nil
 	}
 	out := make(map[string]string, len(rules))
 	for _, r := range rules {
-		if r.Kind != v6.RuleKindSrs || r.ID == "" {
+		if r.Kind != state.RuleKindSrs || r.ID == "" {
 			continue
 		}
 		// Convention: user-defined srs rule cached as bin/rule-sets/<id>.srs.
@@ -513,10 +513,10 @@ func CollectSrsCachedPaths(rules []v6.Rule, execDir string) map[string]string {
 	return out
 }
 
-// hasAnyV6Rule — true если в state.RulesV6 есть хоть один enabled rule
+// hasAnyV6Rule — true если в state.Rules есть хоть один enabled rule
 // любого kind. Используется как trigger для preset merge path: если есть v6
 // правила — берём их emit на себя, иначе noop (legacy путь через MergeRouteSection).
-func hasAnyV6Rule(rules []v6.Rule) bool {
+func hasAnyV6Rule(rules []state.Rule) bool {
 	for _, r := range rules {
 		if r.Enabled {
 			return true
@@ -526,9 +526,9 @@ func hasAnyV6Rule(rules []v6.Rule) bool {
 }
 
 // hasAnyPresetRef — оставлен для совместимости (используется в тестах).
-func hasAnyPresetRef(rules []v6.Rule) bool {
+func hasAnyPresetRef(rules []state.Rule) bool {
 	for _, r := range rules {
-		if r.Kind == v6.RuleKindPreset && r.Enabled {
+		if r.Kind == state.RuleKindPreset && r.Enabled {
 			return true
 		}
 	}

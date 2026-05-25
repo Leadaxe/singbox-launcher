@@ -22,7 +22,7 @@ import (
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core/build"
-	corev6 "singbox-launcher/core/state/v6"
+	"singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/fynewidget"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -37,9 +37,9 @@ func jsonMarshalIndent(v interface{}, prefix, indent string) ([]byte, error) {
 // preset-ref'ов через ResolveDNS (SPEC 056-R-N follow-up).
 //
 // Использует resolver чтобы:
-//  - Получить ВСЕ bundled servers (без consumption-фильтра)
-//  - Получить Active flag (прошёл if/if_or)
-//  - Получить InactiveReason для tooltip когда !Active
+//   - Получить ВСЕ bundled servers (без consumption-фильтра)
+//   - Получить Active flag (прошёл if/if_or)
+//   - Получить InactiveReason для tooltip когда !Active
 //
 // onChanged — callback после toggle чекбокса.
 // parentWindow — для View JSON dialog'а.
@@ -109,19 +109,19 @@ func presetDisplayLabel(p *wizardtemplate.Preset) string {
 	return p.ID
 }
 
-// buildShadowStateForResolve — конструирует временный v6.State из model для
+// buildShadowStateForResolve — конструирует временный state.State из model для
 // передачи в build.ResolveDNS на render-time. Не полностью equivalent тому
 // что напишется на диск — нам нужны только Rules (для preset-ref discovery)
 // и DNS.Servers/Rules (для enabled overrides).
 //
 // SPEC 056-R-N follow-up: enabled читаем из PresetRefState.DNSServerEnabled /
 // DNSRuleEnabled (default true). Раньше были отдельные карты в model.
-func buildShadowStateForResolve(m *wizardmodels.WizardModel) *corev6.State {
+func buildShadowStateForResolve(m *wizardmodels.WizardModel) *state.State {
 	if m == nil {
 		return nil
 	}
-	state := &corev6.State{}
-	state.Rules = wizardmodels.SyncPresetRefsToStateRules(m.PresetRefs)
+	st := &state.State{}
+	st.Rules = wizardmodels.SyncPresetRefsToStateRules(m.PresetRefs)
 	// Для каждого PresetRefState собираем preset DNS entries с toggle'ами.
 	// Render использует это для visualisation (ResolveDNS читает Enabled).
 	for _, pr := range m.PresetRefs {
@@ -129,21 +129,21 @@ func buildShadowStateForResolve(m *wizardmodels.WizardModel) *corev6.State {
 			continue
 		}
 		for localTag, enabled := range pr.DNSServerEnabled {
-			state.DNSOptions.Servers = append(state.DNSOptions.Servers, corev6.DNSServer{
-				Kind:    corev6.DNSServerKindPreset,
+			st.DNS.Servers = append(st.DNS.Servers, state.DNSServer{
+				Kind:    state.DNSServerKindPreset,
 				Ref:     pr.Ref + ":" + localTag,
 				Enabled: enabled,
 			})
 		}
 		if pr.DNSRuleEnabled != nil {
-			state.DNSOptions.Rules = append(state.DNSOptions.Rules, corev6.DNSRule{
-				Kind:    corev6.DNSRuleKindPreset,
+			st.DNS.Rules = append(st.DNS.Rules, state.DNSRule{
+				Kind:    state.DNSRuleKindPreset,
 				Ref:     pr.Ref,
 				Enabled: *pr.DNSRuleEnabled,
 			})
 		}
 	}
-	return state
+	return st
 }
 
 // gatherTemplateVars — собирает global template vars из model для substitute

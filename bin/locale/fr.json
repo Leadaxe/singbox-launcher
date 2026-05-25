@@ -376,7 +376,6 @@
   "wizard.rules.label_final_outbound": "Sortie finale :",
   "wizard.rules.label_outbound": "Sortie :",
   "wizard.rules.label_selectable": "Règles sélectionnables",
-  "wizard.rules.no_selectable_rules": "Aucune règle sélectionnable définie dans le modèle.",
   "wizard.rules.template_create_hint": "Créez le fichier modèle pour activer cet onglet.",
   "wizard.rules.template_not_found": "Fichier modèle bin/%s introuvable.",
   "wizard.rules.tun_help": "Activer TUN demandera la saisie de votre mot de passe lors du démarrage ou de l'arrêt du VPN.",

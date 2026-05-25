@@ -16,9 +16,12 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+	fynetooltip "github.com/dweymouth/fyne-tooltip"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/template"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/textnorm"
@@ -56,15 +59,32 @@ func ShowEditDialog(
 		dialogTitle = locale.T("wizard.outbound.title_add")
 	}
 
+	// SPEC 058-R-N: для referenced entries (ref != "") body live из template/preset.
+	// displayBody — это merged view (template body + active preset patches + USER patch
+	// если есть). Используем для populate формы. Для direct entries — это просто
+	// existing as-is.
+	displayBody := existing
+	if existing != nil && existing.Ref != "" && editPresenter != nil {
+		// SPEC 058-R-N: для referenced entries (ref != "") body live из template/preset.
+		// Используем тот же pipeline что Preview tab — wizardbusiness.ResolveMergedOutbound
+		// сначала прогоняет sync + MergeOutboundUpdatesInPlace на копии parserConfig
+		// (как parseAndPreview делает для emit), затем возвращает merged entry по tag.
+		// Это устраняет дублирование merge-логики и гарантирует что dialog показывает
+		// то же что увидит build pipeline.
+		if merged := wizardbusiness.ResolveMergedOutbound(editPresenter.Model(), existing.Tag); merged != nil {
+			displayBody = merged
+		}
+	}
+
 	tagEntry := widget.NewEntry()
-	if existing != nil {
-		tagEntry.SetText(existing.Tag)
+	if displayBody != nil {
+		tagEntry.SetText(displayBody.Tag)
 	}
 	tagEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_tag"))
 
 	typeSelect := widget.NewSelect([]string{locale.T("wizard.outbound.type_manual"), locale.T("wizard.outbound.type_auto")}, nil)
-	if existing != nil {
-		if existing.Type == "urltest" {
+	if displayBody != nil {
+		if displayBody.Type == "urltest" {
 			typeSelect.SetSelected(locale.T("wizard.outbound.type_auto"))
 		} else {
 			typeSelect.SetSelected(locale.T("wizard.outbound.type_manual"))
@@ -74,10 +94,49 @@ func ShowEditDialog(
 	}
 
 	commentEntry := widget.NewEntry()
-	if existing != nil {
-		commentEntry.SetText(existing.Comment)
+	if displayBody != nil {
+		commentEntry.SetText(displayBody.Comment)
 	}
 	commentEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_comment"))
+
+	// SPEC: editable fields для urltest outbound options (interval/tolerance/url).
+	// interval/tolerance — widget.Select (только dropdown, без свободного ввода);
+	// url — widget.SelectEntry (dropdown + ручной ввод, т.к. URL разнообразны).
+	// В каждый dropdown добавлен placeholder вида `@varname` чтобы юзер мог
+	// явно выбрать «inherit from Settings» (значение переменной из state.vars).
+	//
+	// Visible только когда Type=urltest (toggled via typeSelect.OnChanged ниже).
+	curInterval, curTolerance, curURL := "", "", ""
+	if displayBody != nil && displayBody.Options != nil {
+		if v, ok := displayBody.Options["interval"]; ok {
+			curInterval = fmt.Sprintf("%v", v)
+		}
+		if v, ok := displayBody.Options["tolerance"]; ok {
+			curTolerance = fmt.Sprintf("%v", v)
+		}
+		if v, ok := displayBody.Options["url"]; ok {
+			curURL = fmt.Sprintf("%v", v)
+		}
+	}
+
+	intervalLabels, intervalLabelToValue := templateVarChoices(editPresenter, "urltest_interval", curInterval)
+	urltestIntervalSelect := widget.NewSelect(intervalLabels, nil)
+	if lbl := labelForValue(intervalLabelToValue, curInterval); lbl != "" {
+		urltestIntervalSelect.SetSelected(lbl)
+	}
+
+	toleranceLabels, toleranceLabelToValue := templateVarChoices(editPresenter, "urltest_tolerance", curTolerance)
+	urltestToleranceSelect := widget.NewSelect(toleranceLabels, nil)
+	if lbl := labelForValue(toleranceLabelToValue, curTolerance); lbl != "" {
+		urltestToleranceSelect.SetSelected(lbl)
+	}
+
+	urlLabels, _ := templateVarChoices(editPresenter, "urltest_url", curURL)
+	urltestURLEntry := widget.NewSelectEntry(urlLabels)
+	urltestURLEntry.SetPlaceHolder("https://cp.cloudflare.com/generate_204")
+	if curURL != "" {
+		urltestURLEntry.SetText(curURL)
+	}
 
 	// Scope: For all | For source: ...
 	scopeOptions := []string{locale.T("wizard.outbound.scope_all")}
@@ -106,13 +165,13 @@ func ShowEditDialog(
 	filterKeyLabel := widget.NewLabel(locale.T("wizard.outbound.label_tag"))
 	filterValEntry := widget.NewEntry()
 	filterValEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_filter"))
-	if existing != nil && existing.Filters != nil {
-		if v, ok := existing.Filters["tag"]; ok {
+	if displayBody != nil && displayBody.Filters != nil {
+		if v, ok := displayBody.Filters["tag"]; ok {
 			if s, ok := v.(string); ok {
 				filterValEntry.SetText(s)
 			}
 		} else {
-			for _, v := range existing.Filters {
+			for _, v := range displayBody.Filters {
 				if s, ok := v.(string); ok {
 					filterValEntry.SetText(s)
 					break
@@ -125,13 +184,13 @@ func ShowEditDialog(
 	defKeyLabel := widget.NewLabel(locale.T("wizard.outbound.label_tag"))
 	defValEntry := widget.NewEntry()
 	defValEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_preferred"))
-	if existing != nil && existing.PreferredDefault != nil {
-		if v, ok := existing.PreferredDefault["tag"]; ok {
+	if displayBody != nil && displayBody.PreferredDefault != nil {
+		if v, ok := displayBody.PreferredDefault["tag"]; ok {
 			if s, ok := v.(string); ok {
 				defValEntry.SetText(s)
 			}
 		} else {
-			for _, v := range existing.PreferredDefault {
+			for _, v := range displayBody.PreferredDefault {
 				if s, ok := v.(string); ok {
 					defValEntry.SetText(s)
 					break
@@ -150,8 +209,8 @@ func ShowEditDialog(
 		otherTagChecks = append(otherTagChecks, c)
 		otherTagsMap[tag] = c
 	}
-	if existing != nil && len(existing.AddOutbounds) > 0 {
-		for _, t := range existing.AddOutbounds {
+	if displayBody != nil && len(displayBody.AddOutbounds) > 0 {
+		for _, t := range displayBody.AddOutbounds {
 			if t == "direct-out" {
 				directCheck.SetChecked(true)
 			} else if t == "reject" {
@@ -253,9 +312,9 @@ func ShowEditDialog(
 			Type:    obType,
 			Comment: strings.TrimSpace(commentEntry.Text),
 		}
-		if existing != nil && existing.Options != nil {
+		if displayBody != nil && displayBody.Options != nil {
 			cfg.Options = make(map[string]interface{})
-			for k, v := range existing.Options {
+			for k, v := range displayBody.Options {
 				cfg.Options[k] = v
 			}
 		} else if obType == "selector" {
@@ -265,6 +324,40 @@ func ShowEditDialog(
 				"url":      "https://cp.cloudflare.com/generate_204",
 				"interval": "5m", "tolerance": 100,
 				"interrupt_exist_connections": true,
+			}
+		}
+
+		// SPEC: для urltest перезаписываем interval/tolerance/url из form fields
+		// (юзер мог изменить их через urltestBlock виджеты). Перезапись только
+		// для urltest type. Для selector — поля скрыты, не применяем.
+		//
+		// interval/tolerance — widget.Select: .Selected = label, lookup в
+		// labelToValue даёт raw value. URL — SelectEntry: читаем .Text напрямую
+		// (юзер мог ввести custom URL).
+		if obType == "urltest" {
+			if cfg.Options == nil {
+				cfg.Options = map[string]interface{}{}
+			}
+			if lbl := urltestIntervalSelect.Selected; lbl != "" {
+				if v, ok := intervalLabelToValue[lbl]; ok && v != "" {
+					cfg.Options["interval"] = v
+				}
+			}
+			if lbl := urltestToleranceSelect.Selected; lbl != "" {
+				if v, ok := toleranceLabelToValue[lbl]; ok && v != "" {
+					// tolerance — число в template; placeholder @urltest_tolerance
+					// оставляем строкой (substituter резолвит на build time).
+					if strings.HasPrefix(v, "@") {
+						cfg.Options["tolerance"] = v
+					} else if n, err := strconv.Atoi(v); err == nil {
+						cfg.Options["tolerance"] = n
+					} else {
+						cfg.Options["tolerance"] = v
+					}
+				}
+			}
+			if v := strings.TrimSpace(urltestURLEntry.Text); v != "" {
+				cfg.Options["url"] = v
 			}
 		}
 
@@ -294,18 +387,44 @@ func ShowEditDialog(
 		return cfg, nil
 	}
 
-	// SPEC 057-R-N: preserveStateMetadata копирует preset binding (Ref +
-	// Updates) от existing → cfg. Эти поля state-managed (SyncOutboundsWithActivePresets),
-	// не user-editable. Без preserve юзерское Save затирает preset привязку
-	// и Updates стек → preset patches теряются на следующем emit.
-	preserveStateMetadata := func(cfg *config.OutboundConfig) {
+	// SPEC 058-R-N: applyEditedConfig.
+	// Для direct entries (existing.Ref=="") — body inline, copy existing's Updates
+	// (если есть юзерские правки накопленные — preserve).
+	// Для referenced entries (existing.Ref!="") — вычисляем diff cfg → merged_base
+	// и обновляем USER patch в updates[]. Body fields в cfg не идут в save (referenced
+	// entries thin — body live из template/preset).
+	applyEditedConfig := func(cfg *config.OutboundConfig) {
 		if existing == nil {
 			return
 		}
 		cfg.Ref = existing.Ref
-		if len(existing.Updates) > 0 {
-			cfg.Updates = append([]config.OutboundUpdate(nil), existing.Updates...)
+		if cfg.Ref == "" {
+			// Direct entry: preserve existing Updates (на случай legacy с USER patch).
+			if len(existing.Updates) > 0 {
+				cfg.Updates = append([]config.OutboundUpdate(nil), existing.Updates...)
+			}
+			return
 		}
+		// Referenced entry: diff cfg против merged_base без USER patch.
+		var td *template.TemplateData
+		if editPresenter != nil {
+			if m := editPresenter.Model(); m != nil {
+				td = m.TemplateData
+			}
+		}
+		// merged_base = resolved template/preset body + active preset patches
+		// (без USER patch — он и есть результат этого edit).
+		baseEntry := *existing
+		baseEntry.Updates = filterOutUserPatch(existing.Updates)
+		mergedBase := build.MergeOutboundUpdates(baseEntry, td)
+		diff := build.OutboundFieldDiff(*cfg, mergedBase)
+		// updates[] = existing preset patches + новый USER patch (или без него если diff пуст).
+		cfg.Updates = build.UpsertUserPatch(
+			append([]config.OutboundUpdate(nil), baseEntry.Updates...),
+			diff,
+		)
+		// Strip body fields — referenced entries thin.
+		stripDirectBodyForReferenced(cfg)
 	}
 
 	save := func() {
@@ -320,13 +439,10 @@ func ShowEditDialog(
 				return
 			}
 			scopeKind, idx := getScopeFromForm()
-			if existing != nil && existing.Wizard != nil {
-				cfg.Wizard = wizardbusiness.CloneOutbound(existing).Wizard
-			}
 			// SPEC 057-R-N: Raw tab показывает ref/updates юзеру (они в JSON),
 			// но юзерский edit мог их случайно изменить/удалить. Преимущество
 			// state-managed полей: оверрайдим тем что в state, игнорируем raw edit.
-			preserveStateMetadata(&cfg)
+			applyEditedConfig(&cfg)
 			onSave(&cfg, scopeKind, idx)
 			if dialogWin != nil {
 				dialogWin.Close()
@@ -341,16 +457,45 @@ func ShowEditDialog(
 		}
 		scopeKind, idx := getScopeFromForm()
 
-		// Preserve wizard if editing
-		if existing != nil && existing.Wizard != nil {
-			cfg.Wizard = wizardbusiness.CloneOutbound(existing).Wizard
-		}
 		// SPEC 057-R-N: preserve preset binding (Form tab их не показывает,
 		// но они должны "пережить" Form-edit).
-		preserveStateMetadata(cfg)
+		applyEditedConfig(cfg)
 		onSave(cfg, scopeKind, idx)
 		if dialogWin != nil {
 			dialogWin.Close()
+		}
+	}
+
+	// Urltest-specific options block. Видим только когда Type=urltest.
+	// Tooltip объясняет что @varname placeholder означает inherit из Settings tab.
+	const urltestTooltip = "Pick a preset value or select @varname to inherit the value from Settings tab (substituted at build time)."
+	urltestLabel := widget.NewLabel("URLTest options")
+	urltestIntervalLabel := ttwidget.NewLabel("Interval")
+	urltestIntervalLabel.SetToolTip(urltestTooltip)
+	urltestToleranceLabel := ttwidget.NewLabel("Tolerance (ms)")
+	urltestToleranceLabel.SetToolTip(urltestTooltip)
+	urltestURLLabel := ttwidget.NewLabel("URL")
+	urltestURLLabel.SetToolTip(urltestTooltip)
+	urltestBlock := container.NewVBox(
+		urltestLabel,
+		container.NewGridWithColumns(2, urltestIntervalLabel, urltestIntervalSelect),
+		container.NewGridWithColumns(2, urltestToleranceLabel, urltestToleranceSelect),
+		container.NewGridWithColumns(2, urltestURLLabel, urltestURLEntry),
+	)
+	urltestVisible := func() {
+		isAuto := typeSelect.Selected == locale.T("wizard.outbound.type_auto")
+		if isAuto {
+			urltestBlock.Show()
+		} else {
+			urltestBlock.Hide()
+		}
+	}
+	urltestVisible() // initial state
+	prevOnTypeChanged := typeSelect.OnChanged
+	typeSelect.OnChanged = func(s string) {
+		urltestVisible()
+		if prevOnTypeChanged != nil {
+			prevOnTypeChanged(s)
 		}
 	}
 
@@ -361,6 +506,7 @@ func ShowEditDialog(
 		tagEntry,
 		widget.NewLabel(locale.T("wizard.outbound.label_type")),
 		typeSelect,
+		urltestBlock,
 		widget.NewLabel(locale.T("wizard.outbound.label_comment")),
 		commentEntry,
 		widget.NewLabel(locale.T("wizard.outbound.label_filters")),
@@ -439,7 +585,13 @@ func ShowEditDialog(
 		// Updates[].patch, а cfg.Filters пуст), хотя в config.json фильтр сработает.
 		if existing != nil && len(existing.Updates) > 0 {
 			cfg.Updates = append([]config.OutboundUpdate(nil), existing.Updates...)
-			merged := build.MergeOutboundUpdates(*cfg)
+			var td *template.TemplateData
+			if editPresenter != nil {
+				if m := editPresenter.Model(); m != nil {
+					td = m.TemplateData
+				}
+			}
+			merged := build.MergeOutboundUpdates(*cfg, td)
 			cfg = &merged
 		}
 
@@ -550,6 +702,11 @@ func ShowEditDialog(
 
 	// syncRawToForm parses the Raw tab JSON and updates Settings form fields (tag, type, comment, filters, etc.).
 	// Called when user switches from Raw to Settings so the form reflects the raw JSON.
+	//
+	// SPEC 058-R-N: для referenced entries (cfg.Ref != "") Raw содержит thin
+	// shape (tag+ref+updates без body) — populate из этого даст пустую форму.
+	// Re-merge с template: build.MergeOutboundUpdates резолвит base body и
+	// applies updates → получаем full merged view для populate.
 	syncRawToForm := func() {
 		var cfg config.OutboundConfig
 		if err := json.Unmarshal([]byte(rawEntry.Text), &cfg); err != nil {
@@ -558,24 +715,31 @@ func ShowEditDialog(
 		if strings.TrimSpace(cfg.Tag) == "" {
 			return
 		}
-		tagEntry.SetText(cfg.Tag)
-		if cfg.Type == "urltest" {
+		// Re-merge для referenced entries — иначе форма обнуляется.
+		display := cfg
+		if cfg.Ref != "" && editPresenter != nil {
+			if m := editPresenter.Model(); m != nil {
+				display = build.MergeOutboundUpdates(cfg, m.TemplateData)
+			}
+		}
+		tagEntry.SetText(display.Tag)
+		if display.Type == "urltest" {
 			typeSelect.SetSelected(locale.T("wizard.outbound.type_auto"))
 		} else {
 			typeSelect.SetSelected(locale.T("wizard.outbound.type_manual"))
 		}
-		commentEntry.SetText(cfg.Comment)
+		commentEntry.SetText(display.Comment)
 		filterValEntry.SetText("")
-		if cfg.Filters != nil {
-			if v, ok := cfg.Filters["tag"]; ok {
+		if display.Filters != nil {
+			if v, ok := display.Filters["tag"]; ok {
 				if s, ok := v.(string); ok {
 					filterValEntry.SetText(s)
 				}
 			}
 		}
 		defValEntry.SetText("")
-		if cfg.PreferredDefault != nil {
-			if v, ok := cfg.PreferredDefault["tag"]; ok {
+		if display.PreferredDefault != nil {
+			if v, ok := display.PreferredDefault["tag"]; ok {
 				if s, ok := v.(string); ok {
 					defValEntry.SetText(s)
 				}
@@ -586,8 +750,8 @@ func ShowEditDialog(
 		for _, c := range otherTagChecks {
 			c.SetChecked(false)
 		}
-		if len(cfg.AddOutbounds) > 0 {
-			for _, t := range cfg.AddOutbounds {
+		if len(display.AddOutbounds) > 0 {
+			for _, t := range display.AddOutbounds {
 				if t == "direct-out" {
 					directCheck.SetChecked(true)
 				} else if t == "reject" {
@@ -597,6 +761,48 @@ func ShowEditDialog(
 				}
 			}
 		}
+		// urltest fields — для referenced merged.Options содержит финальные
+		// значения (template + preset patches + USER patch).
+		if display.Options != nil {
+			if v, ok := display.Options["interval"]; ok {
+				if lbl := labelForValue(intervalLabelToValue, fmt.Sprintf("%v", v)); lbl != "" {
+					urltestIntervalSelect.SetSelected(lbl)
+				}
+			}
+			if v, ok := display.Options["tolerance"]; ok {
+				if lbl := labelForValue(toleranceLabelToValue, fmt.Sprintf("%v", v)); lbl != "" {
+					urltestToleranceSelect.SetSelected(lbl)
+				}
+			}
+			if v, ok := display.Options["url"]; ok {
+				urltestURLEntry.SetText(fmt.Sprintf("%v", v))
+			}
+		}
+	}
+
+	// syncFormToRaw — собирает OutboundConfig из текущего состояния формы
+	// и кладёт его JSON в rawEntry. Вызывается при переключении Settings → Raw.
+	//
+	// SPEC 058-R-N: Raw view показывает SAVE-shape (что реально попадёт в state),
+	// не resolved/merged body. Для referenced entries (ref != "") это означает:
+	// thin tag+ref + Updates с USER patch (diff формы vs merged_base). Юзер видит
+	// то же что и save(), без иллюзии full body.
+	syncFormToRaw := func() {
+		if currentTab != "settings" {
+			return
+		}
+		cfg, err := buildConfigForPreview()
+		if err != nil || cfg == nil {
+			return
+		}
+		// applyEditedConfig делает: для referenced — diff vs merged_base + USER
+		// patch + strip body; для direct — preserve Updates + full body.
+		applyEditedConfig(cfg)
+		b, err := json.MarshalIndent(cfg, "", "  ")
+		if err != nil {
+			return
+		}
+		rawEntry.SetText(string(b))
 	}
 
 	tabs := container.NewAppTabs(
@@ -607,6 +813,8 @@ func ShowEditDialog(
 	tabs.OnSelected = func(t *container.TabItem) {
 		switch t.Text {
 		case locale.T("wizard.outbound.tab_raw"):
+			// Settings → Raw: материализуем правки формы в JSON.
+			syncFormToRaw()
 			currentTab = "raw"
 		case locale.T("wizard.outbound.tab_preview"):
 			currentTab = "preview"
@@ -645,15 +853,115 @@ func ShowEditDialog(
 	if editPresenter != nil {
 		editPresenter.SetOutboundEditWindow(dialogWin)
 		dialogWin.SetOnClosed(func() {
+			fynetooltip.DestroyWindowToolTipLayer(dialogWin.Canvas())
 			editPresenter.ClearOutboundEditWindow()
 			editPresenter.UpdateChildOverlay()
 		})
 	}
 	dialogWin.Resize(fyne.NewSize(440, 560))
 	dialogWin.CenterOnScreen()
-	dialogWin.SetContent(mainContent)
+	// fynetooltip layer обязателен для tooltips на ttwidget виджетах в
+	// отдельном окне — без него fyne-tooltip пишет "no tool tip layer
+	// created for current overlay" и tooltips не показываются.
+	dialogWin.SetContent(fynetooltip.AddWindowToolTipLayer(mainContent, dialogWin.Canvas()))
 	dialogWin.Show()
 	if editPresenter != nil {
 		editPresenter.UpdateChildOverlay()
 	}
+}
+
+// filterOutUserPatch returns Updates with USER patch entry removed (preset
+// patches kept). Используется в diff computation: merged_base = template body +
+// active preset patches (БЕЗ USER patch — он и есть результат текущего edit).
+// templateVarChoices строит (labels, labelToValue) для dropdown'а на основе
+// template var. Семантика:
+//   - labels[0] = "@varname" placeholder — позволяет выбрать «inherit from
+//     Settings» (substituter резолвит в текущее значение state.vars[var]).
+//   - labels[1..] = OptionTitles если есть, иначе raw values (mirror того что
+//     Settings tab показывает).
+//   - currentValue добавляется в конец списка если не matchится ни с placeholder
+//     ни с template options — preserve юзерское custom value (например, юзер
+//     раньше ввёл нестандартное "7m" — не теряем).
+//   - labelToValue: label → raw value (для save mapping).
+func templateVarChoices(editPresenter OutboundEditPresenter, varName, currentValue string) ([]string, map[string]string) {
+	placeholder := "@" + varName
+	labels := []string{placeholder}
+	labelToValue := map[string]string{placeholder: placeholder}
+
+	if editPresenter != nil {
+		if m := editPresenter.Model(); m != nil && m.TemplateData != nil {
+			for _, v := range m.TemplateData.Vars {
+				if v.Name != varName {
+					continue
+				}
+				for i, opt := range v.Options {
+					label := opt
+					if i < len(v.OptionTitles) && v.OptionTitles[i] != "" {
+						label = v.OptionTitles[i]
+					}
+					labels = append(labels, label)
+					labelToValue[label] = opt
+				}
+				break
+			}
+		}
+	}
+
+	// Preserve custom currentValue если не среди известных options/placeholder.
+	if currentValue != "" {
+		found := false
+		for _, val := range labelToValue {
+			if val == currentValue {
+				found = true
+				break
+			}
+		}
+		if !found {
+			labels = append(labels, currentValue)
+			labelToValue[currentValue] = currentValue
+		}
+	}
+	return labels, labelToValue
+}
+
+// labelForValue ищет label соответствующий значению value в map. Возвращает
+// первый matching label или пустую строку.
+func labelForValue(labelToValue map[string]string, value string) string {
+	for label, val := range labelToValue {
+		if val == value {
+			return label
+		}
+	}
+	return ""
+}
+
+func filterOutUserPatch(updates []config.OutboundUpdate) []config.OutboundUpdate {
+	if len(updates) == 0 {
+		return nil
+	}
+	out := make([]config.OutboundUpdate, 0, len(updates))
+	for _, u := range updates {
+		if u.Ref == config.RefUser {
+			continue
+		}
+		out = append(out, u)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// stripDirectBodyForReferenced — referenced entries (ref != "") хранят thin
+// shape: только tag + ref + updates. Body fields обнуляются (live из template/preset).
+func stripDirectBodyForReferenced(cfg *config.OutboundConfig) {
+	if cfg == nil || cfg.Ref == "" {
+		return
+	}
+	cfg.Type = ""
+	cfg.Options = nil
+	cfg.Filters = nil
+	cfg.AddOutbounds = nil
+	cfg.PreferredDefault = nil
+	cfg.Comment = ""
 }

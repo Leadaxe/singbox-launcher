@@ -267,7 +267,6 @@
   "wizard.rules.button_srs_done": "✔️ srs",
   "wizard.rules.template_not_found": "File modello bin/%s non trovato.",
   "wizard.rules.template_create_hint": "Crea il file modello per abilitare questa scheda.",
-  "wizard.rules.no_selectable_rules": "Nessuna regola selezionabile definita nel modello.",
   "wizard.rules.label_outbound": "Outbound:",
   "wizard.rules.button_info": "?",
   "wizard.rules.button_edit": "✏️",

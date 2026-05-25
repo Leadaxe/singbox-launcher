@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
-	v6 "singbox-launcher/core/state/v6"
 )
 
 func makeTestPreset(t *testing.T, raw string) template.Preset {
@@ -18,9 +18,9 @@ func makeTestPreset(t *testing.T, raw string) template.Preset {
 	return p
 }
 
-func makeTestRule(t *testing.T, kind v6.RuleKind, ref, id string, enabled bool, bodyJSON string) v6.Rule {
+func makeTestRule(t *testing.T, kind state.RuleKind, ref, id string, enabled bool, bodyJSON string) state.Rule {
 	t.Helper()
-	return v6.Rule{
+	return state.Rule{
 		Kind:    kind,
 		Ref:     ref,
 		ID:      id,
@@ -50,11 +50,11 @@ func TestPipeline_TemplateDNS_OverrideDisable(t *testing.T) {
 		{Tag: "google_doh", Enabled: true, Raw: map[string]interface{}{"tag": "google_doh", "type": "https"}},
 		{Tag: "cloudflare_udp", Enabled: false, Raw: map[string]interface{}{"tag": "cloudflare_udp", "type": "udp"}},
 	}
-	state := &v6.State{
-		DNSOptions: v6.DNSOptions{
-			Servers: []v6.DNSServer{
-				{Kind: v6.DNSServerKindTemplate, Tag: "google_doh", Enabled: false},
-				{Kind: v6.DNSServerKindTemplate, Tag: "cloudflare_udp", Enabled: true},
+	state := &state.State{
+		DNS: state.DNSOptions{
+			Servers: []state.DNSServer{
+				{Kind: state.DNSServerKindTemplate, Tag: "google_doh", Enabled: false},
+				{Kind: state.DNSServerKindTemplate, Tag: "cloudflare_udp", Enabled: true},
 			},
 		},
 	}
@@ -79,8 +79,8 @@ func TestPipeline_PresetRef(t *testing.T) {
 		],
 		"rule": {"rule_set": "domains", "outbound": "@out"}
 	}`)}
-	state := &v6.State{
-		Rules: []v6.Rule{makeTestRule(t, v6.RuleKindPreset, "ru-direct-mini", "", true, `{"vars":{}}`)},
+	state := &state.State{
+		Rules: []state.Rule{makeTestRule(t, state.RuleKindPreset, "ru-direct-mini", "", true, `{"vars":{}}`)},
 	}
 	result := BuildRulesAndDNS(presets, nil, state, nil)
 	if len(result.RouteRuleSet) != 1 {
@@ -96,8 +96,8 @@ func TestPipeline_PresetRef(t *testing.T) {
 
 // TestPipeline_BrokenPresetRef — ref на несуществующий preset → warning, skip.
 func TestPipeline_BrokenPresetRef(t *testing.T) {
-	state := &v6.State{
-		Rules: []v6.Rule{makeTestRule(t, v6.RuleKindPreset, "missing", "", true, `{"vars":{}}`)},
+	state := &state.State{
+		Rules: []state.Rule{makeTestRule(t, state.RuleKindPreset, "missing", "", true, `{"vars":{}}`)},
 	}
 	result := BuildRulesAndDNS(nil, nil, state, nil)
 	if len(result.RouteRules) != 0 {
@@ -120,8 +120,8 @@ func TestPipeline_DisabledPresetRef(t *testing.T) {
 		"id": "x", "label": "X",
 		"rule": {"ip_is_private": true, "outbound": "direct-out"}
 	}`)}
-	state := &v6.State{
-		Rules: []v6.Rule{makeTestRule(t, v6.RuleKindPreset, "x", "", false, `{"vars":{}}`)},
+	state := &state.State{
+		Rules: []state.Rule{makeTestRule(t, state.RuleKindPreset, "x", "", false, `{"vars":{}}`)},
 	}
 	result := BuildRulesAndDNS(presets, nil, state, nil)
 	if len(result.RouteRules) != 0 {
@@ -135,8 +135,8 @@ func TestPipeline_DisabledPresetRef(t *testing.T) {
 // route.rules[] принимает union всех типов. Каждое user inline уникально по tag —
 // reuse нет, обёртка лишь добавляет индирекцию.
 func TestPipeline_UserInline(t *testing.T) {
-	state := &v6.State{
-		Rules: []v6.Rule{makeTestRule(t, v6.RuleKindInline, "", "01JUSR1", true, `{
+	state := &state.State{
+		Rules: []state.Rule{makeTestRule(t, state.RuleKindInline, "", "01JUSR1", true, `{
 			"name": "Firefox VPN",
 			"match": {"domain_suffix": ["example.com"]},
 			"outbound": "proxy-out"
@@ -164,8 +164,8 @@ func TestPipeline_UserInline(t *testing.T) {
 
 // TestPipeline_UserInline_Reject — outbound=reject → action=reject, no outbound.
 func TestPipeline_UserInline_Reject(t *testing.T) {
-	state := &v6.State{
-		Rules: []v6.Rule{makeTestRule(t, v6.RuleKindInline, "", "01JBLK1", true, `{
+	state := &state.State{
+		Rules: []state.Rule{makeTestRule(t, state.RuleKindInline, "", "01JBLK1", true, `{
 			"name": "Block site",
 			"match": {"domain_suffix": ["evil.com"]},
 			"outbound": "reject"
@@ -183,8 +183,8 @@ func TestPipeline_UserInline_Reject(t *testing.T) {
 
 // TestPipeline_UserSrs_NoCache — kind=srs без cached path → warning, skip.
 func TestPipeline_UserSrs_NoCache(t *testing.T) {
-	state := &v6.State{
-		Rules: []v6.Rule{makeTestRule(t, v6.RuleKindSrs, "", "01JSRS1", true, `{
+	state := &state.State{
+		Rules: []state.Rule{makeTestRule(t, state.RuleKindSrs, "", "01JSRS1", true, `{
 			"name": "Block list",
 			"srs_url": "https://example.com/list.srs",
 			"outbound": "reject"
@@ -207,8 +207,8 @@ func TestPipeline_UserSrs_NoCache(t *testing.T) {
 
 // TestPipeline_UserSrs_WithCache — cached path есть → local rule_set emit.
 func TestPipeline_UserSrs_WithCache(t *testing.T) {
-	state := &v6.State{
-		Rules: []v6.Rule{makeTestRule(t, v6.RuleKindSrs, "", "01JSRS1", true, `{
+	state := &state.State{
+		Rules: []state.Rule{makeTestRule(t, state.RuleKindSrs, "", "01JSRS1", true, `{
 			"name": "Block list",
 			"srs_url": "https://example.com/list.srs",
 			"outbound": "reject"
@@ -231,15 +231,15 @@ func TestPipeline_UserSrs_WithCache(t *testing.T) {
 // state.DNSOptions.Servers/Rules проходят через BuildRulesAndDNS Pass 2/3.
 // Test-only path; production использует MergePresetsIntoDNS.
 func TestPipeline_UserServersAndRules(t *testing.T) {
-	state := &v6.State{
-		DNSOptions: v6.DNSOptions{
-			Servers: []v6.DNSServer{
-				{Kind: v6.DNSServerKindUser, Tag: "my-pihole", Enabled: true, Body: map[string]interface{}{
+	state := &state.State{
+		DNS: state.DNSOptions{
+			Servers: []state.DNSServer{
+				{Kind: state.DNSServerKindUser, Tag: "my-pihole", Enabled: true, Body: map[string]interface{}{
 					"tag": "my-pihole", "type": "udp", "server": "192.168.1.5",
 				}},
 			},
-			Rules: []v6.DNSRule{
-				{Kind: v6.DNSRuleKindUser, Enabled: true, Body: map[string]interface{}{
+			Rules: []state.DNSRule{
+				{Kind: state.DNSRuleKindUser, Enabled: true, Body: map[string]interface{}{
 					"server": "my-pihole", "domain_suffix": []interface{}{"internal.local"},
 				}},
 			},
@@ -263,13 +263,13 @@ func TestPipeline_MixedKinds(t *testing.T) {
 		"id": "private-ips", "label": "Private IPs",
 		"rule": {"ip_is_private": true, "outbound": "direct-out"}
 	}`)}
-	state := &v6.State{
-		Rules: []v6.Rule{
-			makeTestRule(t, v6.RuleKindPreset, "private-ips", "", true, `{"vars":{}}`),
-			makeTestRule(t, v6.RuleKindInline, "", "01JIN1", true, `{
+	state := &state.State{
+		Rules: []state.Rule{
+			makeTestRule(t, state.RuleKindPreset, "private-ips", "", true, `{"vars":{}}`),
+			makeTestRule(t, state.RuleKindInline, "", "01JIN1", true, `{
 				"name": "X", "match": {"port": [443]}, "outbound": "direct-out"
 			}`),
-			makeTestRule(t, v6.RuleKindSrs, "", "01JSR1", true, `{
+			makeTestRule(t, state.RuleKindSrs, "", "01JSR1", true, `{
 				"name": "Y", "srs_url": "https://x", "outbound": "reject"
 			}`),
 		},
@@ -299,9 +299,9 @@ func TestPipeline_DuplicateTagFirstWins(t *testing.T) {
 	// невозможен через два preset'а с одинаковыми local-tag'ами.
 	// Проверим вместо этого что одинаковые prefix'ованные tag'и из одного и того же preset'а
 	// не дублируются (idempotent emit).
-	state := &v6.State{
-		Rules: []v6.Rule{
-			makeTestRule(t, v6.RuleKindPreset, "a", "", true, `{"vars":{}}`),
+	state := &state.State{
+		Rules: []state.Rule{
+			makeTestRule(t, state.RuleKindPreset, "a", "", true, `{"vars":{}}`),
 		},
 	}
 	result := BuildRulesAndDNS([]template.Preset{p1}, nil, state, nil)
@@ -345,7 +345,7 @@ func TestParseTemplateDNSDefaults(t *testing.T) {
 func TestValidateTemplateDNSServers(t *testing.T) {
 	servers := []TemplateDNSServer{
 		{Tag: "google_doh", Enabled: true, Raw: map[string]interface{}{"enabled": true}},
-		{Tag: "google_doh", Enabled: true, Raw: map[string]interface{}{"enabled": true}}, // duplicate
+		{Tag: "google_doh", Enabled: true, Raw: map[string]interface{}{"enabled": true}},                                            // duplicate
 		{Tag: "local_dns_resolver", Required: true, Enabled: true, Raw: map[string]interface{}{"required": true, "enabled": false}}, // coherence warn
 	}
 	warns := ValidateTemplateDNSServers(servers)

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"singbox-launcher/core/state"
-	v5 "singbox-launcher/core/state/v5"
 	"singbox-launcher/internal/platform"
 )
 
@@ -115,7 +114,7 @@ func TestRefreshSubscriptionsMetaAndCache_FailureKeepsOldRaw(t *testing.T) {
 	// Заранее заводим raw body — proxy "уже один раз успешно сходили".
 	subsDir := platform.GetSubscriptionsDir(execDir)
 	oldBody := []byte("vless://old#previous\n")
-	if err := v5.WriteRawBody(subsDir, "01FAIL", oldBody); err != nil {
+	if err := state.WriteRawBody(subsDir, "01FAIL", oldBody); err != nil {
 		t.Fatal(err)
 	}
 
@@ -137,7 +136,7 @@ func TestRefreshSubscriptionsMetaAndCache_FailureKeepsOldRaw(t *testing.T) {
 	refreshSubscriptionsMetaAndCache(loaded, execDir)
 
 	// 1. Старый raw НЕ повреждён.
-	got, err := v5.ReadRawBody(subsDir, "01FAIL")
+	got, err := state.ReadRawBody(subsDir, "01FAIL")
 	if err != nil {
 		t.Fatalf("old raw should be preserved: %v", err)
 	}
@@ -174,7 +173,7 @@ func TestRefreshSubscriptionsMetaAndCache_DeleteOrphans(t *testing.T) {
 	}
 	subsDir := platform.GetSubscriptionsDir(execDir)
 	// Orphan, которого нет в state.
-	if err := v5.WriteRawBody(subsDir, "01ORPHAN", []byte("orphan")); err != nil {
+	if err := state.WriteRawBody(subsDir, "01ORPHAN", []byte("orphan")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -190,11 +189,11 @@ func TestRefreshSubscriptionsMetaAndCache_DeleteOrphans(t *testing.T) {
 	refreshSubscriptionsMetaAndCache(loaded, execDir)
 
 	// orphan должен быть удалён.
-	if _, err := v5.ReadRawBody(subsDir, "01ORPHAN"); err == nil {
+	if _, err := state.ReadRawBody(subsDir, "01ORPHAN"); err == nil {
 		t.Errorf("orphan raw should be deleted")
 	}
 	// keep должен быть на месте.
-	if _, err := v5.ReadRawBody(subsDir, "01KEEP"); err != nil {
+	if _, err := state.ReadRawBody(subsDir, "01KEEP"); err != nil {
 		t.Errorf("kept raw missing: %v", err)
 	}
 }

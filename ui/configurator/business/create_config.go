@@ -145,7 +145,7 @@ func BuildPreviewConfig(model *wizardmodels.WizardModel) (string, error) {
 	)
 	ctx.Preset = build.PresetMergeContext{
 		Presets:             model.TemplateData.Presets,
-		RulesV6:             rulesV6,
+		Rules:             rulesV6,
 		DNS:                 dnsV6,
 		SrsCachedPaths:      build.CollectSrsCachedPaths(rulesV6, model.ExecDir),
 		ExecDir:             model.ExecDir,

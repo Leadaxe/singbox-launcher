@@ -267,7 +267,6 @@
   "wizard.rules.button_srs_done": "✔️ srs",
   "wizard.rules.template_not_found": "Archivo de plantilla bin/%s no encontrado.",
   "wizard.rules.template_create_hint": "Crea el archivo de plantilla para habilitar esta pestaña.",
-  "wizard.rules.no_selectable_rules": "No hay reglas seleccionables definidas en la plantilla.",
   "wizard.rules.label_outbound": "Salida:",
   "wizard.rules.button_info": "?",
   "wizard.rules.button_edit": "✏️",

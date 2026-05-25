@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	v6 "singbox-launcher/core/state/v6"
+	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 )
 
@@ -35,7 +35,7 @@ func makeTestTD(t *testing.T, presetsJSON string) *template.TemplateData {
 // TestResolveDNS_Required — required=true entries из dns_options → Locked + Source=template.
 func TestResolveDNS_Required(t *testing.T) {
 	td := makeTestTD(t, "")
-	state := &v6.State{}
+	state := &state.State{}
 	got := ResolveDNS(state, td, nil)
 	if len(got.Servers) < 2 {
 		t.Fatalf("expected >=2 required servers, got %d", len(got.Servers))
@@ -52,10 +52,10 @@ func TestResolveDNS_Required(t *testing.T) {
 // TestResolveDNS_TemplateOverride — state.DNS.Servers[kind=template] override default_enabled.
 func TestResolveDNS_TemplateOverride(t *testing.T) {
 	td := makeTestTD(t, "")
-	state := &v6.State{
-		DNSOptions: v6.DNSOptions{
-			Servers: []v6.DNSServer{
-				{Kind: v6.DNSServerKindTemplate, Tag: "google_doh", Enabled: true}, // template default false
+	state := &state.State{
+		DNS: state.DNSOptions{
+			Servers: []state.DNSServer{
+				{Kind: state.DNSServerKindTemplate, Tag: "google_doh", Enabled: true}, // template default false
 			},
 		},
 	}
@@ -89,9 +89,9 @@ func TestResolveDNS_Preset(t *testing.T) {
 		]
 	}]`
 	td := makeTestTD(t, presetsJSON)
-	state := &v6.State{
-		Rules: []v6.Rule{
-			{Kind: v6.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+	state := &state.State{
+		Rules: []state.Rule{
+			{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 		},
 	}
 	got := ResolveDNS(state, td, nil)
@@ -128,9 +128,9 @@ func TestResolveDNS_PresetInactiveByIf(t *testing.T) {
 		]
 	}]`
 	td := makeTestTD(t, presetsJSON)
-	state := &v6.State{
-		Rules: []v6.Rule{
-			{Kind: v6.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+	state := &state.State{
+		Rules: []state.Rule{
+			{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 		},
 	}
 	got := ResolveDNS(state, td, nil)
@@ -153,13 +153,13 @@ func TestResolveDNS_PresetUserToggle(t *testing.T) {
 		"dns_servers": [{"tag": "yandex_doh", "type": "https", "server": "x"}]
 	}]`
 	td := makeTestTD(t, presetsJSON)
-	state := &v6.State{
-		Rules: []v6.Rule{
-			{Kind: v6.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+	state := &state.State{
+		Rules: []state.Rule{
+			{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 		},
-		DNSOptions: v6.DNSOptions{
-			Servers: []v6.DNSServer{
-				{Kind: v6.DNSServerKindPreset, Ref: "russian:yandex_doh", Enabled: false},
+		DNS: state.DNSOptions{
+			Servers: []state.DNSServer{
+				{Kind: state.DNSServerKindPreset, Ref: "russian:yandex_doh", Enabled: false},
 			},
 		},
 	}
@@ -179,10 +179,10 @@ func TestResolveDNS_PresetUserToggle(t *testing.T) {
 // TestResolveDNS_User — user-defined server в state.DNS.Servers[kind=user].
 func TestResolveDNS_User(t *testing.T) {
 	td := makeTestTD(t, "")
-	state := &v6.State{
-		DNSOptions: v6.DNSOptions{
-			Servers: []v6.DNSServer{
-				{Kind: v6.DNSServerKindUser, Tag: "my-pihole", Enabled: true, Body: map[string]interface{}{
+	state := &state.State{
+		DNS: state.DNSOptions{
+			Servers: []state.DNSServer{
+				{Kind: state.DNSServerKindUser, Tag: "my-pihole", Enabled: true, Body: map[string]interface{}{
 					"tag": "my-pihole", "type": "udp", "server": "192.168.1.5",
 				}},
 			},
@@ -215,9 +215,9 @@ func TestResolveDNS_NoConsumptionFilter(t *testing.T) {
 		"dns_rule": {"rule_set": "ru-domains", "server": "@dns_server"}
 	}]`
 	td := makeTestTD(t, presetsJSON)
-	state := &v6.State{
-		Rules: []v6.Rule{
-			{Kind: v6.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+	state := &state.State{
+		Rules: []state.Rule{
+			{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 		},
 	}
 	got := ResolveDNS(state, td, nil)

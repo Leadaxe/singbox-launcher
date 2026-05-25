@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"singbox-launcher/core/state"
-	v5 "singbox-launcher/core/state/v5"
 	"singbox-launcher/internal/platform"
 )
 
@@ -22,7 +21,7 @@ func TestBuildSnapshotFromRawCache_HappyPath(t *testing.T) {
 	}
 	// Реальный VLESS URI чтобы парсер действительно вернул ноду.
 	body := []byte("vless://12345678-1234-1234-1234-123456789abc@example.com:443?encryption=none&security=tls&type=tcp#tokyo\n")
-	if err := v5.WriteRawBody(subsDir, "01TESTRAW", body); err != nil {
+	if err := state.WriteRawBody(subsDir, "01TESTRAW", body); err != nil {
 		t.Fatal(err)
 	}
 
@@ -107,7 +106,7 @@ func TestBuildSnapshotFromRawCache_DisabledSubscriptionsIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := []byte("vless://12345678-1234-1234-1234-123456789abc@example.com:443?encryption=none&security=tls&type=tcp#tokyo\n")
-	if err := v5.WriteRawBody(subsDir, "01ENABLED", body); err != nil {
+	if err := state.WriteRawBody(subsDir, "01ENABLED", body); err != nil {
 		t.Fatal(err)
 	}
 

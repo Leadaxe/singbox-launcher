@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	v6 "singbox-launcher/core/state/v6"
 )
 
 // TestParseV6_MetaAndConnections — базовый v6 файл с новым dns_options shape.
@@ -45,8 +43,8 @@ func TestParseV6_MetaAndConnections(t *testing.T) {
 	if s.Version != 6 {
 		t.Errorf("Version: %d", s.Version)
 	}
-	if len(s.RulesV6) != 2 {
-		t.Errorf("RulesV6 count: %d", len(s.RulesV6))
+	if len(s.Rules) != 2 {
+		t.Errorf("Rules count: %d", len(s.Rules))
 	}
 	if len(s.Connections.Sources) != 1 || s.Connections.Sources[0].ID != "src1" {
 		t.Errorf("connections lost: %+v", s.Connections)
@@ -55,7 +53,7 @@ func TestParseV6_MetaAndConnections(t *testing.T) {
 		t.Errorf("vars lost: %+v", s.Vars)
 	}
 	if s.DNS.Strategy != "prefer_ipv4" || s.DNS.Final != "google_doh" {
-		t.Errorf("DNSV6 scalars: %+v", s.DNS)
+		t.Errorf("DNS scalars: %+v", s.DNS)
 	}
 	if len(s.DNS.Servers) != 1 || s.DNS.Servers[0].Tag != "cloudflare_udp" || !s.DNS.Servers[0].Enabled {
 		t.Errorf("dns_options.servers lost: %+v", s.DNS.Servers)
@@ -75,7 +73,7 @@ func TestParseV6_MetaAndConnections(t *testing.T) {
 
 // TestParseV6_LegacyDevShapeConversion — старый дев-shape `dns` со SPEC 053
 // (template_servers / extra_servers / extra_rules) конвертится в новый
-// flat dns_options при parseV6.
+// flat dns_options при parseCurrent.
 func TestParseV6_LegacyDevShapeConversion(t *testing.T) {
 	raw := []byte(`{
 		"meta": {"version": 6, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"},
@@ -101,7 +99,7 @@ func TestParseV6_LegacyDevShapeConversion(t *testing.T) {
 	// Spot-check каждого entry: ровно один user-server с tag=my-pihole.
 	foundUserPihole := false
 	for _, srv := range s.DNS.Servers {
-		if srv.Kind == v6.DNSServerKindUser && srv.Tag == "my-pihole" {
+		if srv.Kind == DNSServerKindUser && srv.Tag == "my-pihole" {
 			foundUserPihole = true
 			if srv.Body["server"] != "192.168.1.5" {
 				t.Errorf("user body lost: %+v", srv.Body)
@@ -114,16 +112,19 @@ func TestParseV6_LegacyDevShapeConversion(t *testing.T) {
 	if len(s.DNS.Rules) != 1 {
 		t.Errorf("rules count: %+v", s.DNS.Rules)
 	}
-	if s.DNS.Rules[0].Kind != v6.DNSRuleKindUser {
+	if s.DNS.Rules[0].Kind != DNSRuleKindUser {
 		t.Errorf("rule kind: %v", s.DNS.Rules[0].Kind)
 	}
 }
 
-// TestSave_V5_WhenNoPresetRefs — без preset-ref'ов Save пишет v5.
-func TestSave_V5_WhenNoPresetRefs(t *testing.T) {
+// TestSave_AlwaysWritesV6 — SPEC 060: single write path, всегда canonical (v6).
+// Раньше TestSave_V5_WhenNoPresetRefs ожидал v5 если нет preset-ref; теперь
+// независимо от содержимого пишем v6.
+func TestSave_AlwaysWritesV6(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
 
+	// Pure inline rules — раньше шло v5, теперь должно идти v6.
 	s := New()
 	s.CustomRules = []CustomRule{
 		{Label: "Test inline", Enabled: true, SelectedOutbound: "direct-out",
@@ -140,17 +141,16 @@ func TestSave_V5_WhenNoPresetRefs(t *testing.T) {
 	}
 	var probe struct {
 		Meta struct {
-			Version int `json:"version"`
+			Version int    `json:"version"`
+			Schema  string `json:"schema"`
 		} `json:"meta"`
 	}
 	json.Unmarshal(raw, &probe)
-	if probe.Meta.Version != 5 {
-		t.Errorf("expected v5 save (no preset-refs), got version=%d", probe.Meta.Version)
+	if probe.Meta.Version != 6 {
+		t.Errorf("expected v6 save (single write path), got version=%d", probe.Meta.Version)
 	}
-
-	// Backup НЕ должен быть создан (мы не переходим с v5 на v6).
-	if _, err := os.Stat(path + ".v5.bak"); !os.IsNotExist(err) {
-		t.Error("backup should NOT exist for v5 save")
+	if probe.Meta.Schema != "presets_v1" {
+		t.Errorf("expected schema presets_v1, got %q", probe.Meta.Schema)
 	}
 }
 
@@ -160,9 +160,9 @@ func TestSave_V6_WhenHasPresetRef(t *testing.T) {
 	path := filepath.Join(dir, "state.json")
 
 	s := New()
-	s.RulesV6 = []v6.Rule{
+	s.Rules = []Rule{
 		{
-			Kind:    v6.RuleKindPreset,
+			Kind:    RuleKindPreset,
 			Ref:     "ru-direct",
 			Enabled: true,
 			Body:    json.RawMessage(`{"vars":{}}`),
@@ -189,69 +189,24 @@ func TestSave_V6_WhenHasPresetRef(t *testing.T) {
 	}
 }
 
-// TestSave_BackupV5OnFirstUpgrade — при первом v5→v6 upgrade создаётся backup.
-func TestSave_BackupV5OnFirstUpgrade(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "state.json")
-
-	// Step 1: первый Save — v5 (без preset-ref'ов)
-	s := New()
-	s.CustomRules = []CustomRule{
-		{Label: "Inline", Enabled: true, SelectedOutbound: "direct-out",
-			Rule: map[string]interface{}{"ip_is_private": true}},
-	}
-	if err := s.Save(path); err != nil {
-		t.Fatalf("first save: %v", err)
-	}
-
-	// Step 2: добавляем preset-ref → второй Save должен переключиться на v6 + создать backup.
-	s.RulesV6 = []v6.Rule{
-		{Kind: v6.RuleKindPreset, Ref: "ru-direct", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
-	}
-	if err := s.Save(path); err != nil {
-		t.Fatalf("upgrade save: %v", err)
-	}
-
-	// Backup должен существовать.
-	if _, err := os.Stat(path + ".v5.bak"); err != nil {
-		t.Errorf("backup should exist after v5→v6 upgrade: %v", err)
-	}
-
-	// Главный файл — теперь v6.
-	raw, _ := os.ReadFile(path)
-	if !v6.IsV6(raw) {
-		t.Errorf("main file should be v6 after upgrade")
-	}
-
-	// Step 3: третий Save (всё ещё с preset-ref) — backup НЕ перезаписывается (идемпотентно).
-	backupBefore, _ := os.ReadFile(path + ".v5.bak")
-	if err := s.Save(path); err != nil {
-		t.Fatalf("third save: %v", err)
-	}
-	backupAfter, _ := os.ReadFile(path + ".v5.bak")
-	if string(backupBefore) != string(backupAfter) {
-		t.Error("backup should NOT be overwritten on subsequent saves")
-	}
-}
-
 // TestRoundTrip_V6_LoadSaveLoad — Save v6 → Load → Save → identical (SPEC 056-R-N).
 func TestRoundTrip_V6_LoadSaveLoad(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
 
 	original := New()
-	original.RulesV6 = []v6.Rule{
-		{Kind: v6.RuleKindPreset, Ref: "ru-direct", Enabled: true,
+	original.Rules = []Rule{
+		{Kind: RuleKindPreset, Ref: "ru-direct", Enabled: true,
 			Body: json.RawMessage(`{"vars":{"dns_ip":"77.88.8.7"}}`)},
-		{Kind: v6.RuleKindInline, ID: "u1", Enabled: true,
+		{Kind: RuleKindInline, ID: "u1", Enabled: true,
 			Body: json.RawMessage(`{"name":"X","match":{"port":[443]},"outbound":"proxy-out"}`)},
 	}
-	original.DNS = v6.DNSOptions{
+	original.DNS = DNSOptions{
 		Strategy: "prefer_ipv4",
 		Final:    "google_doh",
-		Servers: []v6.DNSServer{
-			{Kind: v6.DNSServerKindTemplate, Tag: "cloudflare_udp", Enabled: true},
-			{Kind: v6.DNSServerKindUser, Tag: "my-pihole", Enabled: true, Body: map[string]interface{}{
+		Servers: []DNSServer{
+			{Kind: DNSServerKindTemplate, Tag: "cloudflare_udp", Enabled: true},
+			{Kind: DNSServerKindUser, Tag: "my-pihole", Enabled: true, Body: map[string]interface{}{
 				"tag": "my-pihole", "type": "udp", "server": "192.168.1.5", "server_port": float64(53),
 			}},
 		},
@@ -266,11 +221,11 @@ func TestRoundTrip_V6_LoadSaveLoad(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 
-	if len(loaded.RulesV6) != 2 {
-		t.Errorf("RulesV6 round-trip: %d", len(loaded.RulesV6))
+	if len(loaded.Rules) != 2 {
+		t.Errorf("Rules round-trip: %d", len(loaded.Rules))
 	}
-	if loaded.RulesV6[0].Ref != "ru-direct" {
-		t.Errorf("ref lost: %+v", loaded.RulesV6[0])
+	if loaded.Rules[0].Ref != "ru-direct" {
+		t.Errorf("ref lost: %+v", loaded.Rules[0])
 	}
 	if loaded.DNS.Final != "google_doh" {
 		t.Errorf("DNS round-trip lost: %+v", loaded.DNS)
@@ -278,12 +233,12 @@ func TestRoundTrip_V6_LoadSaveLoad(t *testing.T) {
 	if len(loaded.DNS.Servers) != 2 {
 		t.Errorf("servers round-trip: %+v", loaded.DNS.Servers)
 	}
-	if loaded.DNS.Servers[0].Kind != v6.DNSServerKindTemplate ||
+	if loaded.DNS.Servers[0].Kind != DNSServerKindTemplate ||
 		loaded.DNS.Servers[0].Tag != "cloudflare_udp" ||
 		!loaded.DNS.Servers[0].Enabled {
 		t.Errorf("template entry lost: %+v", loaded.DNS.Servers[0])
 	}
-	if loaded.DNS.Servers[1].Kind != v6.DNSServerKindUser ||
+	if loaded.DNS.Servers[1].Kind != DNSServerKindUser ||
 		loaded.DNS.Servers[1].Body["server"] != "192.168.1.5" {
 		t.Errorf("user entry body lost: %+v", loaded.DNS.Servers[1])
 	}
@@ -293,7 +248,7 @@ func TestRoundTrip_V6_LoadSaveLoad(t *testing.T) {
 		t.Fatalf("save 2: %v", err)
 	}
 	raw, _ := os.ReadFile(path)
-	if !v6.IsV6(raw) {
+	if !isV6(raw) {
 		t.Error("should remain v6 after re-save")
 	}
 }

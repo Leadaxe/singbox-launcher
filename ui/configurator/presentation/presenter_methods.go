@@ -181,30 +181,20 @@ func (p *WizardPresenter) RefreshOutboundOptions() {
 	})
 }
 
-// InitializeTemplateState — правила маршрута только в CustomRules; selectable-слой не используется.
-// Первый запуск без state: засев пресетов с default:true из шаблона; затем outbound/final.
+// InitializeTemplateState — выставляет дефолтные outbound'ы для CustomRules
+// и final-outbound. SPEC 053 убрал template.selectable_rules[] (clone-from-library
+// механизм); rules теперь только через state.rules[] (preset/inline/srs), а на
+// чистом старте CustomRules пуст — пользователь сам добавляет через +Add Rule.
 func (p *WizardPresenter) InitializeTemplateState() {
 	if p.model.TemplateData == nil {
 		return
 	}
-
 	p.model.SelectableRuleStates = nil
+	p.model.RulesLibraryMerged = true
 	options := wizardbusiness.EnsureDefaultAvailableOutbounds(wizardbusiness.GetAvailableOutbounds(p.model))
-
-	if !p.model.RulesLibraryMerged && len(p.model.CustomRules) == 0 {
-		for i := range p.model.TemplateData.SelectableRules {
-			tr := &p.model.TemplateData.SelectableRules[i]
-			if rs := wizardbusiness.ClonePresetWithSRSGuard(p.model, tr, tr.IsDefault, options); rs != nil {
-				p.model.CustomRules = append(p.model.CustomRules, rs)
-			}
-		}
-		p.model.RulesLibraryMerged = true
-	}
-
 	for _, ruleState := range p.model.CustomRules {
 		wizardmodels.EnsureDefaultOutbound(ruleState, options)
 	}
-
 	wizardbusiness.EnsureFinalSelected(p.model, options)
 	wizardbusiness.MaterializeClashSecretIfNeeded(p.model)
 }

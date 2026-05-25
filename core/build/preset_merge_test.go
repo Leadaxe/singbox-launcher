@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	v6 "singbox-launcher/core/state/v6"
+	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 )
 
@@ -34,8 +34,8 @@ func TestMergePresets_AppendsActivePresetRule(t *testing.T) {
 	raw := json.RawMessage(`{"rules":[{"protocol":"dns","action":"hijack-dns"}],"rule_set":[]}`)
 	ctx := PresetMergeContext{
 		Presets: []template.Preset{p},
-		RulesV6: []v6.Rule{
-			{Kind: v6.RuleKindPreset, Ref: "private-ips", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+		Rules: []state.Rule{
+			{Kind: state.RuleKindPreset, Ref: "private-ips", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 		},
 	}
 	out, err := MergePresetsIntoRoute(raw, ctx)
@@ -68,8 +68,8 @@ func TestMergePresets_DisabledPresetRefSkipped(t *testing.T) {
 	raw := json.RawMessage(`{"rules":[],"rule_set":[]}`)
 	ctx := PresetMergeContext{
 		Presets: []template.Preset{{ID: "x", Label: "X", Rule: map[string]interface{}{"ip_is_private": true, "outbound": "direct-out"}}},
-		RulesV6: []v6.Rule{
-			{Kind: v6.RuleKindPreset, Ref: "x", Enabled: false, Body: json.RawMessage(`{"vars":{}}`)},
+		Rules: []state.Rule{
+			{Kind: state.RuleKindPreset, Ref: "x", Enabled: false, Body: json.RawMessage(`{"vars":{}}`)},
 		},
 	}
 	out, _ := MergePresetsIntoRoute(raw, ctx)
@@ -84,8 +84,8 @@ func TestMergePresets_BrokenRefWarningSkip(t *testing.T) {
 	raw := json.RawMessage(`{"rules":[],"rule_set":[]}`)
 	ctx := PresetMergeContext{
 		Presets: nil, // нет presets — все refs broken
-		RulesV6: []v6.Rule{
-			{Kind: v6.RuleKindPreset, Ref: "nonexistent", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+		Rules: []state.Rule{
+			{Kind: state.RuleKindPreset, Ref: "nonexistent", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 		},
 	}
 	out, err := MergePresetsIntoRoute(raw, ctx)
@@ -121,13 +121,13 @@ func TestMergePresets_DNSBundledServer(t *testing.T) {
 	dnsRaw := json.RawMessage(`{"servers":[{"tag":"google_doh","type":"https"}],"rules":[]}`)
 	ctx := PresetMergeContext{
 		Presets: []template.Preset{p},
-		RulesV6: []v6.Rule{
-			{Kind: v6.RuleKindPreset, Ref: "ru-direct", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
+		Rules: []state.Rule{
+			{Kind: state.RuleKindPreset, Ref: "ru-direct", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 		},
 		// SPEC 056-R-N: kind=preset entry в DNSOptions.Servers (sync должен был создать).
-		DNS: v6.DNSOptions{
-			Servers: []v6.DNSServer{
-				{Kind: v6.DNSServerKindPreset, Ref: "ru-direct:yandex_udp", Enabled: true},
+		DNS: state.DNSOptions{
+			Servers: []state.DNSServer{
+				{Kind: state.DNSServerKindPreset, Ref: "ru-direct:yandex_udp", Enabled: true},
 			},
 		},
 	}
@@ -165,10 +165,10 @@ func TestMergePresets_DNSTemplateServerDisabled(t *testing.T) {
 				"tag": "cloudflare_udp", "type": "udp", "server": "1.1.1.1",
 			}},
 		},
-		DNS: v6.DNSOptions{
-			Servers: []v6.DNSServer{
-				{Kind: v6.DNSServerKindTemplate, Tag: "google_doh", Enabled: true},
-				{Kind: v6.DNSServerKindTemplate, Tag: "cloudflare_udp", Enabled: false},
+		DNS: state.DNSOptions{
+			Servers: []state.DNSServer{
+				{Kind: state.DNSServerKindTemplate, Tag: "google_doh", Enabled: true},
+				{Kind: state.DNSServerKindTemplate, Tag: "cloudflare_udp", Enabled: false},
 			},
 		},
 	}
@@ -190,14 +190,14 @@ func TestMergePresets_DNSTemplateServerDisabled(t *testing.T) {
 func TestMergePresets_DNSUserServers(t *testing.T) {
 	dnsRaw := json.RawMessage(`{"servers":[]}`)
 	ctx := PresetMergeContext{
-		DNS: v6.DNSOptions{
-			Servers: []v6.DNSServer{
-				{Kind: v6.DNSServerKindUser, Tag: "my-pihole", Enabled: true, Body: map[string]interface{}{
+		DNS: state.DNSOptions{
+			Servers: []state.DNSServer{
+				{Kind: state.DNSServerKindUser, Tag: "my-pihole", Enabled: true, Body: map[string]interface{}{
 					"tag": "my-pihole", "type": "udp", "server": "192.168.1.5",
 				}},
 			},
-			Rules: []v6.DNSRule{
-				{Kind: v6.DNSRuleKindUser, Enabled: true, Body: map[string]interface{}{
+			Rules: []state.DNSRule{
+				{Kind: state.DNSRuleKindUser, Enabled: true, Body: map[string]interface{}{
 					"server": "my-pihole", "domain_suffix": []interface{}{"internal.local"},
 				}},
 			},
@@ -220,13 +220,13 @@ func TestHasAnyPresetRef(t *testing.T) {
 	if hasAnyPresetRef(nil) {
 		t.Error("nil should be false")
 	}
-	if hasAnyPresetRef([]v6.Rule{{Kind: v6.RuleKindInline, ID: "x", Enabled: true}}) {
+	if hasAnyPresetRef([]state.Rule{{Kind: state.RuleKindInline, ID: "x", Enabled: true}}) {
 		t.Error("inline should not count")
 	}
-	if hasAnyPresetRef([]v6.Rule{{Kind: v6.RuleKindPreset, Ref: "x", Enabled: false}}) {
+	if hasAnyPresetRef([]state.Rule{{Kind: state.RuleKindPreset, Ref: "x", Enabled: false}}) {
 		t.Error("disabled preset should not count")
 	}
-	if !hasAnyPresetRef([]v6.Rule{{Kind: v6.RuleKindPreset, Ref: "x", Enabled: true}}) {
+	if !hasAnyPresetRef([]state.Rule{{Kind: state.RuleKindPreset, Ref: "x", Enabled: true}}) {
 		t.Error("enabled preset should count")
 	}
 }

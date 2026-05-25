@@ -56,79 +56,89 @@ type ProxySource struct {
 	Disabled bool `json:"disabled,omitempty"`
 }
 
-// WizardConfig represents the wizard configuration for outbounds.
-// Supports both old format ("wizard":"hide") and new format ("wizard":{"hide":true}).
+// Sentinel ref values for OutboundConfig (SPEC 058-R-N STATE_AS_TEMPLATE_DIFF).
 //
-// SPEC unify: поле Required удалено — было dead code (GetWizardRequired
-// нигде не вызывался). Lock-семантика теперь через top-level OutboundConfig.Required.
-type WizardConfig struct {
-	Hide bool `json:"hide,omitempty"` // Hide outbound from wizard second tab
-}
+// Outbound entries в state.connections.outbounds[] делятся на два класса:
+//   - **Direct (прямые):** self-contained body. `Ref` пустой (поле отсутствует в JSON).
+//   - **Referenced (ссылочные):** body живёт в template или preset, в state только tag + ref.
+//
+// Для ссылочных entries `Ref` принимает одно из двух значений:
+//   - `RefTemplate` — body из `template.parser_config.outbounds[tag]`.
+//   - `<preset_id>` — body из `template.presets[id].outbounds` (mode=add).
+//
+// Update-level (`OutboundUpdate.Ref`) — `<preset_id>` для preset patch'ей либо
+// `RefUser` для пользовательского field-level diff поверх referenced body.
+//
+// Validation: preset.id regex `^[a-z0-9_-]+$` не пересекается с этими константами
+// (UPPERCASE + `#`) by construction — collision невозможна.
+const (
+	RefTemplate = "#TEMPLATE#" // только в state.outbounds[].ref — referenced template entry
+	RefUser     = "#USER#"     // только в state.outbounds[].updates[].ref — user patch
+)
 
-// OutboundConfig represents an outbound selector configuration (version 3).
+// OutboundConfig represents an outbound selector configuration.
 //
-// **Preset binding (SPEC 057-R-N):**
-//   - `Ref` — id preset'а владельца, если entry создан через `preset.outbounds[mode=add]`.
-//     Пусто для template/user globals. Lifecycle через SyncOutboundsWithActivePresets.
-//   - `Updates` — стек patches от `preset.outbounds[mode=update]`. Merged body
-//     для emit вычисляется через ResolveOutbound (base + apply updates в order).
+// **Origin class (SPEC 058-R-N):**
+//   - `Ref == ""` (поле отсутствует) — direct entry, body inline в state. Full ownership.
+//   - `Ref == RefTemplate` — referenced template entry. Body live из
+//     `template.parser_config.outbounds[tag]`; body-поля в state НЕ хранятся
+//     (omitempty). USER edit становится field-level diff в `Updates[]` с ref=RefUser.
+//   - `Ref == "<preset_id>"` — referenced preset add entry. Body live из
+//     `template.presets[id].outbounds` (mode=add). USER edit аналогично через USER patch.
 //
-// **Required (SPEC 056-R-N):** НЕ хранится здесь как поле struct — это
-// template-only concern, читается live через templateRequiredTags на UI render
-// time. Если бы Required был в struct, state.json мог бы персистить устаревшее
-// значение (юзер сохранил v1 template'а где required=true, в v2 template author
-// убрал — state продолжил бы держать stale true). Source of truth = template.
+// **Updates stack (SPEC 057-R-N):** стек patches от `preset.outbounds[mode=update]`
+// + опциональный USER patch. Merged body для emit вычисляется через ResolveOutbound /
+// MergeOutboundUpdatesInPlace (base + apply updates в order; USER patch всегда последний).
+//
+// **Required:** template-only flag — указывает что outbound обязателен и
+// не должен быть полностью удалён (UI блокирует Del, но Edit + Reset OK).
+// В state.json приходит из миграции wizard.required (legacy) → required.
+// В template — `required: true` на уровне outbound.
 type OutboundConfig struct {
 	Tag              string                 `json:"tag"`
-	Type             string                 `json:"type"`
+	Type             string                 `json:"type,omitempty"`
 	Options          map[string]interface{} `json:"options,omitempty"`
 	Filters          map[string]interface{} `json:"filters,omitempty"`
 	AddOutbounds     []string               `json:"addOutbounds,omitempty"`
 	PreferredDefault map[string]interface{} `json:"preferredDefault,omitempty"`
 	Comment          string                 `json:"comment,omitempty"`
-	Wizard           interface{}            `json:"wizard,omitempty"` // Supports both "hide" (string) and {"hide":true} (object) for backward compatibility
+	Required         bool                   `json:"required,omitempty"` // template-only marker (см. RequiredOutboundTags)
 
-	// SPEC 057-R-N: preset binding.
-	Ref     string           `json:"ref,omitempty"`     // preset.id для mode=add entries; пусто для globals
-	Updates []OutboundUpdate `json:"updates,omitempty"` // стек patches от preset.outbounds[mode=update]
+	// SPEC 057/058-R-N: preset/template binding.
+	Ref     string           `json:"ref,omitempty"`     // "" (direct) | "#TEMPLATE#" | "<preset_id>"
+	Updates []OutboundUpdate `json:"updates,omitempty"` // стек patches: preset patches в rule order + опц. USER patch (всегда последний)
 }
 
-// OutboundUpdate — одна запись в стеке `OutboundConfig.Updates` (SPEC 057-R-N).
+// OutboundUpdate — одна запись в стеке `OutboundConfig.Updates` (SPEC 057/058-R-N).
 //
-// Каждая запись — patch от одного активного preset'а через `preset.outbounds[
-// mode=update]`. Merged body вычисляется через ResolveOutbound:
+// `Ref` принимает:
+//   - `<preset_id>` — patch от активного preset'а (mode=update). Stale → drop через sync.
+//   - `RefUser` — пользовательский field-level diff от merged_base. Один на outbound,
+//     replace при каждом Save, всегда последний в order.
+//
+// Merged body вычисляется через ResolveOutbound:
 // `merged = base; for each u in Updates: merged = applyOutboundUpdatePatch(merged, u.Patch)`.
-//
-// На disable parent preset (SyncOutboundsWithActivePresets): запись с этим Ref
-// удаляется из стека → merged пересчитывается → state самонастраивается.
 type OutboundUpdate struct {
-	Ref   string                 `json:"ref"`   // preset.id
+	Ref   string                 `json:"ref"`   // <preset_id> | RefUser
 	Patch map[string]interface{} `json:"patch"` // patch fields (filters, options, addOutbounds, ...)
 }
 
-// IsWizardHidden checks if outbound should be hidden from wizard
-// Supports both old format ("wizard":"hide") and new format ("wizard":{"hide":true})
-func (oc *OutboundConfig) IsWizardHidden() bool {
-	if oc.Wizard == nil {
-		return false
-	}
-
-	// Old format: "wizard":"hide"
-	if wizardStr, ok := oc.Wizard.(string); ok {
-		return wizardStr == "hide"
-	}
-
-	// New format: "wizard":{"hide":true, ...}
-	if wizardMap, ok := oc.Wizard.(map[string]interface{}); ok {
-		if hideVal, ok := wizardMap["hide"]; ok {
-			if hideBool, ok := hideVal.(bool); ok {
-				return hideBool
-			}
-		}
-	}
-
-	return false
+// IsReferenced возвращает true если entry — referenced (#TEMPLATE# или preset_id),
+// false для direct (пустой Ref). Body для referenced live из template/preset.
+func (oc *OutboundConfig) IsReferenced() bool {
+	return oc.Ref != ""
 }
+
+// IsTemplateRef возвращает true если entry ссылается на template global outbound.
+func (oc *OutboundConfig) IsTemplateRef() bool {
+	return oc.Ref == RefTemplate
+}
+
+// IsPresetRef возвращает true если entry ссылается на preset add outbound.
+func (oc *OutboundConfig) IsPresetRef() bool {
+	return oc.Ref != "" && oc.Ref != RefTemplate
+}
+
 
 // UnsetSourceIndex means SourceIndex was not assigned; exclude_from_global must not apply.
 const UnsetSourceIndex = -1

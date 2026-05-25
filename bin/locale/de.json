@@ -267,7 +267,6 @@
   "wizard.rules.button_srs_done": "✔️ srs",
   "wizard.rules.template_not_found": "Vorlagen-Datei bin/%s nicht gefunden.",
   "wizard.rules.template_create_hint": "Erstelle die Vorlagen-Datei, um diesen Tab zu aktivieren.",
-  "wizard.rules.no_selectable_rules": "Keine auswählbaren Regeln in der Vorlage definiert.",
   "wizard.rules.label_outbound": "Outbound:",
   "wizard.rules.button_info": "?",
   "wizard.rules.button_edit": "✏️",

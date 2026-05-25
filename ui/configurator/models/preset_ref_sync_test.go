@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
-	v6 "singbox-launcher/core/state/v6"
 )
 
 // TestSyncAllRulesToStateRulesV6_PresetOnly — только preset-ref'ы в model.
@@ -14,7 +14,7 @@ func TestSyncAllRulesToStateRulesV6_PresetOnly(t *testing.T) {
 		{Ref: "ru-direct", Enabled: true, Vars: map[string]string{"dns_ip": "77.88.8.7"}},
 	}
 	out := SyncAllRulesToStateRulesV6(prs, nil)
-	if len(out) != 1 || out[0].Kind != v6.RuleKindPreset || out[0].Ref != "ru-direct" {
+	if len(out) != 1 || out[0].Kind != state.RuleKindPreset || out[0].Ref != "ru-direct" {
 		t.Errorf("preset sync: %+v", out)
 	}
 }
@@ -39,7 +39,7 @@ func TestSyncAllRulesToStateRulesV6_InlineFromCustomRule(t *testing.T) {
 		t.Fatalf("expected 1 rule, got %d", len(out))
 	}
 	r := out[0]
-	if r.Kind != v6.RuleKindInline {
+	if r.Kind != state.RuleKindInline {
 		t.Errorf("kind: %q", r.Kind)
 	}
 	if r.ID == "" {
@@ -49,7 +49,7 @@ func TestSyncAllRulesToStateRulesV6_InlineFromCustomRule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	ib := body.(*v6.InlineBody)
+	ib := body.(*state.InlineBody)
 	if ib.Name != "Firefox VPN" || ib.Outbound != "proxy-out" {
 		t.Errorf("inline body: %+v", ib)
 	}
@@ -73,11 +73,11 @@ func TestSyncAllRulesToStateRulesV6_SrsFromCustomRule(t *testing.T) {
 		},
 	}
 	out := SyncAllRulesToStateRulesV6(nil, cr)
-	if len(out) != 1 || out[0].Kind != v6.RuleKindSrs {
+	if len(out) != 1 || out[0].Kind != state.RuleKindSrs {
 		t.Errorf("kind: %+v", out)
 	}
 	body, _ := out[0].DecodeBody()
-	sb := body.(*v6.SrsBody)
+	sb := body.(*state.SrsBody)
 	if sb.SrsURL != "https://example.com/list.srs" {
 		t.Errorf("srs url: %q", sb.SrsURL)
 	}
@@ -109,8 +109,8 @@ func TestSyncAllRulesToStateRulesV6_Mixed(t *testing.T) {
 	if len(out) != 3 {
 		t.Fatalf("expected 3 rules, got %d", len(out))
 	}
-	kinds := []v6.RuleKind{out[0].Kind, out[1].Kind, out[2].Kind}
-	want := []v6.RuleKind{v6.RuleKindPreset, v6.RuleKindInline, v6.RuleKindSrs}
+	kinds := []state.RuleKind{out[0].Kind, out[1].Kind, out[2].Kind}
+	want := []state.RuleKind{state.RuleKindPreset, state.RuleKindInline, state.RuleKindSrs}
 	for i := range want {
 		if kinds[i] != want[i] {
 			t.Errorf("kind[%d]: got %q want %q", i, kinds[i], want[i])
@@ -128,13 +128,13 @@ func TestSyncDNSFullToStateV6_Split(t *testing.T) {
 	templateTags := map[string]bool{"google_doh": true}
 	cfg := SyncDNSFullToStateV6(servers, "", nil, templateTags)
 
-	var tplGoogle, userPiHole *v6.DNSServer
+	var tplGoogle, userPiHole *state.DNSServer
 	for i := range cfg.Servers {
 		s := &cfg.Servers[i]
-		if s.Kind == v6.DNSServerKindTemplate && s.Tag == "google_doh" {
+		if s.Kind == state.DNSServerKindTemplate && s.Tag == "google_doh" {
 			tplGoogle = s
 		}
-		if s.Kind == v6.DNSServerKindUser && s.Tag == "my-pihole" {
+		if s.Kind == state.DNSServerKindUser && s.Tag == "my-pihole" {
 			userPiHole = s
 		}
 	}
@@ -162,7 +162,7 @@ func TestSyncDNSFullToStateV6_ExplicitOverridesWin(t *testing.T) {
 	overrides := map[string]bool{"google_doh": true} // явный override Enabled=true
 
 	cfg := SyncDNSFullToStateV6(servers, "", overrides, templateTags)
-	if len(cfg.Servers) != 1 || cfg.Servers[0].Kind != v6.DNSServerKindTemplate || !cfg.Servers[0].Enabled {
+	if len(cfg.Servers) != 1 || cfg.Servers[0].Kind != state.DNSServerKindTemplate || !cfg.Servers[0].Enabled {
 		t.Errorf("explicit override should win: %+v", cfg.Servers)
 	}
 }
@@ -174,7 +174,7 @@ func TestSyncDNSFullToStateV6_RulesText(t *testing.T) {
 	if len(cfg.Rules) != 1 {
 		t.Fatalf("expected 1 user rule: %+v", cfg.Rules)
 	}
-	if cfg.Rules[0].Kind != v6.DNSRuleKindUser || cfg.Rules[0].Body["server"] != "x" {
+	if cfg.Rules[0].Kind != state.DNSRuleKindUser || cfg.Rules[0].Body["server"] != "x" {
 		t.Errorf("rule shape: %+v", cfg.Rules[0])
 	}
 }

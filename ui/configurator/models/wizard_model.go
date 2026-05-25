@@ -98,7 +98,7 @@ type WizardModel struct {
 
 	// PresetRefs — preset-ref правила (kind=preset). Хранятся параллельно
 	// CustomRules (которые держат kind=inline/srs). При Save копируются в
-	// state.RulesV6; на Load восстанавливаются из state.RulesV6.
+	// state.Rules; на Load восстанавливаются из state.Rules.
 	// Каждый элемент — {Ref, Enabled, Vars}.
 	PresetRefs []*PresetRefState
 

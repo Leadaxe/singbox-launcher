@@ -29,6 +29,7 @@ import (
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui/configurator"
+	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardtemplate "singbox-launcher/core/template"
 )
 
@@ -749,27 +750,15 @@ func (tab *CoreDashboardTab) createStateBlock() fyne.CanvasObject {
 		if selectedID == "" || tab.controller == nil || tab.controller.FileService == nil {
 			return
 		}
-		if err := tab.switchToNamedState(selectedID); err != nil {
-			debuglog.WarnLog("CoreDashboard: switchToNamedState(%q): %v", selectedID, err)
-			if tab.controller.UIService != nil && tab.controller.UIService.MainWindow != nil {
-				ShowError(tab.controller.UIService.MainWindow, err)
-			}
+		// Preserve current state.json before overwriting. If there is no
+		// current state (cold install / freshly cleared) — нечего терять,
+		// просто переключаемся. Иначе показываем 3-кнопочный модал.
+		statePath := platform.GetWizardStatePath(tab.controller.FileService.ExecDir)
+		if _, err := os.Stat(statePath); os.IsNotExist(err) {
+			tab.performStateSwitch(selectedID)
 			return
 		}
-		// state.json — копия выбранного → cache и config устарели.
-		if tab.controller.StateService != nil {
-			tab.controller.StateService.MarkCacheStale()
-			tab.controller.StateService.MarkConfigStale()
-		}
-		tab.refreshStateSelector()
-		if tab.controller.UIService != nil {
-			if tab.controller.UIService.UpdateConfigStatusFunc != nil {
-				tab.controller.UIService.UpdateConfigStatusFunc()
-			}
-			if tab.controller.UIService.UpdateCoreStatusFunc != nil {
-				tab.controller.UIService.UpdateCoreStatusFunc()
-			}
-		}
+		tab.confirmStateSwitch(selectedID)
 	}
 	tab.refreshStateSelector()
 
@@ -814,6 +803,215 @@ func (tab *CoreDashboardTab) refreshStateSelector() {
 		tab.stateSelect.ClearSelected()
 	}
 	tab.stateSelect.Refresh()
+}
+
+// performStateSwitch — рабочая лошадка: копирует <id>.json → state.json,
+// помечает кэш+config stale, рефрешит селектор и статусы. Раньше эта
+// логика жила inline в OnChanged — выделена чтобы переиспользовать после
+// «save current and switch» / «discard and switch» flow'ов.
+func (tab *CoreDashboardTab) performStateSwitch(selectedID string) {
+	if err := tab.switchToNamedState(selectedID); err != nil {
+		debuglog.WarnLog("CoreDashboard: switchToNamedState(%q): %v", selectedID, err)
+		if tab.controller != nil && tab.controller.UIService != nil && tab.controller.UIService.MainWindow != nil {
+			ShowError(tab.controller.UIService.MainWindow, err)
+		}
+		return
+	}
+	// state.json — копия выбранного → cache и config устарели.
+	if tab.controller.StateService != nil {
+		tab.controller.StateService.MarkCacheStale()
+		tab.controller.StateService.MarkConfigStale()
+	}
+	tab.refreshStateSelector()
+	if tab.controller.UIService != nil {
+		if tab.controller.UIService.UpdateConfigStatusFunc != nil {
+			tab.controller.UIService.UpdateConfigStatusFunc()
+		}
+		if tab.controller.UIService.UpdateCoreStatusFunc != nil {
+			tab.controller.UIService.UpdateCoreStatusFunc()
+		}
+	}
+}
+
+// confirmStateSwitch — 3-кнопочный модал перед перезаписью state.json
+// именованным state'ом:
+//
+//	[Save current] — открывает name-input dialog, копирует state.json в
+//	                 <name>.json, потом switch.
+//	[Discard]      — switch напрямую (текущее состояние теряется).
+//	[Cancel]       — закрывает модал, сбрасывает выбор в dropdown'е.
+//
+// Закрытие через ESC / dismiss-text эквивалентно Cancel.
+//
+// SPEC: добавлено после инцидента когда юзер случайно загрузил `base.json`
+// из главного экрана и потерял несохранённые preset-rules.
+func (tab *CoreDashboardTab) confirmStateSwitch(targetID string) {
+	if tab.controller == nil || tab.controller.UIService == nil || tab.controller.UIService.MainWindow == nil {
+		// Нет окна — fallback на старое поведение (без модала).
+		tab.performStateSwitch(targetID)
+		return
+	}
+	win := tab.controller.UIService.MainWindow
+
+	body := widget.NewLabel(locale.Tf("core.state_switch_confirm_body", targetID))
+	body.Wrapping = fyne.TextWrapWord
+
+	var dlg dialog.Dialog
+	// «Не сохранять и переключить» — оригинальное поведение.
+	discardBtn := widget.NewButton(locale.T("core.state_switch_btn_discard"), func() {
+		if dlg != nil {
+			dlg.Hide()
+		}
+		tab.performStateSwitch(targetID)
+	})
+	// «Сохранить текущее → переключить»: подцепляем secondary dialog.
+	saveBtn := widget.NewButton(locale.T("core.state_switch_btn_save"), func() {
+		if dlg != nil {
+			dlg.Hide()
+		}
+		tab.promptSaveCurrentStateAs(func() {
+			tab.performStateSwitch(targetID)
+		})
+	})
+	saveBtn.Importance = widget.HighImportance
+
+	buttons := container.NewHBox(layout.NewSpacer(), discardBtn, saveBtn)
+	dlg = dialogs.NewCustom(
+		locale.T("core.state_switch_title"),
+		body,
+		buttons,
+		locale.T("core.state_switch_btn_cancel"),
+		win,
+	)
+	dlg.SetOnClosed(func() {
+		// Кнопки сами вызывают dlg.Hide() — на повторном SetOnClosed
+		// (Cancel/ESC) сбросим dropdown, чтобы он не показывал «выбран X»
+		// при не-сработавшем switch'е. ClearSelected безопасен и после
+		// performStateSwitch (refreshStateSelector тоже его дёргает).
+		if tab.stateSelect != nil {
+			tab.stateSelect.ClearSelected()
+		}
+	})
+	dlg.Show()
+}
+
+// promptSaveCurrentStateAs — диалог ввода имени для save-as копии
+// текущего state.json в `bin/wizard_states/<id>.json`. На успех вызывает
+// `then()` (обычно — переключение на новый state).
+//
+// Reuse semantic ShowSaveStateDialog'а из визарда (валидация ID,
+// предупреждение о существующем имени), но не зависит от
+// WizardPresenter — диалог рисуется поверх main window'а.
+func (tab *CoreDashboardTab) promptSaveCurrentStateAs(then func()) {
+	if tab.controller == nil || tab.controller.UIService == nil || tab.controller.UIService.MainWindow == nil || tab.controller.FileService == nil {
+		return
+	}
+	win := tab.controller.UIService.MainWindow
+
+	idEntry := widget.NewEntry()
+	idEntry.SetPlaceHolder(locale.T("core.state_save_placeholder"))
+
+	warning := widget.NewLabel("")
+	warning.Hide()
+
+	statesDir := platform.GetWizardStatesDir(tab.controller.FileService.ExecDir)
+	exists := func(id string) bool {
+		_, err := os.Stat(filepath.Join(statesDir, id+".json"))
+		return err == nil
+	}
+
+	idEntry.OnChanged = func(text string) {
+		t := strings.TrimSpace(text)
+		if t == "" {
+			warning.Hide()
+			return
+		}
+		if err := wizardmodels.ValidateStateID(t); err != nil {
+			warning.SetText(err.Error())
+			warning.Show()
+			return
+		}
+		if exists(t) {
+			warning.SetText(locale.Tf("core.state_save_warning_exists", t+".json"))
+			warning.Show()
+			return
+		}
+		warning.Hide()
+	}
+
+	var dlg dialog.Dialog
+	saveBtn := widget.NewButton(locale.T("core.state_save_btn_save"), func() {
+		id := strings.TrimSpace(idEntry.Text)
+		if id == "" {
+			dialog.ShowError(fmt.Errorf("%s", locale.T("core.state_save_error_empty")), win)
+			return
+		}
+		if err := wizardmodels.ValidateStateID(id); err != nil {
+			dialog.ShowError(err, win)
+			return
+		}
+		if err := tab.copyCurrentStateAs(id); err != nil {
+			dialog.ShowError(err, win)
+			return
+		}
+		if dlg != nil {
+			dlg.Hide()
+		}
+		// Refresh dropdown сразу — новый файл должен появиться, даже если
+		// then() не вызовет refresh'а (для defensive).
+		tab.refreshStateSelector()
+		then()
+	})
+	saveBtn.Importance = widget.HighImportance
+
+	body := container.NewVBox(
+		widget.NewLabel(locale.T("core.state_save_label")),
+		idEntry,
+		warning,
+	)
+	buttons := container.NewHBox(layout.NewSpacer(), saveBtn)
+	dlg = dialogs.NewCustom(
+		locale.T("core.state_save_title"),
+		body,
+		buttons,
+		locale.T("core.state_switch_btn_cancel"),
+		win,
+	)
+	dlg.SetOnClosed(func() {
+		// Cancel в этом sub-dialog'е = передумали сохранять и передумали
+		// переключаться — сбрасываем dropdown.
+		if tab.stateSelect != nil {
+			tab.stateSelect.ClearSelected()
+		}
+	})
+	dlg.Resize(fyne.NewSize(380, 180))
+	dlg.Show()
+	idEntry.FocusGained()
+}
+
+// copyCurrentStateAs — атомарно копирует state.json → wizard_states/<id>.json.
+// Если файл уже существует — перезапишет (валидация дубликата делается
+// в UI диалоге через warning label; пользователь явно согласился).
+func (tab *CoreDashboardTab) copyCurrentStateAs(id string) error {
+	if tab.controller == nil || tab.controller.FileService == nil {
+		return fmt.Errorf("file service not initialized")
+	}
+	src := platform.GetWizardStatePath(tab.controller.FileService.ExecDir)
+	dst := filepath.Join(platform.GetWizardStatesDir(tab.controller.FileService.ExecDir), id+".json")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", src, err)
+	}
+	tmp := dst + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename %s → %s: %w", tmp, dst, err)
+	}
+	debuglog.InfoLog("CoreDashboard: saved current state.json → %q.json", id)
+	return nil
 }
 
 // switchToNamedState атомарно копирует `<id>.json` в state.json. Не

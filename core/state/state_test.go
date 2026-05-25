@@ -402,7 +402,7 @@ func TestDiff_BothFlags(t *testing.T) {
 func TestDiff_DNSOptions(t *testing.T) {
 	a := buildSampleState()
 	b := buildSampleState()
-	b.DNSOptions = &DNSOptions{
+	b.DNSOptions = &LegacyDNSOptionsV5{
 		Servers: []json.RawMessage{json.RawMessage(`{"address":"8.8.8.8"}`)},
 	}
 
@@ -465,7 +465,7 @@ func buildSampleState() *State {
 		Vars:               []SettingVar{{Name: "log_level", Value: "info"}},
 		CustomRules:        []CustomRule{},
 		RulesLibraryMerged: true,
-		DNSOptions:         &DNSOptions{Servers: []json.RawMessage{}, Rules: []json.RawMessage{}},
+		DNSOptions:         &LegacyDNSOptionsV5{Servers: []json.RawMessage{}, Rules: []json.RawMessage{}},
 	}
 	s.ParserConfig.ParserConfig.Version = 4
 	s.ParserConfig.ParserConfig.Proxies = []configtypes.ProxySource{

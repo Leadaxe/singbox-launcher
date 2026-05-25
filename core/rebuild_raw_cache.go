@@ -10,7 +10,6 @@ import (
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
-	v5 "singbox-launcher/core/state/v5"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
@@ -30,7 +29,7 @@ import (
 // parser_config с preset.outbounds[] перед запуском native outbound
 // generator'а. td=nil → no preset processing (тесты, legacy fallback);
 // non-nil → ApplyPresetOutboundsToParserConfig применяет mode=add/update
-// от enabled preset-refs в s.RulesV6.
+// от enabled preset-refs в s.Rules.
 func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarSubstituter, td *template.TemplateData) (*build.ParsedCache, error) {
 	if s == nil {
 		return nil, fmt.Errorf("buildSnapshotFromRawCache: nil state")
@@ -80,8 +79,10 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 	//      body — generator про эти поля не знает, видит уже merged.
 	// td=nil → quiet skip (тесты, legacy fallback path).
 	if td != nil {
-		build.SyncOutboundsWithActivePresets(s.RulesV6, &parserCfg.ParserConfig.Outbounds, td.Presets)
-		build.MergeOutboundUpdatesInPlace(&parserCfg)
+		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.
+		_ = build.MigrateOutboundsToReferencedShape(&parserCfg.ParserConfig.Outbounds, s.Rules, td)
+		build.SyncOutboundsWithActivePresets(s.Rules, &parserCfg.ParserConfig.Outbounds, td.Presets)
+		build.MergeOutboundUpdatesInPlace(&parserCfg, td)
 	}
 
 	tagCounts := make(map[string]int)
@@ -116,7 +117,7 @@ func buildBodyLookup(s *state.State, subsDir string) map[string][]byte {
 		if src.Type != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
 			continue
 		}
-		raw, err := v5.ReadRawBody(subsDir, src.ID)
+		raw, err := state.ReadRawBody(subsDir, src.ID)
 		if err != nil {
 			debuglog.WarnLog("buildBodyLookup: read raw for %s: %v", src.ID, err)
 			continue

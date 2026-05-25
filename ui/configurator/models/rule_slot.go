@@ -10,7 +10,7 @@
 //   - рендерить единый список в Rules tab с произвольным порядком kind'ов
 //   - drag ↑↓ работает на индексах RuleOrder без перетряхивания CustomRules/PresetRefs
 //   - build pipeline обходит RuleOrder → эмитит fragments в порядке state
-//   - на Save: state.RulesV6 заполняется в порядке RuleOrder
+//   - на Save: state.Rules заполняется в порядке RuleOrder
 //
 // Источники истины:
 //   - CustomRules / PresetRefs — что хранится (kind-specific данные)

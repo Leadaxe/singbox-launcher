@@ -14,8 +14,8 @@ import (
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
+	"singbox-launcher/core/state"
 	corestate "singbox-launcher/core/state"
-	v5 "singbox-launcher/core/state/v5"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -69,7 +69,7 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 		}
 		idx := startIndex + added
 		newSrc := corestate.Source{
-			ID:      v5.MakeULID(),
+			ID:      state.MakeULID(),
 			Type:    corestate.SourceTypeSubscription,
 			Enabled: true,
 			URL:     subURL,
@@ -95,7 +95,7 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 			label = fmt.Sprintf("server-%d", startIndex+added)
 		}
 		newSrc := corestate.Source{
-			ID:      v5.MakeULID(),
+			ID:      state.MakeULID(),
 			Type:    corestate.SourceTypeServer,
 			Enabled: true,
 			Label:   label,

@@ -267,7 +267,6 @@
   "wizard.rules.button_srs_done": "✔️ srs",
   "wizard.rules.template_not_found": "Arquivo de modelo bin/%s não encontrado.",
   "wizard.rules.template_create_hint": "Crie o arquivo de modelo para habilitar esta aba.",
-  "wizard.rules.no_selectable_rules": "Nenhuma regra selecionável definida no modelo.",
   "wizard.rules.label_outbound": "Outbound:",
   "wizard.rules.button_info": "?",
   "wizard.rules.button_edit": "✏️",

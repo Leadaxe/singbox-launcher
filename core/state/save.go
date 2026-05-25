@@ -9,20 +9,16 @@ import (
 	"time"
 
 	"singbox-launcher/core/config/configtypes"
-	v5 "singbox-launcher/core/state/v5"
-	v6 "singbox-launcher/core/state/v6"
 )
 
 // Save атомарно записывает s в path.
 //
-// Формат выбирается автоматически (SPEC 053):
-//   - Если state содержит preset-ref правила (любая запись в RulesV6 с
-//     kind=preset) → пишем v6-формат + создаём backup state.json.v5.bak
-//     при первом upgrade.
-//   - Иначе → v5-формат (текущее поведение, backward-compat).
+// SPEC 060 Phase 5: single write path. После collapse v5/v6 namespaces и
+// migration с SPEC 053/056/058 все state'ы пишутся в canonical (v6) shape.
+// `useV6` gate и dual marshalDisk удалены.
 //
-// Auto-upgrade триггерится когда UI Phase 6 добавит preset-ref правило.
-// До этого момента юзеры с pure inline/srs правилами остаются на v5.
+// SPEC 058-R-N: backup перед первым перезаписыванием когда outbounds содержат
+// referenced entries (post-migration shape). Lossless rollback гарантирован.
 //
 // Save мутирует UpdatedAt текущим временем (UTC); CreatedAt — только если zero.
 func (s *State) Save(path string) error {
@@ -35,30 +31,22 @@ func (s *State) Save(path string) error {
 	}
 	s.UpdatedAt = now
 
-	// Sync legacy → v5 canonical перед сериализацией.
+	// Sync legacy → canonical перед сериализацией.
 	syncConnectionsFromLegacy(s)
 
-	useV6 := hasPresetRefs(s.RulesV6)
+	s.Version = SchemaVersionV6
 
-	if useV6 {
-		s.Version = v6.SchemaVersion
-		// Backup перед первым перезаписыванием с v5 на v6.
-		if err := maybeBackupV5(path); err != nil {
-			// Backup failure non-fatal — продолжаем save (warning логируется
-			// callsite'ом, у нас здесь нет debuglog без расширения signature).
-			_ = err
+	// SPEC 058-R-N: backup перед первым перезаписыванием когда outbounds
+	// содержат referenced entries (post-migration shape). Gate idempotent
+	// (maybeBackupSPEC058 skip если .pre-058.bak уже есть) — backup создаётся
+	// единственный раз. Lossless rollback гарантирован.
+	if hasReferencedOutbounds(s) {
+		if err := maybeBackupSPEC058(path); err != nil {
+			_ = err // non-fatal
 		}
-	} else {
-		s.Version = v5.SchemaVersion
 	}
 
-	var data []byte
-	var err error
-	if useV6 {
-		data, err = s.marshalDiskV6()
-	} else {
-		data, err = s.marshalDisk()
-	}
+	data, err := s.marshalDisk()
 	if err != nil {
 		return err
 	}
@@ -96,56 +84,7 @@ func (s *State) Save(path string) error {
 	return nil
 }
 
-// marshalDisk сериализует State в v5-форму:
-//
-//	{
-//	  "meta":         { version:5, comment, created_at, updated_at },
-//	  "connections":  { sources, outbounds, defaults },
-//	  "config_params": [...],
-//	  "custom_rules":  [...],
-//	  "vars":          [...],
-//	  "dns_options":   {...}
-//	}
-//
-// Legacy-поля (id, parser_config, rules_library_merged, selectable_rule_states)
-// в v5 не сериализуются.
-func (s *State) marshalDisk() ([]byte, error) {
-	out := struct {
-		Meta         v5.MetaSection        `json:"meta"`
-		Connections  v5.ConnectionsSection `json:"connections"`
-		ConfigParams []ConfigParam         `json:"config_params"`
-		CustomRules  []CustomRule          `json:"custom_rules"`
-		Vars         []SettingVar          `json:"vars,omitempty"`
-		DNSOptions   *DNSOptions           `json:"dns_options"`
-	}{
-		Meta: v5.MetaSection{
-			Version:   SchemaVersion,
-			Comment:   s.Comment,
-			CreatedAt: s.CreatedAt.Format(time.RFC3339),
-			UpdatedAt: s.UpdatedAt.Format(time.RFC3339),
-		},
-		Connections:  s.Connections,
-		ConfigParams: s.ConfigParams,
-		CustomRules:  s.CustomRules,
-		Vars:         s.Vars,
-		DNSOptions:   s.DNSOptions,
-	}
-	if out.ConfigParams == nil {
-		out.ConfigParams = []ConfigParam{}
-	}
-	if out.CustomRules == nil {
-		out.CustomRules = []CustomRule{}
-	}
-	if out.Connections.Sources == nil {
-		out.Connections.Sources = []Source{}
-	}
-	if out.Connections.Outbounds == nil {
-		out.Connections.Outbounds = []configtypes.OutboundConfig{}
-	}
-	return json.MarshalIndent(out, "", "  ")
-}
-
-// marshalDiskV6 — сериализация State в v6-форму (SPEC 053 + SPEC 056-R-N).
+// marshalDisk — сериализация State в canonical (v6) shape (SPEC 053 + SPEC 056-R-N).
 //
 //	{
 //	  "meta":        { version: 6, schema: "presets_v1", ... },
@@ -158,29 +97,25 @@ func (s *State) marshalDisk() ([]byte, error) {
 //	  }
 //	}
 //
-// legacy CustomRules / DNSOptions в v6 не сериализуются (источник — RulesV6 / DNSV6).
-func (s *State) marshalDiskV6() ([]byte, error) {
-	out := struct {
-		Meta        v6.MetaSection        `json:"meta"`
-		Connections v5.ConnectionsSection `json:"connections"`
-		Rules       []v6.Rule             `json:"rules"`
-		Vars        []SettingVar          `json:"vars,omitempty"`
-		DNSOptions  v6.DNSOptions         `json:"dns_options"`
-	}{
-		Meta: v6.MetaSection{
-			Version:   v6.SchemaVersion,
-			Schema:    v6.SchemaName,
+// SPEC 060 Phase 5: единственный write path — `marshalDiskV6` rename'нут в
+// `marshalDisk`, старый v5-marshaller удалён. Legacy `s.CustomRules` /
+// `s.DNSOptions` НЕ сериализуются — источник истины Rules / DNS.
+func (s *State) marshalDisk() ([]byte, error) {
+	out := diskStateV6{
+		Meta: MetaSection{
+			Version:   SchemaVersionV6,
+			Schema:    SchemaName,
 			Comment:   s.Comment,
 			CreatedAt: s.CreatedAt.Format(time.RFC3339),
 			UpdatedAt: s.UpdatedAt.Format(time.RFC3339),
 		},
 		Connections: s.Connections,
-		Rules:       s.RulesV6,
+		Rules:       s.Rules,
 		Vars:        s.Vars,
 		DNSOptions:  s.DNS,
 	}
 	if out.Rules == nil {
-		out.Rules = []v6.Rule{}
+		out.Rules = []Rule{}
 	}
 	if out.Connections.Sources == nil {
 		out.Connections.Sources = []Source{}
@@ -191,47 +126,36 @@ func (s *State) marshalDiskV6() ([]byte, error) {
 	return json.MarshalIndent(out, "", "  ")
 }
 
-// hasPresetRefs — true если state имеет хотя бы одно правило kind=preset.
-// Триггер для v6 save.
-func hasPresetRefs(rules []v6.Rule) bool {
-	for _, r := range rules {
-		if r.Kind == v6.RuleKindPreset {
+// hasReferencedOutbounds — true если хотя бы один outbound в state.Connections.Outbounds
+// имеет непустой Ref (referenced shape, SPEC 058).
+func hasReferencedOutbounds(s *State) bool {
+	for _, ob := range s.Connections.Outbounds {
+		if ob.Ref != "" {
 			return true
 		}
 	}
 	return false
 }
 
-// maybeBackupV5 — копирует существующий state.json в state.json.v5.bak,
-// если backup ещё не создан И если текущий файл реально v5-формата.
+// maybeBackupSPEC058 — копирует существующий state.json в state.json.pre-058.bak,
+// если backup ещё не создан. Создаётся однократно перед первым перезаписыванием
+// после миграции в SPEC 058 referenced shape (Lossless rollback гарантирован —
+// юзер может вернуть .bak → state.json и установить предыдущий build).
+//
 // Идемпотентно: повторные вызовы — no-op.
-func maybeBackupV5(path string) error {
-	backupPath := path + ".v5.bak"
+func maybeBackupSPEC058(path string) error {
+	backupPath := path + ".pre-058.bak"
 	if _, err := os.Stat(backupPath); err == nil {
-		// Backup уже есть.
-		return nil
+		return nil // backup уже есть
 	}
 	src, err := os.Open(path)
 	if err != nil {
-		// Файла нет — fresh install, nothing to backup.
 		if os.IsNotExist(err) {
-			return nil
+			return nil // fresh install
 		}
 		return err
 	}
 	defer src.Close()
-
-	// Проверим что это действительно v5 (не v6 уже).
-	head := make([]byte, 4096)
-	n, _ := src.Read(head)
-	head = head[:n]
-	if v6.IsV6(head) {
-		return nil
-	}
-	if _, err := src.Seek(0, 0); err != nil {
-		return err
-	}
-
 	dst, err := os.OpenFile(backupPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return err

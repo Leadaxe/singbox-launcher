@@ -29,7 +29,7 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config/configtypes"
-	corev6 "singbox-launcher/core/state/v6"
+	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
@@ -106,11 +106,11 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	}
 
 	// SPEC 053: sync ВСЕХ правил с сохранением порядка RuleOrder.
-	// state.RulesV6 эмитится в том же порядке как UI Rules tab показывает
+	// state.Rules эмитится в том же порядке как UI Rules tab показывает
 	// (включая drag-reordering). Build pipeline затем эмитит fragments
 	// в config.json::route.rules[] в этом же порядке.
 	wizardmodels.ReconcileRuleOrder(p.model)
-	state.RulesV6 = wizardmodels.SyncRulesByOrderToStateRulesV6(
+	state.Rules = wizardmodels.SyncRulesByOrderToStateRulesV6(
 		p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules,
 	)
 
@@ -125,11 +125,11 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 		templateDNSTags,
 	)
 	// Lifecycle sync: ensure preset-entries в state.DNS соответствуют активным
-	// preset-ref'ам в state.RulesV6. Idempotent — добавит missing entries и удалит
+	// preset-ref'ам в state.Rules. Idempotent — добавит missing entries и удалит
 	// orphan'ы. Это **единственная** точка где kind=preset entries создаются/удаляются.
 	if p.model.TemplateData != nil {
 		presetMap := wizardtemplate.PresetLiteMap(p.model.TemplateData.Presets)
-		corev6.SyncDNSOptionsWithActivePresets(state.RulesV6, &state.DNS, presetMap)
+		corestate.SyncDNSOptionsWithActivePresets(state.Rules, &state.DNS, presetMap)
 	}
 	// SPEC 056-R-N follow-up: apply UI toggle overrides для kind=preset entries.
 	// Sync создал entries с дефолтом Enabled=true; юзерский toggle живёт в
@@ -147,8 +147,8 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	// view'а (или хотя бы ParserConfig — тогда адаптер скопирует корректную
 	// версию в Connections).
 	if p.model.TemplateData != nil {
-		build.SyncOutboundsWithActivePresets(state.RulesV6, &state.Connections.Outbounds, p.model.TemplateData.Presets)
-		build.SyncOutboundsWithActivePresets(state.RulesV6, &state.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets)
+		build.SyncOutboundsWithActivePresets(state.Rules, &state.Connections.Outbounds, p.model.TemplateData.Presets)
+		build.SyncOutboundsWithActivePresets(state.Rules, &state.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets)
 	}
 
 	// dns_options в state — только servers и rules; скаляры DNS — в state.vars (dns_*).
@@ -273,20 +273,39 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 	// Восстановление DNS вкладки (шаг 4b)
 	p.restoreDNS(stateFile)
 
-	hadRulesLibraryMerged := stateFile.RulesLibraryMerged
-	wizardbusiness.ApplyRulesLibraryMigration(stateFile, p.model.TemplateData, p.model.ExecDir)
-	p.model.RulesLibraryMerged = stateFile.RulesLibraryMerged
+	// SPEC 053 removed the legacy template.selectable_rules library — rules now
+	// live exclusively in state.rules[] (kind=preset/inline/srs). RulesLibraryMerged
+	// + SelectableRuleStates are kept on the v4 disk struct for read-compat but
+	// have no runtime effect; just zero the in-memory copies so nothing reads stale.
+	p.model.RulesLibraryMerged = true
 	p.model.SelectableRuleStates = nil
 	p.restoreCustomRules(stateFile.CustomRules)
-	wizardbusiness.EnsureCustomRulesDefaultOutbounds(p.model)
-	// SPEC 053: restore preset-ref правила (kind=preset из state.RulesV6).
+	// Fill SelectedOutbound for any custom rules missing it (single-pass after restore).
+	{
+		opts := wizardbusiness.EnsureDefaultAvailableOutbounds(wizardbusiness.GetAvailableOutbounds(p.model))
+		for _, rs := range p.model.CustomRules {
+			wizardmodels.EnsureDefaultOutbound(rs, opts)
+		}
+	}
+	// SPEC 053: restore preset-ref правила (kind=preset из state.Rules).
 	p.restorePresetRefs(stateFile)
 
-	// SPEC 057-R-N: sync preset binding в model.GlobalOutbounds после load.
-	// Если state без ref/updates (legacy) — добавит entries для active preset'ов.
-	// Idempotent: повторный вызов с уже-synced state — noop.
+	// SPEC 058-R-N: migration direct→referenced shape. Legacy state.json (SPEC 057
+	// и раньше) хранил template/preset-derived entries с full body inline; новый
+	// shape — thin tag+ref. Migration однопроходная, lossless (Backup .pre-058.bak
+	// создаётся на следующем Save). Idempotent.
+	//
+	// SPEC 057-R-N: sync preset binding после migration. Sync приведёт slice в
+	// правильный referenced shape (drop stale, add missing, reorder updates).
+	// Idempotent.
 	if p.model.TemplateData != nil {
-		build.SyncOutboundsWithActivePresets(stateFile.RulesV6, &p.model.GlobalOutbounds, p.model.TemplateData.Presets)
+		// MigrateOutboundsToReferencedShape возвращает true если конвертировал
+		// хоть один entry. Backup gate в Save проверяет outbounds.Ref напрямую,
+		// флаг здесь не нужен. Rules нужны migration'у для computing merged_base
+		// = template + active preset patches (чтобы USER patch не over-include
+		// preset edits которые УЖЕ были materialized в legacy body).
+		_ = build.MigrateOutboundsToReferencedShape(&p.model.GlobalOutbounds, stateFile.Rules, p.model.TemplateData)
+		build.SyncOutboundsWithActivePresets(stateFile.Rules, &p.model.GlobalOutbounds, p.model.TemplateData.Presets)
 		p.model.RefreshDerivedParserConfig()
 	}
 
@@ -301,20 +320,10 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 	p.RefreshOutboundOptions()
 
 	// SPEC 045 invariant: единственный writer state.json — Save визарда.
-	// Миграция rules-library живёт в RAM; ApplyRulesLibraryMigration
-	// идемпотентна — при следующем открытии без Save снова отработает
-	// in-memory, на диск ничего не утечёт.
-	//
-	// Раньше тут стоял SaveWizardState под флагом !hadRulesLibraryMerged —
-	// это и был баг утечки записи через "Get Free" (фрешный WizardStateFile
-	// идёт с RulesLibraryMerged=false, миграция выставляет true, persist
-	// затирал существующий state.json до того, как юзер успел нажать Save
-	// или Cancel). После SPEC 045 миграция остаётся pure-data операцией.
-	if !hadRulesLibraryMerged {
-		p.MarkAsChanged()
-	} else {
-		p.MarkAsSaved()
-	}
+	// На clean load дирти-флаг не нужен (раньше он зависел от
+	// !hadRulesLibraryMerged — сигнал, что миграция SelectableRules сменила
+	// shape; SPEC 053 убрал эту библиотеку, миграция мертва).
+	p.MarkAsSaved()
 
 	return nil
 }
@@ -367,21 +376,21 @@ func (p *WizardPresenter) restoreCustomRules(persistedRules []wizardmodels.Persi
 	}
 }
 
-// restorePresetRefs (SPEC 053) — восстанавливает model.PresetRefs из state.RulesV6
-// и заполняет model.RuleOrder в порядке state.RulesV6 (так чтобы UI Rules tab
+// restorePresetRefs (SPEC 053) — восстанавливает model.PresetRefs из state.Rules
+// и заполняет model.RuleOrder в порядке state.Rules (так чтобы UI Rules tab
 // после load показал правила в том же порядке как при save).
 //
 // Только kind=preset entries попадают в PresetRefs; kind=inline/srs остаются
 // в CustomRules через restoreCustomRules + legacy view (см. parseV6).
 func (p *WizardPresenter) restorePresetRefs(state *wizardmodels.WizardStateFile) {
-	p.model.PresetRefs = wizardmodels.SyncStateRulesToPresetRefs(state.RulesV6)
+	p.model.PresetRefs = wizardmodels.SyncStateRulesToPresetRefs(state.Rules)
 	p.model.DNSTemplateOverrides = wizardmodels.SyncStateV6ToDNSOverrides(state.DNS)
 	// SPEC 056-R-N follow-up: per-server/rule preset enabled overrides → PresetRefState fields.
 	populatePresetEnabledFromState(p.model.PresetRefs, state.DNS)
 
-	// Restore RuleOrder из state.RulesV6 (preserve порядок between save/load).
+	// Restore RuleOrder из state.Rules (preserve порядок between save/load).
 	// Fallback на дефолтную последовательность если state v5 (нет RulesV6).
-	order := wizardmodels.RuleOrderFromStateRulesV6(state.RulesV6, p.model.PresetRefs, p.model.CustomRules)
+	order := wizardmodels.RuleOrderFromStateRulesV6(state.Rules, p.model.PresetRefs, p.model.CustomRules)
 	if len(order) == 0 {
 		wizardmodels.RebuildRuleOrder(p.model)
 	} else {
@@ -447,6 +456,11 @@ func (p *WizardPresenter) restoreDNS(sf *wizardmodels.WizardStateFile) {
 	if sf.DNSOptions != nil {
 		wizardbusiness.LoadPersistedWizardDNS(p.model, sf.DNSOptions)
 	}
+	// SPEC 056 phase 7 regression fix: для v6-файлов sf.DNSOptions == nil,
+	// поэтому user-added DNS-сервера и user DNS rules (kind=user в sf.DNS)
+	// никем не восстанавливались — populateUserDNSFromState закрывает дыру.
+	// Идемпотентно: дедуп по tag, DNSRulesText трогаем только если пуст.
+	populateUserDNSFromState(p.model, sf.DNS)
 	// Старые state.json: тег только в config_params (до dns_* vars).
 	if !p.model.DefaultDomainResolverUnset && strings.TrimSpace(p.model.DefaultDomainResolver) == "" {
 		if dr := p.findConfigParamValue(sf.ConfigParams, "route.default_domain_resolver"); dr != "" {

@@ -1,15 +1,13 @@
-// File preset_lite.go (SPEC 056-R-N) — адаптер template.Preset к v6.PresetLite.
+// File preset_lite.go (SPEC 056-R-N) — адаптер template.Preset к state.PresetLite.
 //
-// v6.PresetLite — минимальный интерфейс нужный для SyncDNSOptionsWithActivePresets,
-// определён в core/state/v6. template импортирует v6 (direction: high-level
+// state.PresetLite — минимальный интерфейс нужный для SyncDNSOptionsWithActivePresets,
+// определён в core/state/state. template импортирует v6 (direction: high-level
 // template → low-level state schema) — циклов нет.
 package template
 
-import (
-	v6 "singbox-launcher/core/state/v6"
-)
+import "singbox-launcher/core/state"
 
-// PresetID — implements v6.PresetLite.
+// PresetID — implements state.PresetLite.
 func (p *Preset) PresetID() string { return p.ID }
 
 // PresetDNSServerTags — возвращает локальные tag'и всех DNS-серверов preset'а
@@ -36,15 +34,15 @@ func (p *Preset) PresetHasDNSRule() bool {
 	return p.DNSRule != nil
 }
 
-// PresetLiteMap — собирает map[id]→v6.PresetLite из []Preset для передачи в
-// v6.SyncDNSOptionsWithActivePresets.
+// PresetLiteMap — собирает map[id]→state.PresetLite из []Preset для передачи в
+// state.SyncDNSOptionsWithActivePresets.
 //
 // Использование:
 //
 //	m := template.PresetLiteMap(td.Presets)
-//	v6.SyncDNSOptionsWithActivePresets(state.RulesV6, &state.DNS, m)
-func PresetLiteMap(presets []Preset) map[string]v6.PresetLite {
-	out := make(map[string]v6.PresetLite, len(presets))
+//	state.SyncDNSOptionsWithActivePresets(state.Rules, &state.DNS, m)
+func PresetLiteMap(presets []Preset) map[string]state.PresetLite {
+	out := make(map[string]state.PresetLite, len(presets))
 	for i := range presets {
 		out[presets[i].ID] = &presets[i]
 	}

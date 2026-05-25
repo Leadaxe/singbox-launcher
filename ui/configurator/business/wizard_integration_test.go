@@ -80,18 +80,12 @@ func TestDefaultWizardFlow_NextNextFinish(t *testing.T) {
 	// Emulate user entering subscription URL (Page 1 of wizard)
 	model.SourceURLs = "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt"
 
+	// SPEC 053 removed template.selectable_rules — wizard now opens with empty
+	// CustomRules; user adds rules via +Add Rule / Library (presets). This test
+	// covers the preview/save pipeline with whatever default model state the
+	// template seeds (currently nothing; preset bundles add their own state.Rules).
 	options := EnsureDefaultAvailableOutbounds(GetAvailableOutbounds(model))
-	for i := range templateData.SelectableRules {
-		rule := &templateData.SelectableRules[i]
-		outbound := rule.DefaultOutbound
-		if outbound == "" {
-			outbound = options[0]
-		}
-		rs := CloneTemplateSelectableToRuleState(rule, rule.IsDefault, outbound, options)
-		if rs != nil {
-			model.CustomRules = append(model.CustomRules, rs)
-		}
-	}
+	_ = options
 	model.RulesLibraryMerged = true
 
 	EnsureFinalSelected(model, options)
@@ -150,18 +144,12 @@ func TestWizardFlowWithCustomRules(t *testing.T) {
 	// Emulate user entering subscription URL
 	model.SourceURLs = "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt"
 
+	// SPEC 053 removed template.selectable_rules — wizard now opens with empty
+	// CustomRules; user adds rules via +Add Rule / Library (presets). This test
+	// covers the preview/save pipeline with whatever default model state the
+	// template seeds (currently nothing; preset bundles add their own state.Rules).
 	options := EnsureDefaultAvailableOutbounds(GetAvailableOutbounds(model))
-	for i := range templateData.SelectableRules {
-		rule := &templateData.SelectableRules[i]
-		outbound := rule.DefaultOutbound
-		if outbound == "" {
-			outbound = options[0]
-		}
-		rs := CloneTemplateSelectableToRuleState(rule, rule.IsDefault, outbound, options)
-		if rs != nil {
-			model.CustomRules = append(model.CustomRules, rs)
-		}
-	}
+	_ = options
 	model.RulesLibraryMerged = true
 
 	// Add custom rule (user action)

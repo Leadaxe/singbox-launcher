@@ -550,19 +550,11 @@ func PersistedDNSRulesForState(rulesText string) []json.RawMessage {
 	return rules
 }
 
-// DNSRulesToText formats dns.rules as a single JSON object: {"rules":[...]}.
+// DNSRulesToText — тонкий re-export `build.DNSRulesToText`. Сохранён
+// под этим именем, чтобы не править все callsite'ы пакета (визард / тесты).
+// Живая реализация — в `core/build/dns_merge.go` рядом с `ParseDNSRulesText`.
 func DNSRulesToText(rules []interface{}) string {
-	if len(rules) == 0 {
-		return ""
-	}
-	out := map[string]interface{}{
-		"rules": rules,
-	}
-	b, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		return ""
-	}
-	return string(b)
+	return build.DNSRulesToText(rules)
 }
 
 // ValidateDNSModel checks tags, final, and rules before save / preview.

@@ -21,7 +21,7 @@ import (
 	"sort"
 	"strings"
 
-	v6 "singbox-launcher/core/state/v6"
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 )
 
@@ -159,7 +159,7 @@ type ResolvedDNS struct {
 // `direct_dns_resolver` живут в `template.dns_options.servers[]` с
 // `required: true` маркером. Locked entries попадают в результат с
 // Source=template + Locked=true; Enabled всегда true.
-func ResolveDNS(state *v6.State, td *template.TemplateData, templateVars map[string]string) ResolvedDNS {
+func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars map[string]string) ResolvedDNS {
 	var out ResolvedDNS
 	if td == nil {
 		return out
@@ -199,7 +199,7 @@ func ResolveDNS(state *v6.State, td *template.TemplateData, templateVars map[str
 	}
 	if state != nil {
 		for _, rule := range state.Rules {
-			if rule.Kind != v6.RuleKindPreset || !rule.Enabled || rule.Ref == "" {
+			if rule.Kind != corestate.RuleKindPreset || !rule.Enabled || rule.Ref == "" {
 				continue
 			}
 			p := presetByID[rule.Ref]
@@ -210,7 +210,7 @@ func ResolveDNS(state *v6.State, td *template.TemplateData, templateVars map[str
 			if err != nil {
 				continue
 			}
-			pb := body.(*v6.PresetBody)
+			pb := body.(*corestate.PresetBody)
 			presetVars := buildPresetVarsMap(p, pb.Vars)
 
 			// 3a. DNS servers — все bundled, без consumption-фильтра.
@@ -260,9 +260,9 @@ func ResolveDNS(state *v6.State, td *template.TemplateData, templateVars map[str
 
 	// 4. USER: state.DNS.Servers[kind=user] + state.DNS.Rules[kind=user].
 	if state != nil {
-		for i := range state.DNSOptions.Servers {
-			srv := &state.DNSOptions.Servers[i]
-			if srv.Kind != v6.DNSServerKindUser {
+		for i := range state.DNS.Servers {
+			srv := &state.DNS.Servers[i]
+			if srv.Kind != corestate.DNSServerKindUser {
 				continue
 			}
 			body := make(map[string]interface{}, len(srv.Body)+1)
@@ -281,9 +281,9 @@ func ResolveDNS(state *v6.State, td *template.TemplateData, templateVars map[str
 				Enabled:  srv.Enabled,
 			})
 		}
-		for i := range state.DNSOptions.Rules {
-			r := &state.DNSOptions.Rules[i]
-			if r.Kind != v6.DNSRuleKindUser {
+		for i := range state.DNS.Rules {
+			r := &state.DNS.Rules[i]
+			if r.Kind != corestate.DNSRuleKindUser {
 				continue
 			}
 			body := make(map[string]interface{}, len(r.Body))
@@ -307,13 +307,13 @@ func ResolveDNS(state *v6.State, td *template.TemplateData, templateVars map[str
 	// State.DNSOptions scalars (для in-memory работы — обычно дублируют vars).
 	if state != nil {
 		if out.Strategy == "" {
-			out.Strategy = state.DNSOptions.Strategy
+			out.Strategy = state.DNS.Strategy
 		}
 		if out.Final == "" {
-			out.Final = state.DNSOptions.Final
+			out.Final = state.DNS.Final
 		}
 		if out.DefaultDomainResolver == "" {
-			out.DefaultDomainResolver = state.DNSOptions.DefaultDomainResolver
+			out.DefaultDomainResolver = state.DNS.DefaultDomainResolver
 		}
 	}
 
@@ -373,12 +373,12 @@ func bodyEnabled(body map[string]interface{}, fallback bool) bool {
 
 // stateTemplateEnabled — читает enabled override для kind=template entry в state.
 // Если state нет или entry нет — возвращает default.
-func stateTemplateEnabled(state *v6.State, tag string, defaultEnabled bool) bool {
+func stateTemplateEnabled(state *corestate.State, tag string, defaultEnabled bool) bool {
 	if state == nil {
 		return defaultEnabled
 	}
-	for _, s := range state.DNSOptions.Servers {
-		if s.Kind == v6.DNSServerKindTemplate && s.Tag == tag {
+	for _, s := range state.DNS.Servers {
+		if s.Kind == corestate.DNSServerKindTemplate && s.Tag == tag {
 			return s.Enabled
 		}
 	}
@@ -387,12 +387,12 @@ func stateTemplateEnabled(state *v6.State, tag string, defaultEnabled bool) bool
 
 // statePresetServerEnabled — читает enabled для kind=preset entry в state.
 // Если state нет или entry нет — возвращает default (true).
-func statePresetServerEnabled(state *v6.State, ref string, defaultEnabled bool) bool {
+func statePresetServerEnabled(state *corestate.State, ref string, defaultEnabled bool) bool {
 	if state == nil {
 		return defaultEnabled
 	}
-	for _, s := range state.DNSOptions.Servers {
-		if s.Kind == v6.DNSServerKindPreset && s.Ref == ref {
+	for _, s := range state.DNS.Servers {
+		if s.Kind == corestate.DNSServerKindPreset && s.Ref == ref {
 			return s.Enabled
 		}
 	}
@@ -400,12 +400,12 @@ func statePresetServerEnabled(state *v6.State, ref string, defaultEnabled bool) 
 }
 
 // statePresetRuleEnabled — readонй для kind=preset rule entry.
-func statePresetRuleEnabled(state *v6.State, ref string, defaultEnabled bool) bool {
+func statePresetRuleEnabled(state *corestate.State, ref string, defaultEnabled bool) bool {
 	if state == nil {
 		return defaultEnabled
 	}
-	for _, r := range state.DNSOptions.Rules {
-		if r.Kind == v6.DNSRuleKindPreset && r.Ref == ref {
+	for _, r := range state.DNS.Rules {
+		if r.Kind == corestate.DNSRuleKindPreset && r.Ref == ref {
 			return r.Enabled
 		}
 	}

@@ -279,9 +279,22 @@ func buildSinglePresetRefRow(
 	// Когда юзер выключит var управляющий remote rule_set (например geoip_enabled)
 	// → presetRefSRSEntries вернёт пустой list → облачко исчезнет.
 	var srsHF *fynewidget.HoverForwardTTButton
+	var srsWarn *ttwidget.Label
+	srsMissingEnabled := false
 	if len(srsEntries) > 0 && model.ExecDir != "" {
 		srsHF = makePresetSRSButton(presenter, model, guiState, srsEntries, showAddRuleDialog, pr, &enableOnSRSSuccess, rowGetter)
 		srsBtn = srsHF.TTWidget()
+		// SRS-warning badge: preset enabled в state но файлы не скачены →
+		// rule фактически не работает (sing-box упадёт на missing .srs).
+		// Visual ⚠ + auto-download silently в фоне ниже. Defensive против
+		// сценариев: (a) файлы потёрли вручную, (b) template добавил srs_url
+		// в уже-enabled preset, (c) load state'а с broken cache.
+		if pr.Enabled && !services.AllSRSDownloadedForEntries(model.ExecDir, srsEntries) {
+			srsMissingEnabled = true
+			srsWarn = ttwidget.NewLabel("⚠")
+			srsWarn.Importance = widget.WarningImportance
+			srsWarn.SetToolTip(locale.T("wizard.rules.tooltip_srs_missing_enabled"))
+		}
 	}
 
 	// Клик по label — тоггл checkbox'а (как в legacy custom rule row).
@@ -301,12 +314,35 @@ func buildSinglePresetRefRow(
 	}
 	var center fyne.CanvasObject = labelTap
 	if srsHF != nil {
-		center = container.NewBorder(nil, nil, nil, srsHF, labelTap)
+		// ⚠ slot — между center label'ом и srs download'ом, если SRS
+		// missing + preset enabled (см. srsMissingEnabled блок выше).
+		var srsCluster fyne.CanvasObject = srsHF
+		if srsWarn != nil {
+			srsCluster = container.NewHBox(srsWarn, srsHF)
+		}
+		center = container.NewBorder(nil, nil, nil, srsCluster, labelTap)
 	}
 	rowInner := container.NewBorder(nil, nil, leftLead, rightCluster, center)
 	row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
 	row.WireTooltipLabelHover(label)
 	rulesBox.Add(row)
+
+	// Auto-download silent: SRS missing у enabled preset'а — пробуем
+	// тихо скачать сразу. Failure не показывает popup (silent=true) —
+	// юзер увидит остающуюся ⚠ + ⬇ srs кнопку для ручного retry.
+	// Success path: refreshRulesTabFromPresenter пересоберёт row → srsWarn
+	// исчезнет, btn станет "✔️ srs". Cascade safety: success-path не
+	// re-kick'ает (после success !AllSRSDownloaded → false → check fails).
+	if srsMissingEnabled && srsHF != nil {
+		runSRSDownloadAsync(presenter, model, guiState, srsEntries, srsHF.TTWidget(), nil,
+			func() {
+				model.TemplatePreviewNeedsUpdate = true
+				// НЕ вызываем MarkAsChanged — это auto-fix, не user action.
+				refreshRulesTabFromPresenter(presenter, showAddRuleDialog)
+			},
+			true, /* silent */
+		)
+	}
 }
 
 // makePresetSRSButton — облачко скачивания remote rule_set'ов preset'а.
@@ -348,7 +384,7 @@ func makePresetSRSButton(
 			}
 			presenter.MarkAsChanged()
 			refreshRulesTabFromPresenter(presenter, showAddRuleDialog)
-		})
+		}, false /* manual click — показываем фейл-диалог */)
 	}
 	return btn
 }
@@ -377,11 +413,14 @@ func presetHasAddOutbounds(tpl *wizardtemplate.Preset) bool {
 	return false
 }
 
-// presetTileLabel — текст для tile preset-ref'а: label + non-default vars summary.
+// presetTileLabel — текст для tile preset-ref'а: 🔗 + label + non-default vars summary.
+// Префикс 🔗 — visual marker «правило из библиотеки пресетов» (kind=preset),
+// отличает от user-добавленных inline/srs (`+Add Rule`). Origin тривиально
+// читается из state: kind=preset → 🔗, остальное — пользовательское.
 // Возвращает (text, brokenRef): brokenRef=true когда preset не найден в template.
 func presetTileLabel(pr *wizardmodels.PresetRefState, tpl *wizardtemplate.Preset) (string, bool) {
 	if tpl == nil {
-		return fmt.Sprintf("⚠ Broken preset: %s", pr.Ref), true
+		return fmt.Sprintf("🔗 ⚠ Broken preset: %s", pr.Ref), true
 	}
 	labelText := tpl.Label
 	if labelText == "" {
@@ -390,7 +429,7 @@ func presetTileLabel(pr *wizardmodels.PresetRefState, tpl *wizardtemplate.Preset
 	if summary := summarizePresetVarsCompact(pr, tpl); summary != "" {
 		labelText += "  ·  " + summary
 	}
-	return labelText, false
+	return "🔗 " + labelText, false
 }
 
 func summarizePresetVarsCompact(pr *wizardmodels.PresetRefState, tpl *wizardtemplate.Preset) string {

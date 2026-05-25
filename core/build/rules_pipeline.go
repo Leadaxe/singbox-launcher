@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/template"
-	v6 "singbox-launcher/core/state/v6"
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/outboundutil"
 )
 
@@ -41,7 +41,7 @@ type RulesPipelineResult struct {
 func BuildRulesAndDNS(
 	presets []template.Preset,
 	templateDNSDefaults []TemplateDNSServer,
-	state *v6.State,
+	state *corestate.State,
 	srsCachedPaths map[string]string,
 ) RulesPipelineResult {
 	result := RulesPipelineResult{}
@@ -72,7 +72,7 @@ func BuildRulesAndDNS(
 
 	// Pass 1: expand active preset-refs + emit user inline/srs.
 	// Bundled DNS-серверы от preset'ов добавляются здесь же — это эквивалент
-	// "kind=preset" entries в state.DNSOptions.Servers[]. Финальный walk DNS
+	// "kind=preset" entries в state.DNS.Servers[]. Финальный walk DNS
 	// идёт в Pass 2 ниже (template + user).
 	for _, rule := range state.Rules {
 		if !rule.Enabled {
@@ -80,7 +80,7 @@ func BuildRulesAndDNS(
 		}
 
 		switch rule.Kind {
-		case v6.RuleKindPreset:
+		case corestate.RuleKindPreset:
 			p, ok := presetByID[rule.Ref]
 			if !ok {
 				result.Warnings = append(result.Warnings,
@@ -92,7 +92,7 @@ func BuildRulesAndDNS(
 				result.Warnings = append(result.Warnings, fmt.Sprintf("decode preset body for %q: %v", rule.Ref, err))
 				continue
 			}
-			pb := body.(*v6.PresetBody)
+			pb := body.(*corestate.PresetBody)
 
 			frags, warns, ok := ExpandPreset(p, pb.Vars)
 			for _, w := range warns {
@@ -122,13 +122,13 @@ func BuildRulesAndDNS(
 				}
 			}
 
-		case v6.RuleKindInline:
+		case corestate.RuleKindInline:
 			body, err := rule.DecodeBody()
 			if err != nil {
 				result.Warnings = append(result.Warnings, fmt.Sprintf("decode inline body: %v", err))
 				continue
 			}
-			ib := body.(*v6.InlineBody)
+			ib := body.(*corestate.InlineBody)
 			// SPEC 056 follow-up: emit user inline match напрямую в route.rules[],
 			// без rule_set обёртки — sing-box headless rule_set отвергает
 			// connection-level match-поля (protocol/inbound/...). См.
@@ -141,13 +141,13 @@ func BuildRulesAndDNS(
 			routeRule = outboundutil.ApplyOutboundToRule(routeRule, ib.Outbound)
 			result.RouteRules = append(result.RouteRules, routeRule)
 
-		case v6.RuleKindSrs:
+		case corestate.RuleKindSrs:
 			body, err := rule.DecodeBody()
 			if err != nil {
 				result.Warnings = append(result.Warnings, fmt.Sprintf("decode srs body: %v", err))
 				continue
 			}
-			sb := body.(*v6.SrsBody)
+			sb := body.(*corestate.SrsBody)
 			path, hasCache := srsCachedPaths[rule.ID]
 			if !hasCache {
 				result.Warnings = append(result.Warnings,
@@ -172,7 +172,7 @@ func BuildRulesAndDNS(
 		}
 	}
 
-	// Pass 2: walk state.DNSOptions.Servers[] — kind switch (SPEC 056-R-N).
+	// Pass 2: walk state.DNS.Servers[] — kind switch (SPEC 056-R-N).
 	//
 	// Template-defined серверы материализуются здесь (template entries в state
 	// хранят только {tag, enabled}; тело берётся из templateDNSDefaults).
@@ -184,14 +184,14 @@ func BuildRulesAndDNS(
 	}
 	presetVarsByID := make(map[string]map[string]string, len(state.Rules))
 	for _, r := range state.Rules {
-		if r.Kind != v6.RuleKindPreset || !r.Enabled {
+		if r.Kind != corestate.RuleKindPreset || !r.Enabled {
 			continue
 		}
 		body, err := r.DecodeBody()
 		if err != nil {
 			continue
 		}
-		pb := body.(*v6.PresetBody)
+		pb := body.(*corestate.PresetBody)
 		presetVarsByID[r.Ref] = pb.Vars
 	}
 
@@ -205,12 +205,12 @@ func BuildRulesAndDNS(
 	}
 
 	var templateDNSEmit []map[string]interface{}
-	for _, srv := range state.DNSOptions.Servers {
+	for _, srv := range state.DNS.Servers {
 		if !srv.Enabled {
 			continue
 		}
 		switch srv.Kind {
-		case v6.DNSServerKindTemplate:
+		case corestate.DNSServerKindTemplate:
 			d, ok := templateDNSByTag[srv.Tag]
 			if !ok || dnsServerSeenTags[srv.Tag] {
 				continue
@@ -222,13 +222,13 @@ func BuildRulesAndDNS(
 			templateDNSEmit = append(templateDNSEmit, cleaned)
 			dnsServerSeenTags[d.Tag] = true
 
-		case v6.DNSServerKindPreset:
+		case corestate.DNSServerKindPreset:
 			// Preset DNS-серверы уже эмитнуты в Pass 1 через ExpandPreset.
 			// Если по какой-то причине не эмитнули (Pass 1 skipped) — здесь
 			// тоже пропускаем (preset уже не активен, либо tag не consumed).
 			continue
 
-		case v6.DNSServerKindUser:
+		case corestate.DNSServerKindUser:
 			body := make(map[string]interface{}, len(srv.Body)+1)
 			for k, v := range srv.Body {
 				body[k] = v
@@ -251,16 +251,16 @@ func BuildRulesAndDNS(
 	// для golden tests / диагностики).
 	result.DNSServers = append(templateDNSEmit, result.DNSServers...)
 
-	// Pass 3: walk state.DNSOptions.Rules[] (SPEC 056-R-N).
-	for _, dr := range state.DNSOptions.Rules {
+	// Pass 3: walk state.DNS.Rules[] (SPEC 056-R-N).
+	for _, dr := range state.DNS.Rules {
 		if !dr.Enabled {
 			continue
 		}
 		switch dr.Kind {
-		case v6.DNSRuleKindPreset:
+		case corestate.DNSRuleKindPreset:
 			// Preset DNS rules уже эмитнуты в Pass 1 через ExpandPreset.
 			continue
-		case v6.DNSRuleKindUser:
+		case corestate.DNSRuleKindUser:
 			copy := make(map[string]interface{}, len(dr.Body))
 			for k, v := range dr.Body {
 				copy[k] = v
@@ -289,7 +289,7 @@ type TemplateDNSServer struct {
 //
 // Старая функция фильтровала template-defined серверы по effective_enabled
 // через `map[tag]TemplateServerOvr`. После рефактора template-эмит идёт через
-// flat walk по state.DNSOptions.Servers[kind=template] в Pass 2 BuildRulesAndDNS
+// flat walk по state.DNS.Servers[kind=template] в Pass 2 BuildRulesAndDNS
 // и в MergePresetsIntoDNS — каждый template entry знает свой Enabled flag
 // напрямую (no override map).
 

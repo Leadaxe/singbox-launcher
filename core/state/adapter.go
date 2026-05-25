@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
-	v5 "singbox-launcher/core/state/v5"
 )
 
 // syncConnectionsFromLegacy обновляет State.Connections на основе
@@ -81,7 +80,7 @@ func syncConnectionsFromLegacy(s *State) {
 				src.Update = existing.Update
 			}
 			if src.ID == "" {
-				src.ID = v5.MakeULID()
+				src.ID = MakeULID()
 			}
 			newSources = append(newSources, src)
 		}
@@ -102,7 +101,7 @@ func syncConnectionsFromLegacy(s *State) {
 				src.Label = serverLabelFromLegacy(uri, j+1, p.TagPrefix, p.TagPostfix)
 			}
 			if src.ID == "" {
-				src.ID = v5.MakeULID()
+				src.ID = MakeULID()
 			}
 			newSources = append(newSources, src)
 		}
@@ -120,7 +119,7 @@ func syncConnectionsFromLegacy(s *State) {
 	// Defaults.Reload — следуем legacy parser_config.parser.reload.
 	s.Connections.Defaults.Reload = s.ParserConfig.ParserConfig.Parser.Reload
 	if s.Connections.Defaults.MaxNodes == 0 {
-		s.Connections.Defaults.MaxNodes = v5.DefaultMaxNodes
+		s.Connections.Defaults.MaxNodes = DefaultMaxNodes
 	}
 }
 
