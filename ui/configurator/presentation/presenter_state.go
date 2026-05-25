@@ -458,6 +458,11 @@ func (p *WizardPresenter) restoreDNS(sf *wizardmodels.WizardStateFile) {
 	if sf.DNSOptions != nil {
 		wizardbusiness.LoadPersistedWizardDNS(p.model, sf.DNSOptions)
 	}
+	// SPEC 056 phase 7 regression fix: для v6-файлов sf.DNSOptions == nil,
+	// поэтому user-added DNS-сервера и user DNS rules (kind=user в sf.DNS)
+	// никем не восстанавливались — populateUserDNSFromState закрывает дыру.
+	// Идемпотентно: дедуп по tag, DNSRulesText трогаем только если пуст.
+	populateUserDNSFromState(p.model, sf.DNS)
 	// Старые state.json: тег только в config_params (до dns_* vars).
 	if !p.model.DefaultDomainResolverUnset && strings.TrimSpace(p.model.DefaultDomainResolver) == "" {
 		if dr := p.findConfigParamValue(sf.ConfigParams, "route.default_domain_resolver"); dr != "" {
