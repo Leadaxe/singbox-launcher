@@ -214,6 +214,161 @@ func TestStateDNSPatchBadKind(t *testing.T) {
 	}
 }
 
+// TestStateDNSRulesGet — returns USER rules as wizard-text {"rules":[...]}.
+// PRESET rules are filtered out (they don't have a text representation —
+// they're toggle-refs into the template).
+func TestStateDNSRulesGet(t *testing.T) {
+	st := state.New()
+	st.DNS = state.DNSOptions{
+		Rules: []state.DNSRule{
+			{Kind: state.DNSRuleKindPreset, Ref: "russian", Enabled: true},
+			{Kind: state.DNSRuleKindUser, Enabled: true, Body: map[string]interface{}{"domain": "example.com", "server": "cf"}},
+			{Kind: state.DNSRuleKindUser, Enabled: true, Body: map[string]interface{}{"domain": "internal.lan", "server": "pihole"}},
+		},
+	}
+	ff := &fakeFacade{stateValue: st}
+	base, _ := newTestServer(t, ff)
+	var got struct {
+		Text string `json:"text"`
+	}
+	status, _ := doJSON(t, authedReq(t, "GET", base+"/state/dns/rules", nil), &got)
+	if status != 200 {
+		t.Fatalf("status: %d", status)
+	}
+	// Sanity: parses back to 2 entries (preset was filtered out).
+	var root struct {
+		Rules []map[string]interface{} `json:"rules"`
+	}
+	if err := json.Unmarshal([]byte(got.Text), &root); err != nil {
+		t.Fatalf("unmarshal returned text: %v\ntext=%q", err, got.Text)
+	}
+	if len(root.Rules) != 2 {
+		t.Errorf("want 2 user rules in text, got %d: %s", len(root.Rules), got.Text)
+	}
+}
+
+// TestStateDNSRulesGetEmpty — no rules at all → empty text.
+func TestStateDNSRulesGetEmpty(t *testing.T) {
+	ff := &fakeFacade{stateValue: state.New()}
+	base, _ := newTestServer(t, ff)
+	var got struct {
+		Text string `json:"text"`
+	}
+	status, _ := doJSON(t, authedReq(t, "GET", base+"/state/dns/rules", nil), &got)
+	if status != 200 || got.Text != "" {
+		t.Errorf("status=%d text=%q (want 200 + empty)", status, got.Text)
+	}
+}
+
+// TestStateDNSRulesPatch — table-driven: text replaces USER rules;
+// PRESET rules are preserved across the PATCH.
+func TestStateDNSRulesPatch(t *testing.T) {
+	cases := []struct {
+		name           string
+		text           string
+		wantStatus     int
+		wantUserCount  int // expected USER-kind rules after save
+		wantPresetKept bool
+		wantInBody     string
+	}{
+		{
+			name:           "replace_two_objects",
+			text:           `{"rules":[{"domain":"a"},{"domain":"b"}]}`,
+			wantStatus:     200,
+			wantUserCount:  2,
+			wantPresetKept: true,
+		},
+		{
+			name:           "empty_clears_user",
+			text:           "",
+			wantStatus:     200,
+			wantUserCount:  0,
+			wantPresetKept: true,
+		},
+		{
+			name:           "legacy_multiline",
+			text:           "{\"domain\":\"a\"}\n# comment\n{\"domain\":\"b\"}",
+			wantStatus:     200,
+			wantUserCount:  2,
+			wantPresetKept: true,
+		},
+		{
+			name:           "single_object",
+			text:           `{"domain":"only"}`,
+			wantStatus:     200,
+			wantUserCount:  1,
+			wantPresetKept: true,
+		},
+		{
+			name:       "bad_text_not_object",
+			text:       `"just a string"`,
+			wantStatus: 422,
+			wantInBody: "expected JSON object",
+		},
+		{
+			name:       "bad_rules_field_type",
+			text:       `{"rules":"oops"}`,
+			wantStatus: 422,
+			wantInBody: "expected JSON array",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Seed: 1 preset + 1 user. After PATCH, preset should remain.
+			init := state.New()
+			init.DNS = state.DNSOptions{
+				Rules: []state.DNSRule{
+					{Kind: state.DNSRuleKindPreset, Ref: "russian", Enabled: true},
+					{Kind: state.DNSRuleKindUser, Enabled: true, Body: map[string]interface{}{"domain": "stale"}},
+				},
+			}
+			ff := &fakeFacade{stateValue: init}
+			base, _ := newTestServer(t, ff)
+
+			body, _ := json.Marshal(patchDNSRulesReq{Text: tc.text})
+			status, raw := doJSON(t, authedReq(t, "PATCH", base+"/state/dns/rules", body), nil)
+			if status != tc.wantStatus {
+				t.Fatalf("status: want %d, got %d body=%s", tc.wantStatus, status, raw)
+			}
+			if tc.wantInBody != "" && !strings.Contains(string(raw), tc.wantInBody) {
+				t.Errorf("body: want substring %q, got %s", tc.wantInBody, raw)
+			}
+			if tc.wantStatus != 200 {
+				return
+			}
+			if ff.savedState == nil {
+				t.Fatalf("savedState: nil after 200")
+			}
+			userN := 0
+			presetN := 0
+			for _, r := range ff.savedState.DNS.Rules {
+				switch r.Kind {
+				case state.DNSRuleKindUser:
+					userN++
+				case state.DNSRuleKindPreset:
+					presetN++
+				}
+			}
+			if userN != tc.wantUserCount {
+				t.Errorf("user count: want %d, got %d", tc.wantUserCount, userN)
+			}
+			if tc.wantPresetKept && presetN != 1 {
+				t.Errorf("preset kept: want 1, got %d", presetN)
+			}
+		})
+	}
+}
+
+// TestStateDNSRulesPatchBadJSON — malformed wrapper body (not {text:...}) → 400.
+func TestStateDNSRulesPatchBadJSON(t *testing.T) {
+	ff := &fakeFacade{stateValue: state.New()}
+	base, _ := newTestServer(t, ff)
+	status, raw := doJSON(t, authedReq(t, "PATCH", base+"/state/dns/rules", []byte(`{not json`)), nil)
+	if status != 400 {
+		t.Errorf("status: want 400, got %d body=%s", status, raw)
+	}
+}
+
 // TestStateOutboundsResolved — direct entry passes through; we don't
 // exercise the full template lookup here (the resolver itself has its own
 // tests under core/build/), just verify the endpoint shape.
@@ -260,6 +415,8 @@ func TestStateAuthGuard(t *testing.T) {
 		{"PATCH", "/state/rules"},
 		{"GET", "/state/dns"},
 		{"PATCH", "/state/dns"},
+		{"GET", "/state/dns/rules"},
+		{"PATCH", "/state/dns/rules"},
 		{"GET", "/state/outbounds/resolved"},
 	} {
 		t.Run(p.method+p.path, func(t *testing.T) {

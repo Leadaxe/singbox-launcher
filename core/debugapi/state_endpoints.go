@@ -11,6 +11,8 @@
 //	PATCH /state/rules                 — body {mode: replace|append, rules}
 //	GET   /state/dns                   — SPEC 056 dns_options section
 //	PATCH /state/dns                   — replace whole dns_options
+//	GET   /state/dns/rules             — wizard-text view of USER rules only
+//	PATCH /state/dns/rules             — body {text} → replace USER rules
 //	GET   /state/outbounds/resolved    — SPEC 057+058 merged outbounds view
 //
 // All mutations follow the SPEC 050 contract: validate → Save → respond.
@@ -177,6 +179,106 @@ func (s *Server) handleStateDNS(w http.ResponseWriter, r *http.Request) {
 			"ok": true,
 			"diff_summary": []string{fmt.Sprintf("dns: replace, %d servers / %d rules",
 				len(req.Servers), len(req.Rules))},
+		})
+
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET or PATCH required"})
+	}
+}
+
+// patchDNSRulesReq — body for PATCH /state/dns/rules.
+//
+// Тот же текст-формат, что принимает редактор визарда (`build.ParseDNSRulesText`):
+// {"rules":[...]}, голый массив, одиночный объект или legacy-многострочный.
+// Пустая строка → стереть все USER rules.
+type patchDNSRulesReq struct {
+	Text string `json:"text"`
+}
+
+// handleStateDNSRules — GET/PATCH /state/dns/rules.
+//
+// Это **текстовый вид только USER-правил** (kind=user) — тот же, что
+// показывает визард. PRESET-правила (toggle-ссылки на template.presets[*].dns_rule)
+// сюда не попадают и при PATCH сохраняются как есть. Этим эндпоинт
+// отличается от `PATCH /state/dns`, который заменяет всю секцию.
+//
+// SPEC 050 контракт: bad JSON → 400, парсинг текста → 422, save → 200.
+func (s *Server) handleStateDNSRules(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		st, err := s.facade.LoadState()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		// Соберём текст из USER-правил. Body — map[string]interface{},
+		// именно его принимает DNSRulesToText.
+		userRules := make([]interface{}, 0)
+		for _, rl := range st.DNS.Rules {
+			if rl.Kind == state.DNSRuleKindUser && rl.Body != nil {
+				userRules = append(userRules, rl.Body)
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"text": build.DNSRulesToText(userRules)})
+
+	case http.MethodPatch:
+		var req patchDNSRulesReq
+		if err := decodeJSONBody(r, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body: " + err.Error()})
+			return
+		}
+		parsed, perr := build.ParseDNSRulesText(req.Text)
+		if perr != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+				"error": "dns rules text: " + perr.Error(),
+				"field": "text",
+			})
+			return
+		}
+		st, err := s.facade.LoadState()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "load state: " + err.Error()})
+			return
+		}
+		// Считаем сколько USER-правил было до — для diff_summary.
+		beforeUser := 0
+		kept := make([]state.DNSRule, 0, len(st.DNS.Rules))
+		for _, rl := range st.DNS.Rules {
+			if rl.Kind == state.DNSRuleKindUser {
+				beforeUser++
+				continue
+			}
+			kept = append(kept, rl)
+		}
+		// USER-правила из parsed становятся новыми DNSRule с enabled=true
+		// (text-формат не несёт enabled-флаг — это совместимо с визардом,
+		// где переключатели у user-правил отсутствуют).
+		for _, p := range parsed {
+			m, ok := p.(map[string]interface{})
+			if !ok {
+				// build.ParseDNSRulesText гарантирует, что элементы — объекты,
+				// но защитимся от регресса.
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+					"error": "dns rules text: non-object entry after parse",
+					"field": "text",
+				})
+				return
+			}
+			kept = append(kept, state.DNSRule{
+				Kind:    state.DNSRuleKindUser,
+				Enabled: true,
+				Body:    m,
+			})
+		}
+		st.DNS.Rules = kept
+		if err := s.facade.SaveState(st); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "save state: " + err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok": true,
+			"diff_summary": []string{fmt.Sprintf("dns.rules[user]: replace, %d → %d entries",
+				beforeUser, len(parsed))},
 		})
 
 	default:

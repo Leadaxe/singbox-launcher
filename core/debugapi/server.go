@@ -185,6 +185,7 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("/state/full", s.handleStateFull)
 	protected.HandleFunc("/state/rules", s.handleStateRules)
 	protected.HandleFunc("/state/dns", s.handleStateDNS)
+	protected.HandleFunc("/state/dns/rules", s.handleStateDNSRules)
 	protected.HandleFunc("/state/outbounds/resolved", s.handleStateOutboundsResolved)
 
 	// SPEC 059: Traffic Profiler.

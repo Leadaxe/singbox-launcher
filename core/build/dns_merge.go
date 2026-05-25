@@ -245,6 +245,24 @@ func ParseDNSRulesText(text string) ([]interface{}, error) {
 	return rules, nil
 }
 
+// DNSRulesToText форматирует dns.rules как канонический объект
+// {"rules":[...]} с отступами. Зеркало `ParseDNSRulesText`.
+//
+// Пустой/nil rules → "" (вызывающий редактор обнулит свой буфер).
+//
+// Живёт в core/build чтобы дебаг-API (`GET /state/dns/rules`) мог отдавать
+// тот же текст, что показывает визард — без зависимости от UI-слоя.
+func DNSRulesToText(rules []interface{}) string {
+	if len(rules) == 0 {
+		return ""
+	}
+	b, err := json.MarshalIndent(map[string]interface{}{"rules": rules}, "", "  ")
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
 func parseDNSRulesArray(arr []interface{}) ([]interface{}, error) {
 	rules := make([]interface{}, 0, len(arr))
 	for i, item := range arr {
