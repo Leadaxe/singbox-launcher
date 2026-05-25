@@ -116,4 +116,58 @@ func TestFetchSubscriptionWithMeta_EmptyBody(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected empty-body error")
 	}
+	// No announce headers → plain "empty subscription body" error,
+	// NOT a FetchAnnounceError.
+	if _, ok := IsAnnounceError(err); ok {
+		t.Errorf("unexpected FetchAnnounceError for empty body without announce headers")
+	}
+}
+
+// TestFetchSubscriptionWithMeta_AnnounceError — provider gate: HTTP 200 +
+// empty body + announce headers → wraps the announce info into a
+// FetchAnnounceError so UI/CLI can render the provider's message + URL.
+func TestFetchSubscriptionWithMeta_AnnounceError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Announce", "base64:0JLRiyDQtNC+0YHRgtC40LPQvdGD0LvQuCDQu9C40LzQuNGC0LAg0YPRgdGC0YDQvtC50YHRgtCyIQ==")
+		w.Header().Set("Announce-Url", "https://t.me/nash_vpn_bot")
+		w.Header().Set("X-Hwid-Limit", "true")
+		w.Header().Set("Profile-Title", "base64:TmFzaFZQTg==")
+		w.WriteHeader(http.StatusOK)
+		// no body
+	}))
+	defer srv.Close()
+
+	_, err := FetchSubscriptionWithMeta(srv.URL)
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	ae, ok := IsAnnounceError(err)
+	if !ok {
+		t.Fatalf("expected FetchAnnounceError, got %T: %v", err, err)
+	}
+	if !ae.Announce.HWIDLimit {
+		t.Errorf("HWIDLimit = false")
+	}
+	if ae.Announce.URL != "https://t.me/nash_vpn_bot" {
+		t.Errorf("URL = %q", ae.Announce.URL)
+	}
+	if ae.Announce.ProfileTitle != "NashVPN" {
+		t.Errorf("ProfileTitle = %q", ae.Announce.ProfileTitle)
+	}
+	if !strings.HasPrefix(ae.Announce.Message, "Вы достиг") {
+		t.Errorf("Message decoded prefix wrong: %q", ae.Announce.Message)
+	}
+	// Error() should contain the title, message preview and URL so a flat
+	// UI label still surfaces something useful.
+	msg := err.Error()
+	for _, want := range []string{"NashVPN", "Вы достиг", "https://t.me/nash_vpn_bot"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("Error() = %q, missing substring %q", msg, want)
+		}
+	}
+	// errors.As + sentinel errors.Is plumbing — defensive smoke.
+	var sentinel *FetchAnnounceError
+	if !errors.As(err, &sentinel) {
+		t.Errorf("errors.As(*FetchAnnounceError) failed")
+	}
 }

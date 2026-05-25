@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"singbox-launcher/core/config/configtypes"
@@ -87,6 +88,53 @@ func (e *FetchHTTPError) Error() string {
 	return fmt.Sprintf("subscription server returned status %d (%s)", e.StatusCode, e.Hint)
 }
 
+// FetchAnnounceError — провайдер вернул HTTP 200 с **пустым телом** и
+// announce-headers, объясняющими причину (HWID-лимит, region-block,
+// expired trial, etc.). Это не «empty subscription body» в смысле
+// «пустая подписка» — это provider-side gate, и юзеру надо показать
+// что именно сказал провайдер + куда идти.
+//
+// errors.As вытаскивает структуру для UI: показать диалог с
+// message + кликабельной URL вместо плоской error-строки.
+//
+// Примеры в дикой природе:
+//
+//	NashVPN (Marzban-style):
+//	    announce: base64:<RU-сообщение про лимит устройств>
+//	    announce-url: https://t.me/nash_vpn_bot
+//	    x-hwid-limit: true
+//	    Body: 0 bytes
+//
+//	Sub-Store с истёкшим trial:
+//	    announce: Your trial has expired. Renew at the link.
+//	    announce-url: https://example.com/renew
+//	    Body: 0 bytes
+type FetchAnnounceError struct {
+	Announce ProviderAnnounce
+}
+
+func (e *FetchAnnounceError) Error() string {
+	a := e.Announce
+	var b strings.Builder
+	if a.ProfileTitle != "" {
+		b.WriteString(a.ProfileTitle)
+		b.WriteString(": ")
+	}
+	switch {
+	case a.Message != "":
+		b.WriteString(a.Message)
+	case a.HWIDLimit:
+		b.WriteString("subscription provider reports HWID/device limit reached")
+	default:
+		b.WriteString("subscription provider returned empty body with announce header")
+	}
+	if a.URL != "" {
+		b.WriteString("  →  ")
+		b.WriteString(a.URL)
+	}
+	return b.String()
+}
+
 // FetchSubscriptionWithMeta — расширенная версия FetchSubscription,
 // возвращающая raw body, decoded body и распарсенные header-derived
 // поля subscription metadata.
@@ -139,6 +187,14 @@ func FetchSubscriptionWithMeta(url string) (*FetchResult, error) {
 		return result, fmt.Errorf("read body: %w", err)
 	}
 	if len(rawBody) == 0 {
+		// Provider gate: HTTP 200 + 0 байт + announce headers → не «пустая
+		// подписка», а явное сообщение от провайдера (HWID-лимит, expired,
+		// region-block, …). Сохраняем как FetchAnnounceError чтобы UI мог
+		// показать декодированный текст + кликабельный URL вместо плоского
+		// «empty subscription body».
+		if a := ParseAnnounce(resp.Header); !a.IsEmpty() {
+			return result, &FetchAnnounceError{Announce: a}
+		}
 		return result, fmt.Errorf("empty subscription body")
 	}
 	if int64(len(rawBody)) > MaxSubscriptionResponseSize {
@@ -182,6 +238,17 @@ func IsHTTPError(err error) (*FetchHTTPError, bool) {
 	var httpErr *FetchHTTPError
 	if errors.As(err, &httpErr) {
 		return httpErr, true
+	}
+	return nil, false
+}
+
+// IsAnnounceError — convenience-обёртка чтобы UI/CLI могли вытащить
+// провайдерский announce + URL из ошибки и нарисовать actionable дialog
+// (кликабельный URL, кнопка «открыть бота») вместо плоского текста.
+func IsAnnounceError(err error) (*FetchAnnounceError, bool) {
+	var ae *FetchAnnounceError
+	if errors.As(err, &ae) {
+		return ae, true
 	}
 	return nil, false
 }

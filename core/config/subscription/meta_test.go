@@ -3,6 +3,7 @@ package subscription
 import (
 	"net/http"
 	"singbox-launcher/core/state"
+	"strings"
 	"testing"
 )
 
@@ -269,6 +270,87 @@ func TestParseContentDispositionFilename_Variants(t *testing.T) {
 }
 
 // isEmptyMeta — true если все поля meta пусты.
+// TestParseAnnounce_NashVPNStyle — реальный заголовочный набор от NashVPN
+// (sub.towersflowerss.com): HWID-лимит + base64 announce + telegram URL.
+func TestParseAnnounce_NashVPNStyle(t *testing.T) {
+	h := http.Header{}
+	// "Вы достигли лимита устройств! ..." (RU)
+	h.Set("Announce", "base64:0JLRiyDQtNC+0YHRgtC40LPQvdGD0LvQuCDQu9C40LzQuNGC0LAg0YPRgdGC0YDQvtC50YHRgtCyIQ==")
+	h.Set("Announce-Url", "https://t.me/nash_vpn_bot")
+	h.Set("X-Hwid-Limit", "true")
+	h.Set("Profile-Title", "base64:TmFzaFZQTg==") // "NashVPN"
+
+	a := ParseAnnounce(h)
+	if a.IsEmpty() {
+		t.Fatalf("expected non-empty announce, got %+v", a)
+	}
+	if !a.HWIDLimit {
+		t.Errorf("HWIDLimit = false")
+	}
+	if a.URL != "https://t.me/nash_vpn_bot" {
+		t.Errorf("URL = %q", a.URL)
+	}
+	if a.ProfileTitle != "NashVPN" {
+		t.Errorf("ProfileTitle = %q (want decoded \"NashVPN\")", a.ProfileTitle)
+	}
+	// Message decoded — should be Russian text starting with "Вы достигли".
+	if !strings.HasPrefix(a.Message, "Вы достиг") {
+		t.Errorf("Message decoded prefix = %q, want Russian \"Вы достиг...\"", a.Message)
+	}
+}
+
+// TestParseAnnounce_PlainText — provider шлёт announce БЕЗ base64-wrapping.
+func TestParseAnnounce_PlainText(t *testing.T) {
+	h := http.Header{}
+	h.Set("Announce", "Your trial has expired. Renew below.")
+	h.Set("Announce-Url", "https://example.com/renew")
+	a := ParseAnnounce(h)
+	if a.IsEmpty() || a.HWIDLimit {
+		t.Fatalf("got %+v", a)
+	}
+	if a.Message != "Your trial has expired. Renew below." {
+		t.Errorf("Message = %q", a.Message)
+	}
+}
+
+// TestParseAnnounce_HWIDLimitVariants — провайдеры пишут флаг по-разному.
+func TestParseAnnounce_HWIDLimitVariants(t *testing.T) {
+	cases := map[string]bool{
+		"true":  true,
+		"True":  true,
+		"TRUE":  true,
+		"1":     true,
+		"yes":   true,
+		"on":    true,
+		"false": false,
+		"0":     false,
+		"":      false, // missing → false
+		"maybe": false, // unknown → false
+	}
+	for v, want := range cases {
+		t.Run("v="+v, func(t *testing.T) {
+			h := http.Header{}
+			if v != "" {
+				h.Set("X-Hwid-Limit", v)
+			}
+			a := ParseAnnounce(h)
+			if a.HWIDLimit != want {
+				t.Errorf("HWIDLimit for %q = %v, want %v", v, a.HWIDLimit, want)
+			}
+		})
+	}
+}
+
+// TestParseAnnounce_NilAndEmpty — defensive.
+func TestParseAnnounce_NilAndEmpty(t *testing.T) {
+	if a := ParseAnnounce(nil); !a.IsEmpty() {
+		t.Errorf("nil → %+v", a)
+	}
+	if a := ParseAnnounce(http.Header{}); !a.IsEmpty() {
+		t.Errorf("empty → %+v", a)
+	}
+}
+
 func isEmptyMeta(m state.SubscriptionMeta) bool {
 	return m.UserInfo == nil &&
 		m.ProfileTitle == "" &&

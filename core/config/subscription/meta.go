@@ -26,7 +26,70 @@ const (
 	headerSupportURL            = "Support-Url"
 	headerProfileWebPageURL     = "Profile-Web-Page-Url"
 	headerContentDisposition    = "Content-Disposition"
+
+	// Announce-headers — провайдер шлёт их вместе с **пустым телом**, когда
+	// он не может вернуть подписку (HWID-лимит / region-block / expired
+	// trial / etc.). Без этого декода юзер видит только generic «empty
+	// subscription body» и не понимает что делать.
+	//
+	// Видел в дикой природе (Marzban / Sub-Store / NashVPN-style панели):
+	//
+	//   announce: base64:<UTF-8 message for the user>
+	//   announce-url: https://t.me/some_support_bot
+	//   x-hwid-limit: true
+	headerAnnounce    = "Announce"
+	headerAnnounceURL = "Announce-Url"
+	headerHWIDLimit   = "X-Hwid-Limit"
 )
+
+// ProviderAnnounce — header-derived причина почему провайдер вернул
+// пустое тело, в человекочитаемом виде. Собирается в meta.ParseAnnounce
+// + используется fetcher'ом как поле AnnounceError'а.
+//
+// Все поля optional: вызывающий проверяет `IsEmpty()`.
+type ProviderAnnounce struct {
+	Message      string // decoded из `Announce` (base64 → UTF-8)
+	URL          string // `Announce-Url` (raw)
+	HWIDLimit    bool   // `X-Hwid-Limit: true` → флаг для UI «лимит устройств»
+	ProfileTitle string // `Profile-Title` decoded — для контекста («какая подписка»)
+}
+
+// IsEmpty — true если ни одно поле не заполнено (значит провайдер не
+// прислал announce headers и fallback'аться на generic-сообщение).
+func (a ProviderAnnounce) IsEmpty() bool {
+	return a.Message == "" && a.URL == "" && !a.HWIDLimit && a.ProfileTitle == ""
+}
+
+// ParseAnnounce — вытаскивает provider-announce headers (см. константы выше)
+// из ответа. Возвращает «пустой» ProviderAnnounce если ни одного нет —
+// caller через IsEmpty решает, нужно ли заворачивать в специальную ошибку.
+//
+// Декодит `Announce` через тот же `decodeProfileTitle` helper (handles
+// `base64:` prefix + auto-detect bare base64), потому что провайдеры
+// шлют announce ровно тем же способом.
+func ParseAnnounce(h http.Header) ProviderAnnounce {
+	var a ProviderAnnounce
+	if h == nil {
+		return a
+	}
+	if v := strings.TrimSpace(h.Get(headerAnnounce)); v != "" {
+		a.Message = decodeProfileTitle(v)
+	}
+	if v := strings.TrimSpace(h.Get(headerAnnounceURL)); v != "" {
+		a.URL = v
+	}
+	if v := strings.TrimSpace(h.Get(headerHWIDLimit)); v != "" {
+		// «true» / «1» / «yes» — все trueish; всё остальное — false.
+		switch strings.ToLower(v) {
+		case "true", "1", "yes", "on":
+			a.HWIDLimit = true
+		}
+	}
+	if v := strings.TrimSpace(h.Get(headerProfileTitle)); v != "" {
+		a.ProfileTitle = decodeProfileTitle(v)
+	}
+	return a
+}
 
 // ParseHeaders — извлекает метаданные подписки из HTTP response headers.
 //
