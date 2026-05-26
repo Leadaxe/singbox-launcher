@@ -12,17 +12,18 @@ import (
 // between releases, this test fails fast and pinpoints the regex to fix
 // (rather than letting the profiler silently emit nothing).
 //
-// The fixture file is intentionally `.gitignore`d (line in `.gitignore`:
-// `*.log` matches it) because real sing-box logs may carry user-specific
-// metadata. Developers reproduce it locally by copying a slice of their
-// `bin/logs/sing-box.log`. On CI the file is absent — we skip rather than
-// fail, so the test stays useful locally without blocking the pipeline.
+// The fixture file `testdata/sing-box-logs/sample.log` is sanitized
+// (no real user data) and checked into the repo via a `.gitignore`
+// exception (`!internal/traffic/testdata/sing-box-logs/*.log`). The
+// surrounding `*.log` rule still protects runtime logs under `bin/logs/`.
+// The os.IsNotExist branch below is a belt-and-suspenders skip so the
+// test degrades to SKIP (not FAIL) if the fixture ever goes missing again.
 func TestParseLogLine_KnownSamples(t *testing.T) {
 	path := filepath.Join("testdata", "sing-box-logs", "sample.log")
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			t.Skipf("fixture missing (gitignored, see SPEC 059); skipping. To enable locally, drop a sing-box log slice at %s", path)
+			t.Skipf("fixture missing at %s — sanitized golden log expected to be in repo via .gitignore exception", path)
 		}
 		t.Fatalf("open sample log: %v", err)
 	}

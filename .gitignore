@@ -50,6 +50,9 @@ desktop.ini
 # Logs
 logs/*.log
 *.log
+# Allow golden test fixtures (sanitized sample sing-box logs for parser tests).
+# These are intentionally checked in so CI doesn't skip TestParseLogLine_*.
+!internal/traffic/testdata/sing-box-logs/*.log
 
 # Temporary files
 *.tmp

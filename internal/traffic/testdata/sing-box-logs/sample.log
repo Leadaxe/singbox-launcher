@@ -1,0 +1,10 @@
+2026-05-24 12:34:15 INFO  [12345] dns: exchanged A cdn.t-bank-app.ru. -> 193.17.93.194
+2026-05-24 12:34:15 INFO  [12345] dns: exchanged AAAA cdn.t-bank-app.ru. -> 2a02:6b8::1
+2026-05-24 12:34:15 INFO  [12346] dns: exchanged CNAME certs.t-bank-app.ru. -> eq09pc7nbi.a.trbcdn.net.
+2026-05-24 12:34:15 INFO  [12346] dns: exchanged A eq09pc7nbi.a.trbcdn.net. -> 81.222.127.186
+2026-05-24 12:34:16 WARN  [12347] dns: exchange failed for certs.t-bank-app.ru: context deadline exceeded
+2026-05-24 12:34:17 INFO  [12348] router: found process name: /Applications/Slack.app/Contents/MacOS/Slack
+2026-05-24 12:34:17 INFO  [12348] router: match[domain_suffix=example.com] => route(vpn-1)
+2026-05-24 12:34:17 INFO  [12348] inbound/tun[tun-in]: outbound connection to 1.2.3.4:443
+2026-05-24 12:34:18 INFO  [12349] dns: exchanged A api.example.com. -> 5.6.7.8
+2026-05-24 12:34:18 INFO  [12349] inbound/tun[tun-in]: outbound connection to api.example.com:443
