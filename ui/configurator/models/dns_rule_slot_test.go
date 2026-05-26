@@ -1,6 +1,25 @@
 package models
 
-import "testing"
+import (
+	"testing"
+
+	"singbox-launcher/core/template"
+)
+
+// templateWithDNSPresets builds a minimal TemplateData where each preset
+// listed in `ids` has a non-nil dns_rule fragment — enough for
+// presetHasDNSRuleInModel to return true and the reconcile filter to
+// keep / append the matching slot.
+func templateWithDNSPresets(ids ...string) *template.TemplateData {
+	td := &template.TemplateData{}
+	for _, id := range ids {
+		td.Presets = append(td.Presets, template.Preset{
+			ID:      id,
+			DNSRule: map[string]interface{}{"domain": "x.example", "server": "any"},
+		})
+	}
+	return td
+}
 
 func TestRebuildDNSRuleOrder_EmptyModel(t *testing.T) {
 	m := &WizardModel{}
@@ -20,6 +39,7 @@ func TestRebuildDNSRuleOrder_UsersThenPresets(t *testing.T) {
 			{Ref: "preset1"},
 			{Ref: "preset2"},
 		},
+		TemplateData: templateWithDNSPresets("preset1", "preset2"),
 	}
 	RebuildDNSRuleOrder(m)
 	if len(m.DNSRuleOrder) != 4 {
@@ -50,6 +70,7 @@ func TestReconcileDNSRuleOrder_DropsStaleSlots(t *testing.T) {
 			{Kind: DNSSlotKindPresetRef, Index: 0},
 			{Kind: DNSSlotKindPresetRef, Index: 5}, // stale
 		},
+		TemplateData: templateWithDNSPresets("p1"),
 	}
 	ReconcileDNSRuleOrder(m)
 	if len(m.DNSRuleOrder) != 2 {
@@ -77,6 +98,7 @@ func TestReconcileDNSRuleOrder_AppendsMissing(t *testing.T) {
 			{Kind: DNSSlotKindUser, Index: 0},
 			{Kind: DNSSlotKindPresetRef, Index: 0},
 		},
+		TemplateData: templateWithDNSPresets("p1", "p2"),
 	}
 	ReconcileDNSRuleOrder(m)
 	if len(m.DNSRuleOrder) != 4 {
@@ -88,6 +110,53 @@ func TestReconcileDNSRuleOrder_AppendsMissing(t *testing.T) {
 	}
 	if m.DNSRuleOrder[3].Kind != DNSSlotKindPresetRef || m.DNSRuleOrder[3].Index != 1 {
 		t.Errorf("slot[3] wrong: %+v", m.DNSRuleOrder[3])
+	}
+}
+
+// TestReconcileDNSRuleOrder_FiltersPresetsWithoutDNSRule — regression for the
+// «down arrow stays active on the last visible row» bug: preset-refs that
+// don't carry a `dns_rule` fragment (route-only presets like Private IPs,
+// Block Ads) used to occupy DNSRuleOrder slots that the UI rendered as
+// invisible, making the «is last row?» check overcount. Now they're
+// filtered out so DNSRuleOrder.length matches the number of rendered rows.
+func TestReconcileDNSRuleOrder_FiltersPresetsWithoutDNSRule(t *testing.T) {
+	// Template: only "russian" has a dns_rule; "private-ips" and
+	// "block-ads" are route-only presets (no DNS contribution).
+	td := &template.TemplateData{
+		Presets: []template.Preset{
+			{ID: "private-ips" /* no DNSRule */},
+			{ID: "russian", DNSRule: map[string]interface{}{"domain_suffix": []interface{}{"ru"}, "server": "ru_dns"}},
+			{ID: "block-ads" /* no DNSRule */},
+		},
+	}
+	m := &WizardModel{
+		DNSUserRules: []DNSUserRule{
+			{Enabled: true, Body: map[string]interface{}{"domain": "mysite.ru"}},
+		},
+		PresetRefs: []*PresetRefState{
+			{Ref: "private-ips"},
+			{Ref: "russian"},
+			{Ref: "block-ads"},
+		},
+		TemplateData: td,
+	}
+	ReconcileDNSRuleOrder(m)
+	// Expect 2 slots: 1 user + 1 preset (russian only); private-ips and
+	// block-ads are filtered out because they have no dns_rule.
+	if len(m.DNSRuleOrder) != 2 {
+		t.Fatalf("expected 2 slots after filter, got %d: %+v", len(m.DNSRuleOrder), m.DNSRuleOrder)
+	}
+	// User slot kept; preset slot points at PresetRefs index 1 (russian).
+	wantPreset := DNSRuleSlot{Kind: DNSSlotKindPresetRef, Index: 1}
+	foundPreset := false
+	for _, s := range m.DNSRuleOrder {
+		if s == wantPreset {
+			foundPreset = true
+			break
+		}
+	}
+	if !foundPreset {
+		t.Errorf("expected slot %+v in DNSRuleOrder, got %+v", wantPreset, m.DNSRuleOrder)
 	}
 }
 

@@ -64,6 +64,14 @@ func RebuildDNSRuleOrder(m *WizardModel) {
 // ReconcileDNSRuleOrder — добавляет недостающие slots для свежесозданных
 // rules и удаляет slots ссылающиеся на отсутствующие индексы. Безопасно после
 // add/delete операций.
+//
+// SPEC 062 specifics: preset-ref slots only count if the preset actually has
+// a `dns_rule` in the template. Bare route-rule presets ("Private IPs", "Block
+// Ads") would otherwise occupy DNSRuleOrder entries that the UI renders as
+// invisible (buildSingleDNSPresetRuleRow returns early on no-dns-rule),
+// which makes the «is last visible row?» check overcount and leaves the down
+// arrow active on what looks like the last row. Filter them out here so
+// DNSRuleOrder.length matches the number of rows actually rendered.
 func ReconcileDNSRuleOrder(m *WizardModel) {
 	if m == nil {
 		return
@@ -79,7 +87,8 @@ func ReconcileDNSRuleOrder(m *WizardModel) {
 		}
 	}
 
-	// Pass 1: keep valid existing slots (drop slots pointing past end).
+	// Pass 1: keep valid existing slots (drop slots pointing past end OR
+	// pointing at a preset with no dns_rule fragment).
 	kept := make([]DNSRuleSlot, 0, len(m.DNSRuleOrder))
 	for _, s := range m.DNSRuleOrder {
 		switch s.Kind {
@@ -88,7 +97,8 @@ func ReconcileDNSRuleOrder(m *WizardModel) {
 				kept = append(kept, s)
 			}
 		case DNSSlotKindPresetRef:
-			if s.Index >= 0 && s.Index < len(m.PresetRefs) {
+			if s.Index >= 0 && s.Index < len(m.PresetRefs) &&
+				presetHasDNSRuleInModel(m, m.PresetRefs[s.Index].Ref) {
 				kept = append(kept, s)
 			}
 		}
@@ -101,12 +111,28 @@ func ReconcileDNSRuleOrder(m *WizardModel) {
 		}
 	}
 	for i := range m.PresetRefs {
-		if !presetSeen[i] {
+		if !presetSeen[i] && presetHasDNSRuleInModel(m, m.PresetRefs[i].Ref) {
 			kept = append(kept, DNSRuleSlot{Kind: DNSSlotKindPresetRef, Index: i})
 		}
 	}
 
 	m.DNSRuleOrder = kept
+}
+
+// presetHasDNSRuleInModel — true if the template-preset with given ref ID
+// defines a `dns_rule` fragment. Walks model.TemplateData.Presets; returns
+// false if TemplateData is missing or the preset isn't found (defensive —
+// caller treats unknown presets as «no DNS contribution»).
+func presetHasDNSRuleInModel(m *WizardModel, ref string) bool {
+	if m == nil || m.TemplateData == nil || ref == "" {
+		return false
+	}
+	for i := range m.TemplateData.Presets {
+		if m.TemplateData.Presets[i].ID == ref {
+			return m.TemplateData.Presets[i].PresetHasDNSRule()
+		}
+	}
+	return false
 }
 
 // CompactDNSRuleOrderIndices — пересчитывает индексы slot'ов после удаления
