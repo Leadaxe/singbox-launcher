@@ -76,9 +76,9 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	// табстрип реально перечитал текст. Безопасно вызывать с UI-thread
 	// (caller wrap'ит в fyne.Do).
 	//
-	//   ▶️ Core   — stopped / idle (приглашение «нажми Start»)
-	//   🟢 Core   — running (зелёный кружок = «активно»)
-	//   🔄 Core   — restarting (тот же индикатор что у status row)
+	// Status-indicator paradigm (как у media-плеера):
+	//   ⏸️ Core  — stopped / idle (sing-box не запущен)
+	//   ▶️ Core  — running (sing-box активен)
 	//
 	// База берётся из локали (`Core` / `Ядро` / etc), эмодзи приклеивается
 	// тут чтобы не плодить per-state ключи в каждой локали.
@@ -95,9 +95,9 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 		var icon string
 		switch {
 		case controller.RunningState != nil && controller.RunningState.IsRunning():
-			icon = "🟢"
-		default:
 			icon = "▶️"
+		default:
+			icon = "⏸️"
 		}
 		coreTabItem.Text = icon + " " + coreLabelBase
 		app.tabs.Refresh()
