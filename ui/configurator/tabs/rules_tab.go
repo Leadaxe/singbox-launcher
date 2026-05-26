@@ -31,6 +31,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
+	"singbox-launcher/core/build"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
@@ -59,6 +60,14 @@ func srsBtnDone() string     { return locale.T("wizard.rules.button_srs_done") }
 
 // srsEntriesTooltip возвращает строку URL для tooltip кнопки SRS.
 // customRuleSRSEntries возвращает записи SRS для строки правила, если это пресет с rule_sets; иначе ok=false.
+//
+// Tag override (issue #77): GetSRSEntries возвращает entries с tag'ом из
+// rule_set JSON-поля (wizard заполняет его, обычно из URL filename). Мы
+// перезаписываем его на build.SRSTagFromURL — это единственный источник
+// правды о filename'е user-SRS файла во всех 3 местах: downloader →
+// CollectSrsCachedPaths → orphan GC (collectAllStageRuleSetTags). Без
+// override был bug: файл сохранялся под одним именем, sing-box искал под
+// другим (r.ID-based), orphan GC удалял реально-скачанный файл.
 func customRuleSRSEntries(customRule *wizardmodels.RuleState) (entries []services.SRSEntry, ok bool) {
 	if customRule == nil {
 		return nil, false
@@ -66,7 +75,11 @@ func customRuleSRSEntries(customRule *wizardmodels.RuleState) (entries []service
 	if wizardmodels.DetermineRuleType(customRule.Rule.Rule) != wizardmodels.RuleTypeSRS || len(customRule.Rule.RuleSets) == 0 {
 		return nil, false
 	}
-	return services.GetSRSEntries(customRule.Rule.RuleSets), true
+	entries = services.GetSRSEntries(customRule.Rule.RuleSets)
+	for i := range entries {
+		entries[i].Tag = build.SRSTagFromURL(entries[i].URL)
+	}
+	return entries, true
 }
 
 func srsEntriesTooltip(entries []services.SRSEntry) string {

@@ -729,6 +729,24 @@ func collectAllStageRuleSetTags(execDir string, td *template.TemplateData) []str
 				}
 			}
 		}
+		// Issue #77: user-defined kind=srs rule'ы тоже keep'аются. Файл
+		// сохраняется downloader'ом под `build.SRSTagFromURL(SrsURL)`;
+		// без этой ветки orphan GC удалял бы реально-скачанный файл при
+		// каждом save, ломая user-SRS правила.
+		for _, r := range s.Rules {
+			if r.Kind != state.RuleKindSrs {
+				continue
+			}
+			body, err := r.DecodeBody()
+			if err != nil {
+				continue
+			}
+			sb, ok := body.(*state.SrsBody)
+			if !ok || sb.SrsURL == "" {
+				continue
+			}
+			addTag(build.SRSTagFromURL(sb.SrsURL))
+		}
 	}
 
 	out := make([]string, 0, len(tagSet))
