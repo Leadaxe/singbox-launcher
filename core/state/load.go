@@ -255,6 +255,14 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 				"format": "binary",
 				"url":    sb.SrsURL,
 			})
+			// SPEC 063 follow-up: edit dialog re-derives rule type через
+			// DetermineRuleType(cr.Rule) и игнорирует stored cr.Type. Чтобы
+			// SRS rule после re-open не превратилось в "Custom JSON",
+			// в cr.Rule кладём rule_set placeholder с identity-based тегом
+			// (тот же, что эмитит build/rules_pipeline.go: "user:" + StableRuleID).
+			// Это чисто UI-hint — build path не использует cr.Rule для SRS,
+			// он берёт state.Rules напрямую.
+			tag := "user:" + StableRuleID(r)
 			cr := CustomRule{
 				Label:            sb.Name,
 				Type:             RuleTypeSRS,
@@ -263,6 +271,7 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 				HasOutbound:      true,
 				RuleSet:          []json.RawMessage{rsRaw},
 				Rule: map[string]interface{}{
+					"rule_set": tag,
 					"outbound": sb.Outbound,
 				},
 			}
