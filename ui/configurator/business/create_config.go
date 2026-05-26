@@ -137,7 +137,14 @@ func BuildPreviewConfig(model *wizardmodels.WizardModel) (string, error) {
 		model.RuleOrder, model.PresetRefs, model.CustomRules,
 	)
 	templateDNSTags := extractTemplateDNSTagsLocal(model.TemplateData)
-	dnsV6 := wizardmodels.SyncDNSFullToStateV6(
+	// SPEC 062-F-N: same order-aware DNS sync as CreateStateFromModel so
+	// preview matches what Save would emit (preset + user rules interleaved
+	// per DNSRuleOrder).
+	wizardmodels.ReconcileDNSRuleOrder(model)
+	dnsV6 := wizardmodels.SyncDNSByOrderToState(
+		model.DNSRuleOrder,
+		model.PresetRefs,
+		model.DNSUserRules,
 		model.DNSServers,
 		model.DNSRulesText,
 		model.DNSTemplateOverrides,
