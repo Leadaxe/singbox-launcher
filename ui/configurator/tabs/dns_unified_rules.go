@@ -22,6 +22,7 @@ import (
 	"singbox-launcher/core/build"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/fynewidget"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
@@ -254,6 +255,7 @@ func moveDNSSlotUp(presenter *wizardpresentation.WizardPresenter, model *wizardm
 	}
 	model.DNSRuleOrder[slotIdx], model.DNSRuleOrder[slotIdx-1] = model.DNSRuleOrder[slotIdx-1], model.DNSRuleOrder[slotIdx]
 	model.TemplatePreviewNeedsUpdate = true
+	wizardbusiness.InvalidatePreviewCache(model) // drop cached preview so Preview tab reflects new order
 	presenter.MarkAsChanged()
 	if refreshAll != nil {
 		refreshAll()
@@ -266,6 +268,7 @@ func moveDNSSlotDown(presenter *wizardpresentation.WizardPresenter, model *wizar
 	}
 	model.DNSRuleOrder[slotIdx], model.DNSRuleOrder[slotIdx+1] = model.DNSRuleOrder[slotIdx+1], model.DNSRuleOrder[slotIdx]
 	model.TemplatePreviewNeedsUpdate = true
+	wizardbusiness.InvalidatePreviewCache(model) // drop cached preview so Preview tab reflects new order
 	presenter.MarkAsChanged()
 	if refreshAll != nil {
 		refreshAll()

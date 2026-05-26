@@ -117,10 +117,17 @@ func BuildPreviewConfig(model *wizardmodels.WizardModel) (string, error) {
 		},
 		ForPreview: true,
 		DNS: build.DNSConfig{
-			Servers:   model.DNSServers,
-			RulesText: model.DNSRulesText,
-			Final:     model.DNSFinal,
-			Strategy:  model.DNSStrategy,
+			Servers: model.DNSServers,
+			// SPEC 062: user DNS rules now flow through ctx.Preset.DNS.Rules
+			// (populated below via SyncDNSByOrderToState) so they emit in
+			// DNSRuleOrder, NOT before preset rules. The legacy RulesText
+			// path of MergeDNSSection would double-emit them (once here,
+			// once from MergePresetsIntoDNS) and pin user rules to the top
+			// regardless of the user's drag order. Mirrors what the
+			// Save→rebuild path does via core/config_service.go::dnsConfigForUpdate
+			// — that one also leaves RulesText empty when v6 state is active.
+			Final:    model.DNSFinal,
+			Strategy: model.DNSStrategy,
 			// SPEC: IndependentCache removed (sing-box 1.14 deprecation).
 		},
 		Route: routeConfigFromModel(model),
