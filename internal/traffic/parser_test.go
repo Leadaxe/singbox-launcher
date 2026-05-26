@@ -11,10 +11,19 @@ import (
 // asserts kind + key field for each line. If sing-box log format changes
 // between releases, this test fails fast and pinpoints the regex to fix
 // (rather than letting the profiler silently emit nothing).
+//
+// The fixture file is intentionally `.gitignore`d (line in `.gitignore`:
+// `*.log` matches it) because real sing-box logs may carry user-specific
+// metadata. Developers reproduce it locally by copying a slice of their
+// `bin/logs/sing-box.log`. On CI the file is absent — we skip rather than
+// fail, so the test stays useful locally without blocking the pipeline.
 func TestParseLogLine_KnownSamples(t *testing.T) {
 	path := filepath.Join("testdata", "sing-box-logs", "sample.log")
 	f, err := os.Open(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			t.Skipf("fixture missing (gitignored, see SPEC 059); skipping. To enable locally, drop a sing-box log slice at %s", path)
+		}
 		t.Fatalf("open sample log: %v", err)
 	}
 	defer func() { _ = f.Close() }()
