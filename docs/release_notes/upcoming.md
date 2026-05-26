@@ -11,7 +11,7 @@
 
 ### Technical / Internal
 
-- `ui/wizard_overlay.go::wizardOverlayEnabled` (const `bool`) gates the legacy main-window click-redirect overlay. Default `false`. Flip to `true` to restore the «wizard owns the foreground» UX without ripping out the implementation. The wizard's *internal* `ChildWindowsOverlay` (used over wizard tabs while a child dialog is open) is independent and unchanged. See `docs/WIZARD_CHILD_WINDOWS.md` § «Main-window overlay (separate, opt-in)».
+- `ui/wizard_overlay.go::wizardOverlayEnabled` (const `bool`) gates the legacy main-window click-redirect overlay. Default `false`. Flip to `true` to restore the «wizard owns the foreground» UX without ripping out the implementation. The wizard's *internal* `ChildWindowsOverlay` (used over wizard tabs while a child dialog is open) is independent and unchanged.
 
 ## RU
 ### Основное
@@ -20,4 +20,4 @@
 
 ### Техническое / Внутреннее
 
-- `ui/wizard_overlay.go::wizardOverlayEnabled` (const `bool`) — фича-флаг legacy-overlay'я главного окна. Default `false`. Поставь `true` — вернётся прежнее поведение «wizard захватывает фокус». Внутренний wizard'овый `ChildWindowsOverlay` (над wizard-табами когда открыто child-окно) — независим и не тронут. Подробности в `docs/WIZARD_CHILD_WINDOWS.md` § «Main-window overlay (separate, opt-in)».
+- `ui/wizard_overlay.go::wizardOverlayEnabled` (const `bool`) — фича-флаг legacy-overlay'я главного окна. Default `false`. Поставь `true` — вернётся прежнее поведение «wizard захватывает фокус». Внутренний wizard'овый `ChildWindowsOverlay` (над wizard-табами когда открыто child-окно) — независим и не тронут.

@@ -131,7 +131,18 @@ func (p *WizardPresenter) DialogParent() fyne.Window {
 	return nil
 }
 
-// Child windows contract: see docs/WIZARD_CHILD_WINDOWS.md (register on open, unregister on close, UpdateChildOverlay, single instance for View/Edit).
+// Child windows contract:
+//   - On open: Set*Window(win) + UpdateChildOverlay().
+//   - On close: Clear*Window() + UpdateChildOverlay().
+//   - View / Outbound Edit are single-instance — before creating a new one
+//     check OpenViewWindow() / OpenOutboundEditWindow() and RequestFocus()
+//     on the existing window instead of opening a duplicate.
+//   - Rule dialogs use a map (`OpenRuleDialogs`) keyed by rule index; only
+//     one is open at a time but the indexing is preserved so a re-open
+//     reuses the same key.
+//
+// See `docs/ARCHITECTURE.md` UIService entry for the relation with
+// `FocusOpenChildWindows` / `wizardOverlayEnabled`.
 
 // OpenViewWindow returns the open View (source servers) window if any.
 func (p *WizardPresenter) OpenViewWindow() fyne.Window { return p.openViewWindow }
