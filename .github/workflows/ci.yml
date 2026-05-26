@@ -677,12 +677,27 @@ jobs:
           SLUG="${SLUG//./-}"
           SRC="docs/release_notes/${SLUG}.md"
 
+          # Prerelease fallback to upcoming.md when exact slug file is missing.
+          # Rationale: prerelease slug embeds the HEAD short SHA via git describe,
+          # but adding a release-notes commit shifts HEAD to a new SHA — so any
+          # file you pre-create has a name based on parent's SHA, never matches
+          # what CI computes on the post-commit HEAD. This is a structural
+          # chicken-and-egg in the doc'd flow. Falling back to the canonical
+          # upcoming.md draft makes prereleases usable without manual SHA
+          # gymnastics. Stable releases (`vX.Y.Z` tag → SLUG=X-Y-Z) keep the
+          # strict requirement: that file MUST exist.
+          if [ ! -f "$SRC" ] && [ "$PRERELEASE" = "true" ] && [ -f "docs/release_notes/upcoming.md" ]; then
+            echo "::notice::Prerelease release-notes file '$SRC' not found — falling back to docs/release_notes/upcoming.md (see RELEASE_PROCESS.md §2 chicken-and-egg note)."
+            SRC="docs/release_notes/upcoming.md"
+          fi
+
           if [ ! -f "$SRC" ]; then
             echo "::error file=$SRC::Release notes file not found for version '$VERSION'."
             echo "::error::Expected path: $SRC"
             echo "::error::Create this file BEFORE triggering the release. See docs/RELEASE_PROCESS.md."
             if [ "$PRERELEASE" = "true" ]; then
-              echo "::error::For a prerelease, compute the slug locally with:"
+              echo "::error::Prerelease fallback also failed: docs/release_notes/upcoming.md is missing."
+              echo "::error::Either populate upcoming.md OR pre-create the exact per-SHA file:"
               echo "::error::  VER=\"\$(git describe --tags --always --exclude='*-prerelease')-prerelease\""
               echo "::error::  SLUG=\"\${VER#v}\"; SLUG=\"\${SLUG//./-}\""
               echo "::error::  echo \"docs/release_notes/\${SLUG}.md\""
