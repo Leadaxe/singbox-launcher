@@ -71,8 +71,12 @@ func dnsRuleSummary(rule map[string]interface{}) (title, tooltip string) {
 	addList("ip_cidr", "cidr=")
 	addList("rule_set", "rule_set=")
 
+	// Note: NO `→ ` prefix here — the unified rules list (dns_unified_rules.go)
+	// adds its own `→ ` per row to mark user-rule vs `🔗` for preset-rule.
+	// Embedding the arrow in the summary led to a double-arrow «→ → server»
+	// when both wrappers ran. Keep this string clean; UI decorates.
 	if server, ok := rule["server"].(string); ok && server != "" {
-		title = "→ " + server + "  ·  " + strings.Join(parts, " · ")
+		title = server + "  ·  " + strings.Join(parts, " · ")
 	} else {
 		title = strings.Join(parts, " · ")
 	}
