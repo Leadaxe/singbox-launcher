@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v0.9.8
+
+Plumbing + quality релиз поверх v0.9.7: **sing-box обновлён до 1.13.12** на modern и Win7-legacy сборках, **Win7-релиз теперь корректно показывает версию** (раньше шёл с `v-local-test` из-за бага в CI ldflags), задокументирован **workaround OpenGL через Mesa3D** для старого Win7-железа (Intel HD 1xxx-2xxx), **главное окно теперь работает параллельно с конфигуратором** (был невидимый overlay, который перехватывал клики), **вкладка DNS Rules стала единым ordered списком** с drag ↑↓ (preset 🔗 и user → правила можно перемешивать). За кулисами: **README переписан** вокруг platform-level позиционирования с 6 hero-скриншотами + 3 независимых CI-бага найдены и исправлены (Win7 ldflags инжектил в несуществующий символ, Windows test-фейлы молча проглатывались `set ERRORLEVEL` трапом, Linux/macOS падал на `.gitignore`-проглоченной фикстуре).
+
+**Полный список изменений:** [docs/release_notes/0-9-8.md](docs/release_notes/0-9-8.md).
+
+### Highlights (EN) — v0.9.8
+
+Plumbing + quality release on top of v0.9.7: **sing-box bumped to 1.13.12** on both modern and Win7-legacy builds, **Win7 release now reports the correct version** (was shipping with `v-local-test` due to a CI ldflags bug), **Mesa3D OpenGL workaround documented** for legacy Win7 hardware (Intel HD 1xxx-2xxx), **main window now usable in parallel with the configurator** (an invisible overlay was intercepting clicks), **DNS Rules tab is now a single ordered list** with drag ↑↓ (preset 🔗 and user → rules can be freely interleaved). Behind the scenes: **README rewrite** around platform-level positioning with 6 hero screenshots + 3 independent CI bugs found and fixed (Win7 ldflags injecting into a non-existent symbol, Windows test failures silently swallowed by a `set ERRORLEVEL` trap, Linux/macOS failing on a `.gitignore`-swallowed fixture).
+
+**Full changelog:** [docs/release_notes/0-9-8.md](docs/release_notes/0-9-8.md).
+
+---
+
 ### Выжимка (RU) — v0.9.7
 
 Quality-of-life релиз поверх v0.9.6: появился **Профайлер трафика** (новое окно с вкладки Diagnostics — live DNS/TCP/UDP события с привязкой к процессам, per-process recording, verbose toggle). Починили две неприятные регрессии — user-добавленные **DNS-серверы и правила** больше не пропадают после reopen configurator'а, и dropdown «Saved states» на главном экране теперь спрашивает перед перезаписью текущего state.json (раньше тихо стирал). **Правила** стали понятнее: preset-правила из библиотеки префиксованы 🔗, а если у enabled preset'а .srs файл не скачан — появляется ⚠ и launcher тихо скачивает в фоне. Debug API получил ~15 новых endpoint'ов по SPEC 053–059 для скриптинга/автоматизации.
