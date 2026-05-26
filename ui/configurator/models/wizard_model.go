@@ -122,6 +122,19 @@ type WizardModel struct {
 	// См. rule_slot.go для подробностей.
 	RuleOrder []RuleSlot
 
+	// DNSUserRules — типизированный список user-defined DNS rules
+	// (SPEC 062-F-N). Replaces JSON-string `DNSRulesText` для primary editing.
+	// `DNSRulesText` остаётся для raw-JSON editor toggle (см. DNSUserRulesFromText
+	// / DNSUserRulesToText в dns_user_rule.go).
+	DNSUserRules []DNSUserRule
+
+	// DNSRuleOrder — упорядоченный список slot'ов для DNS Rules секции в DNS tab
+	// (SPEC 062-F-N). Зеркало RuleOrder для route rules. Каждый slot ссылается
+	// либо на DNSUserRules[i], либо на PresetRefs[i].dns_rule. Определяет порядок
+	// отображения и порядок эмита в state.DNS.Rules[].
+	// См. dns_rule_slot.go.
+	DNSRuleOrder []DNSRuleSlot
+
 	// SettingsVars — переопределения вкладки Settings (name → value); пустое значение ключа = дефолт шаблона.
 	SettingsVars map[string]string `json:"-"`
 
