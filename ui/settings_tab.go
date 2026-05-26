@@ -5,6 +5,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
@@ -244,7 +245,11 @@ func buildSubscriptionIdentificationBlock(ac *core.AppController, binDir string)
 	}
 
 	hwidLabel := widget.NewLabel(locale.T("settings.hwid_label"))
-	hwidRow := container.NewBorder(nil, nil, hwidLabel, regenBtn, hwidEntry)
+	// UUIDv4 is 36 chars; pin entry width to ~360px so the row doesn't
+	// stretch the whole Settings tab (and thus the entire app window).
+	// GridWrap forces a fixed cell size — entry won't grow horizontally.
+	hwidEntryFixed := container.New(layout.NewGridWrapLayout(fyne.NewSize(360, hwidEntry.MinSize().Height)), hwidEntry)
+	hwidRow := container.NewHBox(hwidLabel, hwidEntryFixed, regenBtn, layout.NewSpacer())
 
 	return container.NewVBox(
 		sendHWIDCheck,
