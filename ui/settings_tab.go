@@ -115,6 +115,10 @@ func CreateSettingsTab(ac *core.AppController) fyne.CanvasObject {
 	// langSelect stretches; button stays compact on the right.
 	langRow := container.NewBorder(nil, nil, langLabel, downloadLocalesBtn, langSelect)
 
+	// ---- Subscription identification (SPEC 061 Phase 4) -------------------
+	subIDTitle := widget.NewLabelWithStyle(locale.T("settings.section_subscription_identification"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	subIDBlock := buildSubscriptionIdentificationBlock(ac, binDir)
+
 	content := container.NewVBox(
 		subsTitle,
 		autoUpdateCheck,
@@ -122,6 +126,153 @@ func CreateSettingsTab(ac *core.AppController) fyne.CanvasObject {
 		widget.NewSeparator(),
 		langTitle,
 		langRow,
+		widget.NewSeparator(),
+		subIDTitle,
+		subIDBlock,
 	)
 	return container.NewPadded(content)
+}
+
+// buildSubscriptionIdentificationBlock — SPEC 061 Phase 4 controls:
+//
+//   - Checkbox "Send device identification to providers" — toggles all
+//     four X-Hwid-* request headers. Writes to Settings.SubscriptionSendHWID
+//     (pointer to distinguish "explicitly false" from "default nil = true").
+//
+//   - Checkbox "Hash device model" — if checked, X-Device-Model is sent
+//     as sha256(model)[:16] instead of raw "MacBookPro18,1". Disabled
+//     (greyed) when send_hwid is off — no headers go out anyway.
+//
+//   - Entry "Device ID (HWID)" + Regenerate button — exposes the
+//     random-UUIDv4 identifier. Editing accepts any 8-4-4-4-12 hex form
+//     (loose validation — providers don't validate version/variant bits;
+//     advanced users may want to paste their old install's UUID to keep
+//     the same device slot at the provider). Regenerate prompts before
+//     overwriting since it can burn a device slot.
+//
+// Layout: stack of rows in a VBox, each row a Border / HBox so labels
+// stay left, controls fill right.
+func buildSubscriptionIdentificationBlock(ac *core.AppController, binDir string) fyne.CanvasObject {
+	st := locale.LoadSettings(binDir)
+	// Lazy-generate HWID on first open so the entry isn't blank for a
+	// first-time visit; persist immediately so the row's current display
+	// matches what the launcher will send on the next subscription fetch.
+	if st.HWID == "" {
+		_ = st.EnsureHWID()
+		if err := locale.SaveSettings(binDir, st); err != nil {
+			debuglog.WarnLog("settings_tab: persist lazy-generated HWID: %v", err)
+		}
+	}
+
+	// --- send_hwid checkbox
+	sendHWIDCheck := ttwidget.NewCheck(locale.T("settings.send_hwid_label"), nil)
+	sendHWIDCheck.SetChecked(st.ShouldSendHWID())
+	sendHWIDCheck.SetToolTip(locale.T("settings.send_hwid_tooltip"))
+
+	// --- hash_model checkbox
+	hashModelCheck := ttwidget.NewCheck(locale.T("settings.hash_device_model_label"), nil)
+	hashModelCheck.SetChecked(st.SubscriptionDeviceModelHashed)
+	hashModelCheck.SetToolTip(locale.T("settings.hash_device_model_tooltip"))
+	if !st.ShouldSendHWID() {
+		hashModelCheck.Disable() // greyed when whole HWID send is off
+	}
+
+	// --- HWID entry + Regenerate
+	hwidEntry := widget.NewEntry()
+	hwidEntry.SetText(st.HWID)
+
+	regenBtn := widget.NewButton(locale.T("settings.hwid_regenerate"), nil)
+
+	// Wire send_hwid first so hashModelCheck.Enable/Disable can react.
+	sendHWIDCheck.OnChanged = func(checked bool) {
+		cur := locale.LoadSettings(binDir)
+		b := checked
+		cur.SubscriptionSendHWID = &b
+		if err := locale.SaveSettings(binDir, cur); err != nil {
+			debuglog.WarnLog("settings_tab: save subscription_send_hwid: %v", err)
+		}
+		if checked {
+			hashModelCheck.Enable()
+		} else {
+			hashModelCheck.Disable()
+		}
+	}
+
+	hashModelCheck.OnChanged = func(checked bool) {
+		cur := locale.LoadSettings(binDir)
+		cur.SubscriptionDeviceModelHashed = checked
+		if err := locale.SaveSettings(binDir, cur); err != nil {
+			debuglog.WarnLog("settings_tab: save subscription_device_model_hashed: %v", err)
+		}
+	}
+
+	hwidEntry.OnChanged = func(text string) {
+		// Loose UUID validation: 8-4-4-4-12 hex, case-insensitive. Empty
+		// is invalid (would leave us without an identifier on next fetch).
+		if !looksLikeUUID(text) {
+			return // wait for more characters; don't toast on every keystroke
+		}
+		cur := locale.LoadSettings(binDir)
+		cur.HWID = text
+		if err := locale.SaveSettings(binDir, cur); err != nil {
+			debuglog.WarnLog("settings_tab: save hwid: %v", err)
+		}
+	}
+
+	regenBtn.OnTapped = func() {
+		// Confirm — burning a fresh UUID means the next fetch registers
+		// as a new device at HWID-binding providers, consuming one of N
+		// allowed slots. Once accepted, the old UUID is dead until the
+		// user removes it via the provider's management bot.
+		ShowConfirm(
+			ac.UIService.MainWindow,
+			locale.T("settings.hwid_regenerate_confirm_title"),
+			locale.T("settings.hwid_regenerate_confirm_body"),
+			func(ok bool) {
+				if !ok {
+					return
+				}
+				newID := locale.GenerateUUIDv4()
+				hwidEntry.SetText(newID)
+				cur := locale.LoadSettings(binDir)
+				cur.HWID = newID
+				if err := locale.SaveSettings(binDir, cur); err != nil {
+					debuglog.WarnLog("settings_tab: save regenerated hwid: %v", err)
+				}
+			},
+		)
+	}
+
+	hwidLabel := widget.NewLabel(locale.T("settings.hwid_label"))
+	hwidRow := container.NewBorder(nil, nil, hwidLabel, regenBtn, hwidEntry)
+
+	return container.NewVBox(
+		sendHWIDCheck,
+		hashModelCheck,
+		hwidRow,
+	)
+}
+
+// looksLikeUUID — 8-4-4-4-12 hex check, case-insensitive. We don't
+// require RFC 4122 version/variant bits because the provider won't
+// either; advanced users may paste any UUID-shaped string from an
+// older install to keep their device slot.
+func looksLikeUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, r := range s {
+		switch i {
+		case 8, 13, 18, 23:
+			if r != '-' {
+				return false
+			}
+		default:
+			isHex := (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
+			if !isHex {
+				return false
+			}
+		}
+	}
+	return true
 }
