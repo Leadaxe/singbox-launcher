@@ -6,6 +6,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
@@ -165,24 +166,45 @@ func buildSubscriptionIdentificationBlock(ac *core.AppController, binDir string)
 		}
 	}
 
-	// --- send_hwid checkbox
-	sendHWIDCheck := ttwidget.NewCheck(locale.T("settings.send_hwid_label"), nil)
-	sendHWIDCheck.SetChecked(st.ShouldSendHWID())
-	sendHWIDCheck.SetToolTip(locale.T("settings.send_hwid_tooltip"))
+	// helpDialog — common pattern for the long-form explanations that
+	// used to sit on the checkbox label. Short label + tiny "?" button
+	// next to it; click opens a modal with the full text. Same shape
+	// we use elsewhere in the app (singboxHelpBtn et al.).
+	helpDialog := func(title, body string) func() {
+		return func() {
+			ShowInfo(ac.UIService.MainWindow, title, body)
+		}
+	}
 
-	// --- hash_model checkbox
-	hashModelCheck := ttwidget.NewCheck(locale.T("settings.hash_device_model_label"), nil)
+	// --- send_hwid checkbox + "?" help
+	sendHWIDCheck := widget.NewCheck(locale.T("settings.send_hwid_label"), nil)
+	sendHWIDCheck.SetChecked(st.ShouldSendHWID())
+	sendHWIDHelp := widget.NewButton("?", helpDialog(
+		locale.T("settings.send_hwid_label"),
+		locale.T("settings.send_hwid_tooltip"),
+	))
+	sendHWIDHelp.Importance = widget.LowImportance
+	sendHWIDRow := container.NewHBox(sendHWIDCheck, sendHWIDHelp)
+
+	// --- hash_model checkbox + "?" help
+	hashModelCheck := widget.NewCheck(locale.T("settings.hash_device_model_label"), nil)
 	hashModelCheck.SetChecked(st.SubscriptionDeviceModelHashed)
-	hashModelCheck.SetToolTip(locale.T("settings.hash_device_model_tooltip"))
+	hashModelHelp := widget.NewButton("?", helpDialog(
+		locale.T("settings.hash_device_model_label"),
+		locale.T("settings.hash_device_model_tooltip"),
+	))
+	hashModelHelp.Importance = widget.LowImportance
+	hashModelRow := container.NewHBox(hashModelCheck, hashModelHelp)
 	if !st.ShouldSendHWID() {
 		hashModelCheck.Disable() // greyed when whole HWID send is off
 	}
 
-	// --- HWID entry + Regenerate
+	// --- HWID entry + Regenerate (icon-only — text moved to tooltip)
 	hwidEntry := widget.NewEntry()
 	hwidEntry.SetText(st.HWID)
 
-	regenBtn := widget.NewButton(locale.T("settings.hwid_regenerate"), nil)
+	regenBtn := ttwidget.NewButtonWithIcon("", theme.ViewRefreshIcon(), nil)
+	regenBtn.SetToolTip(locale.T("settings.hwid_regenerate"))
 
 	// Wire send_hwid first so hashModelCheck.Enable/Disable can react.
 	sendHWIDCheck.OnChanged = func(checked bool) {
@@ -253,8 +275,8 @@ func buildSubscriptionIdentificationBlock(ac *core.AppController, binDir string)
 	hwidRow := container.NewHBox(hwidLabel, hwidEntryFixed, regenBtn, layout.NewSpacer())
 
 	return container.NewVBox(
-		sendHWIDCheck,
-		hashModelCheck,
+		sendHWIDRow,
+		hashModelRow,
 		hwidRow,
 	)
 }

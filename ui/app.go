@@ -8,6 +8,7 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
+	uiicons "singbox-launcher/ui/icons"
 )
 
 // App manages the UI structure and tabs.
@@ -37,8 +38,10 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	}
 
 	// Create tabs - Core is first (opens on startup)
-	// Создаем вкладку Core первой, чтобы её callback установился
-	coreTabItem := container.NewTabItem(locale.T("app.tab.core"), CreateCoreDashboardTab(controller))
+	// Создаем вкладку Core первой, чтобы её callback установился.
+	// Lightning icon via custom SVG (theme has no Bolt — Fyne font has
+	// no glyph for ⚡ U+26A1 even with VS-16, so emoji-in-label is out).
+	coreTabItem := container.NewTabItemWithIcon(locale.T("app.tab.core"), uiicons.Bolt, CreateCoreDashboardTab(controller))
 	app.clashAPITab = container.NewTabItem(locale.T("app.tab.servers"), CreateClashAPITab(controller))
 	app.tabs = container.NewAppTabs(
 		coreTabItem,
