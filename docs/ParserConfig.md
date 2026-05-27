@@ -4,7 +4,25 @@
 
 ## Назначение
 
-Парсер обновляет файл `bin/config.json`, загружая подписки (поддерживаются протоколы: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, WireGuard, **NaïveProxy**), фильтруя и группируя их в селекторы. Результат записывается в секции между маркерами `/** @ParserSTART */` и `/** @ParserEND */` (outbounds), а узлы WireGuard — между `/** @ParserSTART_E */` и `/** @ParserEND_E */` (endpoints). Секция **endpoints** (WireGuard) поддерживается в sing-box начиная с версии **1.11**.
+Парсер обновляет файл `bin/config.json`, загружая подписки (см. таблицу [«Поддерживаемые протоколы»](#поддерживаемые-протоколы) ниже — 9 протоколов: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard), фильтруя и группируя их в селекторы. Результат записывается в секции между маркерами `/** @ParserSTART */` и `/** @ParserEND */` (outbounds), а узлы WireGuard — между `/** @ParserSTART_E */` и `/** @ParserEND_E */` (endpoints). Секция **endpoints** (WireGuard) поддерживается в sing-box начиная с версии **1.11**.
+
+### Поддерживаемые протоколы
+
+| # | Схема URI | sing-box `type` | Секция конфига | Версия / build-tag | Описание |
+|---|-----------|-----------------|----------------|--------------------|----------|
+| 1 | `vless://` | `vless` | `outbounds[]` | core | TCP/raw/ws/grpc/http/`xhttp`(→`httpupgrade`)/quic, TLS, Reality, Vision flow. |
+| 2 | `vmess://` | `vmess` | `outbounds[]` | core | Base64 JSON или legacy cleartext `method:uuid@host:port`. `net=h2`→`http`+TLS, `net=xhttp/httpupgrade`→`httpupgrade`. |
+| 3 | `trojan://` | `trojan` | `outbounds[]` | core | Те же transport/TLS, что и VLESS. Пароль в userinfo. |
+| 4 | `ss://` | `shadowsocks` | `outbounds[]` | core | SIP002 + legacy `ss://base64("method:password@host:port")`. Методы — фиксированный allow-list (2022-blake3, AEAD GCM, ChaCha20-Poly1305). |
+| 5 | `hysteria2://`, `hy2://` | `hysteria2` | `outbounds[]` | core (QUIC) | Multi-port (`mport`/`ports` query или `host:123,5000-6000` в authority); obfs только `salamander`. |
+| 6 | `ssh://` | `ssh` | `outbounds[]` | core | **Собственный URI-диалект singbox-launcher**, не RFC. Inline-ключ / путь к ключу / passphrase / host_key. |
+| 7 | `socks5://`, `socks://` | `socks` (version=5) | `outbounds[]` | core | User/pass опциональны. Поле фильтра `scheme` сохраняет оригинал (`socks5` vs `socks`). |
+| 8 | `naive+https://`, `naive+quic://` | `naive` | `outbounds[]` | **sing-box ≥ 1.13.0** + build tag **`with_naive_proxy`** (Apple/Android/Windows-сборки SagerNet ОК; минимальный Linux отвергает в runtime) | DuckSoft 2020 URI-диалект. `extra-headers=` (CRLF-разделённые пары). TLS только `server_name`. |
+| 9 | `wireguard://` | `wireguard` | **`endpoints[]`** | **sing-box ≥ 1.11** | Один peer; маркеры `@ParserSTART_E`/`@ParserEND_E`. Default port 51820, mtu 1420. |
+
+**Не поддерживаются** (явно, не реализованы): **TUIC**, **AnyTLS**, **ShadowTLS**, **Mieru**, **Hysteria 1** (только v2), **ShadowsocksR / SSR**, **Tor**, plain HTTP-proxy как тип ноды (URL `http(s)://...` — это всегда **источник подписки**, не нода). Селекторы (`selector`, `urltest`, `direct`, `block`, `dns`) — не URI-протоколы; собираются на стороне ParserConfig (см. [секцию `outbounds`](#секция-outbounds)).
+
+Подробности по каждой схеме (query-параметры, TLS, transport, edge cases) — в разделе [Форматы URI для прямых ссылок](#форматы-uri-для-прямых-ссылок) ниже.
 
 ### JSON-массив полных конфигов Xray/V2Ray
 
@@ -132,8 +150,10 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
       // Список источников прокси-серверов
       "proxies": [
         {
-          // URL подписки (Base64 или plain-текст)
-          // Поддерживаются: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SOCKS5, WireGuard
+          // URL подписки (Base64, plain-текст или JSON-массив конфигов Xray)
+          // Поддерживаются: VLESS, VMess, Trojan, Shadowsocks, Hysteria2,
+          // SSH, SOCKS5, NaïveProxy, WireGuard. См. таблицу «Поддерживаемые
+          // протоколы» в начале документа.
           "source": "https://your-subscription-url.com/subscription",
           
           // Прямые ссылки на прокси-серверы (необязательно)
@@ -274,8 +294,8 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 
 | Поле          | Тип      | Обязательное | Описание |
 |---------------|----------|--------------|----------|
-| `source`      | string   | Да           | URL подписки (поддерживаются протоколы: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, WireGuard). Допускаются Base64 и plain-текст; также **JSON-массив** полных конфигов Xray (`[ {...}, ... ]`), см. выше. |
-| `connections` | array    | Нет          | Массив прямых ссылок (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, socks5:// или socks://, wireguard://). Можно комбинировать с подписками. Узлы WireGuard попадают в секцию `endpoints` конфига (требуется sing-box 1.11+). Подробнее о форматах URI см. раздел [Форматы URI для прямых ссылок](#форматы-uri-для-прямых-ссылок). |
+| `source`      | string   | Да           | URL подписки. Все 9 протоколов из таблицы [«Поддерживаемые протоколы»](#поддерживаемые-протоколы): VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard. Допускаются Base64 и plain-текст; также **JSON-массив** полных конфигов Xray (`[ {...}, ... ]`), см. выше. |
+| `connections` | array    | Нет          | Массив прямых ссылок. Все 9 схем из таблицы [«Поддерживаемые протоколы»](#поддерживаемые-протоколы): `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`/`hy2://`, `ssh://`, `socks5://`/`socks://`, `naive+https://`/`naive+quic://`, `wireguard://`. Можно комбинировать с подписками. Узлы WireGuard попадают в секцию `endpoints` конфига (sing-box ≥ 1.11). NaïveProxy требует sing-box ≥ 1.13.0 + build tag `with_naive_proxy`. Подробнее — раздел [Форматы URI для прямых ссылок](#форматы-uri-для-прямых-ссылок). |
 | `skip`        | array    | Нет          | Список фильтров. Если хотя бы один совпал — узел пропускается. |
 | `tag_prefix`  | string   | Нет          | Префикс, добавляемый ко всем тегам узлов из этого источника (версия 4). Применяется перед оригинальным тегом. Поддерживает переменные: `{$tag}`, `{$scheme}`, `{$protocol}`, `{$server}`, `{$port}`, `{$label}`, `{$comment}`, `{$num}`. Игнорируется, если указан `tag_mask`. |
 | `tag_postfix` | string   | Нет          | Постфикс, добавляемый ко всем тегам узлов из этого источника (версия 4). Применяется после оригинального тега. Поддерживает те же переменные, что и `tag_prefix`. Игнорируется, если указан `tag_mask`. |
@@ -520,15 +540,16 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
    - Для каждой прямой ссылки из `proxies[].connections`:
      - Парсится прямая ссылка (vless://, vmess://, trojan://, ss://, hysteria2:// или hy2://, ssh://, socks5:// или socks://, wireguard://) и добавляется в список прокси
 
-3. **Поддерживаемые протоколы**
-   - ✅ VLESS
-   - ✅ VMess
-   - ✅ Trojan
-   - ✅ Shadowsocks (SS)
-   - ✅ Hysteria2
-   - ✅ SSH
-   - ✅ SOCKS5 (socks5://, socks:// — outbound type "socks")
-   - ✅ WireGuard (попадает в секцию endpoints; sing-box 1.11+)
+3. **Поддерживаемые протоколы** (полная матрица — см. таблицу в начале документа)
+   - ✅ **VLESS** (`vless://`)
+   - ✅ **VMess** (`vmess://`)
+   - ✅ **Trojan** (`trojan://`)
+   - ✅ **Shadowsocks / SS** (`ss://` — SIP002 + legacy)
+   - ✅ **Hysteria2** (`hysteria2://` и короткая форма `hy2://`)
+   - ✅ **SSH** (`ssh://` — собственный URI-диалект singbox-launcher)
+   - ✅ **SOCKS5** (`socks5://`, `socks://` — outbound type `socks`, version=5)
+   - ✅ **NaïveProxy** (`naive+https://`, `naive+quic://` — sing-box ≥ 1.13.0 + build tag `with_naive_proxy`)
+   - ✅ **WireGuard** (`wireguard://` — секция `endpoints[]`; sing-box ≥ 1.11)
 
 4. **Извлечение информации**
    - Из каждого URI извлекается:
@@ -542,7 +563,7 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
    - Узлы с дублирующимися тегами автоматически переименовываются (добавляется суффикс `-2`, `-3` и т.д.)
 
 6. **Генерация JSON узлов**
-   - Узлы VLESS/VMess/Trojan/SS/Hysteria2/SSH/SOCKS5 сериализуются в outbounds; узлы WireGuard — в endpoints (sing-box 1.11+)
+   - Узлы VLESS / VMess / Trojan / SS / Hysteria2 / SSH / SOCKS5 / **NaïveProxy** сериализуются в `outbounds[]`; узлы WireGuard — в `endpoints[]` (sing-box ≥ 1.11)
    - Комментарии выводятся из `label`
    - Порядок полей оптимизирован для читаемости
 
@@ -582,8 +603,10 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 - `host` / `Host` — для WS → заголовок `Host`; если `host` и `sni` в query нет, для WS используется **`obfsParam`**. Если есть `host` или `sni`, они имеют приоритет. Для HTTP/httpupgrade — поле `host` транспорта (регистр ключа `Host` в query учитывается)
 - `headerType` — вместе с `type=raw` или `tcp` и значением `http` задаёт транспорт типа HTTP (обфускация), см. отчёт 023
 - `serviceName` / `service_name` — имя gRPC-сервиса → `transport.service_name`
-- `packetEncoding` — например `xudp` → поле outbound `packet_encoding`, см. [доку VLESS](https://sing-box.sagernet.org/configuration/outbound/vless/)
+- `packetEncoding` — поле outbound `packet_encoding`. **Allow-list:** только `xudp`, `packetaddr`, `none` (включая пустое значение). Любое другое значение **отбрасывается с warning** в `debuglog` — sing-box не примёт неизвестные. См. [доку VLESS](https://sing-box.sagernet.org/configuration/outbound/vless/)
 - `mode`, `spx`, `extra`, `quicSecurity`, `authority` — часто встречаются в ссылках Xray/панелей; в документированный клиентский JSON sing-box **не переносятся**, на разбор ссылки не влияют
+
+**⚠️ Vision на UDP:443 — авто-перезапись порта.** Если `flow=xtls-rprx-vision-udp443`, парсер **принудительно** ставит `server_port=443` (независимо от порта в URI) и `packet_encoding=xudp`. Семантика flow — XTLS Vision поверх UDP-трафика к стандартному 443. Если ваш сервер слушает Vision на нестандартном порту, используйте `flow=xtls-rprx-vision` (без `-udp443` суффикса).
 
 **Пример:**
 ```
@@ -615,7 +638,7 @@ JSON должен содержать поля:
 
 **Сборка outbound с TLS для VMess:** `tls.server_name` берётся из `sni`, при отсутствии — из поля **`peer`** в query (если провайдер продублировал имя в `peer`), иначе — **адрес сервера** (`add`). Флаги **`insecure` / `allowInsecure` / `allowinsecure`** в query обрабатываются так же, как для VLESS (`tlsInsecureTrue`).
 
-**Legacy (не JSON):** в query допускаются, например, `type=ws`, `path`, `tls=1` — они маппятся в `transport` и `tls` так же, как у URI-протоколов с query.
+**Legacy cleartext (не JSON):** парсер также принимает `vmess://base64("method:uuid@host:port?query")` — старый формат, используемый частью клиентов (V2RayN early и т.п.). После base64-декодирования распознаётся как URI с теми же query-параметрами, что у URI-протоколов: `type=ws`, `path`, `tls=1`, `host`, `sni` и т.д.; они маппятся в `transport` и `tls`. Парсер автоматически детектит формат по первому символу декодированной строки: `{` → JSON, иначе → legacy cleartext.
 
 **Пример:**
 ```
@@ -640,17 +663,22 @@ trojan://password123@server.com:443?security=tls&sni=example.com#🇺🇸 United
 ```
 
 ### Shadowsocks (`ss://`)
-Формат SIP002: `ss://base64(method:password)@server:port#tag`
 
-**Методы шифрования (поддерживаемые):**
-- `2022-blake3-aes-128-gcm`
-- `2022-blake3-aes-256-gcm`
-- `2022-blake3-chacha20-poly1305`
-- `aes-128-gcm`
-- `aes-192-gcm`
-- `aes-256-gcm`
-- `chacha20-ietf-poly1305`
-- `xchacha20-ietf-poly1305`
+Два формата:
+
+1. **SIP002 (предпочтительный):** `ss://base64(method:password)@server:port#tag` — userinfo в base64-кодировке метода и пароля, server/port в чистом виде.
+2. **Legacy non-SIP002:** `ss://base64("method:password@server:port")#tag` — всё `method:password@server:port` в одном base64-блоке. Парсер автоматически детектит и поддерживает оба формата.
+
+**Методы шифрования (allow-list `isValidShadowsocksMethod`):**
+
+| Категория | Методы |
+|-----------|--------|
+| Shadowsocks 2022 (рекомендуется) | `2022-blake3-aes-128-gcm`, `2022-blake3-aes-256-gcm`, `2022-blake3-chacha20-poly1305` |
+| AEAD GCM | `aes-128-gcm`, `aes-192-gcm`, `aes-256-gcm` |
+| AEAD ChaCha20 | `chacha20-ietf-poly1305`, `xchacha20-ietf-poly1305` |
+| Без шифрования | `none` (только если сервер сконфигурирован соответственно) |
+
+Любой другой метод (например, legacy streaming RC4/AES-CFB) **отвергается на парсе** — sing-box не примёт его в outbound, поэтому узел не имеет смысла создавать.
 
 **Пример:**
 ```
@@ -666,8 +694,14 @@ ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@server.com:443#Shadowsocks Server
 - `auth` - учетные данные аутентификации (password или username:password для userpass)
 - `hostname` - адрес сервера
 - `port` - порт (по умолчанию 443, если не указан)
-  - Поддерживается multi-port формат в части порта (например, `123,5000-6000`)
 - `#tag` - тег/комментарий (опционально)
+
+**Multi-port:** Hysteria2 поддерживает несколько источников для списка портов, в порядке приоритета:
+1. **Query `mport`** или `ports` — основной канонический способ. Значение — comma-separated список портов / диапазонов: `mport=443,5000-6000,8443`.
+2. **Авторити-style `host:123,5000-6000`** — если в части порта URI есть запятая (что нарушает RFC), парсер сначала «спасает» хвост через `hysteria2RecoverMultiPortAuthority`: первый порт идёт в `server_port`, остаток (включая первый) уезжает в query как `mport`. URI вида `hysteria2://[email protected]:123,5000-6000/?...` отрабатывается корректно.
+3. Если `mport` пустой и в порту только одно число — простой одно-портовый случай.
+
+Дальше sing-box сам разруливает: при наличии `server_ports` (список) клиент open'ит по любому из них.
 
 **Параметры query string (согласно официальной спецификации):**
 - `obfs` - тип обфускации (в настоящее время поддерживается только `salamander`)
