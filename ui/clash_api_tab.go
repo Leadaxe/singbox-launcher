@@ -167,7 +167,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 			return
 		}
-		_, _, clashAPIEnabled := ac.APIService.GetClashAPIConfig()
+		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac)
 		if !clashAPIEnabled {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
 			if ac.UIService.ListStatusLabel != nil {
@@ -187,9 +187,16 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			if platform.IsSleeping() {
 				return
 			}
-			baseURL, token, _ := ac.APIService.GetClashAPIConfig()
+			// SPEC 064: capture generation для drop-stale если override
+			// сменился пока запрос летит.
+			gen := CurrentGeneration()
+			baseURL, token, _, _ := EffectiveClashAPIConfig(ac)
 			proxies, now, err := api.GetProxiesInGroup(baseURL, token, group)
 			fyne.Do(func() {
+				if gen != CurrentGeneration() {
+					// Endpoint override сменился — результат stale, drop без write в UI.
+					return
+				}
 				if err != nil {
 					ShowError(ac.UIService.MainWindow, err)
 					if ac.UIService.ListStatusLabel != nil {
@@ -278,7 +285,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 			return
 		}
-		_, _, clashAPIEnabled := ac.APIService.GetClashAPIConfig()
+		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac)
 		if !clashAPIEnabled {
 			ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_clash_api_off_config"))
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
@@ -288,7 +295,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			if platform.IsSleeping() {
 				return
 			}
-			baseURL, token, _ := ac.APIService.GetClashAPIConfig()
+			baseURL, token, _, _ := EffectiveClashAPIConfig(ac)
 			var err error
 			for attempt := 0; attempt < clashAPITestMaxAttempts; attempt++ {
 				if platform.IsSleeping() {
@@ -360,7 +367,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 				return
 			}
 			fyne.Do(func() { button.SetText("...") })
-			baseURL, token, _ := ac.APIService.GetClashAPIConfig()
+			baseURL, token, _, _ := EffectiveClashAPIConfig(ac)
 			delay, err := api.GetDelay(baseURL, token, proxyName)
 			fyne.Do(func() {
 				proxies := ac.GetProxiesList()
@@ -523,7 +530,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 				return
 			}
-			_, _, clashAPIEnabled := ac.APIService.GetClashAPIConfig()
+			_, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac)
 			if !clashAPIEnabled {
 				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
 				return
@@ -817,7 +824,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 			return
 		}
-		_, _, clashAPIEnabled := ac.APIService.GetClashAPIConfig()
+		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac)
 		if !clashAPIEnabled {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
 			return
@@ -831,7 +838,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 		go func() {
 			gen := atomic.AddUint64(&pingAllGeneration, 1)
-			baseURL, token, _ := ac.APIService.GetClashAPIConfig()
+			baseURL, token, _, _ := EffectiveClashAPIConfig(ac)
 
 			type pingJob struct {
 				Name string
@@ -1192,7 +1199,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 			return
 		}
-		baseURL, token, enabled := ac.APIService.GetClashAPIConfig()
+		baseURL, token, enabled, _ := EffectiveClashAPIConfig(ac)
 		if !enabled {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
 			return
@@ -1291,8 +1298,29 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		suppressSelectCallback = false
 	}
 
+	// SPEC 064: status badge ("🏠 Local" / "🌐 host:port") + gear ⚙ для
+	// remote-endpoint settings. Badge auto-update'ится через OnOverrideChanged.
+	endpointBadge := newRemoteEndpointBadge()
+	endpointGearBtn := ttwidget.NewButton("⚙", func() {
+		showRemoteEndpointDialog(ac, ac.UIService.MainWindow, func() {
+			// onChanged: после Set/Clear override force-refresh proxy list,
+			// чтобы tab сразу отразил данные нового endpoint'а.
+			// Generation counter в EffectiveClashAPIConfig + atomic gen-check
+			// в refresh-goroutine'ах гарантирует drop-stale если рефреш
+			// уже летит против старого endpoint'а.
+			onResetAPIState()
+			onLoadAndRefreshProxies()
+		})
+	})
+	endpointGearBtn.SetToolTip(locale.T("servers.endpoint.tooltip_settings"))
+	endpointGearBtn.Importance = widget.LowImportance
+
 	topControls := container.NewVBox(
-		ac.UIService.ApiStatusLabel,
+		container.NewBorder(
+			nil, nil,
+			ac.UIService.ApiStatusLabel,
+			container.NewHBox(endpointBadge, endpointGearBtn),
+		),
 		container.NewHBox(widget.NewLabel(locale.T("servers.label_selector_group")), groupSelect, mapButton),
 		widget.NewSeparator(),
 		buttonsRow,

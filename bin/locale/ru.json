@@ -671,5 +671,22 @@
   "wizard.rules.button_convert_to_user": "Преобразовать в пользовательское",
   "wizard.rules.dialog_edit_rule_title": "Редактировать правило",
   "wizard.dns.section_from_active_presets": "От активных пресетов (read-only)",
-  "wizard.add_rule.domain_mode_label": "Тип домена:"
+  "wizard.add_rule.domain_mode_label": "Тип домена:",
+  "servers.endpoint.dialog.title": "Удалённый endpoint",
+  "servers.endpoint.host": "Хост",
+  "servers.endpoint.port": "Порт",
+  "servers.endpoint.secret": "Secret",
+  "servers.endpoint.reset_to_local": "Из локального конфига",
+  "servers.endpoint.use_local": "Использовать Local",
+  "servers.endpoint.connect": "Подключиться",
+  "servers.endpoint.connecting": "Подключение…",
+  "servers.endpoint.cancel": "Отмена",
+  "servers.endpoint.invalid_port": "Порт должен быть 1..65535",
+  "servers.endpoint.no_local_config": "Локальный конфиг недоступен",
+  "servers.endpoint.badge_local": "🏠 Local",
+  "servers.endpoint.badge_remote_format": "🌐 %s:%d",
+  "servers.endpoint.tooltip_settings": "Настройки удалённого endpoint'а",
+  "servers.endpoint.unreachable_title": "Endpoint недоступен",
+  "servers.endpoint.unreachable_body": "GET /version упал: %v\n\nПодключиться всё равно?",
+  "servers.endpoint.note_http_only": "ⓘ Только HTTP. Loopback / LAN — без TLS, без CORS."
 }

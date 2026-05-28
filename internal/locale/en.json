@@ -671,5 +671,22 @@
   "core.state_save_error_empty": "Name cannot be empty",
   "core.state_save_warning_exists": "%s already exists — it will be overwritten",
   "dialog.button_save": "Save",
-  "dialog.button_cancel": "Cancel"
+  "dialog.button_cancel": "Cancel",
+  "servers.endpoint.dialog.title": "Remote endpoint",
+  "servers.endpoint.host": "Host",
+  "servers.endpoint.port": "Port",
+  "servers.endpoint.secret": "Secret",
+  "servers.endpoint.reset_to_local": "Reset to local config",
+  "servers.endpoint.use_local": "Use Local",
+  "servers.endpoint.connect": "Connect",
+  "servers.endpoint.connecting": "Connecting…",
+  "servers.endpoint.cancel": "Cancel",
+  "servers.endpoint.invalid_port": "Port must be 1..65535",
+  "servers.endpoint.no_local_config": "No local config available",
+  "servers.endpoint.badge_local": "🏠 Local",
+  "servers.endpoint.badge_remote_format": "🌐 %s:%d",
+  "servers.endpoint.tooltip_settings": "Remote endpoint settings",
+  "servers.endpoint.unreachable_title": "Endpoint unreachable",
+  "servers.endpoint.unreachable_body": "GET /version failed: %v\n\nConnect anyway?",
+  "servers.endpoint.note_http_only": "ⓘ HTTP only. Loopback / LAN — no TLS, no CORS."
 }

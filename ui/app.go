@@ -129,6 +129,13 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 		})
 	}
 
+	// SPEC 064: подписка на remote-override changes. Set/Clear из
+	// gear-dialog'а в Servers tab → tab немедленно re-enable / re-disable.
+	// Listener тонкий: только trigger UI refresh через fyne.Do.
+	OnOverrideChanged(func() {
+		fyne.Do(app.updateClashAPITabState)
+	})
+
 	// Инициализируем состояние вкладки + первичный рендер иконки Core.
 	// EventBus.Subscribe не fires backfill — рендерим вручную для startup'а.
 	app.updateClashAPITabState()
@@ -199,16 +206,24 @@ func (a *App) GetController() *core.AppController {
 	return a.core
 }
 
-// updateClashAPITabState обновляет состояние вкладки Servers в зависимости от статуса запуска
+// updateClashAPITabState обновляет состояние вкладки Servers в зависимости
+// от статуса запуска локального sing-box И активного remote override (SPEC 064).
+//
+// Tab enabled если:
+//   - локальный sing-box запущен, ИЛИ
+//   - active remote override (юзер подключился к удалённому Clash API через
+//     gear-dialog в шапке таба).
 func (a *App) updateClashAPITabState() {
 	if a.clashAPITab == nil || a.tabs == nil {
 		return
 	}
 
 	isRunning := a.core.RunningState.IsRunning()
+	_, hasRemoteOverride := GetRemoteOverride()
+	isActive := isRunning || hasRemoteOverride
 
 	// Используем DisableItem/EnableItem из AppTabs для визуальной индикации неактивности
-	if !isRunning {
+	if !isActive {
 		// Вкладка неактивна - отключаем её (будет показана серым цветом)
 		a.tabs.DisableItem(a.clashAPITab)
 	} else {
@@ -216,8 +231,9 @@ func (a *App) updateClashAPITabState() {
 		a.tabs.EnableItem(a.clashAPITab)
 	}
 
-	// Если sing-box не запущен и вкладка Servers выбрана, переключаем на Core
-	if !isRunning && a.currentTab == a.clashAPITab {
+	// Если sing-box не запущен И нет remote override и вкладка Servers выбрана,
+	// переключаем на Core. С active override остаёмся (юзерский явный выбор).
+	if !isActive && a.currentTab == a.clashAPITab {
 		if len(a.tabs.Items) > 0 {
 			coreTab := a.tabs.Items[0]
 			a.tabs.Select(coreTab)
