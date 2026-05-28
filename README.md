@@ -23,7 +23,7 @@ Three layers that together define the product:
 
 - **User layer** — one-button start/stop, subscription URL → working VPN flow, server picker with ping, declarative rules via checkboxes, Traffic Profiler window with per-process attribution.
 - **Power layer** — Configurator with full sing-box rule semantics (CIDR, domain regex, process matching, sniff, GeoIP/Geosite via SRS), preset bundles with `if`/`if_or` conditions, DNS server selection with conditional rules.
-- **Headless layer** — bearer-auth Debug API on `127.0.0.1`, 28 endpoints covering state read/write, action triggers, traffic capture control, and a one-shot snapshot endpoint for support workflows.
+- **Headless layer** — bearer-auth Debug API on `127.0.0.1`, 24 endpoints covering state read/write, action triggers, traffic capture control, and a one-shot snapshot endpoint for support workflows.
 
 ## Features
 
@@ -75,7 +75,7 @@ Three layers that together define the product:
 
 ### Power tools
 
-- **Debug API** — local HTTP API (28 endpoints, bearer-auth, off by default) for state read/write, action triggers, traffic capture control. See [Headless control plane](#headless-control-plane--debug-api).
+- **Debug API** — local HTTP API (24 endpoints, bearer-auth, off by default) for state read/write, action triggers, traffic capture control. See [Headless control plane](#headless-control-plane--debug-api).
 - **Configurator** — 6-tab visual editor (Sources / Outbounds / Rules / DNS / Settings / Preview) with schema validation, named state snapshots, atomic save.
 - **Snapshot for support** — `GET /debug/snapshot` or **Copy snapshot** button packages template + state + cache + config into a single JSON for bug reports.
 - **Verbose toggle** — `🔬 dbg` button in Traffic Profiler flips sing-box `log_level=debug` with atomic rebuild and revert.
@@ -184,7 +184,7 @@ Keyboard shortcuts (work regardless of which tab is focused, unless a text field
 
 ### Headless control plane — Debug API
 
-Local HTTP API on `127.0.0.1`, bearer-auth, off by default. 28 endpoints in five groups:
+Local HTTP API on `127.0.0.1`, bearer-auth, off by default. 24 endpoints in five groups:
 
 | Group | Coverage |
 | --- | --- |
@@ -195,7 +195,9 @@ Local HTTP API on `127.0.0.1`, bearer-auth, off by default. 28 endpoints in five
 | **Traffic Profiler control** | start / stop / clear / live snapshot / sessions list / export / drop / processes / verbose toggle |
 | **Snapshot** | `/debug/snapshot` — template + state + cache + config as one JSON for bug reports |
 
-Use cases: automation scripts (`bash` + `curl`), MCP wrappers for AI agents ([SPEC 038 §6.5](SPECS/038-F-C-DEBUG_API/SPEC.md)), CI/CD validation of new templates, headless deployment, regression fixtures. No public, documented, scriptable HTTP API of this scope exists in any other desktop sing-box client.
+Use cases: automation scripts (`bash` + `curl`), MCP wrappers for AI agents, CI/CD validation of new templates, headless deployment, regression fixtures. No public, documented, scriptable HTTP API of this scope exists in any other desktop sing-box client.
+
+**Full reference + curl cookbook:** [`docs/API.md`](docs/API.md). Design notes: [SPEC 038](SPECS/038-F-C-DEBUG_API/SPEC.md).
 
 Toggle in **Settings → Debug API (localhost)**. The same `snapshot.Build()` powers the **Copy snapshot** button in Diagnostics — one click to package the full state for a bug report.
 
