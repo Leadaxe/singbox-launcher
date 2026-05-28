@@ -118,20 +118,29 @@ func collectRows(pc *config.ParserConfig, presetTagToLabel map[string]string, re
 			HasUserPatch: hasUserPatch,
 		}
 		// SPEC 058-R-N: classify по ref.
+		//
+		// SourceLabel — атрибуция строки для пользователя. Для per-source
+		// outbound'ов = название подписки; для global emit'им только то,
+		// что несёт смысл: 🔒 (required template / preset-locked), имя
+		// пресета, ✏ (USER patch). Плоское «Global» убрано как шум:
+		// глобальные строки и так визуально отличаются от per-source
+		// отсутствием source-метки, дублировать слово на каждой строке
+		// лишнее.
 		switch {
 		case ob.Ref == "":
-			// Direct — full ownership.
-			row.SourceLabel = "Global"
+			// Direct — full ownership. Без суффикса.
 		case ob.Ref == config.RefTemplate:
-			// Referenced template.
+			// Referenced template. Помечаем только если required (🔒).
+			// Non-required template визуально == direct: разница для
+			// юзера проявляется через Edit-диалог (live body из шаблона)
+			// и кнопку Restore missing.
 			row.IsTemplate = true
 			row.IsRequired = requiredTags != nil && requiredTags[ob.Tag]
-			row.SourceLabel = "Global"
 			if row.IsRequired {
-				row.SourceLabel = "🔒 Global"
+				row.SourceLabel = "🔒"
 			}
 		default:
-			// Referenced preset.
+			// Referenced preset — имя пресета осмысленно (preset_id ↔ origin).
 			row.IsPreset = true
 			row.PresetID = ob.Ref
 			if presetTagToLabel != nil {
@@ -146,7 +155,10 @@ func collectRows(pc *config.ParserConfig, presetTagToLabel map[string]string, re
 		}
 		// USER patch badge (✏) — для referenced entries с пользовательской правкой.
 		if hasUserPatch && (row.IsTemplate || row.IsPreset) {
-			row.SourceLabel += " ✏"
+			if row.SourceLabel != "" {
+				row.SourceLabel += " "
+			}
+			row.SourceLabel += "✏"
 		}
 		rows = append(rows, row)
 	}
@@ -397,7 +409,10 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			var row *fynewidget.HoverRow
 			rowGetter := func() *fynewidget.HoverRow { return row }
 
-			rawLine := r.Outbound.Tag + " (" + r.Outbound.Type + ") — " + r.SourceLabel
+			rawLine := r.Outbound.Tag + " (" + r.Outbound.Type + ")"
+			if r.SourceLabel != "" {
+				rawLine += " — " + r.SourceLabel
+			}
 			rawLine = strings.ToValidUTF8(rawLine, "")
 			displayLine := wizardutils.TruncateStringEllipsis(rawLine, wizardutils.MaxLabelRunes, "...")
 
