@@ -37,6 +37,27 @@ func settingsVarVisible(v wizardtemplate.TemplateVar, goos string) bool {
 	return false
 }
 
+// noInboundConfigured — true when neither TUN nor mixed-proxy inbound is
+// effectively enabled (after resolver applies state + template defaults).
+// Triggers the SPEC 066 follow-up warning row in Settings tab.
+//
+// "false" / missing / non-"true" all count as off.
+func noInboundConfigured(resolved map[string]wizardtemplate.ResolvedVar) bool {
+	tunOn := resolved["tun"].Scalar == "true"
+	proxyOn := resolved["enable_proxy_in"].Scalar == "true"
+	return !tunOn && !proxyOn
+}
+
+// buildNoInboundWarningRow — orange ⚠ banner explaining the trap state.
+// Standalone row (no Reset button, no value), so it slots after the last
+// var-row regardless of layout. Locale key: wizard.settings.no_inbound_warning.
+func buildNoInboundWarningRow() fyne.CanvasObject {
+	lbl := widget.NewLabel(locale.T("wizard.settings.no_inbound_warning"))
+	lbl.Wrapping = fyne.TextWrapWord
+	lbl.Importance = widget.WarningImportance
+	return container.NewPadded(lbl)
+}
+
 func enumListContains(opts []string, v string) bool {
 	for _, o := range opts {
 		if o == v {
@@ -168,6 +189,15 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 			rowEnabled := wizardtemplate.VarUISatisfied(vd, vi, resolved, goos)
 			row := buildSettingsVarRow(presenter, model, td, vd, title, toolTip, rowEnabled, gs)
 			box.Add(row)
+		}
+		// SPEC 066 follow-up: trap-state warning. After SPEC 066 made `tun`
+		// user-disableable on Win/Linux, the combination tun=false +
+		// enable_proxy_in=false is reachable from the UI → sing-box would
+		// start with zero inbounds → no traffic ever reaches it, silently.
+		// Show a soft warning row when both resolve to false (we don't hard-
+		// block, so power users can still test weird configs).
+		if noInboundConfigured(resolved) {
+			box.Add(buildNoInboundWarningRow())
 		}
 		box.Refresh()
 	}

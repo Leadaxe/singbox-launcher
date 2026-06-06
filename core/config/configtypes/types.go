@@ -46,9 +46,9 @@ func canonicalGOOSName(goos string) string {
 //
 // Examples:
 //
-//	singbox-launcher/0.9.8 (macOS arm64)
-//	singbox-launcher/0.9.8 (windows amd64)
-//	singbox-launcher/0.9.8 (linux amd64)
+//	singbox-launcher/0.9.9 (macOS arm64)
+//	singbox-launcher/0.9.9 (windows amd64)
+//	singbox-launcher/0.9.9 (linux amd64)
 //
 // See SPEC 061-F-N §"Request headers" §1.
 func BuildSubscriptionUserAgent() string {

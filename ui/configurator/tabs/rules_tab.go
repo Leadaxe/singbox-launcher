@@ -38,6 +38,7 @@ import (
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -595,8 +596,7 @@ func CreateRulesScroll(guiState *wizardpresentation.GUIState, content fyne.Canva
 	if maxHeight <= 0 {
 		maxHeight = 430
 	}
-	scrollGutter := canvas.NewRectangle(color.Transparent)
-	scrollGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+	scrollGutter := components.NewScrollGutter()
 	contentWithGutter := container.NewBorder(nil, nil, nil, scrollGutter, content)
 	scroll := container.NewVScroll(contentWithGutter)
 	scroll.SetMinSize(fyne.NewSize(0, maxHeight))

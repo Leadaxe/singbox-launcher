@@ -65,6 +65,10 @@ type SubscriptionRequestSettings struct {
 	HWID              string
 	SendHWID          bool
 	DeviceModelHashed bool
+	// UserAgent — пользовательский UA для subscription requests. Пустое →
+	// fallback на configtypes.BuildSubscriptionUserAgent (default). Полезно
+	// когда провайдер режет наш default и принимает только v2rayN/Hiddify/etc.
+	UserAgent string
 }
 
 // LoadSubscriptionSettingsFunc is set by core init to read bin/settings.json
@@ -78,11 +82,19 @@ var LoadSubscriptionSettingsFunc func() SubscriptionRequestSettings
 // FetchSubscriptionWithMeta and the legacy FetchSubscription wrapper stay
 // in lockstep — see SPEC 061 §"Request headers".
 func applySubscriptionRequestHeaders(req *http.Request) {
-	req.Header.Set("User-Agent", configtypes.BuildSubscriptionUserAgent())
-	if LoadSubscriptionSettingsFunc == nil {
-		return
+	// User-Agent: load settings ONCE here so we can let the user override
+	// the default UA via Settings tab. Empty user value → default helper
+	// (current launcher version + OS/arch). Both branches Set() once —
+	// downstream HWID block re-uses the same snapshot, no double load.
+	var s SubscriptionRequestSettings
+	if LoadSubscriptionSettingsFunc != nil {
+		s = LoadSubscriptionSettingsFunc()
 	}
-	s := LoadSubscriptionSettingsFunc()
+	ua := strings.TrimSpace(s.UserAgent)
+	if ua == "" {
+		ua = configtypes.BuildSubscriptionUserAgent()
+	}
+	req.Header.Set("User-Agent", ua)
 	if !s.SendHWID || s.HWID == "" {
 		return
 	}

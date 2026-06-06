@@ -63,6 +63,7 @@ func NewConfigService(ac *AppController) *ConfigService {
 			HWID:              s.HWID,
 			SendHWID:          s.ShouldSendHWID(),
 			DeviceModelHashed: s.SubscriptionDeviceModelHashed,
+			UserAgent:         s.SubscriptionUserAgent, // "" → fetcher uses default
 		}
 	}
 	services.CreateHTTPClientFunc = CreateHTTPClient

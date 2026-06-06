@@ -29,7 +29,7 @@
 
 - **Пользовательский слой** — старт/стоп одной кнопкой, поток «subscription URL → работающий VPN», переключение серверов с пингом, правила маршрутизации через чекбоксы, окно Traffic Profiler с per-process атрибуцией.
 - **Power-слой** — Configurator с полной семантикой правил sing-box (CIDR, regex доменов, process matching, sniff, GeoIP/Geosite через SRS), preset bundles с условиями `if` / `if_or`, выбор DNS-серверов с условными правилами.
-- **Headless-слой** — bearer-auth Debug API на `127.0.0.1`, 28 endpoints: чтение и запись state, action-триггеры, управление capture трафика, snapshot endpoint для support workflows.
+- **Headless-слой** — bearer-auth Debug API на `127.0.0.1`, 24 endpoints: чтение и запись state, action-триггеры, управление capture трафика, snapshot endpoint для support workflows.
 
 ## Возможности
 
@@ -81,7 +81,7 @@
 
 ### Power-инструменты
 
-- **Debug API** — локальный HTTP API (28 endpoints, bearer-auth, off by default) для чтения/записи state, action-триггеров, управления capture трафика. См. [Headless control plane](#headless-control-plane--debug-api).
+- **Debug API** — локальный HTTP API (24 endpoints, bearer-auth, off by default) для чтения/записи state, action-триггеров, управления capture трафика. См. [Headless control plane](#headless-control-plane--debug-api).
 - **Configurator** — 6-tab визуальный редактор (Sources / Outbounds / Rules / DNS / Settings / Preview) со schema validation, named state snapshots, атомарным save.
 - **Snapshot для support** — `GET /debug/snapshot` или кнопка **Copy snapshot** упаковывает template + state + cache + config в один JSON для bug-report.
 - **Verbose toggle** — `🔬 dbg` кнопка в Traffic Profiler переключает `log_level=debug` с atomic rebuild и revert.
@@ -190,7 +190,7 @@ Keyboard shortcuts (работают независимо от текущей а
 
 ### Headless control plane — Debug API
 
-Локальный HTTP API на `127.0.0.1`, bearer-auth, off by default. 28 endpoints в пяти группах:
+Локальный HTTP API на `127.0.0.1`, bearer-auth, off by default. 24 endpoints в пяти группах:
 
 | Группа | Что покрывает |
 | --- | --- |
@@ -201,7 +201,9 @@ Keyboard shortcuts (работают независимо от текущей а
 | **Traffic Profiler control** | start / stop / clear / live snapshot / sessions list / export / drop / processes / verbose toggle |
 | **Snapshot** | `/debug/snapshot` — template + state + cache + config одним JSON для bug-report |
 
-Use cases: скрипты автоматизации (`bash` + `curl`), MCP-обёртки для AI-агентов ([SPEC 038 §6.5](SPECS/038-F-C-DEBUG_API/SPEC.md)), CI/CD валидация новых шаблонов, headless deployment, регрессионные фикстуры. Публичного, документированного, скриптуемого HTTP API такого охвата нет ни у одного другого desktop sing-box клиента.
+Use cases: скрипты автоматизации (`bash` + `curl`), MCP-обёртки для AI-агентов, CI/CD валидация новых шаблонов, headless deployment, регрессионные фикстуры. Публичного, документированного, скриптуемого HTTP API такого охвата нет ни у одного другого desktop sing-box клиента.
+
+**Полный референс + curl-cookbook:** [`docs/API.md`](docs/API.md). Дизайн-нотации: [SPEC 038](SPECS/038-F-C-DEBUG_API/SPEC.md).
 
 Включается в **Settings → Debug API (localhost)**. Тот же `snapshot.Build()` дёргает кнопка **Copy snapshot** в Diagnostics — один клик упаковывает полный стейт для bug-report.
 

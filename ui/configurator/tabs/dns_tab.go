@@ -19,6 +19,7 @@ import (
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -66,8 +67,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		serversBox.Objects = serversBox.Objects[:0]
 		m := presenter.Model()
 		if len(m.DNSServers) == 0 {
-			g := canvas.NewRectangle(color.Transparent)
-			g.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+			g := components.NewScrollGutter()
 			serversBox.Add(container.NewHBox(
 				widget.NewLabel(locale.T("wizard.dns.no_servers")),
 				layout.NewSpacer(),
@@ -126,8 +126,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				}
 				setTooltip(enCheck, locale.T(tooltipForDNSServerCheck(locked)))
 
-				rowGutter := canvas.NewRectangle(color.Transparent)
-				rowGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+				rowGutter := components.NewScrollGutter()
 
 				// SPEC unify: Edit/Del — только для user-added entries.
 				// Template entries (read-only) получают View JSON вместо Edit.

@@ -21,6 +21,7 @@ import (
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
+	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -506,16 +507,14 @@ func showSourceEditWindow(
 	rebuildSettingsLayout()
 	settingsScroll := container.NewVScroll(settingsContent)
 	settingsScroll.SetMinSize(fyne.NewSize(0, sourceEditSettingsScrollMinH))
-	settingsGutter := canvas.NewRectangle(color.Transparent)
-	settingsGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+	settingsGutter := components.NewScrollGutter()
 	settingsWithGutter := container.NewBorder(nil, nil, nil, settingsGutter, settingsScroll)
 
 	previewStatus := widget.NewLabel(locale.T("wizard.source.preview_loading"))
 	previewStatus.Wrapping = fyne.TextWrapOff
 	previewStatusScroll := container.NewHScroll(previewStatus)
 	previewListHost := container.NewMax()
-	previewGutter := canvas.NewRectangle(color.Transparent)
-	previewGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+	previewGutter := components.NewScrollGutter()
 	previewBox := container.NewBorder(previewStatusScroll, nil, nil, previewGutter, previewListHost)
 
 	previewRefreshSeq := 0
@@ -639,8 +638,7 @@ func showSourceEditWindow(
 
 	jsonHint := widget.NewLabel(locale.T("wizard.source.json_hint"))
 	jsonHint.Wrapping = fyne.TextWrapWord
-	jsonGutter := canvas.NewRectangle(color.Transparent)
-	jsonGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+	jsonGutter := components.NewScrollGutter()
 	jsonScrollWithGutter := container.NewBorder(nil, nil, nil, jsonGutter, jsonScroll)
 	jsonCol := container.NewVBox(jsonHint, jsonScrollWithGutter)
 

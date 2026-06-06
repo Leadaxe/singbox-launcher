@@ -4,6 +4,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/events"
@@ -44,25 +45,52 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	// (🖥️ Servers / ⚙️ Settings / 🔍 Diagnostics).
 	coreTabItem := container.NewTabItem(locale.T("app.tab.core"), CreateCoreDashboardTab(controller))
 	app.clashAPITab = container.NewTabItem(locale.T("app.tab.servers"), CreateClashAPITab(controller))
+	// Settings tab is a no-content placeholder that acts as a button: its
+	// OnSelected handler opens the standalone Settings window (see
+	// ui/settings_window.go) and then immediately reverts tab selection
+	// back to the previously active tab. Keeps the entry point visible in
+	// the tab strip without giving Settings a full-sized tab page.
+	// Content widget is a 1-line label only to satisfy Fyne's tab-must-have-
+	// content invariant; it's never actually rendered because we revert
+	// selection before the tab content is drawn.
+	settingsTabItem := container.NewTabItem(locale.T("app.tab.settings"), widget.NewLabel(""))
+	// Tab order: Core | Servers | 🔍 Diagnostics | ⚙️ Settings | ❓ Help.
+	// Settings sits between Diagnostics and Help — close to other
+	// "launcher behavior" controls and one click away from Help.
 	app.tabs = container.NewAppTabs(
 		coreTabItem,
 		app.clashAPITab,
-		container.NewTabItem(locale.T("app.tab.settings"), CreateSettingsTab(controller)),
 		container.NewTabItem(locale.T("app.tab.diagnostics"), CreateDiagnosticsTab(controller)),
+		settingsTabItem,
 		container.NewTabItem(locale.T("app.tab.help"), CreateHelpTab(controller)),
 	)
 
 	// Set tab selection handler
 	app.tabs.OnSelected = func(item *container.TabItem) {
+		// Settings tab acts as a button: open the window, revert to the
+		// previous tab. The revert triggers OnSelected again with the
+		// previous TabItem — guarded by the `item == settingsTabItem`
+		// check so we don't infinite-loop.
+		if item == settingsTabItem {
+			OpenSettingsWindow(controller)
+			// Fallback to Core if user clicked Settings as their very
+			// first action (app.currentTab still nil).
+			target := app.currentTab
+			if target == nil || target == settingsTabItem {
+				target = coreTabItem
+			}
+			app.tabs.Select(target)
+			return
+		}
 		app.currentTab = item
 		if item == app.clashAPITab {
-			// Проверяем, запущен ли sing-box
-			if !controller.RunningState.IsRunning() {
-				// Если не запущен, переключаем обратно на Core
-				app.tabs.Select(coreTabItem)
-				// Можно показать сообщение пользователю
-				return
-			}
+			// SPEC 064: Servers tab is always reachable so the user can
+			// configure a remote Clash API endpoint even when local
+			// sing-box isn't running. The tab's own UI (badge + disabled
+			// controls) communicates the "no API available" state — no
+			// need to bounce the user back to Core. RefreshAPIFunc is
+			// safe to call: it no-ops when neither local sing-box nor a
+			// remote override is reachable.
 			if controller.UIService != nil && controller.UIService.RefreshAPIFunc != nil {
 				controller.UIService.RefreshAPIFunc()
 			}
@@ -128,6 +156,13 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 			fyne.Do(refreshCoreTabIcon)
 		})
 	}
+
+	// SPEC 064: подписка на remote-override changes. Set/Clear из
+	// gear-dialog'а в Servers tab → tab немедленно re-enable / re-disable.
+	// Listener тонкий: только trigger UI refresh через fyne.Do.
+	OnOverrideChanged(func() {
+		fyne.Do(app.updateClashAPITabState)
+	})
 
 	// Инициализируем состояние вкладки + первичный рендер иконки Core.
 	// EventBus.Subscribe не fires backfill — рендерим вручную для startup'а.
@@ -199,30 +234,29 @@ func (a *App) GetController() *core.AppController {
 	return a.core
 }
 
-// updateClashAPITabState обновляет состояние вкладки Servers в зависимости от статуса запуска
+// updateClashAPITabState — SPEC 064 update: tab **всегда** доступна.
+//
+// Раньше (до SPEC 064) tab disable'илась когда локальный sing-box не запущен.
+// Это создало chicken-and-egg: gear-кнопка для настройки remote-endpoint
+// живёт ВНУТРИ этой вкладки, юзер не мог до неё добраться из cold-start
+// состояния (local не стартован, override ещё не задан → tab disabled →
+// gear недоступен → override никогда не задать).
+//
+// Решение: вкладка постоянно enabled. Если ни local sing-box, ни remote
+// override не активны — refresh-логика покажет «Clash API offline» в
+// ApiStatusLabel, но badge + gear остаются нажимаемыми, и юзер может
+// настроить remote или запустить local.
+//
+// Функция оставлена в качестве no-op-stub: вызывается из множества мест
+// в кодовой базе (UpdateCoreStatusFunc, EventBus subscriber, OnOverrideChanged
+// listener). Удалять hook не имеет смысла — нет cost'а, и позволяет в
+// будущем вернуть гейтинг если потребуется.
 func (a *App) updateClashAPITabState() {
 	if a.clashAPITab == nil || a.tabs == nil {
 		return
 	}
-
-	isRunning := a.core.RunningState.IsRunning()
-
-	// Используем DisableItem/EnableItem из AppTabs для визуальной индикации неактивности
-	if !isRunning {
-		// Вкладка неактивна - отключаем её (будет показана серым цветом)
-		a.tabs.DisableItem(a.clashAPITab)
-	} else {
-		// Вкладка активна - включаем её
-		a.tabs.EnableItem(a.clashAPITab)
-	}
-
-	// Если sing-box не запущен и вкладка Servers выбрана, переключаем на Core
-	if !isRunning && a.currentTab == a.clashAPITab {
-		if len(a.tabs.Items) > 0 {
-			coreTab := a.tabs.Items[0]
-			a.tabs.Select(coreTab)
-		}
-	}
+	// SPEC 064: всегда enabled. Никаких DisableItem'ов больше нет.
+	a.tabs.EnableItem(a.clashAPITab)
 }
 
 // indexEmojiSep — returns the byte index just AFTER the first ASCII

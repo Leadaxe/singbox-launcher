@@ -2,9 +2,14 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -12,22 +17,31 @@ import (
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core"
+	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/debugapi"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 )
 
-// CreateSettingsTab builds the Settings tab. Collects launcher-wide toggles
-// that used to be scattered across Core Dashboard (auto-update, auto-ping)
-// and Help (language + download-locales), so there's one obvious place to
-// look for "change launcher behavior".
+// buildSettingsContent builds the Settings UI body. Collects launcher-wide
+// toggles that used to be scattered across Core Dashboard (auto-update,
+// auto-ping) and Help (language + download-locales), so there's one obvious
+// place to look for "change launcher behavior".
+//
+// Originally a main-window tab (`CreateSettingsTab`); promoted to its own
+// OS window when content outgrew a single tab page. The Settings tab in the
+// AppTabs strip stays as a clickable entry point but its OnSelected handler
+// opens this content in `OpenSettingsWindow` (see ui/settings_window.go)
+// and immediately reverts tab selection — visible discoverability without
+// stealing tab real-estate.
 //
 // Settings persist to bin/settings.json via locale.LoadSettings /
 // locale.SaveSettings with load-mutate-save — we explicitly avoid the
 // `Settings{Lang: code}` "fresh struct" anti-pattern which silently wiped
 // every other field.
-func CreateSettingsTab(ac *core.AppController) fyne.CanvasObject {
+func buildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 	binDir := platform.GetBinDir(ac.FileService.ExecDir)
 
 	// ---- Subscriptions section ---------------------------------------------
@@ -57,6 +71,87 @@ func CreateSettingsTab(ac *core.AppController) fyne.CanvasObject {
 			debuglog.WarnLog("settings_tab: save auto_ping_after_connect_disabled: %v", err)
 		}
 	}
+
+	// --- Subscription User-Agent override -----------------------------------
+	// Empty entry → fetcher falls back to BuildSubscriptionUserAgent (the
+	// default UA shown as the placeholder). Reset button just clears the
+	// field, which triggers OnChanged → save empty string → default kicks in
+	// on next fetch. We do NOT live-write on every keystroke (would race
+	// while user pastes a long UA); save fires on focus-loss via OnSubmitted
+	// pattern and explicitly on Reset.
+	defaultUA := configtypes.BuildSubscriptionUserAgent()
+	uaLabel := widget.NewLabel(locale.T("settings.subscription_ua_label"))
+	uaHint := widget.NewLabel(locale.Tf("settings.subscription_ua_hint", defaultUA))
+	uaHint.Wrapping = fyne.TextWrapWord
+	uaEntry := widget.NewEntry()
+	uaEntry.SetPlaceHolder(defaultUA)
+	{
+		// Initial value from disk. Load fresh — autoUpdateCheck above already
+		// loaded once but might be stale if other code wrote to settings since
+		// (e.g. HWID lazy-gen on first fetch). Cheap re-load avoids guessing.
+		curSt := locale.LoadSettings(binDir)
+		uaEntry.SetText(curSt.SubscriptionUserAgent)
+	}
+	saveUA := func(text string) {
+		text = strings.TrimSpace(text)
+		cur := locale.LoadSettings(binDir)
+		if cur.SubscriptionUserAgent == text {
+			return
+		}
+		cur.SubscriptionUserAgent = text
+		if err := locale.SaveSettings(binDir, cur); err != nil {
+			debuglog.WarnLog("settings_tab: save subscription_user_agent: %v", err)
+		}
+	}
+	// Debounce 500ms: Fyne fires OnChanged on every keystroke. Without a
+	// delay each char triggers a settings.json atomic rename — wasteful and
+	// noisy in logs. The timer is reset on every keystroke, so the actual
+	// write fires 500ms after the user *stops* typing.
+	//
+	// Thread-safety: time.AfterFunc fires its callback on a fresh goroutine,
+	// so Stop/Reset/store of `uaSaveTimer` must be guarded by a mutex.
+	// OnChanged runs on the UI thread, callback runs off-thread, mutex is
+	// the cheapest correct synchronization.
+	var (
+		uaSaveMu    sync.Mutex
+		uaSaveTimer *time.Timer
+	)
+	scheduleSaveUA := func(text string) {
+		uaSaveMu.Lock()
+		defer uaSaveMu.Unlock()
+		if uaSaveTimer != nil {
+			uaSaveTimer.Stop()
+		}
+		uaSaveTimer = time.AfterFunc(500*time.Millisecond, func() {
+			saveUA(text)
+		})
+	}
+	flushSaveUA := func(text string) {
+		uaSaveMu.Lock()
+		if uaSaveTimer != nil {
+			uaSaveTimer.Stop()
+			uaSaveTimer = nil
+		}
+		uaSaveMu.Unlock()
+		saveUA(text)
+	}
+	// Save 500ms after user stops typing. Enter / focus-out flushes
+	// immediately (Fyne 2.5+ fires OnSubmitted on Tab-out too).
+	uaEntry.OnChanged = scheduleSaveUA
+	uaEntry.OnSubmitted = flushSaveUA
+
+	// Icon-only reset (text moved to tooltip — same pattern as HWID
+	// Regenerate). Tooltip explains the action because the bare refresh
+	// icon could read as "refresh field" or "reload from disk".
+	// Reset is a deliberate action — flush immediately rather than wait
+	// for the debounce window.
+	uaResetBtn := ttwidget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() {
+		uaEntry.SetText("") // OnChanged fires → scheduleSaveUA("") starts timer
+		flushSaveUA("")     // override the timer with an immediate write
+	})
+	uaResetBtn.SetToolTip(locale.T("settings.subscription_ua_reset_tooltip"))
+
+	uaRow := container.NewBorder(nil, nil, uaLabel, uaResetBtn, uaEntry)
 
 	// ---- Language section --------------------------------------------------
 	langTitle := widget.NewLabelWithStyle(locale.T("settings.section_language"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
@@ -121,18 +216,28 @@ func CreateSettingsTab(ac *core.AppController) fyne.CanvasObject {
 	subIDTitle := widget.NewLabelWithStyle(locale.T("settings.section_subscription_identification"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	subIDBlock := buildSubscriptionIdentificationBlock(ac, binDir)
 
+	// ---- Debug API (переехал из Diagnostics tab) ---------------------------
+	// Это launcher-wide setting (порт + токен персистятся в bin/settings.json),
+	// а не ad-hoc диагностика — поэтому живёт здесь рядом с auto-update,
+	// языком и идентификацией подписки.
+	debugAPIBlock := buildDebugAPIRow(ac)
+
 	content := container.NewVBox(
 		subsTitle,
 		autoUpdateCheck,
 		autoPingCheck,
+		uaRow,
+		uaHint,
 		widget.NewSeparator(),
 		langTitle,
 		langRow,
 		widget.NewSeparator(),
 		subIDTitle,
 		subIDBlock,
+		widget.NewSeparator(),
+		debugAPIBlock,
 	)
-	return container.NewPadded(content)
+	return content
 }
 
 // buildSubscriptionIdentificationBlock — SPEC 061 Phase 4 controls:
@@ -279,6 +384,143 @@ func buildSubscriptionIdentificationBlock(ac *core.AppController, binDir string)
 		hashModelRow,
 		hwidRow,
 	)
+}
+
+// buildDebugAPIRow renders the local HTTP Debug API toggle + token copy.
+// Off by default. First enable generates a random Bearer token; persists to
+// bin/settings.json. UI shows bound address ("127.0.0.1:9263") while running.
+//
+// Locale keys остаются в `diag.debug_api_*` namespace для backward-compat
+// с уже переведёнными строками — функционал тот же, просто переехал из
+// Diagnostics → Settings tab (так как это persisted launcher setting,
+// а не one-shot диагностическое действие).
+func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
+	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	st := locale.LoadSettings(binDir)
+
+	title := widget.NewLabelWithStyle(locale.T("diag.debug_api_title"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	// Hint text wraps to window width instead of forcing the window wider —
+	// otherwise a 90-char description pins the whole tab's minimum size.
+	hint := widget.NewLabel(locale.T("diag.debug_api_hint"))
+	hint.Wrapping = fyne.TextWrapWord
+	status := widget.NewLabel("")
+	status.Wrapping = fyne.TextWrapWord
+	refreshStatus := func() {
+		addr := ac.DebugAPIAddr()
+		if addr == "" {
+			status.SetText(locale.T("diag.debug_api_off"))
+		} else {
+			status.SetText(locale.Tf("diag.debug_api_on", addr))
+		}
+	}
+	refreshStatus()
+
+	copyTokenBtn := widget.NewButtonWithIcon(locale.T("diag.debug_api_copy_token"), theme.ContentCopyIcon(), nil)
+	copyTokenBtn.OnTapped = func() {
+		// Re-load settings each tap so Copy always reflects the latest token
+		// (e.g. after a user regenerates via the checkbox dance).
+		cur := locale.LoadSettings(binDir)
+		if cur.DebugAPIToken == "" {
+			return
+		}
+		ac.UIService.MainWindow.Clipboard().SetContent(cur.DebugAPIToken)
+		// Silent clipboard copies feel like dead buttons. A toast confirms
+		// the token actually went to the clipboard.
+		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
+			locale.T("diag.debug_api_copied_title"), locale.T("diag.debug_api_copied_msg"))
+	}
+	if st.DebugAPIToken == "" {
+		copyTokenBtn.Disable()
+	}
+
+	// Port entry: пользователь может задать кастомный порт. 0/empty =
+	// debugapi.DefaultPort. Меняется только когда API выключен (иначе
+	// гонка между Stop старого listener'а и Start нового на занятом порту);
+	// поле disable'ится при чекбоксе ON.
+	portEntry := widget.NewEntry()
+	portEntry.SetPlaceHolder(fmt.Sprintf("%d", debugapi.DefaultPort))
+	if st.DebugAPIPort > 0 {
+		portEntry.SetText(fmt.Sprintf("%d", st.DebugAPIPort))
+	}
+	if st.DebugAPIEnabled {
+		portEntry.Disable()
+	}
+
+	check := widget.NewCheck(locale.T("diag.debug_api_enable"), nil)
+	check.SetChecked(st.DebugAPIEnabled)
+	check.OnChanged = func(enabled bool) {
+		cur := locale.LoadSettings(binDir)
+		// Парсим порт из поля; пустое = default. Невалидное → дёргаем
+		// диалог и откатываем чекбокс.
+		portText := strings.TrimSpace(portEntry.Text)
+		port := 0
+		if portText != "" {
+			p, err := strconv.Atoi(portText)
+			if err != nil || p < 1024 || p > 65535 {
+				dialog.ShowInformation(
+					locale.T("diag.debug_api_port_invalid_title"),
+					locale.T("diag.debug_api_port_invalid_msg"),
+					ac.UIService.MainWindow,
+				)
+				check.SetChecked(false)
+				return
+			}
+			port = p
+		}
+		cur.DebugAPIPort = port
+		cur.DebugAPIEnabled = enabled
+		if enabled {
+			// Lazy-generate token on first enable so tokens don't exist in
+			// settings.json until the user actually opts in.
+			if strings.TrimSpace(cur.DebugAPIToken) == "" {
+				tok, err := debugapi.GenerateToken()
+				if err != nil {
+					debuglog.ErrorLog("settings.debug_api: token gen failed: %v", err)
+					ShowError(ac.UIService.MainWindow, err)
+					check.SetChecked(false)
+					return
+				}
+				cur.DebugAPIToken = tok
+			}
+			if err := locale.SaveSettings(binDir, cur); err != nil {
+				debuglog.WarnLog("settings.debug_api: save settings: %v", err)
+			}
+			port := cur.DebugAPIPort
+			if err := ac.StartDebugAPI(port, cur.DebugAPIToken); err != nil {
+				debuglog.ErrorLog("settings.debug_api: start failed: %v", err)
+				ShowError(ac.UIService.MainWindow, err)
+				check.SetChecked(false)
+				cur.DebugAPIEnabled = false
+				_ = locale.SaveSettings(binDir, cur)
+				refreshStatus()
+				return
+			}
+			copyTokenBtn.Enable()
+			portEntry.Disable()
+		} else {
+			ac.StopDebugAPI()
+			// Keep the token in settings.json so re-enabling doesn't rotate
+			// it and break existing scripts. Users who want rotation can
+			// delete the key manually.
+			if err := locale.SaveSettings(binDir, cur); err != nil {
+				debuglog.WarnLog("settings.debug_api: save settings: %v", err)
+			}
+			portEntry.Enable()
+		}
+		refreshStatus()
+	}
+
+	portLabel := widget.NewLabel(locale.T("diag.debug_api_port_label"))
+	portRow := container.NewBorder(nil, nil, portLabel, nil, portEntry)
+
+	row := container.NewVBox(
+		title,
+		hint,
+		container.NewHBox(check, copyTokenBtn),
+		portRow,
+		status,
+	)
+	return row
 }
 
 // looksLikeUUID — 8-4-4-4-12 hex check, case-insensitive. We don't

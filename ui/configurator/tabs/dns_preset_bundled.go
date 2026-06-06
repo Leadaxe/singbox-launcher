@@ -11,10 +11,8 @@ package tabs
 
 import (
 	"encoding/json"
-	"image/color"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
@@ -25,6 +23,7 @@ import (
 	"singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/fynewidget"
+	"singbox-launcher/ui/components"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -305,8 +304,7 @@ func buildPresetBundledDNSRowFromResolved(
 	}
 
 	// rowGutter — reserved space под scrollbar (visual паритет с template-rows).
-	rowGutter := canvas.NewRectangle(color.Transparent)
-	rowGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+	rowGutter := components.NewScrollGutter()
 
 	var right *fyne.Container
 	if onView != nil {

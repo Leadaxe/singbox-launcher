@@ -67,27 +67,18 @@
     {
       "name": "tun",
       "type": "bool",
-      "default_value": {"darwin": "true", "default": "false"},
+      "default_value": {"windows": "true", "linux": "true", "darwin": "true", "default": "false"},
       "wizard_ui": "edit",
-      "platforms": ["darwin"],
-      "title": "Enable TUN (macOS)",
-      "tooltip": "Route traffic through sing-box TUN. Requires administrator privileges on macOS."
-    },
-    {
-      "name": "tun_builtin",
-      "type": "bool",
-      "default_value": {"windows": "true", "linux": "true", "default": "false"},
-      "wizard_ui": "hidden",
-      "platforms": ["windows", "linux"],
-      "title": "TUN (Windows/Linux)",
-      "tooltip": "TUN inbound is always merged on these platforms. Used for template conditions (params.if); not user-editable."
+      "platforms": ["windows", "linux", "darwin"],
+      "title": "Enable TUN",
+      "tooltip": "Route traffic through sing-box TUN inbound. Requires administrator privileges. If you disable TUN, enable Proxy-in below and point your browser/system to that proxy — otherwise no traffic will flow through sing-box."
     },
     {
       "name": "tun_address",
       "type": "text",
       "default_value": "172.16.0.1/30",
       "wizard_ui": "edit",
-      "if_or": ["tun_builtin", "tun"],
+      "if": ["tun"],
       "title": "TUN interface address",
       "tooltip": "IPv4 CIDR for the TUN interface (inbounds address). Enabled when TUN is on for this platform."
     },
@@ -96,7 +87,7 @@
       "type": "text",
       "default_value": "1492",
       "wizard_ui": "edit",
-      "if_or": ["tun_builtin", "tun"],
+      "if": ["tun"],
       "title": "TUN MTU",
       "tooltip": "Maximum transmission unit for the TUN interface (numeric value in JSON)."
     },
@@ -105,7 +96,7 @@
       "type": "bool",
       "default_value": "false",
       "wizard_ui": "edit",
-      "if_or": ["tun_builtin", "tun"],
+      "if": ["tun"],
       "title": "TUN strict route",
       "tooltip": "sing-box tun strict_route: stricter routing (fewer leaks); may break some LAN or split setups when enabled."
     },
@@ -115,7 +106,7 @@
       "default_value": {"win7": "gvisor", "default": "system"},
       "options": ["system", "gvisor", "mixed"],
       "wizard_ui": "edit",
-      "if_or": ["tun_builtin", "tun"],
+      "if": ["tun"],
       "title": "TUN stack",
       "tooltip": "sing-box inbound tun stack (system, gvisor, mixed). Mixed uses system TCP stack and gvisor UDP stack."
     },
@@ -642,6 +633,7 @@
     {
       "name": "inbounds",
       "platforms": ["windows", "linux"],
+      "if": ["tun"],
       "value": [
         {
           "type": "tun",
@@ -688,7 +680,7 @@
     {
       "name": "route.rules",
       "platforms": ["windows", "linux", "darwin"],
-      "if_or": ["tun_builtin", "tun"],
+      "if": ["tun"],
       "mode": "prepend",
       "value": [
         { "inbound": "tun-in", "action": "resolve", "strategy": "@resolve_strategy" },

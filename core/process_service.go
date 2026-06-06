@@ -31,7 +31,42 @@ const (
 	// before forcing kill
 	gracefulShutdownTimeout = 2 * time.Second
 
+	// ghostTunCleanupDelay — задержка перед запуском cleanup phantom-адаптеров
+	// после exit'а sing-box. SPEC 065: PnP Manager обрабатывает DIF_REMOVE
+	// асинхронно, надо дать ему время пометить устройство CM_PROB_PHANTOM
+	// прежде чем мы попытаемся снести этот phantom. На non-Win7 — no-op
+	// внутри CleanupGhostSingboxTunAdapters, но задержка всё равно
+	// присутствует (запускаем в goroutine, не блокирует UI).
+	ghostTunCleanupDelay = 500 * time.Millisecond
 )
+
+// triggerGhostTunCleanup запускает SPEC 065 cleanup в фоновой goroutine.
+// Вызывать ПОСЛЕ того как sing-box процесс реально завершился
+// (cmd.Wait вернулся, либо после KillPrivilegedProcess).
+//
+// Гарантии:
+//   - Never блокирует caller'а — вся работа в goroutine.
+//   - Never panic'ит — defer recover внутри.
+//   - На macOS/Linux/Win8+/Win10+/Win11 — no-op (см. wintun_cleanup_*.go).
+//   - Ошибки логируются на WarnLog, не пропагируются.
+func triggerGhostTunCleanup() {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				debuglog.WarnLog("triggerGhostTunCleanup: recovered from panic: %v", r)
+			}
+		}()
+		time.Sleep(ghostTunCleanupDelay)
+		removed, err := platform.CleanupGhostSingboxTunAdapters()
+		if err != nil {
+			debuglog.WarnLog("triggerGhostTunCleanup: cleanup returned error: %v", err)
+			return
+		}
+		if removed > 0 {
+			debuglog.InfoLog("triggerGhostTunCleanup: removed %d phantom adapter(s)", removed)
+		}
+	}()
+}
 
 // ProcessService encapsulates sing-box process lifecycle management.
 // It handles starting, stopping, monitoring, and auto-restarting the sing-box process.
@@ -322,6 +357,11 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 		ac.ConsecutiveCrashAttempts = 0
 		ac.RunningState.Set(false)
 		ac.StoppedByUser = false // Reset flag for next start
+		// SPEC 065: подцепить cleanup phantom TUN-адаптеров на Win7.
+		// Только при user-stop (не на crash, не на restart) — это
+		// единственный путь где мы уверены что sing-box должен был
+		// почистить адаптер сам, и можем поправить если не вышло.
+		triggerGhostTunCleanup()
 		return
 	}
 
@@ -434,6 +474,10 @@ func (svc *ProcessService) Stop() {
 		ac.RunningState.Set(false)
 		ac.StoppedByUser = false
 		ac.CmdMutex.Unlock()
+		// SPEC 065: privileged path не идёт через Monitor (нет cmd.Wait),
+		// поэтому хук дублируется здесь. KillPrivilegedProcess вернулся
+		// успешно ⇒ sing-box процесс подтверждённо завершён.
+		triggerGhostTunCleanup()
 		return
 	}
 

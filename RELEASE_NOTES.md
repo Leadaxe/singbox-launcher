@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v0.9.9
+
+Большой UX-релиз. Settings переехали в отдельное окно, открываемое кликом по табу `⚙️` — таб работает как кнопка; внутри Subscriptions / Language / Идентификация устройства / Debug API в одной полосе скролла. Servers tab подключается к удалённым Clash API (sing-box на роутере, mihomo на VPS, другой инстанс лаунчера) — кнопка ⚙ в шапке таба, badge `🏠 Local` / `🌐 host:port`. Подписки получили кастомное User-Agent поле для провайдеров, режущих наш default. В Outbound Edit диалоге появился picker эмодзи-флагов для построения фильтр-regex'а с live-preview node-list. На Windows 7 phantom TUN адаптеры теперь автоматически чистятся. SPEC 066 убрала фантомный `tun_builtin` toggle. Новый Debug API endpoint `GET/PATCH /settings/user-agent`, документация API доступна в `docs/API.md`.
+
+**Полный список изменений:** [docs/release_notes/0-9-9.md](docs/release_notes/0-9-9.md).
+
+### Highlights (EN) — v0.9.9
+
+Major UX release. Settings moved to a separate window opened from the `⚙️` tab — the tab acts as a button; inside, Subscriptions / Language / Subscription identification / Debug API live on one scrollable column. Servers tab can now connect to remote Clash API endpoints (sing-box on a router, mihomo on a VPS, another launcher instance) — gear button in the tab header, `🏠 Local` / `🌐 host:port` badge. Subscriptions got a custom User-Agent field for providers that reject our default. The Outbound Edit dialog gained an emoji flag picker for building filter regexes with a live preview of which nodes match. Windows 7 phantom TUN adapters are now auto-cleaned. SPEC 066 dropped the phantom `tun_builtin` toggle. New Debug API endpoint `GET/PATCH /settings/user-agent`; full API reference docs available at `docs/API.md`.
+
+**Full changelog:** [docs/release_notes/0-9-9.md](docs/release_notes/0-9-9.md).
+
+---
+
 ### Выжимка (RU) — v0.9.8.1
 
 Hotfix поверх v0.9.8 — пользовательские SRS-правила теперь работают end-to-end. До этого релиза user-добавленное SRS-правило либо теряло скачанный `.srs` файл при следующем rebuild (orphan GC мисматчил filename), либо — после file-name фикса в v0.9.8 — при повторном открытии диалога редактирования молча переключалось в "Custom JSON" с пустым body. Оба пути закрыты; других изменений поведения нет.
