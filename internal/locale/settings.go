@@ -66,6 +66,22 @@ type Settings struct {
 	// Провайдер всё ещё видит стабильный device-ID, но не leak'ает hardware
 	// family. См. SPEC 061 §4.
 	SubscriptionDeviceModelHashed bool `json:"subscription_device_model_hashed,omitempty"`
+
+	// SubscriptionUserAgent — пользовательский User-Agent для subscription
+	// requests. Пустая строка / отсутствие поля → fallback на
+	// configtypes.BuildSubscriptionUserAgent() (default, например
+	// `singbox-launcher/0.9.8.1 (macOS arm64)`).
+	//
+	// Use cases:
+	//   - Провайдер требует UA от конкретного клиента (`v2rayN/...`,
+	//     `Hiddify/...`, `Shadowrocket/...`) и режет наш default.
+	//   - Тестировать обходные конфиги без перекомпиляции лаунчера.
+	//   - Облегчить fingerprint когда default UA блокируется на CDN-уровне.
+	//
+	// Передаётся в fetcher через SubscriptionRequestSettings.UserAgent —
+	// applySubscriptionRequestHeaders использует custom если не пустой,
+	// иначе BuildSubscriptionUserAgent.
+	SubscriptionUserAgent string `json:"subscription_user_agent,omitempty"`
 }
 
 // ShouldSendHWID — true если флаг nil (default) или явно true.

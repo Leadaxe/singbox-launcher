@@ -188,6 +188,11 @@ func (s *Server) routes() http.Handler {
 	protected.HandleFunc("/state/dns/rules", s.handleStateDNSRules)
 	protected.HandleFunc("/state/outbounds/resolved", s.handleStateOutboundsResolved)
 
+	// bin/settings.json — launcher-level preferences (subscription UA, etc).
+	// Separate namespace from /state/* because settings.json ≠ state.json:
+	// settings live in internal/locale and persist UI knobs.
+	protected.HandleFunc("/settings/user-agent", s.handleSettingsUserAgent)
+
 	// SPEC 059: Traffic Profiler.
 	protected.HandleFunc("/traffic/status", s.handleTrafficStatus)
 	protected.HandleFunc("/traffic/live", s.handleTrafficLive)

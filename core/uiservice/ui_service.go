@@ -27,7 +27,13 @@ type UIService struct {
 	// We store it here to implement singleton-like behavior for the wizard: only
 	// one wizard window exists at a time. Other UI code checks this field to
 	// decide whether to create a new wizard or focus the existing one.
-	WizardWindow   fyne.Window
+	WizardWindow fyne.Window
+	// SettingsWindow holds the currently open Settings window (if any).
+	// Settings used to be a main tab — moved out into a separate OS-level
+	// window when content outgrew "one screen" (auto-update, language,
+	// HWID identification, Debug API). Singleton: opening Settings again
+	// while it's already up just focuses the existing window.
+	SettingsWindow fyne.Window
 	TrayIcon       fyne.Resource
 	ApiStatusLabel *widget.Label
 

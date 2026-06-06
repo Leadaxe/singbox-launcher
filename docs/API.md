@@ -9,7 +9,7 @@
 ## TL;DR
 
 ```bash
-# 1. Включить в UI: Configurator → Diagnostics → Debug API (localhost) → ✓
+# 1. Включить в UI: Settings → Debug API (localhost) → ✓
 # 2. Скопировать токен: тот же экран, кнопка "Copy token"
 # 3. Записать в env
 export TOKEN="<paste-here>"
@@ -30,7 +30,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 | Bind | `127.0.0.1:<port>` — **hard-coded loopback**, на LAN не вынесешь |
 | Дефолтный порт | **9263** |
 | Override порта | `bin/settings.json` → `debug_api_port` (1024–65535, `0` = дефолт) |
-| Включить/выключить | `bin/settings.json` → `debug_api_enabled` (UI: Diagnostics → checkbox) |
+| Включить/выключить | `bin/settings.json` → `debug_api_enabled` (UI: Settings → checkbox) |
 | Bearer-токен | `bin/settings.json` → `debug_api_token` (UI: Diagnostics → Copy token) |
 | Регенерация токена | UI нет — удалить ключ из `settings.json`, перезапустить лаунчер |
 | Comparison | `subtle.ConstantTimeCompare` (constant-time) |
@@ -107,6 +107,34 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application
 ```
 
 **Ошибки:** `400` (битый JSON / неизвестный mode), `422` (semantic validation: unknown rule kind, unknown DNS server kind, body decode fail), `500` (load/save), `405` (метод).
+
+---
+
+## Settings
+
+`bin/settings.json` — launcher-level preferences (отдельный namespace от `state.json`). Изменения подхватываются на лету: subscription fetcher читает `LoadSubscriptionSettingsFunc` на каждом запросе, sing-box restart НЕ нужен.
+
+| Method | Path | Что делает |
+|---|---|---|
+| GET | `/settings/user-agent` | `{user_agent, default, effective}` — `user_agent` raw stored (может быть пустой), `default` — что отдаст `BuildSubscriptionUserAgent()`, `effective` — что реально уйдёт в следующий fetch |
+| PATCH | `/settings/user-agent` | `{"user_agent":"..."}` — записать кастомный UA. `{"user_agent":""}` = reset к default. Поле обязательно (пропуск = `400`) — иначе truncated request мог бы случайно стереть значение |
+
+```bash
+# Прочитать текущий + default + effective
+curl -s -H "Authorization: Bearer $TOKEN" "$API/settings/user-agent" | jq
+
+# Установить UA как v2rayN (для провайдеров, которые режут наш default)
+curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/settings/user-agent" \
+  -d '{"user_agent":"v2rayN/7.5.0"}'
+
+# Сбросить на default
+curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/settings/user-agent" \
+  -d '{"user_agent":""}'
+```
+
+**Ошибки:** `400` (битый JSON / отсутствует `user_agent` поле), `500` (save settings.json), `405` (метод).
 
 ---
 
