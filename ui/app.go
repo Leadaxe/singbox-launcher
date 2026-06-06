@@ -206,39 +206,29 @@ func (a *App) GetController() *core.AppController {
 	return a.core
 }
 
-// updateClashAPITabState обновляет состояние вкладки Servers в зависимости
-// от статуса запуска локального sing-box И активного remote override (SPEC 064).
+// updateClashAPITabState — SPEC 064 update: tab **всегда** доступна.
 //
-// Tab enabled если:
-//   - локальный sing-box запущен, ИЛИ
-//   - active remote override (юзер подключился к удалённому Clash API через
-//     gear-dialog в шапке таба).
+// Раньше (до SPEC 064) tab disable'илась когда локальный sing-box не запущен.
+// Это создало chicken-and-egg: gear-кнопка для настройки remote-endpoint
+// живёт ВНУТРИ этой вкладки, юзер не мог до неё добраться из cold-start
+// состояния (local не стартован, override ещё не задан → tab disabled →
+// gear недоступен → override никогда не задать).
+//
+// Решение: вкладка постоянно enabled. Если ни local sing-box, ни remote
+// override не активны — refresh-логика покажет «Clash API offline» в
+// ApiStatusLabel, но badge + gear остаются нажимаемыми, и юзер может
+// настроить remote или запустить local.
+//
+// Функция оставлена в качестве no-op-stub: вызывается из множества мест
+// в кодовой базе (UpdateCoreStatusFunc, EventBus subscriber, OnOverrideChanged
+// listener). Удалять hook не имеет смысла — нет cost'а, и позволяет в
+// будущем вернуть гейтинг если потребуется.
 func (a *App) updateClashAPITabState() {
 	if a.clashAPITab == nil || a.tabs == nil {
 		return
 	}
-
-	isRunning := a.core.RunningState.IsRunning()
-	_, hasRemoteOverride := GetRemoteOverride()
-	isActive := isRunning || hasRemoteOverride
-
-	// Используем DisableItem/EnableItem из AppTabs для визуальной индикации неактивности
-	if !isActive {
-		// Вкладка неактивна - отключаем её (будет показана серым цветом)
-		a.tabs.DisableItem(a.clashAPITab)
-	} else {
-		// Вкладка активна - включаем её
-		a.tabs.EnableItem(a.clashAPITab)
-	}
-
-	// Если sing-box не запущен И нет remote override и вкладка Servers выбрана,
-	// переключаем на Core. С active override остаёмся (юзерский явный выбор).
-	if !isActive && a.currentTab == a.clashAPITab {
-		if len(a.tabs.Items) > 0 {
-			coreTab := a.tabs.Items[0]
-			a.tabs.Select(coreTab)
-		}
-	}
+	// SPEC 064: всегда enabled. Никаких DisableItem'ов больше нет.
+	a.tabs.EnableItem(a.clashAPITab)
 }
 
 // indexEmojiSep — returns the byte index just AFTER the first ASCII
