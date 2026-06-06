@@ -258,6 +258,7 @@
   "wizard.tab_settings": "Настройки",
   "wizard.tab_preview": "Превью",
   "wizard.settings.no_vars": "В этом профиле нет переменных шаблона.",
+  "wizard.settings.no_inbound_warning": "⚠ Ни один inbound не включён — sing-box запустится, но не будет принимать трафик. Включите Enable TUN выше или Enable Proxy-in ниже.",
   "wizard.settings.reset": "Сброс",
   "wizard.settings.reset_tooltip": "Сбросить к значению из шаблона.",
   "wizard.settings.clash_secret_regenerate_tooltip": "Сгенерировать новый случайный секрет.",

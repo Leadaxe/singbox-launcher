@@ -258,6 +258,7 @@
   "wizard.tab_settings": "Settings",
   "wizard.tab_preview": "Preview",
   "wizard.settings.no_vars": "No template variables in this profile.",
+  "wizard.settings.no_inbound_warning": "⚠ No inbound is enabled — sing-box will start, but won't accept any traffic. Turn on Enable TUN above, or Enable Proxy-in below.",
   "wizard.settings.reset": "Reset",
   "wizard.settings.reset_tooltip": "Reset to the template default.",
   "wizard.settings.clash_secret_regenerate_tooltip": "Generate a new random secret.",
