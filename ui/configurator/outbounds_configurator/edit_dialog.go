@@ -139,14 +139,29 @@ func ShowEditDialog(
 	}
 
 	// Scope: For all | For source: ...
+	//
+	// Filter out server-type sources (no subscription URL → ровно 1 нода).
+	// Selector / urltest над 1 нодой semantically бессмыслен — это не группа,
+	// а alias на одну ноду. Раньше dropdown показывал такие источники,
+	// юзер мог их выбрать, и сохранённый selector создавал «группу из 1
+	// элемента» с тегом server-source'а внутри.
+	//
+	// Discriminator: `p.Source != ""` ⇒ subscription-type (включая mixed —
+	// подписка + extra connections). Pure server-source имеет `Source == ""`
+	// и непустой Connections, см. core/state/adapter_source.go::ToProxySourceV4.
 	scopeOptions := []string{locale.T("wizard.outbound.scope_all")}
+	// scopeIndexMap[i in scopeOptions starting from 1] = i in parserConfig.Proxies
+	// (нужен потому что не все Proxies попадают в dropdown).
+	scopeIndexMap := make([]int, 0, len(parserConfig.ParserConfig.Proxies))
 	for i, p := range parserConfig.ParserConfig.Proxies {
-		label := p.Source
-		if label == "" {
-			label = locale.T("wizard.outbound.label_source") + strconv.Itoa(i+1)
+		if p.Source == "" {
+			// Server-source — пропускаем.
+			continue
 		}
+		label := p.Source
 		label = wizardutils.TruncateStringEllipsis(label, wizardutils.MaxLabelRunes, "...")
 		scopeOptions = append(scopeOptions, locale.T("wizard.outbound.scope_source")+label)
+		scopeIndexMap = append(scopeIndexMap, i)
 	}
 	scopeSelect := widget.NewSelect(scopeOptions, nil)
 	if isAdd {
@@ -154,17 +169,48 @@ func ShowEditDialog(
 	} else if isGlobal {
 		scopeSelect.SetSelected(locale.T("wizard.outbound.scope_all"))
 	} else {
-		if sourceIndex >= 0 && sourceIndex < len(parserConfig.ParserConfig.Proxies) {
-			scopeSelect.SetSelected(scopeOptions[sourceIndex+1])
-		} else {
+		// Pre-select для существующего outbound'а: ищем sourceIndex в map'е.
+		// Если он указывает на server-source (legacy data до фикса) — fallback
+		// на "For all" (selector над одной нодой smells неправильно).
+		matched := false
+		for optIdx, srcIdx := range scopeIndexMap {
+			if srcIdx == sourceIndex {
+				scopeSelect.SetSelected(scopeOptions[optIdx+1])
+				matched = true
+				break
+			}
+		}
+		if !matched {
 			scopeSelect.SetSelected(scopeOptions[0])
 		}
 	}
 
-	// Filters: fixed key "tag", value editable
+	// Filters: fixed key "tag", value editable. Flag-picker button (🌐) opens
+	// emoji picker dialog with live regex preview + match-count.
 	filterKeyLabel := widget.NewLabel(locale.T("wizard.outbound.label_tag"))
 	filterValEntry := widget.NewEntry()
 	filterValEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_filter"))
+	filterPickerBtn := widget.NewButton("🌐", func() {
+		var nodes []*config.ParsedNode
+		if editPresenter != nil {
+			if m := editPresenter.Model(); m != nil {
+				// Same path as Preview tab: rebuild the preview cache before
+				// reading PreviewNodes. Без этого кэш пуст, если юзер ещё не
+				// открывал Preview tab, и picker показывает 0 нод.
+				// best-effort: ошибка ребилда не блокирует picker, просто
+				// возможно nodes окажется stale/empty (юзер увидит чипы 0
+				// или пустой список).
+				_, _ = wizardbusiness.RebuildPreviewCache(m)
+				nodes = m.PreviewNodes
+			}
+		}
+		showFlagPickerPopup(parent, nodes, filterValEntry.Text, func(filter string) {
+			filterValEntry.SetText(filter)
+		})
+	})
+	filterPickerBtn.Importance = widget.LowImportance
+	// Compose: [entry stretches] [button 30px].
+	filterValBox := container.NewBorder(nil, nil, nil, filterPickerBtn, filterValEntry)
 	if displayBody != nil && displayBody.Filters != nil {
 		if v, ok := displayBody.Filters["tag"]; ok {
 			if s, ok := v.(string); ok {
@@ -267,7 +313,14 @@ func ShowEditDialog(
 		rawScroll,
 	)
 
-	var currentTab string = "settings"
+	// editSource — where the authoritative content currently lives:
+	// "settings" or "raw". Preview tab is read-only and never updates this.
+	//
+	// Routing read/sync by `editSource` (not visible-tab) fixes scenarios
+	// like Settings → Preview → Raw and Raw → Preview → Save: a stale form
+	// must not overwrite raw, and Save from Preview must use whatever the
+	// user typed last, not always the form path.
+	var editSource string = "settings"
 
 	var dialogWin fyne.Window
 	getScopeFromForm := func() (scopeKind string, idx int) {
@@ -275,32 +328,51 @@ func ShowEditDialog(
 		idx = -1
 		if scopeSelect.Selected != "" && strings.HasPrefix(scopeSelect.Selected, locale.T("wizard.outbound.scope_source")) {
 			scopeKind = "source"
+			// Map: option index → real source index в Proxies (см.
+			// scopeIndexMap выше). Раньше использовали `idx = i - 1` напрямую,
+			// что было верно только если в dropdown'е попадают ВСЕ Proxies.
+			// После фильтра server-source'ов нужен явный mapping.
 			for i, opt := range scopeOptions {
 				if i > 0 && opt == scopeSelect.Selected {
-					idx = i - 1
+					optIdx := i - 1
+					if optIdx >= 0 && optIdx < len(scopeIndexMap) {
+						idx = scopeIndexMap[optIdx]
+					}
 					break
 				}
 			}
 		}
 		return scopeKind, idx
 	}
-	// buildConfigForPreview builds a config.OutboundConfig snapshot based on current UI state.
-	// It is used by the Preview tab; errors are returned to be shown inline.
-	buildConfigForPreview := func() (*config.OutboundConfig, error) {
-		if currentTab == "raw" {
+	// buildConfigForPreview builds a config.OutboundConfig snapshot based on
+	// the authoritative source (settings form or raw JSON). Routes by
+	// `editSource`, not `currentTab` — preview tab itself doesn't host edits,
+	// so when called from Preview we read from wherever the user last typed.
+	//
+	// `requireTag=true`: empty tag → error (save() needs a real tag).
+	// `requireTag=false`: empty tag → autoinjected "_preview_" placeholder so
+	// preview tab + syncFormToRaw work before the user has typed a name.
+	buildConfigForPreview := func(requireTag bool) (*config.OutboundConfig, error) {
+		if editSource == "raw" {
 			var cfg config.OutboundConfig
 			if err := json.Unmarshal([]byte(rawEntry.Text), &cfg); err != nil {
 				return nil, fmt.Errorf("%s: %w", locale.T("wizard.outbound.error_invalid_json"), err)
 			}
 			if strings.TrimSpace(cfg.Tag) == "" {
-				return nil, fmt.Errorf("%s", locale.T("wizard.outbound.error_tag_required"))
+				if requireTag {
+					return nil, fmt.Errorf("%s", locale.T("wizard.outbound.error_tag_required"))
+				}
+				cfg.Tag = "_preview_"
 			}
 			return &cfg, nil
 		}
 
 		tag := strings.TrimSpace(tagEntry.Text)
 		if tag == "" {
-			return nil, fmt.Errorf("%s", locale.T("wizard.outbound.error_tag_required"))
+			if requireTag {
+				return nil, fmt.Errorf("%s", locale.T("wizard.outbound.error_tag_required"))
+			}
+			tag = "_preview_"
 		}
 		obType := "selector"
 		if typeSelect.Selected == locale.T("wizard.outbound.type_auto") {
@@ -428,7 +500,10 @@ func ShowEditDialog(
 	}
 
 	save := func() {
-		if currentTab == "raw" {
+		// Route by editSource (where user actually typed) instead of currentTab.
+		// Save from Preview tab must use whatever was last edited, not always
+		// the form path.
+		if editSource == "raw" {
 			var cfg config.OutboundConfig
 			if err := json.Unmarshal([]byte(rawEntry.Text), &cfg); err != nil {
 				dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.outbound.error_invalid_json"), err), dialogWin)
@@ -450,7 +525,8 @@ func ShowEditDialog(
 			return
 		}
 
-		cfg, err := buildConfigForPreview()
+		// Save → requireTag=true: explicit error if tag is empty.
+		cfg, err := buildConfigForPreview(true)
 		if err != nil {
 			dialog.ShowError(err, dialogWin)
 			return
@@ -510,7 +586,7 @@ func ShowEditDialog(
 		widget.NewLabel(locale.T("wizard.outbound.label_comment")),
 		commentEntry,
 		widget.NewLabel(locale.T("wizard.outbound.label_filters")),
-		container.NewGridWithColumns(2, filterKeyLabel, filterValEntry),
+		container.NewGridWithColumns(2, filterKeyLabel, filterValBox),
 		widget.NewLabel(locale.T("wizard.outbound.label_preferred")),
 		container.NewGridWithColumns(2, defKeyLabel, defValEntry),
 		widget.NewLabel(locale.T("wizard.outbound.label_add_outbounds")),
@@ -572,7 +648,10 @@ func ShowEditDialog(
 			return
 		}
 
-		cfg, err := buildConfigForPreview()
+		// Preview → requireTag=false: empty tag is fine, we substitute a
+		// placeholder so the filter pipeline still runs and the user can see
+		// which nodes match before naming the outbound.
+		cfg, err := buildConfigForPreview(false)
 		if err != nil {
 			previewStatusLabel.SetText(locale.T("wizard.outbound.preview_invalid_json"))
 			return
@@ -788,10 +867,16 @@ func ShowEditDialog(
 	// thin tag+ref + Updates с USER patch (diff формы vs merged_base). Юзер видит
 	// то же что и save(), без иллюзии full body.
 	syncFormToRaw := func() {
-		if currentTab != "settings" {
+		// Guard by editSource: if user's last edits were in raw (and now they
+		// just returned to it via preview), preserve raw — don't overwrite
+		// with a stale form snapshot. If editSource was "settings", form is
+		// authoritative → push it into raw.
+		if editSource != "settings" {
 			return
 		}
-		cfg, err := buildConfigForPreview()
+		// Settings → Raw sync: requireTag=false so an empty-tag form still
+		// materializes a skeleton JSON in Raw (user can keep editing there).
+		cfg, err := buildConfigForPreview(false)
 		if err != nil || cfg == nil {
 			return
 		}
@@ -813,15 +898,25 @@ func ShowEditDialog(
 	tabs.OnSelected = func(t *container.TabItem) {
 		switch t.Text {
 		case locale.T("wizard.outbound.tab_raw"):
-			// Settings → Raw: материализуем правки формы в JSON.
+			// Going TO raw. If editSource is "settings" → push form into raw
+			// (syncFormToRaw has its own editSource=="settings" guard).
+			// If editSource was already "raw" (returning via Preview), keep
+			// raw as user left it.
 			syncFormToRaw()
-			currentTab = "raw"
+			editSource = "raw"
 		case locale.T("wizard.outbound.tab_preview"):
-			currentTab = "preview"
+			// Preview is read-only. Don't touch editSource. buildPreview
+			// uses buildConfigForPreview, which routes by editSource.
 			buildPreview()
 		default:
-			currentTab = "settings"
-			syncRawToForm()
+			// Going TO settings. If editSource was "raw" → re-parse raw into
+			// the form. If editSource was "settings" (returning via Preview),
+			// the form is already correct — don't overwrite with possibly
+			// stale rawEntry.
+			if editSource == "raw" {
+				syncRawToForm()
+			}
+			editSource = "settings"
 		}
 	}
 

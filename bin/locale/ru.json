@@ -688,5 +688,14 @@
   "servers.endpoint.tooltip_settings": "Настройки удалённого endpoint'а",
   "servers.endpoint.unreachable_title": "Endpoint недоступен",
   "servers.endpoint.unreachable_body": "GET /version упал: %v\n\nПодключиться всё равно?",
-  "servers.endpoint.note_http_only": "ⓘ Только HTTP. Loopback / LAN — без TLS, без CORS."
+  "servers.endpoint.note_http_only": "ⓘ Только HTTP. Loopback / LAN — без TLS, без CORS.",
+  "wizard.outbound.flag_picker.title": "Выбор флагов",
+  "wizard.outbound.flag_picker.flags_header": "Доступные флаги (клик переключает):",
+  "wizard.outbound.flag_picker.no_flags": "Флагов в тэгах нет. Обнови подписки (Update) или впиши regex руками ниже.",
+  "wizard.outbound.flag_picker.regex_header": "Regex фильтра (редактируемый, применяется live):",
+  "wizard.outbound.flag_picker.matches": "совпадает %d из %d узлов",
+  "wizard.outbound.flag_picker.invalid_regex": "Невалидный regex",
+  "wizard.outbound.flag_picker.exclude": "Исключить эти флаги (negation)",
+  "wizard.outbound.flag_picker.apply": "Применить",
+  "wizard.outbound.flag_picker.cancel": "Отмена"
 }

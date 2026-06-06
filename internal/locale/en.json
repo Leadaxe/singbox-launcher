@@ -688,5 +688,14 @@
   "servers.endpoint.tooltip_settings": "Remote endpoint settings",
   "servers.endpoint.unreachable_title": "Endpoint unreachable",
   "servers.endpoint.unreachable_body": "GET /version failed: %v\n\nConnect anyway?",
-  "servers.endpoint.note_http_only": "ⓘ HTTP only. Loopback / LAN — no TLS, no CORS."
+  "servers.endpoint.note_http_only": "ⓘ HTTP only. Loopback / LAN — no TLS, no CORS.",
+  "wizard.outbound.flag_picker.title": "Flag picker",
+  "wizard.outbound.flag_picker.flags_header": "Available flags (click to toggle):",
+  "wizard.outbound.flag_picker.no_flags": "No flags found in node tags. Refresh subscriptions first, or type a regex below manually.",
+  "wizard.outbound.flag_picker.regex_header": "Filter regex (editable, live-applied):",
+  "wizard.outbound.flag_picker.matches": "matches %d of %d total nodes",
+  "wizard.outbound.flag_picker.invalid_regex": "Invalid regex",
+  "wizard.outbound.flag_picker.exclude": "Exclude these flags instead (negation)",
+  "wizard.outbound.flag_picker.apply": "Apply",
+  "wizard.outbound.flag_picker.cancel": "Cancel"
 }
