@@ -33,15 +33,9 @@ import (
 	"singbox-launcher/internal/constants"
 	internaldialogs "singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
-
-// scrollbarGutterWidth — right padding under scrollable content так чтобы
-// нативная полоска прокрутки не наезжала на кнопки/текст. Должно совпадать
-// со значением в `ui/configurator/tabs/scroll_gutter.go` (тот же визуальный
-// инвариант). Дублируем потому что это другой пакет; константа маленькая
-// и выделять отдельный shared-utility ради 10px пока не оправдано.
-const scrollbarGutterWidth = 10
 
 // getFreeData — плоская LxBox-style схема: текст благодарности + ссылка
 // + список URL'ов подписок. Никакого parser_config / outbounds / правил —
@@ -211,8 +205,7 @@ func renderGetFreeDialog(
 
 	// Right scroll gutter — иначе native scrollbar наезжает на кнопки
 	// Insert (тот же приём, что в tabs/source_tab.go::urlURIGutter).
-	gutter := canvas.NewRectangle(color.Transparent)
-	gutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+	gutter := components.NewScrollGutter()
 	listWithGutter := container.NewBorder(nil, nil, nil, gutter, listVBox)
 
 	header := container.NewVBox(intro, credit, separator)

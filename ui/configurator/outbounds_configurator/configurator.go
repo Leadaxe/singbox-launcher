@@ -18,6 +18,7 @@ import (
 	"singbox-launcher/core/config"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardutils "singbox-launcher/ui/configurator/utils"
 
@@ -417,8 +418,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			displayLine := wizardutils.TruncateStringEllipsis(rawLine, wizardutils.MaxLabelRunes, "...")
 
 			// Add transparent padding on the right so the list scrollbar has a visual strip.
-			rightPadding := canvas.NewRectangle(color.Transparent)
-			rightPadding.SetMinSize(fyne.NewSize(10, 0))
+			rightPadding := components.NewScrollGutter()
 
 			nameLabel := ttwidget.NewLabel(displayLine)
 			nameLabel.Wrapping = fyne.TextWrapOff

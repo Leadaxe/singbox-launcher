@@ -39,6 +39,7 @@ import (
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/textnorm"
+	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizarddialogs "singbox-launcher/ui/configurator/dialogs"
 	"singbox-launcher/ui/configurator/outbounds_configurator"
@@ -110,8 +111,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 	// Limit width and height of URL input field (3 lines)
 	// Wrap MultiLineEntry in Scroll container to show scrollbars; right gutter for scrollbar strip
-	urlURIGutter := canvas.NewRectangle(color.Transparent)
-	urlURIGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+	urlURIGutter := components.NewScrollGutter()
 	urlEntryScrollInner := container.NewBorder(nil, nil, nil, urlURIGutter, guiState.SourceURLEntry)
 	urlEntryScroll := container.NewScroll(urlEntryScrollInner)
 	urlEntryScroll.Direction = container.ScrollBoth
@@ -157,8 +157,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		sourcesBox.Objects = sourcesBox.Objects[:0]
 		m := presenter.Model()
 		if len(m.Sources) == 0 {
-			emptyGutter := canvas.NewRectangle(color.Transparent)
-			emptyGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+			emptyGutter := components.NewScrollGutter()
 			sourcesBox.Add(container.NewHBox(widget.NewLabel(locale.T("wizard.source.no_sources")), layout.NewSpacer(), emptyGutter))
 			sourcesBox.Refresh()
 			return
@@ -381,8 +380,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					}
 				}
 
-				rowGutter := canvas.NewRectangle(color.Transparent)
-				rowGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+				rowGutter := components.NewScrollGutter()
 				rightControlsItems := []fyne.CanvasObject{}
 				if noticeBtn != nil {
 					rightControlsItems = append(rightControlsItems, noticeBtn)
@@ -446,8 +444,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		sourcesHeader,
 	)
 
-	tabScrollGutter := canvas.NewRectangle(color.Transparent)
-	tabScrollGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+	tabScrollGutter := components.NewScrollGutter()
 
 	// Sources list fills remaining tab height (preview all servers moved to a separate window).
 	body := container.NewBorder(
@@ -540,8 +537,7 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 	refreshBtn := widget.NewButton(locale.T("wizard.source.button_refresh"), refreshPreview)
 	closeBtn := widget.NewButton(locale.T("wizard.source.view_close"), func() { win.Close() })
 	topRow := container.NewBorder(nil, nil, nil, refreshBtn, previewStatusScroll)
-	listStrip := canvas.NewRectangle(color.Transparent)
-	listStrip.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+	listStrip := components.NewScrollGutter()
 	previewScroll := container.NewScroll(previewList)
 	previewScroll.Direction = container.ScrollVerticalOnly
 	listRow := container.NewBorder(nil, nil, nil, listStrip, previewScroll)

@@ -22,6 +22,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
+	"singbox-launcher/ui/components"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
@@ -35,8 +36,7 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 	scroll := container.NewVScroll(body)
 	scroll.SetMinSize(fyne.NewSize(0, sourceEditSettingsScrollMinH))
 	// Scrollbar gutter справа — чтобы контент не прижимался к скролл-баре.
-	gutter := canvas.NewRectangle(transparentColor())
-	gutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+	gutter := components.NewScrollGutter()
 	rootWithGutter := container.NewBorder(nil, nil, nil, gutter, scroll)
 
 	refresh := func() {

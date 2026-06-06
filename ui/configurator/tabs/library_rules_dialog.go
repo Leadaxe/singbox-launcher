@@ -15,6 +15,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
@@ -138,8 +139,7 @@ func ShowRulesLibraryDialog(p *wizardpresentation.WizardPresenter, showAddRuleDi
 		listBox.Add(row)
 	}
 
-	scrollGutter := canvas.NewRectangle(color.Transparent)
-	scrollGutter.SetMinSize(fyne.NewSize(scrollbarGutterWidth, 0))
+	scrollGutter := components.NewScrollGutter()
 	scrollInner := container.NewBorder(nil, nil, nil, scrollGutter, listBox)
 	scroll := container.NewVScroll(scrollInner)
 	minH := canvas.NewRectangle(color.Transparent)
