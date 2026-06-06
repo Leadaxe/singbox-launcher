@@ -65,39 +65,26 @@
       "name": "tun",
       "type": "bool",
       "default_value": {
+        "windows": "true",
+        "linux": "true",
         "darwin": "true",
         "default": "false"
       },
       "wizard_ui": "edit",
       "platforms": [
+        "windows",
+        "linux",
         "darwin"
       ],
-      "title": "Enable TUN (macOS)",
-      "tooltip": "Route traffic through sing-box TUN. Requires administrator privileges on macOS."
-    },
-    {
-      "name": "tun_builtin",
-      "type": "bool",
-      "default_value": {
-        "windows": "true",
-        "linux": "true",
-        "default": "false"
-      },
-      "wizard_ui": "hidden",
-      "platforms": [
-        "windows",
-        "linux"
-      ],
-      "title": "TUN (Windows/Linux)",
-      "tooltip": "TUN inbound is always merged on these platforms. Used for template conditions (params.if); not user-editable."
+      "title": "Enable TUN",
+      "tooltip": "Route traffic through sing-box TUN inbound. Requires administrator privileges. If you disable TUN, enable Proxy-in below and point your browser/system to that proxy — otherwise no traffic will flow through sing-box."
     },
     {
       "name": "tun_address",
       "type": "text",
       "default_value": "172.16.0.1/30",
       "wizard_ui": "edit",
-      "if_or": [
-        "tun_builtin",
+      "if": [
         "tun"
       ],
       "title": "TUN interface address",
@@ -108,8 +95,7 @@
       "type": "text",
       "default_value": "1492",
       "wizard_ui": "edit",
-      "if_or": [
-        "tun_builtin",
+      "if": [
         "tun"
       ],
       "title": "TUN MTU",
@@ -120,8 +106,7 @@
       "type": "bool",
       "default_value": "false",
       "wizard_ui": "edit",
-      "if_or": [
-        "tun_builtin",
+      "if": [
         "tun"
       ],
       "title": "TUN strict route",
@@ -140,8 +125,7 @@
         "mixed"
       ],
       "wizard_ui": "edit",
-      "if_or": [
-        "tun_builtin",
+      "if": [
         "tun"
       ],
       "title": "TUN stack",
@@ -1331,6 +1315,9 @@
         "windows",
         "linux"
       ],
+      "if": [
+        "tun"
+      ],
       "value": [
         {
           "type": "tun",
@@ -1391,8 +1378,7 @@
         "linux",
         "darwin"
       ],
-      "if_or": [
-        "tun_builtin",
+      "if": [
         "tun"
       ],
       "mode": "prepend",
