@@ -2,9 +2,12 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -12,6 +15,7 @@ import (
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core"
+	"singbox-launcher/core/debugapi"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
@@ -121,6 +125,12 @@ func CreateSettingsTab(ac *core.AppController) fyne.CanvasObject {
 	subIDTitle := widget.NewLabelWithStyle(locale.T("settings.section_subscription_identification"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	subIDBlock := buildSubscriptionIdentificationBlock(ac, binDir)
 
+	// ---- Debug API (переехал из Diagnostics tab) ---------------------------
+	// Это launcher-wide setting (порт + токен персистятся в bin/settings.json),
+	// а не ad-hoc диагностика — поэтому живёт здесь рядом с auto-update,
+	// языком и идентификацией подписки.
+	debugAPIBlock := buildDebugAPIRow(ac)
+
 	content := container.NewVBox(
 		subsTitle,
 		autoUpdateCheck,
@@ -131,6 +141,8 @@ func CreateSettingsTab(ac *core.AppController) fyne.CanvasObject {
 		widget.NewSeparator(),
 		subIDTitle,
 		subIDBlock,
+		widget.NewSeparator(),
+		debugAPIBlock,
 	)
 	return container.NewPadded(content)
 }
@@ -279,6 +291,143 @@ func buildSubscriptionIdentificationBlock(ac *core.AppController, binDir string)
 		hashModelRow,
 		hwidRow,
 	)
+}
+
+// buildDebugAPIRow renders the local HTTP Debug API toggle + token copy.
+// Off by default. First enable generates a random Bearer token; persists to
+// bin/settings.json. UI shows bound address ("127.0.0.1:9263") while running.
+//
+// Locale keys остаются в `diag.debug_api_*` namespace для backward-compat
+// с уже переведёнными строками — функционал тот же, просто переехал из
+// Diagnostics → Settings tab (так как это persisted launcher setting,
+// а не one-shot диагностическое действие).
+func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
+	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	st := locale.LoadSettings(binDir)
+
+	title := widget.NewLabelWithStyle(locale.T("diag.debug_api_title"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	// Hint text wraps to window width instead of forcing the window wider —
+	// otherwise a 90-char description pins the whole tab's minimum size.
+	hint := widget.NewLabel(locale.T("diag.debug_api_hint"))
+	hint.Wrapping = fyne.TextWrapWord
+	status := widget.NewLabel("")
+	status.Wrapping = fyne.TextWrapWord
+	refreshStatus := func() {
+		addr := ac.DebugAPIAddr()
+		if addr == "" {
+			status.SetText(locale.T("diag.debug_api_off"))
+		} else {
+			status.SetText(locale.Tf("diag.debug_api_on", addr))
+		}
+	}
+	refreshStatus()
+
+	copyTokenBtn := widget.NewButtonWithIcon(locale.T("diag.debug_api_copy_token"), theme.ContentCopyIcon(), nil)
+	copyTokenBtn.OnTapped = func() {
+		// Re-load settings each tap so Copy always reflects the latest token
+		// (e.g. after a user regenerates via the checkbox dance).
+		cur := locale.LoadSettings(binDir)
+		if cur.DebugAPIToken == "" {
+			return
+		}
+		ac.UIService.MainWindow.Clipboard().SetContent(cur.DebugAPIToken)
+		// Silent clipboard copies feel like dead buttons. A toast confirms
+		// the token actually went to the clipboard.
+		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
+			locale.T("diag.debug_api_copied_title"), locale.T("diag.debug_api_copied_msg"))
+	}
+	if st.DebugAPIToken == "" {
+		copyTokenBtn.Disable()
+	}
+
+	// Port entry: пользователь может задать кастомный порт. 0/empty =
+	// debugapi.DefaultPort. Меняется только когда API выключен (иначе
+	// гонка между Stop старого listener'а и Start нового на занятом порту);
+	// поле disable'ится при чекбоксе ON.
+	portEntry := widget.NewEntry()
+	portEntry.SetPlaceHolder(fmt.Sprintf("%d", debugapi.DefaultPort))
+	if st.DebugAPIPort > 0 {
+		portEntry.SetText(fmt.Sprintf("%d", st.DebugAPIPort))
+	}
+	if st.DebugAPIEnabled {
+		portEntry.Disable()
+	}
+
+	check := widget.NewCheck(locale.T("diag.debug_api_enable"), nil)
+	check.SetChecked(st.DebugAPIEnabled)
+	check.OnChanged = func(enabled bool) {
+		cur := locale.LoadSettings(binDir)
+		// Парсим порт из поля; пустое = default. Невалидное → дёргаем
+		// диалог и откатываем чекбокс.
+		portText := strings.TrimSpace(portEntry.Text)
+		port := 0
+		if portText != "" {
+			p, err := strconv.Atoi(portText)
+			if err != nil || p < 1024 || p > 65535 {
+				dialog.ShowInformation(
+					locale.T("diag.debug_api_port_invalid_title"),
+					locale.T("diag.debug_api_port_invalid_msg"),
+					ac.UIService.MainWindow,
+				)
+				check.SetChecked(false)
+				return
+			}
+			port = p
+		}
+		cur.DebugAPIPort = port
+		cur.DebugAPIEnabled = enabled
+		if enabled {
+			// Lazy-generate token on first enable so tokens don't exist in
+			// settings.json until the user actually opts in.
+			if strings.TrimSpace(cur.DebugAPIToken) == "" {
+				tok, err := debugapi.GenerateToken()
+				if err != nil {
+					debuglog.ErrorLog("settings.debug_api: token gen failed: %v", err)
+					ShowError(ac.UIService.MainWindow, err)
+					check.SetChecked(false)
+					return
+				}
+				cur.DebugAPIToken = tok
+			}
+			if err := locale.SaveSettings(binDir, cur); err != nil {
+				debuglog.WarnLog("settings.debug_api: save settings: %v", err)
+			}
+			port := cur.DebugAPIPort
+			if err := ac.StartDebugAPI(port, cur.DebugAPIToken); err != nil {
+				debuglog.ErrorLog("settings.debug_api: start failed: %v", err)
+				ShowError(ac.UIService.MainWindow, err)
+				check.SetChecked(false)
+				cur.DebugAPIEnabled = false
+				_ = locale.SaveSettings(binDir, cur)
+				refreshStatus()
+				return
+			}
+			copyTokenBtn.Enable()
+			portEntry.Disable()
+		} else {
+			ac.StopDebugAPI()
+			// Keep the token in settings.json so re-enabling doesn't rotate
+			// it and break existing scripts. Users who want rotation can
+			// delete the key manually.
+			if err := locale.SaveSettings(binDir, cur); err != nil {
+				debuglog.WarnLog("settings.debug_api: save settings: %v", err)
+			}
+			portEntry.Enable()
+		}
+		refreshStatus()
+	}
+
+	portLabel := widget.NewLabel(locale.T("diag.debug_api_port_label"))
+	portRow := container.NewBorder(nil, nil, portLabel, nil, portEntry)
+
+	row := container.NewVBox(
+		title,
+		hint,
+		container.NewHBox(check, copyTokenBtn),
+		portRow,
+		status,
+	)
+	return row
 }
 
 // looksLikeUUID — 8-4-4-4-12 hex check, case-insensitive. We don't
