@@ -188,12 +188,12 @@ func TestExpand_IfFiltersEntries(t *testing.T) {
 		},
 	}
 	// Default geoip=false → second entry filtered.
-	entries, _ := ExpandPresetOutbounds(preset, nil)
+	entries, _ := ExpandPresetOutbounds(preset, nil, "darwin", "amd64")
 	if len(entries) != 1 || entries[0].Config.Tag != "always" {
 		t.Fatalf("expected only 'always' entry, got %+v", entries)
 	}
 	// User overrides geoip=true → both entries.
-	entries2, _ := ExpandPresetOutbounds(preset, map[string]string{"geoip": "true"})
+	entries2, _ := ExpandPresetOutbounds(preset, map[string]string{"geoip": "true"}, "darwin", "amd64")
 	if len(entries2) != 2 {
 		t.Fatalf("expected 2 entries with geoip=true, got %d", len(entries2))
 	}
@@ -210,7 +210,7 @@ func TestExpand_VarSubstitutionInOptions(t *testing.T) {
 				Options: map[string]interface{}{"default": "@out"}},
 		},
 	}
-	entries, warns := ExpandPresetOutbounds(preset, map[string]string{"out": "proxy-out"})
+	entries, warns := ExpandPresetOutbounds(preset, map[string]string{"out": "proxy-out"}, "darwin", "amd64")
 	if len(warns) != 0 || len(entries) != 1 {
 		t.Fatalf("expected 1 entry no warnings, got warns=%v entries=%+v", warns, entries)
 	}

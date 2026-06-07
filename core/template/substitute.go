@@ -24,6 +24,29 @@ func isIntCastVar(name string) bool {
 // Параметры goos / goarch используются runtime-globals (@platform / @arch) в predicates
 // #if construct'а (см. SPEC 067).
 func SubstituteVarsInJSON(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, goos, goarch string) ([]byte, error) {
+	out, _, err := substituteVarsInJSONInternal(data, vars, resolved, goos, goarch, false)
+	return out, err
+}
+
+// SubstituteVarsInJSONStrict — то же что SubstituteVarsInJSON, но возвращает
+// ошибку (UnresolvedVarError) если в дереве встречена ссылка на @var, отсутствующий
+// в `resolved`. Используется preset-substitute path'ом (см. SPEC 067 Phase 8),
+// где unresolved @var означает «пропустить preset целиком», а не подставить пустую строку.
+func SubstituteVarsInJSONStrict(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, goos, goarch string) ([]byte, []string, error) {
+	return substituteVarsInJSONInternal(data, vars, resolved, goos, goarch, true)
+}
+
+// UnresolvedVarError возвращается SubstituteVarsInJSONStrict если в дереве
+// встречены неразрешённые @var ссылки.
+type UnresolvedVarError struct {
+	Names []string
+}
+
+func (e *UnresolvedVarError) Error() string {
+	return "unresolved @var(s): " + strings.Join(e.Names, ", ")
+}
+
+func substituteVarsInJSONInternal(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, goos, goarch string, strict bool) ([]byte, []string, error) {
 	varTypes := make(map[string]string, len(vars))
 	for _, v := range vars {
 		if v.Separator {
@@ -35,13 +58,29 @@ func SubstituteVarsInJSON(data []byte, vars []TemplateVar, resolved map[string]R
 	dec.UseNumber()
 	var root interface{}
 	if err := dec.Decode(&root); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	substituteWalk(&root, varTypes, resolved, goos, goarch)
-	return json.Marshal(root)
+	var unresolved []string
+	var unresolvedSink *[]string
+	if strict {
+		unresolvedSink = &unresolved
+	}
+	substituteWalkCtx(&root, varTypes, resolved, goos, goarch, unresolvedSink)
+	if strict && len(unresolved) > 0 {
+		return nil, unresolved, &UnresolvedVarError{Names: unresolved}
+	}
+	out, err := json.Marshal(root)
+	return out, unresolved, err
 }
 
 func substituteWalk(v *interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string) {
+	substituteWalkCtx(v, varTypes, resolved, goos, goarch, nil)
+}
+
+// substituteWalkCtx — internal walker с опциональным sink'ом для unresolved @var
+// (используется SubstituteVarsInJSONStrict, SPEC 067 Phase 8). nil sink ==
+// legacy lenient behavior (empty string + warn log).
+func substituteWalkCtx(v *interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string, unresolvedSink *[]string) {
 	switch x := (*v).(type) {
 	case map[string]interface{}:
 		// Pre-pass: control-constructs (keys starting with "#").
@@ -56,7 +95,7 @@ func substituteWalk(v *interface{}, varTypes map[string]string, resolved map[str
 			raw := x[k]
 			switch k {
 			case "#if":
-				handleIfMapSpread(x, raw, varTypes, resolved, goos, goarch)
+				handleIfMapSpreadCtx(x, raw, varTypes, resolved, goos, goarch, unresolvedSink)
 				// handleIfMapSpread always deletes "#if" itself.
 			default:
 				debuglog.WarnLog("substitute: unknown control-construct %q — dropping", k)
@@ -65,7 +104,7 @@ func substituteWalk(v *interface{}, varTypes map[string]string, resolved map[str
 		}
 		// Normal field walk.
 		for k, val := range x {
-			substituteWalk(&val, varTypes, resolved, goos, goarch)
+			substituteWalkCtx(&val, varTypes, resolved, goos, goarch, unresolvedSink)
 			x[k] = val
 		}
 	case []interface{}:
@@ -85,14 +124,14 @@ func substituteWalk(v *interface{}, varTypes map[string]string, resolved map[str
 			for _, elem := range x {
 				if m, ok := elem.(map[string]interface{}); ok && len(m) == 1 {
 					if body, ok := m["#if"].(map[string]interface{}); ok {
-						branch, take := handleIfArrayElement(body, varTypes, resolved, goos, goarch)
+						branch, take := handleIfArrayElementCtx(body, varTypes, resolved, goos, goarch, unresolvedSink)
 						if take {
 							out = append(out, branch)
 						}
 						continue
 					}
 				}
-				substituteWalk(&elem, varTypes, resolved, goos, goarch)
+				substituteWalkCtx(&elem, varTypes, resolved, goos, goarch, unresolvedSink)
 				out = append(out, elem)
 			}
 			*v = out
@@ -103,7 +142,7 @@ func substituteWalk(v *interface{}, varTypes map[string]string, resolved map[str
 			if s, ok := x[0].(string); ok && strings.HasPrefix(s, "@") {
 				name := s[1:]
 				if name != "" && !strings.Contains(name, "@") {
-					if rep := replacementForPlaceholder(name, varTypes, resolved); rep != nil {
+					if rep := replacementForPlaceholderCtx(name, varTypes, resolved, unresolvedSink); rep != nil {
 						*v = rep
 						return
 					}
@@ -111,13 +150,13 @@ func substituteWalk(v *interface{}, varTypes map[string]string, resolved map[str
 			}
 		}
 		for i := range x {
-			substituteWalk(&x[i], varTypes, resolved, goos, goarch)
+			substituteWalkCtx(&x[i], varTypes, resolved, goos, goarch, unresolvedSink)
 		}
 	case string:
 		if strings.HasPrefix(x, "@") {
 			name := x[1:]
 			if name != "" && !strings.Contains(name, "@") {
-				if rep := replacementForPlaceholder(name, varTypes, resolved); rep != nil {
+				if rep := replacementForPlaceholderCtx(name, varTypes, resolved, unresolvedSink); rep != nil {
 					*v = rep
 				}
 			}
@@ -126,8 +165,15 @@ func substituteWalk(v *interface{}, varTypes map[string]string, resolved map[str
 }
 
 func replacementForPlaceholder(name string, varTypes map[string]string, resolved map[string]ResolvedVar) interface{} {
+	return replacementForPlaceholderCtx(name, varTypes, resolved, nil)
+}
+
+func replacementForPlaceholderCtx(name string, varTypes map[string]string, resolved map[string]ResolvedVar, unresolvedSink *[]string) interface{} {
 	r, ok := resolved[name]
 	if !ok {
+		if unresolvedSink != nil {
+			*unresolvedSink = append(*unresolvedSink, name)
+		}
 		debuglog.WarnLog("substitute: unresolved @%s", name)
 		return ""
 	}
@@ -175,6 +221,10 @@ func replacementForPlaceholder(name string, varTypes map[string]string, resolved
 // handleIfMapSpread evaluates the #if construct in map-spread mode and merges
 // the selected branch's fields into parent. Always deletes the "#if" key.
 func handleIfMapSpread(parent map[string]interface{}, rawBody interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string) {
+	handleIfMapSpreadCtx(parent, rawBody, varTypes, resolved, goos, goarch, nil)
+}
+
+func handleIfMapSpreadCtx(parent map[string]interface{}, rawBody interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string, unresolvedSink *[]string) {
 	defer delete(parent, "#if")
 	body, ok := rawBody.(map[string]interface{})
 	if !ok {
@@ -186,7 +236,7 @@ func handleIfMapSpread(parent map[string]interface{}, rawBody interface{}, varTy
 		return
 	}
 	// Substitute placeholders inside selected branch first.
-	substituteWalk(&branch, varTypes, resolved, goos, goarch)
+	substituteWalkCtx(&branch, varTypes, resolved, goos, goarch, unresolvedSink)
 	branchMap, ok := branch.(map[string]interface{})
 	if !ok {
 		debuglog.WarnLog("substitute: #if branch in map-spread context is not an object — skipping merge")
@@ -201,11 +251,15 @@ func handleIfMapSpread(parent map[string]interface{}, rawBody interface{}, varTy
 // take=false means drop element from array; take=true means include branch
 // (substituted) at this index.
 func handleIfArrayElement(body map[string]interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string) (interface{}, bool) {
+	return handleIfArrayElementCtx(body, varTypes, resolved, goos, goarch, nil)
+}
+
+func handleIfArrayElementCtx(body map[string]interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string, unresolvedSink *[]string) (interface{}, bool) {
 	branch, take := selectIfBranch(body, varTypes, resolved, goos, goarch)
 	if !take {
 		return nil, false
 	}
-	substituteWalk(&branch, varTypes, resolved, goos, goarch)
+	substituteWalkCtx(&branch, varTypes, resolved, goos, goarch, unresolvedSink)
 	return branch, true
 }
 

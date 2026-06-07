@@ -24,6 +24,7 @@ package build
 
 import (
 	"encoding/json"
+	"runtime"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/template"
@@ -213,7 +214,7 @@ func resolveBaseBody(
 		}
 		// Expand с дефолтными vars (нам нужен только outbound shape; vars
 		// substitution для emit делает sync function).
-		entries, _ := ExpandPresetOutbounds(preset, nil)
+		entries, _ := ExpandPresetOutbounds(preset, nil, runtime.GOOS, runtime.GOARCH)
 		for _, entry := range entries {
 			if entry.Mode == "add" && entry.Config.Tag == ob.Tag {
 				base := entry.Config

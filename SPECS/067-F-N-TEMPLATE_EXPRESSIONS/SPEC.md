@@ -380,6 +380,67 @@ Lookup `@platform` / `@arch` — до `resolved` map. `SubstituteVarsInJSON` и 
 * **Negation** — `else` покрывает: для "NOT X = Y" пиши `{"#if": {"and":["@x"], "else": Y}}`
   (value отсутствует → когда X=true ничего; X=false → Y).
 
+### Стиль форматирования `#if` в шаблоне
+
+Шаблон форматируется стандартным 2-space pretty-print'ом, но **`#if`-блоки —
+гибрид**: opener на одной строке, payload разворачивается только при
+необходимости. Цель — `#if` визуально читается как декоратор поля, не как
+6-строчный обёрточный блок.
+
+**Три формы (по сложности `value`):**
+
+1. **Скалярный value** → полностью на одной строке:
+   ```jsonc
+   {"#if": {"and": ["@tun"], "value": "tun-in"}}
+   ```
+
+2. **Map value с одним коротким ключом** (`value: {key: scalar}` или
+   `value: {key: [scalar]}`) → opener inline, payload expanded на следующую
+   строку, `}}` на своей:
+   ```jsonc
+   "#if": {"and": [{"@platform": {"#in": ["windows", "linux"]}}], "value": {
+     "interface_name": "singbox-tun0"
+   }}
+   ```
+
+3. **Map value с массивом-объектов** короткой длины → массив тоже inline:
+   ```jsonc
+   "#if": {"and": ["@proxy_in_auth_enabled"], "value": {
+     "users": [{"username": "@proxy_in_username", "password": "@proxy_in_password"}]
+   }}
+   ```
+
+**Правило большого пальца:**
+
+* `and`/`or` массив, `value`-обёртка, и (если есть) `else`-обёртка — **всегда
+  на одной строке** в opener'е.
+* Сложный payload (multi-key map, длинная строка) — на отдельных строках
+  внутри `value: { ... }`.
+* `}}` — на своей строке, на уровне отступа родительского ключа.
+
+**Когда `#if` сидит в массиве** (array-element mode) вместе с другими полями
+объекта — trailing fields после `]` пакуются на одну строку:
+
+```jsonc
+{
+  "inbound": [
+    {"#if": {"and": ["@tun"],             "value": "tun-in"}},
+    {"#if": {"and": ["@enable_proxy_in"], "value": "proxy-in"}}
+  ], "action": "resolve", "strategy": "@resolve_strategy"
+}
+```
+
+Параллельные `#if` в `and` колонке выравниваются пробелами — читается как
+маленькая таблица.
+
+**Не пытаться сжать в одну строку:**
+
+* `value` с 3+ ключами (станет нечитаемо).
+* `and`/`or` с 3+ predicate'ами (одна строка перевалит за 120 символов).
+
+В таких случаях разворачивать на несколько строк весь блок как обычный JSON
+(стандартный 2-space pretty-print, как для прочих сложных entries в `params[]`).
+
 ### Forward compatibility
 
 Неизвестный ключ начинающийся с `#` → walker логирует warn и удаляет (graceful
@@ -843,6 +904,20 @@ Template-driven UI уже читает `title`/`tooltip` из самого templ
    (пункт про one-time re-download шаблона после апгрейда). **Release checklist:**
    bump `AppVersion` + `RequiredTemplateRef` — без bump invalidation не сработает
    у пользователей на той же версии лаунчера.
+
+8. **Phase 8 — preset substitute unification (post-Phase-7 amendment).**
+   Replace `core/build/preset_expand.go::substituteAny` (and its callsites in
+   `preset_outbounds.go`, `resolve_dns.go`) with `template.SubstituteVarsInJSON`,
+   so `#if` and the expression language work in preset bodies too.
+   `ExpandPreset` / `ExpandPresetOutbounds` / `PresetOutboundAddByTag`
+   signatures gain `goos, goarch` (runtime path: `runtime.GOOS` /
+   `runtime.GOARCH`; tests: fakes). New strict variant
+   `template.SubstituteVarsInJSONStrict` returns `UnresolvedVarError` on
+   unresolved `@var` — preserves the legacy "skip preset entirely" semantic
+   that `substituteAny` had via its `ok=false` return. Enables collapse of
+   platform-split presets (`split-all-traffic-mac-win` +
+   `split-all-traffic-linux`, DNS bundled variants) — actual collapse is a
+   follow-up template-cleanup commit, not in this phase.
 
 ## Open questions / future extensions
 

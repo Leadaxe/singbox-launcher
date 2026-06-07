@@ -10,6 +10,7 @@ package build
 
 import (
 	"encoding/json"
+	"runtime"
 
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
@@ -150,7 +151,7 @@ func resolvePresetRouteRule(
 		return
 	}
 	pb := body.(*corestate.PresetBody)
-	frags, warns, ok := ExpandPreset(p, pb.Vars)
+	frags, warns, ok := ExpandPreset(p, pb.Vars, runtime.GOOS, runtime.GOARCH)
 	for _, w := range warns {
 		debuglog.WarnLog("route resolve: %s", w.String())
 	}

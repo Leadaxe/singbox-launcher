@@ -64,11 +64,11 @@ type presetOutboundEntry struct {
 //
 // Возвращает nil если preset nil, tag не найден, или entry была отфильтрована
 // if/if_or (т.е. preset defines outbound для других var-комбинаций).
-func PresetOutboundAddByTag(preset *template.Preset, vars map[string]string, tag string) *configtypes.OutboundConfig {
+func PresetOutboundAddByTag(preset *template.Preset, vars map[string]string, tag, goos, goarch string) *configtypes.OutboundConfig {
 	if preset == nil || tag == "" {
 		return nil
 	}
-	entries, _ := ExpandPresetOutbounds(preset, vars)
+	entries, _ := ExpandPresetOutbounds(preset, vars, goos, goarch)
 	for _, e := range entries {
 		if e.Mode == "add" && e.Config.Tag == tag {
 			cfg := e.Config
@@ -96,7 +96,7 @@ func PresetOutboundAddByTag(preset *template.Preset, vars map[string]string, tag
 // обрабатываться (в отличие от ExpandPreset который отменяет весь preset
 // на unresolved — там dangling @var в rule_set/rule может всё разломать,
 // здесь же одна сломанная entry не блокирует другие).
-func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string) ([]presetOutboundEntry, []ExpandWarning) {
+func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string, goos, goarch string) ([]presetOutboundEntry, []ExpandWarning) {
 	if preset == nil || len(preset.Outbounds) == 0 {
 		return nil, nil
 	}
@@ -152,7 +152,7 @@ func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string) 
 			})
 			continue
 		}
-		substituted, ok := substituteAny(asMap, varsMap)
+		substituted, ok := substitutePresetBody(asMap, preset.Vars, varsMap, goos, goarch)
 		if !ok {
 			warnings = append(warnings, ExpandWarning{
 				PresetID: preset.ID,

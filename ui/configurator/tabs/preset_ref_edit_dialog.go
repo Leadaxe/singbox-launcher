@@ -12,6 +12,7 @@ package tabs
 import (
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -412,7 +413,7 @@ func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]strin
 			vars[v.Name] = v.Default
 		}
 	}
-	frags, warns, ok := build.ExpandPreset(tpl, vars)
+	frags, warns, ok := build.ExpandPreset(tpl, vars, runtime.GOOS, runtime.GOARCH)
 	if !ok {
 		return "// preset expansion failed:\n// " + warningsAsText(warns)
 	}

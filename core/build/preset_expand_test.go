@@ -66,7 +66,7 @@ func ruDirectPreset(t *testing.T) *template.Preset {
 // удалён т.к. @out=direct-out.
 func TestExpand_RuDirect_Default(t *testing.T) {
 	p := ruDirectPreset(t)
-	frags, warns, ok := ExpandPreset(p, nil)
+	frags, warns, ok := ExpandPreset(p, nil, "darwin", "amd64")
 	if !ok {
 		t.Fatalf("expand failed: %v", warns)
 	}
@@ -154,7 +154,7 @@ func TestExpand_RuDirect_NoDNSOverride(t *testing.T) {
 	p := ruDirectPreset(t)
 	frags, _, ok := ExpandPreset(p, map[string]string{
 		"use_dns_override": "false",
-	})
+	}, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -186,7 +186,7 @@ func TestExpand_RuDirect_NoGeoip(t *testing.T) {
 	p := ruDirectPreset(t)
 	frags, _, ok := ExpandPreset(p, map[string]string{
 		"geoip_enabled": "false",
-	})
+	}, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -219,7 +219,7 @@ func TestExpand_RuDirect_DifferentDNSServer(t *testing.T) {
 	p := ruDirectPreset(t)
 	frags, _, ok := ExpandPreset(p, map[string]string{
 		"dns_server": "yandex_doh",
-	})
+	}, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -239,7 +239,7 @@ func TestExpand_RuDirect_OutboundOverride(t *testing.T) {
 	p := ruDirectPreset(t)
 	frags, _, ok := ExpandPreset(p, map[string]string{
 		"out": "proxy-out",
-	})
+	}, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -282,7 +282,7 @@ func TestExpand_BlockAds_Reject(t *testing.T) {
 	var p template.Preset
 	_ = json.Unmarshal(raw, &p)
 
-	frags, _, ok := ExpandPreset(&p, nil)
+	frags, _, ok := ExpandPreset(&p, nil, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -310,7 +310,7 @@ func TestExpand_PrivateIPs_NoRuleSet(t *testing.T) {
 	var p template.Preset
 	_ = json.Unmarshal(raw, &p)
 
-	frags, _, ok := ExpandPreset(&p, nil)
+	frags, _, ok := ExpandPreset(&p, nil, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -339,7 +339,7 @@ func TestExpand_UnresolvedVar(t *testing.T) {
 	var p template.Preset
 	_ = json.Unmarshal(raw, &p)
 
-	_, warns, ok := ExpandPreset(&p, nil)
+	_, warns, ok := ExpandPreset(&p, nil, "darwin", "amd64")
 	if ok {
 		t.Error("expand should fail with unresolved var")
 	}
@@ -360,7 +360,7 @@ func TestExpand_UnresolvedVar(t *testing.T) {
 // TestExpand_UserVarsOverride — userVars перебивают template default.
 func TestExpand_UserVarsOverride(t *testing.T) {
 	p := ruDirectPreset(t)
-	frags, _, ok := ExpandPreset(p, map[string]string{"dns_ip": "77.88.8.7"})
+	frags, _, ok := ExpandPreset(p, map[string]string{"dns_ip": "77.88.8.7"}, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -401,7 +401,7 @@ func TestExpand_IfOr_FragmentDropped(t *testing.T) {
 	var p template.Preset
 	_ = json.Unmarshal(raw, &p)
 
-	frags, _, ok := ExpandPreset(&p, nil)
+	frags, _, ok := ExpandPreset(&p, nil, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -416,9 +416,188 @@ func TestExpand_IfOr_FragmentDropped(t *testing.T) {
 
 // TestExpand_NilPreset — guard.
 func TestExpand_NilPreset(t *testing.T) {
-	_, _, ok := ExpandPreset(nil, nil)
+	_, _, ok := ExpandPreset(nil, nil, "darwin", "amd64")
 	if ok {
 		t.Error("nil preset should return ok=false")
+	}
+}
+
+// ===========================================================================
+// SPEC 067 Phase 8 — #if in preset bodies
+// ===========================================================================
+
+// TestExpandPreset_RuleWithIf_TrueBranchMerges — #if внутри preset.rule:
+// на goos="linux" port_range мерджится в rule; на goos="darwin" — нет.
+func TestExpandPreset_RuleWithIf_TrueBranchMerges(t *testing.T) {
+	raw := []byte(`{
+		"id": "pwif",
+		"label": "Preset with #if",
+		"vars": [
+			{"name": "out", "type": "outbound", "default": "direct-out"}
+		],
+		"rule": {
+			"network": ["tcp", "udp"],
+			"outbound": "@out",
+			"#if": {
+				"and": [{"@platform": "linux"}],
+				"value": {"port_range": ["32768:60999"]}
+			}
+		}
+	}`)
+	var p template.Preset
+	if err := json.Unmarshal(raw, &p); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// Linux → port_range present.
+	frags, _, ok := ExpandPreset(&p, nil, "linux", "amd64")
+	if !ok {
+		t.Fatalf("expand on linux failed")
+	}
+	if frags.RoutingRule == nil {
+		t.Fatal("rule should be present")
+	}
+	if _, has := frags.RoutingRule["#if"]; has {
+		t.Errorf("#if key should be stripped from emitted rule: %v", frags.RoutingRule)
+	}
+	pr, _ := frags.RoutingRule["port_range"].([]interface{})
+	if len(pr) != 1 || pr[0] != "32768:60999" {
+		t.Errorf("port_range missing/wrong on linux: %v", frags.RoutingRule)
+	}
+
+	// Darwin → port_range absent.
+	frags2, _, ok2 := ExpandPreset(&p, nil, "darwin", "amd64")
+	if !ok2 {
+		t.Fatalf("expand on darwin failed")
+	}
+	if frags2.RoutingRule == nil {
+		t.Fatal("rule should be present on darwin")
+	}
+	if _, has := frags2.RoutingRule["port_range"]; has {
+		t.Errorf("port_range should be absent on darwin: %v", frags2.RoutingRule)
+	}
+	if _, has := frags2.RoutingRule["#if"]; has {
+		t.Errorf("#if key should be stripped on darwin too: %v", frags2.RoutingRule)
+	}
+}
+
+// TestExpandPreset_RuleSetWithIf_FalseDropsElement — array-element `#if` в rule_set
+// rules list корректно резолвится (элемент удалён когда condition false).
+func TestExpandPreset_RuleSetWithIf_FalseDropsElement(t *testing.T) {
+	raw := []byte(`{
+		"id": "pwrs",
+		"label": "Preset with #if in rule_set",
+		"vars": [
+			{"name": "out", "type": "outbound", "default": "direct-out"}
+		],
+		"rule_set": [
+			{"tag": "rs", "type": "inline", "format": "domain_suffix",
+			 "rules": [
+				{"domain_suffix": ["always.example"]},
+				{"#if": {"and": [{"@platform": "linux"}], "value": {"domain_suffix": ["linux-only.example"]}}}
+			 ]}
+		],
+		"rule": {"rule_set": "rs", "outbound": "@out"}
+	}`)
+	var p template.Preset
+	if err := json.Unmarshal(raw, &p); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// Darwin: array-element #if false → element dropped, only 1 rule remains.
+	frags, _, ok := ExpandPreset(&p, nil, "darwin", "amd64")
+	if !ok {
+		t.Fatalf("expand on darwin failed")
+	}
+	if len(frags.RuleSets) != 1 {
+		t.Fatalf("expected 1 rule_set, got %d", len(frags.RuleSets))
+	}
+	rules, _ := frags.RuleSets[0]["rules"].([]interface{})
+	if len(rules) != 1 {
+		t.Errorf("expected 1 rule on darwin (array #if dropped), got %d: %v", len(rules), rules)
+	}
+
+	// Linux: array-element #if true → element merged in → 2 rules.
+	frags2, _, ok2 := ExpandPreset(&p, nil, "linux", "amd64")
+	if !ok2 {
+		t.Fatalf("expand on linux failed")
+	}
+	rules2, _ := frags2.RuleSets[0]["rules"].([]interface{})
+	if len(rules2) != 2 {
+		t.Errorf("expected 2 rules on linux, got %d: %v", len(rules2), rules2)
+	}
+}
+
+// TestExpandPresetOutbounds_OutboundFieldWithIf — #if inside preset.outbounds[].options.
+func TestExpandPresetOutbounds_OutboundFieldWithIf(t *testing.T) {
+	preset := &template.Preset{
+		ID: "p8",
+		Vars: []template.PresetVar{
+			{Name: "out", Type: "outbound", Default: "direct-out"},
+		},
+		Outbounds: []template.PresetOutbound{
+			{
+				Mode: "add", Tag: "x", Type: "selector",
+				Options: map[string]interface{}{
+					"default": "@out",
+					"#if": map[string]interface{}{
+						"and":   []interface{}{map[string]interface{}{"@platform": "linux"}},
+						"value": map[string]interface{}{"linux_only_field": "yes"},
+					},
+				},
+			},
+		},
+	}
+	// Linux → linux_only_field present.
+	entries, _ := ExpandPresetOutbounds(preset, nil, "linux", "amd64")
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	opts := entries[0].Config.Options
+	if opts["linux_only_field"] != "yes" {
+		t.Errorf("expected linux_only_field=yes on linux, got %v", opts)
+	}
+	if _, has := opts["#if"]; has {
+		t.Errorf("#if key should be stripped from emitted options on linux: %v", opts)
+	}
+	// Darwin → field absent.
+	entries2, _ := ExpandPresetOutbounds(preset, nil, "darwin", "amd64")
+	if len(entries2) != 1 {
+		t.Fatalf("expected 1 entry on darwin, got %d", len(entries2))
+	}
+	opts2 := entries2[0].Config.Options
+	if _, has := opts2["linux_only_field"]; has {
+		t.Errorf("linux_only_field should be absent on darwin, got %v", opts2)
+	}
+	if _, has := opts2["#if"]; has {
+		t.Errorf("#if key should be stripped on darwin: %v", opts2)
+	}
+}
+
+// TestExpandPreset_UnresolvedVar_StillReturnsFalse — preserving legacy substituteAny
+// semantic: unresolved @var → skip preset entirely.
+func TestExpandPreset_UnresolvedVar_StillReturnsFalse(t *testing.T) {
+	raw := []byte(`{
+		"id": "broken",
+		"label": "X",
+		"vars": [{"name": "x", "type": "text", "default": "y"}],
+		"rule": {"outbound": "@nonexistent"}
+	}`)
+	var p template.Preset
+	_ = json.Unmarshal(raw, &p)
+
+	_, warns, ok := ExpandPreset(&p, nil, "darwin", "amd64")
+	if ok {
+		t.Error("expand should fail with unresolved var (legacy substituteAny semantic)")
+	}
+	hasUnresolved := false
+	for _, w := range warns {
+		if strings.Contains(w.Message, "unresolved") {
+			hasUnresolved = true
+		}
+	}
+	if !hasUnresolved {
+		t.Errorf("expected unresolved warning: %v", warns)
 	}
 }
 

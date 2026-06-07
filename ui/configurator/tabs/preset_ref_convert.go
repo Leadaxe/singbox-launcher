@@ -14,6 +14,7 @@ package tabs
 import (
 	"encoding/json"
 	"fmt"
+	"runtime"
 
 	"singbox-launcher/core/build"
 	wizardtemplate "singbox-launcher/core/template"
@@ -30,7 +31,7 @@ func convertPresetRefToUserRules(
 	if model == nil || tplPreset == nil {
 		return 0
 	}
-	frags, _, ok := build.ExpandPreset(tplPreset, vars)
+	frags, _, ok := build.ExpandPreset(tplPreset, vars, runtime.GOOS, runtime.GOARCH)
 	if !ok {
 		return 0
 	}

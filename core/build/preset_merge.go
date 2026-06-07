@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 
 	"singbox-launcher/core/state"
@@ -386,7 +387,7 @@ func collectRuleSetTagsFromPresets(presetByID map[string]*template.Preset, rules
 			continue
 		}
 		pb := body.(*state.PresetBody)
-		frags, _, ok := ExpandPreset(preset, pb.Vars)
+		frags, _, ok := ExpandPreset(preset, pb.Vars, runtime.GOOS, runtime.GOARCH)
 		if !ok {
 			continue
 		}

@@ -18,6 +18,7 @@ package build
 
 import (
 	"encoding/json"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -230,7 +231,7 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 					continue
 				}
 				active, reason := evalIfWithReason(ds.If, ds.IfOr, presetVars)
-				bodyMap := substitutePresetDNSServer(ds, presetVars)
+				bodyMap := substitutePresetDNSServer(ds, p.Vars, presetVars, runtime.GOOS, runtime.GOARCH)
 				ref := p.ID + ":" + ds.Tag
 				bodyMap["tag"] = ref
 				enabled := statePresetServerEnabled(state, ref, true)
@@ -251,7 +252,7 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 			// порядок эмиссии решается в Pass 4 по state.DNS.Rules.
 			if p.DNSRule != nil {
 				active, reason := evalIfFromRuleMap(p.DNSRule, presetVars)
-				ruleBody, ok := substitutePresetDNSRule(p, presetVars)
+				ruleBody, ok := substitutePresetDNSRule(p, presetVars, runtime.GOOS, runtime.GOARCH)
 				if !ok {
 					continue
 				}
@@ -477,7 +478,7 @@ func buildPresetVarsMap(p *template.Preset, userVars map[string]string) map[stri
 
 // substitutePresetDNSServer — конвертит PresetDNSServer struct в map с
 // applied substitute. Возвращает чистый sing-box-valid body.
-func substitutePresetDNSServer(ds *template.PresetDNSServer, varsMap map[string]string) map[string]interface{} {
+func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []template.PresetVar, varsMap map[string]string, goos, goarch string) map[string]interface{} {
 	body := map[string]interface{}{
 		"tag":  ds.Tag,
 		"type": ds.Type,
@@ -500,8 +501,11 @@ func substitutePresetDNSServer(ds *template.PresetDNSServer, varsMap map[string]
 	if ds.TLS != nil {
 		body["tls"] = ds.TLS
 	}
-	// substituteAny inplace — резолвит @var строки в значения.
-	substituted, _ := substituteAny(body, varsMap)
+	// SPEC 067 Phase 8: substitutePresetBody → SubstituteVarsInJSONStrict.
+	substituted, ok := substitutePresetBody(body, presetVars, varsMap, goos, goarch)
+	if !ok {
+		return body
+	}
 	out, _ := substituted.(map[string]interface{})
 	if out == nil {
 		return body
@@ -515,13 +519,13 @@ func substitutePresetDNSServer(ds *template.PresetDNSServer, varsMap map[string]
 
 // substitutePresetDNSRule — резолвит preset.DNSRule body через ExpandPreset
 // (он умеет rewrite rule_set refs с preset prefix).
-func substitutePresetDNSRule(p *template.Preset, varsMap map[string]string) (map[string]interface{}, bool) {
+func substitutePresetDNSRule(p *template.Preset, varsMap map[string]string, goos, goarch string) (map[string]interface{}, bool) {
 	if p == nil || p.DNSRule == nil {
 		return nil, false
 	}
 	// Reuse ExpandPreset.frags.DNSRule — он делает substitute + rewrite refs.
 	// Эту часть пока оставим — она независима от consumption filter.
-	frags, _, ok := ExpandPreset(p, varsMap)
+	frags, _, ok := ExpandPreset(p, varsMap, goos, goarch)
 	if !ok || frags == nil || frags.DNSRule == nil {
 		return nil, false
 	}

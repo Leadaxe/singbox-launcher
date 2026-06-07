@@ -12,6 +12,8 @@
 package tabs
 
 import (
+	"runtime"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
@@ -184,7 +186,7 @@ func buildSingleDNSPresetRuleRow(
 	labelText := "🔗 " + presetLabel
 
 	// Resolve dns_rule body для tooltip + View JSON.
-	frags, _, ok := build.ExpandPreset(tplPreset, pr.Vars)
+	frags, _, ok := build.ExpandPreset(tplPreset, pr.Vars, runtime.GOOS, runtime.GOARCH)
 	var ruleBody map[string]interface{}
 	if ok && frags.DNSRule != nil {
 		ruleBody = frags.DNSRule

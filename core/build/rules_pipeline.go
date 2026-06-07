@@ -3,6 +3,7 @@ package build
 import (
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"singbox-launcher/core/template"
@@ -94,7 +95,7 @@ func BuildRulesAndDNS(
 			}
 			pb := body.(*corestate.PresetBody)
 
-			frags, warns, ok := ExpandPreset(p, pb.Vars)
+			frags, warns, ok := ExpandPreset(p, pb.Vars, runtime.GOOS, runtime.GOARCH)
 			for _, w := range warns {
 				result.Warnings = append(result.Warnings, w.String())
 			}
