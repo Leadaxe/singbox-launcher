@@ -587,20 +587,28 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 	// delete profile keys. We collect first then delete because deleting
 	// a key while iterating ReadSubKeyNames is a fast path to undefined
 	// behavior; collect-then-delete is the conservative pattern.
+	debuglog.WarnLog("nla cleanup: starting")
+
+	// Phase A.1: read-only enumerate + match. Open root with READ only.
+	// Mixing WRITE on the parent and QUERY_VALUE on children has been
+	// observed to fail silently on Win7 — children get inherited handle
+	// permissions and QUERY_VALUE may be refused. Separate read vs.
+	// delete phases: read with KEY_READ (full subkey enumerate + value
+	// query), delete with a freshly-opened KEY_WRITE handle.
 	const profilesPath = `SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles`
-	profKey, err := registry.OpenKey(registry.LOCAL_MACHINE, profilesPath,
-		registry.ENUMERATE_SUB_KEYS|registry.READ|registry.WRITE)
+	profReadKey, err := registry.OpenKey(registry.LOCAL_MACHINE, profilesPath, registry.READ)
 	if err != nil {
-		debuglog.WarnLog("nla cleanup: open Profiles: %v", err)
+		debuglog.WarnLog("nla cleanup: open Profiles (read): %v", err)
 		return 0, 0
 	}
-	defer profKey.Close()
 
-	subNames, err := profKey.ReadSubKeyNames(-1)
+	subNames, err := profReadKey.ReadSubKeyNames(-1)
 	if err != nil {
+		profReadKey.Close()
 		debuglog.WarnLog("nla cleanup: enumerate Profiles: %v", err)
 		return 0, 0
 	}
+	debuglog.WarnLog("nla cleanup: enumerated %d profile subkeys", len(subNames))
 
 	// Matched-GUIDs set for Signatures cross-reference (case-preserving:
 	// Windows stores GUIDs with mixed case, ProfileGuid value matches
@@ -608,62 +616,103 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 	matchedGUIDs := make(map[string]bool, len(subNames))
 
 	for _, name := range subNames {
-		// Open with READ to check Description.
-		sub, err := registry.OpenKey(profKey, name, registry.QUERY_VALUE)
+		sub, err := registry.OpenKey(profReadKey, name, registry.QUERY_VALUE)
 		if err != nil {
+			debuglog.DebugLog("nla cleanup: open profile %q: %v", name, err)
 			continue
 		}
-		desc, _, err := sub.GetStringValue("Description")
+		desc, _, descErr := sub.GetStringValue("Description")
 		sub.Close()
-		if err != nil || !strings.HasPrefix(desc, adapterNamePrefix) {
+		if descErr != nil {
+			debuglog.DebugLog("nla cleanup: read Description for %q: %v", name, descErr)
 			continue
 		}
-		// Delete subkey via the parent (DeleteKey takes the parent + relative name).
-		if delErr := registry.DeleteKey(profKey, name); delErr != nil {
+		if !strings.HasPrefix(desc, adapterNamePrefix) {
+			debuglog.DebugLog("nla cleanup: skip profile %q (Description=%q does not match prefix)", name, desc)
+			continue
+		}
+		debuglog.WarnLog("nla cleanup: matched profile %q (Description=%q)", name, desc)
+		matchedGUIDs[name] = true
+	}
+	profReadKey.Close()
+
+	if len(matchedGUIDs) == 0 {
+		debuglog.WarnLog("nla cleanup: no matching profiles found in %d subkeys", len(subNames))
+		return 0, 0
+	}
+
+	// Phase A.2: delete matched profiles. Re-open parent with WRITE.
+	profWriteKey, err := registry.OpenKey(registry.LOCAL_MACHINE, profilesPath, registry.WRITE)
+	if err != nil {
+		debuglog.WarnLog("nla cleanup: open Profiles (write): %v", err)
+		return 0, 0
+	}
+	for name := range matchedGUIDs {
+		if delErr := registry.DeleteKey(profWriteKey, name); delErr != nil {
 			debuglog.WarnLog("nla cleanup: delete profile %q: %v", name, delErr)
 			continue
 		}
-		matchedGUIDs[name] = true
 		profilesRemoved++
 	}
-
-	if len(matchedGUIDs) == 0 {
-		return profilesRemoved, 0
-	}
+	profWriteKey.Close()
+	debuglog.WarnLog("nla cleanup: deleted %d profile(s) of %d matched", profilesRemoved, len(matchedGUIDs))
 
 	// Phase B: enumerate Signatures\Unmanaged, delete entries whose
 	// ProfileGuid value matches one of the just-deleted profiles.
 	const sigPath = `SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Signatures\Unmanaged`
-	sigKey, err := registry.OpenKey(registry.LOCAL_MACHINE, sigPath,
-		registry.ENUMERATE_SUB_KEYS|registry.READ|registry.WRITE)
+	sigReadKey, err := registry.OpenKey(registry.LOCAL_MACHINE, sigPath, registry.READ)
 	if err != nil {
-		debuglog.WarnLog("nla cleanup: open Signatures: %v", err)
+		debuglog.WarnLog("nla cleanup: open Signatures (read): %v", err)
 		return profilesRemoved, 0
 	}
-	defer sigKey.Close()
 
-	sigSubs, err := sigKey.ReadSubKeyNames(-1)
+	sigSubs, err := sigReadKey.ReadSubKeyNames(-1)
 	if err != nil {
+		sigReadKey.Close()
 		debuglog.WarnLog("nla cleanup: enumerate Signatures: %v", err)
 		return profilesRemoved, 0
 	}
+	debuglog.WarnLog("nla cleanup: enumerated %d signature subkeys", len(sigSubs))
 
+	matchedSigs := make([]string, 0, len(matchedGUIDs))
 	for _, name := range sigSubs {
-		sub, err := registry.OpenKey(sigKey, name, registry.QUERY_VALUE)
+		sub, err := registry.OpenKey(sigReadKey, name, registry.QUERY_VALUE)
 		if err != nil {
+			debuglog.DebugLog("nla cleanup: open signature %q: %v", name, err)
 			continue
 		}
-		guid, _, err := sub.GetStringValue("ProfileGuid")
+		guid, _, guidErr := sub.GetStringValue("ProfileGuid")
 		sub.Close()
-		if err != nil || !matchedGUIDs[guid] {
+		if guidErr != nil {
+			debuglog.DebugLog("nla cleanup: read ProfileGuid for %q: %v", name, guidErr)
 			continue
 		}
-		if delErr := registry.DeleteKey(sigKey, name); delErr != nil {
+		if !matchedGUIDs[guid] {
+			continue
+		}
+		matchedSigs = append(matchedSigs, name)
+	}
+	sigReadKey.Close()
+
+	if len(matchedSigs) == 0 {
+		debuglog.WarnLog("nla cleanup: no matching signatures found")
+		return profilesRemoved, 0
+	}
+
+	sigWriteKey, err := registry.OpenKey(registry.LOCAL_MACHINE, sigPath, registry.WRITE)
+	if err != nil {
+		debuglog.WarnLog("nla cleanup: open Signatures (write): %v", err)
+		return profilesRemoved, 0
+	}
+	for _, name := range matchedSigs {
+		if delErr := registry.DeleteKey(sigWriteKey, name); delErr != nil {
 			debuglog.WarnLog("nla cleanup: delete signature %q: %v", name, delErr)
 			continue
 		}
 		signaturesRemoved++
 	}
+	sigWriteKey.Close()
+	debuglog.WarnLog("nla cleanup: deleted %d signature(s) of %d matched", signaturesRemoved, len(matchedSigs))
 
 	return profilesRemoved, signaturesRemoved
 }
