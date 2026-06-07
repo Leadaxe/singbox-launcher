@@ -357,7 +357,7 @@ build\test_windows.bat   # Windows
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — полная карта архитектуры проекта.
 - **[SPECS/CONSTITUTION.md](SPECS/CONSTITUTION.md)** — архитектурные инварианты.
 - **[SPECS/](SPECS/)** — 60+ спецификаций фич (HWID protocol, traffic profiler, debug API, preset bundles, state-as-template-diff, atomic writes, typed event bus, …).
-- **[docs/CREATE_WIZARD_TEMPLATE_RU.md](docs/CREATE_WIZARD_TEMPLATE_RU.md)** — гайд для VPN-провайдеров, поставляющих собственный `wizard_template.json`.
+- **[docs/WIZARD_TEMPLATE_RU.md](docs/WIZARD_TEMPLATE_RU.md)** — справочник по синтаксису `wizard_template.json` (для VPN-провайдеров, поставляющих собственный шаблон).
 - **[docs/ParserConfig.md](docs/ParserConfig.md)** — справочник по настройке парсера подписок.
 - **[docs/TRAFFIC_PROFILER.md](docs/TRAFFIC_PROFILER.md)** — внутренности и использование Traffic Profiler.
 - **[docs/TEMPLATE_REFERENCE.md](docs/TEMPLATE_REFERENCE.md)** — справочник схемы `wizard_template.json`.

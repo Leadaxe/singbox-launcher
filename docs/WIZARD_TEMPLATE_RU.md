@@ -1,1753 +1,422 @@
-# Создание собственного шаблона визарда конфигурации
+# Синтаксис `wizard_template.json`
 
-Это руководство предназначено для **провайдеров и администраторов сервисов**, которые хотят создать собственный шаблон конфигурации (`wizard_template.json`), который их пользователи смогут настраивать через встроенный визард.
+Справочник по формату шаблона визарда. Шаблон — один JSON-файл, описывающий
+как из подписки и выбора пользователя собирается итоговый `config.json` sing-box.
 
-> **⚠️ ВАЖНОЕ ПРЕДУПРЕЖДЕНИЕ**
-> 
-> Данный инструмент является **профессиональным программным обеспечением**, предназначенным исключительно для **сетевых администраторов и IT-специалистов** с целью упрощения администрирования и управления сетевыми подключениями в корпоративных и профессиональных средах.
-> 
-> **Использование данного инструмента любым нелегальным образом запрещено.** Разработчики не несут ответственности за неправомерное использование данного программного обеспечения и призывают ни в каком случае не нарушать действующее законодательство.
-
----
-
-## Что такое визард конфигурации?
-
-Визард конфигурации — это визуальный интерфейс, который помогает пользователям создать файл `config.json` без ручного редактирования JSON. Как провайдер, вы создаёте файл-шаблон (`wizard_template.json`), который определяет:
-
-- Настройки по умолчанию (DNS, логирование, правила маршрутизации)
-- Какие правила пользователи могут включать/выключать через чекбоксы
-- Как вставляются сгенерированные прокси-аутбаунды
-- Группы прокси и селекторы по умолчанию
-- Платформо-зависимые конфигурации (Windows, macOS, Linux)
-
-Пользователи просто:
-1. Вводят URL своей подписки или прямые ссылки на прокси
-2. Выбирают, какие опциональные правила включить
-3. Нажимают "Save" для генерации своего `config.json`
-
-**Файл `state.json` (не входит в шаблон):** лаунчер сохраняет снимки в `bin/wizard_states/`. **Корневое** поле **`version`** — **формат снимка визарда** (новые записи — **4**; загрузка **2–4**). Версия **4** — линия **032**: **`state.vars`**, **`vars`** в шаблоне, подстановки **`@name`** в **`config`**/**`params`**, условия **`if`**/**`if_or`** у **params**. Это **не** **`parser_config.version`** в том же файле или в **`wizard_template.json`**. Подробнее — **docs/WIZARD_STATE.md**.
+- **Расположение:** `<каталог_бинаря>/bin/wizard_template.json`. Для macOS `.app` —
+  `Contents/MacOS/bin/wizard_template.json` внутри бандла (не файл из репозитория).
+- **Внутренние детали движка** (walker, build pipeline, формат stock-JSON):
+  [`TEMPLATE_REFERENCE.md`](TEMPLATE_REFERENCE.md). Здесь — только синтаксис для автора шаблона.
 
 ---
 
-## Быстрый старт
-
-### Шаг 1: Создайте файл шаблона
-
-Создайте файл с именем `wizard_template.json` в папке `bin/` (рядом с исполняемым файлом приложения). **Этот единый файл работает для всех платформ** (Windows, macOS, Linux).
-
-### Шаг 2: Используйте минимальный шаблон
-
-Скопируйте этот скелет и настройте под себя:
+## 1. Top-level структура
 
 ```json
 {
-  "parser_config": {
-    "ParserConfig": {
-      "version": 4,
-      "proxies": [
-        {
-          "source": "https://your-subscription-url-here"
-        }
-      ],
-      "outbounds": [
-        {
-          "tag": "auto-proxy-out",
-          "type": "urltest",
-          "options": {
-            "url": "https://cp.cloudflare.com/generate_204",
-            "interval": "5m",
-            "tolerance": 100
-          },
-          "outbounds": {
-            "proxies": {}
-          }
-        },
-        {
-          "tag": "proxy-out",
-          "type": "selector",
-          "options": {
-            "default": "auto-proxy-out"
-          },
-          "outbounds": {
-            "addOutbounds": ["direct-out", "auto-proxy-out"],
-            "proxies": {}
-          }
-        }
-      ]
-    }
-  },
-
-  "config": {
-    "log": {
-      "level": "info",
-      "timestamp": true
-    },
-    "dns": {
-      "servers": [
-        {
-          "type": "udp",
-          "tag": "direct_dns",
-          "server": "9.9.9.9",
-          "server_port": 53
-        }
-      ],
-      "final": "direct_dns"
-    },
-    "inbounds": [],
-    "outbounds": [
-      { "type": "direct", "tag": "direct-out" }
-    ],
-    "route": {
-      "rule_set": [],
-      "rules": [
-        { "ip_is_private": true, "outbound": "direct-out" },
-        { "domain_suffix": ["local"], "outbound": "direct-out" }
-      ],
-      "final": "proxy-out"
-    },
-    "experimental": {
-      "clash_api": {
-        "external_controller": "127.0.0.1:9090",
-        "secret": "CHANGE_THIS_TO_YOUR_SECRET_TOKEN"
-      }
-    }
-  },
-
-  "selectable_rules": [
-    {
-      "label": "Блокировка рекламы",
-      "description": "Мягко блокировать рекламу, отклоняя соединения",
-      "default": true,
-      "rule_set": [
-        {
-          "tag": "ads-all",
-          "type": "remote",
-          "format": "binary",
-          "url": "https://raw.githubusercontent.com/v2fly/domain-list-community/release/geosite-category-ads-all.srs",
-          "download_detour": "direct-out",
-          "update_interval": "24h"
-        }
-      ],
-      "rule": {
-        "rule_set": "ads-all",
-        "action": "reject"
-      }
-    },
-    {
-      "label": "Российские домены напрямую",
-      "description": "Отправлять трафик российских доменов напрямую",
-      "rule": {
-        "rule_set": "ru-domains",
-        "outbound": "direct-out"
-      }
-    }
-  ],
-
-  "params": [
-    {
-      "name": "inbounds",
-      "platforms": ["windows", "linux"],
-      "value": [
-        {
-          "type": "tun",
-          "tag": "tun-in",
-          "interface_name": "singbox-tun0",
-          "address": ["172.16.0.1/30"],
-          "mtu": 1400,
-          "auto_route": true,
-          "strict_route": false,
-          "stack": "system"
-        }
-      ]
-    },
-    {
-      "name": "route.rules",
-      "platforms": ["windows", "linux"],
-      "mode": "prepend",
-      "value": [
-        { "inbound": "tun-in", "action": "resolve", "strategy": "prefer_ipv4" },
-        { "inbound": "tun-in", "action": "sniff", "timeout": "1s" }
-      ]
-    },
-    {
-      "name": "inbounds",
-      "platforms": ["darwin"],
-      "value": [
-        {
-          "type": "mixed",
-          "tag": "proxy-in",
-          "listen": "127.0.0.1",
-          "listen_port": 7890,
-          "sniff": true,
-          "sniff_override_destination": true,
-          "set_system_proxy": true
-        }
-      ]
-    }
-  ]
+  "parser_config": { ... },
+  "config":        { ... },
+  "dns_options":   { ... },
+  "vars":     [ ... ],
+  "params":   [ ... ],
+  "presets":  [ ... ]
 }
 ```
 
-### Шаг 3: Настройте под свой сервис
-
-1. **Обновите `parser_config`**: Замените `"source": "https://your-subscription-url-here"` на реальный URL вашей подписки (или оставьте пустым, если пользователи будут вводить свой)
-2. **Настройте группы аутбаундов**: Измените массив `outbounds` в `parser_config` под структуру ваших прокси-групп
-3. **Добавьте свои правила**: Замените примеры `selectable_rules` на свои правила маршрутизации
-4. **Установите финальный аутбаунд по умолчанию**: Измените `"final": "proxy-out"` в `config.route` на тег вашей прокси-группы по умолчанию
-4. **Настройте платформо-зависимые параметры**: Добавьте или измените записи в `params` для платформо-зависимых конфигураций
-
----
-
-## Понимание структуры шаблона
-
-Унифицированный шаблон включает блоки: `parser_config`, `config`, опционально `dns_options`, `selectable_rules`, `params`:
-
-### 1. Секция `parser_config`
-
-**Назначение**: Определяет конфигурацию парсера подписок по умолчанию.
-
-**Структура**:
-```json
-{
-  "parser_config": {
-    "ParserConfig": {
-      "version": 4,
-      "proxies": [
-        { "source": "https://example.com/subscription" }
-      ],
-      "outbounds": [
-        {
-          "tag": "auto-proxy-out",
-          "type": "urltest",
-          "options": { "url": "https://cp.cloudflare.com/generate_204", "interval": "5m" },
-          "outbounds": { "proxies": {} }
-        }
-      ],
-      "parser": {
-        "reload": "1h",
-        "last_updated": "2026-01-30T12:00:00Z"
-      }
-    }
-  }
-}
-```
-
-**Поля**:
-- `version`: Всегда используйте `4` (текущая версия ParserConfig)
-- `proxies`: Массив с URL подписок (пользователи могут переопределить их в визарде)
-- `outbounds`: Группы прокси по умолчанию (urltest, selector и т.д.), которые будут доступны пользователям
-- `parser`: Настройки парсера (интервал обновления, время последнего обновления)
-
-**Важно**: Визард автоматически нормализует это до формата версии 4. Убедитесь, что все значения `tag` соответствуют тем, на которые вы ссылаетесь в секции `route`.
-
----
-
-### 2. Секция `config`
-
-**Назначение**: Содержит основной конфиг sing-box (платформонезависимая часть).
-
-**Структура**:
-```json
-{
-  "config": {
-    "log": { "level": "warn", "timestamp": true },
-    "dns": { /* конфигурация DNS */ },
-    "inbounds": [],
-    "outbounds": [
-      { "type": "direct", "tag": "direct-out" }
-    ],
-    "route": {
-      "rule_set": [],
-      "rules": [
-        { "ip_is_private": true, "outbound": "direct-out" },
-        { "domain_suffix": ["local"], "outbound": "direct-out" }
-      ],
-      "final": "proxy-out"
-    },
-    "experimental": { /* экспериментальные функции */ }
-  }
-}
-```
-
-**Важные моменты**:
-- `inbounds`: Должен быть пустым массивом `[]` — заполняется из `params` в зависимости от платформы
-- `outbounds`: Содержит только статические аутбаунды (например, `direct-out`). Сгенерированные прокси-аутбаунды из парсера автоматически вставляются в начало массива (между маркерами `/** @ParserSTART */` и `/** @ParserEND */`).
-- `endpoints`: (Опционально.) По умолчанию пустой массив `[]`. Узлы WireGuard из источников записываются между `/** @ParserSTART_E */` и `/** @ParserEND_E */`. Требуется sing-box 1.11+. Подробнее см. [ParserConfig.md](ParserConfig.md) (ссылки wireguard://).
-- `route.rules`: Содержит только базовые универсальные правила (hijack-dns, ip_is_private, local). Пресеты маршрута задаются в **`selectable_rules`**; визард подмешивает **включённые** копии в `route` из единого сохранённого списка **`custom_rules`** (см. **docs/WIZARD_STATE.md**), без второго параллельного слоя в `route`
-- `route.rule_set`: Содержит только общие наборы правил, используемые несколькими правилами или DNS-правилами. Наборы правил, специфичные для отдельных правил, определяются внутри этих правил
-- `route.default_domain_resolver`: Тег DNS-сервера из `config.dns.servers` для резолва имён в движке маршрута. В текущей модели это поле управляется переменной DNS-вкладки **`dns_default_domain_resolver`** (хранение в `state.vars`, подстановка `@dns_default_domain_resolver`).
-
----
-
-### 3. Секция `dns_options`
-
-**Назначение**: Дефолты списка DNS для визарда. В текущей модели в `dns_options` только:
-- `servers`
-- `rules`
-
-Скаляры DNS-вкладки задаются переменными `vars` (с `wizard_ui: "fix"`):
-- `dns_strategy` -> `config.dns.strategy`
-- `dns_final` -> `config.dns.final`
-- `dns_default_domain_resolver` -> `config.route.default_domain_resolver`
-
-> `dns_independent_cache` удалена — `config.dns.independent_cache`
-> deprecated в sing-box 1.14.0 (cache всегда per-transport). Legacy шаблоны
-> с переменной / placeholder'ом всё ещё парсятся; emit silently дропает поле.
-
-**Структура**:
-```json
-{
-  "dns_options": {
-    "servers": [
-      { "type": "udp", "tag": "direct_dns_resolver", "server": "8.8.8.8", "server_port": 53, "enabled": true }
-    ],
-    "rules": [
-      { "server": "direct_dns_resolver" }
-    ]
-  }
-}
-```
-
-**Хранение**:
-- `state.json -> dns_options`: только `servers` и `rules`
-- `state.json -> vars`: значения скаляров DNS (`dns_*`)
-
-Устаревшие ключи скаляров в `dns_options` (`strategy`, `final`, `default_domain_resolver`, `default_domain_resolver_unset`) мигрируют при загрузке в `state.vars` и в новых сохранениях обратно не пишутся. Ключ `independent_cache` (если есть в legacy файлах) silently дропается — см. note выше про deprecation.
-
----
-
-### 4. Секция `selectable_rules`
-
-**Назначение**: Описания пресетов для вкладки **Rules**: **первый засев** (записи с `"default": true`) и диалог **Добавить из библиотеки**. Отдельного списка «галок» в `state.json` больше нет — в профиле хранится один упорядоченный массив **`custom_rules`** (см. **docs/WIZARD_STATE.md**, спека **027**).
-
-**Структура**:
-```json
-{
-  "selectable_rules": [
-    {
-      "label": "Блокировка рекламы",
-      "description": "Мягко блокировать рекламу, отклоняя соединения",
-      "default": true,
-      "rule_set": [
-        {
-          "tag": "ads-all",
-          "type": "remote",
-          "format": "binary",
-          "url": "https://example.com/rules/ads.srs",
-          "download_detour": "direct-out",
-          "update_interval": "24h"
-        }
-      ],
-      "rule": {
-        "rule_set": "ads-all",
-        "action": "reject"
-      }
-    }
-  ]
-}
-```
-
-**Поля**:
-- `label` (обязательное): Метка чекбокса, отображаемая в UI визарда
-- `description` (обязательное): Текст подсказки, показываемый при нажатии кнопки "?"
-- `default` (опциональное, boolean): Если `true`, правило включено по умолчанию при первом открытии визарда
-- `platforms` (опциональное, массив строк): Платформы, на которых это правило доступно (`"windows"`, `"linux"`, `"darwin"`). Если не указано, правило доступно на всех платформах
-- `rule_set` (опциональное, массив): Определения наборов правил, необходимые для этого правила. Они добавляются в `config.route.rule_set` **только если правило включено**
-- `rule` (опциональное, объект): Одно правило маршрутизации (взаимоисключающее с `rules`)
-- `rules` (опциональное, массив): Несколько правил маршрутизации (взаимоисключающее с `rule`)
-
-**Формат правила**: Может быть одним объектом правила или массивом правил:
-```json
-// Одно правило
-{
-  "label": "Блокировка рекламы",
-  "rule": {
-    "rule_set": "ads-all",
-    "action": "reject"
-  }
-}
-
-// Несколько правил (массив)
-{
-  "label": "Правила для игр",
-  "rules": [
-    { "rule_set": "games", "outbound": "direct-out" },
-    { "port": [27000, 27001], "outbound": "direct-out" }
-  ]
-}
-```
-
-**Выбор аутбаунда**: Если ваше правило имеет поле `outbound`, визард автоматически показывает выпадающий список, чтобы пользователи могли выбрать, какую прокси-группу использовать. Доступные варианты берутся из:
-- Тегов, определённых в `parser_config` outbounds
-- Тегов из сгенерированных прокси
-- Всегда доступны: `direct-out`, `reject`, `drop`
-
-**Особый случай - правила reject**: Если ваше правило имеет `"action": "reject"`, визард предлагает варианты `reject` и `drop` вместо прокси-групп.
-
-**Платформо-зависимые правила**: Вы можете создавать платформо-зависимые правила с одинаковой меткой, но разными `platforms` и содержимым правила:
-```json
-{
-  "label": "Мессенджеры через прокси",
-  "platforms": ["windows"],
-  "rule": {
-    "rule_set": "messengers",
-    "process_name": ["Telegram.exe", "Discord.exe"],
-    "outbound": "proxy-out"
-  }
-},
-{
-  "label": "Мессенджеры через прокси",
-  "platforms": ["darwin", "linux"],
-  "rule": {
-    "rule_set": "messengers",
-    "process_name": ["Telegram", "Discord"],
-    "outbound": "proxy-out"
-  }
-}
-```
-
----
-
-### Переменные шаблона (`vars`) и плейсхолдеры `@`
-
-**Назначение:** объявить значения, которые показываются на вкладке визарда **«Настройки»** и сохраняются в `state.json` в **`vars`** как пары `{ "name", "value" }` (строки). В **`config`** и **`params`** строковые литералы вида `"@имя_переменной"` (и одноэлементные массивы `["@имя"]`, где поддерживается) подставляются при сборке эффективного конфига. Числовые поля шаблона используют **`@tun_mtu`**, **`@proxy_in_listen_port`** и аналогичные **`@`**-плейсхолдеры (разрешаются как целые).
-
-**Вкладка DNS теперь через `vars` (`dns_*`):** скаляры DNS-вкладки — это шаблонные переменные (`vars`) с подстановками `@dns_*` в `config`. `dns_options` остаётся только для `servers`/`rules`. См. секцию **`dns_options`** (§3 выше), **`docs/WIZARD_STATE.md`** и **`SPECS/032-F-C-WIZARD_SETTINGS_TAB/SUB_SPEC_DNS_TAB_VARS.md`**.
-
-**`params.if`:** опциональный массив имён **булевых** переменных из `vars`, например `"if": ["@tun"]`. Каждый элемент **обязан** начинаться с `@` (иначе loader error — см. SPEC 067). Параметр применяется только если **каждая** перечисленная переменная истинна **на текущей ОС** (учитывается **`vars[].platforms`**: если переменная объявлена только для других платформ, здесь она считается ложной).
-
-**`params.if_or`:** опциональный массив булевых имён, например `"if_or": ["@tun", "@enable_proxy_in"]`. Параметр применяется, если **хотя бы одна** перечисленная переменная истинна на текущей ОС. В одной записи **`params`** нельзя задать одновременно **`if`** и **`if_or`**.
-
-**Связь `vars[].platforms` с `if` / `if_or`:** для каждого имени в **`if`** или **`if_or`** лаунчер снимает префикс `@` и проверяет, **относится ли переменная к текущей ОС** (пустой **`platforms`** → все ОС; иначе в списке должен быть **`runtime.GOOS`**). Legacy-сборка Win7 — это **`windows`** + **`386`**; в **`params` / `selectable_rules`** используйте **`"windows"`**, отдельная метка **`win7`** в **`platforms`** не нужна. Для **`tun_stack`** в шаблоне задаётся **`default_value`** объектом, например **`{"win7":"gvisor","default":"system"}`** — незаданное значение на **windows/386** даёт **`gvisor`**, на остальных платформах — **`system`** (см. **`VarDefaultValue`** в **`core/template/vars_default.go`**). Если переменная **не** относится к текущей ОС, она даёт **`false`** в И/ИЛИ — **до** чтения значения из state. Сохранённое в **`state.vars`** **`"true"`** для **`tun`** **не** сделает истинным **`if: ["@tun"]`** на Linux, если в шаблоне **`tun`** только под **`darwin`**. Реализация: **`VarAppliesOnGOOS`** / **`ParamBoolVarTrue`** в **`core/template/vars_resolve.go`**.
-
-Поставляемый шаблон (SPEC 066 + 067): один **`params`** TUN-inbound с **`"if": ["@tun"]`** (без дублирования по платформам); **`interface_name`** выводится только на Windows/Linux через **`#if` + `@runtime.platform`** внутри объекта inbound; опциональный **`proxy-in`** и prepend **`route.rules`** с **`"if_or": ["@tun", "@enable_proxy_in"]`** и динамическим **`inbound[]`** через **`#if`** в элементах массива. См. **`bin/wizard_template.json`** и [`docs/TEMPLATE_REFERENCE.md`](TEMPLATE_REFERENCE.md) §9–§10.
-
-**Поля элементов массива `vars`:** `name` (рекомендуется `[A-Za-z_][A-Za-z0-9_]*` — проверяется при загрузке), `type` (`text`, `bool`, `enum`, `text_list`, `secret`), **`default_value`** (JSON-строка, число, булево или **объект** «ключ платформы → строка» — см. **Ключи платформы для объектов `default_value`** ниже), опционально `default_node`, `options` (для `enum`), `platforms`, `wizard_ui` (`edit` / `view` только чтение / `hidden` / `fix`), **`title`** (короткая подпись на **«Настройках»**; если не задан или пустой — показывается **`name`**), **`tooltip`** (опциональная всплывающая подсказка на поддерживаемых виджетах). Опционально **`if`** / **`if_or`** (та же семантика, что у **`params`**, взаимоисключение, только **`@`**): на вкладке **«Настройки»** строка остаётся видимой (с учётом **`platforms`** / **`wizard_ui`**), но **поля и кнопки отключены**, пока условие не выполнено — например адрес/MTU TUN с **`"if": ["@tun"]`**. Смена bool-переменной, от которой зависят другие, **пересобирает** зависимые строки. Тип **`secret`** зарезервирован для встроенной пары **`name`: `clash_secret`**, **`type`: `secret`** (как `text`, но с отдельной кнопкой перегенерации). Для остальных переменных используйте `text` / `enum` / `bool` / `text_list`. `wizard_ui: "fix"` — переменная редактируется в специальном месте UI (не на вкладке «Настройки»); `hidden` остаётся общим режимом «не показывать». **Оформление JSON** bundled template — [`TEMPLATE_REFERENCE.md`](TEMPLATE_REFERENCE.md) §10.
-
-**Разделитель (только вёрстка):** запись **`{"separator": true}`** рисует на **«Настройках»** горизонтальную линию между строками. Не задавайте **`name`**, **`type`**, **`default_value`**, **`default_node`**, **`options`**, **`title`**, **`tooltip`**, **`if`**, **`if_or`**. Опционально **`platforms`** (как у обычных vars) и **`wizard_ui`**: кроме пустого допускается только **`hidden`** — чтобы скрыть линию на части ОС. Разделитель не переменная: нет плейсхолдеров **`@`** и ничего не пишется в state. **macOS `.app`:** лаунчер читает **`Contents/MacOS/bin/wizard_template.json`** внутри бандла, а не файл из клона репозитория. После правок шаблона в репозитории нужно **пересобрать/переустановить** приложение или **скопировать** обновлённый JSON в каталог бандла, иначе разделители и другие изменения в шаблоне не появятся.
-
-#### macOS: выключение `tun` на вкладке «Настройки»
-
-**Имя переменной:** логика привязана к **`name`** ровно **`tun`** (поставляемый **`bin/wizard_template.json`**). Булева переменная показывается на всех платформах (`platforms`: `windows`, `linux`, `darwin`); macOS-специфичная очистка выполняется при **`runtime.GOOS == "darwin"`** и снятии галочки TUN.
-
-При **снятии** этой галочки (переход включено → выключено):
-
-1. **Ядро должно быть остановлено (состояние лаунчера):** если **`RunningState.IsRunning()`** истинно — то же «запущен», что и на вкладке Core — показывается сообщение, галка **возвращается** во включённое состояние, в модели визарда **`tun`** **не** переключается в off.
-2. **Нет «зависшего» sing-box в ОС:** **`ProcessService.IsSingBoxProcessRunningOnSystem()`** (эвристика по имени исполняемого файла). Если процесс найден — галка не снимается, иначе можно удалить файлы, пока sing-box держит **TUN** и порты (например mixed **7890**), что даёт **address already in use** при следующем старте. Это закрывает рассинхрон, когда **Stop** отменили на пароле: **`ProcessService.Stop`** при ошибке **`KillPrivilegedProcess`** **не** сбрасывает **RunningState** (исправленное поведение).
-3. **После прохождения проверок:** собираются пути, которые после привилегированного TUN могли остаться **от root**, затем выполняется **один** привилегированный **`rm -rf`** по существующим из списка (та же сессия **AuthorizationRef**, что и у других привилегированных действий):
-   - **кеш experimental:** из эффективной секции **`experimental`** (**`EffectiveConfigSection`**, мерж как у превью, **`GetEffectiveConfig`**). **`ExperimentalCacheFileFromSection`** читает **`experimental.cache_file`**: при **`enabled`** не **`false`** и непустом **`path`** путь резолвится — относительные от каталога **`bin/`**. В список попадает только путь **внутри** **`bin/`**, **существующий** на диске; **вне** **`bin/`** — пропуск (предупреждение в лог).
-   - **логи ядра:** **`logs/sing-box.log`** и **`logs/sing-box.log.old`** (ротация) рядом с бинарником лаунчера (**`ExecDir`**), фиксированные имена (**`internal/constants`**: **`LogsDirName`**, **`ChildLogFileName`**); каждый путь добавляется, только если файл **есть** и путь **внутри** **`ExecDir`** (проверка безопасности).
-   Если список пуст, привилегированный вызов **не** делается. При ошибке **`rm`** — диалог, но **`tun`** в модели **всё равно** переключается в off. Если удалялись **логи ядра**, вызывается **`FileService.ReopenChildLogFile()`**: закрывается старый дескриптор и заново открывается **`logs/sing-box.log`**, чтобы следующий **Start** и просмотр логов шли в файл по пути на диске.
-
-Другие булевы **`vars`** эту ветку **не** запускают.
-
-#### Ключи платформы для объектов `default_value`
-
-**Область:** только ключи внутри JSON-**объекта** **`vars[].default_value`**.
-
-**Целевые ОС проекта** — **Windows**, **macOS**, **Linux**. В документации и шаблонах можно опираться на такой набор строк:
-
-- **`params[].platforms`**, **`selectable_rules[].platforms`**, **`vars[].platforms`**: **`windows`**, **`linux`**, **`darwin`** (должны совпадать с **`runtime.GOOS`**). **`win7`** и **`default`** в эти массивы **не** пишут. Реализация: **`matchesPlatform`** в **`ui/wizard/template/loader.go`**.
-
-- **Объект `default_value`** (**`VarDefaultValue.ForPlatform`** / **`defaultValueKeyOrder`** в **`vars_default.go`**): ключи приводятся к **нижнему регистру**. Для поставляемых сборок имеют смысл:
-
-| Ключ | Назначение |
-|------|------------|
-| **`win7`** | Только legacy Win7 x86 (**`windows`/`386`**), проверяется **раньше** **`windows`**. |
-| **`windows`**, **`linux`**, **`darwin`** | То же, что в **`platforms`** (**`GOARCH`** в имя ключа не входит; **`linux_amd64`** не используется). |
-| **`default`** | Запасной вариант, если выше ничего не подошло или значения пустые. |
-
-**Порядок перебора:** **`win7`** (если **`windows`/`386`**) → текущий **`GOOS`** (**`windows`**, **`linux`** или **`darwin`**) → **`default`**.
-
-Прочие ключи в JSON (опечатки, старый **`goos_goarch`**) при выборе дефолта **игнорируются**. Движок по-прежнему сравнивает с фактическим **`runtime.GOOS`**, если запустить на другой ОС; релизы и примеры проекта рассчитаны **только на linux / darwin / windows**.
-
-В шаблоне приложения **`bin/wizard_template.json`** есть полный пример (`tun`, `tun_address`, `tun_mtu`, `proxy_in_*`, `log_level`, `clash_api`, `clash_secret`, `#if` для auth proxy-in и `interface_name` TUN).
-
-При загрузке шаблон отклоняется, если какой-либо **`@name`** в **`config`** или в **`params[].value`** отсутствует в **`vars`**, если в **`vars`** дублируется **`name`**, если **`params[].if`** / **`params[].if_or`** или **`vars[].if`** / **`vars[].if_or`** ссылается на не-булеву переменную, или если на одной записи **`params`** или **`vars`** заданы одновременно **`if`** и **`if_or`**.
-
----
-
-### 5. Секция `params`
-
-**Назначение**: Определяет платформо-зависимые переопределения конфигурации, применяемые к `config` при загрузке шаблона.
-
-**Структура** (стиль stock-шаблона — плейсхолдеры `@`, опционально `if` / `#if`):
-
-```json
-{
-  "params": [
-    {
-      "name": "inbounds",
-      "if": ["@tun"],
-      "value": [{
-        "type": "tun", "tag": "tun-in", "auto_route": true,
-        "address": ["@tun_address"],
-        "mtu": "@tun_mtu",
-        "strict_route": "@strict_route",
-        "stack": "@tun_stack",
-        "#if": {"and": [{"@runtime.platform": {"#in": ["windows", "linux"]}}], "value": {
-          "interface_name": "singbox-tun0"
-        }}
-      }]
-    },
-    {
-      "name": "route.rules",
-      "if_or": ["@tun", "@enable_proxy_in"],
-      "mode": "prepend",
-      "value": [
-        {"inbound": [{"#if": {"and": ["@tun"], "value": "tun-in"}}, {"#if": {"and": ["@enable_proxy_in"], "value": "proxy-in"}}], "action": "resolve", "strategy": "@resolve_strategy"}
-      ]
-    }
-  ]
-}
-```
-
-**Поля**:
-- `name` (обязательное, строка): Путь к свойству конфига с использованием точечной нотации (например, `"inbounds"`, `"route.rules"`, `"dns.servers"`)
-- `platforms` (опционально, массив строк): Платформы, на которых применяется этот параметр (`"windows"`, `"linux"`, `"darwin"`). Можно опустить — тогда применяется на всех ОС, если прошли `if`/`if_or`.
-- `if` / `if_or` (опционально): Условие для **всей** записи `params`; каждый элемент — **`@bool_var`** (SPEC 067). Взаимоисключение на одной записи.
-- `value` (обязательное): Значение для применения (любой тип JSON). Может содержать `@var` и конструкции **`#if`** (§ Условные поля с `#if`).
-- `mode` (опциональное, строка): Способ применения значения:
-  - `"replace"` (по умолчанию): Заменить `config[name]` на `value`
-  - `"prepend"`: Вставить элементы `value` в начало массива `config[name]`
-  - `"append"`: Добавить элементы `value` в конец массива `config[name]`
-
-**Маппинг платформ**:
-- `"windows"` → Windows (`runtime.GOOS == "windows"`)
-- `"linux"` → Linux (`runtime.GOOS == "linux"`)
-- `"darwin"` → macOS (`runtime.GOOS == "darwin"`)
-
-Условия по платформе **внутри полей** `value` — через **`#if` + `@runtime.platform` / `@runtime.arch`** (не через outer `if`).
-
-**Как работает**: При загрузке шаблона визард:
-1. Определяет текущую платформу (`runtime.GOOS`)
-2. Для каждого param оценивает `if`/`if_or` по bool-переменным (и применимости `vars[].platforms`)
-3. Если задан `platforms`, проверяет вхождение текущей ОС
-4. Если param применим, мержит `value` в `config` по пути `name` с учётом `mode`, затем подстановку `@var` и обход `#if`
-
-**Пример**: Чтобы добавить TUN inbound только на Windows и Linux:
-```json
-{
-  "name": "inbounds",
-  "platforms": ["windows", "linux"],
-  "value": [
-    {
-      "type": "tun",
-      "tag": "tun-in",
-      "interface_name": "singbox-tun0",
-      "address": ["172.16.0.1/30"],
-      "mtu": 1400,
-      "auto_route": true,
-      "strict_route": false,
-      "stack": "system"
-    }
-  ]
-}
-```
-
-Чтобы добавить системный прокси inbound только на macOS:
-```json
-{
-  "name": "inbounds",
-  "platforms": ["darwin"],
-  "value": [
-    {
-      "type": "mixed",
-      "tag": "proxy-in",
-      "listen": "127.0.0.1",
-      "listen_port": 7890,
-      "sniff": true,
-      "sniff_override_destination": true,
-      "set_system_proxy": true
-    }
-  ]
-}
-```
-
----
-
-## Условные поля через `#if` (SPEC 067)
-
-Когда нужно включить / выключить **одно поле внутри уже эмиченного объекта**
-(а не целую запись `params[]`), используйте **construct `#if`**. Поддерживаются
-два режима размещения; оба реализованы одним walker'ом в
-`core/template/substitute.go::SubstituteVarsInJSON`.
-
-### Map-spread mode — условные поля внутри объекта
-
-`#if` — обычный ключ внутри объекта; при `true` его `value` (обязательно
-объект) **мерджится в родительский объект**, ключ `#if` удаляется.
-
-```jsonc
-// Proxy-in mixed inbound: опциональный `users` для auth-required режима.
-{
-  "type": "mixed",
-  "tag": "proxy-in",
-  "listen": "@proxy_in_listen",
-  "listen_port": "@proxy_in_listen_port",
-  "set_system_proxy": "@proxy_in_set_system_proxy",
-  "#if": {
-    "and": ["@proxy_in_auth_enabled"],
-    "value": {
-      "users": [{"username": "@proxy_in_username", "password": "@proxy_in_password"}]
-    }
-  }
-}
-```
-
-Когда `proxy_in_auth_enabled = true`, в выводе есть `users`; иначе поле
-отсутствует (anonymous proxy). Без `else` → поле просто не эмитится.
-
-### Array-element mode — условные элементы массива
-
-`#if` — **единственный** ключ объекта-элемента массива. При `true` элемент
-заменяется на `value`; при `false` (без `else`) элемент **удаляется** из
-массива (длина -1).
-
-```jsonc
-// TUN inbound: `interface_name` нужен только на Windows / Linux (macOS
-// не хочет фиксированного interface_name). Схлопывает две почти
-// одинаковые entries из params[] в одну.
-{
-  "name": "inbounds",
-  "if": ["@tun"],
-  "value": [{
-    "type": "tun",
-    "tag": "tun-in",
-    "address": ["@tun_address"],
-    "mtu": "@tun_mtu",
-    "auto_route": true,
-    "strict_route": "@strict_route",
-    "stack": "@tun_stack",
-    "#if": {
-      "and": [{"@runtime.platform": {"#in": ["windows", "linux"]}}],
-      "value": {"interface_name": "singbox-tun0"}
-    }
-  }]
-}
-```
-
-### Поля тела `#if`
-
-| Поле | Обязательно | Примечания |
+| Ключ | Тип | Назначение |
 |---|---|---|
-| `and` | ровно один из `and`/`or` | Непустой список predicate'ов (AND, short-circuit) |
-| `or`  | ровно один из `and`/`or` | Непустой список predicate'ов (OR, short-circuit) |
-| `value` | да | Что подставляется на `true` |
-| `else`  | опционально | Подставляется на `false`; без `else` ключ map'а удаляется / элемент массива выкидывается |
+| `parser_config` | object | Настройки парсера подписки + статические outbound-группы (selector/urltest). Сюда инжектятся ноды из подписки. |
+| `config` | object | Базовый скелет конфига sing-box (`route`, `experimental`, `inbounds`, …), в который подставляются `@var` и применяются `params`. |
+| `dns_options` | object | Дефолты DNS-вкладки: `servers[]` + `rules[]`. |
+| `vars` | array | Типизированные переменные шаблона → строки **Настроек**, источники `@`-плейсхолдеров. |
+| `params` | array | Патчи к `config` по dot-path с условиями (`if`) и режимом слияния. |
+| `presets` | array | Пресеты для вкладки **Rules** (правила, rule_set, DNS, outbounds). |
 
-### Формы predicate'ов (в `and` / `or`)
+> Устаревшее: ключ `selectable_rules` удалён (SPEC 053) — правила только через `presets[]`.
+
+---
+
+## 2. Плейсхолдеры `@var`
+
+В `config`, `params[].value`, телах пресетов строка вида `"@name"` заменяется
+значением переменной `name` из `vars[]` (или preset var в scope пресета).
+
+- **Скаляр:** `"mtu": "@tun_mtu"` → значение (для int-вар — числом, не строкой).
+- **Список (одноэлементный массив):** `["@dns_list"]` где `dns_list` — `text_list` →
+  массив разворачивается в список строк.
+- **Тип результата** определяется типом var: `bool` → `true/false`, `text_list` → массив,
+  числовые vars (`tun_mtu`, `mixed_listen_port`, `proxy_in_listen_port`, `urltest_tolerance`)
+  → число, остальные → строка.
+- Имя после `@` не содержит пробелов; неизвестный `@var` в `config` → ошибка загрузки.
+
+`@var` как **ключ** объекта используется только в predicate'ах `#if` (§5), в обычном
+JSON ключи не подставляются.
+
+---
+
+## 3. `vars[]` — переменные
+
+Каждый элемент описывает одну переменную (строку на вкладке **Настройки**).
+
+| Поле | Тип | Описание |
+|---|---|---|
+| `name` | string | Идентификатор (`[A-Za-z_][A-Za-z0-9_]*`). Имя `runtime` зарезервировано. |
+| `type` | string | `text` \| `bool` \| `enum` \| `text_list` \| `secret`. |
+| `default_value` | см. §3.2 | Значение по умолчанию (если нет в state). |
+| `default_node` | string | Альтернатива: dot-path внутри шаблона, откуда взять дефолт. |
+| `options` | array | Для `enum`: `["a","b"]` или `[{"title","value"}]`. |
+| `wizard_ui` | string | `edit` (по умолч.) \| `view` (read-only) \| `hidden` \| `fix` (правится в другом месте UI). |
+| `platforms` | array | ОС, где переменная активна (пусто = все). |
+| `title` | string | Подпись строки (пусто → `name`). |
+| `tooltip` | string | Всплывающая подсказка. |
+| `if` / `if_or` | array | Условие активности строки — `@bool_var` (§3.3). |
+
+### 3.1 Типы
+
+| Тип | Виджет | Подстановка |
+|---|---|---|
+| `text` | поле ввода (+ combo, если задан `options`) | строка |
+| `bool` | чекбокс | `true` / `false` |
+| `enum` | dropdown | `value` выбранного варианта |
+| `text_list` | многострочное поле | массив строк (по строкам) |
+| `secret` | masked-поле (точки) + глаз + кнопка регенерации; всегда предзаполнено случайным значением | строка |
+
+Объектная форма `options` (`[{title,value}]`) автоматически делает переменную `enum`.
+
+### 3.2 `default_value` — три формы
+
+```json
+"default_value": "system"                              // 1. скаляр (строка/число/bool)
+"default_value": {"win7": "gvisor", "default": "system"}  // 2. по платформе
+"default_value": {"#if": { ... }}                      // 3. выражение #if (только @runtime.*)
+```
+
+**По платформе** — перебор ключей: `win7` (только `windows`/`386`) → `<goos>`
+(`windows`/`linux`/`darwin`) → `default`.
+
+**`#if`** (§5) вычисляется в runtime; внутри разрешены **только** `@runtime.*` globals,
+ссылки на другие vars запрещены (ошибка загрузки). Можно и в платформенном ключе:
+`{"default": {"#if": {...}}}`.
+
+### 3.3 `if` / `if_or` (внешнее условие)
+
+```json
+{"name": "tun_address", "type": "text", "if": ["@tun"]}
+```
+
+- Каждый элемент — **`@имя_bool_var`** (префикс `@` обязателен; голое `"tun"` → ошибка загрузки).
+- `if` — активна, если **все** перечисленные `true`; `if_or` — если **хотя бы одна**. Взаимоисключение.
+- На вкладке **Настройки** строка остаётся видимой, но **поля отключены**, пока условие не выполнено.
+- Runtime globals (`@runtime.*`) в outer `if`/`if_or` **запрещены** — только в `#if`.
+
+### 3.4 Разделитель
+
+```json
+{"separator": true}
+```
+Горизонтальная линия между строками Настроек. Без `name`/`type`/`default_value`/прочего
+(допускается только `platforms` и `wizard_ui: "hidden"`).
+
+---
+
+## 4. `#if` — условные поля
+
+Control-construct: включает/исключает поля или элементы по условию. Ключ `#if`
+**не попадает** в выходной JSON.
+
+### 4.1 Форма
+
+```json
+"#if": {
+  "and":   [ <predicate>, ... ],   // ИЛИ "or" — ровно один из and/or
+  "value": <любой JSON>,           // подставляется при истинном условии
+  "else":  <любой JSON>            // опционально — при ложном
+}
+```
+
+- Ровно один из `and` / `or` (оба или ни одного → ошибка). `value` обязателен.
+- `and` — все predicate'ы `true`; `or` — хотя бы один.
+
+### 4.2 Два режима размещения
+
+**Map-spread** — `#if` как ключ внутри объекта; при истине поля ветви **мерджатся в родителя**:
+```json
+{"type": "tun", "tag": "tun-in",
+ "#if": {"and": [{"@runtime.platform": {"#in": ["windows","linux"]}}],
+         "value": {"interface_name": "singbox-tun0"}}}
+```
+
+**Array-element** — одиночный `{"#if": {...}}` как элемент массива; элемент
+**заменяется** ветвью или **выбрасывается** (если ложь и нет `else`):
+```json
+"inbound": [
+  {"#if": {"and": ["@tun"],             "value": "tun-in"}},
+  {"#if": {"and": ["@enable_proxy_in"], "value": "proxy-in"}}
+]
+```
+
+### 4.3 Predicate'ы (элементы `and` / `or`)
 
 | Форма | Семантика |
 |---|---|
-| `"@bool_var"` | bool var обязан быть `true` (bare string зарезервирован только под bool var) |
-| `{"@var": "literal"}` | text var совпадает с literal |
-| `{"@var": "#notEmpty"}` / `{"@var": "#isEmpty"}` | непусто / пусто (для text / text_list / bool) |
-| `{"@var": {"#in":    ["a","b"]}}` / `{"#notIn": [...]}` | text var есть / нет в списке (можно `"@text_list_var"` вместо массива) |
-| `{"@var": {"#matches": "^pattern$"}}` | text var match'ит Go-regexp |
-| `{"#not": <predicate>}` | унарная негация (inner — любой из выше, рекурсивно) |
+| `"@var"` | bool var истинна (`scalar == "true"`) |
+| `{"@var": "literal"}` | равенство: `trim(scalar) == "literal"` |
+| `{"@var": "#notEmpty"}` | непусто (text: длина > 0; text_list: есть элементы; bool: true) |
+| `{"@var": "#isEmpty"}` | инверсия `#notEmpty` |
+| `{"@var": {"#in": ["a","b"]}}` | `scalar` в списке (список может быть `"@text_list_var"`) |
+| `{"@var": {"#notIn": ["a","b"]}}` | `scalar` не в списке |
+| `{"@var": {"#matches": "^re$"}}` | `scalar` матчит Go-regexp |
+| `{"#not": <predicate>}` | отрицание любого predicate'а (рекурсивно) |
 
-### Runtime globals — namespace `@runtime.*`
+Аргументы (literal, элементы `#in`, regex `#matches`) могут содержать `@var` — подставляются до оценки.
 
-Namespace `@runtime.*` (поля `@runtime.platform`, `@runtime.arch`; расширяемый) —
-pseudo-var'ы, доступные **только** в `#if.and` / `#if.or` predicates. Резолвятся
-из `runtime.GOOS` / `runtime.GOARCH` (lower-case: `"darwin"`, `"windows"`,
-`"linux"`; `"amd64"`, `"arm64"`, `"386"`). Ведут себя как text-var в predicates,
-но в bool-form (bare `"@runtime.platform"` в списке) — loader error. Имя `runtime`
-зарезервировано под namespace (`vars[].name == "runtime"` → loader error).
+### 4.4 Runtime globals — `@runtime.*`
 
-В outer `params[].if` / `params[].if_or` они **не работают** — для
-платформенной фильтрации целой entry используйте `params[].platforms`,
-а для отдельных полей — `#if` внутри `value`.
+Псевдо-переменные, доступные **только** в predicate'ах `#if` (не объявляются в `vars`):
 
-**`default_value` тоже может быть `#if`.** `default_value` переменной может быть
-`#if`-выражением, вычисляемым в runtime по `@runtime.*` (ссылки на другие vars
-там **запрещены** — loader error). Обобщает форму с ключами платформы
-(`{"win7":"gvisor","default":"system"}`):
+| Global | Источник | Значения |
+|---|---|---|
+| `@runtime.platform` | `runtime.GOOS` | `"darwin"`, `"windows"`, `"linux"` |
+| `@runtime.arch` | `runtime.GOARCH` | `"amd64"`, `"arm64"`, `"386"` |
 
-```jsonc
-"default_value": {"#if": {"and": [{"@runtime.platform": "windows"}, {"@runtime.arch": "386"}],
-                          "value": "gvisor", "else": "system"}}
-```
+- Только text-predicate'ы (equality, `#in`, `#matches`, …); **голое** `"@runtime.platform"` в списке → ошибка.
+- Win7 = `windows`+`386`: `{"and": [{"@runtime.platform": "windows"}, {"@runtime.arch": "386"}]}`.
+- Namespace расширяемый; имя `runtime` в `vars[].name` зарезервировано.
 
-### Типичные ошибки загрузки шаблона
+### 4.5 Дисциплина именования
 
-| Что | Почему loader error |
-|---|---|
-| `"if": ["tun"]` (bare element) | SPEC 067 требует `@`-prefix на каждом элементе `if` / `if_or`. Исправление: `"if": ["@tun"]`. |
-| `vars[].name == "runtime"` | Зарезервировано — collision с namespace runtime-globals `@runtime.*`. Переименовать var. (`platform` / `arch` снова допустимы.) |
-| `"if": ["@runtime.platform"]` (outer) | Runtime globals только внутри `#if` predicates. Используйте `params[].platforms`. |
-| Body `#if` без `value` | `value` обязателен (даже при наличии `else`). |
-| Оба `and` и `or` в одном теле `#if` | Mutually exclusive — composition через вложенный `#if`. |
-| `and: []` / `or: []` | Predicate list должен быть непустым. |
-| `{"#matches": "[broken"}` | Pattern должен компилироваться как Go-regexp. |
-| `{"#in": ["a"]}` против `bool` var | `#in` / `#notIn` / `#matches` работают только на text / text_list (или runtime globals). |
-
-### Forward compatibility
-
-Неизвестные ключи с префиксом `#` (например, будущий `#for_each`) walker
-логирует как warn и тихо удаляет — старые лаунчеры graceful-игнорируют
-неизвестные constructs. Это позволяет добавлять новые `#*` без breaking
-change для кастомных шаблонов.
-
-> **Mobile parity:** все `#*` constructs — **только desktop**, до
-> подтяжки реализации в LxBox. Если шаблон шарится между лаунчерами,
-> используйте `#*` только после проверки совместимости.
-
-См. [`docs/TEMPLATE_REFERENCE.md`](TEMPLATE_REFERENCE.md) §9 — полная
-спецификация, **§10** — оформление JSON bundled template,
-[`SPECS/067-F-N-TEMPLATE_EXPRESSIONS/SPEC.md`](../SPECS/067-F-N-TEMPLATE_EXPRESSIONS/SPEC.md)
-— design rationale.
+- `#` — control-constructs и predicate'ы (`#if`, `#in`, `#not`, `#notEmpty`, …); не попадают в выход.
+- `@` — ссылки на переменные (`@var`) и runtime globals (`@runtime.*`).
+- bare — обычные ключи данных и inner-ключи тела `#if` (`and`/`or`/`value`/`else`).
+- Неизвестный `#*`-ключ → warn + drop (forward-compat для будущих constructs).
 
 ---
 
-## Примеры правил с подробными объяснениями
+## 5. `params[]` — патчи `config`
 
-### Пример 1: Правило с выбором аутбаунда
-
-```json
-{
-  "label": "Gemini via Gemini VPN",
-  "description": "Use dedicated Gemini VPN selector for Gemini rule set.",
-  "default": true,
-  "rule_set": [
-    {
-      "tag": "gemini",
-      "type": "inline",
-      "format": "domain_suffix",
-      "rules": [
-        {
-          "domain_suffix": [
-            "generativelanguage.googleapis.com",
-            "gemini.google.com",
-            "ai.google.dev"
-          ]
-        }
-      ]
-    }
-  ],
-  "rule": {
-    "rule_set": "gemini",
-    "network": ["tcp", "udp"],
-    "outbound": "proxy-out"
-  }
-}
-```
-
-**Как это работает:**
-- Это правило имеет поле `outbound` (`"outbound": "proxy-out"`), поэтому визард покажет выпадающий список
-- Пользователи могут выбрать из:
-  - Любого тега аутбаунда, определённого в `parser_config` (например, `proxy-out`, `auto-proxy-out`)
-  - Любого тега сгенерированного прокси из подписок (например, `🇳🇱Нидерланды`, `🇺🇸США`)
-  - Всегда доступные варианты: `direct-out`, `reject`
-- `default: true` означает, что это правило включено по умолчанию при открытии визарда
-- `description` предоставляет полезный контекст во всплывающей подсказке
-- Массив `rule_set` содержит определение набора правил, которое будет добавлено в `config.route.rule_set` только если это правило включено
-
-### Пример 2: Правило с прямым аутбаундом по умолчанию
-
-```json
-{
-  "label": "Games direct",
-  "description": "Send gaming rule set traffic directly for lower latency.",
-  "default": true,
-  "rule_set": [
-    {
-      "tag": "games",
-      "type": "remote",
-      "format": "binary",
-      "url": "https://example.com/rules/games.srs",
-      "download_detour": "direct-out",
-      "update_interval": "24h"
-    }
-  ],
-  "rule": {
-    "rule_set": "games",
-    "network": ["tcp", "udp"],
-    "outbound": "direct-out"
-  }
-}
-```
-
-**Как это работает:**
-- Использует `direct-out` по умолчанию (трафик обходит VPN)
-- Пользователи всё ещё могут изменить это в визарде, чтобы маршрутизировать игровой трафик через VPN при необходимости
-- Поле `network` указывает как TCP, так и UDP протоколы (игры часто используют UDP)
-- Помечено `default: true`, потому что прямое маршрутизация с низкой задержкой обычно предпочтительна для игр
-
-### Пример 3: Правило блокировки с опцией reject
-
-```json
-{
-  "label": "Block ads",
-  "description": "Block advertising domains.",
-  "rule_set": [
-    {
-      "tag": "ads",
-      "type": "remote",
-      "format": "binary",
-      "url": "https://example.com/rules/ads.srs",
-      "download_detour": "direct-out",
-      "update_interval": "24h"
-    }
-  ],
-  "rule": {
-    "rule_set": "ads",
-    "action": "reject",
-    "method": "drop"
-  }
-}
-```
-
-**Как это работает:**
-- Это правило использует `"action": "reject"` для блокировки рекламы по умолчанию
-- Визард автоматически показывает выпадающий список "Outbound:" с **всеми доступными опциями**:
-  - `reject` - Мягкая блокировка (отклоняет соединения) - выбрано по умолчанию
-  - `drop` - Жёсткая блокировка (сбрасывает пакеты)
-  - `direct-out` - Трафик идет напрямую, мимо VPN (не рекомендуется для рекламы)
-  - Любые прокси-группы - Маршрутизировать через VPN (обычно не нужно)
-- **Важно:** Пользователь всегда может изменить поведение правила в визарде, выбрав любую опцию из списка, независимо от того, что указано в шаблоне
-
-**Требования к правилам:**
-- Все `selectable_rules` **должны** иметь либо поле `outbound` в правиле, либо поле `action: reject`
-- Правила без этих полей не поддерживаются визардом и не будут отображаться в интерфейсе
-- Правила с `action: resolve`, `action: sniff` и другими действиями без `outbound` или `action: reject` должны быть размещены в `config.route.rules` как обычные правила (не в `selectable_rules`)
-
----
-
-## Конфигурация DNS и разделение трафика
-
-В этом разделе объясняется, как работает конфигурация DNS в шаблонах и как маршрутизировать DNS-запросы через разные пути.
-
-### Понимание структуры DNS-серверов
-
-В примере шаблона DNS-серверы настроены следующим образом:
-
-```json
-{
-  "dns": {
-    "servers": [
-      {
-        "type": "udp",
-        "tag": "direct_dns_resolver",
-        "server": "9.9.9.9",
-        "server_port": 53
-      },
-      {
-        "type": "https",
-        "tag": "google_doh",
-        "server": "8.8.8.8",
-        "server_port": 443,
-        "path": "/dns-query"
-      },
-      {
-        "type": "https",
-        "tag": "google_doh_vpn",
-        "server": "8.8.8.8",
-        "server_port": 443,
-        "path": "/dns-query",
-        "detour": "proxy-out"
-      }
-    ],
-    "rules": [
-      { "rule_set": "ru-domains", "server": "yandex_doh" },
-      { "server": "google_doh" }
-    ],
-    "final": "direct_dns_resolver"
-  }
-}
-```
-
-**Типы DNS-серверов:**
-
-1. **`direct_dns_resolver`** - Стандартный UDP DNS (9.9.9.9 - Quad9)
-   - Прямое подключение, без шифрования
-   - Быстрый и надёжный запасной вариант
-
-2. **`google_doh`** - DNS-over-HTTPS (8.8.8.8)
-   - Зашифрованные DNS-запросы
-   - Прямое подключение (не через VPN)
-   - Хорошо для приватности и обхода DNS-цензуры
-
-3. **`google_doh_vpn`** - DNS-over-HTTPS через VPN
-   - То же, что и `google_doh`, но маршрутизируется через `proxy-out` (через `detour`)
-   - Используйте, когда хотите, чтобы DNS-запросы выглядели так, будто они идут из местоположения VPN
-   - Помогает обходить геоблокировку на основе DNS
-
-**Когда использовать DNS через VPN:**
-- ✅ Вы хотите, чтобы DNS-запросы выглядели так, будто они идут из местоположения VPN
-- ✅ Вам нужно обойти геоограничения на основе DNS
-- ✅ Ваш провайдер блокирует определённые DNS-серверы
-- ✅ Вы хотите усилить приватность DNS-запросов
-
-**Когда использовать прямой DNS:**
-- ✅ Быстрее время отклика (нет накладных расходов VPN)
-- ✅ Правильное разрешение локальных доменов (например, `.local`, `.lan`)
-- ✅ Доступ к сервисам, которые требуют локального DNS-разрешения
-- ✅ Снижение нагрузки VPN на DNS-запросы
-
-### Важные настройки DNS
-
-**`domain_strategy: "prefer_ipv4"`:**
-- Принудительно использует IPv4-разрешение, даже если доступен IPv6
-- Предотвращает проблемы с подключением к сервисам, которые предпочитают IPv4
-- Рекомендуется для лучшей совместимости
-
-**`strategy: "ipv4_only"`** (на уровне DNS):
-- Разрешает только IPv4-адреса
-- Полезно, если ваша сеть или VPN не поддерживает IPv6
-- Снижает накладные расходы на DNS-разрешение
-
-> `independent_cache` удалена — sing-box 1.14.0 задеприкейтил опцию
-> ([migration guide](https://sing-box.sagernet.org/migration/#migrate-independent-dns-cache)).
-> DNS-кэш теперь всегда keys by transport name автоматически, юзерская
-> конфигурация не нужна.
-
----
-
-## TUN vs Системный прокси (SOCKS/HTTP)
-
-В этом разделе объясняется разница между режимом TUN и режимом системного прокси, и когда использовать каждый из них.
-
-### Режим TUN (Виртуальный сетевой интерфейс)
-
-**Что это:**
-TUN создаёт виртуальный сетевой интерфейс, который перехватывает **весь трафик** вашей системы.
-
-**Пример конфигурации (через `params`):**
-```json
-{
-  "name": "inbounds",
-  "platforms": ["windows", "linux"],
-  "value": [
-    {
-      "type": "tun",
-      "tag": "tun-in",
-      "interface_name": "singbox-tun0",
-      "address": ["172.16.0.1/30"],
-      "mtu": 1400,
-      "auto_route": true,
-      "strict_route": false,
-      "stack": "system"
-    }
-  ]
-}
-```
-
-**Описание параметров TUN:**
-
-- **`type: "tun"`** - Тип интерфейса. **НЕ ИЗМЕНЯЙТЕ** - всегда должен быть `"tun"`.
-
-- **`tag: "tun-in"`** - Тег для ссылок в правилах маршрутизации.
-  - ✅ **Можно изменить** на любое уникальное имя (например, `"my-tun"`)
-  - ⚠️ **Важно:** Если меняете, обновите все ссылки на этот тег в правилах (`{ "inbound": "tun-in" }`)
-
-- **`interface_name: "singbox-tun0"`** - Имя сетевого интерфейса в системе.
-  - ✅ **Можно изменить** на любое уникальное имя (например, `"my-vpn"`)
-  - ⚠️ **Важно:** На Linux должно начинаться с `tun` (например, `tun0`, `tun1`)
-  - 💡 Рекомендуется оставить по умолчанию для избежания конфликтов
-
-- **`address: ["172.16.0.1/30"]`** - IP-адрес и маска подсети для TUN-интерфейса.
-  - ✅ **Можно изменить** на другой приватный диапазон (например, `["10.0.0.1/30"]`, `["192.168.100.1/30"]`)
-  - ⚠️ **Важно:** Используйте только приватные диапазоны (RFC 1918):
-    - `10.0.0.0/8` - `10.0.0.0` до `10.255.255.255`
-    - `172.16.0.0/12` - `172.16.0.0` до `172.31.255.255`
-    - `192.168.0.0/16` - `192.168.0.0` до `192.168.255.255`
-  - `/30` означает 4 адреса (обычно достаточно)
-  - 💡 Если измените, убедитесь, что не конфликтует с вашей локальной сетью
-
-- **`mtu: 1400`** - Maximum Transmission Unit (максимальный размер пакета).
-  - ✅ **Можно изменить** в диапазоне `1280-1500` (рекомендуется `1300-1450`)
-  - 💡 Меньший MTU помогает избежать фрагментации пакетов:
-    - `1400` - универсальный вариант (хорошо для большинства случаев)
-    - `1300` - если есть проблемы с фрагментацией
-    - `1280` - минимум для IPv6, если нужна совместимость
-  - ❌ Не устанавливайте больше `1500` (стандартный Ethernet MTU)
-
-- **`auto_route: true`** - Автоматическое добавление маршрутов для всего трафика.
-  - ❌ **НЕ МЕНЯЙТЕ** - должен быть `true` для полноценной работы VPN
-  - Если `false`, TUN не будет перехватывать трафик системы
-
-- **`strict_route: false`** - Строгая маршрутизация (принудительная отправка всего трафика через TUN).
-  - ✅ **Можно изменить** на `true` в некоторых случаях:
-    - `false` (по умолчанию) - позволяет обход маршрутов через правила
-    - `true` - принудительно отправляет весь трафик через TUN (более строгий режим)
-  - 💡 Рекомендуется оставить `false` для большей гибкости
-
-- **`stack: "system"`** - Сетевой стек для обработки пакетов.
-  - ❌ **НЕ МЕНЯЙТЕ** без необходимости
-  - `"system"` - использует системный стек (рекомендуется)
-  - `"gvisor"` - использует gVisor (экспериментальный, для особых случаев)
-  - 💡 Оставьте `"system"` для стабильной работы
-
-**Когда использовать TUN:**
-- ✅ Вы хотите **полный системный VPN** (все приложения автоматически)
-- ✅ У вас есть права администратора/root
-- ✅ Вам нужен прозрачный прокси для всего трафика
-- ✅ Вы хотите защитить всю сетевую активность
-- ✅ Вам нужно маршрутизировать трафик, который не поддерживает настройки прокси
-
-**Преимущества:**
-- ✅ Работает со **всеми приложениями** (браузеры, игры, приложения без поддержки прокси)
-- ✅ Прозрачный - приложениям не нужна конфигурация прокси
-- ✅ Перехватывает весь трафик автоматически
-- ✅ Лучший выбор для полного VPN-опыта
-
-**Недостатки:**
-- ❌ Требуются права администратора/root
-- ❌ Более сложная настройка
-- ❌ Может мешать некоторым сетевым сервисам
-- ❌ Нужны правильные правила маршрутизации, чтобы не сломать локальную сеть
-
-### Системный прокси (SOCKS/HTTP)
-
-**Что это:**
-Режим системного прокси запускает прокси-сервер (SOCKS или HTTP), к которому приложения подключаются вручную.
-
-**Пример системного прокси (через `params`):**
-```json
-{
-  "name": "inbounds",
-  "platforms": ["darwin"],
-  "value": [
-    {
-      "type": "mixed",
-      "tag": "proxy-in",
-      "listen": "127.0.0.1",
-      "listen_port": 7890,
-      "sniff": true,
-      "sniff_override_destination": true,
-      "set_system_proxy": true
-    }
-  ]
-}
-```
-
-**Когда использовать системный прокси:**
-- ✅ У вас нет прав администратора/root
-- ✅ Вы хотите **выборочное проксирование** (только определённые приложения)
-- ✅ Вам нужно, чтобы приложения явно использовали прокси
-- ✅ Вам нужен **отдельный прокси и другие настройки для части приложений** (разные приложения используют разные прокси-серверы)
-- ✅ Вы хотите более простую настройку без установки драйвера TUN
-- ✅ Вы тестируете или нуждаетесь в быстрой настройке прокси
-
-**Преимущества:**
-- ✅ Не требуются права администратора
-- ✅ Выборочный - выбирайте, какие приложения используют прокси
-- ✅ Проще настроить и сконфигурировать
-- ✅ Может запускать несколько экземпляров прокси на разных портах
-- ✅ Работает на системах, где TUN недоступен
-
-**Недостатки:**
-- ❌ Не все приложения поддерживают настройки прокси
-- ❌ Нужно настраивать каждое приложение вручную
-- ❌ Некоторые приложения игнорируют настройки системного прокси
-- ❌ Менее прозрачно - приложения должны явно поддерживать прокси
-- ❌ DNS-запросы могут не маршрутизироваться через прокси (если не настроено)
-
-### Сравнительная таблица
-
-| Характеристика | Режим TUN | Системный прокси |
-|----------------|-----------|------------------|
-| **Охват** | Весь системный трафик | Только выбранные приложения |
-| **Сложность настройки** | Выше | Ниже |
-| **Права администратора** | Требуются | Не требуются |
-| **Поддержка приложений** | Все приложения (автоматически) | Только приложения с поддержкой прокси |
-| **Прозрачность** | Полная | Частичная |
-| **Маршрутизация DNS** | Автоматическая | Требуется ручная настройка |
-| **Изоляция сети** | Полная | Зависит от приложения |
-| **Лучше для** | Полный VPN-опыт | Выборочное проксирование |
-
-### Рекомендация
-
-- **Для большинства пользователей**: Используйте **режим TUN** для полной VPN-защиты
-- **Для разработчиков/тестирования**: Используйте **системный прокси** для быстрой настройки и тестирования
-- **Для ограниченных сред**: Используйте **системный прокси**, если права администратора недоступны
-
----
-
-## Правила локального трафика - Критически важно для домашних сетей
-
-В этом разделе объясняется, почему правила локального трафика необходимы и что происходит без них.
-
-### Проблема
-
-Без правильных правил локального трафика пользователи VPN часто сталкиваются с:
-- ❌ Невозможностью доступа к веб-интерфейсу роутера (192.168.1.1, 192.168.0.1)
-- ❌ Невозможностью доступа к локальным сетевым устройствам (NAS, принтеры, умный дом)
-- ❌ Неработающими локальными доменными именами (`.local`, `.lan`)
-- ❌ Поломанным файловым обменом в домашней сети (SMB, DLNA)
-- ❌ Недоступностью устройств умного дома
-- ❌ Невозможностью настройки сетевых устройств через веб-интерфейс
-
-### Решение: Правила локального трафика
-
-Всегда включайте эти критические правила в `config.route.rules` вашего шаблона:
-
-```json
-{
-  "config": {
-    "route": {
-      "rules": [
-        { "ip_is_private": true, "outbound": "direct-out" },
-        { "domain_suffix": ["local"], "outbound": "direct-out" }
-      ]
-    }
-  }
-}
-```
-
-### Понимание правил
-
-#### Правило 1: Приватные IP-адреса
-
-```json
-{ "ip_is_private": true, "outbound": "direct-out" }
-```
-
-**Что покрывает:**
-- Все приватные диапазоны IPv4:
-  - `192.168.0.0/16` (192.168.0.0 - 192.168.255.255)
-  - `10.0.0.0/8` (10.0.0.0 - 10.255.255.255)
-  - `172.16.0.0/12` (172.16.0.0 - 172.31.255.255)
-- Интерфейсы роутера (например, 192.168.1.1, 192.168.0.1)
-- Локальные сетевые устройства (NAS, принтеры, IP-камеры)
-- Другие устройства в вашей домашней сети
-
-**Почему это критически важно:**
-- Без этого правила VPN пытается маршрутизировать локальные IP через VPN-сервер
-- VPN-серверы обычно не имеют маршрутов к вашей локальной сети
-- Результат: **Невозможно получить доступ ни к чему в вашей локальной сети**
-
-#### Правило 2: Локальные доменные суффиксы
-
-```json
-{ "domain_suffix": ["local"], "outbound": "direct-out" }
-```
-
-**Что покрывает:**
-- Доменные имена, заканчивающиеся на `.local` (например, `printer.local`, `nas.local`)
-- Доменные имена, заканчивающиеся на `.lan` (если добавлено: `["local", "lan"]`)
-- Имена, разрешённые через mDNS (multicast DNS)
-- Локальные имена хостов, обнаруженные через сетевое обнаружение
-
-**Почему это критически важно:**
-- Многие устройства используют домены `.local` для автоматического обнаружения
-- Без этого правила домены `.local` могут пытаться разрешиться через VPN DNS
-- Результат: **Локальные устройства становятся недоступными по имени**
-
-### Что происходит без этих правил
-
-**Сценарий: Пользователь пытается получить доступ к роутеру (192.168.1.1)**
-
-**Без правил локального трафика:**
-1. Запрос идёт на VPN-сервер
-2. VPN-сервер не имеет маршрута к 192.168.1.1
-3. Подключение не удаётся или таймаут
-4. ❌ **Пользователь не может настроить роутер**
-
-**С правилами локального трафика:**
-1. Правило совпадает с `ip_is_private: true`
-2. Трафик маршрутизируется в `direct-out` (обходит VPN)
-3. Запрос идёт напрямую на роутер в локальной сети
-4. ✅ **Роутер доступен**
-
-### Описание системных правил действий
-
-В начале массива правил обычно размещаются системные правила с особыми действиями, которые не маршрутизируют трафик, а выполняют предварительную обработку. Они должны быть добавлены через `params` для режима TUN:
+Применяют `value` к секции `config` по dot-path при выполнении условия.
 
 ```json
 {
   "name": "route.rules",
-  "platforms": ["windows", "linux"],
+  "if_or": ["@tun", "@enable_proxy_in"],
   "mode": "prepend",
-  "value": [
-    { "inbound": "tun-in", "action": "resolve", "strategy": "prefer_ipv4" },
-    { "inbound": "tun-in", "action": "sniff", "timeout": "1s" }
-  ]
+  "value": [ { ... } ]
 }
 ```
 
-#### `action: resolve` - Разрешение доменных имен
+| Поле | Описание |
+|---|---|
+| `name` | dot-path в `config` (`"inbounds"`, `"route.rules"`, `"dns.servers"`). |
+| `value` | применяемое значение (любой JSON); поддерживает `@var` и `#if`. |
+| `mode` | `replace` (по умолч.) \| `prepend` \| `append` (для массивов). |
+| `platforms` | ОС применения (пусто = все). |
+| `if` / `if_or` | условие на **всю** запись — `@bool_var` (§3.3). |
 
-```json
-{ "inbound": "tun-in", "action": "resolve", "strategy": "prefer_ipv4" }
-```
-
-**Что делает:**
-- Выполняет DNS-разрешение (преобразует доменные имена в IP-адреса) для трафика, идущего через TUN-интерфейс
-- Параметр `strategy: "prefer_ipv4"` предпочитает IPv4-адреса даже если доступен IPv6
-- Это позволяет sing-box знать реальные IP-адреса назначения **до** применения правил маршрутизации
-
-**Зачем нужно:**
-- Без этого правила sing-box может не знать IP-адреса, что усложняет маршрутизацию
-- Необходимо для правильной работы других правил, которые работают с IP-адресами
-- Улучшает совместимость и стабильность работы VPN
-
-#### `action: sniff` - Определение протокола и извлечение метаданных
-
-```json
-{ "inbound": "tun-in", "action": "sniff", "timeout": "1s" }
-```
-
-**Что делает:**
-- Анализирует начальные байты соединения и определяет протокол (HTTP, TLS, DNS, BitTorrent и т.д.)
-- Извлекает метаданные из трафика, например:
-  - **SNI (Server Name Indication)** из TLS handshake - реальное доменное имя даже при подключении по IP-адресу
-  - Тип протокола для правильной маршрутизации
-- Параметр `timeout: "1s"` ограничивает время анализа - если за 1 секунду протокол не определён, соединение обрабатывается без sniffing
-
-**Зачем нужно:**
-- Позволяет использовать правила маршрутизации по доменам (`domain`, `domain_suffix`, `domain_keyword`) даже когда приложение подключается по IP-адресу
-- Без sniffing sing-box видит только IP-адреса в TUN-режиме, что ограничивает возможности маршрутизации
-- Критически важно для правильной работы правил, основанных на доменных именах
-
-**Пример:** Если приложение подключается к `1.2.3.4`, но это IP для `google.com`, sniffing извлечёт домен из TLS handshake, и правила для `google.com` будут работать корректно.
-
-#### `action: hijack-dns` - Перехват DNS-запросов
-
-```json
-{ "protocol": "dns", "action": "hijack-dns" }
-```
-
-**Что делает:**
-- Перехватывает DNS-запросы и направляет их на DNS-серверы, настроенные в секции `dns`
-- Заставляет все DNS-запросы использовать настроенную конфигурацию DNS вместо системного DNS
-- Правило срабатывает только для трафика с протоколом `dns`
-
-**Зачем нужно:**
-- Гарантирует, что все DNS-запросы обрабатываются через настроенные DNS-серверы (DoH, DoT, специфичные серверы для разных доменов)
-- Без этого правила приложения могут использовать системный DNS, обходя вашу конфигурацию
-- Позволяет применять DNS-правила из секции `dns.rules` для разделения трафика
-
-**Важно:** Это правило должно быть размещено **до** правил локального трафика, чтобы DNS-запросы обрабатывались правильно.
-
-### Рекомендации для провайдеров VPN
-
-⚠️ **КРИТИЧЕСКИ ВАЖНО:** Всегда включайте правила локального трафика в ваши шаблоны
-
-1. **Никогда не пропускайте эти правила** - У пользователей будет сломана домашняя сеть без них
-2. **Размещайте их рано** в массиве правил для надёжного совпадения
-3. **Документируйте их** - Объясните пользователям, почему эти правила важны
-4. **Тщательно тестируйте** - Проверьте доступ к роутеру и локальным устройствам
-
-**Пример фрагмента шаблона:**
-```json
-{
-  "config": {
-    "route": {
-      "rules": [
-        { "protocol": "dns", "action": "hijack-dns" },
-        { "ip_is_private": true, "outbound": "direct-out" },
-        { "domain_suffix": ["local"], "outbound": "direct-out" }
-      ]
-    }
-  },
-  "params": [
-    {
-      "name": "route.rules",
-      "platforms": ["windows", "linux"],
-      "mode": "prepend",
-      "value": [
-        { "inbound": "tun-in", "action": "resolve", "strategy": "prefer_ipv4" },
-        { "inbound": "tun-in", "action": "sniff", "timeout": "1s" }
-      ]
-    }
-  ]
-}
-```
+Порядок при загрузке: проверка `platforms` → `if`/`if_or` → слияние `value` по `mode`
+→ подстановка `@var` → обход `#if`.
 
 ---
 
-## Полный пример: Реальный шаблон
+## 6. `presets[]` — пресеты вкладки Rules
 
-Вот более полный пример, демонстрирующий лучшие практики:
+Самодостаточные наборы правил/наборов-правил/DNS/outbound'ов. Переменные пресета
+имеют **локальный scope** (`@name` внутри пресета резолвится по его `vars[]`).
+
+| Поле | Тип | Описание |
+|---|---|---|
+| `id` | string | Стабильный slug (`[a-z0-9_-]+`), на него ссылается state. |
+| `label` | string | Название в UI. |
+| `description` | string | Описание (tooltip / карточка). |
+| `default_enabled` | bool | Рекомендация: включён ли на fresh install. |
+| `platforms` | array | ОС доступности (пусто = все). |
+| `vars` | array | Локальные переменные (`PresetVar`, §6.1). |
+| `rules` | array | Routing rules (массив объектов; `@var`, `rule_set`-ссылки, свои `if`). |
+| `rule_set` | array | Определения rule_set (`PresetRuleSet`, §6.2). |
+| `dns_servers` | array | Bundled DNS-серверы (`PresetDNSServer`, §6.3). |
+| `dns_rule` | object | DNS-rule пресета (свой `if`). |
+| `outbounds` | array | Добавление/патч outbound'ов (`PresetOutbound`, §6.4). |
+
+### 6.1 `PresetVar`
+
+| Поле | Описание |
+|---|---|
+| `name` | локальное имя; `@name` в телах пресета. |
+| `type` | `outbound` \| `dns_server` \| `enum` \| `text` \| `number` \| `bool`. |
+| `default` | обязательный дефолт (строка; для bool — `"true"`/`"false"`). |
+| `title` / `tooltip` | UI. |
+| `options` | `enum` → `[{title,value}]`; `outbound`/`dns_server` → `["tag", …]` (whitelist). |
+| `select` | для `dns_server`: `"local"` (только bundled пресета) \| `"global"` (все доступные, по умолч.). |
+| `if` / `if_or` | условие активности (`@bool_var`). |
+
+> Типы `secret` / `text_list` в preset-vars **не** поддерживаются (только top-level `vars`).
+
+### 6.2 `PresetRuleSet`
 
 ```json
-{
-  "parser_config": {
-    "ParserConfig": {
-      "version": 4,
-      "proxies": [
-        {
-          "source": "https://your-vpn-service.com/api/subscription?token=USER_TOKEN"
-        }
-      ],
-      "outbounds": [
-        {
-          "tag": "auto-proxy-out",
-          "type": "urltest",
-          "options": {
-            "url": "https://cp.cloudflare.com/generate_204",
-            "interval": "5m",
-            "tolerance": 100,
-            "interrupt_exist_connections": true
-          },
-          "outbounds": {
-            "proxies": {}
-          },
-          "comment": "Автоматический выбор самого быстрого прокси"
-        },
-        {
-          "tag": "proxy-out",
-          "type": "selector",
-          "options": {
-            "interrupt_exist_connections": true,
-            "default": "auto-proxy-out"
-          },
-          "outbounds": {
-            "addOutbounds": ["direct-out", "auto-proxy-out"],
-            "proxies": {}
-          },
-          "comment": "Основной селектор прокси"
-        }
-      ],
-      "parser": {
-        "reload": "1h",
-        "last_updated": "2026-01-30T12:00:00Z"
-      }
-    }
-  },
-
-  "config": {
-    "log": {
-      "level": "warn",
-      "timestamp": true
-    },
-    "dns": {
-      "servers": [
-        {
-          "type": "udp",
-          "tag": "direct_dns",
-          "server": "9.9.9.9",
-          "server_port": 53
-        },
-        {
-          "type": "https",
-          "tag": "cloudflare_doh",
-          "server": "1.1.1.1",
-          "server_port": 443,
-          "path": "/dns-query"
-        }
-      ],
-      "rules": [
-        { "server": "cloudflare_doh" }
-      ],
-      "final": "direct_dns"
-    },
-    "inbounds": [],
-    "outbounds": [
-      { "type": "direct", "tag": "direct-out" }
-    ],
-    "route": {
-      "rule_set": [
-        {
-          "tag": "ru-domains",
-          "type": "inline",
-          "format": "domain_suffix",
-          "rules": [
-            { "domain_suffix": ["ru", "xn--p1ai"] }
-          ]
-        }
-      ],
-      "rules": [
-        { "protocol": "dns", "action": "hijack-dns" },
-        { "ip_is_private": true, "outbound": "direct-out" },
-        { "domain_suffix": ["local"], "outbound": "direct-out" }
-      ],
-      "final": "proxy-out",
-      "auto_detect_interface": true
-    },
-    "experimental": {
-      "clash_api": {
-        "external_controller": "127.0.0.1:9090",
-        "secret": "CHANGE_THIS_TO_YOUR_SECRET_TOKEN"
-      }
-    }
-  },
-
-  "selectable_rules": [
-    {
-      "label": "Блокировка рекламы",
-      "description": "Мягко блокировать рекламу, отклоняя соединения (рекомендуется)",
-      "default": true,
-      "rule_set": [
-        {
-          "tag": "ads-all",
-          "type": "remote",
-          "format": "binary",
-          "url": "https://raw.githubusercontent.com/v2fly/domain-list-community/release/geosite-category-ads-all.srs",
-          "download_detour": "direct-out",
-          "update_interval": "24h"
-        }
-      ],
-      "rule": {
-        "rule_set": "ads-all",
-        "action": "reject"
-      }
-    },
-    {
-      "label": "Российские домены напрямую",
-      "description": "Маршрутизировать российские домены напрямую (быстрее для локальных сервисов)",
-      "rule": {
-        "rule_set": "ru-domains",
-        "outbound": "direct-out"
-      }
-    },
-    {
-      "label": "Игровой трафик напрямую",
-      "description": "Маршрутизировать игровой трафик напрямую для меньшей задержки",
-      "default": true,
-      "rule_set": [
-        {
-          "tag": "games",
-          "type": "remote",
-          "format": "binary",
-          "url": "https://example.com/rules/games.srs",
-          "download_detour": "direct-out",
-          "update_interval": "24h"
-        }
-      ],
-      "rule": {
-        "rule_set": "games",
-        "outbound": "direct-out"
-      }
-    }
-  ],
-
-  "params": [
-    {
-      "name": "inbounds",
-      "platforms": ["windows", "linux"],
-      "value": [
-        {
-          "type": "tun",
-          "tag": "tun-in",
-          "interface_name": "singbox-tun0",
-          "address": ["172.16.0.1/30"],
-          "mtu": 1400,
-          "auto_route": true,
-          "strict_route": false,
-          "stack": "system"
-        }
-      ]
-    },
-    {
-      "name": "route.rules",
-      "platforms": ["windows", "linux"],
-      "mode": "prepend",
-      "value": [
-        { "inbound": "tun-in", "action": "resolve", "strategy": "prefer_ipv4" },
-        { "inbound": "tun-in", "action": "sniff", "timeout": "1s" }
-      ]
-    },
-    {
-      "name": "inbounds",
-      "platforms": ["darwin"],
-      "value": [
-        {
-          "type": "mixed",
-          "tag": "proxy-in",
-          "listen": "127.0.0.1",
-          "listen_port": 7890,
-          "sniff": true,
-          "sniff_override_destination": true,
-          "set_system_proxy": true
-        }
-      ]
-    }
-  ]
-}
+{"tag": "geoip-ru", "type": "remote", "format": "binary", "url": "https://…/geoip-ru.srs", "if": ["@geoip_enabled"]}
+{"tag": "messengers", "type": "inline", "format": "domain_suffix", "rules": [ { ... } ]}
 ```
+`tag` локальный (при build → `<preset_id>:<tag>`). `type`: `inline` (с `rules`) или `remote` (с `url`). Свои `if`/`if_or`.
 
----
+### 6.3 `PresetDNSServer`
 
-## Лучшие практики
-
-### 1. Всегда включайте статические аутбаунды
-
-Оставьте хотя бы `direct-out` в `config.outbounds`. Пользователям он нужен для локального трафика и как запасной вариант. Сгенерированные прокси-аутбаунды автоматически вставляются в начало этого массива.
-
-### 2. Используйте понятные метки и описания
-
-Хорошие метки помогают пользователям понять, что делает каждое правило:
-- ✅ `"label": "Блокировка рекламы"` 
-- ❌ `"label": "Правило 1"`
-
-Хорошие описания объясняют влияние:
-- ✅ `"description": "Мягко блокировать рекламу, отклоняя соединения вместо сброса пакетов"`
-- ❌ `"description": "Блокирует рекламу"`
-
-### 3. Устанавливайте разумные значения по умолчанию
-
-Используйте `"default": true` для правил, которые большинство пользователей должны включить:
-- Блокировка рекламы
-- Общие правила гео-маршрутизации
-- Оптимизации производительности
-
-Не используйте `default: true` для:
-- Экспериментальных функций
-- Правил, которые могут сломать обычные сервисы
-- Региональных правил (если только вы не нацелены на этот регион)
-
-### 4. Согласовывайте имена тегов
-
-Убедитесь, что все значения `tag`, на которые ссылаются в `route.rules`, существуют в:
-- Ваших `parser_config` outbounds, ИЛИ
-- Статических outbounds в `config.outbounds`, ИЛИ
-- Будут сгенерированы из подписок
-
-### 5. Проверяйте валидность JSON
-
-Ваш шаблон должен быть валидным JSON. Проверьте его:
-```bash
-# Используя jq (если установлен)
-cat wizard_template.json | jq . > /dev/null
-
-# Или используйте онлайн-валидатор JSON
-```
-
-### 6. Сохраняйте логичный порядок секций
-
-Визард сохраняет порядок ваших секций. Организуйте логично:
-1. `parser_config` - Конфигурация парсера
-2. `config` - Основной конфиг sing-box
-3. `dns_options` - (опционально) дефолты списка DNS во визарде (`servers` / `rules`)
-4. `selectable_rules` - Правила, выбираемые пользователем
-5. `params` - Платформо-зависимые параметры
-
-### 7. Используйте `rule_set` разумно
-
-- Включайте определения `rule_set` в `selectable_rules` только если они специфичны для этого правила
-- Размещайте общие наборы правил (используемые несколькими правилами или DNS) в `config.route.rule_set`
-- Это гарантирует, что наборы правил загружаются только когда их правила включены
-
-### 8. Платформо-зависимые правила
-
-Используйте поле `platforms` в `selectable_rules` для создания платформо-зависимых правил:
-- Одинаковая `label` с разными `platforms` и содержимым правила
-- Пример: Windows использует имена процессов `.exe`, macOS/Linux используют имена процессов без расширения
-
----
-
-## Тестирование вашего шаблона
-
-### Шаг 1: Разместите файл
-
-Поместите `wizard_template.json` в папку `bin/` рядом с исполняемым файлом.
-
-### Шаг 2: Запустите визард
-
-1. Запустите приложение
-2. Откройте визард конфигурации (обычно из главного меню или вкладки Tools)
-3. Убедитесь, что шаблон загружается без ошибок
-
-### Шаг 3: Протестируйте пользовательский поток
-
-1. **Вкладка 1 (Источники & Parser)**:
-   - Введите тестовый URL подписки или прямую ссылку
-   - Нажмите "Check" - должно успешно провериться
-   - Нажмите "Parse" - должно сгенерировать превью аутбаундов
-
-2. **Вкладка 2 (Правила)**:
-   - После первого запуска пресеты с `"default": true` видны строками; **Добавить из библиотеки** показывает все пресеты `selectable_rules` для добавления копий
-   - Проверьте выпадающие списки аутбаундов и галку включения у каждого правила
-   - При необходимости измените порядок ↑/↓
-   - Убедитесь, что платформо-зависимые пресеты ведут себя ожидаемо на каждой ОС
-
-3. **Вкладка 3 (Превью)**:
-   - Нажмите "Show Preview"
-   - Убедитесь, что сгенерированный конфиг выглядит правильно
-   - Проверьте, что выбранные правила включены
-   - Убедитесь, что сгенерированные прокси-аутбаунды вставлены правильно
-   - Убедитесь, что платформо-зависимые `params` применены правильно
-
-4. **Сохранение**:
-   - Нажмите "Save"
-   - Убедитесь, что `config.json` создан
-   - Проверьте, что старый конфиг был сохранён в резервную копию (если существовал)
-   - Убедитесь, что `experimental.clash_api.secret` был сгенерирован
-
----
-
-## Решение проблем
-
-### Шаблон не загружается
-
-**Проблема**: Визард показывает "Файл шаблона не найден" или ошибки JSON.
-
-**Решения**:
-- Убедитесь, что файл назван точно `wizard_template.json` (с учётом регистра)
-- Убедитесь, что файл находится в папке `bin/`
-- Проверьте синтаксис JSON (используйте `jq` или онлайн-валидатор)
-- Проверьте наличие лишних запятых или синтаксических ошибок
-- Убедитесь, что все обязательные секции (`parser_config`, `config`, `selectable_rules`, `params`) присутствуют; при использовании вкладки DNS можно добавить `dns_options` с дефолтами списка (`servers` / `rules`)
-
-### Сгенерированные аутбаунды не появляются
-
-**Проблема**: После парсинга в превью не показываются аутбаунды.
-
-**Решения**:
-- Проверьте доступность URL подписки
-- Убедитесь, что формат подписки поддерживается (vless://, vmess://, trojan://, ss://)
-- Проверьте логи в папке `logs/` на ошибки парсинга
-- Убедитесь, что структура `parser_config` правильная
-
-### Правила не отображаются в визарде
-
-**Проблема**: Ожидаемые пресеты не видны на вкладке **Правила** или в **Добавить из библиотеки**.
-
-**Решения**:
-- Убедитесь, что структура JSON валидна
-- Убедитесь, что поля `label` и `description` присутствуют
-- Проверьте, что правило имеет либо поле `outbound`, либо `action: reject`
-- Убедитесь, что поле `platforms` (если используется) соответствует текущей платформе
-- Проверьте логи на ошибки парсинга
-
-### Теги аутбаундов не найдены
-
-**Проблема**: Визард показывает ошибки "аутбаунд не найден".
-
-**Решения**:
-- Убедитесь, что все упомянутые теги существуют в `parser_config` outbounds
-- Убедитесь, что тег `final` существует в `config.route.final`
-- Проверьте, что сгенерированные прокси будут иметь соответствующие теги (если используете фильтры тегов)
-- Добавьте отсутствующие аутбаунды в статическую секцию в `config.outbounds`
-
-### Платформо-зависимые настройки не применяются
-
-**Проблема**: Платформо-зависимые `params` не применяются.
-
-**Решения**:
-- Убедитесь, что массив `platforms` использует правильные значения: `"windows"`, `"linux"`, `"darwin"`
-- Проверьте, что поле `name` использует правильный путь в точечной нотации
-- Убедитесь, что `mode` правильный (`"replace"`, `"prepend"`, `"append"`)
-- Убедитесь, что структура JSON валидна
-
----
-
-## Продвинутые советы
-
-### Динамические URL подписок
-
-Если пользователям нужно вводить свой URL подписки, оставьте `source` пустым или используйте плейсхолдер:
 ```json
-{
-  "parser_config": {
-    "ParserConfig": {
-      "proxies": [
-        { "source": "" }
-      ]
-    }
-  }
-}
+{"tag": "yandex", "type": "https", "server": "dns.yandex", "detour": "@out", "if": ["@use_dns_override"]}
 ```
+`type`: `udp`/`https`/`tls`/`h3`. Поля `server`, `server_port`, `path`, `tls`, `detour` (может быть `@var`),
+`description`. В config попадает только если выбран через `@dns_server`-var или упомянут в `dns_rule.server`.
 
-Пользователи введут свой URL на первой вкладке визарда.
+### 6.4 `PresetOutbound`
 
-### Несколько источников подписок
-
-Поддержка нескольких подписок:
 ```json
-{
-  "parser_config": {
-    "ParserConfig": {
-      "proxies": [
-        { "source": "https://provider1.com/subscription" },
-        { "source": "https://provider2.com/subscription" }
-      ]
-    }
-  }
-}
+{"mode": "add",    "tag": "auto", "type": "urltest", "options": { ... }, "if": ["@flag"]}
+{"mode": "update", "tag": "proxy-out", "options": { ... }}
 ```
-
-Пользователи могут добавить больше в интерфейсе визарда.
-
-### Условные правила на основе выбора аутбаунда
-
-Когда правило имеет `outbound`, пользователи могут выбирать из доступных тегов. Убедитесь, что ваш `parser_config` определяет все варианты, которые могут понадобиться пользователям.
-
-### Пользовательские наборы правил
-
-Ссылайтесь на удалённые наборы правил в `selectable_rules`:
-```json
-{
-  "label": "Блокировка рекламы",
-  "rule_set": [
-    {
-      "tag": "ads-all",
-      "type": "remote",
-      "format": "binary",
-      "url": "https://example.com/rules/ads.srs",
-      "download_detour": "direct-out",
-      "update_interval": "24h"
-    }
-  ],
-  "rule": {
-    "rule_set": "ads-all",
-    "action": "reject"
-  }
-}
-```
-
-Наборы правил загружаются только когда правило включено.
-
-### Общие наборы правил
-
-Если несколько правил или DNS-правил используют один и тот же набор правил, определите его в `config.route.rule_set`:
-```json
-{
-  "config": {
-    "route": {
-      "rule_set": [
-        {
-          "tag": "ru-domains",
-          "type": "inline",
-          "format": "domain_suffix",
-          "rules": [
-            { "domain_suffix": ["ru", "xn--p1ai"] }
-          ]
-        }
-      ]
-    }
-  }
-}
-```
-
-Затем ссылайтесь на него в `selectable_rules` без повторного определения:
-```json
-{
-  "label": "Российские домены напрямую",
-  "rule": {
-    "rule_set": "ru-domains",
-    "outbound": "direct-out"
-  }
-}
-```
+`mode`: `add` (новый, нужен `type`) \| `update` (патч существующего по `tag`). Поля зеркалят
+outbound sing-box (`options`, `filters`, `addOutbounds`, `preferredDefault`, `comment`). Свои `if`/`if_or`.
 
 ---
 
-## Распространение
+## 7. `parser_config` / `config` / `dns_options`
 
-При распространении вашего настроенного лаунчера:
-
-1. Включите `wizard_template.json` в пакет релиза
-2. Поместите его в папку `bin/`
-3. Пользователи автоматически будут использовать его при открытии визарда конфигурации
-4. Рассмотрите возможность документирования ваших конкретных правил и опций в отдельном README
-
----
-
-## Нужна помощь?
-
-- **Проблемы с синтаксисом шаблона**: Проверьте примеры в этом руководстве
-- **Конфигурация sing-box**: См. [официальную документацию sing-box](https://sing-box.sagernet.org/configuration/)
-- **Формат ParserConfig**: См. [ParserConfig.md](ParserConfig.md) в этом репозитории
-- **Сообщить об ошибках**: Откройте issue на [GitHub](https://github.com/Leadaxe/singbox-launcher/issues)
+- **`parser_config`** — настройки парсера подписки (`reload`, …) + статические outbound-группы
+  (`selector`/`urltest` через `addOutbounds`/`filters`). Ноды из подписки инжектятся между маркерами.
+- **`config`** — скелет sing-box: `route` (rules, rule_set, final, …), `experimental` (clash_api, cache),
+  `inbounds`, `log` и т.д. Принимает `@var`, патчится `params`, обходится `#if`.
+- **`dns_options`** — `servers[]` и `rules[]` (дефолты DNS-вкладки). Скаляры DNS задаются переменными
+  `vars` с `wizard_ui: "fix"` (`dns_strategy` → `config.dns.strategy`, `dns_final` → `config.dns.final`,
+  `dns_default_domain_resolver` → `config.route.default_domain_resolver`).
 
 ---
 
-**Примечание**: Эта система шаблонов визарда разработана для упрощения конфигурации для конечных пользователей. Как провайдер, вы сохраняете полный контроль над конфигурацией по умолчанию, предоставляя пользователям гибкость для настройки своей установки. Унифицированная структура шаблона устраняет платформо-зависимые файлы и директивы в комментариях, делая шаблоны проще в поддержке и валидации.
+## 8. Стиль форматирования (bundled-шаблон)
 
+Правила оформления **поставляемого** `bin/wizard_template.json`. Порядок ключей и
+переносы **не влияют** на загрузку — это читаемость для maintainer'ов и аккуратные
+diff'ы. Кастомные шаблоны могут игнорировать §8, но синтаксис (§1–§7) обязателен.
 
+**Принцип:** *компактно* — литералы и мелкие metadata-объекты; *развёрнуто* —
+выражения (`@…`, `#if`, outer `if[]`) и длинные списки.
 
+### 8.1 `vars[]` и `presets[].vars[]`
+
+| Часть | Оформление |
+|---|---|
+| «Шапка» (`name`, `type`, `wizard_ui`, `title`, `tooltip`, `platforms`, `comment`, `select`, …) | строка 1 |
+| `default_value` / `default` (в расширенной форме) | отдельная строка |
+| `options[]` | multiline — каждый элемент на своей строке |
+| outer `if` / `if_or` | отдельная строка, **в конце** объекта |
+| `{"separator": true}` | одна строка |
+| простой preset-var (`out`, …) — всё целиком (включая `default`) | одна строка |
+
+```jsonc
+{"name": "tun_mtu", "type": "text", "wizard_ui": "edit",
+  "title": "TUN MTU", "tooltip": "…",
+  "default_value": "1492",
+  "if": ["@tun"]
+},
+```
+
+### 8.2 JSON payload (`config`, `params[].value`, `parser_config`)
+
+| Контекст | Правило |
+|---|---|
+| поля с `@` | одно поле — одна строка |
+| литералы (`type`, `tag`, `auto_route`, …) | можно вместе на одной строке |
+| `options` **с** `@`-полями | multiline-объект |
+| `options` / `filters` / `addOutbounds` **без** `@` | одна строка |
+| мелкие struct'ы из литералов (≤2–3 поля: `direct-out`, hijack-dns, `mode:update`) | одна строка |
+| крупные объекты (`dns_options.servers[]`, preset `dns_servers[]`, полный `mode:add` outbound) | multiline — одно поле на строку |
+
+```jsonc
+"options": {
+  "url": "@urltest_url",
+  "interval": "@urltest_interval",
+  "tolerance": "@urltest_tolerance",
+  "interrupt_exist_connections": true
+},
+```
+
+### 8.3 `#if`
+
+| `value` / `else` | Оформление |
+|---|---|
+| скаляр | одна строка: `"#if": {"and": [...], "value": "…", "else": "…"}` |
+| объект | условие + `"value": {` на строке 1; тело ниже; закрытие `}}` (с `else` → `}, "else": {` … `}}}`) |
+
+Скалярная ветвь (array-element) — одна строка:
+```jsonc
+"inbound": [
+  {"#if": {"and": ["@tun"], "value": "tun-in"}},
+  {"#if": {"and": ["@enable_proxy_in"], "value": "proxy-in"}}
+]
+```
+
+Объектная ветвь (map-spread) — условие + `"value": {` на первой строке, тело ниже:
+```jsonc
+"#if": {"and": [{"@runtime.platform": {"#in": ["windows", "linux"]}}], "value": {
+  "interface_name": "singbox-tun0"
+}}
+```
+
+С `else` (обе ветви — объекты); массивы значений пишутся **как есть**, без выравнивания колонками:
+```jsonc
+{"#if": {"and": [{"@runtime.platform": "windows"}], "value": {
+  "process_name": ["Telegram.exe", "Discord.exe", "WhatsApp.exe", "Signal.exe", "Zoom.exe"]
+}, "else": {
+  "process_name": ["Telegram", "Discord", "WhatsApp", "Signal", "zoom.us"]
+}}}
+```
+
+### 8.4 Presets
+
+| Секция | Оформление |
+|---|---|
+| `rules[]`, `dns_rule` | одна строка |
+| `rule_set[]` (inline и remote) | строка 1: metadata (`tag`, `type`, `format`, **`if`/`if_or`**); строка 2: `rules` / `url` |
+| `rule_set[].rules` inline | одна строка, если влезает; очень длинные suffix-списки — массив с переносами |
+| `outbounds[]` `mode:update` | одна строка на entry |
+| `outbounds[]` `mode:add` (полный outbound) | multiline-объект; `options` / `filters` — одна строка |
+| `params[]` route.rules (скалярные `#if`) | правило целиком в одну строку |
+
+> В отличие от `vars[]` (где `if` на отдельной строке в конце), у **condensed** объектов с metadata в одну строку (`rule_set[]`) `if`/`if_or` ставится **на этой же строке**.
+
+```jsonc
+{"tag": "geoip-ru", "type": "remote", "format": "binary", "if": ["@geoip_enabled"],
+  "url": "https://…/geoip-ru.srs"}
+```
+
+### 8.5 Шпаргалка
+
+| | Одна строка | Multiline |
+|---|---|---|
+| var-«шапка» | ✓ | — |
+| простой preset-var (вкл. `default`) | ✓ | — |
+| `default_value` / `default` (расш. форма) | — | ✓ |
+| элементы `options[]` | — | ✓ |
+| outer `if[]` в vars | — | ✓ (в конце) |
+| `rule_set[]` metadata (вкл. `if`) | ✓ | `rules` / `url` ниже |
+| `@` в payload | — | ✓ (по полю) |
+| мелкий literal-struct (≤2–3 поля) | ✓ | — |
+| крупный config-объект (`dns_servers[]`, `mode:add`) | — | ✓ |
+| `#if` + object `value` | условие | тело |
+| `#if` + скаляр | ✓ | — |
+| `filters`, literal `options` | ✓ | — |
+
+---
+
+## 9. Ошибки загрузки (частые)
+
+| Симптом | Причина |
+|---|---|
+| `bare var-ref "x" in if[]; use "@x"` | элемент `if`/`if_or` без `@`. |
+| `vars[].name "runtime" is reserved` | имя занято namespace'ом `@runtime.*`. |
+| `@x is not declared in vars` | `@var` в `config`/`params` без объявления в `vars`. |
+| `#if has both "and" and "or"` | в теле `#if` оба — допустим один. |
+| `#if missing "value"` | в теле `#if` нет обязательного `value`. |
+| `predicate key "x" must start with @ or be #not` | неверная форма predicate'а (var — это ключ `@var`, предикат — значение). |
+| `unknown runtime global @runtime.x` | поле namespace вне `platform`/`arch`. |
+
+После изменения шаблона в репозитории — пересобрать/переустановить приложение
+или скопировать файл в `Contents/MacOS/bin/`, иначе правки не подхватятся.
