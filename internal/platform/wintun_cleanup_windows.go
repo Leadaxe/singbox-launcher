@@ -589,6 +589,21 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 	// behavior; collect-then-delete is the conservative pattern.
 	debuglog.WarnLog("nla cleanup: starting")
 
+	// IMPORTANT — KEY_WOW64_64KEY on every OpenKey under HKLM\SOFTWARE.
+	//
+	// On 64-bit Windows, a 32-bit process accessing HKLM\SOFTWARE\... is
+	// silently redirected to HKLM\SOFTWARE\Wow6432Node\... by Wow64
+	// Registry Redirection. The "\NetworkList" subtree is NOT in
+	// Microsoft's list of Shared Keys, so it gets redirected. Real NLA
+	// profiles live in the 64-bit view; the Wow6432Node view is empty.
+	//
+	// Discovered when a Win7-64 user ran our Win7-32 build: cleanup
+	// logged "enumerated 0 profile subkeys" despite 20 profiles in the
+	// registry. Adding KEY_WOW64_64KEY (= 0x100) forces every OpenKey
+	// to target the 64-bit view. The flag is a no-op on native 32-bit
+	// Windows (Win7-32), so the same binary works on both.
+	const wowFlag = registry.WOW64_64KEY
+
 	// Phase A.1: read-only enumerate + match. Open root with READ only.
 	// Mixing WRITE on the parent and QUERY_VALUE on children has been
 	// observed to fail silently on Win7 — children get inherited handle
@@ -596,7 +611,7 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 	// delete phases: read with KEY_READ (full subkey enumerate + value
 	// query), delete with a freshly-opened KEY_WRITE handle.
 	const profilesPath = `SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles`
-	profReadKey, err := registry.OpenKey(registry.LOCAL_MACHINE, profilesPath, registry.READ)
+	profReadKey, err := registry.OpenKey(registry.LOCAL_MACHINE, profilesPath, registry.READ|wowFlag)
 	if err != nil {
 		debuglog.WarnLog("nla cleanup: open Profiles (read): %v", err)
 		return 0, 0
@@ -616,7 +631,7 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 	matchedGUIDs := make(map[string]bool, len(subNames))
 
 	for _, name := range subNames {
-		sub, err := registry.OpenKey(profReadKey, name, registry.QUERY_VALUE)
+		sub, err := registry.OpenKey(profReadKey, name, registry.QUERY_VALUE|wowFlag)
 		if err != nil {
 			debuglog.DebugLog("nla cleanup: open profile %q: %v", name, err)
 			continue
@@ -642,7 +657,7 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 	}
 
 	// Phase A.2: delete matched profiles. Re-open parent with WRITE.
-	profWriteKey, err := registry.OpenKey(registry.LOCAL_MACHINE, profilesPath, registry.WRITE)
+	profWriteKey, err := registry.OpenKey(registry.LOCAL_MACHINE, profilesPath, registry.WRITE|wowFlag)
 	if err != nil {
 		debuglog.WarnLog("nla cleanup: open Profiles (write): %v", err)
 		return 0, 0
@@ -660,7 +675,7 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 	// Phase B: enumerate Signatures\Unmanaged, delete entries whose
 	// ProfileGuid value matches one of the just-deleted profiles.
 	const sigPath = `SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Signatures\Unmanaged`
-	sigReadKey, err := registry.OpenKey(registry.LOCAL_MACHINE, sigPath, registry.READ)
+	sigReadKey, err := registry.OpenKey(registry.LOCAL_MACHINE, sigPath, registry.READ|wowFlag)
 	if err != nil {
 		debuglog.WarnLog("nla cleanup: open Signatures (read): %v", err)
 		return profilesRemoved, 0
@@ -676,7 +691,7 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 
 	matchedSigs := make([]string, 0, len(matchedGUIDs))
 	for _, name := range sigSubs {
-		sub, err := registry.OpenKey(sigReadKey, name, registry.QUERY_VALUE)
+		sub, err := registry.OpenKey(sigReadKey, name, registry.QUERY_VALUE|wowFlag)
 		if err != nil {
 			debuglog.DebugLog("nla cleanup: open signature %q: %v", name, err)
 			continue
@@ -699,7 +714,7 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 		return profilesRemoved, 0
 	}
 
-	sigWriteKey, err := registry.OpenKey(registry.LOCAL_MACHINE, sigPath, registry.WRITE)
+	sigWriteKey, err := registry.OpenKey(registry.LOCAL_MACHINE, sigPath, registry.WRITE|wowFlag)
 	if err != nil {
 		debuglog.WarnLog("nla cleanup: open Signatures (write): %v", err)
 		return profilesRemoved, 0
