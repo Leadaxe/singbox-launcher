@@ -34,7 +34,7 @@
 //     до record/atomic-rename);
 //   - не парсит подписки (это слой parser);
 //   - не материализует clash_secret (вызывающий делает
-//     `MaterializeClashSecretInVars` до сборки контекста).
+//     `MaterializeSecretsInVars` до сборки контекста).
 package build
 
 import (
@@ -60,7 +60,7 @@ type BuildContext struct {
 
 	// Vars — итоговый набор vars для substitution (template defaults + state
 	// overrides + DNS scalars + clash_secret). Вызывающий формирует через
-	// `ApplyDNSScalarsToVars` + `MaterializeClashSecretInVars`. nil трактуется
+	// `ApplyDNSScalarsToVars` + `MaterializeSecretsInVars`. nil трактуется
 	// как пустая map.
 	Vars map[string]string
 

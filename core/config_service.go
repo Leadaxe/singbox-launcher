@@ -356,7 +356,7 @@ func (ac *AppController) buildContextFromState(s *state.State, cache *build.Pars
 		vars[v.Name] = v.Value
 	}
 	// Materialize clash_secret если template объявляет его и в vars нет.
-	build.MaterializeClashSecretInVars(td, vars)
+	build.MaterializeSecretsInVars(td, vars)
 	ctx.Vars = vars
 
 	// DNS scalars из state (могут жить в DNSOptions или vars; см. dnsConfigFromUpdate).

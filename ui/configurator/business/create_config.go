@@ -70,17 +70,17 @@ func extractTemplateDNSTagsLocal(td *wizardtemplate.TemplateData) map[string]boo
 	return out
 }
 
-// MaterializeClashSecretIfNeeded гарантирует SettingsVars непустую map'у и
-// делегирует материализацию clash_secret в `core/build`. Тонкая обёртка для
-// двух callsites — preview build + EffectiveConfigSection.
-func MaterializeClashSecretIfNeeded(model *wizardmodels.WizardModel) {
+// MaterializeSecretsIfNeeded гарантирует SettingsVars непустую map'у и
+// делегирует материализацию всех type:"secret" var в `core/build`. Тонкая
+// обёртка для двух callsites — preview build + EffectiveConfigSection.
+func MaterializeSecretsIfNeeded(model *wizardmodels.WizardModel) {
 	if model == nil {
 		return
 	}
 	if model.SettingsVars == nil {
 		model.SettingsVars = make(map[string]string)
 	}
-	build.MaterializeClashSecretInVars(model.TemplateData, model.SettingsVars)
+	build.MaterializeSecretsInVars(model.TemplateData, model.SettingsVars)
 }
 
 // BuildPreviewConfig собирает config.json для preview-вкладки визарда.
@@ -97,9 +97,9 @@ func BuildPreviewConfig(model *wizardmodels.WizardModel) (string, error) {
 		return "", fmt.Errorf("template data not available")
 	}
 
-	// Mutates model.SettingsVars: материализует dns_* + clash_secret.
+	// Mutates model.SettingsVars: материализует dns_* + секреты.
 	SyncDNSModelToSettingsVars(model)
-	MaterializeClashSecretIfNeeded(model)
+	MaterializeSecretsIfNeeded(model)
 
 	if strings.TrimSpace(model.ParserConfigJSON) == "" {
 		return "", fmt.Errorf("ParserConfig is empty and no template available")
@@ -282,7 +282,7 @@ func EffectiveConfigSection(model *wizardmodels.WizardModel, sectionKey string) 
 	if model == nil || model.TemplateData == nil {
 		return nil, false, fmt.Errorf("no template data")
 	}
-	MaterializeClashSecretIfNeeded(model)
+	MaterializeSecretsIfNeeded(model)
 	config, _ := effectiveTemplateConfig(model)
 	raw, ok := config[sectionKey]
 	return raw, ok, nil

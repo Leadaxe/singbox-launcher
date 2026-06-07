@@ -1,8 +1,8 @@
 # Template reference (wizard_template.json)
 
 Архитектурная сводка: что лежит в `bin/wizard_template.json`, где это потом
-всплывает в runtime / state / UI. Туториал для авторов template'ов —
-[CREATE_WIZARD_TEMPLATE.md](CREATE_WIZARD_TEMPLATE.md). Этот файл — reference
+всплывает в runtime / state / UI. Справочник по синтаксису template'ов —
+[WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md). Этот файл — reference
 для разработчиков лаунчера и для понимания связи template ↔ state.
 
 ---
@@ -596,7 +596,8 @@ Editorial conventions for the **bundled** template. Порядок ключей 
 | Литералы (`type`, `tag`, `auto_route`, …) | Можно на одной строке между собой |
 | `options` **с** `@`-полями | **Multiline object** (не одна строка) |
 | `options` / `filters` / `addOutbounds` **без** `@` | **Одна строка** |
-| Простые struct'ы из литералов | **Одна строка** (`direct-out`, hijack-dns, `mode:update`) |
+| Мелкие struct'ы из литералов (≤2–3 поля) | **Одна строка** (`direct-out`, hijack-dns, `mode:update`) |
+| Крупные объекты (`dns_options.servers[]`, preset `dns_servers[]`, полный `mode:add`) | **Multiline** — одно поле на строку |
 
 Пример urltest `options`:
 
@@ -628,11 +629,14 @@ Editorial conventions for the **bundled** template. Порядок ключей 
 
 | Секция | Оформление |
 |--------|------------|
-| `rule`, простые `vars[]` | одна строка |
-| `rule_set[]` remote | строка 1: metadata; строка 2: `url` |
-| `rule_set[]` inline, длинные suffix | переносы в массивах |
+| `rules`, `dns_rule`, простые `vars[]` | одна строка |
+| `rule_set[]` (inline и remote) | строка 1: metadata (`tag`/`type`/`format`/**`if`/`if_or`**); строка 2: `rules` / `url` |
+| `rule_set[]` inline, длинные suffix | одна строка если влезает; очень длинные — переносы в массивах |
 | `outbounds[]` `mode:update` | одна строка на entry |
+| `outbounds[]` `mode:add` (полный) | multiline-объект; `options` / `filters` — одна строка |
 | `params[]` route.rules (скалярные `#if`) | правило целиком в одну строку |
+
+> У **condensed**-объектов с metadata в одну строку (`rule_set[]`) `if`/`if_or` ставится **на той же строке** (в отличие от `vars[]`, где `if` — отдельной строкой в конце).
 
 ### 10.6 Шпаргалка
 
@@ -666,6 +670,6 @@ Editorial conventions for the **bundled** template. Порядок ключей 
 
 См. также: [WIZARD_STATE.md](WIZARD_STATE.md) — как state взаимодействует
 с template, формат `state.json` v6, lifecycle Sync*. [DATA_FLOW.md](DATA_FLOW.md)
-— расширенные load/save/build/toggle диаграммы. [CREATE_WIZARD_TEMPLATE.md](CREATE_WIZARD_TEMPLATE.md)
+— расширенные load/save/build/toggle диаграммы. [WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md)
 — туториал для авторов preset'ов и template-vars (§10 здесь — editorial style
 для maintainers bundled template).

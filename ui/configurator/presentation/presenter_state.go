@@ -279,7 +279,7 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 
 	// Восстановление config_params и vars (шаг 4)
 	p.restoreConfigParams(stateFile)
-	wizardbusiness.MaterializeClashSecretIfNeeded(p.model)
+	wizardbusiness.MaterializeSecretsIfNeeded(p.model)
 
 	// Восстановление DNS вкладки (шаг 4b)
 	p.restoreDNS(stateFile)

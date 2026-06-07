@@ -319,7 +319,7 @@ emit, а не stale snapshot.
 |--------|----------|
 | Что лежит в state.json, какие kind'ы, schema v6 | [WIZARD_STATE.md](WIZARD_STATE.md) |
 | Что лежит в wizard_template.json, presets / vars / required | [TEMPLATE_REFERENCE.md](TEMPLATE_REFERENCE.md) |
-| Туториал — как написать новый preset / template var | [CREATE_WIZARD_TEMPLATE.md](CREATE_WIZARD_TEMPLATE.md) |
+| Справочник по синтаксису — preset / template var | [WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md) |
 | Общая архитектура приложения (а не storage) | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Release notes v0.9.6 (терминология preset binding) | [release_notes/0-9-6.md](release_notes/0-9-6.md) |
 

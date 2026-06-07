@@ -157,20 +157,59 @@ func (zeroReader) Read(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func TestMaybeGenerateClashSecret(t *testing.T) {
-	old := ClashSecretReader
-	defer func() { ClashSecretReader = old }()
-	ClashSecretReader = zeroReader{}
+func TestMaybeGenerateSecrets(t *testing.T) {
+	old := SecretReader
+	defer func() { SecretReader = old }()
+	SecretReader = zeroReader{}
 
+	vars := []TemplateVar{{Name: "clash_secret", Type: "secret"}}
 	m := map[string]ResolvedVar{
 		"clash_secret": {Scalar: "CHANGE_THIS_TO_YOUR_SECRET_TOKEN"},
 	}
-	MaybeGenerateClashSecret(m)
+	MaybeGenerateSecrets(vars, m)
 	if len(m["clash_secret"].Scalar) != 16 {
 		t.Fatalf("len %d: %q", len(m["clash_secret"].Scalar), m["clash_secret"].Scalar)
 	}
 	if m["clash_secret"].Scalar != "AAAAAAAAAAAAAAAA" {
 		t.Fatalf("deterministic secret: %q", m["clash_secret"].Scalar)
+	}
+}
+
+// SPEC 067 follow-up: MaybeGenerateSecrets обобщён на ВСЕ type:"secret" vars.
+func TestMaybeGenerateSecrets_AllSecretVars(t *testing.T) {
+	old := SecretReader
+	defer func() { SecretReader = old }()
+	SecretReader = zeroReader{}
+
+	vars := []TemplateVar{
+		{Name: "clash_secret", Type: "secret"},
+		{Name: "proxy_in_password", Type: "secret"},
+		{Name: "proxy_in_username", Type: "text"}, // НЕ secret — не трогаем
+	}
+	m := map[string]ResolvedVar{
+		"clash_secret":      {Scalar: "CHANGE_THIS_X"}, // плейсхолдер → генерим
+		"proxy_in_password": {Scalar: ""},              // пусто → генерим
+		"proxy_in_username": {Scalar: ""},              // text → остаётся пустым
+	}
+	MaybeGenerateSecrets(vars, m)
+	if m["clash_secret"].Scalar != "AAAAAAAAAAAAAAAA" {
+		t.Fatalf("clash_secret not generated: %q", m["clash_secret"].Scalar)
+	}
+	if m["proxy_in_password"].Scalar != "AAAAAAAAAAAAAAAA" {
+		t.Fatalf("proxy_in_password not generated: %q", m["proxy_in_password"].Scalar)
+	}
+	if m["proxy_in_username"].Scalar != "" {
+		t.Fatalf("non-secret var must stay untouched: %q", m["proxy_in_username"].Scalar)
+	}
+}
+
+// Уже разрешённый секрет (не пусто, не плейсхолдер) не перегенерируется.
+func TestMaybeGenerateSecrets_PreservesResolved(t *testing.T) {
+	vars := []TemplateVar{{Name: "clash_secret", Type: "secret"}}
+	m := map[string]ResolvedVar{"clash_secret": {Scalar: "userPickedValue"}}
+	MaybeGenerateSecrets(vars, m)
+	if m["clash_secret"].Scalar != "userPickedValue" {
+		t.Fatalf("resolved secret overwritten: %q", m["clash_secret"].Scalar)
 	}
 }
 
@@ -195,11 +234,11 @@ func TestVarDisplayTooltip(t *testing.T) {
 	}
 }
 
-func TestGenerateClashSecretDeterministic(t *testing.T) {
-	old := ClashSecretReader
-	defer func() { ClashSecretReader = old }()
-	ClashSecretReader = zeroReader{}
-	s, err := GenerateClashSecret()
+func TestGenerateSecretDeterministic(t *testing.T) {
+	old := SecretReader
+	defer func() { SecretReader = old }()
+	SecretReader = zeroReader{}
+	s, err := GenerateSecret()
 	if err != nil {
 		t.Fatal(err)
 	}

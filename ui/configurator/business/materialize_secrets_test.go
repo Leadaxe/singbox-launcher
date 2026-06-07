@@ -8,10 +8,10 @@ import (
 	wizardtemplate "singbox-launcher/core/template"
 )
 
-func TestMaterializeClashSecretIfNeeded_idempotent(t *testing.T) {
-	old := wizardtemplate.ClashSecretReader
-	defer func() { wizardtemplate.ClashSecretReader = old }()
-	wizardtemplate.ClashSecretReader = fixedReaderForClashTest()
+func TestMaterializeSecretsIfNeeded_idempotent(t *testing.T) {
+	old := wizardtemplate.SecretReader
+	defer func() { wizardtemplate.SecretReader = old }()
+	wizardtemplate.SecretReader = fixedReaderForClashTest()
 
 	rawFull := json.RawMessage(`{"vars":[{"name":"clash_secret","type":"secret","default_value":"CHANGE_THIS_X"}]}`)
 	td := &wizardtemplate.TemplateData{
@@ -24,21 +24,21 @@ func TestMaterializeClashSecretIfNeeded_idempotent(t *testing.T) {
 		TemplateData: td,
 		SettingsVars: make(map[string]string),
 	}
-	MaterializeClashSecretIfNeeded(m)
+	MaterializeSecretsIfNeeded(m)
 	s1 := m.SettingsVars["clash_secret"]
 	if len(s1) != 16 {
 		t.Fatalf("len %d", len(s1))
 	}
-	MaterializeClashSecretIfNeeded(m)
+	MaterializeSecretsIfNeeded(m)
 	if m.SettingsVars["clash_secret"] != s1 {
 		t.Fatalf("secret changed on second call")
 	}
 }
 
-func TestMaterializeClashSecretIfNeeded_placeholderKeyStabilizes(t *testing.T) {
-	old := wizardtemplate.ClashSecretReader
-	defer func() { wizardtemplate.ClashSecretReader = old }()
-	wizardtemplate.ClashSecretReader = fixedReaderForClashTest()
+func TestMaterializeSecretsIfNeeded_placeholderKeyStabilizes(t *testing.T) {
+	old := wizardtemplate.SecretReader
+	defer func() { wizardtemplate.SecretReader = old }()
+	wizardtemplate.SecretReader = fixedReaderForClashTest()
 
 	rawFull := json.RawMessage(`{"vars":[{"name":"clash_secret","type":"secret","default_value":"CHANGE_THIS_X"}]}`)
 	td := &wizardtemplate.TemplateData{
@@ -51,12 +51,12 @@ func TestMaterializeClashSecretIfNeeded_placeholderKeyStabilizes(t *testing.T) {
 		TemplateData: td,
 		SettingsVars: map[string]string{"clash_secret": "CHANGE_THIS_OLD"},
 	}
-	MaterializeClashSecretIfNeeded(m)
+	MaterializeSecretsIfNeeded(m)
 	s1 := m.SettingsVars["clash_secret"]
 	if len(s1) != 16 {
 		t.Fatalf("len %d", len(s1))
 	}
-	MaterializeClashSecretIfNeeded(m)
+	MaterializeSecretsIfNeeded(m)
 	if m.SettingsVars["clash_secret"] != s1 {
 		t.Fatalf("secret changed when key held placeholder")
 	}

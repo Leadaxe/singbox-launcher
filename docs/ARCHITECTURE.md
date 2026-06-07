@@ -395,7 +395,7 @@ singbox-launcher/
 │       │   │   │   - buildRulesTabContainer() / CreateRulesScroll()  # Прокрутка с gutter
 │       │   ├── settings_tab.go   # Вкладка настроек шаблона (vars)
 │       │   │   │   - CreateSettingsTab()                   # Поля из TemplateData.Vars; vars.separator → горизонтальная линия; optional vars.if/if_or → Disable до выполнения условия; Reset → снять override
-│       │   ├── settings_tun_darwin.go / settings_tun_stub.go  # darwin: при снятии bool `tun` — блок, если ядро Running; иначе привилегированный rm: cache под bin/ + logs/sing-box.log(.old) под ExecDir (см. CREATE_WIZARD_TEMPLATE)
+│       │   ├── settings_tun_darwin.go / settings_tun_stub.go  # darwin: при снятии bool `tun` — блок, если ядро Running; иначе привилегированный rm: cache под bin/ + logs/sing-box.log(.old) под ExecDir (см. WIZARD_TEMPLATE)
 │       │   ├── library_rules_dialog.go  # Модалка пресетов шаблона
 │       │   │   │   - ShowRulesLibraryDialog()                # Чекбоксы, подсветка строк, Add selected → append в CustomRules
 │       │   │   │
@@ -990,9 +990,9 @@ singbox-launcher/
 
 **template/** - Работа с единым шаблоном конфигурации
 - `loader.go`:
-  - `LoadTemplateData()` - загрузка единого JSON-шаблона (`wizard_template.json`), парсинг секций, применение `params` по текущей платформе, фильтрация `selectable_rules` по `platforms`; условия **`params.if`** / **`params.if_or`** смотрят на bool-**`vars`**: при несовпадении **`vars[].platforms`** с текущей ОС переменная даёт **false** в условии (см. **`VarAppliesOnGOOS`** / **`ParamBoolVarTrue`** в **`core/template/vars_resolve.go`**, **docs/CREATE_WIZARD_TEMPLATE.md**)
+  - `LoadTemplateData()` - загрузка единого JSON-шаблона (`wizard_template.json`), парсинг секций, применение `params` по текущей платформе, фильтрация `selectable_rules` по `platforms`; условия **`params.if`** / **`params.if_or`** смотрят на bool-**`vars`**: при несовпадении **`vars[].platforms`** с текущей ОС переменная даёт **false** в условии (см. **`VarAppliesOnGOOS`** / **`ParamBoolVarTrue`** в **`core/template/vars_resolve.go`**, **docs/WIZARD_TEMPLATE.md**)
   - `GetTemplateFileName()` - возврат имени файла шаблона (`wizard_template.json`, единый для всех платформ)
-  - Объектные **`vars[].default_value`**: **`VarDefaultValue`** / **`defaultValueKeyOrder`** в **`core/template/vars_default.go`** (как **`platforms`**: только **`GOOS`**, плюс **`win7`** для **windows/386**, затем **`default`**), разрешение в **`vars_resolve.go`** — **docs/CREATE_WIZARD_TEMPLATE.md** / **_RU.md**
+  - Объектные **`vars[].default_value`**: **`VarDefaultValue`** / **`defaultValueKeyOrder`** в **`core/template/vars_default.go`** (как **`platforms`**: только **`GOOS`**, плюс **`win7`** для **windows/386**, затем **`default`**), разрешение в **`vars_resolve.go`** — **docs/WIZARD_TEMPLATE.md** / **_RU.md**
   - `GetTemplateURL()` - URL шаблона на GitHub, pinned на коммит сборки через **`constants.RequiredTemplateRef`** (CI инжектит SHA через **-ldflags**, локальные сборки берут source-default = последний `main` HEAD; см. **SPEC 046**, `docs/RELEASE_PROCESS.md §5`)
   - `UnifiedTemplate` struct - структура JSON-шаблона (`parser_config`, `config`, `selectable_rules`, `params`)
   - `UnifiedSelectableRule` struct - правило в шаблоне (label, description, default, platforms, rule_set, rule/rules)

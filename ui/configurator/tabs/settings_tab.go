@@ -415,8 +415,8 @@ func buildSettingsSecretRow(presenter *wizardpresentation.WizardPresenter, model
 	// Always pre-filled: generate + persist a value when the row is active and
 	// the secret is empty/placeholder. Gated on rowEnabled so disabled (if-gated)
 	// rows don't spawn secrets until their condition is met.
-	if rowEnabled && !viewMode && wizardtemplate.ClashSecretUnresolved(disp) {
-		if gen, err := wizardtemplate.GenerateClashSecret(); err == nil {
+	if rowEnabled && !viewMode && wizardtemplate.SecretUnresolved(disp) {
+		if gen, err := wizardtemplate.GenerateSecret(); err == nil {
 			if model.SettingsVars == nil {
 				model.SettingsVars = make(map[string]string)
 			}
@@ -425,7 +425,7 @@ func buildSettingsSecretRow(presenter *wizardpresentation.WizardPresenter, model
 			model.TemplatePreviewNeedsUpdate = true
 			presenter.MarkAsChanged()
 		} else {
-			debuglog.WarnLog("settings_tab: GenerateClashSecret prefill %q: %v", name, err)
+			debuglog.WarnLog("settings_tab: GenerateSecret prefill %q: %v", name, err)
 		}
 	}
 
@@ -444,9 +444,9 @@ func buildSettingsSecretRow(presenter *wizardpresentation.WizardPresenter, model
 		if model.SettingsVars == nil {
 			model.SettingsVars = make(map[string]string)
 		}
-		gen, err := wizardtemplate.GenerateClashSecret()
+		gen, err := wizardtemplate.GenerateSecret()
 		if err != nil {
-			debuglog.WarnLog("settings_tab: GenerateClashSecret: %v", err)
+			debuglog.WarnLog("settings_tab: GenerateSecret: %v", err)
 			delete(model.SettingsVars, name)
 		} else {
 			model.SettingsVars[name] = gen

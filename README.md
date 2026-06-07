@@ -351,7 +351,7 @@ To run GUI tests locally, set `TEST_PACKAGE` manually inside the script or invok
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — full project architecture map.
 - **[SPECS/CONSTITUTION.md](SPECS/CONSTITUTION.md)** — architectural invariants.
 - **[SPECS/](SPECS/)** — 60+ feature specs (HWID protocol, traffic profiler, debug API, preset bundles, state-as-template-diff, atomic writes, typed event bus, …).
-- **[docs/CREATE_WIZARD_TEMPLATE.md](docs/CREATE_WIZARD_TEMPLATE.md)** — guide for VPN providers shipping a custom `wizard_template.json`.
+- **[docs/WIZARD_TEMPLATE.md](docs/WIZARD_TEMPLATE.md)** — `wizard_template.json` syntax reference for VPN providers shipping a custom template.
 - **[docs/ParserConfig.md](docs/ParserConfig.md)** — subscription parser configuration reference.
 - **[docs/TRAFFIC_PROFILER.md](docs/TRAFFIC_PROFILER.md)** — Traffic Profiler internals and usage.
 - **[docs/TEMPLATE_REFERENCE.md](docs/TEMPLATE_REFERENCE.md)** — `wizard_template.json` schema reference.

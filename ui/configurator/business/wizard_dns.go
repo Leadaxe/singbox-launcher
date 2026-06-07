@@ -63,7 +63,7 @@ func effectiveWizardConfig(model *wizardmodels.WizardModel) map[string]json.RawM
 	if model == nil || model.TemplateData == nil {
 		return nil
 	}
-	MaterializeClashSecretIfNeeded(model)
+	MaterializeSecretsIfNeeded(model)
 	config := model.TemplateData.Config
 	if len(model.TemplateData.RawConfig) > 0 && (len(model.TemplateData.Params) > 0 || len(model.TemplateData.Vars) > 0) {
 		effective, _, err := wizardtemplate.GetEffectiveConfig(

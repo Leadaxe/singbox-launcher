@@ -328,7 +328,7 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 // ApplyTemplateWithVars применяет params (платформа, if, if_or) и подставляет @name из vars.
 func ApplyTemplateWithVars(configJSON json.RawMessage, params []TemplateParam, goos string, vars []TemplateVar, stateVars map[string]string, rawFull json.RawMessage) (json.RawMessage, error) {
 	resolved := ResolveTemplateVars(vars, stateVars, rawFull)
-	MaybeGenerateClashSecret(resolved)
+	MaybeGenerateSecrets(vars, resolved)
 	vi := VarIndex(vars)
 	out, err := applyParamsFiltered(configJSON, params, goos, vi, resolved)
 	if err != nil {

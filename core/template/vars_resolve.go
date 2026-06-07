@@ -12,17 +12,18 @@ import (
 	"singbox-launcher/internal/debuglog"
 )
 
-// ClashSecretReader — источник энтропии для GenerateClashSecret / MaybeGenerateClashSecret.
+// SecretReader — источник энтропии для GenerateSecret / MaybeGenerateSecrets.
 // В тестах можно временно подменить на детерминированный io.Reader.
-var ClashSecretReader io.Reader = rand.Reader
+var SecretReader io.Reader = rand.Reader
 
-const clashSecretPrefix = "CHANGE_THIS_"
+const secretPlaceholderPrefix = "CHANGE_THIS_"
 
-// ClashSecretUnresolved true, если значение из state ещё нужно заменить автогенерацией
-// (пусто/пробелы или префикс плейсхолдера шаблона). Совпадает с критерием MaybeGenerateClashSecret.
-func ClashSecretUnresolved(s string) bool {
+// SecretUnresolved true, если значение секрета ещё нужно автогенерировать
+// (пусто/пробелы или префикс плейсхолдера шаблона CHANGE_THIS_*). Критерий
+// общий для всех type:"secret" var (см. MaybeGenerateSecrets).
+func SecretUnresolved(s string) bool {
 	s = strings.TrimSpace(s)
-	return s == "" || strings.HasPrefix(s, clashSecretPrefix)
+	return s == "" || strings.HasPrefix(s, secretPlaceholderPrefix)
 }
 
 // TemplateVar описывает элемент секции vars шаблона.
@@ -216,12 +217,12 @@ func (v ResolvedVar) IsList() bool {
 	return v.List != nil
 }
 
-// GenerateClashSecret возвращает случайную строку из 16 символов [A-Za-z0-9].
-func GenerateClashSecret() (string, error) {
-	return generateClashSecret(ClashSecretReader)
+// GenerateSecret возвращает случайную строку из 16 символов [A-Za-z0-9].
+func GenerateSecret() (string, error) {
+	return generateSecret(SecretReader)
 }
 
-func generateClashSecret(r io.Reader) (string, error) {
+func generateSecret(r io.Reader) (string, error) {
 	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 	const n = 16
 	var b strings.Builder
@@ -252,22 +253,27 @@ func ResolveTemplateVars(vars []TemplateVar, state map[string]string, rawTemplat
 	return out
 }
 
-// MaybeGenerateClashSecret подставляет случайный секрет, если значение пустое или плейсхолдер CHANGE_THIS_*.
-func MaybeGenerateClashSecret(resolved map[string]ResolvedVar) {
-	rv, ok := resolved["clash_secret"]
-	if !ok {
-		return
+// MaybeGenerateSecrets автогенерирует значение для КАЖДОЙ объявленной
+// type:"secret" переменной, если в resolved она пустая/плейсхолдер CHANGE_THIS_*.
+// Обобщает прежнее clash_secret-специфичное поведение: секрет всегда
+// материализуется (например proxy_in_password). Если шаблон не вставит его —
+// это решает #if в шаблоне (proxy_in_password не попадёт в config без
+// непустого proxy_in_username), а не отсутствие значения.
+func MaybeGenerateSecrets(vars []TemplateVar, resolved map[string]ResolvedVar) {
+	for _, v := range vars {
+		if v.Separator || !strings.EqualFold(strings.TrimSpace(v.Type), "secret") {
+			continue
+		}
+		if !SecretUnresolved(resolved[v.Name].Scalar) {
+			continue
+		}
+		gen, err := GenerateSecret()
+		if err != nil {
+			debuglog.WarnLog("MaybeGenerateSecrets %q: %v", v.Name, err)
+			continue
+		}
+		resolved[v.Name] = ResolvedVar{Scalar: gen}
 	}
-	s := strings.TrimSpace(rv.Scalar)
-	if s != "" && !strings.HasPrefix(s, clashSecretPrefix) {
-		return
-	}
-	gen, err := GenerateClashSecret()
-	if err != nil {
-		debuglog.WarnLog("MaybeGenerateClashSecret: %v", err)
-		return
-	}
-	resolved["clash_secret"] = ResolvedVar{Scalar: gen}
 }
 
 func resolveOneVar(v TemplateVar, stateVal string, root map[string]json.RawMessage) ResolvedVar {

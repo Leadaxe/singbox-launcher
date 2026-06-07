@@ -795,5 +795,5 @@ Legacy v5 файлы по-прежнему читаются через `parseV5L
 См. также: [TEMPLATE_REFERENCE.md](TEMPLATE_REFERENCE.md) — что лежит в
 `wizard_template.json` и куда оно попадает в state/runtime/UI.
 [DATA_FLOW.md](DATA_FLOW.md) — расширенные диаграммы load/save/build/toggle.
-[CREATE_WIZARD_TEMPLATE.md](CREATE_WIZARD_TEMPLATE.md) — туториал для авторов
+[WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md) — справочник по синтаксису
 template'ов (формат preset'ов, vars, substitute, if/if_or).
