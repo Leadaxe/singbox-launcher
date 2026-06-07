@@ -1409,42 +1409,53 @@
     },
     {
       "name": "route.rules",
-      "platforms": [
-        "windows",
-        "linux",
-        "darwin"
-      ],
-      "if": [
-        "@tun"
-      ],
-      "mode": "prepend",
-      "value": [
-        {
-          "inbound": "tun-in",
-          "action": "resolve",
-          "strategy": "@resolve_strategy"
-        },
-        {
-          "inbound": "tun-in",
-          "action": "sniff",
-          "timeout": "1s"
-        }
-      ]
-    },
-    {
-      "name": "route.rules",
-      "if": [
+      "if_or": [
+        "@tun",
         "@enable_proxy_in"
       ],
       "mode": "prepend",
       "value": [
         {
-          "inbound": "proxy-in",
+          "inbound": [
+            {
+              "#if": {
+                "and": [
+                  "@tun"
+                ],
+                "value": "tun-in"
+              }
+            },
+            {
+              "#if": {
+                "and": [
+                  "@enable_proxy_in"
+                ],
+                "value": "proxy-in"
+              }
+            }
+          ],
           "action": "resolve",
           "strategy": "@resolve_strategy"
         },
         {
-          "inbound": "proxy-in",
+          "inbound": [
+            {
+              "#if": {
+                "and": [
+                  "@tun"
+                ],
+                "value": "tun-in"
+              }
+            },
+            {
+              "#if": {
+                "and": [
+                  "@enable_proxy_in"
+                ],
+                "value": "proxy-in"
+              }
+            }
+          ],
           "action": "sniff",
           "timeout": "1s"
         }
