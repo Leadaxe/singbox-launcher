@@ -341,6 +341,10 @@ func parseV5Legacy(data []byte) (*State, error) {
 		s.UpdatedAt = t
 	}
 
+	// BUG1 fix: derive canonical v6 Rules/DNS from legacy v5 CustomRules/
+	// DNSOptions так, чтобы headless Save (сериализует только v6) их не терял.
+	deriveV6FromLegacy(s)
+
 	// Заполняем legacy proxies-view из Connections для backward-compat
 	// callsite'ов (UI source_tab, dashboard counters, parser).
 	syncLegacyFromConnections(s)
@@ -415,8 +419,33 @@ func parseLegacyAndMigrate(data []byte) (*State, error) {
 	if t, err := time.Parse(time.RFC3339, raw.UpdatedAt); err == nil {
 		s.UpdatedAt = t
 	}
+	deriveV6FromLegacy(s) // BUG1: derive v6 Rules/DNS from migrated legacy fields
 	normalizeNilSlices(s)
 	return s, nil
+}
+
+// deriveV6FromLegacy populates canonical v6 s.Rules / s.DNS from the legacy
+// s.CustomRules / s.DNSOptions when the v6 fields are empty. Without it a
+// legacy-format state loaded headlessly (no Configurator UI) keeps Rules/DNS
+// empty, and the next Save — which serializes ONLY v6 fields (marshalDisk) —
+// silently drops the user's custom rules + DNS config (Debug API PATCH /
+// auto-save / log-level / subscription-refresh paths all hit Load→mutate→Save
+// without re-emitting from a model). Build branch-selection keys on
+// len(s.Rules)>0 (routeConfigForUpdate) and v6Active (dnsConfigForUpdate), so
+// once populated CustomRules/DNSOptions become a dormant legacy view — no
+// double-emit. Template maps are nil at parse time (no template available):
+// best-effort kind detection; the Configurator re-derives accurately on open.
+func deriveV6FromLegacy(s *State) {
+	if len(s.Rules) == 0 && len(s.CustomRules) > 0 {
+		for _, cr := range s.CustomRules {
+			if r, _ := migrateCustomRule(cr, nil); r != nil {
+				s.Rules = append(s.Rules, *r)
+			}
+		}
+	}
+	if len(s.DNS.Servers) == 0 && len(s.DNS.Rules) == 0 && s.DNSOptions != nil {
+		s.DNS, _ = migrateDNS(s.DNSOptions, nil)
+	}
 }
 
 // rawLegacyFile — JSON-форма v2/v3/v4 для устойчивого декодирования.

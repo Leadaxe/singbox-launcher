@@ -554,8 +554,9 @@ func evalIfWithReason(ifList, ifOrList []string, varsMap map[string]string) (boo
 			}
 		}
 		if !anyTrue {
-			sort.Strings(ifOrList) // detered output for test stability
-			return false, "if_or=" + strings.Join(ifOrList, ",")
+			sorted := append([]string(nil), ifOrList...) // sort a COPY — never mutate caller's slice
+			sort.Strings(sorted)                         // deterministic reason for test stability
+			return false, "if_or=" + strings.Join(sorted, ",")
 		}
 	}
 	return true, ""

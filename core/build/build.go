@@ -3,8 +3,8 @@
 //
 // Это реализация фазы 3.4 + 5.3 SPEC 045 (STATE_CONFIG_DECOUPLING). До
 // рефакторинга сборка config.json была размазана по двум write-points
-// (`core/config.WriteToConfig` при Update и
-// `ui/wizard/business.SaveConfigWithBackup` при Save визарда), причём
+// (`core/config.WriteToConfig` при Update и Save-визарда в
+// `ui/configurator/business`), причём
 // каждый дублировал часть логики. После — `BuildConfig` — единственная
 // чистая функция; вызывающий слой пишет результат на диск отдельным шагом.
 //

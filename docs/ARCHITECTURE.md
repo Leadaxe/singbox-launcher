@@ -287,8 +287,8 @@ singbox-launcher/
 │   │   │   - NewErrorBanner()                           # Создание баннера ошибки
 │   │   │   - ErrorBanner struct                         # Структура баннера
 │   │   │
-│   └── wizard/                 # Мастер конфигурации
-│       ├── wizard.go           # Точка входа (ShowConfigWizard)
+│   └── configurator/           # Мастер конфигурации
+│       ├── configurator.go     # Точка входа (ShowConfigWizard)
 │       │   │   - ShowConfigWizard()                     # Точка входа визарда
 │       │   │
 │       ├── models/             # Модели данных визарда (без GUI зависимостей)
@@ -459,11 +459,10 @@ singbox-launcher/
 │       │   │   │   - EnsureRequiredOutbounds()                 # Обеспечение outbounds
 │       │   │   │   - CloneOutbound()                           # Клонирование outbound
 │       │   │   │
-│       │   ├── saver.go        # Сохранение конфигурации
-│       │   │   │   - SaveConfigWithBackup()                    # Сохранение с бэкапом
-│       │   │   │   - ValidateConfigWithSingBox()              # Валидация через sing-box check
-│       │   │   │   - NextBackupPath()                          # Путь для бэкапа
-│       │   │   │   - FileServiceAdapter                        # Адаптер FileService
+│       │   ├── state_store.go  # Persist состояния визарда (state.json, НЕ config.json)
+│       │   │   │   - SaveCurrentState()                        # Запись state.json через core/state.Save (атомарно)
+│       │   │   │   - LoadCurrentState()                        # Чтение state.json
+│       │   │   │   # config.json (пере)собирается build-pipeline'ом (RebuildConfigIfDirty → core/build.BuildConfig)
 │       │   │   │
 │       │   ├── outbound.go     # Работа с outbounds
 │       │   │   │   - GetAvailableOutbounds()                   # Получение доступных outbounds
@@ -611,7 +610,7 @@ singbox-launcher/
 - `UpdateUI()` - обновление всех UI элементов
 - `StopTrayMenuUpdateTimer()` - остановка таймера обновления меню
 - `QuitApplication()` - выход из приложения
-- `FocusOpenChildWindows` - callback для переноса фокуса на одно из дочерних окон визарда (View, Outbound Edit, rule dialog) при клике по окну визарда; устанавливается в `wizard.go`, вызывается из `ui/components/click_redirect.go`. **Главное окно лаунчера** свой overlay не использует с v0.9.8 — флипается константой `ui.wizardOverlayEnabled` в `ui/wizard_overlay.go` (default `false` → клики по главному окну работают параллельно с открытым визардом; `true` восстанавливает legacy «wizard owns foreground» поведение). Внутренний wizard'овый `ChildWindowsOverlay` (поверх wizard-табов когда открыт child-dialog) независим от этой константы.
+- `FocusOpenChildWindows` - callback для переноса фокуса на одно из дочерних окон визарда (View, Outbound Edit, rule dialog) при клике по окну визарда; устанавливается в `ui/configurator/configurator.go`, вызывается из `ui/components/click_redirect.go`. **Главное окно лаунчера** свой overlay не использует с v0.9.8 — флипается константой `ui.wizardOverlayEnabled` в `ui/wizard_overlay.go` (default `false` → клики по главному окну работают параллельно с открытым визардом; `true` восстанавливает legacy «wizard owns foreground» поведение). Внутренний wizard'овый `ChildWindowsOverlay` (поверх wizard-табов когда открыт child-dialog) независим от этой константы.
 - Структуры: `UIService` с полями для Fyne компонентов и callbacks
 - Тултипы: см. раздел «Используемые библиотеки» (fyne-tooltip).
 
@@ -793,7 +792,7 @@ singbox-launcher/
 - Список прокси: **`DisplayOrName()`** для подписей; сортировка по отображаемому имени
 - Контекстное меню (ПКМ): строка списка обёрнута в `internal/fynewidget.NewSecondaryTapWrap`; `serversProxyContextMenu` / `serversRunCopyShareURIToClipboard`; сверху `ProxyInfo.ContextMenuTypeLine`, затем **Copy link** → `ShareProxyURIForOutboundTag` (outbound или WireGuard в `endpoints[]`); `subscription.ErrShareURINotSupported` → локализованное сообщение пользователю
 
-#### Wizard (`ui/wizard/`)
+#### Wizard (`ui/configurator/`)
 
 Визард следует архитектуре MVP (Model-View-Presenter) с четким разделением ответственности:
 - **Model** (`models/`) - чистые бизнес-данные без GUI зависимостей
@@ -802,7 +801,7 @@ singbox-launcher/
 
 Списочные строки (вкладки **Rules**, **Sources**, список outbounds в конфигураторе на **Outbounds**, **DNS**, модал **Add from library**) используют **`internal/fynewidget.HoverRow`**, **`WireTooltipLabelHover`** для **`ttwidget.Label`** и **`HoverForward*`** для кнопок/селектов; см. **`internal/fynewidget/doc.go`**, **SPECS/028-F-C-WIZARD_LIST_ROW_HOVER/SPEC.md**.
 
-**wizard.go**
+**configurator.go**
 - `ShowConfigWizard()` - точка входа, создание окна визарда
 - Создание модели (`WizardModel`), GUI-состояния (`GUIState`) и презентера (`WizardPresenter`)
 - Инициализация табов и координация шагов
@@ -855,11 +854,10 @@ singbox-launcher/
 - `presenter_save.go`:
   - `SaveConfig()` - сохранение конфигурации с прогресс-баром и проверками (основная функция)
   - `validateSaveInput()`, `checkSaveOperationState()` - проверки перед сохранением
-  - `executeSaveOperation()` - выполнение сохранения в горутине: `ensureOutboundsParsed` (ожидание/парсинг outbounds), затем **`MergeGUIToModelFromMainThread`** (актуализация модели с виджетов после долгого ожидания), сборка конфига, валидация по временному файлу (config-check.json) и запись config.json, state.json, диалог; перезапуск sing-box не выполняется; по завершении в фоне вызывается `core.RunParserProcess()` (обновление конфига из подписок)
+  - `executeSaveOperation()` - выполнение сохранения в горутине: **`MergeGUIToModelFromMainThread`** (актуализация модели с виджетов), затем **запись state.json** (атомарно через `core/state.Save`), диалог; **Save больше НЕ пишет config.json** — реальная пересборка `config.json` выполняется build-pipeline'ом (`AppController.RebuildConfigIfDirty` → `core/build.BuildConfig`), который вызывается best-effort после Save и при Update/Restart; перезапуск sing-box не выполняется
   - `finalizeSaveOperation()` - завершение операции и восстановление UI
-  - `buildConfigForSave()` - построение конфигурации из шаблона и модели
-  - `saveConfigFile()` - валидация sing-box check по временному файлу (config-check.json) и при успехе запись в config.json с бэкапом (вызов SaveConfigWithBackup)
-  - `saveStateAndShowSuccessDialog()`, `showSaveSuccessDialog()` - сохранение state и диалог успеха (без перезапуска sing-box)
+  - `saveStateOnly()` - persist state.json через `SaveCurrentState` (атомарная запись `core/state.Save`); **config.json здесь НЕ пишется** — его (пере)собирает build-pipeline (`RebuildConfigIfDirty` → `core/build.BuildConfig`)
+  - `showSaveSuccessDialog()` - диалог успеха после записи state.json (без перезапуска sing-box)
   - `completeSaveOperation()` - финализация и запуск RunParserProcess в фоне
 - `presenter_state.go`:
   - `CreateStateFromModel()` - создание WizardStateFile из текущей модели
@@ -961,10 +959,9 @@ singbox-launcher/
   - `LoadConfigFromFile()` - загрузка ParserConfig из config.json (приоритет) или template (fallback)
   - `EnsureRequiredOutbounds()` - обеспечение наличия требуемых outbounds из template
   - `CloneOutbound()` - создание глубокой копии OutboundConfig
-- `saver.go`:
-  - `SaveConfigWithBackup()` - при непустом fileService.SingboxPath(): запись во временный файл `config-check.json`, валидация `sing-box check`, при успехе — бэкап и запись в config; генерация secret для Clash API (prepareConfigText)
-  - `ValidateConfigWithSingBox()` - валидация конфига через sing-box check
-  - `FileServiceAdapter` - адаптер для services.FileService
+- `file_service_adapter.go`:
+  - `FileServiceAdapter` struct - адаптер для services.FileService (`ConfigPath()`, `ExecDir()`, `SingboxPath()`)
+  - Примечание: Save визарда пишет только **state.json** (см. `state_store.go` ниже); запись/валидацию `config.json` (`config-check.json` + `sing-box check` + бэкап) выполняет build-pipeline в `core/build`, а не слой визарда
 - `state_store.go`:
   - `NewStateStore()` - создание хранилища состояний
   - `SaveWizardState()` - сохранение состояния по ID в файл
@@ -1048,7 +1045,7 @@ singbox-launcher/
 │     └─> Настройка callbacks                                  │
 │     └─> Запуск фоновых процессов                             │
 │                                                              │
-│  3. wizard.ShowConfigWizard() [ui/wizard/wizard.go]          │
+│  3. configurator.ShowConfigWizard() [ui/configurator/configurator.go] │
 │     └─> Создание окна визарда                                │
 │     └─> Инициализация вкладок                                │
 │     └─> Координация шагов                                    │
@@ -1212,9 +1209,9 @@ singbox-launcher/
 │  └──────────────────────────────────────────────────────┘   │
 │                                                             │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │  Wizard Package [ui/wizard/] (MVP Architecture)      │   │
+│  │  Wizard Package [ui/configurator/] (MVP Architecture) │   │
 │  │                                                      │   │
-│  │  wizard.go:                                          │   │
+│  │  configurator.go:                                    │   │
 │  │  • Координация шагов визарда                         │   │
 │  │  • Создание Model, GUIState и Presenter              │   │
 │  │  • Инициализация табов                               │   │
@@ -1240,7 +1237,7 @@ singbox-launcher/
 │  │  • Сборка конфигурации из шаблона (create_config.go) │   │
 │  │  • Валидация данных (validator.go)                   │   │
 │  │  • Загрузка конфигурации (loader.go)                 │   │
-│  │  • Сохранение конфигурации (saver.go)                │   │
+│  │  • FileService адаптер (file_service_adapter.go)     │   │
 │  │  • Работа с outbounds (outbound.go)                  │   │
 │  │  • Управление состояниями (state_store.go)           │   │
 │  │  • Интерфейсы: UIUpdater, ConfigService, TemplateLoader│ │
@@ -1300,46 +1297,43 @@ UI (core_dashboard_tab.go)
 
 ```
 UI (core_dashboard_tab.go)
-  └─> wizard.ShowConfigWizard()
-      ├─> wizard/models: NewWizardModel()
-      ├─> wizard/presentation: NewGUIState(), NewWizardPresenter()
-      ├─> wizard/template/loader.go: LoadTemplateData()  # единый JSON-шаблон
-      ├─> wizard/tabs/source_tab.go: CreateSourcesTab, CreateOutboundsAndParserConfigTab
-      ├─> wizard/tabs/dns_tab.go: CreateDNSTab (модель ↔ UI; частичное обновление: RefreshDNSDependentSelectsOnly / RefreshDNSListAndSelects)
-      ├─> wizard/business/wizard_dns.go: ApplyWizardDNSTemplate — слияние шаблона и модели DNS
-      ├─> wizard/tabs/rules_tab.go: CreateRulesTab
-      ├─> wizard/tabs/settings_tab.go: CreateSettingsTab (+ darwin: settings_tun_darwin — снятие tun / кеш + логи ядра)
-      ├─> wizard/tabs/preview_tab.go: CreatePreviewTab
+  └─> configurator.ShowConfigWizard()
+      ├─> ui/configurator/models: NewWizardModel()
+      ├─> ui/configurator/presentation: NewGUIState(), NewWizardPresenter()
+      ├─> core/template/loader.go: LoadTemplateData()  # единый JSON-шаблон
+      ├─> ui/configurator/tabs/source_tab.go: CreateSourcesTab, CreateOutboundsAndParserConfigTab
+      ├─> ui/configurator/tabs/dns_tab.go: CreateDNSTab (модель ↔ UI; частичное обновление: RefreshDNSDependentSelectsOnly / RefreshDNSListAndSelects)
+      ├─> ui/configurator/business/wizard_dns.go: ApplyWizardDNSTemplate — слияние шаблона и модели DNS
+      ├─> ui/configurator/tabs/rules_tab.go: CreateRulesTab
+      ├─> ui/configurator/tabs/settings_tab.go: CreateSettingsTab (+ darwin: settings_tun_darwin — снятие tun / кеш + логи ядра)
+      ├─> ui/configurator/tabs/preview_tab.go: CreatePreviewTab
       │
-      ├─> wizard/business/loader.go: LoadConfigFromFile()
-      ├─> wizard/presentation/presenter_state.go: LoadState()
-      │   ├─> wizard/business/state_store.go: LoadCurrentState()
-      │   └─> wizard/presentation/presenter_sync.go: SyncModelToGUI()
-      │       └─> wizard/presentation/presenter_rules.go: RefreshRulesTabAfterLoadState() - пересоздание вкладки Rules (DI)
-      ├─> wizard/dialogs/get_free_dialog.go: ShowGetFreeVPNDialog()
+      ├─> ui/configurator/business/loader.go: LoadConfigFromFile()
+      ├─> ui/configurator/presentation/presenter_state.go: LoadState()
+      │   ├─> ui/configurator/business/state_store.go: LoadCurrentState()
+      │   └─> ui/configurator/presentation/presenter_sync.go: SyncModelToGUI()
+      │       └─> ui/configurator/presentation/presenter_rules.go: RefreshRulesTabAfterLoadState() - пересоздание вкладки Rules (DI)
+      ├─> ui/configurator/dialogs/get_free_dialog.go: ShowGetFreeVPNDialog()
       │   ├─> downloadGetFreeJSON() - скачивание get_free.json с GitHub
       │   ├─> loadGetFreeJSON() - загрузка и парсинг get_free.json
       │   ├─> convertGetFreeDataToStateFile() - преобразование в WizardStateFile
-      │   │   └─> wizard/models/wizard_state_file.go: NewWizardStateFile() - фабрика
+      │   │   └─> ui/configurator/models/wizard_state_file.go: NewWizardStateFile() - фабрика
       │   └─> presenter.LoadState() - применение конфигурации (та же логика, что и для state.json)
       │       └─> SyncModelToGUI() → RefreshRulesTabAfterLoadState() - обновление UI после загрузки
-      ├─> wizard/presentation/presenter_async.go: TriggerParseForPreview()
-      │   └─> wizard/business/parser.go: ParseAndPreview()
-      ├─> wizard/presentation/presenter_async.go: UpdateTemplatePreviewAsync()
-      │   └─> wizard/business/create_config.go: BuildTemplateConfig()
-      ├─> wizard/presentation/presenter_save.go: SaveConfig()
+      ├─> ui/configurator/presentation/presenter_async.go: TriggerParseForPreview()
+      │   └─> ui/configurator/business/parser.go: ParseAndPreview()
+      ├─> ui/configurator/presentation/presenter_async.go: UpdateTemplatePreviewAsync()
+      │   └─> ui/configurator/business/create_config.go: BuildTemplateConfig()
+      ├─> ui/configurator/presentation/presenter_save.go: SaveConfig()
       │   ├─> validateSaveInput() / checkSaveOperationState()
       │   ├─> executeSaveOperation()
-      │   │   ├─> ensureOutboundsParsed()
       │   │   ├─> MergeGUIToModelFromMainThread()
-      │   │   ├─> buildConfigForSave()
-      │   │   │   └─> wizard/business/create_config.go: BuildTemplateConfig()
-      │   │   ├─> saveConfigFile()
-      │   │   │   └─> wizard/business/saver.go: SaveConfigWithBackup() (внутри: запись в config-check.json, ValidateConfigWithSingBox, при успехе — запись в config)
-      │   │   └─> saveStateAndShowSuccessDialog()
-      │   │       ├─> wizard/presentation/presenter_state.go: SaveCurrentState()
-      │   │       │   └─> wizard/business/state_store.go: SaveCurrentState()
-      │   │       └─> showSaveSuccessDialog()
+      │   │   ├─> saveStateOnly()  # пишет ТОЛЬКО state.json (config.json здесь не пишется)
+      │   │   │   ├─> ui/configurator/presentation/presenter_state.go: SaveCurrentState()
+      │   │   │   │   └─> ui/configurator/business/state_store.go: SaveCurrentState()
+      │   │   │   │       └─> core/state.Save() — атомарная запись state.json
+      │   │   │   └─> showSaveSuccessDialog()
+      │   │   └─> AppController.RebuildConfigIfDirty() (best-effort) → config.json (пере)собирается build-pipeline'ом (core/build.BuildConfig)
 ```
 
 ## Принципы организации кода
@@ -1397,19 +1391,19 @@ main.go
       │   ├─> core/config/parser
       │   └─> core/config/subscription # Импортирует configtypes (не config) → нет цикла
       └─> ui
-          └─> ui/wizard
-              ├─> ui/wizard/models
-              ├─> ui/wizard/presentation
-              ├─> ui/wizard/business
-              ├─> ui/wizard/tabs
-              ├─> ui/wizard/dialogs
-              ├─> ui/wizard/template
-              └─> ui/wizard/utils
+          └─> ui/configurator
+              ├─> ui/configurator/models
+              ├─> ui/configurator/presentation
+              ├─> ui/configurator/business
+              ├─> ui/configurator/tabs
+              ├─> ui/configurator/dialogs
+              ├─> ui/configurator/outbounds_configurator
+              └─> ui/configurator/utils
 ```
 
 **Правила зависимостей:**
 - `core` не зависит от `ui`
-- `ui/wizard` не зависит от `ui` (кроме точки входа)
+- `ui/configurator` не зависит от `ui` (кроме точки входа)
 - `core/config` не зависит от `core/services`
 - `core/services` не зависит от Fyne (UIService вынесен в `core/uiservice`)
 - `core/config/subscription` импортирует `core/config/configtypes` (не `core/config`) — цикл разорван
@@ -1439,7 +1433,7 @@ main.go
 ### Структура тестов
 
 - Тесты находятся рядом с кодом (`*_test.go`)
-- Тесты для бизнес-логики в `ui/wizard/business/*_test.go`
+- Тесты для бизнес-логики в `ui/configurator/business/*_test.go`
 - Тесты для парсинга в `core/config/subscription/*_test.go`
 - Build constraints для тестов с UI зависимостями: `//go:build cgo`
 
@@ -1468,9 +1462,9 @@ main.go
 
 ### Добавление нового шага визарда
 
-1. Создать файл в `ui/wizard/tabs/`
+1. Создать файл в `ui/configurator/tabs/`
 2. Реализовать функцию создания вкладки
-3. Добавить в `wizard.go` в список шагов
+3. Добавить в `configurator.go` в список шагов
 4. Обновить навигацию между шагами
 
 ## SPEC 052 — Connections redesign (state.json v5)
@@ -1486,14 +1480,17 @@ top-level контейнерами `meta` и `connections`. Wizard и runtime ч
   автоматически мигрируются при первом Load. Подробности —
   `SPECS/052-F-C-CONNECTIONS_REDESIGN/SPEC.md`.
 
-- **`core/state/v5/`** — pure-data типы и migration v4 → v5:
-  - `Source` (subscription / server) с дискриминатором по `Type`;
+- **`core/state/`** (плоский пакет после SPEC 060 — без подпакетов `v5/`/`v6/`) —
+  pure-data типы и миграция legacy-форматов:
+  - `Source` (subscription / server) с дискриминатором по `Type` (`connections.go`);
   - `SubscriptionMeta` — runtime-данные подписки (profile_title, userinfo,
-    fetch history, preview);
-  - `MakeULID` — собственная имплементация Crockford-base32 для Source.ID;
-  - `MigrateV4ToV5` — pure-функция, deterministic при заданном `IDGenerator`;
+    fetch history, preview) (`connections.go`);
+  - `MakeULID` — собственная имплементация Crockford-base32 для Source.ID (`ulid.go`);
+  - миграция legacy v2–v5 файлов выполняется внутренне при первом Load
+    (`legacy_migration.go`, `migration_v5_to_v6.go`); on-disk-формат, который
+    пишет Save, — `SchemaVersion` (сейчас всегда v6, `state.go`);
   - `WriteRawBody` / `ReadRawBody` / `DeleteOrphans` — atomic I/O для
-    `bin/subscriptions/<id>.raw` (raw body cache).
+    `bin/subscriptions/<id>.raw` (raw body cache, `raw_cache.go`).
 
 - **`bin/subscriptions/<id>.raw`** — per-source raw body cache. Update
   пишет atomic'но при успешном fetch; при failed fetch старый файл

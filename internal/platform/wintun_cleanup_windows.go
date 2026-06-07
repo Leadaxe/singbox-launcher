@@ -104,10 +104,6 @@ const (
 	// DI_FUNCTION codes for SetupDiCallClassInstaller.
 	difRemove = 0x00000005 // DIF_REMOVE — uninstall device
 
-	// PnP device-node status / problem codes.
-	dnStarted     = 0x00000008 // DN_STARTED — driver loaded & started
-	cmProbPhantom = 24         // CM_PROB_PHANTOM — phantom (was removed)
-
 	// SetupDiGetClassDevsW flags.
 	digcfPresent = 0x00000002 // we DO NOT want this — phantoms are not "present"
 	// We pass 0 to include phantoms.
@@ -115,14 +111,11 @@ const (
 	// Cap on per-invocation removals — defensive bound.
 	maxRemovalsPerCall = 32
 
-	// FriendlyName prefix we own.
-	adapterNamePrefix = "singbox-tun"
-
-	// Service name set by WinTun.
-	wintunServiceName = "Wintun"
-
 	// INVALID_HANDLE_VALUE — returned by SetupDiGetClassDevs on failure.
 	invalidHandle = ^uintptr(0)
+
+	// dnStarted, cmProbPhantom, adapterNamePrefix, wintunServiceName moved to
+	// wintun_cleanup.go (non-tagged) so ghostTunDecision is testable off-Windows.
 )
 
 // guidDevClassNet — {4D36E972-E325-11CE-BFC1-08002BE10318}.
@@ -434,69 +427,24 @@ func CleanupGhostSingboxTunAdapters(mode GhostTunCleanupMode) (removed int, err 
 		// effort idempotent for sources where NetConnectionID matches).
 		// Aggressive mode drops the name check entirely and relies on
 		// the service-name guard + DN_STARTED gate below.
+		// Filter 2 (service == "Wintun") is a hard requirement in both
+		// modes — without it aggressive cleanup would touch WireGuard or any
+		// other non-WinTun network adapter. Filters 3/4 (status readable, not
+		// DN_STARTED, CM_PROB_PHANTOM in phantom-only mode) are folded into the
+		// pure ghostTunDecision predicate, unit-tested in wintun_cleanup_test.go.
 		name := getNetConnectionID(h, &devInfo)
-		if !aggressive && !strings.HasPrefix(name, adapterNamePrefix) {
-			skipped++
-			index++
-			continue
-		}
-
-		// Filter 2: driver service name. Hard requirement in both modes
-		// — without this guard aggressive cleanup would touch WireGuard
-		// or any other non-WinTun network adapter, which is unsafe.
 		service := getRegistryPropertyW(h, &devInfo, spdrpService)
-		if !strings.EqualFold(service, wintunServiceName) {
-			debuglog.DebugLog("ghost-tun cleanup: skip name=%q reason=service-mismatch service=%q", name, service)
+		status, problem, ok := getDevNodeStatus(devInfo.devInst)
+
+		if remove, reason := ghostTunDecision(bool(aggressive), name, service, ok, status, problem); !remove {
+			debuglog.DebugLog("ghost-tun cleanup: skip name=%q reason=%s service=%q status=0x%x problem=%d aggressive=%v",
+				name, reason, service, status, problem, bool(aggressive))
 			skipped++
 			index++
 			continue
 		}
 
-		status, problem, ok := getDevNodeStatus(devInfo.devInst)
-		if !aggressive {
-			// Phantom-only mode (original SPEC 065).
-			if !ok {
-				debuglog.DebugLog("ghost-tun cleanup: skip name=%q reason=status-readback-failed", name)
-				skipped++
-				index++
-				continue
-			}
-			if status&dnStarted != 0 {
-				debuglog.DebugLog("ghost-tun cleanup: skip name=%q reason=active(DN_STARTED) problem=%d", name, problem)
-				skipped++
-				index++
-				continue
-			}
-			if problem != cmProbPhantom {
-				debuglog.DebugLog("ghost-tun cleanup: skip name=%q reason=not-phantom(problem=%d)", name, problem)
-				skipped++
-				index++
-				continue
-			}
-		} else {
-			// Aggressive mode (v0.9.9.2): we already enforced service ==
-			// "Wintun" above, so the only WinTun adapters that survive
-			// to here are this app's leftovers OR a currently-active
-			// adapter owned by another WinTun client (WireGuard etc).
-			// Skip the active one to avoid stealing a running tunnel.
-			// Phantom adapters from killed sing-box runs do NOT have
-			// DN_STARTED set, so they pass through to DIF_REMOVE.
-			if !ok {
-				debuglog.DebugLog("ghost-tun cleanup: skip aggressive reason=status-readback-failed name=%q", name)
-				skipped++
-				index++
-				continue
-			}
-			if status&dnStarted != 0 {
-				debuglog.DebugLog("ghost-tun cleanup: skip aggressive reason=active(DN_STARTED) name=%q", name)
-				skipped++
-				index++
-				continue
-			}
-			debuglog.DebugLog("ghost-tun cleanup: candidate aggressive name=%q status=0x%x problem=%d", name, status, problem)
-		}
-
-		debuglog.WarnLog("ghost-tun cleanup: removing name=%q service=%q", name, service)
+		debuglog.WarnLog("ghost-tun cleanup: removing name=%q service=%q (aggressive=%v)", name, service, bool(aggressive))
 		callRet, _, callErr := procSetupDiCallClassInstaller.Call(
 			uintptr(difRemove),
 			h,

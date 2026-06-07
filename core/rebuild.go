@@ -176,6 +176,7 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	// violations (unknown fields, legacy DNS format, type mismatches) ДО того
 	// как юзер нажмёт Connect и получит non-obvious "FATAL: ..." в логе.
 	// Ошибка → ErrorLog + popup через UIService.
+	configValid := true
 	if checkErr := validateConfigViaSingBox(ac.FileService.SingboxPath, ac.FileService.ConfigPath); checkErr != nil {
 		debuglog.ErrorLog("RebuildConfigIfDirty: sing-box check failed: %v", checkErr)
 		if ac.UIService != nil && ac.UIService.MainWindow != nil {
@@ -192,8 +193,11 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 				},
 			})
 		}
-		// Не return error — config записан, юзер видит проблему. State
-		// остаётся ConfigStale=false (мы попытались rebuild'нуть).
+		// Config записан, но sing-box его ОТВЕРГ: оставляем ConfigStale,
+		// чтобы следующий rebuild перепроверил, а не доверял заведомо битому
+		// config.json (и пропускаем ConfigBuilt{OK:true} ниже). Без return —
+		// поток продолжается; popup + ConfigBuilt{OK:false} уже отправлены.
+		configValid = false
 	}
 
 	// Step 5.5: orphan GC для bin/rule-sets/. Параллельно тому что
@@ -207,19 +211,18 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		debuglog.InfoLog("RebuildConfigIfDirty: GC removed %d orphan rule-set file(s): %v", len(deleted), deleted)
 	}
 
-	// Step 6: clear ConfigStale (config теперь свеж относительно state+cache).
-	// CacheStale НЕ трогаем: rebuild не делал network fetch (если только не
-	// auto-Update сработал выше — в этом случае Update сам уже его сбросил).
-	// Поэтому если cacheMissing=true → CacheStale уже cleared изнутри Update;
-	// если cacheMissing=false → CacheStale остаётся как был (rebuild не
-	// обновлял подписки и не имеет права отчитываться за это).
-	ac.StateService.ClearConfigStale()
-
-	if ac.EventBus != nil {
-		ac.EventBus.Publish(events.Event{
-			Kind:    events.ConfigBuilt,
-			Payload: events.ConfigBuiltPayload{OK: true, Warnings: res.Validation.Warnings},
-		})
+	// Step 6: clear ConfigStale ТОЛЬКО если sing-box принял config (свеж И
+	// валиден). Если rejected — ConfigStale остаётся, чтобы следующий rebuild
+	// перепроверил. CacheStale НЕ трогаем: rebuild не делал network fetch (при
+	// cacheMissing Update уже его сбросил; иначе CacheStale остаётся как был).
+	if configValid {
+		ac.StateService.ClearConfigStale()
+		if ac.EventBus != nil {
+			ac.EventBus.Publish(events.Event{
+				Kind:    events.ConfigBuilt,
+				Payload: events.ConfigBuiltPayload{OK: true, Warnings: res.Validation.Warnings},
+			})
+		}
 	}
 
 	// Step 7: refresh UI markers (coarse — будем заменять на typed events).

@@ -276,25 +276,11 @@ func filterActiveVars(vars []template.PresetVar, varsMap map[string]string) map[
 // SPEC 067 Phase 3: канонический формат имени — "@var" (loader validation требует
 // `@`-префикс). Префикс strip'ается перед lookup; bare имена (legacy) тоже
 // работают — но валидатор их отвергает на load.
+// evalIf — boolean if/if_or evaluation. Single source of truth is
+// evalIfWithReason (resolve_dns.go); evalIf just drops the reason string.
 func evalIf(ifList, ifOrList []string, varsMap map[string]string) bool {
-	for _, name := range ifList {
-		if !strings.EqualFold(varsMap[strings.TrimPrefix(name, "@")], "true") {
-			return false
-		}
-	}
-	if len(ifOrList) > 0 {
-		anyTrue := false
-		for _, name := range ifOrList {
-			if strings.EqualFold(varsMap[strings.TrimPrefix(name, "@")], "true") {
-				anyTrue = true
-				break
-			}
-		}
-		if !anyTrue {
-			return false
-		}
-	}
-	return true
+	ok, _ := evalIfWithReason(ifList, ifOrList, varsMap)
+	return ok
 }
 
 // extractIfFromMap — достаёт if/if_or из map[string]interface{} (для rule/dns_rule).

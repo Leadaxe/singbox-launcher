@@ -484,6 +484,17 @@ func (r *RunningState) Set(value bool) {
 	if r.controller.UIService != nil && r.controller.UIService.UpdateCoreStatusFunc != nil {
 		r.controller.UIService.UpdateCoreStatusFunc()
 	}
+
+	// SPEC 047 / audit BUG6: publish typed VpnStateChanged on the ACTUAL
+	// running transition (Set dedups no-op calls above). Subscribers such as
+	// the Core-tab icon (ui/app.go) were previously dead — nothing published
+	// this event; only the legacy UpdateCoreStatusFunc callback fired.
+	if ac != nil && ac.EventBus != nil {
+		ac.EventBus.Publish(events.Event{
+			Kind:    events.VpnStateChanged,
+			Payload: events.VpnStateChangedPayload{Running: value},
+		})
+	}
 }
 
 // IsRunning checks if the VPN is running.

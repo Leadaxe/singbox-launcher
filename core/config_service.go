@@ -168,7 +168,7 @@ func (svc *ConfigService) GenerateOutboundsFromParserConfig(
 //
 // SPEC 045 cleanup invariant: Update НЕ пишет config.json. Единственный
 // writer config.json — RebuildConfigIfDirty. Update только обновляет
-// `outbounds.cache.json` свежими нодами из подписок.
+// per-source кэши `bin/subscriptions/<id>.raw` свежими нодами из подписок.
 //
 //	parser_config (из state.json)
 //	  → SubstituteParserConfigPlaceholders (resolve @vars)
