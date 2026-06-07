@@ -233,22 +233,34 @@ func getDevNodeStatus(devInst uint32) (status uint32, problem uint32, ok bool) {
 // Public API
 // ───────────────────────────────────────────────────────────────────────────
 
-// CleanupGhostSingboxTunAdapters scans Net-class devices, identifies phantom
-// singbox-tun WinTun adapters, and removes them. Returns the number of
-// adapters removed.
+// CleanupGhostSingboxTunAdapters scans Net-class devices and removes stale
+// singbox-tun WinTun adapters. Returns the number of adapters removed.
+//
+// mode GhostTunCleanupAggressive (default for callers): sing-box is confirmed
+// dead — remove every singbox-tun + Wintun match regardless of phantom /
+// DN_STARTED. Needed because Windows Stop uses taskkill: WinTun often never
+// sets CM_PROB_PHANTOM on Win7.
+//
+// mode GhostTunCleanupPhantomOnly: original SPEC 065 filters (phantom + not
+// DN_STARTED).
 //
 // On non-Win7 (Win8/10/11) this is a strict no-op: the bug doesn't exist
 // there, and we explicitly avoid touching SetupAPI.
 //
 // All errors are non-fatal and logged at Warn level. The cleanup must
 // never affect VPN stop behavior — return values exist purely for telemetry.
-func CleanupGhostSingboxTunAdapters() (removed int, err error) {
+func CleanupGhostSingboxTunAdapters(mode GhostTunCleanupMode) (removed int, err error) {
+	aggressive := bool(mode)
 	// Guard 1: OS version.
 	if !isWindows7() {
 		debuglog.DebugLog("ghost-tun cleanup: skipped (os=%s, not Win7)", cachedOSDesc)
 		return 0, nil
 	}
-	debuglog.InfoLog("ghost-tun cleanup: scanning (os=%s, Win7 detected)", cachedOSDesc)
+	if aggressive {
+		debuglog.WarnLog("ghost-tun cleanup: scanning aggressive (os=%s, Win7)", cachedOSDesc)
+	} else {
+		debuglog.WarnLog("ghost-tun cleanup: scanning phantom-only (os=%s, Win7)", cachedOSDesc)
+	}
 
 	// Enumerate Net-class devices including phantoms (flag = 0).
 	h, _, callErr := procSetupDiGetClassDevsW.Call(
@@ -287,13 +299,13 @@ func CleanupGhostSingboxTunAdapters() (removed int, err error) {
 			// ERROR_NO_MORE_ITEMS — clean end of enumeration.
 			break
 		}
-		index++
 		scanned++
 
 		// Filter 1: friendly name prefix.
 		name := getRegistryPropertyW(h, &devInfo, spdrpFriendlyName)
 		if !strings.HasPrefix(name, adapterNamePrefix) {
 			skipped++
+			index++
 			continue
 		}
 
@@ -302,29 +314,36 @@ func CleanupGhostSingboxTunAdapters() (removed int, err error) {
 		if !strings.EqualFold(service, wintunServiceName) {
 			debuglog.DebugLog("ghost-tun cleanup: skip name=%q reason=service-mismatch service=%q", name, service)
 			skipped++
+			index++
 			continue
 		}
 
-		// Filter 3: must be phantom AND not active.
 		status, problem, ok := getDevNodeStatus(devInfo.devInst)
-		if !ok {
-			debuglog.DebugLog("ghost-tun cleanup: skip name=%q reason=status-readback-failed", name)
-			skipped++
-			continue
-		}
-		if status&dnStarted != 0 {
-			debuglog.DebugLog("ghost-tun cleanup: skip name=%q reason=active(DN_STARTED) problem=%d", name, problem)
-			skipped++
-			continue
-		}
-		if problem != cmProbPhantom {
-			debuglog.DebugLog("ghost-tun cleanup: skip name=%q reason=not-phantom(problem=%d)", name, problem)
-			skipped++
-			continue
+		if !aggressive {
+			// Phantom-only mode (original SPEC 065).
+			if !ok {
+				debuglog.DebugLog("ghost-tun cleanup: skip name=%q reason=status-readback-failed", name)
+				skipped++
+				index++
+				continue
+			}
+			if status&dnStarted != 0 {
+				debuglog.DebugLog("ghost-tun cleanup: skip name=%q reason=active(DN_STARTED) problem=%d", name, problem)
+				skipped++
+				index++
+				continue
+			}
+			if problem != cmProbPhantom {
+				debuglog.DebugLog("ghost-tun cleanup: skip name=%q reason=not-phantom(problem=%d)", name, problem)
+				skipped++
+				index++
+				continue
+			}
+		} else if ok {
+			debuglog.DebugLog("ghost-tun cleanup: candidate name=%q status=0x%x problem=%d", name, status, problem)
 		}
 
-		// All guards passed — this is a singbox-tun WinTun phantom. Remove.
-		debuglog.InfoLog("ghost-tun cleanup: removing name=%q service=%q problem=%d", name, service, problem)
+		debuglog.WarnLog("ghost-tun cleanup: removing name=%q service=%q", name, service)
 		callRet, _, callErr := procSetupDiCallClassInstaller.Call(
 			uintptr(difRemove),
 			h,
@@ -337,16 +356,19 @@ func CleanupGhostSingboxTunAdapters() (removed int, err error) {
 			// in spamming the log if the launcher isn't elevated and
 			// can't fix anything anyway.
 			if errno, ok := callErr.(syscall.Errno); ok && errno == syscall.ERROR_ACCESS_DENIED {
-				debuglog.DebugLog("ghost-tun cleanup: DIF_REMOVE access-denied name=%q (launcher not elevated?)", name)
+				debuglog.WarnLog("ghost-tun cleanup: DIF_REMOVE access-denied name=%q (run launcher as Administrator on Win7?)", name)
 			} else {
 				debuglog.WarnLog("ghost-tun cleanup: DIF_REMOVE failed name=%q err=%v", name, callErr)
 			}
 			skipped++
+			index++
 			continue
 		}
 		removed++
+		// SetupAPI: after DIF_REMOVE the next device may shift into this
+		// index — do not increment so we don't skip it.
 	}
 
-	debuglog.InfoLog("ghost-tun cleanup: done scanned=%d removed=%d skipped=%d", scanned, removed, skipped)
+	debuglog.WarnLog("ghost-tun cleanup: done scanned=%d removed=%d skipped=%d", scanned, removed, skipped)
 	return removed, nil
 }

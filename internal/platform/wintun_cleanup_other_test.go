@@ -10,7 +10,7 @@ import "testing"
 // regression test for SPEC 065 §Out of scope: "не-Windows платформы
 // (полный no-op на macOS/Linux)".
 func TestCleanupGhostSingboxTunAdapters_NoopOnNonWindows(t *testing.T) {
-	removed, err := CleanupGhostSingboxTunAdapters()
+	removed, err := CleanupGhostSingboxTunAdapters(GhostTunCleanupAggressive)
 	if err != nil {
 		t.Fatalf("expected nil error on non-Windows, got %v", err)
 	}

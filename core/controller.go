@@ -613,6 +613,16 @@ func CheckIfSingBoxRunningAtStartUtil() {
 	ac.ProcessService.CheckIfRunningAtStart()
 }
 
+// CleanupStaleTunAtStartUtil runs Win7 ghost-TUN cleanup on launcher startup when
+// sing-box is not already running (SPEC 065).
+func CleanupStaleTunAtStartUtil() {
+	ac := GetController()
+	if ac == nil || ac.ProcessService == nil {
+		return
+	}
+	ac.ProcessService.CleanupStaleTunAtStart()
+}
+
 // CheckConfigFileExists checks if config.json exists and shows a warning if it doesn't
 func CheckConfigFileExists() {
 	ac := GetController()

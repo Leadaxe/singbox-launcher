@@ -344,6 +344,9 @@ func main() {
 	// Check if sing-box is running on startup and show a warning if it is.
 	core.CheckIfSingBoxRunningAtStartUtil()
 
+	// Win7: remove accumulated singbox-tun ghosts from prior sessions (SPEC 065).
+	core.CleanupStaleTunAtStartUtil()
+
 	// Use app.Run() instead of ShowAndRun() for windowless support
 	// This allows the app to keep running even when window is closed/hidden
 	// On macOS, this enables standard Dock behavior (applicationShouldHandleReopen)
