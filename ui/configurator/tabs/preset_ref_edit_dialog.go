@@ -89,14 +89,14 @@ func showEditPresetRefDialog(
 
 	isVarVisible := func(v *wizardtemplate.PresetVar) bool {
 		for _, ref := range v.If {
-			if !strings.EqualFold(getVarOrDefault(working, ref, tplPreset), "true") {
+			if !strings.EqualFold(getVarOrDefault(working, strings.TrimPrefix(ref, "@"), tplPreset), "true") {
 				return false
 			}
 		}
 		if len(v.IfOr) > 0 {
 			any := false
 			for _, ref := range v.IfOr {
-				if strings.EqualFold(getVarOrDefault(working, ref, tplPreset), "true") {
+				if strings.EqualFold(getVarOrDefault(working, strings.TrimPrefix(ref, "@"), tplPreset), "true") {
 					any = true
 					break
 				}

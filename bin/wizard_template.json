@@ -589,7 +589,7 @@
         "listen": "@proxy_in_listen",
         "listen_port": "@proxy_in_listen_port",
         "set_system_proxy": "@proxy_in_set_system_proxy",
-        "#if": {"and": ["@proxy_in_auth_enabled"], "value": {
+        "#if": {"and": ["@proxy_in_auth_enabled", {"@proxy_in_username": "#notEmpty"}], "value": {
           "users": [{
             "username": "@proxy_in_username",
             "password": "@proxy_in_password"

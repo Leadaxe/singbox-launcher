@@ -62,14 +62,14 @@ func presetRefSRSEntries(pr *wizardmodels.PresetRefState, tpl *wizardtemplate.Pr
 // Когда core/build/preset_expand.go вынесет evalIf в публичный API — заменить.
 func ifActiveForRuleSet(rs wizardtemplate.PresetRuleSet, vars map[string]string) bool {
 	for _, name := range rs.If {
-		if !strings.EqualFold(vars[name], "true") {
+		if !strings.EqualFold(vars[strings.TrimPrefix(name, "@")], "true") {
 			return false
 		}
 	}
 	if len(rs.IfOr) > 0 {
 		any := false
 		for _, name := range rs.IfOr {
-			if strings.EqualFold(vars[name], "true") {
+			if strings.EqualFold(vars[strings.TrimPrefix(name, "@")], "true") {
 				any = true
 				break
 			}

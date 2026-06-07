@@ -221,14 +221,14 @@ func collectActivePresetOutboundTags(model *wizardmodels.WizardModel) []string {
 // core/build.evalIf, продублировано чтобы UI не импортировал внутренний build.
 func evalPresetOutboundIf(ifList, ifOrList []string, varsMap map[string]string) bool {
 	for _, name := range ifList {
-		if !strings.EqualFold(varsMap[name], "true") {
+		if !strings.EqualFold(varsMap[strings.TrimPrefix(name, "@")], "true") {
 			return false
 		}
 	}
 	if len(ifOrList) > 0 {
 		anyTrue := false
 		for _, name := range ifOrList {
-			if strings.EqualFold(varsMap[name], "true") {
+			if strings.EqualFold(varsMap[strings.TrimPrefix(name, "@")], "true") {
 				anyTrue = true
 				break
 			}
