@@ -401,14 +401,28 @@ func CleanupGhostSingboxTunAdapters(mode GhostTunCleanupMode) (removed int, err 
 		// rejected all candidates because "Wintun Userspace Tunnel"
 		// doesn't start with "singbox-tun"). Confirmed by Win7 user log:
 		// scanned=15 removed=0 skipped=15.
+		//
+		// v0.9.9.2 follow-up: on a real Win7 user the registry export
+		// showed the WinTun adapters' NetConnectionID was the default
+		// Russian "Подключение по локальной сети N" — NOT "singbox-tunN"
+		// either. Windows apparently does not preserve the name passed
+		// to WintunCreateAdapter into NetConnectionID on Win7 (the
+		// "singbox-tunN" name visible in the Network Location dialog
+		// is a Network Location Awareness profile name derived from
+		// elsewhere). Phantom-only mode keeps the prefix check (best-
+		// effort idempotent for sources where NetConnectionID matches).
+		// Aggressive mode drops the name check entirely and relies on
+		// the service-name guard + DN_STARTED gate below.
 		name := getNetConnectionID(h, &devInfo)
-		if !strings.HasPrefix(name, adapterNamePrefix) {
+		if !aggressive && !strings.HasPrefix(name, adapterNamePrefix) {
 			skipped++
 			index++
 			continue
 		}
 
-		// Filter 2: driver service name.
+		// Filter 2: driver service name. Hard requirement in both modes
+		// — without this guard aggressive cleanup would touch WireGuard
+		// or any other non-WinTun network adapter, which is unsafe.
 		service := getRegistryPropertyW(h, &devInfo, spdrpService)
 		if !strings.EqualFold(service, wintunServiceName) {
 			debuglog.DebugLog("ghost-tun cleanup: skip name=%q reason=service-mismatch service=%q", name, service)
@@ -438,8 +452,27 @@ func CleanupGhostSingboxTunAdapters(mode GhostTunCleanupMode) (removed int, err 
 				index++
 				continue
 			}
-		} else if ok {
-			debuglog.DebugLog("ghost-tun cleanup: candidate name=%q status=0x%x problem=%d", name, status, problem)
+		} else {
+			// Aggressive mode (v0.9.9.2): we already enforced service ==
+			// "Wintun" above, so the only WinTun adapters that survive
+			// to here are this app's leftovers OR a currently-active
+			// adapter owned by another WinTun client (WireGuard etc).
+			// Skip the active one to avoid stealing a running tunnel.
+			// Phantom adapters from killed sing-box runs do NOT have
+			// DN_STARTED set, so they pass through to DIF_REMOVE.
+			if !ok {
+				debuglog.DebugLog("ghost-tun cleanup: skip aggressive reason=status-readback-failed name=%q", name)
+				skipped++
+				index++
+				continue
+			}
+			if status&dnStarted != 0 {
+				debuglog.DebugLog("ghost-tun cleanup: skip aggressive reason=active(DN_STARTED) name=%q", name)
+				skipped++
+				index++
+				continue
+			}
+			debuglog.DebugLog("ghost-tun cleanup: candidate aggressive name=%q status=0x%x problem=%d", name, status, problem)
 		}
 
 		debuglog.WarnLog("ghost-tun cleanup: removing name=%q service=%q", name, service)
