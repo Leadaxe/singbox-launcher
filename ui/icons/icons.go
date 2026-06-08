@@ -11,6 +11,7 @@ import (
 	_ "embed"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/theme"
 )
 
 //go:embed bolt.svg
@@ -22,3 +23,24 @@ var Bolt fyne.Resource = &fyne.StaticResource{
 	StaticName:    "bolt.svg",
 	StaticContent: boltSVG,
 }
+
+//go:embed telegram.svg
+var telegramSVG []byte
+
+// Telegram — blue paper-plane, for Telegram support links (t.me / tg://).
+// Kept as a StaticResource (NOT themed) so it stays Telegram-blue regardless
+// of the active theme's foreground color.
+var Telegram fyne.Resource = &fyne.StaticResource{
+	StaticName:    "telegram.svg",
+	StaticContent: telegramSVG,
+}
+
+//go:embed link.svg
+var linkSVG []byte
+
+// Link — generic chain/link icon for non-Telegram support / web-page links.
+// Themed (currentColor) so it inherits the active text color.
+var Link fyne.Resource = theme.NewThemedResource(&fyne.StaticResource{
+	StaticName:    "link.svg",
+	StaticContent: linkSVG,
+})

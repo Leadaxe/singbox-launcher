@@ -100,26 +100,26 @@ type ConnectionIssue struct {
 // router match. Bytes counters are deltas-from-last-snapshot for the
 // open/close events, *not* cumulative.
 type TrafficEvent struct {
-	TS             time.Time
-	Kind           EventKind
-	ConnID         string           // sing-box conn id; empty for events without one
-	ProcessPath    string           // canonical executable path; empty if unattributed
-	ProcessName    string           // short display name from Clash API metadata.process
-	Confidence     Confidence       // verified / inferred / unattributed
-	MatchedVia     string           // "router_log" / "prior_dns_10s" / "" — debug aid
-	Domain         string           // sniffed/resolved hostname; empty for hostless
-	CnameChain     []string         // accumulated CNAME chain ending in A-record IP
-	IP             string
-	Port           int
-	Network        string           // "tcp" / "udp"
-	OutboundChain  []string         // chains from Clash API; order is leaf→root
-	Rule           string           // matched router rule name (if any)
-	UpBytes        int64
-	DownBytes      int64
-	Duration       time.Duration    // only meaningful for *Close events
-	Issues         []ConnectionIssue
-	RawLogLine     string           // for diagnostics; not displayed by default
-	Backfilled     bool             // true if copied from pre-session rolling buffer
+	TS            time.Time
+	Kind          EventKind
+	ConnID        string     // sing-box conn id; empty for events without one
+	ProcessPath   string     // canonical executable path; empty if unattributed
+	ProcessName   string     // short display name from Clash API metadata.process
+	Confidence    Confidence // verified / inferred / unattributed
+	MatchedVia    string     // "router_log" / "prior_dns_10s" / "" — debug aid
+	Domain        string     // sniffed/resolved hostname; empty for hostless
+	CnameChain    []string   // accumulated CNAME chain ending in A-record IP
+	IP            string
+	Port          int
+	Network       string   // "tcp" / "udp"
+	OutboundChain []string // chains from Clash API; order is leaf→root
+	Rule          string   // matched router rule name (if any)
+	UpBytes       int64
+	DownBytes     int64
+	Duration      time.Duration // only meaningful for *Close events
+	Issues        []ConnectionIssue
+	RawLogLine    string // for diagnostics; not displayed by default
+	Backfilled    bool   // true if copied from pre-session rolling buffer
 }
 
 // HasIssue returns true if the event carries an issue of the given kind.

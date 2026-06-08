@@ -10,6 +10,7 @@ package build
 
 import (
 	"encoding/json"
+	"runtime"
 
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
@@ -150,14 +151,14 @@ func resolvePresetRouteRule(
 		return
 	}
 	pb := body.(*corestate.PresetBody)
-	frags, warns, ok := ExpandPreset(p, pb.Vars)
+	frags, warns, ok := ExpandPreset(p, pb.Vars, runtime.GOOS, runtime.GOARCH)
 	for _, w := range warns {
 		debuglog.WarnLog("route resolve: %s", w.String())
 	}
 	if !ok {
 		return
 	}
-	presetLabel := presetDisplayLabel(p)
+	presetLabel := p.DisplayLabel()
 
 	// RuleSets из preset.RuleSet (после ExpandPreset уже substituted + prefixed).
 	for _, rs := range frags.RuleSets {
@@ -190,19 +191,22 @@ func resolvePresetRouteRule(
 		emittedTags[tag] = true
 	}
 
-	// Routing rule. Cleanup dangling refs (если remote rule_set skipped).
-	if frags.RoutingRule != nil {
-		cleaned := cleanDanglingRuleSetInRule(frags.RoutingRule, emittedTags)
-		if cleaned != nil {
-			out.Rules = append(out.Rules, ResolvedRouteRule{
-				Body:        cleaned,
-				Source:      RouteSourcePreset,
-				PresetID:    p.ID,
-				PresetLabel: presetLabel,
-				Active:      true, // ExpandPreset уже отфильтровал по if/if_or
-				Enabled:     rule.Enabled,
-			})
+	// Routing rules. Cleanup dangling refs (если remote rule_set skipped).
+	// SPEC 067 Phase 9: каждая rule из frags.RoutingRules эмитится отдельной
+	// ResolvedRouteRule (in-order).
+	for _, rr := range frags.RoutingRules {
+		cleaned := cleanDanglingRuleSetInRule(rr, emittedTags)
+		if cleaned == nil {
+			continue
 		}
+		out.Rules = append(out.Rules, ResolvedRouteRule{
+			Body:        cleaned,
+			Source:      RouteSourcePreset,
+			PresetID:    p.ID,
+			PresetLabel: presetLabel,
+			Active:      true, // ExpandPreset уже отфильтровал по if/if_or
+			Enabled:     rule.Enabled,
+		})
 	}
 }
 

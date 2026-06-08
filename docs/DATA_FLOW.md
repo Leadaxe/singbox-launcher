@@ -17,16 +17,22 @@ launcher start
      │
      ▼
 core/template_migration.InvalidateTemplateIfStale(execDir)
-     │   compare RequiredTemplateRef vs cached marker
-     │   mismatch → unlink bin/wizard_template.json
+     │   compare Settings.LastTemplateLauncherVersion vs constants.AppVersion
+     │   stale → unlink bin/wizard_template.json (dev AppVersion — пропуск)
+     │   UI на следующем запуске показывает «Download Template»;
+     │   после скачки MarkTemplateInstalled пишет AppVersion в settings.json
      ▼
 extractEmbeddedTemplate (if file missing)
      │
      ▼
 core/template.LoadTemplateData(execDir)
      │   read JSON
+     │   ValidateWizardTemplate (включая #if construct и outer @-only — SPEC 067)
      │   ApplyParams(runtime.GOOS) → effective Config sections
-     │   substitute @vars defaults
+     │   SubstituteVarsInJSON(goos, goarch):
+     │     · resolves "@var" placeholders во всём JSON-дереве
+     │     · обрабатывает "#if" construct (map-spread + array-element),
+     │       runtime globals @runtime.platform / @runtime.arch — SPEC 067
      │   ParsePresets + filter platforms
      ▼
 model.TemplateData (immutable for session)
@@ -148,11 +154,22 @@ Save перезаписывает их в v6 layout.
 
 `state` + `template` → `bin/config.json` (sing-box-compatible).
 
+> **Single-writer invariant (ADR-070-4).** `config.json` has **exactly one writer**:
+> `AppController.RebuildConfigIfDirty` (`core/rebuild.go` → `atomicWriteConfig(ConfigPath, …)`).
+> `Start()` rebuilds before launching sing-box (pre-start hook, SPEC 068 dirty
+> markers); `Update()` auto-rebuilds on cache-refresh success; `RebuildConfigIfDirty`
+> noop-skips when clean and not forced. Neither `Start` nor `Update` writes
+> `config.json` directly. See [ARCHITECTURE.md §6.3 / §7](ARCHITECTURE.md).
+
 ```
 trigger: app start / config dirty / explicit rebuild
      │
      ▼
-core/build entry (BuildAndWriteConfig)
+core.AppController.RebuildConfigIfDirty  (sole config.json writer; noop if clean & not forced)
+     │   assembles BuildContext{Template, Vars, Cache, DNS, Route, Preset}
+     │   via config_service.buildContextFromState
+     ▼
+core/build entry (BuildConfig)  — pure function over BuildContext
      │
      ├─► ResolveDNS(state, template, vars)        — pure func
      │     walk state.dns_options.servers[] kind switch
@@ -163,17 +180,18 @@ core/build entry (BuildAndWriteConfig)
      │
      ├─► ResolveRoute(state, template, vars)      — pure func
      │     walk state.rules[] kind switch
-     │       preset → resolve через template.presets[id].rule (expand + tag prefix)
+     │       preset → resolve через template.presets[id].rules (expand + tag prefix)
      │       inline → emit body.match + outbound
      │       srs    → emit body.srs_url + outbound (downloaded .srs path)
      │
-     ├─► ResolveOutbounds(state, template)        — pure func (SPEC 058)
-     │     walk state.connections.outbounds[]
-     │     для каждой: lookup base by Ref
+     ├─► MergeOutboundUpdates(ob, template)       — pure func (SPEC 058)
+     │     per-entry resolver (UI preview / dialog Edit); build runtime
+     │     зовёт MergeOutboundUpdatesInPlace ниже на весь parserCfg
+     │     для каждой outbound entry: lookup base by Ref (resolveBaseBody)
      │       ref=""           → direct entry, body inline в state
      │       ref="#TEMPLATE#" → template.parser_config.outbounds[tag]
      │       ref=<preset_id>  → template.presets[id].outbounds (mode=add)
-     │     mergeOutboundUpdates(base, Updates[]) → merged body
+     │     applyUpdatesToBase(base, Updates[]) → merged body
      │       preset patches в rule order, USER patch (ref="#USER#") последним
      │     attach metadata: IsDirect / IsTemplate / IsPreset / HasUserPatch /
      │                      HasPresetUpdates / Required / PresetLabel
@@ -199,9 +217,9 @@ MergeDNSSection + MergeRouteSection + MergePresetsIntoRoute
 atomic write: bin/config.json
 ```
 
-**Resolver pattern** — `ResolveDNS` / `ResolveRoute` / `ResolveOutbounds`
-— pure funcs без I/O. UI render и build emit consume один и тот же
-resolved view → нет divergence между preview и финальным config.
+**Resolver pattern** — `ResolveDNS` / `ResolveRoute` (+ `MergeOutboundUpdates`
+для outbounds) — pure funcs без I/O. UI render и build emit consume один и
+тот же resolved view → нет divergence между preview и финальным config.
 
 **Headless vs UI paths.** В UI-сессии `CreateStateFromModel` уже sync'нул
 state перед Save, и build читает только. В headless path'ах
@@ -313,8 +331,9 @@ emit, а не stale snapshot.
 |--------|----------|
 | Что лежит в state.json, какие kind'ы, schema v6 | [WIZARD_STATE.md](WIZARD_STATE.md) |
 | Что лежит в wizard_template.json, presets / vars / required | [TEMPLATE_REFERENCE.md](TEMPLATE_REFERENCE.md) |
-| Туториал — как написать новый preset / template var | [CREATE_WIZARD_TEMPLATE.md](CREATE_WIZARD_TEMPLATE.md) |
-| Общая архитектура приложения (а не storage) | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Справочник по синтаксису — preset / template var | [WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md) |
+| Общая архитектура приложения (слои, события, ADR) | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Per-package / per-file инвентарь (по слоям L0–L7) | [ARCHITECTURE_PACKAGES.md](ARCHITECTURE_PACKAGES.md) |
 | Release notes v0.9.6 (терминология preset binding) | [release_notes/0-9-6.md](release_notes/0-9-6.md) |
 
 | Source SPEC | Что покрывает |
@@ -325,3 +344,4 @@ emit, а не stale snapshot.
 | SPECS/056-R-N-DNS_SCHEMA_REDESIGN | Flat `dns_options.servers/rules[]` kind discriminator + Resolver pattern |
 | SPECS/057-R-N-OUTBOUNDS_PRESET_BINDING | Outbound `Ref` + `Updates[]` schema + lifecycle Sync |
 | SPECS/058-R-N-STATE_AS_TEMPLATE_DIFF | State outbounds — thin refs (`#TEMPLATE#`/preset_id) + USER patch (`#USER#`); migration + auto-upgrade |
+| SPECS/067-F-N-TEMPLATE_EXPRESSIONS | `#if` construct (map-spread + array-element) + expression language predicates + runtime globals `@runtime.platform`/`@runtime.arch` + strict `@`-only var-ref в outer `if[]` |

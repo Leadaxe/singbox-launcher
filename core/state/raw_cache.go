@@ -131,53 +131,6 @@ func ReadRawBody(subsDir, id string) ([]byte, error) {
 // ErrRawNotFound — raw body для данного source id не существует на диске.
 var ErrRawNotFound = fmt.Errorf("state.raw_cache: raw body not found")
 
-// DeleteRawBody удаляет bin/subscriptions/<id>.raw, если он есть.
-// Отсутствие файла — не ошибка.
-func DeleteRawBody(subsDir, id string) error {
-	target, err := rawPath(subsDir, id)
-	if err != nil {
-		return err
-	}
-	if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("state.raw_cache: remove %s: %w", target, err)
-	}
-	return nil
-}
-
-// ListRawBodyIDs возвращает список id'ов всех .raw файлов в subsDir.
-// Если каталог не существует — возвращает пустой список без ошибки.
-func ListRawBodyIDs(subsDir string) ([]string, error) {
-	entries, err := os.ReadDir(subsDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("state.raw_cache: readdir %s: %w", subsDir, err)
-	}
-	out := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		// Игнорируем .tmp (мусор от crash mid-write).
-		if strings.HasSuffix(name, rawTmpSuffix) {
-			continue
-		}
-		if !strings.HasSuffix(name, rawSuffix) {
-			continue
-		}
-		id := strings.TrimSuffix(name, rawSuffix)
-		// Defensive: пропускаем файлы с невалидными именами
-		// (artefacts чужих процессов / corrupt FS).
-		if err := validateRawID(id); err != nil {
-			continue
-		}
-		out = append(out, id)
-	}
-	return out, nil
-}
-
 // DeleteOrphans удаляет .raw файлы, чьих id нет в knownIDs.
 // Используется для lazy GC: при каждом Update'е чистим файлы удалённых
 // source'ов. Возвращает список удалённых id (для логов/метрик).

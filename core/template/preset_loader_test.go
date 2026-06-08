@@ -27,11 +27,11 @@ func TestLoadPresets_MalformedJSON(t *testing.T) {
 func TestLoadPresets_ValidSimple(t *testing.T) {
 	raw := []byte(`[
 		{"id": "private-ips-direct", "label": "Private IPs direct",
-		 "rule": {"ip_is_private": true, "outbound": "direct-out"}},
+		 "rules": [{"ip_is_private": true, "outbound": "direct-out"}]},
 		{"id": "block-ads", "label": "Block ads",
 		 "vars": [{"name": "out", "type": "outbound", "default": "reject"}],
 		 "rule_set": [{"tag": "ads", "type": "remote", "url": "https://x/ads.srs"}],
-		 "rule": {"rule_set": "ads", "outbound": "@out"}}
+		 "rules": [{"rule_set": "ads", "outbound": "@out"}]}
 	]`)
 	ps, ws := LoadPresets(raw, nil)
 	if len(ps) != 2 {
@@ -47,8 +47,8 @@ func TestLoadPresets_ValidSimple(t *testing.T) {
 
 func TestLoadPresets_DuplicateID(t *testing.T) {
 	raw := []byte(`[
-		{"id": "dup", "label": "First",  "rule": {"outbound": "direct-out"}},
-		{"id": "dup", "label": "Second", "rule": {"outbound": "direct-out"}}
+		{"id": "dup", "label": "First",  "rules": [{"outbound": "direct-out"}]},
+		{"id": "dup", "label": "Second", "rules": [{"outbound": "direct-out"}]}
 	]`)
 	ps, ws := LoadPresets(raw, nil)
 	if len(ps) != 1 {
@@ -70,8 +70,8 @@ func TestLoadPresets_DuplicateID(t *testing.T) {
 
 func TestLoadPresets_InvalidIDFormat(t *testing.T) {
 	raw := []byte(`[
-		{"id": "Has Spaces", "label": "X", "rule": {}},
-		{"id": "good_one",   "label": "Y", "rule": {}}
+		{"id": "Has Spaces", "label": "X", "rules": [{}]},
+		{"id": "good_one",   "label": "Y", "rules": [{}]}
 	]`)
 	ps, ws := LoadPresets(raw, nil)
 	if len(ps) != 1 || ps[0].ID != "good_one" {
@@ -95,7 +95,7 @@ func TestLoadPresets_DuplicateRuleSetTag(t *testing.T) {
 			{"tag": "dup", "type": "inline", "rules": []},
 			{"tag": "dup", "type": "remote", "url": "https://x"}
 		 ],
-		 "rule": {"rule_set": "dup", "outbound": "direct-out"}}
+		 "rules": [{"rule_set": "dup", "outbound": "direct-out"}]}
 	]`)
 	ps, ws := LoadPresets(raw, nil)
 	if len(ps) != 0 {
@@ -116,7 +116,7 @@ func TestLoadPresets_DanglingRuleSetRef(t *testing.T) {
 	raw := []byte(`[
 		{"id": "dangling", "label": "X",
 		 "rule_set": [{"tag": "a", "type": "inline"}],
-		 "rule": {"rule_set": "nonexistent", "outbound": "direct-out"}}
+		 "rules": [{"rule_set": "nonexistent", "outbound": "direct-out"}]}
 	]`)
 	ps, ws := LoadPresets(raw, nil)
 	// Preset не skip'ается (dangling ref в expansion вычищается),
@@ -139,7 +139,7 @@ func TestLoadPresets_VarTypeUnknown(t *testing.T) {
 	raw := []byte(`[
 		{"id": "bad-type", "label": "X",
 		 "vars": [{"name": "x", "type": "fancy", "default": "y"}],
-		 "rule": {"outbound": "direct-out"}}
+		 "rules": [{"outbound": "direct-out"}]}
 	]`)
 	_, ws := LoadPresets(raw, nil)
 	hasUnknown := false
@@ -157,7 +157,7 @@ func TestLoadPresets_SelectOnNonDnsServer(t *testing.T) {
 	raw := []byte(`[
 		{"id": "bad-select", "label": "X",
 		 "vars": [{"name": "out", "type": "outbound", "default": "direct-out", "select": "local"}],
-		 "rule": {"outbound": "@out"}}
+		 "rules": [{"outbound": "@out"}]}
 	]`)
 	ps, ws := LoadPresets(raw, nil)
 	if len(ps) != 1 {
@@ -182,7 +182,7 @@ func TestLoadPresets_SelectInvalidValue(t *testing.T) {
 		{"id": "x", "label": "X",
 		 "vars": [{"name": "dns", "type": "dns_server", "default": "yandex_udp", "select": "fancy"}],
 		 "dns_servers": [{"tag": "yandex_udp", "type": "udp", "server": "77.88.8.7"}],
-		 "rule": {"outbound": "direct-out"}}
+		 "rules": [{"outbound": "direct-out"}]}
 	]`)
 	ps, ws := LoadPresets(raw, nil)
 	if len(ps) != 1 || ps[0].Vars[0].Select != "" {
@@ -205,7 +205,7 @@ func TestLoadPresets_SelectAndOptionsCollision(t *testing.T) {
 		 "vars": [{"name": "dns", "type": "dns_server", "default": "yandex_udp",
 		           "select": "local", "options": ["yandex_udp"]}],
 		 "dns_servers": [{"tag": "yandex_udp", "type": "udp", "server": "77.88.8.7"}],
-		 "rule": {"outbound": "direct-out"}}
+		 "rules": [{"outbound": "direct-out"}]}
 	]`)
 	ps, _ := LoadPresets(raw, nil)
 	if len(ps) != 1 || ps[0].Vars[0].Select != "" {
@@ -218,7 +218,7 @@ func TestLoadPresets_EnumDefaultNotInOptions(t *testing.T) {
 		{"id": "x", "label": "X",
 		 "vars": [{"name": "mode", "type": "enum", "default": "missing",
 		           "options": [{"title": "A", "value": "a"}, {"title": "B", "value": "b"}]}],
-		 "rule": {"outbound": "direct-out"}}
+		 "rules": [{"outbound": "direct-out"}]}
 	]`)
 	ps, ws := LoadPresets(raw, nil)
 	if len(ps) != 0 {
@@ -244,7 +244,7 @@ func TestLoadPresets_IfRefUnknownVar(t *testing.T) {
 			 "if": ["nonexistent"]}
 		 ],
 		 "dns_servers": [{"tag": "yandex_udp", "type": "udp", "server": "77.88.8.7"}],
-		 "rule": {"outbound": "@out"}}
+		 "rules": [{"outbound": "@out"}]}
 	]`)
 	_, ws := LoadPresets(raw, nil)
 	hasIfRef := false
@@ -267,7 +267,7 @@ func TestLoadPresets_IfRefNonBool(t *testing.T) {
 			 "if": ["out"]}
 		 ],
 		 "dns_servers": [{"tag": "yandex_udp", "type": "udp", "server": "77.88.8.7"}],
-		 "rule": {"outbound": "@out"}}
+		 "rules": [{"outbound": "@out"}]}
 	]`)
 	_, ws := LoadPresets(raw, nil)
 	hasNonBool := false
@@ -285,7 +285,7 @@ func TestLoadPresets_VarShadowsGlobal(t *testing.T) {
 	raw := []byte(`[
 		{"id": "x", "label": "X",
 		 "vars": [{"name": "cert_store", "type": "outbound", "default": "direct-out"}],
-		 "rule": {"outbound": "@cert_store"}}
+		 "rules": [{"outbound": "@cert_store"}]}
 	]`)
 	globals := map[string]bool{"cert_store": true}
 	ps, ws := LoadPresets(raw, globals)
@@ -337,7 +337,7 @@ func TestLoadPresets_RuDirectClean(t *testing.T) {
 			 "server_port": 443, "path": "/dns-query", "detour": "@out",
 			 "if": ["use_dns_override"]}
 		],
-		"rule":     {"rule_set": ["ru-domains","ru-services","geoip-ru"], "outbound": "@out"},
+		"rules": [{"rule_set": ["ru-domains","ru-services","geoip-ru"], "outbound": "@out"}],
 		"dns_rule": {"rule_set": ["ru-domains","ru-services"], "server": "@dns_server",
 		             "if": ["use_dns_override"]}
 	}]`)

@@ -12,7 +12,8 @@ package platform
 // CleanupGhostSingboxTunAdapters — no-op on non-Windows platforms.
 //
 // Mirrors the Windows signature so callers can invoke it unconditionally
-// without runtime.GOOS branching.
-func CleanupGhostSingboxTunAdapters() (removed int, err error) {
+// without runtime.GOOS branching. mode is ignored on !windows.
+func CleanupGhostSingboxTunAdapters(mode GhostTunCleanupMode) (removed int, err error) {
+	_ = mode
 	return 0, nil
 }

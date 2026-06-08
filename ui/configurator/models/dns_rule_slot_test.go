@@ -66,7 +66,7 @@ func TestReconcileDNSRuleOrder_DropsStaleSlots(t *testing.T) {
 		PresetRefs: []*PresetRefState{{Ref: "p1"}},
 		DNSRuleOrder: []DNSRuleSlot{
 			{Kind: DNSSlotKindUser, Index: 0},
-			{Kind: DNSSlotKindUser, Index: 99},     // stale — past end
+			{Kind: DNSSlotKindUser, Index: 99}, // stale — past end
 			{Kind: DNSSlotKindPresetRef, Index: 0},
 			{Kind: DNSSlotKindPresetRef, Index: 5}, // stale
 		},

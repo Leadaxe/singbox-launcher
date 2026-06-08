@@ -12,6 +12,8 @@
 package tabs
 
 import (
+	"runtime"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
@@ -136,12 +138,10 @@ func buildSingleDNSUserRuleRow(
 		downBtn.Disable()
 	}
 
-	leftLead := container.NewHBox(upBtn, downBtn, fynewidget.CheckLeadingWrap(enableCh))
-	right := container.NewHBox(editBtn, delBtn)
-	rowInner := container.NewBorder(nil, nil, leftLead, right, label)
-	row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
-	row.WireTooltipLabelHover(label)
-	dnsRulesBox.Add(row)
+	// Shared row scaffolding (see row_scaffold.go).
+	leftLead := buildRowLeftLead(upBtn, downBtn, enableCh)
+	right := buildRowEditDelCluster(editBtn, delBtn)
+	row = finalizeRow(dnsRulesBox, leftLead, right, label, label)
 }
 
 // buildSingleDNSPresetRuleRow — один tile для preset-ref DNS rule.
@@ -184,7 +184,7 @@ func buildSingleDNSPresetRuleRow(
 	labelText := "🔗 " + presetLabel
 
 	// Resolve dns_rule body для tooltip + View JSON.
-	frags, _, ok := build.ExpandPreset(tplPreset, pr.Vars)
+	frags, _, ok := build.ExpandPreset(tplPreset, pr.Vars, runtime.GOOS, runtime.GOARCH)
 	var ruleBody map[string]interface{}
 	if ok && frags.DNSRule != nil {
 		ruleBody = frags.DNSRule
@@ -239,12 +239,10 @@ func buildSingleDNSPresetRuleRow(
 		downBtn.Disable()
 	}
 
-	leftLead := container.NewHBox(upBtn, downBtn, fynewidget.CheckLeadingWrap(enableCh))
+	// Shared row scaffolding (see row_scaffold.go). View-only row: no edit/del.
+	leftLead := buildRowLeftLead(upBtn, downBtn, enableCh)
 	right := container.NewHBox(viewBtn)
-	rowInner := container.NewBorder(nil, nil, leftLead, right, titleLabel)
-	row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
-	row.WireTooltipLabelHover(titleLabel)
-	dnsRulesBox.Add(row)
+	row = finalizeRow(dnsRulesBox, leftLead, right, titleLabel, titleLabel)
 }
 
 // moveDNSSlotUp / moveDNSSlotDown — swap slots в DNSRuleOrder. Refresh

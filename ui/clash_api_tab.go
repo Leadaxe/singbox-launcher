@@ -14,7 +14,6 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -23,7 +22,6 @@ import (
 	"singbox-launcher/api"
 	"singbox-launcher/core"
 	"singbox-launcher/core/config"
-	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
@@ -31,83 +29,6 @@ import (
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/textnorm"
 )
-
-// serversListRowScrollbarGutterWidth — отступ справа внутри каждой строки списка прокси (после кнопок),
-// чтобы полоса прокрутки списка не наезжала на Ping / Switch (а не поле снаружи скролла).
-const serversListRowScrollbarGutterWidth = 10
-
-// keyModifiers returns held keyboard modifiers (desktop); 0 on mobile or if driver has no support.
-func keyModifiers() fyne.KeyModifier {
-	d, ok := fyne.CurrentApp().Driver().(desktop.Driver)
-	if !ok {
-		return 0
-	}
-	return d.CurrentKeyModifiers()
-}
-
-// clashAPITestMaxAttempts / clashAPITestRetryInterval — повторы GET /version при проверке Clash API:
-// диалог об ошибке только после исчерпания попыток (см. onTestAPIConnection).
-const (
-	clashAPITestMaxAttempts   = 5
-	clashAPITestRetryInterval = 5 * time.Second
-)
-
-var pingAllConcurrencyOptions = []string{"1", "5", "10", "20", "50", "100"}
-
-// reorderWithPinned moves special proxies to the top of the list while
-// preserving relative order of the rest:
-//   - "direct-out" (if present)
-//   - currently active proxy (if set and different from direct-out)
-func reorderWithPinned(ac *core.AppController, list []api.ProxyInfo) []api.ProxyInfo {
-	if len(list) == 0 {
-		return list
-	}
-	const directName = "direct-out"
-	activeName := ac.GetActiveProxyName()
-
-	hasDirect := false
-	hasActive := false
-	for i := range list {
-		if list[i].Name == directName {
-			hasDirect = true
-		}
-		if activeName != "" && list[i].Name == activeName {
-			hasActive = true
-		}
-	}
-	if !hasDirect && (!hasActive || activeName == "") {
-		return list
-	}
-
-	result := make([]api.ProxyInfo, 0, len(list))
-	used := make(map[string]struct{}, 2)
-
-	if hasDirect {
-		for i := range list {
-			if list[i].Name == directName {
-				result = append(result, list[i])
-				used[directName] = struct{}{}
-				break
-			}
-		}
-	}
-	if hasActive && activeName != directName {
-		for i := range list {
-			if list[i].Name == activeName {
-				result = append(result, list[i])
-				used[activeName] = struct{}{}
-				break
-			}
-		}
-	}
-	for i := range list {
-		if _, ok := used[list[i].Name]; ok {
-			continue
-		}
-		result = append(result, list[i])
-	}
-	return result
-}
 
 // CreateClashAPITab creates and returns the content for the "Clash API" tab.
 func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
@@ -1342,81 +1263,4 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	)
 
 	return contentContainer
-}
-
-// proxyClashTypeSkippedForShareExport skips selector/urltest/direct (routing outbounds), not leaf share links.
-func proxyClashTypeSkippedForShareExport(p api.ProxyInfo) bool {
-	switch strings.ToLower(strings.TrimSpace(p.ClashType)) {
-	case "selector", "urltest", "direct":
-		return true
-	default:
-		return false
-	}
-}
-
-// serversProxyContextMenu is the ПКМ menu for one proxy row: type line + copy link actions.
-func serversProxyContextMenu(ac *core.AppController, status *widget.Label, win fyne.Window, proxy api.ProxyInfo) *fyne.Menu {
-	hint := proxy.ContextMenuTypeLine(locale.T("servers.menu_context_type_unknown"))
-	items := []*fyne.MenuItem{
-		fyne.NewMenuItem(hint, nil),
-		fyne.NewMenuItem(locale.T("servers.menu_copy_server_link"), func() {
-			serversRunCopyShareURIToClipboard(ac, status, win, proxy.Name)
-		}),
-	}
-	if ac != nil && ac.FileService != nil {
-		if detourTag, err := config.GetDetourTagForOutboundTag(ac.FileService.ConfigPath, proxy.Name); err == nil && detourTag != "" {
-			items = append(items, fyne.NewMenuItem(locale.T("servers.menu_copy_jump_server_link"), func() {
-				serversRunCopyJumpShareURIToClipboard(ac, status, win, proxy.Name)
-			}))
-		}
-	}
-	return fyne.NewMenu("", items...)
-}
-
-func serversRunCopyShareURIToClipboard(ac *core.AppController, status *widget.Label, win fyne.Window, tag string) {
-	cfgPath := ac.FileService.ConfigPath
-	go func() {
-		fyne.Do(func() {
-			status.SetText(locale.T("servers.copy_link_resolving"))
-		})
-		line, err := config.ShareMainURIForOutboundTag(cfgPath, tag)
-		fyne.Do(func() {
-			if err != nil {
-				if errors.Is(err, subscription.ErrShareURINotSupported) {
-					ShowErrorText(win, locale.T("app.tab.servers"), locale.T("servers.copy_link_not_supported"))
-				} else {
-					ShowError(win, err)
-				}
-				return
-			}
-			if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
-				app.Clipboard().SetContent(line)
-			}
-			status.SetText(locale.T("servers.copy_link_done"))
-		})
-	}()
-}
-
-func serversRunCopyJumpShareURIToClipboard(ac *core.AppController, status *widget.Label, win fyne.Window, tag string) {
-	cfgPath := ac.FileService.ConfigPath
-	go func() {
-		fyne.Do(func() {
-			status.SetText(locale.T("servers.copy_jump_link_resolving"))
-		})
-		line, err := config.ShareJumpURIForOutboundTag(cfgPath, tag)
-		fyne.Do(func() {
-			if err != nil {
-				if errors.Is(err, subscription.ErrShareURINotSupported) {
-					ShowErrorText(win, locale.T("app.tab.servers"), locale.T("servers.copy_link_not_supported"))
-				} else {
-					ShowError(win, err)
-				}
-				return
-			}
-			if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
-				app.Clipboard().SetContent(line)
-			}
-			status.SetText(locale.T("servers.copy_jump_link_done"))
-		})
-	}()
 }

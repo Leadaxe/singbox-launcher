@@ -12,6 +12,7 @@ package tabs
 import (
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -88,14 +89,14 @@ func showEditPresetRefDialog(
 
 	isVarVisible := func(v *wizardtemplate.PresetVar) bool {
 		for _, ref := range v.If {
-			if !strings.EqualFold(getVarOrDefault(working, ref, tplPreset), "true") {
+			if !strings.EqualFold(getVarOrDefault(working, strings.TrimPrefix(ref, "@"), tplPreset), "true") {
 				return false
 			}
 		}
 		if len(v.IfOr) > 0 {
 			any := false
 			for _, ref := range v.IfOr {
-				if strings.EqualFold(getVarOrDefault(working, ref, tplPreset), "true") {
+				if strings.EqualFold(getVarOrDefault(working, strings.TrimPrefix(ref, "@"), tplPreset), "true") {
 					any = true
 					break
 				}
@@ -412,7 +413,7 @@ func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]strin
 			vars[v.Name] = v.Default
 		}
 	}
-	frags, warns, ok := build.ExpandPreset(tpl, vars)
+	frags, warns, ok := build.ExpandPreset(tpl, vars, runtime.GOOS, runtime.GOARCH)
 	if !ok {
 		return "// preset expansion failed:\n// " + warningsAsText(warns)
 	}
@@ -420,8 +421,14 @@ func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]strin
 	if len(frags.RuleSets) > 0 {
 		preview["rule_set"] = frags.RuleSets
 	}
-	if frags.RoutingRule != nil {
-		preview["rule"] = frags.RoutingRule
+	if len(frags.RoutingRules) > 0 {
+		// SPEC 067 Phase 9: preset.rules — slice. Single rule → preview as
+		// object (back-compat for display); multi-rule → array.
+		if len(frags.RoutingRules) == 1 {
+			preview["rule"] = frags.RoutingRules[0]
+		} else {
+			preview["rules"] = frags.RoutingRules
+		}
 	}
 	if frags.DNSRule != nil {
 		preview["dns_rule"] = frags.DNSRule

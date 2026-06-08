@@ -31,6 +31,7 @@ package debugapi
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -371,17 +372,14 @@ func decodeJSONBody(r *http.Request, dst any) error {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
-		// Empty body is acceptable for endpoints with no required fields.
-		if errors.Is(err, errEmptyBody{}) || strings.Contains(err.Error(), "EOF") {
+		// A genuinely empty body (io.EOF on the first token) is acceptable for
+		// endpoints with no required fields. A *truncated* body surfaces as
+		// io.ErrUnexpectedEOF and must NOT be swallowed — otherwise a cut-off
+		// PATCH /state/dns would be treated as {} and clear the section.
+		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		return err
 	}
 	return nil
 }
-
-// errEmptyBody — placeholder for the io.EOF check above (kept as a typed
-// sentinel so a future refactor can switch on it).
-type errEmptyBody struct{}
-
-func (errEmptyBody) Error() string { return "empty body" }

@@ -21,6 +21,7 @@
 package build
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -39,9 +40,13 @@ type PresetFragments struct {
 	// Пустой если все элементы preset.rule_set имели if=false.
 	RuleSets []map[string]interface{}
 
-	// RoutingRule — routing rule (preset.rule после substitute и prefix).
-	// nil если rule имеет if=false или после dangling-cleanup стал пустым.
-	RoutingRule map[string]interface{}
+	// RoutingRules — routing rules (preset.rules после substitute и prefix).
+	// Каждая entry эмитится в порядке исходного списка. Empty slice если все
+	// rules имеют if=false или после dangling-cleanup стали пустыми.
+	//
+	// SPEC 067 Phase 9: было одиночное RoutingRule, теперь slice — соответствует
+	// Preset.Rules []map (multi-rule presets как split-all-traffic).
+	RoutingRules []map[string]interface{}
 
 	// DNSRule — dns rule (preset.dns_rule). nil если нет / if=false / dangling.
 	DNSRule map[string]interface{}
@@ -66,10 +71,13 @@ func (w ExpandWarning) String() string {
 // userVars — значения переменных из state.rule.body.vars (только diff от
 // default'ов; пустые / отсутствующие резолвятся через template.preset.vars[].default).
 //
+// goos / goarch — для runtime globals @runtime.platform / @runtime.arch в #if predicates
+// (SPEC 067). Callers передают runtime.GOOS / runtime.GOARCH; тесты — fakes.
+//
 // Возвращает (fragments, warnings, ok). ok=false если preset нельзя раскрыть
 // (например unresolved @var) — в этом случае fragments частично заполнен,
 // но caller должен пропустить preset целиком.
-func ExpandPreset(preset *template.Preset, userVars map[string]string) (*PresetFragments, []ExpandWarning, bool) {
+func ExpandPreset(preset *template.Preset, userVars map[string]string, goos, goarch string) (*PresetFragments, []ExpandWarning, bool) {
 	if preset == nil {
 		return nil, nil, false
 	}
@@ -109,7 +117,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string) (*PresetF
 				fmt.Sprintf("deep copy rule_set %q: %v", rs.Tag, err)})
 			continue
 		}
-		substituted, ok := substituteAny(raw, varsMap)
+		substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, goos, goarch)
 		if !ok {
 			warnings = append(warnings, ExpandWarning{preset.ID,
 				fmt.Sprintf("unresolved @var in rule_set %q", rs.Tag)})
@@ -130,36 +138,46 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string) (*PresetF
 		frags.RuleSets = append(frags.RuleSets, m)
 	}
 
-	// === 4. Resolve routing rule ===
-	if preset.Rule != nil {
-		ruleIf, ruleIfOr := extractIfFromMap(preset.Rule)
-		if evalIf(ruleIf, ruleIfOr, varsMap) {
-			raw, err := deepCopyMap(preset.Rule)
-			if err != nil {
-				warnings = append(warnings, ExpandWarning{preset.ID,
-					fmt.Sprintf("deep copy rule: %v", err)})
-			} else {
-				substituted, ok := substituteAny(raw, varsMap)
-				if !ok {
-					warnings = append(warnings, ExpandWarning{preset.ID, "unresolved @var in rule"})
-					return nil, warnings, false
-				}
-				m, _ := substituted.(map[string]interface{})
-				delete(m, "if")
-				delete(m, "if_or")
-				// Rewrite rule_set refs: local → prefixed, filter dangling.
-				rewriteRuleSetRefs(m, preset.ID, emittedTags)
-				// Apply outbound sentinels (reject/drop) — shared util с UI.
-				if outbound, ok := m["outbound"].(string); ok {
-					m = outboundutil.ApplyOutboundToRule(m, outbound)
-				}
-				if !isRuleEmpty(m, emittedTags) {
-					frags.RoutingRule = m
-				} else {
-					warnings = append(warnings, ExpandWarning{preset.ID,
-						"routing rule dropped (no valid rule_set refs after if-filter)"})
-				}
-			}
+	// === 4. Resolve routing rules ===
+	// SPEC 067 Phase 9: preset.Rules — slice. Каждая rule имеет свой `if`/`if_or`
+	// gate. Эмитятся в порядке исходного списка.
+	for idx, ruleMap := range preset.Rules {
+		if ruleMap == nil {
+			continue
+		}
+		ruleIf, ruleIfOr := extractIfFromMap(ruleMap)
+		if !evalIf(ruleIf, ruleIfOr, varsMap) {
+			continue
+		}
+		raw, err := deepCopyMap(ruleMap)
+		if err != nil {
+			warnings = append(warnings, ExpandWarning{preset.ID,
+				fmt.Sprintf("deep copy rules[%d]: %v", idx, err)})
+			continue
+		}
+		substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, goos, goarch)
+		if !ok {
+			warnings = append(warnings, ExpandWarning{preset.ID,
+				fmt.Sprintf("unresolved @var in rules[%d]", idx)})
+			return nil, warnings, false
+		}
+		m, _ := substituted.(map[string]interface{})
+		if m == nil {
+			continue
+		}
+		delete(m, "if")
+		delete(m, "if_or")
+		// Rewrite rule_set refs: local → prefixed, filter dangling.
+		rewriteRuleSetRefs(m, preset.ID, emittedTags)
+		// Apply outbound sentinels (reject/drop) — shared util с UI.
+		if outbound, ok := m["outbound"].(string); ok {
+			m = outboundutil.ApplyOutboundToRule(m, outbound)
+		}
+		if !isRuleEmpty(m, emittedTags) {
+			frags.RoutingRules = append(frags.RoutingRules, m)
+		} else {
+			warnings = append(warnings, ExpandWarning{preset.ID,
+				fmt.Sprintf("rules[%d] dropped (no valid rule_set refs after if-filter)", idx)})
 		}
 	}
 
@@ -172,7 +190,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string) (*PresetF
 				warnings = append(warnings, ExpandWarning{preset.ID,
 					fmt.Sprintf("deep copy dns_rule: %v", err)})
 			} else {
-				substituted, ok := substituteAny(raw, varsMap)
+				substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, goos, goarch)
 				if !ok {
 					warnings = append(warnings, ExpandWarning{preset.ID, "unresolved @var in dns_rule"})
 					return nil, warnings, false
@@ -213,7 +231,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string) (*PresetF
 				fmt.Sprintf("deep copy dns_server %q: %v", ds.Tag, err)})
 			continue
 		}
-		substituted, ok := substituteAny(raw, varsMap)
+		substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, goos, goarch)
 		if !ok {
 			warnings = append(warnings, ExpandWarning{preset.ID,
 				fmt.Sprintf("unresolved @var in dns_server %q", ds.Tag)})
@@ -254,25 +272,15 @@ func filterActiveVars(vars []template.PresetVar, varsMap map[string]string) map[
 // Сам факт «var истинна» = varsMap[name] == "true" (case-insensitive).
 //
 // Пустые ifList+ifOrList → true (фрагмент всегда активен).
+//
+// SPEC 067 Phase 3: канонический формат имени — "@var" (loader validation требует
+// `@`-префикс). Префикс strip'ается перед lookup; bare имена (legacy) тоже
+// работают — но валидатор их отвергает на load.
+// evalIf — boolean if/if_or evaluation. Single source of truth is
+// evalIfWithReason (resolve_dns.go); evalIf just drops the reason string.
 func evalIf(ifList, ifOrList []string, varsMap map[string]string) bool {
-	for _, name := range ifList {
-		if !strings.EqualFold(varsMap[name], "true") {
-			return false
-		}
-	}
-	if len(ifOrList) > 0 {
-		anyTrue := false
-		for _, name := range ifOrList {
-			if strings.EqualFold(varsMap[name], "true") {
-				anyTrue = true
-				break
-			}
-		}
-		if !anyTrue {
-			return false
-		}
-	}
-	return true
+	ok, _ := evalIfWithReason(ifList, ifOrList, varsMap)
+	return ok
 }
 
 // extractIfFromMap — достаёт if/if_or из map[string]interface{} (для rule/dns_rule).
@@ -294,51 +302,105 @@ func extractIfFromMap(m map[string]interface{}) (ifList, ifOrList []string) {
 	return ifList, ifOrList
 }
 
-// substituteAny рекурсивно заменяет строки `@name` на varsMap[name].
-// Возвращает (result, ok). ok=false если найдена строка `@name` для name,
-// которого нет в varsMap (unresolved → skip preset).
+// substitutePresetBody — SPEC 067 Phase 8: единый substitute path для preset
+// bodies через template.SubstituteVarsInJSONStrict. Заменил substituteAny —
+// устаревший «тупой текстовый» substitute path, не знающий о #if/predicates.
 //
-// Тупой текстовый замен: только полное равенство "@name". Embed'ы в подстроку
-// типа "prefix@name" не поддерживаются (YAGNI).
-func substituteAny(obj interface{}, vars map[string]string) (interface{}, bool) {
-	switch v := obj.(type) {
-	case string:
-		if !strings.HasPrefix(v, "@") {
-			return v, true
-		}
-		name := v[1:]
-		if name == "" {
-			return v, true
-		}
-		val, exists := vars[name]
-		if !exists {
-			return nil, false
-		}
-		return val, true
-
-	case map[string]interface{}:
-		for k, val := range v {
-			rep, ok := substituteAny(val, vars)
-			if !ok {
-				return nil, false
-			}
-			v[k] = rep
-		}
-		return v, true
-
-	case []interface{}:
-		for i, val := range v {
-			rep, ok := substituteAny(val, vars)
-			if !ok {
-				return nil, false
-			}
-			v[i] = rep
-		}
-		return v, true
-
-	default:
-		return obj, true
+// raw — preset fragment (map / slice / scalar — типичные decoded JSON shapes).
+// presetVars — описание preset.Vars (для varTypes map).
+// varsMap — varsMap{name: scalar string} после filterActiveVars.
+//
+// Возвращает (substituted, ok). ok=false если в дереве были unresolved @var,
+// либо если marshal/unmarshal сломался — caller должен пропустить preset
+// целиком (legacy substituteAny semantics).
+//
+// goos / goarch — для @runtime.platform / @runtime.arch globals в #if predicates.
+func substitutePresetBody(raw interface{}, presetVars []template.PresetVar, varsMap map[string]string, goos, goarch string) (interface{}, bool) {
+	if raw == nil {
+		return nil, true
 	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return nil, false
+	}
+	templateVars := presetVarsToTemplateVars(presetVars)
+	resolved := varsMapToResolved(varsMap, presetVars)
+	out, _, err := template.SubstituteVarsInJSONStrict(data, templateVars, resolved, goos, goarch)
+	if err != nil {
+		// UnresolvedVarError → ok=false (callers warn + skip preset).
+		return nil, false
+	}
+	// Decode back via UseNumber to preserve int precision (substitute walker
+	// already uses UseNumber internally; here we round-trip via json.Decoder
+	// to match that behavior).
+	dec := json.NewDecoder(bytes.NewReader(out))
+	dec.UseNumber()
+	var result interface{}
+	if err := dec.Decode(&result); err != nil {
+		return nil, false
+	}
+	return result, true
+}
+
+// presetVarsToTemplateVars — converts PresetVar list to TemplateVar list,
+// preserving Name and Type so the walker can apply type-based semantics
+// (#notEmpty, text_list → list, etc.).
+func presetVarsToTemplateVars(vars []template.PresetVar) []template.TemplateVar {
+	if len(vars) == 0 {
+		return nil
+	}
+	out := make([]template.TemplateVar, 0, len(vars))
+	for _, v := range vars {
+		out = append(out, template.TemplateVar{
+			Name: v.Name,
+			Type: v.Type,
+			If:   v.If,
+			IfOr: v.IfOr,
+		})
+	}
+	return out
+}
+
+// varsMapToResolved — adapt preset varsMap (name → scalar string) into the
+// ResolvedVar form SubstituteVarsInJSON expects. For text_list type, the scalar
+// is parsed into r.List (comma/newline-split; mirrors what loader/state does
+// for text_list values stored as strings).
+//
+// Preset vars don't natively store list values — preset.Default is a string
+// regardless of type — but text_list values arriving via state may be
+// comma-separated. We split on commas; if there are no commas, single-element
+// list.
+func varsMapToResolved(varsMap map[string]string, presetVars []template.PresetVar) map[string]template.ResolvedVar {
+	typeByName := make(map[string]string, len(presetVars))
+	for _, v := range presetVars {
+		typeByName[v.Name] = v.Type
+	}
+	out := make(map[string]template.ResolvedVar, len(varsMap))
+	for name, scalar := range varsMap {
+		rv := template.ResolvedVar{Scalar: scalar}
+		if typeByName[name] == "text_list" {
+			rv.List = splitTextList(scalar)
+		}
+		out[name] = rv
+	}
+	return out
+}
+
+// splitTextList — split text_list scalar on commas (trimmed). Empty input →
+// empty list (not nil — distinguish "absent" from "explicitly empty list").
+func splitTextList(scalar string) []string {
+	s := strings.TrimSpace(scalar)
+	if s == "" {
+		return []string{}
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // rewriteRuleSetRefs — переписывает rule_set refs:
@@ -418,10 +480,6 @@ func isDNSRuleEmpty(m map[string]interface{}, _ map[string]bool) bool {
 	}
 	return matchFields == 0
 }
-
-// collectConsumedBundledDNSTags — УДАЛЕНА в SPEC 056-R-N follow-up.
-// Consumption-filter заменён per-server enable toggle в state.DNS.Servers
-// (см. ResolveDNS + MergePresetsIntoDNS).
 
 // deepCopy — JSON round-trip копия любой структуры.
 func deepCopy(in interface{}) (interface{}, error) {

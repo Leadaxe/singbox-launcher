@@ -7,7 +7,7 @@
 // Каждый таб визарда имеет свою отдельную ответственность и логику UI.
 //
 // Используется в:
-//   - wizard.go - при создании окна визарда, вызывается CreateSourceTab(presenter)
+//   - configurator.go - при создании окна конфигуратора вызывается CreateSourcesTab(presenter)
 //
 // Взаимодействует с:
 //   - presenter - все действия пользователя (нажатия кнопок, ввод текста) обрабатываются через методы presenter
@@ -31,7 +31,6 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
-	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
@@ -120,7 +119,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	urlEntrySizeRect.SetMinSize(fyne.NewSize(0, 60)) // Width 900px, height ~3 lines (approx 20px per line)
 	// Wrap in Max container with Rectangle to fix size
 	// Scroll container will be limited by this size and show scrollbars when content doesn't fit
-	urlEntryWithSize := container.NewMax(
+	urlEntryWithSize := container.NewStack(
 		urlEntrySizeRect,
 		urlEntryScroll,
 	)
@@ -171,7 +170,6 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 				srcPtr := &m.Sources[sourceIndex]
 				src := *srcPtr
-				_ = subscription.IsSubscriptionURL // keep import used by classifyInputLines elsewhere
 
 				isSubscription := src.Type == corestate.SourceTypeSubscription
 				meta := src.Meta
@@ -255,9 +253,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// и так читается из URL (https://) vs URI (vless://, wireguard://);
 				// в Edit-окне есть Overview tab с явным "Type: Subscription/Server".
 				var leftBlock fyne.CanvasObject
+				var prefixLabel *ttwidget.Label
 				if pfx := strings.TrimSpace(tagPrefix); pfx != "" {
 					pfxShow := wizardutils.TruncateStringEllipsis(pfx, 24, "...")
-					prefixLabel := ttwidget.NewLabel(pfxShow)
+					prefixLabel = ttwidget.NewLabel(pfxShow)
 					prefixLabel.Importance = widget.MediumImportance
 					if pfxShow != pfx {
 						prefixLabel.SetToolTip(pfx)
@@ -266,7 +265,6 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				}
 				_ = tagPostfix
 				var rowCenter fyne.CanvasObject = container.NewBorder(nil, nil, leftBlock, nil, sourceLabel)
-				var prefixLabel *ttwidget.Label
 
 				// Enable/disable toggle — persists to Source.Enabled.
 				// Dim the label importance so disabled rows are visibly inactive.
@@ -284,6 +282,11 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						return
 					}
 					m.Sources[sourceIndex].Enabled = enabled
+					// Toggling a source is a savable change. UpdateParserConfig
+					// below suppresses the text widget's OnChanged MarkAsChanged
+					// (see UpdateParserConfig), so mark dirty explicitly — else
+					// the toggle is silently lost on close.
+					presenter.MarkAsChanged()
 					m.RefreshDerivedParserConfig()
 					m.PreviewNeedsParse = true
 					wizardbusiness.InvalidatePreviewCache(m)
@@ -304,9 +307,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				}, rowGetter)
 				copyBtn.Importance = widget.LowImportance
 				sourceLabel.SetToolTip(tooltipText)
-				if tb, ok := interface{}(copyBtn).(interface{ SetToolTip(string) }); ok {
-					tb.SetToolTip(tooltipText)
-				}
+				fynewidget.SetToolTipSafe(copyBtn, tooltipText)
 
 				editBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DocumentCreateIcon(), func() {
 					presenter.MergeGUIToModel()
@@ -317,9 +318,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					showSourceEditWindow(presenter, guiState, guiState.Window, sourceIndex, shortLabel)
 				}, rowGetter)
 				editBtn.Importance = widget.LowImportance
-				if eb, ok := interface{}(editBtn).(interface{ SetToolTip(string) }); ok {
-					eb.SetToolTip(locale.T("wizard.source.button_edit"))
-				}
+				fynewidget.SetToolTipSafe(editBtn, locale.T("wizard.source.button_edit"))
 
 				delBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DeleteIcon(), func() {
 					m := presenter.Model()
@@ -327,6 +326,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						return
 					}
 					m.Sources = append(m.Sources[:sourceIndex], m.Sources[sourceIndex+1:]...)
+					presenter.MarkAsChanged()
 					m.RefreshDerivedParserConfig()
 					m.PreviewNeedsParse = true
 					wizardbusiness.InvalidatePreviewCache(m)
@@ -337,9 +337,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					}
 				}, rowGetter)
 				delBtn.Importance = widget.LowImportance
-				if db, ok := interface{}(delBtn).(interface{ SetToolTip(string) }); ok {
-					db.SetToolTip(locale.T("wizard.source.button_del"))
-				}
+				fynewidget.SetToolTipSafe(delBtn, locale.T("wizard.source.button_del"))
 
 				// SPEC 052 phase 8: статус из subtitle (⚠ при err); badge на главной
 				// строке убран как избыточный. Refresh-icon только для подписок.
@@ -349,9 +347,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						refreshOneSourceFromUI(presenter, guiState, sourceID)
 					}, rowGetter)
 					refreshBtn.Importance = widget.LowImportance
-					if rb, ok := interface{}(refreshBtn).(interface{ SetToolTip(string) }); ok {
-						rb.SetToolTip(locale.T("wizard.source.tooltip_refresh_one"))
-					}
+					fynewidget.SetToolTipSafe(refreshBtn, locale.T("wizard.source.tooltip_refresh_one"))
 				}
 
 				// SPEC 061 Phase 3: ⚠ / 📢 icon-button — persistent affordance to
@@ -375,9 +371,33 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						wizarddialogs.ShowSourceErrorDialog(guiState.Window, srcLabel, metaCopy)
 					}, rowGetter)
 					noticeBtn.Importance = widget.LowImportance
-					if nb, ok := interface{}(noticeBtn).(interface{ SetToolTip(string) }); ok {
-						nb.SetToolTip(locale.T(tooltipKey))
-					}
+					fynewidget.SetToolTipSafe(noticeBtn, locale.T(tooltipKey))
+				}
+
+				// Reorder buttons (↑/↓) — move this source within the list.
+				// Order is plain slice order in model.Sources and persists to
+				// state.connections.sources on Save (handles both subscriptions
+				// and direct servers, since both live in the same Sources slice).
+				moveUpBtn := fynewidget.NewHoverForwardButton("↑", func() {
+					moveSourceUp(presenter, guiState, sourceIndex)
+				}, rowGetter)
+				moveUpBtn.Importance = widget.LowImportance
+				if sourceIndex <= 0 {
+					moveUpBtn.Disable()
+					fynewidget.SetToolTipSafe(moveUpBtn, locale.T("wizard.source.tooltip_move_up_off"))
+				} else {
+					fynewidget.SetToolTipSafe(moveUpBtn, locale.T("wizard.source.tooltip_move_up"))
+				}
+
+				moveDownBtn := fynewidget.NewHoverForwardButton("↓", func() {
+					moveSourceDown(presenter, guiState, sourceIndex)
+				}, rowGetter)
+				moveDownBtn.Importance = widget.LowImportance
+				if sourceIndex >= len(m.Sources)-1 {
+					moveDownBtn.Disable()
+					fynewidget.SetToolTipSafe(moveDownBtn, locale.T("wizard.source.tooltip_move_down_off"))
+				} else {
+					fynewidget.SetToolTipSafe(moveDownBtn, locale.T("wizard.source.tooltip_move_down"))
 				}
 
 				rowGutter := components.NewScrollGutter()
@@ -385,27 +405,50 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				if noticeBtn != nil {
 					rightControlsItems = append(rightControlsItems, noticeBtn)
 				}
+				// SPEC 069 feature: provider support / web-page link — small inline
+				// icon in the info panel (TG plane / link), tooltip = URL, click opens.
+				// No extra row height; nil for sources without a support URL.
+				if supportBtn := supportLinkButton(meta, rowGetter); supportBtn != nil {
+					rightControlsItems = append(rightControlsItems, supportBtn)
+				}
 				rightControlsItems = append(rightControlsItems, copyBtn, editBtn)
 				if refreshBtn != nil {
 					rightControlsItems = append(rightControlsItems, refreshBtn)
 				}
-				rightControlsItems = append(rightControlsItems, delBtn, rowGutter)
-				rightControls := container.NewHBox(rightControlsItems...)
-				titleRow := container.NewBorder(nil, nil, enableCheck, rightControls, rowCenter)
+				rightControlsItems = append(rightControlsItems, delBtn)
+				// Pack the action icons tightly (tightHBox with a negative gap),
+				// then keep the scroll gutter separated at the right edge with the
+				// normal HBox padding so it still reserves the scrollbar strip.
+				rightControls := container.NewHBox(
+					container.New(tightHBox{spacing: rowIconGap}, rightControlsItems...),
+					rowGutter,
+				)
+				// Guideline (Rules tab): reorder ↑/↓ go to the LEFT of the enable
+				// checkbox in a leading cluster, action buttons stay on the right.
+				// Arrows are packed tight; the checkbox keeps its own leading wrap.
+				arrowsCluster := container.New(tightHBox{spacing: rowIconGap}, moveUpBtn, moveDownBtn)
+				leftLead := container.NewHBox(arrowsCluster, fynewidget.CheckLeadingWrap(enableCheck))
+				titleRow := container.NewBorder(nil, nil, leftLead, rightControls, rowCenter)
 
 				// Subtitle row: meta inline (nodes / interval / fetched / quota / expires).
 				// tightVBox — custom layout без theme.Padding между title/subtitle
 				// (стандартный VBox / Border даёт ~12px воздуха, slишком много).
 				var rowInner fyne.CanvasObject = titleRow
 				if isSubscription {
-					subtitle := formatSourceSubtitle(meta, srcPtr.Update, m.Defaults.Reload)
-					if subtitle != "" {
+					lines := []fyne.CanvasObject{titleRow}
+					if subtitle := formatSourceSubtitle(meta, srcPtr.Update, m.Defaults.Reload); subtitle != "" {
 						subtitleText := canvas.NewText(subtitle, theme.PlaceHolderColor())
 						subtitleText.TextSize = theme.CaptionTextSize()
+						// Indent the subtitle by the exact width of the leading
+						// cluster (↑ ↓ + checkbox) so it starts right under the
+						// title — the title in titleRow also sits after leftLead.
+						// Hardcoding broke once the reorder arrows were added.
 						leftPad := canvas.NewRectangle(color.Transparent)
-						leftPad.SetMinSize(fyne.NewSize(48, 0))
-						subtitleRow := container.NewBorder(nil, nil, leftPad, nil, subtitleText)
-						rowInner = container.New(tightVBox{}, titleRow, subtitleRow)
+						leftPad.SetMinSize(fyne.NewSize(leftLead.MinSize().Width, 0))
+						lines = append(lines, container.NewBorder(nil, nil, leftPad, nil, subtitleText))
+					}
+					if len(lines) > 1 {
+						rowInner = container.New(tightVBox{}, lines...)
 					}
 				}
 
@@ -456,6 +499,47 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	)
 
 	return body
+}
+
+// moveSourceUp swaps the source at idx with the one above it, then re-derives
+// the parser config and refreshes the list. Order persists on the next Save.
+func moveSourceUp(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState, idx int) {
+	m := presenter.Model()
+	if m == nil || idx <= 0 || idx >= len(m.Sources) {
+		return
+	}
+	m.Sources[idx-1], m.Sources[idx] = m.Sources[idx], m.Sources[idx-1]
+	applySourceReorder(presenter, guiState)
+}
+
+// moveSourceDown swaps the source at idx with the one below it.
+func moveSourceDown(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState, idx int) {
+	m := presenter.Model()
+	if m == nil || idx < 0 || idx >= len(m.Sources)-1 {
+		return
+	}
+	m.Sources[idx], m.Sources[idx+1] = m.Sources[idx+1], m.Sources[idx]
+	applySourceReorder(presenter, guiState)
+}
+
+// applySourceReorder runs the same refresh chain the Delete handler uses after
+// mutating model.Sources: re-derive ParserConfig, invalidate preview cache,
+// refresh outbound options and rebuild the sources list. Marks the model dirty
+// so the Save button lights up.
+func applySourceReorder(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState) {
+	m := presenter.Model()
+	if m == nil {
+		return
+	}
+	presenter.MarkAsChanged()
+	m.RefreshDerivedParserConfig()
+	m.PreviewNeedsParse = true
+	wizardbusiness.InvalidatePreviewCache(m)
+	presenter.UpdateParserConfig(m.ParserConfigJSON)
+	presenter.RefreshOutboundOptions()
+	if guiState != nil && guiState.RefreshSourcesList != nil {
+		guiState.RefreshSourcesList()
+	}
 }
 
 // showSourcePreviewAllWindow opens a window with the combined server list from all sources (uses View window slot).
@@ -545,7 +629,7 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 
 	minList := canvas.NewRectangle(color.Transparent)
 	minList.SetMinSize(fyne.NewSize(0, 320))
-	listFill := container.NewMax(minList, listRow)
+	listFill := container.NewStack(minList, listRow)
 
 	content := container.NewBorder(
 		container.NewVBox(topRow, widget.NewSeparator()),
@@ -610,7 +694,7 @@ func CreateOutboundsAndParserConfigTab(presenter *wizardpresentation.WizardPrese
 	parserConfigScroll.Direction = container.ScrollBoth
 	parserHeightRect := canvas.NewRectangle(color.Transparent)
 	parserHeightRect.SetMinSize(fyne.NewSize(0, 200)) // ~10 lines
-	parserConfigWithHeight := container.NewMax(
+	parserConfigWithHeight := container.NewStack(
 		parserHeightRect,
 		parserConfigScroll,
 	)
@@ -699,11 +783,6 @@ func CreateOutboundsAndParserConfigTab(presenter *wizardpresentation.WizardPrese
 	scrollContainer.SetMinSize(fyne.NewSize(0, 620))
 
 	return scrollContainer
-}
-
-// CreateSourceTab is kept for backward compatibility and currently returns the Sources tab content.
-func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObject {
-	return CreateSourcesTab(presenter)
 }
 
 // refreshOneSourceFromUI — SPEC 052 phase 7: per-source Refresh button click handler.

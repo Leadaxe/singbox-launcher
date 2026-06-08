@@ -369,14 +369,14 @@ func TestParseAnnounce_HWIDFlagMatrix(t *testing.T) {
 			wantActive: true, wantNotSup: true, wantMax: true, wantLimit: true,
 		},
 		{
-			name:       "legacy X-Hwid-Limit only → mirrors to MaxDevicesReached",
-			headers:    map[string]string{"X-Hwid-Limit": "true"},
-			wantMax:    true, wantLimit: true,
+			name:    "legacy X-Hwid-Limit only → mirrors to MaxDevicesReached",
+			headers: map[string]string{"X-Hwid-Limit": "true"},
+			wantMax: true, wantLimit: true,
 		},
 		{
-			name:       "modern X-Hwid-Max-Devices-Reached only → mirrors to Limit",
-			headers:    map[string]string{"X-Hwid-Max-Devices-Reached": "true"},
-			wantMax:    true, wantLimit: true,
+			name:    "modern X-Hwid-Max-Devices-Reached only → mirrors to Limit",
+			headers: map[string]string{"X-Hwid-Max-Devices-Reached": "true"},
+			wantMax: true, wantLimit: true,
 		},
 		{
 			name:       "active without limit (informational badge)",

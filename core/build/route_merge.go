@@ -7,14 +7,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/services"
-)
-
-// Action-имена для sing-box `route.rules[].action`.
-// Зеркалят `ui/wizard/models/wizard_model.go::RejectActionName/Method`;
-// дублируются здесь, чтобы core/build не импортировал ui/.
-const (
-	routeActionReject     = "reject"
-	routeActionMethodDrop = "drop"
+	"singbox-launcher/internal/outboundutil"
 )
 
 // RouteRule — одно custom-rule из state, в форме, готовой для merge'а.
@@ -23,8 +16,9 @@ const (
 // извлекает данные из своей модели (RuleState и т.п.) в эту структуру.
 //
 // `Outbound` — уже-разрешённый outbound (было `GetEffectiveOutbound(ruleState)`
-// у вызывающего): либо имя outbound, либо routeActionReject ("reject"), либо
-// "drop" (особый псевдо-outbound: action=reject, method=drop).
+// у вызывающего): либо имя outbound, либо "reject", либо "drop" (особый
+// псевдо-outbound: action=reject, method=drop). Применяется через
+// outboundutil.ApplyOutboundToRule.
 type RouteRule struct {
 	Enabled  bool
 	Outbound string
@@ -71,7 +65,7 @@ type RouteConfig struct {
 //     далее **только append** (а не replace).
 //  3. Для каждого enabled-RouteRule: добавляет SRS-records (с local-конверсией
 //     при наличии файла) и собственно rules-записи (PrimaryRule или Rules)
-//     с применением outbound через applyRouteOutbound.
+//     с применением outbound через outboundutil.ApplyOutboundToRule.
 //  4. Финализирует ключи route.final / .default_domain_resolver.
 //
 // Pure (модулём): без I/O кроме filesystem-проверки наличия SRS-файлов
@@ -121,12 +115,12 @@ func MergeRouteSection(raw json.RawMessage, cfg RouteConfig) (json.RawMessage, e
 		if len(r.Rules) > 0 {
 			for _, sub := range r.Rules {
 				cloned := shallowCopyStringMap(sub)
-				applyRouteOutbound(cloned, r.Outbound)
+				outboundutil.ApplyOutboundToRule(cloned, r.Outbound)
 				rules = append(rules, cloned)
 			}
 		} else if r.PrimaryRule != nil {
 			cloned := shallowCopyStringMap(r.PrimaryRule)
-			applyRouteOutbound(cloned, r.Outbound)
+			outboundutil.ApplyOutboundToRule(cloned, r.Outbound)
 			rules = append(rules, cloned)
 		}
 	}
@@ -148,30 +142,6 @@ func MergeRouteSection(raw json.RawMessage, cfg RouteConfig) (json.RawMessage, e
 	}
 
 	return json.Marshal(route)
-}
-
-// applyRouteOutbound — устанавливает outbound/action/method у клонированной
-// rule-map'ы. Семантика идентична legacy:
-//   - "reject" → action=reject, нет outbound, нет method
-//   - "drop"   → action=reject, method=drop, нет outbound (action=reject method=drop = sing-box "drop");
-//   - иначе непустой outbound → outbound=X, action/method удаляются.
-func applyRouteOutbound(cloned map[string]interface{}, outbound string) {
-	switch outbound {
-	case routeActionReject:
-		delete(cloned, "outbound")
-		cloned["action"] = routeActionReject
-		delete(cloned, "method")
-	case "drop":
-		delete(cloned, "outbound")
-		cloned["action"] = routeActionReject
-		cloned["method"] = routeActionMethodDrop
-	default:
-		if outbound != "" {
-			cloned["outbound"] = outbound
-			delete(cloned, "action")
-			delete(cloned, "method")
-		}
-	}
 }
 
 // convertRuleSetToLocalRequired эмитит rule-set строго как type:local (или

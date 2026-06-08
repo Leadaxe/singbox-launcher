@@ -310,25 +310,25 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 		len(presets), len(allPresets), len(presets), platform)
 
 	return &TemplateData{
-		ParserConfig:            parserConfigStr,
-		Config:                  configSections,
-		ConfigOrder:             configOrder,
-		RawConfig:               rawConfig,
-		Params:                  root.Params,
-		Vars:                    root.Vars,
-		RawTemplate:             rawFull,
-		Presets:                 presets,
-		PresetWarnings:          presetWarns,
-		DefaultFinal:            defaultFinal,
-		DefaultDomainResolver:   defaultDomainResolver,
-		DNSOptionsRaw:           root.DNSOptions,
+		ParserConfig:          parserConfigStr,
+		Config:                configSections,
+		ConfigOrder:           configOrder,
+		RawConfig:             rawConfig,
+		Params:                root.Params,
+		Vars:                  root.Vars,
+		RawTemplate:           rawFull,
+		Presets:               presets,
+		PresetWarnings:        presetWarns,
+		DefaultFinal:          defaultFinal,
+		DefaultDomainResolver: defaultDomainResolver,
+		DNSOptionsRaw:         root.DNSOptions,
 	}, nil
 }
 
 // ApplyTemplateWithVars применяет params (платформа, if, if_or) и подставляет @name из vars.
 func ApplyTemplateWithVars(configJSON json.RawMessage, params []TemplateParam, goos string, vars []TemplateVar, stateVars map[string]string, rawFull json.RawMessage) (json.RawMessage, error) {
 	resolved := ResolveTemplateVars(vars, stateVars, rawFull)
-	MaybeGenerateClashSecret(resolved)
+	MaybeGenerateSecrets(vars, resolved)
 	vi := VarIndex(vars)
 	out, err := applyParamsFiltered(configJSON, params, goos, vi, resolved)
 	if err != nil {
@@ -337,7 +337,7 @@ func ApplyTemplateWithVars(configJSON json.RawMessage, params []TemplateParam, g
 	if len(vars) == 0 {
 		return out, nil
 	}
-	return SubstituteVarsInJSON(out, vars, resolved)
+	return SubstituteVarsInJSON(out, vars, resolved, goos, runtime.GOARCH)
 }
 
 func applyParamsFiltered(configJSON json.RawMessage, params []TemplateParam, goos string, vi map[string]TemplateVar, resolved map[string]ResolvedVar) (json.RawMessage, error) {
@@ -351,7 +351,7 @@ func applyParamsFiltered(configJSON json.RawMessage, params []TemplateParam, goo
 	}
 
 	for _, param := range params {
-		if !matchesPlatform(param.Platforms, goos) {
+		if !VarAppliesOnGOOS(param.Platforms, goos) {
 			continue
 		}
 		if vi != nil && resolved != nil {
@@ -472,25 +472,12 @@ func GetEffectiveConfig(rawConfig json.RawMessage, params []TemplateParam, goos 
 	return parseJSONWithOrder(applied)
 }
 
-// matchesPlatform проверяет, подходит ли текущая платформа (GOOS; Win7-сборка — это windows/386).
-func matchesPlatform(platforms []string, goos string) bool {
-	if len(platforms) == 0 {
-		return true
-	}
-	for _, p := range platforms {
-		if p == goos {
-			return true
-		}
-	}
-	return false
-}
-
 // filterPresetsByPlatform — отбирает presets совместимые с runtime ОС.
 // Пустой Platforms list = доступно везде.
 func filterPresetsByPlatform(presets []Preset, goos string) []Preset {
 	out := make([]Preset, 0, len(presets))
 	for _, p := range presets {
-		if matchesPlatform(p.Platforms, goos) {
+		if VarAppliesOnGOOS(p.Platforms, goos) {
 			out = append(out, p)
 		}
 	}

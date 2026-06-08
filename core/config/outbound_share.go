@@ -49,18 +49,6 @@ func GetOutboundMapByTag(configPath, tag string) (map[string]interface{}, error)
 	return findTaggedInRoot(root, tag, "outbounds", "outbound with tag %q not found")
 }
 
-// GetEndpointMapByTag returns the raw endpoint object from config.json endpoints[] with the given tag (e.g. WireGuard).
-func GetEndpointMapByTag(configPath, tag string) (map[string]interface{}, error) {
-	if tag == "" {
-		return nil, fmt.Errorf("empty endpoint tag")
-	}
-	root, err := loadConfigRootMap(configPath)
-	if err != nil {
-		return nil, err
-	}
-	return findTaggedInRoot(root, tag, "endpoints", "endpoint with tag %q not found")
-}
-
 // shareURITryEndpointAfterOutboundError is true when the tag is missing from outbounds (or outbounds absent), so we may resolve WireGuard in endpoints[].
 func shareURITryEndpointAfterOutboundError(err error) bool {
 	if err == nil {

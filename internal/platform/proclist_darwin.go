@@ -67,9 +67,9 @@ func listProcessesImpl() ([]ProcessEntry, error) {
 // parse Info.plist — basename of the .app dir gives the user-visible
 // label for 99% of macOS apps.
 //
-//   /Applications/Slack.app/Contents/MacOS/Slack  →  Slack
-//   /usr/local/bin/sing-box                       →  sing-box
-//   /Applications/Firefox.app/Contents/MacOS/firefox → Firefox
+//	/Applications/Slack.app/Contents/MacOS/Slack  →  Slack
+//	/usr/local/bin/sing-box                       →  sing-box
+//	/Applications/Firefox.app/Contents/MacOS/firefox → Firefox
 func macDisplayName(path string) string {
 	// Walk up until we find a `.app` segment; if any, the segment minus
 	// the suffix is the bundle name.

@@ -7,10 +7,7 @@
 package config
 
 import (
-	"regexp"
-	"strings"
-
-	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/core/config/configtypes"
 )
 
 // filterNodesForSelector returns nodes that match the filter. filter may be nil (all nodes),
@@ -113,45 +110,18 @@ func getNodeValue(node *ParsedNode, key string) string {
 		return node.Label // fragment == label
 	case "comment":
 		return node.Comment
+	case "flow":
+		return node.Flow
 	default:
 		return ""
 	}
 }
 
 // matchesPattern matches value against pattern: literal, !literal, /regex/i, !/regex/i. Case-insensitive for regex.
+// Delegates to the shared configtypes.MatchesPattern so selector filters and subscription skip-filters
+// stay byte-equivalent (see core/config/configtypes/matcher.go).
 func matchesPattern(value, pattern string) bool {
-	// Negation literal: !literal
-	if strings.HasPrefix(pattern, "!") && !strings.HasPrefix(pattern, "!/") {
-		literal := strings.TrimPrefix(pattern, "!")
-		return value != literal
-	}
-
-	// Negation regex: !/regex/i
-	if strings.HasPrefix(pattern, "!/") && strings.HasSuffix(pattern, "/i") {
-		regexStr := strings.TrimPrefix(pattern, "!/")
-		regexStr = strings.TrimSuffix(regexStr, "/i")
-		re, err := regexp.Compile("(?i)" + regexStr)
-		if err != nil {
-			debuglog.WarnLog("Parser: Invalid regex pattern %s: %v", pattern, err)
-			return false
-		}
-		return !re.MatchString(value)
-	}
-
-	// Regex: /regex/i
-	if strings.HasPrefix(pattern, "/") && strings.HasSuffix(pattern, "/i") {
-		regexStr := strings.TrimPrefix(pattern, "/")
-		regexStr = strings.TrimSuffix(regexStr, "/i")
-		re, err := regexp.Compile("(?i)" + regexStr)
-		if err != nil {
-			debuglog.WarnLog("Parser: Invalid regex pattern %s: %v", pattern, err)
-			return false
-		}
-		return re.MatchString(value)
-	}
-
-	// Literal match
-	return value == pattern
+	return configtypes.MatchesPattern(value, pattern)
 }
 
 // PreviewSelectorNodes returns nodes that match outboundConfig.Filters and the default tag

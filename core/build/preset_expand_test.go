@@ -49,7 +49,7 @@ func ruDirectPreset(t *testing.T) *template.Preset {
 			 "server_port": 853, "detour": "@out",
 			 "if": ["use_dns_override"]}
 		],
-		"rule":     {"rule_set": ["ru-domains","ru-services","geoip-ru"], "outbound": "@out"},
+		"rules": [{"rule_set": ["ru-domains","ru-services","geoip-ru"], "outbound": "@out"}],
 		"dns_rule": {"rule_set": ["ru-domains","ru-services"], "server": "@dns_server",
 		             "if": ["use_dns_override"]}
 	}`)
@@ -66,7 +66,7 @@ func ruDirectPreset(t *testing.T) *template.Preset {
 // удалён т.к. @out=direct-out.
 func TestExpand_RuDirect_Default(t *testing.T) {
 	p := ruDirectPreset(t)
-	frags, warns, ok := ExpandPreset(p, nil)
+	frags, warns, ok := ExpandPreset(p, nil, "darwin", "amd64")
 	if !ok {
 		t.Fatalf("expand failed: %v", warns)
 	}
@@ -86,13 +86,13 @@ func TestExpand_RuDirect_Default(t *testing.T) {
 	}
 
 	// routing rule
-	if frags.RoutingRule == nil {
-		t.Fatal("RoutingRule should not be nil")
+	if len(frags.RoutingRules) == 0 {
+		t.Fatal("RoutingRules should not be empty")
 	}
-	if got := frags.RoutingRule["outbound"]; got != "direct-out" {
+	if got := frags.RoutingRules[0]["outbound"]; got != "direct-out" {
 		t.Errorf("rule.outbound: got %v want direct-out", got)
 	}
-	ruleSetRefs, _ := frags.RoutingRule["rule_set"].([]interface{})
+	ruleSetRefs, _ := frags.RoutingRules[0]["rule_set"].([]interface{})
 	if len(ruleSetRefs) != 3 {
 		t.Errorf("rule.rule_set should have 3 refs, got %v", ruleSetRefs)
 	}
@@ -154,7 +154,7 @@ func TestExpand_RuDirect_NoDNSOverride(t *testing.T) {
 	p := ruDirectPreset(t)
 	frags, _, ok := ExpandPreset(p, map[string]string{
 		"use_dns_override": "false",
-	})
+	}, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -165,7 +165,7 @@ func TestExpand_RuDirect_NoDNSOverride(t *testing.T) {
 	}
 
 	// routing rule — есть
-	if frags.RoutingRule == nil {
+	if len(frags.RoutingRules) == 0 {
 		t.Error("routing rule should be present")
 	}
 
@@ -186,7 +186,7 @@ func TestExpand_RuDirect_NoGeoip(t *testing.T) {
 	p := ruDirectPreset(t)
 	frags, _, ok := ExpandPreset(p, map[string]string{
 		"geoip_enabled": "false",
-	})
+	}, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -202,7 +202,7 @@ func TestExpand_RuDirect_NoGeoip(t *testing.T) {
 	}
 
 	// rule.rule_set: только 2 ссылки (без geoip-ru)
-	refs, _ := frags.RoutingRule["rule_set"].([]interface{})
+	refs, _ := frags.RoutingRules[0]["rule_set"].([]interface{})
 	if len(refs) != 2 {
 		t.Errorf("rule.rule_set should have 2 refs after dangling clean, got %v", refs)
 	}
@@ -219,7 +219,7 @@ func TestExpand_RuDirect_DifferentDNSServer(t *testing.T) {
 	p := ruDirectPreset(t)
 	frags, _, ok := ExpandPreset(p, map[string]string{
 		"dns_server": "yandex_doh",
-	})
+	}, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -239,12 +239,12 @@ func TestExpand_RuDirect_OutboundOverride(t *testing.T) {
 	p := ruDirectPreset(t)
 	frags, _, ok := ExpandPreset(p, map[string]string{
 		"out": "proxy-out",
-	})
+	}, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
-	if frags.RoutingRule["outbound"] != "proxy-out" {
-		t.Errorf("rule.outbound: %v", frags.RoutingRule["outbound"])
+	if frags.RoutingRules[0]["outbound"] != "proxy-out" {
+		t.Errorf("rule.outbound: %v", frags.RoutingRules[0]["outbound"])
 	}
 	// detour в yandex_udp = "proxy-out" → ключ ОСТАЁТСЯ (SPEC 056-R-N: все 3 yandex_* в frags)
 	if len(frags.DNSServers) != 3 {
@@ -277,23 +277,23 @@ func TestExpand_BlockAds_Reject(t *testing.T) {
 		"rule_set": [
 			{"tag": "ads", "type": "remote", "format": "binary", "url": "https://x/ads.srs"}
 		],
-		"rule": {"rule_set": "ads", "outbound": "@out"}
+		"rules": [{"rule_set": "ads", "outbound": "@out"}]
 	}`)
 	var p template.Preset
 	_ = json.Unmarshal(raw, &p)
 
-	frags, _, ok := ExpandPreset(&p, nil)
+	frags, _, ok := ExpandPreset(&p, nil, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
-	if frags.RoutingRule["action"] != "reject" {
-		t.Errorf("rule.action: %v", frags.RoutingRule["action"])
+	if frags.RoutingRules[0]["action"] != "reject" {
+		t.Errorf("rule.action: %v", frags.RoutingRules[0]["action"])
 	}
-	if _, has := frags.RoutingRule["outbound"]; has {
-		t.Errorf("rule.outbound should be removed for reject: %v", frags.RoutingRule)
+	if _, has := frags.RoutingRules[0]["outbound"]; has {
+		t.Errorf("rule.outbound should be removed for reject: %v", frags.RoutingRules[0])
 	}
-	if frags.RoutingRule["rule_set"] != "ru-direct:ads" && frags.RoutingRule["rule_set"] != "block-ads:ads" {
-		t.Errorf("rule.rule_set should be prefixed: %v", frags.RoutingRule["rule_set"])
+	if frags.RoutingRules[0]["rule_set"] != "ru-direct:ads" && frags.RoutingRules[0]["rule_set"] != "block-ads:ads" {
+		t.Errorf("rule.rule_set should be prefixed: %v", frags.RoutingRules[0]["rule_set"])
 	}
 }
 
@@ -305,26 +305,26 @@ func TestExpand_PrivateIPs_NoRuleSet(t *testing.T) {
 		"vars": [
 			{"name": "out", "type": "outbound", "default": "direct-out"}
 		],
-		"rule": {"ip_is_private": true, "outbound": "@out"}
+		"rules": [{"ip_is_private": true, "outbound": "@out"}]
 	}`)
 	var p template.Preset
 	_ = json.Unmarshal(raw, &p)
 
-	frags, _, ok := ExpandPreset(&p, nil)
+	frags, _, ok := ExpandPreset(&p, nil, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
 	if len(frags.RuleSets) != 0 {
 		t.Errorf("expected no rule_sets: %v", frags.RuleSets)
 	}
-	if frags.RoutingRule == nil {
+	if len(frags.RoutingRules) == 0 {
 		t.Fatal("rule should be present")
 	}
-	if frags.RoutingRule["ip_is_private"] != true {
-		t.Errorf("ip_is_private should be preserved: %v", frags.RoutingRule)
+	if frags.RoutingRules[0]["ip_is_private"] != true {
+		t.Errorf("ip_is_private should be preserved: %v", frags.RoutingRules[0])
 	}
-	if frags.RoutingRule["outbound"] != "direct-out" {
-		t.Errorf("outbound: %v", frags.RoutingRule["outbound"])
+	if frags.RoutingRules[0]["outbound"] != "direct-out" {
+		t.Errorf("outbound: %v", frags.RoutingRules[0]["outbound"])
 	}
 }
 
@@ -334,12 +334,12 @@ func TestExpand_UnresolvedVar(t *testing.T) {
 		"id": "broken",
 		"label": "X",
 		"vars": [{"name": "x", "type": "text", "default": "y"}],
-		"rule": {"outbound": "@nonexistent"}
+		"rules": [{"outbound": "@nonexistent"}]
 	}`)
 	var p template.Preset
 	_ = json.Unmarshal(raw, &p)
 
-	_, warns, ok := ExpandPreset(&p, nil)
+	_, warns, ok := ExpandPreset(&p, nil, "darwin", "amd64")
 	if ok {
 		t.Error("expand should fail with unresolved var")
 	}
@@ -360,7 +360,7 @@ func TestExpand_UnresolvedVar(t *testing.T) {
 // TestExpand_UserVarsOverride — userVars перебивают template default.
 func TestExpand_UserVarsOverride(t *testing.T) {
 	p := ruDirectPreset(t)
-	frags, _, ok := ExpandPreset(p, map[string]string{"dns_ip": "77.88.8.7"})
+	frags, _, ok := ExpandPreset(p, map[string]string{"dns_ip": "77.88.8.7"}, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -396,12 +396,12 @@ func TestExpand_IfOr_FragmentDropped(t *testing.T) {
 			{"tag": "main", "type": "inline", "rules": [{"domain_suffix": ["x"]}],
 			 "if_or": ["a", "b"]}
 		],
-		"rule": {"rule_set": "main", "outbound": "direct-out"}
+		"rules": [{"rule_set": "main", "outbound": "direct-out"}]
 	}`)
 	var p template.Preset
 	_ = json.Unmarshal(raw, &p)
 
-	frags, _, ok := ExpandPreset(&p, nil)
+	frags, _, ok := ExpandPreset(&p, nil, "darwin", "amd64")
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -409,16 +409,195 @@ func TestExpand_IfOr_FragmentDropped(t *testing.T) {
 		t.Errorf("rule_set should be dropped (if_or both false): %v", frags.RuleSets)
 	}
 	// rule остаётся? rule_set ссылка стерта, остаётся только outbound → rule пустой → dropped
-	if frags.RoutingRule != nil {
-		t.Errorf("rule should be dropped (no valid rule_set ref + no other match): %v", frags.RoutingRule)
+	if len(frags.RoutingRules) > 0 {
+		t.Errorf("rule should be dropped (no valid rule_set ref + no other match): %v", frags.RoutingRules[0])
 	}
 }
 
 // TestExpand_NilPreset — guard.
 func TestExpand_NilPreset(t *testing.T) {
-	_, _, ok := ExpandPreset(nil, nil)
+	_, _, ok := ExpandPreset(nil, nil, "darwin", "amd64")
 	if ok {
 		t.Error("nil preset should return ok=false")
+	}
+}
+
+// ===========================================================================
+// SPEC 067 Phase 8 — #if in preset bodies
+// ===========================================================================
+
+// TestExpandPreset_RuleWithIf_TrueBranchMerges — #if внутри preset.rule:
+// на goos="linux" port_range мерджится в rule; на goos="darwin" — нет.
+func TestExpandPreset_RuleWithIf_TrueBranchMerges(t *testing.T) {
+	raw := []byte(`{
+		"id": "pwif",
+		"label": "Preset with #if",
+		"vars": [
+			{"name": "out", "type": "outbound", "default": "direct-out"}
+		],
+		"rules": [{
+			"network": ["tcp", "udp"],
+			"outbound": "@out",
+			"#if": {
+				"and": [{"@runtime.platform": "linux"}],
+				"value": {"port_range": ["32768:60999"]}
+			}
+		}]
+	}`)
+	var p template.Preset
+	if err := json.Unmarshal(raw, &p); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// Linux → port_range present.
+	frags, _, ok := ExpandPreset(&p, nil, "linux", "amd64")
+	if !ok {
+		t.Fatalf("expand on linux failed")
+	}
+	if len(frags.RoutingRules) == 0 {
+		t.Fatal("rule should be present")
+	}
+	if _, has := frags.RoutingRules[0]["#if"]; has {
+		t.Errorf("#if key should be stripped from emitted rule: %v", frags.RoutingRules[0])
+	}
+	pr, _ := frags.RoutingRules[0]["port_range"].([]interface{})
+	if len(pr) != 1 || pr[0] != "32768:60999" {
+		t.Errorf("port_range missing/wrong on linux: %v", frags.RoutingRules[0])
+	}
+
+	// Darwin → port_range absent.
+	frags2, _, ok2 := ExpandPreset(&p, nil, "darwin", "amd64")
+	if !ok2 {
+		t.Fatalf("expand on darwin failed")
+	}
+	if len(frags2.RoutingRules) == 0 {
+		t.Fatal("rule should be present on darwin")
+	}
+	if _, has := frags2.RoutingRules[0]["port_range"]; has {
+		t.Errorf("port_range should be absent on darwin: %v", frags2.RoutingRules[0])
+	}
+	if _, has := frags2.RoutingRules[0]["#if"]; has {
+		t.Errorf("#if key should be stripped on darwin too: %v", frags2.RoutingRules[0])
+	}
+}
+
+// TestExpandPreset_RuleSetWithIf_FalseDropsElement — array-element `#if` в rule_set
+// rules list корректно резолвится (элемент удалён когда condition false).
+func TestExpandPreset_RuleSetWithIf_FalseDropsElement(t *testing.T) {
+	raw := []byte(`{
+		"id": "pwrs",
+		"label": "Preset with #if in rule_set",
+		"vars": [
+			{"name": "out", "type": "outbound", "default": "direct-out"}
+		],
+		"rule_set": [
+			{"tag": "rs", "type": "inline", "format": "domain_suffix",
+			 "rules": [
+				{"domain_suffix": ["always.example"]},
+				{"#if": {"and": [{"@runtime.platform": "linux"}], "value": {"domain_suffix": ["linux-only.example"]}}}
+			 ]}
+		],
+		"rules": [{"rule_set": "rs", "outbound": "@out"}]
+	}`)
+	var p template.Preset
+	if err := json.Unmarshal(raw, &p); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	// Darwin: array-element #if false → element dropped, only 1 rule remains.
+	frags, _, ok := ExpandPreset(&p, nil, "darwin", "amd64")
+	if !ok {
+		t.Fatalf("expand on darwin failed")
+	}
+	if len(frags.RuleSets) != 1 {
+		t.Fatalf("expected 1 rule_set, got %d", len(frags.RuleSets))
+	}
+	rules, _ := frags.RuleSets[0]["rules"].([]interface{})
+	if len(rules) != 1 {
+		t.Errorf("expected 1 rule on darwin (array #if dropped), got %d: %v", len(rules), rules)
+	}
+
+	// Linux: array-element #if true → element merged in → 2 rules.
+	frags2, _, ok2 := ExpandPreset(&p, nil, "linux", "amd64")
+	if !ok2 {
+		t.Fatalf("expand on linux failed")
+	}
+	rules2, _ := frags2.RuleSets[0]["rules"].([]interface{})
+	if len(rules2) != 2 {
+		t.Errorf("expected 2 rules on linux, got %d: %v", len(rules2), rules2)
+	}
+}
+
+// TestExpandPresetOutbounds_OutboundFieldWithIf — #if inside preset.outbounds[].options.
+func TestExpandPresetOutbounds_OutboundFieldWithIf(t *testing.T) {
+	preset := &template.Preset{
+		ID: "p8",
+		Vars: []template.PresetVar{
+			{Name: "out", Type: "outbound", Default: "direct-out"},
+		},
+		Outbounds: []template.PresetOutbound{
+			{
+				Mode: "add", Tag: "x", Type: "selector",
+				Options: map[string]interface{}{
+					"default": "@out",
+					"#if": map[string]interface{}{
+						"and":   []interface{}{map[string]interface{}{"@runtime.platform": "linux"}},
+						"value": map[string]interface{}{"linux_only_field": "yes"},
+					},
+				},
+			},
+		},
+	}
+	// Linux → linux_only_field present.
+	entries, _ := ExpandPresetOutbounds(preset, nil, "linux", "amd64")
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	opts := entries[0].Config.Options
+	if opts["linux_only_field"] != "yes" {
+		t.Errorf("expected linux_only_field=yes on linux, got %v", opts)
+	}
+	if _, has := opts["#if"]; has {
+		t.Errorf("#if key should be stripped from emitted options on linux: %v", opts)
+	}
+	// Darwin → field absent.
+	entries2, _ := ExpandPresetOutbounds(preset, nil, "darwin", "amd64")
+	if len(entries2) != 1 {
+		t.Fatalf("expected 1 entry on darwin, got %d", len(entries2))
+	}
+	opts2 := entries2[0].Config.Options
+	if _, has := opts2["linux_only_field"]; has {
+		t.Errorf("linux_only_field should be absent on darwin, got %v", opts2)
+	}
+	if _, has := opts2["#if"]; has {
+		t.Errorf("#if key should be stripped on darwin: %v", opts2)
+	}
+}
+
+// TestExpandPreset_UnresolvedVar_StillReturnsFalse — preserving legacy substituteAny
+// semantic: unresolved @var → skip preset entirely.
+func TestExpandPreset_UnresolvedVar_StillReturnsFalse(t *testing.T) {
+	raw := []byte(`{
+		"id": "broken",
+		"label": "X",
+		"vars": [{"name": "x", "type": "text", "default": "y"}],
+		"rules": [{"outbound": "@nonexistent"}]
+	}`)
+	var p template.Preset
+	_ = json.Unmarshal(raw, &p)
+
+	_, warns, ok := ExpandPreset(&p, nil, "darwin", "amd64")
+	if ok {
+		t.Error("expand should fail with unresolved var (legacy substituteAny semantic)")
+	}
+	hasUnresolved := false
+	for _, w := range warns {
+		if strings.Contains(w.Message, "unresolved") {
+			hasUnresolved = true
+		}
+	}
+	if !hasUnresolved {
+		t.Errorf("expected unresolved warning: %v", warns)
 	}
 }
 
@@ -427,10 +606,10 @@ func TestEvalIf_AllCombinations(t *testing.T) {
 	vars := map[string]string{"a": "true", "b": "false", "c": "true"}
 
 	cases := []struct {
-		name   string
-		ifL    []string
-		ifOrL  []string
-		want   bool
+		name  string
+		ifL   []string
+		ifOrL []string
+		want  bool
 	}{
 		{"empty empty", nil, nil, true},
 		{"if a true", []string{"a"}, nil, true},

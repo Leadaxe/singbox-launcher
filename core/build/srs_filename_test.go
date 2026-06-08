@@ -1,9 +1,9 @@
 // File srs_filename_test.go — SPEC 063: integration tests для issue #77 fix.
 //
 // Проверяем что user-SRS filename во всех 3 точках единого источника правды:
-//   1. CollectSrsCachedPaths   — value path использует URL-derived tag
-//   2. ResolveRoute            — emit'ит local rule_set с тем же path
-//   3. collectAllStageRuleSetTags (косвенно через CollectSrsCachedPaths logic)
+//  1. CollectSrsCachedPaths   — value path использует URL-derived tag
+//  2. ResolveRoute            — emit'ит local rule_set с тем же path
+//  3. collectAllStageRuleSetTags (косвенно через CollectSrsCachedPaths logic)
 //
 // Issue #77 reproducer: user добавляет SRS rule, файл скачивается под
 // SRSTagFromURL(URL); сборщик ранее искал под `<r.ID>.srs` — mismatch →

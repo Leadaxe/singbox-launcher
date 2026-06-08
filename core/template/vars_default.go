@@ -13,8 +13,11 @@ import (
 // Ключи без учёта регистра. Объект: win7 (только windows/386), затем GOOS (как в platforms), затем default.
 // Документация под linux/darwin/windows; см. docs/CREATE_WIZARD_TEMPLATE.md (и _RU).
 type VarDefaultValue struct {
-	Scalar      string
-	PerPlatform map[string]string // нормализованные ключи в нижнем регистре
+	Scalar string
+	// PerPlatform: нормализованные ключи (нижний регистр) → значение. Значение —
+	// строка ИЛИ #if-дерево (map[string]interface{}), вычисляемое в ForPlatform по
+	// @runtime.* globals (SPEC 067). Единственный спец-ключ "#if" = top-level выражение.
+	PerPlatform map[string]interface{}
 }
 
 // IsEmpty true, если нет ни скаляра, ни карты.
@@ -22,19 +25,53 @@ func (v VarDefaultValue) IsEmpty() bool {
 	return strings.TrimSpace(v.Scalar) == "" && len(v.PerPlatform) == 0
 }
 
-// ForPlatform возвращает значение по умолчанию для goos/goarch.
+// ForPlatform возвращает значение по умолчанию для goos/goarch. Узел значения
+// может быть #if-выражением (только @runtime.* globals) — оно вычисляется здесь.
 func (v VarDefaultValue) ForPlatform(goos, goarch string) string {
 	if len(v.PerPlatform) > 0 {
+		// Top-level #if: default_value == {"#if": {...}}.
+		if node, ok := v.PerPlatform["#if"]; ok && len(v.PerPlatform) == 1 {
+			return resolveDefaultNode(map[string]interface{}{"#if": node}, goos, goarch)
+		}
 		for _, k := range defaultValueKeyOrder(goos, goarch) {
 			if val, ok := v.PerPlatform[k]; ok {
-				val = strings.TrimSpace(val)
-				if val != "" {
-					return val
+				if s := resolveDefaultNode(val, goos, goarch); s != "" {
+					return s
 				}
 			}
 		}
 	}
 	return strings.TrimSpace(v.Scalar)
+}
+
+// resolveDefaultNode разрешает узел default_value:
+//   - строка → trimmed;
+//   - объект {"#if": {...}} → вычисляет #if (только @runtime.* globals, без user-vars
+//     и без resolved-map) и рекурсивно разрешает выбранную ветку;
+//   - число/bool → строковое представление; иначе → "".
+func resolveDefaultNode(node interface{}, goos, goarch string) string {
+	switch x := node.(type) {
+	case string:
+		return strings.TrimSpace(x)
+	case map[string]interface{}:
+		body, ok := x["#if"]
+		if !ok {
+			return ""
+		}
+		bodyMap, ok := body.(map[string]interface{})
+		if !ok {
+			return ""
+		}
+		branch, take := selectIfBranch(bodyMap, nil, nil, goos, goarch)
+		if !take {
+			return ""
+		}
+		return resolveDefaultNode(branch, goos, goarch)
+	case nil:
+		return ""
+	default:
+		return defaultValueStringify(node)
+	}
 }
 
 // defaultValueKeyOrder задаёт перебор ключей объекта default_value: как platforms — только GOOS,
@@ -76,13 +113,19 @@ func (v *VarDefaultValue) UnmarshalJSON(data []byte) error {
 		if len(m) == 0 {
 			return nil
 		}
-		v.PerPlatform = make(map[string]string, len(m))
+		v.PerPlatform = make(map[string]interface{}, len(m))
 		for k, val := range m {
 			sk := strings.ToLower(strings.TrimSpace(k))
 			if sk == "" {
 				continue
 			}
-			v.PerPlatform[sk] = defaultValueStringify(val)
+			// #if-дерево сохраняем как есть (вычислится в ForPlatform по @runtime.*);
+			// скаляры приводим к строке.
+			if tree, ok := val.(map[string]interface{}); ok {
+				v.PerPlatform[sk] = tree
+			} else {
+				v.PerPlatform[sk] = defaultValueStringify(val)
+			}
 		}
 		return nil
 	default:

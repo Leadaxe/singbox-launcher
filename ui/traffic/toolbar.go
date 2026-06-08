@@ -20,7 +20,7 @@ import (
 
 // buildWindowToolbar renders the top-of-window toolbar:
 //
-//   [Verbose checkbox] [Banner if active] ............. [⋮ Overflow]
+//	[Verbose checkbox] [Banner if active] ............. [⋮ Overflow]
 //
 // The verbose checkbox toggles vars[log_level] between the user's saved
 // value and "debug", invoking ConfigConfirmApply (which shows the
@@ -136,11 +136,11 @@ func buildOverflowMenu(deps WindowDeps, win fyne.Window) *fyne.Menu {
 // sessionExport is the JSON payload — small, no schema version (in-memory
 // only feature per SPEC §"Final decisions" #5).
 type sessionExport struct {
-	Target     string                `json:"target_process"`
-	StartedAt  time.Time             `json:"started_at"`
-	FinishedAt *time.Time            `json:"finished_at,omitempty"`
-	WasVerbose bool                  `json:"was_verbose"`
-	Events     []tprof.TrafficEvent  `json:"events"`
+	Target     string               `json:"target_process"`
+	StartedAt  time.Time            `json:"started_at"`
+	FinishedAt *time.Time           `json:"finished_at,omitempty"`
+	WasVerbose bool                 `json:"was_verbose"`
+	Events     []tprof.TrafficEvent `json:"events"`
 }
 
 func currentExport(deps WindowDeps) (*sessionExport, error) {

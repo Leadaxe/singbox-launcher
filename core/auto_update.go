@@ -25,10 +25,9 @@ import (
 //     рекурсивный; если retry тоже упал, ждём следующий heartbeat (1ч)
 //     или VPN-event.
 //
-//   - **VPN-event trigger**: подписка на `events.VpnStateChanged` и
-//     `events.ProxyActiveChanged` через event bus. На любое событие —
-//     trigger fetch для source'ов с `last_status="err"` (досрочный retry,
-//     не ждать heartbeat).
+//   - **VPN-event trigger**: подписка на `events.VpnStateChanged` через
+//     event bus. На событие — trigger fetch для source'ов с
+//     `last_status="err"` (досрочный retry, не ждать heartbeat).
 //
 // Это устраняет паразитный апдейт-всех при старте (был bug — v4 поле
 // parser.last_updated удалено в v5, всегда триггерило `shouldAutoUpdate=true`).
@@ -49,7 +48,7 @@ const (
 
 	// autoUpdateEventCooldown — минимальный интервал между fetch-попытками
 	// одного source через VPN-event handler (защита от storm'а при rapid
-	// proxy-switch / VPN on-off). Manual Refresh и heartbeat — без cooldown'а
+	// VPN on-off). Manual Refresh и heartbeat — без cooldown'а
 	// (юзер явно кликнул / редкое событие).
 	autoUpdateEventCooldown = 5 * time.Second
 )
@@ -71,9 +70,6 @@ func (ac *AppController) startAutoUpdateLoop() {
 	if ac.EventBus != nil {
 		ac.EventBus.Subscribe(events.VpnStateChanged, func(_ events.Event) {
 			ac.triggerRetryForFailedSources("vpn-state-changed")
-		})
-		ac.EventBus.Subscribe(events.ProxyActiveChanged, func(_ events.Event) {
-			ac.triggerRetryForFailedSources("proxy-active-changed")
 		})
 	}
 

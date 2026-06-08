@@ -144,11 +144,11 @@ func EnsureLocalAuto(proxy *config.ProxySource, sourceIndex int) error {
 	}
 	proxy.Outbounds = removeOutboundsWithCommentPredicate(proxy.Outbounds, commentHasWizardAuto)
 	proxy.Outbounds = append(proxy.Outbounds, config.OutboundConfig{
-		Tag:      autoTag,
-		Type:     "urltest",
-		Options:  defaultLocalURLTestOptions,
-		Filters:  map[string]interface{}{},
-		Comment:  "local auto " + WizardMarkerAuto,
+		Tag:     autoTag,
+		Type:    "urltest",
+		Options: defaultLocalURLTestOptions,
+		Filters: map[string]interface{}{},
+		Comment: "local auto " + WizardMarkerAuto,
 	})
 	return nil
 }

@@ -3,8 +3,6 @@
 package state
 
 import (
-	"encoding/json"
-
 	"singbox-launcher/core/config/configtypes"
 )
 
@@ -46,14 +44,4 @@ type v4SelectableRuleSt struct {
 	Label            string `json:"label"`
 	Enabled          bool   `json:"enabled"`
 	SelectedOutbound string `json:"selected_outbound"`
-}
-
-// parseV4File разбирает v4-state из сырых байт. Не делает миграцию — только
-// JSON-парсинг в v4File.
-func parseV4File(data []byte) (*v4File, error) {
-	var f v4File
-	if err := json.Unmarshal(data, &f); err != nil {
-		return nil, err
-	}
-	return &f, nil
 }

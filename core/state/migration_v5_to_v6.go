@@ -6,63 +6,12 @@ package state
 
 import (
 	"encoding/json"
-	"fmt"
-	"strings"
-	"time"
 )
 
 // migrateWarning — non-fatal warning при миграции v5 → v6.
 type migrateWarning struct {
 	RuleLabel string
 	Message   string
-}
-
-func (w migrateWarning) String() string {
-	prefix := ""
-	if w.RuleLabel != "" {
-		prefix = fmt.Sprintf("rule %q: ", w.RuleLabel)
-	}
-	return prefix + w.Message
-}
-
-// migrateV5ToV6 — pure func. Конвертит diskStateV5 в canonical (v6) форму
-// через приватный diskStateV6 — но возвращает разложенные поля удобные для
-// сборки State.
-//
-// templateDNSDefaults — карта template.dns_defaults.servers[tag] → default_enabled.
-// templatePresetIDsByLabel — карта template.presets[].label → preset.id.
-func migrateV5ToV6(
-	old diskStateV5,
-	templateDNSDefaults map[string]bool,
-	templatePresetIDsByLabel map[string]string,
-) (diskStateV6, []migrateWarning) {
-	var warnings []migrateWarning
-
-	newState := diskStateV6{
-		Meta: MetaSection{
-			Version:   SchemaVersionV6,
-			Schema:    SchemaName,
-			Comment:   old.Meta.Comment,
-			CreatedAt: old.Meta.CreatedAt,
-			UpdatedAt: time.Now().UTC().Format(time.RFC3339),
-		},
-		Connections: old.Connections,
-		Vars:        old.Vars,
-	}
-
-	// Rules migration
-	for _, cr := range old.CustomRules {
-		r, w := migrateCustomRule(cr, templatePresetIDsByLabel)
-		if r != nil {
-			newState.Rules = append(newState.Rules, *r)
-		}
-		warnings = append(warnings, w...)
-	}
-
-	// DNS migration
-	newState.DNSOptions, _ = migrateDNS(old.DNSOptions, templateDNSDefaults)
-
-	return newState, warnings
 }
 
 // migrateCustomRule — конвертит один CustomRule в Rule.
@@ -234,37 +183,3 @@ func migrateDNS(old *LegacyDNSOptionsV5, templateDefaults map[string]bool) (DNSO
 // generateMigrationULID УДАЛЁН (SPEC 063): identity больше не stored в
 // state.Rule.ID — он вычислим из body.name через StableRuleID. Миграция v5→v6
 // просто переносит CustomRule.Label → body.name; identity получает caller.
-
-// isV6 — детект schema version по сырому state JSON.
-func isV6(raw []byte) bool {
-	var probe struct {
-		Meta struct {
-			Version int `json:"version"`
-		} `json:"meta"`
-	}
-	if err := json.Unmarshal(raw, &probe); err != nil {
-		return false
-	}
-	return probe.Meta.Version == SchemaVersionV6
-}
-
-// isV5 — детект v5 schema.
-func isV5(raw []byte) bool {
-	var probe struct {
-		Meta struct {
-			Version int `json:"version"`
-		} `json:"meta"`
-	}
-	if err := json.Unmarshal(raw, &probe); err != nil {
-		return false
-	}
-	return probe.Meta.Version == legacySchemaVersionV5
-}
-
-// isLikelyLegacyLabel — heuristic для определения legacy-label'а.
-// (placeholder для будущих расширений)
-func isLikelyLegacyLabel(label string) bool {
-	return strings.HasPrefix(label, "Russian ") ||
-		strings.HasPrefix(label, "Block ") ||
-		strings.HasPrefix(label, "Private ")
-}

@@ -23,12 +23,3 @@ type ParsedCache struct {
 	// Endpoints — WireGuard endpoints (если используются).
 	Endpoints []json.RawMessage
 }
-
-// IsEmpty — true, если cache не содержит ни одного outbound и ни одного endpoint.
-// nil-receiver обрабатывается как пустой.
-func (c *ParsedCache) IsEmpty() bool {
-	if c == nil {
-		return true
-	}
-	return len(c.Outbounds) == 0 && len(c.Endpoints) == 0
-}

@@ -17,7 +17,7 @@ func TestPreset_RoundTrip_Form1_InlineMatch(t *testing.T) {
 		"vars": [
 			{"name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound"}
 		],
-		"rule": {"ip_is_private": true, "outbound": "@out"}
+		"rules": [{"ip_is_private": true, "outbound": "@out"}]
 	}`)
 	var p Preset
 	if err := json.Unmarshal(raw, &p); err != nil {
@@ -35,8 +35,8 @@ func TestPreset_RoundTrip_Form1_InlineMatch(t *testing.T) {
 	if len(p.RuleSet) != 0 {
 		t.Errorf("rule_set should be empty: %+v", p.RuleSet)
 	}
-	if p.Rule["ip_is_private"] != true {
-		t.Errorf("rule.ip_is_private should be true: %+v", p.Rule)
+	if len(p.Rules) != 1 || p.Rules[0]["ip_is_private"] != true {
+		t.Errorf("rules[0].ip_is_private should be true: %+v", p.Rules)
 	}
 }
 
@@ -52,7 +52,7 @@ func TestPreset_RoundTrip_Form3_MultiRuleSet(t *testing.T) {
 			{"tag": "main",      "type": "remote", "format": "binary", "url": "https://example.com/main.srs"},
 			{"tag": "community", "type": "remote", "format": "binary", "url": "https://example.com/community.srs"}
 		],
-		"rule": {"rule_set": ["main", "community"], "network": ["tcp","udp"], "outbound": "@out"}
+		"rules": [{"rule_set": ["main", "community"], "network": ["tcp","udp"], "outbound": "@out"}]
 	}`)
 	var p Preset
 	if err := json.Unmarshal(raw, &p); err != nil {
@@ -67,10 +67,13 @@ func TestPreset_RoundTrip_Form3_MultiRuleSet(t *testing.T) {
 	if p.RuleSet[1].URL != "https://example.com/community.srs" {
 		t.Errorf("rule_set[1] URL mismatch: %+v", p.RuleSet[1])
 	}
-	// rule.rule_set должно остаться массивом
-	ruleSet, ok := p.Rule["rule_set"].([]interface{})
+	// rules[0].rule_set должно остаться массивом
+	if len(p.Rules) != 1 {
+		t.Fatalf("expected 1 rule entry, got %d", len(p.Rules))
+	}
+	ruleSet, ok := p.Rules[0]["rule_set"].([]interface{})
 	if !ok || len(ruleSet) != 2 {
-		t.Errorf("rule.rule_set should be array of 2: %+v", p.Rule["rule_set"])
+		t.Errorf("rules[0].rule_set should be array of 2: %+v", p.Rules[0]["rule_set"])
 	}
 }
 
@@ -99,7 +102,7 @@ func TestPreset_RoundTrip_Form2_BundledDNS(t *testing.T) {
 			 "server_port": 53, "detour": "@out",
 			 "if": ["use_yandex_dns"]}
 		],
-		"rule":     {"rule_set": "domains", "outbound": "@out"},
+		"rules": [{"rule_set": "domains", "outbound": "@out"}],
 		"dns_rule": {"rule_set": "domains", "server": "yandex_udp",
 		             "if": ["use_yandex_dns"]}
 	}`)
@@ -248,7 +251,7 @@ func TestPreset_RoundTrip_RuDirect(t *testing.T) {
 			 "title": "Yandex DoH", "description": "Yandex Safe DoH.",
 			 "if": ["use_dns_override"]}
 		],
-		"rule":     {"rule_set": ["ru-domains","ru-services","geoip-ru"], "outbound": "@out"},
+		"rules": [{"rule_set": ["ru-domains","ru-services","geoip-ru"], "outbound": "@out"}],
 		"dns_rule": {"rule_set": ["ru-domains","ru-services"], "server": "@dns_server",
 		             "if": ["use_dns_override"]}
 	}`)
@@ -312,7 +315,7 @@ func TestPreset_OmitEmpty(t *testing.T) {
 	p := Preset{
 		ID:    "minimal",
 		Label: "Minimal preset",
-		Rule:  map[string]interface{}{"outbound": "direct-out"},
+		Rules: []map[string]interface{}{{"outbound": "direct-out"}},
 	}
 	out, err := json.Marshal(p)
 	if err != nil {

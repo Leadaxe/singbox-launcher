@@ -3,8 +3,8 @@
 //
 // Это реализация фазы 3.4 + 5.3 SPEC 045 (STATE_CONFIG_DECOUPLING). До
 // рефакторинга сборка config.json была размазана по двум write-points
-// (`core/config.WriteToConfig` при Update и
-// `ui/wizard/business.SaveConfigWithBackup` при Save визарда), причём
+// (`core/config.WriteToConfig` при Update и Save-визарда в
+// `ui/configurator/business`), причём
 // каждый дублировал часть логики. После — `BuildConfig` — единственная
 // чистая функция; вызывающий слой пишет результат на диск отдельным шагом.
 //
@@ -34,7 +34,7 @@
 //     до record/atomic-rename);
 //   - не парсит подписки (это слой parser);
 //   - не материализует clash_secret (вызывающий делает
-//     `MaterializeClashSecretInVars` до сборки контекста).
+//     `MaterializeSecretsInVars` до сборки контекста).
 package build
 
 import (
@@ -60,7 +60,7 @@ type BuildContext struct {
 
 	// Vars — итоговый набор vars для substitution (template defaults + state
 	// overrides + DNS scalars + clash_secret). Вызывающий формирует через
-	// `ApplyDNSScalarsToVars` + `MaterializeClashSecretInVars`. nil трактуется
+	// `ApplyDNSScalarsToVars` + `MaterializeSecretsInVars`. nil трактуется
 	// как пустая map.
 	Vars map[string]string
 
@@ -106,9 +106,6 @@ type ValidationResult struct {
 	// Warnings — non-fatal: пользователь должен знать, но конфиг применим.
 	Warnings []string
 }
-
-// HasErrors — true, если есть хотя бы один fatal.
-func (v ValidationResult) HasErrors() bool { return len(v.Errors) > 0 }
 
 // ErrInvalidInputs — структурно неправильный BuildContext.
 type ErrInvalidInputs struct{ Reason string }

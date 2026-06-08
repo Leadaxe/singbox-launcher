@@ -54,9 +54,9 @@ func LoadPresets(raw json.RawMessage, globalVarsNames map[string]bool) ([]Preset
 	}
 
 	var (
-		result    []Preset
-		warnings  []PresetWarning
-		seenIDs   = make(map[string]bool, len(rawList))
+		result   []Preset
+		warnings []PresetWarning
+		seenIDs  = make(map[string]bool, len(rawList))
 	)
 
 	for i, rawPreset := range rawList {
@@ -260,9 +260,12 @@ func validatePresetOutbounds(p *Preset) []PresetWarning {
 		}
 
 		// 4) if/if_or references → bool vars того же preset'а.
+		// SPEC 067 Phase 3: канонический формат — "@var"; префикс strip'ается
+		// перед lookup. Bare имена (legacy) — пропускаются с warning.
 		checkRefs := func(loc string, list []string) {
 			for _, ref := range list {
-				if !allVars[ref] {
+				name := strings.TrimPrefix(ref, "@")
+				if !allVars[name] {
 					warns = append(warns, PresetWarning{
 						PresetID: p.ID,
 						Message: fmt.Sprintf(
@@ -271,7 +274,7 @@ func validatePresetOutbounds(p *Preset) []PresetWarning {
 						),
 						Action: "strip",
 					})
-				} else if !boolVars[ref] {
+				} else if !boolVars[name] {
 					warns = append(warns, PresetWarning{
 						PresetID: p.ID,
 						Message: fmt.Sprintf(
@@ -483,15 +486,18 @@ func validateIfRefs(p *Preset) []PresetWarning {
 		}
 	}
 
+	// SPEC 067 Phase 3: канонический формат — "@var"; префикс strip'ается
+	// перед lookup. Bare имена (legacy) — пропускаются с warning.
 	check := func(loc string, ifList, ifOrList []string) {
 		for _, ref := range ifList {
-			if !allVars[ref] {
+			name := strings.TrimPrefix(ref, "@")
+			if !allVars[name] {
 				warns = append(warns, PresetWarning{
 					PresetID: p.ID,
 					Message:  fmt.Sprintf("%s: if reference %q is unknown var", loc, ref),
 					Action:   "strip",
 				})
-			} else if !boolVars[ref] {
+			} else if !boolVars[name] {
 				warns = append(warns, PresetWarning{
 					PresetID: p.ID,
 					Message:  fmt.Sprintf("%s: if reference %q is not a bool var", loc, ref),
@@ -500,13 +506,14 @@ func validateIfRefs(p *Preset) []PresetWarning {
 			}
 		}
 		for _, ref := range ifOrList {
-			if !allVars[ref] {
+			name := strings.TrimPrefix(ref, "@")
+			if !allVars[name] {
 				warns = append(warns, PresetWarning{
 					PresetID: p.ID,
 					Message:  fmt.Sprintf("%s: if_or reference %q is unknown var", loc, ref),
 					Action:   "strip",
 				})
-			} else if !boolVars[ref] {
+			} else if !boolVars[name] {
 				warns = append(warns, PresetWarning{
 					PresetID: p.ID,
 					Message:  fmt.Sprintf("%s: if_or reference %q is not a bool var", loc, ref),
@@ -569,9 +576,13 @@ func validateRuleSetRefs(p *Preset, validTags map[string]bool) []PresetWarning {
 		}
 	}
 
-	if p.Rule != nil {
-		if ref, ok := p.Rule["rule_set"]; ok {
-			checkRef("rule", ref)
+	// SPEC 067 Phase 9: preset.rules — slice. Validate refs per rule.
+	for i, rm := range p.Rules {
+		if rm == nil {
+			continue
+		}
+		if ref, ok := rm["rule_set"]; ok {
+			checkRef(fmt.Sprintf("rules[%d]", i), ref)
 		}
 	}
 	if p.DNSRule != nil {

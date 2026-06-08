@@ -54,51 +54,6 @@ func TestPublishMultipleHandlers(t *testing.T) {
 	}
 }
 
-// TestSubscribeAll — handler на ВСЕ kind'ы получает события любого вида.
-func TestSubscribeAll(t *testing.T) {
-	bus := NewMemoryBus()
-	var got []EventKind
-	cancel := bus.SubscribeAll(func(ev Event) {
-		got = append(got, ev.Kind)
-	})
-	defer cancel()
-
-	bus.Publish(Event{Kind: StateChanged})
-	bus.Publish(Event{Kind: ConfigBuilt})
-	bus.Publish(Event{Kind: PowerResume})
-
-	if len(got) != 3 {
-		t.Fatalf("got %d events, want 3", len(got))
-	}
-	want := []EventKind{StateChanged, ConfigBuilt, PowerResume}
-	for i, k := range want {
-		if got[i] != k {
-			t.Fatalf("got[%d]: want %s, got %s", i, k, got[i])
-		}
-	}
-}
-
-// TestSubscribeAllAndKindSpecific — точечная подписка не блокирует SubscribeAll.
-func TestSubscribeAllAndKindSpecific(t *testing.T) {
-	bus := NewMemoryBus()
-	var allCalls, kindCalls atomic.Int32
-
-	cancelAll := bus.SubscribeAll(func(_ Event) { allCalls.Add(1) })
-	defer cancelAll()
-	cancelKind := bus.Subscribe(ConfigBuilt, func(_ Event) { kindCalls.Add(1) })
-	defer cancelKind()
-
-	bus.Publish(Event{Kind: ConfigBuilt})
-	bus.Publish(Event{Kind: StateChanged})
-
-	if got := allCalls.Load(); got != 2 {
-		t.Fatalf("allCalls: want 2, got %d", got)
-	}
-	if got := kindCalls.Load(); got != 1 {
-		t.Fatalf("kindCalls: want 1, got %d", got)
-	}
-}
-
 // TestCancelStopsDelivery — после Cancel handler больше не вызывается.
 func TestCancelStopsDelivery(t *testing.T) {
 	bus := NewMemoryBus()
@@ -173,13 +128,11 @@ func TestNilHandlerSubscribeReturnsNoopCancel(t *testing.T) {
 	bus := NewMemoryBus()
 
 	cancel1 := bus.Subscribe(ConfigBuilt, nil)
-	cancel2 := bus.SubscribeAll(nil)
 
 	// Publish не должен паниковать
 	bus.Publish(Event{Kind: ConfigBuilt})
 
 	cancel1()
-	cancel2()
 }
 
 // TestConcurrentSubscribePublish — race-detector smoke на параллельной работе.
@@ -215,28 +168,24 @@ func TestConcurrentSubscribePublish(t *testing.T) {
 // TestPublishWithoutSubscribers — не паникует, ничего не делает.
 func TestPublishWithoutSubscribers(t *testing.T) {
 	bus := NewMemoryBus()
-	bus.Publish(Event{Kind: PowerResume})
+	bus.Publish(Event{Kind: VpnStateChanged})
 }
 
 // TestPayloadTypeAssertion — payload приводится к ожидаемому типу.
 func TestPayloadTypeAssertion(t *testing.T) {
 	bus := NewMemoryBus()
-	var p SubscriptionUpdatedPayload
-	cancel := bus.Subscribe(SubscriptionUpdated, func(ev Event) {
-		p, _ = ev.Payload.(SubscriptionUpdatedPayload)
+	var p StateChangedPayload
+	cancel := bus.Subscribe(StateChanged, func(ev Event) {
+		p, _ = ev.Payload.(StateChangedPayload)
 	})
 	defer cancel()
 
 	bus.Publish(Event{
-		Kind: SubscriptionUpdated,
-		Payload: SubscriptionUpdatedPayload{
-			SourceTag: "test-source",
-			Succeeded: 42,
-			Failed:    1,
-		},
+		Kind:    StateChanged,
+		Payload: StateChangedPayload{Changed: []string{"dns", "rules"}},
 	})
 
-	if p.SourceTag != "test-source" || p.Succeeded != 42 || p.Failed != 1 {
+	if len(p.Changed) != 2 || p.Changed[0] != "dns" || p.Changed[1] != "rules" {
 		t.Fatalf("payload not delivered correctly: %+v", p)
 	}
 }
@@ -249,11 +198,7 @@ func TestEventKindString(t *testing.T) {
 	}{
 		{StateChanged, "StateChanged"},
 		{ConfigBuilt, "ConfigBuilt"},
-		{SubscriptionUpdated, "SubscriptionUpdated"},
 		{VpnStateChanged, "VpnStateChanged"},
-		{ProxyActiveChanged, "ProxyActiveChanged"},
-		{PowerResume, "PowerResume"},
-		{AutoUpdateStatus, "AutoUpdateStatus"},
 		{EventKind(9999), "Unknown"},
 	}
 	for _, c := range cases {

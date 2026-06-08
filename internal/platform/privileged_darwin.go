@@ -75,8 +75,8 @@ import (
 
 // Имена файлов привилегированного запуска (macOS TUN).
 const (
-	PrivilegedScriptName  = "start-singbox-privileged.sh"
-	PrivilegedPidFileName = "singbox.pid"
+	PrivilegedScriptName   = "start-singbox-privileged.sh"
+	PrivilegedPidFileName  = "singbox.pid"
 	PrivilegedPkillPattern = "sing-box run|start-singbox-privileged"
 )
 

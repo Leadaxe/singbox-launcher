@@ -51,9 +51,16 @@ type Preset struct {
 	// При build префиксуются и фильтруются (только используемые попадают в config).
 	DNSServers []PresetDNSServer `json:"dns_servers,omitempty"`
 
-	// Rule — routing rule preset'а. Может содержать @varname плейсхолдеры,
-	// `rule_set` ссылки на локальные tag'и (по имени без префикса).
-	Rule map[string]interface{} `json:"rule,omitempty"`
+	// Rules — routing rules preset'а. Каждая entry — отдельный routing rule,
+	// эмитится в порядке списка. Может содержать @varname плейсхолдеры,
+	// `rule_set` ссылки на локальные tag'и (по имени без префикса). Каждая
+	// rule имеет собственные `if`/`if_or` для conditional emit.
+	//
+	// SPEC 067 Phase 9: было одиночное Rule, теперь slice — позволяет
+	// presets вроде split-all-traffic эмитить несколько rule (по одному per
+	// outbound). Empty / nil — preset без routing rule (только rule_set /
+	// dns_servers / outbounds), валидно.
+	Rules []map[string]interface{} `json:"rules,omitempty"`
 
 	// DNSRule — DNS-rule preset'а. Опциональный, имеет свой `if`.
 	DNSRule map[string]interface{} `json:"dns_rule,omitempty"`
@@ -69,6 +76,16 @@ type Preset struct {
 	// нативный generator сам делает options-flatten, filters/addOutbounds
 	// резолв, comment-prefix. Никаких post-merge JSON-патчей или strip'ов.
 	Outbounds []PresetOutbound `json:"outbounds,omitempty"`
+}
+
+// DisplayLabel returns the human-facing name for the preset: Label, or the ID
+// as a fallback when Label is empty. Single source of truth for the build
+// pipeline and the configurator UI (was duplicated as presetDisplayLabel).
+func (p *Preset) DisplayLabel() string {
+	if p.Label != "" {
+		return p.Label
+	}
+	return p.ID
 }
 
 // PresetOutbound — entry preset.outbounds[] (SPEC 056).

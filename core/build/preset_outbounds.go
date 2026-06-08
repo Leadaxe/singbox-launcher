@@ -1,9 +1,8 @@
 // Package build — File preset_outbounds.go.
 //
 // SPEC 057-R-N (current): preset outbound binding живёт в state directly
-// через Ref/Updates fields на OutboundConfig. Pre-patch функция
-// ApplyPresetOutboundsToParserConfig (SPEC 056) удалена; runtime path
-// использует SyncOutboundsWithActivePresets (sync_outbounds.go) +
+// через Ref/Updates fields на OutboundConfig. Runtime path использует
+// SyncOutboundsWithActivePresets (sync_outbounds.go) +
 // MergeOutboundUpdatesInPlace (resolve_outbounds.go).
 //
 // Этот файл оставляет вспомогательные helper'ы:
@@ -52,32 +51,6 @@ type presetOutboundEntry struct {
 	PresetID string
 }
 
-// SPEC 057-R-N: ApplyPresetOutboundsToParserConfig + PresetOutboundAddTags
-// удалены. Runtime использует SyncOutboundsWithActivePresets (sync_outbounds.go)
-// + MergeOutboundUpdatesInPlace (resolve_outbounds.go). UI читает preset
-// binding напрямую через OutboundConfig.Ref/Updates.
-
-// PresetOutboundAddByTag — exported helper для UI: возвращает preset-defined
-// body для tag (mode=add only) с учётом текущих vars. Используется кнопкой
-// Reset на preset outbound row'ах — replace state body на freshly-expanded
-// preset definition.
-//
-// Возвращает nil если preset nil, tag не найден, или entry была отфильтрована
-// if/if_or (т.е. preset defines outbound для других var-комбинаций).
-func PresetOutboundAddByTag(preset *template.Preset, vars map[string]string, tag string) *configtypes.OutboundConfig {
-	if preset == nil || tag == "" {
-		return nil
-	}
-	entries, _ := ExpandPresetOutbounds(preset, vars)
-	for _, e := range entries {
-		if e.Mode == "add" && e.Config.Tag == tag {
-			cfg := e.Config
-			return &cfg
-		}
-	}
-	return nil
-}
-
 // ExpandPresetOutbounds разворачивает preset.Outbounds[] в []presetOutboundEntry
 // с уже применённой substitution @var и if/if_or фильтрацией.
 //
@@ -96,7 +69,7 @@ func PresetOutboundAddByTag(preset *template.Preset, vars map[string]string, tag
 // обрабатываться (в отличие от ExpandPreset который отменяет весь preset
 // на unresolved — там dangling @var в rule_set/rule может всё разломать,
 // здесь же одна сломанная entry не блокирует другие).
-func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string) ([]presetOutboundEntry, []ExpandWarning) {
+func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string, goos, goarch string) ([]presetOutboundEntry, []ExpandWarning) {
 	if preset == nil || len(preset.Outbounds) == 0 {
 		return nil, nil
 	}
@@ -152,7 +125,7 @@ func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string) 
 			})
 			continue
 		}
-		substituted, ok := substituteAny(asMap, varsMap)
+		substituted, ok := substitutePresetBody(asMap, preset.Vars, varsMap, goos, goarch)
 		if !ok {
 			warnings = append(warnings, ExpandWarning{
 				PresetID: preset.ID,

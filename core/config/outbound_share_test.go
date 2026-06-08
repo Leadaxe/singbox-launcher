@@ -74,21 +74,6 @@ func TestShareProxyURIForOutboundTag_WireGuardEndpoint(t *testing.T) {
 	}
 }
 
-func TestGetEndpointMapByTag(t *testing.T) {
-	dir := t.TempDir()
-	p := filepath.Join(dir, "config.json")
-	if err := os.WriteFile(p, []byte(`{"endpoints":[{"type":"wireguard","tag":"e1","private_key":"x","address":["10.0.0.1/32"],"peers":[{"address":"1.1.1.1","port":51820,"public_key":"pub","allowed_ips":["0.0.0.0/0"]}]}]}`), 0644); err != nil {
-		t.Fatal(err)
-	}
-	m, err := GetEndpointMapByTag(p, "e1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mapGetStringTest(m, "tag") != "e1" {
-		t.Fatalf("tag: %+v", m)
-	}
-}
-
 func TestGetDetourTagForOutboundTag(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.json")
@@ -144,13 +129,4 @@ func TestShareMainURIForOutboundTag_ContainsDetourLiteral(t *testing.T) {
 	if !strings.Contains(u, "detour=jump") {
 		t.Fatalf("expected detour literal in URI, got %q", u)
 	}
-}
-
-func mapGetStringTest(m map[string]interface{}, k string) string {
-	v, ok := m[k]
-	if !ok {
-		return ""
-	}
-	s, _ := v.(string)
-	return s
 }

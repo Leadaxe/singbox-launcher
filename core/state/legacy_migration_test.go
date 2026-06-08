@@ -27,15 +27,15 @@ func TestMigrate_RealFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
-	old, err := parseV4File(data)
-	if err != nil {
+	var old v4File
+	if err := json.Unmarshal(data, &old); err != nil {
 		t.Fatalf("parse v4: %v", err)
 	}
 	if old.Version != 4 {
 		t.Fatalf("fixture is not v4 (version=%d)", old.Version)
 	}
 
-	state := migrateV4ToV5(old, fixedIDGen())
+	state := migrateV4ToV5(&old, fixedIDGen())
 
 	// 1. Meta — version бамплен на 5, timestamps скопированы.
 	if state.Meta.Version != legacySchemaVersionV5 {

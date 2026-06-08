@@ -298,19 +298,18 @@ func buildSinglePresetRefRow(
 	}
 
 	// Клик по label — тоггл checkbox'а (как в legacy custom rule row).
-	labelTap := fynewidget.NewTapWrap(label, func() {
-		if enableCh.Disabled() {
-			return
-		}
-		enableCh.SetChecked(!enableCh.Checked)
-	})
+	labelTap := newRowLabelToggleTap(label, enableCh)
 
-	leftLead := container.NewHBox(upBtn, downBtn, fynewidget.CheckLeadingWrap(enableCh))
+	// Shared row scaffolding (see row_scaffold.go). The conditional outbound
+	// select (only when the preset has exactly one outbound var) and the srsWarn
+	// badge below are preset-ref-specific and stay here.
+	leftLead := buildRowLeftLead(upBtn, downBtn, enableCh)
+	editDel := buildRowEditDelCluster(editBtn, delBtn)
 	var rightCluster *fyne.Container
 	if outSel != nil {
-		rightCluster = container.NewHBox(editBtn, delBtn, outSel)
+		rightCluster = container.NewHBox(editDel, outSel)
 	} else {
-		rightCluster = container.NewHBox(editBtn, delBtn)
+		rightCluster = container.NewHBox(editDel)
 	}
 	var center fyne.CanvasObject = labelTap
 	if srsHF != nil {
@@ -322,10 +321,7 @@ func buildSinglePresetRefRow(
 		}
 		center = container.NewBorder(nil, nil, nil, srsCluster, labelTap)
 	}
-	rowInner := container.NewBorder(nil, nil, leftLead, rightCluster, center)
-	row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
-	row.WireTooltipLabelHover(label)
-	rulesBox.Add(row)
+	row = finalizeRow(rulesBox, leftLead, rightCluster, center, label)
 
 	// Auto-download silent: SRS missing у enabled preset'а — пробуем
 	// тихо скачать сразу. Failure не показывает popup (silent=true) —

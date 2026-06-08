@@ -20,8 +20,8 @@ import (
 	"fmt"
 
 	"singbox-launcher/core/config"
-	"singbox-launcher/internal/debuglog"
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/debuglog"
 )
 
 // LoadConfigFromFile теперь — pure template loader. Сигнатура сохранена
@@ -55,62 +55,4 @@ func LoadConfigFromFile(_ FileServiceInterface, templateData *wizardtemplate.Tem
 		return false, "", "", fmt.Errorf("failed to serialize parser_config: %w", err)
 	}
 	return true, parserConfigJSON, "", nil
-}
-
-// CloneOutbound creates a deep copy of OutboundConfig.
-func CloneOutbound(src *config.OutboundConfig) *config.OutboundConfig {
-	dst := &config.OutboundConfig{
-		Tag:          src.Tag,
-		Type:         src.Type,
-		Comment:      src.Comment,
-		Required:     src.Required,
-		AddOutbounds: make([]string, len(src.AddOutbounds)),
-	}
-	copy(dst.AddOutbounds, src.AddOutbounds)
-
-	// Copy Options
-	if src.Options != nil {
-		dst.Options = make(map[string]interface{})
-		for k, v := range src.Options {
-			dst.Options[k] = deepCopyValue(v)
-		}
-	}
-
-	// Copy Filters
-	if src.Filters != nil {
-		dst.Filters = make(map[string]interface{})
-		for k, v := range src.Filters {
-			dst.Filters[k] = deepCopyValue(v)
-		}
-	}
-
-	// Copy PreferredDefault
-	if src.PreferredDefault != nil {
-		dst.PreferredDefault = make(map[string]interface{})
-		for k, v := range src.PreferredDefault {
-			dst.PreferredDefault[k] = deepCopyValue(v)
-		}
-	}
-
-	return dst
-}
-
-// deepCopyValue creates a deep copy of a value (for map and slice).
-func deepCopyValue(v interface{}) interface{} {
-	switch val := v.(type) {
-	case map[string]interface{}:
-		result := make(map[string]interface{})
-		for k, vv := range val {
-			result[k] = deepCopyValue(vv)
-		}
-		return result
-	case []interface{}:
-		result := make([]interface{}, len(val))
-		for i, vv := range val {
-			result[i] = deepCopyValue(vv)
-		}
-		return result
-	default:
-		return v
-	}
 }

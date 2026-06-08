@@ -48,7 +48,7 @@ func InitWizardOverlay(app *App, controller *core.AppController) {
 	// Create overlay widget and attach it on top of the tabs
 	overlay := components.NewClickRedirect(controller)
 	app.overlay = overlay
-	app.content = container.NewMax(app.tabs, overlay)
+	app.content = container.NewStack(app.tabs, overlay)
 
 	// Subscribe to UIService.OnStateChange to keep overlay visibility in sync
 	if controller.UIService != nil {

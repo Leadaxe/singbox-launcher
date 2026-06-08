@@ -5,8 +5,9 @@
 // текущее состояние и финальный результат в одной карточке.
 //
 // Layout: [icon]  Title         [×]
-//                 Subtitle (опционально)
-//                 [progress bar при активной операции]
+//
+//	Subtitle (опционально)
+//	[progress bar при активной операции]
 //
 // Состояния:
 //   - inProgress: нейтральная иконка ⋯, без × кнопки, прогрессбар активен
@@ -33,7 +34,7 @@ const subsToastTTL = 20 * time.Second
 // createSubsStatusBlock — пустой контейнер под Exit для будущих тостов.
 // На старте скрыт; появляется при первом вызове setSubsToastInProgress.
 func (tab *CoreDashboardTab) createSubsStatusBlock() fyne.CanvasObject {
-	tab.subsToastBox = container.NewMax()
+	tab.subsToastBox = container.NewStack()
 	tab.subsToastBox.Hide()
 	return tab.subsToastBox
 }

@@ -3,7 +3,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-Leadaxe%2Fsingbox--launcher-blue)](https://github.com/Leadaxe/singbox-launcher)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-blue)](https://golang.org/)
-[![Version](https://img.shields.io/badge/version-0.9.7-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
 
 **Desktop platform for network routing and traffic analysis. 15+ VPN protocols, configuration depth and API at enterprise level. Built on top of [sing-box](https://github.com/SagerNet/sing-box) as execution engine.**
 
@@ -269,7 +269,7 @@ curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scrip
 Installs to `/Applications/`, removes quarantine attributes, fixes permissions, ensures compatibility with Apple Silicon and recent macOS. For a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- v0.9.7
+curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- v1.0.0
 ```
 
 #### Option 2: manual install
@@ -351,7 +351,7 @@ To run GUI tests locally, set `TEST_PACKAGE` manually inside the script or invok
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — full project architecture map.
 - **[SPECS/CONSTITUTION.md](SPECS/CONSTITUTION.md)** — architectural invariants.
 - **[SPECS/](SPECS/)** — 60+ feature specs (HWID protocol, traffic profiler, debug API, preset bundles, state-as-template-diff, atomic writes, typed event bus, …).
-- **[docs/CREATE_WIZARD_TEMPLATE.md](docs/CREATE_WIZARD_TEMPLATE.md)** — guide for VPN providers shipping a custom `wizard_template.json`.
+- **[docs/WIZARD_TEMPLATE.md](docs/WIZARD_TEMPLATE.md)** — `wizard_template.json` syntax reference for VPN providers shipping a custom template.
 - **[docs/ParserConfig.md](docs/ParserConfig.md)** — subscription parser configuration reference.
 - **[docs/TRAFFIC_PROFILER.md](docs/TRAFFIC_PROFILER.md)** — Traffic Profiler internals and usage.
 - **[docs/TEMPLATE_REFERENCE.md](docs/TEMPLATE_REFERENCE.md)** — `wizard_template.json` schema reference.

@@ -58,7 +58,7 @@ func (w *HoverRow) CreateRenderer() fyne.WidgetRenderer {
 	w.bg = canvas.NewRectangle(color.Transparent)
 	w.bg.Hide()
 	w.applyBackground()
-	return widget.NewSimpleRenderer(container.NewMax(w.bg, w.Content))
+	return widget.NewSimpleRenderer(container.NewStack(w.bg, w.Content))
 }
 
 // Refresh updates selection/hover visuals (e.g. after checkbox toggles without pointer move).
@@ -147,7 +147,7 @@ func blendHoverWithBackground(th fyne.Theme, v fyne.ThemeVariant) color.NRGBA {
 	wb := uint32(hoverBlendBackgroundPercent)
 	wp := uint32(hoverBlendPrimaryPercent)
 	mix := func(x, y uint32) uint8 {
-		return uint8(((x*wb + y*wp)/100)>>8) & 0xff
+		return uint8(((x*wb+y*wp)/100)>>8) & 0xff
 	}
 	return color.NRGBA{
 		R: mix(br, pr),

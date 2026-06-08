@@ -33,6 +33,7 @@ import (
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/services"
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
@@ -42,7 +43,6 @@ import (
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
-	wizardtemplate "singbox-launcher/core/template"
 )
 
 // ShowAddRuleDialogFunc is a function type for showing the add rule dialog.
@@ -322,23 +322,17 @@ func buildSingleCustomRuleRow(
 	}
 	guiState.RuleOutboundSelects = append(guiState.RuleOutboundSelects, customRuleWidget)
 
-	leftLead := container.NewHBox(moveUpButton, moveDownButton, fynewidget.CheckLeadingWrap(checkbox))
-	rightCluster := container.NewHBox(editButton, deleteButton, outboundWidget)
+	// Shared row scaffolding (see row_scaffold.go): leading ↑/↓+checkbox cluster
+	// and the right edit/delete cluster; the outbound select stays separated.
+	leftLead := buildRowLeftLead(moveUpButton, moveDownButton, checkbox)
+	rightCluster := container.NewHBox(buildRowEditDelCluster(editButton, deleteButton), outboundWidget)
 
-	labelTap := fynewidget.NewTapWrap(label, func() {
-		if checkbox.Disabled() {
-			return
-		}
-		checkbox.SetChecked(!checkbox.Checked)
-	})
+	labelTap := newRowLabelToggleTap(label, checkbox)
 	var center fyne.CanvasObject = labelTap
 	if srsHF != nil {
 		center = container.NewBorder(nil, nil, nil, srsHF, labelTap)
 	}
-	rowInner := container.NewBorder(nil, nil, leftLead, rightCluster, center)
-	row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
-	row.WireTooltipLabelHover(label)
-	rulesBox.Add(row)
+	row = finalizeRow(rulesBox, leftLead, rightCluster, center, label)
 }
 
 // createRuleEnableCheckbox — чекбокс вкл/выкл; подпись правила обёрнута в TapWrap и тоже переключает состояние.

@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"singbox-launcher/core/config/configtypes"
-	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
@@ -134,31 +133,6 @@ func extractURIFragment(s string) string {
 		return strings.TrimSpace(dec)
 	}
 	return strings.TrimSpace(frag)
-}
-
-// classifyInputLinesV2 — public wrapper над classifyInputLines для тестов.
-// Возвращает subscriptions/connections в порядке появления в input.
-func ClassifyInput(input string) (subscriptions []string, connections []string) {
-	return classifyInputLinesV2(input)
-}
-
-// classifyInputLinesV2 — копия classifyInputLines без timing аргумента.
-// Используется AppendURLsToSources для самосостоятельной классификации.
-func classifyInputLinesV2(input string) (subscriptions []string, connections []string) {
-	subscriptions = make([]string, 0)
-	connections = make([]string, 0)
-	for _, line := range strings.Split(input, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if subscription.IsSubscriptionURL(line) {
-			subscriptions = append(subscriptions, line)
-		} else if subscription.IsDirectLink(line) {
-			connections = append(connections, line)
-		}
-	}
-	return subscriptions, connections
 }
 
 // Compile-time guard: импорт configtypes используется (легкая зависимость

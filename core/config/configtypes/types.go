@@ -183,7 +183,6 @@ func (oc *OutboundConfig) IsPresetRef() bool {
 	return oc.Ref != "" && oc.Ref != RefTemplate
 }
 
-
 // UnsetSourceIndex means SourceIndex was not assigned; exclude_from_global must not apply.
 const UnsetSourceIndex = -1
 

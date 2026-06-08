@@ -89,17 +89,17 @@ func TestStateRulesGet(t *testing.T) {
 // TestStateRulesPatch — table-driven mode switching + validation.
 func TestStateRulesPatch(t *testing.T) {
 	cases := []struct {
-		name        string
-		mode        string
-		rules       []state.Rule
-		wantStatus  int
-		wantCount   int
-		wantInBody  string
+		name       string
+		mode       string
+		rules      []state.Rule
+		wantStatus int
+		wantCount  int
+		wantInBody string
 	}{
 		{
-			name: "replace_empty",
-			mode: "replace",
-			rules: []state.Rule{},
+			name:       "replace_empty",
+			mode:       "replace",
+			rules:      []state.Rule{},
 			wantStatus: 200,
 			wantCount:  0,
 		},

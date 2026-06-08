@@ -15,14 +15,14 @@ import (
 // about. The full response carries more (chain stats, byte/sec totals) but
 // for the profiler the per-connection record is enough.
 type ClashConn struct {
-	ID       string         `json:"id"`
-	Metadata ClashConnMeta  `json:"metadata"`
-	Upload   int64          `json:"upload"`
-	Download int64          `json:"download"`
-	Start    time.Time      `json:"start"`
-	Chains   []string       `json:"chains"`
-	Rule     string         `json:"rule"`
-	RulePayload string      `json:"rulePayload"`
+	ID          string        `json:"id"`
+	Metadata    ClashConnMeta `json:"metadata"`
+	Upload      int64         `json:"upload"`
+	Download    int64         `json:"download"`
+	Start       time.Time     `json:"start"`
+	Chains      []string      `json:"chains"`
+	Rule        string        `json:"rule"`
+	RulePayload string        `json:"rulePayload"`
 }
 
 // ClashConnMeta — the relevant fields of metadata. Port comes as a string
@@ -66,8 +66,8 @@ type ClashConfigProvider func() (baseURL, token string, enabled bool)
 // profiler) consume the channel and translate each item into 0..N
 // TrafficEvents.
 type ConnDelta struct {
-	Opened []ClashConn          // new connection ids
-	Closed []ClashConnClosed    // ids that disappeared since last snapshot
+	Opened []ClashConn           // new connection ids
+	Closed []ClashConnClosed     // ids that disappeared since last snapshot
 	Bytes  []ClashConnBytesDelta // ids present in both with non-zero up/down delta
 	At     time.Time
 }
@@ -82,9 +82,9 @@ type ClashConnClosed struct {
 // ClashConnBytesDelta captures byte counters delta for one already-tracked
 // connection. Total bytes since open live in Conn.Upload / Conn.Download.
 type ClashConnBytesDelta struct {
-	Conn       ClashConn
-	UpDelta    int64
-	DownDelta  int64
+	Conn      ClashConn
+	UpDelta   int64
+	DownDelta int64
 }
 
 // ConnPoller polls Clash /connections at 1s cadence and emits ConnDeltas.
@@ -120,13 +120,6 @@ func NewConnPoller(cfg ClashConfigProvider, httpc *http.Client) *ConnPoller {
 // slow consumer doesn't block the poll loop for long, but if it falls more
 // than 16 cycles behind we drop deltas (logged via SetWarn).
 func (p *ConnPoller) Out() <-chan ConnDelta { return p.out }
-
-// SetInterval overrides the default 1s poll cadence. Mainly for tests.
-func (p *ConnPoller) SetInterval(d time.Duration) {
-	if d > 0 {
-		p.interval = d
-	}
-}
 
 // warnFn is set via SetWarn so callers can route log warnings without
 // taking a hard dep on debuglog from this package (and break tests).

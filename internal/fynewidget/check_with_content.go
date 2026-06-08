@@ -107,9 +107,7 @@ func newCheckContentWrap(check *widget.Check, content fyne.CanvasObject, content
 	w.ExtendBaseWidget(w)
 
 	if contentToolTip != "" {
-		if tb, ok := interface{}(content).(interface{ SetToolTip(string) }); ok {
-			tb.SetToolTip(contentToolTip)
-		}
+		SetToolTipSafe(content, contentToolTip)
 	}
 
 	if w.ttLabel != nil {

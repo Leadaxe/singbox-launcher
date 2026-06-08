@@ -161,12 +161,12 @@ func runGoldenScenario(t *testing.T, dir string) {
 	routeCfg := routeConfigFromState(s)
 
 	ctx := BuildContext{
-		Template:         td,
-		Vars:             vars,
-		Cache:            &cache,
-		ForPreview:       false,
-		DNS:              dnsCfg,
-		Route:            routeCfg,
+		Template:   td,
+		Vars:       vars,
+		Cache:      &cache,
+		ForPreview: false,
+		DNS:        dnsCfg,
+		Route:      routeCfg,
 	}
 
 	res, err := BuildConfig(ctx)
@@ -216,8 +216,8 @@ func normalizeParserTimestamp(raw []byte) []byte {
 // wrapper, оставляет `vars`/`params` для GetEffectiveConfig.
 func parseGoldenTemplate(raw []byte) (*template.TemplateData, error) {
 	var root struct {
-		ParserConfig json.RawMessage      `json:"parser_config"`
-		Config       json.RawMessage      `json:"config"`
+		ParserConfig json.RawMessage          `json:"parser_config"`
+		Config       json.RawMessage          `json:"config"`
 		Params       []template.TemplateParam `json:"params"`
 		Vars         []template.TemplateVar   `json:"vars"`
 	}

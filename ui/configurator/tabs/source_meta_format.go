@@ -234,4 +234,3 @@ func formatSourceSubtitle(meta *corestate.SubscriptionMeta, update *corestate.Up
 
 	return strings.Join(parts, "  •  ")
 }
-

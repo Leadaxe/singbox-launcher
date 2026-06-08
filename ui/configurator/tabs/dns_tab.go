@@ -16,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
@@ -23,16 +24,13 @@ import (
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
-	wizardtemplate "singbox-launcher/core/template"
 )
 
 func setTooltip(o fyne.CanvasObject, text string) {
 	if text == "" || o == nil {
 		return
 	}
-	if tb, ok := interface{}(o).(interface{ SetToolTip(string) }); ok {
-		tb.SetToolTip(text)
-	}
+	fynewidget.SetToolTipSafe(o, text)
 }
 
 func tooltipForDNSServerCheck(locked bool) string {
@@ -148,13 +146,12 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 						presenter.RefreshDNSListAndSelects()
 					}, rowGetter)
 					delBtn.Importance = widget.LowImportance
-					right = container.NewHBox(editBtn, delBtn, rowGutter)
+					right = container.NewHBox(buildRowEditDelCluster(editBtn, delBtn), rowGutter)
 				}
 				// Border: check left, content center (tap/hover → check via fynewidget), buttons right — avoids zero-width label in HBox-only row.
-				rowInner := container.NewBorder(nil, nil, cwc.CheckLeading, right, cwc.Content)
-				row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
-				row.WireTooltipLabelHover(sumLabel)
-				serversBox.Add(row)
+				// Shared row tail (see row_scaffold.go); DNS servers have no ↑/↓ so
+				// the left is the CheckWithContent leading, not buildRowLeftLead.
+				row = finalizeRow(serversBox, cwc.CheckLeading, right, cwc.Content, sumLabel)
 			}(i)
 		}
 		// Append bundled-preset rows в общий список (без заголовка — 🔒 в label
@@ -264,8 +261,8 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	rulesScroll := container.NewScroll(guiState.DNSRulesEntry)
 	rulesScroll.Direction = container.ScrollBoth
 	rulesHeight := canvas.NewRectangle(color.Transparent)
-		rulesHeight.SetMinSize(fyne.NewSize(0, 170)) // was 120; +50 px for rules JSON area
-	rulesBlock := container.NewMax(rulesHeight, rulesScroll)
+	rulesHeight.SetMinSize(fyne.NewSize(0, 170)) // was 120; +50 px for rules JSON area
+	rulesBlock := container.NewStack(rulesHeight, rulesScroll)
 
 	rulesLabel := widget.NewLabel(locale.T("wizard.dns.label_rules"))
 	rulesLabel.Importance = widget.MediumImportance
@@ -307,7 +304,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	rawRulesScroll.Direction = container.ScrollBoth
 	rawRulesHeight := canvas.NewRectangle(color.Transparent)
 	rawRulesHeight.SetMinSize(fyne.NewSize(0, 200))
-	rawRulesBlock := container.NewMax(rawRulesHeight, rawRulesScroll)
+	rawRulesBlock := container.NewStack(rawRulesHeight, rawRulesScroll)
 	rawRulesBlock.Hide() // list view by default
 
 	// rawJSONMode — toggle между list view и raw-JSON edit. Reflected
@@ -570,7 +567,7 @@ func dnsServerDialogJSONArea(entry *widget.Entry) fyne.CanvasObject {
 	scroll.Direction = container.ScrollBoth
 	minH := canvas.NewRectangle(color.Transparent)
 	minH.SetMinSize(fyne.NewSize(0, dnsServerDialogEntryMinHeight))
-	return container.NewMax(minH, scroll)
+	return container.NewStack(minH, scroll)
 }
 
 func applyDNSServerJSON(p *wizardpresentation.WizardPresenter, w fyne.Window, text string, editIndex int) bool {

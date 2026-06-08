@@ -16,6 +16,9 @@ const (
 	// dnsInferWindow — how long an IP→process attribution lasts for
 	// "inferred" confidence (SPEC §"Confidence levels").
 	dnsInferWindow = 10 * time.Second
+	// dnsByIPSweepThreshold — sweep expired dnsByIP entries only once the map
+	// grows past this, so the O(n) TTL scan is amortized, not per-event (audit TD6).
+	dnsByIPSweepThreshold = 2048
 )
 
 // TrafficProfiler is the always-on singleton that joins Clash API
@@ -39,12 +42,12 @@ type TrafficProfiler struct {
 	completed []*Session
 
 	// cross-source join state
-	connProcessMap map[string]string             // conn_id → process_path (from router log)
-	dnsAccum       map[string][]string           // conn_id → CNAME chain (in arrival order)
-	dnsByIP        map[string]dnsAttribution     // dest IP → recent DNS + process (for inferred attribution)
+	connProcessMap map[string]string         // conn_id → process_path (from router log)
+	dnsAccum       map[string][]string       // conn_id → CNAME chain (in arrival order)
+	dnsByIP        map[string]dnsAttribution // dest IP → recent DNS + process (for inferred attribution)
 
 	// subscribers for live UI streaming
-	subs map[int]chan TrafficEvent
+	subs    map[int]chan TrafficEvent
 	nextSub int
 
 	// lifecycle hooks (window title timer / button label badge)
@@ -334,6 +337,24 @@ func (p *TrafficProfiler) dispatch(e TrafficEvent) {
 		p.roll = p.roll[1:]
 	}
 	p.roll = append(p.roll, e)
+
+	// Map eviction (audit TD6 — these join maps grew unbounded before).
+	// 1) On close, the conn-keyed maps will never be referenced again
+	//    (the close event already snapshotted its CNAME chain above).
+	if e.Kind == EventTCPClose || e.Kind == EventUDPClose {
+		delete(p.connProcessMap, e.ConnID)
+		delete(p.dnsAccum, e.ConnID)
+	}
+	// 2) dnsByIP holds only dnsInferWindow-lived IP→process attributions;
+	//    sweep expired entries once the map is big enough to be worth the scan.
+	if len(p.dnsByIP) > dnsByIPSweepThreshold {
+		cutoffDNS := e.TS.Add(-dnsInferWindow)
+		for ip, att := range p.dnsByIP {
+			if att.At.Before(cutoffDNS) {
+				delete(p.dnsByIP, ip)
+			}
+		}
+	}
 
 	active := p.active
 	// Snapshot subscriber list to fan out without holding lock.

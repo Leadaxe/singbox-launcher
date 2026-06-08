@@ -44,7 +44,7 @@ func CreatePreviewTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	guiState.TemplatePreviewEntry.OnChanged = func(text string) {
 		// Read-only field, do nothing on change
 	}
-	previewWithHeight := container.NewMax(
+	previewWithHeight := container.NewStack(
 		canvas.NewRectangle(color.Transparent),
 		guiState.TemplatePreviewEntry,
 	)

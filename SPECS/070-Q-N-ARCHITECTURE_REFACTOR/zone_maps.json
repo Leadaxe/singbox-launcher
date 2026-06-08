@@ -1,0 +1,2687 @@
+[
+  {
+    "zone": "event system",
+    "packages": [
+      {
+        "path": "core/events",
+        "responsibility": "Typed sync event-bus (SPEC 047) for state-change notifications and cross-package decoupling",
+        "keyFiles": [
+          {
+            "file": "core/events/events.go",
+            "purpose": "EventKind enum + payload dispatch interface definition",
+            "loc": 133
+          },
+          {
+            "file": "core/events/payloads.go",
+            "purpose": "Payload struct definitions for each EventKind",
+            "loc": 64
+          },
+          {
+            "file": "core/events/memory_bus.go",
+            "purpose": "In-memory sync Bus implementation with RWMutex-protected handlers map",
+            "loc": 135
+          }
+        ]
+      },
+      {
+        "path": "core/controller.go",
+        "responsibility": "Publishes VpnStateChanged when RunningState transitions (line 493)",
+        "keyFiles": [
+          {
+            "file": "core/controller.go",
+            "purpose": "AppController singleton managing process lifecycle and EventBus wiring",
+            "loc": 747
+          }
+        ]
+      },
+      {
+        "path": "core/rebuild.go",
+        "responsibility": "Publishes ConfigBuilt (OK=true/false) on config validation + write (lines 188, 221)",
+        "keyFiles": []
+      },
+      {
+        "path": "core/services/state_service.go",
+        "responsibility": "Publishes StateChanged when dirty markers mutate (line 207), holds EventBus field",
+        "keyFiles": []
+      },
+      {
+        "path": "core/auto_update.go",
+        "responsibility": "Subscribes VpnStateChanged (line 72) and ProxyActiveChanged (line 75) to trigger retry",
+        "keyFiles": []
+      },
+      {
+        "path": "ui/app.go",
+        "responsibility": "Subscribes VpnStateChanged (line 155) to refresh Core-tab icon; legacy UpdateCoreStatusFunc wrapper (line 138)",
+        "keyFiles": []
+      },
+      {
+        "path": "ui/configurator/presentation/presenter_save.go",
+        "responsibility": "Publishes StateChanged after state.json write (line 174)",
+        "keyFiles": []
+      }
+    ],
+    "events": [
+      {
+        "name": "StateChanged",
+        "publishers": [
+          "core/services/state_service.go:207 (publishStateChanged via Set*Dirty methods)",
+          "ui/configurator/presentation/presenter_save.go:174 (on Configurator Save)"
+        ],
+        "subscribers": [
+          "NONE (no EventBus.Subscribe found in repo)"
+        ],
+        "status": "dead-subscribe: published but never consumed via EventBus"
+      },
+      {
+        "name": "ConfigBuilt",
+        "publishers": [
+          "core/rebuild.go:188 (OK=false on sing-box check failure)",
+          "core/rebuild.go:221 (OK=true on successful config write + validation)"
+        ],
+        "subscribers": [
+          "NONE (no EventBus.Subscribe found in repo)"
+        ],
+        "status": "dead-subscribe: published but never consumed via EventBus"
+      },
+      {
+        "name": "VpnStateChanged",
+        "publishers": [
+          "core/controller.go:493 (RunningState.Set on running bool transition)"
+        ],
+        "subscribers": [
+          "core/auto_update.go:72 (triggers retry for failed sources)",
+          "ui/app.go:155 (refreshes Core-tab icon via fyne.Do)"
+        ],
+        "status": "wired"
+      },
+      {
+        "name": "ProxyActiveChanged",
+        "publishers": [
+          "NONE (event defined but never published anywhere)"
+        ],
+        "subscribers": [
+          "core/auto_update.go:75 (subscribes but never receives events)"
+        ],
+        "status": "dead-publish: subscribed but never published"
+      },
+      {
+        "name": "SubscriptionUpdated",
+        "publishers": [
+          "NONE (event defined but never published)"
+        ],
+        "subscribers": [
+          "NONE (never subscribed)"
+        ],
+        "status": "dead: artifact from design, never wired"
+      },
+      {
+        "name": "AutoUpdateStatus",
+        "publishers": [
+          "NONE (event defined but never published)"
+        ],
+        "subscribers": [
+          "NONE (never subscribed)"
+        ],
+        "status": "dead: artifact from design, never wired"
+      },
+      {
+        "name": "PowerResume",
+        "publishers": [
+          "NONE (event defined but never published via EventBus)"
+        ],
+        "subscribers": [
+          "NONE (never subscribed)"
+        ],
+        "status": "dead: legacy platform.RegisterPowerResumeCallback wires direct callbacks (main.go:294) instead of EventBus"
+      }
+    ],
+    "dependencies": [
+      {
+        "from": "core/controller.go",
+        "to": "core/events",
+        "why": "Creates EventBus instance + publishes VpnStateChanged on running state transition"
+      },
+      {
+        "from": "core/rebuild.go",
+        "to": "core/events",
+        "why": "Publishes ConfigBuilt on config validation result (success/failure)"
+      },
+      {
+        "from": "core/services/state_service.go",
+        "to": "core/events",
+        "why": "Holds EventBus field + publishes StateChanged on dirty-marker mutations"
+      },
+      {
+        "from": "core/auto_update.go",
+        "to": "core/events",
+        "why": "Subscribes to VpnStateChanged and ProxyActiveChanged for event-triggered retries"
+      },
+      {
+        "from": "ui/app.go",
+        "to": "core/events",
+        "why": "Subscribes to VpnStateChanged for Core-tab icon refresh"
+      },
+      {
+        "from": "ui/configurator/presentation/presenter_save.go",
+        "to": "core/events",
+        "why": "Publishes StateChanged after state.json Save operation"
+      }
+    ],
+    "dups": [],
+    "deadOrHistorical": [
+      {
+        "location": "core/events/memory_bus.go:94-122",
+        "kind": "method",
+        "action": "DELETE: SubscribeAll(h Handler) Cancel — never called in production code. Comments state it is 'useful for logging/debug' but no callsite exists. MemoryBus.Publish already dispatches to all kinds; SubscribeAll adds no production value."
+      },
+      {
+        "location": "core/events/events.go:50-52",
+        "kind": "constant + payload",
+        "action": "DELETE: SubscriptionUpdated event (EventKind + SubscriptionUpdatedPayload). Defined in SPEC 047 design but never published or subscribed. No callsite exists."
+      },
+      {
+        "location": "core/events/events.go:66-69",
+        "kind": "constant + payload",
+        "action": "DELETE: AutoUpdateStatus event (EventKind + AutoUpdateStatusPayload). Designed for auto-update status notifications but never wired. No callsite."
+      },
+      {
+        "location": "core/events/events.go:58-60",
+        "kind": "constant + payload",
+        "action": "DELETE or IMPLEMENT: ProxyActiveChanged event. Subscribed by auto_update.go:75 but never published. Either implement publisher (APIService.OnProxySwitched callback → Publish) or remove the subscriber."
+      },
+      {
+        "location": "core/events/events.go:62-64",
+        "kind": "constant",
+        "action": "DELETE: PowerResume event. Platform power-resume is wired via legacy direct callbacks (main.go:294 RegisterPowerResumeCallback) instead of EventBus. No EventBus.Publish exists. If needed, wire platform/power_*.go to publish this event."
+      },
+      {
+        "location": "core/controller.go:273-281",
+        "kind": "initialization",
+        "action": "KEEP: Legacy UIService callback placeholders (UpdateCoreStatusFunc, UpdateConfigStatusFunc, RefreshAPIFunc, UpdateTrayMenuFunc). These are filled by UI layers (app.go, core_dashboard_tab.go). SPEC 047 audit noted they should be replaced by typed events, but phase 6 is pending (see line 287 comment). Currently dual-wired: callbacks + EventBus.Subscribe. Will be cleaned in SPEC 047 phase 6."
+      },
+      {
+        "location": "ui/app.go:136-142",
+        "kind": "callback wrapper",
+        "action": "KEEP: Wrapper preserving legacy UpdateCoreStatusFunc while adding EventBus.Subscribe path. Layer is necessary for incremental migration. Remove after phase 6 consolidation."
+      }
+    ],
+    "recommendations": [
+      {
+        "title": "Implement ProxyActiveChanged publisher in APIService or Clash API integration",
+        "detail": "ProxyActiveChanged is subscribed by auto_update.go:75 but never published. The proxy-switch must come from APIService.OnProxySwitched callback (core/services/api_service.go) or from wherever proxy selection happens. Either: (1) wire the callback to publish ProxyActiveChanged{GroupTag, NewSelected}, or (2) delete the subscriber if proxy-active notifications are not needed for retry-trigger logic.",
+        "risk": "low",
+        "behaviorChange": true
+      },
+      {
+        "title": "Delete dead event kinds: SubscriptionUpdated, AutoUpdateStatus, PowerResume",
+        "detail": "These three event types are defined but never published or subscribed. SubscriptionUpdated and AutoUpdateStatus are design artifacts (SPEC 047). PowerResume uses legacy callbacks instead (main.go:294). Removing them will shrink events.go and reduce confusion. If auto-update monitoring becomes needed later, the pattern is clear: add new EventKind + payload + Publisher + Subscriber.",
+        "risk": "low",
+        "behaviorChange": false
+      },
+      {
+        "title": "Delete MemoryBus.SubscribeAll() method",
+        "detail": "SubscribeAll exists in the Bus interface and MemoryBus implementation but is never called. Comments state it is for 'logging/debug only' but no production code uses it. Removing it simplifies the interface and reduces cognitive load. If per-event debugging is needed, add a named debug-handler instead or use external event logging.",
+        "risk": "low",
+        "behaviorChange": false
+      },
+      {
+        "title": "Consolidate StateChanged event: make StateService subscribers explicit",
+        "detail": "StateChanged is published by StateService.publishStateChanged() and ui/configurator presenter_save.go, but no subscriber listens via EventBus.Subscribe(). If UI needs to react to state changes, wire explicit subscribers in ui/app.go or the Configurator tab. Otherwise, this is a half-finished feature: either complete it or delete it. The event payload Comments mention future state.Diff typing (SPEC 045 phase 3.2) — clarify if this is on the roadmap.",
+        "risk": "medium",
+        "behaviorChange": true
+      },
+      {
+        "title": "Unify power-resume handling via EventBus.Publish(PowerResume)",
+        "detail": "Currently main.go:294 wires platform.RegisterPowerResumeCallback() directly to RefreshAPIFunc + auto-ping logic. Instead: have platform/power_*.go publish PowerResume events, and let auto_update.go / api layer subscribe. This removes special-case callbacks and centralizes event dispatch. One platform-agnostic path: Subscribe(PowerResume, func() { RefreshAPIFunc(); scheduleAutoPing() }).",
+        "risk": "medium",
+        "behaviorChange": false
+      },
+      {
+        "title": "Complete SPEC 047 phase 6: replace legacy callbacks with typed event subscriptions",
+        "detail": "core/controller.go:287-289 notes that UpdateConfigStatusFunc and UpdateCoreStatusFunc are 'temporary' placeholders until typed events mature. Currently ui/app.go and core_dashboard_tab.go wrap these callbacks for incremental migration. Phase 6 should: (1) publish ConfigBuilt and VpnStateChanged everywhere (already done for VpnStateChanged), (2) replace all callback assignments with EventBus.Subscribe, (3) remove the callback fields from UIService. This will unify the event model and simplify controller ↔ UI coupling.",
+        "risk": "high",
+        "behaviorChange": true
+      }
+    ],
+    "monoliths": [],
+    "stateFlows": [
+      "StateChanged → state.json save → publishStateChanged via StateService.Set*Dirty (no subscriber)",
+      "ConfigBuilt → config.json build + validation → RebuildConfigIfDirty publishes OK/Error (no subscriber)",
+      "VpnStateChanged → RunningState.Set(bool) → auto_update retry + ui/app Core-tab refresh (2 subscribers)",
+      "PowerResume → platform callback → main.go schedules RefreshAPIFunc + autoping (legacy path, no EventBus)"
+    ]
+  },
+  {
+    "zone": "State broker (core/state + core/snapshot)",
+    "packages": [
+      {
+        "path": "core/state/state.go",
+        "responsibility": "Root state model: dual-view State struct with legacy ParserConfig + canonical Connections; coordinates load/save lifecycle",
+        "keyFiles": [
+          {
+            "file": "core/state/state.go:42-128",
+            "purpose": "State struct definition: identity (ID,Version,Comment,timestamps), legacy view (ParserConfig), canonical view (Connections,Rules,DNS)"
+          },
+          {
+            "file": "core/state/state.go:152-190",
+            "purpose": "Accessor helpers: GetSubscriptionSources(), GetServerSources(), FindSource()"
+          }
+        ]
+      },
+      {
+        "path": "core/state/load.go",
+        "responsibility": "Parse disk → memory: v2-v6 migration, auto-schema detection, BUG1 legacy Rules/DNS derivation",
+        "keyFiles": [
+          {
+            "file": "core/state/load.go:35-76",
+            "purpose": "Load() + Parse(): reads disk, detects schema (top-level version vs meta.version), routes to v2/v3/v4/v5/v6 parsers"
+          },
+          {
+            "file": "core/state/load.go:99-141",
+            "purpose": "parseCurrent(): v6 canonical read, legacyDevDNSToOptions fallback for old dev-shape (SPEC 053)"
+          },
+          {
+            "file": "core/state/load.go:312-353",
+            "purpose": "parseV5Legacy(): v5 read + deriveV6FromLegacy (BUG1 fix for headless paths)"
+          },
+          {
+            "file": "core/state/load.go:357-425",
+            "purpose": "parseLegacyAndMigrate(): v2/v3/v4 full migration to v5, then deriveV6FromLegacy"
+          },
+          {
+            "file": "core/state/load.go:438-449",
+            "purpose": "deriveV6FromLegacy(): BUG1 workaround—populate Rules/DNS from CustomRules/DNSOptions if empty (headless auto-save paths)"
+          }
+        ]
+      },
+      {
+        "path": "core/state/save.go",
+        "responsibility": "Memory → disk: v6 canonical write, legacy→canonical sync, atomic file ops, SPEC 058 backup",
+        "keyFiles": [
+          {
+            "file": "core/state/save.go:24-85",
+            "purpose": "Save(): sync legacy ParserConfig→canonical Connections, update timestamps, atomic write with fsync/rename"
+          },
+          {
+            "file": "core/state/save.go:103-127",
+            "purpose": "marshalDisk(): v6 JSON layout (meta, connections, rules[], vars[], dns_options)"
+          }
+        ]
+      },
+      {
+        "path": "core/state/adapter.go",
+        "responsibility": "Legacy↔canonical sync: syncConnectionsFromLegacy (Save path), syncLegacyFromConnections (Load path)",
+        "keyFiles": [
+          {
+            "file": "core/state/adapter.go:28-124",
+            "purpose": "syncConnectionsFromLegacy(): UI edits ParserConfig→Connections on Save (match by URL/URI, preserve ID/Meta, ULID new sources)"
+          },
+          {
+            "file": "core/state/adapter.go:135-174",
+            "purpose": "syncLegacyFromConnections(): Load fills ParserConfig from Connections for backward-compat UI (server Label→TagMask)"
+          }
+        ]
+      },
+      {
+        "path": "core/state/connections.go",
+        "responsibility": "v5 canonical schema: Source[], Outbounds[], Defaults (subscription/server sources + global config)",
+        "keyFiles": [
+          {
+            "file": "core/state/connections.go:10-59",
+            "purpose": "ConnectionsSection + Source: type discriminator (subscription/server), per-source config (URL/URI/Skip/Tag/Outbounds/Meta)"
+          }
+        ]
+      },
+      {
+        "path": "core/state/rule_types.go",
+        "responsibility": "v6 rule model: kind discriminator (preset/inline/srs), body decoder, type safety",
+        "keyFiles": [
+          {
+            "file": "core/state/rule_types.go:26-58",
+            "purpose": "Rule: header (Kind,Ref,Enabled) + Body (raw JSON, kind-specific)"
+          },
+          {
+            "file": "core/state/rule_types.go:60-86",
+            "purpose": "PresetBody, InlineBody, SrsBody: kind-specific payloads"
+          },
+          {
+            "file": "core/state/rule_types.go:102-151",
+            "purpose": "DecodeBody(): dispatcher, validation (ref required for preset, empty for inline/srs)"
+          }
+        ]
+      },
+      {
+        "path": "core/state/dns_options.go",
+        "responsibility": "v6 DNS schema (SPEC 056-R-N): flat kind discriminator (template/preset/user) for servers/rules, custom Marshal/Unmarshal",
+        "keyFiles": [
+          {
+            "file": "core/state/dns_options.go:39-135",
+            "purpose": "DNSServerKind, DNSRuleKind enums + DNSServer, DNSRule, DNSOptions structs"
+          },
+          {
+            "file": "core/state/dns_options.go:137-220+",
+            "purpose": "MarshalJSON/UnmarshalJSON: flat layout (kind/ref/tag/enabled + body fields for kind=user)"
+          }
+        ]
+      },
+      {
+        "path": "core/state/sync_dns.go",
+        "responsibility": "Lifecycle: SyncDNSOptionsWithActivePresets idempotent sync (add/remove preset entries on Rule toggle)",
+        "keyFiles": [
+          {
+            "file": "core/state/sync_dns.go:51-160",
+            "purpose": "SyncDNSOptionsWithActivePresets(): materialize kind=preset servers/rules from active preset-refs, auto-cleanup on disable"
+          }
+        ]
+      },
+      {
+        "path": "core/state/migration_v5_to_v6.go",
+        "responsibility": "Legacy v5→v6 conversion helpers: migrateCustomRule (kind heuristic), migrateDNS",
+        "keyFiles": [
+          {
+            "file": "core/state/migration_v5_to_v6.go:18-82",
+            "purpose": "migrateCustomRule(): kind detection (label match→preset, rule_set[].type=remote→srs, else inline), identity from StableRuleID"
+          },
+          {
+            "file": "core/state/migration_v5_to_v6.go:113-181",
+            "purpose": "migrateDNS(): v5 servers split (template tag vs user), rules→kind=user"
+          }
+        ]
+      },
+      {
+        "path": "core/state/legacy_migration.go",
+        "responsibility": "v2/v3/v4→v5 migration: migrateV4ToV5, migrateLegacySources (expand proxy+connections into Source[])",
+        "keyFiles": [
+          {
+            "file": "core/state/legacy_migration.go:41-97",
+            "purpose": "migrateV4ToV5(): wrap v4 into diskStateV5 with ULID generation (IDGenerator override for tests)"
+          },
+          {
+            "file": "core/state/legacy_migration.go:99-136",
+            "purpose": "migrateLegacySources(): expand one ProxySource into subscription+server Sources"
+          }
+        ]
+      },
+      {
+        "path": "core/state/diff.go",
+        "responsibility": "Change detection: CacheStale (parser impact), ConfigStale (template impact), AffectsParser/AffectsTemplate checks",
+        "keyFiles": [
+          {
+            "file": "core/state/diff.go:16-60",
+            "purpose": "Diff struct + AffectsParser/AffectsTemplate: partition changes by downstream impact"
+          }
+        ]
+      },
+      {
+        "path": "core/state/rule_identity.go",
+        "responsibility": "Identity (SPEC 063): StableRuleID pure function (preset→Ref, inline/srs→sanitize(name))",
+        "keyFiles": [
+          {
+            "file": "core/state/rule_identity.go:27-73",
+            "purpose": "StableRuleID() + sanitizeIDPart(): single source of truth for rule identity (not stored, computed)"
+          }
+        ]
+      },
+      {
+        "path": "core/state/ulid.go",
+        "responsibility": "ULID generator: monotonic Crockford base32 (48-bit ms timestamp + 80-bit crypto random)",
+        "keyFiles": [
+          {
+            "file": "core/state/ulid.go:28-84",
+            "purpose": "MakeULID(): crypto/rand with intra-ms monotonicity, encodeTimestamp/encodeRandom"
+          }
+        ]
+      },
+      {
+        "path": "core/state/raw_cache.go",
+        "responsibility": "Subscription body cache: WriteRawBody (atomic), ReadRawBody, DeleteOrphans GC",
+        "keyFiles": [
+          {
+            "file": "core/state/raw_cache.go:52-112",
+            "purpose": "WriteRawBody(): mkdir+.tmp+Sync+Rename (atomic), skip empty bodies (HWID binding edge case)"
+          },
+          {
+            "file": "core/state/raw_cache.go:114-149",
+            "purpose": "ReadRawBody(), DeleteOrphans()"
+          }
+        ]
+      },
+      {
+        "path": "core/state/provider_announce.go",
+        "responsibility": "ProviderAnnounce struct: parsed announcement headers from fetch (SPEC 061), surfaces via SubscriptionMeta.ProviderAnnounce",
+        "keyFiles": [
+          {
+            "file": "core/state/provider_announce.go:30-54",
+            "purpose": "ProviderAnnounce + IsEmpty(): HWID binding status (active, max devices reached)"
+          }
+        ]
+      },
+      {
+        "path": "core/state/adapter_source.go",
+        "responsibility": "Source→ProxySource converter: backward-compat helper for legacy parser code",
+        "keyFiles": [
+          {
+            "file": "core/state/adapter_source.go:20-50",
+            "purpose": "ToProxySourceV4(): subscription/server mapping (server Label→TagMask)"
+          }
+        ]
+      },
+      {
+        "path": "core/state/disk_v6.go",
+        "responsibility": "On-disk v6 schema constants + diskStateV6 private type (v6 read/write layout)",
+        "keyFiles": [
+          {
+            "file": "core/state/disk_v6.go:32-68",
+            "purpose": "SchemaVersionV6, SchemaName, diskStateV6 struct + MetaSection"
+          }
+        ]
+      },
+      {
+        "path": "core/state/legacy_types.go",
+        "responsibility": "Legacy model types: ConfigParam, SettingVar, CustomRule, RuleType*, LegacyDNSOptionsV5",
+        "keyFiles": [
+          {
+            "file": "core/state/legacy_types.go:21-83",
+            "purpose": "Legacy in-memory types for backward-compat (UI, v5 shimming), IsKnownRuleType()"
+          }
+        ]
+      },
+      {
+        "path": "core/state/legacy_v4.go",
+        "responsibility": "On-disk v4 schema (private): input type for v2/v3/v4 parsing",
+        "keyFiles": [
+          {
+            "file": "core/state/legacy_v4.go:9-48",
+            "purpose": "v4File, v4ParserConfig, v4Parser, v4SelectableRuleSt (unmarshalling only)"
+          }
+        ]
+      },
+      {
+        "path": "core/snapshot/snapshot.go",
+        "responsibility": "Snapshot capture: read-only aggregation of 4 files (template, state, cache, config) for diagnostics",
+        "keyFiles": [
+          {
+            "file": "core/snapshot/snapshot.go:26-107",
+            "purpose": "Snapshot struct, Build(): iterate fileSpec[], handle missing/invalid JSON, partial completeness (Missing/Errors)"
+          }
+        ]
+      }
+    ],
+    "recommendations": [
+      {
+        "title": "Extract legacyCustomRulesFromV6 call from parseCurrent (dependency debt)",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "legacyCustomRulesFromV6 is called in parseCurrent:136 to generate State.CustomRules for backward-compat UI. It duplicates the Rules field and adds technical debt. After Phase 7 (UI migration to Rules), delete the call and State.CustomRules field entirely. Currently necessary for UI source_tab / rules dashboard that still read CustomRules. Tag as TECH-DEBT-070 and remove after UI phase 7."
+      },
+      {
+        "title": "BUG1 (deriveV6FromLegacy) reflects dual-state / two sources of truth problem (SPEC 068)",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "deriveV6FromLegacy:438-449 is called on Load to backfill Rules/DNS from CustomRules/DNSOptions when the canonical fields are empty. This workaround masks a deeper architecture issue: legacy State.CustomRules + new State.Rules are maintained in parallel, creating two sources of truth. The root cause is that Load fills both views (legacy on v2-v5, derived on v6), but Save on headless paths (auto_update, log_level, config_service) doesn't update UI—it Load→mutate→Save without re-emitting from Configurator. Rule: Store ONLY Rules/DNS (canonical); derive legacy CustomRules/DNSOptions on-demand in UI layer (not in core/state). This eliminates BUG1 and forces callsites to converge. After Phase 7."
+      },
+      {
+        "title": "Consolidate legacyDevDNSToOptions (dev-shape fallback SPEC 053) removal",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "legacyDevDNSToOptions:156-221 in load.go is a fallback for old dev-shape (template_servers/extra_servers/extra_rules from SPEC 053 pre-SPEC 056-R-N). Marked TODO for removal after release-cycle. v6 was not released to users; all dev-state has migrated. Delete on next Phase 5 cleanup after confirming no stored dev-state files exist in field."
+      },
+      {
+        "title": "Deduplicate syncLegacyFromConnections logic (appears 3 times, used in 2 code paths)",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "syncLegacyFromConnections is called in: (1) adapter.go:34 on nil-proxy edge case, (2) load.go:138 after parseCurrent, (3) load.go:350 after parseV5Legacy. It's a pure function, but the call sites have similar patterns. Consider extracting a single 'normalizeAfterLoad' helper that calls syncLegacyFromConnections + normalizeNilSlices + sanitizeOutboundRefs for all parse paths."
+      },
+      {
+        "title": "SPEC 053 legacyDevDNSToOptions temporary shim—clarify with release notes",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "load.go:93-95 comment says 'v6 not released, lossless conversion'. But the shim is present; should be documented in WIZARD_STATE.md or RELEASE_NOTES when v6 ships. Mark clearly: 'this fallback removed after v1.0.0' or similar."
+      },
+      {
+        "title": "Move v4File, v4ParserConfig, v4SelectableRuleSt to separate legacy_v4_types.go (minor org)",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "legacy_v4.go (47 lines) is small; coupling with legacy_migration.go is tight. Legacy-specific types could be extracted to legacy_v4_types.go for clarity (keep logic in legacy_migration.go). Low priority, good-to-have for SPEC 070 org pass."
+      },
+      {
+        "title": "Rule.DecodeBody error messages omit rule identity for debugging",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "rule_types.go:102-151 DecodeBody() returns generic errors like 'rule kind=preset requires ref'. For debugging, wrap errors with StableRuleID(r) context: 'rule [id=sanitized_name] kind=preset requires ref'. Useful for validator + UI error dialogs."
+      },
+      {
+        "title": "Snapshot.Build missing validation for incomplete capture (partial Success)",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "snapshot.go:60-107 Build() gracefully handles missing files (Missing[]) and I/O errors (Errors{}), but doesn't signal 'success despite missing files'. Return value is Snapshot{Files, Missing, Errors}; caller must check len(Missing)>0 or len(Errors)>0. Consider a bool Success field or a method Snapshot.IsComplete() for clarity in debug-API response."
+      }
+    ],
+    "stateFlows": [
+      "LOAD disk → memory: (1a) disk file → Parse detects schema (top-level version vs meta.version) → routes to v2/v3/v4/v5/v6 parser; (1b) v2-v4 → parseLegacyAndMigrate → migrateV4ToV5 → diskStateV5; (1c) v5 → parseV5Legacy reads diskStateV5; (1d) v6 → parseCurrent reads canonical Rules/DNS. (2) All paths: syncLegacyFromConnections fills ParserConfig.Proxies from Connections.Sources (backward-compat). (3) All paths: normalizeNilSlices, sanitizeOutboundRefs, deriveV6FromLegacy (BUG1 workaround on v2-v5). (4) Result: *State in memory with dual views (legacy ParserConfig + canonical Connections/Rules/DNS).",
+      "LOAD + PRESENTOR: (1) Configurator.LoadWizardState: state.Load → *State → refreshSourcesList (UI source_tab reads ParserConfig.Proxies). (2) Presenter.OpenWizardState: state.Rules → Rules tab, state.DNS → DNS tab, state.ConfigParams → Settings. (3) SyncDNSOptionsWithActivePresets called on load (presenter_state.go:127) to materialize kind=preset DNS entries from active Rule[kind=preset] refs.",
+      "EDIT + SAVE: (1) UI edits model.ParserConfig.ParserConfig.Proxies (source_tab, outbounds_tab) or model.Rules/model.DNS (Rules tab, DNS tab). (2) SaveCurrentState: state.Save(s) calls s.syncConnectionsFromLegacy (ParserConfig→Connections on Save), marshalDisk (v6 JSON layout), atomic write (tmp+Sync+Rename). (3) Result: disk state.json in v6 canonical form (Rules[], DNS flat with kind discriminator).",
+      "AUTO-UPDATE / HEADLESS: (1) core/auto_update.go: state.Load(statePath) → *State → refresh subscriptions → state.Save. (2) BUG1 manifests: deriveV6FromLegacy backfills Rules/DNS if empty (legacy v2-v5 path skips UI, so CustomRules→Rules not converted). (3) Next Load: legacyCustomRulesFromV6 converts Rules back to CustomRules for legacy view (circular dual-state).",
+      "MIGRATION v2→v5→v6: (1) parseLegacyAndMigrate: migrateV4ToV5 (IDGenerator optional), wrap in diskStateV5, then return State (ULID'ed Sources). (2) parseV5Legacy: diskStateV5 → State, call deriveV6FromLegacy to backfill Rules/DNS. (3) parseCurrent: diskStateV6 → State, legacyCustomRulesFromV6 derives CustomRules from Rules. (4) Edge case: legacyDevDNSToOptions reads old dev-shape `dns` field (SPEC 053), converts to canonical DNSOptions on load (one-shot, re-saves in new shape on next Save).",
+      "SNAPSHOT capture: (1) snapshot.Build(execDir, ...) → read 4 files via platform.GetWizardXPath. (2) Per file: os.ReadFile → jsonc.ToJSON (handles JSONC comments) → json.Valid → append to Snapshot.Files[] or Missing/Errors. (3) No errors raised; caller sees Files/Missing/Errors dict and decides severity."
+    ],
+    "deadOrHistorical": [
+      {
+        "location": "core/state/load.go:156-221",
+        "action": "delete after next release cycle",
+        "kind": "function legacyDevDNSToOptions: fallback for SPEC 053 dev-shape (template_servers/extra_servers/extra_rules). v6 never shipped; all dev-state migrated to SPEC 056-R-N flat shape. TODO comment confirms removal intent. Keep until confirm no stored dev-state.json files in field."
+      },
+      {
+        "location": "core/state/state.go:96-110",
+        "action": "delete after Phase 7 (UI Rules tab migration complete)",
+        "kind": "field State.SelectableRuleStates, State.RulesLibraryMerged: legacy flags from v2-v4, not serialized in v5+. Kept for one-shot migration + backward-compat callsites. After UI Phase 7 (Rules tab reads state.Rules directly), remove along with State.CustomRules + State.DNSOptions."
+      },
+      {
+        "location": "core/state/load.go:136-137, 223-285",
+        "action": "delete CustomRules generation after Phase 7",
+        "kind": "code legacyCustomRulesFromV6: converts state.Rules→CustomRules for backward-compat UI (source_tab, dashboard). After UI Phase 7 migrates Rules tab to read state.Rules directly, delete this call and state.CustomRules field."
+      },
+      {
+        "location": "core/state/legacy_types.go:34-45",
+        "action": "consider removal after Phase 7 or move to ui/configurator/models",
+        "kind": "type CustomRule: legacy in-memory representation (label, rule map, outbound). Used by UI models for backward-compat. After Rules tab migrates, this type becomes UI-only; move to ui/ namespace to clarify boundary."
+      },
+      {
+        "location": "core/state/legacy_types.go:47-64",
+        "action": "keep; used by ui/configurator/models as wizardmodels.PersistedDNSState",
+        "kind": "type LegacyDNSOptionsV5: legacy v5 DNS shape. Public (not private) by design: UI models alias it. After DNS tab Phase 6 (UI reads state.DNS), still needed for backward-compat with v5 loaded state.json."
+      },
+      {
+        "location": "core/state/load.go:438-449",
+        "action": "refactor after BUG1 architecture fix (SPEC 068)",
+        "kind": "function deriveV6FromLegacy: workaround for dual-state issue. Root cause: headless paths (auto_update, log_level) Load→Save without UI re-emit. Fix: store ONLY Rules/DNS canonical; derive CustomRules/DNSOptions on-demand in UI layer. This eliminates the need for deriveV6FromLegacy."
+      }
+    ],
+    "dups": [
+      {
+        "desc": "syncLegacyFromConnections and syncConnectionsFromLegacy are opposites (Load vs Save), not dups, but adapter.go syncConnectionsFromLegacy (for Save) also mirrors Save-path code. Consider extracting common logic (URL/URI matching, ID preservation, ULID generation) into helper.",
+        "locations": [
+          "core/state/adapter.go:28-124 (syncConnectionsFromLegacy, Save path)",
+          "core/state/adapter.go:135-174 (syncLegacyFromConnections, Load path)"
+        ],
+        "consolidation": "These are intentionally symmetric (bidirectional adapter); no consolidation needed. But the matching/ID-preservation logic is complex; extract buildTagSpecFromLegacy + serverLabelFromLegacy patterns into shared helpers for clarity."
+      },
+      {
+        "desc": "Parse routing for v2/v3/v4 uses shared patterns (detect version, unmarshal to intermediate, migrate to v5). Could factor out common schema detection / intermediate type.",
+        "locations": [
+          "core/state/load.go:63-75 (Parse router: version probing)",
+          "core/state/load.go:357-425 (parseLegacyAndMigrate full pipeline)",
+          "core/state/legacy_migration.go:41-97 (migrateV4ToV5)"
+        ],
+        "consolidation": "Low priority. Parse router is already clear (switch on version). migrateV4ToV5 is isolated. Keep as-is; dups are minimal."
+      },
+      {
+        "desc": "Both load.go and adapter.go have versions of tag-spec building (buildTagSpecFromLegacy appears twice: line 64, line 177). Identical logic.",
+        "locations": [
+          "core/state/adapter.go:177-182 (buildTagSpecFromLegacy)",
+          "core/state/legacy_migration.go:138-148 (buildLegacyTagSpec, same logic)"
+        ],
+        "consolidation": "Consolidate: move one canonical buildTagSpec to a shared place (e.g., adapter_source.go or new connections_helpers.go). Update both callsites to import from shared location."
+      }
+    ],
+    "monoliths": [
+      {
+        "file": "core/state/load.go",
+        "loc": 652,
+        "problem": "Large monolith file combining multiple concerns: high-level Parse router + low-level v2/v3/v4 parsing + v5 parsing + v6 parsing + migration helpers + BUG1 workaround. Complex nested functions (parseCurrent, parseV5Legacy, parseLegacyAndMigrate, legacyDevDNSToOptions, legacyCustomRulesFromV6, deriveV6FromLegacy, etc.). Hard to navigate and test each schema path independently.",
+        "decomposition": "Split into 4 files: (1) load_router.go (Parse, schema detection, route to sub-parsers), (2) load_v6.go (parseCurrent + legacyDevDNSToOptions + legacyCustomRulesFromV6), (3) load_v5.go (parseV5Legacy + deriveV6FromLegacy), (4) load_v2_v3_v4.go (parseLegacyAndMigrate). Each file ~150-200 LOC, single-schema responsibility. Tests become clearer: TestParseV6, TestParseV5, TestParseLegacy separately."
+      },
+      {
+        "file": "core/state/adapter.go",
+        "loc": 231,
+        "problem": "syncConnectionsFromLegacy (98 lines) and syncLegacyFromConnections (40 lines) are tightly coupled opposites with shared helpers (buildTagSpecFromLegacy, serverLabelFromLegacy, extractURIFragment, etc.). The Save-path sync is complex: nested source iteration, type dispatch, ID/Meta preservation, ULID generation. Hard to verify correctness on rearrangement/update flows.",
+        "decomposition": "Split into 2 files: (1) sync_to_connections.go (syncConnectionsFromLegacy + helpers for Save path), (2) sync_to_legacy.go (syncLegacyFromConnections for Load path). Or keep in adapter.go but extract helpers to connections_helpers.go (buildTagSpec, serverLabel, extractFragment). Add unit tests for each direction with fixtures (rearrange, add/remove, metadata preservation)."
+      }
+    ],
+    "dependencies": [
+      {
+        "from": "ui/configurator/presentation/presenter_state.go",
+        "to": "core/state",
+        "why": "UI reads state.Rules, state.DNS, state.ConfigParams, state.Vars on load; writes through state.Save(). Depends on SyncDNSOptionsWithActivePresets call. BUG1 manifested here: UI expects both CustomRules (legacy) and Rules (canonical) available in-memory after Load."
+      },
+      {
+        "from": "core/auto_update.go",
+        "to": "core/state",
+        "why": "Headless path: state.Load → update subscription Meta → state.Save without UI emit. BUG1 triggers: deriveV6FromLegacy needed to backfill v6 fields on v2-v5 load."
+      },
+      {
+        "from": "core/config_service.go",
+        "to": "core/state",
+        "why": "Reads state.Load for subscription metadata refresh + Write state.Save (auto-update caller). Also calls SyncDNSOptionsWithActivePresets (presenter already did; possible duplication on rebuild?)."
+      },
+      {
+        "from": "core/rebuild.go",
+        "to": "core/state",
+        "why": "state.Load for build service; reads state.Rules, state.DNS for config generation."
+      },
+      {
+        "from": "core/template/preset_lite.go",
+        "to": "core/state",
+        "why": "Defines PresetLite interface for SyncDNSOptionsWithActivePresets: PresetID(), PresetDNSServerTags(), PresetHasDNSRule(). Circular import avoided by placing interface in state package (not template)."
+      },
+      {
+        "from": "core/snapshot",
+        "to": "core/state (implicit: reads state.json disk file)",
+        "why": "snapshot.Build() reads state.json as JSON blob (not parsed into State struct). No direct code dependency, but captures state.json contents."
+      },
+      {
+        "from": "ui/configurator/business/state_store.go",
+        "to": "core/state",
+        "why": "High-level state persistence: LoadWizardState (state.Load), SaveWizardState (state.Save)."
+      }
+    ],
+    "events": []
+  },
+  {
+    "zone": "build/template/config pipeline",
+    "packages": [
+      {
+        "path": "core/build",
+        "responsibility": "Config-to-JSON pipeline orchestrator: BuildConfig orchestrates per-section rendering (outbounds, DNS, route presets) via pure section handlers. EntryPoint for all sing-box JSON generation.",
+        "keyFiles": [
+          {
+            "file": "core/build/build.go",
+            "purpose": "BuildConfig main orchestrator: validate template, resolve effective config via GetEffectiveConfig, dispatch per-section via buildSection dispatcher, concat final JSON. Pure function.",
+            "loc": 348
+          },
+          {
+            "file": "core/build/sections.go",
+            "purpose": "BuildOutboundsSection/BuildEndpointsSection: render outbounds/endpoints with parser markers + preview truncation. Pure JSON string formatters.",
+            "loc": 178
+          },
+          {
+            "file": "core/build/format.go",
+            "purpose": "Indentation + JSON formatting helpers (Indent, FormatSectionJSON, FormatCompactJSON). Extracted from wizard layer for purity.",
+            "loc": 73
+          },
+          {
+            "file": "core/build/dns_merge.go",
+            "purpose": "MergeDNSSection: overlay DNSConfig (servers/rules/final/strategy) onto template dns JSON. Filter by enabled, strip wizard-only fields. Pure merge.",
+            "loc": 275
+          },
+          {
+            "file": "core/build/route_merge.go",
+            "purpose": "MergeRouteSection: append enabled custom-rules + SRS rule_sets onto template route. Convert remote rule_sets to local via bin/rule-sets/ lookup. Pure merge.",
+            "loc": 236
+          },
+          {
+            "file": "core/build/preset_merge.go",
+            "purpose": "MergePresetsIntoRoute/DNS (SPEC 053): secondary pass that append's preset-bundled rule_sets/rules/dns via ResolveRoute/ResolveDNS. Dedup by tag.",
+            "loc": 491
+          },
+          {
+            "file": "core/build/preset_expand.go",
+            "purpose": "ExpandPreset: substitute @vars, apply if/if_or filters, prefix tags, clean dangling rule_set refs. Returns PresetFragments (RuleSets/RoutingRules/DNSRule/DNSServers).",
+            "loc": 508
+          },
+          {
+            "file": "core/build/resolve_dns.go",
+            "purpose": "ResolveDNS pure resolver: unifies template/preset/user DNS sources with Active/Enabled/Locked metadata. Source-of-truth for UI render + build emit.",
+            "loc": 544
+          },
+          {
+            "file": "core/build/resolve_route.go",
+            "purpose": "ResolveRoute pure resolver: unifies preset/inline/srs routing via state.Rules. Returns ResolvedRoute with RuleSets/Rules dups-dedup by tag.",
+            "loc": 293
+          }
+        ]
+      },
+      {
+        "path": "core/config",
+        "responsibility": "Subscription fetch→parse→generate outbounds JSON pipeline. Orchestrates three-pass node validity + selector filtering. Dual-responsibility: legacy string-concat JSON generation + new varsubst resolver.",
+        "keyFiles": [
+          {
+            "file": "core/config/outbound_generator.go",
+            "purpose": "Three-pass outbounds generation: buildOutboundsInfo (collect by tag+filter), computeOutboundValidity (topological sort by addOutbounds deps), generateSelectorJSONs (emit valid selectors). 1086 LOC monolith. String-concat JSON in GenerateNodeJSON/GenerateSelectorWithFilteredAddOutbounds.",
+            "loc": 1086
+          },
+          {
+            "file": "core/config/config_loader.go",
+            "purpose": "GetSelectorGroupsFromConfig: extract selector group names + defaults from config.json for UI binding. Reads live config, returns tag list.",
+            "loc": 145
+          },
+          {
+            "file": "core/config/varsubst.go",
+            "purpose": "SubstituteParserConfigPlaceholders (hotfix v0.8.8.1): resolve @name placeholders in outbound[].options via BuildVarSubstituterFromDisk (template defaults + state override). Pure string substitution.",
+            "loc": 311
+          }
+        ]
+      },
+      {
+        "path": "core/template",
+        "responsibility": "Template load + presets extraction. Schema validation + v6-aware rule library materialization via Presets field.",
+        "keyFiles": [
+          {
+            "file": "core/template/loader.go",
+            "purpose": "LoadTemplateData: read wizard_template.json, apply params, extract presets (SPEC 053), validate DNS servers, return TemplateData. Performs setup for downstream BuildConfig.",
+            "loc": 150
+          }
+        ]
+      },
+      {
+        "path": "core (config_service.go)",
+        "responsibility": "Config-build service facade: orchestrates cache-refresh (UpdateConfigFromSubscriptions → parser) and Rebuild (BuildConfig → emit). State-aware context builder.",
+        "keyFiles": [
+          {
+            "file": "core/config_service.go",
+            "purpose": "ConfigService: RunParserProcess (subscription fetch/parse), UpdateConfigFromSubscriptions (cache refresh pipeline), buildContextFromState (assemble BuildContext from state+cache+template). 1066 LOC; multi-step state coordination.",
+            "loc": 1066
+          }
+        ]
+      }
+    ],
+    "dependencies": [
+      {
+        "from": "core/config_service.go",
+        "to": "core/build/build.go",
+        "why": "BuildConfig main entry: config_service assembles BuildContext + calls BuildConfig to produce config.json bytes. Pure function boundary."
+      },
+      {
+        "from": "core/build/build.go",
+        "to": "core/build/{dns_merge,route_merge,preset_merge}.go",
+        "why": "buildSection dispatcher: DNS/Route sections routed to MergeDNS/MergeRoute, then MergePresetsInto* for preset passthrough."
+      },
+      {
+        "from": "core/build/preset_merge.go",
+        "to": "core/build/{resolve_dns,resolve_route}.go",
+        "why": "ResolveDNS/ResolveRoute called to expand state.Rules into fragments for preset bundle merge. Pure resolvers."
+      },
+      {
+        "from": "core/build/resolve_dns.go core/build/resolve_route.go",
+        "to": "core/build/preset_expand.go",
+        "why": "ExpandPreset called per preset-ref rule to yield fragments (RuleSets/RoutingRules/DNSServers/DNSRule). Output merged back."
+      },
+      {
+        "from": "core/config_service.go",
+        "to": "core/config/outbound_generator.go",
+        "why": "GenerateOutboundsFromParserConfig: subscription fetch→parse pipeline. Input: ParserConfig, output: []string outbounds JSON for BuildContext.Cache."
+      },
+      {
+        "from": "core/config/outbound_generator.go",
+        "to": "core/config/varsubst.go",
+        "why": "SubstituteParserConfigPlaceholders called on outbound[].options to resolve @name before JSON generation."
+      },
+      {
+        "from": "core/config_service.go",
+        "to": "core/template/loader.go",
+        "why": "LoadTemplateData: load wizard_template.json for TemplateData (presets, parser_config, DNS library)."
+      },
+      {
+        "from": "core/build/build.go",
+        "to": "core/template/loader.go (via BuildContext)",
+        "why": "TemplateData passed as BuildContext.Template; BuildConfig applies template params via GetEffectiveConfig."
+      },
+      {
+        "from": "core/build/resolve_dns.go core/build/resolve_route.go",
+        "to": "core/state/",
+        "why": "ResolveDNS/ResolveRoute consume state.Rules (preset/inline/srs) + state.DNS + state.Vars to produce resolved fragments."
+      }
+    ],
+    "dups": [
+      {
+        "desc": "Active/Enabled/InactiveReason metadata patterns duplicated across ResolveDNS (ResolvedDNSServer) and ResolveRoute (ResolvedRouteRule)",
+        "locations": [
+          "core/build/resolve_dns.go:ResolvedDNSServer (Active, Enabled, InactiveReason fields + logic)",
+          "core/build/resolve_route.go:ResolvedRouteRule (Active, Enabled, InactiveReason fields + logic)"
+        ],
+        "consolidation": "Extract shared ResolvedEntry<T> or embed metadata struct {Active, Enabled, InactiveReason} into both; reduce copy-paste in resolver implementations."
+      },
+      {
+        "desc": "Rule filtering + substitution logic appears in both ExpandPreset (preset_expand.go) and ResolveRoute/ResolveDNS (resolve_*.go)",
+        "locations": [
+          "core/build/preset_expand.go:filterActiveVars, evalIf, substitutePresetBody (lines 97-158)",
+          "core/build/resolve_route.go:resolvePresetRouteRule calls ExpandPreset then filters Active",
+          "core/build/resolve_dns.go:preset DNS server emit after ExpandPreset"
+        ],
+        "consolidation": "ExpandPreset is single source; ResolveRoute/ResolveDNS should call it once and consume result. Currently symmetric but potential for unification if if/if_or evaluation moves to a shared validator."
+      },
+      {
+        "desc": "String-concat JSON generation in GenerateNodeJSON and GenerateSelectorWithFilteredAddOutbounds both use parts[]string + strings.Join pattern",
+        "locations": [
+          "core/config/outbound_generator.go:GenerateNodeJSON (lines 242-489) — 248 lines of fmt.Sprintf + strings.Join",
+          "core/config/outbound_generator.go:GenerateSelectorWithFilteredAddOutbounds (lines 496-659) — similar pattern for selector JSON"
+        ],
+        "consolidation": "Extract JSONBuilder struct with appendField(name, value) method to reduce boilerplate. Current approach error-prone for edge cases (nested objects, array handling). json.Marshal for leaf values already applied; wrapper can unify field ordering."
+      },
+      {
+        "desc": "rule_set tag conversion logic duplicated: convertRuleSetToLocalRequired (route_merge.go:167) vs convertPresetRuleSetRemoteToLocal (preset_merge.go:42)",
+        "locations": [
+          "core/build/route_merge.go:convertRuleSetToLocalRequired (legacy custom-rule path)",
+          "core/build/preset_merge.go:convertPresetRuleSetRemoteToLocal (preset path)"
+        ],
+        "consolidation": "Merge into single convertRemoteRuleSetToLocal(rs, execDir, tag) that both callsites use. Local type=local and execDir logic identical; only differs in error message detail."
+      },
+      {
+        "desc": "DNS-only fields stripping logic in stripDNSWizardOnlyFields duplicates pattern across MergeDNSSection and MergePresetsIntoDNS",
+        "locations": [
+          "core/build/dns_merge.go:stripDNSWizardOnlyFields (line 156) — single source used by both",
+          "core/build/preset_merge.go:MergePresetsIntoDNS calls stripDNSWizardOnlyFields"
+        ],
+        "consolidation": "Already consolidated in stripDNSWizardOnlyFields; no issue. Keep as single source of truth."
+      }
+    ],
+    "monoliths": [
+      {
+        "file": "core/config/outbound_generator.go",
+        "loc": 1086,
+        "problem": "String-concat JSON generation across GenerateNodeJSON (248 LOC) and GenerateSelectorWithFilteredAddOutbounds (164 LOC) uses repeated fmt.Sprintf + strings.Join pattern. 1086 LOC total, with three-pass algorithm (buildOutboundsInfo, computeOutboundValidity, generateSelectorJSONs) and complex filter/expose tag logic interleaved. Difficult to test field ordering, handle new protocols (naive, etc. are cumbersome additions).",
+        "decomposition": "1. Extract JSONBuilder{parts []string} helper with AppendField(name, value) — handles proper escaping via marshalJSONString. 2. Extract ProtocolFieldsHandler interface{GenerateFields(node) []string} — implement per protocol (VLESS, VMess, Trojan, etc.) to centralize field logic. 3. Move three-pass algorithm (buildOutboundsInfo/computeOutboundValidity/generateSelectorJSONs) to outbound_validity.go; GenerateOutboundsFromParserConfig becomes thin orchestrator. 4. Create filter_helpers.go for SelectorFiltersAcceptNode, filterNodesForSelector, matchesFilter logic (currently scattered)."
+      },
+      {
+        "file": "core/config_service.go",
+        "loc": 1066,
+        "problem": "Multi-step state coordination: UpdateConfigFromSubscriptions (186-306) handles cache refresh, per-source resilience, state mutation, UI callbacks, and auto-rebuild trigger. buildContextFromState (341-389) constructs BuildContext with DNS/Route/Preset merge contexts — deep nesting of optional parameters. RefreshSubscriptionsMetaAndCache (537-597), RefreshSourceInPlace (872-895), RefreshSingleSubscription (906-945) are three different per-source refresh paths with overlapping logic. Mixing concerns: subscription fetch orchestration, state persistence, UI signaling, build triggering.",
+        "decomposition": "1. Extract SubscriptionFetcher service{FetchMeta(), RefreshAll(), RefreshOne()} — isolate per-source network I/O and meta management. 2. Extract ConfigContextBuilder{buildDNSConfig(), buildRouteConfig(), buildPresetContext()} — encapsulate BuildContext assembly logic separate from subscription handling. 3. Create StateCoordinator{UpdateState(), SaveState()} — single point for state.Load/mutate/Save + MarkConfigStale/ClearCacheStale. 4. Move UI callback chains into separate event service — decouple build triggers from refresh logic. Result: UpdateConfigFromSubscriptions becomes 50 LOC orchestrator calling these services in sequence."
+      }
+    ],
+    "recommendations": [
+      {
+        "title": "outbound_generator.go string-concat JSON: migrate to typed JSON builder",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "Current fmt.Sprintf + strings.Join is fragile for new protocol support (naive, hysteria2 recent additions show pattern). Extract JSONBuilder struct with AppendField(name, value) that marshals via json.Marshal internally + handles proper escaping. Test via golden outbound_generator_test.go. Risk: field ordering—ensure Builder preserves insertion order (use ordered map or slice of [key, value] pairs). Does NOT change behavior, only refactors internal implementation."
+      },
+      {
+        "title": "Consolidate rule_set type conversion (local vs remote)",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "convertRuleSetToLocalRequired (route_merge.go:167) and convertPresetRuleSetRemoteToLocal (preset_merge.go:42) duplicate type=remote → type=local logic. Create single convertRuleSetToLocal(rs, execDir) that both paths use. Unify error messages. Tests in route_merge_test.go cover both paths after consolidation."
+      },
+      {
+        "title": "Extract ResolveDNS/ResolveRoute shared metadata struct",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "ResolvedDNSServer + ResolvedDNSRule + ResolvedRouteRule all carry {Active, Enabled, InactiveReason}. Define shared ResolvedEntryMetadata struct, embed in each. Reduces code duplication in resolver implementations. No behavior change—purely structural."
+      },
+      {
+        "title": "Extract config-build context assembly from config_service.go",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "buildContextFromState (lines 341-389) + dnsConfigForUpdate + routeConfigForUpdate are state-to-build-context transformations. Move to separate ConfigContextBuilder service. Improves testability: unit-test context assembly independently of subscription refresh orchestration. Risk: ensure BuildContext invariants preserved (e.g., Preset.ExecDir must be set for SRS resolution)."
+      },
+      {
+        "title": "Separate subscription fetching from state coordination in config_service.go",
+        "risk": "high",
+        "behaviorChange": false,
+        "detail": "UpdateConfigFromSubscriptions conflates three concerns: (1) per-source network fetch + parse, (2) state.Load/mutate/Save, (3) UI signaling + auto-rebuild trigger. Extract SubscriptionFetcher service handling (1); leave config_service orchestrating (2)+(3). Risk: race conditions with SubscriptionMu must be preserved through new service boundaries. Test via existing update_*.go test suite. Payoff: clarifies retry/resilience logic, enables per-source fetch isolation (TODO in comment line 183)."
+      },
+      {
+        "title": "Create outbounds_validity.go: extract three-pass algorithm from outbound_generator.go",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "buildOutboundsInfo, computeOutboundValidity, generateSelectorJSONs (lines 692-908) are pure algorithm for determining which selectors are non-empty after dependency resolution. Move to separate file. GenerateOutboundsFromParserConfig becomes thin coordinator: load nodes → run validity pass → emit JSON. Improves readability of complex algorithm. Risk: ensure topological sort cycle-detection remains correct (existing WarnLog at line 835)."
+      },
+      {
+        "title": "Dead code audit: @ParserConfig block removal cleanup (SPEC 045)",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "Comments in build.go (lines 131-157) document removal of /** @ParserConfig */ block from config.json. Check for any legacy readers: grep -r '@ParserConfig' (should be zero in core, may have UI stubs). If found, remove dead parsing code. Current state: canonical source is state.json; config.json block was dub redundant since SPEC 045 cleanup."
+      },
+      {
+        "title": "Document pipeline contracts: BuildContext → BuildConfig → Result",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "create docs/PIPELINE.md mapping state.json → BuildContext assembly → BuildConfig dispatch → per-section merge → config.json JSON. Helps future refactorers understand layering: (1) fetch/parse subscriptions → cache, (2) state.Load + cache assembly → BuildContext, (3) BuildConfig pure render, (4) atomicWrite. Current doc comments scattered; consolidate."
+      },
+      {
+        "title": "Outbound JSON generation: separate protocol field logic from JSON formatting",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "GenerateNodeJSON (lines 242-489) mixes protocol-specific field extraction (UUID for vless, password for trojan, method for ss, etc.) with JSON formatting boilerplate. Create ProtocolFieldHandler interface; per-protocol impl in node_parser_vless.go style. Centralizes new-protocol additions (current: naive, hysteria2 recently added and are verbose). Risk: maintain field ordering invariants (tag, type, server, server_port, auth fields, tls, detour)."
+      }
+    ],
+    "events": [
+      {
+        "name": "ConfigBuild",
+        "publishers": [
+          "config_service.go:RebuildConfigIfDirty",
+          "config_service.go:UpdateConfigFromSubscriptions (line 286 auto-rebuild)"
+        ],
+        "subscribers": [
+          "StateService.MarkConfigStale/ClearConfigStale",
+          "UIService.UpdateConfigStatusFunc"
+        ]
+      },
+      {
+        "name": "SubscriptionUpdate",
+        "publishers": [
+          "config_service.go:UpdateConfigFromSubscriptions",
+          "config_service.go:RefreshSingleSubscription"
+        ],
+        "subscribers": [
+          "config_service.go (auto-rebuild)",
+          "StateService (cache meta update)",
+          "UIService.ShowSubsResultFunc (toast)"
+        ]
+      },
+      {
+        "name": "PresetActivation",
+        "publishers": [
+          "build/resolve_dns.go ResolveDNS",
+          "build/resolve_route.go ResolveRoute (when state.Rules has preset-ref)"
+        ],
+        "subscribers": [
+          "build/preset_expand.go ExpandPreset (via ExpandPreset call in resolve_*.go)",
+          "build/preset_merge.go (output append to existing)"
+        ]
+      }
+    ],
+    "stateFlows": [
+      "state.json → load → config_service.buildContextFromState → BuildContext.{Template,Vars,Cache,DNS,Route,Preset} → BuildConfig → sections per order → MergeDNSSection → MergePresetsIntoDNS (ResolveDNS) → emit",
+      "state.json → load → config_service.buildContextFromState → BuildContext.Route → MergeRouteSection → MergePresetsIntoRoute (ResolveRoute + ExpandPreset per preset-ref) → emit rules + rule_sets",
+      "subscription fetch → GenerateOutboundsFromParserConfig (three passes: buildOutboundsInfo, computeOutboundValidity, generateSelectorJSONs) → []string JSON → cache → BuildContext.Cache → BuildOutboundsSection (add @ParserSTART markers) → emit"
+    ]
+  },
+  {
+    "zone": "Subscription Ingestion + Remote API (SPEC 070 Zone)",
+    "packages": [
+      {
+        "path": "core/config/subscription",
+        "responsibility": "Protocol parsers + share-URI encoders for proxy nodes (VLESS, VMess, Trojan, SS, Hysteria2, SSH, SOCKS, WireGuard, Naive) and subscription transport (fetch + decode + metadata extraction)",
+        "keyFiles": [
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/core/config/subscription/source_loader.go:399",
+            "purpose": "Entry point: fetches & parses subscriptions (URL → nodes), applies tag filters/naming, respects cache hook for offline rebuild"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/core/config/subscription/node_parser.go:744",
+            "purpose": "Main parser: dispatches URI scheme → protocol parser, extracts metadata (tag/label/comment), builds sing-box outbound JSON"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/core/config/subscription/share_uri_encode.go:883",
+            "purpose": "Reverse of ParseNode: outbound JSON → shareable proxy URI (VLESS/Trojan/SS/VMess/Hysteria2/SSH/Naive/WireGuard)"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/core/config/subscription/fetcher.go:366",
+            "purpose": "HTTP fetch + announce-header decode: downloads subscriptions with configurable User-Agent & HWID headers, surfaces provider messages"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/core/config/subscription/meta.go:439",
+            "purpose": "Metadata parsing: extracts headers (Subscription-Userinfo, Profile-Title, Profile-Update-Interval) and inline #comments; handles provider announce on empty body (HWID-limit, region-block)"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/core/config/subscription/decoder.go:100",
+            "purpose": "Content decoding: base64 → plain text URIs or JSON array Xray configs; handles multiple encoding variants"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/core/config/subscription/node_parser_transport.go:286",
+            "purpose": "Transport builder: queryGetFold + uriTransportFromQuery → sing-box V2Ray transport (WS/gRPC/HTTP/HTTPUpgrade); TLS extraction (REALITY/plain)"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/core/config/subscription/xray_outbound_convert.go:333",
+            "purpose": "Xray JSON array parser: converts Xray outbound format (vnext/settings) + jump-proxies into ParsedNode + sing-box Outbound"
+          }
+        ]
+      },
+      {
+        "path": "api",
+        "responsibility": "Clash API client: proxies list + delay test + group switch (remote server management via Clash API)",
+        "keyFiles": [
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/api/clash.go:599",
+            "purpose": "Clash API HTTP layer: LoadClashAPIConfig + GetProxiesInGroup + SwitchProxy + GetDelay; handles net errors (timeout → ErrPlatformInterrupt), logging to api.log"
+          }
+        ]
+      },
+      {
+        "path": "core/debugapi",
+        "responsibility": "Debug HTTP API: introspect + control app state (run/stop, fetch proxies, probe delays, rebuild config, traffic profiling)",
+        "keyFiles": [
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/core/debugapi/server.go:200",
+            "purpose": "HTTP server scaffold: auth (Bearer token), routes (/version, /state/*, /traffic/*, /action/*), facade to AppController"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/core/debugapi/traffic_endpoints.go:150",
+            "purpose": "Traffic Profiler endpoints: /traffic/status + /live + /sessions (SPEC 059), wraps internal/traffic.TrafficProfiler singleton"
+          }
+        ]
+      }
+    ],
+    "recommendations": [
+      {
+        "title": "Break apart node_parser.go (744 lines) into scheme-specific modules",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "ParseNode function is complex and dispatches ~10 schemes (VLESS/VMess/Trojan/SS/Hysteria2/SSH/SOCKS/WireGuard/Naive/Shadowsocks). Decompose into: (1) node_parser_core.go (scheme detection + common logic: URI validation, label/tag extraction), (2) node_parser_vmess.go (already exists, but move VMess specifics here), (3) node_parser_ss.go (Shadowsocks base64 decode + SIP002), (4) node_parser_socks.go (SOCKS5/SOCKS parsing), (5) move WireGuard/Naive/Hysteria2 logic to existing files more cleanly. ParseNode becomes a thin router: detect scheme → call scheme-module → buildOutbound. This drops cyclomatic complexity and makes per-protocol testing clearer. Target: each file <300 lines."
+      },
+      {
+        "title": "Consolidate transport + TLS parsing helpers into node_parser_transport.go module",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "Current state: queryGetFold, normalizePercentDecodeLoop, normalizeRealityShortID, vlessTLSFromNode, trojanTLSFromNode are in node_parser_transport.go; uriTransportFromQuery is also here. But node_parser.go imports node_parser_transport.go + calls vlessTLSFromNode etc. Rename node_parser_transport.go → node_parser_query_helpers.go (or keep name) and clearly document it as the central module for query-string → sing-box-config-object conversion. Add a TransportAndTLS struct/module (buildTransportAndTLS) that centralizes the logic for TLS + transport together (they are often co-dependent: TLS security=none vs TLS+UTLS). This will make it easier to add new protocols."
+      },
+      {
+        "title": "Extract share_uri_encode.go protocol-specific logic into shareuri_*.go files",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "share_uri_encode.go (883 lines) has functions shareURIFromVLESS, shareURIFromVMess, ..., shareURIFromNaive. Split into: shareuri_vless.go, shareuri_vmess.go, shareuri_trojan.go, shareuri_ss.go, shareuri_hysteria2.go, shareuri_ssh.go, shareuri_socks.go, shareuri_wireguard.go, shareuri_naive.go. Keep common helpers (mapGetString, mapGetInt, transportToQuery, vlessTLSToQuery, etc.) in shareuri_helpers.go. ShareURIFromOutbound becomes a thin dispatch in shareuri.go. This mirrors the pattern already used in node_parser_*.go files. Reduces cognitive load per file to ~100 lines."
+      },
+      {
+        "title": "Deduplicate transport parsing across uriTransportFromQuery and xrayTransportFromStreamSettings",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "Two separate parsers exist: (1) uriTransportFromQuery in node_parser_transport.go (handles subscription URI query params: type=ws/grpc/http/httpupgrade), (2) xrayTransportFromStreamSettings in xray_outbound_convert.go (handles Xray JSON: wsSettings/grpcSettings/httpSettings). Both build the same sing-box {type, path, service_name, host} structure but from different input formats. Create a shared module transport_builder.go with: (1) generic TransportSpec type (union of all fields), (2) buildFromQueryParams (current uriTransportFromQuery logic), (3) buildFromXray (current xrayTransportFromStreamSettings logic), (4) toSingboxJSON (output formatting). This prevents drift when sing-box transport schema changes."
+      },
+      {
+        "title": "Unify TLS parsing (vlessTLSFromNode vs xrayVLESSTLSFromStreamSettings)",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "Two VLESS TLS parsers: (1) vlessTLSFromNode (node_parser_transport.go) reads from URL query (security, pbk, sid, fp), (2) xrayVLESSTLSFromStreamSettings (xray_outbound_convert.go) reads from Xray JSON (tlsSettings, realitySettings). Same outputs but different input translation. Create tls_builder.go: (1) struct TLSSpec (enabled, server_name, utls, reality, insecure, alpn), (2) buildFromURIQuery, (3) buildFromXrayJSON, (4) toSingboxJSON. Use shared normalizeRealityShortID, NormalizeUTLSFingerprint, applyTLSQueryExtras. This avoids bugs where one parser gets updated (e.g., new REALITY field) and the other doesn't."
+      },
+      {
+        "title": "Add error context wrapper for net.Error mapping in clash.go",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "classifyRequestError function (clash.go:266) maps context.Canceled/net.Error/OpError → user messages. But the same logic is repeated across GetProxiesInGroup, SwitchProxy, GetDelay (3 copies). Extract: type RequestError struct {Err error, URL string} → wrap in GET/PUT call sites → classifyRequestError receives RequestError and has context for logging. This avoids the fallbackFormat parameter pattern and makes error reporting more consistent (currently 'switch request' vs 'proxies request' vs 'delay request' vary in text)."
+      },
+      {
+        "title": "Migrate fetcher.go function-pointer hooks to dependency-injection interface",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "Current pattern: CreateHTTPClientFunc, IsNetworkErrorFunc, GetNetworkErrorMessageFunc, LoadSubscriptionSettingsFunc are package-level func pointers set by core init (config_service.go). This makes testing hard (requires global state mutations) and implicit dependencies. Extract an interface SubscriptionDependencies { CreateHTTPClient(), IsNetworkError(), GetNetworkErrorMessage(), LoadSettings() } and pass it to FetchSubscriptionWithMeta. Create a testfakes package with mock implementations. This will also help if fetcher ever needs to be reused in headless/CLI contexts."
+      },
+      {
+        "title": "Consolidate node-skipping logic (shouldSkipNode pattern)",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "shouldSkipNode (node_parser.go:529) reads skipFilters []map[string]string and evaluates regex. Same pattern is likely in core/config/configtypes.MatchesPattern (imported in node_parser.go:525). Extract a SkipFilter type with methods: Matches(node *ParsedNode) bool. This allows: (1) unit tests on SkipFilter alone, (2) future expansions (whitelist filters, tag-based filters), (3) clearer intent in LoadNodesFromSource where skip logic is currently mixed with tag/dedup logic."
+      },
+      {
+        "title": "Separate debugapi state-mutation concerns (LoadState/SaveState vs API handlers)",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "debugapi/server.go imports core/state for SPEC 053+ endpoints. But ControllerFacade.LoadState/SaveState are generic state I/O hooks used by multiple endpoints. Extract a StateManager interface (LoadState, SaveState, ApplyLogLevel) that the facade implements, so debugapi can be tested without the full controller. This also clarifies that /state/* endpoints are read-only query or atomic mutations, not ad-hoc edits."
+      },
+      {
+        "title": "Mark subscription cache hook (LookupCachedBody) as deprecated; migrate to explicit parameter",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "source_loader.go:14-27 documents LookupCachedBody as a SPEC 052 feature: caller (Update/Rebuild in core) sets a hook so fetcher doesn't re-fetch. But this is a package-level global, making concurrency/testing fragile. Plan: Add optional CachedBodyFunc to FetchSubscriptionWithMeta signature (breaking change on next refactor cycle). For now, add a deprecation warning in the godoc and note in SPEC 070 cleanup checklist."
+      },
+      {
+        "title": "Clean up UTF-8 validation duplicates (validateAndFixUTF8 appears twice)",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "node_parser.go:420-429 define validateAndFixUTF8 (string → string) and validateAndFixUTF8Bytes ([]byte → string). Similar logic exists in decoder.go, meta.go. Extract a utf8_utils.go with: FixUTF8(s string) string, FixUTF8Bytes(b []byte) string, ValidateUTF8Strict(s string, allowedControlRunes ...) error. This makes the intent clearer (especially the 'strict' variant that rejects control-chars for display)."
+      },
+      {
+        "title": "Document transport query param case-insensitivity invariant in a shared type",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "queryGetFold is used 40+ times across node_parser*.go. The naming (Fold) is from RFC 7230 but not obvious to new readers. Add a package-level comment in node_parser_query_helpers.go documenting: 'Query strings in proxy URIs are case-insensitive per [ref]; use queryGetFold for all reads.' Add a TODO for Go 1.25+: url.Values.GetFold(name string) might be added upstream, at which point we can drop our helper and use stdlib."
+      }
+    ],
+    "dups": [
+      {
+        "desc": "UTF-8 validation and repair: validateAndFixUTF8 (node_parser.go:420), validateAndFixUTF8Bytes (node_parser.go:433), hasControlChars (meta.go:406), sanitizeForDisplay (node_parser.go:452)",
+        "locations": [
+          "/Users/macbook/projects/singbox-launcher/core/config/subscription/node_parser.go:420-442",
+          "/Users/macbook/projects/singbox-launcher/core/config/subscription/meta.go:406-416",
+          "/Users/macbook/projects/singbox-launcher/core/config/subscription/node_parser.go:452-477"
+        ],
+        "consolidation": "Extract utf8_utils.go module: FixUTF8String(s string) (string, bool), FixUTF8Bytes(b []byte) (string, bool), HasControlChars(s string) bool. All callers import from this module. Reduces duplication and makes policy consistent (currently meta.go and node_parser.go have slightly different control-char definitions)."
+      },
+      {
+        "desc": "Base64 decode with padding fallback: decodeBase64WithPadding (node_parser.go:378), tryDecodeBase64 (decoder.go:15), tryBase64Decode (meta.go:381)",
+        "locations": [
+          "/Users/macbook/projects/singbox-launcher/core/config/subscription/node_parser.go:378-396",
+          "/Users/macbook/projects/singbox-launcher/core/config/subscription/decoder.go:15-37",
+          "/Users/macbook/projects/singbox-launcher/core/config/subscription/meta.go:381-404"
+        ],
+        "consolidation": "Create encoding_utils.go: DecodeBase64Multi(s string) ([]byte, string, error) returns (decoded, source, err). Source indicates which variant succeeded (useful for logging). Replace all 3 functions with calls to this one. Also consolidates the 4-variant try loop (URL-safe padded/unpadded, Std padded/unpadded) in one place."
+      },
+      {
+        "desc": "Transport builder from query params: uriTransportFromQuery (node_parser_transport.go:65) vs xrayTransportFromStreamSettings (xray_outbound_convert.go:214)",
+        "locations": [
+          "/Users/macbook/projects/singbox-launcher/core/config/subscription/node_parser_transport.go:65-136",
+          "/Users/macbook/projects/singbox-launcher/core/config/subscription/xray_outbound_convert.go:214-256"
+        ],
+        "consolidation": "Create transport_builder.go: type TransportSpec (union of {type, path, service_name, host, headers}). Implement (1) buildFromQueryParams (uriTransportFromQuery logic), (2) buildFromXrayJSON (xrayTransportFromStreamSettings logic), (3) toSingboxMap() → map[string]interface{}. Both input formats → same spec → same output. Prevents drift when sing-box transport schema evolves."
+      },
+      {
+        "desc": "TLS config builder: vlessTLSFromNode (node_parser_transport.go:182) vs xrayVLESSTLSFromStreamSettings (xray_outbound_convert.go:144) vs trojanTLSFromNode (node_parser_transport.go:254)",
+        "locations": [
+          "/Users/macbook/projects/singbox-launcher/core/config/subscription/node_parser_transport.go:182-251",
+          "/Users/macbook/projects/singbox-launcher/core/config/subscription/xray_outbound_convert.go:144-212",
+          "/Users/macbook/projects/singbox-launcher/core/config/subscription/node_parser_transport.go:254-287"
+        ],
+        "consolidation": "Create tls_builder.go: type TLSSpec (enabled, server_name, utls, reality, insecure, alpn). Implement (1) buildFromVLESSQuery (VLESS URI), (2) buildFromTrojanQuery (Trojan URI), (3) buildFromXrayJSON (Xray JSON). Centralize normalizeRealityShortID, applyTLSQueryExtras, NormalizeUTLSFingerprint. Ensures both subscription parsers and Xray converters stay in sync when TLS fields are added (e.g., new ALPN format)."
+      },
+      {
+        "desc": "Net error classification: classifyRequestError (clash.go:266) logic repeated in GetProxiesInGroup/SwitchProxy/GetDelay error handling",
+        "locations": [
+          "/Users/macbook/projects/singbox-launcher/api/clash.go:266-277",
+          "/Users/macbook/projects/singbox-launcher/api/clash.go:354-410",
+          "/Users/macbook/projects/singbox-launcher/api/clash.go:487-535",
+          "/Users/macbook/projects/singbox-launcher/api/clash.go:536-599"
+        ],
+        "consolidation": "Extract RequestErrorMapper type: (err error, context string) → UserErrorMessage. All three functions (GetProxiesInGroup, SwitchProxy, GetDelay) call mapper.Classify(err, 'request type') instead of inline classifyRequestError. This centralizes error message formatting and makes it testable. Also reduces timestamp-logging duplication (currently each function has writeLog calls with similar timestamp patterns)."
+      },
+      {
+        "desc": "Query parameter case-insensitive lookup: queryGetFold (node_parser_transport.go:12) duplicated pattern in node_parser_hysteria2.go (queryGetFold call) and node_parser_vmess.go",
+        "locations": [
+          "/Users/macbook/projects/singbox-launcher/core/config/subscription/node_parser_transport.go:10-19",
+          "/Users/macbook/projects/singbox-launcher/core/config/subscription/node_parser_hysteria2.go:28-30",
+          "/Users/macbook/projects/singbox-launcher/core/config/subscription/node_parser_vmess.go:137-142"
+        ],
+        "consolidation": "All three files import node_parser_transport and call queryGetFold (already centralized). No action needed. Document in node_parser_transport.go that this is the canonical helper for all subscription URI query parsing (cross-package standardization point)."
+      }
+    ],
+    "monoliths": [
+      {
+        "file": "/Users/macbook/projects/singbox-launcher/core/config/subscription/node_parser.go",
+        "loc": 744,
+        "problem": "Single ParseNode function (lines 40-370) dispatches 10 proxy protocols (VLESS, VMess, Trojan, SS, Hysteria2, SSH, SOCKS5, WireGuard, Naive, Shadowsocks). Complex scheme detection + parsing + UTF-8 validation + skip-filter logic interwoven. 25+ helper functions below ParseNode deal with specific schemes or generic tasks (UTF-8 fix, tag extraction, outbound building). High cyclomatic complexity per protocol; testing each scheme in isolation is awkward.",
+        "decomposition": "Split into: (1) node_parser_core.go (ParseNode dispatcher, IsDirectLink, MaxURILength, common helpers: extractTagAndComment, normalizeFlagTag, generateDefaultTag, buildOutbound as a generic; 200 lines), (2) node_parser_ss.go (Shadowsocks base64 decode + SIP002 + legacy format; 150 lines), (3) node_parser_socks.go (SOCKS/SOCKS5 parsing; 100 lines), (4) consolidate node_parser_vmess.go + node_parser_naive.go + node_parser_hysteria2.go to be cleaner per-protocol. Move UTF-8 utils to utf8_utils.go (shared), move tag/comment extraction to tag_utils.go (shared). Result: node_parser_core.go is a thin router, each protocol module handles ParseNode branch → configtypes.ParsedNode. Each file becomes testable in isolation. Cyclomatic complexity drops from ~20 to ~5 per module."
+      },
+      {
+        "file": "/Users/macbook/projects/singbox-launcher/core/config/subscription/share_uri_encode.go",
+        "loc": 883,
+        "problem": "Monolithic reverse-encoder: 20+ protocol-specific functions (shareURIFromVLESS, shareURIFromVMess, shareURIFromTrojan, shareURIFromShadowsocks, shareURIFromSocks, shareURIFromHysteria2, shareURIFromSSH, shareURIFromNaive, ShareURIFromWireGuardEndpoint) plus 10+ helpers (mapGetString, mapGetInt, mapGetBool, transportToQuery, vlessTLSToQuery, shareAppendALPNInsecure, trojanTLSToQuery, wireGuardPeerMaps, stringSliceFromWireGuardField, wireGuardJSONElemToString, wireGuardDNSToQuery). Hard to navigate; each protocol's round-trip contract (outbound → URI) is scattered.",
+        "decomposition": "Reorganize into: (1) share_uri.go (ShareURIFromOutbound dispatcher; 50 lines), (2) shareuri_vless.go (shareURIFromVLESS, vlessTLSToQuery, transport parsing; 100 lines), (3) shareuri_vmess.go (shareURIFromVMess; 100 lines), (4) shareuri_trojan.go (shareURIFromTrojan, trojanTLSToQuery; 80 lines), (5) shareuri_ss.go (shareURIFromShadowsocks; 40 lines), (6) shareuri_socks.go (shareURIFromSocks; 40 lines), (7) shareuri_hysteria2.go (shareURIFromHysteria2, hysteria2ServerPortsToMportQuery; 80 lines), (8) shareuri_ssh.go (shareURIFromSSH; 80 lines), (9) shareuri_naive.go (shareURIFromNaive; 80 lines), (10) shareuri_wireguard.go (ShareURIFromWireGuardEndpoint + helpers; 120 lines), (11) shareuri_helpers.go (mapGetString, mapGetInt, mapGetBool, fragmentFromTag, hostPort, shareAppendDetourLiteral, transportToQuery, shareAppendALPNInsecure; 150 lines). Each file now ~100 lines; protocol authors can find round-trip logic in one place. Easier to add new protocols."
+      },
+      {
+        "file": "/Users/macbook/projects/singbox-launcher/core/config/subscription/source_loader.go",
+        "loc": 312,
+        "problem": "LoadNodesFromSource (lines 83-312) is the entry point for subscription ingestion. 230 lines of logic: HTTP fetch (delegated to FetchSubscription), Xray JSON vs plaintext detection, skip-filter application, tag prefix/postfix/mask substitution, dedup logic, progress callback. Mixed concerns: parsing orchestration, progress reporting, tag manipulation, dedup, caching. Hard to test individual steps; progress callback adds noise.",
+        "decomposition": "Extract: (1) LoadNodesFromSource stays but shrinks to 100 lines: fetch → detect format → parse lines/JSON → apply-tags-and-dedup; (2) create SourceSubscriptionParser interface { ParseLineFormat(body []byte) ([]*ParsedNode, error), ParseJSONFormat(body []byte) ([]*ParsedNode, error) }, inject implementations → LoadNodesFromSource calls parser methods. (3) Extract TagNormalizer struct { ApplyPrefix(prefix, node, num), ApplyPostfix(postfix, node, num), ApplyMask(mask, node, num), MakeUnique(tag, counts) } used in a separate step. (4) Extract ProgressReporter { Report(pct float64, msg string) } and default no-op impl; LoadNodesFromSource doesn't log directly. (5) Move applyTagsToXrayNode → XrayNodeTagger struct in xray_outbound_convert.go. Result: LoadNodesFromSource becomes a 5-step pipeline that's testable end-to-end or per-step."
+      },
+      {
+        "file": "/Users/macbook/projects/singbox-launcher/api/clash.go",
+        "loc": 599,
+        "problem": "Single monolithic file for Clash API: HTTP client lifecycle (clashHTTPClient, ResetClashHTTPTransport, getHTTPClient with lock), logging (SetAPILogFile, SetAPILogSink, writeLog), error classification (classifyRequestError, normalizeRequestError), three request handlers (GetProxiesInGroup ~130 lines, SwitchProxy ~50 lines, GetDelay ~60 lines), plus config loading + ping endpoint management. Mixed layers: transport, auth, error mapping, application logic (proxy list, delay test) all in one file.",
+        "decomposition": "Split into: (1) clash_config.go (LoadClashAPIConfig; 50 lines), (2) clash_transport.go (clashHTTPClient, ResetClashHTTPTransport, getHTTPClient, httpIdleConnTimeout logic; 50 lines), (3) clash_log.go (SetAPILogFile, SetAPILogSink, ClearAPILogSink, writeLog, apiLogFile/apiLogSink guards; 50 lines), (4) clash_error.go (classifyRequestError, normalizeRequestError, RequestErrorClassifier type; 50 lines), (5) clash_proxy.go (GetProxiesInGroup, ProxyInfo type, DisplayOrName, ContextMenuTypeLine; 150 lines), (6) clash_switch.go (SwitchProxy; 50 lines), (7) clash_delay.go (GetDelay, TestAPIConnection, SetPingTestURL/AllConcurrency; 100 lines). Each file has one concern; shared logMsg utility for timestamp consistency. Package init wires defaults. Result: when a protocol provider changes (e.g., new proxy type field in /proxies response), the change localizes to clash_proxy.go."
+      }
+    ],
+    "stateFlows": [
+      "User → ConfigWizard adds subscription URL → LoadNodesFromSource invokes FetchSubscription(url) → fetcher.go:FetchSubscriptionWithMeta sends HTTP GET (with HWID/UA headers) → reads response body (max 10MB) → parses headers (Profile-Title, Announce, etc.) + inline #comments → merges meta → DecodeSubscriptionContent (base64 or plain) → returns decoded body + FetchResult {Body, RawBody, Meta, HTTPStatus}",
+      "Decoded subscription body (plain text URIs per line) → LoadNodesFromSource splits lines → ParseNode(line) for each → dispatches by scheme prefix (vless://, vmess://, ss://, etc.) → protocol-specific parser extracts host/port/UUID/query-params → buildOutbound constructs sing-box JSON → applies tag filters + prefix/postfix/mask + dedup → returns []*ParsedNode",
+      "Xray JSON array subscription (alternative format) → LoadNodesFromSource detects [{ protocol, settings, streamSettings, ... }] → ParseNodesFromXrayJSONArray → loops outbounds → xrayBuildVLESSFromOutbound (vnext+users) + xrayTransportFromStreamSettings (WS/gRPC/HTTP) + xrayVLESSTLSFromStreamSettings (TLS/Reality) → ParsedNode.Outbound → tags applied same as line-based",
+      "Jump proxy (Xray chain): outbound has dialerProxy reference → xrayBuildJumpFromOutbound reads referenced socks/vless outbound → parses server/port/auth → returns ParsedJump (intermediate proxy) → embedded in parent ParsedNode.Jump for chained routing",
+      "Tag naming: node parsed from subscription, tag extracted from label (fragment or comment) or generated (vless-host-port) → prefix/postfix/mask applied (variable substitution: {$tag}, {$protocol}, {$num}) → dedup: if tag exists in map, append -2/-3/... → normalized for display (emoji fixes) → stored in ParsedNode.Tag + Outbound['tag']",
+      "Share URI (reverse): ParsedNode stored in state → UI export button → ShareURIFromOutbound reads outbound map (tag, type, server, port, uuid, transport, tls, password, etc.) → dispatches by type → shareURIFromVLESS builds url.URL (scheme=vless, user=uuid, host=server:port, query=security/sni/fp/flow/etc, fragment=tag) → URL.String() → shared via clipboard/QR",
+      "Clash API workflow: Servers tab → GetProxiesInGroup(baseURL, token, groupName) → GET /proxies → parses {proxies: {groupName: {all: [proxyNames], now: activeName, ...}}} → returns []ProxyInfo (Name, DisplayName, ClashType, Traffic, Delay from history) → UI renders list; user clicks proxy → SwitchProxy(baseURL, token, groupName, proxyName) → PUT /proxies/{groupName} {name: proxyName} → Clash updates active",
+      "Delay test: user clicks 'Test' on a proxy → GetDelay(baseURL, token, proxyName) → GET /proxies/{proxyName}/delay?url=PingTestEndpoint.URL&timeout=5000 → Clash measures latency → returns {delay: ms} → stored in ProxyInfo.Delay",
+      "Debug API: external tool (CI, script, agent) → GET /ping (127.0.0.1:9263) → OK, or GET /version with Bearer token → returns launcher version + sing-box version, or POST /action/update-subs → background fetch all subscriptions → returns 202, or GET /state/full → LoadState → serialize state.json → returns {rules: [...], dns: {...}, outbounds: [...]} for programmatic config inspection"
+    ],
+    "deadOrHistorical": [
+      {
+        "location": "/Users/macbook/projects/singbox-launcher/core/config/subscription/source_loader.go:14-27 (comment block: LookupCachedBody hook)",
+        "action": "Keep + document",
+        "kind": "Pattern/Design",
+        "details": "LookupCachedBody is a SPEC 052 feature (offline rebuild without re-fetch). The hook pattern is a bit fragile (package-level global, implicit setup in core init). Keep it for now (breaking to remove mid-cycle), but add deprecation comment: 'TODO SPEC 070: migrate to FetchSubscriptionWithMeta(..., SubscriptionDependencies{LookupCached...}) to make testing/scoping clearer.' Flag for next refactor phase."
+      },
+      {
+        "location": "/Users/macbook/projects/singbox-launcher/core/config/subscription/fetcher.go:337-366 (FetchSubscription wrapper)",
+        "action": "Keep until callsites migrated",
+        "kind": "Backward-compat",
+        "details": "FetchSubscription(url) is the old wrapper; FetchSubscriptionWithMeta is the new canonical. Wrapper is marked deprecated: 'Deprecated: use FetchSubscriptionWithMeta'. Callsite source_loader.go still uses it. No rush to delete; when source_loader refactor extracts SourceSubscriptionParser interface, migrate to FetchSubscriptionWithMeta there."
+      },
+      {
+        "location": "/Users/macbook/projects/singbox-launcher/core/config/subscription/node_parser.go:374-375 (comment: circular import guard)",
+        "action": "Keep + expand",
+        "kind": "Design note",
+        "details": "Comment explains why decodeBase64WithPadding is duplicated instead of imported from core: 'circular dependency if we import core'. This is a real constraint (subscription is low-level, core is high-level). Document in the dup analysis: base64 helpers are intentionally local; if they evolve, update both. Could extract to internal/encoding if it ever has >2 callers across packages."
+      }
+    ]
+  },
+  {
+    "zone": "services + app lifecycle + process",
+    "packages": [
+      {
+        "path": "core/services",
+        "responsibility": "Encapsulated service implementations decoupled from AppController: FileService (paths + log rotation), APIService (Clash API + proxy state), StateService (dirty markers + settings), SRSDownloader (rule-set HTTP fetch)."
+      },
+      {
+        "path": "core/uiservice",
+        "responsibility": "UI state + callbacks container (separate package to allow core/services to avoid importing Fyne). Singleton windows (wizard, settings), tray menu state, icon resources, callback registration (no implementation)."
+      },
+      {
+        "path": "core",
+        "responsibility": "App lifecycle orchestration (main.go, controller.go), process lifecycle (process_service.go), config update pipeline (config_service.go, rebuild.go, auto_update.go), downloaders (core_downloader.go)."
+      }
+    ],
+    "dependencies": [
+      {
+        "from": "core/controller.go:GetController()",
+        "to": "core/controller.go:NewAppController() (singleton)",
+        "why": "GetController() is called as fallback when instance=nil; creates bare ProcessService+ConfigService if nil. This drift (lines 148-165 vs 225-226) violates single initialization point; GetController should fail fast instead."
+      },
+      {
+        "from": "core/controller.go:NewAppController()",
+        "to": "core/services/* + core/uiservice/* (all services)",
+        "why": "Central DI wiring point; creates FileService, UIService, APIService, ProcessService, ConfigService, StateService in dependency order. All backward-compat wrapper functions (StartSingBoxProcess, StopSingBoxProcess, RunParserProcess) delegate here."
+      },
+      {
+        "from": "core/process_service.go:Monitor()",
+        "to": "core/process_service.go:onPrivilegedScriptExited()",
+        "why": "Parallel crash/restart state machines for non-privileged (Monitor) vs privileged (onPrivilegedScriptExited). Both handle: StoppedByUser, RestartRequestedByUser, ConsecutiveCrashAttempts, delay, auto-restart, stability timer reset. ~50 lines duplicated (lines 305-369 vs 371-478 logic). See Duplication section."
+      },
+      {
+        "from": "core/process_service.go:Start()",
+        "to": "core/rebuild.go:RebuildConfigIfDirty()",
+        "why": "Pre-start config rebuild hook (line 154 in process_service.go): ensures dirty markers from Wizard Save are applied before sing-box starts, so running process sees current config."
+      },
+      {
+        "from": "core/config_service.go:UpdateConfigFromSubscriptions()",
+        "to": "core/rebuild.go:RebuildConfigIfDirty()",
+        "why": "Auto-rebuild on cache-refresh success (line 286): Update refreshes subscription cache, then auto-rebuilds config.json so it stays in sync. Best-effort: rebuild error does not cancel Update success."
+      },
+      {
+        "from": "core/controller.go:startAutoUpdateLoop()",
+        "to": "core/auto_update.go (entire module)",
+        "why": "AutoUpdateLoop goroutine (started in NewAppController line 298) runs event subscriptions + heartbeat refresh. Per-source retry timers + EventBus subscriptions (VpnStateChanged, ProxyActiveChanged) managed here."
+      },
+      {
+        "from": "ui/* (all UI tabs/windows)",
+        "to": "core/controller.go:AppController (public wrappers)",
+        "why": "UI layer imports core; calls GetController() then delegates to public functions (StartSingBoxProcess, RunParserProcess, etc) and reads state from APIService/StateService. Callbacks (UpdateCoreStatusFunc, UpdateConfigStatusFunc, RefreshAPIFunc) registered in NewAppController line 274-281 but set to no-op until UI provides real handlers."
+      },
+      {
+        "from": "main.go",
+        "to": "core/controller.go:NewAppController()",
+        "why": "main.go creates the singleton at startup (line 48). All subsequent GetController() calls return this instance. No other place should call NewAppController (enforced via sync.Once)."
+      },
+      {
+        "from": "core/controller.go:GracefulExit()",
+        "to": "core/process_service.go:ProcessService.Stop()",
+        "why": "Graceful shutdown at app exit: calls StopSingBoxProcess (line 349) which delegates to ProcessService.Stop(), waits for RunningState to clear (lines 355-378)."
+      }
+    ],
+    "dups": [
+      {
+        "desc": "Crash/restart state machine duplicated in Monitor() (lines 371-478) vs onPrivilegedScriptExited() (lines 303-369)",
+        "locations": [
+          "core/process_service.go:371-478 (Monitor: check PID, StoppedByUser, RestartRequestedByUser, err==nil, ConsecutiveCrashAttempts++, delay, retry, stability timer)",
+          "core/process_service.go:303-369 (onPrivilegedScriptExited: identical logic for privileged path)"
+        ],
+        "consolidation": "Extract CrashRestartHandler(isPrivileged bool) struct with common state machine logic; call from both code paths. Unified: check order (PID/flag/error), attempt limit, dialog, delay, cleanup hook position (BEFORE or AFTER Start), stability check logic."
+      },
+      {
+        "desc": "ProcessService initialization fallback drift (GetController fallback creates bare service vs NewAppController creates fully-wired service)",
+        "locations": [
+          "core/controller.go:145-165 (GetController fallback: FileService + ProcessService + ConfigService + StateService + EventBus + ctx minimal init)",
+          "core/controller.go:197-303 (NewAppController: FileService → UIService → APIService → ProcessService → ConfigService → StateService in proper order with callbacks)"
+        ],
+        "consolidation": "Delete GetController fallback (lines 142-165). Require NewAppController to be called in main() before any GetController(). Add panicking version GetControllerOrPanic() if nil-safe default needed, but fail fast instead of half-init."
+      },
+      {
+        "desc": "Start/Build/Save split expressed in three places without explicit state machine",
+        "locations": [
+          "core/process_service.go:154 (Start calls RebuildConfigIfDirty pre-check hook)",
+          "core/config_service.go:286 (UpdateConfigFromSubscriptions auto-rebuild on success)",
+          "core/rebuild.go:154 (RebuildConfigIfDirty noop-fast-path when not forced & clean)"
+        ],
+        "consolidation": "Formalize invariant in doc comment: Start → (optional pre-rebuild if dirty) → exec; Update → rebuild (always); RebuildConfigIfDirty → (skip if clean & not forced) → write. Clarify that config.json is ONLY written by rebuild.go, never by Update or Start. Add integration test ensuring trio stays coordinated."
+      },
+      {
+        "desc": "UI callback initialization pattern (no-op placeholders until UI sets real handlers) repeated across controller + ui_service",
+        "locations": [
+          "core/controller.go:274-281 (placeholder no-op handlers: RefreshAPIFunc, ResetAPIStateFunc, UpdateCoreStatusFunc, UpdateConfigStatusFunc, UpdateTrayMenuFunc, UpdateParserProgressFunc)",
+          "core/uiservice/ui_service.go:126-140 (identical no-op handlers in NewUIService)"
+        ],
+        "consolidation": "Single source of truth: define no-op functions in uiservice package; import and use in controller. OR accept that controllers' field is nil, wrap all callers with nil-check (if ac.UIService.RefreshAPIFunc != nil). Current pattern has handlers initialized to 'debuglog.DebugLog(\"not set yet\")' which is confusing when handler IS set — logs still appear."
+      }
+    ],
+    "monoliths": [
+      {
+        "file": "core/config_service.go",
+        "loc": 1066,
+        "problem": "Monolithic config update: UpdateConfigFromSubscriptions (186 lines) handles subscription meta refresh, network fetch, generator invocation, state save, dirty-marker application, auto-rebuild call, and UI callback. Deep nesting (5 indents): progressCallback → loadNodesFunc → subscription.LookupCachedBody hook + prevHook restore → catch/error handling.",
+        "decomposition": "Extract internal helpers: (1) refreshSubscriptionsMetaAndCacheInternal() handles meta+raw fetch only; (2) applyGenerationResultAndDirtyMarkers() handles generator result → state save → dirty flags; (3) UpdateConfigFromSubscriptions becomes orchestrator calling (1) then (2) then auto-rebuild. Consider moving generator invocation to ConfigService method that wraps config.GenerateOutboundsFromParserConfig (currently duplicated in GenerateOutboundsFromParserConfig + GenerateNodeJSON)."
+      },
+      {
+        "file": "core/controller.go",
+        "loc": 747,
+        "problem": "AppController monolith: 747 lines, 113 fields (services, process state, run state, caches, mutexes, state machine flags, timers, event handlers, auto-update retry timers). Responsibilities bleed: process lifecycle, config parsing, API state, UI callbacks, version caching, event bridging, auto-update loop startup, DI wiring. Dense state: CmdMutex locks 11+ fields; ParserMutex, RunningState.RWMutex, SubscriptionMu, CmdMutex are independent locks (deadlock risk).",
+        "decomposition": "Decompose into: (1) ProcessLifecycleManager (SingboxCmd, SingboxPrivilegedMode/PID, StoppedByUser, RestartRequestedByUser, ConsecutiveCrashAttempts, RunningState + crash/restart state machine); (2) CacheManager (installedCoreVersionCache, autoUpdateRetryTimers, autoUpdateEventLastFetch, SubscriptionMu + dirty-marker application); (3) Keep AppController as thin orchestrator holding services + EventBus + UI callbacks. Lock strategy: ProcessLifecycleManager has CmdMutex, CacheManager has SubscriptionMu + version lock, no cross-locking."
+      },
+      {
+        "file": "core/process_service.go",
+        "loc": 759,
+        "problem": "ProcessService.Monitor(cmd) (107 lines, 3 goto labels, 5 nested if/check branches, GOLDEN STANDARD comment indicates fragility): monolithic crash/restart handler. Parallel implementation in onPrivilegedScriptExited (65 lines) with identical logic. Hard to test; logic tightly coupled to ac.CmdMutex/ConsecutiveCrashAttempts/RunningState/StoppedByUser/RestartRequestedByUser/UIService callbacks.",
+        "decomposition": "Extract CrashHandler struct (owns crash counter, restart flag, stability threshold, max attempts); implement unified Decide(isPrivileged, exitErr, flags) → Action{Kind: StoppedByUser | RestartRequested | CrashRestart | Max | OK}. Call from Monitor(cmd) and onPrivilegedScriptExited(scriptPID) with the same logic. Move all UI dialogs + timeouts to dedicated PostCrashAction(action, ac) function. Separate concern: process tree watching (isSingBoxProcessRunning + PID tracking) into ProcessWatcher type."
+      }
+    ],
+    "deadOrHistorical": [
+      {
+        "location": "core/controller.go:140-167 (GetController fallback)",
+        "action": "delete",
+        "kind": "Fallback initialization anti-pattern — creates bare ProcessService/ConfigService without full wiring if instance nil. Should fail fast. No production code should hit this path if main.go calls NewAppController early."
+      },
+      {
+        "location": "core/process_service.go:303-369 (onPrivilegedScriptExited full duplicate logic)",
+        "action": "delete (after dedup via CrashHandler extraction)",
+        "kind": "Duplicated crash/restart state machine — once unified handler extracted, onPrivilegedScriptExited becomes 15-line wrapper calling unified logic."
+      },
+      {
+        "location": "core/controller.go:563-611 (backward-compat wrapper functions StartSingBoxProcess, StopSingBoxProcess, RunParserProcess, CheckIfSingBoxRunningAtStartUtil, CleanupStaleTunAtStartUtil)",
+        "action": "keep+document",
+        "kind": "Wrapper functions protect against GetController drift (lines 565, 579, 602, 616, 630 all call GetController). Once GetController fallback is deleted, these wrappers become optional; they can be deleted if callers import services directly or replaced with deprecated warnings."
+      },
+      {
+        "location": "core/config_service.go:253-260 (comment about legacy outbounds.cache.json cleanup SPEC 052 phase 6)",
+        "action": "keep",
+        "kind": "Narrative comment explaining why cache is NOT written anymore; important for future maintainers to understand that per-source .raw bodies replaced old monolithic outbounds.cache.json. Move to cleanupLegacyOutboundsCache docstring."
+      },
+      {
+        "location": "core/rebuild.go:241-255 (cleanupLegacyOutboundsCache one-shot function)",
+        "action": "keep (one-shot cleanup, runs once per install)",
+        "kind": "Handles version migration (legacy cache cleanup). Safe to keep forever as it's a no-op after first run."
+      },
+      {
+        "location": "core/process_service.go:447-453 (SPEC 065 hotfix comment: phantom-adapter cleanup BEFORE Start on crash)",
+        "action": "keep+cross-reference",
+        "kind": "Important invariant: sync cleanup guarantees new Start doesn't see old phantom adapter. Document in top-level ProcessService docstring and link to triggerGhostTunCleanup/runGhostTunCleanup."
+      },
+      {
+        "location": "core/auto_update.go:31-34 (comment about v4→v5 migration parsing.last_updated field removed, caused bug)",
+        "action": "keep",
+        "kind": "Historical note explaining why per-source freshness check necessary (parasite auto-update on v5 load). Part of SPEC 052 design rationale."
+      }
+    ],
+    "recommendations": [
+      {
+        "title": "Refactor ProcessService crash/restart state machine: extract unified CrashHandler",
+        "detail": "Monitor() (lines 371-478) and onPrivilegedScriptExited() (lines 303-369) duplicate 50+ lines of crash/restart logic (attempt counter, restart request flag, stability timer, dialog, delay). Extract CrashHandler struct with Decide(isPrivileged, exitErr, StoppedByUser, RestartRequested, counter) → Action enum; implement PostCrashAction(action) separately. Both code paths call the same unified handler.\n\nThis unblocks: (1) easier testing of crash behavior; (2) fixes potential flag-check order bugs (lines 384-425 vs 305-335 might diverge); (3) enables future fixes (e.g. exponential backoff, jitter) in one place.",
+        "risk": "medium",
+        "behaviorChange": false
+      },
+      {
+        "title": "Delete GetController fallback (lines 140-165), enforce NewAppController at startup",
+        "detail": "GetController() creates a half-initialized controller if instance=nil, with bare services lacking callbacks/wiring (ProcessService, ConfigService, StateService but no UIService, no EventBus proper init). This drift (vs NewAppController lines 197-303) violates single initialization point.\n\nAction: (1) Delete fallback code (lines 142-165). (2) Ensure main.go calls NewAppController before any GetController (already does, line 48). (3) Replace any package-level GetController() calls with dependency injection (e.g. in tests). (4) Optionally add GetControllerOrPanic() that fails fast if nil.",
+        "risk": "low",
+        "behaviorChange": false
+      },
+      {
+        "title": "Consolidate DI callback initialization (RefreshAPIFunc, UpdateCoreStatusFunc, etc)",
+        "detail": "No-op handlers defined in both controller.go:274-281 AND uiservice/ui_service.go:126-140 with identical 'debuglog.DebugLog(\"handler is not set yet\")' placeholders. Current pattern: handlers initialized to no-op logging, then UI sets real ones. Problem: log messages confuse debugging ('handler not set' still logs even when IS set).\n\nAction: (1) Single source of truth: define DefaultUICallbacks in uiservice package, import in controller. OR (2) Accept handlers may be nil, wrap all call sites with nil-check (if ac.UIService.RefreshAPIFunc != nil). Recommendation: (2) — simpler, avoids double-initialization.",
+        "risk": "low",
+        "behaviorChange": false
+      },
+      {
+        "title": "Formalize Start/Build/Save state machine with explicit documentation + test",
+        "detail": "Config.json invariant (SPEC 045): config.json is ONLY written by RebuildConfigIfDirty. But the wiring is implicit across three functions: Start() calls RebuildConfigIfDirty (line 154), UpdateConfigFromSubscriptions() calls RebuildConfigIfDirty (line 286), and RebuildConfigIfDirty has noop fast-path (line 154).\n\nAction: (1) Add top-level docstring in controller.go explaining: 'config.json lifecycle = RebuildConfigIfDirty is sole writer. Start() rebuilds before exec if dirty (pre-start hook). Update() auto-rebuilds on cache success. RebuildConfigIfDirty noop-skips if clean & not forced.' (2) Add integration test: (a) dirty markers clean → Start() calls rebuild → noop; (b) Update() → CacheStale true, ConfigStale true; (c) RebuildConfigIfDirty forced=false → noop (already rebuilt); (d) Start() rebuilds; (e) verify config.json written once per Rebuild.",
+        "risk": "low",
+        "behaviorChange": false
+      },
+      {
+        "title": "Decompose AppController monolith (747 lines, 113 fields, 4 independent mutexes)",
+        "detail": "AppController mixes process lifecycle (SingboxCmd, CmdMutex, StoppedByUser, RestartRequestedByUser, ConsecutiveCrashAttempts, RunningState), cache management (autoUpdateRetryTimers, autoUpdateEventLastFetch, installedCoreVersionCache + locks), and DI wiring (services, EventBus, callbacks). Deep lock interactions: SubscriptionMu serializes meta-refresh + Rebuild; CmdMutex locks process + state flags; ParserMutex gates parser. Risk: deadlock under concurrent Update + Start, race windows in RunningState.Set.\n\nAction: Extract ProcessLifecycleManager (owns process state + Monitor/Stop/Start orchestration + CmdMutex), CacheManager (owns subscription timers + version cache + SubscriptionMu). AppController keeps services + EventBus + UI callbacks (thin orchestrator).",
+        "risk": "high",
+        "behaviorChange": false
+      },
+      {
+        "title": "Simplify ConfigService monolith: extract subscription meta/cache refresh, generator result application",
+        "detail": "UpdateConfigFromSubscriptions (186 lines, ~5 indents): mixes subscription meta refresh (lines 190-203), generator setup (lines 205-246), error handling (lines 247-259), dirty-marker application (lines 264-280), auto-rebuild (lines 282-289), toast emission (lines 291-301). Deep nesting: subscription.LookupCachedBody hook + prevHook restore inside generator loop.\n\nAction: Extract (1) refreshSubscriptionsMetaAndCacheInternal() — does meta refresh + raw cache only; (2) applyGenerationResultAndMarkers(result, rebuildErr) — applies dirty flags + auto-rebuild + toast. UpdateConfigFromSubscriptions becomes thin orchestrator calling these two.",
+        "risk": "medium",
+        "behaviorChange": false
+      },
+      {
+        "title": "Add explicit documentation linking Start/pre-rebuild-hook with SPEC 068 (Wizard Save) invariant",
+        "detail": "Wizard Save (SPEC 068) raises CacheStale/ConfigStale dirty markers. Start() calls RebuildConfigIfDirty (line 154) to apply them BEFORE sing-box runs. This contract is implicit and fragile: if any caller skips RebuildConfigIfDirty before Start, running process sees stale config.\n\nAction: Add docstring to Start() explaining: 'Pre-start rebuild hook (SPEC 068): Wizard Save sets dirty markers; before launching sing-box, we rebuild config.json so running process has fresh template changes (TUN, DNS, rules, etc).' Cross-reference in Wizard Save handler and RebuildConfigIfDirty.",
+        "risk": "low",
+        "behaviorChange": false
+      },
+      {
+        "title": "Unify process-running check (isSingBoxProcessRunning duplication across Monitor + Stop + CheckIfRunningAtStart)",
+        "detail": "ProcessService.isSingBoxProcessRunning (lines 693-759) called from Monitor (via race-check PID compare), Stop (implicit via ac.SingboxCmd), CheckIfRunningAtStart (line 616). Two variants: Windows (tasklist CSV) vs PS library fallback. Minor duplication: parseCSVLine + process.GetProcesses both called from multiple paths, logic slightly different (ourPID check, heuristic matching).\n\nAction: (1) Consolidate into single ProcessWatcher type with cached process list. (2) Separate concerns: FindSingBoxProcess(ourPID) returns (found, pid); IsSingBoxProcessRunning() calls it. (3) Cache for ~100ms to avoid repeated system calls within same event loop tick.",
+        "risk": "low",
+        "behaviorChange": false
+      }
+    ],
+    "stateFlows": [
+      "main.go NewAppController → (FileService → UIService → APIService → ProcessService → ConfigService → StateService + EventBus) → startAutoUpdateLoop (1h heartbeat + event subscriptions)",
+      "user clicks Connect → StartSingBoxProcess → ProcessService.Start → RebuildConfigIfDirty (pre-check hook) → Launch sing-box + Monitor goroutine → RunningState.Set(true) → UpdateUI + autoPingTimer arm → AutoLoadProxies scheduled",
+      "Sing-box crashes → Monitor detects (cmd.Wait err) → Check PID/StoppedByUser/RestartRequested → ConsecutiveCrashAttempts++ → Delay 2s + ghostTunCleanup(true) → Start(true) → stability timer (180s) → if stable reset counter",
+      "Wizard Save + dirty markers → (CacheStale/ConfigStale raised via StateService) → Next Start() triggers RebuildConfigIfDirty → parses + builds config.json (SPEC 045 invariant: sole writer)",
+      "Manual Update button → ConfigService.UpdateConfigFromSubscriptions → subscription meta refresh + network fetch → cache per-source .raw → ClearCacheStale + MarkConfigStale → auto-RebuildConfigIfDirty → toast with ShowSubsResultFunc",
+      "Auto-update heartbeat (1h) → Auto-update loop wakes → runScheduledRefresh per-source staleness check → stale sources → refreshSourceWithRetry (with event cooldown 5s, retry 15s) → on failure retry timer scheduled",
+      "Power resume (macOS/Windows) → ResetClashHTTPTransport → schedule UI refresh + auto-ping-after-connect (soft-cap check) 2s later (if enabled + under max-proxies)",
+      "AppExit → GracefulExit → cancel ac.ctx (signal autoUpdateLoop, autoPingTimer, retryTimers) → StopSingBoxProcess → wait 2s for RunningState.IsRunning() clear → close log files"
+    ]
+  },
+  {
+    "zone": "configurator presentation + business + models",
+    "packages": [
+      {
+        "path": "ui/configurator/presentation",
+        "responsibility": "MVP presentation layer (orchestration): syncs GUI ↔ model via WizardPresenter; manages UI dispatch (fyne.Do wrapping); handles save/load state flow, tab synchronization, and async operations",
+        "keyFiles": [
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/presentation/presenter.go",
+            "loc": 177,
+            "purpose": "WizardPresenter base struct + SafeFyneDo dispatcher + UIUpdater bridge; ties model/GUI/business-logic together (orchestration hub)"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/presentation/gui_state.go",
+            "loc": 110,
+            "purpose": "Pure GUI state container (Fyne widgets only, no business data); separates UI from model per MVP pattern"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/presentation/presenter_sync.go",
+            "loc": 535,
+            "purpose": "Bidirectional model ↔ GUI sync; handles WizardWidgetsReady coordination and stale-read protection for programmatic updates"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/presentation/presenter_state.go",
+            "loc": 529,
+            "purpose": "State file I/O: CreateStateFromModel, SaveCurrentState, LoadState with 9-step recovery sequence; handles DNS/rules order sync to state.json"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/presentation/presenter_save.go",
+            "loc": 304,
+            "purpose": "Save pipeline (state-only post-SPEC-045): validates input, syncs GUI→model, persists state.json, triggers auto-rebuild, shows success dialog"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/presentation/presenter_methods.go",
+            "loc": 239,
+            "purpose": "UI management helpers: SetSaveState, RefreshOutboundOptions, InitializeTemplateState; debounced outbound refresh (300ms) during JSON typing"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/presentation/presenter_async.go",
+            "loc": 176,
+            "purpose": "Async preview/parse lifecycle: UpdateTemplatePreviewAsync, TriggerParseForPreview, ParseAndPreview dispatch through business layer"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/presentation/preset_ref_helpers.go",
+            "loc": 251,
+            "purpose": "Helper: extractTemplateDNSTags — parses template.DNSOptionsRaw; used in CreateStateFromModel to discriminate kind=template vs kind=user DNS entries"
+          }
+        ]
+      },
+      {
+        "path": "ui/configurator/business",
+        "responsibility": "Business logic layer: ParserConfig parsing, DNS/outbound schema handling, template interpolation, state lifecycle, validation; pure functions without GUI deps (except UIUpdater interface for callbacks)",
+        "keyFiles": [
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/business/create_config.go",
+            "loc": 250,
+            "purpose": "config.json generation from state: BuildPreviewConfig, routeConfigFromModel, materialization of secrets; preview-specific vs production paths split"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/business/wizard_dns.go",
+            "loc": 652,
+            "purpose": "DNS tab schema: ApplyWizardDNSTemplate, LoadPersistedWizardDNS, reconciliation, helpers (DNSTagLocked, DNSTagFromTemplate); core DNS server lifecycle"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/business/outbound.go",
+            "loc": 152,
+            "purpose": "Outbound resolution: GetAvailableOutbounds (memoized), ResolveMergedOutbound; preset outbound tag collection; ensures default tags (direct-out, reject, drop)"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/business/source_local_wizard.go",
+            "loc": 209,
+            "purpose": "Local proxy group markers (WIZARD:auto, WIZARD:selector): tag generation, conflict detection; state lifecycle for ProxySource outbounds"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/business/validator.go",
+            "loc": 237,
+            "purpose": "Input validation: ParserConfig, URL, URI, outbounds, JSON size; used on Save, parsing entry points"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/business/ui_updater.go",
+            "loc": 31,
+            "purpose": "Interface contract: UIUpdater (Model, UpdateParserConfig, UpdateTemplatePreview, progress) — decouples business from Fyne, implemented by WizardPresenter"
+          }
+        ]
+      },
+      {
+        "path": "ui/configurator/models",
+        "responsibility": "Pure data structures: WizardModel (canonical source for Sources/GlobalOutbounds/Defaults); rule/DNS slot management; preset-ref state; wizard state file schema",
+        "keyFiles": [
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/models/wizard_model.go",
+            "loc": 228,
+            "purpose": "Central model: Sources (v5-canonical), GlobalOutbounds, Defaults; caches ParserConfigJSON/ParserConfig as derived views; holds TemplateData, RuleOrder, DNSRuleOrder"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/models/preset_ref_sync.go",
+            "loc": 620,
+            "purpose": "Preset-ref lifecycle: SyncDNSByOrderToState, ReconcileDNSRuleOrder; materializes preset DNS servers/rules; handles kind=preset vs kind=user discrimination"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/models/rule_slot.go",
+            "loc": 132,
+            "purpose": "Rule ordering container: RuleSlot holds indices into PresetRefs/CustomRules; unifies rules display order and config.json emit order"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/models/dns_rule_slot.go",
+            "loc": 164,
+            "purpose": "DNS rule ordering (SPEC 062): DNSRuleSlot mirrors RuleSlot for DNS tab; interleaves preset + user rules per DNSRuleOrder"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/models/wizard_state_file.go",
+            "loc": 191,
+            "purpose": "Persisted state schema: v6 state format (Connections.Sources/Outbounds/Defaults, DNS, Rules, Vars, ConfigParams for backward-compat)"
+          },
+          {
+            "file": "/Users/macbook/projects/singbox-launcher/ui/configurator/models/dns_user_rule.go",
+            "loc": 75,
+            "purpose": "DNS rule state: DNSUserRule typed struct; conversion helpers (FromText/ToText) for raw JSON editor toggle"
+          }
+        ]
+      }
+    ],
+    "dependencies": [
+      {
+        "from": "presentation/presenter*",
+        "to": "business/*",
+        "why": "Presenter calls business: ParseAndPreview, BuildPreviewConfig, GetAvailableOutbounds, ValidateDNSModel, RefreshOutboundOptions; business notifies presenter via UIUpdater interface"
+      },
+      {
+        "from": "presentation/presenter*",
+        "to": "models/wizard_model + preset_ref_sync",
+        "why": "Presenter mutates model (Sources, GlobalOutbounds, Rules, DNS state); calls ReconcileRuleOrder, SyncRulesByOrderToStateRulesV6, SyncDNSByOrderToState on Save"
+      },
+      {
+        "from": "business/create_config + wizard_dns + outbound",
+        "to": "models/wizard_model",
+        "why": "Business reads model fields (ParserConfigJSON, GlobalOutbounds, DNSServers, SettingsVars, PresetRefs); does NOT mutate (except business/parser.go ParseAndPreview which updates stats)"
+      },
+      {
+        "from": "presentation/presenter_state",
+        "to": "business/ui_updater (interface)",
+        "why": "Presenter implements UIUpdater; business layer never imports presentation, maintains clean layering"
+      },
+      {
+        "from": "configurator.go (coordinator)",
+        "to": "presentation + business + models",
+        "why": "Main entry ShowConfigWizard creates and wires model → presenter → tabs/dialogs; single assembly point"
+      }
+    ],
+    "dups": [
+      {
+        "desc": "DNS options parsing — template.DNSOptionsRaw JSON unmarshaling appears in 2 locations",
+        "locations": [
+          "business/create_config.go:45 (parsePreviewTemplateDNSDefaults)",
+          "business/create_config.go:61 (extractTemplateDNSTagsLocal)",
+          "business/wizard_dns.go:55 (ApplyWizardDNSTemplate calls parseDNSOptionsMap)",
+          "presentation/preset_ref_helpers.go:27 (extractTemplateDNSTags — identical to create_config version)"
+        ],
+        "consolidation": "Extract parseTemplateDNSOptions(td *TemplateData) (servers map, rules map, err) in core/template or business helpers; make extractTemplateDNSTags(td) → map[string]bool as single implementation; store in business/dns_helpers.go, remove duplicate from presentation/preset_ref_helpers.go"
+      },
+      {
+        "desc": "effectiveWizardConfig vs effectiveTemplateConfig — two similar template-resolution functions",
+        "locations": [
+          "business/wizard_dns.go:62 (effectiveWizardConfig: applies Params/Vars substitution to config)",
+          "business/create_config.go:227 (effectiveTemplateConfig: same logic, returns sections list too)"
+        ],
+        "consolidation": "Merge into single effectedTemplate(model *WizardModel, options...) → (map[string]json.RawMessage, error); both callsites use identical GetEffectiveConfig call — eliminate duplication"
+      }
+    ],
+    "monoliths": [
+      {
+        "file": "presentation/presenter_state.go",
+        "loc": 529,
+        "problem": "Large multi-responsibility state management: CreateStateFromModel (DNS sync + rules sync + outbounds sync + legacy ParserConfig view), SaveCurrentState, SaveStateAs, LoadState (9-step recovery), restoreParserConfig, restoreCustomRules, restoreDNS, restorePresetRefs",
+        "decomposition": "Extract into separate handler types: StateBuilder (CreateStateFromModel, extractConfigParams), StateRestorer (LoadState, restoreParserConfig, restoreDNS, restoreCustomRules, restorePresetRefs, restoreConfigParams), StateStore (SaveCurrentState, SaveStateAs). Keep save/load orchestration in presenter, delegate domain logic to handlers."
+      },
+      {
+        "file": "business/wizard_dns.go",
+        "loc": 652,
+        "problem": "Monolithic DNS orchestration: ApplyWizardDNSTemplate does reconcileDNSServers → prependMissingLocalServers → fillDNSAuxiliaryIfEmpty with 13+ helper functions (reconcile/index/options/prepend/fill/pick/validate/convert), mixed responsibilities (UI schema vs state I/O vs validation)",
+        "decomposition": "Split into: DNSServerReconciler (reconcileDNSServers, prependMissingLocal), DNSAuxiliaryFiller (fillDNSAuxiliary, pickDNS*, fillDefaultResolver), DNSValidator (ValidateDNSModel). Group helpers by responsibility (server index/options/tag/enabled/JSON as utility module). Expose clean 3-func API: ReconcileServers, FillDefaults, Validate."
+      },
+      {
+        "file": "business/create_config.go",
+        "loc": 250,
+        "problem": "Config generation mixes preview-only logic with production: BuildPreviewConfig instantiates BuildContext with preview-specific stats/truncation, then calls generic BuildConfig. routeConfigFromModel extracts CustomRules → RouteRules. Material template DNS materialization inline. No clear separation of preview vs production paths.",
+        "decomposition": "Extract PreviewConfigBuilder (BuildPreviewConfig, inMemoryCacheFromModel, preview-specific stats). Move routeConfigFromModel to separate RouteBuilder. Move template DNS materialization (parsePreviewTemplateDNSDefaults) to business/dns_helpers.go with other DNS utils. Keep BuildConfig call generic."
+      }
+    ],
+    "deadOrHistorical": [
+      {
+        "location": "presentation/presenter_state.go:287-291 (comment)",
+        "action": "keep+why",
+        "kind": "narrative comment",
+        "detail": "'SPEC 053 removed the legacy template.selectable_rules library' — documents past refactor; helps future readers understand state schema evolution (SelectableRuleStates field kept for migration)"
+      },
+      {
+        "location": "business/wizard_dns.go:149-152 (comment)",
+        "action": "keep+why",
+        "kind": "narrative comment",
+        "detail": "'SPEC unify: больше нет config.dns.servers' — clarifies DNS schema unification; explains why reconcileDNSServers simplified (template is sole source, no config/dns collision)"
+      },
+      {
+        "location": "presentation/presenter_state.go:62-63 + 87 (legacy ParserConfig view)",
+        "action": "keep+why",
+        "kind": "historical API",
+        "detail": "ParserConfig (derived view) and legacy config_params channel (route.final) persist for backward-compat; tests/callsites read state.ParserConfig without round-trip. Remove only after audit of all read sites."
+      },
+      {
+        "location": "presentation/presenter_state.go:418-425 (restoreDNS comment on legacy state)",
+        "action": "keep+why",
+        "kind": "narrative comment",
+        "detail": "'На legacy state (state.DNS пуст)' — defensive fallback for pre-SPEC-062 state files; documents safe upgrade path"
+      },
+      {
+        "location": "business/create_config.go:52-53 (Дубль логики comment)",
+        "action": "consolidate",
+        "kind": "code duplication marker",
+        "detail": "extractTemplateDNSTagsLocal is intentional dup of presentation/preset_ref_helpers.go::extractTemplateDNSTags to avoid import cycle. FIX: move to core/template or business/dns_helpers, import from both callsites."
+      }
+    ],
+    "recommendations": [
+      {
+        "title": "Consolidate DNS options parsing into single utility module",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "Extract parseTemplateDNSOptions(td) + extractTemplateDNSTags(td) to business/dns_helpers.go or core/template/dns_utils.go. Update callsites in create_config.go, wizard_dns.go, preset_ref_helpers.go. Eliminates manual JSON unmarshaling duplication and clarifies template DNS schema contract. No behavior change — same parsing logic, different location."
+      },
+      {
+        "title": "Merge effectiveWizardConfig + effectiveTemplateConfig into single function",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "Both call GetEffectiveConfig(RawConfig, Params, GOOS, Vars, SettingsVars, RawTemplate). Extract into business/template_helpers.go::effectiveTemplate(model, includeVars bool) → (map[string]json.RawMessage, []string, error). Callsites: wizard_dns.go (no sections needed, pass false), create_config.go (sections needed, pass true). Reduces code duplication and clarifies template resolution contract."
+      },
+      {
+        "title": "Unify UI-thread dispatch: presenter.UpdateUI standardized as single entry point",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "All fyne.Do calls go through presenter.UpdateUI(fn func()). Currently respected (grep shows only SafeFyneDo + UpdateUI). Formalize as documented contract: business layer never calls fyne.Do directly; all async UI updates → presenter.UpdateUI via UIUpdater interface. Add lint rule (or vet extension) to catch direct fyne.Do imports in business/. Reduces risk of dispatcher race conditions."
+      },
+      {
+        "title": "Extract presenter_state.go into StateBuilder + StateRestorer handlers",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "Split 529-line presenter_state.go: (1) StateBuilder with CreateStateFromModel, extractConfigParams (67 lines) → handles state assembly, (2) StateRestorer with LoadState + 4 restore* methods (300 lines) → 9-step recovery, (3) keep SaveCurrentState/SaveStateAs in presenter (30 lines). Move StateRestorer.restoreDNS to business/dns_restore_helpers.go (80 lines overlap with ApplyWizardDNSTemplate). Benefits: clearer responsibilities, easier testing, easier to audit 9-step recovery sequence."
+      },
+      {
+        "title": "Decompose wizard_dns.go: separate ReconcileServers, FillDefaults, Validate concerns",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "Split 652-line wizard_dns.go into: (1) reconcilers.go: reconcileDNSServers + server index/options helpers (150 lines), (2) fillers.go: fillDNSAuxiliaryIfEmpty + pick* functions (100 lines), (3) validators.go: ValidateDNSModel + tag helpers (100 lines), (4) keep public API in wizard_dns.go (LoadPersistedWizardDNS, ApplyWizardDNSTemplate, DNSTagLocked, DNSTagFromTemplate, DNSEnabledTagOptions) (40 lines). Benefits: per-domain testing, easier code review, clearer mental model of DNS state lifecycle."
+      },
+      {
+        "title": "Enforce strict presentation ↔ business boundary: no cross-layer types",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "Presentation imports business (UIUpdater), business imports models (WizardModel) — correct. Verify no business → presentation imports exist (audit showed none). Consider: (a) formalizing UIUpdater as the ONLY bridge, (b) moving UIUpdater to models package so business doesn't import presentation package at all (currently fine, but explicit is clearer), (c) documenting in ARCHITECTURE.md that business layer is unit-testable without Fyne. Currently sound, but formalize as lint rule."
+      },
+      {
+        "title": "Add test coverage for UI dispatch contract: SafeFyneDo + UpdateUI coordination",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "Current contract (presenter_sync.go:23-25): fyne.Do only through SafeFyneDo/UpdateUI; WizardWidgetsReady guards early (reader-side); programmatic flags (SourceURLsProgrammatic, DNSSelectsProgrammatic, etc.) suppress MarkAsChanged. Add unit tests: (1) UpdateUI → fyne.Do barrier test, (2) WizardWidgetsReady state machine, (3) programmatic flag suppression. Validates dispatch model against race conditions."
+      },
+      {
+        "title": "Document SPEC 068 (presentation = orchestration) and SPEC 070 (clean layering) decisions in ARCHITECTURE.md",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "Add section: MVP pattern (model ↔ presenter ↔ view), UIUpdater interface as bridge, UI dispatch via SafeFyneDo, three concerns (presentation/business/models) and their separation. Include: (a) why presenter orchestrates (single source of truth for model mutations), (b) why business never imports Fyne, (c) UIUpdater as inversion-of-control bridge. Clarifies refactoring scope for future work."
+      }
+    ]
+  },
+  {
+    "zone": "UI tabs, dialogs, root tabs — ui/configurator/tabs/*, ui/configurator/dialogs/*, ui/configurator/outbounds_configurator/*, ui/*.go, ui/traffic/*",
+    "packages": [
+      {
+        "path": "ui/core_dashboard_tab.go",
+        "responsibility": "Core lifecycle dashboard: sing-box status, version checks, download/wintun buttons, config refresh, state switching, subscription operation panel.",
+        "keyFiles": [
+          {
+            "file": "ui/core_dashboard_tab.go:94-207",
+            "purpose": "CreateCoreDashboardTab orchestrator — registers callbacks (UpdateCoreStatusFunc, UpdateConfigStatusFunc, UpdateParserProgressFunc, ShowSubsResultFunc, ShowUpdatePopupFunc), coordinates 5 UI blocks (status row, version block, config block, wintun block, state selector) and subscription toast panel."
+          },
+          {
+            "file": "ui/core_dashboard_tab.go:631-715",
+            "purpose": "updateRunningStatus — determines Start/Stop/Restart button states based on binary existence, running state, and state.json presence; applies dirty-marker HighImportance styling."
+          },
+          {
+            "file": "ui/core_dashboard_tab.go:1045-1145",
+            "purpose": "updateConfigInfo — updates config status label, wizard/download button visibility (template-gated), Update button enable/disable (state.json + parser availability), Restart dirty marker."
+          }
+        ]
+      },
+      {
+        "path": "ui/clash_api_tab.go",
+        "responsibility": "Clash API servers tab: proxy list with sort/filter/ping, active proxy tracking, selector group dropdown, remote endpoint override, share URI export.",
+        "keyFiles": [
+          {
+            "file": "ui/clash_api_tab.go:112-345",
+            "purpose": "CreateClashAPITab setup — selector dropdown, proxy list widget, ping/sort buttons, API test + refresh handlers, external endpoint badge + settings dialog."
+          },
+          {
+            "file": "ui/clash_api_tab.go:427-562",
+            "purpose": "Proxy list item builder — background selection state, ping+switch buttons, proxy name display; updateItem callback handles visual feedback per selection/active state."
+          },
+          {
+            "file": "ui/clash_api_tab.go:730-819",
+            "purpose": "Sort + filter state — sortByName/sortByDelay with ascending/descending toggle, hidePingErrors filter, reorderWithPinned to keep direct-out and active at top."
+          }
+        ]
+      },
+      {
+        "path": "ui/diagnostics_tab.go",
+        "responsibility": "System diagnostics tab: STUN server IP detection, DNS/network tests, process kill for panic recovery, settings persistence.",
+        "keyFiles": [
+          {
+            "file": "ui/diagnostics_tab.go:24-100",
+            "purpose": "killSingBoxPanic, STUN/DNS settings globals, DNS record caching."
+          }
+        ]
+      },
+      {
+        "path": "ui/app.go",
+        "responsibility": "Main app tab strip layout: 5 tabs (Core, Servers, Diagnostics, Settings button, Help), Settings as button-only tab, click-redirect overlay guard.",
+        "keyFiles": [
+          {
+            "file": "ui/app.go:22-66",
+            "purpose": "App struct + tab container setup with Settings as button-tab (OnSelected opens standalone window then reverts selection)."
+          }
+        ]
+      },
+      {
+        "path": "ui/traffic/",
+        "responsibility": "Traffic profiler: live packet view, per-process aggregation, event detail expansion, toolbar filters/sorting.",
+        "keyFiles": [
+          {
+            "file": "ui/traffic/window.go",
+            "purpose": "Traffic profiler window coordinator — layout scaffold, live_view + per_process_view tabs, toolbar."
+          },
+          {
+            "file": "ui/traffic/live_view.go",
+            "purpose": "Packet list rendering with pause/resume, column sorting, protocol type icons, click-to-detail."
+          },
+          {
+            "file": "ui/traffic/per_process_view.go",
+            "purpose": "Process-grouped aggregation display, per-process bandwidth totals."
+          }
+        ]
+      },
+      {
+        "path": "ui/configurator/configurator.go",
+        "responsibility": "Configuration wizard orchestrator: MVP lifecycle (model/GUI state/presenter), tab initialization, state.json vs config.json load strategy, singleton window pattern.",
+        "keyFiles": [
+          {
+            "file": "ui/configurator/configurator.go:68-180",
+            "purpose": "ShowConfigWizard entry point — singleton check, model/GUI/presenter creation, template load, state.json → config.json fallback, wizard window lifecycle."
+          }
+        ]
+      },
+      {
+        "path": "ui/configurator/tabs/source_tab.go (791 LOC)",
+        "responsibility": "Subscription URL input & preview: add/remove/fetch sources, unified preview window, source format metadata display.",
+        "keyFiles": [
+          {
+            "file": "ui/configurator/tabs/source_tab.go:50-150",
+            "purpose": "Source URL input section with add button, source list (expandable format + metadata), preview window launcher."
+          }
+        ]
+      },
+      {
+        "path": "ui/configurator/tabs/rules_tab.go (606 LOC)",
+        "responsibility": "Custom routing rules UI: rule list with add/edit/delete, SRS (remote rule-set) auto-download + button state mgmt, outbound selector per rule.",
+        "keyFiles": [
+          {
+            "file": "ui/configurator/tabs/rules_tab.go:1-100",
+            "purpose": "SRS helper constants, runSRSDownloadAsync goroutine with presenter.UpdateUI callback, button state transitions (download→loading→done/error)."
+          }
+        ]
+      },
+      {
+        "path": "ui/configurator/tabs/dns_tab.go (721 LOC)",
+        "responsibility": "DNS servers + routing rules UI: preset-bundled + user-added servers, lock/toggle semantics, unified rules editor, DNS variables resolver.",
+        "keyFiles": [
+          {
+            "file": "ui/configurator/tabs/dns_tab.go",
+            "purpose": "DNS section with server list, preset vs user-added distinction, DNS rules unified editor (combines preset + custom rows), variables dropdown integration."
+          }
+        ]
+      },
+      {
+        "path": "ui/configurator/tabs/source_edit_window.go (781 LOC)",
+        "responsibility": "Floating window for subscribe-sourced outbound inspection: overview, raw JSON, edit misc settings, format/support links.",
+        "keyFiles": [
+          {
+            "file": "ui/configurator/tabs/source_edit_window.go",
+            "purpose": "Outbound edit window (non-modal) with overview tab, raw editor, misc settings, format metadata + support link toolbar."
+          }
+        ]
+      },
+      {
+        "path": "ui/configurator/tabs/dns_user_rules.go (537 LOC)",
+        "responsibility": "User-added DNS rules subcomponent: list with add/edit/delete, rule type selection (domain/regex/etc), outbound selector.",
+        "keyFiles": [
+          {
+            "file": "ui/configurator/tabs/dns_user_rules.go",
+            "purpose": "DNS user rules list builder, add/edit/delete handlers, rule type detection + outbound choice."
+          }
+        ]
+      },
+      {
+        "path": "ui/configurator/dialogs/add_rule_dialog.go (1146 LOC)",
+        "responsibility": "Modal for adding/editing routing rules: tabs (guided form, raw JSON), multi-field validation, process selector, SRS URL list support.",
+        "keyFiles": [
+          {
+            "file": "ui/configurator/dialogs/add_rule_dialog.go:60-200",
+            "purpose": "Dialog setup — dual-tab (form + raw), input fields (domain/IP/port/process/SRS URLs), raw JSON syncing between tabs."
+          }
+        ]
+      },
+      {
+        "path": "ui/configurator/dialogs/rule_dialog.go (99 LOC)",
+        "responsibility": "Simple rule type selection helper dialog (domain/IP-based/process/SRS).",
+        "keyFiles": [
+          {
+            "file": "ui/configurator/dialogs/rule_dialog.go",
+            "purpose": "Lightweight rule type picker dialog."
+          }
+        ]
+      },
+      {
+        "path": "ui/configurator/dialogs/get_free_dialog.go (255 LOC)",
+        "responsibility": "Modal for selecting free servers from subscription (filter by protocol/country, batch toggle).",
+        "keyFiles": [
+          {
+            "file": "ui/configurator/dialogs/get_free_dialog.go",
+            "purpose": "Subscription server picker with protocol/country filters and batch select UI."
+          }
+        ]
+      },
+      {
+        "path": "ui/configurator/outbounds_configurator/configurator.go (690 LOC)",
+        "responsibility": "Outbound edit modal manager: list UI with add/edit/delete/reset (for preset refs), scope selector (global/per-source).",
+        "keyFiles": [
+          {
+            "file": "ui/configurator/outbounds_configurator/configurator.go",
+            "purpose": "Outbound list tab with add/edit/delete/reset buttons, global vs source-scoped outbound toggle, preset-ref badge indicator."
+          }
+        ]
+      },
+      {
+        "path": "ui/configurator/outbounds_configurator/edit_dialog.go (1071 LOC)",
+        "responsibility": "Floating window for outbound creation/editing: tag/type/comment fields, auto-detect (urltest) options (interval/tolerance/URL from template vars), scope selector.",
+        "keyFiles": [
+          {
+            "file": "ui/configurator/outbounds_configurator/edit_dialog.go:1-150",
+            "purpose": "Dialog setup — tag/type/comment input, urltest option fields (interval/tolerance/URL via template variable dropdown), scope selector with subscription source list (filters single-node sources)."
+          }
+        ]
+      }
+    ],
+    "recommendations": [
+      {
+        "title": "Extract downloadComponentState setter logic into a helper function factory",
+        "detail": "core_dashboard_tab.go lines 516-592 define setDownloadState, setWintunState, setSingboxState which are essentially wrappers applying identical logic to different field sets. Propose: create a generic downloadComponentSetter(component downloadComponentState) func that returns a func(statusText, buttonText string, progress float64) — eliminates 70 LOC of duplication. Setter definitions would be: tab.setSingbox := downloadComponentSetter(tab.singboxComponent); tab.setWintun := downloadComponentSetter(tab.wintunComponent).",
+        "risk": "low",
+        "behaviorChange": false
+      },
+      {
+        "title": "Consolidate SetToolTip pattern into a TooltipHelper utility",
+        "detail": "Calls to button.SetToolTip(fmt.Sprintf(...)), button.SetToolTip(locale.T(...)), and conditional type assertion interface{SetToolTip(string)} appear in core_dashboard_tab.go:228, 387, 708-711; clash_api_tab.go:383-384, 393-394, 470-472, 935, 1007, 1009, 1028, 1036, 1040, 1064, 1182. Propose: internal/fynewidget/tooltip.go with SetToolTipSafe(button, text string) that handles the type assertion and no-op gracefully, reducing boilerplate.",
+        "risk": "low",
+        "behaviorChange": false
+      },
+      {
+        "title": "Separate UI state management (selection, filtering) from CreateClashAPITab",
+        "detail": "clash_api_tab.go:113-1345 is a ~1300-LOC single-pass closure capturing 24+ variables (selectedProxyNames, hidePingErrors, sortNameAscending, selectionAnchorVis, etc.). The selection reconciliation logic (reconcileListSelection, refreshServersProxySelectionUI, applyServersPointerSelection) and sort/filter state (sortByName, sortByDelay, applySavedSort) are tangled. Propose: extract ServersTabState struct holding (selectedProxyNames, sortType, hidePingErrors, selectionAnchor, etc.) + methods (ApplySort, ToggleFilter, ReconcileSelection) into separate file ui/clash_api_tab_state.go — reduces closure variable capture and improves testability.",
+        "risk": "medium",
+        "behaviorChange": false
+      },
+      {
+        "title": "Extract SRS download callback pattern into reusable component",
+        "detail": "SRS auto-download is implemented independently in rules_tab.go:114-180 (runSRSDownloadAsync) and add_rule_dialog.go. Both use presenter.UpdateUI + context timeout + services.DownloadSRSGroup + button state transitions (loading→done/error). Propose: ui/configurator/components/srs_downloader.go with RunSRSDownload(ctx, model, entries, onSuccess, onError, presenter) func and SRSButtonStateMachine enum — eliminates duplication and ensures consistency.",
+        "risk": "medium",
+        "behaviorChange": false
+      },
+      {
+        "title": "Convert mixed-language comment debt to English-only or Cyrillic-only",
+        "detail": "Core UI files heavily mix Russian (UI logic descriptions, SPEC notes) with English (code names, constant references): core_dashboard_tab.go ~95+ Russian comments (lines 38, 126, 132-143, 162-189, 211-296, etc.); clash_api_tab.go ~66+ (lines 35-50, 48-52, etc.); source_tab.go ~52+. Propose: create docs/COMMENT_STYLE.md establishing English for all new comments (Russian reserved for docblocks in locales/ru.json narrative context), then systematically translate existing narratives (e.g., SPEC 045/052/058 long-form explanations can move to docs/*.md). This is not urgent but reduces cognitive load on maintainers unfamiliar with Russian.",
+        "risk": "low",
+        "behaviorChange": false
+      },
+      {
+        "title": "Extract UI callback registration patterns into a coordinator helper",
+        "detail": "core_dashboard_tab.go:141-189 manually registers ~5 callbacks on controller.UIService (UpdateCoreStatusFunc, UpdateConfigStatusFunc, UpdateParserProgressFunc, ShowSubsResultFunc, ShowUpdatePopupFunc). This pattern is repeated in clash_api_tab.go:357-360 (RefreshAPIFunc, ResetAPIStateFunc). Propose: internal/ui/callback_coordinator.go with RegisterCoreCallbacks(tab *CoreDashboardTab, uiService *core.UIService), RegisterClashAPICallbacks(controller *core.AppController) — centralizes lifecycle logic and makes callback contracts explicit.",
+        "risk": "low",
+        "behaviorChange": false
+      },
+      {
+        "title": "Break up CreateCoreDashboardTab into functional sub-builders",
+        "detail": "core_dashboard_tab.go:94-207 spans 113 LOC with 5 nested block creations (statusRow, versionBlock, wintunBlock, configBlock, stateBlock) and 5 callback registrations. While not technically a monolith (callbacks are registered, not inline), the function is a \"God Coordinator\" mixing layout logic with lifecycle setup. Propose: extract createStatusRow (lines 210-337 → separate), createVersionBlock (lines 441-506 → separate), createWintunBlock (already separate 1309-1373), createConfigBlock (already separate 339-438), createStateBlock (already separate 746-768) so CreateCoreDashboardTab becomes: row := createStatusRow(tab); version := createVersionBlock(tab); ... then compose container + registerCallbacks(). This shifts the function from 113 LOC of nested closures to clear sequential logic.",
+        "risk": "low",
+        "behaviorChange": false
+      },
+      {
+        "title": "Move hardcoded English constants to locale strings",
+        "detail": "Scattered English strings remain hardcoded in UI code: edit_dialog.go:136 'https://cp.cloudflare.com/generate_204' (urltest placeholder); add_rule_dialog.go:158 hardcoded SRS GitHub URL; clash_api_tab.go:436 hardcoded emoji '▶️' for switch button. Propose: add locale keys wizard.outbound.urltest_default_url, wizard.rules.srs_reference_url, servers.button_switch_emoji in locale JSON, then substitute in code.",
+        "risk": "low",
+        "behaviorChange": false
+      },
+      {
+        "title": "Consolidate Presenter.UpdateUI callback into an event dispatcher",
+        "detail": "Multiple tabs call presenter.UpdateUI(func() { ... fyne.Do(...) }) to marshal UI updates back to the main thread. The pattern is functional but indirect — caller wraps presenter.UpdateUI which wraps fyne.Do. Over ~15+ callsites (rules_tab.go, add_rule_dialog.go, edit_dialog.go), this creates a chain. Propose: internal abstraction ui/configurator/event_dispatcher.go with Dispatch(callback) that routes presenter updates through a single entry point, making thread-safety guarantees visible and testable.",
+        "risk": "medium",
+        "behaviorChange": false
+      },
+      {
+        "title": "Extract Source Tab state into a separate model class",
+        "detail": "source_tab.go:50-150+ manipulates SourceURLEntry, SourceURLsProgrammatic flag, RefreshSourcesList callback. The interaction between text input state, programmatic vs user-initiated changes, and list refresh is implicit. Propose: ui/configurator/tabs/models/source_editor_state.go with SourceEditorState{entry, refreshCallback, isProgrammatic} + OnTextChanged, OnAddURL, RefreshList methods — provides explicit state contract and makes the text-vs-list sync logic testable.",
+        "risk": "medium",
+        "behaviorChange": false
+      },
+      {
+        "title": "Audit UI → core/ui imports for layering violations",
+        "detail": "core_dashboard_tab.go imports ui/configurator (line 31) and wizardmodels (line 32) — main tab reaches into the configurator package. While not a hard cycle, it creates coupling: Core tab can trigger wizard actions. Verify that this is intentional architectural decision (main dashboard should be able to launch configurator) vs accidental layering violation. If intentional, document the contract in ARCHITECTURE.md.",
+        "risk": "low",
+        "behaviorChange": false
+      }
+    ],
+    "monoliths": [
+      {
+        "file": "ui/clash_api_tab.go",
+        "loc": 1422,
+        "problem": "CreateClashAPITab is a 1300+ LOC single closure capturing 24+ variables (selectedProxyNames, hidePingErrors, sortNameAscending, selectionAnchorVis, applySavedSort, reconcileListSelection, refreshServersProxySelectionUI, applyServersPointerSelection, etc.) with nested state machines for sort/filter/selection, SRS button handling, ping concurrency, endpoint override. Logic spans sort functions (lines 730-819), selection handlers (lines 636-717), refresh callbacks (lines 603-634), ping-all workers (lines 822-915), and proxy list item generation (lines 427-562).",
+        "decomposition": "Extract into: (1) ui/clash_api_tab_state.go with ServersTabState{selectedProxies, sortType, hidePingErrors, selectionAnchor} + methods Reconcile(), ApplySortOrder(), ToggleFilter() — holds mutable state; (2) ui/clash_api_tab_handlers.go with OnLoadProxies(), OnPingProxy(), OnSwitchProxy(), OnSortBy() — closures bound to ServersTabState + controller, reducing variable capture; (3) keep CreateClashAPITab as thin orchestrator that builds UI widgets and binds them to handlers. Result: ~300 LOC per file, clear responsibility boundaries, testable state + handlers."
+      },
+      {
+        "file": "ui/configurator/dialogs/add_rule_dialog.go",
+        "loc": 1146,
+        "problem": "ShowAddRuleDialog spans 1146 LOC as a single-pass closure creating the dialog UI, registering field change listeners, syncing between form and raw JSON tabs, validating input (domain/IP/process/path patterns), and handling save. Complex state machines for tab switching (activeTabIsRaw toggle at line 88), process selection popup (processesSelected list + selectProcessesButton callback), and JSON ↔ form bidirectional sync (lines ~350-500) are nested within the closure.",
+        "decomposition": "Extract into: (1) ui/configurator/dialogs/rule_editor_state.go with RuleEditorState{label, domain, ips, urls, processes, pathPatterns, outbound, customJSON} + methods SyncFromJSON(), SyncToJSON(), Validate() — canonical state holder; (2) ui/configurator/dialogs/rule_editor_tabs.go with buildFormTab(state, presenter) and buildRawTab(state) functions — tab UI builders (each ~250 LOC); (3) ui/configurator/dialogs/rule_editor_process_picker.go with showProcessPickerDialog() — separates process selection logic; (4) keep ShowAddRuleDialog as thin wrapper that creates state, builds tabs, registers sync handlers, calls onSave. Result: ~300 LOC per file, state explicitly serializable/testable, tab sync logic isolated."
+      },
+      {
+        "file": "ui/configurator/outbounds_configurator/edit_dialog.go",
+        "loc": 1071,
+        "problem": "ShowEditDialog spans 1071 LOC as a single-pass closure handling: outbound tag/type/comment input fields, urltest-specific options (interval/tolerance/URL from template variable dropdowns), scope selector (global/per-source), body merging for referenced entries (lines 66-77), validation, and save callback. Interleaved logic: tag entry creation (lines 79-82), type select with conditional urltest options display (lines 85-134), comment input, scope selector with source filtering (lines 141-180+), body JSON display, save/delete buttons (lines ~800-900).",
+        "decomposition": "Extract into: (1) ui/configurator/outbounds_configurator/edit_state.go with OutboundEditState{tag, type, comment, interval, tolerance, url, scope, sourceIndex} + methods ApplyTemplate(merged), Validate(), ToConfig() — state holder; (2) ui/configurator/outbounds_configurator/edit_form_builder.go with buildBasicFields(state), buildUrltestFields(state), buildScopeSelector(state) — tab UI builders; (3) ui/configurator/outbounds_configurator/template_resolver.go with ResolveMergedBody(editPresenter, existing) — moves the complex ref+preset merge logic (lines 62-77) into a standalone function; (4) keep ShowEditDialog as orchestrator. Result: ~250 LOC per file, state testable, template merge logic auditable."
+      }
+    ],
+    "deadOrHistorical": [
+      {
+        "location": "ui/core_dashboard_tab.go:1451-1453",
+        "kind": "narrative comment",
+        "action": "KEEP — documents intentional choice (popup shown flag prevents re-show on app focus)"
+      },
+      {
+        "location": "ui/core_dashboard_tab.go:126-140",
+        "kind": "Russian narrative comment",
+        "action": "MIGRATE to English — describes SPEC 052 phase 8 polish (subscription status panel lifecycle). Long-form narrative belongs in docs/SPEC_052.md; replace with: '// SPEC 052 phase 8 polish: subscription status panel auto-hides after operation completes. See docs/SPEC_052.md.'"
+      },
+      {
+        "location": "ui/clash_api_tab.go:35-50",
+        "kind": "Russian narrative comment",
+        "action": "MIGRATE to English — describes serversListRowScrollbarGutterWidth rationale. Replace with: '// serversListRowScrollbarGutterWidth prevents scrollbar overlap with Ping/Switch buttons (Fyne limitation).'"
+      },
+      {
+        "location": "ui/configurator/tabs/source_tab.go:1",
+        "kind": "package docblock in Russian",
+        "action": "KEEP (for now) — package-level narrative is acceptable; document in COMMENT_STYLE.md that new package docblocks should be English."
+      }
+    ],
+    "dups": [
+      {
+        "desc": "Button SetToolTip pattern with locale.T() and type assertion",
+        "locations": [
+          "ui/core_dashboard_tab.go:228 restartButton.SetToolTip(fmt.Sprintf(...))",
+          "ui/core_dashboard_tab.go:387 updateConfigButton.SetToolTip(fmt.Sprintf(...))",
+          "ui/core_dashboard_tab.go:708,711 restartButton.SetToolTip(...dirty_tooltip / restartTooltip)",
+          "ui/clash_api_tab.go:383-384 type assert SetToolTip, then SetToolTip(ac.APIService.GetLastPingError(...))",
+          "ui/clash_api_tab.go:393-394 same pattern",
+          "ui/clash_api_tab.go:935 sortByNameButton.SetToolTip(locale.T(...))",
+          "ui/clash_api_tab.go:1028 sortByDelayButton.SetToolTip(locale.T(...))"
+        ],
+        "consolidation": "Extract into internal/fynewidget/tooltip.go: SetToolTipSafe(button interface{}, text string) error that handles nil button, tries type assertion, and gracefully no-ops. Callsites become: SetToolTipSafe(button, locale.T(...))."
+      },
+      {
+        "desc": "Download state management (sing-box / wintun) with statusLabel + button + progressBar + placeholder",
+        "locations": [
+          "ui/core_dashboard_tab.go:516-571 setDownloadState generic, setSingboxState, setWintunState wrappers",
+          "ui/core_dashboard_tab.go:1166-1182 setSingboxState calls (updateVersionInfo)",
+          "ui/core_dashboard_tab.go:1272, 1287, 1298 setSingboxState calls (handleDownload)",
+          "ui/core_dashboard_tab.go:1384, 1390, 1394, 1409, 1423, 1431 setWintunState calls (updateWintunStatus, handleWintunDownload)"
+        ],
+        "consolidation": "Extract into ui/components/download_state_manager.go: DownloadStateComponent{statusLabel, button, progressBar, placeholder} + setter (statusText, buttonText, progress float64) method. Consolidates setDownloadState + setSingboxState + setWintunState into one reusable struct."
+      },
+      {
+        "desc": "SRS auto-download callback with button state transitions (loading → done/error)",
+        "locations": [
+          "ui/configurator/tabs/rules_tab.go:114-180 runSRSDownloadAsync with context, services.DownloadSRSGroup, button state machine",
+          "ui/configurator/dialogs/add_rule_dialog.go:~700+ region likely has similar SRS download logic (not fully inspected in this pass)"
+        ],
+        "consolidation": "Extract into ui/configurator/components/srs_downloader.go: RunSRSDownloadWithUI(ctx, model, entries, buttonState, presenter, onSuccess, onError) helper that encapsulates the presenter.UpdateUI + button.SetText transitions."
+      }
+    ],
+    "events": [
+      {
+        "name": "UpdateCoreStatusFunc",
+        "publishers": [
+          "CoreDashboardTab.updateRunningStatus (via fyne.Do callback registration)"
+        ],
+        "subscribers": [
+          "controller.UIService"
+        ],
+        "status": "active — called on RunningState.Set() changes to update button states"
+      },
+      {
+        "name": "UpdateConfigStatusFunc",
+        "publishers": [
+          "CoreDashboardTab.updateConfigInfo (config existence checks, dirty markers)"
+        ],
+        "subscribers": [
+          "controller.UIService"
+        ],
+        "status": "active — called on state.json changes or Save completion"
+      },
+      {
+        "name": "UpdateParserProgressFunc",
+        "publishers": [
+          "core.RunParserProcess (progress callback from subscription fetch)"
+        ],
+        "subscribers": [
+          "CoreDashboardTab.setSubsToastInProgress (progress bar + status)"
+        ],
+        "status": "active — multi-shot progress updates during subscription refresh"
+      },
+      {
+        "name": "ShowSubsResultFunc",
+        "publishers": [
+          "core.RunParserProcess (final success/error)"
+        ],
+        "subscribers": [
+          "CoreDashboardTab.setSubsToastResult (toast + auto-hide)"
+        ],
+        "status": "active — single final update per subscription operation"
+      },
+      {
+        "name": "RefreshAPIFunc",
+        "publishers": [
+          "ClashAPITab.onTestAPIConnection trigger"
+        ],
+        "subscribers": [
+          "app.go:86-96 (Servers tab OnSelected handler)"
+        ],
+        "status": "active — explicit refresh when user selects Servers tab"
+      },
+      {
+        "name": "ResetAPIStateFunc",
+        "publishers": [
+          "ClashAPITab.onResetAPIState trigger"
+        ],
+        "subscribers": [
+          "app.go (called on sing-box stop)"
+        ],
+        "status": "active — clears proxy list when VPN exits"
+      },
+      {
+        "name": "AutoPingAfterConnectFunc",
+        "publishers": [
+          "ClashAPITab setup (line 1076)"
+        ],
+        "subscribers": [
+          "controller.RunningState.Set callback (~5s after connect)"
+        ],
+        "status": "active — auto-trigger ping-all after VPN connects"
+      }
+    ],
+    "stateFlows": [
+      "Core Dashboard: [binary not found] ←→ [binary found] ←→ [starting] ←→ [running] ←→ [stopping] ←→ [stopped]; state.json missing gates Restart button; dirty config HighImportance restart indicator",
+      "ClashAPI tab: [not tested] → [testing] → [disabled/error] OR [enabled] → [loading proxies] → [list ready] ↔ [sorting/filtering/pinging]; selection state (none/single/multi) tracked across list refresh",
+      "Subscription operation: [idle] → [starting] → [downloading] → [progress updates] → [parsing] → [success toast (auto-hide 20s)] OR [error toast]; final state reverts parser UI"
+    ],
+    "dependencies": [
+      {
+        "from": "ui/core_dashboard_tab.go",
+        "to": "ui/configurator/configurator.go",
+        "why": "Core tab launches config wizard via configurator.ShowConfigWizard(parentWindow) — intentional to allow config editing from main screen"
+      },
+      {
+        "from": "ui/clash_api_tab.go",
+        "to": "core/config",
+        "why": "Tab reads selector groups from config.json via config.GetSelectorGroupsFromConfig() and builds share URIs via config.BuildShareURILinesForOutboundTags() — necessary for proxy grouping"
+      },
+      {
+        "from": "ui/configurator/tabs/rules_tab.go",
+        "to": "core/services",
+        "why": "Rules tab calls services.DownloadSRSGroup() and services.GetSRSEntries() for remote rule-set management — necessary for SRS feature"
+      },
+      {
+        "from": "ui/configurator/dialogs/add_rule_dialog.go",
+        "to": "ui/configurator/tabs/rules_tab.go (via CreateRulesTabFunc callback)",
+        "why": "Add rule dialog can trigger rules tab refresh after rule save — callback pattern avoids circular import, acceptable"
+      }
+    ]
+  },
+  {
+    "zone": "internal/platform, internal/traffic, internal/fynewidget, internal/locale, internal/srstag, internal/outboundutil, internal/urlsafe, internal/debuglog, ui/icons, ui/components",
+    "packages": [
+      {
+        "path": "internal/platform",
+        "responsibility": "OS abstraction layer: power events (sleep/wake), device info (HWID), process management, file system paths, WinTun ghost adapter cleanup (Windows-only)",
+        "keyFiles": [
+          {
+            "file": "internal/platform/power_darwin.go",
+            "purpose": "IOKit-based sleep/wake event subscription via CFRunLoop + IsSleeping/PowerContext exported state"
+          },
+          {
+            "file": "internal/platform/power_linux.go",
+            "purpose": "systemd-logind DBus PrepareForSleep signal subscription + IsSleeping/PowerContext state"
+          },
+          {
+            "file": "internal/platform/power_windows.go",
+            "purpose": "Win32 message loop for WM_POWERBROADCAST (sleep/wake) + GenerateConsoleCtrlEvent-based CTRL+BREAK send"
+          },
+          {
+            "file": "internal/platform/power_stub.go",
+            "purpose": "Fallback no-op implementations for unsupported platforms (all power methods return false/no-op)"
+          },
+          {
+            "file": "internal/platform/device_info_darwin.go",
+            "purpose": "macOS HWID extraction: sw_vers, sysctl hw.model queries cached per-process"
+          },
+          {
+            "file": "internal/platform/device_info_linux.go",
+            "purpose": "Linux HWID extraction: /etc/os-release VERSION_ID, /sys/devices/virtual/dmi/id/product_name cached"
+          },
+          {
+            "file": "internal/platform/device_info_windows.go",
+            "purpose": "Windows HWID extraction: wmic os get Version, wmic computersystem get Model cached"
+          },
+          {
+            "file": "internal/platform/wintun_cleanup_windows.go",
+            "purpose": "SPEC 065: phantom ghost WinTun adapter removal (Win7 only); NLA profile/signature cleanup (all Windows); ghostTunDecision pure predicate"
+          },
+          {
+            "file": "internal/platform/wintun_cleanup.go",
+            "purpose": "Shared ghost-adapter mode constants + ghostTunDecision pure func (platform-agnostic unit tests)"
+          },
+          {
+            "file": "internal/platform/proclist.go",
+            "purpose": "Cross-platform process enumeration interface; ProcessEntry struct for Traffic Profiler picker"
+          },
+          {
+            "file": "internal/platform/platform_common.go",
+            "purpose": "Shared path getters for config.json, wizard_template.json, bin/wizard_states, rule-sets, subscriptions (single source of truth)"
+          }
+        ]
+      },
+      {
+        "path": "internal/traffic",
+        "responsibility": "Event profiling & session recording: Clash API poller + log tailer join, rolling buffer, session lifecycle, traffic event aggregation",
+        "keyFiles": [
+          {
+            "file": "internal/traffic/profiler.go",
+            "purpose": "TrafficProfiler singleton: rolling 60s buffer, Clash+log event join, process→IP attribution (verified/inferred), session dispatch, subscriber fanout"
+          },
+          {
+            "file": "internal/traffic/session.go",
+            "purpose": "Session in-memory recording: event append + overflow, domain/IP/connection aggregation views, 50k event cap, 3h age window"
+          },
+          {
+            "file": "internal/traffic/types.go",
+            "purpose": "Shared types: TrafficEvent, ConnectionIssue, dnsAttribution, event kinds, confidence levels, issue codes"
+          }
+        ]
+      },
+      {
+        "path": "internal/fynewidget",
+        "responsibility": "Reusable Fyne widget building blocks: row hover styling, check+content toggle, button/select hover forwarding, tooltip label wiring",
+        "keyFiles": [
+          {
+            "file": "internal/fynewidget/hover_row.go",
+            "purpose": "HoverRow: background color on hover + optional selection tint; blends theme colors for subtle effect"
+          },
+          {
+            "file": "internal/fynewidget/check_with_content.go",
+            "purpose": "CheckWithContent: checkbox + wrapper that toggles check on tap, mirrors hover to check icon via helper label wiring"
+          },
+          {
+            "file": "internal/fynewidget/hover_forward.go",
+            "purpose": "HoverForwardButton/Select/TTButton: wrappers that forward row hover from child widgets to parent row getter"
+          },
+          {
+            "file": "internal/fynewidget/tap_wrap.go",
+            "purpose": "TapWrap, SecondaryTapWrap: minimal wrappers for tap event forwarding to children"
+          },
+          {
+            "file": "internal/fynewidget/doc.go",
+            "purpose": "Package-level documentation: embedding rules, hover forwarding patterns, fyne BaseWidget extension best practices"
+          }
+        ]
+      },
+      {
+        "path": "internal/locale",
+        "responsibility": "i18n: English embedded, external JSON per-language, remote fetch, T/Tf lookup with English fallback",
+        "keyFiles": [
+          {
+            "file": "internal/locale/locale.go",
+            "purpose": "Locale singleton: current language + catalog map, T/Tf lookups, SetLang/GetLang, remote download hook"
+          },
+          {
+            "file": "internal/locale/settings.go",
+            "purpose": "LanguageListItem: UI list row for language picker"
+          }
+        ]
+      },
+      {
+        "path": "internal/srstag",
+        "responsibility": "Content-addressed local SRS filename generation: URL → filename-<hash8> to deduplicate same URL, differentiate same filename from different URLs",
+        "keyFiles": [
+          {
+            "file": "internal/srstag/srstag.go",
+            "purpose": "TagFromURL: SHA256 hash first 4 bytes, filename without .srs extension, stable dedup across runs"
+          }
+        ]
+      },
+      {
+        "path": "internal/outboundutil",
+        "responsibility": "Shared outbound-to-rule application: 'reject' / 'drop' literal → action/method field mapping (server + UI use same logic)",
+        "keyFiles": [
+          {
+            "file": "internal/outboundutil/outbound.go",
+            "purpose": "ApplyOutboundToRule: single source of truth for reject/drop → action/method conversion"
+          }
+        ]
+      },
+      {
+        "path": "internal/urlsafe",
+        "responsibility": "URL scheme allowlist for clickable affordances: http/https/tg allowed, javascript/file/data/mailto blocked",
+        "keyFiles": [
+          {
+            "file": "internal/urlsafe/url.go",
+            "purpose": "IsSafeAnnounceURL: scheme vetting for Announce-Url buttons from subscription headers"
+          }
+        ]
+      },
+      {
+        "path": "internal/debuglog",
+        "responsibility": "Centralized logging: configurable levels (Off/Error/Warn/Info/Verbose/Trace), build-time level (Warn release, Verbose dev), optional internal sink for UI log viewer",
+        "keyFiles": [
+          {
+            "file": "internal/debuglog/debuglog.go",
+            "purpose": "Log function + level dispatch, internal sink for diagnostics viewer, timing helpers (StartTiming/EndWithDefer)"
+          },
+          {
+            "file": "internal/debuglog/close.go",
+            "purpose": "Log file cleanup on app exit"
+          }
+        ]
+      },
+      {
+        "path": "ui/icons",
+        "responsibility": "Embedded SVG icon resources for UI tabs: bolt (Core tab), telegram (blue, unthemed), link (generic, themed)",
+        "keyFiles": [
+          {
+            "file": "ui/icons/icons.go",
+            "purpose": "Fyne StaticResources: bolt.svg, telegram.svg, link.svg; replaces ⚡ emoji that Fyne font couldn't render"
+          }
+        ]
+      },
+      {
+        "path": "ui/components",
+        "responsibility": "Shared UI components: scroll gutter spacing, click-redirect overlay for wizard focus",
+        "keyFiles": [
+          {
+            "file": "ui/components/scroll_gutter.go",
+            "purpose": "NewScrollGutter: 10px transparent spacer for scrollbar overlay; WrapInScrollWithGutter canonical wrapper; documents inside vs outside gutter semantics"
+          },
+          {
+            "file": "ui/components/click_redirect.go",
+            "purpose": "ClickRedirect: invisible tappable overlay forwarding clicks to wizard window (focus + child window elevation)"
+          }
+        ]
+      }
+    ],
+    "dependencies": [
+      {
+        "from": "internal/platform (all)",
+        "to": "internal/debuglog, internal/constants",
+        "why": "All platform modules use debuglog for tracing (power hooks, device queries, WinTun cleanup); platform_common.go + device_info use constants for path names"
+      },
+      {
+        "from": "ui/components/click_redirect.go",
+        "to": "core",
+        "why": "Needs AppController to access UIService, WizardWindow — layering violation: UI component reaching down to core (acceptable for focus flow)"
+      },
+      {
+        "from": "internal/traffic (profiler, session)",
+        "to": "none (self-contained)",
+        "why": "Traffic profiling is decoupled; depends only on stdlib + types.go internal defs"
+      },
+      {
+        "from": "internal/fynewidget (all)",
+        "to": "none (self-contained)",
+        "why": "Pure Fyne widget composition; no internal package dependencies"
+      },
+      {
+        "from": "internal/locale",
+        "to": "internal/constants, internal/debuglog",
+        "why": "constants.GetMyBranch for build-time log level; debuglog for locale download diagnostics"
+      },
+      {
+        "from": "internal/srstag, internal/outboundutil, internal/urlsafe",
+        "to": "none (self-contained)",
+        "why": "Pure utility packages with no cross-dependencies"
+      }
+    ],
+    "monoliths": [
+      {
+        "file": "internal/platform/wintun_cleanup_windows.go",
+        "loc": 681,
+        "problem": "Single file handles all Win7 WinTun phantom adapter cleanup + NLA profile/signature cleanup; three distinct concerns (SetupAPI enumeration, NLA Profiles read/delete, NLA Signatures read/delete)",
+        "decomposition": "Refactor into: wintun_cleanup_windows_device.go (SetupDiGetClassDevsW enumeration + DIF_REMOVE logic, ~250 LOC), wintun_cleanup_windows_nla_profiles.go (NLA Profiles cleanup, ~200 LOC), wintun_cleanup_windows_nla_sigs.go (NLA Signatures cleanup, ~150 LOC), shared helpers module. Shared: procSetupDi* lazy bindings, GUID constants, version detection."
+      },
+      {
+        "file": "internal/traffic/profiler.go",
+        "loc": 450,
+        "problem": "TrafficProfiler.dispatch and event processing deeply nested; multiple concerns: rolling buffer management, session dispatch, map eviction, subscriber fanout mixed in single function",
+        "decomposition": "Extract: appendToRollingBuffer (buffer shift + cap enforcement), evictFromMaps (connProcessMap/dnsAccum/dnsByIP cleanup), dispatchToSession (active session filtering), fanoutToSubscribers (non-blocking send loop). Keep dispatch as coordinator, each helper <100 LOC."
+      }
+    ],
+    "dups": [
+      {
+        "desc": "Platform-split power state machines (power_darwin.go ~ power_linux.go structural duplication)",
+        "locations": [
+          "internal/platform/power_darwin.go",
+          "internal/platform/power_linux.go"
+        ],
+        "consolidation": "Structural similarity is intentional per-platform implementation detail (IOKit CFRunLoop vs DBus signal loop require platform-specific event sources). No consolidation needed — code clarity + correctness requires platform-native APIs. Shared interface (IsSleeping/PowerContext/RegisterSleepCallback/RegisterPowerResumeCallback) is already unified."
+      },
+      {
+        "desc": "Device info modules (device_info_darwin.go, device_info_linux.go, device_info_windows.go share same caching pattern and exported interface)",
+        "locations": [
+          "internal/platform/device_info_darwin.go",
+          "internal/platform/device_info_linux.go",
+          "internal/platform/device_info_windows.go"
+        ],
+        "consolidation": "Minor refactor opportunity: extract sync.Once caching pattern to shared deviceInfoCache helper type + per-platform loadDeviceInfo() impl. Today: 3 x ~70-80 LOC of duplication (variable init + loadDeviceInfo structure). Benefit: low (pattern is simple); risk: acceptable (pure extraction). Do NOT consolidate: different source implementations (sw_vers, /etc/os-release, wmic are irreplaceable per OS)."
+      },
+      {
+        "desc": "Proclist enumeration pattern (proclist_darwin.go, proclist_linux.go, proclist_windows.go each impl different syscall path to same ProcessEntry output)",
+        "locations": [
+          "internal/platform/proclist_darwin.go",
+          "internal/platform/proclist_linux.go",
+          "internal/platform/proclist_windows.go"
+        ],
+        "consolidation": "No consolidation — proclist.go anchor file + platform-specific impl is correct pattern. Each platform requires native syscalls (ps, /proc/<pid>/exe, EnumProcesses). Shared interface already defined in proclist.go."
+      }
+    ],
+    "deadOrHistorical": [
+      {
+        "location": "internal/platform/power_stub.go",
+        "kind": "fallback stub",
+        "action": "KEEP — Intentional no-op for non-Windows/non-Linux/non-Darwin platforms; allows build on unsupported OS (e.g., FreeBSD during dev) without breaking"
+      },
+      {
+        "location": "internal/platform/dock_handler_stub.go",
+        "kind": "fallback stub",
+        "action": "KEEP — Paired with dock_handler.go (macOS-only). Non-macOS builds use stub to avoid link errors"
+      },
+      {
+        "location": "internal/platform/privileged_stub.go",
+        "kind": "fallback stub",
+        "action": "KEEP — Paired with privileged_darwin.go (macOS privilege escalation). Allows non-macOS builds without dead-code warnings on platform-specific calls"
+      },
+      {
+        "location": "internal/platform/power_darwin.go:233-235",
+        "kind": "dead code guard (defensive default in switch)",
+        "action": "KEEP — Cases kIOMessageCanSystemSleep, kIOMessageSystemWillNotSleep handled by C side (IOAllowPowerChange). Go side explicitly clears with _ = C.kMsg*() for clarity. Not dead; prevents 'unused constant' warnings if removed."
+      },
+      {
+        "location": "internal/platform/wintun_cleanup_windows.go:88-93",
+        "kind": "commented block (CREATE_NO_WINDOW)",
+        "action": "KEEP — Documented comment explaining why CREATE_NO_WINDOW is commented out (breaks graceful shutdown semantics via GenerateConsoleCtrlEvent). Critical context for future maintainers; removal risks regression."
+      },
+      {
+        "location": "internal/traffic/profiler.go:305-307 (EventRouterMatch case)",
+        "kind": "consumed-but-not-surfaced event",
+        "action": "KEEP — Router-match log lines feed join state (process map); not surfaced as rows. Comment explains design intent. Code is necessary."
+      }
+    ],
+    "recommendations": [
+      {
+        "title": "Extract wintun_cleanup_windows.go device/NLA concerns into separate files",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "wintun_cleanup_windows.go (681 LOC) mixes three independent cleanup operations: (1) SetupAPI device enumeration + phantom/DN_STARTED filtering + DIF_REMOVE (2) NLA Profiles iteration/delete (3) NLA Signatures iteration/delete. Refactor into wintun_cleanup_windows_device.go (~250 LOC device enumeration), wintun_cleanup_windows_nla.go (~350 LOC both NLA phases). Extract lazydll bindings + GUID constants to shared module. No behavior change; improves testability (each concern can be unit-tested separately)."
+      },
+      {
+        "title": "Simplify profiler.go dispatch logic into smaller functions",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "dispatch() function (internal/traffic/profiler.go:329-377) combines rolling-buffer GC, map eviction (conn/dnsAccum/dnsByIP), session matching, subscriber fanout. Extract: appendToRollingBuffer(e) (lines 331-339), evictExpiredDNSByIP(e) (lines 350-357), dispatchToSession(e, active) (lines 367-369), fanoutToSubscribers(e, subs). Each <50 LOC, single concern. No behavior change; improves readability and enables independent testing."
+      },
+      {
+        "title": "Unify device_info caching pattern via generic sync.Once helper",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "device_info_*.go (all platforms) each define deviceInfoOnce sync.Once + loadDeviceInfo(). Minor duplication of caching wrapper. Opportunity: extract deviceInfoCache[T any] type with Do(fn func() T) T pattern, used by all three. Risk is low (pure extraction); benefit is low (pattern is trivial). Do NOT consolidate source-specific logic (sw_vers, /etc/os-release, wmic); only the caching skeleton."
+      },
+      {
+        "title": "Document profiler lock granularity and consider refactoring hot paths",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "TrafficProfiler.mu (internal/traffic/profiler.go) is held across slow map operations (eviction sweep in eventsFromPoller, connProcessMap access on every event). During high-traffic capture (1000s events/sec) this becomes a bottleneck. Consider: split into connProcessMapMu + dnsAccumMu + dnsByIPMu + rollingBufferMu with narrower critical sections. Or use atomic.Ptr<map> with periodic snapshots. Profile-guided refactoring recommended before claiming performance optimizations."
+      },
+      {
+        "title": "Review SendCtrlBreak (platform_windows.go) for signal safety in shutdown paths",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "SendCtrlBreak (internal/platform/platform_windows.go:67-75) calls GenerateConsoleCtrlEvent and returns immediately. No graceful timeout handling — caller must wait separately. Document contract: SendCtrlBreak does NOT wait for process exit; caller should poll or use separate wait. Alternatively, add SendCtrlBreakWithTimeout(pid int, timeout time.Duration) for convenience at call sites."
+      },
+      {
+        "title": "Consider extracting power context creation/cancellation into PowerContextManager type",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "power_*.go (all platforms) repeat: powerCtx/powerCtxCancel sync + context.WithCancel + mu.Lock patterns. No behavior change, but extracted type (PowerContextManager with Start/Stop/Get methods) would simplify implementations and reduce duplication. Low risk; moderate benefit for readability."
+      },
+      {
+        "title": "Add tests for cross-platform profiler.eventMatchesSession behavior",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "eventMatchesSession (internal/traffic/profiler.go:383-391) accepts verified/inferred confidence but explicitly rejects unattributed. Document and test: empty target string means system-wide (any event). Add tests for process-name match, path mismatch cases."
+      }
+    ],
+    "stateFlows": [
+      "power_darwin.go: IOKit CFRunLoop subscription → goPowerCallback (C callback) → (async) sleepCallbacks/resumeCallbacks dispatch + powerCtx cancel/recreate",
+      "power_linux.go: DBus signal loop → PrepareForSleep(true/false) → sleepingFlag.Store + context cancel/recreate + (sync) callback dispatch",
+      "power_windows.go: Win32 message loop (locked OS thread) → WM_POWERBROADCAST handlers → powerSleeping flag + context cancel/recreate + (async via time.AfterFunc) callback",
+      "profiler.go: Clash poller.Out + LogTailer.Out → runJoin select loop → eventsFromPoller/eventsFromLogLine → dispatch → rolling buffer + session.Append + subscribers fanout"
+    ]
+  },
+  {
+    "zone": "documentation audit (docs/ tree)",
+    "packages": [
+      {
+        "path": "docs/",
+        "responsibility": "Complete user and developer reference for singbox-launcher architecture, data flows, API, templating system, parser, and configuration. Split across 8 primary docs (ARCHITECTURE, DATA_FLOW, API, TEMPLATE_REFERENCE, WIZARD_STATE, ParserConfig, TRAFFIC_PROFILER, + ancillary BUILD/RELEASE guides) covering schema v6 and SPEC 053-067 lifecycle.",
+        "keyFiles": [
+          {
+            "file": "docs/ARCHITECTURE.md",
+            "purpose": "Project structure, package responsibilities, core/ui/internal layers, major subsystems (AppController, ConfigService, UIService, ProcessService, Configurator wizard, API), cross-package dependencies",
+            "loc": 1566
+          },
+          {
+            "file": "docs/DATA_FLOW.md",
+            "purpose": "Load/save/build/preset-toggle flows with mermaid-style ASCII diagrams, state transitions, resolver pipeline, preset binding lifecycle",
+            "loc": 336
+          },
+          {
+            "file": "docs/API.md",
+            "purpose": "Debug API reference (24 endpoints, auth, responses, curl cookbook), traffic profiler control, snapshot endpoint, settings read/write",
+            "loc": 269
+          },
+          {
+            "file": "docs/TEMPLATE_REFERENCE.md",
+            "purpose": "wizard_template.json schema, presets (outbounds/dns/rules/vars), #if construct (SPEC 067), runtime globals (@runtime.*), default_value resolution, formatting style guide",
+            "loc": 680
+          },
+          {
+            "file": "docs/WIZARD_STATE.md",
+            "purpose": "state.json v6 schema (canonical), connections/sources, outbound Ref/Updates (SPEC 058), rules (preset/inline/srs kinds), DNS, vars, migrations from v5",
+            "loc": 400
+          },
+          {
+            "file": "docs/ParserConfig.md",
+            "purpose": "Subscription parser: 9 protocols (VLESS/VMess/Trojan/SS/Hy2/SSH/SOCKS5/Naive/WireGuard), Xray JSON array, share URI encode/decode, filters, tag prefix/postfix/mask",
+            "loc": 295
+          },
+          {
+            "file": "docs/TRAFFIC_PROFILER.md",
+            "purpose": "User guide for Traffic Profiler window (per-process capture, live/domains/IPs/connections tabs, verbose toggle, issue classification)",
+            "loc": 85
+          },
+          {
+            "file": "AGENTS.md",
+            "purpose": "AI-agent scope, task format (Spec Kit), restrictions, documentation checklist, where to find code/SPECS/patterns",
+            "loc": 90
+          }
+        ]
+      }
+    ],
+    "recommendations": [
+      {
+        "title": "Update ARCHITECTURE.md — snapshot.go package underdocumented",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "ARCHITECTURE.md §1 (structure) omits core/snapshot/ and its Build() function used by /debug/snapshot endpoint and Copy snapshot UI button. Snapshot.go builds state+template+cache+config into one JSON for bug reports (mentioned in README.md and API.md but no inventory in ARCHITECTURE). Recommendation: add entry for core/snapshot/ under API section with purpose and Build() signature."
+      },
+      {
+        "title": "ARCHITECTURE.md §Детальное описание (lines 582-643) references deleted files",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "Section claims `ui/wizard_overlay.go` contains ChildWindowsOverlay and FocusOpenChildWindows callback logic (line 611). File exists but structure differs: ChildWindowsOverlay is in ui/configurator/child_overlay.go, FocusOpenChildWindows is callback in UIService. Also claims ui/components/click_redirect.go exists for click-redirect but that file handles ChildWindowsOverlay focus only, not general click-redirect. Recommendation: cross-reference actual file locations in core/uiservice/ui_service.go for real callback registration points."
+      },
+      {
+        "title": "DATA_FLOW.md — MigrateOutboundsToReferencedShape migration details incomplete",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "§1 Load flow correctly describes SPEC 058 one-shot migration but omits interaction with SPEC 060 v5→v6 schema conversion. On fresh v0.9.8+ no state.json exists, so MigrateOutboundsToReferencedShape never runs (path A / legacy v5 assumed pre-SPEC-058). Missing clarification: migration only applies to v5 state files loaded into v6 system; new installs skip it. Recommendation: add note that migration is legacy-only (v5→v6 scope)."
+      },
+      {
+        "title": "API.md — rebuild-config response shape mismatch documented",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "Line 151 claims doc-comment promises {\"rebuilt\":bool} but handler returns {\"ok\":true}. Documented as \"на доработке\" (pending fix). Correct handler behavior verified (ok only). Recommendation: either implement {\"rebuilt\":bool} response or remove the note and confirm {\"ok\":true} is canonical."
+      },
+      {
+        "title": "TEMPLATE_REFERENCE.md §4.2 (preset DNS servers) — substitute vars scope mismatch",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "Line 92 claims preset.vars can be substituted in bundled dns_servers[].body on build. Actual code (core/build/preset_expand.go): preset vars ARE substituted in rule/dns_rule/rule_set fragments but DNS server bodies use per-database tag prefix, no deep preset-var substitute per entry. DNS servers inherit outer vars only if declared as part of preset definition. Recommendation: clarify that dns_servers[] inline server definitions can use preset vars but pooled template servers[tag] do not."
+      },
+      {
+        "title": "TEMPLATE_REFERENCE.md §9.6 (outer @-only) — runtime globals restriction unclear",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "Line 460 states \"Runtime globals в outer if[] запрещены\" but line 455 shows params[].if DOES accept @runtime.platform in its predicates within inner #if contexts. Outer if[] accepts ONLY bool vars (@tun, @enable_proxy_in), but the doc doesn't clearly separate outer if[] from inner #if predicates. Real rule: outer params[].if[] is @bool-only; inner #if within config/param value CAN use @runtime.*. Recommendation: add subsection clarifying the three scopes: (1) outer if[]/if_or[] on params/vars/presets — @bool only; (2) inner #if predicates within config value — @var + @runtime.*; (3) preset-local vars — same rules as outer."
+      },
+      {
+        "title": "ParserConfig.md — Xray JSON array handling incomplete for v0.9.8+",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "Lines 34-60 describe SPEC 033 Xray JSON array parsing with lengthy coverage of remarks→slug, jump detour chains. However, doc omits SPEC 067 interaction: if template has #if on outbounds[] with @runtime.platform predicates, generated outbounds may be filtered at build time, affecting Xray node visibility in selector filters. Recommendation: add cross-reference to SPEC 067 for conditional inbound/outbound visibility during Xray expand."
+      },
+      {
+        "title": "Build a per-file responsibility matrix in ARCHITECTURE.md",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "Current §Структура provides hierarchical tree but lacks quick lookup table. Developers must parse nested structure to find e.g., which file handles rule validation, where share-URI encode lives, where preset expand happens. Recommendation: add 2-3 line per-file responsibility matrix after tree (file path | purpose | key function) as supplementary quick-ref."
+      },
+      {
+        "title": "Add ARCHITECTURE.md §Package dependency diagram",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "No visual or explicit cycle/layering checks documented. CONSTITUTION.md defines no circular import rules, but complex cross-package callbacks (UIService ← Configurator business ← core/state ← core/build ← core/template) need explicit documentation. Recommendation: add directed graph (or ASCII DAG) showing core → services → ui layering, callbacks, and MCP/interface boundaries."
+      },
+      {
+        "title": "WIZARD_STATE.md §3 (schemas) needs v6 version pinning note",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "Doc says state.json v6 is canonical and all future loads normalize v5→v6, but doesn't specify: when does Save force v6? After first Save of v5 state? Immediate on Load? Add note: all writes post-SPEC-060 are v6 (meta.version=6, schema=presets_v1), no dual-write mode. v5 files upgraded in-memory at Load."
+      },
+      {
+        "title": "Create missing ARCHITECTURE addendum: ADR register",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "Current ARCHITECTURE.md is snapshot of code structure, not design decisions. SPEC/ folder contains ADRs (SPEC 046, 053, 057, 058, 060, 067) but ARCHITECTURE.md doesn't link to them or explain WHY major design choices (thin refs, preset binding, resolver pipeline, snapshot format). Recommendation: add optional §Architectural Decision Records with links to SPEC/ PLAN/SPEC.md for cross-references (e.g., why Ref+Updates model vs full body in state, why preset bundles not inline, why atomic write with Rename)."
+      },
+      {
+        "title": "Document all-go-files inventory (missing from ARCHITECTURE.md)",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "Tree shows 50+ files but no complete file manifest. Developers adding features must grep to find where e.g., process-matching rules are validated, where SRS auto-download lives (core/build/srs.go? not mentioned), where HWID generation happens (core/subscription? also not listed). Recommendation: either expand ARCHITECTURE.md with 1-line inventory of all .go files under core/, ui/, internal/, or create separate docs/FILE_INVENTORY.md."
+      },
+      {
+        "title": "WIZARD_STATE.md — clarify preset.dns_server.local_tag namespace",
+        "risk": "low",
+        "behaviorChange": false,
+        "detail": "§3.2 describes DNSServer.ref as \"<pid>:<tag>\" but doesn't explain: are local_tag values unique per preset or global? If preset A and B both declare dns_servers[tag=\"cloudflare\"], do they collide in state? Docs imply per-preset uniqueness but actual code may enforce global uniqueness via build pipeline. Recommendation: clarify that preset-dns-server refs are scoped to preset (\"russian:cloudflare\" vs \"ru-direct:cloudflare\" are different entries)."
+      },
+      {
+        "title": "Missing: core/build/ and core/state/ inventory in ARCHITECTURE.md",
+        "risk": "medium",
+        "behaviorChange": false,
+        "detail": "These two packages are architectural hearts (Resolver pattern, lifecycle sync, migration logic) but given only cursory mention (1-2 lines each) in ARCHITECTURE.md. No mention of core/state/v6/ (State, Rule, DNSServer schema), core/state/load.go, core/state/save.go, core/build/resolve_*.go, core/build/sync_*.go. Recommendation: add subsection §Build & State packages with file-level inventory and lifecycle responsibilities."
+      }
+    ],
+    "deadOrHistorical": [
+      {
+        "location": "docs/ARCHITECTURE.md:286",
+        "action": "delete or update",
+        "kind": "narrative comment describing removed file",
+        "details": "Line 286 claims (error_banner.go удалён в SPEC 068 — ошибки показываются через dialogs.go). This is accurate but error_banner.go was removed years ago (before v0.9.0). The comment documents a historical decision (why dialogs.go not error_banner.go), not current drift. **Action:** keep as historical note if educational; move to separate §Legacy notes section or delete if SPEC 068 is closed."
+      },
+      {
+        "location": "docs/ARCHITECTURE.md:197-199",
+        "action": "delete or verify",
+        "kind": "commented-out code path description",
+        "details": "Section §config.updater.go marked as removed with comment \"cache-refresh pipeline переехал в core/config_service.go\". This is accurate (SPEC 052 refactored subscription fetch). The comment is correct but dated (describes v4→v5 schema change). **Action:** verify config_service.go::UpdateConfigFromSubscriptions still defines the documented pipeline (yes, confirmed); keep note but clarify it's a v5+ implementation detail."
+      },
+      {
+        "location": "docs/ARCHITECTURE.md:595-597",
+        "action": "verify and update",
+        "kind": "narrative description of subsystem",
+        "details": "Lines claim UIService manages UI state and callbacks (UpdateUI, callbacks for child windows, tray menu). Actual implementation: UIService stores Fyne pointers and callback functions, but window management (child overlay focus) is in ui/configurator/child_overlay.go, not UIService directly. The callback IS stored in UIService but registered in configurator.go. **Action:** clarify UIService holds callback references but does not implement focus logic itself; focus is handled by child_overlay.go."
+      },
+      {
+        "location": "docs/DATA_FLOW.md:106-107",
+        "action": "verify",
+        "kind": "schema description",
+        "details": "Lines claim PATCH /state/dns/rules replaces USER rules, preserving preset-rules. Actual API implementation (core/debugapi/state_endpoints.go PATCH /state/dns/rules): replaces only user-kind entries, preset-kind entries remain. **Action:** code matches doc; no change needed but note that this is index-sensitive (preset entries must be at correct positions in array for preservation)."
+      },
+      {
+        "location": "docs/TEMPLATE_REFERENCE.md:49-50",
+        "action": "verify and update",
+        "kind": "schema description",
+        "details": "Lines 49-50 claim MigrateOutboundsToReferencedShape on Load converts empty Ref + tag-in-template to Ref=\"#TEMPLATE#\" + diff. Correct for v5→v6 path, but misleading: this is a ONE-SHOT legacy migration (SPEC 058 scope was v5 pre-state; v6-native state.json never has empty Ref). **Action:** clarify migration is for v5 state files only; native v6 state always has explicit Ref or omitted (direct)."
+      },
+      {
+        "location": "docs/WIZARD_STATE.md:73",
+        "action": "verify",
+        "kind": "schema field description",
+        "details": "Line 73 claims 'ref' field is `{pid}:{tag}` format for preset dns-servers. Omits question: can users edit/delete preset DNS servers? Or are they read-only? Field is Enabled toggleable but text doesn't clarify ownership. **Action:** update to say preset DNS servers are template-owned with toggle enabled/disabled but no edit/delete UI visibility (handled by DNSTagLocked in UI layer)."
+      },
+      {
+        "location": "docs/API.md:151",
+        "action": "update or implement",
+        "kind": "endpoint response documentation",
+        "details": "POST /action/rebuild-config documented as returning {\"rebuilt\":bool} but actual handler returns {\"ok\":true}. Internal doc comment (code) claims it should return rebuilt flag. **Action:** either implement {\"rebuilt\":true} response or update doc to {\"ok\":true} only and note that caller should check /state to verify rebuild."
+      },
+      {
+        "location": "README.md:32-33",
+        "action": "verify currency",
+        "kind": "feature claim",
+        "details": "README claims 11 UI locales and self-update check at startup with notification. Verify these are accurate in current version. **Action:** verify internal/locale/ has 11 JSON files (en, ru, de, es, fr, it, ja, ko, pt-br, tr, zh) and core/core_version.go::CheckLauncherVersionOnStartup() still runs."
+      },
+      {
+        "location": "docs/ARCHITECTURE.md:631-633",
+        "action": "update or move",
+        "kind": "feature description",
+        "details": "Lines describe StateService cache (GetCachedLauncherVersion, GetCachedVersion for core removed in SPEC 046). This is accurate but OLD removal (v0.8.x era). Comment should clarify: all version caches are now state.json and settings.json; GetCachedLauncherVersion is last artifact. **Action:** if core-version cache is gone, remove this; if launcher-version cache is kept, move comment inline to say why it exists."
+      }
+    ],
+    "dups": [],
+    "monoliths": [],
+    "events": [],
+    "stateFlows": []
+  }
+]

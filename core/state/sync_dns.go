@@ -12,16 +12,16 @@
 //
 // Семантика:
 //
-//   Для каждого state.Rules[Kind=preset && Enabled=true]:
-//     - ensure entries {Kind:preset, Ref:"<id>:<local_tag>"} в DNS.Servers
-//       по числу template.presets[id].DNSServers[].
-//       Default Enabled=true. Если entry уже была — preserve её Enabled.
-//     - ensure entry {Kind:preset, Ref:"<id>"} в DNS.Rules если у preset'а
-//       определён dns_rule.
+//	Для каждого state.Rules[Kind=preset && Enabled=true]:
+//	  - ensure entries {Kind:preset, Ref:"<id>:<local_tag>"} в DNS.Servers
+//	    по числу template.presets[id].DNSServers[].
+//	    Default Enabled=true. Если entry уже была — preserve её Enabled.
+//	  - ensure entry {Kind:preset, Ref:"<id>"} в DNS.Rules если у preset'а
+//	    определён dns_rule.
 //
-//   Drop entries с Ref на disabled/missing preset (auto-cleanup):
-//     - DNS.Servers где Ref начинается с "<disabled_preset_id>:"
-//     - DNS.Rules где Ref == "<disabled_preset_id>"
+//	Drop entries с Ref на disabled/missing preset (auto-cleanup):
+//	  - DNS.Servers где Ref начинается с "<disabled_preset_id>:"
+//	  - DNS.Rules где Ref == "<disabled_preset_id>"
 //
 // Idempotency: повторный вызов с тем же состоянием не меняет ничего.
 package state

@@ -194,9 +194,14 @@ func (p *WizardPresenter) executeSaveOperation() {
 			}
 		}()
 
-		// Step 3: success dialog. Передаём путь к state.json — это то, что
-		// мы только что записали; config.json пересоберётся при Update/Restart.
-		p.showSaveSuccessDialog(p.statePathForLog())
+		// Step 3: success dialog — только если визард-окно ещё живо. Если
+		// пользователь закрыл окно во время Save (Close → CancelSaveOperation
+		// сбросил SaveInProgress=false), диалог парентился бы к уже закрытому
+		// окну (audit BUG3). Dirty-маркеры + auto-rebuild выше уже отработали —
+		// это и есть результат Save, его отменять не нужно.
+		if p.guiState.SaveInProgress && p.guiState.Window != nil {
+			p.showSaveSuccessDialog(p.statePathForLog())
+		}
 	})
 
 	p.UpdateSaveStatusText(locale.T("wizard.save.status_done"))

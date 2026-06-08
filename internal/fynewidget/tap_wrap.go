@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	_ fyne.Tappable   = (*TapWrap)(nil)
+	_ fyne.Tappable      = (*TapWrap)(nil)
 	_ desktop.Cursorable = (*TapWrap)(nil)
 )
 

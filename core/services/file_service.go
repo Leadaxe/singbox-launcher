@@ -7,7 +7,6 @@
 //   - Создание необходимых директорий (logs/, bin/) при старте
 //   - Управление жизненным циклом лог-файлов (открытие, закрытие)
 //   - Ротация логов при превышении размера (максимум 1 старый файл на каждый лог)
-//   - Создание резервных копий файлов (BackupFile, BackupPath)
 //
 // Ротация логов:
 //   - Порог: 2 MB (maxLogFileSize)
@@ -19,7 +18,6 @@
 //   - controller.go — инициализация при старте, RunHidden для логирования дочерних процессов
 //   - process_service.go — пути к sing-box, лог-файл дочернего процесса
 //   - wintun_downloader.go — путь к wintun.dll
-//   - ui/wizard/business/saver.go — путь к config.json через FileServiceInterface
 package services
 
 import (
@@ -204,15 +202,6 @@ func (fs *FileService) CheckAndRotateLogFile(logPath string) {
 	}
 }
 
-// BackupPath генерирует путь для резервной копии файла.
-// Формат: file.ext → file-old.ext (например, config.json → config-old.json).
-func BackupPath(path string) string {
-	dir := filepath.Dir(path)
-	ext := filepath.Ext(path)
-	base := strings.TrimSuffix(filepath.Base(path), ext)
-	return filepath.Join(dir, fmt.Sprintf("%s-old%s", base, ext))
-}
-
 // ReadLastLines reads up to maxLines last lines from the file at path.
 // Used by the diagnostics log viewer (Core tab) for tail-style display.
 // Returns (nil, nil) if the file does not exist; returns (nil, err) on read errors.
@@ -276,28 +265,4 @@ func ReadLastLines(path string, maxLines int) ([]string, error) {
 		return lines, nil
 	}
 	return lines[len(lines)-maxLines:], nil
-}
-
-// BackupFile создаёт резервную копию файла (file.ext → file-old.ext).
-// Предыдущая резервная копия удаляется — хранится максимум 1 бэкап.
-// Если файл не существует или является директорией — ничего не делает.
-func BackupFile(path string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // Nothing to backup
-		}
-		return fmt.Errorf("BackupFile: cannot stat %s: %w", path, err)
-	}
-	if info.IsDir() {
-		return nil
-	}
-
-	backup := BackupPath(path)
-	_ = os.Remove(backup) // Remove old backup if exists
-	if err := os.Rename(path, backup); err != nil {
-		return fmt.Errorf("BackupFile: cannot rename %s to %s: %w", path, backup, err)
-	}
-	debuglog.DebugLog("BackupFile: %s → %s", path, backup)
-	return nil
 }

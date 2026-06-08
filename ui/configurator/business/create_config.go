@@ -18,69 +18,23 @@ package business
 import (
 	"encoding/json"
 	"fmt"
-	"runtime"
 	"strings"
 
 	"singbox-launcher/core/build"
-	"singbox-launcher/internal/debuglog"
 	wizardmodels "singbox-launcher/ui/configurator/models"
-	wizardtemplate "singbox-launcher/core/template"
 )
 
-// parsePreviewTemplateDNSDefaults — то же что core_service.parseTemplateDNSDefaultsFromTD,
-// продублировано здесь чтобы business не импортировал core (избегаем import cycle).
-// Используется BuildPreviewConfig: preview tab визарда должен показывать тот же
-// config, что Save/Rebuild — материализованную template DNS library из dns_options.
-//
-// Возвращает nil если td nil / нет dns_options / парс не удался — caller
-// (MergePresetsIntoDNS) тогда просто не материализует, остальные DNS-сервера
-// (template config.dns.servers + bundled + extras) работают как раньше.
-func parsePreviewTemplateDNSDefaults(td *wizardtemplate.TemplateData) []build.TemplateDNSServer {
-	if td == nil || len(td.DNSOptionsRaw) == 0 {
-		return nil
-	}
-	var dnsOpt struct {
-		Servers []json.RawMessage `json:"servers"`
-	}
-	if err := json.Unmarshal(td.DNSOptionsRaw, &dnsOpt); err != nil {
-		return nil
-	}
-	return build.ParseTemplateDNSDefaults(dnsOpt.Servers)
-}
-
-// extractTemplateDNSTagsLocal — выдаёт set template-defined DNS server tag'ов
-// из TemplateData.DNSOptionsRaw. Дубль логики из presentation/preset_ref_helpers.go,
-// чтобы не тянуть presentation в business package (avoid import cycle).
-func extractTemplateDNSTagsLocal(td *wizardtemplate.TemplateData) map[string]bool {
-	if td == nil || len(td.DNSOptionsRaw) == 0 {
-		return nil
-	}
-	var dnsOpt struct {
-		Servers []map[string]interface{} `json:"servers"`
-	}
-	if err := json.Unmarshal(td.DNSOptionsRaw, &dnsOpt); err != nil {
-		return nil
-	}
-	out := make(map[string]bool, len(dnsOpt.Servers))
-	for _, s := range dnsOpt.Servers {
-		if tag, ok := s["tag"].(string); ok && tag != "" {
-			out[tag] = true
-		}
-	}
-	return out
-}
-
-// MaterializeClashSecretIfNeeded гарантирует SettingsVars непустую map'у и
-// делегирует материализацию clash_secret в `core/build`. Тонкая обёртка для
-// двух callsites — preview build + EffectiveConfigSection.
-func MaterializeClashSecretIfNeeded(model *wizardmodels.WizardModel) {
+// MaterializeSecretsIfNeeded гарантирует SettingsVars непустую map'у и
+// делегирует материализацию всех type:"secret" var в `core/build`. Тонкая
+// обёртка для двух callsites — preview build + EffectiveConfigSection.
+func MaterializeSecretsIfNeeded(model *wizardmodels.WizardModel) {
 	if model == nil {
 		return
 	}
 	if model.SettingsVars == nil {
 		model.SettingsVars = make(map[string]string)
 	}
-	build.MaterializeClashSecretInVars(model.TemplateData, model.SettingsVars)
+	build.MaterializeSecretsInVars(model.TemplateData, model.SettingsVars)
 }
 
 // BuildPreviewConfig собирает config.json для preview-вкладки визарда.
@@ -97,9 +51,9 @@ func BuildPreviewConfig(model *wizardmodels.WizardModel) (string, error) {
 		return "", fmt.Errorf("template data not available")
 	}
 
-	// Mutates model.SettingsVars: материализует dns_* + clash_secret.
+	// Mutates model.SettingsVars: материализует dns_* + секреты.
 	SyncDNSModelToSettingsVars(model)
-	MaterializeClashSecretIfNeeded(model)
+	MaterializeSecretsIfNeeded(model)
 
 	if strings.TrimSpace(model.ParserConfigJSON) == "" {
 		return "", fmt.Errorf("ParserConfig is empty and no template available")
@@ -143,7 +97,7 @@ func BuildPreviewConfig(model *wizardmodels.WizardModel) (string, error) {
 	rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
 		model.RuleOrder, model.PresetRefs, model.CustomRules,
 	)
-	templateDNSTags := extractTemplateDNSTagsLocal(model.TemplateData)
+	templateDNSTags := ExtractTemplateDNSTags(model.TemplateData)
 	// SPEC 062-F-N: same order-aware DNS sync as CreateStateFromModel so
 	// preview matches what Save would emit (preset + user rules interleaved
 	// per DNSRuleOrder).
@@ -159,11 +113,11 @@ func BuildPreviewConfig(model *wizardmodels.WizardModel) (string, error) {
 	)
 	ctx.Preset = build.PresetMergeContext{
 		Presets:             model.TemplateData.Presets,
-		Rules:             rulesV6,
+		Rules:               rulesV6,
 		DNS:                 dnsV6,
 		SrsCachedPaths:      build.CollectSrsCachedPaths(rulesV6, model.ExecDir),
 		ExecDir:             model.ExecDir,
-		TemplateDNSDefaults: parsePreviewTemplateDNSDefaults(model.TemplateData),
+		TemplateDNSDefaults: ParseTemplateDNSDefaults(model.TemplateData),
 	}
 
 	res, err := build.BuildConfig(ctx)
@@ -217,63 +171,6 @@ func routeConfigFromModel(model *wizardmodels.WizardModel) build.RouteConfig {
 	}
 }
 
-// MergeRouteSection — back-compat шим над `build.MergeRouteSection` для
-// существующих generator_test.go тестов wizard-side. Production-код больше
-// эту функцию не использует — `core/build.MergeRouteSection` вызывается
-// напрямую из orchestrator'а через `build.RouteConfig`.
-//
-// Deprecated: использовать `build.MergeRouteSection(raw, build.RouteConfig{...})` напрямую.
-// Обёртка останется до тех пор, пока тесты не перенесены в `core/build`.
-func MergeRouteSection(raw json.RawMessage, customRules []*wizardmodels.RuleState, finalOutbound string, execDir string, defaultDomainResolver string, omitDefaultDomainResolver bool) (json.RawMessage, error) {
-	rules := make([]build.RouteRule, 0, len(customRules))
-	for _, rs := range customRules {
-		rules = append(rules, build.RouteRule{
-			Enabled:     rs.Enabled,
-			Outbound:    wizardmodels.GetEffectiveOutbound(rs),
-			PrimaryRule: rs.Rule.Rule,
-			Rules:       rs.Rule.Rules,
-			RuleSets:    rs.Rule.RuleSets,
-		})
-	}
-	return build.MergeRouteSection(raw, build.RouteConfig{
-		Rules:                     rules,
-		FinalOutbound:             finalOutbound,
-		ExecDir:                   execDir,
-		DefaultDomainResolver:     defaultDomainResolver,
-		OmitDefaultDomainResolver: omitDefaultDomainResolver,
-	})
-}
-
-// effectiveTemplateConfig returns the merged top-level config map (after
-// applying params + substituting vars) and the key order. Used by
-// `EffectiveConfigSection` для UI-операций, читающих конкретную секцию
-// (например, `settings_tun_darwin.go` проверяет experimental.tun).
-//
-// На неудаче GetEffectiveConfig — fallback на td.Config / td.ConfigOrder
-// (template defaults без подставленных vars).
-func effectiveTemplateConfig(model *wizardmodels.WizardModel) (map[string]json.RawMessage, []string) {
-	if model == nil || model.TemplateData == nil {
-		return nil, nil
-	}
-	td := model.TemplateData
-	config, order := td.Config, td.ConfigOrder
-	if len(td.RawConfig) > 0 && (len(td.Params) > 0 || len(td.Vars) > 0) {
-		effective, ord, err := wizardtemplate.GetEffectiveConfig(
-			td.RawConfig,
-			td.Params,
-			runtime.GOOS,
-			td.Vars,
-			model.SettingsVars,
-			td.RawTemplate,
-		)
-		if err == nil {
-			return effective, ord
-		}
-		debuglog.WarnLog("effectiveTemplateConfig: GetEffectiveConfig: %v", err)
-	}
-	return config, order
-}
-
 // EffectiveConfigSection returns merged template JSON for one top-level
 // config key (e.g. "experimental"). Используется UI-кодом, которому нужно
 // прочитать конкретную секцию шаблона с применёнными vars (но без
@@ -282,8 +179,9 @@ func EffectiveConfigSection(model *wizardmodels.WizardModel, sectionKey string) 
 	if model == nil || model.TemplateData == nil {
 		return nil, false, fmt.Errorf("no template data")
 	}
-	MaterializeClashSecretIfNeeded(model)
-	config, _ := effectiveTemplateConfig(model)
+	MaterializeSecretsIfNeeded(model)
+	// secrets уже материализованы выше — effectiveTemplate(..., false).
+	config, _ := effectiveTemplate(model, false)
 	raw, ok := config[sectionKey]
 	return raw, ok, nil
 }

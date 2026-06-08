@@ -10,8 +10,6 @@
 package tabs
 
 import (
-	"strings"
-
 	"singbox-launcher/core/services"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/ui/configurator/dialogs"
@@ -44,7 +42,7 @@ func presetRefSRSEntries(pr *wizardmodels.PresetRefState, tpl *wizardtemplate.Pr
 		if rs.Type != "remote" || rs.URL == "" {
 			continue
 		}
-		if !ifActiveForRuleSet(rs, vars) {
+		if !wizardtemplate.EvalIf(rs.If, rs.IfOr, vars) {
 			continue
 		}
 		tag := dialogs.SRSTagFromURL(rs.URL)
@@ -54,29 +52,4 @@ func presetRefSRSEntries(pr *wizardmodels.PresetRefState, tpl *wizardtemplate.Pr
 		out = append(out, services.SRSEntry{Tag: tag, URL: rs.URL})
 	}
 	return out
-}
-
-// ifActiveForRuleSet — копия логики evalIf из core/build/preset_expand.go,
-// дублирована тут чтобы избежать import cycle (UI → core/build → UI...).
-//
-// Когда core/build/preset_expand.go вынесет evalIf в публичный API — заменить.
-func ifActiveForRuleSet(rs wizardtemplate.PresetRuleSet, vars map[string]string) bool {
-	for _, name := range rs.If {
-		if !strings.EqualFold(vars[name], "true") {
-			return false
-		}
-	}
-	if len(rs.IfOr) > 0 {
-		any := false
-		for _, name := range rs.IfOr {
-			if strings.EqualFold(vars[name], "true") {
-				any = true
-				break
-			}
-		}
-		if !any {
-			return false
-		}
-	}
-	return true
 }

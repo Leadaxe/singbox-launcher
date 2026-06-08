@@ -7,8 +7,8 @@ import (
 
 // Session caps to keep memory bounded — see SPEC §"Edge cases & limits".
 const (
-	maxEventsPerSession = 50000
-	maxSessionAge       = 3 * time.Hour
+	maxEventsPerSession  = 50000
+	maxSessionAge        = 3 * time.Hour
 	maxCompletedSessions = 5
 )
 
@@ -17,15 +17,15 @@ const (
 type Session struct {
 	mu sync.RWMutex
 
-	ID             string
-	TargetProcess  string         // canonical executable path the user picked
-	StartedAt      time.Time
-	FinishedAt     *time.Time
-	WasVerbose     bool           // log.level was bumped to debug for this run
+	ID                 string
+	TargetProcess      string // canonical executable path the user picked
+	StartedAt          time.Time
+	FinishedAt         *time.Time
+	WasVerbose         bool        // log.level was bumped to debug for this run
 	VerboseToggleTimes []time.Time // mid-session toggles
 
-	events       []TrafficEvent
-	eventsDropped int           // counter shown in UI footer when events overflow
+	events        []TrafficEvent
+	eventsDropped int // counter shown in UI footer when events overflow
 
 	// aggregated views — rebuilt lazily on AggregateDomains/IPs/Conns.
 	// Kept inside the struct so the UI can hand back a snapshot pointer

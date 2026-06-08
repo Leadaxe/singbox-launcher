@@ -11,30 +11,13 @@ import (
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/state"
-	wizardtemplate "singbox-launcher/core/template"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
-// extractTemplateDNSTags — выдаёт set tag'ов template-defined DNS-серверов из
-// template.DNSOptionsRaw (используется для split'а на overrides vs extras при save v6).
-func extractTemplateDNSTags(td *wizardtemplate.TemplateData) map[string]bool {
-	if td == nil || len(td.DNSOptionsRaw) == 0 {
-		return nil
-	}
-	var dnsOpt struct {
-		Servers []map[string]interface{} `json:"servers"`
-	}
-	if err := json.Unmarshal(td.DNSOptionsRaw, &dnsOpt); err != nil {
-		return nil
-	}
-	out := make(map[string]bool, len(dnsOpt.Servers))
-	for _, s := range dnsOpt.Servers {
-		if tag, ok := s["tag"].(string); ok && tag != "" {
-			out[tag] = true
-		}
-	}
-	return out
-}
+// extractTemplateDNSTags перенесён в business.ExtractTemplateDNSTags
+// (SPEC 070 Stage B): копия в presentation существовала только чтобы избежать
+// import cycle business→presentation; presentation уже импортирует business,
+// поэтому единственный дом теперь в business/dns_helpers.go.
 
 // applyPresetEnabledOverrides — после SyncDNSOptionsWithActivePresets
 // проходит по kind=preset entries в state.DNS и применяет toggle overrides
@@ -134,6 +117,51 @@ func populatePresetEnabledFromState(presetRefs []*wizardmodels.PresetRefState, d
 //     их enabled-state восстанавливается через SyncStateV6ToDNSOverrides →
 //     DNSTemplateOverrides;
 //   - preset servers/rules — через populatePresetEnabledFromState.
+//
+// applyDNSServerEnabledFromState overlays the saved `enabled` flag from canonical
+// state DNS onto model.DNSServers by tag — for ALL servers (template + user).
+//
+// Why: populateUserDNSFromState only restores kind=user entries, and the
+// DNSTemplateOverrides map (SyncStateV6ToDNSOverrides) is never applied back onto
+// model.DNSServers — yet the UI checkboxes and DNSEnabledTagOptions read enabled
+// from model.DNSServers. So a user's enable/disable of a TEMPLATE server (e.g.
+// enabling cloudflare_udp) was lost on reopen, which additionally dropped that tag
+// from the enabled-server options and reset the Default-resolver / Final selects.
+// Must run AFTER ApplyWizardDNSTemplate built the full server list and BEFORE the
+// DNS selects refresh. No-op when dns has no servers (legacy v5 path is unaffected).
+func applyDNSServerEnabledFromState(model *wizardmodels.WizardModel, dns state.DNSOptions) {
+	if model == nil || len(dns.Servers) == 0 {
+		return
+	}
+	enabledByTag := make(map[string]bool, len(dns.Servers))
+	for _, s := range dns.Servers {
+		if t := strings.TrimSpace(s.Tag); t != "" {
+			enabledByTag[t] = s.Enabled
+		}
+	}
+	for i, raw := range model.DNSServers {
+		var m map[string]interface{}
+		if json.Unmarshal(raw, &m) != nil {
+			continue
+		}
+		tag, _ := m["tag"].(string)
+		if tag = strings.TrimSpace(tag); tag == "" {
+			continue
+		}
+		en, ok := enabledByTag[tag]
+		if !ok {
+			continue
+		}
+		if cur, _ := m["enabled"].(bool); cur == en {
+			continue
+		}
+		m["enabled"] = en
+		if b, err := json.Marshal(m); err == nil {
+			model.DNSServers[i] = json.RawMessage(b)
+		}
+	}
+}
+
 func populateUserDNSFromState(model *wizardmodels.WizardModel, dns state.DNSOptions) {
 	if model == nil {
 		return
@@ -163,7 +191,7 @@ func populateUserDNSFromState(model *wizardmodels.WizardModel, dns state.DNSOpti
 		if _, dup := existingTags[tag]; dup {
 			continue
 		}
-		// Reconstruct wizard JSON shape (inverse of SyncDNSFullToStateV6's
+		// Reconstruct wizard JSON shape (inverse of syncDNSServersOnly's
 		// kind=user branch in preset_ref_sync.go): tag + enabled top-level,
 		// плюс flatten Body. Body уже не содержит kind/ref/enabled
 		// (Unmarshal в DNSServer их выкидывает), но защищаемся от tag-

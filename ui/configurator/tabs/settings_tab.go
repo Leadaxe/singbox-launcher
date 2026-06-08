@@ -13,12 +13,12 @@ import (
 
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
-	wizardtemplate "singbox-launcher/core/template"
 )
 
 func settingsVarVisible(v wizardtemplate.TemplateVar, goos string) bool {
@@ -67,24 +67,22 @@ func enumListContains(opts []string, v string) bool {
 	return false
 }
 
-// clashSecretSecretVar — единственный поддерживаемый в Settings тип "secret": отдельная строка и кнопка перегенерации.
-func clashSecretSecretVar(v wizardtemplate.TemplateVar) bool {
-	return strings.EqualFold(strings.TrimSpace(v.Type), "secret") && v.Name == "clash_secret"
-}
-
 // templateVarUsedInAnotherVarConditional: имя bool-переменной в if/if_or другой var — после её смены нужно пересобрать Settings.
 func templateVarUsedInAnotherVarConditional(td *wizardtemplate.TemplateData, name string) bool {
 	if td == nil {
 		return false
 	}
 	for _, v := range td.Vars {
+		// If/IfOr entries are canonical "@name" (SPEC 067 Phase 3); changedName is
+		// the bare var name. Strip the @ before comparing, else the refresh trigger
+		// never fires and dependent rows stay frozen on toggle.
 		for _, x := range v.If {
-			if x == name {
+			if strings.TrimPrefix(x, "@") == name {
 				return true
 			}
 		}
 		for _, x := range v.IfOr {
-			if x == name {
+			if strings.TrimPrefix(x, "@") == name {
 				return true
 			}
 		}
@@ -150,9 +148,7 @@ func setVarFieldToolTip(tip string, widgets ...fyne.CanvasObject) {
 		if o == nil {
 			continue
 		}
-		if tb, ok := interface{}(o).(interface{ SetToolTip(string) }); ok {
-			tb.SetToolTip(tip)
-		}
+		fynewidget.SetToolTipSafe(o, tip)
 	}
 }
 
@@ -179,9 +175,6 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 			}
 			if vd.Separator {
 				box.Add(settingsSeparatorBlock())
-				continue
-			}
-			if strings.EqualFold(strings.TrimSpace(vd.Type), "secret") && !clashSecretSecretVar(vd) {
 				continue
 			}
 			title := wizardtemplate.VarDisplayTitle(vd)
@@ -226,8 +219,8 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 	raw := td.RawTemplate
 	vars := td.Vars
 
-	if clashSecretSecretVar(vd) {
-		return buildClashSecretSecretRow(presenter, model, td, vd, title, toolTip, viewMode, rowEnabled)
+	if strings.EqualFold(strings.TrimSpace(typ), "secret") {
+		return buildSettingsSecretRow(presenter, model, td, vd, title, toolTip, viewMode, rowEnabled)
 	}
 
 	reset := func() {
@@ -400,19 +393,58 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 	}
 }
 
-func buildClashSecretSecretRow(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, td *wizardtemplate.TemplateData, vd wizardtemplate.TemplateVar, title, toolTip string, viewMode bool, rowEnabled bool) fyne.CanvasObject {
+// buildSettingsSecretRow renders any type:"secret" var uniformly: a masked
+// password field (Fyne PasswordEntry → dots + built-in show/hide eye toggle),
+// a regenerate button, and always-prefilled behaviour — when the row is active
+// and the value is empty/placeholder, a random secret is generated and
+// persisted (same generator as clash_secret). All secrets behave identically.
+func buildSettingsSecretRow(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, td *wizardtemplate.TemplateData, vd wizardtemplate.TemplateVar, title, toolTip string, viewMode bool, rowEnabled bool) fyne.CanvasObject {
 	name := vd.Name
 	st := model.SettingsVars
 	raw := td.RawTemplate
 	vars := td.Vars
 
+	titleLab := newSettingsTitleLabel(title)
+
+	disp := wizardtemplate.DisplaySettingValue(vars, st, raw, name)
+	if v, ok := model.SettingsVars[name]; ok {
+		disp = v
+	}
+	// Always pre-filled: generate + persist a value when the row is active and
+	// the secret is empty/placeholder. Gated on rowEnabled so disabled (if-gated)
+	// rows don't spawn secrets until their condition is met.
+	if rowEnabled && !viewMode && wizardtemplate.SecretUnresolved(disp) {
+		if gen, err := wizardtemplate.GenerateSecret(); err == nil {
+			if model.SettingsVars == nil {
+				model.SettingsVars = make(map[string]string)
+			}
+			model.SettingsVars[name] = gen
+			disp = gen
+			model.TemplatePreviewNeedsUpdate = true
+			presenter.MarkAsChanged()
+		} else {
+			debuglog.WarnLog("settings_tab: GenerateSecret prefill %q: %v", name, err)
+		}
+	}
+
+	e := widget.NewPasswordEntry() // masked dots + built-in reveal (eye) toggle
+	e.SetText(disp)
+	e.OnChanged = func(s string) {
+		model.SettingsVars[name] = s
+		model.TemplatePreviewNeedsUpdate = true
+		presenter.MarkAsChanged()
+	}
+	if viewMode {
+		e.Disable()
+	}
+
 	regenerate := func() {
 		if model.SettingsVars == nil {
 			model.SettingsVars = make(map[string]string)
 		}
-		gen, err := wizardtemplate.GenerateClashSecret()
+		gen, err := wizardtemplate.GenerateSecret()
 		if err != nil {
-			debuglog.WarnLog("settings_tab: GenerateClashSecret: %v", err)
+			debuglog.WarnLog("settings_tab: GenerateSecret: %v", err)
 			delete(model.SettingsVars, name)
 		} else {
 			model.SettingsVars[name] = gen
@@ -423,37 +455,12 @@ func buildClashSecretSecretRow(presenter *wizardpresentation.WizardPresenter, mo
 			presenter.GUIState().RefreshSettingsFromModel()
 		}
 	}
-
 	regenBtn := ttwidget.NewButtonWithIcon("", theme.ViewRefreshIcon(), regenerate)
 	regenBtn.Importance = widget.LowImportance
 	regenBtn.SetToolTip(locale.T("wizard.settings.clash_secret_regenerate_tooltip"))
 
-	if viewMode {
-		disp := strings.TrimSpace(wizardtemplate.DisplaySettingValue(vars, st, raw, name))
-		valLab := ttwidget.NewLabel(disp)
-		valLab.Wrapping = fyne.TextWrapWord
-		titleLab := newSettingsTitleLabel(title)
-		row := container.NewBorder(nil, nil, titleLab, regenBtn, valLab)
-		setVarFieldToolTip(toolTip, titleLab, valLab)
-		applySettingsRowDisabled(rowEnabled, regenBtn)
-		return row
-	}
-
-	titleLab := newSettingsTitleLabel(title)
-	e := widget.NewEntry()
-	disp := wizardtemplate.DisplaySettingValue(vars, st, raw, name)
-	if v, ok := model.SettingsVars[name]; ok {
-		disp = v
-	}
-	e.SetText(disp)
-	e.OnChanged = func(s string) {
-		model.SettingsVars[name] = s
-		model.TemplatePreviewNeedsUpdate = true
-		presenter.MarkAsChanged()
-	}
 	row := container.NewBorder(nil, nil, titleLab, regenBtn, e)
 	setVarFieldToolTip(toolTip, titleLab, e)
 	applySettingsRowDisabled(rowEnabled, regenBtn, e)
 	return row
 }
-

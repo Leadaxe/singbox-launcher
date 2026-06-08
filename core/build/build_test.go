@@ -50,7 +50,7 @@ func TestBuildConfig_NilTemplate(t *testing.T) {
 func TestBuildConfig_TrivialTemplate(t *testing.T) {
 	td := minimalTemplateData(t, `{"log":{"level":"info"}}`)
 	res, err := BuildConfig(BuildContext{
-		Template:         td,
+		Template: td,
 	})
 	if err != nil {
 		t.Fatalf("BuildConfig: %v", err)
@@ -161,7 +161,7 @@ func TestBuildConfig_RouteSectionMerged(t *testing.T) {
 func TestBuildConfig_ResultIsValidJSON(t *testing.T) {
 	td := minimalTemplateData(t, `{"log":{"level":"info"}}`)
 	res, err := BuildConfig(BuildContext{
-		Template:         td,
+		Template: td,
 	})
 	if err != nil {
 		t.Fatalf("BuildConfig: %v", err)
@@ -171,17 +171,5 @@ func TestBuildConfig_ResultIsValidJSON(t *testing.T) {
 	out := string(res.ConfigJSON)
 	if !strings.HasPrefix(out, "{") || !strings.HasSuffix(strings.TrimSpace(out), "}") {
 		t.Errorf("output must be enclosed in {}: %s", out)
-	}
-}
-
-// TestValidationResult_HasErrors — fatal vs warning.
-func TestValidationResult_HasErrors(t *testing.T) {
-	v := ValidationResult{Warnings: []string{"w1"}}
-	if v.HasErrors() {
-		t.Fatalf("warnings only: HasErrors must be false")
-	}
-	v.Errors = []string{"e1"}
-	if !v.HasErrors() {
-		t.Fatalf("errors set: HasErrors must be true")
 	}
 }

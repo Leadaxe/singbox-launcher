@@ -242,8 +242,18 @@ func (apiSvc *APIService) ReloadClashAPIConfig() error {
 	return nil
 }
 
-// AutoLoadProxies attempts to load proxies with retry intervals (1, 3, 7, 13, 17 seconds).
+// AutoLoadProxies attempts to load proxies across 14 retry attempts with
+// escalating back-off (1,3,3, 5×5, 10×4, 15×2 seconds). Runs at most one
+// instance at a time; the in-progress flag is always cleared on exit — the
+// goroutine's defer covers every path, including the currentGroup=="" early
+// return that previously leaked it (wedging auto-load until restart).
 func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
+	clearInProgress := func() {
+		apiSvc.AutoLoadMutex.Lock()
+		apiSvc.AutoLoadInProgress = false
+		apiSvc.AutoLoadMutex.Unlock()
+	}
+
 	// Check if already in progress
 	apiSvc.AutoLoadMutex.Lock()
 	if apiSvc.AutoLoadInProgress {
@@ -254,19 +264,15 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 	apiSvc.AutoLoadInProgress = true
 	apiSvc.AutoLoadMutex.Unlock()
 
-	if !apiSvc.Enabled {
-		apiSvc.AutoLoadMutex.Lock()
-		apiSvc.AutoLoadInProgress = false
-		apiSvc.AutoLoadMutex.Unlock()
+	if _, _, enabled := apiSvc.GetClashAPIConfig(); !enabled {
+		clearInProgress()
 		debuglog.DebugLog("AutoLoadProxies: Clash API is disabled, skipping")
 		return
 	}
 
 	selectedGroup := apiSvc.GetSelectedClashGroup()
 	if selectedGroup == "" {
-		apiSvc.AutoLoadMutex.Lock()
-		apiSvc.AutoLoadInProgress = false
-		apiSvc.AutoLoadMutex.Unlock()
+		clearInProgress()
 		debuglog.DebugLog("AutoLoadProxies: No group selected, skipping")
 		return
 	}
@@ -274,36 +280,33 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 	intervals := []time.Duration{1, 3, 3, 5, 5, 5, 5, 5, 10, 10, 10, 10, 15, 15}
 
 	go func() {
+		// Always release the in-progress flag, whichever path exits.
+		defer clearInProgress()
+
 		for attempt, interval := range intervals {
-		// Check if context is cancelled
-		select {
-		case <-ctx.Done():
-			debuglog.DebugLog("AutoLoadProxies: Stopped (context cancelled)")
-			apiSvc.AutoLoadMutex.Lock()
-			apiSvc.AutoLoadInProgress = false
-			apiSvc.AutoLoadMutex.Unlock()
-			return
-		default:
-		}
-
-		if attempt > 0 {
-			if err := ctxutil.SleepWithContext(ctx, interval*time.Second); err != nil {
-				debuglog.DebugLog("AutoLoadProxies: Stopped during wait (context cancelled)")
-				apiSvc.AutoLoadMutex.Lock()
-				apiSvc.AutoLoadInProgress = false
-				apiSvc.AutoLoadMutex.Unlock()
+			// Check if context is cancelled
+			select {
+			case <-ctx.Done():
+				debuglog.DebugLog("AutoLoadProxies: Stopped (context cancelled)")
 				return
+			default:
 			}
-		}
 
-		// Check if sing-box is running before attempting to connect
-		if !apiSvc.RunningStateIsRunning() {
-			debuglog.DebugLog("AutoLoadProxies: Attempt %d/%d skipped - sing-box is not running", attempt+1, len(intervals))
-			// Continue to next attempt
-			continue
-		}
+			if attempt > 0 {
+				if err := ctxutil.SleepWithContext(ctx, interval*time.Second); err != nil {
+					debuglog.DebugLog("AutoLoadProxies: Stopped during wait (context cancelled)")
+					return
+				}
+			}
 
-		debuglog.DebugLog("AutoLoadProxies: Attempt %d/%d to load proxies for group '%s'", attempt+1, len(intervals), selectedGroup)
+			// Check if sing-box is running before attempting to connect
+			if !apiSvc.RunningStateIsRunning() {
+				debuglog.DebugLog("AutoLoadProxies: Attempt %d/%d skipped - sing-box is not running", attempt+1, len(intervals))
+				// Continue to next attempt
+				continue
+			}
+
+			debuglog.DebugLog("AutoLoadProxies: Attempt %d/%d to load proxies for group '%s'", attempt+1, len(intervals), selectedGroup)
 
 			// Get current group (it might have changed)
 			apiSvc.StateMutex.RLock()
@@ -312,26 +315,26 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 			token := apiSvc.Token
 			apiSvc.StateMutex.RUnlock()
 
-		if currentGroup == "" {
-			debuglog.DebugLog("AutoLoadProxies: Group cleared, stopping attempts")
-			return
-		}
-
-		if platform.IsSleeping() {
-			debuglog.DebugLog("AutoLoadProxies: Skipping attempt - system sleeping")
-			continue
-		}
-
-		// Try to load proxies
-		proxies, now, err := api.GetProxiesInGroup(baseURL, token, currentGroup)
-		if err != nil {
-			if errors.Is(err, api.ErrPlatformInterrupt) {
-				debuglog.DebugLog("AutoLoadProxies: Aborted (platform interrupt/sleep)")
-			} else {
-				debuglog.DebugLog("AutoLoadProxies: Attempt %d failed: %v", attempt+1, err)
+			if currentGroup == "" {
+				debuglog.DebugLog("AutoLoadProxies: Group cleared, stopping attempts")
+				return
 			}
-			continue
-		}
+
+			if platform.IsSleeping() {
+				debuglog.DebugLog("AutoLoadProxies: Skipping attempt - system sleeping")
+				continue
+			}
+
+			// Try to load proxies
+			proxies, now, err := api.GetProxiesInGroup(baseURL, token, currentGroup)
+			if err != nil {
+				if errors.Is(err, api.ErrPlatformInterrupt) {
+					debuglog.DebugLog("AutoLoadProxies: Aborted (platform interrupt/sleep)")
+				} else {
+					debuglog.DebugLog("AutoLoadProxies: Attempt %d failed: %v", attempt+1, err)
+				}
+				continue
+			}
 
 			// Success - update proxies list
 			fyne.Do(func() {
@@ -367,17 +370,10 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 			}
 
 			debuglog.InfoLog("AutoLoadProxies: Successfully loaded %d proxies for group '%s' on attempt %d", len(proxies), currentGroup, attempt+1)
-
-			apiSvc.AutoLoadMutex.Lock()
-			apiSvc.AutoLoadInProgress = false
-			apiSvc.AutoLoadMutex.Unlock()
 			return // Success, stop retrying
 		}
 
 		debuglog.WarnLog("AutoLoadProxies: All %d attempts failed", len(intervals))
-		apiSvc.AutoLoadMutex.Lock()
-		apiSvc.AutoLoadInProgress = false
-		apiSvc.AutoLoadMutex.Unlock()
 	}()
 }
 

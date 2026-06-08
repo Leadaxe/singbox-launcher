@@ -69,63 +69,6 @@ func TestWriteRawBody_OverwriteAtomic(t *testing.T) {
 	}
 }
 
-// TestDeleteRawBody — отсутствующий файл не ошибка.
-func TestDeleteRawBody(t *testing.T) {
-	dir := t.TempDir()
-	id := "01DELME"
-	_ = WriteRawBody(dir, id, []byte("x"))
-	if err := DeleteRawBody(dir, id); err != nil {
-		t.Fatalf("delete: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, id+".raw")); !os.IsNotExist(err) {
-		t.Errorf("file still exists")
-	}
-	// idempotent — удаление несуществующего ОК
-	if err := DeleteRawBody(dir, id); err != nil {
-		t.Errorf("delete idempotent: %v", err)
-	}
-}
-
-// TestListRawBodyIDs — возвращает только .raw файлы с валидными id'ами.
-func TestListRawBodyIDs(t *testing.T) {
-	dir := t.TempDir()
-	_ = WriteRawBody(dir, "01ID-A", []byte("a"))
-	_ = WriteRawBody(dir, "01ID-B", []byte("b"))
-	// Шум: не-.raw, .tmp, поддиректория, .raw с инвалидным id.
-	_ = os.WriteFile(filepath.Join(dir, "garbage.txt"), []byte("noise"), 0o644)
-	_ = os.WriteFile(filepath.Join(dir, "01XYZ.raw.tmp"), []byte("tmp"), 0o644)
-	_ = os.WriteFile(filepath.Join(dir, "../suspicious.raw"), []byte("evil"), 0o644)
-	_ = os.WriteFile(filepath.Join(dir, "has space.raw"), []byte("evil"), 0o644)
-	_ = os.MkdirAll(filepath.Join(dir, "subdir"), 0o755)
-
-	ids, err := ListRawBodyIDs(dir)
-	if err != nil {
-		t.Fatalf("ListRawBodyIDs: %v", err)
-	}
-	sort.Strings(ids)
-	want := []string{"01ID-A", "01ID-B"}
-	if len(ids) != len(want) {
-		t.Errorf("got %v, want %v", ids, want)
-	}
-	for i := range want {
-		if i >= len(ids) || ids[i] != want[i] {
-			t.Errorf("ids[%d]: got %v, want %s", i, ids, want[i])
-		}
-	}
-}
-
-// TestListRawBodyIDs_MissingDir — отсутствующий каталог не ошибка.
-func TestListRawBodyIDs_MissingDir(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "nope")
-	ids, err := ListRawBodyIDs(dir)
-	if err != nil {
-		t.Errorf("got err: %v, want nil", err)
-	}
-	if len(ids) != 0 {
-		t.Errorf("got %v, want empty", ids)
-	}
-}
-
 // TestDeleteOrphans — удаляет id'ы которых нет в knownIDs + .tmp мусор.
 func TestDeleteOrphans(t *testing.T) {
 	dir := t.TempDir()

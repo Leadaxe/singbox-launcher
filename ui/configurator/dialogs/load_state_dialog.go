@@ -25,6 +25,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core"
 	"singbox-launcher/internal/debuglog"
 	internaldialogs "singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
@@ -227,6 +228,19 @@ func ShowLoadStateDialog(presenter *wizardpresentation.WizardPresenter, onResult
 
 			// Обновляем список состояний
 			refreshStatesList()
+
+			// Удалённый стейт мог быть единственным держателем своих SRS-файлов.
+			// Подчищаем осиротевшие bin/rule-sets/*.srs (multi-stage GC по
+			// оставшимся стейтам). Best-effort, в фоне — не блокируем UI.
+			if ctrl := core.GetController(); ctrl != nil {
+				go func() {
+					if removed, err := ctrl.CleanOrphanRuleSets(); err != nil {
+						debuglog.WarnLog("load_state delete: CleanOrphanRuleSets: %v", err)
+					} else if len(removed) > 0 {
+						debuglog.InfoLog("load_state delete: removed %d orphan rule-set file(s): %v", len(removed), removed)
+					}
+				}()
+			}
 		}, guiState.Window)
 	})
 	deleteButton.Importance = widget.MediumImportance

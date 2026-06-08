@@ -94,39 +94,6 @@ func getConfigJSON(configPath string) ([]byte, error) {
 	return jsonc.ToJSON(data), nil
 }
 
-// GetTunInterfaceName extracts TUN interface name from config.json
-// Returns empty string if no TUN interface is configured
-func GetTunInterfaceName(configPath string) (string, error) {
-	cleanData, err := getConfigJSON(configPath)
-	if err != nil {
-		return "", err
-	}
-	var config map[string]interface{}
-	if err := json.Unmarshal(cleanData, &config); err != nil {
-		return "", fmt.Errorf("failed to parse config: %w", err)
-	}
-
-	inbounds, ok := config["inbounds"].([]interface{})
-	if !ok {
-		return "", nil // No inbounds section, no TUN interface
-	}
-
-	for _, inbound := range inbounds {
-		inboundMap, ok := inbound.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		if inboundMap["type"] == "tun" {
-			if interfaceName, ok := inboundMap["interface_name"].(string); ok && interfaceName != "" {
-				return interfaceName, nil
-			}
-		}
-	}
-
-	return "", nil // No TUN interface found in config
-}
-
 // ConfigHasTun returns true if config has any TUN inbound (used to decide if privilege escalation is needed on macOS).
 func ConfigHasTun(configPath string) (bool, error) {
 	cleanData, err := getConfigJSON(configPath)

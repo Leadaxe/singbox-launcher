@@ -253,7 +253,12 @@ func TestRoundTrip_V6_LoadSaveLoad(t *testing.T) {
 		t.Fatalf("save 2: %v", err)
 	}
 	raw, _ := os.ReadFile(path)
-	if !isV6(raw) {
+	var probe struct {
+		Meta struct {
+			Version int `json:"version"`
+		} `json:"meta"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil || probe.Meta.Version != SchemaVersionV6 {
 		t.Error("should remain v6 after re-save")
 	}
 }

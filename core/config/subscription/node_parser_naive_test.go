@@ -117,13 +117,13 @@ func TestParseNaiveExtraHeaders(t *testing.T) {
 func TestParseNode_Naive_Canonical(t *testing.T) {
 	// The four examples from the DuckSoft URI spec.
 	cases := []struct {
-		name     string
-		uri      string
-		wantUser string
-		wantPass string
-		wantHost string
-		wantPort int
-		wantQUIC bool
+		name      string
+		uri       string
+		wantUser  string
+		wantPass  string
+		wantHost  string
+		wantPort  int
+		wantQUIC  bool
 		wantLabel string
 	}{
 		{

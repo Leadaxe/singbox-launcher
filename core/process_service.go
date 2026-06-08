@@ -31,39 +31,75 @@ const (
 	// before forcing kill
 	gracefulShutdownTimeout = 2 * time.Second
 
-	// ghostTunCleanupDelay — задержка перед запуском cleanup phantom-адаптеров
-	// после exit'а sing-box. SPEC 065: PnP Manager обрабатывает DIF_REMOVE
-	// асинхронно, надо дать ему время пометить устройство CM_PROB_PHANTOM
-	// прежде чем мы попытаемся снести этот phantom. На non-Win7 — no-op
-	// внутри CleanupGhostSingboxTunAdapters, но задержка всё равно
-	// присутствует (запускаем в goroutine, не блокирует UI).
+	// ghostTunCleanupDelay — пауза после exit sing-box перед SetupAPI cleanup.
+	// На Win7 после taskkill драйверу / PnP нужен короткий момент, чтобы
+	// отпустить device node. На non-Win7 — no-op внутри cleanup.
 	ghostTunCleanupDelay = 500 * time.Millisecond
 )
 
-// triggerGhostTunCleanup запускает SPEC 065 cleanup в фоновой goroutine.
-// Вызывать ПОСЛЕ того как sing-box процесс реально завершился
-// (cmd.Wait вернулся, либо после KillPrivilegedProcess).
+// runGhostTunCleanup выполняет SPEC 065 cleanup (Win7, aggressive mode).
+// Вызывать только когда sing-box подтверждённо не работает.
 //
-// Гарантии:
-//   - Never блокирует caller'а — вся работа в goroutine.
-//   - Never panic'ит — defer recover внутри.
-//   - На macOS/Linux/Win8+/Win10+/Win11 — no-op (см. wintun_cleanup_*.go).
-//   - Ошибки логируются на WarnLog, не пропагируются.
-func triggerGhostTunCleanup() {
-	go func() {
+// sync=false — фоновая goroutine (Stop, не блокирует UI).
+// sync=true  — inline (Restart: cleanup до Start, чтобы не снести новый адаптер).
+func runGhostTunCleanup(sync bool) {
+	run := func() {
 		defer func() {
 			if r := recover(); r != nil {
-				debuglog.WarnLog("triggerGhostTunCleanup: recovered from panic: %v", r)
+				debuglog.WarnLog("runGhostTunCleanup: recovered from panic: %v", r)
 			}
 		}()
 		time.Sleep(ghostTunCleanupDelay)
-		removed, err := platform.CleanupGhostSingboxTunAdapters()
+		removed, err := platform.CleanupGhostSingboxTunAdapters(platform.GhostTunCleanupAggressive)
 		if err != nil {
-			debuglog.WarnLog("triggerGhostTunCleanup: cleanup returned error: %v", err)
+			debuglog.WarnLog("runGhostTunCleanup: cleanup returned error: %v", err)
 			return
 		}
 		if removed > 0 {
-			debuglog.InfoLog("triggerGhostTunCleanup: removed %d phantom adapter(s)", removed)
+			debuglog.WarnLog("runGhostTunCleanup: removed %d stale adapter(s)", removed)
+		}
+	}
+	if sync {
+		run()
+		return
+	}
+	go run()
+}
+
+// triggerGhostTunCleanup — async runGhostTunCleanup (не блокирует caller).
+func triggerGhostTunCleanup() {
+	runGhostTunCleanup(false)
+}
+
+// CleanupStaleTunAtStart удаляет накопившиеся singbox-tun WinTun-адаптеры при
+// старте лаунчера (Win7, aggressive). Нужно после обновления с версии без
+// auto-cleanup или если остались ghost'ы с прошлых сессий / reboot.
+//
+// Пропускаем, если sing-box уже запущен — иначе снесём активный адаптер.
+// Не блокирует UI (фоновая goroutine, без задержки — stale уже давно мёртвые).
+func (svc *ProcessService) CleanupStaleTunAtStart() {
+	if found, pid := svc.isSingBoxProcessRunning(); found {
+		debuglog.WarnLog("CleanupStaleTunAtStart: skipped (sing-box already running PID=%d)", pid)
+		return
+	}
+	if svc.ac.RunningState.IsRunning() {
+		debuglog.WarnLog("CleanupStaleTunAtStart: skipped (launcher thinks VPN is running)")
+		return
+	}
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				debuglog.WarnLog("CleanupStaleTunAtStart: recovered from panic: %v", r)
+			}
+		}()
+		debuglog.WarnLog("CleanupStaleTunAtStart: scanning for stale singbox-tun adapters")
+		removed, err := platform.CleanupGhostSingboxTunAdapters(platform.GhostTunCleanupAggressive)
+		if err != nil {
+			debuglog.WarnLog("CleanupStaleTunAtStart: cleanup returned error: %v", err)
+			return
+		}
+		if removed > 0 {
+			debuglog.WarnLog("CleanupStaleTunAtStart: removed %d stale adapter(s) from previous sessions", removed)
 		}
 	}()
 }
@@ -278,33 +314,36 @@ func (svc *ProcessService) onPrivilegedScriptExited() {
 	ac.SingboxPrivilegedSingboxPID = 0
 	ac.SingboxPrivilegedPIDFile = ""
 	ac.RunningState.Set(false)
-	if ac.StoppedByUser {
+
+	// SPEC 070: shared crash/restart decision. Privileged путь не имеет err
+	// (скрипт ждёт sing-box; cmd.Wait отсутствует) → cleanExit=false, поэтому
+	// actionClean здесь не возникает.
+	action, newAttempts := decideCrashAction(ac.StoppedByUser, ac.RestartRequestedByUser, false, ac.ConsecutiveCrashAttempts, restartAttempts)
+	ac.ConsecutiveCrashAttempts = newAttempts
+	switch action {
+	case actionStoppedByUser:
 		ac.StoppedByUser = false
-		ac.ConsecutiveCrashAttempts = 0
 		debuglog.InfoLog("onPrivilegedScriptExited: Stopped by user.")
 		return
-	}
-	if ac.RestartRequestedByUser {
+	case actionUserRestart:
 		ac.RestartRequestedByUser = false
-		ac.ConsecutiveCrashAttempts = 0
 		debuglog.InfoLog("onPrivilegedScriptExited: Restart requested by user, starting sing-box...")
 		ac.CmdMutex.Unlock()
+		runGhostTunCleanup(true)
 		svc.Start(true)
 		if ac.UIService != nil && ac.UIService.UpdateCoreStatusFunc != nil {
 			ac.UIService.UpdateCoreStatusFunc()
 		}
 		ac.CmdMutex.Lock()
 		return
-	}
-	ac.ConsecutiveCrashAttempts++
-	if ac.ConsecutiveCrashAttempts > restartAttempts {
+	case actionMaxAttempts:
 		debuglog.DebugLog("onPrivilegedScriptExited: Max restart attempts reached.")
 		if ac.UIService != nil && ac.UIService.MainWindow != nil {
 			dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("%s", locale.Tf("error.restart_failed", restartAttempts)))
 		}
-		ac.ConsecutiveCrashAttempts = 0
 		return
 	}
+	// action == actionCrashRestart
 	debuglog.WarnLog("onPrivilegedScriptExited: Sing-Box exited, auto-restart (attempt %d/%d)", ac.ConsecutiveCrashAttempts, restartAttempts)
 	if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
 		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, locale.T("core.crash_title"), locale.Tf("core.crash_restarting", ac.ConsecutiveCrashAttempts, restartAttempts))
@@ -351,27 +390,31 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 		return
 	}
 
+	// SPEC 070: shared crash/restart decision (steps 2-5). PID-check (step 1)
+	// stays above; err==nil graceful-exit is fed via cleanExit so the decision
+	// lives in one place but Monitor keeps its per-branch RunningState placement.
+	action, newAttempts := decideCrashAction(ac.StoppedByUser, ac.RestartRequestedByUser, err == nil, ac.ConsecutiveCrashAttempts, restartAttempts)
+
 	// 2. Then StoppedByUser (did user stop it?)
-	if ac.StoppedByUser {
+	if action == actionStoppedByUser {
 		debuglog.InfoLog("monitorSingBox: Sing-Box exited as requested by user.")
-		ac.ConsecutiveCrashAttempts = 0
+		ac.ConsecutiveCrashAttempts = newAttempts
 		ac.RunningState.Set(false)
 		ac.StoppedByUser = false // Reset flag for next start
-		// SPEC 065: подцепить cleanup phantom TUN-адаптеров на Win7.
-		// Только при user-stop (не на crash, не на restart) — это
-		// единственный путь где мы уверены что sing-box должен был
-		// почистить адаптер сам, и можем поправить если не вышло.
+		// SPEC 065: cleanup phantom TUN-адаптеров на Win7 после exit sing-box.
 		triggerGhostTunCleanup()
 		return
 	}
 
 	// 3. Restart by user (Restart button): bring process back up immediately
-	if ac.RestartRequestedByUser {
+	if action == actionUserRestart {
 		ac.RestartRequestedByUser = false
 		ac.RunningState.Set(false)
-		ac.ConsecutiveCrashAttempts = 0
+		ac.ConsecutiveCrashAttempts = newAttempts
 		debuglog.InfoLog("monitorSingBox: Restart requested by user, starting sing-box...")
+		// SPEC 065: sync cleanup до Start — sing-box мёртв, нового адаптера ещё нет.
 		ac.CmdMutex.Unlock()
+		runGhostTunCleanup(true)
 		svc.Start(true)
 		if ac.UIService != nil && ac.UIService.UpdateCoreStatusFunc != nil {
 			ac.UIService.UpdateCoreStatusFunc() // refresh "Restarting..." → "Running" or "Stopped" if start failed
@@ -381,26 +424,26 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 	}
 
 	// 4. Then err == nil (exited normally, not restart) — do not restart
-	if err == nil {
+	if action == actionClean {
 		debuglog.InfoLog("monitorSingBox: Sing-Box exited gracefully (exit code 0).")
-		ac.ConsecutiveCrashAttempts = 0
+		ac.ConsecutiveCrashAttempts = newAttempts
 		ac.RunningState.Set(false)
 		return
 	}
 
 	// 5. Crash → restart with delay and attempt limit
 	ac.RunningState.Set(false)
-	ac.ConsecutiveCrashAttempts++
+	ac.ConsecutiveCrashAttempts = newAttempts
 
-	if ac.ConsecutiveCrashAttempts > restartAttempts {
+	if action == actionMaxAttempts {
 		debuglog.DebugLog("monitorSingBox: Maximum restart attempts (%d) reached. Stopping auto-restart.", restartAttempts)
 		if ac.UIService != nil && ac.UIService.MainWindow != nil {
 			dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("%s", locale.Tf("error.restart_failed", restartAttempts)))
 		}
-		ac.ConsecutiveCrashAttempts = 0
 		return
 	}
 
+	// action == actionCrashRestart
 	debuglog.WarnLog("monitorSingBox: Sing-Box crashed: %v, attempting auto-restart (attempt %d/%d)", err, ac.ConsecutiveCrashAttempts, restartAttempts)
 	if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
 		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, locale.T("core.crash_title"), locale.Tf("core.crash_restarting", ac.ConsecutiveCrashAttempts, restartAttempts))
@@ -408,6 +451,13 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 
 	ac.CmdMutex.Unlock()
 	<-time.After(2 * time.Second)
+	// SPEC 065 hotfix (v0.9.9.1): cleanup phantom singbox-tun adapter from
+	// the just-crashed sing-box BEFORE auto-restart. Без этого хука каждый
+	// retry создаёт новый адаптер (singbox-tun0 → tun1 → tun2) потому что
+	// старое имя ещё занято dead-but-not-cleaned-up phantom'ом. На 3
+	// попытки = 3 phantom-адаптера, даже если юзер вообще не нажимал Stop.
+	// Sync mode: cleanup точно завершится ДО Start.
+	runGhostTunCleanup(true)
 	svc.Start(true)
 	ac.CmdMutex.Lock()
 

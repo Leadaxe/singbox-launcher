@@ -91,9 +91,9 @@ type WizardModel struct {
 	TemplateData *wizardtemplate.TemplateData
 
 	// Правила (маршрут — только CustomRules; SelectableRuleStates не используется после 027)
-	SelectableRuleStates   []*RuleState
-	CustomRules            []*RuleState
-	RulesLibraryMerged     bool // true после миграции/засева; сериализуется в state.json
+	SelectableRuleStates  []*RuleState
+	CustomRules           []*RuleState
+	RulesLibraryMerged    bool // true после миграции/засева; сериализуется в state.json
 	SelectedFinalOutbound string
 
 	// PresetRefs — preset-ref правила (kind=preset). Хранятся параллельно
@@ -159,12 +159,12 @@ type WizardModel struct {
 	ExecDir string
 
 	// DNS tab (sing-box config.dns + route.default_domain_resolver)
-	DNSServers                 []json.RawMessage
+	DNSServers []json.RawMessage
 	// DNSLockedTags — УДАЛЕНО в SPEC unify. Lock-channel живёт в template
 	// через `required: true` в dns_options.servers[]. См. wizardbusiness.DNSTagLocked.
-	DNSRulesText               string
-	DNSFinal                   string
-	DNSStrategy                string
+	DNSRulesText string
+	DNSFinal     string
+	DNSStrategy  string
 	// DNSIndependentCache — УДАЛЕНО: independent_cache deprecated в sing-box
 	// 1.14.0 (кэш всегда per-transport). Поле снято из UI/model/emit.
 	DefaultDomainResolver      string

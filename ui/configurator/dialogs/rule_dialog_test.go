@@ -8,7 +8,7 @@ import (
 func TestSimplePatternToRegex(t *testing.T) {
 	tests := []struct {
 		pattern string
-		want   string
+		want    string
 	}{
 		{"*", "(.*)"},
 		{"*/steam/*", "(.*)/steam/(.*)"},

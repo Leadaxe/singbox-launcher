@@ -18,8 +18,7 @@ package build
 
 import (
 	"encoding/json"
-	"sort"
-	"strings"
+	"runtime"
 
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
@@ -230,7 +229,7 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 					continue
 				}
 				active, reason := evalIfWithReason(ds.If, ds.IfOr, presetVars)
-				bodyMap := substitutePresetDNSServer(ds, presetVars)
+				bodyMap := substitutePresetDNSServer(ds, p.Vars, presetVars, runtime.GOOS, runtime.GOARCH)
 				ref := p.ID + ":" + ds.Tag
 				bodyMap["tag"] = ref
 				enabled := statePresetServerEnabled(state, ref, true)
@@ -240,7 +239,7 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 					Body:           stripDNSWizardOnlyFields(bodyMap),
 					Source:         DNSSourcePreset,
 					PresetID:       p.ID,
-					PresetLabel:    presetDisplayLabel(p),
+					PresetLabel:    p.DisplayLabel(),
 					Active:         active,
 					Enabled:        enabled,
 					InactiveReason: reason,
@@ -251,7 +250,7 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 			// порядок эмиссии решается в Pass 4 по state.DNS.Rules.
 			if p.DNSRule != nil {
 				active, reason := evalIfFromRuleMap(p.DNSRule, presetVars)
-				ruleBody, ok := substitutePresetDNSRule(p, presetVars)
+				ruleBody, ok := substitutePresetDNSRule(p, presetVars, runtime.GOOS, runtime.GOARCH)
 				if !ok {
 					continue
 				}
@@ -260,7 +259,7 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 					Body:           ruleBody,
 					Source:         DNSSourcePreset,
 					PresetID:       p.ID,
-					PresetLabel:    presetDisplayLabel(p),
+					PresetLabel:    p.DisplayLabel(),
 					Active:         active,
 					Enabled:        enabled,
 					InactiveReason: reason,
@@ -363,10 +362,6 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
-
-// coreDNSServersFromTemplate — УДАЛЕНА в SPEC unify. Все DNS-серверы
-// (включая required: local_dns_resolver/direct_dns_resolver) живут в
-// template.dns_options.servers[]. Locked entries имеют `required: true`.
 
 // templateDNSLibraryFromTemplate — template.dns_options.servers[] (библиотека).
 func templateDNSLibraryFromTemplate(td *template.TemplateData) []map[string]interface{} {
@@ -477,7 +472,7 @@ func buildPresetVarsMap(p *template.Preset, userVars map[string]string) map[stri
 
 // substitutePresetDNSServer — конвертит PresetDNSServer struct в map с
 // applied substitute. Возвращает чистый sing-box-valid body.
-func substitutePresetDNSServer(ds *template.PresetDNSServer, varsMap map[string]string) map[string]interface{} {
+func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []template.PresetVar, varsMap map[string]string, goos, goarch string) map[string]interface{} {
 	body := map[string]interface{}{
 		"tag":  ds.Tag,
 		"type": ds.Type,
@@ -500,8 +495,11 @@ func substitutePresetDNSServer(ds *template.PresetDNSServer, varsMap map[string]
 	if ds.TLS != nil {
 		body["tls"] = ds.TLS
 	}
-	// substituteAny inplace — резолвит @var строки в значения.
-	substituted, _ := substituteAny(body, varsMap)
+	// SPEC 067 Phase 8: substitutePresetBody → SubstituteVarsInJSONStrict.
+	substituted, ok := substitutePresetBody(body, presetVars, varsMap, goos, goarch)
+	if !ok {
+		return body
+	}
 	out, _ := substituted.(map[string]interface{})
 	if out == nil {
 		return body
@@ -515,13 +513,13 @@ func substitutePresetDNSServer(ds *template.PresetDNSServer, varsMap map[string]
 
 // substitutePresetDNSRule — резолвит preset.DNSRule body через ExpandPreset
 // (он умеет rewrite rule_set refs с preset prefix).
-func substitutePresetDNSRule(p *template.Preset, varsMap map[string]string) (map[string]interface{}, bool) {
+func substitutePresetDNSRule(p *template.Preset, varsMap map[string]string, goos, goarch string) (map[string]interface{}, bool) {
 	if p == nil || p.DNSRule == nil {
 		return nil, false
 	}
 	// Reuse ExpandPreset.frags.DNSRule — он делает substitute + rewrite refs.
 	// Эту часть пока оставим — она независима от consumption filter.
-	frags, _, ok := ExpandPreset(p, varsMap)
+	frags, _, ok := ExpandPreset(p, varsMap, goos, goarch)
 	if !ok || frags == nil || frags.DNSRule == nil {
 		return nil, false
 	}
@@ -533,27 +531,9 @@ func substitutePresetDNSRule(p *template.Preset, varsMap map[string]string) (map
 }
 
 // evalIfWithReason — то же что evalIf, но возвращает причину отказа для UI tooltip.
-// Возвращает (true, "") если активна. Иначе (false, "if=foo" / "if_or=a,b").
+// Single source of truth: template.EvalIfWithReason (shared with the UI).
 func evalIfWithReason(ifList, ifOrList []string, varsMap map[string]string) (bool, string) {
-	for _, name := range ifList {
-		if !strings.EqualFold(varsMap[name], "true") {
-			return false, "if=" + name
-		}
-	}
-	if len(ifOrList) > 0 {
-		anyTrue := false
-		for _, name := range ifOrList {
-			if strings.EqualFold(varsMap[name], "true") {
-				anyTrue = true
-				break
-			}
-		}
-		if !anyTrue {
-			sort.Strings(ifOrList) // detered output for test stability
-			return false, "if_or=" + strings.Join(ifOrList, ",")
-		}
-	}
-	return true, ""
+	return template.EvalIfWithReason(ifList, ifOrList, varsMap)
 }
 
 // evalIfFromRuleMap — extract'ит if/if_or из map[string]interface{} (preset.Rule/DNSRule)
@@ -561,12 +541,4 @@ func evalIfWithReason(ifList, ifOrList []string, varsMap map[string]string) (boo
 func evalIfFromRuleMap(m map[string]interface{}, varsMap map[string]string) (bool, string) {
 	ifList, ifOrList := extractIfFromMap(m)
 	return evalIfWithReason(ifList, ifOrList, varsMap)
-}
-
-// presetDisplayLabel — fallback на ID если Label пусто.
-func presetDisplayLabel(p *template.Preset) string {
-	if p.Label != "" {
-		return p.Label
-	}
-	return p.ID
 }

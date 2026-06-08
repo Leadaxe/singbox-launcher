@@ -14,9 +14,6 @@
 //	timing := debuglog.StartTiming("processData")
 //	defer timing.EndWithDefer()
 //
-//	// Log large text fragments with automatic truncation
-//	debuglog.LogTextFragment("Parser", debuglog.LevelVerbose, "Config content", configText, 500)
-//
 // Optional internal log sink: SetInternalLogSink sets a callback that receives (level, line) for every
 // Log() call; used by the diagnostics log viewer window. The callback is invoked from any goroutine
 // and must not block (e.g. push to a channel; UI updates via fyne.Async). The viewer filters by level.
@@ -126,41 +123,6 @@ func SetInternalLogSink(fn func(Level, string)) {
 // ClearInternalLogSink removes the internal log sink (e.g. when the log viewer is closed).
 func ClearInternalLogSink() {
 	SetInternalLogSink(nil)
-}
-
-// ShouldLog checks if a message with the given level would be logged.
-// Returns true if level <= GlobalLevel.
-func ShouldLog(level Level) bool {
-	return level <= GlobalLevel
-}
-
-// LogTextFragment логирует фрагмент текста с автоматической обрезкой для читаемости.
-// Для больших текстов показывает начало и конец, избегая захламления логов.
-//
-// Параметры:
-//   - prefix: префикс модуля для логов
-//   - level: уровень логирования
-//   - description: описание фрагмента
-//   - text: текст для логирования
-//   - maxChars: максимум символов для показа (рекомендуется 500-1000)
-func LogTextFragment(prefix string, level Level, description, text string, maxChars int) {
-	if !ShouldLog(level) {
-		return
-	}
-
-	textLen := len(text)
-
-	// Если текст короткий, показываем полностью
-	if textLen <= maxChars*2 {
-		Log(prefix, level, "%s (len=%d): %s", description, textLen, text)
-		return
-	}
-
-	// Для длинных текстов показываем начало и конец
-	Log(prefix, level, "%s (len=%d): first %d chars: %s",
-		description, textLen, maxChars, text[:maxChars])
-	Log(prefix, level, "%s (len=%d): last %d chars: %s",
-		description, textLen, maxChars, text[textLen-maxChars:])
 }
 
 // DebugLog logs a debug message (LevelVerbose) with "DEBUG" prefix.

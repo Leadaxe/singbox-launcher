@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v1.0.0
+
+**Первый стабильный релиз — выходим из тестирования.** После долгого 0.x-цикла конфигуратор, пайплайн подписок/пресетов/outbound/DNS/правил, Debug API и сборки macOS + Windows (вкл. Win7) считаются production-ready. Содержимое накопилось с v0.9.9. **Template engine получил `#if`** (SPEC 067) — условное включение полей по выражениям с предикатами (`#in`/`#not`/`#notEmpty`/`#matches`…) и namespace `@runtime.*`; это разблокировало multi-rule presets и аутентификацию **proxy-in по логину/паролю**. **Аудит безопасности** (SPEC 068) закрыл 10 верифицированных находок (в т.ч. critical-баг с потерей rules/DNS при headless-Save на legacy state). **Архитектурный рефактор** (SPEC 070): `docs/ARCHITECTURE.md` переписан вокруг 8-слойной модели с ADR + крупная уборка кода (SPEC 069, 304 находки). UX: **подписки и серверы можно переупорядочивать** (↑/↓, сохраняется), **ссылка на поддержку провайдера** в строке источника, **«Fetch now»** для выключенных подписок, **очистка неиспользуемых `.srs`**, **маскированные поля для `type:"secret"`**. Починены DNS-скаляры/template-серверы на Save/reopen; усилена очистка NLA/ghost-TUN на Windows. **Breaking (только кастомные шаблоны):** outer `if`/`if_or` теперь требуют `@`-префикс — bundled-шаблон мигрирован автоматически.
+
+**Полный список изменений:** [docs/release_notes/1-0-0.md](docs/release_notes/1-0-0.md).
+
+### Highlights (EN) — v1.0.0
+
+**First stable release — out of testing.** After an extended 0.x cycle, the configurator, the subscription/preset/outbound/DNS/rules pipeline, the Debug API, and the macOS + Windows (incl. Win7) builds are considered production-ready. Contents accumulated since v0.9.9. **The template engine gained `#if`** (SPEC 067) — conditional field inclusion via an expression language (`#in`/`#not`/`#notEmpty`/`#matches`…) and a `@runtime.*` namespace; this unblocked multi-rule presets and **proxy-in username/password authentication**. A **threat-model audit** (SPEC 068) fixed 10 verified findings (incl. a critical bug that dropped rules/DNS on a headless Save of a legacy state). An **architecture refactor** (SPEC 070): `docs/ARCHITECTURE.md` rewritten around an 8-layer model with ADRs, plus a large code-cleanup pass (SPEC 069, 304 findings). UX: **subscriptions and servers can be reordered** (↑/↓, persisted), a **provider support link** per source row, **"Fetch now"** for disabled subscriptions, **unused `.srs` cleanup**, and **masked fields for `type:"secret"`**. DNS scalars/template-servers now persist correctly on Save/reopen; NLA/ghost-TUN cleanup hardened on Windows. **Breaking (custom templates only):** outer `if`/`if_or` now require an `@`-prefix — the bundled template is migrated automatically.
+
+**Full changelog:** [docs/release_notes/1-0-0.md](docs/release_notes/1-0-0.md).
+
+---
+
 ### Выжимка (RU) — v0.9.9
 
 Большой UX-релиз. Settings переехали в отдельное окно, открываемое кликом по табу `⚙️` — таб работает как кнопка; внутри Subscriptions / Language / Идентификация устройства / Debug API в одной полосе скролла. Servers tab подключается к удалённым Clash API (sing-box на роутере, mihomo на VPS, другой инстанс лаунчера) — кнопка ⚙ в шапке таба, badge `🏠 Local` / `🌐 host:port`. Подписки получили кастомное User-Agent поле для провайдеров, режущих наш default. В Outbound Edit диалоге появился picker эмодзи-флагов для построения фильтр-regex'а с live-preview node-list. На Windows 7 phantom TUN адаптеры теперь автоматически чистятся. SPEC 066 убрала фантомный `tun_builtin` toggle. Новый Debug API endpoint `GET/PATCH /settings/user-agent`, документация API доступна в `docs/API.md`.
@@ -224,6 +238,18 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v1.0.0** | [docs/release_notes/1-0-0.md](docs/release_notes/1-0-0.md) |
+| **v0.9.9** | [docs/release_notes/0-9-9.md](docs/release_notes/0-9-9.md) |
+| **v0.9.8.1** | [docs/release_notes/0-9-8-1.md](docs/release_notes/0-9-8-1.md) |
+| **v0.9.8** | [docs/release_notes/0-9-8.md](docs/release_notes/0-9-8.md) |
+| **v0.9.7** | [docs/release_notes/0-9-7.md](docs/release_notes/0-9-7.md) |
+| **v0.9.6** | [docs/release_notes/0-9-6.md](docs/release_notes/0-9-6.md) |
+| **v0.9.5** | [docs/release_notes/0-9-5.md](docs/release_notes/0-9-5.md) |
+| **v0.9.4** | [docs/release_notes/0-9-4.md](docs/release_notes/0-9-4.md) |
+| **v0.9.3** | [docs/release_notes/0-9-3.md](docs/release_notes/0-9-3.md) |
+| **v0.9.2** | [docs/release_notes/0-9-2.md](docs/release_notes/0-9-2.md) |
+| **v0.9.1** | [docs/release_notes/0-9-1.md](docs/release_notes/0-9-1.md) |
+| **v0.9.0** | [docs/release_notes/0-9-0.md](docs/release_notes/0-9-0.md) |
 | **v0.8.8** | [docs/release_notes/0-8-8.md](docs/release_notes/0-8-8.md) |
 | **v0.8.7** | [docs/release_notes/0-8-7.md](docs/release_notes/0-8-7.md) |
 | **v0.8.6** | [docs/release_notes/0-8-6.md](docs/release_notes/0-8-6.md) |

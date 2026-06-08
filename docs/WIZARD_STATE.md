@@ -80,6 +80,8 @@ Top-level keys, отсутствующие в v6 (vs предыдущих рев
 
 Дискриминатор `type`: `subscription` (URL → пачка нод) или `server` (один URI → один outbound).
 
+**Порядок.** Записи хранятся в порядке массива `sources[]` — это же порядок, в котором они показаны на вкладке Sources. Кнопки ↑/↓ в строке переставляют элементы слайса (схема не меняется, `id` сохраняется); новый порядок уезжает в `state.json` на ближайшем Save.
+
 | Поле | Тип | Когда | Описание |
 |------|-----|-------|----------|
 | `id` | string | всегда | ULID (Crockford-base32, 26 символов). Стабильный — переживает Save/Load. Имя файла `bin/subscriptions/<id>.raw`. |
@@ -228,11 +230,12 @@ Preset.id regex `^[a-z0-9_-]+$` by construction не пересекается с
 | `ref` | string | `<preset_id>` (preset patch) или `#USER#` (user diff). |
 | `patch` | `map[string]interface{}` | Поля для merge (filters / options / addOutbounds / preferredDefault / comment). `tag` и `type` immutable, не в patch'е. |
 
-Merge semantics (см. `core/build/resolve_outbounds.go::applyOutboundUpdate` +
-`outbound_diff.go::OutboundFieldDiff`):
+Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
+→ `core/build/preset_outbounds.go::applyOutboundUpdate`; diff —
+`core/build/outbound_diff.go::OutboundFieldDiff`):
 - `filters` — full replace если в patch
 - `options.*` — per-key replace (не глубокий merge)
-- `addOutbounds` — replace целиком (не union — иначе нельзя удалять из USER diff)
+- `addOutbounds` — union с base (`unionStringList`), только если patch непустой
 - `preferredDefault`, `comment` — replace
 
 **Псевдо-поле `required` vs реальное:**
@@ -461,7 +464,7 @@ Merge semantics (см. `core/build/resolve_outbounds.go::applyOutboundUpdate` +
 | Секция | Содержит | Источник истины | Кто пишет | Кто читает |
 |--------|----------|-----------------|-----------|------------|
 | `connections.sources` | Source entries (subscription URL или server URI), per-source meta (profile_title, userinfo, last_status), update spec | state | UI Sources tab (`source_tab`), Update flow (после fetch) | parser pipeline, UI dashboard, build |
-| `connections.outbounds` | Global selectors/urltest entries, в т.ч. preset-bound (`ref`) и preset-patched (`updates[]`) | state | UI Outbounds tab, `SyncOutboundsWithActivePresets`, presenter `CreateStateFromModel` | build (`ResolveOutbounds` + `MergeOutboundUpdatesInPlace`), UI render |
+| `connections.outbounds` | Global selectors/urltest entries, в т.ч. preset-bound (`ref`) и preset-patched (`updates[]`) | state | UI Outbounds tab, `SyncOutboundsWithActivePresets`, presenter `CreateStateFromModel` | build (`MergeOutboundUpdatesInPlace`; UI preview — `MergeOutboundUpdates`), UI render |
 | `connections.defaults` | reload interval, max_nodes per source default | state | UI Settings/Sources | parser pipeline |
 | `rules` | Routing rules через kind discriminator (preset/inline/srs) — единый упорядоченный массив | state | UI Rules tab (drag, library add, edit) | build (`MergeRouteSection` + `MergePresetsIntoRoute`), UI render |
 | `vars` | Overrides для всех объявленных в template vars: tun, route_final, dns_*, clash_secret, etc. | state (значения) + template (объявления) | UI Settings tab, скрытые синхронизаторы (`SyncDNSModelToSettingsVars`) | build (`@var` substitute) |
@@ -712,11 +715,10 @@ disk: bin/wizard_states/state.json
 state.State (после Load или после CreateStateFromModel)
         │
         ▼
-core/build (entry: BuildAndWriteConfig / ApplyTemplate)
+core/build (entry: BuildConfig)
         │   ResolveDNS(state, template, vars)        ◄── pure func
         │   ResolveRoute(state, template, vars)      ◄── pure func
-        │   ResolveOutbounds(state, template)        ◄── pure func
-        │   MergeOutboundUpdatesInPlace(parserCfg)   ◄── материализует Updates[] в body для generator'а
+        │   MergeOutboundUpdatesInPlace(parserCfg)   ◄── материализует Updates[] (preset + USER patches) в body для generator'а
         │   GenerateOutboundsFromParserConfig
         │   MergeDNSSection + MergeRouteSection
         │   MergePresetsIntoRoute (per-preset expand: substitute + tag prefix)
@@ -783,8 +785,8 @@ Legacy v5 файлы по-прежнему читаются через `parseV5L
 | `core/state/ulid.go` | `MakeULID` |
 | `core/build/sync_outbounds.go` | `SyncOutboundsWithActivePresets` (lifecycle) + `stripReferencedBody` + `reorderUpdates` + `outboundConfigToPatchMap` |
 | `core/build/migrate_outbounds_spec058.go` | **SPEC 058.** `MigrateOutboundsToReferencedShape` — one-shot direct→referenced + USER patch на первом load |
-| `core/build/outbound_diff.go` | **SPEC 058.** `OutboundFieldDiff` (field-level diff против merged_base), `UpsertUserPatch`, `applyUpdatesToBase` |
-| `core/build/resolve_outbounds.go` | `ResolveOutbounds` (resolver учитывает `ref` для base lookup) + `MergeOutboundUpdatesInPlace` (runtime helper) + `applyOutboundUpdate` |
+| `core/build/outbound_diff.go` | **SPEC 058.** `OutboundFieldDiff` (field-level diff против merged_base) + `UpsertUserPatch` |
+| `core/build/resolve_outbounds.go` | `resolveBaseBody` (учитывает `ref` для base lookup) + `MergeOutboundUpdates` / `MergeOutboundUpdatesInPlace` (runtime helpers) + `applyUpdatesToBase` + `applyOutboundUpdatePatch` (map-patch → `preset_outbounds.go::applyOutboundUpdate`) |
 | `core/build/resolve_dns.go` | `ResolveDNS` (pure DNS view для UI + build) |
 | `core/build/resolve_route.go` | `ResolveRoute` (pure route view) |
 | `core/template/loader.go` | `LoadTemplateData` + `TemplateData` struct |
@@ -795,5 +797,5 @@ Legacy v5 файлы по-прежнему читаются через `parseV5L
 См. также: [TEMPLATE_REFERENCE.md](TEMPLATE_REFERENCE.md) — что лежит в
 `wizard_template.json` и куда оно попадает в state/runtime/UI.
 [DATA_FLOW.md](DATA_FLOW.md) — расширенные диаграммы load/save/build/toggle.
-[CREATE_WIZARD_TEMPLATE.md](CREATE_WIZARD_TEMPLATE.md) — туториал для авторов
+[WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md) — справочник по синтаксису
 template'ов (формат preset'ов, vars, substitute, if/if_or).

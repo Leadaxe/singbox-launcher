@@ -1,7 +1,6 @@
 package subscription
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -11,29 +10,10 @@ import (
 )
 
 // tryDecodeBase64 attempts to decode base64 string using multiple encoding variants
-// Returns decoded bytes and source description, or error if all attempts fail
+// Returns decoded bytes and source description, or error if all attempts fail.
+// Thin wrapper over the shared DecodeBase64Multi helper (encoding_utils.go).
 func tryDecodeBase64(s string) ([]byte, string, error) {
-	// Try URL-safe base64 without padding (most common in subscriptions)
-	if decoded, err := base64.URLEncoding.WithPadding(base64.NoPadding).DecodeString(s); err == nil {
-		return decoded, "URL-safe base64", nil
-	}
-
-	// Try standard base64 without padding
-	if decoded, err := base64.StdEncoding.WithPadding(base64.NoPadding).DecodeString(s); err == nil {
-		return decoded, "Standard base64", nil
-	}
-
-	// Try URL-safe base64 with padding
-	if decoded, err := base64.URLEncoding.DecodeString(s); err == nil {
-		return decoded, "URL-safe base64 (with padding)", nil
-	}
-
-	// Try standard base64 with padding
-	if decoded, err := base64.StdEncoding.DecodeString(s); err == nil {
-		return decoded, "Standard base64 (with padding)", nil
-	}
-
-	return nil, "", fmt.Errorf("failed to decode base64")
+	return DecodeBase64Multi(s)
 }
 
 // DecodeSubscriptionContent декодирует содержимое подписки (base64 или plain text).

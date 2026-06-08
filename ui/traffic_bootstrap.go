@@ -108,7 +108,7 @@ func trafficWindowManager(ac *core.AppController, parentRefresh func()) *uitraff
 		FindProcessEnabled: func() bool {
 			return readFindProcessFromConfig(ac.FileService.ConfigPath)
 		},
-		ParentRefresh:      parentRefresh,
+		ParentRefresh: parentRefresh,
 		SingBoxRunning: func() bool {
 			if ac == nil || ac.RunningState == nil {
 				return false

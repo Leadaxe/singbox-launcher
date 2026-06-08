@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardtemplate "singbox-launcher/core/template"
+	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
 func TestPersistedDNSRulesForState_ValidMultiline(t *testing.T) {

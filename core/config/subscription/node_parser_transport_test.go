@@ -9,8 +9,8 @@ func TestNormalizeRealityShortID(t *testing.T) {
 		{"48720c", "48720c"},
 		{" 9083951b754b4254 ", "9083951b754b4254"},
 		{"ABCDEF01", "abcdef01"},
-		{"48\xC2\xA7ab", "48ab"}, // § (UTF-8) between hex — strip non-hex
-		{"\xC2\xA0", ""},        // NBSP only
+		{"48\xC2\xA7ab", "48ab"},                         // § (UTF-8) between hex — strip non-hex
+		{"\xC2\xA0", ""},                                 // NBSP only
 		{"9083951b754b4254deadbeef", "9083951b754b4254"}, // truncate to 16 hex
 		{"", ""},
 	}

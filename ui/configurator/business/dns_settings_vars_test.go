@@ -3,8 +3,8 @@ package business
 import (
 	"testing"
 
-	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardtemplate "singbox-launcher/core/template"
+	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
 func TestMigrateDNSScalarsFromPersistedToSettingsVars_Idempotent(t *testing.T) {

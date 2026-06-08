@@ -10,7 +10,7 @@ import (
 // Зеркалят `ui/wizard/models/dns_vars.go::VarDNS*`; дублируются здесь, чтобы
 // core/build не импортировал ui/.
 const (
-	varDNSStrategy              = "dns_strategy"
+	varDNSStrategy = "dns_strategy"
 	// varDNSIndependentCache УДАЛЕНО — sing-box 1.14 deprecation.
 	varDNSDefaultDomainResolver = "dns_default_domain_resolver"
 	varDNSFinal                 = "dns_final"

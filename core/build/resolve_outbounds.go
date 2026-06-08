@@ -24,160 +24,11 @@ package build
 
 import (
 	"encoding/json"
+	"runtime"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/template"
 )
-
-// OutboundSource — discriminator происхождения outbound entry.
-type OutboundSource string
-
-const (
-	// OutboundSourceDirect — direct entry (Ref=""), self-contained body inline.
-	// Создаётся юзером через Add. Не связан с template/preset.
-	OutboundSourceDirect OutboundSource = "direct"
-
-	// OutboundSourceTemplate — referenced template entry (Ref="#TEMPLATE#").
-	// Body live из template.parser_config.outbounds[tag].
-	OutboundSourceTemplate OutboundSource = "template"
-
-	// OutboundSourcePreset — referenced preset entry (Ref="<preset_id>").
-	// Body live из template.presets[id].outbounds (mode=add).
-	OutboundSourcePreset OutboundSource = "preset"
-)
-
-// ResolvedOutbound — одна entry финального outbounds list'а.
-//
-// Body = merged result (template/preset/inline base + apply Updates в order).
-// Для UI display и build emit.
-type ResolvedOutbound struct {
-	// Body — готовое sing-box outbound тело (after resolve base + merge updates).
-	Body configtypes.OutboundConfig
-
-	// Source — direct / template / preset.
-	Source OutboundSource
-
-	// IndexInSlice — индекс в state.connections.outbounds[]. Stable order.
-	IndexInSlice int
-
-	// Ref — копия ob.Ref из state ("" | "#TEMPLATE#" | "<preset_id>").
-	Ref string
-
-	// PresetLabel — UI label preset'а (только для Source=preset). Пусто иначе.
-	PresetLabel string
-
-	// Updates — снимок Updates стека (для UI hover/inspect). Не используется
-	// для emit; только metadata.
-	Updates []configtypes.OutboundUpdate
-
-	// HasPresetUpdates — true если на этот outbound применены updates от
-	// active preset'ов (хотя бы один update.ref ≠ RefUser).
-	HasPresetUpdates bool
-
-	// HasUserPatch — true если в Updates[] есть entry с ref=RefUser
-	// (пользовательский field-level diff поверх resolved base, SPEC 058).
-	HasUserPatch bool
-
-	// Required — true если template маркирует этот tag как `required: true`.
-	// Live lookup из template (как в SPEC 056-R-N Phase E). Релевантно только
-	// для Source=template — для direct/preset всегда false.
-	Required bool
-
-	// Resolved — true если base body удалось найти (для referenced entries).
-	// Для direct всегда true. Для referenced с broken ref (preset disabled,
-	// template tag исчез) — false; entry должен быть dropped через sync.
-	Resolved bool
-}
-
-// ResolvedOutbounds — результат ResolveOutbounds.
-type ResolvedOutbounds struct {
-	Globals []ResolvedOutbound // включая referenced (template + preset) entries
-}
-
-// ResolveOutbounds — единая точка резолва outbounds section (SPEC 057/058-R-N).
-//
-// Аргументы:
-//   - outbounds — state.connections.outbounds[] (state-of-truth)
-//   - td — template data; nil для legacy fallback (referenced entries дают
-//     Resolved=false, body = состояние ob как есть — обычно почти пустой для
-//     referenced template entries; UI render для них degraded)
-//
-// Возвращает структурированный view. Merged body вычисляется на лету:
-// resolve base (template/preset/inline) + apply each Update в order.
-func ResolveOutbounds(
-	outbounds []configtypes.OutboundConfig,
-	td *template.TemplateData,
-) ResolvedOutbounds {
-	tmplOutbounds := td.GlobalOutbounds() // nil-safe
-	presetByID := make(map[string]*template.Preset)
-	if td != nil {
-		for i := range td.Presets {
-			presetByID[td.Presets[i].ID] = &td.Presets[i]
-		}
-	}
-	requiredTags := td.RequiredOutboundTags() // nil-safe
-
-	out := ResolvedOutbounds{Globals: make([]ResolvedOutbound, 0, len(outbounds))}
-	for i, ob := range outbounds {
-		base, resolved := resolveBaseBody(ob, tmplOutbounds, presetByID)
-		merged := applyUpdatesToBase(base, ob.Updates)
-
-		source := classifySource(ob.Ref)
-
-		var presetLabel string
-		if source == OutboundSourcePreset {
-			if p, ok := presetByID[ob.Ref]; ok {
-				presetLabel = p.Label
-				if presetLabel == "" {
-					presetLabel = p.ID
-				}
-			} else {
-				presetLabel = ob.Ref // dangling
-			}
-		}
-
-		hasPresetUpd, hasUserPatch := summarizeUpdates(ob.Updates)
-
-		out.Globals = append(out.Globals, ResolvedOutbound{
-			Body:             merged,
-			Source:           source,
-			IndexInSlice:     i,
-			Ref:              ob.Ref,
-			PresetLabel:      presetLabel,
-			Updates:          ob.Updates,
-			HasPresetUpdates: hasPresetUpd,
-			HasUserPatch:     hasUserPatch,
-			Required:         requiredTags[ob.Tag],
-			Resolved:         resolved,
-		})
-	}
-	return out
-}
-
-// classifySource — переводит Ref в OutboundSource enum.
-func classifySource(ref string) OutboundSource {
-	switch {
-	case ref == "":
-		return OutboundSourceDirect
-	case ref == configtypes.RefTemplate:
-		return OutboundSourceTemplate
-	default:
-		return OutboundSourcePreset
-	}
-}
-
-// summarizeUpdates — возвращает (hasPresetPatch, hasUserPatch).
-func summarizeUpdates(updates []configtypes.OutboundUpdate) (bool, bool) {
-	var hasPreset, hasUser bool
-	for _, u := range updates {
-		if u.Ref == configtypes.RefUser {
-			hasUser = true
-		} else if u.Ref != "" {
-			hasPreset = true
-		}
-	}
-	return hasPreset, hasUser
-}
 
 // resolveBaseBody — для referenced entry возвращает base body из template/preset.
 // Для direct entry возвращает ob как есть.
@@ -199,7 +50,7 @@ func resolveBaseBody(
 		for _, t := range tmplOutbounds {
 			if t.Tag == ob.Tag {
 				base := t
-				base.Ref = ob.Ref       // preserve ref в merged для UI metadata
+				base.Ref = ob.Ref         // preserve ref в merged для UI metadata
 				base.Updates = ob.Updates // preserve updates stack (will be applied)
 				return base, true
 			}
@@ -213,7 +64,7 @@ func resolveBaseBody(
 		}
 		// Expand с дефолтными vars (нам нужен только outbound shape; vars
 		// substitution для emit делает sync function).
-		entries, _ := ExpandPresetOutbounds(preset, nil)
+		entries, _ := ExpandPresetOutbounds(preset, nil, runtime.GOOS, runtime.GOARCH)
 		for _, entry := range entries {
 			if entry.Mode == "add" && entry.Config.Tag == ob.Tag {
 				base := entry.Config

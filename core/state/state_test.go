@@ -1,7 +1,6 @@
 package state
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -307,142 +306,6 @@ func TestSave_BumpsVersionToCurrent(t *testing.T) {
 	}
 }
 
-// TestDiff_Empty — два одинаковых state дают пустой Diff.
-func TestDiff_Empty(t *testing.T) {
-	a := buildSampleState()
-	b := buildSampleState()
-	d := DiffStates(a, b)
-	if !d.IsEmpty() {
-		t.Fatalf("expected empty diff, got %+v", d)
-	}
-	if d.AffectsParser() || d.AffectsTemplate() {
-		t.Fatalf("affects flags must be false on identical states")
-	}
-}
-
-// TestDiff_VsNilPrev — nil в качестве prev = всё новое.
-func TestDiff_VsNilPrev(t *testing.T) {
-	cur := buildSampleState()
-	d := DiffStates(nil, cur)
-	if d.IsEmpty() {
-		t.Fatalf("nil prev → diff must be non-empty")
-	}
-	if !d.ProxiesChanged {
-		t.Fatalf("ProxiesChanged should be true")
-	}
-}
-
-// TestDiff_ProxiesAdded — добавление подписки → ProxiesChanged → AffectsParser.
-func TestDiff_ProxiesAdded(t *testing.T) {
-	a := buildSampleState()
-	b := buildSampleState()
-	b.ParserConfig.ParserConfig.Proxies = append(b.ParserConfig.ParserConfig.Proxies,
-		configtypes.ProxySource{Source: "https://new.example/sub"})
-
-	d := DiffStates(a, b)
-	if !d.ProxiesChanged {
-		t.Fatalf("ProxiesChanged should be true")
-	}
-	if !d.AffectsParser() {
-		t.Fatalf("AffectsParser should be true")
-	}
-	if d.AffectsTemplate() {
-		t.Fatalf("AffectsTemplate should be false (only proxies changed)")
-	}
-}
-
-// TestDiff_VarsChanged — правка settings vars → VarsChanged → AffectsTemplate.
-func TestDiff_VarsChanged(t *testing.T) {
-	a := buildSampleState()
-	b := buildSampleState()
-	b.Vars = []SettingVar{
-		{Name: "log_level", Value: "debug"}, // было "info"
-	}
-
-	d := DiffStates(a, b)
-	if !d.VarsChanged {
-		t.Fatalf("VarsChanged should be true")
-	}
-	if !d.AffectsTemplate() {
-		t.Fatalf("AffectsTemplate should be true")
-	}
-	if d.AffectsParser() {
-		t.Fatalf("AffectsParser should be false")
-	}
-}
-
-// TestDiff_VarsReordered — vars в другом порядке считаются равными
-// (сравнение по name, не по позиции).
-func TestDiff_VarsReordered(t *testing.T) {
-	a := &State{Vars: []SettingVar{{Name: "a", Value: "1"}, {Name: "b", Value: "2"}}}
-	b := &State{Vars: []SettingVar{{Name: "b", Value: "2"}, {Name: "a", Value: "1"}}}
-	d := DiffStates(a, b)
-	if d.VarsChanged {
-		t.Fatalf("Vars reorder must not be a change: %+v", d)
-	}
-}
-
-// TestDiff_BothFlags — одновременное изменение proxies и vars поднимает оба.
-func TestDiff_BothFlags(t *testing.T) {
-	a := buildSampleState()
-	b := buildSampleState()
-	b.ParserConfig.ParserConfig.Proxies[0].TagPrefix = "[CHANGED] "
-	b.Vars = []SettingVar{{Name: "log_level", Value: "warn"}}
-
-	d := DiffStates(a, b)
-	if !d.AffectsParser() {
-		t.Fatalf("AffectsParser must be true")
-	}
-	if !d.AffectsTemplate() {
-		t.Fatalf("AffectsTemplate must be true")
-	}
-}
-
-// TestDiff_DNSOptions — изменение DNS rules.
-func TestDiff_DNSOptions(t *testing.T) {
-	a := buildSampleState()
-	b := buildSampleState()
-	b.DNSOptions = &LegacyDNSOptionsV5{
-		Servers: []json.RawMessage{json.RawMessage(`{"address":"8.8.8.8"}`)},
-	}
-
-	d := DiffStates(a, b)
-	if !d.DNSOptionsChanged {
-		t.Fatalf("DNSOptionsChanged should be true")
-	}
-	if !d.AffectsTemplate() {
-		t.Fatalf("AffectsTemplate should be true")
-	}
-}
-
-// TestDiff_CustomRules — добавление custom rule.
-func TestDiff_CustomRules(t *testing.T) {
-	a := buildSampleState()
-	b := buildSampleState()
-	b.CustomRules = append(b.CustomRules, CustomRule{
-		Label:   "new-rule",
-		Type:    RuleTypeIPS,
-		Enabled: true,
-	})
-
-	d := DiffStates(a, b)
-	if !d.CustomRulesChanged {
-		t.Fatalf("CustomRulesChanged should be true")
-	}
-	if !d.AffectsTemplate() {
-		t.Fatalf("AffectsTemplate should be true")
-	}
-}
-
-// TestDiff_NilCur — nil cur — пустой Diff (программная ошибка вызывающего).
-func TestDiff_NilCur(t *testing.T) {
-	a := buildSampleState()
-	d := DiffStates(a, nil)
-	if !d.IsEmpty() {
-		t.Fatalf("nil cur must yield empty diff")
-	}
-}
-
 // TestIsKnownRuleType — проверка enum.
 func TestIsKnownRuleType(t *testing.T) {
 	for _, k := range []string{RuleTypeIPS, RuleTypeURLs, RuleTypeProcesses, RuleTypeSRS, RuleTypeRaw} {
@@ -453,24 +316,4 @@ func TestIsKnownRuleType(t *testing.T) {
 	if IsKnownRuleType("nonsense") {
 		t.Fatalf("'nonsense' must not be known")
 	}
-}
-
-// --- helpers ---
-
-func buildSampleState() *State {
-	s := &State{
-		Version:            SchemaVersion,
-		ID:                 "sample",
-		ConfigParams:       []ConfigParam{{Name: "route_final", Value: "vpn-1"}},
-		Vars:               []SettingVar{{Name: "log_level", Value: "info"}},
-		CustomRules:        []CustomRule{},
-		RulesLibraryMerged: true,
-		DNSOptions:         &LegacyDNSOptionsV5{Servers: []json.RawMessage{}, Rules: []json.RawMessage{}},
-	}
-	s.ParserConfig.ParserConfig.Version = 4
-	s.ParserConfig.ParserConfig.Proxies = []configtypes.ProxySource{
-		{Source: "https://a.example/sub"},
-	}
-	s.ParserConfig.ParserConfig.Outbounds = []configtypes.OutboundConfig{}
-	return s
 }

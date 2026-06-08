@@ -77,7 +77,7 @@ type UIService struct {
 	// fresh by the time the user looks at it. Registered by the Servers tab;
 	// no-op until then. Controlled by StateService.IsAutoPingAfterConnectEnabled().
 	AutoPingAfterConnectFunc func()
-	FocusOpenChildWindows    func() // Focus one of wizard child windows (View, Outbound Edit, rule dialog) when user clicks wizard
+	FocusOpenChildWindows    func()                                     // Focus one of wizard child windows (View, Outbound Edit, rule dialog) when user clicks wizard
 	ShowUpdatePopupFunc      func(currentVersion, latestVersion string) // Called to show update popup
 
 	// Dependencies (passed from AppController)

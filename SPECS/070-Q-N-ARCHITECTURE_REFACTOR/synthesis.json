@@ -1,0 +1,408 @@
+{
+  "layers": [
+    {
+      "name": "L0 platform",
+      "responsibility": "OS abstraction with platform-tagged files behind a unified interface: power sleep/wake, HWID device-info, process enumeration, WinTun ghost-adapter cleanup, canonical filesystem path getters. Depends only on stdlib + debuglog/constants. No upward imports (verified: no core/ui refs).",
+      "packages": [
+        "internal/platform"
+      ]
+    },
+    {
+      "name": "L1 shared-internal (leaf utilities)",
+      "responsibility": "Self-contained, dependency-free helpers reused across layers: i18n catalog, content-addressed SRS tag hashing, reject/drop outbound-to-rule mapping (single source of truth shared by core + UI), URL-scheme allowlist, leveled logging, traffic profiler (decoupled, stdlib-only).",
+      "packages": [
+        "internal/locale",
+        "internal/srstag",
+        "internal/outboundutil",
+        "internal/urlsafe",
+        "internal/debuglog",
+        "internal/constants",
+        "internal/traffic"
+      ]
+    },
+    {
+      "name": "L2 core-domain (state + build + config + template)",
+      "responsibility": "Pure domain: state schema/load/save/migration (core/state), the JSON build pipeline and resolvers (core/build), subscription fetch/parse/encode and outbound generation (core/config + core/config/subscription), template load + preset extraction (core/template), snapshot capture. Pure functions where possible; no Fyne, no AppController.",
+      "packages": [
+        "core/state",
+        "core/snapshot",
+        "core/build",
+        "core/config",
+        "core/config/subscription",
+        "core/config/configtypes",
+        "core/template"
+      ]
+    },
+    {
+      "name": "L3 services + lifecycle",
+      "responsibility": "Stateful service implementations and app orchestration: FileService/APIService/StateService/SRSDownloader (core/services), UI-callback container without Fyne deps (core/uiservice), and the lifecycle layer (controller.go, process_service.go, config_service.go, rebuild.go, auto_update.go, main.go). Owns the EventBus and DI wiring.",
+      "packages": [
+        "core/services",
+        "core/uiservice",
+        "core (controller/process_service/config_service/rebuild/auto_update)",
+        "core/events"
+      ]
+    },
+    {
+      "name": "L4 api / remote-control",
+      "responsibility": "Outbound Clash API client (api/) and inbound Debug HTTP API (core/debugapi) that introspects/controls the app through a ControllerFacade interface. Both sit above domain but are reachable from services; debugapi talks to the controller only via an interface (no concrete upward import).",
+      "packages": [
+        "api",
+        "core/debugapi"
+      ]
+    },
+    {
+      "name": "L5 ui-presentation (configurator MVP)",
+      "responsibility": "MVP layers for the wizard: presentation (orchestration + fyne.Do dispatch), business (pure logic behind UIUpdater interface, never imports Fyne), models (pure WizardModel + slot/order containers). business->models->core-domain; presentation->business; business never imports presentation.",
+      "packages": [
+        "ui/configurator/presentation",
+        "ui/configurator/business",
+        "ui/configurator/models",
+        "ui/configurator/configurator.go"
+      ]
+    },
+    {
+      "name": "L6 ui-views (tabs/dialogs/root)",
+      "responsibility": "Fyne views: root tab strip (ui/app.go), main tabs (core dashboard, clash API, diagnostics), configurator tabs/dialogs, outbounds configurator, traffic profiler window. Subscribes to EventBus/UIService callbacks; reads core-domain for rendering.",
+      "packages": [
+        "ui (app.go + *_tab.go)",
+        "ui/configurator/tabs",
+        "ui/configurator/dialogs",
+        "ui/configurator/outbounds_configurator",
+        "ui/traffic"
+      ]
+    },
+    {
+      "name": "L7 ui-widgets / assets",
+      "responsibility": "Reusable, self-contained Fyne building blocks and assets: hover rows, check-with-content, hover forwarding, tooltips, scroll gutter, embedded SVG icons. Pure Fyne composition, no internal deps (except click_redirect, which currently violates by reaching into core).",
+      "packages": [
+        "internal/fynewidget",
+        "ui/icons",
+        "ui/components"
+      ]
+    }
+  ],
+  "layeringViolations": [
+    "ui/components/click_redirect.go:10 imports singbox-launcher/core to reach UIService.WizardWindow for focus elevation — a widget-tier (L7) package reaching down into the lifecycle layer (L3). Fix: inject a focus callback (func()) or a small WizardFocuser interface from the configurator layer; do not import core in ui/components.",
+    "ui/core_dashboard_tab.go:31-32 imports singbox-launcher/ui/configurator and ui/configurator/models — a root main tab (L6) reaching sideways/down into the configurator package and its models (ValidateStateID at lines 931/951). Intentional for 'launch wizard from dashboard', but the configurator dependency should be narrowed to a launcher entrypoint + a shared validation helper hoisted to core-domain (state validates its own IDs), not the full models package.",
+    "core/controller.go GetController() fallback (≈lines 140-167) constructs a half-wired AppController (bare ProcessService/ConfigService/StateService, no UIService/EventBus init) divergent from NewAppController (lines 197-303) — an init-path layering/DI violation creating two construction paths. Fix: delete fallback, require NewAppController in main() (already called main.go:48), add GetControllerOrPanic() for nil-safety.",
+    "core/state/load.go deriveV6FromLegacy (lines 438-449) + legacyCustomRulesFromV6 (line 136) keep legacy State.CustomRules/DNSOptions and canonical State.Rules/DNS as parallel sources of truth inside the domain layer — not a package-edge violation but a layering-of-truth violation (dual-state). Resolve by making canonical Rules/DNS the sole stored truth and deriving legacy views on-demand in the UI layer (see stateModel).",
+    "core/events StateChanged + ConfigBuilt are published from core (state_service.go:207, rebuild.go:188/221) and presenter_save.go:174 but have zero EventBus subscribers, while VpnStateChanged uses BOTH EventBus and legacy UIService callbacks (UpdateCoreStatusFunc) — a dual-wiring inconsistency across the L3/L6 boundary that SPEC 047 phase 6 must collapse onto one mechanism."
+  ],
+  "eventCatalog": [
+    {
+      "name": "VpnStateChanged",
+      "status": "wired (dual: EventBus + legacy callback)",
+      "action": "keep + consolidate — publisher core/controller.go:493; subscribers core/auto_update.go:72 and ui/app.go:155. Canonical EventBus event. In SPEC 047 phase 6, retire the parallel UpdateCoreStatusFunc callback so this is the single mechanism for VPN-state UI refresh."
+    },
+    {
+      "name": "StateChanged",
+      "status": "dead-subscribe (published, never consumed)",
+      "action": "wire or delete — publishers core/services/state_service.go:207 and ui/configurator/presentation/presenter_save.go:174; no Subscribe. Decision: WIRE a subscriber in the UI (dashboard dirty-marker refresh) since state-dirty already drives button styling via callbacks; otherwise delete the publish calls. Prefer wiring to converge onto the bus."
+    },
+    {
+      "name": "ConfigBuilt",
+      "status": "dead-subscribe (published, never consumed)",
+      "action": "wire — publishers core/rebuild.go:188 (OK=false) and :221 (OK=true); no Subscribe. Wire ui core dashboard updateConfigInfo to subscribe (replacing UpdateConfigStatusFunc callback) so config-status UI is event-driven. Part of SPEC 047 phase 6."
+    },
+    {
+      "name": "ProxyActiveChanged",
+      "status": "dead-publish (subscribed, never published)",
+      "action": "implement publisher or delete subscriber — subscriber core/auto_update.go:75; no publisher (verified). Decision: DELETE the subscriber now (no proxy-active retry-trigger requirement is exercised); re-add publisher+subscriber together if/when retry-on-proxy-switch is actually needed via APIService.SwitchProxy."
+    },
+    {
+      "name": "SubscriptionUpdated",
+      "status": "dead (defined, never published/subscribed)",
+      "action": "delete — EventKind events.go:52 + SubscriptionUpdatedPayload payloads.go:39. SPEC 047 design artifact with no callsite. Remove kind + payload + String() case."
+    },
+    {
+      "name": "AutoUpdateStatus",
+      "status": "dead (defined, never published/subscribed)",
+      "action": "delete — EventKind events.go:69 + AutoUpdateStatusPayload payloads.go:57. No callsite. Remove kind + payload + String() case."
+    },
+    {
+      "name": "PowerResume",
+      "status": "dead in EventBus (wired via legacy direct callback)",
+      "action": "delete EventKind (defer unify) — platform power-resume is handled by platform.RegisterPowerResumeCallback at main.go:294, never via EventBus.Publish. Delete the unused EventKind now; optionally unify power-resume onto the bus in a later phase, but that is not required for SPEC 070 cleanup."
+    },
+    {
+      "name": "SubscribeAll (Bus method)",
+      "status": "dead (interface method, never called)",
+      "action": "delete — core/events memory_bus.go:96 + interface decl events.go:132. No production caller (verified). Remove from Bus interface and MemoryBus; drop the 'all' subscriber slice in memory_bus.go."
+    },
+    {
+      "name": "UpdateCoreStatusFunc (UIService callback)",
+      "status": "active legacy callback (parallel to VpnStateChanged)",
+      "action": "keep until SPEC 047 phase 6, then delete — registered controller.go:274-281, wrapped ui/app.go:136-142. Replace with VpnStateChanged subscription."
+    },
+    {
+      "name": "UpdateConfigStatusFunc (UIService callback)",
+      "status": "active legacy callback (parallel to ConfigBuilt)",
+      "action": "keep until SPEC 047 phase 6, then delete — replace with ConfigBuilt subscription in core dashboard."
+    },
+    {
+      "name": "UpdateParserProgressFunc / ShowSubsResultFunc (UIService callbacks)",
+      "status": "active legacy callbacks (no EventBus equivalent)",
+      "action": "keep — multi-shot progress + final toast for subscription refresh; reasonable to leave as callbacks or model as a typed progress event later (low priority)."
+    },
+    {
+      "name": "RefreshAPIFunc / ResetAPIStateFunc / AutoPingAfterConnectFunc (UIService callbacks)",
+      "status": "active legacy callbacks",
+      "action": "keep — Clash-API refresh/reset/auto-ping wiring; out of scope for SPEC 070 event cleanup."
+    }
+  ],
+  "stateModel": "Today State carries two parallel views: the canonical v6 fields (Connections.Sources, Rules[], DNS) and a legacy view (ParserConfig, CustomRules, DNSOptions) kept in sync by adapters and backfilled on load via deriveV6FromLegacy (the BUG1 workaround) — creating two sources of truth that headless Load->mutate->Save paths (auto_update, log_level, config_service) keep diverging from the UI. The consolidated model makes the v6 canonical fields (Rules/DNS/Connections) the ONLY stored truth: Load parses any v2..v6 disk shape and migrates forward to canonical in-memory once, and Save always writes v6. Legacy views (CustomRules, DNSOptions, ParserConfig.Proxies) become on-demand projections computed in the UI/business layer (e.g. a wizardmodels helper), not fields on core/state.State, which lets deriveV6FromLegacy and legacyCustomRulesFromV6 be deleted after the UI Rules/DNS tabs read canonical fields directly (SPEC 070 Phase 7). The adapter remains only as a bidirectional migration shim for reading old disk files, not as a runtime dual-write.",
+  "dataFlow": [
+    "INGEST (subscription -> nodes): UI/auto-update triggers config_service.UpdateConfigFromSubscriptions -> subscription.LoadNodesFromSource -> fetcher.FetchSubscriptionWithMeta (HTTP GET with HWID/UA headers, max 10MB, announce-header decode) -> decoder.DecodeSubscriptionContent (base64 or Xray JSON array) -> node_parser.ParseNode per URI (scheme dispatch -> protocol parser -> transport/TLS build -> sing-box outbound JSON) -> tag prefix/postfix/mask + skip-filter + dedup -> []ParsedNode.",
+    "CACHE: per-source raw body written atomically via state.WriteRawBody (.tmp+Sync+Rename); outbound JSON produced by config.GenerateOutboundsFromParserConfig (three passes: buildOutboundsInfo -> computeOutboundValidity topological sort -> generateSelectorJSONs) -> []string held in BuildContext.Cache. ClearCacheStale + MarkConfigStale set.",
+    "STATE WRITE: config_service mutates *State subscription Meta, then state.Save -> syncConnectionsFromLegacy -> marshalDisk (v6 layout: meta, connections, rules[], vars[], dns_options) -> atomic write. config.json is NOT written here.",
+    "BUILD (state -> sing-box config): rebuild.RebuildConfigIfDirty (sole config.json writer; noop fast-path when clean & not forced) -> config_service.buildContextFromState assembles BuildContext{Template,Vars,Cache,DNS,Route,Preset} -> build.BuildConfig (pure) dispatches per section: BuildOutboundsSection, MergeDNSSection->MergePresetsIntoDNS(ResolveDNS), MergeRouteSection->MergePresetsIntoRoute(ResolveRoute->ExpandPreset per preset-ref) -> concat final JSON -> atomic write config.json.",
+    "RUN: user Connect -> ProcessService.Start -> RebuildConfigIfDirty pre-start hook (applies Wizard-Save dirty markers, SPEC 068) -> launch sing-box + Monitor goroutine -> RunningState.Set(true) -> publish VpnStateChanged -> auto_update retry + ui/app Core-tab refresh + auto-ping arm.",
+    "UI EDIT -> STATE -> REBUILD: user edits WizardModel (Sources/GlobalOutbounds/Rules/DNS) in configurator tabs -> presenter syncs GUI->model (ReconcileRuleOrder, SyncRulesByOrderToStateRulesV6, SyncDNSByOrderToState) on Save -> presenter_save validates -> state.Save (v6) -> publish StateChanged + auto-RebuildConfigIfDirty -> success dialog. Next Start re-applies via pre-start rebuild hook."
+  ],
+  "decompositionPlan": [
+    {
+      "target": "core/config/outbound_generator.go (1086 LOC)",
+      "currentLoc": 1086,
+      "risk": "medium",
+      "behaviorChange": false,
+      "plan": "Split into: (1) outbound_validity.go — three-pass algorithm buildOutboundsInfo/computeOutboundValidity/generateSelectorJSONs (preserve topological cycle-detection WarnLog); (2) outbound_jsonbuilder.go — JSONBuilder{parts []string} with AppendField(name,value) that marshals leaf values + preserves insertion order, replacing fmt.Sprintf+strings.Join in GenerateNodeJSON/GenerateSelectorWithFilteredAddOutbounds; (3) filter_helpers.go — SelectorFiltersAcceptNode/filterNodesForSelector/matchesFilter; outbound_generator.go becomes a thin orchestrator. Gate with golden tests on emitted JSON before/after."
+    },
+    {
+      "target": "core/config_service.go (1066 LOC)",
+      "currentLoc": 1066,
+      "risk": "high",
+      "behaviorChange": false,
+      "plan": "Extract: (1) SubscriptionFetcher service{FetchMeta, RefreshAll, RefreshOne} unifying RefreshSubscriptionsMetaAndCache/RefreshSourceInPlace/RefreshSingleSubscription network I/O (preserve SubscriptionMu boundaries); (2) ConfigContextBuilder{buildDNSConfig,buildRouteConfig,buildPresetContext} for BuildContext assembly (ensure Preset.ExecDir invariant); (3) split UpdateConfigFromSubscriptions into refreshSubscriptionsMetaAndCacheInternal + applyGenerationResultAndMarkers, leaving a ~50-LOC orchestrator. Highest risk due to concurrency; cover with existing update_*.go tests."
+    },
+    {
+      "target": "core/controller.go (747 LOC, ~113 fields, 4 mutexes)",
+      "currentLoc": 747,
+      "risk": "high",
+      "behaviorChange": false,
+      "plan": "Extract ProcessLifecycleManager (SingboxCmd, CmdMutex, StoppedByUser/RestartRequestedByUser, ConsecutiveCrashAttempts, RunningState + crash/restart machine) and CacheManager (installedCoreVersionCache, autoUpdateRetryTimers, autoUpdateEventLastFetch, SubscriptionMu). AppController becomes a thin orchestrator holding services + EventBus + UI callbacks. Each extracted type owns its own lock (no cross-locking) to remove deadlock windows. Also delete GetController fallback path here."
+    },
+    {
+      "target": "core/process_service.go (759 LOC)",
+      "currentLoc": 759,
+      "risk": "medium",
+      "behaviorChange": false,
+      "plan": "Extract CrashHandler{counter, restartFlag, stabilityThreshold, maxAttempts} with Decide(isPrivileged, exitErr, flags) -> Action enum {StoppedByUser|RestartRequested|CrashRestart|Max|OK} and a separate PostCrashAction(action). Both Monitor() and onPrivilegedScriptExited() call the same handler, deleting ~50 dup lines. Extract ProcessWatcher (isSingBoxProcessRunning + PID tracking, ~100ms cache). Preserve SPEC 065 phantom-adapter-cleanup-before-Start ordering."
+    },
+    {
+      "target": "core/state/load.go (652 LOC)",
+      "currentLoc": 652,
+      "risk": "medium",
+      "behaviorChange": false,
+      "plan": "Split by schema: load_router.go (Parse + schema detection + routing), load_v6.go (parseCurrent + legacyDevDNSToOptions + legacyCustomRulesFromV6), load_v5.go (parseV5Legacy + deriveV6FromLegacy), load_v2_v3_v4.go (parseLegacyAndMigrate). Extract a shared normalizeAfterLoad helper (syncLegacyFromConnections + normalizeNilSlices + sanitizeOutboundRefs) called by all parse paths. Enables TestParseV6/V5/Legacy in isolation."
+    },
+    {
+      "target": "core/state/adapter.go (231 LOC)",
+      "currentLoc": 231,
+      "risk": "low",
+      "behaviorChange": false,
+      "plan": "Split into sync_to_connections.go (syncConnectionsFromLegacy, Save path) and sync_to_legacy.go (syncLegacyFromConnections, Load path); hoist shared buildTagSpec/serverLabel/extractURIFragment into connections_helpers.go and dedup buildTagSpecFromLegacy (also in legacy_migration.go:138)."
+    },
+    {
+      "target": "core/config/subscription/node_parser.go (744 LOC)",
+      "currentLoc": 744,
+      "risk": "medium",
+      "behaviorChange": false,
+      "plan": "node_parser_core.go = ParseNode dispatcher + extractTagAndComment/normalizeFlagTag/generateDefaultTag/buildOutbound; per-protocol files node_parser_ss.go, node_parser_socks.go (VMess/Naive/Hysteria2 already split, tidy them); move UTF-8 helpers to utf8_utils.go and base64 helpers to encoding_utils.go (shared). Each protocol module testable in isolation."
+    },
+    {
+      "target": "core/config/subscription/share_uri_encode.go (883 LOC)",
+      "currentLoc": 883,
+      "risk": "low",
+      "behaviorChange": false,
+      "plan": "share_uri.go dispatcher + per-protocol shareuri_vless/vmess/trojan/ss/socks/hysteria2/ssh/naive/wireguard.go + shareuri_helpers.go (mapGet*, transportToQuery, tls-to-query). Mirrors node_parser_*.go layout; co-locates each protocol's round-trip with its parser."
+    },
+    {
+      "target": "api/clash.go (599 LOC)",
+      "currentLoc": 599,
+      "risk": "low",
+      "behaviorChange": false,
+      "plan": "Split into clash_config.go, clash_transport.go, clash_log.go, clash_error.go (RequestErrorClassifier consolidating classifyRequestError used 3x), clash_proxy.go (GetProxiesInGroup+ProxyInfo), clash_switch.go, clash_delay.go. One concern per file; package init wires defaults."
+    },
+    {
+      "target": "internal/platform/wintun_cleanup_windows.go (681 LOC)",
+      "currentLoc": 681,
+      "risk": "medium",
+      "behaviorChange": false,
+      "plan": "Split into wintun_cleanup_windows_device.go (SetupAPI enumeration + DIF_REMOVE), wintun_cleanup_windows_nla_profiles.go, wintun_cleanup_windows_nla_sigs.go, with shared lazydll bindings + GUID constants in a helpers file. Keep the documented CREATE_NO_WINDOW comment. Windows-only; verify with existing ghostTunDecision unit tests."
+    },
+    {
+      "target": "ui/clash_api_tab.go (1422 LOC)",
+      "currentLoc": 1422,
+      "risk": "medium",
+      "behaviorChange": false,
+      "plan": "Extract clash_api_tab_state.go (ServersTabState{selectedProxyNames,sortType,hidePingErrors,selectionAnchor} + Reconcile/ApplySortOrder/ToggleFilter) and clash_api_tab_handlers.go (OnLoadProxies/OnPingProxy/OnSwitchProxy/OnSortBy bound to state+controller); CreateClashAPITab becomes a thin widget-builder. Reduces 24+ captured closure vars."
+    },
+    {
+      "target": "ui/configurator/dialogs/add_rule_dialog.go (1146 LOC)",
+      "currentLoc": 1146,
+      "risk": "medium",
+      "behaviorChange": false,
+      "plan": "Extract rule_editor_state.go (RuleEditorState + SyncFromJSON/SyncToJSON/Validate), rule_editor_tabs.go (buildFormTab/buildRawTab), rule_editor_process_picker.go (showProcessPickerDialog); ShowAddRuleDialog becomes a wrapper creating state, building tabs, registering bidirectional JSON<->form sync."
+    },
+    {
+      "target": "ui/configurator/outbounds_configurator/edit_dialog.go (1071 LOC)",
+      "currentLoc": 1071,
+      "risk": "medium",
+      "behaviorChange": false,
+      "plan": "Extract edit_state.go (OutboundEditState + ApplyTemplate/Validate/ToConfig), edit_form_builder.go (buildBasicFields/buildUrltestFields/buildScopeSelector), template_resolver.go (ResolveMergedBody for ref+preset merge); ShowEditDialog becomes orchestrator."
+    },
+    {
+      "target": "ui/configurator/presentation/presenter_state.go (529 LOC)",
+      "currentLoc": 529,
+      "risk": "medium",
+      "behaviorChange": false,
+      "plan": "Extract StateBuilder (CreateStateFromModel, extractConfigParams), StateRestorer (LoadState 9-step recovery + restoreParserConfig/restoreDNS/restoreCustomRules/restorePresetRefs), keep SaveCurrentState/SaveStateAs in presenter. Move restoreDNS overlap into business/dns_restore_helpers.go. Coordinates with Phase 7 dual-state removal."
+    },
+    {
+      "target": "ui/configurator/business/wizard_dns.go (652 LOC)",
+      "currentLoc": 652,
+      "risk": "medium",
+      "behaviorChange": false,
+      "plan": "Split into reconcilers.go (reconcileDNSServers + index/options helpers), fillers.go (fillDNSAuxiliaryIfEmpty + pick*), validators.go (ValidateDNSModel + tag helpers), keeping public API (ApplyWizardDNSTemplate, LoadPersistedWizardDNS, DNSTagLocked/DNSTagFromTemplate) in wizard_dns.go. Expose clean ReconcileServers/FillDefaults/Validate trio."
+    }
+  ],
+  "consolidations": [
+    {
+      "desc": "Subscription UTF-8 validate/repair duplicated across node_parser.go (validateAndFixUTF8/validateAndFixUTF8Bytes/sanitizeForDisplay) and meta.go (hasControlChars) with slightly different control-char policies.",
+      "plan": "Create core/config/subscription/utf8_utils.go: FixUTF8String/FixUTF8Bytes/HasControlChars; route all 3 callers to it; unify control-char policy."
+    },
+    {
+      "desc": "Base64 decode-with-padding-fallback duplicated 3x: node_parser.go decodeBase64WithPadding, decoder.go tryDecodeBase64, meta.go tryBase64Decode (the 4-variant try loop).",
+      "plan": "Create encoding_utils.go: DecodeBase64Multi(s) ([]byte, variant string, error) consolidating URL-safe/std padded/unpadded; keep local to subscription pkg (documented circular-import constraint with core)."
+    },
+    {
+      "desc": "Transport builder duplicated: uriTransportFromQuery (node_parser_transport.go) vs xrayTransportFromStreamSettings (xray_outbound_convert.go) build the same {type,path,service_name,host} from URI-query vs Xray-JSON.",
+      "plan": "transport_builder.go: TransportSpec union + buildFromQueryParams + buildFromXrayJSON + toSingboxMap; both inputs converge on one output to prevent drift on sing-box schema changes."
+    },
+    {
+      "desc": "TLS builder duplicated 3x: vlessTLSFromNode/trojanTLSFromNode (URI) vs xrayVLESSTLSFromStreamSettings (Xray JSON).",
+      "plan": "tls_builder.go: TLSSpec{enabled,server_name,utls,reality,insecure,alpn} + buildFromVLESSQuery/buildFromTrojanQuery/buildFromXrayJSON; centralize normalizeRealityShortID/NormalizeUTLSFingerprint/applyTLSQueryExtras."
+    },
+    {
+      "desc": "Clash net-error classification (classifyRequestError) inlined in GetProxiesInGroup/SwitchProxy/GetDelay.",
+      "plan": "clash_error.go: RequestErrorClassifier.Classify(err, context) -> user message; all three call it; unify timestamp logging."
+    },
+    {
+      "desc": "rule_set remote->local conversion duplicated: convertRuleSetToLocalRequired (route_merge.go) vs convertPresetRuleSetRemoteToLocal (preset_merge.go).",
+      "plan": "Single convertRemoteRuleSetToLocal(rs, execDir, tag) used by both custom-rule and preset paths; unify error messages."
+    },
+    {
+      "desc": "Resolver metadata {Active,Enabled,InactiveReason} copy-pasted across ResolvedDNSServer/ResolvedDNSRule/ResolvedRouteRule.",
+      "plan": "Define ResolvedEntryMetadata struct, embed in each resolved type; purely structural, no behavior change."
+    },
+    {
+      "desc": "Template DNS-options parsing/extractTemplateDNSTags duplicated: business/create_config.go (parsePreviewTemplateDNSDefaults, extractTemplateDNSTagsLocal) and presentation/preset_ref_helpers.go (extractTemplateDNSTags, intentional import-cycle dup).",
+      "plan": "Hoist parseTemplateDNSOptions + extractTemplateDNSTags to business/dns_helpers.go (or core/template); both layers import it; removes the cycle-driven copy."
+    },
+    {
+      "desc": "effectiveWizardConfig (wizard_dns.go) vs effectiveTemplateConfig (create_config.go) both call GetEffectiveConfig.",
+      "plan": "Merge into business/template_helpers.go effectiveTemplate(model, includeSections bool) -> (map[string]json.RawMessage, []string, error)."
+    },
+    {
+      "desc": "DI no-op UI callback placeholders defined twice (controller.go:274-281 and uiservice/ui_service.go:126-140) with identical 'not set yet' loggers that mislead even when handlers ARE set.",
+      "plan": "Single source: define DefaultUICallbacks in uiservice and import in controller; or make fields nil + nil-check at call sites (preferred — avoids confusing logs)."
+    },
+    {
+      "desc": "buildTagSpecFromLegacy duplicated in adapter.go:177 and legacy_migration.go:138.",
+      "plan": "Move one canonical buildTagSpec to connections_helpers.go; both callers import it."
+    },
+    {
+      "desc": "UI Button SetToolTip + type-assertion pattern repeated ~15x across core_dashboard_tab.go and clash_api_tab.go; download-state setters (setDownloadState/setSingboxState/setWintunState) duplicate ~70 LOC; SRS auto-download flow duplicated in rules_tab.go and add_rule_dialog.go.",
+      "plan": "internal/fynewidget/tooltip.go SetToolTipSafe(button,text); ui/components/download_state_manager.go DownloadStateComponent + setter; ui/configurator/components/srs_downloader.go RunSRSDownloadWithUI(ctx,model,entries,buttonState,presenter,onSuccess,onError)."
+    }
+  ],
+  "phasePlan": [
+    {
+      "phase": "P1",
+      "items": [
+        "Pure deletions of dead code (zero behavior change): remove dead EventKinds SubscriptionUpdated + AutoUpdateStatus + PowerResume (events.go + payloads.go + String() cases); remove Bus.SubscribeAll interface method + MemoryBus implementation + 'all' subscriber slice; delete the auto_update.go:75 ProxyActiveChanged subscriber (no publisher exists).",
+        "Delete GetController() fallback in controller.go:140-167; add GetControllerOrPanic(); confirm main.go:48 calls NewAppController first.",
+        "Consolidate DI no-op callback placeholders to a single source (or nil + nil-check) across controller.go and uiservice/ui_service.go.",
+        "Update docs/ARCHITECTURE.md factual fixes flagged by audit (snapshot.go inventory, child_overlay.go vs UIService callback location, MigrateOutboundsToReferencedShape v5-only scope, API rebuild-config {ok:true} response)."
+      ]
+    },
+    {
+      "phase": "P2",
+      "items": [
+        "Behavior-preserving dedup of leaf utilities: subscription utf8_utils.go + encoding_utils.go; transport_builder.go (URI+Xray) and tls_builder.go (URI+Xray); convertRemoteRuleSetToLocal unify; ResolvedEntryMetadata embed; buildTagSpec hoist to connections_helpers.go.",
+        "UI helper consolidation: fynewidget SetToolTipSafe, ui/components DownloadStateComponent, ui/configurator/components srs_downloader.go.",
+        "Business dedup: hoist parseTemplateDNSOptions/extractTemplateDNSTags to dns_helpers.go (kills import-cycle copy); merge effectiveWizardConfig/effectiveTemplateConfig into template_helpers.go effectiveTemplate."
+      ]
+    },
+    {
+      "phase": "P3",
+      "items": [
+        "Domain monolith splits (mechanical, golden-test guarded): core/state/load.go -> load_router/load_v6/load_v5/load_v2_v3_v4 + normalizeAfterLoad; core/state/adapter.go -> sync_to_connections/sync_to_legacy + connections_helpers.",
+        "Subscription parser/encoder splits: node_parser.go -> node_parser_core + per-protocol; share_uri_encode.go -> share_uri + shareuri_* + shareuri_helpers.",
+        "api/clash.go split into clash_config/transport/log/error/proxy/switch/delay; platform/wintun_cleanup_windows.go split into device + nla_profiles + nla_sigs + helpers."
+      ]
+    },
+    {
+      "phase": "P4",
+      "items": [
+        "Build/config pipeline decomposition: core/config/outbound_generator.go -> outbound_validity.go + outbound_jsonbuilder.go (JSONBuilder.AppendField, insertion-order safe) + filter_helpers.go.",
+        "Optional protocol-field handler extraction for GenerateNodeJSON (per-protocol field generators) behind golden tests.",
+        "Document the pipeline contract (BuildContext -> BuildConfig -> per-section merge -> config.json) and the 'rebuild.go is the sole config.json writer' invariant in docs/PIPELINE.md + ARCHITECTURE.md package-dependency DAG."
+      ]
+    },
+    {
+      "phase": "P5",
+      "items": [
+        "Lifecycle decomposition: extract CrashHandler{Decide->Action}+PostCrashAction+ProcessWatcher from process_service.go (unify Monitor + onPrivilegedScriptExited); split controller.go into ProcessLifecycleManager + CacheManager + thin AppController with non-overlapping locks.",
+        "config_service.go decomposition: SubscriptionFetcher service + ConfigContextBuilder + split UpdateConfigFromSubscriptions into meta/cache refresh + result-application halves; preserve SubscriptionMu invariants with update_*.go tests.",
+        "SPEC 047 phase 6: wire ConfigBuilt (core dashboard updateConfigInfo) and StateChanged (dashboard dirty markers) as EventBus subscriptions; retire UpdateCoreStatusFunc/UpdateConfigStatusFunc callbacks; VpnStateChanged becomes single-mechanism."
+      ]
+    },
+    {
+      "phase": "P6",
+      "items": [
+        "Dual-state elimination (SPEC 068/070 Phase 7): make canonical Rules/DNS/Connections the sole stored truth; migrate UI Rules/DNS/source tabs to read canonical fields; delete deriveV6FromLegacy, legacyCustomRulesFromV6, State.CustomRules/DNSOptions/SelectableRuleStates and the runtime legacy backfill; keep adapter only as old-disk migration shim; remove legacyDevDNSToOptions after confirming no field dev-state.",
+        "UI view decomposition once dual-state is gone: clash_api_tab.go -> state+handlers; add_rule_dialog.go -> rule_editor_state/tabs/process_picker; edit_dialog.go -> edit_state/form_builder/template_resolver; presenter_state.go -> StateBuilder/StateRestorer; wizard_dns.go -> reconcilers/fillers/validators.",
+        "Fix remaining layering edges: ui/components/click_redirect.go inject focus callback instead of importing core; narrow ui/core_dashboard_tab.go -> configurator dependency to a launcher entrypoint + hoist ID validation to core/state."
+      ]
+    }
+  ],
+  "adrs": [
+    {
+      "title": "ADR-070-1: Seven-layer package model with strict downward dependencies",
+      "decision": "Adopt layers L0 platform -> L1 shared-internal -> L2 core-domain (state/build/config/template) -> L3 services+lifecycle -> L4 api -> L5 ui-presentation (MVP) -> L6 ui-views -> L7 ui-widgets/assets. Imports flow downward only; cross-layer access from below is via interfaces (UIUpdater, ControllerFacade) or callbacks. Add a CI import-graph check.",
+      "rationale": "The codebase already approximates this (verified: platform/traffic/api have no upward imports, business never imports Fyne, debugapi uses a facade). Codifying it makes the two real violations (click_redirect->core, core_dashboard_tab->configurator) visible and fixable, and prevents regressions as monoliths are split."
+    },
+    {
+      "title": "ADR-070-2: Canonical v6 state is the single source of truth; legacy views are derived projections",
+      "decision": "core/state.State stores only canonical Rules/DNS/Connections. Legacy CustomRules/DNSOptions/ParserConfig are computed on-demand in the UI/business layer, not stored or runtime-backfilled. The adapter survives solely as a read-time migration shim for v2-v5 disk files.",
+      "rationale": "Eliminates the BUG1 dual-state problem where headless Load->mutate->Save paths diverge from the UI. deriveV6FromLegacy/legacyCustomRulesFromV6 are workarounds for two sources of truth; one truth removes them and forces all callsites to converge."
+    },
+    {
+      "title": "ADR-070-3: Typed EventBus is the single mechanism for cross-layer state-change notifications",
+      "decision": "VpnStateChanged, ConfigBuilt, and StateChanged are delivered exclusively via the EventBus; legacy UIService status callbacks (UpdateCoreStatusFunc/UpdateConfigStatusFunc) are retired in SPEC 047 phase 6. Events with no producer/consumer (SubscriptionUpdated, AutoUpdateStatus, PowerResume, ProxyActiveChanged subscriber, SubscribeAll) are deleted rather than kept as design placeholders.",
+      "rationale": "Dual-wiring (callback + bus) for the same signal is confusing and error-prone, and five dead event artifacts inflate the bus surface. Add-only-when-wired keeps the catalog honest; a clear add-pattern (kind+payload+publisher+subscriber together) covers future needs like proxy-switch retries."
+    },
+    {
+      "title": "ADR-070-4: config.json has exactly one writer (rebuild.RebuildConfigIfDirty)",
+      "decision": "Only RebuildConfigIfDirty writes config.json. Start() rebuilds before launching sing-box (pre-start hook, SPEC 068 dirty markers); Update() auto-rebuilds on cache success; RebuildConfigIfDirty noop-skips when clean and not forced. Document and add an integration test asserting the trio stays coordinated.",
+      "rationale": "The invariant is currently implicit across three functions; making it explicit prevents stale-config-on-start regressions and clarifies the Start/Build/Save state machine for future refactorers."
+    },
+    {
+      "title": "ADR-070-5: Pure resolver pipeline (state -> BuildContext -> BuildConfig)",
+      "decision": "BuildConfig and the ResolveDNS/ResolveRoute/ExpandPreset resolvers remain pure functions over an explicit BuildContext; impure concerns (network fetch, state I/O, UI signaling) live in config_service/services. Outbound JSON generation moves from string-concat to a JSONBuilder with golden-test coverage.",
+      "rationale": "Purity is the codebase's main testability lever and lets the 1086-LOC outbound_generator and build pipeline be decomposed safely. The JSONBuilder removes the fragile fmt.Sprintf+strings.Join pattern that makes adding protocols error-prone."
+    },
+    {
+      "title": "ADR-070-6: Bidirectional protocol logic is single-sourced via spec builders",
+      "decision": "Transport and TLS parsing converge on shared TransportSpec/TLSSpec builders that accept either subscription-URI-query or Xray-JSON input and emit one sing-box shape; UTF-8 and base64 helpers are single utilities. Per-protocol parse and share-URI-encode logic are co-located one file per protocol.",
+      "rationale": "Parser/encoder and URI/Xray paths currently drift when sing-box's schema changes (e.g. a new REALITY field updated in one path only). Single-sourcing the spec conversion prevents silent round-trip breakage while the per-protocol file split lowers per-file complexity from ~20 to ~5."
+    },
+    {
+      "title": "ADR-070-7: Single AppController construction path with focused sub-managers",
+      "decision": "NewAppController is the only constructor (delete GetController fallback; add GetControllerOrPanic). The 113-field controller is decomposed into ProcessLifecycleManager and CacheManager, each owning its own lock with no cross-locking; AppController is a thin orchestrator over services + EventBus + callbacks.",
+      "rationale": "The half-wired fallback diverges from the real constructor and four independent mutexes create deadlock/race windows under concurrent Update+Start. Focused managers with isolated locks remove the drift and make the crash/restart state machine testable (unifying Monitor + onPrivilegedScriptExited via one CrashHandler)."
+    }
+  ]
+}

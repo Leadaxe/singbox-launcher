@@ -38,20 +38,20 @@ type fakeFacade struct {
 	appliedLevel  string
 }
 
-func (f *fakeFacade) IsRunning() bool                    { return f.running }
-func (f *fakeFacade) GetProxiesList() []api.ProxyInfo    { return f.proxies }
-func (f *fakeFacade) GetActiveProxyName() string         { return f.active }
-func (f *fakeFacade) GetSelectedClashGroup() string      { return f.group }
-func (f *fakeFacade) GetSingboxVersion() string          { return f.version }
-func (f *fakeFacade) GetConfigPath() string              { return "/tmp/config.json" }
-func (f *fakeFacade) GetExecDir() string                 { return f.execDir }
-func (f *fakeFacade) GetLauncherVersion() string         { return "v-test" }
+func (f *fakeFacade) IsRunning() bool                     { return f.running }
+func (f *fakeFacade) GetProxiesList() []api.ProxyInfo     { return f.proxies }
+func (f *fakeFacade) GetActiveProxyName() string          { return f.active }
+func (f *fakeFacade) GetSelectedClashGroup() string       { return f.group }
+func (f *fakeFacade) GetSingboxVersion() string           { return f.version }
+func (f *fakeFacade) GetConfigPath() string               { return "/tmp/config.json" }
+func (f *fakeFacade) GetExecDir() string                  { return f.execDir }
+func (f *fakeFacade) GetLauncherVersion() string          { return "v-test" }
 func (f *fakeFacade) GetLastUpdateSucceededAt() time.Time { return f.lastSuccess }
-func (f *fakeFacade) StartSingBox() error                { return nil }
-func (f *fakeFacade) StopSingBox() error                 { return nil }
-func (f *fakeFacade) UpdateSubscriptions() error         { return f.updateErr }
-func (f *fakeFacade) PingAllProxies() error              { return nil }
-func (f *fakeFacade) RebuildConfigIfDirty() error        { return nil }
+func (f *fakeFacade) StartSingBox() error                 { return nil }
+func (f *fakeFacade) StopSingBox() error                  { return nil }
+func (f *fakeFacade) UpdateSubscriptions() error          { return f.updateErr }
+func (f *fakeFacade) PingAllProxies() error               { return nil }
+func (f *fakeFacade) RebuildConfigIfDirty() error         { return nil }
 
 func (f *fakeFacade) LoadState() (*state.State, error) {
 	if f.stateLoadErr != nil {

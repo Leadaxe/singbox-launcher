@@ -342,6 +342,23 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 		}()
 	})
 
+	// Clean unused rule-set files (.srs not referenced by any saved state).
+	// Multi-stage GC is kept (an .srs stays while any saved state uses it);
+	// this is the explicit manual trigger to prune true orphans.
+	cleanRuleSetsButton := widget.NewButtonWithIcon(locale.T("diag.clean_rulesets"), theme.DeleteIcon(), func() {
+		go func() {
+			removed, err := ac.CleanOrphanRuleSets()
+			msg := locale.Tf("diag.clean_rulesets_done", len(removed))
+			if err != nil {
+				msg = err.Error()
+			}
+			fyne.Do(func() {
+				dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
+					locale.T("diag.clean_rulesets"), msg)
+			})
+		}()
+	})
+
 	// Layout: 3 строки (per user request).
 	//   Row 1: Log window (full width — самое частое действие при дебаге)
 	//   Row 2: Logs folder | Config folder (file-system explorer пара)
@@ -357,6 +374,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 		widget.NewLabel(" "),
 		logWindowRow,
 		foldersRow,
+		cleanRuleSetsButton,
 		killRow,
 		trafficProfilerBtn,
 		widget.NewLabel(locale.T("diag.ip_check_services")),
@@ -364,4 +382,3 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 		ipServicesRow,
 	)
 }
-

@@ -15,6 +15,7 @@ package tabs
 import (
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -308,7 +309,9 @@ func showEditUserDNSRuleDialog(
 
 // updateFromForm — read form widgets → write into working map.
 // ruleType: "srs" → используется только ruleSetSel (rule_set field в working).
-//           "inline" → используются domain_suffix / domain / keyword / ip_cidr entry'и.
+//
+//	"inline" → используются domain_suffix / domain / keyword / ip_cidr entry'и.
+//
 // Server общий для обоих режимов.
 //
 // При переключении типа поля противоположного режима **очищаются** из working,
@@ -427,7 +430,7 @@ func collectAllRuleSetTags(m *wizardmodels.WizardModel) []string {
 			if tpl == nil {
 				continue
 			}
-			frags, _, ok := build.ExpandPreset(tpl, pr.Vars)
+			frags, _, ok := build.ExpandPreset(tpl, pr.Vars, runtime.GOOS, runtime.GOARCH)
 			if !ok {
 				continue
 			}
@@ -489,7 +492,7 @@ func showViewAllDNSRulesDialog(presenter *wizardpresentation.WizardPresenter, pa
 			if tpl == nil {
 				continue
 			}
-			frags, _, ok := build.ExpandPreset(tpl, pr.Vars)
+			frags, _, ok := build.ExpandPreset(tpl, pr.Vars, runtime.GOOS, runtime.GOARCH)
 			if !ok || frags.DNSRule == nil {
 				continue
 			}
