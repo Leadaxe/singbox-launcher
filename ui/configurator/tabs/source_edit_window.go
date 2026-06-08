@@ -42,6 +42,10 @@ func setFyneWidgetToolTip(w fyne.CanvasObject, tip string) {
 	}
 }
 
+// previewNodeCap bounds how many nodes the Preview tab parses/renders from a
+// source body, keeping the preview responsive for large (CIDR) subscriptions.
+const previewNodeCap = 200
+
 // parsePreviewNodesFromBody — парсер decoded body для Preview tab.
 //
 // Dispatcher по формату body (так же как SPEC 054 для preview_nodes):
@@ -57,8 +61,8 @@ func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.
 		if err != nil {
 			return nil
 		}
-		if len(nodes) > 200 {
-			nodes = nodes[:200]
+		if len(nodes) > previewNodeCap {
+			nodes = nodes[:previewNodeCap]
 		}
 		return nodes
 	}
@@ -77,7 +81,7 @@ func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.
 		}
 		node.Tag = subscription.MakeTagUnique(node.Tag, tagCounts, "ConfigWizard")
 		out = append(out, node)
-		if len(out) >= 200 {
+		if len(out) >= previewNodeCap {
 			break
 		}
 	}

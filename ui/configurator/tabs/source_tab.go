@@ -330,6 +330,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						return
 					}
 					m.Sources = append(m.Sources[:sourceIndex], m.Sources[sourceIndex+1:]...)
+					presenter.MarkAsChanged()
 					m.RefreshDerivedParserConfig()
 					m.PreviewNeedsParse = true
 					wizardbusiness.InvalidatePreviewCache(m)
