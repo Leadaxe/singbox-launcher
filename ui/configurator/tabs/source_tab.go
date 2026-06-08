@@ -374,8 +374,34 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					fynewidget.SetToolTipSafe(noticeBtn, locale.T(tooltipKey))
 				}
 
+				// Reorder buttons (↑/↓) — move this source within the list.
+				// Order is plain slice order in model.Sources and persists to
+				// state.connections.sources on Save (handles both subscriptions
+				// and direct servers, since both live in the same Sources slice).
+				moveUpBtn := fynewidget.NewHoverForwardButton("↑", func() {
+					moveSourceUp(presenter, guiState, sourceIndex)
+				}, rowGetter)
+				moveUpBtn.Importance = widget.LowImportance
+				if sourceIndex <= 0 {
+					moveUpBtn.Disable()
+					fynewidget.SetToolTipSafe(moveUpBtn, locale.T("wizard.source.tooltip_move_up_off"))
+				} else {
+					fynewidget.SetToolTipSafe(moveUpBtn, locale.T("wizard.source.tooltip_move_up"))
+				}
+
+				moveDownBtn := fynewidget.NewHoverForwardButton("↓", func() {
+					moveSourceDown(presenter, guiState, sourceIndex)
+				}, rowGetter)
+				moveDownBtn.Importance = widget.LowImportance
+				if sourceIndex >= len(m.Sources)-1 {
+					moveDownBtn.Disable()
+					fynewidget.SetToolTipSafe(moveDownBtn, locale.T("wizard.source.tooltip_move_down_off"))
+				} else {
+					fynewidget.SetToolTipSafe(moveDownBtn, locale.T("wizard.source.tooltip_move_down"))
+				}
+
 				rowGutter := components.NewScrollGutter()
-				rightControlsItems := []fyne.CanvasObject{}
+				rightControlsItems := []fyne.CanvasObject{moveUpBtn, moveDownBtn}
 				if noticeBtn != nil {
 					rightControlsItems = append(rightControlsItems, noticeBtn)
 				}
@@ -458,6 +484,47 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	)
 
 	return body
+}
+
+// moveSourceUp swaps the source at idx with the one above it, then re-derives
+// the parser config and refreshes the list. Order persists on the next Save.
+func moveSourceUp(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState, idx int) {
+	m := presenter.Model()
+	if m == nil || idx <= 0 || idx >= len(m.Sources) {
+		return
+	}
+	m.Sources[idx-1], m.Sources[idx] = m.Sources[idx], m.Sources[idx-1]
+	applySourceReorder(presenter, guiState)
+}
+
+// moveSourceDown swaps the source at idx with the one below it.
+func moveSourceDown(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState, idx int) {
+	m := presenter.Model()
+	if m == nil || idx < 0 || idx >= len(m.Sources)-1 {
+		return
+	}
+	m.Sources[idx], m.Sources[idx+1] = m.Sources[idx+1], m.Sources[idx]
+	applySourceReorder(presenter, guiState)
+}
+
+// applySourceReorder runs the same refresh chain the Delete handler uses after
+// mutating model.Sources: re-derive ParserConfig, invalidate preview cache,
+// refresh outbound options and rebuild the sources list. Marks the model dirty
+// so the Save button lights up.
+func applySourceReorder(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState) {
+	m := presenter.Model()
+	if m == nil {
+		return
+	}
+	presenter.MarkAsChanged()
+	m.RefreshDerivedParserConfig()
+	m.PreviewNeedsParse = true
+	wizardbusiness.InvalidatePreviewCache(m)
+	presenter.UpdateParserConfig(m.ParserConfigJSON)
+	presenter.RefreshOutboundOptions()
+	if guiState != nil && guiState.RefreshSourcesList != nil {
+		guiState.RefreshSourcesList()
+	}
 }
 
 // showSourcePreviewAllWindow opens a window with the combined server list from all sources (uses View window slot).
