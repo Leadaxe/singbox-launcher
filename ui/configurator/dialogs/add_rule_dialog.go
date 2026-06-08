@@ -45,6 +45,7 @@ import (
 	"singbox-launcher/internal/process"
 
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -1005,8 +1006,8 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		confirmButton,
 	)
 
-	formScroll := container.NewScroll(inputContainer)
-	rawScroll := container.NewScroll(rawTabEntry)
+	formScroll := components.WrapInScrollWithGutter(inputContainer)
+	rawScroll := components.WrapInScrollWithGutter(rawTabEntry)
 	formTabItem := container.NewTabItem(locale.T("wizard.add_rule.tab_form"), formScroll)
 	rawTabItem := container.NewTabItem(locale.T("wizard.add_rule.tab_raw"), rawScroll)
 	tabs := container.NewAppTabs(formTabItem, rawTabItem)
