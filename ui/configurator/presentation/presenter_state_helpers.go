@@ -185,6 +185,10 @@ func (p *WizardPresenter) restoreDNS(sf *wizardmodels.WizardStateFile) {
 		}
 	}
 	wizardbusiness.ApplyWizardDNSTemplate(p.model)
+	// Overlay saved enabled state for ALL servers (incl. template) from canonical
+	// sf.DNS — populateUserDNSFromState only handled kind=user, so template-server
+	// enable/disable overrides were otherwise lost on reopen (and reset the selects).
+	applyDNSServerEnabledFromState(p.model, sf.DNS)
 	wizardbusiness.ApplyDNSVarsFromSettingsToModel(p.model)
 }
 

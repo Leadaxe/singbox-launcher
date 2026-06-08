@@ -117,6 +117,51 @@ func populatePresetEnabledFromState(presetRefs []*wizardmodels.PresetRefState, d
 //     их enabled-state восстанавливается через SyncStateV6ToDNSOverrides →
 //     DNSTemplateOverrides;
 //   - preset servers/rules — через populatePresetEnabledFromState.
+//
+// applyDNSServerEnabledFromState overlays the saved `enabled` flag from canonical
+// state DNS onto model.DNSServers by tag — for ALL servers (template + user).
+//
+// Why: populateUserDNSFromState only restores kind=user entries, and the
+// DNSTemplateOverrides map (SyncStateV6ToDNSOverrides) is never applied back onto
+// model.DNSServers — yet the UI checkboxes and DNSEnabledTagOptions read enabled
+// from model.DNSServers. So a user's enable/disable of a TEMPLATE server (e.g.
+// enabling cloudflare_udp) was lost on reopen, which additionally dropped that tag
+// from the enabled-server options and reset the Default-resolver / Final selects.
+// Must run AFTER ApplyWizardDNSTemplate built the full server list and BEFORE the
+// DNS selects refresh. No-op when dns has no servers (legacy v5 path is unaffected).
+func applyDNSServerEnabledFromState(model *wizardmodels.WizardModel, dns state.DNSOptions) {
+	if model == nil || len(dns.Servers) == 0 {
+		return
+	}
+	enabledByTag := make(map[string]bool, len(dns.Servers))
+	for _, s := range dns.Servers {
+		if t := strings.TrimSpace(s.Tag); t != "" {
+			enabledByTag[t] = s.Enabled
+		}
+	}
+	for i, raw := range model.DNSServers {
+		var m map[string]interface{}
+		if json.Unmarshal(raw, &m) != nil {
+			continue
+		}
+		tag, _ := m["tag"].(string)
+		if tag = strings.TrimSpace(tag); tag == "" {
+			continue
+		}
+		en, ok := enabledByTag[tag]
+		if !ok {
+			continue
+		}
+		if cur, _ := m["enabled"].(bool); cur == en {
+			continue
+		}
+		m["enabled"] = en
+		if b, err := json.Marshal(m); err == nil {
+			model.DNSServers[i] = json.RawMessage(b)
+		}
+	}
+}
+
 func populateUserDNSFromState(model *wizardmodels.WizardModel, dns state.DNSOptions) {
 	if model == nil {
 		return
