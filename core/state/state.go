@@ -93,7 +93,7 @@ type State struct {
 	// SelectableRuleStates — снимок выбора пользователя для template-rules.
 	// Legacy (v2-v4); в v5 не сериализуется (rules library полностью в
 	// CustomRules после SPEC 027). Поле остаётся для одноразовой миграции
-	// и для UI-кода, который ещё на него ссылается (rules_library.go).
+	// и для UI-кода, который ещё на него ссылается.
 	SelectableRuleStates []SelectableRuleState
 
 	// CustomRules — пользовательские правила.

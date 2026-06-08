@@ -234,40 +234,10 @@ func stripOutboundAction(rule map[string]interface{}) map[string]interface{} {
 	return out
 }
 
-// SyncDNSFullToStateV6 — full sync model DNS → state.DNS (SPEC 056-R-N).
-//
-// Конвертит model.DNSServers (legacy []json.RawMessage) + DNSTemplateOverrides
-// в flat `state.DNSOptions.Servers[]` через kind discriminator.
-//
-// Алгоритм для каждого сервера:
-//   - tag ∈ templateDNSTags                   → kind=template (Tag, Enabled)
-//   - tag начинается с "<preset_id>:"         → kind=preset (Ref, Enabled) —
-//     эти entries ОБЫЧНО приходят из state, но UI может их пересоздать (через
-//     дефолты пресета). SyncDNSOptionsWithActivePresets потом отнормализует.
-//   - иначе                                   → kind=user (Tag, Enabled, Body)
-//
-// templateOverrides — карта tag→enabled для template-серверов (юзер кликал
-// чекбоксы). Имеет приоритет над enabled полем в raw bodies.
-//
-// model.DNSRulesText (если задан) — парсится как user rules.
-//
-// **Не вызывает** SyncDNSOptionsWithActivePresets — это делается caller'ом
-// (presenter) после receiving результата + state.Rules.
-func SyncDNSFullToStateV6(
-	dnsServers []json.RawMessage,
-	dnsRulesText string,
-	templateOverrides map[string]bool,
-	templateDNSTags map[string]bool,
-) state.DNSOptions {
-	cfg := syncDNSServersOnly(dnsServers, templateOverrides, templateDNSTags)
-	cfg.Rules = buildDNSRulesFromText(dnsRulesText)
-	return cfg
-}
-
 // SyncDNSByOrderToState — SPEC 062-F-N: full DNS sync с уважением к DNSRuleOrder.
 //
 // Зеркало SyncRulesByOrderToStateRulesV6 для DNS rules. Servers собираются
-// через тот же путь что SyncDNSFullToStateV6 (kind=template/preset/user
+// через syncDNSServersOnly (kind=template/preset/user
 // классификация по tag); rules собираются обходом DNSRuleOrder:
 //
 //	for slot in order:
@@ -292,7 +262,7 @@ func SyncDNSByOrderToState(
 	templateOverrides map[string]bool,
 	templateDNSTags map[string]bool,
 ) state.DNSOptions {
-	// Servers — same logic as SyncDNSFullToStateV6 (без rules портion).
+	// Servers — server portion only (без rules portion).
 	cfg := syncDNSServersOnly(dnsServers, templateOverrides, templateDNSTags)
 
 	// Rules — order-aware (preferred) ИЛИ legacy fallback из dnsRulesText.
@@ -304,9 +274,8 @@ func SyncDNSByOrderToState(
 	return cfg
 }
 
-// syncDNSServersOnly — extract из SyncDNSFullToStateV6: только server portion.
-// Используется и старой SyncDNSFullToStateV6 (через её собственную копию ниже),
-// и новой SyncDNSByOrderToState.
+// syncDNSServersOnly — только server portion DNS sync (без rules).
+// Используется SyncDNSByOrderToState.
 func syncDNSServersOnly(
 	dnsServers []json.RawMessage,
 	templateOverrides map[string]bool,
@@ -475,8 +444,8 @@ func buildDNSRulesFromOrder(
 	return out
 }
 
-// buildDNSRulesFromText — fallback для callsite'ов с пустым DNSRuleOrder.
-// Зеркало старого rules-блока в SyncDNSFullToStateV6.
+// buildDNSRulesFromText — fallback для callsite'ов с пустым DNSRuleOrder:
+// парсит DNSRulesText как user rules.
 func buildDNSRulesFromText(dnsRulesText string) []state.DNSRule {
 	if dnsRulesText == "" {
 		return nil
@@ -627,8 +596,6 @@ func SyncStateRulesToPresetRefs(rules []state.Rule) []*PresetRefState {
 	}
 	return out
 }
-
-// SyncDNSToStateV6 — УДАЛЕНА в SPEC 056-R-N. Используйте SyncDNSFullToStateV6.
 
 // SyncStateV6ToDNSOverrides — state → UI. Возвращает overrides map из state.DNS
 // (только entries с kind=template, формат map[tag]→enabled).

@@ -158,7 +158,7 @@ Save перезаписывает их в v6 layout.
 trigger: app start / config dirty / explicit rebuild
      │
      ▼
-core/build entry (BuildAndWriteConfig)
+core/build entry (BuildConfig)
      │
      ├─► ResolveDNS(state, template, vars)        — pure func
      │     walk state.dns_options.servers[] kind switch
@@ -169,17 +169,18 @@ core/build entry (BuildAndWriteConfig)
      │
      ├─► ResolveRoute(state, template, vars)      — pure func
      │     walk state.rules[] kind switch
-     │       preset → resolve через template.presets[id].rule (expand + tag prefix)
+     │       preset → resolve через template.presets[id].rules (expand + tag prefix)
      │       inline → emit body.match + outbound
      │       srs    → emit body.srs_url + outbound (downloaded .srs path)
      │
-     ├─► ResolveOutbounds(state, template)        — pure func (SPEC 058)
-     │     walk state.connections.outbounds[]
-     │     для каждой: lookup base by Ref
+     ├─► MergeOutboundUpdates(ob, template)       — pure func (SPEC 058)
+     │     per-entry resolver (UI preview / dialog Edit); build runtime
+     │     зовёт MergeOutboundUpdatesInPlace ниже на весь parserCfg
+     │     для каждой outbound entry: lookup base by Ref (resolveBaseBody)
      │       ref=""           → direct entry, body inline в state
      │       ref="#TEMPLATE#" → template.parser_config.outbounds[tag]
      │       ref=<preset_id>  → template.presets[id].outbounds (mode=add)
-     │     mergeOutboundUpdates(base, Updates[]) → merged body
+     │     applyUpdatesToBase(base, Updates[]) → merged body
      │       preset patches в rule order, USER patch (ref="#USER#") последним
      │     attach metadata: IsDirect / IsTemplate / IsPreset / HasUserPatch /
      │                      HasPresetUpdates / Required / PresetLabel
@@ -205,9 +206,9 @@ MergeDNSSection + MergeRouteSection + MergePresetsIntoRoute
 atomic write: bin/config.json
 ```
 
-**Resolver pattern** — `ResolveDNS` / `ResolveRoute` / `ResolveOutbounds`
-— pure funcs без I/O. UI render и build emit consume один и тот же
-resolved view → нет divergence между preview и финальным config.
+**Resolver pattern** — `ResolveDNS` / `ResolveRoute` (+ `MergeOutboundUpdates`
+для outbounds) — pure funcs без I/O. UI render и build emit consume один и
+тот же resolved view → нет divergence между preview и финальным config.
 
 **Headless vs UI paths.** В UI-сессии `CreateStateFromModel` уже sync'нул
 state перед Save, и build читает только. В headless path'ах

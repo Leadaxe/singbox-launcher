@@ -119,67 +119,6 @@ func TestSyncAllRulesToStateRulesV6_Mixed(t *testing.T) {
 	}
 }
 
-// TestSyncDNSFullToStateV6_Split — SPEC 056-R-N: template tags → kind=template,
-// user-added → kind=user в flat servers[].
-func TestSyncDNSFullToStateV6_Split(t *testing.T) {
-	servers := []json.RawMessage{
-		json.RawMessage(`{"tag":"google_doh","type":"https","enabled":true}`),
-		json.RawMessage(`{"tag":"my-pihole","type":"udp","server":"192.168.1.5","enabled":true}`),
-	}
-	templateTags := map[string]bool{"google_doh": true}
-	cfg := SyncDNSFullToStateV6(servers, "", nil, templateTags)
-
-	var tplGoogle, userPiHole *state.DNSServer
-	for i := range cfg.Servers {
-		s := &cfg.Servers[i]
-		if s.Kind == state.DNSServerKindTemplate && s.Tag == "google_doh" {
-			tplGoogle = s
-		}
-		if s.Kind == state.DNSServerKindUser && s.Tag == "my-pihole" {
-			userPiHole = s
-		}
-	}
-	if tplGoogle == nil || !tplGoogle.Enabled {
-		t.Errorf("google_doh template entry should be enabled: %+v", tplGoogle)
-	}
-	if userPiHole == nil {
-		t.Fatalf("my-pihole user entry missing: %+v", cfg.Servers)
-	}
-	if userPiHole.Body["server"] != "192.168.1.5" {
-		t.Errorf("user body lost server: %+v", userPiHole.Body)
-	}
-	if _, has := userPiHole.Body["enabled"]; has {
-		t.Errorf("enabled should be stripped from user body: %v", userPiHole.Body)
-	}
-}
-
-// TestSyncDNSFullToStateV6_ExplicitOverridesWin — DNSTemplateOverrides приоритетнее
-// чем чтение enabled из raw server.
-func TestSyncDNSFullToStateV6_ExplicitOverridesWin(t *testing.T) {
-	servers := []json.RawMessage{
-		json.RawMessage(`{"tag":"google_doh","type":"https","enabled":false}`),
-	}
-	templateTags := map[string]bool{"google_doh": true}
-	overrides := map[string]bool{"google_doh": true} // явный override Enabled=true
-
-	cfg := SyncDNSFullToStateV6(servers, "", overrides, templateTags)
-	if len(cfg.Servers) != 1 || cfg.Servers[0].Kind != state.DNSServerKindTemplate || !cfg.Servers[0].Enabled {
-		t.Errorf("explicit override should win: %+v", cfg.Servers)
-	}
-}
-
-// TestSyncDNSFullToStateV6_RulesText — user rules парсятся из JSON text.
-func TestSyncDNSFullToStateV6_RulesText(t *testing.T) {
-	rulesText := `{"rules":[{"server":"x","domain_suffix":["a.com"]}]}`
-	cfg := SyncDNSFullToStateV6(nil, rulesText, nil, nil)
-	if len(cfg.Rules) != 1 {
-		t.Fatalf("expected 1 user rule: %+v", cfg.Rules)
-	}
-	if cfg.Rules[0].Kind != state.DNSRuleKindUser || cfg.Rules[0].Body["server"] != "x" {
-		t.Errorf("rule shape: %+v", cfg.Rules[0])
-	}
-}
-
 // TestStableRuleID_FromLegacyRuleState — SPEC 063: identity конвертированного
 // legacy RuleState вычислима через `state.StableRuleID` от resulting state.Rule.
 // Прежняя локальная `stableRuleID` (с префиксом "rule-") удалена; identity

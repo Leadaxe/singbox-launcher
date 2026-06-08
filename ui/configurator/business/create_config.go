@@ -22,9 +22,9 @@ import (
 	"strings"
 
 	"singbox-launcher/core/build"
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	wizardmodels "singbox-launcher/ui/configurator/models"
-	wizardtemplate "singbox-launcher/core/template"
 )
 
 // parsePreviewTemplateDNSDefaults — то же что core_service.parseTemplateDNSDefaultsFromTD,
@@ -159,7 +159,7 @@ func BuildPreviewConfig(model *wizardmodels.WizardModel) (string, error) {
 	)
 	ctx.Preset = build.PresetMergeContext{
 		Presets:             model.TemplateData.Presets,
-		Rules:             rulesV6,
+		Rules:               rulesV6,
 		DNS:                 dnsV6,
 		SrsCachedPaths:      build.CollectSrsCachedPaths(rulesV6, model.ExecDir),
 		ExecDir:             model.ExecDir,
@@ -215,33 +215,6 @@ func routeConfigFromModel(model *wizardmodels.WizardModel) build.RouteConfig {
 		DefaultDomainResolver:     model.DefaultDomainResolver,
 		OmitDefaultDomainResolver: model.DefaultDomainResolverUnset,
 	}
-}
-
-// MergeRouteSection — back-compat шим над `build.MergeRouteSection` для
-// существующих generator_test.go тестов wizard-side. Production-код больше
-// эту функцию не использует — `core/build.MergeRouteSection` вызывается
-// напрямую из orchestrator'а через `build.RouteConfig`.
-//
-// Deprecated: использовать `build.MergeRouteSection(raw, build.RouteConfig{...})` напрямую.
-// Обёртка останется до тех пор, пока тесты не перенесены в `core/build`.
-func MergeRouteSection(raw json.RawMessage, customRules []*wizardmodels.RuleState, finalOutbound string, execDir string, defaultDomainResolver string, omitDefaultDomainResolver bool) (json.RawMessage, error) {
-	rules := make([]build.RouteRule, 0, len(customRules))
-	for _, rs := range customRules {
-		rules = append(rules, build.RouteRule{
-			Enabled:     rs.Enabled,
-			Outbound:    wizardmodels.GetEffectiveOutbound(rs),
-			PrimaryRule: rs.Rule.Rule,
-			Rules:       rs.Rule.Rules,
-			RuleSets:    rs.Rule.RuleSets,
-		})
-	}
-	return build.MergeRouteSection(raw, build.RouteConfig{
-		Rules:                     rules,
-		FinalOutbound:             finalOutbound,
-		ExecDir:                   execDir,
-		DefaultDomainResolver:     defaultDomainResolver,
-		OmitDefaultDomainResolver: omitDefaultDomainResolver,
-	})
 }
 
 // effectiveTemplateConfig returns the merged top-level config map (after

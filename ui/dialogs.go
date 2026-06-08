@@ -5,9 +5,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/widget"
-
-	"singbox-launcher/internal/locale"
 )
 
 // ShowError shows an error dialog to the user
@@ -43,14 +40,4 @@ func ShowConfirm(window fyne.Window, title, message string, onConfirm func(bool)
 	fyne.Do(func() {
 		dialog.ShowConfirm(title, message, onConfirm, window)
 	})
-}
-
-// ShowErrorBanner shows an error banner (widget.Entry with error styling)
-// This can be used for inline error display in forms
-func ShowErrorBanner(message string) *widget.Entry {
-	entry := widget.NewEntry()
-	entry.SetText(locale.T("dialog.error_prefix") + message)
-	entry.Disable()
-	entry.Wrapping = fyne.TextWrapWord
-	return entry
 }

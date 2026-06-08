@@ -49,7 +49,7 @@
 - **TestLogDuplicateTagStatistics** - логирование статистики дубликатов
 - **TestProcessProxySource_RealWorldExamples** - обработка реальных примеров
 
-### 4. Тесты визарда (`ui/wizard/business/`)
+### 4. Тесты конфигуратора (`ui/configurator/business/`)
 
 Покрывают логику мастера конфигурации:
 
@@ -121,7 +121,7 @@ chmod +x test.sh
 .\build\test_windows.bat nopause ./core
 
 # Тесты визарда (требуют CGO)
-.\build\test_windows.bat nopause ./ui/wizard/business
+.\build\test_windows.bat nopause ./ui/configurator/business
 
 # Интеграционные тесты (требуют CGO)
 .\build\test_windows.bat nopause ./core
@@ -268,7 +268,7 @@ go test ./core/config/subscription -v -run TestParseNode_VLESS
 ## Примечания
 
 - Для быстрого запуска unit-тестов используйте `test.bat` (Windows) или `test.sh` (macOS/Linux)
-- Тесты визарда (`ui/wizard/business`) и интеграционные тесты (`core/integration_test.go`) требуют CGO из-за зависимостей от Fyne
+- Тесты конфигуратора (`ui/configurator/business`) и интеграционные тесты (`core/integration_test.go`) требуют CGO из-за зависимостей от Fyne
 - Интеграционные тесты могут требовать сетевого доступа для проверки подписок
 - Тесты используют временные файлы и директории для изоляции
 - Батник автоматически устанавливает правильные переменные окружения (CGO_ENABLED, PATH, GOROOT)
@@ -287,7 +287,7 @@ go test ./core/config/subscription -v -run TestParseNode_VLESS
 ./test.sh
 
 # Везде
-go test ./core/config/... ./internal/wizardsync/... ./ui/wizard/business/... ./ui/wizard/models/...
+go test ./core/config/... ./internal/wizardsync/... ./ui/configurator/business/... ./ui/configurator/models/...
 ```
 
 **Полное тестирование (с CGO):**

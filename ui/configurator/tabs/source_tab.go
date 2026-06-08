@@ -7,7 +7,7 @@
 // Каждый таб визарда имеет свою отдельную ответственность и логику UI.
 //
 // Используется в:
-//   - wizard.go - при создании окна визарда, вызывается CreateSourceTab(presenter)
+//   - configurator.go - при создании окна конфигуратора вызывается CreateSourcesTab(presenter)
 //
 // Взаимодействует с:
 //   - presenter - все действия пользователя (нажатия кнопок, ввод текста) обрабатываются через методы presenter
@@ -31,7 +31,6 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
-	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
@@ -120,7 +119,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	urlEntrySizeRect.SetMinSize(fyne.NewSize(0, 60)) // Width 900px, height ~3 lines (approx 20px per line)
 	// Wrap in Max container with Rectangle to fix size
 	// Scroll container will be limited by this size and show scrollbars when content doesn't fit
-	urlEntryWithSize := container.NewMax(
+	urlEntryWithSize := container.NewStack(
 		urlEntrySizeRect,
 		urlEntryScroll,
 	)
@@ -171,7 +170,6 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 				srcPtr := &m.Sources[sourceIndex]
 				src := *srcPtr
-				_ = subscription.IsSubscriptionURL // keep import used by classifyInputLines elsewhere
 
 				isSubscription := src.Type == corestate.SourceTypeSubscription
 				meta := src.Meta
@@ -556,7 +554,7 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 
 	minList := canvas.NewRectangle(color.Transparent)
 	minList.SetMinSize(fyne.NewSize(0, 320))
-	listFill := container.NewMax(minList, listRow)
+	listFill := container.NewStack(minList, listRow)
 
 	content := container.NewBorder(
 		container.NewVBox(topRow, widget.NewSeparator()),
@@ -621,7 +619,7 @@ func CreateOutboundsAndParserConfigTab(presenter *wizardpresentation.WizardPrese
 	parserConfigScroll.Direction = container.ScrollBoth
 	parserHeightRect := canvas.NewRectangle(color.Transparent)
 	parserHeightRect.SetMinSize(fyne.NewSize(0, 200)) // ~10 lines
-	parserConfigWithHeight := container.NewMax(
+	parserConfigWithHeight := container.NewStack(
 		parserHeightRect,
 		parserConfigScroll,
 	)
@@ -710,11 +708,6 @@ func CreateOutboundsAndParserConfigTab(presenter *wizardpresentation.WizardPrese
 	scrollContainer.SetMinSize(fyne.NewSize(0, 620))
 
 	return scrollContainer
-}
-
-// CreateSourceTab is kept for backward compatibility and currently returns the Sources tab content.
-func CreateSourceTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObject {
-	return CreateSourcesTab(presenter)
 }
 
 // refreshOneSourceFromUI — SPEC 052 phase 7: per-source Refresh button click handler.

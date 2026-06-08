@@ -138,13 +138,6 @@ type SRSEntry struct {
 	URL string
 }
 
-// AllSRSDownloaded проверяет, что все remote SRS для правила (по текущим правилам отбора)
-// скачаны локально. Используется для встроенных правил, основанных на шаблоне.
-func AllSRSDownloaded(execDir string, ruleSets []json.RawMessage) bool {
-	entries := GetSRSEntries(ruleSets)
-	return AllSRSDownloadedForEntries(execDir, entries)
-}
-
 // AllSRSDownloadedForEntries проверяет, что для всех переданных SRS-энтри существуют локальные файлы.
 // Используется и для встроенных, и для пользовательских SRS-правил.
 func AllSRSDownloadedForEntries(execDir string, entries []SRSEntry) bool {
@@ -199,6 +192,7 @@ func GetSRSEntries(ruleSets []json.RawMessage) []SRSEntry {
 //   - https://raw.githubusercontent.com/...;
 //   - любые другие https/http-хосты;
 //   - локальные пути и нестандартные схемы, если они уже попали в конфиг)
+//
 // возвращаются без изменений. Это позволяет поддерживать как удалённые, так и локальные
 // SRS-источники, не навязывая жёстких ограничений по схеме/хосту.
 func normalizeSRSURL(rawURL string) string {

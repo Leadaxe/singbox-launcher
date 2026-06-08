@@ -512,7 +512,7 @@ func showSourceEditWindow(
 	previewStatus := widget.NewLabel(locale.T("wizard.source.preview_loading"))
 	previewStatus.Wrapping = fyne.TextWrapOff
 	previewStatusScroll := container.NewHScroll(previewStatus)
-	previewListHost := container.NewMax()
+	previewListHost := container.NewStack()
 	previewGutter := components.NewScrollGutter()
 	previewBox := container.NewBorder(previewStatusScroll, nil, nil, previewGutter, previewListHost)
 
@@ -696,7 +696,7 @@ func showSourceEditWindow(
 	jsonEntry := widget.NewMultiLineEntry()
 	jsonEntry.Wrapping = fyne.TextWrapOff
 	jsonEntry.OnChanged = func(string) { /* display-only; changes are not saved */ }
-	jsonScroll := container.NewVScroll(container.NewMax(
+	jsonScroll := container.NewVScroll(container.NewStack(
 		canvas.NewRectangle(color.Transparent),
 		jsonEntry,
 	))

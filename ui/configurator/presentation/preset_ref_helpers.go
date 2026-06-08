@@ -163,7 +163,7 @@ func populateUserDNSFromState(model *wizardmodels.WizardModel, dns state.DNSOpti
 		if _, dup := existingTags[tag]; dup {
 			continue
 		}
-		// Reconstruct wizard JSON shape (inverse of SyncDNSFullToStateV6's
+		// Reconstruct wizard JSON shape (inverse of syncDNSServersOnly's
 		// kind=user branch in preset_ref_sync.go): tag + enabled top-level,
 		// плюс flatten Body. Body уже не содержит kind/ref/enabled
 		// (Unmarshal в DNSServer их выкидывает), но защищаемся от tag-

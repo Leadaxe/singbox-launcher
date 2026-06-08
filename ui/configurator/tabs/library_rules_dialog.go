@@ -144,7 +144,7 @@ func ShowRulesLibraryDialog(p *wizardpresentation.WizardPresenter, showAddRuleDi
 	scroll := container.NewVScroll(scrollInner)
 	minH := canvas.NewRectangle(color.Transparent)
 	minH.SetMinSize(fyne.NewSize(0, 300))
-	scrollBlock := container.NewMax(minH, scroll)
+	scrollBlock := container.NewStack(minH, scroll)
 
 	hint := widget.NewLabel(locale.T("wizard.rules.library_hint"))
 	hint.Wrapping = fyne.TextWrapWord
@@ -173,7 +173,7 @@ func ShowRulesLibraryDialog(p *wizardpresentation.WizardPresenter, showAddRuleDi
 	// Размер задаём через padded wrapper — PopUp растягивается под content.
 	sizer := canvas.NewRectangle(color.Transparent)
 	sizer.SetMinSize(fyne.NewSize(520, 440))
-	content := container.NewMax(sizer, body)
+	content := container.NewStack(sizer, body)
 
 	popup = widget.NewModalPopUp(content, win.Canvas())
 	fynetooltip.AddPopUpToolTipLayer(popup)

@@ -212,11 +212,6 @@ type ResolvedVar struct {
 	List   []string
 }
 
-// IsList true для text_list с данными.
-func (v ResolvedVar) IsList() bool {
-	return v.List != nil
-}
-
 // GenerateSecret возвращает случайную строку из 16 символов [A-Za-z0-9].
 func GenerateSecret() (string, error) {
 	return generateSecret(SecretReader)

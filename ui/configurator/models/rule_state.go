@@ -18,7 +18,7 @@
 //
 // Используется в:
 //   - models/wizard_model.go - WizardModel.CustomRules ([]*RuleState)
-//   - business/create_config.go - MergeRouteSection использует RuleState для слияния правил
+//   - business/create_config.go - buildRouteConfig использует RuleState для слияния правил
 //   - presentation/presenter_methods.go - RefreshOutboundOptions обновляет outbounds для RuleState
 //   - dialogs/add_rule_dialog.go - работает с RuleState при добавлении/редактировании правил
 package models

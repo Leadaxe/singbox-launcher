@@ -1,9 +1,8 @@
 // Package build — File preset_outbounds.go.
 //
 // SPEC 057-R-N (current): preset outbound binding живёт в state directly
-// через Ref/Updates fields на OutboundConfig. Pre-patch функция
-// ApplyPresetOutboundsToParserConfig (SPEC 056) удалена; runtime path
-// использует SyncOutboundsWithActivePresets (sync_outbounds.go) +
+// через Ref/Updates fields на OutboundConfig. Runtime path использует
+// SyncOutboundsWithActivePresets (sync_outbounds.go) +
 // MergeOutboundUpdatesInPlace (resolve_outbounds.go).
 //
 // Этот файл оставляет вспомогательные helper'ы:
@@ -51,11 +50,6 @@ type presetOutboundEntry struct {
 	Config   configtypes.OutboundConfig
 	PresetID string
 }
-
-// SPEC 057-R-N: ApplyPresetOutboundsToParserConfig + PresetOutboundAddTags
-// удалены. Runtime использует SyncOutboundsWithActivePresets (sync_outbounds.go)
-// + MergeOutboundUpdatesInPlace (resolve_outbounds.go). UI читает preset
-// binding напрямую через OutboundConfig.Ref/Updates.
 
 // ExpandPresetOutbounds разворачивает preset.Outbounds[] в []presetOutboundEntry
 // с уже применённой substitution @var и if/if_or фильтрацией.

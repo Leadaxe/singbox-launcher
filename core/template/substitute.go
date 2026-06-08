@@ -99,10 +99,6 @@ func substituteVarsInJSONInternal(data []byte, vars []TemplateVar, resolved map[
 	return out, unresolved, err
 }
 
-func substituteWalk(v *interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string) {
-	substituteWalkCtx(v, varTypes, resolved, goos, goarch, nil)
-}
-
 // substituteWalkCtx — internal walker с опциональным sink'ом для unresolved @var
 // (используется SubstituteVarsInJSONStrict, SPEC 067 Phase 8). nil sink ==
 // legacy lenient behavior (empty string + warn log).
@@ -122,7 +118,7 @@ func substituteWalkCtx(v *interface{}, varTypes map[string]string, resolved map[
 			switch k {
 			case "#if":
 				handleIfMapSpreadCtx(x, raw, varTypes, resolved, goos, goarch, unresolvedSink)
-				// handleIfMapSpread always deletes "#if" itself.
+				// handleIfMapSpreadCtx always deletes "#if" itself.
 			default:
 				debuglog.WarnLog("substitute: unknown control-construct %q — dropping", k)
 				delete(x, k)
@@ -244,12 +240,8 @@ func replacementForPlaceholderCtx(name string, varTypes map[string]string, resol
 // #if construct (SPEC 067)
 // ---------------------------------------------------------------------------
 
-// handleIfMapSpread evaluates the #if construct in map-spread mode and merges
+// handleIfMapSpreadCtx evaluates the #if construct in map-spread mode and merges
 // the selected branch's fields into parent. Always deletes the "#if" key.
-func handleIfMapSpread(parent map[string]interface{}, rawBody interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string) {
-	handleIfMapSpreadCtx(parent, rawBody, varTypes, resolved, goos, goarch, nil)
-}
-
 func handleIfMapSpreadCtx(parent map[string]interface{}, rawBody interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string, unresolvedSink *[]string) {
 	defer delete(parent, "#if")
 	body, ok := rawBody.(map[string]interface{})
@@ -273,13 +265,9 @@ func handleIfMapSpreadCtx(parent map[string]interface{}, rawBody interface{}, va
 	}
 }
 
-// handleIfArrayElement evaluates the #if construct in array-element mode.
+// handleIfArrayElementCtx evaluates the #if construct in array-element mode.
 // take=false means drop element from array; take=true means include branch
 // (substituted) at this index.
-func handleIfArrayElement(body map[string]interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string) (interface{}, bool) {
-	return handleIfArrayElementCtx(body, varTypes, resolved, goos, goarch, nil)
-}
-
 func handleIfArrayElementCtx(body map[string]interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string, unresolvedSink *[]string) (interface{}, bool) {
 	branch, take := selectIfBranch(body, varTypes, resolved, goos, goarch)
 	if !take {

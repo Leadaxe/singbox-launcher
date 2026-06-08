@@ -29,10 +29,9 @@ type WizardStateFile = corestate.State
 // Алиасы на типы корневой модели — чтобы wizardmodels.X-обращения
 // сохранили знакомую сигнатуру.
 type (
-	ConfigParam                  = corestate.ConfigParam
-	PersistedSettingVar          = corestate.SettingVar
-	PersistedSelectableRuleState = corestate.SelectableRuleState
-	PersistedCustomRule          = corestate.CustomRule
+	ConfigParam         = corestate.ConfigParam
+	PersistedSettingVar = corestate.SettingVar
+	PersistedCustomRule = corestate.CustomRule
 	// SPEC 060: PersistedDNSState is v5-legacy DNSOptions shape (with
 	// []json.RawMessage Servers/Rules). After collapse, core/state.DNSOptions
 	// is the v6 canonical shape — so PersistedDNSState points at the renamed
@@ -123,15 +122,6 @@ func PersistedCustomRuleToRuleState(pcr *PersistedCustomRule) *RuleState {
 		Rule:             tsr,
 		Enabled:          pcr.Enabled,
 		SelectedOutbound: pcr.SelectedOutbound,
-	}
-}
-
-// ToPersistedSelectableRuleState — конвертер RuleState (UI) → core/state форма.
-func ToPersistedSelectableRuleState(ruleState *RuleState) PersistedSelectableRuleState {
-	return PersistedSelectableRuleState{
-		Label:            ruleState.Rule.Label,
-		Enabled:          ruleState.Enabled,
-		SelectedOutbound: ruleState.SelectedOutbound,
 	}
 }
 

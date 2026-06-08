@@ -16,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
@@ -23,7 +24,6 @@ import (
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
-	wizardtemplate "singbox-launcher/core/template"
 )
 
 func setTooltip(o fyne.CanvasObject, text string) {
@@ -264,8 +264,8 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	rulesScroll := container.NewScroll(guiState.DNSRulesEntry)
 	rulesScroll.Direction = container.ScrollBoth
 	rulesHeight := canvas.NewRectangle(color.Transparent)
-		rulesHeight.SetMinSize(fyne.NewSize(0, 170)) // was 120; +50 px for rules JSON area
-	rulesBlock := container.NewMax(rulesHeight, rulesScroll)
+	rulesHeight.SetMinSize(fyne.NewSize(0, 170)) // was 120; +50 px for rules JSON area
+	rulesBlock := container.NewStack(rulesHeight, rulesScroll)
 
 	rulesLabel := widget.NewLabel(locale.T("wizard.dns.label_rules"))
 	rulesLabel.Importance = widget.MediumImportance
@@ -307,7 +307,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	rawRulesScroll.Direction = container.ScrollBoth
 	rawRulesHeight := canvas.NewRectangle(color.Transparent)
 	rawRulesHeight.SetMinSize(fyne.NewSize(0, 200))
-	rawRulesBlock := container.NewMax(rawRulesHeight, rawRulesScroll)
+	rawRulesBlock := container.NewStack(rawRulesHeight, rawRulesScroll)
 	rawRulesBlock.Hide() // list view by default
 
 	// rawJSONMode — toggle между list view и raw-JSON edit. Reflected
@@ -570,7 +570,7 @@ func dnsServerDialogJSONArea(entry *widget.Entry) fyne.CanvasObject {
 	scroll.Direction = container.ScrollBoth
 	minH := canvas.NewRectangle(color.Transparent)
 	minH.SetMinSize(fyne.NewSize(0, dnsServerDialogEntryMinHeight))
-	return container.NewMax(minH, scroll)
+	return container.NewStack(minH, scroll)
 }
 
 func applyDNSServerJSON(p *wizardpresentation.WizardPresenter, w fyne.Window, text string, editIndex int) bool {

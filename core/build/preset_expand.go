@@ -481,10 +481,6 @@ func isDNSRuleEmpty(m map[string]interface{}, _ map[string]bool) bool {
 	return matchFields == 0
 }
 
-// collectConsumedBundledDNSTags — УДАЛЕНА в SPEC 056-R-N follow-up.
-// Consumption-filter заменён per-server enable toggle в state.DNS.Servers
-// (см. ResolveDNS + MergePresetsIntoDNS).
-
 // deepCopy — JSON round-trip копия любой структуры.
 func deepCopy(in interface{}) (interface{}, error) {
 	raw, err := json.Marshal(in)

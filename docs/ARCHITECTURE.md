@@ -194,10 +194,10 @@ singbox-launcher/
 │       │   │   - matchesFilter() / matchesPattern()         # Literal / regex / negation matching
 │       │   │   - PreviewSelectorNodes()                     # Фильтрация для UI preview
 │       │   │
-│       ├── updater.go          # Обновление конфигурации
-│       │   │   - UpdateConfigFromSubscriptions()        # Обновление из подписок (outbounds + endpoints)
-│       │   │   - writeToConfig()                        # Запись в config.json (@ParserSTART/E, @ParserSTART_E/END_E)
-│       │   │
+│       │   (updater.go удалён: cache-refresh pipeline переехал в
+│       │    core/config_service.go — метод ConfigService.UpdateConfigFromSubscriptions();
+│       │    config.json теперь пишется через build pipeline, не writeToConfig)
+│       │
 │       ├── parser/             # Парсинг ParserConfig блока
 │       │   ├── factory.go      # Фабрика ParserConfig
 │       │   │   │   - ExtractParserConfig()                # Извлечение ParserConfig
@@ -283,10 +283,8 @@ singbox-launcher/
 │   │   │   - ShowConfirm()                              # Показать подтверждение
 │   │   │   - ShowCustom()                               # Кастомный диалог
 │   │   │
-│   ├── error_banner.go         # Баннеры ошибок
-│   │   │   - NewErrorBanner()                           # Создание баннера ошибки
-│   │   │   - ErrorBanner struct                         # Структура баннера
-│   │   │
+│   │   (error_banner.go удалён в SPEC 068 — ошибки показываются через dialogs.go)
+│   │
 │   └── configurator/           # Мастер конфигурации
 │       ├── configurator.go     # Точка входа (ShowConfigWizard)
 │       │   │   - ShowConfigWizard()                     # Точка входа визарда

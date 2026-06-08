@@ -12,7 +12,7 @@
 
 1. **VPN observability platform.** Traffic Profiler + Debug API дают полную видимость трафика и состояния — за 30 секунд видно, какой outbound выбрал router, какой DNS resolve дал какой IP, по какому правилу прошло соединение.
 
-2. **Headless mode из коробки.** Bearer-auth HTTP API из 28 endpoints, документированный MCP integration path (SPEC 038 §6.5). Пригоден для DevOps-скриптов и AI-агентов: Claude через MCP читает `/state`, переключает прокси, рестартит engine — без открытия UI.
+2. **Headless mode из коробки.** Bearer-auth HTTP API из 25 endpoints (24 protected + unauthenticated `/ping`), документированный MCP integration path (SPEC 038 §6.5). Пригоден для DevOps-скриптов и AI-агентов: Claude через MCP читает `/state`, переключает прокси, рестартит engine — без открытия UI.
 
 3. **Configuration overlay.** State хранит ссылки на community template + diff пользовательских изменений (SPEC 058). Bump шаблона приносит обновления автоматически, персональные правки переезжают сверху. Паттерн дотфайл-менеджеров (chezmoi / yadm), применённый к VPN-конфигам.
 
@@ -104,7 +104,7 @@ Per-rule action: `route(outbound)`, `route-options`, `reject`, `direct`.
 `core/state/rule_types.go::SrsBody{Name, SrsURL, Outbound}` + SPEC 014 + SPEC 020 (local download). Лаунчер:
 
 - кеширует `.srs` файлы в `bin/rule_sets/`
-- запрещает `type: remote` в финальном `config.json` (`convertRuleSetToLocalRequired()` в `ui/wizard/business/create_config.go`, SPEC 045 фаза 9) — иначе sing-box на cold-start пытается скачать rule-set через VPN-прокси, который ещё не поднят, → fatal. Invariant ловит реальный bug
+- запрещает `type: remote` в финальном `config.json` (`convertRuleSetToLocalRequired()` в `core/build/route_merge.go`, SPEC 045 фаза 9) — иначе sing-box на cold-start пытается скачать rule-set через VPN-прокси, который ещё не поднят, → fatal. Invariant ловит реальный bug
 - авто-скачивает SRS на открытие configurator (если файл отсутствует)
 - показывает badge ⚠ если SRS file missing
 
@@ -256,7 +256,7 @@ Per-subscription observability: «у меня осталось 23 GB, до 2027-
 
 Файлы: `core/debugapi/server.go` (345 строк), `state_endpoints.go`, `traffic_endpoints.go`, `snapshot.go`, `SPECS/038-F-C-DEBUG_API/SPEC.md`, `SPECS/050-F-N-DEBUG_API_STATE_MUTATIONS/SPEC.md`.
 
-### Поверхность API — 28 endpoints в 5 группах
+### Поверхность API — 25 endpoints (24 protected + unauthenticated `/ping`) в 6 группах
 
 | Группа | Что покрывает |
 | --- | --- |
@@ -392,7 +392,7 @@ SRE-фичи (auto-update on VPN-event, SPEC 052) и observability (UI icon Core
 
 ## Atomic file writes (SPEC 041)
 
-`core/config/updater.go`, `internal/locale/settings.go`, `ui/wizard/business/saver.go`. Паттерн `stage → rename` с `.tmp`/`.swap` суффиксами. На macOS/Linux — POSIX-rename атомарен; на Windows — через `MoveFileEx` (Go 1.22+).
+`core/config_service.go`, `internal/locale/settings.go`, `core/state/save.go`. Паттерн `stage → rename` с `.tmp`/`.swap` суффиксами. На macOS/Linux — POSIX-rename атомарен; на Windows — через `MoveFileEx` (Go 1.22+).
 
 ## Power-events
 

@@ -45,17 +45,17 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/config"
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
-	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
+	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizarddialogs "singbox-launcher/ui/configurator/dialogs"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 	wizardtabs "singbox-launcher/ui/configurator/tabs"
-	wizardtemplate "singbox-launcher/core/template"
 )
 
 // ShowConfigWizard opens the configuration wizard window.
@@ -275,12 +275,12 @@ func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *w
 	// We need to create a wrapper that includes createRulesTab to avoid circular import
 	var showAddRuleDialogWrapper func(*wizardpresentation.WizardPresenter, *wizardmodels.RuleState, int)
 	var createRulesTabWrapper func(*wizardpresentation.WizardPresenter) fyne.CanvasObject
-	
+
 	// Define createRulesTabWrapper first (it depends on showAddRuleDialogWrapper)
 	createRulesTabWrapper = func(p *wizardpresentation.WizardPresenter) fyne.CanvasObject {
 		return wizardtabs.CreateRulesTab(p, showAddRuleDialogWrapper)
 	}
-	
+
 	// Define showAddRuleDialogWrapper (it depends on createRulesTabWrapper)
 	showAddRuleDialogWrapper = func(p *wizardpresentation.WizardPresenter, editRule *wizardmodels.RuleState, ruleIndex int) {
 		wizarddialogs.ShowAddRuleDialog(p, editRule, ruleIndex, createRulesTabWrapper)
@@ -493,7 +493,7 @@ func setWindowContent(guiState *wizardpresentation.GUIState, wizardWindow fyne.W
 		tabs,                      // center
 	)
 	if guiState.ChildWindowsOverlay != nil {
-		content = container.NewMax(content, guiState.ChildWindowsOverlay)
+		content = container.NewStack(content, guiState.ChildWindowsOverlay)
 	}
 	wizardWindow.SetContent(fynetooltip.AddWindowToolTipLayer(content, wizardWindow.Canvas()))
 }
@@ -542,7 +542,7 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 			ac := core.GetController()
 			fileServiceAdapter := &wizardbusiness.FileServiceAdapter{FileService: ac.FileService}
 			model := presenter.Model()
-			
+
 			// Если TemplateData ещё не загружен, загружаем его
 			if model.TemplateData == nil {
 				templateLoader := &wizardbusiness.DefaultTemplateLoader{}
@@ -555,13 +555,13 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 				}
 				model.TemplateData = templateData
 			}
-			
+
 			// Загружаем конфигурацию из config.json или шаблона
 			loadConfigFromFile(presenter, fileServiceAdapter, model.TemplateData, model, wizardWindow)
-			
+
 			// Сбрасываем флаг изменений, так как это новая конфигурация
 			presenter.MarkAsSaved()
-			
+
 			// Синхронизируем GUI
 			presenter.SyncModelToGUI()
 			return

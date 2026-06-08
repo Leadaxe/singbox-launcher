@@ -363,10 +363,6 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-// coreDNSServersFromTemplate — УДАЛЕНА в SPEC unify. Все DNS-серверы
-// (включая required: local_dns_resolver/direct_dns_resolver) живут в
-// template.dns_options.servers[]. Locked entries имеют `required: true`.
-
 // templateDNSLibraryFromTemplate — template.dns_options.servers[] (библиотека).
 func templateDNSLibraryFromTemplate(td *template.TemplateData) []map[string]interface{} {
 	if td == nil || len(td.DNSOptionsRaw) == 0 {

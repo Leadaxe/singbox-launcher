@@ -9,11 +9,6 @@ import (
 	"singbox-launcher/core/template"
 )
 
-// SPEC 057-R-N: ApplyPresetOutboundsToParserConfig removed. Fixtures
-// makeParserCfg / makePresetRule + TestApply_* tests deleted. Lifecycle
-// coverage moved to sync_outbounds_test.go (preset add/remove + Updates
-// stack) and resolve_outbounds_test.go (merge of base+updates).
-
 // === applyOutboundUpdate (typed field-merge) ================================
 
 func TestApplyOutboundUpdate_FiltersReplace(t *testing.T) {

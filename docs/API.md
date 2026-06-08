@@ -1,6 +1,6 @@
 # Debug API
 
-Локальный HTTP API на `127.0.0.1`, bearer-auth, выключен по умолчанию. **24 endpoint'а** в 6 группах: health/info, state read, state write, actions, traffic profiler, snapshot. Используется для автоматизации (bash + curl), MCP-обёрток для AI-агентов, CI/CD-валидации шаблонов, headless-deployment, и для одной кнопки **Copy snapshot** в Diagnostics (это тот же `/debug/snapshot`).
+Локальный HTTP API на `127.0.0.1`, bearer-auth, выключен по умолчанию. **25 endpoint'ов** (24 protected + unauthenticated `/ping`) в 6 группах: health/info, state read, state write, actions, traffic profiler, snapshot. Используется для автоматизации (bash + curl), MCP-обёрток для AI-агентов, CI/CD-валидации шаблонов, headless-deployment, и для одной кнопки **Copy snapshot** в Diagnostics (это тот же `/debug/snapshot`).
 
 > Source of truth: код `core/debugapi/`. Этот документ — generated-style сводка из реальных handler-ов; SPEC 038 описывает оригинальный дизайн и осталась как историческая референс.
 

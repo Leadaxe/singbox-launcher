@@ -247,7 +247,7 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 						bodyEntry.SetText(string(display))
 					}
 				}
-				bodyEntryScroll := container.NewVScroll(container.NewMax(
+				bodyEntryScroll := container.NewVScroll(container.NewStack(
 					canvas.NewRectangle(transparentColor()),
 					bodyEntry,
 				))

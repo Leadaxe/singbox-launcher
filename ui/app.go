@@ -209,11 +209,6 @@ func (a *App) registerShortcuts() {
 	})
 }
 
-// GetTabs returns the tabs container
-func (a *App) GetTabs() *container.AppTabs {
-	return a.tabs
-}
-
 // GetContent returns the root content for the main window (tabs alone when
 // the overlay is disabled, tabs+overlay when enabled — see
 // `wizardOverlayEnabled`).
@@ -222,16 +217,6 @@ func (a *App) GetContent() fyne.CanvasObject {
 		return a.content
 	}
 	return a.tabs
-}
-
-// GetWindow returns the main window
-func (a *App) GetWindow() fyne.Window {
-	return a.window
-}
-
-// GetController returns the core controller
-func (a *App) GetController() *core.AppController {
-	return a.core
 }
 
 // updateClashAPITabState — SPEC 064 update: tab **всегда** доступна.

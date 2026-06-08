@@ -609,7 +609,7 @@ func ShowEditDialog(
 	formWithGap := container.NewBorder(nil, nil, nil, rightGap, form)
 	widthSpacer := canvas.NewRectangle(color.Transparent)
 	widthSpacer.SetMinSize(fyne.NewSize(400, 0))
-	scrollContent := container.NewMax(widthSpacer, formWithGap)
+	scrollContent := container.NewStack(widthSpacer, formWithGap)
 	dialogScroll := container.NewScroll(scrollContent)
 	dialogScroll.SetMinSize(fyne.NewSize(400, 400))
 
