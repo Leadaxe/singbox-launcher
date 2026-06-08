@@ -32,11 +32,12 @@
 3. Tooltip-дедуп (`SetToolTipSafe`) и UI-сплиты — без видимых изменений (тот же UI).
 
 ### Отложено + задокументировано (designed targets, ADR в ARCHITECTURE.md)
-- ~~**dual-state elimination** (ADR-070-2)~~ ✅ **СДЕЛАНО** — `43a5f11`. (1-я автопопытка
-  была кривой и откачена; 2-я — полная: canonical Rules/DNS = единственная stored truth,
-  legacy через on-demand projections, read-time migration shim. build+vet+full test зелёные,
-  включая golden config-output.) **НО нужен твой GUI round-trip смоук-тест** (см. ниже) —
-  автотесты не покрывают UI load/save round-trip; 2 нюанса поведения в DNS-restore.
+- **dual-state elimination** (ADR-070-2) — `43a5f11` СДЕЛАН и затем **ОТКАЧЕН** `a58a176`.
+  GUI-тест юзера нашёл регресс: **не сохраняются DNS-тогглы серверов и
+  default_domain_resolver** (UI save/restore round-trip, ровно те 2 нюанса, что я флагал;
+  автотесты этот путь не покрывают). Откатил целиком — DNS-поведение вернулось к рабочему.
+  Вывод подтверждён эмпирически: dual-state нельзя без полного UI save/restore переписывания
+  DNS-пути + ручного round-trip теста. Остаётся как supervised-таргет (ADR-070-2 в докках).
 - **controller field-extraction** (ADR-070-7) — 113 полей/4 mutex, риск дедлоков.
 - **полный callback→event retirement** (ADR-070-3) — нужен GUI-smoke; сделан только
   ConfigBuilt-кусок.
