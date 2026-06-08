@@ -22,6 +22,7 @@ import (
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core"
+	"singbox-launcher/core/events"
 	"singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
@@ -135,10 +136,28 @@ func CreateCoreDashboardTab(ac *core.AppController) fyne.CanvasObject {
 		})
 	}
 
-	// Регистрируем callback для обновления статуса конфига
+	// Регистрируем callback для обновления статуса конфига.
+	// SPEC 047 phase 6: этот legacy-callback ещё дёргается из UI-путей
+	// (configurator Save, dashboard Rebuild/Update/state-switch), поэтому
+	// поле остаётся. Но core-пути (rebuild.go / config_service.go) больше
+	// его не зовут — они публикуют events.ConfigBuilt, который ловит
+	// подписчик ниже. См. SUB-TASK 3 (SPEC 070).
 	tab.controller.UIService.UpdateConfigStatusFunc = func() {
 		fyne.Do(func() {
 			tab.updateConfigInfo()
+		})
+	}
+
+	// SPEC 047 phase 6: config-status UI refresh теперь приходит через
+	// EventBus. RebuildConfigIfDirty (rebuild.go) и UpdateConfigFromSubscriptions
+	// (config_service.go) публикуют events.ConfigBuilt из core-goroutine'ы; здесь
+	// мы делаем тот же refresh, что раньше делал прямой UpdateConfigStatusFunc
+	// callback. Обёрнуто в fyne.Do — событие приходит не из UI-потока.
+	if tab.controller.EventBus != nil {
+		tab.controller.EventBus.Subscribe(events.ConfigBuilt, func(_ events.Event) {
+			fyne.Do(func() {
+				tab.updateConfigInfo()
+			})
 		})
 	}
 

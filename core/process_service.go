@@ -314,15 +314,19 @@ func (svc *ProcessService) onPrivilegedScriptExited() {
 	ac.SingboxPrivilegedSingboxPID = 0
 	ac.SingboxPrivilegedPIDFile = ""
 	ac.RunningState.Set(false)
-	if ac.StoppedByUser {
+
+	// SPEC 070: shared crash/restart decision. Privileged путь не имеет err
+	// (скрипт ждёт sing-box; cmd.Wait отсутствует) → cleanExit=false, поэтому
+	// actionClean здесь не возникает.
+	action, newAttempts := decideCrashAction(ac.StoppedByUser, ac.RestartRequestedByUser, false, ac.ConsecutiveCrashAttempts, restartAttempts)
+	ac.ConsecutiveCrashAttempts = newAttempts
+	switch action {
+	case actionStoppedByUser:
 		ac.StoppedByUser = false
-		ac.ConsecutiveCrashAttempts = 0
 		debuglog.InfoLog("onPrivilegedScriptExited: Stopped by user.")
 		return
-	}
-	if ac.RestartRequestedByUser {
+	case actionUserRestart:
 		ac.RestartRequestedByUser = false
-		ac.ConsecutiveCrashAttempts = 0
 		debuglog.InfoLog("onPrivilegedScriptExited: Restart requested by user, starting sing-box...")
 		ac.CmdMutex.Unlock()
 		runGhostTunCleanup(true)
@@ -332,16 +336,14 @@ func (svc *ProcessService) onPrivilegedScriptExited() {
 		}
 		ac.CmdMutex.Lock()
 		return
-	}
-	ac.ConsecutiveCrashAttempts++
-	if ac.ConsecutiveCrashAttempts > restartAttempts {
+	case actionMaxAttempts:
 		debuglog.DebugLog("onPrivilegedScriptExited: Max restart attempts reached.")
 		if ac.UIService != nil && ac.UIService.MainWindow != nil {
 			dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("%s", locale.Tf("error.restart_failed", restartAttempts)))
 		}
-		ac.ConsecutiveCrashAttempts = 0
 		return
 	}
+	// action == actionCrashRestart
 	debuglog.WarnLog("onPrivilegedScriptExited: Sing-Box exited, auto-restart (attempt %d/%d)", ac.ConsecutiveCrashAttempts, restartAttempts)
 	if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
 		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, locale.T("core.crash_title"), locale.Tf("core.crash_restarting", ac.ConsecutiveCrashAttempts, restartAttempts))
@@ -388,10 +390,15 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 		return
 	}
 
+	// SPEC 070: shared crash/restart decision (steps 2-5). PID-check (step 1)
+	// stays above; err==nil graceful-exit is fed via cleanExit so the decision
+	// lives in one place but Monitor keeps its per-branch RunningState placement.
+	action, newAttempts := decideCrashAction(ac.StoppedByUser, ac.RestartRequestedByUser, err == nil, ac.ConsecutiveCrashAttempts, restartAttempts)
+
 	// 2. Then StoppedByUser (did user stop it?)
-	if ac.StoppedByUser {
+	if action == actionStoppedByUser {
 		debuglog.InfoLog("monitorSingBox: Sing-Box exited as requested by user.")
-		ac.ConsecutiveCrashAttempts = 0
+		ac.ConsecutiveCrashAttempts = newAttempts
 		ac.RunningState.Set(false)
 		ac.StoppedByUser = false // Reset flag for next start
 		// SPEC 065: cleanup phantom TUN-адаптеров на Win7 после exit sing-box.
@@ -400,10 +407,10 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 	}
 
 	// 3. Restart by user (Restart button): bring process back up immediately
-	if ac.RestartRequestedByUser {
+	if action == actionUserRestart {
 		ac.RestartRequestedByUser = false
 		ac.RunningState.Set(false)
-		ac.ConsecutiveCrashAttempts = 0
+		ac.ConsecutiveCrashAttempts = newAttempts
 		debuglog.InfoLog("monitorSingBox: Restart requested by user, starting sing-box...")
 		// SPEC 065: sync cleanup до Start — sing-box мёртв, нового адаптера ещё нет.
 		ac.CmdMutex.Unlock()
@@ -417,26 +424,26 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 	}
 
 	// 4. Then err == nil (exited normally, not restart) — do not restart
-	if err == nil {
+	if action == actionClean {
 		debuglog.InfoLog("monitorSingBox: Sing-Box exited gracefully (exit code 0).")
-		ac.ConsecutiveCrashAttempts = 0
+		ac.ConsecutiveCrashAttempts = newAttempts
 		ac.RunningState.Set(false)
 		return
 	}
 
 	// 5. Crash → restart with delay and attempt limit
 	ac.RunningState.Set(false)
-	ac.ConsecutiveCrashAttempts++
+	ac.ConsecutiveCrashAttempts = newAttempts
 
-	if ac.ConsecutiveCrashAttempts > restartAttempts {
+	if action == actionMaxAttempts {
 		debuglog.DebugLog("monitorSingBox: Maximum restart attempts (%d) reached. Stopping auto-restart.", restartAttempts)
 		if ac.UIService != nil && ac.UIService.MainWindow != nil {
 			dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("%s", locale.Tf("error.restart_failed", restartAttempts)))
 		}
-		ac.ConsecutiveCrashAttempts = 0
 		return
 	}
 
+	// action == actionCrashRestart
 	debuglog.WarnLog("monitorSingBox: Sing-Box crashed: %v, attempting auto-restart (attempt %d/%d)", err, ac.ConsecutiveCrashAttempts, restartAttempts)
 	if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
 		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, locale.T("core.crash_title"), locale.Tf("core.crash_restarting", ac.ConsecutiveCrashAttempts, restartAttempts))

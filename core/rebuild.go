@@ -225,11 +225,13 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		}
 	}
 
-	// Step 7: refresh UI markers (coarse — будем заменять на typed events).
+	// Step 7: refresh UI markers.
+	// SPEC 047 phase 6 (SPEC 070): config-status refresh теперь приходит через
+	// events.ConfigBuilt (опубликован в Step 5.4 OK:false / Step 6 OK:true) —
+	// dashboard-подписчик зовёт updateConfigInfo. Поэтому прямой вызов
+	// UpdateConfigStatusFunc здесь убран. UpdateCoreStatusFunc оставлен
+	// (VpnState-канал, вне scope этого шага).
 	if ac.UIService != nil {
-		if ac.UIService.UpdateConfigStatusFunc != nil {
-			ac.UIService.UpdateConfigStatusFunc()
-		}
 		if ac.UIService.UpdateCoreStatusFunc != nil {
 			ac.UIService.UpdateCoreStatusFunc()
 		}
