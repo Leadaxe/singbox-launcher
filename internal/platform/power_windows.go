@@ -18,9 +18,9 @@ import (
 
 const (
 	wmPowerBroadcast    = 0x0218
-	pbtApmSuspend       = 4   // system entering sleep/hibernation
-	pbtApmResumeSuspend = 7   // user-triggered resume
-	pbtApmResumeAuto    = 18  // system resume (sleep/hibernation)
+	pbtApmSuspend       = 4  // system entering sleep/hibernation
+	pbtApmResumeSuspend = 7  // user-triggered resume
+	pbtApmResumeAuto    = 18 // system resume (sleep/hibernation)
 	wmQuit              = 0x0012
 	// Defer resume callback so WM_POWERBROADCAST handler stays minimal (Windows recommendation).
 	powerResumeCallbackDelay = 100 * time.Millisecond
@@ -99,8 +99,8 @@ func runPowerResumeListener() {
 	registerClassExW := user32.NewProc("RegisterClassExW")
 	createWindowExW := user32.NewProc("CreateWindowExW")
 	getMessageW := user32.NewProc("GetMessageW")
-		translateMessage := user32.NewProc("TranslateMessage")
-		dispatchMessageW := user32.NewProc("DispatchMessageW")
+	translateMessage := user32.NewProc("TranslateMessage")
+	dispatchMessageW := user32.NewProc("DispatchMessageW")
 	defWindowProcWProc := user32.NewProc("DefWindowProcW")
 
 	defWindowProcW = func(hwnd windows.HWND, msg uint32, wParam, lParam uintptr) uintptr {
@@ -118,20 +118,20 @@ func runPowerResumeListener() {
 
 	wndProc := windows.NewCallback(powerWndProc)
 	wc := struct {
-		Size, Style                       uint32
-		WndProc                           uintptr
-		ClsExtra, WndExtra                int32
+		Size, Style                        uint32
+		WndProc                            uintptr
+		ClsExtra, WndExtra                 int32
 		Instance, Icon, Cursor, Background uintptr
-		MenuName, ClassName               *uint16
-		IconSm                            uintptr
+		MenuName, ClassName                *uint16
+		IconSm                             uintptr
 	}{
-		Size:     uint32(unsafe.Sizeof(struct {
-			Size, Style                       uint32
-			WndProc                           uintptr
-			ClsExtra, WndExtra                int32
+		Size: uint32(unsafe.Sizeof(struct {
+			Size, Style                        uint32
+			WndProc                            uintptr
+			ClsExtra, WndExtra                 int32
 			Instance, Icon, Cursor, Background uintptr
-			MenuName, ClassName               *uint16
-			IconSm                            uintptr
+			MenuName, ClassName                *uint16
+			IconSm                             uintptr
 		}{})),
 		WndProc:   wndProc,
 		Instance:  mod,

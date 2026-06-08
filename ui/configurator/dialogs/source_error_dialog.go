@@ -12,18 +12,18 @@
 //
 // Layout (top → bottom):
 //
-//   ┌────────────────────────────────────────────┐
-//   │ ⚠ <ProfileTitle or source label>      [×] │  ← title
-//   ├────────────────────────────────────────────┤
-//   │ HTTP 200 · empty body                      │  ← http status line
-//   │                                            │
-//   │ <decoded announce or LastErrorMsg>         │  ← wrap text
-//   │                                            │
-//   │ [🔗 Open https://t.me/nash_vpn_bot]        │  ← when URL is safe
-//   │                                            │
-//   │ Last attempt: 2026-05-25 19:04             │  ← footer meta
-//   │ Errors in a row: 3                         │
-//   └────────────────────────────────────────────┘
+//	┌────────────────────────────────────────────┐
+//	│ ⚠ <ProfileTitle or source label>      [×] │  ← title
+//	├────────────────────────────────────────────┤
+//	│ HTTP 200 · empty body                      │  ← http status line
+//	│                                            │
+//	│ <decoded announce or LastErrorMsg>         │  ← wrap text
+//	│                                            │
+//	│ [🔗 Open https://t.me/nash_vpn_bot]        │  ← when URL is safe
+//	│                                            │
+//	│ Last attempt: 2026-05-25 19:04             │  ← footer meta
+//	│ Errors in a row: 3                         │
+//	└────────────────────────────────────────────┘
 //
 // URL safety: `internal/urlsafe.IsSafeAnnounceURL` gates the clickable
 // button (http/https/tg only). Invalid → URL shown as plain text under

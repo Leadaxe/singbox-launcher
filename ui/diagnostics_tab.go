@@ -364,4 +364,3 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 		ipServicesRow,
 	)
 }
-

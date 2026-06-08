@@ -38,13 +38,13 @@ type liveView struct {
 // liveFilter is the user's current filter state. Defaults: everything on,
 // no search.
 type liveFilter struct {
-	ShowDNS     bool
-	ShowDNSFail bool
-	ShowTCP     bool
+	ShowDNS      bool
+	ShowDNSFail  bool
+	ShowTCP      bool
 	ShowTCPClose bool
-	ShowUDP     bool
-	Search      string
-	Process     string // empty = all processes
+	ShowUDP      bool
+	Search       string
+	Process      string // empty = all processes
 }
 
 func defaultLiveFilter() liveFilter {

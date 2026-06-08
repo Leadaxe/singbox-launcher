@@ -33,6 +33,7 @@ import (
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/services"
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
@@ -42,7 +43,6 @@ import (
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
-	wizardtemplate "singbox-launcher/core/template"
 )
 
 // ShowAddRuleDialogFunc is a function type for showing the add rule dialog.

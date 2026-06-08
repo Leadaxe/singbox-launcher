@@ -52,11 +52,11 @@ import (
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/wizardsync"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
-	wizardtemplate "singbox-launcher/core/template"
 )
 
 // SyncModelToGUI синхронизирует данные из модели в GUI.

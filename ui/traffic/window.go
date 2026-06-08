@@ -58,9 +58,9 @@ type WindowDeps struct {
 // running app — instantiated from the UI layer wiring (ui/app.go or
 // equivalent) and reused by the Diagnostics button.
 type Manager struct {
-	mu     sync.Mutex
-	win    fyne.Window
-	deps   WindowDeps
+	mu          sync.Mutex
+	win         fyne.Window
+	deps        WindowDeps
 	titleStopCh chan struct{}
 }
 

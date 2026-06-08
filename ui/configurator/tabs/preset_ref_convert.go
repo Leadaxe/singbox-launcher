@@ -1,11 +1,11 @@
 // File preset_ref_convert.go (SPEC 053) — one-way конверсия preset-ref → user rules.
 //
 // Алгоритм:
-//   1. Expand preset с текущими varsValues → fragments.
-//   2. Если preset имеет remote rule_set'ы → создать по одному kind=srs rule per remote set
-//      (юзер должен повторно скачать .srs, потому что URL'ы перевязаны на content-addressed tag'и).
-//   3. Если preset имеет inline rule_set → создать kind=inline rule с объединённым match'ом.
-//   4. Если preset не имеет rule_set'ов (inline match в preset.rule) → один kind=inline rule.
+//  1. Expand preset с текущими varsValues → fragments.
+//  2. Если preset имеет remote rule_set'ы → создать по одному kind=srs rule per remote set
+//     (юзер должен повторно скачать .srs, потому что URL'ы перевязаны на content-addressed tag'и).
+//  3. Если preset имеет inline rule_set → создать kind=inline rule с объединённым match'ом.
+//  4. Если preset не имеет rule_set'ов (inline match в preset.rule) → один kind=inline rule.
 //
 // После Convert юзерское правило **теряет связь с template** — bump'ы template'а
 // больше не подтягиваются. Это явный intent юзера (предупреждается в confirm dialog'е).

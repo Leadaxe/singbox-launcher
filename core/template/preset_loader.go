@@ -54,9 +54,9 @@ func LoadPresets(raw json.RawMessage, globalVarsNames map[string]bool) ([]Preset
 	}
 
 	var (
-		result    []Preset
-		warnings  []PresetWarning
-		seenIDs   = make(map[string]bool, len(rawList))
+		result   []Preset
+		warnings []PresetWarning
+		seenIDs  = make(map[string]bool, len(rawList))
 	)
 
 	for i, rawPreset := range rawList {

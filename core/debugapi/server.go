@@ -233,19 +233,19 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 
 func (s *Server) handleVersion(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"launcher":  s.facade.GetLauncherVersion(),
-		"singbox":   s.facade.GetSingboxVersion(),
-		"api":       "debugapi/v1",
+		"launcher": s.facade.GetLauncherVersion(),
+		"singbox":  s.facade.GetSingboxVersion(),
+		"api":      "debugapi/v1",
 	})
 }
 
 func (s *Server) handleState(w http.ResponseWriter, _ *http.Request) {
 	out := map[string]any{
-		"running":                 s.facade.IsRunning(),
-		"active_proxy":            s.facade.GetActiveProxyName(),
-		"selected_group":          s.facade.GetSelectedClashGroup(),
-		"singbox_version":         s.facade.GetSingboxVersion(),
-		"subs_last_updated_unix":  unixOrNull(s.facade.GetLastUpdateSucceededAt()),
+		"running":                s.facade.IsRunning(),
+		"active_proxy":           s.facade.GetActiveProxyName(),
+		"selected_group":         s.facade.GetSelectedClashGroup(),
+		"singbox_version":        s.facade.GetSingboxVersion(),
+		"subs_last_updated_unix": unixOrNull(s.facade.GetLastUpdateSucceededAt()),
 	}
 	writeJSON(w, http.StatusOK, out)
 }

@@ -4,8 +4,8 @@ import (
 	"strings"
 
 	"singbox-launcher/core/build"
-	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardtemplate "singbox-launcher/core/template"
+	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
 func templateDeclaresDNSWizardVar(vars []wizardtemplate.TemplateVar, name string) bool {

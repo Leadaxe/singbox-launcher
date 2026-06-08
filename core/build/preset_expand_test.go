@@ -606,10 +606,10 @@ func TestEvalIf_AllCombinations(t *testing.T) {
 	vars := map[string]string{"a": "true", "b": "false", "c": "true"}
 
 	cases := []struct {
-		name   string
-		ifL    []string
-		ifOrL  []string
-		want   bool
+		name  string
+		ifL   []string
+		ifOrL []string
+		want  bool
 	}{
 		{"empty empty", nil, nil, true},
 		{"if a true", []string{"a"}, nil, true},

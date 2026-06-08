@@ -15,9 +15,9 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core"
-	"singbox-launcher/internal/locale"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 )
 
@@ -93,8 +93,8 @@ func OpenLogViewerWindow(ac *core.AppController) {
 
 	var (
 		internalMu     sync.Mutex
-		internalLines   []logEntry
-		internalList    *widget.List
+		internalLines  []logEntry
+		internalList   *widget.List
 		internalLevel  debuglog.Level
 		apiMu          sync.Mutex
 		apiLines       []logEntry
@@ -102,10 +102,10 @@ func OpenLogViewerWindow(ac *core.AppController) {
 		apiLevel       debuglog.Level
 		coreLines      []string
 		coreList       *widget.List
-		corePath     = filepath.Join(ac.FileService.ExecDir, ac.FileService.ChildLogRelativePath)
-		internalCh   = make(chan logEntry, 64)
-		apiCh        = make(chan logEntry, 64)
-		coreTickStop func()
+		corePath       = filepath.Join(ac.FileService.ExecDir, ac.FileService.ChildLogRelativePath)
+		internalCh     = make(chan logEntry, 64)
+		apiCh          = make(chan logEntry, 64)
+		coreTickStop   func()
 		coreTabIndex   int
 		coreRefreshBtn *widget.Button
 	)

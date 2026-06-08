@@ -14,18 +14,18 @@ import (
 // We keep this struct small and side-effect-free so the parser package can
 // be exercised by golden tests without bringing in fsnotify or HTTP.
 type LogLine struct {
-	TS         time.Time
-	Raw        string
-	ConnID     string
-	Kind       EventKind
-	Domain     string  // for DNSResolve / DNSFail
-	IP         string  // for DNSResolve (final A-record target) and TCP/UDP
+	TS          time.Time
+	Raw         string
+	ConnID      string
+	Kind        EventKind
+	Domain      string // for DNSResolve / DNSFail
+	IP          string // for DNSResolve (final A-record target) and TCP/UDP
 	CnameTarget string // non-empty when DNSResolve produced a CNAME instead of A
-	Port       int    // for inbound/tun outbound-connection line
+	Port        int    // for inbound/tun outbound-connection line
 	ProcessPath string // for `router: found process name: <path>` lines
-	Rule       string // for `router: match[<rule>] => route(<outbound>)`
-	Outbound   string // ditto
-	FailReason string // for DNSFail
+	Rule        string // for `router: match[<rule>] => route(<outbound>)`
+	Outbound    string // ditto
+	FailReason  string // for DNSFail
 }
 
 // Sing-box logs are not stable across minor versions — these regexes are
@@ -33,12 +33,13 @@ type LogLine struct {
 // covered by parser_test.go against snapshots in testdata/sing-box-logs.
 //
 // Reference samples (sing-box 1.13.11):
-//   `2026-05-24 12:34:15 INFO  [12345] dns: exchanged AAAA cdn.t-bank.ru. -> 2a02:...`
-//   `2026-05-24 12:34:15 INFO  [12345] dns: cached A cdn.t-bank.ru. -> 81.222.127.186`
-//   `2026-05-24 12:34:15 INFO  [12345] dns: exchange failed for certs.t-bank.ru: ... context deadline exceeded`
-//   `2026-05-24 12:34:15 INFO  [12345] router: found process name: /Applications/Slack.app/Contents/MacOS/Slack`
-//   `2026-05-24 12:34:15 INFO  [12345] router: match[domain_suffix=example.com] => route(vpn-1)`
-//   `2026-05-24 12:34:15 INFO  [12345] inbound/tun[tun-in]: outbound connection to 1.2.3.4:443`
+//
+//	`2026-05-24 12:34:15 INFO  [12345] dns: exchanged AAAA cdn.t-bank.ru. -> 2a02:...`
+//	`2026-05-24 12:34:15 INFO  [12345] dns: cached A cdn.t-bank.ru. -> 81.222.127.186`
+//	`2026-05-24 12:34:15 INFO  [12345] dns: exchange failed for certs.t-bank.ru: ... context deadline exceeded`
+//	`2026-05-24 12:34:15 INFO  [12345] router: found process name: /Applications/Slack.app/Contents/MacOS/Slack`
+//	`2026-05-24 12:34:15 INFO  [12345] router: match[domain_suffix=example.com] => route(vpn-1)`
+//	`2026-05-24 12:34:15 INFO  [12345] inbound/tun[tun-in]: outbound connection to 1.2.3.4:443`
 //
 // The conn-id capture allows both numeric (`123`) and uuid-shape (`abcd-1234`)
 // — sing-box has used both depending on build flags.

@@ -12,11 +12,11 @@ type stubStaleUIUpdater struct {
 	model *wizardmodels.WizardModel
 }
 
-func (s stubStaleUIUpdater) Model() *wizardmodels.WizardModel         { return s.model }
-func (stubStaleUIUpdater) UpdateParserConfig(string)                  {}
-func (stubStaleUIUpdater) UpdateTemplatePreview(string)               {}
-func (stubStaleUIUpdater) UpdateSaveProgress(float64)                 {}
-func (stubStaleUIUpdater) UpdateSaveButtonText(string)                {}
+func (s stubStaleUIUpdater) Model() *wizardmodels.WizardModel { return s.model }
+func (stubStaleUIUpdater) UpdateParserConfig(string)          {}
+func (stubStaleUIUpdater) UpdateTemplatePreview(string)       {}
+func (stubStaleUIUpdater) UpdateSaveProgress(float64)         {}
+func (stubStaleUIUpdater) UpdateSaveButtonText(string)        {}
 
 type blockingGenMock struct {
 	entered chan struct{}

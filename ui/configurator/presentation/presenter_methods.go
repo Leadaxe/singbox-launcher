@@ -106,6 +106,7 @@ func (p *WizardPresenter) CancelDebouncedOutboundRefresh() {
 //   - смена вкладки на Rules (wizard.go), завершение ParseAndPreview, Save после парсинга, LoadState;
 //   - Apply конфигуратора, Del источника, правки prefix (после debounce — через таймер);
 //   - presenter_sync после успешного применения ParserConfig из Entry.
+//
 // Debounce только для потокового ввода в multi-line JSON и prefix Entry (source_tab).
 func (p *WizardPresenter) ScheduleRefreshOutboundOptionsDebounced() {
 	p.outboundOptionsDebounceMu.Lock()

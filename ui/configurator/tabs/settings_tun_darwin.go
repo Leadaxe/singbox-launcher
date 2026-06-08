@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config"
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
@@ -21,7 +22,6 @@ import (
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
-	wizardtemplate "singbox-launcher/core/template"
 )
 
 // pathUnderRoot returns true if target is inside root (after Clean), not escaping with "..".

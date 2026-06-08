@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardtemplate "singbox-launcher/core/template"
+	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
 func TestMaterializeSecretsIfNeeded_idempotent(t *testing.T) {

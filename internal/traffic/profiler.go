@@ -42,12 +42,12 @@ type TrafficProfiler struct {
 	completed []*Session
 
 	// cross-source join state
-	connProcessMap map[string]string             // conn_id → process_path (from router log)
-	dnsAccum       map[string][]string           // conn_id → CNAME chain (in arrival order)
-	dnsByIP        map[string]dnsAttribution     // dest IP → recent DNS + process (for inferred attribution)
+	connProcessMap map[string]string         // conn_id → process_path (from router log)
+	dnsAccum       map[string][]string       // conn_id → CNAME chain (in arrival order)
+	dnsByIP        map[string]dnsAttribution // dest IP → recent DNS + process (for inferred attribution)
 
 	// subscribers for live UI streaming
-	subs map[int]chan TrafficEvent
+	subs    map[int]chan TrafficEvent
 	nextSub int
 
 	// lifecycle hooks (window title timer / button label badge)

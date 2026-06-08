@@ -14,6 +14,7 @@
 // Используется в:
 //   - wizard.go — TriggerParseForPreview при смене вкладок; UpdateTemplatePreviewAsync при необходимости обновить preview
 //   - tabs/source_tab.go — UpdateTemplatePreviewAsync после успешного парсинга
+//
 // Сохранение конфига ждёт/запускает парсинг через presenter_save.ensureOutboundsParsed, не через TriggerParseForPreview.
 package presentation
 
@@ -124,16 +125,16 @@ func (p *WizardPresenter) UpdateTemplatePreviewAsync() {
 			goroutineTiming.End()
 			p.model.PreviewGenerationInProgress = false
 			SafeFyneDo(p.guiState.Window, func() {
-			if p.guiState.ShowPreviewButton != nil {
-				p.guiState.ShowPreviewButton.Enable()
-			}
+				if p.guiState.ShowPreviewButton != nil {
+					p.guiState.ShowPreviewButton.Enable()
+				}
 			})
 		}()
 
 		SafeFyneDo(p.guiState.Window, func() {
-		if p.guiState.TemplatePreviewStatusLabel != nil {
-			p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_parsing_config"))
-		}
+			if p.guiState.TemplatePreviewStatusLabel != nil {
+				p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_parsing_config"))
+			}
 		})
 
 		buildStartTime := time.Now()
@@ -147,9 +148,9 @@ func (p *WizardPresenter) UpdateTemplatePreviewAsync() {
 			p.SetTemplatePreviewText(errorText)
 			p.model.TemplatePreviewNeedsUpdate = false
 			SafeFyneDo(p.guiState.Window, func() {
-			if p.guiState.TemplatePreviewStatusLabel != nil {
-				p.guiState.TemplatePreviewStatusLabel.SetText(locale.Tf("wizard.preview.status_error", err))
-			}
+				if p.guiState.TemplatePreviewStatusLabel != nil {
+					p.guiState.TemplatePreviewStatusLabel.SetText(locale.Tf("wizard.preview.status_error", err))
+				}
 			})
 			return
 		}
@@ -161,12 +162,12 @@ func (p *WizardPresenter) UpdateTemplatePreviewAsync() {
 
 		if !isLargeText {
 			SafeFyneDo(p.guiState.Window, func() {
-			if p.guiState.TemplatePreviewStatusLabel != nil {
-				p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_ready"))
-			}
-			if p.guiState.ShowPreviewButton != nil {
-				p.guiState.ShowPreviewButton.Enable()
-			}
+				if p.guiState.TemplatePreviewStatusLabel != nil {
+					p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_ready"))
+				}
+				if p.guiState.ShowPreviewButton != nil {
+					p.guiState.ShowPreviewButton.Enable()
+				}
 			})
 			debuglog.DebugLog("UpdateTemplatePreviewAsync: Preview text inserted")
 		} else {

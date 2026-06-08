@@ -329,7 +329,7 @@ func TestSubstituteParserConfigPlaceholders_EndToEndWithDiskSubstituter(t *testi
 // Fixture lives in testdata/state-real.json — derived from a real install,
 // edited only to anonymize ID. To regenerate from a live launcher:
 //
-//   python3 -c '...' > core/config/testdata/state-real.json
+//	python3 -c '...' > core/config/testdata/state-real.json
 func TestBuildVarSubstituterFromDisk_RealFixture(t *testing.T) {
 	fixtureRaw, err := os.ReadFile("testdata/state-real.json")
 	if err != nil {

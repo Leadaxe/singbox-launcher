@@ -29,6 +29,7 @@ import (
 //   - Внутри визарда — используется `presenter.UpdateChildOverlay` поверх
 //     wizard-табов, чтобы открытое child-окно (Edit Outbound, View Source,
 //     rule dialog) не пряталось за wizard'ом.
+//
 // ClickRedirect — невидимый tappable-оverlay, который перехватывает клики
 // по основному содержимому и переносит фокус на окно визарда, если он открыт.
 //

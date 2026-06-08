@@ -3,7 +3,7 @@ package models
 // Имена переменных шаблона (vars) для скаляров вкладки DNS — state.json → vars, маркеры @ в config.
 // См. SPECS/032-F-C-WIZARD_SETTINGS_TAB/SUB_SPEC_DNS_TAB_VARS.md
 const (
-	VarDNSStrategy              = "dns_strategy"
+	VarDNSStrategy = "dns_strategy"
 	// VarDNSIndependentCache — УДАЛЕНО: independent_cache deprecated в
 	// sing-box 1.14.0. Поле снято из template/state/UI.
 	VarDNSDefaultDomainResolver = "dns_default_domain_resolver"

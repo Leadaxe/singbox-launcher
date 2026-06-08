@@ -43,8 +43,8 @@ type WizardPresenter struct {
 	guiState               *GUIState
 	templateLoader         wizardbusiness.TemplateLoader
 	openRuleDialogs        map[int]fyne.Window
-	openViewWindow         fyne.Window // single View (source servers) window
-	openOutboundEditWindow fyne.Window // single Outbound Edit/Add window
+	openViewWindow         fyne.Window                              // single View (source servers) window
+	openOutboundEditWindow fyne.Window                              // single Outbound Edit/Add window
 	hasChanges             bool                                     // Отслеживает наличие несохранённых изменений
 	createRulesTabFunc     func(*WizardPresenter) fyne.CanvasObject // Функция для создания вкладки Rules (устанавливается при инициализации)
 

@@ -45,6 +45,7 @@ type DNSConfig struct {
 //  4. cfg.Final (или fallback — тег первого enabled-сервера) → "final";
 //     пусто и нет fallback'а — ключ удаляется из map;
 //  5. cfg.Strategy непустой → "strategy"; иначе ключ из шаблона остаётся;
+//
 // (SPEC: independent_cache emit удалён — sing-box 1.14 deprecation.)
 //
 // Pure: без I/O, без shared state.

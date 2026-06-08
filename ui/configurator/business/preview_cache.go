@@ -102,4 +102,3 @@ func InvalidatePreviewCache(model *wizardmodels.WizardModel) {
 	model.AvailableOutboundsMemoKey = ""
 	model.AvailableOutboundsMemoTags = nil
 }
-
