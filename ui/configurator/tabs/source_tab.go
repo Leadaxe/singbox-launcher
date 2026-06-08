@@ -415,11 +415,19 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				if refreshBtn != nil {
 					rightControlsItems = append(rightControlsItems, refreshBtn)
 				}
-				rightControlsItems = append(rightControlsItems, delBtn, rowGutter)
-				rightControls := container.NewHBox(rightControlsItems...)
+				rightControlsItems = append(rightControlsItems, delBtn)
+				// Pack the action icons tightly (tightHBox with a negative gap),
+				// then keep the scroll gutter separated at the right edge with the
+				// normal HBox padding so it still reserves the scrollbar strip.
+				rightControls := container.NewHBox(
+					container.New(tightHBox{spacing: rowIconGap}, rightControlsItems...),
+					rowGutter,
+				)
 				// Guideline (Rules tab): reorder ↑/↓ go to the LEFT of the enable
 				// checkbox in a leading cluster, action buttons stay on the right.
-				leftLead := container.NewHBox(moveUpBtn, moveDownBtn, fynewidget.CheckLeadingWrap(enableCheck))
+				// Arrows are packed tight; the checkbox keeps its own leading wrap.
+				arrowsCluster := container.New(tightHBox{spacing: rowIconGap}, moveUpBtn, moveDownBtn)
+				leftLead := container.NewHBox(arrowsCluster, fynewidget.CheckLeadingWrap(enableCheck))
 				titleRow := container.NewBorder(nil, nil, leftLead, rightControls, rowCenter)
 
 				// Subtitle row: meta inline (nodes / interval / fetched / quota / expires).
