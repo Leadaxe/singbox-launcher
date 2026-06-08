@@ -19,8 +19,6 @@ package build
 import (
 	"encoding/json"
 	"runtime"
-	"sort"
-	"strings"
 
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
@@ -241,7 +239,7 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 					Body:           stripDNSWizardOnlyFields(bodyMap),
 					Source:         DNSSourcePreset,
 					PresetID:       p.ID,
-					PresetLabel:    presetDisplayLabel(p),
+					PresetLabel:    p.DisplayLabel(),
 					Active:         active,
 					Enabled:        enabled,
 					InactiveReason: reason,
@@ -261,7 +259,7 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 					Body:           ruleBody,
 					Source:         DNSSourcePreset,
 					PresetID:       p.ID,
-					PresetLabel:    presetDisplayLabel(p),
+					PresetLabel:    p.DisplayLabel(),
 					Active:         active,
 					Enabled:        enabled,
 					InactiveReason: reason,
@@ -537,29 +535,9 @@ func substitutePresetDNSRule(p *template.Preset, varsMap map[string]string, goos
 }
 
 // evalIfWithReason — то же что evalIf, но возвращает причину отказа для UI tooltip.
-// Возвращает (true, "") если активна. Иначе (false, "if=foo" / "if_or=a,b").
-// SPEC 067 Phase 3: `@`-префикс strip'ается перед lookup (loader требует канонической формы).
+// Single source of truth: template.EvalIfWithReason (shared with the UI).
 func evalIfWithReason(ifList, ifOrList []string, varsMap map[string]string) (bool, string) {
-	for _, name := range ifList {
-		if !strings.EqualFold(varsMap[strings.TrimPrefix(name, "@")], "true") {
-			return false, "if=" + name
-		}
-	}
-	if len(ifOrList) > 0 {
-		anyTrue := false
-		for _, name := range ifOrList {
-			if strings.EqualFold(varsMap[strings.TrimPrefix(name, "@")], "true") {
-				anyTrue = true
-				break
-			}
-		}
-		if !anyTrue {
-			sorted := append([]string(nil), ifOrList...) // sort a COPY — never mutate caller's slice
-			sort.Strings(sorted)                         // deterministic reason for test stability
-			return false, "if_or=" + strings.Join(sorted, ",")
-		}
-	}
-	return true, ""
+	return template.EvalIfWithReason(ifList, ifOrList, varsMap)
 }
 
 // evalIfFromRuleMap — extract'ит if/if_or из map[string]interface{} (preset.Rule/DNSRule)
@@ -567,12 +545,4 @@ func evalIfWithReason(ifList, ifOrList []string, varsMap map[string]string) (boo
 func evalIfFromRuleMap(m map[string]interface{}, varsMap map[string]string) (bool, string) {
 	ifList, ifOrList := extractIfFromMap(m)
 	return evalIfWithReason(ifList, ifOrList, varsMap)
-}
-
-// presetDisplayLabel — fallback на ID если Label пусто.
-func presetDisplayLabel(p *template.Preset) string {
-	if p.Label != "" {
-		return p.Label
-	}
-	return p.ID
 }

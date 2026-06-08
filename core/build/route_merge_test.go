@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/outboundutil"
 )
 
 // stubSRSFile создаёт пустой bin/rule-sets/<tag>.srs внутри execDir.
@@ -286,7 +287,7 @@ func TestApplyRouteOutbound_Direct(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			m := shallowCopyStringMap(c.in)
-			applyRouteOutbound(m, c.outbound)
+			outboundutil.ApplyOutboundToRule(m, c.outbound)
 			c.check(t, m)
 		})
 	}

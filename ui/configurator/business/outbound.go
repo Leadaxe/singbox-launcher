@@ -216,28 +216,11 @@ func collectActivePresetOutboundTags(model *wizardmodels.WizardModel) []string {
 	return out
 }
 
-// evalPresetOutboundIf — true iff ВСЕ if истинны И (if_or пуст ИЛИ хотя бы один if_or истинен).
-// "Истинно" = varsMap[name] == "true" (case-insensitive). Зеркало семантики
-// core/build.evalIf, продублировано чтобы UI не импортировал внутренний build.
+// evalPresetOutboundIf — preset outbound if/if_or activation. Delegates to the
+// shared template.EvalIf (single source of truth with the build pipeline) so UI
+// preview and server-side emit never diverge.
 func evalPresetOutboundIf(ifList, ifOrList []string, varsMap map[string]string) bool {
-	for _, name := range ifList {
-		if !strings.EqualFold(varsMap[strings.TrimPrefix(name, "@")], "true") {
-			return false
-		}
-	}
-	if len(ifOrList) > 0 {
-		anyTrue := false
-		for _, name := range ifOrList {
-			if strings.EqualFold(varsMap[strings.TrimPrefix(name, "@")], "true") {
-				anyTrue = true
-				break
-			}
-		}
-		if !anyTrue {
-			return false
-		}
-	}
-	return true
+	return wizardtemplate.EvalIf(ifList, ifOrList, varsMap)
 }
 
 func sortedOutboundTagSlice(tags map[string]struct{}) []string {

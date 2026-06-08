@@ -78,6 +78,16 @@ type Preset struct {
 	Outbounds []PresetOutbound `json:"outbounds,omitempty"`
 }
 
+// DisplayLabel returns the human-facing name for the preset: Label, or the ID
+// as a fallback when Label is empty. Single source of truth for the build
+// pipeline and the configurator UI (was duplicated as presetDisplayLabel).
+func (p *Preset) DisplayLabel() string {
+	if p.Label != "" {
+		return p.Label
+	}
+	return p.ID
+}
+
 // PresetOutbound — entry preset.outbounds[] (SPEC 056).
 //
 // Поля Tag/Type/Options/Filters/AddOutbounds/PreferredDefault/Comment/Wizard

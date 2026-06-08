@@ -82,7 +82,7 @@ func renderPresetBundledDNSRows(m *wizardmodels.WizardModel, parentWindow fyne.W
 		onView := func() {
 			body, _ := jsonPrettyMarshal(srvCopy.Body)
 			header := widget.NewLabelWithStyle(
-				"🔒  From preset: "+presetDisplayLabel(tplCopy),
+				"🔒  From preset: "+tplCopy.DisplayLabel(),
 				fyne.TextAlignLeading, fyne.TextStyle{Bold: true},
 			)
 			helpLabel := widget.NewLabelWithStyle(
@@ -98,14 +98,6 @@ func renderPresetBundledDNSRows(m *wizardmodels.WizardModel, parentWindow fyne.W
 		}
 	}
 	return rows
-}
-
-// presetDisplayLabel — helper для UI: label или fallback на ID.
-func presetDisplayLabel(p *wizardtemplate.Preset) string {
-	if p.Label != "" {
-		return p.Label
-	}
-	return p.ID
 }
 
 // buildShadowStateForResolve — конструирует временный state.State из model для

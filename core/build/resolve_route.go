@@ -158,7 +158,7 @@ func resolvePresetRouteRule(
 	if !ok {
 		return
 	}
-	presetLabel := presetDisplayLabel(p)
+	presetLabel := p.DisplayLabel()
 
 	// RuleSets из preset.RuleSet (после ExpandPreset уже substituted + prefixed).
 	for _, rs := range frags.RuleSets {
