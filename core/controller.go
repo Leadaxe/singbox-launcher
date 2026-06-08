@@ -69,7 +69,7 @@ type AppController struct {
 	ParserMutex                 sync.Mutex // Mutex for ParserRunning
 	ParserRunning               bool
 	StoppedByUser               bool
-	RestartRequestedByUser      bool   // true when user clicked Restart: watcher must bring process back up
+	RestartRequestedByUser      bool // true when user clicked Restart: watcher must bring process back up
 	ConsecutiveCrashAttempts    int
 
 	// --- VPN Operation State ---
@@ -134,34 +134,21 @@ var (
 	instanceOnce sync.Once
 )
 
-// GetController returns the global AppController instance (singleton).
-// Returns nil if NewAppController has not been called yet.
-// In normal operation, NewAppController should be called in main.go before any calls to GetController().
+// GetController returns the global AppController singleton, or nil if
+// NewAppController has not run yet. main.go constructs the controller before
+// any UI/service code calls this (single construction path — ADR-070-7), so
+// callers can rely on a non-nil result; GetControllerOrPanic makes that
+// contract explicit.
 func GetController() *AppController {
+	return instance
+}
+
+// GetControllerOrPanic returns the global AppController, panicking if the
+// singleton has not been constructed yet. Use at callsites that cannot
+// proceed without it — all of which run after main.go's NewAppController.
+func GetControllerOrPanic() *AppController {
 	if instance == nil {
-		debuglog.WarnLog("GetController: instance is nil, this should not happen. NewAppController should be called first.")
-		// Try to create a minimal instance (this is a fallback, not recommended)
-		// In practice, this should never happen in normal operation
-		instanceOnce.Do(func() {
-			// Create minimal instance without UI dependencies
-			// This is a fallback and may not work correctly for all use cases
-			fileService, err := services.NewFileService()
-			if err != nil {
-				debuglog.ErrorLog("GetController: failed to create fallback FileService: %v", err)
-				return
-			}
-			instance = &AppController{
-				FileService: fileService,
-			}
-			locale.CreateHTTPClientFunc = CreateHTTPClient
-			instance.RunningState = &RunningState{controller: instance}
-			instance.ProcessService = NewProcessService(instance)
-			instance.ConfigService = NewConfigService(instance)
-			instance.ctx, instance.cancelFunc = context.WithCancel(context.Background())
-			instance.EventBus = events.NewMemoryBus()
-			instance.StateService = services.NewStateService()
-			instance.StateService.EventBus = instance.EventBus
-		})
+		panic("core: GetController called before NewAppController")
 	}
 	return instance
 }
@@ -270,15 +257,9 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	}
 	ac.APIService = apiService
 
-	// Initialize UI callbacks (delegated to UIService)
-	ac.UIService.RefreshAPIFunc = func() { debuglog.DebugLog("RefreshAPIFunc handler is not set yet.") }
-	ac.UIService.ResetAPIStateFunc = func() { debuglog.DebugLog("ResetAPIStateFunc handler is not set yet.") }
-	ac.UIService.UpdateCoreStatusFunc = func() {} // placeholder until UI sets real handler
-	ac.UIService.UpdateConfigStatusFunc = func() { debuglog.DebugLog("UpdateConfigStatusFunc handler is not set yet.") }
-	ac.UIService.UpdateTrayMenuFunc = func() { debuglog.DebugLog("UpdateTrayMenuFunc handler is not set yet.") }
-	ac.UIService.UpdateParserProgressFunc = func(progress float64, status string) {
-		debuglog.DebugLog("UpdateParserProgressFunc handler is not set yet. Progress: %.0f%%, Status: %s", progress, status)
-	}
+	// UI callback defaults (no-op placeholders) are installed by
+	// uiservice.NewUIService above; the UI layer (dashboard / clash tab)
+	// replaces them with real handlers. No need to re-set them here.
 
 	// Initialize context for goroutine cancellation
 	ac.ctx, ac.cancelFunc = context.WithCancel(context.Background())

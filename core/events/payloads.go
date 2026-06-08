@@ -7,21 +7,15 @@ package events
 //	bus.Subscribe(events.StateChanged, func(ev events.Event) {
 //	    p, ok := ev.Payload.(events.StateChangedPayload)
 //	    if !ok { return } // защита от Publish с некорректным payload'ом
-//	    // ... использовать p.Diff
+//	    // ... использовать p.Changed
 //	})
 //
-// При добавлении новой константы EventKind — добавить здесь
-// соответствующий *Payload и закомментировать связь.
+// При добавлении новой константы EventKind — добавить здесь соответствующий *Payload.
 
 // StateChangedPayload сопровождает Kind StateChanged.
-//
-// Поле Diff пока хранится как opaque-карта строк; конкретный тип
-// `core/state.Diff` ещё не существует (см. фазу 3.2 SPEC 045).
-// После появления этого пакета — заменить на `state.Diff`.
 type StateChangedPayload struct {
-	// Changed — список «доменов» состояния, которые поменялись.
-	// Пока — строковые ярлыки ("proxies", "tun", "dns", "rules", "vars", ...).
-	// Будут типизированы после реализации core/state.
+	// Changed — список «доменов» состояния, которые поменялись
+	// ("proxies", "tun", "dns", "rules", "vars", ...).
 	Changed []string
 }
 
@@ -35,30 +29,7 @@ type ConfigBuiltPayload struct {
 	Warnings []string
 }
 
-// SubscriptionUpdatedPayload сопровождает Kind SubscriptionUpdated.
-type SubscriptionUpdatedPayload struct {
-	SourceTag string
-	Succeeded int
-	Failed    int
-}
-
 // VpnStateChangedPayload сопровождает Kind VpnStateChanged.
 type VpnStateChangedPayload struct {
 	Running bool
-}
-
-// ProxyActiveChangedPayload сопровождает Kind ProxyActiveChanged.
-type ProxyActiveChangedPayload struct {
-	GroupTag    string
-	NewSelected string
-}
-
-// AutoUpdateStatusPayload сопровождает Kind AutoUpdateStatus.
-type AutoUpdateStatusPayload struct {
-	// Stage — этап цикла: "started" / "succeeded" / "failed" / "disabled".
-	Stage string
-	// ConsecutiveFailures — текущее значение счётчика подряд-ошибок (0 при успехе).
-	ConsecutiveFailures int
-	// LastError — заполнено при Stage=="failed".
-	LastError error
 }

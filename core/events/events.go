@@ -34,8 +34,9 @@ package events
 
 // EventKind — строго типизированный идентификатор типа события.
 //
-// При добавлении нового типа: добавить константу ниже, payload-структуру
-// в payloads.go, обновить String() для удобства логов.
+// Новый тип заводится только вместе с реальными publisher'ом и subscriber'ом:
+// добавить константу ниже, payload-структуру в payloads.go, обновить String().
+// Мёртвые «про запас» kind'ы не держим (ADR-070-3).
 type EventKind int
 
 const (
@@ -47,26 +48,9 @@ const (
 	// Payload: ConfigBuiltPayload.
 	ConfigBuilt
 
-	// SubscriptionUpdated — обработка одной подписки завершилась.
-	// Payload: SubscriptionUpdatedPayload.
-	SubscriptionUpdated
-
 	// VpnStateChanged — sing-box перешёл из/в running-состояние.
 	// Payload: VpnStateChangedPayload.
 	VpnStateChanged
-
-	// ProxyActiveChanged — пользователь / селектор переключил активную ноду.
-	// Payload: ProxyActiveChangedPayload.
-	ProxyActiveChanged
-
-	// PowerResume — система проснулась после sleep/hibernate.
-	// Payload: nil (событие без данных).
-	PowerResume
-
-	// AutoUpdateStatus — auto-update подписок что-то сообщил
-	// (старт цикла, успех, последовательная ошибка).
-	// Payload: AutoUpdateStatusPayload.
-	AutoUpdateStatus
 )
 
 // String — человеко-читаемое имя для логов и тестов.
@@ -77,16 +61,8 @@ func (k EventKind) String() string {
 		return "StateChanged"
 	case ConfigBuilt:
 		return "ConfigBuilt"
-	case SubscriptionUpdated:
-		return "SubscriptionUpdated"
 	case VpnStateChanged:
 		return "VpnStateChanged"
-	case ProxyActiveChanged:
-		return "ProxyActiveChanged"
-	case PowerResume:
-		return "PowerResume"
-	case AutoUpdateStatus:
-		return "AutoUpdateStatus"
 	default:
 		return "Unknown"
 	}
@@ -112,22 +88,16 @@ type Cancel func()
 //
 // Контракт реализаций:
 //   - Publish синхронен: вызывает handler'ы в той же goroutine.
-//   - Subscribe / SubscribeAll thread-safe.
+//   - Subscribe thread-safe.
 //   - Cancel thread-safe и идемпотентен.
 //   - Panic в handler'е не должна прерывать доставку другим handler'ам.
 type Bus interface {
-	// Publish доставляет событие всем подписчикам этого Kind + всем,
-	// кто подписался через SubscribeAll. Порядок вызова handler'ов
-	// не определён (в текущей реализации — порядок Subscribe, но
-	// зависеть от этого не следует).
+	// Publish доставляет событие всем подписчикам этого Kind. Порядок
+	// вызова handler'ов не определён (в текущей реализации — порядок
+	// Subscribe, но зависеть от этого не следует).
 	Publish(ev Event)
 
 	// Subscribe регистрирует handler на конкретный Kind.
 	// Возвращает Cancel — вызвать для отписки.
 	Subscribe(kind EventKind, h Handler) Cancel
-
-	// SubscribeAll регистрирует handler на ВСЕ события (любой Kind).
-	// Удобно для логирования / отладки. Для production-кода
-	// предпочитайте точечный Subscribe.
-	SubscribeAll(h Handler) Cancel
 }
