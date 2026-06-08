@@ -52,9 +52,7 @@ func supportLinkButton(meta *corestate.SubscriptionMeta, rowGetter func() *fynew
 		}
 	}, rowGetter)
 	btn.Importance = widget.LowImportance
-	if tt, ok := interface{}(btn).(interface{ SetToolTip(string) }); ok {
-		tt.SetToolTip(raw)
-	}
+	fynewidget.SetToolTipSafe(btn, raw)
 	return btn
 }
 

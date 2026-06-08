@@ -11,30 +11,13 @@ import (
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/state"
-	wizardtemplate "singbox-launcher/core/template"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
-// extractTemplateDNSTags — выдаёт set tag'ов template-defined DNS-серверов из
-// template.DNSOptionsRaw (используется для split'а на overrides vs extras при save v6).
-func extractTemplateDNSTags(td *wizardtemplate.TemplateData) map[string]bool {
-	if td == nil || len(td.DNSOptionsRaw) == 0 {
-		return nil
-	}
-	var dnsOpt struct {
-		Servers []map[string]interface{} `json:"servers"`
-	}
-	if err := json.Unmarshal(td.DNSOptionsRaw, &dnsOpt); err != nil {
-		return nil
-	}
-	out := make(map[string]bool, len(dnsOpt.Servers))
-	for _, s := range dnsOpt.Servers {
-		if tag, ok := s["tag"].(string); ok && tag != "" {
-			out[tag] = true
-		}
-	}
-	return out
-}
+// extractTemplateDNSTags перенесён в business.ExtractTemplateDNSTags
+// (SPEC 070 Stage B): копия в presentation существовала только чтобы избежать
+// import cycle business→presentation; presentation уже импортирует business,
+// поэтому единственный дом теперь в business/dns_helpers.go.
 
 // applyPresetEnabledOverrides — после SyncDNSOptionsWithActivePresets
 // проходит по kind=preset entries в state.DNS и применяет toggle overrides

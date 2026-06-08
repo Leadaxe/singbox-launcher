@@ -3,13 +3,11 @@ package business
 import (
 	"encoding/json"
 	"fmt"
-	"runtime"
 	"strings"
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/internal/debuglog"
 	wizardmodels "singbox-launcher/ui/configurator/models"
-	wizardtemplate "singbox-launcher/core/template"
 )
 
 // -----------------------------------------------------------------------------
@@ -50,37 +48,15 @@ func ApplyWizardDNSTemplate(model *wizardmodels.WizardModel) {
 	if model == nil || model.TemplateData == nil {
 		return
 	}
-	cfg := effectiveWizardConfig(model)
+	// effectiveTemplate(..., true) материализует secrets перед resolve —
+	// сохраняет поведение прежнего effectiveWizardConfig. Order игнорируем.
+	cfg, _ := effectiveTemplate(model, true)
 	dnsObj := dnsSectionFromConfig(cfg)
 	optsMap := parseDNSOptionsMap(model.TemplateData.DNSOptionsRaw)
 
 	reconcileDNSServers(model, dnsObj, optsMap)
 	prependMissingLocalServers(model, dnsObj)
 	fillDNSAuxiliaryIfEmpty(model, cfg, dnsObj, optsMap)
-}
-
-func effectiveWizardConfig(model *wizardmodels.WizardModel) map[string]json.RawMessage {
-	if model == nil || model.TemplateData == nil {
-		return nil
-	}
-	MaterializeSecretsIfNeeded(model)
-	config := model.TemplateData.Config
-	if len(model.TemplateData.RawConfig) > 0 && (len(model.TemplateData.Params) > 0 || len(model.TemplateData.Vars) > 0) {
-		effective, _, err := wizardtemplate.GetEffectiveConfig(
-			model.TemplateData.RawConfig,
-			model.TemplateData.Params,
-			runtime.GOOS,
-			model.TemplateData.Vars,
-			model.SettingsVars,
-			model.TemplateData.RawTemplate,
-		)
-		if err == nil {
-			config = effective
-		} else {
-			debuglog.WarnLog("effectiveWizardConfig: GetEffectiveConfig: %v", err)
-		}
-	}
-	return config
 }
 
 // DNSTagLocked — true для tag'ов с `required: true` в template.dns_options.servers[].

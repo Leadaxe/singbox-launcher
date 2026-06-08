@@ -395,24 +395,12 @@ func tryBase64Decode(s string) string {
 		}
 		// Reject если decoded — байтовая каша с control-chars
 		// (false-positive base64-detect на не-base64 строках).
-		if hasControlChars(str) {
+		if HasControlChars(str) {
 			continue
 		}
 		return strings.TrimSpace(str)
 	}
 	return ""
-}
-
-func hasControlChars(s string) bool {
-	for _, r := range s {
-		if r == '\t' || r == '\n' || r == '\r' {
-			continue
-		}
-		if r < 0x20 || r == 0x7F {
-			return true
-		}
-	}
-	return false
 }
 
 // parseContentDispositionFilename извлекает filename= из значения

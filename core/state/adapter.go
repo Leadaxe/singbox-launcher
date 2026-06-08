@@ -173,14 +173,6 @@ func syncLegacyFromConnections(s *State) {
 	s.ParserConfig.ParserConfig.Parser.Reload = s.Connections.Defaults.Reload
 }
 
-// buildTagSpecFromLegacy — *TagSpec или nil если все поля пустые.
-func buildTagSpecFromLegacy(prefix, postfix, mask string) *TagSpec {
-	if prefix == "" && postfix == "" && mask == "" {
-		return nil
-	}
-	return &TagSpec{Prefix: prefix, Postfix: postfix, Mask: mask}
-}
-
 // serverLabelFromLegacy зеркалит v5.serverLabel: tag_prefix + fragment +
 // tag_postfix (или fallback "server-N"). Используется когда legacy ProxySource
 // (с connections[]) попадает в state без существующего Source-матча по URI.

@@ -103,7 +103,7 @@ func migrateLegacySources(proxies []configtypes.ProxySource, gen IDGenerator) []
 	for _, ps := range proxies {
 		// 1. type=subscription (если задан source URL)
 		if ps.Source != "" {
-			tag := buildLegacyTagSpec(ps.TagPrefix, ps.TagPostfix, ps.TagMask)
+			tag := buildTagSpecFromLegacy(ps.TagPrefix, ps.TagPostfix, ps.TagMask)
 			s := Source{
 				ID:                      gen(),
 				Type:                    SourceTypeSubscription,
@@ -133,18 +133,6 @@ func migrateLegacySources(proxies []configtypes.ProxySource, gen IDGenerator) []
 		}
 	}
 	return out
-}
-
-// buildLegacyTagSpec возвращает *TagSpec (или nil если все три поля пустые).
-func buildLegacyTagSpec(prefix, postfix, mask string) *TagSpec {
-	if prefix == "" && postfix == "" && mask == "" {
-		return nil
-	}
-	return &TagSpec{
-		Prefix:  prefix,
-		Postfix: postfix,
-		Mask:    mask,
-	}
 }
 
 // legacyServerLabel формирует label для Source(server) из:

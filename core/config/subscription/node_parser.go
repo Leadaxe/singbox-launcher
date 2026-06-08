@@ -4,12 +4,10 @@
 package subscription
 
 import (
-	"encoding/base64"
 	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/debuglog"
@@ -371,28 +369,12 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 
 // Private helper functions (migrated from parser.go)
 
-// decodeBase64WithPadding attempts to decode base64 string with automatic padding
-// Uses the shared tryDecodeBase64 function from core package
-// Note: This creates a dependency on core package, but we can't import it due to circular dependency
-// So we keep a local implementation that matches the logic
+// decodeBase64WithPadding attempts to decode base64 string with automatic padding.
+// Thin wrapper over the shared DecodeBase64Multi helper (encoding_utils.go),
+// which tries the same four variants in the same order.
 func decodeBase64WithPadding(s string) ([]byte, error) {
-	// Try URL-safe base64 without padding first (most common)
-	if decoded, err := base64.URLEncoding.WithPadding(base64.NoPadding).DecodeString(s); err == nil {
-		return decoded, nil
-	}
-
-	// Try standard base64 without padding
-	if decoded, err := base64.StdEncoding.WithPadding(base64.NoPadding).DecodeString(s); err == nil {
-		return decoded, nil
-	}
-
-	// Try URL-safe base64 with padding
-	if decoded, err := base64.URLEncoding.DecodeString(s); err == nil {
-		return decoded, nil
-	}
-
-	// Try standard base64 with padding
-	return base64.StdEncoding.DecodeString(s)
+	decoded, _, err := DecodeBase64Multi(s)
+	return decoded, err
 }
 
 // isValidShadowsocksMethod checks if the encryption method is supported by sing-box
@@ -415,30 +397,18 @@ func isValidShadowsocksMethod(method string) bool {
 	return validMethods[method]
 }
 
-// validateAndFixUTF8 validates and fixes invalid UTF-8 in a string
-// Returns fixed string and true if valid, or original string and false if unfixable
+// validateAndFixUTF8 validates and fixes invalid UTF-8 in a string.
+// Returns fixed string and true if valid, or original string and false if unfixable.
+// Thin wrapper over the shared FixUTF8String helper (utf8_utils.go).
 func validateAndFixUTF8(s string) (string, bool) {
-	if utf8.ValidString(s) {
-		return s, true
-	}
-	fixed := strings.ToValidUTF8(s, "")
-	if utf8.ValidString(fixed) {
-		return fixed, true
-	}
-	return s, false
+	return FixUTF8String(s)
 }
 
-// validateAndFixUTF8Bytes validates and fixes invalid UTF-8 in bytes
-// Returns fixed string and true if valid, or empty string and false if unfixable
+// validateAndFixUTF8Bytes validates and fixes invalid UTF-8 in bytes.
+// Returns fixed string and true if valid, or empty string and false if unfixable.
+// Thin wrapper over the shared FixUTF8Bytes helper (utf8_utils.go).
 func validateAndFixUTF8Bytes(b []byte) (string, bool) {
-	if utf8.Valid(b) {
-		return string(b), true
-	}
-	fixed := strings.ToValidUTF8(string(b), "")
-	if utf8.ValidString(fixed) {
-		return fixed, true
-	}
-	return "", false
+	return FixUTF8Bytes(b)
 }
 
 // sanitizeForDisplay removes control characters that are unsafe for UI

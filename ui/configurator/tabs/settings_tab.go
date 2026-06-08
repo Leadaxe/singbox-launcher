@@ -13,12 +13,12 @@ import (
 
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
-	wizardtemplate "singbox-launcher/core/template"
 )
 
 func settingsVarVisible(v wizardtemplate.TemplateVar, goos string) bool {
@@ -148,9 +148,7 @@ func setVarFieldToolTip(tip string, widgets ...fyne.CanvasObject) {
 		if o == nil {
 			continue
 		}
-		if tb, ok := interface{}(o).(interface{ SetToolTip(string) }); ok {
-			tb.SetToolTip(tip)
-		}
+		fynewidget.SetToolTipSafe(o, tip)
 	}
 }
 
@@ -466,4 +464,3 @@ func buildSettingsSecretRow(presenter *wizardpresentation.WizardPresenter, model
 	applySettingsRowDisabled(rowEnabled, regenBtn, e)
 	return row
 }
-

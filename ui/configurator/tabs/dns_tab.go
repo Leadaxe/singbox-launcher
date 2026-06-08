@@ -30,9 +30,7 @@ func setTooltip(o fyne.CanvasObject, text string) {
 	if text == "" || o == nil {
 		return
 	}
-	if tb, ok := interface{}(o).(interface{ SetToolTip(string) }); ok {
-		tb.SetToolTip(text)
-	}
+	fynewidget.SetToolTipSafe(o, text)
 }
 
 func tooltipForDNSServerCheck(locked bool) string {

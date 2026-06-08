@@ -307,9 +307,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				}, rowGetter)
 				copyBtn.Importance = widget.LowImportance
 				sourceLabel.SetToolTip(tooltipText)
-				if tb, ok := interface{}(copyBtn).(interface{ SetToolTip(string) }); ok {
-					tb.SetToolTip(tooltipText)
-				}
+				fynewidget.SetToolTipSafe(copyBtn, tooltipText)
 
 				editBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DocumentCreateIcon(), func() {
 					presenter.MergeGUIToModel()
@@ -320,9 +318,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					showSourceEditWindow(presenter, guiState, guiState.Window, sourceIndex, shortLabel)
 				}, rowGetter)
 				editBtn.Importance = widget.LowImportance
-				if eb, ok := interface{}(editBtn).(interface{ SetToolTip(string) }); ok {
-					eb.SetToolTip(locale.T("wizard.source.button_edit"))
-				}
+				fynewidget.SetToolTipSafe(editBtn, locale.T("wizard.source.button_edit"))
 
 				delBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DeleteIcon(), func() {
 					m := presenter.Model()
@@ -341,9 +337,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					}
 				}, rowGetter)
 				delBtn.Importance = widget.LowImportance
-				if db, ok := interface{}(delBtn).(interface{ SetToolTip(string) }); ok {
-					db.SetToolTip(locale.T("wizard.source.button_del"))
-				}
+				fynewidget.SetToolTipSafe(delBtn, locale.T("wizard.source.button_del"))
 
 				// SPEC 052 phase 8: статус из subtitle (⚠ при err); badge на главной
 				// строке убран как избыточный. Refresh-icon только для подписок.
@@ -353,9 +347,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						refreshOneSourceFromUI(presenter, guiState, sourceID)
 					}, rowGetter)
 					refreshBtn.Importance = widget.LowImportance
-					if rb, ok := interface{}(refreshBtn).(interface{ SetToolTip(string) }); ok {
-						rb.SetToolTip(locale.T("wizard.source.tooltip_refresh_one"))
-					}
+					fynewidget.SetToolTipSafe(refreshBtn, locale.T("wizard.source.tooltip_refresh_one"))
 				}
 
 				// SPEC 061 Phase 3: ⚠ / 📢 icon-button — persistent affordance to
@@ -379,9 +371,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						wizarddialogs.ShowSourceErrorDialog(guiState.Window, srcLabel, metaCopy)
 					}, rowGetter)
 					noticeBtn.Importance = widget.LowImportance
-					if nb, ok := interface{}(noticeBtn).(interface{ SetToolTip(string) }); ok {
-						nb.SetToolTip(locale.T(tooltipKey))
-					}
+					fynewidget.SetToolTipSafe(noticeBtn, locale.T(tooltipKey))
 				}
 
 				rowGutter := components.NewScrollGutter()

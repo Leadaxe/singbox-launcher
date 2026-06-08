@@ -18,6 +18,7 @@ import (
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui/components"
@@ -34,12 +35,6 @@ const (
 
 func showWizardTagConflictError(win fyne.Window) {
 	dialog.ShowError(errors.New(locale.T("wizard.source.wizard_tag_conflict")), win)
-}
-
-func setFyneWidgetToolTip(w fyne.CanvasObject, tip string) {
-	if tb, ok := interface{}(w).(interface{ SetToolTip(string) }); ok {
-		tb.SetToolTip(tip)
-	}
 }
 
 // previewNodeCap bounds how many nodes the Preview tab parses/renders from a
@@ -301,7 +296,7 @@ func showSourceEditWindow(
 		if has {
 			tip = ""
 		}
-		setFyneWidgetToolTip(exposeCheck, tip)
+		fynewidget.SetToolTipSafe(exposeCheck, tip)
 	}
 
 	refreshExcludeHint := func() {

@@ -124,7 +124,7 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	// dns_rule). Затем SyncDNSByOrderToState обойдёт DNSRuleOrder и эмитит
 	// rules в правильном порядке. Если DNSRuleOrder пуст (legacy state) —
 	// fallback на DNSRulesText (через buildDNSRulesFromText внутри).
-	templateDNSTags := extractTemplateDNSTags(p.model.TemplateData)
+	templateDNSTags := wizardbusiness.ExtractTemplateDNSTags(p.model.TemplateData)
 	wizardmodels.ReconcileDNSRuleOrder(p.model)
 	state.DNS = wizardmodels.SyncDNSByOrderToState(
 		p.model.DNSRuleOrder,

@@ -399,11 +399,6 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 		syncOutboundsLocal(model)
 		rows := collectRowsForUI(model)
 		items := make([]fyne.CanvasObject, 0, len(rows))
-		setReorderBtnTip := func(w fyne.CanvasObject, tip string) {
-			if tb, ok := interface{}(w).(interface{ SetToolTip(string) }); ok {
-				tb.SetToolTip(tip)
-			}
-		}
 		for rowIdx, r := range rows {
 			r := r
 			rowIdx := rowIdx
@@ -447,9 +442,9 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			}, rowGetter)
 			if !canUp {
 				upBtn.Disable()
-				setReorderBtnTip(upBtn, locale.T("wizard.outbound.reorder_up_off"))
+				fynewidget.SetToolTipSafe(upBtn, locale.T("wizard.outbound.reorder_up_off"))
 			} else {
-				setReorderBtnTip(upBtn, locale.T("wizard.outbound.reorder_up"))
+				fynewidget.SetToolTipSafe(upBtn, locale.T("wizard.outbound.reorder_up"))
 			}
 
 			downBtn := fynewidget.NewHoverForwardButton("↓", func() {
@@ -465,9 +460,9 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			}, rowGetter)
 			if !canDown {
 				downBtn.Disable()
-				setReorderBtnTip(downBtn, locale.T("wizard.outbound.reorder_down_off"))
+				fynewidget.SetToolTipSafe(downBtn, locale.T("wizard.outbound.reorder_down_off"))
 			} else {
-				setReorderBtnTip(downBtn, locale.T("wizard.outbound.reorder_down"))
+				fynewidget.SetToolTipSafe(downBtn, locale.T("wizard.outbound.reorder_down"))
 			}
 
 			// Edit button — доступен для всех rows включая preset/required.
@@ -573,9 +568,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 					}
 				}, rowGetter)
 				resetBtn.Importance = widget.LowImportance
-				if rb, ok := interface{}(resetBtn).(interface{ SetToolTip(string) }); ok {
-					rb.SetToolTip("Reset — clear your changes, revert to defaults")
-				}
+				fynewidget.SetToolTipSafe(resetBtn, "Reset — clear your changes, revert to defaults")
 				if !r.HasUserPatch {
 					resetBtn.Disable()
 				}
