@@ -401,7 +401,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				}
 
 				rowGutter := components.NewScrollGutter()
-				rightControlsItems := []fyne.CanvasObject{moveUpBtn, moveDownBtn}
+				rightControlsItems := []fyne.CanvasObject{}
 				if noticeBtn != nil {
 					rightControlsItems = append(rightControlsItems, noticeBtn)
 				}
@@ -417,7 +417,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				}
 				rightControlsItems = append(rightControlsItems, delBtn, rowGutter)
 				rightControls := container.NewHBox(rightControlsItems...)
-				titleRow := container.NewBorder(nil, nil, enableCheck, rightControls, rowCenter)
+				// Guideline (Rules tab): reorder ↑/↓ go to the LEFT of the enable
+				// checkbox in a leading cluster, action buttons stay on the right.
+				leftLead := container.NewHBox(moveUpBtn, moveDownBtn, fynewidget.CheckLeadingWrap(enableCheck))
+				titleRow := container.NewBorder(nil, nil, leftLead, rightControls, rowCenter)
 
 				// Subtitle row: meta inline (nodes / interval / fetched / quota / expires).
 				// tightVBox — custom layout без theme.Padding между title/subtitle
