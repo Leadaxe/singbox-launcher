@@ -33,7 +33,11 @@
 
 ### Отложено + задокументировано (designed targets, ADR в ARCHITECTURE.md)
 - **dual-state elimination** (ADR-070-2) — риск тихого повреждения state; эволюционировал
-  через 4 SPEC; нужен runtime-verify. Не делал вслепую.
+  через 4 SPEC; нужен runtime-verify. **Автономная попытка сделана (агент, all-or-nothing)
+  и ОТКАЧЕНА:** агент удалил `State.CustomRules`/`DNSOptions`, но не сконвертил всех
+  ридеров (`config_service.go`, `config_service_context.go`, `state_test.go`) → build red;
+  мой gate поймал, откатил в чистый HEAD. Подтверждает: dual-state — только supervised
+  (нужно конвертить ридеров по одному с твоим GUI round-trip тестом save/load).
 - **controller field-extraction** (ADR-070-7) — 113 полей/4 mutex, риск дедлоков.
 - **полный callback→event retirement** (ADR-070-3) — нужен GUI-smoke; сделан только
   ConfigBuilt-кусок.
