@@ -3,19 +3,23 @@
 > Обновляется по ходу работы. Источник правды о том, что сделано и что осталось.
 > Стартовая точка: HEAD `f9f2d06`, ветка `develop`, дерево чистое.
 
-## Текущая фаза: **Stage B — behavior-preserving dedup (workflow running)**
+## Текущая фаза: **Stage C — domain monolith splits (workflow running)**
 
 ### Стадии — статус
-- ✅ **Stage A** done — `e09749e`. Event-bus + DI cleanup (см. ниже).
-- 🔄 **Stage B** — workflow `wf_89343467-aea`, 5 агентов на disjoint-пакетах:
-  subscription utf8/base64, state buildTagSpec, build ruleset-convert, fynewidget
-  SetToolTipSafe, business/presentation template-dedup. После — full build + targeted
-  tests + commit.
-- ⏭ Отложено из B (риск/нужны golden): subscription transport_builder/tls_builder
-  (URI vs Xray drift — в Stage D с golden), ResolvedEntryMetadata embed (много literal-
-  сайтов, low value), DownloadStateComponent + srs_downloader (в Stage F с UI-декомпозицией).
-- Stage A решение: DI no-op placeholder консолидирован (удалён дубль в controller.go,
-  дефолты ставит NewUIService). `GetController` fallback удалён + `GetControllerOrPanic`.
+- ✅ **Stage A** done — `e09749e`. Event-bus + DI cleanup.
+- ✅ **Stage B** done — `7a3a1de`. Dedup: subscription utf8/base64 helpers, state
+  buildTagSpec, fynewidget SetToolTipSafe (~9 inline copies), business/presentation
+  template-dedup. B3 (build ruleset-convert) намеренно SKIP — два конвертера различаются
+  ключеванием path (tag vs content-hash) → merge сменил бы emitted JSON. build+vet+targeted
+  tests зелёные.
+- 🔄 **Stage C** — workflow `wf_d228b683-d2a`, 4 агента (pure file-splits):
+  core/state (load.go, adapter.go), subscription (node_parser.go, share_uri_encode.go),
+  api (clash.go), internal/platform (wintun_cleanup_windows.go, GOOS=windows verify).
+- ⏭ Отложено: transport_builder/tls_builder (golden — Stage D), ResolvedEntryMetadata
+  embed (low value), DownloadStateComponent+srs_downloader (Stage F), остаток tooltip-
+  сайтов в core_dashboard_tab/clash_api_tab (Stage F при декомпозиции).
+- Stage G (docs ARCHITECTURE.md + file-inventory) — в конце, после всех split'ов
+  (инвентарь файлов меняется декомпозицией). Делегирую агенту с synthesis.json.
 
 ## Принятый план исполнения (из synthesis.json — see also zone_maps.json)
 
