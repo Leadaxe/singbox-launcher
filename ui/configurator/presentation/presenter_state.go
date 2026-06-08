@@ -20,7 +20,6 @@
 package presentation
 
 import (
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -97,12 +96,12 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	state.RulesLibraryMerged = p.model.RulesLibraryMerged
 	state.SelectableRuleStates = nil
 
-	// Преобразуем CustomRules — сохраняем полную структуру
-	state.CustomRules = make([]wizardmodels.PersistedCustomRule, 0, len(p.model.CustomRules))
-	for _, ruleState := range p.model.CustomRules {
-		persisted := wizardmodels.ToPersistedCustomRule(ruleState)
-		state.CustomRules = append(state.CustomRules, persisted)
-	}
+	// SPEC 070 ADR-070-2: legacy state.CustomRules write удалён — поле снято
+	// с core/state.State. marshalDisk сериализует только canonical state.Rules
+	// (заполняется ниже через SyncRulesByOrderToStateRulesV6), а прежний
+	// CustomRules-write был dead-on-save (не сериализовался) и dead-in-memory
+	// (state отбрасывается после Save). UI legacy view берётся on-demand через
+	// state.LegacyCustomRulesView при restore.
 
 	// SPEC 053: sync ВСЕХ правил с сохранением порядка RuleOrder.
 	// state.Rules эмитится в том же порядке как UI Rules tab показывает
@@ -161,11 +160,11 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 		build.SyncOutboundsWithActivePresets(state.Rules, &state.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets)
 	}
 
-	// dns_options в state — только servers и rules; скаляры DNS — в state.vars (dns_*).
-	state.DNSOptions = &wizardmodels.PersistedDNSState{
-		Servers: append([]json.RawMessage(nil), p.model.DNSServers...),
-		Rules:   wizardbusiness.PersistedDNSRulesForState(p.model.DNSRulesText),
-	}
+	// SPEC 070 ADR-070-2: legacy state.DNSOptions write удалён — поле снято
+	// с core/state.State. Canonical state.DNS (servers/rules) уже синхронизирован
+	// выше через SyncDNSByOrderToState; DNS-scalars живут в state.vars (dns_*).
+	// Прежний DNSOptions-write был dead-on-save (не сериализовался) и
+	// dead-in-memory (state отбрасывается после Save).
 
 	if p.model.TemplateData != nil {
 		// Sync model.SelectedFinalOutbound → SettingsVars["route_final"] before
@@ -275,7 +274,9 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 	// have no runtime effect; just zero the in-memory copies so nothing reads stale.
 	p.model.RulesLibraryMerged = true
 	p.model.SelectableRuleStates = nil
-	p.restoreCustomRules(stateFile.CustomRules)
+	// SPEC 070 ADR-070-2: legacy CustomRules больше не stored field — берём
+	// on-demand projection из canonical stateFile.Rules.
+	p.restoreCustomRules(corestate.LegacyCustomRulesView(stateFile))
 	// Fill SelectedOutbound for any custom rules missing it (single-pass after restore).
 	{
 		opts := wizardbusiness.EnsureDefaultAvailableOutbounds(wizardbusiness.GetAvailableOutbounds(p.model))

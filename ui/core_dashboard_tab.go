@@ -525,11 +525,11 @@ func (tab *CoreDashboardTab) readConfigOnDemand() {
 		debuglog.WarnLog("CoreDashboard: state.json not loaded on demand: %v", err)
 		return
 	}
-	debuglog.InfoLog("CoreDashboard: state.json snapshot (parser_config v%d, %d proxy sources, %d outbounds, %d custom rules)",
+	debuglog.InfoLog("CoreDashboard: state.json snapshot (parser_config v%d, %d proxy sources, %d outbounds, %d rules)",
 		s.ParserConfig.ParserConfig.Version,
 		len(s.ParserConfig.ParserConfig.Proxies),
 		len(s.ParserConfig.ParserConfig.Outbounds),
-		len(s.CustomRules))
+		len(s.Rules))
 }
 
 // createStateBlock — секция «Saved states» внизу дашборда: dropdown со

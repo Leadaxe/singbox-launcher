@@ -570,7 +570,7 @@ func SyncPresetRefsToStateRules(refs []*PresetRefState) []state.Rule {
 
 // SyncStateRulesToPresetRefs — state → UI. Возвращает model.PresetRefs из state.Rules.
 // Только kind=preset попадают; остальные kind'ы (inline/srs) идут через legacy CustomRules
-// path (см. core/state/load.go::legacyCustomRulesFromV6).
+// projection (см. core/state.LegacyCustomRulesView, SPEC 070 ADR-070-2).
 func SyncStateRulesToPresetRefs(rules []state.Rule) []*PresetRefState {
 	if len(rules) == 0 {
 		return nil

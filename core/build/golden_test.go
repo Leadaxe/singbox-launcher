@@ -316,8 +316,9 @@ func dnsConfigFromState(s *state.State) DNSConfig {
 		return DNSConfig{}
 	}
 	cfg := DNSConfig{}
-	if s.DNSOptions != nil {
-		d := s.DNSOptions
+	// SPEC 070 ADR-070-2: legacy s.DNSOptions field удалён; legacy DNS view
+	// (raw v5 servers/rules + scalars) восстанавливается через projection.
+	if d := state.LegacyDNSOptionsView(s); d != nil {
 		cfg.Servers = d.Servers
 		cfg.Final = d.Final
 		cfg.Strategy = d.Strategy
@@ -351,8 +352,11 @@ func routeConfigFromState(s *state.State) RouteConfig {
 	if s == nil {
 		return RouteConfig{}
 	}
-	rules := make([]RouteRule, 0, len(s.CustomRules))
-	for _, cr := range s.CustomRules {
+	// SPEC 070 ADR-070-2: legacy s.CustomRules field удалён; legacy view
+	// (inline/srs из canonical s.Rules) восстанавливается через projection.
+	legacyCustom := state.LegacyCustomRulesView(s)
+	rules := make([]RouteRule, 0, len(legacyCustom))
+	for _, cr := range legacyCustom {
 		// Аналог wizard `GetEffectiveOutbound`: SelectedOutbound либо
 		// DefaultOutbound. У state.CustomRule нет explicit DefaultOutbound,
 		// но HasOutbound + DefaultOutbound поля сохраняются.

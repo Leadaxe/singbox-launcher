@@ -24,9 +24,10 @@ import (
 // **TODO (SPEC 056-R-N): удалить `legacyDevDNSToOptions` после release-cycle**
 // когда все dev-state'ы перешли на новый shape.
 //
-// Для backward-compat UI callsite'ов (DNS tab пока на v5-моделях) генерируется
-// legacy CustomRules view (preset-ref пропускается — UI Phase 6 покажет
-// через новый dialog).
+// SPEC 070 ADR-070-2: canonical Rules/DNS — единственная stored truth. Legacy
+// views (CustomRules / DNSOptions) больше НЕ backfill'ятся в поля State на load;
+// UI/business слой берёт их on-demand через LegacyCustomRulesView /
+// LegacyDNSOptionsView.
 func parseCurrent(data []byte) (*State, error) {
 	var raw struct {
 		Meta        MetaSection        `json:"meta"`
@@ -62,9 +63,6 @@ func parseCurrent(data []byte) (*State, error) {
 	if t, err := time.Parse(time.RFC3339, raw.Meta.UpdatedAt); err == nil {
 		s.UpdatedAt = t
 	}
-
-	// Generate legacy CustomRules view for backward-compat UI (Phase 6 will use RulesV6 directly).
-	s.CustomRules = legacyCustomRulesFromV6(raw.Rules)
 
 	syncLegacyFromConnections(s)
 	normalizeNilSlices(s)
@@ -151,12 +149,21 @@ func legacyDevDNSToOptions(legacy json.RawMessage) DNSOptions {
 	return out
 }
 
-// legacyCustomRulesFromV6 — конвертирует Rules[] в legacy CustomRule view.
+// LegacyCustomRulesView — on-demand projection: конвертирует s.Rules[] в legacy
+// CustomRule view для UI/business callsite'ов которые ещё работают на v5-модели.
+//
+// SPEC 070 ADR-070-2: это ПРОЕКЦИЯ, а не stored field. Раньше результат
+// записывался в State.CustomRules на load (legacyCustomRulesFromV6 +
+// deriveV6FromLegacy backfill); теперь caller вызывает helper когда нужно.
 //
 // Только kind=inline/srs конвертируются. kind=preset пропускается (не имеет
-// сериализованных match-полей — они в template; UI Phase 6 будет работать
-// с RulesV6 напрямую через новый edit dialog).
-func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
+// сериализованных match-полей — они в template; preset-ref'ы UI показывает
+// через PresetRefs напрямую).
+func LegacyCustomRulesView(s *State) []CustomRule {
+	if s == nil {
+		return nil
+	}
+	rules := s.Rules
 	out := make([]CustomRule, 0, len(rules))
 	for _, r := range rules {
 		body, err := r.DecodeBody()
@@ -215,15 +222,94 @@ func legacyCustomRulesFromV6(rules []Rule) []CustomRule {
 	return out
 }
 
-// legacyDNSOptionsFromV6 — УДАЛЁНА в SPEC 056-R-N.
+// LegacyDNSOptionsView — on-demand projection: реконструирует v5
+// *LegacyDNSOptionsV5 из canonical s.DNS для UI/business/test callsite'ов
+// которые ещё работают на v5 DNS-модели.
 //
-// Старая функция материализовала v6.DNSConfig template_servers + extras в v5
-// DNSOptions view для UI back-compat. Заменена прямым чтением `state.DNS`
-// (v6.DNSOptions) — UI рендерит DNS tab из flat servers[]/rules[] напрямую,
-// build pipeline читает через ctx.Preset.DNS. Никакого двойного view больше нет.
+// SPEC 070 ADR-070-2: проекция, не stored field. Раньше State.DNSOptions
+// заполнялся raw'ом на load v5 (parseV5Legacy) либо оставался nil на v6;
+// теперь поле удалено, а данные живут в canonical s.DNS (после migrateDNS на
+// read-time migration shim).
 //
-// Если UI код всё ещё ожидает state.DNSOptions — он использует legacy v5 path
-// (для backward-compat с v5 файлами). В v6 path `state.DNSOptions` остаётся nil.
+// Реконструкция:
+//   - scalars (Strategy/Final/DefaultDomainResolver) копируются напрямую;
+//   - Servers/Rules восстанавливаются в raw v5 shape (плоский JSON объект
+//     {tag, enabled, ...body} без поля kind) — это инвертирует migrateDNS
+//     для callsite'ов, ожидающих старый формат (build golden harness).
+//
+// Возвращает nil если s nil или s.DNS пуст — caller'ы nil-tolerant.
+func LegacyDNSOptionsView(s *State) *LegacyDNSOptionsV5 {
+	if s == nil {
+		return nil
+	}
+	d := s.DNS
+	if d.IsEmpty() {
+		return nil
+	}
+	out := &LegacyDNSOptionsV5{
+		Strategy:              d.Strategy,
+		Final:                 d.Final,
+		DefaultDomainResolver: d.DefaultDomainResolver,
+	}
+	for i := range d.Servers {
+		if raw := legacyRawDNSServer(d.Servers[i]); raw != nil {
+			out.Servers = append(out.Servers, raw)
+		}
+	}
+	for i := range d.Rules {
+		if raw := legacyRawDNSRule(d.Rules[i]); raw != nil {
+			out.Rules = append(out.Rules, raw)
+		}
+	}
+	return out
+}
+
+// legacyRawDNSServer — реконструирует raw v5 server JSON {tag, enabled, ...body}
+// из canonical DNSServer (инверсия migrateDNS kind=user branch). template/preset
+// kinds пропускаются (у них нет body — они материализуются из шаблона).
+func legacyRawDNSServer(srv DNSServer) json.RawMessage {
+	if srv.Kind != DNSServerKindUser {
+		return nil
+	}
+	entry := make(map[string]interface{}, 2+len(srv.Body))
+	for k, v := range srv.Body {
+		switch k {
+		case "kind", "ref", "enabled":
+			continue
+		}
+		entry[k] = v
+	}
+	if srv.Tag != "" {
+		entry["tag"] = srv.Tag
+	}
+	entry["enabled"] = srv.Enabled
+	b, err := json.Marshal(entry)
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
+// legacyRawDNSRule — реконструирует raw v5 rule JSON из canonical DNSRule
+// (инверсия migrateDNS rules branch). preset kind пропускается.
+func legacyRawDNSRule(rl DNSRule) json.RawMessage {
+	if rl.Kind != DNSRuleKindUser {
+		return nil
+	}
+	entry := make(map[string]interface{}, len(rl.Body))
+	for k, v := range rl.Body {
+		switch k {
+		case "kind", "ref", "enabled":
+			continue
+		}
+		entry[k] = v
+	}
+	b, err := json.Marshal(entry)
+	if err != nil {
+		return nil
+	}
+	return b
+}
 
 // cloneMap — shallow copy of map[string]interface{} for safe legacy view generation.
 func cloneMap(in map[string]interface{}) map[string]interface{} {

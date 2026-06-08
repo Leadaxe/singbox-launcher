@@ -6,6 +6,7 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/config/configtypes"
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -158,24 +159,26 @@ func (p *WizardPresenter) restoreConfigParams(stateFile *wizardmodels.WizardStat
 }
 
 // restoreDNS loads dns_options from state (if any) and merges with the current wizard_template.json.
+//
+// SPEC 070 ADR-070-2: canonical-only. Раньше v5-файлы шли через legacy
+// sf.DNSOptions (LoadPersistedWizardDNS + scalars), но read-time migration shim
+// (migrateLegacyIntoCanonical в Load) теперь конвертит v5 dns_options в canonical
+// sf.DNS, так что servers/rules восстанавливаются через populateUserDNSFromState
+// (как для v6-файлов), а DNS-scalars — через LegacyDNSOptionsView projection.
 func (p *WizardPresenter) restoreDNS(sf *wizardmodels.WizardStateFile) {
 	if sf == nil {
 		return
 	}
+	// DNS-scalars (strategy/final/default_domain_resolver) projection из canonical
+	// sf.DNS. nil-tolerant: для пустого DNS view == nil → no-op.
+	legacyDNSView := corestate.LegacyDNSOptionsView(sf)
 	if p.model.TemplateData != nil {
-		wizardbusiness.MigrateDNSScalarsFromPersistedToSettingsVars(sf.DNSOptions, p.model.SettingsVars, p.model.TemplateData.Vars)
+		wizardbusiness.MigrateDNSScalarsFromPersistedToSettingsVars(legacyDNSView, p.model.SettingsVars, p.model.TemplateData.Vars)
 	}
-	if sf.DNSOptions != nil && sf.DNSOptions.ResolverUnset {
-		p.model.DefaultDomainResolverUnset = true
-		p.model.DefaultDomainResolver = ""
-	}
-	if sf.DNSOptions != nil {
-		wizardbusiness.LoadPersistedWizardDNS(p.model, sf.DNSOptions)
-	}
-	// SPEC 056 phase 7 regression fix: для v6-файлов sf.DNSOptions == nil,
-	// поэтому user-added DNS-сервера и user DNS rules (kind=user в sf.DNS)
-	// никем не восстанавливались — populateUserDNSFromState закрывает дыру.
-	// Идемпотентно: дедуп по tag, DNSRulesText трогаем только если пуст.
+	// SPEC 070: legacy ResolverUnset flag (v5-only) больше не сохраняется в
+	// canonical схеме — в v6 "resolver unset" выражается отсутствием dns_default_
+	// domain_resolver var (ApplyDNSVarsFromSettingsToModel → template default).
+	// servers/rules восстанавливаются канонически (как для v6-файлов).
 	populateUserDNSFromState(p.model, sf.DNS)
 	// Старые state.json: тег только в config_params (до dns_* vars).
 	if !p.model.DefaultDomainResolverUnset && strings.TrimSpace(p.model.DefaultDomainResolver) == "" {

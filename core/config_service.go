@@ -408,18 +408,12 @@ func collectAllStageRuleSetTags(execDir string, td *template.TemplateData) []str
 			debuglog.DebugLog("collectAllStageRuleSetTags: skip %s: %v", path, loadErr)
 			continue
 		}
-		// Legacy CustomRule rule_set tags.
-		for i := range s.CustomRules {
-			for _, rs := range s.CustomRules[i].RuleSet {
-				var m map[string]interface{}
-				if err := json.Unmarshal(rs, &m); err != nil {
-					continue
-				}
-				if tag, ok := m["tag"].(string); ok {
-					addTag(tag)
-				}
-			}
-		}
+		// SPEC 070 ADR-070-2: legacy CustomRule rule_set-tag loop удалён.
+		// v5-файлы мигрируются read-time в s.Rules (migrateLegacyIntoCanonical),
+		// поэтому inline/srs правила покрываются canonical-ветками ниже
+		// (preset-ref bundle + kind=srs user). Дублирующий legacy-loop больше
+		// ничего не добавлял (он читал m["tag"], которого нет в migrated SRS view).
+		//
 		// SPEC 053: preset-ref bundled remote rule_set'ы. content-addressed tag'и.
 		if presetByID != nil {
 			for _, r := range s.Rules {

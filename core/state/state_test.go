@@ -19,7 +19,7 @@ func TestNew(t *testing.T) {
 	if s.CreatedAt.IsZero() || s.UpdatedAt.IsZero() {
 		t.Fatalf("times must be set: %+v %+v", s.CreatedAt, s.UpdatedAt)
 	}
-	if s.ConfigParams == nil || s.CustomRules == nil {
+	if s.ConfigParams == nil {
 		t.Fatalf("default slices must be non-nil")
 	}
 }
@@ -86,8 +86,16 @@ func TestLoad_V4Minimal(t *testing.T) {
 	if len(s.Vars) != 2 {
 		t.Fatalf("Vars: want 2, got %d", len(s.Vars))
 	}
-	if s.DNSOptions == nil {
-		t.Fatalf("DNSOptions must be present")
+	// SPEC 070 ADR-070-2: legacy DNSOptions field удалён; v4 dns_options
+	// мигрирован в canonical s.DNS. Фикстура содержит пустой dns_options
+	// (servers:[], rules:[], без scalars), поэтому s.DNS остаётся пустым —
+	// проверяем что миграция не упала и canonical DNS-секция консистентна
+	// (projection отдаёт nil для пустого view, как и положено).
+	if !s.DNS.IsEmpty() {
+		t.Fatalf("DNS should be empty for empty v4 dns_options, got %+v", s.DNS)
+	}
+	if LegacyDNSOptionsView(s) != nil {
+		t.Fatalf("projection must be nil for empty DNS")
 	}
 	wantUpdated := time.Date(2026, 4, 26, 20, 0, 0, 0, time.UTC)
 	if !s.UpdatedAt.Equal(wantUpdated) {
@@ -116,11 +124,15 @@ func TestLoad_V3LegacyShapes(t *testing.T) {
 		t.Fatalf("selectable migration wrong: %+v", sr)
 	}
 
-	if got := len(s.CustomRules); got != 1 {
+	// SPEC 070 ADR-070-2: legacy CustomRules field удалён; v3 custom_rules
+	// мигрированы в canonical s.Rules, доступны через projection.
+	legacyCustom := LegacyCustomRulesView(s)
+	if got := len(legacyCustom); got != 1 {
 		t.Fatalf("CustomRules: want 1 after migration, got %d", got)
 	}
-	cr := s.CustomRules[0]
-	if cr.Label != "private-net" || cr.Type != "ips" || !cr.Enabled {
+	cr := legacyCustom[0]
+	// Type на projection вычисляется через DetermineRuleType (ips body → "ips").
+	if cr.Label != "private-net" || !cr.Enabled {
 		t.Fatalf("custom migration wrong: %+v", cr)
 	}
 	if cr.Rule == nil {
@@ -143,7 +155,6 @@ func TestSave_RoundTrip(t *testing.T) {
 		CreatedAt:    time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		ConfigParams: []ConfigParam{{Name: "route_final", Value: "vpn-1"}},
 		Vars:         []SettingVar{{Name: "log_level", Value: "info"}},
-		CustomRules:  []CustomRule{},
 	}
 	original.ParserConfig.ParserConfig.Version = 4
 	original.ParserConfig.ParserConfig.Proxies = []configtypes.ProxySource{

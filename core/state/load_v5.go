@@ -27,9 +27,7 @@ func parseV5Legacy(data []byte) (*State, error) {
 		Comment:      raw.Meta.Comment,
 		Connections:  raw.Connections,
 		ConfigParams: raw.ConfigParams,
-		CustomRules:  raw.CustomRules,
 		Vars:         raw.Vars,
-		DNSOptions:   raw.DNSOptions,
 		// Legacy флаги, которые v5 больше не сериализует — выставляем
 		// дефолты, удобные UI-коду:
 		RulesLibraryMerged: true,
@@ -41,9 +39,10 @@ func parseV5Legacy(data []byte) (*State, error) {
 		s.UpdatedAt = t
 	}
 
-	// BUG1 fix: derive canonical v6 Rules/DNS from legacy v5 CustomRules/
-	// DNSOptions так, чтобы headless Save (сериализует только v6) их не терял.
-	deriveV6FromLegacy(s)
+	// SPEC 070 ADR-070-2: read-time migration shim. v5 CustomRules/DNSOptions
+	// (disk-only locals) мигрируются forward в canonical Rules/DNS in-memory —
+	// они НЕ хранятся в State. Следующий Save пишет только v6.
+	migrateLegacyIntoCanonical(s, raw.CustomRules, raw.DNSOptions)
 
 	// Заполняем legacy proxies-view из Connections для backward-compat
 	// callsite'ов (UI source_tab, dashboard counters, parser).
@@ -52,26 +51,27 @@ func parseV5Legacy(data []byte) (*State, error) {
 	return s, nil
 }
 
-// deriveV6FromLegacy populates canonical v6 s.Rules / s.DNS from the legacy
-// s.CustomRules / s.DNSOptions when the v6 fields are empty. Without it a
-// legacy-format state loaded headlessly (no Configurator UI) keeps Rules/DNS
-// empty, and the next Save — which serializes ONLY v6 fields (marshalDisk) —
-// silently drops the user's custom rules + DNS config (Debug API PATCH /
-// auto-save / log-level / subscription-refresh paths all hit Load→mutate→Save
-// without re-emitting from a model). Build branch-selection keys on
-// len(s.Rules)>0 (routeConfigForUpdate) and v6Active (dnsConfigForUpdate), so
-// once populated CustomRules/DNSOptions become a dormant legacy view — no
-// double-emit. Template maps are nil at parse time (no template available):
-// best-effort kind detection; the Configurator re-derives accurately on open.
-func deriveV6FromLegacy(s *State) {
-	if len(s.Rules) == 0 && len(s.CustomRules) > 0 {
-		for _, cr := range s.CustomRules {
+// migrateLegacyIntoCanonical — read-time migration shim (SPEC 070 ADR-070-2).
+//
+// Конвертит legacy v2..v5 CustomRules/DNSOptions (распарсенные из disk shape,
+// передаются как локалы — НЕ State-поля) в canonical s.Rules / s.DNS, если
+// canonical поля пусты. Без этого legacy-файл, загруженный headless'но (без
+// Configurator UI), терял бы custom rules + DNS на следующем Save (marshalDisk
+// сериализует ТОЛЬКО v6). Headless writers: Debug API PATCH, auto-save,
+// log-level, subscription-refresh — все Load→mutate→Save без re-emit из модели.
+//
+// Template maps nil на parse-time (нет шаблона): best-effort kind detection;
+// Configurator передеривит точно на open. Идемпотентно: noop когда canonical
+// уже заполнен (чистый v6-файл такой ветки не достигает).
+func migrateLegacyIntoCanonical(s *State, customRules []CustomRule, dnsOptions *LegacyDNSOptionsV5) {
+	if len(s.Rules) == 0 && len(customRules) > 0 {
+		for _, cr := range customRules {
 			if r, _ := migrateCustomRule(cr, nil); r != nil {
 				s.Rules = append(s.Rules, *r)
 			}
 		}
 	}
-	if len(s.DNS.Servers) == 0 && len(s.DNS.Rules) == 0 && s.DNSOptions != nil {
-		s.DNS, _ = migrateDNS(s.DNSOptions, nil)
+	if len(s.DNS.Servers) == 0 && len(s.DNS.Rules) == 0 && dnsOptions != nil {
+		s.DNS, _ = migrateDNS(dnsOptions, nil)
 	}
 }

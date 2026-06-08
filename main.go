@@ -206,11 +206,11 @@ func main() {
 					debuglog.WarnLog("Application startup: state.json not loaded: %v", err)
 					return
 				}
-				debuglog.InfoLog("Application startup: state.json loaded (parser_config v%d, %d proxy sources, %d outbounds, %d custom rules)",
+				debuglog.InfoLog("Application startup: state.json loaded (parser_config v%d, %d proxy sources, %d outbounds, %d rules)",
 					s.ParserConfig.ParserConfig.Version,
 					len(s.ParserConfig.ParserConfig.Proxies),
 					len(s.ParserConfig.ParserConfig.Outbounds),
-					len(s.CustomRules))
+					len(s.Rules))
 			}()
 
 			// Auto-start VPN if -start flag is provided

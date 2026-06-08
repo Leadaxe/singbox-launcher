@@ -65,9 +65,7 @@ func parseLegacyAndMigrate(data []byte) (*State, error) {
 		ConfigParams:         migrated.ConfigParams,
 		Vars:                 migrated.Vars,
 		SelectableRuleStates: selectable,
-		CustomRules:          migrated.CustomRules,
 		RulesLibraryMerged:   raw.RulesLibraryMerged,
-		DNSOptions:           migrated.DNSOptions,
 	}
 	if t, err := time.Parse(time.RFC3339, raw.CreatedAt); err == nil {
 		s.CreatedAt = t
@@ -75,7 +73,9 @@ func parseLegacyAndMigrate(data []byte) (*State, error) {
 	if t, err := time.Parse(time.RFC3339, raw.UpdatedAt); err == nil {
 		s.UpdatedAt = t
 	}
-	deriveV6FromLegacy(s) // BUG1: derive v6 Rules/DNS from migrated legacy fields
+	// SPEC 070 ADR-070-2: read-time migration shim — migrated v4 CustomRules/
+	// DNSOptions (locals) → canonical Rules/DNS in-memory; не хранятся в State.
+	migrateLegacyIntoCanonical(s, migrated.CustomRules, migrated.DNSOptions)
 	normalizeNilSlices(s)
 	return s, nil
 }

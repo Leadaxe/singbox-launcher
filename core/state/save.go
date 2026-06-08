@@ -98,8 +98,10 @@ func (s *State) Save(path string) error {
 //	}
 //
 // SPEC 060 Phase 5: единственный write path — `marshalDiskV6` rename'нут в
-// `marshalDisk`, старый v5-marshaller удалён. Legacy `s.CustomRules` /
-// `s.DNSOptions` НЕ сериализуются — источник истины Rules / DNS.
+// `marshalDisk`, старый v5-marshaller удалён.
+//
+// SPEC 070 ADR-070-2: legacy CustomRules / DNSOptions stored-поля удалены —
+// canonical Rules / DNS единственная stored truth; marshalDisk пишет только их.
 func (s *State) marshalDisk() ([]byte, error) {
 	out := diskStateV6{
 		Meta: MetaSection{

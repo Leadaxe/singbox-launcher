@@ -2,14 +2,17 @@
 // Wizard) без UI-зависимостей.
 //
 // SPEC 052 (CONNECTIONS_REDESIGN): на диск пишется v5/v6-схема. Поверхностный
-// in-memory тип State сохраняет legacy-форму (ParserConfig.ParserConfig.Proxies,
-// Vars, CustomRules, DNSOptions) для совместимости с существующими
-// callsite'ами; canonical секция Connections живёт параллельно и
-// синхронизируется на Save (UI-edits ParserConfig → Sync → write).
+// in-memory тип State сохраняет legacy-форму ParserConfig.ParserConfig.Proxies
+// для совместимости с существующими callsite'ами; canonical секция Connections
+// живёт параллельно и синхронизируется на Save (UI-edits ParserConfig → Sync →
+// write).
 //
 // SPEC 060: v5/ и v6/ subpackages collapsed в единый core/state/. Wire format
 // не меняется. Историческое имя поля RulesV6 сохранено в Phase 2/3/4 и
 // переименовано в Rules на Phase 5.
+//
+// SPEC 070 ADR-070-2: legacy stored поля CustomRules / DNSOptions удалены —
+// canonical Rules / DNS — единственная stored truth (см. ниже).
 //
 // Этот пакет НЕ:
 //   - не зависит от UI / Fyne;
@@ -96,18 +99,15 @@ type State struct {
 	// и для UI-кода, который ещё на него ссылается.
 	SelectableRuleStates []SelectableRuleState
 
-	// CustomRules — пользовательские правила.
-	CustomRules []CustomRule
-
 	// RulesLibraryMerged — флаг SPEC 027: rules library уже мигрирована.
 	// Legacy; в v5 не сериализуется (всегда true). В памяти сохраняется
 	// чтобы UI-код не ре-запускал миграцию каждый Load.
 	RulesLibraryMerged bool
 
-	// DNSOptions — снимок вкладки DNS визарда (v5 legacy shape).
-	// Приватный тип LegacyDNSOptionsV5 — оставлен для backward-compat с UI
-	// кодом который ещё работает через legacy view. В v6 path обычно nil.
-	DNSOptions *LegacyDNSOptionsV5
+	// SPEC 070 ADR-070-2: legacy stored поля CustomRules ([]CustomRule) и
+	// DNSOptions (*LegacyDNSOptionsV5) УДАЛЕНЫ. Canonical Rules / DNS — единственная
+	// stored truth. Legacy views вычисляются on-demand через LegacyCustomRulesView /
+	// LegacyDNSOptionsView (см. load_v6.go).
 
 	// === SPEC 053: v6 preset bundles ===
 
@@ -120,7 +120,7 @@ type State struct {
 
 	// DNS — новая DNS-секция (SPEC 056-R-N: flat kind discriminator
 	// template/preset/user для servers и preset/user для rules).
-	// Параллельно DNSOptions (legacy v5) для одностороннего sync на Save.
+	// Единственная stored DNS-truth (SPEC 070 ADR-070-2).
 	// JSON-ключ на диске: "dns_options" (см. state.marshalDisk).
 	// Историческое имя поля было DNSV6 (когда v5/v6 co-existed); после
 	// SPEC 056-R-N оба формата это v6 internally, суффикс выкинут.
@@ -143,7 +143,6 @@ func New() *State {
 		CreatedAt:    now,
 		UpdatedAt:    now,
 		ConfigParams: []ConfigParam{},
-		CustomRules:  []CustomRule{},
 	}
 }
 
