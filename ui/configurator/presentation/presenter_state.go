@@ -179,6 +179,13 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 			}
 			p.model.SettingsVars["route_final"] = p.model.SelectedFinalOutbound
 		}
+		// Materialize DNS scalars (dns_strategy / dns_final / dns_default_domain_resolver)
+		// from the model into SettingsVars before emitting state.Vars, so Save persists
+		// them regardless of whether a prior GUI→model DNS sync ran. Without this, a
+		// resolver/strategy/final change made right before Save (e.g. no tab switch) was
+		// silently dropped, while server enable/disable persisted (that goes straight to
+		// state.DNS.servers, not via a var).
+		wizardbusiness.SyncDNSModelToSettingsVars(p.model)
 		for _, vd := range p.model.TemplateData.Vars {
 			if vd.Separator {
 				continue

@@ -350,7 +350,11 @@ func (p *WizardPresenter) syncGUIToModel(markDirty bool) {
 		return
 	}
 	ready := p.guiState.WizardWidgetsReady
-	changed := p.syncGUIToModelSourceParserFinal(ready) || p.syncGUIToModelDNS(ready)
+	// Evaluate BOTH (no || short-circuit): if the source/parser/final sync returns
+	// true, the DNS GUI→model sync must STILL run, otherwise DNS edits are dropped.
+	changedSPF := p.syncGUIToModelSourceParserFinal(ready)
+	changedDNS := p.syncGUIToModelDNS(ready)
+	changed := changedSPF || changedDNS
 	if ready {
 		wizardbusiness.SyncDNSModelToSettingsVars(p.model)
 	}
