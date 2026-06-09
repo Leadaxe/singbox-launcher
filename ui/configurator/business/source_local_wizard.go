@@ -2,7 +2,6 @@ package business
 
 import (
 	"errors"
-	"maps"
 	"strings"
 
 	"singbox-launcher/core/config"
@@ -125,7 +124,7 @@ func tagUsedByNonWizardOutbound(outbounds []config.OutboundConfig, tag string, w
 }
 
 // defaultLocalURLTestOptions is the template for a local-auto urltest outbound.
-// It is package-global, so it MUST be cloned (maps.Clone) before being assigned
+// It is package-global, so it MUST be cloned (cloneOptions) before being assigned
 // to an OutboundConfig — handing out the shared instance would let a later edit
 // of one outbound's Options mutate this global and poison every subsequent
 // local-auto outbound. Values are all primitives, so a shallow clone suffices.
@@ -134,6 +133,17 @@ var defaultLocalURLTestOptions = map[string]interface{}{
 	"interval":                    "5m",
 	"tolerance":                   100,
 	"interrupt_exist_connections": true,
+}
+
+// cloneOptions returns a shallow copy of m. Used instead of the stdlib
+// maps.Clone (Go 1.21+) so the Windows 7 legacy build, which is pinned to the
+// last 386-capable toolchain (Go 1.20), keeps compiling.
+func cloneOptions(m map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
 
 // EnsureLocalAuto creates or keeps a urltest outbound with WIZARD:auto marker.
@@ -152,7 +162,7 @@ func EnsureLocalAuto(proxy *config.ProxySource, sourceIndex int) error {
 	proxy.Outbounds = append(proxy.Outbounds, config.OutboundConfig{
 		Tag:     autoTag,
 		Type:    "urltest",
-		Options: maps.Clone(defaultLocalURLTestOptions),
+		Options: cloneOptions(defaultLocalURLTestOptions),
 		Filters: map[string]interface{}{},
 		Comment: "local auto " + WizardMarkerAuto,
 	})
