@@ -15,9 +15,11 @@ import (
 // source-default went sideways.
 
 func TestRequiredCoreVersion_SemVerShape(t *testing.T) {
-	re := regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+	// SPEC 072: core is now the sing-box-lx fork, tagged X.Y.Z-lx.N. Accept the
+	// optional -lx.N suffix; still reject branch names / garbage.
+	re := regexp.MustCompile(`^\d+\.\d+\.\d+(-lx\.\d+)?$`)
 	if !re.MatchString(RequiredCoreVersion) {
-		t.Fatalf("RequiredCoreVersion = %q, want X.Y.Z", RequiredCoreVersion)
+		t.Fatalf("RequiredCoreVersion = %q, want X.Y.Z or X.Y.Z-lx.N", RequiredCoreVersion)
 	}
 }
 

@@ -5,6 +5,8 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,8 +24,32 @@ import (
 )
 
 // Win7LegacyVersion — фиксированная версия sing-box для Windows 7 (legacy build).
-// Используется только для Win7-сборки лаунчера (GOOS=windows, GOARCH=386).
+// SPEC 072 Variant B: форк sing-box-lx не публикует windows-386 ассет, поэтому
+// Win7 остаётся на upstream SagerNet 1.13.12 (без XHTTP/AWG, но не ломается).
 const Win7LegacyVersion = "1.13.12"
+
+// coreReleaseRepo returns the GitHub "owner/repo" the core is downloaded from
+// for the current platform. Windows 7 (windows/386) has no sing-box-lx asset,
+// so it stays on upstream SagerNet; every other platform uses the fork.
+func coreReleaseRepo() string {
+	return coreReleaseRepoFor(runtime.GOOS, runtime.GOARCH)
+}
+
+// coreReleaseRepoFor is the pure form of coreReleaseRepo (testable across
+// GOOS/GOARCH without depending on the build platform).
+func coreReleaseRepoFor(goos, goarch string) string {
+	if goos == "windows" && goarch == "386" {
+		return constants.SingboxLegacyRepo
+	}
+	return constants.SingboxCoreRepo
+}
+
+// coreReleaseIsLegacy reports whether the current platform downloads from the
+// upstream SagerNet repo (which has a SourceForge mirror) rather than the fork
+// (which does not).
+func coreReleaseIsLegacy() bool {
+	return coreReleaseRepo() == constants.SingboxLegacyRepo
+}
 
 // ReleaseInfo contains information about GitHub release
 type ReleaseInfo struct {
@@ -99,6 +125,20 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 		return
 	}
 
+	// 4b. Verify SHA256 (SPEC 072). Fork releases ship a SHA256SUMS asset.
+	// Soft degradation: if it's unavailable (upstream/legacy release, network
+	// blip), warn and continue — HTTPS + GitHub authenticity remain the floor.
+	// A real mismatch is a hard error (possible tampered mirror).
+	progressChan <- DownloadProgress{Progress: 78, Message: "Verifying checksum...", Status: "downloading"}
+	if sums, sErr := ac.fetchSHA256SUMS(ctx, release); sErr != nil {
+		debuglog.WarnLog("DownloadCore: SHA256SUMS unavailable, skipping checksum: %v", sErr)
+	} else if vErr := verifyChecksum(archivePath, asset.Name, sums); vErr != nil {
+		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Checksum verification failed: %v", vErr), Status: "error", Error: fmt.Errorf("DownloadCore: %w", vErr)}
+		return
+	} else {
+		debuglog.InfoLog("DownloadCore: checksum OK for %s", asset.Name)
+	}
+
 	// 5. Extract archive
 	progressChan <- DownloadProgress{Progress: 80, Message: "Extracting archive...", Status: "extracting"}
 	binaryPath, err := ac.extractArchive(archivePath, tempDir)
@@ -126,9 +166,14 @@ func (ac *AppController) getReleaseInfo(ctx context.Context, version string) (*R
 		return release, nil
 	}
 
-	debuglog.InfoLog("GitHub failed, trying SourceForge...")
+	// SourceForge mirror only exists for upstream SagerNet (the Win7 legacy
+	// path). The sing-box-lx fork has no SF mirror — don't waste a request on a
+	// guaranteed 404; surface the GitHub error instead.
+	if !coreReleaseIsLegacy() {
+		return nil, err
+	}
 
-	// If GitHub doesn't work, try SourceForge
+	debuglog.InfoLog("GitHub failed, trying SourceForge (legacy)...")
 	return ac.getReleaseInfoFromSourceForge(ctx, version)
 }
 
@@ -136,7 +181,7 @@ func (ac *AppController) getReleaseInfo(ctx context.Context, version string) (*R
 // must be non-empty (DownloadCore guarantees this since SPEC 046 — there is
 // no longer a /releases/latest path).
 func (ac *AppController) getReleaseInfoFromGitHub(ctx context.Context, version string) (*ReleaseInfo, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/SagerNet/sing-box/releases/tags/v%s", version)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/tags/v%s", coreReleaseRepo(), version)
 
 	// Используем универсальный HTTP клиент
 	client := CreateHTTPClient(NetworkRequestTimeout)
@@ -295,6 +340,85 @@ func (ac *AppController) findPlatformAsset(assets []Asset) (*Asset, error) {
 	return nil, fmt.Errorf("findPlatformAsset: asset not found for platform %s/%s", runtime.GOOS, runtime.GOARCH)
 }
 
+// fetchSHA256SUMS downloads and parses the release's SHA256SUMS asset into a
+// map of filename → lowercase hex digest. Returns an error if the asset is
+// absent or unreadable (caller soft-degrades on error).
+func (ac *AppController) fetchSHA256SUMS(ctx context.Context, release *ReleaseInfo) (map[string]string, error) {
+	var url string
+	for i := range release.Assets {
+		if release.Assets[i].Name == "SHA256SUMS" {
+			url = release.Assets[i].BrowserDownloadURL
+			break
+		}
+	}
+	if url == "" {
+		return nil, fmt.Errorf("fetchSHA256SUMS: no SHA256SUMS asset in release")
+	}
+
+	client := CreateHTTPClient(NetworkRequestTimeout)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("fetchSHA256SUMS: %w", err)
+	}
+	req.Header.Set("User-Agent", "singbox-launcher/1.0")
+	resp, err := client.Do(req)
+	defer func() {
+		if resp != nil {
+			debuglog.RunAndLog("fetchSHA256SUMS: close body", resp.Body.Close)
+		}
+	}()
+	if err != nil {
+		return nil, fmt.Errorf("fetchSHA256SUMS: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetchSHA256SUMS: HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // SHA256SUMS is tiny
+	if err != nil {
+		return nil, fmt.Errorf("fetchSHA256SUMS: %w", err)
+	}
+	return parseSHA256SUMS(string(body)), nil
+}
+
+// parseSHA256SUMS parses GNU coreutils `sha256sum` output: each line is
+// "<64-hex>␣␣<filename>" (the filename may carry a leading "*" for binary mode).
+func parseSHA256SUMS(s string) map[string]string {
+	m := make(map[string]string)
+	for _, line := range strings.Split(s, "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) != 2 {
+			continue
+		}
+		name := strings.TrimPrefix(fields[1], "*")
+		m[name] = strings.ToLower(fields[0])
+	}
+	return m
+}
+
+// verifyChecksum computes the SHA256 of archivePath and compares it to the
+// expected digest for assetName from a parsed SHA256SUMS map.
+func verifyChecksum(archivePath, assetName string, sums map[string]string) error {
+	want, ok := sums[assetName]
+	if !ok {
+		return fmt.Errorf("verifyChecksum: no checksum entry for %q", assetName)
+	}
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("verifyChecksum: %w", err)
+	}
+	defer debuglog.RunAndLog("verifyChecksum: close archive", f.Close)
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return fmt.Errorf("verifyChecksum: %w", err)
+	}
+	got := hex.EncodeToString(h.Sum(nil))
+	if !strings.EqualFold(got, want) {
+		return fmt.Errorf("verifyChecksum: %s sha256 mismatch (got %s, want %s)", assetName, got, want)
+	}
+	return nil
+}
+
 // downloadFile downloads a file with progress tracking (with SourceForge fallback)
 func (ac *AppController) downloadFile(ctx context.Context, url, destPath string, progressChan chan DownloadProgress) error {
 	// Try to download from original URL
@@ -319,8 +443,9 @@ func (ac *AppController) downloadFile(ctx context.Context, url, destPath string,
 		debuglog.DebugLog("downloadFile: mirror failed: %v", err)
 	}
 
-	// If all GitHub mirrors don't work, try SourceForge
-	if strings.Contains(url, "github.com") {
+	// SourceForge mirror exists only for upstream SagerNet (Win7 legacy path);
+	// the fork has no SF mirror, so skip it there.
+	if coreReleaseIsLegacy() && strings.Contains(url, "github.com") {
 		debuglog.DebugLog("downloadFile: trying SourceForge...")
 		// Extract version and file name from URL
 		version, fileName := ac.extractVersionAndFileName(url)
