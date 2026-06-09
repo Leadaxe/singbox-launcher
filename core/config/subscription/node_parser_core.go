@@ -25,6 +25,7 @@ func IsDirectLink(input string) bool {
 		strings.HasPrefix(trimmed, "hy2://") ||
 		strings.HasPrefix(trimmed, "ssh://") ||
 		strings.HasPrefix(trimmed, "wireguard://") ||
+		strings.HasPrefix(trimmed, "awg://") ||
 		strings.HasPrefix(trimmed, "socks5://") ||
 		strings.HasPrefix(trimmed, "socks://") ||
 		strings.HasPrefix(trimmed, "naive+https://") ||
@@ -192,8 +193,17 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		scheme = "socks"
 		defaultPort = 1080
 
-	case strings.HasPrefix(uri, "wireguard://"):
-		return parseWireGuardURI(uri, skipFilters)
+	case strings.HasPrefix(uri, "wireguard://"), strings.HasPrefix(uri, "awg://"):
+		// AmneziaWG (SPEC 073): awg:// is an alias — same endpoint shape as
+		// wireguard:// plus promoted obfuscation params (jc/jmin/.../i1-i5),
+		// handled inside parseWireGuardURI via applyAWGFields. Normalize the
+		// scheme so net/url parses it; node.Scheme stays "wireguard" (AWG is a
+		// superset of the WG endpoint — keeps GenerateEndpointJSON guard happy).
+		wgURI := uri
+		if strings.HasPrefix(uri, "awg://") {
+			wgURI = strings.Replace(uri, "awg://", "wireguard://", 1)
+		}
+		return parseWireGuardURI(wgURI, skipFilters)
 
 	case strings.HasPrefix(uri, "naive+https://"), strings.HasPrefix(uri, "naive+quic://"):
 		// NaïveProxy URI (de-facto spec: DuckSoft 2020).
@@ -559,11 +569,18 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 		if network == "" {
 			network = "tcp"
 		}
-		if network == "xhttp" {
-			network = "httpupgrade"
-		}
 
 		switch {
+		case network == "xhttp":
+			// sing-box-lx xhttp transport (SPEC 071). Distinct from httpupgrade.
+			tr := xhttpTransportFromQuery(node.Query)
+			if _, ok := tr["host"]; !ok {
+				if h := queryGetFold(node.Query, "sni"); h != "" {
+					tr["host"] = h
+				}
+			}
+			outbound["transport"] = tr
+
 		case network == "httpupgrade":
 			tr := map[string]interface{}{"type": "httpupgrade"}
 			if p := node.Query.Get("path"); p != "" {

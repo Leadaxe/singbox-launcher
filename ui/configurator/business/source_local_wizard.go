@@ -2,6 +2,7 @@ package business
 
 import (
 	"errors"
+	"maps"
 	"strings"
 
 	"singbox-launcher/core/config"
@@ -123,6 +124,11 @@ func tagUsedByNonWizardOutbound(outbounds []config.OutboundConfig, tag string, w
 	return false
 }
 
+// defaultLocalURLTestOptions is the template for a local-auto urltest outbound.
+// It is package-global, so it MUST be cloned (maps.Clone) before being assigned
+// to an OutboundConfig — handing out the shared instance would let a later edit
+// of one outbound's Options mutate this global and poison every subsequent
+// local-auto outbound. Values are all primitives, so a shallow clone suffices.
 var defaultLocalURLTestOptions = map[string]interface{}{
 	"url":                         "https://cp.cloudflare.com/generate_204",
 	"interval":                    "5m",
@@ -146,7 +152,7 @@ func EnsureLocalAuto(proxy *config.ProxySource, sourceIndex int) error {
 	proxy.Outbounds = append(proxy.Outbounds, config.OutboundConfig{
 		Tag:     autoTag,
 		Type:    "urltest",
-		Options: defaultLocalURLTestOptions,
+		Options: maps.Clone(defaultLocalURLTestOptions),
 		Filters: map[string]interface{}{},
 		Comment: "local auto " + WizardMarkerAuto,
 	})

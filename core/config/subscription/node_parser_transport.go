@@ -118,8 +118,13 @@ func uriTransportFromQuery(q url.Values) (map[string]interface{}, bool) {
 			t["host"] = []string{host}
 		}
 		return t, true
-	case "xhttp", "httpupgrade":
-		// Xray "xhttp" and subscription alias "httpupgrade" → sing-box "httpupgrade".
+	case "xhttp":
+		// Xray "xhttp" (splithttp) → sing-box-lx "xhttp" transport. Distinct
+		// wire protocol from httpupgrade; requires a core built with_xhttp
+		// (sing-box-lx). See SPEC 071.
+		return xhttpTransportFromQuery(q), true
+	case "httpupgrade":
+		// sing-box "httpupgrade" (HTTP/1.1 Upgrade). Kept separate from xhttp.
 		t := map[string]interface{}{"type": "httpupgrade"}
 		if p := queryGetFold(q, "path"); p != "" {
 			t["path"] = p
@@ -133,6 +138,53 @@ func uriTransportFromQuery(q url.Values) (map[string]interface{}, bool) {
 	default:
 		return nil, false
 	}
+}
+
+// xhttpTransportFromQuery builds a sing-box-lx "xhttp" (Xray splithttp)
+// transport from a VLESS/Trojan/VMess URI query. Distinct from "httpupgrade".
+// Fields: mode, path, host, x_padding_bytes, no_grpc_header. Value normalization
+// is left to the core. See SPEC 071.
+func xhttpTransportFromQuery(q url.Values) map[string]interface{} {
+	t := map[string]interface{}{"type": "xhttp"}
+	if v := strings.TrimSpace(queryGetFold(q, "mode")); v != "" {
+		t["mode"] = v
+	}
+	if p := queryGetFold(q, "path"); p != "" {
+		t["path"] = p
+	}
+	if host := queryGetFold(q, "host"); host != "" {
+		t["host"] = host
+	}
+	if pad := xhttpPaddingFromQuery(q); pad != "" {
+		t["x_padding_bytes"] = pad
+	}
+	if xhttpNoGRPCHeader(q) {
+		t["no_grpc_header"] = true
+	}
+	return t
+}
+
+// xhttpPaddingFromQuery reads the padding spec under either the snake_case
+// (x_padding_bytes) or Xray camelCase (xPaddingBytes) key. queryGetFold is
+// case-insensitive but underscore vs camelCase are distinct spellings.
+func xhttpPaddingFromQuery(q url.Values) string {
+	for _, key := range []string{"x_padding_bytes", "xPaddingBytes"} {
+		if v := strings.TrimSpace(queryGetFold(q, key)); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// xhttpNoGRPCHeader reads the no_grpc_header flag (snake_case or Xray noGRPCHeader).
+func xhttpNoGRPCHeader(q url.Values) bool {
+	for _, key := range []string{"no_grpc_header", "noGRPCHeader"} {
+		v := strings.TrimSpace(strings.ToLower(queryGetFold(q, key)))
+		if v == "1" || v == "true" || v == "yes" {
+			return true
+		}
+	}
+	return false
 }
 
 // maxRealityShortIDHexLen is the maximum hex character count sing-box accepts for outbound

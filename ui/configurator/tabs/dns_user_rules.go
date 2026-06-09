@@ -28,6 +28,7 @@ import (
 	"singbox-launcher/core/build"
 	wizardtemplate "singbox-launcher/core/template"
 	internaldialogs "singbox-launcher/internal/dialogs"
+	"singbox-launcher/internal/locale"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -242,9 +243,9 @@ func showEditUserDNSRuleDialog(
 		}
 	}
 
-	titleStr := "Add DNS Rule"
+	titleStr := locale.T("wizard.dns_rule.title_add")
 	if idx >= 0 {
-		titleStr = "Edit DNS Rule"
+		titleStr = locale.T("wizard.dns_rule.title_edit")
 	}
 
 	controller := presenter.Controller()
@@ -260,7 +261,7 @@ func showEditUserDNSRuleDialog(
 		var finalRule map[string]interface{}
 		if tabs.Selected() == jsonTab {
 			if err := json.Unmarshal([]byte(jsonEntry.Text), &finalRule); err != nil {
-				dialog.ShowError(fmt.Errorf("invalid JSON: %w", err), editWin)
+				dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.dns.error_invalid_json"), err), editWin)
 				return
 			}
 		} else {
@@ -268,7 +269,7 @@ func showEditUserDNSRuleDialog(
 			finalRule = working
 		}
 		if len(finalRule) == 0 {
-			dialog.ShowError(fmt.Errorf("rule is empty"), editWin)
+			dialog.ShowError(fmt.Errorf("%s", locale.T("wizard.dns_rule.error_empty")), editWin)
 			return
 		}
 		// Strip top-level kind/ref/enabled if user pasted state-shape JSON in raw mode.

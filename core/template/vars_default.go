@@ -148,6 +148,16 @@ func (v *VarDefaultValue) UnmarshalJSON(data []byte) error {
 	}
 }
 
+// defaultValueStringify renders an ALREADY-DECODED default_value
+// (interface{} from json.Unmarshal of the vars map) to a string.
+//
+// Intentionally distinct from readJSONLiteralAsString (vars_resolve.go),
+// which takes raw json.RawMessage. Two differences are load-bearing: (1)
+// input type — decoded value here vs raw bytes there; (2) the default branch
+// here is a fmt.Sprint catch-all (default_value is trusted template content,
+// so a best-effort string is fine), whereas the raw reader strictly returns
+// "" for non-literals. Do NOT merge the two (SPEC 069 §5.4 — verified
+// intentional divergence, not accidental duplication).
 func defaultValueStringify(val interface{}) string {
 	switch x := val.(type) {
 	case string:

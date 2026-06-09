@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v1.1.0
+
+**Большое обновление: форк-ядро, XHTTP и AmneziaWG.** Лаунчер переключился с upstream-ядра SagerNet на **форк [`sing-box-lx`](https://github.com/Leadaxe/sing-box-lx) (v1.13.13-lx.3)**, который собирает `with_xhttp` + `with_awg` и потому запускает две клиентские фичи, недоступные в upstream. **XHTTP** (чинит тихую регрессию): узлы `type=xhttp` больше не деградируют в `httpupgrade` — честно парсятся, эмитятся в `config.json` и round-trip'ятся в share-URI (VLESS/VMess/Trojan), плюс исправлена путаница `httpupgrade ⇄ xhttp`. **AmneziaWG 2.0**: WireGuard-узлы несут `jc/jmin/jmax`, `s1`–`s4`, `h1`–`h4` и CPS-пакеты `i1`–`i5` из `wireguard://`/`awg://`, эмитятся в `endpoints[]`; **MTU AWG клампится до 1280**, иначе S3/S4-паддинг ломает данные при сохранённом handshake. **Debug API**: кнопка «Перегенерировать токен». **Windows 7 (32-бит)** остаётся на upstream `1.13.12` (без XHTTP/AWG) — не ломается. Обновить ядро: Core Dashboard → Download/Reinstall.
+
+**Полный список изменений:** [docs/release_notes/1-1-0.md](docs/release_notes/1-1-0.md).
+
+### Highlights (EN) — v1.1.0
+
+**Big update: fork core, XHTTP & AmneziaWG.** The launcher switched off the upstream SagerNet core onto the **[`sing-box-lx`](https://github.com/Leadaxe/sing-box-lx) fork (v1.13.13-lx.3)**, which builds `with_xhttp` + `with_awg` and therefore runs two client features upstream can't. **XHTTP** (fixes a silent regression): `type=xhttp` nodes no longer degrade to `httpupgrade` — they're parsed, generated into `config.json`, and round-tripped to share URIs (VLESS/VMess/Trojan); the `httpupgrade ⇄ xhttp` mislabeling is fixed. **AmneziaWG 2.0**: WireGuard nodes carry `jc/jmin/jmax`, `s1`–`s4`, `h1`–`h4` and CPS packets `i1`–`i5` from `wireguard://`/`awg://`, generated into `endpoints[]`; **AWG MTU is clamped to 1280**, or the S3/S4 padding breaks data while the handshake still succeeds. **Debug API**: a "Regenerate token" button. **Windows 7 (32-bit)** stays on upstream `1.13.12` (no XHTTP/AWG) — nothing breaks. Pull the new core via Core Dashboard → Download/Reinstall.
+
+**Full changelog:** [docs/release_notes/1-1-0.md](docs/release_notes/1-1-0.md).
+
+---
+
 ### Выжимка (RU) — v1.0.0
 
 **Первый стабильный релиз — выходим из тестирования.** После долгого 0.x-цикла конфигуратор, пайплайн подписок/пресетов/outbound/DNS/правил, Debug API и сборки macOS + Windows (вкл. Win7) считаются production-ready. Содержимое накопилось с v0.9.9. **Template engine получил `#if`** (SPEC 067) — условное включение полей по выражениям с предикатами (`#in`/`#not`/`#notEmpty`/`#matches`…) и namespace `@runtime.*`; это разблокировало multi-rule presets и аутентификацию **proxy-in по логину/паролю**. **Аудит безопасности** (SPEC 068) закрыл 10 верифицированных находок (в т.ч. critical-баг с потерей rules/DNS при headless-Save на legacy state). **Архитектурный рефактор** (SPEC 070): `docs/ARCHITECTURE.md` переписан вокруг 8-слойной модели с ADR + крупная уборка кода (SPEC 069, 304 находки). UX: **подписки и серверы можно переупорядочивать** (↑/↓, сохраняется), **ссылка на поддержку провайдера** в строке источника, **«Fetch now»** для выключенных подписок, **очистка неиспользуемых `.srs`**, **маскированные поля для `type:"secret"`**. Починены DNS-скаляры/template-серверы на Save/reopen; усилена очистка NLA/ghost-TUN на Windows. **Breaking (только кастомные шаблоны):** outer `if`/`if_or` теперь требуют `@`-префикс — bundled-шаблон мигрирован автоматически.

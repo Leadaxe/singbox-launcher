@@ -22,8 +22,32 @@ import (
 )
 
 // Win7LegacyVersion — фиксированная версия sing-box для Windows 7 (legacy build).
-// Используется только для Win7-сборки лаунчера (GOOS=windows, GOARCH=386).
+// SPEC 072 Variant B: форк sing-box-lx не публикует windows-386 ассет, поэтому
+// Win7 остаётся на upstream SagerNet 1.13.12 (без XHTTP/AWG, но не ломается).
 const Win7LegacyVersion = "1.13.12"
+
+// coreReleaseRepo returns the GitHub "owner/repo" the core is downloaded from
+// for the current platform. Windows 7 (windows/386) has no sing-box-lx asset,
+// so it stays on upstream SagerNet; every other platform uses the fork.
+func coreReleaseRepo() string {
+	return coreReleaseRepoFor(runtime.GOOS, runtime.GOARCH)
+}
+
+// coreReleaseRepoFor is the pure form of coreReleaseRepo (testable across
+// GOOS/GOARCH without depending on the build platform).
+func coreReleaseRepoFor(goos, goarch string) string {
+	if goos == "windows" && goarch == "386" {
+		return constants.SingboxLegacyRepo
+	}
+	return constants.SingboxCoreRepo
+}
+
+// coreReleaseIsLegacy reports whether the current platform downloads from the
+// upstream SagerNet repo (which has a SourceForge mirror) rather than the fork
+// (which does not).
+func coreReleaseIsLegacy() bool {
+	return coreReleaseRepo() == constants.SingboxLegacyRepo
+}
 
 // ReleaseInfo contains information about GitHub release
 type ReleaseInfo struct {
@@ -126,9 +150,14 @@ func (ac *AppController) getReleaseInfo(ctx context.Context, version string) (*R
 		return release, nil
 	}
 
-	debuglog.InfoLog("GitHub failed, trying SourceForge...")
+	// SourceForge mirror only exists for upstream SagerNet (the Win7 legacy
+	// path). The sing-box-lx fork has no SF mirror — don't waste a request on a
+	// guaranteed 404; surface the GitHub error instead.
+	if !coreReleaseIsLegacy() {
+		return nil, err
+	}
 
-	// If GitHub doesn't work, try SourceForge
+	debuglog.InfoLog("GitHub failed, trying SourceForge (legacy)...")
 	return ac.getReleaseInfoFromSourceForge(ctx, version)
 }
 
@@ -136,7 +165,7 @@ func (ac *AppController) getReleaseInfo(ctx context.Context, version string) (*R
 // must be non-empty (DownloadCore guarantees this since SPEC 046 — there is
 // no longer a /releases/latest path).
 func (ac *AppController) getReleaseInfoFromGitHub(ctx context.Context, version string) (*ReleaseInfo, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/SagerNet/sing-box/releases/tags/v%s", version)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/tags/v%s", coreReleaseRepo(), version)
 
 	// Используем универсальный HTTP клиент
 	client := CreateHTTPClient(NetworkRequestTimeout)
@@ -319,8 +348,9 @@ func (ac *AppController) downloadFile(ctx context.Context, url, destPath string,
 		debuglog.DebugLog("downloadFile: mirror failed: %v", err)
 	}
 
-	// If all GitHub mirrors don't work, try SourceForge
-	if strings.Contains(url, "github.com") {
+	// SourceForge mirror exists only for upstream SagerNet (Win7 legacy path);
+	// the fork has no SF mirror, so skip it there.
+	if coreReleaseIsLegacy() && strings.Contains(url, "github.com") {
 		debuglog.DebugLog("downloadFile: trying SourceForge...")
 		// Extract version and file name from URL
 		version, fileName := ac.extractVersionAndFileName(url)

@@ -75,6 +75,22 @@ func ShareURIFromWireGuardEndpoint(ep map[string]interface{}) (string, error) {
 	if dnsStr := wireGuardDNSToQuery(ep["dns"]); dnsStr != "" {
 		q.Set("dns", dnsStr)
 	}
+	// AmneziaWG (SPEC 073): re-emit obfuscation params so endpoint→URI→endpoint
+	// round-trips losslessly. Numeric fields are emitted by PRESENCE (so an
+	// explicit jc=0 / junk-off survives); i1–i5 only when non-empty. url.Values
+	// escapes the tag chars (<, >, space); the parser decodes them back.
+	for _, k := range awgNumericFields {
+		if raw, ok := ep[k]; ok {
+			if s, ok2 := awgNumericString(raw); ok2 {
+				q.Set(k, s)
+			}
+		}
+	}
+	for _, k := range awgStringFields {
+		if s := mapGetString(ep, k); s != "" {
+			q.Set(k, s)
+		}
+	}
 	u := &url.URL{
 		Scheme:   "wireguard",
 		User:     url.User(url.PathEscape(priv)),
@@ -162,6 +178,38 @@ func wireGuardJSONElemToString(e interface{}) string {
 		return s
 	default:
 		return strings.TrimSpace(fmt.Sprint(x))
+	}
+}
+
+// awgNumericString formats an AmneziaWG numeric endpoint field for a share-URI
+// query. It accepts every shape the value can take depending on provenance:
+// freshly parsed (int64), JSON-decoded from state (float64 / json.Number), or
+// hand-built (int / uint32). Returns ok=false for nil / non-numeric / empty so
+// the caller skips the param. Avoids mapGetInt — that returns `int` (would
+// overflow large h-values on 32-bit) and doesn't handle uint32.
+func awgNumericString(v interface{}) (string, bool) {
+	switch t := v.(type) {
+	case int64:
+		return strconv.FormatInt(t, 10), true
+	case int:
+		return strconv.Itoa(t), true
+	case uint32:
+		return strconv.FormatUint(uint64(t), 10), true
+	case uint64:
+		return strconv.FormatUint(t, 10), true
+	case float64:
+		if t == float64(int64(t)) {
+			return strconv.FormatInt(int64(t), 10), true
+		}
+		return strconv.FormatFloat(t, 'f', -1, 64), true
+	case json.Number:
+		s := strings.TrimSpace(t.String())
+		return s, s != ""
+	case string:
+		s := strings.TrimSpace(t)
+		return s, s != ""
+	default:
+		return "", false
 	}
 }
 

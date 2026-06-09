@@ -50,15 +50,25 @@ const (
 
 // Manual download URLs (shown when automatic download fails)
 const (
-	SingboxReleasesURL = "https://github.com/SagerNet/sing-box/releases"
+	SingboxReleasesURL = "https://github.com/Leadaxe/sing-box-lx/releases"
 	WintunHomeURL      = "https://www.wintun.net/"
 )
 
-// Pinned sing-box version for this launcher build (SPEC 046). Manually
-// bumped per release as a deliberate engineering decision; the source-of-
-// truth lives here, not in auto-discovered GitHub latest. See
+// sing-box core download sources (SPEC 072). The launcher ships the
+// sing-box-lx fork (upstream + XHTTP `with_xhttp` + AmneziaWG `with_awg`).
+// The fork has no windows-386 asset, so Windows 7 (32-bit) stays on upstream
+// SagerNet — see coreReleaseRepo()/Win7LegacyVersion in core_downloader.go.
+const (
+	SingboxCoreRepo   = "Leadaxe/sing-box-lx" // primary core (XHTTP + AmneziaWG)
+	SingboxLegacyRepo = "SagerNet/sing-box"   // Win7/386 fallback only (no fork 386 build)
+)
+
+// Pinned sing-box core version for this launcher build (SPEC 046 / 072).
+// Now a fork tag `X.Y.Z-lx.N` — the fork binary prints the full tag in
+// `sing-box version`, so the strict-equality reinstall check still holds.
+// Manually bumped per release; source-of-truth here. See
 // docs/RELEASE_PROCESS.md §5.1.
-const RequiredCoreVersion = "1.13.12"
+const RequiredCoreVersion = "1.13.13-lx.3"
 
 // AppVersion — git describe output. Set by build scripts via -ldflags.
 //
@@ -72,7 +82,7 @@ const RequiredCoreVersion = "1.13.12"
 // HEAD. See docs/RELEASE_PROCESS.md §5.2.
 var (
 	AppVersion          = "v-local-test"
-	RequiredTemplateRef = "664f81045ee777aac1149c2692b1633932544eeb"
+	RequiredTemplateRef = "f6315d85bfcbab191cd8baec92b07361bf1545f0"
 )
 
 // GetMyBranch возвращает ветку репозитория для загрузки ассетов, у которых нет

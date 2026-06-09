@@ -61,6 +61,9 @@ func buildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 		}
 	}
 
+	// Auto-ping is a connection-behavior toggle (ping proxies after VPN
+	// connects), not a subscription setting — it gets its own section.
+	connTitle := widget.NewLabelWithStyle(locale.T("settings.section_connection"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	autoPingCheck := widget.NewCheck(locale.T("core.auto_ping_label"), nil)
 	autoPingCheck.SetChecked(ac.StateService.IsAutoPingAfterConnectEnabled())
 	autoPingCheck.OnChanged = func(enabled bool) {
@@ -222,15 +225,20 @@ func buildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 	// языком и идентификацией подписки.
 	debugAPIBlock := buildDebugAPIRow(ac)
 
+	// Language first so the two subscription sections (Subscriptions +
+	// Subscription identification) sit together instead of being split by the
+	// Language block.
 	content := container.NewVBox(
-		subsTitle,
-		autoUpdateCheck,
-		autoPingCheck,
-		uaRow,
-		uaHint,
-		widget.NewSeparator(),
 		langTitle,
 		langRow,
+		widget.NewSeparator(),
+		connTitle,
+		autoPingCheck,
+		widget.NewSeparator(),
+		subsTitle,
+		autoUpdateCheck,
+		uaRow,
+		uaHint,
 		widget.NewSeparator(),
 		subIDTitle,
 		subIDBlock,
@@ -433,6 +441,48 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 		copyTokenBtn.Disable()
 	}
 
+	// Regenerate token — rotates the Bearer token. Confirmed because it
+	// invalidates the old token: any script/automation still using it gets
+	// 401 on the next call. If the API is currently listening we restart it
+	// so the live server picks up the new token; otherwise the new token is
+	// just persisted for the next enable.
+	regenTokenBtn := widget.NewButtonWithIcon(locale.T("diag.debug_api_regen_token"), theme.ViewRefreshIcon(), nil)
+	regenTokenBtn.OnTapped = func() {
+		ShowConfirm(
+			ac.UIService.MainWindow,
+			locale.T("diag.debug_api_regen_confirm_title"),
+			locale.T("diag.debug_api_regen_confirm_body"),
+			func(ok bool) {
+				if !ok {
+					return
+				}
+				tok, err := debugapi.GenerateToken()
+				if err != nil {
+					debuglog.ErrorLog("settings.debug_api: token regen failed: %v", err)
+					ShowError(ac.UIService.MainWindow, err)
+					return
+				}
+				cur := locale.LoadSettings(binDir)
+				cur.DebugAPIToken = tok
+				if err := locale.SaveSettings(binDir, cur); err != nil {
+					debuglog.WarnLog("settings.debug_api: save regenerated token: %v", err)
+				}
+				// Restart the live listener so it serves the new token.
+				if ac.DebugAPIAddr() != "" {
+					ac.StopDebugAPI()
+					if err := ac.StartDebugAPI(cur.DebugAPIPort, tok); err != nil {
+						debuglog.ErrorLog("settings.debug_api: restart after regen failed: %v", err)
+						ShowError(ac.UIService.MainWindow, err)
+					}
+				}
+				copyTokenBtn.Enable()
+				refreshStatus()
+				dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
+					locale.T("diag.debug_api_regen_done_title"), locale.T("diag.debug_api_regen_done_msg"))
+			},
+		)
+	}
+
 	// Port entry: пользователь может задать кастомный порт. 0/empty =
 	// debugapi.DefaultPort. Меняется только когда API выключен (иначе
 	// гонка между Stop старого listener'а и Start нового на занятом порту);
@@ -516,7 +566,7 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 	row := container.NewVBox(
 		title,
 		hint,
-		container.NewHBox(check, copyTokenBtn),
+		container.NewHBox(check, copyTokenBtn, regenTokenBtn),
 		portRow,
 		status,
 	)

@@ -121,6 +121,14 @@ func templateDNSServersOf(model *wizardmodels.WizardModel) []map[string]interfac
 // JSON helpers
 // -----------------------------------------------------------------------------
 
+// parseDNSOptionsMap decodes a DNSOptions blob as the top-level JSON OBJECT it
+// is ({"servers":[...],"rules":[...],"strategy":...}), returning its fields as
+// a key→raw map for by-key access (optsMap["servers"], ["rules"], ...).
+//
+// This is deliberately NOT the same as templateDNSServersOf, which unmarshals
+// the SAME blob into a struct to pull out just the servers array. The two
+// coexist on purpose — different callers want different slices of the object;
+// they are not duplicate parsers to merge (SPEC 069 §5.4 — verified correct).
 func parseDNSOptionsMap(raw json.RawMessage) map[string]json.RawMessage {
 	if len(raw) == 0 {
 		return nil

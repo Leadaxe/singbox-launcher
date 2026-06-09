@@ -26,6 +26,52 @@ func TestShareURIFromOutbound_RoundTripVLESS(t *testing.T) {
 	}
 }
 
+// SPEC 071: xhttp round-trips back to type=xhttp with its fields (not type=httpupgrade).
+func TestShareURIFromOutbound_RoundTripXHTTP(t *testing.T) {
+	uri := "vless://550e8400-e29b-41d4-a716-446655440000@example.com:443?encryption=none&type=xhttp&path=%2Fx&host=h.test&mode=stream-one&xPaddingBytes=100-1000&security=tls&sni=h.test#x"
+	n, err := ParseNode(uri, nil)
+	if err != nil || n == nil {
+		t.Fatalf("ParseNode: %v", err)
+	}
+	got, err := ShareURIFromOutbound(n.Outbound)
+	if err != nil {
+		t.Fatalf("ShareURIFromOutbound: %v", err)
+	}
+	for _, want := range []string{"type=xhttp", "mode=stream-one", "x_padding_bytes=100-1000"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in share URI: %s", want, got)
+		}
+	}
+	n2, err := ParseNode(got, nil)
+	if err != nil || n2 == nil {
+		t.Fatalf("re-parse: %v uri=%q", err, got)
+	}
+	tr, ok := n2.Outbound["transport"].(map[string]interface{})
+	if !ok || tr["type"] != "xhttp" || tr["mode"] != "stream-one" {
+		t.Fatalf("xhttp not preserved on round-trip: %+v", n2.Outbound["transport"])
+	}
+}
+
+// SPEC 071 regression: httpupgrade must export as type=httpupgrade, not the old
+// mislabeled type=xhttp (the bidirectional xhttp⇄httpupgrade confusion).
+func TestShareURIFromOutbound_HTTPUpgradeNotXHTTP(t *testing.T) {
+	uri := "vless://550e8400-e29b-41d4-a716-446655440000@example.com:443?encryption=none&type=httpupgrade&path=%2Fp&host=h2.test&security=tls&sni=h2.test#h"
+	n, err := ParseNode(uri, nil)
+	if err != nil || n == nil {
+		t.Fatalf("ParseNode: %v", err)
+	}
+	got, err := ShareURIFromOutbound(n.Outbound)
+	if err != nil {
+		t.Fatalf("ShareURIFromOutbound: %v", err)
+	}
+	if !strings.Contains(got, "type=httpupgrade") {
+		t.Fatalf("httpupgrade must export as type=httpupgrade: %s", got)
+	}
+	if strings.Contains(got, "type=xhttp") {
+		t.Fatalf("httpupgrade must NOT export as type=xhttp (old bug): %s", got)
+	}
+}
+
 func TestShareURIFromOutbound_RoundTripTrojan(t *testing.T) {
 	uri := "trojan://secretpass@example.com:443?sni=example.com#tr1"
 	n, err := ParseNode(uri, nil)

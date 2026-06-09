@@ -301,6 +301,28 @@ func TestGenerateNodeJSON_VLESS_XtlsVisionUDP443(t *testing.T) {
 	}
 }
 
+// SPEC 071: VLESS + XHTTP transport is emitted as type=xhttp with all fields
+// (mode/path/host/x_padding_bytes), not degraded to httpupgrade.
+func TestGenerateNodeJSON_VLESS_XHTTPTransport(t *testing.T) {
+	uri := "vless://a0ee37a5-1844-4087-bc5c-1db6f416d38c@example.com:443?encryption=none&type=xhttp&path=%2Fx&host=h.test&mode=stream-one&xPaddingBytes=100-1000&security=tls&sni=h.test#t"
+	node, err := subscription.ParseNode(uri, nil)
+	if err != nil || node == nil {
+		t.Fatalf("ParseNode: %v", err)
+	}
+	jsonStr, err := GenerateNodeJSON(node)
+	if err != nil {
+		t.Fatalf("GenerateNodeJSON: %v", err)
+	}
+	for _, want := range []string{`"type":"xhttp"`, `"mode":"stream-one"`, `"path":"/x"`, `"host":"h.test"`, `"x_padding_bytes":"100-1000"`} {
+		if !strings.Contains(jsonStr, want) {
+			t.Fatalf("expected %s in JSON:\n%s", want, jsonStr)
+		}
+	}
+	if strings.Contains(jsonStr, "httpupgrade") {
+		t.Fatalf("xhttp must not degrade to httpupgrade:\n%s", jsonStr)
+	}
+}
+
 // GenerateNodeJSON must emit transport for VLESS ws and omit tls when security=none.
 func TestGenerateNodeJSON_VLESS_WSTransportNoTLS(t *testing.T) {
 	uri := "vless://a0ee37a5-1844-4087-bc5c-1db6f416d38c@cdn.example.com:8880?encryption=none&type=ws&path=%2F&host=h.cdn&security=none#t"

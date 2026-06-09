@@ -341,6 +341,15 @@ func getRawAtPath(root map[string]json.RawMessage, path string) json.RawMessage 
 	return nil
 }
 
+// readJSONLiteralAsString decodes RAW json.RawMessage bytes (string / number
+// / bool / null) to a string, returning "" for anything that is not a
+// recognized JSON literal — a STRICT reader.
+//
+// Intentionally distinct from defaultValueStringify (vars_default.go), which
+// takes an already-decoded interface{} and has a fmt.Sprint catch-all
+// fallback. The input type (raw bytes vs decoded value) and the fallback
+// semantics (strict-reject vs best-effort) both differ on purpose. Do NOT
+// merge the two (SPEC 069 §5.4 — verified intentional divergence).
 func readJSONLiteralAsString(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""

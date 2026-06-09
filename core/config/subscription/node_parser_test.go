@@ -262,11 +262,11 @@ func TestParseNode_VMess(t *testing.T) {
 		}
 	})
 
-	t.Run("VMess JSON net=xhttp uses httpupgrade transport", func(t *testing.T) {
+	t.Run("VMess JSON net=xhttp uses xhttp transport (SPEC 071)", func(t *testing.T) {
 		vmessConfig := map[string]interface{}{
 			"v": "2", "ps": "xh", "add": "vm.example.com", "port": float64(443),
 			"id":  "bf000d23-0752-40b4-affe-68f7707a9661",
-			"net": "xhttp", "path": "/hx", "host": "h.vm", "tls": "tls",
+			"net": "xhttp", "path": "/hx", "host": "h.vm", "tls": "tls", "mode": "stream-one",
 		}
 		raw, _ := json.Marshal(vmessConfig)
 		uri := "vmess://" + base64.URLEncoding.EncodeToString(raw)
@@ -275,7 +275,7 @@ func TestParseNode_VMess(t *testing.T) {
 			t.Fatalf("ParseNode: %v", err)
 		}
 		tr := node.Outbound["transport"].(map[string]interface{})
-		if tr["type"] != "httpupgrade" || tr["path"] != "/hx" || tr["host"] != "h.vm" {
+		if tr["type"] != "xhttp" || tr["path"] != "/hx" || tr["host"] != "h.vm" || tr["mode"] != "stream-one" {
 			t.Fatalf("transport: %+v", tr)
 		}
 	})
@@ -778,18 +778,21 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 		}
 	})
 
-	t.Run("xhttp maps to httpupgrade (sing-box schema: host/path only)", func(t *testing.T) {
-		uri := "vless://a0ee37a5-1844-4087-bc5c-1db6f416d38c@example.com:443?type=xhttp&path=%2F&host=h.test&mode=auto&security=tls&sni=h.test#xh"
+	t.Run("xhttp parses as xhttp transport with all fields (SPEC 071)", func(t *testing.T) {
+		uri := "vless://a0ee37a5-1844-4087-bc5c-1db6f416d38c@example.com:443?type=xhttp&path=%2F&host=h.test&mode=stream-one&xPaddingBytes=100-1000&security=tls&sni=h.test#xh"
 		node, err := ParseNode(uri, nil)
 		if err != nil || node == nil {
 			t.Fatalf("ParseNode: err=%v", err)
 		}
 		tr := node.Outbound["transport"].(map[string]interface{})
-		if tr["type"] != "httpupgrade" || tr["host"] != "h.test" || tr["path"] != "/" {
+		if tr["type"] != "xhttp" || tr["host"] != "h.test" || tr["path"] != "/" {
 			t.Fatalf("transport: %+v", tr)
 		}
-		if _, has := tr["mode"]; has {
-			t.Fatal("xhttp mode is not part of sing-box httpupgrade transport")
+		if tr["mode"] != "stream-one" {
+			t.Fatalf("xhttp mode not preserved: %+v", tr)
+		}
+		if tr["x_padding_bytes"] != "100-1000" {
+			t.Fatalf("xhttp x_padding_bytes (camelCase key) not parsed: %+v", tr)
 		}
 	})
 
@@ -980,7 +983,7 @@ func TestParseNode_VLESS_TransportAndTLS(t *testing.T) {
 			t.Fatalf("ParseNode: err=%v", err)
 		}
 		tr := node.Outbound["transport"].(map[string]interface{})
-		if tr["type"] != "httpupgrade" || tr["path"] != "/illusion-finland" {
+		if tr["type"] != "xhttp" || tr["path"] != "/illusion-finland" || tr["mode"] != "auto" {
 			t.Fatalf("transport: %+v", tr)
 		}
 		if node.Outbound["tls"] == nil {

@@ -26,6 +26,12 @@ import (
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
+// setTooltip is the package-shared, nil/empty-guarded tooltip helper for the
+// configurator tabs — prefer it over bare o.SetToolTip(...) so empty strings
+// and nil objects can't panic or render blank tooltips. (SPEC 069 §5.4 noted
+// "three setTooltip helpers" but only this one exists; it's already shared
+// package-wide. Direct .SetToolTip and fynewidget.SetToolTipSafe calls also
+// remain in places that need the unguarded form.)
 func setTooltip(o fyne.CanvasObject, text string) {
 	if text == "" || o == nil {
 		return

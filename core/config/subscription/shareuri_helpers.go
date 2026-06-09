@@ -147,12 +147,31 @@ func transportToQuery(q url.Values, tr map[string]interface{}) {
 			}
 		}
 	case "httpupgrade":
-		q.Set("type", "xhttp")
+		// SPEC 071: httpupgrade is its own type — previously mislabeled as xhttp.
+		q.Set("type", "httpupgrade")
 		if p := mapGetString(tr, "path"); p != "" {
 			q.Set("path", p)
 		}
 		if h := mapGetString(tr, "host"); h != "" {
 			q.Set("host", h)
+		}
+	case "xhttp":
+		// SPEC 071: Xray splithttp transport, round-tripped verbatim.
+		q.Set("type", "xhttp")
+		if m := mapGetString(tr, "mode"); m != "" {
+			q.Set("mode", m)
+		}
+		if p := mapGetString(tr, "path"); p != "" {
+			q.Set("path", p)
+		}
+		if h := mapGetString(tr, "host"); h != "" {
+			q.Set("host", h)
+		}
+		if pad := mapGetString(tr, "x_padding_bytes"); pad != "" {
+			q.Set("x_padding_bytes", pad)
+		}
+		if v, ok := tr["no_grpc_header"].(bool); ok && v {
+			q.Set("no_grpc_header", "true")
 		}
 	}
 }

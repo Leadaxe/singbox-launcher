@@ -10,24 +10,29 @@
 
 | # | Схема URI | sing-box `type` | Секция конфига | Версия / build-tag | Описание |
 |---|-----------|-----------------|----------------|--------------------|----------|
-| 1 | `vless://` | `vless` | `outbounds[]` | core | TCP/raw/ws/grpc/http/`httpupgrade`/quic, TLS, Reality, Vision flow. `xhttp` → `httpupgrade` **с деградацией** (см. ниже). |
-| 2 | `vmess://` | `vmess` | `outbounds[]` | core | Base64 JSON или legacy cleartext `method:uuid@host:port`. `net=h2`→`http`+TLS, `net=xhttp`/`httpupgrade`→`httpupgrade` (та же деградация). |
+| 1 | `vless://` | `vless` | `outbounds[]` | core (+ **`with_xhttp`** для xhttp) | TCP/raw/ws/grpc/http/`httpupgrade`/quic/**`xhttp`** (splithttp), TLS, Reality, Vision flow. xhttp — нативно на ядре sing-box-lx (см. ниже). |
+| 2 | `vmess://` | `vmess` | `outbounds[]` | core (+ **`with_xhttp`**) | Base64 JSON или legacy cleartext `method:uuid@host:port`. `net=h2`→`http`+TLS; `net=xhttp`→**`xhttp`**, `net=httpupgrade`→`httpupgrade` (разные транспорты). |
 | 3 | `trojan://` | `trojan` | `outbounds[]` | core | Те же transport/TLS, что и VLESS. Пароль в userinfo. |
 | 4 | `ss://` | `shadowsocks` | `outbounds[]` | core | SIP002 + legacy `ss://base64("method:password@host:port")`. Методы — фиксированный allow-list (2022-blake3, AEAD GCM, ChaCha20-Poly1305). |
 | 5 | `hysteria2://`, `hy2://` | `hysteria2` | `outbounds[]` | core (QUIC) | Multi-port (`mport`/`ports` query или `host:123,5000-6000` в authority); obfs только `salamander`. |
 | 6 | `ssh://` | `ssh` | `outbounds[]` | core | **Собственный URI-диалект singbox-launcher**, не RFC. Inline-ключ / путь к ключу / passphrase / host_key. |
 | 7 | `socks5://`, `socks://` | `socks` (version=5) | `outbounds[]` | core | User/pass опциональны. Поле фильтра `scheme` сохраняет оригинал (`socks5` vs `socks`). |
 | 8 | `naive+https://`, `naive+quic://` | `naive` | `outbounds[]` | **sing-box ≥ 1.13.0** + build tag **`with_naive_proxy`** (Apple/Android/Windows-сборки SagerNet ОК; минимальный Linux отвергает в runtime) | DuckSoft 2020 URI-диалект. `extra-headers=` (CRLF-разделённые пары). TLS только `server_name`. |
-| 9 | `wireguard://` | `wireguard` | **`endpoints[]`** | **sing-box ≥ 1.11** | Один peer; маркеры `@ParserSTART_E`/`@ParserEND_E`. Default port 51820, mtu 1420. |
+| 9 | `wireguard://` | `wireguard` | **`endpoints[]`** | **sing-box ≥ 1.11** (+ **`with_awg`** для AmneziaWG) | Один peer; маркеры `@ParserSTART_E`/`@ParserEND_E`. Default port 51820, mtu 1420. Опциональные параметры **AmneziaWG 2.0** (jc/jmin/jmax, s1–s4, h1–h4, i1–i5) — см. ниже. |
 
 **Не поддерживаются** (явно, не реализованы): **TUIC**, **AnyTLS**, **ShadowTLS**, **Mieru**, **Hysteria 1** (только v2), **ShadowsocksR / SSR**, **Tor**, plain HTTP-proxy как тип ноды (URL `http(s)://...` — это всегда **источник подписки**, не нода). Селекторы (`selector`, `urltest`, `direct`, `block`, `dns`) — не URI-протоколы; собираются на стороне ParserConfig (см. [секцию `outbounds`](#секция-outbounds)).
 
-**⚠️ `xhttp` транспорт — частичная поддержка через деградацию.** Sing-box **не имеет** настоящего `xhttp` транспорта (Xray-only фича). Если в URI VLESS/VMess указан `type=xhttp` / `net=xhttp`, парсер транслирует его в sing-box-овый **`httpupgrade`** (упрощённый HTTP/1.1 Upgrade без mux), отбрасывая xhttp-specific поля: **`mode`** (`auto`/`stream-up`/`packet-up`), **`extra`** (multiplexing-параметры), **`packetEncoding`** и др. Результат:
+### Транспорт xhttp и AmneziaWG
 
-- ✅ **Работает**, если сервер настроен на xhttp `mode=packet-up` (по поведению ~эквивалент WebSocket).
-- ❌ **Не работает** для xhttp `mode=stream-up` (требует full-duplex stream — `httpupgrade` это не умеет) и для xhttp с активным мультиплексингом.
+Лаунчер собран под ядро **[sing-box-lx](https://github.com/Leadaxe/sing-box-lx)** (upstream sing-box + ровно две клиентские фичи под build-тегами). Парсер/генератор/share-URI лаунчера поддерживают обе сквозно; в рантайме они работают **только** на ядре с соответствующим тегом — на стоковом sing-box конфиг с этими полями отвергается на load-time (явная ошибка, без тихого даунгрейда).
 
-Для полноценного xhttp нужно ждать [апстрим в sing-box](https://github.com/SagerNet/sing-box/issues) или использовать Xray-клиент.
+**✅ `xhttp` транспорт — полноценно (build-tag `with_xhttp`).** Прежняя деградация в `httpupgrade` снята. При `type=xhttp` (VLESS/Trojan) или `net=xhttp` (VMess) строится честный транспорт `type:"xhttp"` (Xray-совместимый splithttp) со всеми полями, и без потерь сериализуется обратно в share-URI:
+
+- Поля: `mode` (`auto` \| `packet-up` \| `stream-up` \| `stream-one`; у форка `auto`=`packet-up`, у `stream-one` известный баг downlink-framing), `host`, `path`, `headers`, `x_padding_bytes` (диапазон `"min-max"`, дефолт `100-1000`, несётся в заголовке `Referer`), `no_grpc_header`. Композится с TLS/Reality (не с XTLS-Vision — ограничение протокола).
+- `httpupgrade` теперь **отдельный** транспорт (HTTP/1.1 Upgrade) — больше не путается с xhttp ни на входе, ни на выходе share-URI.
+- Детали: `SPECS/071-F-N-XHTTP_TRANSPORT/SPEC.md`, `sing-box-lx/docs/lx-config.md`.
+
+**✅ AmneziaWG 2.0 (AWG2) — обфускация WireGuard (build-tag `with_awg`).** WireGuard-endpoint (`wireguard://`) может нести promoted-поля AWG: числа `jc`/`jmin`/`jmax`, `s1`–`s4`, `h1`–`h4` и CPS-строки `i1`–`i5` (AWG 2.0, case-sensitive tag-формат). Парсятся из URI, эмитятся в `endpoints[]`, round-trip в share-URI без потерь. Endpoint **без** AWG-полей — обычный WireGuard (byte-identical с апстримом). Детали полей — секция [WireGuard](#wireguard-wireguard) ниже; `SPECS/073-F-N-AMNEZIAWG_PARAMS/SPEC.md`, `sing-box-lx/docs/lx-config.md`.
 
 Подробности по каждой схеме (query-параметры, TLS, transport, edge cases) — в разделе [Форматы URI для прямых ссылок](#форматы-uri-для-прямых-ссылок) ниже.
 
@@ -605,7 +610,7 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 - `alpn` — список через запятую → `tls.alpn`
 - `insecure`, `allowInsecure` / `allowinsecure` — при `1` / `true` → `tls.insecure`
 - `pbk`, `sid` — Reality → `tls.reality.public_key`, `short_id`
-- `type` — транспорт: `tcp` / `raw`, `ws`, `grpc`, `http`, **`httpupgrade`**, реже `quic`. Значение `xhttp` парсер мапит в `httpupgrade` с **деградацией** (см. предупреждение про xhttp в начале документа)
+- `type` — транспорт: `tcp` / `raw`, `ws`, `grpc`, `http`, **`httpupgrade`**, **`xhttp`**, реже `quic`. `xhttp` строится как нативный splithttp-транспорт (ядро sing-box-lx, build-tag `with_xhttp`; см. [секцию про xhttp и AmneziaWG](#транспорт-xhttp-и-amneziawg) в начале документа), отдельно от `httpupgrade`
 - `path` — путь WebSocket / HTTP / httpupgrade или fallback имени сервиса для gRPC
 - `host` / `Host` — для WS → заголовок `Host`; если `host` и `sni` в query нет, для WS используется **`obfsParam`**. Если есть `host` или `sni`, они имеют приоритет. Для HTTP/httpupgrade — поле `host` транспорта (регистр ключа `Host` в query учитывается)
 - `headerType` — вместе с `type=raw` или `tcp` и значением `http` задаёт транспорт типа HTTP (обфускация), см. отчёт 023
@@ -633,7 +638,7 @@ JSON должен содержать поля:
 - `id` - UUID клиента
 - `aid` - alterId (опционально)
 - `scy` - метод шифрования (опционально)
-- `net` - тип сети (`tcp`, `ws`, `http`, `grpc`, **`httpupgrade`**; **`h2`** → transport `http` + TLS; **`xhttp`** → `httpupgrade` с деградацией, см. предупреждение про xhttp в начале документа)
+- `net` - тип сети (`tcp`, `ws`, `http`, `grpc`, **`httpupgrade`**, **`xhttp`**; **`h2`** → transport `http` + TLS; **`xhttp`** → нативный splithttp-транспорт `xhttp` (ядро sing-box-lx, build-tag `with_xhttp`), отдельно от `httpupgrade`; см. [секцию про xhttp и AmneziaWG](#транспорт-xhttp-и-amneziawg) в начале документа)
 - `type` - тип заголовка (для `tcp`)
 - `host` - хост (для `ws`/`http`; для WS при пустом `host` подставляется SNI из TLS, если есть)
 - `path` - путь (для `ws`/`http`/`grpc`)
@@ -655,12 +660,12 @@ vmess://eyJ2IjoiMiIsInBzIjoiVGVzdCIsImFkZCI6InNlcnZlci5jb20iLCJwb3J0Ijo0NDMsImlk
 ### Trojan (`trojan://`)
 Стандартный URI формат: `trojan://password@server:port?params#tag`
 
-Те же правила **TLS** и **[V2Ray transport](https://sing-box.sagernet.org/configuration/shared/v2ray-transport/)**, что и для VLESS (в т.ч. `type=ws`, `path`, `host` / `Host`, `type=httpupgrade`; `xhttp` — с той же деградацией, см. предупреждение в начале документа), см. **`SUBSCRIPTION_PARAMS_REPORT.md`** (023) и спеку **029**.
+Те же правила **TLS** и **[V2Ray transport](https://sing-box.sagernet.org/configuration/shared/v2ray-transport/)**, что и для VLESS (в т.ч. `type=ws`, `path`, `host` / `Host`, `type=httpupgrade`, `type=xhttp` — нативный splithttp как у VLESS, см. [секцию про xhttp и AmneziaWG](#транспорт-xhttp-и-amneziawg) в начале документа), см. **`SUBSCRIPTION_PARAMS_REPORT.md`** (023) и спеку **029**.
 
 **Параметры query string (типичные):**
 - `security` — например `tls` или `none` (без TLS)
 - `sni`, `host`, **`peer`** — SNI / имя сертификата (приоритет `sni`, затем `peer`, затем `host`); для WS также заголовок Host
-- `type` — `ws`, `grpc`, `http`, **`httpupgrade`**, `tcp`/`raw` (+ при необходимости `headerType=http`) — как у VLESS. `xhttp` мапится в `httpupgrade` с деградацией
+- `type` — `ws`, `grpc`, `http`, **`httpupgrade`**, **`xhttp`**, `tcp`/`raw` (+ при необходимости `headerType=http`) — как у VLESS. `xhttp` — нативный splithttp-транспорт (ядро sing-box-lx, build-tag `with_xhttp`), отдельно от `httpupgrade`
 - `path` — путь WebSocket
 - `alpn`, `fp`, `insecure` / `allowInsecure` — как у VLESS
 
@@ -846,6 +851,23 @@ wireguard://privatekey-base64@10.0.0.1:51820?publickey=server-pubkey-base64&addr
 ```
 
 **Детали разбора:** Приватный ключ из userinfo декодируется через PathUnescape. В `publickey` и `presharedkey` символ `+` (в base64) при разборе сохраняется.
+
+**AmneziaWG 2.0 (опционально — ядро sing-box-lx с `with_awg`):**
+
+Те же `wireguard://` ссылки могут нести параметры обфускации AmneziaWG — они promoted в корень WireGuard-endpoint рядом с `private_key`/`peers`:
+
+- **Числовые** (uint32 → JSON-число): `jc` (число junk-пакетов до handshake), `jmin`/`jmax` (мин/макс размер junk), `s1`/`s2` (junk перед init/response handshake), `s3`/`s4` (junk перед cookie-reply/transport — **AWG 2.x**), `h1`–`h4` (magic-заголовки для 4 типов сообщений WireGuard).
+- **Строковые** (case-sensitive tag-формат): `i1`–`i5` — CPS decoy-пакеты **AWG 2.0**, отправляются по порядку до handshake. Теги: `<b 0xHEX>` статичные байты, `<c>` счётчик, `<t>` timestamp, `<r N>` / `<rc N>` / `<rd N>` — random байты / символы / цифры.
+
+Имена числовых полей читаются из query в любом регистре; `i1`–`i5` берутся как есть (кейс сохраняется). Endpoint **без единого** AWG-поля = обычный WireGuard (byte-identical с апстримом). Клиент и сервер должны иметь **совпадающие** AWG-параметры — I-пакеты являются конфигурацией, не согласуются по сети. Маппинг 1:1 с `awg.conf` (awg-quick): `[Interface] Jc/Jmin/Jmax/S1–S4/H1–H4/I1–I5` → корень endpoint, `[Peer] …` → `peers[0]`.
+
+**MTU AWG-эндпоинта клампится сверху до `1280`** (рекомендация AmneziaWG). `s3`/`s4` добавляют padding к **каждому** transport-пакету, поэтому при `mtu=1420` итоговый пакет вылезает за path-MTU и ОС отбивает его (`sendmsg: message too long`): handshake проходит, но данные молча встают. Политика парсера для WireGuard-эндпоинта **с** AWG-полями: `mtu` из URI выше 1280 → понижается до 1280; явно меньшее значение (напр. `mtu=1200`) уважается; при отсутствии `mtu` — дефолт 1280 (а не 1420). Обычный WireGuard (без AWG-полей) сохраняет апстрим-дефолт 1420. Потолок без запаса: `1500 − 28 (UDP/IP) − 32 (WG) − max(s3,s4)`; 1280 = IPv6-минимум, безопасен на PPPoE/мобайл/вложенных путях. **Сервер должен иметь симметричный MTU** — иначе крупные обратные пакеты упрутся в path-MTU так же.
+
+**Пример (AWG2):**
+```
+wireguard://privkey-base64@server.example.com:51821?publickey=server-pubkey&address=10.0.0.2%2F32&allowedips=0.0.0.0%2F0%2C%3A%3A%2F0&keepalive=25&jc=10&jmin=50&jmax=100&s1=20&s2=20&s3=60&s4=60&h1=1234567890&h2=1234567891&h3=1234567892&h4=1234567893&i1=%3Cb%200x000100002112a442%3E%3Cr%2012%3E#AWG2
+```
+(`i1` здесь — URL-encoded `<b 0x000100002112a442><r 12>`.) Поддержка реализована в `applyAWGFields` / `ShareURIFromWireGuardEndpoint` (`core/config/subscription/node_parser_wireguard.go`, `shareuri_wireguard.go`); рантайм — на ядре с `with_awg`. См. `SPECS/073-F-N-AMNEZIAWG_PARAMS/SPEC.md` и `sing-box-lx/docs/lx-config.md`.
 
 ## Маркерная секция в `config.json`
 
