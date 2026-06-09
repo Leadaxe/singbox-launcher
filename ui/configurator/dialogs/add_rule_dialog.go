@@ -165,40 +165,9 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	rawTabEntry.SetPlaceHolder(locale.T("wizard.add_rule.placeholder_raw"))
 	rawTabEntry.Wrapping = fyne.TextWrapWord
 
-	// Helper to normalize process name (strip legacy "PID: name" format)
-	normalizeProcName := func(s string) string {
-		parts := strings.SplitN(strings.TrimSpace(s), ": ", 2)
-		if len(parts) == 2 {
-			return strings.TrimSpace(parts[1])
-		}
-		return strings.TrimSpace(s)
-	}
-
-	// Sort helper for process strings (by name)
-	sortProcessStrings := func(items []string) {
-		sort.Slice(items, func(i, j int) bool {
-			return strings.ToLower(items[i]) < strings.ToLower(items[j])
-		})
-	}
-
-	// Dedupe helper for process names (case-insensitive)
-	dedupeProcessStrings := func(items []string) []string {
-		seen := make(map[string]struct{}, len(items))
-		out := make([]string, 0, len(items))
-		for _, item := range items {
-			n := normalizeProcName(item)
-			key := strings.ToLower(n)
-			if n == "" {
-				continue
-			}
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			out = append(out, n)
-		}
-		return out
-	}
+	// Process-name helpers are now top-level pure funcs (see bottom of file):
+	// normalizeProcName / sortProcessStrings / dedupeProcessStrings.
+	// Call sites below reference them directly by name.
 
 	// Outbound selector
 	availableOutbounds := wizardbusiness.EnsureDefaultAvailableOutbounds(wizardbusiness.GetAvailableOutbounds(model))
@@ -1144,4 +1113,42 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	refreshSelectedProcessesUI()
 	updateButtonState()
 	dialogWindow.Show()
+}
+
+// normalizeProcName strips the legacy "PID: name" prefix from a process string,
+// returning just the trimmed process name. Inputs without that prefix are
+// returned trimmed as-is.
+func normalizeProcName(s string) string {
+	parts := strings.SplitN(strings.TrimSpace(s), ": ", 2)
+	if len(parts) == 2 {
+		return strings.TrimSpace(parts[1])
+	}
+	return strings.TrimSpace(s)
+}
+
+// sortProcessStrings sorts process strings in place, case-insensitively by name.
+func sortProcessStrings(items []string) {
+	sort.Slice(items, func(i, j int) bool {
+		return strings.ToLower(items[i]) < strings.ToLower(items[j])
+	})
+}
+
+// dedupeProcessStrings normalizes each item (via normalizeProcName), drops empty
+// results, and removes case-insensitive duplicates, preserving first-seen order.
+func dedupeProcessStrings(items []string) []string {
+	seen := make(map[string]struct{}, len(items))
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		n := normalizeProcName(item)
+		key := strings.ToLower(n)
+		if n == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, n)
+	}
+	return out
 }
