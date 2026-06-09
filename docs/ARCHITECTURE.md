@@ -18,11 +18,20 @@
 ## 1. Overview
 
 `singbox-launcher` is a cross-platform (Windows / macOS / Linux) desktop GUI that
-manages a [sing-box](https://github.com/SagerNet/sing-box) VPN core. It is written
+manages a sing-box VPN core. It is written
 in Go with [Fyne](https://fyne.io) for the UI. The launcher downloads and pins a
-sing-box binary, fetches and parses proxy subscriptions (VLESS / VMess / Trojan /
+sing-box binary — specifically the [`sing-box-lx`](https://github.com/Leadaxe/sing-box-lx)
+fork (`constants.RequiredCoreVersion = "1.13.13-lx.3"`, built with the `with_xhttp` +
+`with_awg` build tags and fetched from the fork's GitHub Releases; the legacy Windows 7
+(`windows/386`) path has no fork build and stays on upstream
+[SagerNet/sing-box](https://github.com/SagerNet/sing-box) `1.13.12`,
+`constants.Win7LegacyVersion`). It fetches and parses proxy subscriptions (VLESS / VMess / Trojan /
 Shadowsocks / Hysteria2 / SSH / SOCKS / Naive / WireGuard, plus the Xray JSON-array
-format), and assembles a working `config.json` from a user-edited **state** plus a
+format) — including the **XHTTP** transport (`type=xhttp` for VLESS/VMess/Trojan,
+parsed, generated into `config.json`, and round-tripped to share URIs) and
+**AmneziaWG 2.0** on WireGuard endpoints (obfuscation params `jc`/`jmin`/`jmax`,
+`s1`–`s4`, `h1`–`h4`, CPS packets `i1`–`i5`; AWG endpoint MTU auto-clamped to 1280) —
+and assembles a working `config.json` from a user-edited **state** plus a
 versioned **template**. A configuration **wizard** (the "configurator") lets users
 edit subscription sources, global outbounds, routing rules, and DNS, all preview-
 rendered against the same resolver pipeline the final build uses.

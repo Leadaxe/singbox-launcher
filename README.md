@@ -3,9 +3,9 @@
 [![GitHub](https://img.shields.io/badge/GitHub-Leadaxe%2Fsingbox--launcher-blue)](https://github.com/Leadaxe/singbox-launcher)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-blue)](https://golang.org/)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
 
-**Desktop platform for network routing and traffic analysis. 15+ VPN protocols, configuration depth and API at enterprise level. Built on top of [sing-box](https://github.com/SagerNet/sing-box) as execution engine.**
+**Desktop platform for network routing and traffic analysis. 15+ VPN protocols, configuration depth and API at enterprise level. Built on top of the [sing-box-lx](https://github.com/Leadaxe/sing-box-lx) fork (upstream sing-box + XHTTP transport + AmneziaWG 2.0) as execution engine; the Windows 7 32-bit legacy build stays on upstream [SagerNet/sing-box](https://github.com/SagerNet/sing-box).**
 
 **Repository**: [https://github.com/Leadaxe/singbox-launcher](https://github.com/Leadaxe/singbox-launcher)
 
@@ -30,6 +30,8 @@ Three layers that together define the product:
 ### Connectivity
 
 - **15 connection protocols** — vless, vmess, trojan, shadowsocks, hysteria, hysteria2, tuic, ssh, wireguard, naive (https / quic).
+- **XHTTP transport** — `type=xhttp` on vless/vmess/trojan nodes is parsed, generated into `config.json`, and round-tripped back to share URIs (no longer degraded to httpupgrade). Runs on the bundled sing-box-lx core.
+- **AmneziaWG 2.0 (AWG2)** — obfuscation params on wireguard endpoints (`jc` / `jmin` / `jmax`, `s1`-`s4`, `h1`-`h4`, plus CPS packets `i1`-`i5`), parsed from both `wireguard://` and `awg://` URIs and emitted into `endpoints[]`. AWG endpoint MTU is auto-clamped to 1280.
 - **Multiple sources per profile** — subscription URLs and direct links (`vless://`, `vmess://`, …) can be mixed in a single configuration.
 - **Subscription provider compatibility** — first-class support for HWID-binding panels (Marzban, Marzneshin, Remnawave, NashVPN, V2Board / Xboard) via the canonical XTLS subscription-header protocol (`X-Hwid`, `X-Hwid-Limit`, `Announce`, `Subscription-Userinfo`).
 - **Per-source raw cache** — last working subscription body preserved on fetch failure (no broken config when provider is down).
@@ -89,7 +91,7 @@ Three layers that together define the product:
 ## Quick start
 
 1. Download from [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases) and install (see [Installation](#installation)).
-2. Open the app → **Core** tab → click **Download** to fetch the matching `sing-box` binary (and `wintun.dll` on Windows). Falls back to a SourceForge mirror if GitHub is unreachable.
+2. Open the app → **Core** tab → click **Download** to fetch the matching `sing-box` binary (and `wintun.dll` on Windows). The core is the `sing-box-lx` fork (XHTTP + AmneziaWG 2.0) from its GitHub Releases. The SourceForge mirror fallback applies only to the Windows 7 32-bit upstream legacy build.
 3. Click **Configurator** → paste your subscription URL on the **Sources** tab → step through Outbounds / Rules / DNS / Settings / Preview → **Save**.
 4. Back in **Core** → **Start**. Switch servers on the **Servers** tab, monitor traffic via the **Traffic Profiler** button in Diagnostics.
 
@@ -234,15 +236,15 @@ User Agent: `singbox-launcher/<version> (<os> <arch>)`. Privacy controls in Sett
 ### Windows
 
 - **Recommended:** Windows 10 / 11 (x64).
-- **Legacy:** Windows 7 (x86/x64) via separate build `singbox-launcher-<version>-win7-32.zip` with pinned legacy sing-box 1.13.2 (32-bit) and 32-bit `wintun.dll`.
-- [sing-box](https://github.com/SagerNet/sing-box/releases) — auto-downloaded via the Core tab.
+- **Legacy:** Windows 7 (x86/x64) via separate build `singbox-launcher-<version>-win7-32.zip` with pinned legacy upstream SagerNet sing-box 1.13.12 (32-bit, no XHTTP/AWG fork build for windows/386) and 32-bit `wintun.dll`.
+- [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — fork core (XHTTP + AmneziaWG 2.0) auto-downloaded via the Core tab on Win 10/11; Windows 7 32-bit uses upstream [SagerNet/sing-box](https://github.com/SagerNet/sing-box/releases) instead.
 - [WinTun](https://www.wintun.net/) (wintun.dll, MIT license) — auto-downloaded via the Core tab.
 
 ### macOS
 
 - **Universal** (recommended): macOS 11+ (Big Sur), supports Apple Silicon and Intel.
 - **Intel-only legacy build**: macOS 10.15+ (Catalina).
-- [sing-box](https://github.com/SagerNet/sing-box/releases) — auto-downloaded via the Core tab.
+- [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — fork core (XHTTP + AmneziaWG 2.0) auto-downloaded via the Core tab.
 
 ### Linux
 
@@ -269,7 +271,7 @@ curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scrip
 Installs to `/Applications/`, removes quarantine attributes, fixes permissions, ensures compatibility with Apple Silicon and recent macOS. For a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- v1.0.0
+curl -fsSL https://raw.githubusercontent.com/Leadaxe/singbox-launcher/main/scripts/install-macos.sh | bash -s -- v1.1.0
 ```
 
 #### Option 2: manual install

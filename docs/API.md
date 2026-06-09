@@ -18,7 +18,7 @@ export API="http://127.0.0.1:9263"
 # 4. Проверить
 curl -s "$API/ping"                                    # → {"ok":true}    (без auth)
 curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
-# → {"launcher":"v0.9.9","singbox":"1.13.12","api":"debugapi/v1"}
+# → {"launcher":"v1.1.0","singbox":"1.13.13-lx.3","api":"debugapi/v1"}
 ```
 
 ---
@@ -32,7 +32,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 | Override порта | `bin/settings.json` → `debug_api_port` (1024–65535, `0` = дефолт) |
 | Включить/выключить | `bin/settings.json` → `debug_api_enabled` (UI: Settings → checkbox) |
 | Bearer-токен | `bin/settings.json` → `debug_api_token` (UI: Diagnostics → Copy token) |
-| Регенерация токена | UI нет — удалить ключ из `settings.json`, перезапустить лаунчер |
+| Регенерация токена | UI: **Settings → Debug API → «Regenerate»** (с подтверждением; ротирует токен и перезапускает listener). Альтернатива — удалить ключ из `settings.json` и перезапустить лаунчер |
 | Comparison | `subtle.ConstantTimeCompare` (constant-time) |
 | Header | `Authorization: Bearer <token>` |
 
@@ -45,7 +45,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 | Method | Path | Auth | Response |
 |---|---|---|---|
 | GET | `/ping` | — | `{"ok":true}` |
-| GET | `/version` | ✓ | `{"launcher":"v…","singbox":"1.13.12","api":"debugapi/v1"}` |
+| GET | `/version` | ✓ | `{"launcher":"v…","singbox":"1.13.13-lx.3","api":"debugapi/v1"}` |
 
 ```bash
 curl -s "$API/ping"
@@ -212,8 +212,8 @@ Response shape:
 ```json
 {
   "captured_at": "2026-05-28T12:00:00Z",
-  "launcher_version": "v0.9.9",
-  "singbox_version": "1.13.12",
+  "launcher_version": "v1.1.0",
+  "singbox_version": "1.13.13-lx.3",
   "files": { "state.json": "...", "config.json": "...", "wizard_template.json": "..." },
   "missing": [],
   "errors": []

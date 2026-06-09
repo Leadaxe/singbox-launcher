@@ -21,11 +21,12 @@
 - **TestParseNode_Hysteria2** / **TestBuildOutbound_Hysteria2** - Hysteria2 URI и outbound (TLS, pinSHA256, fp)
 - **TestParseNode_SSH**, **TestBuildOutbound_SSH** - SSH
 - **TestParseNode_SOCKS5**, **TestParseNode_Wireguard** - SOCKS5, WireGuard
+- **AmneziaWG 2.0 (`core/config/subscription/awg_test.go`)** — `TestParseWireGuardURI_AWGFields` (jc/jmin/jmax, s1-s4, h1-h4, i1-i5), `TestParseWireGuardURI_MTUClamp` (MTU авто-клампится до 1280), `TestParseNode_AWGScheme_RoutesToWireguard` / `TestIsDirectLink_AWG` (схема `awg://`), `TestShareURI_AWG_RoundTrip` / `TestShareURI_AWG_ZeroJc_Preserved` / `TestAWG_TypeFidelity_JSON`
 - **TestSanitizeForDisplay_stripsInvalidUTF8WithoutFFFD** - санитизация отображения
 
 **Дополнительно (обратная операция — outbound → share URI):**
 
-- **`core/config/subscription/share_uri_encode_test.go`** — `ShareURIFromOutbound`: round-trip VLESS/Trojan/Shadowsocks, `ErrShareURINotSupported` для `selector`, SOCKS из map; WireGuard round-trip и multi-peer → `ErrShareURINotSupported`
+- **`core/config/subscription/share_uri_encode_test.go`** — `ShareURIFromOutbound`: round-trip VLESS/Trojan/Shadowsocks, `ErrShareURINotSupported` для `selector`, SOCKS из map; WireGuard round-trip и multi-peer → `ErrShareURINotSupported`; **XHTTP** round-trip (`TestShareURIFromOutbound_RoundTripXHTTP` — `type=xhttp`/`mode`/`x_padding_bytes` сохраняются, не деградируют в `httpupgrade`) и `TestShareURIFromOutbound_HTTPUpgradeNotXHTTP` (`httpupgrade` не экспортируется как `type=xhttp`)
 - **`core/config/outbound_share_test.go`** — `ShareProxyURIForOutboundTag` по минимальному `config.json` (vless и WireGuard только в `endpoints[]`), ошибка поиска для несуществующего тега
 
 ### 2. Тесты парсера подписок (`core/config/subscription/subscription_parser_test.go`)
@@ -252,7 +253,7 @@ go test ./core/config/subscription -v -run TestParseNode_VLESS
 ## Требования для запуска тестов
 
 ### Для всех тестов
-- Go 1.24.4 или выше
+- Go 1.25.0 или выше (`go.mod`); legacy Win7-сборка отдельно пинит Go 1.20 через `go.win7.mod`
 - Установленные зависимости проекта (`go mod download`)
 
 ### Для тестов с UI зависимостями (визард, интеграционные)
