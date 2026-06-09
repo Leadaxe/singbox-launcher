@@ -282,18 +282,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						return
 					}
 					m.Sources[sourceIndex].Enabled = enabled
-					// Toggling a source is a savable change. UpdateParserConfig
-					// below suppresses the text widget's OnChanged MarkAsChanged
-					// (see UpdateParserConfig), so mark dirty explicitly — else
-					// the toggle is silently lost on close.
-					presenter.MarkAsChanged()
-					m.RefreshDerivedParserConfig()
-					m.PreviewNeedsParse = true
-					wizardbusiness.InvalidatePreviewCache(m)
-					presenter.UpdateParserConfig(m.ParserConfigJSON)
-					if guiState.RefreshSourcesList != nil {
-						guiState.RefreshSourcesList()
-					}
+					// Shared mutation chain (marks dirty, re-derives, refreshes
+					// outbound options + list). The MarkAsChanged rationale and
+					// the previously-missing RefreshOutboundOptions live there.
+					applySourceMutation(presenter, guiState)
 				}
 
 				copyBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.ContentCopyIcon(), func() {
@@ -326,15 +318,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						return
 					}
 					m.Sources = append(m.Sources[:sourceIndex], m.Sources[sourceIndex+1:]...)
-					presenter.MarkAsChanged()
-					m.RefreshDerivedParserConfig()
-					m.PreviewNeedsParse = true
-					wizardbusiness.InvalidatePreviewCache(m)
-					presenter.UpdateParserConfig(m.ParserConfigJSON)
-					presenter.RefreshOutboundOptions()
-					if guiState.RefreshSourcesList != nil {
-						guiState.RefreshSourcesList()
-					}
+					applySourceMutation(presenter, guiState)
 				}, rowGetter)
 				delBtn.Importance = widget.LowImportance
 				fynewidget.SetToolTipSafe(delBtn, locale.T("wizard.source.button_del"))
@@ -509,7 +493,7 @@ func moveSourceUp(presenter *wizardpresentation.WizardPresenter, guiState *wizar
 		return
 	}
 	m.Sources[idx-1], m.Sources[idx] = m.Sources[idx], m.Sources[idx-1]
-	applySourceReorder(presenter, guiState)
+	applySourceMutation(presenter, guiState)
 }
 
 // moveSourceDown swaps the source at idx with the one below it.
@@ -519,14 +503,24 @@ func moveSourceDown(presenter *wizardpresentation.WizardPresenter, guiState *wiz
 		return
 	}
 	m.Sources[idx], m.Sources[idx+1] = m.Sources[idx+1], m.Sources[idx]
-	applySourceReorder(presenter, guiState)
+	applySourceMutation(presenter, guiState)
 }
 
-// applySourceReorder runs the same refresh chain the Delete handler uses after
-// mutating model.Sources: re-derive ParserConfig, invalidate preview cache,
-// refresh outbound options and rebuild the sources list. Marks the model dirty
-// so the Save button lights up.
-func applySourceReorder(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState) {
+// applySourceMutation is the single refresh chain every Sources-list mutation
+// runs after editing model.Sources (reorder ↑/↓, enable toggle, delete):
+// mark dirty → re-derive ParserConfig → invalidate preview cache →
+// UpdateParserConfig → refresh outbound options → rebuild the list.
+//
+// MarkAsChanged is called explicitly (and first) on purpose: UpdateParserConfig
+// below suppresses the ParserConfig text widget's OnChanged → MarkAsChanged
+// (see UpdateParserConfig), so without this the mutation would be silently
+// lost on close and the Save button wouldn't light up.
+//
+// Keeping all source mutations on this one helper is deliberate — the chain
+// drifted before (the enable toggle used to skip RefreshOutboundOptions, so a
+// disabled source's outbounds lingered in the rule selectors). Add new source
+// mutations here, not as a fresh inline copy.
+func applySourceMutation(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState) {
 	m := presenter.Model()
 	if m == nil {
 		return
