@@ -311,6 +311,7 @@
   "wizard.source.placeholder_prefix": "prefix",
   "wizard.source.button_view": "View",
   "wizard.source.button_del": "Del",
+  "wizard.source.dialog_delete_confirm": "Delete \"%s\"? The source and its nodes are removed from the configuration.",
   "wizard.source.dialog_copied_title": "Copied",
   "wizard.source.dialog_copied_message": "Source copied to clipboard.",
   "wizard.source.preview_click_refresh": "Click Refresh to load servers from all sources.",

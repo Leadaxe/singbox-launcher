@@ -10,6 +10,7 @@
 - **Debug API: "Regenerate token" button.** Settings → Debug API now has a Regenerate button next to Copy token. It rotates the bearer token (confirm dialog — the old token stops working immediately) and, if the API is running, restarts the listener with the new token.
 
 ### Technical / Internal
+- Sources screen: deleting a subscription or server now asks for confirmation (matches the Rules tab) — no more one-click accidental removal.
 - DNS-rule editor dialog: window titles ("Add/Edit DNS Rule") and the two validation errors ("Invalid JSON", "Rule is empty") are now localized (RU added). Field labels, placeholders and type names stay English by design.
 - Sources list: the enable-toggle / delete / reorder handlers now share one `applySourceMutation` helper. Side effect of the consolidation: toggling a source on/off now also refreshes the rule outbound selectors (the toggle path previously skipped `RefreshOutboundOptions`, so a just-disabled source's outbounds could linger in the dropdowns until another action).
 
@@ -19,5 +20,6 @@
 - **Debug API: кнопка «Перегенерировать токен».** В Settings → Debug API рядом с «Копировать токен» появилась кнопка перегенерации. Она ротирует bearer-токен (с подтверждением — старый сразу перестаёт работать) и, если API запущен, перезапускает listener с новым токеном.
 
 ### Техническое / Внутреннее
+- Экран «Серверы»: удаление подписки или сервера теперь спрашивает подтверждение (как в Rules-табе) — больше нет удаления в один клик по ошибке.
 - Диалог редактора DNS-правил: заголовки окна («Добавить/Редактировать DNS-правило») и две ошибки валидации («Некорректный JSON», «Правило пустое») теперь локализованы (добавлен RU). Лейблы полей, плейсхолдеры и названия типов — намеренно английские.
 - Список источников: обработчики toggle / delete / reorder сведены в один хелпер `applySourceMutation`. Побочный эффект консолидации: toggle источника теперь тоже обновляет outbound-селекторы правил (раньше toggle-путь пропускал `RefreshOutboundOptions`, и outbound'ы только что выключенного источника могли оставаться в дропдаунах до следующего действия).

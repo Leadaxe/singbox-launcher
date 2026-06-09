@@ -308,6 +308,7 @@
   "wizard.source.placeholder_prefix": "префикс",
   "wizard.source.button_view": "Просмотр",
   "wizard.source.button_del": "Удалить",
+  "wizard.source.dialog_delete_confirm": "Удалить «%s»? Источник и его узлы будут удалены из конфигурации.",
   "wizard.source.dialog_copied_title": "Скопировано",
   "wizard.source.dialog_copied_message": "Источник скопирован в буфер обмена.",
   "wizard.source.preview_click_refresh": "Нажмите «Обновить» для загрузки серверов из всех источников.",

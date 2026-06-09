@@ -313,12 +313,24 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				fynewidget.SetToolTipSafe(editBtn, locale.T("wizard.source.button_edit"))
 
 				delBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DeleteIcon(), func() {
-					m := presenter.Model()
-					if sourceIndex >= len(m.Sources) {
-						return
-					}
-					m.Sources = append(m.Sources[:sourceIndex], m.Sources[sourceIndex+1:]...)
-					applySourceMutation(presenter, guiState)
+					// Confirm before removing — deletion drops the source (and its
+					// nodes) from the config; matches the Rules-tab delete UX.
+					dialog.ShowConfirm(
+						locale.T("wizard.dialog_confirmation"),
+						locale.Tf("wizard.source.dialog_delete_confirm", shortLabel),
+						func(ok bool) {
+							if !ok {
+								return
+							}
+							m := presenter.Model()
+							if sourceIndex >= len(m.Sources) {
+								return
+							}
+							m.Sources = append(m.Sources[:sourceIndex], m.Sources[sourceIndex+1:]...)
+							applySourceMutation(presenter, guiState)
+						},
+						guiState.Window,
+					)
 				}, rowGetter)
 				delBtn.Importance = widget.LowImportance
 				fynewidget.SetToolTipSafe(delBtn, locale.T("wizard.source.button_del"))
