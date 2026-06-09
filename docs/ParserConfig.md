@@ -22,7 +22,7 @@
 
 **Не поддерживаются** (явно, не реализованы): **TUIC**, **AnyTLS**, **ShadowTLS**, **Mieru**, **Hysteria 1** (только v2), **ShadowsocksR / SSR**, **Tor**, plain HTTP-proxy как тип ноды (URL `http(s)://...` — это всегда **источник подписки**, не нода). Селекторы (`selector`, `urltest`, `direct`, `block`, `dns`) — не URI-протоколы; собираются на стороне ParserConfig (см. [секцию `outbounds`](#секция-outbounds)).
 
-### Транспорт `xhttp` и AmneziaWG — две фичи ядра sing-box-lx
+### Транспорт xhttp и AmneziaWG
 
 Лаунчер собран под ядро **[sing-box-lx](https://github.com/Leadaxe/sing-box-lx)** (upstream sing-box + ровно две клиентские фичи под build-тегами). Парсер/генератор/share-URI лаунчера поддерживают обе сквозно; в рантайме они работают **только** на ядре с соответствующим тегом — на стоковом sing-box конфиг с этими полями отвергается на load-time (явная ошибка, без тихого даунгрейда).
 
@@ -610,7 +610,7 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 - `alpn` — список через запятую → `tls.alpn`
 - `insecure`, `allowInsecure` / `allowinsecure` — при `1` / `true` → `tls.insecure`
 - `pbk`, `sid` — Reality → `tls.reality.public_key`, `short_id`
-- `type` — транспорт: `tcp` / `raw`, `ws`, `grpc`, `http`, **`httpupgrade`**, **`xhttp`**, реже `quic`. `xhttp` строится как нативный splithttp-транспорт (ядро sing-box-lx, build-tag `with_xhttp`; см. секцию про xhttp в начале документа), отдельно от `httpupgrade`
+- `type` — транспорт: `tcp` / `raw`, `ws`, `grpc`, `http`, **`httpupgrade`**, **`xhttp`**, реже `quic`. `xhttp` строится как нативный splithttp-транспорт (ядро sing-box-lx, build-tag `with_xhttp`; см. [секцию про xhttp и AmneziaWG](#транспорт-xhttp-и-amneziawg) в начале документа), отдельно от `httpupgrade`
 - `path` — путь WebSocket / HTTP / httpupgrade или fallback имени сервиса для gRPC
 - `host` / `Host` — для WS → заголовок `Host`; если `host` и `sni` в query нет, для WS используется **`obfsParam`**. Если есть `host` или `sni`, они имеют приоритет. Для HTTP/httpupgrade — поле `host` транспорта (регистр ключа `Host` в query учитывается)
 - `headerType` — вместе с `type=raw` или `tcp` и значением `http` задаёт транспорт типа HTTP (обфускация), см. отчёт 023
@@ -638,7 +638,7 @@ JSON должен содержать поля:
 - `id` - UUID клиента
 - `aid` - alterId (опционально)
 - `scy` - метод шифрования (опционально)
-- `net` - тип сети (`tcp`, `ws`, `http`, `grpc`, **`httpupgrade`**, **`xhttp`**; **`h2`** → transport `http` + TLS; **`xhttp`** → нативный splithttp-транспорт `xhttp` (ядро sing-box-lx, build-tag `with_xhttp`), отдельно от `httpupgrade`; см. секцию про xhttp в начале документа)
+- `net` - тип сети (`tcp`, `ws`, `http`, `grpc`, **`httpupgrade`**, **`xhttp`**; **`h2`** → transport `http` + TLS; **`xhttp`** → нативный splithttp-транспорт `xhttp` (ядро sing-box-lx, build-tag `with_xhttp`), отдельно от `httpupgrade`; см. [секцию про xhttp и AmneziaWG](#транспорт-xhttp-и-amneziawg) в начале документа)
 - `type` - тип заголовка (для `tcp`)
 - `host` - хост (для `ws`/`http`; для WS при пустом `host` подставляется SNI из TLS, если есть)
 - `path` - путь (для `ws`/`http`/`grpc`)
@@ -660,7 +660,7 @@ vmess://eyJ2IjoiMiIsInBzIjoiVGVzdCIsImFkZCI6InNlcnZlci5jb20iLCJwb3J0Ijo0NDMsImlk
 ### Trojan (`trojan://`)
 Стандартный URI формат: `trojan://password@server:port?params#tag`
 
-Те же правила **TLS** и **[V2Ray transport](https://sing-box.sagernet.org/configuration/shared/v2ray-transport/)**, что и для VLESS (в т.ч. `type=ws`, `path`, `host` / `Host`, `type=httpupgrade`, `type=xhttp` — нативный splithttp как у VLESS, см. секцию про xhttp в начале документа), см. **`SUBSCRIPTION_PARAMS_REPORT.md`** (023) и спеку **029**.
+Те же правила **TLS** и **[V2Ray transport](https://sing-box.sagernet.org/configuration/shared/v2ray-transport/)**, что и для VLESS (в т.ч. `type=ws`, `path`, `host` / `Host`, `type=httpupgrade`, `type=xhttp` — нативный splithttp как у VLESS, см. [секцию про xhttp и AmneziaWG](#транспорт-xhttp-и-amneziawg) в начале документа), см. **`SUBSCRIPTION_PARAMS_REPORT.md`** (023) и спеку **029**.
 
 **Параметры query string (типичные):**
 - `security` — например `tls` или `none` (без TLS)
