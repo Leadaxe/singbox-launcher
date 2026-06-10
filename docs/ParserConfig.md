@@ -871,6 +871,18 @@ wireguard://privkey-base64@server.example.com:51821?publickey=server-pubkey&addr
 ```
 (`i1` здесь — URL-encoded `<b 0x000100002112a442><r 12>`.) Поддержка реализована в `applyAWGFields` / `ShareURIFromWireGuardEndpoint` (`core/config/subscription/node_parser_wireguard.go`, `shareuri_wireguard.go`); рантайм — на ядре с `with_awg`. См. `SPECS/073-F-N-AMNEZIAWG_PARAMS/SPEC.md` и `sing-box-lx/docs/lx-config.md`.
 
+### Amnezia (`vpn://`)
+
+Ссылки **`vpn://…`**, которые экспортирует Amnezia VPN / AmneziaWG 2.0 (файл `.vpn` — это одна такая ссылка), принимаются напрямую: вставьте ссылку в Sources или Connections. Формат (эталон — `amnezia-vpn/config-decoder`): `vpn://` + base64url без padding, внутри qCompress (4 байта big-endian длины + zlib), под ним JSON всего профиля Amnezia.
+
+Из профиля импортируется **только WireGuard/AmneziaWG-контейнер** (OpenVPN/Cloak/XRay-контейнеры пропускаются): сначала пробуется `defaultContainer`, затем остальные по порядку. Найденный `[Interface]/[Peer]`-конфиг конвертируется в канонический `wireguard://`-URI (см. таблицу параметров выше), поэтому применяются те же правила: нормализация голых IP до CIDR, promote AWG-полей `Jc`/`Jmin`/`Jmax`/`S1`–`S4`/`H1`–`H4`/`I1`–`I5` в корень endpoint и **кламп MTU AWG-эндпоинта до 1280** — `MTU = 1420` из амнезиевского конфига заведомо ломает передачу данных (`sendmsg: message too long`). Имя узла берётся из `description` профиля, затем `hostName`, затем имя контейнера.
+
+Лимиты: ссылка до 512 КБ, распакованный профиль до 8 МБ (защита от zlib-бомб). Профиль без WG/AWG-контейнера даёт ошибку с перечислением контейнеров. Реализация: `core/config/subscription/node_parser_amnezia.go`; спека: `SPECS/075-F-N-AMNEZIA_VPN_IMPORT/SPEC.md`; референс-декодер для отладки: `scripts/decode_amnezia_vpn.py`.
+
+### Голый `.conf`-текст (`[Interface]/[Peer]`)
+
+Содержимое `.conf`-файла WireGuard/AmneziaWG можно вставить в поле Add вкладки Sources **как есть** — классификатор сам выделяет `[Interface]`-блоки из вставленного текста до построчного разбора и конвертирует каждый в канонический `wireguard://`-URI (хранится и шарится именно URI). Несколько блоков за одну вставку → несколько узлов; ссылки в том же тексте продолжают работать. Имя узла — хост из `Endpoint`. AWG-поля и кламп MTU — как у `vpn://` выше. Невалидный блок пропускается с предупреждением в лог, не срывая вставку. Реализация: `core/config/subscription/wgconf_text.go` + врезка в `classifyInputLines` (`ui/configurator/business/parser.go`); спека: `SPECS/076-F-N-WGCONF_PASTE_IMPORT/SPEC.md`.
+
 ## Маркерная секция в `config.json`
 
 Парсер перезаписывает блок между `/** @ParserSTART */` и `/** @ParserEND */`. Пример результата:

@@ -189,6 +189,24 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 // classifyInputLines классифицирует входные строки на подписки и прямые ссылки.
 func classifyInputLines(input string, timing interface{ LogTiming(string, time.Duration) }) (subscriptions []string, connections []string) {
 	splitStartTime := time.Now()
+
+	// SPEC 076: pasted [Interface]/[Peer] conf text (WireGuard/AmneziaWG .conf)
+	// is multi-line and would be destroyed by the per-line loop — carve the
+	// blocks out first and convert each to a canonical wireguard:// URI. A bad
+	// block is skipped with a warning (same policy as a broken subscription
+	// line); the remaining text still classifies line-by-line, so links and
+	// conf text can be pasted together.
+	input, confBlocks := subscription.ExtractWGConfBlocks(input)
+	confURIs := make([]string, 0, len(confBlocks))
+	for _, block := range confBlocks {
+		uri, err := subscription.ConvertWGConfText(block)
+		if err != nil {
+			debuglog.WarnLog("Parser: skipping pasted [Interface]/[Peer] block: %v", err)
+			continue
+		}
+		confURIs = append(confURIs, uri)
+	}
+
 	lines := strings.Split(input, "\n")
 	debuglog.DebugLog("applyURLToParserConfig: Split input into %d lines", len(lines))
 
@@ -206,6 +224,7 @@ func classifyInputLines(input string, timing interface{ LogTiming(string, time.D
 			connections = append(connections, line)
 		}
 	}
+	connections = append(connections, confURIs...)
 
 	timing.LogTiming("classify lines", time.Since(splitStartTime))
 	debuglog.DebugLog("applyURLToParserConfig: Classified lines: %d subscriptions, %d connections",
