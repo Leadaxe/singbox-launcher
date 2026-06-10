@@ -27,6 +27,7 @@ func IsDirectLink(input string) bool {
 		strings.HasPrefix(trimmed, "ssh://") ||
 		strings.HasPrefix(trimmed, "wireguard://") ||
 		strings.HasPrefix(trimmed, "awg://") ||
+		strings.HasPrefix(trimmed, "vpn://") ||
 		strings.HasPrefix(trimmed, "socks5://") ||
 		strings.HasPrefix(trimmed, "socks://") ||
 		strings.HasPrefix(trimmed, "naive+https://") ||
@@ -38,6 +39,13 @@ const MaxURILength = 8192 // 8 KB - reasonable limit for proxy URIs
 
 // ParseNode parses a single node URI and applies skip filters
 func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.ParsedNode, error) {
+	// Amnezia vpn:// (compressed profile JSON, SPEC 075) is dispatched before the
+	// generic length guard: such links wrap a whole profile and routinely exceed
+	// MaxURILength; parseAmneziaVPNLink enforces its own size caps.
+	if strings.HasPrefix(uri, "vpn://") {
+		return parseAmneziaVPNLink(uri, skipFilters)
+	}
+
 	// Validate URI length
 	if len(uri) > MaxURILength {
 		return nil, fmt.Errorf("URI length (%d) exceeds maximum (%d)", len(uri), MaxURILength)
