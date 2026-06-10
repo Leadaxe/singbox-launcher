@@ -65,7 +65,7 @@ type OutboundGenerationResult struct {
 }
 
 // GenerateNodeJSON returns a single JSON object string for one proxy node (sing-box outbound).
-// Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria2, socks.
+// Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria2, tuic, naive, socks.
 // Includes optional TLS (including reality), transport (ws/http/grpc), and protocol-specific options.
 // Returned string ends with a trailing comma and may include a leading comment line (node label) for readability.
 func GenerateNodeJSON(node *ParsedNode) (string, error) {
@@ -221,6 +221,32 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 				return "", fmt.Errorf("failed to marshal naive extra_headers: %w", err)
 			}
 			parts = append(parts, fmt.Sprintf(`"extra_headers":%s`, string(hdrJSON)))
+		}
+	} else if node.Scheme == "tuic" && node.Outbound != nil {
+		// uuid + password required; congestion_control / udp_relay_mode /
+		// zero_rtt_handshake / heartbeat optional. The TLS block is emitted by the
+		// shared section below (buildTuicTLS always sets node.Outbound["tls"]).
+		if uuid, ok := node.Outbound["uuid"].(string); ok && uuid != "" {
+			parts = append(parts, fmt.Sprintf(`"uuid":%s`, marshalJSONString(uuid)))
+		}
+		if password, ok := node.Outbound["password"].(string); ok && password != "" {
+			passwordJSON, err := json.Marshal(password)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal tuic password: %w", err)
+			}
+			parts = append(parts, fmt.Sprintf(`"password":%s`, string(passwordJSON)))
+		}
+		if cc, ok := node.Outbound["congestion_control"].(string); ok && cc != "" {
+			parts = append(parts, fmt.Sprintf(`"congestion_control":%s`, marshalJSONString(cc)))
+		}
+		if urm, ok := node.Outbound["udp_relay_mode"].(string); ok && urm != "" {
+			parts = append(parts, fmt.Sprintf(`"udp_relay_mode":%s`, marshalJSONString(urm)))
+		}
+		if zr, ok := node.Outbound["zero_rtt_handshake"].(bool); ok && zr {
+			parts = append(parts, `"zero_rtt_handshake":true`)
+		}
+		if hb, ok := node.Outbound["heartbeat"].(string); ok && hb != "" {
+			parts = append(parts, fmt.Sprintf(`"heartbeat":%s`, marshalJSONString(hb)))
 		}
 	}
 

@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v1.1.2
+
+**TUIC v5 + фиксы парсинга WireGuard/AmneziaWG.** Добавлен протокол **TUIC v5** — `tuic://`-ссылки парсятся, генерируют рабочий sing-box `tuic` outbound (uuid/password, congestion_control, udp_relay_mode, zero-RTT, heartbeat, обязательный TLS с ALPN/SNI/insecure/uTLS) и делятся обратно в URI. Плюс два бага WG/AWG из v1.1.1: (1) сырой `/` в base64-приватном ключе ломал разбор — узел был в Sources, но пропадал из Preview; (2) голый адрес без `/32` (`172.16.0.2`, как в стандартных конфигах AmneziaWG) не давал ядру стартовать (`netip.ParsePrefix: no '/'`). Оба исправлены. Миграция не нужна.
+
+**Полный список изменений:** [docs/release_notes/1-1-2.md](docs/release_notes/1-1-2.md).
+
+### Highlights (EN) — v1.1.2
+
+**TUIC v5 + WireGuard/AmneziaWG parse fixes.** Adds the **TUIC v5** protocol — `tuic://` links are parsed, generate a working sing-box `tuic` outbound (uuid/password, congestion_control, udp_relay_mode, zero-RTT, heartbeat, mandatory TLS with ALPN/SNI/insecure/uTLS), and round-trip back to a URI. Plus two WG/AWG bugs from v1.1.1: (1) a raw `/` in a base64 private key broke parsing — the node sat in Sources but vanished from Preview; (2) a bare address with no `/32` (`172.16.0.2`, as in standard AmneziaWG configs) blocked the core from starting (`netip.ParsePrefix: no '/'`). Both fixed. No migration needed.
+
+**Full changelog:** [docs/release_notes/1-1-2.md](docs/release_notes/1-1-2.md).
+
+---
+
 ### Выжимка (RU) — v1.1.1
 
 **Windows 7 переходит на форк-ядро — XHTTP + AmneziaWG 2.0 на всех платформах.** Форк [`sing-box-lx`](https://github.com/Leadaxe/sing-box-lx) начал собирать сборку для **Windows 7 (32-бит, `windows-386-legacy-windows-7`)**, поэтому Win7 больше не откатывается на upstream SagerNet `1.13.12` — лаунчер качает на Win7 то же форк-ядро, что и везде. Win7-пользователи впервые получают **XHTTP** и обфускацию **AmneziaWG 2.0**. Удалена ставшая мёртвой legacy/SourceForge-машинерия (`Win7LegacyVersion`, `SingboxLegacyRepo`, SF-фоллбэк). Ядро запиннено на `v1.13.13-lx.5`. Обновить: Core Dashboard → Download/Reinstall.

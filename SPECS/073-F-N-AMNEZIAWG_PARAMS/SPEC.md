@@ -225,3 +225,21 @@ wireguard://<PRIVATE_KEY>@<SERVER>:<PORT>?publickey=...&address=10.0.0.2%2F32
 2. **SPEC XHTTP (transport для VLESS/VMess/Trojan, форк-фича `with_xhttp`)** — **независима / параллельна.** Другой код-путь (`uriTransportFromQuery`, `appendOutboundTransportParts`), не пересекается с WireGuard-endpoint-путём этой SPEC. Единственная общая точка — обе ждут lx-ядра (через 072). Можно разрабатывать параллельно; конфликтов мерджа с 073 нет.
 
 **Внутренний порядок фаз (этой SPEC):** Фаза 1 (парс) → Фаза 2 (scheme-алиас) → Фаза 3 (генератор, near-zero) → Фаза 4 (share round-trip) → Фаза 5 (UI, опционально) → Фаза 6 (тесты + golden). Фазы 1–4 — обязательное ядро фичи; 1 → 4 строго последовательны (share-тест в Фазе 4 опирается на парс из Фазы 1). Фаза 6 финализирует. Каждый коммит оставляет `go test ./core/...` зелёным.
+
+---
+
+## Сабтаска 073.1 — robustness-фиксы парсинга (v1.1.2)
+
+> **Статус:** ✅ сделано (v1.1.2, коммит `8f97a51`). Два бага парсинга WG/AWG-ссылок, найденные на проде после релиза AWG. Оба — в `core/config/subscription/node_parser_wireguard.go`, покрыты `wireguard_robustness_test.go`.
+
+**Баг A — сырой `/` в base64-приватном ключе.**
+- *Симптом:* ссылка `wireguard://<key с />…@host` (стандартный base64 содержит `/` примерно в половине ключей) → узел добавляется в Sources, но **пропадает из Preview**.
+- *Корень:* `url.Parse` принимает `/` в authority-части за начало пути → `parsedURL.User == nil` → парсер возвращает «missing private key».
+- *Фикс:* перед `url.Parse` percent-энкодим сырой `/` в userinfo (между `://` и `@`) → `%2F`; `PathUnescape` восстанавливает ключ. Уже-`%2F`-закодированные ссылки не затрагиваются (helper `percentEncodeWGUserinfoSlashes`).
+
+**Баг B — голый адрес без CIDR-префикса.**
+- *Симптом:* `address`/`allowed_ips` = голый IP (`172.16.0.2`, частый случай в экспортах AmneziaWG/`.conf`) → ядро **не стартует**: `endpoints[0].address … netip.ParsePrefix("172.16.0.2"): no '/'`.
+- *Корень:* sing-box ждёт `netip.Prefix` (CIDR); парсер клал адрес как есть, без маски.
+- *Фикс:* голому IPv4 дописываем `/32`, IPv6 — `/128`; применено к `address` и `allowed_ips` (helper `normalizeWGPrefixes`).
+
+**Связь с AWG:** оба бага особенно бьют по AmneziaWG-узлам — их часто импортируют как стандартные amnezia-конфиги (`.conf`-стиль с голым `Address`), а приватные ключи — обычный std-base64 с `/`. Поэтому фиксы документируются здесь, в спеке AWG, а не только в WireGuard.
