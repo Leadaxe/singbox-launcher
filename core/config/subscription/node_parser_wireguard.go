@@ -26,6 +26,11 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 	if i := strings.LastIndex(uri, "#"); i >= 0 {
 		fragmentFromRaw = strings.TrimSpace(uri[i+1:])
 	}
+	// A standard base64 private key may contain a raw '/' in the userinfo
+	// (`wireguard://AbC/DeF...@host`). url.Parse treats that '/' as the start of
+	// the path and drops the userinfo, so the key would be lost. Percent-encode
+	// raw '/' in the userinfo before parsing; the PathUnescape below restores it.
+	uri = percentEncodeWGUserinfoSlashes(uri)
 	parsedURL, err := url.Parse(uri)
 	if err != nil {
 		debuglog.DebugLog("parseWireGuardURI: error parse URL: %v", err)
@@ -85,8 +90,11 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 
 	addressDecoded, _ := url.QueryUnescape(addressParam)
 	allowedipsDecoded, _ := url.QueryUnescape(allowedipsParam)
-	addressList := splitAndTrim(addressDecoded, ",")
-	allowedipsList := splitAndTrim(allowedipsDecoded, ",")
+	// sing-box wants CIDRs (netip.Prefix): a bare IP like "172.16.0.2" (common in
+	// AmneziaWG/.conf exports) fails to load with `ParsePrefix: no '/'`. Default a
+	// bare address to /32 (IPv4) or /128 (IPv6).
+	addressList := normalizeWGPrefixes(splitAndTrim(addressDecoded, ","))
+	allowedipsList := normalizeWGPrefixes(splitAndTrim(allowedipsDecoded, ","))
 	if len(addressList) == 0 || len(allowedipsList) == 0 {
 		return nil, fmt.Errorf("invalid wireguard URI: address or allowedips empty after parse")
 	}
@@ -196,6 +204,55 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 	}
 	debuglog.DebugLog("parseWireGuardURI: success tag=%s", node.Tag)
 	return node, nil
+}
+
+// percentEncodeWGUserinfoSlashes percent-encodes a raw '/' in the userinfo of a
+// wireguard:// / awg:// URI (between "://" and the authority's '@') so url.Parse
+// does not mistake the base64 private key's '/' for a path separator and drop the
+// key. Already-encoded URIs (no raw '/' in userinfo) are returned unchanged.
+func percentEncodeWGUserinfoSlashes(uri string) string {
+	const sep = "://"
+	si := strings.Index(uri, sep)
+	if si < 0 {
+		return uri
+	}
+	start := si + len(sep)
+	rest := uri[start:]
+	at := strings.IndexByte(rest, '@')
+	if at < 0 {
+		return uri
+	}
+	// The '@' must belong to the authority, not the query/fragment.
+	if strings.IndexAny(rest[:at], "?#") >= 0 {
+		return uri
+	}
+	userinfo := rest[:at]
+	if !strings.Contains(userinfo, "/") {
+		return uri
+	}
+	return uri[:start] + strings.ReplaceAll(userinfo, "/", "%2F") + uri[start+at:]
+}
+
+// normalizeWGPrefixes ensures every entry is a CIDR (netip.Prefix): a bare IP
+// gets /32 (IPv4) or /128 (IPv6). sing-box rejects an address/allowed_ip without
+// a prefix length (`netip.ParsePrefix("172.16.0.2"): no '/'`).
+func normalizeWGPrefixes(addrs []string) []string {
+	out := make([]string, 0, len(addrs))
+	for _, a := range addrs {
+		a = strings.TrimSpace(a)
+		if a == "" {
+			continue
+		}
+		if !strings.Contains(a, "/") {
+			if strings.Contains(a, ":") {
+				a += "/128" // IPv6
+			} else {
+				a += "/32" // IPv4
+			}
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 // queryParamPreservePlus returns the first value for key in u.RawQuery, decoded with PathUnescape.
