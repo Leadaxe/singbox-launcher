@@ -6,14 +6,14 @@
 
 ## EN
 ### Highlights
--
+- **TUIC v5** protocol support — paste a `tuic://` link (or include it in a subscription) and the launcher parses it, generates a working sing-box `tuic` outbound (uuid/password, congestion_control, udp_relay_mode, ALPN/SNI, allow_insecure, zero-RTT, heartbeat), and can share it back to a URI.
 
 ### Technical / Internal
 -
 
 ## RU
 ### Основное
--
+- Поддержка протокола **TUIC v5** — вставьте ссылку `tuic://` (или используйте в подписке): парсится, генерирует рабочий sing-box `tuic` outbound (uuid/password, congestion_control, udp_relay_mode, ALPN/SNI, allow_insecure, zero-RTT, heartbeat) и делится обратно в URI.
 
 ### Техническое / Внутреннее
 -

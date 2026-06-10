@@ -19,8 +19,9 @@
 | 7 | `socks5://`, `socks://` | `socks` (version=5) | `outbounds[]` | core | User/pass опциональны. Поле фильтра `scheme` сохраняет оригинал (`socks5` vs `socks`). |
 | 8 | `naive+https://`, `naive+quic://` | `naive` | `outbounds[]` | **sing-box ≥ 1.13.0** + build tag **`with_naive_proxy`** (Apple/Android/Windows-сборки SagerNet ОК; минимальный Linux отвергает в runtime) | DuckSoft 2020 URI-диалект. `extra-headers=` (CRLF-разделённые пары). TLS только `server_name`. |
 | 9 | `wireguard://` | `wireguard` | **`endpoints[]`** | **sing-box ≥ 1.11** (+ **`with_awg`** для AmneziaWG) | Один peer; маркеры `@ParserSTART_E`/`@ParserEND_E`. Default port 51820, mtu 1420. Опциональные параметры **AmneziaWG 2.0** (jc/jmin/jmax, s1–s4, h1–h4, i1–i5) — см. ниже. |
+| 10 | `tuic://` | `tuic` | `outbounds[]` | core (QUIC) | TUIC v5: `uuid:password` в userinfo. Query: `congestion_control` (cubic/new_reno/bbr), `udp_relay_mode` (native/quic), `alpn`, `sni`, `allow_insecure`, `reduce_rtt`/`zero_rtt_handshake`, `heartbeat`, `fp`. TLS обязателен (QUIC). |
 
-**Не поддерживаются** (явно, не реализованы): **TUIC**, **AnyTLS**, **ShadowTLS**, **Mieru**, **Hysteria 1** (только v2), **ShadowsocksR / SSR**, **Tor**, plain HTTP-proxy как тип ноды (URL `http(s)://...` — это всегда **источник подписки**, не нода). Селекторы (`selector`, `urltest`, `direct`, `block`, `dns`) — не URI-протоколы; собираются на стороне ParserConfig (см. [секцию `outbounds`](#секция-outbounds)).
+**Не поддерживаются** (явно, не реализованы): **AnyTLS**, **ShadowTLS**, **Mieru**, **Hysteria 1** (только v2), **ShadowsocksR / SSR**, **Tor**, plain HTTP-proxy как тип ноды (URL `http(s)://...` — это всегда **источник подписки**, не нода). Селекторы (`selector`, `urltest`, `direct`, `block`, `dns`) — не URI-протоколы; собираются на стороне ParserConfig (см. [секцию `outbounds`](#секция-outbounds)).
 
 ### Транспорт xhttp и AmneziaWG
 
@@ -83,7 +84,7 @@
 ### Принцип и соответствие форматам
 
 - **Вход кодировщика:** один элемент массива `outbounds` **или** один элемент `endpoints[]` с `type: wireguard` (тот же набор полей, что даёт `parseWireGuardURI` / `GenerateEndpointJSON`).
-- **Выход:** одна строка URI в форматах, которые снова понимает этот проект: `vless://`, `vmess://` (base64 JSON), `trojan://`, `ss://` (SIP002), `socks5://`, `hysteria2://`, `ssh://`, **`wireguard://`**.
+- **Выход:** одна строка URI в форматах, которые снова понимает этот проект: `vless://`, `vmess://` (base64 JSON), `trojan://`, `ss://` (SIP002), `socks5://`, `hysteria2://`, `tuic://`, `ssh://`, **`wireguard://`**.
 - **Query / transport / TLS:** для VLESS и Trojan при кодировании используются те же соглашения, что и при разборе (`uriTransportFromQuery`, `vlessTLSFromNode`, `trojanTLSFromNode` в `node_parser_transport.go`). VMess при разборе не использует стандартный URI-query в основном формате (JSON в base64); legacy и поля JSON — в `node_parser_vmess.go`. Подробный справочник VLESS/Trojan: **`SUBSCRIPTION_PARAMS_REPORT.md`** (023); расширения 029 — спека **`029-Q-С-…/SPEC.md`** и разделы URI ниже.
 
 ### API в коде
@@ -108,6 +109,7 @@
 | `shadowsocks` | `ss://` | SIP002, base64(`method:password`) |
 | `socks` | `socks5://` | `version` 5; user/password при наличии |
 | `hysteria2` | `hysteria2://` | TLS SNI, `mport`, obfs и т.д. по возможности |
+| `tuic` | `tuic://` | `uuid:password`; `congestion_control`, `udp_relay_mode`, `zero_rtt_handshake`, `heartbeat`; `alpn`/`sni`/`insecure` из TLS |
 | `ssh` | `ssh://` | **Нет** кодирования inline `private_key` в URI; путь к ключу и прочие поля — в query, как в документации SSH URI |
 | `naive` | `naive+https://` / `naive+quic://` | HTTP/2 (`naive+https`) или QUIC (`naive+quic`); user/pass в userinfo; `extra-headers` в query с `\r\n`-разделёнными парами (см. раздел **NaïveProxy** ниже). Требует sing-box **≥ 1.13.0** с `with_naive_proxy` build tag. |
 | `wireguard` | `wireguard://` | Обычно узел только в `endpoints[]`; формат и query — раздел **WireGuard** ниже. **Один URI ↔ один удалённый peer:** при нескольких элементах в `peers[]` кодирование не поддерживается (`ErrShareURINotSupported`). |
@@ -164,7 +166,7 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
         {
           // URL подписки (Base64, plain-текст или JSON-массив конфигов Xray)
           // Поддерживаются: VLESS, VMess, Trojan, Shadowsocks, Hysteria2,
-          // SSH, SOCKS5, NaïveProxy, WireGuard. См. таблицу «Поддерживаемые
+          // TUIC, SSH, SOCKS5, NaïveProxy, WireGuard. См. таблицу «Поддерживаемые
           // протоколы» в начале документа.
           "source": "https://your-subscription-url.com/subscription",
           
@@ -307,7 +309,7 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 | Поле          | Тип      | Обязательное | Описание |
 |---------------|----------|--------------|----------|
 | `source`      | string   | Да           | URL подписки. Все 9 протоколов из таблицы [«Поддерживаемые протоколы»](#поддерживаемые-протоколы): VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard. Допускаются Base64 и plain-текст; также **JSON-массив** полных конфигов Xray (`[ {...}, ... ]`), см. выше. |
-| `connections` | array    | Нет          | Массив прямых ссылок. Все 9 схем из таблицы [«Поддерживаемые протоколы»](#поддерживаемые-протоколы): `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`/`hy2://`, `ssh://`, `socks5://`/`socks://`, `naive+https://`/`naive+quic://`, `wireguard://`. Можно комбинировать с подписками. Узлы WireGuard попадают в секцию `endpoints` конфига (sing-box ≥ 1.11). NaïveProxy требует sing-box ≥ 1.13.0 + build tag `with_naive_proxy`. Подробнее — раздел [Форматы URI для прямых ссылок](#форматы-uri-для-прямых-ссылок). |
+| `connections` | array    | Нет          | Массив прямых ссылок. Все 10 схем из таблицы [«Поддерживаемые протоколы»](#поддерживаемые-протоколы): `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`/`hy2://`, `tuic://`, `ssh://`, `socks5://`/`socks://`, `naive+https://`/`naive+quic://`, `wireguard://`. Можно комбинировать с подписками. Узлы WireGuard попадают в секцию `endpoints` конфига (sing-box ≥ 1.11). NaïveProxy требует sing-box ≥ 1.13.0 + build tag `with_naive_proxy`. Подробнее — раздел [Форматы URI для прямых ссылок](#форматы-uri-для-прямых-ссылок). |
 | `skip`        | array    | Нет          | Список фильтров. Если хотя бы один совпал — узел пропускается. |
 | `tag_prefix`  | string   | Нет          | Префикс, добавляемый ко всем тегам узлов из этого источника (версия 4). Применяется перед оригинальным тегом. Поддерживает переменные: `{$tag}`, `{$scheme}`, `{$protocol}`, `{$server}`, `{$port}`, `{$label}`, `{$comment}`, `{$num}`. Игнорируется, если указан `tag_mask`. |
 | `tag_postfix` | string   | Нет          | Постфикс, добавляемый ко всем тегам узлов из этого источника (версия 4). Применяется после оригинального тега. Поддерживает те же переменные, что и `tag_prefix`. Игнорируется, если указан `tag_mask`. |
