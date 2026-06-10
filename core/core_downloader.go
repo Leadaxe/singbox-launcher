@@ -21,32 +21,19 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
-// Win7LegacyVersion — фиксированная версия sing-box для Windows 7 (legacy build).
-// SPEC 072 Variant B: форк sing-box-lx не публикует windows-386 ассет, поэтому
-// Win7 остаётся на upstream SagerNet 1.13.12 (без XHTTP/AWG, но не ломается).
-const Win7LegacyVersion = "1.13.12"
-
-// coreReleaseRepo returns the GitHub "owner/repo" the core is downloaded from
-// for the current platform. Windows 7 (windows/386) has no sing-box-lx asset,
-// so it stays on upstream SagerNet; every other platform uses the fork.
+// coreReleaseRepo returns the GitHub "owner/repo" the core is downloaded from.
+// Since SPEC 072 (Variant A, live from fork v1.13.13-lx.5) the sing-box-lx fork
+// builds every platform — including the Windows 7 (windows/386)
+// `legacy-windows-7` asset — so there is no per-platform split anymore (no
+// upstream/SourceForge legacy path).
 func coreReleaseRepo() string {
 	return coreReleaseRepoFor(runtime.GOOS, runtime.GOARCH)
 }
 
-// coreReleaseRepoFor is the pure form of coreReleaseRepo (testable across
-// GOOS/GOARCH without depending on the build platform).
-func coreReleaseRepoFor(goos, goarch string) string {
-	if goos == "windows" && goarch == "386" {
-		return constants.SingboxLegacyRepo
-	}
+// coreReleaseRepoFor is the pure form of coreReleaseRepo, kept as a seam so the
+// repo selection stays unit-testable. All platforms resolve to the fork.
+func coreReleaseRepoFor(_, _ string) string {
 	return constants.SingboxCoreRepo
-}
-
-// coreReleaseIsLegacy reports whether the current platform downloads from the
-// upstream SagerNet repo (which has a SourceForge mirror) rather than the fork
-// (which does not).
-func coreReleaseIsLegacy() bool {
-	return coreReleaseRepo() == constants.SingboxLegacyRepo
 }
 
 // ReleaseInfo contains information about GitHub release
@@ -71,19 +58,15 @@ type DownloadProgress struct {
 }
 
 // DownloadCore downloads and installs sing-box.
-// Per SPEC 046, the launcher pins a specific core version for each build:
-//   - windows/386 (Win7 legacy): hard-pinned to Win7LegacyVersion;
-//   - all other platforms: empty `version` falls back to constants.RequiredCoreVersion.
+// Per SPEC 046, the launcher pins constants.RequiredCoreVersion (the sing-box-lx
+// fork tag) for every platform, including Windows 7 (windows/386).
 //
 // Callers always pass "" — the explicit-version path is kept only for tests
 // and forced reinstall flows that target a specific tag.
 func (ac *AppController) DownloadCore(ctx context.Context, version string, progressChan chan DownloadProgress) {
 	defer close(progressChan)
 
-	// For Windows 7 (32-bit launcher build) always use fixed legacy core version.
-	if runtime.GOOS == "windows" && runtime.GOARCH == "386" {
-		version = Win7LegacyVersion
-	} else if version == "" {
+	if version == "" {
 		version = constants.RequiredCoreVersion
 	}
 
@@ -142,23 +125,9 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 	progressChan <- DownloadProgress{Progress: 100, Message: fmt.Sprintf("sing-box v%s installed successfully!", version), Status: "done"}
 }
 
-// getReleaseInfo gets release information from GitHub (with SourceForge fallback)
+// getReleaseInfo gets release information from the fork's GitHub releases.
 func (ac *AppController) getReleaseInfo(ctx context.Context, version string) (*ReleaseInfo, error) {
-	// Try GitHub API first
-	release, err := ac.getReleaseInfoFromGitHub(ctx, version)
-	if err == nil {
-		return release, nil
-	}
-
-	// SourceForge mirror only exists for upstream SagerNet (the Win7 legacy
-	// path). The sing-box-lx fork has no SF mirror — don't waste a request on a
-	// guaranteed 404; surface the GitHub error instead.
-	if !coreReleaseIsLegacy() {
-		return nil, err
-	}
-
-	debuglog.InfoLog("GitHub failed, trying SourceForge (legacy)...")
-	return ac.getReleaseInfoFromSourceForge(ctx, version)
+	return ac.getReleaseInfoFromGitHub(ctx, version)
 }
 
 // getReleaseInfoFromGitHub gets release information from GitHub. `version`
@@ -207,66 +176,6 @@ func (ac *AppController) getReleaseInfoFromGitHub(ctx context.Context, version s
 	}
 
 	return &release, nil
-}
-
-// getReleaseInfoFromSourceForge creates ReleaseInfo based on SourceForge
-// (builds direct download links). `version` is guaranteed non-empty by
-// DownloadCore (SPEC 046 — no implicit "latest" lookup).
-func (ac *AppController) getReleaseInfoFromSourceForge(ctx context.Context, version string) (*ReleaseInfo, error) {
-	// Build list of assets based on known platforms
-	assets := ac.buildSourceForgeAssets(version)
-
-	return &ReleaseInfo{
-		TagName: fmt.Sprintf("v%s", version),
-		Assets:  assets,
-	}, nil
-}
-
-// buildSourceForgeAssets builds list of assets for SourceForge
-func (ac *AppController) buildSourceForgeAssets(version string) []Asset {
-	var assets []Asset
-
-	// Determine required file for current platform
-	var fileName string
-	switch runtime.GOOS {
-	case "windows":
-		if runtime.GOARCH == "amd64" {
-			fileName = fmt.Sprintf("sing-box-%s-windows-amd64.zip", version)
-		} else if runtime.GOARCH == "arm64" {
-			fileName = fmt.Sprintf("sing-box-%s-windows-arm64.zip", version)
-		} else if runtime.GOARCH == "386" {
-			fileName = fmt.Sprintf("sing-box-%s-windows-386-legacy-windows-7.zip", version)
-		}
-	case "linux":
-		if runtime.GOARCH == "amd64" {
-			fileName = fmt.Sprintf("sing-box-%s-linux-amd64.tar.gz", version)
-		} else if runtime.GOARCH == "arm64" {
-			fileName = fmt.Sprintf("sing-box-%s-linux-arm64.tar.gz", version)
-		} else if runtime.GOARCH == "arm" {
-			fileName = fmt.Sprintf("sing-box-%s-linux-armv7.tar.gz", version)
-		}
-	case "darwin":
-		if runtime.GOARCH == "amd64" {
-			fileName = fmt.Sprintf("sing-box-%s-darwin-amd64.tar.gz", version)
-		} else if runtime.GOARCH == "arm64" {
-			fileName = fmt.Sprintf("sing-box-%s-darwin-arm64.tar.gz", version)
-		}
-	}
-
-	if fileName == "" {
-		return assets
-	}
-
-	// Build direct link to SourceForge
-	downloadURL := fmt.Sprintf("https://sourceforge.net/projects/sing-box.mirror/files/v%s/%s/download", version, fileName)
-
-	assets = append(assets, Asset{
-		Name:               fileName,
-		BrowserDownloadURL: downloadURL,
-		Size:               0, // Size is unknown in advance
-	})
-
-	return assets
 }
 
 // SingboxAssetSuffix returns the asset filename suffix for current platform (e.g. "windows-amd64.zip").
@@ -324,7 +233,7 @@ func (ac *AppController) findPlatformAsset(assets []Asset) (*Asset, error) {
 	return nil, fmt.Errorf("findPlatformAsset: asset not found for platform %s/%s", runtime.GOOS, runtime.GOARCH)
 }
 
-// downloadFile downloads a file with progress tracking (with SourceForge fallback)
+// downloadFile downloads a file with progress tracking (with a GitHub mirror fallback)
 func (ac *AppController) downloadFile(ctx context.Context, url, destPath string, progressChan chan DownloadProgress) error {
 	// Try to download from original URL
 	err := ac.downloadFileFromURL(ctx, url, destPath, progressChan)
@@ -346,22 +255,6 @@ func (ac *AppController) downloadFile(ctx context.Context, url, destPath string,
 			return nil
 		}
 		debuglog.DebugLog("downloadFile: mirror failed: %v", err)
-	}
-
-	// SourceForge mirror exists only for upstream SagerNet (Win7 legacy path);
-	// the fork has no SF mirror, so skip it there.
-	if coreReleaseIsLegacy() && strings.Contains(url, "github.com") {
-		debuglog.DebugLog("downloadFile: trying SourceForge...")
-		// Extract version and file name from URL
-		version, fileName := ac.extractVersionAndFileName(url)
-		if version != "" && fileName != "" {
-			sourceForgeURL := fmt.Sprintf("https://sourceforge.net/projects/sing-box.mirror/files/v%s/%s/download", version, fileName)
-			err := ac.downloadFileFromURL(ctx, sourceForgeURL, destPath, progressChan)
-			if err == nil {
-				return nil
-			}
-			debuglog.WarnLog("downloadFile: SourceForge failed: %v", err)
-		}
 	}
 
 	return fmt.Errorf("downloadFile: all download sources failed, last error: %w", err)
@@ -504,22 +397,6 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 	}
 
 	return nil
-}
-
-// extractVersionAndFileName extracts version and file name from GitHub URL
-func (ac *AppController) extractVersionAndFileName(url string) (string, string) {
-	// GitHub URL format: https://github.com/SagerNet/sing-box/releases/download/v1.12.12/sing-box-1.12.12-windows-amd64.zip
-	parts := strings.Split(url, "/")
-	for i, part := range parts {
-		if strings.HasPrefix(part, "v") && len(part) > 1 {
-			version := strings.TrimPrefix(part, "v")
-			if i+1 < len(parts) {
-				fileName := parts[i+1]
-				return version, fileName
-			}
-		}
-	}
-	return "", ""
 }
 
 // extractArchive extracts archive and returns path to binary

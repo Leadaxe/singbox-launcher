@@ -54,21 +54,18 @@ const (
 	WintunHomeURL      = "https://www.wintun.net/"
 )
 
-// sing-box core download sources (SPEC 072). The launcher ships the
-// sing-box-lx fork (upstream + XHTTP `with_xhttp` + AmneziaWG `with_awg`).
-// The fork has no windows-386 asset, so Windows 7 (32-bit) stays on upstream
-// SagerNet — see coreReleaseRepo()/Win7LegacyVersion in core_downloader.go.
-const (
-	SingboxCoreRepo   = "Leadaxe/sing-box-lx" // primary core (XHTTP + AmneziaWG)
-	SingboxLegacyRepo = "SagerNet/sing-box"   // Win7/386 fallback only (no fork 386 build)
-)
+// sing-box core download source (SPEC 072, Variant A). The launcher ships the
+// sing-box-lx fork (upstream + XHTTP `with_xhttp` + AmneziaWG `with_awg`) on
+// every platform — including Windows 7 (32-bit), which the fork now builds as a
+// `windows-386-legacy-windows-7` asset. See coreReleaseRepo() in core_downloader.go.
+const SingboxCoreRepo = "Leadaxe/sing-box-lx" // core for all platforms (XHTTP + AmneziaWG)
 
 // Pinned sing-box core version for this launcher build (SPEC 046 / 072).
-// Now a fork tag `X.Y.Z-lx.N` — the fork binary prints the full tag in
+// A fork tag `X.Y.Z-lx.N` — the fork binary prints the full tag in
 // `sing-box version`, so the strict-equality reinstall check still holds.
 // Manually bumped per release; source-of-truth here. See
 // docs/RELEASE_PROCESS.md §5.1.
-const RequiredCoreVersion = "1.13.13-lx.3"
+const RequiredCoreVersion = "1.13.13-lx.5"
 
 // AppVersion — git describe output. Set by build scripts via -ldflags.
 //
@@ -82,7 +79,7 @@ const RequiredCoreVersion = "1.13.13-lx.3"
 // HEAD. See docs/RELEASE_PROCESS.md §5.2.
 var (
 	AppVersion          = "v-local-test"
-	RequiredTemplateRef = "f6315d85bfcbab191cd8baec92b07361bf1545f0"
+	RequiredTemplateRef = "d37822456973081aadd7d9ed60b9f95ade8f6283"
 )
 
 // GetMyBranch возвращает ветку репозитория для загрузки ассетов, у которых нет

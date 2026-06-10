@@ -5,7 +5,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-blue)](https://golang.org/)
 [![Version](https://img.shields.io/badge/version-1.1.0-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
 
-**Desktop platform for network routing and traffic analysis. 15+ VPN protocols, configuration depth and API at enterprise level. Built on top of the [sing-box-lx](https://github.com/Leadaxe/sing-box-lx) fork (upstream sing-box + XHTTP transport + AmneziaWG 2.0) as execution engine; the Windows 7 32-bit legacy build stays on upstream [SagerNet/sing-box](https://github.com/SagerNet/sing-box).**
+**Desktop platform for network routing and traffic analysis. 15+ VPN protocols, configuration depth and API at enterprise level. Built on top of the [sing-box-lx](https://github.com/Leadaxe/sing-box-lx) fork (upstream sing-box + XHTTP transport + AmneziaWG 2.0) as execution engine — on every platform, including the Windows 7 32-bit legacy build.**
 
 **Repository**: [https://github.com/Leadaxe/singbox-launcher](https://github.com/Leadaxe/singbox-launcher)
 
@@ -91,7 +91,7 @@ Three layers that together define the product:
 ## Quick start
 
 1. Download from [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases) and install (see [Installation](#installation)).
-2. Open the app → **Core** tab → click **Download** to fetch the matching `sing-box` binary (and `wintun.dll` on Windows). The core is the `sing-box-lx` fork (XHTTP + AmneziaWG 2.0) from its GitHub Releases. The SourceForge mirror fallback applies only to the Windows 7 32-bit upstream legacy build.
+2. Open the app → **Core** tab → click **Download** to fetch the matching `sing-box` binary (and `wintun.dll` on Windows). The core is the `sing-box-lx` fork (XHTTP + AmneziaWG 2.0) from its GitHub Releases — on every platform, including the Windows 7 32-bit `legacy-windows-7` build (with a GitHub-proxy mirror fallback if GitHub is blocked).
 3. Click **Configurator** → paste your subscription URL on the **Sources** tab → step through Outbounds / Rules / DNS / Settings / Preview → **Save**.
 4. Back in **Core** → **Start**. Switch servers on the **Servers** tab, monitor traffic via the **Traffic Profiler** button in Diagnostics.
 
@@ -236,8 +236,8 @@ User Agent: `singbox-launcher/<version> (<os> <arch>)`. Privacy controls in Sett
 ### Windows
 
 - **Recommended:** Windows 10 / 11 (x64).
-- **Legacy:** Windows 7 (x86/x64) via separate build `singbox-launcher-<version>-win7-32.zip` with pinned legacy upstream SagerNet sing-box 1.13.12 (32-bit, no XHTTP/AWG fork build for windows/386) and 32-bit `wintun.dll`.
-- [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — fork core (XHTTP + AmneziaWG 2.0) auto-downloaded via the Core tab on Win 10/11; Windows 7 32-bit uses upstream [SagerNet/sing-box](https://github.com/SagerNet/sing-box/releases) instead.
+- **Legacy:** Windows 7 (x86/x64) via separate build `singbox-launcher-<version>-win7-32.zip` with the sing-box-lx fork core (32-bit `windows-386-legacy-windows-7` build — **XHTTP + AmneziaWG 2.0 work on Win7 too**) and 32-bit `wintun.dll`.
+- [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — fork core (XHTTP + AmneziaWG 2.0) auto-downloaded via the Core tab on **all** Windows builds, including the Windows 7 32-bit `legacy-windows-7` asset.
 - [WinTun](https://www.wintun.net/) (wintun.dll, MIT license) — auto-downloaded via the Core tab.
 
 ### macOS

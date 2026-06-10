@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v1.1.1
+
+**Windows 7 переходит на форк-ядро — XHTTP + AmneziaWG 2.0 на всех платформах.** Форк [`sing-box-lx`](https://github.com/Leadaxe/sing-box-lx) начал собирать сборку для **Windows 7 (32-бит, `windows-386-legacy-windows-7`)**, поэтому Win7 больше не откатывается на upstream SagerNet `1.13.12` — лаунчер качает на Win7 то же форк-ядро, что и везде. Win7-пользователи впервые получают **XHTTP** и обфускацию **AmneziaWG 2.0**. Удалена ставшая мёртвой legacy/SourceForge-машинерия (`Win7LegacyVersion`, `SingboxLegacyRepo`, SF-фоллбэк). Ядро запиннено на `v1.13.13-lx.5`. Обновить: Core Dashboard → Download/Reinstall.
+
+**Полный список изменений:** [docs/release_notes/1-1-1.md](docs/release_notes/1-1-1.md).
+
+### Highlights (EN) — v1.1.1
+
+**Windows 7 joins the fork core — XHTTP + AmneziaWG 2.0 on every platform.** The [`sing-box-lx`](https://github.com/Leadaxe/sing-box-lx) fork now publishes a **Windows 7 (32-bit, `windows-386-legacy-windows-7`)** build, so Win7 no longer falls back to upstream SagerNet `1.13.12` — the launcher downloads the same fork core on Win7 as everywhere else. Win7 users get **XHTTP** and **AmneziaWG 2.0** obfuscation for the first time. The now-dead legacy/SourceForge download machinery (`Win7LegacyVersion`, `SingboxLegacyRepo`, the SF fallback) is removed. Core pinned to `v1.13.13-lx.5`. Pull it from Core Dashboard → Download/Reinstall.
+
+**Full changelog:** [docs/release_notes/1-1-1.md](docs/release_notes/1-1-1.md).
+
+---
+
 ### Выжимка (RU) — v1.1.0
 
 **Большое обновление: форк-ядро, XHTTP и AmneziaWG.** Лаунчер переключился с upstream-ядра SagerNet на **форк [`sing-box-lx`](https://github.com/Leadaxe/sing-box-lx) (v1.13.13-lx.3)**, который собирает `with_xhttp` + `with_awg` и потому запускает две клиентские фичи, недоступные в upstream. **XHTTP** (чинит тихую регрессию): узлы `type=xhttp` больше не деградируют в `httpupgrade` — честно парсятся, эмитятся в `config.json` и round-trip'ятся в share-URI (VLESS/VMess/Trojan), плюс исправлена путаница `httpupgrade ⇄ xhttp`. **AmneziaWG 2.0**: WireGuard-узлы несут `jc/jmin/jmax`, `s1`–`s4`, `h1`–`h4` и CPS-пакеты `i1`–`i5` из `wireguard://`/`awg://`, эмитятся в `endpoints[]`; **MTU AWG клампится до 1280**, иначе S3/S4-паддинг ломает данные при сохранённом handshake. **Debug API**: кнопка «Перегенерировать токен». **Windows 7 (32-бит)** остаётся на upstream `1.13.12` (без XHTTP/AWG) — не ломается. Обновить ядро: Core Dashboard → Download/Reinstall.

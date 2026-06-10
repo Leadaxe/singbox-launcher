@@ -28,7 +28,7 @@ This release downloads/bundles a prebuilt `sing-box.exe` (Windows) / `sing-box` 
 **Репозиторий ядра:** [https://github.com/Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx)  
 **Лицензия:** GPL-3.0
 
-**Исключение (Windows 7 / 386):** для `GOOS=windows GOARCH=386` форк-сборки нет — на этой устаревшей платформе используется апстрим [SagerNet/sing-box](https://github.com/SagerNet/sing-box) (`1.13.12`).
+**Windows 7 (`GOOS=windows GOARCH=386`):** форк собирает и эту платформу (ассет `windows-386-legacy-windows-7`) — тоже `sing-box-lx`, отдельного апстрим-исключения больше нет.
 
 **Примечание:** Если в релизе нет предсобранного бинарника, пользователи должны скачать его самостоятельно из [релизов sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases).
 

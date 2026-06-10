@@ -1,5 +1,14 @@
 # SPEC 072-F-M — ПЕРЕВОД ЯДРА НА ФОРК SING-BOX-LX (XHTTP + AmneziaWG)
 
+> **✅ ОБНОВЛЕНО 2026-06-10 (v1.1.1):** Win7-развилка (Фаза 4) разрешена в пользу
+> **Варианта A/C**. Форк `sing-box-lx` начал собирать `windows-386` (ассет
+> `sing-box-<ver>-windows-386-legacy-windows-7.zip`, начиная с `v1.13.13-lx.5`),
+> поэтому Windows 7 **тоже переведён на форк** — XHTTP/AWG работают на всех
+> платформах. Удалена вся legacy/SourceForge-машинерия: `Win7LegacyVersion`,
+> `coreReleaseIsLegacy`, `getReleaseInfoFromSourceForge`, `buildSourceForgeAssets`,
+> `constants.SingboxLegacyRepo`. `RequiredCoreVersion = 1.13.13-lx.5`. Описание
+> ниже (Вариант B как дефолт) — исторический контекст до этого изменения.
+
 ## Цель
 
 Лаунчер качает и пиннит ядро `sing-box` с upstream-релизов **SagerNet/sing-box** (сейчас `1.13.12`). Чтобы в визарде/подписках стали доступны два клиентских фич-набора — **XHTTP** (Xray-совместимый транспорт для VLESS/VMess/Trojan) и **AmneziaWG 2.0** (DPI-обфускация WireGuard-эндпоинтов), — нужно переключить источник ядра на форк **`github.com/Leadaxe/sing-box-lx`** (ветка `lx`, релиз `v1.13.13-lx.1+`). Обе фичи собраны в бинарь форка под build-тегами (`with_xhttp`, `with_awg`); конфиги с этими полями upstream-ядро **отвергает на этапе load** — значит без смены ядра SPEC 071 (XHTTP в парсере) и 073 (AmneziaWG в парсере) физически не запустятся.

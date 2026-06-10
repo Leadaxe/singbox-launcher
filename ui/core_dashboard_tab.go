@@ -911,7 +911,7 @@ func (tab *CoreDashboardTab) downloadConfigTemplate() {
 
 // handleDownload обрабатывает нажатие на кнопку Download/Reinstall.
 // Версия не выбирается пользователем — DownloadCore сам подставит pinned
-// `constants.RequiredCoreVersion` (или Win7Legacy для windows/386), см. SPEC 046.
+// `constants.RequiredCoreVersion` (форк-тег для всех платформ, вкл. windows/386), см. SPEC 046.
 func (tab *CoreDashboardTab) handleDownload() {
 	if tab.downloadInProgress {
 		return
