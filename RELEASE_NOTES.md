@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v1.1.3
+
+**Импорт Amnezia: `vpn://`-ссылки и голый `.conf`-текст.** Оба формата, которые экспортирует Amnezia VPN / AmneziaWG 2.0, теперь вставляются напрямую: `vpn://…` (содержимое `.vpn`-файла) декодируется в WG/AWG-узел с параметрами обфускации AWG 2.0, а `[Interface]/[Peer]`-текст из `.conf` распознаётся прямо в поле Add (несколько блоков → несколько узлов, ссылки рядом продолжают работать). `MTU = 1420` из амнезиевских конфигов для AWG клампится до безопасного 1280. Миграция не нужна.
+
+**Полный список изменений:** [docs/release_notes/1-1-3.md](docs/release_notes/1-1-3.md).
+
+### Highlights (EN) — v1.1.3
+
+**Amnezia import: `vpn://` links and raw `.conf` text.** Both formats exported by Amnezia VPN / AmneziaWG 2.0 now paste directly: a `vpn://…` link (the `.vpn` file content) decodes into a WG/AWG endpoint with AWG 2.0 obfuscation params, and the raw `[Interface]/[Peer]` text of a `.conf` is recognized right in the Add field (several blocks → several nodes, links pasted alongside keep working). The `MTU = 1420` from Amnezia configs is clamped to a safe 1280 for AWG. No migration needed.
+
+**Full changelog:** [docs/release_notes/1-1-3.md](docs/release_notes/1-1-3.md).
+
+---
+
 ### Выжимка (RU) — v1.1.2
 
 **TUIC v5 + фиксы парсинга WireGuard/AmneziaWG.** Добавлен протокол **TUIC v5** — `tuic://`-ссылки парсятся, генерируют рабочий sing-box `tuic` outbound (uuid/password, congestion_control, udp_relay_mode, zero-RTT, heartbeat, обязательный TLS с ALPN/SNI/insecure/uTLS) и делятся обратно в URI. Плюс два бага WG/AWG из v1.1.1: (1) сырой `/` в base64-приватном ключе ломал разбор — узел был в Sources, но пропадал из Preview; (2) голый адрес без `/32` (`172.16.0.2`, как в стандартных конфигах AmneziaWG) не давал ядру стартовать (`netip.ParsePrefix: no '/'`). Оба исправлены. Миграция не нужна.
