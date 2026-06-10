@@ -3,7 +3,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-Leadaxe%2Fsingbox--launcher-blue)](https://github.com/Leadaxe/singbox-launcher)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-blue)](https://golang.org/)
-[![Version](https://img.shields.io/badge/version-1.1.0-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
+[![Version](https://img.shields.io/badge/version-1.1.1-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
 
 **Десктоп-платформа сетевой маршрутизации и анализа трафика. 15+ VPN-протоколов, глубина настроек и API уровня Enterprise. Поверх форка [sing-box-lx](https://github.com/Leadaxe/sing-box-lx) (upstream sing-box + XHTTP + AmneziaWG 2.0) как execution-engine — на всех платформах, включая Windows 7 32-бит.**
 

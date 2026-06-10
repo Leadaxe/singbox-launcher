@@ -3,7 +3,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-Leadaxe%2Fsingbox--launcher-blue)](https://github.com/Leadaxe/singbox-launcher)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.24%2B-blue)](https://golang.org/)
-[![Version](https://img.shields.io/badge/version-1.1.0-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
+[![Version](https://img.shields.io/badge/version-1.1.1-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
 
 **Desktop platform for network routing and traffic analysis. 15+ VPN protocols, configuration depth and API at enterprise level. Built on top of the [sing-box-lx](https://github.com/Leadaxe/sing-box-lx) fork (upstream sing-box + XHTTP transport + AmneziaWG 2.0) as execution engine — on every platform, including the Windows 7 32-bit legacy build.**
 
