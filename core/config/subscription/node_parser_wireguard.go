@@ -316,22 +316,30 @@ func hasAWGParams(q url.Values) bool {
 // applyAWGFields extracts AmneziaWG obfuscation params from a wireguard:// (or
 // awg://) query and promotes them to the endpoint root. Numeric fields are
 // stored as int64 (full uint32 range, safe on 32-bit, marshals as a JSON
-// number); i1–i5 are stored as non-empty strings with their tag case preserved.
-// A bad numeric value is skipped with a debug log (forward-compat: one broken
-// param must not drop the whole node, matching the mtu/keepalive policy). A
-// plain WireGuard URI (no AWG params) leaves endpoint untouched.
+// number); h1–h4 may instead carry an AWG 2.0 randomization range "lo-hi",
+// stored as a normalized string (SPEC 073.2, core >= lx.6 picks an in-range
+// value per handshake); i1–i5 are stored as non-empty strings with their tag
+// case preserved. A bad value is skipped with a debug log (forward-compat: one
+// broken param must not drop the whole node, matching the mtu/keepalive
+// policy). A plain WireGuard URI (no AWG params) leaves endpoint untouched.
 func applyAWGFields(endpoint map[string]interface{}, q url.Values) {
 	for _, k := range awgNumericFields {
 		raw := strings.TrimSpace(q.Get(k))
 		if raw == "" {
 			continue
 		}
-		n, err := parseAWGNumeric(raw)
-		if err != nil {
-			debuglog.DebugLog("applyAWGFields: skip %s=%q (%v)", k, raw, err)
+		if n, err := strconv.ParseUint(raw, 10, 32); err == nil {
+			endpoint[k] = int64(n)
 			continue
 		}
-		endpoint[k] = n
+		// SPEC 073.2: h1–h4 may carry an AWG 2.0 randomization range "lo-hi".
+		if awgHeaderFields[k] {
+			if rng, ok := parseAWGHeaderRange(raw); ok {
+				endpoint[k] = rng
+				continue
+			}
+		}
+		debuglog.DebugLog("applyAWGFields: skip %s=%q (invalid value)", k, raw)
 	}
 	for _, k := range awgStringFields {
 		// q.Get already URL-decodes (incl. '+' → space and %3C → '<'); the tag
@@ -344,31 +352,30 @@ func applyAWGFields(endpoint map[string]interface{}, q url.Values) {
 	}
 }
 
-// parseAWGNumeric parses an AWG numeric field value (SPEC 073.2). Besides a
-// plain uint32, AmneziaWG 2.0 clients export header randomization ranges for
-// H1–H4 ("H1 = 43613244-384550127" in .conf and awg:// query): the client picks
-// a value inside the range, the server accepts the whole range. The sing-box-lx
-// endpoint shape takes a single uint32, so a range is collapsed to its start —
-// any in-range value is valid, and the start keeps parse → share → parse
-// deterministic. A reversed range is tolerated (smaller bound wins).
-func parseAWGNumeric(raw string) (int64, error) {
-	if n, err := strconv.ParseUint(raw, 10, 32); err == nil {
-		return int64(n), nil
-	}
+// awgHeaderFields — magic-header fields (h1–h4) that, unlike the other AWG
+// numerics, may carry an AWG 2.0 randomization range besides a plain uint32.
+var awgHeaderFields = map[string]bool{"h1": true, "h2": true, "h3": true, "h4": true}
+
+// parseAWGHeaderRange validates an AWG 2.0 header randomization range "lo-hi"
+// (both bounds uint32) and returns it normalized (bounds ordered). The range
+// stays a string: the sing-box-lx core (>= 1.13.13-lx.6) accepts "h1": "N-M"
+// in the endpoint JSON and picks a fresh in-range value per handshake — better
+// obfuscation than any fixed value the launcher could choose. Cores before
+// lx.6 reject the string form — hence the RequiredCoreVersion bump (SPEC 073.2).
+func parseAWGHeaderRange(raw string) (string, bool) {
 	loStr, hiStr, found := strings.Cut(raw, "-")
 	if !found {
-		return 0, fmt.Errorf("not a uint32")
+		return "", false
 	}
 	lo, errLo := strconv.ParseUint(strings.TrimSpace(loStr), 10, 32)
 	hi, errHi := strconv.ParseUint(strings.TrimSpace(hiStr), 10, 32)
 	if errLo != nil || errHi != nil {
-		return 0, fmt.Errorf("not a uint32 or lo-hi range")
+		return "", false
 	}
 	if hi < lo {
-		lo = hi
+		lo, hi = hi, lo
 	}
-	debuglog.DebugLog("parseAWGNumeric: collapsing range %q -> %d", raw, lo)
-	return int64(lo), nil
+	return fmt.Sprintf("%d-%d", lo, hi), true
 }
 
 // splitAndTrim splits a string by separator, trims whitespace from each part,
