@@ -316,22 +316,35 @@ func hasAWGParams(q url.Values) bool {
 // applyAWGFields extracts AmneziaWG obfuscation params from a wireguard:// (or
 // awg://) query and promotes them to the endpoint root. Numeric fields are
 // stored as int64 (full uint32 range, safe on 32-bit, marshals as a JSON
-// number); i1–i5 are stored as non-empty strings with their tag case preserved.
-// A bad numeric value is skipped with a debug log (forward-compat: one broken
-// param must not drop the whole node, matching the mtu/keepalive policy). A
-// plain WireGuard URI (no AWG params) leaves endpoint untouched.
+// number); h1–h4 may instead carry an AWG 2.0 randomization range "lo-hi",
+// stored as a normalized string (SPEC 073.2, core >= lx.6 picks an in-range
+// value per handshake); i1–i5 are stored as non-empty strings with their tag
+// case preserved. A bad value is skipped with a debug log (forward-compat: one
+// broken param must not drop the whole node, matching the mtu/keepalive
+// policy). A plain WireGuard URI (no AWG params) leaves endpoint untouched.
 func applyAWGFields(endpoint map[string]interface{}, q url.Values) {
 	for _, k := range awgNumericFields {
 		raw := strings.TrimSpace(q.Get(k))
 		if raw == "" {
 			continue
 		}
-		n, err := strconv.ParseUint(raw, 10, 32)
-		if err != nil {
-			debuglog.DebugLog("applyAWGFields: skip %s=%q (not a uint32): %v", k, raw, err)
+		if n, err := strconv.ParseUint(raw, 10, 32); err == nil {
+			endpoint[k] = int64(n)
 			continue
 		}
-		endpoint[k] = int64(n)
+		// SPEC 073.2: h1–h4 may carry an AWG 2.0 randomization range "lo-hi".
+		if awgHeaderFields[k] {
+			if rng, ok := parseAWGHeaderRange(raw); ok {
+				endpoint[k] = rng
+				continue
+			}
+			// A silently dropped header means the core falls back to the WG
+			// default message type and the handshake won't match the server —
+			// the exact failure mode of the original 073.2 bug. Warn loudly.
+			debuglog.WarnLog("Parser: AWG %s=%q is not a uint32 or lo-hi range — field dropped, the core will use the WireGuard default header", k, raw)
+			continue
+		}
+		debuglog.DebugLog("applyAWGFields: skip %s=%q (invalid value)", k, raw)
 	}
 	for _, k := range awgStringFields {
 		// q.Get already URL-decodes (incl. '+' → space and %3C → '<'); the tag
@@ -342,6 +355,75 @@ func applyAWGFields(endpoint map[string]interface{}, q url.Values) {
 		}
 		endpoint[k] = v
 	}
+	if a, b := awgHeaderOverlap(endpoint); a != "" {
+		debuglog.WarnLog("Parser: AWG magic headers %s and %s overlap — the core will reject this endpoint ('headers must not overlap')", a, b)
+	}
+}
+
+// awgHeaderOverlap reports a pair of magic-header fields whose effective
+// ranges overlap ("", "" when all four are disjoint). Mirrors the core
+// contract (SPEC 073.2): an unset/zero header counts as its WireGuard default
+// message type (h1=1 … h4=4), a single value as [v,v], a range as [lo,hi].
+// The core rejects an overlapping set at load with "headers must not
+// overlap", so the parser warns already at import time; the node itself is
+// still produced — the core's error stays the source of truth.
+func awgHeaderOverlap(endpoint map[string]interface{}) (string, string) {
+	type span struct {
+		name   string
+		lo, hi uint64
+	}
+	spans := make([]span, 0, 4)
+	for i, k := range []string{"h1", "h2", "h3", "h4"} {
+		s := span{name: k, lo: uint64(i + 1), hi: uint64(i + 1)} // WG default
+		switch v := endpoint[k].(type) {
+		case int64:
+			if v > 0 {
+				s.lo, s.hi = uint64(v), uint64(v)
+			}
+		case string:
+			loStr, hiStr, _ := strings.Cut(v, "-")
+			lo, errLo := strconv.ParseUint(loStr, 10, 32)
+			hi, errHi := strconv.ParseUint(hiStr, 10, 32)
+			if errLo == nil && errHi == nil {
+				s.lo, s.hi = lo, hi
+			}
+		}
+		spans = append(spans, s)
+	}
+	for i := 0; i < len(spans); i++ {
+		for j := i + 1; j < len(spans); j++ {
+			if spans[i].lo <= spans[j].hi && spans[j].lo <= spans[i].hi {
+				return spans[i].name, spans[j].name
+			}
+		}
+	}
+	return "", ""
+}
+
+// awgHeaderFields — magic-header fields (h1–h4) that, unlike the other AWG
+// numerics, may carry an AWG 2.0 randomization range besides a plain uint32.
+var awgHeaderFields = map[string]bool{"h1": true, "h2": true, "h3": true, "h4": true}
+
+// parseAWGHeaderRange validates an AWG 2.0 header randomization range "lo-hi"
+// (both bounds uint32) and returns it normalized (bounds ordered). The range
+// stays a string: the sing-box-lx core (>= 1.13.13-lx.6) accepts "h1": "N-M"
+// in the endpoint JSON and picks a fresh in-range value per handshake — better
+// obfuscation than any fixed value the launcher could choose. Cores before
+// lx.6 reject the string form — hence the RequiredCoreVersion bump (SPEC 073.2).
+func parseAWGHeaderRange(raw string) (string, bool) {
+	loStr, hiStr, found := strings.Cut(raw, "-")
+	if !found {
+		return "", false
+	}
+	lo, errLo := strconv.ParseUint(strings.TrimSpace(loStr), 10, 32)
+	hi, errHi := strconv.ParseUint(strings.TrimSpace(hiStr), 10, 32)
+	if errLo != nil || errHi != nil {
+		return "", false
+	}
+	if hi < lo {
+		lo, hi = hi, lo
+	}
+	return fmt.Sprintf("%d-%d", lo, hi), true
 }
 
 // splitAndTrim splits a string by separator, trims whitespace from each part,

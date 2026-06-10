@@ -4,7 +4,7 @@ COMMIT_MSG_FILE="$1"
 [ -z "$COMMIT_MSG_FILE" ] || [ ! -f "$COMMIT_MSG_FILE" ] && exit 0
 tmp="$COMMIT_MSG_FILE.$$"
 : > "$tmp"
-while IFS= read -r line; do
+while IFS= read -r line || [ -n "$line" ]; do
   case "$line" in
     *Co-authored-by:\ Cursor*) ;;
     *Made-with:\ Cursor*) ;;

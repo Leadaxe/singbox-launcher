@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v1.1.4
+
+**Диапазонные magic-заголовки AmneziaWG 2.0.** Реальные экспорты AWG 2.0 задают `H1–H4` диапазонами (`43613244-384550127`) — раньше парсер молча выбрасывал все четыре, и handshake не сходился. Теперь диапазоны идут в ядро один в один (`"h1": "N-M"`), ядро выбирает свежее значение на каждый handshake; одиночные значения — числами, как раньше. Плюс warn-диагностика мусора и пересечений заголовков при импорте. **Требуется ядро `1.13.13-lx.6`** — обновите через Core Dashboard → Download/Reinstall.
+
+**Полный список изменений:** [docs/release_notes/1-1-4.md](docs/release_notes/1-1-4.md).
+
+### Highlights (EN) — v1.1.4
+
+**AmneziaWG 2.0 ranged magic headers.** Real AWG 2.0 exports set `H1–H4` as ranges (`43613244-384550127`) — previously the parser silently dropped all four and the handshake never matched. Ranges now flow to the core 1:1 (`"h1": "N-M"`), the core picks a fresh in-range value per handshake; single values stay numbers as before. Plus import-time warnings for garbage and overlapping headers. **Requires core `1.13.13-lx.6`** — update via Core Dashboard → Download/Reinstall.
+
+**Full changelog:** [docs/release_notes/1-1-4.md](docs/release_notes/1-1-4.md).
+
+---
+
 ### Выжимка (RU) — v1.1.3
 
 **Импорт Amnezia: `vpn://`-ссылки и голый `.conf`-текст.** Оба формата, которые экспортирует Amnezia VPN / AmneziaWG 2.0, теперь вставляются напрямую: `vpn://…` (содержимое `.vpn`-файла) декодируется в WG/AWG-узел с параметрами обфускации AWG 2.0, а `[Interface]/[Peer]`-текст из `.conf` распознаётся прямо в поле Add (несколько блоков → несколько узлов, ссылки рядом продолжают работать). `MTU = 1420` из амнезиевских конфигов для AWG клампится до безопасного 1280. Миграция не нужна.
