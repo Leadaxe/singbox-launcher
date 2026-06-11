@@ -619,6 +619,14 @@ func GenerateOutboundsFromParserConfig(
 		return nil, fmt.Errorf("no nodes parsed from any source")
 	}
 
+	// SPEC 077: sanitize source-level detours that would break sing-box —
+	// self-reference and detour cycles among nodes. Fail-open: the offending
+	// detour field is dropped (the node dials directly), generation continues.
+	// Dangling detours onto template/preset group tags are NOT pruned here:
+	// those tags are merged in only at final config assembly, so they are
+	// unknown at this point and pruning them would be a false positive.
+	sanitizeNodeDetours(allNodes)
+
 	// Step 2: Generate JSON for all nodes
 	if progressCallback != nil {
 		progressCallback(40, fmt.Sprintf("Generating JSON for %d nodes...", len(allNodes)))
@@ -717,4 +725,89 @@ func GenerateOutboundsFromParserConfig(
 		SucceededSources:     succeededSources,
 		FailedSources:        failedSources,
 	}, nil
+}
+
+// sanitizeNodeDetours removes source-level detour fields that would break
+// sing-box (SPEC 077), fail-open: the field is dropped and the node dials
+// directly. Two cases are handled, both decidable from the node set alone:
+//
+//   - self-reference: node.detour == node.tag;
+//   - cycle among nodes: following node.detour from node to node returns to an
+//     already-visited node (A→B→A, longer rings, …). The detour on the node
+//     that closes the ring is dropped, which breaks every cycle it belongs to.
+//
+// Detours pointing at tags outside the node set (template/preset group tags,
+// built-in outbounds) are left untouched — those are resolved only at final
+// config assembly and are not knowable here.
+func sanitizeNodeDetours(nodes []*ParsedNode) {
+	// detourOf[tag] = the detour target of the node with that tag, but only
+	// when the target is itself a node (intra-node edge). Also drop self-refs.
+	nodeByTag := make(map[string]*ParsedNode, len(nodes))
+	for _, n := range nodes {
+		if n != nil && n.Tag != "" {
+			nodeByTag[n.Tag] = n
+		}
+	}
+
+	detourOf := make(map[string]string)
+	for _, n := range nodes {
+		if n == nil || n.Outbound == nil {
+			continue
+		}
+		d, _ := n.Outbound["detour"].(string)
+		d = strings.TrimSpace(d)
+		if d == "" {
+			continue
+		}
+		if d == n.Tag {
+			debuglog.WarnLog("Parser: node %q detour points at itself — dropping detour (direct dial)", n.Tag)
+			delete(n.Outbound, "detour")
+			continue
+		}
+		if _, isNode := nodeByTag[d]; isNode {
+			detourOf[n.Tag] = d // only intra-node edges can form a cycle we can see
+		}
+	}
+
+	// Cycle detection over intra-node detour edges. Classic DFS colouring:
+	// walking the unique out-edge of each tag, a back-edge to a node already on
+	// the current path is a cycle — drop the closing edge's detour.
+	const (
+		white = 0 // unvisited
+		gray  = 1 // on current path
+		black = 2 // fully explored, acyclic
+	)
+	color := make(map[string]int, len(detourOf))
+	for start := range detourOf {
+		if color[start] != white {
+			continue
+		}
+		// iterative walk of the single out-edge chain
+		path := []string{}
+		cur := start
+		for {
+			if color[cur] == gray {
+				// back-edge: cur is on the current path → break the ring here
+				if n := nodeByTag[cur]; n != nil && n.Outbound != nil {
+					debuglog.WarnLog("Parser: detour cycle through node %q — dropping its detour to break the chain", cur)
+					delete(n.Outbound, "detour")
+				}
+				delete(detourOf, cur)
+				break
+			}
+			if color[cur] == black {
+				break // joins an already-cleared, acyclic chain
+			}
+			color[cur] = gray
+			path = append(path, cur)
+			next, ok := detourOf[cur]
+			if !ok {
+				break // chain ends at a non-node target or a node without detour
+			}
+			cur = next
+		}
+		for _, t := range path {
+			color[t] = black
+		}
+	}
 }

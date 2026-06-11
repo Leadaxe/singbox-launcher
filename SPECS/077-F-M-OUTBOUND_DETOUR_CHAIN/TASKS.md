@@ -7,9 +7,9 @@
 - [x] `LoadNodesFromSource`: `applySourceDetour` проставляет `node.Outbound["detour"]` (skip wireguard / Jump)
 - [x] Тесты: round-trip Source↔ProxySource (detour_mapping_test.go); applySourceDetour + server+detour end-to-end (detour_test.go). Эмиссия `"detour"` в JSON — существующий механизм GenerateNodeJSON.
 
-## Фаза 2 — валидация (fail-open)
-- [ ] `sanitizeDetours` в outbound_generator: висячий → drop+warn; self → drop+warn; цикл → разорвать+warn
-- [ ] Тесты: каждый кейс + wg-skip + Jump-приоритет
+## Фаза 2 — валидация (fail-open) ✅
+- [x] `sanitizeNodeDetours` в outbound_generator: self → drop+warn; цикл среди узлов (DFS-раскраска) → разорвать+warn. Висячий-на-шаблон НЕ дропается (теги шаблонных групп неизвестны до финальной сборки — уточнено в SPEC §3).
+- [x] Тесты: self / valid-chain / external-target-kept / 2-cycle / 3-cycle (detour_sanitize_test.go). wg-skip и Jump-приоритет покрыты в Фазе 1 (applySourceDetour).
 
 ## Фаза 3 — UI
 - [ ] Дропдаун «Detour server» в source_edit_window (server + subscription), фильтр собственных тегов, «(none)»
