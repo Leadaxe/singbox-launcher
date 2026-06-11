@@ -46,15 +46,14 @@ func canonicalGOOSName(goos string) string {
 //
 // Examples:
 //
-//	LxBox-desktop/1.1.4 (sing-box/1.13.13-lx.6; macOS arm64)
-//	LxBox-desktop/1.1.4 (sing-box/1.13.13-lx.6; windows amd64)
-//	LxBox-desktop/1.1.4 (sing-box/1.13.13-lx.6; linux amd64)
+//	LxBox/1.1.4 (sing-box-launcher; macOS)
+//	LxBox/1.1.4 (sing-box-launcher; windows)
+//	LxBox/1.1.4 (sing-box-launcher; linux)
 //
 // Two things matter in this string:
 //
-//  1. Product token "LxBox-desktop" — the product brand, with the "desktop"
-//     suffix to distinguish from the Android LxBox build.
-//  2. The "sing-box/<core>" comment token — many subscription panels
+//  1. Product token "LxBox" — the product brand.
+//  2. The "sing-box-launcher" comment token — many subscription panels
 //     (Remnawave/Marzban-style) route the response body by a substring match on
 //     the User-Agent: a client recognized as sing-box gets the base64/URI
 //     subscription list the launcher can ingest, while an unrecognized client
@@ -70,8 +69,7 @@ func BuildSubscriptionUserAgent() string {
 	if ver == "" {
 		ver = "unknown"
 	}
-	core := strings.TrimSpace(constants.RequiredCoreVersion)
-	return fmt.Sprintf("LxBox-desktop/%s (sing-box/%s; %s %s)", ver, core, canonicalGOOSName(runtime.GOOS), runtime.GOARCH)
+	return fmt.Sprintf("LxBox/%s (sing-box-launcher; %s)", ver, canonicalGOOSName(runtime.GOOS))
 }
 
 // MaxNodesPerSubscription limits the maximum number of nodes parsed from a single subscription

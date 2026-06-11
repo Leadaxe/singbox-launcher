@@ -70,7 +70,7 @@ type Settings struct {
 	// SubscriptionUserAgent — пользовательский User-Agent для subscription
 	// requests. Пустая строка / отсутствие поля → fallback на
 	// configtypes.BuildSubscriptionUserAgent() (default, например
-	// `LxBox-desktop/1.1.4 (sing-box/1.13.13-lx.6; macOS arm64)`).
+	// `LxBox/1.1.4 (sing-box-launcher; macOS)`).
 	//
 	// Use cases:
 	//   - Провайдер требует UA от конкретного клиента (`v2rayN/...`,

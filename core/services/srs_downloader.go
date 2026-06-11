@@ -70,7 +70,7 @@ func DownloadSRS(ctx context.Context, url string, destPath string) error {
 	if err != nil {
 		return fmt.Errorf("DownloadSRS: failed to create request: %w", err)
 	}
-	req.Header.Set("User-Agent", "LxBox-desktop/1.0")
+	req.Header.Set("User-Agent", "LxBox/1.0")
 
 	resp, err := client.Do(req)
 	if err != nil {

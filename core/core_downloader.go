@@ -145,7 +145,7 @@ func (ac *AppController) getReleaseInfoFromGitHub(ctx context.Context, version s
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("User-Agent", "LxBox-desktop/1.0")
+	req.Header.Set("User-Agent", "LxBox/1.0")
 
 	resp, err := client.Do(req)
 	defer func() {
@@ -278,7 +278,7 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 		return fmt.Errorf("downloadFileFromURL: failed to create request: %w", err)
 	}
 
-	req.Header.Set("User-Agent", "LxBox-desktop/1.0")
+	req.Header.Set("User-Agent", "LxBox/1.0")
 
 	resp, err := client.Do(req)
 	defer func() {
