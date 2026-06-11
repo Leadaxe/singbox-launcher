@@ -147,7 +147,7 @@ func (ac *AppController) getLatestVersionFromURLWithPrefix(url string, keepPrefi
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("User-Agent", "sing-box-launcher/1.0")
+	req.Header.Set("User-Agent", "LxBox-desktop/1.0")
 
 	resp, err := client.Do(req)
 	defer func() {
