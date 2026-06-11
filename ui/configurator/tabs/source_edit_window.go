@@ -105,6 +105,7 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 		src.Outbounds = append([]configtypes.OutboundConfig(nil), ps.Outbounds...)
 		src.ExcludeFromGlobal = ps.ExcludeFromGlobal
 		src.ExposeGroupTagsToGlobal = ps.ExposeGroupTagsToGlobal
+		src.DetourTag = ps.DetourTag // SPEC 077
 		src.Enabled = !ps.Disabled
 		if ps.TagPrefix != "" || ps.TagPostfix != "" || ps.TagMask != "" {
 			src.Tag = &wizardmodels.TagSpec{
@@ -126,6 +127,7 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 		}
 		src.Enabled = !ps.Disabled
 		src.ExcludeFromGlobal = ps.ExcludeFromGlobal
+		src.DetourTag = ps.DetourTag // SPEC 077
 		src.Outbounds = nil
 		src.Tag = nil
 	}
@@ -258,6 +260,35 @@ func showSourceEditWindow(
 	hintLabel := widget.NewLabel("")
 	hintLabel.Wrapping = fyne.TextWrapWord
 
+	// SPEC 077: detour (proxy-chain) picker — works for both server and
+	// subscription. Selecting a target sets scratch.DetourTag; the generator
+	// stamps "detour":"<tag>" on every node of this source.
+	detourNone := locale.T("wizard.source.detour_none")
+	detourSelect := widget.NewSelect(nil, nil)
+	detourHint := widget.NewLabel(locale.T("wizard.source.detour_hint"))
+	detourHint.Wrapping = fyne.TextWrapWord
+	detourOnChanged := func(sel string) {
+		p := proxyRef()
+		if p == nil {
+			return
+		}
+		if sel == "" || sel == detourNone {
+			p.DetourTag = ""
+		} else {
+			p.DetourTag = sel
+		}
+		_ = serializeParserAfterSourceEdit(presenter, guiState, presenter.Model(), sourceIndex, &scratch, win)
+	}
+	detourSelect.OnChanged = detourOnChanged
+	refreshDetourOptions := func() {
+		opts, sel := wizardbusiness.DetourOptions(presenter.Model(), proxyRef(), detourNone)
+		detourSelect.OnChanged = nil // avoid feedback while repopulating
+		detourSelect.Options = opts
+		detourSelect.SetSelected(sel)
+		detourSelect.OnChanged = detourOnChanged
+		detourSelect.Refresh()
+	}
+
 	var afterSync func()
 
 	var exposeOnChanged func(bool)
@@ -338,6 +369,7 @@ func showSourceEditWindow(
 		excludeCheck.SetChecked(p.ExcludeFromGlobal)
 		refreshExposeAvailability()
 		refreshExcludeHint()
+		refreshDetourOptions()
 		if afterSync != nil {
 			afterSync()
 		}
@@ -475,15 +507,19 @@ func showSourceEditWindow(
 		isServer := mm != nil && sourceIndex < len(mm.Sources) && mm.Sources[sourceIndex].Type == wizardmodels.SourceTypeServer
 
 		if isServer {
-			// Server: URI + Label + ExcludeFromGlobal.
+			// Server: URI + Label + ExcludeFromGlobal + Detour.
 			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_uri")))
 			settingsContent.Add(uriEntry)
 			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_label_field")))
 			settingsContent.Add(labelEntry)
 			settingsContent.Add(widget.NewSeparator())
 			settingsContent.Add(excludeCheck)
+			settingsContent.Add(widget.NewSeparator())
+			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_detour")))
+			settingsContent.Add(detourSelect)
+			settingsContent.Add(detourHint)
 		} else {
-			// Subscription: URL + Tag prefix/postfix/mask + auto/select/exclude/expose.
+			// Subscription: URL + Tag prefix/postfix/mask + auto/select/exclude/expose + Detour.
 			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_url_edit")))
 			settingsContent.Add(urlEntry)
 			settingsContent.Add(widget.NewSeparator())
@@ -499,6 +535,10 @@ func showSourceEditWindow(
 			settingsContent.Add(excludeCheck)
 			settingsContent.Add(exposeCheck)
 			settingsContent.Add(hintLabel)
+			settingsContent.Add(widget.NewSeparator())
+			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_detour")))
+			settingsContent.Add(detourSelect)
+			settingsContent.Add(detourHint)
 		}
 		settingsContent.Refresh()
 	}
