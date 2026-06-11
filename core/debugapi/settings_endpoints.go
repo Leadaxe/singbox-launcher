@@ -36,7 +36,7 @@ import (
 //
 //	{
 //	  "user_agent": "v2rayN/7.5.0",                         // raw stored value (may be empty)
-//	  "default":    "LxBox/1.1.4 (sing-box-launcher; macOS)",   // what gets sent when user_agent is empty
+//	  "default":    "LxBox/1.1.4 (desktop; macOS)",   // what gets sent when user_agent is empty
 //	  "effective":  "v2rayN/7.5.0"                          // what the next fetch will actually send
 //	}
 //

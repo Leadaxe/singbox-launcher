@@ -188,10 +188,10 @@ func TestFetchSubscriptionWithMeta_AnnounceError(t *testing.T) {
 }
 
 // TestFetchSubscription_UserAgentFormat — SPEC 061 Phase 2: UA должно быть
-// `LxBox/<v> (sing-box-launcher; <os>)`, не legacy `SubscriptionParserClient`.
-// Дефис в `sing-box` обязателен: панели, матчащие UA по подстроке, иначе
-// принимают bare `singbox` за не-sing-box клиента и отдают JSON-конфиг вместо
-// списка подписки (см. BuildSubscriptionUserAgent).
+// `LxBox/<v> (desktop; <os>)`, не legacy `SubscriptionParserClient`. Bare
+// `singbox` (без дефиса) недопустим: панели, матчащие UA по подстроке, иначе
+// принимают его за не-sing-box клиента и отдают JSON-конфиг вместо списка
+// подписки (см. BuildSubscriptionUserAgent).
 func TestFetchSubscription_UserAgentFormat(t *testing.T) {
 	var gotUA string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -210,8 +210,8 @@ func TestFetchSubscription_UserAgentFormat(t *testing.T) {
 	if strings.Contains(gotUA, "singbox") {
 		t.Errorf("UA = %q, must not contain bare 'singbox' (panels mis-route it)", gotUA)
 	}
-	if !strings.Contains(gotUA, "sing-box") {
-		t.Errorf("UA = %q, want hyphenated sing-box token for panel recognition", gotUA)
+	if !strings.Contains(gotUA, "desktop") {
+		t.Errorf("UA = %q, want 'desktop' variant tag", gotUA)
 	}
 	if !strings.Contains(gotUA, "(") || !strings.Contains(gotUA, ")") {
 		t.Errorf("UA = %q, want platform suffix in parens", gotUA)

@@ -46,21 +46,17 @@ func canonicalGOOSName(goos string) string {
 //
 // Examples:
 //
-//	LxBox/1.1.4 (sing-box-launcher; macOS)
-//	LxBox/1.1.4 (sing-box-launcher; windows)
-//	LxBox/1.1.4 (sing-box-launcher; linux)
+//	LxBox/1.1.4 (desktop; macOS)
+//	LxBox/1.1.4 (desktop; windows)
+//	LxBox/1.1.4 (desktop; linux)
 //
-// Two things matter in this string:
-//
-//  1. Product token "LxBox" — the product brand.
-//  2. The "sing-box-launcher" comment token — many subscription panels
-//     (Remnawave/Marzban-style) route the response body by a substring match on
-//     the User-Agent: a client recognized as sing-box gets the base64/URI
-//     subscription list the launcher can ingest, while an unrecognized client
-//     may get a full client-config JSON (which the launcher can't parse). The
-//     hyphenated "sing-box" token ensures recognition. A bare "singbox" (no
-//     hyphen) is the failure trigger and must never appear — see the regression
-//     test in useragent_test.go.
+// Product brand token is "LxBox" with a "desktop" variant tag (distinguishes
+// from the Android LxBox build). The UA must NOT contain a bare "singbox" (no
+// hyphen): some subscription panels (Remnawave/Marzban-style) route the
+// response body by a substring match on the User-Agent, and a bare "singbox"
+// is matched as a non-sing-box client — the panel then serves a full
+// client-config JSON instead of the base64/URI subscription list the launcher
+// can ingest. The regression test in useragent_test.go guards against it.
 //
 // See SPEC 061-F-N §"Request headers" §1.
 func BuildSubscriptionUserAgent() string {
@@ -69,7 +65,7 @@ func BuildSubscriptionUserAgent() string {
 	if ver == "" {
 		ver = "unknown"
 	}
-	return fmt.Sprintf("LxBox/%s (sing-box-launcher; %s)", ver, canonicalGOOSName(runtime.GOOS))
+	return fmt.Sprintf("LxBox/%s (desktop; %s)", ver, canonicalGOOSName(runtime.GOOS))
 }
 
 // MaxNodesPerSubscription limits the maximum number of nodes parsed from a single subscription
