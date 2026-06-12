@@ -395,7 +395,13 @@ func (s *Server) Addr() string {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	enc := json.NewEncoder(w)
+	// This is a localhost API consumed by curl/agents, never embedded in HTML.
+	// Default HTML-escaping turns "<token>" into "<token>" and & into
+	// & — valid JSON but ugly to read. Disable it so responses (e.g. the
+	// manifest's auth scheme "Authorization: Bearer <token>") stay readable.
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(v)
 }
 
 func unixOrNull(t time.Time) any {

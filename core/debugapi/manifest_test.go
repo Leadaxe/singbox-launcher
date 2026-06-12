@@ -25,6 +25,24 @@ func TestDocsURL(t *testing.T) {
 	}
 }
 
+// ConnectionCardJSON must be human-readable: the auth scheme's "<token>" must
+// stay literal, not HTML-escaped to "<token>".
+func TestConnectionCardJSON_NoHTMLEscape(t *testing.T) {
+	card, err := ConnectionCardJSON("http://127.0.0.1:9263", "abc", "v1.1.5", "1.13.13-lx.6")
+	if err != nil {
+		t.Fatalf("card: %v", err)
+	}
+	if strings.Contains(card, "\\u003c") || strings.Contains(card, "\\u003e") {
+		t.Errorf("card must not HTML-escape angle brackets to \\u003c/\\u003e:\n%s", card)
+	}
+	if !strings.Contains(card, "Authorization: Bearer <token>") {
+		t.Errorf("card auth scheme should read literally:\n%s", card)
+	}
+	if !strings.Contains(card, `"token": "abc"`) || !strings.Contains(card, `"base_url": "http://127.0.0.1:9263"`) {
+		t.Errorf("card missing token/base_url:\n%s", card)
+	}
+}
+
 // Every endpoint advertised by the registry must actually be reachable (not
 // 404), and conversely the manifest/help must list what the server serves —
 // the single-source-of-truth guarantee.

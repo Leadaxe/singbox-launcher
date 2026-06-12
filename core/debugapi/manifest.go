@@ -1,6 +1,7 @@
 package debugapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"regexp"
@@ -84,9 +85,15 @@ func ConnectionCardJSON(baseURL, token, launcherVer, coreVer string) (string, er
 		"docs":     DocsURL(launcherVer),
 		"hint":     APIHint,
 	}
-	b, err := json.MarshalIndent(card, "", "  ")
-	if err != nil {
+	// Encoder (not MarshalIndent) with HTML-escaping off so the card stays
+	// human-readable: "<token>" in the auth scheme must not become "<token>".
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(card); err != nil {
 		return "", err
 	}
-	return string(b), nil
+	// Encoder appends a trailing newline; trim for a clean clipboard payload.
+	return strings.TrimRight(buf.String(), "\n"), nil
 }
