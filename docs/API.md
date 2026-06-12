@@ -40,15 +40,25 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 
 ---
 
-## Health & info
+## Discovery & info
+
+The API is **self-describing** (SPEC 078): point an agent at the base URL with the token and it can read the surface itself.
 
 | Method | Path | Auth | Response |
 |---|---|---|---|
 | GET | `/ping` | — | `{"ok":true}` |
+| GET | `/` | ✓ | **Manifest** — `api`, `spec`, `launcher`, `core`, `auth`, `docs` (version-pinned link to this file), `hint`, `endpoints[]` (method/path/summary). |
+| GET | `/help` | ✓ | `{"endpoints":[{method,path,summary,auth}, …]}` — just the endpoint list. |
 | GET | `/version` | ✓ | `{"launcher":"v…","singbox":"1.13.13-lx.6","api":"debugapi/v1"}` |
+
+An authed request to any **unknown** path returns `404` with a `docs` pointer, so an agent that guessed wrong is nudged back to `/` and this file.
+
+The Settings → Debug API screen has a **Copy API info** button that puts a *connection card* JSON on the clipboard (`base_url`, `token`, `launcher`, `core`, `auth`, `docs`, `hint`) — hand it to an agent and it has everything to connect from scratch.
 
 ```bash
 curl -s "$API/ping"
+curl -s -H "Authorization: Bearer $TOKEN" "$API/"       # manifest
+curl -s -H "Authorization: Bearer $TOKEN" "$API/help"   # endpoint list
 curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 ```
 
