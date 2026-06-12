@@ -183,25 +183,27 @@ func (s *Server) endpoints() []apiEndpoint {
 		{"POST", "/action/rebuild-config", true, "Rebuild config.json from state", s.handleRebuildConfig},
 
 		// SPEC 053/056/057/058: structured state read + targeted mutations.
+		// Methods reflect every verb the handler accepts (GET read + PATCH write)
+		// so an agent reading /help sees the full picture.
 		{"GET", "/state/full", true, "Full wizard state JSON", s.handleStateFull},
-		{"GET", "/state/rules", true, "Routing rules", s.handleStateRules},
-		{"GET", "/state/dns", true, "DNS settings", s.handleStateDNS},
-		{"GET", "/state/dns/rules", true, "DNS rules", s.handleStateDNSRules},
+		{"GET/PATCH", "/state/rules", true, "Get / replace|append routing rules", s.handleStateRules},
+		{"GET/PATCH", "/state/dns", true, "Get / replace whole dns_options", s.handleStateDNS},
+		{"GET/PATCH", "/state/dns/rules", true, "Get / replace USER dns rules (text)", s.handleStateDNSRules},
 		{"GET", "/state/outbounds/resolved", true, "Resolved outbound tags", s.handleStateOutboundsResolved},
 
 		// bin/settings.json — launcher-level preferences (subscription UA, etc).
-		{"GET/PUT", "/settings/user-agent", true, "Get/set subscription User-Agent", s.handleSettingsUserAgent},
+		{"GET/PATCH", "/settings/user-agent", true, "Get / set subscription User-Agent", s.handleSettingsUserAgent},
 
 		// SPEC 059: Traffic Profiler.
 		{"GET", "/traffic/status", true, "Traffic profiler status", s.handleTrafficStatus},
 		{"GET", "/traffic/live", true, "Live traffic counters", s.handleTrafficLive},
 		{"GET", "/traffic/sessions", true, "Captured sessions", s.handleTrafficSessions},
-		{"GET", "/traffic/sessions/", true, "Session by ID (path suffix)", s.handleTrafficSessionByID},
+		{"GET/DELETE", "/traffic/sessions/", true, "Get / delete a session by ID (path suffix)", s.handleTrafficSessionByID},
 		{"GET", "/traffic/processes", true, "Per-process traffic", s.handleTrafficProcesses},
 		{"POST", "/traffic/start", true, "Start traffic capture", s.handleTrafficStart},
 		{"POST", "/traffic/stop", true, "Stop traffic capture", s.handleTrafficStop},
 		{"POST", "/traffic/clear", true, "Clear captured traffic", s.handleTrafficClear},
-		{"POST", "/traffic/verbose", true, "Toggle verbose capture", s.handleTrafficVerbose},
+		{"GET/POST", "/traffic/verbose", true, "Get / toggle verbose capture", s.handleTrafficVerbose},
 	}
 }
 
