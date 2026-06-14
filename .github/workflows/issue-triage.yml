@@ -20,10 +20,12 @@ on:
     types: [opened, reopened]
 
 # Минимально необходимые права. contents:read — чтобы агент мог изучать код.
+# id-token:write — обязательно для claude-code-action (OIDC-аутентификация).
 permissions:
   contents: read
   issues: write
   pull-requests: read
+  id-token: write
 
 # Не запускать параллельно несколько триажей по одному и тому же issue.
 concurrency:
