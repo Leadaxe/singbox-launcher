@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v1.1.6
+
+**Фикс запуска на macOS 11 Big Sur + «Добавить источник из файла» + самоописываемый debug API.** Релиз падал при запуске на Big Sur (Go 1.25 проверял TLS через системный API только для macOS 12+) — теперь лаунчер берёт корни из системного keychain и собирается с `minos 11.0`; **проверено на реальном маке Big Sur 11.7.11**. Заодно окно визарда больше не вылезает за маленькие экраны (1280×800). Плюс кнопка **«Добавить из файла»** (`.conf`/`.vpn`/`.txt`) на вкладке Sources и самоописываемый debug API (`GET /` манифест, `GET /help`, кнопка «Копировать инфо API»). Миграция не нужна.
+
+**Полный список изменений:** [docs/release_notes/1-1-6.md](docs/release_notes/1-1-6.md).
+
+### Highlights (EN) — v1.1.6
+
+**macOS 11 Big Sur launch fix + Add source from file + self-describing debug API.** Release builds crashed on launch on Big Sur (Go 1.25 verified TLS via a macOS 12+ system API) — the launcher now loads roots from the system keychain and builds with `minos 11.0`; **verified on a real Mac running Big Sur 11.7.11**. The config wizard window also no longer overflows small (1280×800) screens. Plus an **Add from file** button (`.conf`/`.vpn`/`.txt`) on the Sources tab and a self-describing debug API (`GET /` manifest, `GET /help`, a "Copy API info" button). No migration needed.
+
+**Full changelog:** [docs/release_notes/1-1-6.md](docs/release_notes/1-1-6.md).
+
+---
+
 ### Выжимка (RU) — v1.1.5
 
 **Цепочки прокси (detour) + фиксы VLESS flow и User-Agent.** В настройках сервера/подписки появился выбор **Detour-сервера** — все узлы источника идут через выбранную ручную прокси-группу (цепочка клиент → хоп → узел), самоссылки и циклы разрываются автоматически. Плюс два бага, из-за которых узел мог не загрузиться: (1) VLESS `flow` теперь на выходе только `""` или `xtls-rprx-vision` — лишний flow при транспорте и мусорные значения (`none` от x3-ui, deprecated direct/origin/splice) сбрасываются; (2) User-Agent сменён на `LxBox/<v> (desktop; <os>)`, чтобы панели не отдавали JSON-конфиг вместо подписки. Миграция не нужна.
