@@ -40,6 +40,11 @@ var defaultSharedTransport = &http.Transport{
 // CreateHTTPClient returns an HTTP client using defaultSharedTransport with the given overall request timeout.
 // Exported for subscription and other packages that inject CreateHTTPClientFunc.
 func CreateHTTPClient(timeout time.Duration) *http.Client {
+	// On macOS 11 (Big Sur) the Go system certificate verifier crashes
+	// (missing SecTrustCopyCertificateChain). initDarwinTLSRoots installs a
+	// custom root pool so TLS uses the pure-Go verifier instead. No-op on
+	// other platforms; cheap after the first call (sync.Once).
+	initDarwinTLSRoots()
 	return &http.Client{
 		Timeout:   timeout,
 		Transport: defaultSharedTransport,
