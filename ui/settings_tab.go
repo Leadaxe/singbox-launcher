@@ -19,6 +19,7 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/debugapi"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
@@ -441,6 +442,31 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 		copyTokenBtn.Disable()
 	}
 
+	// Copy API info (connection card, SPEC 078) — one JSON blob with base_url,
+	// token, versions and a docs link that the user hands to an agent so it can
+	// connect from scratch. Only meaningful while the API is listening (needs a
+	// live base_url), so it tracks the enable checkbox.
+	copyCardBtn := widget.NewButtonWithIcon(locale.T("diag.debug_api_copy_card"), theme.ContentCopyIcon(), nil)
+	copyCardBtn.OnTapped = func() {
+		cur := locale.LoadSettings(binDir)
+		addr := ac.DebugAPIAddr()
+		if addr == "" || cur.DebugAPIToken == "" {
+			return
+		}
+		coreVer, _ := ac.GetInstalledCoreVersion()
+		card, err := debugapi.ConnectionCardJSON("http://"+addr, cur.DebugAPIToken, constants.AppVersion, coreVer)
+		if err != nil {
+			ShowError(ac.UIService.MainWindow, err)
+			return
+		}
+		ac.UIService.MainWindow.Clipboard().SetContent(card)
+		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
+			locale.T("diag.debug_api_card_copied_title"), locale.T("diag.debug_api_card_copied_msg"))
+	}
+	if !st.DebugAPIEnabled {
+		copyCardBtn.Disable()
+	}
+
 	// Regenerate token — rotates the Bearer token. Confirmed because it
 	// invalidates the old token: any script/automation still using it gets
 	// 401 on the next call. If the API is currently listening we restart it
@@ -546,9 +572,11 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 				return
 			}
 			copyTokenBtn.Enable()
+			copyCardBtn.Enable()
 			portEntry.Disable()
 		} else {
 			ac.StopDebugAPI()
+			copyCardBtn.Disable()
 			// Keep the token in settings.json so re-enabling doesn't rotate
 			// it and break existing scripts. Users who want rotation can
 			// delete the key manually.
@@ -560,8 +588,11 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 		refreshStatus()
 	}
 
+	// Port row: [label] [entry…stretch] [Copy API info]. The connection-card
+	// button lives here (Border right) instead of in the button row above so
+	// four buttons don't force the window wider; the port entry takes the slack.
 	portLabel := widget.NewLabel(locale.T("diag.debug_api_port_label"))
-	portRow := container.NewBorder(nil, nil, portLabel, nil, portEntry)
+	portRow := container.NewBorder(nil, nil, portLabel, copyCardBtn, portEntry)
 
 	row := container.NewVBox(
 		title,

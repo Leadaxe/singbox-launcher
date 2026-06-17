@@ -21,8 +21,10 @@
 package debugapi
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"singbox-launcher/core/build"
@@ -136,13 +138,37 @@ func (s *Server) handleStateDNS(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, st.DNS)
 
 	case http.MethodPatch:
-		var req state.DNSOptions
-		if err := decodeJSONBody(r, &req); err != nil {
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "read body: " + err.Error()})
+			return
+		}
+		// Guard against silent wipe: PATCH replaces the WHOLE dns_options, so a
+		// bare `{}` (or a truncated request) would clear every DNS server/rule
+		// and still return 200. Require the body to actually carry servers
+		// and/or rules; a keyless object → 422, state untouched. (DNSOptions has
+		// a custom Unmarshal, so probe the raw keys rather than trusting nil
+		// slices.)
+		var probe map[string]json.RawMessage
+		if err := json.Unmarshal(body, &probe); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body: " + err.Error()})
 			return
 		}
-		// Light validation: kinds must be in the known set. Empty/zero
-		// shape (clearing the section) is allowed.
+		_, hasServers := probe["servers"]
+		_, hasRules := probe["rules"]
+		if !hasServers && !hasRules {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
+				"error": `body must include "servers" and/or "rules"; refusing to clear dns_options`,
+				"field": "dns",
+			})
+			return
+		}
+		var req state.DNSOptions
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body: " + err.Error()})
+			return
+		}
+		// Light validation: kinds must be in the known set.
 		for i, srv := range req.Servers {
 			switch srv.Kind {
 			case state.DNSServerKindTemplate, state.DNSServerKindPreset, state.DNSServerKindUser:

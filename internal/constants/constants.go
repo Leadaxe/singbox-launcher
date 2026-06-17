@@ -79,7 +79,7 @@ const RequiredCoreVersion = "1.13.13-lx.6"
 // HEAD. See docs/RELEASE_PROCESS.md §5.2.
 var (
 	AppVersion          = "v-local-test"
-	RequiredTemplateRef = "2727f96b14a7a9be2fdaa247b7d9114f553a6998"
+	RequiredTemplateRef = "1fad50eda74eb5ef363b570068386ab0d7de2dc2"
 )
 
 // GetMyBranch возвращает ветку репозитория для загрузки ассетов, у которых нет

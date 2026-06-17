@@ -26,6 +26,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -80,11 +81,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// Keep help button compact (single-symbol width) and pinned to the right.
 	helpButtonCompact := container.NewGridWrap(fyne.NewSize(24, 24), wireguardHelpButton)
 	hintRow := container.NewBorder(nil, nil, nil, helpButtonCompact, hintLabel)
-	addURLButton := widget.NewButton(locale.T("wizard.source.button_add"), func() {
+	// applyAddedSources runs the shared Add path: parse `text` (URI links /
+	// vpn:// / [Interface]/[Peer] conf) into sources, refresh UI, clear the
+	// field. Used by both the Add button and Add-from-file (SPEC 079).
+	applyAddedSources := func(text string) {
 		presenter.MergeGUIToModel()
-		trimmed := strings.TrimSpace(guiState.SourceURLEntry.Text)
-		if err := wizardbusiness.AppendURLsToSources(presenter, trimmed); err != nil {
-			debuglog.ErrorLog("source_tab: Add URL error: %v", err)
+		if err := wizardbusiness.AppendURLsToSources(presenter, strings.TrimSpace(text)); err != nil {
+			debuglog.ErrorLog("source_tab: Add error: %v", err)
 			return
 		}
 		m := presenter.Model()
@@ -99,6 +102,37 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		guiState.SourceURLsProgrammatic = true
 		guiState.SourceURLEntry.SetText("")
 		guiState.SourceURLsProgrammatic = false
+	}
+
+	addURLButton := widget.NewButton(locale.T("wizard.source.button_add"), func() {
+		applyAddedSources(guiState.SourceURLEntry.Text)
+	})
+
+	// SPEC 079: WG/AWG configs are often shared as files (.conf with
+	// [Interface]/[Peer], or .vpn with a vpn:// link). Pick a file → its text
+	// goes through the same import path as the Add field.
+	addFromFileButton := widget.NewButton(locale.T("wizard.source.button_add_from_file"), func() {
+		fileDialog := dialog.NewFileOpen(func(rc fyne.URIReadCloser, err error) {
+			if err != nil {
+				dialog.ShowError(err, guiState.Window)
+				return
+			}
+			if rc == nil {
+				return // cancelled
+			}
+			defer rc.Close()
+			text, rerr := wizardbusiness.ReadSourceFileText(rc)
+			if rerr != nil {
+				dialog.ShowError(rerr, guiState.Window)
+				return
+			}
+			if text == "" {
+				return
+			}
+			applyAddedSources(text)
+		}, guiState.Window)
+		fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".conf", ".vpn", ".txt"}))
+		fileDialog.Show()
 	})
 
 	// «Free community servers» — picker (LxBox-style): клик подставляет URL
@@ -124,10 +158,11 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		urlEntryScroll,
 	)
 
-	// Header row: label + community-picker button on the right (LxBox-style).
+	// Header row: label + add-from-file + community-picker buttons on the right.
 	urlHeader := container.NewHBox(
 		urlLabel,
 		layout.NewSpacer(),
+		addFromFileButton,
 		getFreeVPNButton,
 	)
 
@@ -786,7 +821,11 @@ func CreateOutboundsAndParserConfigTab(presenter *wizardpresentation.WizardPrese
 	)
 
 	scrollContainer := container.NewScroll(content)
-	scrollContainer.SetMinSize(fyne.NewSize(0, 620))
+	// Adaptive min-height: a fixed 620px forced the whole wizard window taller
+	// than small laptop screens (Big Sur 1280×800), pushing nav buttons under
+	// the Dock. Scale with window height; the fallback (used before the window
+	// is measured at first layout) is kept small enough to fit a 600px window.
+	scrollContainer.SetMinSize(adaptiveScrollSize(guiState, 0.62, 440))
 
 	return scrollContainer
 }

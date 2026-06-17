@@ -196,6 +196,16 @@ echo "Template ref: $TEMPLATE_REF"
 
 LDFLAGS="-s -w -X singbox-launcher/internal/constants.AppVersion=$VERSION -X singbox-launcher/internal/constants.RequiredTemplateRef=$TEMPLATE_REF"
 
+# macOS 11 (Big Sur) compatibility: force the external (Xcode) linker and pass
+# the deployment target through to it. Go's internal linker hardcodes the
+# minimum macOS version to the SDK's (12.0 on a modern SDK) and ignores
+# CGO_LDFLAGS' -mmacosx-version-min, so the binary ends up requiring macOS 12+
+# even with MIN_MACOS_VERSION=11.0. That makes crypto/x509's system verifier
+# symbol (_SecTrustCopyCertificateChain, macOS 12+) bind eagerly and the app
+# aborts before main() on Big Sur. The external linker honors the flag and
+# stamps the correct minos, restoring lazy binding. See SPEC 081.
+LDFLAGS="$LDFLAGS -linkmode=external -extldflags=-mmacosx-version-min=$MIN_MACOS_VERSION"
+
 if [ "$BUILD_TYPE" = "universal" ]; then
     echo ""
     echo "=== Building for arm64 (Apple Silicon) ==="

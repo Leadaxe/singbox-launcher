@@ -542,7 +542,13 @@ func (tab *CoreDashboardTab) createStateBlock() fyne.CanvasObject {
 	tab.stateSelect = widget.NewSelect(nil, nil)
 	tab.stateSelect.PlaceHolder = locale.T("core.state_select_placeholder")
 	tab.stateSelect.OnChanged = func(selectedID string) {
-		if selectedID == "" || tab.controller == nil || tab.controller.FileService == nil {
+		// The first option is "● Current (active)" — a safe no-op anchor so a
+		// stray tap on the top of the list never switches away from the live
+		// state. Empty / current selection does nothing.
+		if selectedID == "" || selectedID == locale.T("core.state_current_option") {
+			return
+		}
+		if tab.controller == nil || tab.controller.FileService == nil {
 			return
 		}
 		// Preserve current state.json before overwriting. If there is no
@@ -575,7 +581,10 @@ func (tab *CoreDashboardTab) refreshStateSelector() {
 		tab.stateSelect.Refresh()
 		return
 	}
-	options := make([]string, 0, len(entries))
+	// First option is the live state, as a safe anchor (see OnChanged). The
+	// active state.json itself is not a switch target — it's "where we are now".
+	currentLabel := locale.T("core.state_current_option")
+	options := []string{currentLabel}
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -593,11 +602,23 @@ func (tab *CoreDashboardTab) refreshStateSelector() {
 		options = append(options, strings.TrimSuffix(name, ".json"))
 	}
 	tab.stateSelect.Options = options
-	if tab.stateSelect.Selected != "" {
-		// SetSelected без триггера OnChanged: clearing.
-		tab.stateSelect.ClearSelected()
-	}
+	// Show "● Current (active)" as the selected value (not the placeholder), so
+	// the control always reflects that we are on the live state.
+	tab.selectCurrentStateSilently()
 	tab.stateSelect.Refresh()
+}
+
+// selectCurrentStateSilently выставляет в dropdown'е пункт «● Текущее» как
+// выбранный, не дёргая OnChanged. Выбор «текущее» и так no-op, но silent-set
+// избавляет от лишней попытки switch'а во время refresh / на Cancel модала.
+func (tab *CoreDashboardTab) selectCurrentStateSilently() {
+	if tab.stateSelect == nil {
+		return
+	}
+	saved := tab.stateSelect.OnChanged
+	tab.stateSelect.OnChanged = nil
+	tab.stateSelect.SetSelected(locale.T("core.state_current_option"))
+	tab.stateSelect.OnChanged = saved
 }
 
 // performStateSwitch — рабочая лошадка: копирует <id>.json → state.json,
@@ -679,13 +700,11 @@ func (tab *CoreDashboardTab) confirmStateSwitch(targetID string) {
 		win,
 	)
 	dlg.SetOnClosed(func() {
-		// Кнопки сами вызывают dlg.Hide() — на повторном SetOnClosed
-		// (Cancel/ESC) сбросим dropdown, чтобы он не показывал «выбран X»
-		// при не-сработавшем switch'е. ClearSelected безопасен и после
-		// performStateSwitch (refreshStateSelector тоже его дёргает).
-		if tab.stateSelect != nil {
-			tab.stateSelect.ClearSelected()
-		}
+		// Кнопки сами вызывают dlg.Hide() — на Cancel/ESC возвращаем dropdown
+		// на «● Текущее», чтобы он не показывал «выбран X» при не-сработавшем
+		// switch'е и всегда отражал, что мы на живом state. После
+		// performStateSwitch refreshStateSelector сделает то же самое.
+		tab.selectCurrentStateSilently()
 	})
 	dlg.Show()
 }

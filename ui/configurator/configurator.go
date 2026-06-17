@@ -99,9 +99,14 @@ func ShowConfigWizard(parent fyne.Window) {
 	model.TemplateData = templateData
 	model.ExecDir = ac.FileService.ExecDir
 
-	// Create new window for wizard
+	// Create new window for wizard.
+	//
+	// Высота подбирается под доступную высоту экрана: на ноутбуках с logical
+	// 1280×800 (типичный минимум для macOS 11 Big Sur) фиксированные 660px не
+	// помещались — нижний край с навигационными кнопками уходил под Dock.
+	// clampWizardSize ограничивает размер рабочей областью экрана.
 	wizardWindow := ac.UIService.Application.NewWindow(locale.T("wizard.window_title"))
-	wizardWindow.Resize(fyne.NewSize(620, 660))
+	wizardWindow.Resize(clampWizardSize(ac.UIService.Application, 620, 660))
 	wizardWindow.CenterOnScreen()
 	guiState.Window = wizardWindow
 

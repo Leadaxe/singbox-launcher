@@ -155,7 +155,7 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 
 ### `core/config/subscription` — protocol parsers + fetch + encode
 
-**Responsibility:** Per-protocol URI parsers + share-URI encoders (VLESS/VMess/Trojan/SS/Hysteria2/SSH/SOCKS/Naive/WireGuard) and subscription transport (fetch + decode + metadata).
+**Responsibility:** Per-protocol URI parsers + share-URI encoders (VLESS/VMess/Trojan/SS/Hysteria2/TUIC/SSH/SOCKS/Naive/WireGuard, plus Amnezia `vpn://`) and subscription transport (fetch + decode + metadata).
 
 | File | Purpose |
 |------|---------|

@@ -198,7 +198,7 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 	refresh()
 
 	scroll := container.NewVScroll(box)
-	scroll.SetMinSize(fyne.NewSize(0, 400))
+	scroll.SetMinSize(adaptiveScrollSize(gs, 0.5, 400))
 	return scroll
 }
 

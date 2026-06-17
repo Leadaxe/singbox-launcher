@@ -1,6 +1,6 @@
 # Debug API
 
-Локальный HTTP API на `127.0.0.1`, bearer-auth, выключен по умолчанию. **25 endpoint'ов** (24 protected + unauthenticated `/ping`) в 6 группах: health/info, state read, state write, actions, traffic profiler, snapshot. Используется для автоматизации (bash + curl), MCP-обёрток для AI-агентов, CI/CD-валидации шаблонов, headless-deployment, и для одной кнопки **Copy snapshot** в Diagnostics (это тот же `/debug/snapshot`).
+Локальный HTTP API на `127.0.0.1`, bearer-auth, выключен по умолчанию. **Самоописываемый** (SPEC 078): `GET /` отдаёт манифест, `GET /help` — список эндпоинтов, так что агенту достаточно дать base URL + токен. Группы: discovery/info, state read, state write, actions, traffic profiler, snapshot. Используется для автоматизации (bash + curl), MCP-обёрток для AI-агентов, CI/CD-валидации шаблонов, headless-deployment, и для одной кнопки **Copy snapshot** в Diagnostics (это тот же `/debug/snapshot`).
 
 > Source of truth: код `core/debugapi/`. Этот документ — generated-style сводка из реальных handler-ов; SPEC 038 описывает оригинальный дизайн и осталась как историческая референс.
 
@@ -18,7 +18,7 @@ export API="http://127.0.0.1:9263"
 # 4. Проверить
 curl -s "$API/ping"                                    # → {"ok":true}    (без auth)
 curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
-# → {"launcher":"v1.1.4","singbox":"1.13.13-lx.6","api":"debugapi/v1"}
+# → {"launcher":"v1.1.5","singbox":"1.13.13-lx.6","api":"debugapi/v1"}
 ```
 
 ---
@@ -40,15 +40,25 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 
 ---
 
-## Health & info
+## Discovery & info
+
+The API is **self-describing** (SPEC 078): point an agent at the base URL with the token and it can read the surface itself.
 
 | Method | Path | Auth | Response |
 |---|---|---|---|
 | GET | `/ping` | — | `{"ok":true}` |
+| GET | `/` | ✓ | **Manifest** — `api`, `spec`, `launcher`, `core`, `auth`, `docs` (version-pinned link to this file), `hint`, `endpoints[]` (method/path/summary). |
+| GET | `/help` | ✓ | `{"endpoints":[{method,path,summary,auth}, …]}` — just the endpoint list. |
 | GET | `/version` | ✓ | `{"launcher":"v…","singbox":"1.13.13-lx.6","api":"debugapi/v1"}` |
+
+An authed request to any **unknown** path returns `404` with a `docs` pointer, so an agent that guessed wrong is nudged back to `/` and this file.
+
+The Settings → Debug API screen has a **Copy API info** button that puts a *connection card* JSON on the clipboard (`base_url`, `token`, `launcher`, `core`, `auth`, `docs`, `hint`) — hand it to an agent and it has everything to connect from scratch.
 
 ```bash
 curl -s "$API/ping"
+curl -s -H "Authorization: Bearer $TOKEN" "$API/"       # manifest
+curl -s -H "Authorization: Bearer $TOKEN" "$API/help"   # endpoint list
 curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 ```
 
@@ -85,7 +95,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/state/full" > backup.json
 | Method | Path | Body | Что делает |
 |---|---|---|---|
 | PATCH | `/state/rules` | `{"mode":"replace"\|"append", "rules":[]state.Rule}` | Заменяет / добавляет правила. Каждое валидируется через `r.DecodeBody()` (kind discriminator: preset/inline/srs). |
-| PATCH | `/state/dns` | `state.DNSOptions` | Заменяет **всю** dns_options (servers + rules). Каждый server/rule валидируется по `kind`. |
+| PATCH | `/state/dns` | `state.DNSOptions` | Заменяет **всю** dns_options (servers + rules). Каждый server/rule валидируется по `kind`. **Тело обязано содержать `servers` и/или `rules`** — keyless `{}` → `422` (защита от молчаливого стирания всей секции), состояние не трогается. |
 | PATCH | `/state/dns/rules` | `{"text":"..."}` | Заменяет **только USER** rules; preset-rules сохраняются. `""` (пустой текст) = wipe user rules. |
 
 ```bash
@@ -212,7 +222,7 @@ Response shape:
 ```json
 {
   "captured_at": "2026-05-28T12:00:00Z",
-  "launcher_version": "v1.1.4",
+  "launcher_version": "v1.1.5",
   "singbox_version": "1.13.13-lx.6",
   "files": { "state.json": "...", "config.json": "...", "wizard_template.json": "..." },
   "missing": [],
@@ -249,7 +259,7 @@ Response shape:
 - **Нет `GET /logs?tail=N`** — sing-box логи читать напрямую из `bin/logs/`.
 - **Нет switch_proxy / list_groups / get_logs** — упоминались в SPEC 038 §183 как future work, не реализованы.
 - **Toggle verbose** рестартит sing-box — активные TCP-соединения дропаются. Response предупреждает (`"warning":"active connections reset"`).
-- **Token rotation** — нет UI; ручной flow: stop launcher → удалить `debug_api_token` из `bin/settings.json` → start launcher → токен будет регенерирован при первом включении.
+- **Token rotation** — кнопка **Settings → Debug API → «Regenerate»** (с подтверждением; ротирует токен и перезапускает listener). Альтернатива без UI: stop launcher → удалить `debug_api_token` из `bin/settings.json` → start launcher → токен будет регенерирован при первом включении.
 
 ---
 

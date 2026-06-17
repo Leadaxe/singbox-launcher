@@ -161,51 +161,110 @@ func GenerateToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
+// endpoints is the single source of truth for the debug-API surface (SPEC 078):
+// routes() registers handlers from it, and GET / + GET /help document it. A path
+// can't be documented without being wired, or wired without showing up in /help.
+//
+// "/" (the manifest) and "/help" are intentionally NOT in this list — they
+// describe the list and would be self-referential; routes() wires them directly.
+func (s *Server) endpoints() []apiEndpoint {
+	return []apiEndpoint{
+		{"GET", "/ping", false, "Liveness probe (no auth)", func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		}},
+		{"GET", "/version", true, "Launcher, core and API-spec versions", s.handleVersion},
+		{"GET", "/state", true, "Core run state + active proxy/group", s.handleState},
+		{"GET", "/proxies", true, "Proxy list with latencies", s.handleProxies},
+		{"GET", "/debug/snapshot", true, "Diagnostic snapshot (state/config/template)", s.handleSnapshot},
+		{"POST", "/action/update-subs", true, "Re-fetch subscriptions and rebuild config", s.handleUpdateSubs},
+		{"POST", "/action/start", true, "Start the core", s.handleStart},
+		{"POST", "/action/stop", true, "Stop the core", s.handleStop},
+		{"POST", "/action/ping-all", true, "Latency-test all proxies", s.handlePingAll},
+		{"POST", "/action/rebuild-config", true, "Rebuild config.json from state", s.handleRebuildConfig},
+
+		// SPEC 053/056/057/058: structured state read + targeted mutations.
+		// Methods reflect every verb the handler accepts (GET read + PATCH write)
+		// so an agent reading /help sees the full picture.
+		{"GET", "/state/full", true, "Full wizard state JSON", s.handleStateFull},
+		{"GET/PATCH", "/state/rules", true, "Get / replace|append routing rules", s.handleStateRules},
+		{"GET/PATCH", "/state/dns", true, "Get / replace whole dns_options", s.handleStateDNS},
+		{"GET/PATCH", "/state/dns/rules", true, "Get / replace USER dns rules (text)", s.handleStateDNSRules},
+		{"GET", "/state/outbounds/resolved", true, "Resolved outbound tags", s.handleStateOutboundsResolved},
+
+		// bin/settings.json — launcher-level preferences (subscription UA, etc).
+		{"GET/PATCH", "/settings/user-agent", true, "Get / set subscription User-Agent", s.handleSettingsUserAgent},
+
+		// SPEC 059: Traffic Profiler.
+		{"GET", "/traffic/status", true, "Traffic profiler status", s.handleTrafficStatus},
+		{"GET", "/traffic/live", true, "Live traffic counters", s.handleTrafficLive},
+		{"GET", "/traffic/sessions", true, "Captured sessions", s.handleTrafficSessions},
+		{"GET/DELETE", "/traffic/sessions/", true, "Get / delete a session by ID (path suffix)", s.handleTrafficSessionByID},
+		{"GET", "/traffic/processes", true, "Per-process traffic", s.handleTrafficProcesses},
+		{"POST", "/traffic/start", true, "Start traffic capture", s.handleTrafficStart},
+		{"POST", "/traffic/stop", true, "Stop traffic capture", s.handleTrafficStop},
+		{"POST", "/traffic/clear", true, "Clear captured traffic", s.handleTrafficClear},
+		{"GET/POST", "/traffic/verbose", true, "Get / toggle verbose capture", s.handleTrafficVerbose},
+	}
+}
+
 // routes wires the endpoints. auth middleware guards everything except /ping
-// (which is still bound to 127.0.0.1 so it's not a real leak vector).
+// (which is still bound to 127.0.0.1 so it's not a real leak vector). The
+// manifest (/) and /help discovery endpoints are auth-guarded too.
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
-
-	mux.HandleFunc("/ping", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-	})
-
 	protected := http.NewServeMux()
-	protected.HandleFunc("/version", s.handleVersion)
-	protected.HandleFunc("/state", s.handleState)
-	protected.HandleFunc("/proxies", s.handleProxies)
-	protected.HandleFunc("/debug/snapshot", s.handleSnapshot)
-	protected.HandleFunc("/action/update-subs", s.handleUpdateSubs)
-	protected.HandleFunc("/action/start", s.handleStart)
-	protected.HandleFunc("/action/stop", s.handleStop)
-	protected.HandleFunc("/action/ping-all", s.handlePingAll)
-	protected.HandleFunc("/action/rebuild-config", s.handleRebuildConfig)
 
-	// SPEC 053/056/057/058: structured state read + targeted mutations.
-	protected.HandleFunc("/state/full", s.handleStateFull)
-	protected.HandleFunc("/state/rules", s.handleStateRules)
-	protected.HandleFunc("/state/dns", s.handleStateDNS)
-	protected.HandleFunc("/state/dns/rules", s.handleStateDNSRules)
-	protected.HandleFunc("/state/outbounds/resolved", s.handleStateOutboundsResolved)
+	for _, e := range s.endpoints() {
+		if e.Auth {
+			protected.HandleFunc(e.Path, e.handler)
+		} else {
+			mux.HandleFunc(e.Path, e.handler)
+		}
+	}
 
-	// bin/settings.json — launcher-level preferences (subscription UA, etc).
-	// Separate namespace from /state/* because settings.json ≠ state.json:
-	// settings live in internal/locale and persist UI knobs.
-	protected.HandleFunc("/settings/user-agent", s.handleSettingsUserAgent)
-
-	// SPEC 059: Traffic Profiler.
-	protected.HandleFunc("/traffic/status", s.handleTrafficStatus)
-	protected.HandleFunc("/traffic/live", s.handleTrafficLive)
-	protected.HandleFunc("/traffic/sessions", s.handleTrafficSessions)
-	protected.HandleFunc("/traffic/sessions/", s.handleTrafficSessionByID)
-	protected.HandleFunc("/traffic/processes", s.handleTrafficProcesses)
-	protected.HandleFunc("/traffic/start", s.handleTrafficStart)
-	protected.HandleFunc("/traffic/stop", s.handleTrafficStop)
-	protected.HandleFunc("/traffic/clear", s.handleTrafficClear)
-	protected.HandleFunc("/traffic/verbose", s.handleTrafficVerbose)
+	// SPEC 078: self-description. "/" → manifest, "/help" → endpoint list.
+	// "/" is an exact-match catch-all in protected (ServeMux routes any unknown
+	// path to "/"); handleManifest distinguishes the real root from 404s.
+	protected.HandleFunc("/help", s.handleHelp)
+	protected.HandleFunc("/", s.handleManifest)
 
 	mux.Handle("/", s.authMiddleware(protected))
 	return mux
+}
+
+// handleManifest serves the GET / self-description manifest (SPEC 078): API
+// identity, versions, auth scheme, a version-pinned docs link, and the endpoint
+// list. Because "/" is the ServeMux catch-all, any unknown path lands here too —
+// those get a 404 with the same docs pointer so an agent isn't left guessing.
+func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request) {
+	launcher := s.facade.GetLauncherVersion()
+	if r.URL.Path != "/" {
+		writeJSON(w, http.StatusNotFound, map[string]any{
+			"error": "unknown endpoint",
+			"path":  r.URL.Path,
+			"docs":  DocsURL(launcher),
+			"hint":  "GET / for the manifest, GET /help for the endpoint list.",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"api":       APIDisplayName,
+		"spec":      APISpec,
+		"launcher":  launcher,
+		"core":      s.facade.GetSingboxVersion(),
+		"auth":      APIAuthScheme,
+		"docs":      DocsURL(launcher),
+		"hint":      APIHint,
+		"endpoints": endpointViews(s.endpoints()),
+	})
+}
+
+// handleHelp serves GET /help — just the endpoint list, for an agent to
+// discover the surface and take it from there.
+func (s *Server) handleHelp(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"endpoints": endpointViews(s.endpoints()),
+	})
 }
 
 // authMiddleware requires "Authorization: Bearer <token>" on every protected
@@ -338,7 +397,13 @@ func (s *Server) Addr() string {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	enc := json.NewEncoder(w)
+	// This is a localhost API consumed by curl/agents, never embedded in HTML.
+	// Default HTML-escaping turns "<token>" into "<token>" and & into
+	// & — valid JSON but ugly to read. Disable it so responses (e.g. the
+	// manifest's auth scheme "Authorization: Bearer <token>") stay readable.
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(v)
 }
 
 func unixOrNull(t time.Time) any {
