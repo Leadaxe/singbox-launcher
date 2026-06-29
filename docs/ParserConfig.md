@@ -889,7 +889,7 @@ wireguard://privkey-base64@server.example.com:51821?publickey=server-pubkey&addr
 
 ### Добавление из файла (Add from file)
 
-Конфиги WG/AmneziaWG часто раздают файлом — кнопка **«Add from file»** на вкладке Sources (рядом с Get free) открывает выбор файла (`.conf` / `.vpn` / `.txt`) и прогоняет его содержимое через тот же путь, что и поле Add: `.conf` → WG/AWG-узел, `.vpn` → профиль Amnezia, текст со ссылками → узлы. Лимит файла — 1 МБ. Реализация: `business.ReadSourceFileText` + `dialog.NewFileOpen` в `ui/configurator/tabs/source_tab.go`; спека: `SPECS/079-F-N-ADD_SOURCE_FROM_FILE/SPEC.md`.
+Конфиги WG/AmneziaWG часто раздают файлом — кнопка **«Add from file»** на вкладке Sources (рядом с Get free) открывает **нативное системное окно** выбора файла (`.conf` / `.vpn` / `.txt`) и прогоняет его содержимое через тот же путь, что и поле Add: `.conf` → WG/AWG-узел, `.vpn` → профиль Amnezia, текст со ссылками → узлы. Лимит файла — 1 МБ. Нативный диалог: `osascript` (macOS), PowerShell `OpenFileDialog` (Windows), `zenity`/`kdialog` (Linux); если на Linux ни того, ни другого нет — fallback на встроенный Fyne-диалог. Реализация: `platform.PickOpenFile` (SPEC 082) + `business.ReadSourceFileText` в `ui/configurator/tabs/source_tab.go`; спеки: `SPECS/079-F-N-ADD_SOURCE_FROM_FILE/`, `SPECS/082-F-N-NATIVE_FILE_PICKER/`.
 
 ## Маркерная секция в `config.json`
 

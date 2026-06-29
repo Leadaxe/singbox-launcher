@@ -303,6 +303,7 @@
   "wizard.source.hint": "Поддерживаются URL подписок (http/https) или прямые ссылки (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://). Для нескольких ссылок — по одной на строку.",
   "wizard.source.button_add": "Добавить",
   "wizard.source.button_add_from_file": "Добавить из файла",
+  "wizard.source.pick_file_prompt": "Выберите файл конфигурации (.conf / .vpn / .txt)",
   "wizard.source.label_sources": "Источники",
   "wizard.source.button_preview_all": "Просмотр всех серверов…",
   "wizard.source.preview_all_title": "Серверы из всех источников",

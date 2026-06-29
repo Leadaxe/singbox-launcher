@@ -17,6 +17,7 @@ package tabs
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"image/color"
@@ -108,10 +109,9 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		applyAddedSources(guiState.SourceURLEntry.Text)
 	})
 
-	// SPEC 079: WG/AWG configs are often shared as files (.conf with
-	// [Interface]/[Peer], or .vpn with a vpn:// link). Pick a file → its text
-	// goes through the same import path as the Add field.
-	addFromFileButton := widget.NewButton(locale.T("wizard.source.button_add_from_file"), func() {
+	// fyneFileOpen — in-app file dialog, used as the fallback when no native
+	// dialog is available (Linux without zenity/kdialog).
+	fyneFileOpen := func() {
 		fileDialog := dialog.NewFileOpen(func(rc fyne.URIReadCloser, err error) {
 			if err != nil {
 				dialog.ShowError(err, guiState.Window)
@@ -126,13 +126,45 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				dialog.ShowError(rerr, guiState.Window)
 				return
 			}
-			if text == "" {
-				return
+			if text != "" {
+				applyAddedSources(text)
 			}
-			applyAddedSources(text)
 		}, guiState.Window)
 		fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".conf", ".vpn", ".txt"}))
 		fileDialog.Show()
+	}
+
+	// SPEC 079/082: WG/AWG configs are often shared as files (.conf with
+	// [Interface]/[Peer], or .vpn with a vpn:// link). Open a native system file
+	// dialog (SPEC 082); fall back to the in-app one where there's no native
+	// dialog. The picked file's text goes through the same path as the Add field.
+	addFromFileButton := widget.NewButton(locale.T("wizard.source.button_add_from_file"), func() {
+		path, ok, err := platform.PickOpenFile(locale.T("wizard.source.pick_file_prompt"), []string{"conf", "vpn", "txt"})
+		if err == platform.ErrNativeDialogUnavailable {
+			fyneFileOpen()
+			return
+		}
+		if err != nil {
+			dialog.ShowError(err, guiState.Window)
+			return
+		}
+		if !ok {
+			return // cancelled
+		}
+		f, oerr := os.Open(path)
+		if oerr != nil {
+			dialog.ShowError(oerr, guiState.Window)
+			return
+		}
+		defer f.Close()
+		text, rerr := wizardbusiness.ReadSourceFileText(f)
+		if rerr != nil {
+			dialog.ShowError(rerr, guiState.Window)
+			return
+		}
+		if text != "" {
+			applyAddedSources(text)
+		}
 	})
 
 	// «Free community servers» — picker (LxBox-style): клик подставляет URL

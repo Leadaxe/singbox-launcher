@@ -306,6 +306,7 @@
   "wizard.source.hint": "Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://). For multiple links, use a new line for each.",
   "wizard.source.button_add": "Add",
   "wizard.source.button_add_from_file": "Add from file",
+  "wizard.source.pick_file_prompt": "Select a config file (.conf / .vpn / .txt)",
   "wizard.source.label_sources": "Sources",
   "wizard.source.button_preview_all": "Preview all servers…",
   "wizard.source.preview_all_title": "Servers from all sources",
