@@ -30,11 +30,8 @@ func pickOpenFileNative(prompt string, exts []string) (string, bool, error) {
 
 	out, err := exec.Command("osascript", "-e", b.String()).Output()
 	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			// User cancelled the dialog → not an error.
-			if strings.Contains(string(ee.Stderr), "User canceled") {
-				return "", false, nil
-			}
+		if ee, ok := err.(*exec.ExitError); ok && isAppleScriptCancel(ee.Stderr) {
+			return "", false, nil
 		}
 		return "", false, err
 	}
@@ -43,6 +40,14 @@ func pickOpenFileNative(prompt string, exts []string) (string, bool, error) {
 		return "", false, nil
 	}
 	return path, true, nil
+}
+
+// isAppleScriptCancel reports whether osascript stderr is a user-cancel. The
+// cancel is AppleScript error -128 (errAECanceled); the message is localized
+// ("User canceled" / "Отменено пользователем." / …) so we match the numeric
+// code, which is stable across system languages.
+func isAppleScriptCancel(stderr []byte) bool {
+	return strings.Contains(string(stderr), "-128")
 }
 
 // appleScriptStringLiteral wraps s as an AppleScript string literal, escaping

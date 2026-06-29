@@ -2,10 +2,7 @@
 
 package platform
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
 func TestAppleScriptStringLiteral(t *testing.T) {
 	cases := map[string]string{
@@ -21,16 +18,27 @@ func TestAppleScriptStringLiteral(t *testing.T) {
 	}
 }
 
-// PickOpenFile must normalize extensions (drop leading dots / blanks) before
-// handing them to the OS layer. We can't drive the native dialog in a test, but
-// we can verify a cancelled invocation (the common path on a headless box where
-// osascript returns "User canceled") yields (",false,nil) — i.e. no error, and
-// the function doesn't choke on dotted extensions. This is best-effort: skip if
-// osascript isn't present.
-func TestPickOpenFile_ExtNormalizationSmoke(t *testing.T) {
-	// Just exercise the extension-cleaning path; the actual dialog is not shown
-	// in CI, so we only assert it doesn't panic and returns a sane tuple shape.
-	// (Run interactively to see the real Finder panel.)
-	t.Skip("native dialog can't run headless; appleScriptStringLiteral covers escaping")
-	_ = strings.TrimSpace("")
+// User-cancel detection must be language-independent: it keys off AppleScript
+// error code -128, not the localized message (English / Russian / …).
+func TestIsAppleScriptCancel(t *testing.T) {
+	cancels := []string{
+		"15:45: execution error: User canceled. (-128)",
+		"15:45: execution error: Отменено пользователем. (-128)",
+		"execution error: 已取消。 (-128)",
+	}
+	for _, s := range cancels {
+		if !isAppleScriptCancel([]byte(s)) {
+			t.Errorf("should detect cancel: %q", s)
+		}
+	}
+	notCancels := []string{
+		"execution error: File not found. (-43)",
+		"some unrelated error",
+		"",
+	}
+	for _, s := range notCancels {
+		if isAppleScriptCancel([]byte(s)) {
+			t.Errorf("should NOT be cancel: %q", s)
+		}
+	}
 }
