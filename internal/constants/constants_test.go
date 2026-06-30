@@ -15,11 +15,15 @@ import (
 // source-default went sideways.
 
 func TestRequiredCoreVersion_SemVerShape(t *testing.T) {
-	// SPEC 072: core is now the sing-box-lx fork, tagged X.Y.Z-lx.N. Accept the
-	// optional -lx.N suffix; still reject branch names / garbage.
-	re := regexp.MustCompile(`^\d+\.\d+\.\d+(-lx\.\d+)?$`)
+	// SPEC 072: core is the sing-box-lx fork. Tags evolved from a single
+	// `-lx.N` suffix (1.13.13-lx.6) to dot-separated prerelease chains
+	// (1.14.0-lx.1-rc.16). Accept the general SemVer shape — base X.Y.Z plus
+	// zero or more `-<ident>` suffixes (alnum, dot-separated) — so future tags
+	// like `-lx.2-rc.1` or a stable `-lx.1` pass without another regex bump,
+	// while branch names / empty / a leading `v` / dangling dashes still fail.
+	re := regexp.MustCompile(`^\d+\.\d+\.\d+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)*$`)
 	if !re.MatchString(RequiredCoreVersion) {
-		t.Fatalf("RequiredCoreVersion = %q, want X.Y.Z or X.Y.Z-lx.N", RequiredCoreVersion)
+		t.Fatalf("RequiredCoreVersion = %q, want X.Y.Z optionally followed by -<ident> suffixes", RequiredCoreVersion)
 	}
 }
 
