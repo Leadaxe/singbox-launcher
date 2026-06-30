@@ -37,7 +37,7 @@
 
 - **15 протоколов соединений** — vless, vmess, trojan, shadowsocks, hysteria, hysteria2, tuic, ssh, wireguard, naive (https / quic).
 - **XHTTP-транспорт** — `type=xhttp` ноды (VLESS / VMess / Trojan) парсятся, генерируются в `config.json` и round-trip'ятся обратно в share URI (без деградации в httpupgrade). Работает на bundled-ядре sing-box-lx.
-- **AmneziaWG 2.0 (AWG2)** — обфускация на wireguard-endpoint'ах: параметры `jc`/`jmin`/`jmax`, `s1`–`s4`, `h1`–`h4` и CPS-пакеты `i1`–`i5`, парсятся из `wireguard://` и `awg://` URI; `h1`–`h4` принимают **диапазоны** рандомизации AWG 2.0 (`lo-hi`) — ядро само выбирает свежее значение на каждый handshake (ядро ≥ `1.14.0-lx.1-rc.16`); MTU AWG-endpoint авто-клампится до 1280.
+- **AmneziaWG 2.0 (AWG2)** — обфускация на wireguard-endpoint'ах: параметры `jc`/`jmin`/`jmax`, `s1`–`s4`, `h1`–`h4` и CPS-пакеты `i1`–`i5`, парсятся из `wireguard://` и `awg://` URI; `h1`–`h4` принимают **диапазоны** рандомизации AWG 2.0 (`lo-hi`) — ядро само выбирает свежее значение на каждый handshake (ядро ≥ `1.14.0-lx.1-rc.17`); MTU AWG-endpoint авто-клампится до 1280.
 - **Импорт Amnezia** — вставьте ссылку Amnezia `vpn://…` (содержимое `.vpn`-файла) или голый `[Interface]/[Peer]`-текст из `.conf` WireGuard/AmneziaWG прямо в Sources: лаунчер сам декодирует профиль / распознаёт conf-блоки и импортирует их как обычные WG/AWG-узлы.
 - **Несколько источников в одном профиле** — subscription URL и direct links (`vless://`, `vmess://`, …) можно смешивать в одной конфигурации.
 - **Совместимость с VPN-провайдерами** — first-class поддержка HWID-binding панелей (Marzban, Marzneshin, Remnawave, NashVPN, V2Board / Xboard) через канонический XTLS subscription-header протокол (`X-Hwid`, `X-Hwid-Limit`, `Announce`, `Subscription-Userinfo`).

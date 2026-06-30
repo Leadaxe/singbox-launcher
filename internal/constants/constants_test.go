@@ -17,7 +17,7 @@ import (
 func TestRequiredCoreVersion_SemVerShape(t *testing.T) {
 	// SPEC 072: core is the sing-box-lx fork. Tags evolved from a single
 	// `-lx.N` suffix (1.13.13-lx.6) to dot-separated prerelease chains
-	// (1.14.0-lx.1-rc.16). Accept the general SemVer shape — base X.Y.Z plus
+	// (1.14.0-lx.1-rc.17). Accept the general SemVer shape — base X.Y.Z plus
 	// zero or more `-<ident>` suffixes (alnum, dot-separated) — so future tags
 	// like `-lx.2-rc.1` or a stable `-lx.1` pass without another regex bump,
 	// while branch names / empty / a leading `v` / dangling dashes still fail.

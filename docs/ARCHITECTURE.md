@@ -21,7 +21,7 @@
 manages a sing-box VPN core. It is written
 in Go with [Fyne](https://fyne.io) for the UI. The launcher downloads and pins a
 sing-box binary — specifically the [`sing-box-lx`](https://github.com/Leadaxe/sing-box-lx)
-fork (`constants.RequiredCoreVersion`, currently `1.14.0-lx.1-rc.16`, built with the `with_xhttp` +
+fork (`constants.RequiredCoreVersion`, currently `1.14.0-lx.1-rc.17`, built with the `with_xhttp` +
 `with_awg` build tags and fetched from the fork's GitHub Releases; the fork builds
 every platform, including the Windows 7 (`windows/386`) `legacy-windows-7` asset,
 so XHTTP/AWG work there too — there is no upstream/legacy split anymore). It fetches
