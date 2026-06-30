@@ -2,7 +2,9 @@ package subscription
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
@@ -141,51 +143,180 @@ func uriTransportFromQuery(q url.Values) (map[string]interface{}, bool) {
 	}
 }
 
-// xhttpTransportFromQuery builds a sing-box-lx "xhttp" (Xray splithttp)
-// transport from a VLESS/Trojan/VMess URI query. Distinct from "httpupgrade".
-// Fields: mode, path, host, x_padding_bytes, no_grpc_header. Value normalization
-// is left to the core. See SPEC 071.
+// xhttpStringField maps a transport JSON key (snake_case) to the URL spellings
+// it may arrive under. The first non-empty source wins; queryGetFold already
+// folds case, so we only list distinct spellings (snake vs camelCase).
+type xhttpStringField struct {
+	jsonKey string
+	urlKeys []string
+}
+
+// xhttpStringFields are the v2 string-valued XHTTP transport fields (SPEC 002 v2,
+// PARAM_MAP). mode/path/host are handled separately (path needs ?-tail trimming,
+// host falls back differently); these are pure passthrough — read as-is, emit
+// under jsonKey. Value validation against the allowed sets is left to the core.
+var xhttpStringFields = []xhttpStringField{
+	{"session_placement", []string{"session_placement", "sessionPlacement"}},
+	{"session_key", []string{"session_key", "sessionKey"}},
+	{"seq_placement", []string{"seq_placement", "seqPlacement"}},
+	{"seq_key", []string{"seq_key", "seqKey"}},
+	{"uplink_data_placement", []string{"uplink_data_placement", "uplinkDataPlacement"}},
+	{"uplink_data_key", []string{"uplink_data_key", "uplinkDataKey"}},
+	{"uplink_chunk_size", []string{"uplink_chunk_size", "uplinkChunkSize"}},
+	{"uplink_http_method", []string{"uplink_http_method", "uplinkHTTPMethod"}},
+	{"x_padding_key", []string{"x_padding_key", "xPaddingKey"}},
+	{"x_padding_header", []string{"x_padding_header", "xPaddingHeader"}},
+	{"x_padding_placement", []string{"x_padding_placement", "xPaddingPlacement"}},
+	{"x_padding_method", []string{"x_padding_method", "xPaddingMethod"}},
+}
+
+// xhttpRangeFields are sc*-fields the core expects as a "min-max" string but
+// which real subscriptions often send as a bare number (or a float like 30.0)
+// in the extra-JSON. xhttpGet normalizes those to strings before we read them.
+var xhttpRangeFields = []xhttpStringField{
+	{"sc_max_each_post_bytes", []string{"sc_max_each_post_bytes", "scMaxEachPostBytes"}},
+	{"sc_min_posts_interval_ms", []string{"sc_min_posts_interval_ms", "scMinPostsIntervalMs"}},
+}
+
+// xhttpTransportFromQuery builds a sing-box-lx "xhttp" (Xray splithttp) transport
+// from a VLESS/Trojan/VMess URI query. Distinct from "httpupgrade". Covers the
+// full SPEC 002 v2 field set: the base trio (mode/path/host), padding, placement
+// and key fields, x-padding obfs, and packet-up tuning. Values come from two
+// sources merged into one lookup: flat query params and the `extra` URL-encoded
+// JSON (extra wins for its keys). Value normalization is otherwise left to the
+// core. See SPEC 071 / sing-box-lx SPEC 002.
 func xhttpTransportFromQuery(q url.Values) map[string]interface{} {
+	src := xhttpMergeSource(q)
 	t := map[string]interface{}{"type": "xhttp"}
-	if v := strings.TrimSpace(queryGetFold(q, "mode")); v != "" {
+
+	if v := strings.TrimSpace(xhttpGet(src, q, "mode")); v != "" {
 		t["mode"] = v
 	}
-	if p := queryGetFold(q, "path"); p != "" {
+	if p := xhttpCleanPath(xhttpGet(src, q, "path")); p != "" {
 		t["path"] = p
 	}
-	if host := queryGetFold(q, "host"); host != "" {
+	if host := xhttpGet(src, q, "host"); host != "" {
 		t["host"] = host
 	}
-	if pad := xhttpPaddingFromQuery(q); pad != "" {
+	if pad := xhttpGetAny(src, q, "x_padding_bytes", "xPaddingBytes"); pad != "" {
 		t["x_padding_bytes"] = pad
 	}
-	if xhttpNoGRPCHeader(q) {
+	if xhttpBool(src, q, "no_grpc_header", "noGRPCHeader") {
 		t["no_grpc_header"] = true
+	}
+	if xhttpBool(src, q, "x_padding_obfs_mode", "xPaddingObfsMode") {
+		t["x_padding_obfs_mode"] = true
+	}
+	for _, f := range xhttpStringFields {
+		if v := xhttpGetAny(src, q, f.urlKeys...); v != "" {
+			t[f.jsonKey] = v
+		}
+	}
+	for _, f := range xhttpRangeFields {
+		if v := xhttpRange(xhttpGetAny(src, q, f.urlKeys...)); v != "" {
+			t[f.jsonKey] = v
+		}
 	}
 	return t
 }
 
-// xhttpPaddingFromQuery reads the padding spec under either the snake_case
-// (x_padding_bytes) or Xray camelCase (xPaddingBytes) key. queryGetFold is
-// case-insensitive but underscore vs camelCase are distinct spellings.
-func xhttpPaddingFromQuery(q url.Values) string {
-	for _, key := range []string{"x_padding_bytes", "xPaddingBytes"} {
-		if v := strings.TrimSpace(queryGetFold(q, key)); v != "" {
+// xhttpMergeSource decodes the `extra` query param (URL-encoded JSON) into a
+// flat map of stringified values. Numbers become their canonical string ("30.0"
+// → "30", "1000000" → "1000000"), bools become "true"/"false". Returns nil when
+// there is no usable extra. Flat query params are read separately via xhttpGet,
+// so this map only carries the extra-only keys.
+func xhttpMergeSource(q url.Values) map[string]string {
+	raw := strings.TrimSpace(queryGetFold(q, "extra"))
+	if raw == "" {
+		return nil
+	}
+	// queryGetFold returns the already percent-decoded value; the surviving
+	// payload is the JSON object itself. Guard against double-encoded inputs.
+	if !strings.HasPrefix(strings.TrimSpace(raw), "{") {
+		if dec, err := url.QueryUnescape(raw); err == nil {
+			raw = dec
+		}
+	}
+	var obj map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &obj); err != nil {
+		return nil
+	}
+	out := make(map[string]string, len(obj))
+	for k, v := range obj {
+		out[k] = xhttpStringifyJSON(v)
+	}
+	return out
+}
+
+// xhttpStringifyJSON renders a JSON scalar from `extra` as the string sing-box
+// wants. Floats drop a redundant ".0" (encoding/json decodes every JSON number
+// as float64), so 30.0 → "30" and 1000000 → "1000000" rather than "1e+06".
+func xhttpStringifyJSON(v interface{}) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case bool:
+		return strconv.FormatBool(val)
+	case float64:
+		return strconv.FormatFloat(val, 'f', -1, 64)
+	case nil:
+		return ""
+	default:
+		b, err := json.Marshal(val)
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	}
+}
+
+// xhttpGet reads a single key, preferring the extra-JSON source over the flat
+// query (SPEC 002 §1.5: extra wins for its keys). The flat lookup is
+// case-insensitive via queryGetFold.
+func xhttpGet(src map[string]string, q url.Values, key string) string {
+	if src != nil {
+		if v, ok := src[key]; ok && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	return strings.TrimSpace(queryGetFold(q, key))
+}
+
+// xhttpGetAny tries each spelling in order and returns the first non-empty value
+// from either source. Used for fields with both a snake_case and a camelCase
+// spelling.
+func xhttpGetAny(src map[string]string, q url.Values, keys ...string) string {
+	for _, k := range keys {
+		if v := xhttpGet(src, q, k); v != "" {
 			return v
 		}
 	}
 	return ""
 }
 
-// xhttpNoGRPCHeader reads the no_grpc_header flag (snake_case or Xray noGRPCHeader).
-func xhttpNoGRPCHeader(q url.Values) bool {
-	for _, key := range []string{"no_grpc_header", "noGRPCHeader"} {
-		v := strings.TrimSpace(strings.ToLower(queryGetFold(q, key)))
-		if v == "1" || v == "true" || v == "yes" {
-			return true
-		}
+// xhttpBool reads a flag under any of the given spellings, treating 1/true/yes
+// as true (case-insensitive).
+func xhttpBool(src map[string]string, q url.Values, keys ...string) bool {
+	v := strings.ToLower(xhttpGetAny(src, q, keys...))
+	return v == "1" || v == "true" || v == "yes"
+}
+
+// xhttpCleanPath strips a query-string tail from an XHTTP path. Real nodes ship
+// path=/GaMeOpTiMiZeR?ed=2048 — the part after `?` is not the path (SPEC 002
+// §4.1). The core normalizes the path itself, but the `?` is trimmed here.
+func xhttpCleanPath(p string) string {
+	p = strings.TrimSpace(p)
+	if i := strings.IndexByte(p, '?'); i >= 0 {
+		p = p[:i]
 	}
-	return false
+	return p
+}
+
+// xhttpRange normalizes an sc*-range value to the "min-max" string the core
+// wants. A bare number N is left as "N" (the core accepts "N" and "N-N" alike);
+// xhttpStringifyJSON has already dropped any ".0" float tail. Empty stays empty.
+func xhttpRange(v string) string {
+	return strings.TrimSpace(v)
 }
 
 // maxRealityShortIDHexLen is the maximum hex character count sing-box accepts for outbound
