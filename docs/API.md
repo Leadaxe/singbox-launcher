@@ -18,7 +18,7 @@ export API="http://127.0.0.1:9263"
 # 4. Проверить
 curl -s "$API/ping"                                    # → {"ok":true}    (без auth)
 curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
-# → {"launcher":"v1.1.5","singbox":"1.13.13-lx.6","api":"debugapi/v1"}
+# → {"launcher":"v1.1.5","singbox":"1.14.0-lx.1-rc.16","api":"debugapi/v1"}
 ```
 
 ---
@@ -49,7 +49,7 @@ The API is **self-describing** (SPEC 078): point an agent at the base URL with t
 | GET | `/ping` | — | `{"ok":true}` |
 | GET | `/` | ✓ | **Manifest** — `api`, `spec`, `launcher`, `core`, `auth`, `docs` (version-pinned link to this file), `hint`, `endpoints[]` (method/path/summary). |
 | GET | `/help` | ✓ | `{"endpoints":[{method,path,summary,auth}, …]}` — just the endpoint list. |
-| GET | `/version` | ✓ | `{"launcher":"v…","singbox":"1.13.13-lx.6","api":"debugapi/v1"}` |
+| GET | `/version` | ✓ | `{"launcher":"v…","singbox":"1.14.0-lx.1-rc.16","api":"debugapi/v1"}` |
 
 An authed request to any **unknown** path returns `404` with a `docs` pointer, so an agent that guessed wrong is nudged back to `/` and this file.
 
@@ -223,7 +223,7 @@ Response shape:
 {
   "captured_at": "2026-05-28T12:00:00Z",
   "launcher_version": "v1.1.5",
-  "singbox_version": "1.13.13-lx.6",
+  "singbox_version": "1.14.0-lx.1-rc.16",
   "files": { "state.json": "...", "config.json": "...", "wizard_template.json": "..." },
   "missing": [],
   "errors": []

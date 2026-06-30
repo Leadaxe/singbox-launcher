@@ -33,7 +33,7 @@
 **В объёме:**
 
 - Парсинг `type=xhttp` (VLESS/Trojan через `uriTransportFromQuery`) и `network=xhttp` (VMess) в honest sing-box `transport.type=xhttp` — **только** при условии, что ядро это поддерживает (см. § Риски про fallback-политику).
-- Извлечение и проброс XHTTP-полей в transport-map: `mode`, `host`, `path`, `headers`, `x_padding_bytes`, `no_grpc_header`.
+- Извлечение и проброс XHTTP-полей в transport-map. Базовый набор: `mode`, `host`, `path`, `headers`, `x_padding_bytes`, `no_grpc_header`. **Расширено до полного набора sing-box-lx SPEC 002 v2** (реализовано): placement/key-поля (`session_placement`, `session_key`, `seq_placement`, `seq_key`, `uplink_data_placement`, `uplink_data_key`, `uplink_chunk_size`, `uplink_http_method`), блок X-Padding obfs (`x_padding_obfs_mode`, `x_padding_key`, `x_padding_header`, `x_padding_placement`, `x_padding_method`), packet-up tuning (`sc_max_each_post_bytes`, `sc_min_posts_interval_ms`); источник полей — плоские query **и** `extra` (URL-encoded JSON, приоритет у `extra`).
 - Эмиссия этих полей в `config.json` через `appendOutboundTransportParts`.
 - Корректный round-trip обратно в share-URI: sing-box `xhttp` → URI `type=xhttp` (а не нынешнее `httpupgrade → type=xhttp`).
 - Отображение/редактирование XHTTP-транспорта в Outbounds-редакторе через Raw-JSON-таб (минимум) — verify, что схема не теряется при load/save в редакторе.
@@ -100,7 +100,7 @@
 }
 ```
 
-**URI-параметры (что читаем из подписки):** `type=xhttp`, `mode=auto|packet-up|stream-up|stream-one`, `path`, `host`, `xPaddingBytes` / `x_padding_bytes`, `noGRPCHeader` / `no_grpc_header`. Чтение — через существующий `queryGetFold` (case-insensitive, `node_parser_transport.go:12`), нормализация значений — лежит на ядре.
+**URI-параметры (что читаем из подписки):** базовые — `type=xhttp`, `mode=auto|packet-up|stream-up|stream-one`, `path`, `host`, `xPaddingBytes` / `x_padding_bytes`, `noGRPCHeader` / `no_grpc_header`. **v2 (реализовано, sing-box-lx SPEC 002):** placement/key (`sessionPlacement`, `sessionKey`, `seqPlacement`, `seqKey`, `uplinkDataPlacement`, `uplinkDataKey`, `uplinkChunkSize`, `uplinkHTTPMethod`), X-Padding obfs (`xPaddingObfsMode`, `xPaddingKey`, `xPaddingHeader`, `xPaddingPlacement`, `xPaddingMethod`), sc-tuning (`scMaxEachPostBytes`, `scMinPostsIntervalMs`); плюс `extra` — URL-encoded JSON-блоб (приоритет над плоскими). Чтение плоских — через `queryGetFold` (case-insensitive), `extra` — через `xhttpMergeSource`; нормализация на стороне лаунчера (числа → строки, обрезка `?`-хвоста у `path` через `xhttpCleanPath`), остальное — на ядре. `scMaxConcurrentPosts` и server-only — accept-but-ignore.
 
 ## Фазы
 
