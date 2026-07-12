@@ -94,5 +94,13 @@
 - **074** — фича завершена (F-C): TUIC_PROTOCOL (TUIC v5, v1.1.2; **SPECS/074-F-C-TUIC_PROTOCOL/**)
 - **075** — фича завершена (F-C): AMNEZIA_VPN_IMPORT (импорт `vpn://`-профилей Amnezia — base64url + qCompress + JSON → WG/AWG-узел, v1.1.3; **SPECS/075-F-C-AMNEZIA_VPN_IMPORT/**)
 - **076** — фича завершена (F-C): WGCONF_PASTE_IMPORT (вставка голого `[Interface]/[Peer]`-текста в поле Add, v1.1.3; **SPECS/076-F-C-WGCONF_PASTE_IMPORT/**)
+- **083** — баг диагностика (B-W): RUTRACKER_SSL_RECORD_TOO_LONG — `SSL_ERROR_RX_RECORD_TOO_LONG` = не дефект туннеля/кода: `rutracker.org` в geosite-ru-blocked → direct → DPI-заглушка РКН вместо TLS. Amnezia открывает (full-tunnel). Диагностика+рекомендации, решение за владельцем.
+- **084** — фича (F-O, backend): WARP_GENERATOR — `core/warp` регистрация Cloudflare API (X25519 on-device), AWG-обфускация, endpoint-пул; +парсер `reserved`/`ip/id/ib`. e2e `sing-box check` OK. UI-визард — 084.1.
+- **085** — фича (F-O, backend): FAKEIP — пресет `fakeip` + `PresetDNSServer.Inet4/6Range` + `store_fakeip`. HTTPS/SVCB-блок — **085.1** (`dns_rules`-plural, нужен live-GUI).
+- **086** — фича (F-N, блокирован пином): MASQUE_WARP_INTEGRATION — MASQUE есть в ядре (SPEC 021, lx.2+), лаунчер на rc.17. Контракт зафиксирован; предусловие — бамп пина rc.17→lx.3.
+- **087** — рефактор/фича (R-N, spec-only): CHANNELS_MODEL — порт LxBox §125/§267; Channels как отдельное top-level state-поле, материализация на build-time. XL, нужен live-GUI + миграции.
+- **088** — фича (F-O): LOADBALANCING — generator round_robin/balancer + sentinel-guard + детерминированный emit (реализовано); UI-контролы — 088.1.
+- **089** — фича (F-N, spec-only): DEEP_RULES — структурный редактор выражений (logical and/or/invert), `editor_mode` в Params, декомпозиция add_rule_dialog. L, UI-heavy.
+- **090** — фича (F-N, spec-only): PRESET_LANGUAGE — `#if` уже общий с LxBox; конвертер-импорт (bundled 8 уже нативны) отложен; документ shared-формата.
 
 Подробное описание каждой задачи — в SPEC.md соответствующей папки.
