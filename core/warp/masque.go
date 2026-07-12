@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -57,6 +59,57 @@ func GenerateECDSAKeypair() (privDER string, pubDER string, err error) {
 	}
 	return base64.StdEncoding.EncodeToString(privBytes),
 		base64.StdEncoding.EncodeToString(pubBytes), nil
+}
+
+// ToMasqueURI builds a masque:// share URI for the account (the launcher parser
+// turns it back into a masque outbound). Mirrors the LxBox toMasqueUri contract:
+// masque://<privDER>@<server>:<port>?publickey=&address=&profile=cloudflare
+//   &network=&mtu=[&sni=][&idle_timeout=][&keep_alive=]#tag
+func (a *MasqueAccount) ToMasqueURI() (string, error) {
+	if a.PrivateKeyDER == "" || a.ServerPubDER == "" {
+		return "", fmt.Errorf("warp masque: missing key material")
+	}
+	if a.ClientV4 == "" && a.ClientV6 == "" {
+		return "", fmt.Errorf("warp masque: missing interface address")
+	}
+	network := a.Network
+	if network == "" {
+		network = "h3"
+	}
+	port := a.Port
+	if port == 0 {
+		port = 443
+	}
+	addrs := make([]string, 0, 2)
+	if a.ClientV4 != "" {
+		addrs = append(addrs, ensureCIDR(a.ClientV4, false))
+	}
+	if a.ClientV6 != "" {
+		addrs = append(addrs, ensureCIDR(a.ClientV6, true))
+	}
+	q := url.Values{}
+	q.Set("publickey", a.ServerPubDER)
+	q.Set("address", strings.Join(addrs, ","))
+	q.Set("profile", "cloudflare")
+	q.Set("network", network)
+	q.Set("mtu", strconv.Itoa(warpMTU))
+	if a.SNI != "" {
+		q.Set("sni", a.SNI)
+	}
+	if a.IdleTimeout != "" {
+		q.Set("idle_timeout", a.IdleTimeout)
+	}
+	if a.KeepAlive != "" {
+		q.Set("keep_alive", a.KeepAlive)
+	}
+	u := &url.URL{
+		Scheme:   "masque",
+		User:     url.User(a.PrivateKeyDER),
+		Host:     a.Server + ":" + strconv.Itoa(port),
+		RawQuery: q.Encode(),
+		Fragment: a.DisplayTag(),
+	}
+	return u.String(), nil
 }
 
 // ToMasqueOutbound builds the sing-box masque outbound map from the account,
