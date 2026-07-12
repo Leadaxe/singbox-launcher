@@ -274,6 +274,47 @@
       "separator": true
     },
     {
+      "name": "tls_fragment",
+      "type": "bool",
+      "wizard_ui": "edit",
+      "title": "TLS fragment (anti-DPI)",
+      "tooltip": "Split the TLS ClientHello across packets so a DPI cannot match the SNI in one read. Applied to first-hop TLS proxy outbounds. Helps against RU/TSPU SNI blocking. sing-box tls.fragment.",
+      "default_value": "false"
+    },
+    {
+      "name": "tls_record_fragment",
+      "type": "bool",
+      "wizard_ui": "edit",
+      "title": "TLS record fragment",
+      "tooltip": "Split every TLS record, not just the ClientHello (stronger, slightly slower). sing-box tls.record_fragment. Use with TLS fragment.",
+      "default_value": "false",
+      "if": [
+        "@tls_fragment"
+      ]
+    },
+    {
+      "name": "tls_fragment_fallback_delay",
+      "type": "text",
+      "wizard_ui": "edit",
+      "title": "Fragment fallback delay",
+      "tooltip": "sing-box tls.fragment_fallback_delay — delay before falling back if fragmentation stalls (e.g. 500ms). Leave empty for the core default.",
+      "default_value": "",
+      "if": [
+        "@tls_fragment"
+      ]
+    },
+    {
+      "name": "tls_mixed_case_sni",
+      "type": "bool",
+      "wizard_ui": "edit",
+      "title": "Mixed-case SNI",
+      "tooltip": "Randomize the letter case of the SNI hostname. TLS SNI is case-insensitive (RFC 6066) so servers accept it, but a case-sensitive DPI blocklist match is defeated. Punycode labels are left intact.",
+      "default_value": "false"
+    },
+    {
+      "separator": true
+    },
+    {
       "name": "urltest_url",
       "type": "text",
       "wizard_ui": "edit",
