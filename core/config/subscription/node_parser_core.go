@@ -28,6 +28,7 @@ func IsDirectLink(input string) bool {
 		strings.HasPrefix(trimmed, "ssh://") ||
 		strings.HasPrefix(trimmed, "wireguard://") ||
 		strings.HasPrefix(trimmed, "awg://") ||
+		strings.HasPrefix(trimmed, "masque://") ||
 		strings.HasPrefix(trimmed, "vpn://") ||
 		strings.HasPrefix(trimmed, "socks5://") ||
 		strings.HasPrefix(trimmed, "socks://") ||
@@ -45,6 +46,13 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	// MaxURILength; parseAmneziaVPNLink enforces its own size caps.
 	if strings.HasPrefix(uri, "vpn://") {
 		return parseAmneziaVPNLink(uri, skipFilters)
+	}
+
+	// MASQUE (CONNECT-IP / WARP) wraps full key material in the URI like
+	// wireguard://; dispatch to its own parser (builds the endpoint directly).
+	// Requires core >= lx.2 (masque outbound; launcher pins lx.3).
+	if strings.HasPrefix(uri, "masque://") {
+		return parseMasqueURI(uri, skipFilters)
 	}
 
 	// Validate URI length
