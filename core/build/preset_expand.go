@@ -51,6 +51,11 @@ type PresetFragments struct {
 	// DNSRule — dns rule (preset.dns_rule). nil если нет / if=false / dangling.
 	DNSRule map[string]interface{}
 
+	// DNSRules — упорядоченный список dns rules (preset.dns_rules, SPEC 085.1).
+	// Разворачиваются в порядке; predefined/action-правила (без server)
+	// сохраняются. Пусто если preset их не определяет.
+	DNSRules []map[string]interface{}
+
 	// DNSServers — bundled DNS-серверы, отфильтрованные через @dns_server var.
 	// Только tag'и упомянутые в emit'ах попадают сюда. С префиксом `<preset_id>:`.
 	DNSServers []map[string]interface{}
@@ -181,38 +186,24 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string, goos, goa
 		}
 	}
 
-	// === 5. Resolve dns_rule ===
+	// === 5. Resolve dns_rule (singular) + dns_rules (plural, SPEC 085.1) ===
 	if preset.DNSRule != nil {
-		dnsIf, dnsIfOr := extractIfFromMap(preset.DNSRule)
-		if evalIf(dnsIf, dnsIfOr, varsMap) {
-			raw, err := deepCopyMap(preset.DNSRule)
-			if err != nil {
-				warnings = append(warnings, ExpandWarning{preset.ID,
-					fmt.Sprintf("deep copy dns_rule: %v", err)})
-			} else {
-				substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, goos, goarch)
-				if !ok {
-					warnings = append(warnings, ExpandWarning{preset.ID, "unresolved @var in dns_rule"})
-					return nil, warnings, false
-				}
-				m, _ := substituted.(map[string]interface{})
-				delete(m, "if")
-				delete(m, "if_or")
-				rewriteRuleSetRefs(m, preset.ID, emittedTags)
-				// dns_rule.server — может быть локальный bundled tag (без префикса), prefix'ить.
-				if srv, ok := m["server"].(string); ok && srv != "" && !strings.HasPrefix(srv, "@") {
-					// Check if it matches bundled tag.
-					for _, ds := range preset.DNSServers {
-						if ds.Tag == srv {
-							m["server"] = preset.ID + TagSeparator + srv
-							break
-						}
-					}
-				}
-				if !isDNSRuleEmpty(m, emittedTags) {
-					frags.DNSRule = m
-				}
-			}
+		if m, ok, fatal := expandOnePresetDNSRule(preset, preset.DNSRule, varsMap, emittedTags, goos, goarch, &warnings); fatal {
+			return nil, warnings, false
+		} else if ok {
+			frags.DNSRule = m
+		}
+	}
+	for _, dr := range preset.DNSRules {
+		if dr == nil {
+			continue
+		}
+		m, ok, fatal := expandOnePresetDNSRule(preset, dr, varsMap, emittedTags, goos, goarch, &warnings)
+		if fatal {
+			return nil, warnings, false
+		}
+		if ok {
+			frags.DNSRules = append(frags.DNSRules, m)
 		}
 	}
 
@@ -468,6 +459,15 @@ func isDNSRuleEmpty(m map[string]interface{}, _ map[string]bool) bool {
 	if m == nil {
 		return true
 	}
+	// SPEC 085.1: an action rule (predefined / reject / route-options) is valid
+	// WITHOUT a server — e.g. FakeIP's HTTPS/SVCB predefined block. A rule
+	// carrying an `action` or a `query_type` matcher is never "empty".
+	if _, hasAction := m["action"]; hasAction {
+		return false
+	}
+	if _, hasQT := m["query_type"]; hasQT {
+		return false
+	}
 	if _, ok := m["server"]; !ok {
 		return true
 	}
@@ -479,6 +479,45 @@ func isDNSRuleEmpty(m map[string]interface{}, _ map[string]bool) bool {
 		matchFields++
 	}
 	return matchFields == 0
+}
+
+// expandOnePresetDNSRule resolves one preset DNS rule map: evaluates its `if`,
+// deep-copies, substitutes @vars, strips if/if_or, rewrites rule_set refs, and
+// prefixes a bundled server tag. Returns (rule, ok, fatal): ok=false when the
+// rule is gated off or empty; fatal=true on an unresolved @var (caller aborts
+// the whole preset). Shared by the singular dns_rule and the plural dns_rules.
+func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{}, varsMap map[string]string, emittedTags map[string]bool, goos, goarch string, warnings *[]ExpandWarning) (map[string]interface{}, bool, bool) {
+	dnsIf, dnsIfOr := extractIfFromMap(src)
+	if !evalIf(dnsIf, dnsIfOr, varsMap) {
+		return nil, false, false
+	}
+	raw, err := deepCopyMap(src)
+	if err != nil {
+		*warnings = append(*warnings, ExpandWarning{preset.ID, fmt.Sprintf("deep copy dns_rule: %v", err)})
+		return nil, false, false
+	}
+	substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, goos, goarch)
+	if !ok {
+		*warnings = append(*warnings, ExpandWarning{preset.ID, "unresolved @var in dns_rule"})
+		return nil, false, true
+	}
+	m, _ := substituted.(map[string]interface{})
+	delete(m, "if")
+	delete(m, "if_or")
+	rewriteRuleSetRefs(m, preset.ID, emittedTags)
+	// dns_rule.server — может быть локальный bundled tag (без префикса), prefix'ить.
+	if srv, ok := m["server"].(string); ok && srv != "" && !strings.HasPrefix(srv, "@") {
+		for _, ds := range preset.DNSServers {
+			if ds.Tag == srv {
+				m["server"] = preset.ID + TagSeparator + srv
+				break
+			}
+		}
+	}
+	if isDNSRuleEmpty(m, emittedTags) {
+		return nil, false, false
+	}
+	return m, true, false
 }
 
 // deepCopy — JSON round-trip копия любой структуры.

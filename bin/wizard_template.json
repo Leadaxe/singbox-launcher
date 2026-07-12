@@ -1324,6 +1324,13 @@
           "default": "fc00::/18",
           "title": "IPv6 fake range",
           "tooltip": "CIDR pool for synthetic IPv6 answers (sing-box dns fakeip inet6_range)."
+        },
+        {
+          "name": "force",
+          "type": "bool",
+          "title": "Block HTTPS/SVCB records",
+          "default": "true",
+          "tooltip": "Answer HTTPS/SVCB (HTTP/3 & ECH hint) queries as empty so browsers fall back to A/AAAA and cannot bypass FakeIP via an ipv4hint. Recommended on."
         }
       ],
       "dns_servers": [
@@ -1336,13 +1343,26 @@
           "description": "Synthetic-IP DNS server (sing-box type fakeip)."
         }
       ],
-      "dns_rule": {
-        "query_type": [
-          "A",
-          "AAAA"
-        ],
-        "server": "@dns_server"
-      }
+      "dns_rules": [
+        {
+          "query_type": [
+            "HTTPS",
+            "SVCB"
+          ],
+          "action": "predefined",
+          "rcode": "NOERROR",
+          "if": [
+            "@force"
+          ]
+        },
+        {
+          "query_type": [
+            "A",
+            "AAAA"
+          ],
+          "server": "@dns_server"
+        }
+      ]
     },
     {
       "id": "split-all-traffic",

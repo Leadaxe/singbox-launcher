@@ -24,8 +24,14 @@ func TestResolveDNS_FakeIPPreset(t *testing.T) {
 		"dns_servers": [
 			{"tag": "fakeip", "type": "fakeip", "inet4_range": "@inet4_range", "inet6_range": "@inet6_range"}
 		],
-		"dns_rule": {"query_type": ["A","AAAA"], "server": "@dns_server"}
+		"dns_rules": [
+			{"query_type": ["HTTPS","SVCB"], "action": "predefined", "rcode": "NOERROR", "if": ["@force"]},
+			{"query_type": ["A","AAAA"], "server": "@dns_server"}
+		]
 	}]`
+	presetsJSON = strings.Replace(presetsJSON,
+		`{"name": "inet6_range", "type": "text", "default": "fc00::/18"}`,
+		`{"name": "inet6_range", "type": "text", "default": "fc00::/18"},`+"\n\t\t\t"+`{"name": "force", "type": "bool", "default": "true"}`, 1)
 	td := makeTestTD(t, presetsJSON)
 	st := &state.State{
 		Rules: []state.Rule{
@@ -58,21 +64,44 @@ func TestResolveDNS_FakeIPPreset(t *testing.T) {
 		t.Errorf("inet6_range = %v, want fc00::/18", got)
 	}
 
-	// A/AAAA rule pointing at the prefixed fakeip server.
-	var found bool
+	// Two preset DNS rules in order (SPEC 085.1): HTTPS/SVCB predefined block
+	// first, then A/AAAA → fakeip:fakeip.
+	var preset []ResolvedDNSRule
 	for _, r := range got.Rules {
-		if r.Source != DNSSourcePreset {
-			continue
+		if r.Source == DNSSourcePreset {
+			preset = append(preset, r)
 		}
-		srv, _ := r.Body["server"].(string)
-		if srv == "fakeip:fakeip" {
-			qt, _ := json.Marshal(r.Body["query_type"])
-			if strings.Contains(string(qt), "A") {
-				found = true
+	}
+	if len(preset) != 2 {
+		t.Fatalf("expected 2 preset DNS rules, got %d: %+v", len(preset), preset)
+	}
+	// rule 0: predefined block, no server
+	if preset[0].Body["action"] != "predefined" || preset[0].Body["rcode"] != "NOERROR" {
+		t.Errorf("rule 0 should be predefined NOERROR: %+v", preset[0].Body)
+	}
+	if _, hasServer := preset[0].Body["server"]; hasServer {
+		t.Errorf("predefined block must NOT carry a server: %+v", preset[0].Body)
+	}
+	// rule 1: A/AAAA → fakeip:fakeip
+	if preset[1].Body["server"] != "fakeip:fakeip" {
+		t.Errorf("rule 1 server = %v, want fakeip:fakeip", preset[1].Body["server"])
+	}
+
+	// force=false drops the HTTPS/SVCB block → only the A/AAAA rule remains.
+	st2 := &state.State{Rules: []state.Rule{
+		{Kind: state.RuleKindPreset, Ref: "fakeip", Enabled: true, Body: json.RawMessage(`{"vars":{"force":"false"}}`)},
+	}}
+	got2 := ResolveDNS(st2, td, nil)
+	presetCount := 0
+	for _, r := range got2.Rules {
+		if r.Source == DNSSourcePreset {
+			presetCount++
+			if r.Body["action"] == "predefined" {
+				t.Errorf("force=false must drop the predefined block")
 			}
 		}
 	}
-	if !found {
-		t.Errorf("A/AAAA→fakeip DNS rule not emitted; rules=%+v", got.Rules)
+	if presetCount != 1 {
+		t.Errorf("force=false should leave 1 preset rule, got %d", presetCount)
 	}
 }

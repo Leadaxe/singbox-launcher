@@ -48,3 +48,27 @@
 
 `dns_rules`-plural — правильное решение с малым радиусом, но затрагивает DNS save/load ordering,
 где unit-зелёный ≠ ship-ready. Владелец/следующая сессия лендят с GUI-верификацией.
+
+---
+
+## РЕАЛИЗОВАНО 2026-07-12
+
+Backend завершён и проверен (оба DNS-пути, один toggle на пресет — ordering-машинерия
+SPEC 062 не тронута):
+- `preset_types.go` +`DNSRules []map`; `preset_lite.go` `PresetHasDNSRule` учитывает plural.
+- `preset_expand.go` +`PresetFragments.DNSRules` + `expandOnePresetDNSRule` helper; `isDNSRuleEmpty`
+  релаксирован для `action`/`query_type` (predefined без server валиден).
+- `resolve_dns.go` `presetDNSRulesByID map[string][]ResolvedDNSRule`; Pass 3b/4/fallback
+  эмитят все правила слота в порядке. Удалён мёртвый `evalIfFromRuleMap`.
+- `bin/wizard_template.json` fakeip → `dns_rules:[HTTPS/SVCB predefined (if @force), A/AAAA→fakeip]`
+  + var `force` (default true).
+- UI-превью (`dns_user_rules`, `dns_unified_rules`, `preset_ref_edit_dialog`) итерируют DNSRules.
+
+**Проверка:** `go test ./core/build/ ./core/template/` OK (russian singular не сломан;
+`TestResolveDNS_FakeIPPreset` проверяет порядок 2 правил + force=false дропает блок).
+`sing-box check` 2-правильного FakeIP-конфига — OK на **rc.17 И lx.3**. `go vet` OK.
+
+**Осталось (GUI-gate перед релизом):** live-smoke DNS-таба — включить fakeip, проверить что
+слот показывает оба правила (View JSON), toggle/reorder переживают Save/Load. Backend не
+меняет state.DNS.Rules-slot-модель (один Ref на пресет), так что риск ordering минимизирован,
+но GUI-round-trip DNS-save обязателен по протоколу SPEC 062.

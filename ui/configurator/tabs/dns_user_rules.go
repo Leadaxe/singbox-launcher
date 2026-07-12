@@ -494,10 +494,15 @@ func showViewAllDNSRulesDialog(presenter *wizardpresentation.WizardPresenter, pa
 				continue
 			}
 			frags, _, ok := build.ExpandPreset(tpl, pr.Vars, runtime.GOOS, runtime.GOARCH)
-			if !ok || frags.DNSRule == nil {
+			if !ok {
 				continue
 			}
-			allRules = append(allRules, frags.DNSRule)
+			// SPEC 085.1: a preset may bundle several DNS rules (singular
+			// DNSRule + plural DNSRules) behind one slot; materialize all.
+			if frags.DNSRule != nil {
+				allRules = append(allRules, frags.DNSRule)
+			}
+			allRules = append(allRules, frags.DNSRules...)
 		case wizardmodels.DNSSlotKindUser:
 			if slot.Index < 0 || slot.Index >= len(m.DNSUserRules) {
 				continue

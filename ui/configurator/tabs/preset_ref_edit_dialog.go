@@ -433,6 +433,9 @@ func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]strin
 	if frags.DNSRule != nil {
 		preview["dns_rule"] = frags.DNSRule
 	}
+	if len(frags.DNSRules) > 0 { // SPEC 085.1: bundled multi-rule DNS (e.g. FakeIP)
+		preview["dns_rules"] = frags.DNSRules
+	}
 	if len(frags.DNSServers) > 0 {
 		preview["dns_servers"] = frags.DNSServers
 	}
