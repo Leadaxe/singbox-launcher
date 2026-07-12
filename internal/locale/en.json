@@ -730,5 +730,21 @@
   "wizard.outbound.flag_picker.invalid_regex": "Invalid regex",
   "wizard.outbound.flag_picker.exclude": "Exclude these flags instead (negation)",
   "wizard.outbound.flag_picker.apply": "Apply",
-  "wizard.outbound.flag_picker.cancel": "Cancel"
+  "wizard.outbound.flag_picker.cancel": "Cancel",
+  "wizard.source.button_add_warp": "Add WARP",
+  "wizard.warp.title": "Generate Cloudflare WARP",
+  "wizard.warp.intro": "Registers a new anonymous WARP account. The key is generated on this device — only the public key is sent to Cloudflare.",
+  "wizard.warp.transport_label": "Transport",
+  "wizard.warp.transport_awg": "AmneziaWG (obfuscated, anti-DPI)",
+  "wizard.warp.transport_plain": "WireGuard (plain)",
+  "wizard.warp.random_endpoint": "Random endpoint (bypass the blocked default)",
+  "wizard.warp.license_label": "WARP+ license",
+  "wizard.warp.license_placeholder": "optional — leave empty for free WARP",
+  "wizard.warp.button_create": "Create",
+  "wizard.warp.button_cancel": "Cancel",
+  "wizard.warp.registering_title": "Registering WARP…",
+  "wizard.warp.registering_msg": "Contacting Cloudflare and generating keys.",
+  "wizard.warp.error_register": "WARP registration failed",
+  "wizard.warp.done_title": "WARP added",
+  "wizard.warp.done_msg": "The WARP node was added to Sources. Click Add-list / rebuild to use it."
 }

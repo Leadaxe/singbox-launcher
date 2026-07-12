@@ -730,5 +730,21 @@
   "wizard.outbound.flag_picker.invalid_regex": "Невалидный regex",
   "wizard.outbound.flag_picker.exclude": "Исключить эти флаги (negation)",
   "wizard.outbound.flag_picker.apply": "Применить",
-  "wizard.outbound.flag_picker.cancel": "Отмена"
+  "wizard.outbound.flag_picker.cancel": "Отмена",
+  "wizard.source.button_add_warp": "Добавить WARP",
+  "wizard.warp.title": "Генерация Cloudflare WARP",
+  "wizard.warp.intro": "Регистрирует новый анонимный аккаунт WARP. Ключ генерируется на этом устройстве — в Cloudflare уходит только публичный ключ.",
+  "wizard.warp.transport_label": "Транспорт",
+  "wizard.warp.transport_awg": "AmneziaWG (обфускация, обход DPI)",
+  "wizard.warp.transport_plain": "WireGuard (обычный)",
+  "wizard.warp.random_endpoint": "Случайный endpoint (обход заблокированного по умолчанию)",
+  "wizard.warp.license_label": "Лицензия WARP+",
+  "wizard.warp.license_placeholder": "необязательно — пусто для бесплатного WARP",
+  "wizard.warp.button_create": "Создать",
+  "wizard.warp.button_cancel": "Отмена",
+  "wizard.warp.registering_title": "Регистрация WARP…",
+  "wizard.warp.registering_msg": "Связь с Cloudflare и генерация ключей.",
+  "wizard.warp.error_register": "Не удалось зарегистрировать WARP",
+  "wizard.warp.done_title": "WARP добавлен",
+  "wizard.warp.done_msg": "Узел WARP добавлен в Sources. Нажмите добавление в список / пересборку, чтобы использовать."
 }

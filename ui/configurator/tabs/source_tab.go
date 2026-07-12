@@ -174,6 +174,12 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		wizarddialogs.ShowGetFreeVPNDialog(presenter)
 	})
 
+	// SPEC 084.1: «Add WARP» — генератор Cloudflare WARP. Регистрирует аккаунт и
+	// отдаёт готовый wireguard://-URI в тот же Add-путь, что и ручная вставка.
+	addWarpButton := widget.NewButton(locale.T("wizard.source.button_add_warp"), func() {
+		wizarddialogs.ShowAddWarpDialog(presenter, applyAddedSources)
+	})
+
 	// Limit width and height of URL input field (3 lines)
 	// Wrap MultiLineEntry in Scroll container to show scrollbars; right gutter for scrollbar strip
 	urlURIGutter := components.NewScrollGutter()
@@ -194,6 +200,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	urlHeader := container.NewHBox(
 		urlLabel,
 		layout.NewSpacer(),
+		addWarpButton,
 		addFromFileButton,
 		getFreeVPNButton,
 	)
