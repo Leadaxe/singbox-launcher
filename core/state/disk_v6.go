@@ -53,6 +53,7 @@ type diskStateV6 struct {
 	Meta        MetaSection        `json:"meta"`
 	Connections ConnectionsSection `json:"connections"`
 	Rules       []Rule             `json:"rules"`
+	Channels    []Channel          `json:"channels,omitempty"` // SPEC 087
 	Vars        []SettingVar       `json:"vars,omitempty"`
 	DNSOptions  DNSOptions         `json:"dns_options"`
 }

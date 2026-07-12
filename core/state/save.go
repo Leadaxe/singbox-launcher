@@ -111,6 +111,7 @@ func (s *State) marshalDisk() ([]byte, error) {
 		},
 		Connections: s.Connections,
 		Rules:       s.Rules,
+		Channels:    s.Channels,
 		Vars:        s.Vars,
 		DNSOptions:  s.DNS,
 	}
