@@ -39,6 +39,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"singbox-launcher/core/config/subscription"
@@ -515,12 +516,21 @@ func GenerateSelectorWithFilteredAddOutbounds(
 		}
 	}
 
-	// 6. Other options (in order they appear)
-	for key, value := range outboundConfig.Options {
+	// 6. Other options — emitted in sorted key order for a deterministic config.
+	// A map range is unordered, which makes byte-exact golden fixtures flaky
+	// (e.g. urltest mode/balancer pair swapping position); sorting fixes that
+	// and is harmless for sing-box (object key order is not significant).
+	sanitizeBalancerOptions(outboundConfig.Options)
+	optKeys := make([]string, 0, len(outboundConfig.Options))
+	for key := range outboundConfig.Options {
 		if key != "interrupt_exist_connections" {
-			valJSON, _ := json.Marshal(value)
-			parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), string(valJSON)))
+			optKeys = append(optKeys, key)
 		}
+	}
+	sort.Strings(optKeys)
+	for _, key := range optKeys {
+		valJSON, _ := json.Marshal(outboundConfig.Options[key])
+		parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), string(valJSON)))
 	}
 
 	// Build final JSON
@@ -534,6 +544,40 @@ func GenerateSelectorWithFilteredAddOutbounds(
 	result += fmt.Sprintf("\t%s,", jsonStr)
 
 	return result, nil
+}
+
+// sanitizeBalancerOptions enforces the sing-box-lx urltest load-balancing
+// sentinel contract before emit (SPEC 088 / core SPEC 019). The core treats a
+// balancer.sticky_hash of length 0 as "omitted" → default stickiness
+// (["process","domain"]), NOT as "off". Stickiness is disabled only by the
+// explicit sentinel ["none"]. So a bare empty sticky_hash ([]) in the options
+// is meaningless and misleading: drop it, letting the core apply its default.
+// A malformed balancer (not a map) is left untouched — sing-box check will
+// reject it before RebuildConfigIfDirty writes the config (fail-closed).
+func sanitizeBalancerOptions(opts map[string]interface{}) {
+	if opts == nil {
+		return
+	}
+	balancer, ok := opts["balancer"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	sh, ok := balancer["sticky_hash"]
+	if !ok {
+		return
+	}
+	empty := false
+	switch v := sh.(type) {
+	case []interface{}:
+		empty = len(v) == 0
+	case []string:
+		empty = len(v) == 0
+	case nil:
+		empty = true
+	}
+	if empty {
+		delete(balancer, "sticky_hash")
+	}
 }
 
 // GenerateEndpointJSON returns a single JSON object string for one WireGuard endpoint (sing-box endpoints array).
