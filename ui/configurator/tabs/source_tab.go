@@ -196,13 +196,17 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		urlEntryScroll,
 	)
 
-	// Header row: label + add-from-file + community-picker buttons on the right.
-	urlHeader := container.NewHBox(
-		urlLabel,
-		layout.NewSpacer(),
+	// Header row: label on the left; the three add-source actions (Add WARP,
+	// Add from file, Free community servers) stacked vertically on the right.
+	urlActionButtons := container.NewVBox(
 		addWarpButton,
 		addFromFileButton,
 		getFreeVPNButton,
+	)
+	urlHeader := container.NewHBox(
+		urlLabel,
+		layout.NewSpacer(),
+		urlActionButtons,
 	)
 
 	// URL field with Add button on the right, vertically centered with the field.
