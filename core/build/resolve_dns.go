@@ -495,6 +495,13 @@ func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []templa
 	if ds.TLS != nil {
 		body["tls"] = ds.TLS
 	}
+	// FakeIP (SPEC 085): CIDR ranges for type:"fakeip". Passed through as-is.
+	if ds.Inet4Range != "" {
+		body["inet4_range"] = ds.Inet4Range
+	}
+	if ds.Inet6Range != "" {
+		body["inet6_range"] = ds.Inet6Range
+	}
 	// SPEC 067 Phase 8: substitutePresetBody → SubstituteVarsInJSONStrict.
 	substituted, ok := substitutePresetBody(body, presetVars, varsMap, goos, goarch)
 	if !ok {

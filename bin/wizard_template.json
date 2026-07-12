@@ -18,22 +18,40 @@
         "required": true,
         "tag": "proxy-out",
         "type": "selector",
-        "options": {"interrupt_exist_connections": true, "default": "auto-proxy-out"},
-        "addOutbounds": ["direct-out", "auto-proxy-out"],
+        "options": {
+          "interrupt_exist_connections": true,
+          "default": "auto-proxy-out"
+        },
+        "addOutbounds": [
+          "direct-out",
+          "auto-proxy-out"
+        ],
         "comment": "Proxy group for everything that should go through VPN."
       },
       {
         "tag": "vpn ①",
         "type": "selector",
-        "options": {"default": "proxy-out", "interrupt_exist_connections": true},
-        "addOutbounds": ["direct-out", "proxy-out"],
+        "options": {
+          "default": "proxy-out",
+          "interrupt_exist_connections": true
+        },
+        "addOutbounds": [
+          "direct-out",
+          "proxy-out"
+        ],
         "comment": "Proxy group 1"
       },
       {
         "tag": "vpn ②",
         "type": "selector",
-        "options": {"default": "proxy-out", "interrupt_exist_connections": true},
-        "addOutbounds": ["direct-out", "proxy-out"],
+        "options": {
+          "default": "proxy-out",
+          "interrupt_exist_connections": true
+        },
+        "addOutbounds": [
+          "direct-out",
+          "proxy-out"
+        ],
         "comment": "Proxy group 2"
       }
     ],
@@ -43,60 +61,177 @@
     }
   },
   "vars": [
-    {"name": "tun", "type": "bool", "wizard_ui": "edit", "title": "Enable TUN", "tooltip": "Route traffic through sing-box TUN inbound. Requires administrator privileges. If you disable TUN, enable Proxy-in below and point your browser/system to that proxy — otherwise no traffic will flow through sing-box.",
-      "default_value": {"windows": "true", "linux": "true", "darwin": "true", "default": "false"}
+    {
+      "name": "tun",
+      "type": "bool",
+      "wizard_ui": "edit",
+      "title": "Enable TUN",
+      "tooltip": "Route traffic through sing-box TUN inbound. Requires administrator privileges. If you disable TUN, enable Proxy-in below and point your browser/system to that proxy — otherwise no traffic will flow through sing-box.",
+      "default_value": {
+        "windows": "true",
+        "linux": "true",
+        "darwin": "true",
+        "default": "false"
+      }
     },
-    {"name": "tun_address", "type": "text", "wizard_ui": "edit", "title": "TUN interface address", "tooltip": "IPv4 CIDR for the TUN interface (inbounds address). Enabled when TUN is on for this platform.",
+    {
+      "name": "tun_address",
+      "type": "text",
+      "wizard_ui": "edit",
+      "title": "TUN interface address",
+      "tooltip": "IPv4 CIDR for the TUN interface (inbounds address). Enabled when TUN is on for this platform.",
       "default_value": "172.16.0.1/30",
-      "if": ["@tun"]
+      "if": [
+        "@tun"
+      ]
     },
-    {"name": "tun_mtu", "type": "text", "wizard_ui": "edit", "title": "TUN MTU", "tooltip": "Maximum transmission unit for the TUN interface (numeric value in JSON).",
+    {
+      "name": "tun_mtu",
+      "type": "text",
+      "wizard_ui": "edit",
+      "title": "TUN MTU",
+      "tooltip": "Maximum transmission unit for the TUN interface (numeric value in JSON).",
       "default_value": "1492",
-      "if": ["@tun"]
+      "if": [
+        "@tun"
+      ]
     },
-    {"name": "strict_route", "type": "bool", "wizard_ui": "edit", "title": "TUN strict route", "tooltip": "sing-box tun strict_route: stricter routing (fewer leaks); may break some LAN or split setups when enabled.",
+    {
+      "name": "strict_route",
+      "type": "bool",
+      "wizard_ui": "edit",
+      "title": "TUN strict route",
+      "tooltip": "sing-box tun strict_route: stricter routing (fewer leaks); may break some LAN or split setups when enabled.",
       "default_value": "false",
-      "if": ["@tun"]
+      "if": [
+        "@tun"
+      ]
     },
-    {"name": "tun_stack", "type": "enum", "wizard_ui": "edit", "title": "TUN stack", "tooltip": "sing-box inbound tun stack (system, gvisor, mixed). Mixed uses system TCP stack and gvisor UDP stack.",
-      "default_value": {"default": {"#if": {"and": [{"@runtime.platform": "windows"}, {"@runtime.arch": "386"}], "value": "gvisor", "else": "system"}}},
+    {
+      "name": "tun_stack",
+      "type": "enum",
+      "wizard_ui": "edit",
+      "title": "TUN stack",
+      "tooltip": "sing-box inbound tun stack (system, gvisor, mixed). Mixed uses system TCP stack and gvisor UDP stack.",
+      "default_value": {
+        "default": {
+          "#if": {
+            "and": [
+              {
+                "@runtime.platform": "windows"
+              },
+              {
+                "@runtime.arch": "386"
+              }
+            ],
+            "value": "gvisor",
+            "else": "system"
+          }
+        }
+      },
       "options": [
         "system",
         "gvisor",
         "mixed"
       ],
-      "if": ["@tun"]
+      "if": [
+        "@tun"
+      ]
     },
-    {"separator": true},
-    {"name": "enable_proxy_in", "type": "bool", "wizard_ui": "edit", "title": "Enable proxy-in", "tooltip": "Adds mixed inbound proxy-in and route.rules for proxy-in. Can be enabled on any platform for experiments.",
-      "default_value": {"darwin": "true", "default": "false"}
+    {
+      "separator": true
     },
-    {"name": "proxy_in_listen", "type": "text", "wizard_ui": "edit", "title": "Proxy-in listen address", "tooltip": "Listen address for mixed inbound proxy-in.",
+    {
+      "name": "enable_proxy_in",
+      "type": "bool",
+      "wizard_ui": "edit",
+      "title": "Enable proxy-in",
+      "tooltip": "Adds mixed inbound proxy-in and route.rules for proxy-in. Can be enabled on any platform for experiments.",
+      "default_value": {
+        "darwin": "true",
+        "default": "false"
+      }
+    },
+    {
+      "name": "proxy_in_listen",
+      "type": "text",
+      "wizard_ui": "edit",
+      "title": "Proxy-in listen address",
+      "tooltip": "Listen address for mixed inbound proxy-in.",
       "default_value": "127.0.0.1",
-      "if": ["@enable_proxy_in"]
+      "if": [
+        "@enable_proxy_in"
+      ]
     },
-    {"name": "proxy_in_listen_port", "type": "text", "wizard_ui": "edit", "title": "Proxy-in listen port", "tooltip": "Listen port for mixed inbound proxy-in.",
+    {
+      "name": "proxy_in_listen_port",
+      "type": "text",
+      "wizard_ui": "edit",
+      "title": "Proxy-in listen port",
+      "tooltip": "Listen port for mixed inbound proxy-in.",
       "default_value": "7890",
-      "if": ["@enable_proxy_in"]
+      "if": [
+        "@enable_proxy_in"
+      ]
     },
-    {"name": "proxy_in_set_system_proxy", "type": "bool", "wizard_ui": "edit", "title": "Proxy-in set system proxy", "tooltip": "Set system proxy through mixed inbound proxy-in. Some platforms require elevated privileges.",
-      "default_value": {"darwin": "true", "default": "false"},
-      "if": ["@enable_proxy_in"]
+    {
+      "name": "proxy_in_set_system_proxy",
+      "type": "bool",
+      "wizard_ui": "edit",
+      "title": "Proxy-in set system proxy",
+      "tooltip": "Set system proxy through mixed inbound proxy-in. Some platforms require elevated privileges.",
+      "default_value": {
+        "darwin": "true",
+        "default": "false"
+      },
+      "if": [
+        "@enable_proxy_in"
+      ]
     },
-    {"name": "proxy_in_auth_enabled", "type": "bool", "wizard_ui": "edit", "title": "Proxy-in require authentication", "tooltip": "When enabled, clients connecting to mixed inbound proxy-in must provide a username and password.",
+    {
+      "name": "proxy_in_auth_enabled",
+      "type": "bool",
+      "wizard_ui": "edit",
+      "title": "Proxy-in require authentication",
+      "tooltip": "When enabled, clients connecting to mixed inbound proxy-in must provide a username and password.",
       "default_value": "false",
-      "if": ["@enable_proxy_in"]
+      "if": [
+        "@enable_proxy_in"
+      ]
     },
-    {"name": "proxy_in_username", "type": "text", "wizard_ui": "edit", "title": "Proxy-in username", "tooltip": "Username for mixed inbound proxy-in authentication.",
+    {
+      "name": "proxy_in_username",
+      "type": "text",
+      "wizard_ui": "edit",
+      "title": "Proxy-in username",
+      "tooltip": "Username for mixed inbound proxy-in authentication.",
       "default_value": "",
-      "if": ["@enable_proxy_in", "@proxy_in_auth_enabled"]
+      "if": [
+        "@enable_proxy_in",
+        "@proxy_in_auth_enabled"
+      ]
     },
-    {"name": "proxy_in_password", "type": "secret", "wizard_ui": "edit", "title": "Proxy-in password", "tooltip": "Password for mixed inbound proxy-in authentication.",
+    {
+      "name": "proxy_in_password",
+      "type": "secret",
+      "wizard_ui": "edit",
+      "title": "Proxy-in password",
+      "tooltip": "Password for mixed inbound proxy-in authentication.",
       "default_value": "",
-      "if": ["@enable_proxy_in", "@proxy_in_auth_enabled"]
+      "if": [
+        "@enable_proxy_in",
+        "@proxy_in_auth_enabled"
+      ]
     },
-    {"separator": true},
-    {"name": "resolve_strategy", "type": "enum", "wizard_ui": "edit", "title": "Route resolve strategy", "tooltip": "Resolution strategy for route rules with action resolve on tun-in and proxy-in (sing-box: prefer_ipv4, prefer_ipv6, ipv4_only, ipv6_only).",
+    {
+      "separator": true
+    },
+    {
+      "name": "resolve_strategy",
+      "type": "enum",
+      "wizard_ui": "edit",
+      "title": "Route resolve strategy",
+      "tooltip": "Resolution strategy for route rules with action resolve on tun-in and proxy-in (sing-box: prefer_ipv4, prefer_ipv6, ipv4_only, ipv6_only).",
       "default_value": "prefer_ipv4",
       "options": [
         "prefer_ipv4",
@@ -105,19 +240,45 @@
         "ipv6_only"
       ]
     },
-    {"name": "auto_detect_interface", "type": "bool", "wizard_ui": "edit", "title": "Auto-detect outbound interface", "tooltip": "sing-box route.auto_detect_interface: detect default interface for outbound; turn off if routing is wrong with multiple uplinks.",
+    {
+      "name": "auto_detect_interface",
+      "type": "bool",
+      "wizard_ui": "edit",
+      "title": "Auto-detect outbound interface",
+      "tooltip": "sing-box route.auto_detect_interface: detect default interface for outbound; turn off if routing is wrong with multiple uplinks.",
       "default_value": "true"
     },
-    {"name": "cert_store", "type": "enum", "wizard_ui": "edit", "title": "TLS root certificate store", "tooltip": "sing-box certificate.store — which CA bundle to trust for outbound TLS validation. 'system' uses your OS cert store. 'mozilla' / 'chrome' use built-in bundles, useful when the OS store is broken (e.g. Windows updates not applied, or x509 'unknown authority' errors). 'none' disables CA validation entirely — only for testing. https://sing-box.sagernet.org/configuration/certificate/",
+    {
+      "name": "cert_store",
+      "type": "enum",
+      "wizard_ui": "edit",
+      "title": "TLS root certificate store",
+      "tooltip": "sing-box certificate.store — which CA bundle to trust for outbound TLS validation. 'system' uses your OS cert store. 'mozilla' / 'chrome' use built-in bundles, useful when the OS store is broken (e.g. Windows updates not applied, or x509 'unknown authority' errors). 'none' disables CA validation entirely — only for testing. https://sing-box.sagernet.org/configuration/certificate/",
       "default_value": "system",
       "options": [
-        {"title": "System (default — OS trust store)", "value": "system"},
-        {"title": "Mozilla CA bundle (built-in)", "value": "mozilla"},
-        {"title": "Chrome Root Store (built-in)", "value": "chrome"}
+        {
+          "title": "System (default — OS trust store)",
+          "value": "system"
+        },
+        {
+          "title": "Mozilla CA bundle (built-in)",
+          "value": "mozilla"
+        },
+        {
+          "title": "Chrome Root Store (built-in)",
+          "value": "chrome"
+        }
       ]
     },
-    {"separator": true},
-    {"name": "urltest_url", "type": "text", "wizard_ui": "edit", "title": "URLTest URL", "tooltip": "sing-box urltest.url — endpoint to probe for latency when selecting the fastest node in auto-proxy-out. Pick a preset or type any HTTP(S) URL that returns a quick response.",
+    {
+      "separator": true
+    },
+    {
+      "name": "urltest_url",
+      "type": "text",
+      "wizard_ui": "edit",
+      "title": "URLTest URL",
+      "tooltip": "sing-box urltest.url — endpoint to probe for latency when selecting the fastest node in auto-proxy-out. Pick a preset or type any HTTP(S) URL that returns a quick response.",
       "default_value": "https://cp.cloudflare.com/generate_204",
       "options": [
         "https://cp.cloudflare.com/generate_204",
@@ -126,27 +287,71 @@
         "http://connectivitycheck.gstatic.com/generate_204"
       ]
     },
-    {"name": "urltest_interval", "type": "enum", "wizard_ui": "edit", "title": "URLTest interval", "tooltip": "sing-box urltest.interval — how often to re-probe all nodes in auto-proxy-out. Pick a preset.",
+    {
+      "name": "urltest_interval",
+      "type": "enum",
+      "wizard_ui": "edit",
+      "title": "URLTest interval",
+      "tooltip": "sing-box urltest.interval — how often to re-probe all nodes in auto-proxy-out. Pick a preset.",
       "default_value": "5m",
       "options": [
-        {"title": "1m (aggressive)", "value": "1m"},
-        {"title": "5m (default)", "value": "5m"},
-        {"title": "10m", "value": "10m"},
-        {"title": "30m (battery-sparing)", "value": "30m"},
-        {"title": "1h", "value": "1h"}
+        {
+          "title": "1m (aggressive)",
+          "value": "1m"
+        },
+        {
+          "title": "5m (default)",
+          "value": "5m"
+        },
+        {
+          "title": "10m",
+          "value": "10m"
+        },
+        {
+          "title": "30m (battery-sparing)",
+          "value": "30m"
+        },
+        {
+          "title": "1h",
+          "value": "1h"
+        }
       ]
     },
-    {"name": "urltest_tolerance", "type": "enum", "wizard_ui": "edit", "title": "URLTest tolerance (ms)", "tooltip": "sing-box urltest.tolerance — don't switch node unless the new fastest one beats the current by this many milliseconds. Higher = less flap.",
+    {
+      "name": "urltest_tolerance",
+      "type": "enum",
+      "wizard_ui": "edit",
+      "title": "URLTest tolerance (ms)",
+      "tooltip": "sing-box urltest.tolerance — don't switch node unless the new fastest one beats the current by this many milliseconds. Higher = less flap.",
       "default_value": "100",
       "options": [
-        {"title": "50 ms (twitchy)", "value": "50"},
-        {"title": "100 ms (default)", "value": "100"},
-        {"title": "200 ms", "value": "200"},
-        {"title": "500 ms (stable)", "value": "500"}
+        {
+          "title": "50 ms (twitchy)",
+          "value": "50"
+        },
+        {
+          "title": "100 ms (default)",
+          "value": "100"
+        },
+        {
+          "title": "200 ms",
+          "value": "200"
+        },
+        {
+          "title": "500 ms (stable)",
+          "value": "500"
+        }
       ]
     },
-    {"separator": true},
-    {"name": "log_level", "type": "enum", "wizard_ui": "edit", "title": "Log level", "tooltip": "Sing-box log.level (trace, debug, info, warn, error, fatal, panic).",
+    {
+      "separator": true
+    },
+    {
+      "name": "log_level",
+      "type": "enum",
+      "wizard_ui": "edit",
+      "title": "Log level",
+      "tooltip": "Sing-box log.level (trace, debug, info, warn, error, fatal, panic).",
       "default_value": "warn",
       "options": [
         "trace",
@@ -158,14 +363,32 @@
         "panic"
       ]
     },
-    {"separator": true},
-    {"name": "clash_api", "type": "text", "wizard_ui": "edit", "title": "Clash API address", "tooltip": "Host:port for external_controller (Clash-compatible REST API).",
+    {
+      "separator": true
+    },
+    {
+      "name": "clash_api",
+      "type": "text",
+      "wizard_ui": "edit",
+      "title": "Clash API address",
+      "tooltip": "Host:port for external_controller (Clash-compatible REST API).",
       "default_value": "127.0.0.1:9090"
     },
-    {"name": "clash_secret", "type": "secret", "wizard_ui": "edit", "title": "Clash API secret", "tooltip": "Secret for the Clash API. Use the refresh button to generate a random value.",
+    {
+      "name": "clash_secret",
+      "type": "secret",
+      "wizard_ui": "edit",
+      "title": "Clash API secret",
+      "tooltip": "Secret for the Clash API. Use the refresh button to generate a random value.",
       "default_value": "CHANGE_THIS_TO_YOUR_SECRET_TOKEN"
     },
-    {"name": "dns_strategy", "type": "enum", "wizard_ui": "fix", "title": "Strategy", "comment": "DNS tab only: sing-box config.dns.strategy.", "tooltip": "sing-box config.dns.strategy.",
+    {
+      "name": "dns_strategy",
+      "type": "enum",
+      "wizard_ui": "fix",
+      "title": "Strategy",
+      "comment": "DNS tab only: sing-box config.dns.strategy.",
+      "tooltip": "sing-box config.dns.strategy.",
       "default_value": "prefer_ipv4",
       "options": [
         "prefer_ipv4",
@@ -174,13 +397,30 @@
         "ipv6_only"
       ]
     },
-    {"name": "dns_default_domain_resolver", "type": "text", "wizard_ui": "fix", "title": "Default DNS domain resolver", "tooltip": "sing-box config.route.default_domain_resolver (server tag).", "comment": "DNS tab only: route.default_domain_resolver (server tag).",
+    {
+      "name": "dns_default_domain_resolver",
+      "type": "text",
+      "wizard_ui": "fix",
+      "title": "Default DNS domain resolver",
+      "tooltip": "sing-box config.route.default_domain_resolver (server tag).",
+      "comment": "DNS tab only: route.default_domain_resolver (server tag).",
       "default_value": "direct_dns_resolver"
     },
-    {"name": "dns_final", "type": "text", "wizard_ui": "fix", "title": "Final", "tooltip": "sing-box config.dns.final (server tag).", "comment": "DNS tab only: config.dns.final (server tag).",
+    {
+      "name": "dns_final",
+      "type": "text",
+      "wizard_ui": "fix",
+      "title": "Final",
+      "tooltip": "sing-box config.dns.final (server tag).",
+      "comment": "DNS tab only: config.dns.final (server tag).",
       "default_value": "direct_dns_resolver"
     },
-    {"name": "route_final", "type": "text", "wizard_ui": "hidden", "title": "Final outbound", "tooltip": "sing-box config.route.final — the outbound used for any traffic that didn't match any rule. Edited via Configurator → Rules tab → 'Final outbound' dropdown (UI surface lives there because the available choices depend on the current outbound list, which is dynamic).",
+    {
+      "name": "route_final",
+      "type": "text",
+      "wizard_ui": "hidden",
+      "title": "Final outbound",
+      "tooltip": "sing-box config.route.final — the outbound used for any traffic that didn't match any rule. Edited via Configurator → Rules tab → 'Final outbound' dropdown (UI surface lives there because the available choices depend on the current outbound list, which is dynamic).",
       "default_value": "proxy-out"
     }
   ],
@@ -201,12 +441,18 @@
     "inbounds": [],
     "endpoints": [],
     "outbounds": [
-      {"type": "direct", "tag": "direct-out"}
+      {
+        "type": "direct",
+        "tag": "direct-out"
+      }
     ],
     "route": {
       "default_domain_resolver": "@dns_default_domain_resolver",
       "rules": [
-        {"protocol": "dns", "action": "hijack-dns"}
+        {
+          "protocol": "dns",
+          "action": "hijack-dns"
+        }
       ],
       "final": "@route_final",
       "auto_detect_interface": "@auto_detect_interface",
@@ -219,7 +465,8 @@
       },
       "cache_file": {
         "enabled": true,
-        "path": "cache.db"
+        "path": "cache.db",
+        "store_fakeip": true
       }
     }
   },
@@ -291,9 +538,19 @@
       "description": "Route private IP ranges (LAN, etc.) directly to guarantee local network access.",
       "default_enabled": true,
       "vars": [
-        {"name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound"}
+        {
+          "name": "out",
+          "type": "outbound",
+          "default": "direct-out",
+          "title": "Outbound"
+        }
       ],
-      "rules": [{"ip_is_private": true, "outbound": "@out"}]
+      "rules": [
+        {
+          "ip_is_private": true,
+          "outbound": "@out"
+        }
+      ]
     },
     {
       "id": "local-lan-domains",
@@ -301,13 +558,34 @@
       "description": "Route .local and .lan domains directly for LAN access.",
       "default_enabled": true,
       "vars": [
-        {"name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound"}
+        {
+          "name": "out",
+          "type": "outbound",
+          "default": "direct-out",
+          "title": "Outbound"
+        }
       ],
       "rule_set": [
-        {"tag": "lan", "type": "inline", "format": "domain_suffix",
-          "rules": [{"domain_suffix": ["local", "lan"]}]}
+        {
+          "tag": "lan",
+          "type": "inline",
+          "format": "domain_suffix",
+          "rules": [
+            {
+              "domain_suffix": [
+                "local",
+                "lan"
+              ]
+            }
+          ]
+        }
       ],
-      "rules": [{"rule_set": "lan", "outbound": "@out"}]
+      "rules": [
+        {
+          "rule_set": "lan",
+          "outbound": "@out"
+        }
+      ]
     },
     {
       "id": "block-ads",
@@ -315,50 +593,180 @@
       "description": "Soft-block ads by rejecting connections instead of dropping packets.",
       "default_enabled": true,
       "vars": [
-        {"name": "out", "type": "outbound", "default": "reject", "title": "Action"}
+        {
+          "name": "out",
+          "type": "outbound",
+          "default": "reject",
+          "title": "Action"
+        }
       ],
       "rule_set": [
-        {"tag": "ads", "type": "remote", "format": "binary",
-          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-ads-all.srs"}
+        {
+          "tag": "ads",
+          "type": "remote",
+          "format": "binary",
+          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-ads-all.srs"
+        }
       ],
-      "rules": [{"rule_set": "ads", "outbound": "@out"}]
+      "rules": [
+        {
+          "rule_set": "ads",
+          "outbound": "@out"
+        }
+      ]
     },
     {
       "id": "russian",
       "label": "Russian domains & IPs",
       "description": "Route Russian TLDs (.ru/.su/IDN), service CDNs (Yandex/VK/Avito/2GIS/banks/etc) and Russian IP ranges directly. Also brings the 'ru VPN 🇷🇺' selector (RU proxies only) and adds an !RU filter to proxy-out/auto-proxy-out so Russian traffic doesn't accidentally exit through a Russian proxy when the main proxy group is used.",
       "vars": [
-        {"name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound", "tooltip": "Where to route traffic for Russian domains and IPs."},
-        {"name": "use_dns_override", "type": "bool", "default": "true", "title": "Use Yandex DNS for these domains", "tooltip": "Override DNS for matched domains. Disable to resolve via global DNS."},
-        {"name": "dns_server", "type": "dns_server", "select": "local", "title": "DNS server", "tooltip": "Recommended: UDP — most stable. DoH/DoT may be filtered by ISPs.",
-          "default": "yandex_udp",
-          "if": ["@use_dns_override"]
+        {
+          "name": "out",
+          "type": "outbound",
+          "default": "direct-out",
+          "title": "Outbound",
+          "tooltip": "Where to route traffic for Russian domains and IPs."
         },
-        {"name": "dns_ip", "type": "enum", "title": "UDP server IP", "tooltip": "Applies to UDP only. DoH and DoT are pinned to 77.88.8.88 with SNI safe.dot.dns.yandex.net.",
+        {
+          "name": "use_dns_override",
+          "type": "bool",
+          "default": "true",
+          "title": "Use Yandex DNS for these domains",
+          "tooltip": "Override DNS for matched domains. Disable to resolve via global DNS."
+        },
+        {
+          "name": "dns_server",
+          "type": "dns_server",
+          "select": "local",
+          "title": "DNS server",
+          "tooltip": "Recommended: UDP — most stable. DoH/DoT may be filtered by ISPs.",
+          "default": "yandex_udp",
+          "if": [
+            "@use_dns_override"
+          ]
+        },
+        {
+          "name": "dns_ip",
+          "type": "enum",
+          "title": "UDP server IP",
+          "tooltip": "Applies to UDP only. DoH and DoT are pinned to 77.88.8.88 with SNI safe.dot.dns.yandex.net.",
           "default": "77.88.8.8",
           "options": [
-            {"title": "77.88.8.8 · Base", "value": "77.88.8.8"},
-            {"title": "77.88.8.1 · Base alt", "value": "77.88.8.1"},
-            {"title": "2a02:6b8::feed:0ff · Base v6", "value": "2a02:6b8::feed:0ff"},
-            {"title": "77.88.8.88 · Safe", "value": "77.88.8.88"},
-            {"title": "77.88.8.2 · Safe alt", "value": "77.88.8.2"},
-            {"title": "2a02:6b8::feed:bad · Safe v6", "value": "2a02:6b8::feed:bad"},
-            {"title": "2a02:6b8:0:1::feed:bad · Safe v6 alt", "value": "2a02:6b8:0:1::feed:bad"},
-            {"title": "77.88.8.7 · Family", "value": "77.88.8.7"},
-            {"title": "77.88.8.3 · Family alt", "value": "77.88.8.3"},
-            {"title": "2a02:6b8::feed:a11 · Family v6", "value": "2a02:6b8::feed:a11"}
+            {
+              "title": "77.88.8.8 · Base",
+              "value": "77.88.8.8"
+            },
+            {
+              "title": "77.88.8.1 · Base alt",
+              "value": "77.88.8.1"
+            },
+            {
+              "title": "2a02:6b8::feed:0ff · Base v6",
+              "value": "2a02:6b8::feed:0ff"
+            },
+            {
+              "title": "77.88.8.88 · Safe",
+              "value": "77.88.8.88"
+            },
+            {
+              "title": "77.88.8.2 · Safe alt",
+              "value": "77.88.8.2"
+            },
+            {
+              "title": "2a02:6b8::feed:bad · Safe v6",
+              "value": "2a02:6b8::feed:bad"
+            },
+            {
+              "title": "2a02:6b8:0:1::feed:bad · Safe v6 alt",
+              "value": "2a02:6b8:0:1::feed:bad"
+            },
+            {
+              "title": "77.88.8.7 · Family",
+              "value": "77.88.8.7"
+            },
+            {
+              "title": "77.88.8.3 · Family alt",
+              "value": "77.88.8.3"
+            },
+            {
+              "title": "2a02:6b8::feed:a11 · Family v6",
+              "value": "2a02:6b8::feed:a11"
+            }
           ],
-          "if": ["@use_dns_override"]
+          "if": [
+            "@use_dns_override"
+          ]
         },
-        {"name": "geoip_enabled", "type": "bool", "default": "true", "title": "GeoIP IP-range fallback", "tooltip": "Match Russian-AS IPs as well as domains — catches CDN/QUIC/ECH cases where domain detection fails. Requires downloading geoip-ru.srs (~150 KB) via the cloud icon next to the rule."}
+        {
+          "name": "geoip_enabled",
+          "type": "bool",
+          "default": "true",
+          "title": "GeoIP IP-range fallback",
+          "tooltip": "Match Russian-AS IPs as well as domains — catches CDN/QUIC/ECH cases where domain detection fails. Requires downloading geoip-ru.srs (~150 KB) via the cloud icon next to the rule."
+        }
       ],
       "rule_set": [
-        {"tag": "ru-domains", "type": "inline", "format": "domain_suffix",
-          "rules": [{"domain_suffix": ["ru", "su", "xn--p1ai", "xn--p1acf", "xn--80adxhks", "moscow", "tatar", "xn--d1acj3b", "xn--80asehdb", "xn--80aswg", "xn--c1avg", "xn--j1aef"]}]},
-        {"tag": "ru-services", "type": "inline", "format": "domain_suffix",
-          "rules": [{"domain_suffix": ["userapi.com", "avito.st", "yandex.net", "yandex.com", "yastatic.net", "2gis.com", "okko.tv", "premier.one", "lenta.com", "vk.com", "vk-portal.net", "gismeteo.com", "lmru.tech", "mradx.net", "wbstatic.net", "wildberries.by", "trbcdn.net", "sberbank.com"]}]},
-        {"tag": "geoip-ru", "type": "remote", "format": "binary", "if": ["@geoip_enabled"],
-          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru.srs"}
+        {
+          "tag": "ru-domains",
+          "type": "inline",
+          "format": "domain_suffix",
+          "rules": [
+            {
+              "domain_suffix": [
+                "ru",
+                "su",
+                "xn--p1ai",
+                "xn--p1acf",
+                "xn--80adxhks",
+                "moscow",
+                "tatar",
+                "xn--d1acj3b",
+                "xn--80asehdb",
+                "xn--80aswg",
+                "xn--c1avg",
+                "xn--j1aef"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "ru-services",
+          "type": "inline",
+          "format": "domain_suffix",
+          "rules": [
+            {
+              "domain_suffix": [
+                "userapi.com",
+                "avito.st",
+                "yandex.net",
+                "yandex.com",
+                "yastatic.net",
+                "2gis.com",
+                "okko.tv",
+                "premier.one",
+                "lenta.com",
+                "vk.com",
+                "vk-portal.net",
+                "gismeteo.com",
+                "lmru.tech",
+                "mradx.net",
+                "wbstatic.net",
+                "wildberries.by",
+                "trbcdn.net",
+                "sberbank.com"
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "geoip-ru",
+          "type": "remote",
+          "format": "binary",
+          "if": [
+            "@geoip_enabled"
+          ],
+          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru.srs"
+        }
       ],
       "dns_servers": [
         {
@@ -369,7 +777,9 @@
           "detour": "@out",
           "title": "Yandex UDP",
           "description": "Yandex public DNS over UDP (port 53). IP from var dns_ip.",
-          "if": ["@use_dns_override"]
+          "if": [
+            "@use_dns_override"
+          ]
         },
         {
           "tag": "yandex_doh",
@@ -377,95 +787,226 @@
           "server": "77.88.8.88",
           "server_port": 443,
           "path": "/dns-query",
-          "tls": {"enabled": true, "server_name": "safe.dot.dns.yandex.net"},
+          "tls": {
+            "enabled": true,
+            "server_name": "safe.dot.dns.yandex.net"
+          },
           "detour": "@out",
           "title": "Yandex DoH",
           "description": "Yandex Safe DoH (77.88.8.88, SNI safe.dot.dns.yandex.net).",
-          "if": ["@use_dns_override"]
+          "if": [
+            "@use_dns_override"
+          ]
         },
         {
           "tag": "yandex_dot",
           "type": "tls",
           "server": "77.88.8.88",
           "server_port": 853,
-          "tls": {"enabled": true, "server_name": "safe.dot.dns.yandex.net"},
+          "tls": {
+            "enabled": true,
+            "server_name": "safe.dot.dns.yandex.net"
+          },
           "detour": "@out",
           "title": "Yandex DoT",
           "description": "Yandex Safe DoT (77.88.8.88:853, SNI safe.dot.dns.yandex.net).",
-          "if": ["@use_dns_override"]
+          "if": [
+            "@use_dns_override"
+          ]
         }
       ],
       "outbounds": [
-        {"mode": "update", "tag": "proxy-out", "filters": {"tag": "!/(🇷🇺)/i"}},
-        {"mode": "update", "tag": "auto-proxy-out", "filters": {"tag": "!/(🇷🇺)/i"}},
+        {
+          "mode": "update",
+          "tag": "proxy-out",
+          "filters": {
+            "tag": "!/(🇷🇺)/i"
+          }
+        },
+        {
+          "mode": "update",
+          "tag": "auto-proxy-out",
+          "filters": {
+            "tag": "!/(🇷🇺)/i"
+          }
+        },
         {
           "tag": "ru VPN 🇷🇺",
           "type": "selector",
-          "options": {"default": "direct-out", "interrupt_exist_connections": true},
-          "filters": {"tag": "/(🇷🇺)/i"},
-          "addOutbounds": ["direct-out"],
+          "options": {
+            "default": "direct-out",
+            "interrupt_exist_connections": true
+          },
+          "filters": {
+            "tag": "/(🇷🇺)/i"
+          },
+          "addOutbounds": [
+            "direct-out"
+          ],
           "comment": "RU-only proxy selector (preset.outbounds mode=add; identical body shared with ru-inside when both enabled)"
         }
       ],
-      "rules": [{"rule_set": ["ru-domains", "ru-services", "geoip-ru"], "outbound": "@out"}],
-      "dns_rule": {"rule_set": ["ru-domains", "ru-services"], "server": "@dns_server", "if": ["@use_dns_override"]}
+      "rules": [
+        {
+          "rule_set": [
+            "ru-domains",
+            "ru-services",
+            "geoip-ru"
+          ],
+          "outbound": "@out"
+        }
+      ],
+      "dns_rule": {
+        "rule_set": [
+          "ru-domains",
+          "ru-services"
+        ],
+        "server": "@dns_server",
+        "if": [
+          "@use_dns_override"
+        ]
+      }
     },
     {
       "id": "ru-inside",
       "label": "Russia-only services",
       "description": "Services available only inside Russia — direct (geosite-ru-available-only-inside). Also brings the 'ru VPN 🇷🇺' selector (RU proxies only) and adds an !RU filter to proxy-out/auto-proxy-out so RU traffic goes through ru VPN, not the main proxy.",
       "vars": [
-        {"name": "out", "type": "outbound", "default": "ru VPN 🇷🇺", "title": "Outbound"}
+        {
+          "name": "out",
+          "type": "outbound",
+          "default": "ru VPN 🇷🇺",
+          "title": "Outbound"
+        }
       ],
       "rule_set": [
-        {"tag": "ru-inside", "type": "remote", "format": "binary",
-          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-ru-available-only-inside.srs"}
+        {
+          "tag": "ru-inside",
+          "type": "remote",
+          "format": "binary",
+          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-ru-available-only-inside.srs"
+        }
       ],
       "outbounds": [
-        {"mode": "update", "tag": "proxy-out", "filters": {"tag": "!/(🇷🇺)/i"}},
-        {"mode": "update", "tag": "auto-proxy-out", "filters": {"tag": "!/(🇷🇺)/i"}},
+        {
+          "mode": "update",
+          "tag": "proxy-out",
+          "filters": {
+            "tag": "!/(🇷🇺)/i"
+          }
+        },
+        {
+          "mode": "update",
+          "tag": "auto-proxy-out",
+          "filters": {
+            "tag": "!/(🇷🇺)/i"
+          }
+        },
         {
           "tag": "ru VPN 🇷🇺",
           "type": "selector",
-          "options": {"default": "direct-out", "interrupt_exist_connections": true},
-          "filters": {"tag": "/(🇷🇺)/i"},
-          "addOutbounds": ["direct-out"],
+          "options": {
+            "default": "direct-out",
+            "interrupt_exist_connections": true
+          },
+          "filters": {
+            "tag": "/(🇷🇺)/i"
+          },
+          "addOutbounds": [
+            "direct-out"
+          ],
           "comment": "RU-only proxy selector (preset.outbounds mode=add, emitted by ru-inside preset)"
         }
       ],
-      "rules": [{"rule_set": "ru-inside", "outbound": "@out"}]
+      "rules": [
+        {
+          "rule_set": "ru-inside",
+          "outbound": "@out"
+        }
+      ]
     },
     {
       "id": "ru-blocked",
       "label": "Russian blocked resources",
       "description": "Detour resources blocked in Russia (geoip-ru-blocked + community list) through proxy selector. Also adds an !RU filter to proxy-out/auto-proxy-out so traffic doesn't accidentally exit through a Russian proxy — that would hit the same blocks you're trying to escape.",
       "vars": [
-        {"name": "out", "type": "outbound", "default": "proxy-out", "title": "Outbound"}
+        {
+          "name": "out",
+          "type": "outbound",
+          "default": "proxy-out",
+          "title": "Outbound"
+        }
       ],
       "rule_set": [
-        {"tag": "main", "type": "remote", "format": "binary",
-          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked.srs"},
-        {"tag": "community", "type": "remote", "format": "binary",
-          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked-community.srs"}
+        {
+          "tag": "main",
+          "type": "remote",
+          "format": "binary",
+          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked.srs"
+        },
+        {
+          "tag": "community",
+          "type": "remote",
+          "format": "binary",
+          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-ru-blocked-community.srs"
+        }
       ],
       "outbounds": [
-        {"mode": "update", "tag": "proxy-out", "filters": {"tag": "!/(🇷🇺)/i"}},
-        {"mode": "update", "tag": "auto-proxy-out", "filters": {"tag": "!/(🇷🇺)/i"}}
+        {
+          "mode": "update",
+          "tag": "proxy-out",
+          "filters": {
+            "tag": "!/(🇷🇺)/i"
+          }
+        },
+        {
+          "mode": "update",
+          "tag": "auto-proxy-out",
+          "filters": {
+            "tag": "!/(🇷🇺)/i"
+          }
+        }
       ],
-      "rules": [{"rule_set": ["main", "community"], "network": ["tcp", "udp"], "outbound": "@out"}]
+      "rules": [
+        {
+          "rule_set": [
+            "main",
+            "community"
+          ],
+          "network": [
+            "tcp",
+            "udp"
+          ],
+          "outbound": "@out"
+        }
+      ]
     },
     {
       "id": "israel-sites",
       "label": "Israel-specific sites",
       "description": "Send Israel-focused traffic via main proxy selector (geoip-il).",
       "vars": [
-        {"name": "out", "type": "outbound", "default": "proxy-out", "title": "Outbound"}
+        {
+          "name": "out",
+          "type": "outbound",
+          "default": "proxy-out",
+          "title": "Outbound"
+        }
       ],
       "rule_set": [
-        {"tag": "il", "type": "remote", "format": "binary",
-          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-il.srs"}
+        {
+          "tag": "il",
+          "type": "remote",
+          "format": "binary",
+          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geoip/geoip-il.srs"
+        }
       ],
-      "rules": [{"rule_set": "il", "outbound": "@out"}]
+      "rules": [
+        {
+          "rule_set": "il",
+          "outbound": "@out"
+        }
+      ]
     },
     {
       "id": "bittorrent",
@@ -473,138 +1014,468 @@
       "description": "Route BitTorrent traffic directly to avoid VPN throttling.",
       "default_enabled": true,
       "vars": [
-        {"name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound"}
+        {
+          "name": "out",
+          "type": "outbound",
+          "default": "direct-out",
+          "title": "Outbound"
+        }
       ],
-      "rules": [{"protocol": ["bittorrent"], "outbound": "@out"}]
+      "rules": [
+        {
+          "protocol": [
+            "bittorrent"
+          ],
+          "outbound": "@out"
+        }
+      ]
     },
     {
       "id": "ai-services",
       "label": "AI services (Claude, ChatGPT, Perplexity, Gemini)",
       "description": "Route major AI chat services (Anthropic Claude, OpenAI ChatGPT, Perplexity, Google Gemini) through selected outbound. Useful when these services are geo-restricted or require clean IP.",
       "vars": [
-        {"name": "out", "type": "outbound", "default": "proxy-out", "title": "Outbound"}
+        {
+          "name": "out",
+          "type": "outbound",
+          "default": "proxy-out",
+          "title": "Outbound"
+        }
       ],
       "rule_set": [
-        {"tag": "ai-services", "type": "inline", "format": "domain_suffix",
-          "rules": [{"domain_suffix": [
-            "anthropic.com", "claude.ai", "claudeusercontent.com",
-            "openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com",
-            "perplexity.ai", "pplx.ai",
-            "generativelanguage.googleapis.com", "gemini.google.com", "aistudio.google.com", "ai.google.dev", "palm.googleapis.com"
-          ]}]}
+        {
+          "tag": "ai-services",
+          "type": "inline",
+          "format": "domain_suffix",
+          "rules": [
+            {
+              "domain_suffix": [
+                "anthropic.com",
+                "claude.ai",
+                "claudeusercontent.com",
+                "openai.com",
+                "chatgpt.com",
+                "oaistatic.com",
+                "oaiusercontent.com",
+                "perplexity.ai",
+                "pplx.ai",
+                "generativelanguage.googleapis.com",
+                "gemini.google.com",
+                "aistudio.google.com",
+                "ai.google.dev",
+                "palm.googleapis.com"
+              ]
+            }
+          ]
+        }
       ],
-      "rules": [{"rule_set": "ai-services", "network": ["tcp", "udp"], "outbound": "@out"}]
+      "rules": [
+        {
+          "rule_set": "ai-services",
+          "network": [
+            "tcp",
+            "udp"
+          ],
+          "outbound": "@out"
+        }
+      ]
     },
     {
       "id": "messengers",
       "label": "Messengers",
       "description": "Send messenger traffic (Telegram, WhatsApp, Discord, Signal, Zoom) through proxy. Process names adapt per OS automatically.",
-      "platforms": ["windows", "darwin", "linux"],
+      "platforms": [
+        "windows",
+        "darwin",
+        "linux"
+      ],
       "vars": [
-        {"name": "out", "type": "outbound", "default": "proxy-out", "title": "Outbound"}
+        {
+          "name": "out",
+          "type": "outbound",
+          "default": "proxy-out",
+          "title": "Outbound"
+        }
       ],
       "rule_set": [
-        {"tag": "messengers", "type": "inline", "format": "domain_suffix",
+        {
+          "tag": "messengers",
+          "type": "inline",
+          "format": "domain_suffix",
           "rules": [
-            {"domain_suffix": [
-              "meet.google.com", "googlevideo.com", "gstatic.com", "googleusercontent.com", "googleapis.com",
-              "web.whatsapp.com", "whatsapp.com", "whatsapp.net", "cdn.whatsapp.net", "mmg.whatsapp.net",
-              "discord.com", "discordapp.com", "cdn.discordapp.com", "discord.gg", "gateway.discord.gg", "discord.media",
-              "telegram.org", "t.me", "cdn-telegram.org"
-            ]},
-            {"#if": {"and": [{"@runtime.platform": "windows"}], "value": {
-              "process_name": ["Telegram.exe", "Discord.exe", "WhatsApp.exe", "Signal.exe", "Zoom.exe"]
-            }, "else": {
-              "process_name": ["Telegram", "Discord", "WhatsApp", "Signal", "zoom.us"]
-            }}}
-          ]}
+            {
+              "domain_suffix": [
+                "meet.google.com",
+                "googlevideo.com",
+                "gstatic.com",
+                "googleusercontent.com",
+                "googleapis.com",
+                "web.whatsapp.com",
+                "whatsapp.com",
+                "whatsapp.net",
+                "cdn.whatsapp.net",
+                "mmg.whatsapp.net",
+                "discord.com",
+                "discordapp.com",
+                "cdn.discordapp.com",
+                "discord.gg",
+                "gateway.discord.gg",
+                "discord.media",
+                "telegram.org",
+                "t.me",
+                "cdn-telegram.org"
+              ]
+            },
+            {
+              "#if": {
+                "and": [
+                  {
+                    "@runtime.platform": "windows"
+                  }
+                ],
+                "value": {
+                  "process_name": [
+                    "Telegram.exe",
+                    "Discord.exe",
+                    "WhatsApp.exe",
+                    "Signal.exe",
+                    "Zoom.exe"
+                  ]
+                },
+                "else": {
+                  "process_name": [
+                    "Telegram",
+                    "Discord",
+                    "WhatsApp",
+                    "Signal",
+                    "zoom.us"
+                  ]
+                }
+              }
+            }
+          ]
+        }
       ],
-      "rules": [{"rule_set": "messengers", "network": ["tcp", "udp"], "outbound": "@out"}]
+      "rules": [
+        {
+          "rule_set": "messengers",
+          "network": [
+            "tcp",
+            "udp"
+          ],
+          "outbound": "@out"
+        }
+      ]
     },
     {
       "id": "games",
       "label": "Games",
       "description": "Send gaming rule set traffic directly for lower latency.",
       "vars": [
-        {"name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound"}
+        {
+          "name": "out",
+          "type": "outbound",
+          "default": "direct-out",
+          "title": "Outbound"
+        }
       ],
       "rule_set": [
-        {"tag": "games", "type": "remote", "format": "binary",
-          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-games.srs"}
+        {
+          "tag": "games",
+          "type": "remote",
+          "format": "binary",
+          "url": "https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/sing-box/rule-set-geosite/geosite-category-games.srs"
+        }
       ],
-      "rules": [{"rule_set": "games", "network": ["tcp", "udp"], "outbound": "@out"}]
+      "rules": [
+        {
+          "rule_set": "games",
+          "network": [
+            "tcp",
+            "udp"
+          ],
+          "outbound": "@out"
+        }
+      ]
     },
     {
       "id": "gaming-ports",
       "label": "Gaming ports",
       "description": "Keep popular gaming ports and Steam ranges outside VPN.",
       "vars": [
-        {"name": "out", "type": "outbound", "default": "direct-out", "title": "Outbound"}
+        {
+          "name": "out",
+          "type": "outbound",
+          "default": "direct-out",
+          "title": "Outbound"
+        }
       ],
-      "rules": [{"port": [3659, 1935, 5001, 5795, 5796, 7000, 7777, 9000, 10039, 10040], "port_range": "27000:27100", "network": ["tcp", "udp"], "outbound": "@out"}]
+      "rules": [
+        {
+          "port": [
+            3659,
+            1935,
+            5001,
+            5795,
+            5796,
+            7000,
+            7777,
+            9000,
+            10039,
+            10040
+          ],
+          "port_range": "27000:27100",
+          "network": [
+            "tcp",
+            "udp"
+          ],
+          "outbound": "@out"
+        }
+      ]
     },
     {
       "id": "stop-http3",
       "label": "Stop HTTP/3",
       "description": "QUIC does not support UDP traffic proxying — drop HTTP/3 (UDP/443). May reduce speed for Google/YouTube/Cloudflare.",
       "vars": [
-        {"name": "out", "type": "outbound", "default": "drop", "title": "Action"}
+        {
+          "name": "out",
+          "type": "outbound",
+          "default": "drop",
+          "title": "Action"
+        }
       ],
-      "rules": [{"network": ["udp"], "port": [443], "outbound": "@out"}]
+      "rules": [
+        {
+          "network": [
+            "udp"
+          ],
+          "port": [
+            443
+          ],
+          "outbound": "@out"
+        }
+      ]
+    },
+    {
+      "id": "fakeip",
+      "label": "FakeIP (faster connect)",
+      "description": "Answer proxied A/AAAA lookups from a synthetic pool instead of resolving upstream — the real domain is recovered by sniffing, so connections open faster and DNS leaks less. Keep this preset AFTER Russian/direct rules so local domains still resolve for real.",
+      "vars": [
+        {
+          "name": "dns_server",
+          "type": "dns_server",
+          "select": "local",
+          "title": "FakeIP server",
+          "default": "fakeip",
+          "tooltip": "DNS server that returns synthetic IPs. Leave as the bundled fakeip server."
+        },
+        {
+          "name": "inet4_range",
+          "type": "text",
+          "default": "198.18.0.0/15",
+          "title": "IPv4 fake range",
+          "tooltip": "CIDR pool for synthetic IPv4 answers (sing-box dns fakeip inet4_range)."
+        },
+        {
+          "name": "inet6_range",
+          "type": "text",
+          "default": "fc00::/18",
+          "title": "IPv6 fake range",
+          "tooltip": "CIDR pool for synthetic IPv6 answers (sing-box dns fakeip inet6_range)."
+        }
+      ],
+      "dns_servers": [
+        {
+          "tag": "fakeip",
+          "type": "fakeip",
+          "inet4_range": "@inet4_range",
+          "inet6_range": "@inet6_range",
+          "title": "FakeIP",
+          "description": "Synthetic-IP DNS server (sing-box type fakeip)."
+        }
+      ],
+      "dns_rule": {
+        "query_type": [
+          "A",
+          "AAAA"
+        ],
+        "server": "@dns_server"
+      }
     },
     {
       "id": "split-all-traffic",
       "label": "Split all traffic 50/50 across two outbounds",
       "description": "Distribute proxy-bound traffic across two outbounds by OS source-port (ephemeral range split in half). Per-connection sticky: one TCP/UDP session stays on one side, one origin (HTTP/2 multiplex) → one outbound. Heavy single-stream traffic (video, large download) does NOT split across both. Enable AFTER all direct/reject presets — this preset acts as catch-all for proxy-bound traffic. Ephemeral range: macOS/Windows 49152-65535, Linux 32768-60999.",
       "vars": [
-        {"name": "out_a", "type": "outbound", "default": "proxy-out", "title": "Outbound A"},
-        {"name": "out_b", "type": "outbound", "default": "proxy-out", "title": "Outbound B"}
+        {
+          "name": "out_a",
+          "type": "outbound",
+          "default": "proxy-out",
+          "title": "Outbound A"
+        },
+        {
+          "name": "out_b",
+          "type": "outbound",
+          "default": "proxy-out",
+          "title": "Outbound B"
+        }
       ],
       "rules": [
-        {"source_port_range": [{"#if": {"and": [{"@runtime.platform": "linux"}], "value": "32768:46883", "else": "49152:57343"}}], "outbound": "@out_a"},
-        {"source_port_range": [{"#if": {"and": [{"@runtime.platform": "linux"}], "value": "46884:60999", "else": "57344:65535"}}], "outbound": "@out_b"}
+        {
+          "source_port_range": [
+            {
+              "#if": {
+                "and": [
+                  {
+                    "@runtime.platform": "linux"
+                  }
+                ],
+                "value": "32768:46883",
+                "else": "49152:57343"
+              }
+            }
+          ],
+          "outbound": "@out_a"
+        },
+        {
+          "source_port_range": [
+            {
+              "#if": {
+                "and": [
+                  {
+                    "@runtime.platform": "linux"
+                  }
+                ],
+                "value": "46884:60999",
+                "else": "57344:65535"
+              }
+            }
+          ],
+          "outbound": "@out_b"
+        }
       ]
     }
   ],
   "params": [
     {
       "name": "inbounds",
-      "if": ["@tun"],
-      "value": [{
-        "type": "tun", "tag": "tun-in", "auto_route": true,
-        "address": ["@tun_address"],
-        "mtu": "@tun_mtu",
-        "strict_route": "@strict_route",
-        "stack": "@tun_stack",
-        "#if": {"and": [{"@runtime.platform": {"#in": ["windows", "linux"]}}], "value": {
-          "interface_name": "singbox-tun0"
-        }}
-      }]
+      "if": [
+        "@tun"
+      ],
+      "value": [
+        {
+          "type": "tun",
+          "tag": "tun-in",
+          "auto_route": true,
+          "address": [
+            "@tun_address"
+          ],
+          "mtu": "@tun_mtu",
+          "strict_route": "@strict_route",
+          "stack": "@tun_stack",
+          "#if": {
+            "and": [
+              {
+                "@runtime.platform": {
+                  "#in": [
+                    "windows",
+                    "linux"
+                  ]
+                }
+              }
+            ],
+            "value": {
+              "interface_name": "singbox-tun0"
+            }
+          }
+        }
+      ]
     },
     {
       "name": "inbounds",
-      "if": ["@enable_proxy_in"],
-      "value": [{
-        "type": "mixed", "tag": "proxy-in",
-        "listen": "@proxy_in_listen",
-        "listen_port": "@proxy_in_listen_port",
-        "set_system_proxy": "@proxy_in_set_system_proxy",
-        "#if": {"and": ["@proxy_in_auth_enabled", {"@proxy_in_username": "#notEmpty"}], "value": {
-          "users": [{
-            "username": "@proxy_in_username",
-            "password": "@proxy_in_password"
-          }]
-        }}
-      }],
+      "if": [
+        "@enable_proxy_in"
+      ],
+      "value": [
+        {
+          "type": "mixed",
+          "tag": "proxy-in",
+          "listen": "@proxy_in_listen",
+          "listen_port": "@proxy_in_listen_port",
+          "set_system_proxy": "@proxy_in_set_system_proxy",
+          "#if": {
+            "and": [
+              "@proxy_in_auth_enabled",
+              {
+                "@proxy_in_username": "#notEmpty"
+              }
+            ],
+            "value": {
+              "users": [
+                {
+                  "username": "@proxy_in_username",
+                  "password": "@proxy_in_password"
+                }
+              ]
+            }
+          }
+        }
+      ],
       "mode": "prepend"
     },
     {
       "name": "route.rules",
-      "if_or": ["@tun", "@enable_proxy_in"],
+      "if_or": [
+        "@tun",
+        "@enable_proxy_in"
+      ],
       "mode": "prepend",
       "value": [
-        {"inbound": [{"#if": {"and": ["@tun"], "value": "tun-in"}}, {"#if": {"and": ["@enable_proxy_in"], "value": "proxy-in"}}], "action": "resolve", "strategy": "@resolve_strategy"},
-        {"inbound": [{"#if": {"and": ["@tun"], "value": "tun-in"}}, {"#if": {"and": ["@enable_proxy_in"], "value": "proxy-in"}}], "action": "sniff", "timeout": "1s"}
+        {
+          "inbound": [
+            {
+              "#if": {
+                "and": [
+                  "@tun"
+                ],
+                "value": "tun-in"
+              }
+            },
+            {
+              "#if": {
+                "and": [
+                  "@enable_proxy_in"
+                ],
+                "value": "proxy-in"
+              }
+            }
+          ],
+          "action": "resolve",
+          "strategy": "@resolve_strategy"
+        },
+        {
+          "inbound": [
+            {
+              "#if": {
+                "and": [
+                  "@tun"
+                ],
+                "value": "tun-in"
+              }
+            },
+            {
+              "#if": {
+                "and": [
+                  "@enable_proxy_in"
+                ],
+                "value": "proxy-in"
+              }
+            }
+          ],
+          "action": "sniff",
+          "timeout": "1s"
+        }
       ]
     }
   ]

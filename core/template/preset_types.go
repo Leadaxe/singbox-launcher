@@ -290,6 +290,12 @@ type PresetDNSServer struct {
 	// Показывается в debug views / config inspection / logs.
 	Description string `json:"description,omitempty"`
 
+	// Inet4Range/Inet6Range — для type:"fakeip" (SPEC 085): CIDR-диапазоны,
+	// из которых sing-box выдаёт синтетические A/AAAA-ответы. Пробрасываются в
+	// config как есть.
+	Inet4Range string `json:"inet4_range,omitempty"`
+	Inet6Range string `json:"inet6_range,omitempty"`
+
 	// If/IfOr — условный DNS-сервер.
 	If   []string `json:"if,omitempty"`
 	IfOr []string `json:"if_or,omitempty"`
