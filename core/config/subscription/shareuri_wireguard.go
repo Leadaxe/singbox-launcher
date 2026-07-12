@@ -66,6 +66,10 @@ func ShareURIFromWireGuardEndpoint(ep map[string]interface{}) (string, error) {
 	if psk := mapGetString(peer, "pre_shared_key"); psk != "" {
 		q.Set("presharedkey", psk)
 	}
+	// reserved (Cloudflare WARP): re-emit "b0,b1,b2" so endpoint->URI->endpoint round-trips.
+	if res := intSliceFromWireGuardField(peer["reserved"]); len(res) == 3 {
+		q.Set("reserved", fmt.Sprintf("%d,%d,%d", res[0], res[1], res[2]))
+	}
 	if lp := mapGetInt(ep, "listen_port"); lp > 0 {
 		q.Set("listenport", strconv.Itoa(lp))
 	}
@@ -87,6 +91,13 @@ func ShareURIFromWireGuardEndpoint(ep map[string]interface{}) (string, error) {
 		}
 	}
 	for _, k := range awgStringFields {
+		if s := mapGetString(ep, k); s != "" {
+			q.Set(k, s)
+		}
+	}
+	// Masquerade sugar id/ip/ib (SPEC 009): re-emit so endpoint→URI→endpoint
+	// round-trips for WARP/AmneziaWG obfuscated nodes.
+	for _, k := range awgMasqueradeFields {
 		if s := mapGetString(ep, k); s != "" {
 			q.Set(k, s)
 		}
@@ -149,6 +160,36 @@ func stringSliceFromWireGuardField(v interface{}) []string {
 			s := wireGuardJSONElemToString(e)
 			if s != "" {
 				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+// intSliceFromWireGuardField coerces a WireGuard peer numeric slice (e.g.
+// reserved) to []int. Handles []int and []interface{} carrying int / int64 /
+// float64 (JSON-decoded numbers). Non-numeric or nil input yields nil.
+func intSliceFromWireGuardField(v interface{}) []int {
+	if v == nil {
+		return nil
+	}
+	switch x := v.(type) {
+	case []int:
+		return x
+	case []interface{}:
+		out := make([]int, 0, len(x))
+		for _, e := range x {
+			switch n := e.(type) {
+			case int:
+				out = append(out, n)
+			case int64:
+				out = append(out, int(n))
+			case float64:
+				out = append(out, int(n))
+			default:
+				return nil
 			}
 		}
 		return out
