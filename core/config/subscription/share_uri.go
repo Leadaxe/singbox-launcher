@@ -34,6 +34,8 @@ func ShareURIFromOutbound(out map[string]interface{}) (string, error) {
 		return shareURIFromHysteria2(out)
 	case "tuic":
 		return shareURIFromTuic(out)
+	case "anytls":
+		return shareURIFromAnyTLS(out)
 	case "ssh":
 		return shareURIFromSSH(out)
 	case "naive":

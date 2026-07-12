@@ -24,6 +24,7 @@ func IsDirectLink(input string) bool {
 		strings.HasPrefix(trimmed, "hysteria2://") ||
 		strings.HasPrefix(trimmed, "hy2://") ||
 		strings.HasPrefix(trimmed, "tuic://") ||
+		strings.HasPrefix(trimmed, "anytls://") ||
 		strings.HasPrefix(trimmed, "ssh://") ||
 		strings.HasPrefix(trimmed, "wireguard://") ||
 		strings.HasPrefix(trimmed, "awg://") ||
@@ -195,6 +196,11 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		// TUIC v5 (uuid:password@host:port). Runs over QUIC; default port 443.
 		scheme = "tuic"
 
+	case strings.HasPrefix(uri, "anytls://"):
+		// AnyTLS (password@host:port). Single credential in userinfo like Trojan;
+		// always over TLS; default port 443.
+		scheme = "anytls"
+
 	case strings.HasPrefix(uri, "ssh://"):
 		scheme = "ssh"
 		defaultPort = 22 // Default port for SSH
@@ -246,8 +252,8 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		return nil, fmt.Errorf("failed to parse URI: %w", err)
 	}
 
-	// Validate VLESS/Trojan/SSH/TUIC URI format (must have hostname and userinfo)
-	if scheme == "vless" || scheme == "trojan" || scheme == "ssh" || scheme == "tuic" {
+	// Validate VLESS/Trojan/SSH/TUIC/AnyTLS URI format (must have hostname and userinfo)
+	if scheme == "vless" || scheme == "trojan" || scheme == "ssh" || scheme == "tuic" || scheme == "anytls" {
 		if parsedURL.Hostname() == "" {
 			return nil, fmt.Errorf("invalid %s URI: missing hostname", scheme)
 		}
@@ -709,6 +715,8 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 		buildHysteria2Outbound(node, outbound)
 	} else if node.Scheme == "tuic" {
 		buildTuicOutbound(node, outbound)
+	} else if node.Scheme == "anytls" {
+		buildAnyTLSOutbound(node, outbound)
 	} else if node.Scheme == "ssh" {
 		buildSSHOutbound(node, outbound)
 	} else if node.Scheme == "naive" {
