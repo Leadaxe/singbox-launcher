@@ -80,6 +80,12 @@ func ShowRulesLibraryDialog(p *wizardpresentation.WizardPresenter, showAddRuleDi
 
 	for i := range presets {
 		i, pr := i, &presets[i]
+		// SPEC 093: DNS-only пресеты (fakeip и т.п.) — это постоянные DNS-правила,
+		// они авто-сидятся и живут на вкладке DNS (toggle без удаления), в
+		// routing-библиотеке им не место.
+		if pr.IsDNSOnly() {
+			continue
+		}
 		labelText := pr.Label
 		if labelText == "" {
 			labelText = pr.ID

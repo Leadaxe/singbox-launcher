@@ -1366,7 +1366,8 @@
           ],
           "server": "@dns_server"
         }
-      ]
+      ],
+      "default_enabled": true
     },
     {
       "id": "split-all-traffic",

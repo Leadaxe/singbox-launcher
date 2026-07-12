@@ -85,6 +85,11 @@ func (p *WizardPresenter) restorePresetRefs(state *wizardmodels.WizardStateFile)
 	// SPEC 056-R-N follow-up: per-server/rule preset enabled overrides → PresetRefState fields.
 	populatePresetEnabledFromState(p.model.PresetRefs, state.DNS)
 
+	// SPEC 093: авто-сид DNS-only пресетов (fakeip) как постоянных DNS-правил.
+	// ДО построения RuleOrder/DNSRuleOrder — Reconcile* ниже подхватят slot'ы.
+	// Идемпотентно: существующий (в т.ч. выключенный юзером) ref не трогается.
+	wizardmodels.EnsureDNSOnlyPresetsSeeded(p.model)
+
 	// Restore RuleOrder из state.Rules (preserve порядок between save/load).
 	// Fallback на дефолтную последовательность если state v5 (нет RulesV6).
 	order := wizardmodels.RuleOrderFromStateRulesV6(state.Rules, p.model.PresetRefs, p.model.CustomRules)
