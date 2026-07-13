@@ -758,7 +758,7 @@
   "wizard.warp.masq_protocol": "Протокол (ip)",
   "wizard.warp.masq_domain": "Домен (id)",
   "wizard.warp.masq_browser": "Браузер (ib)",
-  "wizard.warp.junk_header": "Junk-размеры / заголовки — безопасные для WARP значения; меняйте на свой риск",
+  "wizard.warp.junk_note": "jc/jmin/jmax добавляют отдельные мусорные пакеты (безопасно для WARP). Паддинг пакетов (s1–s4) и magic-заголовки (h1–h4) зафиксированы под WARP: сервер WARP — плейн-WireGuard, любой другой паддинг он отбрасывает и handshake рвётся.",
   "wizard.warp.masque_note": "MASQUE идёт поверх HTTPS/QUIC и маскируется сам — обфускация AmneziaWG не применяется. Требует ядро lx.3+.",
   "wizard.warp.masque_transport": "Транспорт",
   "wizard.warp.masque_sni": "SNI",

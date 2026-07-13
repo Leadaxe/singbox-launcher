@@ -758,7 +758,7 @@
   "wizard.warp.masq_protocol": "Protocol (ip)",
   "wizard.warp.masq_domain": "Domain (id)",
   "wizard.warp.masq_browser": "Browser (ib)",
-  "wizard.warp.junk_header": "Junk sizes / headers — WARP-safe defaults; change at your own risk",
+  "wizard.warp.junk_note": "jc/jmin/jmax add standalone junk packets (safe with WARP). Packet padding (s1–s4) and magic headers (h1–h4) are fixed to WARP-compatible values — a plain-WireGuard WARP server drops any other padding, breaking the handshake.",
   "wizard.warp.masque_note": "MASQUE tunnels over HTTPS/QUIC and masks itself — AmneziaWG obfuscation does not apply. Requires core lx.3+.",
   "wizard.warp.masque_transport": "Transport",
   "wizard.warp.masque_sni": "SNI",

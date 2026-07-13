@@ -3,12 +3,20 @@ package warp
 import "strings"
 
 // QuicParams configures AmneziaWG obfuscation for a WARP node (SPEC 084.2 — full
-// field set). The junk knobs (jc/jmin/jmax) inject pre-handshake noise; s1-s4 are
-// junk sizes (s1/s2 before the handshake init/response, s3/s4 padding on every
-// transport packet); h1-h4 are the magic message headers (WARP must keep 1..4 or
-// Cloudflare rejects the handshake). Masquerade id/ip/ib is the high-level sugar
-// the core expands into i1; alternatively i1-i5 can carry explicit junk-packet
-// tags (mutually exclusive with id/ip/ib).
+// field set). The junk knobs (jc/jmin/jmax) inject pre-handshake noise as separate
+// datagrams — safe with WARP. s1-s4 are padding prefixes on REAL packets: s1 →
+// handshake initiation, s2 → handshake response, s3 → cookie-reply, s4 → every
+// transport packet (verified against amneziawg-go send.go/receive.go — the core
+// keys are paddings.{init,response,cookie,transport}). Any non-zero s1-s4 shifts
+// the message type/size, so a plain-WireGuard WARP server (padding=0, not
+// AmneziaWG) fails to parse and drops it. h1-h4 are the magic message headers
+// (WARP must keep 1..4 or Cloudflare rejects the handshake). Masquerade id/ip/ib
+// is the high-level sugar the core expands into i1; alternatively i1-i5 can carry
+// explicit junk-packet tags (mutually exclusive with id/ip/ib).
+//
+// The WARP configurator UI exposes only jc/jmin/jmax + masquerade and forces
+// s1-s4=0, h1-h4=1..4 — see dialogs/warp_dialog.go. The s/h/i fields stay here
+// for nodes pointing at a real AmneziaWG server with matching values.
 //
 // A zero-value QuicParams means "use the safe WARP default profile"
 // (DefaultQuicParams). A preset or the configurator fills every field explicitly.

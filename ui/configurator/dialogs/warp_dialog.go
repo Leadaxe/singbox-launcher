@@ -22,6 +22,7 @@ import (
 
 	"singbox-launcher/core/warp"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
@@ -62,7 +63,10 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 		wg.container,
 		mq.container,
 	)
-	scroll := container.NewVScroll(content)
+	// Правый gutter под нативный скроллбар — иначе он наезжает на поля/кубики 🎲
+	// справа (тот же приём, что в get_free_dialog.go / source_tab.go).
+	gutter := components.NewScrollGutter()
+	scroll := container.NewVScroll(container.NewBorder(nil, nil, nil, gutter, content))
 	scroll.SetMinSize(fyne.NewSize(520, 460))
 
 	dlg := dialog.NewCustomConfirm(
@@ -124,9 +128,13 @@ func newWarpWGSection() *warpWGSection {
 	jc := numEntry("4")
 	jmin := numEntry("40")
 	jmax := numEntry("70")
-	// «все поля»: s1-s4, h1-h4 (WARP-safe defaults; менять на свой риск).
-	s1, s2, s3, s4 := numEntry("0"), numEntry("0"), numEntry("0"), numEntry("0")
-	h1, h2, h3, h4 := numEntry("1"), numEntry("2"), numEntry("3"), numEntry("4")
+	// s1-s4 (init/response/cookie/transport padding) и h1-h4 (magic headers)
+	// НЕ выставляются в UI: Cloudflare WARP — плейн-WireGuard сервер (padding=0,
+	// не AmneziaWG). Любой ненулевой s1-s4 сдвигает тип/размер РЕАЛЬНОГО пакета →
+	// WARP-сервер не распознаёт handshake и молча дропает (проверено по коду ядра
+	// amneziawg-go send.go/receive.go). h1-h4 WARP требует строго 1/2/3/4. Оба
+	// набора форсятся в collect() ниже. Против DPI с WARP работают только jc/jmin/
+	// jmax (отдельные мусорные датаграммы, сервер их игнорит) + masquerade id/ip/ib.
 
 	reserved := widget.NewCheck(locale.T("wizard.warp.reserved"), nil)
 
@@ -164,11 +172,7 @@ func newWarpWGSection() *warpWGSection {
 		ibRow,
 		container.NewGridWithColumns(3,
 			labeledRow("jc", jc), labeledRow("jmin", jmin), labeledRow("jmax", jmax)),
-		widget.NewLabelWithStyle(locale.T("wizard.warp.junk_header"), fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
-		container.NewGridWithColumns(4,
-			labeledRow("s1", s1), labeledRow("s2", s2), labeledRow("s3", s3), labeledRow("s4", s4)),
-		container.NewGridWithColumns(4,
-			labeledRow("h1", h1), labeledRow("h2", h2), labeledRow("h3", h3), labeledRow("h4", h4)),
+		widget.NewLabelWithStyle(locale.T("wizard.warp.junk_note"), fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
 	)
 	acc := widget.NewAccordion(widget.NewAccordionItem(locale.T("wizard.warp.advanced"), advanced))
 
@@ -189,10 +193,13 @@ func newWarpWGSection() *warpWGSection {
 	box := container.NewVBox(obfuscate, presetRow, acc)
 
 	collect := func() warpRegParams {
+		// s1-s4 форсятся в 0, h1-h4 — в 1/2/3/4: WARP-сервер плейн-WG, ненулевой
+		// padding ломает handshake, а magic headers должны быть каноничны (см.
+		// коммент выше). Юзеру эти поля не даём — только jc/jmin/jmax + masquerade.
 		p := warp.QuicParams{
 			JC: atoiDef(jc.Text, 4), JMin: atoiDef(jmin.Text, 40), JMax: atoiDef(jmax.Text, 70),
-			S1: atoiDef(s1.Text, 0), S2: atoiDef(s2.Text, 0), S3: atoiDef(s3.Text, 0), S4: atoiDef(s4.Text, 0),
-			H1: atoiDef(h1.Text, 1), H2: atoiDef(h2.Text, 2), H3: atoiDef(h3.Text, 3), H4: atoiDef(h4.Text, 4),
+			S1: 0, S2: 0, S3: 0, S4: 0,
+			H1: 1, H2: 2, H3: 3, H4: 4,
 			IP: ipSel.Selected, SNI: idEntry.Text, IB: ibSel.Selected,
 		}
 		return warpRegParams{
