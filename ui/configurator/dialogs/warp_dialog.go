@@ -18,7 +18,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/warp"
@@ -64,13 +63,22 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 		wg.container,
 		mq.container,
 	)
-	// ТОЛЬКО вертикальный скролл (NewVScroll, не NewScroll) + gutter под бегунок:
-	// форма высокая, но по ширине должна ужиматься в окно, а не давать
-	// горизонтальную прокрутку. container.NewScroll (что внутри WrapInScrollWithGutter)
-	// скроллит в обе стороны → длинные поля выдавливали гор. полосу.
-	gutter := components.NewScrollGutter()
-	scroll := container.NewVScroll(container.NewBorder(nil, nil, nil, gutter, content))
-	scroll.SetMinSize(fyne.NewSize(520, 460))
+	// Кап ширины формы. dialog.NewCustomConfirm — модальный попап: его рендерер
+	// подтягивает размер ВВЕРХ до Content.MinSize() на каждом layout, поэтому
+	// .Resize() задаёт только пол, а не потолок. Ничем не ограниченный VBox
+	// растягивался до края окна wizard (~2000px) → гигантские поля, обрезанные
+	// слева лейблы. GridWrap — единственный Fyne-layout, жёстко фиксирующий И min,
+	// И max ширину (resize'ит ребёнка ровно в CellSize), поэтому пиним 520px.
+	const formWidth = 520
+	capped := container.NewGridWrap(fyne.NewSize(formWidth, content.MinSize().Height), content)
+
+	// Gutter внутри вертикального (только!) скролла: форма высокая, но по ширине
+	// зафиксирована — горизонтального бегунка нет. NewVScroll вместо двухосевого
+	// NewScroll (что внутри WrapInScrollWithGutter). Gutter в правом слоте Border
+	// резервирует 14pt под бегунок, поля стоят левее полосы.
+	inner := container.NewBorder(nil, nil, nil, components.NewScrollGutter(), capped)
+	scroll := container.NewVScroll(inner)
+	scroll.SetMinSize(fyne.NewSize(formWidth+components.ScrollbarGutterWidth+8, 460))
 
 	dlg := dialog.NewCustomConfirm(
 		locale.T("wizard.warp.title"),
@@ -89,7 +97,7 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 		},
 		win,
 	)
-	dlg.Resize(fyne.NewSize(620, 580))
+	dlg.Resize(fyne.NewSize(560, 560))
 	dlg.Show()
 }
 
@@ -155,7 +163,7 @@ func newWarpWGSection() *warpWGSection {
 	preset.OnChanged = applyPreset
 
 	// ib только при ip=quic; masquerade-блок только при obfuscate.
-	ibRow := formRow(locale.T("wizard.warp.masq_browser"), ibSel)
+	ibRow := labeledRow(locale.T("wizard.warp.masq_browser"), ibSel)
 	ipSel.OnChanged = func(v string) {
 		if v == "quic" {
 			ibRow.Show()
@@ -164,28 +172,23 @@ func newWarpWGSection() *warpWGSection {
 		}
 	}
 
-	// Junk-числа компактные и фиксированной ширины — иначе Entry растягивается на
-	// весь ряд и форма уезжает в горизонтальный скролл. Кладём в один ряд label+field.
-	junkRow := container.NewGridWithColumns(3,
-		compactNumRow("jc", jc), compactNumRow("jmin", jmin), compactNumRow("jmax", jmax),
-	)
-
 	advanced := container.NewVBox(
-		formRow(locale.T("wizard.warp.license_label"), license),
-		formRow(locale.T("wizard.warp.endpoint_label"), withDice(endpoint, randEndpointBtn)),
+		labeledRow(locale.T("wizard.warp.license_label"), license),
+		labeledRow(locale.T("wizard.warp.endpoint_label"), container.NewBorder(nil, nil, nil, randEndpointBtn, endpoint)),
 		reserved,
 		widget.NewSeparator(),
 		widget.NewLabelWithStyle(locale.T("wizard.warp.masq_header"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		formRow(locale.T("wizard.warp.masq_protocol"), ipSel),
-		formRow(locale.T("wizard.warp.masq_domain"), withDice(idEntry, randIDBtn)),
+		labeledRow(locale.T("wizard.warp.masq_protocol"), ipSel),
+		labeledRow(locale.T("wizard.warp.masq_domain"), container.NewBorder(nil, nil, nil, randIDBtn, idEntry)),
 		ibRow,
-		junkRow,
+		container.NewGridWithColumns(3,
+			labeledRow("jc", jc), labeledRow("jmin", jmin), labeledRow("jmax", jmax)),
 		widget.NewLabelWithStyle(locale.T("wizard.warp.junk_note"), fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
 	)
 	acc := widget.NewAccordion(widget.NewAccordionItem(locale.T("wizard.warp.advanced"), advanced))
 
 	// obfuscate=false → прячем пресет+advanced masquerade (plain WARP).
-	presetRow := formRow(locale.T("wizard.warp.preset_label"), preset)
+	presetRow := labeledRow(locale.T("wizard.warp.preset_label"), preset)
 	obfuscate.OnChanged = func(on bool) {
 		if on {
 			presetRow.Show()
@@ -241,7 +244,7 @@ func newWarpMasqueSection() *warpMasqueSection {
 	idle.SetPlaceHolder("5")
 	keep := numEntry("")
 	keep.SetPlaceHolder("30")
-	keepRow := formRow(locale.T("wizard.warp.masque_keepalive"), keep)
+	keepRow := labeledRow(locale.T("wizard.warp.masque_keepalive"), keep)
 	network.OnChanged = func(v string) {
 		if v == "h3" {
 			keepRow.Show()
@@ -252,9 +255,9 @@ func newWarpMasqueSection() *warpMasqueSection {
 
 	box := container.NewVBox(
 		widget.NewLabel(locale.T("wizard.warp.masque_note")),
-		formRow(locale.T("wizard.warp.masque_transport"), network),
-		formRow(locale.T("wizard.warp.masque_sni"), withDice(sni, randSNIBtn)),
-		formRow(locale.T("wizard.warp.masque_idle"), idle),
+		labeledRow(locale.T("wizard.warp.masque_transport"), network),
+		labeledRow(locale.T("wizard.warp.masque_sni"), container.NewBorder(nil, nil, nil, randSNIBtn, sni)),
+		labeledRow(locale.T("wizard.warp.masque_idle"), idle),
 		keepRow,
 	)
 	collect := func() masqueRegParams {
@@ -345,22 +348,8 @@ func numEntry(def string) *widget.Entry {
 	return e
 }
 
-// formRow — строка «label : control» на Fyne form-layout: label-колонка по
-// ширине текста, control занимает остаток ряда, но НЕ выходит за ширину формы
-// (в отличие от Border, где control мог раздувать ряд и вызывать гор. скролл).
-func formRow(label string, control fyne.CanvasObject) *fyne.Container {
-	return container.New(layout.NewFormLayout(), widget.NewLabel(label), control)
-}
-
-// withDice — control с кнопкой 🎲 справа фиксированной ширины (Border: right=btn).
-func withDice(control fyne.CanvasObject, dice *widget.Button) *fyne.Container {
-	return container.NewBorder(nil, nil, nil, dice, control)
-}
-
-// compactNumRow — узкая пара «label field» для числовых junk-полей (jc/jmin/jmax),
-// чтобы три штуки помещались в ряд без растягивания на всю ширину.
-func compactNumRow(label string, e *widget.Entry) *fyne.Container {
-	return container.NewBorder(nil, nil, widget.NewLabel(label), nil, e)
+func labeledRow(label string, control fyne.CanvasObject) *fyne.Container {
+	return container.NewBorder(nil, nil, widget.NewLabel(label), nil, control)
 }
 
 func atoiDef(s string, def int) int {

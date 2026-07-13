@@ -283,10 +283,13 @@ func showEditPresetRefDialog(
 	)
 
 	// ===== AppTabs (Form / JSON) =====
-	// Только вертикальный скролл + gutter под бегунок: форма высокая, но по ширине
-	// ужимается в окно (иначе длинные поля IPv4/IPv6 range дают гор. прокрутку).
-	formGutter := components.NewScrollGutter()
-	formScroll := container.NewVScroll(container.NewBorder(nil, nil, nil, formGutter, formContent))
+	// Только вертикальный скролл + gutter внутри: окно фиксированной ширины (500,
+	// editWindow.Resize ниже) уже держит горизонт, поэтому GridWrap-кап не нужен —
+	// но двухосевой NewScroll (в WrapInScrollWithGutter) давал бы горизонтальную
+	// полосу на длинных полях (IPv4/IPv6 range). NewVScroll её убирает; gutter в
+	// правом слоте резервирует 14pt под бегунок.
+	formInnerScroll := container.NewBorder(nil, nil, nil, components.NewScrollGutter(), formContent)
+	formScroll := container.NewVScroll(formInnerScroll)
 	formTabItem := container.NewTabItem(locale.T("wizard.add_rule.tab_form"), formScroll)
 	jsonTabItem := container.NewTabItem(locale.T("wizard.add_rule.tab_raw"), jsonContent)
 	tabs := container.NewAppTabs(formTabItem, jsonTabItem)
