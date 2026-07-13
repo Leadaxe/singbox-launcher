@@ -118,6 +118,19 @@ func ShowEditDialog(
 			curURL = fmt.Sprintf("%v", v)
 		}
 	}
+	// SPEC 088 load-balancing: mode (least_test|round_robin) + balancer{pool,
+	// pool_tolerance, sticky_hash}. Parsed via the pure helper (tested).
+	var curBalancer balancerFormState
+	if displayBody != nil {
+		curBalancer = parseBalancerFromOptions(displayBody.Options)
+	} else {
+		curBalancer = balancerFormState{Sticky: map[string]bool{}}
+	}
+	curMode, curPool, curPoolTolerance := "", curBalancer.Pool, curBalancer.PoolTolerance
+	if curBalancer.RoundRobin {
+		curMode = "round_robin"
+	}
+	curSticky := curBalancer.Sticky
 
 	intervalLabels, intervalLabelToValue := templateVarChoices(editPresenter, "urltest_interval", curInterval)
 	urltestIntervalSelect := widget.NewSelect(intervalLabels, nil)
@@ -136,6 +149,44 @@ func ShowEditDialog(
 	urltestURLEntry.SetPlaceHolder("https://cp.cloudflare.com/generate_204")
 	if curURL != "" {
 		urltestURLEntry.SetText(curURL)
+	}
+
+	// SPEC 088: Mode select. least_test (default — один лучший узел) vs round_robin
+	// (пул живых узлов + sticky-сессии). Пустое/least_test → balancer не эмитится.
+	const modeLeastTest = "least_test"
+	const modeRoundRobin = "round_robin"
+	modeSelect := widget.NewSelect([]string{modeLeastTest, modeRoundRobin}, nil)
+	if curMode == modeRoundRobin {
+		modeSelect.SetSelected(modeRoundRobin)
+	} else {
+		modeSelect.SetSelected(modeLeastTest)
+	}
+
+	poolEntry := widget.NewEntry()
+	poolEntry.SetPlaceHolder("3")
+	if curPool != "" {
+		poolEntry.SetText(curPool)
+	}
+	poolToleranceEntry := widget.NewEntry()
+	poolToleranceEntry.SetPlaceHolder("0")
+	if curPoolTolerance != "" {
+		poolToleranceEntry.SetText(curPoolTolerance)
+	}
+
+	// sticky_hash — компоненты липкости сессии (какие поля соединения держат его
+	// на одном узле пула). Ядро: пустой список = дефолтная липкость; ["none"] =
+	// выкл. Здесь: все сняты → эмитим ["none"] только если юзер явно был в none
+	// или снял всё вручную; хотя бы один → список выбранных.
+	stickyKeys := stickyHashKeys
+	stickyChecks := make(map[string]*widget.Check, len(stickyKeys))
+	stickyCheckRow := container.NewGridWithColumns(len(stickyKeys))
+	for _, k := range stickyKeys {
+		ch := widget.NewCheck(k, nil)
+		if curSticky[k] {
+			ch.SetChecked(true)
+		}
+		stickyChecks[k] = ch
+		stickyCheckRow.Add(ch)
 	}
 
 	// Scope: For all | For source: ...
@@ -440,6 +491,22 @@ func ShowEditDialog(
 			if v := strings.TrimSpace(urltestURLEntry.Text); v != "" {
 				cfg.Options["url"] = v
 			}
+
+			// SPEC 088 balancing — build via the pure helper (tested). round_robin
+			// → emit mode + balancer; least_test → strip both (plain urltest stays
+			// byte-identical to upstream).
+			st := balancerFormState{
+				RoundRobin:    modeSelect.Selected == modeRoundRobin,
+				Pool:          poolEntry.Text,
+				PoolTolerance: poolToleranceEntry.Text,
+				Sticky:        map[string]bool{},
+			}
+			for _, k := range stickyKeys {
+				if ch := stickyChecks[k]; ch != nil && ch.Checked {
+					st.Sticky[k] = true
+				}
+			}
+			buildBalancerOptions(cfg.Options, st)
 		}
 
 		filterVal := strings.TrimSpace(filterValEntry.Text)
@@ -561,16 +628,46 @@ func ShowEditDialog(
 	urltestToleranceLabel.SetToolTip(urltestTooltip)
 	urltestURLLabel := ttwidget.NewLabel("URL")
 	urltestURLLabel.SetToolTip(urltestTooltip)
+
+	// SPEC 088 balancing controls. Mode всегда виден в urltest-блоке; pool/
+	// pool_tolerance/sticky_hash — только при round_robin (balancerBlock).
+	const modeTooltip = "least_test routes through the single fastest node. round_robin spreads traffic across a pool of live nodes with sticky sessions (sing-box-lx load balancing)."
+	modeLabel := ttwidget.NewLabel("Mode")
+	modeLabel.SetToolTip(modeTooltip)
+	poolLabel := ttwidget.NewLabel("Pool size")
+	poolLabel.SetToolTip("Number of live nodes to spread traffic across (round_robin balancer.pool).")
+	poolToleranceLabel := ttwidget.NewLabel("Pool tolerance (ms)")
+	poolToleranceLabel.SetToolTip("Extra latency budget (ms) a node may exceed the best and still stay in the pool (balancer.pool_tolerance, 0..65535).")
+	stickyLabel := ttwidget.NewLabel("Sticky hash")
+	stickyLabel.SetToolTip("Connection fields that pin a session to one pool node. None checked = disabled (sent as [\"none\"]).")
+	balancerBlock := container.NewVBox(
+		container.NewGridWithColumns(2, poolLabel, poolEntry),
+		container.NewGridWithColumns(2, poolToleranceLabel, poolToleranceEntry),
+		stickyLabel,
+		stickyCheckRow,
+	)
 	urltestBlock := container.NewVBox(
 		urltestLabel,
 		container.NewGridWithColumns(2, urltestIntervalLabel, urltestIntervalSelect),
 		container.NewGridWithColumns(2, urltestToleranceLabel, urltestToleranceSelect),
 		container.NewGridWithColumns(2, urltestURLLabel, urltestURLEntry),
+		container.NewGridWithColumns(2, modeLabel, modeSelect),
+		balancerBlock,
 	)
+	balancerVisible := func() {
+		if modeSelect.Selected == modeRoundRobin {
+			balancerBlock.Show()
+		} else {
+			balancerBlock.Hide()
+		}
+	}
+	balancerVisible() // initial state
+	modeSelect.OnChanged = func(string) { balancerVisible() }
 	urltestVisible := func() {
 		isAuto := typeSelect.Selected == locale.T("wizard.outbound.type_auto")
 		if isAuto {
 			urltestBlock.Show()
+			balancerVisible() // respect mode when the block becomes visible
 		} else {
 			urltestBlock.Hide()
 		}
