@@ -283,10 +283,10 @@ func showEditPresetRefDialog(
 	)
 
 	// ===== AppTabs (Form / JSON) =====
-	// Канонический tall-form паттерн: gutter внутри скролла (WrapInScrollWithGutter)
-	// резервирует 10pt справа под бегунок, иначе он наезжает на длинные поля
-	// (IPv4/IPv6 range). См. components/scroll_gutter.go.
-	formScroll := components.WrapInScrollWithGutter(formContent)
+	// Только вертикальный скролл + gutter под бегунок: форма высокая, но по ширине
+	// ужимается в окно (иначе длинные поля IPv4/IPv6 range дают гор. прокрутку).
+	formGutter := components.NewScrollGutter()
+	formScroll := container.NewVScroll(container.NewBorder(nil, nil, nil, formGutter, formContent))
 	formTabItem := container.NewTabItem(locale.T("wizard.add_rule.tab_form"), formScroll)
 	jsonTabItem := container.NewTabItem(locale.T("wizard.add_rule.tab_raw"), jsonContent)
 	tabs := container.NewAppTabs(formTabItem, jsonTabItem)
