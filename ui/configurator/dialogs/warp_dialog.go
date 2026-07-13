@@ -227,7 +227,7 @@ func newWarpMasqueSection() *warpMasqueSection {
 
 	sni := widget.NewSelectEntry(warp.MasqueSNIPool)
 	sni.SetPlaceHolder(locale.T("wizard.warp.masque_sni_placeholder"))
-	randSNIBtn := widget.NewButton("🎲", func() { sni.SetText(warp.RandomSNI(nil)) })
+	randSNIBtn := widget.NewButton("🎲", func() { sni.SetText(warp.RandomMasqueSNI(nil)) })
 
 	idle := numEntry("")
 	idle.SetPlaceHolder("5")

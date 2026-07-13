@@ -42,11 +42,5 @@ func PresetByName(name string) QuicParams {
 	return DefaultQuicParams()
 }
 
-// MasqueSNIPool — SNI-пул для MASQUE (реальный TLS SNI QUIC/HTTP2-сессии к CF).
-// В отличие от sni_pool WARP-junk, здесь допустим www.cloudflare.com (для MASQUE
-// это легитимный SNI, а не палевный junk-домен).
-var MasqueSNIPool = []string{
-	"www.cloudflare.com", "cdn.jsdelivr.net", "aws.amazon.com", "www.google.com",
-	"www.microsoft.com", "www.bing.com", "www.apple.com", "www.wikipedia.org",
-	"yandex.ru", "telemost.yandex.ru", "ozon.ru", "rutube.ru", "gosuslugi.ru",
-}
+// MasqueSNIPool живёт в endpoints_asset.go (загружается из embedded
+// warp_endpoints.json, fallback на SNIPool при отсутствии masque_sni_pool).
