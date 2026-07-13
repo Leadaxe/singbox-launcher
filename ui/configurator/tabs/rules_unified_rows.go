@@ -86,12 +86,6 @@ func buildSinglePresetRefRow(
 		}
 	}
 
-	// SPEC 093: DNS-only пресеты (fakeip) — постоянные DNS-правила, они живут на
-	// вкладке DNS (toggle без удаления), а на вкладке Rules не показываются.
-	if tplPreset != nil && tplPreset.IsDNSOnly() {
-		return
-	}
-
 	labelText, brokenRef := presetTileLabel(pr, tplPreset)
 	srsEntries := presetRefSRSEntries(pr, tplPreset)
 

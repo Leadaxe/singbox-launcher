@@ -13,7 +13,6 @@ import (
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
-	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/services"
 	"singbox-launcher/core/state"
@@ -218,13 +217,6 @@ func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGener
 		build.MergeOutboundUpdatesInPlace(parserConfig, td)
 	} else {
 		debuglog.WarnLog("UpdateConfigFromSubscriptions: LoadTemplateData failed (skip preset.outbounds sync): %v", terr)
-	}
-
-	// SPEC 087: materialize routing channels (copy-then-append; never mutate the
-	// state-owned backing array). Symmetric with buildSnapshotFromRawCache.
-	if chans := build.BuildChannelOutbounds(stateRef.Channels); len(chans) > 0 {
-		merged := append([]configtypes.OutboundConfig(nil), parserConfig.ParserConfig.Outbounds...)
-		parserConfig.ParserConfig.Outbounds = append(merged, chans...)
 	}
 
 	updateParserProgress(ac, 5, "Parsed ParserConfig block")

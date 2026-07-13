@@ -118,12 +118,6 @@ type State struct {
 	// SPEC 060 Phase 5: rename RulesV6 → Rules. JSON tag всё ещё "rules".
 	Rules []Rule
 
-	// Channels — модель каналов роутинга (SPEC 087, порт LxBox §125/§267).
-	// Отдельное top-level поле, НЕ в Connections.Outbounds — не зеркалится в
-	// legacy ParserConfig, материализуется в selector/urltest на build-time.
-	// JSON-ключ на диске: "channels" (см. state.marshalDisk / parseCurrent).
-	Channels []Channel
-
 	// DNS — новая DNS-секция (SPEC 056-R-N: flat kind discriminator
 	// template/preset/user для servers и preset/user для rules).
 	// Параллельно DNSOptions (legacy v5) для одностороннего sync на Save.

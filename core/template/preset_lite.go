@@ -36,20 +36,6 @@ func (p *Preset) PresetHasDNSRule() bool {
 	return p.DNSRule != nil || len(p.DNSRules) > 0
 }
 
-// PresetHasRoutingRule — true если preset определяет route-правила (Rules).
-func (p *Preset) PresetHasRoutingRule() bool {
-	return len(p.Rules) > 0
-}
-
-// IsDNSOnly — true если preset несёт только DNS-контент (dns_servers/dns_rules)
-// и НЕ имеет route-правил. Такие пресеты (SPEC 093, напр. fakeip) — это чисто
-// DNS-фича: они авто-сидятся как постоянное DNS-правило на вкладке DNS
-// (default-enabled, toggle без удаления) и НЕ показываются в библиотеке/на
-// вкладке Rules.
-func (p *Preset) IsDNSOnly() bool {
-	return p.PresetHasDNSRule() && !p.PresetHasRoutingRule()
-}
-
 // PresetLiteMap — собирает map[id]→state.PresetLite из []Preset для передачи в
 // state.SyncDNSOptionsWithActivePresets.
 //

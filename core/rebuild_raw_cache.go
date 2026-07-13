@@ -85,14 +85,6 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 		build.MergeOutboundUpdatesInPlace(&parserCfg, td)
 	}
 
-	// SPEC 087: materialize routing channels into selector/urltest entries and
-	// append to a COPY of the outbounds slice (never mutate the state-owned
-	// backing array). Ephemeral — channels live only in state.Channels.
-	if chans := build.BuildChannelOutbounds(s.Channels); len(chans) > 0 {
-		merged := append([]configtypes.OutboundConfig(nil), parserCfg.ParserConfig.Outbounds...)
-		parserCfg.ParserConfig.Outbounds = append(merged, chans...)
-	}
-
 	tagCounts := make(map[string]int)
 	loadNodesFunc := func(ps configtypes.ProxySource, tc map[string]int, pc func(float64, string), idx, total int) ([]*configtypes.ParsedNode, error) {
 		return subscription.LoadNodesFromSource(ps, tc, pc, idx, total)

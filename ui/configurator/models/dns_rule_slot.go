@@ -76,11 +76,6 @@ func ReconcileDNSRuleOrder(m *WizardModel) {
 	if m == nil {
 		return
 	}
-	// SPEC 093: гарантируем, что DNS-only пресеты (fakeip) засижены как preset-ref
-	// перед построением порядка — на любом пути (load / fresh start / refresh).
-	// Идемпотентно: существующий (в т.ч. выключенный) ref не трогается.
-	EnsureDNSOnlyPresetsSeeded(m)
-
 	userSeen := make(map[int]bool, len(m.DNSUserRules))
 	presetSeen := make(map[int]bool, len(m.PresetRefs))
 	for _, s := range m.DNSRuleOrder {

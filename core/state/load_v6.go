@@ -32,7 +32,6 @@ func parseCurrent(data []byte) (*State, error) {
 		Meta        MetaSection        `json:"meta"`
 		Connections ConnectionsSection `json:"connections"`
 		Rules       []Rule             `json:"rules"`
-		Channels    []Channel          `json:"channels"` // SPEC 087
 		Vars        []SettingVar       `json:"vars"`
 		DNSOptions  DNSOptions         `json:"dns_options"`
 		// Legacy dev-shape (SPEC 053). Читаем для одноразовой in-place миграции.
@@ -54,7 +53,6 @@ func parseCurrent(data []byte) (*State, error) {
 		Connections:        raw.Connections,
 		Vars:               raw.Vars,
 		Rules:              raw.Rules,
-		Channels:           raw.Channels,
 		DNS:                dnsOpts,
 		RulesLibraryMerged: true,
 	}
