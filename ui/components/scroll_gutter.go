@@ -66,10 +66,12 @@ import (
 )
 
 // ScrollbarGutterWidth — width in points of the reserved right strip
-// under the vertical scrollbar. 10 matches the native Fyne scrollbar
-// rendering on macOS/Windows/Linux; tuning per-OS isn't worth the
-// conditional given how rarely this number shifts.
-const ScrollbarGutterWidth = 10
+// under the vertical scrollbar. Must be >= the Fyne theme scrollBar size
+// (SizeNameScrollBar = 12 in v2.7.x) or the bar paints over the rightmost
+// content pixels. 10 was too narrow — the 12pt bar overhung fields by 2pt
+// (visible on long inputs like the FakeIP IPv4/IPv6 range). 14 covers the
+// bar plus a hair of breathing room.
+const ScrollbarGutterWidth = 14
 
 // NewScrollGutter returns a bare transparent rectangle with a fixed
 // `ScrollbarGutterWidth`-wide minimum size. Drop it into any layout slot

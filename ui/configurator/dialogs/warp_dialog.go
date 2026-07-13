@@ -63,10 +63,10 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 		wg.container,
 		mq.container,
 	)
-	// Правый gutter под нативный скроллбар — иначе он наезжает на поля/кубики 🎲
-	// справа (тот же приём, что в get_free_dialog.go / source_tab.go).
-	gutter := components.NewScrollGutter()
-	scroll := container.NewVScroll(container.NewBorder(nil, nil, nil, gutter, content))
+	// Канонический tall-form паттерн: gutter ВНУТРИ скролла (WrapInScrollWithGutter)
+	// — резервирует 10pt справа под нативный бегунок, поля/кубики 🎲 не попадают
+	// под него. Читается как «скроллится вся форма» (см. components/scroll_gutter.go).
+	scroll := components.WrapInScrollWithGutter(content)
 	scroll.SetMinSize(fyne.NewSize(520, 460))
 
 	dlg := dialog.NewCustomConfirm(

@@ -26,6 +26,7 @@ import (
 	"singbox-launcher/core/build"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -282,7 +283,10 @@ func showEditPresetRefDialog(
 	)
 
 	// ===== AppTabs (Form / JSON) =====
-	formScroll := container.NewScroll(formContent)
+	// Канонический tall-form паттерн: gutter внутри скролла (WrapInScrollWithGutter)
+	// резервирует 10pt справа под бегунок, иначе он наезжает на длинные поля
+	// (IPv4/IPv6 range). См. components/scroll_gutter.go.
+	formScroll := components.WrapInScrollWithGutter(formContent)
 	formTabItem := container.NewTabItem(locale.T("wizard.add_rule.tab_form"), formScroll)
 	jsonTabItem := container.NewTabItem(locale.T("wizard.add_rule.tab_raw"), jsonContent)
 	tabs := container.NewAppTabs(formTabItem, jsonTabItem)
