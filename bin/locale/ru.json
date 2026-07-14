@@ -613,6 +613,7 @@
   "wizard.outbound.placeholder_tag": "напр. proxy-out",
   "wizard.outbound.type_manual": "ручной (selector)",
   "wizard.outbound.type_auto": "авто (urltest)",
+  "wizard.outbound.type_loadbalance": "балансировка (round robin)",
   "wizard.outbound.placeholder_comment": "Комментарий (необязательно)",
   "wizard.outbound.scope_all": "Для всех",
   "wizard.outbound.scope_source": "Для источника: ",

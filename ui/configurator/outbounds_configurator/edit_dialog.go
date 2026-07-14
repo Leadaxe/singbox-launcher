@@ -82,10 +82,31 @@ func ShowEditDialog(
 	}
 	tagEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_tag"))
 
-	typeSelect := widget.NewSelect([]string{locale.T("wizard.outbound.type_manual"), locale.T("wizard.outbound.type_auto")}, nil)
+	// SPEC 088 load-balancing: mode/balancer парсим ЗАРАНЕЕ — он определяет, какой
+	// из трёх типов показать (round_robin = отдельный пункт "loadbalance", хотя на
+	// проводе это тот же type:urltest + mode:round_robin).
+	var curBalancer balancerFormState
+	if displayBody != nil {
+		curBalancer = parseBalancerFromOptions(displayBody.Options)
+	} else {
+		curBalancer = balancerFormState{Sticky: map[string]bool{}}
+	}
+
+	// Type: три пункта. manual(selector) | auto(urltest, least_test) |
+	// loadbalance(urltest + round_robin). Последние два — один wire-type urltest,
+	// различаются наличием mode:round_robin.
+	typeSelect := widget.NewSelect([]string{
+		locale.T("wizard.outbound.type_manual"),
+		locale.T("wizard.outbound.type_auto"),
+		locale.T("wizard.outbound.type_loadbalance"),
+	}, nil)
 	if displayBody != nil {
 		if displayBody.Type == "urltest" {
-			typeSelect.SetSelected(locale.T("wizard.outbound.type_auto"))
+			if curBalancer.RoundRobin {
+				typeSelect.SetSelected(locale.T("wizard.outbound.type_loadbalance"))
+			} else {
+				typeSelect.SetSelected(locale.T("wizard.outbound.type_auto"))
+			}
 		} else {
 			typeSelect.SetSelected(locale.T("wizard.outbound.type_manual"))
 		}
@@ -118,18 +139,8 @@ func ShowEditDialog(
 			curURL = fmt.Sprintf("%v", v)
 		}
 	}
-	// SPEC 088 load-balancing: mode (least_test|round_robin) + balancer{pool,
-	// pool_tolerance, sticky_hash}. Parsed via the pure helper (tested).
-	var curBalancer balancerFormState
-	if displayBody != nil {
-		curBalancer = parseBalancerFromOptions(displayBody.Options)
-	} else {
-		curBalancer = balancerFormState{Sticky: map[string]bool{}}
-	}
-	curMode, curPool, curPoolTolerance := "", curBalancer.Pool, curBalancer.PoolTolerance
-	if curBalancer.RoundRobin {
-		curMode = "round_robin"
-	}
+	// balancer уже распарсен выше (curBalancer). pool/tolerance/sticky для виджетов.
+	curPool, curPoolTolerance := curBalancer.Pool, curBalancer.PoolTolerance
 	curSticky := curBalancer.Sticky
 
 	intervalLabels, intervalLabelToValue := templateVarChoices(editPresenter, "urltest_interval", curInterval)
@@ -151,17 +162,8 @@ func ShowEditDialog(
 		urltestURLEntry.SetText(curURL)
 	}
 
-	// SPEC 088: Mode select. least_test (default — один лучший узел) vs round_robin
-	// (пул живых узлов + sticky-сессии). Пустое/least_test → balancer не эмитится.
-	const modeLeastTest = "least_test"
-	const modeRoundRobin = "round_robin"
-	modeSelect := widget.NewSelect([]string{modeLeastTest, modeRoundRobin}, nil)
-	if curMode == modeRoundRobin {
-		modeSelect.SetSelected(modeRoundRobin)
-	} else {
-		modeSelect.SetSelected(modeLeastTest)
-	}
-
+	// Mode-селекта нет: тип "loadbalance" в Type-дропдауне и означает round_robin
+	// (auto = least_test). При Save loadbalance → mode:round_robin + balancer.
 	poolEntry := widget.NewEntry()
 	poolEntry.SetPlaceHolder("3")
 	if curPool != "" {
@@ -425,8 +427,11 @@ func ShowEditDialog(
 			}
 			tag = "_preview_"
 		}
+		// auto И loadbalance → wire-type urltest (loadbalance = urltest + round_robin,
+		// применяется ниже через buildBalancerOptions).
 		obType := "selector"
-		if typeSelect.Selected == locale.T("wizard.outbound.type_auto") {
+		if typeSelect.Selected == locale.T("wizard.outbound.type_auto") ||
+			typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance") {
 			obType = "urltest"
 		}
 
@@ -492,11 +497,11 @@ func ShowEditDialog(
 				cfg.Options["url"] = v
 			}
 
-			// SPEC 088 balancing — build via the pure helper (tested). round_robin
-			// → emit mode + balancer; least_test → strip both (plain urltest stays
-			// byte-identical to upstream).
+			// SPEC 088 balancing — build via the pure helper (tested). loadbalance
+			// type → emit mode:round_robin + balancer; auto (least_test) → strip both
+			// (plain urltest stays byte-identical to upstream).
 			st := balancerFormState{
-				RoundRobin:    modeSelect.Selected == modeRoundRobin,
+				RoundRobin:    typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance"),
 				Pool:          poolEntry.Text,
 				PoolTolerance: poolToleranceEntry.Text,
 				Sticky:        map[string]bool{},
@@ -629,11 +634,9 @@ func ShowEditDialog(
 	urltestURLLabel := ttwidget.NewLabel("URL")
 	urltestURLLabel.SetToolTip(urltestTooltip)
 
-	// SPEC 088 balancing controls. Mode всегда виден в urltest-блоке; pool/
-	// pool_tolerance/sticky_hash — только при round_robin (balancerBlock).
-	const modeTooltip = "least_test routes through the single fastest node. round_robin spreads traffic across a pool of live nodes with sticky sessions (sing-box-lx load balancing)."
-	modeLabel := ttwidget.NewLabel("Mode")
-	modeLabel.SetToolTip(modeTooltip)
+	// SPEC 088 balancing controls. balancerBlock (pool/pool_tolerance/sticky_hash)
+	// виден только для типа loadbalance (round_robin). Mode-селекта нет — тип его
+	// заменил.
 	poolLabel := ttwidget.NewLabel("Pool size")
 	poolLabel.SetToolTip("Number of live nodes to spread traffic across (round_robin balancer.pool).")
 	poolToleranceLabel := ttwidget.NewLabel("Pool tolerance (ms)")
@@ -651,23 +654,25 @@ func ShowEditDialog(
 		container.NewGridWithColumns(2, urltestIntervalLabel, urltestIntervalSelect),
 		container.NewGridWithColumns(2, urltestToleranceLabel, urltestToleranceSelect),
 		container.NewGridWithColumns(2, urltestURLLabel, urltestURLEntry),
-		container.NewGridWithColumns(2, modeLabel, modeSelect),
 		balancerBlock,
 	)
-	balancerVisible := func() {
-		if modeSelect.Selected == modeRoundRobin {
-			balancerBlock.Show()
-		} else {
-			balancerBlock.Hide()
-		}
+	// urltest-поля видны для auto И loadbalance (оба = wire-type urltest);
+	// balancer-блок — только для loadbalance.
+	isURLTestType := func() bool {
+		return typeSelect.Selected == locale.T("wizard.outbound.type_auto") ||
+			typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance")
 	}
-	balancerVisible() // initial state
-	modeSelect.OnChanged = func(string) { balancerVisible() }
+	isLoadBalance := func() bool {
+		return typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance")
+	}
 	urltestVisible := func() {
-		isAuto := typeSelect.Selected == locale.T("wizard.outbound.type_auto")
-		if isAuto {
+		if isURLTestType() {
 			urltestBlock.Show()
-			balancerVisible() // respect mode when the block becomes visible
+			if isLoadBalance() {
+				balancerBlock.Show()
+			} else {
+				balancerBlock.Hide()
+			}
 		} else {
 			urltestBlock.Hide()
 		}

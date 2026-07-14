@@ -618,6 +618,7 @@
   "wizard.outbound.placeholder_tag": "e.g. proxy-out",
   "wizard.outbound.type_manual": "manual (selector)",
   "wizard.outbound.type_auto": "auto (urltest)",
+  "wizard.outbound.type_loadbalance": "loadbalance (round robin)",
   "wizard.outbound.placeholder_comment": "Optional comment",
   "wizard.outbound.scope_all": "For all",
   "wizard.outbound.scope_source": "For source: ",
