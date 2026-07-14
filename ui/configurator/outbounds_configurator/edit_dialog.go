@@ -176,20 +176,34 @@ func ShowEditDialog(
 	}
 
 	// sticky_hash — компоненты липкости сессии (какие поля соединения держат его
-	// на одном узле пула). Ядро: пустой список = дефолтная липкость; ["none"] =
-	// выкл. Здесь: все сняты → эмитим ["none"] только если юзер явно был в none
-	// или снял всё вручную; хотя бы один → список выбранных.
+	// на одном узле пула). Ядро: пустой список = дефолтная липкость; ["none"] = выкл.
+	// Дефолт process + dest_ip + dest_port применяем, когда balancer ещё НЕ был
+	// round_robin (новый outbound или переключение auto→loadbalance) — держит
+	// соединения к одному хосту:порту на одном узле, разные назначения раскидывает
+	// по пулу. Если round_robin уже был сохранён — уважаем сохранённый выбор.
+	stickyDefaults := map[string]bool{"process": true, "dest_ip": true, "dest_port": true}
+	applyStickyDefaults := !curBalancer.RoundRobin
 	stickyKeys := stickyHashKeys
 	stickyChecks := make(map[string]*widget.Check, len(stickyKeys))
-	stickyCheckRow := container.NewGridWithColumns(len(stickyKeys))
-	for _, k := range stickyKeys {
+	// Два компактных ряда HBox (3 + 2), а не GridWithColumns (равные растянутые
+	// колонки раздували окно). Чекбоксы встают по своей ширине слева.
+	stickyRow1 := container.NewHBox()
+	stickyRow2 := container.NewHBox()
+	for i, k := range stickyKeys {
 		ch := widget.NewCheck(k, nil)
-		if curSticky[k] {
+		if applyStickyDefaults {
+			ch.SetChecked(stickyDefaults[k])
+		} else if curSticky[k] {
 			ch.SetChecked(true)
 		}
 		stickyChecks[k] = ch
-		stickyCheckRow.Add(ch)
+		if i < 3 {
+			stickyRow1.Add(ch)
+		} else {
+			stickyRow2.Add(ch)
+		}
 	}
+	stickyCheckRow := container.NewVBox(stickyRow1, stickyRow2)
 
 	// Scope: For all | For source: ...
 	//
