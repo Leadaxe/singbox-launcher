@@ -17,7 +17,7 @@
 | 5 | `hysteria2://`, `hy2://` | `hysteria2` | `outbounds[]` | core (QUIC) | Multi-port (`mport`/`ports` query или `host:123,5000-6000` в authority); obfs только `salamander`. |
 | 6 | `ssh://` | `ssh` | `outbounds[]` | core | **Собственный URI-диалект singbox-launcher**, не RFC. Inline-ключ / путь к ключу / passphrase / host_key. |
 | 7 | `socks5://`, `socks://` | `socks` (version=5) | `outbounds[]` | core | User/pass опциональны. Поле фильтра `scheme` сохраняет оригинал (`socks5` vs `socks`). |
-| 8 | `naive+https://`, `naive+quic://` | `naive` | `outbounds[]` | **sing-box ≥ 1.13.0** + build tag **`with_naive_proxy`** (Apple/Android/Windows-сборки SagerNet ОК; минимальный Linux отвергает в runtime) | DuckSoft 2020 URI-диалект. `extra-headers=` (CRLF-разделённые пары). TLS только `server_name`. |
+| 8 | `naive+https://`, `naive+quic://` | `naive` | `outbounds[]` | **sing-box ≥ 1.13.0** + build tag **`with_naive_outbound`** (ядро форка `1.14.0-lx.4+` — все desktop-платформы; на Windows нужен `libcronet.dll`, лаунчер ставит его сам). На ядре без поддержки ноды **деградируются с warning**, конфиг не ломается. | DuckSoft 2020 URI-диалект. `extra-headers=` (CRLF-разделённые пары). TLS только `server_name`. |
 | 9 | `wireguard://` | `wireguard` | **`endpoints[]`** | **sing-box ≥ 1.11** (+ **`with_awg`** для AmneziaWG) | Один peer; маркеры `@ParserSTART_E`/`@ParserEND_E`. Default port 51820, mtu 1420. Опциональные параметры **AmneziaWG 2.0** (jc/jmin/jmax, s1–s4, h1–h4, i1–i5) — см. ниже. |
 | 10 | `tuic://` | `tuic` | `outbounds[]` | core (QUIC) | TUIC v5: `uuid:password` в userinfo. Query: `congestion_control` (cubic/new_reno/bbr), `udp_relay_mode` (native/quic), `alpn`, `sni`, `allow_insecure`, `reduce_rtt`/`zero_rtt_handshake`, `heartbeat`, `fp`. TLS обязателен (QUIC). |
 | 11 | `vpn://` | `wireguard` | **`endpoints[]`** | как №9 | Профиль **Amnezia** (`.vpn`-файл: base64url + qCompress + JSON, SPEC 075): импортируется WG/AWG-контейнер, конвертация в канонический `wireguard://`-URI. См. секцию Amnezia (`vpn://`) ниже. |
@@ -114,7 +114,7 @@
 | `hysteria2` | `hysteria2://` | TLS SNI, `mport`, obfs и т.д. по возможности |
 | `tuic` | `tuic://` | `uuid:password`; `congestion_control`, `udp_relay_mode`, `zero_rtt_handshake`, `heartbeat`; `alpn`/`sni`/`insecure` из TLS |
 | `ssh` | `ssh://` | **Нет** кодирования inline `private_key` в URI; путь к ключу и прочие поля — в query, как в документации SSH URI |
-| `naive` | `naive+https://` / `naive+quic://` | HTTP/2 (`naive+https`) или QUIC (`naive+quic`); user/pass в userinfo; `extra-headers` в query с `\r\n`-разделёнными парами (см. раздел **NaïveProxy** ниже). Требует sing-box **≥ 1.13.0** с `with_naive_proxy` build tag. |
+| `naive` | `naive+https://` / `naive+quic://` | HTTP/2 (`naive+https`) или QUIC (`naive+quic`); user/pass в userinfo; `extra-headers` в query с `\r\n`-разделёнными парами (см. раздел **NaïveProxy** ниже). Требует sing-box **≥ 1.13.0** с build tag `with_naive_outbound` (ядро форка `1.14.0-lx.4+`). |
 | `wireguard` | `wireguard://` | Обычно узел только в `endpoints[]`; формат и query — раздел **WireGuard** ниже. **Один URI ↔ один удалённый peer:** при нескольких элементах в `peers[]` кодирование не поддерживается (`ErrShareURINotSupported`). |
 
 **Не кодируются в один share URI:** `selector`, `urltest`, `direct`, `block`, `dns`, произвольные служебные типы; WireGuard с **несколькими** `peers`; outbound с непустым **`detour`** (цепочка через jump из подписки Xray JSON).
@@ -312,7 +312,7 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 | Поле          | Тип      | Обязательное | Описание |
 |---------------|----------|--------------|----------|
 | `source`      | string   | Да           | URL подписки. Все 11 протоколов из таблицы [«Поддерживаемые протоколы»](#поддерживаемые-протоколы): VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`). Допускаются Base64 и plain-текст; также **JSON-массив** полных конфигов Xray (`[ {...}, ... ]`), см. выше. |
-| `connections` | array    | Нет          | Массив прямых ссылок. Все 11 схем из таблицы [«Поддерживаемые протоколы»](#поддерживаемые-протоколы): `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`/`hy2://`, `tuic://`, `ssh://`, `socks5://`/`socks://`, `naive+https://`/`naive+quic://`, `wireguard://`/`awg://`, `vpn://` (Amnezia). Можно комбинировать с подписками. Узлы WireGuard попадают в секцию `endpoints` конфига (sing-box ≥ 1.11). NaïveProxy требует sing-box ≥ 1.13.0 + build tag `with_naive_proxy`. Подробнее — раздел [Форматы URI для прямых ссылок](#форматы-uri-для-прямых-ссылок). |
+| `connections` | array    | Нет          | Массив прямых ссылок. Все 11 схем из таблицы [«Поддерживаемые протоколы»](#поддерживаемые-протоколы): `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`/`hy2://`, `tuic://`, `ssh://`, `socks5://`/`socks://`, `naive+https://`/`naive+quic://`, `wireguard://`/`awg://`, `vpn://` (Amnezia). Можно комбинировать с подписками. Узлы WireGuard попадают в секцию `endpoints` конфига (sing-box ≥ 1.11). NaïveProxy требует sing-box ≥ 1.13.0 + build tag `with_naive_outbound` (ядро форка `1.14.0-lx.4+`). Подробнее — раздел [Форматы URI для прямых ссылок](#форматы-uri-для-прямых-ссылок). |
 | `skip`        | array    | Нет          | Список фильтров. Если хотя бы один совпал — узел пропускается. |
 | `tag_prefix`  | string   | Нет          | Префикс, добавляемый ко всем тегам узлов из этого источника (версия 4). Применяется перед оригинальным тегом. Поддерживает переменные: `{$tag}`, `{$scheme}`, `{$protocol}`, `{$server}`, `{$port}`, `{$label}`, `{$comment}`, `{$num}`. Игнорируется, если указан `tag_mask`. |
 | `tag_postfix` | string   | Нет          | Постфикс, добавляемый ко всем тегам узлов из этого источника (версия 4). Применяется после оригинального тега. Поддерживает те же переменные, что и `tag_prefix`. Игнорируется, если указан `tag_mask`. |
@@ -566,7 +566,7 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
    - ✅ **Hysteria2** (`hysteria2://` и короткая форма `hy2://`)
    - ✅ **SSH** (`ssh://` — собственный URI-диалект singbox-launcher)
    - ✅ **SOCKS5** (`socks5://`, `socks://` — outbound type `socks`, version=5)
-   - ✅ **NaïveProxy** (`naive+https://`, `naive+quic://` — sing-box ≥ 1.13.0 + build tag `with_naive_proxy`)
+   - ✅ **NaïveProxy** (`naive+https://`, `naive+quic://` — sing-box ≥ 1.13.0 + build tag `with_naive_outbound`; ядро форка `1.14.0-lx.4+`)
    - ✅ **WireGuard** (`wireguard://` — секция `endpoints[]`; sing-box ≥ 1.11)
 
 4. **Извлечение информации**
@@ -782,7 +782,9 @@ socks://127.0.0.1:1080#Local
 
 ### NaïveProxy (`naive+https://` / `naive+quic://`)
 
-**Требование:** sing-box должен быть собран с поддержкой NaïveProxy (build tag `with_naive_proxy`). Официальные релизы `SagerNet/sing-box` для **Apple, Android, Windows и отдельных Linux-сборок** включают эту поддержку; на минимальных сборках парсинг URI пройдёт, но `sing-box check` при запуске отклонит конфиг как «unknown outbound type 'naive'».
+**Требование:** sing-box должен быть собран с поддержкой NaïveProxy (build tag `with_naive_outbound`). Ядро форка `sing-box-lx` начиная с **`1.14.0-lx.4`** поддерживает naive на всех desktop-платформах: на Windows outbound в рантайме подгружает `libcronet.dll` (лаунчер извлекает её из релизного архива ядра в `bin/` при Download/Reinstall), на macOS и Linux cronet вкомпилен статически. Исключения навсегда: `windows-386-legacy-windows-7` и mips (cronet туда не собирается).
+
+Если текущее ядро naive не поддерживает (нет тега, или purego-сборка без libcronet рядом с бинарём) — лаунчер **деградирует naive-ноды с предупреждением** (тост Update, warnings при rebuild), не позволяя одной ноде завалить весь `sing-box check` (probe: `core/core_capabilities.go::CoreSupportsNaive`).
 
 **Схема URI** (де-факто, DuckSoft 2020 — [gist](https://gist.github.com/DuckSoft/ca03913b0a26fc77a1da4d01cc6ab2f1)):
 
