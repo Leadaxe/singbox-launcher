@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -108,7 +109,7 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 
 	// 5. Extract archive
 	progressChan <- DownloadProgress{Progress: 80, Message: "Extracting archive...", Status: "extracting"}
-	binaryPath, err := ac.extractArchive(archivePath, tempDir)
+	binaryPath, companionPaths, err := ac.extractArchive(archivePath, tempDir)
 	if err != nil {
 		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Extraction failed: %v", err), Status: "error", Error: fmt.Errorf("DownloadCore: %w", err)}
 		return
@@ -119,6 +120,19 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 	if err := ac.installBinary(binaryPath, ac.FileService.SingboxBundledPath); err != nil {
 		progressChan <- DownloadProgress{Progress: 0, Message: fmt.Sprintf("Installation failed: %v", err), Status: "error", Error: fmt.Errorf("DownloadCore: %w", err)}
 		return
+	}
+
+	// 6.5. Install companion libraries (libcronet.*) next to the binary. The
+	// naive outbound in purego core builds loads libcronet at runtime from the
+	// executable's directory (SPEC 044) — without it every naive node fails
+	// `sing-box check`. Non-fatal: the core itself works without the library,
+	// only naive nodes need it.
+	binDir := filepath.Dir(ac.FileService.SingboxBundledPath)
+	for _, libPath := range companionPaths {
+		destPath := filepath.Join(binDir, filepath.Base(libPath))
+		if err := ac.installBinary(libPath, destPath); err != nil {
+			debuglog.WarnLog("DownloadCore: failed to install companion library %s: %v — naive outbounds won't work", filepath.Base(libPath), err)
+		}
 	}
 
 	// 7. Done!
@@ -299,9 +313,10 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 	}
 
 	// Hard upper bound on the downloaded archive. Legitimate sing-box
-	// release archives are < 20 MB; capping at 100 MB protects us from a
-	// compromised or misconfigured mirror feeding gigabytes onto disk and
-	// filling the user's drive before failing.
+	// release archives are < 30 MB (binary plus the libcronet companion
+	// library for naive); capping at 100 MB protects us from a compromised
+	// or misconfigured mirror feeding gigabytes onto disk and filling the
+	// user's drive before failing.
 	const maxDownloadSize = 100 * 1024 * 1024
 	if resp.ContentLength > maxDownloadSize {
 		return fmt.Errorf("downloadFileFromURL: advertised size %d bytes exceeds %d-byte cap", resp.ContentLength, maxDownloadSize)
@@ -399,78 +414,97 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 	return nil
 }
 
-// extractArchive extracts archive and returns path to binary
-func (ac *AppController) extractArchive(archivePath, destDir string) (string, error) {
+// isCompanionLib reports whether an archive entry is a runtime companion
+// library shipped next to the sing-box binary. Today that's libcronet
+// (libcronet.dll / .dylib / .so) — the naive outbound in purego core builds
+// loads it from the executable's directory at runtime (SPEC 044).
+func isCompanionLib(name string) bool {
+	return strings.HasPrefix(path.Base(name), "libcronet.")
+}
+
+// extractArchive extracts archive and returns path to binary plus paths to
+// any companion libraries (libcronet.*) found in the archive.
+func (ac *AppController) extractArchive(archivePath, destDir string) (string, []string, error) {
 	if strings.HasSuffix(archivePath, ".zip") {
 		return ac.extractZip(archivePath, destDir)
 	} else if strings.HasSuffix(archivePath, ".tar.gz") {
 		return ac.extractTarGz(archivePath, destDir)
 	}
-	return "", fmt.Errorf("extractArchive: unsupported archive format")
+	return "", nil, fmt.Errorf("extractArchive: unsupported archive format")
 }
 
 // extractZip extracts ZIP archive (Windows)
-func (ac *AppController) extractZip(archivePath, destDir string) (string, error) {
+func (ac *AppController) extractZip(archivePath, destDir string) (string, []string, error) {
 	r, err := zip.OpenReader(archivePath)
 	if err != nil {
-		return "", fmt.Errorf("extractZip: failed to open zip: %w", err)
+		return "", nil, fmt.Errorf("extractZip: failed to open zip: %w", err)
 	}
 	defer debuglog.RunAndLog(fmt.Sprintf("extractZip: close zip reader %s", archivePath), r.Close)
 
 	singboxName := platform.GetExecutableNames()
 	var binaryPath string
+	var companions []string
 
 	for _, f := range r.File {
-		// Search for sing-box.exe in archive
-		if strings.HasSuffix(f.Name, singboxName) {
-			rc, err := f.Open()
-			if err != nil {
-				return "", fmt.Errorf("extractZip: failed to open file in zip: %w", err)
+		isBinary := binaryPath == "" && strings.HasSuffix(f.Name, singboxName)
+		if !isBinary && !isCompanionLib(f.Name) {
+			continue
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			return "", nil, fmt.Errorf("extractZip: failed to open file in zip: %w", err)
+		}
+
+		outPath := filepath.Join(destDir, path.Base(f.Name))
+		outFile, err := os.Create(outPath)
+		if err != nil {
+			debuglog.RunAndLog(fmt.Sprintf("extractZip: close zip entry %s after create error", f.Name), rc.Close)
+			return "", nil, fmt.Errorf("extractZip: failed to create output file: %w", err)
+		}
+
+		_, err = io.Copy(outFile, rc)
+		debuglog.RunAndLog(fmt.Sprintf("extractZip: close output file %s", outPath), outFile.Close)
+		debuglog.RunAndLog(fmt.Sprintf("extractZip: close zip entry %s", f.Name), rc.Close)
+
+		if err != nil {
+			return "", nil, fmt.Errorf("extractZip: failed to copy file: %w", err)
+		}
+
+		if isBinary {
+			if err := platform.ChmodExecutable(outPath); err != nil {
+				debuglog.WarnLog("extractZip: failed to chmod %s: %v", outPath, err)
 			}
-
-			binaryPath = filepath.Join(destDir, filepath.Base(f.Name))
-			outFile, err := os.Create(binaryPath)
-			if err != nil {
-				debuglog.RunAndLog(fmt.Sprintf("extractZip: close zip entry %s after create error", f.Name), rc.Close)
-				return "", fmt.Errorf("extractZip: failed to create output file: %w", err)
-			}
-
-			_, err = io.Copy(outFile, rc)
-			debuglog.RunAndLog(fmt.Sprintf("extractZip: close output file %s", binaryPath), outFile.Close)
-			debuglog.RunAndLog(fmt.Sprintf("extractZip: close zip entry %s", f.Name), rc.Close)
-
-			if err != nil {
-				return "", fmt.Errorf("extractZip: failed to copy file: %w", err)
-			}
-
-			if err := platform.ChmodExecutable(binaryPath); err != nil {
-				debuglog.WarnLog("extractZip: failed to chmod %s: %v", binaryPath, err)
-			}
-
-			return binaryPath, nil
+			binaryPath = outPath
+		} else {
+			companions = append(companions, outPath)
 		}
 	}
 
-	return "", fmt.Errorf("extractZip: sing-box binary not found in archive")
+	if binaryPath == "" {
+		return "", nil, fmt.Errorf("extractZip: sing-box binary not found in archive")
+	}
+	return binaryPath, companions, nil
 }
 
 // extractTarGz extracts tar.gz archive (Linux/macOS)
-func (ac *AppController) extractTarGz(archivePath, destDir string) (string, error) {
+func (ac *AppController) extractTarGz(archivePath, destDir string) (string, []string, error) {
 	file, err := os.Open(archivePath)
 	if err != nil {
-		return "", fmt.Errorf("extractTarGz: failed to open archive: %w", err)
+		return "", nil, fmt.Errorf("extractTarGz: failed to open archive: %w", err)
 	}
 	defer debuglog.RunAndLog(fmt.Sprintf("extractTarGz: close archive %s", archivePath), file.Close)
 
 	gzr, err := gzip.NewReader(file)
 	if err != nil {
-		return "", fmt.Errorf("extractTarGz: failed to create gzip reader: %w", err)
+		return "", nil, fmt.Errorf("extractTarGz: failed to create gzip reader: %w", err)
 	}
 	defer debuglog.RunAndLog(fmt.Sprintf("extractTarGz: close gzip reader %s", archivePath), gzr.Close)
 
 	tr := tar.NewReader(gzr)
 	singboxName := platform.GetExecutableNames()
 	var binaryPath string
+	var companions []string
 
 	for {
 		header, err := tr.Next()
@@ -478,33 +512,45 @@ func (ac *AppController) extractTarGz(archivePath, destDir string) (string, erro
 			break
 		}
 		if err != nil {
-			return "", fmt.Errorf("extractTarGz: failed to read tar: %w", err)
+			return "", nil, fmt.Errorf("extractTarGz: failed to read tar: %w", err)
+		}
+		if header.Typeflag != tar.TypeReg {
+			continue
 		}
 
-		// Search for sing-box in archive
-		if strings.HasSuffix(header.Name, singboxName) || strings.HasSuffix(header.Name, "sing-box") {
-			binaryPath = filepath.Join(destDir, filepath.Base(header.Name))
-			outFile, err := os.Create(binaryPath)
-			if err != nil {
-				return "", fmt.Errorf("extractTarGz: failed to create output file: %w", err)
+		isBinary := binaryPath == "" &&
+			(strings.HasSuffix(header.Name, singboxName) || strings.HasSuffix(header.Name, "sing-box"))
+		if !isBinary && !isCompanionLib(header.Name) {
+			continue
+		}
+
+		outPath := filepath.Join(destDir, path.Base(header.Name))
+		outFile, err := os.Create(outPath)
+		if err != nil {
+			return "", nil, fmt.Errorf("extractTarGz: failed to create output file: %w", err)
+		}
+
+		_, err = io.Copy(outFile, tr)
+		debuglog.RunAndLog(fmt.Sprintf("extractTarGz: close output file %s", outPath), outFile.Close)
+
+		if err != nil {
+			return "", nil, fmt.Errorf("extractTarGz: failed to copy file: %w", err)
+		}
+
+		if isBinary {
+			if err := platform.ChmodExecutable(outPath); err != nil {
+				debuglog.WarnLog("extractTarGz: failed to chmod %s: %v", outPath, err)
 			}
-
-			_, err = io.Copy(outFile, tr)
-			debuglog.RunAndLog(fmt.Sprintf("extractTarGz: close output file %s", binaryPath), outFile.Close)
-
-			if err != nil {
-				return "", fmt.Errorf("extractTarGz: failed to copy file: %w", err)
-			}
-
-			if err := platform.ChmodExecutable(binaryPath); err != nil {
-				debuglog.WarnLog("extractTarGz: failed to chmod %s: %v", binaryPath, err)
-			}
-
-			return binaryPath, nil
+			binaryPath = outPath
+		} else {
+			companions = append(companions, outPath)
 		}
 	}
 
-	return "", fmt.Errorf("extractTarGz: sing-box binary not found in archive")
+	if binaryPath == "" {
+		return "", nil, fmt.Errorf("extractTarGz: sing-box binary not found in archive")
+	}
+	return binaryPath, companions, nil
 }
 
 // installBinary copies binary to target directory

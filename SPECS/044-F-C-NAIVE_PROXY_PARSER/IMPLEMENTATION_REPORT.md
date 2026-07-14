@@ -70,7 +70,7 @@
 
 ## Что не сделано (в рамках TODO на будущее)
 
-- **sing-box binary feature-probe.** При первом Update вызывать `sing-box check` на тестовом конфиге с naive и при ошибке `unknown outbound type "naive"` показывать warning в UI. Сейчас — только документирование требования в `docs/ParserConfig.md` и release-notes.
+- **sing-box binary feature-probe.** ~~При первом Update вызывать `sing-box check` на тестовом конфиге с naive и при ошибке `unknown outbound type "naive"` показывать warning в UI. Сейчас — только документирование требования в `docs/ParserConfig.md` и release-notes.~~ **Сделано 2026-07-14** (после полевого отчёта: naive-нода валила весь конфиг на ядре без поддержки). Реализация отличается от плана: вместо probe-конфига через `sing-box check` — разбор `Tags:` из `sing-box version` + проверка наличия libcronet для purego-сборок (`core/core_capabilities.go::CoreSupportsNaive`, hook `config.NaiveSupportProbe`). Naive-ноды деградируются с warning (тост Update / `ParsedCache.Warnings`), а не валят конфиг. Заодно `DownloadCore` теперь извлекает `libcronet.*` из архива ядра в `bin/` (нужен релиз форка `lx.4+`, который его пакует).
 - **Custom SNI** через `sni=` query-param (`tls.server_name` ≠ host). В v1 `tls.server_name` всегда = `server`.
 - **Live-tests** — намеренно пропущены (нет публичных anonymous naive-серверов).
 

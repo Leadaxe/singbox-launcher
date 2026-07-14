@@ -63,7 +63,20 @@ type OutboundGenerationResult struct {
 	TotalSources     int
 	SucceededSources int
 	FailedSources    int
+	// SkippedNaiveNodes — naive nodes dropped because the running sing-box
+	// core can't create them (SPEC 044 feature-probe: no with_naive_outbound
+	// tag, or a purego build without libcronet next to the binary). One such
+	// node would otherwise fail `sing-box check` for the whole config.
+	// SkippedNaiveReason carries the probe verdict for UI surfacing.
+	SkippedNaiveNodes  int
+	SkippedNaiveReason string
 }
+
+// NaiveSupportProbe — hook installed by the app layer (core.AppController):
+// reports whether the running sing-box core supports naive outbounds and why
+// not. nil (parser-level tests, standalone use) → assume supported. Same
+// package-level-hook pattern as subscription.LookupCachedBody.
+var NaiveSupportProbe func() (supported bool, reason string)
 
 // GenerateNodeJSON returns a single JSON object string for one proxy node (sing-box outbound).
 // Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria2, tuic, naive, socks.
@@ -642,6 +655,15 @@ func GenerateOutboundsFromParserConfig(
 		progressCallback(10, fmt.Sprintf("Processing %d sources...", totalSources))
 	}
 
+	// SPEC 044 feature-probe: one probe per generation run. When the core
+	// can't create naive outbounds, drop those nodes (with a warning) instead
+	// of emitting a config that `sing-box check` rejects wholesale.
+	naiveSupported, naiveReason := true, ""
+	if NaiveSupportProbe != nil {
+		naiveSupported, naiveReason = NaiveSupportProbe()
+	}
+	skippedNaive := 0
+
 	processedIdx := 0
 	succeededSources := 0
 	failedSources := 0
@@ -660,6 +682,28 @@ func GenerateOutboundsFromParserConfig(
 		if err != nil {
 			debuglog.ErrorLog("GenerateOutboundsFromParserConfig: Error processing source %d/%d: %v", i+1, totalSources, err)
 			failedSources++
+			continue
+		}
+
+		skippedNaiveHere := 0
+		if !naiveSupported {
+			kept := nodesFromSource[:0]
+			for _, n := range nodesFromSource {
+				if n.Scheme == "naive" {
+					skippedNaiveHere++
+					debuglog.WarnLog("GenerateOutboundsFromParserConfig: skipping naive node %q — %s", n.Tag, naiveReason)
+					continue
+				}
+				kept = append(kept, n)
+			}
+			nodesFromSource = kept
+			skippedNaive += skippedNaiveHere
+		}
+
+		// A source whose every node was a degraded naive node still fetched
+		// and parsed fine — count it as succeeded, not silent-empty.
+		if len(nodesFromSource) == 0 && skippedNaiveHere > 0 {
+			succeededSources++
 			continue
 		}
 
@@ -682,6 +726,9 @@ func GenerateOutboundsFromParserConfig(
 	if len(allNodes) == 0 {
 		if totalSources == 0 {
 			return nil, fmt.Errorf("no enabled sources (all subscriptions disabled in wizard)")
+		}
+		if skippedNaive > 0 {
+			return nil, fmt.Errorf("no usable nodes: %d naive node(s) skipped (%s)", skippedNaive, naiveReason)
 		}
 		return nil, fmt.Errorf("no nodes parsed from any source")
 	}
@@ -791,6 +838,8 @@ func GenerateOutboundsFromParserConfig(
 		TotalSources:         totalSources,
 		SucceededSources:     succeededSources,
 		FailedSources:        failedSources,
+		SkippedNaiveNodes:    skippedNaive,
+		SkippedNaiveReason:   naiveReason,
 	}, nil
 }
 

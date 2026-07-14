@@ -22,4 +22,10 @@ type ParsedCache struct {
 
 	// Endpoints — WireGuard endpoints (если используются).
 	Endpoints []json.RawMessage
+
+	// Warnings — non-fatal замечания парсера, о которых должен узнать
+	// пользователь (например, деградированные naive-ноды на ядре без
+	// with_naive_outbound). Caller (RebuildConfigIfDirty) присоединяет их
+	// к Result.Validation.Warnings; BuildConfig это поле не читает.
+	Warnings []string
 }

@@ -166,6 +166,16 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		return fmt.Errorf("build: %w", err)
 	}
 
+	// Parser-stage warnings (e.g. naive nodes degraded on a core without
+	// naive support, SPEC 044 feature-probe) ride along with the build
+	// validation warnings into the ConfigBuilt event.
+	if cacheSnap != nil && len(cacheSnap.Warnings) > 0 {
+		for _, w := range cacheSnap.Warnings {
+			debuglog.WarnLog("RebuildConfigIfDirty: %s", w)
+		}
+		res.Validation.Warnings = append(res.Validation.Warnings, cacheSnap.Warnings...)
+	}
+
 	// Step 5: atomic write.
 	if err := atomicWriteConfig(ac.FileService.ConfigPath, res.ConfigJSON); err != nil {
 		return fmt.Errorf("write config: %w", err)
