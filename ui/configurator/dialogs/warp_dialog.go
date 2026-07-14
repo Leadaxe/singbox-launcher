@@ -57,8 +57,10 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 	}
 	mq.container.Hide()
 
+	intro := widget.NewLabel(locale.T("wizard.warp.intro"))
+	intro.Wrapping = fyne.TextWrapWord // иначе 120-симв строка задаёт огромный min-width окна
 	content := container.NewVBox(
-		widget.NewLabel(locale.T("wizard.warp.intro")),
+		intro,
 		container.NewHBox(widget.NewLabel(locale.T("wizard.warp.transport_label")), transport),
 		widget.NewSeparator(),
 		wg.container,
@@ -76,8 +78,9 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 	}
 	warpWindow := controller.UIService.Application.NewWindow(locale.T("wizard.warp.title"))
 
-	// Вертикальный скролл + gutter внутри. Окно держит ширину/высоту, поэтому
-	// скролл получает конечный вьюпорт и реально прокручивает высокую форму.
+	// Точь-в-точь как preset_ref_edit (Edit Rule), который работает: контент в
+	// VScroll + gutter внутри, ширину держит само окно (Resize ниже). Никаких
+	// GridWrap/HBox-капов — они и ломали раскладку в прошлых итерациях.
 	scrollInner := container.NewBorder(nil, nil, nil, components.NewScrollGutter(), content)
 	scroll := container.NewVScroll(scrollInner)
 
@@ -174,6 +177,9 @@ func newWarpWGSection() *warpWGSection {
 		}
 	}
 
+	junkNote := widget.NewLabelWithStyle(locale.T("wizard.warp.junk_note"), fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+	junkNote.Wrapping = fyne.TextWrapWord // 224-симв подсказка — без wrap задаёт огромный min-width
+
 	advanced := container.NewVBox(
 		labeledRow(locale.T("wizard.warp.license_label"), license),
 		labeledRow(locale.T("wizard.warp.endpoint_label"), container.NewBorder(nil, nil, nil, randEndpointBtn, endpoint)),
@@ -185,7 +191,7 @@ func newWarpWGSection() *warpWGSection {
 		ibRow,
 		container.NewGridWithColumns(3,
 			labeledRow("jc", jc), labeledRow("jmin", jmin), labeledRow("jmax", jmax)),
-		widget.NewLabelWithStyle(locale.T("wizard.warp.junk_note"), fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
+		junkNote,
 	)
 	acc := widget.NewAccordion(widget.NewAccordionItem(locale.T("wizard.warp.advanced"), advanced))
 
@@ -255,8 +261,11 @@ func newWarpMasqueSection() *warpMasqueSection {
 		}
 	}
 
+	masqueNote := widget.NewLabel(locale.T("wizard.warp.masque_note"))
+	masqueNote.Wrapping = fyne.TextWrapWord // 108-симв подсказка — без wrap раздувает окно
+
 	box := container.NewVBox(
-		widget.NewLabel(locale.T("wizard.warp.masque_note")),
+		masqueNote,
 		labeledRow(locale.T("wizard.warp.masque_transport"), network),
 		labeledRow(locale.T("wizard.warp.masque_sni"), container.NewBorder(nil, nil, nil, randSNIBtn, sni)),
 		labeledRow(locale.T("wizard.warp.masque_idle"), idle),
