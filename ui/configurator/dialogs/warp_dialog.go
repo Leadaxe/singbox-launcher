@@ -63,28 +63,35 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 		wg.container,
 		mq.container,
 	)
-	// Кап ширины формы. dialog.NewCustomConfirm — модальный попап: его рендерер
+	// Кап РАЗМЕРА формы. dialog.NewCustomConfirm — модальный попап: его рендерер
 	// подтягивает размер ВВЕРХ до Content.MinSize() на каждом layout, поэтому
-	// .Resize() задаёт только пол, а не потолок. Ничем не ограниченный VBox
-	// растягивался до края окна wizard (~2000px) → гигантские поля, обрезанные
-	// слева лейблы. GridWrap — единственный Fyne-layout, жёстко фиксирующий И min,
-	// И max ширину (resize'ит ребёнка ровно в CellSize), поэтому пиним 520px.
+	// .Resize() задаёт только пол, а не потолок. Без капа: по ширине VBox
+	// растягивался до края окна wizard (гигантские поля, обрезанные лейблы), а по
+	// высоте форма вылезала за окно вместо скролла.
+	//
+	// GridWrap — единственный Fyne-layout, жёстко фиксирующий И min, И max по обеим
+	// осям (resize'ит ребёнка ровно в CellSize). Два уровня:
+	//   1. внутренний GridWrap(520 × высота_формы) — пинит ШИРИНУ формы;
+	//   2. внешний GridWrap(вьюпорт × 460) вокруг скролла — пинит ВЫСОТУ вьюпорта,
+	//      чтобы форма (высотой ~700) реально СКРОЛЛИЛАСЬ, а не вылезала за окно.
 	const formWidth = 520
+	const viewportH = 460
 	capped := container.NewGridWrap(fyne.NewSize(formWidth, content.MinSize().Height), content)
 
-	// Gutter внутри вертикального (только!) скролла: форма высокая, но по ширине
-	// зафиксирована — горизонтального бегунка нет. NewVScroll вместо двухосевого
-	// NewScroll (что внутри WrapInScrollWithGutter). Gutter в правом слоте Border
-	// резервирует 14pt под бегунок, поля стоят левее полосы.
+	// Gutter внутри вертикального (только!) скролла: горизонтального бегунка нет.
+	// Gutter в правом слоте Border резервирует 14pt под бегунок, поля левее полосы.
 	inner := container.NewBorder(nil, nil, nil, components.NewScrollGutter(), capped)
 	scroll := container.NewVScroll(inner)
-	scroll.SetMinSize(fyne.NewSize(formWidth+components.ScrollbarGutterWidth+8, 460))
+	// Внешний GridWrap с фиксированной высотой вьюпорта — заставляет скролл иметь
+	// вьюпорт 460 (< высоты формы) → появляется вертикальная прокрутка.
+	viewportW := float32(formWidth) + components.ScrollbarGutterWidth + 8
+	scrollBox := container.NewGridWrap(fyne.NewSize(viewportW, viewportH), scroll)
 
 	dlg := dialog.NewCustomConfirm(
 		locale.T("wizard.warp.title"),
 		locale.T("wizard.warp.button_create"),
 		locale.T("wizard.warp.button_cancel"),
-		scroll,
+		scrollBox,
 		func(ok bool) {
 			if !ok {
 				return
