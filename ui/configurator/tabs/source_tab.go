@@ -210,19 +210,19 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(overflowBtn)
 		pop.ShowAtPosition(fyne.NewPos(pos.X, pos.Y+overflowBtn.MinSize().Height))
 	})
-	urlActionButtons := overflowBtn
-	urlHeader := container.NewHBox(
-		urlLabel,
-		layout.NewSpacer(),
-		urlActionButtons,
-	)
+	// Header: только label (⋮ переехал в строку ввода, вплотную к Add).
+	urlHeader := container.NewHBox(urlLabel)
 
-	// URL field with Add button on the right, vertically centered with the field.
-	// Use Border so the entry takes all remaining width and Add stays compact on the right.
+	// URL field: [entry .......] [Add] [⋮]. Add и overflow-меню стоят рядом справа
+	// от поля — ⋮ сразу за кнопкой Add, а не в дальнем углу заголовка.
+	addCluster := container.NewHBox(
+		container.NewCenter(addURLButton),
+		container.NewCenter(overflowBtn),
+	)
 	urlEntryRow := container.NewBorder(
 		nil, nil,
 		nil,
-		container.NewCenter(addURLButton),
+		addCluster,
 		urlEntryWithSize,
 	)
 
