@@ -18,6 +18,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/warp"
@@ -63,49 +64,43 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 		wg.container,
 		mq.container,
 	)
-	// Кап РАЗМЕРА формы. dialog.NewCustomConfirm — модальный попап: его рендерер
-	// подтягивает размер ВВЕРХ до Content.MinSize() на каждом layout, поэтому
-	// .Resize() задаёт только пол, а не потолок. Без капа: по ширине VBox
-	// растягивался до края окна wizard (гигантские поля, обрезанные лейблы), а по
-	// высоте форма вылезала за окно вместо скролла.
-	//
-	// GridWrap — единственный Fyne-layout, жёстко фиксирующий И min, И max по обеим
-	// осям (resize'ит ребёнка ровно в CellSize). Два уровня:
-	//   1. внутренний GridWrap(520 × высота_формы) — пинит ШИРИНУ формы;
-	//   2. внешний GridWrap(вьюпорт × 460) вокруг скролла — пинит ВЫСОТУ вьюпорта,
-	//      чтобы форма (высотой ~700) реально СКРОЛЛИЛАСЬ, а не вылезала за окно.
-	const formWidth = 520
-	const viewportH = 460
-	capped := container.NewGridWrap(fyne.NewSize(formWidth, content.MinSize().Height), content)
 
-	// Gutter внутри вертикального (только!) скролла: горизонтального бегунка нет.
-	// Gutter в правом слоте Border резервирует 14pt под бегунок, поля левее полосы.
-	inner := container.NewBorder(nil, nil, nil, components.NewScrollGutter(), capped)
-	scroll := container.NewVScroll(inner)
-	// Внешний GridWrap с фиксированной высотой вьюпорта — заставляет скролл иметь
-	// вьюпорт 460 (< высоты формы) → появляется вертикальная прокрутка.
-	viewportW := float32(formWidth) + components.ScrollbarGutterWidth + 8
-	scrollBox := container.NewGridWrap(fyne.NewSize(viewportW, viewportH), scroll)
+	// Отдельное окно (Application.NewWindow), а НЕ модальный попап. Попап Fyne
+	// подтягивает свой размер до Content.MinSize() и игнорирует .Resize() как
+	// потолок → форма либо раздувалась на всё окно, либо вылезала без скролла.
+	// Окно фиксированного размера с обычным VScroll внутри решает это — тот же
+	// паттерн, что add_rule_dialog / preset_ref_edit (Edit Rule).
+	controller := presenter.Controller()
+	if controller == nil || controller.UIService == nil {
+		return
+	}
+	warpWindow := controller.UIService.Application.NewWindow(locale.T("wizard.warp.title"))
 
-	dlg := dialog.NewCustomConfirm(
-		locale.T("wizard.warp.title"),
-		locale.T("wizard.warp.button_create"),
-		locale.T("wizard.warp.button_cancel"),
-		scrollBox,
-		func(ok bool) {
-			if !ok {
-				return
-			}
-			if transport.Selected == locale.T("wizard.warp.mode_masque") {
-				runMasqueRegistration(win, onURI, mq.collect())
-			} else {
-				runWarpRegistration(win, onURI, wg.collect())
-			}
-		},
-		win,
-	)
-	dlg.Resize(fyne.NewSize(560, 560))
-	dlg.Show()
+	// Вертикальный скролл + gutter внутри. Окно держит ширину/высоту, поэтому
+	// скролл получает конечный вьюпорт и реально прокручивает высокую форму.
+	scrollInner := container.NewBorder(nil, nil, nil, components.NewScrollGutter(), content)
+	scroll := container.NewVScroll(scrollInner)
+
+	cancelButton := widget.NewButton(locale.T("wizard.warp.button_cancel"), func() {
+		warpWindow.Close()
+	})
+	createButton := widget.NewButton(locale.T("wizard.warp.button_create"), func() {
+		warpWindow.Close()
+		if transport.Selected == locale.T("wizard.warp.mode_masque") {
+			runMasqueRegistration(win, onURI, mq.collect())
+		} else {
+			runWarpRegistration(win, onURI, wg.collect())
+		}
+	})
+	createButton.Importance = widget.HighImportance
+	buttons := container.NewHBox(layout.NewSpacer(), cancelButton, createButton)
+
+	dialogContent := container.NewBorder(nil, buttons, nil, nil, scroll)
+	warpWindow.Resize(fyne.NewSize(600, 640))
+	warpWindow.CenterOnScreen()
+	warpWindow.SetContent(dialogContent)
+	warpWindow.SetCloseIntercept(func() { warpWindow.Close() })
+	warpWindow.Show()
 }
 
 // ---- WireGuard / AmneziaWG section ----
