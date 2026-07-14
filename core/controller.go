@@ -16,6 +16,7 @@ import (
 	"fyne.io/fyne/v2"
 
 	"singbox-launcher/api"
+	"singbox-launcher/core/config"
 	"singbox-launcher/core/events"
 	"singbox-launcher/core/services"
 	"singbox-launcher/core/uiservice"
@@ -86,6 +87,12 @@ type AppController struct {
 	// --- Installed core version cache (one successful check per run) ---
 	installedCoreVersionCache   string // после первой успешной проверки — без повторных запусков sing-box version
 	installedCoreVersionCacheMu sync.Mutex
+
+	// --- Naive-support probe cache (SPEC 044 feature-probe) ---
+	// Invalidated by the core binary's (mtime, size), so a core reinstall
+	// mid-session re-probes. See core_capabilities.go.
+	naiveSupportCache   *naiveSupportVerdict
+	naiveSupportCacheMu sync.Mutex
 
 	// --- Auto-update per-source retry timers (SPEC 052 phase 8 event model) ---
 	// Map source.ID → pending retry timer. Один retry на 15 секунд после
@@ -211,6 +218,11 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	ac.ConsecutiveCrashAttempts = 0
 	ac.ProcessService = NewProcessService(ac)
 	ac.ConfigService = NewConfigService(ac)
+
+	// SPEC 044 feature-probe: генератор outbound'ов деградирует naive-ноды
+	// (drop + warning) вместо того чтобы отдать sing-box конфиг, который
+	// целиком завалит `check` на ядре без naive-поддержки.
+	config.NaiveSupportProbe = ac.CoreSupportsNaive
 
 	// Устанавливаем callback для проверки обновлений при открытии окна
 	ac.UIService.OnWindowShown = func() {

@@ -28,7 +28,7 @@ func TestDocsURL(t *testing.T) {
 // ConnectionCardJSON must be human-readable: the auth scheme's "<token>" must
 // stay literal, not HTML-escaped to "<token>".
 func TestConnectionCardJSON_NoHTMLEscape(t *testing.T) {
-	card, err := ConnectionCardJSON("http://127.0.0.1:9263", "abc", "v1.1.5", "1.13.13-lx.6")
+	card, err := ConnectionCardJSON("http://127.0.0.1:9263", "abc", "v1.1.5", "1.14.0-lx.1-rc.17")
 	if err != nil {
 		t.Fatalf("card: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestConnectionCardJSON_NoHTMLEscape(t *testing.T) {
 // the single-source-of-truth guarantee.
 func TestManifestAndHelp(t *testing.T) {
 	port := freeLocalPort(t)
-	ff := &fakeFacade{version: "1.13.13-lx.6"}
+	ff := &fakeFacade{version: "1.14.0-lx.1-rc.17"}
 	s, err := New(ff, port, "tok")
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -89,7 +89,7 @@ func TestManifestAndHelp(t *testing.T) {
 	if manifest.API != APIDisplayName || manifest.Spec != APISpec {
 		t.Errorf("manifest identity wrong: %+v", manifest)
 	}
-	if manifest.Core != "1.13.13-lx.6" || manifest.Launcher != "v-test" {
+	if manifest.Core != "1.14.0-lx.1-rc.17" || manifest.Launcher != "v-test" {
 		t.Errorf("manifest versions wrong: launcher=%q core=%q", manifest.Launcher, manifest.Core)
 	}
 	if !strings.Contains(manifest.Docs, "/docs/API.md") {

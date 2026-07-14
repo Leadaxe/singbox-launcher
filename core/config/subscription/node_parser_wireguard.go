@@ -149,6 +149,14 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 	} else if psk := q.Get("presharedkey"); psk != "" {
 		peer["pre_shared_key"] = psk
 	}
+	// reserved (Cloudflare WARP): 3 decimal bytes "b0,b1,b2" derived from the
+	// account client_id. sing-box prepends them to every WireGuard packet, which
+	// WARP requires to route to the right anycast device. A malformed value is
+	// skipped (forward-compat: a WARP node still works without reserved on many
+	// paths, matching the mtu/keepalive drop-one-param policy).
+	if reserved := parseReservedTriplet(q.Get("reserved")); len(reserved) == 3 {
+		peer["reserved"] = reserved
+	}
 
 	endpoint := map[string]interface{}{
 		"type":        "wireguard",
@@ -279,9 +287,13 @@ func queryParamPreservePlus(u *url.URL, key string) string {
 // (applyAWGFields) and the share-URI encoder (shareuri_wireguard.go).
 //   - numeric: jc/jmin/jmax, s1–s4, h1–h4 — uint32 (emitted as JSON number)
 //   - string:  i1–i5 — case-sensitive tag strings (<b 0xHEX>, <r N>, <c>, …)
+//   - masquerade: ip/id/ib — id/ip/ib sugar (SPEC 009); the core expands them
+//     into i1 (and i2 for quic). Mutually exclusive with an explicit i1. Used by
+//     the WARP generator (SPEC 084) and AmneziaWG/Amnezia imports.
 var (
-	awgNumericFields = []string{"jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4"}
-	awgStringFields  = []string{"i1", "i2", "i3", "i4", "i5"}
+	awgNumericFields    = []string{"jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4"}
+	awgStringFields     = []string{"i1", "i2", "i3", "i4", "i5"}
+	awgMasqueradeFields = []string{"ip", "id", "ib"}
 )
 
 const (
@@ -355,9 +367,45 @@ func applyAWGFields(endpoint map[string]interface{}, q url.Values) {
 		}
 		endpoint[k] = v
 	}
+	// Masquerade sugar id/ip/ib (SPEC 009): the core synthesizes i1 from these.
+	// Case must be preserved (id is a domain). Do not set when an explicit i1 is
+	// already present — the core rejects id/ip/ib alongside a literal i1.
+	if _, hasI1 := endpoint["i1"]; !hasI1 {
+		for _, k := range awgMasqueradeFields {
+			v := strings.TrimSpace(q.Get(k))
+			if v == "" {
+				continue
+			}
+			endpoint[k] = v
+		}
+	}
 	if a, b := awgHeaderOverlap(endpoint); a != "" {
 		debuglog.WarnLog("Parser: AWG magic headers %s and %s overlap — the core will reject this endpoint ('headers must not overlap')", a, b)
 	}
+}
+
+// parseReservedTriplet parses a Cloudflare WARP reserved value "b0,b1,b2"
+// (three decimal bytes, each 0–255) into a []int for the peer's reserved field.
+// Returns nil for empty input or any malformed/out-of-range component, so a bad
+// value is skipped rather than dropping the whole node.
+func parseReservedTriplet(raw string) []int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	if len(parts) != 3 {
+		return nil
+	}
+	out := make([]int, 0, 3)
+	for _, p := range parts {
+		n, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil || n < 0 || n > 255 {
+			return nil
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 // awgHeaderOverlap reports a pair of magic-header fields whose effective

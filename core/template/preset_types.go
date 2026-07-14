@@ -62,8 +62,15 @@ type Preset struct {
 	// dns_servers / outbounds), валидно.
 	Rules []map[string]interface{} `json:"rules,omitempty"`
 
-	// DNSRule — DNS-rule preset'а. Опциональный, имеет свой `if`.
+	// DNSRule — DNS-rule preset'а (одиночный). Опциональный, имеет свой `if`.
 	DNSRule map[string]interface{} `json:"dns_rule,omitempty"`
+
+	// DNSRules — упорядоченный список DNS-правил preset'а (SPEC 085.1). Нужен,
+	// когда пресету требуется >1 правила (FakeIP: HTTPS/SVCB predefined-блок +
+	// A/AAAA→fakeip). Все правила делят ОДИН toggle на пресет (state.DNS.Rules
+	// несёт один Ref=<id>), эмитятся в порядке ПОСЛЕ singular DNSRule. Каждое
+	// имеет свой `if`. Predefined/action-правило без server — валидно.
+	DNSRules []map[string]interface{} `json:"dns_rules,omitempty"`
 
 	// Outbounds — preset.outbounds[] (SPEC 056). Каждая entry — либо
 	// mode="add" (новый outbound, требует Type), либо mode="update"
@@ -289,6 +296,12 @@ type PresetDNSServer struct {
 	// Description — valid sing-box DNS server field, пробрасывается в config.
 	// Показывается в debug views / config inspection / logs.
 	Description string `json:"description,omitempty"`
+
+	// Inet4Range/Inet6Range — для type:"fakeip" (SPEC 085): CIDR-диапазоны,
+	// из которых sing-box выдаёт синтетические A/AAAA-ответы. Пробрасываются в
+	// config как есть.
+	Inet4Range string `json:"inet4_range,omitempty"`
+	Inet6Range string `json:"inet6_range,omitempty"`
 
 	// If/IfOr — условный DNS-сервер.
 	If   []string `json:"if,omitempty"`

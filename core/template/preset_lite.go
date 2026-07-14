@@ -29,9 +29,11 @@ func (p *Preset) PresetDNSServerTags() []string {
 	return out
 }
 
-// PresetHasDNSRule — true если preset определяет dns_rule.
+// PresetHasDNSRule — true если preset определяет dns_rule (одиночный) или
+// dns_rules (список, SPEC 085.1). Один toggle в state.DNS.Rules покрывает весь
+// набор bundled DNS-правил пресета.
 func (p *Preset) PresetHasDNSRule() bool {
-	return p.DNSRule != nil
+	return p.DNSRule != nil || len(p.DNSRules) > 0
 }
 
 // PresetLiteMap — собирает map[id]→state.PresetLite из []Preset для передачи в

@@ -156,7 +156,11 @@ func transportToQuery(q url.Values, tr map[string]interface{}) {
 			q.Set("host", h)
 		}
 	case "xhttp":
-		// SPEC 071: Xray splithttp transport, round-tripped verbatim.
+		// SPEC 071 base + SPEC 002 v2: Xray splithttp transport, round-tripped
+		// verbatim. Keys are written snake_case (the parser reads snake_case and
+		// camelCase alike), so parseUri(toUri(spec)) ≈ spec. Only non-empty
+		// fields are written — an absent field and a field-at-default decode to
+		// the same spec.
 		q.Set("type", "xhttp")
 		if m := mapGetString(tr, "mode"); m != "" {
 			q.Set("mode", m)
@@ -172,6 +176,19 @@ func transportToQuery(q url.Values, tr map[string]interface{}) {
 		}
 		if v, ok := tr["no_grpc_header"].(bool); ok && v {
 			q.Set("no_grpc_header", "true")
+		}
+		if v, ok := tr["x_padding_obfs_mode"].(bool); ok && v {
+			q.Set("x_padding_obfs_mode", "true")
+		}
+		for _, f := range xhttpStringFields {
+			if val := mapGetString(tr, f.jsonKey); val != "" {
+				q.Set(f.jsonKey, val)
+			}
+		}
+		for _, f := range xhttpRangeFields {
+			if val := mapGetString(tr, f.jsonKey); val != "" {
+				q.Set(f.jsonKey, val)
+			}
 		}
 	}
 }

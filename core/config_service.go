@@ -120,12 +120,20 @@ func parserSuccessToastMessage(result *config.OutboundGenerationResult) string {
 	if result == nil || result.TotalSources <= 0 {
 		return "Subscriptions refreshed. Press Rebuild or Restart to apply."
 	}
+	var msg string
 	if result.FailedSources == 0 {
-		return fmt.Sprintf("Subscriptions refreshed (%d sources, %d nodes). Press Rebuild or Restart to apply.",
+		msg = fmt.Sprintf("Subscriptions refreshed (%d sources, %d nodes). Press Rebuild or Restart to apply.",
 			result.SucceededSources, result.NodesCount)
+	} else {
+		msg = fmt.Sprintf("Subscriptions partially refreshed: %d/%d sources OK (%d failed). Press Rebuild or Restart to apply.",
+			result.SucceededSources, result.TotalSources, result.FailedSources)
 	}
-	return fmt.Sprintf("Subscriptions partially refreshed: %d/%d sources OK (%d failed). Press Rebuild or Restart to apply.",
-		result.SucceededSources, result.TotalSources, result.FailedSources)
+	// SPEC 044 feature-probe: the user must learn WHY their naive nodes are
+	// missing from the list — silence here reads as a parser bug.
+	if result.SkippedNaiveNodes > 0 {
+		msg += fmt.Sprintf(" %d naive node(s) skipped: %s.", result.SkippedNaiveNodes, result.SkippedNaiveReason)
+	}
+	return msg
 }
 
 // updateParserProgress safely calls UpdateParserProgressFunc if it's not nil

@@ -17,6 +17,7 @@ package tabs
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"image/color"
@@ -108,10 +109,9 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		applyAddedSources(guiState.SourceURLEntry.Text)
 	})
 
-	// SPEC 079: WG/AWG configs are often shared as files (.conf with
-	// [Interface]/[Peer], or .vpn with a vpn:// link). Pick a file → its text
-	// goes through the same import path as the Add field.
-	addFromFileButton := widget.NewButton(locale.T("wizard.source.button_add_from_file"), func() {
+	// fyneFileOpen — in-app file dialog, used as the fallback when no native
+	// dialog is available (Linux without zenity/kdialog).
+	fyneFileOpen := func() {
 		fileDialog := dialog.NewFileOpen(func(rc fyne.URIReadCloser, err error) {
 			if err != nil {
 				dialog.ShowError(err, guiState.Window)
@@ -126,21 +126,59 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				dialog.ShowError(rerr, guiState.Window)
 				return
 			}
-			if text == "" {
-				return
+			if text != "" {
+				applyAddedSources(text)
 			}
-			applyAddedSources(text)
 		}, guiState.Window)
 		fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".conf", ".vpn", ".txt"}))
 		fileDialog.Show()
-	})
+	}
+
+	// SPEC 079/082: WG/AWG configs are often shared as files (.conf with
+	// [Interface]/[Peer], or .vpn with a vpn:// link). Open a native system file
+	// dialog (SPEC 082); fall back to the in-app one where there's no native
+	// dialog. The picked file's text goes through the same path as the Add field.
+	addFromFileAction := func() {
+		path, ok, err := platform.PickOpenFile(locale.T("wizard.source.pick_file_prompt"), []string{"conf", "vpn", "txt"})
+		if err == platform.ErrNativeDialogUnavailable {
+			fyneFileOpen()
+			return
+		}
+		if err != nil {
+			dialog.ShowError(err, guiState.Window)
+			return
+		}
+		if !ok {
+			return // cancelled
+		}
+		f, oerr := os.Open(path)
+		if oerr != nil {
+			dialog.ShowError(oerr, guiState.Window)
+			return
+		}
+		defer f.Close()
+		text, rerr := wizardbusiness.ReadSourceFileText(f)
+		if rerr != nil {
+			dialog.ShowError(rerr, guiState.Window)
+			return
+		}
+		if text != "" {
+			applyAddedSources(text)
+		}
+	}
 
 	// «Free community servers» — picker (LxBox-style): клик подставляет URL
 	// из bin/get_free.json в поле SourceURLEntry, ничего не сохраняет в
 	// state.json и не мутирует модель. Юзер сам нажимает Add.
-	getFreeVPNButton := widget.NewButton(locale.T("wizard.source.button_get_free"), func() {
+	getFreeVPNAction := func() {
 		wizarddialogs.ShowGetFreeVPNDialog(presenter)
-	})
+	}
+
+	// SPEC 084.1: «Add WARP» — генератор Cloudflare WARP. Регистрирует аккаунт и
+	// отдаёт готовый wireguard://-URI в тот же Add-путь, что и ручная вставка.
+	addWarpAction := func() {
+		wizarddialogs.ShowAddWarpDialog(presenter, applyAddedSources)
+	}
 
 	// Limit width and height of URL input field (3 lines)
 	// Wrap MultiLineEntry in Scroll container to show scrollbars; right gutter for scrollbar strip
@@ -158,20 +196,33 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		urlEntryScroll,
 	)
 
-	// Header row: label + add-from-file + community-picker buttons on the right.
-	urlHeader := container.NewHBox(
-		urlLabel,
-		layout.NewSpacer(),
-		addFromFileButton,
-		getFreeVPNButton,
-	)
+	// Header row: label on the left; the three add-source actions (Add WARP,
+	// Add from file, Free community servers) hidden behind a compact ⋮ overflow
+	// menu (same pattern as ui/traffic/toolbar.go) so the header stays clean.
+	var overflowBtn *widget.Button
+	overflowBtn = widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
+		menu := fyne.NewMenu("",
+			fyne.NewMenuItem(locale.T("wizard.source.button_add_warp"), addWarpAction),
+			fyne.NewMenuItem(locale.T("wizard.source.button_add_from_file"), addFromFileAction),
+			fyne.NewMenuItem(locale.T("wizard.source.button_get_free"), getFreeVPNAction),
+		)
+		pop := widget.NewPopUpMenu(menu, guiState.Window.Canvas())
+		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(overflowBtn)
+		pop.ShowAtPosition(fyne.NewPos(pos.X, pos.Y+overflowBtn.MinSize().Height))
+	})
+	// Header: только label (⋮ переехал в строку ввода, вплотную к Add).
+	urlHeader := container.NewHBox(urlLabel)
 
-	// URL field with Add button on the right, vertically centered with the field.
-	// Use Border so the entry takes all remaining width and Add stays compact on the right.
+	// URL field: [entry .......] [Add] [⋮]. Add и overflow-меню стоят рядом справа
+	// от поля — ⋮ сразу за кнопкой Add, а не в дальнем углу заголовка.
+	addCluster := container.NewHBox(
+		container.NewCenter(addURLButton),
+		container.NewCenter(overflowBtn),
+	)
 	urlEntryRow := container.NewBorder(
 		nil, nil,
 		nil,
-		container.NewCenter(addURLButton),
+		addCluster,
 		urlEntryWithSize,
 	)
 

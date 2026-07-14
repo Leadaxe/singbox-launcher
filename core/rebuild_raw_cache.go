@@ -97,9 +97,16 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 
 	subscription.LogDuplicateTagStatistics(tagCounts, "Rebuild")
 
+	var warnings []string
+	if result.SkippedNaiveNodes > 0 {
+		warnings = append(warnings, fmt.Sprintf("%d naive node(s) skipped: %s",
+			result.SkippedNaiveNodes, result.SkippedNaiveReason))
+	}
+
 	return &build.ParsedCache{
 		Outbounds: jsonStringsToRawMessages(result.OutboundsJSON),
 		Endpoints: jsonStringsToRawMessages(result.EndpointsJSON),
+		Warnings:  warnings,
 	}, nil
 }
 

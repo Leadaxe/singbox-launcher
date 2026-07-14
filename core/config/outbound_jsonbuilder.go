@@ -11,6 +11,29 @@ import (
 	"strings"
 )
 
+// xhttpV2StringKeys are the SPEC 002 v2 string-valued XHTTP transport keys, in
+// the deterministic order they are emitted into the sing-box "transport" object.
+// All are already snake_case (the parser maps camelCase URL params onto these);
+// the value is written verbatim, validation is the core's job. Range fields
+// (sc_max_each_post_bytes, sc_min_posts_interval_ms) are strings here too — the
+// parser normalized bare numbers to "min-max" form before they reached us.
+var xhttpV2StringKeys = []string{
+	"session_placement",
+	"session_key",
+	"seq_placement",
+	"seq_key",
+	"uplink_data_placement",
+	"uplink_data_key",
+	"uplink_chunk_size",
+	"uplink_http_method",
+	"x_padding_key",
+	"x_padding_header",
+	"x_padding_placement",
+	"x_padding_method",
+	"sc_max_each_post_bytes",
+	"sc_min_posts_interval_ms",
+}
+
 // marshalJSONString returns s as a JSON string literal (including quotes).
 // encoding/json replaces invalid UTF-8 with U+FFFD, unlike fmt %q / strconv.Quote which can emit
 // escapes that are invalid in JSON (e.g. \xNN) and break sing-box decode.
@@ -80,7 +103,10 @@ func appendOutboundTransportParts(parts []string, outbound map[string]interface{
 	if serviceName, ok := transport["service_name"].(string); ok && serviceName != "" {
 		transportParts = append(transportParts, fmt.Sprintf(`"service_name":%s`, marshalJSONString(serviceName)))
 	}
-	// XHTTP-specific fields (SPEC 071); only present when type=="xhttp".
+	// XHTTP-specific fields (SPEC 071 base + SPEC 002 v2); only present when
+	// type=="xhttp". String fields are emitted in a fixed order so the JSON is
+	// deterministic; bool fields are written only when true (their absence is
+	// the core default).
 	if mode, ok := transport["mode"].(string); ok && mode != "" {
 		transportParts = append(transportParts, fmt.Sprintf(`"mode":%s`, marshalJSONString(mode)))
 	}
@@ -89,6 +115,14 @@ func appendOutboundTransportParts(parts []string, outbound map[string]interface{
 	}
 	if v, ok := transport["no_grpc_header"].(bool); ok && v {
 		transportParts = append(transportParts, `"no_grpc_header":true`)
+	}
+	for _, key := range xhttpV2StringKeys {
+		if s, ok := transport[key].(string); ok && s != "" {
+			transportParts = append(transportParts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), marshalJSONString(s)))
+		}
+	}
+	if v, ok := transport["x_padding_obfs_mode"].(bool); ok && v {
+		transportParts = append(transportParts, `"x_padding_obfs_mode":true`)
 	}
 	// headers may arrive as map[string]string (ws Host) or map[string]interface{}
 	// (URI/Raw-JSON path) — handle both so they aren't silently dropped.

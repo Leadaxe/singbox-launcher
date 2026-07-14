@@ -82,10 +82,31 @@ func ShowEditDialog(
 	}
 	tagEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_tag"))
 
-	typeSelect := widget.NewSelect([]string{locale.T("wizard.outbound.type_manual"), locale.T("wizard.outbound.type_auto")}, nil)
+	// SPEC 088 load-balancing: mode/balancer парсим ЗАРАНЕЕ — он определяет, какой
+	// из трёх типов показать (round_robin = отдельный пункт "loadbalance", хотя на
+	// проводе это тот же type:urltest + mode:round_robin).
+	var curBalancer balancerFormState
+	if displayBody != nil {
+		curBalancer = parseBalancerFromOptions(displayBody.Options)
+	} else {
+		curBalancer = balancerFormState{Sticky: map[string]bool{}}
+	}
+
+	// Type: три пункта. manual(selector) | auto(urltest, least_test) |
+	// loadbalance(urltest + round_robin). Последние два — один wire-type urltest,
+	// различаются наличием mode:round_robin.
+	typeSelect := widget.NewSelect([]string{
+		locale.T("wizard.outbound.type_manual"),
+		locale.T("wizard.outbound.type_auto"),
+		locale.T("wizard.outbound.type_loadbalance"),
+	}, nil)
 	if displayBody != nil {
 		if displayBody.Type == "urltest" {
-			typeSelect.SetSelected(locale.T("wizard.outbound.type_auto"))
+			if curBalancer.RoundRobin {
+				typeSelect.SetSelected(locale.T("wizard.outbound.type_loadbalance"))
+			} else {
+				typeSelect.SetSelected(locale.T("wizard.outbound.type_auto"))
+			}
 		} else {
 			typeSelect.SetSelected(locale.T("wizard.outbound.type_manual"))
 		}
@@ -118,6 +139,9 @@ func ShowEditDialog(
 			curURL = fmt.Sprintf("%v", v)
 		}
 	}
+	// balancer уже распарсен выше (curBalancer). pool/tolerance/sticky для виджетов.
+	curPool, curPoolTolerance := curBalancer.Pool, curBalancer.PoolTolerance
+	curSticky := curBalancer.Sticky
 
 	intervalLabels, intervalLabelToValue := templateVarChoices(editPresenter, "urltest_interval", curInterval)
 	urltestIntervalSelect := widget.NewSelect(intervalLabels, nil)
@@ -137,6 +161,49 @@ func ShowEditDialog(
 	if curURL != "" {
 		urltestURLEntry.SetText(curURL)
 	}
+
+	// Mode-селекта нет: тип "loadbalance" в Type-дропдауне и означает round_robin
+	// (auto = least_test). При Save loadbalance → mode:round_robin + balancer.
+	poolEntry := widget.NewEntry()
+	poolEntry.SetPlaceHolder("3")
+	if curPool != "" {
+		poolEntry.SetText(curPool)
+	}
+	poolToleranceEntry := widget.NewEntry()
+	poolToleranceEntry.SetPlaceHolder("0")
+	if curPoolTolerance != "" {
+		poolToleranceEntry.SetText(curPoolTolerance)
+	}
+
+	// sticky_hash — компоненты липкости сессии (какие поля соединения держат его
+	// на одном узле пула). Ядро: пустой список = дефолтная липкость; ["none"] = выкл.
+	// Дефолт process + dest_ip + dest_port применяем, когда balancer ещё НЕ был
+	// round_robin (новый outbound или переключение auto→loadbalance) — держит
+	// соединения к одному хосту:порту на одном узле, разные назначения раскидывает
+	// по пулу. Если round_robin уже был сохранён — уважаем сохранённый выбор.
+	stickyDefaults := map[string]bool{"process": true, "dest_ip": true, "dest_port": true}
+	applyStickyDefaults := !curBalancer.RoundRobin
+	stickyKeys := stickyHashKeys
+	stickyChecks := make(map[string]*widget.Check, len(stickyKeys))
+	// Два компактных ряда HBox (3 + 2), а не GridWithColumns (равные растянутые
+	// колонки раздували окно). Чекбоксы встают по своей ширине слева.
+	stickyRow1 := container.NewHBox()
+	stickyRow2 := container.NewHBox()
+	for i, k := range stickyKeys {
+		ch := widget.NewCheck(k, nil)
+		if applyStickyDefaults {
+			ch.SetChecked(stickyDefaults[k])
+		} else if curSticky[k] {
+			ch.SetChecked(true)
+		}
+		stickyChecks[k] = ch
+		if i < 3 {
+			stickyRow1.Add(ch)
+		} else {
+			stickyRow2.Add(ch)
+		}
+	}
+	stickyCheckRow := container.NewVBox(stickyRow1, stickyRow2)
 
 	// Scope: For all | For source: ...
 	//
@@ -374,8 +441,11 @@ func ShowEditDialog(
 			}
 			tag = "_preview_"
 		}
+		// auto И loadbalance → wire-type urltest (loadbalance = urltest + round_robin,
+		// применяется ниже через buildBalancerOptions).
 		obType := "selector"
-		if typeSelect.Selected == locale.T("wizard.outbound.type_auto") {
+		if typeSelect.Selected == locale.T("wizard.outbound.type_auto") ||
+			typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance") {
 			obType = "urltest"
 		}
 
@@ -440,6 +510,22 @@ func ShowEditDialog(
 			if v := strings.TrimSpace(urltestURLEntry.Text); v != "" {
 				cfg.Options["url"] = v
 			}
+
+			// SPEC 088 balancing — build via the pure helper (tested). loadbalance
+			// type → emit mode:round_robin + balancer; auto (least_test) → strip both
+			// (plain urltest stays byte-identical to upstream).
+			st := balancerFormState{
+				RoundRobin:    typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance"),
+				Pool:          poolEntry.Text,
+				PoolTolerance: poolToleranceEntry.Text,
+				Sticky:        map[string]bool{},
+			}
+			for _, k := range stickyKeys {
+				if ch := stickyChecks[k]; ch != nil && ch.Checked {
+					st.Sticky[k] = true
+				}
+			}
+			buildBalancerOptions(cfg.Options, st)
 		}
 
 		filterVal := strings.TrimSpace(filterValEntry.Text)
@@ -561,16 +647,46 @@ func ShowEditDialog(
 	urltestToleranceLabel.SetToolTip(urltestTooltip)
 	urltestURLLabel := ttwidget.NewLabel("URL")
 	urltestURLLabel.SetToolTip(urltestTooltip)
+
+	// SPEC 088 balancing controls. balancerBlock (pool/pool_tolerance/sticky_hash)
+	// виден только для типа loadbalance (round_robin). Mode-селекта нет — тип его
+	// заменил.
+	poolLabel := ttwidget.NewLabel("Pool size")
+	poolLabel.SetToolTip("Number of live nodes to spread traffic across (round_robin balancer.pool).")
+	poolToleranceLabel := ttwidget.NewLabel("Pool tolerance (ms)")
+	poolToleranceLabel.SetToolTip("Extra latency budget (ms) a node may exceed the best and still stay in the pool (balancer.pool_tolerance, 0..65535).")
+	stickyLabel := ttwidget.NewLabel("Sticky hash")
+	stickyLabel.SetToolTip("Connection fields that pin a session to one pool node. None checked = disabled (sent as [\"none\"]).")
+	balancerBlock := container.NewVBox(
+		container.NewGridWithColumns(2, poolLabel, poolEntry),
+		container.NewGridWithColumns(2, poolToleranceLabel, poolToleranceEntry),
+		stickyLabel,
+		stickyCheckRow,
+	)
 	urltestBlock := container.NewVBox(
 		urltestLabel,
 		container.NewGridWithColumns(2, urltestIntervalLabel, urltestIntervalSelect),
 		container.NewGridWithColumns(2, urltestToleranceLabel, urltestToleranceSelect),
 		container.NewGridWithColumns(2, urltestURLLabel, urltestURLEntry),
+		balancerBlock,
 	)
+	// urltest-поля видны для auto И loadbalance (оба = wire-type urltest);
+	// balancer-блок — только для loadbalance.
+	isURLTestType := func() bool {
+		return typeSelect.Selected == locale.T("wizard.outbound.type_auto") ||
+			typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance")
+	}
+	isLoadBalance := func() bool {
+		return typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance")
+	}
 	urltestVisible := func() {
-		isAuto := typeSelect.Selected == locale.T("wizard.outbound.type_auto")
-		if isAuto {
+		if isURLTestType() {
 			urltestBlock.Show()
+			if isLoadBalance() {
+				balancerBlock.Show()
+			} else {
+				balancerBlock.Hide()
+			}
 		} else {
 			urltestBlock.Hide()
 		}

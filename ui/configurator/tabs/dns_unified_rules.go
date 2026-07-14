@@ -183,11 +183,17 @@ func buildSingleDNSPresetRuleRow(
 	}
 	labelText := "🔗 " + presetLabel
 
-	// Resolve dns_rule body для tooltip + View JSON.
+	// Resolve dns_rule body для tooltip + View JSON. SPEC 085.1: пресет может
+	// нести несколько DNS-правил под одним slot'ом — для summary берём первое
+	// доступное (singular DNSRule, иначе первый элемент DNSRules).
 	frags, _, ok := build.ExpandPreset(tplPreset, pr.Vars, runtime.GOOS, runtime.GOARCH)
 	var ruleBody map[string]interface{}
-	if ok && frags.DNSRule != nil {
-		ruleBody = frags.DNSRule
+	if ok {
+		if frags.DNSRule != nil {
+			ruleBody = frags.DNSRule
+		} else if len(frags.DNSRules) > 0 {
+			ruleBody = frags.DNSRules[0]
+		}
 	}
 
 	titleLabel := ttwidget.NewLabel(labelText)

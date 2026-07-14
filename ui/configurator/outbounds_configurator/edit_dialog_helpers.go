@@ -5,8 +5,95 @@
 package outbounds_configurator
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
+
 	"singbox-launcher/core/config"
 )
+
+// stickyHashKeys — компоненты sticky_hash в порядке отображения в UI.
+var stickyHashKeys = []string{"process", "domain", "source_ip", "dest_ip", "dest_port"}
+
+// balancerFormState — плоское представление UI-полей балансировки (SPEC 088),
+// отвязанное от Fyne-виджетов ради тестируемости чтения/записи Options.
+type balancerFormState struct {
+	RoundRobin    bool            // mode == "round_robin"
+	Pool          string          // raw text (может быть пустым)
+	PoolTolerance string          // raw text
+	Sticky        map[string]bool // выбранные компоненты sticky_hash
+}
+
+// parseBalancerFromOptions читает mode/balancer из Options существующего
+// urltest-outbound'а в balancerFormState для заполнения виджетов. "none"-sentinel
+// в sticky_hash трактуется как «выкл» (ни один чекбокс не отмечен).
+func parseBalancerFromOptions(opts map[string]interface{}) balancerFormState {
+	st := balancerFormState{Sticky: map[string]bool{}}
+	if opts == nil {
+		return st
+	}
+	if mode, _ := opts["mode"].(string); mode == "round_robin" {
+		st.RoundRobin = true
+	}
+	bal, ok := opts["balancer"].(map[string]interface{})
+	if !ok {
+		return st
+	}
+	if v, ok := bal["pool"]; ok {
+		st.Pool = fmt.Sprintf("%v", v)
+	}
+	if v, ok := bal["pool_tolerance"]; ok {
+		st.PoolTolerance = fmt.Sprintf("%v", v)
+	}
+	if sh, ok := bal["sticky_hash"].([]interface{}); ok {
+		for _, item := range sh {
+			if s, _ := item.(string); s != "" && s != "none" {
+				st.Sticky[s] = true
+			}
+		}
+	}
+	return st
+}
+
+// buildBalancerOptions собирает mode+balancer из balancerFormState в целевой
+// Options-map. round_robin → пишет mode + balancer{pool,pool_tolerance,
+// sticky_hash}; иначе удаляет оба ключа (plain urltest остаётся чистым).
+//
+// Контракт ядра: пустой sticky_hash дропается генератором (= дефолтная
+// липкость), поэтому «выкл» кодируется явным ["none"]. pool_tolerance ограничен
+// uint16 (0..65535). pool/pool_tolerance с невалидным/пустым текстом опускаются.
+func buildBalancerOptions(opts map[string]interface{}, st balancerFormState) {
+	if opts == nil {
+		return
+	}
+	if !st.RoundRobin {
+		delete(opts, "mode")
+		delete(opts, "balancer")
+		return
+	}
+	opts["mode"] = "round_robin"
+	balancer := map[string]interface{}{}
+	if n, err := strconv.Atoi(strings.TrimSpace(st.Pool)); err == nil && n > 0 {
+		balancer["pool"] = n
+	}
+	if n, err := strconv.Atoi(strings.TrimSpace(st.PoolTolerance)); err == nil && n >= 0 {
+		if n > 65535 {
+			n = 65535
+		}
+		balancer["pool_tolerance"] = n
+	}
+	sticky := make([]interface{}, 0, len(stickyHashKeys))
+	for _, k := range stickyHashKeys {
+		if st.Sticky[k] {
+			sticky = append(sticky, k)
+		}
+	}
+	if len(sticky) == 0 {
+		sticky = append(sticky, "none")
+	}
+	balancer["sticky_hash"] = sticky
+	opts["balancer"] = balancer
+}
 
 // templateVarChoices строит (labels, labelToValue) для dropdown'а на основе
 // template var. Семантика:

@@ -39,6 +39,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"singbox-launcher/core/config/subscription"
@@ -62,7 +63,20 @@ type OutboundGenerationResult struct {
 	TotalSources     int
 	SucceededSources int
 	FailedSources    int
+	// SkippedNaiveNodes — naive nodes dropped because the running sing-box
+	// core can't create them (SPEC 044 feature-probe: no with_naive_outbound
+	// tag, or a purego build without libcronet next to the binary). One such
+	// node would otherwise fail `sing-box check` for the whole config.
+	// SkippedNaiveReason carries the probe verdict for UI surfacing.
+	SkippedNaiveNodes  int
+	SkippedNaiveReason string
 }
+
+// NaiveSupportProbe — hook installed by the app layer (core.AppController):
+// reports whether the running sing-box core supports naive outbounds and why
+// not. nil (parser-level tests, standalone use) → assume supported. Same
+// package-level-hook pattern as subscription.LookupCachedBody.
+var NaiveSupportProbe func() (supported bool, reason string)
 
 // GenerateNodeJSON returns a single JSON object string for one proxy node (sing-box outbound).
 // Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria2, tuic, naive, socks.
@@ -515,12 +529,21 @@ func GenerateSelectorWithFilteredAddOutbounds(
 		}
 	}
 
-	// 6. Other options (in order they appear)
-	for key, value := range outboundConfig.Options {
+	// 6. Other options — emitted in sorted key order for a deterministic config.
+	// A map range is unordered, which makes byte-exact golden fixtures flaky
+	// (e.g. urltest mode/balancer pair swapping position); sorting fixes that
+	// and is harmless for sing-box (object key order is not significant).
+	sanitizeBalancerOptions(outboundConfig.Options)
+	optKeys := make([]string, 0, len(outboundConfig.Options))
+	for key := range outboundConfig.Options {
 		if key != "interrupt_exist_connections" {
-			valJSON, _ := json.Marshal(value)
-			parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), string(valJSON)))
+			optKeys = append(optKeys, key)
 		}
+	}
+	sort.Strings(optKeys)
+	for _, key := range optKeys {
+		valJSON, _ := json.Marshal(outboundConfig.Options[key])
+		parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), string(valJSON)))
 	}
 
 	// Build final JSON
@@ -534,6 +557,40 @@ func GenerateSelectorWithFilteredAddOutbounds(
 	result += fmt.Sprintf("\t%s,", jsonStr)
 
 	return result, nil
+}
+
+// sanitizeBalancerOptions enforces the sing-box-lx urltest load-balancing
+// sentinel contract before emit (SPEC 088 / core SPEC 019). The core treats a
+// balancer.sticky_hash of length 0 as "omitted" → default stickiness
+// (["process","domain"]), NOT as "off". Stickiness is disabled only by the
+// explicit sentinel ["none"]. So a bare empty sticky_hash ([]) in the options
+// is meaningless and misleading: drop it, letting the core apply its default.
+// A malformed balancer (not a map) is left untouched — sing-box check will
+// reject it before RebuildConfigIfDirty writes the config (fail-closed).
+func sanitizeBalancerOptions(opts map[string]interface{}) {
+	if opts == nil {
+		return
+	}
+	balancer, ok := opts["balancer"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	sh, ok := balancer["sticky_hash"]
+	if !ok {
+		return
+	}
+	empty := false
+	switch v := sh.(type) {
+	case []interface{}:
+		empty = len(v) == 0
+	case []string:
+		empty = len(v) == 0
+	case nil:
+		empty = true
+	}
+	if empty {
+		delete(balancer, "sticky_hash")
+	}
 }
 
 // GenerateEndpointJSON returns a single JSON object string for one WireGuard endpoint (sing-box endpoints array).
@@ -598,6 +655,15 @@ func GenerateOutboundsFromParserConfig(
 		progressCallback(10, fmt.Sprintf("Processing %d sources...", totalSources))
 	}
 
+	// SPEC 044 feature-probe: one probe per generation run. When the core
+	// can't create naive outbounds, drop those nodes (with a warning) instead
+	// of emitting a config that `sing-box check` rejects wholesale.
+	naiveSupported, naiveReason := true, ""
+	if NaiveSupportProbe != nil {
+		naiveSupported, naiveReason = NaiveSupportProbe()
+	}
+	skippedNaive := 0
+
 	processedIdx := 0
 	succeededSources := 0
 	failedSources := 0
@@ -616,6 +682,28 @@ func GenerateOutboundsFromParserConfig(
 		if err != nil {
 			debuglog.ErrorLog("GenerateOutboundsFromParserConfig: Error processing source %d/%d: %v", i+1, totalSources, err)
 			failedSources++
+			continue
+		}
+
+		skippedNaiveHere := 0
+		if !naiveSupported {
+			kept := nodesFromSource[:0]
+			for _, n := range nodesFromSource {
+				if n.Scheme == "naive" {
+					skippedNaiveHere++
+					debuglog.WarnLog("GenerateOutboundsFromParserConfig: skipping naive node %q — %s", n.Tag, naiveReason)
+					continue
+				}
+				kept = append(kept, n)
+			}
+			nodesFromSource = kept
+			skippedNaive += skippedNaiveHere
+		}
+
+		// A source whose every node was a degraded naive node still fetched
+		// and parsed fine — count it as succeeded, not silent-empty.
+		if len(nodesFromSource) == 0 && skippedNaiveHere > 0 {
+			succeededSources++
 			continue
 		}
 
@@ -638,6 +726,9 @@ func GenerateOutboundsFromParserConfig(
 	if len(allNodes) == 0 {
 		if totalSources == 0 {
 			return nil, fmt.Errorf("no enabled sources (all subscriptions disabled in wizard)")
+		}
+		if skippedNaive > 0 {
+			return nil, fmt.Errorf("no usable nodes: %d naive node(s) skipped (%s)", skippedNaive, naiveReason)
 		}
 		return nil, fmt.Errorf("no nodes parsed from any source")
 	}
@@ -747,6 +838,8 @@ func GenerateOutboundsFromParserConfig(
 		TotalSources:         totalSources,
 		SucceededSources:     succeededSources,
 		FailedSources:        failedSources,
+		SkippedNaiveNodes:    skippedNaive,
+		SkippedNaiveReason:   naiveReason,
 	}, nil
 }
 

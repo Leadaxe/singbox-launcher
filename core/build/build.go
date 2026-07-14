@@ -227,7 +227,19 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 func buildSection(ctx BuildContext, key string, raw json.RawMessage, finalOutboundTags map[string]bool) (string, error) {
 	switch key {
 	case "outbounds":
-		return BuildOutboundsSection(raw, cacheOutboundsAsStrings(ctx.Cache), ctx.ForPreview, ctx.Stats)
+		cache := ctx.Cache
+		// SPEC 092: apply opt-in anti-DPI TLS transforms (fragment / record
+		// fragment / mixed-case SNI) to first-hop outbounds before emit. No-op
+		// unless a tls_* var is enabled, so an untouched config is unchanged.
+		if opts := TLSTransformOptionsFromVars(ctx.Vars); cache != nil {
+			transformed := ApplyTLSTransforms(cache.Outbounds, opts)
+			if len(transformed) == len(cache.Outbounds) {
+				c := *cache
+				c.Outbounds = transformed
+				cache = &c
+			}
+		}
+		return BuildOutboundsSection(raw, cacheOutboundsAsStrings(cache), ctx.ForPreview, ctx.Stats)
 	case "endpoints":
 		return BuildEndpointsSection(raw, cacheEndpointsAsStrings(ctx.Cache), ctx.ForPreview, ctx.Stats)
 	case "dns":

@@ -26,6 +26,7 @@ import (
 	"singbox-launcher/core/build"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -282,7 +283,13 @@ func showEditPresetRefDialog(
 	)
 
 	// ===== AppTabs (Form / JSON) =====
-	formScroll := container.NewScroll(formContent)
+	// Только вертикальный скролл + gutter внутри: окно фиксированной ширины (500,
+	// editWindow.Resize ниже) уже держит горизонт, поэтому GridWrap-кап не нужен —
+	// но двухосевой NewScroll (в WrapInScrollWithGutter) давал бы горизонтальную
+	// полосу на длинных полях (IPv4/IPv6 range). NewVScroll её убирает; gutter в
+	// правом слоте резервирует 14pt под бегунок.
+	formInnerScroll := container.NewBorder(nil, nil, nil, components.NewScrollGutter(), formContent)
+	formScroll := container.NewVScroll(formInnerScroll)
 	formTabItem := container.NewTabItem(locale.T("wizard.add_rule.tab_form"), formScroll)
 	jsonTabItem := container.NewTabItem(locale.T("wizard.add_rule.tab_raw"), jsonContent)
 	tabs := container.NewAppTabs(formTabItem, jsonTabItem)
@@ -432,6 +439,9 @@ func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]strin
 	}
 	if frags.DNSRule != nil {
 		preview["dns_rule"] = frags.DNSRule
+	}
+	if len(frags.DNSRules) > 0 { // SPEC 085.1: bundled multi-rule DNS (e.g. FakeIP)
+		preview["dns_rules"] = frags.DNSRules
 	}
 	if len(frags.DNSServers) > 0 {
 		preview["dns_servers"] = frags.DNSServers

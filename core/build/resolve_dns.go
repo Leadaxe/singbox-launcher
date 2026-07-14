@@ -202,10 +202,12 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 	for i := range td.Presets {
 		presetByID[td.Presets[i].ID] = &td.Presets[i]
 	}
-	// presetDNSRulesByID: preset.ID → resolved preset dns_rule fragment.
-	// Populated in Pass 3b; consumed in Pass 4 when state.DNS.Rules has a
-	// matching kind=preset entry.
-	presetDNSRulesByID := make(map[string]ResolvedDNSRule)
+	// presetDNSRulesByID: preset.ID → ordered list of resolved preset dns rules
+	// (SPEC 085.1: a preset may bundle >1 DNS rule — e.g. FakeIP's HTTPS/SVCB
+	// block + A/AAAA→fakeip — behind ONE state.DNS.Rules toggle). Populated in
+	// Pass 3b; consumed in Pass 4 when state.DNS.Rules has a matching kind=preset
+	// entry, emitting all bundled rules in order for that single slot.
+	presetDNSRulesByID := make(map[string][]ResolvedDNSRule)
 	if state != nil {
 		for _, rule := range state.Rules {
 			if rule.Kind != corestate.RuleKindPreset || !rule.Enabled || rule.Ref == "" {
@@ -246,24 +248,30 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 				})
 			}
 
-			// 3b. dns_rule (один на preset, если есть) — буферизуем в карту;
-			// порядок эмиссии решается в Pass 4 по state.DNS.Rules.
-			if p.DNSRule != nil {
-				active, reason := evalIfFromRuleMap(p.DNSRule, presetVars)
-				ruleBody, ok := substitutePresetDNSRule(p, presetVars, runtime.GOOS, runtime.GOARCH)
-				if !ok {
+			// 3b. dns rules (один или несколько на preset, SPEC 085.1) —
+			// буферизуем список в карту; порядок эмиссии решается в Pass 4 по
+			// state.DNS.Rules (один toggle Ref=<id> покрывает весь список).
+			if p.PresetHasDNSRule() {
+				bodies := substitutePresetDNSRules(p, presetVars, runtime.GOOS, runtime.GOARCH)
+				if len(bodies) == 0 {
 					continue
 				}
 				enabled := statePresetRuleEnabled(state, p.ID, true)
-				presetDNSRulesByID[p.ID] = ResolvedDNSRule{
-					Body:           ruleBody,
-					Source:         DNSSourcePreset,
-					PresetID:       p.ID,
-					PresetLabel:    p.DisplayLabel(),
-					Active:         active,
-					Enabled:        enabled,
-					InactiveReason: reason,
+				resolved := make([]ResolvedDNSRule, 0, len(bodies))
+				for _, body := range bodies {
+					// Per-rule `if` was already resolved inside ExpandPreset (gated
+					// rules are dropped); a rule that survived is Active. Its own
+					// if-reason no longer applies, so Active=true.
+					resolved = append(resolved, ResolvedDNSRule{
+						Body:        body,
+						Source:      DNSSourcePreset,
+						PresetID:    p.ID,
+						PresetLabel: p.DisplayLabel(),
+						Active:      true,
+						Enabled:     enabled,
+					})
 				}
+				presetDNSRulesByID[p.ID] = resolved
 			}
 		}
 	}
@@ -306,15 +314,18 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 			r := &state.DNS.Rules[i]
 			switch r.Kind {
 			case corestate.DNSRuleKindPreset:
-				pr, ok := presetDNSRulesByID[r.Ref]
+				prList, ok := presetDNSRulesByID[r.Ref]
 				if !ok {
 					continue // preset disabled / missing — skip silently
 				}
-				// State entry may override the preset's default `Enabled`
-				// (user toggled the rule off in DNS tab). Merge by AND so
-				// either side can disable.
-				pr.Enabled = pr.Enabled && r.Enabled
-				out.Rules = append(out.Rules, pr)
+				// One state.DNS.Rules slot expands to all bundled preset rules
+				// (SPEC 085.1), emitted in order. The state entry may override
+				// the preset's default `Enabled` (user toggled the slot off);
+				// merge by AND so either side can disable the whole set.
+				for _, pr := range prList {
+					pr.Enabled = pr.Enabled && r.Enabled
+					out.Rules = append(out.Rules, pr)
+				}
 				emittedPresetRules[r.Ref] = true
 			case corestate.DNSRuleKindUser:
 				body := make(map[string]interface{}, len(r.Body))
@@ -333,9 +344,9 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 		// not represented in state.DNS.Rules (legacy state / first-load
 		// before SyncDNSByOrderToState ran). Append at the end so the
 		// user's existing drag order isn't shuffled.
-		for refID, pr := range presetDNSRulesByID {
+		for refID, prList := range presetDNSRulesByID {
 			if !emittedPresetRules[refID] {
-				out.Rules = append(out.Rules, pr)
+				out.Rules = append(out.Rules, prList...)
 			}
 		}
 	}
@@ -495,6 +506,13 @@ func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []templa
 	if ds.TLS != nil {
 		body["tls"] = ds.TLS
 	}
+	// FakeIP (SPEC 085): CIDR ranges for type:"fakeip". Passed through as-is.
+	if ds.Inet4Range != "" {
+		body["inet4_range"] = ds.Inet4Range
+	}
+	if ds.Inet6Range != "" {
+		body["inet6_range"] = ds.Inet6Range
+	}
 	// SPEC 067 Phase 8: substitutePresetBody → SubstituteVarsInJSONStrict.
 	substituted, ok := substitutePresetBody(body, presetVars, varsMap, goos, goarch)
 	if !ok {
@@ -511,23 +529,33 @@ func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []templa
 	return out
 }
 
-// substitutePresetDNSRule — резолвит preset.DNSRule body через ExpandPreset
-// (он умеет rewrite rule_set refs с preset prefix).
-func substitutePresetDNSRule(p *template.Preset, varsMap map[string]string, goos, goarch string) (map[string]interface{}, bool) {
-	if p == nil || p.DNSRule == nil {
-		return nil, false
+// substitutePresetDNSRules — резолвит ВСЕ DNS-правила пресета (singular DNSRule
+// + plural DNSRules, SPEC 085.1) через ExpandPreset, в порядке эмиссии. Пустой
+// список, если у пресета нет активных DNS-правил.
+func substitutePresetDNSRules(p *template.Preset, varsMap map[string]string, goos, goarch string) []map[string]interface{} {
+	if p == nil {
+		return nil
 	}
-	// Reuse ExpandPreset.frags.DNSRule — он делает substitute + rewrite refs.
-	// Эту часть пока оставим — она независима от consumption filter.
 	frags, _, ok := ExpandPreset(p, varsMap, goos, goarch)
-	if !ok || frags == nil || frags.DNSRule == nil {
-		return nil, false
+	if !ok || frags == nil {
+		return nil
 	}
-	out := make(map[string]interface{}, len(frags.DNSRule))
-	for k, v := range frags.DNSRule {
+	out := make([]map[string]interface{}, 0, 1+len(frags.DNSRules))
+	if frags.DNSRule != nil {
+		out = append(out, cloneDNSRuleMap(frags.DNSRule))
+	}
+	for _, r := range frags.DNSRules {
+		out = append(out, cloneDNSRuleMap(r))
+	}
+	return out
+}
+
+func cloneDNSRuleMap(src map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(src))
+	for k, v := range src {
 		out[k] = v
 	}
-	return out, true
+	return out
 }
 
 // evalIfWithReason — то же что evalIf, но возвращает причину отказа для UI tooltip.
@@ -536,9 +564,3 @@ func evalIfWithReason(ifList, ifOrList []string, varsMap map[string]string) (boo
 	return template.EvalIfWithReason(ifList, ifOrList, varsMap)
 }
 
-// evalIfFromRuleMap — extract'ит if/if_or из map[string]interface{} (preset.Rule/DNSRule)
-// и вызывает evalIfWithReason.
-func evalIfFromRuleMap(m map[string]interface{}, varsMap map[string]string) (bool, string) {
-	ifList, ifOrList := extractIfFromMap(m)
-	return evalIfWithReason(ifList, ifOrList, varsMap)
-}
