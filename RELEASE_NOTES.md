@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v1.2.0
+
+**Встроенный Cloudflare WARP + рабочий NaiveProxy «из коробки» + FakeIP + loadbalance + AnyTLS + anti-DPI TLS.** Кнопка **Add WARP** на Sources регистрирует WARP-аккаунт и выдаёт готовый AmneziaWG-endpoint; полный конфигуратор открывает все AWG-поля, пресеты обфускации и MASQUE. Ядро запинено на **sing-box-lx 1.14.0-lx.4** — naive работает на всех десктопных платформах (на Windows лаунчер сам ставит `libcronet.dll` при установке ядра), а на ядрах без поддержки naive-ноды деградируются с предупреждением, не ломая конфиг. Плюс FakeIP-пресет, тип outbound `loadbalance` (round-robin + sticky), протокол AnyTLS, anti-DPI TLS-трансформации (fragment / record_fragment / mixed-case SNI) и родное системное окно выбора файла. Миграция не нужна.
+
+**Полный список изменений:** [docs/release_notes/1-2-0.md](docs/release_notes/1-2-0.md).
+
+### Highlights (EN) — v1.2.0
+
+**Cloudflare WARP built in + NaiveProxy working out of the box + FakeIP + loadbalance + AnyTLS + anti-DPI TLS.** The **Add WARP** button on Sources registers a WARP account and produces a ready AmneziaWG endpoint; the full configurator exposes every AWG field, obfuscation presets, and MASQUE. Core pinned to **sing-box-lx 1.14.0-lx.4** — naive works on every desktop platform (on Windows the launcher installs `libcronet.dll` itself during core install), and cores without naive support degrade such nodes with a warning instead of breaking the whole config. Plus the FakeIP preset, the `loadbalance` outbound type (round-robin + sticky), the AnyTLS protocol, anti-DPI TLS transforms (fragment / record_fragment / mixed-case SNI), and a native system file picker. No migration needed.
+
+**Full changelog:** [docs/release_notes/1-2-0.md](docs/release_notes/1-2-0.md).
+
+---
+
 ### Выжимка (RU) — v1.1.6
 
 **Фикс запуска на macOS 11 Big Sur + «Добавить источник из файла» + самоописываемый debug API.** Релиз падал при запуске на Big Sur (Go 1.25 проверял TLS через системный API только для macOS 12+) — теперь лаунчер берёт корни из системного keychain и собирается с `minos 11.0`; **проверено на реальном маке Big Sur 11.7.11**. Заодно окно визарда больше не вылезает за маленькие экраны (1280×800). Плюс кнопка **«Добавить из файла»** (`.conf`/`.vpn`/`.txt`) на вкладке Sources и самоописываемый debug API (`GET /` манифест, `GET /help`, кнопка «Копировать инфо API»). Миграция не нужна.
@@ -336,6 +350,9 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v1.2.0** | [docs/release_notes/1-2-0.md](docs/release_notes/1-2-0.md) |
+| **v1.1.7** | [docs/release_notes/1-1-7.md](docs/release_notes/1-1-7.md) |
+| **v1.1.6** | [docs/release_notes/1-1-6.md](docs/release_notes/1-1-6.md) |
 | **v1.1.5** | [docs/release_notes/1-1-5.md](docs/release_notes/1-1-5.md) |
 | **v1.1.4** | [docs/release_notes/1-1-4.md](docs/release_notes/1-1-4.md) |
 | **v1.1.3** | [docs/release_notes/1-1-3.md](docs/release_notes/1-1-3.md) |
