@@ -23,7 +23,7 @@ func writeTestZip(t *testing.T, dir string, entries map[string]string) string {
 	if err != nil {
 		t.Fatalf("create zip: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	zw := zip.NewWriter(f)
 	for name, content := range entries {
 		w, err := zw.Create(name)
@@ -47,7 +47,7 @@ func writeTestTarGz(t *testing.T, dir string, entries map[string]string) string 
 	if err != nil {
 		t.Fatalf("create tar.gz: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	gzw := gzip.NewWriter(f)
 	tw := tar.NewWriter(gzw)
 	for name, content := range entries {

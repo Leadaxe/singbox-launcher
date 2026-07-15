@@ -57,7 +57,9 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          # Pinned: `latest` silently turns new linter releases into red CI on
+          # untouched code. Bump deliberately.
+          version: v2.12.2
           args: --verbose
           skip-cache: true
         env:
