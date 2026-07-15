@@ -21,6 +21,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/warp"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
@@ -59,9 +60,25 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 
 	intro := widget.NewLabel(locale.T("wizard.warp.intro"))
 	intro.Wrapping = fyne.TextWrapWord // иначе 120-симв строка задаёт огромный min-width окна
+
+	// Регистрация переиспользуется из кеша (state.warp_accounts): H2 и H3,
+	// добавленные подряд, должны сидеть на одном ключе — как в LxBox. Галочка
+	// снята по умолчанию; включённая заставляет пойти в Cloudflare за свежей
+	// регистрацией и перезаписать кеш. Показываем её только когда кеш реально
+	// есть — иначе она обещает выбор, которого нет.
+	newKeys := widget.NewCheck(locale.T("wizard.warp.new_keys"), nil)
+	newKeysNote := widget.NewLabel(locale.T("wizard.warp.new_keys_note"))
+	newKeysNote.Wrapping = fyne.TextWrapWord
+	newKeysNote.TextStyle = fyne.TextStyle{Italic: true}
+	newKeysRow := container.NewVBox(newKeys, newKeysNote)
+	if presenter.Model() == nil || presenter.Model().WarpAccounts == nil {
+		newKeysRow.Hide()
+	}
+
 	content := container.NewVBox(
 		intro,
 		container.NewHBox(widget.NewLabel(locale.T("wizard.warp.transport_label")), transport),
+		newKeysRow,
 		widget.NewSeparator(),
 		wg.container,
 		mq.container,
@@ -90,9 +107,9 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 	createButton := widget.NewButton(locale.T("wizard.warp.button_create"), func() {
 		warpWindow.Close()
 		if transport.Selected == locale.T("wizard.warp.mode_masque") {
-			runMasqueRegistration(win, onURI, mq.collect())
+			runMasqueRegistration(win, presenter, onURI, mq.collect(), newKeys.Checked)
 		} else {
-			runWarpRegistration(win, onURI, wg.collect())
+			runWarpRegistration(win, presenter, onURI, wg.collect(), newKeys.Checked)
 		}
 	})
 	createButton.Importance = widget.HighImportance
@@ -244,8 +261,11 @@ func newWarpMasqueSection() *warpMasqueSection {
 	network := widget.NewSelect([]string{"h3", "h2"}, nil)
 	network.SetSelected("h3")
 
+	// Пустой sni → ядро подставляет consumer-masque.cloudflareclient.com, туннель
+	// встаёт, но данные не идут (DPI глушит фирменный SNI). Дефолт обязателен —
+	// как у masquerade-домена в WG-секции выше.
 	sni := widget.NewSelectEntry(warp.MasqueSNIPool)
-	sni.SetPlaceHolder(locale.T("wizard.warp.masque_sni_placeholder"))
+	sni.SetText(warp.RandomMasqueSNI(nil))
 	randSNIBtn := widget.NewButton("🎲", func() { sni.SetText(warp.RandomMasqueSNI(nil)) })
 
 	idle := numEntry("")
@@ -293,19 +313,34 @@ type masqueRegParams struct {
 	sni     string
 }
 
-func runWarpRegistration(win fyne.Window, onURI func(string), p warpRegParams) {
+func runWarpRegistration(win fyne.Window, presenter *wizardpresentation.WizardPresenter, onURI func(string), p warpRegParams, forceNew bool) {
 	loading := showWarpProgress(win)
 	go func() {
+		var acc *warp.Account
+		var err error
+
 		client := warp.NewClient(nil)
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		acc, err := client.Register(ctx, warp.RegisterOptions{
+		opts := warp.RegisterOptions{
 			LicenseKey:     p.license,
 			Endpoint:       p.endpoint,
 			Obfuscate:      p.obfuscate,
 			Quic:           p.quic,
 			RandomEndpoint: p.randomEndpoint,
-		})
+		}
+
+		if acc = cachedWG(presenter, forceNew); acc != nil {
+			// Регистрация из кеша: endpoint и поля обфускации — параметры узла,
+			// их UI задаёт заново на каждую сборку (пресет, кубик 🎲).
+			client.ApplyNodeOptions(acc, opts)
+		} else {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			acc, err = client.Register(ctx, opts)
+			if err == nil {
+				storeWG(presenter, acc)
+			}
+		}
+
 		var uri string
 		if err == nil {
 			uri, err = acc.ToWireguardURI(p.reserved)
@@ -314,19 +349,89 @@ func runWarpRegistration(win fyne.Window, onURI func(string), p warpRegParams) {
 	}()
 }
 
-func runMasqueRegistration(win fyne.Window, onURI func(string), p masqueRegParams) {
+func runMasqueRegistration(win fyne.Window, presenter *wizardpresentation.WizardPresenter, onURI func(string), p masqueRegParams, forceNew bool) {
 	loading := showWarpProgress(win)
 	go func() {
-		client := warp.NewClient(nil)
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		acc, err := client.RegisterMasque(ctx, time.Now().UTC(), p.network, p.sni)
+		var acc *warp.MasqueAccount
+		var err error
+
+		if acc = cachedMasque(presenter, forceNew); acc == nil {
+			client := warp.NewClient(nil)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			acc, err = client.RegisterMasque(ctx, time.Now().UTC(), p.network, p.sni)
+			if err == nil {
+				storeMasque(presenter, acc)
+			}
+		}
+		if err == nil {
+			// Транспорт/SNI/таймауты — параметры узла, не регистрации: именно
+			// поэтому H2 и H3 собираются из одной кешированной записи.
+			acc.ApplyNodeOptions(p.network, p.sni)
+		}
+
 		var uri string
 		if err == nil {
 			uri, err = acc.ToMasqueURI()
 		}
 		fyne.Do(func() { finishWarp(win, loading, onURI, uri, err) })
 	}()
+}
+
+// cachedWG возвращает кешированную WG-регистрацию или nil (промах кеша либо
+// пользователь явно попросил новые ключи).
+func cachedWG(presenter *wizardpresentation.WizardPresenter, forceNew bool) *warp.Account {
+	if forceNew {
+		return nil
+	}
+	m := presenter.Model()
+	if m == nil || m.WarpAccounts == nil {
+		return nil
+	}
+	return warp.WGFromCache(m.WarpAccounts.WG)
+}
+
+// cachedMasque — то же для MASQUE.
+func cachedMasque(presenter *wizardpresentation.WizardPresenter, forceNew bool) *warp.MasqueAccount {
+	if forceNew {
+		return nil
+	}
+	m := presenter.Model()
+	if m == nil || m.WarpAccounts == nil {
+		return nil
+	}
+	return warp.MasqueFromCache(m.WarpAccounts.Masque)
+}
+
+// storeWG кладёт свежую регистрацию в кеш модели; на диск она уедет вместе с
+// остальным state при сохранении визарда.
+func storeWG(presenter *wizardpresentation.WizardPresenter, acc *warp.Account) {
+	m := presenter.Model()
+	if m == nil {
+		return
+	}
+	fyne.Do(func() {
+		if m.WarpAccounts == nil {
+			m.WarpAccounts = &corestate.WarpAccountsSection{}
+		}
+		m.WarpAccounts.WG = warp.WGToCache(acc)
+		presenter.MarkAsChanged()
+	})
+}
+
+// storeMasque — то же для MASQUE.
+func storeMasque(presenter *wizardpresentation.WizardPresenter, acc *warp.MasqueAccount) {
+	m := presenter.Model()
+	if m == nil {
+		return
+	}
+	fyne.Do(func() {
+		if m.WarpAccounts == nil {
+			m.WarpAccounts = &corestate.WarpAccountsSection{}
+		}
+		m.WarpAccounts.Masque = warp.MasqueToCache(acc)
+		presenter.MarkAsChanged()
+	})
 }
 
 func showWarpProgress(win fyne.Window) *dialog.CustomDialog {

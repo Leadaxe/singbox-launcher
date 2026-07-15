@@ -33,6 +33,7 @@ func (p *WizardPresenter) restoreParserConfig(stateFile *wizardmodels.WizardStat
 	p.model.Sources = append([]wizardmodels.Source(nil), stateFile.Connections.Sources...)
 	p.model.GlobalOutbounds = append([]configtypes.OutboundConfig(nil), stateFile.Connections.Outbounds...)
 	p.model.Defaults = stateFile.Connections.Defaults
+	p.model.WarpAccounts = stateFile.WarpAccounts
 
 	// Validate: на свежей миграции должна быть хотя бы пустая slice.
 	if p.model.Sources == nil {

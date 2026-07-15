@@ -117,18 +117,7 @@ func (c *Client) Register(ctx context.Context, opts RegisterOptions) (*Account, 
 		return nil, fmt.Errorf("warp: registration failed (HTTP %d); the API version (%s) may have changed", status, apiVersion)
 	}
 
-	// Resolve the effective endpoint: a user-picked (non-default) endpoint wins;
-	// otherwise, when obfuscating, optionally pick a random pool endpoint to
-	// dodge the blocked default; else keep the default.
-	endpoint := strings.TrimSpace(opts.Endpoint)
-	if endpoint == "" {
-		endpoint = DefaultEndpoint
-	}
-	if opts.Obfuscate && opts.RandomEndpoint && endpoint == DefaultEndpoint {
-		endpoint = RandomEndpoint(c.rng)
-	}
-
-	acc, err := parseRegistration(respBody, priv, endpoint, nowISO)
+	acc, err := parseRegistration(respBody, priv, c.resolveEndpoint(opts), nowISO)
 	if err != nil {
 		return nil, err
 	}
@@ -136,14 +125,48 @@ func (c *Client) Register(ctx context.Context, opts RegisterOptions) (*Account, 
 	if key := strings.TrimSpace(opts.LicenseKey); key != "" {
 		c.applyLicenseSafe(ctx, acc, key)
 	}
-	if opts.Obfuscate {
-		quic := opts.Quic
-		if opts.RandomEndpoint && strings.TrimSpace(quic.SNI) == "" {
-			quic.SNI = RandomSNI(c.rng)
-		}
-		acc.AWG = buildAWGFields(quic)
-	}
+	c.applyNodeOptions(acc, opts)
 	return acc, nil
+}
+
+// resolveEndpoint — эффективный endpoint: пользовательский (не дефолтный)
+// побеждает; иначе при обфускации можно взять случайный из пула, чтобы обойти
+// заблокированный дефолт; иначе — дефолт.
+func (c *Client) resolveEndpoint(opts RegisterOptions) string {
+	endpoint := strings.TrimSpace(opts.Endpoint)
+	if endpoint == "" {
+		endpoint = DefaultEndpoint
+	}
+	if opts.Obfuscate && opts.RandomEndpoint && endpoint == DefaultEndpoint {
+		endpoint = RandomEndpoint(c.rng)
+	}
+	return endpoint
+}
+
+// ApplyNodeOptions проставляет аккаунту параметры УЗЛА (endpoint + поля
+// AmneziaWG-обфускации) — то, что задаётся в UI на каждую сборку и не относится
+// к регистрации в Cloudflare.
+//
+// Вынесено из Register, чтобы кешированный аккаунт (state.warp_accounts)
+// собирался ровно теми же правилами, что и свежезарегистрированный: иначе
+// «Add WARP» из кеша и без кеша давали бы разные ноды.
+func (c *Client) ApplyNodeOptions(acc *Account, opts RegisterOptions) {
+	if acc == nil {
+		return
+	}
+	acc.Endpoint = c.resolveEndpoint(opts)
+	c.applyNodeOptions(acc, opts)
+}
+
+func (c *Client) applyNodeOptions(acc *Account, opts RegisterOptions) {
+	if !opts.Obfuscate {
+		return
+	}
+	quic := opts.Quic
+	if opts.RandomEndpoint && strings.TrimSpace(quic.SNI) == "" {
+		quic.SNI = RandomSNI(c.rng)
+	}
+	acc.AWG = buildAWGFields(quic)
 }
 
 // parseRegistration extracts the Account fields from a /reg response. A

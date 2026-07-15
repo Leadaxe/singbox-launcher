@@ -109,10 +109,11 @@ func (s *State) marshalDisk() ([]byte, error) {
 			CreatedAt: s.CreatedAt.Format(time.RFC3339),
 			UpdatedAt: s.UpdatedAt.Format(time.RFC3339),
 		},
-		Connections: s.Connections,
-		Rules:       s.Rules,
-		Vars:        s.Vars,
-		DNSOptions:  s.DNS,
+		Connections:  s.Connections,
+		Rules:        s.Rules,
+		Vars:         s.Vars,
+		DNSOptions:   s.DNS,
+		WarpAccounts: s.WarpAccounts,
 	}
 	if out.Rules == nil {
 		out.Rules = []Rule{}
