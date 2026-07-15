@@ -8,6 +8,24 @@
 
 ---
 
+### Выжимка (RU) — v1.2.5
+
+**Вкладки больше не прячутся под заголовком окна при разворачивании из трея (Windows).** Разворачивание перерисовывало окно, пока канва ещё росла до размера контента: GL-viewport брался из размера канвы, а не реального фреймбуфера, кадр рендерился выше буфера, и лишнее срезалось сверху — полоса вкладок уходила под заголовок. Дальше окно догоняло размер, но эта подгонка не ставила dirty-флаг, поэтому битый кадр висел, пока что-нибудь ещё не вызовет перерисовку — отсюда «закономерности нет, проходит само». Теперь после показа окна принудительно ставится перерисовка. На macOS не воспроизводилось. Ядро без изменений — `1.14.0-lx.5`. Миграция не нужна. (issue #92)
+
+Остальное — обслуживание: Fyne 2.7.4 → 2.8.0 (тянет GLFW 3.3 → 3.4; `minos` на macOS остался 11.0 Big Sur+, новых системных зависимостей нет), x/sys 0.45 → 0.47, плюс починка CI — Wayland-заголовки для GLFW 3.4 и пин golangci-lint. Пользовательского поведения это не меняет.
+
+**Полный список изменений:** [docs/release_notes/1-2-5.md](docs/release_notes/1-2-5.md).
+
+### Highlights (EN) — v1.2.5
+
+**The tab strip no longer hides under the title bar when restoring from tray (Windows).** Un-hiding repainted the window while the canvas was still growing to the content's size: the GL viewport came from the canvas size rather than the real framebuffer, so the frame rendered taller than the buffer and the overflow was clipped off the top — taking the tab strip under the caption with it. The window then caught up in size, but that resize left no dirty flag, so the broken frame persisted until something else triggered a repaint — hence "no pattern, clears on its own". A repaint is now forced after the window is shown. Never reproduced on macOS. Core unchanged — `1.14.0-lx.5`. No migration needed. (issue #92)
+
+Everything else is maintenance: Fyne 2.7.4 → 2.8.0 (pulls GLFW 3.3 → 3.4; macOS `minos` stays at 11.0 Big Sur+, no new system dependencies), x/sys 0.45 → 0.47, plus CI repairs — Wayland headers for GLFW 3.4 and a golangci-lint pin. No user-facing behaviour changes.
+
+**Full changelog:** [docs/release_notes/1-2-5.md](docs/release_notes/1-2-5.md).
+
+---
+
 ### Выжимка (RU) — v1.2.4
 
 **`null` в urltest-опциях больше не ломает конфиг — и уже испорченный state чинится сам.** Лаунчер мог записать в auto/urltest-outbound `"interval": null, "tolerance": null, "url": null`, после чего ядро отказывалось принимать конфиг целиком: `invalid duration ""`. Хуже того, `null` залипал в `state.json` и переживал перезапуски — «новая версия при старте собирает новый конфиг» не спасало, потому что конфиг пересобирался из уже испорченного состояния, а срабатывало это без единой правки руками. Теперь `null`-оверрайд читается как «оверрайда нет — берём значение из базы», и нода получает обратно свои шаблонные `interval: 5m` / `tolerance: 100` / `url` на первом же чтении. Ядро без изменений — `1.14.0-lx.5`. Миграция не нужна: просто запустите новую версию. (issue #91)
