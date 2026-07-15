@@ -563,4 +563,3 @@ func cloneDNSRuleMap(src map[string]interface{}) map[string]interface{} {
 func evalIfWithReason(ifList, ifOrList []string, varsMap map[string]string) (bool, string) {
 	return template.EvalIfWithReason(ifList, ifOrList, varsMap)
 }
-

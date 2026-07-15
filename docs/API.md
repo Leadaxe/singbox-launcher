@@ -1,6 +1,6 @@
 # Debug API
 
-Локальный HTTP API на `127.0.0.1`, bearer-auth, выключен по умолчанию. **Самоописываемый** (SPEC 078): `GET /` отдаёт манифест, `GET /help` — список эндпоинтов, так что агенту достаточно дать base URL + токен. Группы: discovery/info, state read, state write, actions, traffic profiler, snapshot. Используется для автоматизации (bash + curl), MCP-обёрток для AI-агентов, CI/CD-валидации шаблонов, headless-deployment, и для одной кнопки **Copy snapshot** в Diagnostics (это тот же `/debug/snapshot`).
+Локальный HTTP API на `127.0.0.1`, bearer-auth, выключен по умолчанию. **Самоописываемый** (SPEC 078): `GET /` отдаёт манифест, `GET /help` — список эндпоинтов, так что агенту достаточно дать base URL + токен. Группы: discovery/info, state read, state write, actions, traffic profiler, snapshot. Используется для автоматизации (bash + curl), MCP-обёрток для AI-агентов, CI/CD-валидации шаблонов, headless-deployment и снятия полного снапшота для bug-report’а (`/debug/snapshot`).
 
 > Source of truth: код `core/debugapi/`. Этот документ — generated-style сводка из реальных handler-ов; SPEC 038 описывает оригинальный дизайн и осталась как историческая референс.
 
@@ -18,7 +18,7 @@ export API="http://127.0.0.1:9263"
 # 4. Проверить
 curl -s "$API/ping"                                    # → {"ok":true}    (без auth)
 curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
-# → {"launcher":"v1.1.5","singbox":"1.14.0-lx.1-rc.17","api":"debugapi/v1"}
+# → {"launcher":"v1.2.2","singbox":"1.14.0-lx.5","api":"debugapi/v1"}
 ```
 
 ---
@@ -31,12 +31,12 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 | Дефолтный порт | **9263** |
 | Override порта | `bin/settings.json` → `debug_api_port` (1024–65535, `0` = дефолт) |
 | Включить/выключить | `bin/settings.json` → `debug_api_enabled` (UI: Settings → checkbox) |
-| Bearer-токен | `bin/settings.json` → `debug_api_token` (UI: Diagnostics → Copy token) |
+| Bearer-токен | `bin/settings.json` → `debug_api_token` (UI: Settings → Debug API → Copy token) |
 | Регенерация токена | UI: **Settings → Debug API → «Regenerate»** (с подтверждением; ротирует токен и перезапускает listener). Альтернатива — удалить ключ из `settings.json` и перезапустить лаунчер |
 | Comparison | `subtle.ConstantTimeCompare` (constant-time) |
 | Header | `Authorization: Bearer <token>` |
 
-Адрес виден в Diagnostics-табе рядом с чекбоксом — копи-пейст готовой строки `127.0.0.1:<port>`.
+Адрес виден в Settings → Debug API рядом с чекбоксом — копи-пейст готовой строки `127.0.0.1:<port>`.
 
 ---
 
@@ -49,7 +49,7 @@ The API is **self-describing** (SPEC 078): point an agent at the base URL with t
 | GET | `/ping` | — | `{"ok":true}` |
 | GET | `/` | ✓ | **Manifest** — `api`, `spec`, `launcher`, `core`, `auth`, `docs` (version-pinned link to this file), `hint`, `endpoints[]` (method/path/summary). |
 | GET | `/help` | ✓ | `{"endpoints":[{method,path,summary,auth}, …]}` — just the endpoint list. |
-| GET | `/version` | ✓ | `{"launcher":"v…","singbox":"1.14.0-lx.1-rc.17","api":"debugapi/v1"}` |
+| GET | `/version` | ✓ | `{"launcher":"v…","singbox":"1.14.0-lx.5","api":"debugapi/v1"}` |
 
 An authed request to any **unknown** path returns `404` with a `docs` pointer, so an agent that guessed wrong is nudged back to `/` and this file.
 
@@ -174,7 +174,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API/action/start"
 
 ## Traffic Profiler (SPEC 059)
 
-Контроль за live DNS/TCP/UDP capture session'ом и просмотр rolling buffer'а (последние 10 минут). Та же подсистема, что окно **Traffic Profiler** в Diagnostics.
+Контроль за live DNS/TCP/UDP capture session'ом и просмотр rolling buffer'а (последние 60 секунд; параметр `last` клампится до 10 минут). Та же подсистема, что окно **Traffic Profiler** в Diagnostics.
 
 | Method | Path | Назначение |
 |---|---|---|
@@ -211,7 +211,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/traffic/live?last=30s" | jq '.ev
 
 | Method | Path | Назначение |
 |---|---|---|
-| GET | `/debug/snapshot` | `core.snapshot.Build()` — template + state + cache + config.json в одном JSON-е. Та же функция, что под кнопкой **Copy snapshot** в Diagnostics. Идеально для bug-report'а |
+| GET | `/debug/snapshot` | `core.snapshot.Build()` — template + state + cache + config.json в одном JSON-е. Идеально для bug-report'а |
 
 ```bash
 # Сохранить полный snapshot для bug-report'а
@@ -222,12 +222,17 @@ Response shape:
 ```json
 {
   "captured_at": "2026-05-28T12:00:00Z",
-  "launcher_version": "v1.1.5",
-  "singbox_version": "1.14.0-lx.1-rc.17",
+  "launcher_version": "v1.2.2",
+  "singbox_version": "1.14.0-lx.5",
   "files": { "state.json": "...", "config.json": "...", "wizard_template.json": "..." },
-  "missing": [],
-  "errors": []
+  "missing": ["cache.json"],
+  "errors": { "config.json": "read: permission denied" }
 }
+```
+
+`missing` — массив, `errors` — объект `{файл: сообщение}`; пустые поля опускаются целиком (omitempty).
+
+```json
 ```
 
 ---
@@ -271,8 +276,8 @@ Response shape:
 | `core/debugapi/state_endpoints.go` | `/state/full`, `/state/rules`, `/state/dns`, `/state/dns/rules`, `/state/outbounds/resolved` |
 | `core/debugapi/traffic_endpoints.go` | Все `/traffic/*` |
 | `core/debugapi/snapshot.go` | `/debug/snapshot` |
-| `core/debugapi/debugapi_wiring.go` | Bridge между Server и controller (StartSingBox, StopSingBox, Update, Rebuild, PingAll) |
+| `core/debugapi_wiring.go` | Bridge между Server и controller (StartSingBox, StopSingBox, Update, Rebuild, PingAll) |
 | `internal/locale/settings.go` | `debug_api_enabled`, `debug_api_port`, `debug_api_token` |
-| `ui/diagnostics_tab.go` | UI toggle / Copy token / port entry |
+| `ui/settings_tab.go` | UI toggle / Copy token / port entry |
 
 История дизайна (необязательно к чтению): [SPEC 038](../SPECS/038-F-C-DEBUG_API/SPEC.md), [IMPLEMENTATION_REPORT](../SPECS/038-F-C-DEBUG_API/IMPLEMENTATION_REPORT.md).

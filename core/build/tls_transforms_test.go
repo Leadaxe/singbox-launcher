@@ -111,9 +111,9 @@ func TestMixedCaseSNI_Deterministic_PunycodeSafe(t *testing.T) {
 
 func TestTLSTransformOptionsFromVars(t *testing.T) {
 	opts := TLSTransformOptionsFromVars(map[string]string{
-		"tls_fragment":         "true",
-		"tls_record_fragment":  "1",
-		"tls_mixed_case_sni":   "on",
+		"tls_fragment":        "true",
+		"tls_record_fragment": "1",
+		"tls_mixed_case_sni":  "on",
 	})
 	if !opts.Fragment || !opts.RecordFragment || !opts.MixedCaseSNI {
 		t.Errorf("vars not parsed: %+v", opts)

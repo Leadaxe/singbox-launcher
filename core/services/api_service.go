@@ -381,7 +381,7 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 func (apiSvc *APIService) SwitchProxy(group, proxyName string) error {
 	baseURL, token, enabled := apiSvc.GetClashAPIConfig()
 	if !enabled {
-		return fmt.Errorf("Clash API is disabled")
+		return fmt.Errorf("clash_api is disabled")
 	}
 
 	err := api.SwitchProxy(baseURL, token, group, proxyName)

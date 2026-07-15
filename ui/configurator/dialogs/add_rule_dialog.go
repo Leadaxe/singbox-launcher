@@ -996,27 +996,27 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		trimmed := strings.TrimSpace(rawTabEntry.Text)
 		if trimmed == "" {
 			dialog.ShowError(errors.New(locale.T("wizard.add_rule.error_raw_empty")), dialogWindow)
-			tabs.SelectTab(rawTabItem)
+			tabs.Select(rawTabItem)
 			ruleSel.SetType(wizardmodels.RuleTypeRaw)
 			return
 		}
 		var obj map[string]interface{}
 		if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
 			dialog.ShowError(fmt.Errorf("invalid JSON: %w", err), dialogWindow)
-			tabs.SelectTab(rawTabItem)
+			tabs.Select(rawTabItem)
 			ruleSel.SetType(wizardmodels.RuleTypeRaw)
 			return
 		}
 		if obj == nil {
 			dialog.ShowError(errors.New(locale.T("wizard.add_rule.error_must_be_object")), dialogWindow)
-			tabs.SelectTab(rawTabItem)
+			tabs.Select(rawTabItem)
 			ruleSel.SetType(wizardmodels.RuleTypeRaw)
 			return
 		}
 		detected := wizardmodels.DetermineRuleType(obj)
 		if detected == wizardmodels.RuleTypeRaw {
 			dialog.ShowInformation(locale.T("wizard.add_rule.dialog_not_recognized_title"), locale.T("wizard.add_rule.dialog_not_recognized_msg"), dialogWindow)
-			tabs.SelectTab(rawTabItem)
+			tabs.Select(rawTabItem)
 			ruleSel.SetType(wizardmodels.RuleTypeRaw)
 			activeTabIsRaw = true
 			return

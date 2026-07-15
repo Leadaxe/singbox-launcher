@@ -45,14 +45,14 @@ func writeLog(level debuglog.Level, format string, args ...interface{}) {
 		return
 	}
 	line := fmt.Sprintf(format, args...)
+	// Hold the read lock across the writes: releasing it first (as before)
+	// let a concurrent close invalidate the file mid-write.
 	apiLogSinkMu.RLock()
-	f := apiLogFile
-	fn := apiLogSink
-	apiLogSinkMu.RUnlock()
-	if f != nil {
-		_, _ = fmt.Fprintf(f, format, args...)
+	defer apiLogSinkMu.RUnlock()
+	if apiLogFile != nil {
+		_, _ = fmt.Fprintf(apiLogFile, format, args...)
 	}
-	if fn != nil {
-		fn(level, line)
+	if apiLogSink != nil {
+		apiLogSink(level, line)
 	}
 }

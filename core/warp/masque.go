@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -64,7 +65,8 @@ func GenerateECDSAKeypair() (privDER string, pubDER string, err error) {
 // ToMasqueURI builds a masque:// share URI for the account (the launcher parser
 // turns it back into a masque outbound). Mirrors the LxBox toMasqueUri contract:
 // masque://<privDER>@<server>:<port>?publickey=&address=&profile=cloudflare
-//   &network=&mtu=[&sni=][&idle_timeout=][&keep_alive=]#tag
+//
+//	&network=&mtu=[&sni=][&idle_timeout=][&keep_alive=]#tag
 func (a *MasqueAccount) ToMasqueURI() (string, error) {
 	if a.PrivateKeyDER == "" || a.ServerPubDER == "" {
 		return "", fmt.Errorf("warp masque: missing key material")
@@ -105,7 +107,7 @@ func (a *MasqueAccount) ToMasqueURI() (string, error) {
 	u := &url.URL{
 		Scheme:   "masque",
 		User:     url.User(a.PrivateKeyDER),
-		Host:     a.Server + ":" + strconv.Itoa(port),
+		Host:     net.JoinHostPort(a.Server, strconv.Itoa(port)), // re-brackets IPv6
 		RawQuery: q.Encode(),
 		Fragment: a.DisplayTag(),
 	}

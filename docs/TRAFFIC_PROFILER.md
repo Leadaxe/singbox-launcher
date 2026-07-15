@@ -25,7 +25,7 @@ System-wide stream of every DNS / TCP / UDP event sing-box sees. New events appe
 
 - Filter chips (DNS / DNS× / TCP / TCP· / UDP) hide/show event kinds.
 - Search box matches domain, IP, process path, process name.
-- Each row carries the process name when sing-box was able to attribute it (`router.find_process: true` is on by default in the bundled template).
+- Each row carries the process name when sing-box was able to attribute it (`route.find_process: true` is on by default in the bundled template).
 
 If you see most rows without a process tag, your template likely has process detection off — a banner inside the window tells you so. Re-run the Configurator wizard and Save; the new template has `route.find_process: true`.
 

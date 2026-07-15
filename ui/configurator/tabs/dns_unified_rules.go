@@ -73,14 +73,13 @@ func buildSingleDNSUserRuleRow(
 
 	title, tooltip := dnsRuleSummary(ur.Body)
 	label := ttwidget.NewLabel("→ " + title)
-	label.Wrapping = fyne.TextTruncate
+	label.Truncation = fyne.TextTruncateClip
 	if tooltip != "" {
 		label.SetToolTip(tooltip)
 	}
 
 	// Per-row enable toggle. DNSUserRule.Enabled — disabled → skip emit на Save.
-	var enableCh *widget.Check
-	enableCh = widget.NewCheck("", nil)
+	enableCh := widget.NewCheck("", nil)
 	enableCh.Checked = ur.Enabled
 	enableCh.OnChanged = func(on bool) {
 		ur.Enabled = on
@@ -197,7 +196,7 @@ func buildSingleDNSPresetRuleRow(
 	}
 
 	titleLabel := ttwidget.NewLabel(labelText)
-	titleLabel.Wrapping = fyne.TextTruncate
+	titleLabel.Truncation = fyne.TextTruncateClip
 	if ruleBody != nil {
 		_, tooltip := dnsRuleSummary(ruleBody)
 		if tooltip != "" {
@@ -208,8 +207,7 @@ func buildSingleDNSPresetRuleRow(
 	// Enable toggle. Pulls from PresetRefState.DNSRuleEnabled (default true).
 	// Если pr.Enabled == false на уровне route — preset выключен глобально,
 	// dns_rule тоже не активен. В таком случае дизейблим чекбокс с тултипом.
-	var enableCh *widget.Check
-	enableCh = widget.NewCheck("", nil)
+	enableCh := widget.NewCheck("", nil)
 	enableCh.Checked = pr.IsDNSRuleEnabled() && pr.Enabled
 	enableCh.OnChanged = func(on bool) {
 		pr.SetDNSRuleEnabled(on)

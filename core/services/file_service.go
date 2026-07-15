@@ -185,20 +185,45 @@ func (fs *FileService) OpenLogFileWithRotation(logPath string) (*os.File, error)
 // Ротация: file.log → file.log.old (предыдущий .old удаляется).
 // Хранится максимум 1 резервная копия.
 // Вызывается также из process_service.go перед каждым запуском sing-box.
+//
+// Если ротируется child-лог (sing-box.log), открытый ChildLogFile указывает
+// на переименованный файл — без переоткрытия весь дальнейший вывод sing-box
+// уходил бы в .old, который больше никогда не ротируется. Поэтому дескриптор
+// закрывается перед rename (иначе на Windows rename падает) и открывается
+// заново после.
 func (fs *FileService) CheckAndRotateLogFile(logPath string) {
 	info, err := os.Stat(logPath)
 	if err != nil {
 		return // File doesn't exist yet, nothing to rotate
 	}
+	if info.Size() <= maxLogFileSize {
+		return
+	}
 
-	if info.Size() > maxLogFileSize {
-		oldPath := logPath + ".old"
-		_ = os.Remove(oldPath) // Remove old backup if exists
-		if err := os.Rename(logPath, oldPath); err != nil {
-			debuglog.WarnLog("CheckAndRotateLogFile: Failed to rotate log file %s: %v", logPath, err)
-		} else {
-			debuglog.DebugLog("CheckAndRotateLogFile: Rotated log file %s (size: %d bytes)", logPath, info.Size())
+	isChildLog := fs.ChildLogFile != nil && fs.ChildLogRelativePath != "" &&
+		logPath == filepath.Join(fs.ExecDir, fs.ChildLogRelativePath)
+	if isChildLog {
+		if err := fs.ChildLogFile.Close(); err != nil {
+			debuglog.WarnLog("CheckAndRotateLogFile: failed to close child log before rotation: %v", err)
 		}
+		fs.ChildLogFile = nil
+	}
+
+	oldPath := logPath + ".old"
+	_ = os.Remove(oldPath) // Remove old backup if exists
+	if err := os.Rename(logPath, oldPath); err != nil {
+		debuglog.WarnLog("CheckAndRotateLogFile: Failed to rotate log file %s: %v", logPath, err)
+	} else {
+		debuglog.DebugLog("CheckAndRotateLogFile: Rotated log file %s (size: %d bytes)", logPath, info.Size())
+	}
+
+	if isChildLog {
+		f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, platform.DefaultFileMode)
+		if err != nil {
+			debuglog.WarnLog("CheckAndRotateLogFile: failed to reopen child log after rotation: %v", err)
+			return
+		}
+		fs.ChildLogFile = f
 	}
 }
 

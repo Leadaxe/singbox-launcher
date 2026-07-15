@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v1.2.2
+
+**Ядро lx.5 («энергетическая ревизия») + починка паролей из подписок + глубокая ревизия кода.** Ядро запинено на **sing-box-lx 1.14.0-lx.5**: приостановленные WG/AWG-туннели больше не воскресают от выключения экрана или смены сети, idle-suspend не рвёт активные передачи, покинутая urltest-группа перестаёт будить свои ноды (плюс opt-in `route.lx_idle_suspend_reachable` и `urltest.passive_check`). На стороне лаунчера — результат глубокой ревизии: парсер больше **не портит пароли** (двойное декодирование превращало `+` в пробел у trojan/hysteria2/tuic/ssh/socks/naive; сильнее всех страдали SSH-ключи), **одна битая нода больше не валит весь конфиг** (порт вне диапазона и мусорный REALITY-ключ из Xray-JSON деградируют ноду, а не `sing-box check`), выключенное автообновление уважается при старте, а неудачное обновление ядра откатывается на `.old` вместо обрезанного бинаря. Обновить ядро: Core Dashboard → Download/Reinstall. Миграция не нужна.
+
+**Полный список изменений:** [docs/release_notes/1-2-2.md](docs/release_notes/1-2-2.md).
+
+### Highlights (EN) — v1.2.2
+
+**Core lx.5 (energy revision) + subscription-credential fixes + deep code review.** Core pinned to **sing-box-lx 1.14.0-lx.5**: suspended WG/AWG tunnels are no longer resurrected by a screen-off/on or a network change, idle-suspend no longer cuts live transfers, and an abandoned urltest group stops waking its members (plus the opt-in `route.lx_idle_suspend_reachable` and `urltest.passive_check`). On the launcher side, the outcome of a deep review: the parser **no longer corrupts passwords** (a double decode turned `+` into a space for trojan/hysteria2/tuic/ssh/socks/naive; inline SSH keys suffered most), **one bad node no longer breaks the whole config** (an out-of-range port and a junk REALITY key from Xray-JSON now degrade the node instead of failing `sing-box check`), the auto-update opt-out is honoured at startup, and a failed core update rolls back to `.old` instead of leaving a truncated binary. Pull the core via Core Dashboard → Download/Reinstall. No migration needed.
+
+**Full changelog:** [docs/release_notes/1-2-2.md](docs/release_notes/1-2-2.md).
+
+---
+
 ### Выжимка (RU) — v1.2.1
 
 **Hotfix: MASQUE / AnyTLS / SSH-ноды теряли поля в config.json.** Генератор конфига (`GenerateNodeJSON`) не имел веток эмиссии для этих трёх схем — всё, что парсер клал в outbound, молча выпадало, доезжали только `tag/type/server/server_port`. Для **WARP (MASQUE) из мастера** это ломало конфиг целиком (`sing-box check`: `masque: at least one of ip/ipv6 is required` — репорт из Telegram); **AnyTLS** терял пароль, **SSH** — все учётные данные. Исправлено + эмиссионные тесты на все три схемы. Данные целы: источники хранили полный URI, после обновления достаточно Update/Rebuild. Миграция не нужна.
@@ -364,6 +378,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v1.2.2** | [docs/release_notes/1-2-2.md](docs/release_notes/1-2-2.md) |
 | **v1.2.1** | [docs/release_notes/1-2-1.md](docs/release_notes/1-2-1.md) |
 | **v1.2.0** | [docs/release_notes/1-2-0.md](docs/release_notes/1-2-0.md) |
 | **v1.1.7** | [docs/release_notes/1-1-7.md](docs/release_notes/1-1-7.md) |

@@ -11,6 +11,7 @@ package warp
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -113,7 +114,7 @@ func (a *Account) ToWireguardURI(includeReserved bool) (string, error) {
 	u := &url.URL{
 		Scheme:   "wireguard",
 		User:     url.User(a.PrivateKey),
-		Host:     host + ":" + strconv.Itoa(port),
+		Host:     net.JoinHostPort(host, strconv.Itoa(port)), // re-brackets IPv6
 		RawQuery: q.Encode(),
 		Fragment: a.DisplayTag(),
 	}

@@ -70,7 +70,7 @@ func (s *Server) handleStateRules(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		st, err := s.facade.LoadState()
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			writeJSON(w, stateErrStatus(err), map[string]any{"error": err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"rules": st.Rules})
@@ -96,6 +96,8 @@ func (s *Server) handleStateRules(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		s.stateMu.Lock()
+		defer s.stateMu.Unlock()
 		st, err := s.facade.LoadState()
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "load state: " + err.Error()})
@@ -132,7 +134,7 @@ func (s *Server) handleStateDNS(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		st, err := s.facade.LoadState()
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			writeJSON(w, stateErrStatus(err), map[string]any{"error": err.Error()})
 			return
 		}
 		writeJSON(w, http.StatusOK, st.DNS)
@@ -191,6 +193,8 @@ func (s *Server) handleStateDNS(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		s.stateMu.Lock()
+		defer s.stateMu.Unlock()
 		st, err := s.facade.LoadState()
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "load state: " + err.Error()})
@@ -234,7 +238,7 @@ func (s *Server) handleStateDNSRules(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		st, err := s.facade.LoadState()
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			writeJSON(w, stateErrStatus(err), map[string]any{"error": err.Error()})
 			return
 		}
 		// Соберём текст из USER-правил. Body — map[string]interface{},
@@ -261,6 +265,8 @@ func (s *Server) handleStateDNSRules(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		s.stateMu.Lock()
+		defer s.stateMu.Unlock()
 		st, err := s.facade.LoadState()
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "load state: " + err.Error()})
@@ -344,4 +350,13 @@ func (s *Server) handleStateOutboundsResolved(w http.ResponseWriter, r *http.Req
 	pc.ParserConfig.Outbounds = append([]configtypes.OutboundConfig(nil), st.Connections.Outbounds...)
 	build.MergeOutboundUpdatesInPlace(&pc, td)
 	writeJSON(w, http.StatusOK, map[string]any{"outbounds": pc.ParserConfig.Outbounds})
+}
+
+// stateErrStatus maps state.ErrNotFound to 404 (same contract as /state/full);
+// everything else stays 500.
+func stateErrStatus(err error) int {
+	if errors.Is(err, state.ErrNotFound) {
+		return http.StatusNotFound
+	}
+	return http.StatusInternalServerError
 }

@@ -143,6 +143,14 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 	ac.CmdMutex.Lock()
 	defer ac.CmdMutex.Unlock()
 
+	// Re-check under the lock: two concurrent Start() calls both pass the
+	// unlocked IsRunning() check above; without this the second one would
+	// launch a duplicate sing-box process and orphan the first Cmd handle.
+	if ac.RunningState.IsRunning() {
+		debuglog.WarnLog("startSingBox: already running (lost start race), skipping duplicate start")
+		return
+	}
+
 	// SPEC 045 phase 5.C — pre-start config rebuild:
 	// если Wizard Save поднял dirty-маркеры (CacheStale / ConfigStale),
 	// перед запуском sing-box пересобираем config.json из state + cache.

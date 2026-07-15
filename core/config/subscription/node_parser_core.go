@@ -299,31 +299,31 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		node.Query.Set("password", ssPassword)
 	}
 
-	// Extract port (defaultPort was set in scheme detection)
+	// Extract port (defaultPort was set in scheme detection). Out-of-range
+	// ports are a node-level error: sing-box check rejects the whole config
+	// over a single bad server_port, so the node must degrade here instead.
 	node.Port = defaultPort
 	if port := parsedURL.Port(); port != "" {
-		if p, err := strconv.Atoi(port); err == nil {
-			node.Port = p
+		p, err := strconv.Atoi(port)
+		if err != nil || p < 1 || p > 65535 {
+			return nil, fmt.Errorf("invalid port %q in URI", port)
 		}
+		node.Port = p
 	}
 
 	// Extract UUID/user
 	// For hysteria2, password is in username part of userinfo (hysteria2://password@server:port)
 	// For SSH and Trojan, password can be in userinfo (user:password@server:port)
+	// url.Parse has already percent-decoded the userinfo: Username()/Password()
+	// return the plain values. Re-decoding them (historically via QueryUnescape)
+	// corrupted legal credentials — '+' became a space and literal %XX sequences
+	// were decoded a second time.
 	if parsedURL.User != nil {
 		node.UUID = parsedURL.User.Username()
-		// URL decode the username (password) if it contains encoded characters
-		if decoded, err := url.QueryUnescape(node.UUID); err == nil && decoded != node.UUID {
-			node.UUID = decoded
-		}
 		// Extract password for SSH, Trojan, SOCKS, Naive and TUIC (user:password@server)
 		if scheme == "ssh" || scheme == "trojan" || scheme == "socks" || scheme == "socks5" || scheme == "naive" || scheme == "tuic" {
 			if password, hasPassword := parsedURL.User.Password(); hasPassword {
-				if decodedPassword, err := url.QueryUnescape(password); err == nil {
-					node.Query.Set("password", decodedPassword)
-				} else {
-					node.Query.Set("password", password)
-				}
+				node.Query.Set("password", password)
 			}
 		}
 	}

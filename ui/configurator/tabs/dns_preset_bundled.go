@@ -92,10 +92,7 @@ func renderPresetBundledDNSRows(m *wizardmodels.WizardModel, parentWindow fyne.W
 			helpLabel.Wrapping = fyne.TextWrapWord
 			showJSONReadOnlyDialog(parentWindow, "DNS server details", header, helpLabel, body)
 		}
-		row := buildPresetBundledDNSRowFromResolved(tplCopy, srvCopy, onToggle, onView)
-		if row != nil {
-			rows = append(rows, row)
-		}
+		rows = append(rows, buildPresetBundledDNSRowFromResolved(tplCopy, srvCopy, onToggle, onView))
 	}
 	return rows
 }
@@ -265,7 +262,7 @@ func buildPresetBundledDNSRowFromResolved(
 	rowText += " · 🔒 " + presetLabel
 
 	titleLabel := ttwidget.NewLabel(rowText)
-	titleLabel.Wrapping = fyne.TextTruncate
+	titleLabel.Truncation = fyne.TextTruncateClip
 
 	tipParts := []string{}
 	if typ, ok := srv.Body["type"].(string); ok && typ != "" {

@@ -117,7 +117,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 
 				// Не вызывать SyncModelToGUI здесь — он пересобирает весь список и все вкладки; только обновить селекты.
 				sumLabel := ttwidget.NewLabel(sum)
-				sumLabel.Wrapping = fyne.TextTruncate
+				sumLabel.Truncation = fyne.TextTruncateClip
 				cwc := fynewidget.NewCheckWithContent(func(checked bool) {
 					setDNSServerEnabledAt(presenter, idx, checked)
 					presenter.RefreshDNSDependentSelectsOnly()
@@ -355,8 +355,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	// top-right of the rules section. Click → swap unified list for the raw
 	// multi-line editor with the current DNSUserRules serialized; click
 	// again → parse text, replace DNSUserRules, rebuild DNSRuleOrder.
-	var toggleBtn *widget.Button
-	toggleBtn = widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), nil)
+	toggleBtn := widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), nil)
 	toggleBtn.Importance = widget.LowImportance
 	setTooltip(toggleBtn, locale.T("wizard.dns.tooltip_toggle_raw_rules"))
 	toggleBtn.OnTapped = func() {

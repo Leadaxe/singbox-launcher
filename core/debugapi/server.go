@@ -94,6 +94,12 @@ type Server struct {
 	httpSrv  *http.Server
 	token    string
 	facade   ControllerFacade
+
+	// stateMu serializes load-modify-save cycles of the PATCH /state/*
+	// handlers; without it two concurrent PATCHes lose one side's edit.
+	stateMu sync.Mutex
+	// settingsMu — то же для PATCH /settings/* (bin/settings.json).
+	settingsMu sync.Mutex
 }
 
 // New constructs a Server bound to 127.0.0.1:port.
@@ -129,12 +135,20 @@ func New(facade ControllerFacade, port int, token string) (*Server, error) {
 
 // Start runs the HTTP server in a goroutine. Returns immediately.
 func (s *Server) Start() {
+	// Snapshot under the mutex: Stop() nils out s.httpSrv, and the Serve
+	// goroutine must not race that write (nil deref would crash the app).
+	s.mu.Lock()
+	srv, ln := s.httpSrv, s.listener
+	s.mu.Unlock()
+	if srv == nil || ln == nil {
+		return
+	}
 	go func() {
-		if err := s.httpSrv.Serve(s.listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			debuglog.WarnLog("debugapi: Serve: %v", err)
 		}
 	}()
-	debuglog.InfoLog("debugapi: listening on %s", s.listener.Addr())
+	debuglog.InfoLog("debugapi: listening on %s", ln.Addr())
 }
 
 // Stop gracefully shuts the server down (5s deadline).

@@ -38,6 +38,11 @@ func shareURIFromTuic(out map[string]interface{}) (string, error) {
 			q.Set("sni", sni)
 		}
 		shareAppendALPNInsecure(q, tls) // alpn + insecure=1
+		if utls, ok := tls["utls"].(map[string]interface{}); ok {
+			if fp := mapGetString(utls, "fingerprint"); fp != "" {
+				q.Set("fp", fp)
+			}
+		}
 	}
 	shareAppendDetourLiteral(q, out)
 

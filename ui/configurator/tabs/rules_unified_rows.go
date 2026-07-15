@@ -175,8 +175,7 @@ func buildSinglePresetRefRow(
 	// потом назначаем OnChanged. Без этой осторожности initial рендер
 	// enabled-preset'а триггерил бы callback → MarkAsChanged → (для preset'ов
 	// с outbounds) refreshRulesTabFromPresenter → новый checkbox → infinite loop.
-	var enableCh *widget.Check
-	enableCh = widget.NewCheck("", nil)
+	enableCh := widget.NewCheck("", nil)
 	enableCh.Checked = pr.Enabled
 	enableCh.OnChanged = func(on bool) {
 		if on && len(srsEntries) > 0 && model.ExecDir != "" &&

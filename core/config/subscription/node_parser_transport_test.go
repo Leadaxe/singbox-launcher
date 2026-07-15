@@ -46,9 +46,9 @@ func TestIsValidRealityPublicKey(t *testing.T) {
 		in   string
 		want bool
 	}{
-		{"mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg", true},  // base64url, 43 chars
+		{"mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg", true},   // base64url, 43 chars
 		{" mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg ", true}, // surrounding space
-		{"mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg=", true}, // stray pad
+		{"mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg=", true},  // stray pad
 		{"enabled", false}, // junk from broken public lists
 		{"true", false},
 		{"", false},
