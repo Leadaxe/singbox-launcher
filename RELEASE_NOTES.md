@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v1.2.1
+
+**Hotfix: MASQUE / AnyTLS / SSH-ноды теряли поля в config.json.** Генератор конфига (`GenerateNodeJSON`) не имел веток эмиссии для этих трёх схем — всё, что парсер клал в outbound, молча выпадало, доезжали только `tag/type/server/server_port`. Для **WARP (MASQUE) из мастера** это ломало конфиг целиком (`sing-box check`: `masque: at least one of ip/ipv6 is required` — репорт из Telegram); **AnyTLS** терял пароль, **SSH** — все учётные данные. Исправлено + эмиссионные тесты на все три схемы. Данные целы: источники хранили полный URI, после обновления достаточно Update/Rebuild. Миграция не нужна.
+
+**Полный список изменений:** [docs/release_notes/1-2-1.md](docs/release_notes/1-2-1.md).
+
+### Highlights (EN) — v1.2.1
+
+**Hotfix: MASQUE / AnyTLS / SSH nodes lost their fields in config.json.** The config generator (`GenerateNodeJSON`) had no emit branches for these three schemes — everything the parser put into the outbound was silently dropped, leaving only `tag/type/server/server_port`. For **wizard-generated WARP (MASQUE)** this broke the whole config (`sing-box check`: `masque: at least one of ip/ipv6 is required` — reported via Telegram); **AnyTLS** lost its password, **SSH** lost all credentials. Fixed + emission tests for all three schemes. Your data is intact: sources kept the full URI all along — just Update/Rebuild after updating. No migration needed.
+
+**Full changelog:** [docs/release_notes/1-2-1.md](docs/release_notes/1-2-1.md).
+
+---
+
 ### Выжимка (RU) — v1.2.0
 
 **Встроенный Cloudflare WARP + рабочий NaiveProxy «из коробки» + FakeIP + loadbalance + AnyTLS + anti-DPI TLS.** Кнопка **Add WARP** на Sources регистрирует WARP-аккаунт и выдаёт готовый AmneziaWG-endpoint; полный конфигуратор открывает все AWG-поля, пресеты обфускации и MASQUE. Ядро запинено на **sing-box-lx 1.14.0-lx.4** — naive работает на всех десктопных платформах (на Windows лаунчер сам ставит `libcronet.dll` при установке ядра), а на ядрах без поддержки naive-ноды деградируются с предупреждением, не ломая конфиг. Плюс FakeIP-пресет, тип outbound `loadbalance` (round-robin + sticky), протокол AnyTLS, anti-DPI TLS-трансформации (fragment / record_fragment / mixed-case SNI) и родное системное окно выбора файла. Миграция не нужна.
@@ -350,6 +364,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v1.2.1** | [docs/release_notes/1-2-1.md](docs/release_notes/1-2-1.md) |
 | **v1.2.0** | [docs/release_notes/1-2-0.md](docs/release_notes/1-2-0.md) |
 | **v1.1.7** | [docs/release_notes/1-1-7.md](docs/release_notes/1-1-7.md) |
 | **v1.1.6** | [docs/release_notes/1-1-6.md](docs/release_notes/1-1-6.md) |
