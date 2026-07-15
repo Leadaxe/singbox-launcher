@@ -24,6 +24,11 @@ func shareURIFromHysteria2(out map[string]interface{}) (string, error) {
 		if mapGetBool(tls, "insecure") {
 			q.Set("insecure", "1")
 		}
+		if utls, ok := tls["utls"].(map[string]interface{}); ok {
+			if fp := mapGetString(utls, "fingerprint"); fp != "" {
+				q.Set("fp", fp)
+			}
+		}
 		if alpn, ok := tls["alpn"].([]interface{}); ok && len(alpn) > 0 {
 			parts := make([]string, 0, len(alpn))
 			for _, a := range alpn {

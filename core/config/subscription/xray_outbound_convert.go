@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/internal/debuglog"
 )
 
 // xrayMapString returns string value for key in m.
@@ -184,10 +185,17 @@ func xrayVLESSTLSFromStreamSettings(streamSettings map[string]interface{}, secur
 		if sid == "" {
 			sid = xrayMapString(rs, "short_id")
 		}
-		tlsData["reality"] = map[string]interface{}{
-			"enabled":    true,
-			"public_key": pbk,
-			"short_id":   sid,
+		// Same guard as the URI path (node_parser_transport.go): a junk or empty
+		// pbk emitted as public_key makes sing-box reject the entire config, so
+		// degrade to plain TLS instead of emitting a broken REALITY block.
+		if isValidRealityPublicKey(pbk) {
+			tlsData["reality"] = map[string]interface{}{
+				"enabled":    true,
+				"public_key": strings.TrimSpace(pbk),
+				"short_id":   normalizeRealityShortID(sid),
+			}
+		} else {
+			debuglog.WarnLog("Parser: xray realitySettings has invalid public_key %q — degrading to plain TLS", pbk)
 		}
 		return tlsData
 	}
