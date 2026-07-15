@@ -103,7 +103,7 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 
 	subNames, err := profReadKey.ReadSubKeyNames(-1)
 	if err != nil {
-		profReadKey.Close()
+		_ = profReadKey.Close()
 		debuglog.WarnLog("nla cleanup: enumerate Profiles: %v", err)
 		return 0, 0
 	}
@@ -121,7 +121,7 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 			continue
 		}
 		desc, _, descErr := sub.GetStringValue("Description")
-		sub.Close()
+		_ = sub.Close()
 		if descErr != nil {
 			debuglog.DebugLog("nla cleanup: read Description for %q: %v", name, descErr)
 			continue
@@ -133,7 +133,7 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 		debuglog.WarnLog("nla cleanup: matched profile %q (Description=%q)", name, desc)
 		matchedGUIDs[name] = true
 	}
-	profReadKey.Close()
+	_ = profReadKey.Close()
 
 	if len(matchedGUIDs) == 0 {
 		debuglog.WarnLog("nla cleanup: no matching profiles found in %d subkeys", len(subNames))
@@ -153,7 +153,7 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 		}
 		profilesRemoved++
 	}
-	profWriteKey.Close()
+	_ = profWriteKey.Close()
 	debuglog.WarnLog("nla cleanup: deleted %d profile(s) of %d matched", profilesRemoved, len(matchedGUIDs))
 
 	// Phase B: enumerate Signatures\Unmanaged, delete entries whose
@@ -167,7 +167,7 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 
 	sigSubs, err := sigReadKey.ReadSubKeyNames(-1)
 	if err != nil {
-		sigReadKey.Close()
+		_ = sigReadKey.Close()
 		debuglog.WarnLog("nla cleanup: enumerate Signatures: %v", err)
 		return profilesRemoved, 0
 	}
@@ -181,7 +181,7 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 			continue
 		}
 		guid, _, guidErr := sub.GetStringValue("ProfileGuid")
-		sub.Close()
+		_ = sub.Close()
 		if guidErr != nil {
 			debuglog.DebugLog("nla cleanup: read ProfileGuid for %q: %v", name, guidErr)
 			continue
@@ -191,7 +191,7 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 		}
 		matchedSigs = append(matchedSigs, name)
 	}
-	sigReadKey.Close()
+	_ = sigReadKey.Close()
 
 	if len(matchedSigs) == 0 {
 		debuglog.WarnLog("nla cleanup: no matching signatures found")
@@ -210,7 +210,7 @@ func cleanupNLAProfiles() (profilesRemoved, signaturesRemoved int) {
 		}
 		signaturesRemoved++
 	}
-	sigWriteKey.Close()
+	_ = sigWriteKey.Close()
 	debuglog.WarnLog("nla cleanup: deleted %d signature(s) of %d matched", signaturesRemoved, len(matchedSigs))
 
 	return profilesRemoved, signaturesRemoved

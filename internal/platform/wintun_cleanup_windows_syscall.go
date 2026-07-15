@@ -86,7 +86,7 @@ const (
 	// class display name ("Wintun Userspace Tunnel"), not the connection
 	// name. Reading it broke filter 1 in v0.9.9.1. Kept for potential
 	// future diagnostics; do NOT use it as a primary filter.
-	spdrpFriendlyName = 0x0000000C // SPDRP_FRIENDLYNAME — class name on Win7
+	spdrpFriendlyName = 0x0000000C //nolint:unused // SPDRP_FRIENDLYNAME — kept as documentation, see above
 
 	// Net device class GUID literal used in the registry path that holds
 	// per-adapter NetConnectionID. Must match guidDevClassNet below.
@@ -101,7 +101,7 @@ const (
 	difRemove = 0x00000005 // DIF_REMOVE — uninstall device
 
 	// SetupDiGetClassDevsW flags.
-	digcfPresent = 0x00000002 // we DO NOT want this — phantoms are not "present"
+	digcfPresent = 0x00000002 //nolint:unused // we DO NOT want this — phantoms are not "present"
 	// We pass 0 to include phantoms.
 
 	// Cap on per-invocation removals — defensive bound.
@@ -192,8 +192,9 @@ func isWindows7() bool {
 // fills it. Required by SetupAPI for variable-length strings.
 func getRegistryPropertyW(h uintptr, devInfo *spDevInfoData, prop uint32) string {
 	var requiredSize uint32
-	// First call — request size (buffer = nil, size = 0).
-	procSetupDiGetDeviceRegistryPropertyW.Call(
+	// First call — request size (buffer = nil, size = 0). It always fails with
+	// ERROR_INSUFFICIENT_BUFFER by design; requiredSize is the real result.
+	_, _, _ = procSetupDiGetDeviceRegistryPropertyW.Call(
 		h,
 		uintptr(unsafe.Pointer(devInfo)),
 		uintptr(prop),
@@ -234,8 +235,9 @@ func getRegistryPropertyW(h uintptr, devInfo *spDevInfoData, prop uint32) string
 // Two-call pattern: probe required size, then fill.
 func getDeviceInstanceID(h uintptr, devInfo *spDevInfoData) string {
 	var requiredSize uint32
-	// First call — request size (buffer = nil, size = 0).
-	procSetupDiGetDeviceInstanceIdW.Call(
+	// First call — request size (buffer = nil, size = 0). It always fails with
+	// ERROR_INSUFFICIENT_BUFFER by design; requiredSize is the real result.
+	_, _, _ = procSetupDiGetDeviceInstanceIdW.Call(
 		h,
 		uintptr(unsafe.Pointer(devInfo)),
 		0, // DeviceInstanceId
@@ -284,7 +286,7 @@ func getNetConnectionID(h uintptr, devInfo *spDevInfoData) string {
 	if err != nil {
 		return ""
 	}
-	defer k.Close()
+	defer func() { _ = k.Close() }()
 	name, _, err := k.GetStringValue("Name")
 	if err != nil {
 		return ""

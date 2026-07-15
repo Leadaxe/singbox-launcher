@@ -82,7 +82,7 @@ func processImagePath(pid uint32) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer windows.CloseHandle(h)
+	defer func() { _ = windows.CloseHandle(h) }()
 
 	kernel32 := windows.NewLazySystemDLL("kernel32.dll")
 	qfpin := kernel32.NewProc("QueryFullProcessImageNameW")
