@@ -217,15 +217,30 @@ func (c *Client) RegisterMasque(ctx context.Context, now time.Time, network, sni
 	if err != nil {
 		return nil, err
 	}
-	if network == "h2" {
-		acc.Network = "h2"
-	} else {
-		acc.Network = "h3"
-	}
-	acc.SNI = strings.TrimSpace(sni)
-	acc.IdleTimeout = "5m"
-	acc.KeepAlive = "30s"
+	acc.ApplyNodeOptions(network, sni)
 	return acc, nil
+}
+
+// ApplyNodeOptions проставляет параметры УЗЛА: транспорт, SNI и таймауты. Это
+// не часть регистрации в Cloudflare — одна регистрация обслуживает и H2, и H3,
+// поэтому кешированный аккаунт (state.warp_accounts) прогоняется через тот же
+// вызов, что и свежий.
+//
+// Пустой SNI оставлять нельзя: ядро подставит consumer-masque.cloudflareclient.com,
+// туннель встанет, но данные не пойдут — DPI пропускает MASQUE только под
+// нейтральным именем. Вызов без SNI → берём случайное из пула.
+func (a *MasqueAccount) ApplyNodeOptions(network, sni string) {
+	if network == "h2" {
+		a.Network = "h2"
+	} else {
+		a.Network = "h3"
+	}
+	a.SNI = strings.TrimSpace(sni)
+	if a.SNI == "" {
+		a.SNI = RandomMasqueSNI(nil)
+	}
+	a.IdleTimeout = "5m"
+	a.KeepAlive = "30s"
 }
 
 // parseMasqueEnroll extracts the MASQUE account from the PATCH-enroll response.

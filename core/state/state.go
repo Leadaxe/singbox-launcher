@@ -125,6 +125,14 @@ type State struct {
 	// Историческое имя поля было DNSV6 (когда v5/v6 co-existed); после
 	// SPEC 056-R-N оба формата это v6 internally, суффикс выкинут.
 	DNS DNSOptions
+
+	// === WARP account cache ===
+
+	// WarpAccounts — кеш выданных Cloudflare регистраций WARP (nil = ни одной).
+	// Повторный «Add WARP» переиспользует запись вместо новой регистрации, так
+	// что MASQUE H2/H3 ложатся на один ключ (как в LxBox). Галочка «создать
+	// новые ключи» в визарде сбрасывает соответствующую запись.
+	WarpAccounts *WarpAccountsSection
 }
 
 // SelectableRuleState — выбор пользователя для правила, определённого в шаблоне.

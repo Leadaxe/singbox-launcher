@@ -82,6 +82,7 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 		state.Connections.Outbounds = []configtypes.OutboundConfig{}
 	}
 	state.Connections.Defaults = p.model.Defaults
+	state.WarpAccounts = p.model.WarpAccounts
 
 	// Заполняем legacy ParserConfig view ради совместимости тех тестов /
 	// callsite'ов, что читают state.ParserConfig.ParserConfig.Proxies сразу

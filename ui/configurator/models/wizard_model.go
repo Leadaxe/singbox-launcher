@@ -69,6 +69,11 @@ type WizardModel struct {
 	// fallback). Зеркалит state.connections.defaults.
 	Defaults corestate.Defaults
 
+	// WarpAccounts — кеш выданных Cloudflare регистраций WARP (nil = пусто).
+	// Зеркалит state.warp_accounts. Диалог Add WARP переиспользует запись
+	// вместо новой регистрации, поэтому MASQUE H2/H3 ложатся на один ключ.
+	WarpAccounts *corestate.WarpAccountsSection
+
 	// ParserConfigJSON — derived: кэш сериализации `AsParserConfig()` в
 	// строку для JSON-editor виджета. Refresh в `RefreshSerializedParserConfig`
 	// после любой мутации Sources/GlobalOutbounds. Не источник истины.

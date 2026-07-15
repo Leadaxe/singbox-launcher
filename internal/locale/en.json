@@ -763,7 +763,9 @@
   "wizard.warp.masque_note": "MASQUE tunnels over HTTPS/QUIC and masks itself — AmneziaWG obfuscation does not apply. Requires core lx.3+.",
   "wizard.warp.masque_transport": "Transport",
   "wizard.warp.masque_sni": "SNI",
-  "wizard.warp.masque_sni_placeholder": "optional — empty = core default",
+  "wizard.warp.masque_sni_placeholder": "a name from the pool or your own — 🎲 picks at random",
   "wizard.warp.masque_idle": "Idle timeout (min)",
-  "wizard.warp.masque_keepalive": "Keep-alive (sec)"
+  "wizard.warp.masque_keepalive": "Keep-alive (sec)",
+  "wizard.warp.new_keys": "Create new keys (fresh Cloudflare registration)",
+  "wizard.warp.new_keys_note": "By default the node reuses the registration you already have, so H2 and H3 share one key. Tick this if you need a new account — the old one is replaced."
 }

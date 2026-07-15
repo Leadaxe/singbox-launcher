@@ -763,7 +763,9 @@
   "wizard.warp.masque_note": "MASQUE идёт поверх HTTPS/QUIC и маскируется сам — обфускация AmneziaWG не применяется. Требует ядро lx.3+.",
   "wizard.warp.masque_transport": "Транспорт",
   "wizard.warp.masque_sni": "SNI",
-  "wizard.warp.masque_sni_placeholder": "необязательно — пусто = дефолт ядра",
+  "wizard.warp.masque_sni_placeholder": "имя из пула или своё — 🎲 выберет случайное",
   "wizard.warp.masque_idle": "Idle timeout (мин)",
-  "wizard.warp.masque_keepalive": "Keep-alive (сек)"
+  "wizard.warp.masque_keepalive": "Keep-alive (сек)",
+  "wizard.warp.new_keys": "Создать новые ключи (новая регистрация в Cloudflare)",
+  "wizard.warp.new_keys_note": "По умолчанию узел собирается на уже выданной регистрации — так H2 и H3 сидят на одном ключе. Включите, если нужен новый аккаунт: старый будет заменён."
 }
