@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v1.2.3
+
+**MASQUE-ноды получили SNI + кеш регистраций WARP.** MASQUE-нода из визарда создавалась с **пустым SNI** и из-за этого не пропускала трафик: туннель вставал, DNS резолвился — нода выглядела живой, но данные не шли и в списке висел `-1`. Теперь поле заранее заполнено случайным именем из пула (🎲 перевыбирает), а пустой SNI перестал быть достижимым состоянием. Второе: **«Add WARP» больше не регистрирует новое устройство на каждый клик** — регистрации кешируются в `state.json` (секция `warp_accounts`, WG и MASQUE раздельно), поэтому H2 и H3 сидят на одном ключе, как в LxBox на Android; галочка «Создать новые ключи» (снята по умолчанию) идёт за свежей регистрацией. Ядро без изменений — `1.14.0-lx.5`. Миграция не нужна. Существующие MASQUE-ноды не переписываются — пересоздайте через Add WARP. Транспорт `h3` не пропускает трафик независимо от SNI (и на десктопе, и на Android) — это открытая проблема на стороне ядра.
+
+**Полный список изменений:** [docs/release_notes/1-2-3.md](docs/release_notes/1-2-3.md).
+
+### Highlights (EN) — v1.2.3
+
+**MASQUE nodes get an SNI + WARP registration cache.** A wizard-generated MASQUE node came out with an **empty SNI** and could not pass traffic: the tunnel established and DNS resolved — the node looked healthy, but no data flowed and it read `-1` in the list. The field is now pre-filled with a random name from the pool (🎲 re-rolls), and an empty SNI is no longer a reachable state. Second: **«Add WARP» no longer enrolls a new device on every click** — registrations are cached in `state.json` (`warp_accounts`, WG and MASQUE separately), so H2 and H3 share one key just like LxBox on Android; the **Create new keys** checkbox (unchecked by default) goes for a fresh one. Core unchanged — `1.14.0-lx.5`. No migration needed. Existing MASQUE nodes are not rewritten — re-add them via Add WARP. The `h3` transport fails to pass traffic regardless of SNI (on desktop and Android alike) — an open core-side problem.
+
+**Full changelog:** [docs/release_notes/1-2-3.md](docs/release_notes/1-2-3.md).
+
+---
+
 ### Выжимка (RU) — v1.2.2
 
 **Ядро lx.5 («энергетическая ревизия») + починка паролей из подписок + глубокая ревизия кода.** Ядро запинено на **sing-box-lx 1.14.0-lx.5**: приостановленные WG/AWG-туннели больше не воскресают от выключения экрана или смены сети, idle-suspend не рвёт активные передачи, покинутая urltest-группа перестаёт будить свои ноды (плюс opt-in `route.lx_idle_suspend_reachable` и `urltest.passive_check`). На стороне лаунчера — результат глубокой ревизии: парсер больше **не портит пароли** (двойное декодирование превращало `+` в пробел у trojan/hysteria2/tuic/ssh/socks/naive; сильнее всех страдали SSH-ключи), **одна битая нода больше не валит весь конфиг** (порт вне диапазона и мусорный REALITY-ключ из Xray-JSON деградируют ноду, а не `sing-box check`), выключенное автообновление уважается при старте, а неудачное обновление ядра откатывается на `.old` вместо обрезанного бинаря. Обновить ядро: Core Dashboard → Download/Reinstall. Миграция не нужна.
