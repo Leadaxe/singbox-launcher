@@ -197,12 +197,7 @@ func (s *Server) handleTrafficSessionByID(w http.ResponseWriter, r *http.Request
 			writeJSON(w, http.StatusConflict, map[string]any{"error": "cannot delete active session — POST /traffic/stop first"})
 			return
 		}
-		// DeleteSession is a no-op for unknown ids; detect missing by
-		// snapshotting count before/after.
-		before := len(p.CompletedSessions())
-		p.DeleteSession(id)
-		after := len(p.CompletedSessions())
-		if before == after {
+		if !p.DeleteSession(id) {
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": "session not found", "id": id})
 			return
 		}

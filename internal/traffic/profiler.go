@@ -470,16 +470,23 @@ func (p *TrafficProfiler) CompletedSessions() []*Session {
 
 // DeleteSession removes a finalized session from the ring. Active sessions
 // can't be deleted (Stop first).
-func (p *TrafficProfiler) DeleteSession(id string) {
+// DeleteSession removes a completed session by id. Returns true when a
+// session was actually removed — callers must not infer this from count
+// deltas, which race with concurrent StopSession/ClearAll.
+func (p *TrafficProfiler) DeleteSession(id string) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	out := p.completed[:0]
+	deleted := false
 	for _, s := range p.completed {
 		if s.ID != id {
 			out = append(out, s)
+		} else {
+			deleted = true
 		}
 	}
 	p.completed = out
+	return deleted
 }
 
 // ClearAll drops all completed sessions. Active is left alone.

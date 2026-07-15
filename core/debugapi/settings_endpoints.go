@@ -82,7 +82,9 @@ func (s *Server) handleSettingsUserAgent(w http.ResponseWriter, r *http.Request)
 			})
 			return
 		}
-		cur := locale.LoadSettings(binDir)
+		s.settingsMu.Lock()
+	defer s.settingsMu.Unlock()
+	cur := locale.LoadSettings(binDir)
 		cur.SubscriptionUserAgent = strings.TrimSpace(*req.UserAgent)
 		if err := locale.SaveSettings(binDir, cur); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})

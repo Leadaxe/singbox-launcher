@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"singbox-launcher/internal/debuglog"
@@ -42,11 +43,13 @@ var (
 )
 
 // pingTestURL is the current endpoint used for delay checks.
-// It is process-wide and can be overridden at runtime from the UI.
-var pingTestURL = PingTestEndpointGoogle.URL
-
-// pingTestAllConcurrency is the worker count for bulk "ping all" on the Servers tab (see UI options).
-var pingTestAllConcurrency = 20
+// It is process-wide and can be overridden at runtime from the UI, while ping
+// workers read it from their goroutines — hence the mutex.
+var (
+	pingTestMu             sync.RWMutex
+	pingTestURL            = PingTestEndpointGoogle.URL
+	pingTestAllConcurrency = 20
+)
 
 func normalizePingTestAllConcurrency(n int) int {
 	switch n {
@@ -59,22 +62,30 @@ func normalizePingTestAllConcurrency(n int) int {
 
 // GetPingTestAllConcurrency returns the number of parallel delay requests for ping-all.
 func GetPingTestAllConcurrency() int {
+	pingTestMu.RLock()
+	defer pingTestMu.RUnlock()
 	return pingTestAllConcurrency
 }
 
 // SetPingTestAllConcurrency sets parallel workers for ping-all; invalid values become 20.
 func SetPingTestAllConcurrency(n int) {
+	pingTestMu.Lock()
+	defer pingTestMu.Unlock()
 	pingTestAllConcurrency = normalizePingTestAllConcurrency(n)
 }
 
 // GetPingTestURL returns the current endpoint used for delay checks.
 func GetPingTestURL() string {
+	pingTestMu.RLock()
+	defer pingTestMu.RUnlock()
 	return pingTestURL
 }
 
 // SetPingTestURL sets the endpoint used for delay checks.
 // If url is empty or only whitespace, it falls back to PingTestEndpointGoogle.URL.
 func SetPingTestURL(url string) {
+	pingTestMu.Lock()
+	defer pingTestMu.Unlock()
 	if strings.TrimSpace(url) == "" {
 		pingTestURL = PingTestEndpointGoogle.URL
 		return
