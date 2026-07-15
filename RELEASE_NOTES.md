@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v1.2.4
+
+**`null` в urltest-опциях больше не ломает конфиг — и уже испорченный state чинится сам.** Лаунчер мог записать в auto/urltest-outbound `"interval": null, "tolerance": null, "url": null`, после чего ядро отказывалось принимать конфиг целиком: `invalid duration ""`. Хуже того, `null` залипал в `state.json` и переживал перезапуски — «новая версия при старте собирает новый конфиг» не спасало, потому что конфиг пересобирался из уже испорченного состояния, а срабатывало это без единой правки руками. Теперь `null`-оверрайд читается как «оверрайда нет — берём значение из базы», и нода получает обратно свои шаблонные `interval: 5m` / `tolerance: 100` / `url` на первом же чтении. Ядро без изменений — `1.14.0-lx.5`. Миграция не нужна: просто запустите новую версию. (issue #91)
+
+**Полный список изменений:** [docs/release_notes/1-2-4.md](docs/release_notes/1-2-4.md).
+
+### Highlights (EN) — v1.2.4
+
+**`null` in urltest options no longer breaks the config — and a state file already poisoned with it heals itself.** The launcher could write `"interval": null, "tolerance": null, "url": null` into an auto/urltest outbound, after which the core rejected the whole config: `invalid duration ""`. Worse, the `null` stuck in `state.json` and survived restarts — "the new version builds a fresh config at startup" did not help, because the fresh config was rebuilt from the already-poisoned state, and no user edit was needed to trigger it. A `null` override now reads as "no override — take the value from the base", so the node gets its template `interval: 5m` / `tolerance: 100` / `url` back on the very next read. Core unchanged — `1.14.0-lx.5`. No migration needed: just launch the new version. (issue #91)
+
+**Full changelog:** [docs/release_notes/1-2-4.md](docs/release_notes/1-2-4.md).
+
+---
+
 ### Выжимка (RU) — v1.2.3
 
 **MASQUE-ноды получили SNI + кеш регистраций WARP.** MASQUE-нода из визарда создавалась с **пустым SNI** и из-за этого не пропускала трафик: туннель вставал, DNS резолвился — нода выглядела живой, но данные не шли и в списке висел `-1`. Теперь поле заранее заполнено случайным именем из пула (🎲 перевыбирает), а пустой SNI перестал быть достижимым состоянием. Второе: **«Add WARP» больше не регистрирует новое устройство на каждый клик** — регистрации кешируются в `state.json` (секция `warp_accounts`, WG и MASQUE раздельно), поэтому H2 и H3 сидят на одном ключе, как в LxBox на Android; галочка «Создать новые ключи» (снята по умолчанию) идёт за свежей регистрацией. Ядро без изменений — `1.14.0-lx.5`. Миграция не нужна. Существующие MASQUE-ноды не переписываются — пересоздайте через Add WARP. Транспорт `h3` не пропускает трафик независимо от SNI (и на десктопе, и на Android) — это открытая проблема на стороне ядра.

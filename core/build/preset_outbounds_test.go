@@ -48,6 +48,58 @@ func TestApplyOutboundUpdate_OptionsPerKeyReplace(t *testing.T) {
 	}
 }
 
+// Регрессия issue #91: залипший в state.json nil читается как "оверрайда нет"
+// (значение берётся из base), а не как живое значение. Иначе emitter выдавал
+// "interval":null и sing-box падал: invalid duration "".
+func TestApplyOutboundUpdate_NilOptionFallsBackToBase(t *testing.T) {
+	target := configtypes.OutboundConfig{
+		Tag: "auto", Type: "urltest",
+		Options: map[string]interface{}{
+			"url":       "https://cp.cloudflare.com/generate_204",
+			"interval":  "5m",
+			"tolerance": 100,
+		},
+	}
+	patch := configtypes.OutboundConfig{
+		Options: map[string]interface{}{
+			"interval":  nil,
+			"tolerance": nil,
+			"url":       nil,
+		},
+	}
+	out := applyOutboundUpdate(target, patch)
+	if out.Options["interval"] != "5m" {
+		t.Fatalf("expected interval from base 5m, got %#v", out.Options["interval"])
+	}
+	if out.Options["url"] != "https://cp.cloudflare.com/generate_204" {
+		t.Fatalf("expected url from base, got %#v", out.Options["url"])
+	}
+	// cloneOptions гоняет map через JSON, поэтому 100 приезжает float64.
+	if v, ok := out.Options["tolerance"].(float64); !ok || v != 100 {
+		t.Fatalf("expected tolerance from base 100, got %#v", out.Options["tolerance"])
+	}
+	for _, k := range []string{"interval", "tolerance", "url"} {
+		if v, ok := out.Options[k]; ok && v == nil {
+			t.Fatalf("option %q must never survive merge as nil", k)
+		}
+	}
+}
+
+// nil для ключа, которого нет в base, не должен создавать ключ со значением nil.
+func TestApplyOutboundUpdate_NilOptionAbsentInBaseNotCreated(t *testing.T) {
+	target := configtypes.OutboundConfig{
+		Tag: "auto", Type: "urltest",
+		Options: map[string]interface{}{"interval": "5m"},
+	}
+	patch := configtypes.OutboundConfig{
+		Options: map[string]interface{}{"tolerance": nil},
+	}
+	out := applyOutboundUpdate(target, patch)
+	if v, ok := out.Options["tolerance"]; ok {
+		t.Fatalf("expected tolerance absent, got %#v", v)
+	}
+}
+
 func TestApplyOutboundUpdate_AddOutboundsUnion(t *testing.T) {
 	target := configtypes.OutboundConfig{
 		Tag: "x", AddOutbounds: []string{"a", "b"},
