@@ -57,12 +57,12 @@ func (c *Client) WithRand(rng *mrand.Rand) *Client {
 
 // RegisterOptions controls a WARP registration.
 type RegisterOptions struct {
-	LicenseKey     string    // optional WARP+ license
-	Endpoint       string    // "" = default; a non-default value is respected as-is
-	Obfuscate      bool      // enable AmneziaWG obfuscation
+	LicenseKey     string     // optional WARP+ license
+	Endpoint       string     // "" = default; a non-default value is respected as-is
+	Obfuscate      bool       // enable AmneziaWG obfuscation
 	Quic           QuicParams // masquerade params (used when Obfuscate)
-	RandomEndpoint bool      // when Obfuscate and Endpoint is default, pick from the pool
-	Now            time.Time // registration timestamp (tos); zero = time.Now()
+	RandomEndpoint bool       // when Obfuscate and Endpoint is default, pick from the pool
+	Now            time.Time  // registration timestamp (tos); zero = time.Now()
 }
 
 // GenerateKeypair returns (privateBase64, publicBase64) for a fresh X25519 pair,
@@ -249,7 +249,7 @@ func (c *Client) do(ctx context.Context, method, url, bearer string, body []byte
 	return data, resp.StatusCode, nil
 }
 
-func regURL() string                 { return fmt.Sprintf("%s/%s/reg", apiBase, apiVersion) }
+func regURL() string { return fmt.Sprintf("%s/%s/reg", apiBase, apiVersion) }
 func accountURL(deviceID string) string {
 	return fmt.Sprintf("%s/%s/reg/%s/account", apiBase, apiVersion, deviceID)
 }

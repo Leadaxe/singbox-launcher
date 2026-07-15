@@ -432,7 +432,7 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 		if cur.DebugAPIToken == "" {
 			return
 		}
-		ac.UIService.MainWindow.Clipboard().SetContent(cur.DebugAPIToken)
+		ac.UIService.Application.Clipboard().SetContent(cur.DebugAPIToken)
 		// Silent clipboard copies feel like dead buttons. A toast confirms
 		// the token actually went to the clipboard.
 		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
@@ -459,7 +459,7 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 			ShowError(ac.UIService.MainWindow, err)
 			return
 		}
-		ac.UIService.MainWindow.Clipboard().SetContent(card)
+		ac.UIService.Application.Clipboard().SetContent(card)
 		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
 			locale.T("diag.debug_api_card_copied_title"), locale.T("diag.debug_api_card_copied_msg"))
 	}

@@ -346,7 +346,7 @@ func createNavigationButtons(presenter *wizardpresentation.WizardPresenter, guiS
 	guiState.PrevButton = widget.NewButton(locale.T("wizard.button_prev"), func() {
 		if *currentTabIndex > 0 {
 			*currentTabIndex--
-			tabs.SelectTab(tabs.Items[*currentTabIndex])
+			tabs.Select(tabs.Items[*currentTabIndex])
 		}
 	})
 	guiState.PrevButton.Importance = widget.HighImportance
@@ -354,7 +354,7 @@ func createNavigationButtons(presenter *wizardpresentation.WizardPresenter, guiS
 	guiState.NextButton = widget.NewButton(locale.T("wizard.button_next"), func() {
 		if *currentTabIndex < len(tabs.Items)-1 {
 			*currentTabIndex++
-			tabs.SelectTab(tabs.Items[*currentTabIndex])
+			tabs.Select(tabs.Items[*currentTabIndex])
 		}
 	})
 	guiState.NextButton.Importance = widget.HighImportance
@@ -436,7 +436,7 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 	var previousTabIndex int = -1
 
 	// Update buttons when switching tabs
-	tabs.OnChanged = func(item *container.TabItem) {
+	tabs.OnSelected = func(item *container.TabItem) {
 		// Sync GUI to model before switching (без MarkAsChanged — иначе ложный «есть несохранённые» при переключении табов)
 		presenter.MergeGUIToModel()
 

@@ -291,8 +291,7 @@ func showSourceEditWindow(
 
 	var afterSync func()
 
-	var exposeOnChanged func(bool)
-	exposeOnChanged = func(v bool) {
+	exposeOnChanged := func(v bool) {
 		if exposeCheck.Disabled() {
 			return
 		}

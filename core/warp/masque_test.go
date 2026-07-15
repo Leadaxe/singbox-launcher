@@ -58,7 +58,7 @@ func TestToMasqueOutbound(t *testing.T) {
 	assert("profile", "cloudflare")
 	assert("network", "h3")
 	assert("server_port", 443)
-	assert("ip", "172.16.0.2/32")     // bare address gets /32
+	assert("ip", "172.16.0.2/32") // bare address gets /32
 	assert("ipv6", "2606:4700:110:8db9::/128")
 	assert("mtu", warpMTU)
 	assert("sni", "consumer-masque.cloudflareclient.com")

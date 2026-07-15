@@ -482,8 +482,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		}
 	}
 
-	var proxiesListWidget *widget.List
-	proxiesListWidget = widget.NewList(
+	proxiesListWidget := widget.NewList(
 		func() int { return len(proxiesForListView()) },
 		createItem,
 		updateItem,

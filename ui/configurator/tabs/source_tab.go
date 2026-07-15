@@ -519,7 +519,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				if isSubscription {
 					lines := []fyne.CanvasObject{titleRow}
 					if subtitle := formatSourceSubtitle(meta, srcPtr.Update, m.Defaults.Reload); subtitle != "" {
-						subtitleText := canvas.NewText(subtitle, theme.PlaceHolderColor())
+						subtitleText := canvas.NewText(subtitle, theme.Color(theme.ColorNamePlaceHolder))
 						subtitleText.TextSize = theme.CaptionTextSize()
 						// Indent the subtitle by the exact width of the leading
 						// cluster (↑ ↓ + checkbox) so it starts right under the

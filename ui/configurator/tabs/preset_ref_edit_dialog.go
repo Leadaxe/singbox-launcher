@@ -120,8 +120,7 @@ func showEditPresetRefDialog(
 		jsonRichText.ParseMarkdown("```json\n" + buildPresetJSONPreview(tplPreset, working) + "\n```")
 	}
 
-	var refreshVisibility func()
-	refreshVisibility = func() {
+	refreshVisibility := func() {
 		for i := range tplPreset.Vars {
 			v := &tplPreset.Vars[i]
 			block, ok := itemRefs[v.Name]

@@ -39,7 +39,8 @@ func TestTagFromURL(t *testing.T) {
 
 func TestTagFromURL_Stable(t *testing.T) {
 	const u = "https://cdn.example.org/rules/ads.srs"
-	if TagFromURL(u) != TagFromURL(u) {
+	first, second := TagFromURL(u), TagFromURL(u)
+	if first != second {
 		t.Fatal("TagFromURL not stable for the same URL")
 	}
 }

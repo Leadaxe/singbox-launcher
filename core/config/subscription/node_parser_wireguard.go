@@ -231,7 +231,7 @@ func percentEncodeWGUserinfoSlashes(uri string) string {
 		return uri
 	}
 	// The '@' must belong to the authority, not the query/fragment.
-	if strings.IndexAny(rest[:at], "?#") >= 0 {
+	if strings.ContainsAny(rest[:at], "?#") {
 		return uri
 	}
 	userinfo := rest[:at]

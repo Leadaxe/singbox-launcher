@@ -223,12 +223,6 @@ func showRemoteEndpointDialog(ac *core.AppController, parent fyne.Window, onChan
 			setError(err.Error())
 			return
 		}
-		portRaw := hostEntry.Text // for error formatting only — reuse below
-		_ = portRaw
-
-		portInt, err := strconv.Atoi(secretEntry.Text)
-		_ = portInt
-		// real port parse:
 		portN, perr := strconv.Atoi(portEntry.Text)
 		if perr != nil || portN < 1 || portN > 65535 {
 			setError(locale.T("servers.endpoint.invalid_port"))

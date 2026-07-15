@@ -256,9 +256,7 @@ func parseGoldenTemplate(raw []byte) (*template.TemplateData, error) {
 		var simple map[string]json.RawMessage
 		if err := json.Unmarshal(root.Config, &simple); err == nil {
 			td.Config = simple
-			for _, k := range orderedConfigKeys(root.Config) {
-				td.ConfigOrder = append(td.ConfigOrder, k)
-			}
+			td.ConfigOrder = append(td.ConfigOrder, orderedConfigKeys(root.Config)...)
 		}
 	}
 	return td, nil

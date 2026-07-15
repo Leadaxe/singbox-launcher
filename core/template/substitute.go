@@ -164,10 +164,10 @@ func substituteWalkCtx(v *interface{}, varTypes map[string]string, resolved map[
 			if s, ok := x[0].(string); ok && strings.HasPrefix(s, "@") {
 				name := s[1:]
 				if name != "" && !strings.Contains(name, "@") {
-					if rep := replacementForPlaceholderCtx(name, varTypes, resolved, unresolvedSink); rep != nil {
-						*v = rep
-						return
-					}
+					// replacementForPlaceholderCtx never returns nil: unresolved
+					// vars resolve to "" (with a warning) by contract.
+					*v = replacementForPlaceholderCtx(name, varTypes, resolved, unresolvedSink)
+					return
 				}
 			}
 		}
@@ -178,9 +178,7 @@ func substituteWalkCtx(v *interface{}, varTypes map[string]string, resolved map[
 		if strings.HasPrefix(x, "@") {
 			name := x[1:]
 			if name != "" && !strings.Contains(name, "@") {
-				if rep := replacementForPlaceholderCtx(name, varTypes, resolved, unresolvedSink); rep != nil {
-					*v = rep
-				}
+				*v = replacementForPlaceholderCtx(name, varTypes, resolved, unresolvedSink)
 			}
 		}
 	}
@@ -545,10 +543,9 @@ func substituteSimpleString(s string, varTypes map[string]string, resolved map[s
 	if name == "" || strings.Contains(name, "@") {
 		return s
 	}
+	// replacementForPlaceholder never returns nil: unresolved vars resolve to
+	// "" (with a warning) by contract, so predicates compare against "".
 	rep := replacementForPlaceholder(name, varTypes, resolved)
-	if rep == nil {
-		return s
-	}
 	switch v := rep.(type) {
 	case string:
 		return v

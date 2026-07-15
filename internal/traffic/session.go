@@ -178,9 +178,7 @@ func (s *Session) AggregateDomains() []DomainStats {
 		for _, ob := range e.OutboundChain {
 			ds.Outbounds = appendUnique(ds.Outbounds, ob)
 		}
-		for _, iss := range e.Issues {
-			ds.Issues = append(ds.Issues, iss)
-		}
+		ds.Issues = append(ds.Issues, e.Issues...)
 	}
 	out := make([]DomainStats, 0, len(byDomain))
 	for _, ds := range byDomain {
@@ -268,9 +266,7 @@ func (s *Session) AggregateConns() []ConnRecord {
 		for _, ob := range e.OutboundChain {
 			r.Outbounds = appendUnique(r.Outbounds, ob)
 		}
-		for _, iss := range e.Issues {
-			r.Issues = append(r.Issues, iss)
-		}
+		r.Issues = append(r.Issues, e.Issues...)
 	}
 	out := make([]ConnRecord, 0, len(order))
 	for _, id := range order {
