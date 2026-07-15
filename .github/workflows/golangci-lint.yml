@@ -36,7 +36,10 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y xorg-dev libgl1-mesa-dev libglu1-mesa-dev
+          # libwayland-dev/libxkbcommon-dev: GLFW 3.4 (fyne >= 2.8) compiles its
+          # Wayland backend unconditionally, so its headers are needed even for
+          # an X11-only build. xorg-dev alone fails with wayland-client-core.h.
+          sudo apt-get install -y xorg-dev libgl1-mesa-dev libglu1-mesa-dev libwayland-dev libxkbcommon-dev
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -57,7 +60,9 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          # Pinned: `latest` silently turns new linter releases into red CI on
+          # untouched code. Bump deliberately.
+          version: v2.12.2
           args: --verbose
           skip-cache: true
         env:

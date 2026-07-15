@@ -57,22 +57,22 @@ func TestManifestAndHelp(t *testing.T) {
 	defer s.Stop()
 	base := "http://127.0.0.1:" + itoa(port)
 
-	get := func(path string) (*http.Response, []byte) {
+	get := func(path string) (int, []byte) {
 		req, _ := http.NewRequest("GET", base+path, nil)
 		req.Header.Set("Authorization", "Bearer tok")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
 		}
+		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		return resp, body
+		return resp.StatusCode, body
 	}
 
 	// GET / manifest
-	resp, body := get("/")
-	if resp.StatusCode != 200 {
-		t.Fatalf("GET /: status %d", resp.StatusCode)
+	status, body := get("/")
+	if status != 200 {
+		t.Fatalf("GET /: status %d", status)
 	}
 	var manifest struct {
 		API       string         `json:"api"`
@@ -100,9 +100,9 @@ func TestManifestAndHelp(t *testing.T) {
 	}
 
 	// GET /help → endpoint list, must match the registry.
-	resp, body = get("/help")
-	if resp.StatusCode != 200 {
-		t.Fatalf("GET /help: status %d", resp.StatusCode)
+	status, body = get("/help")
+	if status != 200 {
+		t.Fatalf("GET /help: status %d", status)
 	}
 	var help struct {
 		Endpoints []endpointView `json:"endpoints"`

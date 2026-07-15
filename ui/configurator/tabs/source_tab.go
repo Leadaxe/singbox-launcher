@@ -120,7 +120,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			if rc == nil {
 				return // cancelled
 			}
-			defer rc.Close()
+			defer func() { _ = rc.Close() }()
 			text, rerr := wizardbusiness.ReadSourceFileText(rc)
 			if rerr != nil {
 				dialog.ShowError(rerr, guiState.Window)
@@ -156,7 +156,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			dialog.ShowError(oerr, guiState.Window)
 			return
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		text, rerr := wizardbusiness.ReadSourceFileText(f)
 		if rerr != nil {
 			dialog.ShowError(rerr, guiState.Window)

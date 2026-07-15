@@ -115,7 +115,7 @@ func decodeAmneziaProfile(payload string) (map[string]interface{}, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid zlib stream: %w", err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	data, err := io.ReadAll(io.LimitReader(zr, maxAmneziaProfileJSON+1))
 	if err != nil {
 		return nil, fmt.Errorf("zlib decompression failed: %w", err)

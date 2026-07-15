@@ -76,7 +76,7 @@ func CleanupGhostSingboxTunAdapters(mode GhostTunCleanupMode) (removed int, err 
 		debuglog.WarnLog("ghost-tun cleanup: SetupDiGetClassDevs failed: %v", callErr)
 		return 0, fmt.Errorf("SetupDiGetClassDevs: %w", callErr)
 	}
-	defer procSetupDiDestroyDeviceInfoList.Call(h)
+	defer func() { _, _, _ = procSetupDiDestroyDeviceInfoList.Call(h) }()
 
 	var (
 		index   uint32
