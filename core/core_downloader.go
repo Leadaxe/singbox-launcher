@@ -135,7 +135,9 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 		}
 	}
 
-	// 7. Done!
+	// 7. Done! Invalidate the session version cache so the dashboard shows
+	// the freshly installed core without a launcher restart.
+	ac.InvalidateInstalledCoreVersionCache()
 	progressChan <- DownloadProgress{Progress: 100, Message: fmt.Sprintf("sing-box v%s installed successfully!", version), Status: "done"}
 }
 
@@ -587,6 +589,16 @@ func (ac *AppController) installBinary(sourcePath, destPath string) error {
 
 	_, err = io.Copy(destFile, sourceFile)
 	if err != nil {
+		// Best-effort rollback: drop the truncated file and restore the .old
+		// backup — a failed update must not destroy the working binary.
+		_ = destFile.Close()
+		_ = os.Remove(destPath)
+		rollbackPath := destPath + ".old"
+		if _, statErr := os.Stat(rollbackPath); statErr == nil {
+			if rerr := os.Rename(rollbackPath, destPath); rerr != nil {
+				debuglog.WarnLog("installBinary: rollback of %s failed: %v", rollbackPath, rerr)
+			}
+		}
 		return fmt.Errorf("installBinary: failed to copy file: %w", err)
 	}
 

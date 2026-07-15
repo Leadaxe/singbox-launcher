@@ -78,7 +78,14 @@ func (ac *AppController) startAutoUpdateLoop() {
 	if err := ctxutil.SleepWithContext(ac.ctx, 30*time.Second); err != nil {
 		return
 	}
-	ac.runScheduledRefresh("startup")
+	// Startup sweep respects the same user opt-out as the heartbeat below —
+	// without this check a disabled auto-update still fetched every
+	// subscription once per launch.
+	if ac.StateService.IsAutoUpdateEnabled() {
+		ac.runScheduledRefresh("startup")
+	} else {
+		debuglog.DebugLog("Auto-update: disabled by user, skipping startup sweep")
+	}
 
 	ticker := time.NewTicker(autoUpdateHeartbeat)
 	defer ticker.Stop()

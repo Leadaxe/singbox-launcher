@@ -284,3 +284,12 @@ func (ac *AppController) ShowUpdatePopupIfAvailable() {
 		debuglog.WarnLog("ShowUpdatePopupIfAvailable: ShowUpdatePopupFunc callback not set")
 	}
 }
+
+// InvalidateInstalledCoreVersionCache сбрасывает сессионный кэш версии ядра.
+// Вызывается после успешной установки/переустановки ядра, иначе Core Dashboard
+// до перезапуска лаунчера показывает прежнюю версию.
+func (ac *AppController) InvalidateInstalledCoreVersionCache() {
+	ac.installedCoreVersionCacheMu.Lock()
+	defer ac.installedCoreVersionCacheMu.Unlock()
+	ac.installedCoreVersionCache = ""
+}

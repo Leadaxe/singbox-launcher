@@ -137,22 +137,27 @@ func (ac *AppController) DownloadWintunDLL(ctx context.Context, progressChan cha
 				continue
 			}
 
-			// Extract the file
-			dllPath = filepath.Join(tempDir, "wintun.dll")
-			outFile, err := os.Create(dllPath)
+			// Extract the file. dllPath is assigned only after a fully
+			// successful copy — a partial write must not pass the
+			// "dllPath != \"\"" success check below and install a
+			// truncated DLL.
+			outPath := filepath.Join(tempDir, "wintun.dll")
+			outFile, err := os.Create(outPath)
 			if err != nil {
 				debuglog.RunAndLog(fmt.Sprintf("DownloadWintunDLL: close zip entry %s after create error", f.Name), rc.Close)
 				continue
 			}
 
 			_, err = io.Copy(outFile, rc)
-			debuglog.RunAndLog(fmt.Sprintf("DownloadWintunDLL: close output file %s", dllPath), outFile.Close)
+			debuglog.RunAndLog(fmt.Sprintf("DownloadWintunDLL: close output file %s", outPath), outFile.Close)
 			debuglog.RunAndLog("DownloadWintunDLL: close zip entry", rc.Close)
 
 			if err != nil {
+				_ = os.Remove(outPath)
 				continue
 			}
 
+			dllPath = outPath
 			break
 		}
 	}
