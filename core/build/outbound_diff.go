@@ -20,7 +20,8 @@ import (
 //
 //	tag, type      — immutable для referenced entries (изменения игнорируются)
 //	filters        — equal → skip; иначе replace целиком
-//	options        — per-key diff: пишем только изменённые ключи
+//	options        — per-key diff: пишем только изменённые/новые ключи;
+//	                 отсутствующий в form ключ = "оверрайда нет" (берётся base)
 //	addOutbounds   — slice equal (order matters here для простоты) → skip; иначе replace
 //	preferredDefault — replace целиком
 //	wizard         — replace целиком
@@ -91,7 +92,17 @@ func outboundMapsEqual(a, b map[string]interface{}) bool {
 }
 
 // mapDiff — возвращает per-key diff: ключи изменённых/новых значений из form.
-// Удалённые ключи (в base но не в form) тоже включаются как nil (для override).
+//
+// Ключи, присутствующие в base но отсутствующие в form, НЕ попадают в patch:
+// patch — это набор оверрайдов поверх base, и отсутствие ключа означает
+// "оверрайда нет" (значение берётся из base), а не "ключ удалён".
+//
+// Раньше здесь писался nil как tombstone "ключ удалён", но applyOutboundUpdate
+// никогда этот контракт не реализовывал — он копировал nil как живое значение,
+// и emitter выдавал "interval":null, на котором sing-box падал с
+// `invalid duration ""` (issue #91). Удаление ключа выражается не через diff,
+// а через тип outbound'а (см. selector-ветку в edit_dialog.go, которая сама
+// не переносит urltest-only ключи).
 //
 // Если diff пуст — nil.
 func mapDiff(form, base map[string]interface{}) map[string]interface{} {
@@ -103,12 +114,6 @@ func mapDiff(form, base map[string]interface{}) map[string]interface{} {
 	for k, v := range form {
 		if bv, ok := base[k]; !ok || !reflect.DeepEqual(v, bv) {
 			out[k] = v
-		}
-	}
-	// Удалённые keys — пишем nil как explicit override.
-	for k := range base {
-		if _, ok := form[k]; !ok {
-			out[k] = nil
 		}
 	}
 	if len(out) == 0 {

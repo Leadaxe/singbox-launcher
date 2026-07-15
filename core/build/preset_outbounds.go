@@ -184,7 +184,8 @@ func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string, 
 //   - Type, Tag    — НЕ меняются (immutable; Type loader уже зачищает для update)
 //   - Filters      — replace целиком (если patch.Filters != nil)
 //   - AddOutbounds — union (preserve order, dedupe)
-//   - Options.*    — per-key replace в target.Options (нет глубокого merge)
+//   - Options.*    — per-key replace в target.Options (нет глубокого merge);
+//     nil-значение = "оверрайда нет" → key берётся из target (issue #91)
 //   - PreferredDefault — replace
 //   - Wizard       — replace
 //   - Comment      — replace iff patch.Comment != ""
@@ -203,6 +204,15 @@ func applyOutboundUpdate(target, patch configtypes.OutboundConfig) configtypes.O
 			merged = make(map[string]interface{}, len(patch.Options))
 		}
 		for k, v := range patch.Options {
+			// nil == "нет оверрайда для этого ключа" — значение берётся из base.
+			// Историческая причина (issue #91): mapDiff писал nil как tombstone
+			// "ключ удалён", merge копировал его как живое значение, и emitter
+			// выдавал "interval":null → sing-box падал с invalid duration "".
+			// Такие null'ы залипли в state.json у пользователей, поэтому чтение
+			// обязано их игнорировать, а не переносить в merged.
+			if v == nil {
+				continue
+			}
 			merged[k] = v
 		}
 		out.Options = merged
