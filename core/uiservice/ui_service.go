@@ -142,6 +142,30 @@ func NewUIService(appIconData, greyIconData, greenIconData, redIconData []byte,
 	return ui, nil
 }
 
+// forceRepaint marks a window's content dirty right after Show().
+//
+// Un-hiding takes Fyne's doShowAgain path, which repaints immediately while
+// the canvas may still be growing to the content's MinSize (content mutated
+// in the background — subscription refresh, status changes — is only applied
+// on the first repaint, since hidden windows don't redraw). That repaint sets
+// the GL viewport from canvas.Size() rather than the real framebuffer, so the
+// frame renders taller than the buffer and, OpenGL's origin being bottom-left,
+// the top of the UI (the tab strip) is cut off. The window then catches up in
+// size, but the resize is a no-op that leaves no dirty flag, so the broken
+// frame stays on screen until something happens to repaint.
+//
+// Refresh() sets that dirty flag, so the next frame renders with geometry the
+// window and canvas agree on. Windows-only in practice (see issue #92): on
+// macOS orderFront forces an honest repaint anyway. Cheap enough not to gate
+// on GOOS.
+func forceRepaint(w fyne.Window) {
+	if c := w.Canvas(); c != nil {
+		if content := c.Content(); content != nil {
+			content.Refresh()
+		}
+	}
+}
+
 // ShowMainWindowOrFocusWizard ensures the main window is shown (unhidden),
 // then if the Wizard is open it brings the Wizard to front and focuses it.
 // This avoids the case where both windows are hidden and clicking "Open" does nothing.
@@ -153,11 +177,13 @@ func (ui *UIService) ShowMainWindowOrFocusWizard() {
 		if ui.MainWindow != nil {
 			ui.MainWindow.Show()
 			ui.MainWindow.RequestFocus()
+			forceRepaint(ui.MainWindow)
 		}
 
 		if ui.WizardWindow != nil {
 			ui.WizardWindow.Show()
 			ui.WizardWindow.RequestFocus()
+			forceRepaint(ui.WizardWindow)
 		}
 
 		if ui.OnWindowShown != nil {
