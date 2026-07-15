@@ -79,7 +79,7 @@ type OutboundGenerationResult struct {
 var NaiveSupportProbe func() (supported bool, reason string)
 
 // GenerateNodeJSON returns a single JSON object string for one proxy node (sing-box outbound).
-// Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria2, tuic, naive, socks.
+// Field order and presence follow sing-box expectations. Supports: vless, vmess, trojan, shadowsocks, hysteria2, tuic, naive, masque, anytls, ssh, socks.
 // Includes optional TLS (including reality), transport (ws/http/grpc), and protocol-specific options.
 // Returned string ends with a trailing comma and may include a leading comment line (node label) for readability.
 func GenerateNodeJSON(node *ParsedNode) (string, error) {
@@ -261,6 +261,45 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 		}
 		if hb, ok := node.Outbound["heartbeat"].(string); ok && hb != "" {
 			parts = append(parts, fmt.Sprintf(`"heartbeat":%s`, marshalJSONString(hb)))
+		}
+	} else if node.Scheme == "masque" && node.Outbound != nil {
+		// parseMasqueURI / warp.ToMasqueOutbound populate base64-DER keys, ip/ipv6
+		// tunnel addresses and transport knobs; sing-box rejects the outbound
+		// without them ("at least one of ip/ipv6 is required").
+		for _, key := range []string{"private_key", "public_key", "ip", "ipv6", "profile", "network", "sni", "idle_timeout", "keep_alive_period"} {
+			if v, ok := node.Outbound[key].(string); ok && v != "" {
+				parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), marshalJSONString(v)))
+			}
+		}
+		if mtu, ok := node.Outbound["mtu"].(int); ok && mtu > 0 {
+			parts = append(parts, fmt.Sprintf(`"mtu":%d`, mtu))
+		}
+	} else if node.Scheme == "anytls" && node.Outbound != nil {
+		// buildAnyTLSOutbound stores the credential and session-pool tuning in the
+		// outbound map; the mandatory TLS block is emitted by the shared section below.
+		for _, key := range []string{"password", "idle_session_check_interval", "idle_session_timeout"} {
+			if v, ok := node.Outbound[key].(string); ok && v != "" {
+				parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), marshalJSONString(v)))
+			}
+		}
+		if n, ok := node.Outbound["min_idle_session"].(int); ok {
+			parts = append(parts, fmt.Sprintf(`"min_idle_session":%d`, n))
+		}
+	} else if node.Scheme == "ssh" && node.Outbound != nil {
+		// buildSSHOutbound stores credentials and host-key material in the outbound map.
+		for _, key := range []string{"user", "password", "private_key", "private_key_path", "private_key_passphrase", "client_version"} {
+			if v, ok := node.Outbound[key].(string); ok && v != "" {
+				parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), marshalJSONString(v)))
+			}
+		}
+		for _, key := range []string{"host_key", "host_key_algorithms"} {
+			if list, ok := node.Outbound[key].([]string); ok && len(list) > 0 {
+				listJSON, err := json.Marshal(list)
+				if err != nil {
+					return "", fmt.Errorf("failed to marshal ssh %s: %w", key, err)
+				}
+				parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), string(listJSON)))
+			}
 		}
 	}
 
