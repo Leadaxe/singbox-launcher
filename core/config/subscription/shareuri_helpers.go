@@ -110,8 +110,10 @@ func transportToQuery(q url.Values, tr map[string]interface{}) {
 	switch typ {
 	case "ws":
 		q.Set("type", "ws")
+		// Re-encode WebSocket early data back into the Xray `?ed=N` path tail so a
+		// node → share-link → node round-trip preserves it (issue #96).
 		if p := mapGetString(tr, "path"); p != "" {
-			q.Set("path", p)
+			q.Set("path", appendEarlyDataToPath(p, mapGetInt(tr, "max_early_data")))
 		}
 		if h, ok := tr["headers"].(map[string]interface{}); ok {
 			if host := mapGetString(h, "Host"); host != "" {

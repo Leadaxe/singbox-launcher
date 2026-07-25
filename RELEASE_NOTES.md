@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v1.2.6
+
+**Подписки с WebSocket Early Data (`?ed=`) наконец подключаются.** Xray кодирует early data прямо в путь — `"path": "/api/v2/channel?ed=2560"` — вместо отдельного поля. Лаунчер копировал строку как есть, а в sing-box такого соглашения нет: он считал её буквальным путём, сервер не находил маршрута и отвечал `404`. Ноды при этом импортировались нормально и выглядели правильно в интерфейсе — не подключались, и всё. Теперь хвост отделяется в `max_early_data` и `early_data_header_name: "Sec-WebSocket-Protocol"` (именно этот заголовок обязателен: с пустым sing-box шлёт early data в путь по соглашению V2Ray, и Xray-сервер этого не понимает). Отдельно стоит отметить: `sing-box check` такой конфиг всегда принимал — строка с `?ed=` синтаксически законна, поломка была только в рантайме. Ядро без изменений — `1.14.0-lx.5`. Миграция не нужна. (issue #96, спасибо @Septdir за разбор)
+
+**Полный список изменений:** [docs/release_notes/1-2-6.md](docs/release_notes/1-2-6.md).
+
+### Highlights (EN) — v1.2.6
+
+**Subscriptions with WebSocket Early Data (`?ed=`) finally connect.** Xray encodes early data into the path itself — `"path": "/api/v2/channel?ed=2560"` — rather than using a dedicated field. The launcher copied that string straight through, and sing-box has no such convention: it treated the whole thing as a literal path, so the server matched no route and answered `404`. The nodes imported fine and looked correct in the UI — they just would not connect. The tail is now split into `max_early_data` and `early_data_header_name: "Sec-WebSocket-Protocol"` (that exact header is required: left empty, sing-box appends early data to the path per the V2Ray convention, which an Xray server does not understand). Worth noting: `sing-box check` always accepted the broken config — a string containing `?ed=` is syntactically legal, and the failure only ever appeared at runtime. Core unchanged — `1.14.0-lx.5`. No migration needed. (issue #96, thanks @Septdir for the diagnosis)
+
+**Full changelog:** [docs/release_notes/1-2-6.md](docs/release_notes/1-2-6.md).
+
+---
+
 ### Выжимка (RU) — v1.2.5
 
 **Вкладки больше не прячутся под заголовком окна при разворачивании из трея (Windows).** Разворачивание перерисовывало окно, пока канва ещё росла до размера контента: GL-viewport брался из размера канвы, а не реального фреймбуфера, кадр рендерился выше буфера, и лишнее срезалось сверху — полоса вкладок уходила под заголовок. Дальше окно догоняло размер, но эта подгонка не ставила dirty-флаг, поэтому битый кадр висел, пока что-нибудь ещё не вызовет перерисовку — отсюда «закономерности нет, проходит само». Теперь после показа окна принудительно ставится перерисовка. На macOS не воспроизводилось. Ядро без изменений — `1.14.0-lx.5`. Миграция не нужна. (issue #92)

@@ -84,8 +84,10 @@ func uriTransportFromQuery(q url.Values) (map[string]interface{}, bool) {
 	switch typ {
 	case "ws":
 		t := map[string]interface{}{"type": "ws"}
+		// path may carry Xray's `?ed=N` early-data tail; split it into the
+		// sing-box max_early_data / early_data_header_name fields (issue #96).
 		if p := queryGetFold(q, "path"); p != "" {
-			t["path"] = p
+			applyWSEarlyData(t, p)
 		}
 		// Many subscriptions set only sni= for TLS; reverse proxies expect WS Host to match vhost.
 		host := strings.TrimSpace(queryGetFold(q, "host"))
@@ -310,6 +312,77 @@ func xhttpCleanPath(p string) string {
 		p = p[:i]
 	}
 	return p
+}
+
+// wsEarlyDataHeaderName is the header sing-box must use to stay compatible with
+// Xray-core WebSocket 0-RTT. Xray sends early data in this header; with an empty
+// early_data_header_name sing-box would instead append it to the path (the V2Ray
+// convention), which an Xray server does not understand. See the sing-box
+// v2ray-transport docs and issue #96.
+const wsEarlyDataHeaderName = "Sec-WebSocket-Protocol"
+
+// splitWSEarlyData separates Xray's `?ed=N` tail from a WebSocket path. Xray
+// encodes WebSocket Early Data into the path (`/api/v2/channel?ed=2560`) instead
+// of a dedicated field, but sing-box treats the whole string as a literal path
+// and the server answers 404 (issue #96). We return the clean path plus the
+// max_early_data value (0 = not set / not a number).
+//
+// The `?`-tail is always stripped from the path — any query tail breaks the WS
+// route match — but a malformed `ed` (missing, non-numeric) only zeroes the
+// early-data value rather than dropping the node, matching how we degrade other
+// broken share-URI fields instead of poisoning the config.
+func splitWSEarlyData(path string) (string, int) {
+	path = strings.TrimSpace(path)
+	i := strings.IndexByte(path, '?')
+	if i < 0 {
+		return path, 0
+	}
+	tail := path[i+1:]
+	clean := path[:i]
+	q, err := url.ParseQuery(tail)
+	if err != nil {
+		return clean, 0
+	}
+	// Xray writes lowercase `ed`, but read it case-insensitively to match how the
+	// rest of the parser folds query keys (queryGetFold).
+	ed := strings.TrimSpace(queryGetFold(q, "ed"))
+	if ed == "" {
+		return clean, 0
+	}
+	n, err := strconv.Atoi(ed)
+	if err != nil || n <= 0 {
+		return clean, 0
+	}
+	return clean, n
+}
+
+// applyWSEarlyData sets the WebSocket transport path and, when a positive
+// max_early_data was parsed from the Xray `?ed=N` tail, the two sing-box early
+// data fields. Shared by every WS transport builder (URI, Xray JSON, VMess) so
+// the `?ed=` conversion stays consistent. An empty path leaves the key unset.
+func applyWSEarlyData(tr map[string]interface{}, rawPath string) {
+	clean, maxED := splitWSEarlyData(rawPath)
+	if clean != "" {
+		tr["path"] = clean
+	}
+	if maxED > 0 {
+		tr["max_early_data"] = maxED
+		tr["early_data_header_name"] = wsEarlyDataHeaderName
+	}
+}
+
+// appendEarlyDataToPath re-encodes a positive max_early_data back into an Xray
+// `?ed=N` path tail. Used by the share-URI exporters so a node → share-link →
+// node round-trip preserves WebSocket early data (the inverse of splitWSEarlyData).
+func appendEarlyDataToPath(path string, maxED int) string {
+	if maxED <= 0 {
+		return path
+	}
+	sep := "?"
+	if strings.ContainsRune(path, '?') {
+		sep = "&"
+	}
+	return path + sep + "ed=" + strconv.Itoa(maxED)
 }
 
 // xhttpRange normalizes an sc*-range value to the "min-max" string the core
