@@ -87,6 +87,17 @@ func appendOutboundTransportParts(parts []string, outbound map[string]interface{
 	if path, ok := transport["path"].(string); ok && path != "" {
 		transportParts = append(transportParts, fmt.Sprintf(`"path":%s`, marshalJSONString(path)))
 	}
+	// WebSocket early data (issue #96). Emitted right after path so the JSON is
+	// deterministic for golden tests. max_early_data is read type-tolerantly: the
+	// parser produces int, but a round-trip through state.json turns it into
+	// float64. early_data_header_name pairs with it (must be Sec-WebSocket-Protocol
+	// for Xray compatibility) and rides through as a plain string.
+	if maxED := transportInt(transport["max_early_data"]); maxED > 0 {
+		transportParts = append(transportParts, fmt.Sprintf(`"max_early_data":%d`, maxED))
+	}
+	if hdr, ok := transport["early_data_header_name"].(string); ok && hdr != "" {
+		transportParts = append(transportParts, fmt.Sprintf(`"early_data_header_name":%s`, marshalJSONString(hdr)))
+	}
 	switch hostVal := transport["host"].(type) {
 	case string:
 		if hostVal != "" {
@@ -153,4 +164,27 @@ func appendOutboundTransportParts(parts []string, outbound map[string]interface{
 		parts = append(parts, fmt.Sprintf(`"transport":%s`, transportJSON))
 	}
 	return parts
+}
+
+// transportInt coerces a transport numeric field to int. Values built by the
+// parser are int, but after a round-trip through state.json (JSON unmarshal into
+// interface{}) they come back as float64 — and older/hand-edited state may carry
+// json.Number. Anything else yields 0.
+func transportInt(v interface{}) int {
+	switch n := v.(type) {
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case float64:
+		return int(n)
+	case json.Number:
+		i, err := n.Int64()
+		if err != nil {
+			return 0
+		}
+		return int(i)
+	default:
+		return 0
+	}
 }

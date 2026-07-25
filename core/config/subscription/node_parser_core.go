@@ -648,7 +648,12 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 					transport["service_name"] = path
 				}
 			} else if path := node.Query.Get("path"); path != "" {
-				transport["path"] = path
+				if network == "ws" {
+					// split Xray's `?ed=N` early-data tail out of the path (issue #96)
+					applyWSEarlyData(transport, path)
+				} else {
+					transport["path"] = path
+				}
 			}
 
 			if network == "ws" {

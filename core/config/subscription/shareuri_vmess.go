@@ -42,7 +42,9 @@ func shareURIFromVMess(out map[string]interface{}) (string, error) {
 		vm["net"] = net
 		switch net {
 		case "ws":
-			vm["path"] = mapGetString(tr, "path")
+			// Re-encode WebSocket early data into the Xray `?ed=N` path tail so a
+			// vmess node → share-link → node round-trip preserves it (issue #96).
+			vm["path"] = appendEarlyDataToPath(mapGetString(tr, "path"), mapGetInt(tr, "max_early_data"))
 			if h, ok := tr["headers"].(map[string]interface{}); ok {
 				vm["host"] = mapGetString(h, "Host")
 			}

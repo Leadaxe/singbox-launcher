@@ -230,8 +230,11 @@ func xrayTransportFromStreamSettings(streamSettings map[string]interface{}, netw
 			return map[string]interface{}{"type": "ws"}
 		}
 		tr := map[string]interface{}{"type": "ws"}
+		// Xray's wsSettings.path carries the `?ed=N` early-data tail
+		// (/api/v2/channel?ed=2560); sing-box needs it as separate
+		// max_early_data / early_data_header_name fields (issue #96).
 		if p := xrayMapString(ws, "path"); p != "" {
-			tr["path"] = p
+			applyWSEarlyData(tr, p)
 		}
 		if h := xrayMapString(ws, "host"); h != "" {
 			tr["headers"] = map[string]string{"Host": h}
