@@ -43,14 +43,60 @@ func tlsInsecureTrue(q url.Values) bool {
 	return false
 }
 
+// singboxUTLSFingerprints are the names sing-box accepts in tls.utls.fingerprint.
+// Mirrors uTLSClientHelloID in sing-box common/tls/utls_client.go — anything else
+// aborts config load with "unknown uTLS fingerprint".
+var singboxUTLSFingerprints = map[string]struct{}{
+	"chrome": {}, "firefox": {}, "edge": {}, "safari": {},
+	"360": {}, "qq": {}, "ios": {}, "android": {},
+	"random": {}, "randomized": {},
+	// Chrome ClientHello variants sing-box maps onto HelloChrome_Auto.
+	"chrome_psk": {}, "chrome_psk_shuffle": {}, "chrome_padding_psk_shuffle": {},
+	"chrome_pq": {}, "chrome_pq_psk": {},
+}
+
+// utlsAliasPrefixes maps uTLS library ClientHelloID names (HelloChrome_120,
+// HelloFirefox_Auto, …) onto the browser family sing-box understands. Some lists
+// export the Go identifier verbatim instead of the sing-box name.
+var utlsAliasPrefixes = []struct {
+	prefix string
+	name   string
+}{
+	{"hellochrome", "chrome"},
+	{"hellofirefox", "firefox"},
+	{"helloedge", "edge"},
+	{"hellosafari", "safari"},
+	{"helloios", "ios"},
+	{"helloandroid", "android"},
+	{"hello360", "360"},
+	{"helloqq", "qq"},
+	{"hellorandomized", "randomized"},
+	{"hellorandom", "random"},
+}
+
 // NormalizeUTLSFingerprint maps subscription variants to sing-box utls names (lowercase).
 // sing-box rejects values like "QQ"; the canonical name is "qq".
+//
+// Values outside the sing-box allowlist are dropped (""), not passed through: a single
+// node carrying e.g. fp=HelloChrome_120 made sing-box abort the whole config with
+// "initialize outbound[N]: unknown uTLS fingerprint" so the VPN never started. Callers
+// treat "" as "no utls block", degrading that node instead of poisoning config.json.
 func NormalizeUTLSFingerprint(fp string) string {
 	fp = strings.TrimSpace(strings.ToLower(fp))
 	if fp == "" {
 		return ""
 	}
-	return fp
+	if _, ok := singboxUTLSFingerprints[fp]; ok {
+		return fp
+	}
+	// uTLS Go identifiers: HelloChrome_120, hellofirefox_auto, HelloChrome-106, …
+	bare := strings.NewReplacer("_", "", "-", "", " ", "").Replace(fp)
+	for _, alias := range utlsAliasPrefixes {
+		if strings.HasPrefix(bare, alias.prefix) {
+			return alias.name
+		}
+	}
+	return ""
 }
 
 // plaintextVLESSPorts are common subscription ports where TLS is typically off (plain HTTP / CF HTTP).
