@@ -371,9 +371,14 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 					if utlsEnabled, ok := utls["enabled"].(bool); ok {
 						utlsParts = append(utlsParts, fmt.Sprintf(`"enabled":%v`, utlsEnabled))
 					}
+					// Emit fingerprint only when sing-box knows the name. An unknown value
+					// (e.g. fp=HelloChrome_120 from a raw uTLS identifier) aborts config
+					// load for every outbound; omitting the key lets sing-box pick its
+					// default Chrome hello instead.
 					if fingerprint, ok := utls["fingerprint"].(string); ok {
-						fingerprint = subscription.NormalizeUTLSFingerprint(fingerprint)
-						utlsParts = append(utlsParts, fmt.Sprintf(`"fingerprint":%s`, marshalJSONString(fingerprint)))
+						if fingerprint = subscription.NormalizeUTLSFingerprint(fingerprint); fingerprint != "" {
+							utlsParts = append(utlsParts, fmt.Sprintf(`"fingerprint":%s`, marshalJSONString(fingerprint)))
+						}
 					}
 					utlsJSON := "{" + strings.Join(utlsParts, ",") + "}"
 					tlsParts = append(tlsParts, fmt.Sprintf(`"utls":%s`, utlsJSON))

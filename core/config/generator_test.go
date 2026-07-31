@@ -373,6 +373,71 @@ func TestGenerateNodeJSON_UTLSFingerprintLowercase(t *testing.T) {
 	}
 }
 
+// A raw uTLS identifier reaching the emitter (e.g. from a hand-written template that
+// never passed a parser) must be mapped, not emitted verbatim: sing-box aborts the
+// whole config with "unknown uTLS fingerprint" and no outbound starts.
+func TestGenerateNodeJSON_UTLSRawIdentifierMapped(t *testing.T) {
+	node := &ParsedNode{
+		Scheme: "vless",
+		Tag:    "t-fp-raw",
+		Server: "example.com",
+		Port:   443,
+		UUID:   "a0ee37a5-1844-4087-bc5c-1db6f416d38c",
+		Outbound: map[string]interface{}{
+			"tls": map[string]interface{}{
+				"enabled":     true,
+				"server_name": "example.com",
+				"utls": map[string]interface{}{
+					"enabled":     true,
+					"fingerprint": "HelloChrome_120",
+				},
+			},
+		},
+	}
+	jsonStr, err := GenerateNodeJSON(node)
+	if err != nil {
+		t.Fatalf("GenerateNodeJSON: %v", err)
+	}
+	if strings.Contains(jsonStr, "HelloChrome_120") || strings.Contains(jsonStr, "hellochrome_120") {
+		t.Fatalf("raw uTLS identifier leaked into JSON:\n%s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"fingerprint":"chrome"`) {
+		t.Fatalf("expected chrome fingerprint:\n%s", jsonStr)
+	}
+}
+
+// An unmappable fingerprint must be omitted entirely rather than emitted as "" —
+// sing-box treats a missing key as its default hello, but rejects unknown names.
+func TestGenerateNodeJSON_UTLSUnknownFingerprintOmitted(t *testing.T) {
+	node := &ParsedNode{
+		Scheme: "vless",
+		Tag:    "t-fp-junk",
+		Server: "example.com",
+		Port:   443,
+		UUID:   "a0ee37a5-1844-4087-bc5c-1db6f416d38c",
+		Outbound: map[string]interface{}{
+			"tls": map[string]interface{}{
+				"enabled":     true,
+				"server_name": "example.com",
+				"utls": map[string]interface{}{
+					"enabled":     true,
+					"fingerprint": "enabled",
+				},
+			},
+		},
+	}
+	jsonStr, err := GenerateNodeJSON(node)
+	if err != nil {
+		t.Fatalf("GenerateNodeJSON: %v", err)
+	}
+	if strings.Contains(jsonStr, `"fingerprint"`) {
+		t.Fatalf("expected no fingerprint key for junk value:\n%s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"utls":{"enabled":true}`) {
+		t.Fatalf("expected utls block without fingerprint:\n%s", jsonStr)
+	}
+}
+
 // VLESS URI may use fingerprint= instead of fp=; same normalization as hysteria2.
 func TestParseNode_VLESS_FingerprintQueryAlias(t *testing.T) {
 	uri := "vless://a0ee37a5-1844-4087-bc5c-1db6f416d38c@example.com:443?encryption=none&security=tls&sni=example.com&fingerprint=QQ#t"

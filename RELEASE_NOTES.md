@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v1.2.7
+
+**Одна нода с `fp=HelloChrome_120` больше не роняет весь конфиг.** Некоторые списки кладут в `fp=` Go-идентификатор из библиотеки uTLS вместо короткого имени, которое ждёт sing-box. Лаунчер только приводил строку к нижнему регистру, и `hellochrome_120` уезжал в `config.json` как есть — а ядро сверяет это поле с фиксированным набором и на всём остальном прекращает загрузку: `initialize outbound[26]: unknown uTLS fingerprint`. Отказ был не по одной ноде, а по всему конфигу — из-за битого outbound #26 не поднимались и outbound'ы #0–25, то есть VPN не стартовал вовсе. Теперь значение проверяется по набору, который ядро действительно принимает (включая пять неочевидных вариантов Chrome ClientHello — список взят из исходников sing-box, а не по памяти), сырые uTLS-идентификаторы отображаются на своё семейство браузера (`HelloChrome_120` → `chrome`), а нераспознанное отбрасывается — нода деградирует вместо того, чтобы портить конфиг. Ядро без изменений — `1.14.0-lx.5`. Миграция не нужна.
+
+**Полный список изменений:** [docs/release_notes/1-2-7.md](docs/release_notes/1-2-7.md).
+
+### Highlights (EN) — v1.2.7
+
+**A single node with `fp=HelloChrome_120` no longer takes down the whole config.** Some lists ship the uTLS library's Go identifier in `fp=` instead of the short name sing-box expects. The launcher only lowercased it, so `hellochrome_120` landed in `config.json` verbatim — and the core validates that field against a fixed set, aborting on anything else: `initialize outbound[26]: unknown uTLS fingerprint`. The failure was not scoped to that node but to the entire config — outbound #26 being bad meant outbounds #0–25 never started either, so the VPN did not come up at all. The value is now checked against the set the core actually accepts (including five non-obvious Chrome ClientHello variants — the list was taken from sing-box's source, not from memory), raw uTLS identifiers are mapped onto their browser family (`HelloChrome_120` → `chrome`), and anything unrecognised is dropped so the node degrades instead of poisoning the config. Core unchanged — `1.14.0-lx.5`. No migration needed.
+
+**Full changelog:** [docs/release_notes/1-2-7.md](docs/release_notes/1-2-7.md).
+
+---
+
 ### Выжимка (RU) — v1.2.6
 
 **Подписки с WebSocket Early Data (`?ed=`) наконец подключаются.** Xray кодирует early data прямо в путь — `"path": "/api/v2/channel?ed=2560"` — вместо отдельного поля. Лаунчер копировал строку как есть, а в sing-box такого соглашения нет: он считал её буквальным путём, сервер не находил маршрута и отвечал `404`. Ноды при этом импортировались нормально и выглядели правильно в интерфейсе — не подключались, и всё. Теперь хвост отделяется в `max_early_data` и `early_data_header_name: "Sec-WebSocket-Protocol"` (именно этот заголовок обязателен: с пустым sing-box шлёт early data в путь по соглашению V2Ray, и Xray-сервер этого не понимает). Отдельно стоит отметить: `sing-box check` такой конфиг всегда принимал — строка с `?ed=` синтаксически законна, поломка была только в рантайме. Ядро без изменений — `1.14.0-lx.5`. Миграция не нужна. (issue #96, спасибо @Septdir за разбор)
