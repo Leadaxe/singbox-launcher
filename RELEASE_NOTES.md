@@ -8,6 +8,32 @@
 
 ---
 
+### Выжимка (RU) — v1.3.0
+
+**Подписка теперь может быть целым конфигом sing-box, а не только списком ссылок.** Раньше любое тело, начинающееся с `{`, давало ноль нод: парсер отвергал его ещё до разбора. Теперь принимаются все четыре формы — одиночный outbound, массив outbound'ов, целый конфиг и массив конфигов, — а вместе с узлами приезжают цепочки `detour` (до 8 хопов, с разрывом колец) и группы `selector`/`urltest`. Группы становятся обычными узлами списка, а не каналами вкладки Outbounds: правила роутинга на них не ссылаются, состав пользователь не редактирует.
+
+**Xray-подписки перестали терять большинство узлов.** Разбирался только VLESS и только один узел на элемент массива — провайдер, отдающий vmess/trojan/shadowsocks/hysteria2 или несколько серверов в одном элементе, терял их целиком. Теперь берутся все узлы и все эти протоколы, распознаются транспорты `xhttp` и `httpupgrade`, а цепочки dialerProxy разворачиваются на любую глубину через любой поддерживаемый протокол. Отдельно решена задача имён: провайдеры намеренно переиспользуют один сервер и как «🇩🇪 Германия», и внутри пула «Авто | Лучший сервер» с техническими тегами — право назвать сервер достаётся элементу с наименьшим числом узлов, поэтому в списке остаются страны, а не `proxy-45-195-228-192-direct`. Пул с балансировщиком при этом становится отдельным узлом-группой, а не пятнадцатью строками.
+
+**Каждый узел подписан, и его можно выключить.** Под тегом — «протокол·транспорт·защита» (`vless·tcp·Reality+Vision`), у групп вместо этого режим и размер пула (`⚖️ [37] по кругу`). Задержка стала цветным кликабельным значением вместо кнопки. По правому клику открывается окно с полной карточкой узла и точным JSON. Отдельные ноды выключаются чекбоксом; выбор привязан к хешу идентичности и переживает обновление подписки, перезапуск и переименование узла провайдером.
+
+**Ядро перепиннуто.** Соединения через тихо умерший путь отваливаются за 15 секунд вместо ~127 секунд молчания — группа узлов наконец видит отказ и перестаёт слать трафик в мёртвый узел.
+
+**Полный список изменений:** [docs/release_notes/1-3-0.md](docs/release_notes/1-3-0.md).
+
+### Highlights (EN) — v1.3.0
+
+**A subscription can now be a whole sing-box config, not just a list of links.** Any body starting with `{` used to yield zero nodes — the parser rejected it before parsing. All four shapes are now accepted (single outbound, outbound array, whole config, array of configs), and `detour` chains (up to 8 hops, with cycles broken) plus `selector`/`urltest` groups come across with the nodes. Groups arrive as ordinary entries in the node list rather than channels in the Outbounds tab: routing rules never reference them and their membership is not user-editable.
+
+**Xray subscriptions stopped losing most of their nodes.** Only VLESS was parsed, and only one node per array element — a provider shipping vmess/trojan/shadowsocks/hysteria2, or several servers in one element, lost them entirely. Every node and all of those protocols are now imported, `xhttp` and `httpupgrade` transports are recognised, and dialerProxy chains follow to any depth through any supported protocol. Naming was solved separately: providers deliberately reuse one server both as «🇩🇪 Germany» and inside an «Auto | Best server» pool full of technical tags — the right to name a server goes to the element with the fewest nodes, so the list keeps countries instead of `proxy-45-195-228-192-direct`. A pool with a balancer becomes a single group node rather than fifteen rows.
+
+**Every node says what it is, and can be switched off.** Under each tag sits «protocol·transport·security» (`vless·tcp·Reality+Vision`); groups show their selection mode and pool size instead (`⚖️ [37] balanced`). Latency became a coloured, clickable value rather than a button. Right-click opens a full node card with the exact outbound JSON. Individual nodes are switched off with a checkbox; the choice is bound to an identity hash and survives subscription updates, restarts and provider-side renames.
+
+**Core re-pinned.** Connections through a silently dead path now fail in 15 seconds instead of hanging ~127 seconds — so a node group actually sees the failure and stops routing into a dead node.
+
+**Full changelog:** [docs/release_notes/1-3-0.md](docs/release_notes/1-3-0.md).
+
+---
+
 ### Выжимка (RU) — v1.2.7
 
 **Одна нода с `fp=HelloChrome_120` больше не роняет весь конфиг.** Некоторые списки кладут в `fp=` Go-идентификатор из библиотеки uTLS вместо короткого имени, которое ждёт sing-box. Лаунчер только приводил строку к нижнему регистру, и `hellochrome_120` уезжал в `config.json` как есть — а ядро сверяет это поле с фиксированным набором и на всём остальном прекращает загрузку: `initialize outbound[26]: unknown uTLS fingerprint`. Отказ был не по одной ноде, а по всему конфигу — из-за битого outbound #26 не поднимались и outbound'ы #0–25, то есть VPN не стартовал вовсе. Теперь значение проверяется по набору, который ядро действительно принимает (включая пять неочевидных вариантов Chrome ClientHello — список взят из исходников sing-box, а не по памяти), сырые uTLS-идентификаторы отображаются на своё семейство браузера (`HelloChrome_120` → `chrome`), а нераспознанное отбрасывается — нода деградирует вместо того, чтобы портить конфиг. Ядро без изменений — `1.14.0-lx.5`. Миграция не нужна.
