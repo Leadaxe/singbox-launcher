@@ -8,6 +8,24 @@
 
 ---
 
+### Выжимка (RU) — v1.3.1
+
+**Переключение группы селектора чинится для ядра, запущенного не лаунчером.** Выбор другой группы перезагружал список узлов только если sing-box поднял сам лаунчер. При ядре, запущенном вручную, или при подключении к внешнему Clash API статус менялся, а список продолжал показывать узлы предыдущей группы — сколько бы раз группу ни переключали. Теперь условие — доступность Clash API, а не принадлежность процесса. Заодно устранена гонка: retry-цикл живёт до ~100 секунд, и его поздний ответ затирал список уже выбранной группы.
+
+**Строки групп показывают, какой узел работает прямо сейчас.** Подзаголовок читается как `🚩 [11] fastest ‣ AL:🇫🇷-Франция` — режим, размер пула и текущий выбор ядра. Данные берутся из ответа `/proxies`, который лаунчер и так запрашивает, поэтому дополнительных запросов нет.
+
+**Полный список изменений:** [docs/release_notes/1-3-1.md](docs/release_notes/1-3-1.md).
+
+### Highlights (EN) — v1.3.1
+
+**Selector group switching now works with an externally started core.** Picking a different group reloaded the node list only when sing-box had been launched by the launcher itself. With a manually started core, or when pointed at a remote Clash API endpoint, the status line updated but the list kept showing the previous group's nodes — no matter how many times you switched. The reload is now gated on Clash API reachability rather than process ownership. A related race is fixed too: the retry loop runs for up to ~100 seconds, and its late response used to clobber the list of the newly selected group.
+
+**Group rows show which node is in use right now.** The subtitle reads `🚩 [11] fastest ‣ AL:🇫🇷-Франция` — mode, pool size, and the core's current pick. It comes from the `/proxies` response the launcher already fetches, so there are no extra requests.
+
+**Full changelog:** [docs/release_notes/1-3-1.md](docs/release_notes/1-3-1.md).
+
+---
+
 ### Выжимка (RU) — v1.3.0
 
 **Подписка теперь может быть целым конфигом sing-box, а не только списком ссылок.** Раньше любое тело, начинающееся с `{`, давало ноль нод: парсер отвергал его ещё до разбора. Теперь принимаются все четыре формы — одиночный outbound, массив outbound'ов, целый конфиг и массив конфигов, — а вместе с узлами приезжают цепочки `detour` (до 8 хопов, с разрывом колец) и группы `selector`/`urltest`. Группы становятся обычными узлами списка, а не каналами вкладки Outbounds: правила роутинга на них не ссылаются, состав пользователь не редактирует.
