@@ -4,6 +4,7 @@ go 1.20
 
 require (
 	fyne.io/fyne/v2 v2.7.3
+	fyne.io/systray v1.12.0
 	github.com/dweymouth/fyne-tooltip v0.4.0
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/muhammadmuzzammil1998/jsonc v1.0.0
@@ -13,7 +14,6 @@ require (
 )
 
 require (
-	fyne.io/systray v1.12.0 // indirect
 	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fredbi/uri v1.1.1 // indirect

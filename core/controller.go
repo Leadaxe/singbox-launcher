@@ -81,6 +81,12 @@ type AppController struct {
 	ctx        context.Context    // Context for cancellation
 	cancelFunc context.CancelFunc // Cancel function for stopping goroutines
 
+	// --- Shutdown state ---
+	// exitOnce guards GracefulExit: it is reachable both from the tray "Quit"
+	// item / dashboard Exit button *and* from main() after Application.Run()
+	// returns, so without this the whole teardown runs twice.
+	exitOnce sync.Once
+
 	// --- Update popup state ---
 	updatePopupShown bool         // Флаг, что попап обновления уже был показан в этой сессии
 	updatePopupMutex sync.RWMutex // Мьютекс для защиты updatePopupShown
@@ -335,7 +341,15 @@ func (ac *AppController) hasUI() bool {
 }
 
 // GracefulExit performs a graceful shutdown of the application.
+//
+// Two call sites reach this: the tray "Quit" item (and the dashboard Exit
+// button), and main() after Application.Run() returns. exitOnce makes the
+// second call a no-op instead of a second full teardown.
 func (ac *AppController) GracefulExit() {
+	ac.exitOnce.Do(ac.gracefulExit)
+}
+
+func (ac *AppController) gracefulExit() {
 	// Cancel context to signal all goroutines to stop
 	if ac.cancelFunc != nil {
 		ac.cancelFunc()
@@ -384,8 +398,28 @@ end_loop:
 	}
 
 	if ac.hasUI() {
+		// Armed before Quit so a driver that refuses to unwind can't strand
+		// the process. By this point sing-box is stopped and the log files
+		// are closed, so os.Exit loses nothing.
+		forceExitAfter(3 * time.Second)
 		ac.UIService.QuitApplication()
 	}
+}
+
+// forceExitAfter arms a last-resort os.Exit in case the Fyne event loop never
+// unwinds after Application.Quit(). Field reports (2026-08): quitting from the
+// tray with the window hidden leaves the process alive — on Windows the tray
+// icon stays behind and the still-running process holds the single-instance
+// lock, so relaunching the .exe reports "already running". The tray icon part
+// is fixed deterministically in UIService.QuitApplication (systray.Quit); this
+// watchdog guarantees the process itself dies even if the driver's shutdown
+// path stalls. By arming time all critical teardown (sing-box stopped, logs
+// closed) is already done, so os.Exit loses nothing.
+func forceExitAfter(d time.Duration) {
+	time.AfterFunc(d, func() {
+		debuglog.WarnLog("Shutdown watchdog: event loop did not exit within %s, forcing process exit", d)
+		os.Exit(0)
+	})
 }
 
 // RunHidden launches an external command in a hidden window.
