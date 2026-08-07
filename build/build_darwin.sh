@@ -449,35 +449,57 @@ if [ "$COPY_TO_APPLICATIONS" = true ]; then
     # bin/ (core, subscriptions, state) and logs/ change on every run. Using
     # --verify as the gate would re-sign on every single install.
     #
-    # What actually breaks the launch is a MISSING _CodeSignature: macOS then
-    # refuses the app with a useless "cannot be opened" dialog and
-    # `Launchd job spawn failed` in the log. That is what we detect.
+    # What actually breaks the launch is a seal that does not MATCH the bundle:
+    # macOS refuses the app with a useless "cannot be opened" dialog and
+    # `Launchd job spawn failed` (POSIX 162) in the log. Two distinct states
+    # produce it, and both must be detected:
     #
-    # Re-sealing needs the working data out of the way: those files may be
-    # root-owned after the core ran with administrator rights, and codesign
-    # fails on them.
-    if [ ! -d "$DEST_APP/Contents/_CodeSignature" ]; then
-        echo "=== Bundle seal broken — re-sealing ==="
-        SEAL_HOLD="/tmp/${BASE_NAME}_seal_$$"
-        mkdir -p "$SEAL_HOLD"
-        for item in bin logs; do
-            [ -e "$DEST_APP/Contents/MacOS/$item" ] && \
-                mv "$DEST_APP/Contents/MacOS/$item" "$SEAL_HOLD/$item"
-        done
-        codesign --force --deep --sign - --identifier com.singbox.launcher "$DEST_APP" 2>&1 | tail -1
-        for item in bin logs; do
-            [ -e "$SEAL_HOLD/$item" ] && \
-                mv "$SEAL_HOLD/$item" "$DEST_APP/Contents/MacOS/$item"
-        done
-        rmdir "$SEAL_HOLD" 2>/dev/null || true
-        if [ -d "$DEST_APP/Contents/_CodeSignature" ]; then
+    #   1. _CodeSignature missing entirely.
+    #   2. _CodeSignature present but stale — e.g. "code has no resources but
+    #      signature indicates they must be present". Signing the executable
+    #      standalone (above) does NOT refresh the bundle seal, so it drifts
+    #      out of sync as Contents/ changes across installs.
+    #
+    # Case 2 was previously missed (the check was `! -d _CodeSignature`), and
+    # the app started failing to launch after a few incremental installs.
+    #
+    # Verification and re-sealing both need the working data out of the way:
+    # those files live in Contents/MacOS, so --verify always reports them as
+    # "sealed resource is missing or invalid", and they may be root-owned
+    # after the core ran with administrator rights, which makes codesign fail.
+    SEAL_HOLD="/tmp/${BASE_NAME}_seal_$$"
+    mkdir -p "$SEAL_HOLD"
+    for item in bin logs; do
+        [ -e "$DEST_APP/Contents/MacOS/$item" ] && \
+            mv "$DEST_APP/Contents/MacOS/$item" "$SEAL_HOLD/$item"
+    done
+
+    # With the working data aside, --verify tells the truth about the seal.
+    if [ -d "$DEST_APP/Contents/_CodeSignature" ] && \
+       codesign --verify "$DEST_APP" 2>/dev/null; then
+        SEAL_OK=1
+    else
+        SEAL_OK=0
+    fi
+
+    if [ "$SEAL_OK" -eq 0 ]; then
+        echo "=== Bundle seal missing or stale — re-sealing ==="
+        rm -rf "$DEST_APP/Contents/_CodeSignature"
+        codesign --force --sign - --identifier com.singbox.launcher "$DEST_APP" 2>&1 | tail -1
+        if codesign --verify "$DEST_APP" 2>/dev/null; then
             echo "Bundle re-sealed: $DEST_APP"
         else
-            echo "WARNING: bundle still unsealed; macOS may refuse to launch the app"
+            echo "WARNING: bundle seal still invalid; macOS may refuse to launch the app"
             echo "  Fix manually with the working data moved aside:"
-            echo "    codesign --force --deep --sign - --identifier com.singbox.launcher $DEST_APP"
+            echo "    codesign --force --sign - --identifier com.singbox.launcher $DEST_APP"
         fi
     fi
+
+    for item in bin logs; do
+        [ -e "$SEAL_HOLD/$item" ] && \
+            mv "$SEAL_HOLD/$item" "$DEST_APP/Contents/MacOS/$item"
+    done
+    rmdir "$SEAL_HOLD" 2>/dev/null || true
     echo "========================================"
 else
     echo "To install or update in /Applications:"
