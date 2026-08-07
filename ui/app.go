@@ -57,18 +57,12 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	// Tab order: Core | Servers | 🔍 Diagnostics | ⚙️ Settings | ❓ Help.
 	// Settings sits between Diagnostics and Help — close to other
 	// "launcher behavior" controls and one click away from Help.
-	// Каталог глифов — как и Settings, вкладка-кнопка: открывает окно и
-	// возвращает выбор на прежнюю вкладку. Нужен для подбора значков UI:
-	// символ, красивый в редакторе, в приложении может не отрисоваться,
-	// стать тофу или прийти нередактируемой цветной картинкой.
-	glyphsTabItem := container.NewTabItem("🔤", widget.NewLabel(""))
 	app.tabs = container.NewAppTabs(
 		coreTabItem,
 		app.clashAPITab,
 		container.NewTabItem(locale.T("app.tab.diagnostics"), CreateDiagnosticsTab(controller)),
 		settingsTabItem,
 		container.NewTabItem(locale.T("app.tab.help"), CreateHelpTab(controller)),
-		glyphsTabItem,
 	)
 
 	// Set tab selection handler
@@ -83,18 +77,6 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 			// first action (app.currentTab still nil).
 			target := app.currentTab
 			if target == nil || target == settingsTabItem {
-				target = coreTabItem
-			}
-			app.tabs.Select(target)
-			return
-		}
-		// Каталог глифов — тоже вкладка-кнопка (см. settingsTabItem выше).
-		if item == glyphsTabItem {
-			if controller.UIService != nil && controller.UIService.Application != nil {
-				ShowGlyphExplorer(controller.UIService.Application)
-			}
-			target := app.currentTab
-			if target == nil || target == glyphsTabItem {
 				target = coreTabItem
 			}
 			app.tabs.Select(target)
