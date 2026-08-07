@@ -1030,6 +1030,45 @@ func testTrojanWSOne(t *testing.T, uri, wantHost, wantPath string) {
 	}
 }
 
+// TestParseNode_Trojan_SecurityNone_OmitsTLSBlock guards the SPEC 045 crash
+// shape: a trojan node with security=none must omit the tls key entirely, never
+// emit `"tls":{"enabled":false}`. Cores 1.14.0-lx.5..lx.18 wrap the nil config
+// the disabled block produces in a live TLS dialer and SIGSEGV on the first
+// dial — URL test included — taking the whole core process down. Same contract
+// VLESS already follows (see TestParseNode_VLESS_TransportAndTLS).
+func TestParseNode_Trojan_SecurityNone_OmitsTLSBlock(t *testing.T) {
+	cases := []struct {
+		name string
+		uri  string
+	}{
+		{"raw tcp", "trojan://secretpass@example.com:8080?security=none#plain-trojan"},
+		{"ws transport", "trojan://secretpass@example.com:8080?security=none&type=ws&path=%2Ftjw&host=cdn.test#plain-trojan-ws"},
+		{"uppercase value", "trojan://secretpass@example.com:8080?security=NONE#plain-trojan-upper"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			node, err := ParseNode(tc.uri, nil)
+			if err != nil || node == nil {
+				t.Fatalf("ParseNode: err=%v node=%v", err, node)
+			}
+			if tlsData, has := node.Outbound["tls"]; has {
+				t.Fatalf("expected no tls key for security=none, got %+v", tlsData)
+			}
+		})
+	}
+
+	t.Run("security=tls still emits the block", func(t *testing.T) {
+		node, err := ParseNode("trojan://secretpass@example.com:443?security=tls&sni=m.example.com#tr", nil)
+		if err != nil || node == nil {
+			t.Fatalf("ParseNode: err=%v node=%v", err, node)
+		}
+		tlsData, ok := node.Outbound["tls"].(map[string]interface{})
+		if !ok || tlsData["enabled"] != true || tlsData["server_name"] != "m.example.com" {
+			t.Fatalf("tls: %+v", node.Outbound["tls"])
+		}
+	})
+}
+
 // TestParseNode_Hysteria2 tests parsing Hysteria2 nodes
 func TestParseNode_Hysteria2(t *testing.T) {
 	tests := []struct {

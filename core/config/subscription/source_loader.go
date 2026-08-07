@@ -26,6 +26,164 @@ import (
 // nil → стандартное поведение (FetchSubscription).
 var LookupCachedBody func(url string) ([]byte, bool)
 
+// NodeIdentityHashFunc — package-level hook, дающий парсеру доступ к
+// вычислению идентичности узла (SPEC 094 D2).
+//
+// Хеш считается от ЭМИТИРОВАННОГО outbound-JSON, а эмиттер живёт в пакете
+// config, который сам импортирует subscription. Прямой вызов дал бы цикл
+// импорта, поэтому используется тот же приём, что и для LookupCachedBody:
+// зависимость подставляется сверху.
+//
+// nil → дедупликация не выполняется (узлы отдаются как есть). Это не ошибка:
+// парсер обязан оставаться работоспособным в изоляции — в тестах пакета
+// subscription хук не установлен.
+var NodeIdentityHashFunc func(node *configtypes.ParsedNode) string
+
+// disabledNodeTTL возвращает срок жизни отметки о выключенной ноде
+// (SPEC 094 D4).
+//
+// clamp(3 × интервал обновления, 24h, 30d). Три цикла обновления — запас на
+// провайдера, у которого нода временно исчезла из выдачи: если удалять отметку
+// сразу, нода вернулась бы включённой за спиной пользователя. Верхняя граница
+// не даёт отметкам копиться годами.
+func disabledNodeTTL(updateIntervalHours int) time.Duration {
+	const (
+		minTTL = 24 * time.Hour
+		maxTTL = 30 * 24 * time.Hour
+	)
+	if updateIntervalHours <= 0 {
+		return minTTL
+	}
+	ttl := time.Duration(updateIntervalHours) * 3 * time.Hour
+	if ttl < minTTL {
+		return minTTL
+	}
+	if ttl > maxTTL {
+		return maxTTL
+	}
+	return ttl
+}
+
+// filterDisabledNodes убирает узлы, выключенные пользователем, и обновляет
+// временные метки у переживших отметок (SPEC 094 D4).
+//
+// Возвращает оставшиеся узлы и карту отметок с обновлёнными временами. Карта
+// возвращается новой: вызывающий решает, сохранять ли её (GC выполняется только
+// при успешном сетевом обновлении, иначе кэш-прогон без сети стёр бы отметки
+// для нод, которых временно нет в теле).
+func filterDisabledNodes(
+	nodes []*configtypes.ParsedNode,
+	disabled map[string]int64,
+	now time.Time,
+) ([]*configtypes.ParsedNode, map[string]int64) {
+	if len(disabled) == 0 || NodeIdentityHashFunc == nil {
+		return nodes, disabled
+	}
+
+	refreshed := make(map[string]int64, len(disabled))
+	for hash, ts := range disabled {
+		refreshed[hash] = ts
+	}
+
+	kept := make([]*configtypes.ParsedNode, 0, len(nodes))
+	dropped := 0
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		hash := NodeIdentityHashFunc(node)
+		if hash == "" {
+			kept = append(kept, node)
+			continue
+		}
+		if _, off := disabled[hash]; off {
+			// Нода на месте — отметка актуальна, продлеваем.
+			refreshed[hash] = now.Unix()
+			dropped++
+			continue
+		}
+		kept = append(kept, node)
+	}
+
+	if dropped > 0 {
+		debuglog.DebugLog("Parser: %d node(s) skipped as disabled by the user", dropped)
+	}
+	return kept, refreshed
+}
+
+// GCDisabledNodes убирает отметки о выключенных нодах, которых давно нет в
+// подписке (SPEC 094 D4). TTL считается из интервала обновления источника.
+//
+// Вызывать ТОЛЬКО после успешного СЕТЕВОГО обновления: на прогоне из кэша тело
+// может быть неполным, и отметки исчезли бы для живых нод — те молча включились
+// бы обратно за спиной пользователя.
+func GCDisabledNodes(disabled map[string]int64, updateIntervalHours int, now time.Time) map[string]int64 {
+	return gcDisabledNodes(disabled, disabledNodeTTL(updateIntervalHours), now)
+}
+
+// gcDisabledNodes — внутренняя реализация с явным TTL (удобна для тестов).
+func gcDisabledNodes(disabled map[string]int64, ttl time.Duration, now time.Time) map[string]int64 {
+	if len(disabled) == 0 {
+		return disabled
+	}
+	cutoff := now.Add(-ttl).Unix()
+	kept := make(map[string]int64, len(disabled))
+	expired := 0
+	for hash, ts := range disabled {
+		if ts < cutoff {
+			expired++
+			continue
+		}
+		kept[hash] = ts
+	}
+	if expired > 0 {
+		debuglog.DebugLog("Parser: dropped %d expired disabled-node mark(s)", expired)
+	}
+	return kept
+}
+
+// dedupNodesByIdentity схлопывает узлы с совпадающей идентичностью в пределах
+// ОДНОГО источника (SPEC 094 D3). Выживает первый по порядку.
+//
+// Между источниками дедуп не применяется: подписаться на две подписки с общим
+// сервером — осознанный выбор пользователя, и молча выкидывать одну из них
+// значило бы решать за него.
+//
+// Узлы без вычислимой идентичности (хук не установлен, эмиссия не удалась)
+// пропускаются нетронутыми: схлопывать их в одну «пустую» группу нельзя.
+func dedupNodesByIdentity(nodes []*configtypes.ParsedNode) []*configtypes.ParsedNode {
+	if NodeIdentityHashFunc == nil || len(nodes) < 2 {
+		return nodes
+	}
+
+	seen := make(map[string]string, len(nodes))
+	kept := make([]*configtypes.ParsedNode, 0, len(nodes))
+	dropped := 0
+
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		hash := NodeIdentityHashFunc(node)
+		if hash == "" {
+			kept = append(kept, node)
+			continue
+		}
+		if firstTag, dup := seen[hash]; dup {
+			debuglog.DebugLog("Parser: dedup: %q duplicates %q (same identity) — dropped", node.Tag, firstTag)
+			dropped++
+			continue
+		}
+		seen[hash] = node.Tag
+		kept = append(kept, node)
+	}
+
+	if dropped > 0 {
+		debuglog.DebugLog("Parser: dedup: dropped %d duplicate node(s) within the source", dropped)
+	}
+	return kept
+}
+
 // NormalizeSubscriptionTextLine trims whitespace, drops invalid UTF-8 byte sequences, and replaces
 // HTML-escaped "&amp;" with "&". Some public lists are HTML-exported; without this, query parameters
 // stay merged and URI parsing breaks.
@@ -77,15 +235,54 @@ func LogDuplicateTagStatistics(tagCounts map[string]int, logPrefix string) {
 	}
 }
 
+// SourceLoadResult — расширенный результат разбора источника (SPEC 094 A5).
+//
+// Помимо узлов несёт то, что появляется только при импорте sing-box JSON:
+// группы selector/urltest и перечень непрочитанных секций конфига.
+type SourceLoadResult struct {
+	// Nodes — узлы с уже применёнными тегами (префикс/маска/уникализация).
+	//
+	// Импортированные из конфига группы (SchemeGroup) лежат здесь же, среди
+	// обычных узлов: для лаунчера это рядовые ноды без привилегий, а не записи
+	// вкладки Outbounds, на которые ссылается роутинг (SPEC 094 A5).
+	Nodes []*configtypes.ParsedNode
+	// IgnoredSections — секции целого конфига, которые импорт не читает
+	// (route/dns/inbounds/experimental). Показываются в превью.
+	IgnoredSections []string
+	// DisabledNodes — отметки о выключенных нодах с обновлёнными временами
+	// (SPEC 094 D4). Отметка ноды, встреченной в этом прогоне, продлевается;
+	// вызывающий решает, сохранять ли карту и запускать ли GC — просроченные
+	// отметки удаляются только после успешного СЕТЕВОГО обновления.
+	DisabledNodes map[string]int64
+}
+
 // LoadNodesFromSource loads and processes nodes from a configtypes.ProxySource
 // Handles subscriptions, legacy direct links, and connections
-// Returns list of parsed nodes with processed tags
+// Returns list of parsed nodes with processed tags.
+//
+// Тонкая обёртка над LoadNodesFromSourceEx для вызывающих, которым нужны
+// только узлы.
 func LoadNodesFromSource(
 	proxySource configtypes.ProxySource,
 	tagCounts map[string]int,
 	progressCallback func(float64, string),
 	subscriptionIndex, totalSubscriptions int,
 ) ([]*configtypes.ParsedNode, error) {
+	res, err := LoadNodesFromSourceEx(proxySource, tagCounts, progressCallback, subscriptionIndex, totalSubscriptions)
+	if res == nil {
+		return nil, err
+	}
+	return res.Nodes, err
+}
+
+// LoadNodesFromSourceEx — как LoadNodesFromSource, но возвращает и группы,
+// импортированные из sing-box конфига (SPEC 094 A5).
+func LoadNodesFromSourceEx(
+	proxySource configtypes.ProxySource,
+	tagCounts map[string]int,
+	progressCallback func(float64, string),
+	subscriptionIndex, totalSubscriptions int,
+) (*SourceLoadResult, error) {
 	startTime := time.Now()
 	debuglog.DebugLog("LoadNodesFromSource: START source %d/%d at %s",
 		subscriptionIndex+1, totalSubscriptions, startTime.Format("15:04:05.000"))
@@ -93,6 +290,10 @@ func LoadNodesFromSource(
 	nodes := make([]*configtypes.ParsedNode, 0)
 	nodesFromThisSource := 0
 	skippedDueToLimit := 0
+
+	// SPEC 094 A4: секции импортированного конфига, которые парсер не читает.
+	// Группы отдельным списком НЕ идут: они рядовые узлы и лежат в nodes.
+	var ignoredSections []string
 
 	// Process subscription from Source field
 	if proxySource.Source != "" {
@@ -143,14 +344,68 @@ func LoadNodesFromSource(
 				contentStr = strings.ReplaceAll(contentStr, "\r", "\n")
 				contentStr = strings.TrimSpace(contentStr)
 
-				if IsXrayJSONArrayBody(contentStr) {
+				bodyKind := ClassifySubscriptionBody(contentStr)
+
+				if bodyKind.IsSingbox() {
+					// SPEC 094 фаза A: подписка отдала sing-box JSON —
+					// одиночный outbound, массив outbound'ов, целый конфиг
+					// или массив конфигов. До SPEC 094 такое тело не давало
+					// ни одной ноды.
+					importRes, err := ParseSingboxBody(contentStr, bodyKind, proxySource.Skip)
+					if err != nil {
+						debuglog.WarnLog("Parser: sing-box JSON subscription %s: %v", proxySource.Source, err)
+					} else {
+						debuglog.DebugLog("LoadNodesFromSource: sing-box JSON subscription %d/%d (%s): %d node(s)",
+							subscriptionIndex+1, totalSubscriptions, bodyKind, len(importRes.Nodes))
+						// SPEC 094 D3: дедуп ДО простановки тегов — иначе
+						// MakeTagUnique успеет присвоить дублю тег "…-2",
+						// и в конфиг уедет лишний узел с чужим именем.
+						importRes.Nodes = dedupNodesByIdentity(importRes.Nodes)
+
+						nodeNum := 0
+						accepted := make([]*configtypes.ParsedNode, 0, len(importRes.Nodes))
+						for _, node := range importRes.Nodes {
+							if nodesFromThisSource >= configtypes.MaxNodesPerSubscription {
+								skippedDueToLimit++
+								if skippedDueToLimit == 1 {
+									debuglog.DebugLog("LoadNodesFromSource: Reached limit of %d nodes for subscription %d/%d",
+										configtypes.MaxNodesPerSubscription, subscriptionIndex+1, totalSubscriptions)
+								}
+								continue
+							}
+							nodeNum++
+							applyTagsToSingboxNode(node, proxySource, nodeNum, tagCounts)
+							accepted = append(accepted, node)
+							nodesFromThisSource++
+						}
+						// Узлы-группы ссылаются на теги соседей, а те получили
+						// префикс/маску/уникализацию — состав переписывается на
+						// итоговые теги. Группа, потерявшая всех членов (лимит,
+						// skip-фильтр), отбрасывается: пустой urltest роняет ядро.
+						accepted = rebindImportedGroupNodes(accepted)
+						nodes = append(nodes, accepted...)
+						ignoredSections = importRes.IgnoredSections
+					}
+					debuglog.DebugLog("LoadNodesFromSource: Parsed subscription %d/%d: %d nodes in %v (%s)",
+						subscriptionIndex+1, totalSubscriptions, nodesFromThisSource, time.Since(parseStartTime), bodyKind)
+				} else if bodyKind == BodyKindXrayArray {
 					arrayNodes, err := ParseNodesFromXrayJSONArray(contentStr, proxySource.Skip)
 					if err != nil {
 						debuglog.WarnLog("Parser: Xray JSON array subscription %s: %v", proxySource.Source, err)
 					} else {
 						debuglog.DebugLog("LoadNodesFromSource: Xray JSON array subscription %d/%d: %d node(s)",
 							subscriptionIndex+1, totalSubscriptions, len(arrayNodes))
+
+						// SPEC 094 D3: дедуп ВНУТРИ элемента, а не по всей
+						// подписке. Провайдеры намеренно переиспользуют один
+						// сервер в разных элементах: тот же адрес приезжает и
+						// как «🇩🇪 Германия», и внутри пула «Авто | Лучший
+						// сервер». Для пользователя это разные записи с разным
+						// смыслом, и схлопывание стирало половину стран из
+						// списка. Дедуп внутри элемента выполняет сам
+						// ParseNodesFromXrayJSONArray.
 						nodeNum := 0
+						acceptedXray := make([]*configtypes.ParsedNode, 0, len(arrayNodes))
 						for _, node := range arrayNodes {
 							if nodesFromThisSource >= configtypes.MaxNodesPerSubscription {
 								skippedDueToLimit++
@@ -162,9 +417,16 @@ func LoadNodesFromSource(
 							}
 							nodeNum++
 							applyTagsToXrayNode(node, proxySource, nodeNum, tagCounts)
-							nodes = append(nodes, node)
+							acceptedXray = append(acceptedXray, node)
 							nodesFromThisSource++
 						}
+						// Узлы-группы (§322) ссылаются на теги соседей, а те
+						// получили префикс/маску/уникализацию — состав
+						// переписывается на итоговые теги. Без этого группа с
+						// tag_prefix указывала в пустоту: `sing-box check`
+						// такое пропускает, но в рантайме группа мертва.
+						acceptedXray = rebindImportedGroupNodes(acceptedXray)
+						nodes = append(nodes, acceptedXray...)
 					}
 					debuglog.DebugLog("LoadNodesFromSource: Parsed subscription %d/%d: %d nodes in %v (Xray JSON array)",
 						subscriptionIndex+1, totalSubscriptions, nodesFromThisSource, time.Since(parseStartTime))
@@ -172,6 +434,13 @@ func LoadNodesFromSource(
 					subscriptionLines := strings.Split(contentStr, "\n")
 					debuglog.DebugLog("LoadNodesFromSource: Parsing subscription %d/%d: %d lines",
 						subscriptionIndex+1, totalSubscriptions, len(subscriptionLines))
+
+					// SPEC 094 D3: дедуп внутри источника. Проверка идёт до
+					// простановки тегов — MakeTagUnique иначе успел бы выдать
+					// дублю тег "…-2", и в конфиг уехал бы лишний узел.
+					// Инкрементально, а не по собранному списку: подписка на
+					// 3000 нод не должна дважды лежать в памяти целиком.
+					seenIdentities := make(map[string]string)
 
 					lineCount := 0
 					for _, subLine := range subscriptionLines {
@@ -200,6 +469,16 @@ func LoadNodesFromSource(
 						}
 
 						if node != nil {
+							if NodeIdentityHashFunc != nil {
+								if hash := NodeIdentityHashFunc(node); hash != "" {
+									if firstTag, dup := seenIdentities[hash]; dup {
+										debuglog.DebugLog("Parser: dedup: %q duplicates %q (same identity) — dropped", node.Tag, firstTag)
+										continue
+									}
+									seenIdentities[hash] = node.Tag
+								}
+							}
+
 							// Apply prefix, postfix, or mask to tag if specified (with variable substitution)
 							node.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, proxySource.TagMask, nodesFromThisSource+1)
 							node.Tag = textnorm.NormalizeProxyDisplay(node.Tag)
@@ -313,10 +592,130 @@ func LoadNodesFromSource(
 	// known; here we only stamp it.
 	applySourceDetour(nodes, proxySource.DetourTag)
 
+	// SPEC 094 D4: узлы, выключенные пользователем, не попадают в конфиг.
+	// Отметки живут по хешу идентичности, поэтому переживают переименование
+	// ноды провайдером и смену её позиции в подписке.
+	nodes, refreshedDisabled := filterDisabledNodes(nodes, proxySource.DisabledNodes, time.Now())
+
 	totalDuration := time.Since(startTime)
 	debuglog.DebugLog("LoadNodesFromSource: END source %d/%d (total duration: %v, nodes: %d)",
 		subscriptionIndex+1, totalSubscriptions, totalDuration, len(nodes))
-	return nodes, nil
+	return &SourceLoadResult{
+		Nodes:           nodes,
+		IgnoredSections: ignoredSections,
+		DisabledNodes:   refreshedDisabled,
+	}, nil
+}
+
+// applyTagsToSingboxNode применяет к импортированному узлу те же правила тегов,
+// что и к узлам из URI-подписки: префикс/постфикс/маска, нормализация,
+// уникализация. Цепочечные хопы получают производные теги, чтобы не
+// столкнуться с тегами других источников.
+func applyTagsToSingboxNode(
+	node *configtypes.ParsedNode,
+	proxySource configtypes.ProxySource,
+	nodeNum int,
+	tagCounts map[string]int,
+) {
+	if node == nil {
+		return
+	}
+	// Исходный тег нужен группам, чтобы переписать состав на итоговые теги.
+	// Comment для этого использовать нельзя — его читают skip-фильтры.
+	node.SourceTag = node.Tag
+
+	node.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, proxySource.TagMask, nodeNum)
+	node.Tag = textnorm.NormalizeProxyDisplay(node.Tag)
+	node.Tag = MakeTagUnique(node.Tag, tagCounts, "Parser")
+	if node.Outbound != nil {
+		node.Outbound["tag"] = node.Tag
+	}
+
+	for hopIdx, hop := range node.Chain {
+		if hop == nil {
+			continue
+		}
+		hop.Tag = MakeTagUnique(fmt.Sprintf("%s_hop%d", node.Tag, hopIdx+1), tagCounts, "Parser")
+		if hop.Outbound != nil {
+			hop.Outbound["tag"] = hop.Tag
+		}
+	}
+	// Каждый хоп дозванивается через следующий; последний идёт напрямую.
+	for hopIdx, hop := range node.Chain {
+		if hop == nil || hop.Outbound == nil {
+			continue
+		}
+		if hopIdx+1 < len(node.Chain) && node.Chain[hopIdx+1] != nil {
+			hop.Outbound["detour"] = node.Chain[hopIdx+1].Tag
+		} else {
+			delete(hop.Outbound, "detour")
+		}
+	}
+	if len(node.Chain) > 0 && node.Chain[0] != nil && node.Outbound != nil {
+		node.Outbound["detour"] = node.Chain[0].Tag
+	}
+	node.SyncJumpFromChain()
+}
+
+// rebindImportedGroupNodes переписывает состав узлов-групп с исходных тегов
+// конфига на итоговые теги узлов (после префикса/маски/уникализации).
+//
+// Соответствие берётся из node.SourceTag, куда applyTagsToSingboxNode кладёт
+// исходный тег. Член, для которого узла не нашлось, выбрасывается; группа,
+// оставшаяся без членов, удаляется целиком — пустой urltest роняет старт ядра.
+//
+// Узел, не прошедший лимит MaxNodesPerSubscription или отсечённый skip-фильтром,
+// в списке отсутствует и потому из состава выпадает: ссылка на неэмитированный
+// тег отвергается ядром.
+//
+// Возвращает отфильтрованный список узлов.
+func rebindImportedGroupNodes(nodes []*configtypes.ParsedNode) []*configtypes.ParsedNode {
+	finalByOriginal := make(map[string]string, len(nodes))
+	for _, node := range nodes {
+		if node == nil || node.SourceTag == "" {
+			continue
+		}
+		finalByOriginal[node.SourceTag] = node.Tag
+	}
+
+	kept := make([]*configtypes.ParsedNode, 0, len(nodes))
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		if node.Scheme != configtypes.SchemeGroup || node.Outbound == nil {
+			kept = append(kept, node)
+			continue
+		}
+
+		members := make([]interface{}, 0)
+		switch raw := node.Outbound[configtypes.GroupMembersKey].(type) {
+		case []interface{}:
+			for _, item := range raw {
+				if memberTag, ok := item.(string); ok {
+					if finalTag, ok := finalByOriginal[memberTag]; ok {
+						members = append(members, finalTag)
+					}
+				}
+			}
+		}
+
+		if len(members) == 0 {
+			debuglog.WarnLog("Parser: singbox import: group %q lost all members after tag rewrite — skipped", node.Tag)
+			continue
+		}
+		node.Outbound[configtypes.GroupMembersKey] = members
+
+		if def, ok := node.Outbound["default"].(string); ok {
+			if finalTag, ok := finalByOriginal[def]; ok {
+				node.Outbound["default"] = finalTag
+			} else {
+				delete(node.Outbound, "default")
+			}
+		}
+		kept = append(kept, node)
+	}
+	return kept
 }
 
 // applySourceDetour stamps node.Outbound["detour"] = detourTag on every eligible
@@ -344,6 +743,13 @@ func applySourceDetour(nodes []*configtypes.ParsedNode, detourTag string) {
 
 // applyTagsToXrayNode applies tag_prefix/tag_postfix/tag_mask and MakeTagUnique to main and jump tags.
 func applyTagsToXrayNode(node *configtypes.ParsedNode, proxySource configtypes.ProxySource, nodeNum int, tagCounts map[string]int) {
+	// SPEC 094: исходный тег нужен узлам-группам, чтобы после префикса/маски
+	// переписать состав на итоговые теги. Без этого группа из Xray-подписки
+	// с tag_prefix ссылалась на несуществующие теги: `sing-box check` такое
+	// пропускает (существование членов он не проверяет), а в рантайме группа
+	// мертва.
+	node.SourceTag = node.Tag
+
 	if node.Jump != nil {
 		saved := node.Tag
 		node.Tag = node.Jump.Tag

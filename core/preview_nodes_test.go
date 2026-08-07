@@ -3,6 +3,7 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -83,6 +84,10 @@ func TestExtractXrayJSONPreviewNodes_Smoke(t *testing.T) {
 
 func TestExtractXrayJSONPreviewNodes_SyntheticArray(t *testing.T) {
 	// Synthetic 100-node JSON array — verifies truncation + count.
+	//
+	// SPEC 094 D3: адреса должны РАЗЛИЧАТЬСЯ. Сто копий одного сервера
+	// дедуп схлопнет в один узел — и правильно сделает; проверять на них
+	// усечение до 50 бессмысленно.
 	arr := make([]map[string]interface{}, 100)
 	for i := range arr {
 		arr[i] = map[string]interface{}{
@@ -91,7 +96,7 @@ func TestExtractXrayJSONPreviewNodes_SyntheticArray(t *testing.T) {
 				"tag":      "synthetic-node",
 				"settings": map[string]interface{}{
 					"vnext": []map[string]interface{}{{
-						"address": "srv.example.com",
+						"address": fmt.Sprintf("srv-%d.example.com", i),
 						"port":    443,
 						"users":   []map[string]interface{}{{"id": "00000000-0000-0000-0000-000000000000"}},
 					}},
@@ -129,7 +134,9 @@ func TestExtractXrayJSONPreviewNodes_BloatedBodyNotBloatedPreview(t *testing.T) 
 				"tag":      "n-" + bigComment[:50],
 				"settings": map[string]interface{}{
 					"vnext": []map[string]interface{}{{
-						"address": "srv.example.com", "port": 443,
+						// Разные адреса: иначе дедуп (SPEC 094 D3) схлопнет
+						// все пять в один узел, и счётчик не сойдётся.
+						"address": fmt.Sprintf("srv-%d.example.com", i), "port": 443,
 						"users": []map[string]interface{}{{"id": "00000000-0000-0000-0000-000000000000"}},
 					}},
 				},

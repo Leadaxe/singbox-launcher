@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
@@ -83,6 +84,31 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 
 		if refreshOneSubscriptionSource(src, s.Connections.Defaults, subsDir) {
 			dirty = true
+		}
+
+		// SPEC 094 D4: чистка отметок о выключенных нодах. Выполняется ТОЛЬКО
+		// здесь — на пути успешного сетевого обновления: на прогоне из кэша
+		// тело может быть неполным, и отметки исчезли бы для живых нод, молча
+		// включив их обратно за спиной пользователя.
+		if len(src.DisabledNodes) > 0 {
+			// Интервал: пользовательская настройка, иначе объявленный
+			// провайдером. Ноль означает «не задан» — TTL тогда падает на
+			// свой пол в 24 часа.
+			interval := 0
+			if src.Update != nil {
+				interval = src.Update.IntervalHours
+			}
+			if interval <= 0 && src.Meta != nil {
+				interval = src.Meta.ProfileUpdateIntervalHours
+			}
+			before := len(src.DisabledNodes)
+			src.DisabledNodes = subscription.GCDisabledNodes(src.DisabledNodes, interval, time.Now())
+			if len(src.DisabledNodes) == 0 {
+				src.DisabledNodes = nil
+			}
+			if len(src.DisabledNodes) != before {
+				dirty = true
+			}
 		}
 	}
 
@@ -365,12 +391,80 @@ func extractXrayJSONPreviewNodes(body []byte, limit int) ([]string, int) {
 		if node == nil {
 			continue
 		}
+		// SPEC 094 A5: узел-группа не соединение — server/port у него нет, и
+		// общий формат дал бы бессмысленное «group://:0#tag». Показываем
+		// состав: это единственное, что о группе стоит знать в превью.
+		if node.Scheme == configtypes.SchemeGroup {
+			out = append(out, formatGroupPreview(node))
+			continue
+		}
 		// URI-like preview: `<scheme>://<server>:<port>#<tag>` (~50-150 байт).
 		// Server/Port дают связь с реальной нодой, tag — human-readable label.
 		// UUID/Flow намеренно не включаем — это секреты, в preview не место.
 		out = append(out, fmt.Sprintf("%s://%s:%d#%s", node.Scheme, node.Server, node.Port, node.Tag))
 	}
 	return out, total
+}
+
+// formatGroupPreview описывает узел-группу одной строкой превью.
+//
+// Формат «group://<type>?<параметры>#<tag>» держится общей формы соседних
+// строк (schema://…#tag), но вместо адреса несёт всё, что у группы есть:
+// размер пула, цель и период проверки, выбор по умолчанию. Иначе по снимку не
+// понять, чем одна группа отличается от другой.
+//
+// Состав перечисляется тегами: без него не видно, ЧТО именно в пуле, а это
+// главный вопрос к группе. Список ограничен — пул провайдера бывает на 15+
+// узлов, и полный перечень раздул бы строку до нечитаемости.
+func formatGroupPreview(node *configtypes.ParsedNode) string {
+	groupType := "group"
+	params := make([]string, 0, 5)
+
+	if node.Outbound != nil {
+		if t, ok := node.Outbound["type"].(string); ok && t != "" {
+			groupType = t
+		}
+
+		members := groupPreviewMembers(node.Outbound)
+		params = append(params, fmt.Sprintf("members=%d", len(members)))
+
+		// Каждый член отдельным ключом «outbounds[]=»: тег провайдера может
+		// содержать запятую («🇩🇪 Berlin, DE»), и склейка через разделитель
+		// сделала бы список неразбираемым — граница между тегами исчезает.
+		//
+		// Состав пишется ЦЕЛИКОМ. Соблазн урезать его понятен — SPEC 054
+		// боролся с раздутым state.json, — но цена измерена: пул на 50 узлов
+		// со всеми членами занимает ~1.7 КБ, то есть 0.6% от порога в 256 КБ.
+		// Там раздувала одна строка на 983 КБ, а не сотня байт; экономить
+		// здесь значит показывать пользователю неполный состав без причины.
+		for _, tag := range members {
+			params = append(params, "outbounds[]="+tag)
+		}
+
+		// Параметры проверки — по ним видно, как группа выбирает узел.
+		for _, key := range []string{"url", "interval", "tolerance", "default"} {
+			if v, ok := node.Outbound[key]; ok && v != nil {
+				params = append(params, fmt.Sprintf("%s=%v", key, v))
+			}
+		}
+	}
+
+	return fmt.Sprintf("group://%s?%s#%s", groupType, strings.Join(params, "&"), node.Tag)
+}
+
+// groupPreviewMembers достаёт теги членов группы.
+func groupPreviewMembers(outbound map[string]interface{}) []string {
+	raw, ok := outbound[configtypes.GroupMembersKey].([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		if tag, ok := item.(string); ok && tag != "" {
+			out = append(out, tag)
+		}
+	}
+	return out
 }
 
 // extractPreviewNodes — первые `limit` URI-like строк из decoded body.

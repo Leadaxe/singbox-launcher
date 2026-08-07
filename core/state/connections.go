@@ -63,6 +63,15 @@ type Source struct {
 	// a dangling/cyclic/self target is dropped at build time (fail-open), the
 	// node then dials directly. Not applied to WireGuard nodes.
 	DetourTag string `json:"detour_tag,omitempty"`
+
+	// DisabledNodes — SPEC 094 D4: per-node off switch, keyed by the node's
+	// identity hash and valued with the unix time the mark was last confirmed.
+	//
+	// Keyed by hash rather than tag or position: providers rename nodes between
+	// refreshes and reorder them freely, so a tag-keyed mark would silently move
+	// to a different server. Marks for nodes gone from the subscription longer
+	// than the TTL are garbage-collected, otherwise the map would grow forever.
+	DisabledNodes map[string]int64 `json:"disabled_nodes,omitempty"`
 }
 
 // TagSpec — правила преобразования тэгов нод подписки.

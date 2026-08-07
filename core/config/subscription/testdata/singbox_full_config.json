@@ -1,0 +1,121 @@
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      { "tag": "google", "address": "tls://8.8.8.8" }
+    ],
+    "rules": [
+      { "outbound": "any", "server": "google" }
+    ]
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",
+      "listen_port": 2080
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "reality-node",
+      "server": "reality.example.com",
+      "server_port": 443,
+      "uuid": "b831381d-6324-4d53-ad4f-8cda48b30811",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "server_name": "www.microsoft.com",
+        "utls": { "enabled": true, "fingerprint": "HelloChrome_120" },
+        "reality": {
+          "enabled": true,
+          "public_key": "jNXHt1yRo0vDuchQlIP6Z0ZvjT3KtzVI-T4E7RoLJS0",
+          "short_id": "0123abcd"
+        }
+      }
+    },
+    {
+      "type": "vmess",
+      "tag": "ws-node",
+      "server": "ws.example.com",
+      "server_port": 443,
+      "uuid": "b831381d-6324-4d53-ad4f-8cda48b30811",
+      "security": "auto",
+      "tls": { "enabled": true, "server_name": "ws.example.com" },
+      "transport": {
+        "type": "ws",
+        "path": "/websocket",
+        "headers": { "Host": "ws.example.com" }
+      }
+    },
+    {
+      "type": "trojan",
+      "tag": "chained-node",
+      "server": "trojan.example.com",
+      "server_port": 443,
+      "password": "trojan-password",
+      "tls": { "enabled": true, "server_name": "trojan.example.com" },
+      "detour": "jump-socks"
+    },
+    {
+      "type": "socks",
+      "tag": "jump-socks",
+      "server": "127.0.0.1",
+      "server_port": 1080,
+      "version": "5"
+    },
+    {
+      "type": "hysteria2",
+      "tag": "hy2-node",
+      "server": "hy2.example.com",
+      "server_port": 8443,
+      "password": "hy2-password",
+      "obfs": { "type": "salamander", "password": "obfs-secret" },
+      "tls": { "enabled": true, "server_name": "hy2.example.com" }
+    },
+    {
+      "type": "urltest",
+      "tag": "auto-group",
+      "outbounds": ["reality-node", "ws-node", "hy2-node"],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "5m",
+      "tolerance": 50
+    },
+    {
+      "type": "selector",
+      "tag": "manual-group",
+      "outbounds": ["reality-node", "ws-node", "direct"],
+      "default": "reality-node"
+    },
+    { "type": "direct", "tag": "direct" },
+    { "type": "block", "tag": "block" }
+  ],
+  "endpoints": [
+    {
+      "type": "wireguard",
+      "tag": "wg-node",
+      "address": ["172.16.0.2/32"],
+      "private_key": "OFTLTOxCtzHTsFqLnZBhL5nQZ7ByOlnbrIzJdVCKMFc=",
+      "mtu": 1280,
+      "peers": [
+        {
+          "address": "engage.cloudflareclient.com",
+          "port": 2408,
+          "public_key": "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
+          "allowed_ips": ["0.0.0.0/0"]
+        }
+      ]
+    }
+  ],
+  "route": {
+    "rules": [
+      { "protocol": "dns", "outbound": "dns-out" },
+      { "ip_is_private": true, "outbound": "direct" }
+    ],
+    "final": "auto-group"
+  }
+}

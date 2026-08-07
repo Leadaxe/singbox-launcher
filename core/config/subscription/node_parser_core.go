@@ -39,6 +39,43 @@ func IsDirectLink(input string) bool {
 // MaxURILength defines the maximum allowed length for a proxy URI
 const MaxURILength = 8192 // 8 KB - reasonable limit for proxy URIs
 
+// percentEncodeUserinfoSpaces percent-encodes raw spaces inside the userinfo
+// segment of a proxy URI (between "://" and the authority's '@').
+//
+// Some public lists paste a promo login with a stray space —
+// `vless://Telegramjoin:TurboConfigs @1.2.3.4:80?...` — and net/url refuses the
+// whole URI with "invalid userinfo", dropping an otherwise usable node. A space
+// is never meaningful there, so encoding it is lossless: callers unescape the
+// userinfo anyway.
+//
+// Mirrors percentEncodeWGUserinfoSlashes (node_parser_wireguard.go), which
+// solves the same class of problem for raw '/' in base64 keys.
+func percentEncodeUserinfoSpaces(uri string) string {
+	const sep = "://"
+	si := strings.Index(uri, sep)
+	if si < 0 {
+		return uri
+	}
+	start := si + len(sep)
+	rest := uri[start:]
+
+	// Only the authority's '@' counts; a '@' inside the query or fragment
+	// (a Telegram handle in the node name, say) is not a userinfo separator.
+	at := strings.IndexByte(rest, '@')
+	if at < 0 {
+		return uri
+	}
+	if strings.ContainsAny(rest[:at], "?#") {
+		return uri
+	}
+
+	userinfo := rest[:at]
+	if !strings.Contains(userinfo, " ") {
+		return uri
+	}
+	return uri[:start] + strings.ReplaceAll(userinfo, " ", "%20") + uri[start+at:]
+}
+
 // ParseNode parses a single node URI and applies skip filters
 func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.ParsedNode, error) {
 	// Amnezia vpn:// (compressed profile JSON, SPEC 075) is dispatched before the
@@ -247,6 +284,14 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 	default:
 		return nil, fmt.Errorf("unsupported scheme")
 	}
+
+	// Public lists sometimes paste a raw space into the userinfo
+	// (`vless://Telegramjoin:TurboConfigs @host:port`), usually a stray
+	// separator in a promo login. net/url rejects it outright with
+	// "invalid userinfo", so the whole node was lost. Percent-encode spaces in
+	// that segment before parsing; everything downstream reads the userinfo
+	// through PathUnescape / QueryUnescape and gets the original value back.
+	uriToParse = percentEncodeUserinfoSpaces(uriToParse)
 
 	// Parse URI
 	parsedURL, err := url.Parse(uriToParse)
@@ -716,7 +761,9 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 		if t, ok := uriTransportFromQuery(node.Query); ok {
 			outbound["transport"] = t
 		}
-		outbound["tls"] = trojanTLSFromNode(node)
+		if tlsData, ok := trojanTLSFromNode(node); ok {
+			outbound["tls"] = tlsData
+		}
 	} else if node.Scheme == "ss" {
 		if method := node.Query.Get("method"); method != "" {
 			outbound["method"] = method

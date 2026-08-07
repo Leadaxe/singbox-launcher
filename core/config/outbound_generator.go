@@ -83,6 +83,15 @@ var NaiveSupportProbe func() (supported bool, reason string)
 // Includes optional TLS (including reality), transport (ws/http/grpc), and protocol-specific options.
 // Returned string ends with a trailing comma and may include a leading comment line (node label) for readability.
 func GenerateNodeJSON(node *ParsedNode) (string, error) {
+	// SPEC 094 A5: a group imported from a sing-box config is a node in the
+	// subscription's own list, not a separate entry in the wizard's outbound
+	// configurator. It carries no server/server_port, so it gets its own
+	// emitter rather than threading "skip these fields" through the whole
+	// per-scheme switch below.
+	if node.Scheme == SchemeGroup {
+		return generateGroupNodeJSON(node)
+	}
+
 	// Build JSON with correct field order
 	var parts []string
 
@@ -349,7 +358,13 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 	if node.Outbound != nil {
 		if tlsData, ok := node.Outbound["tls"].(map[string]interface{}); ok {
 			if disabled, ok := tlsData["enabled"].(bool); ok && !disabled {
-				parts = append(parts, `"tls":{"enabled":false}`)
+				// Omit the block entirely instead of emitting
+				// `"tls":{"enabled":false}`. Both mean "dial plain TCP", but the
+				// explicit disabled form crashes sing-box cores
+				// 1.14.0-lx.5..lx.18 on the first dial of a trojan/vless node
+				// (nil TLS config wrapped in a live dialer — SPEC 045), taking
+				// the whole core process down. Backstop for nodes that reach the
+				// generator without going through the URI parsers.
 			} else {
 				var tlsParts []string
 
@@ -722,6 +737,9 @@ func GenerateOutboundsFromParserConfig(
 		}
 		processedIdx++
 
+		// SPEC 094 A5: группы из импортированного sing-box конфига приходят
+		// В ЭТОМ ЖЕ списке как обычные узлы (SchemeGroup). Отдельного канала
+		// для них нет — вкладка Outbounds остаётся за каналами лаунчера.
 		nodesFromSource, err := loadNodesFunc(proxySource, tagCounts, progressCallback, i, totalSources)
 		if err != nil {
 			debuglog.ErrorLog("GenerateOutboundsFromParserConfig: Error processing source %d/%d: %v", i+1, totalSources, err)
@@ -806,40 +824,27 @@ func GenerateOutboundsFromParserConfig(
 			endpointsCount++
 		} else {
 			var nodeJSONs []string
-			if node.Jump != nil {
-				jScheme := node.Jump.Scheme
-				if jScheme == "" {
-					jScheme = "socks"
-				}
-				jumpNode := &ParsedNode{
-					Tag:      node.Jump.Tag,
-					Scheme:   jScheme,
-					Server:   node.Jump.Server,
-					Port:     node.Jump.Port,
-					UUID:     node.Jump.UUID,
-					Flow:     node.Jump.Flow,
-					Outbound: node.Jump.Outbound,
-					Label:    node.Label,
-					Comment:  node.Comment,
-				}
-				if jumpNode.Outbound == nil {
-					jumpNode.Outbound = map[string]interface{}{}
-				}
-				if jScheme == "socks" {
-					if _, ok := jumpNode.Outbound["version"]; !ok {
-						jumpNode.Outbound["version"] = "5"
-					}
-				}
-				jumpJSON, err := GenerateNodeJSON(jumpNode)
+			// SPEC 094 B3: цепочка произвольной глубины. Chain — источник
+			// правды; Jump продолжает работать для узлов из Xray-пути и из
+			// state.json, написанного до SPEC 094.
+			chain := chainOfNode(node)
+
+			chainFailed := false
+			for _, hop := range chain {
+				hopJSON, err := GenerateNodeJSON(hop)
 				if err != nil {
-					debuglog.WarnLog("GenerateOutboundsFromParserConfig: Failed to generate JSON for jump %s: %v", node.Jump.Tag, err)
-					continue
+					debuglog.WarnLog("GenerateOutboundsFromParserConfig: Failed to generate JSON for chain hop %s: %v", hop.Tag, err)
+					chainFailed = true
+					break
 				}
-				nodeJSONs = append(nodeJSONs, jumpJSON)
+				nodeJSONs = append(nodeJSONs, hopJSON)
+			}
+			if chainFailed {
+				continue
 			}
 
 			origOutbound := node.Outbound
-			if node.Jump != nil {
+			if len(chain) > 0 {
 				if node.Outbound == nil {
 					node.Outbound = make(map[string]interface{})
 				} else {
@@ -849,10 +854,10 @@ func GenerateOutboundsFromParserConfig(
 					}
 					node.Outbound = cp
 				}
-				node.Outbound["detour"] = node.Jump.Tag
+				node.Outbound["detour"] = chain[0].Tag
 			}
 			mainJSON, err := GenerateNodeJSON(node)
-			if node.Jump != nil {
+			if len(chain) > 0 {
 				node.Outbound = origOutbound
 			}
 			if err != nil {
@@ -899,6 +904,162 @@ func GenerateOutboundsFromParserConfig(
 // Detours pointing at tags outside the node set (template/preset group tags,
 // built-in outbounds) are left untouched — those are resolved only at final
 // config assembly and are not knowable here.
+// generateGroupNodeJSON emits a selector/urltest node imported from a sing-box
+// config (SPEC 094 A5).
+//
+// Unlike every other scheme this node has no server/server_port; its payload is
+// the member list plus the group's own options (url/interval/tolerance/…),
+// already validated at parse time.
+//
+// Emitting an empty group is not allowed: sing-box refuses to start on an
+// urltest with no outbounds, so a group that lost all its members must have
+// been dropped earlier. Returning an error here is the last line of defence.
+func generateGroupNodeJSON(node *ParsedNode) (string, error) {
+	if node.Outbound == nil {
+		return "", fmt.Errorf("group node %q has no outbound data", node.Tag)
+	}
+
+	groupType, _ := node.Outbound["type"].(string)
+	groupType = strings.TrimSpace(groupType)
+	if groupType == "" {
+		return "", fmt.Errorf("group node %q has no type", node.Tag)
+	}
+
+	members := groupMemberTags(node)
+	if len(members) == 0 {
+		return "", fmt.Errorf("group node %q has no members", node.Tag)
+	}
+
+	var parts []string
+	parts = append(parts, fmt.Sprintf(`"tag":%s`, marshalJSONString(node.Tag)))
+	parts = append(parts, fmt.Sprintf(`"type":%s`, marshalJSONString(groupType)))
+
+	quoted := make([]string, 0, len(members))
+	for _, m := range members {
+		quoted = append(quoted, marshalJSONString(m))
+	}
+	parts = append(parts, fmt.Sprintf(`"outbounds":[%s]`, strings.Join(quoted, ",")))
+
+	// Остальные поля группы эмитятся в отсортированном порядке: детерминизм
+	// нужен и golden-тестам, и хешу идентичности узла.
+	extraKeys := make([]string, 0, len(node.Outbound))
+	for k := range node.Outbound {
+		switch k {
+		case "tag", "type", GroupMembersKey:
+			continue
+		}
+		extraKeys = append(extraKeys, k)
+	}
+	sort.Strings(extraKeys)
+
+	for _, k := range extraKeys {
+		encoded, err := json.Marshal(node.Outbound[k])
+		if err != nil {
+			debuglog.WarnLog("GenerateNodeJSON: group %q: dropping unencodable field %q: %v", node.Tag, k, err)
+			continue
+		}
+		parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(k), string(encoded)))
+	}
+
+	body := fmt.Sprintf("\t{%s},", strings.Join(parts, ","))
+	if comment := sanitizeOutboundLineComment(node.Label); comment != "" {
+		return fmt.Sprintf("\t// %s\n%s", comment, body), nil
+	}
+	return body, nil
+}
+
+// groupMemberTags returns the group's member tags in order.
+func groupMemberTags(node *ParsedNode) []string {
+	if node == nil || node.Outbound == nil {
+		return nil
+	}
+	raw, ok := node.Outbound[GroupMembersKey].([]interface{})
+	if !ok {
+		// Уже нормализованный срез строк — форма после round-trip через state.
+		if strs, ok := node.Outbound[GroupMembersKey].([]string); ok {
+			return strs
+		}
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// chainOfNode returns the node's detour chain, nearest hop first (SPEC 094 B3).
+//
+// Chain is authoritative. When it is empty the legacy single-hop Jump is
+// promoted to a one-element chain, so nodes produced by the Xray dialerProxy
+// path — and state.json files written before SPEC 094 — keep chaining exactly
+// as before.
+//
+// Each hop is returned as a ready-to-emit ParsedNode; hops carry their own
+// detour to the next one, stamped at parse time.
+func chainOfNode(node *ParsedNode) []*ParsedNode {
+	if node == nil {
+		return nil
+	}
+
+	if len(node.Chain) > 0 {
+		out := make([]*ParsedNode, 0, len(node.Chain))
+		for _, hop := range node.Chain {
+			if hop == nil {
+				continue
+			}
+			out = append(out, normalizeChainHop(hop, node))
+		}
+		return out
+	}
+
+	if node.Jump == nil {
+		return nil
+	}
+	return []*ParsedNode{normalizeChainHop(&ParsedNode{
+		Tag:      node.Jump.Tag,
+		Scheme:   node.Jump.Scheme,
+		Server:   node.Jump.Server,
+		Port:     node.Jump.Port,
+		UUID:     node.Jump.UUID,
+		Flow:     node.Jump.Flow,
+		Outbound: node.Jump.Outbound,
+	}, node)}
+}
+
+// normalizeChainHop fills in the defaults a hop needs to emit cleanly.
+//
+// An empty scheme means SOCKS for backward compatibility (ParsedJump documented
+// it that way), and a SOCKS hop without an explicit version must default to 5 —
+// sing-box rejects the outbound otherwise.
+func normalizeChainHop(hop, owner *ParsedNode) *ParsedNode {
+	out := &ParsedNode{
+		Tag:      hop.Tag,
+		Scheme:   hop.Scheme,
+		Server:   hop.Server,
+		Port:     hop.Port,
+		UUID:     hop.UUID,
+		Flow:     hop.Flow,
+		Outbound: hop.Outbound,
+		Label:    owner.Label,
+		Comment:  owner.Comment,
+	}
+	if out.Scheme == "" {
+		out.Scheme = "socks"
+	}
+	if out.Outbound == nil {
+		out.Outbound = map[string]interface{}{}
+	}
+	if out.Scheme == "socks" {
+		if _, ok := out.Outbound["version"]; !ok {
+			out.Outbound["version"] = "5"
+		}
+	}
+	return out
+}
+
 func sanitizeNodeDetours(nodes []*ParsedNode) {
 	// detourOf[tag] = the detour target of the node with that tag, but only
 	// when the target is itself a node (intra-node edge). Also drop self-refs.

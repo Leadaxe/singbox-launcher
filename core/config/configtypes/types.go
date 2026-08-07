@@ -111,6 +111,20 @@ type ProxySource struct {
 	// ["detour"] for each non-WireGuard node at parse time; validated (dangling/
 	// cycle/self → dropped) at generation time.
 	DetourTag string `json:"detour_tag,omitempty"`
+	// DisabledNodes: SPEC 094 D4 — per-node off switch, keyed by the node's
+	// identity hash (config.NodeIdentityHash) and valued with the unix time the
+	// mark was last confirmed.
+	//
+	// Keyed by hash rather than by tag or position because both are unstable:
+	// providers rename nodes between refreshes and reorder them freely, so a
+	// tag-keyed mark would silently jump to a different server. The hash covers
+	// everything that describes the connection, so the mark follows the actual
+	// node and survives refreshes, restarts and provider-side renames.
+	//
+	// The timestamp exists for garbage collection: a node that has been gone
+	// from the subscription longer than the TTL drops out of the map, otherwise
+	// it would grow without bound over a subscription's lifetime.
+	DisabledNodes map[string]int64 `json:"disabled_nodes,omitempty"`
 }
 
 // Sentinel ref values for OutboundConfig (SPEC 058-R-N STATE_AS_TEMPLATE_DIFF).
@@ -199,6 +213,22 @@ func (oc *OutboundConfig) IsPresetRef() bool {
 // UnsetSourceIndex means SourceIndex was not assigned; exclude_from_global must not apply.
 const UnsetSourceIndex = -1
 
+// SchemeGroup marks a ParsedNode that is an outbound group (selector/urltest)
+// imported from a sing-box config (SPEC 094 A5).
+//
+// Such a node is an ORDINARY entry in the subscription's node list with no
+// privileges: it does not appear in the wizard's Outbounds tab, routing rules
+// never reference it, and the user does not configure its membership. That tab
+// stays reserved for the launcher's own channels, which do drive routing.
+//
+// For sing-box it emits as a real selector/urltest inside the outbounds array;
+// for the launcher it is just another node the user can pick.
+const SchemeGroup = "group"
+
+// GroupMembersKey is the ParsedNode.Outbound field holding the group's member
+// tags. Mirrors sing-box's own "outbounds" field on selector/urltest.
+const GroupMembersKey = "outbounds"
+
 // ParsedJump is an optional first hop for Xray dialerProxy → sing-box detour (SOCKS, VLESS, …).
 // Scheme empty means "socks" (backward compatibility). UUID/Flow are set for vless/vmess hops when GenerateNodeJSON needs them.
 type ParsedJump struct {
@@ -226,9 +256,76 @@ type ParsedNode struct {
 	Query    url.Values
 	Outbound map[string]interface{}
 	// Jump is set when the subscription node uses a chain (e.g. Xray dialerProxy → SOCKS before main outbound).
+	//
+	// Deprecated (SPEC 094 B1): holds only the first hop. Use Chain, which
+	// carries the full path. Jump stays in sync with Chain[0] so existing
+	// readers and state.json files written before SPEC 094 keep working.
 	Jump *ParsedJump
+	// SourceTag is the node's tag exactly as it appeared in an imported
+	// sing-box config, before prefix/mask/uniquification (SPEC 094 A5).
+	//
+	// Imported selector/urltest groups list their members by that original
+	// tag, so rebinding them to the final tags needs this untouched copy.
+	// Empty for nodes that did not come from a sing-box config.
+	SourceTag string
+	// Chain is the ordered detour path from the nearest hop outwards
+	// (SPEC 094 B1). Empty means the node dials directly.
+	//
+	// A node reaches its server through Chain[0] → Chain[1] → … → node, i.e.
+	// the emitted outbound carries detour=Chain[0].Tag, and each hop carries
+	// detour of the next one. Depth is capped at 8 hops.
+	Chain []*ParsedNode
 	// SourceIndex is the index into ParserConfig.proxies for this node; UnsetSourceIndex if unknown.
 	SourceIndex int
+}
+
+// SyncJumpFromChain refreshes the deprecated Jump field from Chain[0].
+//
+// SPEC 094 B1: Chain is the source of truth; Jump is kept alive so code paths
+// and persisted state predating the chain model keep reading a valid first hop.
+func (n *ParsedNode) SyncJumpFromChain() {
+	if n == nil {
+		return
+	}
+	if len(n.Chain) == 0 {
+		n.Jump = nil
+		return
+	}
+	hop := n.Chain[0]
+	if hop == nil {
+		n.Jump = nil
+		return
+	}
+	n.Jump = &ParsedJump{
+		Tag:      hop.Tag,
+		Scheme:   hop.Scheme,
+		Server:   hop.Server,
+		Port:     hop.Port,
+		UUID:     hop.UUID,
+		Flow:     hop.Flow,
+		Outbound: hop.Outbound,
+	}
+}
+
+// AdoptLegacyJump rebuilds Chain from a legacy single-hop Jump.
+//
+// SPEC 094 B1 migration: state.json written before the chain model carries only
+// Jump. Reading it must not lose the hop, so an empty Chain plus a non-nil Jump
+// is promoted to a one-element Chain. No-op when Chain is already populated.
+func (n *ParsedNode) AdoptLegacyJump() {
+	if n == nil || len(n.Chain) > 0 || n.Jump == nil {
+		return
+	}
+	n.Chain = []*ParsedNode{{
+		Tag:         n.Jump.Tag,
+		Scheme:      n.Jump.Scheme,
+		Server:      n.Jump.Server,
+		Port:        n.Jump.Port,
+		UUID:        n.Jump.UUID,
+		Flow:        n.Jump.Flow,
+		Outbound:    n.Jump.Outbound,
+		SourceIndex: UnsetSourceIndex,
+	}}
 }
 
 // NormalizeParserConfig normalizes ParserConfig structure:
