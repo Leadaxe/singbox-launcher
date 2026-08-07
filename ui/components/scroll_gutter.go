@@ -63,6 +63,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 )
 
 // ScrollbarGutterWidth — width in points of the reserved right strip
@@ -104,4 +105,48 @@ func NewScrollGutter() *canvas.Rectangle {
 func WrapInScrollWithGutter(content fyne.CanvasObject) *container.Scroll {
 	inner := container.NewBorder(nil, nil, nil, NewScrollGutter(), content)
 	return container.NewScroll(inner)
+}
+
+// NewListRowPadded — padding строки `widget.List` БЕЗ правой стороны.
+//
+// Строка списка отличается от прочих мест тем, что gutter лежит ВНУТРИ неё
+// (см. call pattern 3 выше), а не отдельной колонкой снаружи. Обычный
+// `container.NewPadded` добавляет отступ со всех четырёх сторон, и справа
+// тот СКЛАДЫВАЕТСЯ с gutter'ом: получалось ~18pt вместо 14, и полоса
+// прокрутки в списке выглядела заметно шире, чем на других экранах.
+//
+// Здесь правый отступ задаёт исключительно gutter, поэтому padding ставится
+// только слева, сверху и снизу — зазор справа выходит ровно
+// ScrollbarGutterWidth, тот же, что везде.
+func NewListRowPadded(content fyne.CanvasObject) *fyne.Container {
+	return container.New(listRowPadding{}, content)
+}
+
+// listRowPadding — layout: отступ темы со всех сторон, кроме правой.
+type listRowPadding struct{}
+
+// Layout сдвигает содержимое на padding слева и сверху, оставляя правый край
+// нетронутым — там уже стоит gutter.
+func (listRowPadding) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	p := theme.Padding()
+	for _, o := range objects {
+		if o == nil {
+			continue
+		}
+		o.Move(fyne.NewPos(p, p))
+		o.Resize(fyne.NewSize(size.Width-p, size.Height-2*p))
+	}
+}
+
+// MinSize — минимальный размер содержимого плюс отступы (справа их нет).
+func (listRowPadding) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	p := theme.Padding()
+	var min fyne.Size
+	for _, o := range objects {
+		if o == nil {
+			continue
+		}
+		min = min.Max(o.MinSize())
+	}
+	return fyne.NewSize(min.Width+p, min.Height+2*p)
 }

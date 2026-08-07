@@ -28,6 +28,14 @@ type APIService struct {
 	// Auto-load state
 	AutoLoadInProgress bool
 	AutoLoadMutex      sync.Mutex
+	// AutoLoadGeneration растёт при каждом новом запуске автозагрузки.
+	//
+	// Retry-цикл живёт до ~100 секунд. Без поколения смена группы во время
+	// его работы приводила к тому, что поздний ответ СТАРОГО цикла
+	// перезаписывал список уже выбранной группы: в UI оставались узлы от
+	// предыдущей. Цикл сверяет поколение перед каждой попыткой и перед
+	// записью результата, и молча выходит, если его вытеснил новый запуск.
+	AutoLoadGeneration uint64
 
 	// Proxy list state (protected by StateMutex)
 	StateMutex      sync.RWMutex
@@ -248,21 +256,36 @@ func (apiSvc *APIService) ReloadClashAPIConfig() error {
 // goroutine's defer covers every path, including the currentGroup=="" early
 // return that previously leaked it (wedging auto-load until restart).
 func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
+	// clearInProgress гасит флаг ТОЛЬКО если нас не вытеснил новый запуск —
+	// иначе выходящий старый цикл сбросил бы флаг работающего нового.
+	var myGenRef *uint64
 	clearInProgress := func() {
 		apiSvc.AutoLoadMutex.Lock()
-		apiSvc.AutoLoadInProgress = false
+		if myGenRef == nil || apiSvc.AutoLoadGeneration == *myGenRef {
+			apiSvc.AutoLoadInProgress = false
+		}
 		apiSvc.AutoLoadMutex.Unlock()
 	}
 
-	// Check if already in progress
+	// Новый запуск ВЫТЕСНЯЕТ предыдущий, а не отбрасывается сам.
+	//
+	// Раньше здесь стоял ранний return по AutoLoadInProgress, и смена группы
+	// во время retry-цикла (до ~100 с) просто игнорировалась: пользователь
+	// выбирал другую группу, а список продолжал жить от старой. Поколение
+	// решает и это, и обратную гонку — поздний ответ вытесненного цикла.
 	apiSvc.AutoLoadMutex.Lock()
-	if apiSvc.AutoLoadInProgress {
-		apiSvc.AutoLoadMutex.Unlock()
-		debuglog.DebugLog("AutoLoadProxies: Already in progress, skipping")
-		return
-	}
+	apiSvc.AutoLoadGeneration++
+	myGen := apiSvc.AutoLoadGeneration
 	apiSvc.AutoLoadInProgress = true
 	apiSvc.AutoLoadMutex.Unlock()
+	myGenRef = &myGen
+
+	// isStale сообщает, вытеснен ли этот запуск более новым.
+	isStale := func() bool {
+		apiSvc.AutoLoadMutex.Lock()
+		defer apiSvc.AutoLoadMutex.Unlock()
+		return apiSvc.AutoLoadGeneration != myGen
+	}
 
 	if _, _, enabled := apiSvc.GetClashAPIConfig(); !enabled {
 		clearInProgress()
@@ -292,6 +315,13 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 			default:
 			}
 
+			// Нас вытеснил более новый запуск (пользователь сменил группу) —
+			// дальше работать бессмысленно, результат всё равно устарел.
+			if isStale() {
+				debuglog.DebugLog("AutoLoadProxies: Superseded by a newer run, stopping")
+				return
+			}
+
 			if attempt > 0 {
 				if err := ctxutil.SleepWithContext(ctx, interval*time.Second); err != nil {
 					debuglog.DebugLog("AutoLoadProxies: Stopped during wait (context cancelled)")
@@ -299,13 +329,16 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 				}
 			}
 
-			// Check if sing-box is running before attempting to connect
-			if !apiSvc.RunningStateIsRunning() {
-				debuglog.DebugLog("AutoLoadProxies: Attempt %d/%d skipped - sing-box is not running", attempt+1, len(intervals))
-				// Continue to next attempt
-				continue
-			}
-
+			// Раньше здесь стоял skip по RunningStateIsRunning(), и при любом
+			// ядре, поднятом НЕ лаунчером, автозагрузка не выполнялась:
+			// tracked PID = -1, флаг всегда false. Так ломалось переключение
+			// групп и с чужим sing-box'ом (remote endpoint, SPEC 064), и с
+			// локальным ядром, запущенным вручную, — API отвечал, а список
+			// оставался от предыдущей группы.
+			//
+			// Отдельная проверка не нужна: недостижимый endpoint отсеется
+			// ошибкой самого запроса ниже и уйдёт в следующий retry — тот же
+			// результат, но без ложного пропуска.
 			debuglog.DebugLog("AutoLoadProxies: Attempt %d/%d to load proxies for group '%s'", attempt+1, len(intervals), selectedGroup)
 
 			// Get current group (it might have changed)
@@ -336,8 +369,19 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 				continue
 			}
 
-			// Success - update proxies list
+			// Success - update proxies list.
+			//
+			// Поколение сверяем ЕЩЁ РАЗ перед записью: запрос летел по сети, и
+			// за это время пользователь мог сменить группу. Без проверки
+			// поздний ответ старого цикла затирал список уже выбранной группы.
+			if isStale() {
+				debuglog.DebugLog("AutoLoadProxies: Result for group '%s' dropped — superseded", currentGroup)
+				return
+			}
 			fyne.Do(func() {
+				if isStale() {
+					return
+				}
 				apiSvc.SetProxiesList(proxies)
 				apiSvc.SetActiveProxyName(now)
 
