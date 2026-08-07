@@ -261,6 +261,44 @@ func xrayTransportFromStreamSettings(streamSettings map[string]interface{}, netw
 			}
 		}
 		return tr
+	case "httpupgrade":
+		// SPEC 094 C5: URI-путь разбирал httpupgrade с самого начала, а
+		// Xray-ветка — нет, и такая нода приезжала без транспорта вовсе.
+		hu, _ := streamSettings["httpupgradeSettings"].(map[string]interface{})
+		tr := map[string]interface{}{"type": "httpupgrade"}
+		if hu != nil {
+			if p := xrayMapString(hu, "path"); p != "" {
+				// Хвост `?ed=N` не является частью пути ни для одного
+				// транспорта sing-box; у httpupgrade early data нет, поэтому
+				// хвост срезается, а сам ed отбрасывается.
+				cleanPath, _ := splitWSEarlyData(p)
+				tr["path"] = cleanPath
+			}
+			if h := xrayMapString(hu, "host"); h != "" {
+				tr["host"] = h
+			}
+		}
+		return tr
+	case "xhttp", "splithttp":
+		// SPEC 094 C5. Xray зовёт этот транспорт splithttp в старых сборках и
+		// xhttp в новых; sing-box-lx принимает его как xhttp.
+		xs, _ := streamSettings["xhttpSettings"].(map[string]interface{})
+		if xs == nil {
+			xs, _ = streamSettings["splithttpSettings"].(map[string]interface{})
+		}
+		tr := map[string]interface{}{"type": "xhttp"}
+		if xs != nil {
+			if p := xrayMapString(xs, "path"); p != "" {
+				tr["path"] = xhttpCleanPath(p)
+			}
+			if h := xrayMapString(xs, "host"); h != "" {
+				tr["host"] = h
+			}
+			if m := xrayMapString(xs, "mode"); m != "" {
+				tr["mode"] = m
+			}
+		}
+		return tr
 	default:
 		return nil
 	}

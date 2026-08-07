@@ -72,7 +72,11 @@ func buildSingleDNSUserRuleRow(
 	rowGetter := func() *fynewidget.HoverRow { return row }
 
 	title, tooltip := dnsRuleSummary(ur.Body)
-	label := ttwidget.NewLabel("→ " + title)
+	// Префикс пользовательского правила — эмодзи, а не «→» (U+2192): в
+	// основном шрифте темы Fyne этого глифа нет, и вместо стрелки рисовалась
+	// «плитка» U+FFFD. Эмодзи идут отдельным шрифтом и отображаются всегда —
+	// ровно так же, как «🔗» у preset-правил в соседней строке.
+	label := ttwidget.NewLabel("✏️ " + title)
 	label.Truncation = fyne.TextTruncateClip
 	if tooltip != "" {
 		label.SetToolTip(tooltip)

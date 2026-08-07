@@ -18,6 +18,12 @@ func serversProxyContextMenu(ac *core.AppController, status *widget.Label, win f
 	hint := proxy.ContextMenuTypeLine(locale.T("servers.menu_context_type_unknown"))
 	items := []*fyne.MenuItem{
 		fyne.NewMenuItem(hint, nil),
+		// SPEC 095 — карточка узла: сервер, транспорт, TLS, состав группы и
+		// полный JSON. Пунктом меню, а не кнопкой в строке: строка плотная,
+		// а Info нужен изредка.
+		fyne.NewMenuItem(locale.T("servers.menu_node_info"), func() {
+			showNodeInfoWindow(ac, proxy)
+		}),
 		fyne.NewMenuItem(locale.T("servers.menu_copy_server_link"), func() {
 			serversRunCopyShareURIToClipboard(ac, status, win, proxy.Name)
 		}),

@@ -5,12 +5,14 @@ import (
 	"errors"
 	"image/color"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	fynetooltip "github.com/dweymouth/fyne-tooltip"
 
@@ -49,20 +51,30 @@ const previewNodeCap = 200
 //   - base64 / plain text-line (vless://...): построчно через ParseNode
 //
 // Без диспатча Xray JSON давал 0 нод (split по \n → 1 строка, не URI).
+//
+// SPEC 094: sing-box JSON (одиночный outbound, массив, целый конфиг, массив
+// конфигов) разбирается той же веткой, что и в основном пайплайне — иначе
+// превью показывало бы 0 нод для тела, которое импортируется успешно.
 func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.ParsedNode {
 	bodyStr := strings.TrimSpace(string(body))
+
+	if kind := subscription.ClassifySubscriptionBody(bodyStr); kind.IsSingbox() {
+		res, err := subscription.ParseSingboxBody(bodyStr, kind, skip)
+		if err != nil || res == nil {
+			return nil
+		}
+		return capPreviewNodes(uniquifyPreviewTags(res.Nodes))
+	}
+
 	if subscription.IsXrayJSONArrayBody(bodyStr) {
 		nodes, err := subscription.ParseNodesFromXrayJSONArray(bodyStr, skip)
 		if err != nil {
 			return nil
 		}
-		if len(nodes) > previewNodeCap {
-			nodes = nodes[:previewNodeCap]
-		}
-		return nodes
+		return capPreviewNodes(uniquifyPreviewTags(nodes))
 	}
-	out := make([]*config.ParsedNode, 0)
 	tagCounts := make(map[string]int)
+	out := make([]*config.ParsedNode, 0)
 	contentStr := strings.ReplaceAll(string(body), "\r\n", "\n")
 	contentStr = strings.ReplaceAll(contentStr, "\r", "\n")
 	for _, line := range strings.Split(contentStr, "\n") {
@@ -83,6 +95,32 @@ func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.
 	return out
 }
 
+// uniquifyPreviewTags разводит одинаковые теги суффиксами «-2», «-3».
+//
+// Провайдер часто отдаёт по два сервера на страну под одним именем
+// («🇳🇱-Нидерланды» дважды). В основном списке их разводит LoadNodesFromSource,
+// а превью зовёт парсер напрямую — без этого пользователь видит две
+// неразличимые строки и не понимает, какую из них выключает.
+func uniquifyPreviewTags(nodes []*config.ParsedNode) []*config.ParsedNode {
+	tagCounts := make(map[string]int, len(nodes))
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		node.Tag = subscription.MakeTagUnique(node.Tag, tagCounts, "ConfigWizard")
+	}
+	return nodes
+}
+
+// capPreviewNodes ограничивает превью, чтобы подписка на тысячи узлов не
+// подвешивала окно отрисовкой.
+func capPreviewNodes(nodes []*config.ParsedNode) []*config.ParsedNode {
+	if len(nodes) > previewNodeCap {
+		return nodes[:previewNodeCap]
+	}
+	return nodes
+}
+
 // applyProxyEditToSource — SPEC 052 phase 8: переносит изменения в widget'е
 // edit-окна (которое мутирует *config.ProxySource scratch-буфер) обратно
 // в canonical `model.Sources[sourceIndex]`.
@@ -92,6 +130,30 @@ func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.
 //     Enabled (=!Disabled) + Tag из TagPrefix/Postfix/Mask;
 //   - server: URI=Connections[0], Label=TagMask (corestate adapter ставит
 //     `tag_mask=label` для server-source — тэг node будет точно label).
+// setNodeEnabled ставит или снимает отметку «нода выключена» (SPEC 094 D4).
+//
+// Отметка хранится в ProxySource.DisabledNodes по хешу идентичности узла;
+// значение — unix-время последнего подтверждения, по нему потом работает GC.
+// Включение ноды удаляет ключ целиком, а не пишет false: пустая карта
+// сериализуется как отсутствующее поле (omitempty), и state.json не растёт
+// отметками «всё включено».
+func setNodeEnabled(ps *config.ProxySource, hash string, enabled bool) {
+	if ps == nil || hash == "" {
+		return
+	}
+	if enabled {
+		delete(ps.DisabledNodes, hash)
+		if len(ps.DisabledNodes) == 0 {
+			ps.DisabledNodes = nil
+		}
+		return
+	}
+	if ps.DisabledNodes == nil {
+		ps.DisabledNodes = make(map[string]int64, 1)
+	}
+	ps.DisabledNodes[hash] = time.Now().Unix()
+}
+
 func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 	if ps == nil || src == nil {
 		return
@@ -106,6 +168,7 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 		src.ExcludeFromGlobal = ps.ExcludeFromGlobal
 		src.ExposeGroupTagsToGlobal = ps.ExposeGroupTagsToGlobal
 		src.DetourTag = ps.DetourTag // SPEC 077
+		src.DisabledNodes = ps.DisabledNodes // SPEC 094 D4
 		src.Enabled = !ps.Disabled
 		if ps.TagPrefix != "" || ps.TagPostfix != "" || ps.TagMask != "" {
 			src.Tag = &wizardmodels.TagSpec{
@@ -707,6 +770,13 @@ func showSourceEditWindow(
 						previewListHost.Add(container.NewVBox(lbl, layout.NewSpacer()))
 					} else {
 						nn := nodes
+						// SPEC 094 D4: у каждой ноды переключатель «включена».
+						// Отметка живёт по хешу идентичности, поэтому переживает
+						// переименование ноды провайдером и смену её позиции.
+						hashes := make([]string, len(nn))
+						for i, n := range nn {
+							hashes[i] = config.NodeIdentityHash(n)
+						}
 						// widget.List сам виртуализирует scroll — не оборачиваем в
 						// NewScroll/NewVScroll (двойной scroll + ограничивающий
 						// MinSize 280px не давал списку расти на всю высоту).
@@ -714,12 +784,78 @@ func showSourceEditWindow(
 						srvList := widget.NewList(
 							func() int { return len(nn) },
 							func() fyne.CanvasObject {
-								l := widget.NewLabel("")
-								l.Truncation = fyne.TextTruncateEllipsis
-								return l
+								check := widget.NewCheck("", nil)
+
+								// Имя и подзаголовок — как в списке серверов:
+								// у провайдера часто по два сервера на страну
+								// под одним именем, и различает их только
+								// «протокол·транспорт·security».
+								name := canvas.NewText("", theme.Color(theme.ColorNameForeground))
+								name.TextSize = previewNameTextSize
+								sub := canvas.NewText("", theme.Color(theme.ColorNamePlaceHolder))
+								sub.TextSize = previewSubtitleTextSize
+								sub.TextStyle.Italic = true
+
+								titleBox := container.New(
+									previewTightVBox{gap: previewTitleSubtitleGap}, name, sub)
+								row := container.NewBorder(nil, nil, check, nil, titleBox)
+
+								// Правый клик по строке — контекстное меню с
+								// «Info»: разобранные поля и JSON, который
+								// уйдёт в конфиг. Обработчик ставится в
+								// updateItem, где известен узел.
+								return fynewidget.NewSecondaryTapWrap(row)
 							},
 							func(id int, o fyne.CanvasObject) {
-								o.(*widget.Label).SetText(nodeDisplayLine(nn[id]))
+								wrap, ok := o.(*fynewidget.SecondaryTapWrap)
+								if !ok {
+									return
+								}
+								node := nn[id]
+								wrap.OnSecondary = func(pe *fyne.PointEvent) {
+									showPreviewNodeContextMenu(win, node, pe)
+								}
+
+								row, ok := wrap.Content.(*fyne.Container)
+								if !ok || len(row.Objects) < 2 {
+									return
+								}
+								titleBox, _ := row.Objects[0].(*fyne.Container)
+								check, _ := row.Objects[1].(*widget.Check)
+								if titleBox == nil || check == nil || len(titleBox.Objects) < 2 {
+									return
+								}
+								name, _ := titleBox.Objects[0].(*canvas.Text)
+								sub, _ := titleBox.Objects[1].(*canvas.Text)
+								if name == nil || sub == nil {
+									return
+								}
+
+								name.Text = nodeDisplayLine(nn[id])
+								name.Color = theme.Color(theme.ColorNameForeground)
+								name.Refresh()
+
+								sub.Text = previewNodeSubtitle(nn[id])
+								sub.Color = theme.Color(theme.ColorNamePlaceHolder)
+								sub.Refresh()
+
+								hash := hashes[id]
+								// Узел без вычислимого хеша выключать нельзя:
+								// отметку не к чему привязать, и она поехала бы
+								// на соседа при следующем обновлении.
+								if hash == "" {
+									check.OnChanged = nil
+									check.SetChecked(true)
+									check.Disable()
+									return
+								}
+								check.Enable()
+								check.OnChanged = nil
+								_, off := scratch.DisabledNodes[hash]
+								check.SetChecked(!off)
+								check.OnChanged = func(enabled bool) {
+									setNodeEnabled(&scratch, hash, enabled)
+								}
 							},
 						)
 						previewListHost.Add(srvList)

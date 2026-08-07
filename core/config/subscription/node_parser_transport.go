@@ -581,14 +581,22 @@ func vlessTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, boo
 	return tlsData, true
 }
 
-// trojanTLSFromNode returns TLS config for Trojan (WebSocket/raw over TLS).
-func trojanTLSFromNode(node *configtypes.ParsedNode) map[string]interface{} {
+// trojanTLSFromNode returns the sing-box tls map for Trojan (WebSocket/raw over
+// TLS) and whether a tls block should be emitted at all.
+//
+// security=none omits the key entirely rather than emitting
+// `"tls":{"enabled":false}` — same contract as vlessTLSFromNode. The explicit
+// disabled block is what sing-box cores 1.14.0-lx.5..lx.18 crash on: the
+// upstream ECH-retry commit builds a TLS dialer whenever a tls block is
+// present, while the config constructor returns (nil, nil) for enabled:false,
+// so the dialer wraps a nil config and SIGSEGVs on the first dial — URL test
+// included, killing the whole core process (sing-box-lx SPEC 045). Omitting
+// the key yields the same plain-TCP dial on every core version.
+func trojanTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, bool) {
 	q := node.Query
 	sec := strings.ToLower(strings.TrimSpace(queryGetFold(q, "security")))
 	if sec == "none" {
-		return map[string]interface{}{
-			"enabled": false,
-		}
+		return nil, false
 	}
 
 	sni := queryGetFold(q, "sni")
@@ -613,5 +621,5 @@ func trojanTLSFromNode(node *configtypes.ParsedNode) map[string]interface{} {
 		}
 	}
 	applyTLSQueryExtras(q, tlsData)
-	return tlsData
+	return tlsData, true
 }

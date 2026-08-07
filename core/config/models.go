@@ -16,6 +16,10 @@ const ParserConfigVersion = configtypes.ParserConfigVersion
 const MaxNodesPerSubscription = configtypes.MaxNodesPerSubscription
 const UnsetSourceIndex = configtypes.UnsetSourceIndex
 
+// SPEC 094 A5: imported selector/urltest nodes.
+const SchemeGroup = configtypes.SchemeGroup
+const GroupMembersKey = configtypes.GroupMembersKey
+
 // SPEC 058-R-N: sentinel ref values, re-exported for UI/test callsites.
 const RefTemplate = configtypes.RefTemplate
 const RefUser = configtypes.RefUser

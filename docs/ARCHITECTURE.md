@@ -288,11 +288,42 @@ writer. (For the storage-time view with diagrams, see [DATA_FLOW.md](DATA_FLOW.m
 
 1. **INGEST (subscription → nodes).** UI/auto-update triggers
    `config_service.UpdateConfigFromSubscriptions` → `subscription.LoadNodesFromSource`
-   → `fetcher.FetchSubscriptionWithMeta` (HTTP GET with HWID/UA headers, max 10 MB,
-   announce-header decode) → `decoder.DecodeSubscriptionContent` (base64 or Xray JSON
-   array) → `node_parser.ParseNode` per URI (scheme dispatch → protocol parser →
-   transport/TLS build → sing-box outbound JSON) → tag prefix/postfix/mask +
-   skip-filter + dedup → `[]ParsedNode`.
+   (thin wrapper over `LoadNodesFromSourceEx`, see below) →
+   `fetcher.FetchSubscriptionWithMeta` (HTTP GET with HWID/UA headers, max 10 MB,
+   announce-header decode) → `decoder.DecodeSubscriptionContent` (base64 strip) →
+   `subscription.ClassifySubscriptionBody` picks one of three branches:
+   - **URI list** — `node_parser.ParseNode` per line (scheme dispatch → protocol
+     parser → transport/TLS build → sing-box outbound JSON);
+   - **Xray JSON array** — `ParseNodesFromXrayJSONArray`;
+   - **sing-box JSON** (single outbound / outbound array / whole config / config
+     array, SPEC 094) — `ParseSingboxBody`: `outbounds` + `endpoints` are read as
+     one list, service types (`direct`/`block`/`dns`) are skipped, `detour` chains
+     are resolved up to 8 hops with cycle detection, `selector`/`urltest` become
+     the source's local outbounds, and `route`/`dns`/`inbounds`/`experimental` are
+     ignored by design (reported back for the UI).
+
+   Then tag prefix/postfix/mask + skip-filter + dedup → `[]ParsedNode`.
+
+   An imported `selector`/`urltest` becomes a **node** with scheme `group`
+   (`configtypes.SchemeGroup`), sitting in the same list as regular nodes. It has
+   no privileges: it never enters the wizard's Outbounds tab, routing rules do
+   not reference it, and its membership is not user-editable. That tab stays
+   reserved for the launcher's own **channels**, which do drive routing. For
+   sing-box the node still emits as a real selector/urltest inside `outbounds`
+   (`generateGroupNodeJSON`).
+
+   `LoadNodesFromSourceEx` returns a `SourceLoadResult` — nodes (groups included)
+   plus the config sections the parser deliberately ignores.
+
+   Within a single source, nodes are deduplicated by identity (SPEC 094 D3)
+   **before** tags are assigned, otherwise `MakeTagUnique` would hand a duplicate
+   a `…-2` tag first. Identity is `config.NodeIdentityHash`: sha256 over the
+   emitted outbound JSON with `tag` and `detour` removed and keys sorted. The
+   emitter lives in `config` while the parser lives in `subscription`, so the
+   dependency is injected top-down via `subscription.NodeIdentityHashFunc` (wired
+   in `core/controller.go`) — the same pattern as `LookupCachedBody`, and for the
+   same reason: a direct call would close an import cycle. With the hook unset the
+   parser still works, it simply does not deduplicate.
 2. **CACHE.** Per-source raw body written atomically via `state.WriteRawBody`
    (`.tmp` + `Sync` + `Rename`); outbound JSON produced by
    `config.GenerateOutboundsFromParserConfig` (three passes: `buildOutboundsInfo` →
@@ -321,6 +352,25 @@ configurator tabs → presenter syncs GUI → model (`ReconcileRuleOrder`,
 `SyncRulesByOrderToStateRulesV6`, `SyncDNSByOrderToState`) on Save → `presenter_save`
 validates → `state.Save` (v6) → publish `StateChanged` + auto-`RebuildConfigIfDirty`
 → success dialog. The next Start re-applies via the pre-start rebuild hook.
+
+### 6.2.1 config.json → node details in the UI (SPEC 095)
+
+The Servers list is driven by `api.ProxyInfo` from the Clash API, which carries
+only `Name`, `ClashType`, `Delay` and `Traffic` — no transport, no TLS, no group
+membership. Everything the UI shows beyond a tag and a latency therefore comes
+from the generated `config.json`, read back through
+`ui/configurator/business.LoadConfigNodes` → `ConfigNodes.Lookup(tag)`.
+
+That read-back feeds the row subtitle (`vless·tcp·Reality+Vision`), the group
+mode badge (`⚖️ [37]` for `mode: round_robin`, `🎯 [11]` otherwise) and the Info
+window. A tag missing from the config is not an error — the Clash API can report
+a node from a config that has since been regenerated — and the UI simply omits
+the detail.
+
+The source Preview tab needs the same detail **before** any config exists: the
+subscription has only just been parsed and not yet saved. It therefore reads
+straight from `ParsedNode` via a parallel pair of files
+(`ui/configurator/tabs/preview_node_subtitle.go`, `preview_node_info.go`).
 
 ### 6.3 The single-writer invariant (ADR-070-4)
 

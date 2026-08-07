@@ -156,6 +156,13 @@ type WizardModel struct {
 	PreviewNodes         []*config.ParsedNode
 	PreviewNodesBySource map[int][]*config.ParsedNode
 
+	// PreviewIgnoredSectionsBySource — секции импортированного sing-box конфига,
+	// которые парсер намеренно не читает (route/dns/inbounds/experimental),
+	// по индексу источника (SPEC 094 A4). Показывается в превью, чтобы
+	// пропущенное не выглядело как потеря данных. nil, если ни один источник
+	// не отдал целый конфиг.
+	PreviewIgnoredSectionsBySource map[int][]string
+
 	// Мемо для GetAvailableOutbounds при чтении только из ParserConfigJSON (ParserConfig == nil); сброс в InvalidatePreviewCache.
 	AvailableOutboundsMemoKey  string   `json:"-"`
 	AvailableOutboundsMemoTags []string `json:"-"`

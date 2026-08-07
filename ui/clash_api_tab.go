@@ -350,21 +350,62 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		background := canvas.NewRectangle(color.Transparent)
 		background.CornerRadius = 5
 
-		nameLabel := widget.NewLabel(locale.T("servers.label_proxy_name"))
-		nameLabel.TextStyle.Bold = true
+		// SPEC 095 — имя и подзаголовок обязаны уместиться в ПРЕЖНЮЮ высоту
+		// строки: с ней список был плотным и читался хорошо.
+		//
+		// Оба текста — canvas.Text, а не widget.Label: Label добавляет
+		// вертикальные отступы под размер шрифта темы, и пара таких виджетов
+		// удваивает высоту строки. canvas.Text занимает ровно свою строку.
+		nameText := canvas.NewText("", theme.Color(theme.ColorNameForeground))
+		nameText.TextSize = serversNameTextSize
+		nameText.TextStyle.Bold = true
 
-		pingButton := ttwidget.NewButton(locale.T("servers.button_ping"), nil)
+		// Подзаголовок резервирует место ВСЕГДА, даже пустой: widget.List
+		// берёт высоту строки из первого созданного элемента, и скрытый
+		// подзаголовок сделал бы строки разной высоты.
+		subtitleText := canvas.NewText("", theme.Color(theme.ColorNamePlaceHolder))
+		subtitleText.TextSize = serversSubtitleTextSize
+		subtitleText.TextStyle.Italic = true
+
+		titleBox := container.New(
+			tightVBoxLayout{gap: serversTitleSubtitleGap},
+			nameText, subtitleText,
+		)
+
 		switchButton := widget.NewButton("▶️", nil)
 
 		rowGutter := canvas.NewRectangle(color.Transparent)
 		rowGutter.SetMinSize(fyne.NewSize(serversListRowScrollbarGutterWidth, 0))
 
-		content := container.NewHBox(
-			nameLabel,
-			layout.NewSpacer(),
-			pingButton,
-			switchButton,
-			rowGutter,
+		// Замер — КЛИКАБЕЛЬНЫЙ ЦВЕТНОЙ ТЕКСТ вместо кнопки.
+		//
+		// widget.Button не позволяет покрасить свой текст: Fyne даёт только
+		// Importance, а тот заливает весь фон — число тонет в заливке. Здесь
+		// цвет несёт само значение, а клик обрабатывает TapWrap (он же ставит
+		// курсор-указатель, чтобы зона читалась как кликабельная).
+		delayText := canvas.NewText("", theme.Color(theme.ColorNamePlaceHolder))
+		delayText.TextSize = serversDelayTextSize
+		delayText.TextStyle.Bold = true
+		delayText.Alignment = fyne.TextAlignCenter
+
+		// Фон-подложка: даёт зоне клика видимые границы и постоянную ширину,
+		// иначе кнопка ▶ прыгала бы по горизонтали от строки к строке
+		// («31 ms» против «1194 ms»).
+		delayBackground := canvas.NewRectangle(theme.Color(theme.ColorNameInputBackground))
+		delayBackground.CornerRadius = 4
+		delayBackground.SetMinSize(fyne.NewSize(serversDelayColumnWidth, serversDelayCellHeight))
+
+		delayTappable := fynewidget.NewTapWrap(
+			container.NewStack(delayBackground, container.NewCenter(delayText)), nil)
+
+		buttons := container.NewHBox(delayTappable, switchButton, rowGutter)
+
+		// titleBox без Center: тот сжал бы его по ширине, и длинное имя
+		// перестало бы использовать всю строку.
+		content := container.NewBorder(
+			nil, nil, nil,
+			container.NewCenter(buttons),
+			titleBox,
 		)
 
 		paddedContent := container.NewPadded(content)
@@ -385,24 +426,43 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		paddedContent := stack.Objects[1].(*fyne.Container)
 		content := paddedContent.Objects[0].(*fyne.Container)
 
-		nameLabel := content.Objects[0].(*widget.Label)
-		pingButton := content.Objects[2].(*ttwidget.Button)
-		if ac.APIService != nil {
-			pingButton.SetToolTip(ac.APIService.GetLastPingError(proxyInfo.Name))
-		} else {
-			pingButton.SetToolTip("")
-		}
-		switchButton := content.Objects[3].(*widget.Button)
+		// Border кладёт объекты в порядке [center, right]: titleBox, кнопки.
+		titleBox := content.Objects[0].(*fyne.Container)
+		nameText := titleBox.Objects[0].(*canvas.Text)
+		subtitleText := titleBox.Objects[1].(*canvas.Text)
 
-		nameLabel.SetText(proxyInfo.DisplayOrName())
+		// content.Objects: [titleBox, центрированные кнопки].
+		// buttonsBox: [кликабельный замер, ▶, распорка].
+		buttonsCenter := content.Objects[1].(*fyne.Container)
+		buttonsBox := buttonsCenter.Objects[0].(*fyne.Container)
 
-		if proxyInfo.Delay > 0 {
-			pingButton.SetText(locale.Tf("servers.ping_format_ms", proxyInfo.Delay))
-		} else if proxyInfo.Delay == -1 {
-			pingButton.SetText(locale.T("servers.ping_button_error"))
-		} else {
-			pingButton.SetText(locale.T("servers.button_ping"))
-		}
+		delayTappable := buttonsBox.Objects[0].(*fynewidget.TapWrap)
+		delayStack := delayTappable.Content.(*fyne.Container)
+		delayBackground := delayStack.Objects[0].(*canvas.Rectangle)
+		delayText := delayStack.Objects[1].(*fyne.Container).Objects[0].(*canvas.Text)
+
+		switchButton := buttonsBox.Objects[1].(*widget.Button)
+
+		// canvas.Text не умеет ellipsis сам — режем по длине, иначе длинное
+		// имя растянет строку и вытолкнет кнопки за край.
+		nameText.Text = truncateRunes(proxyInfo.DisplayOrName(), serversNameMaxRunes)
+		nameText.Color = theme.Color(theme.ColorNameForeground)
+		nameText.Refresh()
+
+		// SPEC 095 — подзаголовок из config.json. Узел, которого там нет
+		// (гонка перегенерации), просто остаётся без подзаголовка.
+		subtitleText.Text = truncateSubtitle(serversNodeSubtitle(ac, proxyInfo))
+		subtitleText.Color = theme.Color(theme.ColorNamePlaceHolder)
+		subtitleText.Refresh()
+
+		// Замер — цветное число на нейтральной подложке; клик по нему
+		// запускает новый замер (обработчик ниже).
+		delayText.Text = serversDelayText(proxyInfo.Delay)
+		delayText.Color = serversDelayColor(proxyInfo.Delay)
+		delayText.Refresh()
+
+		delayBackground.FillColor = theme.Color(theme.ColorNameInputBackground)
+		delayBackground.Refresh()
 
 		// Обновляем фон
 		if proxyInfo.Name == ac.GetActiveProxyName() {
@@ -442,8 +502,12 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			pop.ShowAtPosition(pe.AbsolutePosition)
 		}
 
-		pingButton.OnTapped = func() {
-			pingProxy(proxyNameForCallback, pingButton)
+		// Замер запускается кликом по самому числу — кнопки больше нет.
+		// canvas.Text не реализует SetText, поэтому pingProxy получает
+		// тонкий адаптер, который заодно перерисовывает текст.
+		delaySetter := &canvasTextSetter{text: delayText}
+		delayTappable.OnTapped = func() {
+			pingProxy(proxyNameForCallback, delaySetter)
 		}
 
 		switchButton.OnTapped = func() {
@@ -472,7 +536,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 						if reconcileListSelection != nil {
 							reconcileListSelection()
 						}
-						pingProxy(proxyNameForCallback, pingButton)
+						pingProxy(proxyNameForCallback, delaySetter)
 						if ac.UIService.ListStatusLabel != nil {
 							ac.UIService.ListStatusLabel.SetText(locale.Tf("servers.status_switched", group, textnorm.NormalizeProxyDisplay(proxyNameForCallback)))
 						}

@@ -191,7 +191,11 @@ func TestParseNodesFromXrayJSONArray_VLESSJump(t *testing.T) {
 	}
 }
 
-func TestParseNodesFromXrayJSONArray_UnsupportedJumpProtocolSkipped(t *testing.T) {
+// SPEC 094 C4: trojan как первый хоп цепочки теперь поддержан.
+//
+// До SPEC 094 хопом мог быть только socks или vless, и весь узел выбрасывался
+// целиком — пользователь терял рабочий сервер из-за неподдержанного джампа.
+func TestParseNodesFromXrayJSONArray_TrojanJumpSupported(t *testing.T) {
 	raw := `[
 	  {
 		"remarks": "trojan-jump",
@@ -221,8 +225,26 @@ func TestParseNodesFromXrayJSONArray_UnsupportedJumpProtocolSkipped(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nodes) != 0 {
-		t.Fatalf("want 0 nodes when jump protocol unsupported, got %d", len(nodes))
+	// Один узел: trojan — цель dialerProxy, то есть звено, а не отдельная нода.
+	if len(nodes) != 1 {
+		t.Fatalf("want 1 node, got %d", len(nodes))
+	}
+	n := nodes[0]
+	if n.Scheme != "vless" {
+		t.Fatalf("node scheme = %q, want vless", n.Scheme)
+	}
+	if len(n.Chain) != 1 {
+		t.Fatalf("chain length = %d, want 1", len(n.Chain))
+	}
+	if n.Chain[0].Scheme != "trojan" {
+		t.Fatalf("hop scheme = %q, want trojan", n.Chain[0].Scheme)
+	}
+	if n.Chain[0].Server != "a.test" {
+		t.Fatalf("hop server = %q, want a.test", n.Chain[0].Server)
+	}
+	// Deprecated Jump синхронизирован с первым хопом.
+	if n.Jump == nil || n.Jump.Scheme != "trojan" {
+		t.Fatalf("Jump must mirror Chain[0], got %+v", n.Jump)
 	}
 }
 

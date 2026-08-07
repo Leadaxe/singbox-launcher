@@ -7,15 +7,26 @@ set -e
 cd "$(dirname "$0")/.."
 
 # Parse args first so --help exits without go mod tidy / full checks
-BUILD_TYPE="universal"
+#
+# Default build type follows the host architecture: a developer building
+# locally wants a binary that runs on this Mac, and a native build is much
+# faster than lipo'ing two of them. Release builds ask for "universal"
+# explicitly (see .github/workflows and docs/RELEASE_PROCESS.md).
+case "$(uname -m)" in
+    arm64)  HOST_BUILD_TYPE="arm64" ;;
+    x86_64) HOST_BUILD_TYPE="intel" ;;
+    *)      HOST_BUILD_TYPE="universal" ;;  # unknown host: widest target
+esac
+
+BUILD_TYPE="$HOST_BUILD_TYPE"
 COPY_TO_APPLICATIONS=false
 BUILD_TYPE_SET=false
 
 print_usage() {
     echo "Usage: $0 [options] [universal|intel|arm64|catalina]"
     echo ""
-    echo "Build types:"
-    echo "  universal - Universal binary (arm64 + amd64), slower; default if omitted"
+    echo "Build types (default: this Mac's architecture — ${HOST_BUILD_TYPE}):"
+    echo "  universal - Universal binary (arm64 + amd64), slower; use for releases"
     echo "  intel     - amd64 only (macOS 11.0+)"
     echo "  arm64     - Apple Silicon only (macOS 11.0+), fast on M-series Macs"
     echo "  catalina  - amd64 only, minimum macOS 10.15"
@@ -429,6 +440,44 @@ if [ "$COPY_TO_APPLICATIONS" = true ]; then
     fi
     # Strip quarantine attribute (just in case it got added by some flow).
     xattr -dr com.apple.quarantine "$DEST_APP" 2>/dev/null || true
+
+    # Check that the bundle still HAS a seal — not that it verifies.
+    #
+    # `codesign --verify` is useless here by design: it reports every file
+    # added to Contents/MacOS after signing as "a sealed resource is missing
+    # or invalid", and this app keeps its working data exactly there —
+    # bin/ (core, subscriptions, state) and logs/ change on every run. Using
+    # --verify as the gate would re-sign on every single install.
+    #
+    # What actually breaks the launch is a MISSING _CodeSignature: macOS then
+    # refuses the app with a useless "cannot be opened" dialog and
+    # `Launchd job spawn failed` in the log. That is what we detect.
+    #
+    # Re-sealing needs the working data out of the way: those files may be
+    # root-owned after the core ran with administrator rights, and codesign
+    # fails on them.
+    if [ ! -d "$DEST_APP/Contents/_CodeSignature" ]; then
+        echo "=== Bundle seal broken — re-sealing ==="
+        SEAL_HOLD="/tmp/${BASE_NAME}_seal_$$"
+        mkdir -p "$SEAL_HOLD"
+        for item in bin logs; do
+            [ -e "$DEST_APP/Contents/MacOS/$item" ] && \
+                mv "$DEST_APP/Contents/MacOS/$item" "$SEAL_HOLD/$item"
+        done
+        codesign --force --deep --sign - --identifier com.singbox.launcher "$DEST_APP" 2>&1 | tail -1
+        for item in bin logs; do
+            [ -e "$SEAL_HOLD/$item" ] && \
+                mv "$SEAL_HOLD/$item" "$DEST_APP/Contents/MacOS/$item"
+        done
+        rmdir "$SEAL_HOLD" 2>/dev/null || true
+        if [ -d "$DEST_APP/Contents/_CodeSignature" ]; then
+            echo "Bundle re-sealed: $DEST_APP"
+        else
+            echo "WARNING: bundle still unsealed; macOS may refuse to launch the app"
+            echo "  Fix manually with the working data moved aside:"
+            echo "    codesign --force --deep --sign - --identifier com.singbox.launcher $DEST_APP"
+        fi
+    fi
     echo "========================================"
 else
     echo "To install or update in /Applications:"

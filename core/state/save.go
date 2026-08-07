@@ -1,6 +1,7 @@
 package state
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -124,7 +125,22 @@ func (s *State) marshalDisk() ([]byte, error) {
 	if out.Connections.Outbounds == nil {
 		out.Connections.Outbounds = []configtypes.OutboundConfig{}
 	}
-	return json.MarshalIndent(out, "", "  ")
+	// SetEscapeHTML(false): по умолчанию encoding/json экранирует «&», «<» и
+	// «>» в & и подобное — защита для вставки JSON в HTML-страницу,
+	// которая здесь не нужна. В state.json попадают URL подписок и строки
+	// превью с query-параметрами, и в файле они превращались в нечитаемое
+	// «members=11&outbounds[]=…». Значение при чтении то же самое, но
+	// файл смотрят глазами.
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(out); err != nil {
+		return nil, err
+	}
+	// Encode дописывает перевод строки — MarshalIndent его не давал, и
+	// golden-тесты сравнивают точный байт-в-байт результат.
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
 // hasReferencedOutbounds — true если хотя бы один outbound в state.Connections.Outbounds

@@ -44,12 +44,14 @@ func RebuildPreviewCache(model *wizardmodels.WizardModel) (int, error) {
 	if totalSources == 0 {
 		model.PreviewNodes = nil
 		model.PreviewNodesBySource = nil
+		model.PreviewIgnoredSectionsBySource = nil
 		return 0, nil
 	}
 
 	tagCounts := make(map[string]int)
 	nodesBySource := make(map[int][]*config.ParsedNode, totalSources)
 	allNodes := make([]*config.ParsedNode, 0)
+	ignoredBySource := make(map[int][]string)
 	errorCount := 0
 
 	loadTimingStart := time.Now()
@@ -62,11 +64,21 @@ func RebuildPreviewCache(model *wizardmodels.WizardModel) (int, error) {
 		if ps.Disabled {
 			continue
 		}
-		nodes, err := subscription.LoadNodesFromSource(ps, tagCounts, nil, i, totalSources)
+		res, err := subscription.LoadNodesFromSourceEx(ps, tagCounts, nil, i, totalSources)
 		if err != nil {
 			errorCount++
 			debuglog.DebugLog("wizardPreviewCache: LoadNodesFromSource error for source %d/%d: %v", i+1, totalSources, err)
 			continue
+		}
+		if res == nil {
+			continue
+		}
+		nodes := res.Nodes
+		// SPEC 094 A4: подписка отдала целый sing-box конфиг — показываем, какие
+		// его секции импорт не читает, чтобы «проглочено молча» не выглядело
+		// как потеря данных.
+		if len(res.IgnoredSections) > 0 {
+			ignoredBySource[i] = res.IgnoredSections
 		}
 		if len(nodes) == 0 {
 			continue
@@ -87,6 +99,11 @@ func RebuildPreviewCache(model *wizardmodels.WizardModel) (int, error) {
 	} else {
 		model.PreviewNodesBySource = nil
 	}
+	if len(ignoredBySource) > 0 {
+		model.PreviewIgnoredSectionsBySource = ignoredBySource
+	} else {
+		model.PreviewIgnoredSectionsBySource = nil
+	}
 
 	return errorCount, nil
 }
@@ -99,6 +116,7 @@ func InvalidatePreviewCache(model *wizardmodels.WizardModel) {
 	}
 	model.PreviewNodes = nil
 	model.PreviewNodesBySource = nil
+	model.PreviewIgnoredSectionsBySource = nil
 	model.AvailableOutboundsMemoKey = ""
 	model.AvailableOutboundsMemoTags = nil
 }

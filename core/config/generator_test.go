@@ -342,6 +342,55 @@ func TestGenerateNodeJSON_VLESS_WSTransportNoTLS(t *testing.T) {
 	}
 }
 
+// A trojan node with security=none must reach config.json with no tls key at
+// all. `"tls":{"enabled":false}` is the shape that crashes sing-box cores
+// 1.14.0-lx.5..lx.18: the disabled block still builds a TLS dialer around a nil
+// config, which SIGSEGVs on the first dial (URL test included) and kills the
+// core process (sing-box-lx SPEC 045).
+func TestGenerateNodeJSON_Trojan_SecurityNone_OmitsTLS(t *testing.T) {
+	uri := "trojan://secretpass@example.com:8080?security=none&type=ws&path=%2F&host=h.cdn#t"
+	node, err := subscription.ParseNode(uri, nil)
+	if err != nil || node == nil {
+		t.Fatalf("ParseNode: %v", err)
+	}
+	jsonStr, err := GenerateNodeJSON(node)
+	if err != nil {
+		t.Fatalf("GenerateNodeJSON: %v", err)
+	}
+	if strings.Contains(jsonStr, `"tls":`) {
+		t.Fatalf("unexpected tls for security=none:\n%s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"type":"ws"`) {
+		t.Fatalf("expected ws transport to survive:\n%s", jsonStr)
+	}
+}
+
+// Backstop for nodes that reach the generator without passing through the URI
+// parsers (raw sing-box JSON, hand-edited outbounds): an explicit
+// enabled:false tls map must be dropped, not serialized. See SPEC 045.
+func TestGenerateNodeJSON_DisabledTLSMapIsDropped(t *testing.T) {
+	node := &ParsedNode{
+		Scheme: "trojan",
+		Tag:    "t-raw-disabled",
+		Server: "example.com",
+		Port:   8080,
+		UUID:   "secretpass",
+		Outbound: map[string]interface{}{
+			"password": "secretpass",
+			"tls": map[string]interface{}{
+				"enabled": false,
+			},
+		},
+	}
+	jsonStr, err := GenerateNodeJSON(node)
+	if err != nil {
+		t.Fatalf("GenerateNodeJSON: %v", err)
+	}
+	if strings.Contains(jsonStr, `"tls":`) {
+		t.Fatalf("disabled tls map must be omitted, got:\n%s", jsonStr)
+	}
+}
+
 // sing-box rejects uTLS fingerprints with wrong casing (e.g. "QQ"); emit lowercase (issue #45).
 func TestGenerateNodeJSON_UTLSFingerprintLowercase(t *testing.T) {
 	node := &ParsedNode{

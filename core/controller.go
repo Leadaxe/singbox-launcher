@@ -17,6 +17,7 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/events"
 	"singbox-launcher/core/services"
 	"singbox-launcher/core/uiservice"
@@ -223,6 +224,13 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	// (drop + warning) вместо того чтобы отдать sing-box конфиг, который
 	// целиком завалит `check` на ядре без naive-поддержки.
 	config.NaiveSupportProbe = ac.CoreSupportsNaive
+
+	// SPEC 094 D3: дедуп внутри источника считает идентичность по
+	// эмитированному outbound-JSON. Эмиттер живёт в config, парсер — в
+	// subscription, поэтому зависимость подставляется здесь (прямой вызов
+	// дал бы цикл импорта).
+	subscription.NodeIdentityHashFunc = config.NodeIdentityHash
+
 
 	// Устанавливаем callback для проверки обновлений при открытии окна
 	ac.UIService.OnWindowShown = func() {
