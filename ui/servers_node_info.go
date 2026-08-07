@@ -1,0 +1,397 @@
+package ui
+
+import (
+	"encoding/json"
+	"fmt"
+	"image/color"
+	"sort"
+	"strconv"
+	"strings"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/widget"
+
+	"singbox-launcher/api"
+	"singbox-launcher/core"
+	"singbox-launcher/internal/locale"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
+)
+
+// SPEC 095 I1–I4 — окно «Info»: всё, что известно об узле.
+//
+// Открывается из контекстного меню строки. Отдельной кнопки в строке нет:
+// она и так плотная, а Info нужен изредка.
+//
+// Окно отдельное (Application.NewWindow), а не модальный диалог: форма
+// высокая, и Fyne раздувает такой попап на весь экран.
+
+// showNodeInfoWindow открывает окно с полной информацией об узле.
+func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo) {
+	if ac == nil || ac.FileService == nil || ac.UIService == nil {
+		return
+	}
+
+	nodes := wizardbusiness.LoadConfigNodes(ac.FileService.ConfigPath)
+	node := nodes.Lookup(proxy.Name)
+
+	win := fyne.CurrentApp().NewWindow(
+		locale.Tf("servers.node_info_title", proxy.DisplayOrName()))
+
+	body := container.NewVBox()
+
+	// Шапка: то, что видно в списке.
+	body.Add(sectionHeader(locale.T("servers.node_info_section_general")))
+	body.Add(infoRow(locale.T("servers.node_info_tag"), proxy.Name))
+	if display := proxy.DisplayOrName(); display != proxy.Name {
+		body.Add(infoRow(locale.T("servers.node_info_display_name"), display))
+	}
+	body.Add(infoRow(locale.T("servers.node_info_delay"), formatDelay(proxy.Delay)))
+
+	if node == nil {
+		// Узла нет в конфиге: гонка перегенерации либо служебный outbound.
+		body.Add(widget.NewLabel(locale.T("servers.node_info_not_in_config")))
+		finishNodeInfoWindow(win, body)
+		return
+	}
+
+	body.Add(infoRow(locale.T("servers.node_info_type"), node.Type))
+	body.Add(infoRow(locale.T("servers.node_info_kind"), node.Kind))
+
+	if node.Server != "" {
+		body.Add(infoRow(locale.T("servers.node_info_server"),
+			fmt.Sprintf("%s:%d", node.Server, node.ServerPort)))
+	}
+	if node.Transport != "" {
+		body.Add(infoRow(locale.T("servers.node_info_transport"), node.Transport))
+	}
+	if node.Security != "" {
+		body.Add(infoRow(locale.T("servers.node_info_security"), node.Security))
+	}
+	if node.Detour != "" {
+		body.Add(infoRow(locale.T("servers.node_info_detour"), node.Detour))
+	}
+
+	// Группа: состав и параметры проверки.
+	if node.IsGroup() {
+		body.Add(widget.NewSeparator())
+		body.Add(sectionHeader(locale.Tf("servers.node_info_section_group", len(node.GroupMembers))))
+
+		for _, row := range groupModeRows(node) {
+			body.Add(row)
+		}
+		if url, ok := node.Raw["url"].(string); ok && url != "" {
+			body.Add(infoRow(locale.T("servers.node_info_test_url"), url))
+		}
+		if interval, ok := node.Raw["interval"].(string); ok && interval != "" {
+			body.Add(infoRow(locale.T("servers.node_info_test_interval"), interval))
+		}
+		if def, ok := node.Raw["default"].(string); ok && def != "" {
+			body.Add(infoRow(locale.T("servers.node_info_default"), def))
+		}
+		for _, member := range node.GroupMembers {
+			body.Add(memberRow(member, nodes))
+		}
+	}
+
+	// TLS-подробности отдельной секцией: их много и они длинные.
+	if tlsRows := tlsInfoRows(node); len(tlsRows) > 0 {
+		body.Add(widget.NewSeparator())
+		body.Add(sectionHeader(locale.T("servers.node_info_section_tls")))
+		for _, row := range tlsRows {
+			body.Add(row)
+		}
+	}
+
+	// Транспорт с параметрами (path/host/service_name).
+	if trRows := transportInfoRows(node); len(trRows) > 0 {
+		body.Add(widget.NewSeparator())
+		body.Add(sectionHeader(locale.T("servers.node_info_section_transport")))
+		for _, row := range trRows {
+			body.Add(row)
+		}
+	}
+
+	// JSON — отдельной вкладкой: он длинный и на общей странице оттеснял бы
+	// разобранные поля вниз, ради которых окно и открывают.
+	jsonText := prettyNodeJSON(node.Raw)
+	jsonEntry := widget.NewMultiLineEntry()
+	jsonEntry.SetText(jsonText)
+	jsonEntry.Wrapping = fyne.TextWrapOff
+
+	jsonTab := container.NewBorder(
+		nil,
+		widget.NewButton(locale.T("servers.node_info_copy_json"), func() {
+			win.Clipboard().SetContent(jsonText)
+		}),
+		nil, nil,
+		jsonEntry,
+	)
+
+	tabs := container.NewAppTabs(
+		container.NewTabItem(locale.T("servers.node_info_tab_details"), withScrollGutter(body)),
+		container.NewTabItem(locale.T("servers.node_info_section_json"), jsonTab),
+	)
+
+	win.SetContent(tabs)
+	win.Resize(fyne.NewSize(620, 680))
+	win.CenterOnScreen()
+	win.Show()
+}
+
+// withScrollGutter оборачивает содержимое в скролл с отступом под полосу
+// прокрутки, чтобы она не наезжала на значения полей.
+func withScrollGutter(body fyne.CanvasObject) fyne.CanvasObject {
+	gutter := canvas.NewRectangle(color.Transparent)
+	gutter.SetMinSize(fyne.NewSize(nodeInfoScrollbarGutter, 0))
+	return container.NewScroll(container.NewBorder(nil, nil, nil, gutter, body))
+}
+
+// finishNodeInfoWindow показывает окно без вкладок — используется, когда узла
+// нет в конфиге и показывать в JSON-вкладке нечего.
+func finishNodeInfoWindow(win fyne.Window, body *fyne.Container) {
+	win.SetContent(withScrollGutter(body))
+	win.Resize(fyne.NewSize(620, 400))
+	win.CenterOnScreen()
+	win.Show()
+}
+
+// groupModeRows разворачивает параметры отбора и балансировки группы.
+//
+// Раньше окно показывало только url/interval, и всё, что относится к
+// round_robin, оставалось невидимым: режим, окно допуска, липкость сессий.
+// Эти поля определяют, как именно расходится трафик, — без них «Info» о
+// группе ничего толком не сообщает.
+func groupModeRows(node *wizardbusiness.ConfigNode) []*fyne.Container {
+	var rows []*fyne.Container
+
+	// mode — расширение форка (SPEC 088). Отсутствие означает умолчание
+	// urltest: один самый быстрый узел по замерам.
+	if node.Type == "urltest" {
+		mode, _ := node.Raw["mode"].(string)
+		if strings.TrimSpace(mode) == "" {
+			mode = "least_test"
+		}
+		rows = append(rows, infoRow(locale.T("servers.node_info_group_mode"), mode))
+	}
+
+	// tolerance — окно, в пределах которого узлы считаются равными по
+	// скорости: без него least_test дёргал бы выбор на каждой миллисекунде.
+	if tolerance, ok := jsonNumberString(node.Raw["tolerance"]); ok {
+		rows = append(rows, infoRow(locale.T("servers.node_info_tolerance"), tolerance+" ms"))
+	}
+	if idle, ok := node.Raw["idle_timeout"].(string); ok && idle != "" {
+		rows = append(rows, infoRow(locale.T("servers.node_info_idle_timeout"), idle))
+	}
+
+	balancer, ok := node.Raw["balancer"].(map[string]interface{})
+	if !ok {
+		return rows
+	}
+
+	// pool — сколько узлов держать в раздаче; 0 означает «весь состав».
+	if pool, ok := jsonNumberString(balancer["pool"]); ok {
+		rows = append(rows, infoRow(locale.T("servers.node_info_pool"), pool))
+	}
+	if poolTolerance, ok := jsonNumberString(balancer["pool_tolerance"]); ok {
+		rows = append(rows, infoRow(locale.T("servers.node_info_pool_tolerance"), poolTolerance+" ms"))
+	}
+
+	// sticky_hash — по каким признакам соединение закрепляется за узлом.
+	// Сентинел ["none"] означает «липкость выключена» (SPEC 210).
+	if raw, ok := balancer["sticky_hash"].([]interface{}); ok {
+		keys := make([]string, 0, len(raw))
+		for _, item := range raw {
+			if s, ok := item.(string); ok {
+				keys = append(keys, s)
+			}
+		}
+		value := strings.Join(keys, ", ")
+		if len(keys) == 1 && keys[0] == "none" {
+			value = locale.T("servers.node_info_sticky_off")
+		}
+		if value != "" {
+			rows = append(rows, infoRow(locale.T("servers.node_info_sticky_hash"), value))
+		}
+	}
+	if ttl, ok := balancer["sticky_ttl"].(string); ok && ttl != "" {
+		rows = append(rows, infoRow(locale.T("servers.node_info_sticky_ttl"), ttl))
+	}
+
+	return rows
+}
+
+// jsonNumberString приводит числовое поле JSON к строке.
+//
+// После json.Unmarshal целые приезжают как float64 — печатать их «%v» дало бы
+// «50» либо «5e+01» в зависимости от величины.
+func jsonNumberString(v interface{}) (string, bool) {
+	switch x := v.(type) {
+	case float64:
+		return strconv.FormatFloat(x, 'f', -1, 64), true
+	case int:
+		return strconv.Itoa(x), true
+	case int64:
+		return strconv.FormatInt(x, 10), true
+	case json.Number:
+		return x.String(), true
+	default:
+		return "", false
+	}
+}
+
+// sectionHeader — заголовок секции.
+func sectionHeader(text string) *widget.Label {
+	l := widget.NewLabel(text)
+	l.TextStyle.Bold = true
+	return l
+}
+
+// nodeInfoKeyColumnWidth — ширина колонки с названиями полей.
+//
+// Фиксированная: без неё каждая строка сама решает, сколько занять под ключ, и
+// колонка значений разъезжается — «Tag» и «REALITY public key» дают разный
+// отступ, читать невозможно.
+const nodeInfoKeyColumnWidth = 168
+
+// nodeInfoScrollbarGutter — отступ справа под полосу прокрутки.
+//
+// В проекте принято резервировать место под скроллбар, чтобы он не наезжал на
+// содержимое (см. serversListRowScrollbarGutterWidth).
+const nodeInfoScrollbarGutter = 5
+
+// infoRow — строка «ключ: значение».
+//
+// Значение в Entry, а не Label: его можно выделить и скопировать, а длинное
+// значение не растягивает окно (Entry сжимается, Label — нет).
+func infoRow(key, value string) *fyne.Container {
+	keyLabel := widget.NewLabel(key)
+	keyLabel.TextStyle.Bold = true
+	keyLabel.Truncation = fyne.TextTruncateEllipsis
+
+	// Распорка задаёт колонке ключей одинаковую ширину во всех строках.
+	keySpacer := canvas.NewRectangle(color.Transparent)
+	keySpacer.SetMinSize(fyne.NewSize(nodeInfoKeyColumnWidth, 0))
+	keyCell := container.NewStack(keySpacer, keyLabel)
+
+	valueEntry := widget.NewEntry()
+	valueEntry.SetText(value)
+	valueEntry.Wrapping = fyne.TextWrapOff
+
+	return container.NewBorder(nil, nil, keyCell, nil, valueEntry)
+}
+
+// memberRow — строка члена группы с его собственным подзаголовком.
+func memberRow(tag string, nodes *wizardbusiness.ConfigNodes) *widget.Label {
+	line := "   · " + tag
+	if member := nodes.Lookup(tag); member != nil {
+		if parts := member.SubtitleParts(); len(parts) > 0 {
+			line += "  (" + strings.Join(parts, "·") + ")"
+		}
+	} else {
+		// Висячая ссылка: ядро такую группу не поднимет.
+		line += "  ⚠"
+	}
+	l := widget.NewLabel(line)
+	l.Truncation = fyne.TextTruncateEllipsis
+	return l
+}
+
+// tlsInfoRows разворачивает блок tls в строки.
+func tlsInfoRows(node *wizardbusiness.ConfigNode) []*fyne.Container {
+	tls, ok := node.Raw["tls"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	var rows []*fyne.Container
+	if sni, ok := tls["server_name"].(string); ok && sni != "" {
+		rows = append(rows, infoRow(locale.T("servers.node_info_sni"), sni))
+	}
+	if alpn, ok := tls["alpn"].([]interface{}); ok && len(alpn) > 0 {
+		parts := make([]string, 0, len(alpn))
+		for _, a := range alpn {
+			if s, ok := a.(string); ok {
+				parts = append(parts, s)
+			}
+		}
+		rows = append(rows, infoRow("ALPN", strings.Join(parts, ", ")))
+	}
+	if insecure, ok := tls["insecure"].(bool); ok && insecure {
+		rows = append(rows, infoRow(locale.T("servers.node_info_insecure"), "true"))
+	}
+	if utls, ok := tls["utls"].(map[string]interface{}); ok {
+		if fp, ok := utls["fingerprint"].(string); ok && fp != "" {
+			rows = append(rows, infoRow(locale.T("servers.node_info_fingerprint"), fp))
+		}
+	}
+	if reality, ok := tls["reality"].(map[string]interface{}); ok {
+		if pk, ok := reality["public_key"].(string); ok && pk != "" {
+			rows = append(rows, infoRow(locale.T("servers.node_info_reality_key"), pk))
+		}
+		if sid, ok := reality["short_id"].(string); ok && sid != "" {
+			rows = append(rows, infoRow(locale.T("servers.node_info_reality_short_id"), sid))
+		}
+	}
+	return rows
+}
+
+// transportInfoRows разворачивает блок transport в строки.
+func transportInfoRows(node *wizardbusiness.ConfigNode) []*fyne.Container {
+	tr, ok := node.Raw["transport"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	var rows []*fyne.Container
+	if path, ok := tr["path"].(string); ok && path != "" {
+		rows = append(rows, infoRow(locale.T("servers.node_info_path"), path))
+	}
+	if headers, ok := tr["headers"].(map[string]interface{}); ok {
+		if host, ok := headers["Host"].(string); ok && host != "" {
+			rows = append(rows, infoRow("Host", host))
+		}
+	}
+	if sn, ok := tr["service_name"].(string); ok && sn != "" {
+		rows = append(rows, infoRow(locale.T("servers.node_info_service_name"), sn))
+	}
+	if med, ok := tr["max_early_data"].(float64); ok && med > 0 {
+		rows = append(rows, infoRow(locale.T("servers.node_info_early_data"),
+			fmt.Sprintf("%d", int(med))))
+	}
+	return rows
+}
+
+// prettyNodeJSON форматирует объект узла с отсортированными ключами.
+func prettyNodeJSON(raw map[string]interface{}) string {
+	if raw == nil {
+		return "{}"
+	}
+	// json.MarshalIndent сортирует ключи map сам — порядок стабилен между
+	// открытиями окна, и глазу не приходится заново искать поле.
+	data, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		// Падать нельзя: окно — диагностический инструмент, и оно обязано
+		// открыться даже на странном узле.
+		keys := make([]string, 0, len(raw))
+		for k := range raw {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		return fmt.Sprintf("// %v\n%s", err, strings.Join(keys, "\n"))
+	}
+	return string(data)
+}
+
+// formatDelay человекочитаемо описывает последний замер.
+func formatDelay(delay int64) string {
+	switch {
+	case delay > 0:
+		return fmt.Sprintf("%d ms", delay)
+	case delay == -1:
+		return locale.T("servers.ping_button_error")
+	default:
+		return "—"
+	}
+}

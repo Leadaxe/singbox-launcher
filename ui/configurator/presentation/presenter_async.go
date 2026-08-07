@@ -114,10 +114,18 @@ func (p *WizardPresenter) UpdateTemplatePreviewAsync() {
 	}
 
 	p.model.PreviewGenerationInProgress = true
-	p.SetTemplatePreviewText(locale.T("wizard.preview.text_building"))
-	if p.guiState.TemplatePreviewStatusLabel != nil {
-		p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_building"))
-	}
+
+	// Виджеты трогаем ТОЛЬКО через SafeFyneDo: этот метод вызывается и из
+	// GUI-потока (кнопка «Показать»), и из фоновой горутины
+	// TriggerParseForPreview. Прямой вызов во втором случае — гонка, которую
+	// Fyne ловит как «Error in Fyne call thread» и на которой приложение
+	// падало при сохранении визарда.
+	SafeFyneDo(p.guiState.Window, func() {
+		p.SetTemplatePreviewText(locale.T("wizard.preview.text_building"))
+		if p.guiState.TemplatePreviewStatusLabel != nil {
+			p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_building"))
+		}
+	})
 
 	go func() {
 		goroutineTiming := debuglog.StartTiming("UpdateTemplatePreviewAsync: Goroutine")
@@ -145,9 +153,11 @@ func (p *WizardPresenter) UpdateTemplatePreviewAsync() {
 			goroutineTiming.LogTiming("BuildPreviewConfig", buildDuration)
 			debuglog.ErrorLog("UpdateTemplatePreviewAsync: BuildPreviewConfig failed: %v", err)
 			errorText := locale.Tf("wizard.preview.error", err)
-			p.SetTemplatePreviewText(errorText)
 			p.model.TemplatePreviewNeedsUpdate = false
+			// Текст превью — тоже виджет: правим его в GUI-потоке вместе со
+			// статусом, а не прямо здесь, в фоновой горутине.
 			SafeFyneDo(p.guiState.Window, func() {
+				p.SetTemplatePreviewText(errorText)
 				if p.guiState.TemplatePreviewStatusLabel != nil {
 					p.guiState.TemplatePreviewStatusLabel.SetText(locale.Tf("wizard.preview.status_error", err))
 				}
@@ -158,20 +168,26 @@ func (p *WizardPresenter) UpdateTemplatePreviewAsync() {
 		debuglog.DebugLog("UpdateTemplatePreviewAsync: BuildPreviewConfig completed (result size: %d bytes)", len(text))
 
 		isLargeText := len(text) > 50000
-		p.SetTemplatePreviewText(text)
 
-		if !isLargeText {
-			SafeFyneDo(p.guiState.Window, func() {
-				if p.guiState.TemplatePreviewStatusLabel != nil {
-					p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_ready"))
-				}
-				if p.guiState.ShowPreviewButton != nil {
-					p.guiState.ShowPreviewButton.Enable()
-				}
-			})
-			debuglog.DebugLog("UpdateTemplatePreviewAsync: Preview text inserted")
-		} else {
+		// Текст ставится в обеих ветках — разница только в статусе: у
+		// большого текста вставка идёт долго, и «готово» дописывает сам
+		// SetTemplatePreviewText по завершении, иначе метка соврала бы.
+		SafeFyneDo(p.guiState.Window, func() {
+			p.SetTemplatePreviewText(text)
+			if isLargeText {
+				return
+			}
+			if p.guiState.TemplatePreviewStatusLabel != nil {
+				p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_ready"))
+			}
+			if p.guiState.ShowPreviewButton != nil {
+				p.guiState.ShowPreviewButton.Enable()
+			}
+		})
+		if isLargeText {
 			debuglog.DebugLog("UpdateTemplatePreviewAsync: Large text insertion started (status will update when complete)")
+		} else {
+			debuglog.DebugLog("UpdateTemplatePreviewAsync: Preview text inserted")
 		}
 	}()
 }

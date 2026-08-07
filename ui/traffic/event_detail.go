@@ -99,7 +99,9 @@ func formatEventDetail(e tprof.TrafficEvent) string {
 			fmt.Fprintf(&b, "Domain:      %s\n", e.Domain)
 		}
 		if len(e.CnameChain) > 0 {
-			fmt.Fprintf(&b, "CNAME chain: %s\n", strings.Join(e.CnameChain, "  →  "))
+			// ASCII-стрелка, а не «→» (U+2192): глифа нет в шрифте темы
+			// Fyne, и вместо стрелки рисуется «плитка» U+FFFD.
+			fmt.Fprintf(&b, "CNAME chain: %s\n", strings.Join(e.CnameChain, "  ->  "))
 		}
 		if e.IP != "" {
 			if e.Port != 0 {
@@ -125,7 +127,7 @@ func formatEventDetail(e tprof.TrafficEvent) string {
 			for i, s := range e.OutboundChain {
 				rev[len(e.OutboundChain)-1-i] = s
 			}
-			fmt.Fprintf(&b, "Outbound:    %s\n", strings.Join(rev, "  →  "))
+			fmt.Fprintf(&b, "Outbound:    %s\n", strings.Join(rev, "  ->  "))
 		}
 		if e.Rule != "" {
 			fmt.Fprintf(&b, "Rule:        %s\n", e.Rule)
