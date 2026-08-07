@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	tprof "singbox-launcher/internal/traffic"
+	"singbox-launcher/ui/components"
 )
 
 // perProcessView is the recording tab. Owns:
@@ -162,7 +163,11 @@ func buildPerProcessView(deps WindowDeps, onRefresh func()) *perProcessView {
 			open := widget.NewButton("Open", nil)
 			del := widget.NewButton("Delete", nil)
 			lbl := widget.NewLabel("...")
-			return container.NewBorder(nil, nil, nil, container.NewHBox(open, del), lbl)
+			// Gutter в конце строки: без него полоса прокрутки списка
+			// наезжает на кнопку Delete (тот же дефект, что чинили в списке
+			// серверов). Общий механизм — components.NewScrollGutter.
+			return container.NewBorder(nil, nil, nil,
+				container.NewHBox(open, del, components.NewScrollGutter()), lbl)
 		},
 		func(i widget.ListItemID, o fyne.CanvasObject) {
 			if i < 0 || i >= len(v.savedData) {

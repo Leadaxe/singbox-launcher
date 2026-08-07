@@ -9,13 +9,7 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core"
-	"singbox-launcher/ui/components"
 )
-
-// serversListRowScrollbarGutterWidth — отступ справа внутри каждой строки списка прокси (после кнопок),
-// чтобы полоса прокрутки списка не наезжала на Ping / Switch (а не поле снаружи скролла).
-// Единый источник — components.ScrollbarGutterWidth (>= ширины бегунка Fyne, иначе наезжает).
-const serversListRowScrollbarGutterWidth = components.ScrollbarGutterWidth
 
 // keyModifiers returns held keyboard modifiers (desktop); 0 on mobile or if driver has no support.
 func keyModifiers() fyne.KeyModifier {
