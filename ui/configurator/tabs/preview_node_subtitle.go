@@ -60,17 +60,21 @@ func previewGroupSubtitle(node *config.ParsedNode) string {
 	// Тип говорит лишь «ядро выбирает само», но не КАК: у urltest есть своё
 	// поле mode (расширение форка, SPEC 088). Значок и подпись должны его
 	// отражать — иначе смена режима на экране никак не видна.
-	icon := "🔀"
+	// selector — выбор делает пользователь, режима отбора нет.
+	icon := "\U0001F590"
 	mode := ""
 	if groupType == "urltest" {
 		raw, _ := node.Outbound["mode"].(string)
 		switch strings.ToLower(strings.TrimSpace(raw)) {
 		case "round_robin":
-			icon, mode = "⚖️", locale.T("servers.group_mode_round_robin")
+			// «⭐» U+2B50 — подобрана в каталоге глифов: «🔀» на кегле
+			// подзаголовка не читался, а «⚡» U+26A1 не рисуется вовсе
+			// (пустой глиф в EmojiOneColor).
+			icon, mode = "\U00002B50", locale.T("servers.group_mode_round_robin")
 		case "least_test", "":
-			icon, mode = "🎯", locale.T("servers.group_mode_least_test")
+			icon, mode = "\U0001F6A9", locale.T("servers.group_mode_least_test")
 		default:
-			icon, mode = "🎯", raw
+			icon, mode = "\U0001F6A9", raw
 		}
 	}
 

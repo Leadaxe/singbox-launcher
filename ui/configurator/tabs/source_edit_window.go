@@ -130,6 +130,7 @@ func capPreviewNodes(nodes []*config.ParsedNode) []*config.ParsedNode {
 //     Enabled (=!Disabled) + Tag из TagPrefix/Postfix/Mask;
 //   - server: URI=Connections[0], Label=TagMask (corestate adapter ставит
 //     `tag_mask=label` для server-source — тэг node будет точно label).
+//
 // setNodeEnabled ставит или снимает отметку «нода выключена» (SPEC 094 D4).
 //
 // Отметка хранится в ProxySource.DisabledNodes по хешу идентичности узла;
@@ -167,7 +168,7 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 		src.Outbounds = append([]configtypes.OutboundConfig(nil), ps.Outbounds...)
 		src.ExcludeFromGlobal = ps.ExcludeFromGlobal
 		src.ExposeGroupTagsToGlobal = ps.ExposeGroupTagsToGlobal
-		src.DetourTag = ps.DetourTag // SPEC 077
+		src.DetourTag = ps.DetourTag         // SPEC 077
 		src.DisabledNodes = ps.DisabledNodes // SPEC 094 D4
 		src.Enabled = !ps.Disabled
 		if ps.TagPrefix != "" || ps.TagPostfix != "" || ps.TagMask != "" {
@@ -792,9 +793,12 @@ func showSourceEditWindow(
 								// «протокол·транспорт·security».
 								name := canvas.NewText("", theme.Color(theme.ColorNameForeground))
 								name.TextSize = previewNameTextSize
+								// БЕЗ Italic: у эмодзи нет курсивного глифа, Fyne
+								// берёт его из emoji-шрифта с другой базовой
+								// линией — значки режима групп повисали выше
+								// наклонного текста.
 								sub := canvas.NewText("", theme.Color(theme.ColorNamePlaceHolder))
 								sub.TextSize = previewSubtitleTextSize
-								sub.TextStyle.Italic = true
 
 								titleBox := container.New(
 									previewTightVBox{gap: previewTitleSubtitleGap}, name, sub)

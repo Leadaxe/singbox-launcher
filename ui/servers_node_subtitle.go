@@ -23,6 +23,22 @@ import (
 //
 // Данные берутся из сгенерированного config.json: Clash API их не отдаёт.
 
+// groupNowSeparator — разделитель перед выбранным узлом группы.
+//
+// «‣» (U+2023) есть во ВСЕХ текстовых шрифтах темы (Inter + NotoSans
+// Regular/Bold/Italic), поэтому рисуется без переключения шрифта и наследует
+// серый цвет подзаголовка.
+//
+// НЕ «→» (U+2192): проверка глифов показала, что стрелка живёт ТОЛЬКО в
+// InterSymbols — шрифте без букв и цифр. Ради одного символа Fyne переключает
+// шрифт и возвращается обратно, роняя на шве .notdef: на экране выходило
+// «→<тофу>». Тем же кончилось в dns_unified_rules.go.
+//
+// НЕ символы из emoji-шрифта (▶ U+25B6, ➡ U+27A1): это готовые ЦВЕТНЫЕ
+// иконки, покрасить их в серый нельзя, и синий треугольник спорил с кнопкой
+// ▶️ справа, читаясь как элемент управления.
+const groupNowSeparator = "‣"
+
 // maxPoolBadges — сколько значков членов показывать у группы.
 //
 // Пул провайдера бывает на 15+ узлов; вывести все значит растянуть строку и
@@ -169,21 +185,31 @@ func serversNodeSubtitle(ac *core.AppController, proxyInfo api.ProxyInfo) string
 	}
 
 	if node.IsGroup() {
-		return groupSubtitle(node)
+		return groupSubtitle(node, proxyInfo.NowOrEmpty())
 	}
 	return strings.Join(node.SubtitleParts(), "·")
 }
 
-// groupSubtitle описывает группу: режим, размер пула и значки членов.
+// groupSubtitle описывает группу: режим, размер пула и текущий выбор.
 //
 // urltest ядро проверяет замерами и выбирает лучший — «🎯»; selector отдаёт
 // выбор пользователю — «🔀». Иконки повторяют смысл, принятый в LxBox.
-func groupSubtitle(node *wizardbusiness.ConfigNode) string {
+//
+// now — тег узла, который группа держит активным (Clash API, поле "now").
+// Он важнее набора флагов: состав пула виден в «Info» и меняется редко, а
+// выбор меняется на каждом замере, и именно через него идёт трафик. Флаги
+// членов показываются только когда выбор неизвестен — иначе строка была бы
+// пустой там, где ядро ещё не отчиталось.
+func groupSubtitle(node *wizardbusiness.ConfigNode, now string) string {
 	icon, mode := groupModeLabel(node)
 
 	label := fmt.Sprintf("%s [%d]", icon, len(node.GroupMembers))
 	if mode != "" {
 		label += " " + mode
+	}
+
+	if now = strings.TrimSpace(now); now != "" {
+		return label + " " + groupNowSeparator + " " + now
 	}
 
 	if badges := poolBadges(node.GroupMembers); badges != "" {
@@ -201,21 +227,36 @@ func groupSubtitle(node *wizardbusiness.ConfigNode) string {
 // экране никак не отражалась.
 func groupModeLabel(node *wizardbusiness.ConfigNode) (icon, mode string) {
 	if node.Type != "urltest" {
-		// selector — выбор делает пользователь, режима отбора нет.
-		return "🔀", ""
+		// selector — выбор делает пользователь, режима отбора нет. В списке
+		// серверов такие группы обычно не показываются (селекторы уходят
+		// наверх, в выбор группы), но ветка нужна: значок обязан отличаться
+		// от round_robin, иначе типы стали бы неразличимы. Она отрабатывает
+		// на вложенных селекторах — например, когда группа «vpn ②» держит
+		// активным «proxy-out», который сам является selector'ом.
+		//
+		// «🖐» U+1F590 — подобрана в каталоге глифов (вкладка 🔤).
+		return "\U0001F590", ""
 	}
 
 	raw, _ := node.Raw["mode"].(string)
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "round_robin":
 		// Балансировка по пулу: трафик расходится между узлами.
-		return "⚖️", locale.T("servers.group_mode_round_robin")
+		//
+		// «⭐» U+2B50 — подобрана в каталоге глифов (вкладка 🔤): силуэт
+		// простой и читается на кегле подзаголовка.
+		//
+		// НЕ «🔀» U+1F500: мелкий рисунок из переплетённых стрелок на 10pt
+		// схлопывался в неразличимое пятно. НЕ «⚡» U+26A1: глиф в
+		// EmojiOneColor пустой — символ не рисуется вовсе, ни с
+		// вариационным селектором U+FE0F, ни без него.
+		return "\U00002B50", locale.T("servers.group_mode_round_robin")
 	case "least_test", "":
 		// Умолчание urltest — один самый быстрый по замерам.
-		return "🎯", locale.T("servers.group_mode_least_test")
+		return "\U0001F6A9", locale.T("servers.group_mode_least_test")
 	default:
 		// Незнакомый режим: показываем как есть, не выдумывая перевод.
-		return "🎯", raw
+		return "\U0001F6A9", raw
 	}
 }
 

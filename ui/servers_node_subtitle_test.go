@@ -92,6 +92,9 @@ func TestGroupSubtitle(t *testing.T) {
 	tests := []struct {
 		name string
 		node *wizardbusiness.ConfigNode
+		// now — тег, выбранный группой прямо сейчас (Clash API, поле "now").
+		// Пусто = ядро ещё не отчиталось, подзаголовок падает на флаги.
+		now  string
 		want string
 	}{
 		{
@@ -102,7 +105,7 @@ func TestGroupSubtitle(t *testing.T) {
 				GroupMembers: []string{"🇩🇪a", "🇳🇱b"},
 			},
 			// urltest без mode — умолчание «самый быстрый по замерам».
-			want: "🎯 [2] fastest 🇩🇪🇳🇱",
+			want: "🚩 [2] fastest 🇩🇪🇳🇱",
 		},
 		{
 			// selector отдаёт выбор пользователю — «переключатель».
@@ -111,12 +114,12 @@ func TestGroupSubtitle(t *testing.T) {
 				Type:         "selector",
 				GroupMembers: []string{"a", "b", "c"},
 			},
-			want: "🔀 [3]",
+			want: "🖐 [3]",
 		},
 		{
 			name: "empty group",
 			node: &wizardbusiness.ConfigNode{Type: "urltest"},
-			want: "🎯 [0] fastest",
+			want: "🚩 [0] fastest",
 		},
 		{
 			// SPEC 088: round_robin раздаёт трафик по пулу — иконка и
@@ -127,13 +130,45 @@ func TestGroupSubtitle(t *testing.T) {
 				GroupMembers: []string{"a", "b"},
 				Raw:          map[string]interface{}{"mode": "round_robin"},
 			},
-			want: "⚖️ [2] balanced",
+			want: "⭐ [2] balanced",
+		},
+		{
+			// Ядро отчиталось о выборе — показываем ЕГО, а не флаги: состав
+			// пула виден в «Info» и меняется редко, а выбор меняется на
+			// каждом замере, и именно через него идёт трафик.
+			name: "urltest with now replaces badges",
+			node: &wizardbusiness.ConfigNode{
+				Type:         "urltest",
+				GroupMembers: []string{"🇩🇪a", "🇳🇱b"},
+			},
+			now:  "AL:🇭🇺-Венгрия",
+			want: "🚩 [2] fastest ‣ AL:🇭🇺-Венгрия",
+		},
+		{
+			// selector тоже сообщает выбор — у него он ручной.
+			name: "selector with now",
+			node: &wizardbusiness.ConfigNode{
+				Type:         "selector",
+				GroupMembers: []string{"a", "b", "c"},
+			},
+			now:  "proxy-out",
+			want: "🖐 [3] ‣ proxy-out",
+		},
+		{
+			// Пробелы вокруг тега не должны рвать разделитель.
+			name: "now trimmed",
+			node: &wizardbusiness.ConfigNode{
+				Type:         "selector",
+				GroupMembers: []string{"a"},
+			},
+			now:  "  node-1  ",
+			want: "🖐 [1] ‣ node-1",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := groupSubtitle(tt.node); got != tt.want {
+			if got := groupSubtitle(tt.node, tt.now); got != tt.want {
 				t.Fatalf("groupSubtitle() = %q, want %q", got, tt.want)
 			}
 		})

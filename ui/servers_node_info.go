@@ -258,7 +258,7 @@ const nodeInfoKeyColumnWidth = 168
 // nodeInfoScrollbarGutter — отступ справа под полосу прокрутки.
 //
 // В проекте принято резервировать место под скроллбар, чтобы он не наезжал на
-// содержимое (см. serversListRowScrollbarGutterWidth).
+// содержимое (см. components.ScrollbarGutterWidth).
 const nodeInfoScrollbarGutter = 5
 
 // infoRow — строка «ключ: значение».
