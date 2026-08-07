@@ -23,6 +23,22 @@ type ProxyInfo struct {
 	ClashType string
 	Traffic   [2]int64 // [up, down]
 	Delay     int64    // Last known delay in ms
+	// Now — тег узла, который группа выбрала прямо сейчас (поле "now" из
+	// Clash API). Пусто у обычных узлов и у групп, которые ещё не выбрали.
+	//
+	// Ядро отдаёт "now" для КАЖДОЙ группы в том же ответе GET /proxies, что мы
+	// и так запрашиваем, — отдельного запроса на строку не нужно.
+	Now string
+	// NowDisplay — Now, нормализованный для UI тем же путём, что DisplayName.
+	NowDisplay string
+}
+
+// NowOrEmpty returns NowDisplay when set, otherwise the raw Now tag.
+func (p ProxyInfo) NowOrEmpty() string {
+	if p.NowDisplay != "" {
+		return p.NowDisplay
+	}
+	return p.Now
 }
 
 // DisplayOrName returns DisplayName when set, otherwise a normalized form of Name for UI.
@@ -153,6 +169,14 @@ func GetProxiesInGroup(baseURL, token, groupName string) ([]ProxyInfo, string, e
 		if node, ok := proxiesMap[name].(map[string]interface{}); ok {
 			if t, ok := node["type"].(string); ok {
 				pi.ClashType = t
+			}
+			// "now" есть у каждой группы в этом же ответе — забираем сразу,
+			// иначе UI пришлось бы делать запрос на строку списка.
+			if now, ok := node["now"].(string); ok && now != "" {
+				pi.Now = now
+				if nd := textnorm.NormalizeProxyDisplay(now); nd != "" {
+					pi.NowDisplay = nd
+				}
 			}
 			// Парсим трафик (остается на случай, если он появится)
 			if f, ok := node["up"].(float64); ok {

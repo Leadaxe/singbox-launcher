@@ -28,6 +28,7 @@ import (
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/textnorm"
+	"singbox-launcher/ui/components"
 )
 
 // CreateClashAPITab creates and returns the content for the "Clash API" tab.
@@ -363,9 +364,12 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		// Подзаголовок резервирует место ВСЕГДА, даже пустой: widget.List
 		// берёт высоту строки из первого созданного элемента, и скрытый
 		// подзаголовок сделал бы строки разной высоты.
+		// БЕЗ Italic: у эмодзи курсивного глифа нет, Fyne подставляет его из
+		// emoji-шрифта с другой базовой линией — значки режима (🎯/⚖️/🔀) и
+		// флаги повисали выше наклонного текста. Подзаголовок и так отличим
+		// от имени размером и цветом.
 		subtitleText := canvas.NewText("", theme.Color(theme.ColorNamePlaceHolder))
 		subtitleText.TextSize = serversSubtitleTextSize
-		subtitleText.TextStyle.Italic = true
 
 		titleBox := container.New(
 			tightVBoxLayout{gap: serversTitleSubtitleGap},
@@ -375,7 +379,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		switchButton := widget.NewButton("▶️", nil)
 
 		rowGutter := canvas.NewRectangle(color.Transparent)
-		rowGutter.SetMinSize(fyne.NewSize(serversListRowScrollbarGutterWidth, 0))
+		rowGutter.SetMinSize(fyne.NewSize(components.ScrollbarGutterWidth, 0))
 
 		// Замер — КЛИКАБЕЛЬНЫЙ ЦВЕТНОЙ ТЕКСТ вместо кнопки.
 		//
@@ -408,7 +412,9 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			titleBox,
 		)
 
-		paddedContent := container.NewPadded(content)
+		// Padding БЕЗ правой стороны: справа зазор уже даёт rowGutter, и
+		// обычный NewPadded складывался с ним в ~18pt вместо 14.
+		paddedContent := components.NewListRowPadded(content)
 		stack := container.NewStack(background, paddedContent)
 		return fynewidget.NewSecondaryTapWrap(stack)
 	}
@@ -1266,11 +1272,20 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		if ac.UIService != nil && ac.UIService.UpdateTrayMenuFunc != nil {
 			ac.UIService.UpdateTrayMenuFunc()
 		}
-		// Start auto-loading proxies for the new group only if sing-box is running.
-		// Same guard для onLoadAndRefreshProxies — без этого при cold start (state
-		// restore установил selectedGroup) callback дёргает Clash API, который
-		// возвращает "API disabled" → пугающий popup. См. user-feedback 2026-05-15.
-		if ac.RunningState.IsRunning() {
+		// Перезагружаем список под новую группу, если Clash API включён.
+		//
+		// Критерий — именно ВКЛЮЧЁННОСТЬ API, а не «кто запустил ядро».
+		// Раньше здесь стояло ac.RunningState.IsRunning(), и список молча не
+		// обновлялся в двух реальных сценариях:
+		//   - ядро запущено НЕ лаунчером (tracked PID = -1, isOurProcess=false);
+		//   - подключение к чужому sing-box'у через remote endpoint (SPEC 064).
+		// В обоих случаях API прекрасно отвечает — пинги идут, список живой, —
+		// но флаг ложен, и узлы оставались от ПРЕДЫДУЩЕЙ группы.
+		//
+		// Защита от «API disabled»-popup'а при холодном старте сохраняется:
+		// onLoadAndRefreshProxies показывает диалог, если API выключен, — и
+		// именно поэтому проверка стоит ЗДЕСЬ, до вызова.
+		if _, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac); clashAPIEnabled {
 			ac.AutoLoadProxies()
 			onLoadAndRefreshProxies()
 		}
