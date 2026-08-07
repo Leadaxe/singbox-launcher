@@ -318,7 +318,7 @@ singbox-launcher/
 See platform-specific guides:
 
 - **Windows** — [docs/BUILD_WINDOWS.md](docs/BUILD_WINDOWS.md) (Go 1.24+, GCC required, optional `rsrc` for icon)
-- **macOS** — `./build/build_darwin.sh [universal|arm64|intel|catalina]`, optional `-i` to install/update in `/Applications`
+- **macOS** — `./build/build_darwin.sh [universal|arm64|intel|catalina]`, optional `-i` to install/update in `/Applications`. With no build type it targets **this Mac's architecture** — the fast path for local work; pass `universal` for a release build
 - **Linux** — [docs/BUILD_LINUX.md](docs/BUILD_LINUX.md) (Go 1.24+, OpenGL + X11 dev packages, or Docker build)
 
 Quick reference:
@@ -327,7 +327,10 @@ Quick reference:
 git clone https://github.com/Leadaxe/singbox-launcher.git
 cd singbox-launcher
 
-# macOS — universal binary, install into /Applications
+# macOS — build for this Mac and install into /Applications
+./build/build_darwin.sh -i
+
+# macOS — universal binary (releases)
 ./build/build_darwin.sh -i universal
 
 # Linux — build script with package check
