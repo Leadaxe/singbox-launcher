@@ -69,7 +69,9 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -149,4 +151,65 @@ func WaitForPrivilegedExit(pid int) {
 // Call on app exit (e.g. GracefulExit) to avoid leaving the ref alive.
 func FreePrivilegedAuthorization() {
 	C.freePrivilegedAuthorization()
+}
+
+// RunPrivilegedProgramAndWait выполняет программу argv с правами root и ЖДЁТ
+// её завершения (в отличие от RunWithPrivileges, который возвращается сразу
+// после старта). Используется для управления launchd-службой демона
+// (`sing-box lxd --service=install|uninstall`, `launchctl kickstart`), где
+// важен код возврата и вывод команды.
+//
+// Механика: AuthorizationExecuteWithPrivileges даёт запускаемому процессу
+// только EFFECTIVE uid=0, real uid остаётся пользовательским (execve не меняет
+// real uid). Целевые программы, проверяющие os.Getuid() (real), это не
+// устраивает. Поэтому под привилегиями запускается НЕ цель напрямую, а сам
+// лаунчер в режиме --priv-exec: он вызывает setuid(0) (при euid=0 поднимает и
+// real uid), затем запускает цель — которая теперь видит настоящий root. См.
+// MaybeRunPrivExecHelper.
+//
+// БЕЗОПАСНОСТЬ: argv цели передаётся как отдельные C-строки в
+// ProgramArguments (никакой оболочки, никакой конкатенации) — shell-метасимволы
+// в путях/аргументах не интерпретируются. temp-файлы в приватном 0700-каталоге.
+func RunPrivilegedProgramAndWait(argv []string, timeout time.Duration) (string, error) {
+	if len(argv) == 0 {
+		return "", fmt.Errorf("empty argv")
+	}
+	self, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("locate own binary: %w", err)
+	}
+	dir, err := os.MkdirTemp("", "sblauncher-priv-")
+	if err != nil {
+		return "", fmt.Errorf("temp dir: %w", err)
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		os.RemoveAll(dir)
+		return "", fmt.Errorf("chmod temp dir: %w", err)
+	}
+	defer os.RemoveAll(dir)
+	outPath := dir + "/out"
+	donePath := dir + "/done"
+
+	// AEWP запускает <self> --priv-exec <out> <done> -- <program> [args...].
+	// Хелпер (MaybeRunPrivExecHelper) поднимет real uid и выполнит цель.
+	helperArgs := append([]string{privExecFlag, outPath, donePath, "--"}, argv...)
+	if _, _, err := RunWithPrivileges(self, helperArgs); err != nil {
+		return "", err // авторизация отклонена/не удалась
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		if data, err := os.ReadFile(donePath); err == nil && len(data) > 0 {
+			output, _ := os.ReadFile(outPath)
+			code := strings.TrimSpace(string(data))
+			if code != "0" {
+				return string(output), fmt.Errorf("privileged command exited with code %s: %s", code, strings.TrimSpace(string(output)))
+			}
+			return string(output), nil
+		}
+		if time.Now().After(deadline) {
+			output, _ := os.ReadFile(outPath)
+			return string(output), fmt.Errorf("privileged command timed out after %s", timeout)
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
 }

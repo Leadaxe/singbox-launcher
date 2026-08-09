@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -87,12 +88,27 @@ type ClashConnBytesDelta struct {
 	DownDelta int64
 }
 
-// ConnPoller polls Clash /connections at 1s cadence and emits ConnDeltas.
-// One instance per app lifetime; lives inside TrafficProfiler.
+// SnapshotFunc returns the current set of open connections keyed by id. ok=false
+// means "no source available right now" (core not running / API disabled) —
+// the poller resets its diff state so a later start doesn't report every old id
+// as "just closed". This is the pluggable seam that lets the poller draw from
+// Clash HTTP (classic) OR gRPC SubscribeConnections (daemon) without the
+// profiler knowing which. See SetSnapshotFunc.
+type SnapshotFunc func(ctx context.Context) (conns map[string]ClashConn, ok bool)
+
+// ConnPoller polls a connection source at 1s cadence and emits ConnDeltas.
+// One instance per app lifetime; lives inside TrafficProfiler. The source is
+// either the built-in Clash /connections HTTP fetch (default) or an injected
+// SnapshotFunc (daemon mode gRPC).
 type ConnPoller struct {
 	cfg      ClashConfigProvider
 	httpc    *http.Client
 	interval time.Duration
+
+	// snapshotFn, when non-nil, replaces the Clash HTTP fetch (daemon mode).
+	// Guarded by srcMu so it can be swapped when the backend mode changes.
+	srcMu      sync.Mutex
+	snapshotFn SnapshotFunc
 
 	// state for diff
 	prev map[string]ClashConn
@@ -114,6 +130,21 @@ func NewConnPoller(cfg ClashConfigProvider, httpc *http.Client) *ConnPoller {
 		prev:     make(map[string]ClashConn),
 		out:      make(chan ConnDelta, 16),
 	}
+}
+
+// SetSnapshotFunc swaps the connection source at runtime. Non-nil → the poller
+// draws snapshots from fn (daemon mode gRPC); nil → back to the Clash HTTP
+// fetch (classic). Thread-safe; called when the backend mode changes.
+func (p *ConnPoller) SetSnapshotFunc(fn SnapshotFunc) {
+	p.srcMu.Lock()
+	p.snapshotFn = fn
+	p.srcMu.Unlock()
+}
+
+func (p *ConnPoller) currentSnapshotFn() SnapshotFunc {
+	p.srcMu.Lock()
+	defer p.srcMu.Unlock()
+	return p.snapshotFn
 }
 
 // Out returns the channel that emits one ConnDelta per poll. Buffered so a
@@ -156,6 +187,20 @@ func (p *ConnPoller) Run(ctx context.Context) {
 }
 
 func (p *ConnPoller) pollOnce(ctx context.Context) {
+	// Daemon mode: an injected snapshot source (gRPC SubscribeConnections)
+	// replaces the Clash HTTP fetch. Classic keeps the HTTP path unchanged.
+	if fn := p.currentSnapshotFn(); fn != nil {
+		curr, ok := fn(ctx)
+		if !ok {
+			if len(p.prev) > 0 {
+				p.prev = make(map[string]ClashConn)
+			}
+			return
+		}
+		p.emit(p.diff(curr, time.Now()), curr)
+		return
+	}
+
 	baseURL, token, enabled := p.cfg()
 	if !enabled || baseURL == "" {
 		// sing-box not running or Clash API disabled — reset state so a
@@ -175,7 +220,13 @@ func (p *ConnPoller) pollOnce(ctx context.Context) {
 	for _, c := range snap.Connections {
 		curr[c.ID] = c
 	}
-	delta := p.diff(curr, now)
+	p.emit(p.diff(curr, now), curr)
+}
+
+// emit records the new snapshot as prev and pushes the delta to the out
+// channel (non-blocking; drops on backlog). Shared by the Clash HTTP path and
+// the injected-source (daemon gRPC) path.
+func (p *ConnPoller) emit(delta ConnDelta, curr map[string]ClashConn) {
 	p.prev = curr
 	select {
 	case p.out <- delta:

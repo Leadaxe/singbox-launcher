@@ -107,6 +107,19 @@ func (p *TrafficProfiler) Start(cfg ClashConfigProvider, logPath string, httpc H
 	go p.runJoin(p.bgCtx)
 }
 
+// SetConnSnapshotFunc swaps the connection source (Clash HTTP ↔ daemon gRPC)
+// at runtime. Non-nil → poller draws from fn; nil → Clash HTTP. No-op before
+// Start (the poller doesn't exist yet); callers re-invoke after Start or on
+// backend-mode change. See traffic.SnapshotFunc.
+func (p *TrafficProfiler) SetConnSnapshotFunc(fn SnapshotFunc) {
+	p.mu.Lock()
+	poller := p.poller
+	p.mu.Unlock()
+	if poller != nil {
+		poller.SetSnapshotFunc(fn)
+	}
+}
+
 // Stop tears down the goroutines. Mainly for tests; in production the app
 // process exit handles cleanup.
 func (p *TrafficProfiler) Stop() {

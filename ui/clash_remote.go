@@ -30,6 +30,7 @@ import (
 	"sync/atomic"
 
 	"singbox-launcher/core"
+	"singbox-launcher/core/services"
 )
 
 // RemoteOverride — ephemeral remote Clash-API endpoint.
@@ -158,8 +159,37 @@ func EffectiveClashAPIConfig(ac *core.AppController) (baseURL, token string, ena
 	if ac == nil || ac.APIService == nil {
 		return "", "", false, false
 	}
+	// В daemon-режиме Clash API ядра слушает на перенесённом порту (не том,
+	// что в config.json — мы его переписали). Берём адрес у бэкенда, чтобы
+	// Test API и traffic-профайлер били куда надо, а не в занятый порт.
+	if base, tok, ok := ac.DaemonClashEndpoint(); ok {
+		return base, tok, true, false
+	}
 	base, tok, en := ac.APIService.GetClashAPIConfig()
 	return base, tok, en, false
+}
+
+// EffectiveProxyTransport — транспорт proxy-операций для Servers-tab.
+// Приоритет: явный remote-override (диагностический путь SPEC 064) →
+// транспорт активного бэкенда (daemon-режим, gRPC) → локальный Clash API.
+//
+// Всегда возвращает готовый транспорт: при выключенном clash_api это
+// ClashTransport с пустым baseURL — запрос завершится той же ошибкой
+// соединения, что и раньше (behavior-preserving для error-путей).
+func EffectiveProxyTransport(ac *core.AppController) services.ProxyTransport {
+	// Daemon-режим (gRPC-транспорт) имеет приоритет над remote-override:
+	// override — диагностический путь classic-режима (SPEC 064), в daemon он
+	// только увёл бы proxy-операции с gRPC на чужой Clash-адрес.
+	if ac != nil && ac.APIService != nil {
+		if t := ac.APIService.TransportOverride(); t != nil {
+			return t
+		}
+	}
+	if ov, ok := GetRemoteOverride(); ok {
+		return services.NewClashTransport(fmt.Sprintf("http://%s:%d", ov.Host, ov.Port), ov.Secret)
+	}
+	baseURL, token, _, _ := EffectiveClashAPIConfig(ac)
+	return services.NewClashTransport(baseURL, token)
 }
 
 // NormalizeHost — приводит юзер-ввод к чистому hostname'у.

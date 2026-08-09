@@ -61,6 +61,14 @@ type AppController struct {
 	// на изменения состояния вместо broadcast-callback'ов.
 	EventBus events.Bus
 
+	// backend — активный движок ядра (classic spawn / lxd daemon). Все
+	// package-level обёртки (StartSingBoxProcess и т.д.) диспетчеризуют
+	// сюда. Меняется только через setBackend (Settings → режим ядра).
+	backend   CoreBackend
+	backendMu sync.RWMutex
+	// backendModeChangeHook — колбэк после смены backend (traffic-источник).
+	backendModeChangeHook func()
+
 	// --- Process State ---
 	SingboxCmd                  *exec.Cmd
 	SingboxPrivilegedMode       bool   // true when sing-box was started with RunWithPrivileges (macOS TUN)
@@ -225,6 +233,9 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	ac.ConsecutiveCrashAttempts = 0
 	ac.ProcessService = NewProcessService(ac)
 	ac.ConfigService = NewConfigService(ac)
+	// Активный движок ядра. По умолчанию — классический spawn; daemon-режим
+	// (macOS) поднимается ниже из settings.json после инициализации сервисов.
+	ac.backend = NewLegacyBackend(ac)
 
 	// SPEC 044 feature-probe: генератор outbound'ов деградирует naive-ноды
 	// (drop + warning) вместо того чтобы отдать sing-box конфиг, который
@@ -236,7 +247,6 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	// subscription, поэтому зависимость подставляется здесь (прямой вызов
 	// дал бы цикл импорта).
 	subscription.NodeIdentityHashFunc = config.NodeIdentityHash
-
 
 	// Устанавливаем callback для проверки обновлений при открытии окна
 	ac.UIService.OnWindowShown = func() {
@@ -296,6 +306,11 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	ac.EventBus = events.NewMemoryBus()
 	ac.StateService = services.NewStateService()
 	ac.StateService.EventBus = ac.EventBus
+
+	// Daemon-режим (macOS): если включён в settings.json — заменяет
+	// LegacyBackend, установленный выше. Требует готовых FileService и
+	// APIService (транспорт-override ставится в конструкторе).
+	ac.initBackendFromSettings()
 
 	// Check if config file exists before starting auto-update
 	if _, err := os.Stat(ac.FileService.ConfigPath); os.IsNotExist(err) {
@@ -361,36 +376,47 @@ func (ac *AppController) gracefulExit() {
 		ac.UIService.StopTrayMenuUpdateTimer()
 	}
 
-	StopSingBoxProcess()
+	// Через backend: classic останавливает ядро (как раньше), daemon может
+	// оставить его работать (выход из лаунчера ≠ выключение VPN).
+	waitForStop := true
+	if b := ac.Backend(); b != nil {
+		waitForStop = b.OnAppExit()
+	} else {
+		StopSingBoxProcess()
+	}
 
 	if runtime.GOOS == "darwin" {
 		platform.FreePrivilegedAuthorization()
 	}
 
-	debuglog.InfoLog("GracefulExit: Waiting for sing-box to stop...")
-	// Use ProcessService constant for timeout
-	timeout := time.After(2 * time.Second) // gracefulShutdownTimeout from ProcessService
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		if !ac.RunningState.IsRunning() {
-			debuglog.InfoLog("GracefulExit: Sing-box confirmed stopped.")
-			break
-		}
-		select {
-		case <-timeout:
-			debuglog.WarnLog("GracefulExit: Timeout waiting for sing-box to stop. Forcing kill.")
-			ac.CmdMutex.Lock()
-			if ac.SingboxCmd != nil && ac.SingboxCmd.Process != nil {
-				_ = ac.SingboxCmd.Process.Kill()
+	if waitForStop {
+		debuglog.InfoLog("GracefulExit: Waiting for sing-box to stop...")
+		// Use ProcessService constant for timeout
+		timeout := time.After(2 * time.Second) // gracefulShutdownTimeout from ProcessService
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+	waitLoop:
+		for {
+			if !ac.RunningState.IsRunning() {
+				debuglog.InfoLog("GracefulExit: Sing-box confirmed stopped.")
+				break waitLoop
 			}
-			ac.CmdMutex.Unlock()
-			goto end_loop
-		case <-ticker.C:
-			// Check state on each tick - continue loop to re-check IsRunning()
+			select {
+			case <-timeout:
+				debuglog.WarnLog("GracefulExit: Timeout waiting for sing-box to stop. Forcing kill.")
+				ac.CmdMutex.Lock()
+				if ac.SingboxCmd != nil && ac.SingboxCmd.Process != nil {
+					_ = ac.SingboxCmd.Process.Kill()
+				}
+				ac.CmdMutex.Unlock()
+				break waitLoop
+			case <-ticker.C:
+				// Check state on each tick - continue loop to re-check IsRunning()
+			}
 		}
+	} else {
+		debuglog.InfoLog("GracefulExit: daemon mode keeps the core running; skipping stop wait")
 	}
-end_loop:
 
 	if ac.FileService != nil {
 		api.SetAPILogFile(nil)
@@ -605,6 +631,10 @@ func StartSingBoxProcess(skipRunningCheck ...bool) {
 		debuglog.WarnLog("StartSingBoxProcess: ProcessService is nil, this should not happen. Initializing...")
 		ac.ProcessService = NewProcessService(ac)
 	}
+	if b := ac.Backend(); b != nil {
+		b.StartVPN(skipRunningCheck...)
+		return
+	}
 	ac.ProcessService.Start(skipRunningCheck...)
 }
 
@@ -619,13 +649,23 @@ func StopSingBoxProcess() {
 		debuglog.WarnLog("StopSingBoxProcess: ProcessService is nil, this should not happen. Initializing...")
 		ac.ProcessService = NewProcessService(ac)
 	}
+	if b := ac.Backend(); b != nil {
+		b.StopVPN()
+		return
+	}
 	ac.ProcessService.Stop()
 }
 
-// KillSingBoxForRestart kills the sing-box process so the monitor will restart it (no StoppedByUser).
+// KillSingBoxForRestart applies a fresh config through the active backend:
+// classic — kill so the monitor restarts the process; daemon — in-process
+// apply without killing anything.
 func KillSingBoxForRestart() {
 	ac := GetController()
 	if ac == nil || ac.ProcessService == nil {
+		return
+	}
+	if b := ac.Backend(); b != nil {
+		b.RestartVPN()
 		return
 	}
 	ac.ProcessService.KillForRestart()
@@ -655,6 +695,11 @@ func CheckIfSingBoxRunningAtStartUtil() {
 	if ac.ProcessService == nil {
 		debuglog.WarnLog("CheckIfSingBoxRunningAtStartUtil: ProcessService is nil, this should not happen. Initializing...")
 		ac.ProcessService = NewProcessService(ac)
+	}
+	// В daemon-режиме работающее ядро внутри демона — норма, а не «чужой»
+	// инстанс: предупреждение с предложением убить процесс неуместно.
+	if ac.BackendMode() == BackendDaemon {
+		return
 	}
 	ac.ProcessService.CheckIfRunningAtStart()
 }

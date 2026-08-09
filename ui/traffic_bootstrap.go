@@ -70,10 +70,39 @@ func EnsureTrafficProfilerStarted(ac *core.AppController) {
 		if ac.APIService == nil {
 			return "", "", false
 		}
+		// Daemon-режим: Clash API вырезан из конфига (управление и трафик по
+		// gRPC). Backend это сигналит через DaemonClashEndpoint. Пока трафик
+		// в daemon-режиме идёт не через Clash-поллер — возвращаем "не
+		// поллить", чтобы не биться в отсутствующий Clash-порт.
+		// (gRPC SubscribeConnections — отдельный источник, подключается ниже.)
+		if base, tok, ok := ac.DaemonClashEndpoint(); ok {
+			return base, tok, true
+		}
+		if ac.BackendMode() == core.BackendDaemon {
+			return "", "", false // daemon без Clash — Clash-поллер выключен
+		}
 		return ac.APIService.GetClashAPIConfig()
 	}
 	logPath := filepath.Join(platform.GetLogsDir(ac.FileService.ExecDir), constants.ChildLogFileName)
 	p.Start(cfg, logPath, profilerHTTPClient)
+
+	// Источник трафика по режиму: daemon → gRPC SubscribeConnections,
+	// classic → nil (Clash HTTP через cfg выше). Переустанавливается при
+	// смене backend (ac.OnBackendModeChanged).
+	applyTrafficSource(ac, p)
+	ac.SetBackendModeChangeHook(func() { applyTrafficSource(ac, p) })
+}
+
+// applyTrafficSource ставит профайлеру gRPC-источник соединений в
+// daemon-режиме, снимает (nil → Clash HTTP) в classic.
+func applyTrafficSource(ac *core.AppController, p *tprof.TrafficProfiler) {
+	if fnAny := ac.DaemonConnSnapshotFunc(); fnAny != nil {
+		if fn, ok := fnAny.(tprof.SnapshotFunc); ok {
+			p.SetConnSnapshotFunc(fn)
+			return
+		}
+	}
+	p.SetConnSnapshotFunc(nil)
 }
 
 // trafficWindowManager lazily creates the window-singleton manager and

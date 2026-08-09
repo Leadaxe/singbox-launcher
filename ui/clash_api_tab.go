@@ -112,8 +112,8 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			// SPEC 064: capture generation для drop-stale если override
 			// сменился пока запрос летит.
 			gen := CurrentGeneration()
-			baseURL, token, _, _ := EffectiveClashAPIConfig(ac)
-			proxies, now, err := api.GetProxiesInGroup(baseURL, token, group)
+			transport := EffectiveProxyTransport(ac)
+			proxies, now, err := transport.GroupProxies(group)
 			fyne.Do(func() {
 				if gen != CurrentGeneration() {
 					// Endpoint override сменился — результат stale, drop без write в UI.
@@ -207,6 +207,25 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 			return
 		}
+		// Daemon-режим: Clash API нет, управление по gRPC. «Тест» = проверка
+		// gRPC-транспорта через загрузку групп; статус показываем как gRPC,
+		// без Clash-ошибок.
+		if ac.BackendMode() == core.BackendDaemon {
+			go func() {
+				_, _, err := EffectiveProxyTransport(ac).GroupProxies(ac.APIService.GetSelectedClashGroup())
+				fyne.Do(func() {
+					if err != nil {
+						ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_grpc_off"))
+						ShowError(ac.UIService.MainWindow, err)
+						return
+					}
+					ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_grpc_on"))
+					updateSelectorList()
+					onLoadAndRefreshProxies()
+				})
+			}()
+			return
+		}
 		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac)
 		if !clashAPIEnabled {
 			ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_clash_api_off_config"))
@@ -289,8 +308,8 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 				return
 			}
 			fyne.Do(func() { button.SetText("...") })
-			baseURL, token, _, _ := EffectiveClashAPIConfig(ac)
-			delay, err := api.GetDelay(baseURL, token, proxyName)
+			transport := EffectiveProxyTransport(ac)
+			delay, err := transport.Delay(proxyName)
 			fyne.Do(func() {
 				proxies := ac.GetProxiesList()
 				for i := range proxies {
@@ -527,7 +546,10 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 				return
 			}
 			go func(group string) {
-				err := ac.APIService.SwitchProxy(group, proxyNameForCallback)
+				// Через EffectiveProxyTransport: учитывает remote-override
+				// (SPEC 064) и gRPC-транспорт daemon-режима — прямой
+				// APIService.SwitchProxy их не видит.
+				err := ac.APIService.SwitchProxyVia(EffectiveProxyTransport(ac), group, proxyNameForCallback)
 				fyne.Do(func() {
 					if err != nil {
 						ShowError(ac.UIService.MainWindow, err)
@@ -828,7 +850,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 		go func() {
 			gen := atomic.AddUint64(&pingAllGeneration, 1)
-			baseURL, token, _, _ := EffectiveClashAPIConfig(ac)
+			transport := EffectiveProxyTransport(ac)
 
 			type pingJob struct {
 				Name string
@@ -848,7 +870,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 			worker := func() {
 				for job := range jobs {
-					delay, err := api.GetDelay(baseURL, token, job.Name)
+					delay, err := transport.Delay(job.Name)
 					fyne.Do(func() {
 						if atomic.LoadUint64(&pingAllGeneration) != gen {
 							return
@@ -1189,11 +1211,12 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 			return
 		}
-		baseURL, token, enabled, _ := EffectiveClashAPIConfig(ac)
+		_, _, enabled, _ := EffectiveClashAPIConfig(ac)
 		if !enabled {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
 			return
 		}
+		transport := EffectiveProxyTransport(ac)
 
 		// Run queries in background to avoid blocking UI
 		go func() {
@@ -1221,7 +1244,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 			results := make([]string, 0, len(currentSelectorOptions))
 			for _, sel := range currentSelectorOptions {
-				_, now, err := api.GetProxiesInGroup(baseURL, token, sel)
+				_, now, err := transport.GroupProxies(sel)
 				if err != nil {
 					results = append(results, locale.Tf("servers.selector_error", sel, err))
 					continue
@@ -1314,11 +1337,27 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	endpointGearBtn.SetToolTip(locale.T("servers.endpoint.tooltip_settings"))
 	endpointGearBtn.Importance = widget.LowImportance
 
+	// Кнопка пула балансировщика — только daemon-режим (gRPC GetPool).
+	// Видимость обновляется через refreshPoolButtonVisibility (дёргается из
+	// updateClashAPITabState вместе с прочими cross-tab рефрешами).
+	poolBtn := ttwidget.NewButton("⛁", func() { OpenPoolWindow(ac) })
+	poolBtn.SetToolTip(locale.T("pool.window_title"))
+	poolBtn.Importance = widget.LowImportance
+	refreshPoolBtnVisibility := func() {
+		if ac.DaemonPoolAvailable() {
+			poolBtn.Show()
+		} else {
+			poolBtn.Hide()
+		}
+	}
+	refreshPoolBtnVisibility()
+	setPoolButtonVisibilityHook(refreshPoolBtnVisibility)
+
 	topControls := container.NewVBox(
 		container.NewBorder(
 			nil, nil,
 			ac.UIService.ApiStatusLabel,
-			container.NewHBox(endpointBadge, endpointGearBtn),
+			container.NewHBox(poolBtn, endpointBadge, endpointGearBtn),
 		),
 		container.NewHBox(widget.NewLabel(locale.T("servers.label_selector_group")), groupSelect, mapButton),
 		widget.NewSeparator(),

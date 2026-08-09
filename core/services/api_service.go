@@ -54,6 +54,11 @@ type APIService struct {
 	RunningStateIsRunning func() bool
 	OnProxiesUpdated      func() // Called when proxies are updated
 	OnProxySwitched       func() // Called when proxy is switched
+
+	// transportOverride — альтернативный транспорт proxy-операций
+	// (daemon-режим: gRPC к lxd). nil = классический Clash HTTP.
+	// Protected by StateMutex.
+	transportOverride ProxyTransport
 }
 
 // NewAPIService creates and initializes a new APIService instance.
@@ -287,9 +292,9 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 		return apiSvc.AutoLoadGeneration != myGen
 	}
 
-	if _, _, enabled := apiSvc.GetClashAPIConfig(); !enabled {
+	if _, err := apiSvc.wireTransport(); err != nil {
 		clearInProgress()
-		debuglog.DebugLog("AutoLoadProxies: Clash API is disabled, skipping")
+		debuglog.DebugLog("AutoLoadProxies: no proxy transport available (%v), skipping", err)
 		return
 	}
 
@@ -342,11 +347,7 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 			debuglog.DebugLog("AutoLoadProxies: Attempt %d/%d to load proxies for group '%s'", attempt+1, len(intervals), selectedGroup)
 
 			// Get current group (it might have changed)
-			apiSvc.StateMutex.RLock()
-			currentGroup := apiSvc.SelectedClashGroup
-			baseURL := apiSvc.BaseURL
-			token := apiSvc.Token
-			apiSvc.StateMutex.RUnlock()
+			currentGroup := apiSvc.GetSelectedClashGroup()
 
 			if currentGroup == "" {
 				debuglog.DebugLog("AutoLoadProxies: Group cleared, stopping attempts")
@@ -358,8 +359,16 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 				continue
 			}
 
+			// Транспорт строим на каждой попытке: endpoint/override могли
+			// смениться пока retry-цикл спал.
+			transport, terr := apiSvc.wireTransport()
+			if terr != nil {
+				debuglog.DebugLog("AutoLoadProxies: transport unavailable (%v)", terr)
+				continue
+			}
+
 			// Try to load proxies
-			proxies, now, err := api.GetProxiesInGroup(baseURL, token, currentGroup)
+			proxies, now, err := transport.GroupProxies(currentGroup)
 			if err != nil {
 				if errors.Is(err, api.ErrPlatformInterrupt) {
 					debuglog.DebugLog("AutoLoadProxies: Aborted (platform interrupt/sleep)")
@@ -423,13 +432,12 @@ func (apiSvc *APIService) AutoLoadProxies(ctx context.Context) {
 
 // SwitchProxy switches to the specified proxy in the selected group.
 func (apiSvc *APIService) SwitchProxy(group, proxyName string) error {
-	baseURL, token, enabled := apiSvc.GetClashAPIConfig()
-	if !enabled {
-		return fmt.Errorf("clash_api is disabled")
+	transport, err := apiSvc.wireTransport()
+	if err != nil {
+		return err
 	}
 
-	err := api.SwitchProxy(baseURL, token, group, proxyName)
-	if err != nil {
+	if err := transport.SwitchProxy(group, proxyName); err != nil {
 		return fmt.Errorf("failed to switch proxy: %w", err)
 	}
 
