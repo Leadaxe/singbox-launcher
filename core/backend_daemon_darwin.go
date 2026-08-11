@@ -126,17 +126,49 @@ func (b *DaemonBackend) reinstallTransport() {
 }
 
 // diagnoseReachError превращает сырую ошибку связи с демоном в понятный
-// пользователю совет (английский). Три частых случая: демон не запущен,
-// сертификат не совпадает (после переустановки службы), прочее.
+// пользователю совет (английский) и реализует «лаунчер следует за демоном»:
+// режимом канала владеет демон (tls в его daemon.json), клиент лишь
+// обнаруживает смену (lxdclient.DetectChannel) и подстраивается — на
+// loopback сброс пина автоматический, по сети только совет (авто-даунгрейд
+// в сетевом сценарии открывал бы MITM'у downgrade-атаку). Обратный переход
+// (демон стал TLS) автоматике недоступен принципиально: пин нельзя
+// выдумать, доверие приезжает только с приглашением.
 func (b *DaemonBackend) diagnoseReachError(err error) string {
 	s := err.Error()
+	addr := b.admin.AddrString()
 	switch {
+	case strings.Contains(s, "first record does not look like a TLS handshake"):
+		// Профиль лаунчера — TLS (пин установлен), а на адресе живёт
+		// plain-демон: демон перевели на tls:false.
+		if lxdclient.DetectChannel(addr) == lxdclient.ChannelPlain {
+			if lxdclient.IsLoopbackAddr(addr) {
+				b.ac.followDaemonPlainChannel()
+				return "Daemon at " + addr + " switched to plain (secret) mode — the launcher followed automatically. " +
+					"If the daemon uses a secret, set it in the connection window (Servers tab, gear button), then try again."
+			}
+			return "Daemon at " + addr + " now runs in plain (secret) mode. " +
+				"Unpair in the connection window to follow it (automatic follow over the network is disabled: it would enable downgrade attacks)."
+		}
+		return "Cannot reach the daemon: " + s
 	case strings.Contains(s, "connection refused"), strings.Contains(s, "no such host"), strings.Contains(s, "dial tcp"):
-		return "Daemon is not reachable at " + b.admin.AddrString() +
-			". Install or start the daemon service in Settings, then try again."
+		return "Daemon is not reachable at " + addr +
+			". Install the service and pair (Servers tab, gear button, Local), then try again."
 	case strings.Contains(s, "fingerprint"), strings.Contains(s, "certificate"):
 		return "Daemon certificate changed (the service was reinstalled). " +
-			"Re-pair in Settings — click «Pair local» — then try again."
+			"Re-pair with a fresh invite (Servers tab, gear button, Local), then try again."
+	case strings.Contains(s, "HTTP request to an HTTPS server"):
+		// Профиль лаунчера — plain, а демон отвечает 400-сигнатурой
+		// net/http-TLS-сервера: его вернули на tls:true.
+		return "Daemon at " + addr + " now requires mTLS. " +
+			"Pair with a fresh invite (mint one with `sudo sing-box lxd client add` on its host), then try again."
+	case strings.Contains(s, "EOF"), strings.Contains(s, "connection reset"):
+		// Профиль лаунчера — plain, а демон рвёт HTTP-запросы: вероятно, его
+		// вернули на TLS (tls:true) — plain-клиенту он отвечать не будет.
+		if lxdclient.DetectChannel(addr) == lxdclient.ChannelTLS {
+			return "Daemon at " + addr + " now requires mTLS. " +
+				"Pair with a fresh invite (mint one with `sudo sing-box lxd client add` on its host), then try again."
+		}
+		return "Cannot reach the daemon: " + s
 	default:
 		return "Cannot reach the daemon: " + s
 	}
@@ -197,8 +229,11 @@ func (b *DaemonBackend) applyCurrentConfig(caller string, forced bool) {
 		debuglog.WarnLog("daemon.%s: config rebuild failed (%v); proceeding with existing config.json", caller, err)
 	}
 
-	// Clash API остаётся живым внутри ядра демона (традиционный путь; в
-	// внешние дашборды) — перечитываем endpoint из свежего config.json.
+	// Синхронизируем APIService с пересобранным config.json. В daemon-режиме
+	// Clash API из доставляемой демону копии ВЫРЕЗАН (prepareConfigForDaemon),
+	// а proxy-операции идут через gRPC transport-override — но состояние
+	// APIService (endpoint, Enabled) должно отражать config.json на диске,
+	// чтобы возврат на classic-режим не унёс устаревший endpoint.
 	if ac.APIService != nil {
 		if err := ac.APIService.ReloadClashAPIConfig(); err != nil {
 			debuglog.WarnLog("daemon.%s: reload Clash API config: %v", caller, err)
@@ -214,22 +249,30 @@ func (b *DaemonBackend) applyCurrentConfig(caller string, forced bool) {
 		return
 	}
 
-	// Подготовка конфига для демона: (1) абсолютизация cache_file (демон
-	// cwd="/", относительный путь → read-only корень → фатал); (2) перенос
-	// Clash API на отдельный порт, чтобы не биться с classic-ядром за 9090.
-	// Classic-режим этого не требует (cwd=bin/, единственное ядро).
-	config, err = prepareConfigForDaemon(config)
-	if err != nil {
-		ac.ShowStartupError(fmt.Errorf("daemon apply: prepare config: %w", err))
-		return
-	}
-
 	// Pre-flight: убеждаемся, что демон жив и его сертификат совпадает с
 	// закреплённым, ДО отправки конфига — иначе пользователь видит сырой
 	// "connection refused" / "fingerprint mismatch" вместо понятного совета.
 	if _, err := b.admin.Status(); err != nil {
 		msg := b.diagnoseReachError(err)
 		ac.ShowStartupError(fmt.Errorf("%s", msg))
+		return
+	}
+
+	// Подготовка конфига для демона: (1) абсолютизация cache_file в каталог,
+	// которым ВЛАДЕЕТ демон — state_dir из его паспорта (/admin/info); демон
+	// работает с cwd="/", относительный путь ушёл бы в read-only корень.
+	// Fallback на историческую константу — только если info недоступен
+	// (демон старой сборки). (2) Полное удаление clash_api (всё по gRPC).
+	// Classic-режим этой подготовки не проходит (cwd=bin/, единственное ядро).
+	runtimeDir := daemonFallbackRuntimeDir
+	if passport, infoErr := b.admin.Info(); infoErr == nil && passport.StateDir != "" {
+		runtimeDir = passport.StateDir
+	} else if infoErr != nil {
+		debuglog.WarnLog("daemon.%s: /admin/info unavailable (%v); using fallback runtime dir", caller, infoErr)
+	}
+	config, err = prepareConfigForDaemon(config, runtimeDir)
+	if err != nil {
+		ac.ShowStartupError(fmt.Errorf("daemon apply: prepare config: %w", err))
 		return
 	}
 
@@ -349,6 +392,12 @@ func (b *DaemonBackend) grpcClient() (daemonpb.StartedServiceClient, error) {
 // superviseStatus держит подписку SubscribeServiceStatus: демон шлёт текущий
 // статус сразу при подписке и каждый переход дальше — один стрим видит всё
 // без переподключения. Обрыв → reconnect с экспоненциальным backoff.
+//
+// Backoff сбрасывается ТОЛЬКО после реально полученного кадра: создание
+// стрима у grpc-go ленивое (NewClient не коннектится, Subscribe* возвращает
+// stream без ошибки даже при лежащем демоне — ошибка всплывает в первом
+// Recv), поэтому сброс «по успешному Subscribe» держал бы reconnect-цикл на
+// вечной 1s без роста.
 func (b *DaemonBackend) superviseStatus() {
 	backoff := time.Second
 	for {
@@ -359,9 +408,8 @@ func (b *DaemonBackend) superviseStatus() {
 		if err == nil {
 			var stream grpc.ServerStreamingClient[daemonpb.ServiceStatus]
 			stream, err = client.SubscribeServiceStatus(b.ctx, &emptypb.Empty{})
-			if err == nil {
+			if err == nil && b.consumeStatusStream(stream) {
 				backoff = time.Second
-				b.consumeStatusStream(stream)
 			}
 		}
 		if err != nil {
@@ -378,14 +426,18 @@ func (b *DaemonBackend) superviseStatus() {
 	}
 }
 
-func (b *DaemonBackend) consumeStatusStream(stream grpc.ServerStreamingClient[daemonpb.ServiceStatus]) {
+// consumeStatusStream читает стрим до обрыва; возвращает true, если был
+// получен хотя бы один кадр (стрим реально работал, а не умер на первом Recv).
+func (b *DaemonBackend) consumeStatusStream(stream grpc.ServerStreamingClient[daemonpb.ServiceStatus]) bool {
 	ac := b.ac
+	received := false
 	for {
 		status, err := stream.Recv()
 		if err != nil {
 			debuglog.DebugLog("daemon.supervisor: status stream closed: %v", err)
-			return
+			return received
 		}
+		received = true
 		if !b.isActive() {
 			// Стрим вытесненного backend'а не должен дёргать общее состояние.
 			continue
@@ -422,7 +474,8 @@ func (b *DaemonBackend) consumeStatusStream(stream grpc.ServerStreamingClient[da
 }
 
 // superviseLogs держит подписку SubscribeLog и наполняет кольцевой буфер.
-// Тот же reconnect-паттерн, что у superviseStatus.
+// Тот же reconnect-паттерн, что у superviseStatus (сброс backoff — только
+// после реально полученного кадра, см. комментарий там).
 func (b *DaemonBackend) superviseLogs() {
 	backoff := time.Second
 	for {
@@ -433,9 +486,8 @@ func (b *DaemonBackend) superviseLogs() {
 		if err == nil {
 			var stream grpc.ServerStreamingClient[daemonpb.Log]
 			stream, err = client.SubscribeLog(b.ctx, &emptypb.Empty{})
-			if err == nil {
+			if err == nil && b.consumeLogStream(stream) {
 				backoff = time.Second
-				b.consumeLogStream(stream)
 			}
 		}
 		if err != nil {
@@ -452,13 +504,16 @@ func (b *DaemonBackend) superviseLogs() {
 	}
 }
 
-func (b *DaemonBackend) consumeLogStream(stream grpc.ServerStreamingClient[daemonpb.Log]) {
+// consumeLogStream читает стрим до обрыва; true — получен хотя бы один кадр.
+func (b *DaemonBackend) consumeLogStream(stream grpc.ServerStreamingClient[daemonpb.Log]) bool {
+	received := false
 	for {
 		batch, err := stream.Recv()
 		if err != nil {
 			debuglog.DebugLog("daemon.logs: stream closed: %v", err)
-			return
+			return received
 		}
+		received = true
 		b.logMu.Lock()
 		if batch.GetReset_() {
 			b.logLines = b.logLines[:0]
@@ -495,28 +550,6 @@ func (b *DaemonBackend) CoreLogLines(max int) []string {
 // в classic-конфиге».
 func (b *DaemonBackend) ClashEndpoint() (baseURL, token string, ok bool) {
 	return "", "", false
-}
-
-// PoolGroups implements poolSource: теги urltest-групп (только у них есть
-// пул балансировщика).
-func (b *DaemonBackend) PoolGroups() ([]string, error) {
-	client, err := b.grpcClient()
-	if err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithTimeout(b.ctx, daemonRPCTimeout)
-	defer cancel()
-	groups, err := client.GetGroups(ctx, &emptypb.Empty{})
-	if err != nil {
-		return nil, fmt.Errorf("daemon GetGroups: %w", err)
-	}
-	var tags []string
-	for _, g := range groups.GetGroup() {
-		if strings.EqualFold(g.GetType(), "urltest") {
-			tags = append(tags, g.GetTag())
-		}
-	}
-	return tags, nil
 }
 
 // PoolSlots implements poolSource через lx-RPC GetPool.

@@ -5,6 +5,7 @@ package lxdclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,19 +49,25 @@ func TestDaemonEndToEnd(t *testing.T) {
 		t.Skip("LXD_E2E_BIN is not set — skipping live daemon e2e")
 	}
 
-	stateDir := t.TempDir()
+	tempDir := t.TempDir()
+	stateDir := filepath.Join(tempDir, "state")
+
+	// Новая модель владения (ревизия 057): дом демона — state-dir, все его
+	// настройки в daemon.json. Демон запускается голым `lxd --state-dir` и
+	// обязан подхватить listen/tls/secret из своего файла.
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	secret := "e2e-test-secret"
-	secretFile := filepath.Join(stateDir, "secret")
-	if err := os.WriteFile(secretFile, []byte(secret+"\n"), 0o600); err != nil {
+	daemonJSON := `{"listen":"` + e2eListen + `","tls":true,"secret":"` + secret + `"}`
+	if err := os.WriteFile(filepath.Join(stateDir, "daemon.json"), []byte(daemonJSON), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command(singboxBin, "lxd",
-		"--listen", e2eListen,
-		"--tls",
-		"--secret-file", secretFile,
-		"--state-dir", filepath.Join(stateDir, "state"),
-	)
+	cmd := exec.Command(singboxBin, "lxd", "--state-dir", stateDir)
+	// cwd демона → временный каталог: иначе он наследует каталог пакета и
+	// пишет туда рантайм-файлы (cache.db), засоряя рабочее дерево.
+	cmd.Dir = tempDir
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start daemon: %v", err)
@@ -77,18 +84,28 @@ func TestDaemonEndToEnd(t *testing.T) {
 		}
 	})
 
-	// --- Сопряжение: operator-маршрут выдаёт приглашение (loopback+Bearer).
-	operator := New(Config{Addr: e2eListen, Secret: secret, AllowUnpinnedTLS: true})
+	// --- Сопряжение прод-путём оператора: `lxd client add` сам находит
+	// listen/secret в daemon.json указанного state-dir и минтит приглашение.
 	var invite string
 	deadline := time.Now().Add(15 * time.Second)
 	for {
-		var err error
-		invite, err = operator.MintInvite()
+		out, err := exec.Command(singboxBin, "lxd", "client", "add",
+			"--state-dir", stateDir, "--name", "e2e-launcher").CombinedOutput()
 		if err == nil {
-			break
+			for _, line := range strings.Split(string(out), "\n") {
+				if candidate := strings.TrimSpace(line); strings.Contains(candidate, "#") {
+					if _, parseErr := ParseInvite(candidate); parseErr == nil {
+						invite = candidate
+					}
+				}
+			}
+			if invite != "" {
+				break
+			}
+			t.Fatalf("client add succeeded but printed no invite: %s", out)
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("mint invite: %v", err)
+			t.Fatalf("client add: %v (%s)", err, out)
 		}
 		time.Sleep(300 * time.Millisecond)
 	}
@@ -98,19 +115,34 @@ func TestDaemonEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse invite: %v", err)
 	}
-	identity, err := LoadOrCreateIdentity(filepath.Join(stateDir, "launcher-id"))
+	identity, err := LoadOrCreateIdentity(filepath.Join(tempDir, "launcher-id"))
 	if err != nil {
 		t.Fatalf("identity: %v", err)
 	}
+	// БЕЗ Secret: доверенный клиентский сертификат — полный мандат
+	// mTLS-плоскости (bearer-or-cert); секрет демона лаунчер не знает.
 	client := New(Config{
 		Addr:              parsed.Addr,
 		ServerFingerprint: parsed.ServerFingerprint,
 		Identity:          identity,
-		Secret:            secret,
 	})
 	if err := client.Enroll(parsed.Code, "e2e-launcher"); err != nil {
 		t.Fatalf("enroll: %v", err)
 	}
+
+	// --- Паспорт демона: /admin/info доступен по одному сертификату и
+	// отдаёт настоящий state-dir (источник каталога для cache_file).
+	passport, err := client.Info()
+	if err != nil {
+		t.Fatalf("info after enroll (cert-only): %v", err)
+	}
+	if passport.StateDir != stateDir {
+		t.Fatalf("info.state_dir = %q, want %q", passport.StateDir, stateDir)
+	}
+	if !passport.TLS || passport.Fingerprint == "" {
+		t.Fatalf("info must report tls+fingerprint, got %+v", passport)
+	}
+	t.Logf("daemon passport: version=%s state_dir=%s", passport.Version, passport.StateDir)
 
 	// Одноразовость кода: второй enroll обязан упасть.
 	if err := client.Enroll(parsed.Code, "e2e-launcher-2"); err == nil {
@@ -151,12 +183,12 @@ func TestDaemonEndToEnd(t *testing.T) {
 		t.Fatal("apply of a broken config must fail")
 	} else {
 		var applyErr *ApplyError
-		if !errorsAs(err, &applyErr) || !applyErr.Rejected() {
+		if !errors.As(err, &applyErr) || !applyErr.Rejected() {
 			t.Fatalf("broken config: want 422 rejected, got %v", err)
 		}
 	}
 	if info, _ = client.Status(); info.Status != "started" {
-		t.Fatalf("после rejected apply статус %q, want started", info.Status)
+		t.Fatalf("status after rejected apply = %q, want started", info.Status)
 	}
 
 	// --- gRPC: версия, статус-стрим, группы, selector, url-test, пул, логи.
@@ -283,21 +315,4 @@ func TestDaemonEndToEnd(t *testing.T) {
 	if info, _ = client.Status(); info.Status != "started" {
 		t.Fatalf("status after start = %q, want started", info.Status)
 	}
-}
-
-// errorsAs — локальный шим, чтобы не тянуть errors в import-блок теста.
-func errorsAs(err error, target **ApplyError) bool {
-	for err != nil {
-		if e, ok := err.(*ApplyError); ok {
-			*target = e
-			return true
-		}
-		type unwrapper interface{ Unwrap() error }
-		u, ok := err.(unwrapper)
-		if !ok {
-			return false
-		}
-		err = u.Unwrap()
-	}
-	return false
 }

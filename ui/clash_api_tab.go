@@ -216,6 +216,14 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 				fyne.Do(func() {
 					if err != nil {
 						ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_grpc_off"))
+						// FailedPrecondition = канал и сопряжение живы, но
+						// ядро внутри демона не запущено — сырой RPC-текст
+						// пугает, а лекарство одно: нажать Start.
+						if strings.Contains(err.Error(), "service is not started") {
+							ShowErrorText(ac.UIService.MainWindow, "Daemon",
+								locale.T("servers.error_daemon_core_idle"))
+							return
+						}
 						ShowError(ac.UIService.MainWindow, err)
 						return
 					}
@@ -1211,10 +1219,14 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 			return
 		}
-		_, _, enabled, _ := EffectiveClashAPIConfig(ac)
-		if !enabled {
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
-			return
+		// Гейт «clash_api включён» осмыслен только для classic: в daemon-режиме
+		// запросы идут по gRPC-транспорту и от clash_api-секции конфига не
+		// зависят (её может вообще не быть).
+		if ac.BackendMode() != core.BackendDaemon {
+			if _, _, enabled, _ := EffectiveClashAPIConfig(ac); !enabled {
+				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
+				return
+			}
 		}
 		transport := EffectiveProxyTransport(ac)
 
@@ -1320,16 +1332,17 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		suppressSelectCallback = false
 	}
 
-	// SPEC 064: status badge ("🏠 Local" / "🌐 host:port") + gear ⚙ для
-	// remote-endpoint settings. Badge auto-update'ится через OnOverrideChanged.
+	// Status badge ("🏠 Local" / "🌐 host:port", SPEC 064) + gear ⚙ —
+	// открывает окно настроек подключения (вкладки REMOTE / LOCAL: remote
+	// Clash-override и движок локального ядра). Badge auto-update'ится
+	// через OnOverrideChanged.
 	endpointBadge := newRemoteEndpointBadge()
 	endpointGearBtn := ttwidget.NewButton("⚙", func() {
-		showRemoteEndpointDialog(ac, ac.UIService.MainWindow, func() {
-			// onChanged: после Set/Clear override force-refresh proxy list,
-			// чтобы tab сразу отразил данные нового endpoint'а.
-			// Generation counter в EffectiveClashAPIConfig + atomic gen-check
-			// в refresh-goroutine'ах гарантирует drop-stale если рефреш
-			// уже летит против старого endpoint'а.
+		OpenConnectionWindow(ac, func() {
+			// onChanged: после смены override/движка force-refresh proxy
+			// list, чтобы tab сразу отразил данные нового транспорта.
+			// Generation counter в EffectiveClashAPIConfig + atomic
+			// gen-check в refresh-goroutine'ах гарантирует drop-stale.
 			onResetAPIState()
 			onLoadAndRefreshProxies()
 		})
@@ -1337,27 +1350,11 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	endpointGearBtn.SetToolTip(locale.T("servers.endpoint.tooltip_settings"))
 	endpointGearBtn.Importance = widget.LowImportance
 
-	// Кнопка пула балансировщика — только daemon-режим (gRPC GetPool).
-	// Видимость обновляется через refreshPoolButtonVisibility (дёргается из
-	// updateClashAPITabState вместе с прочими cross-tab рефрешами).
-	poolBtn := ttwidget.NewButton("⛁", func() { OpenPoolWindow(ac) })
-	poolBtn.SetToolTip(locale.T("pool.window_title"))
-	poolBtn.Importance = widget.LowImportance
-	refreshPoolBtnVisibility := func() {
-		if ac.DaemonPoolAvailable() {
-			poolBtn.Show()
-		} else {
-			poolBtn.Hide()
-		}
-	}
-	refreshPoolBtnVisibility()
-	setPoolButtonVisibilityHook(refreshPoolBtnVisibility)
-
 	topControls := container.NewVBox(
 		container.NewBorder(
 			nil, nil,
 			ac.UIService.ApiStatusLabel,
-			container.NewHBox(poolBtn, endpointBadge, endpointGearBtn),
+			container.NewHBox(endpointBadge, endpointGearBtn),
 		),
 		container.NewHBox(widget.NewLabel(locale.T("servers.label_selector_group")), groupSelect, mapButton),
 		widget.NewSeparator(),

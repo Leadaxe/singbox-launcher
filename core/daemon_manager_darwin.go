@@ -3,63 +3,61 @@
 package core
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/muhammadmuzzammil1998/jsonc"
 
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/lxdclient"
 	"singbox-launcher/internal/platform"
 )
 
-// Управление launchd-службой демона `sing-box lxd` (задача 057 форка):
-// установка/удаление системного LaunchDaemon через существующий механизм
-// привилегий (пароль один раз на операцию), генерация Bearer-секрета,
-// авто-сопряжение с локальной службой и ручное сопряжение по приглашению.
+// Управление launchd-службой демона `sing-box lxd` (задача 057 форка,
+// ревизия модели владения 2026-08-09): все привилегированные операции —
+// ТОЛЬКО через терминал оператора. Лаунчер генерирует готовые sudo-команды
+// (установка/удаление/пере-сопряжение/kickstart), открывает Terminal.app и
+// принимает результат — приглашение сопряжения пользователь вставляет в поле
+// из вывода команды. AuthorizationExecuteWithPrivileges для демона не
+// используется вовсе (выпилен вместе с priv-exec-хелпером): свой sudo с
+// полным выводом прозрачнее и не тянет euid-фокусы.
+//
+// Модель владения: демон полностью самодостаточен в своём state-dir —
+// daemon.json (listen/tls/secret), ключи, доверенные клиенты, last-good.
+// Лаунчер НЕ генерирует и НЕ хранит секрет демона; у него остаётся только
+// собственная клиентская пара (bin/daemon/).
 
 const (
 	// daemonLaunchdLabel зеркалит константу lxd/service_darwin.go форка.
 	daemonLaunchdLabel = "com.leadaxe.sing-box-lxd"
-	// daemonDefaultListen — адрес управляющего канала локальной службы.
-	daemonDefaultListen = "127.0.0.1:9091"
-	// daemonSecretFileName — файл Bearer-секрета (0600, в bin/daemon/).
-	// Служба читает его через --secret-file; root читает файлы пользователя.
-	daemonSecretFileName = "secret"
+	// daemonDefaultListen — отображаемый дефолт адреса управляющего канала
+	// (install сканирует свободный порт с 19091; фактический адрес приезжает
+	// в приглашении и сохраняется при сопряжении).
+	daemonDefaultListen = "127.0.0.1:19091"
+	// daemonLegacySecretFileName — файл Bearer-секрета старой модели (до
+	// ревизии владения). Больше не создаётся; UnpairDaemon подчищает остатки.
+	daemonLegacySecretFileName = "secret"
 
-	daemonPrivilegedTimeout = 60 * time.Second
-
-	// daemonSupportDir — каталог службы демона (root-owned, cwd демона = "/").
-	// Зеркалит lxd/service_darwin.go форка (StandardOutPath рядом). Сюда
-	// абсолютизируются относительные пути конфига, которые ядро ПИШЕТ
-	// (cache_file), иначе они резолвятся от "/" в read-only корень.
-	daemonSupportDir = "/Library/Application Support/sing-box-lxd"
+	// daemonFallbackRuntimeDir — каталог рантайм-файлов демона, используемый
+	// ТОЛЬКО когда /admin/info недоступен (демон старой сборки). Обычный путь
+	// — state_dir из паспорта демона (см. prepareConfigForDaemon caller).
+	daemonFallbackRuntimeDir = "/Library/Application Support/sing-box-lxd"
 )
 
 func daemonSystemPlistPath() string {
 	return filepath.Join("/Library/LaunchDaemons", daemonLaunchdLabel+".plist")
 }
 
-// daemonRuntimeDir — куда демон пишет рантайм-файлы (cache.db и т.п.).
-// Сам support-каталог: он УЖЕ создаётся службой при установке (там лежит
-// lxd.log), root в нём пишет — отдельный подкаталог не нужен, mkdir не
-// требуется. state демона (last-good/ключи) лежит в подкаталоге state/,
-// cache.db — рядом с логом, это разные вещи и не конфликтуют.
-func daemonRuntimeDir() string {
-	return daemonSupportDir
-}
-
 // prepareConfigForDaemon готовит config.json перед отправкой демону:
-//  1. cache_file.path → абсолютный в каталоге демона (демон cwd="/", иначе
-//     относительный путь уходит в read-only корень и валит старт);
+//  1. cache_file.path → абсолютный в runtimeDir — каталоге, которым владеет
+//     демон (state_dir из /admin/info; демон cwd="/", иначе относительный
+//     путь уходит в read-only корень и валит старт);
 //  2. experimental.clash_api УДАЛЯЕТСЯ — в daemon-режиме управление и ноды
 //     идут по gRPC (GetGroups/SelectOutbound/URLTestOutbound), а трафик — по
 //     gRPC SubscribeConnections. Clash API демону не нужен вовсе: убираем его,
@@ -70,7 +68,7 @@ func daemonRuntimeDir() string {
 // Конфиг — JSONC (с комментариями): стрипим их (jsonc.ToJSON), правим map,
 // сериализуем чистым JSON (демон толерантен к обоим). Возвращает исходный
 // конфиг без изменений, если править нечего.
-func prepareConfigForDaemon(config []byte) ([]byte, error) {
+func prepareConfigForDaemon(config []byte, runtimeDir string) ([]byte, error) {
 	clean := jsonc.ToJSON(config)
 	var root map[string]json.RawMessage
 	if err := json.Unmarshal(clean, &root); err != nil {
@@ -100,7 +98,7 @@ func prepareConfigForDaemon(config []byte) ([]byte, error) {
 			pathStr = "cache.db"
 		}
 		if !filepath.IsAbs(pathStr) {
-			abs := filepath.Join(daemonRuntimeDir(), filepath.Base(pathStr))
+			abs := filepath.Join(runtimeDir, filepath.Base(pathStr))
 			cf["path"], _ = json.Marshal(abs)
 			exp["cache_file"], _ = json.Marshal(cf)
 			changed = true
@@ -145,6 +143,10 @@ type DaemonUIStatus struct {
 	// InterruptedApply — демон обнаружил, что предыдущий apply был прерван
 	// смертью процесса (загрузился last-good). Информационный сигнал.
 	InterruptedApply bool
+	// DaemonVersion/StateDir — паспорт демона (/admin/info); пусто, если
+	// демон недостижим или собран до появления info-эндпоинта.
+	DaemonVersion string
+	StateDir      string
 }
 
 // DaemonStatusSnapshot собирает состояние службы/сопряжения/демона.
@@ -170,7 +172,8 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 	if err != nil {
 		return status
 	}
-	info, err := lxdclient.New(cfg).Status()
+	client := lxdclient.New(cfg)
+	info, err := client.Status()
 	if err != nil {
 		debuglog.DebugLog("DaemonStatusSnapshot: status unavailable: %v", err)
 		return status
@@ -179,6 +182,12 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 	status.CoreStatus = info.Status
 	status.LastError = info.LastError
 	status.InterruptedApply = info.InterruptedApply
+	// Паспорт демона — best-effort: старый демон без /admin/info не делает
+	// снапшот ошибочным, поля просто остаются пустыми.
+	if passport, infoErr := client.Info(); infoErr == nil {
+		status.DaemonVersion = passport.Version
+		status.StateDir = passport.StateDir
+	}
 	return status
 }
 
@@ -195,103 +204,10 @@ func (ac *AppController) CoreSupportsLxd() bool {
 	if err != nil {
 		return false
 	}
-	return strings.Contains(string(out), "--listen")
-}
-
-// InstallDaemonService устанавливает системный LaunchDaemon и сопрягает с
-// ним лаунчер. Один запрос пароля (launchctl bootstrap требует root); дальше
-// весь жизненный цикл ядра идёт без пароля через управляющий канал.
-//
-// Последовательность: секрет → файл секрета (0600) → привилегированный
-// `sing-box lxd --service=install --tls` → ожидание listener'а → выпуск
-// приглашения через operator-маршрут (loopback + Bearer — сертификат ещё не
-// нужен) → enroll собственного сертификата → сохранение настроек.
-func (ac *AppController) InstallDaemonService() error {
-	if !ac.CoreSupportsLxd() {
-		return fmt.Errorf("installed core has no daemon support (need sing-box-lx 1.14.0-lx.23 or newer)")
-	}
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
-	identityDir := DaemonIdentityDir(ac.FileService.ExecDir)
-	// 0700: каталог держит файл секрета службы и клиентскую пару.
-	if err := os.MkdirAll(identityDir, 0o700); err != nil {
-		return fmt.Errorf("create daemon dir: %w", err)
-	}
-
-	st := locale.LoadSettings(binDir)
-	secret := st.DaemonSecret
-	if secret == "" {
-		var err error
-		secret, err = generateDaemonSecret()
-		if err != nil {
-			return err
-		}
-	}
-	secretPath := filepath.Join(identityDir, daemonSecretFileName)
-	if err := os.WriteFile(secretPath, []byte(secret+"\n"), 0o600); err != nil {
-		return fmt.Errorf("write secret file: %w", err)
-	}
-
-	address := st.DaemonAddress
-	if address == "" {
-		address = daemonDefaultListen
-	}
-
-	installArgv := []string{
-		ac.FileService.SingboxPath,
-		"lxd", "--service=install", "--tls",
-		"--listen", address,
-		"--secret-file", secretPath,
-	}
-	debuglog.InfoLog("InstallDaemonService: %v", installArgv)
-	output, err := platform.RunPrivilegedProgramAndWait(installArgv, daemonPrivilegedTimeout)
-	if err != nil {
-		return fmt.Errorf("service install: %w", err)
-	}
-	debuglog.InfoLog("InstallDaemonService: %s", strings.TrimSpace(output))
-
-	// Сохраняем адрес и секрет сразу: сопряжение ниже строит клиента из
-	// settings, а при частичном провале пользователь сможет повторить
-	// только шаг сопряжения.
-	st = locale.LoadSettings(binDir)
-	st.DaemonAddress = address
-	st.DaemonSecret = secret
-	if err := locale.SaveSettings(binDir, st); err != nil {
-		return fmt.Errorf("save settings: %w", err)
-	}
-
-	return ac.pairWithLocalService(address, secret)
-}
-
-// pairWithLocalService — авто-сопряжение с локально установленной службой:
-// лаунчер знает Bearer-секрет, поэтому может сам выпустить приглашение
-// (operator-маршрут /admin/client-code доступен с loopback без сертификата).
-func (ac *AppController) pairWithLocalService(address, secret string) error {
-	// Bootstrap без пина отправляет Bearer-секрет по неаутентифицированному
-	// TLS — это безопасно ТОЛЬКО на loopback (MITM невозможен без локального
-	// root). Для не-loopback адреса отказываемся: пользователь должен сопрячь
-	// удалённый демон вручную по приглашению (там пин приезжает с отпечатком).
-	if !lxdclient.IsLoopbackAddr(address) {
-		return fmt.Errorf("auto-pairing is only for a local daemon (%s is not loopback); for a remote one paste the invite manually", address)
-	}
-	// AllowUnpinnedTLS: отпечатка сервера ещё нет — он приедет в приглашении.
-	operator := lxdclient.New(lxdclient.Config{Addr: address, Secret: secret, AllowUnpinnedTLS: true})
-
-	// Служба только что стартовала — ждём listener до ~15 секунд.
-	var invite string
-	var err error
-	deadline := time.Now().Add(15 * time.Second)
-	for {
-		invite, err = operator.MintInvite()
-		if err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("service did not respond to invite request: %w", err)
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-
-	return ac.PairDaemonWithInvite(invite, secret)
+	// Маркер — --state-dir: фундаментальный флаг демона (его дом), пережил
+	// безфлаговую ревизию, в отличие от --listen (удалён — connection-настройки
+	// живут в daemon.json, и детект по нему сломался ровно об этот контракт).
+	return strings.Contains(string(out), "--state-dir")
 }
 
 // PairDaemonWithInvite выполняет сопряжение по приглашению
@@ -334,43 +250,6 @@ func (ac *AppController) PairDaemonWithInvite(inviteRaw, secret string) error {
 	return nil
 }
 
-// UninstallDaemonService снимает системную службу. purge=true — полное
-// удаление: демон стирает свой state-каталог (ключи, last-good, доверенных
-// клиентов), лаунчер — локальное сопряжение; режим возвращается на classic.
-func (ac *AppController) UninstallDaemonService(purge bool) error {
-	if ac.BackendMode() == BackendDaemon && ac.RunningState.IsRunning() {
-		return fmt.Errorf("stop the VPN before uninstalling the service")
-	}
-	uninstallArgv := []string{ac.FileService.SingboxPath, "lxd", "--service=uninstall"}
-	if purge {
-		uninstallArgv = append(uninstallArgv, "--purge")
-	}
-	output, err := platform.RunPrivilegedProgramAndWait(uninstallArgv, daemonPrivilegedTimeout)
-	if err != nil {
-		return fmt.Errorf("service uninstall: %w", err)
-	}
-	debuglog.InfoLog("UninstallDaemonService(purge=%v): %s", purge, strings.TrimSpace(output))
-
-	if purge {
-		if err := ac.UnpairDaemon(); err != nil {
-			debuglog.WarnLog("UninstallDaemonService: unpair: %v", err)
-		}
-	}
-	// Служба снята — daemon-режим больше не работоспособен.
-	if ac.BackendMode() == BackendDaemon {
-		if err := ac.SwitchBackendMode(BackendClassic); err != nil {
-			debuglog.WarnLog("UninstallDaemonService: switch to classic: %v", err)
-		}
-	}
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
-	st := locale.LoadSettings(binDir)
-	st.CoreBackendMode = string(BackendClassic)
-	if err := locale.SaveSettings(binDir, st); err != nil {
-		debuglog.WarnLog("UninstallDaemonService: save settings: %v", err)
-	}
-	return nil
-}
-
 // UnpairDaemon стирает локальное сопряжение: клиентскую пару, пин, секрет и
 // адрес. Регистрация на стороне демона (если он жив) остаётся — её снимает
 // `sing-box lxd client remove` или полное удаление службы.
@@ -378,9 +257,11 @@ func (ac *AppController) UnpairDaemon() error {
 	if err := lxdclient.RemoveIdentity(DaemonIdentityDir(ac.FileService.ExecDir)); err != nil {
 		return err
 	}
-	secretPath := filepath.Join(DaemonIdentityDir(ac.FileService.ExecDir), daemonSecretFileName)
-	if err := os.Remove(secretPath); err != nil && !os.IsNotExist(err) {
-		debuglog.WarnLog("UnpairDaemon: remove secret file: %v", err)
+	// Файл секрета старой модели (до ревизии владения): больше не создаётся,
+	// но у ранних установок мог остаться — подчищаем.
+	legacySecretPath := filepath.Join(DaemonIdentityDir(ac.FileService.ExecDir), daemonLegacySecretFileName)
+	if err := os.Remove(legacySecretPath); err != nil && !os.IsNotExist(err) {
+		debuglog.WarnLog("UnpairDaemon: remove legacy secret file: %v", err)
 	}
 	binDir := platform.GetBinDir(ac.FileService.ExecDir)
 	st := locale.LoadSettings(binDir)
@@ -396,6 +277,46 @@ func (ac *AppController) SetDaemonAddress(address string) error {
 	binDir := platform.GetBinDir(ac.FileService.ExecDir)
 	st := locale.LoadSettings(binDir)
 	st.DaemonAddress = strings.TrimSpace(address)
+	if err := locale.SaveSettings(binDir, st); err != nil {
+		return err
+	}
+	ac.reloadDaemonBackendIfActive()
+	return nil
+}
+
+// followDaemonPlainChannel — «лаунчер следует за демоном»: демон перешёл на
+// plain-канал (tls:false в его daemon.json), и закреплённый пин стал ложью.
+// Сбрасываем ТОЛЬКО пин (адрес, секрет и клиентская пара остаются) и
+// пересоздаём backend — следующая попытка пойдёт по plain-HTTP. Вызывается
+// исключительно для loopback-адресов: авто-даунгрейд по сети — это подарок
+// MITM'у (downgrade-атака), там решение остаётся за пользователем.
+func (ac *AppController) followDaemonPlainChannel() {
+	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	st := locale.LoadSettings(binDir)
+	debuglog.InfoLog("followDaemonPlainChannel: daemon at %s dropped TLS; clearing the pinned fingerprint to follow", st.DaemonAddress)
+	st.DaemonServerFingerprint = ""
+	if err := locale.SaveSettings(binDir, st); err != nil {
+		debuglog.WarnLog("followDaemonPlainChannel: save settings: %v", err)
+		return
+	}
+	ac.reloadDaemonBackendIfActive()
+}
+
+// DaemonShowSecretCommand — команда просмотра Bearer-секрета в daemon.json
+// системной службы (для справки у поля секрета: секретом владеет демон,
+// лаунчер его не хранит — подсмотреть можно только под sudo).
+func (ac *AppController) DaemonShowSecretCommand() string {
+	return "sudo grep '\"secret\"' " + shellQuote(daemonFallbackRuntimeDir+"/state/daemon.json")
+}
+
+// SetDaemonSecret сохраняет Bearer-секрет и пересоздаёт активный
+// daemon-backend. Нужен только для plain-h2c демона (без TLS): там нет
+// сопряжения, и секрет — весь канал аутентификации; для mTLS-демона
+// сертификат — полный мандат, а секрет не используется.
+func (ac *AppController) SetDaemonSecret(secret string) error {
+	binDir := platform.GetBinDir(ac.FileService.ExecDir)
+	st := locale.LoadSettings(binDir)
+	st.DaemonSecret = strings.TrimSpace(secret)
 	if err := locale.SaveSettings(binDir, st); err != nil {
 		return err
 	}
@@ -419,91 +340,60 @@ func (ac *AppController) reloadDaemonBackendIfActive() {
 
 // restartDaemonServiceAfterCoreUpdate перезапускает установленную службу
 // демона после обновления бинаря ядра (launchd держит старый образ в памяти;
-// KeepAlive поднимет процесс заново уже с новым бинарём). Требует одного
-// ввода пароля; вызывается только когда служба реально установлена.
-func (ac *AppController) restartDaemonServiceAfterCoreUpdate() {
-	// Только в активном daemon-режиме: в classic-режиме служба (если её plist
-	// остался от прошлой установки) не управляет нашим ядром, и внезапный
-	// запрос пароля + kickstart чужого демона был бы неожиданным для юзера.
+// KeepAlive поднимет процесс заново уже с новым бинарём). Привилегированных
+// вызовов из лаунчера нет — показываем пользователю готовую sudo-команду
+// (терминальная модель, как и все операции со службой). Только активный
+// daemon-режим: в classic чужая служба нас не касается.
+func (ac *AppController) notifyDaemonServiceAfterCoreUpdate() {
 	if ac.BackendMode() != BackendDaemon {
 		return
 	}
 	if _, err := os.Stat(daemonSystemPlistPath()); err != nil {
 		return // служба не установлена — нечего перезапускать
 	}
-	debuglog.InfoLog("restartDaemonServiceAfterCoreUpdate: kickstarting %s", daemonLaunchdLabel)
-	kickstartArgv := []string{"launchctl", "kickstart", "-k", "system/" + daemonLaunchdLabel}
-	if out, err := platform.RunPrivilegedProgramAndWait(kickstartArgv, daemonPrivilegedTimeout); err != nil {
-		debuglog.WarnLog("restartDaemonServiceAfterCoreUpdate: %v (%s) — демон продолжит работать на старой версии ядра до перезапуска службы", err, strings.TrimSpace(out))
+	debuglog.InfoLog("notifyDaemonServiceAfterCoreUpdate: core updated; daemon keeps the old binary until kickstart")
+	if !ac.hasUI() {
+		return
 	}
+	// Диалог сам оборачивается в fyne.Do — зваться из горутины загрузчика можно.
+	dialogs.ShowLinuxCapabilitiesRequired(ac.UIService.MainWindow,
+		locale.T("settings.daemon_kickstart_title"),
+		locale.T("settings.daemon_kickstart_body"),
+		ac.DaemonKickstartCommand())
 }
 
-// --- Терминальный путь (оператор управляет установкой сам) ---------------
+// DaemonKickstartCommand — sudo-команда перезапуска установленной службы
+// (после обновления бинаря ядра launchd держит старый образ в памяти).
+func (ac *AppController) DaemonKickstartCommand() string {
+	return "sudo launchctl kickstart -k system/" + daemonLaunchdLabel
+}
+
+// DaemonRepairCommand — sudo-команда пере-сопряжения: `lxd client add` сам
+// находит state-dir установленной службы, берёт listen/секрет из её
+// daemon.json и печатает свежее одноразовое приглашение — его пользователь
+// вставляет в поле сопряжения.
+func (ac *AppController) DaemonRepairCommand() string {
+	return fmt.Sprintf("sudo %s lxd client add --name singbox-launcher",
+		shellQuote(ac.FileService.SingboxPath))
+}
+
+// --- Терминальная модель (оператор выполняет все привилегированные шаги) ---
 //
-// Альтернатива автоматической установке: лаунчер готовит секрет-файл и
-// открывает Terminal.app с готовой sudo-командой. Оператор видит весь вывод
-// launchctl, вводит свой sudo-пароль, полностью контролирует процесс. Это
-// надёжнее AuthorizationExecuteWithPrivileges (настоящий root, никаких
-// euid-фокусов) и прозрачнее. Сопряжение после этого лаунчер делает сам
-// кнопкой «Сопрячь с локальной службой» (пароль не нужен — loopback+секрет).
+// Лаунчер открывает Terminal.app с готовой sudo-командой (или даёт её
+// скопировать). Оператор видит весь вывод launchctl (включая напечатанное
+// приглашение), вводит свой sudo-пароль, полностью контролирует процесс.
+// Сопряжение после установки/пере-сопряжения: скопировать приглашение из
+// вывода в поле сопряжения.
 
-// DaemonInstallCommand собирает shell-команду установки службы для терминала
-// и гарантирует наличие секрет-файла. Возвращает (команда, ошибка подготовки).
+// DaemonInstallCommand собирает shell-команду установки службы для терминала.
+// Никаких параметров: install сам выбирает свободный loopback-порт (19091+,
+// либо сохраняет адрес существующей установки), сам генерирует секрет,
+// принудительно включает mTLS — и печатает адрес, секрет, путь к daemon.json,
+// команду перезапуска и приглашение. Адрес лаунчер узнаёт из приглашения при
+// сопряжении (PairDaemonWithInvite сохраняет invite.Addr).
 func (ac *AppController) DaemonInstallCommand() (string, error) {
-	if !ac.CoreSupportsLxd() {
-		return "", fmt.Errorf("installed core has no daemon support (need sing-box-lx 1.14.0-lx.23 or newer)")
-	}
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
-	identityDir := DaemonIdentityDir(ac.FileService.ExecDir)
-	if err := os.MkdirAll(identityDir, 0o700); err != nil {
-		return "", fmt.Errorf("create daemon dir: %w", err)
-	}
-	st := locale.LoadSettings(binDir)
-	secret := st.DaemonSecret
-	if secret == "" {
-		var err error
-		secret, err = generateDaemonSecret()
-		if err != nil {
-			return "", err
-		}
-	}
-	secretPath := filepath.Join(identityDir, daemonSecretFileName)
-	if err := os.WriteFile(secretPath, []byte(secret+"\n"), 0o600); err != nil {
-		return "", fmt.Errorf("write secret file: %w", err)
-	}
-	address := st.DaemonAddress
-	if address == "" {
-		address = daemonDefaultListen
-	}
-	// Сохраняем адрес/секрет заранее: после терминальной установки лаунчер
-	// сопрягается по ним, зная секрет.
-	st.DaemonAddress = address
-	st.DaemonSecret = secret
-	if err := locale.SaveSettings(binDir, st); err != nil {
-		return "", fmt.Errorf("save settings: %w", err)
-	}
-	return fmt.Sprintf("sudo %s lxd --service=install --tls --listen %s --secret-file %s",
-		shellQuote(ac.FileService.SingboxPath), shellQuote(address), shellQuote(secretPath)), nil
-}
-
-// PairWithLocalService — публичная обёртка сопряжения с локально
-// установленной службой (для терминального пути: служба поставлена руками в
-// терминале, лаунчер досопрягается сам по сохранённым адресу/секрету).
-func (ac *AppController) PairWithLocalService() error {
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
-	st := locale.LoadSettings(binDir)
-	address := st.DaemonAddress
-	if address == "" {
-		address = daemonDefaultListen
-	}
-	if st.DaemonSecret == "" {
-		return fmt.Errorf("no saved secret: prepare installation with the Terminal button first")
-	}
-	if err := ac.pairWithLocalService(address, st.DaemonSecret); err != nil {
-		return err
-	}
-	ac.reloadDaemonBackendIfActive()
-	return nil
+	return fmt.Sprintf("sudo %s lxd --service=install",
+		shellQuote(ac.FileService.SingboxPath)), nil
 }
 
 // DaemonUninstallCommand собирает shell-команду удаления службы для терминала.
@@ -547,12 +437,4 @@ end tell`, escaped)
 // адрес проходят через это перед показом/вставкой в терминал.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
-func generateDaemonSecret() (string, error) {
-	var buf [32]byte
-	if _, err := rand.Read(buf[:]); err != nil {
-		return "", fmt.Errorf("generate secret: %w", err)
-	}
-	return hex.EncodeToString(buf[:]), nil
 }

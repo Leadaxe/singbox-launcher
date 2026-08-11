@@ -144,7 +144,47 @@ func TestTLSEnabledPredicate(t *testing.T) {
 	if !(Config{ServerFingerprint: "abc"}).TLSEnabled() {
 		t.Error("fingerprint should enable TLS")
 	}
-	if !(Config{AllowUnpinnedTLS: true}).TLSEnabled() {
-		t.Error("AllowUnpinnedTLS should enable TLS")
+}
+
+func TestInfoDecode(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/admin/info" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"version":"1.14.0-lx.23","state_dir":"/var/lib/lxd/state","listen":"127.0.0.1:9091","tls":true,"fingerprint":"ff00","pid":42,"uptime_seconds":7,"log_path":"/var/lib/lxd/lxd.log"}`))
+	})
+	info, err := c.Info()
+	if err != nil {
+		t.Fatalf("info: %v", err)
+	}
+	if info.Version != "1.14.0-lx.23" || info.StateDir != "/var/lib/lxd/state" || !info.TLS || info.PID != 42 {
+		t.Fatalf("bad info decode: %+v", info)
+	}
+}
+
+func TestDetectChannel(t *testing.T) {
+	// Plain HTTP-сервер (даже 401 — это валидный HTTP-ответ) → ChannelPlain.
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(plain.Close)
+	if got := DetectChannel(plain.Listener.Addr().String()); got != ChannelPlain {
+		t.Fatalf("plain server detected as %v, want ChannelPlain", got)
+	}
+
+	// TLS-сервер: plain-запрос обрывается без HTTP-ответа → ChannelTLS.
+	tlsSrv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	t.Cleanup(tlsSrv.Close)
+	if got := DetectChannel(tlsSrv.Listener.Addr().String()); got != ChannelTLS {
+		t.Fatalf("tls server detected as %v, want ChannelTLS", got)
+	}
+
+	// Мёртвый порт → ChannelUnknown.
+	dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	deadAddr := dead.Listener.Addr().String()
+	dead.Close()
+	if got := DetectChannel(deadAddr); got != ChannelUnknown {
+		t.Fatalf("dead port detected as %v, want ChannelUnknown", got)
 	}
 }

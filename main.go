@@ -38,15 +38,6 @@ const (
 
 // main is the application's entry point. It simply creates and runs the AppController.
 func main() {
-	// Привилегированный хелпер (macOS): когда лаунчер запущен как
-	// `--priv-exec -- <program> <args...>` из-под AuthorizationExecuteWithPrivileges
-	// (euid=0, но real uid — пользователя), поднимаем real uid до 0 через
-	// setuid(0) и exec'аем цель. Без этого дочерний sing-box видит
-	// os.Getuid()!=0 и `--service=install` падает с "needs root". Должно
-	// стоять ПЕРВЫМ в main — до любой инициализации GUI. См.
-	// platform.RunPrivilegedProgramAndWait и SPEC daemon-режима.
-	platform.MaybeRunPrivExecHelper()
-
 	// Parse command line arguments
 	autoStart := flag.Bool("start", false, "Automatically start VPN on launch")
 	startInTray := flag.Bool("tray", false, "Start minimized to system tray (hide window on launch)")

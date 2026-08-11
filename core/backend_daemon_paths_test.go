@@ -9,6 +9,9 @@ import (
 	"testing"
 )
 
+// testRuntimeDir имитирует state_dir из /admin/info.
+const testRuntimeDir = "/Library/Application Support/sing-box-lxd/state"
+
 func TestPrepareConfigForDaemon(t *testing.T) {
 	t.Run("relative cache_file → absolute in support dir", func(t *testing.T) {
 		in := []byte(`{
@@ -18,7 +21,7 @@ func TestPrepareConfigForDaemon(t *testing.T) {
     "cache_file": {"enabled": true, "path": "cache.db"}
   }
 }`)
-		out, err := prepareConfigForDaemon(in)
+		out, err := prepareConfigForDaemon(in, testRuntimeDir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -45,7 +48,7 @@ func TestPrepareConfigForDaemon(t *testing.T) {
 
 	t.Run("already absolute → untouched", func(t *testing.T) {
 		in := []byte(`{"experimental":{"cache_file":{"path":"/var/db/cache.db"}}}`)
-		out, err := prepareConfigForDaemon(in)
+		out, err := prepareConfigForDaemon(in, testRuntimeDir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -56,7 +59,7 @@ func TestPrepareConfigForDaemon(t *testing.T) {
 
 	t.Run("no cache_file → unchanged", func(t *testing.T) {
 		in := []byte(`{"log":{"level":"info"}}`)
-		out, err := prepareConfigForDaemon(in)
+		out, err := prepareConfigForDaemon(in, testRuntimeDir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -67,7 +70,7 @@ func TestPrepareConfigForDaemon(t *testing.T) {
 
 	t.Run("no path (default) → absolutized cache.db", func(t *testing.T) {
 		in := []byte(`{"experimental":{"cache_file":{"enabled":true}}}`)
-		out, err := prepareConfigForDaemon(in)
+		out, err := prepareConfigForDaemon(in, testRuntimeDir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,7 +81,7 @@ func TestPrepareConfigForDaemon(t *testing.T) {
 
 	t.Run("clash_api removed entirely (daemon uses gRPC)", func(t *testing.T) {
 		in := []byte(`{"experimental":{"clash_api":{"external_controller":"127.0.0.1:9090","secret":"s"}}}`)
-		out, err := prepareConfigForDaemon(in)
+		out, err := prepareConfigForDaemon(in, testRuntimeDir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -92,7 +95,7 @@ func TestPrepareConfigForDaemon(t *testing.T) {
 
 	t.Run("cache_file absolutized AND clash_api removed together", func(t *testing.T) {
 		in := []byte(`{"experimental":{"cache_file":{"path":"cache.db"},"clash_api":{"external_controller":"127.0.0.1:9090"}}}`)
-		out, err := prepareConfigForDaemon(in)
+		out, err := prepareConfigForDaemon(in, testRuntimeDir)
 		if err != nil {
 			t.Fatal(err)
 		}

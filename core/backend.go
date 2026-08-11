@@ -142,8 +142,9 @@ type PoolSlotInfo struct {
 }
 
 // poolSource — бэкенд, умеющий отдавать пул балансировщика (gRPC GetPool).
+// Запрашивается всегда для конкретной группы (node info urltest-группы) —
+// отдельного перечисления групп не требуется.
 type poolSource interface {
-	PoolGroups() ([]string, error)
 	PoolSlots(group string) ([]PoolSlotInfo, error)
 }
 
@@ -197,15 +198,6 @@ func (ac *AppController) DaemonConnSnapshotFunc() any {
 func (ac *AppController) DaemonPoolAvailable() bool {
 	_, ok := ac.Backend().(poolSource)
 	return ok
-}
-
-// DaemonPoolGroups возвращает теги urltest-групп активного демона.
-func (ac *AppController) DaemonPoolGroups() ([]string, error) {
-	src, ok := ac.Backend().(poolSource)
-	if !ok {
-		return nil, fmt.Errorf("pool source is not available in this mode")
-	}
-	return src.PoolGroups()
 }
 
 // DaemonPoolSlots возвращает слоты пула выбранной группы.

@@ -99,4 +99,15 @@ func TestConnTrackerLifecycle(t *testing.T) {
 	if len(snap) != 0 {
 		t.Errorf("after reset len = %d, want 0", len(snap))
 	}
+
+	// markDead (обрыв стрима): снимок снова ok=false — источника нет,
+	// застывшие данные не должны отдаваться как живые.
+	tr.applyEvent(&daemonpb.ConnectionEvent{
+		Type:       daemonpb.ConnectionEventType_CONNECTION_EVENT_NEW,
+		Connection: &daemonpb.Connection{Id: "c", Destination: "3.3.3.3:80"},
+	})
+	tr.markDead()
+	if _, ok := tr.snapshot(nil); ok {
+		t.Error("snapshot ok=true after markDead")
+	}
 }

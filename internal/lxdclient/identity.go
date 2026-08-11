@@ -24,6 +24,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -50,10 +51,18 @@ func FingerprintOf(der []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// identityMu сериализует создание клиентской пары: два конкурентных вызова
+// (двойной клик по «Pair» + фоновый снапшот статуса) без него могли бы
+// одновременно не найти файлы, сгенерировать РАЗНЫЕ пары и перезаписать друг
+// друга — enroll ушёл бы с одним отпечатком, а на диске остался бы другой.
+var identityMu sync.Mutex
+
 // LoadOrCreateIdentity читает клиентскую пару из dir или создаёт новую при
 // первом обращении (ECDSA P-256, self-signed, 10 лет — как у демона).
 // Отпечаток стабилен между запусками: на нём держится доверие демона.
 func LoadOrCreateIdentity(dir string) (*Identity, error) {
+	identityMu.Lock()
+	defer identityMu.Unlock()
 	certPath := filepath.Join(dir, clientCertFile)
 	keyPath := filepath.Join(dir, clientKeyFile)
 	certPEM, err := os.ReadFile(certPath)

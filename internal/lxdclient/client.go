@@ -25,25 +25,23 @@ type Config struct {
 	// Addr — host:port управляющего канала.
 	Addr string
 	// ServerFingerprint — пин серверного сертификата (lowercase hex). Пусто =
-	// plain h2c без TLS (dev-режим демона на loopback).
+	// plain h2c без TLS (dev-режим демона на loopback). Пин обязателен для
+	// любого TLS-канала: bootstrap без пина лаунчеру больше не нужен —
+	// приглашение (с отпечатком внутри) приходит из вывода установки службы
+	// либо из `sing-box lxd client add`, а не через operator-маршрут.
 	ServerFingerprint string
 	// Identity — клиентская пара для mTLS. Обязателна для всех admin/gRPC
 	// вызовов при TLS, кроме Enroll (там достаточно кода).
 	Identity *Identity
-	// Secret — Bearer-секрет обеих плоскостей (пусто = аутентификация
-	// секретом выключена на стороне демона).
+	// Secret — Bearer-секрет. Нужен ТОЛЬКО для plain-h2c демона (dev): в
+	// mTLS-режиме доверенный клиентский сертификат — полный мандат, секретом
+	// владеет демон, и лаунчер его не знает. Слать заголовок при mTLS
+	// безвредно (демон его игнорирует).
 	Secret string
-	// AllowUnpinnedTLS — говорить TLS без пина сервера (InsecureSkipVerify).
-	// Используется ТОЛЬКО для bootstrap-вызова MintInvite к локальной службе
-	// на loopback: отпечатка ещё нет (он приедет в приглашении), а канал уже
-	// TLS. Локальная машина = trust boundary; для удалённых демонов пин
-	// обязателен.
-	AllowUnpinnedTLS bool
 }
 
-// TLSEnabled — включён ли TLS-канал (пин установлен либо явно разрешён
-// bootstrap без пина).
-func (c Config) TLSEnabled() bool { return c.ServerFingerprint != "" || c.AllowUnpinnedTLS }
+// TLSEnabled — включён ли TLS-канал (установлен пин сервера).
+func (c Config) TLSEnabled() bool { return c.ServerFingerprint != "" }
 
 // AddrString возвращает адрес управляющего канала (для логов/статуса).
 func (c *Client) AddrString() string { return c.cfg.Addr }
@@ -259,28 +257,34 @@ func (c *Client) Enroll(code, name string) error {
 	return nil
 }
 
-// MintInvite просит демона выдать свежее приглашение (operator-маршрут:
-// loopback + Bearer-секрет, клиентский пин не требуется). Используется для
-// авто-сопряжения с локально установленной службой — лаунчер сам знает секрет.
-// Имя в теле — метка будущего клиента (новые демоны учитывают, старые
-// игнорируют тело).
-func (c *Client) MintInvite() (string, error) {
-	body, _ := json.Marshal(map[string]string{"name": "singbox-launcher"})
-	resp, err := c.do(http.MethodPost, "/admin/client-code", bytes.NewReader(body), "application/json")
+// InfoData — паспорт демона (GET /admin/info): версия, домашний каталог,
+// адрес, отпечаток. Лаунчер берёт пути демона отсюда, а не хардкодит их.
+type InfoData struct {
+	Version       string `json:"version"`
+	StateDir      string `json:"state_dir"`
+	Listen        string `json:"listen"`
+	TLS           bool   `json:"tls"`
+	Fingerprint   string `json:"fingerprint"`
+	PID           int    `json:"pid"`
+	UptimeSeconds int    `json:"uptime_seconds"`
+	LogPath       string `json:"log_path"`
+}
+
+// Info возвращает паспорт демона.
+func (c *Client) Info() (InfoData, error) {
+	resp, err := c.do(http.MethodGet, "/admin/info", nil, "")
 	if err != nil {
-		return "", err
+		return InfoData{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("lxdclient: client-code: %s", decodeError(resp))
+		return InfoData{}, fmt.Errorf("lxdclient: info: %s", decodeError(resp))
 	}
-	var payload struct {
-		Invite string `json:"invite"`
+	var info InfoData
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&info); err != nil {
+		return InfoData{}, fmt.Errorf("lxdclient: info decode: %w", err)
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&payload); err != nil {
-		return "", err
-	}
-	return payload.Invite, nil
+	return info, nil
 }
 
 // --- gRPC plane ---------------------------------------------------------
@@ -317,4 +321,53 @@ func (c *Client) authStreamInterceptor() grpc.StreamClientInterceptor {
 		}
 		return streamer(ctx, desc, conn, method, opts...)
 	}
+}
+
+// --- Определение канала (follow-the-daemon) ------------------------------
+
+// ChannelKind — результат пробы управляющего канала демона.
+type ChannelKind int
+
+const (
+	// ChannelUnknown — адрес не отвечает (демон не запущен / порт закрыт).
+	ChannelUnknown ChannelKind = iota
+	// ChannelPlain — на адресе живёт plain-h2c демон (HTTP без TLS).
+	ChannelPlain
+	// ChannelTLS — на адресе живёт TLS-демон (нужны пин и сопряжение).
+	ChannelTLS
+)
+
+// DetectChannel определяет, в каком режиме канала работает демон на addr:
+// шлёт plain-HTTP GET /admin/info. Живой plain-демон отвечает валидным HTTP
+// (200/401 — не важно: важен сам HTTP-ответ); TLS-listener на plain-запрос
+// обрывает соединение без HTTP-ответа. Проба только ЧИТАЕТ режим — никакие
+// учётные данные в ней не участвуют, поэтому она безопасна на любом адресе.
+//
+// Используется лаунчером, чтобы СЛЕДОВАТЬ за демоном: демон явно владеет
+// своим режимом (daemon.json), клиент лишь обнаруживает его и подстраивает
+// свой профиль (сброс пина при переходе демона на plain — только loopback;
+// подсказка о сопряжении при переходе на TLS).
+func DetectChannel(addr string) ChannelKind {
+	httpc := &http.Client{Timeout: 3 * time.Second}
+	resp, err := httpc.Get("http://" + addr + "/admin/info")
+	if err == nil {
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+		// net/http-сервер за tls.Listener (наш демон — он самый) отвечает на
+		// plain-запрос НЕ обрывом, а честным 400 с этой сигнатурой — самый
+		// надёжный признак TLS-канала.
+		if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "HTTP request to an HTTPS server") {
+			return ChannelTLS
+		}
+		return ChannelPlain
+	}
+	// Ошибка plain-запроса: разделяем «порт молчит» и «на порту не-HTTP».
+	// Голый TLS-listener без net/http-обёртки рвёт соединение на мусорном
+	// ClientHello-ожидании → клиент видит EOF/reset, но не refused.
+	s := err.Error()
+	if strings.Contains(s, "connection refused") || strings.Contains(s, "no such host") ||
+		strings.Contains(s, "timeout") || strings.Contains(s, "deadline") {
+		return ChannelUnknown
+	}
+	return ChannelTLS
 }

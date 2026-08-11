@@ -11,5 +11,5 @@ func newDaemonBackend(_ *AppController) (CoreBackend, error) {
 	return nil, fmt.Errorf("daemon mode is only available on macOS")
 }
 
-// restartDaemonServiceAfterCoreUpdate — no-op вне macOS (службы демона нет).
-func (ac *AppController) restartDaemonServiceAfterCoreUpdate() {}
+// notifyDaemonServiceAfterCoreUpdate — no-op вне macOS (службы демона нет).
+func (ac *AppController) notifyDaemonServiceAfterCoreUpdate() {}

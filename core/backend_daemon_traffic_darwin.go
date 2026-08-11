@@ -54,6 +54,18 @@ func (t *connTracker) reset() {
 	t.mu.Unlock()
 }
 
+// markDead переводит tracker в состояние «источника нет»: стрим оборвался,
+// текущий снимок больше не отражает реальность. snapshot снова вернёт
+// ok=false (профайлер сбросит diff-state), пока переподписка не доставит
+// свежие данные. Без этого застывший снимок отдавался бы как живой всё
+// время, пока демон недоступен.
+func (t *connTracker) markDead() {
+	t.mu.Lock()
+	t.conns = make(map[string]tprof.ClashConn)
+	t.live = false
+	t.mu.Unlock()
+}
+
 // snapshot реализует traffic.SnapshotFunc: копия текущего множества.
 // ok=false до первого события стрима.
 func (t *connTracker) snapshot(_ context.Context) (map[string]tprof.ClashConn, bool) {
@@ -130,7 +142,9 @@ func procBase(path string) string {
 }
 
 // superviseConnections держит подписку SubscribeConnections и наполняет
-// tracker; reconnect с backoff, как у status/logs. Профайлер читает снимок
+// tracker; reconnect с backoff, как у status/logs (сброс backoff — только
+// после реально полученного кадра: Subscribe* у grpc-go «успешен» даже при
+// лежащем демоне, ошибка всплывает в первом Recv). Профайлер читает снимок
 // через b.connTracker.snapshot (установлено как SnapshotFunc в EnsureProfiler).
 func (b *DaemonBackend) superviseConnections() {
 	backoff := time.Second
@@ -142,9 +156,8 @@ func (b *DaemonBackend) superviseConnections() {
 		if err == nil {
 			var stream grpc.ServerStreamingClient[daemonpb.ConnectionEvents]
 			stream, err = client.SubscribeConnections(b.ctx, &daemonpb.SubscribeConnectionsRequest{Interval: 1000})
-			if err == nil {
+			if err == nil && b.consumeConnStream(stream) {
 				backoff = time.Second
-				b.consumeConnStream(stream)
 			}
 		}
 		if err != nil {
@@ -161,13 +174,20 @@ func (b *DaemonBackend) superviseConnections() {
 	}
 }
 
-func (b *DaemonBackend) consumeConnStream(stream grpc.ServerStreamingClient[daemonpb.ConnectionEvents]) {
+// consumeConnStream читает стрим до обрыва; true — получен хотя бы один кадр.
+// По выходу tracker помечается мёртвым: без источника снимок не «живой», и
+// профайлер должен видеть ok=false, а не застывшее множество соединений.
+// Свежая переподписка доставит полный снапшот заново (reset+NEW-события).
+func (b *DaemonBackend) consumeConnStream(stream grpc.ServerStreamingClient[daemonpb.ConnectionEvents]) bool {
+	received := false
+	defer b.connTracker.markDead()
 	for {
 		batch, err := stream.Recv()
 		if err != nil {
 			debuglog.DebugLog("daemon.conns: stream closed: %v", err)
-			return
+			return received
 		}
+		received = true
 		if !b.isActive() {
 			continue
 		}

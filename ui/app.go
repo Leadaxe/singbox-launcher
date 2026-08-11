@@ -242,21 +242,6 @@ func (a *App) updateClashAPITabState() {
 	}
 	// SPEC 064: всегда enabled. Никаких DisableItem'ов больше нет.
 	a.tabs.EnableItem(a.clashAPITab)
-	// Кнопка пула балансировщика показывается только в daemon-режиме;
-	// хук установлен при построении Servers tab.
-	refreshPoolButtonVisibility()
-}
-
-// poolButtonVisibilityHook — рефреш видимости кнопки пула в Servers tab.
-// Устанавливается из CreateClashAPITab; no-op до построения вкладки.
-var poolButtonVisibilityHook func()
-
-func setPoolButtonVisibilityHook(hook func()) { poolButtonVisibilityHook = hook }
-
-func refreshPoolButtonVisibility() {
-	if poolButtonVisibilityHook != nil {
-		poolButtonVisibilityHook()
-	}
 }
 
 // indexEmojiSep — returns the byte index just AFTER the first ASCII

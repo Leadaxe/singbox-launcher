@@ -7,12 +7,12 @@
 ## EN
 ### Highlights
 
-- **Daemon mode for the core (macOS).** The launcher can now run the VPN core inside a long-lived system service (`sing-box lxd`) instead of spawning `sing-box run` itself — the same in-process, reload-surviving model the Android app uses. Turn it on in **Settings → Core engine (lxd daemon)**. What it buys you:
-  - **Password once.** Installing the service asks for an administrator password a single time (to register the LaunchDaemon). After that, starting/stopping the VPN and applying config changes need no password at all.
+- **Daemon mode for the core (macOS).** The launcher can now run the VPN core inside a long-lived system service (`sing-box lxd`) instead of spawning `sing-box run` itself — the same in-process, reload-surviving model the Android app uses. Configure it in the new **connection settings window: Servers → ⚙ → Local** (the Remote tab keeps the SPEC 064 remote Clash override). What it buys you:
+  - **Sudo once, in your own Terminal.** Installing the service is a single command the launcher prepares for you (copy or open in Terminal — full launchctl output, your own sudo; the launcher itself never runs anything privileged). After that, starting/stopping the VPN and applying config changes need no password at all.
   - **Quitting the launcher can keep the VPN up.** By default, closing the launcher leaves the core running in the daemon; a "Stop VPN when quitting" toggle restores the classic behavior.
   - **In-process config swaps.** Applying a new config no longer kills and restarts a process: the daemon swaps the core in-place, validates the config in a subprocess before touching the running instance, and auto-rolls-back to the last working config if the new one fails to start.
   - **Richer observability over gRPC.** Proxy groups, node selection, latency tests, live status/traffic, connections, and core logs all flow over the daemon's gRPC channel (the CommandClient protocol shared with the Android line) — including a new **balancer pool** view on the Servers tab showing each urltest slot and its delay.
-  - **Pairing.** The launcher pairs with the daemon over mTLS using a one-time invite (`address#fingerprint#code`). For a locally-installed service this happens automatically; for any daemon you can paste an invite in Settings (mint one on the daemon's host with `sing-box lxd client add`).
+  - **Pairing.** The launcher pairs with the daemon over mTLS using a one-time invite (`address#fingerprint#code`). The install command prints one at the end — paste it into the pairing field; mint a fresh one any time with `sudo sing-box lxd client add` (works for remote daemons too). The daemon fully owns its home directory and credentials (`daemon.json` with the listen address and admin secret lives in its state dir, reported over `GET /admin/info`); the launcher keeps only its own client keypair — a trusted client certificate is the whole credential.
 
   The classic engine remains the default and is unchanged; daemon mode is opt-in and requires a core build with the `lxd` subcommand (sing-box-lx 1.14.0-lx.23 or newer).
 
@@ -30,12 +30,12 @@
 ## RU
 ### Основное
 
-- **Daemon-режим ядра (macOS).** Лаунчер теперь умеет запускать ядро VPN внутри долгоживущей системной службы (`sing-box lxd`), а не спавнить `sing-box run` сам — та же модель «ядро внутри процесса, канал управления переживает перезагрузку конфига», что и в Android-приложении. Включается в **Настройках → Движок ядра (демон lxd)**. Что это даёт:
-  - **Пароль — один раз.** Установка службы спрашивает пароль администратора единожды (чтобы зарегистрировать LaunchDaemon). Дальше запуск/остановка VPN и смена конфига идут вообще без пароля.
+- **Daemon-режим ядра (macOS).** Лаунчер теперь умеет запускать ядро VPN внутри долгоживущей системной службы (`sing-box lxd`), а не спавнить `sing-box run` сам — та же модель «ядро внутри процесса, канал управления переживает перезагрузку конфига», что и в Android-приложении. Настраивается в новом **окне подключения: Servers → ⚙ → Local** (вкладка Remote — прежний удалённый Clash-override SPEC 064). Что это даёт:
+  - **Sudo один раз, в вашем терминале.** Установка службы — одна команда, которую лаунчер готовит за вас (скопировать или открыть в терминале — полный вывод launchctl, ваш собственный sudo; сам лаунчер ничего привилегированного не запускает). Дальше запуск/остановка VPN и смена конфига идут вообще без пароля.
   - **Выход из лаунчера может оставлять VPN работать.** По умолчанию закрытие лаунчера не выключает ядро в демоне; галочка «Останавливать VPN при выходе» возвращает классическое поведение.
   - **Смена конфига без убийства процесса.** Применение нового конфига больше не перезапускает процесс: демон подменяет ядро на месте, валидирует конфиг сабпроцессом до того, как тронуть работающий инстанс, и автоматически откатывается на последний рабочий конфиг, если новый не стартовал.
   - **Богатая наблюдаемость по gRPC.** Группы прокси, выбор узла, тесты задержки, живой статус/трафик, соединения и логи ядра — всё идёт по gRPC-каналу демона (протокол CommandClient, общий с Android-линией), включая новый экран **пула балансировщика** на вкладке Servers: каждый слот urltest-группы и его задержка.
-  - **Сопряжение.** Лаунчер сопрягается с демоном по mTLS через одноразовое приглашение (`адрес#отпечаток#код`). Для локально установленной службы это происходит автоматически; для любого демона можно вставить приглашение в Настройках (выпустить его на хосте демона командой `sing-box lxd client add`).
+  - **Сопряжение.** Лаунчер сопрягается с демоном по mTLS через одноразовое приглашение (`адрес#отпечаток#код`). Команда установки печатает его в конце — вставьте в поле сопряжения; свежее можно выпустить в любой момент командой `sudo sing-box lxd client add` (работает и для удалённых демонов). Демон полностью владеет своим каталогом и учётными данными (`daemon.json` с адресом и админ-секретом живёт в его state-каталоге и виден через `GET /admin/info`); у лаунчера остаётся только собственная клиентская пара — доверенный сертификат и есть весь мандат.
 
   Классический движок остаётся по умолчанию и не меняется; daemon-режим включается вручную и требует сборки ядра с сабкомандой `lxd` (sing-box-lx 1.14.0-lx.23 или новее).
 

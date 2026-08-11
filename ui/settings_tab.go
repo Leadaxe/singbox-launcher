@@ -246,12 +246,6 @@ func buildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 		widget.NewSeparator(),
 		debugAPIBlock,
 	)
-	// Daemon-режим ядра (lxd) — только macOS; на других платформах builder
-	// возвращает nil и секция не показывается.
-	if daemonBlock := buildDaemonSection(ac); daemonBlock != nil {
-		content.Add(widget.NewSeparator())
-		content.Add(daemonBlock)
-	}
 	return content
 }
 

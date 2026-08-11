@@ -93,6 +93,43 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo) {
 		for _, member := range node.GroupMembers {
 			body.Add(memberRow(member, nodes))
 		}
+
+		// Живой пул балансировщика — только urltest-группы и только в
+		// daemon-режиме (lx-RPC GetPool доступен по gRPC-каналу). Секция
+		// наполняется асинхронно после показа окна: statics выше — из
+		// конфига, а тут — текущее состояние работающего ядра.
+		if node.Type == "urltest" && ac.DaemonPoolAvailable() {
+			poolBox := container.NewVBox(
+				widget.NewSeparator(),
+				sectionHeader(locale.T("servers.node_info_section_pool")),
+			)
+			loading := widget.NewLabel(locale.T("servers.node_info_pool_loading"))
+			poolBox.Add(loading)
+			body.Add(poolBox)
+			go func(group string) {
+				slots, err := ac.DaemonPoolSlots(group)
+				fyne.Do(func() {
+					poolBox.Remove(loading)
+					switch {
+					case err != nil:
+						poolBox.Add(widget.NewLabel(locale.Tf("servers.node_info_pool_error", err)))
+					case len(slots) == 0:
+						poolBox.Add(widget.NewLabel(locale.T("servers.node_info_pool_empty")))
+					default:
+						for _, slot := range slots {
+							delay := "—"
+							if slot.Delay > 0 {
+								delay = fmt.Sprintf("%d ms", slot.Delay)
+							}
+							row := widget.NewLabel(fmt.Sprintf("   #%d  %s  ·  %s", slot.Slot, slot.Tag, delay))
+							row.Truncation = fyne.TextTruncateEllipsis
+							poolBox.Add(row)
+						}
+					}
+					poolBox.Refresh()
+				})
+			}(proxy.Name)
+		}
 	}
 
 	// TLS-подробности отдельной секцией: их много и они длинные.

@@ -159,9 +159,10 @@ func EffectiveClashAPIConfig(ac *core.AppController) (baseURL, token string, ena
 	if ac == nil || ac.APIService == nil {
 		return "", "", false, false
 	}
-	// В daemon-режиме Clash API ядра слушает на перенесённом порту (не том,
-	// что в config.json — мы его переписали). Берём адрес у бэкенда, чтобы
-	// Test API и traffic-профайлер били куда надо, а не в занятый порт.
+	// Бэкенд может переопределять Clash-адрес своего ядра. Сегодня
+	// DaemonBackend всегда отвечает ok=false (Clash вырезан из daemon-конфига,
+	// всё по gRPC) — ветка остаётся швом на случай бэкенда, у которого Clash
+	// живёт на собственном адресе, а не по config.json.
 	if base, tok, ok := ac.DaemonClashEndpoint(); ok {
 		return base, tok, true, false
 	}
