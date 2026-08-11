@@ -75,6 +75,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 | GET | `/state/dns` | Вся секция `state.DNSOptions` (SPEC 056) |
 | GET | `/state/dns/rules` | `{"text":"..."}` — **только USER**-правила как wizard-текст. Preset-правила не включаются (они toggle-ref'ы) |
 | GET | `/state/outbounds/resolved` | `{"outbounds": []OutboundConfig}` — merge'нутые после SPEC 057/058 expansion (template + preset patches + user overrides) |
+| GET | `/state/log-level` | `{level, is_set, default, effective, allowed}` — `level` = сырое `vars[log_level]` (`""` если не задан), `effective` = что реально возьмёт sing-box (при пустом — `default`, т.е. `warn`) |
 
 ```bash
 # Что сейчас выбрано
@@ -97,6 +98,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/state/full" > backup.json
 | PATCH | `/state/rules` | `{"mode":"replace"\|"append", "rules":[]state.Rule}` | Заменяет / добавляет правила. Каждое валидируется через `r.DecodeBody()` (kind discriminator: preset/inline/srs). |
 | PATCH | `/state/dns` | `state.DNSOptions` | Заменяет **всю** dns_options (servers + rules). Каждый server/rule валидируется по `kind`. **Тело обязано содержать `servers` и/или `rules`** — keyless `{}` → `422` (защита от молчаливого стирания всей секции), состояние не трогается. |
 | PATCH | `/state/dns/rules` | `{"text":"..."}` | Заменяет **только USER** rules; preset-rules сохраняются. `""` (пустой текст) = wipe user rules. |
+| PATCH | `/state/log-level` | `{"level":"trace"\|"debug"\|"info"\|"warn"\|"error"\|"fatal"\|"panic"}` | Пишет `vars[log_level]` → forced rebuild `config.json` → **restart sing-box** (активные соединения рвутся). Отвечает `202` + `{"ok":true,"level":"...","warning":"active connections reset"}`, а не общим `{"ok":true,"diff_summary":[...]}`. Поле `level` обязательно; невалидный уровень → `400` со списком `allowed` (ядро не трогается). |
 
 ```bash
 # Replace all rules с одним preset-ref'ом
@@ -114,7 +116,13 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application
 curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   "$API/state/dns/rules" \
   -d '{"text":"{\"rules\":[{\"domain\":\"example.com\",\"server\":\"cf\"}]}"}'
+
+# Поднять логи до trace (рвёт активные соединения — ядро перезапускается)
+curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/state/log-level" -d '{"level":"trace"}'
 ```
+
+> `POST /traffic/verbose` — булев частный случай этой же ручки: умеет только `debug` (`true`) и `warn` (`false`). Для остальных уровней используйте `PATCH /state/log-level`.
 
 **Ошибки:** `400` (битый JSON / неизвестный mode), `422` (semantic validation: unknown rule kind, unknown DNS server kind, body decode fail), `500` (load/save), `405` (метод).
 
@@ -274,6 +282,7 @@ Response shape:
 |---|---|
 | `core/debugapi/server.go` | Routing, auth middleware, `/ping`, `/version`, `/state`, `/proxies`, `/action/*` |
 | `core/debugapi/state_endpoints.go` | `/state/full`, `/state/rules`, `/state/dns`, `/state/dns/rules`, `/state/outbounds/resolved` |
+| `core/debugapi/log_level_endpoint.go` | `/state/log-level` (валидация уровня + core restart через `core.ApplyLogLevelAndReloadCore`) |
 | `core/debugapi/traffic_endpoints.go` | Все `/traffic/*` |
 | `core/debugapi/snapshot.go` | `/debug/snapshot` |
 | `core/debugapi_wiring.go` | Bridge между Server и controller (StartSingBox, StopSingBox, Update, Rebuild, PingAll) |
