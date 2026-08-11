@@ -17,19 +17,19 @@ func TestSplitWSEarlyData(t *testing.T) {
 		wantED   int
 	}{
 		{"/api/v2/channel?ed=2560", "/api/v2/channel", 2560},
-		{"/path?ed=2048&foo=bar", "/path", 2048},   // ed among other params
-		{"/path?foo=bar&ed=100", "/path", 100},     // ed not first
-		{"/plain", "/plain", 0},                    // no tail
-		{"/plain?ed=", "/plain", 0},                // empty ed → strip tail, no ED
-		{"/plain?ed=abc", "/plain", 0},             // non-numeric ed → no ED
-		{"/plain?ed=0", "/plain", 0},               // ed=0 means disabled
-		{"/plain?ed=-5", "/plain", 0},              // negative → ignored
-		{"/plain?foo=bar", "/plain", 0},            // tail without ed → still stripped
-		{"  /sp?ed=64  ", "/sp", 64},               // surrounding whitespace
-		{"/p?ED=2560", "/p", 2560},                 // uppercase key — folded like the rest of the parser
-		{"/p?ed=2560&ed=99", "/p", 2560},           // duplicate ed → first wins
-		{"", "", 0},                                // empty
-		{"?ed=32", "", 32},                         // path is only the tail
+		{"/path?ed=2048&foo=bar", "/path", 2048}, // ed among other params
+		{"/path?foo=bar&ed=100", "/path", 100},   // ed not first
+		{"/plain", "/plain", 0},                  // no tail
+		{"/plain?ed=", "/plain", 0},              // empty ed → strip tail, no ED
+		{"/plain?ed=abc", "/plain", 0},           // non-numeric ed → no ED
+		{"/plain?ed=0", "/plain", 0},             // ed=0 means disabled
+		{"/plain?ed=-5", "/plain", 0},            // negative → ignored
+		{"/plain?foo=bar", "/plain", 0},          // tail without ed → still stripped
+		{"  /sp?ed=64  ", "/sp", 64},             // surrounding whitespace
+		{"/p?ED=2560", "/p", 2560},               // uppercase key — folded like the rest of the parser
+		{"/p?ed=2560&ed=99", "/p", 2560},         // duplicate ed → first wins
+		{"", "", 0},                              // empty
+		{"?ed=32", "", 32},                       // path is only the tail
 	}
 	for _, tt := range tests {
 		gotPath, gotED := splitWSEarlyData(tt.in)
@@ -74,10 +74,10 @@ func TestAppendEarlyDataToPath(t *testing.T) {
 		want string
 	}{
 		{"/api/v2/channel", 2560, "/api/v2/channel?ed=2560"},
-		{"/p", 0, "/p"},                     // no ed → untouched
-		{"/p", -1, "/p"},                    // invalid → untouched
-		{"/p?x=1", 64, "/p?x=1&ed=64"},      // existing query → &ed
-		{"", 32, "?ed=32"},                  // empty path
+		{"/p", 0, "/p"},                // no ed → untouched
+		{"/p", -1, "/p"},               // invalid → untouched
+		{"/p?x=1", 64, "/p?x=1&ed=64"}, // existing query → &ed
+		{"", 32, "?ed=32"},             // empty path
 	}
 	for _, tt := range tests {
 		if got := appendEarlyDataToPath(tt.path, tt.ed); got != tt.want {
