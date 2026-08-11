@@ -192,7 +192,8 @@ func (ac *AppController) DaemonStatusSnapshot() DaemonUIStatus {
 }
 
 // CoreSupportsLxd проверяет, собрано ли установленное ядро с сабкомандой lxd
-// (тег with_lx_command; появился в релизах форка начиная с 1.14.0-lx.23).
+// (тег with_lx_command; присутствует в релизах форка как минимум с 1.14.0-lx.19 —
+// проверено на darwin-arm64 для lx.19..lx.25-rc.1; релиза lx.23 не существует).
 func (ac *AppController) CoreSupportsLxd() bool {
 	singbox := ac.FileService.SingboxPath
 	if _, err := os.Stat(singbox); err != nil {
