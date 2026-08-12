@@ -70,7 +70,7 @@ func buildRemoteDaemonsPanel(ac *core.AppController, win fyne.Window, onChanged 
 				// отцепляемся, иначе Servers остался бы с транспортом к
 				// подключению, которого уже нет в реестре.
 				if id, _, active := GetLxdRemoteOverride(); active && id == entry.ID {
-					ClearLxdRemoteOverride()
+					ClearLxdRemoteOverride(ac)
 					if onChanged != nil {
 						onChanged()
 					}

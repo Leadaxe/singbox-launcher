@@ -83,7 +83,7 @@ func newEndpointPicker(ac *core.AppController, onChanged func()) *widget.Select 
 		}
 		id, isRemote := labelToID[selected]
 		if !isRemote {
-			ClearLxdRemoteOverride()
+			ClearLxdRemoteOverride(ac)
 			if onChanged != nil {
 				onChanged()
 			}

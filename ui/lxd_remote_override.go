@@ -59,6 +59,15 @@ func SetLxdRemoteOverride(ac *core.AppController, id string) error {
 	lxdOverrideActive = true
 	lxdOverrideMu.Unlock()
 
+	// Транспорт ставим в APIService: через него ходят ВСЕ proxy-операции
+	// core-слоя (AutoLoadProxies, ping, переключение узла). Без этого
+	// EffectiveProxyTransport отдавал наш gRPC только тем вызовам, что идут
+	// из UI, а список прокси грузился локальным Clash-путём — роутер работал
+	// на своём конфиге, а вкладка показывала локальные узлы.
+	if ac.APIService != nil {
+		ac.APIService.SetTransport(transport)
+	}
+
 	if prev != nil {
 		_ = prev.Close()
 	}
@@ -69,7 +78,19 @@ func SetLxdRemoteOverride(ac *core.AppController, id string) error {
 }
 
 // ClearLxdRemoteOverride возвращает Servers к локальному источнику.
-func ClearLxdRemoteOverride() {
+//
+// ac нужен, чтобы снять транспорт-override в APIService; nil допустим для
+// вызовов, у которых контроллера под рукой нет (тогда снимается только
+// UI-состояние).
+func ClearLxdRemoteOverride(ac *core.AppController) {
+	// Снимаем override ТОЛЬКО если он наш: в daemon-режиме там стоит
+	// транспорт локального демона, и его сбрасывать нельзя — иначе своё же
+	// ядро останется без gRPC-канала.
+	if ac != nil && ac.APIService != nil {
+		if _, isRemote := ac.APIService.TransportOverride().(*services.LxdRemoteTransport); isRemote {
+			ac.APIService.SetTransport(nil)
+		}
+	}
 	lxdOverrideMu.Lock()
 	prev := lxdOverrideTransport
 	lxdOverrideID = ""
