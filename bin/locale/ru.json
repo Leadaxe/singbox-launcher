@@ -894,5 +894,9 @@
   "conn.remotes.edit_title": "Настройки машины",
   "conn.remotes.secret_placeholder": "только для демона без TLS",
   "servers.endpoint.picker_tooltip": "Какой машиной управляет вкладка «Серверы»",
-  "conn.remotes.remove_action": "Забыть здесь"
+  "conn.remotes.remove_action": "Забыть здесь",
+  "conn.remotes.health_checking": "проверяем…",
+  "conn.remotes.health_unreachable": "недоступна",
+  "conn.remotes.health_core": "ядро: %s",
+  "conn.remotes.health_daemon": "демон %s"
 }

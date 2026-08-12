@@ -14,10 +14,5 @@ func buildDaemonPanel(_ *core.AppController, _ fyne.Window, _ func()) fyne.Canva
 	return nil
 }
 
-// buildRemoteDaemonPanel — удалённый демон управляется darwin-only клиентом.
-func buildRemoteDaemonPanel(_ *core.AppController, _ fyne.Window, _ func()) fyne.CanvasObject {
-	return nil
-}
-
 // connectionScopeIsRemote — вне macOS удалённого демона нет.
 func connectionScopeIsRemote(_ *core.AppController) bool { return false }

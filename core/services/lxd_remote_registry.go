@@ -372,6 +372,69 @@ func copyIdentity(src, dst string) error {
 	return nil
 }
 
+// RemoteHealth — состояние удалённой машины для строки списка (SPEC 097).
+//
+// Диагностика КАЖДОЙ машины отдельно: до этого окно показывало статус
+// локального демона под заголовком «Remote», то есть данные не той машины,
+// на которую смотрит пользователь.
+type RemoteHealth struct {
+	// Reachable — ответила ли машина на /admin/status.
+	Reachable bool
+	// Err — почему не ответила (для подсказки в UI).
+	Err string
+	// CoreStatus — idle | started | fatal.
+	CoreStatus string
+	// LastError — последняя ошибка применения конфига на той стороне.
+	LastError string
+	// Version / StateDir — паспорт демона (/admin/info); best-effort.
+	Version  string
+	StateDir string
+}
+
+// Health опрашивает машину: статус ядра + паспорт демона.
+//
+// Блокирующий вызов по сети — вызывающий обязан звать из горутины, иначе
+// недоступный роутер подвесит UI на таймаут REST-клиента.
+func (r *RemoteRegistry) Health(id string) RemoteHealth {
+	entry, ok, err := r.Get(id)
+	if err != nil {
+		return RemoteHealth{Err: err.Error()}
+	}
+	if !ok {
+		return RemoteHealth{Err: fmt.Sprintf("unknown id %q", id)}
+	}
+	cfg := lxdclient.Config{
+		Addr:              entry.Addr,
+		ServerFingerprint: entry.ServerFingerprint,
+		Secret:            entry.Secret,
+	}
+	if cfg.TLSEnabled() {
+		identity, idErr := lxdclient.LoadOrCreateIdentity(r.identityDir(id))
+		if idErr != nil {
+			return RemoteHealth{Err: idErr.Error()}
+		}
+		cfg.Identity = identity
+	}
+	client := lxdclient.New(cfg)
+
+	status, err := client.Status()
+	if err != nil {
+		return RemoteHealth{Err: err.Error()}
+	}
+	out := RemoteHealth{
+		Reachable:  true,
+		CoreStatus: status.Status,
+		LastError:  status.LastError,
+	}
+	// Паспорт — best-effort: машина уже отвечает, и отсутствие /admin/info
+	// (старый демон) не повод считать её недоступной.
+	if info, infoErr := client.Info(); infoErr == nil {
+		out.Version = info.Version
+		out.StateDir = info.StateDir
+	}
+	return out
+}
+
 // Transport строит ProxyTransport к сохранённому подключению.
 // Вызывающий отвечает за Close, когда транспорт больше не нужен.
 func (r *RemoteRegistry) Transport(id string) (*LxdRemoteTransport, error) {

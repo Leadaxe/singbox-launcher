@@ -43,22 +43,17 @@ func OpenConnectionWindow(ac *core.AppController, onChanged func()) {
 	win := ac.UIService.Application.NewWindow(locale.T("conn.window_title"))
 
 	localContent := buildLocalEngineTab(ac, win, onChanged)
-	ownDaemonContent := buildRemoteDaemonPanel(ac, win, onChanged) // nil вне macOS
-	// SPEC 097: подключения к ЧУЖИМ демонам (роутер, VPS, другой mac) —
-	// кросс-платформенно: лаунчер тут только клиент.
-	remotesContent := buildRemoteDaemonsPanel(ac, win, onChanged)
+	// SPEC 097: область Remote — только про ЧУЖИЕ машины.
+	//
+	// Раньше здесь жила ещё панель сопряжения своего демона
+	// (buildRemoteDaemonPanel): её диагностика показывала ЛОКАЛЬНЫЙ демон
+	// под заголовком «Remote», а её Pair дублировал «Add machine» ниже — и
+	// именно он затирал адрес своего демона при сопряжении с роутером.
+	// Статус локального демона уже есть во вкладке Local, дубль убран.
+	remoteContent := buildRemoteDaemonsPanel(ac, win, onChanged)
 
 	var body fyne.CanvasObject
 	{
-		// Панель «свой демон» существует только на macOS; панель удалённых
-		// машин — везде. Собираем remote-область из того, что доступно.
-		remoteParts := []fyne.CanvasObject{}
-		if ownDaemonContent != nil {
-			remoteParts = append(remoteParts, ownDaemonContent, widget.NewSeparator())
-		}
-		remoteParts = append(remoteParts, remotesContent)
-		remoteContent := container.NewVBox(remoteParts...)
-
 		localBox := container.NewVBox(localContent)
 		remoteBox := container.NewVBox(remoteContent)
 		showScope := func(remote bool) {

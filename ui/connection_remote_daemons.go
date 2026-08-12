@@ -256,16 +256,38 @@ func buildRemoteDaemonsPanel(ac *core.AppController, win fyne.Window, onChanged 
 		}
 		for _, e := range entries {
 			entry := e
+			isActive := active && entry.ID == activeID
+
+			// Строка 1: имя + адрес. Активная машина помечена точкой —
+			// тем же маркером, что и в дропдауне шапки Servers.
 			title := entry.Name
-			if active && entry.ID == activeID {
-				title = "● " + title
+			if isActive {
+				title = "● " + entry.Name
 			}
 			nameLbl := widget.NewLabel(title)
+			nameLbl.TextStyle = fyne.TextStyle{Bold: true}
 			addrLbl := widget.NewLabel(entry.Addr)
 			addrLbl.Importance = widget.LowImportance
 
+			// Строка 2: диагностика ЭТОЙ машины. Опрос по сети, поэтому
+			// стартуем с «проверяем…» и заполняем из горутины — недоступный
+			// роутер иначе подвесил бы окно на таймаут REST-клиента.
+			healthLbl := widget.NewLabel(locale.T("conn.remotes.health_checking"))
+			healthLbl.Wrapping = fyne.TextWrapWord
+			healthLbl.Importance = widget.LowImportance
+			go func(id string, lbl *widget.Label) {
+				h := registry.Health(id)
+				fyne.Do(func() {
+					text, importance := renderRemoteHealth(h)
+					lbl.SetText(text)
+					lbl.Importance = importance
+					lbl.Refresh()
+				})
+			}(entry.ID, healthLbl)
+
+			// Кнопки — одной строкой справа, компактно.
 			var actionBtn *widget.Button
-			if active && entry.ID == activeID {
+			if isActive {
 				actionBtn = widget.NewButton(locale.T("conn.remotes.disconnect"), disconnect)
 			} else {
 				actionBtn = widget.NewButton(locale.T("conn.remotes.connect"), func() { connectTo(entry) })
@@ -274,10 +296,11 @@ func buildRemoteDaemonsPanel(ac *core.AppController, win fyne.Window, onChanged 
 			editBtn := widget.NewButton(locale.T("conn.remotes.edit"), func() { editEntry(entry) })
 			delBtn := widget.NewButton(locale.T("conn.remotes.remove"), func() { remove(entry) })
 			delBtn.Importance = widget.DangerImportance
+			buttons := container.NewHBox(actionBtn, editBtn, delBtn)
 
-			list.Add(container.NewBorder(nil, nil,
-				container.NewVBox(nameLbl, addrLbl),
-				container.NewHBox(actionBtn, editBtn, delBtn),
+			list.Add(container.NewBorder(
+				nil, nil, nil, buttons,
+				container.NewVBox(nameLbl, addrLbl, healthLbl),
 			))
 			list.Add(widget.NewSeparator())
 		}
@@ -315,4 +338,33 @@ func isLoopbackAddr(addr string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// renderRemoteHealth — одна строка состояния машины + её важность.
+//
+// Формат: «● ядро: started · демон v1.14.0-lx.25-rc.1». Недоступность —
+// отдельным цветом: это самая частая проблема (роутер выключен, адрес
+// сменился, порт закрыт), и она не должна теряться среди прочего текста.
+func renderRemoteHealth(h services.RemoteHealth) (string, widget.Importance) {
+	if !h.Reachable {
+		msg := h.Err
+		if msg == "" {
+			msg = locale.T("conn.remotes.health_unreachable")
+		}
+		return "✕ " + msg, widget.DangerImportance
+	}
+	parts := []string{locale.Tf("conn.remotes.health_core", h.CoreStatus)}
+	if h.Version != "" {
+		parts = append(parts, locale.Tf("conn.remotes.health_daemon", h.Version))
+	}
+	line := "✓ " + strings.Join(parts, " · ")
+	// Ядро легло или конфиг не применился — предупреждаем, машина доступна,
+	// но не в рабочем состоянии.
+	if h.CoreStatus == "fatal" || h.LastError != "" {
+		if h.LastError != "" {
+			line += " · " + h.LastError
+		}
+		return line, widget.WarningImportance
+	}
+	return line, widget.MediumImportance
 }

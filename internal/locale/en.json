@@ -894,5 +894,9 @@
   "conn.remotes.edit_title": "Machine settings",
   "conn.remotes.secret_placeholder": "only for a daemon without TLS",
   "servers.endpoint.picker_tooltip": "Which machine the Servers tab manages",
-  "conn.remotes.remove_action": "Forget it here"
+  "conn.remotes.remove_action": "Forget it here",
+  "conn.remotes.health_checking": "checking…",
+  "conn.remotes.health_unreachable": "unreachable",
+  "conn.remotes.health_core": "core: %s",
+  "conn.remotes.health_daemon": "daemon %s"
 }
