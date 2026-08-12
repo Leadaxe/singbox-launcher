@@ -15,6 +15,7 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 )
@@ -104,21 +105,48 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo) {
 			memberRows[member] = row
 			body.Add(row)
 		}
-		go func(group string) {
-			_, now, err := EffectiveProxyTransport(ac).GroupProxies(group)
-			if err != nil || strings.TrimSpace(now) == "" {
-				return
+		// Перерисовка метки: снимаем её со старого участника и ставим новому.
+		// Идемпотентна — приходит на каждый кадр подписки, включая повтор
+		// того же значения.
+		markSelected := func(selected string) {
+			for tag, row := range memberRows {
+				want := tag == selected
+				has := strings.Contains(row.Text, "   ● ")
+				if want == has {
+					continue
+				}
+				if want {
+					row.SetText(strings.Replace(row.Text, "   · ", "   ● ", 1))
+					row.TextStyle = fyne.TextStyle{Bold: true}
+				} else {
+					row.SetText(strings.Replace(row.Text, "   ● ", "   · ", 1))
+					row.TextStyle = fyne.TextStyle{}
+				}
+				row.Refresh()
 			}
-			fyne.Do(func() {
-				row, ok := memberRows[now]
-				if !ok {
+		}
+
+		// Живая подписка: ядро пушит смену выбора по событию, поэтому окно
+		// отражает перевыбор само. Разовый снимок «замёрз» бы — у least_test
+		// перевыбор случается по результатам url-теста в любой момент.
+		if sub, ok := EffectiveProxyTransport(ac).(groupSelectionSource); ok {
+			if cancel, err := sub.SubscribeGroupSelection(proxy.Name, func(selected string) {
+				fyne.Do(func() { markSelected(selected) })
+			}); err == nil {
+				win.SetOnClosed(cancel) // иначе стрим и горутина переживут окно
+			} else {
+				debuglog.WarnLog("node info: subscribe group selection: %v", err)
+			}
+		} else {
+			// Транспорт без подписки (Clash HTTP) — разовый снимок.
+			go func(group string) {
+				_, now, err := EffectiveProxyTransport(ac).GroupProxies(group)
+				if err != nil || strings.TrimSpace(now) == "" {
 					return
 				}
-				row.TextStyle = fyne.TextStyle{Bold: true}
-				row.SetText(strings.Replace(row.Text, "   · ", "   ● ", 1))
-				row.Refresh()
-			})
-		}(proxy.Name)
+				fyne.Do(func() { markSelected(now) })
+			}(proxy.Name)
+		}
 
 		// Живой пул балансировщика — только urltest-группы и только в
 		// daemon-режиме (lx-RPC GetPool доступен по gRPC-каналу). Секция
@@ -487,4 +515,11 @@ func groupUsesPool(node *wizardbusiness.ConfigNode) bool {
 		}
 	}
 	return false
+}
+
+// groupSelectionSource — транспорт, умеющий пушить смену выбранного узла
+// группы (gRPC SubscribeGroups). Clash-транспорт его не реализует — там
+// остаётся разовый снимок.
+type groupSelectionSource interface {
+	SubscribeGroupSelection(group string, onSelected func(string)) (func(), error)
 }

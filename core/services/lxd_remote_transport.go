@@ -168,6 +168,57 @@ func (t *LxdRemoteTransport) Delay(proxyName string) (int64, error) {
 // Убедимся на компиляции, что транспорт реализует интерфейс.
 var _ ProxyTransport = (*LxdRemoteTransport)(nil)
 
+// SubscribeGroupSelection следит за выбранным узлом группы (SPEC 097).
+//
+// Поток пушится ядром по событию перевыбора, а не по таймеру, поэтому окно
+// узла отражает смену само — без опроса. Разовый GetGroups показал бы снимок
+// на момент открытия и «замёрз» бы: у least_test перевыбор случается по
+// результатам url-теста, то есть в любой момент.
+//
+// onSelected зовётся при КАЖДОМ кадре, включая повтор того же значения:
+// фильтрацию оставляем вызывающему (у UI свой критерий «изменилось»).
+// Пустой selected — валидное состояние (ядро не в STARTED), не ошибка.
+//
+// Возвращает функцию отмены: вызывающий обязан её позвать при закрытии окна,
+// иначе стрим и горутина переживут его.
+func (t *LxdRemoteTransport) SubscribeGroupSelection(group string, onSelected func(string)) (cancel func(), err error) {
+	t.mu.Lock()
+	if t.conn == nil {
+		conn, dialErr := t.client.DialGRPC()
+		if dialErr != nil {
+			t.mu.Unlock()
+			return nil, fmt.Errorf("lxd remote: dial %s: %w", t.client.AddrString(), dialErr)
+		}
+		t.conn = conn
+	}
+	conn := t.conn
+	t.mu.Unlock()
+
+	// Собственный контекст: стрим живёт, пока открыто окно, и не связан с
+	// дедлайном одиночного RPC.
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	stream, err := daemonpb.NewStartedServiceClient(conn).SubscribeGroups(ctx, &emptypb.Empty{})
+	if err != nil {
+		cancelCtx()
+		return nil, fmt.Errorf("lxd remote SubscribeGroups: %w", err)
+	}
+	go func() {
+		for {
+			groups, recvErr := stream.Recv()
+			if recvErr != nil {
+				return // обрыв или отмена — окно закрылось либо ядро легло
+			}
+			for _, g := range groups.GetGroup() {
+				if g.GetTag() == group {
+					onSelected(g.GetSelected())
+					break
+				}
+			}
+		}
+	}()
+	return cancelCtx, nil
+}
+
 // PoolSlot — слот пула балансировщика удалённого ядра (SPEC 097).
 //
 // Дублирует core.PoolSlotInfo намеренно: core импортирует services, обратная
