@@ -51,10 +51,17 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	}
 	// SPEC 097: при подключении к удалённому демону локальный config.json не
 	// описывает ЕГО ядро — группы спрашиваем у самого демона по gRPC.
-	if remoteGroups, ok := RemoteDaemonGroups(); ok && len(remoteGroups) > 0 {
+	if remoteGroups, isRemote, groupsErr := RemoteDaemonGroups(); isRemote {
+		// Выбрана удалённая машина: её группы — единственный корректный
+		// источник. При ошибке НЕ откатываемся на локальный config.json —
+		// он описывает другое ядро, и подстановка выдавала бы чужой список
+		// за список выбранной машины.
 		selectorOptions = remoteGroups
-		if defaultSelector == "" || !containsStringValue(remoteGroups, defaultSelector) {
+		defaultSelector = ""
+		if len(remoteGroups) > 0 {
 			defaultSelector = remoteGroups[0]
+		} else if groupsErr != nil {
+			debuglog.WarnLog("clash_api_tab: remote groups unavailable: %v", groupsErr)
 		}
 	}
 	if len(selectorOptions) == 0 {
@@ -188,9 +195,15 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		var updatedSelectorOptions []string
 		var updatedDefaultSelector string
 		var err error
-		if remoteGroups, ok := RemoteDaemonGroups(); ok && len(remoteGroups) > 0 {
+		if remoteGroups, isRemote, groupsErr := RemoteDaemonGroups(); isRemote {
 			updatedSelectorOptions = remoteGroups
-			updatedDefaultSelector = remoteGroups[0]
+			if len(remoteGroups) > 0 {
+				updatedDefaultSelector = remoteGroups[0]
+			} else if groupsErr != nil {
+				// Машина недоступна или ядро не запущено — список пуст, но
+				// локальные группы подставлять нельзя: это чужое ядро.
+				debuglog.WarnLog("clash_api_tab: remote groups unavailable: %v", groupsErr)
+			}
 		} else {
 			updatedSelectorOptions, updatedDefaultSelector, err = config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
 		}

@@ -106,20 +106,24 @@ func lxdOverrideTransportOrNil() services.ProxyTransport {
 //
 // Локальный путь берёт список групп из bin/config.json; для чужой машины
 // такого файла у нас нет, поэтому спрашиваем само ядро по gRPC.
-func RemoteDaemonGroups() ([]string, bool) {
+func RemoteDaemonGroups() (groups []string, isRemote bool, err error) {
 	lxdOverrideMu.RLock()
 	transport := lxdOverrideTransport
 	active := lxdOverrideActive
 	lxdOverrideMu.RUnlock()
 	if !active || transport == nil {
-		return nil, false
+		return nil, false, nil
 	}
-	groups, err := transport.Groups()
+	groups, err = transport.Groups()
 	if err != nil {
 		debuglog.WarnLog("lxd override: GetGroups failed: %v", err)
-		return nil, false
+		// isRemote=true при ошибке — это НЕ мелочь: вызывающий не должен
+		// откатываться на локальный config.json. Он описывает другое ядро, и
+		// подстановка его групп выдавала бы чужой список за список выбранной
+		// машины (симптом: «переключил на роутер, а список локальный»).
+		return nil, true, err
 	}
-	return groups, true
+	return groups, true, nil
 }
 
 type overrideError string
