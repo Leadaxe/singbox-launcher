@@ -121,20 +121,30 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 			}
 			app.localPanel.Activate(controller)
 			ClearLxdRemoteOverride(controller)
+			// Транспорт машины снят — панель Remote снова без собеседника.
+			// Прячем её, иначе при возврате на вкладку она встретит
+			// пользователя органами управления, которым некуда обращаться.
+			app.remotePanel.SetEnabled(false)
 		case app.clashAPITab:
 			if controller.APIService != nil {
 				controller.APIService.SetProxyScope(services.ScopeRemote)
 			}
 			app.remotePanel.Activate(controller)
 		}
-		if item == coreTabItem || item == app.clashAPITab {
-			// SPEC 064: вкладка доступна всегда, даже когда локальный sing-box
-			// не запущен и удалённая машина не выбрана — её собственный UI
-			// сообщает об этом. RefreshAPIFunc безопасен: он no-op, если ни
-			// локальное ядро, ни удалённый транспорт не отвечают.
-			if controller.UIService != nil && controller.UIService.RefreshAPIFunc != nil {
-				controller.UIService.RefreshAPIFunc()
-			}
+		// Обновляем список только там, где есть с кем разговаривать.
+		//
+		// На Local это локальное ядро — оно есть всегда (RefreshAPIFunc сам
+		// no-op, если ядро не запущено). На Remote собеседник появляется
+		// только после выбора машины: без него запрос уходил с пустой группой
+		// и возвращал «Daemon: group "" not found». Пустой список до выбора —
+		// это честное состояние, а не сбой.
+		needRefresh := item == coreTabItem
+		if item == app.clashAPITab {
+			_, _, hasMachine := GetLxdRemoteOverride()
+			needRefresh = hasMachine
+		}
+		if needRefresh && controller.UIService != nil && controller.UIService.RefreshAPIFunc != nil {
+			controller.UIService.RefreshAPIFunc()
 		}
 	}
 

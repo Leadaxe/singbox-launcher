@@ -66,6 +66,10 @@ func SetLxdRemoteOverride(ac *core.AppController, id string) error {
 	// на своём конфиге, а вкладка показывала локальные узлы.
 	if ac.APIService != nil {
 		ac.APIService.SetTransport(transport)
+		// Сменилась машина — прежние узлы и группа принадлежали ДРУГОМУ ядру.
+		// Без сброса список показывал бы данные предыдущей машины под именем
+		// новой, пока не придёт ответ (инвариант «UI не подменяет данные»).
+		ac.APIService.ResetScope(services.ScopeRemote)
 	}
 
 	if prev != nil {

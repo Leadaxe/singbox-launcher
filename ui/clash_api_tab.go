@@ -62,6 +62,18 @@ type ProxyListPanel struct {
 	refreshAPI           func()
 	resetAPIState        func()
 	autoPingAfterConnect func()
+	setEnabled           func(bool)
+}
+
+// SetEnabled показывает или прячет содержимое панели.
+//
+// Нужен вкладке Remote: до Connect у неё нет собеседника, и вся панель —
+// дропдаун групп, сортировка, ping — вела бы в пустоту. Показывать
+// неработающие органы управления хуже, чем не показывать их вовсе.
+func (p *ProxyListPanel) SetEnabled(on bool) {
+	if p != nil && p.setEnabled != nil {
+		p.setEnabled(on)
+	}
 }
 
 // Activate делает панель владельцем разделяемых слотов UIService.
@@ -107,16 +119,30 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	panel.listStatusLabel = status
 	ac.UIService.ListStatusLabel = status
 
-	selectorOptions, defaultSelector, err := config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
-	if err != nil {
-		// Cold-start: config.json ещё не существует (пользователь не нажал
-		// Save). Сваливаемся на "proxy-out" дефолт ниже — не повод писать
-		// ERROR. На любую другую ошибку (битый JSON, нет experimental.clash_api)
-		// логируем громко.
-		if os.IsNotExist(err) {
-			debuglog.DebugLog("clash_api_tab: config.json not present yet (cold start): %v", err)
-		} else {
-			debuglog.ErrorLog("clash_api_tab: failed to get selector groups: %v", err)
+	var (
+		selectorOptions []string
+		defaultSelector string
+	)
+	// Локальный config.json описывает ТОЛЬКО локальное ядро, поэтому группы из
+	// него читает лишь local-панель.
+	//
+	// Для remote-панели он не источник ни при каких условиях: до Connect у неё
+	// вообще нет собеседника, а группы у машины свои. Без этого различия
+	// дропдаун на Remote при старте заполнялся группами своего ядра
+	// (`vpn ①`, `ru VPN`…) — чужой список под именем удалённой машины.
+	if scope == services.ScopeLocal {
+		var err error
+		selectorOptions, defaultSelector, err = config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
+		if err != nil {
+			// Cold-start: config.json ещё не существует (пользователь не нажал
+			// Save). Сваливаемся на "proxy-out" дефолт ниже — не повод писать
+			// ERROR. На любую другую ошибку (битый JSON, нет experimental.clash_api)
+			// логируем громко.
+			if os.IsNotExist(err) {
+				debuglog.DebugLog("clash_api_tab: config.json not present yet (cold start): %v", err)
+			} else {
+				debuglog.ErrorLog("clash_api_tab: failed to get selector groups: %v", err)
+			}
 		}
 	}
 	// SPEC 097: при подключении к удалённому демону локальный config.json не
@@ -134,11 +160,13 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			debuglog.WarnLog("clash_api_tab: remote groups unavailable: %v", groupsErr)
 		}
 	}
-	if len(selectorOptions) == 0 {
+	// Заглушка "proxy-out" — только для local: у него ядро есть всегда, и
+	// пустой дропдаун был бы тупиком. На Remote до Connect список честно пуст.
+	if len(selectorOptions) == 0 && scope == services.ScopeLocal {
 		selectorOptions = []string{"proxy-out"}
 	}
 	selectedGroup := defaultSelector
-	if selectedGroup == "" {
+	if selectedGroup == "" && len(selectorOptions) > 0 {
 		selectedGroup = selectorOptions[0]
 	}
 	// Only set SelectedClashGroup if it's not already set (to preserve value from initialization)
@@ -280,8 +308,22 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				// локальные группы подставлять нельзя: это чужое ядро.
 				debuglog.WarnLog("clash_api_tab: remote groups unavailable: %v", groupsErr)
 			}
-		} else {
+		} else if scope == services.ScopeLocal {
 			updatedSelectorOptions, updatedDefaultSelector, err = config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
+		} else if groupSelect != nil {
+			// Remote без выбранной машины: собеседника нет, значит нет и групп.
+			// Оставить прежние значило бы показывать группы отключённой машины
+			// (а на старте — локальные) как её собственные.
+			selectorOptions = nil
+			selectedGroup = ""
+			groupSelect.SetOptions(nil)
+			suppressSelectCallback = true
+			groupSelect.SetSelected("")
+			suppressSelectCallback = false
+			if ac.APIService != nil {
+				ac.APIService.SetSelectedClashGroupIn(panel.scope, "")
+			}
+			return
 		}
 		if err == nil && len(updatedSelectorOptions) > 0 && groupSelect != nil {
 			// Обновляем и переменную selectorOptions, и виджет groupSelect
@@ -1495,6 +1537,38 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		nil,
 		scrollContainer,
 	)
+
+	// Remote без выбранной машины: собеседника нет, и нажимать в панели
+	// нечего — любое действие ушло бы в пустоту.
+	//
+	// Гасим ОРГАНЫ УПРАВЛЕНИЯ, а не саму панель: спрятать её целиком значит
+	// отдать всё окно правой колонке, и разметка вкладки скачет туда-сюда при
+	// каждом Connect. Каркас стоит на месте, кнопки серые — это и читается как
+	// «здесь пока нечего делать». Панель включается по Connect
+	// (SetEnabled из machine_list_panel).
+	disableable := []fyne.Disableable{groupSelect, mapButton}
+	for _, o := range buttonsRow.Objects {
+		if d, ok := o.(fyne.Disableable); ok {
+			disableable = append(disableable, d)
+		}
+	}
+	panel.setEnabled = func(on bool) {
+		for _, d := range disableable {
+			if on {
+				d.Enable()
+			} else {
+				d.Disable()
+			}
+		}
+	}
+	if scope == services.ScopeRemote {
+		if _, _, connected := GetLxdRemoteOverride(); !connected {
+			panel.setEnabled(false)
+			// Пустой список без объяснения читается как поломка. Говорим, чего
+			// не хватает: машина не выбрана.
+			status.SetText(locale.T("remote.proxies.no_machine"))
+		}
+	}
 
 	panel.Content = contentContainer
 	return panel

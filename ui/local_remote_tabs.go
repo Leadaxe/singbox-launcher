@@ -78,7 +78,7 @@ func CreateRemoteTab(ac *core.AppController) (fyne.CanvasObject, *ProxyListPanel
 	// Обновляем СВОЮ панель напрямую, а не через UIService.RefreshAPIFunc:
 	// выбор машины касается списка Remote, и промахнуться мимо него в момент,
 	// когда слоты принадлежат другой вкладке, нельзя.
-	machines := CreateMachineListPanel(ac, proxyPanel.Refresh)
+	machines := CreateMachineListPanel(ac, proxyPanel)
 	split := container.NewHSplit(proxyPanel.Content, withColumnWidth(machines, rightColumnWidth))
 	split.SetOffset(splitColumnRatio)
 	return split, proxyPanel

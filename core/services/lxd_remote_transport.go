@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -263,8 +264,21 @@ func (t *LxdRemoteTransport) Groups() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("lxd remote GetGroups: %w", err)
 	}
+	// Только РУЧНЫЕ группы (selector) — те, где узел выбирает пользователь.
+	//
+	// GetGroups отдаёт все группы ядра подряд, включая urltest (`auto-proxy-out`,
+	// «Авто | Лучший сервер») и группы-обёртки вокруг отдельных узлов. В
+	// дропдауне селектора им не место: выбор внутри urltest делает само ядро по
+	// задержке, и подмена его руками ничего не решает.
+	//
+	// Тот же критерий, что у локальной стороны (GetSelectorGroupsFromConfig
+	// отбирает outbounds с type=="selector"), — иначе список групп на Remote и
+	// на Local означал бы разное.
 	tags := make([]string, 0, len(groups.GetGroup()))
 	for _, g := range groups.GetGroup() {
+		if !strings.EqualFold(g.GetType(), "selector") {
+			continue
+		}
 		if tag := g.GetTag(); tag != "" {
 			tags = append(tags, tag)
 		}

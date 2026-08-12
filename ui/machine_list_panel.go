@@ -32,21 +32,21 @@ type machineListPanel struct {
 	registry  *services.RemoteRegistry
 	list      *fyne.Container
 	container *fyne.Container
-	// onSelectionChanged — перезагрузка списка прокси слева после смены
-	// активной машины.
-	onSelectionChanged func()
+	// proxies — панель списка узлов слева. Панель машин ею управляет: до
+	// Connect она скрыта, после — показывается и перечитывается.
+	proxies *ProxyListPanel
 	// health — последний известный статус каждой машины, чтобы перерисовка
 	// строки не ходила в сеть заново.
 	health map[string]services.RemoteHealth
 }
 
 // CreateMachineListPanel строит правую колонку вкладки Remote.
-func CreateMachineListPanel(ac *core.AppController, onSelectionChanged func()) fyne.CanvasObject {
+func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyne.CanvasObject {
 	p := &machineListPanel{
-		ac:                 ac,
-		registry:           services.NewRemoteRegistry(ac.FileService.ExecDir),
-		onSelectionChanged: onSelectionChanged,
-		health:             make(map[string]services.RemoteHealth),
+		ac:       ac,
+		registry: services.NewRemoteRegistry(ac.FileService.ExecDir),
+		proxies:  proxies,
+		health:   make(map[string]services.RemoteHealth),
 	}
 	p.list = container.NewVBox()
 
@@ -56,9 +56,7 @@ func CreateMachineListPanel(ac *core.AppController, onSelectionChanged func()) f
 		// значило бы иметь две реализации одноразового кода.
 		OpenConnectionWindow(ac, func() {
 			p.Reload()
-			if p.onSelectionChanged != nil {
-				p.onSelectionChanged()
-			}
+			p.proxies.Refresh()
 		})
 	})
 	addBtn.Importance = widget.MediumImportance
@@ -104,7 +102,8 @@ func (p *machineListPanel) Reload() {
 		p.list.Add(p.buildRow(d, d.ID == activeID))
 	}
 	p.list.Refresh()
-	p.refreshHealthAsync(list)
+	// Никаких сетевых опросов здесь: показ списка — не повод стучаться к
+	// чужим хостам. Состояние машины появляется только после явного Connect.
 }
 
 // buildRow — одна строка машины: имя, платформа, адрес, статус и кнопки.
@@ -119,57 +118,9 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	tgt := d.Target()
 	meta := widget.NewLabel(fmt.Sprintf("%s/%s   %s", tgt.GOOS, tgt.GOARCH, d.Addr))
 
-	// Статус ядра: то, что уже успел вернуть фоновой health-опрос. Пока не
-	// вернул — честное «проверяем», а не выдуманное «остановлено».
-	statusText := locale.T("remote.machines.checking")
-	if h, ok := p.health[d.ID]; ok {
-		switch {
-		case h.Err != "":
-			statusText = locale.Tf("remote.machines.unreachable", h.Err)
-		case h.CoreStatus != "":
-			statusText = h.CoreStatus
-		default:
-			statusText = locale.T("remote.machines.reachable")
-		}
-	}
-	status := widget.NewLabel(statusText)
-	status.Wrapping = fyne.TextWrapWord
-
-	// Configure — визард, корневой на профиле ЭТОЙ машины (§2.4). Именно
-	// здесь исчезает выбор таргета: он задан тем, из какой строки открыли.
-	configureBtn := widget.NewButton(locale.T("remote.machines.configure"), func() {
-		configurator.ShowConfigWizardForMachine(p.ac.UIService.MainWindow, d)
-	})
-
-	selectBtn := widget.NewButton(locale.T("remote.machines.select"), func() {
-		p.selectMachine(d)
-	})
-	if active {
-		selectBtn.Disable()
-	}
-
-	// Питание ядра машины. Надпись зависит от последнего известного статуса;
-	// пока health не вернулся — Start, потому что «запустить уже запущенное»
-	// демон отвергает безобидно, а «остановить» вслепую рвёт чужой VPN.
-	//
-	// Статусы демона: idle | started | fatal (RemoteHealth.CoreStatus).
-	// Сравнение с "running" не совпадало ни с одним из них, поэтому кнопка
-	// всегда показывала Start и остановить ядро было нечем.
-	running := false
-	if h, ok := p.health[d.ID]; ok && h.CoreStatus == "started" {
-		running = true
-	}
-	powerLabel := locale.T("servers.power.start")
-	if running {
-		powerLabel = locale.T("servers.power.stop")
-	}
-	powerBtn := widget.NewButton(powerLabel, func() {
-		p.togglePower(d, running)
-	})
-
-	deployBtn := widget.NewButton(locale.T("servers.power.deploy"), func() {
-		p.deployTo(d)
-	})
+	// Соединения с машиной ещё не было — про её ядро мы не знаем НИЧЕГО, и
+	// узнать можем только сходив по сети, чего без спроса делать нельзя.
+	health, connected := p.health[d.ID]
 
 	editBtn := ttwidget.NewButton("✎", func() {
 		p.editMachine(d)
@@ -184,21 +135,77 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	removeBtn.Importance = widget.LowImportance
 
 	// Правка и удаление — напротив ИМЕНИ: это операции над самой записью,
-	// а не над её ядром. Start/Stop — напротив СТАТУСА, который он меняет:
-	// кнопка стоит там, где виден её результат.
+	// а не над её ядром, поэтому доступны и без соединения.
 	nameRow := container.NewBorder(nil, nil, nil,
 		container.NewHBox(editBtn, removeBtn), name)
+
+	rows := []fyne.CanvasObject{nameRow, meta}
+
+	// Configure правит профиль машины на диске — сеть для этого не нужна,
+	// поэтому кнопка живёт до соединения (§2.4).
+	configureBtn := widget.NewButton(locale.T("remote.machines.configure"), func() {
+		configurator.ShowConfigWizardForMachine(p.ac.UIService.MainWindow, d)
+	})
+
+	if !connected {
+		// До Connect строка показывает только паспорт машины и Connect.
+		// Ни статуса, ни Start/Stop, ни Deploy: всё это требует ответа от
+		// демона, а выдумывать его состояние — врать пользователю.
+		connectBtn := widget.NewButton(locale.T("remote.machines.connect"), func() {
+			p.connectMachine(d)
+		})
+		connectBtn.Importance = widget.HighImportance
+		rows = append(rows, container.NewHBox(configureBtn, connectBtn), widget.NewSeparator())
+		return container.NewVBox(rows...)
+	}
+
+	// Соединились: показываем настоящий статус ядра и открываем управление.
+	//
+	// Статусы демона: idle | started | fatal (RemoteHealth.CoreStatus).
+	statusText := locale.T("remote.machines.reachable")
+	switch {
+	case health.Err != "":
+		statusText = locale.Tf("remote.machines.unreachable", health.Err)
+	case health.CoreStatus != "":
+		statusText = health.CoreStatus
+	}
+	status := widget.NewLabel(statusText)
+	status.Wrapping = fyne.TextWrapWord
+
+	running := health.CoreStatus == "started"
+	powerLabel := locale.T("servers.power.start")
+	if running {
+		powerLabel = locale.T("servers.power.stop")
+	}
+	powerBtn := widget.NewButton(powerLabel, func() {
+		p.togglePower(d, running)
+	})
+	if health.Err != "" {
+		// Машина не отвечает — управлять её ядром нечем.
+		powerBtn.Disable()
+	}
+
+	deployBtn := widget.NewButton(locale.T("servers.power.deploy"), func() {
+		p.deployTo(d)
+	})
+	if health.Err != "" {
+		deployBtn.Disable()
+	}
+
+	disconnectBtn := widget.NewButton(locale.T("remote.machines.disconnect"), func() {
+		p.disconnectMachine()
+	})
+
+	// Start/Stop — напротив СТАТУСА, который он меняет: кнопка стоит там,
+	// где виден её результат.
 	statusRow := container.NewBorder(nil, nil, nil,
 		container.NewHBox(powerBtn), status)
-
-	card := container.NewVBox(
-		nameRow,
-		meta,
+	rows = append(rows,
 		statusRow,
-		container.NewHBox(configureBtn, deployBtn, selectBtn),
+		container.NewHBox(configureBtn, deployBtn, disconnectBtn),
 		widget.NewSeparator(),
 	)
-	return card
+	return container.NewVBox(rows...)
 }
 
 // selectMachine делает машину активной: список прокси слева начинает
@@ -206,16 +213,59 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 //
 // Выбор эфемерный (SPEC 097 §4.3) — не переживает перезапуск, чтобы лаунчер
 // всегда стартовал со своим ядром.
-func (p *machineListPanel) selectMachine(d services.RemoteDaemon) {
+func (p *machineListPanel) connectMachine(d services.RemoteDaemon) {
 	if err := SetLxdRemoteOverride(p.ac, d.ID); err != nil {
-		debuglog.WarnLog("machine list: select %q: %v", d.ID, err)
+		debuglog.WarnLog("machine list: connect %q: %v", d.ID, err)
 		dialog.ShowError(err, p.ac.UIService.MainWindow)
 		return
 	}
-	p.Reload()
-	if p.onSelectionChanged != nil {
-		p.onSelectionChanged()
+	// Спрашиваем состояние ядра — первый и единственный сетевой поход,
+	// сделанный по явной команде пользователя. Блокирующий вызов, поэтому
+	// в горутине: недоступная машина отвечает по таймауту REST-клиента.
+	go func() {
+		h := p.registry.Health(d.ID)
+		fyne.Do(func() {
+			p.health[d.ID] = h
+			p.redrawRows()
+
+			if h.Err != "" {
+				debuglog.WarnLog("machine list: %q unreachable: %s", d.ID, h.Err)
+				return
+			}
+			// Узлы читаем ТОЛЬКО если ядро на машине запущено. При idle их
+			// физически нет: демон ответит «service is not started», и
+			// пользователь получил бы ошибку там, где достаточно нажать Start.
+			if h.CoreStatus != "started" {
+				debuglog.InfoLog("machine list: %q connected, core is %q — press Start to load nodes",
+					d.ID, h.CoreStatus)
+				return
+			}
+			p.proxies.SetEnabled(true)
+			p.loadNodes()
+		})
+	}()
+}
+
+// loadNodes перечитывает группы и список узлов активной машины.
+//
+// Сброс идёт первым: он перечитывает группы У ЭТОЙ машины и чистит прежний
+// список. Без него запрос уходил бы с группой предыдущего источника —
+// отсюда «Daemon: group "" not found».
+func (p *machineListPanel) loadNodes() {
+	if p.ac.UIService != nil && p.ac.UIService.ResetAPIStateFunc != nil {
+		p.ac.UIService.ResetAPIStateFunc()
 	}
+	p.proxies.Refresh()
+}
+
+// disconnectMachine рвёт связь с машиной: строка сворачивается обратно к
+// паспорту с кнопкой Connect, список слева пустеет.
+func (p *machineListPanel) disconnectMachine() {
+	p.proxies.SetEnabled(false)
+	ClearLxdRemoteOverride(p.ac)
+	p.health = make(map[string]services.RemoteHealth)
+	p.Reload()
+	p.proxies.Refresh()
 }
 
 // editMachine — правка имени и адреса. Платформа правится там же: это
@@ -284,8 +334,9 @@ func (p *machineListPanel) removeMachine(d services.RemoteDaemon) {
 				return
 			}
 			p.Reload()
-			if activeID == d.ID && p.onSelectionChanged != nil {
-				p.onSelectionChanged()
+			if activeID == d.ID {
+				p.proxies.SetEnabled(false)
+				p.proxies.Refresh()
 			}
 		}, p.ac.UIService.MainWindow)
 }
@@ -303,15 +354,29 @@ func (p *machineListPanel) togglePower(d services.RemoteDaemon, running bool) {
 			} else {
 				err = p.registry.StartCore(d.ID)
 			}
+			// Перечитываем состояние: оно только что изменилось, и рисовать
+			// строку по домыслу («нажали Start — значит started») нельзя —
+			// ядро могло не подняться.
+			h := p.registry.Health(d.ID)
 			fyne.Do(func() {
 				if err != nil {
 					debuglog.WarnLog("machine list: power %q: %v", d.ID, err)
 					dialog.ShowError(err, p.ac.UIService.MainWindow)
 				}
-				p.Reload()
-				if p.onSelectionChanged != nil {
-					p.onSelectionChanged()
+				p.health[d.ID] = h
+				p.redrawRows()
+
+				if h.CoreStatus == "started" {
+					// Ядро поднялось — вот теперь у машины есть группы и узлы.
+					p.loadNodes()
+					return
 				}
+				// Ядро остановлено: список слева должен опустеть, а не
+				// показывать узлы, которых на машине уже нет.
+				if p.ac.APIService != nil {
+					p.ac.APIService.ResetScope(services.ScopeRemote)
+				}
+				p.proxies.Refresh()
 			})
 		}()
 	}
@@ -365,22 +430,6 @@ func (p *machineListPanel) deployTo(d services.RemoteDaemon) {
 				})
 			}()
 		}, p.ac.UIService.MainWindow)
-}
-
-// refreshHealthAsync опрашивает машины в фоне и перерисовывает строки.
-//
-// Строго вне UI-потока: недоступный роутер отвечает по таймауту REST-клиента,
-// и синхронный опрос подвесил бы окно на всё это время.
-func (p *machineListPanel) refreshHealthAsync(list []services.RemoteDaemon) {
-	for _, d := range list {
-		go func(d services.RemoteDaemon) {
-			h := p.registry.Health(d.ID)
-			fyne.Do(func() {
-				p.health[d.ID] = h
-				p.redrawRows()
-			})
-		}(d)
-	}
 }
 
 // redrawRows перерисовывает строки из кеша health, не трогая реестр.
