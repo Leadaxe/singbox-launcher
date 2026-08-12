@@ -12,6 +12,7 @@ import (
 
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 )
@@ -33,7 +34,71 @@ func (tab *CoreDashboardTab) updateBinaryStatus() {
 }
 
 // updateRunningStatus обновляет статус Running/Stopped на основе RunningState
+// pendingOpTimeout — сколько держим кнопки выключенными, не дождавшись
+// смены состояния ядра.
+//
+// Это НЕ «ожидание успеха», а потолок ожидания: на неудачном пути
+// (config rejected, демон не ответил) состояние не меняется вовсе —
+// StartVPN/StopVPN показывают диалог с ошибкой и выходят, не трогая
+// RunningState. Без потолка кнопки остались бы мёртвыми до перезапуска
+// лаунчера. 12s — заметно больше типичного rebuild+apply и заметно меньше
+// порога, за которым интерфейс кажется сломанным.
+const pendingOpTimeout = 12 * time.Second
+
+// beginPendingOp — мгновенная реакция на Start/Stop: гасим обе кнопки и
+// пишем, что операция идёт. Возврат — в updateRunningStatus по приходу
+// реального статуса, либо по таймауту.
+func (tab *CoreDashboardTab) beginPendingOp(statusText string, wantRunning bool) {
+	tab.pendingOp = true
+	tab.pendingOpWantRun = wantRunning
+	tab.pendingOpGen++
+	gen := tab.pendingOpGen
+
+	if tab.statusLabel != nil {
+		tab.statusLabel.SetText(statusText)
+		tab.statusLabel.Refresh()
+	}
+	for _, b := range []*widget.Button{tab.startButton, tab.stopButton} {
+		if b != nil {
+			b.Disable()
+			b.Importance = widget.MediumImportance
+			b.Refresh()
+		}
+	}
+	if tab.restartButton != nil {
+		tab.restartButton.Disable()
+		tab.restartButton.Refresh()
+	}
+
+	go func() {
+		time.Sleep(pendingOpTimeout)
+		fyne.Do(func() {
+			// Другое поколение — операция уже завершилась (или началась
+			// новая), этот таймаут просрочен и трогать ничего не должен.
+			if !tab.pendingOp || tab.pendingOpGen != gen {
+				return
+			}
+			debuglog.WarnLog("dashboard: core did not switch state within %s — releasing buttons", pendingOpTimeout)
+			tab.pendingOp = false
+			tab.updateRunningStatus()
+		})
+	}()
+}
+
 func (tab *CoreDashboardTab) updateRunningStatus() {
+	// Операция в полёте — статус мог прийти от промежуточного опроса
+	// (watcher тикает раз в секунду). Не перерисовываем кнопки, пока ядро
+	// не сообщит финальное состояние: иначе они мигают активный/неактивный
+	// посреди запуска.
+	if tab.pendingOp {
+		// Ждём именно того состояния, ради которого нажали кнопку. Пока
+		// ядро не переключилось — держим кнопки выключенными и статус
+		// «Запуск…»/«Остановка…».
+		if tab.controller == nil || tab.controller.RunningState.IsRunning() != tab.pendingOpWantRun {
+			return
+		}
+		tab.pendingOp = false
+	}
 	// Get button state from centralized function (same logic as Tray Menu)
 	buttonState := tab.controller.GetVPNButtonState()
 

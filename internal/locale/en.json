@@ -885,5 +885,7 @@
   "conn.remotes.import_body": "The connection to %s is already paired (address, pin and client key exist). Add it to the list of remote machines so the Servers tab can talk to it — pairing again is not needed.",
   "conn.remotes.import_done": "%s (%s) added. Press Connect to view its proxies on the Servers tab.",
   "conn.remotes.import_nothing": "No paired daemon found. Pair with the target machine in the panel above first.",
-  "conn.remotes.import_local": "The paired daemon runs on this machine — it is managed by the panel above, no need to add it here."
+  "conn.remotes.import_local": "The paired daemon runs on this machine — it is managed by the panel above, no need to add it here.",
+  "core.status_starting": "Core Status ⏳ Starting...",
+  "core.status_stopping": "Core Status ⏳ Stopping..."
 }
