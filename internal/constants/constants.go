@@ -16,7 +16,7 @@ const (
 	// (platform.GetRemoteConfigPathFor). Константа осталась только ради
 	// миграции, которая читает старый файл и переносит его владельцу.
 	LegacyRemoteConfigFileName = "remote-config.json"
-	WizardStateFileName  = "state.json"
+	WizardStateFileName        = "state.json"
 	// OutboundsCacheFileName — кеш-файл outbounds (SPEC 045 phase 5.1).
 	// Лежит в <execDir>/bin/. Scope = последний активный state. Парсер
 	// перезаписывает его при каждом успешном Update; на переключении
@@ -81,6 +81,17 @@ const (
 const (
 	SingboxReleasesURL = "https://github.com/Leadaxe/sing-box-lx/releases"
 	WintunHomeURL      = "https://www.wintun.net/"
+	// RemoteDaemonDocsURL — как поставить `sing-box lxd` на машину, которой
+	// хочется управлять из лаунчера (SPEC 098, окно добавления машины).
+	//
+	// Документ живёт в форке ядра (docs-lx/lxd-daemon.md, ветка lx), а не в
+	// репозитории лаунчера: демон — часть ядра, и инструкция обновляется
+	// вместе с ним. BUILD_LINUX.md тут был неверной ссылкой — он про сборку
+	// самого лаунчера, а не про установку демона.
+	// Якорь ведёт сразу в раздел про Linux: удалённая машина почти всегда
+	// роутер или VPS, и начало документа (что такое демон, установка на
+	// macOS) на этом шаге только отвлекает.
+	RemoteDaemonDocsURL = "https://github.com/Leadaxe/sing-box-lx/blob/lx/docs-lx/lxd-daemon.md#8-linux--setup-approaches"
 )
 
 // sing-box core download source (SPEC 072, Variant A). The launcher ships the

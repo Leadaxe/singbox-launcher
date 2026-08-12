@@ -1517,30 +1517,17 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		suppressSelectCallback = false
 	}
 
-	// Гейр настроек подключения: Clash API и локальный демон. Он остаётся в
-	// панели (§2.5) — это не про удалённые машины, которыми управляет правая
-	// колонка вкладки Remote.
-	endpointGearBtn := ttwidget.NewButton("⚙", func() {
-		OpenConnectionWindow(ac, func() {
-			// onChanged: после смены override/движка force-refresh proxy
-			// list, чтобы tab сразу отразил данные нового транспорта.
-			// Generation counter в EffectiveClashAPIConfig + atomic
-			// gen-check в refresh-goroutine'ах гарантирует drop-stale.
-			onResetAPIState()
-			onLoadAndRefreshProxies()
-		})
-	})
-	endpointGearBtn.SetToolTip(locale.T("servers.endpoint.tooltip_settings"))
-	endpointGearBtn.Importance = widget.LowImportance
-
 	// SPEC 098: панель начинается сразу с выбора группы. Питание и выбор
 	// машины уехали в правую колонку вкладок — там видно, о какой машине
 	// речь, тогда как в шапке списка это было неочевидно: дропдаун говорил,
 	// чьи прокси показывать, а кнопки управляли «текущей» машиной.
-	groupRow := container.NewBorder(
-		nil, nil, nil,
-		container.NewHBox(endpointGearBtn),
-		container.NewHBox(widget.NewLabel(locale.T("servers.label_selector_group")), groupSelect, mapButton),
+	//
+	// Гейр настроек подключения уехал туда же — в блок Core на вкладке Local:
+	// он про ЛОКАЛЬНОЕ ядро (движок и сопряжение со своим демоном), и в шапке
+	// списка, который может показывать узлы роутера, читался как настройка
+	// удалённой машины.
+	groupRow := container.NewHBox(
+		widget.NewLabel(locale.T("servers.label_selector_group")), groupSelect, mapButton,
 	)
 	topControls := container.NewVBox(groupRow, widget.NewSeparator(), buttonsRow)
 

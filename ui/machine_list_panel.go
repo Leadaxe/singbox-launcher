@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -51,10 +52,7 @@ func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyn
 	p.list = container.NewVBox()
 
 	addBtn := widget.NewButton(locale.T("remote.machines.add"), func() {
-		// Сопряжение живёт в окне подключения — там уже есть разбор
-		// приглашения и обработка ошибок enroll'а. Дублировать его здесь
-		// значило бы иметь две реализации одноразового кода.
-		OpenConnectionWindow(ac, func() {
+		OpenAddMachineWindow(ac, func() {
 			// Только что добавленная машина ещё не подключена — узлов у неё
 			// для нас нет, и Refresh ушёл бы с пустой группой.
 			p.Reload()
@@ -170,6 +168,11 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	case health.CoreStatus != "":
 		statusText = health.CoreStatus
 	}
+	// Версия ядра идёт вместе со статусом: без неё непонятно, поддерживает ли
+	// та сторона то, что мы деплоим, — а это первый вопрос при разборе сбоя.
+	if health.Version != "" {
+		statusText = health.Version + " · " + statusText
+	}
 	status := widget.NewLabel(statusText)
 	status.Wrapping = fyne.TextWrapWord
 
@@ -186,6 +189,15 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 		powerBtn.Disable()
 	}
 
+	// (i) — всё, что демон сообщил о себе: хеши конфигов, последняя ошибка,
+	// state-dir. В строку это не влезает, а при разборе «почему на машине не
+	// то» нужно целиком.
+	infoBtn := ttwidget.NewButton("ⓘ", func() {
+		p.showHealthDetails(d, health)
+	})
+	infoBtn.SetToolTip(locale.T("remote.machines.info_tooltip"))
+	infoBtn.Importance = widget.LowImportance
+
 	deployBtn := widget.NewButton(locale.T("servers.power.deploy"), func() {
 		p.deployTo(d)
 	})
@@ -200,7 +212,7 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	// Start/Stop — напротив СТАТУСА, который он меняет: кнопка стоит там,
 	// где виден её результат.
 	statusRow := container.NewBorder(nil, nil, nil,
-		container.NewHBox(powerBtn), status)
+		container.NewHBox(infoBtn, powerBtn), status)
 	rows = append(rows,
 		statusRow,
 		container.NewHBox(configureBtn, deployBtn, disconnectBtn),
@@ -245,6 +257,64 @@ func (p *machineListPanel) connectMachine(d services.RemoteDaemon) {
 			p.loadNodes()
 		})
 	}()
+}
+
+// showHealthDetails показывает всё, что демон сообщил о себе.
+//
+// Отдельное окно, а не диалог: строк много и они длинные (хеши по 64 символа,
+// путь к state-dir), а высокий модальный попап Fyne раздувает на весь экран.
+//
+// Значения показываются как есть, без «причёсывания»: это диагностика, и
+// подмена пустого поля прочерком или домысленным текстом здесь стоила бы
+// дороже, чем пустая строка.
+func (p *machineListPanel) showHealthDetails(d services.RemoteDaemon, h services.RemoteHealth) {
+	rows := [][2]string{
+		{locale.T("remote.info.machine"), d.Name},
+		{locale.T("remote.info.addr"), d.Addr},
+		{locale.T("remote.info.platform"), fmt.Sprintf("%s/%s", d.Target().GOOS, d.Target().GOARCH)},
+		{locale.T("remote.info.daemon_version"), h.Version},
+		{locale.T("remote.info.core_status"), h.CoreStatus},
+		{locale.T("remote.info.state_dir"), h.StateDir},
+		{locale.T("remote.info.active_sha"), h.ActiveSHA},
+		{locale.T("remote.info.last_good_sha"), h.LastGoodSHA},
+	}
+	if h.InterruptedApply {
+		rows = append(rows, [2]string{locale.T("remote.info.interrupted"), locale.T("remote.info.interrupted_yes")})
+	}
+	if h.LastError != "" {
+		rows = append(rows, [2]string{locale.T("remote.info.last_error"), h.LastError})
+	}
+	if h.Err != "" {
+		rows = append(rows, [2]string{locale.T("remote.info.unreachable"), h.Err})
+	}
+
+	items := make([]*widget.FormItem, 0, len(rows))
+	var plain strings.Builder
+	for _, r := range rows {
+		// Значение — не Label, а поле только для чтения: хеш и путь нужно
+		// уметь выделить и скопировать, иначе диагностику не перенести в тикет.
+		v := widget.NewEntry()
+		v.SetText(r[1])
+		v.Wrapping = fyne.TextWrapOff
+		items = append(items, widget.NewFormItem(r[0], v))
+		fmt.Fprintf(&plain, "%s: %s\n", r[0], r[1])
+	}
+
+	win := p.ac.UIService.Application.NewWindow(locale.Tf("remote.info.window_title", d.Name))
+	copyBtn := widget.NewButton(locale.T("dialog.copy"), func() {
+		win.Clipboard().SetContent(plain.String())
+	})
+	closeBtn := widget.NewButton(locale.T("dialog.close"), func() { win.Close() })
+	closeBtn.Importance = widget.HighImportance
+
+	body := container.NewVBox(
+		widget.NewForm(items...),
+		container.NewBorder(nil, nil, copyBtn, closeBtn),
+	)
+	win.SetContent(container.NewPadded(container.NewVScroll(body)))
+	win.Resize(fyne.NewSize(560, 420))
+	win.CenterOnScreen()
+	win.Show()
 }
 
 // loadNodes перечитывает группы и список узлов активной машины.

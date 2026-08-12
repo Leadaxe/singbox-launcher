@@ -460,6 +460,15 @@ type RemoteHealth struct {
 	// Version / StateDir — паспорт демона (/admin/info); best-effort.
 	Version  string
 	StateDir string
+	// ActiveSHA / LastGoodSHA — хеши работающего и последнего удачного
+	// конфигов. По ним видно, действительно ли на машине крутится то, что
+	// мы задеплоили: совпадение с хешем нашего файла — единственная честная
+	// проверка «доехало».
+	ActiveSHA   string
+	LastGoodSHA string
+	// InterruptedApply — предыдущее применение конфига прервалось (демон
+	// упал или его убили в процессе). Ядро при этом работает на last-good.
+	InterruptedApply bool
 }
 
 // Health опрашивает машину: статус ядра + паспорт демона.
@@ -476,9 +485,12 @@ func (r *RemoteRegistry) Health(id string) RemoteHealth {
 		return RemoteHealth{Err: err.Error()}
 	}
 	out := RemoteHealth{
-		Reachable:  true,
-		CoreStatus: status.Status,
-		LastError:  status.LastError,
+		Reachable:        true,
+		CoreStatus:       status.Status,
+		LastError:        status.LastError,
+		ActiveSHA:        status.ActiveSHA,
+		LastGoodSHA:      status.LastGoodSHA,
+		InterruptedApply: status.InterruptedApply,
 	}
 	// Паспорт — best-effort: машина уже отвечает, и отсутствие /admin/info
 	// (старый демон) не повод считать её недоступной.
