@@ -19,8 +19,10 @@ import (
 
 // SPEC 097 — панель «Удалённые машины» в окне подключения.
 //
-// Управляет реестром сохранённых демонов `sing-box lxd` (роутер, VPS, другой
-// mac) и переключает вкладку Servers на выбранный.
+// Полный жизненный цикл подключения к чужому демону `sing-box lxd` (роутер,
+// VPS, другой mac): добавить (имя + адрес + приглашение), подключиться,
+// поправить адрес, удалить. Переключение между машинами — здесь и в
+// дропдауне шапки Servers, обе точки работают с одним реестром.
 //
 // Кросс-платформенно, в отличие от buildRemoteDaemonPanel (darwin-only): та
 // панель настраивает демон, которым лаунчер САМ управляет на этой машине —
@@ -35,23 +37,26 @@ func buildRemoteDaemonsPanel(ac *core.AppController, win fyne.Window, onChanged 
 	list := container.NewVBox()
 	var refresh func()
 
-	connectTo := func(entry services.RemoteDaemon) {
-		if err := SetLxdRemoteOverride(ac, entry.ID); err != nil {
-			dialog.ShowError(err, win)
-			return
-		}
+	// notify — перерисовать саму панель и уведомить вкладку Servers, чтобы
+	// она перечитала прокси с нового источника.
+	notify := func() {
 		refresh()
 		if onChanged != nil {
 			onChanged()
 		}
 	}
 
+	connectTo := func(entry services.RemoteDaemon) {
+		if err := SetLxdRemoteOverride(ac, entry.ID); err != nil {
+			dialog.ShowError(err, win)
+			return
+		}
+		notify()
+	}
+
 	disconnect := func() {
 		ClearLxdRemoteOverride()
-		refresh()
-		if onChanged != nil {
-			onChanged()
-		}
+		notify()
 	}
 
 	remove := func(entry services.RemoteDaemon) {
@@ -75,51 +80,110 @@ func buildRemoteDaemonsPanel(ac *core.AppController, win fyne.Window, onChanged 
 					dialog.ShowError(err, win)
 					return
 				}
-				refresh()
+				notify()
 			}, win)
 	}
 
-	editAddr := func(entry services.RemoteDaemon) {
+	editEntry := func(entry services.RemoteDaemon) {
+		nameEntry := widget.NewEntry()
+		nameEntry.SetText(entry.Name)
 		addrEntry := widget.NewEntry()
 		addrEntry.SetText(entry.Addr)
-		addrEntry.SetPlaceHolder("192.168.10.1:9500")
-		form := widget.NewForm(widget.NewFormItem(locale.T("conn.remotes.addr"), addrEntry))
-		hint := widget.NewLabel(locale.T("conn.remotes.addr_hint"))
-		hint.Wrapping = fyne.TextWrapWord
+		addrEntry.SetPlaceHolder("192.168.10.1:9091")
+
+		form := widget.NewForm(
+			widget.NewFormItem(locale.T("conn.remotes.name"), nameEntry),
+			widget.NewFormItem(locale.T("conn.remotes.addr"), addrEntry),
+		)
+		hint := wrappedInfoLabel(locale.T("conn.remotes.addr_hint"))
 		hint.Importance = widget.LowImportance
+
 		d := dialog.NewCustomConfirm(
-			locale.T("conn.remotes.edit_addr_title"), locale.T("diag.save"), locale.T("diag.cancel"),
+			locale.T("conn.remotes.edit_title"), locale.T("diag.save"), locale.T("diag.cancel"),
 			container.NewVBox(form, hint),
 			func(ok bool) {
 				if !ok {
 					return
 				}
-				if err := registry.SetAddr(entry.ID, addrEntry.Text); err != nil {
+				if err := registry.Update(entry.ID, nameEntry.Text, addrEntry.Text); err != nil {
 					dialog.ShowError(err, win)
 					return
 				}
-				// Адрес сменился — активный транспорт смотрит на старый.
+				// Адрес мог смениться — активный транспорт смотрит на старый.
 				if id, _, active := GetLxdRemoteOverride(); active && id == entry.ID {
 					if err := SetLxdRemoteOverride(ac, entry.ID); err != nil {
-						debuglog.WarnLog("remotes: reconnect after addr change: %v", err)
-					}
-					if onChanged != nil {
-						onChanged()
+						debuglog.WarnLog("remotes: reconnect after edit: %v", err)
 					}
 				}
-				refresh()
+				notify()
 			}, win)
-		d.Resize(fyne.NewSize(460, 200))
+		d.Resize(fyne.NewSize(520, 260))
 		d.Show()
 	}
 
-	// Импорт подключения, сопряжённого через панель выше (settings.json).
+	// addRemote — добавление машины: имя, адрес, приглашение.
 	//
-	// Зачем это вместо второго Pair: сопряжение пишет адрес и пин в
-	// ЕДИНСТВЕННЫЙ набор полей settings.json. Сопряглись с роутером — и
-	// подключение к своему демону затёрто (именно так оно и ломалось).
-	// Импорт забирает чужую машину в реестр вместе с копией ключей, после
-	// чего settings.json можно вернуть локальному демону.
+	// Адрес отдельным полем, хотя он есть и в приглашении: демон печатает
+	// в приглашении свой listen-адрес, и при listen 0.0.0.0 оттуда приезжает
+	// нерабочее значение. Пустое поле = взять адрес из приглашения.
+	addRemote := func() {
+		nameEntry := widget.NewEntry()
+		nameEntry.SetPlaceHolder(locale.T("conn.remotes.name_placeholder"))
+		addrEntry := widget.NewEntry()
+		addrEntry.SetPlaceHolder("192.168.10.1:9091")
+		inviteEntry := widget.NewEntry()
+		inviteEntry.SetPlaceHolder("address#fingerprint#code")
+		secretEntry := widget.NewPasswordEntry()
+		secretEntry.SetPlaceHolder(locale.T("conn.remotes.secret_placeholder"))
+
+		// Команду отдельным полем, а не в тексте: из Label её не скопировать.
+		cmdField := widget.NewEntry()
+		cmdField.SetText("sudo sing-box lxd client add")
+		cmdField.Wrapping = fyne.TextWrapOff
+
+		form := widget.NewForm(
+			widget.NewFormItem(locale.T("conn.remotes.name"), nameEntry),
+			widget.NewFormItem(locale.T("conn.remotes.addr"), addrEntry),
+			widget.NewFormItem(locale.T("conn.remotes.invite"), inviteEntry),
+			widget.NewFormItem(locale.T("conn.remotes.secret"), secretEntry),
+		)
+		body := container.NewVBox(
+			wrappedInfoLabel(locale.T("conn.remotes.add_hint")),
+			cmdField,
+			widget.NewSeparator(),
+			form,
+		)
+
+		d := dialog.NewCustomConfirm(
+			locale.T("conn.remotes.add_title"), locale.T("conn.remotes.add_action"), locale.T("diag.cancel"),
+			body,
+			func(ok bool) {
+				if !ok {
+					return
+				}
+				// Enroll ходит по сети — не блокируем UI-поток.
+				go func() {
+					entry, err := registry.PairWithAddr(
+						inviteEntry.Text, nameEntry.Text, addrEntry.Text, secretEntry.Text)
+					fyne.Do(func() {
+						if err != nil {
+							dialog.ShowError(err, win)
+							return
+						}
+						notify()
+						dialog.ShowInformation(
+							locale.T("conn.remotes.added_title"),
+							locale.Tf("conn.remotes.added_body", entry.Name, entry.Addr), win)
+					})
+				}()
+			}, win)
+		d.Resize(fyne.NewSize(640, 420))
+		d.Show()
+	}
+
+	// importPaired — забрать в реестр подключение, сопряжённое панелью выше
+	// (settings.json). Нужно для машин, сопряжённых до появления реестра:
+	// повторный enroll им не требуется, ключ уже доверен демоном.
 	importPaired := func() {
 		st := locale.LoadSettings(platform.GetBinDir(ac.FileService.ExecDir))
 		addr := strings.TrimSpace(st.DaemonAddress)
@@ -129,8 +193,6 @@ func buildRemoteDaemonsPanel(ac *core.AppController, win fyne.Window, onChanged 
 			return
 		}
 		if isLoopbackAddr(addr) {
-			// Свой демон импортировать незачем: им управляет панель выше,
-			// и он и так доступен движку.
 			dialog.ShowInformation(locale.T("conn.remotes.import_title"),
 				locale.T("conn.remotes.import_local"), win)
 			return
@@ -155,7 +217,7 @@ func buildRemoteDaemonsPanel(ac *core.AppController, win fyne.Window, onChanged 
 					dialog.ShowError(err, win)
 					return
 				}
-				refresh()
+				notify()
 				dialog.ShowInformation(locale.T("conn.remotes.import_title"),
 					locale.Tf("conn.remotes.import_done", entry.Name, entry.Addr), win)
 			}, win)
@@ -167,17 +229,15 @@ func buildRemoteDaemonsPanel(ac *core.AppController, win fyne.Window, onChanged 
 		list.RemoveAll()
 		entries, err := registry.List()
 		if err != nil {
-			lbl := widget.NewLabel(fmt.Sprintf("%v", err))
+			lbl := wrappedInfoLabel(fmt.Sprintf("%v", err))
 			lbl.Importance = widget.DangerImportance
-			lbl.Wrapping = fyne.TextWrapWord
 			list.Add(lbl)
 			list.Refresh()
 			return
 		}
 		activeID, _, active := GetLxdRemoteOverride()
 		if len(entries) == 0 {
-			empty := widget.NewLabel(locale.T("conn.remotes.empty"))
-			empty.Wrapping = fyne.TextWrapWord
+			empty := wrappedInfoLabel(locale.T("conn.remotes.empty"))
 			empty.Importance = widget.LowImportance
 			list.Add(empty)
 		}
@@ -198,7 +258,7 @@ func buildRemoteDaemonsPanel(ac *core.AppController, win fyne.Window, onChanged 
 				actionBtn = widget.NewButton(locale.T("conn.remotes.connect"), func() { connectTo(entry) })
 				actionBtn.Importance = widget.HighImportance
 			}
-			editBtn := widget.NewButton(locale.T("conn.remotes.edit_addr"), func() { editAddr(entry) })
+			editBtn := widget.NewButton(locale.T("conn.remotes.edit"), func() { editEntry(entry) })
 			delBtn := widget.NewButton(locale.T("conn.remotes.remove"), func() { remove(entry) })
 			delBtn.Importance = widget.DangerImportance
 
@@ -212,15 +272,13 @@ func buildRemoteDaemonsPanel(ac *core.AppController, win fyne.Window, onChanged 
 	}
 	refresh()
 
-	intro := widget.NewLabel(locale.T("conn.remotes.intro"))
-	intro.Wrapping = fyne.TextWrapWord
-
-	addBtn := widget.NewButton(locale.T("conn.remotes.import_action"), importPaired)
+	addBtn := widget.NewButton(locale.T("conn.remotes.add_action"), addRemote)
 	addBtn.Importance = widget.HighImportance
+	importBtn := widget.NewButton(locale.T("conn.remotes.import_action"), importPaired)
 
 	return container.NewVBox(
-		intro,
-		container.NewHBox(addBtn),
+		wrappedInfoLabel(locale.T("conn.remotes.intro")),
+		container.NewHBox(addBtn, importBtn),
 		widget.NewSeparator(),
 		list,
 	)

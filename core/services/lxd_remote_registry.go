@@ -3,6 +3,7 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
@@ -142,13 +143,33 @@ func (r *RemoteRegistry) Get(id string) (RemoteDaemon, bool, error) {
 // в реестр делается ТОЛЬКО после успешного enroll: иначе при ошибке сети мы
 // сохранили бы подключение, которым уже нельзя воспользоваться повторно.
 func (r *RemoteRegistry) Pair(inviteRaw, name, secret string) (RemoteDaemon, error) {
+	return r.PairWithAddr(inviteRaw, name, "", secret)
+}
+
+// PairWithAddr — сопряжение с явным адресом подключения (SPEC 097).
+//
+// Демон печатает в приглашении СВОЙ listen-адрес. При listen 0.0.0.0 оттуда
+// приезжает нерабочее значение, а при listen на LAN-интерфейсе — адрес,
+// по которому мы можем быть недоступны. Пользователь указывает адрес, по
+// которому реально достучится; пустой addr = взять из приглашения.
+//
+// Enroll всё равно идёт на АДРЕС ПОЛЬЗОВАТЕЛЯ: сопрягаться по одному адресу,
+// а работать по другому — верный способ получить «сопряглись, но не
+// подключается».
+func (r *RemoteRegistry) PairWithAddr(inviteRaw, name, addr, secret string) (RemoteDaemon, error) {
 	invite, err := lxdclient.ParseInvite(inviteRaw)
 	if err != nil {
 		return RemoteDaemon{}, err
 	}
+	if a := strings.TrimSpace(addr); a != "" {
+		if _, _, splitErr := net.SplitHostPort(a); splitErr != nil {
+			return RemoteDaemon{}, fmt.Errorf("address %q is not a valid host:port: %w", a, splitErr)
+		}
+		invite.Addr = a
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
 	list, err := r.listLocked()
 	if err != nil {
 		return RemoteDaemon{}, err
@@ -187,6 +208,38 @@ func (r *RemoteRegistry) Pair(inviteRaw, name, secret string) (RemoteDaemon, err
 	}
 	debuglog.InfoLog("remote pair: enrolled %q at %s", entry.Name, entry.Addr)
 	return entry, nil
+}
+
+// Update меняет имя и адрес записи, не трогая ключи и пин.
+//
+// ID (он же папка ключей) НЕ переименовывается вслед за именем: ключ уже
+// доверен демоном, и переезд папки означал бы потерю сопряжения ради
+// косметики.
+func (r *RemoteRegistry) Update(id, name, addr string) error {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return fmt.Errorf("remote registry: empty address")
+	}
+	if _, _, err := net.SplitHostPort(addr); err != nil {
+		return fmt.Errorf("address %q is not a valid host:port: %w", addr, err)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	list, err := r.listLocked()
+	if err != nil {
+		return err
+	}
+	for i := range list {
+		if list[i].ID != id {
+			continue
+		}
+		if n := strings.TrimSpace(name); n != "" {
+			list[i].Name = n
+		}
+		list[i].Addr = addr
+		return r.saveLocked(list)
+	}
+	return fmt.Errorf("remote registry: unknown id %q", id)
 }
 
 // SetAddr меняет адрес сохранённого подключения, не трогая ключи.

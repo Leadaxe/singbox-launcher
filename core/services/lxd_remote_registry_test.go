@@ -237,3 +237,75 @@ func TestImportPairedDaemon(t *testing.T) {
 		t.Error("empty address must be rejected")
 	}
 }
+
+// SPEC 097: адрес пользователя перекрывает адрес из приглашения.
+//
+// Демон печатает в приглашении свой listen-адрес: при listen 0.0.0.0 оттуда
+// приезжает нерабочее значение. Проверяем валидацию — сам enroll ходит по
+// сети, поэтому здесь только разбор входа.
+func TestPairWithAddrValidatesOverride(t *testing.T) {
+	r := NewRemoteRegistry(t.TempDir())
+	fp := "4dc7f90bfa5835781034d723675fd9d44b3dcd8dbdeed218f732903a3c05ad7a"
+	invite := "0.0.0.0:9091#" + fp + "#CODE123"
+
+	if _, err := r.PairWithAddr(invite, "Router", "not-a-host-port", ""); err == nil {
+		t.Error("malformed address override must be rejected before enroll")
+	}
+	// Битое приглашение отвергается независимо от адреса.
+	if _, err := r.PairWithAddr("garbage", "Router", "192.168.10.1:9091", ""); err == nil {
+		t.Error("malformed invite must be rejected")
+	}
+}
+
+// Update меняет имя и адрес, но НЕ трогает ключи и пин: ключ уже доверен
+// демоном, переезд папки означал бы потерю сопряжения ради косметики.
+func TestRegistryUpdateKeepsIdentity(t *testing.T) {
+	dir := t.TempDir()
+	r := NewRemoteRegistry(dir)
+	srcDir := filepath.Join(dir, "seed")
+	if _, err := lxdclient.LoadOrCreateIdentity(srcDir); err != nil {
+		t.Fatal(err)
+	}
+	entry, err := r.ImportPairedDaemon("Router", "192.168.10.1:19091", "aa11", "", srcDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := lxdclient.LoadOrCreateIdentity(r.identityDir(entry.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.Update(entry.ID, "Home router", "192.168.10.5:9091"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, ok, _ := r.Get(entry.ID)
+	if !ok || got.Name != "Home router" || got.Addr != "192.168.10.5:9091" {
+		t.Fatalf("update did not apply: %+v", got)
+	}
+	if got.ServerFingerprint != "aa11" {
+		t.Errorf("pin must survive update, got %q", got.ServerFingerprint)
+	}
+	after, err := lxdclient.LoadOrCreateIdentity(r.identityDir(entry.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Fingerprint != before.Fingerprint {
+		t.Error("client identity must survive rename")
+	}
+
+	// Пустое имя — не стираем прежнее (пользователь просто правил адрес).
+	if err := r.Update(entry.ID, "  ", "10.0.0.9:9091"); err != nil {
+		t.Fatal(err)
+	}
+	got, _, _ = r.Get(entry.ID)
+	if got.Name != "Home router" {
+		t.Errorf("blank name must keep the previous one, got %q", got.Name)
+	}
+
+	if err := r.Update(entry.ID, "x", "no-port"); err == nil {
+		t.Error("malformed address must be rejected")
+	}
+	if err := r.Update("ghost", "x", "1.2.3.4:9091"); err == nil {
+		t.Error("unknown id must be rejected")
+	}
+}

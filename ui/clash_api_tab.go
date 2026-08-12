@@ -1340,11 +1340,14 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		suppressSelectCallback = false
 	}
 
-	// Status badge ("🏠 Local" / "🌐 host:port", SPEC 064) + gear ⚙ —
-	// открывает окно настроек подключения (вкладки REMOTE / LOCAL: remote
-	// Clash-override и движок локального ядра). Badge auto-update'ится
-	// через OnOverrideChanged.
-	endpointBadge := newRemoteEndpointBadge()
+	// SPEC 097: дропдаун выбора машины (Local + сохранённые удалённые
+	// демоны) вместо статичного бейджа — переключение в один клик, текущий
+	// источник всегда виден. Гейр рядом остаётся для сопряжения и настроек
+	// подключения. Оба обновляются через OnOverrideChanged.
+	endpointBadge := newEndpointPicker(ac, func() {
+		onResetAPIState()
+		onLoadAndRefreshProxies()
+	})
 	endpointGearBtn := ttwidget.NewButton("⚙", func() {
 		OpenConnectionWindow(ac, func() {
 			// onChanged: после смены override/движка force-refresh proxy
