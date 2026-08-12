@@ -22,6 +22,7 @@ import (
 	"singbox-launcher/api"
 	"singbox-launcher/core"
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
@@ -48,6 +49,11 @@ import (
 type ProxyListPanel struct {
 	// Content — корневой контейнер панели (левая колонка вкладки).
 	Content fyne.CanvasObject
+
+	// scope — чьё состояние ведёт эта панель. Обе строятся на старте, когда
+	// активна ScopeLocal, поэтому «активную» область спрашивать нельзя:
+	// панель обязана знать свою.
+	scope services.ProxyScope
 
 	// Собственные виджеты и колбэки панели; переезжают в UIService на Activate.
 	apiStatusLabel       *widget.Label
@@ -92,8 +98,8 @@ func (p *ProxyListPanel) Refresh() {
 //
 // Шапки управления машиной здесь нет: питанием локального ядра управляет
 // правая колонка Local, удалённым — строка машины на Remote.
-func CreateProxyListPanel(ac *core.AppController) *ProxyListPanel {
-	panel := &ProxyListPanel{}
+func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *ProxyListPanel {
+	panel := &ProxyListPanel{scope: scope}
 	apiStatusLabel := widget.NewLabel(locale.T("servers.status_not_checked"))
 	panel.apiStatusLabel = apiStatusLabel
 	ac.UIService.ApiStatusLabel = apiStatusLabel
@@ -136,10 +142,16 @@ func CreateProxyListPanel(ac *core.AppController) *ProxyListPanel {
 		selectedGroup = selectorOptions[0]
 	}
 	// Only set SelectedClashGroup if it's not already set (to preserve value from initialization)
+	//
+	// SPEC 098: пишем в СВОЮ область, а не в активную. Обе панели строятся на
+	// старте, когда активна ScopeLocal, поэтому remote-панель записывала свою
+	// группу в local-состояние, а её собственное оставалось пустым — и первый
+	// же запрос к машине уходил с group="" («Daemon: group "" not found»),
+	// хотя дропдаун показывал proxy-out.
 	if ac.APIService != nil {
-		currentGroup := ac.APIService.GetSelectedClashGroup()
+		currentGroup := ac.APIService.SelectedClashGroupIn(panel.scope)
 		if currentGroup == "" {
-			ac.APIService.SetSelectedClashGroup(selectedGroup)
+			ac.APIService.SetSelectedClashGroupIn(panel.scope, selectedGroup)
 		} else {
 			// Use existing value, but update selectedGroup variable for UI
 			selectedGroup = currentGroup
@@ -295,7 +307,7 @@ func CreateProxyListPanel(ac *core.AppController) *ProxyListPanel {
 				groupSelect.SetSelected(selectedGroup)
 				suppressSelectCallback = false
 				if ac.APIService != nil {
-					ac.APIService.SetSelectedClashGroup(selectedGroup)
+					ac.APIService.SetSelectedClashGroupIn(panel.scope, selectedGroup)
 				}
 			}
 		}
@@ -1401,7 +1413,7 @@ func CreateProxyListPanel(ac *core.AppController) *ProxyListPanel {
 		}
 		selectedGroup = value
 		if ac.APIService != nil {
-			ac.APIService.SetSelectedClashGroup(value)
+			ac.APIService.SetSelectedClashGroupIn(panel.scope, value)
 		}
 		if suppressSelectCallback {
 			return

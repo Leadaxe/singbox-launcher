@@ -196,6 +196,35 @@ func (apiSvc *APIService) ProxyScopeOf() ProxyScope {
 	return apiSvc.scope
 }
 
+// SelectedClashGroupIn / SetSelectedClashGroupIn адресуют КОНКРЕТНУЮ область,
+// а не активную.
+//
+// Нужны конструкторам панелей: обе строятся на старте, когда активна
+// ScopeLocal, и «активные» аксессоры записали бы группу удалённой машины в
+// local-состояние, оставив remote пустым.
+func (apiSvc *APIService) SelectedClashGroupIn(scope ProxyScope) string {
+	apiSvc.StateMutex.RLock()
+	defer apiSvc.StateMutex.RUnlock()
+	if st := apiSvc.scopes[scope]; st != nil {
+		return st.SelectedClashGroup
+	}
+	return ""
+}
+
+func (apiSvc *APIService) SetSelectedClashGroupIn(scope ProxyScope, group string) {
+	apiSvc.StateMutex.Lock()
+	defer apiSvc.StateMutex.Unlock()
+	if apiSvc.scopes == nil {
+		apiSvc.scopes = make(map[ProxyScope]*proxyScopeState, 2)
+	}
+	st := apiSvc.scopes[scope]
+	if st == nil {
+		st = newProxyScopeState()
+		apiSvc.scopes[scope] = st
+	}
+	st.SelectedClashGroup = group
+}
+
 // ResetScope очищает состояние области — список, выбор и ошибки пинга.
 //
 // Нужен, когда область перестала быть осмысленной: машина отключена или

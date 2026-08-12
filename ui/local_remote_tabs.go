@@ -5,6 +5,7 @@ import (
 	"fyne.io/fyne/v2/container"
 
 	"singbox-launcher/core"
+	"singbox-launcher/core/services"
 )
 
 // Вкладки Local и Remote (SPEC 098 §2.1).
@@ -50,7 +51,7 @@ const splitColumnRatio = float64(leftColumnWidth) / float64(leftColumnWidth+righ
 // переключение вкладки обязано отдать разделяемые слоты UIService той панели,
 // которую пользователь видит (ProxyListPanel.Activate).
 func CreateLocalTab(ac *core.AppController) (fyne.CanvasObject, *ProxyListPanel) {
-	panel := CreateProxyListPanel(ac)
+	panel := CreateProxyListPanel(ac, services.ScopeLocal)
 	split := container.NewHSplit(
 		panel.Content,
 		withColumnWidth(CreateCoreDashboardTab(ac), rightColumnWidth),
@@ -73,7 +74,7 @@ func withColumnWidth(content fyne.CanvasObject, width float32) fyne.CanvasObject
 // Без этого список остался бы с узлами предыдущей — то есть показывал бы
 // чужие данные под именем новой машины (нарушение инварианта §5.3).
 func CreateRemoteTab(ac *core.AppController) (fyne.CanvasObject, *ProxyListPanel) {
-	proxyPanel := CreateProxyListPanel(ac)
+	proxyPanel := CreateProxyListPanel(ac, services.ScopeRemote)
 	// Обновляем СВОЮ панель напрямую, а не через UIService.RefreshAPIFunc:
 	// выбор машины касается списка Remote, и промахнуться мимо него в момент,
 	// когда слоты принадлежат другой вкладке, нельзя.
