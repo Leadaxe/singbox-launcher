@@ -190,9 +190,14 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 		}
 	}
 
-	// Emit rule_sets: skip Skipped, dedup.
+	// Emit rule_sets: skip Skipped и ВЫКЛЮЧЕННЫЕ, dedup.
+	//
+	// Выключенное правило не эмитит своё routing-правило (ниже по Enabled),
+	// значит на его rule_set никто не ссылается — а требование к файлу
+	// остаётся. На машине, где .srs нет, ядро падает с «open …: no such file
+	// or directory»: так выключенные пресеты ломали конфиг для роутера.
 	for _, rs := range resolved.RuleSets {
-		if rs.Skipped {
+		if rs.Skipped || !rs.Enabled {
 			continue
 		}
 		if emittedTags[rs.Tag] {

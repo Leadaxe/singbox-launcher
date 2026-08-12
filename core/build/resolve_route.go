@@ -55,6 +55,15 @@ type ResolvedRouteRuleSet struct {
 	// или srs cache miss). Build skip'ает; UI показывает с warning'ом.
 	Skipped       bool
 	SkippedReason string
+
+	// Enabled — состояние правила-владельца (state.rules[i].enabled).
+	//
+	// Выключенный пресет НЕ должен тащить свои rule_set в конфиг: его
+	// routing-правила не эмитятся, ссылаться на набор некому, а вот
+	// требование к файлу остаётся — и на машине, где .srs нет, ядро падает
+	// с «open …: no such file or directory». Так выключенные block-ads и
+	// russian ломали конфиг для роутера.
+	Enabled bool
 }
 
 // ResolvedRouteRule — одна entry финального route.rules[] list'а.
@@ -177,6 +186,7 @@ func resolvePresetRouteRule(
 				Source:        RouteSourcePreset,
 				PresetID:      p.ID,
 				PresetLabel:   presetLabel,
+				Enabled:       rule.Enabled,
 				Skipped:       true,
 				SkippedReason: "remote .srs not cached",
 			})
@@ -188,6 +198,7 @@ func resolvePresetRouteRule(
 			Source:      RouteSourcePreset,
 			PresetID:    p.ID,
 			PresetLabel: presetLabel,
+			Enabled:     rule.Enabled,
 		})
 		emittedTags[tag] = true
 	}
@@ -258,6 +269,7 @@ func resolveSrsRouteRule(
 			Tag:           tag,
 			Source:        RouteSourceSrs,
 			SrsID:         id,
+			Enabled:       rule.Enabled,
 			Skipped:       true,
 			SkippedReason: "srs file not cached",
 		})
@@ -272,10 +284,11 @@ func resolveSrsRouteRule(
 			"path":   path,
 		}
 		out.RuleSets = append(out.RuleSets, ResolvedRouteRuleSet{
-			Tag:    tag,
-			Body:   rs,
-			Source: RouteSourceSrs,
-			SrsID:  id,
+			Tag:     tag,
+			Body:    rs,
+			Source:  RouteSourceSrs,
+			SrsID:   id,
+			Enabled: rule.Enabled,
 		})
 		emittedTags[tag] = true
 	}
