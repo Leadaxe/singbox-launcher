@@ -8,6 +8,7 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/events"
+	"singbox-launcher/core/services"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
 )
@@ -25,6 +26,11 @@ type App struct {
 	tabs        *container.AppTabs
 	clashAPITab *container.TabItem
 	currentTab  *container.TabItem
+	// localPanel / remotePanel — независимые списки прокси двух вкладок
+	// (SPEC 098). Держим ссылки, чтобы отдавать разделяемые слоты UIService
+	// активной панели при переключении вкладки.
+	localPanel  *ProxyListPanel
+	remotePanel *ProxyListPanel
 	content     fyne.CanvasObject
 	// overlay is a concrete ClickRedirect component from `ui/components`.
 	// nil when `wizardOverlayEnabled` is false (current default).
@@ -47,8 +53,11 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	// Emoji-in-label (💡 default emoji presentation) — colour rendering
 	// via OS font fallback to Apple Color Emoji, matching sibling tabs
 	// (⚙️ Settings / 🔍 Diagnostics).
-	coreTabItem := container.NewTabItem(locale.T("app.tab.local"), CreateLocalTab(controller))
-	app.clashAPITab = container.NewTabItem(locale.T("app.tab.remote"), CreateRemoteTab(controller))
+	localContent, localPanel := CreateLocalTab(controller)
+	remoteContent, remotePanel := CreateRemoteTab(controller)
+	app.localPanel, app.remotePanel = localPanel, remotePanel
+	coreTabItem := container.NewTabItem(locale.T("app.tab.local"), localContent)
+	app.clashAPITab = container.NewTabItem(locale.T("app.tab.remote"), remoteContent)
 	// Settings tab is a no-content placeholder that acts as a button: its
 	// OnSelected handler opens the standalone Settings window (see
 	// ui/settings_window.go) and then immediately reverts tab selection
@@ -100,9 +109,23 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 		// строке; сама вкладка ничего не восстанавливает, потому что выбор
 		// эфемерный (SPEC 097 §4.3): после перезапуска активной машины нет, и
 		// список пуст до первого клика.
+		// Панели Local и Remote независимы, но слоты UIService рассчитаны на
+		// одного владельца — отдаём их той, что сейчас на экране.
 		switch item {
 		case coreTabItem:
+			// Порядок важен: сначала область, потом снятие транспорта. Оба
+			// шага дёргают обновление списка, и оно должно писать уже в
+			// local-состояние, а не в remote.
+			if controller.APIService != nil {
+				controller.APIService.SetProxyScope(services.ScopeLocal)
+			}
+			app.localPanel.Activate(controller)
 			ClearLxdRemoteOverride(controller)
+		case app.clashAPITab:
+			if controller.APIService != nil {
+				controller.APIService.SetProxyScope(services.ScopeRemote)
+			}
+			app.remotePanel.Activate(controller)
 		}
 		if item == coreTabItem || item == app.clashAPITab {
 			// SPEC 064: вкладка доступна всегда, даже когда локальный sing-box
@@ -184,6 +207,12 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	OnOverrideChanged(func() {
 		fyne.Do(app.updateClashAPITabState)
 	})
+
+	// Local открыта на старте, но её слоты UIService перетёр конструктор
+	// Remote (панели строятся обе, а слот один). Возвращаем владение той
+	// панели, которая реально на экране, — иначе первый же авто-пинг или
+	// ResetAPIState ушёл бы в невидимый список.
+	app.localPanel.Activate(controller)
 
 	// Инициализируем состояние вкладки + первичный рендер иконки Core.
 	// EventBus.Subscribe не fires backfill — рендерим вручную для startup'а.

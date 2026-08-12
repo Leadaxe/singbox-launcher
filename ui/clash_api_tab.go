@@ -31,19 +31,74 @@ import (
 	"singbox-launcher/ui/components"
 )
 
-// CreateClashAPITab creates and returns the content for the "Clash API" tab.
+// ProxyListPanel — построенная панель списка прокси вместе с её СОБСТВЕННЫМИ
+// виджетами и колбэками (SPEC 098).
+//
+// Local и Remote держат по независимому экземпляру: у каждого свой список
+// узлов, своя выбранная группа и свои строки статуса. Раньше оба писали в
+// общие слоты `UIService`, и второй конструктор затирал первый — обновления с
+// Remote прилетали в виджеты Local, а переключение вкладки перетирало
+// состояние соседней.
+//
+// Слоты `UIService` (ProxiesListWidget, ApiStatusLabel, ListStatusLabel,
+// RefreshAPIFunc, ResetAPIStateFunc, AutoPingAfterConnectFunc) рассчитаны на
+// одного владельца: их дёргают снаружи — main.go, core, горячие клавиши, —
+// и адресовать они должны АКТИВНУЮ панель. Поэтому привязка делается не в
+// конструкторе, а в Activate() при переключении вкладки.
+type ProxyListPanel struct {
+	// Content — корневой контейнер панели (левая колонка вкладки).
+	Content fyne.CanvasObject
+
+	// Собственные виджеты и колбэки панели; переезжают в UIService на Activate.
+	apiStatusLabel       *widget.Label
+	listStatusLabel      *widget.Label
+	proxiesList          *widget.List
+	refreshAPI           func()
+	resetAPIState        func()
+	autoPingAfterConnect func()
+}
+
+// Activate делает панель владельцем разделяемых слотов UIService.
+//
+// Вызывается при выборе её вкладки: внешние потребители (авто-пинг после
+// resume, ResetAPIState из core, Cmd+P) обязаны попадать в тот список,
+// который пользователь сейчас видит.
+func (p *ProxyListPanel) Activate(ac *core.AppController) {
+	if p == nil || ac == nil || ac.UIService == nil {
+		return
+	}
+	ac.UIService.ApiStatusLabel = p.apiStatusLabel
+	ac.UIService.ListStatusLabel = p.listStatusLabel
+	ac.UIService.ProxiesListWidget = p.proxiesList
+	ac.UIService.RefreshAPIFunc = p.refreshAPI
+	ac.UIService.ResetAPIStateFunc = p.resetAPIState
+	ac.UIService.AutoPingAfterConnectFunc = p.autoPingAfterConnect
+}
+
+// Refresh перезагружает список панели, если она активна.
+func (p *ProxyListPanel) Refresh() {
+	if p != nil && p.refreshAPI != nil {
+		p.refreshAPI()
+	}
+}
+
 // CreateProxyListPanel строит панель списка прокси — левую колонку обеих
 // вкладок (SPEC 098 §2.1).
 //
-// Один и тот же виджет на Local и Remote: поведение, сортировка, ping и
-// переключение узла обязаны совпадать, поэтому это не две копии, а один код.
-// Чьи прокси показывать, решает активный транспорт (см. lxd_remote_override).
+// Один и тот же КОД на Local и Remote (поведение, сортировка, ping и
+// переключение узла обязаны совпадать), но РАЗНЫЕ экземпляры: у каждой
+// вкладки своё состояние. Чьи прокси показывать, решает активный транспорт
+// (см. lxd_remote_override).
 //
 // Шапки управления машиной здесь нет: питанием локального ядра управляет
 // правая колонка Local, удалённым — строка машины на Remote.
-func CreateProxyListPanel(ac *core.AppController) fyne.CanvasObject {
-	ac.UIService.ApiStatusLabel = widget.NewLabel(locale.T("servers.status_not_checked"))
+func CreateProxyListPanel(ac *core.AppController) *ProxyListPanel {
+	panel := &ProxyListPanel{}
+	apiStatusLabel := widget.NewLabel(locale.T("servers.status_not_checked"))
+	panel.apiStatusLabel = apiStatusLabel
+	ac.UIService.ApiStatusLabel = apiStatusLabel
 	status := widget.NewLabel(locale.T("servers.status_click_load"))
+	panel.listStatusLabel = status
 	ac.UIService.ListStatusLabel = status
 
 	selectorOptions, defaultSelector, err := config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
@@ -350,7 +405,12 @@ func CreateProxyListPanel(ac *core.AppController) fyne.CanvasObject {
 		})
 	}
 
-	// --- Регистрация колбэков в контроллере ---
+	// --- Регистрация колбэков ---
+	// Панель держит их у себя (Activate переносит в UIService при выборе её
+	// вкладки), а в UIService пишет и сразу: первая построенная панель должна
+	// быть рабочей ещё до первого переключения вкладок.
+	panel.refreshAPI = onTestAPIConnection
+	panel.resetAPIState = onResetAPIState
 	if ac.UIService != nil {
 		ac.UIService.RefreshAPIFunc = onTestAPIConnection
 		ac.UIService.ResetAPIStateFunc = onResetAPIState
@@ -784,6 +844,7 @@ func CreateProxyListPanel(ac *core.AppController) fyne.CanvasObject {
 		refreshServersProxySelectionUI()
 	}
 
+	panel.proxiesList = proxiesListWidget
 	ac.UIService.ProxiesListWidget = proxiesListWidget
 
 	// Переменные для отслеживания направления сортировки
@@ -1141,9 +1202,10 @@ func CreateProxyListPanel(ac *core.AppController) fyne.CanvasObject {
 	// requests. The soft cap for the *automatic* (timer-driven) path lives at
 	// the timer call sites in controller.go and main.go (resume). See SPEC 039
 	// §1.3 / §2.7.
-	ac.UIService.AutoPingAfterConnectFunc = func() {
+	panel.autoPingAfterConnect = func() {
 		fyne.Do(pingAllProxies)
 	}
+	ac.UIService.AutoPingAfterConnectFunc = panel.autoPingAfterConnect
 
 	// Настройки Ping test (endpoint для delay).
 	pingSettingsButton := ttwidget.NewButton("⚙", func() {
@@ -1422,7 +1484,8 @@ func CreateProxyListPanel(ac *core.AppController) fyne.CanvasObject {
 		scrollContainer,
 	)
 
-	return contentContainer
+	panel.Content = contentContainer
+	return panel
 }
 
 // containsStringValue — есть ли значение в списке (локальный хелпер вкладки).

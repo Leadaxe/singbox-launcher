@@ -90,6 +90,26 @@ func (ac *AppController) setBackend(b CoreBackend) {
 	}
 }
 
+// RestoreOwnTransport возвращает APIService транспорт СВОЕГО движка.
+//
+// Нужен UI-слою при возврате к локальному ядру: снятие удалённого override'а —
+// это `SetTransport(nil)`, то есть «никакого транспорта», а не «транспорт
+// локального демона». В daemon-режиме своё ядро говорит по gRPC, и без этого
+// вызова Servers падал обратно на Clash HTTP, которого в lxd-режиме нет
+// вовсе — пользователь получал `dial 127.0.0.1:9190: connection refused`.
+//
+// В classic-режиме no-op: там своего transport-override нет, и путь через
+// Clash HTTP как раз правильный.
+func (ac *AppController) RestoreOwnTransport() {
+	if ac == nil {
+		return
+	}
+	b := ac.Backend()
+	if reinstaller, ok := b.(interface{ reinstallTransport() }); ok {
+		reinstaller.reinstallTransport()
+	}
+}
+
 // SetBackendModeChangeHook регистрирует колбэк, вызываемый после каждой смены
 // активного бэкенда (setBackend). Используется UI-слоем, чтобы переустановить
 // зависящие от режима источники (traffic-профайлер). Один слот — последний

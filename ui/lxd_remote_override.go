@@ -86,11 +86,26 @@ func ClearLxdRemoteOverride(ac *core.AppController) {
 	// Снимаем override ТОЛЬКО если он наш: в daemon-режиме там стоит
 	// транспорт локального демона, и его сбрасывать нельзя — иначе своё же
 	// ядро останется без gRPC-канала.
+	//
+	// SetTransport(nil) означает «никакого транспорта», а не «транспорт
+	// локального демона», поэтому сразу возвращаем транспорт своего движка.
+	// Без этого в lxd-режиме Servers падал обратно на Clash HTTP, которого
+	// там нет вовсе: `dial 127.0.0.1:9190: connection refused`. В classic
+	// RestoreOwnTransport — no-op, и путь через Clash HTTP остаётся верным.
 	if ac != nil && ac.APIService != nil {
 		if _, isRemote := ac.APIService.TransportOverride().(*services.LxdRemoteTransport); isRemote {
 			ac.APIService.SetTransport(nil)
+			ac.RestoreOwnTransport()
 		}
 	}
+	// Машина больше не выбрана — её список узлов ни к чему не относится.
+	// Без сброса вкладка Remote показывала бы узлы отключённой машины (а на
+	// старте, до первого выбора, — узлы локального ядра, потому что раньше
+	// состояние было общим).
+	if ac != nil && ac.APIService != nil {
+		ac.APIService.ResetScope(services.ScopeRemote)
+	}
+
 	lxdOverrideMu.Lock()
 	prev := lxdOverrideTransport
 	lxdOverrideID = ""

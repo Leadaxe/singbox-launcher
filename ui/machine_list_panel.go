@@ -151,8 +151,12 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	// Питание ядра машины. Надпись зависит от последнего известного статуса;
 	// пока health не вернулся — Start, потому что «запустить уже запущенное»
 	// демон отвергает безобидно, а «остановить» вслепую рвёт чужой VPN.
+	//
+	// Статусы демона: idle | started | fatal (RemoteHealth.CoreStatus).
+	// Сравнение с "running" не совпадало ни с одним из них, поэтому кнопка
+	// всегда показывала Start и остановить ядро было нечем.
 	running := false
-	if h, ok := p.health[d.ID]; ok && h.CoreStatus == "running" {
+	if h, ok := p.health[d.ID]; ok && h.CoreStatus == "started" {
 		running = true
 	}
 	powerLabel := locale.T("servers.power.start")
@@ -179,12 +183,21 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	removeBtn.SetToolTip(locale.T("remote.machines.remove_tooltip"))
 	removeBtn.Importance = widget.LowImportance
 
-	buttons := container.NewBorder(nil, nil, nil,
-		container.NewHBox(editBtn, removeBtn),
-		container.NewHBox(configureBtn, powerBtn, deployBtn, selectBtn),
-	)
+	// Правка и удаление — напротив ИМЕНИ: это операции над самой записью,
+	// а не над её ядром. Start/Stop — напротив СТАТУСА, который он меняет:
+	// кнопка стоит там, где виден её результат.
+	nameRow := container.NewBorder(nil, nil, nil,
+		container.NewHBox(editBtn, removeBtn), name)
+	statusRow := container.NewBorder(nil, nil, nil,
+		container.NewHBox(powerBtn), status)
 
-	card := container.NewVBox(name, meta, status, buttons, widget.NewSeparator())
+	card := container.NewVBox(
+		nameRow,
+		meta,
+		statusRow,
+		container.NewHBox(configureBtn, deployBtn, selectBtn),
+		widget.NewSeparator(),
+	)
 	return card
 }
 

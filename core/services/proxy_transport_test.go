@@ -81,7 +81,6 @@ func TestSetTransportNilRestoresClash(t *testing.T) {
 // (нужно для UI-remote-override SPEC 064).
 func TestSwitchProxyViaUsesGivenTransport(t *testing.T) {
 	svc := &APIService{Enabled: false} // wireTransport упал бы (clash off)
-	svc.LastSelectedProxyByGroup = map[string]string{}
 	explicit := &stubTransport{}
 	if err := svc.SwitchProxyVia(explicit, "grp", "node-x"); err != nil {
 		t.Fatalf("SwitchProxyVia: %v", err)
@@ -100,7 +99,6 @@ func TestSwitchProxyViaUsesGivenTransport(t *testing.T) {
 // SwitchProxy идёт через транспорт-override, а не через api.SwitchProxy.
 func TestAPIServiceSwitchProxyUsesTransport(t *testing.T) {
 	svc := &APIService{Enabled: false}
-	svc.LastSelectedProxyByGroup = map[string]string{}
 	stub := &stubTransport{}
 	svc.SetTransport(stub)
 	if err := svc.SwitchProxy("proxy-out", "node-b"); err != nil {

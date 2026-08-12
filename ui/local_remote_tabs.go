@@ -35,8 +35,8 @@ import (
 // Поэтому правой задаётся собственный минимум (minSizeBox), а offset
 // вычисляется из фактических ширин.
 const (
-	leftColumnWidth  = 790
-	rightColumnWidth = 330
+	leftColumnWidth  = 395
+	rightColumnWidth = 165
 )
 
 // splitColumnRatio — доля окна под левую колонку при стартовом размере.
@@ -45,13 +45,18 @@ const splitColumnRatio = float64(leftColumnWidth) / float64(leftColumnWidth+righ
 
 // CreateLocalTab — вкладка Local: слева прокси локального ядра, справа
 // управление этим ядром (бывшая вкладка Core целиком).
-func CreateLocalTab(ac *core.AppController) fyne.CanvasObject {
+//
+// Возвращает и панель списка: у Local и Remote независимые состояния, и
+// переключение вкладки обязано отдать разделяемые слоты UIService той панели,
+// которую пользователь видит (ProxyListPanel.Activate).
+func CreateLocalTab(ac *core.AppController) (fyne.CanvasObject, *ProxyListPanel) {
+	panel := CreateProxyListPanel(ac)
 	split := container.NewHSplit(
-		CreateProxyListPanel(ac),
+		panel.Content,
 		withColumnWidth(CreateCoreDashboardTab(ac), rightColumnWidth),
 	)
 	split.SetOffset(splitColumnRatio)
-	return split
+	return split, panel
 }
 
 // withColumnWidth фиксирует минимальную ширину колонки, не трогая высоту:
@@ -67,16 +72,15 @@ func withColumnWidth(content fyne.CanvasObject, width float32) fyne.CanvasObject
 // onSelectionChanged перезагружает левую колонку после смены активной машины.
 // Без этого список остался бы с узлами предыдущей — то есть показывал бы
 // чужие данные под именем новой машины (нарушение инварианта §5.3).
-func CreateRemoteTab(ac *core.AppController) fyne.CanvasObject {
+func CreateRemoteTab(ac *core.AppController) (fyne.CanvasObject, *ProxyListPanel) {
 	proxyPanel := CreateProxyListPanel(ac)
-	machines := CreateMachineListPanel(ac, func() {
-		if ac.UIService != nil && ac.UIService.RefreshAPIFunc != nil {
-			ac.UIService.RefreshAPIFunc()
-		}
-	})
-	split := container.NewHSplit(proxyPanel, withColumnWidth(machines, rightColumnWidth))
+	// Обновляем СВОЮ панель напрямую, а не через UIService.RefreshAPIFunc:
+	// выбор машины касается списка Remote, и промахнуться мимо него в момент,
+	// когда слоты принадлежат другой вкладке, нельзя.
+	machines := CreateMachineListPanel(ac, proxyPanel.Refresh)
+	split := container.NewHSplit(proxyPanel.Content, withColumnWidth(machines, rightColumnWidth))
 	split.SetOffset(splitColumnRatio)
-	return split
+	return split, proxyPanel
 }
 
 // MinWindowSize — минимальный и стартовый размер главного окна (§3.2).
