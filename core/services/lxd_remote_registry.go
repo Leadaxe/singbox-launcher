@@ -448,6 +448,26 @@ func (r *RemoteRegistry) StopCore(id string) error {
 	return nil
 }
 
+// ApplyConfig отправляет конфиг на удалённую машину (SPEC 097).
+//
+// Демон валидирует конфиг сабпроцессом ДО подмены инстанса и откатывается
+// на last-good, если новый не стартовал: неудачный деплой не оставит роутер
+// без VPN. Ошибка 422 (ApplyError.Rejected) означает, что конфиг забракован
+// и работающий инстанс не тронут вовсе.
+//
+// Блокирующий сетевой вызов — звать из горутины.
+func (r *RemoteRegistry) ApplyConfig(id string, config []byte) error {
+	client, err := r.adminClient(id)
+	if err != nil {
+		return err
+	}
+	if err := client.Apply(config); err != nil {
+		return fmt.Errorf("remote apply: %w", err)
+	}
+	debuglog.InfoLog("remote apply: config delivered to %q (%d bytes)", id, len(config))
+	return nil
+}
+
 // adminClient собирает REST-клиента к записи реестра (адрес + пин + ключ).
 func (r *RemoteRegistry) adminClient(id string) (*lxdclient.Client, error) {
 	entry, ok, err := r.Get(id)

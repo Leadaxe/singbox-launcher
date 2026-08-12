@@ -901,5 +901,11 @@
   "servers.power.stop": "Остановить",
   "servers.power.local": "локальное ядро",
   "servers.power.stop_title": "Остановить ядро",
-  "servers.power.stop_body": "Остановить ядро на %s? У всех, кто ходит через эту машину, пропадёт VPN, пока его не запустят снова."
+  "servers.power.stop_body": "Остановить ядро на %s? У всех, кто ходит через эту машину, пропадёт VPN, пока его не запустят снова.",
+  "servers.power.deploy": "Отправить конфиг",
+  "servers.power.deploying": "отправляем…",
+  "servers.power.deploy_title": "Отправка конфига",
+  "servers.power.deploy_body": "Отправить конфиг на %s (%d байт)? Демон проверит его до подмены инстанса и откатится на last-good, если новый не стартует.",
+  "servers.power.deploy_done": "Конфиг применён на %s.",
+  "servers.power.deploy_missing": "Конфиг для удалённой машины ещё не собран. Откройте Конфигуратор, выберите на первой вкладке назначение Remote и нажмите «Сохранить» — он запишет:\n\n%s"
 }

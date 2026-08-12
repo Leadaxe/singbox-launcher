@@ -901,5 +901,11 @@
   "servers.power.stop": "Stop",
   "servers.power.local": "local core",
   "servers.power.stop_title": "Stop the core",
-  "servers.power.stop_body": "Stop the core on %s? Everyone routing through that machine loses VPN until it is started again."
+  "servers.power.stop_body": "Stop the core on %s? Everyone routing through that machine loses VPN until it is started again.",
+  "servers.power.deploy": "Deploy config",
+  "servers.power.deploying": "deploying…",
+  "servers.power.deploy_title": "Deploy config",
+  "servers.power.deploy_body": "Send the config to %s (%d bytes)? The daemon validates it before swapping the instance and rolls back to last-good if the new one fails to start.",
+  "servers.power.deploy_done": "Config applied on %s.",
+  "servers.power.deploy_missing": "No config for a remote machine yet. Open the Configurator, pick the Remote target on the first tab and press Save — it writes:\n\n%s"
 }
