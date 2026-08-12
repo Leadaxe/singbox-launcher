@@ -32,7 +32,16 @@ import (
 )
 
 // CreateClashAPITab creates and returns the content for the "Clash API" tab.
-func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
+// CreateProxyListPanel строит панель списка прокси — левую колонку обеих
+// вкладок (SPEC 098 §2.1).
+//
+// Один и тот же виджет на Local и Remote: поведение, сортировка, ping и
+// переключение узла обязаны совпадать, поэтому это не две копии, а один код.
+// Чьи прокси показывать, решает активный транспорт (см. lxd_remote_override).
+//
+// Шапки управления машиной здесь нет: питанием локального ядра управляет
+// правая колонка Local, удалённым — строка машины на Remote.
+func CreateProxyListPanel(ac *core.AppController) fyne.CanvasObject {
 	ac.UIService.ApiStatusLabel = widget.NewLabel(locale.T("servers.status_not_checked"))
 	status := widget.NewLabel(locale.T("servers.status_click_load"))
 	ac.UIService.ListStatusLabel = status
@@ -1371,14 +1380,9 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		suppressSelectCallback = false
 	}
 
-	// SPEC 097: дропдаун выбора машины (Local + сохранённые удалённые
-	// демоны) вместо статичного бейджа — переключение в один клик, текущий
-	// источник всегда виден. Гейр рядом остаётся для сопряжения и настроек
-	// подключения. Оба обновляются через OnOverrideChanged.
-	endpointBadge := newEndpointPicker(ac, func() {
-		onResetAPIState()
-		onLoadAndRefreshProxies()
-	})
+	// Гейр настроек подключения: Clash API и локальный демон. Он остаётся в
+	// панели (§2.5) — это не про удалённые машины, которыми управляет правая
+	// колонка вкладки Remote.
 	endpointGearBtn := ttwidget.NewButton("⚙", func() {
 		OpenConnectionWindow(ac, func() {
 			// onChanged: после смены override/движка force-refresh proxy
@@ -1392,24 +1396,16 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	endpointGearBtn.SetToolTip(locale.T("servers.endpoint.tooltip_settings"))
 	endpointGearBtn.Importance = widget.LowImportance
 
-	// SPEC 097: слева — управление ядром ВЫБРАННОЙ машины (кнопка Start/Stop
-	// + короткий статус). Прежний ApiStatusLabel всегда показывал локальное
-	// ядро, даже когда выбран роутер, и управлять удалённым ядром было нечем.
-	powerControl := newEndpointPowerControl(ac, func() {
-		onResetAPIState()
-		onLoadAndRefreshProxies()
-	})
-
-	topControls := container.NewVBox(
-		container.NewBorder(
-			nil, nil,
-			powerControl.container,
-			container.NewHBox(endpointBadge, endpointGearBtn),
-		),
+	// SPEC 098: панель начинается сразу с выбора группы. Питание и выбор
+	// машины уехали в правую колонку вкладок — там видно, о какой машине
+	// речь, тогда как в шапке списка это было неочевидно: дропдаун говорил,
+	// чьи прокси показывать, а кнопки управляли «текущей» машиной.
+	groupRow := container.NewBorder(
+		nil, nil, nil,
+		container.NewHBox(endpointGearBtn),
 		container.NewHBox(widget.NewLabel(locale.T("servers.label_selector_group")), groupSelect, mapButton),
-		widget.NewSeparator(),
-		buttonsRow,
 	)
+	topControls := container.NewVBox(groupRow, widget.NewSeparator(), buttonsRow)
 
 	// Обертываем status label в контейнер с горизонтальной прокруткой
 	// Scroll контейнер ограничит ширину label и добавит прокрутку при необходимости

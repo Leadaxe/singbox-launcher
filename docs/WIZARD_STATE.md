@@ -8,12 +8,33 @@
 
 ## 1. Файлы и расположение
 
+**Локальная машина** (исторический плоский layout, не менялся):
+
 - **`bin/wizard_states/state.json`** — текущий снимок. Единственный файл,
   читаемый при старте Configurator'а и при headless rebuild config.json.
 - **`bin/wizard_states/<id>.json`** — именованные снимки (Save As).
   Структурно идентичны `state.json`; при Read копируются поверх `state.json`.
 - **`bin/subscriptions/<source_id>.raw`** — per-source raw body cache подписки
   (atomic .tmp + rename). Read-path парсит .raw напрямую без сети.
+- **`bin/rule-sets/<tag>.srs`** — скачанные rule-set'ы.
+
+**Удалённая машина** (SPEC 098): всё её имущество — под одной директорией,
+где `<id>` = ID записи реестра `bin/remote-daemons.json`:
+
+- **`bin/wizard_states/remote/<id>/state.json`** — её текущий снимок;
+- **`bin/wizard_states/remote/<id>/<snap>.json`** — её именованные снимки;
+- **`bin/wizard_states/remote/<id>/config.json`** — её собранный конфиг
+  (именно этот файл отправляет Deploy в её строке);
+- **`bin/wizard_states/remote/<id>/srs/`**, **`…/subscriptions/`** — её `.srs`
+  и тела подписок.
+
+Машины не делят файлы: GC живых тегов и Source.ID считается по состояниям
+**этой** машины и удаляет только в её каталогах. Удаление машины = удаление её
+директории состояний плюс `bin/remote-daemons/<id>/` (клиентские ключи).
+
+Пути резолвятся только через `internal/platform` (`GetWizardStatePathFor`,
+`GetRemoteConfigPathFor`, `GetRuleSetsDirFor`, `GetSubscriptionsDirFor`) — не
+собирайте их из строковых литералов.
 
 ExecDir resolve описан в SPECS/022 (macOS app support directories). На macOS
 release-сборке это `~/Library/Application Support/singbox-launcher/bin/...`,

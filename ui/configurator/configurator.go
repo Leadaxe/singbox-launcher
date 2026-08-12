@@ -45,6 +45,7 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/services"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
@@ -66,6 +67,26 @@ import (
 // This prevents multiple parallel instances of the wizard from being
 // opened and simplifies lifecycle management.
 func ShowConfigWizard(parent fyne.Window) {
+	showConfigWizardFor(parent, wizardtemplate.LocalTarget())
+}
+
+// ShowConfigWizardForMachine открывает визард, корневой на профиле КОНКРЕТНОЙ
+// удалённой машины (SPEC 098 §2.4) — точка входа кнопки [Configure].
+//
+// Таргет задаётся здесь и дальше не выбирается: состояние читается из
+// директории этой машины, Save пишет туда же, а собранный конфиг ложится в её
+// config.json. Именно поэтому промах «собрал для одной, задеплоил на другую»
+// становится невозможен — у машины просто нет другого файла.
+//
+// Платформа берётся из записи реестра, а не из состояния: это свойство
+// машины, и второго источника правды у него быть не должно.
+func ShowConfigWizardForMachine(parent fyne.Window, machine services.RemoteDaemon) {
+	tgt := machine.Target()
+	tgt.MachineID = machine.ID
+	showConfigWizardFor(parent, tgt)
+}
+
+func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec) {
 	ac := core.GetController()
 	if ac == nil {
 		return
@@ -98,6 +119,10 @@ func ShowConfigWizard(parent fyne.Window) {
 	}
 	model.TemplateData = templateData
 	model.ExecDir = ac.FileService.ExecDir
+	// Таргет ставится ДО чтения состояния: от него зависит, из чьей
+	// директории читать. Поставить его после загрузки значило бы прочитать
+	// local-состояние и записать его в папку машины.
+	model.Target = target.Normalized()
 
 	// Create new window for wizard.
 	//
@@ -152,9 +177,13 @@ func ShowConfigWizard(parent fyne.Window) {
 		})
 	}
 
-	// Check if state.json exists and load it directly
+	// Check if state.json exists and load it directly.
+	//
+	// SPEC 098: store корневится на директории таргета — для машины это её
+	// папка. GetStateStore читает тот же model.Target, поэтому дальше
+	// Save/Load/снапшоты автоматически остаются в её границах.
 	fileServiceAdapter := &wizardbusiness.FileServiceAdapter{FileService: ac.FileService}
-	stateStore := wizardbusiness.NewStateStore(fileServiceAdapter)
+	stateStore := presenter.GetStateStore()
 
 	// If state.json exists, load it directly without dialog
 	if stateStore.StateExists("") {
@@ -172,9 +201,25 @@ func ShowConfigWizard(parent fyne.Window) {
 			} else {
 				debuglog.InfoLog("ShowConfigWizard: loaded state from state.json")
 			}
+			// LoadState восстанавливает Target из meta файла. Для машины это
+			// затирает и её id, и платформу из реестра — а реестр здесь
+			// источник правды (§5.8). Возвращаем таргет, которым открывали.
+			if target.IsRemote() {
+				model.Target = target.Normalized()
+			}
 		}
 	} else {
-		// No state.json - load from config.json/template (current behavior)
+		// No state.json — для машины это первый заход. Профиль начинается с
+		// ШАБЛОНА, а не с копии локального состояния: копирование притащило бы
+		// чужие источники подписок, которых пользователь на роутер не
+		// добавлял (SPEC 098 §2.3).
+		//
+		// Отдельной ветки не нужно: LoadConfigFromFile и так читает только
+		// template (FileService у неё игнорируется) — имя осталось от времён,
+		// когда она падала обратно на config.json.
+		if target.IsRemote() {
+			debuglog.InfoLog("ShowConfigWizard: no state for machine %q — starting from template", target.MachineID)
+		}
 		loadConfigFromFile(presenter, fileServiceAdapter, templateData, model, wizardWindow)
 	}
 

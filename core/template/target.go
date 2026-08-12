@@ -32,6 +32,20 @@ type TargetSpec struct {
 	// Target — TargetLocal | TargetRemote. Пустая строка трактуется как
 	// TargetLocal (nil-tolerance для legacy-вызовов).
 	Target string
+
+	// MachineID — ID записи реестра удалённых машин (SPEC 098 §2.3), он же
+	// имя её директории: bin/wizard_states/remote/<id>/.
+	//
+	// Значим только при Target=remote; для local игнорируется. Едет здесь, а
+	// не отдельным параметром, потому что каждый слой, которому нужно
+	// разрешить путь (состояние, config.json, .srs, тела подписок), уже
+	// получает TargetSpec — иначе id пришлось бы протаскивать вторым
+	// аргументом через весь пайплайн, и любое забытое место молча писало бы
+	// в singleton-папку, то есть в чужой профиль.
+	//
+	// Пустой при Target=remote = pre-098 singleton-раскладка; такой конфиг
+	// читается, но переезжает в папку машины при первой миграции.
+	MachineID string
 }
 
 // Значения TargetSpec.Target. Совпадают со слагами: TargetRemote — имя
@@ -75,8 +89,31 @@ func LocalTarget() TargetSpec {
 // RemoteTarget — таргет «удалённая машина» на указанной платформе.
 // goos/goarch пустые → подставляется runtime (лучше собрать под свою
 // платформу, чем уронить генерацию на пустой строке).
+//
+// Без MachineID: пути ведут в singleton-папку pre-098. Вызывать стоит
+// RemoteTargetFor — единственный способ адресовать конкретную машину.
 func RemoteTarget(goos, goarch string) TargetSpec {
 	return TargetSpec{GOOS: goos, GOARCH: goarch, Target: TargetRemote}.Normalized()
+}
+
+// RemoteTargetFor — таргет конкретной удалённой машины (SPEC 098).
+func RemoteTargetFor(goos, goarch, machineID string) TargetSpec {
+	return TargetSpec{
+		GOOS: goos, GOARCH: goarch, Target: TargetRemote,
+		MachineID: strings.TrimSpace(machineID),
+	}.Normalized()
+}
+
+// MachineIDOrEmpty возвращает ID машины для remote-таргета и "" для local.
+//
+// Санкционированный способ получить третий аргумент путевых хелперов:
+// у local-таргета id обязан быть пустым, иначе локальное состояние уехало бы
+// в папку машины.
+func (t TargetSpec) MachineIDOrEmpty() string {
+	if !t.IsRemote() {
+		return ""
+	}
+	return strings.TrimSpace(t.MachineID)
 }
 
 // Normalized заполняет пустые поля дефолтами: GOOS/GOARCH — из runtime,

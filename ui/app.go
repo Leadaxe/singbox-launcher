@@ -38,13 +38,17 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 		core:   controller,
 	}
 
-	// Create tabs - Core is first (opens on startup)
-	// Создаем вкладку Core первой, чтобы её callback установился.
+	// SPEC 098: вкладки Local и Remote вместо Core и Servers. Обе
+	// двухколоночные — слева список прокси, справа управление; см.
+	// ui/local_remote_tabs.go.
+	//
+	// Local создаётся первой, чтобы её callback установился (внутри живёт
+	// CreateCoreDashboardTab, который регистрирует UpdateCoreStatusFunc).
 	// Emoji-in-label (💡 default emoji presentation) — colour rendering
 	// via OS font fallback to Apple Color Emoji, matching sibling tabs
-	// (🖥️ Servers / ⚙️ Settings / 🔍 Diagnostics).
-	coreTabItem := container.NewTabItem(locale.T("app.tab.core"), CreateCoreDashboardTab(controller))
-	app.clashAPITab = container.NewTabItem(locale.T("app.tab.servers"), CreateClashAPITab(controller))
+	// (⚙️ Settings / 🔍 Diagnostics).
+	coreTabItem := container.NewTabItem(locale.T("app.tab.local"), CreateLocalTab(controller))
+	app.clashAPITab = container.NewTabItem(locale.T("app.tab.remote"), CreateRemoteTab(controller))
 	// Settings tab is a no-content placeholder that acts as a button: its
 	// OnSelected handler opens the standalone Settings window (see
 	// ui/settings_window.go) and then immediately reverts tab selection
@@ -100,18 +104,21 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	// Сохраняем оригинальный callback, который был установлен в CreateCoreDashboardTab
 	originalUpdateCoreStatusFunc := controller.UIService.UpdateCoreStatusFunc
 
-	// refreshCoreTabIcon — динамический emoji в табе Core по состоянию
+	// refreshCoreTabIcon — динамический emoji в табе Local по состоянию
 	// sing-box. Перерисовывает label + дёргает AppTabs.Refresh чтобы
 	// табстрип реально перечитал текст. Безопасно вызывать с UI-thread
 	// (caller wrap'ит в fyne.Do).
 	//
 	// Status-indicator paradigm (как у media-плеера):
-	//   ⏸️ Core  — stopped / idle (sing-box не запущен)
-	//   ▶️ Core  — running (sing-box активен)
+	//   ⏸️ Local  — stopped / idle (sing-box не запущен)
+	//   ▶️ Local  — running (sing-box активен)
 	//
-	// База берётся из локали (`Core` / `Ядро` / etc), эмодзи приклеивается
+	// Индикатор остался на Local, потому что показывает ЛОКАЛЬНОЕ ядро;
+	// состояние удалённых машин видно в их строках на вкладке Remote.
+	//
+	// База берётся из локали (`Local` / `Локально` / etc), эмодзи приклеивается
 	// тут чтобы не плодить per-state ключи в каждой локали.
-	coreLabelBase := locale.T("app.tab.core")
+	coreLabelBase := locale.T("app.tab.local")
 	// Strip leading emoji + space from the locale base — text after the
 	// first space character. Locale strings ship with a default ▶️ (or
 	// previous attempt's icon) for the never-changed startup case; we

@@ -32,6 +32,15 @@ func (p *WizardPresenter) ConfigTarget() string {
 	return constants.ConfigTargetLocal
 }
 
+// ConfigMachineID — ID машины, чей профиль сейчас редактируется (SPEC 098).
+// Пусто для local и для remote-состояний, оставшихся от singleton-раскладки.
+func (p *WizardPresenter) ConfigMachineID() string {
+	if p.model == nil {
+		return ""
+	}
+	return p.model.Target.MachineIDOrEmpty()
+}
+
 // SwitchConfigTarget переключает таргет: сохраняет текущее состояние в его
 // директории, затем читает состояние нового таргета и перезагружает модель.
 //

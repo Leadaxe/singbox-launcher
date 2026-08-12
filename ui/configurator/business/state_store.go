@@ -46,15 +46,17 @@ func NewStateStore(fileService FileServiceInterface) *StateStore {
 	}
 }
 
-// NewStateStoreFor создаёт StateStore для указанного таргета (SPEC 097):
-// local → bin/wizard_states/, remote → bin/wizard_states/remote/.
+// NewStateStoreFor создаёт StateStore для указанного таргета и машины
+// (SPEC 097, machine-scoped в SPEC 098):
+// local → bin/wizard_states/, remote → bin/wizard_states/remote/<id>/.
 //
 // Изоляция снапшотов получается даром: ListWizardStates пропускает
-// поддиректории, поэтому local-store не видит remote-снапшоты и наоборот.
-func NewStateStoreFor(fileService FileServiceInterface, target string) *StateStore {
+// поддиректории, поэтому ни один store не видит снапшотов другого — ни
+// local против remote, ни одна машина против другой.
+func NewStateStoreFor(fileService FileServiceInterface, target, machineID string) *StateStore {
 	return &StateStore{
 		fileService: fileService,
-		statesDir:   platform.GetWizardStatesDirFor(fileService.ExecDir(), target),
+		statesDir:   platform.GetWizardStatesDirFor(fileService.ExecDir(), target, machineID),
 	}
 }
 

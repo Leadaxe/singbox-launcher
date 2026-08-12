@@ -103,5 +103,6 @@
 - **089** — фича (F-N, spec-only): DEEP_RULES — структурный редактор выражений (logical and/or/invert), `editor_mode` в Params, декомпозиция add_rule_dialog. L, UI-heavy.
 - **093** — баг завершён (B-C): UTLS_FINGERPRINT_ALLOWLIST — `fp=HelloChrome_120` из подписки уезжал в конфиг как есть → `unknown uTLS fingerprint` и отказ загрузки **всего** конфига (одна нода = VPN не стартует). Валидация по allowlist ядра + маппинг сырых uTLS-идентификаторов, барьер в парсере и эмиттере; v1.2.7, issue [#100](https://github.com/Leadaxe/singbox-launcher/issues/100); **SPECS/093-B-C-UTLS_FINGERPRINT_ALLOWLIST/**
 - **090** — фича (F-N, spec-only): PRESET_LANGUAGE — `#if` уже общий с LxBox; конвертер-импорт (bundled 8 уже нативны) отложен; документ shared-формата.
+- **098** — фича завершена (F-C): LOCAL_REMOTE_TABS — вкладки **Local** и **Remote** вместо Core/Servers (обе двухколоночные: слева список прокси, справа управление); **конфиг на каждую машину** — своя директория `bin/wizard_states/remote/<id>/` с состоянием, снапшотами, `config.json`, `srs/` и `subscriptions/`; GC в границах машины; платформа машины переехала в реестр; миграция singleton-профиля; окно 1000×700; **SPECS/098-F-C-LOCAL_REMOTE_TABS/**
 
 Подробное описание каждой задачи — в SPEC.md соответствующей папки.

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/lxdclient"
 	"singbox-launcher/internal/platform"
@@ -44,6 +45,18 @@ type RemoteDaemon struct {
 	// Secret — Bearer-секрет; нужен только plain-h2c демону. При mTLS
 	// мандатом служит клиентский сертификат.
 	Secret string `json:"secret,omitempty"`
+	// GOOS/GOARCH — платформа и архитектура МАШИНЫ (SPEC 098 §2.4).
+	//
+	// Живут здесь, а не в состоянии визарда, потому что это свойство самой
+	// машины, а не одной из её настроек: строка списка показывает их, визард
+	// читает их, генерация собирает из них TargetSpec. Один источник правды —
+	// иначе остаётся способ разъехаться: собрать конфиг под архитектуру,
+	// отличную от той, что показана в списке.
+	//
+	// Пустые значения трактуются как linux/amd64 (см. TargetSpec): самый
+	// частый случай для роутера и VPS.
+	GOOS   string `json:"goos,omitempty"`
+	GOARCH string `json:"goarch,omitempty"`
 	// AddedAt — когда сопряглись (RFC3339, для UI-списка).
 	AddedAt string `json:"added_at,omitempty"`
 }
@@ -264,7 +277,14 @@ func (r *RemoteRegistry) SetAddr(id, addr string) error {
 	return fmt.Errorf("remote registry: unknown id %q", id)
 }
 
-// Remove удаляет подключение и его клиентские ключи.
+// Remove удаляет подключение, его клиентские ключи и всё её имущество:
+// состояние визарда, снапшоты, собранный конфиг, .srs и тела подписок
+// (SPEC 098 §3.1.9).
+//
+// Две директории — ровно потому, что SPEC 098 §5.6 держит всё имущество
+// машины под одним корнем. Пока конфиг лежал в общем bin/remote-config.json,
+// а .srs в общем bin/rule-sets/, удаление машины было поиском следов по bin/
+// с риском задеть чужие файлы.
 //
 // Регистрация на СТОРОНЕ демона остаётся — снять её может только сам демон
 // (`sing-box lxd client remove`). Мы честно забываем ключ у себя, а не
@@ -294,7 +314,58 @@ func (r *RemoteRegistry) Remove(id string) error {
 	if err := os.RemoveAll(r.identityDir(id)); err != nil {
 		debuglog.WarnLog("remote registry: remove identity dir for %q: %v", id, err)
 	}
+	// Пустой id снёс бы плоскую remote/ со всеми машинами — но пустой id не
+	// проходит validation при добавлении, так что сюда он попасть не может.
+	// Проверка стоит на случай, если запись попала в реестр правкой файла.
+	if strings.TrimSpace(id) != "" {
+		if err := os.RemoveAll(platform.GetRemoteMachineDir(r.execDir, id)); err != nil {
+			debuglog.WarnLog("remote registry: remove state dir for %q: %v", id, err)
+		}
+	}
 	return nil
+}
+
+// SetPlatform фиксирует платформу и архитектуру машины (SPEC 098 §2.4).
+//
+// Платформа — свойство машины, а не настройка конфига: под неё собирается
+// config.json, и она же показывается в строке списка. Держать её в состоянии
+// визарда значило бы иметь два источника правды и способ разъехаться —
+// собрать под архитектуру, отличную от показанной.
+func (r *RemoteRegistry) SetPlatform(id, goos, goarch string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	list, err := r.listLocked()
+	if err != nil {
+		return err
+	}
+	for i := range list {
+		if list[i].ID != id {
+			continue
+		}
+		list[i].GOOS = strings.TrimSpace(goos)
+		list[i].GOARCH = strings.TrimSpace(goarch)
+		return r.saveLocked(list)
+	}
+	return fmt.Errorf("remote registry: unknown id %q", id)
+}
+
+// Target собирает TargetSpec генерации из записи реестра (SPEC 098 §2.4).
+// Единственный санкционированный способ узнать, под что собирать конфиг
+// машины.
+//
+// Пустая платформа = linux/amd64, а НЕ платформа хоста: запись без явного
+// GOOS осталась от сопряжения до SPEC 098, и удалённая машина в этом проекте —
+// почти всегда роутер или VPS. Подставить сюда runtime.GOOS значило бы на
+// macOS-лаунчере молча собрать darwin-конфиг для linux-роутера.
+func (d RemoteDaemon) Target() wizardtemplate.TargetSpec {
+	goos, goarch := strings.TrimSpace(d.GOOS), strings.TrimSpace(d.GOARCH)
+	if goos == "" {
+		goos = "linux"
+	}
+	if goarch == "" {
+		goarch = "amd64"
+	}
+	return wizardtemplate.RemoteTarget(goos, goarch)
 }
 
 // ImportPairedDaemon добавляет в реестр УЖЕ сопряжённое подключение —

@@ -14,6 +14,7 @@ import (
 	"singbox-launcher/core/services"
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/platform"
@@ -212,9 +213,13 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 
 	// Step 5.5: orphan GC для bin/rule-sets/. Параллельно тому что
 	// refreshSubscriptionsMetaAndCache делает для bin/subscriptions/.
-	// Live tags = union из всех stages (multi-stage safety). Удаляем
-	// .srs файлы которые уже не упоминаются ни одним stage'ом.
-	knownTags := collectAllStageRuleSetTags(execDir, td)
+	// Live tags = union из всех stages ЛОКАЛЬНОЙ машины (multi-stage safety).
+	// Удаляем .srs файлы которые уже не упоминаются ни одним её stage'ом.
+	//
+	// SPEC 098: этот путь — только про локальную машину. Каталоги .srs
+	// удалённых машин лежат в их директориях и чистятся своим GC; трогать их
+	// отсюда значило бы удалить файл, живой для другой машины.
+	knownTags := collectAllStageRuleSetTags(execDir, constants.ConfigTargetLocal, "", td)
 	if deleted, gcErr := services.DeleteOrphanRuleSets(execDir, knownTags); gcErr != nil {
 		debuglog.WarnLog("RebuildConfigIfDirty: DeleteOrphanRuleSets: %v", gcErr)
 	} else if len(deleted) > 0 {
@@ -251,9 +256,13 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	return nil
 }
 
-// CleanOrphanRuleSets removes bin/rule-sets/*.srs files not referenced by ANY
-// saved wizard state — the same multi-stage live-set the rebuild GC (Step 5.5)
-// uses. Returns the removed filenames.
+// CleanOrphanRuleSets removes bin/rule-sets/*.srs files not referenced by any
+// saved LOCAL wizard state — the same multi-stage live-set the rebuild GC
+// (Step 5.5) uses. Returns the removed filenames.
+//
+// SPEC 098: local-scoped. Remote machines keep their .srs under their own
+// directory and garbage-collect within it, so this call can neither delete
+// nor retain their files.
 //
 // Used by the manual "clean unused rule-sets" action and the state-delete path
 // (deleting a saved state frees the .srs only that state referenced). Multi-stage
@@ -270,7 +279,7 @@ func (ac *AppController) CleanOrphanRuleSets() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("CleanOrphanRuleSets: load template: %w", err)
 	}
-	known := collectAllStageRuleSetTags(execDir, td)
+	known := collectAllStageRuleSetTags(execDir, constants.ConfigTargetLocal, "", td)
 	return services.DeleteOrphanRuleSets(execDir, known)
 }
 

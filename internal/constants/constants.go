@@ -9,11 +9,13 @@ const (
 	ConfigFileName         = "config.json"
 	SingBoxExecName        = "sing-box"
 	WizardTemplateFileName = "wizard_template.json"
-	// RemoteConfigFileName — конфиг, подготовленный для УДАЛЁННОЙ машины
-	// (SPEC 097). Namespace специально отдельный от ConfigFileName:
-	// bin/config.json принадлежит локальному ядру и перезаписывается
-	// Update/Rebuild — класть туда чужой конфиг нельзя.
-	RemoteConfigFileName = "remote-config.json"
+	// LegacyRemoteConfigFileName — bin/remote-config.json, единственный
+	// конфиг удалённой машины до SPEC 098.
+	//
+	// Больше не пишется: у каждой машины свой config.json в её директории
+	// (platform.GetRemoteConfigPathFor). Константа осталась только ради
+	// миграции, которая читает старый файл и переносит его владельцу.
+	LegacyRemoteConfigFileName = "remote-config.json"
 	WizardStateFileName  = "state.json"
 	// OutboundsCacheFileName — кеш-файл outbounds (SPEC 045 phase 5.1).
 	// Лежит в <execDir>/bin/. Scope = последний активный state. Парсер
@@ -31,7 +33,16 @@ const (
 	// SubscriptionsDirName — каталог raw-body cache подписок (SPEC 052):
 	// <execDir>/bin/subscriptions/<source-id>.raw. Один файл per Source(id),
 	// атомарная запись через .tmp + Rename, lazy GC orphan-файлов.
+	//
+	// SPEC 098: для удалённой машины тот же базовый имя каталога, но внутри
+	// её директории — bin/wizard_states/remote/<id>/subscriptions/.
 	SubscriptionsDirName = "subscriptions"
+	// RemoteRuleSetsDirName — каталог .srs УДАЛЁННОЙ машины (SPEC 098 §2.3):
+	// bin/wizard_states/remote/<id>/srs/.
+	//
+	// Имя короче локального rule-sets/ намеренно: путь и так длинный, а
+	// каталог лежит внутри директории машины, где двусмысленности нет.
+	RemoteRuleSetsDirName = "srs"
 )
 
 // Config targets (SPEC 097) — для какой машины лаунчер готовит config.json.

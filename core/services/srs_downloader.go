@@ -23,14 +23,38 @@ import (
 )
 
 // RuleSRSPath возвращает путь к локальному SRS файлу: {ExecDir}/bin/rule-sets/{tag}.srs
+//
+// Локальная машина. Для удалённой — RuleSRSPathFor: у каждой машины свой
+// каталог .srs (SPEC 098 §2.3).
 func RuleSRSPath(execDir string, tag string) string {
 	return filepath.Join(execDir, constants.BinDirName, constants.RuleSetsDirName, tag+".srs")
+}
+
+// RuleSRSPathFor возвращает путь .srs в каталоге конкретной машины
+// (SPEC 098 §2.3):
+//
+//	local          → bin/rule-sets/<tag>.srs
+//	remote + <id>  → bin/wizard_states/remote/<id>/srs/<tag>.srs
+//
+// ВАЖНО: это путь на МАШИНЕ ЛАУНЧЕРА. Он попадает в config.json как
+// rule_set[].path, поэтому для remote-конфига остаётся открытым вопросом
+// SPEC 097 §6 — на самой удалённой машине такого пути нет. Пока такие наборы
+// у remote следует оставлять type:remote; здесь функция отвечает только за
+// то, ГДЕ лаунчер держит скачанный файл.
+func RuleSRSPathFor(execDir, target, machineID, tag string) string {
+	return filepath.Join(platform.GetRuleSetsDirFor(execDir, target, machineID), tag+".srs")
 }
 
 // SRSFileExists проверяет наличие локального SRS файла
 func SRSFileExists(execDir string, tag string) bool {
 	path := RuleSRSPath(execDir, tag)
 	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+// SRSFileExistsFor — SRSFileExists в границах конкретной машины.
+func SRSFileExistsFor(execDir, target, machineID, tag string) bool {
+	info, err := os.Stat(RuleSRSPathFor(execDir, target, machineID, tag))
 	return err == nil && !info.IsDir()
 }
 
@@ -245,13 +269,26 @@ func DownloadSRSGroup(ctx context.Context, execDir string, entries []SRSEntry) e
 // Multi-stage safety: caller должен передать union tags из ВСЕХ
 // bin/wizard_states/*.json (см. collectAllStageRuleSetTags), иначе rebuild
 // активного state'а сметёт .srs нужные другому (неактивному) stage'у.
+//
+// Локальная машина. Для удалённой — DeleteOrphanRuleSetsFor.
 func DeleteOrphanRuleSets(execDir string, knownTags []string) ([]string, error) {
+	return DeleteOrphanRuleSetsFor(execDir, constants.ConfigTargetLocal, "", knownTags)
+}
+
+// DeleteOrphanRuleSetsFor чистит каталог .srs КОНКРЕТНОЙ машины
+// (SPEC 098 §3.1.10).
+//
+// Границы машины — не оптимизация, а корректность: knownTags считается по
+// состояниям этой же машины (collectAllStageRuleSetTags с тем же
+// target/machineID). Смешать одно с другим — значит либо удалить чужой живой
+// файл, либо вечно держать свой мёртвый.
+func DeleteOrphanRuleSetsFor(execDir, target, machineID string, knownTags []string) ([]string, error) {
 	knownSet := make(map[string]struct{}, len(knownTags))
 	for _, tag := range knownTags {
 		knownSet[tag] = struct{}{}
 	}
 
-	dir := filepath.Join(execDir, constants.BinDirName, constants.RuleSetsDirName)
+	dir := platform.GetRuleSetsDirFor(execDir, target, machineID)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {

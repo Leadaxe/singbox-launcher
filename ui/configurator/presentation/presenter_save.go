@@ -30,6 +30,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -227,9 +228,10 @@ func (p *WizardPresenter) statePathForLog() string {
 	if ac == nil || ac.FileService == nil {
 		return ""
 	}
-	// SPEC 097: путь зависит от таргета (remote-состояние живёт в подпапке);
-	// иначе лог показывал бы local-путь, пока запись шла в remote/.
-	return platform.GetWizardStatePathFor(ac.FileService.ExecDir, p.ConfigTarget())
+	// SPEC 097/098: путь зависит от таргета и машины (remote-состояние живёт
+	// в её подпапке); иначе лог показывал бы local-путь, пока запись шла в
+	// remote/<id>/.
+	return platform.GetWizardStatePathFor(ac.FileService.ExecDir, p.ConfigTarget(), p.ConfigMachineID())
 }
 
 // saveStateOnly persist state.json и возвращает его путь (или "" при ошибке).
@@ -243,7 +245,7 @@ func (p *WizardPresenter) saveStateOnly() string {
 		})
 		return ""
 	}
-	statePath := platform.GetWizardStatePathFor(ac.FileService.ExecDir, p.ConfigTarget())
+	statePath := platform.GetWizardStatePathFor(ac.FileService.ExecDir, p.ConfigTarget(), p.ConfigMachineID())
 
 	debuglog.InfoLog("SaveConfig: saving state.json to %s", statePath)
 	if err := p.SaveCurrentState(); err != nil {
@@ -315,12 +317,19 @@ func (p *WizardPresenter) completeSaveOperation() {
 }
 
 // exportRemoteConfig собирает config для remote-таргета и пишет его в
-// bin/remote-config.json (SPEC 097).
+// директорию ЭТОЙ машины: bin/wizard_states/remote/<id>/config.json
+// (SPEC 097, machine-scoped в SPEC 098 §2.4).
 //
-// Почему отдельный файл, а не bin/config.json: последний принадлежит
-// ЛОКАЛЬНОМУ ядру — его перезаписывает Update/Rebuild и с него стартует
-// sing-box на этой машине. Конфиг, собранный для linux-роутера, там был бы
-// либо затёрт, либо (хуже) запущен локально.
+// Почему не bin/config.json: последний принадлежит ЛОКАЛЬНОМУ ядру — его
+// перезаписывает Update/Rebuild и с него стартует sing-box на этой машине.
+// Конфиг, собранный для linux-роутера, там был бы либо затёрт, либо (хуже)
+// запущен локально.
+//
+// Почему не общий bin/remote-config.json (как было до SPEC 098): файл был
+// один на все машины, поэтому вторая настроенная машина молча затирала конфиг
+// первой, а Deploy отправлял то, что оказалось записано последним. Теперь у
+// каждой машины свой файл, и Deploy из её строки физически не может взять
+// чужой.
 //
 // Локальные dirty-маркеры (MarkCacheStale / MarkConfigStale) намеренно НЕ
 // поднимаются: они означают «локальный config.json устарел», а remote-Save
@@ -351,7 +360,17 @@ func (p *WizardPresenter) exportRemoteConfig() {
 		})
 		return
 	}
-	outPath := platform.GetRemoteConfigPath(ac.FileService.ExecDir)
+	outPath := platform.GetRemoteConfigPathFor(ac.FileService.ExecDir, p.ConfigMachineID())
+	// Директория машины могла ещё не существовать: состояние сохраняется
+	// StateStore'ом, который создаёт её сам, но порядок вызовов тут не
+	// гарантирован, а WriteFile каталоги не создаёт.
+	if err := os.MkdirAll(filepath.Dir(outPath), platform.DefaultDirMode); err != nil {
+		debuglog.ErrorLog("exportRemoteConfig: mkdir %s: %v", filepath.Dir(outPath), err)
+		p.UpdateUI(func() {
+			dialog.ShowError(err, p.guiState.Window)
+		})
+		return
+	}
 	if err := os.WriteFile(outPath, []byte(configText), platform.DefaultFileMode); err != nil {
 		debuglog.ErrorLog("exportRemoteConfig: write %s: %v", outPath, err)
 		p.UpdateUI(func() {

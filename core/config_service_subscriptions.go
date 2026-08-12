@@ -21,6 +21,7 @@ import (
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
 )
@@ -112,12 +113,15 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 		}
 	}
 
-	// Lazy GC: known set = ОБЪЕДИНЕНИЕ Source.ID'ов из ВСЕХ state'ов
-	// (active state.json + named snapshots). `.raw` файл шарится между
+	// Lazy GC: known set = ОБЪЕДИНЕНИЕ Source.ID'ов из всех state'ов ЛОКАЛЬНОЙ
+	// машины (active state.json + named snapshots). `.raw` файл шарится между
 	// stages если Source с тем же ID присутствует в нескольких — удаляем
 	// только когда ID не упомянут НИГДЕ. Это защищает от случая «Update
 	// активного state'а сносит данные неактивного stage'а».
-	knownIDs := collectAllStageSourceIDs(execDir)
+	//
+	// SPEC 098: и множество, и каталог — локальные. У удалённых машин свои
+	// каталоги тел подписок внутри их директорий.
+	knownIDs := collectAllStageSourceIDs(execDir, constants.ConfigTargetLocal, "")
 	if _, gcErr := state.DeleteOrphans(subsDir, knownIDs); gcErr != nil {
 		debuglog.WarnLog("refreshSubscriptionsMetaAndCache: DeleteOrphans: %v", gcErr)
 	}
@@ -131,21 +135,36 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 	}
 }
 
-// collectAllStageSourceIDs возвращает объединение Source.ID'ов из ВСЕХ
-// state-файлов в `bin/wizard_states/` (active state.json + named snapshots).
+// collectAllStageSourceIDs возвращает объединение Source.ID'ов из state-файлов
+// ОДНОЙ машины (её active state.json + её named snapshots).
 //
-// SPEC 052 phase 8 fix: bin/subscriptions/<id>.raw шарится между stages,
+// SPEC 052 phase 8 fix: <subscriptions>/<id>.raw шарится между stages,
 // если Source с тем же ID есть в нескольких state-файлах. DeleteOrphans
 // должен сравнивать с union ID'ов всех stage'ов, а не только active —
 // иначе Update активного state'а удалит .raw файлы, нужные другому
 // (неактивному) stage'у.
 //
+// SPEC 098: union считается В ГРАНИЦАХ МАШИНЫ, потому что каталог тел
+// подписок теперь тоже её собственный:
+//
+//	local          → bin/wizard_states/*.json  → bin/subscriptions/
+//	remote + <id>  → …/remote/<id>/*.json      → …/remote/<id>/subscriptions/
+//
+// До SPEC 098 каталог был общим, и функция обязана была обходить все уровни
+// wizard_states/ — иначе Update одной машины сносил тело подписки, которым
+// владеет другая. С раздельными каталогами обход чужих состояний стал
+// вредным: он удерживал бы от удаления .raw, уже никем в этой машине не
+// упомянутый.
+//
 // Read-only: errors per-file логируются и пропускаются (битый файл одного
 // snapshot'а не должен блокировать GC).
-func collectAllStageSourceIDs(execDir string) []string {
-	statesDir := platform.GetWizardStatesDir(execDir)
+func collectAllStageSourceIDs(execDir, target, machineID string) []string {
+	statesDir := platform.GetWizardStatesDirFor(execDir, target, machineID)
 	entries, err := os.ReadDir(statesDir)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
 		debuglog.WarnLog("collectAllStageSourceIDs: readdir %s: %v", statesDir, err)
 		return nil
 	}
@@ -164,32 +183,18 @@ func collectAllStageSourceIDs(execDir string) []string {
 		}
 	}
 
-	// SPEC 097: как и collectAllStageRuleSetTags — local-состояния лежат
-	// плоско, remote-таргеты в подпапках. Пропустить подпапку значит стереть
-	// raw-body подписки, которой владеет только remote-state.
-	scanDir := func(dir string, entries []os.DirEntry) {
-		for _, e := range entries {
-			if e.IsDir() {
-				continue
-			}
-			if !strings.HasSuffix(e.Name(), ".json") {
-				continue
-			}
-			collectFromState(filepath.Join(dir, e.Name()))
-		}
-	}
-	scanDir(statesDir, entries)
+	// SPEC 098: как и collectAllStageRuleSetTags — сканируется только свой
+	// уровень. Поддиректории (для local это папки машин) пропускаются:
+	// каталог тел подписок у каждой машины свой, и чужие состояния не должны
+	// влиять на её GC ни в одну сторону.
 	for _, e := range entries {
-		if !e.IsDir() {
+		if e.IsDir() {
 			continue
 		}
-		sub := filepath.Join(statesDir, e.Name())
-		subEntries, subErr := os.ReadDir(sub)
-		if subErr != nil {
-			debuglog.WarnLog("collectAllStageSourceIDs: readdir %s: %v", sub, subErr)
+		if !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		scanDir(sub, subEntries)
+		collectFromState(filepath.Join(statesDir, e.Name()))
 	}
 
 	out := make([]string, 0, len(idSet))
