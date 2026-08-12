@@ -105,8 +105,8 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 		)
 		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.
 		// Передаём rulesV6 для computing merged_base = template + active preset patches.
-		_ = build.MigrateOutboundsToReferencedShape(&parserConfig.ParserConfig.Outbounds, rulesV6, model.TemplateData)
-		build.SyncOutboundsWithActivePresets(rulesV6, &parserConfig.ParserConfig.Outbounds, model.TemplateData.Presets)
+		_ = build.MigrateOutboundsToReferencedShape(&parserConfig.ParserConfig.Outbounds, rulesV6, model.TemplateData, model.Target)
+		build.SyncOutboundsWithActivePresets(rulesV6, &parserConfig.ParserConfig.Outbounds, model.TemplateData.Presets, model.Target)
 		// Deep-copy outbounds slice для generator-only Merge.
 		// Per-element copy чтобы Updates[] стек не shared.
 		genOutbounds := make([]config.OutboundConfig, len(parserConfig.ParserConfig.Outbounds))
@@ -117,7 +117,7 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 			}
 		}
 		parserConfigForGen.ParserConfig.Outbounds = genOutbounds
-		build.MergeOutboundUpdatesInPlace(&parserConfigForGen, model.TemplateData)
+		build.MergeOutboundUpdatesInPlace(&parserConfigForGen, model.TemplateData, model.Target)
 	}
 
 	// Generate outbounds from current ParserConfig only. Do not apply SourceURLs here:

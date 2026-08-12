@@ -156,6 +156,13 @@ func EffectiveClashAPIConfig(ac *core.AppController) (baseURL, token string, ena
 	if ov, ok := GetRemoteOverride(); ok {
 		return fmt.Sprintf("http://%s:%d", ov.Host, ov.Port), ov.Secret, true, true
 	}
+	// SPEC 097: удалённый демон lxd управляется по gRPC — Clash-адреса у него
+	// нет. Возвращаем enabled=true с пустым baseURL: это гейт доступности
+	// вкладки, а сами запросы всё равно идут через EffectiveProxyTransport.
+	// Без этого Servers оставался бы выключенным при живом gRPC-подключении.
+	if _, _, ok := GetLxdRemoteOverride(); ok {
+		return "", "", true, true
+	}
 	if ac == nil || ac.APIService == nil {
 		return "", "", false, false
 	}
@@ -185,6 +192,12 @@ func EffectiveProxyTransport(ac *core.AppController) services.ProxyTransport {
 		if t := ac.APIService.TransportOverride(); t != nil {
 			return t
 		}
+	}
+	// SPEC 097: выбран удалённый демон lxd — говорим с ним по gRPC.
+	// Выше Clash-override: у remote-конфига Clash API нет by design, и
+	// откат на HTTP-путь дал бы гарантированно нерабочее подключение.
+	if t := lxdOverrideTransportOrNil(); t != nil {
+		return t
 	}
 	if ov, ok := GetRemoteOverride(); ok {
 		return services.NewClashTransport(fmt.Sprintf("http://%s:%d", ov.Host, ov.Port), ov.Secret)

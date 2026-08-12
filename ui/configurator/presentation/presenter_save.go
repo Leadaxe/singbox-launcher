@@ -29,10 +29,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
+	"os"
 	"strings"
 	"time"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -41,11 +42,12 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/events"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/platform"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
-	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
 // SaveConfig сохраняет конфигурацию асинхронно с прогресс-баром.
@@ -141,6 +143,14 @@ func (p *WizardPresenter) executeSaveOperation() {
 		return
 	}
 
+	// SPEC 097: для remote-таргета Save дополнительно материализует конфиг
+	// в bin/remote-config.json и НЕ трогает локальные маркеры — локальное
+	// ядро к этому состоянию отношения не имеет.
+	if p.ConfigTarget() == constants.ConfigTargetRemote {
+		p.exportRemoteConfig()
+		return
+	}
+
 	// Step 2: signal UI / dirty markers / event-bus.
 	p.UpdateUI(func() {
 		ac := core.GetController()
@@ -217,7 +227,9 @@ func (p *WizardPresenter) statePathForLog() string {
 	if ac == nil || ac.FileService == nil {
 		return ""
 	}
-	return filepath.Join(ac.FileService.ExecDir, "bin", wizardbusiness.WizardStatesDir, wizardmodels.StateFileName)
+	// SPEC 097: путь зависит от таргета (remote-состояние живёт в подпапке);
+	// иначе лог показывал бы local-путь, пока запись шла в remote/.
+	return platform.GetWizardStatePathFor(ac.FileService.ExecDir, p.ConfigTarget())
 }
 
 // saveStateOnly persist state.json и возвращает его путь (или "" при ошибке).
@@ -231,8 +243,7 @@ func (p *WizardPresenter) saveStateOnly() string {
 		})
 		return ""
 	}
-	statesDir := filepath.Join(ac.FileService.ExecDir, "bin", wizardbusiness.WizardStatesDir)
-	statePath := filepath.Join(statesDir, wizardmodels.StateFileName)
+	statePath := platform.GetWizardStatePathFor(ac.FileService.ExecDir, p.ConfigTarget())
 
 	debuglog.InfoLog("SaveConfig: saving state.json to %s", statePath)
 	if err := p.SaveCurrentState(); err != nil {
@@ -301,4 +312,96 @@ func (p *WizardPresenter) completeSaveOperation() {
 	<-time.After(100 * time.Millisecond)
 	p.UpdateSaveProgress(1.0)
 	<-time.After(200 * time.Millisecond)
+}
+
+// exportRemoteConfig собирает config для remote-таргета и пишет его в
+// bin/remote-config.json (SPEC 097).
+//
+// Почему отдельный файл, а не bin/config.json: последний принадлежит
+// ЛОКАЛЬНОМУ ядру — его перезаписывает Update/Rebuild и с него стартует
+// sing-box на этой машине. Конфиг, собранный для linux-роутера, там был бы
+// либо затёрт, либо (хуже) запущен локально.
+//
+// Локальные dirty-маркеры (MarkCacheStale / MarkConfigStale) намеренно НЕ
+// поднимаются: они означают «локальный config.json устарел», а remote-Save
+// его не касается.
+func (p *WizardPresenter) exportRemoteConfig() {
+	ac := core.GetController()
+	if ac == nil || ac.FileService == nil {
+		debuglog.WarnLog("exportRemoteConfig: controller/FileService unavailable")
+		return
+	}
+	// Ноды разбирает парсер подписок; после смены таргета (или до первого
+	// разбора) их ещё нет, и конфиг ушёл бы с ПУСТЫМИ секциями между
+	// парсер-маркерами — валидный по check, но без единой прокси-ноды.
+	// Лучше честно сказать, чем отдать пустышку под видом готового конфига.
+	if p.model.PreviewNeedsParse || len(p.model.GeneratedOutbounds) == 0 {
+		debuglog.WarnLog("exportRemoteConfig: nodes not parsed yet (needsParse=%v, outbounds=%d)",
+			p.model.PreviewNeedsParse, len(p.model.GeneratedOutbounds))
+		p.UpdateUI(func() {
+			dialog.ShowError(errors.New(locale.T("wizard.save.remote_needs_parse")), p.guiState.Window)
+		})
+		return
+	}
+	configText, err := wizardbusiness.BuildRemoteConfig(p.model)
+	if err != nil {
+		debuglog.ErrorLog("exportRemoteConfig: build failed: %v", err)
+		p.UpdateUI(func() {
+			dialog.ShowError(err, p.guiState.Window)
+		})
+		return
+	}
+	outPath := platform.GetRemoteConfigPath(ac.FileService.ExecDir)
+	if err := os.WriteFile(outPath, []byte(configText), platform.DefaultFileMode); err != nil {
+		debuglog.ErrorLog("exportRemoteConfig: write %s: %v", outPath, err)
+		p.UpdateUI(func() {
+			dialog.ShowError(err, p.guiState.Window)
+		})
+		return
+	}
+	debuglog.InfoLog("exportRemoteConfig: wrote %s (%d bytes)", outPath, len(configText))
+	p.UpdateUI(func() {
+		p.showRemoteExportDialog(outPath)
+	})
+}
+
+// showRemoteExportDialog — диалог успешного экспорта remote-конфига.
+//
+// Своя реализация вместо dialog.ShowInformation по той же причине, что и у
+// local-пути (showSaveSuccessDialog): OK должен закрывать И диалог, И окно
+// визарда. У ShowInformation кнопка только прячет сам диалог, поэтому после
+// Save окно оставалось открытым — поведение расходилось с local-сохранением.
+func (p *WizardPresenter) showRemoteExportDialog(outPath string) {
+	var d dialog.Dialog
+	okButton := widget.NewButton(locale.T("dialog.ok"), func() {
+		if d != nil {
+			d.Hide()
+		}
+		if p.guiState.Window != nil {
+			p.guiState.Window.Close()
+		}
+	})
+	okButton.Importance = widget.HighImportance
+	buttonsRow := container.NewHBox(layout.NewSpacer(), okButton)
+
+	// Пояснение переносится по словам, а вот путь — отдельным полем без
+	// переноса: Label с TextWrapWord ломает длинный путь по СИМВОЛАМ
+	// («/Applications/singbox-lau / ncher.app/...»), что нечитаемо и
+	// невозможно скопировать. Entry ещё и выделяется мышью.
+	messageLabel := widget.NewLabel(locale.T("wizard.save.remote_exported_body"))
+	messageLabel.Wrapping = fyne.TextWrapWord
+
+	pathField := widget.NewEntry()
+	pathField.SetText(outPath)
+	pathField.Wrapping = fyne.TextWrapOff
+
+	body := container.NewVBox(messageLabel, pathField)
+
+	d = dialogs.NewCustom(locale.T("wizard.save.remote_exported_title"),
+		body, buttonsRow, "", p.guiState.Window)
+	// Ширину задаём явно: Fyne считает её от min-size контента, а у
+	// wrapping-Label он равен одной строке — диалог схлопывался в узкую
+	// колонку (та же ловушка, что с длинными Label в других окнах проекта).
+	d.Resize(fyne.NewSize(720, 260))
+	d.Show()
 }

@@ -574,16 +574,18 @@ func ShowEditDialog(
 		}
 		// Referenced entry: diff cfg против merged_base без USER patch.
 		var td *template.TemplateData
+		var tgt template.TargetSpec
 		if editPresenter != nil {
 			if m := editPresenter.Model(); m != nil {
 				td = m.TemplateData
+				tgt = m.Target
 			}
 		}
 		// merged_base = resolved template/preset body + active preset patches
 		// (без USER patch — он и есть результат этого edit).
 		baseEntry := *existing
 		baseEntry.Updates = filterOutUserPatch(existing.Updates)
-		mergedBase := build.MergeOutboundUpdates(baseEntry, td)
+		mergedBase := build.MergeOutboundUpdates(baseEntry, td, tgt)
 		diff := build.OutboundFieldDiff(*cfg, mergedBase)
 		// updates[] = existing preset patches + новый USER patch (или без него если diff пуст).
 		cfg.Updates = build.UpsertUserPatch(
@@ -790,12 +792,14 @@ func ShowEditDialog(
 		if existing != nil && len(existing.Updates) > 0 {
 			cfg.Updates = append([]config.OutboundUpdate(nil), existing.Updates...)
 			var td *template.TemplateData
+			var tgt template.TargetSpec
 			if editPresenter != nil {
 				if m := editPresenter.Model(); m != nil {
 					td = m.TemplateData
+					tgt = m.Target
 				}
 			}
-			merged := build.MergeOutboundUpdates(*cfg, td)
+			merged := build.MergeOutboundUpdates(*cfg, td, tgt)
 			cfg = &merged
 		}
 
@@ -923,7 +927,7 @@ func ShowEditDialog(
 		display := cfg
 		if cfg.Ref != "" && editPresenter != nil {
 			if m := editPresenter.Model(); m != nil {
-				display = build.MergeOutboundUpdates(cfg, m.TemplateData)
+				display = build.MergeOutboundUpdates(cfg, m.TemplateData, m.Target)
 			}
 		}
 		tagEntry.SetText(display.Tag)

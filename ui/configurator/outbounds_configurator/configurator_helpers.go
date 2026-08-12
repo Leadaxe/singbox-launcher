@@ -290,9 +290,9 @@ func syncOutboundsLocal(model *wizardmodels.WizardModel) {
 	rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
 		model.RuleOrder, model.PresetRefs, model.CustomRules,
 	)
-	build.SyncOutboundsWithActivePresets(rulesV6, &model.GlobalOutbounds, model.TemplateData.Presets)
+	build.SyncOutboundsWithActivePresets(rulesV6, &model.GlobalOutbounds, model.TemplateData.Presets, model.Target)
 	if model.ParserConfig != nil {
-		build.SyncOutboundsWithActivePresets(rulesV6, &model.ParserConfig.ParserConfig.Outbounds, model.TemplateData.Presets)
+		build.SyncOutboundsWithActivePresets(rulesV6, &model.ParserConfig.ParserConfig.Outbounds, model.TemplateData.Presets, model.Target)
 	}
 }
 

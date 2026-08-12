@@ -75,6 +75,52 @@
       }
     },
     {
+      "name": "gateway_mode",
+      "type": "bool",
+      "wizard_ui": "target",
+      "title": "Gateway mode (share to LAN)",
+      "tooltip": "The machine forwards other devices’ traffic (router/gateway), not just its own. Enables LAN interface selection for TUN, makes proxy-in listen on 0.0.0.0 and turns process matching off. Independent of the config target: a gateway can be a remote router or this Mac (Internet Sharing).",
+      "default_value": "false",
+      "if": [
+        "@tun"
+      ]
+    },
+    {
+      "name": "gateway_include_interface",
+      "type": "text_list",
+      "wizard_ui": "target",
+      "title": "LAN interfaces (include_interface)",
+      "tooltip": "sing-box tun include_interface — which interfaces to route into TUN, one per line (for example br-vpn). Empty means all traffic of the machine — usually NOT what you want on a router with two wifi networks.",
+      "default_value": "",
+      "if": [
+        "@tun",
+        "@gateway_mode"
+      ]
+    },
+    {
+      "name": "tun_interface_name",
+      "type": "text",
+      "wizard_ui": "edit",
+      "title": "TUN interface name",
+      "tooltip": "sing-box tun interface_name — explicit TUN device name. Always set: the core default cannot be relied on, and on a router the name is needed for firewall rules and routes. Defaults to lxd-tun0 for a remote target (lxd daemon).",
+      "default_value": {
+        "default": {
+          "#if": {
+            "and": [
+              {
+                "@runtime.target": "remote"
+              }
+            ],
+            "value": "lxd-tun0",
+            "else": "singbox-tun0"
+          }
+        }
+      },
+      "if": [
+        "@tun"
+      ]
+    },
+    {
       "name": "tun_address",
       "type": "text",
       "wizard_ui": "edit",
@@ -101,7 +147,7 @@
       "type": "bool",
       "wizard_ui": "edit",
       "title": "TUN strict route",
-      "tooltip": "sing-box tun strict_route: stricter routing (fewer leaks); may break some LAN or split setups when enabled.",
+      "tooltip": "sing-box tun strict_route: stricter routing (fewer leaks); may break some LAN or split setups. Keep it off in gateway mode — otherwise the local network is cut off.",
       "default_value": "false",
       "if": [
         "@tun"
@@ -157,8 +203,18 @@
       "type": "text",
       "wizard_ui": "edit",
       "title": "Proxy-in listen address",
-      "tooltip": "Listen address for mixed inbound proxy-in.",
-      "default_value": "127.0.0.1",
+      "tooltip": "Listen address for mixed inbound proxy-in. Defaults to 0.0.0.0 only in gateway mode (clients from the LAN); otherwise 127.0.0.1 — on a server an unauthenticated proxy on 0.0.0.0 would be wide open.",
+      "default_value": {
+        "default": {
+          "#if": {
+            "and": [
+              "@gateway_mode"
+            ],
+            "value": "0.0.0.0",
+            "else": "127.0.0.1"
+          }
+        }
+      },
       "if": [
         "@enable_proxy_in"
       ]
@@ -179,10 +235,22 @@
       "type": "bool",
       "wizard_ui": "edit",
       "title": "Proxy-in set system proxy",
-      "tooltip": "Set system proxy through mixed inbound proxy-in. Some platforms require elevated privileges.",
+      "tooltip": "Set the system proxy through mixed inbound proxy-in. Local target only: a remote machine has no user session whose proxy settings we could change.",
       "default_value": {
-        "darwin": "true",
-        "default": "false"
+        "default": {
+          "#if": {
+            "and": [
+              {
+                "@runtime.target": "local"
+              },
+              {
+                "@runtime.platform": "darwin"
+              }
+            ],
+            "value": "true",
+            "else": "false"
+          }
+        }
       },
       "if": [
         "@enable_proxy_in"
@@ -413,7 +481,10 @@
       "wizard_ui": "edit",
       "title": "Clash API address",
       "tooltip": "Host:port for external_controller (Clash-compatible REST API).",
-      "default_value": "127.0.0.1:9090"
+      "default_value": "127.0.0.1:9090",
+      "if": [
+        "{\"@runtime.target\": \"local\"}"
+      ]
     },
     {
       "name": "clash_secret",
@@ -421,7 +492,10 @@
       "wizard_ui": "edit",
       "title": "Clash API secret",
       "tooltip": "Secret for the Clash API. Use the refresh button to generate a random value.",
-      "default_value": "CHANGE_THIS_TO_YOUR_SECRET_TOKEN"
+      "default_value": "CHANGE_THIS_TO_YOUR_SECRET_TOKEN",
+      "if": [
+        "{\"@runtime.target\": \"local\"}"
+      ]
     },
     {
       "name": "dns_strategy",
@@ -501,12 +575,33 @@
       ],
       "final": "@route_final",
       "auto_detect_interface": "@auto_detect_interface",
-      "find_process": true
+      "#if": {
+        "and": [
+          {
+            "#not": "@gateway_mode"
+          }
+        ],
+        "value": {
+          "find_process": true
+        },
+        "else": {
+          "find_process": false
+        }
+      }
     },
     "experimental": {
-      "clash_api": {
-        "external_controller": "@clash_api",
-        "secret": "@clash_secret"
+      "#if": {
+        "and": [
+          {
+            "@runtime.target": "local"
+          }
+        ],
+        "value": {
+          "clash_api": {
+            "external_controller": "@clash_api",
+            "secret": "@clash_secret"
+          }
+        }
       },
       "cache_file": {
         "enabled": true,
@@ -1439,6 +1534,7 @@
           "mtu": "@tun_mtu",
           "strict_route": "@strict_route",
           "stack": "@tun_stack",
+          "include_interface": "@gateway_include_interface",
           "#if": {
             "and": [
               {
@@ -1451,7 +1547,7 @@
               }
             ],
             "value": {
-              "interface_name": "singbox-tun0"
+              "interface_name": "@tun_interface_name"
             }
           }
         }

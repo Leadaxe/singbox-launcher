@@ -37,11 +37,24 @@ type StateStore struct {
 	statesDir   string
 }
 
-// NewStateStore создаёт StateStore.
+// NewStateStore создаёт StateStore для локального таргета
+// (bin/wizard_states/ — исторический layout).
 func NewStateStore(fileService FileServiceInterface) *StateStore {
 	return &StateStore{
 		fileService: fileService,
 		statesDir:   platform.GetWizardStatesDir(fileService.ExecDir()),
+	}
+}
+
+// NewStateStoreFor создаёт StateStore для указанного таргета (SPEC 097):
+// local → bin/wizard_states/, remote → bin/wizard_states/remote/.
+//
+// Изоляция снапшотов получается даром: ListWizardStates пропускает
+// поддиректории, поэтому local-store не видит remote-снапшоты и наоборот.
+func NewStateStoreFor(fileService FileServiceInterface, target string) *StateStore {
+	return &StateStore{
+		fileService: fileService,
+		statesDir:   platform.GetWizardStatesDirFor(fileService.ExecDir(), target),
 	}
 }
 

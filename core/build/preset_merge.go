@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"runtime"
 
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
@@ -149,6 +148,10 @@ type PresetMergeContext struct {
 	// Используется для materialization template-серверов с применением
 	// effective_enabled (от state.dns_options.servers[kind=template]).
 	TemplateDNSDefaults []TemplateDNSServer
+
+	// Target (SPEC 097) — платформа и роль целевой машины для #if внутри
+	// пресетов. Zero value нормализуется в «эта машина, local».
+	Target template.TargetSpec
 }
 
 // MergePresetsIntoRoute — единый emit-путь route через ResolveRoute()
@@ -175,7 +178,7 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 
 	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
 	tdVal := template.TemplateData{Presets: ctx.Presets}
-	resolved := ResolveRoute(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths)
+	resolved := ResolveRoute(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths, ctx.Target)
 
 	// Dedup по tag (template уже мог эмитить rule_sets).
 	emittedTags := make(map[string]bool)
@@ -237,7 +240,7 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 	// (RulesV6 + DNS), строит ResolvedDNS на лету.
 	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
 	tdVal := templateLikeFromCtx(ctx)
-	resolved := ResolveDNS(st, &tdVal, nil)
+	resolved := ResolveDNS(st, &tdVal, nil, ctx.Target)
 
 	if len(resolved.Servers) == 0 && len(resolved.Rules) == 0 && !hasAnyV6Rule(ctx.Rules) {
 		return dnsRaw, nil
@@ -285,7 +288,7 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 	for i := range ctx.Presets {
 		presetByID[ctx.Presets[i].ID] = &ctx.Presets[i]
 	}
-	emittedRuleSetTags := collectRuleSetTagsFromPresets(presetByID, ctx.Rules)
+	emittedRuleSetTags := collectRuleSetTagsFromPresets(presetByID, ctx.Rules, ctx.Target)
 
 	// Emit rules: Active && Enabled. User → dangling cleanup; preset → as is.
 	for _, dr := range resolved.Rules {
@@ -344,7 +347,7 @@ func templateLikeFromCtx(ctx PresetMergeContext) template.TemplateData {
 // Используется в DNS rules dangling-cleanup: extra_rule с `rule_set` ссылкой
 // должен матчиться с реально-эмитнутым rule_set tag'ом. Иначе sing-box упадёт
 // на `start service: initialize DNS rule[N]: rule-set not found: <X>`.
-func collectRuleSetTagsFromPresets(presetByID map[string]*template.Preset, rules []state.Rule) map[string]bool {
+func collectRuleSetTagsFromPresets(presetByID map[string]*template.Preset, rules []state.Rule, target template.TargetSpec) map[string]bool {
 	tags := make(map[string]bool)
 	for _, rule := range rules {
 		if !rule.Enabled || rule.Kind != state.RuleKindPreset {
@@ -359,7 +362,7 @@ func collectRuleSetTagsFromPresets(presetByID map[string]*template.Preset, rules
 			continue
 		}
 		pb := body.(*state.PresetBody)
-		frags, _, ok := ExpandPreset(preset, pb.Vars, runtime.GOOS, runtime.GOARCH)
+		frags, _, ok := ExpandPreset(preset, pb.Vars, target)
 		if !ok {
 			continue
 		}

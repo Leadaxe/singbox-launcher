@@ -189,11 +189,12 @@ func (p *WizardPresenter) refreshDNSSelectsFromModel() {
 		p.guiState.DNSStrategySelect.Options = strOpts
 		sel := strings.TrimSpace(p.model.DNSStrategy)
 		if sel == "" && p.model.TemplateData != nil {
-			sel = strings.TrimSpace(wizardtemplate.DisplaySettingValue(
+			sel = strings.TrimSpace(wizardtemplate.DisplaySettingValueFor(
 				p.model.TemplateData.Vars,
 				p.model.SettingsVars,
 				p.model.TemplateData.RawTemplate,
 				wizardmodels.VarDNSStrategy,
+				p.model.Target.Normalized(),
 			))
 		}
 		if len(strOpts) > 0 && !stringSliceContains(strOpts, sel) {
@@ -263,9 +264,9 @@ func (p *WizardPresenter) RefreshAfterPresetToggle() {
 		rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
 			p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules,
 		)
-		build.SyncOutboundsWithActivePresets(rulesV6, &p.model.GlobalOutbounds, p.model.TemplateData.Presets)
+		build.SyncOutboundsWithActivePresets(rulesV6, &p.model.GlobalOutbounds, p.model.TemplateData.Presets, p.model.Target)
 		if p.model.ParserConfig != nil {
-			build.SyncOutboundsWithActivePresets(rulesV6, &p.model.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets)
+			build.SyncOutboundsWithActivePresets(rulesV6, &p.model.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets, p.model.Target)
 		}
 		p.model.RefreshDerivedParserConfig()
 		p.UpdateParserConfig(p.model.ParserConfigJSON)

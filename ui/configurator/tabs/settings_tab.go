@@ -1,8 +1,8 @@
 package tabs
 
 import (
+	"encoding/json"
 	"image/color"
-	"runtime"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -23,7 +23,11 @@ import (
 
 func settingsVarVisible(v wizardtemplate.TemplateVar, goos string) bool {
 	ui := strings.ToLower(strings.TrimSpace(v.WizardUI))
-	if ui == "hidden" || ui == "fix" {
+	// SPEC 097: "target" — var рендерится вкладкой Target (шаг 0), не здесь.
+	// От таких vars (gateway_mode) зависят default_value других полей, а
+	// дефолты резолвятся однопроходно сверху вниз — переключатель обязан
+	// быть виден раньше, чем юзер дойдёт до зависимых значений.
+	if ui == "hidden" || ui == "fix" || ui == wizardtemplate.WizardUITarget {
 		return false
 	}
 	if len(v.Platforms) == 0 {
@@ -67,12 +71,22 @@ func enumListContains(opts []string, v string) bool {
 	return false
 }
 
-// templateVarUsedInAnotherVarConditional: имя bool-переменной в if/if_or другой var — после её смены нужно пересобрать Settings.
+// templateVarUsedInAnotherVarConditional: имя bool-переменной в if/if_or
+// ИЛИ в default_value.#if другой var — после её смены нужно пересобрать
+// Settings.
+//
+// SPEC 097 добавил вторую форму зависимости: default_value может ветвиться
+// по другой var (gateway_mode → proxy_in_listen). Без учёта этого случая
+// поле сохраняло дефолт, посчитанный до переключения галки.
 func templateVarUsedInAnotherVarConditional(td *wizardtemplate.TemplateData, name string) bool {
 	if td == nil {
 		return false
 	}
+	ref := "@" + name
 	for _, v := range td.Vars {
+		if defaultValueMentionsVar(v.DefaultValue, ref) {
+			return true
+		}
 		// If/IfOr entries are canonical "@name" (SPEC 067 Phase 3); changedName is
 		// the bare var name. Strip the @ before comparing, else the refresh trigger
 		// never fires and dependent rows stay frozen on toggle.
@@ -90,9 +104,33 @@ func templateVarUsedInAnotherVarConditional(td *wizardtemplate.TemplateData, nam
 	return false
 }
 
+// defaultValueMentionsVar — ссылается ли default_value этой var на @ref
+// (в любой ветке #if-дерева). Сравнение по сериализованному дереву: точность
+// «ссылка есть где-то внутри» здесь достаточна — цена ложного срабатывания
+// это одна лишняя перерисовка, цена пропуска — залипшее значение в UI.
+func defaultValueMentionsVar(dv wizardtemplate.VarDefaultValue, ref string) bool {
+	if len(dv.PerPlatform) == 0 {
+		return false
+	}
+	raw, err := json.Marshal(dv.PerPlatform)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(raw), `"`+ref+`"`)
+}
+
 func maybeRefreshSettingsAfterVarChange(gs *wizardpresentation.GUIState, td *wizardtemplate.TemplateData, changedName string) {
-	if templateVarUsedInAnotherVarConditional(td, changedName) && gs.RefreshSettingsFromModel != nil {
+	if !templateVarUsedInAnotherVarConditional(td, changedName) {
+		return
+	}
+	if gs.RefreshSettingsFromModel != nil {
 		gs.RefreshSettingsFromModel()
+	}
+	// Шаг 0 держит собственные vars (gateway_mode + LAN-интерфейсы) — его
+	// тоже надо пересобрать, иначе поле include_interface не разблокируется
+	// сразу после установки галки.
+	if gs.RefreshTargetTabFromModel != nil {
+		gs.RefreshTargetTabFromModel()
 	}
 }
 
@@ -157,9 +195,13 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 	model := presenter.Model()
 	gs := presenter.GUIState()
 	box := container.NewVBox()
-	goos := runtime.GOOS
 
 	refresh := func() {
+		// SPEC 097: платформа ЦЕЛЕВОЙ машины, не той, где запущен лаунчер.
+		// Для local Target нормализуется в runtime.GOOS, так что поведение
+		// локального визарда не меняется.
+		tgt := model.Target.Normalized()
+		goos := tgt.GOOS
 		box.RemoveAll()
 		if model.TemplateData == nil || len(model.TemplateData.Vars) == 0 {
 			box.Add(widget.NewLabel(locale.T("wizard.settings.no_vars")))
@@ -168,7 +210,7 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 		}
 		td := model.TemplateData
 		vi := wizardtemplate.VarIndex(td.Vars)
-		resolved := wizardtemplate.ResolveTemplateVars(td.Vars, model.SettingsVars, td.RawTemplate)
+		resolved := wizardtemplate.ResolveTemplateVarsFor(td.Vars, model.SettingsVars, td.RawTemplate, tgt)
 		for _, vd := range td.Vars {
 			if !settingsVarVisible(vd, goos) {
 				continue
@@ -177,9 +219,18 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 				box.Add(settingsSeparatorBlock())
 				continue
 			}
+			// Условие, зависящее ТОЛЬКО от таргета/платформы (без ссылок на
+			// другие vars), означает «этого поля для такой машины не
+			// существует» — строку не рисуем вовсе. Условие, зависящее от
+			// других vars (@tun), лишь ГАСИТ строку: пользователь может
+			// включить переключатель выше и разблокировать её.
+			if wizardtemplate.VarConditionIsTargetOnly(vd) &&
+				!wizardtemplate.VarUISatisfiedFor(vd, vi, resolved, tgt) {
+				continue
+			}
 			title := wizardtemplate.VarDisplayTitle(vd)
 			toolTip := wizardtemplate.VarDisplayTooltip(vd)
-			rowEnabled := wizardtemplate.VarUISatisfied(vd, vi, resolved, goos)
+			rowEnabled := wizardtemplate.VarUISatisfiedFor(vd, vi, resolved, tgt)
 			row := buildSettingsVarRow(presenter, model, td, vd, title, toolTip, rowEnabled, gs)
 			box.Add(row)
 		}
@@ -214,6 +265,10 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 	//     so no title↔value mapping is needed there.
 	options := vd.Options
 	viewMode := strings.EqualFold(strings.TrimSpace(vd.WizardUI), "view")
+	// SPEC 097: значения полей резолвятся для ТАРГЕТА модели — иначе строка
+	// показывала бы local-дефолт (singbox-tun0) там, где в конфиг уедет
+	// remote-значение (lxd-tun0).
+	rowTarget := model.Target.Normalized()
 
 	st := model.SettingsVars
 	raw := td.RawTemplate
@@ -237,7 +292,7 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 	resetBtn.SetToolTip(locale.T("wizard.settings.reset_tooltip"))
 
 	if viewMode {
-		disp := strings.TrimSpace(wizardtemplate.DisplaySettingValue(vars, st, raw, name))
+		disp := strings.TrimSpace(wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget))
 		if typ == "bool" {
 			if disp != "true" && disp != "false" {
 				disp = "false"
@@ -280,7 +335,7 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		chkForDarwin = chk
 		prog = true
 		v, overridden := model.SettingsVars[name]
-		checked := strings.TrimSpace(wizardtemplate.DisplaySettingValue(vars, st, raw, name)) == "true"
+		checked := strings.TrimSpace(wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)) == "true"
 		if overridden {
 			checked = v == "true"
 		}
@@ -322,7 +377,7 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 			presenter.MarkAsChanged()
 			maybeRefreshSettingsAfterVarChange(gs, td, name)
 		})
-		disp := wizardtemplate.DisplaySettingValue(vars, st, raw, name)
+		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
 		if _, ok := model.SettingsVars[name]; ok {
 			disp = model.SettingsVars[name]
 		}
@@ -343,7 +398,7 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		titleLab := newSettingsTitleLabel(title)
 		e := widget.NewMultiLineEntry()
 		e.SetMinRowsVisible(3)
-		disp := wizardtemplate.DisplaySettingValue(vars, st, raw, name)
+		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
 		if v, ok := model.SettingsVars[name]; ok {
 			disp = v
 		}
@@ -360,7 +415,7 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 
 	default: // text
 		titleLab := newSettingsTitleLabel(title)
-		disp := wizardtemplate.DisplaySettingValue(vars, st, raw, name)
+		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
 		if v, ok := model.SettingsVars[name]; ok {
 			disp = v
 		}
@@ -403,10 +458,11 @@ func buildSettingsSecretRow(presenter *wizardpresentation.WizardPresenter, model
 	st := model.SettingsVars
 	raw := td.RawTemplate
 	vars := td.Vars
+	rowTarget := model.Target.Normalized()
 
 	titleLab := newSettingsTitleLabel(title)
 
-	disp := wizardtemplate.DisplaySettingValue(vars, st, raw, name)
+	disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
 	if v, ok := model.SettingsVars[name]; ok {
 		disp = v
 	}

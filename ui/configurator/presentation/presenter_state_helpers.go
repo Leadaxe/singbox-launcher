@@ -6,6 +6,7 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -216,5 +217,13 @@ func (p *WizardPresenter) getDefaultFinalOutbound() string {
 func (p *WizardPresenter) GetStateStore() *wizardbusiness.StateStore {
 	ac := core.GetController()
 	fileServiceAdapter := &wizardbusiness.FileServiceAdapter{FileService: ac.FileService}
-	return wizardbusiness.NewStateStore(fileServiceAdapter)
+	// SPEC 097: store корневится на директории ТЕКУЩЕГО таргета —
+	// local в bin/wizard_states/, remote в bin/wizard_states/remote/.
+	// Единственная точка, где визард выбирает файл состояния, поэтому
+	// Save/Load/Save-as/список снапшотов переключаются вместе с таргетом.
+	target := constants.ConfigTargetLocal
+	if p.model != nil && p.model.Target.Normalized().IsRemote() {
+		target = constants.ConfigTargetRemote
+	}
+	return wizardbusiness.NewStateStoreFor(fileServiceAdapter, target)
 }

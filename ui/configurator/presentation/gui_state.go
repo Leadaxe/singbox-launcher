@@ -90,6 +90,11 @@ type GUIState struct {
 	// RefreshSettingsFromModel пересобирает вкладку Settings из model.TemplateData.Vars (после LoadState / шаблона).
 	RefreshSettingsFromModel func()
 
+	// RefreshTargetTabFromModel — полная пересборка вкладки Target (шаг 0).
+	// Нужна, потому что состав вкладки зависит от таргета (поля платформы)
+	// и от её собственных vars (gateway_mode → LAN-интерфейсы).
+	RefreshTargetTabFromModel func()
+
 	// Last valid ParserConfig JSON for revert on validation error (e.g. on tab switch from Outbounds tab).
 	LastValidParserConfigJSON string
 

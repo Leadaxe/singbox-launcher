@@ -109,6 +109,10 @@ func (s *State) marshalDisk() ([]byte, error) {
 			Comment:   s.Comment,
 			CreatedAt: s.CreatedAt.Format(time.RFC3339),
 			UpdatedAt: s.UpdatedAt.Format(time.RFC3339),
+
+			Target:         s.Target,
+			TargetPlatform: s.TargetPlatform,
+			TargetArch:     s.TargetArch,
 		},
 		Connections:  s.Connections,
 		Rules:        s.Rules,

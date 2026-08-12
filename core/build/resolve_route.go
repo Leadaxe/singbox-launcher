@@ -10,7 +10,6 @@ package build
 
 import (
 	"encoding/json"
-	"runtime"
 
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
@@ -105,6 +104,7 @@ func ResolveRoute(
 	td *template.TemplateData,
 	execDir string,
 	srsCachedPaths map[string]string,
+	target template.TargetSpec,
 ) ResolvedRoute {
 	var out ResolvedRoute
 	if state == nil || td == nil {
@@ -121,7 +121,7 @@ func ResolveRoute(
 	for _, rule := range state.Rules {
 		switch rule.Kind {
 		case corestate.RuleKindPreset:
-			resolvePresetRouteRule(&out, presetByID, rule, execDir, emittedTags)
+			resolvePresetRouteRule(&out, presetByID, rule, execDir, emittedTags, target)
 		case corestate.RuleKindInline:
 			resolveInlineRouteRule(&out, rule)
 		case corestate.RuleKindSrs:
@@ -139,6 +139,7 @@ func resolvePresetRouteRule(
 	rule corestate.Rule,
 	execDir string,
 	emittedTags map[string]bool,
+	target template.TargetSpec,
 ) {
 	p, ok := presetByID[rule.Ref]
 	if !ok {
@@ -151,7 +152,7 @@ func resolvePresetRouteRule(
 		return
 	}
 	pb := body.(*corestate.PresetBody)
-	frags, warns, ok := ExpandPreset(p, pb.Vars, runtime.GOOS, runtime.GOARCH)
+	frags, warns, ok := ExpandPreset(p, pb.Vars, target)
 	for _, w := range warns {
 		debuglog.WarnLog("route resolve: %s", w.String())
 	}

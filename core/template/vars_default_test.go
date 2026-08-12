@@ -41,21 +41,21 @@ func TestVarDefaultValueUnmarshal_object(t *testing.T) {
 func TestVarDefaultValueForPlatform_goosLikePlatforms(t *testing.T) {
 	// linux_amd64 в объекте не участвует в переборе — берётся ключ linux (как в platforms: только GOOS).
 	v := VarDefaultValue{PerPlatform: map[string]interface{}{"linux_amd64": "ignored", "linux": "y", "default": "z"}}
-	if got := v.ForPlatform("linux", "amd64"); got != "y" {
+	if got := v.ForTarget(TargetSpec{GOOS: "linux", GOARCH: "amd64"}.Normalized()); got != "y" {
 		t.Fatalf("got %q want linux", got)
 	}
 	v2 := VarDefaultValue{PerPlatform: map[string]interface{}{"linux": "only"}}
-	if got := v2.ForPlatform("linux", "arm64"); got != "only" {
+	if got := v2.ForTarget(TargetSpec{GOOS: "linux", GOARCH: "arm64"}.Normalized()); got != "only" {
 		t.Fatalf("got %q", got)
 	}
 }
 
 func TestVarDefaultValueForPlatform_win7BeforeWindows(t *testing.T) {
 	v := VarDefaultValue{PerPlatform: map[string]interface{}{"win7": "gvisor", "windows": "system"}}
-	if got := v.ForPlatform("windows", "386"); got != "gvisor" {
+	if got := v.ForTarget(TargetSpec{GOOS: "windows", GOARCH: "386"}.Normalized()); got != "gvisor" {
 		t.Fatalf("windows/386: got %q", got)
 	}
-	if got := v.ForPlatform("windows", "amd64"); got != "system" {
+	if got := v.ForTarget(TargetSpec{GOOS: "windows", GOARCH: "amd64"}.Normalized()); got != "system" {
 		t.Fatalf("windows/amd64: got %q", got)
 	}
 }
@@ -83,13 +83,13 @@ func TestVarDefaultValueForPlatform_TopLevelIf(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &v); err != nil {
 		t.Fatal(err)
 	}
-	if got := v.ForPlatform("windows", "386"); got != "gvisor" {
+	if got := v.ForTarget(TargetSpec{GOOS: "windows", GOARCH: "386"}.Normalized()); got != "gvisor" {
 		t.Fatalf("windows/386: got %q want gvisor", got)
 	}
-	if got := v.ForPlatform("windows", "amd64"); got != "system" {
+	if got := v.ForTarget(TargetSpec{GOOS: "windows", GOARCH: "amd64"}.Normalized()); got != "system" {
 		t.Fatalf("windows/amd64: got %q want system", got)
 	}
-	if got := v.ForPlatform("linux", "amd64"); got != "system" {
+	if got := v.ForTarget(TargetSpec{GOOS: "linux", GOARCH: "amd64"}.Normalized()); got != "system" {
 		t.Fatalf("linux/amd64: got %q want system", got)
 	}
 }
@@ -101,10 +101,10 @@ func TestVarDefaultValueForPlatform_PerPlatformIfValue(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &v); err != nil {
 		t.Fatal(err)
 	}
-	if got := v.ForPlatform("linux", "amd64"); got != "gvisor" {
+	if got := v.ForTarget(TargetSpec{GOOS: "linux", GOARCH: "amd64"}.Normalized()); got != "gvisor" {
 		t.Fatalf("linux: got %q want gvisor", got)
 	}
-	if got := v.ForPlatform("darwin", "arm64"); got != "system" {
+	if got := v.ForTarget(TargetSpec{GOOS: "darwin", GOARCH: "arm64"}.Normalized()); got != "system" {
 		t.Fatalf("darwin: got %q want system", got)
 	}
 }

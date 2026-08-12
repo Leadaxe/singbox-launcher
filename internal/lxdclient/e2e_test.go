@@ -1,5 +1,3 @@
-//go:build darwin
-
 package lxdclient
 
 import (
@@ -258,7 +256,8 @@ func TestDaemonEndToEnd(t *testing.T) {
 	urlTestResp, err := grpcClient.URLTestOutbound(ctx, &daemonpb.URLTestOutboundRequest{
 		OutboundTag: "direct-a",
 		Link:        "https://www.gstatic.com/generate_204",
-		Timeout:     5000,
+		// Timeout — миллисекунды (uint32), не наносекунды как Interval у Subscribe*.
+		Timeout: uint32((5 * time.Second).Milliseconds()),
 	})
 	if err != nil {
 		t.Fatalf("URLTestOutbound transport error: %v", err)

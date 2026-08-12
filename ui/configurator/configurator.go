@@ -258,14 +258,18 @@ func initializeWizardContent(presenter *wizardpresentation.WizardPresenter, guiS
 // createWizardTabs создает табы визарда.
 // Возвращает контейнер табов и ссылки на Rules и Preview табы.
 func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState) (*container.AppTabs, *container.TabItem, *container.TabItem) {
-	// Tab order: Sources → Outbounds → Rules → DNS → Settings → Preview.
+	// Tab order: Target → Sources → Outbounds → Rules → DNS → Settings → Preview.
+	// Target идёт ПЕРВЫМ (SPEC 097): он определяет платформу и роль целевой
+	// машины, а от них зависит, какие поля вообще показывать дальше.
 	// DNS goes AFTER Rules (per user request: DNS depends on which preset rules are active).
+	targetTab := wizardtabs.CreateTargetTab(presenter)
+	targetTabItem := container.NewTabItem(locale.T("wizard.tab_target"), targetTab)
 	sourcesTab := wizardtabs.CreateSourcesTab(presenter)
 	sourcesTabItem := container.NewTabItem(locale.T("wizard.tab_sources"), sourcesTab)
 	outboundsTab := wizardtabs.CreateOutboundsAndParserConfigTab(presenter)
 	outboundsTabItem := container.NewTabItem(locale.T("wizard.tab_outbounds"), outboundsTab)
 
-	tabs := container.NewAppTabs(sourcesTabItem, outboundsTabItem)
+	tabs := container.NewAppTabs(targetTabItem, sourcesTabItem, outboundsTabItem)
 	guiState.Tabs = tabs
 
 	// Overlay that redirects clicks to open rule dialog when present

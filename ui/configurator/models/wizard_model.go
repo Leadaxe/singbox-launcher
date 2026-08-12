@@ -95,6 +95,14 @@ type WizardModel struct {
 	// Template данные
 	TemplateData *wizardtemplate.TemplateData
 
+	// Target (SPEC 097) — для какой машины готовится конфиг: local (эта
+	// машина) или remote (сервер/роутер/другой mac) + платформа целевой
+	// машины. Выбирается на шаге 0 визарда, сериализуется в state.meta.
+	//
+	// Zero value = «эта машина, local»: модель, созданная кодом, не знающим
+	// о таргетах, ведёт себя ровно как до SPEC 097.
+	Target wizardtemplate.TargetSpec
+
 	// Правила (маршрут — только CustomRules; SelectableRuleStates не используется после 027)
 	SelectableRuleStates  []*RuleState
 	CustomRules           []*RuleState

@@ -1,0 +1,387 @@
+package services
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/lxdclient"
+	"singbox-launcher/internal/platform"
+)
+
+// Реестр УДАЛЁННЫХ демонов `sing-box lxd` (SPEC 097).
+//
+// Отличие от локального сопряжения (core/daemon_manager_darwin.go): там ровно
+// один демон, которым лаунчер сам управляет на этой машине, и его адрес/пин
+// лежат в settings.json единственным набором полей. Здесь машин может быть
+// несколько (роутер, VPS, домашний mac), они переживают перезапуск и
+// выбираются пользователем — поэтому отдельный файл-реестр и своя папка
+// клиентских ключей.
+//
+// Никакой платформенной специфики: лаунчер на Windows управляет
+// linux-роутером. Демонный ДВИЖОК (запуск своего демона) остаётся macOS-only —
+// это про другое.
+
+// RemoteDaemon — сохранённое подключение к удалённой машине.
+type RemoteDaemon struct {
+	// ID — стабильный идентификатор записи (slug имени + суффикс при
+	// коллизии). Он же — имя папки с клиентской парой.
+	ID string `json:"id"`
+	// Name — человекочитаемое имя («Роутер RouteRich»).
+	Name string `json:"name"`
+	// Addr — host:port управляющего канала демона.
+	Addr string `json:"addr"`
+	// ServerFingerprint — SHA-256 пин серверного сертификата (lowercase hex).
+	// Пусто = plain h2c (dev-демон на loopback); для сети обязателен.
+	ServerFingerprint string `json:"server_fingerprint,omitempty"`
+	// Secret — Bearer-секрет; нужен только plain-h2c демону. При mTLS
+	// мандатом служит клиентский сертификат.
+	Secret string `json:"secret,omitempty"`
+	// AddedAt — когда сопряглись (RFC3339, для UI-списка).
+	AddedAt string `json:"added_at,omitempty"`
+}
+
+// remoteRegistryFile — <bin>/remote-daemons.json.
+const remoteRegistryFile = "remote-daemons.json"
+
+// RemoteRegistry — файловый реестр удалённых демонов.
+//
+// Файл читается/пишется целиком: записей единицы, а атомарная перезапись
+// проще и надёжнее частичных апдейтов.
+type RemoteRegistry struct {
+	execDir string
+	mu      sync.Mutex
+}
+
+// NewRemoteRegistry создаёт реестр, живущий в <execDir>/bin/.
+func NewRemoteRegistry(execDir string) *RemoteRegistry {
+	return &RemoteRegistry{execDir: execDir}
+}
+
+func (r *RemoteRegistry) path() string {
+	return filepath.Join(platform.GetBinDir(r.execDir), remoteRegistryFile)
+}
+
+// identityDir — папка клиентской пары для конкретной удалённой машины.
+// У каждой машины своя: сертификат = полный мандат, и общий ключ на все
+// устройства означал бы, что отзыв доступа на одном роутере отзывает его
+// везде.
+func (r *RemoteRegistry) identityDir(id string) string {
+	return filepath.Join(platform.GetBinDir(r.execDir), "remote-daemons", id)
+}
+
+// List возвращает сохранённые подключения, отсортированные по имени.
+// Отсутствующий файл — не ошибка (пустой список).
+func (r *RemoteRegistry) List() ([]RemoteDaemon, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.listLocked()
+}
+
+func (r *RemoteRegistry) listLocked() ([]RemoteDaemon, error) {
+	raw, err := os.ReadFile(r.path())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("remote registry: read: %w", err)
+	}
+	var out []RemoteDaemon
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("remote registry: parse %s: %w", r.path(), err)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+func (r *RemoteRegistry) saveLocked(list []RemoteDaemon) error {
+	binDir := platform.GetBinDir(r.execDir)
+	if err := os.MkdirAll(binDir, platform.DefaultDirMode); err != nil {
+		return fmt.Errorf("remote registry: mkdir: %w", err)
+	}
+	raw, err := json.MarshalIndent(list, "", "  ")
+	if err != nil {
+		return err
+	}
+	// Атомарно: tmp + rename, иначе обрыв записи оставит битый JSON и
+	// пользователь потеряет ВСЕ сопряжения разом.
+	tmp := r.path() + ".tmp"
+	if err := os.WriteFile(tmp, raw, platform.DefaultFileMode); err != nil {
+		return fmt.Errorf("remote registry: write: %w", err)
+	}
+	if err := os.Rename(tmp, r.path()); err != nil {
+		return fmt.Errorf("remote registry: rename: %w", err)
+	}
+	return nil
+}
+
+// Get возвращает запись по ID.
+func (r *RemoteRegistry) Get(id string) (RemoteDaemon, bool, error) {
+	list, err := r.List()
+	if err != nil {
+		return RemoteDaemon{}, false, err
+	}
+	for _, d := range list {
+		if d.ID == id {
+			return d, true, nil
+		}
+	}
+	return RemoteDaemon{}, false, nil
+}
+
+// Pair сопрягается с удалённым демоном по приглашению `адрес#отпечаток#код`
+// и сохраняет подключение под именем name.
+//
+// Код приглашения одноразовый и сгорает после первого enroll, поэтому запись
+// в реестр делается ТОЛЬКО после успешного enroll: иначе при ошибке сети мы
+// сохранили бы подключение, которым уже нельзя воспользоваться повторно.
+func (r *RemoteRegistry) Pair(inviteRaw, name, secret string) (RemoteDaemon, error) {
+	invite, err := lxdclient.ParseInvite(inviteRaw)
+	if err != nil {
+		return RemoteDaemon{}, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	list, err := r.listLocked()
+	if err != nil {
+		return RemoteDaemon{}, err
+	}
+	id := uniqueRemoteID(name, invite.Addr, list)
+
+	identity, err := lxdclient.LoadOrCreateIdentity(r.identityDir(id))
+	if err != nil {
+		return RemoteDaemon{}, fmt.Errorf("remote pair: identity: %w", err)
+	}
+	client := lxdclient.New(lxdclient.Config{
+		Addr:              invite.Addr,
+		ServerFingerprint: invite.ServerFingerprint,
+		Identity:          identity,
+		Secret:            secret,
+	})
+	if err := client.Enroll(invite.Code, "singbox-launcher"); err != nil {
+		// Ключи оставляем: повторная попытка с новым кодом переиспользует их,
+		// и на демоне не появится второй мусорный клиентский сертификат.
+		return RemoteDaemon{}, fmt.Errorf("remote pair: enroll at %s: %w", invite.Addr, err)
+	}
+
+	entry := RemoteDaemon{
+		ID:                id,
+		Name:              strings.TrimSpace(name),
+		Addr:              invite.Addr,
+		ServerFingerprint: invite.ServerFingerprint,
+		Secret:            secret,
+		AddedAt:           time.Now().UTC().Format(time.RFC3339),
+	}
+	if entry.Name == "" {
+		entry.Name = invite.Addr
+	}
+	if err := r.saveLocked(append(list, entry)); err != nil {
+		return RemoteDaemon{}, err
+	}
+	debuglog.InfoLog("remote pair: enrolled %q at %s", entry.Name, entry.Addr)
+	return entry, nil
+}
+
+// SetAddr меняет адрес сохранённого подключения, не трогая ключи.
+//
+// Нужно, потому что в приглашении стоит listen-адрес демона: у роутера с
+// listen 0.0.0.0 приглашение принесёт нерабочий адрес, и пользователь
+// правит его на реальный LAN-адрес после сопряжения.
+func (r *RemoteRegistry) SetAddr(id, addr string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	list, err := r.listLocked()
+	if err != nil {
+		return err
+	}
+	for i := range list {
+		if list[i].ID != id {
+			continue
+		}
+		list[i].Addr = strings.TrimSpace(addr)
+		return r.saveLocked(list)
+	}
+	return fmt.Errorf("remote registry: unknown id %q", id)
+}
+
+// Remove удаляет подключение и его клиентские ключи.
+//
+// Регистрация на СТОРОНЕ демона остаётся — снять её может только сам демон
+// (`sing-box lxd client remove`). Мы честно забываем ключ у себя, а не
+// делаем вид, что отозвали доступ.
+func (r *RemoteRegistry) Remove(id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	list, err := r.listLocked()
+	if err != nil {
+		return err
+	}
+	out := make([]RemoteDaemon, 0, len(list))
+	found := false
+	for _, d := range list {
+		if d.ID == id {
+			found = true
+			continue
+		}
+		out = append(out, d)
+	}
+	if !found {
+		return fmt.Errorf("remote registry: unknown id %q", id)
+	}
+	if err := r.saveLocked(out); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(r.identityDir(id)); err != nil {
+		debuglog.WarnLog("remote registry: remove identity dir for %q: %v", id, err)
+	}
+	return nil
+}
+
+// ImportPairedDaemon добавляет в реестр УЖЕ сопряжённое подключение —
+// без enroll (SPEC 097).
+//
+// Зачем: сопряжение с демоном (адрес + пин + клиентский ключ) до этой спеки
+// делалось единственным путём — PairDaemonWithInvite, который пишет в
+// settings.json. Если сопрягались с чужой машиной, её данные затирали
+// подключение к своему демону: поля-то одни. Импорт разрывает эту связь —
+// реестр забирает подключение себе, а settings.json можно вернуть локальному
+// демону.
+//
+// identitySrcDir — папка, откуда скопировать клиентскую пару (для
+// импортируемого сопряжения это bin/daemon/). Ключ копируется, а не
+// переиспользуется по ссылке: у каждой записи реестра свои ключи, иначе
+// отзыв доступа на одной машине отзывал бы его на всех.
+func (r *RemoteRegistry) ImportPairedDaemon(name, addr, fingerprint, secret, identitySrcDir string) (RemoteDaemon, error) {
+	if strings.TrimSpace(addr) == "" {
+		return RemoteDaemon{}, fmt.Errorf("remote import: empty address")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	list, err := r.listLocked()
+	if err != nil {
+		return RemoteDaemon{}, err
+	}
+	// Уже импортировано (тот же адрес) — возвращаем существующую запись,
+	// чтобы повторный импорт не плодил дубликаты.
+	for _, d := range list {
+		if strings.EqualFold(d.Addr, strings.TrimSpace(addr)) {
+			return d, nil
+		}
+	}
+
+	id := uniqueRemoteID(name, addr, list)
+	if strings.TrimSpace(identitySrcDir) != "" {
+		if err := copyIdentity(identitySrcDir, r.identityDir(id)); err != nil {
+			return RemoteDaemon{}, fmt.Errorf("remote import: copy identity: %w", err)
+		}
+	}
+	entry := RemoteDaemon{
+		ID:                id,
+		Name:              strings.TrimSpace(name),
+		Addr:              strings.TrimSpace(addr),
+		ServerFingerprint: strings.ToLower(strings.TrimSpace(fingerprint)),
+		Secret:            secret,
+		AddedAt:           time.Now().UTC().Format(time.RFC3339),
+	}
+	if entry.Name == "" {
+		entry.Name = entry.Addr
+	}
+	if err := r.saveLocked(append(list, entry)); err != nil {
+		return RemoteDaemon{}, err
+	}
+	debuglog.InfoLog("remote import: %q at %s taken into the registry", entry.Name, entry.Addr)
+	return entry, nil
+}
+
+// copyIdentity копирует клиентскую пару (cert+key) из src в dst.
+func copyIdentity(src, dst string) error {
+	if err := os.MkdirAll(dst, platform.DefaultDirMode); err != nil {
+		return err
+	}
+	for _, name := range []string{"client_cert.pem", "client_key.pem"} {
+		raw, err := os.ReadFile(filepath.Join(src, name))
+		if err != nil {
+			return err
+		}
+		// 0600: приватный ключ клиента = полный мандат на демон.
+		if err := os.WriteFile(filepath.Join(dst, name), raw, 0o600); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Transport строит ProxyTransport к сохранённому подключению.
+// Вызывающий отвечает за Close, когда транспорт больше не нужен.
+func (r *RemoteRegistry) Transport(id string) (*LxdRemoteTransport, error) {
+	entry, ok, err := r.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("remote registry: unknown id %q", id)
+	}
+	cfg := lxdclient.Config{
+		Addr:              entry.Addr,
+		ServerFingerprint: entry.ServerFingerprint,
+		Secret:            entry.Secret,
+	}
+	// Identity нужна только TLS-каналу; plain-h2c демон (dev на loopback)
+	// авторизует Bearer-секретом.
+	if cfg.TLSEnabled() {
+		identity, err := lxdclient.LoadOrCreateIdentity(r.identityDir(id))
+		if err != nil {
+			return nil, fmt.Errorf("remote registry: identity for %q: %w", id, err)
+		}
+		cfg.Identity = identity
+	}
+	return NewLxdRemoteTransport(cfg), nil
+}
+
+// uniqueRemoteID делает slug из имени (или адреса) и разводит коллизии
+// суффиксом. ID — это имя папки с ключами, поэтому только [a-z0-9_-].
+func uniqueRemoteID(name, addr string, existing []RemoteDaemon) string {
+	base := slugifyRemote(name)
+	if base == "" {
+		base = slugifyRemote(addr)
+	}
+	if base == "" {
+		base = "remote"
+	}
+	taken := make(map[string]bool, len(existing))
+	for _, d := range existing {
+		taken[d.ID] = true
+	}
+	if !taken[base] {
+		return base
+	}
+	for i := 2; ; i++ {
+		candidate := fmt.Sprintf("%s-%d", base, i)
+		if !taken[candidate] {
+			return candidate
+		}
+	}
+}
+
+func slugifyRemote(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(s)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '-', r == '_':
+			b.WriteRune(r)
+		case r == ' ', r == '.', r == ':':
+			b.WriteRune('-')
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}

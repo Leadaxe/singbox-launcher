@@ -32,6 +32,12 @@ func (ac *AppController) buildContextFromState(s *state.State, cache *build.Pars
 		ForPreview: false, // Update path = save mode (full inline rendering, no truncation)
 	}
 
+	// SPEC 097: таргет из state meta. Update-путь читает только локальный
+	// bin/wizard_states/state.json, где meta.target пуст → local; заполняем
+	// из state, а не константой, чтобы конфиг всегда был консистентен с
+	// meta того файла, из которого собран.
+	ctx.Target = build.TargetSpecFromState(s)
+
 	if s == nil {
 		// Legacy fallback — vars из template defaults (применятся в GetEffectiveConfig).
 		return ctx
@@ -65,6 +71,7 @@ func (ac *AppController) buildContextFromState(s *state.State, cache *build.Pars
 	// Если state.Rules не пуст, MergePresetsIntoRoute берёт на себя весь emit
 	// (preset/inline/srs). Noop когда RulesV6 пуст (legacy v5-only flow).
 	ctx.Preset = build.PresetMergeContext{
+		Target:              ctx.Target,
 		Presets:             td.Presets,
 		Rules:               s.Rules,
 		DNS:                 s.DNS,

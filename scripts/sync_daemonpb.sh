@@ -6,8 +6,9 @@
 # весь дедовский граф зависимостей sing-box (важно для win7-сборки и размера);
 # стабам нужны только google.golang.org/{grpc,protobuf}.
 #
-# Каждому файлу добавляется `//go:build darwin`: протокол используется только
-# daemon-режимом (macOS), остальные платформы его не компилируют.
+# Build-теги НЕ проставляются: протокол нужен не только daemon-режиму (macOS),
+# но и клиенту к УДАЛЁННОМУ демону (SPEC 097) — лаунчер на Windows управляет
+# linux-роутером теми же RPC. Сами стабы платформенного кода не содержат.
 #
 # Usage: scripts/sync_daemonpb.sh [path-to-sing-box-lx]
 set -eu
@@ -28,11 +29,7 @@ for f in $FILES; do
         echo "sync_daemonpb: missing $src" >&2
         exit 1
     fi
-    {
-        echo "//go:build darwin"
-        echo ""
-        cat "$src"
-    } >"$DEST/$f"
+    cat "$src" >"$DEST/$f"
     echo "synced $f"
 done
 

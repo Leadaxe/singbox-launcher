@@ -80,9 +80,10 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 	// td=nil → quiet skip (тесты, legacy fallback path).
 	if td != nil {
 		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.
-		_ = build.MigrateOutboundsToReferencedShape(&parserCfg.ParserConfig.Outbounds, s.Rules, td)
-		build.SyncOutboundsWithActivePresets(s.Rules, &parserCfg.ParserConfig.Outbounds, td.Presets)
-		build.MergeOutboundUpdatesInPlace(&parserCfg, td)
+		tgt := build.TargetSpecFromState(s)
+		_ = build.MigrateOutboundsToReferencedShape(&parserCfg.ParserConfig.Outbounds, s.Rules, td, tgt)
+		build.SyncOutboundsWithActivePresets(s.Rules, &parserCfg.ParserConfig.Outbounds, td.Presets, tgt)
+		build.MergeOutboundUpdatesInPlace(&parserCfg, td, tgt)
 	}
 
 	tagCounts := make(map[string]int)

@@ -220,9 +220,10 @@ func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGener
 	// Update должен работать даже без template'а (legacy юзеры).
 	if td, terr := template.LoadTemplateData(execDir); terr == nil {
 		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.
-		_ = build.MigrateOutboundsToReferencedShape(&parserConfig.ParserConfig.Outbounds, stateRef.Rules, td)
-		build.SyncOutboundsWithActivePresets(stateRef.Rules, &parserConfig.ParserConfig.Outbounds, td.Presets)
-		build.MergeOutboundUpdatesInPlace(parserConfig, td)
+		tgt := build.TargetSpecFromState(stateRef)
+		_ = build.MigrateOutboundsToReferencedShape(&parserConfig.ParserConfig.Outbounds, stateRef.Rules, td, tgt)
+		build.SyncOutboundsWithActivePresets(stateRef.Rules, &parserConfig.ParserConfig.Outbounds, td.Presets, tgt)
+		build.MergeOutboundUpdatesInPlace(parserConfig, td, tgt)
 	} else {
 		debuglog.WarnLog("UpdateConfigFromSubscriptions: LoadTemplateData failed (skip preset.outbounds sync): %v", terr)
 	}
@@ -402,19 +403,11 @@ func collectAllStageRuleSetTags(execDir string, td *template.TemplateData) []str
 		}
 	}
 
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if !strings.HasSuffix(name, ".json") {
-			continue
-		}
-		path := filepath.Join(statesDir, name)
+	collectFromState := func(path string) {
 		s, loadErr := state.Load(path)
 		if loadErr != nil {
 			debuglog.DebugLog("collectAllStageRuleSetTags: skip %s: %v", path, loadErr)
-			continue
+			return
 		}
 		// Legacy CustomRule rule_set tags.
 		for i := range s.CustomRules {
@@ -464,6 +457,36 @@ func collectAllStageRuleSetTags(execDir string, td *template.TemplateData) []str
 			}
 			addTag(build.SRSTagFromURL(sb.SrsURL))
 		}
+	}
+
+	// SPEC 097: state-файлы живут на двух уровнях — local прямо в
+	// wizard_states/, remote-таргеты в подпапках (wizard_states/remote/).
+	// Обходим оба: без подпапок orphan GC снёс бы .srs, на которые ссылается
+	// ТОЛЬКО remote-состояние — ровно тот multi-stage баг, от которого
+	// защищает union выше, просто на другом уровне вложенности.
+	scanDir := func(dir string, entries []os.DirEntry) {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			if !strings.HasSuffix(e.Name(), ".json") {
+				continue
+			}
+			collectFromState(filepath.Join(dir, e.Name()))
+		}
+	}
+	scanDir(statesDir, entries)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		sub := filepath.Join(statesDir, e.Name())
+		subEntries, subErr := os.ReadDir(sub)
+		if subErr != nil {
+			debuglog.WarnLog("collectAllStageRuleSetTags: readdir %s: %v", sub, subErr)
+			continue
+		}
+		scanDir(sub, subEntries)
 	}
 
 	out := make([]string, 0, len(tagSet))

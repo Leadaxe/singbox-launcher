@@ -653,7 +653,9 @@ func (t *daemonProxyTransport) Delay(proxyName string) (int64, error) {
 	resp, err := client.URLTestOutbound(ctx, &daemonpb.URLTestOutboundRequest{
 		OutboundTag: proxyName,
 		Link:        api.GetPingTestURL(),
-		Timeout:     uint32((10 * time.Second).Milliseconds()),
+		// Timeout — миллисекунды (uint32), в отличие от Interval у Subscribe*,
+		// который в наносекундах (time.Duration). Всегда через time.Duration.
+		Timeout: uint32((10 * time.Second).Milliseconds()),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("daemon URLTestOutbound: %w", err)

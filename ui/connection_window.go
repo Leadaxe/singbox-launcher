@@ -43,14 +43,22 @@ func OpenConnectionWindow(ac *core.AppController, onChanged func()) {
 	win := ac.UIService.Application.NewWindow(locale.T("conn.window_title"))
 
 	localContent := buildLocalEngineTab(ac, win, onChanged)
-	remoteContent := buildRemoteDaemonPanel(ac, win, onChanged) // nil вне macOS
+	ownDaemonContent := buildRemoteDaemonPanel(ac, win, onChanged) // nil вне macOS
+	// SPEC 097: подключения к ЧУЖИМ демонам (роутер, VPS, другой mac) —
+	// кросс-платформенно: лаунчер тут только клиент.
+	remotesContent := buildRemoteDaemonsPanel(ac, win, onChanged)
 
 	var body fyne.CanvasObject
-	if remoteContent == nil {
-		// Не macOS: удалённый демон недоступен (lxd-клиент darwin-only),
-		// переключать нечего.
-		body = localContent
-	} else {
+	{
+		// Панель «свой демон» существует только на macOS; панель удалённых
+		// машин — везде. Собираем remote-область из того, что доступно.
+		remoteParts := []fyne.CanvasObject{}
+		if ownDaemonContent != nil {
+			remoteParts = append(remoteParts, ownDaemonContent, widget.NewSeparator())
+		}
+		remoteParts = append(remoteParts, remotesContent)
+		remoteContent := container.NewVBox(remoteParts...)
+
 		localBox := container.NewVBox(localContent)
 		remoteBox := container.NewVBox(remoteContent)
 		showScope := func(remote bool) {
@@ -71,7 +79,8 @@ func OpenConnectionWindow(ac *core.AppController, onChanged func()) {
 		scope.Required = true
 		// Стартовое положение — где живёт текущее подключение: daemon-режим
 		// с не-loopback адресом = удалённый демон.
-		if connectionScopeIsRemote(ac) {
+		// Активное подключение к удалённой машине — тоже remote-область.
+		if _, _, lxdActive := GetLxdRemoteOverride(); lxdActive || connectionScopeIsRemote(ac) {
 			scope.SetSelected(scopeRemote)
 			showScope(true)
 		} else {

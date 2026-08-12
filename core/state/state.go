@@ -65,6 +65,14 @@ type State struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
+	// Target / TargetPlatform / TargetArch (SPEC 097) — для какой машины
+	// этот state готовит конфиг. Target: "local" | "remote"; пусто == local.
+	// Platform/Arch значимы только для remote (GOOS/GOARCH целевой машины).
+	// Сериализуются в meta.{target,target_platform,target_arch}.
+	Target         string
+	TargetPlatform string
+	TargetArch     string
+
 	// === Legacy proxies-view (UI / dashboard / parser callsite'ы) ===
 
 	// ParserConfig — proxies (sources) + global outbounds в legacy-форме

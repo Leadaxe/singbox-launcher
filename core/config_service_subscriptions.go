@@ -151,25 +151,45 @@ func collectAllStageSourceIDs(execDir string) []string {
 	}
 
 	idSet := make(map[string]struct{})
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if !strings.HasSuffix(name, ".json") {
-			continue
-		}
-		path := filepath.Join(statesDir, name)
+	collectFromState := func(path string) {
 		s, loadErr := state.Load(path)
 		if loadErr != nil {
 			debuglog.DebugLog("collectAllStageSourceIDs: skip %s: %v", path, loadErr)
-			continue
+			return
 		}
 		for _, src := range s.Connections.Sources {
 			if src.ID != "" {
 				idSet[src.ID] = struct{}{}
 			}
 		}
+	}
+
+	// SPEC 097: как и collectAllStageRuleSetTags — local-состояния лежат
+	// плоско, remote-таргеты в подпапках. Пропустить подпапку значит стереть
+	// raw-body подписки, которой владеет только remote-state.
+	scanDir := func(dir string, entries []os.DirEntry) {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			if !strings.HasSuffix(e.Name(), ".json") {
+				continue
+			}
+			collectFromState(filepath.Join(dir, e.Name()))
+		}
+	}
+	scanDir(statesDir, entries)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		sub := filepath.Join(statesDir, e.Name())
+		subEntries, subErr := os.ReadDir(sub)
+		if subErr != nil {
+			debuglog.WarnLog("collectAllStageSourceIDs: readdir %s: %v", sub, subErr)
+			continue
+		}
+		scanDir(sub, subEntries)
 	}
 
 	out := make([]string, 0, len(idSet))

@@ -12,7 +12,6 @@ package tabs
 import (
 	"encoding/json"
 	"fmt"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -117,7 +116,7 @@ func showEditPresetRefDialog(
 	jsonRichText.Wrapping = fyne.TextWrapWord
 
 	refreshJSON := func() {
-		jsonRichText.ParseMarkdown("```json\n" + buildPresetJSONPreview(tplPreset, working) + "\n```")
+		jsonRichText.ParseMarkdown("```json\n" + buildPresetJSONPreview(tplPreset, working, model.Target) + "\n```")
 	}
 
 	refreshVisibility := func() {
@@ -409,7 +408,7 @@ func showEditPresetRefDialog(
 
 // buildPresetJSONPreview — генерит read-only JSON preview эмитнутых fragment'ов
 // для текущих working varsValues. Показывается во вкладке JSON.
-func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]string) string {
+func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]string, target wizardtemplate.TargetSpec) string {
 	// Build effective varsMap (working + defaults).
 	vars := make(map[string]string, len(tpl.Vars))
 	for _, v := range tpl.Vars {
@@ -419,7 +418,7 @@ func buildPresetJSONPreview(tpl *wizardtemplate.Preset, working map[string]strin
 			vars[v.Name] = v.Default
 		}
 	}
-	frags, warns, ok := build.ExpandPreset(tpl, vars, runtime.GOOS, runtime.GOARCH)
+	frags, warns, ok := build.ExpandPreset(tpl, vars, target)
 	if !ok {
 		return "// preset expansion failed:\n// " + warningsAsText(warns)
 	}

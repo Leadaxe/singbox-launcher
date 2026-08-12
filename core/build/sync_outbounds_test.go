@@ -35,7 +35,7 @@ func TestSyncOutbounds_EnableAddEntry(t *testing.T) {
 	rules := []state.Rule{
 		{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 	}
-	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset})
+	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset}, template.LocalTarget())
 
 	if len(outbounds) != 2 {
 		t.Fatalf("expected 2 entries (proxy-out + ru VPN), got %d", len(outbounds))
@@ -54,7 +54,7 @@ func TestSyncOutbounds_DisableRemovesEntry(t *testing.T) {
 	}
 	// No active rules → preset entry должна исчезнуть.
 	rules := []state.Rule{}
-	SyncOutboundsWithActivePresets(rules, &outbounds, nil)
+	SyncOutboundsWithActivePresets(rules, &outbounds, nil, template.LocalTarget())
 
 	if len(outbounds) != 1 || outbounds[0].Tag != "proxy-out" {
 		t.Errorf("expected only proxy-out, got %+v", outbounds)
@@ -72,7 +72,7 @@ func TestSyncOutbounds_UpdateStack(t *testing.T) {
 	rules := []state.Rule{
 		{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 	}
-	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset})
+	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset}, template.LocalTarget())
 
 	if len(outbounds[0].Updates) != 1 {
 		t.Fatalf("expected 1 update: %+v", outbounds[0].Updates)
@@ -106,7 +106,7 @@ func TestSyncOutbounds_DisableUpdateRemovesFromStack(t *testing.T) {
 	rules := []state.Rule{
 		{Kind: state.RuleKindPreset, Ref: "ru-inside", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 	}
-	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{russianPreset, ruInsidePreset})
+	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{russianPreset, ruInsidePreset}, template.LocalTarget())
 
 	if len(outbounds[0].Updates) != 1 {
 		t.Fatalf("expected 1 update remaining (ru-inside): %+v", outbounds[0].Updates)
@@ -128,9 +128,9 @@ func TestSyncOutbounds_Idempotent(t *testing.T) {
 	rules := []state.Rule{
 		{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 	}
-	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset})
+	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset}, template.LocalTarget())
 	snapshot, _ := json.Marshal(outbounds)
-	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset})
+	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset}, template.LocalTarget())
 	after, _ := json.Marshal(outbounds)
 	if string(snapshot) != string(after) {
 		t.Errorf("sync not idempotent:\nbefore: %s\nafter: %s", snapshot, after)
@@ -149,7 +149,7 @@ func TestSyncOutbounds_PreserveOrder(t *testing.T) {
 		{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 	}
 	// Initial sync — preset entry appended at end.
-	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset})
+	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset}, template.LocalTarget())
 	if outbounds[1].Tag != "ru VPN" {
 		t.Fatalf("expected ru VPN at index 1: %+v", outbounds)
 	}
@@ -161,7 +161,7 @@ func TestSyncOutbounds_PreserveOrder(t *testing.T) {
 	}
 
 	// Second sync — должен preserve user-chosen order.
-	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset})
+	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset}, template.LocalTarget())
 	if outbounds[0].Tag != "ru VPN" || outbounds[1].Tag != "proxy-out" {
 		t.Errorf("user reorder lost: %+v", outbounds)
 	}
@@ -188,7 +188,7 @@ func TestSyncOutbounds_AdoptLegacyGlobal(t *testing.T) {
 	rules := []state.Rule{
 		{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 	}
-	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset})
+	SyncOutboundsWithActivePresets(rules, &outbounds, []template.Preset{preset}, template.LocalTarget())
 
 	if len(outbounds) != 2 {
 		t.Fatalf("expected 2 entries (no duplicate from preset add): %+v", outbounds)

@@ -12,6 +12,7 @@ import (
 
 	"github.com/muhammadmuzzammil1998/jsonc"
 
+	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
@@ -234,6 +235,24 @@ func (ac *AppController) PairDaemonWithInvite(inviteRaw, secret string) error {
 	})
 	if err := enrollClient.Enroll(invite.Code, "singbox-launcher"); err != nil {
 		return err
+	}
+
+	// SPEC 097: settings.json держит ОДНО подключение — своего демона. Пока
+	// сюда же писалось сопряжение с чужой машиной, pair с роутером затирал
+	// адрес и пин локального демона, и лаунчер терял с ним связь (движок
+	// продолжал стучаться на роутер). Не-loopback сопряжение уходит в реестр
+	// удалённых машин, локальные поля не трогаем.
+	if !lxdclient.IsLoopbackAddr(invite.Addr) {
+		registry := services.NewRemoteRegistry(ac.FileService.ExecDir)
+		entry, impErr := registry.ImportPairedDaemon(
+			invite.Addr, invite.Addr, invite.ServerFingerprint, secret,
+			DaemonIdentityDir(ac.FileService.ExecDir))
+		if impErr != nil {
+			return fmt.Errorf("pair: register remote daemon: %w", impErr)
+		}
+		debuglog.InfoLog("PairDaemonWithInvite: %s is a REMOTE daemon — stored in the registry as %q (local daemon settings untouched)",
+			invite.Addr, entry.Name)
+		return nil
 	}
 
 	binDir := platform.GetBinDir(ac.FileService.ExecDir)

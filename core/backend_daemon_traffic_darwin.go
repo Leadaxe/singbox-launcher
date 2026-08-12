@@ -155,7 +155,12 @@ func (b *DaemonBackend) superviseConnections() {
 		client, err := b.grpcClient()
 		if err == nil {
 			var stream grpc.ServerStreamingClient[daemonpb.ConnectionEvents]
-			stream, err = client.SubscribeConnections(b.ctx, &daemonpb.SubscribeConnectionsRequest{Interval: 1000})
+			// Interval — наносекунды (time.Duration, конвенция sing-box/libbox):
+			// голое число здесь означало бы наносекунды, а не миллисекунды, и
+			// загоняло бы демон в 100% CPU. Демон клампит значения < 200мс.
+			stream, err = client.SubscribeConnections(b.ctx, &daemonpb.SubscribeConnectionsRequest{
+				Interval: int64(time.Second),
+			})
 			if err == nil && b.consumeConnStream(stream) {
 				backoff = time.Second
 			}

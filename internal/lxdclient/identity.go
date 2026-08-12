@@ -1,5 +1,3 @@
-//go:build darwin
-
 // Package lxdclient — клиент управляющего канала демона `sing-box lxd`:
 // mTLS-сопряжение по одноразовому приглашению, admin REST (apply / start /
 // stop / status) и gRPC-дайл для протокола daemon.StartedService.

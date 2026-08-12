@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"singbox-launcher/internal/constants"
 )
@@ -30,6 +31,16 @@ const DefaultFileMode os.FileMode = 0644
 // GetConfigPath returns the path to config.json
 func GetConfigPath(execDir string) string {
 	return filepath.Join(execDir, constants.BinDirName, constants.ConfigFileName)
+}
+
+// GetRemoteConfigPath returns the path of the config prepared for a REMOTE
+// machine: <execDir>/bin/remote-config.json (SPEC 097).
+//
+// Deliberately NOT config.json: that file belongs to the local core and is
+// rewritten by Update/Rebuild, so a remote config placed there would either
+// be clobbered or — worse — picked up and run locally.
+func GetRemoteConfigPath(execDir string) string {
+	return filepath.Join(execDir, constants.BinDirName, constants.RemoteConfigFileName)
 }
 
 // GetBinDir returns the path to bin directory
@@ -60,8 +71,54 @@ func GetWizardStatesDir(execDir string) string {
 // GetWizardStatePath returns the canonical path of the current wizard state:
 // <execDir>/bin/wizard_states/state.json. The only sanctioned way to locate
 // state.json — do NOT compose from string literals.
+//
+// This is the LOCAL target's state. For remote targets see
+// GetWizardStatesDirFor / GetWizardStatePathFor (SPEC 097).
 func GetWizardStatePath(execDir string) string {
 	return filepath.Join(GetWizardStatesDir(execDir), constants.WizardStateFileName)
+}
+
+// GetWizardStatesDirFor returns the states directory for a config target
+// (SPEC 097).
+//
+//	local  → <execDir>/bin/wizard_states/            (unchanged; no migration)
+//	remote → <execDir>/bin/wizard_states/remote/
+//
+// The local target keeps the historical flat layout, so every existing reader
+// (varsubst, snapshot, config_service) and every saved snapshot stays valid.
+// Non-local targets get their own subdirectory, which also isolates their
+// named snapshots: StateStore.ListWizardStates skips subdirectories, so a
+// store rooted at one target never lists another target's snapshots.
+//
+// An unknown / empty target is treated as local — callers that predate
+// targets keep working.
+func GetWizardStatesDirFor(execDir, target string) string {
+	base := GetWizardStatesDir(execDir)
+	if slug := stateTargetSlug(target); slug != "" {
+		return filepath.Join(base, slug)
+	}
+	return base
+}
+
+// GetWizardStatePathFor returns the current state file for a config target:
+// <states-dir-for-target>/state.json (SPEC 097). The only sanctioned way to
+// locate a non-local state file — do NOT compose from string literals.
+func GetWizardStatePathFor(execDir, target string) string {
+	return filepath.Join(GetWizardStatesDirFor(execDir, target), constants.WizardStateFileName)
+}
+
+// stateTargetSlug maps a target to its subdirectory name; "" means «no
+// subdirectory» (the local target lives directly in wizard_states/).
+//
+// Unknown values fall back to local rather than to some new directory: a typo
+// must not silently strand a state file where no reader looks for it.
+func stateTargetSlug(target string) string {
+	switch strings.ToLower(strings.TrimSpace(target)) {
+	case constants.ConfigTargetRemote:
+		return constants.ConfigTargetRemote
+	default:
+		return ""
+	}
 }
 
 // GetOutboundsCachePath returns the canonical path of the outbounds cache:

@@ -48,7 +48,7 @@ func maybeTunOffDarwin(presenter *wizardpresentation.WizardPresenter, model *wiz
 	vars := td.Vars
 	raw := td.RawTemplate
 	v, overridden := model.SettingsVars[varName]
-	prevTrue := strings.TrimSpace(wizardtemplate.DisplaySettingValue(vars, st, raw, varName)) == "true"
+	prevTrue := strings.TrimSpace(wizardtemplate.DisplaySettingValueFor(vars, st, raw, varName, model.Target.Normalized())) == "true"
 	if overridden {
 		prevTrue = v == "true"
 	}

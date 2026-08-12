@@ -9,7 +9,12 @@ const (
 	ConfigFileName         = "config.json"
 	SingBoxExecName        = "sing-box"
 	WizardTemplateFileName = "wizard_template.json"
-	WizardStateFileName    = "state.json"
+	// RemoteConfigFileName — конфиг, подготовленный для УДАЛЁННОЙ машины
+	// (SPEC 097). Namespace специально отдельный от ConfigFileName:
+	// bin/config.json принадлежит локальному ядру и перезаписывается
+	// Update/Rebuild — класть туда чужой конфиг нельзя.
+	RemoteConfigFileName = "remote-config.json"
+	WizardStateFileName  = "state.json"
 	// OutboundsCacheFileName — кеш-файл outbounds (SPEC 045 phase 5.1).
 	// Лежит в <execDir>/bin/. Scope = последний активный state. Парсер
 	// перезаписывает его при каждом успешном Update; на переключении
@@ -27,6 +32,19 @@ const (
 	// <execDir>/bin/subscriptions/<source-id>.raw. Один файл per Source(id),
 	// атомарная запись через .tmp + Rename, lazy GC orphan-файлов.
 	SubscriptionsDirName = "subscriptions"
+)
+
+// Config targets (SPEC 097) — для какой машины лаунчер готовит config.json.
+//
+// ConfigTargetLocal — эта машина: состояние живёт прямо в
+// bin/wizard_states/ (исторический плоский layout, без миграции).
+// ConfigTargetRemote — удалённая машина (сервер, роутер, другой mac):
+// состояние в bin/wizard_states/remote/. Слаг = имя подпапки.
+//
+// Значение попадает в state.meta.target и в @runtime.target шаблона.
+const (
+	ConfigTargetLocal  = "local"
+	ConfigTargetRemote = "remote"
 )
 
 // Log file names

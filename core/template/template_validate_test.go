@@ -375,16 +375,33 @@ func TestDefaultValueIf_PerPlatformTree_OK(t *testing.T) {
 	}
 }
 
-func TestDefaultValueIf_UserVarRef_LoaderError(t *testing.T) {
-	// Ссылка на user-var внутри default #if запрещена (только @runtime.*).
+func TestDefaultValueIf_UserVarRef_Backward_OK(t *testing.T) {
+	// SPEC 097: ссылка на user-var, объявленный ВЫШЕ, легальна — резолв
+	// однопроходный, @flag к моменту вычисления default_value уже разрешён
+	// (так proxy_in_listen дефолтится по @gateway_mode). До SPEC 097
+	// user-vars в default #if были запрещены целиком.
 	vars := []TemplateVar{
 		{Name: "flag", Type: "bool"},
 		{Name: "tun_stack", Type: "enum",
 			DefaultValue: mustDefaultValue(t, `{"#if":{"and":["@flag"],"value":"gvisor","else":"system"}}`)},
 	}
+	if err := ValidateWizardTemplate(vars, nil, json.RawMessage(`{}`)); err != nil {
+		t.Fatalf("backward user-var ref in default #if must validate, got %v", err)
+	}
+}
+
+func TestDefaultValueIf_UserVarRef_Forward_LoaderError(t *testing.T) {
+	// Forward-ссылка (var объявлен НИЖЕ) — ошибка: к моменту резолва
+	// default_value значение @flag ещё не вычислено, в рантайме предикат
+	// дал бы молчаливый false. Валидатор ловит это на загрузке шаблона.
+	vars := []TemplateVar{
+		{Name: "tun_stack", Type: "enum",
+			DefaultValue: mustDefaultValue(t, `{"#if":{"and":["@flag"],"value":"gvisor","else":"system"}}`)},
+		{Name: "flag", Type: "bool"},
+	}
 	err := ValidateWizardTemplate(vars, nil, json.RawMessage(`{}`))
 	if err == nil || !strings.Contains(err.Error(), "unknown var") {
-		t.Fatalf("expected user-var rejection in default #if, got %v", err)
+		t.Fatalf("expected forward user-var rejection in default #if, got %v", err)
 	}
 }
 

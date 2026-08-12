@@ -49,6 +49,14 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			debuglog.ErrorLog("clash_api_tab: failed to get selector groups: %v", err)
 		}
 	}
+	// SPEC 097: при подключении к удалённому демону локальный config.json не
+	// описывает ЕГО ядро — группы спрашиваем у самого демона по gRPC.
+	if remoteGroups, ok := RemoteDaemonGroups(); ok && len(remoteGroups) > 0 {
+		selectorOptions = remoteGroups
+		if defaultSelector == "" || !containsStringValue(remoteGroups, defaultSelector) {
+			defaultSelector = remoteGroups[0]
+		}
+	}
 	if len(selectorOptions) == 0 {
 		selectorOptions = []string{"proxy-out"}
 	}
@@ -1377,4 +1385,14 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	)
 
 	return contentContainer
+}
+
+// containsStringValue — есть ли значение в списке (локальный хелпер вкладки).
+func containsStringValue(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }

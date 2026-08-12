@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"math/big"
-	"runtime"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -193,15 +193,32 @@ func VarByName(vars []TemplateVar, name string) (TemplateVar, bool) {
 
 // VarUISatisfied: условие показа/включения строки Settings для этой var (пустые If/IfOr → всегда true).
 // Семантика совпадает с params.if / if_or (ParamBoolVarTrue, VarAppliesOnGOOS).
+//
+// Обёртка над VarUISatisfiedFor для вызывающих без таргета (local).
 func VarUISatisfied(v TemplateVar, varByName map[string]TemplateVar, resolved map[string]ResolvedVar, goos string) bool {
+	return VarUISatisfiedFor(v, varByName, resolved, TargetSpec{GOOS: goos}.Normalized())
+}
+
+// VarUISatisfiedFor — то же для конкретного таргета (SPEC 097).
+//
+// Записи if/if_or — предикаты того же языка, что и внутри #if: голое имя
+// bool-var ("@tun") ИЛИ объектная форма ({"@runtime.target": "local"},
+// {"#not": "@gateway_mode"}, {"@x": {"#in": [...]}}). Одна грамматика на
+// весь шаблон: не нужно ни отдельного поля targets[], ни специальных
+// правил для UI — «clash_api только на local» пишется тем же выражением,
+// что и ветка в config-секции.
+func VarUISatisfiedFor(v TemplateVar, varByName map[string]TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) bool {
 	if len(v.If) > 0 && len(v.IfOr) > 0 {
 		return false
 	}
+	if !VarAppliesOnGOOS(v.Platforms, target.Normalized().GOOS) {
+		return false
+	}
 	if len(v.If) > 0 {
-		return ParamIfSatisfied(v.If, varByName, resolved, goos)
+		return ParamIfSatisfiedFor(v.If, varByName, resolved, target)
 	}
 	if len(v.IfOr) > 0 {
-		return ParamIfOrSatisfied(v.IfOr, varByName, resolved, goos)
+		return ParamIfOrSatisfiedFor(v.IfOr, varByName, resolved, target)
 	}
 	return true
 }
@@ -232,18 +249,38 @@ func generateSecret(r io.Reader) (string, error) {
 	return b.String(), nil
 }
 
-// ResolveTemplateVars разрешает все переменные шаблона.
+// ResolveTemplateVars разрешает все переменные шаблона для локального таргета
+// (эта машина). Тонкая обёртка над ResolveTemplateVarsFor — сохранена для
+// вызывающих, которым таргет не важен.
 func ResolveTemplateVars(vars []TemplateVar, state map[string]string, rawTemplate json.RawMessage) map[string]ResolvedVar {
+	return ResolveTemplateVarsFor(vars, state, rawTemplate, LocalTarget())
+}
+
+// ResolveTemplateVarsFor разрешает переменные шаблона для указанного таргета
+// (SPEC 097). Таргет влияет на per-platform дефолты (default_value) и на
+// #if-деревья внутри них через @runtime.* globals.
+func ResolveTemplateVarsFor(vars []TemplateVar, state map[string]string, rawTemplate json.RawMessage, target TargetSpec) map[string]ResolvedVar {
+	target = target.Normalized()
 	out := make(map[string]ResolvedVar, len(vars))
 	var root map[string]json.RawMessage
 	if len(rawTemplate) > 0 {
 		_ = json.Unmarshal(rawTemplate, &root)
 	}
+	// varTypes нужен предикатам #if внутри default_value (bare bool-форма
+	// смотрит на тип). Собираем один раз по ВСЕМ vars; а вот resolved (`out`)
+	// заполняется по ходу цикла — поэтому default_value видит только vars,
+	// объявленные выше себя (контракт ForTargetIn).
+	varTypes := make(map[string]string, len(vars))
+	for _, v := range vars {
+		if !v.Separator {
+			varTypes[v.Name] = v.Type
+		}
+	}
 	for _, v := range vars {
 		if v.Separator {
 			continue
 		}
-		out[v.Name] = resolveOneVar(v, state[v.Name], root)
+		out[v.Name] = resolveOneVar(v, state[v.Name], root, target, varTypes, out)
 	}
 	return out
 }
@@ -271,7 +308,7 @@ func MaybeGenerateSecrets(vars []TemplateVar, resolved map[string]ResolvedVar) {
 	}
 }
 
-func resolveOneVar(v TemplateVar, stateVal string, root map[string]json.RawMessage) ResolvedVar {
+func resolveOneVar(v TemplateVar, stateVal string, root map[string]json.RawMessage, target TargetSpec, varTypes map[string]string, resolved map[string]ResolvedVar) ResolvedVar {
 	switch v.Type {
 	case "text_list":
 		if strings.TrimSpace(stateVal) != "" {
@@ -286,9 +323,9 @@ func resolveOneVar(v TemplateVar, stateVal string, root map[string]json.RawMessa
 			return ResolvedVar{List: nonEmpty}
 		}
 		if !v.DefaultValue.IsEmpty() {
-			def := v.DefaultValue.ForPlatform(runtime.GOOS, runtime.GOARCH)
+			def := v.DefaultValue.ForTargetIn(target, varTypes, resolved)
 			if def != "" {
-				return resolveOneVar(TemplateVar{Name: v.Name, Type: "text_list"}, def, root)
+				return resolveOneVar(TemplateVar{Name: v.Name, Type: "text_list"}, def, root, target, varTypes, resolved)
 			}
 		}
 		if v.DefaultNode != "" && root != nil {
@@ -307,7 +344,7 @@ func resolveOneVar(v TemplateVar, stateVal string, root map[string]json.RawMessa
 			return ResolvedVar{Scalar: s}
 		}
 		if !v.DefaultValue.IsEmpty() {
-			dv := v.DefaultValue.ForPlatform(runtime.GOOS, runtime.GOARCH)
+			dv := v.DefaultValue.ForTargetIn(target, varTypes, resolved)
 			if dv != "" {
 				return ResolvedVar{Scalar: dv}
 			}
@@ -413,24 +450,99 @@ func ParamBoolVarTrue(name string, varByName map[string]TemplateVar, resolved ma
 	return true
 }
 
-// ParamIfSatisfied: все имена в if — bool vars истинны на текущей ОС.
+// ParamIfSatisfied: все предикаты в if истинны на текущей ОС.
 func ParamIfSatisfied(ifNames []string, varByName map[string]TemplateVar, resolved map[string]ResolvedVar, goos string) bool {
-	for _, name := range ifNames {
-		if !ParamBoolVarTrue(name, varByName, resolved, goos) {
+	return ParamIfSatisfiedFor(ifNames, varByName, resolved, TargetSpec{GOOS: goos}.Normalized())
+}
+
+// ParamIfSatisfiedFor — все предикаты истинны для указанного таргета.
+func ParamIfSatisfiedFor(ifNames []string, varByName map[string]TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) bool {
+	for _, expr := range ifNames {
+		if !condEntryTrue(expr, varByName, resolved, target) {
 			return false
 		}
 	}
 	return true
 }
 
-// ParamIfOrSatisfied: хотя бы одна bool var из списка истинна на текущей ОС.
+// ParamIfOrSatisfied: хотя бы один предикат из списка истинен на текущей ОС.
 func ParamIfOrSatisfied(ifOrNames []string, varByName map[string]TemplateVar, resolved map[string]ResolvedVar, goos string) bool {
-	for _, name := range ifOrNames {
-		if ParamBoolVarTrue(name, varByName, resolved, goos) {
+	return ParamIfOrSatisfiedFor(ifOrNames, varByName, resolved, TargetSpec{GOOS: goos}.Normalized())
+}
+
+// ParamIfOrSatisfiedFor — хотя бы один предикат истинен для таргета.
+func ParamIfOrSatisfiedFor(ifOrNames []string, varByName map[string]TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) bool {
+	for _, expr := range ifOrNames {
+		if condEntryTrue(expr, varByName, resolved, target) {
 			return true
 		}
 	}
 	return false
+}
+
+// VarConditionIsTargetOnly — условие var'а зависит ИСКЛЮЧИТЕЛЬНО от
+// @runtime.* globals (таргет, платформа, архитектура), без ссылок на другие
+// vars.
+//
+// Такое условие статично для данной сборки: пользователь не может его
+// удовлетворить, что-то переключив, — значит поле надо СКРЫТЬ, а не
+// показывать выключенным. Условия со ссылками на vars (@tun) наоборот
+// гасят строку: их пользователь может выполнить.
+func VarConditionIsTargetOnly(v TemplateVar) bool {
+	entries := v.If
+	if len(entries) == 0 {
+		entries = v.IfOr
+	}
+	if len(entries) == 0 {
+		return false
+	}
+	for _, e := range entries {
+		t := strings.TrimSpace(e)
+		if !strings.HasPrefix(t, "{") {
+			return false // голое "@var" — ссылка на другую переменную
+		}
+		if !onlyRuntimeGlobalRefs(t) {
+			return false
+		}
+	}
+	return true
+}
+
+// onlyRuntimeGlobalRefs true, если в JSON-предикате все "@..."-ссылки —
+// runtime-globals.
+func onlyRuntimeGlobalRefs(jsonExpr string) bool {
+	for _, ref := range atRefPattern.FindAllStringSubmatch(jsonExpr, -1) {
+		if !isRuntimeGlobalRef(ref[1]) {
+			return false
+		}
+	}
+	return true
+}
+
+// atRefPattern выбирает "@name" внутри JSON-строк предиката.
+var atRefPattern = regexp.MustCompile(`"@([A-Za-z0-9_.]+)"`)
+
+// condEntryTrue вычисляет ОДНУ запись if/if_or.
+//
+// Голое "@name" сохраняет исторический смысл (bool-var истинна на этой ОС),
+// чтобы существующие шаблоны не поехали. Всё, что начинается с "{", —
+// JSON-предикат языка #if, вычисляемый ТЕМ ЖЕ evaluatePredicate, что и
+// внутри config-секций: одна грамматика, одно место отказа.
+func condEntryTrue(expr string, varByName map[string]TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) bool {
+	trimmed := strings.TrimSpace(expr)
+	if !strings.HasPrefix(trimmed, "{") {
+		return ParamBoolVarTrue(trimmed, varByName, resolved, target.Normalized().GOOS)
+	}
+	var node interface{}
+	if err := json.Unmarshal([]byte(trimmed), &node); err != nil {
+		debuglog.WarnLog("template: if-предикат %q — невалидный JSON: %v; считаем false", trimmed, err)
+		return false
+	}
+	varTypes := make(map[string]string, len(varByName))
+	for name, vd := range varByName {
+		varTypes[name] = vd.Type
+	}
+	return evaluatePredicate(node, varTypes, resolved, target.Normalized())
 }
 
 // VarIndex строит map name -> TemplateVar.
@@ -447,7 +559,18 @@ func VarIndex(vars []TemplateVar) map[string]TemplateVar {
 
 // DisplaySettingValue строка для UI Settings без генерации clash_secret (плейсхолдер из шаблона).
 func DisplaySettingValue(vars []TemplateVar, state map[string]string, rawFull json.RawMessage, name string) string {
-	r := ResolveTemplateVars(vars, state, rawFull)
+	return DisplaySettingValueFor(vars, state, rawFull, name, LocalTarget())
+}
+
+// DisplaySettingValueFor — то же для конкретного таргета (SPEC 097).
+//
+// Таргет обязателен: state даёт override, но при его отсутствии значение
+// приходит из default_value, а тот ветвится по @runtime.target
+// (tun_interface_name: lxd-tun0 на remote против singbox-tun0 на local).
+// Резолв по local-таргету показывал бы в UI не то значение, которое реально
+// уедет в конфиг.
+func DisplaySettingValueFor(vars []TemplateVar, state map[string]string, rawFull json.RawMessage, name string, target TargetSpec) string {
+	r := ResolveTemplateVarsFor(vars, state, rawFull, target)
 	rv, ok := r[name]
 	if !ok {
 		return ""

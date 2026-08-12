@@ -18,7 +18,6 @@ package build
 
 import (
 	"encoding/json"
-	"runtime"
 
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
@@ -158,7 +157,7 @@ type ResolvedDNS struct {
 // `direct_dns_resolver` живут в `template.dns_options.servers[]` с
 // `required: true` маркером. Locked entries попадают в результат с
 // Source=template + Locked=true; Enabled всегда true.
-func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars map[string]string) ResolvedDNS {
+func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars map[string]string, target template.TargetSpec) ResolvedDNS {
 	var out ResolvedDNS
 	if td == nil {
 		return out
@@ -231,7 +230,7 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 					continue
 				}
 				active, reason := evalIfWithReason(ds.If, ds.IfOr, presetVars)
-				bodyMap := substitutePresetDNSServer(ds, p.Vars, presetVars, runtime.GOOS, runtime.GOARCH)
+				bodyMap := substitutePresetDNSServer(ds, p.Vars, presetVars, target)
 				ref := p.ID + ":" + ds.Tag
 				bodyMap["tag"] = ref
 				enabled := statePresetServerEnabled(state, ref, true)
@@ -252,7 +251,7 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 			// буферизуем список в карту; порядок эмиссии решается в Pass 4 по
 			// state.DNS.Rules (один toggle Ref=<id> покрывает весь список).
 			if p.PresetHasDNSRule() {
-				bodies := substitutePresetDNSRules(p, presetVars, runtime.GOOS, runtime.GOARCH)
+				bodies := substitutePresetDNSRules(p, presetVars, target)
 				if len(bodies) == 0 {
 					continue
 				}
@@ -483,7 +482,7 @@ func buildPresetVarsMap(p *template.Preset, userVars map[string]string) map[stri
 
 // substitutePresetDNSServer — конвертит PresetDNSServer struct в map с
 // applied substitute. Возвращает чистый sing-box-valid body.
-func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []template.PresetVar, varsMap map[string]string, goos, goarch string) map[string]interface{} {
+func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []template.PresetVar, varsMap map[string]string, target template.TargetSpec) map[string]interface{} {
 	body := map[string]interface{}{
 		"tag":  ds.Tag,
 		"type": ds.Type,
@@ -514,7 +513,7 @@ func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []templa
 		body["inet6_range"] = ds.Inet6Range
 	}
 	// SPEC 067 Phase 8: substitutePresetBody → SubstituteVarsInJSONStrict.
-	substituted, ok := substitutePresetBody(body, presetVars, varsMap, goos, goarch)
+	substituted, ok := substitutePresetBody(body, presetVars, varsMap, target)
 	if !ok {
 		return body
 	}
@@ -532,11 +531,11 @@ func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []templa
 // substitutePresetDNSRules — резолвит ВСЕ DNS-правила пресета (singular DNSRule
 // + plural DNSRules, SPEC 085.1) через ExpandPreset, в порядке эмиссии. Пустой
 // список, если у пресета нет активных DNS-правил.
-func substitutePresetDNSRules(p *template.Preset, varsMap map[string]string, goos, goarch string) []map[string]interface{} {
+func substitutePresetDNSRules(p *template.Preset, varsMap map[string]string, target template.TargetSpec) []map[string]interface{} {
 	if p == nil {
 		return nil
 	}
-	frags, _, ok := ExpandPreset(p, varsMap, goos, goarch)
+	frags, _, ok := ExpandPreset(p, varsMap, target)
 	if !ok || frags == nil {
 		return nil
 	}
