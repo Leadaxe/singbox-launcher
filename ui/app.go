@@ -105,17 +105,24 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 				controller.APIService.SetProxyScope(services.ScopeLocal)
 			}
 			app.localPanel.Activate(controller)
-			ClearLxdRemoteOverride(controller)
-			// Транспорт машины снят — панель Remote снова без собеседника.
-			// Гасим её органы управления и чистим список, иначе при возврате
-			// на вкладку пользователя встретят узлы машины, с которой разговор
-			// уже не идёт.
-			app.remotePanel.SetEnabled(false)
-			app.remotePanel.Clear()
+			// Транспорт МАШИНЫ не снимаем: соединение — состояние самой
+			// машины, а не вкладки. Рвать его при взгляде на своё ядро значит
+			// заставлять жать Connect после каждого переключения. Связь
+			// разрывает только явный Disconnect (или удаление машины).
+			//
+			// Чтобы Local при этом говорил со СВОИМ ядром, ставим его
+			// транспорт: SetTransport(nil) означал бы «никакого», а в
+			// lxd-режиме Clash HTTP нет — панель падала бы в
+			// «connection refused» на 9190.
+			controller.RestoreOwnTransport()
 		case app.clashAPITab:
 			if controller.APIService != nil {
 				controller.APIService.SetProxyScope(services.ScopeRemote)
 			}
+			// Возвращаем транспорт выбранной машины: пока смотрели Local, его
+			// место занимал транспорт своего движка. Само соединение никуда не
+			// девалось — снимает его только явный Disconnect.
+			ReapplyLxdRemoteTransport(controller)
 			app.remotePanel.Activate(controller)
 		}
 		// Обновляем список только там, где есть с кем разговаривать.

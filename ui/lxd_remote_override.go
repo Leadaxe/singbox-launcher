@@ -142,6 +142,27 @@ func lxdOverrideTransportOrNil() services.ProxyTransport {
 	return lxdOverrideTransport
 }
 
+// ReapplyLxdRemoteTransport возвращает в APIService транспорт УЖЕ выбранной
+// машины (SPEC 098).
+//
+// Нужен на входе во вкладку Remote: пока пользователь смотрел Local, там
+// стоял транспорт своего движка. Канал к машине при этом не рвался —
+// соединение принадлежит машине, а не вкладке, и снимает его только явный
+// Disconnect.
+//
+// No-op, когда машина не выбрана: подставлять чужой транспорт «на всякий
+// случай» значило бы говорить с машиной, которую пользователь не выбирал.
+func ReapplyLxdRemoteTransport(ac *core.AppController) {
+	if ac == nil || ac.APIService == nil {
+		return
+	}
+	transport := lxdOverrideTransportOrNil()
+	if transport == nil {
+		return
+	}
+	ac.APIService.SetTransport(transport)
+}
+
 // RemoteDaemonGroups возвращает selector-группы активного удалённого демона.
 //
 // Локальный путь берёт список групп из bin/config.json; для чужой машины

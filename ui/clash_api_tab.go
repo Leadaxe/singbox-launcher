@@ -125,10 +125,8 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	panel := &ProxyListPanel{scope: scope}
 	apiStatusLabel := widget.NewLabel(locale.T("servers.status_not_checked"))
 	panel.apiStatusLabel = apiStatusLabel
-	ac.UIService.ApiStatusLabel = apiStatusLabel
 	status := widget.NewLabel(locale.T("servers.status_click_load"))
 	panel.listStatusLabel = status
-	ac.UIService.ListStatusLabel = status
 
 	var (
 		selectorOptions []string
@@ -486,11 +484,14 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			}
 		})
 	}
-	if ac.UIService != nil {
-		ac.UIService.RefreshAPIFunc = onTestAPIConnection
-		ac.UIService.ResetAPIStateFunc = onResetAPIState
-	}
-
+	// Колбэки панели складываем в неё саму, а в UIService их ставит только
+	// Activate — то есть панель ТОЙ вкладки, которую пользователь видит.
+	//
+	// Раньше их захватывал конструктор, и владельцем оставалась панель,
+	// построенная последней (Remote). Из-за этого падение ЛОКАЛЬНОГО ядра
+	// дёргало remote-панель: UpdateUI зовёт ResetAPIStateFunc на состоянии
+	// «Down», та шла в сеть к машине и перерисовывала список. На отвалившемся
+	// роутере (no route to host) это кончалось падением всего приложения.
 	// --- Вспомогательная функция для пинга ---
 	// Delay in ProxyInfo: >0 = ms, 0 = not pinged, -1 = error (so updateItem shows correct text after list refresh).
 	pingProxy := func(proxyName string, button interface{ SetText(string) }) {
@@ -920,7 +921,6 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	}
 
 	panel.proxiesList = proxiesListWidget
-	ac.UIService.ProxiesListWidget = proxiesListWidget
 
 	// Переменные для отслеживания направления сортировки
 	sortNameAscending := true
@@ -1280,7 +1280,6 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	panel.autoPingAfterConnect = func() {
 		fyne.Do(pingAllProxies)
 	}
-	ac.UIService.AutoPingAfterConnectFunc = panel.autoPingAfterConnect
 
 	// Настройки Ping test (endpoint для delay).
 	pingSettingsButton := ttwidget.NewButton("⚙", func() {

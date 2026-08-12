@@ -6,8 +6,10 @@ import (
 	"strings"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
@@ -74,6 +76,13 @@ func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyn
 	// снимает транспорт (SPEC 098 — Local всегда про своё ядро). Без этой
 	// подписки маркер ● оставался бы висеть на машине, с которой разговор
 	// уже не идёт.
+	//
+	// health-кеш здесь НЕ сбрасывается: соединение живёт, пока его не снял
+	// явный Disconnect, и переключение вкладок его не рвёт. Сброс по этому
+	// сигналу возвращал строку к «Connect» после каждого захода на Local —
+	// связь была жива, а кнопка предлагала подключиться заново.
+	//
+	// Свой кеш чистит сам disconnectMachine, там же, где рвёт канал.
 	OnOverrideChanged(func() {
 		fyne.Do(p.redrawRows)
 	})
@@ -107,19 +116,50 @@ func (p *machineListPanel) Reload() {
 
 // buildRow — одна строка машины: имя, платформа, адрес, статус и кнопки.
 func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.CanvasObject {
-	marker := "○"
-	if active {
-		marker = "●"
+	// Соединения с машиной ещё не было — про её ядро мы не знаем НИЧЕГО, и
+	// узнать можем только сходив по сети, чего без спроса делать нельзя.
+	health, connected := p.health[d.ID]
+
+	// Маркер состояния канала: зелёный — соединены, красный — соединялись, но
+	// машина не отвечает, серый — не подключались.
+	//
+	// Цветом рисуется круг, а не текст: widget.Label в Fyne красить нечем, а
+	// цвет здесь несёт смысл (это первое, что видно в списке из нескольких
+	// машин). Форма при этом одна — цвет не единственный различитель: рядом
+	// стоит либо Connect, либо Disconnect со статусом.
+	markerColor := theme.Color(theme.ColorNameDisabled)
+	switch {
+	case connected && health.Err != "":
+		markerColor = theme.Color(theme.ColorNameError)
+	case connected:
+		markerColor = theme.Color(theme.ColorNameSuccess)
 	}
-	name := widget.NewLabelWithStyle(marker+" "+d.Name, fyne.TextAlignLeading,
+	// Круг занимает ВСЮ выданную площадь (его MinSize = 1×1, а Layout
+	// растягивает), поэтому и GridWrap, и Center раздували точку до размера
+	// ячейки. Фиксируем размер собственной раскладкой и центрируем по
+	// вертикали, чтобы маркер стоял вровень с именем.
+	markerBox := container.New(&dotLayout{size: 10}, canvas.NewCircle(markerColor))
+
+	name := widget.NewLabelWithStyle(d.Name, fyne.TextAlignLeading,
 		fyne.TextStyle{Bold: active})
 
 	tgt := d.Target()
 	meta := widget.NewLabel(fmt.Sprintf("%s/%s   %s", tgt.GOOS, tgt.GOARCH, d.Addr))
 
-	// Соединения с машиной ещё не было — про её ядро мы не знаем НИЧЕГО, и
-	// узнать можем только сходив по сети, чего без спроса делать нельзя.
-	health, connected := p.health[d.ID]
+	// Connect/Disconnect — напротив АДРЕСА: кнопка про канал именно к нему,
+	// а не про ядро на той стороне (тем занимается Start/Stop у статуса).
+	var connBtn *widget.Button
+	if connected {
+		connBtn = widget.NewButton(locale.T("remote.machines.disconnect"), func() {
+			p.disconnectMachine()
+		})
+	} else {
+		connBtn = widget.NewButton(locale.T("remote.machines.connect"), func() {
+			p.connectMachine(d)
+		})
+		connBtn.Importance = widget.HighImportance
+	}
+	metaRow := container.NewBorder(nil, nil, nil, connBtn, meta)
 
 	editBtn := ttwidget.NewButton("✎", func() {
 		p.editMachine(d)
@@ -135,10 +175,10 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 
 	// Правка и удаление — напротив ИМЕНИ: это операции над самой записью,
 	// а не над её ядром, поэтому доступны и без соединения.
-	nameRow := container.NewBorder(nil, nil, nil,
+	nameRow := container.NewBorder(nil, nil, markerBox,
 		container.NewHBox(editBtn, removeBtn), name)
 
-	rows := []fyne.CanvasObject{nameRow, meta}
+	rows := []fyne.CanvasObject{nameRow, metaRow}
 
 	// Configure правит профиль машины на диске — сеть для этого не нужна,
 	// поэтому кнопка живёт до соединения (§2.4).
@@ -147,14 +187,10 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	})
 
 	if !connected {
-		// До Connect строка показывает только паспорт машины и Connect.
+		// До Connect строка показывает только паспорт машины и Configure.
 		// Ни статуса, ни Start/Stop, ни Deploy: всё это требует ответа от
 		// демона, а выдумывать его состояние — врать пользователю.
-		connectBtn := widget.NewButton(locale.T("remote.machines.connect"), func() {
-			p.connectMachine(d)
-		})
-		connectBtn.Importance = widget.HighImportance
-		rows = append(rows, container.NewHBox(configureBtn, connectBtn), widget.NewSeparator())
+		rows = append(rows, container.NewHBox(configureBtn), widget.NewSeparator())
 		return container.NewVBox(rows...)
 	}
 
@@ -205,17 +241,13 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 		deployBtn.Disable()
 	}
 
-	disconnectBtn := widget.NewButton(locale.T("remote.machines.disconnect"), func() {
-		p.disconnectMachine()
-	})
-
 	// Start/Stop — напротив СТАТУСА, который он меняет: кнопка стоит там,
 	// где виден её результат.
 	statusRow := container.NewBorder(nil, nil, nil,
 		container.NewHBox(infoBtn, powerBtn), status)
 	rows = append(rows,
 		statusRow,
-		container.NewHBox(configureBtn, deployBtn, disconnectBtn),
+		container.NewHBox(configureBtn, deployBtn),
 		widget.NewSeparator(),
 	)
 	return container.NewVBox(rows...)
@@ -519,4 +551,24 @@ func (p *machineListPanel) redrawRows() {
 		p.list.Add(p.buildRow(d, d.ID == activeID))
 	}
 	p.list.Refresh()
+}
+
+// dotLayout рисует единственный объект кругом фиксированного диаметра,
+// центрируя его по вертикали в выданной площади.
+//
+// Нужен, потому что canvas.Circle сообщает MinSize 1×1 и растягивается на всю
+// ячейку: и GridWrap, и Center давали точку размером с иконку. Здесь размер
+// задаёт раскладка, а не сам объект.
+type dotLayout struct{ size float32 }
+
+func (d *dotLayout) MinSize([]fyne.CanvasObject) fyne.Size {
+	// Ширина с полем справа — маркер не должен липнуть к имени.
+	return fyne.NewSize(d.size+6, d.size)
+}
+
+func (d *dotLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	for _, o := range objects {
+		o.Resize(fyne.NewSize(d.size, d.size))
+		o.Move(fyne.NewPos(0, (size.Height-d.size)/2))
+	}
 }
