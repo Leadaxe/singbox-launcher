@@ -4,7 +4,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
-	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/events"
@@ -58,15 +57,16 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	app.localPanel, app.remotePanel = localPanel, remotePanel
 	coreTabItem := container.NewTabItem(locale.T("app.tab.local"), localContent)
 	app.clashAPITab = container.NewTabItem(locale.T("app.tab.remote"), remoteContent)
-	// Settings tab is a no-content placeholder that acts as a button: its
-	// OnSelected handler opens the standalone Settings window (see
-	// ui/settings_window.go) and then immediately reverts tab selection
-	// back to the previously active tab. Keeps the entry point visible in
-	// the tab strip without giving Settings a full-sized tab page.
-	// Content widget is a 1-line label only to satisfy Fyne's tab-must-have-
-	// content invariant; it's never actually rendered because we revert
-	// selection before the tab content is drawn.
-	settingsTabItem := container.NewTabItem(locale.T("app.tab.settings"), widget.NewLabel(""))
+	// Settings — обычная вкладка со своим содержимым.
+	//
+	// Раньше она была кнопкой-подделкой: пустая вкладка, чей OnSelected
+	// открывал отдельное окно и тут же откатывал выбор назад. Это стоило
+	// защиты от бесконечного цикла в обработчике и делало Settings
+	// единственным пунктом строки, ведущим себя не как вкладка. Теперь
+	// содержимое рендерится на месте, отдельное окно удалено за
+	// ненадобностью.
+	settingsTabItem := container.NewTabItem(locale.T("app.tab.settings"),
+		components.WrapInScrollWithGutter(container.NewPadded(BuildSettingsContent(controller))))
 	// Tab order: Core | Servers | 🔍 Diagnostics | ⚙️ Settings | ❓ Help.
 	// Settings sits between Diagnostics and Help — close to other
 	// "launcher behavior" controls and one click away from Help.
@@ -80,21 +80,6 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 
 	// Set tab selection handler
 	app.tabs.OnSelected = func(item *container.TabItem) {
-		// Settings tab acts as a button: open the window, revert to the
-		// previous tab. The revert triggers OnSelected again with the
-		// previous TabItem — guarded by the `item == settingsTabItem`
-		// check so we don't infinite-loop.
-		if item == settingsTabItem {
-			OpenSettingsWindow(controller)
-			// Fallback to Core if user clicked Settings as their very
-			// first action (app.currentTab still nil).
-			target := app.currentTab
-			if target == nil || target == settingsTabItem {
-				target = coreTabItem
-			}
-			app.tabs.Select(target)
-			return
-		}
 		app.currentTab = item
 
 		// SPEC 098: вкладка определяет, с КАКИМ ядром идёт разговор.

@@ -26,23 +26,23 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
-// buildSettingsContent builds the Settings UI body. Collects launcher-wide
+// BuildSettingsContent builds the Settings UI body. Collects launcher-wide
 // toggles that used to be scattered across Core Dashboard (auto-update,
 // auto-ping) and Help (language + download-locales), so there's one obvious
 // place to look for "change launcher behavior".
 //
-// Originally a main-window tab (`CreateSettingsTab`); promoted to its own
-// OS window when content outgrew a single tab page. The Settings tab in the
-// AppTabs strip stays as a clickable entry point but its OnSelected handler
-// opens this content in `OpenSettingsWindow` (see ui/settings_window.go)
-// and immediately reverts tab selection — visible discoverability without
-// stealing tab real-estate.
+// Содержимое рендерится во вкладке Settings главного окна (SPEC 098 —
+// обычная вкладка, как все остальные).
+//
+// Промежуточный этап — вкладка-кнопка, открывавшая отдельное окно и тут же
+// откатывавшая выбор, — снят вместе с самим окном: она вела себя не как
+// вкладка и требовала защиты от бесконечного цикла в OnSelected.
 //
 // Settings persist to bin/settings.json via locale.LoadSettings /
 // locale.SaveSettings with load-mutate-save — we explicitly avoid the
 // `Settings{Lang: code}` "fresh struct" anti-pattern which silently wiped
 // every other field.
-func buildSettingsContent(ac *core.AppController) fyne.CanvasObject {
+func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 	binDir := platform.GetBinDir(ac.FileService.ExecDir)
 
 	// ---- Subscriptions section ---------------------------------------------
