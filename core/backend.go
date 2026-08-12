@@ -3,6 +3,8 @@ package core
 import (
 	"fmt"
 
+	"singbox-launcher/core/services"
+
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
@@ -194,14 +196,43 @@ func (ac *AppController) DaemonConnSnapshotFunc() any {
 	return src.connSnapshotFuncAny()
 }
 
-// DaemonPoolAvailable — активный бэкенд отдаёт пул балансировщика.
+// DaemonPoolAvailable — текущий источник отдаёт пул балансировщика.
+//
+// SPEC 097: сначала смотрим на активный транспорт, потом на бэкенд. Пул —
+// свойство ЯДРА, за которым мы сейчас наблюдаем: при выбранной удалённой
+// машине это её ядро, а `ac.Backend()` описывает локальное. Без этого окно
+// узла удалённой машины не показывало активного участника urltest-группы.
 func (ac *AppController) DaemonPoolAvailable() bool {
+	if ac.APIService != nil {
+		if _, ok := ac.APIService.TransportOverride().(remotePoolSource); ok {
+			return true
+		}
+	}
 	_, ok := ac.Backend().(poolSource)
 	return ok
 }
 
-// DaemonPoolSlots возвращает слоты пула выбранной группы.
+// remotePoolSource — транспорт, умеющий отдать пул (services.LxdRemoteTransport).
+// Интерфейс объявлен здесь, чтобы core не зависел от конкретного типа.
+type remotePoolSource interface {
+	PoolSlots(group string) ([]services.PoolSlot, error)
+}
+
+// DaemonPoolSlots возвращает слоты пула выбранной группы у текущего источника.
 func (ac *AppController) DaemonPoolSlots(group string) ([]PoolSlotInfo, error) {
+	if ac.APIService != nil {
+		if src, ok := ac.APIService.TransportOverride().(remotePoolSource); ok {
+			slots, err := src.PoolSlots(group)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]PoolSlotInfo, 0, len(slots))
+			for _, s := range slots {
+				out = append(out, PoolSlotInfo{Slot: s.Slot, Tag: s.Tag, Delay: s.Delay})
+			}
+			return out, nil
+		}
+	}
 	src, ok := ac.Backend().(poolSource)
 	if !ok {
 		return nil, fmt.Errorf("pool source is not available in this mode")

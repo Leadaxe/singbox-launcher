@@ -168,6 +168,37 @@ func (t *LxdRemoteTransport) Delay(proxyName string) (int64, error) {
 // Убедимся на компиляции, что транспорт реализует интерфейс.
 var _ ProxyTransport = (*LxdRemoteTransport)(nil)
 
+// PoolSlot — слот пула балансировщика удалённого ядра (SPEC 097).
+//
+// Дублирует core.PoolSlotInfo намеренно: core импортирует services, обратная
+// зависимость замкнула бы граф. Вызывающий (core/backend.go) конвертирует.
+type PoolSlot struct {
+	Slot  uint32
+	Tag   string
+	Delay uint32
+}
+
+// PoolSlots — живой пул urltest-группы удалённого ядра (lx-RPC GetPool).
+//
+// Тот же RPC, что у локального демона: активный узел группы виден только
+// работающему ядру, из конфига его не вычислить.
+func (t *LxdRemoteTransport) PoolSlots(group string) ([]PoolSlot, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	pool, err := client.GetPool(ctx, &daemonpb.GetPoolRequest{GroupTag: group})
+	if err != nil {
+		return nil, fmt.Errorf("lxd remote GetPool: %w", err)
+	}
+	slots := make([]PoolSlot, 0, len(pool.GetSlots()))
+	for _, s := range pool.GetSlots() {
+		slots = append(slots, PoolSlot{Slot: s.GetSlot(), Tag: s.GetTag(), Delay: s.GetDelay()})
+	}
+	return slots, nil
+}
+
 // Groups возвращает список тегов selector-групп удалённого ядра. Нужен
 // вкладке Servers, чтобы наполнить выпадающий список групп: локальный путь
 // берёт их из config.json, а для чужой машины файла у нас нет.

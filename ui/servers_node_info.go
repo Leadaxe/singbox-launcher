@@ -90,8 +90,22 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo) {
 		if def, ok := node.Raw["default"].(string); ok && def != "" {
 			body.Add(infoRow(locale.T("servers.node_info_default"), def))
 		}
+		// SPEC 097: активный участник группы помечается маркером. Он известен
+		// из ProxyInfo.Now (Clash-путь) либо из поля "now" сырого outbound'а
+		// (gRPC-путь GetGroups разворачивает selected в Now у совпадающего
+		// узла). Без метки окно показывало 10 равнозначных строк, и понять,
+		// через кого реально идёт трафик, было нельзя.
+		activeMember := strings.TrimSpace(proxy.Now)
+		if activeMember == "" {
+			activeMember, _ = node.Raw["now"].(string)
+		}
 		for _, member := range node.GroupMembers {
-			body.Add(memberRow(member, nodes))
+			row := memberRow(member, nodes)
+			if activeMember != "" && member == activeMember {
+				row.TextStyle = fyne.TextStyle{Bold: true}
+				row.SetText(strings.Replace(row.Text, "   · ", "   ● ", 1))
+			}
+			body.Add(row)
 		}
 
 		// Живой пул балансировщика — только urltest-группы и только в
@@ -116,13 +130,24 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo) {
 					case len(slots) == 0:
 						poolBox.Add(widget.NewLabel(locale.T("servers.node_info_pool_empty")))
 					default:
+						active := strings.TrimSpace(proxy.Now)
+						if active == "" {
+							active, _ = node.Raw["now"].(string)
+						}
 						for _, slot := range slots {
 							delay := "—"
 							if slot.Delay > 0 {
 								delay = fmt.Sprintf("%d ms", slot.Delay)
 							}
-							row := widget.NewLabel(fmt.Sprintf("   #%d  %s  ·  %s", slot.Slot, slot.Tag, delay))
+							marker := " "
+							if active != "" && slot.Tag == active {
+								marker = "●"
+							}
+							row := widget.NewLabel(fmt.Sprintf("  %s #%d  %s  ·  %s", marker, slot.Slot, slot.Tag, delay))
 							row.Truncation = fyne.TextTruncateEllipsis
+							if marker == "●" {
+								row.TextStyle = fyne.TextStyle{Bold: true}
+							}
 							poolBox.Add(row)
 						}
 					}
