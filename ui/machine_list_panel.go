@@ -55,8 +55,9 @@ func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyn
 		// приглашения и обработка ошибок enroll'а. Дублировать его здесь
 		// значило бы иметь две реализации одноразового кода.
 		OpenConnectionWindow(ac, func() {
+			// Только что добавленная машина ещё не подключена — узлов у неё
+			// для нас нет, и Refresh ушёл бы с пустой группой.
 			p.Reload()
-			p.proxies.Refresh()
 		})
 	})
 	addBtn.Importance = widget.MediumImportance
@@ -260,12 +261,16 @@ func (p *machineListPanel) loadNodes() {
 
 // disconnectMachine рвёт связь с машиной: строка сворачивается обратно к
 // паспорту с кнопкой Connect, список слева пустеет.
+//
+// Список именно ОЧИЩАЕТСЯ, а не перезагружается: Refresh пошёл бы за узлами,
+// когда транспорта уже нет и группа пуста, — и пользователь получал бы
+// «Daemon: group "" not found» в ответ на штатное отключение.
 func (p *machineListPanel) disconnectMachine() {
 	p.proxies.SetEnabled(false)
 	ClearLxdRemoteOverride(p.ac)
 	p.health = make(map[string]services.RemoteHealth)
 	p.Reload()
-	p.proxies.Refresh()
+	p.proxies.Clear()
 }
 
 // editMachine — правка имени и адреса. Платформа правится там же: это
@@ -336,7 +341,7 @@ func (p *machineListPanel) removeMachine(d services.RemoteDaemon) {
 			p.Reload()
 			if activeID == d.ID {
 				p.proxies.SetEnabled(false)
-				p.proxies.Refresh()
+				p.proxies.Clear()
 			}
 		}, p.ac.UIService.MainWindow)
 }
@@ -376,7 +381,7 @@ func (p *machineListPanel) togglePower(d services.RemoteDaemon, running bool) {
 				if p.ac.APIService != nil {
 					p.ac.APIService.ResetScope(services.ScopeRemote)
 				}
-				p.proxies.Refresh()
+				p.proxies.Clear()
 			})
 		}()
 	}

@@ -63,6 +63,7 @@ type ProxyListPanel struct {
 	resetAPIState        func()
 	autoPingAfterConnect func()
 	setEnabled           func(bool)
+	clear                func()
 }
 
 // SetEnabled показывает или прячет содержимое панели.
@@ -97,6 +98,16 @@ func (p *ProxyListPanel) Activate(ac *core.AppController) {
 func (p *ProxyListPanel) Refresh() {
 	if p != nil && p.refreshAPI != nil {
 		p.refreshAPI()
+	}
+}
+
+// Clear очищает список панели, НЕ ходя в сеть.
+//
+// Нужен при отключении от машины: собеседника уже нет, и Refresh ушёл бы
+// за узлами с пустой группой, отвечая ошибкой на штатное действие.
+func (p *ProxyListPanel) Clear() {
+	if p != nil && p.clear != nil {
+		p.clear()
 	}
 }
 
@@ -465,6 +476,16 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	// быть рабочей ещё до первого переключения вкладок.
 	panel.refreshAPI = onTestAPIConnection
 	panel.resetAPIState = onResetAPIState
+	// Очистка при отключении: тот же сброс состояния, но статус-строка
+	// объясняет причину пустого списка — машина отключена, а не ядро упало.
+	panel.clear = func() {
+		onResetAPIState()
+		fyne.Do(func() {
+			if panel.listStatusLabel != nil {
+				panel.listStatusLabel.SetText(locale.T("remote.proxies.no_machine"))
+			}
+		})
+	}
 	if ac.UIService != nil {
 		ac.UIService.RefreshAPIFunc = onTestAPIConnection
 		ac.UIService.ResetAPIStateFunc = onResetAPIState

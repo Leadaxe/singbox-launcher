@@ -122,9 +122,11 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 			app.localPanel.Activate(controller)
 			ClearLxdRemoteOverride(controller)
 			// Транспорт машины снят — панель Remote снова без собеседника.
-			// Прячем её, иначе при возврате на вкладку она встретит
-			// пользователя органами управления, которым некуда обращаться.
+			// Гасим её органы управления и чистим список, иначе при возврате
+			// на вкладку пользователя встретят узлы машины, с которой разговор
+			// уже не идёт.
 			app.remotePanel.SetEnabled(false)
+			app.remotePanel.Clear()
 		case app.clashAPITab:
 			if controller.APIService != nil {
 				controller.APIService.SetProxyScope(services.ScopeRemote)
