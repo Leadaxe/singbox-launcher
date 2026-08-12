@@ -17,7 +17,6 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/lxdclient"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui/components"
 )
@@ -65,53 +64,14 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	// --- Консольные команды ----------------------------------------------
 	// Каждая строка: подпись, команда (копируемое поле), кнопки copy/terminal.
 	// Команды перечитываются при каждом действии (адрес мог смениться).
-	commandRow := func(labelKey string, command func() (string, error)) fyne.CanvasObject {
-		entry := widget.NewEntry()
-		entry.Wrapping = fyne.TextWrapOff
-		if text, err := command(); err == nil {
-			entry.SetText(text)
-		}
-		var copyBtn *ttwidget.Button
-		copyBtn = ttwidget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
-			text, err := command()
-			if err != nil {
-				ShowError(win, err)
-				return
-			}
-			entry.SetText(text)
-			win.Clipboard().SetContent(text)
-			// Тихий фидбек: иконка на секунду становится галочкой. Никаких
-			// системных нотификаций и модалок ради копирования строки.
-			copyBtn.SetIcon(theme.ConfirmIcon())
-			go func() {
-				time.Sleep(1200 * time.Millisecond)
-				fyne.Do(func() { copyBtn.SetIcon(theme.ContentCopyIcon()) })
-			}()
-		})
-		copyBtn.SetToolTip(locale.T("conn.cmd_copy_tooltip"))
-		termBtn := ttwidget.NewButtonWithIcon("", theme.ComputerIcon(), func() {
-			text, err := command()
-			if err != nil {
-				ShowError(win, err)
-				return
-			}
-			entry.SetText(text)
-			if err := ac.OpenTerminalWithCommand(text); err != nil {
-				ShowError(win, err)
-			}
-		})
-		termBtn.SetToolTip(locale.T("conn.cmd_terminal_tooltip"))
-		rowLabel := widget.NewLabel(locale.T(labelKey))
-		rowLabel.Wrapping = fyne.TextWrapWord
-		return container.NewVBox(
-			rowLabel,
-			container.NewBorder(nil, nil, nil, container.NewHBox(copyBtn, termBtn), entry),
-		)
+	// Команды локальные — терминал открывается на этой же машине.
+	commandRowLocal := func(labelKey string, command func() (string, error)) fyne.CanvasObject {
+		return CommandRow(win, labelKey, command, true)
 	}
 
 	maintenanceCommands := container.NewVBox(
 		widget.NewLabelWithStyle(locale.T("conn.cmd_section"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		commandRow("conn.cmd_kickstart", func() (string, error) { return ac.DaemonKickstartCommand(), nil }),
+		commandRowLocal("conn.cmd_kickstart", func() (string, error) { return ac.DaemonKickstartCommand(), nil }),
 	)
 
 	// --- Сопряжение по приглашению ---------------------------------------
@@ -272,7 +232,7 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	//    в Maintenance (lxd client add).
 	installSection := container.NewVBox(
 		widget.NewLabelWithStyle(locale.T("conn.install_section"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		commandRow("conn.install_step_cmd", ac.DaemonInstallCommand),
+		commandRowLocal("conn.install_step_cmd", ac.DaemonInstallCommand),
 		wrappedLabel("conn.install_step_pair"),
 		container.NewBorder(nil, nil, nil, container.NewHBox(pairBtn, pairHelp), inviteEntry),
 	)
@@ -368,13 +328,6 @@ func activateDaemonEngineIfPossible(ac *core.AppController) {
 	if err := locale.SaveSettings(binDir, st); err != nil {
 		debuglog.WarnLog("conn: save core_backend_mode: %v", err)
 	}
-}
-
-// connectionScopeIsRemote — текущее подключение указывает на удалённый демон
-// (адрес задан и не loopback): окно подключения открывается в REMOTE-виде.
-func connectionScopeIsRemote(ac *core.AppController) bool {
-	st := locale.LoadSettings(platform.GetBinDir(ac.FileService.ExecDir))
-	return st.DaemonAddress != "" && !lxdclient.IsLoopbackAddr(st.DaemonAddress)
 }
 
 // showCommandHelpDialog — единый вид справок «текст + готовая команда»:

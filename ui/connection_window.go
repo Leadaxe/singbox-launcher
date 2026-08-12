@@ -16,7 +16,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
 	"singbox-launcher/internal/locale"
@@ -42,48 +41,15 @@ func OpenConnectionWindow(ac *core.AppController, onChanged func()) {
 
 	win := ac.UIService.Application.NewWindow(locale.T("conn.window_title"))
 
-	localContent := buildLocalEngineTab(ac, win, onChanged)
-	// SPEC 097: область Remote — только про ЧУЖИЕ машины.
+	// SPEC 098: окно осталось ТОЛЬКО про локальное ядро — движок
+	// (classic/daemon) и сопряжение со своим демоном.
 	//
-	// Раньше здесь жила ещё панель сопряжения своего демона
-	// (buildRemoteDaemonPanel): её диагностика показывала ЛОКАЛЬНЫЙ демон
-	// под заголовком «Remote», а её Pair дублировал «Add machine» ниже — и
-	// именно он затирал адрес своего демона при сопряжении с роутером.
-	// Статус локального демона уже есть во вкладке Local, дубль убран.
-	remoteContent := buildRemoteDaemonsPanel(ac, win, onChanged)
-
-	var body fyne.CanvasObject
-	{
-		localBox := container.NewVBox(localContent)
-		remoteBox := container.NewVBox(remoteContent)
-		showScope := func(remote bool) {
-			if remote {
-				localBox.Hide()
-				remoteBox.Show()
-			} else {
-				remoteBox.Hide()
-				localBox.Show()
-			}
-		}
-		scopeLocal := locale.T("conn.scope_local")
-		scopeRemote := locale.T("conn.scope_remote")
-		scope := widget.NewRadioGroup([]string{scopeLocal, scopeRemote}, func(selected string) {
-			showScope(selected == scopeRemote)
-		})
-		scope.Horizontal = true
-		scope.Required = true
-		// Стартовое положение — где живёт текущее подключение: daemon-режим
-		// с не-loopback адресом = удалённый демон.
-		// Активное подключение к удалённой машине — тоже remote-область.
-		if _, _, lxdActive := GetLxdRemoteOverride(); lxdActive || connectionScopeIsRemote(ac) {
-			scope.SetSelected(scopeRemote)
-			showScope(true)
-		} else {
-			scope.SetSelected(scopeLocal)
-			showScope(false)
-		}
-		body = container.NewVBox(scope, widget.NewSeparator(), localBox, remoteBox)
-	}
+	// Переключатель Local/Remote и список чужих машин отсюда убраны: ими
+	// целиком заведует правая колонка вкладки Remote, где у каждой машины своя
+	// строка с Connect, Configure и Deploy. Две точки управления одними и теми
+	// же машинами — это два места, где можно ошибиться, и ровно оттуда росла
+	// путаница «сопрягся с роутером, а затёрся адрес своего демона».
+	body := container.NewVBox(buildLocalEngineTab(ac, win, onChanged))
 
 	// Строго вертикальный скролл: по ширине контент ужимается под окно
 	// (Label'ы с Wrapping), правая полоса — канонический gutter проекта

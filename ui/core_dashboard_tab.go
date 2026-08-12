@@ -332,8 +332,29 @@ func (tab *CoreDashboardTab) createStatusRow() fyne.CanvasObject {
 		pop.ShowAtPosition(fyne.NewPos(pos.X, pos.Y+restartButton.Size().Height))
 	}
 
-	statusContainer := container.NewHBox(
-		tab.statusLabel,
+	// Настройки подключения ЛОКАЛЬНОГО ядра: движок (classic/daemon) и
+	// сопряжение со своим демоном (SPEC 098).
+	//
+	// Раньше кнопка жила в шапке списка прокси, который может показывать узлы
+	// роутера, — и читалась как настройка удалённой машины. Её место здесь,
+	// рядом со статусом ядра, к которому она и относится.
+	connBtn := ttwidget.NewButton("⚙", func() {
+		OpenConnectionWindow(tab.controller, func() {
+			// Сменился движок или сопряжение — список прокси должен перечитать
+			// данные нового транспорта.
+			if tab.controller.UIService != nil && tab.controller.UIService.ResetAPIStateFunc != nil {
+				tab.controller.UIService.ResetAPIStateFunc()
+			}
+			if tab.controller.UIService != nil && tab.controller.UIService.RefreshAPIFunc != nil {
+				tab.controller.UIService.RefreshAPIFunc()
+			}
+		})
+	})
+	connBtn.SetToolTip(locale.T("core.connection_settings_tooltip"))
+	connBtn.Importance = widget.LowImportance
+
+	statusContainer := container.NewBorder(nil, nil,
+		tab.statusLabel, connBtn,
 	)
 
 	buttonsContainer := container.NewCenter(

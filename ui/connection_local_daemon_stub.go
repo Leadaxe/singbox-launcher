@@ -13,6 +13,3 @@ import (
 func buildDaemonPanel(_ *core.AppController, _ fyne.Window, _ func()) fyne.CanvasObject {
 	return nil
 }
-
-// connectionScopeIsRemote — вне macOS удалённого демона нет.
-func connectionScopeIsRemote(_ *core.AppController) bool { return false }
