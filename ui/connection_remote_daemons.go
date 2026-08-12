@@ -60,9 +60,20 @@ func buildRemoteDaemonsPanel(ac *core.AppController, win fyne.Window, onChanged 
 	}
 
 	remove := func(entry services.RemoteDaemon) {
-		dialog.ShowConfirm(
+		// Команда отзыва — отдельным полем: из текста диалога её не
+		// скопировать, а печатать руками — лишний повод ошибиться. Забыть
+		// ключ у себя и отозвать доступ на машине — РАЗНЫЕ действия, и
+		// второе мы сделать не можем: оно на той стороне.
+		revokeCmd := widget.NewEntry()
+		revokeCmd.SetText("sudo sing-box lxd client remove singbox-launcher")
+		revokeCmd.Wrapping = fyne.TextWrapOff
+		warn := wrappedInfoLabel(locale.Tf("conn.remotes.remove_body", entry.Name))
+		warn.Importance = widget.WarningImportance
+
+		d := dialog.NewCustomConfirm(
 			locale.T("conn.remotes.remove_title"),
-			locale.Tf("conn.remotes.remove_body", entry.Name),
+			locale.T("conn.remotes.remove_action"), locale.T("diag.cancel"),
+			container.NewVBox(warn, revokeCmd),
 			func(ok bool) {
 				if !ok {
 					return
@@ -82,6 +93,8 @@ func buildRemoteDaemonsPanel(ac *core.AppController, win fyne.Window, onChanged 
 				}
 				notify()
 			}, win)
+		d.Resize(fyne.NewSize(620, 340))
+		d.Show()
 	}
 
 	editEntry := func(entry services.RemoteDaemon) {

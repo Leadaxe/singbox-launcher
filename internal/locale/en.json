@@ -875,7 +875,7 @@
   "conn.remotes.addr_hint": "The invite carries the daemon listen address. If the daemon listens on 0.0.0.0, put the address you actually reach it at (for example the router LAN IP).",
   "conn.remotes.remove": "Remove",
   "conn.remotes.remove_title": "Remove machine",
-  "conn.remotes.remove_body": "Forget %s and delete its client key? The registration on the daemon side stays until removed there.",
+  "conn.remotes.remove_body": "Forget %s and delete its client key here?\n\nIMPORTANT: this does NOT revoke access on the machine itself — the launcher stays a trusted client there. To revoke it, run on that machine:\n\n    sudo sing-box lxd client remove singbox-launcher\n\nWithout that the old key keeps working for anyone who has it.",
   "wizard.save.remote_needs_parse": "Subscriptions have not been parsed for this target yet, so the config would contain no proxy nodes. Open the Preview tab (or press Read on Sources) to parse them, then save again.",
   "conn.remotes.import_title": "Add a paired machine",
   "conn.remotes.import_action": "Add paired machine",
@@ -893,5 +893,6 @@
   "conn.remotes.edit": "Edit",
   "conn.remotes.edit_title": "Machine settings",
   "conn.remotes.secret_placeholder": "only for a daemon without TLS",
-  "servers.endpoint.picker_tooltip": "Which machine the Servers tab manages"
+  "servers.endpoint.picker_tooltip": "Which machine the Servers tab manages",
+  "conn.remotes.remove_action": "Forget it here"
 }
