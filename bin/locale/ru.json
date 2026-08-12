@@ -869,8 +869,6 @@
   "conn.remotes.unavailable": "Удалённые машины недоступны: нет контроллера.",
   "conn.remotes.name": "Имя",
   "conn.remotes.name_placeholder": "Роутер",
-  "conn.remotes.connect": "Подключить",
-  "conn.remotes.disconnect": "Отключить",
   "conn.remotes.addr": "host:port",
   "conn.remotes.addr_hint": "В приглашении стоит listen-адрес демона. Если демон слушает 0.0.0.0, укажите адрес, по которому вы реально до него достучитесь (например LAN-адрес роутера).",
   "conn.remotes.remove": "Удалить",
@@ -898,5 +896,10 @@
   "conn.remotes.health_checking": "проверяем…",
   "conn.remotes.health_unreachable": "недоступна",
   "conn.remotes.health_core": "ядро: %s",
-  "conn.remotes.health_daemon": "демон %s"
+  "conn.remotes.health_daemon": "демон %s",
+  "servers.power.start": "Запустить",
+  "servers.power.stop": "Остановить",
+  "servers.power.local": "локальное ядро",
+  "servers.power.stop_title": "Остановить ядро",
+  "servers.power.stop_body": "Остановить ядро на %s? У всех, кто ходит через эту машину, пропадёт VPN, пока его не запустят снова."
 }

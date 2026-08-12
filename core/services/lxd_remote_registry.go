@@ -396,27 +396,10 @@ type RemoteHealth struct {
 // Блокирующий вызов по сети — вызывающий обязан звать из горутины, иначе
 // недоступный роутер подвесит UI на таймаут REST-клиента.
 func (r *RemoteRegistry) Health(id string) RemoteHealth {
-	entry, ok, err := r.Get(id)
+	client, err := r.adminClient(id)
 	if err != nil {
 		return RemoteHealth{Err: err.Error()}
 	}
-	if !ok {
-		return RemoteHealth{Err: fmt.Sprintf("unknown id %q", id)}
-	}
-	cfg := lxdclient.Config{
-		Addr:              entry.Addr,
-		ServerFingerprint: entry.ServerFingerprint,
-		Secret:            entry.Secret,
-	}
-	if cfg.TLSEnabled() {
-		identity, idErr := lxdclient.LoadOrCreateIdentity(r.identityDir(id))
-		if idErr != nil {
-			return RemoteHealth{Err: idErr.Error()}
-		}
-		cfg.Identity = identity
-	}
-	client := lxdclient.New(cfg)
-
 	status, err := client.Status()
 	if err != nil {
 		return RemoteHealth{Err: err.Error()}
@@ -433,6 +416,60 @@ func (r *RemoteRegistry) Health(id string) RemoteHealth {
 		out.StateDir = info.StateDir
 	}
 	return out
+}
+
+// StartCore / StopCore — запуск и остановка ЯДРА на удалённой машине
+// (SPEC 097).
+//
+// Демон переживает обе операции: он держит ядро внутри себя, а управляющий
+// канал остаётся. Останов ядра рвёт VPN у всех, кто ходит через эту машину,
+// поэтому вызывающий обязан спросить подтверждение.
+//
+// Блокирующие сетевые вызовы — звать из горутины.
+func (r *RemoteRegistry) StartCore(id string) error {
+	client, err := r.adminClient(id)
+	if err != nil {
+		return err
+	}
+	if err := client.Start(); err != nil {
+		return fmt.Errorf("remote start: %w", err)
+	}
+	return nil
+}
+
+func (r *RemoteRegistry) StopCore(id string) error {
+	client, err := r.adminClient(id)
+	if err != nil {
+		return err
+	}
+	if err := client.Stop(); err != nil {
+		return fmt.Errorf("remote stop: %w", err)
+	}
+	return nil
+}
+
+// adminClient собирает REST-клиента к записи реестра (адрес + пин + ключ).
+func (r *RemoteRegistry) adminClient(id string) (*lxdclient.Client, error) {
+	entry, ok, err := r.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("remote registry: unknown id %q", id)
+	}
+	cfg := lxdclient.Config{
+		Addr:              entry.Addr,
+		ServerFingerprint: entry.ServerFingerprint,
+		Secret:            entry.Secret,
+	}
+	if cfg.TLSEnabled() {
+		identity, idErr := lxdclient.LoadOrCreateIdentity(r.identityDir(id))
+		if idErr != nil {
+			return nil, fmt.Errorf("remote registry: identity for %q: %w", id, idErr)
+		}
+		cfg.Identity = identity
+	}
+	return lxdclient.New(cfg), nil
 }
 
 // Transport строит ProxyTransport к сохранённому подключению.

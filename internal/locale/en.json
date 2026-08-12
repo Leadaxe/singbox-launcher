@@ -869,8 +869,6 @@
   "conn.remotes.unavailable": "Remote machines are unavailable: no controller.",
   "conn.remotes.name": "Name",
   "conn.remotes.name_placeholder": "Router",
-  "conn.remotes.connect": "Connect",
-  "conn.remotes.disconnect": "Disconnect",
   "conn.remotes.addr": "host:port",
   "conn.remotes.addr_hint": "The invite carries the daemon listen address. If the daemon listens on 0.0.0.0, put the address you actually reach it at (for example the router LAN IP).",
   "conn.remotes.remove": "Remove",
@@ -898,5 +896,10 @@
   "conn.remotes.health_checking": "checking…",
   "conn.remotes.health_unreachable": "unreachable",
   "conn.remotes.health_core": "core: %s",
-  "conn.remotes.health_daemon": "daemon %s"
+  "conn.remotes.health_daemon": "daemon %s",
+  "servers.power.start": "Start",
+  "servers.power.stop": "Stop",
+  "servers.power.local": "local core",
+  "servers.power.stop_title": "Stop the core",
+  "servers.power.stop_body": "Stop the core on %s? Everyone routing through that machine loses VPN until it is started again."
 }

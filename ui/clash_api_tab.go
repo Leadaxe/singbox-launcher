@@ -1361,10 +1361,18 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	endpointGearBtn.SetToolTip(locale.T("servers.endpoint.tooltip_settings"))
 	endpointGearBtn.Importance = widget.LowImportance
 
+	// SPEC 097: слева — управление ядром ВЫБРАННОЙ машины (кнопка Start/Stop
+	// + короткий статус). Прежний ApiStatusLabel всегда показывал локальное
+	// ядро, даже когда выбран роутер, и управлять удалённым ядром было нечем.
+	powerControl := newEndpointPowerControl(ac, func() {
+		onResetAPIState()
+		onLoadAndRefreshProxies()
+	})
+
 	topControls := container.NewVBox(
 		container.NewBorder(
 			nil, nil,
-			ac.UIService.ApiStatusLabel,
+			powerControl.container,
 			container.NewHBox(endpointBadge, endpointGearBtn),
 		),
 		container.NewHBox(widget.NewLabel(locale.T("servers.label_selector_group")), groupSelect, mapButton),

@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
@@ -44,19 +45,6 @@ func buildRemoteDaemonsPanel(ac *core.AppController, win fyne.Window, onChanged 
 		if onChanged != nil {
 			onChanged()
 		}
-	}
-
-	connectTo := func(entry services.RemoteDaemon) {
-		if err := SetLxdRemoteOverride(ac, entry.ID); err != nil {
-			dialog.ShowError(err, win)
-			return
-		}
-		notify()
-	}
-
-	disconnect := func() {
-		ClearLxdRemoteOverride()
-		notify()
 	}
 
 	remove := func(entry services.RemoteDaemon) {
@@ -286,17 +274,22 @@ func buildRemoteDaemonsPanel(ac *core.AppController, win fyne.Window, onChanged 
 			}(entry.ID, healthLbl)
 
 			// Кнопки — одной строкой справа, компактно.
-			var actionBtn *widget.Button
-			if isActive {
-				actionBtn = widget.NewButton(locale.T("conn.remotes.disconnect"), disconnect)
-			} else {
-				actionBtn = widget.NewButton(locale.T("conn.remotes.connect"), func() { connectTo(entry) })
-				actionBtn.Importance = widget.HighImportance
-			}
+			// Переключение источника живёт в дропдауне шапки Servers —
+			// одно действие, один путь. Кнопка Connect здесь была вторым
+			// способом делать то же самое; активная машина видна по точке
+			// в имени.
 			editBtn := widget.NewButton(locale.T("conn.remotes.edit"), func() { editEntry(entry) })
 			delBtn := widget.NewButton(locale.T("conn.remotes.remove"), func() { remove(entry) })
 			delBtn.Importance = widget.DangerImportance
-			buttons := container.NewHBox(actionBtn, editBtn, delBtn)
+			// VBox со спейсерами вокруг: NewBorder растягивает боковой
+			// элемент на всю высоту строки, и кнопки вытягивались в
+			// вертикальные плашки. Спейсеры отдают им естественную высоту
+			// и центрируют по строке.
+			buttons := container.NewVBox(
+				layout.NewSpacer(),
+				container.NewHBox(editBtn, delBtn),
+				layout.NewSpacer(),
+			)
 
 			list.Add(container.NewBorder(
 				nil, nil, nil, buttons,
