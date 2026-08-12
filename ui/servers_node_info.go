@@ -509,12 +509,10 @@ func formatDelay(delay int64) string {
 // узел, слотов у него нет. Показывать пустую секцию для least_test —
 // значит выдавать штатное поведение за отсутствие данных.
 func groupUsesPool(node *wizardbusiness.ConfigNode) bool {
-	for _, key := range []string{"balance_strategy", "strategy", "balance"} {
-		if v, ok := node.Raw[key].(string); ok && strings.TrimSpace(v) != "" {
-			return strings.EqualFold(strings.TrimSpace(v), "round_robin")
-		}
-	}
-	return false
+	// Поле форка — "mode": least_test (по умолчанию) | round_robin
+	// (option/group.go). Пул наполняет только round_robin.
+	mode, _ := node.Raw["mode"].(string)
+	return strings.EqualFold(strings.TrimSpace(mode), "round_robin")
 }
 
 // groupSelectionSource — транспорт, умеющий пушить смену выбранного узла
