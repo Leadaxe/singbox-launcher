@@ -189,6 +189,7 @@ func routeConfigFromModel(model *wizardmodels.WizardModel) build.RouteConfig {
 		Rules:                     rules,
 		FinalOutbound:             model.SelectedFinalOutbound,
 		ExecDir:                   model.ExecDir,
+		ResourceDir:               model.ResourceDir,
 		DefaultDomainResolver:     model.DefaultDomainResolver,
 		OmitDefaultDomainResolver: model.DefaultDomainResolverUnset,
 	}

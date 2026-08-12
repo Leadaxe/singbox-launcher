@@ -352,6 +352,17 @@ func (p *WizardPresenter) exportRemoteConfig() {
 		})
 		return
 	}
+	// Страховка на случай, если визард для машины открыли в обход строки
+	// списка: без state_dir пути .srs указывали бы в файловую систему
+	// лаунчера, и ядро на той стороне не нашло бы наборы. Молча собрать такой
+	// конфиг хуже, чем отказаться: сбой всплыл бы только после Deploy.
+	if p.model.ResourceDir == "" && p.modelHasRuleSetFiles() {
+		debuglog.WarnLog("exportRemoteConfig: no resource dir for machine %q — connect first", p.ConfigMachineID())
+		p.UpdateUI(func() {
+			dialog.ShowError(errors.New(locale.T("wizard.save.remote_needs_connect")), p.guiState.Window)
+		})
+		return
+	}
 	configText, err := wizardbusiness.BuildRemoteConfig(p.model)
 	if err != nil {
 		debuglog.ErrorLog("exportRemoteConfig: build failed: %v", err)
@@ -423,4 +434,30 @@ func (p *WizardPresenter) showRemoteExportDialog(outPath string) {
 	// колонку (та же ловушка, что с длинными Label в других окнах проекта).
 	d.Resize(fyne.NewSize(720, 260))
 	d.Show()
+}
+
+// modelHasRuleSetFiles — есть ли в правилах наборы, которые лежат ФАЙЛОМ
+// (скачанный .srs), а не inline-списком.
+//
+// Только они требуют ресурс-стора на удалённой машине: inline уезжает внутри
+// самого конфига и никаких путей не просит.
+func (p *WizardPresenter) modelHasRuleSetFiles() bool {
+	if p.model == nil {
+		return false
+	}
+	for _, rs := range p.model.CustomRules {
+		if rs == nil || !rs.Enabled {
+			continue
+		}
+		for _, raw := range rs.Rule.RuleSets {
+			var m map[string]interface{}
+			if err := json.Unmarshal(raw, &m); err != nil {
+				continue
+			}
+			if typ, _ := m["type"].(string); typ == "remote" || typ == "local" {
+				return true
+			}
+		}
+	}
+	return false
 }

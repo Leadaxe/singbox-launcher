@@ -43,6 +43,17 @@ type RouteConfig struct {
 	// ExecDir — директория для разрешения SRS local-path
 	// (services.RuleSRSPath / services.SRSFileExists).
 	ExecDir string
+	// ResourceDir — АБСОЛЮТНАЯ директория ресурсов на машине, для которой
+	// собирается конфиг: `<state_dir>/resources` удалённого демона
+	// (SPEC 063 форка). Пусто = конфиг для этой машины, пути берутся из
+	// ExecDir как раньше.
+	//
+	// Зачем отдельное поле: путь в rule_set[].path резолвит ЯДРО, а оно
+	// работает на той стороне. Подставляя сюда свой ExecDir, лаунчер эмитил
+	// путь собственной файловой системы — на роутере такого нет, ядро не
+	// находило набор и не поднималось. Значение приходит из
+	// `GET /admin/info` → state_dir; собирать его самим нельзя.
+	ResourceDir string
 	// DefaultDomainResolver — переопределяет ключ route.default_domain_resolver.
 	// Игнорируется, если OmitDefaultDomainResolver=true.
 	DefaultDomainResolver string
@@ -103,7 +114,7 @@ func MergeRouteSection(raw json.RawMessage, cfg RouteConfig) (json.RawMessage, e
 		// error, конфиг не пересобирается; пользователь видит сообщение и
 		// перекачивает SRS вручную через Wizard.
 		for _, rs := range r.RuleSets {
-			rsObj, err := convertRuleSetToLocalRequired(rs, cfg.ExecDir)
+			rsObj, err := convertRuleSetToLocalRequired(rs, cfg.ExecDir, cfg.ResourceDir)
 			if err != nil {
 				return nil, err
 			}
@@ -144,6 +155,17 @@ func MergeRouteSection(raw json.RawMessage, cfg RouteConfig) (json.RawMessage, e
 	return json.Marshal(route)
 }
 
+// ResourceNameForSRS — имя, под которым rule-set с тегом tag живёт в
+// ресурс-сторе удалённой машины (SPEC 063).
+//
+// Единственное место, где это имя образуется: генерация подставляет его в
+// rule_set[].path, а Deploy — в PUT /admin/resources/{name}. Разъедься они —
+// конфиг ссылался бы на файл, которого в сторе нет, и ядро не поднялось бы.
+//
+// Тег уже content-addressed (SRSTagFromURL), поэтому имя стабильно и
+// безопасно как базовое: без разделителей пути и без «..».
+func ResourceNameForSRS(tag string) string { return tag + ".srs" }
+
 // convertRuleSetToLocalRequired эмитит rule-set строго как type:local (или
 // inline). Логика по типу:
 //
@@ -164,7 +186,7 @@ func MergeRouteSection(raw json.RawMessage, cfg RouteConfig) (json.RawMessage, e
 //   - state.json пришёл с другой машины с уже-local entry, но файла нет
 //
 // Идемпотентно: повторный вызов с тем же rule-set даёт тот же результат.
-func convertRuleSetToLocalRequired(rs json.RawMessage, execDir string) (interface{}, error) {
+func convertRuleSetToLocalRequired(rs json.RawMessage, execDir, resourceDir string) (interface{}, error) {
 	var m map[string]interface{}
 	if err := json.Unmarshal(rs, &m); err != nil {
 		return nil, fmt.Errorf("rule-set: invalid JSON: %w", err)
@@ -186,13 +208,18 @@ func convertRuleSetToLocalRequired(rs json.RawMessage, execDir string) (interfac
 			}
 			return nil, fmt.Errorf("rule-set %q: local entry missing path", tag)
 		}
-		if _, err := os.Stat(path); err != nil {
-			label := tag
-			if label == "" {
-				label = path
+		// Для чужой машины путь резолвит ЕЁ ядро — проверять его на своей
+		// файловой системе бессмысленно: файла тут нет по определению, а
+		// os.Stat завалил бы сборку исправного конфига.
+		if resourceDir == "" {
+			if _, err := os.Stat(path); err != nil {
+				label := tag
+				if label == "" {
+					label = path
+				}
+				return nil, fmt.Errorf("rule-set %q: local file missing at %s — open Configurator → Rules and re-download",
+					label, path)
 			}
-			return nil, fmt.Errorf("rule-set %q: local file missing at %s — open Configurator → Rules and re-download",
-				label, path)
 		}
 		return m, nil
 
@@ -203,15 +230,26 @@ func convertRuleSetToLocalRequired(rs json.RawMessage, execDir string) (interfac
 		if execDir == "" {
 			return nil, fmt.Errorf("rule-set %q: cannot resolve local path (empty execDir)", tag)
 		}
+		// Файл обязан быть скачан У НАС в любом случае: для локальной машины
+		// ядро прочитает его отсюда, для удалённой — Deploy зальёт его в
+		// ресурс-стор перед применением конфига.
 		if !services.SRSFileExists(execDir, tag) {
 			return nil, fmt.Errorf("rule-set %q: local file missing at %s — open Configurator → Rules and re-download",
 				tag, services.RuleSRSPath(execDir, tag))
+		}
+		path := services.RuleSRSPath(execDir, tag)
+		if resourceDir != "" {
+			// Конфиг для удалённой машины: путь указывает в её ресурс-стор
+			// (SPEC 063), куда Deploy зальёт этот же файл под именем
+			// <tag>.srs. Собственный путь лаунчера на той стороне не
+			// существует.
+			path = resourceDir + "/" + ResourceNameForSRS(tag)
 		}
 		return map[string]interface{}{
 			"tag":    tag,
 			"type":   "local",
 			"format": "binary",
-			"path":   services.RuleSRSPath(execDir, tag),
+			"path":   path,
 		}, nil
 
 	default:

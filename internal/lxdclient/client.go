@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -226,6 +227,94 @@ func (c *Client) ActiveConfig() ([]byte, error) {
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 }
+
+// --- Ресурсы (.srs и прочие файлы, на которые ссылается конфиг) ----------
+//
+// Второй канал полезной нагрузки admin-плоскости (SPEC 063 форка ядра).
+// Конфиг сплошь и рядом ссылается на внешние файлы — скомпилированные
+// rule-set'ы `type: local, format: binary`. До появления этого стора класть
+// их на машину было некуда, и лаунчер эмитил путь СВОЕЙ файловой системы:
+// на удалённой машине такого пути нет, ядро не находило набор и не
+// поднималось. `type: remote` не годится — источник правды по ресурсам
+// оператор, а не публичный HTTP-хост.
+//
+// Адресация по имени: путь всегда `<state_dir>/resources/<name>`, содержимое
+// перезаливается под тем же именем. sha256 в каждом ответе — по нему клиент
+// решает, гнать ли байты вообще.
+
+// Resource — метаданные одного файла в сторе.
+type Resource struct {
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
+	Size   int64  `json:"size"`
+	// Path — АБСОЛЮТНЫЙ путь на машине демона. Копируется в конфиг как есть:
+	// собирать его самим нельзя (относительный путь резолвится от cwd ядра, и
+	// конфиг ломается при другом cwd).
+	Path string `json:"path"`
+}
+
+// Resources возвращает список залитых ресурсов с хешами (GET /admin/resources).
+func (c *Client) Resources() ([]Resource, error) {
+	resp, err := c.do(http.MethodGet, "/admin/resources", nil, "")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("lxdclient: resources: %s", decodeError(resp))
+	}
+	var out []Resource
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&out); err != nil {
+		return nil, fmt.Errorf("lxdclient: resources: parse: %w", err)
+	}
+	return out, nil
+}
+
+// PutResource заливает (или перезаписывает) ресурс под именем name.
+//
+// 409 означает, что на имя ссылается активный или last-good конфиг: стор
+// именованный, и подмена файла под живой ссылкой сделала бы откат ядра
+// дырявым — текст конфига откатился бы, а набор под именем остался новым.
+// Порядок «сначала залить, потом сослаться» поэтому не пожелание, а
+// требование демона.
+func (c *Client) PutResource(name string, body []byte) (Resource, error) {
+	if strings.TrimSpace(name) == "" {
+		return Resource{}, fmt.Errorf("lxdclient: resource name is empty")
+	}
+	resp, err := c.do(http.MethodPut, "/admin/resources/"+url.PathEscape(name),
+		bytes.NewReader(body), "application/octet-stream")
+	if err != nil {
+		return Resource{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return Resource{}, &ResourceError{
+			StatusCode: resp.StatusCode,
+			Name:       name,
+			Message:    decodeError(resp),
+		}
+	}
+	var out Resource
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
+		return Resource{}, fmt.Errorf("lxdclient: resource %q: parse: %w", name, err)
+	}
+	return out, nil
+}
+
+// ResourceError — отказ операции над ресурсом. StatusCode 409 = имя занято
+// активным/last-good конфигом (см. PutResource).
+type ResourceError struct {
+	StatusCode int
+	Name       string
+	Message    string
+}
+
+func (e *ResourceError) Error() string {
+	return fmt.Sprintf("resource %q: HTTP %d: %s", e.Name, e.StatusCode, e.Message)
+}
+
+// InUse — ресурс занят живой ссылкой из конфига.
+func (e *ResourceError) InUse() bool { return e.StatusCode == http.StatusConflict }
 
 // --- Сопряжение ---------------------------------------------------------
 

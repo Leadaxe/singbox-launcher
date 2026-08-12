@@ -297,7 +297,7 @@ func TestApplyRouteOutbound_Direct(t *testing.T) {
 // (нельзя резолвить локальный путь).
 func TestConvertRuleSetToLocalRequired_NoExecDir(t *testing.T) {
 	in := json.RawMessage(`{"tag":"x","type":"remote","url":"http://..."}`)
-	got, err := convertRuleSetToLocalRequired(in, "")
+	got, err := convertRuleSetToLocalRequired(in, "", "")
 	if err == nil {
 		t.Errorf("no execDir → expected error, got value: %v", got)
 	}
@@ -306,7 +306,7 @@ func TestConvertRuleSetToLocalRequired_NoExecDir(t *testing.T) {
 // TestConvertRuleSetToLocalRequired_NonRemoteUntouched — local/inline не трогаем.
 func TestConvertRuleSetToLocalRequired_NonRemoteUntouched(t *testing.T) {
 	in := json.RawMessage(`{"tag":"x","type":"inline","rules":[]}`)
-	got, err := convertRuleSetToLocalRequired(in, "/tmp")
+	got, err := convertRuleSetToLocalRequired(in, "/tmp", "")
 	if err != nil {
 		t.Fatalf("non-remote should not error: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestConvertRuleSetToLocalRequired_NonRemoteUntouched(t *testing.T) {
 
 // TestConvertRuleSetToLocalRequired_BadJSONReturnsError.
 func TestConvertRuleSetToLocalRequired_BadJSONReturnsError(t *testing.T) {
-	_, err := convertRuleSetToLocalRequired(json.RawMessage("not json"), "/tmp")
+	_, err := convertRuleSetToLocalRequired(json.RawMessage("not json"), "/tmp", "")
 	if err == nil {
 		t.Errorf("bad json → expected error")
 	}
@@ -332,7 +332,7 @@ func TestConvertRuleSetToLocalRequired_RemoteFilePresent(t *testing.T) {
 	expectedPath := stubSRSFile(t, execDir, "ru-blocked-main")
 
 	in := json.RawMessage(`{"tag":"ru-blocked-main","type":"remote","format":"binary","url":"https://example.com/x.srs"}`)
-	got, err := convertRuleSetToLocalRequired(in, execDir)
+	got, err := convertRuleSetToLocalRequired(in, execDir, "")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -363,7 +363,7 @@ func TestConvertRuleSetToLocalRequired_RemoteFileMissing(t *testing.T) {
 	execDir := t.TempDir()
 
 	in := json.RawMessage(`{"tag":"ru-blocked-main","type":"remote","url":"https://example.com/x.srs"}`)
-	_, err := convertRuleSetToLocalRequired(in, execDir)
+	_, err := convertRuleSetToLocalRequired(in, execDir, "")
 	if err == nil {
 		t.Fatal("expected error on missing file")
 	}
@@ -394,7 +394,7 @@ func TestConvertRuleSetToLocalRequired_LocalFilePresent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal input: %v", err)
 	}
-	got, err := convertRuleSetToLocalRequired(in, execDir)
+	got, err := convertRuleSetToLocalRequired(in, execDir, "")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -424,7 +424,7 @@ func TestConvertRuleSetToLocalRequired_LocalFileMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal input: %v", err)
 	}
-	_, err = convertRuleSetToLocalRequired(in, execDir)
+	_, err = convertRuleSetToLocalRequired(in, execDir, "")
 	if err == nil {
 		t.Fatal("expected error on missing local file")
 	}
@@ -439,7 +439,7 @@ func TestConvertRuleSetToLocalRequired_LocalNoPath(t *testing.T) {
 	execDir := t.TempDir()
 
 	in := json.RawMessage(`{"tag":"x","type":"local","format":"binary"}`)
-	_, err := convertRuleSetToLocalRequired(in, execDir)
+	_, err := convertRuleSetToLocalRequired(in, execDir, "")
 	if err == nil {
 		t.Fatal("expected error when local entry has no path")
 	}
@@ -451,7 +451,7 @@ func TestConvertRuleSetToLocalRequired_RemoteNoTag(t *testing.T) {
 	execDir := t.TempDir()
 
 	in := json.RawMessage(`{"type":"remote","url":"https://example.com/x.srs"}`)
-	_, err := convertRuleSetToLocalRequired(in, execDir)
+	_, err := convertRuleSetToLocalRequired(in, execDir, "")
 	if err == nil {
 		t.Fatal("expected error when remote entry has no tag")
 	}

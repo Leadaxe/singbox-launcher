@@ -178,6 +178,14 @@ type WizardModel struct {
 	// ExecDir — директория исполняемого файла (для путей к SRS и т.д.)
 	ExecDir string
 
+	// ResourceDir — каталог ресурсов машины, для которой собирается конфиг:
+	// `<state_dir>/resources` её демона (SPEC 063). Пусто для local.
+	//
+	// Путь резолвит ядро НА ТОЙ СТОРОНЕ, поэтому в rule_set[].path для
+	// удалённой машины должен уезжать он, а не ExecDir лаунчера: своего пути
+	// на роутере нет, и ядро не нашло бы набор.
+	ResourceDir string
+
 	// DNS tab (sing-box config.dns + route.default_domain_resolver)
 	DNSServers []json.RawMessage
 	// DNSLockedTags — УДАЛЕНО в SPEC unify. Lock-channel живёт в template

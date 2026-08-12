@@ -919,6 +919,7 @@
   "conn.remotes.remove_title": "Remove machine",
   "conn.remotes.remove_body": "Forget %s and delete its client key here?\n\nIMPORTANT: this does NOT revoke access on the machine itself — the launcher stays a trusted client there. To revoke it, run on that machine:\n\n    sudo sing-box lxd client remove singbox-launcher\n\nWithout that the old key keeps working for anyone who has it.",
   "wizard.save.remote_needs_parse": "Subscriptions have not been parsed for this target yet, so the config would contain no proxy nodes. Open the Preview tab (or press Read on Sources) to parse them, then save again.",
+  "wizard.save.remote_needs_connect": "Connect to this machine first: its config points at the machine's own resource store, and that path comes from the daemon when you connect.",
   "conn.remotes.import_title": "Add a paired machine",
   "conn.remotes.import_action": "Add paired machine",
   "conn.remotes.import_body": "The connection to %s is already paired (address, pin and client key exist). Add it to the list of remote machines so the Servers tab can talk to it — pairing again is not needed.",

@@ -1,7 +1,10 @@
 package services
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -57,6 +60,14 @@ type RemoteDaemon struct {
 	// частый случай для роутера и VPS.
 	GOOS   string `json:"goos,omitempty"`
 	GOARCH string `json:"goarch,omitempty"`
+	// StateDir — АБСОЛЮТНЫЙ state-каталог демона на его машине; кешируется из
+	// `GET /admin/info` при каждом успешном соединении (SPEC 063).
+	//
+	// Нужен генерации: путь `<StateDir>/resources/<name>` уезжает в
+	// rule_set[].path, и резолвит его ядро НА ТОЙ СТОРОНЕ. Кешируем, чтобы
+	// сборка конфига не требовала живой сети — Configure должен работать и с
+	// выключенным роутером.
+	StateDir string `json:"state_dir,omitempty"`
 	// AddedAt — когда сопряглись (RFC3339, для UI-списка).
 	AddedAt string `json:"added_at,omitempty"`
 }
@@ -349,6 +360,43 @@ func (r *RemoteRegistry) SetPlatform(id, goos, goarch string) error {
 	return fmt.Errorf("remote registry: unknown id %q", id)
 }
 
+// SetStateDir кеширует state-каталог демона, полученный из /admin/info.
+//
+// Тихо no-op при пустом значении и при совпадении: зовётся на каждом
+// health-опросе, и перезаписывать файл реестра ради того же самого не нужно.
+func (r *RemoteRegistry) SetStateDir(id, stateDir string) error {
+	stateDir = strings.TrimSpace(stateDir)
+	if stateDir == "" {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	list, err := r.listLocked()
+	if err != nil {
+		return err
+	}
+	for i := range list {
+		if list[i].ID != id {
+			continue
+		}
+		if list[i].StateDir == stateDir {
+			return nil
+		}
+		list[i].StateDir = stateDir
+		return r.saveLocked(list)
+	}
+	return fmt.Errorf("remote registry: unknown id %q", id)
+}
+
+// ResourceDir — каталог ресурсов машины: `<state_dir>/resources` (SPEC 063).
+// Пусто, если state_dir ещё не известен (ни одного успешного соединения).
+func (d RemoteDaemon) ResourceDir() string {
+	if s := strings.TrimSpace(d.StateDir); s != "" {
+		return s + "/resources"
+	}
+	return ""
+}
+
 // Target собирает TargetSpec генерации из записи реестра (SPEC 098 §2.4).
 // Единственный санкционированный способ узнать, под что собирать конфиг
 // машины.
@@ -497,6 +545,11 @@ func (r *RemoteRegistry) Health(id string) RemoteHealth {
 	if info, infoErr := client.Info(); infoErr == nil {
 		out.Version = info.Version
 		out.StateDir = info.StateDir
+		// Кешируем в реестр: генерация конфига берёт отсюда путь ресурс-стора
+		// и не зависит от того, доступна ли машина в этот момент.
+		if err := r.SetStateDir(id, info.StateDir); err != nil {
+			debuglog.WarnLog("remote registry: cache state_dir for %q: %v", id, err)
+		}
 	}
 	return out
 }
@@ -527,6 +580,69 @@ func (r *RemoteRegistry) StopCore(id string) error {
 	}
 	if err := client.Stop(); err != nil {
 		return fmt.Errorf("remote stop: %w", err)
+	}
+	return nil
+}
+
+// SyncResources заливает на машину rule-set'ы, на которые ссылается её
+// конфиг (SPEC 063 форка ядра).
+//
+// Зачем: конфиг ссылается на `<state_dir>/resources/<name>`, и без этого шага
+// ядро на той стороне не найдёт файл — apply пройдёт, а инстанс не
+// поднимется. Порядок обязателен: сначала ресурсы, потом конфиг.
+//
+// Гоняет только изменённое: демон отдаёт sha256 каждого имени, и совпадающие
+// пропускаются. На больших geo-базах это разница между «моментально» и
+// «десятки мегабайт по Wi-Fi на каждый Deploy».
+//
+// 409 на PUT означает, что имя занято ссылкой из активного или last-good
+// конфига. Это не сбой: файл там уже такой, какой нужен (иначе хеш бы не
+// совпал и мы бы сюда не дошли), поэтому просто пропускаем — переписать его
+// демон и не должен, пока на него ссылаются.
+//
+// Блокирующие сетевые вызовы — звать из горутины.
+func (r *RemoteRegistry) SyncResources(id string, files map[string][]byte) error {
+	if len(files) == 0 {
+		return nil
+	}
+	client, err := r.adminClient(id)
+	if err != nil {
+		return err
+	}
+	remote, err := client.Resources()
+	if err != nil {
+		return fmt.Errorf("remote resources: list: %w", err)
+	}
+	have := make(map[string]string, len(remote))
+	for _, res := range remote {
+		have[res.Name] = strings.ToLower(res.SHA256)
+	}
+
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names) // детерминированный порядок — читаемые логи
+
+	uploaded := 0
+	for _, name := range names {
+		body := files[name]
+		sum := sha256.Sum256(body)
+		if have[name] == hex.EncodeToString(sum[:]) {
+			continue // на машине уже ровно этот файл
+		}
+		if _, putErr := client.PutResource(name, body); putErr != nil {
+			var resErr *lxdclient.ResourceError
+			if errors.As(putErr, &resErr) && resErr.InUse() {
+				debuglog.DebugLog("remote resources: %q is referenced by a live config, keeping it", name)
+				continue
+			}
+			return fmt.Errorf("remote resources: upload %q: %w", name, putErr)
+		}
+		uploaded++
+	}
+	if uploaded > 0 {
+		debuglog.InfoLog("remote resources: uploaded %d file(s) to %q", uploaded, id)
 	}
 	return nil
 }

@@ -67,7 +67,7 @@ import (
 // This prevents multiple parallel instances of the wizard from being
 // opened and simplifies lifecycle management.
 func ShowConfigWizard(parent fyne.Window) {
-	showConfigWizardFor(parent, wizardtemplate.LocalTarget())
+	showConfigWizardFor(parent, wizardtemplate.LocalTarget(), "")
 }
 
 // ShowConfigWizardForMachine открывает визард, корневой на профиле КОНКРЕТНОЙ
@@ -83,10 +83,15 @@ func ShowConfigWizard(parent fyne.Window) {
 func ShowConfigWizardForMachine(parent fyne.Window, machine services.RemoteDaemon) {
 	tgt := machine.Target()
 	tgt.MachineID = machine.ID
-	showConfigWizardFor(parent, tgt)
+	// ResourceDir кешируется в реестре при каждом соединении (SPEC 063):
+	// пути .srs в конфиге машины должны указывать в ЕЁ ресурс-стор, а не в
+	// файловую систему лаунчера. Пусто, если с машиной ещё ни разу не
+	// соединялись — тогда правила с наборами собрать нельзя, о чём Save
+	// скажет явно.
+	showConfigWizardFor(parent, tgt, machine.ResourceDir())
 }
 
-func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec) {
+func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, resourceDir string) {
 	ac := core.GetController()
 	if ac == nil {
 		return
@@ -123,6 +128,7 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec) {
 	// директории читать. Поставить его после загрузки значило бы прочитать
 	// local-состояние и записать его в папку машины.
 	model.Target = target.Normalized()
+	model.ResourceDir = resourceDir
 
 	// Create new window for wizard.
 	//
