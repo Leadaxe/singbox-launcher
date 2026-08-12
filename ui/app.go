@@ -87,14 +87,28 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 			return
 		}
 		app.currentTab = item
-		if item == app.clashAPITab {
-			// SPEC 064: Servers tab is always reachable so the user can
-			// configure a remote Clash API endpoint even when local
-			// sing-box isn't running. The tab's own UI (badge + disabled
-			// controls) communicates the "no API available" state — no
-			// need to bounce the user back to Core. RefreshAPIFunc is
-			// safe to call: it no-ops when neither local sing-box nor a
-			// remote override is reachable.
+
+		// SPEC 098: вкладка определяет, с КАКИМ ядром идёт разговор.
+		//
+		// Local — всегда своё ядро: транспорт удалённой машины снимается при
+		// входе. Без этого список на Local показывал узлы роутера, выбранного
+		// на Remote, — то есть чужие данные под именем локального ядра, и
+		// вернуться к своему было нечем (дропдаун с пунктом Local убран
+		// вместе с шапкой).
+		//
+		// Remote — выбранная машина либо ничего. Транспорт там ставит клик по
+		// строке; сама вкладка ничего не восстанавливает, потому что выбор
+		// эфемерный (SPEC 097 §4.3): после перезапуска активной машины нет, и
+		// список пуст до первого клика.
+		switch item {
+		case coreTabItem:
+			ClearLxdRemoteOverride(controller)
+		}
+		if item == coreTabItem || item == app.clashAPITab {
+			// SPEC 064: вкладка доступна всегда, даже когда локальный sing-box
+			// не запущен и удалённая машина не выбрана — её собственный UI
+			// сообщает об этом. RefreshAPIFunc безопасен: он no-op, если ни
+			// локальное ядро, ни удалённый транспорт не отвечают.
 			if controller.UIService != nil && controller.UIService.RefreshAPIFunc != nil {
 				controller.UIService.RefreshAPIFunc()
 			}

@@ -72,6 +72,14 @@ func CreateMachineListPanel(ac *core.AppController, onSelectionChanged func()) f
 	scroll := container.NewVScroll(p.list)
 	p.container = container.NewBorder(container.NewVBox(header, widget.NewSeparator()), nil, nil, nil, scroll)
 	p.Reload()
+
+	// Активная машина меняется и снаружи панели: переход на вкладку Local
+	// снимает транспорт (SPEC 098 — Local всегда про своё ядро). Без этой
+	// подписки маркер ● оставался бы висеть на машине, с которой разговор
+	// уже не идёт.
+	OnOverrideChanged(func() {
+		fyne.Do(p.redrawRows)
+	})
 	return p.container
 }
 

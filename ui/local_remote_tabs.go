@@ -20,23 +20,45 @@ import (
 // Чтобы настроить одну машину, надо было обойти три экрана, и ни на одном не
 // было видно её целиком.
 
-// splitColumnRatio — доля ширины под левую колонку.
+// Ширины колонок подобраны по факту, а не по доле.
 //
-// Список прокси шире панели управления: в нём длинные имена узлов и строки
-// подписи (протокол, задержка), тогда как справа короткие поля — версия ядра,
-// адрес машины. При 1000px это ~600/400, что укладывается в измеренные
-// минимумы обеих колонок (§3.2).
-const splitColumnRatio = 0.6
+// leftColumnWidth — ширина списка прокси: имя узла вроде
+// «AL:🇳🇱-Нидерланды-2» с подписью протокола, плюс колонка задержки и кнопка
+// подключения. Уже этого имена начинают резаться многоточием.
+//
+// rightColumnWidth — панель управления: там короткие строки (версия ядра,
+// имя и адрес машины), поэтому она заметно уже левой.
+//
+// Доля вместо абсолютных величин тут не работает: HSplit считает offset от
+// MinSize дочерних элементов, а список прокси просит много ширины и
+// продавливает разделитель вправо — правая колонка схлопывалась в ноль.
+// Поэтому правой задаётся собственный минимум (minSizeBox), а offset
+// вычисляется из фактических ширин.
+const (
+	leftColumnWidth  = 790
+	rightColumnWidth = 330
+)
+
+// splitColumnRatio — доля окна под левую колонку при стартовом размере.
+// Явный float: целочисленное деление констант дало бы 2, а не 0.7.
+const splitColumnRatio = float64(leftColumnWidth) / float64(leftColumnWidth+rightColumnWidth)
 
 // CreateLocalTab — вкладка Local: слева прокси локального ядра, справа
 // управление этим ядром (бывшая вкладка Core целиком).
 func CreateLocalTab(ac *core.AppController) fyne.CanvasObject {
 	split := container.NewHSplit(
 		CreateProxyListPanel(ac),
-		CreateCoreDashboardTab(ac),
+		withColumnWidth(CreateCoreDashboardTab(ac), rightColumnWidth),
 	)
 	split.SetOffset(splitColumnRatio)
 	return split
+}
+
+// withColumnWidth фиксирует минимальную ширину колонки, не трогая высоту:
+// без этого HSplit отдаёт всё место тому, кто просит больше, и правая
+// колонка исчезает.
+func withColumnWidth(content fyne.CanvasObject, width float32) fyne.CanvasObject {
+	return container.New(&minSizeBox{min: fyne.NewSize(width, 0)}, content)
 }
 
 // CreateRemoteTab — вкладка Remote: слева прокси ВЫБРАННОЙ машины, справа
@@ -52,7 +74,7 @@ func CreateRemoteTab(ac *core.AppController) fyne.CanvasObject {
 			ac.UIService.RefreshAPIFunc()
 		}
 	})
-	split := container.NewHSplit(proxyPanel, machines)
+	split := container.NewHSplit(proxyPanel, withColumnWidth(machines, rightColumnWidth))
 	split.SetOffset(splitColumnRatio)
 	return split
 }
@@ -67,7 +89,7 @@ func CreateRemoteTab(ac *core.AppController) fyne.CanvasObject {
 // ~400px, ниже должно оставаться место хотя бы на несколько строк списка.
 //
 // Адаптивная раскладка (одна колонка на узких экранах) вне scope SPEC 098.
-var MinWindowSize = fyne.NewSize(1000, 700)
+var MinWindowSize = fyne.NewSize(leftColumnWidth+rightColumnWidth, 700)
 
 // minSizeBox — контейнер, навязывающий содержимому нижнюю границу размера.
 //
