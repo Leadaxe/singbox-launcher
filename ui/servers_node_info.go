@@ -90,29 +90,46 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo) {
 		if def, ok := node.Raw["default"].(string); ok && def != "" {
 			body.Add(infoRow(locale.T("servers.node_info_default"), def))
 		}
-		// SPEC 097: активный участник группы помечается маркером. Он известен
-		// из ProxyInfo.Now (Clash-путь) либо из поля "now" сырого outbound'а
-		// (gRPC-путь GetGroups разворачивает selected в Now у совпадающего
-		// узла). Без метки окно показывало 10 равнозначных строк, и понять,
-		// через кого реально идёт трафик, было нельзя.
-		activeMember := strings.TrimSpace(proxy.Now)
-		if activeMember == "" {
-			activeMember, _ = node.Raw["now"].(string)
-		}
+		// SPEC 097: активный участник группы помечается маркером — без него
+		// окно показывало N равнозначных строк, и понять, через кого реально
+		// идёт трафик, было нельзя.
+		//
+		// Выбор спрашиваем у ядра ОТДЕЛЬНЫМ запросом по тегу ЭТОЙ группы:
+		// ProxyInfo.Now заполнен только у той группы, которую грузит вкладка,
+		// а окно открывают для любой, в том числе вложенной. Запрос уходит в
+		// горутину — сеть, и для удалённой машины это RTT до роутера.
+		memberRows := make(map[string]*widget.Label, len(node.GroupMembers))
 		for _, member := range node.GroupMembers {
 			row := memberRow(member, nodes)
-			if activeMember != "" && member == activeMember {
-				row.TextStyle = fyne.TextStyle{Bold: true}
-				row.SetText(strings.Replace(row.Text, "   · ", "   ● ", 1))
-			}
+			memberRows[member] = row
 			body.Add(row)
 		}
+		go func(group string) {
+			_, now, err := EffectiveProxyTransport(ac).GroupProxies(group)
+			if err != nil || strings.TrimSpace(now) == "" {
+				return
+			}
+			fyne.Do(func() {
+				row, ok := memberRows[now]
+				if !ok {
+					return
+				}
+				row.TextStyle = fyne.TextStyle{Bold: true}
+				row.SetText(strings.Replace(row.Text, "   · ", "   ● ", 1))
+				row.Refresh()
+			})
+		}(proxy.Name)
 
 		// Живой пул балансировщика — только urltest-группы и только в
 		// daemon-режиме (lx-RPC GetPool доступен по gRPC-каналу). Секция
 		// наполняется асинхронно после показа окна: statics выше — из
 		// конфига, а тут — текущее состояние работающего ядра.
-		if node.Type == "urltest" && ac.DaemonPoolAvailable() {
+		// Пул есть только у групп в режиме round_robin: least_test выбирает
+		// один узел, ротации нет, и секция «Live balancer pool» всегда
+		// показывала бы «пусто» — это вводило в заблуждение, будто данные не
+		// пришли. Режим берём из конфига группы (lx-поле balance_strategy).
+		poolCapable := node.Type == "urltest" && groupUsesPool(node)
+		if poolCapable && ac.DaemonPoolAvailable() {
 			poolBox := container.NewVBox(
 				widget.NewSeparator(),
 				sectionHeader(locale.T("servers.node_info_section_pool")),
@@ -456,4 +473,18 @@ func formatDelay(delay int64) string {
 	default:
 		return "—"
 	}
+}
+
+// groupUsesPool — держит ли группа пул ротации.
+//
+// Пул наполняет балансировщик round_robin; least_test держит один выбранный
+// узел, слотов у него нет. Показывать пустую секцию для least_test —
+// значит выдавать штатное поведение за отсутствие данных.
+func groupUsesPool(node *wizardbusiness.ConfigNode) bool {
+	for _, key := range []string{"balance_strategy", "strategy", "balance"} {
+		if v, ok := node.Raw[key].(string); ok && strings.TrimSpace(v) != "" {
+			return strings.EqualFold(strings.TrimSpace(v), "round_robin")
+		}
+	}
+	return false
 }
