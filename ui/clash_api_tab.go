@@ -177,9 +177,23 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		}(group)
 	}
 
-	// Функция для обновления списка селекторов из конфига (вызывается когда sing-box запущен и конфиг загружен)
+	// Функция для обновления списка селекторов (вызывается когда sing-box
+	// запущен и конфиг загружен, а также при смене источника).
+	//
+	// SPEC 097: источник групп зависит от ВЫБРАННОЙ машины. Для удалённой
+	// локальный config.json описывает не её ядро — спрашиваем группы у
+	// самого демона по gRPC. Без этого список групп оставался от локального
+	// ядра, хотя прокси внутри уже приезжали с роутера.
 	updateSelectorList := func() {
-		updatedSelectorOptions, updatedDefaultSelector, err := config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
+		var updatedSelectorOptions []string
+		var updatedDefaultSelector string
+		var err error
+		if remoteGroups, ok := RemoteDaemonGroups(); ok && len(remoteGroups) > 0 {
+			updatedSelectorOptions = remoteGroups
+			updatedDefaultSelector = remoteGroups[0]
+		} else {
+			updatedSelectorOptions, updatedDefaultSelector, err = config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
+		}
 		if err == nil && len(updatedSelectorOptions) > 0 && groupSelect != nil {
 			// Обновляем и переменную selectorOptions, и виджет groupSelect
 			selectorOptions = updatedSelectorOptions
@@ -285,6 +299,10 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 	onResetAPIState := func() {
 		debuglog.InfoLog("clash_api_tab: Resetting API state.")
+		// SPEC 097: сменился источник — список групп берём у новой машины.
+		// Сам сброс идёт до перечитывания прокси, поэтому группы успевают
+		// обновиться раньше, чем поедет запрос за списком узлов.
+		updateSelectorList()
 		ac.SetProxiesList([]api.ProxyInfo{})
 		ac.SetActiveProxyName("")
 		ac.SetSelectedIndex(-1)
