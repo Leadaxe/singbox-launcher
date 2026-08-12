@@ -152,29 +152,32 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo) {
 		// daemon-режиме (lx-RPC GetPool доступен по gRPC-каналу). Секция
 		// наполняется асинхронно после показа окна: statics выше — из
 		// конфига, а тут — текущее состояние работающего ядра.
-		// Пул есть только у групп в режиме round_robin: least_test выбирает
-		// один узел, ротации нет, и секция «Live balancer pool» всегда
-		// показывала бы «пусто» — это вводило в заблуждение, будто данные не
-		// пришли. Режим берём из конфига группы (lx-поле balance_strategy).
-		poolCapable := node.Type == "urltest" && groupUsesPool(node)
-		if poolCapable && ac.DaemonPoolAvailable() {
-			poolBox := container.NewVBox(
-				widget.NewSeparator(),
-				sectionHeader(locale.T("servers.node_info_section_pool")),
-			)
-			loading := widget.NewLabel(locale.T("servers.node_info_pool_loading"))
-			poolBox.Add(loading)
+		// Секция пула показывается ТОЛЬКО если у группы он реально есть.
+		//
+		// Режим (least_test | round_robin) по gRPC не отдаётся: в Group его
+		// нет, type у обоих "urltest". Из локального config.json читать
+		// нельзя — для удалённой машины он описывает чужое ядро. Поэтому
+		// различаем по контракту ядра: непустые слоты GetPool = round_robin,
+		// пустые = у группы нет балансировщика.
+		//
+		// Отсюда порядок: сперва спрашиваем пул, и лишь при непустом ответе
+		// СОЗДАЁМ секцию. Пустой ответ (в т.ч. Unimplemented без
+		// with_lx_command) не рисует ничего — про пул не говорим там, где
+		// балансировки нет.
+		if node.Type == "urltest" && ac.DaemonPoolAvailable() {
+			poolBox := container.NewVBox()
 			body.Add(poolBox)
 			go func(group string) {
 				slots, err := ac.DaemonPoolSlots(group)
 				fyne.Do(func() {
-					poolBox.Remove(loading)
 					switch {
-					case err != nil:
-						poolBox.Add(widget.NewLabel(locale.Tf("servers.node_info_pool_error", err)))
-					case len(slots) == 0:
-						poolBox.Add(widget.NewLabel(locale.T("servers.node_info_pool_empty")))
+					case err != nil || len(slots) == 0:
+						// Ошибка или пустой пул — группа не балансируемая
+						// (или RPC недоступен). Секцию не создаём вовсе.
+						return
 					default:
+						poolBox.Add(widget.NewSeparator())
+						poolBox.Add(sectionHeader(locale.T("servers.node_info_section_pool")))
 						active := strings.TrimSpace(proxy.Now)
 						if active == "" {
 							active, _ = node.Raw["now"].(string)
@@ -501,18 +504,6 @@ func formatDelay(delay int64) string {
 	default:
 		return "—"
 	}
-}
-
-// groupUsesPool — держит ли группа пул ротации.
-//
-// Пул наполняет балансировщик round_robin; least_test держит один выбранный
-// узел, слотов у него нет. Показывать пустую секцию для least_test —
-// значит выдавать штатное поведение за отсутствие данных.
-func groupUsesPool(node *wizardbusiness.ConfigNode) bool {
-	// Поле форка — "mode": least_test (по умолчанию) | round_robin
-	// (option/group.go). Пул наполняет только round_robin.
-	mode, _ := node.Raw["mode"].(string)
-	return strings.EqualFold(strings.TrimSpace(mode), "round_robin")
 }
 
 // groupSelectionSource — транспорт, умеющий пушить смену выбранного узла
