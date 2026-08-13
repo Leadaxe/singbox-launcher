@@ -2,22 +2,22 @@
 
 **🌐 Language**: English | [Русский](API.ru.md)
 
-Локальный HTTP API на `127.0.0.1`, bearer-auth, выключен по умолчанию. **Самоописываемый** (SPEC 078): `GET /` отдаёт манифест, `GET /help` — список эндпоинтов, так что агенту достаточно дать base URL + токен. Группы: discovery/info, state read, state write, actions, traffic profiler, snapshot. Используется для автоматизации (bash + curl), MCP-обёрток для AI-агентов, CI/CD-валидации шаблонов, headless-deployment и снятия полного снапшота для bug-report’а (`/debug/snapshot`).
+A local HTTP API on `127.0.0.1`, bearer-auth, off by default. **Self-describing** (SPEC 078): `GET /` returns a manifest and `GET /help` the endpoint list, so an agent only needs the base URL and a token. Groups: discovery/info, state read, state write, actions, traffic profiler, snapshot. Used for automation (bash + curl), MCP wrappers for AI agents, CI/CD template validation, headless deployment, and capturing a full snapshot for a bug report (`/debug/snapshot`).
 
-> Source of truth: код `core/debugapi/`. Этот документ — generated-style сводка из реальных handler-ов; SPEC 038 описывает оригинальный дизайн и осталась как историческая референс.
+> Source of truth: the code in `core/debugapi/`. This document is a generated-style summary of the real handlers; SPEC 038 describes the original design and remains as a historical reference.
 
 ---
 
 ## TL;DR
 
 ```bash
-# 1. Включить в UI: Settings → Debug API (localhost) → ✓
-# 2. Скопировать токен: тот же экран, кнопка "Copy token"
-# 3. Записать в env
+# 1. Enable it in the UI: Settings → Debug API (localhost) → ✓
+# 2. Copy the token: same screen, the "Copy token" button
+# 3. Put it in the environment
 export TOKEN="<paste-here>"
 export API="http://127.0.0.1:9263"
 
-# 4. Проверить
+# 4. Check
 curl -s "$API/ping"                                    # → {"ok":true}    (без auth)
 curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 # → {"launcher":"v1.2.2","singbox":"1.14.0-lx.5","api":"debugapi/v1"}
@@ -25,20 +25,20 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 
 ---
 
-## Подключение
+## Connecting
 
-| Что | Где |
+| What | Where |
 |---|---|
-| Bind | `127.0.0.1:<port>` — **hard-coded loopback**, на LAN не вынесешь |
-| Дефолтный порт | **9263** |
-| Override порта | `bin/settings.json` → `debug_api_port` (1024–65535, `0` = дефолт) |
-| Включить/выключить | `bin/settings.json` → `debug_api_enabled` (UI: Settings → checkbox) |
-| Bearer-токен | `bin/settings.json` → `debug_api_token` (UI: Settings → Debug API → Copy token) |
-| Регенерация токена | UI: **Settings → Debug API → «Regenerate»** (с подтверждением; ротирует токен и перезапускает listener). Альтернатива — удалить ключ из `settings.json` и перезапустить лаунчер |
+| Bind | `127.0.0.1:<port>` — **hard-coded loopback**, cannot be moved onto the LAN |
+| Default port | **9263** |
+| Port override | `bin/settings.json` → `debug_api_port` (1024–65535, `0` = default) |
+| Enable/disable | `bin/settings.json` → `debug_api_enabled` (UI: Settings → checkbox) |
+| Bearer token | `bin/settings.json` → `debug_api_token` (UI: Settings → Debug API → Copy token) |
+| Token regeneration | UI: **Settings → Debug API → "Regenerate"** (with a confirmation; rotates the token and restarts the listener). The alternative is deleting the key from `settings.json` and restarting the launcher |
 | Comparison | `subtle.ConstantTimeCompare` (constant-time) |
 | Header | `Authorization: Bearer <token>` |
 
-Адрес виден в Settings → Debug API рядом с чекбоксом — копи-пейст готовой строки `127.0.0.1:<port>`.
+The address is shown in Settings → Debug API next to the checkbox — a ready-to-copy `127.0.0.1:<port>` string.
 
 ---
 
