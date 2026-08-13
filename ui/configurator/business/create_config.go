@@ -129,7 +129,7 @@ func buildConfigFromModel(model *wizardmodels.WizardModel, forPreview bool) (str
 		Presets:             model.TemplateData.Presets,
 		Rules:               rulesV6,
 		DNS:                 dnsV6,
-		SrsCachedPaths:      build.CollectSrsCachedPaths(rulesV6, model.ExecDir),
+		SrsCachedPaths:      build.CollectSrsCachedPaths(rulesV6, model.ExecDir, model.ResourceDir),
 		ExecDir:             model.ExecDir,
 		TemplateDNSDefaults: ParseTemplateDNSDefaults(model.TemplateData),
 	}

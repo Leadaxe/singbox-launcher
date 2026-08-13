@@ -574,8 +574,13 @@ func (apiSvc *APIService) SwitchProxy(group, proxyName string) error {
 	}
 
 	if err := transport.SwitchProxy(group, proxyName); err != nil {
+		debuglog.WarnLog("SwitchProxy: group=%q → %q failed: %v", group, proxyName, err)
 		return fmt.Errorf("failed to switch proxy: %w", err)
 	}
+	// Логируем факт и адресата: без этого нельзя отличить «лаунчер не послал
+	// команду» от «ядро её приняло, но соединения не разорвало» — а лечение у
+	// этих случаев разное.
+	debuglog.InfoLog("SwitchProxy: group=%q → %q", group, proxyName)
 
 	apiSvc.SetActiveProxyName(proxyName)
 	// Сохраняем последний выбранный прокси для текущей группы для автоматического переключения при следующем старте

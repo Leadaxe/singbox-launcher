@@ -46,6 +46,18 @@ type TargetSpec struct {
 	// Пустой при Target=remote = pre-098 singleton-раскладка; такой конфиг
 	// читается, но переезжает в папку машины при первой миграции.
 	MachineID string
+
+	// ResourceDir — каталог ресурсов на МАШИНЕ-ИСПОЛНИТЕЛЕ
+	// (`<state_dir>/resources`, SPEC 063). Уезжает в rule_set[].path: путь
+	// резолвит ядро на той стороне, и путь лаунчера там не существует.
+	// Пусто = конфиг для этой машины.
+	ResourceDir string
+
+	// SrsLocalDir — каталог, где файлы .srs лежат У НАС (srs/ профиля
+	// машины). Нужен отдельно от ResourceDir: наличие набора проверяется на
+	// нашей файловой системе, а в конфиг пишется путь чужой. Пусто = local,
+	// проверка идёт по bin/rule-sets/.
+	SrsLocalDir string
 }
 
 // Значения TargetSpec.Target. Совпадают со слагами: TargetRemote — имя

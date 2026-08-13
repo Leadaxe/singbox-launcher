@@ -263,11 +263,16 @@ func (c *Client) Resources() ([]Resource, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("lxdclient: resources: %s", decodeError(resp))
 	}
-	var out []Resource
+	// Список приходит обёрнутым: {"resources": [...]}. PUT и Stat, наоборот,
+	// отдают объект напрямую — форма ответа у демона разная, и путать их
+	// нельзя.
+	var out struct {
+		Resources []Resource `json:"resources"`
+	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&out); err != nil {
 		return nil, fmt.Errorf("lxdclient: resources: parse: %w", err)
 	}
-	return out, nil
+	return out.Resources, nil
 }
 
 // PutResource заливает (или перезаписывает) ресурс под именем name.
@@ -299,6 +304,39 @@ func (c *Client) PutResource(name string, body []byte) (Resource, error) {
 		return Resource{}, fmt.Errorf("lxdclient: resource %q: parse: %w", name, err)
 	}
 	return out, nil
+}
+
+// ResourceContent скачивает сырые байты ресурса
+// (GET /admin/resources/{name}/content).
+//
+// Нужен, чтобы забрать файл, положенный на машину мимо лаунчера: без этого
+// про такой ресурс известно только имя и хеш, а что внутри — нет.
+func (c *Client) ResourceContent(name string) ([]byte, error) {
+	resp, err := c.do(http.MethodGet, "/admin/resources/"+url.PathEscape(name)+"/content", nil, "")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, &ResourceError{StatusCode: resp.StatusCode, Name: name, Message: decodeError(resp)}
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+}
+
+// DeleteResource удаляет ресурс (DELETE /admin/resources/{name}).
+//
+// 409, как и у PutResource, означает «на имя ссылается активный или last-good
+// конфиг»: демон не даёт удалить файл из-под работающего ядра.
+func (c *Client) DeleteResource(name string) error {
+	resp, err := c.do(http.MethodDelete, "/admin/resources/"+url.PathEscape(name), nil, "")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return &ResourceError{StatusCode: resp.StatusCode, Name: name, Message: decodeError(resp)}
+	}
+	return nil
 }
 
 // ResourceError — отказ операции над ресурсом. StatusCode 409 = имя занято

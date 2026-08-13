@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -22,6 +24,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
+	"singbox-launcher/ui/components"
 	"singbox-launcher/ui/configurator"
 )
 
@@ -32,6 +35,16 @@ import (
 // сведения — не эстетика: пока выбор машины и таргет конфига были разными
 // переключателями, можно было собрать конфиг для роутера и задеплоить его на
 // VPS. Здесь у каждой строки свои Configure и Deploy, и промахнуться нечем.
+
+// Повторы Connect: короткий провал L2/ARP (роутер перезагружается, точка
+// роняет клиента) даёт мгновенный «no route to host» на connect(), хотя через
+// пару секунд адрес снова доступен. Пять попыток с паузой в 3 секунды
+// перекрывают такой провал; дальше это уже настоящая недоступность, и
+// молотить сеть смысла нет.
+const (
+	connectAttempts   = 5
+	connectRetryDelay = 3 * time.Second
+)
 
 // machineListPanel — состояние правой колонки.
 type machineListPanel struct {
@@ -45,15 +58,47 @@ type machineListPanel struct {
 	// health — последний известный статус каждой машины, чтобы перерисовка
 	// строки не ходила в сеть заново.
 	health map[string]services.RemoteHealth
+	// errLog — история сетевых отказов по машинам за текущую сессию.
+	//
+	// Строка показывает только последнюю ошибку, а разбирать «почему не
+	// соединяется» приходится по картине: сбоит ли постоянно или гасится
+	// повтором, менялся ли текст. Держать это в памяти процесса дешевле, чем
+	// просить пользователя лезть в лог-файл, и честнее, чем показывать одну
+	// последнюю строку как всю правду.
+	errLog map[string][]connectFailure
+	errMu  sync.Mutex
+	// connectAttempt — номер текущей попытки соединения по машинам (0 = не
+	// соединяемся).
+	//
+	// Нужно для индикации: с повторами Connect занимает до
+	// connectAttempts*connectRetryDelay секунд, и без признака работы это
+	// выглядит как зависшая кнопка.
+	connectAttempt map[string]int
 }
+
+// connectFailure — одна неудачная попытка соединения.
+type connectFailure struct {
+	When    time.Time
+	Attempt int
+	Err     string
+}
+
+// maxConnectFailures — сколько отказов помним на машину.
+//
+// Ограничение нужно: при недоступной машине пользователь может жать Connect
+// десятки раз, и без предела список рос бы всю сессию. Держим последние —
+// именно они объясняют текущее состояние.
+const maxConnectFailures = 50
 
 // CreateMachineListPanel строит правую колонку вкладки Remote.
 func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyne.CanvasObject {
 	p := &machineListPanel{
-		ac:       ac,
-		registry: services.NewRemoteRegistry(ac.FileService.ExecDir),
-		proxies:  proxies,
-		health:   make(map[string]services.RemoteHealth),
+		ac:             ac,
+		registry:       services.NewRemoteRegistry(ac.FileService.ExecDir),
+		proxies:        proxies,
+		health:         make(map[string]services.RemoteHealth),
+		errLog:         make(map[string][]connectFailure),
+		connectAttempt: make(map[string]int),
 	}
 	p.list = container.NewVBox()
 
@@ -157,6 +202,16 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 		connBtn = widget.NewButton(locale.T("remote.machines.disconnect"), func() {
 			p.disconnectMachine()
 		})
+	} else if attempt := p.connectAttempt[d.ID]; attempt > 0 {
+		// Идёт попытка: кнопка неактивна и говорит, что происходит. Иначе
+		// пользователь жмёт её повторно и запускает второй цикл повторов
+		// поверх первого.
+		// Номер попытки прямо в кнопке: с повторами ожидание доходит до
+		// 15 секунд, и «идёт вторая из пяти» отвечает на вопрос «оно ещё
+		// живо или зависло» лучше, чем неподвижная надпись.
+		connBtn = widget.NewButton(
+			locale.Tf("remote.machines.connecting_try", attempt, connectAttempts), nil)
+		connBtn.Disable()
 	} else {
 		connBtn = widget.NewButton(locale.T("remote.machines.connect"), func() {
 			p.connectMachine(d)
@@ -250,13 +305,24 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 		deployBtn.Disable()
 	}
 
+	// RES — управление файлами, на которые ссылается конфиг машины
+	// (SPEC 063). Рядом с Deploy, потому что это его обратная сторона:
+	// Deploy заливает недостающее молча, а здесь видно, что реально лежит на
+	// той стороне и совпадает ли оно с нашим.
+	resBtn := widget.NewButton(locale.T("remote.res.button"), func() {
+		OpenMachineResourcesWindow(p.ac, d)
+	})
+	if health.Err != "" {
+		resBtn.Disable()
+	}
+
 	// Start/Stop — напротив СТАТУСА, который он меняет: кнопка стоит там,
 	// где виден её результат.
 	statusRow := container.NewBorder(nil, nil, nil,
 		container.NewHBox(infoBtn, powerBtn), status)
 	rows = append(rows,
 		statusRow,
-		container.NewHBox(configureBtn, deployBtn),
+		container.NewHBox(configureBtn, deployBtn, resBtn),
 		widget.NewSeparator(),
 	)
 	return container.NewVBox(rows...)
@@ -273,17 +339,49 @@ func (p *machineListPanel) connectMachine(d services.RemoteDaemon) {
 		dialog.ShowError(err, p.ac.UIService.MainWindow)
 		return
 	}
-	// Спрашиваем состояние ядра — первый и единственный сетевой поход,
-	// сделанный по явной команде пользователя. Блокирующий вызов, поэтому
-	// в горутине: недоступная машина отвечает по таймауту REST-клиента.
+	// Спрашиваем состояние ядра — сетевой поход по явной команде
+	// пользователя. Блокирующий вызов, поэтому в горутине: недоступная машина
+	// отвечает по таймауту REST-клиента.
+	//
+	// Повторяем до connectAttempts раз с паузой: наблюдался отказ, при котором
+	// connect() возвращал «no route to host» мгновенно, хотя curl к тому же
+	// адресу в ту же секунду отвечал 200 — короткий провал L2/ARP (роутер
+	// перезагружался). Одна попытка делала это отказом на ровном месте,
+	// а повтор через несколько секунд проходит.
+	p.connectAttempt[d.ID] = 1
+	p.redrawRows()
 	go func() {
-		h := p.registry.Health(d.ID)
+		var h services.RemoteHealth
+		for attempt := 1; attempt <= connectAttempts; attempt++ {
+			if attempt > 1 {
+				fyne.Do(func() {
+					p.connectAttempt[d.ID] = attempt
+					p.redrawRows()
+				})
+			}
+			h = p.registry.Health(d.ID)
+			if h.Err == "" {
+				break
+			}
+			debuglog.WarnLog("machine list: %q unreachable (attempt %d/%d): %s",
+				d.ID, attempt, connectAttempts, h.Err)
+			p.recordFailure(d.ID, attempt, h.Err)
+			if attempt < connectAttempts {
+				time.Sleep(connectRetryDelay)
+			}
+		}
 		fyne.Do(func() {
+			p.connectAttempt[d.ID] = 0
 			p.health[d.ID] = h
 			p.redrawRows()
 
 			if h.Err != "" {
-				debuglog.WarnLog("machine list: %q unreachable: %s", d.ID, h.Err)
+				// Без попапа: маркер строки краснеет, а полный текст последней
+				// ошибки лежит в ⓘ. Модальное окно на каждую неудачу мешает
+				// повторить попытку и ничего не добавляет к тому, что уже
+				// видно в строке.
+				debuglog.WarnLog("machine list: %q unreachable after %d attempts: %s",
+					d.ID, connectAttempts, h.Err)
 				return
 			}
 			// Узлы читаем ТОЛЬКО если ядро на машине запущено. При idle их
@@ -328,12 +426,47 @@ func (p *machineListPanel) showHealthDetails(d services.RemoteDaemon, h services
 	if h.Err != "" {
 		rows = append(rows, [2]string{locale.T("remote.info.unreachable"), h.Err})
 	}
+	// История отказов за сессию: одна последняя ошибка не отвечает на вопрос
+	// «это разово или постоянно». Здесь видно, гасится ли сбой повтором
+	// (attempt 2/5 и дальше тишина) или машина не отвечает вовсе.
+	if fails := p.failures(d.ID); len(fails) > 0 {
+		var b strings.Builder
+		for i := len(fails) - 1; i >= 0; i-- { // свежие сверху
+			f := fails[i]
+			fmt.Fprintf(&b, "%s  [%d/%d]  %s\n",
+				f.When.Format("15:04:05"), f.Attempt, connectAttempts, f.Err)
+		}
+		rows = append(rows, [2]string{
+			locale.Tf("remote.info.failures", len(fails)),
+			strings.TrimRight(b.String(), "\n"),
+		})
+	}
+
+	// Признак «поле длинное» несёт сама строка таблицы, а не наличие \n в
+	// значении: история из ОДНОГО отказа переносов не содержит, но всё равно
+	// длиннее строки, и однострочный Entry показывал бы её началом с
+	// обрезанием.
+	multiline := map[string]bool{locale.Tf("remote.info.failures", len(p.failures(d.ID))): true}
 
 	items := make([]*widget.FormItem, 0, len(rows))
 	var plain strings.Builder
 	for _, r := range rows {
 		// Значение — не Label, а поле только для чтения: хеш и путь нужно
 		// уметь выделить и скопировать, иначе диагностику не перенести в тикет.
+		// Многострочное значение (история отказов) — в MultiLineEntry:
+		// однострочный Entry показал бы только первую строку, а именно
+		// последовательность попыток и объясняет картину.
+		if multiline[r[0]] || strings.Contains(r[1], "\n") {
+			m := widget.NewMultiLineEntry()
+			m.SetText(r[1])
+			// Перенос по словам: строка отказа длиннее окна, и без него
+			// пришлось бы возить поле горизонтально, чтобы прочитать причину.
+			m.Wrapping = fyne.TextWrapWord
+			m.SetMinRowsVisible(6)
+			items = append(items, widget.NewFormItem(r[0], m))
+			fmt.Fprintf(&plain, "%s:\n%s\n", r[0], r[1])
+			continue
+		}
 		v := widget.NewEntry()
 		v.SetText(r[1])
 		v.Wrapping = fyne.TextWrapOff
@@ -352,8 +485,10 @@ func (p *machineListPanel) showHealthDetails(d services.RemoteDaemon, h services
 		widget.NewForm(items...),
 		container.NewBorder(nil, nil, copyBtn, closeBtn),
 	)
-	win.SetContent(container.NewPadded(container.NewVScroll(body)))
-	win.Resize(fyne.NewSize(560, 420))
+	// Gutter резервирует место под полосу прокрутки, иначе она ложится на
+	// правый край полей — здесь это ровно те поля, из которых копируют хеши.
+	win.SetContent(container.NewPadded(components.WrapInScrollWithGutter(body)))
+	win.Resize(fyne.NewSize(600, 460))
 	win.CenterOnScreen()
 	win.Show()
 }
@@ -367,6 +502,10 @@ func (p *machineListPanel) loadNodes() {
 	if p.ac.UIService != nil && p.ac.UIService.ResetAPIStateFunc != nil {
 		p.ac.UIService.ResetAPIStateFunc()
 	}
+	// Порядок обязателен: сначала узнать группы ЭТОЙ машины, потом грузить
+	// узлы. Иначе запрос уходит с пустой группой, и ядро отвечает
+	// «group "" not found» на штатное подключение.
+	p.proxies.ReloadGroups()
 	p.proxies.Refresh()
 }
 
@@ -648,4 +787,31 @@ func collectMachineResources(execDir, machineID string, config []byte) (map[stri
 		out[name] = body
 	}
 	return out, nil
+}
+
+// recordFailure запоминает неудачную попытку соединения.
+//
+// Зовётся из горутины Connect, поэтому под мьютексом: карту читает UI-поток
+// при отрисовке ⓘ.
+func (p *machineListPanel) recordFailure(id string, attempt int, msg string) {
+	p.errMu.Lock()
+	defer p.errMu.Unlock()
+	list := append(p.errLog[id], connectFailure{
+		When:    time.Now(),
+		Attempt: attempt,
+		Err:     msg,
+	})
+	if len(list) > maxConnectFailures {
+		list = list[len(list)-maxConnectFailures:]
+	}
+	p.errLog[id] = list
+}
+
+// failures возвращает копию истории отказов машины.
+func (p *machineListPanel) failures(id string) []connectFailure {
+	p.errMu.Lock()
+	defer p.errMu.Unlock()
+	out := make([]connectFailure, len(p.errLog[id]))
+	copy(out, p.errLog[id])
+	return out
 }

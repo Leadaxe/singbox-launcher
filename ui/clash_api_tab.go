@@ -47,6 +47,8 @@ import (
 // и адресовать они должны АКТИВНУЮ панель. Поэтому привязка делается не в
 // конструкторе, а в Activate() при переключении вкладки.
 type ProxyListPanel struct {
+	// reloadGroups перечитывает список selector-групп у активного ядра.
+	reloadGroups func()
 	// Content — корневой контейнер панели (левая колонка вкладки).
 	Content fyne.CanvasObject
 
@@ -386,6 +388,25 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 								locale.T("servers.error_daemon_core_idle"))
 							return
 						}
+						// Машина недоступна по сети (роутер перезагружается,
+						// сменился Wi-Fi, кабель): показывать сырой
+						// «rpc error: code = Unavailable desc = transport:
+						// Error while dialing…» — значит пугать текстом, из
+						// которого пользователю нечего извлечь.
+						if isUnreachableErr(err) {
+							ShowErrorText(ac.UIService.MainWindow, "Daemon",
+								locale.T("servers.error_daemon_unreachable"))
+							return
+						}
+						// Группа машины ещё не прочитана — это не сбой, а
+						// момент до первого чтения списка. Диалог тут пугает
+						// на ровном месте; хватает строки состояния.
+						if services.IsRemoteGroupUnknown(err) {
+							if panel.listStatusLabel != nil {
+								panel.listStatusLabel.SetText(locale.T("remote.proxies.groups_unknown"))
+							}
+							return
+						}
 						ShowError(ac.UIService.MainWindow, err)
 						return
 					}
@@ -449,14 +470,21 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		selectedProxyNames = make(map[string]struct{})
 		selectionAnchorVis = -1
 		fyne.Do(func() {
-			if ac.UIService.ApiStatusLabel != nil {
-				ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_not_running"))
+			// Пишем в ЛЕЙБЛЫ СВОЕЙ панели, а не в глобальные слоты UIService:
+			// «Sing-box is stopped» — про локальное ядро, и на вкладке Remote
+			// эта надпись противоречила зелёной машине со статусом started.
+			if panel.apiStatusLabel != nil {
+				panel.apiStatusLabel.SetText(locale.T("servers.status_not_running"))
 			}
-			if ac.UIService.ListStatusLabel != nil {
-				ac.UIService.ListStatusLabel.SetText(locale.T("servers.status_singbox_stopped"))
+			if panel.listStatusLabel != nil {
+				if panel.scope == services.ScopeRemote {
+					panel.listStatusLabel.SetText(locale.T("remote.proxies.core_stopped"))
+				} else {
+					panel.listStatusLabel.SetText(locale.T("servers.status_singbox_stopped"))
+				}
 			}
-			if ac.UIService.ProxiesListWidget != nil {
-				ac.UIService.ProxiesListWidget.Refresh()
+			if panel.proxiesList != nil {
+				panel.proxiesList.Refresh()
 			}
 			if syncExportShareURIsButtonTooltip != nil {
 				syncExportShareURIsButtonTooltip()
@@ -1525,8 +1553,29 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	// он про ЛОКАЛЬНОЕ ядро (движок и сопряжение со своим демоном), и в шапке
 	// списка, который может показывать узлы роутера, читался как настройка
 	// удалённой машины.
-	groupRow := container.NewHBox(
-		widget.NewLabel(locale.T("servers.label_selector_group")), groupSelect, mapButton,
+	// Принудительная перезагрузка списка групп. После Deploy ядро на машине
+	// перезапускается с новым конфигом, и набор selector-групп меняется — а
+	// дропдаун держит тот, что прочитали при соединении. Сам лаунчер за этим
+	// не следит: на удалённой машине конфиг могли поменять и мимо него.
+	// Отдаём перечитывание групп наружу: после Connect панель машин обязана
+	// сначала узнать группы машины и только потом грузить узлы — иначе запрос
+	// уходит с пустой группой.
+	panel.reloadGroups = updateSelectorList
+
+	reloadGroupsBtn := ttwidget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() {
+		updateSelectorList()
+		onLoadAndRefreshProxies()
+	})
+	reloadGroupsBtn.SetToolTip(locale.T("servers.reload_groups_tooltip"))
+	reloadGroupsBtn.Importance = widget.LowImportance
+
+	// ↻ прижата к правому краю: это действие над всей панелью (перечитать
+	// группы у ядра), а не часть выбора группы. Border разводит их по краям
+	// строки, HBox сложил бы всё встык слева.
+	groupRow := container.NewBorder(nil, nil, nil, reloadGroupsBtn,
+		container.NewHBox(
+			widget.NewLabel(locale.T("servers.label_selector_group")), groupSelect, mapButton,
+		),
 	)
 	topControls := container.NewVBox(groupRow, widget.NewSeparator(), buttonsRow)
 
@@ -1589,4 +1638,42 @@ func containsStringValue(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// isUnreachableErr — ошибка означает «до машины не достучались», а не отказ
+// на её стороне.
+//
+// gRPC заворачивает такие сбои в code=Unavailable с сырым transport-текстом
+// внутри. Для пользователя разница принципиальна: машина недоступна — чинить
+// сеть, а не конфиг, и никакой полезной информации в «Error while dialing»
+// для него нет.
+func isUnreachableErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, marker := range []string{
+		"no route to host",
+		"connection refused",
+		"i/o timeout",
+		"network is unreachable",
+		"context deadline exceeded",
+		"Error while dialing",
+	} {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// ReloadGroups перечитывает selector-группы у активного ядра.
+//
+// Нужен панели машин: сразу после Connect группы машины ещё не прочитаны, и
+// Refresh ушёл бы с пустой группой — ядро отвечало «group "" not found» на
+// штатное подключение.
+func (p *ProxyListPanel) ReloadGroups() {
+	if p != nil && p.reloadGroups != nil {
+		p.reloadGroups()
+	}
 }

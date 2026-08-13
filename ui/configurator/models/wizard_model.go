@@ -19,6 +19,8 @@ package models
 
 import (
 	"encoding/json"
+	"singbox-launcher/internal/constants"
+	"singbox-launcher/internal/platform"
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
@@ -186,6 +188,10 @@ type WizardModel struct {
 	// на роутере нет, и ядро не нашло бы набор.
 	ResourceDir string
 
+	// MachineID — ID машины, для которой собирается конфиг (пусто для local).
+	// Нужен, чтобы знать, в чей каталог .srs качать наборы.
+	MachineID string
+
 	// DNS tab (sing-box config.dns + route.default_domain_resolver)
 	DNSServers []json.RawMessage
 	// DNSLockedTags — УДАЛЕНО в SPEC unify. Lock-channel живёт в template
@@ -253,4 +259,13 @@ func (m *WizardModel) RefreshDerivedParserConfig() {
 	if data, err := json.MarshalIndent(map[string]interface{}{"ParserConfig": m.ParserConfig.ParserConfig}, "", "  "); err == nil {
 		m.ParserConfigJSON = string(data)
 	}
+}
+
+// SrsDir — каталог, куда качать .srs для текущего таргета (SPEC 098 §2.3).
+// Пусто для local: там путь исторический, bin/rule-sets/.
+func (m *WizardModel) SrsDir() string {
+	if m == nil || m.MachineID == "" {
+		return ""
+	}
+	return platform.GetRuleSetsDirFor(m.ExecDir, constants.ConfigTargetRemote, m.MachineID)
 }

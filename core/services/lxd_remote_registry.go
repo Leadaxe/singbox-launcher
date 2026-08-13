@@ -596,9 +596,11 @@ func (r *RemoteRegistry) StopCore(id string) error {
 // «десятки мегабайт по Wi-Fi на каждый Deploy».
 //
 // 409 на PUT означает, что имя занято ссылкой из активного или last-good
-// конфига. Это не сбой: файл там уже такой, какой нужен (иначе хеш бы не
-// совпал и мы бы сюда не дошли), поэтому просто пропускаем — переписать его
-// демон и не должен, пока на него ссылаются.
+// конфига, и демон отказался его перезаписывать. Сюда мы попадаем только
+// когда хеш НЕ совпал, то есть содержимое действительно другое — значит на
+// машине останется старый набор под новым конфигом. Молчать нельзя: это
+// ровно тот случай, когда ядро поднимется, но с не тем набором правил.
+// Пробрасываем ошибку с внятным советом.
 //
 // Блокирующие сетевые вызовы — звать из горутины.
 func (r *RemoteRegistry) SyncResources(id string, files map[string][]byte) error {
@@ -634,8 +636,8 @@ func (r *RemoteRegistry) SyncResources(id string, files map[string][]byte) error
 		if _, putErr := client.PutResource(name, body); putErr != nil {
 			var resErr *lxdclient.ResourceError
 			if errors.As(putErr, &resErr) && resErr.InUse() {
-				debuglog.DebugLog("remote resources: %q is referenced by a live config, keeping it", name)
-				continue
+				return fmt.Errorf("rule-set %q changed, but the machine's running config still references it. "+
+					"Stop the core on that machine (or deploy a config without this rule) and try again", name)
 			}
 			return fmt.Errorf("remote resources: upload %q: %w", name, putErr)
 		}

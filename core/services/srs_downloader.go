@@ -165,11 +165,25 @@ type SRSEntry struct {
 // AllSRSDownloadedForEntries проверяет, что для всех переданных SRS-энтри существуют локальные файлы.
 // Используется и для встроенных, и для пользовательских SRS-правил.
 func AllSRSDownloadedForEntries(execDir string, entries []SRSEntry) bool {
+	return AllSRSDownloadedIn(execDir, "", entries)
+}
+
+// AllSRSDownloadedIn — проверка наличия в каталоге КОНКРЕТНОЙ машины
+// (SPEC 098). srsDir пуст = локальная машина, bin/rule-sets/.
+//
+// Разделение обязательно: каталоги у профилей разные, и проверка по общему
+// показывала бы «скачано» для машины, у которой файла нет, — правило молча
+// выпадало бы из её конфига при сборке.
+func AllSRSDownloadedIn(execDir, srsDir string, entries []SRSEntry) bool {
 	if execDir == "" || len(entries) == 0 {
 		return true
 	}
 	for _, e := range entries {
-		if !SRSFileExists(execDir, e.Tag) {
+		path := RuleSRSPath(execDir, e.Tag)
+		if srsDir != "" {
+			path = filepath.Join(srsDir, e.Tag+".srs")
+		}
+		if info, err := os.Stat(path); err != nil || info.IsDir() {
 			return false
 		}
 	}
@@ -248,14 +262,28 @@ func normalizeSRSURL(rawURL string) string {
 
 // DownloadSRSGroup скачивает по очереди все SRS из entries в bin/rule-sets/{tag}.srs.
 // Возвращает первую ошибку; при отмене ctx возвращает ctx.Err().
-func DownloadSRSGroup(ctx context.Context, execDir string, entries []SRSEntry) error {
+// destDir (SPEC 098) — каталог .srs той машины, для которой качаем. Пусто =
+// локальная, файлы ложатся в bin/rule-sets/ как раньше.
+//
+// Разделение обязательно: у каждой машины свой профиль, и складывать её
+// наборы в общий каталог значило бы, что окно ресурсов машины их не видит, а
+// GC одной машины удаляет файлы другой.
+func DownloadSRSGroupTo(ctx context.Context, execDir, destDir string, entries []SRSEntry) error {
 	for _, e := range entries {
 		destPath := RuleSRSPath(execDir, e.Tag)
+		if destDir != "" {
+			destPath = filepath.Join(destDir, e.Tag+".srs")
+		}
 		if err := DownloadSRS(ctx, e.URL, destPath); err != nil {
 			return fmt.Errorf("DownloadSRSGroup tag=%q url=%s: %w", e.Tag, e.URL, err)
 		}
 	}
 	return nil
+}
+
+// DownloadSRSGroup — загрузка для ЛОКАЛЬНОЙ машины (bin/rule-sets/).
+func DownloadSRSGroup(ctx context.Context, execDir string, entries []SRSEntry) error {
+	return DownloadSRSGroupTo(ctx, execDir, "", entries)
 }
 
 // DeleteOrphanRuleSets удаляет файлы из bin/rule-sets/, чьих tags нет в knownTags.

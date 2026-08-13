@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -98,6 +99,12 @@ func (t *LxdRemoteTransport) GroupProxies(group string) ([]api.ProxyInfo, string
 	groups, err := client.GetGroups(ctx, &emptypb.Empty{})
 	if err != nil {
 		return nil, "", fmt.Errorf("lxd remote GetGroups: %w", err)
+	}
+	// Пустая группа = список ещё не прочитан у машины (панель успела дёрнуть
+	// refresh раньше). Спрашивать ядро про группу "" бессмысленно, а
+	// «group "" not found» читается как поломка на той стороне.
+	if strings.TrimSpace(group) == "" {
+		return nil, "", errRemoteGroupUnknown
 	}
 	for _, g := range groups.GetGroup() {
 		if g.GetTag() != group {
@@ -285,3 +292,13 @@ func (t *LxdRemoteTransport) Groups() ([]string, error) {
 	}
 	return tags, nil
 }
+
+// errRemoteGroupUnknown — группа машины ещё не известна лаунчеру.
+//
+// Не ошибка машины: список групп читается у неё после соединения, и до этого
+// момента спрашивать «дай узлы группы ""» нечего. Вызывающий показывает
+// подсказку вместо диалога с сырым RPC-текстом.
+var errRemoteGroupUnknown = errors.New("remote group is not known yet")
+
+// IsRemoteGroupUnknown — проверка для UI-слоя.
+func IsRemoteGroupUnknown(err error) bool { return errors.Is(err, errRemoteGroupUnknown) }

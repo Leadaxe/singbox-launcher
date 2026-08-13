@@ -51,6 +51,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
+	"singbox-launcher/internal/platform"
 	"singbox-launcher/ui/components"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizarddialogs "singbox-launcher/ui/configurator/dialogs"
@@ -83,6 +84,12 @@ func ShowConfigWizard(parent fyne.Window) {
 func ShowConfigWizardForMachine(parent fyne.Window, machine services.RemoteDaemon) {
 	tgt := machine.Target()
 	tgt.MachineID = machine.ID
+	// Два каталога, и их нельзя путать: ResourceDir уезжает в конфиг (путь
+	// НА МАШИНЕ), SrsLocalDir — где файл лежит у нас (проверка наличия и
+	// источник для Deploy).
+	tgt.ResourceDir = machine.ResourceDir()
+	tgt.SrsLocalDir = platform.GetRuleSetsDirFor(
+		core.GetController().FileService.ExecDir, constants.ConfigTargetRemote, machine.ID)
 	// ResourceDir кешируется в реестре при каждом соединении (SPEC 063):
 	// пути .srs в конфиге машины должны указывать в ЕЁ ресурс-стор, а не в
 	// файловую систему лаунчера. Пусто, если с машиной ещё ни разу не
@@ -129,6 +136,7 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 	// local-состояние и записать его в папку машины.
 	model.Target = target.Normalized()
 	model.ResourceDir = resourceDir
+	model.MachineID = target.MachineIDOrEmpty()
 
 	// Create new window for wizard.
 	//

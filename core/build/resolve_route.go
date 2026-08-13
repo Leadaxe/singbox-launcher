@@ -179,7 +179,7 @@ func resolvePresetRouteRule(
 		if emittedTags[tag] {
 			continue
 		}
-		converted, skip := convertPresetRuleSetRemoteToLocal(rs, execDir)
+		converted, skip := convertPresetRuleSetRemoteToLocal(rs, execDir, target.ResourceDir, target.SrsLocalDir)
 		if skip {
 			out.RuleSets = append(out.RuleSets, ResolvedRouteRuleSet{
 				Tag:           tag,

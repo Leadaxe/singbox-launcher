@@ -75,7 +75,7 @@ func (ac *AppController) buildContextFromState(s *state.State, cache *build.Pars
 		Presets:             td.Presets,
 		Rules:               s.Rules,
 		DNS:                 s.DNS,
-		SrsCachedPaths:      build.CollectSrsCachedPaths(s.Rules, execDir),
+		SrsCachedPaths:      build.CollectSrsCachedPaths(s.Rules, execDir, ""),
 		TemplateDNSDefaults: parseTemplateDNSDefaultsFromTD(td),
 		ExecDir:             execDir,
 	}
