@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -99,11 +100,19 @@ func (p *TrafficProfiler) Start(cfg ClashConfigProvider, logPath string, httpc H
 	}
 	p.bgCtx, p.bgCancel = context.WithCancel(context.Background())
 	p.poller = NewConnPoller(cfg, asStdHTTP(httpc))
-	p.tailer = NewLogTailer(logPath)
+	// Пустой logPath = наблюдаем УДАЛЁННУЮ машину: её sing-box.log лежит на
+	// её файловой системе, и читать нам нечего. Тогда работает только поток
+	// соединений (gRPC), без DNS-событий и CNAME-цепочек из лога.
+	if logPath != "" {
+		p.tailer = NewLogTailer(logPath)
+	}
+	tailer := p.tailer
 	p.mu.Unlock()
 
 	go p.poller.Run(p.bgCtx)
-	go p.tailer.Run(p.bgCtx)
+	if tailer != nil {
+		go tailer.Run(p.bgCtx)
+	}
 	go p.runJoin(p.bgCtx)
 }
 
@@ -136,7 +145,13 @@ func (p *TrafficProfiler) Stop() {
 // subscribers.
 func (p *TrafficProfiler) runJoin(ctx context.Context) {
 	pollerCh := p.poller.Out()
-	tailerCh := p.tailer.Out()
+	// Без тейлера (наблюдение за удалённой машиной) канал остаётся nil:
+	// select на nil-канале просто никогда не срабатывает, и цикл живёт на
+	// одних соединениях. Это честнее, чем городить отдельную ветку.
+	var tailerCh <-chan LogLine
+	if p.tailer != nil {
+		tailerCh = p.tailer.Out()
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -219,6 +234,7 @@ func (p *TrafficProfiler) eventFromConn(c ClashConn, at time.Time, _ bool) Traff
 		ConnID:        c.ID,
 		ProcessPath:   c.Metadata.ProcessPath,
 		ProcessName:   c.Metadata.Process,
+		SourceAddr:    c.Metadata.SourceAddr,
 		Domain:        c.Metadata.Host,
 		IP:            c.Metadata.DestinationIP,
 		Port:          c.Metadata.PortInt(),
@@ -599,4 +615,312 @@ func FormatRecordingTitle(s *Session) string {
 	m := int(d.Minutes())
 	sec := int(d.Seconds()) % 60
 	return fmt.Sprintf("Traffic Profiler ⚡ Recording · %02d:%02d", m, sec)
+}
+
+// PushEvent подаёт событие, пришедшее из внешнего источника, — так же, как
+// если бы его породил поллер или тейлер.
+//
+// Нужен для удалённой машины: её DNS-плоскость приходит структурным стримом
+// SubscribeDNSQueries (SPEC 018 форка), а не разбором лога, которого у нас
+// нет. Событие проходит тот же путь: кольцевой буфер, активная сессия,
+// подписчики.
+func (p *TrafficProfiler) PushEvent(e TrafficEvent) {
+	p.dispatch(e)
+}
+
+// ClientConn — одно соединение клиента. Строка таблицы = соединение, как в
+// Live: сворачивать их по хосту значило бы прятать то, чем они различаются —
+// порт, маршрут, длительность.
+type ClientConn struct {
+	ID   string
+	Host string
+	Port string
+	Up   int64
+	Down int64
+	// Chains — полная цепочка outbound'ов, leaf→root.
+	Chains  []string
+	Rule    string
+	Network string
+	// Source — адрес клиента вместе с портом: в заголовке группы порт срезан,
+	// а соединения различаются именно им.
+	Source string
+	Start  time.Time
+}
+
+// Outbound — корень цепочки, то есть выбранный outbound.
+func (c ClientConn) Outbound() string {
+	if len(c.Chains) == 0 {
+		return ""
+	}
+	return c.Chains[len(c.Chains)-1]
+}
+
+// ClientSummary — один клиент (устройство в сети) и его соединения.
+//
+// Для удалённой машины это замена разбивки по процессам: процессов там нет,
+// трафик идёт от устройств, и различаются они исходным адресом. Меняется
+// только ось группировки — внутри клиента соединения лежат как есть, по
+// одному на строку, как в Live.
+type ClientSummary struct {
+	Addr  string
+	Conns int
+	Up    int64
+	Down  int64
+	// Items — соединения этого клиента, по убыванию трафика.
+	Items []ClientConn
+	// MixedOutbound — соединения клиента разошлись по разным outbound'ам.
+	//
+	// Именно это и ищут, открывая профайлер на роутере: устройство ушло
+	// мимо VPN на части трафика, а не целиком, и заметить такое в общем
+	// потоке невозможно.
+	MixedOutbound bool
+	// IDs — идентификаторы соединений клиента (для обрыва).
+	IDs []string
+}
+
+// ClientFilter — условия отбора соединений в агрегате по клиентам.
+//
+// Перечислимое (клиент, outbound, правило) отбирается точным совпадением,
+// исчислимое сотнями (домен, IP, порт) — подстрокой: доменов в живом потоке
+// столько, что список из них был бы нечитаем.
+//
+// Пустое поле — «не фильтровать». Условия складываются по И: пара
+// «outbound=direct-out + поиск youtube» отвечает на вопрос, ради которого
+// профайлер на роутере и открывают, — что из ютуба ушло мимо VPN.
+type ClientFilter struct {
+	Client   string
+	Outbound string
+	Rule     string
+	// Search — подстрока для домена, IP или порта, регистр не важен.
+	Search string
+}
+
+func (f ClientFilter) empty() bool {
+	return f.Client == "" && f.Outbound == "" && f.Rule == "" && f.Search == ""
+}
+
+// match проверяет одно соединение против фильтра.
+func (f ClientFilter) match(client string, c ClashConn) bool {
+	if f.Client != "" && client != f.Client {
+		return false
+	}
+	if f.Outbound != "" && connOutbound(c) != f.Outbound {
+		return false
+	}
+	if f.Rule != "" && c.Rule != f.Rule {
+		return false
+	}
+	if f.Search != "" {
+		needle := strings.ToLower(f.Search)
+		hay := strings.ToLower(strings.Join([]string{
+			c.Metadata.Host, c.Metadata.DestinationIP, c.Metadata.DestinationPort,
+		}, " "))
+		if !strings.Contains(hay, needle) {
+			return false
+		}
+	}
+	return true
+}
+
+// ClientOptions — значения для выпадающих списков, собранные из ЖИВОГО потока.
+//
+// Именно из потока, а не из конфига машины: неиспользуемые outbound'ы конфига
+// в этом списке только мешают, важно то, куда трафик ушёл на самом деле.
+// Счётчик — число соединений, а не строк таблицы: он подсказывает, где искать.
+type ClientOptions struct {
+	Clients   []OptionCount
+	Outbounds []OptionCount
+	Rules     []OptionCount
+}
+
+// OptionCount — значение фильтра и число соединений с ним.
+type OptionCount struct {
+	Value string
+	Count int
+}
+
+// ClientOptions собирает варианты фильтров из текущего снимка соединений.
+//
+// Считается по НЕотфильтрованному снимку: списки, сужающиеся от собственного
+// выбора, не дают вернуться обратно.
+func (p *TrafficProfiler) ClientOptions() ClientOptions {
+	conns, ok := p.clientConns()
+	if !ok {
+		return ClientOptions{}
+	}
+	clients, outbounds, rules := map[string]int{}, map[string]int{}, map[string]int{}
+	for _, c := range conns {
+		clients[hostOnlyPart(c.Metadata.SourceAddr)]++
+		if ob := connOutbound(c); ob != "" {
+			outbounds[ob]++
+		}
+		if c.Rule != "" {
+			rules[c.Rule]++
+		}
+	}
+	return ClientOptions{
+		Clients:   SortedOptions(clients),
+		Outbounds: SortedOptions(outbounds),
+		Rules:     SortedOptions(rules),
+	}
+}
+
+// SortedOptions упорядочивает варианты по частоте, при равенстве — по имени:
+// без второго ключа список бы перетасовывался на каждом тике.
+//
+// Экспортирована ради вкладки Live: она строит те же списки, но из своего
+// буфера событий, а не из снимка соединений.
+func SortedOptions(m map[string]int) []OptionCount {
+	out := make([]OptionCount, 0, len(m))
+	for v, n := range m {
+		out = append(out, OptionCount{Value: v, Count: n})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Value < out[j].Value
+	})
+	return out
+}
+
+// clientConns — живой снимок клиентских соединений (у которых есть исходный
+// адрес). Соединения самой машины к клиентам отношения не имеют.
+func (p *TrafficProfiler) clientConns() ([]ClashConn, bool) {
+	p.mu.Lock()
+	poller := p.poller
+	p.mu.Unlock()
+	if poller == nil {
+		return nil, false
+	}
+	cur := poller.Current()
+	out := make([]ClashConn, 0, len(cur))
+	for _, c := range cur {
+		if c.Metadata.SourceAddr == "" {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out, true
+}
+
+// connOutbound — outbound, которым ушло соединение. Цепочка идёт leaf→root:
+// корень и есть выбранный outbound.
+func connOutbound(c ClashConn) string {
+	if len(c.Chains) == 0 {
+		return ""
+	}
+	return c.Chains[len(c.Chains)-1]
+}
+
+// ClientSummaries раскладывает ТЕКУЩИЕ соединения по клиентам.
+//
+// Меняется только ось группировки: вместо процесса — исходный адрес. Внутри
+// клиента соединения лежат по одному на строку, как в Live; сворачивать их по
+// хосту значило бы прятать то, чем они различаются, — порт, маршрут, время.
+//
+// Считается по живому снимку, а не по кольцевому буферу событий: там
+// открытия и закрытия, и итоговые байты длинного соединения в них не видны.
+func (p *TrafficProfiler) ClientSummaries(f ClientFilter) []ClientSummary {
+	conns, ok := p.clientConns()
+	if !ok {
+		return nil
+	}
+
+	byAddr := map[string]*ClientSummary{}
+	outboundsByAddr := map[string]map[string]struct{}{}
+	for _, c := range conns {
+		host := hostOnlyPart(c.Metadata.SourceAddr)
+		if !f.match(host, c) {
+			continue
+		}
+		cs, ok := byAddr[host]
+		if !ok {
+			cs = &ClientSummary{Addr: host}
+			byAddr[host] = cs
+			outboundsByAddr[host] = map[string]struct{}{}
+		}
+		cs.Conns++
+		cs.Up += c.Upload
+		cs.Down += c.Download
+		cs.IDs = append(cs.IDs, c.ID)
+
+		dst := c.Metadata.Host
+		if dst == "" {
+			dst = c.Metadata.DestinationIP
+		}
+		if ob := connOutbound(c); ob != "" {
+			outboundsByAddr[host][ob] = struct{}{}
+		}
+		cs.Items = append(cs.Items, ClientConn{
+			ID:      c.ID,
+			Host:    dst,
+			Port:    c.Metadata.DestinationPort,
+			Up:      c.Upload,
+			Down:    c.Download,
+			Chains:  c.Chains,
+			Rule:    c.Rule,
+			Network: c.Metadata.Network,
+			Source:  c.Metadata.SourceAddr,
+			Start:   c.Start,
+		})
+	}
+
+	out := make([]ClientSummary, 0, len(byAddr))
+	for host, cs := range byAddr {
+		// Признак считается по ОТФИЛЬТРОВАННЫМ соединениям: с фильтром по
+		// одному outbound'у смешения быть не может по построению, и показывать
+		// его там было бы ложью.
+		cs.MixedOutbound = len(outboundsByAddr[host]) > 1
+		sort.Slice(cs.Items, func(i, j int) bool {
+			return cs.Items[i].Up+cs.Items[i].Down > cs.Items[j].Up+cs.Items[j].Down
+		})
+		out = append(out, *cs)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Up+out[i].Down > out[j].Up+out[j].Down })
+	return out
+}
+
+// LiveConnIDs — идентификаторы ВСЕХ открытых соединений, включая те, у
+// которых нет исходного адреса.
+//
+// Шире клиентского среза намеренно: «разорвать все» должно рвать всё, что
+// ядро держит открытым, иначе часть соединений пережила бы кнопку с таким
+// названием. Второе значение — ok=false, пока стрим не принёс первого кадра:
+// пустой список тогда означает «не знаем», а не «рвать нечего».
+func (p *TrafficProfiler) LiveConnIDs() ([]string, bool) {
+	p.mu.Lock()
+	poller := p.poller
+	p.mu.Unlock()
+	if poller == nil {
+		return nil, false
+	}
+	cur := poller.Current()
+	out := make([]string, 0, len(cur))
+	for id := range cur {
+		out = append(out, id)
+	}
+	// Порядок карты случаен, а список уходит в цикл обрыва — сортируем, чтобы
+	// повторный вызов вёл себя одинаково и лог читался.
+	sort.Strings(out)
+	return out, true
+}
+
+// ClientTotals — сколько соединений видно сейчас и сколько всего, чтобы
+// «12 / 26» в шапке отвечало, насколько фильтр сузил картину.
+func (p *TrafficProfiler) ClientTotals(f ClientFilter) (shown, total int) {
+	conns, ok := p.clientConns()
+	if !ok {
+		return 0, 0
+	}
+	total = len(conns)
+	if f.empty() {
+		return total, total
+	}
+	for _, c := range conns {
+		if f.match(hostOnlyPart(c.Metadata.SourceAddr), c) {
+			shown++
+		}
+	}
+	return shown, total
 }

@@ -253,6 +253,90 @@ type Resource struct {
 	Path string `json:"path"`
 }
 
+// ClientInfo — запись справочника устройств локальной сети машины.
+//
+// Пустое поле — это состояние, а не ошибка: у проводного клиента нет ssid, а
+// вне Linux три из пяти провайдеров молчат вовсе (эндпоинт всё равно отвечает
+// — арендами и метками).
+type ClientInfo struct {
+	Name  string `json:"name"`
+	MAC   string `json:"mac"`
+	SSID  string `json:"ssid"`
+	Iface string `json:"iface"`
+	Port  string `json:"port"`
+	// Source — какие провайдеры заполнили запись («lease+arp+wireless»).
+	// Нужен при разборе «почему устройство потеряло имя»: одинокий «label»
+	// означает, что аренда DHCP истекла.
+	Source string `json:"source"`
+}
+
+// ClientsInfo — справочник «адрес → устройство» (GET /admin/clients-info).
+//
+// Именно СПРАВОЧНИК, а не поле соединения: имена меняются в масштабе часов, и
+// демон отдаёт таблицу целиком, чтобы клиент сам соединил её с исходными
+// адресами. Поток соединений при этом не трогается.
+func (c *Client) ClientsInfo() (map[string]ClientInfo, error) {
+	resp, err := c.do(http.MethodGet, "/admin/clients-info", nil, "")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("lxdclient: clients-info: %s", decodeError(resp))
+	}
+	var out struct {
+		Clients map[string]ClientInfo `json:"clients"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&out); err != nil {
+		return nil, fmt.Errorf("lxdclient: clients-info: parse: %w", err)
+	}
+	return out.Clients, nil
+}
+
+// SetClientLabel задаёт собственное имя устройства по IP или MAC.
+//
+// Метка переживает перезапуск демона и имеет приоритет над провайдерами.
+// Метка на MAC следует за устройством между адресами, но телефоны
+// рандомизируют MAC при переподключении — для них устойчивее метка на IP
+// вместе с резервированием DHCP.
+func (c *Client) SetClientLabel(key, name string) error {
+	if strings.TrimSpace(key) == "" {
+		return fmt.Errorf("lxdclient: client label key is empty")
+	}
+	body, err := json.Marshal(struct {
+		Name string `json:"name"`
+	}{Name: name})
+	if err != nil {
+		return err
+	}
+	resp, err := c.do(http.MethodPut, "/admin/clients-info/labels/"+url.PathEscape(key),
+		bytes.NewReader(body), "application/json")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("lxdclient: set client label: %s", decodeError(resp))
+	}
+	return nil
+}
+
+// DeleteClientLabel снимает собственное имя устройства.
+func (c *Client) DeleteClientLabel(key string) error {
+	if strings.TrimSpace(key) == "" {
+		return fmt.Errorf("lxdclient: client label key is empty")
+	}
+	resp, err := c.do(http.MethodDelete, "/admin/clients-info/labels/"+url.PathEscape(key), nil, "")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("lxdclient: delete client label: %s", decodeError(resp))
+	}
+	return nil
+}
+
 // Resources возвращает список залитых ресурсов с хешами (GET /admin/resources).
 func (c *Client) Resources() ([]Resource, error) {
 	resp, err := c.do(http.MethodGet, "/admin/resources", nil, "")

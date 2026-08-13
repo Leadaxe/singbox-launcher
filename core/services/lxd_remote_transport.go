@@ -13,7 +13,9 @@ import (
 
 	"singbox-launcher/api"
 	daemonpb "singbox-launcher/internal/daemonpb"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/lxdclient"
+	"singbox-launcher/internal/traffic"
 )
 
 // LxdRemoteTransport — ProxyTransport поверх gRPC-канала УДАЛЁННОГО демона
@@ -38,7 +40,23 @@ type LxdRemoteTransport struct {
 
 	mu   sync.Mutex
 	conn *grpc.ClientConn
+
+	// Кэш справочника устройств. Он опрашивается на каждой перерисовке
+	// таблицы (раз в секунду), а меняется в масштабе часов — без кэша это
+	// был бы HTTP-запрос к роутеру на каждый тик.
+	clientsMu   sync.Mutex
+	clientsAt   time.Time
+	clientsMap  map[string]lxdclient.ClientInfo
+	clientsErr  error
+	clientsBusy bool
 }
+
+// clientsInfoTTL — срок жизни кэша справочника устройств.
+//
+// Совпадает с кэшем самого демона: свой TTL короче означал бы запросы, на
+// которые демон всё равно отвечает из своего кэша — те же данные ценой
+// лишнего похода к роутеру.
+const clientsInfoTTL = time.Minute
 
 // NewLxdRemoteTransport строит транспорт к удалённому демону по готовой
 // конфигурации подключения (адрес + пин сервера + клиентская identity).
@@ -302,3 +320,363 @@ var errRemoteGroupUnknown = errors.New("remote group is not known yet")
 
 // IsRemoteGroupUnknown — проверка для UI-слоя.
 func IsRemoteGroupUnknown(err error) bool { return errors.Is(err, errRemoteGroupUnknown) }
+
+// SubscribeConnections открывает стрим соединений УДАЛЁННОЙ машины и
+// возвращает источник снимков для traffic-профайлера (SPEC 059).
+//
+// Профайлер у каждой машины свой, как и список каналов: смотреть на свои
+// соединения, когда открыт профайлер роутера, — то же самое, что показывать
+// узлы чужого ядра под именем выбранной машины.
+//
+// Стрим живёт до вызова cancel (закрытия окна), поэтому контекст собственный,
+// не связанный с дедлайном одиночного RPC.
+func (t *LxdRemoteTransport) SubscribeConnections() (snapshot func(context.Context) (map[string]traffic.ClashConn, bool), cancel func(), err error) {
+	t.mu.Lock()
+	if t.conn == nil {
+		conn, dialErr := t.client.DialGRPC()
+		if dialErr != nil {
+			t.mu.Unlock()
+			return nil, nil, fmt.Errorf("lxd remote: dial %s: %w", t.client.AddrString(), dialErr)
+		}
+		t.conn = conn
+	}
+	conn := t.conn
+	t.mu.Unlock()
+
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	stream, err := daemonpb.NewStartedServiceClient(conn).SubscribeConnections(ctx,
+		&daemonpb.SubscribeConnectionsRequest{
+			// Интервал в НАНОСЕКУНДАХ (демон клампит снизу 200 мс). Прислать
+			// сюда «1000», подумав про миллисекунды, — значит попросить тикер
+			// раз в микросекунду и сжечь CPU на той стороне; так уже было.
+			Interval: int64(time.Second),
+		})
+	if err != nil {
+		cancelCtx()
+		return nil, nil, fmt.Errorf("lxd remote SubscribeConnections: %w", err)
+	}
+
+	tracker := traffic.NewConnTracker()
+	go func() {
+		for {
+			events, recvErr := stream.Recv()
+			if recvErr != nil {
+				// Обрыв стрима: соединения, которые мы помним, больше не
+				// подтверждены — сбрасываем, иначе профайлер продолжил бы
+				// показывать давно закрытые как живые.
+				tracker.Reset()
+				debuglog.DebugLog("lxd remote conns: stream closed: %v", recvErr)
+				return
+			}
+			// Reset = ядро перезапустилось (apply, Start/Stop): прежние
+			// соединения мертвы, и держать их в снимке значило бы показывать
+			// давно закрытые как живые.
+			if events.GetReset_() {
+				tracker.Reset()
+			}
+			for _, ev := range events.GetEvents() {
+				tracker.ApplyEvent(ev)
+			}
+		}
+	}()
+
+	return tracker.Snapshot, cancelCtx, nil
+}
+
+// dnsTypeCNAME — код записи CNAME в DNS (RFC 1035).
+const dnsTypeCNAME = 5
+
+// DNSQuery — одно событие DNS-плоскости удалённой машины (SPEC 018 форка).
+//
+// Структурный поток вместо разбора лога: приходит и сервер, который отвечал,
+// и цепочка outbound'ов, и признак отказа — то, что из текстовой строки лога
+// пришлось бы вытаскивать регулярками.
+type DNSQuery struct {
+	Domain  string
+	Failed  bool
+	Error   string
+	Answers []string
+	// CNAMEs — цепочка переадресаций, собранная из ответов типа CNAME.
+	CNAMEs      []string
+	DNSServer   string
+	ProcessPath string
+}
+
+// SubscribeDNSQueries открывает стрим DNS-запросов машины.
+//
+// includeAnswers=true обязателен: без ответов не восстановить CNAME-цепочку,
+// а именно она отвечает на вопрос «куда на самом деле ушёл домен».
+func (t *LxdRemoteTransport) SubscribeDNSQueries(onQuery func(DNSQuery)) (cancel func(), err error) {
+	t.mu.Lock()
+	if t.conn == nil {
+		conn, dialErr := t.client.DialGRPC()
+		if dialErr != nil {
+			t.mu.Unlock()
+			return nil, fmt.Errorf("lxd remote: dial %s: %w", t.client.AddrString(), dialErr)
+		}
+		t.conn = conn
+	}
+	conn := t.conn
+	t.mu.Unlock()
+
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	stream, err := daemonpb.NewStartedServiceClient(conn).SubscribeDNSQueries(ctx,
+		&daemonpb.SubscribeDNSQueriesRequest{IncludeAnswers: true})
+	if err != nil {
+		cancelCtx()
+		return nil, fmt.Errorf("lxd remote SubscribeDNSQueries: %w", err)
+	}
+
+	go func() {
+		for {
+			ev, recvErr := stream.Recv()
+			if recvErr != nil {
+				debuglog.DebugLog("lxd remote dns: stream closed: %v", recvErr)
+				return
+			}
+			q := DNSQuery{
+				Domain:    ev.GetDomain(),
+				Failed:    ev.GetFailed(),
+				Error:     ev.GetError(),
+				DNSServer: ev.GetDnsServer(),
+			}
+			if pi := ev.GetProcessInfo(); pi != nil {
+				q.ProcessPath = pi.GetProcessPath()
+			}
+			for _, a := range ev.GetAnswers() {
+				rdata := a.GetRdata()
+				if rdata == "" {
+					continue
+				}
+				// Type 5 = CNAME: из этих записей клиент и восстанавливает
+				// цепочку переадресаций, отдельной сущностью она не приходит.
+				if a.GetType() == dnsTypeCNAME {
+					q.CNAMEs = append(q.CNAMEs, rdata)
+					continue
+				}
+				q.Answers = append(q.Answers, rdata)
+			}
+			onQuery(q)
+		}
+	}()
+	return cancelCtx, nil
+}
+
+// --- Справочники и статус машины (SPEC 059, рецепт из lxd-grpc-api.md) ----
+
+// RemoteRule — одно правило маршрутизации машины.
+type RemoteRule struct {
+	Type    string
+	Payload string
+	Action  string
+}
+
+// Rules возвращает таблицу правил ядра машины.
+//
+// Нужна, чтобы расшифровать Connection.rule: в соединении лежит строка
+// правила, и без таблицы она читается как невнятный индекс.
+func (t *LxdRemoteTransport) Rules() ([]RemoteRule, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	list, err := client.GetRules(ctx, &emptypb.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("lxd remote GetRules: %w", err)
+	}
+	out := make([]RemoteRule, 0, len(list.GetRules()))
+	for _, r := range list.GetRules() {
+		out = append(out, RemoteRule{
+			Type:    r.GetType(),
+			Payload: r.GetPayload(),
+			Action:  r.GetAction(),
+		})
+	}
+	return out, nil
+}
+
+// Outbounds возвращает теги outbound'ов машины — для резолва цепочек.
+func (t *LxdRemoteTransport) Outbounds() ([]string, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	list, err := client.GetOutbounds(ctx, &emptypb.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("lxd remote GetOutbounds: %w", err)
+	}
+	out := make([]string, 0, len(list.GetOutbounds()))
+	for _, o := range list.GetOutbounds() {
+		out = append(out, o.GetTag())
+	}
+	return out, nil
+}
+
+// StartedAt — момент запуска ядра машины (точка отсчёта uptime).
+func (t *LxdRemoteTransport) StartedAt() (time.Time, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return time.Time{}, err
+	}
+	defer cancel()
+	resp, err := client.GetStartedAt(ctx, &emptypb.Empty{})
+	if err != nil {
+		return time.Time{}, fmt.Errorf("lxd remote GetStartedAt: %w", err)
+	}
+	ms := resp.GetStartedAt()
+	if ms <= 0 {
+		return time.Time{}, nil
+	}
+	return time.UnixMilli(ms), nil
+}
+
+// RemoteStatus — сводка ядра машины для шапки профайлера.
+type RemoteStatus struct {
+	Memory         uint64
+	Goroutines     int32
+	ConnectionsIn  int32
+	ConnectionsOut int32
+	Uplink         int64
+	Downlink       int64
+	UplinkTotal    int64
+	DownlinkTotal  int64
+}
+
+// SubscribeStatus открывает стрим сводки ядра машины.
+func (t *LxdRemoteTransport) SubscribeStatus(onStatus func(RemoteStatus)) (cancel func(), err error) {
+	t.mu.Lock()
+	if t.conn == nil {
+		conn, dialErr := t.client.DialGRPC()
+		if dialErr != nil {
+			t.mu.Unlock()
+			return nil, fmt.Errorf("lxd remote: dial %s: %w", t.client.AddrString(), dialErr)
+		}
+		t.conn = conn
+	}
+	conn := t.conn
+	t.mu.Unlock()
+
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	stream, err := daemonpb.NewStartedServiceClient(conn).SubscribeStatus(ctx,
+		// Наносекунды, как и у прочих Subscribe*.
+		&daemonpb.SubscribeStatusRequest{Interval: int64(time.Second)})
+	if err != nil {
+		cancelCtx()
+		return nil, fmt.Errorf("lxd remote SubscribeStatus: %w", err)
+	}
+	go func() {
+		for {
+			st, recvErr := stream.Recv()
+			if recvErr != nil {
+				debuglog.DebugLog("lxd remote status: stream closed: %v", recvErr)
+				return
+			}
+			onStatus(RemoteStatus{
+				Memory:         st.GetMemory(),
+				Goroutines:     st.GetGoroutines(),
+				ConnectionsIn:  st.GetConnectionsIn(),
+				ConnectionsOut: st.GetConnectionsOut(),
+				Uplink:         st.GetUplink(),
+				Downlink:       st.GetDownlink(),
+				UplinkTotal:    st.GetUplinkTotal(),
+				DownlinkTotal:  st.GetDownlinkTotal(),
+			})
+		}
+	}()
+	return cancelCtx, nil
+}
+
+// ClientsInfo — справочник устройств локальной сети машины, из кэша.
+//
+// Никогда не ходит по сети синхронно: зовётся из UI-потока на каждой
+// перерисовке таблицы, и HTTP к роутеру там подвесил бы окно на время
+// запроса. Просроченный кэш обновляется в фоне, а вызывающему сразу отдаётся
+// то, что есть, — устаревшее имя устройства безобиднее замершего интерфейса.
+//
+// Второе значение — ok=false, пока справочник ни разу не получен: пустая карта
+// тогда означает «ещё не знаем», а не «устройств нет».
+func (t *LxdRemoteTransport) ClientsInfo() (map[string]lxdclient.ClientInfo, bool) {
+	t.clientsMu.Lock()
+	cur, at, busy := t.clientsMap, t.clientsAt, t.clientsBusy
+	fresh := time.Since(at) < clientsInfoTTL
+	if !fresh && !busy {
+		// Флаг занятости не даёт запустить второе обновление, пока идёт
+		// первое: таблица перерисовывается раз в секунду, и без него на
+		// просроченном кэше стартовал бы запрос на каждый тик.
+		t.clientsBusy = true
+		go t.refreshClientsInfo()
+	}
+	t.clientsMu.Unlock()
+	return cur, cur != nil
+}
+
+// refreshClientsInfo обновляет кэш справочника. Работает в своей горутине.
+func (t *LxdRemoteTransport) refreshClientsInfo() {
+	m, err := t.client.ClientsInfo()
+	t.clientsMu.Lock()
+	defer t.clientsMu.Unlock()
+	t.clientsBusy = false
+	t.clientsErr = err
+	if err != nil {
+		// Прошлую карту при ошибке НЕ выбрасываем: связь могла моргнуть, а
+		// имена устройств от этого не перестали быть верными. Метку времени
+		// тоже не двигаем — иначе следующая попытка отложилась бы на минуту.
+		return
+	}
+	// Пустой ответ — это ответ: справочник может не знать ни одного устройства
+	// (вне Linux молчат все провайдеры, кроме меток). Оставить nil значило бы
+	// «ещё не получали», и кэш перезапрашивался бы вечно.
+	if m == nil {
+		m = map[string]lxdclient.ClientInfo{}
+	}
+	t.clientsMap = m
+	t.clientsAt = time.Now()
+}
+
+// ClientsInfoError — последняя ошибка обновления справочника (nil, если всё
+// хорошо). Демон старых версий эндпоинта не знает, и это не повод шуметь.
+func (t *LxdRemoteTransport) ClientsInfoError() error {
+	t.clientsMu.Lock()
+	defer t.clientsMu.Unlock()
+	return t.clientsErr
+}
+
+// SetClientLabel задаёт собственное имя устройства и сбрасывает кэш, чтобы
+// имя появилось в таблице сразу, а не через минуту.
+func (t *LxdRemoteTransport) SetClientLabel(key, name string) error {
+	if err := t.client.SetClientLabel(key, name); err != nil {
+		return err
+	}
+	t.invalidateClientsInfo()
+	return nil
+}
+
+// DeleteClientLabel снимает собственное имя устройства.
+func (t *LxdRemoteTransport) DeleteClientLabel(key string) error {
+	if err := t.client.DeleteClientLabel(key); err != nil {
+		return err
+	}
+	t.invalidateClientsInfo()
+	return nil
+}
+
+func (t *LxdRemoteTransport) invalidateClientsInfo() {
+	t.clientsMu.Lock()
+	t.clientsAt = time.Time{}
+	t.clientsMu.Unlock()
+}
+
+// CloseConnection обрывает одно соединение машины по его UUID.
+func (t *LxdRemoteTransport) CloseConnection(id string) error {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	if _, err := client.CloseConnection(ctx, &daemonpb.CloseConnectionRequest{Id: id}); err != nil {
+		return fmt.Errorf("lxd remote CloseConnection: %w", err)
+	}
+	return nil
+}

@@ -29,6 +29,12 @@ type ClashConn struct {
 // ClashConnMeta — the relevant fields of metadata. Port comes as a string
 // in the Clash schema, so we parse on demand.
 type ClashConnMeta struct {
+	// SourceAddr — адрес КЛИЕНТА (ip:port), инициировавшего соединение.
+	//
+	// На роутере это единственный способ различить, кто ходит: процесса там
+	// нет вовсе (find_process имеет смысл только для трафика самой машины), а
+	// клиенты — устройства в локальной сети.
+	SourceAddr      string
 	Network         string `json:"network"`
 	Type            string `json:"type"`
 	Host            string `json:"host"`
@@ -110,8 +116,12 @@ type ConnPoller struct {
 	srcMu      sync.Mutex
 	snapshotFn SnapshotFunc
 
-	// state for diff
-	prev map[string]ClashConn
+	// state for diff.
+	//
+	// prevMu защищает prev: пишет его goroutine поллера, а читает UI-поток
+	// через Current() — агрегат по клиентам считается из этого снимка.
+	prevMu sync.Mutex
+	prev   map[string]ClashConn
 
 	out chan ConnDelta
 }
@@ -192,8 +202,8 @@ func (p *ConnPoller) pollOnce(ctx context.Context) {
 	if fn := p.currentSnapshotFn(); fn != nil {
 		curr, ok := fn(ctx)
 		if !ok {
-			if len(p.prev) > 0 {
-				p.prev = make(map[string]ClashConn)
+			if p.snapshotLen() > 0 {
+				p.setPrev(make(map[string]ClashConn))
 			}
 			return
 		}
@@ -205,8 +215,8 @@ func (p *ConnPoller) pollOnce(ctx context.Context) {
 	if !enabled || baseURL == "" {
 		// sing-box not running or Clash API disabled — reset state so a
 		// fresh start later doesn't think all old ids "just closed".
-		if len(p.prev) > 0 {
-			p.prev = make(map[string]ClashConn)
+		if p.snapshotLen() > 0 {
+			p.setPrev(make(map[string]ClashConn))
 		}
 		return
 	}
@@ -227,7 +237,7 @@ func (p *ConnPoller) pollOnce(ctx context.Context) {
 // channel (non-blocking; drops on backlog). Shared by the Clash HTTP path and
 // the injected-source (daemon gRPC) path.
 func (p *ConnPoller) emit(delta ConnDelta, curr map[string]ClashConn) {
-	p.prev = curr
+	p.setPrev(curr)
 	select {
 	case p.out <- delta:
 	default:
@@ -240,8 +250,10 @@ func (p *ConnPoller) emit(delta ConnDelta, curr map[string]ClashConn) {
 
 func (p *ConnPoller) diff(curr map[string]ClashConn, now time.Time) ConnDelta {
 	d := ConnDelta{At: now}
+	// Снимок под мьютексом: тот же prev читает UI-поток через Current().
+	prev := p.Current()
 	for id, c := range curr {
-		old, was := p.prev[id]
+		old, was := prev[id]
 		if !was {
 			d.Opened = append(d.Opened, c)
 			continue
@@ -254,7 +266,7 @@ func (p *ConnPoller) diff(curr map[string]ClashConn, now time.Time) ConnDelta {
 			})
 		}
 	}
-	for id, old := range p.prev {
+	for id, old := range prev {
 		if _, still := curr[id]; still {
 			continue
 		}
@@ -292,4 +304,31 @@ func fetchSnapshot(ctx context.Context, httpc *http.Client, baseURL, token strin
 		return ClashConnSnapshot{}, fmt.Errorf("decode: %w", err)
 	}
 	return snap, nil
+}
+
+// Current возвращает копию последнего снимка соединений.
+//
+// Нужен агрегату по клиентам: считать байты по кольцевому буферу событий
+// нельзя — там открытия и закрытия, а не текущие итоги, и цифры разошлись бы
+// с реальностью на первом же длинном соединении.
+func (c *ConnPoller) Current() map[string]ClashConn {
+	c.prevMu.Lock()
+	defer c.prevMu.Unlock()
+	out := make(map[string]ClashConn, len(c.prev))
+	for k, v := range c.prev {
+		out[k] = v
+	}
+	return out
+}
+
+func (c *ConnPoller) setPrev(m map[string]ClashConn) {
+	c.prevMu.Lock()
+	c.prev = m
+	c.prevMu.Unlock()
+}
+
+func (c *ConnPoller) snapshotLen() int {
+	c.prevMu.Lock()
+	defer c.prevMu.Unlock()
+	return len(c.prev)
 }

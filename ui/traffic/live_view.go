@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/internal/locale"
 	tprof "singbox-launcher/internal/traffic"
 )
 
@@ -26,6 +28,14 @@ type liveView struct {
 	list    *widget.List
 	statusL *widget.Label
 	unsub   func()
+
+	// Списки маршрутных фильтров и отпечаток их последнего набора:
+	// перезаполнять на каждом тике значило бы схлопывать раскрытый список
+	// под курсором.
+	clientSel   *widget.Select
+	outboundSel *widget.Select
+	ruleSel     *widget.Select
+	optsSig     string
 
 	// paused — when true, new events from the profiler subscription are
 	// dropped instead of appended to v.events. The subscription itself
@@ -45,6 +55,11 @@ type liveFilter struct {
 	ShowUDP      bool
 	Search       string
 	Process      string // empty = all processes
+	// Три списка из вкладки By client: перечислимое отбирается точным
+	// совпадением, а не поиском по подстроке. Пустое значение — «все».
+	Client   string
+	Outbound string
+	Rule     string
 }
 
 func defaultLiveFilter() liveFilter {
@@ -71,6 +86,7 @@ func buildLiveView(deps WindowDeps) *liveView {
 		n := len(v.events)
 		v.mu.Unlock()
 		v.statusL.SetText("Events in buffer: " + itoa(n) + "  (newest first)")
+		v.syncOptions()
 	}
 
 	// Backfill from rolling buffer so user sees something immediately.
@@ -83,13 +99,17 @@ func buildLiveView(deps WindowDeps) *liveView {
 			defer v.mu.Unlock()
 			return len(v.filteredIndices())
 		},
+		// Строка = текст события слева + колонки outbound/↑/↓ справа.
+		// Колонки фиксированной ширины, иначе при пропорциональном шрифте они
+		// разъезжались бы от строки к строке.
 		func() fyne.CanvasObject {
-			return widget.NewLabel("...")
+			return newLiveRow()
 		},
 		func(i widget.ListItemID, o fyne.CanvasObject) {
 			v.mu.Lock()
 			idxs := v.filteredIndices()
-			label := o.(*widget.Label)
+			row := o.(*fyne.Container)
+			label, obL, upL, downL := liveRowParts(row)
 			if i < 0 || i >= len(idxs) {
 				v.mu.Unlock()
 				// Clear stale text — Fyne's List.Refresh() doesn't reliably
@@ -97,6 +117,9 @@ func buildLiveView(deps WindowDeps) *liveView {
 				// previously-rendered rows can linger with old content.
 				// Defensive blank keeps the UI honest.
 				label.SetText("")
+				obL.SetText("")
+				upL.SetText("")
+				downL.SetText("")
 				return
 			}
 			// Newest-first display: reverse the FILTERED indices, not the
@@ -112,8 +135,22 @@ func buildLiveView(deps WindowDeps) *liveView {
 				line += "   [" + e.ProcessName + "]"
 			} else if e.ProcessPath != "" {
 				line += "   [" + shortPath(e.ProcessPath) + "]"
+			} else if e.SourceAddr != "" {
+				// Удалённая машина: процесса нет, зато известен адрес
+				// клиента — по нему и различаются устройства в сети.
+				line += "   [" + hostOfAddr(e.SourceAddr) + "]"
 			}
 			label.SetText(line)
+			obL.SetText(eventOutbound(e))
+			// Байты есть только у событий закрытия: у открытия их ещё нет, и
+			// «0 B» там читалось бы как «ничего не передано».
+			if e.UpBytes > 0 || e.DownBytes > 0 {
+				upL.SetText(formatBytes(e.UpBytes))
+				downL.SetText(formatBytes(e.DownBytes))
+			} else {
+				upL.SetText("")
+				downL.SetText("")
+			}
 		},
 	)
 	// Click row → detail dialog with every field of the event. Same UX
@@ -130,7 +167,9 @@ func buildLiveView(deps WindowDeps) *liveView {
 		v.mu.Unlock()
 		v.list.UnselectAll()
 		if ok {
-			showEventDetail(parentWindowOf(deps), e)
+			// Карточка устройства и здесь: строка Live несёт адрес клиента,
+			// а «кто это» отвечает справочник машины.
+			showEventDetailWithDevice(parentWindowOf(deps), e, deviceFor(deps, e.SourceAddr))
 		}
 	}
 
@@ -192,10 +231,33 @@ func buildLiveView(deps WindowDeps) *liveView {
 		pauseBtn, clearBtn,
 	)
 
+	// Три списка из вкладки By client: клиент, outbound, правило. Чипы выше
+	// отбирают ВИД события, эти — маршрут, и заменить одно другим нельзя.
+	// Имя фильтра — внутри самого списка: подписи над ними стоили целого ряда
+	// высоты, а панель фильтров в Live и без того высокая.
+	mkSelect := func(placeholder string, set func(string)) *widget.Select {
+		s := widget.NewSelect(nil, func(val string) {
+			v.mu.Lock()
+			set(valueOrEmpty(val))
+			v.mu.Unlock()
+			v.list.Refresh()
+		})
+		s.PlaceHolder = placeholder
+		return s
+	}
+	v.clientSel = mkSelect(locale.T("traffic.byclient.client"), func(s string) { v.filter.Client = s })
+	v.outboundSel = mkSelect(locale.T("traffic.byclient.outbound"), func(s string) { v.filter.Outbound = s })
+	v.ruleSel = mkSelect(locale.T("traffic.byclient.rule"), func(s string) { v.filter.Rule = s })
+
+	routeRow := container.NewGridWithColumns(3, v.clientSel, v.outboundSel, v.ruleSel)
+
 	top := container.NewVBox(
 		searchEntry,
+		routeRow,
 		filterRow,
 		v.statusL,
+		liveHeaderRow(),
+		widget.NewSeparator(),
 	)
 
 	bannerVBox := container.NewVBox()
@@ -299,6 +361,17 @@ func (v *liveView) passes(e tprof.TrafficEvent) bool {
 	if v.filter.Process != "" && e.ProcessPath != v.filter.Process {
 		return false
 	}
+	// Клиент сравнивается без порта: в списке он тоже без порта, а каждое
+	// соединение приходит со своим — иначе фильтр не совпал бы никогда.
+	if v.filter.Client != "" && hostOfAddr(e.SourceAddr) != v.filter.Client {
+		return false
+	}
+	if v.filter.Outbound != "" && eventOutbound(e) != v.filter.Outbound {
+		return false
+	}
+	if v.filter.Rule != "" && e.Rule != v.filter.Rule {
+		return false
+	}
 	if s := v.filter.Search; s != "" {
 		hay := strings.ToLower(e.Domain + " " + e.IP + " " + e.ProcessPath + " " + e.ProcessName)
 		if !strings.Contains(hay, s) {
@@ -306,6 +379,126 @@ func (v *liveView) passes(e tprof.TrafficEvent) bool {
 		}
 	}
 	return true
+}
+
+// Ширины правых колонок Live. Трафик уже, чем в By client: тут краткая
+// форма formatBytes, а не humanBytes.
+const (
+	liveColOutbound = 110
+	liveColBytes    = 74
+)
+
+// newLiveRow строит каркас строки: растяжимый текст события слева, три
+// колонки постоянной ширины справа.
+func newLiveRow() fyne.CanvasObject {
+	text := widget.NewLabel("")
+	text.Truncation = fyne.TextTruncateEllipsis
+	ob := widget.NewLabel("")
+	ob.Truncation = fyne.TextTruncateEllipsis
+	up := widget.NewLabelWithStyle("", fyne.TextAlignTrailing, fyne.TextStyle{})
+	down := widget.NewLabelWithStyle("", fyne.TextAlignTrailing, fyne.TextStyle{})
+	right := container.NewHBox(
+		fixedWidth(ob, liveColOutbound),
+		fixedWidth(up, liveColBytes),
+		fixedWidth(down, liveColBytes),
+	)
+	return container.NewBorder(nil, nil, nil, right, text)
+}
+
+// liveHeaderRow — подписи правых колонок.
+//
+// Собирается тем же newLiveRow, что и строки списка: ширины тогда совпадают
+// по построению, а не потому, что их не забыли поправить в двух местах.
+// Список Fyne рисует свои строки с отступом, которого нет у шапки, — на него
+// и сдвигаем правый блок.
+func liveHeaderRow() fyne.CanvasObject {
+	row := newLiveRow().(*fyne.Container)
+	text, ob, up, down := liveRowParts(row)
+	bold := fyne.TextStyle{Bold: true}
+	text.TextStyle, ob.TextStyle, up.TextStyle, down.TextStyle = bold, bold, bold, bold
+	text.SetText(locale.T("traffic.live.col_event"))
+	ob.SetText(locale.T("traffic.byclient.col_outbound"))
+	// Словами, а не стрелками: «↑» одинаково читается и как исходящий, и как
+	// «вверх по списку». Ушло = от клиента наружу.
+	up.SetText(locale.T("traffic.col_sent"))
+	down.SetText(locale.T("traffic.col_recv"))
+	return container.NewBorder(nil, nil, nil,
+		container.NewHBox(row.Objects[1], fixedWidth(widget.NewLabel(""), liveHeaderPad)),
+		row.Objects[0])
+}
+
+// liveHeaderPad — поправка на внутренний отступ строки списка: без неё
+// подписи стоят правее своих колонок на ширину полосы прокрутки.
+const liveHeaderPad = 8
+
+// liveRowParts достаёт виджеты из каркаса newLiveRow.
+//
+// Border кладёт центр первым, правый блок — вторым; порядок задан здесь же,
+// и держать его в одном месте с конструктором надёжнее, чем искать по индексам
+// в обработчике.
+func liveRowParts(row *fyne.Container) (text, outbound, up, down *widget.Label) {
+	text = row.Objects[0].(*widget.Label)
+	right := row.Objects[1].(*fyne.Container)
+	unwrap := func(i int) *widget.Label {
+		return right.Objects[i].(*fyne.Container).Objects[0].(*widget.Label)
+	}
+	return text, unwrap(0), unwrap(1), unwrap(2)
+}
+
+// eventOutbound — корень цепочки, то есть выбранный outbound. Порядок
+// leaf→root, как в types.go.
+func eventOutbound(e tprof.TrafficEvent) string {
+	if len(e.OutboundChain) == 0 {
+		return ""
+	}
+	return e.OutboundChain[len(e.OutboundChain)-1]
+}
+
+// liveOptions собирает варианты трёх списков из буфера событий.
+//
+// Из буфера, а не из снимка соединений: Live показывает и уже закрытые
+// события, и фильтр обязан уметь отобрать то, что видно на экране. Caller
+// must hold v.mu.
+func (v *liveView) liveOptions() (clients, outbounds, rules []tprof.OptionCount) {
+	cm, om, rm := map[string]int{}, map[string]int{}, map[string]int{}
+	for _, e := range v.events {
+		if h := hostOfAddr(e.SourceAddr); h != "" {
+			cm[h]++
+		}
+		if ob := eventOutbound(e); ob != "" {
+			om[ob]++
+		}
+		if e.Rule != "" {
+			rm[e.Rule]++
+		}
+	}
+	return tprof.SortedOptions(cm), tprof.SortedOptions(om), tprof.SortedOptions(rm)
+}
+
+// syncOptions перезаполняет списки маршрутных фильтров по буферу событий.
+func (v *liveView) syncOptions() {
+	if v.clientSel == nil {
+		return // ещё строимся
+	}
+	v.mu.Lock()
+	clients, outbounds, rules := v.liveOptions()
+	sel := v.filter
+	v.mu.Unlock()
+
+	var b strings.Builder
+	for _, g := range [][]tprof.OptionCount{clients, outbounds, rules} {
+		for _, c := range g {
+			b.WriteString(c.Value)
+			b.WriteByte('\x00')
+		}
+		b.WriteByte('\x01')
+	}
+	if sig := b.String(); sig != v.optsSig {
+		v.optsSig = sig
+		setOptions(v.clientSel, clients, sel.Client)
+		setOptions(v.outboundSel, outbounds, sel.Outbound)
+		setOptions(v.ruleSel, rules, sel.Rule)
+	}
 }
 
 func buildBanner(text string) fyne.CanvasObject {
@@ -338,4 +531,13 @@ func shortPath(p string) string {
 		return p[i+1:]
 	}
 	return p
+}
+
+// hostOfAddr отрезает порт от "ip:port": в списке важен клиент, а порт у
+// каждого соединения свой и только зашумляет строку.
+func hostOfAddr(addr string) string {
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		return h
+	}
+	return addr
 }

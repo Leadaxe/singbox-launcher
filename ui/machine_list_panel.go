@@ -74,6 +74,8 @@ type machineListPanel struct {
 	// connectAttempts*connectRetryDelay секунд, и без признака работы это
 	// выглядит как зависшая кнопка.
 	connectAttempt map[string]int
+	// moreOpen — раскрыта ли панель дополнительных инструментов у машины.
+	moreOpen map[string]bool
 }
 
 // connectFailure — одна неудачная попытка соединения.
@@ -90,6 +92,10 @@ type connectFailure struct {
 // именно они объясняют текущее состояние.
 const maxConnectFailures = 50
 
+// revealDuration — длительность выезда блока «Ещё». Короткая: это подсказка
+// «раскрылось вот это», а не эффект ради эффекта.
+const revealDuration = 180 * time.Millisecond
+
 // CreateMachineListPanel строит правую колонку вкладки Remote.
 func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyne.CanvasObject {
 	p := &machineListPanel{
@@ -99,6 +105,7 @@ func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyn
 		health:         make(map[string]services.RemoteHealth),
 		errLog:         make(map[string][]connectFailure),
 		connectAttempt: make(map[string]int),
+		moreOpen:       make(map[string]bool),
 	}
 	p.list = container.NewVBox()
 
@@ -320,11 +327,46 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	// где виден её результат.
 	statusRow := container.NewBorder(nil, nil, nil,
 		container.NewHBox(infoBtn, powerBtn), status)
+	// Дополнительные инструменты — под строкой, раскрытием вниз (тот же
+	// Accordion, что «Advanced» в окне добавления машины). Не popup-меню:
+	// содержимое остаётся на месте, не перекрывает соседние машины и не
+	// исчезает при промахе мышью.
+	profilerBtn := widget.NewButton(locale.T("remote.more.profiler"), func() {
+		OpenMachineProfiler(p.ac, d)
+	})
+	// Своя кнопка вместо Accordion: тот в горизонтальном ряду растягивает
+	// свою шторку на всю ширину и уводит содержимое вбок — заголовок и
+	// раскрытый блок оказываются в одной строке. Здесь стрелка остаётся
+	// кнопкой в ряду, а блок живёт отдельной строкой под ним.
+	//
+	// Состояние раскрытия помним на машину: строка перерисовывается на каждом
+	// health-ответе, и без этого панель схлопывалась бы под курсором.
+	open := p.moreOpen[d.ID]
+	arrow := "▾"
+	if open {
+		arrow = "▴"
+	}
+	moreBtn := widget.NewButton(arrow, func() {
+		p.moreOpen[d.ID] = !p.moreOpen[d.ID]
+		p.redrawRows()
+	})
+	moreBtn.Importance = widget.LowImportance
+
+	// Стрелка прижата к правому краю: она про раскрытие всей строки, а не
+	// продолжение ряда действий — встык к RES читалась бы как четвёртая
+	// кнопка того же ряда.
 	rows = append(rows,
 		statusRow,
-		container.NewHBox(configureBtn, deployBtn, resBtn),
-		widget.NewSeparator(),
+		container.NewBorder(nil, nil, nil, moreBtn,
+			container.NewHBox(configureBtn, deployBtn, resBtn)),
 	)
+	if open {
+		// Раскрытие с анимацией высоты: мгновенный скачок содержимого не
+		// показывает, ЧТО раскрылось, — глаз теряет связь между стрелкой и
+		// появившимся блоком.
+		rows = append(rows, newRevealBox(container.NewHBox(profilerBtn)))
+	}
+	rows = append(rows, widget.NewSeparator())
 	return container.NewVBox(rows...)
 }
 
@@ -426,6 +468,22 @@ func (p *machineListPanel) showHealthDetails(d services.RemoteDaemon, h services
 	if h.Err != "" {
 		rows = append(rows, [2]string{locale.T("remote.info.unreachable"), h.Err})
 	}
+	// Сводка ядра, если открыт профайлер машины: связи, скорости, память.
+	// Стрим статуса живёт вместе с его окном, поэтому до открытия строк нет —
+	// и выдумывать нули вместо «не знаем» нельзя.
+	if st, ok := MachineStatus(d.ID); ok {
+		rows = append(rows,
+			[2]string{locale.T("remote.info.connections"),
+				locale.Tf("remote.info.connections_value", st.ConnectionsIn, st.ConnectionsOut)},
+			[2]string{locale.T("remote.info.traffic"),
+				locale.Tf("remote.info.traffic_value",
+					sizeOrDash(st.Uplink, true), sizeOrDash(st.Downlink, true),
+					sizeOrDash(st.UplinkTotal, true), sizeOrDash(st.DownlinkTotal, true))},
+			[2]string{locale.T("remote.info.runtime"),
+				locale.Tf("remote.info.runtime_value", sizeOrDash(int64(st.Memory), true), st.Goroutines)},
+		)
+	}
+
 	// История отказов за сессию: одна последняя ошибка не отвечает на вопрос
 	// «это разово или постоянно». Здесь видно, гасится ли сбой повтором
 	// (attempt 2/5 и дальше тишина) или машина не отвечает вовсе.
@@ -516,6 +574,11 @@ func (p *machineListPanel) loadNodes() {
 // когда транспорта уже нет и группа пуста, — и пользователь получал бы
 // «Daemon: group "" not found» в ответ на штатное отключение.
 func (p *machineListPanel) disconnectMachine() {
+	// Профайлер живёт на стриме этой машины — рвём вместе с каналом, иначе
+	// окно продолжало бы показывать поток, которого уже нет.
+	if id, _, ok := GetLxdRemoteOverride(); ok {
+		CloseMachineProfiler(id)
+	}
 	p.proxies.SetEnabled(false)
 	ClearLxdRemoteOverride(p.ac)
 	p.health = make(map[string]services.RemoteHealth)
@@ -578,6 +641,8 @@ func (p *machineListPanel) removeMachine(d services.RemoteDaemon) {
 			if !ok {
 				return
 			}
+			// Машины не станет — её профайлер тоже должен уйти.
+			CloseMachineProfiler(d.ID)
 			activeID, _, _ := GetLxdRemoteOverride()
 			if activeID == d.ID {
 				// Снимаем выбор до удаления: иначе левая колонка осталась бы
@@ -815,3 +880,53 @@ func (p *machineListPanel) failures(id string) []connectFailure {
 	copy(out, p.errLog[id])
 	return out
 }
+
+// newRevealBox оборачивает содержимое в контейнер, который «выезжает» по
+// высоте от нуля до своей минимальной.
+//
+// Fyne не анимирует появление объектов сам: без этого блок возникает рывком,
+// и связь между нажатой стрелкой и тем, что раскрылось, теряется — особенно
+// когда машин в списке несколько.
+func newRevealBox(content fyne.CanvasObject) fyne.CanvasObject {
+	box := &revealBox{content: content}
+	box.ExtendBaseWidget(box)
+	box.animate()
+	return box
+}
+
+type revealBox struct {
+	widget.BaseWidget
+	content  fyne.CanvasObject
+	progress float32 // 0 — свёрнут, 1 — раскрыт целиком
+}
+
+func (b *revealBox) animate() {
+	anim := canvas.NewSizeAnimation(
+		fyne.NewSize(0, 0), fyne.NewSize(0, 1), revealDuration,
+		func(s fyne.Size) {
+			b.progress = s.Height
+			b.Refresh()
+		})
+	anim.Curve = fyne.AnimationEaseOut
+	anim.Start()
+}
+
+func (b *revealBox) CreateRenderer() fyne.WidgetRenderer {
+	return &revealRenderer{box: b}
+}
+
+type revealRenderer struct{ box *revealBox }
+
+func (r *revealRenderer) Layout(size fyne.Size) {
+	r.box.content.Resize(fyne.NewSize(size.Width, r.box.content.MinSize().Height))
+	r.box.content.Move(fyne.NewPos(0, 0))
+}
+
+func (r *revealRenderer) MinSize() fyne.Size {
+	full := r.box.content.MinSize()
+	return fyne.NewSize(full.Width, full.Height*r.box.progress)
+}
+
+func (r *revealRenderer) Refresh()                     { canvas.Refresh(r.box) }
+func (r *revealRenderer) Objects() []fyne.CanvasObject { return []fyne.CanvasObject{r.box.content} }
+func (r *revealRenderer) Destroy()                     {}

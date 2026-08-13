@@ -91,7 +91,26 @@ func buildWindowToolbar(deps WindowDeps, win fyne.Window) fyne.CanvasObject {
 		})
 	}
 
+	// В окне машины тулбара нет вовсе: галка правит уровень лога ЛОКАЛЬНОГО
+	// конфига и перезапускает СВОЁ ядро — к машине это отношения не имеет, её
+	// конфиг лежит у неё. Без writer'а она к тому же просто отскакивала бы
+	// назад, изображая работу. Одно меню ⋮ не стоит целой пустой строки —
+	// оно переезжает в ряд вкладок, к счётчику соединений.
+	if deps.RemoteMachine {
+		return nil
+	}
+	row := container.NewBorder(nil, nil,
+		container.NewHBox(verboseChk, verboseHint), buildOverflowButton(deps, win), nil)
+	return container.NewVBox(row, widget.NewSeparator())
+}
+
+// buildOverflowButton — меню ⋮ (экспорт сессии, справка).
+//
+// Отдельно от тулбара: в окне машины тулбара нет, и кнопка живёт в ряду
+// вкладок.
+func buildOverflowButton(deps WindowDeps, win fyne.Window) *widget.Button {
 	overflow := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), nil)
+	overflow.Importance = widget.LowImportance
 	overflow.OnTapped = func() {
 		menu := buildOverflowMenu(deps, win)
 		pop := widget.NewPopUpMenu(menu, win.Canvas())
@@ -99,10 +118,7 @@ func buildWindowToolbar(deps WindowDeps, win fyne.Window) fyne.CanvasObject {
 		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(overflow)
 		pop.ShowAtPosition(fyne.NewPos(pos.X, pos.Y+overflow.MinSize().Height))
 	}
-
-	left := container.NewHBox(verboseChk, verboseHint)
-	row := container.NewBorder(nil, nil, left, overflow, nil)
-	return container.NewVBox(row, widget.NewSeparator())
+	return overflow
 }
 
 func isCurrentlyVerbose(deps WindowDeps) bool {

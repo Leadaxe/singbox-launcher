@@ -46,10 +46,22 @@ func parentWindowOf(deps WindowDeps) fyne.Window {
 // parent is missing we simply skip (avoids panicking from a stray
 // background tick).
 func showEventDetail(parent fyne.Window, e tprof.TrafficEvent) {
+	showEventDetailWithDevice(parent, e, nil)
+}
+
+// showEventDetailWithDevice — то же окно плюс блок «что за устройство».
+//
+// dev необязателен: у своего ядра трафик идёт от процессов, справочника
+// устройств там нет, и блок просто не рисуется.
+func showEventDetailWithDevice(parent fyne.Window, e tprof.TrafficEvent, dev *DeviceInfo) {
 	if parent == nil {
 		return
 	}
-	body := widget.NewLabel(formatEventDetail(e))
+	text := formatEventDetail(e)
+	if dev != nil {
+		text += formatDeviceDetail(*dev)
+	}
+	body := widget.NewLabel(text)
 	body.Wrapping = fyne.TextWrapWord
 	body.TextStyle = fyne.TextStyle{Monospace: true}
 	scroll := container.NewScroll(body)
@@ -57,6 +69,59 @@ func showEventDetail(parent fyne.Window, e tprof.TrafficEvent) {
 	d := dialog.NewCustom("Event detail", "Close", scroll, parent)
 	d.Resize(fyne.NewSize(620, 440))
 	d.Show()
+}
+
+// deviceFor — запись справочника по адресу клиента, nil если её нет.
+//
+// Принимает адрес и с портом, и без: в событии он приходит как «ip:port», а
+// ключ справочника — голый IP. Резать порт в каждой точке вызова значило бы
+// однажды забыть.
+func deviceFor(deps WindowDeps, addr string) *DeviceInfo {
+	if deps.ClientsInfo == nil || addr == "" {
+		return nil
+	}
+	m, ok := deps.ClientsInfo()
+	if !ok {
+		return nil
+	}
+	d, ok := m[hostOfAddr(addr)]
+	if !ok {
+		return nil
+	}
+	return &d
+}
+
+// formatDeviceDetail — блок «Device» для окна деталей.
+//
+// Пустые поля пропускаются: у проводного клиента нет SSID, у беспроводного —
+// порта моста, и печатать пустые строки значило бы выдавать норму за пробел в
+// данных. Source печатаем всегда, когда он есть: при разборе «почему
+// устройство потеряло имя» это первое, что спрашивают.
+func formatDeviceDetail(d DeviceInfo) string {
+	if d.Name == "" && d.MAC == "" && d.SSID == "" && d.Iface == "" && d.Port == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n")
+	if d.Name != "" {
+		fmt.Fprintf(&b, "Device:      %s\n", d.Name)
+	}
+	if d.MAC != "" {
+		fmt.Fprintf(&b, "MAC:         %s\n", d.MAC)
+	}
+	if d.SSID != "" {
+		fmt.Fprintf(&b, "SSID:        %s\n", d.SSID)
+	}
+	if d.Iface != "" {
+		fmt.Fprintf(&b, "Interface:   %s\n", d.Iface)
+	}
+	if d.Port != "" {
+		fmt.Fprintf(&b, "Switch port: %s\n", d.Port)
+	}
+	if d.Source != "" {
+		fmt.Fprintf(&b, "Source:      %s\n", d.Source)
+	}
+	return b.String()
 }
 
 // formatEventDetail returns a human-readable multi-line summary of every
@@ -118,6 +183,11 @@ func formatEventDetail(e tprof.TrafficEvent) string {
 	}
 
 	// Routing block.
+	// Клиент: на роутере процесса нет, и адрес источника — единственное, что
+	// отвечает на вопрос «чьё это соединение».
+	if e.SourceAddr != "" {
+		fmt.Fprintf(&b, "Client:      %s\n", e.SourceAddr)
+	}
 	if len(e.OutboundChain) > 0 || e.Rule != "" {
 		b.WriteString("\n")
 		if len(e.OutboundChain) > 0 {

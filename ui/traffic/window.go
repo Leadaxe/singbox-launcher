@@ -16,9 +16,12 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	fynetooltip "github.com/dweymouth/fyne-tooltip"
 
+	"singbox-launcher/internal/locale"
 	tprof "singbox-launcher/internal/traffic"
 )
 
@@ -52,6 +55,47 @@ type WindowDeps struct {
 
 	// SingBoxRunning reports whether sing-box is up. Banner-driver.
 	SingBoxRunning func() bool
+
+	// RemoteMachine — окно наблюдает за УДАЛЁННОЙ машиной, а не за своим
+	// ядром. Меняет состав вкладок: процессов там нет вовсе (трафик идут от
+	// устройств в сети, find_process на роутере смысла не имеет), поэтому
+	// вместо «Per-process» показывается разбивка по клиентам — исходным
+	// IP:port из потока соединений.
+	RemoteMachine bool
+
+	// CloseConns рвёт соединения по их id. Есть только у remote-окна:
+	// на роутере это осмысленное действие — после смены правила устройство
+	// иначе доживает на прежних сессиях и идёт старым маршрутом.
+	CloseConns func(ids []string)
+
+	// ClientsInfo — справочник «IP → устройство» локальной сети машины
+	// (аренды DHCP, ARP, мост, Wi-Fi, свои метки). Только у remote-окна: у
+	// своего ядра трафик идёт от процессов, а не от устройств сети.
+	//
+	// Это таблица подстановки, а не поле соединения: имена меняются в
+	// масштабе часов, и join делает UI. ok=false, пока справочник не получен.
+	ClientsInfo func() (map[string]DeviceInfo, bool)
+
+	// SetClientLabel задаёт своё имя устройству (ключ — IP или MAC).
+	SetClientLabel func(key, name string) error
+	// DeleteClientLabel снимает своё имя.
+	DeleteClientLabel func(key string) error
+}
+
+// DeviceInfo — что известно об устройстве локальной сети.
+//
+// Пустое поле — состояние, а не ошибка: у проводного клиента нет SSID, а вне
+// Linux часть провайдеров молчит вовсе.
+type DeviceInfo struct {
+	Name  string
+	MAC   string
+	SSID  string
+	Iface string
+	Port  string
+	// Source — какие провайдеры заполнили запись. При разборе «почему
+	// устройство потеряло имя» это первый вопрос: одинокий label означает,
+	// что аренда DHCP истекла.
+	Source string
 }
 
 // Manager owns the singleton window pointer. There's one Manager per
@@ -123,28 +167,68 @@ func (m *Manager) build() {
 	win := deps.App.NewWindow("Traffic Profiler")
 
 	live := buildLiveView(deps)
-	perProcess := buildPerProcessView(deps, func() {
-		// Defer to avoid synchronous re-entry into m.refreshTitle's mutex
-		// while we're still inside build()'s UI-thread stack. The first
-		// real refresh fires from startTitleTimer / profiler subscriber
-		// shortly anyway.
-		go func() { fyne.Do(func() { m.refreshTitle() }) }()
-	})
 
-	tabs := container.NewAppTabs(
-		container.NewTabItem("Live", live.Content),
-		container.NewTabItem("Per-process", perProcess.Content),
-	)
+	var tabs *container.AppTabs
+	// Останов второй вкладки: у режимов она разная, и держать обе ссылки
+	// значило бы разбирать nil на закрытии.
+	stopSecond := func() {}
+	if deps.RemoteMachine {
+		// У машины нет процессов — есть клиенты. Показывать пикер процессов
+		// значило бы предлагать выбрать из списка процессов ЭТОГО компьютера,
+		// к её трафику отношения не имеющих.
+		// Своё окно передаём явно: заголовок «Traffic Profiler» одинаков у
+		// локального окна и у окон машин, они открыты одновременно, и поиск
+		// родителя по заголовку выбросил бы диалог в чужое окно.
+		byClient := buildByClientView(deps, win)
+		stopSecond = byClient.Stop
+		tabs = container.NewAppTabs(
+			container.NewTabItem("Live", live.Content),
+			container.NewTabItem("By client", byClient.Content),
+		)
+	} else {
+		perProcess := buildPerProcessView(deps, func() {
+			// Defer to avoid synchronous re-entry into m.refreshTitle's mutex
+			// while we're still inside build()'s UI-thread stack. The first
+			// real refresh fires from startTitleTimer / profiler subscriber
+			// shortly anyway.
+			go func() { fyne.Do(func() { m.refreshTitle() }) }()
+		})
+		stopSecond = perProcess.Stop
+		tabs = container.NewAppTabs(
+			container.NewTabItem("Live", live.Content),
+			container.NewTabItem("Per-process", perProcess.Content),
+		)
+	}
 
+	// nil для окна машины — Border просто не рисует верхнюю полосу.
 	toolbar := buildWindowToolbar(deps, win)
-	root := container.NewBorder(toolbar, nil, nil, nil, tabs)
+
+	// Счётчик соединений и «разорвать все» кладём В полосу вкладок, справа:
+	// своя строка стоила бы ещё одного ряда высоты, а место там пустует.
+	tabsRow := fyne.CanvasObject(tabs)
+	if stopCounter := m.attachConnCounter(deps, win, tabs); stopCounter != nil {
+		tabsRow = stopCounter.content
+		prevStop := stopSecond
+		stopSecond = func() {
+			prevStop()
+			stopCounter.stop()
+		}
+	}
+	root := container.NewBorder(toolbar, nil, nil, nil, tabsRow)
 
 	// Wrap with tooltip layer so ttwidget tooltips work inside the window
 	// (otherwise fyne-tooltip warns "no tool tip layer for current
 	// overlay"). Same pattern as ui/configurator/configurator.go and
 	// source_edit_window.go.
 	win.SetContent(fynetooltip.AddWindowToolTipLayer(root, win.Canvas()))
-	win.Resize(fyne.NewSize(720, 520))
+	// Окно машины шире: таблица By client несёт семь колонок, и на 720 хвост с
+	// outbound'ом и правилом — ровно то, ради чего её открывают, — уезжает за
+	// край.
+	if deps.RemoteMachine {
+		win.Resize(fyne.NewSize(900, 560))
+	} else {
+		win.Resize(fyne.NewSize(720, 520))
+	}
 	win.CenterOnScreen()
 
 	// Close intercept: just close, don't quit. The profiler keeps
@@ -152,7 +236,7 @@ func (m *Manager) build() {
 	// continue) so re-opening shows accumulated state immediately.
 	win.SetOnClosed(func() {
 		live.Stop()
-		perProcess.Stop()
+		stopSecond()
 		m.mu.Lock()
 		m.win = nil
 		m.mu.Unlock()
@@ -247,6 +331,87 @@ func formatBytes(n int64) string {
 
 // formatEventRow returns the short summary line for an event (one line
 // in the Live list). Centralized so Live + Per-process Live agree.
+// connCounter — счётчик соединений и «разорвать все», наложенные на правый
+// край полосы вкладок.
+type connCounter struct {
+	content fyne.CanvasObject
+	stop    func()
+}
+
+// attachConnCounter кладёт справа от вкладок число открытых соединений и
+// кнопку обрыва.
+//
+// Только для окна машины: рвать соединения своего ядра из профайлера нечем —
+// CloseConns есть лишь у remote-окна, где это осмысленное действие после
+// смены правила.
+func (m *Manager) attachConnCounter(deps WindowDeps, win fyne.Window, tabs *container.AppTabs) *connCounter {
+	if deps.CloseConns == nil || deps.Profiler == nil {
+		return nil
+	}
+
+	countL := widget.NewLabel("")
+	killBtn := widget.NewButton(locale.T("traffic.conns.kill_all"), func() {
+		ids, ok := deps.Profiler.LiveConnIDs()
+		if !ok || len(ids) == 0 {
+			return
+		}
+		// Спрашиваем: действие рвёт ВСЁ разом, включая чужие сессии на
+		// роутере, и промахнуться мимо кнопки легко — она рядом с вкладками.
+		dialog.ShowConfirm(
+			locale.T("traffic.conns.kill_all"),
+			fmt.Sprintf(locale.T("traffic.conns.kill_all_confirm"), len(ids)),
+			func(yes bool) {
+				if yes {
+					deps.CloseConns(ids)
+				}
+			}, win)
+	})
+	killBtn.Importance = widget.LowImportance
+
+	refresh := func() {
+		ids, ok := deps.Profiler.LiveConnIDs()
+		if !ok {
+			// До первого кадра стрима «0» означал бы «соединений нет», хотя мы
+			// просто ещё не знаем.
+			countL.SetText(locale.T("traffic.conns.unknown"))
+			killBtn.Disable()
+			return
+		}
+		countL.SetText(fmt.Sprintf(locale.T("traffic.conns.count"), len(ids)))
+		if len(ids) == 0 {
+			killBtn.Disable()
+		} else {
+			killBtn.Enable()
+		}
+	}
+	refresh()
+
+	stopCh := make(chan struct{})
+	go func() {
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-stopCh:
+				return
+			case <-t.C:
+				fyne.Do(refresh)
+			}
+		}
+	}()
+
+	// ⋮ здесь же: в окне машины тулбара нет, и меню иначе осталось бы без
+	// места. Целая строка ради одной кнопки — плохой обмен.
+	right := container.NewHBox(countL, killBtn, buildOverflowButton(deps, win))
+	return &connCounter{
+		// Поверх вкладок, а не рядом: AppTabs занимает всю ширину, и в Border
+		// справа он бы сжался, оставив ярлыки обрезанными.
+		content: container.NewStack(tabs, container.NewBorder(
+			container.NewHBox(layout.NewSpacer(), right), nil, nil, nil)),
+		stop: func() { close(stopCh) },
+	}
+}
+
 func formatEventRow(e tprof.TrafficEvent) string {
 	ts := e.TS.Format("15:04:05")
 	switch e.Kind {
@@ -265,7 +430,9 @@ func formatEventRow(e tprof.TrafficEvent) string {
 		}
 		return fmt.Sprintf("%s  TCP   %s:%d", ts, dom, e.Port)
 	case tprof.EventTCPClose:
-		return fmt.Sprintf("%s  TCP·  closed (up %s / down %s, %s)", ts, formatBytes(e.UpBytes), formatBytes(e.DownBytes), e.Duration.Truncate(time.Millisecond))
+		// Байты ушли в правые колонки строки — здесь остаётся длительность,
+		// иначе одно и то же печаталось бы дважды.
+		return fmt.Sprintf("%s  TCP·  closed (%s)", ts, e.Duration.Truncate(time.Millisecond))
 	case tprof.EventUDPOpen:
 		dom := e.Domain
 		if dom == "" {
@@ -273,7 +440,7 @@ func formatEventRow(e tprof.TrafficEvent) string {
 		}
 		return fmt.Sprintf("%s  UDP   %s:%d", ts, dom, e.Port)
 	case tprof.EventUDPClose:
-		return fmt.Sprintf("%s  UDP·  closed (up %s / down %s)", ts, formatBytes(e.UpBytes), formatBytes(e.DownBytes))
+		return fmt.Sprintf("%s  UDP·  closed", ts)
 	}
 	return fmt.Sprintf("%s  %s", ts, e.Kind)
 }
