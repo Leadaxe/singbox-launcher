@@ -110,9 +110,6 @@ func TestHostFDTextRequiresBoth(t *testing.T) {
 	if got := hostFDText(iptr(18), iptr(4095)); got != "18 / 4095" {
 		t.Fatalf("hostFDText = %q", got)
 	}
-	if got := hostFDRatio(iptr(18), iptr(0)); got != 0 {
-		t.Fatalf("hostFDRatio при нулевом лимите = %v, деления на ноль быть не должно", got)
-	}
 }
 
 func TestHostMountFlags(t *testing.T) {
@@ -123,10 +120,10 @@ func TestHostMountFlags(t *testing.T) {
 	}{
 		// squashfs-корень на OpenWrt вечно 100% — помечаем, иначе строка
 		// читается как незамеченная авария.
-		{"read-only", lxdclient.HostMount{ReadOnly: true}, "ro"},
-		{"state-dir", lxdclient.HostMount{HoldsStateDir: true}, "state"},
+		{"read-only", lxdclient.HostMount{ReadOnly: true}, "🔒 ro"},
+		{"state-dir", lxdclient.HostMount{HoldsStateDir: true}, "★ state"},
 		{"обычная", lxdclient.HostMount{}, ""},
-		{"оба флага", lxdclient.HostMount{ReadOnly: true, HoldsStateDir: true}, "ro · state"},
+		{"оба флага", lxdclient.HostMount{ReadOnly: true, HoldsStateDir: true}, "🔒 ro · ★ state"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -246,12 +243,17 @@ func TestHostUptime(t *testing.T) {
 	if got := hostUptime(0); got != hostDash {
 		t.Fatalf("hostUptime(0) = %q", got)
 	}
-	// 121092 с с живого роутера = 1 сутки 09:38.
-	if got := hostUptime(121092); got != "1d 09:38" {
+	// 121092 с с живого роутера = 1 сутки 09:38:12.
+	if got := hostUptime(121092); got != "1d 09:38:12" {
 		t.Fatalf("hostUptime(121092) = %q", got)
 	}
-	if got := hostUptime(3720); got != "01:02" {
+	if got := hostUptime(3720); got != "01:02:00" {
 		t.Fatalf("hostUptime(3720) = %q", got)
+	}
+	// Только что поднялась: секундный разряд отвечает на вопрос «оно
+	// перезагрузилось прямо сейчас?», на который «00:00» ответить не может.
+	if got := hostUptime(37); got != "00:00:37" {
+		t.Fatalf("hostUptime(37) = %q: свежий аптайм обязан быть виден", got)
 	}
 }
 
@@ -281,19 +283,162 @@ func TestHostBytes(t *testing.T) {
 	}
 }
 
-func TestHostMachineLineSkipsEmpty(t *testing.T) {
-	// Демон вправе не знать модель — пустое поле не должно оставлять висящий
-	// разделитель.
+func TestHostMachineHeaderSkipsEmpty(t *testing.T) {
+	// Демон вправе не знать модель — пустое поле не должно оставлять висящие
+	// скобки в заголовке и висящий разделитель во второй строке.
 	h := lxdclient.HostInfo{OS: "RouteRich 24.10.5", Kernel: "6.6.119", Arch: "arm64", UptimeSeconds: 121092}
-	got := hostMachineLine(h)
-	if strings.HasPrefix(got, " · ") || strings.Contains(got, " ·  · ") {
-		t.Fatalf("hostMachineLine = %q: пустое поле оставило разделитель", got)
+
+	title := hostMachineTitle(h)
+	if strings.HasPrefix(title, "(") || strings.Contains(title, "()") {
+		t.Fatalf("hostMachineTitle = %q: без модели остались пустые скобки", title)
 	}
-	if !strings.Contains(got, "1d 09:38") {
-		t.Fatalf("hostMachineLine = %q: нет аптайма", got)
+	if title != "arm64" {
+		t.Fatalf("hostMachineTitle = %q: без модели остаётся одна архитектура", title)
+	}
+	// С моделью архитектура уходит в скобки: это уточнение к железу, а не
+	// ещё один пункт перечисления.
+	full := hostMachineTitle(lxdclient.HostInfo{Model: "Routerich AX3000 v1", Arch: "arm64"})
+	if full != "Routerich AX3000 v1 (arm64)" {
+		t.Fatalf("hostMachineTitle = %q", full)
+	}
+
+	sw := hostMachineSoftware(h)
+	if strings.HasPrefix(sw, " · ") || strings.Contains(sw, " ·  · ") {
+		t.Fatalf("hostMachineSoftware = %q: пустое поле оставило разделитель", sw)
+	}
+	// Хеш ревизии остаётся: во второй строке он не мешает, а прошивку
+	// опознают именно по нему.
+	if !strings.Contains(sw, "RouteRich 24.10.5") || !strings.Contains(sw, "6.6.119") {
+		t.Fatalf("hostMachineSoftware = %q: нет прошивки или ядра", sw)
+	}
+
+	up := hostMachineUptime(h)
+	if !strings.Contains(up, "1d 09:38") {
+		t.Fatalf("hostMachineUptime = %q: нет аптайма", up)
 	}
 	// Стрелка тут не нужна: «↑ » с пробелом в этом шрифте даёт тофу.
-	if strings.ContainsAny(got, "↑↓") {
-		t.Fatalf("hostMachineLine = %q: стрелке в шапке не место", got)
+	if strings.ContainsAny(up, "↑↓") {
+		t.Fatalf("hostMachineUptime = %q: стрелке в шапке не место", up)
+	}
+	// Машина без известного аптайма не должна показывать пустую подпись.
+	if got := hostMachineUptime(lxdclient.HostInfo{}); got != "" {
+		t.Fatalf("hostMachineUptime без данных = %q, хотели пусто", got)
+	}
+}
+
+func TestHostIfaceVisible(t *testing.T) {
+	// lo — обычный интерфейс со своими счётчиками: отдельного правила на него
+	// нет, режимы работают с ним на общих основаниях.
+	lo := lxdclient.HostInterface{Name: "lo", Up: true, RxBytes: 19_500_000, TxBytes: 19_500_000}
+	// Поднятый, но пустой: типичный lanN на роутере.
+	empty := lxdclient.HostInterface{Name: "lan1", Up: true}
+	// Лежачий с историей: gre0 после перезапуска канала.
+	down := lxdclient.HostInterface{Name: "gre0", RxBytes: 512, TxBytes: 512}
+
+	cases := []struct {
+		name string
+		in   lxdclient.HostInterface
+		mode string
+		want bool
+	}{
+		{"все показывают лежачего", down, hostIfaceAll, true},
+		{"активные прячут лежачего", down, hostIfaceUp, false},
+		{"активные показывают пустой поднятый", empty, hostIfaceUp, true},
+		{"с трафиком прячет пустой", empty, hostIfaceTraffic, false},
+		{"с трафиком показывает лежачего со счётчиком", down, hostIfaceTraffic, true},
+		{"lo проходит как обычный интерфейс", lo, hostIfaceTraffic, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := hostIfaceVisible(c.in, c.mode); got != c.want {
+				t.Fatalf("hostIfaceVisible(%s, %s) = %v, хотели %v",
+					c.in.Name, c.mode, got, c.want)
+			}
+		})
+	}
+}
+
+func TestHostArchMismatch(t *testing.T) {
+	// Имена архитектур в Go и в ядре пишутся по-разному, и без нормализации
+	// сверка ругалась бы на КАЖДОЙ машине — предупреждение, которое всегда
+	// горит, перестают читать.
+	same := []struct{ want, actual string }{
+		{"amd64", "x86_64"},
+		{"arm64", "aarch64"},
+		{"arm64", "arm64"},
+		{"386", "i686"},
+		{"arm", "armv7l"},
+	}
+	for _, c := range same {
+		if got := hostArchMismatch(c.want, c.actual); got != "" {
+			t.Fatalf("hostArchMismatch(%q,%q) = %q: это одна и та же архитектура",
+				c.want, c.actual, got)
+		}
+	}
+
+	// Реальный случай LexRouter: в списке выбрали amd64, на железе arm64 —
+	// под такую машину config.json собирается для чужой платформы.
+	if got := hostArchMismatch("amd64", "arm64"); got == "" {
+		t.Fatal("hostArchMismatch(amd64, arm64) молчит: расхождение обязано быть видно")
+	}
+
+	// Сверять нечего — молчим, а не показываем пустое предупреждение.
+	if got := hostArchMismatch("", "arm64"); got != "" {
+		t.Fatalf("hostArchMismatch без записанной архитектуры = %q", got)
+	}
+	if got := hostArchMismatch("amd64", ""); got != "" {
+		t.Fatalf("hostArchMismatch без ответа демона = %q", got)
+	}
+}
+
+func TestHostOSBadge(t *testing.T) {
+	// Дословно с роутера владельца (SPEC 068): форк зовёт себя RouteRich, а
+	// ID честно говорит openwrt. Сопоставление по человеческой строке
+	// платформу бы не опознало — badge берётся из ID.
+	routerich := lxdclient.HostInfo{
+		OS: "RouteRich 24.10.5", OSID: "openwrt", OSIDLike: []string{"lede", "openwrt"},
+	}
+	if got := hostOSBadge(routerich); got != "openwrt" {
+		t.Fatalf("hostOSBadge(RouteRich) = %q, ждали openwrt", got)
+	}
+
+	// Форк со своим ID называет базу только в ID_LIKE — без запасного
+	// варианта он остался бы неопознанным.
+	fork := lxdclient.HostInfo{OS: "SomeFork 1.0", OSIDLike: []string{"openwrt"}}
+	if got := hostOSBadge(fork); got != "openwrt" {
+		t.Fatalf("hostOSBadge(форк с пустым ID) = %q", got)
+	}
+
+	// Если строка os и так начинается с этого слова, второй раз его писать
+	// незачем: «OpenWrt 23.05.5 [openwrt]» — шум.
+	plain := lxdclient.HostInfo{OS: "OpenWrt 23.05.5", OSID: "openwrt"}
+	if got := hostOSBadge(plain); got != "" {
+		t.Fatalf("hostOSBadge(OpenWrt) = %q: дублировать имя не нужно", got)
+	}
+
+	// Демон старой версии полей не отдаёт — пометки просто нет.
+	if got := hostOSBadge(lxdclient.HostInfo{OS: "RouteRich 24.10.5"}); got != "" {
+		t.Fatalf("hostOSBadge без os_id = %q", got)
+	}
+}
+
+func TestHostMachineSoftwareUsesOSFamily(t *testing.T) {
+	// Подпись ядра приходит из os_family, а не угадывается клиентом: до
+	// этого поля «linux» было домыслом и на не-Linux хосте врало бы.
+	h := lxdclient.HostInfo{
+		OS: "RouteRich 24.10.5", OSFamily: "linux", OSID: "openwrt", Kernel: "6.6.119",
+	}
+	got := hostMachineSoftware(h)
+	if !strings.Contains(got, "(linux 6.6.119)") {
+		t.Fatalf("hostMachineSoftware = %q: ждали семейство из os_family", got)
+	}
+	if !strings.Contains(got, "[openwrt]") {
+		t.Fatalf("hostMachineSoftware = %q: ждали пометку дистрибутива", got)
+	}
+
+	// Старый демон: семейства нет — подписи ядра тоже, голая версия.
+	old := lxdclient.HostInfo{OS: "RouteRich 24.10.5", Kernel: "6.6.119"}
+	if got := hostMachineSoftware(old); !strings.Contains(got, "(6.6.119)") {
+		t.Fatalf("hostMachineSoftware без os_family = %q: домысла быть не должно", got)
 	}
 }

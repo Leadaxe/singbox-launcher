@@ -32,10 +32,14 @@ import (
 //
 // Он же задаёт окно усреднения: демон считает проценты и скорости как дельту
 // между двумя СОСЕДНИМИ запросами, поэтому частота опроса здесь — не косметика,
-// а выбор того, что именно показано. Две секунды сглаживают дребезг и не
-// заваливают роутер: два GET'а раз в две секунды дешевле одной перерисовки
-// таблицы профайлера.
-const hostWindowPollInterval = 2 * time.Second
+// а выбор того, что именно показано. Полсекунды дают живую картину, в которой
+// видно короткий всплеск нагрузки: на двух секундах он размазывался в ровный
+// фон и как раз пропадал тот пик, ради которого окно и открывают.
+//
+// Цена — вчетверо больше запросов к роутеру. Она приемлема: два GET'а
+// возвращают готовый снимок из кэша демона, и опрос живёт только пока окно
+// открыто (тикер гасится в SetCloseIntercept).
+const hostWindowPollInterval = 500 * time.Millisecond
 
 // Ширины колонок таблиц.
 //
@@ -50,7 +54,7 @@ const (
 	hostColPercent = 70 // «100.0%» плюс зазор от полоски слева
 	hostColBytes   = 78 // «213.4 MB»
 	hostColFS      = 84 // «squashfs» — под самое длинное имя ФС целиком
-	hostColFlags   = 60 // «[state]»
+	hostColFlags   = 132 // «[🔒 ro · ★ state]»
 	hostColRate    = 72 // «229 B/s»
 	hostColErrors  = 84 // «120 / 52210»
 	hostColMTU     = 48 // «65536»
@@ -64,6 +68,29 @@ const (
 	// ширины таблицы интерфейсов, чтобы окно задавала таблица, а не шапка.
 	hostBlockWide = 250 // CPU, память
 	hostBlockSide = 190 // температура + дескрипторы
+
+	// hostBarHeight — высота полоски: пятая часть штатной (текст 14 + два
+	// отступа по 4 ≈ 22). Полоска здесь отмечает уровень рядом с числом, а
+	// не заменяет его, и в полную высоту перетягивала внимание на себя.
+	hostBarHeight = 4
+
+	// hostWindowWidth — ширина окна по самой широкой строке, а не «с запасом».
+	//
+	// Самая широкая — таблица интерфейсов: семь колонок ниже плюс отступы
+	// HBox между ними и поля прокрутки. Считается из тех же констант, что и
+	// сами колонки, поэтому не разъезжается при их правке: подобранное на
+	// глаз число пережило бы ровно одну правку ширины колонки.
+	hostWindowWidth = hostColName + 2*hostColRate + 2*hostColBytes +
+		hostColErrors + hostColMTU + hostWindowChrome
+
+	// hostWindowChrome — отступы между семью ячейками, поля Padded-контейнера
+	// и полоса прокрутки справа.
+	hostWindowChrome = 64
+
+	// hostIfacesTitleWidth — ширина заголовка «Интерфейсы (12 из 19)».
+	// Задана явно, потому что в голом HBox выпадающий список фильтра садился
+	// поверх текста заголовка.
+	hostIfacesTitleWidth = 190
 )
 
 // machineHostWindow — одно открытое окно телеметрии.
@@ -105,6 +132,7 @@ func OpenMachineHostWindow(ac *core.AppController, d services.RemoteDaemon) {
 
 	win := ac.UIService.Application.NewWindow(locale.Tf("remote.host.window_title", d.Name))
 	view := newHostView()
+	view.wantOS, view.wantArch = d.GOOS, d.GOARCH
 
 	// Поллинг живёт в своей горутине и гаснет вместе с окном: без остановки
 	// он продолжал бы ходить к роутеру после закрытия.
@@ -113,8 +141,13 @@ func OpenMachineHostWindow(ac *core.AppController, d services.RemoteDaemon) {
 	stop := func() { stopOnce.Do(func() { close(stopCh) }) }
 
 	go func() {
-		// Первый заход сразу, дальше по тику: ждать две секунды перед самым
+		// Первый заход сразу, дальше по тику: ждать целый период перед самым
 		// первым показом незачем, у окна и так пустая шапка.
+		//
+		// Опрос синхронный, и это намеренно: тик приходит только после того,
+		// как предыдущий ответ разобран, а лишние тики Ticker отбрасывает.
+		// На медленном канале опрос сам станет реже вместо того, чтобы
+		// копить очередь запросов к роутеру.
 		poll := func() {
 			info, infoErr := transport.HostInfo()
 			ifaces, ifErr := transport.HostInterfaces()
@@ -134,7 +167,7 @@ func OpenMachineHostWindow(ac *core.AppController, d services.RemoteDaemon) {
 	}()
 
 	win.SetContent(container.NewPadded(view.content()))
-	win.Resize(fyne.NewSize(940, 700))
+	win.Resize(fyne.NewSize(hostWindowWidth, 700))
 	win.CenterOnScreen()
 	win.SetCloseIntercept(func() {
 		stop()
@@ -174,7 +207,18 @@ func CloseMachineHostWindow(id string) {
 // тике сбрасывала бы позицию скролла — раз в две секунды это делает список
 // интерфейсов нечитаемым.
 type hostView struct {
-	machine *widget.Label
+	// Шапка машины — две строки: чем машина является (модель, арх, аптайм по
+	// правому краю) и что на ней стоит (прошивка, ядро).
+	machine   *widget.Label
+	machineUp *widget.Label
+	machineSw *widget.Label
+	// archWarn — расхождение записанной платформы машины с настоящей.
+	archWarn *widget.Label
+	// wantOS/wantArch — платформа, выбранная оператором при добавлении машины.
+	// Под неё собирается config.json (SPEC 098 §2.4), поэтому ошибка здесь
+	// не косметическая: конфиг уедет на машину, для которой он не собран.
+	wantOS   string
+	wantArch string
 	errBar  *widget.Label
 
 	cpuTitle    *widget.Label
@@ -192,7 +236,6 @@ type hostView struct {
 	thermalList *widget.Label
 
 	fdDaemon *widget.Label
-	fdBar    *widget.ProgressBar
 	fdSystem *widget.Label
 
 	disksTitle *widget.Label
@@ -202,11 +245,33 @@ type hostView struct {
 	ifacesTitle *widget.Label
 	ifaces      *fyne.Container
 	ifacesHint  *widget.Label
+
+	// Фильтр интерфейсов. На роутере их два десятка, и почти все — мосты,
+	// туннели и пустые lanN; без отсечки живые тонут среди нулей.
+	//
+	// Отдельной галочки на lo нет: петля — такой же интерфейс со своими
+	// счётчиками, и прятать её нужно не чаще, чем любой другой. Режимы ниже
+	// убирают её на общих основаниях, когда она под них не подходит.
+	ifacesFilter *widget.Select
+	// last — последний ответ, чтобы перерисовать по смене фильтра, не дожидаясь
+	// следующего опроса: фильтр обязан отвечать мгновенно.
+	lastIfaces lxdclient.HostInterfaces
+	hasIfaces  bool
 }
+
+// Режимы фильтра интерфейсов.
+const (
+	hostIfaceAll     = "all"
+	hostIfaceUp      = "up"
+	hostIfaceTraffic = "traffic"
+)
 
 func newHostView() *hostView {
 	v := &hostView{
-		machine:     widget.NewLabel(locale.T("remote.host.loading")),
+		machine:     hostBoldLabel(locale.T("remote.host.loading")),
+		machineUp:   widget.NewLabelWithStyle("", fyne.TextAlignTrailing, fyne.TextStyle{}),
+		machineSw:   hostDimLabel(""),
+		archWarn:    widget.NewLabel(""),
 		errBar:      widget.NewLabel(""),
 		cpuTitle:    hostBoldLabel(""),
 		cpuBar:      hostBar(),
@@ -220,7 +285,6 @@ func newHostView() *hostView {
 		thermal:     hostBoldLabel(""),
 		thermalList: widget.NewLabel(""),
 		fdDaemon:    widget.NewLabel(""),
-		fdBar:       hostBar(),
 		fdSystem:    widget.NewLabel(""),
 		disksTitle:  hostBoldLabel(""),
 		disks:       container.NewVBox(),
@@ -230,11 +294,59 @@ func newHostView() *hostView {
 		ifacesHint:  hostDimLabel(""),
 	}
 	v.errBar.Wrapping = fyne.TextWrapWord
-	v.machine.Wrapping = fyne.TextWrapWord
+	// Шапка машины НЕ переносится: это одна опознавательная строка
+	// «модель · прошивка · ядро · арх · аптайм», и разорванная посередине она
+	// перестаёт читаться как одна. Truncation вместо переноса — если окно
+	// сузили руками, лучше отрезать хвост, чем разломать строку надвое.
+	v.machine.Wrapping = fyne.TextWrapOff
+	v.machine.Truncation = fyne.TextTruncateEllipsis
+	v.machineSw.Wrapping = fyne.TextWrapOff
+	v.machineSw.Truncation = fyne.TextTruncateEllipsis
+	v.archWarn.Wrapping = fyne.TextWrapWord
+	v.archWarn.Hide()
 	v.disksHint.Wrapping = fyne.TextWrapWord
 	v.ifacesHint.Wrapping = fyne.TextWrapWord
 	v.errBar.Hide()
+
+	// Фильтр перерисовывает из последнего ответа, а не ждёт следующего опроса:
+	// пауза в 2 секунды после клика читается как «не сработало».
+	v.ifacesFilter = widget.NewSelect([]string{
+		locale.T("remote.host.filter_all"),
+		locale.T("remote.host.filter_up"),
+		locale.T("remote.host.filter_traffic"),
+	}, func(string) { v.redrawInterfaces() })
+	v.ifacesFilter.SetSelectedIndex(0)
 	return v
+}
+
+// ifaceMode — выбранный режим фильтра.
+//
+// По индексу, а не по подписи: подпись переводится, и сравнение с ней сломало
+// бы фильтр в любом языке, кроме того, на котором его писали.
+func (v *hostView) ifaceMode() string {
+	switch v.ifacesFilter.SelectedIndex() {
+	case 1:
+		return hostIfaceUp
+	case 2:
+		return hostIfaceTraffic
+	default:
+		return hostIfaceAll
+	}
+}
+
+// hostIfaceVisible — проходит ли интерфейс фильтр.
+func hostIfaceVisible(i lxdclient.HostInterface, mode string) bool {
+	switch mode {
+	case hostIfaceUp:
+		return i.Up
+	case hostIfaceTraffic:
+		// «С трафиком» — именно счётчик, а не скорость: скорость нулевая в
+		// паузе между запросами, и интерфейс, по которому только что шли
+		// гигабайты, исчезал бы из списка на ровном месте.
+		return i.RxBytes > 0 || i.TxBytes > 0
+	default:
+		return true
+	}
 }
 
 // hostBar — полоска без собственной подписи: цифра стоит в своей колонке
@@ -259,6 +371,13 @@ func hostDimLabel(s string) *widget.Label {
 // в соседних строках стоят друг под другом.
 func hostNum(s string, w float32) fyne.CanvasObject {
 	l := widget.NewLabelWithStyle(s, fyne.TextAlignTrailing, fyne.TextStyle{})
+	return hostFixedWidth(l, w)
+}
+
+// hostDimNum — то же, что hostNum, но курсивом: значение не тревожное, а
+// ожидаемое по построению.
+func hostDimNum(s string, w float32) fyne.CanvasObject {
+	l := widget.NewLabelWithStyle(s, fyne.TextAlignTrailing, fyne.TextStyle{Italic: true})
 	return hostFixedWidth(l, w)
 }
 
@@ -298,56 +417,157 @@ func hostFixedWidth(o fyne.CanvasObject, w float32) fyne.CanvasObject {
 	return container.New(hostFixedWidthLayout{w: w}, o)
 }
 
+// hostThinLayout зажимает высоту виджета, оставляя ширину родителю.
+//
+// Нужен, потому что высота ProgressBar приходит из темы через MinSize() и
+// задать её у самого виджета нельзя: Resize() перетрёт следующий же Layout
+// родителя. Полоска здесь — не элемент управления, а отметка уровня рядом с
+// числом, и в полную высоту строки она забирает внимание у самого числа.
+type hostThinLayout struct{ h float32 }
+
+func (l hostThinLayout) MinSize(objs []fyne.CanvasObject) fyne.Size {
+	w := float32(0)
+	for _, o := range objs {
+		if s := o.MinSize().Width; s > w {
+			w = s
+		}
+	}
+	return fyne.NewSize(w, l.h)
+}
+
+func (l hostThinLayout) Layout(objs []fyne.CanvasObject, size fyne.Size) {
+	for _, o := range objs {
+		// По центру строки: полоска тоньше текста рядом, и прижатая к верху
+		// она читалась бы как подчёркивание заголовка сверху.
+		o.Move(fyne.NewPos(0, (size.Height-l.h)/2))
+		o.Resize(fyne.NewSize(size.Width, l.h))
+	}
+}
+
+// hostThin — полоска в пятую часть обычной высоты.
+func hostThin(o fyne.CanvasObject) fyne.CanvasObject {
+	return container.New(hostThinLayout{h: hostBarHeight}, o)
+}
+
+// hostCellDepth — предел спуска в ячейку.
+//
+// Ячейка собирается нами и мелкая: контейнер ширины → контейнер высоты →
+// виджет, то есть три уровня. Предел стоит не для красоты: виджет Fyne — это
+// дерево со СВОИМИ внутренними контейнерами, и обход «до упора» уходил в них
+// и дальше, пока рантайм не падал на переносе стека главного потока
+// (fatal error: traceback did not unwind completely). Ищем только в своей
+// обёртке, чужое внутреннее устройство не наш уровень.
+const hostCellDepth = 3
+
+// hostFindBar достаёт полоску из ячейки, сколько бы наших обёрток на ней ни
+// было — но не глубже собственной обёртки.
+func hostFindBar(o fyne.CanvasObject, depth int) *widget.ProgressBar {
+	if depth <= 0 {
+		return nil
+	}
+	switch t := o.(type) {
+	case *widget.ProgressBar:
+		return t
+	case *fyne.Container:
+		for _, child := range t.Objects {
+			if b := hostFindBar(child, depth-1); b != nil {
+				return b
+			}
+		}
+	}
+	return nil
+}
+
+// hostFindLabel — то же для подписи.
+func hostFindLabel(o fyne.CanvasObject, depth int) *widget.Label {
+	if depth <= 0 {
+		return nil
+	}
+	switch t := o.(type) {
+	case *widget.Label:
+		return t
+	case *fyne.Container:
+		for _, child := range t.Objects {
+			if l := hostFindLabel(child, depth-1); l != nil {
+				return l
+			}
+		}
+	}
+	return nil
+}
+
 // content собирает дерево окна.
 func (v *hostView) content() fyne.CanvasObject {
 	cpuBlock := container.NewVBox(
 		v.cpuTitle,
-		v.cpuBar,
+		hostThin(v.cpuBar),
 		v.cpuCores,
 		v.cpuLoad,
 		v.cpuInterval,
 	)
 	memBlock := container.NewVBox(
 		v.memTitle,
-		v.memBar,
+		hostThin(v.memBar),
 		v.memDetail,
 		v.memSwap,
 	)
-	// Температура и дескрипторы — узкой колонкой справа: это то, на что
-	// смотрят вторым взглядом, и полная ширина им не нужна.
-	sideBlock := container.NewVBox(
-		hostBoldLabel(locale.T("remote.host.thermal")),
-		v.thermal,
-		v.thermalList,
-		widget.NewSeparator(),
-		hostBoldLabel(locale.T("remote.host.fd")),
-		v.fdDaemon,
-		v.fdBar,
-		v.fdSystem,
-	)
-
-	// Три блока в ряд фиксированной ширины. Именно фиксированной: Label без
+	// Два блока в ряд фиксированной ширины. Именно фиксированной: Label без
 	// переноса отдаёт минимальной шириной всю свою строку, и один длинный
 	// текст («… · cache 168.1 MB») распирал бы ряд шире окна — та же ловушка,
 	// что раздувает диалоги на весь экран.
 	top := container.NewHBox(
 		hostFixedWidth(cpuBlock, hostBlockWide),
 		hostFixedWidth(memBlock, hostBlockWide),
-		hostFixedWidth(sideBlock, hostBlockSide),
+	)
+
+	// Температура — строкой под нагрузкой, а не колонкой сбоку: это третий
+	// показатель того же вопроса «тяжело ли машине сейчас», и в одну строку
+	// зоны читаются подряд, без вертикального списка на пол-экрана.
+	thermalRow := container.NewHBox(
+		hostBoldLabel(locale.T("remote.host.thermal")),
+		v.thermal,
+		v.thermalList,
+	)
+
+	// Дескрипторы — под дисками: это тоже про исчерпание лимита, только не
+	// места, а таблицы открытых файлов. Рядом их и читают.
+	fdRow := container.NewHBox(
+		hostBoldLabel(locale.T("remote.host.fd")),
+		v.fdDaemon,
+		v.fdSystem,
+	)
+
+	// Фильтр — в строке заголовка интерфейсов, справа от счётчика: он
+	// относится к списку под ним, а не к окну целиком. Заголовку даём его
+	// собственную ширину явно: в голом HBox Select налезал на текст.
+	ifacesHead := container.NewHBox(
+		hostFixedWidth(v.ifacesTitle, hostIfacesTitleWidth),
+		v.ifacesFilter,
+	)
+
+	// Аптайм прижат к правому краю через Border: он отвечает на свой вопрос
+	// («давно ли машина живёт»), и у правого края его находят взглядом сразу,
+	// не вычитывая всю строку модели до конца.
+	machineHead := container.NewVBox(
+		container.NewBorder(nil, nil, nil, v.machineUp, v.machine),
+		v.machineSw,
+		v.archWarn,
 	)
 
 	body := container.NewVBox(
-		v.machine,
+		machineHead,
 		v.errBar,
 		widget.NewSeparator(),
 		top,
+		thermalRow,
 		widget.NewSeparator(),
 		v.disksTitle,
 		hostDisksHeader(),
 		v.disks,
 		v.disksHint,
+		fdRow,
 		widget.NewSeparator(),
-		v.ifacesTitle,
+		ifacesHead,
 		hostIfacesHeader(),
 		v.ifaces,
 		v.ifacesHint,
@@ -420,7 +640,19 @@ func (v *hostView) update(h lxdclient.HostInfo, hErr error,
 	}
 	v.errBar.Hide()
 
-	v.machine.SetText(hostMachineLine(h))
+	v.machine.SetText(hostMachineTitle(h))
+	v.machineUp.SetText(hostMachineUptime(h))
+	v.machineSw.SetText(hostMachineSoftware(h))
+
+	// Сверка записанной платформы с настоящей. До этой ручки проверить её
+	// было нечем: GOARCH машины оператор выбирает руками при добавлении, и
+	// ошибка в выпадающем списке молча уезжала в сборку конфига.
+	if warn := hostPlatformMismatch(v.wantOS, v.wantArch, h); warn != "" {
+		v.archWarn.SetText(warn)
+		v.archWarn.Show()
+	} else {
+		v.archWarn.Hide()
+	}
 
 	// CPU. Заголовок несёт либо процент, либо «ждём второй замер…»: пустая
 	// полоска с нулём читалась бы как «простаивает».
@@ -441,7 +673,6 @@ func (v *hostView) update(h lxdclient.HostInfo, hErr error,
 	v.thermalList.SetText(hostThermalZones(h.Thermal))
 
 	v.fdDaemon.SetText(locale.Tf("remote.host.fd_daemon", hostFDText(h.FD.Open, h.FD.Limit)))
-	v.fdBar.SetValue(hostFDRatio(h.FD.Open, h.FD.Limit))
 	v.fdSystem.SetText(locale.Tf("remote.host.fd_system", hostFDText(h.FD.SystemOpen, h.FD.SystemLimit)))
 
 	v.updateDisks(h.Disk)
@@ -464,13 +695,15 @@ func (v *hostView) updateCores(c lxdclient.HostCPU) {
 	// только обновляются: пересборка на каждом тике мигала бы полосками.
 	if len(v.cpuCores.Objects) != len(c.PerCorePercent) {
 		v.cpuCores.RemoveAll()
+		// Только число на ядро, без полоски: полосок в блоке уже одна —
+		// общая, и повторять её разрез шестью маленькими значит спорить с
+		// ней за внимание. Разрез читают, чтобы найти ядро в полке, а для
+		// этого достаточно цифры.
 		for i := range c.PerCorePercent {
-			bar := hostBar()
 			num := widget.NewLabelWithStyle("", fyne.TextAlignTrailing, fyne.TextStyle{})
 			v.cpuCores.Add(container.NewHBox(
 				hostText(fmt.Sprintf("%d", i), hostColCore),
 				hostFixedWidth(num, hostColPercent),
-				hostFixedWidth(bar, hostColBar),
 			))
 		}
 	}
@@ -480,21 +713,17 @@ func (v *hostView) updateCores(c lxdclient.HostCPU) {
 			continue
 		}
 		p := pct
-		// Виджеты ищем ПО ТИПУ, а не по индексу: индекс молча разъезжается
-		// при перестановке колонок, и строка перестаёт обновляться без
-		// единого признака поломки. Номер ядра пропускаем — он не меняется.
+		// Виджеты ищем ПО ТИПУ и вглубь, а не по индексу: индекс молча
+		// разъезжается при перестановке колонок или лишней обёртке, и строка
+		// перестаёт обновляться без единого признака поломки. Номер ядра
+		// пропускаем — он не меняется.
 		for j, cell := range row.Objects {
-			wrap, ok := cell.(*fyne.Container)
-			if !ok || len(wrap.Objects) == 0 {
+			if bar := hostFindBar(cell, hostCellDepth); bar != nil {
+				bar.SetValue(hostBarValue(&p))
 				continue
 			}
-			switch w := wrap.Objects[0].(type) {
-			case *widget.ProgressBar:
-				w.SetValue(hostBarValue(&p))
-			case *widget.Label:
-				if j > 0 {
-					w.SetText(hostPercent(&p))
-				}
+			if num := hostFindLabel(cell, hostCellDepth); num != nil && j > 0 {
+				num.SetText(hostPercent(&p))
 			}
 		}
 	}
@@ -511,21 +740,36 @@ func (v *hostView) updateDisks(d lxdclient.HostDisk) {
 		if m.ReadOnly {
 			anyReadOnly = true
 		}
-		bar := hostBar()
-		p := m.UsedPercent
-		bar.SetValue(hostBarValue(&p))
-
-		// Флаги текстом, а не цветом: пометка должна читаться и на скриншоте
-		// в переписке, и в монохроме.
+		// Флаги текстом со значком: значок ловит взгляд, текст остаётся
+		// читаемым и на скриншоте в переписке, и в монохроме.
 		flags := hostMountFlags(m)
 		if flags != "" {
 			flags = "[" + flags + "]"
 		}
+
+		// Read-only забит ПО ПОСТРОЕНИЮ: squashfs-образ упакован ровно под
+		// размер данных, свободному месту там взяться неоткуда. Полоска в
+		// полке — язык аварии, и рисовать им норму значит каждый раз звать
+		// перепроверять то, что перепроверять не нужно. Поэтому у такой
+		// строки полоски нет вовсе, а вместо процента — причина.
+		roByDesign := m.ReadOnly && m.UsedPercent >= 99.5
+
+		pct := hostNum(fmt.Sprintf("%.1f%%", m.UsedPercent), hostColPercent)
+		var level fyne.CanvasObject = hostFixedWidth(widget.NewLabel(""), hostColBar)
+		if roByDesign {
+			pct = hostDimNum(locale.T("remote.host.ro_full"), hostColPercent)
+		} else {
+			bar := hostBar()
+			p := m.UsedPercent
+			bar.SetValue(hostBarValue(&p))
+			level = hostFixedWidth(hostThin(bar), hostColBar)
+		}
+
 		v.disks.Add(container.NewHBox(
 			hostText(m.Path, hostColName),
 			hostText(m.FSType, hostColFS),
-			hostNum(fmt.Sprintf("%.1f%%", m.UsedPercent), hostColPercent),
-			hostFixedWidth(bar, hostColBar),
+			pct,
+			level,
 			hostNum(hostBytes(m.AvailableBytes), hostColBytes),
 			hostText(flags, hostColFlags),
 		))
@@ -548,20 +792,49 @@ func (v *hostView) updateDisks(d lxdclient.HostDisk) {
 	v.disks.Refresh()
 }
 
-// updateInterfaces рисует интерфейсы таблицей.
-//
-// Показываются ВСЕ, включая lo и лежачие: «wan лёг» — ровно то, что нужно
-// увидеть, и прятать это в фильтр значило бы прятать ответ.
+// updateInterfaces принимает новый ответ и перерисовывает таблицу.
 func (v *hostView) updateInterfaces(ifs lxdclient.HostInterfaces, err error) {
 	if err != nil {
 		v.ifacesTitle.SetText(locale.T("remote.host.ifaces"))
 		v.ifacesHint.SetText(locale.Tf("remote.host.ifaces_error", err))
 		return
 	}
-	v.ifacesTitle.SetText(locale.Tf("remote.host.ifaces_n", len(ifs.Interfaces)))
+	v.lastIfaces = ifs
+	v.hasIfaces = true
+	v.redrawInterfaces()
+}
+
+// redrawInterfaces рисует интерфейсы таблицей из последнего ответа.
+//
+// По умолчанию показываются ВСЕ, включая lo и лежачие: «wan лёг» — ровно то,
+// что нужно увидеть, и прятать это по умолчанию значило бы прятать ответ.
+// Фильтр — выбор пользователя, а не поведение по умолчанию.
+func (v *hostView) redrawInterfaces() {
+	if !v.hasIfaces {
+		return
+	}
+	ifs := v.lastIfaces
+	mode := v.ifaceMode()
+
+	shown := 0
+	for _, i := range ifs.Interfaces {
+		if hostIfaceVisible(i, mode) {
+			shown++
+		}
+	}
+	// В заголовке — сколько показано из скольких, иначе отфильтрованный
+	// список выглядит как пропавшие интерфейсы.
+	if shown == len(ifs.Interfaces) {
+		v.ifacesTitle.SetText(locale.Tf("remote.host.ifaces_n", len(ifs.Interfaces)))
+	} else {
+		v.ifacesTitle.SetText(locale.Tf("remote.host.ifaces_filtered", shown, len(ifs.Interfaces)))
+	}
 
 	v.ifaces.RemoveAll()
 	for _, i := range ifs.Interfaces {
+		if !hostIfaceVisible(i, mode) {
+			continue
+		}
 		// Лежачие гаснут кружком и не жирные: строка остаётся на месте, но
 		// перестаёт спорить за внимание с работающими.
 		marker := "○"
@@ -591,7 +864,10 @@ func (v *hostView) updateInterfaces(ifs lxdclient.HostInterfaces, err error) {
 	v.ifaces.Refresh()
 }
 
-// hostThermalZones — датчики построчно; пусто, когда их нет.
+// hostThermalZones — датчики в одну строку через разделитель.
+//
+// Именно в строку: блок стоит горизонтальной полосой под нагрузкой, и
+// перечисление в столбик растянуло бы её на пол-экрана ради трёх чисел.
 func hostThermalZones(t *lxdclient.HostThermal) string {
 	if t == nil || len(t.Zones) == 0 {
 		return locale.T("remote.host.thermal_none")
@@ -599,9 +875,9 @@ func hostThermalZones(t *lxdclient.HostThermal) string {
 	s := ""
 	for i, z := range t.Zones {
 		if i > 0 {
-			s += "\n"
+			s += " · "
 		}
-		s += fmt.Sprintf("%s  %.1f °C", z.Name, z.Celsius)
+		s += fmt.Sprintf("%s %.1f °C", z.Name, z.Celsius)
 	}
 	return s
 }

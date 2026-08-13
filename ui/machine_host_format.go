@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"singbox-launcher/internal/locale"
@@ -79,8 +80,11 @@ func hostBarValue(v *float64) float64 {
 	}
 }
 
-// hostUptime — «18 сут 04:12», без секунд: аптайм роутера меряют днями, и
-// бегущие секунды в нём только шумят.
+// hostUptime — «18 сут 04:12:37», с секундами.
+//
+// Демон отдаёт аптайм в секундах, и раз разряд у нас есть — показываем его:
+// на свежеподнятой машине «00:00:37» отвечает на вопрос «оно только что
+// перезагрузилось?», на который «00:00» ответить не может.
 func hostUptime(sec int64) string {
 	if sec <= 0 {
 		return hostDash
@@ -89,10 +93,12 @@ func hostUptime(sec int64) string {
 	days := int(d.Hours()) / 24
 	hours := int(d.Hours()) % 24
 	mins := int(d.Minutes()) % 60
+	secs := int(d.Seconds()) % 60
+	clock := fmt.Sprintf("%02d:%02d:%02d", hours, mins, secs)
 	if days > 0 {
-		return locale.Tf("remote.host.uptime_days", days, hours, mins)
+		return locale.Tf("remote.host.uptime_days", days, clock)
 	}
-	return fmt.Sprintf("%02d:%02d", hours, mins)
+	return clock
 }
 
 // hostInterval — подпись окна усреднения под дельта-блоками.
@@ -126,18 +132,6 @@ func hostFDText(open, limit *int) string {
 		return hostDash
 	}
 	return fmt.Sprintf("%d / %d", *open, *limit)
-}
-
-// hostFDRatio — заполнение полоски дескрипторов 0..1.
-func hostFDRatio(open, limit *int) float64 {
-	if open == nil || limit == nil || *limit <= 0 {
-		return 0
-	}
-	r := float64(*open) / float64(*limit)
-	if r > 1 {
-		return 1
-	}
-	return r
 }
 
 // hostMountUsed — «7.4% · свободно 3.33 ГБ» для одной точки монтирования.
@@ -268,27 +262,164 @@ func hostSwapText(m lxdclient.HostMemory) string {
 }
 
 // hostMachineLine — шапка: модель, ОС, ядро, архитектура, аптайм.
-func hostMachineLine(h lxdclient.HostInfo) string {
-	parts := make([]string, 0, 5)
-	for _, s := range []string{h.Model, h.OS, h.Kernel, h.Arch} {
-		if s != "" {
-			parts = append(parts, s)
+// hostMachineTitle — первая строка шапки: чем машина является.
+//
+// Модель с архитектурой в скобках: арх — свойство железа, а не отдельный
+// пункт перечисления, и в скобках она читается как уточнение, а не как ещё
+// одна сущность через разделитель.
+func hostMachineTitle(h lxdclient.HostInfo) string {
+	switch {
+	case h.Model != "" && h.Arch != "":
+		return fmt.Sprintf("%s (%s)", h.Model, h.Arch)
+	case h.Model != "":
+		return h.Model
+	default:
+		return h.Arch
+	}
+}
+
+// hostOSBadge — короткая пометка дистрибутива для шапки: «openwrt», «debian».
+//
+// Берётся из os_id, а при собственном ID форка — из первого элемента
+// os_id_like (SPEC 068): immortalwrt ставит свой ID и называет базу только
+// там, и без запасного варианта такой форк остался бы неопознанным.
+// Показывается только когда добавляет знание: если человеческая строка os и
+// так начинается с этого слова, второй раз его писать незачем.
+func hostOSBadge(h lxdclient.HostInfo) string {
+	id := strings.TrimSpace(h.OSID)
+	if id == "" {
+		for _, like := range h.OSIDLike {
+			if like = strings.TrimSpace(like); like != "" {
+				id = like
+				break
+			}
 		}
 	}
-	line := ""
-	for i, p := range parts {
-		if i > 0 {
-			line += " · "
-		}
-		line += p
+	if id == "" {
+		return ""
 	}
-	if up := hostUptime(h.UptimeSeconds); up != hostDash {
-		if line != "" {
-			line += " · "
-		}
-		// Словом, а не стрелкой: «↑ 1d 09:50» в этом шрифте рвётся на тофу
-		// из-за пробела после стрелки, а вплотную читается как «выросло на».
-		line += locale.Tf("remote.host.uptime", up)
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(h.OS)), strings.ToLower(id)) {
+		return ""
 	}
-	return line
+	return id
+}
+
+// hostArchMismatch сообщает, что записанная у машины архитектура не совпала с
+// той, что демон прочитал с железа.
+//
+// Зачем: GOARCH машины оператор выбирает руками при добавлении, и до этой
+// ручки проверить его было нечем — под него собирается config.json (SPEC 098
+// §2.4), так что промах в выпадающем списке даёт конфиг для чужой платформы.
+// Пустая строка — расхождения нет или сверять нечего.
+func hostArchMismatch(want, actual string) string {
+	want, actual = strings.TrimSpace(want), strings.TrimSpace(actual)
+	if want == "" || actual == "" {
+		return ""
+	}
+	if hostArchEqual(want, actual) {
+		return ""
+	}
+	return locale.Tf("remote.host.arch_mismatch", want, actual)
+}
+
+// hostOSMismatch — то же для ОС: записанный GOOS против os_family.
+//
+// Ошибка здесь грубее промаха в архитектуре и ловится тем же способом:
+// os_family отдаётся из runtime.GOOS демона, то есть словарь с записанным
+// GOOS общий, и нормализовать нечего.
+func hostOSMismatch(want, actual string) string {
+	want, actual = strings.TrimSpace(want), strings.TrimSpace(actual)
+	if want == "" || actual == "" {
+		return ""
+	}
+	if strings.EqualFold(want, actual) {
+		return ""
+	}
+	return locale.Tf("remote.host.os_mismatch", want, actual)
+}
+
+// hostPlatformMismatch собирает предупреждения по обоим полям платформы.
+//
+// Обе строки сразу, а не первая попавшаяся: если оператор промахнулся в
+// выпадающем списке, он мог промахнуться в обоих, и показать только ОС значит
+// отправить его чинить платформу дважды.
+func hostPlatformMismatch(wantOS, wantArch string, h lxdclient.HostInfo) string {
+	parts := make([]string, 0, 2)
+	if s := hostOSMismatch(wantOS, h.OSFamily); s != "" {
+		parts = append(parts, s)
+	}
+	if s := hostArchMismatch(wantArch, h.Arch); s != "" {
+		parts = append(parts, s)
+	}
+	return strings.Join(parts, "\n")
+}
+
+// hostArchEqual сравнивает имя архитектуры Go с тем, что отдаёт ядро.
+//
+// Имена не совпадают по написанию: Go говорит amd64/arm64/386, uname —
+// x86_64/aarch64/i686. Без нормализации сверка ругалась бы на каждой машине.
+func hostArchEqual(goArch, kernelArch string) bool {
+	norm := func(s string) string {
+		switch strings.ToLower(s) {
+		case "x86_64", "amd64":
+			return "amd64"
+		case "aarch64", "arm64", "armv8", "armv8l":
+			return "arm64"
+		case "i386", "i486", "i586", "i686", "386":
+			return "386"
+		case "armv7l", "armv6l", "arm":
+			return "arm"
+		default:
+			return strings.ToLower(s)
+		}
+	}
+	return norm(goArch) == norm(kernelArch)
+}
+
+// hostMachineUptime — правый край первой строки: давно ли машина живёт.
+//
+// Словом, а не стрелкой: «↑ 1d 09:50» в этом шрифте рвётся на тофу из-за
+// пробела после стрелки, а вплотную читается как «выросло на».
+func hostMachineUptime(h lxdclient.HostInfo) string {
+	up := hostUptime(h.UptimeSeconds)
+	if up == hostDash {
+		return ""
+	}
+	return locale.Tf("remote.host.uptime", up)
+}
+
+// hostMachineSoftware — вторая строка шапки: что на машине запущено.
+//
+// Прошивка и ядро отделены от модели, потому что отвечают на другой вопрос:
+// первая строка говорит «что это за коробка», вторая — «что в ней сейчас
+// стоит». Одной строкой они сливались в перечисление длиной в экран.
+func hostMachineSoftware(h lxdclient.HostInfo) string {
+	// Ядро в скобках после прошивки: версия ядра — уточнение к ней, а не
+	// равноправный пункт перечисления. Через разделитель две версии подряд
+	// читались как одна длинная строка непонятно чего.
+	//
+	// Подпись ядра берётся из os_family (SPEC 068), а не угадывается по виду
+	// версии: «linux 6.6.119» до этого поля было домыслом клиента, и на
+	// не-Linux хосте оно оказалось бы враньём.
+	kernel := h.Kernel
+	if kernel != "" && h.OSFamily != "" {
+		kernel = h.OSFamily + " " + kernel
+	}
+	// Пометка дистрибутива — сразу за прошивкой: форк зовёт себя RouteRich, а
+	// платформа под ним openwrt, и знать это нужно раньше, чем версию ядра.
+	os := h.OS
+	if badge := hostOSBadge(h); badge != "" && os != "" {
+		os = fmt.Sprintf("%s [%s]", os, badge)
+	}
+
+	switch {
+	case os != "" && kernel != "":
+		return fmt.Sprintf("%s  (%s)", os, kernel)
+	case os != "":
+		return os
+	case kernel != "":
+		return kernel
+	default:
+		return ""
+	}
 }

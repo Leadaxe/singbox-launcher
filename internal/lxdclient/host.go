@@ -22,7 +22,18 @@ import (
 
 // HostInfo — снимок машины целиком.
 type HostInfo struct {
-	Model         string `json:"model"`
+	Model string `json:"model"`
+
+	// Три машиночитаемых поля платформы, каждое на свой вопрос (SPEC 068):
+	// OSFamily — ядро и сисколлы («есть ли тут /proc»), OSID — дистрибутив
+	// («есть ли тут ubus»), OSIDLike — база форка («это форк чего-то
+	// знакомого»). Строку OS парсить нельзя: её формат задаёт дистрибутив,
+	// и форк RouteRich зовёт себя RouteRich, тогда как ID честно говорит
+	// openwrt — сопоставление по человеческой строке платформу не опознает.
+	OSFamily string   `json:"os_family"`
+	OSID     string   `json:"os_id"`
+	OSIDLike []string `json:"os_id_like"`
+
 	OS            string `json:"os"`
 	Kernel        string `json:"kernel"`
 	Arch          string `json:"arch"`
