@@ -171,7 +171,7 @@ func (m *Manager) build() {
 	var tabs *container.AppTabs
 	// Останов второй вкладки: у режимов она разная, и держать обе ссылки
 	// значило бы разбирать nil на закрытии.
-	stopSecond := func() {}
+	var stopSecond func()
 	if deps.RemoteMachine {
 		// У машины нет процессов — есть клиенты. Показывать пикер процессов
 		// значило бы предлагать выбрать из списка процессов ЭТОГО компьютера,
@@ -213,6 +213,11 @@ func (m *Manager) build() {
 			prevStop()
 			stopCounter.stop()
 		}
+	} else {
+		// Счётчика нет (локальное окно) — ⋮ всё равно живёт в полосе вкладок.
+		// Иначе он оставался бы единственным жильцом тулбара, и целая строка
+		// уходила бы под одну кнопку.
+		tabsRow = overlayOnTabs(tabs, buildOverflowButton(deps, win))
 	}
 	root := container.NewBorder(toolbar, nil, nil, nil, tabsRow)
 
@@ -400,16 +405,20 @@ func (m *Manager) attachConnCounter(deps WindowDeps, win fyne.Window, tabs *cont
 		}
 	}()
 
-	// ⋮ здесь же: в окне машины тулбара нет, и меню иначе осталось бы без
-	// места. Целая строка ради одной кнопки — плохой обмен.
-	right := container.NewHBox(countL, killBtn, buildOverflowButton(deps, win))
 	return &connCounter{
-		// Поверх вкладок, а не рядом: AppTabs занимает всю ширину, и в Border
-		// справа он бы сжался, оставив ярлыки обрезанными.
-		content: container.NewStack(tabs, container.NewBorder(
-			container.NewHBox(layout.NewSpacer(), right), nil, nil, nil)),
-		stop: func() { close(stopCh) },
+		content: overlayOnTabs(tabs, countL, killBtn, buildOverflowButton(deps, win)),
+		stop:    func() { close(stopCh) },
 	}
+}
+
+// overlayOnTabs кладёт элементы в правый край полосы вкладок.
+//
+// Поверх вкладок, а не рядом: AppTabs занимает всю ширину, и в Border справа
+// он бы сжался, оставив ярлыки обрезанными.
+func overlayOnTabs(tabs *container.AppTabs, objs ...fyne.CanvasObject) fyne.CanvasObject {
+	right := container.NewHBox(objs...)
+	return container.NewStack(tabs, container.NewBorder(
+		container.NewHBox(layout.NewSpacer(), right), nil, nil, nil))
 }
 
 func formatEventRow(e tprof.TrafficEvent) string {

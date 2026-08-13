@@ -280,8 +280,8 @@
   "servers.button_test": "тест",
   "servers.tooltip_hide_ping_errors": "Скрыть серверы с ошибкой пинга",
   "servers.tooltip_show_ping_errors": "Показать все серверы",
-  "servers.tooltip_sort_by_name": "Сортировка по имени (↑ А…Я / ↓ Я…А)",
-  "servers.tooltip_sort_by_delay": "Сортировка по задержке (↑ быстрее / ↓ медленнее)",
+  "servers.tooltip_sort_by_name": "Сортировка по имени (↑А…Я / ↓Я…А)",
+  "servers.tooltip_sort_by_delay": "Сортировка по задержке (↑быстрее / ↓медленнее)",
   "servers.tooltip_ping_all": "Пинг всех прокси в группе",
   "servers.tooltip_ping_settings": "URL пинг-теста и число параллельных запросов",
   "servers.button_export": "Экспорт",
@@ -984,7 +984,7 @@
   "remote.info.traffic": "Трафик",
   "remote.info.runtime": "Ядро",
   "remote.info.connections_value": "%d вх / %d исх",
-  "remote.info.traffic_value": "↑ %s/с  ↓ %s/с   (всего ↑ %s ↓ %s)",
+  "remote.info.traffic_value": "↑%s/с  ↓%s/с   (всего ↑%s ↓%s)",
   "remote.info.runtime_value": "%s, горутин %d",
   "traffic.byclient.any": "— все —",
   "traffic.byclient.client": "Клиент",
@@ -1007,5 +1007,7 @@
   "traffic.conns.kill_all": "Разорвать все",
   "traffic.conns.kill_all_confirm": "Разорвать все соединения (%d)? Устройства переподключатся сами.",
   "traffic.conns.count": "соединений: %d",
-  "traffic.conns.unknown": "соединения: …"
+  "traffic.conns.unknown": "соединения: …",
+  "traffic.conns.state_open": "открыто",
+  "traffic.conns.state_closed": "закрыто"
 }

@@ -984,7 +984,7 @@
   "remote.info.traffic": "Traffic",
   "remote.info.runtime": "Core runtime",
   "remote.info.connections_value": "%d in / %d out",
-  "remote.info.traffic_value": "↑ %s/s  ↓ %s/s   (total ↑ %s ↓ %s)",
+  "remote.info.traffic_value": "↑%s/s  ↓%s/s   (total ↑%s ↓%s)",
   "remote.info.runtime_value": "%s, goroutines %d",
   "traffic.byclient.any": "— all —",
   "traffic.byclient.client": "Client",
@@ -1007,5 +1007,7 @@
   "traffic.conns.kill_all": "Close all",
   "traffic.conns.kill_all_confirm": "Close all connections (%d)? Devices will reconnect on their own.",
   "traffic.conns.count": "conns: %d",
-  "traffic.conns.unknown": "conns: …"
+  "traffic.conns.unknown": "conns: …",
+  "traffic.conns.state_open": "open",
+  "traffic.conns.state_closed": "closed"
 }

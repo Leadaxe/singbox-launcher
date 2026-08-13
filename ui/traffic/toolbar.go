@@ -46,7 +46,7 @@ func buildWindowToolbar(deps WindowDeps, win fyne.Window) fyne.CanvasObject {
 			"OFF — connections and their hosts are still shown (they come " +
 			"from the connections snapshot), but the DNS tab stays empty: no " +
 			"queries, no CNAME chains, no failures.\n\n" +
-			"ON — DNS queries appear as events, with the CNAME → A/AAAA chain " +
+			"ON - DNS queries appear as events, with the CNAME -> A/AAAA chain " +
 			"per query. Use while diagnosing, then turn off.\n\n" +
 			"Cost: more CPU + faster log-file growth. Toggling triggers a " +
 			"sing-box restart, so active connections reset (you'll see a " +
@@ -104,12 +104,13 @@ func buildWindowToolbar(deps WindowDeps, win fyne.Window) fyne.CanvasObject {
 	// ядре это наличие подписчика, а не log.level. Галка тогда предлагала бы
 	// рестарт ядра ради данных, которые уже есть, причём в лог они приходят
 	// беднее — без процесса, rcode и признака «ответ из кэша».
+	//
+	// Без неё в тулбаре не остаётся ничего: ⋮ живёт в полосе вкладок. Пустая
+	// строка с разделителем съедала бы ряд высоты впустую.
 	if deps.Profiler != nil && deps.Profiler.DNSFromStream() {
-		row := container.NewBorder(nil, nil, nil, buildOverflowButton(deps, win), nil)
-		return container.NewVBox(row, widget.NewSeparator())
+		return nil
 	}
-	row := container.NewBorder(nil, nil,
-		container.NewHBox(verboseChk, verboseHint), buildOverflowButton(deps, win), nil)
+	row := container.NewHBox(verboseChk, verboseHint)
 	return container.NewVBox(row, widget.NewSeparator())
 }
 

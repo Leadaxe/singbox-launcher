@@ -536,6 +536,9 @@ func fixedWidth(o fyne.CanvasObject, w float32) fyne.CanvasObject {
 	return container.New(fixedWidthLayout{w: w}, o)
 }
 
+// humanBytes — компактная форма объёма («1.2M») для узких колонок таблицы
+// By client. Отдельно от formatBytes намеренно: там полная форма («1.2 MB»),
+// которая в колонку фиксированной ширины не влезает.
 func humanBytes(n int64) string {
 	switch {
 	case n >= 1<<30:
