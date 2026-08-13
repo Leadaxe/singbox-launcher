@@ -134,6 +134,22 @@ func buildPerProcessView(deps WindowDeps, onRefresh func()) *perProcessView {
 			lbl.SetText(line)
 		},
 	)
+	// Клик по строке → карточка домена. Строка тут — свод по всем его
+	// соединениям, и то, ради чего его открывают (цепочка CNAME, все адреса),
+	// в неё не помещается: адреса сжаты до счётчика «1 IPs».
+	v.domainsList.OnSelected = func(id widget.ListItemID) {
+		v.mu.Lock()
+		ok := id >= 0 && int(id) < len(v.domainsData)
+		var d tprof.DomainStats
+		if ok {
+			d = v.domainsData[int(id)]
+		}
+		v.mu.Unlock()
+		v.domainsList.UnselectAll()
+		if ok {
+			showDomainDetail(v.parentWindow(), d)
+		}
+	}
 
 	v.ipsList = widget.NewList(
 		func() int { return len(v.ipsData) },
@@ -151,6 +167,19 @@ func buildPerProcessView(deps WindowDeps, onRefresh func()) *perProcessView {
 			lbl.SetText(fmt.Sprintf("%s:%d  ↑%s ↓%s  %s", d.IP, d.Port, humanBytes(d.UpBytes), humanBytes(d.DownBytes), dom))
 		},
 	)
+	v.ipsList.OnSelected = func(id widget.ListItemID) {
+		v.mu.Lock()
+		ok := id >= 0 && int(id) < len(v.ipsData)
+		var s tprof.IPStats
+		if ok {
+			s = v.ipsData[int(id)]
+		}
+		v.mu.Unlock()
+		v.ipsList.UnselectAll()
+		if ok {
+			showIPDetail(v.parentWindow(), s)
+		}
+	}
 
 	// Колонками, как «By client» у машины: одной строкой через двойные пробелы
 	// значения не выравнивались — шрифт пропорциональный, и хост с правилом
