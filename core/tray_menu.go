@@ -166,7 +166,7 @@ func (ac *AppController) addHideDockMenuItem(menuItems []*fyne.MenuItem) []*fyne
 			if ac.UIService.HideAppFromDock {
 				platform.HideDockIcon()
 				if ac.UIService.MainWindow != nil {
-					ac.UIService.MainWindow.Hide()
+					ac.UIService.HideMainWindow()
 				}
 				debuglog.InfoLog("Tray: Hide app from Dock enabled — Dock hidden and window hidden")
 			} else {

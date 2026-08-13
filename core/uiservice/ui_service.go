@@ -87,6 +87,26 @@ type UIService struct {
 	// OnWindowShown — опциональный callback, который вызывается после открытия главного окна
 	// Используется для проверки обновлений при первом открытии окна после запуска с -tray
 	OnWindowShown func() // Called after main window is shown
+	// OnWindowHidden — парный к OnWindowShown: окно ушло в трей.
+	//
+	// Нужен потребителям с периодическим опросом (авто-обновление списка
+	// узлов на Remote): пока окно скрыто, их запросы уходят в никуда — данные
+	// никто не видит, а сеть и удалённая машина нагружаются.
+	OnWindowHidden func() // Called after main window is hidden to tray
+}
+
+// HideMainWindow прячет главное окно в трей, уведомляя подписчиков.
+//
+// Существует ради OnWindowHidden: прямой MainWindow.Hide() в местах вызова
+// оставлял бы фоновые тикеры работать на невидимое окно.
+func (ui *UIService) HideMainWindow() {
+	if ui == nil || ui.MainWindow == nil {
+		return
+	}
+	ui.MainWindow.Hide()
+	if ui.OnWindowHidden != nil {
+		ui.OnWindowHidden()
+	}
 }
 
 // NewUIService creates and initializes a new UIService instance.

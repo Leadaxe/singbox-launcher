@@ -66,6 +66,21 @@ type ProxyListPanel struct {
 	autoPingAfterConnect func()
 	setEnabled           func(bool)
 	clear                func()
+
+	// autoRefresh — тикер тихого перечитывания списка (только Remote,
+	// см. clash_api_tab_autorefresh.go). nil на Local.
+	autoRefresh *proxyAutoRefresh
+	// silentRefresh — обновление без побочных эффектов ручного действия
+	// (скролл, статус-строка). Дёргается тикером.
+	silentRefresh func(*core.AppController)
+}
+
+// AutoRefresh возвращает тикер авто-обновления панели (nil на Local).
+func (p *ProxyListPanel) AutoRefresh() *proxyAutoRefresh {
+	if p == nil {
+		return nil
+	}
+	return p.autoRefresh
 }
 
 // SetEnabled показывает или прячет содержимое панели.
@@ -1573,10 +1588,43 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	reloadGroupsBtn.SetToolTip(locale.T("servers.reload_groups_tooltip"))
 	reloadGroupsBtn.Importance = widget.LowImportance
 
+	// Тихое авто-обновление списка узлов удалённой машины (раз в 5 секунд).
+	//
+	// Поднимается ДО вёрстки строки ниже: пульсирующий значок ставится вместо
+	// кнопки только при живом тикере, и порядок здесь решает, какой из двух
+	// вариантов попадёт в строку.
+	//
+	// Группу берём не из замыкания, а из состояния СВОЕЙ области на каждом
+	// тике: пользователь мог сменить её в дропдауне, и захваченное на старте
+	// значение опрашивало бы уже не ту группу.
+	panel.silentRefresh = func(c *core.AppController) {
+		if c == nil || c.APIService == nil {
+			return
+		}
+		silentRefreshProxies(c, scope, c.APIService.SelectedClashGroupIn(panel.scope))
+	}
+	panel.startAutoRefresh(ac)
+
+	// На Remote кнопку ↻ подменяет пульсирующий индикатор: он и кнопка (тот же
+	// клик), и показ авто-обновления — значок гаснет к моменту запроса и резко
+	// возвращается в полную яркость. Отдельного элемента в строке нет, поэтому
+	// вёрстка не меняется, а «дыхание» читается боковым зрением.
+	//
+	// На Local тикера нет — там остаётся обычная кнопка.
+	var refreshRight fyne.CanvasObject = reloadGroupsBtn
+	if panel.autoRefresh != nil {
+		pulse := newRefreshPulse(func() {
+			updateSelectorList()
+			onLoadAndRefreshProxies()
+		}, locale.T("servers.reload_groups_tooltip"))
+		panel.autoRefresh.SetCountdownFunc(pulse.SetCountdown)
+		refreshRight = pulse.Object()
+	}
+
 	// ↻ прижата к правому краю: это действие над всей панелью (перечитать
 	// группы у ядра), а не часть выбора группы. Border разводит их по краям
 	// строки, HBox сложил бы всё встык слева.
-	groupRow := container.NewBorder(nil, nil, nil, reloadGroupsBtn,
+	groupRow := container.NewBorder(nil, nil, nil, refreshRight,
 		container.NewHBox(
 			widget.NewLabel(locale.T("servers.label_selector_group")), groupSelect, mapButton,
 		),

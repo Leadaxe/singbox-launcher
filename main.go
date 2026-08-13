@@ -243,7 +243,7 @@ func main() {
 					<-time.After(500 * time.Millisecond)
 					fyne.Do(func() {
 						if controller.UIService.MainWindow != nil {
-							controller.UIService.MainWindow.Hide()
+							controller.UIService.HideMainWindow()
 							debuglog.InfoLog("Tray mode: Window hidden")
 						}
 					})
@@ -274,7 +274,7 @@ func main() {
 	// Intercept the window close event (clicking "X") to hide it instead of exiting completely.
 	if controller.UIService.MainWindow != nil {
 		controller.UIService.MainWindow.SetCloseIntercept(func() {
-			controller.UIService.MainWindow.Hide()
+			controller.UIService.HideMainWindow()
 			if controller.UIService.HideAppFromDock {
 				platform.HideDockIcon()
 			}

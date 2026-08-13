@@ -125,6 +125,9 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 			ReapplyLxdRemoteTransport(controller)
 			app.remotePanel.Activate(controller)
 		}
+		// Авто-обновление списка узлов идёт только на видимой вкладке Remote:
+		// опрашивать машину, пока пользователь смотрит на Local, незачем.
+		app.remotePanel.AutoRefresh().SetTabActive(item == app.clashAPITab)
 		// Обновляем список только там, где есть с кем разговаривать.
 		//
 		// На Local это локальное ядро — оно есть всегда (RefreshAPIFunc сам
@@ -217,6 +220,29 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	// панели, которая реально на экране, — иначе первый же авто-пинг или
 	// ResetAPIState ушёл бы в невидимый список.
 	app.localPanel.Activate(controller)
+
+	// Авто-обновление Remote: на старте открыта Local, поэтому вкладка
+	// неактивна, а окно — видимо (режим -tray скроет его сам, дёрнув
+	// OnWindowHidden). Тикер поднимется при первом заходе на Remote.
+	app.remotePanel.AutoRefresh().SetWindowVisible(true)
+	// Пока окно в трее, обновлять нечего: данные никто не видит, а запросы
+	// продолжали бы будить машину.
+	if controller.UIService != nil {
+		prevShown := controller.UIService.OnWindowShown
+		controller.UIService.OnWindowShown = func() {
+			if prevShown != nil {
+				prevShown()
+			}
+			app.remotePanel.AutoRefresh().SetWindowVisible(true)
+		}
+		prevHidden := controller.UIService.OnWindowHidden
+		controller.UIService.OnWindowHidden = func() {
+			if prevHidden != nil {
+				prevHidden()
+			}
+			app.remotePanel.AutoRefresh().SetWindowVisible(false)
+		}
+	}
 
 	// Инициализируем состояние вкладки + первичный рендер иконки Core.
 	// EventBus.Subscribe не fires backfill — рендерим вручную для startup'а.
