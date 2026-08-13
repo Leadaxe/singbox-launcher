@@ -27,7 +27,15 @@ rc.17 → **lx.3** (последний stable; там же Snell/Bridge/L3-forwa
 (`PATCH /reg/{id}` с `key_type:"secp256r1", tunnel_type:"masque"`) — как в LxBox
 `masque_account.dart`/`masque_keys.dart`.
 
-## 3. Контракт emit (из core SPEC 021 — зафиксирован, device-verified)
+## 3. Контракт emit (из core SPEC 021; схема обновлена по core SPEC 062)
+
+> **Схема сменилась (core SPEC 062, ядро ≥ `1.14.0-lx.26`).** Masque перестал
+> быть единственным outbound'ом со своим диалектом: HTTP-версия теперь `vhttp`
+> (было `network`), а TLS переехал в стандартный вложенный блок `tls`
+> (были плоские `sni` / `skip_cert_verify` / `fragment*`).
+> Ядро принимает и старые имена до `lx.30` с одним deprecation-предупреждением,
+> но **лаунчер их больше не эмитит** — только принимает на входе URI/импорта и
+> нормализует (чужие подписки всё ещё шлют `?network=`/`?sni=`).
 
 ```jsonc
 {
@@ -36,12 +44,12 @@ rc.17 → **lx.3** (последний stable; там же Snell/Bridge/L3-forwa
   "server": "162.159.198.1",     // WARP endpoint IP
   "server_port": 443,
   "profile": "cloudflare",       // cloudflare (деф) | standard
-  "network": "h3",               // ТРАНСПОРТ: h3 (QUIC) | h2 (HTTP/2). НЕ tcp/udp!
+  "vhttp": "h3",                 // ВЕРСИЯ HTTP: h3 (QUIC) | h2 (HTTP/2). НЕ tcp/udp!
   "private_key": "<b64 DER EC>", // x509.ParseECPrivateKey
   "public_key":  "<b64 DER PKIX>",
   "ip":   "172.16.0.2/32",
   "ipv6": "2606:4700:110:...::/128",
-  "sni": "",                     // деф: consumer-masque.cloudflareclient.com
+  "tls": { "server_name": "" },  // деф: consumer-masque.cloudflareclient.com
   "mtu": 1280,                   // h2: ≤16000
   "idle_timeout": "5m",
   "keep_alive_period": "30s",
@@ -50,7 +58,13 @@ rc.17 → **lx.3** (последний stable; там же Snell/Bridge/L3-forwa
 ```
 
 **Грабли (заложить в UI/emit):**
-- `network` = транспорт (`h3`/`h2`), НЕ L4. `"network":"tcp"` → fail-fast ядра. L4 = `network_list`.
+- `vhttp` = версия HTTP (`h3`/`h2`), НЕ L4. L4 = `network_list`. Legacy-имя `network`
+  значило здесь ровно обратное тому, что у всех остальных outbound'ов — из-за этого его
+  и убрали (core SPEC 062). `"vhttp":"tcp"` → форсится в `h3` парсером лаунчера.
+- Плоский `sni` рядом с `tls.server_name` смешивать нельзя: два источника имени, при
+  расхождении ядро падает fail-fast'ом. Импорт нормализует legacy-поля в `tls`
+  (`SanitizeSingboxOutboundMap`).
+- `utls`/`reality` в блоке `tls` ядро для masque игнорирует (идёт поверх QUIC) — импорт их срезает.
 - `profile:cloudflare` требует `private_key`+`public_key` (DER base64, парсятся) и хотя бы один из `ip`/`ipv6` CIDR.
 - `h2` → `mtu ≤ 16000`. Требует top-level `dns` в конфиге.
 
@@ -60,17 +74,19 @@ rc.17 → **lx.3** (последний stable; там же Snell/Bridge/L3-forwa
 |------|-----------|
 | `core/warp/masque.go` (новый) | ECDSA P-256 keygen (DER SEC1/PKIX через `crypto/x509`), 2-шаговая регистрация MASQUE, `MasqueAccount` |
 | `core/warp/account.go` | `ToMasqueOutbound()` — map по контракту §3 (не через WG-парсер) |
-| `core/config/subscription/node_parser_masque.go` (новый) | парс `masque://…?profile=&network=&…` (для импорта готовых) |
+| `core/config/subscription/node_parser_masque.go` (новый) | парс `masque://…?profile=&vhttp=&…` (принимает и legacy `network=`/`sni=`) |
 | `core/config/subscription/shareuri_masque.go` (новый) | share-URI encode |
 | `core/config/subscription/node_parser_core.go:44` | +case `masque://` в `IsDirectLink`/`ParseNode` |
-| `internal/constants/constants.go` | пин ядра rc.17 → lx.3 (Шаг 0) |
+| `core/config/subscription/singbox_sanitize.go` | нормализация legacy-полей masque при импорте конфига (SPEC 062) |
+| `internal/constants/constants.go` | пин ядра rc.17 → lx.3 (Шаг 0); далее lx.26 — схема `vhttp`+`tls` |
 
 ## 5. Тесты
 
 - keygen ECDSA P-256 → DER round-trip (`ParseECPrivateKey`/`ParsePKIXPublicKey`).
-- `ToMasqueOutbound` даёт валидный map; `network:h3`, ключи base64-DER, ip CIDR.
+- `ToMasqueOutbound` даёт валидный map; `vhttp:h3`, `tls.server_name`, ключи base64-DER, ip CIDR.
 - парс `masque://` → тот же outbound (round-trip).
-- **e2e**: emit → `sing-box check` на **lx.3-бинаре** (не rc.17!) — отложено до бампа.
+- legacy `?network=`/`?sni=` на входе → нормализуются в `vhttp`/`tls`; новое имя выигрывает над legacy.
+- **e2e**: emit → `sing-box check` на **lx.26-бинаре** (схема `vhttp`+`tls`).
 
 ## 6. Риски
 

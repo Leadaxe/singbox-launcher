@@ -1,6 +1,6 @@
 # SPEC 095 — Подзаголовок узла, иконки групп и экран информации
 
-**Тип:** Feature · **Статус:** New
+**Тип:** Feature · **Статус:** Complete · **Платформа:** все
 
 Перенос из LxBox трёх связанных вещей списка серверов: подзаголовок под тегом,
 значки пула у групп и пункт «Info» в контекстном меню с полной карточкой узла.
@@ -55,7 +55,7 @@ Clash API и несёт только `Name`, `ClashType`, `Delay`, `Traffic`.
 | `Type` | `type` outbound'а |
 | `Kind` | `outbound` или `endpoint` (WireGuard живёт в `endpoints`) |
 | `Server`, `ServerPort` | одноимённые поля |
-| `Transport` | `transport.type`; для masque — `network`; см. D2 |
+| `Transport` | `transport.type`; для masque — `vhttp`; см. D2 |
 | `Security` | TLS/Reality/Vision, для WireGuard — версия AWG; см. D3 |
 | `Detour` | поле `detour` |
 | `GroupMembers` | `outbounds[]` у selector/urltest |
@@ -63,7 +63,7 @@ Clash API и несёт только `Name`, `ClashType`, `Delay`, `Traffic`.
 
 **D2. Метка транспорта** — правила LxBox (`_deriveTransport`):
 - `transport.type`, при этом `http` показывается как `h2`;
-- `masque` → `network`, пусто → `h3` (дефолт ядра);
+- `masque` → `vhttp` (legacy-фоллбэк на `network` — импорт старых конфигов), пусто → `h3` (дефолт ядра);
 - `vless`/`vmess`/`trojan`/`anytls` без `transport` → `tcp`;
 - иначе — пусто.
 
@@ -135,7 +135,7 @@ min-width и ломает layout).
 
 1. Узел `vless` с ws-транспортом и reality показывает `vless·ws·Reality`.
 2. Узел `vless` на голом TCP с vision показывает `vless·tcp·TLS+Vision`.
-3. MASQUE-узел без `network` показывает `masque·h3`.
+3. MASQUE-узел без `vhttp` показывает `masque·h3`.
 4. WireGuard с ranged-заголовками и masquerade показывает `wireguard·awg2+`.
 5. Импортированная группа urltest из 15 членов показывает метку режима с
    размером пула, а не протокол.

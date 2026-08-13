@@ -1,10 +1,16 @@
 # Документация парсера подписок singbox-launcher
 
-> **SPEC 052 update (state.json v5):** top-level ключ `parser_config` в state.json **удалён**. Список подписок теперь в `connections.sources[]` (см. `docs/WIZARD_STATE.md`); per-source `tag_prefix`, `skip`, `outbounds`, `disabled` живут на уровне Source и сохраняют ту же семантику. Раздел `parser_config.outbounds[]` переехал в `connections.outbounds[]`. Документ ниже описывает **формат полей и логику парсинга** — она актуальна для v5 connections.sources / connections.outbounds 1:1.
+**🌐 Язык**: [English](ParserConfig.md) | Русский
+
+> **Где это хранится (актуально для schema v6).** Настройки парсера живут в **`state.json`**, а не в `config.json`. Список подписок — в `connections.sources[]`, общие селекторы — в `connections.outbounds[]` (см. [`WIZARD_STATE.md`](WIZARD_STATE.md)); per-source `tag_prefix`, `tag_postfix`, `tag_mask`, `skip`, `outbounds`, `disabled` живут на уровне Source.
+>
+> ⚠️ **Блока `/** @ParserConfig ... */` в `config.json` больше нет** — он удалён в SPEC 045, `state.json` стал единственным (canonical) хранилищем. В `config.json` парсер пишет только сами узлы, между маркерами `@ParserSTART`/`@ParserEND` (и `@ParserSTART_E`/`@ParserEND_E` для endpoints).
+>
+> Документ ниже описывает **формат полей и логику парсинга** — он актуален для `connections.sources[]` / `connections.outbounds[]` 1:1.
 
 ## Назначение
 
-Парсер обновляет файл `bin/config.json`, загружая подписки (см. таблицу [«Поддерживаемые протоколы»](#поддерживаемые-протоколы) ниже — 11 протоколов: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`)), фильтруя и группируя их в селекторы. Результат записывается в секции между маркерами `/** @ParserSTART */` и `/** @ParserEND */` (outbounds), а узлы WireGuard — между `/** @ParserSTART_E */` и `/** @ParserEND_E */` (endpoints). Секция **endpoints** (WireGuard) поддерживается в sing-box начиная с версии **1.11**.
+Парсер обновляет файл `bin/config.json`, загружая подписки (см. таблицу [«Поддерживаемые протоколы»](#поддерживаемые-протоколы) ниже — 13 протоколов: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS), фильтруя и группируя их в селекторы. Результат записывается в секции между маркерами `/** @ParserSTART */` и `/** @ParserEND */` (outbounds), а узлы WireGuard — между `/** @ParserSTART_E */` и `/** @ParserEND_E */` (endpoints). Секция **endpoints** (WireGuard) поддерживается в sing-box начиная с версии **1.11**.
 
 ### Поддерживаемые протоколы
 
@@ -21,10 +27,12 @@
 | 9 | `wireguard://` | `wireguard` | **`endpoints[]`** | **sing-box ≥ 1.11** (+ **`with_awg`** для AmneziaWG) | Один peer; маркеры `@ParserSTART_E`/`@ParserEND_E`. Default port 51820, mtu 1420. Опциональные параметры **AmneziaWG 2.0** (jc/jmin/jmax, s1–s4, h1–h4, i1–i5) — см. ниже. |
 | 10 | `tuic://` | `tuic` | `outbounds[]` | core (QUIC) | TUIC v5: `uuid:password` в userinfo. Query: `congestion_control` (cubic/new_reno/bbr), `udp_relay_mode` (native/quic), `alpn`, `sni`, `allow_insecure`, `reduce_rtt`/`zero_rtt_handshake`, `heartbeat`, `fp`. TLS обязателен (QUIC). |
 | 11 | `vpn://` | `wireguard` | **`endpoints[]`** | как №9 | Профиль **Amnezia** (`.vpn`-файл: base64url + qCompress + JSON, SPEC 075): импортируется WG/AWG-контейнер, конвертация в канонический `wireguard://`-URI. См. секцию Amnezia (`vpn://`) ниже. |
+| 12 | `masque://` | `masque` | `outbounds[]` | **ядро форка `1.14.0-lx.26+`** (схема `vhttp`+`tls`, core SPEC 062) | **Собственный URI-диалект singbox-launcher.** MASQUE / CONNECT-IP (RFC 9484) — целые IP-пакеты поверх HTTP/3 (`h3`) или HTTP/2 (`h2`), в первую очередь Cloudflare WARP. Ключи base64(DER), адреса туннеля в `address=`. Узлы обычно создаёт мастер WARP. См. секцию MASQUE (`masque://`) ниже. |
+| 13 | `anytls://` | `anytls` | `outbounds[]` | core (ядро rc.17+: `option/anytls.go`) | Пароль в userinfo, обязательный TLS-блок; тюнинг session-пула (`idle_session_check_interval`, `idle_session_timeout`, `min_idle_session`). Спека SPEC 091. |
 
 Кроме URI, поле Add принимает **голый `[Interface]/[Peer]`-текст** (`.conf` WireGuard/AmneziaWG, включая AWG-поля) — conf-блоки распознаются до построчного разбора и конвертируются в `wireguard://`-URI (SPEC 076); см. секцию про `.conf`-текст ниже.
 
-**Не поддерживаются** (явно, не реализованы): **AnyTLS**, **ShadowTLS**, **Mieru**, **Hysteria 1** (только v2), **ShadowsocksR / SSR**, **Tor**, plain HTTP-proxy как тип ноды (URL `http(s)://...` — это всегда **источник подписки**, не нода). Селекторы (`selector`, `urltest`, `direct`, `block`, `dns`) — не URI-протоколы; собираются на стороне ParserConfig (см. [секцию `outbounds`](#секция-outbounds)).
+**Не поддерживаются** (явно, не реализованы): **ShadowTLS**, **Mieru**, **Hysteria 1** (только v2), **ShadowsocksR / SSR**, **Tor**, plain HTTP-proxy как тип ноды (URL `http(s)://...` — это всегда **источник подписки**, не нода). Селекторы (`selector`, `urltest`, `direct`, `block`, `dns`) — не URI-протоколы; собираются на стороне ParserConfig (см. [секцию `outbounds`](#секция-outbounds)).
 
 ### Транспорт xhttp и AmneziaWG
 
@@ -34,9 +42,9 @@
 
 - Поля: `mode` (`auto` \| `packet-up` \| `stream-up` \| `stream-one`; у форка `auto`=`packet-up`, у `stream-one` известный баг downlink-framing), `host`, `path`, `headers`, `x_padding_bytes` (диапазон `"min-max"`, дефолт `100-1000`, несётся в заголовке `Referer`), `no_grpc_header`. Композится с TLS/Reality (не с XTLS-Vision — ограничение протокола).
 - `httpupgrade` теперь **отдельный** транспорт (HTTP/1.1 Upgrade) — больше не путается с xhttp ни на входе, ни на выходе share-URI.
-- Детали: `SPECS/071-F-N-XHTTP_TRANSPORT/SPEC.md`, `sing-box-lx/docs/lx-config.md`.
+- Детали: `SPECS/071-F-N-XHTTP_TRANSPORT/SPEC.md`, `sing-box-lx/docs-lx/lx-config.md`.
 
-**✅ AmneziaWG 2.0 (AWG2) — обфускация WireGuard (build-tag `with_awg`).** WireGuard-endpoint (`wireguard://`) может нести promoted-поля AWG: числа `jc`/`jmin`/`jmax`, `s1`–`s4`, `h1`–`h4` и CPS-строки `i1`–`i5` (AWG 2.0, case-sensitive tag-формат). `h1`–`h4` — одиночное число **или диапазон** `lo-hi` (header randomization AWG 2.0; ядро ≥ `1.13.13-lx.6` само выбирает значение per-handshake — сабтаска 073.2). Источники импорта: `wireguard://`/`awg://`-URI, `vpn://`-профили Amnezia (SPEC 075) и вставленный `.conf`-текст (SPEC 076); эмиссия в `endpoints[]`, round-trip в share-URI без потерь. Endpoint **без** AWG-полей — обычный WireGuard (byte-identical с апстримом). Детали полей — секция [WireGuard](#wireguard-wireguard) ниже; `SPECS/073-F-N-AMNEZIAWG_PARAMS/SPEC.md`, `sing-box-lx/docs/lx-config.md`.
+**✅ AmneziaWG 2.0 (AWG2) — обфускация WireGuard (build-tag `with_awg`).** WireGuard-endpoint (`wireguard://`) может нести promoted-поля AWG: числа `jc`/`jmin`/`jmax`, `s1`–`s4`, `h1`–`h4` и CPS-строки `i1`–`i5` (AWG 2.0, case-sensitive tag-формат). `h1`–`h4` — одиночное число **или диапазон** `lo-hi` (header randomization AWG 2.0; ядро ≥ `1.13.13-lx.6` само выбирает значение per-handshake — сабтаска 073.2). Источники импорта: `wireguard://`/`awg://`-URI, `vpn://`-профили Amnezia (SPEC 075) и вставленный `.conf`-текст (SPEC 076); эмиссия в `endpoints[]`, round-trip в share-URI без потерь. Endpoint **без** AWG-полей — обычный WireGuard (byte-identical с апстримом). Детали полей — секция [WireGuard](#wireguard-wireguard) ниже; `SPECS/073-F-N-AMNEZIAWG_PARAMS/SPEC.md`, `sing-box-lx/docs-lx/lx-config.md`.
 
 Подробности по каждой схеме (query-параметры, TLS, transport, edge cases) — в разделе [Форматы URI для прямых ссылок](#форматы-uri-для-прямых-ссылок) ниже.
 
@@ -51,7 +59,7 @@
 | Декодер | После trim строка начинается с **`[`**, **`json.Valid`**, успешный `json.Unmarshal` в массив — тело не отвергается как «не подписка» (`DecodeSubscriptionContent`). |
 | Вход в парсер | **`IsXrayJSONArrayBody`**: то же — префикс `[`, валидный JSON, массив объектов. |
 | Элемент массива | **`xrayElementHasProtocolOutbounds`**: в **`outbounds`** есть хотя бы один объект с полем **`protocol`** (строка) — признак **Xray-диалекта**. Элементы только с sing-box **`type`** без **`protocol`** не считаются Xray для этой ветки и **пропускаются** с `debuglog` (ожидается follow-up **016**). |
-| Нода | Среди VLESS с **`settings.vnext`** выбирается основной outbound (`pickMainXrayVLESS`); при **`dialerProxy`** hop разбирается как **`socks`** или **`vless`** (`xrayBuildJumpFromOutbound`); иные `protocol` у hop — пропуск элемента (`WarnLog`). |
+| Нода | Среди VLESS с **`settings.vnext`** выбирается основной outbound (`xrayBuildVLESSFromOutbound`); при **`dialerProxy`** hop разбирается как **`socks`** или **`vless`** (`xrayChainHopFromOutbound`; socks-звено — `xrayBuildJumpFromSocksOutbound`); иные `protocol` у hop — пропуск элемента (`WarnLog`). |
 
 **`remarks` и теги sing-box**
 
@@ -76,7 +84,7 @@
 | **`SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY/SPEC.md`** | Расширения совместимости (029): `type=httpupgrade`, `peer`, `obfsParam`, VMess legacy / `httpupgrade` / `h2`, Hysteria2 TLS; сверка со схемой sing-box. |
 | **`SPECS/033-F-N-SUBSCRIPTION_XRAY_JSON_ARRAY/SPEC.md`** | Подписка как JSON-массив полных конфигов Xray: `remarks`, slug-теги, `dialerProxy` → `detour`, границы MVP (sing-box-массив — **016**, follow-up). |
 | **`SPECS/036-F-C-XRAY_JUMP_ANY_PROTOCOL/SPEC.md`** | `dialerProxy`: hop **SOCKS** или **VLESS**; прочие протоколы — по мере маппинга (**завершено** по объёму SPEC). |
-| Пакет **`core/config/subscription`** | `ParseNode`, `buildOutbound` — `node_parser.go`; VLESS/Trojan transport+TLS — `node_parser_transport.go`; VMess — `node_parser_vmess.go` (`parseVMessDecoded`, `parseVMessJSON`, `parseVMessLegacyCleartext`); Hysteria2 — `node_parser_hysteria2.go`; WireGuard / SSH — `node_parser_wireguard.go`, `node_parser_ssh.go`; share URI — `share_uri_encode.go`; JSON-массив Xray — `xray_json_array.go`, `xray_outbound_convert.go`. |
+| Пакет **`core/config/subscription`** | `ParseNode`, `buildOutbound` — `node_parser_core.go`; VLESS/Trojan transport+TLS — `node_parser_transport.go`; VMess — `node_parser_vmess.go` (`parseVMessDecoded`, `parseVMessJSON`, `parseVMessLegacyCleartext`); Hysteria2 — `node_parser_hysteria2.go`; WireGuard / SSH — `node_parser_wireguard.go`, `node_parser_ssh.go`; share URI — диспетчер `share_uri.go` + реализации `shareuri_*.go`; JSON-массив Xray — `xray_json_array.go`, `xray_outbound_convert.go`, `xray_protocols.go`, `xray_balancer.go`. |
 
 ## Share URI из outbound и WireGuard endpoint (обратно к ссылке)
 
@@ -94,8 +102,8 @@
 
 | Функция | Пакет | Назначение |
 |--------|--------|------------|
-| `ShareURIFromOutbound(out map[string]interface{})` | `core/config/subscription` (`share_uri_encode.go`) | Кодирование из JSON-объекта outbound; для `type: wireguard` делегирует в `ShareURIFromWireGuardEndpoint` |
-| `ShareURIFromWireGuardEndpoint(ep map[string]interface{})` | `core/config/subscription` (`share_uri_encode.go`) | Кодирование `wireguard://` из одного endpoint (один peer в `peers[]`) |
+| `ShareURIFromOutbound(out map[string]interface{})` | `core/config/subscription` (`share_uri.go`) | Кодирование из JSON-объекта outbound; для `type: wireguard` делегирует в `ShareURIFromWireGuardEndpoint` |
+| `ShareURIFromWireGuardEndpoint(ep map[string]interface{})` | `core/config/subscription` (`shareuri_wireguard.go`) | Кодирование `wireguard://` из одного endpoint (один peer в `peers[]`) |
 | `GetOutboundMapByTag(configPath, tag)` | `core/config` (`outbound_share.go`) | Поиск outbound по полю `tag` в `config.json` |
 | `GetEndpointMapByTag(configPath, tag)` | `core/config` (`outbound_share.go`) | Поиск endpoint по полю `tag` в `endpoints[]` |
 | `ShareProxyURIForOutboundTag(configPath, tag)` | `core/config` (`outbound_share.go`) | Сначала outbound по тегу, иначе WireGuard в `endpoints[]` |
@@ -115,9 +123,11 @@
 | `tuic` | `tuic://` | `uuid:password`; `congestion_control`, `udp_relay_mode`, `zero_rtt_handshake`, `heartbeat`; `alpn`/`sni`/`insecure` из TLS |
 | `ssh` | `ssh://` | **Нет** кодирования inline `private_key` в URI; путь к ключу и прочие поля — в query, как в документации SSH URI |
 | `naive` | `naive+https://` / `naive+quic://` | HTTP/2 (`naive+https`) или QUIC (`naive+quic`); user/pass в userinfo; `extra-headers` в query с `\r\n`-разделёнными парами (см. раздел **NaïveProxy** ниже). Требует sing-box **≥ 1.13.0** с build tag `with_naive_outbound` (ядро форка `1.14.0-lx.4+`). |
+| `anytls` | `anytls://` | Пароль в userinfo; TLS-блок обязателен; поля session-пула, если заданы |
+| `masque` | `masque://` | Ключи base64(DER) в userinfo/`publickey=`, `ip`/`ipv6` склеиваются в `address=`; `vhttp` и `tls.server_name` → `vhttp=`/`sni=`. Требует ядро `1.14.0-lx.26+`. |
 | `wireguard` | `wireguard://` | Обычно узел только в `endpoints[]`; формат и query — раздел **WireGuard** ниже. **Один URI ↔ один удалённый peer:** при нескольких элементах в `peers[]` кодирование не поддерживается (`ErrShareURINotSupported`). |
 
-**Не кодируются в один share URI:** `selector`, `urltest`, `direct`, `block`, `dns`, произвольные служебные типы; WireGuard с **несколькими** `peers`; outbound с непустым **`detour`** (цепочка через jump из подписки Xray JSON).
+**Не кодируются в один share URI:** `selector`, `urltest`, `direct`, `block`, `dns`, `http`, произвольные служебные типы; WireGuard с **несколькими** `peers`; outbound с непустым **`detour`** (цепочка через jump из подписки Xray JSON).
 
 ### GUI
 
@@ -136,170 +146,169 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 - **Версия 3** (устарела): плоская структура, поля `filters`, `addOutbounds` и `preferredDefault` на верхнем уровне объекта outbound
 - **Версия 4** (текущая): добавлена поддержка локальных outbounds в `ProxySource` и префиксов/постфиксов для тегов узлов
 
+**Не путать со схемой `state.json`** — у неё своя нумерация (сейчас **v6**, см. [`WIZARD_STATE.md`](WIZARD_STATE.md)). `version: 4` описывает только формат блока ParserConfig.
+
 ## Формат конфигурации
 
-В файле `bin/config.json` должен быть блок комментария `/** @ParserConfig ... */`, внутри которого размещается JSON следующей структуры:
+Структура живёт в `state.json` (ключ `parser_config`; подписки и селекторы дублируются в canonical-виде в `connections.sources[]` / `connections.outbounds[]`). Формат:
 
 ```json
 {
-  "ParserConfig": {
-    "version": 4,
-    "proxies": [...],
-    "outbounds": [...],
-    "parser": {
-      "reload": "4h",
-      "last_updated": "2025-12-16T03:21:19Z"
-    }
+  "version": 4,
+  "proxies": [...],
+  "outbounds": [...],
+  "parser": {
+    "reload": "4h",
+    "last_updated": "2025-12-16T03:21:19Z"
   }
 }
 ```
 
+⚠️ **`version: 4` — это версия блока ParserConfig, а не версия схемы `state.json`.** Две нумерации независимы: `ParserConfigVersion = 4` (`core/config/configtypes/types.go`) и `SchemaVersionV6 = 6` (`core/state/disk_v6.go`). Пример ниже показывает поля этой структуры — раньше он же был содержимым блока `@ParserConfig` в `config.json`, теперь это содержимое `state.json`.
+
 ## Полный пример конфигурации с комментариями
 
-```json
+Содержимое `parser_config` в `state.json` (раньше — блок `@ParserConfig` в `config.json`, удалён в SPEC 045):
+
+```jsonc
 {
-  /** @ParserConfig
-  {
-    "ParserConfig": {
-      // Версия конфигурации (текущая: 4)
-      "version": 4,
+  // Версия конфигурации (текущая: 4)
+  "version": 4,
+  
+  // Список источников прокси-серверов
+  "proxies": [
+    {
+      // URL подписки (Base64, plain-текст или JSON-массив конфигов Xray)
+      // Поддерживаются: VLESS, VMess, Trojan, Shadowsocks, Hysteria2,
+      // TUIC, SSH, SOCKS5, NaïveProxy, WireGuard/AWG, Amnezia, MASQUE, AnyTLS.
+      // См. таблицу «Поддерживаемые
+      // протоколы» в начале документа.
+      "source": "https://your-subscription-url.com/subscription",
       
-      // Список источников прокси-серверов
-      "proxies": [
-        {
-          // URL подписки (Base64, plain-текст или JSON-массив конфигов Xray)
-          // Поддерживаются: VLESS, VMess, Trojan, Shadowsocks, Hysteria2,
-          // TUIC, SSH, SOCKS5, NaïveProxy, WireGuard. См. таблицу «Поддерживаемые
-          // протоколы» в начале документа.
-          "source": "https://your-subscription-url.com/subscription",
-          
-          // Прямые ссылки на прокси-серверы (необязательно)
-          // Можно комбинировать с подписками
-          "connections": [
-            "vless://uuid@server.com:443?security=reality&sni=example.com&fp=chrome&pbk=...&sid=...&type=tcp#🇳🇱 Netherlands",
-            "vmess://eyJ2IjoiMiIsInBzIjoi...",
-            "trojan://password@server.com:443?security=tls&sni=example.com#🇺🇸 United States",
-            "hysteria2://password@server.com:443?sni=example.com&insecure=1#🇺🇸 United States",
-            "hy2://password@server.com:443?sni=example.com#🇺🇸 United States (short form)",
-            "ssh://root:admin@127.0.0.1:22#Local SSH",
-            "socks5://user:pass@proxy.example.com:1080#Office SOCKS5",
-            "wireguard://privatekey@10.0.0.1:51820?publickey=...&address=10.10.10.2/32&allowedips=0.0.0.0/0,::/0#WireGuard VPN"
-          ],
-          
-          // Фильтры для исключения узлов (необязательно)
-          // Если хотя бы один фильтр совпал - узел пропускается
-          "skip": [
-            { "tag": "/🇷🇺/i" },  // Исключить все узлы с тегом содержащим 🇷🇺
-            { "host": "/test\\./i" } // Исключить узлы с host содержащим "test."
-          ],
-          
-          // Префикс для всех тегов узлов из этого источника (необязательно, версия 4)
-          // Добавляется перед оригинальным тегом узла
-          // Визард автоматически добавляет "1:", "2:", "3:" и т.д. при наличии нескольких подписок
-          // Поддерживает переменные: {$tag}, {$scheme}, {$protocol}, {$server}, {$port}, {$label}, {$comment}, {$num}
-          // Пример: "tag_prefix": "{$num} {$protocol}:" → "1 vless:", "2 vmess:" и т.д.
-          // Игнорируется, если указан tag_mask
-          "tag_prefix": "1:",
-          
-          // Постфикс для всех тегов узлов из этого источника (необязательно, версия 4)
-          // Добавляется после оригинального тега узла
-          // Поддерживает те же переменные, что и tag_prefix
-          // Игнорируется, если указан tag_mask
-          "tag_postfix": "--xx",
-          
-          // Маска для полной замены тега узла (необязательно, версия 4)
-          // Если указан, полностью заменяет тег узла, игнорируя tag_prefix и tag_postfix
-          // Поддерживает те же переменные, что и tag_prefix/tag_postfix
-          // Пример: "tag_mask": "{$num} {$protocol} : {$label}" → "1 vless : United States, New York"
-          "tag_mask": "",
-          
-          // Локальные outbounds для этого источника (необязательно, версия 4)
-          // Применяются только к узлам из этого источника
-          // Теги локальных outbounds автоматически добавляются в список доступных outbounds
-          // на второй вкладке (Rules) визарда, что позволяет использовать их в правилах маршрутизации
-          "outbounds": [
-            {
-              "tag": "local-selector",
-              "type": "selector",
-              "filters": { "tag": "/source1-/i" },
-              "comment": "Local selector for this source"
-            }
-          ]
-        },
-        {
-          // Можно добавить несколько источников
-          "source": "https://another-subscription-url.com/sub",
-          "connections": [],
-          "skip": []
-        }
+      // Прямые ссылки на прокси-серверы (необязательно)
+      // Можно комбинировать с подписками
+      "connections": [
+        "vless://uuid@server.com:443?security=reality&sni=example.com&fp=chrome&pbk=...&sid=...&type=tcp#🇳🇱 Netherlands",
+        "vmess://eyJ2IjoiMiIsInBzIjoi...",
+        "trojan://password@server.com:443?security=tls&sni=example.com#🇺🇸 United States",
+        "hysteria2://password@server.com:443?sni=example.com&insecure=1#🇺🇸 United States",
+        "hy2://password@server.com:443?sni=example.com#🇺🇸 United States (short form)",
+        "ssh://root:admin@127.0.0.1:22#Local SSH",
+        "socks5://user:pass@proxy.example.com:1080#Office SOCKS5",
+        "wireguard://privatekey@10.0.0.1:51820?publickey=...&address=10.10.10.2/32&allowedips=0.0.0.0/0,::/0#WireGuard VPN"
       ],
       
-      // Список селекторов (групп прокси)
+      // Фильтры для исключения узлов (необязательно)
+      // Если хотя бы один фильтр совпал - узел пропускается
+      "skip": [
+        { "tag": "/🇷🇺/i" },  // Исключить все узлы с тегом содержащим 🇷🇺
+        { "host": "/test\\./i" } // Исключить узлы с host содержащим "test."
+      ],
+      
+      // Префикс для всех тегов узлов из этого источника (необязательно, версия 4)
+      // Добавляется перед оригинальным тегом узла
+      // Визард автоматически добавляет "1:", "2:", "3:" и т.д. при наличии нескольких подписок
+      // Поддерживает переменные: {$tag}, {$scheme}, {$protocol}, {$server}, {$port}, {$label}, {$comment}, {$num}
+      // Пример: "tag_prefix": "{$num} {$protocol}:" → "1 vless:", "2 vmess:" и т.д.
+      // Игнорируется, если указан tag_mask
+      "tag_prefix": "1:",
+      
+      // Постфикс для всех тегов узлов из этого источника (необязательно, версия 4)
+      // Добавляется после оригинального тега узла
+      // Поддерживает те же переменные, что и tag_prefix
+      // Игнорируется, если указан tag_mask
+      "tag_postfix": "--xx",
+      
+      // Маска для полной замены тега узла (необязательно, версия 4)
+      // Если указан, полностью заменяет тег узла, игнорируя tag_prefix и tag_postfix
+      // Поддерживает те же переменные, что и tag_prefix/tag_postfix
+      // Пример: "tag_mask": "{$num} {$protocol} : {$label}" → "1 vless : United States, New York"
+      "tag_mask": "",
+      
+      // Локальные outbounds для этого источника (необязательно, версия 4)
+      // Применяются только к узлам из этого источника
+      // Теги локальных outbounds автоматически добавляются в список доступных outbounds
+      // на второй вкладке (Rules) визарда, что позволяет использовать их в правилах маршрутизации
       "outbounds": [
         {
-          // Имя селектора (обязательно)
-          // Используется в UI Clash API таба для переключения прокси
-          "tag": "proxy-out",
-          
-          // Тип селектора (обязательно)
-          // Поддерживается: "selector", "urltest"
+          "tag": "local-selector",
           "type": "selector",
-          
-          // Дополнительные опции для селектора (необязательно)
-          // Эти поля добавляются как верхнеуровневые ключи в итоговый JSON селектора
-          "options": {
-            "interrupt_exist_connections": true,  // Прервать существующие соединения при переключении
-            "default": "auto-proxy-out"            // Тег узла по умолчанию (если не указан preferredDefault)
-          },
-          
-          // Главный фильтр для выбора узлов (версия 4, необязательно)
-          // Логика: OR между объектами в массиве, AND между ключами внутри объекта
-          // В версии 2 называлось "outbounds.proxies"
-          "filters": {
-            // Исключить все узлы с тегом содержащим 🇷🇺 или 🇺🇸
-            "tag": "!/(🇷🇺|🇺🇸)/i"
-          },
-          
-          // Список тегов, которые добавляются в начало списка outbounds селектора (необязательно)
-          // Полезно для добавления "direct-out", "reject" и других статических outbounds
-          // В версии 2 называлось "outbounds.addOutbounds"
-          "addOutbounds": ["direct-out", "auto-proxy-out"],
-          
-          // Фильтр для определения узла по умолчанию (необязательно)
-          // Первый узел, совпавший с фильтром, станет значением поля "default" в селекторе
-          // В версии 2 называлось "outbounds.preferredDefault"
-          "preferredDefault": {
-            "tag": "/🇳🇱/i"  // Выбрать узел с тегом содержащим 🇳🇱 как default
-          },
-          
-          // Комментарий, который будет выведен перед JSON селектора (необязательно)
-          "comment": "Proxy group for international connections"
-        },
-        {
-          // Пример селектора типа urltest (автоматический выбор лучшего узла)
-          "tag": "auto-proxy-out",
-          "type": "urltest",
-          "options": {
-            "url": "https://cp.cloudflare.com/generate_204",  // URL для тестирования
-            "interval": "5m",                                 // Интервал проверки
-            "tolerance": 100,                                 // Допустимое отклонение (мс)
-            "interrupt_exist_connections": true                // Прервать соединения при переключении
-          },
-          "filters": {
-            "tag": "!/(🇷🇺)/i"  // Исключить узлы с 🇷🇺
-          },
-          "comment": "Proxy automated group for everything that should go through VPN"
+          "filters": { "tag": "/source1-/i" },
+          "comment": "Local selector for this source"
         }
-      ],
-      
-      // Настройки парсера (необязательно, устанавливаются автоматически)
-      "parser": {
-        "reload": "4h",                    // Интервал автоматического обновления (по умолчанию "4h")
-        "last_updated": "2025-12-16T03:21:19Z"  // Время последнего обновления (RFC3339, UTC, обновляется автоматически)
-      }
+      ]
+    },
+    {
+      // Можно добавить несколько источников
+      "source": "https://another-subscription-url.com/sub",
+      "connections": [],
+      "skip": []
     }
+  ],
+  
+  // Список селекторов (групп прокси)
+  "outbounds": [
+    {
+      // Имя селектора (обязательно)
+      // Используется в UI Clash API таба для переключения прокси
+      "tag": "proxy-out",
+      
+      // Тип селектора (обязательно)
+      // Поддерживается: "selector", "urltest"
+      "type": "selector",
+      
+      // Дополнительные опции для селектора (необязательно)
+      // Эти поля добавляются как верхнеуровневые ключи в итоговый JSON селектора
+      "options": {
+        "interrupt_exist_connections": true,  // Прервать существующие соединения при переключении
+        "default": "auto-proxy-out"            // Тег узла по умолчанию (если не указан preferredDefault)
+      },
+      
+      // Главный фильтр для выбора узлов (версия 4, необязательно)
+      // Логика: OR между объектами в массиве, AND между ключами внутри объекта
+      // В версии 2 называлось "outbounds.proxies"
+      "filters": {
+        // Исключить все узлы с тегом содержащим 🇷🇺 или 🇺🇸
+        "tag": "!/(🇷🇺|🇺🇸)/i"
+      },
+      
+      // Список тегов, которые добавляются в начало списка outbounds селектора (необязательно)
+      // Полезно для добавления "direct-out", "reject" и других статических outbounds
+      // В версии 2 называлось "outbounds.addOutbounds"
+      "addOutbounds": ["direct-out", "auto-proxy-out"],
+      
+      // Фильтр для определения узла по умолчанию (необязательно)
+      // Первый узел, совпавший с фильтром, станет значением поля "default" в селекторе
+      // В версии 2 называлось "outbounds.preferredDefault"
+      "preferredDefault": {
+        "tag": "/🇳🇱/i"  // Выбрать узел с тегом содержащим 🇳🇱 как default
+      },
+      
+      // Комментарий, который будет выведен перед JSON селектора (необязательно)
+      "comment": "Proxy group for international connections"
+    },
+    {
+      // Пример селектора типа urltest (автоматический выбор лучшего узла)
+      "tag": "auto-proxy-out",
+      "type": "urltest",
+      "options": {
+        "url": "https://cp.cloudflare.com/generate_204",  // URL для тестирования
+        "interval": "5m",                                 // Интервал проверки
+        "tolerance": 100,                                 // Допустимое отклонение (мс)
+        "interrupt_exist_connections": true                // Прервать соединения при переключении
+      },
+      "filters": {
+        "tag": "!/(🇷🇺)/i"  // Исключить узлы с 🇷🇺
+      },
+      "comment": "Proxy automated group for everything that should go through VPN"
+    }
+  ],
+  
+  // Настройки парсера (необязательно, устанавливаются автоматически)
+  "parser": {
+    "reload": "4h",                    // Интервал автоматического обновления (по умолчанию "4h")
+    "last_updated": "2025-12-16T03:21:19Z"  // Время последнего обновления (RFC3339, UTC, обновляется автоматически)
   }
-  */
 }
 ```
 
@@ -311,8 +320,8 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 
 | Поле          | Тип      | Обязательное | Описание |
 |---------------|----------|--------------|----------|
-| `source`      | string   | Да           | URL подписки. Все 11 протоколов из таблицы [«Поддерживаемые протоколы»](#поддерживаемые-протоколы): VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`). Допускаются Base64 и plain-текст; также **JSON-массив** полных конфигов Xray (`[ {...}, ... ]`), см. выше. |
-| `connections` | array    | Нет          | Массив прямых ссылок. Все 11 схем из таблицы [«Поддерживаемые протоколы»](#поддерживаемые-протоколы): `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`/`hy2://`, `tuic://`, `ssh://`, `socks5://`/`socks://`, `naive+https://`/`naive+quic://`, `wireguard://`/`awg://`, `vpn://` (Amnezia). Можно комбинировать с подписками. Узлы WireGuard попадают в секцию `endpoints` конфига (sing-box ≥ 1.11). NaïveProxy требует sing-box ≥ 1.13.0 + build tag `with_naive_outbound` (ядро форка `1.14.0-lx.4+`). Подробнее — раздел [Форматы URI для прямых ссылок](#форматы-uri-для-прямых-ссылок). |
+| `source`      | string   | Да           | URL подписки. Все 13 протоколов из таблицы [«Поддерживаемые протоколы»](#поддерживаемые-протоколы): VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS. Допускаются Base64 и plain-текст; также **JSON-массив** полных конфигов Xray (`[ {...}, ... ]`), см. выше. |
+| `connections` | array    | Нет          | Массив прямых ссылок. Все 13 схем из таблицы [«Поддерживаемые протоколы»](#поддерживаемые-протоколы): `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`/`hy2://`, `tuic://`, `ssh://`, `socks5://`/`socks://`, `naive+https://`/`naive+quic://`, `wireguard://`/`awg://`, `vpn://` (Amnezia), `masque://`, `anytls://`. Можно комбинировать с подписками. Узлы WireGuard попадают в секцию `endpoints` конфига (sing-box ≥ 1.11). NaïveProxy требует sing-box ≥ 1.13.0 + build tag `with_naive_outbound` (ядро форка `1.14.0-lx.4+`). Подробнее — раздел [Форматы URI для прямых ссылок](#форматы-uri-для-прямых-ссылок). |
 | `skip`        | array    | Нет          | Список фильтров. Если хотя бы один совпал — узел пропускается. |
 | `tag_prefix`  | string   | Нет          | Префикс, добавляемый ко всем тегам узлов из этого источника (версия 4). Применяется перед оригинальным тегом. Поддерживает переменные: `{$tag}`, `{$scheme}`, `{$protocol}`, `{$server}`, `{$port}`, `{$label}`, `{$comment}`, `{$num}`. Игнорируется, если указан `tag_mask`. |
 | `tag_postfix` | string   | Нет          | Постфикс, добавляемый ко всем тегам узлов из этого источника (версия 4). Применяется после оригинального тега. Поддерживает те же переменные, что и `tag_prefix`. Игнорируется, если указан `tag_mask`. |
@@ -484,7 +493,10 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 | `addOutbounds`    | array    | Нет          | Строки, которые добавляются в начало итогового списка outbounds (например `"direct-out"`). В версии 2 называлось `outbounds.addOutbounds`. |
 | `preferredDefault`| object   | Нет          | Фильтр для определения узла по умолчанию. Первый узел, совпавший с фильтром, станет значением поля `default` в селекторе. В версии 2 называлось `outbounds.preferredDefault`. |
 | `comment`         | string   | Нет          | Комментарий, выводится перед JSON селектора в результирующем файле. |
-| `wizard`          | string/object | Нет          | Параметр для скрытия outbound в визарде и управления обязательностью. Поддерживает два формата:<br/>- **Старый формат (обратная совместимость)**: `"wizard": "hide"` — скрывает outbound из списка доступных outbounds на второй вкладке (Rules) визарда<br/>- **Новый формат**: `"wizard": {"hide": true, "required": 2}` — объект с полями `hide` (boolean) и `required` (int). Поле `required` может иметь значения: `0` или отсутствует — игнорировать; `1` — проверить только наличие тега (если отсутствует, добавить из шаблона); `>1` (например, `2`) — строгое соответствие шаблону (если отсутствует или не совпадает, заменить/добавить из шаблона). |
+| `required`        | bool     | Нет          | **Только для шаблона.** `true` — тег обязателен: визард не даёт удалить такой outbound целиком (Del заблокирован, Edit и Reset работают), а отсутствующий добавляется из шаблона. См. [Поведение Config Wizard](#поведение-config-wizard). |
+| `ref`             | string   | Нет          | Привязка к пресету (SPEC 057/058): `""` (обычный outbound), `"#TEMPLATE#"` или `<preset_id>`. |
+| `updates`         | array    | Нет          | Стек патчей (SPEC 057/058): патчи пресетов в порядке правил, опциональный USER-патч — всегда последним. |
+| `wizard`          | object   | Нет          | **Legacy.** Старая обёртка `{"hide": true, "required": 1}`; `required` из неё ещё читается как fallback (в т.ч. числовая форма). В текущем формате `required` лежит **плоско**, без обёртки. Числовой семантики «`1` — добавить, `2` — всегда переписать» в коде нет. |
 
 #### Логика фильтрации в `filters`
 
@@ -548,16 +560,16 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 Когда вы нажимаете кнопку **"Update Config"** на вкладке "Core" (или используете Config Wizard):
 
 1. **Извлечение конфигурации**
-   - Парсер находит блок `@ParserConfig` в `config.json`
-   - Извлекает JSON конфигурации
-   - Определяет версию конфигурации
+   - Настройки читаются из **`state.json`** (`loadParserConfigForUpdate` в `core/config_service.go`); если его нет или в нём нет `proxies`, обновление прекращается с подсказкой открыть визард и сохранить подписки
+   - Определяется версия блока ParserConfig
+   - ⚠️ Блок `@ParserConfig` в `config.json` **не читается** — он удалён в SPEC 045
 
 2. **Загрузка подписок**
    - Для каждого URL из `proxies[].source`:
      - Скачивается содержимое подписки (поддерживаются Base64 и plain-текст)
      - Декодируется и парсится список прокси-серверов
    - Для каждой прямой ссылки из `proxies[].connections`:
-     - Парсится прямая ссылка (vless://, vmess://, trojan://, ss://, hysteria2:// или hy2://, ssh://, socks5:// или socks://, wireguard://) и добавляется в список прокси
+     - Парсится прямая ссылка (любая схема из таблицы «Поддерживаемые протоколы») и добавляется в список прокси
 
 3. **Поддерживаемые протоколы** (полная матрица — см. таблицу в начале документа)
    - ✅ **VLESS** (`vless://`)
@@ -568,7 +580,11 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
    - ✅ **SSH** (`ssh://` — собственный URI-диалект singbox-launcher)
    - ✅ **SOCKS5** (`socks5://`, `socks://` — outbound type `socks`, version=5)
    - ✅ **NaïveProxy** (`naive+https://`, `naive+quic://` — sing-box ≥ 1.13.0 + build tag `with_naive_outbound`; ядро форка `1.14.0-lx.4+`)
-   - ✅ **WireGuard** (`wireguard://` — секция `endpoints[]`; sing-box ≥ 1.11)
+   - ✅ **WireGuard / AmneziaWG** (`wireguard://`, `awg://` — секция `endpoints[]`; sing-box ≥ 1.11, AWG требует `with_awg`)
+   - ✅ **TUIC** (`tuic://` — TUIC v5)
+   - ✅ **Amnezia** (`vpn://` — профиль `.vpn`, конвертируется в `wireguard://`)
+   - ✅ **AnyTLS** (`anytls://`)
+   - ✅ **MASQUE** (`masque://` — CONNECT-IP / WARP; ядро форка `1.14.0-lx.26+`)
 
 4. **Извлечение информации**
    - Из каждого URI извлекается:
@@ -622,8 +638,14 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 - `host` / `Host` — для WS → заголовок `Host`; если `host` и `sni` в query нет, для WS используется **`obfsParam`**. Если есть `host` или `sni`, они имеют приоритет. Для HTTP/httpupgrade — поле `host` транспорта (регистр ключа `Host` в query учитывается)
 - `headerType` — вместе с `type=raw` или `tcp` и значением `http` задаёт транспорт типа HTTP (обфускация), см. отчёт 023
 - `serviceName` / `service_name` — имя gRPC-сервиса → `transport.service_name`
+- **Дефолт `fp`:** если ни `fp`, ни `fingerprint` не заданы, для VLESS подставляется `random`. У Trojan такого дефолта нет — там uTLS-блок появляется только при распознанном `fp` (и ключ `fingerprint` не читается).
 - `packetEncoding` — поле outbound `packet_encoding`. **Allow-list:** только `xudp`, `packetaddr`, `none` (включая пустое значение). Любое другое значение **отбрасывается с warning** в `debuglog` — sing-box не примёт неизвестные. См. [доку VLESS](https://sing-box.sagernet.org/configuration/outbound/vless/)
-- `mode`, `spx`, `extra`, `quicSecurity`, `authority` — часто встречаются в ссылках Xray/панелей; в документированный клиентский JSON sing-box **не переносятся**, на разбор ссылки не влияют
+- `spx`, `quicSecurity`, `authority` — часто встречаются в ссылках Xray/панелей; в документированный клиентский JSON sing-box **не переносятся**, на разбор ссылки не влияют
+- `mode` и `extra` — **влияют**, но только при `type=xhttp`: `mode` уезжает в транспорт как есть, `extra` — это URL-encoded JSON, из которого читаются те же поля xhttp (значения из `extra` перекрывают одноимённые flat-параметры). См. [параметры `xhttp`](#параметры-транспорта-xhttp) ниже
+
+**⚠️ TLS отключается по порту.** Если `security` пуст, а порт входит в список типичных plaintext-портов (80, 8080, 8880, 2052, 2082, 2086, 2095), TLS-блок не эмитится вовсе — ссылка считается plain-HTTP-нодой (частый случай для Cloudflare-подписок). Чтобы TLS на таком порту всё-таки был, задайте `security=tls` явно.
+
+**⚠️ Early data в пути WebSocket (`?ed=N`).** Xray прячет настройку раннего отправления в сам путь: `path=/ws?ed=2048`. sing-box требует её отдельными полями, поэтому парсер вырезает `ed` из пути и раскладывает в `max_early_data` + `early_data_header_name` (`Sec-WebSocket-Protocol`). Без этой конвертации нода проходит `check`, но в рантайме отвечает 404.
 
 **⚠️ Vision на UDP:443 — авто-перезапись порта.** Если `flow=xtls-rprx-vision-udp443`, парсер **принудительно** ставит `server_port=443` (независимо от порта в URI) и `packet_encoding=xudp`. Семантика flow — XTLS Vision поверх UDP-трафика к стандартному 443. Если ваш сервер слушает Vision на нестандартном порту, используйте `flow=xtls-rprx-vision` (без `-udp443` суффикса).
 
@@ -631,6 +653,27 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 ```
 vless://uuid@server.com:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=example.com&fp=chrome&pbk=...&sid=...&type=tcp#🇳🇱 Netherlands
 ```
+
+### Параметры транспорта `xhttp`
+
+При `type=xhttp` (VLESS/Trojan) или `net=xhttp` (VMess) собирается транспорт `{"type":"xhttp", …}`. Значения берутся из двух источников: обычных query-параметров и **`extra`** — URL-encoded JSON; при совпадении ключей выигрывает `extra`. Имена читаются и в snake_case, и в camelCase (`session_key` = `sessionKey`).
+
+| Параметр | Значение |
+|---|---|
+| `mode` | `auto` \| `packet-up` \| `stream-up` \| `stream-one`. У форка `auto` = `packet-up`; у `stream-one` известен баг downlink-framing |
+| `path` | путь запроса |
+| `host` | заголовок Host; при пустом подставляется SNI из TLS |
+| `x_padding_bytes` (`xPaddingBytes`) | диапазон `"min-max"`, дефолт `100-1000`; несётся в заголовке `Referer` |
+| `no_grpc_header` | убрать gRPC-совместимый заголовок |
+| `session_placement`, `session_key` | размещение и имя ключа сессии |
+| `seq_placement`, `seq_key` | размещение и имя ключа последовательности |
+| `uplink_data_placement`, `uplink_data_key` | размещение и имя ключа uplink-данных |
+| `uplink_chunk_size`, `uplink_http_method` | размер чанка и HTTP-метод uplink'а |
+| `x_padding_key`, `x_padding_header`, `x_padding_placement`, `x_padding_method` | тонкая настройка x-padding-обфускации |
+| `sc_max_each_post_bytes` (`scMaxEachPostBytes`) | ожидается ядром как `"min-max"`; голое число (в т.ч. `30.0` из `extra`) нормализуется в строку |
+| `sc_min_posts_interval_ms` (`scMinPostsIntervalMs`) | то же правило |
+
+Значения дальше не валидируются — их разбирает ядро. Реализация: `xhttpTransportFromQuery` в `core/config/subscription/node_parser_transport.go`; спеки: `SPECS/071-F-N-XHTTP_TRANSPORT/SPEC.md`, `sing-box-lx` SPEC 002.
 
 ### VMess (`vmess://`)
 **⚠️ Особенность:** обычно VMess — base64(JSON); поддерживается и **legacy**-строка после base64: `method:uuid@host:port` с опциональным `?query` (как в части клиентов). Фрагмент `#tag` отрезается **до** декодирования base64.
@@ -726,11 +769,14 @@ ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@server.com:443#Shadowsocks Server
 - `obfs` - тип обфускации (в настоящее время поддерживается только `salamander`)
 - `obfs-password` - пароль для указанного типа обфускации
 - `sni` - Server Name Indication для TLS соединений
-- `insecure`, **`allowInsecure` / `allowinsecure`** — небезопасный TLS (как у VLESS: `1` / `true` / `yes`); также учитываются `skip-cert-verify`
+- `insecure`, **`allowInsecure` / `allowinsecure`** — небезопасный TLS (как у VLESS: `1` / `true` / `yes`); также учитывается `skip-cert-verify`, но он признаётся только в точных формах `true` / `1`
 - `fingerprint` / `fp` — uTLS fingerprint → `tls.utls` в sing-box
 - `pinSHA256` — base64 SHA-256 публичного ключа сертификата → `tls.certificate_public_key_sha256` в sing-box
 
-**⚠️ Важно:** Параметры полосы пропускания (`upmbps`, `downmbps`) и режимы клиента (HTTP, SOCKS5) **не должны** быть в URI, так как это клиентские настройки, специфичные для каждого пользователя.
+- `alpn` — список ALPN через запятую (для hysteria2 обычно `h3`)
+- `upmbps` / `downmbps` — полоса пропускания в Мбит/с → `up_mbps` / `down_mbps` в sing-box. Нечисловые значения игнорируются
+
+**⚠️ Про полосу пропускания.** `upmbps`/`downmbps` — это настройки *вашего* канала, а не сервера, поэтому в общей подписке им, строго говоря, не место (у каждого пользователя они свои). Но если они в ссылке есть — парсер их **читает и переносит** в конфиг, а не отбрасывает. Режимы клиента (HTTP, SOCKS5) в URI не поддерживаются.
 
 **Примеры:**
 ```
@@ -834,7 +880,135 @@ naive+https://some.what?extra-headers=X-Username%3Auser%0D%0AX-Password%3Apasswo
 - `extra_headers` map'а сортируется лексикографически по ключам (для детерминизма round-trip'а), склеивается `\r\n`, шифруется в query.
 - `padding` **не восстанавливается** (не хранится в outbound).
 
-Реализация: `core/config/subscription/node_parser_naive.go` (helpers), `node_parser.go` (dispatch), `share_uri_encode.go` (`shareURIFromNaive`). Спека: [**SPECS/044-F-C-NAIVE_PROXY_PARSER/SPEC.md**](../SPECS/044-F-C-NAIVE_PROXY_PARSER/SPEC.md).
+Реализация: `core/config/subscription/node_parser_naive.go` (helpers), `node_parser_core.go` (dispatch), `shareuri_naive.go` (`shareURIFromNaive`). Спека: [**SPECS/044-F-C-NAIVE_PROXY_PARSER/SPEC.md**](../SPECS/044-F-C-NAIVE_PROXY_PARSER/SPEC.md).
+
+### TUIC (`tuic://`)
+
+TUIC v5 — прокси поверх QUIC: аутентификация парой `uuid` + `password`, UDP-релей и опциональный 0-RTT. TLS-блок обязателен (QUIC без TLS не бывает), поэтому парсер всегда пишет `tls.enabled: true`.
+
+**Формат:** `tuic://<uuid>:<password>@<host>[:port]?<params>#<tag>`
+
+**Структура:**
+- `<uuid>` — userinfo-username → `uuid` в outbound. Без него нода собирается с warning `TUIC link missing uuid`.
+- `<password>` — userinfo-password → `password`. Тоже обязателен, иначе warning `TUIC link missing password`.
+- `port` — по умолчанию **443**.
+- `#tag` — тег/комментарий (опционально).
+
+**Параметры query:**
+
+| Параметр | Значение |
+|---|---|
+| `congestion_control` | контроллер перегрузки QUIC: `cubic`, `new_reno`, `bbr` (регистр не важен). **⚠️ Любое другое значение отбрасывается с warning** — sing-box ругается на неизвестные контроллеры при загрузке конфига, поэтому парсер лучше промолчит, чем завалит весь `config.json` |
+| `udp_relay_mode` | `native` или `quic`. Неизвестное значение отбрасывается с warning |
+| `zero_rtt_handshake` | `1`/`true`/`yes` → `zero_rtt_handshake: true`. Принимается алиас **`reduce_rtt`** (его шлют v2rayN/Nekobox) — достаточно любого из двух |
+| `heartbeat` | интервал keepalive. **Голое число = секунды**: `heartbeat=10` → `"10s"`; значение с единицей (`10s`, `1m`) проходит как есть |
+| `sni` | → `tls.server_name`. **⚠️ Fallback:** если `sni` пустой, равен `🔒` или не похож на хост (нет ни точки, ни двоеточия) — подставляется адрес сервера |
+| `insecure` / `allowInsecure` / `allow_insecure` / `skip-cert-verify` / `skipCertVerify` | `1`/`true`/`yes` → `tls.insecure: true`. Все пять написаний проверяются явно: поиск ключа регистронезависим, но не «разделителенезависим» |
+| `fp` / `fingerprint` | uTLS fingerprint → `tls.utls`. Значение нормализуется по allowlist (`NormalizeUTLSFingerprint`); `fp` имеет приоритет, `fingerprint` — запасной |
+| `alpn` | список через запятую → `tls.alpn` (пробелы обрезаются). Не задан — ядро само использует свой дефолт |
+
+**Примеры:**
+```
+tuic://b8b1a1e3-0a2c-4d0f-9a3b-1c2d3e4f5a6b:[email protected]:443?congestion_control=bbr&udp_relay_mode=quic&alpn=h3&sni=cdn.example.com#🇩🇪 TUIC DE
+tuic://b8b1a1e3-0a2c-4d0f-9a3b-1c2d3e4f5a6b:[email protected]:8443?reduce_rtt=1&heartbeat=10&allow_insecure=1&fp=chrome#TUIC self-signed
+```
+
+**Share URI (обратная сборка)** — round-trip «по смыслу», не побайтно: `insecure` всегда эмитится каноническим `insecure=1`, `zero_rtt_handshake=1` — новым именем (не `reduce_rtt`).
+
+Реализация: `core/config/subscription/node_parser_tuic.go`, `node_parser_core.go` (dispatch), `shareuri_tuic.go`.
+
+### AnyTLS (`anytls://`)
+
+AnyTLS — прокси поверх обычного TLS с пулом переиспользуемых сессий и padding'ом, маскирующим размеры пакетов. Учётные данные — **один пароль**, как у Trojan. TLS обязателен, парсер всегда пишет `tls.enabled: true`.
+
+**Формат:** `anytls://<password>@<host>[:port]?<params>#<tag>`
+
+**Структура:**
+- `<password>` — userinfo-**username** (не password!), как у Trojan → `password` в outbound. Без него warning `AnyTLS link missing password (userinfo)`.
+- `port` — по умолчанию **443**.
+- `#tag` — тег/комментарий (опционально).
+
+**Параметры query:**
+
+| Параметр | Значение |
+|---|---|
+| `sni` / `peer` | → `tls.server_name`; `sni` в приоритете, `peer` — запасной. **⚠️ Fallback:** если оба пустые, значение равно `🔒` или не похоже на хост (нет ни точки, ни двоеточия) — подставляется адрес сервера |
+| `insecure` / `allowInsecure` / `allow_insecure` / `skip-cert-verify` / `skipCertVerify` | `1`/`true`/`yes` → `tls.insecure: true` (все пять написаний, как у TUIC) |
+| `fp` / `fingerprint` | uTLS fingerprint → `tls.utls`, нормализуется по allowlist; `fp` в приоритете |
+| `alpn` | список через запятую → `tls.alpn` (пробелы обрезаются) |
+| `idle_session_check_interval` | как часто пул проверяет простаивающие сессии. **Голое число = секунды** (`30` → `"30s"`), та же конвенция, что у TUIC `heartbeat` |
+| `idle_session_timeout` | через сколько простоя сессия закрывается; голое число тоже трактуется как секунды |
+| `min_idle_session` | сколько сессий держать «тёплыми», целое ≥ 0. **⚠️ Не-число или отрицательное отбрасывается с warning** |
+
+**Примеры:**
+```
+anytls://[email protected]:443?sni=cdn.example.com&alpn=h2,http/1.1&fp=chrome#🇳🇱 AnyTLS NL
+anytls://[email protected]:8443?peer=example.com&insecure=1&idle_session_check_interval=30&idle_session_timeout=60&min_idle_session=2#AnyTLS pool
+```
+
+**Share URI (обратная сборка)** — round-trip «по смыслу»: SNI всегда выезжает как `sni` (не `peer`), небезопасный TLS — как `insecure=1`, `min_idle_session` пишется только при значении > 0.
+
+Реализация: `core/config/subscription/node_parser_anytls.go`, `node_parser_core.go` (dispatch), `shareuri_anytls.go`. Спека: [**SPECS/091-F-C-ANYTLS_PROTOCOL/SPEC.md**](../SPECS/091-F-C-ANYTLS_PROTOCOL/SPEC.md).
+
+### MASQUE (`masque://`)
+**⚠️ Собственный формат:** как и SSH, `masque://` — URI-диалект singbox-launcher, а не стандарт. Он симметричен эмиссии лаунчера: то, что генерирует мастер WARP (MASQUE), парсер принимает обратно без потерь.
+
+MASQUE (CONNECT-IP, RFC 9484) туннелирует **целые IP-пакеты** поверх HTTP/3 или HTTP/2 — в первую очередь это Cloudflare WARP. Требуется ядро **`1.14.0-lx.26+`** (схема `vhttp` + вложенный `tls`, core SPEC 062); узлы пишутся в `outbounds[]`.
+
+**Формат:** `masque://<PRIVATE_KEY_DER>@<SERVER>:<PORT>?publickey=<PUB_DER>&address=<v4,v6>&...#tag`
+
+**Структура:**
+- `<PRIVATE_KEY_DER>` — клиентский EC-приватный ключ, **base64(DER)** (SEC1, `x509.ParseECPrivateKey`). Кладётся в userinfo; допускается и `?private_key=`/`?privatekey=`. Символ `/` внутри base64 экранируется парсером самостоятельно.
+- `<SERVER>:<PORT>` — WARP-endpoint (обычно IP), порт по умолчанию `443`. Нечисловой порт здесь не ошибка — молча берётся 443 (у большинства других схем такой URI отбраковывается).
+- `#tag` — тег/комментарий (опционально).
+
+**Параметры query:**
+
+| Параметр | Обяз. | Дефолт | Значение |
+|---|---|---|---|
+| `publickey` (`public_key`) | **да** | — | публичный ключ endpoint'а, **base64(DER)** PKIX (`x509.ParsePKIXPublicKey`, ECDSA). Именно им аутентифицируется endpoint — поэтому SNI свободен |
+| `address` | **да** | — | локальные адреса **внутри** туннеля через запятую (`172.16.0.2/32,2606:4700:...::/128`). Голый адрес → `/32` (v4) / `/128` (v6). Нужен хотя бы один; без него ядро отвергает узел (`at least one of ip/ipv6 is required`) |
+| `vhttp` | нет | `h3` | **версия HTTP**, несущая CONNECT-IP: `h3` (QUIC) или `h2` (HTTP/2, TCP:443). Не L4-список! Нераспознанное значение форсится в `h3` с warning |
+| `profile` | нет | `cloudflare` | `cloudflare` (кварки WARP) или `standard` (строгий RFC 9484, свой сервер) |
+| `sni` | нет | — | имя в ClientHello → `tls.server_name`. Принимается и как `server_name` |
+| `insecure` | нет | — | `1`/`true` → `tls.insecure`. Принимается и как `skip_cert_verify`, `allowinsecure` |
+| `mtu` | нет | `1280` | MTU userspace-стека. Парсер принимает любое положительное число; верхнюю границу (на `h2` — 16000) проверяет ядро |
+| `idle_timeout` | нет | — | простой, после которого туннель усыпляется (следующий dial поднимает заново) |
+| `keep_alive` (`keep_alive_period`) | нет | — | QUIC-keepalive, только для `h3` |
+
+**⚠️ `vhttp`, а не `network`.** До ядра `lx.26` версия HTTP звалась `network` — то есть ровно наоборот к смыслу `network` у всех остальных протоколов (там это список tcp/udp). Ядро переименовало поле (core SPEC 062), старое принимает до `lx.30` с предупреждением. **Парсер лаунчера понимает обе формы** (`?network=h2` работает — чужие подписки его ещё шлют), но в `config.json` всегда пишет новую: `vhttp` + вложенный `tls`. При конфликте (`vhttp=h3&network=h2`) выигрывает новое имя.
+
+**⚠️ SNI по умолчанию — не адрес endpoint'а.** Назвать MASQUE-endpoint в ClientHello — это ровно то, на что смотрит DPI. Мастер WARP подставляет нейтральный домен из своего пула, а ядро при пустом SNI берёт дефолт профиля. Endpoint аутентифицируется пиннингом `publickey`, поэтому SNI может быть любым.
+
+**Примеры:**
+```
+masque://MHcCAQEEIA...@162.159.198.2:443?publickey=MFkwEwYHKoZI...&address=172.16.0.2/32,2606:4700:110:8142::/128&vhttp=h3&sni=www.microsoft.com#🎭 WARP
+masque://MHcCAQEEIA...@162.159.198.2:443?publickey=MFkwEwYHKoZI...&address=172.16.0.2/32&vhttp=h2&mtu=1400#WARP h2
+```
+
+**Что получается в `config.json`:**
+```jsonc
+{
+  "type": "masque",
+  "tag": "🎭 WARP",
+  "server": "162.159.198.2",
+  "server_port": 443,
+  "profile": "cloudflare",
+  "vhttp": "h3",
+  "tls": { "server_name": "www.microsoft.com" },
+  "private_key": "<base64 DER EC>",
+  "public_key":  "<base64 DER PKIX>",
+  "ip":   "172.16.0.2/32",
+  "ipv6": "2606:4700:110:8142::/128",
+  "mtu":  1280
+}
+```
+
+**Импорт готового конфига.** Outbound со **старой** схемой (плоские `network`/`sni`/`skip_cert_verify`) нормализуется при импорте: плоский `sni` рядом с `tls.server_name` смешивать нельзя — это два источника имени, и при расхождении ядро падает fail-fast'ом. `utls`/`reality` для masque срезаются (он идёт поверх QUIC, ядро их всё равно игнорирует).
+
+**Ключи не добываются из URI** — их выдаёт регистрация в Cloudflare. Проще всего получить узел через мастер: **Config Wizard → WARP → MASQUE**, он регистрирует аккаунт и сам собирает `masque://`-ссылку.
+
+Реализация: `core/config/subscription/node_parser_masque.go`, `shareuri_masque.go`, `core/warp/masque.go`. Спеки: [**SPECS/086-F-O-MASQUE_WARP_INTEGRATION/SPEC.md**](../SPECS/086-F-O-MASQUE_WARP_INTEGRATION/SPEC.md), схема полей — `sing-box-lx/docs-lx/lx-config.md` §4.
 
 ### WireGuard (`wireguard://`)
 **⚠️ Особенность:** Узлы WireGuard записываются в секцию **endpoints** конфига (не в outbounds). Требуется **sing-box 1.11+**.
@@ -859,6 +1033,10 @@ naive+https://some.what?extra-headers=X-Username%3Auser%0D%0AX-Password%3Apasswo
 wireguard://privatekey-base64@10.0.0.1:51820?publickey=server-pubkey-base64&address=10.10.10.2%2F32&allowedips=0.0.0.0%2F0%2C%3A%3A%2F0&keepalive=25&mtu=1420#My WG
 ```
 
+**`reserved` (Cloudflare WARP).** Тройка байтов `reserved=b0,b1,b2` уезжает в `peers[0].reserved`. Значение обязано быть тремя числами 0–255; иначе поле молча пропускается (нода при этом остаётся рабочей — на многих путях WARP живёт и без него).
+
+**Masquerade-сахар `ip` / `id` / `ib`.** WireSock-подобная короткая форма для первого decoy-пакета AWG: `ip` — протокол маскировки (`quic` \| `dns` \| `stun` \| `sip`), `id` — домен маскировки (LDH-валидация; обязателен для `quic`, для `dns`/`sip` генерируется псевдоимя, `stun` его игнорирует), `ib` — браузер (`chrome` \| `firefox` \| `curl`, осмысленно только с `ip=quic`). Ядро само разворачивает их в `i1`; поэтому сахар **взаимоисключающ** с явным `i1`.
+
 **Детали разбора:** Приватный ключ из userinfo декодируется через PathUnescape. В `publickey` и `presharedkey` символ `+` (в base64) при разборе сохраняется.
 
 **AmneziaWG 2.0 (опционально — ядро sing-box-lx с `with_awg`):**
@@ -876,7 +1054,7 @@ wireguard://privatekey-base64@10.0.0.1:51820?publickey=server-pubkey-base64&addr
 ```
 wireguard://privkey-base64@server.example.com:51821?publickey=server-pubkey&address=10.0.0.2%2F32&allowedips=0.0.0.0%2F0%2C%3A%3A%2F0&keepalive=25&jc=10&jmin=50&jmax=100&s1=20&s2=20&s3=60&s4=60&h1=1234567890&h2=1234567891&h3=1234567892&h4=1234567893&i1=%3Cb%200x000100002112a442%3E%3Cr%2012%3E#AWG2
 ```
-(`i1` здесь — URL-encoded `<b 0x000100002112a442><r 12>`.) Поддержка реализована в `applyAWGFields` / `ShareURIFromWireGuardEndpoint` (`core/config/subscription/node_parser_wireguard.go`, `shareuri_wireguard.go`); рантайм — на ядре с `with_awg`. См. `SPECS/073-F-N-AMNEZIAWG_PARAMS/SPEC.md` и `sing-box-lx/docs/lx-config.md`.
+(`i1` здесь — URL-encoded `<b 0x000100002112a442><r 12>`.) Поддержка реализована в `applyAWGFields` / `ShareURIFromWireGuardEndpoint` (`core/config/subscription/node_parser_wireguard.go`, `shareuri_wireguard.go`); рантайм — на ядре с `with_awg`. См. `SPECS/073-F-N-AMNEZIAWG_PARAMS/SPEC.md` и `sing-box-lx/docs-lx/lx-config.md`.
 
 ### Amnezia (`vpn://`)
 
@@ -912,66 +1090,37 @@ wireguard://privkey-base64@server.example.com:51821?publickey=server-pubkey&addr
 
 ## Поведение Config Wizard
 
-Config Wizard (мастер настройки) использует специальную логику загрузки ParserConfig для обеспечения согласованности конфигурации:
+### Откуда визард берёт настройки
 
-### Загрузка из config.json и шаблона
+Canonical-хранилище — **`state.json`**; шаблон (`bin/wizard_template.json`) нужен только для свежей установки.
 
-При открытии Config Wizard:
+1. **`state.json`** — если он есть, визард показывает то, что в нём: подписки (`connections.sources[]`), общие селекторы (`connections.outbounds[]`) и остальные пользовательские настройки. Читается через `state.Load` в presenter'е.
+2. **Шаблон** — fallback, когда `state.json` ещё нет (первый запуск). `LoadConfigFromFile` (`ui/configurator/business/loader.go`) читает **только** шаблон.
+3. ⚠️ **`config.json` в этой цепочке не участвует.** До SPEC 045 визард извлекал `@ParserConfig` из `config.json`; и путь, и сам блок удалены.
 
-1. **Приоритет: ParserConfig загружается из config.json** (если файл существует)
-   - Полный ParserConfig (включая все outbounds и настройки) загружается из существующего `config.json`
-   - Это сохраняет все персональные настройки пользователя, включая сложные конфигурации парсера
+### Обязательные outbounds (`required`)
 
-2. **Проверка обязательных outbounds** (если config.json существует)
-   - Сначала читается шаблон (`bin/wizard_template.json`)
-   - В шаблоне находятся все outbounds с полем `wizard.required > 0`
-   - Для каждого такого outbound проверяется, есть ли он в текущем ParserConfig (загруженном из config.json)
-   - **Логика проверки:**
-     - **`required: 0` или отсутствует** — outbound игнорируется (не проверяется)
-     - **`required: 1`** — проверяется только наличие тега; если outbound отсутствует в config.json, он добавляется из шаблона; если присутствует, сохраняется существующая версия из config.json
-     - **`required > 1` (например, `2`)** — всегда переписывается из шаблона, независимо от наличия в config.json или соответствия шаблону
-   - **Формат**: Используйте формат `"wizard": {"hide": true, "required": 2}`. Старый формат `"wizard": "hide"` поддерживается для обратной совместимости, но без поля `required`.
+В шаблоне outbound можно пометить `"required": true` — тег, который визард не даёт удалить целиком (кнопка Del заблокирована; Edit и Reset работают). Набор таких тегов собирает `TemplateData.RequiredOutboundTags()` (`core/template/loader.go`).
 
-3. **Fallback: использование шаблона** (если config.json не существует или не содержит ParserConfig)
-   - Если `config.json` не существует или не содержит валидный ParserConfig, используется шаблон (`bin/wizard_template.json`)
-   - Все outbounds и proxies берутся из шаблона
+- `required: true` — тег обязателен; отсутствующий добавляется из шаблона.
+- поле отсутствует / `false` — обычный outbound, визард его не трогает.
+- **Legacy:** в старых шаблонах встречается обёртка `"wizard": {"required": 1}` — она ещё читается как fallback (в том числе числовая форма), но в текущем формате поле `required` лежит **плоско** на уровне outbound, без обёртки `wizard`.
 
-### Пример работы
+> ⚠️ Числовой семантики «`required: 1` — добавить, `required: 2` — всегда переписать из шаблона» в коде **нет**: `required` — булев флаг. Если вы встретили это в старой документации — оно не соответствует поведению.
 
-**Шаг 1: Чтение шаблона** (`wizard_template.json`):
-При открытии визарда сначала читается шаблон, в котором находится:
-```json
-{
-  "ParserConfig": {
-    "outbounds": [
-      {"tag": "proxy-out", "type": "selector", ...}
-    ],
-    "proxies": [{"source": "https://your-subscription-url-here"}]
-  }
-}
-```
+### Привязка к пресетам (`ref` / `updates`)
 
-**Шаг 2: Загрузка из config.json** (если файл существует):
-Загружается полный ParserConfig из существующего `config.json`, включая все outbounds, настройки и proxies.
+Помимо `required`, outbound может нести поля привязки к шаблону/пресетам (SPEC 057/058):
 
-**Шаг 3: Проверка обязательных outbounds**:
-Система находит в шаблоне outbounds с `"wizard": {"required": 1}` или `"required": 2` и проверяет их наличие в загруженном ParserConfig.
+- `ref` — источник: `""` (обычный outbound), `"#TEMPLATE#"` или `<preset_id>`;
+- `updates` — стек патчей: патчи пресетов в порядке правил и опциональный USER-патч (всегда последним).
 
-**Шаг 4: Действие**:
-- Для `required: 1` — если outbound отсутствует в config.json, добавляется из шаблона
-- Для `required: 2` — outbound всегда переписывается из шаблона
-
-**Результат в визарде**:
-- ParserConfig: полностью из config.json (сохраняются все персональные настройки)
-- Обязательные outbounds: проверяются и добавляются/обновляются из шаблона согласно полю `wizard.required`
-- Proxies: из config.json
-
-**Примечание**: Старый формат `"wizard": "hide"` поддерживается для обратной совместимости, но без поля `required` (только скрытие из визарда).
+Подробности механики — [`WIZARD_STATE.md`](WIZARD_STATE.md) §3.2 и §5.
 
 ## Особенности и советы
 
 - **Остановите sing-box перед обновлением**: Clash API может отреагировать на промежуточный файл
-- **Нормализация флагов**: Если в подписке странные флаги, можно расширять `normalizeFlagTag` в `core/parser.go`
+- **Нормализация флагов**: Если в подписке странные флаги, можно расширять `normalizeFlagTag` в `core/config/subscription/node_parser_core.go`
 - **UI Clash API**: Подхватывает список селекторов из конфигурации. По умолчанию выбран селектор из `route.rules[].final` (если значение существует и совпадает с тегом). Если `final` отсутствует или не совпадает — выбирается первый селектор из списка конфигурации
 - **Дублирование тегов**: Автоматически обрабатывается — дубликаты переименовываются с суффиксом
 - **Config Wizard и шаблоны**: Outbounds всегда загружаются из шаблона, proxies — из config.json (если существует). Это гарантирует актуальность списка outbounds и сохранность пользовательских подписок
