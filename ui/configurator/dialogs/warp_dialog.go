@@ -258,8 +258,8 @@ type warpMasqueSection struct {
 }
 
 func newWarpMasqueSection() *warpMasqueSection {
-	network := widget.NewSelect([]string{"h3", "h2"}, nil)
-	network.SetSelected("h3")
+	vhttp := widget.NewSelect([]string{"h3", "h2"}, nil)
+	vhttp.SetSelected("h3")
 
 	// Пустой sni → ядро подставляет consumer-masque.cloudflareclient.com, туннель
 	// встаёт, но данные не идут (DPI глушит фирменный SNI). Дефолт обязателен —
@@ -273,7 +273,7 @@ func newWarpMasqueSection() *warpMasqueSection {
 	keep := numEntry("")
 	keep.SetPlaceHolder("30")
 	keepRow := labeledRow(locale.T("wizard.warp.masque_keepalive"), keep)
-	network.OnChanged = func(v string) {
+	vhttp.OnChanged = func(v string) {
 		if v == "h3" {
 			keepRow.Show()
 		} else {
@@ -286,13 +286,13 @@ func newWarpMasqueSection() *warpMasqueSection {
 
 	box := container.NewVBox(
 		masqueNote,
-		labeledRow(locale.T("wizard.warp.masque_transport"), network),
+		labeledRow(locale.T("wizard.warp.masque_transport"), vhttp),
 		labeledRow(locale.T("wizard.warp.masque_sni"), container.NewBorder(nil, nil, nil, randSNIBtn, sni)),
 		labeledRow(locale.T("wizard.warp.masque_idle"), idle),
 		keepRow,
 	)
 	collect := func() masqueRegParams {
-		return masqueRegParams{network: network.Selected, sni: sni.Text}
+		return masqueRegParams{vhttp: vhttp.Selected, sni: sni.Text}
 	}
 	return &warpMasqueSection{container: box, collect: collect}
 }
@@ -309,8 +309,8 @@ type warpRegParams struct {
 }
 
 type masqueRegParams struct {
-	network string
-	sni     string
+	vhttp string
+	sni   string
 }
 
 func runWarpRegistration(win fyne.Window, presenter *wizardpresentation.WizardPresenter, onURI func(string), p warpRegParams, forceNew bool) {
@@ -359,7 +359,7 @@ func runMasqueRegistration(win fyne.Window, presenter *wizardpresentation.Wizard
 			client := warp.NewClient(nil)
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			acc, err = client.RegisterMasque(ctx, time.Now().UTC(), p.network, p.sni)
+			acc, err = client.RegisterMasque(ctx, time.Now().UTC(), p.vhttp, p.sni)
 			if err == nil {
 				storeMasque(presenter, acc)
 			}
@@ -367,7 +367,7 @@ func runMasqueRegistration(win fyne.Window, presenter *wizardpresentation.Wizard
 		if err == nil {
 			// Транспорт/SNI/таймауты — параметры узла, не регистрации: именно
 			// поэтому H2 и H3 собираются из одной кешированной записи.
-			acc.ApplyNodeOptions(p.network, p.sni)
+			acc.ApplyNodeOptions(p.vhttp, p.sni)
 		}
 
 		var uri string

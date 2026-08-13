@@ -44,8 +44,10 @@ func IsSingboxGroupType(t string) bool {
 // quicOutboundTypes — типы, работающие поверх QUIC. Для них ядро не умеет
 // uTLS/REALITY: STDConfig() возвращает ошибку, а QUIC-путь фолбэчит именно
 // на него, и нода становится мёртвой.
+// masque: h3 несёт TLS внутри QUIC, а ядро (SPEC 062 §1.3) для него игнорирует
+// utls/reality/ech с предупреждением — снимаем их здесь, как у остальных QUIC.
 var quicOutboundTypes = map[string]struct{}{
-	"hysteria2": {}, "tuic": {},
+	"hysteria2": {}, "tuic": {}, "masque": {},
 }
 
 // SanitizeSingboxOutboundMap приводит импортированный outbound к форме,
@@ -58,10 +60,60 @@ func SanitizeSingboxOutboundMap(ob map[string]interface{}, tag string) {
 	}
 	obType := strings.ToLower(strings.TrimSpace(mapString(ob, "type")))
 
+	sanitizeSingboxMasqueLegacy(ob, obType, tag)
 	sanitizeSingboxTLS(ob, obType, tag)
 	sanitizeSingboxFlow(ob, tag)
 	sanitizeSingboxPacketEncoding(ob, tag)
 	sanitizeSingboxHysteria2Obfs(ob, obType, tag)
+}
+
+// sanitizeSingboxMasqueLegacy переводит masque-outbound из чужого диалекта
+// (плоские `network`/`sni`/`skip_cert_verify`) в схему ядра SPEC 062: `vhttp`
+// плюс вложенный `tls`. Ядро принимает и старую форму до lx.30, но смешивать
+// нельзя: плоский `sni` рядом с `tls.server_name` — два источника имени, и при
+// расхождении ядро падает fail-fast'ом.
+//
+// Новое имя всегда выигрывает: если импортируемый конфиг уже нёс `vhttp` или
+// `tls.server_name`, legacy-дубликат просто снимается.
+func sanitizeSingboxMasqueLegacy(ob map[string]interface{}, obType, tag string) {
+	if obType != "masque" {
+		return
+	}
+
+	if legacy := strings.TrimSpace(mapString(ob, "network")); legacy != "" {
+		if strings.TrimSpace(mapString(ob, "vhttp")) == "" {
+			ob["vhttp"] = legacy
+		}
+		delete(ob, "network")
+		debuglog.DebugLog("Parser: singbox import %q: masque network → vhttp", tag)
+	}
+
+	sni := strings.TrimSpace(mapString(ob, "sni"))
+	insecure, hasInsecure := ob["skip_cert_verify"].(bool)
+	if sni == "" && !hasInsecure {
+		return
+	}
+	delete(ob, "sni")
+	delete(ob, "skip_cert_verify")
+
+	tlsMap, _ := ob["tls"].(map[string]interface{})
+	if tlsMap == nil {
+		tlsMap = map[string]interface{}{}
+	}
+	if sni != "" {
+		if _, has := tlsMap["server_name"]; !has {
+			tlsMap["server_name"] = sni
+		}
+	}
+	if insecure {
+		if _, has := tlsMap["insecure"]; !has {
+			tlsMap["insecure"] = true
+		}
+	}
+	if len(tlsMap) > 0 {
+		ob["tls"] = tlsMap
+		debuglog.DebugLog("Parser: singbox import %q: masque flat sni/skip_cert_verify → tls block", tag)
+	}
 }
 
 // sanitizeSingboxTLS чистит блок tls: uTLS allowlist, REALITY pbk/short_id,

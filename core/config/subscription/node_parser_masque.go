@@ -11,13 +11,17 @@ import (
 )
 
 // parseMasqueURI parses a MASQUE (CONNECT-IP / WARP) share URI into a sing-box
-// masque outbound. Requires core >= lx.2 (masque outbound; the launcher pins
-// lx.3). Mirrors the LxBox masque_parser and node_spec_emit contract.
+// masque outbound. Requires core >= lx.26 (the vhttp + nested tls schema; the
+// launcher pins it via constants.RequiredCoreVersion). Mirrors the LxBox masque_parser and node_spec_emit contract.
 //
 // URI shape:
 //
 //	masque://<privKeyDer>@<server>:<port>?publickey=<serverPubDer>&address=<v4,v6>
-//	   &profile=cloudflare&network=h3[&sni=][&mtu=1280][&idle_timeout=][&keep_alive=]#label
+//	   &profile=cloudflare&vhttp=h3[&sni=][&mtu=1280][&idle_timeout=][&keep_alive=]#label
+//
+// `vhttp` (HTTP version h3/h2) and `sni` are also accepted under their legacy
+// names `network` / `server_name`; both normalize to the sing-box SPEC 062
+// shape (`vhttp` + nested `tls`).
 //
 // The keys are base64(DER): private_key → x509.ParseECPrivateKey (SEC1),
 // public_key → x509.ParsePKIXPublicKey (PKIX), same as the core config.
@@ -83,13 +87,18 @@ func parseMasqueURI(uri string, skipFilters []map[string]string) (*configtypes.P
 		}
 	}
 
-	network := strings.TrimSpace(q.Get("network"))
-	if network == "" {
-		network = "h3"
+	// HTTP version: `vhttp` is the current name, `network` the legacy one that
+	// the core deprecated in SPEC 062 (it meant the opposite of `network`
+	// everywhere else). Foreign subscriptions still ship `network=`, so both
+	// are accepted here and normalized to `vhttp` — the launcher never emits
+	// the legacy spelling into config.json.
+	vhttp := strings.TrimSpace(firstNonEmptyQuery(q, "vhttp", "network"))
+	if vhttp == "" {
+		vhttp = "h3"
 	}
-	if network != "h3" && network != "h2" {
-		debuglog.WarnLog("Parser: MASQUE network %q invalid (want h3/h2), forcing h3.", network)
-		network = "h3"
+	if vhttp != "h3" && vhttp != "h2" {
+		debuglog.WarnLog("Parser: MASQUE vhttp %q invalid (want h3/h2), forcing h3.", vhttp)
+		vhttp = "h3"
 	}
 	profile := strings.TrimSpace(q.Get("profile"))
 	if profile == "" {
@@ -108,7 +117,7 @@ func parseMasqueURI(uri string, skipFilters []map[string]string) (*configtypes.P
 		"server":      parsedURL.Hostname(),
 		"server_port": port,
 		"profile":     profile,
-		"network":     network,
+		"vhttp":       vhttp,
 		"private_key": privKey,
 		"public_key":  pubKey,
 		"mtu":         mtu,
@@ -119,8 +128,20 @@ func parseMasqueURI(uri string, skipFilters []map[string]string) (*configtypes.P
 	if ip6 != "" {
 		outbound["ipv6"] = ip6
 	}
-	if sni := strings.TrimSpace(q.Get("sni")); sni != "" {
-		outbound["sni"] = sni
+	// TLS goes in the standard nested block (core SPEC 062). `enabled` is not
+	// emitted: masque is TLS-only by construction, and the generator's shared
+	// TLS section drops a block whose `enabled` is false.
+	tlsBlock := map[string]interface{}{}
+	if sni := strings.TrimSpace(firstNonEmptyQuery(q, "sni", "server_name")); sni != "" {
+		tlsBlock["server_name"] = sni
+	}
+	if insecure := strings.TrimSpace(firstNonEmptyQuery(q, "insecure", "skip_cert_verify", "allowinsecure")); insecure != "" {
+		if insecure == "1" || strings.EqualFold(insecure, "true") {
+			tlsBlock["insecure"] = true
+		}
+	}
+	if len(tlsBlock) > 0 {
+		outbound["tls"] = tlsBlock
 	}
 	if it := strings.TrimSpace(q.Get("idle_timeout")); it != "" {
 		outbound["idle_timeout"] = it
@@ -156,7 +177,7 @@ func parseMasqueURI(uri string, skipFilters []map[string]string) (*configtypes.P
 	if shouldSkipNode(node, skipFilters) {
 		return nil, nil
 	}
-	debuglog.DebugLog("parseMasqueURI: success tag=%s network=%s", tag, network)
+	debuglog.DebugLog("parseMasqueURI: success tag=%s vhttp=%s", tag, vhttp)
 	return node, nil
 }
 
