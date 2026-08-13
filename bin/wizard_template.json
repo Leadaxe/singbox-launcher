@@ -55,7 +55,7 @@
       "default_value": {"default": {"#if": {"and": [{"@runtime.target": "remote"}], "value": "lxd-tun0", "else": "singbox-tun0"}}},
       "if": ["@tun"]
     },
-    {"name": "tun_address", "type": "text", "wizard_ui": "edit", "title": "TUN interface address", "tooltip": "IPv4 CIDR for the TUN interface (inbounds address). Enabled when TUN is on for this platform.",
+    {"name": "tun_address", "type": "text_list", "wizard_ui": "edit", "title": "TUN interface addresses", "tooltip": "CIDR addresses for the TUN interface (inbounds address), one per line. IPv4 is required; add an IPv6 CIDR (for example fdfe:dcba:9876::1/126) on a second line to route IPv6 traffic into the tunnel.",
       "default_value": "172.16.0.1/30",
       "if": ["@tun"]
     },
