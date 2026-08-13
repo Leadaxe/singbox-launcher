@@ -153,6 +153,26 @@ func CurrentGeneration() uint64 {
 //   - enabled — true если caller имеет валидный (baseURL, token) для запросов
 //   - remote  — true только если override active (для UI badge differentiation)
 func EffectiveClashAPIConfig(ac *core.AppController) (baseURL, token string, enabled, remote bool) {
+	return EffectiveClashAPIConfigIn(ac, services.ScopeRemote)
+}
+
+// EffectiveClashAPIConfigIn — тот же резолвер, но привязанный к области панели.
+//
+// Remote-override (SPEC 064) и выбранная машина lxd (SPEC 097) — свойства
+// вкладки Remote. Вкладка Local всегда говорит с локальным ядром: без этого
+// подключение к удалённой машине уводило локальную панель на пустой baseURL,
+// и «Тест» падал с `unsupported protocol scheme ""`.
+func EffectiveClashAPIConfigIn(ac *core.AppController, scope services.ProxyScope) (baseURL, token string, enabled, remote bool) {
+	if scope == services.ScopeLocal {
+		if ac == nil || ac.APIService == nil {
+			return "", "", false, false
+		}
+		if base, tok, ok := ac.DaemonClashEndpoint(); ok {
+			return base, tok, true, false
+		}
+		base, tok, en := ac.APIService.GetClashAPIConfig()
+		return base, tok, en, false
+	}
 	if ov, ok := GetRemoteOverride(); ok {
 		return fmt.Sprintf("http://%s:%d", ov.Host, ov.Port), ov.Secret, true, true
 	}
@@ -185,6 +205,22 @@ func EffectiveClashAPIConfig(ac *core.AppController) (baseURL, token string, ena
 // ClashTransport с пустым baseURL — запрос завершится той же ошибкой
 // соединения, что и раньше (behavior-preserving для error-путей).
 func EffectiveProxyTransport(ac *core.AppController) services.ProxyTransport {
+	return EffectiveProxyTransportIn(ac, services.ScopeRemote)
+}
+
+// EffectiveProxyTransportIn — транспорт для конкретной области.
+// ScopeLocal никогда не уезжает на remote-override: локальная панель управляет
+// локальным ядром даже при подключённой удалённой машине.
+func EffectiveProxyTransportIn(ac *core.AppController, scope services.ProxyScope) services.ProxyTransport {
+	if scope == services.ScopeLocal {
+		if ac != nil && ac.APIService != nil {
+			if t := ac.APIService.TransportOverride(); t != nil {
+				return t
+			}
+		}
+		baseURL, token, _, _ := EffectiveClashAPIConfigIn(ac, services.ScopeLocal)
+		return services.NewClashTransport(baseURL, token)
+	}
 	// Daemon-режим (gRPC-транспорт) имеет приоритет над remote-override:
 	// override — диагностический путь classic-режима (SPEC 064), в daemon он
 	// только увёл бы proxy-операции с gRPC на чужой Clash-адрес.

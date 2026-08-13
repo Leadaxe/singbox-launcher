@@ -219,7 +219,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 			return
 		}
-		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac)
+		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 		if !clashAPIEnabled {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
 			if ac.UIService.ListStatusLabel != nil {
@@ -242,7 +242,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			// SPEC 064: capture generation для drop-stale если override
 			// сменился пока запрос летит.
 			gen := CurrentGeneration()
-			transport := EffectiveProxyTransport(ac)
+			transport := EffectiveProxyTransportIn(ac, scope)
 			proxies, now, err := transport.GroupProxies(group)
 			fyne.Do(func() {
 				if gen != CurrentGeneration() {
@@ -374,9 +374,13 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		// Daemon-режим: Clash API нет, управление по gRPC. «Тест» = проверка
 		// gRPC-транспорта через загрузку групп; статус показываем как gRPC,
 		// без Clash-ошибок.
-		if ac.BackendMode() == core.BackendDaemon {
+		// Подключённая машина lxd — тот же gRPC-путь, хотя локальный бэкенд
+		// остаётся classic: у remote-конфига Clash API нет, и HTTP-ветка ушла
+		// бы на пустой baseURL (`unsupported protocol scheme ""`).
+		_, _, lxdConnected := GetLxdRemoteOverride()
+		if ac.BackendMode() == core.BackendDaemon || (scope == services.ScopeRemote && lxdConnected) {
 			go func() {
-				_, _, err := EffectiveProxyTransport(ac).GroupProxies(ac.APIService.GetSelectedClashGroup())
+				_, _, err := EffectiveProxyTransportIn(ac, scope).GroupProxies(ac.APIService.GetSelectedClashGroup())
 				fyne.Do(func() {
 					if err != nil {
 						ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_grpc_off"))
@@ -417,7 +421,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			}()
 			return
 		}
-		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac)
+		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 		if !clashAPIEnabled {
 			ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_clash_api_off_config"))
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
@@ -427,7 +431,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			if platform.IsSleeping() {
 				return
 			}
-			baseURL, token, _, _ := EffectiveClashAPIConfig(ac)
+			baseURL, token, _, _ := EffectiveClashAPIConfigIn(ac, scope)
 			var err error
 			for attempt := 0; attempt < clashAPITestMaxAttempts; attempt++ {
 				if platform.IsSleeping() {
@@ -528,7 +532,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				return
 			}
 			fyne.Do(func() { button.SetText("...") })
-			transport := EffectiveProxyTransport(ac)
+			transport := EffectiveProxyTransportIn(ac, scope)
 			delay, err := transport.Delay(proxyName)
 			fyne.Do(func() {
 				proxies := ac.GetProxiesList()
@@ -760,7 +764,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 				return
 			}
-			_, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac)
+			_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 			if !clashAPIEnabled {
 				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
 				return
@@ -769,7 +773,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				// Через EffectiveProxyTransport: учитывает remote-override
 				// (SPEC 064) и gRPC-транспорт daemon-режима — прямой
 				// APIService.SwitchProxy их не видит.
-				err := ac.APIService.SwitchProxyVia(EffectiveProxyTransport(ac), group, proxyNameForCallback)
+				err := ac.APIService.SwitchProxyVia(EffectiveProxyTransportIn(ac, scope), group, proxyNameForCallback)
 				fyne.Do(func() {
 					if err != nil {
 						ShowError(ac.UIService.MainWindow, err)
@@ -1056,7 +1060,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 			return
 		}
-		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac)
+		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 		if !clashAPIEnabled {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
 			return
@@ -1070,7 +1074,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 		go func() {
 			gen := atomic.AddUint64(&pingAllGeneration, 1)
-			transport := EffectiveProxyTransport(ac)
+			transport := EffectiveProxyTransportIn(ac, scope)
 
 			type pingJob struct {
 				Name string
@@ -1435,12 +1439,12 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		// запросы идут по gRPC-транспорту и от clash_api-секции конфига не
 		// зависят (её может вообще не быть).
 		if ac.BackendMode() != core.BackendDaemon {
-			if _, _, enabled, _ := EffectiveClashAPIConfig(ac); !enabled {
+			if _, _, enabled, _ := EffectiveClashAPIConfigIn(ac, scope); !enabled {
 				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
 				return
 			}
 		}
-		transport := EffectiveProxyTransport(ac)
+		transport := EffectiveProxyTransportIn(ac, scope)
 
 		// Run queries in background to avoid blocking UI
 		go func() {
@@ -1532,7 +1536,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		// Защита от «API disabled»-popup'а при холодном старте сохраняется:
 		// onLoadAndRefreshProxies показывает диалог, если API выключен, — и
 		// именно поэтому проверка стоит ЗДЕСЬ, до вызова.
-		if _, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac); clashAPIEnabled {
+		if _, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope); clashAPIEnabled {
 			ac.AutoLoadProxies()
 			onLoadAndRefreshProxies()
 		}
