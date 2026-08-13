@@ -216,6 +216,26 @@ func (ac *AppController) DaemonConnSnapshotFunc() any {
 	return src.connSnapshotFuncAny()
 }
 
+// dnsQuerySource — бэкенд отдаёт DNS-плоскость структурным стримом (SPEC 018
+// форка) вместо разбора sing-box.log. Реализует только DaemonBackend: в
+// classic gRPC нет, и там остаётся разбор лога.
+type dnsQuerySource interface {
+	// dnsQuerySourceAny возвращает функцию подписки; сигнатура совпадает с
+	// func(func(services.DNSQuery)) (func(), error), но возвращаем any по той
+	// же причине, что и у connSnapshotFuncAny, — приведение на UI-стороне.
+	dnsQuerySourceAny() any
+}
+
+// DaemonDNSQuerySource возвращает подписку на DNS-события активного бэкенда
+// как any; nil — источника нет (classic → профайлер читает лог).
+func (ac *AppController) DaemonDNSQuerySource() any {
+	src, ok := ac.Backend().(dnsQuerySource)
+	if !ok {
+		return nil
+	}
+	return src.dnsQuerySourceAny()
+}
+
 // DaemonPoolAvailable — текущий источник отдаёт пул балансировщика.
 //
 // SPEC 097: сначала смотрим на активный транспорт, потом на бэкенд. Пул —

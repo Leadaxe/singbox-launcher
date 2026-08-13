@@ -85,6 +85,11 @@ func OpenMachineProfiler(ac *core.AppController, d services.RemoteDaemon) {
 	dnsCancel, dnsErr := transport.SubscribeDNSQueries(func(q services.DNSQuery) {
 		p.PushEvent(dnsQueryToEvent(q))
 	})
+	if dnsErr == nil {
+		// Лога машины у нас нет вовсе, так что двоиться нечему; флаг ставим
+		// ради UI — он отличает «DNS есть, структурный» от «DNS нет».
+		p.SetDNSFromStream(true)
+	}
 	if dnsErr != nil {
 		// Без DNS-потока профайлер остаётся рабочим — просто без доменной
 		// плоскости. Ронять окно из-за этого нельзя.

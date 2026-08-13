@@ -12,6 +12,7 @@ import (
 	"fyne.io/fyne/v2"
 
 	"singbox-launcher/core"
+	"singbox-launcher/core/services"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/platform"
@@ -94,15 +95,70 @@ func EnsureTrafficProfilerStarted(ac *core.AppController) {
 }
 
 // applyTrafficSource ставит профайлеру gRPC-источник соединений в
-// daemon-режиме, снимает (nil → Clash HTTP) в classic.
+// daemon-режиме, снимает (nil → Clash HTTP) в classic. Заодно переключает
+// DNS-плоскость: daemon → структурный стрим, classic → разбор лога.
 func applyTrafficSource(ac *core.AppController, p *tprof.TrafficProfiler) {
 	if fnAny := ac.DaemonConnSnapshotFunc(); fnAny != nil {
 		if fn, ok := fnAny.(tprof.SnapshotFunc); ok {
 			p.SetConnSnapshotFunc(fn)
+			applyDNSSource(ac, p)
 			return
 		}
 	}
 	p.SetConnSnapshotFunc(nil)
+	applyDNSSource(ac, p)
+}
+
+// localDNSSub — активная подписка локального профайлера на DNS-стрим.
+// Одна на процесс: профайлер тоже один. Снимается при уходе из daemon-режима,
+// иначе стрим пережил бы свой backend и держал бы ядро в режиме эмита.
+var (
+	localDNSMu     sync.Mutex
+	localDNSCancel func()
+)
+
+// applyDNSSource подписывает профайлер на SubscribeDNSQueries в daemon-режиме
+// и снимает подписку в classic.
+//
+// В classic источника нет by design: gRPC там отсутствует, Clash отдаёт только
+// точечный /dns/query, и единственный поток DNS — текстовый лог. Это и есть та
+// часть функционала, что доступна лишь на lxd gRPC.
+func applyDNSSource(ac *core.AppController, p *tprof.TrafficProfiler) {
+	localDNSMu.Lock()
+	defer localDNSMu.Unlock()
+
+	// Снимаем прежнюю подписку в любом случае: backend мог смениться, и старый
+	// стрим больше не описывает то ядро, за которым мы наблюдаем.
+	if localDNSCancel != nil {
+		localDNSCancel()
+		localDNSCancel = nil
+	}
+	p.SetDNSFromStream(false)
+
+	subAny := ac.DaemonDNSQuerySource()
+	if subAny == nil {
+		return // classic → остаётся LogTailer
+	}
+	subscribe, ok := subAny.(func(func(services.DNSQuery), func()) (func(), error))
+	if !ok {
+		debuglog.WarnLog("traffic: неожиданный тип источника DNS %T", subAny)
+		return
+	}
+	cancel, err := subscribe(
+		func(q services.DNSQuery) { p.PushEvent(dnsQueryToEvent(q)) },
+		// Ядро собрано без with_lx_command: стрима не будет. Возвращаем лог
+		// как источник — иначе DNS-плоскость исчезла бы совсем, ведь лог мы
+		// к этому моменту уже подавили.
+		func() { p.SetDNSFromStream(false) },
+	)
+	if err != nil {
+		// Демон недоступен или ядро без with_lx_command. Профайлер остаётся
+		// рабочим — DNS-плоскость просто приедет из лога, как в classic.
+		debuglog.WarnLog("traffic: dns stream: %v", err)
+		return
+	}
+	localDNSCancel = cancel
+	p.SetDNSFromStream(true)
 }
 
 // trafficWindowManager lazily creates the window-singleton manager and

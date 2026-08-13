@@ -215,3 +215,47 @@ func TestProfiler_SubscribeUnsubscribe(t *testing.T) {
 	// (we may have buffered one); no assertion needed beyond no-panic.
 	p.dispatch(TrafficEvent{Domain: "y.com", TS: time.Now()})
 }
+
+// Когда DNS-плоскость приходит структурным стримом, лог-строки того же
+// запроса не должны порождать вторую копию события: иначе каждый резолв
+// оказался бы в ленте дважды.
+func TestDNSFromStreamSuppressesLogDNS(t *testing.T) {
+	p := NewTrafficProfiler()
+	p.SetDNSFromStream(true)
+
+	for _, kind := range []EventKind{EventDNSResolve, EventDNSFail} {
+		out := p.eventsFromLogLine(LogLine{
+			TS:     time.Now(),
+			Kind:   kind,
+			ConnID: "c1",
+			Domain: "example.com",
+			IP:     "8.8.8.8",
+		})
+		if len(out) != 0 {
+			t.Fatalf("kind=%v: DNS из лога должен подавляться, получено %d событий", kind, len(out))
+		}
+	}
+
+	// Атрибуция процессов из лога при этом продолжает работать: подавляются
+	// только сами DNS-события, а не разбор строки целиком.
+	p.eventsFromLogLine(LogLine{
+		TS:          time.Now(),
+		Kind:        EventDNSResolve,
+		ConnID:      "c2",
+		ProcessPath: "/Apps/Slack",
+	})
+	p.mu.Lock()
+	got := p.connProcessMap["c2"]
+	p.mu.Unlock()
+	if got != "/Apps/Slack" {
+		t.Fatalf("атрибуция процесса потеряна: %q", got)
+	}
+
+	// Снятый флаг возвращает лог как источник (classic после daemon).
+	p.SetDNSFromStream(false)
+	if out := p.eventsFromLogLine(LogLine{
+		TS: time.Now(), Kind: EventDNSResolve, ConnID: "c3", Domain: "a.test",
+	}); len(out) != 1 {
+		t.Fatalf("после снятия флага ждём событие из лога, got %d", len(out))
+	}
+}

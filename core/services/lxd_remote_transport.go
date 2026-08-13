@@ -383,25 +383,6 @@ func (t *LxdRemoteTransport) SubscribeConnections() (snapshot func(context.Conte
 	return tracker.Snapshot, cancelCtx, nil
 }
 
-// dnsTypeCNAME — код записи CNAME в DNS (RFC 1035).
-const dnsTypeCNAME = 5
-
-// DNSQuery — одно событие DNS-плоскости удалённой машины (SPEC 018 форка).
-//
-// Структурный поток вместо разбора лога: приходит и сервер, который отвечал,
-// и цепочка outbound'ов, и признак отказа — то, что из текстовой строки лога
-// пришлось бы вытаскивать регулярками.
-type DNSQuery struct {
-	Domain  string
-	Failed  bool
-	Error   string
-	Answers []string
-	// CNAMEs — цепочка переадресаций, собранная из ответов типа CNAME.
-	CNAMEs      []string
-	DNSServer   string
-	ProcessPath string
-}
-
 // SubscribeDNSQueries открывает стрим DNS-запросов машины.
 //
 // includeAnswers=true обязателен: без ответов не восстановить CNAME-цепочку,
@@ -434,29 +415,7 @@ func (t *LxdRemoteTransport) SubscribeDNSQueries(onQuery func(DNSQuery)) (cancel
 				debuglog.DebugLog("lxd remote dns: stream closed: %v", recvErr)
 				return
 			}
-			q := DNSQuery{
-				Domain:    ev.GetDomain(),
-				Failed:    ev.GetFailed(),
-				Error:     ev.GetError(),
-				DNSServer: ev.GetDnsServer(),
-			}
-			if pi := ev.GetProcessInfo(); pi != nil {
-				q.ProcessPath = pi.GetProcessPath()
-			}
-			for _, a := range ev.GetAnswers() {
-				rdata := a.GetRdata()
-				if rdata == "" {
-					continue
-				}
-				// Type 5 = CNAME: из этих записей клиент и восстанавливает
-				// цепочку переадресаций, отдельной сущностью она не приходит.
-				if a.GetType() == dnsTypeCNAME {
-					q.CNAMEs = append(q.CNAMEs, rdata)
-					continue
-				}
-				q.Answers = append(q.Answers, rdata)
-			}
-			onQuery(q)
+			onQuery(DNSQueryFromProto(ev))
 		}
 	}()
 	return cancelCtx, nil

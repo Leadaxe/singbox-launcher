@@ -54,6 +54,13 @@ type TrafficProfiler struct {
 	// lifecycle hooks (window title timer / button label badge)
 	onSessionChange func()
 
+	// dnsFromStream — DNS-плоскость приходит структурным стримом
+	// (SubscribeDNSQueries), а не разбором лога. Тогда лог-строки DNS
+	// перестают порождать события: иначе один запрос отдался бы дважды —
+	// раз из стрима, раз из лога. Атрибуцию процессов по логу это не
+	// затрагивает, она обновляется до ветвления по Kind.
+	dnsFromStream bool
+
 	// background context for poller/tailer
 	bgCtx    context.Context
 	bgCancel context.CancelFunc
@@ -276,6 +283,12 @@ func (p *TrafficProfiler) eventsFromLogLine(ll LogLine) []TrafficEvent {
 		p.mu.Lock()
 		p.connProcessMap[ll.ConnID] = ll.ProcessPath
 		p.mu.Unlock()
+	}
+
+	// DNS уже приходит стримом — лог-строки того же запроса выбрасываем,
+	// оставив только обновление атрибуции выше.
+	if p.dnsSuppliedByStream() && (ll.Kind == EventDNSResolve || ll.Kind == EventDNSFail) {
+		return nil
 	}
 
 	switch ll.Kind {
@@ -626,6 +639,30 @@ func FormatRecordingTitle(s *Session) string {
 // подписчики.
 func (p *TrafficProfiler) PushEvent(e TrafficEvent) {
 	p.dispatch(e)
+}
+
+// SetDNSFromStream объявляет, что DNS-события подаются через PushEvent из
+// структурного стрима. Пока флаг стоит, DNS-строки лога игнорируются — иначе
+// один запрос попал бы в ленту дважды.
+//
+// Переключается на ходу: локальный профайлер один на процесс, а backend может
+// смениться classic ↔ daemon без перезапуска лаунчера.
+func (p *TrafficProfiler) SetDNSFromStream(on bool) {
+	p.mu.Lock()
+	p.dnsFromStream = on
+	p.mu.Unlock()
+}
+
+// DNSFromStream — источник DNS-плоскости структурный (а не лог). UI смотрит на
+// это, чтобы не предлагать debug-лог там, где он ничего не добавит.
+func (p *TrafficProfiler) DNSFromStream() bool {
+	return p.dnsSuppliedByStream()
+}
+
+func (p *TrafficProfiler) dnsSuppliedByStream() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.dnsFromStream
 }
 
 // ClientConn — одно соединение клиента. Строка таблицы = соединение, как в
