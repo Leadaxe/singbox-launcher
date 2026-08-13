@@ -1,14 +1,16 @@
-# Сборка на Linux
+# Building on Linux
 
-## Требования
+**🌐 Language**: English | [Русский](BUILD_LINUX.ru.md)
 
-1. **Go 1.25** (или версия из `go.mod`)
-   - Установка: [https://go.dev/dl/](https://go.dev/dl/) или пакет дистрибутива
-   - Проверка: `go version`
+## Requirements
 
-2. **Системные пакеты для CGO и Fyne (OpenGL + X11/GLFW)**
+1. **Go 1.25** (or whatever `go.mod` says)
+   - Install: [https://go.dev/dl/](https://go.dev/dl/) or your distro's package
+   - Verify: `go version`
 
-   Без них сборка падает с ошибками вроде `Package gl was not found` или `X11/Xcursor/Xcursor.h: No such file or directory`.
+2. **System packages for CGO and Fyne (OpenGL + X11/GLFW)**
+
+   Without them the build fails with errors like `Package gl was not found` or `X11/Xcursor/Xcursor.h: No such file or directory`.
 
    **Debian / Ubuntu:**
    ```bash
@@ -26,61 +28,61 @@
      libXxf86vm-devel libwayland-devel
    ```
 
-3. **CGO** — должен быть включён (по умолчанию `CGO_ENABLED=1`).
+3. **CGO** — must be enabled (`CGO_ENABLED=1` by default).
 
-## Сборка
+## Building
 
-### Вариант 1: Скрипт (рекомендуется)
+### Option 1: the script (recommended)
 
-Скрипт проверяет наличие зависимостей и выводит команды установки при их отсутствии.
+The script checks for the dependencies and prints the install commands when they are missing.
 
 ```bash
 cd /path/to/singbox-launcher
 ./build/build_linux.sh
 ```
 
-Результат: бинарник `singbox-launcher` (или `singbox-launcher-1`, …) в корне репозитория.
+Result: a `singbox-launcher` binary (or `singbox-launcher-1`, …) in the repository root.
 
-### Вариант 2: Сборка в Docker
+### Option 2: build in Docker
 
-Если не хотите ставить системные пакеты, можно собрать в контейнере. Запуск **из корня репозитория**:
+If you would rather not install the system packages, build inside a container. Run it **from the repository root**:
 
 ```bash
 docker build -f build/Dockerfile.linux --target export -o type=local,dest=. .
 chmod +x singbox-launcher
 ```
 
-Бинарник появится в текущей папке.
+The binary appears in the current directory.
 
-### Вариант 3: Ручная сборка
+### Option 3: manual build
 
-После установки зависимостей:
+Once the dependencies are installed:
 
 ```bash
 export CGO_ENABLED=1
 GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w" -o singbox-launcher
 ```
 
-## Решение проблем
+## Troubleshooting
 
 ### Package gl was not found / pkg-config
 
-- Установите `pkg-config` и пакеты OpenGL: на Debian/Ubuntu — `libgl1-mesa-dev`, см. блок «Системные пакеты» выше.
+- Install `pkg-config` and the OpenGL packages: on Debian/Ubuntu that's `libgl1-mesa-dev`, see the "System packages" block above.
 
 ### X11/Xcursor/Xcursor.h: No such file or directory
 
-- Не хватает заголовков X11. На Debian/Ubuntu: `libxcursor-dev` и остальные пакеты из списка выше (libxrandr-dev, libxi-dev и т.д.).
+- X11 headers are missing. On Debian/Ubuntu: `libxcursor-dev` and the rest of the list above (libxrandr-dev, libxi-dev and so on).
 
-### Сборка в Docker: COPY failed / no such file
+### Docker build: COPY failed / no such file
 
-- Запускайте `docker build` **из корня репозитория** (где лежат `go.mod` и `go.sum`), с контекстом `.` и `-f build/Dockerfile.linux`.
+- Run `docker build` **from the repository root** (where `go.mod` and `go.sum` live), with `.` as the context and `-f build/Dockerfile.linux`.
 
-## Запуск
+## Running
 
 ```bash
 ./singbox-launcher
 ```
 
-Если `sing-box` установлен из пакета дистрибутива и доступен в `PATH`, лаунчер использует его; иначе положите бинарник в `bin/sing-box` рядом с лаунчером или скачайте через вкладку **Core**.
+If `sing-box` is installed from a distro package and available on `PATH`, the launcher uses it; otherwise put the binary in `bin/sing-box` next to the launcher, or download it from the **Local** tab.
 
-При необходимости настройки TUN см. основной README (раздел про Linux capabilities и `setcap`).
+For TUN setup, see the main README (the section on Linux capabilities and `setcap`).

@@ -1,6 +1,6 @@
 # Debug API
 
-**🌐 Language**: English | [Русский](API.ru.md)
+**🌐 Язык**: [English](API.md) | Русский
 
 Локальный HTTP API на `127.0.0.1`, bearer-auth, выключен по умолчанию. **Самоописываемый** (SPEC 078): `GET /` отдаёт манифест, `GET /help` — список эндпоинтов, так что агенту достаточно дать base URL + токен. Группы: discovery/info, state read, state write, actions, traffic profiler, snapshot. Используется для автоматизации (bash + curl), MCP-обёрток для AI-агентов, CI/CD-валидации шаблонов, headless-deployment и снятия полного снапшота для bug-report’а (`/debug/snapshot`).
 
@@ -42,20 +42,20 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 
 ---
 
-## Discovery & info
+## Обнаружение и справка
 
-The API is **self-describing** (SPEC 078): point an agent at the base URL with the token and it can read the surface itself.
+API **самоописываемый** (SPEC 078): дайте агенту base URL и токен — дальше он прочитает поверхность сам.
 
-| Method | Path | Auth | Response |
+| Метод | Путь | Auth | Ответ |
 |---|---|---|---|
 | GET | `/ping` | — | `{"ok":true}` |
-| GET | `/` | ✓ | **Manifest** — `api`, `spec`, `launcher`, `core`, `auth`, `docs` (version-pinned link to this file), `hint`, `endpoints[]` (method/path/summary). |
-| GET | `/help` | ✓ | `{"endpoints":[{method,path,summary,auth}, …]}` — just the endpoint list. |
+| GET | `/` | ✓ | **Манифест** — `api`, `spec`, `launcher`, `core`, `auth`, `docs` (ссылка на этот файл, привязанная к версии), `hint`, `endpoints[]` (метод/путь/описание). |
+| GET | `/help` | ✓ | `{"endpoints":[{method,path,summary,auth}, …]}` — только список эндпоинтов. |
 | GET | `/version` | ✓ | `{"launcher":"v…","singbox":"1.14.0-lx.5","api":"debugapi/v1"}` |
 
-An authed request to any **unknown** path returns `404` with a `docs` pointer, so an agent that guessed wrong is nudged back to `/` and this file.
+Авторизованный запрос к **неизвестному** пути возвращает `404` с указателем `docs` — агент, промахнувшийся с путём, возвращается к `/` и к этому файлу.
 
-The Settings → Debug API screen has a **Copy API info** button that puts a *connection card* JSON on the clipboard (`base_url`, `token`, `launcher`, `core`, `auth`, `docs`, `hint`) — hand it to an agent and it has everything to connect from scratch.
+На экране Settings → Debug API есть кнопка **Copy API info**: она кладёт в буфер JSON-карточку подключения (`base_url`, `token`, `launcher`, `core`, `auth`, `docs`, `hint`) — передайте её агенту, и у него есть всё, чтобы подключиться с нуля.
 
 ```bash
 curl -s "$API/ping"
@@ -66,11 +66,11 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 
 ---
 
-## State read
+## Чтение состояния
 
-| Method | Path | Назначение |
+| Метод | Путь | Назначение |
 |---|---|---|
-| GET | `/state` | Live runtime snapshot: `{running, active_proxy, selected_group, singbox_version, subs_last_updated_unix}` |
+| GET | `/state` | Снимок рантайма: `{running, active_proxy, selected_group, singbox_version, subs_last_updated_unix}` |
 | GET | `/proxies` | Список прокси (`[]api.ProxyInfo`) — из текущего sing-box config |
 | GET | `/state/full` | Полный `state.json` (после load + миграций) |
 | GET | `/state/rules` | `{"rules":[]state.Rule}` — секция SPEC 053 |
@@ -91,11 +91,11 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/state/full" > backup.json
 
 ---
 
-## State write
+## Запись состояния
 
 Все patch-endpoint'ы возвращают `{"ok":true,"diff_summary":["..."]}` на успех. Sync-write через `state.Save` → atomic `.tmp + Rename`; **per-path mutex отсутствует** (полагается на atomic write — concurrent PATCH safe от частичной записи, но last-write-wins).
 
-| Method | Path | Body | Что делает |
+| Метод | Путь | Тело | Что делает |
 |---|---|---|---|
 | PATCH | `/state/rules` | `{"mode":"replace"\|"append", "rules":[]state.Rule}` | Заменяет / добавляет правила. Каждое валидируется через `r.DecodeBody()` (kind discriminator: preset/inline/srs). |
 | PATCH | `/state/dns` | `state.DNSOptions` | Заменяет **всю** dns_options (servers + rules). Каждый server/rule валидируется по `kind`. **Тело обязано содержать `servers` и/или `rules`** — keyless `{}` → `422` (защита от молчаливого стирания всей секции), состояние не трогается. |
@@ -130,11 +130,11 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application
 
 ---
 
-## Settings
+## Настройки
 
 `bin/settings.json` — launcher-level preferences (отдельный namespace от `state.json`). Изменения подхватываются на лету: subscription fetcher читает `LoadSubscriptionSettingsFunc` на каждом запросе, sing-box restart НЕ нужен.
 
-| Method | Path | Что делает |
+| Метод | Путь | Что делает |
 |---|---|---|
 | GET | `/settings/user-agent` | `{user_agent, default, effective}` — `user_agent` raw stored (может быть пустой), `default` — что отдаст `BuildSubscriptionUserAgent()`, `effective` — что реально уйдёт в следующий fetch |
 | PATCH | `/settings/user-agent` | `{"user_agent":"..."}` — записать кастомный UA. `{"user_agent":""}` = reset к default. Поле обязательно (пропуск = `400`) — иначе truncated request мог бы случайно стереть значение |
@@ -158,11 +158,11 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application
 
 ---
 
-## Actions
+## Действия
 
 Все `POST`-only (`GET` → 405). Synchronous (блокируют до завершения). Success = `{"ok":true}`.
 
-| Method | Path | Что делает |
+| Метод | Путь | Что делает |
 |---|---|---|
 | POST | `/action/update-subs` | `ConfigService.UpdateConfigFromSubscriptions` — synchronous re-fetch всех подписок |
 | POST | `/action/start` | Запускает sing-box (fire-and-forget) |
@@ -186,7 +186,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API/action/start"
 
 Контроль за live DNS/TCP/UDP capture session'ом и просмотр rolling buffer'а (последние 60 секунд; параметр `last` клампится до 10 минут). Та же подсистема, что окно **Traffic Profiler** в Diagnostics.
 
-| Method | Path | Назначение |
+| Метод | Путь | Назначение |
 |---|---|---|
 | GET | `/traffic/status` | Состояние активной сессии (recording, target, events_dropped, etc.) |
 | GET | `/traffic/live?last=60s` | Snapshot rolling buffer'а. `last` — Go duration (≤ 10 минут, > 0). Возвращает `{events, cutoff_ts}` |
@@ -217,9 +217,9 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/traffic/live?last=30s" | jq '.ev
 
 ---
 
-## Snapshot
+## Снапшот
 
-| Method | Path | Назначение |
+| Метод | Путь | Назначение |
 |---|---|---|
 | GET | `/debug/snapshot` | `core.snapshot.Build()` — template + state + cache + config.json в одном JSON-е. Идеально для bug-report'а |
 
@@ -228,7 +228,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/traffic/live?last=30s" | jq '.ev
 curl -s -H "Authorization: Bearer $TOKEN" "$API/debug/snapshot" > snapshot-$(date +%Y%m%d-%H%M%S).json
 ```
 
-Response shape:
+Форма ответа:
 ```json
 {
   "captured_at": "2026-05-28T12:00:00Z",
@@ -242,9 +242,6 @@ Response shape:
 
 `missing` — массив, `errors` — объект `{файл: сообщение}`; пустые поля опускаются целиком (omitempty).
 
-```json
-```
-
 ---
 
 ## Общие правила
@@ -257,7 +254,7 @@ Response shape:
 
 ---
 
-## Use-cases
+## Сценарии использования
 
 - **Bash + curl скрипты** — health-check в systemd-юните, регулярный refresh подписок из cron, валидация что `running=true` после deploy.
 - **MCP-обёртки для AI-агентов** — Claude / GPT / прочие могут читать `/state/full`, делать PATCH'и, триггерить rebuild. См. [SPEC 038 §6.5](../SPECS/038-F-C-DEBUG_API/SPEC.md).
@@ -278,7 +275,7 @@ Response shape:
 
 ---
 
-## Source
+## Исходники
 
 | Файл | Что внутри |
 |---|---|

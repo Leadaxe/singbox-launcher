@@ -1,298 +1,91 @@
-# Тесты для singbox-launcher
+# singbox-launcher tests
 
-Этот документ описывает автоматизированные тесты, созданные для проекта singbox-launcher.
+**🌐 Language**: English | [Русский](TEST_README.ru.md)
 
-## Структура тестов
+How the project's test suite is laid out and how to run it: roughly **1130 tests
+across 197 files**. Listing them by name here is pointless — such a list goes stale
+faster than the document does; what follows is where things live and how to run them.
 
-### 1. Тесты парсера узлов (`core/config/subscription/node_parser_test.go`)
+## Running the tests
 
-Покрывают функциональность парсинга различных типов прокси-узлов:
+### Centralized scripts (recommended)
 
-- **TestIsDirectLink** - проверка определения прямых ссылок (VLESS, VMess, Trojan, Shadowsocks)
-- **TestParseNode_VLESS** - парсинг VLESS узлов с различными параметрами (Reality, TLS, порты)
-- **TestParseNode_VMess** - парсинг VMess (base64 JSON, legacy, фрагмент `#`, транспорты в т.ч. httpupgrade/h2)
-- **TestParseNode_Trojan** - парсинг Trojan узлов
-- **TestParseNode_Shadowsocks** - парсинг Shadowsocks узлов (SIP002 формат)
-- **TestParseNode_SkipFilters** - тестирование фильтров пропуска узлов (по тегу, хосту, regex)
-- **TestParseNode_RealWorldExamples** - парсинг реальных примеров из подписки
-- **TestBuildOutbound** - генерация outbound конфигураций для различных типов узлов
-- **TestParseNode_VLESS_TransportAndTLS** - VLESS: ws/grpc/http/httpupgrade, `peer`, `obfsParam`, TLS/Reality
-- **TestParseNode_Trojan_WebSocket** - Trojan + WebSocket и TLS (`peer` и др.)
-- **TestParseNode_Hysteria2** / **TestBuildOutbound_Hysteria2** - Hysteria2 URI и outbound (TLS, pinSHA256, fp)
-- **TestParseNode_SSH**, **TestBuildOutbound_SSH** - SSH
-- **TestParseNode_SOCKS5**, **TestParseNode_Wireguard** - SOCKS5, WireGuard
-- **AmneziaWG 2.0 (`core/config/subscription/awg_test.go`)** — `TestParseWireGuardURI_AWGFields` (jc/jmin/jmax, s1-s4, h1-h4, i1-i5), `TestParseWireGuardURI_MTUClamp` (MTU авто-клампится до 1280), `TestParseNode_AWGScheme_RoutesToWireguard` / `TestIsDirectLink_AWG` (схема `awg://`), `TestShareURI_AWG_RoundTrip` / `TestShareURI_AWG_ZeroJc_Preserved` / `TestAWG_TypeFidelity_JSON`
-- **TestSanitizeForDisplay_stripsInvalidUTF8WithoutFFFD** - санитизация отображения
-
-**Дополнительно (обратная операция — outbound → share URI):**
-
-- **`core/config/subscription/share_uri_encode_test.go`** — `ShareURIFromOutbound`: round-trip VLESS/Trojan/Shadowsocks, `ErrShareURINotSupported` для `selector`, SOCKS из map; WireGuard round-trip и multi-peer → `ErrShareURINotSupported`; **XHTTP** round-trip (`TestShareURIFromOutbound_RoundTripXHTTP` — `type=xhttp`/`mode`/`x_padding_bytes` сохраняются, не деградируют в `httpupgrade`) и `TestShareURIFromOutbound_HTTPUpgradeNotXHTTP` (`httpupgrade` не экспортируется как `type=xhttp`)
-- **`core/config/outbound_share_test.go`** — `ShareProxyURIForOutboundTag` по минимальному `config.json` (vless и WireGuard только в `endpoints[]`), ошибка поиска для несуществующего тега
-
-### 2. Тесты парсера подписок (`core/config/subscription/subscription_parser_test.go`)
-
-Покрывают функциональность работы с подписками:
-
-- **TestDecodeSubscriptionContent** - декодирование подписок (base64 URL/стандарт, plain text)
-- **TestNormalizeParserConfig** - нормализация ParserConfig (миграция версий, установка значений по умолчанию)
-- **TestExtractParserConfig** - извлечение @ParserConfig блока из config.json
-- **TestUpdateLastUpdatedInConfig** - обновление поля last_updated в конфигурации
-- **TestIsSubscriptionURL** - определение URL подписок
-
-### 3. Тесты сервиса конфигурации (`core/config_service_test.go`)
-
-Покрывают логику обработки прокси-источников:
-
-- **TestProcessProxySource_Subscription** - обработка подписок и прямых ссылок
-- **TestProcessProxySource_SkipFilters** - применение фильтров пропуска
-- **TestProcessProxySource_TagDeduplication** - дедупликация тегов
-- **TestMakeTagUnique** - создание уникальных тегов
-- **TestLogDuplicateTagStatistics** - логирование статистики дубликатов
-- **TestProcessProxySource_RealWorldExamples** - обработка реальных примеров
-
-### 4. Тесты конфигуратора (`ui/configurator/business/`)
-
-Покрывают логику мастера конфигурации:
-
-- **TestValidateParserConfig** (`validator_test.go`) - валидация ParserConfig
-- **TestMergeRouteSection** (`generator_test.go`) — слияние секции **`route`** (база шаблона + **`custom_rules`**)
-- **`rules_library_test.go`** — клон пресета, миграция library, **`EnsureCustomRulesDefaultOutbounds`**
-- **TestApplyURLToParserConfig_Logic** (`parser_test.go`) - классификация строк на подписки и connections (применение URL использует buildProxiesFromInputs)
-- **TestLoadConfigFromFile** (`loader_test.go`) - загрузка конфигурации из файла
-- **TestDefaultWizardFlow_NextNextFinish** (`wizard_integration_test.go`) - интеграционный тест полного wizard flow
-- **TestWizardFlowWithCustomRules** (`wizard_integration_test.go`) - wizard flow с кастомными правилами
-- **`parser_stale_test.go`** — смена **`ParserConfigJSON`** во время мок-генерации outbounds: результаты не применяются; без смены — применяются
-- **`TestGetAvailableOutbounds_MemoJSONPath`** (`outbound_test.go`) — мемо по JSON и сброс через **`InvalidatePreviewCache`**
-
-### 5. Интеграционные тесты (`core/integration_test.go`)
-
-Комплексные тесты, проверяющие полный цикл работы:
-
-- **TestIntegration_RealWorldSubscription** - парсинг реальных подписок из BLACK_VLESS_RUS.txt
-- **TestIntegration_SubscriptionDecoding** - декодирование и парсинг подписок
-- **TestIntegration_ParserConfigFlow** - полный цикл от подписки до ParserConfig
-
-## Запуск тестов
-
-### Быстрый запуск (рекомендуется)
-
-Для быстрого запуска всех unit-тестов (без GUI зависимостей):
-
-**Windows:**
 ```bash
-.\test.bat
+./build/test_linux.sh      # Linux
+./build/test_darwin.sh     # macOS
+build\test_windows.bat     # Windows
 ```
 
-**macOS/Linux:**
+The scripts **exclude the GUI packages** (`/ui/`, `fyne.io`), which need OpenGL on a
+headless runner; they set up the environment (CGO, PATH, GCC on Windows), write a
+full log into `temp/<platform>/`, and print the package list before starting.
+
+Parameters (the same for all three):
+
+| Parameter | Effect |
+|---|---|
+| `nopause` / `silent` | don't wait for a keypress at the end |
+| `short` | short tests only |
+| `run TestName` | a single test by name |
+| trailing argument | package path (defaults to `./...`) |
+
 ```bash
-chmod +x test.sh
-./test.sh
+./build/test_darwin.sh nopause ./core/config/subscription
+./build/test_darwin.sh nopause run TestParseNode_VLESS ./core/config/subscription
 ```
 
-Эти скрипты тестируют только бизнес-логику (без CGO), что быстро и работает везде.
+### Directly via `go test`
 
----
-
-### Запуск через батник (Windows, полное тестирование)
-
-Батник автоматически настраивает окружение (CGO, PATH, GCC) и запускает тесты.
-
-**Особенности батника:**
-- Показывает список пакетов, которые будут тестироваться перед запуском
-- Отображает время начала и окончания тестов
-- Сохраняет полный лог тестов в файл `temp\windows\test_output.log`
-- Выводит прогресс выполнения тестов в реальном времени
-- Использует флаг `-count=1` для гарантии выполнения тестов без использования кеша
-
-#### Запуск всех тестов
 ```bash
-# С паузой в конце
-.\build\test_windows.bat
-
-# Без паузы
-.\build\test_windows.bat nopause
-```
-
-#### Запуск тестов конкретного пакета
-```bash
-# Тесты парсера узлов
-.\build\test_windows.bat nopause ./core/config/subscription
-
-# Тесты сервиса конфигурации
-.\build\test_windows.bat nopause ./core
-
-# Тесты визарда (требуют CGO)
-.\build\test_windows.bat nopause ./ui/configurator/business
-
-# Интеграционные тесты (требуют CGO)
-.\build\test_windows.bat nopause ./core
-```
-
-#### Запуск конкретного теста
-```bash
-# По имени теста
-.\build\test_windows.bat nopause run TestParseNode_VLESS ./core/config/subscription
-
-# Короткие тесты (если поддерживается)
-.\build\test_windows.bat nopause short
-```
-
-#### Параметры батника
-- `nopause` или `silent` - не ждать нажатия клавиши в конце
-- `short` - запустить только короткие тесты
-- `run TestName` - запустить конкретный тест (требует указания имени теста)
-- Второй параметр - путь к пакету (по умолчанию `./...` - все тесты)
-
-#### Мониторинг прогресса тестов
-
-Батник предоставляет несколько способов отслеживания прогресса:
-
-1. **Вывод на экран**: Тесты выводят информацию в реальном времени с флагом `-v` (verbose)
-2. **Лог-файл**: Полный вывод сохраняется в `temp\windows\test_output.log`
-3. **Список пакетов**: Перед запуском показывается список всех пакетов, которые будут тестироваться
-4. **Временные метки**: Отображается время начала и окончания тестов
-
-**Проверка активности тестов:**
-
-Если кажется, что тесты зависли, можно проверить:
-
-```cmd
-:: Проверить процессы Go
-tasklist | findstr go
-
-:: Проверить использование CPU (PowerShell)
-powershell -Command "Get-Process go -ErrorAction SilentlyContinue | Format-Table ProcessName, Id, CPU, @{Name='Memory(MB)';Expression={[math]::Round($_.WorkingSet/1MB,2)}}, @{Name='Runtime';Expression={(Get-Date) - $_.StartTime}} -AutoSize"
-
-:: Проверить последние изменения в лог-файле
-dir /o-d temp\windows\test_output.log
-```
-
-Если процессы `go.exe` или `cgo.exe` активны (используют CPU или память меняется), тесты работают нормально.
-
-### Запуск через go test напрямую
-
-**Важно:** Для тестов, использующих Fyne (визард, интеграционные), требуется `CGO_ENABLED=1` и компилятор C (gcc).
-
-#### Запуск всех тестов
-```bash
-# С CGO (требуется для визарда и интеграционных тестов)
-set CGO_ENABLED=1
-go test ./...
-
-# Без CGO (только тесты без UI зависимостей)
-set CGO_ENABLED=0
-go test ./core/config/subscription
-```
-
-#### Запуск тестов конкретного модуля
-```bash
-# Тесты парсера узлов
-go test ./core/config/subscription -v
-
-# Тесты парсера подписок
-go test ./core/config/subscription -v -run TestDecodeSubscriptionContent
-
-# Тесты сервиса конфигурации
-go test ./core -v -run TestProcessProxySource
-
-# Интеграционные тесты (требуют CGO)
-set CGO_ENABLED=1
-go test ./core -v -run TestIntegration
-```
-
-#### Запуск конкретного теста
-```bash
+go test ./core/... ./internal/... ./api/...     # without the GUI packages
 go test ./core/config/subscription -v -run TestParseNode_VLESS
 ```
 
-## Покрытие тестами
+The GUI packages (`ui/...`) require `CGO_ENABLED=1` and a C compiler; on a headless
+machine they fail at OpenGL initialization — which is exactly why the scripts skip
+them. Running them locally only makes sense on a machine with a graphical
+environment.
 
-Тесты покрывают следующие основные сценарии:
+## Where things live
 
-1. **Парсинг узлов**:
-   - Все поддерживаемые протоколы (VLESS, VMess, Trojan, Shadowsocks)
-   - Различные параметры (Reality, TLS, порты, пути)
-   - Обработка ошибок и некорректных данных
+| Area | Files | Tests | Coverage |
+|---|---:|---:|---|
+| `core/config/subscription` | 34 | ~240 | per-protocol URI parsers, share-URI round-trips, subscription-body classification, Xray JSON, sing-box JSON import, deduplication |
+| `core/config` (all of it, `subscription` included) | 53 | ~335 | plus outbound generation, node identity, the group contract, per-scheme emission |
+| `core/build` | 20 | ~141 | config assembly: DNS/route resolvers, preset expansion, outbound sync, SRS filenames |
+| `core/state` | 13 | ~72 | the state schema, v2–v6 load and migration, atomic save, legacy↔canonical adapters |
+| `core/services` | 9 | ~48 | the remote-machine registry, Deploy resources, the proxy-operation transport, the SRS downloader |
+| `core` (root) | — | — | core engines (`CoreBackend`), downloaders, rebuild from the raw cache, metadata refresh, integration tests |
+| `internal` | 23 | ~79 | leaf utilities: locales, the traffic profiler, platform helpers, `wizardsync` |
+| `ui` | 40 | ~181 | **excluded from the scripts** — wizard business logic, models, machine-row formatting |
+| `api` | 3 | 4 | the Clash API client |
 
-2. **Работа с подписками**:
-   - Декодирование base64 (URL и стандартное)
-   - Обработка plain text подписок
-   - Извлечение и обновление ParserConfig
+The invariants the suite exists to protect:
 
-3. **Фильтрация узлов**:
-   - Пропуск по тегу, хосту, схеме
-   - Regex фильтры (с учетом регистра и без)
-   - Негативные фильтры
+- **Emitter and parser travel in pairs.** A new scheme without an emission branch
+  silently truncates a node to `{tag,type,server,server_port}` — every scheme has an
+  emission test.
+- **Share-URI round-trips.** node → `config.json` → share URI → node must not lose
+  fields; `ErrShareURINotSupported` covers what cannot be encoded into a single URI
+  (selectors, WireGuard with several peers, `detour` chains).
+- **The config passes `sing-box check`.** Where the core is available, the generated
+  config is validated by the real core rather than only compared against a golden file.
+- **Locale completeness.** `TestAllKeysPresent` fails when a key exists in one
+  language and is missing in another.
 
-4. **Генерация конфигураций**:
-   - Создание outbound JSON для различных типов узлов
-   - Генерация селекторов
-   - Нормализация ParserConfig
+## Requirements
 
-5. **Wizard flow**:
-   - Полный цикл работы визарда от загрузки шаблона до генерации конфига
-   - Эмуляция ввода URL подписки
-   - Проверка валидности генерируемого конфига
+- **Go 1.25** or newer (`go.mod`). The legacy Win7 build pins Go 1.20 separately via
+  `go.win7.mod` — its dependencies resolve differently, see [BUILD_WINDOWS.md](BUILD_WINDOWS.md).
+- Dependencies downloaded (`go mod download`).
+- For the GUI packages — `CGO_ENABLED=1` and GCC (MinGW-w64 / TDM-GCC on Windows).
+  The Windows script looks for GCC in the usual places (`C:\msys64\mingw64\bin`) and
+  adds it to PATH itself.
 
-6. **Валидация конфига**:
-   - Проверка через sing-box check (если доступен)
-   - Кросс-платформенная поддержка (Windows/macOS/Linux)
+## Notes
 
-7. **Реальные данные**:
-   - Использование примеров из BLACK_VLESS_RUS.txt
-   - Проверка работы с реальными подписками
-
-## Примеры тестовых данных
-
-Тесты используют реальные примеры из подписки:
-- VLESS узлы с Reality
-- VLESS узлы с WebSocket
-- VLESS узлы с gRPC
-- Различные страны и теги
-
-## Требования для запуска тестов
-
-### Для всех тестов
-- Go 1.25.0 или выше (`go.mod`); legacy Win7-сборка отдельно пинит Go 1.20 через `go.win7.mod`
-- Установленные зависимости проекта (`go mod download`)
-
-### Для тестов с UI зависимостями (визард, интеграционные)
-- **CGO_ENABLED=1** (включен по умолчанию в батнике)
-- Компилятор C (gcc) - обычно устанавливается вместе с MinGW-w64 или TDM-GCC
-- Батник автоматически проверяет наличие GCC и добавляет его в PATH
-
-### Рекомендации
-- **Используйте батник** (`test_windows.bat`) для запуска тестов - он автоматически настраивает окружение
-- Если GCC не найден, батник попытается найти его в стандартных местах (C:\msys64\mingw64\bin)
-- Для ручного запуска через `go test` убедитесь, что `CGO_ENABLED=1` установлен для тестов визарда
-
-## Примечания
-
-- Для быстрого запуска unit-тестов используйте `test.bat` (Windows) или `test.sh` (macOS/Linux)
-- Тесты конфигуратора (`ui/configurator/business`) и интеграционные тесты (`core/integration_test.go`) требуют CGO из-за зависимостей от Fyne
-- Интеграционные тесты могут требовать сетевого доступа для проверки подписок
-- Тесты используют временные файлы и директории для изоляции
-- Батник автоматически устанавливает правильные переменные окружения (CGO_ENABLED, PATH, GOROOT)
-- Полный лог тестов сохраняется в `temp\windows\test_output.log` для последующего анализа
-- Батник показывает список пакетов перед запуском и временные метки для удобного отслеживания прогресса
-- См. также `TESTING.md` в корне проекта для подробной информации о тестировании
-
-## Быстрая справка
-
-**Запуск всех unit-тестов (без CGO):**
-```bash
-# Windows
-.\test.bat
-
-# macOS/Linux  
-./test.sh
-
-# Везде
-go test ./core/config/... ./internal/wizardsync/... ./ui/configurator/business/... ./ui/configurator/models/...
-```
-
-**Полное тестирование (с CGO):**
-```bash
-.\build\test_windows.bat
-```
-
+- Tests are isolated: temporary files and directories are created under `t.TempDir()`;
+  the shared per-run temp directory is `temp/<platform>/`, wiped at the start of a run.
+- The `-count=1` flag in the scripts guarantees runs are not served from the result cache.
+- No network needed: the integration tests (`core/integration_test.go`) work on
+  subscription samples embedded in the code, not on live URLs.
