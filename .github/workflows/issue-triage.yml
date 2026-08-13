@@ -77,7 +77,7 @@ jobs:
                  - bin/wizard_template.json   (настройки визарда: TUN, proxy-in, DNS и т.п.)
                  - core/config/, core/template/ (генерация config.json)
                  - ui/                          (интерфейс)
-                 - docs/, README.md, README_RU.md
+                 - docs/, README.md, README.ru.md
                НЕ выдумывай настройки — утверждай только то, что нашёл в коде.
 
             5. Проверь дубликаты среди открытых и закрытых issue:
