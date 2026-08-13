@@ -44,6 +44,62 @@ const (
 // Явный float: целочисленное деление констант дало бы 2, а не 0.7.
 const splitColumnRatio = float64(leftColumnWidth) / float64(leftColumnWidth+rightColumnWidth)
 
+// startWithMinimalLeft ставит разделитель так, чтобы при старте левая колонка
+// была ровно leftColumnWidth, а всё лишнее место доставалось правой.
+//
+// Фиксированная доля этого не даёт: на окне шире минимума 0.705 отдают левой
+// лишние пиксели, хотя список прокси в них не нуждается — растягивать надо
+// панель управления. Реальную ширину сплита узнаём только после раскладки,
+// поэтому доля пересчитывается в minSplitLayout при каждом Resize.
+type minSplitLayout struct {
+	split *container.Split
+	// applied — стартовая доля уже выставлена по реальной ширине. Дальше не
+	// вмешиваемся: иначе каждый ресайз окна отменял бы разделитель, который
+	// пользователь передвинул руками.
+	applied bool
+}
+
+func (l *minSplitLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
+	for _, o := range objects {
+		o.Resize(size)
+		o.Move(fyne.NewPos(0, 0))
+	}
+	if l.applied || size.Width <= 0 {
+		return
+	}
+	l.applied = true
+	offset := float64(leftColumnWidth) / float64(size.Width)
+	if offset > splitColumnRatio {
+		// Окно уже стартового: доля больше базовой означала бы, что правая
+		// колонка ужимается сильнее своего минимума.
+		offset = splitColumnRatio
+	}
+	if l.split.Offset != offset {
+		l.split.SetOffset(offset)
+	}
+}
+
+func (l *minSplitLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
+	var out fyne.Size
+	for _, o := range objects {
+		m := o.MinSize()
+		if m.Width > out.Width {
+			out.Width = m.Width
+		}
+		if m.Height > out.Height {
+			out.Height = m.Height
+		}
+	}
+	return out
+}
+
+// withMinimalLeftColumn оборачивает сплит так, чтобы стартовый offset считался
+// от фактической ширины, а не от предполагаемой.
+func withMinimalLeftColumn(split *container.Split) fyne.CanvasObject {
+	split.SetOffset(splitColumnRatio)
+	return container.New(&minSplitLayout{split: split}, split)
+}
+
 // CreateLocalTab — вкладка Local: слева прокси локального ядра, справа
 // управление этим ядром (бывшая вкладка Core целиком).
 //
@@ -56,8 +112,7 @@ func CreateLocalTab(ac *core.AppController) (fyne.CanvasObject, *ProxyListPanel)
 		panel.Content,
 		withColumnWidth(CreateCoreDashboardTab(ac), rightColumnWidth),
 	)
-	split.SetOffset(splitColumnRatio)
-	return split, panel
+	return withMinimalLeftColumn(split), panel
 }
 
 // withColumnWidth фиксирует минимальную ширину колонки, не трогая высоту:
@@ -80,8 +135,7 @@ func CreateRemoteTab(ac *core.AppController) (fyne.CanvasObject, *ProxyListPanel
 	// когда слоты принадлежат другой вкладке, нельзя.
 	machines := CreateMachineListPanel(ac, proxyPanel)
 	split := container.NewHSplit(proxyPanel.Content, withColumnWidth(machines, rightColumnWidth))
-	split.SetOffset(splitColumnRatio)
-	return split, proxyPanel
+	return withMinimalLeftColumn(split), proxyPanel
 }
 
 // MinWindowSize — минимальный и стартовый размер главного окна (§3.2).
