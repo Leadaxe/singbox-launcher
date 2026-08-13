@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"net"
 	"regexp"
 	"strconv"
 	"strings"
@@ -80,20 +81,37 @@ var timestampLayouts = []string{
 	"2006-01-02 15:04:05.000000",
 }
 
-// ipLooksLikeIP returns true if s parses as either v4 (dotted) or v6 (has a
-// `:`). The DNS resolved value is either an IP (terminal A/AAAA) or a CNAME
-// — distinguishing the two lets the profiler build a proper CNAME chain.
+// ipLooksLikeIP returns true if s is a literal IP address. The DNS resolved
+// value is either an IP (terminal A/AAAA) or a CNAME — distinguishing the two
+// lets the profiler build a proper CNAME chain.
+//
+// net.ParseIP, а не «есть ли двоеточие»: под тот признак подходила ЛЮБАЯ
+// строка с `:`, и rdata записи HTTPS/SVCB (RR 65) вида
+// `1 . alpn="h3,h2" ipv4hint="…" ipv6hint="2606:4700::"` уезжала в колонку IP
+// целиком — Chrome спрашивает такие записи постоянно. Домены ParseIP
+// отвергает сам, так что отдельная ветка под них не нужна.
 func ipLooksLikeIP(s string) bool {
-	if strings.Contains(s, ":") {
-		return true // crude but enough for v6 vs domain
-	}
-	dots := strings.Count(s, ".")
-	if dots != 3 {
+	return net.ParseIP(s) != nil
+}
+
+// looksLikeHostname — значение похоже на доменное имя, то есть на CNAME.
+//
+// Нужна как раз для того, чтобы отделить CNAME от rdata записей, которые мы не
+// разбираем: в имени не бывает пробелов, кавычек и знака «=», а в
+// `1 . alpn="h3,h2" ipv4hint="…"` они есть все сразу.
+func looksLikeHostname(s string) bool {
+	if s == "" || len(s) > 253 {
 		return false
 	}
-	for _, part := range strings.Split(s, ".") {
-		n, err := strconv.Atoi(part)
-		if err != nil || n < 0 || n > 255 {
+	if !strings.Contains(s, ".") {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9',
+			r == '.', r == '-', r == '_':
+		default:
 			return false
 		}
 	}
@@ -120,11 +138,16 @@ func ParseLogLine(line string) (LogLine, bool) {
 		out.ConnID = m[1]
 		out.Domain = strings.TrimSuffix(m[3], ".")
 		target := strings.TrimSuffix(m[4], ".")
-		if ipLooksLikeIP(target) {
+		switch {
+		case ipLooksLikeIP(target):
 			out.IP = target
-		} else {
+		case looksLikeHostname(target):
 			out.CnameTarget = target
 		}
+		// Ни адрес, ни имя — rdata записи, которую мы не разбираем (HTTPS/SVCB
+		// и подобные). Событие оставляем: домен и conn_id в нём верные, а
+		// класть параметры записи в IP или в CNAME-цепочку значило бы
+		// показывать их как то, чем они не являются.
 		return out, true
 	}
 

@@ -140,3 +140,40 @@ func TestIsDNSTimeout(t *testing.T) {
 		}
 	}
 }
+
+// Значение резолва бывает трёх видов: адрес, CNAME и rdata записи, которую мы
+// не разбираем. Третий вид раньше уезжал в колонку IP целиком — признаком
+// адреса считалось «есть двоеточие», а в HTTPS/SVCB-записи оно есть внутри
+// ipv6hint. Chrome спрашивает такие записи постоянно, так что мусор был виден
+// в каждой сессии.
+func TestIPLooksLikeIPRejectsSVCB(t *testing.T) {
+	svcb := `1 . alpn="h3,h2" ipv4hint="162.159.61.3,172.64.41.3" ipv6hint="2606:4700::1111"`
+	if ipLooksLikeIP(svcb) {
+		t.Fatal("rdata HTTPS/SVCB принята за IP")
+	}
+	if looksLikeHostname(svcb) {
+		t.Fatal("rdata HTTPS/SVCB принята за CNAME — мусор просто переехал бы в цепочку")
+	}
+
+	for _, ip := range []string{"162.159.61.3", "2606:4700:4700::1111", "::1", "0.0.0.0"} {
+		if !ipLooksLikeIP(ip) {
+			t.Errorf("%q не распознан как IP", ip)
+		}
+	}
+	for _, host := range []string{"example.com", "cdn.example.co.uk", "xn--80ak6aa92e.com", "a-b_c.test"} {
+		if ipLooksLikeIP(host) {
+			t.Errorf("%q принят за IP", host)
+		}
+		if !looksLikeHostname(host) {
+			t.Errorf("%q не распознан как имя", host)
+		}
+	}
+	// Без точки это не доменное имя: односегментные значения в CNAME не ходят.
+	if looksLikeHostname("localhost") {
+		t.Error("односегментное значение принято за имя")
+	}
+	// Старая проверка на «256» в октете должна сохраниться.
+	if ipLooksLikeIP("999.1.1.1") {
+		t.Error("999.1.1.1 принят за IP")
+	}
+}
