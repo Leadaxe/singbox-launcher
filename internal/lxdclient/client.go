@@ -6,11 +6,14 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
@@ -573,9 +576,22 @@ func DetectChannel(addr string) ChannelKind {
 	// Ошибка plain-запроса: разделяем «порт молчит» и «на порту не-HTTP».
 	// Голый TLS-listener без net/http-обёртки рвёт соединение на мусорном
 	// ClientHello-ожидании → клиент видит EOF/reset, но не refused.
-	s := err.Error()
-	if strings.Contains(s, "connection refused") || strings.Contains(s, "no such host") ||
-		strings.Contains(s, "timeout") || strings.Contains(s, "deadline") {
+	//
+	// Проверка типизированная, а не по подстроке: текст ошибки зависит от ОС.
+	// Windows на закрытый порт пишет «No connection could be made because the
+	// target machine actively refused it», где подстроки "connection refused"
+	// нет — и мёртвый порт уезжал в ChannelTLS. syscall.ECONNREFUSED един для
+	// всех платформ (Go мапит на него WSAECONNREFUSED), а неудача на этапе
+	// dial (OpError.Op == "dial") ловит остальные варианты «не достучались»:
+	// хост не разрезолвился, сеть недоступна.
+	var dnsErr *net.DNSError
+	var opErr *net.OpError
+	var netErr net.Error
+	switch {
+	case errors.Is(err, syscall.ECONNREFUSED),
+		errors.As(err, &dnsErr),
+		errors.As(err, &netErr) && netErr.Timeout(),
+		errors.As(err, &opErr) && opErr.Op == "dial":
 		return ChannelUnknown
 	}
 	return ChannelTLS
