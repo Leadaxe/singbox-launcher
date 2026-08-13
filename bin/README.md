@@ -123,7 +123,7 @@ This release includes prebuilt `sing-box.exe` (Windows) / `sing-box` (macOS/Linu
 ## 📖 Документация
 
 - **Полная документация**: [README.md](../README.md)
-- **Русская версия**: [README_RU.md](../README_RU.md)
+- **Русская версия**: [README.ru.md](../README.ru.md)
 - **Инструкции по сборке**: [docs/BUILD_WINDOWS.md](../docs/BUILD_WINDOWS.md)
 - **Создание шаблонов для Config Wizard**: [docs/CREATE_WIZARD_TEMPLATE.md](../docs/CREATE_WIZARD_TEMPLATE.md)
 - **Настройка парсера подписок**: [docs/ParserConfig.md](../docs/ParserConfig.md)

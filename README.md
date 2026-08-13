@@ -1,15 +1,15 @@
 # Sing-Box Launcher
 
+**🌐 Language**: English | [Русский](README.ru.md)
+
 [![GitHub](https://img.shields.io/badge/GitHub-Leadaxe%2Fsingbox--launcher-blue)](https://github.com/Leadaxe/singbox-launcher)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.24%2B-blue)](https://golang.org/)
-[![Version](https://img.shields.io/badge/version-1.1.2-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
+[![Go Version](https://img.shields.io/badge/Go-1.25%2B-blue)](https://golang.org/)
+[![Version](https://img.shields.io/badge/version-1.3.1-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
 
-**Desktop platform for network routing and traffic analysis. 15+ VPN protocols, configuration depth and API at enterprise level. Built on top of the [sing-box-lx](https://github.com/Leadaxe/sing-box-lx) fork (upstream sing-box + XHTTP transport + AmneziaWG 2.0) as execution engine — on every platform, including the Windows 7 32-bit legacy build.**
+**Desktop platform for network routing and traffic analysis. 13 VPN protocols, configuration depth and API at enterprise level. Built on top of the [sing-box-lx](https://github.com/Leadaxe/sing-box-lx) fork (upstream sing-box + XHTTP transport + AmneziaWG 2.0) as execution engine — on every platform, including the Windows 7 32-bit legacy build. Drives its own core and, over a mutually-authenticated channel, the cores of remote machines — a router or a VPS — each with its own config.**
 
 **Repository**: [https://github.com/Leadaxe/singbox-launcher](https://github.com/Leadaxe/singbox-launcher)
-
-**🌐 Languages**: [English](README.md) | [Русский](README_RU.md)
 
 ---
 
@@ -19,17 +19,18 @@
 
 A cross-platform desktop client (Windows, macOS, Linux) that wraps sing-box and adds the entire surface around it: visual configurator, multi-subscription management, per-server switching with ping, network observability, declarative routing with preset bundles, a local HTTP API, and self-healing supervision.
 
-Three layers that together define the product:
+Four layers that together define the product:
 
 - **User layer** — one-button start/stop, subscription URL → working VPN flow, server picker with ping, declarative rules via checkboxes, Traffic Profiler window with per-process attribution.
 - **Power layer** — Configurator with full sing-box rule semantics (CIDR, domain regex, process matching, sniff, GeoIP/Geosite via SRS), preset bundles with `if`/`if_or` conditions, DNS server selection with conditional rules.
-- **Headless layer** — bearer-auth Debug API on `127.0.0.1`, 24 endpoints covering state read/write, action triggers, traffic capture control, and a one-shot snapshot endpoint for support workflows.
+- **Fleet layer** — the **Remote** tab manages other machines (router, VPS, another Mac) running the core as a daemon: each has its own wizard profile and built config, its own Start/Stop and Deploy, its own traffic profiler and host telemetry window.
+- **Headless layer** — bearer-auth Debug API on `127.0.0.1`, 26 endpoints covering state read/write, action triggers, traffic capture control, and a one-shot snapshot endpoint for support workflows.
 
 ## Features
 
 ### Connectivity
 
-- **15 connection protocols** — vless, vmess, trojan, shadowsocks, hysteria, hysteria2, tuic, ssh, wireguard, naive (https / quic).
+- **13 connection protocols** — vless, vmess, trojan, shadowsocks, hysteria2, tuic, anytls, masque, ssh, socks / socks5, naive (https / quic), wireguard / AmneziaWG, plus Amnezia `vpn://` profiles.
 - **XHTTP transport** — `type=xhttp` on vless/vmess/trojan nodes is parsed, generated into `config.json`, and round-tripped back to share URIs (no longer degraded to httpupgrade). Runs on the bundled sing-box-lx core.
 - **AmneziaWG 2.0 (AWG2)** — obfuscation params on wireguard endpoints (`jc` / `jmin` / `jmax`, `s1`-`s4`, `h1`-`h4`, plus CPS packets `i1`-`i5`), parsed from both `wireguard://` and `awg://` URIs and emitted into `endpoints[]`. `h1`-`h4` accept AWG 2.0 randomization **ranges** (`lo-hi`) — the core picks a fresh in-range value on every handshake (core ≥ `1.14.0-lx.1-rc.17`). AWG endpoint MTU is auto-clamped to 1280.
 - **Amnezia import** — paste an Amnezia `vpn://…` link (the `.vpn` file content) or the raw `[Interface]/[Peer]` text of a WireGuard/AmneziaWG `.conf` straight into Sources: the launcher decodes the profile / detects the conf blocks and imports them as regular WG/AWG endpoints.
@@ -38,13 +39,21 @@ Three layers that together define the product:
 - **Per-source raw cache** — last working subscription body preserved on fetch failure (no broken config when provider is down).
 - **TUN inbound** — system-wide VPN driver on Windows / macOS / Linux with `auto-route`, `auto-redirect`, and `find_process` enabled by default.
 
+### Core engines and remote machines
+
+- **Two core engines behind one seam.** *Classic* (default, all platforms) spawns and supervises `sing-box run` and talks to it over the Clash API. *Daemon* (macOS) drives the core inside a long-lived system service (`sing-box lxd`) over gRPC + admin REST — the same in-process model the Android line uses. UI, tray, shortcuts and the Debug API all go through the active engine, so nothing above the seam knows which one is running.
+- **Daemon mode benefits** — sudo once (the launcher prepares the install command for **your own** Terminal and never runs anything privileged itself), the VPN keeps running after you quit the launcher (opt-out toggle), config changes swap the core in place with subprocess validation and auto-rollback to the last working config, plus richer observability: live status, connections, core logs and a **balancer pool** view over gRPC.
+- **Remote machines** — pair a router / VPS / another Mac over mTLS with a one-time invite (`address#fingerprint#code`). Each machine gets its own registry entry (name, platform, architecture, address), its own wizard profile and built `config.json`, and its own Start / Stop / Deploy — a config built for the router can no longer be deployed to the VPS.
+- **Deploy delivers resources, not just JSON** — rule-sets and subscription bodies the machine's config references are shipped into its resource store alongside the config.
+- **Host telemetry window** — per-machine CPU / memory / storage / network tables answering "why is the router slow" independently of the core's own traffic view.
+
 ### Routing & rules
 
 - **Preset bundles** — community-maintained rule packs with typed variables, local SRS rule-sets, and conditional fragments (`if` / `if_or`). Toggle as checkboxes.
 - **User rules** — five typed kinds: IP / CIDR, domain (suffix / keyword / regex), process (name or path regex), SRS URL, raw JSON.
 - **17+ matchers** — domain, IP CIDR, ports, network, protocol, process, package name, GeoSite / GeoIP via SRS, composite rules with `invert`.
 - **Per-rule outbound chains** through selectors (urltest / failover).
-- **SRS auto-download** — missing-file `⚠` badge on Configurator open; engine never tries to fetch SRS over a not-yet-up VPN.
+- **SRS auto-download** — missing-file `⚠` badge on Wizard open; engine never tries to fetch SRS over a not-yet-up VPN.
 
 ### DNS
 
@@ -54,7 +63,7 @@ Three layers that together define the product:
 
 ### Network observability
 
-- **Traffic Profiler** — always-on capture with 60-second × 3000-event rolling buffer, per-process attribution, CNAME-chain reconstruction, DNS-to-IP inferred matching.
+- **Traffic Profiler** — always-on capture with 60-second × 3000-event rolling buffer, per-process attribution, CNAME-chain reconstruction, DNS-to-IP inferred matching. A paired machine gets its own profiler instance and window (fed by its gRPC streams), so two machines can be watched side by side.
 - **Issue classification** — `⚠ DnsTimeout` / `⚠ TcpRstEarly` surfacing concrete diagnostic signals.
 - **Pre-session backfill** — last 60 seconds of matching events copied into a fresh recording session.
 - **Three-stream Log Viewer** — Internal launcher logs / Core sing-box log file / Clash API client log, with level filter and log-rotation safety.
@@ -74,12 +83,12 @@ Three layers that together define the product:
 - **Keyboard shortcuts** — `⌘R` / `Ctrl+R` reconnect (kill sing-box for restart), `⌘U` / `Ctrl+U` update subscriptions, `⌘P` / `Ctrl+P` ping all proxies.
 - **CLI flags** — `-start` (auto-start VPN on launch), `-tray` (start minimized to tray). Useful for autostart, system services, and headless deployment.
 - **Auto-loaders** — proxy list restored on every sing-box start; active outbound persists across restarts.
-- **Share URI** — right-click any proxy in the Servers tab → **Copy link** generates a share URI (`vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`, `wireguard://`) from the matching outbound in `config.json`.
+- **Share URI** — right-click any proxy in the server list (Local or Remote) → **Copy link** generates a share URI (`vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`, `wireguard://`) from the matching outbound in `config.json`.
 
 ### Power tools
 
-- **Debug API** — local HTTP API (24 endpoints, bearer-auth, off by default) for state read/write, action triggers, traffic capture control. See [Headless control plane](#headless-control-plane--debug-api).
-- **Configurator** — 6-tab visual editor (Sources / Outbounds / Rules / DNS / Settings / Preview) with schema validation, named state snapshots, atomic save.
+- **Debug API** — local HTTP API (26 endpoints, bearer-auth, off by default) for state read/write, action triggers, traffic capture control. See [Headless control plane](#headless-control-plane--debug-api).
+- **Configurator** — 7-tab visual editor (Target / Sources / Outbounds / Rules / DNS / Settings / Preview) with schema validation, named state snapshots, atomic save. The **Target** tab decides which machine the config is built for — this one, or a paired remote machine with its own OS/architecture and optional gateway role.
 - **Snapshot for support** — `GET /debug/snapshot` or **Copy snapshot** button packages template + state + cache + config into a single JSON for bug reports.
 - **Verbose toggle** — `🔬 dbg` button in Traffic Profiler flips sing-box `log_level=debug` with atomic rebuild and revert.
 
@@ -92,9 +101,9 @@ Three layers that together define the product:
 ## Quick start
 
 1. Download from [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases) and install (see [Installation](#installation)).
-2. Open the app → **Core** tab → click **Download** to fetch the matching `sing-box` binary (and `wintun.dll` on Windows). The core is the `sing-box-lx` fork (XHTTP + AmneziaWG 2.0) from its GitHub Releases — on every platform, including the Windows 7 32-bit `legacy-windows-7` build (with a GitHub-proxy mirror fallback if GitHub is blocked).
-3. Click **Configurator** → paste your subscription URL on the **Sources** tab → step through Outbounds / Rules / DNS / Settings / Preview → **Save**.
-4. Back in **Core** → **Start**. Switch servers on the **Servers** tab, monitor traffic via the **Traffic Profiler** button in Diagnostics.
+2. Open the app → **Local** tab → click **Download** to fetch the matching `sing-box` binary (and `wintun.dll` on Windows). The core is the `sing-box-lx` fork (XHTTP + AmneziaWG 2.0) from its GitHub Releases — on every platform, including the Windows 7 32-bit `legacy-windows-7` build (with a GitHub-proxy mirror fallback if GitHub is blocked).
+3. Click **Wizard** → paste your subscription URL on the **Sources** tab → step through Outbounds / Rules / DNS / Settings / Preview → **Save**.
+4. Back on **Local** → **Start**. Servers are in the same tab's left column; monitor traffic via the **Traffic Profiler** button in Diagnostics.
 
 ### Command-line flags
 
@@ -112,11 +121,11 @@ Useful for OS-level autostart (`LaunchAgents` / `Task Scheduler` / `systemd --us
 
 ![Server switching across subscriptions](docs/screenshots/02-server-switching.png)
 
-Add multiple subscription sources, each with its own update schedule and per-source raw cache. The **Servers** tab exposes selector groups (`proxy-out`, `vpn ①`, `ru VPN`, etc.) defined in your ParserConfig and shows per-server latency with one-click switching. Active outbound is mirrored in the system tray for quick swaps without opening the main window.
+Add multiple subscription sources, each with its own update schedule and per-source raw cache. The **Local** tab's server column exposes selector groups (`proxy-out`, `vpn ①`, `ru VPN`, etc.) defined in your ParserConfig and shows per-server latency with one-click switching. Active outbound is mirrored in the system tray for quick swaps without opening the main window.
 
 Per-source `SubscriptionMeta` surfaces upstream state — profile title, support URL, traffic usage (`UploadBytes` / `DownloadBytes` / `TotalBytes`), expiration date, last-fetch status, and provider announcements (`📢` on success-with-announce, `⚠` on error-with-announce — actionable URL in the UI).
 
-**Share URI** — right-click any proxy row in the Servers tab → first menu line shows the Clash API outbound type (lowercase: `vless`, `vmess`, `trojan`, `selector`, `direct`, …), then **Copy link** generates a share URI from the matching outbound in `config.json` (or from a WireGuard `endpoint[]` entry if the tag isn't an outbound). Convenient for moving a server to another device or sharing it with a teammate.
+**Share URI** — right-click any proxy row in the server list → first menu line shows the Clash API outbound type (lowercase: `vless`, `vmess`, `trojan`, `selector`, `direct`, …), then **Copy link** generates a share URI from the matching outbound in `config.json` (or from a WireGuard `endpoint[]` entry if the tag isn't an outbound). Convenient for moving a server to another device or sharing it with a teammate.
 
 ### Declarative routing with preset bundles
 
@@ -172,7 +181,7 @@ Issue classification surfaces concrete problems: `DnsTimeout` (DNS resolver did 
 The tray icon stays visible after the main window is closed and provides:
 
 - **Start / Stop** sing-box.
-- **Proxy switcher** — when Clash API is on, the active group's proxies appear as a submenu with current selection marked. Switching from the tray triggers the same path as switching from the Servers tab.
+- **Proxy switcher** — when Clash API is on, the active group's proxies appear as a submenu with current selection marked. Switching from the tray triggers the same path as switching from the server list.
 - **Show main window** / **Exit**.
 
 Combined with `-tray` CLI flag, this is the headless-style operating mode: launcher starts hidden, you control everything from the tray, the main window opens only when you need to configure.
@@ -183,11 +192,11 @@ Keyboard shortcuts (work regardless of which tab is focused, unless a text field
 | --- | --- |
 | `⌘R` / `Ctrl+R` | Reconnect (kill sing-box for restart — supervisor auto-recovers) |
 | `⌘U` / `Ctrl+U` | Update subscriptions |
-| `⌘P` / `Ctrl+P` | Ping all proxies (same as the Servers-tab ping-all button) |
+| `⌘P` / `Ctrl+P` | Ping all proxies (same as the ping-all button above the server list) |
 
 ### Headless control plane — Debug API
 
-Local HTTP API on `127.0.0.1`, bearer-auth, off by default. 24 endpoints in five groups:
+Local HTTP API on `127.0.0.1`, bearer-auth, off by default. 26 endpoints in five groups:
 
 | Group | Coverage |
 | --- | --- |
@@ -238,14 +247,15 @@ User Agent: `singbox-launcher/<version> (<os> <arch>)`. Privacy controls in Sett
 
 - **Recommended:** Windows 10 / 11 (x64).
 - **Legacy:** Windows 7 (x86/x64) via separate build `singbox-launcher-<version>-win7-32.zip` with the sing-box-lx fork core (32-bit `windows-386-legacy-windows-7` build — **XHTTP + AmneziaWG 2.0 work on Win7 too**) and 32-bit `wintun.dll`.
-- [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — fork core (XHTTP + AmneziaWG 2.0) auto-downloaded via the Core tab on **all** Windows builds, including the Windows 7 32-bit `legacy-windows-7` asset.
-- [WinTun](https://www.wintun.net/) (wintun.dll, MIT license) — auto-downloaded via the Core tab.
+- [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — fork core (XHTTP + AmneziaWG 2.0) auto-downloaded via the Local tab on **all** Windows builds, including the Windows 7 32-bit `legacy-windows-7` asset.
+- [WinTun](https://www.wintun.net/) (wintun.dll, MIT license) — auto-downloaded via the Local tab.
 
 ### macOS
 
 - **Universal** (recommended): macOS 11+ (Big Sur), supports Apple Silicon and Intel.
 - **Intel-only legacy build**: macOS 10.15+ (Catalina).
-- [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — fork core (XHTTP + AmneziaWG 2.0) auto-downloaded via the Core tab.
+- [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — fork core (XHTTP + AmneziaWG 2.0) auto-downloaded via the Local tab.
+- **Daemon mode** (optional, macOS only) additionally needs a core built with the `lxd` subcommand (`with_lx_command`). The pinned `RequiredCoreVersion` (`1.14.0-lx.26`) ships it. See [docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md).
 
 ### Linux
 
@@ -258,8 +268,8 @@ Pre-built binaries are not distributed. Build from source — see [Building from
 1. Download from [Releases](https://github.com/Leadaxe/singbox-launcher/releases) — regular archive for Win 10/11, `singbox-launcher-<version>-win7-32.zip` for Windows 7.
 2. Extract to any folder (e.g. `C:\Program Files\singbox-launcher`).
 3. Run `singbox-launcher.exe`.
-4. **Core** tab → **Download** to fetch `sing-box.exe`, then **Download wintun.dll** if needed.
-5. Open **Configurator** → paste subscription URL → walk through tabs → **Save** → **Start**.
+4. **Local** tab → **Download** to fetch `sing-box.exe`, then **Download wintun.dll** if needed.
+5. Open **Wizard** → paste subscription URL → walk through tabs → **Save** → **Start**.
 
 ### macOS
 
@@ -304,9 +314,13 @@ singbox-launcher/
 │   ├── wintun.dll                  — Windows only, auto-downloaded
 │   ├── config.json                 — sing-box runtime config (derived view)
 │   ├── wizard_template.json        — community template with preset bundles
-│   ├── wizard_states/<name>.json   — named state snapshots
+│   ├── wizard_states/
+│   │   ├── state.json              — this machine's wizard state
+│   │   ├── <name>.json             — named state snapshots
+│   │   └── remote/<machine-id>/    — one directory per paired machine:
+│   │                                 state.json, config.json, srs/, subscriptions/
 │   ├── subscriptions/<id>.raw      — per-source raw cache (SPEC 052)
-│   ├── rule_sets/*.srs             — cached SRS rule-sets
+│   ├── rule-sets/*.srs             — cached SRS rule-sets
 │   └── logs/                       — sing-box.log + rotated history
 └── singbox-launcher(.exe)
 ```
@@ -356,7 +370,9 @@ To run GUI tests locally, set `TEST_PACKAGE` manually inside the script or invok
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — full project architecture map.
 - **[SPECS/CONSTITUTION.md](SPECS/CONSTITUTION.md)** — architectural invariants.
-- **[SPECS/](SPECS/)** — 60+ feature specs (HWID protocol, traffic profiler, debug API, preset bundles, state-as-template-diff, atomic writes, typed event bus, …).
+- **[SPECS/](SPECS/)** — 90+ feature specs (HWID protocol, traffic profiler, debug API, preset bundles, state-as-template-diff, atomic writes, typed event bus, daemon core engine, remote machines, …).
+- **[docs/API.md](docs/API.md)** — Debug API reference with a curl cookbook.
+- **[docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md)** — daemon core engine, pairing, and remote-machine management.
 - **[docs/WIZARD_TEMPLATE.md](docs/WIZARD_TEMPLATE.md)** — `wizard_template.json` syntax reference for VPN providers shipping a custom template.
 - **[docs/ParserConfig.md](docs/ParserConfig.md)** — subscription parser configuration reference.
 - **[docs/TRAFFIC_PROFILER.md](docs/TRAFFIC_PROFILER.md)** — Traffic Profiler internals and usage.
@@ -366,9 +382,9 @@ To run GUI tests locally, set `TEST_PACKAGE` manually inside the script or invok
 
 | Symptom | First check |
 | --- | --- |
-| sing-box won't start | Download via **Core → Download**, then verify `config.json` exists. Check `bin/logs/sing-box.log`. |
-| Configurator opens but Save fails | Inspect Internal log in **Log window**; schema validation error message is logged. |
-| Clash API tab disabled | sing-box is not running (tab is intentionally disabled until engine is up). |
+| sing-box won't start | Download via **Local → Download**, then verify `config.json` exists. Check `bin/logs/sing-box.log`. |
+| Wizard opens but Save fails | Inspect Internal log in **Log window**; schema validation error message is logged. |
+| Server list is empty / disabled | sing-box is not running (the list is intentionally inert until the engine is up). |
 | Subscription returns empty / errors | Check **Subscription identification** in Settings — HWID-binding panels need `Send device ID` enabled. Look at the ⚠ badge tooltip for provider announce. |
 | TUN doesn't capture traffic (Linux/macOS) | TUN interface usually needs root: `sudo ./singbox-launcher` or `sudo setcap cap_net_admin+ep ./singbox-launcher` (Linux). |
 | Win7 32-bit: tray icon shows but window is blank / empty frame | OpenGL 2.0 vs Fyne's 2.1+ requirement — see [docs/WIN7_OPENGL.md](docs/WIN7_OPENGL.md) for the Mesa3D drop-in fix. |

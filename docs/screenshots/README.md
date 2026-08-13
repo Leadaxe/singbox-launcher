@@ -1,6 +1,6 @@
 # Screenshots
 
-Screenshots referenced from the root `README.md` and `README_RU.md`.
+Screenshots referenced from the root `README.md` and `README.ru.md`.
 
 ## Required files
 

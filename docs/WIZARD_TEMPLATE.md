@@ -1,5 +1,7 @@
 # `wizard_template.json` syntax
 
+**🌐 Language**: English | [Русский](WIZARD_TEMPLATE.ru.md)
+
 Reference for the wizard template format. A template is a single JSON file describing
 how the final sing-box `config.json` is assembled from the subscription and the user's
 choices.
