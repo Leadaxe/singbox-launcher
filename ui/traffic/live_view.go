@@ -249,7 +249,14 @@ func buildLiveView(deps WindowDeps) *liveView {
 	v.outboundSel = mkSelect(locale.T("traffic.byclient.outbound"), func(s string) { v.filter.Outbound = s })
 	v.ruleSel = mkSelect(locale.T("traffic.byclient.rule"), func(s string) { v.filter.Rule = s })
 
-	routeRow := container.NewGridWithColumns(3, v.clientSel, v.outboundSel, v.ruleSel)
+	// Клиентов у СВОЕГО ядра нет: трафик идёт от процессов этого компьютера,
+	// исходный адрес в соединениях Clash не заполняется вовсе. Список остался
+	// бы вечно пустым, поэтому в локальном окне его нет, а место делят
+	// оставшиеся два фильтра.
+	routeRow := container.NewGridWithColumns(2, v.outboundSel, v.ruleSel)
+	if deps.RemoteMachine {
+		routeRow = container.NewGridWithColumns(3, v.clientSel, v.outboundSel, v.ruleSel)
+	}
 
 	top := container.NewVBox(
 		searchEntry,
