@@ -152,26 +152,58 @@ func TestHostIfaceErrorsQuietWhenClean(t *testing.T) {
 }
 
 func TestHostIfaceRatesFirstSample(t *testing.T) {
-	// До второго замера скоростей нет — обе стороны прочерком.
-	got := hostIfaceRates(lxdclient.HostInterface{RxBytes: 100, TxBytes: 200})
-	if strings.Count(got, hostDash) != 2 {
-		t.Fatalf("hostIfaceRates на первом замере = %q, хотели два прочерка", got)
+	// До второго замера скоростей нет — в обеих колонках прочерк.
+	first := lxdclient.HostInterface{RxBytes: 100, TxBytes: 200}
+	if got := hostIfaceRxRate(first); got != hostDash {
+		t.Fatalf("hostIfaceRxRate на первом замере = %q, хотели прочерк", got)
+	}
+	if got := hostIfaceTxRate(first); got != hostDash {
+		t.Fatalf("hostIfaceTxRate на первом замере = %q, хотели прочерк", got)
 	}
 	// Счётчики при этом уже есть: именно они переживают разрывы.
-	totals := hostIfaceTotals(lxdclient.HostInterface{RxBytes: 24059590498, TxBytes: 24263091456})
-	if strings.Contains(totals, hostDash) {
-		t.Fatalf("hostIfaceTotals = %q: счётчики доступны сразу", totals)
+	live := lxdclient.HostInterface{RxBytes: 24059590498, TxBytes: 24263091456}
+	if got := hostIfaceRxTotal(live); strings.Contains(got, hostDash) {
+		t.Fatalf("hostIfaceRxTotal = %q: счётчики доступны сразу", got)
+	}
+	if got := hostIfaceTxTotal(live); strings.Contains(got, hostDash) {
+		t.Fatalf("hostIfaceTxTotal = %q: счётчики доступны сразу", got)
+	}
+}
+
+// Значения ячеек не несут стрелок: направление задаёт колонка, а пробел после
+// ↑/↓ в этом шрифте рвёт отрисовку.
+func TestHostIfaceCellsCarryNoArrows(t *testing.T) {
+	i := lxdclient.HostInterface{RxBytes: 1 << 20, TxBytes: 1 << 21, MTU: 1500}
+	for name, got := range map[string]string{
+		"rx_total": hostIfaceRxTotal(i),
+		"tx_total": hostIfaceTxTotal(i),
+		"rx_rate":  hostIfaceRxRate(i),
+		"tx_rate":  hostIfaceTxRate(i),
+		"mtu":      hostIfaceMTU(i),
+	} {
+		if strings.ContainsAny(got, "↑↓") {
+			t.Fatalf("%s = %q: стрелка живёт в шапке колонки, не в ячейке", name, got)
+		}
+	}
+	if got := hostIfaceMTU(lxdclient.HostInterface{}); got != hostDash {
+		t.Fatalf("hostIfaceMTU без MTU = %q: нулевого MTU не бывает", got)
 	}
 }
 
 func TestHostSwapDisabled(t *testing.T) {
-	// На роутере swap обычно не настроен: «0 Б из 0 Б» заставляет гадать.
-	if got := hostSwapText(lxdclient.HostMemory{}); !strings.Contains(got, "выключен") {
-		t.Fatalf("hostSwapText без swap = %q", got)
+	// На роутере swap обычно не настроен: «0 B of 0 B» заставляет гадать.
+	off := hostSwapText(lxdclient.HostMemory{})
+	if !strings.Contains(off, "disabled") {
+		t.Fatalf("hostSwapText без swap = %q", off)
 	}
 	m := lxdclient.HostMemory{SwapTotalBytes: 1 << 30, SwapFreeBytes: 1 << 29}
-	if got := hostSwapText(m); strings.Contains(got, "выключен") {
-		t.Fatalf("hostSwapText со swap = %q", got)
+	on := hostSwapText(m)
+	if strings.Contains(on, "disabled") {
+		t.Fatalf("hostSwapText со swap = %q", on)
+	}
+	// 512 МБ занято из гигабайта — обе цифры на месте.
+	if !strings.Contains(on, "512.0 MB") || !strings.Contains(on, "1.00 GB") {
+		t.Fatalf("hostSwapText со swap = %q", on)
 	}
 }
 
@@ -192,8 +224,21 @@ func TestHostMemoryDetailUsesAvailable(t *testing.T) {
 	if !strings.Contains(got, "213") {
 		t.Fatalf("hostMemoryDetail = %q: занятое считается от available", got)
 	}
-	if !strings.Contains(got, "кеш") {
+	if !strings.Contains(got, "cache") {
 		t.Fatalf("hostMemoryDetail = %q: кеш объясняет разницу free/available", got)
+	}
+}
+
+// Обратный порядок полей не должен уводить вычитание uint64 в переполнение:
+// «занято» тогда стало бы числом в эксабайтах вместо нуля.
+func TestHostMemoryDetailNoUnderflow(t *testing.T) {
+	m := lxdclient.HostMemory{TotalBytes: 100, AvailableBytes: 200}
+	if got := hostMemoryDetail(m); !strings.Contains(got, "0 B used") {
+		t.Fatalf("hostMemoryDetail при available > total = %q", got)
+	}
+	s := lxdclient.HostMemory{SwapTotalBytes: 100, SwapFreeBytes: 200}
+	if got := hostSwapText(s); !strings.Contains(got, "0 B of") {
+		t.Fatalf("hostSwapText при free > total = %q", got)
 	}
 }
 
@@ -201,8 +246,8 @@ func TestHostUptime(t *testing.T) {
 	if got := hostUptime(0); got != hostDash {
 		t.Fatalf("hostUptime(0) = %q", got)
 	}
-	// 121092 с с живого роутера = 1 сут 09:38.
-	if got := hostUptime(121092); got != "1 сут 09:38" {
+	// 121092 с с живого роутера = 1 сутки 09:38.
+	if got := hostUptime(121092); got != "1d 09:38" {
 		t.Fatalf("hostUptime(121092) = %q", got)
 	}
 	if got := hostUptime(3720); got != "01:02" {
@@ -224,10 +269,10 @@ func TestHostBytes(t *testing.T) {
 		in   uint64
 		want string
 	}{
-		{512, "512 Б"},
-		{2048, "2 КБ"},
-		{5 << 20, "5.0 МБ"},
-		{3860496384, "3.60 ГБ"}, // /overlay живого роутера
+		{512, "512 B"},
+		{2048, "2 KB"},
+		{5 << 20, "5.0 MB"},
+		{3860496384, "3.60 GB"}, // /overlay живого роутера
 	}
 	for _, c := range cases {
 		if got := hostBytes(c.in); got != c.want {
@@ -244,7 +289,11 @@ func TestHostMachineLineSkipsEmpty(t *testing.T) {
 	if strings.HasPrefix(got, " · ") || strings.Contains(got, " ·  · ") {
 		t.Fatalf("hostMachineLine = %q: пустое поле оставило разделитель", got)
 	}
-	if !strings.Contains(got, "↑ 1 сут") {
+	if !strings.Contains(got, "1d 09:38") {
 		t.Fatalf("hostMachineLine = %q: нет аптайма", got)
+	}
+	// Стрелка тут не нужна: «↑ » с пробелом в этом шрифте даёт тофу.
+	if strings.ContainsAny(got, "↑↓") {
+		t.Fatalf("hostMachineLine = %q: стрелке в шапке не место", got)
 	}
 }

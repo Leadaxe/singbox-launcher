@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/lxdclient"
 )
 
@@ -21,21 +22,25 @@ const hostDash = "—"
 
 // hostBytes переводит байты в человеческий вид.
 //
-// Одна значащая дробь до гигабайта и две после: 3.87 ГБ и 3.9 ГБ на диске
-// роутера — это разница в 30 МБ, которую и хотят видеть.
+// Единицы латиницей и без перевода — так же, как в formatBytes профайлера:
+// эти суффиксы в проекте не локализуются, и своя конвенция здесь развела бы
+// два окна, которые смотрят рядом.
+//
+// Две значащие дробные цифры от гигабайта: 3.60 ГБ и 3.6 ГБ на диске роутера
+// — это разница в десятки мегабайт, которую и хотят видеть.
 func hostBytes(n uint64) string {
 	const unit = 1024
 	switch {
 	case n >= unit*unit*unit*unit:
-		return fmt.Sprintf("%.2f ТБ", float64(n)/(unit*unit*unit*unit))
+		return fmt.Sprintf("%.2f TB", float64(n)/(unit*unit*unit*unit))
 	case n >= unit*unit*unit:
-		return fmt.Sprintf("%.2f ГБ", float64(n)/(unit*unit*unit))
+		return fmt.Sprintf("%.2f GB", float64(n)/(unit*unit*unit))
 	case n >= unit*unit:
-		return fmt.Sprintf("%.1f МБ", float64(n)/(unit*unit))
+		return fmt.Sprintf("%.1f MB", float64(n)/(unit*unit))
 	case n >= unit:
-		return fmt.Sprintf("%.0f КБ", float64(n)/unit)
+		return fmt.Sprintf("%.0f KB", float64(n)/unit)
 	default:
-		return fmt.Sprintf("%d Б", n)
+		return fmt.Sprintf("%d B", n)
 	}
 }
 
@@ -44,7 +49,7 @@ func hostRate(v *float64) string {
 	if v == nil {
 		return hostDash
 	}
-	return hostBytes(uint64(*v)) + "/с"
+	return hostBytes(uint64(*v)) + "/s"
 }
 
 // hostPercent — процент; nil даёт прочерк.
@@ -85,7 +90,7 @@ func hostUptime(sec int64) string {
 	hours := int(d.Hours()) % 24
 	mins := int(d.Minutes()) % 60
 	if days > 0 {
-		return fmt.Sprintf("%d сут %02d:%02d", days, hours, mins)
+		return locale.Tf("remote.host.uptime_days", days, hours, mins)
 	}
 	return fmt.Sprintf("%02d:%02d", hours, mins)
 }
@@ -98,7 +103,7 @@ func hostInterval(sec float64) string {
 	if sec <= 0 {
 		return ""
 	}
-	return fmt.Sprintf("окно замера %.1f с", sec)
+	return locale.Tf("remote.host.interval", sec)
 }
 
 // hostThermalText — максимум по датчикам одной строкой.
@@ -137,7 +142,7 @@ func hostFDRatio(open, limit *int) float64 {
 
 // hostMountUsed — «7.4% · свободно 3.33 ГБ» для одной точки монтирования.
 func hostMountUsed(m lxdclient.HostMount) string {
-	return fmt.Sprintf("%.1f%% · свободно %s", m.UsedPercent, hostBytes(m.AvailableBytes))
+	return locale.Tf("remote.host.mount_used", m.UsedPercent, hostBytes(m.AvailableBytes))
 }
 
 // hostMountFlags — пометки точки монтирования.
@@ -149,30 +154,39 @@ func hostMountUsed(m lxdclient.HostMount) string {
 func hostMountFlags(m lxdclient.HostMount) string {
 	switch {
 	case m.ReadOnly && m.HoldsStateDir:
-		return "ro · state"
+		return locale.T("remote.host.flag_ro_state")
 	case m.ReadOnly:
-		return "ro"
+		return locale.T("remote.host.flag_ro")
 	case m.HoldsStateDir:
-		return "state"
+		return locale.T("remote.host.flag_state")
 	default:
 		return ""
 	}
 }
 
-// hostIfaceRates — «↓ 11.4 МБ/с   ↑ 1.2 МБ/с» либо прочерки до второго замера.
-func hostIfaceRates(i lxdclient.HostInterface) string {
-	return fmt.Sprintf("↓ %s   ↑ %s", hostRate(i.RxBytesPerSecond), hostRate(i.TxBytesPerSecond))
-}
-
-// hostIfaceTotals — сырые счётчики. Они переживают рестарты и разрывы, и
-// именно по ним строят график; скорость рядом — для чтения глазами.
-func hostIfaceTotals(i lxdclient.HostInterface) string {
-	return fmt.Sprintf("↓ %s   ↑ %s", hostBytes(i.RxBytes), hostBytes(i.TxBytes))
-}
-
-// hostIfaceErrors — ошибки и дропы; пустая строка, когда всё чисто.
+// Значения интерфейса отдаются БЕЗ стрелок: направление задаёт колонка, в
+// шапке которой стрелка стоит один раз. Стрелка в каждой ячейке — это шум,
+// который ещё и мешает выровнять числа по правому краю.
 //
-// Пустая, а не «0 / 0»: ноль ошибок — норма, и печатать его в каждой строке
+// Отдельно: пробел ПОСЛЕ ↑/↓ рвёт отрисовку в этом шрифте (в тексте вылезает
+// тофу вместо стрелки), поэтому в шапке стрелка приклеена к слову вплотную.
+
+// hostIfaceRxRate — входящая скорость; прочерк до второго замера.
+func hostIfaceRxRate(i lxdclient.HostInterface) string { return hostRate(i.RxBytesPerSecond) }
+
+// hostIfaceTxRate — исходящая скорость; прочерк до второго замера.
+func hostIfaceTxRate(i lxdclient.HostInterface) string { return hostRate(i.TxBytesPerSecond) }
+
+// hostIfaceRxTotal — сырой счётчик приёма. Он переживает рестарты и разрывы,
+// и именно по нему строят график; скорость рядом — для чтения глазами.
+func hostIfaceRxTotal(i lxdclient.HostInterface) string { return hostBytes(i.RxBytes) }
+
+// hostIfaceTxTotal — сырой счётчик передачи.
+func hostIfaceTxTotal(i lxdclient.HostInterface) string { return hostBytes(i.TxBytes) }
+
+// hostIfaceErrors — «120 / 52210» для колонки «ошиб/дроп».
+//
+// Пусто, когда всё чисто: ноль ошибок — норма, и печатать его в каждой строке
 // значит приучить глаз пролистывать колонку, в которой однажды появится
 // ненулевое число.
 func hostIfaceErrors(i lxdclient.HostInterface) string {
@@ -181,7 +195,16 @@ func hostIfaceErrors(i lxdclient.HostInterface) string {
 	if errs == 0 && drops == 0 {
 		return ""
 	}
-	return fmt.Sprintf("ошибки %d · дропы %d", errs, drops)
+	return fmt.Sprintf("%d / %d", errs, drops)
+}
+
+// hostIfaceMTU — MTU строкой; ноль показывается прочерком, а не «0»: MTU=0
+// не бывает, это «не знаем».
+func hostIfaceMTU(i lxdclient.HostInterface) string {
+	if i.MTU <= 0 {
+		return hostDash
+	}
+	return fmt.Sprintf("%d", i.MTU)
 }
 
 // hostCPUSummary — заголовок блока CPU.
@@ -190,7 +213,7 @@ func hostIfaceErrors(i lxdclient.HostInterface) string {
 // пустая полоска с «0%» читалась бы как «простаивает».
 func hostCPUSummary(c lxdclient.HostCPU) string {
 	if c.UsagePercent == nil {
-		return "ждём второй замер…"
+		return locale.T("remote.host.awaiting_sample")
 	}
 	return hostPercent(c.UsagePercent)
 }
@@ -203,7 +226,7 @@ func hostLoadText(c lxdclient.HostCPU) string {
 	if c.Load1 == nil || c.Load5 == nil || c.Load15 == nil {
 		return hostDash
 	}
-	return fmt.Sprintf("load  %.2f  %.2f  %.2f", *c.Load1, *c.Load5, *c.Load15)
+	return locale.Tf("remote.host.load", *c.Load1, *c.Load5, *c.Load15)
 }
 
 // hostMemoryDetail — расшифровка памяти под полоской.
@@ -212,11 +235,19 @@ func hostLoadText(c lxdclient.HostCPU) string {
 // тоже от available: роутер держит почти всю память в page cache, и цифра от
 // free кричала бы «занято» при реально свободных 120 МБ.
 func hostMemoryDetail(m lxdclient.HostMemory) string {
-	used := m.TotalBytes - m.AvailableBytes
-	s := fmt.Sprintf("занято %s из %s · доступно %s",
-		hostBytes(used), hostBytes(m.TotalBytes), hostBytes(m.AvailableBytes))
+	// AvailableBytes может превысить Total на кривом ответе; вычитание на
+	// uint64 ушло бы в огромное число вместо нуля.
+	var used uint64
+	if m.TotalBytes > m.AvailableBytes {
+		used = m.TotalBytes - m.AvailableBytes
+	}
+	// Построчно, а не одной длинной строкой: Label без переноса отдаёт
+	// минимальной шириной весь свой текст, и «… · cache 168.1 MB» распирал
+	// колонку шире окна.
+	s := locale.Tf("remote.host.mem_used", hostBytes(used), hostBytes(m.TotalBytes))
+	s += "\n" + locale.Tf("remote.host.mem_avail", hostBytes(m.AvailableBytes))
 	if m.CachedBytes != nil {
-		s += " · кеш " + hostBytes(*m.CachedBytes)
+		s += "\n" + locale.Tf("remote.host.mem_cache", hostBytes(*m.CachedBytes))
 	}
 	return s
 }
@@ -227,10 +258,13 @@ func hostMemoryDetail(m lxdclient.HostMemory) string {
 // это норма, и показывать «0 Б / 0 Б» значит заставлять читателя гадать.
 func hostSwapText(m lxdclient.HostMemory) string {
 	if m.SwapTotalBytes == 0 {
-		return "swap выключен"
+		return locale.T("remote.host.swap_off")
 	}
-	used := m.SwapTotalBytes - m.SwapFreeBytes
-	return fmt.Sprintf("swap %s из %s", hostBytes(used), hostBytes(m.SwapTotalBytes))
+	var used uint64
+	if m.SwapTotalBytes > m.SwapFreeBytes {
+		used = m.SwapTotalBytes - m.SwapFreeBytes
+	}
+	return locale.Tf("remote.host.swap_on", hostBytes(used), hostBytes(m.SwapTotalBytes))
 }
 
 // hostMachineLine — шапка: модель, ОС, ядро, архитектура, аптайм.
@@ -252,7 +286,9 @@ func hostMachineLine(h lxdclient.HostInfo) string {
 		if line != "" {
 			line += " · "
 		}
-		line += "↑ " + up
+		// Словом, а не стрелкой: «↑ 1d 09:50» в этом шрифте рвётся на тофу
+		// из-за пробела после стрелки, а вплотную читается как «выросло на».
+		line += locale.Tf("remote.host.uptime", up)
 	}
 	return line
 }

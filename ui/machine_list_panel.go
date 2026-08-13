@@ -330,6 +330,12 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	profilerBtn := widget.NewButton(locale.T("remote.more.profiler"), func() {
 		OpenMachineProfiler(p.ac, d)
 	})
+	// Телеметрия ХОСТА — рядом с профайлером, потому что это соседний вопрос
+	// с другим ответом: профайлер показывает трафик ядра, а «почему роутер
+	// тормозит» решается только описанием машины (CPU, память, диски, темп.).
+	hostBtn := widget.NewButton(locale.T("remote.more.host"), func() {
+		OpenMachineHostWindow(p.ac, d)
+	})
 	// Своя кнопка вместо Accordion: тот в горизонтальном ряду растягивает
 	// свою шторку на всю ширину и уводит содержимое вбок — заголовок и
 	// раскрытый блок оказываются в одной строке. Здесь стрелка остаётся
@@ -360,7 +366,7 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 		// Раскрытие с анимацией высоты: мгновенный скачок содержимого не
 		// показывает, ЧТО раскрылось, — глаз теряет связь между стрелкой и
 		// появившимся блоком.
-		rows = append(rows, newRevealBox(container.NewHBox(profilerBtn)))
+		rows = append(rows, newRevealBox(container.NewHBox(profilerBtn, hostBtn)))
 	}
 	rows = append(rows, widget.NewSeparator())
 	return container.NewVBox(rows...)
@@ -574,6 +580,9 @@ func (p *machineListPanel) disconnectMachine() {
 	// окно продолжало бы показывать поток, которого уже нет.
 	if id, _, ok := GetLxdRemoteOverride(); ok {
 		CloseMachineProfiler(id)
+		// Телеметрия хоста ходит по тому же каналу: без остановки её опрос
+		// продолжал бы стучаться к машине, с которой разговор уже окончен.
+		CloseMachineHostWindow(id)
 	}
 	p.proxies.SetEnabled(false)
 	ClearLxdRemoteOverride(p.ac)
@@ -637,8 +646,9 @@ func (p *machineListPanel) removeMachine(d services.RemoteDaemon) {
 			if !ok {
 				return
 			}
-			// Машины не станет — её профайлер тоже должен уйти.
+			// Машины не станет — её профайлер и телеметрия тоже должны уйти.
 			CloseMachineProfiler(d.ID)
+			CloseMachineHostWindow(d.ID)
 			activeID, _, _ := GetLxdRemoteOverride()
 			if activeID == d.ID {
 				// Снимаем выбор до удаления: иначе левая колонка осталась бы
