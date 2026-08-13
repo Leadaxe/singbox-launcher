@@ -21,16 +21,21 @@ import (
 //
 // Falls back to the first available window — and to nil if there are
 // none at all (caller is nil-safe).
+// По ПРЕФИКСУ, а не по полному совпадению: во время записи заголовок несёт
+// таймер («Traffic Profiler ⚡ Recording · 00:29», см. FormatRecordingTitle),
+// и точное сравнение переставало находить своё окно ровно тогда, когда по
+// строкам и кликают.
 func parentWindowOf(deps WindowDeps) fyne.Window {
 	if deps.App == nil {
 		return nil
 	}
-	for _, w := range deps.App.Driver().AllWindows() {
-		if w.Title() == "Traffic Profiler" {
+	all := deps.App.Driver().AllWindows()
+	for _, w := range all {
+		if strings.HasPrefix(w.Title(), "Traffic Profiler") {
 			return w
 		}
 	}
-	if all := deps.App.Driver().AllWindows(); len(all) > 0 {
+	if len(all) > 0 {
 		return all[0]
 	}
 	return nil

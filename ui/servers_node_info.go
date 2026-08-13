@@ -233,7 +233,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo) {
 	jsonTab := container.NewBorder(
 		nil,
 		widget.NewButton(locale.T("servers.node_info_copy_json"), func() {
-			win.Clipboard().SetContent(jsonText)
+			setClipboard(jsonText)
 		}),
 		nil, nil,
 		jsonEntry,

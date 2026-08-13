@@ -3,11 +3,14 @@ package services
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/muhammadmuzzammil1998/jsonc"
 
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/platform"
@@ -139,6 +142,58 @@ func localResourceFiles(execDir, id string) (map[string]localResource, error) {
 		}
 		sum := sha256.Sum256(body)
 		out[e.Name()] = localResource{sha: hex.EncodeToString(sum[:]), size: int64(len(body))}
+	}
+	return out, nil
+}
+
+// CollectDeployResources собирает файлы, на которые ссылается конфиг машины
+// через её ресурс-стор (SPEC 063).
+//
+// Источник истины — сам конфиг: пробегаем его rule_set[] и берём те записи,
+// чей path указывает в `/resources/<name>`. Так список заливаемого не может
+// разойтись с тем, что реально нужно ядру: имя в path и имя в PUT берутся из
+// одной строки.
+//
+// Файл ищется в каталоге .srs ЭТОЙ машины (SPEC 098 §2.3). Отсутствие —
+// ошибка, а не пропуск: залить конфиг со ссылкой на файл, которого нет,
+// значит уронить ядро на той стороне.
+func CollectDeployResources(execDir, machineID string, config []byte) (map[string][]byte, error) {
+	var parsed struct {
+		Route struct {
+			RuleSet []struct {
+				Tag  string `json:"tag"`
+				Type string `json:"type"`
+				Path string `json:"path"`
+			} `json:"rule_set"`
+		} `json:"route"`
+	}
+	// Конфиг — jsonc (с комментариями), поэтому чистим их перед разбором тем
+	// же путём, что и остальной код лаунчера.
+	clean := jsonc.ToJSON(config)
+	if err := json.Unmarshal(clean, &parsed); err != nil {
+		return nil, fmt.Errorf("deploy: parse config: %w", err)
+	}
+
+	out := make(map[string][]byte)
+	srsDir := platform.GetRuleSetsDirFor(execDir, constants.ConfigTargetRemote, machineID)
+	for _, rs := range parsed.Route.RuleSet {
+		if rs.Type != "local" || rs.Path == "" {
+			continue
+		}
+		idx := strings.LastIndex(rs.Path, "/resources/")
+		if idx < 0 {
+			continue // не наш стор — путь оператор прописал руками
+		}
+		name := rs.Path[idx+len("/resources/"):]
+		if name == "" || strings.Contains(name, "/") {
+			continue
+		}
+		body, readErr := os.ReadFile(filepath.Join(srsDir, name))
+		if readErr != nil {
+			return nil, fmt.Errorf("deploy: rule-set %q: %w — open Configure → Rules and re-download",
+				rs.Tag, readErr)
+		}
+		out[name] = body
 	}
 	return out, nil
 }

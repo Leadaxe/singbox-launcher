@@ -333,7 +333,7 @@ func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *w
 
 	// Overlay that redirects clicks to open rule dialog when present
 	ac := core.GetController()
-	guiState.ChildWindowsOverlay = components.NewClickRedirect(ac)
+	guiState.ChildWindowsOverlay = components.NewClickRedirect(ac.UIService)
 	guiState.ChildWindowsOverlay.Hide()
 
 	var rulesTabItem *container.TabItem
@@ -342,10 +342,8 @@ func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *w
 	// Use ShowAddRuleDialog from wizard/dialogs directly
 	// We need to create a wrapper that includes createRulesTab to avoid circular import
 	var showAddRuleDialogWrapper func(*wizardpresentation.WizardPresenter, *wizardmodels.RuleState, int)
-	var createRulesTabWrapper func(*wizardpresentation.WizardPresenter) fyne.CanvasObject
-
 	// Define createRulesTabWrapper first (it depends on showAddRuleDialogWrapper)
-	createRulesTabWrapper = func(p *wizardpresentation.WizardPresenter) fyne.CanvasObject {
+	createRulesTabWrapper := func(p *wizardpresentation.WizardPresenter) fyne.CanvasObject {
 		return wizardtabs.CreateRulesTab(p, showAddRuleDialogWrapper)
 	}
 

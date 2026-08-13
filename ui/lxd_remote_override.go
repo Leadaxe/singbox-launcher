@@ -142,6 +142,23 @@ func lxdOverrideTransportOrNil() services.ProxyTransport {
 	return lxdOverrideTransport
 }
 
+// lxdOverrideTransportForID — транспорт машины, если активна именно она.
+//
+// Профайлер и список узлов работают по одному каналу: отдельное соединение
+// ради профайлера означало бы второй gRPC-стрим к той же машине.
+//
+// Снимок под одной блокировкой: проверять id и брать транспорт раздельно
+// значило бы поймать смену машины между двумя чтениями и отдать транспорт
+// уже не той машины, про которую спросили.
+func lxdOverrideTransportForID(id string) (*services.LxdRemoteTransport, bool) {
+	lxdOverrideMu.RLock()
+	defer lxdOverrideMu.RUnlock()
+	if !lxdOverrideActive || lxdOverrideID != id || lxdOverrideTransport == nil {
+		return nil, false
+	}
+	return lxdOverrideTransport, true
+}
+
 // ReapplyLxdRemoteTransport возвращает в APIService транспорт УЖЕ выбранной
 // машины (SPEC 098).
 //

@@ -627,6 +627,27 @@ func (t *LxdRemoteTransport) invalidateClientsInfo() {
 	t.clientsMu.Unlock()
 }
 
+// HostInfo — снимок машины: CPU, память, термодатчики, диски, дескрипторы
+// (GET /admin/host, SPEC 068 форка).
+//
+// Без кэша, в отличие от справочника устройств: там данные меняются в
+// масштабе часов, а здесь смысл ровно в свежести. Темп задаёт вызывающий —
+// проценты демон считает как дельту между ДВУМЯ соседними запросами, и
+// частота опроса прямо определяет окно усреднения.
+//
+// Звать из горутины: это поход к роутеру.
+func (t *LxdRemoteTransport) HostInfo() (lxdclient.HostInfo, error) {
+	return t.client.Host()
+}
+
+// HostInterfaces — интерфейсы машины со счётчиками и скоростями
+// (GET /admin/host/interfaces).
+//
+// Скорости появятся со второго вызова по той же причине, что и проценты CPU.
+func (t *LxdRemoteTransport) HostInterfaces() (lxdclient.HostInterfaces, error) {
+	return t.client.HostInterfaces()
+}
+
 // CloseConnection обрывает одно соединение машины по его UUID.
 func (t *LxdRemoteTransport) CloseConnection(id string) error {
 	client, ctx, cancel, err := t.rpc()

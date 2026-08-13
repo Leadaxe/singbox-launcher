@@ -3,6 +3,7 @@ package traffic
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -434,16 +435,24 @@ func (v *perProcessView) Stop() {
 	}
 }
 
+// parentWindow — окно профайлера, к которому цепляются карточки строк.
+//
+// По ПРЕФИКСУ, а не по полному совпадению: во время записи заголовок несёт
+// таймер («Traffic Profiler ⚡ Recording · 00:29», см. FormatRecordingTitle),
+// и точное сравнение переставало находить своё окно ровно тогда, когда по
+// строкам и кликают — запись идёт. Диалог уезжал в первое попавшееся окно
+// приложения, то есть визуально никуда.
 func (v *perProcessView) parentWindow() fyne.Window {
 	if v.deps.App == nil {
 		return nil
 	}
-	for _, w := range v.deps.App.Driver().AllWindows() {
-		if w.Title() == "Traffic Profiler" || w.Title() == "" {
+	all := v.deps.App.Driver().AllWindows()
+	for _, w := range all {
+		if strings.HasPrefix(w.Title(), "Traffic Profiler") || w.Title() == "" {
 			return w
 		}
 	}
-	if all := v.deps.App.Driver().AllWindows(); len(all) > 0 {
+	if len(all) > 0 {
 		return all[0]
 	}
 	return nil

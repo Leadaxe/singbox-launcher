@@ -4,7 +4,6 @@ package ui
 
 import (
 	"strings"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -164,18 +163,10 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	}
 	purgeCheck.OnChanged = func(bool) { refreshUninstallCommand() }
 	refreshUninstallCommand()
-	var uninstallCopyBtn *ttwidget.Button
-	uninstallCopyBtn = ttwidget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+	uninstallCopyBtn := NewCopyButton("conn.cmd_copy_tooltip", func() (string, bool) {
 		refreshUninstallCommand()
-		win.Clipboard().SetContent(uninstallEntry.Text)
-		// Тихий фидбек, как у commandRow: галочка на секунду.
-		uninstallCopyBtn.SetIcon(theme.ConfirmIcon())
-		go func() {
-			time.Sleep(1200 * time.Millisecond)
-			fyne.Do(func() { uninstallCopyBtn.SetIcon(theme.ContentCopyIcon()) })
-		}()
+		return uninstallEntry.Text, true
 	})
-	uninstallCopyBtn.SetToolTip(locale.T("conn.cmd_copy_tooltip"))
 	uninstallTermBtn := ttwidget.NewButtonWithIcon("", theme.ComputerIcon(), func() {
 		refreshUninstallCommand()
 		if err := ac.OpenTerminalWithCommand(uninstallEntry.Text); err != nil {
@@ -311,25 +302,6 @@ func renderDaemonStatusText(ac *core.AppController, snap core.DaemonUIStatus, in
 	return b.String()
 }
 
-// activateDaemonEngineIfPossible включает daemon-движок после успешного
-// сопряжения (общий хвост Pair для local- и remote-панелей). Молча
-// пропускает, если VPN работает или сопряжение неполно — статус объяснит.
-func activateDaemonEngineIfPossible(ac *core.AppController) {
-	if ac.BackendMode() == core.BackendDaemon || ac.RunningState.IsRunning() {
-		return
-	}
-	if err := ac.SwitchBackendMode(core.BackendDaemon); err != nil {
-		debuglog.InfoLog("conn: daemon engine not active yet: %v", err)
-		return
-	}
-	binDir := platform.GetBinDir(ac.FileService.ExecDir)
-	st := locale.LoadSettings(binDir)
-	st.CoreBackendMode = string(core.BackendDaemon)
-	if err := locale.SaveSettings(binDir, st); err != nil {
-		debuglog.WarnLog("conn: save core_backend_mode: %v", err)
-	}
-}
-
 // showCommandHelpDialog — единый вид справок «текст + готовая команда»:
 // пояснение с переносом, командная строка и кнопки copy/terminal (тихий
 // фидбек галочкой). Вертикальный скролл с каноническим gutter'ом.
@@ -339,16 +311,7 @@ func showCommandHelpDialog(ac *core.AppController, win fyne.Window, title, text,
 	cmdEntry := widget.NewEntry()
 	cmdEntry.Wrapping = fyne.TextWrapOff
 	cmdEntry.SetText(command)
-	var copyBtn *ttwidget.Button
-	copyBtn = ttwidget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
-		win.Clipboard().SetContent(cmdEntry.Text)
-		copyBtn.SetIcon(theme.ConfirmIcon())
-		go func() {
-			time.Sleep(1200 * time.Millisecond)
-			fyne.Do(func() { copyBtn.SetIcon(theme.ContentCopyIcon()) })
-		}()
-	})
-	copyBtn.SetToolTip(locale.T("conn.cmd_copy_tooltip"))
+	copyBtn := NewCopyButton("conn.cmd_copy_tooltip", func() (string, bool) { return cmdEntry.Text, true })
 	termBtn := ttwidget.NewButtonWithIcon("", theme.ComputerIcon(), func() {
 		if err := ac.OpenTerminalWithCommand(cmdEntry.Text); err != nil {
 			ShowError(win, err)

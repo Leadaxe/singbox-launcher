@@ -415,10 +415,18 @@ func (m *Manager) attachConnCounter(deps WindowDeps, win fyne.Window, tabs *cont
 //
 // Поверх вкладок, а не рядом: AppTabs занимает всю ширину, и в Border справа
 // он бы сжался, оставив ярлыки обрезанными.
+//
+// Верхний слой обязан быть ростом с сами элементы. Border, у которого занят
+// только top-слот, растягивается на всю высоту контейнера, и его пустая
+// середина накрывает список под вкладками — клики по строкам туда и уходили.
+// В окне машины это не проявлялось: там строки нарисованы кнопками, а они
+// перехватывают нажатие сами; в локальном окне списки живут на OnSelected.
 func overlayOnTabs(tabs *container.AppTabs, objs ...fyne.CanvasObject) fyne.CanvasObject {
 	right := container.NewHBox(objs...)
-	return container.NewStack(tabs, container.NewBorder(
-		container.NewHBox(layout.NewSpacer(), right), nil, nil, nil))
+	// VBox прижимает строку к верху и НЕ растягивает её по высоте — ниже
+	// остаётся пустое место, сквозь которое список получает свои клики.
+	overlay := container.NewVBox(container.NewHBox(layout.NewSpacer(), right))
+	return container.NewStack(tabs, overlay)
 }
 
 func formatEventRow(e tprof.TrafficEvent) string {

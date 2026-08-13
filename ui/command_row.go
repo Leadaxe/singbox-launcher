@@ -9,8 +9,46 @@ import (
 	"fyne.io/fyne/v2/widget"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 )
+
+// copyFeedbackDelay — сколько держится галочка после копирования.
+const copyFeedbackDelay = 1200 * time.Millisecond
+
+// setClipboard — короткое имя для fynewidget.SetClipboard: копирование зовут
+// из десятка мест пакета, и полное имя там только шумит.
+func setClipboard(text string) { fynewidget.SetClipboard(text) }
+
+// NewCopyButton — кнопка «скопировать» с тихим фидбеком: иконка на секунду
+// становится галочкой и возвращается обратно.
+//
+// text вычисляется в момент нажатия, а не при сборке: команды и превью
+// пересчитываются от состояния формы, и захват строки заранее копировал бы
+// устаревшее значение. ok=false — копирования не было (текст не удалось
+// собрать), и галочку не показываем: она означала бы «в буфере то, что нужно».
+//
+// Единая реализация на все места копирования: раньше их было три, и фидбек в
+// них уже начал разъезжаться.
+func NewCopyButton(tooltipKey string, text func() (string, bool)) *ttwidget.Button {
+	var btn *ttwidget.Button
+	btn = ttwidget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+		s, ok := text()
+		if !ok {
+			return
+		}
+		setClipboard(s)
+		btn.SetIcon(theme.ConfirmIcon())
+		go func() {
+			time.Sleep(copyFeedbackDelay)
+			fyne.Do(func() { btn.SetIcon(theme.ContentCopyIcon()) })
+		}()
+	})
+	if tooltipKey != "" {
+		btn.SetToolTip(locale.T(tooltipKey))
+	}
+	return btn
+}
 
 // CommandRow — строка с командой, которую пользователь должен выполнить сам:
 // поле с текстом плюс кнопки «скопировать» и «открыть в терминале».
@@ -31,24 +69,17 @@ func CommandRow(win fyne.Window, labelKey string, command func() (string, error)
 		entry.SetText(text)
 	}
 
-	var copyBtn *ttwidget.Button
-	copyBtn = ttwidget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
+	// Пересчёт команды на нажатии: ошибку показываем и не копируем — прежний
+	// текст в буфере читался бы как «скопировалась актуальная команда».
+	copyBtn := NewCopyButton("conn.cmd_copy_tooltip", func() (string, bool) {
 		text, err := command()
 		if err != nil {
 			ShowError(win, err)
-			return
+			return "", false
 		}
 		entry.SetText(text)
-		win.Clipboard().SetContent(text)
-		// Тихий фидбек: иконка на секунду становится галочкой. Никаких
-		// системных нотификаций и модалок ради копирования строки.
-		copyBtn.SetIcon(theme.ConfirmIcon())
-		go func() {
-			time.Sleep(1200 * time.Millisecond)
-			fyne.Do(func() { copyBtn.SetIcon(theme.ContentCopyIcon()) })
-		}()
+		return text, true
 	})
-	copyBtn.SetToolTip(locale.T("conn.cmd_copy_tooltip"))
 
 	buttons := container.NewHBox(copyBtn)
 	// Кнопка терминала — только там, где лаунчер умеет его открыть (macOS).

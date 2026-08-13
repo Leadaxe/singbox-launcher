@@ -13,6 +13,7 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 )
 
@@ -45,10 +46,10 @@ func showPreviewNodeContextMenu(win fyne.Window, node *config.ParsedNode, pe *fy
 			showPreviewNodeInfoWindow(node)
 		}),
 		fyne.NewMenuItem(locale.T("servers.node_info_copy_json"), func() {
-			win.Clipboard().SetContent(previewNodeJSON(node))
+			fynewidget.SetClipboard(previewNodeJSON(node))
 		}),
 		fyne.NewMenuItem(locale.T("wizard.source.preview_copy_tag"), func() {
-			win.Clipboard().SetContent(node.Tag)
+			fynewidget.SetClipboard(node.Tag)
 		}),
 	)
 
@@ -108,7 +109,7 @@ func showPreviewNodeInfoWindow(node *config.ParsedNode) {
 	jsonTab := container.NewBorder(
 		nil,
 		widget.NewButton(locale.T("servers.node_info_copy_json"), func() {
-			win.Clipboard().SetContent(jsonText)
+			fynewidget.SetClipboard(jsonText)
 		}),
 		nil, nil,
 		jsonEntry,

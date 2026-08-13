@@ -191,19 +191,6 @@ func CloseMachineProfiler(id string) {
 	}
 }
 
-// lxdOverrideTransportForID — транспорт машины, если она сейчас активна.
-//
-// Профайлер работает по тому же каналу, что и список узлов: отдельное
-// соединение ради него означало бы второй gRPC-стрим к той же машине.
-func lxdOverrideTransportForID(id string) (*services.LxdRemoteTransport, bool) {
-	activeID, _, connected := GetLxdRemoteOverride()
-	if !connected || activeID != id {
-		return nil, false
-	}
-	t, ok := lxdOverrideTransportOrNil().(*services.LxdRemoteTransport)
-	return t, ok
-}
-
 // dnsQueryToEvent переводит DNS-событие машины в событие профайлера — ту же
 // форму, в какой их порождает разбор локального лога.
 func dnsQueryToEvent(q services.DNSQuery) tprof.TrafficEvent {
@@ -212,7 +199,7 @@ func dnsQueryToEvent(q services.DNSQuery) tprof.TrafficEvent {
 		Kind:        tprof.EventDNSResolve,
 		Domain:      q.Domain,
 		ProcessPath: q.ProcessPath,
-		ProcessName: processName(q.ProcessPath),
+		ProcessName: tprof.ProcessBase(q.ProcessPath),
 		CnameChain:  q.CNAMEs,
 	}
 	// Адреса ответа и сервер, который их дал, кладём в диагностическую
@@ -236,17 +223,6 @@ func dnsQueryToEvent(q services.DNSQuery) tprof.TrafficEvent {
 		}
 	}
 	return e
-}
-
-// processName — имя процесса из пути. Путь приходит с удалённой машины, то
-// есть всегда в unix-форме, независимо от того, где работает лаунчер.
-func processName(path string) string {
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' {
-			return path[i+1:]
-		}
-	}
-	return path
 }
 
 // statusStore — последняя сводка ядра по машинам.

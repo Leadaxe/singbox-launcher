@@ -1,10 +1,8 @@
 package ui
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -16,11 +14,9 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
-	"github.com/muhammadmuzzammil1998/jsonc"
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
-	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
@@ -534,7 +530,7 @@ func (p *machineListPanel) showHealthDetails(d services.RemoteDaemon, h services
 
 	win := p.ac.UIService.Application.NewWindow(locale.Tf("remote.info.window_title", d.Name))
 	copyBtn := widget.NewButton(locale.T("dialog.copy"), func() {
-		win.Clipboard().SetContent(plain.String())
+		setClipboard(plain.String())
 	})
 	closeBtn := widget.NewButton(locale.T("dialog.close"), func() { win.Close() })
 	closeBtn.Importance = widget.HighImportance
@@ -742,7 +738,7 @@ func (p *machineListPanel) deployTo(d services.RemoteDaemon) {
 				// стороне не поднимется — apply пройдёт, а инстанс упадёт.
 				// Демон и сам требует этого порядка: PUT на имя, занятое
 				// живой ссылкой, отбивается 409.
-				resources, resErr := collectMachineResources(p.ac.FileService.ExecDir, d.ID, config)
+				resources, resErr := services.CollectDeployResources(p.ac.FileService.ExecDir, d.ID, config)
 				if resErr == nil && len(resources) > 0 {
 					resErr = p.registry.SyncResources(d.ID, resources)
 				}
@@ -800,58 +796,6 @@ func (d *dotLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
 		o.Resize(fyne.NewSize(d.size, d.size))
 		o.Move(fyne.NewPos(0, (size.Height-d.size)/2))
 	}
-}
-
-// collectMachineResources собирает файлы, на которые ссылается конфиг машины
-// через её ресурс-стор (SPEC 063).
-//
-// Источник истины — сам конфиг: пробегаем его rule_set[] и берём те записи,
-// чей path указывает в `/resources/<name>`. Так список заливаемого не может
-// разойтись с тем, что реально нужно ядру: имя в path и имя в PUT берутся из
-// одной строки.
-//
-// Файл ищется в каталоге .srs ЭТОЙ машины (SPEC 098 §2.3). Отсутствие —
-// ошибка, а не пропуск: залить конфиг со ссылкой на файл, которого нет,
-// значит уронить ядро на той стороне.
-func collectMachineResources(execDir, machineID string, config []byte) (map[string][]byte, error) {
-	var parsed struct {
-		Route struct {
-			RuleSet []struct {
-				Tag  string `json:"tag"`
-				Type string `json:"type"`
-				Path string `json:"path"`
-			} `json:"rule_set"`
-		} `json:"route"`
-	}
-	// Конфиг — jsonc (с комментариями), поэтому чистим их перед разбором тем
-	// же путём, что и остальной код лаунчера.
-	clean := jsonc.ToJSON(config)
-	if err := json.Unmarshal(clean, &parsed); err != nil {
-		return nil, fmt.Errorf("deploy: parse config: %w", err)
-	}
-
-	out := make(map[string][]byte)
-	srsDir := platform.GetRuleSetsDirFor(execDir, constants.ConfigTargetRemote, machineID)
-	for _, rs := range parsed.Route.RuleSet {
-		if rs.Type != "local" || rs.Path == "" {
-			continue
-		}
-		idx := strings.LastIndex(rs.Path, "/resources/")
-		if idx < 0 {
-			continue // не наш стор — путь оператор прописал руками
-		}
-		name := rs.Path[idx+len("/resources/"):]
-		if name == "" || strings.Contains(name, "/") {
-			continue
-		}
-		body, readErr := os.ReadFile(filepath.Join(srsDir, name))
-		if readErr != nil {
-			return nil, fmt.Errorf("deploy: rule-set %q: %w — open Configure → Rules and re-download",
-				rs.Tag, readErr)
-		}
-		out[name] = body
-	}
-	return out, nil
 }
 
 // recordFailure запоминает неудачную попытку соединения.

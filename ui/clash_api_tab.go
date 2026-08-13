@@ -1630,16 +1630,6 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	return panel
 }
 
-// containsStringValue — есть ли значение в списке (локальный хелпер вкладки).
-func containsStringValue(list []string, v string) bool {
-	for _, x := range list {
-		if x == v {
-			return true
-		}
-	}
-	return false
-}
-
 // isUnreachableErr — ошибка означает «до машины не достучались», а не отказ
 // на её стороне.
 //

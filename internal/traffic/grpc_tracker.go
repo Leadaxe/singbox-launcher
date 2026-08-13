@@ -137,7 +137,7 @@ func ProtoConnToClash(c *daemonpb.Connection) ClashConn {
 			DestinationIP:   destIP,
 			DestinationPort: portStr,
 			ProcessPath:     proc,
-			Process:         processBase(proc),
+			Process:         ProcessBase(proc),
 		},
 	}
 }
@@ -149,12 +149,12 @@ func hostOnlyPart(hostport string) string {
 	return hostport
 }
 
-// processBase — имя исполняемого файла из полного пути.
+// ProcessBase — имя исполняемого файла из полного пути.
 //
 // На удалённой машине путь всегда в unix-форме, даже если лаунчер работает на
 // Windows, поэтому filepath.Base местного разделителя тут мало: сначала
 // пробуем срез по «/», а уже потом платформенный Base.
-func processBase(path string) string {
+func ProcessBase(path string) string {
 	if path == "" {
 		return ""
 	}

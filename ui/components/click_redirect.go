@@ -7,14 +7,17 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/widget"
 
-	"singbox-launcher/core"
+	"singbox-launcher/core/uiservice"
 )
 
 // clickRedirect — невидимый tappable-оverlay, который перехватывает клики
 // по основному содержимому и переносит фокус на окно визарда, если он открыт.
 //
-// Вынесен в `ui/components` для лучшей организации кода — компонент может быть
-// переиспользован или протестирован отдельно от композиции `App`.
+// Зависит от *uiservice.UIService, а не от *core.AppController: фокус окон —
+// единственное, что виджету нужно. Раньше он тянул сюда весь `core`, и через
+// общий пакет виджетов эта зависимость доставалась всем, кто импортирует
+// отсюда gutter-хелперы (20+ файлов, включая ui/traffic, заявленный
+// изолированным от AppController). uiservice — листовой пакет.
 //
 // Особенности реализации:
 //   - Это отдельный Widget (расширяет widget.BaseWidget), поэтому он корректно
@@ -39,26 +42,24 @@ import (
 // создания экземпляра.
 type ClickRedirect struct {
 	widget.BaseWidget
-	controller *core.AppController
+	ui *uiservice.UIService
 }
 
 // NewClickRedirect creates a new ClickRedirect overlay instance.
-func NewClickRedirect(controller *core.AppController) *ClickRedirect {
-	w := &ClickRedirect{controller: controller}
+func NewClickRedirect(ui *uiservice.UIService) *ClickRedirect {
+	w := &ClickRedirect{ui: ui}
 	w.ExtendBaseWidget(w)
 	return w
 }
 
 func (w *ClickRedirect) Tapped(e *fyne.PointEvent) {
-	if w == nil || w.controller == nil || w.controller.UIService == nil {
+	if w == nil || w.ui == nil || w.ui.WizardWindow == nil {
 		return
 	}
-	if w.controller.UIService.WizardWindow != nil {
-		w.controller.UIService.WizardWindow.Show()
-		w.controller.UIService.WizardWindow.RequestFocus()
-		if w.controller.UIService.FocusOpenChildWindows != nil {
-			w.controller.UIService.FocusOpenChildWindows()
-		}
+	w.ui.WizardWindow.Show()
+	w.ui.WizardWindow.RequestFocus()
+	if w.ui.FocusOpenChildWindows != nil {
+		w.ui.FocusOpenChildWindows()
 	}
 }
 
