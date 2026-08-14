@@ -269,7 +269,10 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 	// SPEC 097: таргет восстанавливаем ПЕРВЫМ — от него зависят per-platform
 	// дефолты vars, которые резолвятся ниже по этой же функции. Legacy-файл
 	// без meta.target даёт zero TargetSpec → нормализуется в local.
-	p.model.Target = targetSpecFromStateMeta(stateFile)
+	// Прежний таргет передаётся в восстановление: MachineID и каталоги машины
+	// в файл не пишутся (они свойство записи реестра), и без переноса первый
+	// же Load увёл бы Save в singleton-папку вместо профиля машины.
+	p.model.Target = targetSpecFromStateMeta(stateFile, p.model.Target)
 
 	// Восстановление parser_config (шаг 2)
 	if err := p.restoreParserConfig(stateFile); err != nil {

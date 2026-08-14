@@ -95,12 +95,28 @@ func ShareProxyURIForOutboundTag(configPath, tag string) (string, error) {
 
 // ShareMainURIForOutboundTag builds a share URI for the outbound itself.
 // If detour is present, it is ignored (removed) so the main hop can still be exported.
+//
+// WireGuard/AmneziaWG узлы живут в endpoints[], а не в outbounds[] (sing-box
+// >= 1.11), поэтому при промахе по outbounds[] пробуем endpoints[] — иначе
+// «Копировать ссылку сервера» падает на каждом wireguard-узле.
 func ShareMainURIForOutboundTag(configPath, tag string) (string, error) {
-	out, err := GetOutboundMapByTag(configPath, tag)
+	if tag == "" {
+		return "", fmt.Errorf("empty outbound tag")
+	}
+	root, err := loadConfigRootMap(configPath)
 	if err != nil {
 		return "", err
 	}
-	return subscription.ShareURIFromOutbound(out)
+	out, outErr := findTaggedInRoot(root, tag, "outbounds", "outbound with tag %q not found")
+	if outErr == nil {
+		return subscription.ShareURIFromOutbound(out)
+	}
+	if shareURITryEndpointAfterOutboundError(outErr) {
+		if ep, epErr := findTaggedInRoot(root, tag, "endpoints", "endpoint with tag %q not found"); epErr == nil {
+			return subscription.ShareURIFromWireGuardEndpoint(ep)
+		}
+	}
+	return "", outErr
 }
 
 // GetDetourTagForOutboundTag returns outbound.detour for the given outbound tag.

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/lxdclient"
 	"singbox-launcher/internal/platform"
@@ -232,6 +233,204 @@ func (r *RemoteRegistry) PairWithAddr(inviteRaw, name, addr, secret string) (Rem
 	}
 	debuglog.InfoLog("remote pair: enrolled %q at %s", entry.Name, entry.Addr)
 	return entry, nil
+}
+
+// RePair переcопрягает СУЩЕСТВУЮЩУЮ запись реестра по свежему приглашению.
+//
+// Зачем отдельно от Pair: сопряжение рвётся на ровном месте — демон
+// переустановили, его state-каталог вычистили, клиента отозвали
+// (`sing-box lxd client remove`) или у демона сменился серверный сертификат и
+// пин перестал сходиться. Через Pair это лечилось «удалить машину и завести
+// заново», а вместе с записью уходило ВСЁ её имущество: состояние визарда,
+// снапшоты, собранный конфиг, .srs и тела подписок (Remove сносит
+// GetRemoteMachineDir целиком). Пере-сопряжение — это про канал, а не про
+// настройки, и терять настройки ради него незачем.
+//
+// Что меняется: пин сервера, клиентская пара и (если задан) адрес с секретом.
+// Что остаётся: ID, а значит папка машины со всем содержимым, имя и платформа.
+//
+// Ключ ПЕРЕВЫПУСКАЕТСЯ, а не переиспользуется. Прежний мог быть отозван на той
+// стороне — тогда enroll со старым сертификатом прошёл бы, а работа по mTLS
+// всё равно упиралась бы в отзыв, и пользователь получил бы «сопряглись, но не
+// подключается». Новая пара снимает этот класс отказа целиком; старая на
+// демоне остаётся мусором, убрать её может только он сам.
+//
+// Блокирующий сетевой вызов — звать из горутины.
+func (r *RemoteRegistry) RePair(id, inviteRaw, addr, secret string) (RemoteDaemon, error) {
+	invite, err := lxdclient.ParseInvite(inviteRaw)
+	if err != nil {
+		return RemoteDaemon{}, err
+	}
+	if a := strings.TrimSpace(addr); a != "" {
+		if _, _, splitErr := net.SplitHostPort(a); splitErr != nil {
+			return RemoteDaemon{}, fmt.Errorf("address %q is not a valid host:port: %w", a, splitErr)
+		}
+		invite.Addr = a
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	list, err := r.listLocked()
+	if err != nil {
+		return RemoteDaemon{}, err
+	}
+	idx := -1
+	for i := range list {
+		if list[i].ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return RemoteDaemon{}, fmt.Errorf("remote registry: unknown id %q", id)
+	}
+
+	// Старую пару убираем ДО генерации новой: LoadOrCreateIdentity вернул бы
+	// существующую, и «перевыпуск» молча оказался бы переиспользованием.
+	dir := r.identityDir(id)
+	if err := lxdclient.RemoveIdentity(dir); err != nil {
+		return RemoteDaemon{}, fmt.Errorf("remote repair: drop old identity: %w", err)
+	}
+	identity, err := lxdclient.LoadOrCreateIdentity(dir)
+	if err != nil {
+		return RemoteDaemon{}, fmt.Errorf("remote repair: identity: %w", err)
+	}
+	client := lxdclient.New(lxdclient.Config{
+		Addr:              invite.Addr,
+		ServerFingerprint: invite.ServerFingerprint,
+		Identity:          identity,
+		Secret:            secret,
+	})
+	if err := client.Enroll(invite.Code, "singbox-launcher"); err != nil {
+		// Реестр не трогаем: код приглашения сгорел, но прежняя запись
+		// (со старым пином) остаётся ровно такой, какой была. Перезаписать её
+		// сейчас значило бы сломать ещё и то сопряжение, которое, может быть,
+		// живо — а не отвечает, скажем, сама сеть.
+		return RemoteDaemon{}, fmt.Errorf("remote repair: enroll at %s: %w", invite.Addr, err)
+	}
+
+	list[idx].Addr = invite.Addr
+	list[idx].ServerFingerprint = invite.ServerFingerprint
+	list[idx].Secret = secret
+	// StateDir — свойство ТОЙ стороны, и после переустановки демона он мог
+	// переехать. Забываем: следующий Health перечитает его из /admin/info.
+	// Оставить прежний значило бы собирать конфиг с путями к ресурс-стору,
+	// которого на машине больше нет.
+	list[idx].StateDir = ""
+	if err := r.saveLocked(list); err != nil {
+		return RemoteDaemon{}, err
+	}
+	debuglog.InfoLog("remote repair: %q re-enrolled at %s (new client key)", list[idx].Name, list[idx].Addr)
+	return list[idx], nil
+}
+
+// CopyProfileFrom переносит НАСТРОЙКИ одной машины на другую (SPEC 098 §2.3).
+//
+// Настройки — это состояние визарда: источники, правила, DNS, переменные.
+// Ровно то, что человек собирал руками и не хочет повторять на второй машине.
+//
+// Сопряжение при этом НЕ копируется, и это не упущение: клиентский ключ и пин
+// сервера — мандат на КОНКРЕТНУЮ машину, общий ключ на две означал бы, что
+// отзыв доступа на одном роутере отзывает его и на другом. Канал у каждой
+// машины остаётся своим.
+//
+// Не копируются также собранный config.json, .srs и тела подписок: конфиг
+// собран под платформу и ресурс-стор ИСХОДНОЙ машины, а .srs с телами
+// подписок — производные, которые Save и Deploy восстановят у приёмника сами,
+// уже под её пути. Копировать их значило бы разложить в папке машины файлы,
+// про которые она не знает, откуда они.
+//
+// Целевое state.json перезаписывается — вызывающий обязан спросить
+// подтверждение, если оно существует (StateExists).
+func (r *RemoteRegistry) CopyProfileFrom(srcID, dstID string) error {
+	if srcID == dstID {
+		return fmt.Errorf("remote profile copy: source and target are the same machine")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	list, err := r.listLocked()
+	if err != nil {
+		return err
+	}
+	var dst *RemoteDaemon
+	srcFound := false
+	for i := range list {
+		switch list[i].ID {
+		case srcID:
+			srcFound = true
+		case dstID:
+			dst = &list[i]
+		}
+	}
+	if !srcFound {
+		return fmt.Errorf("remote registry: unknown id %q", srcID)
+	}
+	if dst == nil {
+		return fmt.Errorf("remote registry: unknown id %q", dstID)
+	}
+
+	srcPath := platform.GetWizardStatePathFor(r.execDir, constants.ConfigTargetRemote, srcID)
+	raw, err := os.ReadFile(srcPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("machine %q has nothing to copy yet — configure it first", srcID)
+		}
+		return fmt.Errorf("remote profile copy: read %s: %w", srcPath, err)
+	}
+
+	// Платформа приёмника остаётся ЕГО собственной: state несёт
+	// meta.target_platform/arch исходной машины, и копия «как есть» собрала бы
+	// на mips-роутере конфиг под amd64 — молча, потому что визард читает
+	// платформу как раз отсюда. Правим на месте, до записи.
+	patched, err := retargetStateJSON(raw, dst.Target().GOOS, dst.Target().GOARCH)
+	if err != nil {
+		return fmt.Errorf("remote profile copy: %w", err)
+	}
+
+	dstDir := platform.GetRemoteMachineDir(r.execDir, dstID)
+	if err := os.MkdirAll(dstDir, platform.DefaultDirMode); err != nil {
+		return fmt.Errorf("remote profile copy: mkdir %s: %w", dstDir, err)
+	}
+	dstPath := platform.GetWizardStatePathFor(r.execDir, constants.ConfigTargetRemote, dstID)
+	tmp := dstPath + ".tmp"
+	if err := os.WriteFile(tmp, patched, platform.DefaultFileMode); err != nil {
+		return fmt.Errorf("remote profile copy: write: %w", err)
+	}
+	if err := os.Rename(tmp, dstPath); err != nil {
+		return fmt.Errorf("remote profile copy: rename: %w", err)
+	}
+	debuglog.InfoLog("remote profile copy: %q → %q (%d bytes, retargeted to %s/%s)",
+		srcID, dstID, len(patched), dst.Target().GOOS, dst.Target().GOARCH)
+	return nil
+}
+
+// retargetStateJSON переписывает meta.target_platform/target_arch в снятом
+// состоянии визарда.
+//
+// Через generic map, а не через corestate.Load/Save: сквозной цикл прогнал бы
+// чужое состояние через миграцию схемы и обратную сериализацию, и всё, что
+// текущая in-memory модель не знает, потерялось бы при копировании. Здесь
+// правятся два поля, остальной файл доезжает байт в байт.
+func retargetStateJSON(raw []byte, goos, goarch string) ([]byte, error) {
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, fmt.Errorf("parse source state: %w", err)
+	}
+	meta, ok := doc["meta"].(map[string]any)
+	if !ok {
+		// v2-v4: target-полей в файле ещё нет вовсе, и дописывать их в
+		// legacy-раскладку нельзя — их читателя там нет. Отдаём как есть,
+		// платформу приёмник возьмёт из реестра (RemoteDaemon.Target).
+		return raw, nil
+	}
+	meta["target"] = constants.ConfigTargetRemote
+	meta["target_platform"] = goos
+	meta["target_arch"] = goarch
+	out, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("serialize state: %w", err)
+	}
+	return out, nil
 }
 
 // Update меняет имя и адрес записи, не трогая ключи и пин.

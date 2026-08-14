@@ -170,7 +170,15 @@ func (p *machineListPanel) Reload() {
 func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.CanvasObject {
 	// Соединения с машиной ещё не было — про её ядро мы не знаем НИЧЕГО, и
 	// узнать можем только сходив по сети, чего без спроса делать нельзя.
-	health, connected := p.health[d.ID]
+	//
+	// active — обязательное условие, а не только признак жирного имени:
+	// транспорт в APIService ОДИН, и подключённой может быть ровно одна
+	// машина. Без этой связки строка машины, чей канал уже перехватила
+	// соседняя, продолжала бы показывать Disconnect, статус и Deploy — а
+	// кнопки эти ходили бы по чужому каналу и отправляли бы конфиг не на ту
+	// машину, что написана в строке.
+	health, hasHealth := p.health[d.ID]
+	connected := active && hasHealth
 
 	// Маркер состояния канала: зелёный — соединены, красный — соединялись, но
 	// машина не отвечает, серый — не подключались.
@@ -378,6 +386,21 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 // Выбор эфемерный (SPEC 097 §4.3) — не переживает перезапуск, чтобы лаунчер
 // всегда стартовал со своим ядром.
 func (p *machineListPanel) connectMachine(d services.RemoteDaemon) {
+	// Соединение ровно одно: транспорт в APIService единственный, и
+	// SetLxdRemoteOverride закрывает предыдущий. Прежняя машина обязана
+	// отключиться и в UI — иначе её строка остаётся с Disconnect, статусом и
+	// Deploy, а кнопки эти уже ходят по каналу ДРУГОЙ машины: Deploy отправил
+	// бы конфиг не туда, куда показывает строка.
+	//
+	// Гасим до переключения, пока прежний транспорт ещё жив: его окна
+	// (профайлер, телеметрия) должны закрыться по своей машине, а не по новой.
+	if prevID, _, ok := GetLxdRemoteOverride(); ok && prevID != d.ID {
+		CloseMachineProfiler(prevID)
+		CloseMachineHostWindow(prevID)
+		delete(p.health, prevID)
+		delete(p.connectAttempt, prevID)
+		debuglog.InfoLog("machine list: %q disconnected — connecting to %q", prevID, d.ID)
+	}
 	if err := SetLxdRemoteOverride(p.ac, d.ID); err != nil {
 		debuglog.WarnLog("machine list: connect %q: %v", d.ID, err)
 		dialog.ShowError(err, p.ac.UIService.MainWindow)
@@ -426,6 +449,11 @@ func (p *machineListPanel) connectMachine(d services.RemoteDaemon) {
 				// видно в строке.
 				debuglog.WarnLog("machine list: %q unreachable after %d attempts: %s",
 					d.ID, connectAttempts, h.Err)
+				// Слева могли остаться узлы машины, с которой мы разорвали
+				// связь ради этой попытки. Показывать их под недоступной
+				// машиной значит показывать данные не той машины — очищаем.
+				p.proxies.SetEnabled(false)
+				p.proxies.Clear()
 				return
 			}
 			// Узлы читаем ТОЛЬКО если ядро на машине запущено. При idle их
@@ -591,45 +619,23 @@ func (p *machineListPanel) disconnectMachine() {
 	p.proxies.Clear()
 }
 
-// editMachine — правка имени и адреса. Платформа правится там же: это
-// свойство машины, и менять его из визарда нельзя (§2.4).
+// editMachine — паспорт записи плюс действия над самой записью: пере-сопряжение
+// и перенос настроек с другой машины. Платформа правится там же: это свойство
+// машины, и менять его из визарда нельзя (§2.4).
+//
+// Отдельное окно вместо прежнего модального диалога: к четырём полям добавились
+// два действия со своими полями ввода и статусами, а высокий модальный попап в
+// Fyne раздувается на весь экран.
 func (p *machineListPanel) editMachine(d services.RemoteDaemon) {
-	nameEntry := widget.NewEntry()
-	nameEntry.SetText(d.Name)
-	addrEntry := widget.NewEntry()
-	addrEntry.SetText(d.Addr)
-
-	tgt := d.Target()
-	goosSelect := widget.NewSelect([]string{"linux", "darwin", "windows"}, nil)
-	goosSelect.SetSelected(tgt.GOOS)
-	goarchSelect := widget.NewSelect([]string{"amd64", "arm64", "arm", "386", "mips", "mipsle"}, nil)
-	goarchSelect.SetSelected(tgt.GOARCH)
-
-	form := widget.NewForm(
-		widget.NewFormItem(locale.T("remote.machines.field_name"), nameEntry),
-		widget.NewFormItem(locale.T("remote.machines.field_addr"), addrEntry),
-		widget.NewFormItem(locale.T("remote.machines.field_platform"), goosSelect),
-		widget.NewFormItem(locale.T("remote.machines.field_arch"), goarchSelect),
-	)
-
-	dlg := dialog.NewCustomConfirm(locale.T("remote.machines.edit_title"),
-		locale.T("dialog.button_save"), locale.T("dialog.button_cancel"), form,
-		func(ok bool) {
-			if !ok {
-				return
-			}
-			if err := p.registry.Update(d.ID, nameEntry.Text, addrEntry.Text); err != nil {
-				dialog.ShowError(err, p.ac.UIService.MainWindow)
-				return
-			}
-			if err := p.registry.SetPlatform(d.ID, goosSelect.Selected, goarchSelect.Selected); err != nil {
-				dialog.ShowError(err, p.ac.UIService.MainWindow)
-				return
-			}
-			p.Reload()
-		}, p.ac.UIService.MainWindow)
-	dlg.Resize(fyne.NewSize(460, 300))
-	dlg.Show()
+	OpenEditMachineWindow(p.ac, p.registry, d, func() {
+		// После re-pair прежний канал разговаривает по отозванному мандату:
+		// строка обязана вернуться к Connect, а не показывать «connected».
+		if id, _, ok := GetLxdRemoteOverride(); ok && id == d.ID {
+			p.disconnectMachine()
+			return
+		}
+		p.Reload()
+	})
 }
 
 // removeMachine удаляет машину со всем её имуществом (§3.1.9).

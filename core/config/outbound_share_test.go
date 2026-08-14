@@ -1,10 +1,13 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"singbox-launcher/core/config/subscription"
 )
 
 func TestShareProxyURIForOutboundTag(t *testing.T) {
@@ -128,5 +131,45 @@ func TestShareMainURIForOutboundTag_ContainsDetourLiteral(t *testing.T) {
 	}
 	if !strings.Contains(u, "detour=jump") {
 		t.Fatalf("expected detour literal in URI, got %q", u)
+	}
+}
+
+// WireGuard/AmneziaWG узлы лежат в endpoints[], а не в outbounds[]: до фикса
+// «Копировать ссылку сервера» падало на них с `outbound with tag ... not found`.
+func TestShareMainURIForOutboundTag_WireGuardEndpoint(t *testing.T) {
+	uri := "wireguard://aDHCHnkcdMjnq0bF+V4fARkbJBW8cWjuYoVjKfUwsXo=@212.232.78.237:51820?publickey=fiK9ZG990zunr5cpRnx%2BSOVW2rVKKqFoVxmHMHAvAFk%3D&address=10.10.10.2%2F32&allowedips=0.0.0.0%2F0%2C%3A%3A%2F0#server-13"
+	n, err := subscription.ParseNode(uri, nil)
+	if err != nil || n == nil {
+		t.Fatalf("ParseNode: %v", err)
+	}
+	ep, err := json.Marshal(n.Outbound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.json")
+	body := []byte(`{"outbounds":[{"type":"selector","tag":"proxy-out","outbounds":["server-13"]}],"endpoints":[` + string(ep) + `]}`)
+	if err := os.WriteFile(p, body, 0644); err != nil {
+		t.Fatal(err)
+	}
+	u, err := ShareMainURIForOutboundTag(p, "server-13")
+	if err != nil {
+		t.Fatalf("ShareMainURIForOutboundTag: %v", err)
+	}
+	if !strings.HasPrefix(u, "wireguard://") {
+		t.Fatalf("expected wireguard URI, got %q", u)
+	}
+}
+
+// Промах по обоим массивам обязан остаться ошибкой, а не тихо вернуть "".
+func TestShareMainURIForOutboundTag_MissingTag(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.json")
+	body := []byte(`{"outbounds":[{"type":"socks","tag":"jump","server":"127.0.0.1","server_port":1080,"version":"5"}]}`)
+	if err := os.WriteFile(p, body, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ShareMainURIForOutboundTag(p, "nope"); err == nil {
+		t.Fatal("expected error for missing tag")
 	}
 }

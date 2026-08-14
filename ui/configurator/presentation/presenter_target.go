@@ -147,8 +147,16 @@ func (p *WizardPresenter) SetTargetPlatform(goos, goarch string) {
 	if goos == cur.GOOS && goarch == cur.GOARCH {
 		return
 	}
+	// Меняется ТОЛЬКО платформа: машина та же, поэтому id и каталоги едут из
+	// текущего таргета. Собрать спек заново «по двум полям» значило бы увести
+	// Save в singleton-папку через смену выпадающего списка архитектуры.
 	p.model.Target = wizardtemplate.TargetSpec{
-		GOOS: goos, GOARCH: goarch, Target: constants.ConfigTargetRemote,
+		GOOS:        goos,
+		GOARCH:      goarch,
+		Target:      constants.ConfigTargetRemote,
+		MachineID:   cur.MachineIDOrEmpty(),
+		ResourceDir: cur.ResourceDir,
+		SrsLocalDir: cur.SrsLocalDir,
 	}.Normalized()
 	p.MarkAsChanged()
 	debuglog.InfoLog("SetTargetPlatform: remote target platform → %s/%s", goos, goarch)
@@ -172,21 +180,57 @@ func targetSpecFor(target string, prev wizardtemplate.TargetSpec) wizardtemplate
 	if strings.TrimSpace(goarch) == "" {
 		goarch = runtime.GOARCH
 	}
-	return wizardtemplate.TargetSpec{GOOS: goos, GOARCH: goarch, Target: constants.ConfigTargetRemote}.Normalized()
+	// MachineID и каталоги переезжают из prev: переключатель local⇄remote
+	// меняет ТАРГЕТ, а не машину — окно как было открыто на своей строке, так
+	// на ней и остаётся. Потерять их здесь значит увести следующий Save в
+	// singleton-папку вместо профиля этой машины.
+	return wizardtemplate.TargetSpec{
+		GOOS:        goos,
+		GOARCH:      goarch,
+		Target:      constants.ConfigTargetRemote,
+		MachineID:   prev.MachineIDOrEmpty(),
+		ResourceDir: prev.ResourceDir,
+		SrsLocalDir: prev.SrsLocalDir,
+	}.Normalized()
 }
 
 // targetSpecFromStateMeta восстанавливает TargetSpec из meta-полей state'а.
 // Файлы, записанные до SPEC 097, не имеют meta.target — они нормализуются в
 // local-таргет текущей машины, то есть читаются ровно как раньше.
-func targetSpecFromStateMeta(sf *wizardmodels.WizardStateFile) wizardtemplate.TargetSpec {
+//
+// open — таргет ОТКРЫТОГО визарда, то есть машина, на строке которой нажали
+// Configure (ShowConfigWizardForMachine кладёт туда её ID). Не «прошлая
+// машина»: другой она за жизнь окна не станет, визард открывается на одной
+// строке и не переключается между машинами.
+//
+// Из него берётся то, чего в файле нет и быть не может: MachineID и два
+// каталога (ResourceDir на машине, SrsLocalDir у нас). Читаемый файл эти поля
+// не несёт, поэтому собранный «по meta» таргет обнулял их — и первый же Load
+// уводил Save в singleton-папку bin/wizard_states/remote/ мимо профиля машины.
+//
+// В файл они не пишутся намеренно: id и пути — свойство ЗАПИСИ РЕЕСТРА, а не
+// содержимого настроек. Ровно поэтому копирование профиля между машинами
+// (RemoteRegistry.CopyProfileFrom) безопасно: скопированный state не тащит за
+// собой id донора, и Save из визарда приёмника уходит в ЕГО папку. Продублируй
+// мы id внутрь state — копия несла бы чужой id и затирала настройки донора.
+func targetSpecFromStateMeta(sf *wizardmodels.WizardStateFile,
+	open wizardtemplate.TargetSpec) wizardtemplate.TargetSpec {
+
 	if sf == nil {
 		return wizardtemplate.LocalTarget()
 	}
-	return wizardtemplate.TargetSpec{
+	next := wizardtemplate.TargetSpec{
 		GOOS:   sf.TargetPlatform,
 		GOARCH: sf.TargetArch,
 		Target: sf.Target,
 	}.Normalized()
+	// Только для remote: у local ни id, ни чужих каталогов нет по построению.
+	if next.IsRemote() {
+		next.MachineID = open.MachineIDOrEmpty()
+		next.ResourceDir = open.ResourceDir
+		next.SrsLocalDir = open.SrsLocalDir
+	}
+	return next
 }
 
 // invalidateParsedNodes сбрасывает разобранные ноды после смены таргета.
