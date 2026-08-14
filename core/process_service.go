@@ -708,6 +708,19 @@ func (svc *ProcessService) IsSingBoxProcessRunningOnSystem() (bool, int) {
 func (svc *ProcessService) isSingBoxProcessRunning() (bool, int) {
 	ourPID := svc.getTrackedPID()
 
+	if runtime.GOOS == "darwin" {
+		// Аргумент-чувствительная проверка (pgrep -f по тому же паттерну,
+		// что и privileged pkill): установленный демон `sing-box lxd` — это
+		// процесс с тем же именем бинаря, но НЕ «чужой запущенный sing-box».
+		// Имя-ориентированный скан (go-ps) ловил бы демона и предлагал его
+		// убить — что противоречит всему daemon-режиму.
+		if found, pid, err := findSingboxRunProcessDarwin(); err == nil {
+			return found, pid
+		}
+		// pgrep недоступен/сломан — fallback на старый скан по имени.
+		return svc.isSingBoxProcessRunningWithPS(ourPID)
+	}
+
 	if runtime.GOOS == "windows" {
 		// Use tasklist on Windows for better reliability
 		processName := platform.GetProcessNameForCheck()

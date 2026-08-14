@@ -1,10 +1,12 @@
 # Data flow
 
-Сводные диаграммы load / save / build / preset-toggle для Configurator'а
-после SPEC 053 + 056-R-N + 057-R-N + 058-R-N. Дополняет
-[WIZARD_STATE.md](WIZARD_STATE.md) и [TEMPLATE_REFERENCE.md](TEMPLATE_REFERENCE.md)
-(там — спецификация секций state и template; здесь — как они вместе
-двигаются по времени).
+**🌐 Language**: English | [Русский](DATA_FLOW.ru.md)
+
+Summary diagrams of the Configurator's load / save / build / preset-toggle flows
+after SPEC 053 + 056-R-N + 057-R-N + 058-R-N. A companion to
+[WIZARD_STATE.md](WIZARD_STATE.md) and [TEMPLATE_REFERENCE.md](TEMPLATE_REFERENCE.md)
+(those specify the state and template sections; this one shows how they move
+together over time).
 
 ---
 
@@ -18,20 +20,20 @@ launcher start
      ▼
 core/template_migration.InvalidateTemplateIfStale(execDir)
      │   compare Settings.LastTemplateLauncherVersion vs constants.AppVersion
-     │   stale → unlink bin/wizard_template.json (dev AppVersion — пропуск)
-     │   UI на следующем запуске показывает «Download Template»;
-     │   после скачки MarkTemplateInstalled пишет AppVersion в settings.json
+     │   stale → unlink bin/wizard_template.json (dev AppVersion — skipped)
+     │   on the next start the UI shows "Download Template";
+     │   after the download MarkTemplateInstalled writes AppVersion to settings.json
      ▼
 extractEmbeddedTemplate (if file missing)
      │
      ▼
 core/template.LoadTemplateData(execDir)
      │   read JSON
-     │   ValidateWizardTemplate (включая #if construct и outer @-only — SPEC 067)
+     │   ValidateWizardTemplate (including the #if construct and outer @-only — SPEC 067)
      │   ApplyParams(runtime.GOOS) → effective Config sections
      │   SubstituteVarsInJSON(goos, goarch):
-     │     · resolves "@var" placeholders во всём JSON-дереве
-     │     · обрабатывает "#if" construct (map-spread + array-element),
+     │     · resolves "@var" placeholders across the whole JSON tree
+     │     · handles the "#if" construct (map-spread + array-element),
      │       runtime globals @runtime.platform / @runtime.arch — SPEC 067
      │   ParsePresets + filter platforms
      ▼
@@ -81,17 +83,17 @@ SyncModelToGUI + RefreshOutboundOptions
 UI renders (Sources / Outbounds / Rules / DNS / Settings tabs)
 ```
 
-Ключевой момент: `SyncOutboundsWithActivePresets` на Load включает
-**adopt-on-first-sync** — pre-SPEC-057 state (где preset-add outbounds
-жили как обычные globals) получает корректный `Ref` без юзерского
-вмешательства.
+The key point: `SyncOutboundsWithActivePresets` on Load performs
+**adopt-on-first-sync** — a pre-SPEC-057 state (where preset-added outbounds
+lived as ordinary globals) gets the correct `Ref` without any user
+intervention.
 
-**SPEC 058 migration** работает на load до presenter'а: legacy SPEC 057
-state хранит template-derived outbound с пустым `ref` и snapshot'нутым
-body — `MigrateOutboundsToReferencedShape` переводит такие entries в
-referenced shape (`ref="#TEMPLATE#"` + diff поверх template defaults в
-`updates[].patch` с `ref="#USER#"`). Migration идемпотентна; entries
-без template match (true direct outbounds) остаются как есть.
+**The SPEC 058 migration** runs on load, before the presenter: a legacy SPEC 057
+state stores a template-derived outbound with an empty `ref` and a snapshotted
+body — `MigrateOutboundsToReferencedShape` converts such entries into the
+referenced shape (`ref="#TEMPLATE#"` plus the diff over template defaults in
+`updates[].patch` with `ref="#USER#"`). The migration is idempotent; entries
+with no template match (true direct outbounds) are left alone.
 
 ---
 
@@ -120,33 +122,33 @@ presenter.CreateStateFromModel(comment, id)
      │
      │   build.SyncOutboundsWithActivePresets — TWICE: on both views
      │     ×1: state.Connections.Outbounds
-     │     ×2: state.ParserConfig.ParserConfig.Outbounds   ◄── обязательно!
+     │     ×2: state.ParserConfig.ParserConfig.Outbounds   ◄── mandatory!
      │
      ▼
 state.State.Save(path)
      │   syncConnectionsFromLegacy             — copies ParserConfig.Outbounds → Connections
-     │                                          (synced version wins; не затирает updates[])
+     │                                          (synced version wins; does not clobber updates[])
      │   hasReferencedOutbounds(Connections) ? maybeBackupPre058(path) : skip
      │                                          ◄── SPEC 058 one-shot state.json.pre-058.bak
-     │                                          (на первом save после migration)
+     │                                          (on the first save after the migration)
      │   marshalDisk                          — single canonical (v6) write path
      │                                          (meta.version=6, schema=presets_v1)
-     │                                          dual write path удалён в SPEC 060
+     │                                          the dual write path was removed in SPEC 060
      │
      │   atomic write: open .tmp, write+fsync, Rename .tmp → path, fsync(dir)
      ▼
 disk: bin/wizard_states/state.json
 ```
 
-**Почему Sync на обе view'а?** `state.Save → syncConnectionsFromLegacy`
-копирует `ParserConfig.Outbounds → Connections.Outbounds`. Если sync
-наложили только на `Connections` — адаптер затрёт sync'нутые `updates[]`.
-Решение: sync обе view'а в `CreateStateFromModel`, тогда адаптер копирует
-уже-корректную версию.
+**Why sync both views?** `state.Save → syncConnectionsFromLegacy` copies
+`ParserConfig.Outbounds → Connections.Outbounds`. If the sync were applied to
+`Connections` alone, the adapter would overwrite the synced `updates[]`. The
+solution: sync both views in `CreateStateFromModel`, so the adapter copies an
+already-correct version.
 
-После SPEC 060 Save всегда пишет canonical (v6) shape. Legacy v5 файлы
-читаются `parseV5Legacy` на load и нормализуются в `State`; ближайший
-Save перезаписывает их в v6 layout.
+Since SPEC 060, Save always writes the canonical (v6) shape. Legacy v5 files are
+read by `parseV5Legacy` on load and normalized into `State`; the next Save
+rewrites them in the v6 layout.
 
 ---
 
@@ -173,37 +175,38 @@ core/build entry (BuildConfig)  — pure function over BuildContext
      │
      ├─► ResolveDNS(state, template, vars)        — pure func
      │     walk state.dns_options.servers[] kind switch
-     │       template → resolve body из template.dns_options.servers[tag]
-     │       preset   → resolve body из template.presets[id].dns_servers[local_tag] + substitute vars
-     │       user     → body уже flat в entry
+     │       template → resolve body from template.dns_options.servers[tag]
+     │       preset   → resolve body from template.presets[id].dns_servers[local_tag] + substitute vars
+     │       user     → body is already flat in the entry
      │     attach metadata: Source / Required / Locked / Active / Enabled
      │
      ├─► ResolveRoute(state, template, vars)      — pure func
      │     walk state.rules[] kind switch
-     │       preset → resolve через template.presets[id].rules (expand + tag prefix)
+     │       preset → resolve via template.presets[id].rules (expand + tag prefix)
      │       inline → emit body.match + outbound
      │       srs    → emit body.srs_url + outbound (downloaded .srs path)
      │
      ├─► MergeOutboundUpdates(ob, template)       — pure func (SPEC 058)
      │     per-entry resolver (UI preview / dialog Edit); build runtime
-     │     зовёт MergeOutboundUpdatesInPlace ниже на весь parserCfg
-     │     для каждой outbound entry: lookup base by Ref (resolveBaseBody)
-     │       ref=""           → direct entry, body inline в state
+     │     calls MergeOutboundUpdatesInPlace below over the whole parserCfg
+     │     for each outbound entry: lookup base by Ref (resolveBaseBody)
+     │       ref=""           → direct entry, body inline in state
      │       ref="#TEMPLATE#" → template.parser_config.outbounds[tag]
      │       ref=<preset_id>  → template.presets[id].outbounds (mode=add)
      │     applyUpdatesToBase(base, Updates[]) → merged body
-     │       preset patches в rule order, USER patch (ref="#USER#") последним
+     │       preset patches in rule order, the USER patch (ref="#USER#") last
      │     attach metadata: IsDirect / IsTemplate / IsPreset / HasUserPatch /
      │                      HasPresetUpdates / Required / PresetLabel
      │
      ├─► (headless paths only) ────────────────────────────────────
      │   SyncOutboundsWithActivePresets(rules, &parserCfg.Outbounds, presets)
-     │     ensures parserCfg view синхронизирована (defensive — UI-paths
-     │     уже sync'нули в CreateStateFromModel)
+     │     ensures the parserCfg view is in sync (defensive — UI paths
+     │     already synced it in CreateStateFromModel)
      │   MergeOutboundUpdatesInPlace(parserCfg, template)
-     │     SPEC 058 pipeline: для referenced entries резолвит template body,
-     │     для direct берёт inline; затем apply Updates[] стек в order
-     │     (preset patches → USER patch). Generator не знает ни Ref, ни Updates.
+     │     SPEC 058 pipeline: resolves the template body for referenced entries
+     │     and takes the inline one for direct; then applies the Updates[] stack
+     │     in order (preset patches → USER patch). The generator knows neither
+     │     Ref nor Updates.
      │
      ▼
 GenerateOutboundsFromParserConfig
@@ -212,31 +215,32 @@ GenerateOutboundsFromParserConfig
      │     append per-source proxies (parsed from .raw cache)
      ▼
 MergeDNSSection + MergeRouteSection + MergePresetsIntoRoute
-     │     emit final dns / route sections в порядке state.rules[]
+     │     emit final dns / route sections in state.rules[] order
      ▼
 atomic write: bin/config.json
 ```
 
-**Resolver pattern** — `ResolveDNS` / `ResolveRoute` (+ `MergeOutboundUpdates`
-для outbounds) — pure funcs без I/O. UI render и build emit consume один и
-тот же resolved view → нет divergence между preview и финальным config.
+**The resolver pattern** — `ResolveDNS` / `ResolveRoute` (plus
+`MergeOutboundUpdates` for outbounds) are pure functions with no I/O. The UI
+render and the build emit consume the very same resolved view → no divergence
+between the preview and the final config.
 
-**Headless vs UI paths.** В UI-сессии `CreateStateFromModel` уже sync'нул
-state перед Save, и build читает только. В headless path'ах
-(`rebuild_raw_cache`, `UpdateConfigFromSubscriptions`, `parseAndPreview`) —
-state читается с диска, sync вызывается defensively, потом
-`MergeOutboundUpdatesInPlace` для generator'а.
+**Headless vs UI paths.** In a UI session `CreateStateFromModel` has already
+synced the state before Save, and the build only reads. On headless paths
+(`rebuild_raw_cache`, `UpdateConfigFromSubscriptions`, `parseAndPreview`) the
+state is read from disk, the sync is called defensively, and then
+`MergeOutboundUpdatesInPlace` runs for the generator.
 
 ---
 
 ## 4. Preset toggle flow
 
-User clicks checkbox на preset row в Rules tab → eager state mutation +
-UI refresh без полного re-render.
+The user clicks the checkbox on a preset row in the Rules tab → an eager state
+mutation plus a UI refresh, without a full re-render.
 
 ```
-UI: Rules tab — checkbox toggle на preset row
-     │   handler в rules_unified_rows.go (one-liner после рефактора)
+UI: Rules tab — checkbox toggle on a preset row
+     │   handler in rules_unified_rows.go (a one-liner after the refactor)
      ▼
 mutate model:
      state.Rules = update Enabled flag
@@ -247,101 +251,101 @@ presenter.RefreshAfterPresetToggle()
      │
      ├─► RefreshDNSListAndSelects
      │     v6.SyncDNSOptionsWithActivePresets(rules, &state.DNS, presetMap)
-     │     re-render DNS tab list (если открыт)
-     │     refresh DNS dropdown'ы (Final / DefaultDomainResolver / per-rule server)
+     │     re-render the DNS tab list (if open)
+     │     refresh the DNS dropdowns (Final / DefaultDomainResolver / per-rule server)
      │
-     ├─► build.SyncOutboundsWithActivePresets — на обе view
+     ├─► build.SyncOutboundsWithActivePresets — over both views
      │     ×1: model.GlobalOutbounds
-     │     ×2: model.ParserConfig.Outbounds (через RefreshDerivedParserConfig)
+     │     ×2: model.ParserConfig.Outbounds (via RefreshDerivedParserConfig)
      │
      ├─► refresh Outbounds tab UI
-     │     collectRowsForUI читает state directly (после SPEC 057)
-     │     preset rows показываются с 🔒 + preset label
-     │     globals с обновлённой filters показывают «⚠ modified by N preset(s)»
+     │     collectRowsForUI reads state directly (since SPEC 057)
+     │     preset rows are shown with 🔒 + the preset label
+     │     globals with updated filters show "⚠ modified by N preset(s)"
      │
      └─► RefreshOutboundOptions
-           rebuild per-rule outbound dropdown'ы в Rules tab
-           (новые preset-add tag'и появляются; disabled — исчезают)
+           rebuild the per-rule outbound dropdowns in the Rules tab
+           (newly preset-added tags appear; disabled ones vanish)
 
   ▲
   │
-  MarkAsChanged → Save кнопка enable
+  MarkAsChanged → the Save button becomes enabled
 ```
 
-Eager sync (а не lazy на Save) — потому что юзеру нужно сразу видеть
-эффект: добавился DNS-сервер в список, появился новый outbound, выпадайки
-правил обновились. Без eager sync DNS tab и Outbounds tab показывали бы
-устаревшее состояние до Save.
+Eager sync (rather than lazy, on Save) exists because the user must see the
+effect immediately: a DNS server was added to the list, a new outbound appeared,
+the rule dropdowns changed. Without it, the DNS and Outbounds tabs would show a
+stale state until Save.
 
 ---
 
 ## 5. Edit dialog flow (SPEC 058)
 
-Outbound Edit dialog с SPEC 058 учитывает три класса entries (direct /
-referenced template / referenced preset) и хранит USER edit как
-field-level diff поверх merged base.
+Since SPEC 058 the outbound Edit dialog handles three classes of entry (direct /
+referenced template / referenced preset) and stores the USER edit as a
+field-level diff over the merged base.
 
 ```
 Open Edit dialog (Outbounds tab → Edit button)
      │
      ▼
 ResolveMergedOutbound(state, template, tag)
-     │   case ref="":          merged_base = body inline в state
+     │   case ref="":          merged_base = the body inline in state
      │   case ref="#TEMPLATE#": merged_base = template.parser_config.outbounds[tag]
-     │                                       + apply все active preset patches
+     │                                       + apply every active preset patch
      │   case ref=<preset_id>: merged_base = template.presets[id].outbounds(tag)
-     │                                       + apply все active preset patches
-     │   displayBody = merged_base + apply existing USER patch (если есть)
+     │                                       + apply every active preset patch
+     │   displayBody = merged_base + apply the existing USER patch (if any)
      ▼
-populate form fields из displayBody
+populate the form fields from displayBody
      │
-     │   юзер правит filters / options / addOutbounds / ...
+     │   the user edits filters / options / addOutbounds / ...
      │
      ▼
-[Settings tab ↔ JSON tab переключение]
-     │   syncFormToRaw(): показывает save-shape (thin для referenced —
-     │     только diff-ные поля; full body для direct)
-     │   syncRawToForm(): берёт raw JSON, re-merge с template body для
-     │     referenced entries → form populate показывает merged view
+[switching between the Settings tab ↔ JSON tab]
+     │   syncFormToRaw(): shows the save shape (thin for referenced —
+     │     only the diffed fields; the full body for direct)
+     │   syncRawToForm(): takes the raw JSON and re-merges it with the template
+     │     body for referenced entries → the populated form shows the merged view
      │
      ▼
 Save → applyEditedConfig
-     │   form_value = собранный body из формы
+     │   form_value = the body assembled from the form
      │   case referenced (ref != ""):
      │     USER_patch = field_diff(form_value, merged_base)
-     │     if diff пуст → drop existing USER patch (no-op Save)
-     │     else replace USER patch в updates[] (всегда один, всегда последний)
+     │     if the diff is empty → drop the existing USER patch (a no-op Save)
+     │     else replace the USER patch in updates[] (always one, always last)
      │   case direct (ref=""):
-     │     body перезаписывается напрямую (нет diff, нет USER patch)
+     │     the body is overwritten directly (no diff, no USER patch)
      │
      ▼
-MarkAsChanged → Save кнопка enable
+MarkAsChanged → the Save button becomes enabled
 ```
 
-`syncFormToRaw` / `syncRawToForm` критичны для two-tab UX: state хранит
-thin shape, но юзер в Settings tab видит merged view. Re-merge на
-переключение гарантирует, что form всегда показывает то, что попадёт в
-emit, а не stale snapshot.
+`syncFormToRaw` / `syncRawToForm` are critical to the two-tab UX: the state
+stores the thin shape, yet the Settings tab shows the user a merged view. The
+re-merge on every switch guarantees the form always shows what will actually be
+emitted, not a stale snapshot.
 
 ---
 
 ## 6. Cross-references
 
-| Аспект | Документ |
+| Aspect | Document |
 |--------|----------|
-| Что лежит в state.json, какие kind'ы, schema v6 | [WIZARD_STATE.md](WIZARD_STATE.md) |
-| Что лежит в wizard_template.json, presets / vars / required | [TEMPLATE_REFERENCE.md](TEMPLATE_REFERENCE.md) |
-| Справочник по синтаксису — preset / template var | [WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md) |
-| Общая архитектура приложения (слои, события, ADR) | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| Per-package / per-file инвентарь (по слоям L0–L7) | [ARCHITECTURE_PACKAGES.md](ARCHITECTURE_PACKAGES.md) |
-| Release notes v0.9.6 (терминология preset binding) | [release_notes/0-9-6.md](release_notes/0-9-6.md) |
+| What lives in state.json, which kinds, schema v6 | [WIZARD_STATE.md](WIZARD_STATE.md) |
+| What lives in wizard_template.json, presets / vars / required | [TEMPLATE_REFERENCE.md](TEMPLATE_REFERENCE.md) |
+| Syntax reference — preset / template var | [WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md) |
+| Overall application architecture (layers, events, ADRs) | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Per-package / per-file inventory (by layers L0–L7) | [ARCHITECTURE_PACKAGES.md](ARCHITECTURE_PACKAGES.md) |
+| Release notes v0.9.6 (preset-binding terminology) | [release_notes/0-9-6.md](release_notes/0-9-6.md) |
 
-| Source SPEC | Что покрывает |
+| Source SPEC | What it covers |
 |-------------|---------------|
 | SPECS/052-F-C-CONNECTIONS_REDESIGN | v5 connections layout (sources / outbounds / defaults) |
-| SPECS/053-F-N-PRESET_BUNDLES | Preset bundles, `kind` discriminator на rules, RequiredTemplateRef integration |
+| SPECS/053-F-N-PRESET_BUNDLES | Preset bundles, the `kind` discriminator on rules, RequiredTemplateRef integration |
 | SPECS/055-F-S-PRESET_OUTBOUNDS | `preset.outbounds[]` design (add/update modes) |
 | SPECS/056-R-N-DNS_SCHEMA_REDESIGN | Flat `dns_options.servers/rules[]` kind discriminator + Resolver pattern |
 | SPECS/057-R-N-OUTBOUNDS_PRESET_BINDING | Outbound `Ref` + `Updates[]` schema + lifecycle Sync |
 | SPECS/058-R-N-STATE_AS_TEMPLATE_DIFF | State outbounds — thin refs (`#TEMPLATE#`/preset_id) + USER patch (`#USER#`); migration + auto-upgrade |
-| SPECS/067-F-N-TEMPLATE_EXPRESSIONS | `#if` construct (map-spread + array-element) + expression language predicates + runtime globals `@runtime.platform`/`@runtime.arch` + strict `@`-only var-ref в outer `if[]` |
+| SPECS/067-F-N-TEMPLATE_EXPRESSIONS | The `#if` construct (map-spread + array-element) + expression-language predicates + runtime globals `@runtime.platform`/`@runtime.arch` + strict `@`-only var refs in the outer `if[]` |

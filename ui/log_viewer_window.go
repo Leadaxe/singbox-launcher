@@ -232,8 +232,22 @@ func OpenLogViewerWindow(ac *core.AppController) {
 	apiTop := container.NewHBox(widget.NewLabel(locale.T("log.level_label")), apiSelect)
 	apiContent := container.NewBorder(apiTop, nil, nil, nil, apiList)
 
-	// Core tab: load from file
+	// Core tab: в daemon-режиме логи ядра приходят по gRPC SubscribeLog
+	// (файл лога принадлежит службе и недоступен пользователю), иначе —
+	// из файла logs/sing-box.log.
 	loadCore := func() {
+		if lines, ok := ac.DaemonCoreLogLines(logViewerMaxLines); ok {
+			fyne.Do(func() {
+				if len(lines) == 0 {
+					lines = []string{locale.T("log.daemon_buffer_empty")}
+				}
+				coreLines = lines
+				if coreList != nil {
+					coreList.Refresh()
+				}
+			})
+			return
+		}
 		lines, err := services.ReadLastLines(corePath, logViewerMaxLines)
 		if err != nil {
 			debuglog.WarnLog("logViewer: Core read failed: %v", err)

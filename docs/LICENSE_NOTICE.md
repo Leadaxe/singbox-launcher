@@ -1,43 +1,44 @@
-# Уведомления о лицензиях сторонних компонентов
+# Third-party license notices
+
+**🌐 Language**: English | [Русский](LICENSE_NOTICE.ru.md)
 
 ## WinTun.dll
 
-Этот проект может включать `wintun.dll` - библиотеку для создания виртуальных сетевых адаптеров в Windows.
+This project may include `wintun.dll` — a library for creating virtual network adapters on Windows.
 
-**Источник:** [https://www.wintun.net/](https://www.wintun.net/)  
-**Лицензия:** MIT License  
-**Авторское право:** Copyright (c) 2018-2021 WireGuard LLC. All Rights Reserved.
+**Source:** [https://www.wintun.net/](https://www.wintun.net/)  
+**License:** MIT License  
+**Copyright:** Copyright (c) 2018-2021 WireGuard LLC. All Rights Reserved.
 
-WinTun.dll распространяется под лицензией MIT, что позволяет:
-- ✅ Свободно использовать
-- ✅ Модифицировать
-- ✅ Распространять (включая в релизы проекта)
+WinTun.dll is distributed under the MIT license, which permits:
+- ✅ Free use
+- ✅ Modification
+- ✅ Redistribution (including inside the project's releases)
 
-**Официальный репозиторий:** [https://git.zx2c4.com/wintun/](https://git.zx2c4.com/wintun/)
+**Official repository:** [https://git.zx2c4.com/wintun/](https://git.zx2c4.com/wintun/)
 
-## sing-box (форк: sing-box-lx)
+## sing-box (fork: sing-box-lx)
 
-**Источник (основное ядро):** [https://github.com/Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx)  
-**Апстрим:** [https://github.com/SagerNet/sing-box](https://github.com/SagerNet/sing-box)  
-**Лицензия:** GPL-3.0 (форк наследует лицензию апстрима)  
+**Source (the primary core):** [https://github.com/Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx)  
+**Upstream:** [https://github.com/SagerNet/sing-box](https://github.com/SagerNet/sing-box)  
+**License:** GPL-3.0 (the fork inherits the upstream license)  
 
 ### Included third-party binaries
 
-This release downloads/bundles a prebuilt `sing-box.exe` (Windows) / `sing-box` (macOS/Linux) from the **sing-box-lx** fork (upstream sing-box + сборочные теги `with_xhttp` и `with_awg`, версия `1.13.13-lx.6`):
+This release downloads/bundles a prebuilt `sing-box.exe` (Windows) / `sing-box` (macOS/Linux) from the **sing-box-lx** fork (upstream sing-box + the `with_xhttp` and `with_awg` build tags, at the version in `constants.RequiredCoreVersion` — currently `1.14.0-lx.26`):
 
-**Репозиторий ядра:** [https://github.com/Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx)  
-**Лицензия:** GPL-3.0
+**Core repository:** [https://github.com/Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx)  
+**License:** GPL-3.0
 
-**Windows 7 (`GOOS=windows GOARCH=386`):** форк собирает и эту платформу (ассет `windows-386-legacy-windows-7`) — тоже `sing-box-lx`, отдельного апстрим-исключения больше нет.
+**Windows 7 (`GOOS=windows GOARCH=386`):** the fork builds this platform too (the `windows-386-legacy-windows-7` asset) — also `sing-box-lx`, with no separate upstream exception anymore.
 
-**Примечание:** Если в релизе нет предсобранного бинарника, пользователи должны скачать его самостоятельно из [релизов sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases).
+**Note:** if a release ships without a prebuilt binary, users must download it themselves from the [sing-box-lx releases](https://github.com/Leadaxe/sing-box-lx/releases).
 
 ## Fyne
 
-**Источник:** [https://github.com/fyne-io/fyne](https://github.com/fyne-io/fyne)  
-**Лицензия:** BSD-3-Clause
+**Source:** [https://github.com/fyne-io/fyne](https://github.com/fyne-io/fyne)  
+**License:** BSD-3-Clause
 
 ---
 
-**Примечание:** Этот проект (`singbox-launcher`) распространяется под **GNU General Public License v3.0**. Полный текст — [LICENSE](../LICENSE); коммерческая лицензия и dual licensing — [LICENSING.md](../LICENSING.md).
-
+**Note:** this project (`singbox-launcher`) is distributed under the **GNU General Public License v3.0**. Full text — [LICENSE](../LICENSE); commercial and dual licensing — [LICENSING.md](../LICENSING.md).

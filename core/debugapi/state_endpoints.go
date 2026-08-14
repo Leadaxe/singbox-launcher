@@ -348,7 +348,7 @@ func (s *Server) handleStateOutboundsResolved(w http.ResponseWriter, r *http.Req
 	// any state cached by the facade.
 	pc := configtypes.ParserConfig{}
 	pc.ParserConfig.Outbounds = append([]configtypes.OutboundConfig(nil), st.Connections.Outbounds...)
-	build.MergeOutboundUpdatesInPlace(&pc, td)
+	build.MergeOutboundUpdatesInPlace(&pc, td, build.TargetSpecFromState(st))
 	writeJSON(w, http.StatusOK, map[string]any{"outbounds": pc.ParserConfig.Outbounds})
 }
 

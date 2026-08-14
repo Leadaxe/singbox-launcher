@@ -4,6 +4,7 @@ go 1.20
 
 require (
 	fyne.io/fyne/v2 v2.7.3
+	fyne.io/systray v1.12.0
 	github.com/dweymouth/fyne-tooltip v0.4.0
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/muhammadmuzzammil1998/jsonc v1.0.0
@@ -13,7 +14,6 @@ require (
 )
 
 require (
-	fyne.io/systray v1.12.0 // indirect
 	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fredbi/uri v1.1.1 // indirect
@@ -52,3 +52,15 @@ require (
 )
 
 replace golang.org/x/sys => golang.org/x/sys v0.25.0
+
+// Win7 собирается на Go 1.20.14, а grpc v1.83 объявляет `go 1.25.0`.
+// Шаг CI `go get -modfile=go.win7.mod ./...` резолвит ВСЕ пакеты модуля
+// независимо от build-тегов, поэтому darwin-only daemon-код всё равно
+// затягивает сюда grpc и поднимает директиву go.win7.mod до 1.25 — после
+// чего Go 1.20 отказывается собирать модуль ("imported by a module that
+// requires go 1.25"). Пин на последние версии, ещё совместимые с Go 1.20:
+// grpc v1.64.1 объявляет go 1.19, protobuf v1.34.2 — go 1.20.
+// В сам бинарь Win7 этот код не попадает, пин нужен только для резолва.
+replace google.golang.org/grpc => google.golang.org/grpc v1.64.1
+
+replace google.golang.org/protobuf => google.golang.org/protobuf v1.34.2

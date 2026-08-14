@@ -39,16 +39,22 @@ type CoreDashboardTab struct {
 	controller *core.AppController
 
 	// UI elements
-	statusLabel               *widget.Label  // Full status: "Core Status" + icon + text
-	singboxStatusLabel        *widget.Label  // sing-box status (version or "not found")
-	singboxHelpBtn            *widget.Button // "?" help button, hidden when Download is hidden
-	downloadButton            *widget.Button
-	downloadProgress          *widget.ProgressBar // Progress bar for download
-	downloadContainer         fyne.CanvasObject   // Container for button/progress bar
-	downloadPlaceholder       *canvas.Rectangle   // keeps width when button hidden
-	startButton               *widget.Button      // Start button
-	stopButton                *widget.Button      // Stop button
-	restartButton             *ttwidget.Button    // Restart (kill, watcher restarts) — tooltip carries shortcut
+	statusLabel         *widget.Label  // Full status: "Core Status" + icon + text
+	singboxStatusLabel  *widget.Label  // sing-box status (version or "not found")
+	singboxHelpBtn      *widget.Button // "?" help button, hidden when Download is hidden
+	downloadButton      *widget.Button
+	downloadProgress    *widget.ProgressBar // Progress bar for download
+	downloadContainer   fyne.CanvasObject   // Container for button/progress bar
+	downloadPlaceholder *canvas.Rectangle   // keeps width when button hidden
+	startButton         *widget.Button      // Start button
+	stopButton          *widget.Button      // Stop button
+	restartButton       *ttwidget.Button    // Restart (kill, watcher restarts) — tooltip carries shortcut
+	// pendingOp — идёт Start/Stop, ответа от ядра ещё нет. Пока true,
+	// updateRunningStatus не трогает кнопки: иначе промежуточный опрос
+	// статуса вернул бы им активный вид посреди операции.
+	pendingOp                 bool
+	pendingOpGen              uint64              // поколение операции — отсекает просроченный таймаут
+	pendingOpWantRun          bool                // какого состояния ждём: true — Start, false — Stop
 	wintunStatusLabel         *widget.Label       // wintun.dll status
 	wintunHelpBtn             *widget.Button      // "?" help button, hidden when Download is hidden
 	wintunDownloadButton      *widget.Button      // wintun.dll download button
@@ -216,12 +222,17 @@ func (tab *CoreDashboardTab) createStatusRow() fyne.CanvasObject {
 	tab.statusLabel.Alignment = fyne.TextAlignLeading // Выравнивание текста
 	tab.statusLabel.Importance = widget.MediumImportance
 
+	// Start/Stop уходят в фон (daemon-режим: rebuild → apply по gRPC), и
+	// ответ может прийти через секунды. Без немедленной реакции кнопка
+	// выглядит «залипшей»: нажатие принято, а интерфейс не меняется —
+	// пользователь жмёт ещё раз, и второй вызов встаёт на applyMu.
 	startButton := widget.NewButton(locale.T("core.button_start"), func() {
+		tab.beginPendingOp(locale.T("core.status_starting"), true)
 		core.StartSingBoxProcess()
-		// Status will be updated automatically via UpdateCoreStatusFunc
 	})
 
 	stopButton := widget.NewButton(locale.T("core.button_stop"), func() {
+		tab.beginPendingOp(locale.T("core.status_stopping"), false)
 		core.StopSingBoxProcess()
 	})
 
@@ -321,8 +332,29 @@ func (tab *CoreDashboardTab) createStatusRow() fyne.CanvasObject {
 		pop.ShowAtPosition(fyne.NewPos(pos.X, pos.Y+restartButton.Size().Height))
 	}
 
-	statusContainer := container.NewHBox(
-		tab.statusLabel,
+	// Настройки подключения ЛОКАЛЬНОГО ядра: движок (classic/daemon) и
+	// сопряжение со своим демоном (SPEC 098).
+	//
+	// Раньше кнопка жила в шапке списка прокси, который может показывать узлы
+	// роутера, — и читалась как настройка удалённой машины. Её место здесь,
+	// рядом со статусом ядра, к которому она и относится.
+	connBtn := ttwidget.NewButton("⚙", func() {
+		OpenConnectionWindow(tab.controller, func() {
+			// Сменился движок или сопряжение — список прокси должен перечитать
+			// данные нового транспорта.
+			if tab.controller.UIService != nil && tab.controller.UIService.ResetAPIStateFunc != nil {
+				tab.controller.UIService.ResetAPIStateFunc()
+			}
+			if tab.controller.UIService != nil && tab.controller.UIService.RefreshAPIFunc != nil {
+				tab.controller.UIService.RefreshAPIFunc()
+			}
+		})
+	})
+	connBtn.SetToolTip(locale.T("core.connection_settings_tooltip"))
+	connBtn.Importance = widget.LowImportance
+
+	statusContainer := container.NewBorder(nil, nil,
+		tab.statusLabel, connBtn,
 	)
 
 	buttonsContainer := container.NewCenter(
@@ -1102,7 +1134,7 @@ func (tab *CoreDashboardTab) showUpdatePopup(currentVersion, latestVersion strin
 		downloadLink.OnTapped = func() {
 			if err := platform.OpenURL(downloadURL); err != nil {
 				debuglog.ErrorLog("showUpdatePopup: Failed to open download URL: %v", err)
-				dialogs.ShowError(tab.controller.UIService.MainWindow, fmt.Errorf("Failed to open link: %w", err))
+				dialogs.ShowError(tab.controller.UIService.MainWindow, fmt.Errorf("failed to open link: %w", err))
 			}
 		}
 

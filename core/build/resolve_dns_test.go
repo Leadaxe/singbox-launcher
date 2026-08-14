@@ -36,7 +36,7 @@ func makeTestTD(t *testing.T, presetsJSON string) *template.TemplateData {
 func TestResolveDNS_Required(t *testing.T) {
 	td := makeTestTD(t, "")
 	state := &state.State{}
-	got := ResolveDNS(state, td, nil)
+	got := ResolveDNS(state, td, nil, template.LocalTarget())
 	if len(got.Servers) < 2 {
 		t.Fatalf("expected >=2 required servers, got %d", len(got.Servers))
 	}
@@ -59,7 +59,7 @@ func TestResolveDNS_TemplateOverride(t *testing.T) {
 			},
 		},
 	}
-	got := ResolveDNS(state, td, nil)
+	got := ResolveDNS(state, td, nil, template.LocalTarget())
 	google := findServer(got.Servers, "google_doh")
 	if google == nil {
 		t.Fatal("google_doh missing")
@@ -94,7 +94,7 @@ func TestResolveDNS_Preset(t *testing.T) {
 			{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 		},
 	}
-	got := ResolveDNS(state, td, nil)
+	got := ResolveDNS(state, td, nil, template.LocalTarget())
 
 	// Ожидаем 3 preset entry (no consumption filter — все bundled).
 	presetEntries := 0
@@ -133,7 +133,7 @@ func TestResolveDNS_PresetInactiveByIf(t *testing.T) {
 			{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 		},
 	}
-	got := ResolveDNS(state, td, nil)
+	got := ResolveDNS(state, td, nil, template.LocalTarget())
 	yandex := findServer(got.Servers, "russian:yandex_doh")
 	if yandex == nil {
 		t.Fatal("preset entry should be in result regardless of Active state")
@@ -163,7 +163,7 @@ func TestResolveDNS_PresetUserToggle(t *testing.T) {
 			},
 		},
 	}
-	got := ResolveDNS(state, td, nil)
+	got := ResolveDNS(state, td, nil, template.LocalTarget())
 	y := findServer(got.Servers, "russian:yandex_doh")
 	if y == nil {
 		t.Fatal("missing preset entry")
@@ -188,7 +188,7 @@ func TestResolveDNS_User(t *testing.T) {
 			},
 		},
 	}
-	got := ResolveDNS(state, td, nil)
+	got := ResolveDNS(state, td, nil, template.LocalTarget())
 	pi := findServer(got.Servers, "my-pihole")
 	if pi == nil {
 		t.Fatal("user entry missing")
@@ -220,7 +220,7 @@ func TestResolveDNS_NoConsumptionFilter(t *testing.T) {
 			{Kind: state.RuleKindPreset, Ref: "russian", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 		},
 	}
-	got := ResolveDNS(state, td, nil)
+	got := ResolveDNS(state, td, nil, template.LocalTarget())
 	tags := []string{}
 	for _, s := range got.Servers {
 		if s.Source == DNSSourcePreset {

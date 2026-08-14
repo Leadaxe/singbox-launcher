@@ -1,15 +1,15 @@
 # Sing-Box Launcher
 
+**🌐 Язык**: [English](README.md) | Русский
+
 [![GitHub](https://img.shields.io/badge/GitHub-Leadaxe%2Fsingbox--launcher-blue)](https://github.com/Leadaxe/singbox-launcher)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.24%2B-blue)](https://golang.org/)
-[![Version](https://img.shields.io/badge/version-1.1.2-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
+[![Go Version](https://img.shields.io/badge/Go-1.25%2B-blue)](https://golang.org/)
+[![Version](https://img.shields.io/badge/version-1.3.1-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
 
-**Десктоп-платформа сетевой маршрутизации и анализа трафика. 15+ VPN-протоколов, глубина настроек и API уровня Enterprise. Поверх форка [sing-box-lx](https://github.com/Leadaxe/sing-box-lx) (upstream sing-box + XHTTP + AmneziaWG 2.0) как execution-engine — на всех платформах, включая Windows 7 32-бит.**
+**Десктоп-платформа сетевой маршрутизации и анализа трафика. 13 VPN-протоколов, глубина настроек и API уровня Enterprise. Поверх форка [sing-box-lx](https://github.com/Leadaxe/sing-box-lx) (upstream sing-box + XHTTP + AmneziaWG 2.0) как execution-engine — на всех платформах, включая Windows 7 32-бит. Управляет своим ядром и — по взаимно аутентифицированному каналу — ядрами удалённых машин (роутер, VPS), у каждой свой конфиг.**
 
 **Репозиторий**: [https://github.com/Leadaxe/singbox-launcher](https://github.com/Leadaxe/singbox-launcher)
-
-**🌐 Языки**: [English](README.md) | [Русский](README_RU.md)
 
 > **⚠️ Важное предупреждение**
 >
@@ -25,17 +25,18 @@
 
 Кросс-платформенный десктоп-клиент (Windows, macOS, Linux), который оборачивает sing-box и добавляет вокруг него всю поверхность управления: визуальный конфигуратор, работу с несколькими подписками, переключение серверов с пингом, сетевую observability, декларативную маршрутизацию через preset bundles, локальный HTTP API и self-healing supervision.
 
-Три слоя, которые вместе определяют продукт:
+Четыре слоя, которые вместе определяют продукт:
 
 - **Пользовательский слой** — старт/стоп одной кнопкой, поток «subscription URL → работающий VPN», переключение серверов с пингом, правила маршрутизации через чекбоксы, окно Traffic Profiler с per-process атрибуцией.
 - **Power-слой** — Configurator с полной семантикой правил sing-box (CIDR, regex доменов, process matching, sniff, GeoIP/Geosite через SRS), preset bundles с условиями `if` / `if_or`, выбор DNS-серверов с условными правилами.
-- **Headless-слой** — bearer-auth Debug API на `127.0.0.1`, 24 endpoints: чтение и запись state, action-триггеры, управление capture трафика, snapshot endpoint для support workflows.
+- **Флот-слой** — вкладка **Удалённые** управляет другими машинами (роутер, VPS, другой Mac), где ядро работает демоном: у каждой свой профиль визарда и собранный конфиг, свои Start/Stop и Deploy, свой профайлер трафика и окно телеметрии хоста.
+- **Headless-слой** — bearer-auth Debug API на `127.0.0.1`, 26 endpoints: чтение и запись state, action-триггеры, управление capture трафика, snapshot endpoint для support workflows.
 
 ## Возможности
 
 ### Подключение
 
-- **15 протоколов соединений** — vless, vmess, trojan, shadowsocks, hysteria, hysteria2, tuic, ssh, wireguard, naive (https / quic).
+- **13 протоколов соединений** — vless, vmess, trojan, shadowsocks, hysteria2, tuic, anytls, masque, ssh, socks / socks5, naive (https / quic), wireguard / AmneziaWG, плюс профили Amnezia `vpn://`.
 - **XHTTP-транспорт** — `type=xhttp` ноды (VLESS / VMess / Trojan) парсятся, генерируются в `config.json` и round-trip'ятся обратно в share URI (без деградации в httpupgrade). Работает на bundled-ядре sing-box-lx.
 - **AmneziaWG 2.0 (AWG2)** — обфускация на wireguard-endpoint'ах: параметры `jc`/`jmin`/`jmax`, `s1`–`s4`, `h1`–`h4` и CPS-пакеты `i1`–`i5`, парсятся из `wireguard://` и `awg://` URI; `h1`–`h4` принимают **диапазоны** рандомизации AWG 2.0 (`lo-hi`) — ядро само выбирает свежее значение на каждый handshake (ядро ≥ `1.14.0-lx.1-rc.17`); MTU AWG-endpoint авто-клампится до 1280.
 - **Импорт Amnezia** — вставьте ссылку Amnezia `vpn://…` (содержимое `.vpn`-файла) или голый `[Interface]/[Peer]`-текст из `.conf` WireGuard/AmneziaWG прямо в Sources: лаунчер сам декодирует профиль / распознаёт conf-блоки и импортирует их как обычные WG/AWG-узлы.
@@ -44,13 +45,23 @@
 - **Per-source raw cache** — последнее работающее тело подписки сохраняется при failure (никакого сломанного конфига при недоступности провайдера).
 - **TUN inbound** — системный VPN-драйвер на Windows / macOS / Linux с `auto-route`, `auto-redirect` и `find_process` по умолчанию.
 
+### Движки ядра и удалённые машины
+
+- **Два движка ядра за одним швом.** *Classic* (по умолчанию, все платформы) спавнит и супервизит `sing-box run` и говорит с ним по Clash API. *Daemon* (macOS) управляет ядром внутри долгоживущей системной службы (`sing-box lxd`) по gRPC + admin REST — та же модель «ядро внутри процесса», что и в Android-линии. UI, трей, горячие клавиши и Debug API ходят к ядру только через активный движок, поэтому ничто выше шва не знает, какой из них работает.
+- **Что даёт daemon-режим** — sudo один раз (лаунчер готовит команду установки для **вашего** терминала и сам ничего привилегированного не запускает), выход из лаунчера может оставлять VPN работать (отключаемо галочкой), смена конфига подменяет ядро на месте с валидацией сабпроцессом и автооткатом на последний рабочий конфиг, плюс богатая наблюдаемость: живой статус, соединения, логи ядра и экран **пула балансировщика** по gRPC.
+- **Удалённые машины** — роутер / VPS / другой Mac сопрягаются по mTLS одноразовым приглашением (`адрес#отпечаток#код`). У каждой машины своя запись в реестре (имя, платформа, архитектура, адрес), свой профиль визарда и собранный `config.json`, свои Start / Stop / Deploy — конфиг, собранный для роутера, больше нельзя задеплоить на VPS.
+- **Deploy везёт не только JSON** — rule-set'ы и тела подписок, на которые ссылается конфиг машины, уезжают в её ресурсное хранилище вместе с конфигом.
+- **Окно телеметрии хоста** — таблицы CPU / память / хранилище / сеть по каждой машине: отвечает на вопрос «почему тормозит роутер» отдельно от картины трафика ядра.
+
+Подробности: [docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md).
+
 ### Маршрутизация и правила
 
 - **Preset bundles** — community-maintained rule-pack'и с типизированными переменными, локальными SRS rule-sets, условными фрагментами (`if` / `if_or`). Включаются чекбоксами.
 - **User rules** — 5 типизированных kind'ов: IP / CIDR, домен (suffix / keyword / regex), процесс (имя или regex пути), SRS URL, raw JSON.
 - **17+ matchers** — domain, IP CIDR, ports, network, protocol, process, package name, GeoSite / GeoIP через SRS, composite rules с `invert`.
 - **Per-rule outbound chains** через селекторы (urltest / failover).
-- **SRS auto-download** — `⚠` badge на missing-file при открытии Configurator; движок не пытается скачивать SRS через ещё не поднятый VPN.
+- **SRS auto-download** — `⚠` badge на missing-file при открытии визарда; движок не пытается скачивать SRS через ещё не поднятый VPN.
 
 ### DNS
 
@@ -60,7 +71,7 @@
 
 ### Сетевая observability
 
-- **Traffic Profiler** — always-on capture с rolling buffer 60 с × 3000 events, per-process атрибуция, реконструкция CNAME-цепочек, inferred matching по DNS-IP.
+- **Traffic Profiler** — always-on capture с rolling buffer 60 с × 3000 events, per-process атрибуция, реконструкция CNAME-цепочек, inferred matching по DNS-IP. У сопряжённой машины — свой экземпляр профайлера и своё окно (питается её gRPC-стримами), поэтому две машины можно смотреть рядом.
 - **Issue classification** — `⚠ DnsTimeout` / `⚠ TcpRstEarly` поднимают конкретные диагностические сигналы.
 - **Pre-session backfill** — last 60s matching events копируются в новую recording-сессию.
 - **Three-stream Log Viewer** — Internal логи лаунчера / Core лог-файл sing-box / Clash API клиент, фильтр по уровню, rotation-safe.
@@ -80,12 +91,12 @@
 - **Keyboard shortcuts** — `⌘R` / `Ctrl+R` reconnect (kill sing-box для restart), `⌘U` / `Ctrl+U` обновить подписки, `⌘P` / `Ctrl+P` пинг всех прокси.
 - **CLI флаги** — `-start` (auto-start VPN при запуске), `-tray` (старт минимизированным в трей). Удобно для автозапуска, system services, headless deployment.
 - **Auto-loaders** — список прокси восстанавливается при каждом старте sing-box; активный outbound сохраняется между перезапусками.
-- **Share URI** — правый клик на любой прокси в Servers tab → **Copy link** генерирует share URI (`vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`, `wireguard://`) из соответствующего outbound в `config.json`.
+- **Share URI** — правый клик на любой прокси в списке серверов (Локально или Удалённые) → **Copy link** генерирует share URI (`vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`, `wireguard://`) из соответствующего outbound в `config.json`.
 
 ### Power-инструменты
 
-- **Debug API** — локальный HTTP API (24 endpoints, bearer-auth, off by default) для чтения/записи state, action-триггеров, управления capture трафика. См. [Headless control plane](#headless-control-plane--debug-api).
-- **Configurator** — 6-tab визуальный редактор (Sources / Outbounds / Rules / DNS / Settings / Preview) со schema validation, named state snapshots, атомарным save.
+- **Debug API** — локальный HTTP API (26 endpoints, bearer-auth, off by default) для чтения/записи state, action-триггеров, управления capture трафика. См. [Headless control plane](#headless-control-plane--debug-api).
+- **Configurator** — 7-tab визуальный редактор (Target / Sources / Outbounds / Rules / DNS / Settings / Preview) со schema validation, named state snapshots, атомарным save. Вкладка **Target** решает, для какой машины собирается конфиг — для этой или для сопряжённой удалённой со своей ОС/архитектурой и опциональной ролью gateway.
 - **Snapshot для support** — `GET /debug/snapshot` или кнопка **Copy snapshot** упаковывает template + state + cache + config в один JSON для bug-report.
 - **Verbose toggle** — `🔬 dbg` кнопка в Traffic Profiler переключает `log_level=debug` с atomic rebuild и revert.
 
@@ -98,9 +109,9 @@
 ## Быстрый старт
 
 1. Скачайте релиз с [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases) и установите (см. [Установка](#установка)).
-2. Откройте приложение → вкладка **Core** → кнопка **Download** скачает `sing-box` (и `wintun.dll` на Windows). Fallback на SourceForge mirror, если GitHub недоступен.
-3. Кнопка **Configurator** → вставьте subscription URL на вкладке **Sources** → пройдите Outbounds / Rules / DNS / Settings / Preview → **Save**.
-4. Назад в **Core** → **Start**. Переключайте серверы во вкладке **Servers**, наблюдайте за трафиком через кнопку **Traffic Profiler** в Diagnostics.
+2. Откройте приложение → вкладка **Локально** → кнопка **Download** скачает `sing-box` (и `wintun.dll` на Windows). Если GitHub недоступен, работает fallback на GitHub-зеркала.
+3. Кнопка **Wizard** → вставьте subscription URL на вкладке **Sources** → пройдите Outbounds / Rules / DNS / Settings / Preview → **Save**.
+4. Назад на **Локально** → **Start**. Серверы — в левой колонке той же вкладки; за трафиком наблюдайте через кнопку **Traffic Profiler** в Diagnostics.
 
 ### Флаги командной строки
 
@@ -118,11 +129,11 @@ singbox-launcher -start -tray   # комбинация — headless autostart-с
 
 ![Переключение серверов между подписками](docs/screenshots/02-server-switching.png)
 
-Подключайте несколько источников подписок, у каждой — свой график обновления и per-source raw cache. Вкладка **Servers** показывает selector-группы (`proxy-out`, `vpn ①`, `ru VPN` и т. д.), определённые в ParserConfig, и пинг каждого сервера с переключением в один клик. Активный outbound отражается в трее — быстрая смена без открытия главного окна.
+Подключайте несколько источников подписок, у каждой — свой график обновления и per-source raw cache. Список серверов вкладки **Локально** показывает selector-группы (`proxy-out`, `vpn ①`, `ru VPN` и т. д.), определённые в ParserConfig, и пинг каждого сервера с переключением в один клик. Активный outbound отражается в трее — быстрая смена без открытия главного окна.
 
 `SubscriptionMeta` каждой подписки раскрывает состояние провайдера — название профиля, support URL, использование трафика (`UploadBytes` / `DownloadBytes` / `TotalBytes`), дата окончания, статус последнего fetch, announce-сообщения от провайдера (`📢` при success-with-announce, `⚠` при error-with-announce — actionable URL в UI).
 
-**Share URI** — правый клик на любую строку прокси в Servers tab → первая строка меню показывает Clash API outbound type (lowercase: `vless`, `vmess`, `trojan`, `selector`, `direct`, …), затем **Copy link** генерирует share URI из соответствующего outbound в `config.json` (или из записи WireGuard `endpoint[]`, если tag не является outbound). Удобно для переноса сервера на другое устройство или передачи коллеге.
+**Share URI** — правый клик на любую строку прокси в списке серверов → первая строка меню показывает Clash API outbound type (lowercase: `vless`, `vmess`, `trojan`, `selector`, `direct`, …), затем **Copy link** генерирует share URI из соответствующего outbound в `config.json` (или из записи WireGuard `endpoint[]`, если tag не является outbound). Удобно для переноса сервера на другое устройство или передачи коллеге.
 
 ### Декларативная маршрутизация через preset bundles
 
@@ -178,7 +189,7 @@ Issue classification — конкретные проблемы: `DnsTimeout` (DN
 Tray-иконка остаётся видимой после закрытия главного окна и даёт:
 
 - **Start / Stop** sing-box.
-- **Переключатель прокси** — при включённом Clash API прокси активной группы появляются как submenu с отмеченным текущим выбором. Переключение из трея запускает тот же путь, что и переключение во вкладке Servers.
+- **Переключатель прокси** — при включённом Clash API прокси активной группы появляются как submenu с отмеченным текущим выбором. Переключение из трея запускает тот же путь, что и переключение в списке серверов.
 - **Показать главное окно** / **Exit**.
 
 В сочетании с CLI флагом `-tray` это режим headless-стиля: лаунчер стартует скрытым, всем управляете из трея, главное окно открываете только когда нужна настройка.
@@ -189,11 +200,11 @@ Keyboard shortcuts (работают независимо от текущей а
 | --- | --- |
 | `⌘R` / `Ctrl+R` | Reconnect (kill sing-box для restart — supervisor авто-восстанавливает) |
 | `⌘U` / `Ctrl+U` | Обновить подписки |
-| `⌘P` / `Ctrl+P` | Пинг всех прокси (то же, что кнопка ping-all во вкладке Servers) |
+| `⌘P` / `Ctrl+P` | Пинг всех прокси (то же, что кнопка ping-all над списком серверов) |
 
 ### Headless control plane — Debug API
 
-Локальный HTTP API на `127.0.0.1`, bearer-auth, off by default. 24 endpoints в пяти группах:
+Локальный HTTP API на `127.0.0.1`, bearer-auth, off by default. 26 endpoints в пяти группах:
 
 | Группа | Что покрывает |
 | --- | --- |
@@ -244,14 +255,15 @@ User Agent: `singbox-launcher/<version> (<os> <arch>)`. Контроли при�
 
 - **Рекомендуется:** Windows 10 / 11 (x64).
 - **Legacy:** Windows 7 (x86/x64) через отдельную сборку `singbox-launcher-<version>-win7-32.zip` с форк-ядром sing-box-lx (32-bit `windows-386-legacy-windows-7` — **XHTTP + AmneziaWG 2.0 работают и на Win7**) и 32-bit `wintun.dll`.
-- [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — форк-ядро (XHTTP + AmneziaWG), авто-загрузка через Core tab на **всех** Windows-сборках, включая Win7 32-bit (`legacy-windows-7`).
-- [WinTun](https://www.wintun.net/) (wintun.dll, лицензия MIT) — авто-загрузка через Core tab.
+- [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — форк-ядро (XHTTP + AmneziaWG), авто-загрузка через вкладку Локально на **всех** Windows-сборках, включая Win7 32-bit (`legacy-windows-7`).
+- [WinTun](https://www.wintun.net/) (wintun.dll, лицензия MIT) — авто-загрузка через вкладку Локально.
 
 ### macOS
 
 - **Universal** (рекомендуется): macOS 11+ (Big Sur), поддерживает Apple Silicon и Intel.
 - **Intel-only legacy build**: macOS 10.15+ (Catalina).
-- [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — форк-ядро (XHTTP + AmneziaWG), авто-загрузка через Core tab.
+- **Daemon-режим** (опционально, только macOS) дополнительно требует ядра, собранного с сабкомандой `lxd` (`with_lx_command`). Пин `RequiredCoreVersion` (`1.14.0-lx.26`) её включает. См. [docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md).
+- [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — форк-ядро (XHTTP + AmneziaWG), авто-загрузка через вкладку Локально.
 
 ### Linux
 
@@ -264,8 +276,8 @@ User Agent: `singbox-launcher/<version> (<os> <arch>)`. Контроли при�
 1. Скачайте релиз с [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases) — обычный архив для Win 10/11, `singbox-launcher-<version>-win7-32.zip` для Windows 7.
 2. Распакуйте в любую папку (например, `C:\Program Files\singbox-launcher`).
 3. Запустите `singbox-launcher.exe`.
-4. Вкладка **Core** → **Download** скачает `sing-box.exe`, затем **Download wintun.dll** при необходимости.
-5. Откройте **Configurator** → вставьте subscription URL → пройдите вкладки → **Save** → **Start**.
+4. Вкладка **Локально** → **Download** скачает `sing-box.exe`, затем **Download wintun.dll** при необходимости.
+5. Откройте **Wizard** → вставьте subscription URL → пройдите вкладки → **Save** → **Start**.
 
 ### macOS
 
@@ -310,9 +322,13 @@ singbox-launcher/
 │   ├── wintun.dll                  — только Windows, авто-загрузка
 │   ├── config.json                 — sing-box runtime config (derived view)
 │   ├── wizard_template.json        — community template с preset bundles
-│   ├── wizard_states/<name>.json   — named state snapshots
+│   ├── wizard_states/
+│   │   ├── state.json              — состояние визарда ЭТОЙ машины
+│   │   ├── <name>.json             — именованные снапшоты
+│   │   └── remote/<machine-id>/    — по каталогу на сопряжённую машину:
+│   │                                 state.json, config.json, srs/, subscriptions/
 │   ├── subscriptions/<id>.raw      — per-source raw cache (SPEC 052)
-│   ├── rule_sets/*.srs             — кешированные SRS rule-sets
+│   ├── rule-sets/*.srs             — кешированные SRS rule-sets
 │   └── logs/                       — sing-box.log + rotated history
 └── singbox-launcher(.exe)
 ```
@@ -359,9 +375,11 @@ build\test_windows.bat   # Windows
 
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — полная карта архитектуры проекта.
 - **[SPECS/CONSTITUTION.md](SPECS/CONSTITUTION.md)** — архитектурные инварианты.
-- **[SPECS/](SPECS/)** — 60+ спецификаций фич (HWID protocol, traffic profiler, debug API, preset bundles, state-as-template-diff, atomic writes, typed event bus, …).
-- **[docs/WIZARD_TEMPLATE_RU.md](docs/WIZARD_TEMPLATE_RU.md)** — справочник по синтаксису `wizard_template.json` (для VPN-провайдеров, поставляющих собственный шаблон).
-- **[docs/ParserConfig.md](docs/ParserConfig.md)** — справочник по настройке парсера подписок.
+- **[SPECS/](SPECS/)** — 90+ спецификаций фич (HWID protocol, traffic profiler, debug API, preset bundles, state-as-template-diff, atomic writes, typed event bus, daemon-режим ядра, удалённые машины, …).
+- **[docs/API.md](docs/API.md)** — референс Debug API с curl-рецептами.
+- **[docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md)** — daemon-режим ядра, сопряжение, управление удалёнными машинами.
+- **[docs/WIZARD_TEMPLATE.ru.md](docs/WIZARD_TEMPLATE.ru.md)** — справочник по синтаксису `wizard_template.json` (для VPN-провайдеров, поставляющих собственный шаблон).
+- **[docs/ParserConfig.ru.md](docs/ParserConfig.ru.md)** — справочник по настройке парсера подписок.
 - **[docs/TRAFFIC_PROFILER.md](docs/TRAFFIC_PROFILER.md)** — внутренности и использование Traffic Profiler.
 - **[docs/TEMPLATE_REFERENCE.md](docs/TEMPLATE_REFERENCE.md)** — справочник схемы `wizard_template.json`.
 
@@ -369,8 +387,8 @@ build\test_windows.bat   # Windows
 
 | Симптом | Что проверить первым |
 | --- | --- |
-| sing-box не стартует | **Core → Download**, затем проверьте наличие `config.json`. Смотрите `bin/logs/sing-box.log`. |
-| Configurator открывается, но Save падает | Internal log в **Log window** — там лог schema-validation. |
+| sing-box не стартует | **Локально → Download**, затем проверьте наличие `config.json`. Смотрите `bin/logs/sing-box.log`. |
+| Визард открывается, но Save падает | Internal log в **Log window** — там лог schema-validation. |
 | Вкладка Clash API недоступна | sing-box не запущен (вкладка намеренно disabled, пока движок не поднят). |
 | Подписка возвращает пусто / ошибки | Проверьте **Subscription identification** в Settings — HWID-binding панели требуют `Send device ID` включённым. Смотрите tooltip ⚠ badge — там announce от провайдера. |
 | TUN не захватывает трафик (Linux/macOS) | Для TUN-интерфейса обычно нужен root: `sudo ./singbox-launcher` или `sudo setcap cap_net_admin+ep ./singbox-launcher` (Linux). |

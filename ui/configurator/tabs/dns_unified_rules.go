@@ -12,8 +12,6 @@
 package tabs
 
 import (
-	"runtime"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
@@ -189,7 +187,7 @@ func buildSingleDNSPresetRuleRow(
 	// Resolve dns_rule body для tooltip + View JSON. SPEC 085.1: пресет может
 	// нести несколько DNS-правил под одним slot'ом — для summary берём первое
 	// доступное (singular DNSRule, иначе первый элемент DNSRules).
-	frags, _, ok := build.ExpandPreset(tplPreset, pr.Vars, runtime.GOOS, runtime.GOARCH)
+	frags, _, ok := build.ExpandPreset(tplPreset, pr.Vars, model.Target)
 	var ruleBody map[string]interface{}
 	if ok {
 		if frags.DNSRule != nil {

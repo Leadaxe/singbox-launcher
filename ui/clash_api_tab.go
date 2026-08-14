@@ -22,6 +22,7 @@ import (
 	"singbox-launcher/api"
 	"singbox-launcher/core"
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
@@ -31,36 +32,180 @@ import (
 	"singbox-launcher/ui/components"
 )
 
-// CreateClashAPITab creates and returns the content for the "Clash API" tab.
-func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
-	ac.UIService.ApiStatusLabel = widget.NewLabel(locale.T("servers.status_not_checked"))
-	status := widget.NewLabel(locale.T("servers.status_click_load"))
-	ac.UIService.ListStatusLabel = status
+// ProxyListPanel — построенная панель списка прокси вместе с её СОБСТВЕННЫМИ
+// виджетами и колбэками (SPEC 098).
+//
+// Local и Remote держат по независимому экземпляру: у каждого свой список
+// узлов, своя выбранная группа и свои строки статуса. Раньше оба писали в
+// общие слоты `UIService`, и второй конструктор затирал первый — обновления с
+// Remote прилетали в виджеты Local, а переключение вкладки перетирало
+// состояние соседней.
+//
+// Слоты `UIService` (ProxiesListWidget, ApiStatusLabel, ListStatusLabel,
+// RefreshAPIFunc, ResetAPIStateFunc, AutoPingAfterConnectFunc) рассчитаны на
+// одного владельца: их дёргают снаружи — main.go, core, горячие клавиши, —
+// и адресовать они должны АКТИВНУЮ панель. Поэтому привязка делается не в
+// конструкторе, а в Activate() при переключении вкладки.
+type ProxyListPanel struct {
+	// reloadGroups перечитывает список selector-групп у активного ядра.
+	reloadGroups func()
+	// Content — корневой контейнер панели (левая колонка вкладки).
+	Content fyne.CanvasObject
 
-	selectorOptions, defaultSelector, err := config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
-	if err != nil {
-		// Cold-start: config.json ещё не существует (пользователь не нажал
-		// Save). Сваливаемся на "proxy-out" дефолт ниже — не повод писать
-		// ERROR. На любую другую ошибку (битый JSON, нет experimental.clash_api)
-		// логируем громко.
-		if os.IsNotExist(err) {
-			debuglog.DebugLog("clash_api_tab: config.json not present yet (cold start): %v", err)
-		} else {
-			debuglog.ErrorLog("clash_api_tab: failed to get selector groups: %v", err)
+	// scope — чьё состояние ведёт эта панель. Обе строятся на старте, когда
+	// активна ScopeLocal, поэтому «активную» область спрашивать нельзя:
+	// панель обязана знать свою.
+	scope services.ProxyScope
+
+	// Собственные виджеты и колбэки панели; переезжают в UIService на Activate.
+	apiStatusLabel       *widget.Label
+	listStatusLabel      *widget.Label
+	proxiesList          *widget.List
+	refreshAPI           func()
+	resetAPIState        func()
+	autoPingAfterConnect func()
+	setEnabled           func(bool)
+	clear                func()
+
+	// autoRefresh — тикер тихого перечитывания списка (только Remote,
+	// см. clash_api_tab_autorefresh.go). nil на Local.
+	autoRefresh *proxyAutoRefresh
+	// silentRefresh — обновление без побочных эффектов ручного действия
+	// (скролл, статус-строка). Дёргается тикером.
+	silentRefresh func(*core.AppController)
+}
+
+// AutoRefresh возвращает тикер авто-обновления панели (nil на Local).
+func (p *ProxyListPanel) AutoRefresh() *proxyAutoRefresh {
+	if p == nil {
+		return nil
+	}
+	return p.autoRefresh
+}
+
+// SetEnabled показывает или прячет содержимое панели.
+//
+// Нужен вкладке Remote: до Connect у неё нет собеседника, и вся панель —
+// дропдаун групп, сортировка, ping — вела бы в пустоту. Показывать
+// неработающие органы управления хуже, чем не показывать их вовсе.
+func (p *ProxyListPanel) SetEnabled(on bool) {
+	if p != nil && p.setEnabled != nil {
+		p.setEnabled(on)
+	}
+}
+
+// Activate делает панель владельцем разделяемых слотов UIService.
+//
+// Вызывается при выборе её вкладки: внешние потребители (авто-пинг после
+// resume, ResetAPIState из core, Cmd+P) обязаны попадать в тот список,
+// который пользователь сейчас видит.
+func (p *ProxyListPanel) Activate(ac *core.AppController) {
+	if p == nil || ac == nil || ac.UIService == nil {
+		return
+	}
+	ac.UIService.ApiStatusLabel = p.apiStatusLabel
+	ac.UIService.ListStatusLabel = p.listStatusLabel
+	ac.UIService.ProxiesListWidget = p.proxiesList
+	ac.UIService.RefreshAPIFunc = p.refreshAPI
+	ac.UIService.ResetAPIStateFunc = p.resetAPIState
+	ac.UIService.AutoPingAfterConnectFunc = p.autoPingAfterConnect
+}
+
+// Refresh перезагружает список панели, если она активна.
+func (p *ProxyListPanel) Refresh() {
+	if p != nil && p.refreshAPI != nil {
+		p.refreshAPI()
+	}
+}
+
+// Clear очищает список панели, НЕ ходя в сеть.
+//
+// Нужен при отключении от машины: собеседника уже нет, и Refresh ушёл бы
+// за узлами с пустой группой, отвечая ошибкой на штатное действие.
+func (p *ProxyListPanel) Clear() {
+	if p != nil && p.clear != nil {
+		p.clear()
+	}
+}
+
+// CreateProxyListPanel строит панель списка прокси — левую колонку обеих
+// вкладок (SPEC 098 §2.1).
+//
+// Один и тот же КОД на Local и Remote (поведение, сортировка, ping и
+// переключение узла обязаны совпадать), но РАЗНЫЕ экземпляры: у каждой
+// вкладки своё состояние. Чьи прокси показывать, решает активный транспорт
+// (см. lxd_remote_override).
+//
+// Шапки управления машиной здесь нет: питанием локального ядра управляет
+// правая колонка Local, удалённым — строка машины на Remote.
+func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *ProxyListPanel {
+	panel := &ProxyListPanel{scope: scope}
+	apiStatusLabel := widget.NewLabel(locale.T("servers.status_not_checked"))
+	panel.apiStatusLabel = apiStatusLabel
+	status := widget.NewLabel(locale.T("servers.status_click_load"))
+	panel.listStatusLabel = status
+
+	var (
+		selectorOptions []string
+		defaultSelector string
+	)
+	// Локальный config.json описывает ТОЛЬКО локальное ядро, поэтому группы из
+	// него читает лишь local-панель.
+	//
+	// Для remote-панели он не источник ни при каких условиях: до Connect у неё
+	// вообще нет собеседника, а группы у машины свои. Без этого различия
+	// дропдаун на Remote при старте заполнялся группами своего ядра
+	// (`vpn ①`, `ru VPN`…) — чужой список под именем удалённой машины.
+	if scope == services.ScopeLocal {
+		var err error
+		selectorOptions, defaultSelector, err = config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
+		if err != nil {
+			// Cold-start: config.json ещё не существует (пользователь не нажал
+			// Save). Сваливаемся на "proxy-out" дефолт ниже — не повод писать
+			// ERROR. На любую другую ошибку (битый JSON, нет experimental.clash_api)
+			// логируем громко.
+			if os.IsNotExist(err) {
+				debuglog.DebugLog("clash_api_tab: config.json not present yet (cold start): %v", err)
+			} else {
+				debuglog.ErrorLog("clash_api_tab: failed to get selector groups: %v", err)
+			}
 		}
 	}
-	if len(selectorOptions) == 0 {
+	// SPEC 097: при подключении к удалённому демону локальный config.json не
+	// описывает ЕГО ядро — группы спрашиваем у самого демона по gRPC.
+	if remoteGroups, isRemote, groupsErr := RemoteDaemonGroups(); isRemote {
+		// Выбрана удалённая машина: её группы — единственный корректный
+		// источник. При ошибке НЕ откатываемся на локальный config.json —
+		// он описывает другое ядро, и подстановка выдавала бы чужой список
+		// за список выбранной машины.
+		selectorOptions = remoteGroups
+		defaultSelector = ""
+		if len(remoteGroups) > 0 {
+			defaultSelector = remoteGroups[0]
+		} else if groupsErr != nil {
+			debuglog.WarnLog("clash_api_tab: remote groups unavailable: %v", groupsErr)
+		}
+	}
+	// Заглушка "proxy-out" — только для local: у него ядро есть всегда, и
+	// пустой дропдаун был бы тупиком. На Remote до Connect список честно пуст.
+	if len(selectorOptions) == 0 && scope == services.ScopeLocal {
 		selectorOptions = []string{"proxy-out"}
 	}
 	selectedGroup := defaultSelector
-	if selectedGroup == "" {
+	if selectedGroup == "" && len(selectorOptions) > 0 {
 		selectedGroup = selectorOptions[0]
 	}
 	// Only set SelectedClashGroup if it's not already set (to preserve value from initialization)
+	//
+	// SPEC 098: пишем в СВОЮ область, а не в активную. Обе панели строятся на
+	// старте, когда активна ScopeLocal, поэтому remote-панель записывала свою
+	// группу в local-состояние, а её собственное оставалось пустым — и первый
+	// же запрос к машине уходил с group="" («Daemon: group "" not found»),
+	// хотя дропдаун показывал proxy-out.
 	if ac.APIService != nil {
-		currentGroup := ac.APIService.GetSelectedClashGroup()
+		currentGroup := ac.APIService.SelectedClashGroupIn(panel.scope)
 		if currentGroup == "" {
-			ac.APIService.SetSelectedClashGroup(selectedGroup)
+			ac.APIService.SetSelectedClashGroupIn(panel.scope, selectedGroup)
 		} else {
 			// Use existing value, but update selectedGroup variable for UI
 			selectedGroup = currentGroup
@@ -89,7 +234,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 			return
 		}
-		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac)
+		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 		if !clashAPIEnabled {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
 			if ac.UIService.ListStatusLabel != nil {
@@ -112,8 +257,8 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			// SPEC 064: capture generation для drop-stale если override
 			// сменился пока запрос летит.
 			gen := CurrentGeneration()
-			baseURL, token, _, _ := EffectiveClashAPIConfig(ac)
-			proxies, now, err := api.GetProxiesInGroup(baseURL, token, group)
+			transport := EffectiveProxyTransportIn(ac, scope)
+			proxies, now, err := transport.GroupProxies(group)
 			fyne.Do(func() {
 				if gen != CurrentGeneration() {
 					// Endpoint override сменился — результат stale, drop без write в UI.
@@ -169,9 +314,43 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		}(group)
 	}
 
-	// Функция для обновления списка селекторов из конфига (вызывается когда sing-box запущен и конфиг загружен)
+	// Функция для обновления списка селекторов (вызывается когда sing-box
+	// запущен и конфиг загружен, а также при смене источника).
+	//
+	// SPEC 097: источник групп зависит от ВЫБРАННОЙ машины. Для удалённой
+	// локальный config.json описывает не её ядро — спрашиваем группы у
+	// самого демона по gRPC. Без этого список групп оставался от локального
+	// ядра, хотя прокси внутри уже приезжали с роутера.
 	updateSelectorList := func() {
-		updatedSelectorOptions, updatedDefaultSelector, err := config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
+		var updatedSelectorOptions []string
+		var updatedDefaultSelector string
+		var err error
+		if remoteGroups, isRemote, groupsErr := RemoteDaemonGroups(); isRemote {
+			updatedSelectorOptions = remoteGroups
+			if len(remoteGroups) > 0 {
+				updatedDefaultSelector = remoteGroups[0]
+			} else if groupsErr != nil {
+				// Машина недоступна или ядро не запущено — список пуст, но
+				// локальные группы подставлять нельзя: это чужое ядро.
+				debuglog.WarnLog("clash_api_tab: remote groups unavailable: %v", groupsErr)
+			}
+		} else if scope == services.ScopeLocal {
+			updatedSelectorOptions, updatedDefaultSelector, err = config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
+		} else if groupSelect != nil {
+			// Remote без выбранной машины: собеседника нет, значит нет и групп.
+			// Оставить прежние значило бы показывать группы отключённой машины
+			// (а на старте — локальные) как её собственные.
+			selectorOptions = nil
+			selectedGroup = ""
+			groupSelect.SetOptions(nil)
+			suppressSelectCallback = true
+			groupSelect.SetSelected("")
+			suppressSelectCallback = false
+			if ac.APIService != nil {
+				ac.APIService.SetSelectedClashGroupIn(panel.scope, "")
+			}
+			return
+		}
 		if err == nil && len(updatedSelectorOptions) > 0 && groupSelect != nil {
 			// Обновляем и переменную selectorOptions, и виджет groupSelect
 			selectorOptions = updatedSelectorOptions
@@ -196,7 +375,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 				groupSelect.SetSelected(selectedGroup)
 				suppressSelectCallback = false
 				if ac.APIService != nil {
-					ac.APIService.SetSelectedClashGroup(selectedGroup)
+					ac.APIService.SetSelectedClashGroupIn(panel.scope, selectedGroup)
 				}
 			}
 		}
@@ -207,7 +386,57 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 			return
 		}
-		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac)
+		// Daemon-режим: Clash API нет, управление по gRPC. «Тест» = проверка
+		// gRPC-транспорта через загрузку групп; статус показываем как gRPC,
+		// без Clash-ошибок.
+		// Подключённая машина lxd — тот же gRPC-путь, хотя локальный бэкенд
+		// остаётся classic: у remote-конфига Clash API нет, и HTTP-ветка ушла
+		// бы на пустой baseURL (`unsupported protocol scheme ""`).
+		_, _, lxdConnected := GetLxdRemoteOverride()
+		if ac.BackendMode() == core.BackendDaemon || (scope == services.ScopeRemote && lxdConnected) {
+			go func() {
+				_, _, err := EffectiveProxyTransportIn(ac, scope).GroupProxies(ac.APIService.GetSelectedClashGroup())
+				fyne.Do(func() {
+					if err != nil {
+						ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_grpc_off"))
+						// FailedPrecondition = канал и сопряжение живы, но
+						// ядро внутри демона не запущено — сырой RPC-текст
+						// пугает, а лекарство одно: нажать Start.
+						if strings.Contains(err.Error(), "service is not started") {
+							ShowErrorText(ac.UIService.MainWindow, "Daemon",
+								locale.T("servers.error_daemon_core_idle"))
+							return
+						}
+						// Машина недоступна по сети (роутер перезагружается,
+						// сменился Wi-Fi, кабель): показывать сырой
+						// «rpc error: code = Unavailable desc = transport:
+						// Error while dialing…» — значит пугать текстом, из
+						// которого пользователю нечего извлечь.
+						if isUnreachableErr(err) {
+							ShowErrorText(ac.UIService.MainWindow, "Daemon",
+								locale.T("servers.error_daemon_unreachable"))
+							return
+						}
+						// Группа машины ещё не прочитана — это не сбой, а
+						// момент до первого чтения списка. Диалог тут пугает
+						// на ровном месте; хватает строки состояния.
+						if services.IsRemoteGroupUnknown(err) {
+							if panel.listStatusLabel != nil {
+								panel.listStatusLabel.SetText(locale.T("remote.proxies.groups_unknown"))
+							}
+							return
+						}
+						ShowError(ac.UIService.MainWindow, err)
+						return
+					}
+					ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_grpc_on"))
+					updateSelectorList()
+					onLoadAndRefreshProxies()
+				})
+			}()
+			return
+		}
+		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 		if !clashAPIEnabled {
 			ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_clash_api_off_config"))
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
@@ -217,7 +446,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			if platform.IsSleeping() {
 				return
 			}
-			baseURL, token, _, _ := EffectiveClashAPIConfig(ac)
+			baseURL, token, _, _ := EffectiveClashAPIConfigIn(ac, scope)
 			var err error
 			for attempt := 0; attempt < clashAPITestMaxAttempts; attempt++ {
 				if platform.IsSleeping() {
@@ -250,20 +479,31 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 	onResetAPIState := func() {
 		debuglog.InfoLog("clash_api_tab: Resetting API state.")
+		// SPEC 097: сменился источник — список групп берём у новой машины.
+		// Сам сброс идёт до перечитывания прокси, поэтому группы успевают
+		// обновиться раньше, чем поедет запрос за списком узлов.
+		updateSelectorList()
 		ac.SetProxiesList([]api.ProxyInfo{})
 		ac.SetActiveProxyName("")
 		ac.SetSelectedIndex(-1)
 		selectedProxyNames = make(map[string]struct{})
 		selectionAnchorVis = -1
 		fyne.Do(func() {
-			if ac.UIService.ApiStatusLabel != nil {
-				ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_not_running"))
+			// Пишем в ЛЕЙБЛЫ СВОЕЙ панели, а не в глобальные слоты UIService:
+			// «Sing-box is stopped» — про локальное ядро, и на вкладке Remote
+			// эта надпись противоречила зелёной машине со статусом started.
+			if panel.apiStatusLabel != nil {
+				panel.apiStatusLabel.SetText(locale.T("servers.status_not_running"))
 			}
-			if ac.UIService.ListStatusLabel != nil {
-				ac.UIService.ListStatusLabel.SetText(locale.T("servers.status_singbox_stopped"))
+			if panel.listStatusLabel != nil {
+				if panel.scope == services.ScopeRemote {
+					panel.listStatusLabel.SetText(locale.T("remote.proxies.core_stopped"))
+				} else {
+					panel.listStatusLabel.SetText(locale.T("servers.status_singbox_stopped"))
+				}
 			}
-			if ac.UIService.ProxiesListWidget != nil {
-				ac.UIService.ProxiesListWidget.Refresh()
+			if panel.proxiesList != nil {
+				panel.proxiesList.Refresh()
 			}
 			if syncExportShareURIsButtonTooltip != nil {
 				syncExportShareURIsButtonTooltip()
@@ -275,12 +515,30 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		})
 	}
 
-	// --- Регистрация колбэков в контроллере ---
-	if ac.UIService != nil {
-		ac.UIService.RefreshAPIFunc = onTestAPIConnection
-		ac.UIService.ResetAPIStateFunc = onResetAPIState
+	// --- Регистрация колбэков ---
+	// Панель держит их у себя (Activate переносит в UIService при выборе её
+	// вкладки), а в UIService пишет и сразу: первая построенная панель должна
+	// быть рабочей ещё до первого переключения вкладок.
+	panel.refreshAPI = onTestAPIConnection
+	panel.resetAPIState = onResetAPIState
+	// Очистка при отключении: тот же сброс состояния, но статус-строка
+	// объясняет причину пустого списка — машина отключена, а не ядро упало.
+	panel.clear = func() {
+		onResetAPIState()
+		fyne.Do(func() {
+			if panel.listStatusLabel != nil {
+				panel.listStatusLabel.SetText(locale.T("remote.proxies.no_machine"))
+			}
+		})
 	}
-
+	// Колбэки панели складываем в неё саму, а в UIService их ставит только
+	// Activate — то есть панель ТОЙ вкладки, которую пользователь видит.
+	//
+	// Раньше их захватывал конструктор, и владельцем оставалась панель,
+	// построенная последней (Remote). Из-за этого падение ЛОКАЛЬНОГО ядра
+	// дёргало remote-панель: UpdateUI зовёт ResetAPIStateFunc на состоянии
+	// «Down», та шла в сеть к машине и перерисовывала список. На отвалившемся
+	// роутере (no route to host) это кончалось падением всего приложения.
 	// --- Вспомогательная функция для пинга ---
 	// Delay in ProxyInfo: >0 = ms, 0 = not pinged, -1 = error (so updateItem shows correct text after list refresh).
 	pingProxy := func(proxyName string, button interface{ SetText(string) }) {
@@ -289,8 +547,8 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 				return
 			}
 			fyne.Do(func() { button.SetText("...") })
-			baseURL, token, _, _ := EffectiveClashAPIConfig(ac)
-			delay, err := api.GetDelay(baseURL, token, proxyName)
+			transport := EffectiveProxyTransportIn(ac, scope)
+			delay, err := transport.Delay(proxyName)
 			fyne.Do(func() {
 				proxies := ac.GetProxiesList()
 				for i := range proxies {
@@ -521,13 +779,16 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 				return
 			}
-			_, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac)
+			_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 			if !clashAPIEnabled {
 				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
 				return
 			}
 			go func(group string) {
-				err := ac.APIService.SwitchProxy(group, proxyNameForCallback)
+				// Через EffectiveProxyTransport: учитывает remote-override
+				// (SPEC 064) и gRPC-транспорт daemon-режима — прямой
+				// APIService.SwitchProxy их не видит.
+				err := ac.APIService.SwitchProxyVia(EffectiveProxyTransportIn(ac, scope), group, proxyNameForCallback)
 				fyne.Do(func() {
 					if err != nil {
 						ShowError(ac.UIService.MainWindow, err)
@@ -706,7 +967,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		refreshServersProxySelectionUI()
 	}
 
-	ac.UIService.ProxiesListWidget = proxiesListWidget
+	panel.proxiesList = proxiesListWidget
 
 	// Переменные для отслеживания направления сортировки
 	sortNameAscending := true
@@ -814,7 +1075,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 			return
 		}
-		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac)
+		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 		if !clashAPIEnabled {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
 			return
@@ -828,7 +1089,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 		go func() {
 			gen := atomic.AddUint64(&pingAllGeneration, 1)
-			baseURL, token, _, _ := EffectiveClashAPIConfig(ac)
+			transport := EffectiveProxyTransportIn(ac, scope)
 
 			type pingJob struct {
 				Name string
@@ -848,7 +1109,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 			worker := func() {
 				for job := range jobs {
-					delay, err := api.GetDelay(baseURL, token, job.Name)
+					delay, err := transport.Delay(job.Name)
 					fyne.Do(func() {
 						if atomic.LoadUint64(&pingAllGeneration) != gen {
 							return
@@ -1063,7 +1324,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 	// requests. The soft cap for the *automatic* (timer-driven) path lives at
 	// the timer call sites in controller.go and main.go (resume). See SPEC 039
 	// §1.3 / §2.7.
-	ac.UIService.AutoPingAfterConnectFunc = func() {
+	panel.autoPingAfterConnect = func() {
 		fyne.Do(pingAllProxies)
 	}
 
@@ -1189,11 +1450,16 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
 			return
 		}
-		baseURL, token, enabled, _ := EffectiveClashAPIConfig(ac)
-		if !enabled {
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
-			return
+		// Гейт «clash_api включён» осмыслен только для classic: в daemon-режиме
+		// запросы идут по gRPC-транспорту и от clash_api-секции конфига не
+		// зависят (её может вообще не быть).
+		if ac.BackendMode() != core.BackendDaemon {
+			if _, _, enabled, _ := EffectiveClashAPIConfigIn(ac, scope); !enabled {
+				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
+				return
+			}
 		}
+		transport := EffectiveProxyTransportIn(ac, scope)
 
 		// Run queries in background to avoid blocking UI
 		go func() {
@@ -1221,7 +1487,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 
 			results := make([]string, 0, len(currentSelectorOptions))
 			for _, sel := range currentSelectorOptions {
-				_, now, err := api.GetProxiesInGroup(baseURL, token, sel)
+				_, now, err := transport.GroupProxies(sel)
 				if err != nil {
 					results = append(results, locale.Tf("servers.selector_error", sel, err))
 					continue
@@ -1256,7 +1522,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		}
 		selectedGroup = value
 		if ac.APIService != nil {
-			ac.APIService.SetSelectedClashGroup(value)
+			ac.APIService.SetSelectedClashGroupIn(panel.scope, value)
 		}
 		if suppressSelectCallback {
 			return
@@ -1285,7 +1551,7 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		// Защита от «API disabled»-popup'а при холодном старте сохраняется:
 		// onLoadAndRefreshProxies показывает диалог, если API выключен, — и
 		// именно поэтому проверка стоит ЗДЕСЬ, до вызова.
-		if _, _, clashAPIEnabled, _ := EffectiveClashAPIConfig(ac); clashAPIEnabled {
+		if _, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope); clashAPIEnabled {
 			ac.AutoLoadProxies()
 			onLoadAndRefreshProxies()
 		}
@@ -1297,33 +1563,73 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		suppressSelectCallback = false
 	}
 
-	// SPEC 064: status badge ("🏠 Local" / "🌐 host:port") + gear ⚙ для
-	// remote-endpoint settings. Badge auto-update'ится через OnOverrideChanged.
-	endpointBadge := newRemoteEndpointBadge()
-	endpointGearBtn := ttwidget.NewButton("⚙", func() {
-		showRemoteEndpointDialog(ac, ac.UIService.MainWindow, func() {
-			// onChanged: после Set/Clear override force-refresh proxy list,
-			// чтобы tab сразу отразил данные нового endpoint'а.
-			// Generation counter в EffectiveClashAPIConfig + atomic gen-check
-			// в refresh-goroutine'ах гарантирует drop-stale если рефреш
-			// уже летит против старого endpoint'а.
-			onResetAPIState()
-			onLoadAndRefreshProxies()
-		})
-	})
-	endpointGearBtn.SetToolTip(locale.T("servers.endpoint.tooltip_settings"))
-	endpointGearBtn.Importance = widget.LowImportance
+	// SPEC 098: панель начинается сразу с выбора группы. Питание и выбор
+	// машины уехали в правую колонку вкладок — там видно, о какой машине
+	// речь, тогда как в шапке списка это было неочевидно: дропдаун говорил,
+	// чьи прокси показывать, а кнопки управляли «текущей» машиной.
+	//
+	// Гейр настроек подключения уехал туда же — в блок Core на вкладке Local:
+	// он про ЛОКАЛЬНОЕ ядро (движок и сопряжение со своим демоном), и в шапке
+	// списка, который может показывать узлы роутера, читался как настройка
+	// удалённой машины.
+	// Принудительная перезагрузка списка групп. После Deploy ядро на машине
+	// перезапускается с новым конфигом, и набор selector-групп меняется — а
+	// дропдаун держит тот, что прочитали при соединении. Сам лаунчер за этим
+	// не следит: на удалённой машине конфиг могли поменять и мимо него.
+	// Отдаём перечитывание групп наружу: после Connect панель машин обязана
+	// сначала узнать группы машины и только потом грузить узлы — иначе запрос
+	// уходит с пустой группой.
+	panel.reloadGroups = updateSelectorList
 
-	topControls := container.NewVBox(
-		container.NewBorder(
-			nil, nil,
-			ac.UIService.ApiStatusLabel,
-			container.NewHBox(endpointBadge, endpointGearBtn),
+	reloadGroupsBtn := ttwidget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() {
+		updateSelectorList()
+		onLoadAndRefreshProxies()
+	})
+	reloadGroupsBtn.SetToolTip(locale.T("servers.reload_groups_tooltip"))
+	reloadGroupsBtn.Importance = widget.LowImportance
+
+	// Тихое авто-обновление списка узлов удалённой машины (раз в 5 секунд).
+	//
+	// Поднимается ДО вёрстки строки ниже: пульсирующий значок ставится вместо
+	// кнопки только при живом тикере, и порядок здесь решает, какой из двух
+	// вариантов попадёт в строку.
+	//
+	// Группу берём не из замыкания, а из состояния СВОЕЙ области на каждом
+	// тике: пользователь мог сменить её в дропдауне, и захваченное на старте
+	// значение опрашивало бы уже не ту группу.
+	panel.silentRefresh = func(c *core.AppController) {
+		if c == nil || c.APIService == nil {
+			return
+		}
+		silentRefreshProxies(c, scope, c.APIService.SelectedClashGroupIn(panel.scope))
+	}
+	panel.startAutoRefresh(ac)
+
+	// На Remote кнопку ↻ подменяет пульсирующий индикатор: он и кнопка (тот же
+	// клик), и показ авто-обновления — значок гаснет к моменту запроса и резко
+	// возвращается в полную яркость. Отдельного элемента в строке нет, поэтому
+	// вёрстка не меняется, а «дыхание» читается боковым зрением.
+	//
+	// На Local тикера нет — там остаётся обычная кнопка.
+	var refreshRight fyne.CanvasObject = reloadGroupsBtn
+	if panel.autoRefresh != nil {
+		pulse := newRefreshPulse(func() {
+			updateSelectorList()
+			onLoadAndRefreshProxies()
+		}, locale.T("servers.reload_groups_tooltip"))
+		panel.autoRefresh.SetCountdownFunc(pulse.SetCountdown)
+		refreshRight = pulse.Object()
+	}
+
+	// ↻ прижата к правому краю: это действие над всей панелью (перечитать
+	// группы у ядра), а не часть выбора группы. Border разводит их по краям
+	// строки, HBox сложил бы всё встык слева.
+	groupRow := container.NewBorder(nil, nil, nil, refreshRight,
+		container.NewHBox(
+			widget.NewLabel(locale.T("servers.label_selector_group")), groupSelect, mapButton,
 		),
-		container.NewHBox(widget.NewLabel(locale.T("servers.label_selector_group")), groupSelect, mapButton),
-		widget.NewSeparator(),
-		buttonsRow,
 	)
+	topControls := container.NewVBox(groupRow, widget.NewSeparator(), buttonsRow)
 
 	// Обертываем status label в контейнер с горизонтальной прокруткой
 	// Scroll контейнер ограничит ширину label и добавит прокрутку при необходимости
@@ -1340,5 +1646,76 @@ func CreateClashAPITab(ac *core.AppController) fyne.CanvasObject {
 		scrollContainer,
 	)
 
-	return contentContainer
+	// Remote без выбранной машины: собеседника нет, и нажимать в панели
+	// нечего — любое действие ушло бы в пустоту.
+	//
+	// Гасим ОРГАНЫ УПРАВЛЕНИЯ, а не саму панель: спрятать её целиком значит
+	// отдать всё окно правой колонке, и разметка вкладки скачет туда-сюда при
+	// каждом Connect. Каркас стоит на месте, кнопки серые — это и читается как
+	// «здесь пока нечего делать». Панель включается по Connect
+	// (SetEnabled из machine_list_panel).
+	disableable := []fyne.Disableable{groupSelect, mapButton}
+	for _, o := range buttonsRow.Objects {
+		if d, ok := o.(fyne.Disableable); ok {
+			disableable = append(disableable, d)
+		}
+	}
+	panel.setEnabled = func(on bool) {
+		for _, d := range disableable {
+			if on {
+				d.Enable()
+			} else {
+				d.Disable()
+			}
+		}
+	}
+	if scope == services.ScopeRemote {
+		if _, _, connected := GetLxdRemoteOverride(); !connected {
+			panel.setEnabled(false)
+			// Пустой список без объяснения читается как поломка. Говорим, чего
+			// не хватает: машина не выбрана.
+			status.SetText(locale.T("remote.proxies.no_machine"))
+		}
+	}
+
+	panel.Content = contentContainer
+	return panel
+}
+
+// isUnreachableErr — ошибка означает «до машины не достучались», а не отказ
+// на её стороне.
+//
+// gRPC заворачивает такие сбои в code=Unavailable с сырым transport-текстом
+// внутри. Для пользователя разница принципиальна: машина недоступна — чинить
+// сеть, а не конфиг, и никакой полезной информации в «Error while dialing»
+// для него нет.
+func isUnreachableErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, marker := range []string{
+		"no route to host",
+		"connection refused",
+		"i/o timeout",
+		"network is unreachable",
+		"context deadline exceeded",
+		"Error while dialing",
+	} {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// ReloadGroups перечитывает selector-группы у активного ядра.
+//
+// Нужен панели машин: сразу после Connect группы машины ещё не прочитаны, и
+// Refresh ушёл бы с пустой группой — ядро отвечало «group "" not found» на
+// штатное подключение.
+func (p *ProxyListPanel) ReloadGroups() {
+	if p != nil && p.reloadGroups != nil {
+		p.reloadGroups()
+	}
 }

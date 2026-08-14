@@ -35,8 +35,13 @@ var awgMasqueradeKeys = []string{"ip", "id", "ib"}
 //   - иначе пусто (у групп, direct, wireguard транспорта нет).
 func deriveTransport(nodeType string, raw map[string]interface{}) string {
 	if nodeType == "masque" {
-		if net := strings.TrimSpace(cfgNodeString(raw, "network")); net != "" {
-			return net
+		// `vhttp` since core SPEC 062; `network` is the legacy spelling, still
+		// present in outbounds imported from older configs.
+		if v := strings.TrimSpace(cfgNodeString(raw, "vhttp")); v != "" {
+			return v
+		}
+		if v := strings.TrimSpace(cfgNodeString(raw, "network")); v != "" {
+			return v
 		}
 		return "h3"
 	}

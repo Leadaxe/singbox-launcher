@@ -66,7 +66,7 @@ func ruDirectPreset(t *testing.T) *template.Preset {
 // удалён т.к. @out=direct-out.
 func TestExpand_RuDirect_Default(t *testing.T) {
 	p := ruDirectPreset(t)
-	frags, warns, ok := ExpandPreset(p, nil, "darwin", "amd64")
+	frags, warns, ok := ExpandPreset(p, nil, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if !ok {
 		t.Fatalf("expand failed: %v", warns)
 	}
@@ -154,7 +154,7 @@ func TestExpand_RuDirect_NoDNSOverride(t *testing.T) {
 	p := ruDirectPreset(t)
 	frags, _, ok := ExpandPreset(p, map[string]string{
 		"use_dns_override": "false",
-	}, "darwin", "amd64")
+	}, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -186,7 +186,7 @@ func TestExpand_RuDirect_NoGeoip(t *testing.T) {
 	p := ruDirectPreset(t)
 	frags, _, ok := ExpandPreset(p, map[string]string{
 		"geoip_enabled": "false",
-	}, "darwin", "amd64")
+	}, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -219,7 +219,7 @@ func TestExpand_RuDirect_DifferentDNSServer(t *testing.T) {
 	p := ruDirectPreset(t)
 	frags, _, ok := ExpandPreset(p, map[string]string{
 		"dns_server": "yandex_doh",
-	}, "darwin", "amd64")
+	}, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -239,7 +239,7 @@ func TestExpand_RuDirect_OutboundOverride(t *testing.T) {
 	p := ruDirectPreset(t)
 	frags, _, ok := ExpandPreset(p, map[string]string{
 		"out": "proxy-out",
-	}, "darwin", "amd64")
+	}, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -282,7 +282,7 @@ func TestExpand_BlockAds_Reject(t *testing.T) {
 	var p template.Preset
 	_ = json.Unmarshal(raw, &p)
 
-	frags, _, ok := ExpandPreset(&p, nil, "darwin", "amd64")
+	frags, _, ok := ExpandPreset(&p, nil, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -310,7 +310,7 @@ func TestExpand_PrivateIPs_NoRuleSet(t *testing.T) {
 	var p template.Preset
 	_ = json.Unmarshal(raw, &p)
 
-	frags, _, ok := ExpandPreset(&p, nil, "darwin", "amd64")
+	frags, _, ok := ExpandPreset(&p, nil, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -339,7 +339,7 @@ func TestExpand_UnresolvedVar(t *testing.T) {
 	var p template.Preset
 	_ = json.Unmarshal(raw, &p)
 
-	_, warns, ok := ExpandPreset(&p, nil, "darwin", "amd64")
+	_, warns, ok := ExpandPreset(&p, nil, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if ok {
 		t.Error("expand should fail with unresolved var")
 	}
@@ -360,7 +360,7 @@ func TestExpand_UnresolvedVar(t *testing.T) {
 // TestExpand_UserVarsOverride — userVars перебивают template default.
 func TestExpand_UserVarsOverride(t *testing.T) {
 	p := ruDirectPreset(t)
-	frags, _, ok := ExpandPreset(p, map[string]string{"dns_ip": "77.88.8.7"}, "darwin", "amd64")
+	frags, _, ok := ExpandPreset(p, map[string]string{"dns_ip": "77.88.8.7"}, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -401,7 +401,7 @@ func TestExpand_IfOr_FragmentDropped(t *testing.T) {
 	var p template.Preset
 	_ = json.Unmarshal(raw, &p)
 
-	frags, _, ok := ExpandPreset(&p, nil, "darwin", "amd64")
+	frags, _, ok := ExpandPreset(&p, nil, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if !ok {
 		t.Fatal("expand failed")
 	}
@@ -416,7 +416,7 @@ func TestExpand_IfOr_FragmentDropped(t *testing.T) {
 
 // TestExpand_NilPreset — guard.
 func TestExpand_NilPreset(t *testing.T) {
-	_, _, ok := ExpandPreset(nil, nil, "darwin", "amd64")
+	_, _, ok := ExpandPreset(nil, nil, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if ok {
 		t.Error("nil preset should return ok=false")
 	}
@@ -450,7 +450,7 @@ func TestExpandPreset_RuleWithIf_TrueBranchMerges(t *testing.T) {
 	}
 
 	// Linux → port_range present.
-	frags, _, ok := ExpandPreset(&p, nil, "linux", "amd64")
+	frags, _, ok := ExpandPreset(&p, nil, template.TargetSpec{GOOS: "linux", GOARCH: "amd64"}.Normalized())
 	if !ok {
 		t.Fatalf("expand on linux failed")
 	}
@@ -466,7 +466,7 @@ func TestExpandPreset_RuleWithIf_TrueBranchMerges(t *testing.T) {
 	}
 
 	// Darwin → port_range absent.
-	frags2, _, ok2 := ExpandPreset(&p, nil, "darwin", "amd64")
+	frags2, _, ok2 := ExpandPreset(&p, nil, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if !ok2 {
 		t.Fatalf("expand on darwin failed")
 	}
@@ -505,7 +505,7 @@ func TestExpandPreset_RuleSetWithIf_FalseDropsElement(t *testing.T) {
 	}
 
 	// Darwin: array-element #if false → element dropped, only 1 rule remains.
-	frags, _, ok := ExpandPreset(&p, nil, "darwin", "amd64")
+	frags, _, ok := ExpandPreset(&p, nil, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if !ok {
 		t.Fatalf("expand on darwin failed")
 	}
@@ -518,7 +518,7 @@ func TestExpandPreset_RuleSetWithIf_FalseDropsElement(t *testing.T) {
 	}
 
 	// Linux: array-element #if true → element merged in → 2 rules.
-	frags2, _, ok2 := ExpandPreset(&p, nil, "linux", "amd64")
+	frags2, _, ok2 := ExpandPreset(&p, nil, template.TargetSpec{GOOS: "linux", GOARCH: "amd64"}.Normalized())
 	if !ok2 {
 		t.Fatalf("expand on linux failed")
 	}
@@ -549,7 +549,7 @@ func TestExpandPresetOutbounds_OutboundFieldWithIf(t *testing.T) {
 		},
 	}
 	// Linux → linux_only_field present.
-	entries, _ := ExpandPresetOutbounds(preset, nil, "linux", "amd64")
+	entries, _ := ExpandPresetOutbounds(preset, nil, template.TargetSpec{GOOS: "linux", GOARCH: "amd64"}.Normalized())
 	if len(entries) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(entries))
 	}
@@ -561,7 +561,7 @@ func TestExpandPresetOutbounds_OutboundFieldWithIf(t *testing.T) {
 		t.Errorf("#if key should be stripped from emitted options on linux: %v", opts)
 	}
 	// Darwin → field absent.
-	entries2, _ := ExpandPresetOutbounds(preset, nil, "darwin", "amd64")
+	entries2, _ := ExpandPresetOutbounds(preset, nil, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if len(entries2) != 1 {
 		t.Fatalf("expected 1 entry on darwin, got %d", len(entries2))
 	}
@@ -586,7 +586,7 @@ func TestExpandPreset_UnresolvedVar_StillReturnsFalse(t *testing.T) {
 	var p template.Preset
 	_ = json.Unmarshal(raw, &p)
 
-	_, warns, ok := ExpandPreset(&p, nil, "darwin", "amd64")
+	_, warns, ok := ExpandPreset(&p, nil, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if ok {
 		t.Error("expand should fail with unresolved var (legacy substituteAny semantic)")
 	}

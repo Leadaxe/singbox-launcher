@@ -24,7 +24,6 @@ package build
 
 import (
 	"encoding/json"
-	"runtime"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/template"
@@ -40,6 +39,7 @@ func resolveBaseBody(
 	ob configtypes.OutboundConfig,
 	tmplOutbounds []configtypes.OutboundConfig,
 	presetByID map[string]*template.Preset,
+	target template.TargetSpec,
 ) (configtypes.OutboundConfig, bool) {
 	switch ob.Ref {
 	case "":
@@ -64,7 +64,7 @@ func resolveBaseBody(
 		}
 		// Expand с дефолтными vars (нам нужен только outbound shape; vars
 		// substitution для emit делает sync function).
-		entries, _ := ExpandPresetOutbounds(preset, nil, runtime.GOOS, runtime.GOARCH)
+		entries, _ := ExpandPresetOutbounds(preset, nil, target)
 		for _, entry := range entries {
 			if entry.Mode == "add" && entry.Config.Tag == ob.Tag {
 				base := entry.Config
@@ -95,13 +95,13 @@ func applyUpdatesToBase(base configtypes.OutboundConfig, updates []configtypes.O
 //
 // td может быть nil — тогда referenced entries будут degraded (body = ob.body
 // без template lookup). Direct entries работают всегда.
-func MergeOutboundUpdates(ob configtypes.OutboundConfig, td *template.TemplateData) configtypes.OutboundConfig {
-	return mergeOutboundUpdates(ob, td)
+func MergeOutboundUpdates(ob configtypes.OutboundConfig, td *template.TemplateData, target template.TargetSpec) configtypes.OutboundConfig {
+	return mergeOutboundUpdates(ob, td, target)
 }
 
 // mergeOutboundUpdates — вычисляет merged outbound body: resolve base
 // (template/preset/inline) + apply Updates в order. Возвращает копию.
-func mergeOutboundUpdates(ob configtypes.OutboundConfig, td *template.TemplateData) configtypes.OutboundConfig {
+func mergeOutboundUpdates(ob configtypes.OutboundConfig, td *template.TemplateData, target template.TargetSpec) configtypes.OutboundConfig {
 	tmplOutbounds := td.GlobalOutbounds()
 	presetByID := make(map[string]*template.Preset)
 	if td != nil {
@@ -109,7 +109,7 @@ func mergeOutboundUpdates(ob configtypes.OutboundConfig, td *template.TemplateDa
 			presetByID[td.Presets[i].ID] = &td.Presets[i]
 		}
 	}
-	base, _ := resolveBaseBody(ob, tmplOutbounds, presetByID)
+	base, _ := resolveBaseBody(ob, tmplOutbounds, presetByID, target)
 	return applyUpdatesToBase(base, ob.Updates)
 }
 
@@ -127,7 +127,7 @@ func mergeOutboundUpdates(ob configtypes.OutboundConfig, td *template.TemplateDa
 // legacy state без миграции и для тестов.
 //
 // Idempotent: повторный вызов после первого даёт тот же результат.
-func MergeOutboundUpdatesInPlace(parserCfg *configtypes.ParserConfig, td *template.TemplateData) {
+func MergeOutboundUpdatesInPlace(parserCfg *configtypes.ParserConfig, td *template.TemplateData, target template.TargetSpec) {
 	if parserCfg == nil {
 		return
 	}
@@ -143,7 +143,7 @@ func MergeOutboundUpdatesInPlace(parserCfg *configtypes.ParserConfig, td *templa
 		if ob.Ref == "" && len(ob.Updates) == 0 {
 			continue // direct без patches — nothing to do
 		}
-		base, _ := resolveBaseBody(ob, tmplOutbounds, presetByID)
+		base, _ := resolveBaseBody(ob, tmplOutbounds, presetByID, target)
 		parserCfg.ParserConfig.Outbounds[i] = applyUpdatesToBase(base, ob.Updates)
 	}
 }

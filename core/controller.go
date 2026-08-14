@@ -61,6 +61,14 @@ type AppController struct {
 	// на изменения состояния вместо broadcast-callback'ов.
 	EventBus events.Bus
 
+	// backend — активный движок ядра (classic spawn / lxd daemon). Все
+	// package-level обёртки (StartSingBoxProcess и т.д.) диспетчеризуют
+	// сюда. Меняется только через setBackend (Settings → режим ядра).
+	backend   CoreBackend
+	backendMu sync.RWMutex
+	// backendModeChangeHook — колбэк после смены backend (traffic-источник).
+	backendModeChangeHook func()
+
 	// --- Process State ---
 	SingboxCmd                  *exec.Cmd
 	SingboxPrivilegedMode       bool   // true when sing-box was started with RunWithPrivileges (macOS TUN)
@@ -80,6 +88,12 @@ type AppController struct {
 	// --- Context for goroutine cancellation ---
 	ctx        context.Context    // Context for cancellation
 	cancelFunc context.CancelFunc // Cancel function for stopping goroutines
+
+	// --- Shutdown state ---
+	// exitOnce guards GracefulExit: it is reachable both from the tray "Quit"
+	// item / dashboard Exit button *and* from main() after Application.Run()
+	// returns, so without this the whole teardown runs twice.
+	exitOnce sync.Once
 
 	// --- Update popup state ---
 	updatePopupShown bool         // Флаг, что попап обновления уже был показан в этой сессии
@@ -219,6 +233,9 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	ac.ConsecutiveCrashAttempts = 0
 	ac.ProcessService = NewProcessService(ac)
 	ac.ConfigService = NewConfigService(ac)
+	// Активный движок ядра. По умолчанию — классический spawn; daemon-режим
+	// (macOS) поднимается ниже из settings.json после инициализации сервисов.
+	ac.backend = NewLegacyBackend(ac)
 
 	// SPEC 044 feature-probe: генератор outbound'ов деградирует naive-ноды
 	// (drop + warning) вместо того чтобы отдать sing-box конфиг, который
@@ -230,7 +247,6 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	// subscription, поэтому зависимость подставляется здесь (прямой вызов
 	// дал бы цикл импорта).
 	subscription.NodeIdentityHashFunc = config.NodeIdentityHash
-
 
 	// Устанавливаем callback для проверки обновлений при открытии окна
 	ac.UIService.OnWindowShown = func() {
@@ -291,6 +307,11 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	ac.StateService = services.NewStateService()
 	ac.StateService.EventBus = ac.EventBus
 
+	// Daemon-режим (macOS): если включён в settings.json — заменяет
+	// LegacyBackend, установленный выше. Требует готовых FileService и
+	// APIService (транспорт-override ставится в конструкторе).
+	ac.initBackendFromSettings()
+
 	// Check if config file exists before starting auto-update
 	if _, err := os.Stat(ac.FileService.ConfigPath); os.IsNotExist(err) {
 		debuglog.InfoLog("Auto-update: Config file does not exist (%s), auto-update disabled", ac.FileService.ConfigPath)
@@ -335,7 +356,15 @@ func (ac *AppController) hasUI() bool {
 }
 
 // GracefulExit performs a graceful shutdown of the application.
+//
+// Two call sites reach this: the tray "Quit" item (and the dashboard Exit
+// button), and main() after Application.Run() returns. exitOnce makes the
+// second call a no-op instead of a second full teardown.
 func (ac *AppController) GracefulExit() {
+	ac.exitOnce.Do(ac.gracefulExit)
+}
+
+func (ac *AppController) gracefulExit() {
 	// Cancel context to signal all goroutines to stop
 	if ac.cancelFunc != nil {
 		ac.cancelFunc()
@@ -347,36 +376,47 @@ func (ac *AppController) GracefulExit() {
 		ac.UIService.StopTrayMenuUpdateTimer()
 	}
 
-	StopSingBoxProcess()
+	// Через backend: classic останавливает ядро (как раньше), daemon может
+	// оставить его работать (выход из лаунчера ≠ выключение VPN).
+	waitForStop := true
+	if b := ac.Backend(); b != nil {
+		waitForStop = b.OnAppExit()
+	} else {
+		StopSingBoxProcess()
+	}
 
 	if runtime.GOOS == "darwin" {
 		platform.FreePrivilegedAuthorization()
 	}
 
-	debuglog.InfoLog("GracefulExit: Waiting for sing-box to stop...")
-	// Use ProcessService constant for timeout
-	timeout := time.After(2 * time.Second) // gracefulShutdownTimeout from ProcessService
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		if !ac.RunningState.IsRunning() {
-			debuglog.InfoLog("GracefulExit: Sing-box confirmed stopped.")
-			break
-		}
-		select {
-		case <-timeout:
-			debuglog.WarnLog("GracefulExit: Timeout waiting for sing-box to stop. Forcing kill.")
-			ac.CmdMutex.Lock()
-			if ac.SingboxCmd != nil && ac.SingboxCmd.Process != nil {
-				_ = ac.SingboxCmd.Process.Kill()
+	if waitForStop {
+		debuglog.InfoLog("GracefulExit: Waiting for sing-box to stop...")
+		// Use ProcessService constant for timeout
+		timeout := time.After(2 * time.Second) // gracefulShutdownTimeout from ProcessService
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+	waitLoop:
+		for {
+			if !ac.RunningState.IsRunning() {
+				debuglog.InfoLog("GracefulExit: Sing-box confirmed stopped.")
+				break waitLoop
 			}
-			ac.CmdMutex.Unlock()
-			goto end_loop
-		case <-ticker.C:
-			// Check state on each tick - continue loop to re-check IsRunning()
+			select {
+			case <-timeout:
+				debuglog.WarnLog("GracefulExit: Timeout waiting for sing-box to stop. Forcing kill.")
+				ac.CmdMutex.Lock()
+				if ac.SingboxCmd != nil && ac.SingboxCmd.Process != nil {
+					_ = ac.SingboxCmd.Process.Kill()
+				}
+				ac.CmdMutex.Unlock()
+				break waitLoop
+			case <-ticker.C:
+				// Check state on each tick - continue loop to re-check IsRunning()
+			}
 		}
+	} else {
+		debuglog.InfoLog("GracefulExit: daemon mode keeps the core running; skipping stop wait")
 	}
-end_loop:
 
 	if ac.FileService != nil {
 		api.SetAPILogFile(nil)
@@ -384,8 +424,28 @@ end_loop:
 	}
 
 	if ac.hasUI() {
+		// Armed before Quit so a driver that refuses to unwind can't strand
+		// the process. By this point sing-box is stopped and the log files
+		// are closed, so os.Exit loses nothing.
+		forceExitAfter(3 * time.Second)
 		ac.UIService.QuitApplication()
 	}
+}
+
+// forceExitAfter arms a last-resort os.Exit in case the Fyne event loop never
+// unwinds after Application.Quit(). Field reports (2026-08): quitting from the
+// tray with the window hidden leaves the process alive — on Windows the tray
+// icon stays behind and the still-running process holds the single-instance
+// lock, so relaunching the .exe reports "already running". The tray icon part
+// is fixed deterministically in UIService.QuitApplication (systray.Quit); this
+// watchdog guarantees the process itself dies even if the driver's shutdown
+// path stalls. By arming time all critical teardown (sing-box stopped, logs
+// closed) is already done, so os.Exit loses nothing.
+func forceExitAfter(d time.Duration) {
+	time.AfterFunc(d, func() {
+		debuglog.WarnLog("Shutdown watchdog: event loop did not exit within %s, forcing process exit", d)
+		os.Exit(0)
+	})
 }
 
 // RunHidden launches an external command in a hidden window.
@@ -571,6 +631,10 @@ func StartSingBoxProcess(skipRunningCheck ...bool) {
 		debuglog.WarnLog("StartSingBoxProcess: ProcessService is nil, this should not happen. Initializing...")
 		ac.ProcessService = NewProcessService(ac)
 	}
+	if b := ac.Backend(); b != nil {
+		b.StartVPN(skipRunningCheck...)
+		return
+	}
 	ac.ProcessService.Start(skipRunningCheck...)
 }
 
@@ -585,13 +649,23 @@ func StopSingBoxProcess() {
 		debuglog.WarnLog("StopSingBoxProcess: ProcessService is nil, this should not happen. Initializing...")
 		ac.ProcessService = NewProcessService(ac)
 	}
+	if b := ac.Backend(); b != nil {
+		b.StopVPN()
+		return
+	}
 	ac.ProcessService.Stop()
 }
 
-// KillSingBoxForRestart kills the sing-box process so the monitor will restart it (no StoppedByUser).
+// KillSingBoxForRestart applies a fresh config through the active backend:
+// classic — kill so the monitor restarts the process; daemon — in-process
+// apply without killing anything.
 func KillSingBoxForRestart() {
 	ac := GetController()
 	if ac == nil || ac.ProcessService == nil {
+		return
+	}
+	if b := ac.Backend(); b != nil {
+		b.RestartVPN()
 		return
 	}
 	ac.ProcessService.KillForRestart()
@@ -621,6 +695,11 @@ func CheckIfSingBoxRunningAtStartUtil() {
 	if ac.ProcessService == nil {
 		debuglog.WarnLog("CheckIfSingBoxRunningAtStartUtil: ProcessService is nil, this should not happen. Initializing...")
 		ac.ProcessService = NewProcessService(ac)
+	}
+	// В daemon-режиме работающее ядро внутри демона — норма, а не «чужой»
+	// инстанс: предупреждение с предложением убить процесс неуместно.
+	if ac.BackendMode() == BackendDaemon {
+		return
 	}
 	ac.ProcessService.CheckIfRunningAtStart()
 }

@@ -474,5 +474,7 @@
   "wizard.rules.button_convert_to_user": "Convert to user rule(s)",
   "wizard.rules.dialog_edit_rule_title": "Edit rule",
   "wizard.dns.section_from_active_presets": "From active presets (read-only)",
-  "wizard.add_rule.domain_mode_label": "Domain mode:"
+  "wizard.add_rule.domain_mode_label": "Domain mode:",
+  "traffic.conns.state_open": "offen",
+  "traffic.conns.state_closed": "geschlossen"
 }

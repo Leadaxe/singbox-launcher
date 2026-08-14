@@ -69,7 +69,7 @@ type presetOutboundEntry struct {
 // обрабатываться (в отличие от ExpandPreset который отменяет весь preset
 // на unresolved — там dangling @var в rule_set/rule может всё разломать,
 // здесь же одна сломанная entry не блокирует другие).
-func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string, goos, goarch string) ([]presetOutboundEntry, []ExpandWarning) {
+func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string, target template.TargetSpec) ([]presetOutboundEntry, []ExpandWarning) {
 	if preset == nil || len(preset.Outbounds) == 0 {
 		return nil, nil
 	}
@@ -125,7 +125,7 @@ func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string, 
 			})
 			continue
 		}
-		substituted, ok := substitutePresetBody(asMap, preset.Vars, varsMap, goos, goarch)
+		substituted, ok := substitutePresetBody(asMap, preset.Vars, varsMap, target)
 		if !ok {
 			warnings = append(warnings, ExpandWarning{
 				PresetID: preset.ID,

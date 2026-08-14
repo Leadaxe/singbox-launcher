@@ -51,6 +51,9 @@ func parseCurrent(data []byte) (*State, error) {
 	s := &State{
 		Version:            raw.Meta.Version,
 		Comment:            raw.Meta.Comment,
+		Target:             raw.Meta.Target,
+		TargetPlatform:     raw.Meta.TargetPlatform,
+		TargetArch:         raw.Meta.TargetArch,
 		Connections:        raw.Connections,
 		Vars:               raw.Vars,
 		Rules:              raw.Rules,

@@ -26,7 +26,7 @@ func TestCollectSrsCachedPaths_URLDerived(t *testing.T) {
 	rules := []state.Rule{
 		{Kind: state.RuleKindSrs, Enabled: true, Body: body},
 	}
-	paths := CollectSrsCachedPaths(rules, "/exec")
+	paths := CollectSrsCachedPaths(rules, "/exec", "")
 
 	id := state.StableRuleID(rules[0])
 	if id != "YT" {
@@ -58,7 +58,7 @@ func TestCollectSrsCachedPaths_TwoRulesSameURL_OneFile(t *testing.T) {
 		{Kind: state.RuleKindSrs, Enabled: true,
 			Body: mustMarshalSRS("Rule B", url, "direct-out")},
 	}
-	paths := CollectSrsCachedPaths(rules, "/exec")
+	paths := CollectSrsCachedPaths(rules, "/exec", "")
 	if len(paths) != 2 {
 		t.Fatalf("expected 2 identity entries, got %d: %+v", len(paths), paths)
 	}
@@ -88,8 +88,8 @@ func TestCollectSrsCachedPaths_RenameDoesNotInvalidate(t *testing.T) {
 		{Kind: state.RuleKindSrs, Enabled: true,
 			Body: mustMarshalSRS("NewName", url, "direct-out")},
 	}
-	bp := CollectSrsCachedPaths(before, "/exec")
-	ap := CollectSrsCachedPaths(after, "/exec")
+	bp := CollectSrsCachedPaths(before, "/exec", "")
+	ap := CollectSrsCachedPaths(after, "/exec", "")
 
 	if bp["OldName"] != wantPath {
 		t.Errorf("before: got %q want %q", bp["OldName"], wantPath)

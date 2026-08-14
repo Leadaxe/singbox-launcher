@@ -179,7 +179,7 @@ func buildSinglePresetRefRow(
 	enableCh.Checked = pr.Enabled
 	enableCh.OnChanged = func(on bool) {
 		if on && len(srsEntries) > 0 && model.ExecDir != "" &&
-			!services.AllSRSDownloadedForEntries(model.ExecDir, srsEntries) {
+			!services.AllSRSDownloadedIn(model.ExecDir, model.SrsDir(), srsEntries) {
 			if srsBtn != nil {
 				enableOnSRSSuccess = true
 				srsBtn.OnTapped()
@@ -288,7 +288,7 @@ func buildSinglePresetRefRow(
 		// Visual ⚠ + auto-download silently в фоне ниже. Defensive против
 		// сценариев: (a) файлы потёрли вручную, (b) template добавил srs_url
 		// в уже-enabled preset, (c) load state'а с broken cache.
-		if pr.Enabled && !services.AllSRSDownloadedForEntries(model.ExecDir, srsEntries) {
+		if pr.Enabled && !services.AllSRSDownloadedIn(model.ExecDir, model.SrsDir(), srsEntries) {
 			srsMissingEnabled = true
 			srsWarn = ttwidget.NewLabel("⚠")
 			srsWarn.Importance = widget.WarningImportance
@@ -359,13 +359,16 @@ func makePresetSRSButton(
 	rowGetter fynewidget.RowHoverGetter,
 ) *fynewidget.HoverForwardTTButton {
 	initialText := srsBtnDownload()
-	if services.AllSRSDownloadedForEntries(model.ExecDir, entries) {
+	if services.AllSRSDownloadedIn(model.ExecDir, model.SrsDir(), entries) {
 		initialText = srsBtnDone()
 	}
 	btn := fynewidget.NewHoverForwardTTButton(initialText, nil, rowGetter)
 	btn.Importance = widget.LowImportance
 	if tip := srsEntriesTooltip(entries); tip != "" {
-		btn.TTWidget().SetToolTip(tip)
+		// К списку URL добавляем КАТАЛОГ, куда файлы лягут: профилей теперь
+		// несколько (свой и по одному на машину), и по одной галочке «скачано»
+		// не понять, чей это набор.
+		btn.TTWidget().SetToolTip(tip + "\n\n" + srsTargetDirHint(model))
 	}
 	btn.OnTapped = func() {
 		runSRSDownloadAsync(presenter, model, guiState, entries, btn.TTWidget(), nil /* no outboundSelect */, func() {

@@ -1,5 +1,7 @@
 # Per-package inventory
 
+**🌐 Language**: English | [Русский](ARCHITECTURE_PACKAGES.ru.md)
+
 > Companion to **[ARCHITECTURE.md](ARCHITECTURE.md)** (§8). One-line responsibility
 > per package + key files with one-line purposes, grouped by layer L0–L7. Reflects
 > the **current** post-SPEC-070 file layout (the monolith splits are landed). Test
@@ -53,6 +55,7 @@ Each package is self-contained and dependency-free (or depends only on `debuglog
 | `internal/process` | Thin process-list wrapper used by runtime checks. | `process.go` |
 | `internal/wizardsync` | Fyne-free predicates for GUI→model merge (`GuiTextAwaitingProgrammaticFill`, `FinalOutboundSelectReadLooksStale`) — unit-testable without CGO/GL. | `guards.go` |
 | `internal/dialogs` | Shared dialog primitives independent of `ui` (custom dialog, download-failed dialog, auto-hide info). | `dialogs.go` |
+| `internal/lxdclient` | mTLS client for the `sing-box lxd` daemon (SPEC 096/097): admin REST calls, certificate pinning (never optional), one-time invite parsing (`address#fingerprint#code`), per-machine client identity, channel detection, host telemetry + clients-info readers. No app state. | `client.go`, `identity.go`, `invite.go`, `host.go` |
 
 > Note: `internal/dialogs` and `internal/fynewidget` both depend on Fyne. `dialogs`
 > is grouped here as a leaf utility (no internal cross-deps); `fynewidget` is grouped
@@ -209,7 +212,12 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 | `file_service.go` | Paths (`ExecDir`, `ConfigPath`, `SingboxPath`, `WintunPath`), log open/close/rotation, backups. |
 | `api_service.go` | Clash API integration + proxy-list / active-proxy state + last-ping-error storage. |
 | `state_service.go` | Dirty markers (`MarkConfigStale`/`ClearCacheStale`), settings (auto-update enabled, cached launcher version); publishes `StateChanged`. |
-| `srs_downloader.go` | Remote rule-set (.srs) HTTP fetch + group download for the Rules tab. |
+| `srs_downloader.go` | Remote rule-set (.srs) HTTP fetch + group download for the Rules tab; target-aware paths (local vs. a machine's `srs/`). |
+| `proxy_transport.go` | `ProxyTransport` seam: proxy-group operations (list, select, latency test, balancer pool) resolved **per scope** — Clash HTTP for the local core, gRPC for the daemon or a selected machine. |
+| `lxd_remote_registry.go` | Machine registry (`bin/remote-daemons.json`): `RemoteDaemon` entries (id / name / addr / fingerprint / GOOS / GOARCH), per-machine client-identity directories, add / edit / remove with directory cleanup. |
+| `lxd_remote_transport.go` | gRPC transport to a selected machine (connect / disconnect, streams, admin calls). |
+| `lxd_remote_resources.go` | `CollectDeployResources` — gathers the local rule-sets and subscription bodies a machine's config references, for Deploy to ship alongside the JSON. Widget-free, hence unit-tested. |
+| `lxd_remote_migration.go` | One-time migration of the pre-SPEC-098 singleton remote profile into the owning machine's directory; refuses (with a warning) when several machines are paired. |
 
 ### `core/uiservice`
 
@@ -229,9 +237,14 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 
 | File | Purpose |
 |------|---------|
-| `controller.go` | `AppController` singleton: `NewAppController` (sole intended constructor) + `GetController`/`GetControllerOrPanic`; holds services + EventBus + UI callbacks; publishes `VpnStateChanged`; `GracefulExit`. (Still ~728 LOC; decomposition deferred — ADR-070-7.) |
+| `controller.go` | `AppController` singleton: `NewAppController` (now the **sole** constructor — the half-wired `GetController` fallback is gone) + `GetController`/`GetControllerOrPanic`; holds services + EventBus + UI callbacks; publishes `VpnStateChanged`; idempotent `GracefulExit` (`sync.Once`). (Still ~827 LOC; field/lock extraction deferred — ADR-070-7.) |
+| `backend.go` | `CoreBackend` — the engine seam every caller above it uses instead of touching the process manager or Clash client directly. |
+| `backend_legacy.go` | `LegacyBackend` — classic engine: spawn + supervise `sing-box run`, Clash HTTP control plane. |
+| `backend_daemon_darwin.go` (+ `_dns_`, `_traffic_`) | `DaemonBackend` — macOS lxd engine: gRPC control plane, structured DNS and connection streams for the profiler. Darwin build tags only. |
+| `backend_daemon_stub.go` | Non-darwin stub so the rest of the code compiles without gRPC (this is what keeps the Win7 build clean). |
+| `daemon_manager_darwin.go` | Daemon lifecycle from the launcher's side: the sudo command strings it hands the user (`--service=install` / `=uninstall [--purge]` / `lxd client add`), pairing, daemon passport (`GET /admin/info`). Runs nothing privileged itself. |
 | `process_service.go` | `ProcessService`: `Start`/`Stop`/`Monitor`, crash/restart state machine, privileged-script exit handling, TUN/phantom-adapter cleanup before Start (SPEC 065). |
-| `config_service.go` | `ConfigService`: `RunParserProcess`, `UpdateConfigFromSubscriptions` (cache-refresh pipeline), `buildContextFromState`, per-source refresh. (Still ~1066 LOC; decomposition deferred.) |
+| `config_service.go` (+ `_context.go`, `_subscriptions.go`) | `ConfigService`: `RunParserProcess`, `UpdateConfigFromSubscriptions` (cache-refresh pipeline), `buildContextFromState`, per-source refresh. Split from 1066 → ~538 LOC; promoting the peeled files to real `SubscriptionFetcher` / `ConfigContextBuilder` seams is still deferred. |
 | `rebuild.go` | `RebuildConfigIfDirty` — **sole `config.json` writer** (ADR-070-4); validate via `sing-box check`; publishes `ConfigBuilt`; `cleanupLegacyOutboundsCache`. |
 | `rebuild_raw_cache.go` | `buildSnapshotFromRawCache` — rebuild from `.raw` bodies without network. |
 | `auto_update.go` | SPEC 052 per-source event-driven auto-update: heartbeat loop, retry timers, subscribes `VpnStateChanged`. |
@@ -352,12 +365,22 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 
 | File | Purpose |
 |------|---------|
-| `app.go` | Root tab container (Core / Servers / Diagnostics / Settings button-tab / Help); subscribes `VpnStateChanged`. |
+| `app.go` | Root tab container (Local / Remote / Diagnostics / Settings / Help); subscribes `VpnStateChanged`. |
+| `local_remote_tabs.go` | Two-column composition shared by both main tabs — proxy list on the left, management on the right (SPEC 098). |
 | `core_dashboard_tab.go` | Core dashboard: sing-box status, version/download/wintun blocks, config status, state selector, subscription toast panel. |
 | `core_dashboard_tab_helpers.go` / `_status.go` / `core_dashboard_subs_status.go` | Dashboard sub-builders + status updaters + subscription-status panel (SPEC 070 split). |
-| `clash_api_tab.go` | Servers tab: proxy list with sort/filter/ping, active-proxy tracking, selector dropdown, share-URI export. (Still ~1266 LOC; decomposition deferred.) |
-| `clash_api_tab_helpers.go` / `_render.go` | Servers-tab helpers + list rendering (SPEC 070 split). |
-| `clash_remote.go` / `clash_remote_ui.go` | SPEC 064 remote Clash API endpoint resolver + dialog. |
+| `clash_api_tab.go` | Proxy list shared by both tabs: sort/filter/ping, active-proxy tracking, selector dropdown, share-URI export, balancer pool. (Still ~1701 LOC; decomposition deferred.) |
+| `clash_api_tab_helpers.go` / `_render.go` / `_autorefresh.go` | Proxy-list helpers, row rendering, auto-refresh loop. |
+| `clash_remote.go` | SPEC 064 remote Clash API endpoint resolver. |
+| `lxd_remote_override.go` | Scope-aware resolution of the remote override, so Local keeps talking to the local core while Remote follows the selected machine. |
+| `machine_list_panel.go` | Remote tab's right column: one row per machine (name, platform, address, core state) with Configure / Start-Stop / Deploy / edit / remove and the **More** block. |
+| `machine_add_window.go` | Add-machine window (invite paste, pairing). |
+| `connection_window.go` / `connection_local.go` / `connection_local_daemon_darwin.go` / `_stub.go` | Connection-settings window: **Remote** tab = SPEC 064 Clash override, **Local** tab = core engine (Process / Daemon radio, install & pairing commands). |
+| `command_row.go` (+ `_darwin.go`) | The row that hands a privileged command to the user — copy / open in Terminal, no privileged execution of its own. |
+| `machine_profiler.go` | Per-machine Traffic Profiler instance + window (SPEC 099); one per machine, dies with its channel. |
+| `machine_host_window.go` / `machine_host_format.go` | Host-telemetry window (CPU, load, memory, temperature, FDs, disks, interfaces) with fixed-width table formatting. |
+| `machine_resources_window.go` | The machine's resource store (rule-sets, subscription bodies). |
+| `servers_node_subtitle.go` / `servers_node_info.go` / `servers_row_layout.go` | SPEC 095 node subtitle, info window and row layout. |
 | `diagnostics_tab.go` | STUN/DNS tests, sing-box panic kill, settings persistence. |
 | `settings_tab.go` / `settings_window.go` | Settings UI (language, log level, …) in standalone window. |
 | `help_tab.go` | Help tab. |
@@ -438,4 +461,4 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 
 **Responsibility:** Shared UI components.
 - `scroll_gutter.go` — `NewScrollGutter` / `WrapInScrollWithGutter` (scrollbar spacing).
-- `click_redirect.go` — `ClickRedirect` overlay forwarding clicks to the wizard window for focus elevation. **(Layering violation V1: imports `core`.)**
+- `click_redirect.go` — the `ClickRedirect` overlay forwarding clicks to the wizard window for focus elevation. Takes `*uiservice.UIService` (a leaf package) — layering violation V1 is resolved.

@@ -41,13 +41,13 @@ func buildWindowToolbar(deps WindowDeps, win fyne.Window) fyne.CanvasObject {
 	verboseChk.SetToolTip(
 		"Switches sing-box log level between your saved value (off) and " +
 			"\"debug\" (on).\n\n" +
-			"OFF — only warnings/errors + basic connection events in " +
-			"sing-box.log. DNS-by-IP attribution may be incomplete; some " +
-			"TCP/UDP events lack the originating domain.\n\n" +
-			"ON — full DNS chain logged (CNAME → A → IP per query), " +
-			"protocol/fragment details, and the profiler can attribute " +
-			"every IP back to its originating domain. Use while diagnosing, " +
-			"then turn off.\n\n" +
+			"In this mode the DNS plane is read from sing-box.log, and only " +
+			"\"debug\" makes the core write it.\n\n" +
+			"OFF — connections and their hosts are still shown (they come " +
+			"from the connections snapshot), but the DNS tab stays empty: no " +
+			"queries, no CNAME chains, no failures.\n\n" +
+			"ON - DNS queries appear as events, with the CNAME -> A/AAAA chain " +
+			"per query. Use while diagnosing, then turn off.\n\n" +
 			"Cost: more CPU + faster log-file growth. Toggling triggers a " +
 			"sing-box restart, so active connections reset (you'll see a " +
 			"confirm dialog).",
@@ -91,7 +91,36 @@ func buildWindowToolbar(deps WindowDeps, win fyne.Window) fyne.CanvasObject {
 		})
 	}
 
+	// В окне машины тулбара нет вовсе: галка правит уровень лога ЛОКАЛЬНОГО
+	// конфига и перезапускает СВОЁ ядро — к машине это отношения не имеет, её
+	// конфиг лежит у неё. Без writer'а она к тому же просто отскакивала бы
+	// назад, изображая работу. Одно меню ⋮ не стоит целой пустой строки —
+	// оно переезжает в ряд вкладок, к счётчику соединений.
+	if deps.RemoteMachine {
+		return nil
+	}
+	// DNS приходит структурным стримом (daemon-режим, SubscribeDNSQueries) —
+	// уровень лога к DNS-плоскости больше не имеет отношения: гейт эмита в
+	// ядре это наличие подписчика, а не log.level. Галка тогда предлагала бы
+	// рестарт ядра ради данных, которые уже есть, причём в лог они приходят
+	// беднее — без процесса, rcode и признака «ответ из кэша».
+	//
+	// Без неё в тулбаре не остаётся ничего: ⋮ живёт в полосе вкладок. Пустая
+	// строка с разделителем съедала бы ряд высоты впустую.
+	if deps.Profiler != nil && deps.Profiler.DNSFromStream() {
+		return nil
+	}
+	row := container.NewHBox(verboseChk, verboseHint)
+	return container.NewVBox(row, widget.NewSeparator())
+}
+
+// buildOverflowButton — меню ⋮ (экспорт сессии, справка).
+//
+// Отдельно от тулбара: в окне машины тулбара нет, и кнопка живёт в ряду
+// вкладок.
+func buildOverflowButton(deps WindowDeps, win fyne.Window) *widget.Button {
 	overflow := widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), nil)
+	overflow.Importance = widget.LowImportance
 	overflow.OnTapped = func() {
 		menu := buildOverflowMenu(deps, win)
 		pop := widget.NewPopUpMenu(menu, win.Canvas())
@@ -99,10 +128,7 @@ func buildWindowToolbar(deps WindowDeps, win fyne.Window) fyne.CanvasObject {
 		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(overflow)
 		pop.ShowAtPosition(fyne.NewPos(pos.X, pos.Y+overflow.MinSize().Height))
 	}
-
-	left := container.NewHBox(verboseChk, verboseHint)
-	row := container.NewBorder(nil, nil, left, overflow, nil)
-	return container.NewVBox(row, widget.NewSeparator())
+	return overflow
 }
 
 func isCurrentlyVerbose(deps WindowDeps) bool {
@@ -128,7 +154,7 @@ func buildOverflowMenu(deps WindowDeps, win fyne.Window) *fyne.Menu {
 			}, win)
 		}),
 		fyne.NewMenuItemSeparator(),
-		fyne.NewMenuItem("Help / about", func() { showHelpDialog(win) }),
+		fyne.NewMenuItem("Help / about", func() { showHelpDialog(deps, win) }),
 	}
 	return fyne.NewMenu("", items...)
 }
@@ -221,22 +247,35 @@ func exportSessionJSON(deps WindowDeps, win fyne.Window) {
 	fd.Show()
 }
 
-func showHelpDialog(win fyne.Window) {
+// showHelpDialog. Абзац про DNS зависит от источника: где он структурный,
+// галки в окне нет вовсе, и советовать её значило бы отправлять пользователя
+// искать несуществующий переключатель.
+func showHelpDialog(deps WindowDeps, win fyne.Window) {
+	dnsPara := "Verbose logs (debug) fills the DNS tab: without it you still\n" +
+		"see connections and their hosts, but no DNS queries, CNAME chains\n" +
+		"or failures. Toggling restarts sing-box, so active connections\n" +
+		"reset — use it while diagnosing, then turn it back off.\n"
+	if deps.Profiler != nil && deps.Profiler.DNSFromStream() {
+		// Структурный поток (SubscribeDNSQueries): DNS приходит независимо от
+		// уровня лога, и в событии есть то, чего в логе нет вовсе.
+		dnsPara = "DNS events arrive as a structured stream from the core, so\n" +
+			"they don't depend on the log level and cost no restart. Each query\n" +
+			"carries its CNAME chain, the server that answered, the process and\n" +
+			"the failure reason.\n"
+	}
 	body := widget.NewLabel(
 		"Traffic Profiler shows live DNS / TCP / UDP events from sing-box.\n" +
 			"\n" +
 			"Live tab — system-wide event stream (all processes).\n" +
 			"Per-process tab — pick one process and record a session.\n" +
 			"\n" +
-			"Verbose logs (debug) gives full DNS visibility but resets active\n" +
-			"connections when toggling. Use it when diagnosing a specific issue,\n" +
-			"then turn it back off.\n" +
+			dnsPara +
 			"\n" +
 			"Sessions are in-memory only — they wipe on app quit. Use Export to\n" +
 			"save one to a file.",
 	)
 	body.Wrapping = fyne.TextWrapWord
 	d := dialog.NewCustom("Traffic Profiler", "Close", body, win)
-	d.Resize(fyne.NewSize(440, 300))
+	d.Resize(fyne.NewSize(440, 360))
 	d.Show()
 }

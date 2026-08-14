@@ -638,49 +638,6 @@ func xrayElementHasProtocolOutbounds(root map[string]interface{}) bool {
 	return false
 }
 
-func pickMainXrayVLESS(cands []struct {
-	ob     map[string]interface{}
-	dialer string
-	tag    string
-}, elemIndex int) map[string]interface{} {
-	var withDial []int
-	for i, c := range cands {
-		if c.dialer != "" {
-			withDial = append(withDial, i)
-		}
-	}
-
-	pickIdx := 0
-	switch {
-	case len(withDial) == 1:
-		pickIdx = withDial[0]
-	case len(withDial) > 1:
-		pickIdx = withDial[0]
-		for _, i := range withDial {
-			if cands[i].tag == "proxy" {
-				pickIdx = i
-				break
-			}
-		}
-		debuglog.WarnLog("Parser: Xray element %d: multiple VLESS with dialerProxy; using tag %q",
-			elemIndex, cands[pickIdx].tag)
-	default:
-		if len(cands) == 1 {
-			pickIdx = 0
-		} else {
-			for i, c := range cands {
-				if c.tag == "proxy" {
-					pickIdx = i
-					break
-				}
-			}
-			debuglog.WarnLog("Parser: Xray element %d: multiple VLESS without dialerProxy; using tag %q",
-				elemIndex, cands[pickIdx].tag)
-		}
-	}
-	return cands[pickIdx].ob
-}
-
 const xrayTagBaseMaxRunes = 48
 
 // Suffix for the SOCKS jump outbound tag (main outbound uses the base slug only; detour points at base+suffix).

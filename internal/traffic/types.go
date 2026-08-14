@@ -100,11 +100,14 @@ type ConnectionIssue struct {
 // router match. Bytes counters are deltas-from-last-snapshot for the
 // open/close events, *not* cumulative.
 type TrafficEvent struct {
-	TS            time.Time
-	Kind          EventKind
-	ConnID        string     // sing-box conn id; empty for events without one
-	ProcessPath   string     // canonical executable path; empty if unattributed
-	ProcessName   string     // short display name from Clash API metadata.process
+	TS          time.Time
+	Kind        EventKind
+	ConnID      string // sing-box conn id; empty for events without one
+	ProcessPath string // canonical executable path; empty if unattributed
+	ProcessName string // short display name from Clash API metadata.process
+	// SourceAddr — адрес клиента (ip:port). На роутере это единственный
+	// признак «кто ходит»: процесса там нет, трафик идёт от устройств в сети.
+	SourceAddr    string
 	Confidence    Confidence // verified / inferred / unattributed
 	MatchedVia    string     // "router_log" / "prior_dns_10s" / "" — debug aid
 	Domain        string     // sniffed/resolved hostname; empty for hostless

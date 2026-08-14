@@ -204,6 +204,7 @@ func (s *Server) endpoints() []apiEndpoint {
 		{"GET/PATCH", "/state/dns", true, "Get / replace whole dns_options", s.handleStateDNS},
 		{"GET/PATCH", "/state/dns/rules", true, "Get / replace USER dns rules (text)", s.handleStateDNSRules},
 		{"GET", "/state/outbounds/resolved", true, "Resolved outbound tags", s.handleStateOutboundsResolved},
+		{"GET/PATCH", "/state/log-level", true, "Get / set sing-box log.level (restarts core)", s.handleStateLogLevel},
 
 		// bin/settings.json — launcher-level preferences (subscription UA, etc).
 		{"GET/PATCH", "/settings/user-agent", true, "Get / set subscription User-Agent", s.handleSettingsUserAgent},

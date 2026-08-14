@@ -275,7 +275,13 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 		// parseMasqueURI / warp.ToMasqueOutbound populate base64-DER keys, ip/ipv6
 		// tunnel addresses and transport knobs; sing-box rejects the outbound
 		// without them ("at least one of ip/ipv6 is required").
-		for _, key := range []string{"private_key", "public_key", "ip", "ipv6", "profile", "network", "sni", "idle_timeout", "keep_alive_period"} {
+		//
+		// The HTTP version is `vhttp` and the server name lives in the shared
+		// `tls` block below — masque no longer has its own dialect (core SPEC
+		// 062, schema present since 1.14.0-lx.26). The legacy `network`/`sni`
+		// spellings are accepted on input by the parsers and normalized there,
+		// so nothing flat reaches this point.
+		for _, key := range []string{"private_key", "public_key", "ip", "ipv6", "profile", "vhttp", "idle_timeout", "keep_alive_period"} {
 			if v, ok := node.Outbound[key].(string); ok && v != "" {
 				parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), marshalJSONString(v)))
 			}

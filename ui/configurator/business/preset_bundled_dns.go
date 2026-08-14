@@ -8,8 +8,6 @@
 package business
 
 import (
-	"runtime"
-
 	"singbox-launcher/core/build"
 	wizardtemplate "singbox-launcher/core/template"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -38,7 +36,7 @@ func PresetBundledDNSTags(model *wizardmodels.WizardModel) []string {
 		if tpl == nil {
 			continue
 		}
-		frags, _, ok := build.ExpandPreset(tpl, pr.Vars, runtime.GOOS, runtime.GOARCH)
+		frags, _, ok := build.ExpandPreset(tpl, pr.Vars, model.Target)
 		if !ok {
 			continue
 		}

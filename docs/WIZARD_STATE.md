@@ -1,23 +1,48 @@
 # Wizard state (state.json)
 
-Декларативная модель Configurator: где лежит, как загружается, как сохраняется,
-куда уходит при build. Файл переписан под schema v6 (SPEC 053 + SPEC 056-R-N
-+ SPEC 057-R-N + SPEC 058-R-N), v5 описан только в разделе «Миграции».
+**🌐 Language**: English | [Русский](WIZARD_STATE.ru.md)
+
+The Configurator's declarative model: where it lives, how it is loaded, how it is
+saved, where it goes at build time. This file is written against schema v6
+(SPEC 053 + SPEC 056-R-N + SPEC 057-R-N + SPEC 058-R-N); v5 is covered only in
+the "Migrations" section.
 
 ---
 
-## 1. Файлы и расположение
+## 1. Files and layout
 
-- **`bin/wizard_states/state.json`** — текущий снимок. Единственный файл,
-  читаемый при старте Configurator'а и при headless rebuild config.json.
-- **`bin/wizard_states/<id>.json`** — именованные снимки (Save As).
-  Структурно идентичны `state.json`; при Read копируются поверх `state.json`.
-- **`bin/subscriptions/<source_id>.raw`** — per-source raw body cache подписки
-  (atomic .tmp + rename). Read-path парсит .raw напрямую без сети.
+**The local machine** (the historical flat layout, unchanged):
 
-ExecDir resolve описан в SPECS/022 (macOS app support directories). На macOS
-release-сборке это `~/Library/Application Support/singbox-launcher/bin/...`,
-в dev-сборке — рядом с бинарём.
+- **`bin/wizard_states/state.json`** — the current snapshot. The only file read
+  when the Configurator starts and during a headless config.json rebuild.
+- **`bin/wizard_states/<id>.json`** — named snapshots (Save As). Structurally
+  identical to `state.json`; on Read they are copied over `state.json`.
+- **`bin/subscriptions/<source_id>.raw`** — the per-source raw subscription body
+  cache (atomic .tmp + rename). The read path parses `.raw` directly, no network.
+- **`bin/rule-sets/<tag>.srs`** — downloaded rule-sets.
+
+**A remote machine** (SPEC 098): everything it owns lives under one directory,
+where `<id>` is the ID of its entry in the `bin/remote-daemons.json` registry:
+
+- **`bin/wizard_states/remote/<id>/state.json`** — its current snapshot;
+- **`bin/wizard_states/remote/<id>/<snap>.json`** — its named snapshots;
+- **`bin/wizard_states/remote/<id>/config.json`** — its built config (this is the
+  file Deploy in its row ships);
+- **`bin/wizard_states/remote/<id>/srs/`**, **`…/subscriptions/`** — its `.srs`
+  files and subscription bodies.
+
+Machines share no files: the GC of live tags and Source.IDs is computed from
+**that** machine's states and deletes only inside its own directories. Removing a
+machine deletes its state directory plus `bin/remote-daemons/<id>/` (the client
+keys).
+
+Paths are resolved only through `internal/platform` (`GetWizardStatePathFor`,
+`GetRemoteConfigPathFor`, `GetRuleSetsDirFor`, `GetSubscriptionsDirFor`) — do not
+assemble them from string literals.
+
+ExecDir resolution is described in SPECS/022 (macOS app support directories). In a
+macOS release build that is `~/Library/Application Support/singbox-launcher/bin/...`;
+in a dev build it sits next to the binary.
 
 ---
 
@@ -68,36 +93,36 @@ release-сборке это `~/Library/Application Support/singbox-launcher/bin/
 }
 ```
 
-Top-level keys, отсутствующие в v6 (vs предыдущих ревизий):
-`id` (snapshot-имя живёт в имени файла), `config_params`, `custom_rules`,
+Top-level keys absent from v6 (compared with earlier revisions):
+`id` (the snapshot name lives in the filename), `config_params`, `custom_rules`,
 `selectable_rule_states`, `rules_library_merged`, `dns_options.independent_cache`.
 
 ---
 
-## 3. Детальные схемы по секциям
+## 3. Per-section schemas in detail
 
 ### 3.1 `connections.sources[i]`
 
-Дискриминатор `type`: `subscription` (URL → пачка нод) или `server` (один URI → один outbound).
+The `type` discriminator: `subscription` (a URL → a batch of nodes) or `server` (one URI → one outbound).
 
-**Порядок.** Записи хранятся в порядке массива `sources[]` — это же порядок, в котором они показаны на вкладке Sources. Кнопки ↑/↓ в строке переставляют элементы слайса (схема не меняется, `id` сохраняется); новый порядок уезжает в `state.json` на ближайшем Save.
+**Order.** Entries are stored in `sources[]` array order — the same order they appear in on the Sources tab. The ↑/↓ buttons in a row reorder the slice elements (the schema doesn't change and `id` is preserved); the new order goes into `state.json` on the next Save.
 
-| Поле | Тип | Когда | Описание |
+| Field | Type | When | Description |
 |------|-----|-------|----------|
-| `id` | string | всегда | ULID (Crockford-base32, 26 символов). Стабильный — переживает Save/Load. Имя файла `bin/subscriptions/<id>.raw`. |
-| `type` | string | всегда | `subscription` \| `server`. |
-| `enabled` | bool | всегда | Source активен. Disabled → его outbound'ы не попадают в финальный config. |
-| `label` | string | опц. | Display name (для server обязательно для UX; для subscription — fallback из `meta.profile_title`). |
-| `exclude_from_global` | bool | опц. | Исключить из global `proxy-out` / `auto-proxy-out`. |
-| `url` | string | subscription | URL подписки. |
-| `skip` | `[]map[string]string` | subscription | Skip-rules (имена нод которые не парсить). |
-| `tag` | `{prefix, postfix, mask}` | subscription | Преобразование tag'ов нод (BL: префиксы и т.п.). `mask` overrides prefix+postfix. |
-| `outbounds` | `[]OutboundConfig` | subscription | Per-source local outbound'ы (BL:auto / BL:select urltest+selector). |
-| `expose_group_tags_to_global` | bool | subscription | Выставлять локальные group-tag'и в global selector. См. SPEC 026. |
-| `update` | `{interval_hours, auto_refresh}` | subscription | Per-source override default reload interval. |
+| `id` | string | always | A ULID (Crockford base32, 26 chars). Stable — survives Save/Load. The filename is `bin/subscriptions/<id>.raw`. |
+| `type` | string | always | `subscription` \| `server`. |
+| `enabled` | bool | always | The source is active. Disabled → its outbounds never reach the final config. |
+| `label` | string | opt. | Display name (effectively required for a server; for a subscription it falls back to `meta.profile_title`). |
+| `exclude_from_global` | bool | opt. | Exclude from the global `proxy-out` / `auto-proxy-out`. |
+| `url` | string | subscription | The subscription URL. |
+| `skip` | `[]map[string]string` | subscription | Skip rules (names of nodes not to parse). |
+| `tag` | `{prefix, postfix, mask}` | subscription | Node tag transformation (`BL:` prefixes and the like). `mask` overrides prefix+postfix. |
+| `outbounds` | `[]OutboundConfig` | subscription | Per-source local outbounds (BL:auto / BL:select urltest+selector). |
+| `expose_group_tags_to_global` | bool | subscription | Expose the local group tags to the global selector. See SPEC 026. |
+| `update` | `{interval_hours, auto_refresh}` | subscription | Per-source override of the default reload interval. |
 | `max_nodes` | int | subscription | Per-source override `defaults.max_nodes`. |
-| `meta` | `SubscriptionMeta` | subscription | Runtime данные (см. ниже), заполняется Update'ом. |
-| `uri` | string | server | vless:// / vmess:// / wireguard:// / etc. — один сервер. |
+| `meta` | `SubscriptionMeta` | subscription | Runtime data (see below), filled in by Update. |
+| `uri` | string | server | vless:// / vmess:// / wireguard:// / etc. — a single server. |
 
 **JSON example — subscription source:**
 ```jsonc
@@ -149,105 +174,107 @@ Top-level keys, отсутствующие в v6 (vs предыдущих рев
 }
 ```
 
-**Drilldown — поле `meta` (subscription runtime данные):**
+**Drilldown — the `meta` field (subscription runtime data):**
 
-| Поле | Описание |
+| Field | Description |
 |------|----------|
-| `profile_title` | Из `subscription-profile-title` header или inline `#profile_title:` в первой строке body. |
+| `profile_title` | From the `subscription-profile-title` header or an inline `#profile_title:` on the body's first line. |
 | `profile_update_interval_hours`, `support_url`, `profile_web_page_url`, `content_disposition_filename` | Headers (response + inline body). |
-| `userinfo` | `{upload_bytes, download_bytes, total_bytes, expire_unix}` — раскрытый `subscription-userinfo` header (V2Board/Xboard). |
+| `userinfo` | `{upload_bytes, download_bytes, total_bytes, expire_unix}` — the parsed `subscription-userinfo` header (V2Board/Xboard). |
 | `url_at_fetch`, `last_fetched_at`, `last_status`, `error_count`, `last_error_msg`, `http_status_code`, `raw_body_bytes` | Fetch history. |
-| `nodes_count_fetched`, `truncated`, `preview_nodes` | Результат парсинга. `truncated` = обрезали по `max_nodes`. |
+| `nodes_count_fetched`, `truncated`, `preview_nodes` | The parse result. `truncated` means it was cut off at `max_nodes`. |
 
 ### 3.2 `connections.outbounds[i]` — `OutboundConfig`
 
-Top-level entry в global outbounds. **SPEC 058-R-N** делит entries на два класса
-по форме хранения:
+A top-level entry in the global outbounds. **SPEC 058-R-N** splits entries into two
+classes by storage shape:
 
-- **Direct** — self-contained body живёт целиком в state. Поле `ref` отсутствует
-  (`omitempty`). Юзерские outbounds, никуда не ссылающиеся — full ownership, Edit
-  пишет body напрямую, никакого USER patch.
-- **Referenced** — body живёт снаружи (в template или preset), в state только
-  `tag + ref + updates[]`. Body-поля (`type`, `options`, `filters`, `addOutbounds`,
-  …) **не пишутся** — `omitempty` на всех. Sync function strip'ает body при
-  любом проходе для thin shape invariant.
+- **Direct** — a self-contained body lives entirely in state. The `ref` field is
+  absent (`omitempty`). These are user outbounds that reference nothing — full
+  ownership: Edit writes the body directly, with no USER patch.
+- **Referenced** — the body lives elsewhere (in the template or a preset), and the
+  state holds only `tag + ref + updates[]`. Body fields (`type`, `options`,
+  `filters`, `addOutbounds`, …) are **not written** — all of them are `omitempty`.
+  The sync function strips the body on every pass to maintain the thin-shape
+  invariant.
 
-Для referenced entries `ref` принимает одно из:
-- `#TEMPLATE#` (константа `configtypes.RefTemplate`) — body live из
+For referenced entries `ref` takes one of:
+- `#TEMPLATE#` (the `configtypes.RefTemplate` constant) — the body lives in
   `template.parser_config.outbounds[tag]`
-- `<preset_id>` — body live из `template.presets[id].outbounds[mode=add]`
+- `<preset_id>` — the body lives in `template.presets[id].outbounds[mode=add]`
 
-USER edit поверх referenced хранится как **field-level diff** в `updates[]`
-с `ref="#USER#"` (константа `configtypes.RefUser`) — это патч поверх referenced,
-не отдельный класс entry. Один на outbound, всегда последний в `updates[]`,
-replace-not-append на каждый Save.
+A USER edit on top of a referenced entry is stored as a **field-level diff** in
+`updates[]` with `ref="#USER#"` (the `configtypes.RefUser` constant) — it is a
+patch over the reference, not a separate class of entry. One per outbound, always
+last in `updates[]`, replace-not-append on every Save.
 
 #### Sentinel constants
 
 ```go
 // core/config/configtypes/types.go
 const (
-    RefTemplate = "#TEMPLATE#" // только в state.outbounds[].ref
-    RefUser     = "#USER#"     // только в state.outbounds[].updates[].ref
+    RefTemplate = "#TEMPLATE#" // only in state.outbounds[].ref
+    RefUser     = "#USER#"     // only in state.outbounds[].updates[].ref
 )
 ```
 
-Любое другое непустое `ref` интерпретируется как preset ID. Validation по
-позиции:
+Any other non-empty `ref` is interpreted as a preset ID. Validation is
+positional:
 
-| Позиция | Допустимо | Reject |
+| Position | Allowed | Rejected |
 |---|---|---|
-| `outbounds[].ref` (entry-level) | `""` / `#TEMPLATE#` / `<preset_id>` | `#USER#` (patch-level), мусор |
-| `outbounds[].updates[].ref` (patch-level) | `#USER#` / `<preset_id>` | `""`, `#TEMPLATE#` |
+| `outbounds[].ref` (entry level) | `""` / `#TEMPLATE#` / `<preset_id>` | `#USER#` (patch level), junk |
+| `outbounds[].updates[].ref` (patch level) | `#USER#` / `<preset_id>` | `""`, `#TEMPLATE#` |
 
-Preset.id regex `^[a-z0-9_-]+$` by construction не пересекается с UPPERCASE+`#`
-константами — collision невозможна. `sanitizeOutboundRefs` в `core/state/load.go`
-дропает entries с невалидным `ref` на load.
+The `^[a-z0-9_-]+$` regex for Preset.id cannot by construction overlap with the
+UPPERCASE+`#` constants — a collision is impossible. `sanitizeOutboundRefs` in
+`core/state/load.go` drops entries with an invalid `ref` at load time.
 
 #### Schema
 
-| Поле | Тип | Описание |
+| Field | Type | Description |
 |------|-----|----------|
-| `tag` | string | Display tag, уникальный в рамках global outbounds. |
-| `type` | string (**omitempty**) | sing-box type. Только в direct entries — у referenced пусто (body live из template/preset). |
-| `options` | `map[string]interface{}` (omitempty) | sing-box options. Только в direct / USER patch. |
-| `filters` | `map[string]interface{}` (omitempty) | UI/build-only: regex-фильтры по tag нод. |
-| `addOutbounds` | `[]string` (omitempty) | UI/build-only: union с подходящими по filter нодами. |
-| `preferredDefault` | `map[string]interface{}` (omitempty) | UI/build-only: метаданные default. |
-| `comment` | string (omitempty) | UI/build-only: comment-prefix `// <comment>\n`. |
-| `required` | bool (omitempty) | **SPEC 058.** Top-level флаг (раньше был в `wizard.required`). Template-level marker — UI lock Del. Источник истины — template; в state приходит миграцией legacy `wizard.required`. |
+| `tag` | string | Display tag, unique within the global outbounds. |
+| `type` | string (**omitempty**) | The sing-box type. Direct entries only — empty for referenced ones (the body lives in the template/preset). |
+| `options` | `map[string]interface{}` (omitempty) | sing-box options. Direct entries / USER patch only. |
+| `filters` | `map[string]interface{}` (omitempty) | UI/build only: regex filters over node tags. |
+| `addOutbounds` | `[]string` (omitempty) | UI/build only: unioned with the nodes matching the filter. |
+| `preferredDefault` | `map[string]interface{}` (omitempty) | UI/build only: default metadata. |
+| `comment` | string (omitempty) | UI/build only: the `// <comment>\n` comment prefix. |
+| `required` | bool (omitempty) | **SPEC 058.** A top-level flag (formerly inside `wizard.required`). A template-level marker — the UI locks Delete. The template is the source of truth; it reaches state through the legacy `wizard.required` migration. |
 | `ref` | string (omitempty) | **SPEC 058.** `""` (direct) / `#TEMPLATE#` (referenced template) / `<preset_id>` (referenced preset add). |
-| `updates` | `[]OutboundUpdate` (omitempty) | Стек patches: preset patches в rule order + опц. USER patch (всегда последний). |
+| `updates` | `[]OutboundUpdate` (omitempty) | The patch stack: preset patches in rule order + an optional USER patch (always last). |
 
-**Удалено по SPEC 058:** поле `wizard interface{}` (раньше держало `{hide}` /
-`{required}` map). `required` стал отдельным top-level `bool`; `hide`
-не используется в state shape (template-only).
+**Removed by SPEC 058:** the `wizard interface{}` field (which used to hold the
+`{hide}` / `{required}` map). `required` became a separate top-level `bool`;
+`hide` is not used in the state shape (template only).
 
-**`OutboundUpdate{ref, patch}`** — одна запись в `updates[]`:
+**`OutboundUpdate{ref, patch}`** — a single entry in `updates[]`:
 
-| Поле | Тип | Описание |
+| Field | Type | Description |
 |------|-----|----------|
-| `ref` | string | `<preset_id>` (preset patch) или `#USER#` (user diff). |
-| `patch` | `map[string]interface{}` | Поля для merge (filters / options / addOutbounds / preferredDefault / comment). `tag` и `type` immutable, не в patch'е. |
+| `ref` | string | `<preset_id>` (a preset patch) or `#USER#` (the user diff). |
+| `patch` | `map[string]interface{}` | The fields to merge (filters / options / addOutbounds / preferredDefault / comment). `tag` and `type` are immutable and never in a patch. |
 
 Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 → `core/build/preset_outbounds.go::applyOutboundUpdate`; diff —
 `core/build/outbound_diff.go::OutboundFieldDiff`):
-- `filters` — full replace если в patch
-- `options.*` — per-key replace (не глубокий merge)
-- `addOutbounds` — union с base (`unionStringList`), только если patch непустой
+- `filters` — a full replace when present in the patch
+- `options.*` — per-key replace (not a deep merge)
+- `addOutbounds` — unioned with the base (`unionStringList`), only when the patch
+  is non-empty
 - `preferredDefault`, `comment` — replace
 
-**Псевдо-поле `required` vs реальное:**
-- В **template** — source of truth, читается live на каждый UI render.
-- В **state** — теперь персистится (см. таблицу выше), но из template же
-  и наполняется на миграции/sync. Изменение в template на следующем
-  load корректно отразится в UI.
+**The `required` pseudo-field vs the real one:**
+- In the **template** it is the source of truth, read live on every UI render.
+- In **state** it is now persisted (see the table above), but it is populated from
+  the template during migration/sync. A change in the template is reflected
+  correctly in the UI on the next load.
 
 #### JSON examples — direct vs referenced
 
 ```jsonc
-// 1. (direct) Self-contained — поля inline, ref отсутствует.
+// 1. (direct) Self-contained — fields inline, no ref.
 {
   "tag": "myProxy",
   "type": "selector",
@@ -255,12 +282,12 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
   "addOutbounds": ["direct-out"]
 }
 
-// 2. (referenced, template) Чисто template-derived, юзер ничего не правил.
-// Body на render берётся из template.parser_config.outbounds["auto-proxy-out"].
+// 2. (referenced, template) Purely template-derived; the user changed nothing.
+// At render time the body comes from template.parser_config.outbounds["auto-proxy-out"].
 { "tag": "auto-proxy-out", "ref": "#TEMPLATE#" }
 
-// 3. (referenced, template) Template-derived с preset patches + USER patch.
-// Финальный body = template + apply updates[] в order (USER всегда последний).
+// 3. (referenced, template) Template-derived with preset patches + a USER patch.
+// The final body = template + updates[] applied in order (USER always last).
 {
   "tag": "proxy-out",
   "ref": "#TEMPLATE#",
@@ -271,11 +298,11 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
   ]
 }
 
-// 4. (referenced, preset) Preset add — body live из template.presets["russian"].outbounds[mode=add].
-// На disable preset "russian" → Sync удаляет entry. Без USER patch.
+// 4. (referenced, preset) A preset add — the body lives in template.presets["russian"].outbounds[mode=add].
+// Disabling the "russian" preset → Sync removes the entry. No USER patch.
 { "tag": "ru VPN 🇷🇺", "ref": "russian" }
 
-// 5. (referenced, preset) Preset add с USER patch — юзер открыл Edit и поправил addOutbounds.
+// 5. (referenced, preset) A preset add with a USER patch — the user opened Edit and changed addOutbounds.
 {
   "tag": "ru VPN 🇷🇺",
   "ref": "russian",
@@ -287,10 +314,10 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 
 ### 3.3 `connections.defaults`
 
-| Поле | Тип | Default | Описание |
+| Field | Type | Default | Description |
 |------|-----|---------|----------|
-| `reload` | string | `"4h"` | Default reload interval подписок (per-source override через `Source.Update.IntervalHours`). |
-| `max_nodes` | int | `3000` | Default cap нод на subscription (per-source override через `Source.MaxNodes`). |
+| `reload` | string | `"4h"` | The default subscription reload interval (per-source override via `Source.Update.IntervalHours`). |
+| `max_nodes` | int | `3000` | The default node cap per subscription (per-source override via `Source.MaxNodes`). |
 
 **JSON example:**
 ```jsonc
@@ -299,32 +326,32 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 
 ### 3.4 `rules[i]` — `v6.Rule` (SPEC 053)
 
-Дискриминатор `kind`: `preset` / `inline` / `srs`. Один упорядоченный массив; порядок = порядок эмита в `config.json::route.rules[]`.
+The `kind` discriminator: `preset` / `inline` / `srs`. A single ordered array; the order is the emission order in `config.json::route.rules[]`.
 
-| Поле | Тип | Когда | Описание |
+| Field | Type | When | Description |
 |------|-----|-------|----------|
-| `kind` | string | всегда | Discriminator. |
-| `ref` | string | `kind=preset` | Ссылка на `template.presets[].id`. |
+| `kind` | string | always | Discriminator. |
+| `ref` | string | `kind=preset` | A reference to `template.presets[].id`. |
 | `id` | string | `kind=inline` \| `srs` | ULID. |
-| `enabled` | bool | всегда | Общий toggle. |
-| `body` | raw JSON | всегда | Kind-specific payload, декодируется через `DecodeBody`. |
+| `enabled` | bool | always | The common toggle. |
+| `body` | raw JSON | always | Kind-specific payload, decoded via `DecodeBody`. |
 
 **Body schemas:**
 
 | Kind | Body shape |
 |------|------------|
-| `preset` | `{ vars: { <name>: <value>, ... } }` — **только diff** от template default'ов. Пустой map = всё дефолтное. Bump'нули template → юзер автоматически получает новые дефолты для var'ов которые не трогал. |
-| `inline` | `{ name: string, match: { <sing-box match keys> }, outbound: string }` — outbound = tag или зарезервированный литерал (`reject` / `drop`). |
-| `srs` | `{ name: string, srs_url: string, outbound: string }` — URL .srs файла + outbound tag/литерал. |
+| `preset` | `{ vars: { <name>: <value>, ... } }` — **the diff only** against the template defaults. An empty map means everything is default. Bump the template → the user automatically gets the new defaults for vars they never touched. |
+| `inline` | `{ name: string, match: { <sing-box match keys> }, outbound: string }` — outbound is a tag or a reserved literal (`reject` / `drop`). |
+| `srs` | `{ name: string, srs_url: string, outbound: string }` — the URL of an .srs file + an outbound tag/literal. |
 
-**JSON examples — три kind'а:**
+**JSON examples — the three kinds:**
 ```jsonc
-// 1. Preset-ref правило (вся семантика в template.presets["russian"])
+// 1. A preset-ref rule (all the semantics live in template.presets["russian"])
 {
   "kind": "preset",
   "ref": "russian",
   "enabled": true,
-  "body": { "vars": { "out": "proxy-out" } }  // только переопределённые vars
+  "body": { "vars": { "out": "proxy-out" } }  // only the overridden vars
 }
 
 // 2. Inline user rule
@@ -354,21 +381,23 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 
 ### 3.5 `vars[i]`
 
-Простой KV-список — overrides для всех template-объявленных vars.
+A simple KV list — overrides for every var declared by the template.
 
-| Поле | Тип | Описание |
+| Field | Type | Description |
 |------|-----|----------|
-| `name` | string | Имя из `template.vars[].name`. |
-| `value` | string | User-overrides (значение всегда строка; типизация — на template-стороне через `vars[].type`). |
+| `name` | string | The name from `template.vars[].name`. |
+| `value` | string | The user override (always a string; typing lives on the template side via `vars[].type`). |
 
-Типичные ключи (определяются template'ом):
-- `tun` (bool-as-string: `"true"`/`"false"`) — TUN mode toggle
-- `route_final` — выбор final outbound в Rules tab
+Typical keys (defined by the template):
+- `tun` (bool-as-string: `"true"`/`"false"`) — the TUN mode toggle
+- `route_final` — the final-outbound choice on the Rules tab
 - `dns_strategy`, `dns_final`, `dns_default_domain_resolver` — DNS scalars
-- `clash_secret` — автогенерируемый bearer для Debug API
-- Любые user-определённые в template
+- `clash_secret` — an auto-generated bearer for the Debug API
+- anything else the template defines
 
-Записи без `name` (template `{separator: true}`) НЕ попадают в state. Сироты (имена не из текущего template) НЕ грузятся в model и НЕ пишутся обратно.
+Entries without a `name` (template `{separator: true}`) do NOT reach state. Orphans
+(names absent from the current template) are NOT loaded into the model and are NOT
+written back.
 
 **JSON example:**
 ```jsonc
@@ -384,54 +413,54 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 
 ### 3.6 `dns_options`
 
-| Поле | Тип | Описание |
+| Field | Type | Description |
 |------|-----|----------|
-| `strategy` | string (omitempty) | Fallback дубль `vars["dns_strategy"]` для in-memory. Source of truth — `vars`. На диск не пишется если == zero. |
-| `final` | string (omitempty) | То же, дубль `vars["dns_final"]`. |
-| `default_domain_resolver` | string (omitempty) | То же, дубль `vars["dns_default_domain_resolver"]`. |
-| `servers` | `[]DNSServer` | Энтрии с `kind` discriminator (см. ниже). |
-| `rules` | `[]DNSRule` | Энтрии с `kind` discriminator. |
+| `strategy` | string (omitempty) | An in-memory fallback duplicate of `vars["dns_strategy"]`. `vars` is the source of truth. Not written to disk when zero. |
+| `final` | string (omitempty) | The same, duplicating `vars["dns_final"]`. |
+| `default_domain_resolver` | string (omitempty) | The same, duplicating `vars["dns_default_domain_resolver"]`. |
+| `servers` | `[]DNSServer` | Entries with a `kind` discriminator (see below). |
+| `rules` | `[]DNSRule` | Entries with a `kind` discriminator. |
 
 **`servers[i]` — `v6.DNSServer` (SPEC 056-R-N):**
 
-| Поле | Тип | Описание |
+| Field | Type | Description |
 |------|-----|----------|
 | `kind` | `DNSServerKind` | `template` \| `preset` \| `user`. |
-| `tag` | string | Для `kind=template` (lookup ключ в `template.dns_options.servers[tag]`) и `kind=user` (display tag в финальном `config.dns.servers[].tag`). Пуст для `preset`. |
-| `ref` | string | Только для `kind=preset`, формат `"<preset_id>:<local_tag>"`. Пуст для остальных. |
-| `enabled` | bool | Toggle. Build pipeline пропускает entry если `false`. |
-| `body` | `map[string]interface{}` | Только для `kind=user` — полные DNS-server поля (type / server / server_port / tls / detour / ...). Для `template` / `preset` — nil (body резолвится из template). |
+| `tag` | string | For `kind=template` (the lookup key in `template.dns_options.servers[tag]`) and `kind=user` (the display tag in the final `config.dns.servers[].tag`). Empty for `preset`. |
+| `ref` | string | For `kind=preset` only, shaped `"<preset_id>:<local_tag>"`. Empty otherwise. |
+| `enabled` | bool | Toggle. The build pipeline skips the entry when `false`. |
+| `body` | `map[string]interface{}` | For `kind=user` only — the full DNS server fields (type / server / server_port / tls / detour / ...). nil for `template` / `preset` (the body resolves from the template). |
 
 **`rules[i]` — `v6.DNSRule` (SPEC 056-R-N):**
 
-| Поле | Тип | Описание |
+| Field | Type | Description |
 |------|-----|----------|
 | `kind` | `DNSRuleKind` | `preset` \| `user`. |
-| `ref` | string | Только для `kind=preset`, формат `"<preset_id>"` (один dns_rule на preset). |
+| `ref` | string | For `kind=preset` only, shaped `"<preset_id>"` (one dns_rule per preset). |
 | `enabled` | bool | Toggle. |
-| `body` | `map[string]interface{}` | Только для `kind=user` — полное sing-box dns rule body (rule_set / server / domain_* / ip_cidr / port / network / ...). nil для preset. |
+| `body` | `map[string]interface{}` | For `kind=user` only — the full sing-box dns rule body (rule_set / server / domain_* / ip_cidr / port / network / ...). nil for preset. |
 
-**Удалено:**
-- `independent_cache` — deprecated в sing-box 1.14.0 (cache всегда per-transport). Legacy state с этим ключом парсится без ошибок (unknown field ignored), новые saves не пишут.
-- `extra_servers[]`, `extra_rules[]`, `template_servers` map — старая dev-схема SPEC 053, заменена flat-list'ом с kind discriminator (SPEC 056-R-N).
+**Removed:**
+- `independent_cache` — deprecated in sing-box 1.14.0 (the cache is always per-transport). A legacy state carrying this key still parses (the unknown field is ignored); new saves don't write it.
+- `extra_servers[]`, `extra_rules[]`, the `template_servers` map — the old SPEC 053 dev schema, replaced by a flat list with a kind discriminator (SPEC 056-R-N).
 
-**JSON example — полный `dns_options` блок:**
+**JSON example — a complete `dns_options` block:**
 ```jsonc
 {
-  // strategy/final/default_domain_resolver — fallback дубль; source of truth в vars[]
-  // (на диск пишутся только если не zero)
+  // strategy/final/default_domain_resolver — a fallback duplicate; vars[] is the source of truth
+  // (written to disk only when non-zero)
 
   "servers": [
-    // template: ссылка на template.dns_options.servers[tag="cloudflare_udp"]
+    // template: a reference to template.dns_options.servers[tag="cloudflare_udp"]
     { "kind": "template", "tag": "cloudflare_udp", "enabled": true },
 
-    // template: required entry от template'а; локально disabled юзером
+    // template: an entry required by the template; disabled locally by the user
     { "kind": "template", "tag": "google_doh", "enabled": false },
 
-    // preset: bundled от russian preset, local_tag="yandex_doh"
+    // preset: bundled by the russian preset, local_tag="yandex_doh"
     { "kind": "preset", "ref": "russian:yandex_doh", "enabled": true },
 
-    // user: полностью user-defined DNS-сервер с inline body
+    // user: a fully user-defined DNS server with an inline body
     {
       "kind": "user",
       "tag": "my-pihole",
@@ -441,10 +470,10 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
   ],
 
   "rules": [
-    // preset: один dns_rule на preset, тело резолвится из template
+    // preset: one dns_rule per preset; the body resolves from the template
     { "kind": "preset", "ref": "russian", "enabled": true },
 
-    // user: полное sing-box dns rule body
+    // user: a full sing-box dns rule body
     {
       "kind": "user",
       "enabled": true,
@@ -461,206 +490,213 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 
 ## 4. Per-block storage rules
 
-| Секция | Содержит | Источник истины | Кто пишет | Кто читает |
+| Section | Contains | Source of truth | Who writes | Who reads |
 |--------|----------|-----------------|-----------|------------|
-| `connections.sources` | Source entries (subscription URL или server URI), per-source meta (profile_title, userinfo, last_status), update spec | state | UI Sources tab (`source_tab`), Update flow (после fetch) | parser pipeline, UI dashboard, build |
-| `connections.outbounds` | Global selectors/urltest entries, в т.ч. preset-bound (`ref`) и preset-patched (`updates[]`) | state | UI Outbounds tab, `SyncOutboundsWithActivePresets`, presenter `CreateStateFromModel` | build (`MergeOutboundUpdatesInPlace`; UI preview — `MergeOutboundUpdates`), UI render |
-| `connections.defaults` | reload interval, max_nodes per source default | state | UI Settings/Sources | parser pipeline |
-| `rules` | Routing rules через kind discriminator (preset/inline/srs) — единый упорядоченный массив | state | UI Rules tab (drag, library add, edit) | build (`MergeRouteSection` + `MergePresetsIntoRoute`), UI render |
-| `vars` | Overrides для всех объявленных в template vars: tun, route_final, dns_*, clash_secret, etc. | state (значения) + template (объявления) | UI Settings tab, скрытые синхронизаторы (`SyncDNSModelToSettingsVars`) | build (`@var` substitute) |
-| `dns_options.servers` | Entries kind=template / preset / user; body для template/preset резолвится из template, для user — flat в entry | state (что включено) + template (тело) | UI DNS tab, `SyncDNSOptionsWithActivePresets`, presenter | build (`ResolveDNS` → `MergeDNSSection`), UI render |
-| `dns_options.rules` | Entries kind=preset / user. preset = thin ref на `template.presets[].dns_rule`, user = flat body | state + template | UI DNS tab, lifecycle sync, presenter | build (`ResolveDNS`), UI render |
+| `connections.sources` | Source entries (a subscription URL or a server URI), per-source meta (profile_title, userinfo, last_status), the update spec | state | The UI Sources tab (`source_tab`), the Update flow (after a fetch) | the parser pipeline, the UI dashboard, build |
+| `connections.outbounds` | Global selector/urltest entries, including preset-bound (`ref`) and preset-patched (`updates[]`) ones | state | The UI Outbounds tab, `SyncOutboundsWithActivePresets`, the presenter's `CreateStateFromModel` | build (`MergeOutboundUpdatesInPlace`; UI preview — `MergeOutboundUpdates`), UI render |
+| `connections.defaults` | The reload interval and the per-source max_nodes default | state | The UI Settings/Sources tabs | the parser pipeline |
+| `rules` | Routing rules behind a kind discriminator (preset/inline/srs) — a single ordered array | state | The UI Rules tab (drag, library add, edit) | build (`MergeRouteSection` + `MergePresetsIntoRoute`), UI render |
+| `vars` | Overrides for every var the template declares: tun, route_final, dns_*, clash_secret, etc. | state (the values) + template (the declarations) | The UI Settings tab, the hidden synchronizers (`SyncDNSModelToSettingsVars`) | build (`@var` substitution) |
+| `dns_options.servers` | Entries of kind=template / preset / user; for template/preset the body resolves from the template, for user it is flat in the entry | state (what is enabled) + template (the body) | The UI DNS tab, `SyncDNSOptionsWithActivePresets`, the presenter | build (`ResolveDNS` → `MergeDNSSection`), UI render |
+| `dns_options.rules` | Entries of kind=preset / user. preset is a thin ref to `template.presets[].dns_rule`, user is a flat body | state + template | The UI DNS tab, the lifecycle sync, the presenter | build (`ResolveDNS`), UI render |
 
-«Источник истины» = откуда берётся семантика записи. «Кто пишет» = в каких
-точках кода mutates state. «Кто читает» = consumers при build/render.
+"Source of truth" means where an entry's semantics come from. "Who writes" means
+the places in the code that mutate state. "Who reads" means the consumers at
+build/render time.
 
 ---
 
 ## 5. Outbound preset/template binding lifecycle (SPEC 057-R-N + SPEC 058-R-N)
 
-Outbound entries в `connections.outbounds[]` живут в одной из двух форм
-(см. §3.2): **direct** (body inline, ref пуст) или **referenced**
-(body external, в state только `tag + ref + updates[]`). SPEC 057 ввёл
-preset binding через `ref=<preset_id>`; SPEC 058 расширил эту же модель на
-template entries через `ref=#TEMPLATE#` и formalize'нул USER edit как
-field-level diff в `updates[]` с `ref=#USER#`.
+Outbound entries in `connections.outbounds[]` exist in one of two shapes (see
+§3.2): **direct** (body inline, empty ref) or **referenced** (external body; the
+state holds only `tag + ref + updates[]`). SPEC 057 introduced preset binding via
+`ref=<preset_id>`; SPEC 058 extended the same model to template entries via
+`ref=#TEMPLATE#` and formalized the USER edit as a field-level diff in `updates[]`
+with `ref=#USER#`.
 
-### 5.1 Schema (см. §3.2 для полной таблицы)
+### 5.1 Schema (see §3.2 for the full table)
 
-Ключевое для lifecycle:
-- `ref=""` → direct, lifecycle вручную (Edit / Del — full ownership)
-- `ref=#TEMPLATE#` → referenced template, lifecycle через «Restore missing» / drop on missing tag
-- `ref=<preset_id>` → referenced preset add, lifecycle через preset toggle в Rules tab
-- `updates[].ref=<preset_id>` → preset mode=update patch, lifecycle через preset toggle
-- `updates[].ref=#USER#` → USER diff, один на outbound, replace на каждый Save, всегда последний
+What matters for the lifecycle:
+- `ref=""` → direct; the lifecycle is manual (Edit / Delete — full ownership)
+- `ref=#TEMPLATE#` → referenced template; the lifecycle runs through "Restore missing" / drop on a missing tag
+- `ref=<preset_id>` → referenced preset add; the lifecycle runs through the preset toggle on the Rules tab
+- `updates[].ref=<preset_id>` → a preset mode=update patch; lifecycle via the preset toggle
+- `updates[].ref=#USER#` → the USER diff: one per outbound, replaced on every Save, always last
 
 ### 5.2 Lifecycle: `SyncOutboundsWithActivePresets`
 
-Единая точка добавления/удаления referenced entries. Idempotent.
+The single place where referenced entries are added and removed. Idempotent.
 
-Вызывается:
-- На Load после `parseV6` (presenter `LoadState`)
-- На каждый preset toggle в Rules tab (через `RefreshAfterPresetToggle`)
-- Перед Save в `CreateStateFromModel` — на **обе view'а**
-  (`state.Connections.Outbounds` и `state.ParserConfig.ParserConfig.Outbounds`),
-  потому что `syncConnectionsFromLegacy` копирует legacy view → canonical,
-  иначе sync'нутые `updates[]` затирались бы адаптером
-- В headless runtime path'ах: `rebuild_raw_cache`,
+Called from:
+- On Load after `parseV6` (the presenter's `LoadState`)
+- On every preset toggle in the Rules tab (via `RefreshAfterPresetToggle`)
+- Before Save in `CreateStateFromModel` — over **both views**
+  (`state.Connections.Outbounds` and `state.ParserConfig.ParserConfig.Outbounds`),
+  because `syncConnectionsFromLegacy` copies the legacy view → canonical, so
+  otherwise the synced `updates[]` would be clobbered by the adapter
+- On headless runtime paths: `rebuild_raw_cache`,
   `UpdateConfigFromSubscriptions`, `parseAndPreview`
 
-Семантика (см. `core/build/sync_outbounds.go`):
+The semantics (see `core/build/sync_outbounds.go`):
 
-1. Walk `state.outbounds`, для каждого:
-   - Drop preset entries (`ref=<preset_id>`) если owner preset disabled/missing
-   - Strip body (`type`/`options`/`filters`/`addOutbounds`/`preferredDefault`/`comment`)
-     для всех referenced entries — **thin shape invariant**
-   - Direct entries (`ref=""`) не трогаем
-   - Из `updates[]` drop preset patches от disabled preset; USER patch сохраняем
-2. Append missing preset add entries как thin `{tag, ref: preset.id}` (body live из preset)
-3. Append expected preset update patches (`mode=update`) в `updates[]` target'а
-4. **Re-order `updates[]`:** preset patches в rule order (по `activeRulesOrder`),
-   stale preset patches (preset disabled но patch ещё есть) после ordered, USER
-   patch — всегда последний. Реализация — `reorderUpdates` в том же файле.
-5. **Adopt-on-first-sync:** direct entry с tag, совпадающим с expected preset add,
-   конвертируется в referenced preset (`ref=preset.id`, strip body).
+1. Walk `state.outbounds`; for each entry:
+   - Drop preset entries (`ref=<preset_id>`) when the owning preset is disabled/missing
+   - Strip the body (`type`/`options`/`filters`/`addOutbounds`/`preferredDefault`/`comment`)
+     from every referenced entry — the **thin-shape invariant**
+   - Leave direct entries (`ref=""`) alone
+   - Drop preset patches from disabled presets out of `updates[]`; keep the USER patch
+2. Append missing preset add entries as thin `{tag, ref: preset.id}` (the body lives in the preset)
+3. Append the expected preset update patches (`mode=update`) into the target's `updates[]`
+4. **Re-order `updates[]`:** preset patches in rule order (by `activeRulesOrder`),
+   stale preset patches (preset disabled but the patch is still there) after the
+   ordered ones, and the USER patch always last. Implemented by `reorderUpdates`
+   in the same file.
+5. **Adopt-on-first-sync:** a direct entry whose tag matches an expected preset add
+   is converted into a referenced preset (`ref=preset.id`, body stripped).
 
-Template entries (`ref=#TEMPLATE#`) в sync function **не дропаются** на missing
-tag — это handled через resolver fallback на render/build (silent drop). Adding
-template entries — отдельно через UI «Restore missing» button (не автоматом
-в sync, чтобы юзер сам контролировал какие template tags у него в state).
+Template entries (`ref=#TEMPLATE#`) are **not dropped** by the sync function on a
+missing tag — that is handled by the resolver fallback at render/build time (a
+silent drop). Adding template entries happens separately, through the UI's
+"Restore missing" button (not automatically during sync, so the user controls
+which template tags live in their state).
 
 ### 5.3 Migration legacy state — `MigrateOutboundsToReferencedShape` (SPEC 058)
 
-One-shot на первом load после апгрейда: SPEC 057 хранил template-derived
-entries с пустым `ref` и snapshot'нутым body — migration переводит их в
-referenced shape. См. `core/build/migrate_outbounds_spec058.go`.
+A one-shot on the first load after the upgrade: SPEC 057 stored template-derived
+entries with an empty `ref` and a snapshotted body — the migration converts them
+into the referenced shape. See `core/build/migrate_outbounds_spec058.go`.
 
-Для каждого direct entry (`ref=""`):
+For each direct entry (`ref=""`):
 
-- Если `tag` совпадает с `template.parser_config.outbounds[tag]`:
-  1. `merged_base` = template body + apply активных preset `mode=update` patches
-     для этого tag (важно: эти patches УЖЕ были materialized в legacy body через
-     `ApplyPresetOutboundsToParserConfig`, diff'ить надо против них, а не против
-     чистого template — иначе preset patches атрибутируются как USER edits)
+- If `tag` matches `template.parser_config.outbounds[tag]`:
+  1. `merged_base` = the template body + the active preset `mode=update` patches
+     for that tag (this matters: those patches were ALREADY materialized into the
+     legacy body by `ApplyPresetOutboundsToParserConfig`, so the diff must be taken
+     against them, not against the bare template — otherwise preset patches get
+     attributed as USER edits)
   2. `diff = OutboundFieldDiff(ob, merged_base)`
-  3. Set `ob.ref = "#TEMPLATE#"`, upsert USER patch с `diff` (если non-empty), strip body
-- Иначе если `tag` совпадает с preset add — set `ref=<preset_id>` + diff против
-  preset body → USER patch + strip body
-- Иначе → настоящий direct entry, leave as-is
+  3. Set `ob.ref = "#TEMPLATE#"`, upsert the USER patch with `diff` (when non-empty), strip the body
+- Otherwise, if `tag` matches a preset add — set `ref=<preset_id>` + diff against
+  the preset body → USER patch + strip the body
+- Otherwise → a genuine direct entry, left as-is
 
-**Идемпотентно:** повторный запуск на уже мигрированном state — no-op (loop
-пропускает уже-referenced entries).
+**Idempotent:** running it again on an already-migrated state is a no-op (the loop
+skips entries that are already referenced).
 
-**Backup:** `state.json.pre-058.bak` на первом save после migration через
-`maybeBackupSPEC058` в `core/state/save.go` (по аналогии с SPEC 053's `.v5.bak`).
-Lossless rollback гарантирован.
+**Backup:** `state.json.pre-058.bak` on the first save after the migration, via
+`maybeBackupSPEC058` in `core/state/save.go` (mirroring SPEC 053's `.v5.bak`).
+Lossless rollback is guaranteed.
 
 ### 5.4 Runtime merge: `MergeOutboundUpdatesInPlace`
 
-Native generator (`GenerateOutboundsFromParserConfig`) не знает про
-`Updates` и `Ref`. Перед его вызовом build pipeline вызывает
-`MergeOutboundUpdatesInPlace(parserCfg)` — walks `parserCfg.Outbounds[]`,
-для каждой entry:
-- **Referenced (`ref != ""`):** lookup base body из template/preset, apply
-  `updates[]` стек (preset patches + USER) в order, write merged в entry
-- **Direct (`ref == ""`):** apply `updates[]` (если есть) к inline body
+The native generator (`GenerateOutboundsFromParserConfig`) knows nothing about
+`Updates` and `Ref`. Before calling it, the build pipeline runs
+`MergeOutboundUpdatesInPlace(parserCfg)`, which walks `parserCfg.Outbounds[]` and
+for each entry:
+- **Referenced (`ref != ""`):** looks up the base body in the template/preset,
+  applies the `updates[]` stack (preset patches + USER) in order, and writes the
+  merged result into the entry
+- **Direct (`ref == ""`):** applies `updates[]` (if any) to the inline body
 
-Mutates in-place (через deep-copy на сайт-edge, model не trash'ится). UI-preview
-flow разделяет unmerged (для model save) и merged (`parserConfigForGen` —
-generator получает flat'нутую копию).
+It mutates in place (via a deep copy at the call edge, so the model is not
+trashed). The UI preview flow keeps the unmerged form (for the model save) apart
+from the merged one (`parserConfigForGen` — the generator gets a flattened copy).
 
 ---
 
 ## 6. DNS preset binding lifecycle (SPEC 056-R-N)
 
-Симметрично outbound binding. `dns_options.servers[]` и `dns_options.rules[]`
-— flat array с `kind` discriminator.
+Symmetrical to the outbound binding. `dns_options.servers[]` and
+`dns_options.rules[]` are flat arrays with a `kind` discriminator.
 
-### 5.1 `dns_options.servers[]` — kind
-
-| `kind` | Identity | Body |
-|--------|----------|------|
-| `template` | `tag` (ссылка в `template.dns_options.servers[tag]`) | резолвится из template на build/render |
-| `preset` | `ref = "<preset_id>:<local_tag>"` (ссылка на `template.presets[id].dns_servers[local_tag]` + `vars` substitute) | резолвится из template + apply preset vars |
-| `user` | `tag` + flat body (type/server/server_port/tls/...) — полная sing-box DNS server spec | self-contained |
-
-Toggle `enabled` доступен для всех трёх kind'ов; edit body — только для user;
-delete — только для user (template/preset управляются template'ом и preset
-toggle'ом).
-
-### 5.2 `dns_options.rules[]` — kind
+### 6.1 `dns_options.servers[]` — kind
 
 | `kind` | Identity | Body |
 |--------|----------|------|
-| `preset` | `ref = "<preset_id>"` (один dns_rule на preset максимум) | резолвится из `template.presets[id].dns_rule` |
+| `template` | `tag` (a reference into `template.dns_options.servers[tag]`) | resolved from the template at build/render time |
+| `preset` | `ref = "<preset_id>:<local_tag>"` (a reference to `template.presets[id].dns_servers[local_tag]` + `vars` substitution) | resolved from the template with the preset vars applied |
+| `user` | `tag` + a flat body (type/server/server_port/tls/...) — a complete sing-box DNS server spec | self-contained |
+
+The `enabled` toggle is available for all three kinds; editing the body is
+user-only; deleting is user-only as well (template/preset entries are governed by
+the template and the preset toggle).
+
+### 6.2 `dns_options.rules[]` — kind
+
+| `kind` | Identity | Body |
+|--------|----------|------|
+| `preset` | `ref = "<preset_id>"` (at most one dns_rule per preset) | resolved from `template.presets[id].dns_rule` |
 | `user` | flat body (rule_set/server/domain_*/ip_cidr/port/network/...) | self-contained |
 
-### 5.3 Lifecycle: `SyncDNSOptionsWithActivePresets`
+### 6.3 Lifecycle: `SyncDNSOptionsWithActivePresets`
 
-Единая точка lifecycle для kind=preset entries. Аналогично outbound sync.
+The single lifecycle point for kind=preset entries, mirroring the outbound sync.
 
-Вызывается из presenter'а на тех же триггерах: Load, preset toggle, перед Save.
-Семантика: enable preset → создаются entries `{kind:preset, ref}` для каждого
-`template.presets[id].dns_servers[]` + (если есть) `dns_rule`. Default
-`Enabled=true`. Disable preset → все entries с ref на этот preset удаляются.
-Per-server toggle внутри активного preset (юзер может скрыть отдельный
-сервер из bundle) преserve'ится при sync.
+Called from the presenter on the same triggers: Load, preset toggle, before Save.
+The semantics: enabling a preset creates `{kind:preset, ref}` entries for every
+`template.presets[id].dns_servers[]` plus its `dns_rule` (when present), defaulting
+to `Enabled=true`. Disabling a preset removes every entry referencing it. A
+per-server toggle inside an active preset (the user may hide one server from a
+bundle) is preserved across syncs.
 
-Реализация: `core/state/sync_dns.go::SyncDNSOptionsWithActivePresets`.
+Implementation: `core/state/sync_dns.go::SyncDNSOptionsWithActivePresets`.
 
-### 5.4 Required entries (template)
+### 6.4 Required entries (template)
 
-`template.dns_options.servers[]` может пометить entry как `"required": true`
-(например, `local_dns_resolver` / `direct_dns_resolver`). Render показывает
-галку enabled + lock на toggle/edit/del; build всегда эмитит. Флаг — template-only,
-state не персистит — читается live на каждый render через
+`template.dns_options.servers[]` may mark an entry `"required": true` (for
+example `local_dns_resolver` / `direct_dns_resolver`). The render shows it ticked
+and locks toggle/edit/delete; the build always emits it. The flag is template-only
+and is never persisted in state — it is read live on every render via
 `wizardbusiness.DNSTagLocked(model, tag)`.
 
-### 5.5 Удалённые поля (sing-box 1.14)
+### 6.5 Removed fields (sing-box 1.14)
 
-`independent_cache` — deprecated в sing-box 1.14 (кэш теперь всегда
-per-transport). Legacy state c этим ключом парсится без ошибок (silently
-dropped через `_ = raw.IndependentCache` в `legacyDevDNSToOptions`),
-новые saves поле не пишут.
+`independent_cache` — deprecated in sing-box 1.14 (the cache is always
+per-transport now). A legacy state carrying this key still parses (it is silently
+dropped via `_ = raw.IndependentCache` in `legacyDevDNSToOptions`); new saves do
+not write the field.
 
 ---
 
 ## 7. Rule preset binding lifecycle (SPEC 053)
 
-`rules[]` — единый упорядоченный массив через `kind` discriminator.
+`rules[]` is a single ordered array behind a `kind` discriminator.
 
 | `kind` | Header | Body |
 |--------|--------|------|
-| `preset` | `{ref, enabled}` (ref = `<preset_id>`) | `{vars: {<name>: <value>, ...}}` — только diff от template defaults; пустой map = всё дефолтное |
-| `inline` | `{id (ULID), enabled}` | `{name, match (sing-box match-объект), outbound (tag|"reject"|"drop")}` |
+| `preset` | `{ref, enabled}` (ref = `<preset_id>`) | `{vars: {<name>: <value>, ...}}` — the diff against the template defaults only; an empty map means everything is default |
+| `inline` | `{id (ULID), enabled}` | `{name, match (a sing-box match object), outbound (tag|"reject"|"drop")}` |
 | `srs` | `{id (ULID), enabled}` | `{name, srs_url, outbound}` |
 
-Order = order рендера в UI Rules tab (включая drag-reordering) = order эмита
-в `config.json::route.rules[]`. Сохраняется через
-`SyncRulesByOrderToStateRulesV6(model.RuleOrder, ...)` в `CreateStateFromModel`
-(имя функции легасийное; результат пишется в `state.Rules`).
+The order is the render order in the UI Rules tab (drag-reordering included),
+which is also the emission order in `config.json::route.rules[]`. It is persisted
+by `SyncRulesByOrderToStateRulesV6(model.RuleOrder, ...)` inside
+`CreateStateFromModel` (the function name is legacy; the result goes into
+`state.Rules`).
 
-Match-поля и rule_set'ы для kind=preset живут **в template** — bump
-`RequiredTemplateRef` → юзеры автоматически получают новые match-поля.
-Body хранит только diff vars; пустой `vars: {}` = preset на template defaults.
+The match fields and rule_sets for kind=preset live **in the template** — bump
+`RequiredTemplateRef` and users automatically get the new match fields. The body
+stores only the diffed vars; an empty `vars: {}` means the preset runs on template
+defaults.
 
-См. `core/state/rule_types.go` (DecodeBody dispatcher) +
-`core/build/preset_expand.go` (build-time substitute + tag-prefix).
+See `core/state/rule_types.go` (the DecodeBody dispatcher) +
+`core/build/preset_expand.go` (build-time substitution + tag prefixing).
 
 ---
 
 ## 8. Data flow
 
-### 7.1 Load: `state.json` → model
+### 8.1 Load: `state.json` → model
 
 ```
 disk: bin/wizard_states/state.json
         │
         ▼
 core/state.Load(path)
-        │   probe meta.version  →  parseV6 (или parseV5 / parseLegacy)
-        │   legacyDevDNSToOptions if старый dev-shape `dns.{template_servers,extras}`
-        │   sanitizeOutboundRefs (SPEC 058: reject невалидные ref по позиции)
+        │   probe meta.version  →  parseV6 (or parseV5 / parseLegacy)
+        │   legacyDevDNSToOptions if the old dev shape `dns.{template_servers,extras}`
+        │   sanitizeOutboundRefs (SPEC 058: rejects refs invalid for their position)
         ▼
 state.State{Connections, Rules, DNS, Vars, ...}
         │
@@ -681,7 +717,7 @@ model.WizardModel  (Sources, GlobalOutbounds, CustomRules, PresetRefs,
 SyncModelToGUI + RefreshOutboundOptions
 ```
 
-### 7.2 Save: model → `state.json`
+### 8.2 Save: model → `state.json`
 
 ```
 model.WizardModel
@@ -694,31 +730,31 @@ presenter.CreateStateFromModel(comment, id)
         │   SyncDNSFullToStateV6                                  → state.DNS
         │   state.SyncDNSOptionsWithActivePresets(state.Rules, &state.DNS, presets)
         │   applyPresetEnabledOverrides (UI toggle → entry.Enabled)
-        │   build.SyncOutboundsWithActivePresets ×2 view (Connections + ParserConfig)  ◄── обязательно на обе!
+        │   build.SyncOutboundsWithActivePresets ×2 views (Connections + ParserConfig)  ◄── both are mandatory!
         ▼
 state.State.Save(path)
-        │   maybeBackupSPEC058 (SPEC 058: .pre-058.bak на первом save после migration)
-        │   syncConnectionsFromLegacy (ParserConfig → Connections; уже sync'нутая версия побеждает)
-        │   marshalDisk (single canonical-v6 path после SPEC 060; dual write убран)
+        │   maybeBackupSPEC058 (SPEC 058: .pre-058.bak on the first save after the migration)
+        │   syncConnectionsFromLegacy (ParserConfig → Connections; the already-synced version wins)
+        │   marshalDisk (a single canonical-v6 path since SPEC 060; the dual write is gone)
         │   atomic write (.tmp + Rename) + fsync
         ▼
 disk: bin/wizard_states/state.json
 ```
 
-Двойной sync на обе view (`Connections.Outbounds` + `ParserConfig.Outbounds`)
-— ключевой момент: без него `syncConnectionsFromLegacy` затирал бы только что
-вычисленные `updates[]` стеки.
+Syncing both views (`Connections.Outbounds` + `ParserConfig.Outbounds`) is the
+crux: without it, `syncConnectionsFromLegacy` would clobber the `updates[]` stacks
+that were just computed.
 
-### 7.3 Build/Emit: state → `bin/config.json`
+### 8.3 Build/Emit: state → `bin/config.json`
 
 ```
-state.State (после Load или после CreateStateFromModel)
+state.State (after Load or after CreateStateFromModel)
         │
         ▼
 core/build (entry: BuildConfig)
         │   ResolveDNS(state, template, vars)        ◄── pure func
         │   ResolveRoute(state, template, vars)      ◄── pure func
-        │   MergeOutboundUpdatesInPlace(parserCfg)   ◄── материализует Updates[] (preset + USER patches) в body для generator'а
+        │   MergeOutboundUpdatesInPlace(parserCfg)   ◄── materializes Updates[] (preset + USER patches) into the body for the generator
         │   GenerateOutboundsFromParserConfig
         │   MergeDNSSection + MergeRouteSection
         │   MergePresetsIntoRoute (per-preset expand: substitute + tag prefix)
@@ -726,52 +762,53 @@ core/build (entry: BuildConfig)
 disk: bin/config.json (sing-box-compatible)
 ```
 
-Resolve* функции — single source of truth для UI и build (нет divergence
-между preview и финальным config).
+The Resolve* functions are the single source of truth for both the UI and the
+build (no divergence between the preview and the final config).
 
 ---
 
 ## 9. Required vs preset-locked entries
 
-Три класса entries в UI с разной семантикой управления:
+Three classes of entry in the UI, with different management semantics:
 
-| Класс | Где маркер | Толкование | UI controls |
+| Class | Where the marker is | Meaning | UI controls |
 |-------|------------|------------|-------------|
-| **Required (template)** | `template.*.entries[].required = true`. Для outbounds: top-level `required bool` в state (SPEC 058, наполняется из template на load/sync); для DNS — live read из template на render. | Mandatory entry — нельзя toggle/del. Body editable через USER patch (referenced) или inline (direct). | Reset (clear USER patch, откат к template defaults), Edit. **Del не рендерится.** |
-| **Referenced template** (SPEC 058) | `ref == "#TEMPLATE#"` | Body live из `template.parser_config.outbounds[tag]`. Юзер может наложить USER patch через Edit (field-level diff в `updates[]`). | Edit (открывает merged_base view, Save вычисляет diff), Reset (clear USER patch — disabled если patch отсутствует), Del (удаляет entry — восстанавливается через «Restore missing») |
-| **Preset-locked** | `entry.ref` = `<preset_id>` (для outbounds) или `kind=preset` (для DNS/rules) | Entry создан preset'ом, body резолвится из template/preset. | Toggle enabled (юзер может скрыть отдельный bundle item), View (read-only modal) либо Edit с USER patch. **Del не рендерится** — lifecycle через preset toggle в Rules tab. |
-| **Direct** | `ref == ""` (поле отсутствует) + tag отсутствует в template/preset | Полный контроль, self-contained body. | Toggle, Edit (пишет body напрямую, никакого USER patch), Up/Down, Del |
+| **Required (template)** | `template.*.entries[].required = true`. For outbounds: the top-level `required bool` in state (SPEC 058, populated from the template on load/sync); for DNS it is read live from the template at render time. | A mandatory entry — it cannot be toggled or deleted. The body is editable through a USER patch (referenced) or inline (direct). | Reset (clears the USER patch, reverting to template defaults), Edit. **Delete is not rendered.** |
+| **Referenced template** (SPEC 058) | `ref == "#TEMPLATE#"` | The body lives in `template.parser_config.outbounds[tag]`. The user can layer a USER patch on top through Edit (a field-level diff in `updates[]`). | Edit (opens the merged_base view; Save computes the diff), Reset (clears the USER patch — disabled when there is none), Delete (removes the entry — restorable via "Restore missing") |
+| **Preset-locked** | `entry.ref` = `<preset_id>` (for outbounds) or `kind=preset` (for DNS/rules) | The entry was created by a preset; the body resolves from the template/preset. | Toggle enabled (the user can hide an individual bundle item), View (a read-only modal) or Edit with a USER patch. **Delete is not rendered** — the lifecycle runs through the preset toggle on the Rules tab. |
+| **Direct** | `ref == ""` (the field is absent) and the tag is absent from the template/presets | Full control, a self-contained body. | Toggle, Edit (writes the body directly, no USER patch), Up/Down, Delete |
 
-«Required» — про **lock на удаление**; «preset-locked» — про **lock на edit body**;
-«referenced template» — promote'нутый класс (SPEC 058), где edit идёт через USER
-patch поверх template body, что даёт template auto-upgrade автоматически.
+"Required" is about a **delete lock**; "preset-locked" is about an **edit-body
+lock**; "referenced template" is the promoted class (SPEC 058) where the edit goes
+through a USER patch over the template body, which is what gives template
+auto-upgrade for free.
 
 ---
 
-## 10. Миграции
+## 10. Migrations
 
-| From → To | Что мигрирует | Backup |
+| From → To | What migrates | Backup |
 |-----------|---------------|--------|
-| v2/v3/v4 → v5 | `selectable_rule_states` + `custom_rules` → единый `custom_rules[]` (rules library merge); `parser_config` wrapped → simplified; `enable_tun_macos` → `vars["tun"]`; `route.default_domain_resolver` → `vars["dns_default_domain_resolver"]` | нет (in-memory; пишется v5 при первом Save) |
-| v5 → v6 | `custom_rules[]` → `rules[]` (kind=inline/srs derive из rule_set type); `dns_options.servers/rules` legacy → `dns_options.servers/rules` flat kind discriminator; meta bump | **`state.json.v5.bak`** на первом upgrade (когда появляется хотя бы один kind=preset rule) |
-| v6 dev-shape → v6 flat | `dns.{template_servers, extra_servers, extra_rules}` (SPEC 053 промежуточный shape) → `dns_options.servers[]/rules[]` flat (SPEC 056-R-N) | нет (lossless, dev-only, не релизился) |
-| SPEC 057 outbounds → SPEC 058 | Direct entries с full body, совпадающим по `tag` с template/preset → referenced thin entries (`ref=#TEMPLATE#` / `ref=<preset_id>`) + USER patch с field-level diff против merged_base. Идемпотентно, lossless. Также: legacy `wizard.required` map → top-level `required bool`; поле `wizard interface{}` удалено из struct. | **`state.json.pre-058.bak`** на первом save после migration |
-| sing-box 1.14 | `dns_options.independent_cache` silently dropped (legacy state читается, новый не пишется) | нет |
+| v2/v3/v4 → v5 | `selectable_rule_states` + `custom_rules` → a single `custom_rules[]` (rules library merge); wrapped `parser_config` → simplified; `enable_tun_macos` → `vars["tun"]`; `route.default_domain_resolver` → `vars["dns_default_domain_resolver"]` | none (in-memory; v5 is written on the first Save) |
+| v5 → v6 | `custom_rules[]` → `rules[]` (kind=inline/srs derived from the rule_set type); legacy `dns_options.servers/rules` → the flat kind-discriminated `dns_options.servers/rules`; meta bump | **`state.json.v5.bak`** on the first upgrade (once at least one kind=preset rule appears) |
+| v6 dev shape → v6 flat | `dns.{template_servers, extra_servers, extra_rules}` (the intermediate SPEC 053 shape) → flat `dns_options.servers[]/rules[]` (SPEC 056-R-N) | none (lossless, dev-only, never released) |
+| SPEC 057 outbounds → SPEC 058 | Direct entries with a full body whose `tag` matches the template/a preset → thin referenced entries (`ref=#TEMPLATE#` / `ref=<preset_id>`) plus a USER patch holding the field-level diff against merged_base. Idempotent and lossless. Also: the legacy `wizard.required` map → a top-level `required bool`; the `wizard interface{}` field was removed from the struct. | **`state.json.pre-058.bak`** on the first save after the migration |
+| sing-box 1.14 | `dns_options.independent_cache` is silently dropped (a legacy state still reads, new ones don't write it) | none |
 
-Save всегда пишет canonical (v6) shape (SPEC 060 убрал dual write path).
-Legacy v5 файлы по-прежнему читаются через `parseV5Legacy` и нормализуются
-в `State` на load; следующий Save перезаписывает их в v6 layout.
-Юзеры с pure inline/srs rules остаются на v5 пока не добавят первый preset.
+Save always writes the canonical (v6) shape (SPEC 060 removed the dual write
+path). Legacy v5 files are still read by `parseV5Legacy` and normalized into
+`State` at load time; the next Save rewrites them in the v6 layout. Users with
+purely inline/srs rules stay on v5 until they add their first preset.
 
 ---
 
-## 11. Где лежит реализация
+## 11. Where the implementation lives
 
-| Файл | Что |
+| File | What |
 |------|-----|
-| `core/state/load.go` | `Load` / `Parse` / `parseCurrent` / `parseV5Legacy` / `parseLegacyAndMigrate` / `legacyDevDNSToOptions` + `sanitizeOutboundRefs` (SPEC 058: drops entries с невалидным `ref` по позиции) |
-| `core/state/save.go` | `Save` / `marshalDisk` (single canonical-v6 write path после SPEC 060) / `maybeBackupSPEC058` (SPEC 058: `.pre-058.bak` на первом save после referenced-shape migration) |
-| `core/state/adapter.go` | `syncConnectionsFromLegacy` / `syncLegacyFromConnections` (обмен legacy ParserConfig ↔ canonical Connections) |
+| `core/state/load.go` | `Load` / `Parse` / `parseCurrent` / `parseV5Legacy` / `parseLegacyAndMigrate` / `legacyDevDNSToOptions` + `sanitizeOutboundRefs` (SPEC 058: drops entries whose `ref` is invalid for its position) |
+| `core/state/save.go` | `Save` / `marshalDisk` (a single canonical-v6 write path since SPEC 060) / `maybeBackupSPEC058` (SPEC 058: `.pre-058.bak` on the first save after the referenced-shape migration) |
+| `core/state/adapter.go` | `syncConnectionsFromLegacy` / `syncLegacyFromConnections` (the legacy ParserConfig ↔ canonical Connections exchange) |
 | `core/state/disk_v6.go` | `diskStateV6` (private write-shape) + `MetaSection` + `SchemaVersionV6` |
 | `core/state/rule_types.go` | `Rule` + `PresetBody`/`InlineBody`/`SrsBody` + `DecodeBody` |
 | `core/state/dns_options.go` | `DNSServer` + `DNSRule` + flat `MarshalJSON`/`UnmarshalJSON` |
@@ -779,23 +816,23 @@ Legacy v5 файлы по-прежнему читаются через `parseV5L
 | `core/state/migration_v5_to_v6.go` | `migrateV5ToV6` (private helper) + `isV5`/`isV6` detection |
 | `core/state/legacy_migration.go` | `migrateV4ToV5` (private) + `IDGenerator` |
 | `core/state/legacy_v4.go` | `v4File` (private) + `parseV4File` |
-| `core/state/legacy_types.go` | `LegacyDNSOptionsV5` (для backward-compat parse path и UI `PersistedDNSState`) |
+| `core/state/legacy_types.go` | `LegacyDNSOptionsV5` (for the backward-compat parse path and the UI's `PersistedDNSState`) |
 | `core/state/connections.go` | `ConnectionsSection`/`Source`/`Defaults`/`TagSpec`/`SubscriptionMeta`/`UserInfo` |
 | `core/state/raw_cache.go` | `WriteRawBody`/`ReadRawBody`/`DeleteOrphans` |
 | `core/state/ulid.go` | `MakeULID` |
 | `core/build/sync_outbounds.go` | `SyncOutboundsWithActivePresets` (lifecycle) + `stripReferencedBody` + `reorderUpdates` + `outboundConfigToPatchMap` |
-| `core/build/migrate_outbounds_spec058.go` | **SPEC 058.** `MigrateOutboundsToReferencedShape` — one-shot direct→referenced + USER patch на первом load |
-| `core/build/outbound_diff.go` | **SPEC 058.** `OutboundFieldDiff` (field-level diff против merged_base) + `UpsertUserPatch` |
-| `core/build/resolve_outbounds.go` | `resolveBaseBody` (учитывает `ref` для base lookup) + `MergeOutboundUpdates` / `MergeOutboundUpdatesInPlace` (runtime helpers) + `applyUpdatesToBase` + `applyOutboundUpdatePatch` (map-patch → `preset_outbounds.go::applyOutboundUpdate`) |
-| `core/build/resolve_dns.go` | `ResolveDNS` (pure DNS view для UI + build) |
+| `core/build/migrate_outbounds_spec058.go` | **SPEC 058.** `MigrateOutboundsToReferencedShape` — the one-shot direct→referenced conversion + USER patch on the first load |
+| `core/build/outbound_diff.go` | **SPEC 058.** `OutboundFieldDiff` (a field-level diff against merged_base) + `UpsertUserPatch` |
+| `core/build/resolve_outbounds.go` | `resolveBaseBody` (honours `ref` for the base lookup) + `MergeOutboundUpdates` / `MergeOutboundUpdatesInPlace` (runtime helpers) + `applyUpdatesToBase` + `applyOutboundUpdatePatch` (map patch → `preset_outbounds.go::applyOutboundUpdate`) |
+| `core/build/resolve_dns.go` | `ResolveDNS` (the pure DNS view for both UI and build) |
 | `core/build/resolve_route.go` | `ResolveRoute` (pure route view) |
 | `core/template/loader.go` | `LoadTemplateData` + `TemplateData` struct |
 | `core/template/preset_types.go` | Preset / PresetVar / PresetRuleSet / PresetDNSServer / PresetOutbound |
-| `ui/configurator/presentation/presenter_state.go` | `LoadState` + `CreateStateFromModel` (entry points для save/load) |
-| `ui/configurator/presentation/presenter_sync.go` | `RefreshAfterPresetToggle` (presenter-level eager sync после Rules toggle) |
+| `ui/configurator/presentation/presenter_state.go` | `LoadState` + `CreateStateFromModel` (the save/load entry points) |
+| `ui/configurator/presentation/presenter_sync.go` | `RefreshAfterPresetToggle` (the presenter-level eager sync after a Rules toggle) |
 
-См. также: [TEMPLATE_REFERENCE.md](TEMPLATE_REFERENCE.md) — что лежит в
-`wizard_template.json` и куда оно попадает в state/runtime/UI.
-[DATA_FLOW.md](DATA_FLOW.md) — расширенные диаграммы load/save/build/toggle.
-[WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md) — справочник по синтаксису
-template'ов (формат preset'ов, vars, substitute, if/if_or).
+See also: [TEMPLATE_REFERENCE.md](TEMPLATE_REFERENCE.md) — what lives in
+`wizard_template.json` and where it ends up in state/runtime/UI.
+[DATA_FLOW.md](DATA_FLOW.md) — extended load/save/build/toggle diagrams.
+[WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md) — the template syntax reference
+(the preset format, vars, substitution, if/if_or).

@@ -25,8 +25,6 @@
 package build
 
 import (
-	"runtime"
-
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
@@ -50,6 +48,7 @@ func SyncOutboundsWithActivePresets(
 	rules []state.Rule,
 	outbounds *[]configtypes.OutboundConfig,
 	presets []template.Preset,
+	target template.TargetSpec,
 ) {
 	if outbounds == nil {
 		return
@@ -90,7 +89,7 @@ func SyncOutboundsWithActivePresets(
 			activeRulesOrder = append(activeRulesOrder, rule.Ref)
 		}
 
-		entries, _ := ExpandPresetOutbounds(preset, pb.Vars, runtime.GOOS, runtime.GOARCH)
+		entries, _ := ExpandPresetOutbounds(preset, pb.Vars, target)
 		for _, entry := range entries {
 			switch entry.Mode {
 			case "add":
@@ -201,7 +200,7 @@ func SyncOutboundsWithActivePresets(
 		if pb == nil {
 			continue
 		}
-		entries, _ := ExpandPresetOutbounds(preset, pb.Vars, runtime.GOOS, runtime.GOARCH)
+		entries, _ := ExpandPresetOutbounds(preset, pb.Vars, target)
 		for _, entry := range entries {
 			if entry.Mode != "add" {
 				continue

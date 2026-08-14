@@ -15,7 +15,6 @@ package tabs
 import (
 	"encoding/json"
 	"fmt"
-	"runtime"
 	"sort"
 	"strings"
 
@@ -431,7 +430,7 @@ func collectAllRuleSetTags(m *wizardmodels.WizardModel) []string {
 			if tpl == nil {
 				continue
 			}
-			frags, _, ok := build.ExpandPreset(tpl, pr.Vars, runtime.GOOS, runtime.GOARCH)
+			frags, _, ok := build.ExpandPreset(tpl, pr.Vars, m.Target)
 			if !ok {
 				continue
 			}
@@ -493,7 +492,7 @@ func showViewAllDNSRulesDialog(presenter *wizardpresentation.WizardPresenter, pa
 			if tpl == nil {
 				continue
 			}
-			frags, _, ok := build.ExpandPreset(tpl, pr.Vars, runtime.GOOS, runtime.GOARCH)
+			frags, _, ok := build.ExpandPreset(tpl, pr.Vars, m.Target)
 			if !ok {
 				continue
 			}

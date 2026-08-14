@@ -18,7 +18,6 @@ package business
 
 import (
 	"encoding/json"
-	"runtime"
 
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
@@ -44,13 +43,16 @@ func effectiveTemplate(model *wizardmodels.WizardModel, materializeSecrets bool)
 	td := model.TemplateData
 	config, order := td.Config, td.ConfigOrder
 	if len(td.RawConfig) > 0 && (len(td.Params) > 0 || len(td.Vars) > 0) {
-		effective, ord, err := wizardtemplate.GetEffectiveConfig(
+		// SPEC 097: секции считаются для ТАРГЕТА модели — DNS-таб и
+		// EffectiveConfigSection должны видеть ту же версию конфига, что
+		// уедет на целевую машину, а не локальную.
+		effective, ord, err := wizardtemplate.GetEffectiveConfigFor(
 			td.RawConfig,
 			td.Params,
-			runtime.GOOS,
 			td.Vars,
 			model.SettingsVars,
 			td.RawTemplate,
+			model.Target,
 		)
 		if err == nil {
 			return effective, ord

@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"runtime"
 
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
@@ -36,7 +35,11 @@ import (
 //
 // preset-prefix tag (`<preset_id>:<local_tag>`) уже задан в ExpandPreset и
 // сохраняется — мы только меняем type/path/strip url.
-func convertPresetRuleSetRemoteToLocal(rs map[string]interface{}, execDir string) (map[string]interface{}, bool) {
+// resourceDir (SPEC 063) — каталог ресурсов УДАЛЁННОЙ машины. Когда задан,
+// в path уезжает он: конфиг исполняет ядро на той стороне, где пути лаунчера
+// не существует. Наличие файла при этом проверяется У НАС — его туда зальёт
+// Deploy.
+func convertPresetRuleSetRemoteToLocal(rs map[string]interface{}, execDir, resourceDir, srsLocalDir string) (map[string]interface{}, bool) {
 	typ, _ := rs["type"].(string)
 	if typ != "remote" {
 		return rs, false
@@ -49,8 +52,15 @@ func convertPresetRuleSetRemoteToLocal(rs map[string]interface{}, execDir string
 	if contentTag == "" {
 		return rs, true
 	}
+	// path — куда посмотрит ЯДРО (на машине-исполнителе);
+	// checkPath — где файл лежит У НАС, его наличие и проверяем.
 	path := execDir + "/bin/rule-sets/" + contentTag + ".srs"
-	if _, err := os.Stat(path); err != nil {
+	checkPath := path
+	if resourceDir != "" {
+		path = resourceDir + "/" + ResourceNameForSRS(contentTag)
+		checkPath = srsLocalDir + "/" + ResourceNameForSRS(contentTag)
+	}
+	if _, err := os.Stat(checkPath); err != nil {
 		return rs, true // файл не скачан → skip
 	}
 	// Mutate copy: type=local, добавить path, удалить url/download_detour/update_interval.
@@ -149,6 +159,10 @@ type PresetMergeContext struct {
 	// Используется для materialization template-серверов с применением
 	// effective_enabled (от state.dns_options.servers[kind=template]).
 	TemplateDNSDefaults []TemplateDNSServer
+
+	// Target (SPEC 097) — платформа и роль целевой машины для #if внутри
+	// пресетов. Zero value нормализуется в «эта машина, local».
+	Target template.TargetSpec
 }
 
 // MergePresetsIntoRoute — единый emit-путь route через ResolveRoute()
@@ -175,7 +189,7 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 
 	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
 	tdVal := template.TemplateData{Presets: ctx.Presets}
-	resolved := ResolveRoute(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths)
+	resolved := ResolveRoute(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths, ctx.Target)
 
 	// Dedup по tag (template уже мог эмитить rule_sets).
 	emittedTags := make(map[string]bool)
@@ -187,9 +201,14 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 		}
 	}
 
-	// Emit rule_sets: skip Skipped, dedup.
+	// Emit rule_sets: skip Skipped и ВЫКЛЮЧЕННЫЕ, dedup.
+	//
+	// Выключенное правило не эмитит своё routing-правило (ниже по Enabled),
+	// значит на его rule_set никто не ссылается — а требование к файлу
+	// остаётся. На машине, где .srs нет, ядро падает с «open …: no such file
+	// or directory»: так выключенные пресеты ломали конфиг для роутера.
 	for _, rs := range resolved.RuleSets {
-		if rs.Skipped {
+		if rs.Skipped || !rs.Enabled {
 			continue
 		}
 		if emittedTags[rs.Tag] {
@@ -237,7 +256,7 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 	// (RulesV6 + DNS), строит ResolvedDNS на лету.
 	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
 	tdVal := templateLikeFromCtx(ctx)
-	resolved := ResolveDNS(st, &tdVal, nil)
+	resolved := ResolveDNS(st, &tdVal, nil, ctx.Target)
 
 	if len(resolved.Servers) == 0 && len(resolved.Rules) == 0 && !hasAnyV6Rule(ctx.Rules) {
 		return dnsRaw, nil
@@ -285,7 +304,7 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 	for i := range ctx.Presets {
 		presetByID[ctx.Presets[i].ID] = &ctx.Presets[i]
 	}
-	emittedRuleSetTags := collectRuleSetTagsFromPresets(presetByID, ctx.Rules)
+	emittedRuleSetTags := collectRuleSetTagsFromPresets(presetByID, ctx.Rules, ctx.Target)
 
 	// Emit rules: Active && Enabled. User → dangling cleanup; preset → as is.
 	for _, dr := range resolved.Rules {
@@ -344,7 +363,7 @@ func templateLikeFromCtx(ctx PresetMergeContext) template.TemplateData {
 // Используется в DNS rules dangling-cleanup: extra_rule с `rule_set` ссылкой
 // должен матчиться с реально-эмитнутым rule_set tag'ом. Иначе sing-box упадёт
 // на `start service: initialize DNS rule[N]: rule-set not found: <X>`.
-func collectRuleSetTagsFromPresets(presetByID map[string]*template.Preset, rules []state.Rule) map[string]bool {
+func collectRuleSetTagsFromPresets(presetByID map[string]*template.Preset, rules []state.Rule, target template.TargetSpec) map[string]bool {
 	tags := make(map[string]bool)
 	for _, rule := range rules {
 		if !rule.Enabled || rule.Kind != state.RuleKindPreset {
@@ -359,7 +378,7 @@ func collectRuleSetTagsFromPresets(presetByID map[string]*template.Preset, rules
 			continue
 		}
 		pb := body.(*state.PresetBody)
-		frags, _, ok := ExpandPreset(preset, pb.Vars, runtime.GOOS, runtime.GOARCH)
+		frags, _, ok := ExpandPreset(preset, pb.Vars, target)
 		if !ok {
 			continue
 		}
@@ -452,7 +471,12 @@ func cleanDanglingDNSRule(rule map[string]interface{}, validTags map[string]bool
 // Для preset-ref'ов с remote rule_set'ами SRS-кэш не нужен: ExpandPreset
 // эмитит rule_set с type=remote URL, а sing-box сам качает. Но если хотим
 // emit type=local — нужен path map (TODO для phase 9).
-func CollectSrsCachedPaths(rules []state.Rule, execDir string) map[string]string {
+// resourceDir (SPEC 063) — каталог ресурсов УДАЛЁННОЙ машины
+// (`<state_dir>/resources`). Когда задан, путь ведёт туда, а не в свой
+// bin/rule-sets/: конфиг исполняет ядро НА ТОЙ СТОРОНЕ, и путь лаунчера там
+// не существует — apply проходил, а ядро падало с «open …: no such file».
+// Пусто = конфиг для этой машины, путь прежний.
+func CollectSrsCachedPaths(rules []state.Rule, execDir, resourceDir string) map[string]string {
 	if execDir == "" || len(rules) == 0 {
 		return nil
 	}
@@ -470,6 +494,10 @@ func CollectSrsCachedPaths(rules []state.Rule, execDir string) map[string]string
 			continue
 		}
 		tag := srsTagFromURLLocal(sb.SrsURL)
+		if resourceDir != "" {
+			out[state.StableRuleID(r)] = resourceDir + "/" + ResourceNameForSRS(tag)
+			continue
+		}
 		out[state.StableRuleID(r)] = execDir + "/bin/rule-sets/" + tag + ".srs"
 	}
 	return out

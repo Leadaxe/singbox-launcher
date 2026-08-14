@@ -15,6 +15,7 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 )
@@ -90,8 +91,117 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo) {
 		if def, ok := node.Raw["default"].(string); ok && def != "" {
 			body.Add(infoRow(locale.T("servers.node_info_default"), def))
 		}
+		// SPEC 097: активный участник группы помечается маркером — без него
+		// окно показывало N равнозначных строк, и понять, через кого реально
+		// идёт трафик, было нельзя.
+		//
+		// Выбор спрашиваем у ядра ОТДЕЛЬНЫМ запросом по тегу ЭТОЙ группы:
+		// ProxyInfo.Now заполнен только у той группы, которую грузит вкладка,
+		// а окно открывают для любой, в том числе вложенной. Запрос уходит в
+		// горутину — сеть, и для удалённой машины это RTT до роутера.
+		memberRows := make(map[string]*widget.Label, len(node.GroupMembers))
 		for _, member := range node.GroupMembers {
-			body.Add(memberRow(member, nodes))
+			row := memberRow(member, nodes)
+			memberRows[member] = row
+			body.Add(row)
+		}
+		// Перерисовка метки: снимаем её со старого участника и ставим новому.
+		// Идемпотентна — приходит на каждый кадр подписки, включая повтор
+		// того же значения.
+		markSelected := func(selected string) {
+			for tag, row := range memberRows {
+				want := tag == selected
+				has := strings.Contains(row.Text, "   ● ")
+				if want == has {
+					continue
+				}
+				if want {
+					row.SetText(strings.Replace(row.Text, "   · ", "   ● ", 1))
+					row.TextStyle = fyne.TextStyle{Bold: true}
+				} else {
+					row.SetText(strings.Replace(row.Text, "   ● ", "   · ", 1))
+					row.TextStyle = fyne.TextStyle{}
+				}
+				row.Refresh()
+			}
+		}
+
+		// Живая подписка: ядро пушит смену выбора по событию, поэтому окно
+		// отражает перевыбор само. Разовый снимок «замёрз» бы — у least_test
+		// перевыбор случается по результатам url-теста в любой момент.
+		if sub, ok := EffectiveProxyTransport(ac).(groupSelectionSource); ok {
+			if cancel, err := sub.SubscribeGroupSelection(proxy.Name, func(selected string) {
+				fyne.Do(func() { markSelected(selected) })
+			}); err == nil {
+				win.SetOnClosed(cancel) // иначе стрим и горутина переживут окно
+			} else {
+				debuglog.WarnLog("node info: subscribe group selection: %v", err)
+			}
+		} else {
+			// Транспорт без подписки (Clash HTTP) — разовый снимок.
+			go func(group string) {
+				_, now, err := EffectiveProxyTransport(ac).GroupProxies(group)
+				if err != nil || strings.TrimSpace(now) == "" {
+					return
+				}
+				fyne.Do(func() { markSelected(now) })
+			}(proxy.Name)
+		}
+
+		// Живой пул балансировщика — только urltest-группы и только в
+		// daemon-режиме (lx-RPC GetPool доступен по gRPC-каналу). Секция
+		// наполняется асинхронно после показа окна: statics выше — из
+		// конфига, а тут — текущее состояние работающего ядра.
+		// Секция пула показывается ТОЛЬКО если у группы он реально есть.
+		//
+		// Режим (least_test | round_robin) по gRPC не отдаётся: в Group его
+		// нет, type у обоих "urltest". Из локального config.json читать
+		// нельзя — для удалённой машины он описывает чужое ядро. Поэтому
+		// различаем по контракту ядра: непустые слоты GetPool = round_robin,
+		// пустые = у группы нет балансировщика.
+		//
+		// Отсюда порядок: сперва спрашиваем пул, и лишь при непустом ответе
+		// СОЗДАЁМ секцию. Пустой ответ (в т.ч. Unimplemented без
+		// with_lx_command) не рисует ничего — про пул не говорим там, где
+		// балансировки нет.
+		if node.Type == "urltest" && ac.DaemonPoolAvailable() {
+			poolBox := container.NewVBox()
+			body.Add(poolBox)
+			go func(group string) {
+				slots, err := ac.DaemonPoolSlots(group)
+				fyne.Do(func() {
+					switch {
+					case err != nil || len(slots) == 0:
+						// Ошибка или пустой пул — группа не балансируемая
+						// (или RPC недоступен). Секцию не создаём вовсе.
+						return
+					default:
+						poolBox.Add(widget.NewSeparator())
+						poolBox.Add(sectionHeader(locale.T("servers.node_info_section_pool")))
+						active := strings.TrimSpace(proxy.Now)
+						if active == "" {
+							active, _ = node.Raw["now"].(string)
+						}
+						for _, slot := range slots {
+							delay := "—"
+							if slot.Delay > 0 {
+								delay = fmt.Sprintf("%d ms", slot.Delay)
+							}
+							marker := " "
+							if active != "" && slot.Tag == active {
+								marker = "●"
+							}
+							row := widget.NewLabel(fmt.Sprintf("  %s #%d  %s  ·  %s", marker, slot.Slot, slot.Tag, delay))
+							row.Truncation = fyne.TextTruncateEllipsis
+							if marker == "●" {
+								row.TextStyle = fyne.TextStyle{Bold: true}
+							}
+							poolBox.Add(row)
+						}
+					}
+					poolBox.Refresh()
+				})
+			}(proxy.Name)
 		}
 	}
 
@@ -123,7 +233,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo) {
 	jsonTab := container.NewBorder(
 		nil,
 		widget.NewButton(locale.T("servers.node_info_copy_json"), func() {
-			win.Clipboard().SetContent(jsonText)
+			setClipboard(jsonText)
 		}),
 		nil, nil,
 		jsonEntry,
@@ -394,4 +504,11 @@ func formatDelay(delay int64) string {
 	default:
 		return "—"
 	}
+}
+
+// groupSelectionSource — транспорт, умеющий пушить смену выбранного узла
+// группы (gRPC SubscribeGroups). Clash-транспорт его не реализует — там
+// остаётся разовый снимок.
+type groupSelectionSource interface {
+	SubscribeGroupSelection(group string, onSelected func(string)) (func(), error)
 }

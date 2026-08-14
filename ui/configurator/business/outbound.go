@@ -56,7 +56,7 @@ func ResolveMergedOutbound(model *wizardmodels.WizardModel, tag string) *config.
 	}
 	pc := &config.ParserConfig{}
 	pc.ParserConfig.Outbounds = []config.OutboundConfig{entry}
-	build.MergeOutboundUpdatesInPlace(pc, model.TemplateData)
+	build.MergeOutboundUpdatesInPlace(pc, model.TemplateData, model.Target)
 	if len(pc.ParserConfig.Outbounds) == 0 {
 		return nil
 	}

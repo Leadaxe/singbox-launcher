@@ -325,19 +325,30 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 	}, nil
 }
 
-// ApplyTemplateWithVars применяет params (платформа, if, if_or) и подставляет @name из vars.
+// ApplyTemplateWithVars применяет params (платформа, if, if_or) и подставляет
+// @name из vars для платформы goos на локальном таргете. Тонкая обёртка над
+// ApplyTemplateWithVarsFor — сохранена для вызывающих без таргета.
 func ApplyTemplateWithVars(configJSON json.RawMessage, params []TemplateParam, goos string, vars []TemplateVar, stateVars map[string]string, rawFull json.RawMessage) (json.RawMessage, error) {
-	resolved := ResolveTemplateVars(vars, stateVars, rawFull)
+	return ApplyTemplateWithVarsFor(configJSON, params, vars, stateVars, rawFull,
+		TargetSpec{GOOS: goos, GOARCH: runtime.GOARCH, Target: TargetLocal}.Normalized())
+}
+
+// ApplyTemplateWithVarsFor — то же для произвольного таргета (SPEC 097).
+// Таргет определяет и платформу фильтрации params, и значение @runtime.target
+// в #if-ветках конфига.
+func ApplyTemplateWithVarsFor(configJSON json.RawMessage, params []TemplateParam, vars []TemplateVar, stateVars map[string]string, rawFull json.RawMessage, target TargetSpec) (json.RawMessage, error) {
+	target = target.Normalized()
+	resolved := ResolveTemplateVarsFor(vars, stateVars, rawFull, target)
 	MaybeGenerateSecrets(vars, resolved)
 	vi := VarIndex(vars)
-	out, err := applyParamsFiltered(configJSON, params, goos, vi, resolved)
+	out, err := applyParamsFiltered(configJSON, params, target.GOOS, vi, resolved)
 	if err != nil {
 		return nil, err
 	}
 	if len(vars) == 0 {
 		return out, nil
 	}
-	return SubstituteVarsInJSON(out, vars, resolved, goos, runtime.GOARCH)
+	return SubstituteVarsInJSON(out, vars, resolved, target)
 }
 
 func applyParamsFiltered(configJSON json.RawMessage, params []TemplateParam, goos string, vi map[string]TemplateVar, resolved map[string]ResolvedVar) (json.RawMessage, error) {
@@ -466,6 +477,18 @@ func GetEffectiveConfig(rawConfig json.RawMessage, params []TemplateParam, goos 
 		return nil, nil, fmt.Errorf("raw config is empty")
 	}
 	applied, err := ApplyTemplateWithVars(rawConfig, params, goos, vars, stateVars, rawFull)
+	if err != nil {
+		return nil, nil, err
+	}
+	return parseJSONWithOrder(applied)
+}
+
+// GetEffectiveConfigFor — то же для произвольного таргета (SPEC 097).
+func GetEffectiveConfigFor(rawConfig json.RawMessage, params []TemplateParam, vars []TemplateVar, stateVars map[string]string, rawFull json.RawMessage, target TargetSpec) (map[string]json.RawMessage, []string, error) {
+	if len(rawConfig) == 0 {
+		return nil, nil, fmt.Errorf("raw config is empty")
+	}
+	applied, err := ApplyTemplateWithVarsFor(rawConfig, params, vars, stateVars, rawFull, target)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -1,161 +1,162 @@
-# Инструкция по сборке на Windows
+# Building on Windows
 
-## 📋 Требования
+**🌐 Language**: English | [Русский](BUILD_WINDOWS.ru.md)
 
-1. **Go 1.24 или новее**
-   - Скачайте с [https://go.dev/dl/](https://go.dev/dl/)
-   - Установите в стандартную папку `C:\Program Files\Go`
-   - Проверьте установку: `go version`
+## 📋 Requirements
 
-2. **Компилятор C (GCC) - ОБЯЗАТЕЛЬНО**
-   - Fyne требует CGO, а CGO требует GCC
-   - **Установите один из вариантов:**
-     - [TDM-GCC](https://jmeubank.github.io/tdm-gcc/) - самый простой вариант
-     - [MinGW-w64](https://www.mingw-w64.org/) - через MSYS2 или WinLibs
-   - После установки добавьте `bin` папку GCC в PATH
-   - **Важно:** Перезапустите командную строку после установки!
-   - Проверьте: `gcc --version`
+1. **Go 1.25 or newer**
+   - Download from [https://go.dev/dl/](https://go.dev/dl/)
+   - Install into the default folder `C:\Program Files\Go`
+   - Verify the installation: `go version`
 
-3. **CGO** (включен по умолчанию)
-   - Fyne требует CGO для работы
-   - Убедитесь, что CGO_ENABLED=1
+2. **A C compiler (GCC) — MANDATORY**
+   - Fyne requires CGO, and CGO requires GCC
+   - **Install one of these:**
+     - [TDM-GCC](https://jmeubank.github.io/tdm-gcc/) — the simplest option
+     - [MinGW-w64](https://www.mingw-w64.org/) — via MSYS2 or WinLibs
+   - After installing, add GCC's `bin` folder to PATH
+   - **Important:** restart the command prompt after installing!
+   - Verify: `gcc --version`
 
-4. **Опционально: rsrc** (для встраивания иконки)
+3. **CGO** (enabled by default)
+   - Fyne needs CGO to work
+   - Make sure `CGO_ENABLED=1`
+
+4. **Optional: rsrc** (for embedding the icon)
    ```bash
    go install github.com/akavel/rsrc@latest
    ```
-   После установки `rsrc.exe` будет в `%USERPROFILE%\go\bin\`
+   After installing, `rsrc.exe` lives in `%USERPROFILE%\go\bin\`
 
-## 🔨 Сборка
+## 🔨 Building
 
-### Вариант 1: Использование скрипта (рекомендуется)
+### Option 1: use the script (recommended)
 
-1. Откройте командную строку (CMD) или PowerShell в папке проекта
-2. Запустите скрипт сборки:
+1. Open a command prompt (CMD) or PowerShell in the project folder
+2. Run the build script:
 
 ```batch
 build\build_windows.bat
 ```
 
-Или из корня проекта:
+Or from the project root:
 
 ```batch
 .\build\build_windows.bat
 ```
 
-Скрипт автоматически:
-- Обновит зависимости (`go mod tidy`)
-- Встроит иконку (если установлен rsrc)
-- Соберет проект
-- Создаст `singbox-launcher.exe` в корне проекта
+The script automatically:
+- Updates dependencies (`go mod tidy`)
+- Embeds the icon (if rsrc is installed)
+- Builds the project
+- Produces `singbox-launcher.exe` in the project root
 
-### Вариант 2: Ручная сборка
+### Option 2: manual build
 
-1. Откройте командную строку в папке проекта
+1. Open a command prompt in the project folder
 
-2. Обновите зависимости:
+2. Update dependencies:
 ```batch
 go mod tidy
 ```
 
-3. (Опционально) Встройте иконку:
+3. (Optional) Embed the icon:
 ```batch
 rsrc -ico assets/app.ico -manifest app.manifest -o rsrc.syso
 ```
 
-4. Соберите проект:
+4. Build the project:
 ```batch
 go build -ldflags="-H windowsgui -s -w" -o singbox-launcher.exe
 ```
 
-Флаги сборки:
-- `-H windowsgui` - скрывает консольное окно (GUI приложение)
-- `-s` - убирает таблицу символов
-- `-w` - убирает отладочную информацию
+Build flags:
+- `-H windowsgui` — hides the console window (GUI application)
+- `-s` — strips the symbol table
+- `-w` — strips debug information
 
-## ⚠️ Решение проблем
+## ⚠️ Troubleshooting
 
-### Ошибка: "go: command not found"
-- Убедитесь, что Go установлен
-- Проверьте PATH: `echo %PATH%` должен содержать `C:\Program Files\Go\bin`
-- Перезапустите командную строку после установки Go
+### Error: "go: command not found"
+- Make sure Go is installed
+- Check PATH: `echo %PATH%` must contain `C:\Program Files\Go\bin`
+- Restart the command prompt after installing Go
 
-### Ошибка: "build constraints exclude all Go files"
-- Это нормально для некоторых зависимостей Fyne на Windows
-- Убедитесь, что CGO_ENABLED=1
-- Попробуйте: `set CGO_ENABLED=1` перед сборкой
+### Error: "build constraints exclude all Go files"
+- This is normal for some Fyne dependencies on Windows
+- Make sure `CGO_ENABLED=1`
+- Try `set CGO_ENABLED=1` before building
 
-### Ошибка: "rsrc: command not found"
-- Это не критично, иконка просто не будет встроена
-- Установите: `go install github.com/akavel/rsrc@latest`
-- Убедитесь, что `%USERPROFILE%\go\bin` в PATH
+### Error: "rsrc: command not found"
+- Not critical — the icon simply won't be embedded
+- Install it: `go install github.com/akavel/rsrc@latest`
+- Make sure `%USERPROFILE%\go\bin` is in PATH
 
-### Ошибка: "gcc: executable file not found in %PATH%"
+### Error: "gcc: executable file not found in %PATH%"
 
-**Проблема:** CGO требует компилятор C (GCC), который не входит в стандартную установку Go на Windows.
+**Problem:** CGO requires a C compiler (GCC), which is not part of the standard Go installation on Windows.
 
-**Решение - установите один из вариантов:**
+**Fix — install one of these:**
 
-#### Вариант 1: TDM-GCC (рекомендуется для начинающих)
+#### Option 1: TDM-GCC (recommended for beginners)
 
-1. Скачайте установщик с [https://jmeubank.github.io/tdm-gcc/](https://jmeubank.github.io/tdm-gcc/)
-2. Запустите установщик и выберите:
+1. Download the installer from [https://jmeubank.github.io/tdm-gcc/](https://jmeubank.github.io/tdm-gcc/)
+2. Run it and choose:
    - **Architecture**: x86_64 (64-bit)
-   - **Installation directory**: `C:\TDM-GCC-64` (по умолчанию)
-   - **Add to PATH**: ✅ Отметьте галочку
-3. Перезапустите командную строку
-4. Проверьте установку:
+   - **Installation directory**: `C:\TDM-GCC-64` (the default)
+   - **Add to PATH**: ✅ tick the box
+3. Restart the command prompt
+4. Verify the installation:
    ```batch
    gcc --version
    ```
 
-#### Вариант 2: MinGW-w64 (через MSYS2)
+#### Option 2: MinGW-w64 (via MSYS2)
 
-1. Скачайте MSYS2 с [https://www.msys2.org/](https://www.msys2.org/)
-2. Установите MSYS2
-3. Откройте **MSYS2 MSYS** (не MinGW64!)
-4. Обновите пакеты:
+1. Download MSYS2 from [https://www.msys2.org/](https://www.msys2.org/)
+2. Install MSYS2
+3. Open **MSYS2 MSYS** (not MinGW64!)
+4. Update the packages:
    ```bash
    pacman -Syu
    ```
-5. Установите MinGW-w64:
+5. Install MinGW-w64:
    ```bash
    pacman -S mingw-w64-x86_64-gcc
    ```
-6. Добавьте в PATH: `C:\msys64\mingw64\bin`
-7. Перезапустите командную строку
+6. Add to PATH: `C:\msys64\mingw64\bin`
+7. Restart the command prompt
 
-#### Вариант 3: MinGW-w64 (прямая установка)
+#### Option 3: MinGW-w64 (direct install)
 
-1. Скачайте установщик с [https://www.mingw-w64.org/downloads/](https://www.mingw-w64.org/downloads/)
-2. Или используйте [WinLibs](https://winlibs.com/) - готовые сборки
-3. Распакуйте в `C:\mingw64`
-4. Добавьте `C:\mingw64\bin` в PATH
-5. Перезапустите командную строку
+1. Download the installer from [https://www.mingw-w64.org/downloads/](https://www.mingw-w64.org/downloads/)
+2. Or use [WinLibs](https://winlibs.com/) — prebuilt packages
+3. Extract into `C:\mingw64`
+4. Add `C:\mingw64\bin` to PATH
+5. Restart the command prompt
 
-**После установки:**
-- Перезапустите командную строку (важно!)
-- Проверьте: `gcc --version`
-- Попробуйте сборку снова: `build\build_windows.bat`
+**After installing:**
+- Restart the command prompt (important!)
+- Verify: `gcc --version`
+- Try the build again: `build\build_windows.bat`
 
-## 📦 Результат
+## 📦 Result
 
-После успешной сборки в корне проекта появится:
-- `singbox-launcher.exe` - исполняемый файл приложения
+After a successful build, the project root contains:
+- `singbox-launcher.exe` — the application executable
 
-Размер файла обычно составляет 15-25 МБ (зависит от версии Go и флагов сборки).
+The file is typically 15–25 MB (depending on the Go version and build flags).
 
-## 🚀 Запуск
+## 🚀 Running
 
-Просто запустите `singbox-launcher.exe` двойным кликом или из командной строки:
+Just launch `singbox-launcher.exe` by double-clicking it, or from the command line:
 
 ```batch
 .\singbox-launcher.exe
 ```
 
-## 📝 Примечания
+## 📝 Notes
 
-- Первая сборка может занять несколько минут (скачивание зависимостей)
-- Последующие сборки будут быстрее
-- Для отладки можно убрать флаг `-H windowsgui` чтобы видеть консольные логи
-
+- The first build may take a few minutes (downloading dependencies)
+- Subsequent builds are faster
+- For debugging, drop the `-H windowsgui` flag to see console logs

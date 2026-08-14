@@ -103,8 +103,8 @@ func singboxGroupToNode(
 	}
 
 	outbound := map[string]interface{}{
-		"tag":                    tag,
-		"type":                   groupType,
+		"tag":                       tag,
+		"type":                      groupType,
 		configtypes.GroupMembersKey: memberList,
 	}
 

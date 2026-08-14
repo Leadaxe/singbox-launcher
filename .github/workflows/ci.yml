@@ -452,6 +452,17 @@ jobs:
       - name: Populate Win7 go.sum entries
         run: go get "-modfile=go.win7.mod" ./...
 
+      # `go get ./...` резолвит все пакеты модуля независимо от build-тегов и
+      # побочно поднимает директиву `go` в go.win7.mod до версии самой новой
+      # зависимости (grpc → 1.25, fyne-tooltip → 1.21). Go 1.20.14 такой модуль
+      # собирать отказывается. Версии пиннятся через replace в go.win7.mod;
+      # здесь возвращаем директиву обратно — ровно как шаг выше делает с go.mod.
+      - name: Restore Go 1.20 directive in go.win7.mod
+        shell: pwsh
+        run: |
+          (Get-Content go.win7.mod) -replace '^go\s+[0-9]+\.[0-9]+(\.[0-9]+)?$','go 1.20' | Set-Content go.win7.mod
+          Select-String -Path go.win7.mod -Pattern '^go ' | ForEach-Object { $_.Line }
+
       # MSYS2 нужен ТОЛЬКО для сборки
       - name: Setup MSYS2 (MINGW32)
         uses: msys2/setup-msys2@v2

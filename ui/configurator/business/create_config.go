@@ -47,6 +47,14 @@ func MaterializeSecretsIfNeeded(model *wizardmodels.WizardModel) {
 // Save / Update / Restart pre-rebuild идут напрямую через `core/build.BuildConfig`
 // без участия этой функции (см. SPEC 045 фазы 5.A/5.B/5.C).
 func BuildPreviewConfig(model *wizardmodels.WizardModel) (string, error) {
+	return buildConfigFromModel(model, true)
+}
+
+// buildConfigFromModel — общее тело preview/remote-сборки. forPreview
+// управляет только truncation'ом больших подписок; всё остальное (таргет,
+// пресеты, DNS-порядок) одинаково, поэтому экспортируемый конфиг гарантированно
+// совпадает с тем, что показано в превью.
+func buildConfigFromModel(model *wizardmodels.WizardModel, forPreview bool) (string, error) {
 	if model == nil || model.TemplateData == nil {
 		return "", fmt.Errorf("template data not available")
 	}
@@ -61,15 +69,20 @@ func BuildPreviewConfig(model *wizardmodels.WizardModel) (string, error) {
 
 	ctx := build.BuildContext{
 		Template: model.TemplateData,
-		Vars:     model.SettingsVars,
-		Cache:    inMemoryCacheFromModel(model),
+		// SPEC 097: без Target превью remote-модели рендерило бы LOCAL-конфиг
+		// (clash_api на месте, find_process=true, singbox-tun0) — ровно то,
+		// чего пользователь не увидит после деплоя. Preview обязан совпадать
+		// с тем, что реально соберётся для таргета.
+		Target: model.Target,
+		Vars:   model.SettingsVars,
+		Cache:  inMemoryCacheFromModel(model),
 		Stats: build.PreviewStats{
 			NodesCount:           model.OutboundStats.NodesCount,
 			LocalSelectorsCount:  model.OutboundStats.LocalSelectorsCount,
 			GlobalSelectorsCount: model.OutboundStats.GlobalSelectorsCount,
 			EndpointsCount:       model.OutboundStats.EndpointsCount,
 		},
-		ForPreview: true,
+		ForPreview: forPreview,
 		DNS: build.DNSConfig{
 			Servers: model.DNSServers,
 			// SPEC 062: user DNS rules now flow through ctx.Preset.DNS.Rules
@@ -112,10 +125,11 @@ func BuildPreviewConfig(model *wizardmodels.WizardModel) (string, error) {
 		templateDNSTags,
 	)
 	ctx.Preset = build.PresetMergeContext{
+		Target:              model.Target,
 		Presets:             model.TemplateData.Presets,
 		Rules:               rulesV6,
 		DNS:                 dnsV6,
-		SrsCachedPaths:      build.CollectSrsCachedPaths(rulesV6, model.ExecDir),
+		SrsCachedPaths:      build.CollectSrsCachedPaths(rulesV6, model.ExecDir, model.ResourceDir),
 		ExecDir:             model.ExecDir,
 		TemplateDNSDefaults: ParseTemplateDNSDefaults(model.TemplateData),
 	}
@@ -125,6 +139,15 @@ func BuildPreviewConfig(model *wizardmodels.WizardModel) (string, error) {
 		return "", err
 	}
 	return string(res.ConfigJSON), nil
+}
+
+// BuildRemoteConfig собирает config.json для УДАЛЁННОЙ машины (SPEC 097).
+//
+// Отличие от BuildPreviewConfig — ForPreview=false: без preview-truncation
+// больших подписок, то есть на выходе полный конфиг, годный для деплоя.
+// Вызывающий (presenter_save) пишет результат в bin/remote-config.json.
+func BuildRemoteConfig(model *wizardmodels.WizardModel) (string, error) {
+	return buildConfigFromModel(model, false)
 }
 
 // inMemoryCacheFromModel конвертит model.GeneratedOutbounds/.GeneratedEndpoints
@@ -166,6 +189,7 @@ func routeConfigFromModel(model *wizardmodels.WizardModel) build.RouteConfig {
 		Rules:                     rules,
 		FinalOutbound:             model.SelectedFinalOutbound,
 		ExecDir:                   model.ExecDir,
+		ResourceDir:               model.ResourceDir,
 		DefaultDomainResolver:     model.DefaultDomainResolver,
 		OmitDefaultDomainResolver: model.DefaultDomainResolverUnset,
 	}

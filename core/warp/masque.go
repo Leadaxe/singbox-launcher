@@ -20,7 +20,7 @@ import (
 // MasqueAccount is a registered WARP MASQUE account plus everything needed to
 // emit a sing-box masque outbound. Unlike the WireGuard WARP account it uses an
 // ECDSA P-256 key pair (DER-encoded) and has no reserved/AWG fields; it carries
-// a transport selector (network h3/h2). PrivateKeyDER and Token are secrets.
+// the HTTP version carrying the tunnel (vhttp h3/h2). PrivateKeyDER and Token are secrets.
 type MasqueAccount struct {
 	PrivateKeyDER string // base64 SEC1 DER (x509.MarshalECPrivateKey) — secret, on-device only
 	ServerPubDER  string // base64 PKIX DER of the endpoint public key (from Cloudflare)
@@ -30,7 +30,7 @@ type MasqueAccount struct {
 	Port          int    // default 443
 	DeviceID      string
 	Token         string // Bearer (secret)
-	Network       string // "h3" (default) | "h2"
+	VHTTP         string // HTTP version carrying the tunnel: "h3" (default) | "h2"
 	SNI           string // optional
 	IdleTimeout   string // optional Go duration
 	KeepAlive     string // optional Go duration
@@ -66,7 +66,7 @@ func GenerateECDSAKeypair() (privDER string, pubDER string, err error) {
 // turns it back into a masque outbound). Mirrors the LxBox toMasqueUri contract:
 // masque://<privDER>@<server>:<port>?publickey=&address=&profile=cloudflare
 //
-//	&network=&mtu=[&sni=][&idle_timeout=][&keep_alive=]#tag
+//	&vhttp=&mtu=[&sni=][&idle_timeout=][&keep_alive=]#tag
 func (a *MasqueAccount) ToMasqueURI() (string, error) {
 	if a.PrivateKeyDER == "" || a.ServerPubDER == "" {
 		return "", fmt.Errorf("warp masque: missing key material")
@@ -74,9 +74,9 @@ func (a *MasqueAccount) ToMasqueURI() (string, error) {
 	if a.ClientV4 == "" && a.ClientV6 == "" {
 		return "", fmt.Errorf("warp masque: missing interface address")
 	}
-	network := a.Network
-	if network == "" {
-		network = "h3"
+	vhttp := a.VHTTP
+	if vhttp == "" {
+		vhttp = "h3"
 	}
 	port := a.Port
 	if port == 0 {
@@ -93,7 +93,7 @@ func (a *MasqueAccount) ToMasqueURI() (string, error) {
 	q.Set("publickey", a.ServerPubDER)
 	q.Set("address", strings.Join(addrs, ","))
 	q.Set("profile", "cloudflare")
-	q.Set("network", network)
+	q.Set("vhttp", vhttp)
 	q.Set("mtu", strconv.Itoa(warpMTU))
 	if a.SNI != "" {
 		q.Set("sni", a.SNI)
@@ -115,8 +115,9 @@ func (a *MasqueAccount) ToMasqueURI() (string, error) {
 }
 
 // ToMasqueOutbound builds the sing-box masque outbound map from the account,
-// following the core SPEC 021 contract (profile cloudflare, network transport,
-// ip/ipv6 tunnel addresses, base64-DER keys). Requires core >= lx.2.
+// following the core SPEC 021/062 contract (profile cloudflare, vhttp HTTP
+// version, nested tls block, ip/ipv6 tunnel addresses, base64-DER keys).
+// Requires core >= lx.26.
 func (a *MasqueAccount) ToMasqueOutbound() (map[string]interface{}, error) {
 	if a.PrivateKeyDER == "" || a.ServerPubDER == "" {
 		return nil, fmt.Errorf("warp masque: missing key material")
@@ -124,9 +125,9 @@ func (a *MasqueAccount) ToMasqueOutbound() (map[string]interface{}, error) {
 	if a.ClientV4 == "" && a.ClientV6 == "" {
 		return nil, fmt.Errorf("warp masque: missing interface address")
 	}
-	network := a.Network
-	if network == "" {
-		network = "h3"
+	vhttp := a.VHTTP
+	if vhttp == "" {
+		vhttp = "h3"
 	}
 	port := a.Port
 	if port == 0 {
@@ -138,7 +139,7 @@ func (a *MasqueAccount) ToMasqueOutbound() (map[string]interface{}, error) {
 		"server":      a.Server,
 		"server_port": port,
 		"profile":     "cloudflare",
-		"network":     network,
+		"vhttp":       vhttp,
 		"private_key": a.PrivateKeyDER,
 		"public_key":  a.ServerPubDER,
 		"mtu":         warpMTU,
@@ -150,7 +151,8 @@ func (a *MasqueAccount) ToMasqueOutbound() (map[string]interface{}, error) {
 		ob["ipv6"] = ensureCIDR(a.ClientV6, true)
 	}
 	if a.SNI != "" {
-		ob["sni"] = a.SNI
+		// Nested `tls` block, not the flat `sni` the core deprecated (SPEC 062).
+		ob["tls"] = map[string]interface{}{"server_name": a.SNI}
 	}
 	if a.IdleTimeout != "" {
 		ob["idle_timeout"] = a.IdleTimeout
@@ -166,9 +168,9 @@ func (a *MasqueAccount) ToMasqueOutbound() (map[string]interface{}, error) {
 //  2. PATCH /reg/{id} with the ECDSA public key, key_type=secp256r1,
 //     tunnel_type=masque → the server public key + interface addresses.
 //
-// The ECDSA private key is generated on-device and never sent. network selects
-// the transport ("h3" default). A non-empty sni overrides the TLS server name.
-func (c *Client) RegisterMasque(ctx context.Context, now time.Time, network, sni string) (*MasqueAccount, error) {
+// The ECDSA private key is generated on-device and never sent. vhttp selects
+// the HTTP version ("h3" default). A non-empty sni overrides the TLS server name.
+func (c *Client) RegisterMasque(ctx context.Context, now time.Time, vhttp, sni string) (*MasqueAccount, error) {
 	// Step 1: create a device with a throwaway WG key.
 	_, wgPub, err := GenerateKeypair()
 	if err != nil {
@@ -217,7 +219,7 @@ func (c *Client) RegisterMasque(ctx context.Context, now time.Time, network, sni
 	if err != nil {
 		return nil, err
 	}
-	acc.ApplyNodeOptions(network, sni)
+	acc.ApplyNodeOptions(vhttp, sni)
 	return acc, nil
 }
 
@@ -229,11 +231,11 @@ func (c *Client) RegisterMasque(ctx context.Context, now time.Time, network, sni
 // Пустой SNI оставлять нельзя: ядро подставит consumer-masque.cloudflareclient.com,
 // туннель встанет, но данные не пойдут — DPI пропускает MASQUE только под
 // нейтральным именем. Вызов без SNI → берём случайное из пула.
-func (a *MasqueAccount) ApplyNodeOptions(network, sni string) {
-	if network == "h2" {
-		a.Network = "h2"
+func (a *MasqueAccount) ApplyNodeOptions(vhttp, sni string) {
+	if vhttp == "h2" {
+		a.VHTTP = "h2"
 	} else {
-		a.Network = "h3"
+		a.VHTTP = "h3"
 	}
 	a.SNI = strings.TrimSpace(sni)
 	if a.SNI == "" {

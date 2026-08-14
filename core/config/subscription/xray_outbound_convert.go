@@ -346,37 +346,3 @@ func xrayBuildJumpFromSocksOutbound(ob map[string]interface{}, jumpTag string) (
 	}
 	return jump, nil
 }
-
-// xrayBuildJumpFromOutbound maps the Xray outbound referenced by dialerProxy (any supported protocol) into ParsedJump.
-// SOCKS and VLESS are supported; other protocols return an error (element should be skipped with WarnLog).
-func xrayBuildJumpFromOutbound(jumpOb map[string]interface{}, jumpTag, label string) (*configtypes.ParsedJump, error) {
-	prot := strings.ToLower(xrayMapString(jumpOb, "protocol"))
-	switch prot {
-	case "socks":
-		return xrayBuildJumpFromSocksOutbound(jumpOb, jumpTag)
-	case "vless":
-		pn, err := xrayBuildVLESSFromOutbound(jumpOb, label)
-		if err != nil {
-			return nil, err
-		}
-		if pn.Outbound == nil {
-			return nil, fmt.Errorf("vless jump: empty outbound")
-		}
-		cp := make(map[string]interface{}, len(pn.Outbound)+1)
-		for k, v := range pn.Outbound {
-			cp[k] = v
-		}
-		cp["tag"] = jumpTag
-		return &configtypes.ParsedJump{
-			Tag:      jumpTag,
-			Scheme:   "vless",
-			Server:   pn.Server,
-			Port:     pn.Port,
-			UUID:     pn.UUID,
-			Flow:     pn.Flow,
-			Outbound: cp,
-		}, nil
-	default:
-		return nil, fmt.Errorf("unsupported jump protocol %q (supported: socks, vless)", prot)
-	}
-}

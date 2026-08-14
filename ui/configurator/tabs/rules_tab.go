@@ -120,7 +120,11 @@ func runSRSDownloadAsync(
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), srsGroupDownloadTimeout)
 		defer cancel()
-		err := services.DownloadSRSGroup(ctx, model.ExecDir, srsEntries)
+		// Качаем в каталог ТОЙ машины, для которой настраиваем: у remote это
+		// её srs/, у local — bin/rule-sets/. Общий каталог означал бы, что
+		// окно ресурсов машины своих файлов не видит, а GC одной машины
+		// трогает файлы другой.
+		err := services.DownloadSRSGroupTo(ctx, model.ExecDir, model.SrsDir(), srsEntries)
 		presenter.UpdateUI(func() {
 			btn.Enable()
 			if err != nil {
@@ -288,7 +292,7 @@ func buildSingleCustomRuleRow(
 		presenter, model, guiState, customRule, customIdx, availableOutbounds, rowGetter,
 	)
 	outboundSelect := &outboundWidget.Select
-	if isSRSRule && len(srsEntries) > 0 && !services.AllSRSDownloadedForEntries(model.ExecDir, srsEntries) {
+	if isSRSRule && len(srsEntries) > 0 && !services.AllSRSDownloadedIn(model.ExecDir, model.SrsDir(), srsEntries) {
 		outboundSelect.Disable()
 	}
 
@@ -350,7 +354,7 @@ func createRuleEnableCheckbox(
 	ch = widget.NewCheck("", func(val bool) {
 		if val {
 			entries, isSRS := customRuleSRSEntries(customRule)
-			if isSRS && len(entries) > 0 && !services.AllSRSDownloadedForEntries(model.ExecDir, entries) {
+			if isSRS && len(entries) > 0 && !services.AllSRSDownloadedIn(model.ExecDir, model.SrsDir(), entries) {
 				if !guiState.UpdatingOutboundOptions && *srsButtonRef != nil {
 					*enableRuleOnSRSSuccess = true
 					(*srsButtonRef).OnTapped()
@@ -514,7 +518,7 @@ func createCustomRuleSRSButton(
 	rowGetter fynewidget.RowHoverGetter,
 ) *fynewidget.HoverForwardTTButton {
 	initialText := srsBtnDownload()
-	if services.AllSRSDownloadedForEntries(model.ExecDir, srsEntries) {
+	if services.AllSRSDownloadedIn(model.ExecDir, model.SrsDir(), srsEntries) {
 		initialText = srsBtnDone()
 	}
 	btn := fynewidget.NewHoverForwardTTButton(initialText, nil, rowGetter)
@@ -597,4 +601,19 @@ func CreateRulesScroll(guiState *wizardpresentation.GUIState, content fyne.Canva
 	scroll.Offset = guiState.RulesScrollOffset
 	guiState.RulesScroll = scroll
 	return scroll
+}
+
+// srsTargetDirHint — куда скачиваются .srs для текущего таргета.
+//
+// Показывается в подсказке кнопки: каталог у каждого профиля свой, и без
+// этой строки «скачано» не отвечает на вопрос «скачано КУДА».
+func srsTargetDirHint(model *wizardmodels.WizardModel) string {
+	if model == nil {
+		return ""
+	}
+	dir := model.SrsDir()
+	if dir == "" {
+		dir = filepath.Join(model.ExecDir, constants.BinDirName, constants.RuleSetsDirName)
+	}
+	return locale.Tf("wizard.rules.srs_dir_hint", dir)
 }

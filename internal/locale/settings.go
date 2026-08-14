@@ -67,6 +67,28 @@ type Settings struct {
 	// family. См. SPEC 061 §4.
 	SubscriptionDeviceModelHashed bool `json:"subscription_device_model_hashed,omitempty"`
 
+	// --- Daemon-режим ядра (macOS, lxd) -----------------------------------
+	//
+	// CoreBackendMode — движок ядра: "" / "classic" — исторический spawn
+	// `sing-box run`; "daemon" — управление долгоживущим демоном
+	// `sing-box lxd` (gRPC + admin REST). Только macOS.
+	CoreBackendMode string `json:"core_backend_mode,omitempty"`
+	// DaemonAddress — host:port управляющего канала демона (из приглашения
+	// либо дефолт 127.0.0.1:9091 при установке службы лаунчером).
+	DaemonAddress string `json:"daemon_address,omitempty"`
+	// DaemonServerFingerprint — SHA-256 пин серверного сертификата демона
+	// (lowercase hex, из приглашения). Пусто = plain h2c (dev, без TLS).
+	DaemonServerFingerprint string `json:"daemon_server_fingerprint,omitempty"`
+	// DaemonSecret — Bearer-секрет управляющего канала. Генерируется
+	// лаунчером при установке службы; для чужого демона может быть введён
+	// вручную. Локальная машина = trust boundary (см. модель state.json),
+	// поэтому хранение в settings.json — осознанное решение.
+	DaemonSecret string `json:"daemon_secret,omitempty"`
+	// DaemonStopVPNOnExit — останавливать ли ядро в демоне при выходе из
+	// лаунчера. Default false: выход из лаунчера НЕ трогает VPN — главное
+	// UX-преимущество daemon-режима.
+	DaemonStopVPNOnExit bool `json:"daemon_stop_vpn_on_exit,omitempty"`
+
 	// SubscriptionUserAgent — пользовательский User-Agent для subscription
 	// requests. Пустая строка / отсутствие поля → fallback на
 	// configtypes.BuildSubscriptionUserAgent() (default, например

@@ -40,7 +40,7 @@ func TestToMasqueOutbound(t *testing.T) {
 		ClientV4:      "172.16.0.2",
 		ClientV6:      "2606:4700:110:8db9::",
 		Server:        "162.159.198.1",
-		Network:       "h3",
+		VHTTP:         "h3",
 		SNI:           "consumer-masque.cloudflareclient.com",
 		IdleTimeout:   "5m",
 		KeepAlive:     "30s",
@@ -56,12 +56,14 @@ func TestToMasqueOutbound(t *testing.T) {
 	}
 	assert("type", "masque")
 	assert("profile", "cloudflare")
-	assert("network", "h3")
+	assert("vhttp", "h3")
 	assert("server_port", 443)
 	assert("ip", "172.16.0.2/32") // bare address gets /32
 	assert("ipv6", "2606:4700:110:8db9::/128")
 	assert("mtu", warpMTU)
-	assert("sni", "consumer-masque.cloudflareclient.com")
+	if tls, ok := ob["tls"].(map[string]interface{}); !ok || tls["server_name"] != "consumer-masque.cloudflareclient.com" {
+		t.Errorf("tls = %v, want nested server_name (core SPEC 062)", ob["tls"])
+	}
 	assert("idle_timeout", "5m")
 	assert("keep_alive_period", "30s")
 }

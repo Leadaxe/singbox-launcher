@@ -76,13 +76,14 @@ func (w ExpandWarning) String() string {
 // userVars — значения переменных из state.rule.body.vars (только diff от
 // default'ов; пустые / отсутствующие резолвятся через template.preset.vars[].default).
 //
-// goos / goarch — для runtime globals @runtime.platform / @runtime.arch в #if predicates
-// (SPEC 067). Callers передают runtime.GOOS / runtime.GOARCH; тесты — fakes.
+// target — платформа и роль ЦЕЛЕВОЙ машины для runtime globals
+// (@runtime.platform / @runtime.arch / @runtime.target) в #if predicates
+// (SPEC 067, SPEC 097). Callers передают TargetSpec; тесты — fakes.
 //
 // Возвращает (fragments, warnings, ok). ok=false если preset нельзя раскрыть
 // (например unresolved @var) — в этом случае fragments частично заполнен,
 // но caller должен пропустить preset целиком.
-func ExpandPreset(preset *template.Preset, userVars map[string]string, goos, goarch string) (*PresetFragments, []ExpandWarning, bool) {
+func ExpandPreset(preset *template.Preset, userVars map[string]string, target template.TargetSpec) (*PresetFragments, []ExpandWarning, bool) {
 	if preset == nil {
 		return nil, nil, false
 	}
@@ -122,7 +123,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string, goos, goa
 				fmt.Sprintf("deep copy rule_set %q: %v", rs.Tag, err)})
 			continue
 		}
-		substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, goos, goarch)
+		substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, target)
 		if !ok {
 			warnings = append(warnings, ExpandWarning{preset.ID,
 				fmt.Sprintf("unresolved @var in rule_set %q", rs.Tag)})
@@ -160,7 +161,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string, goos, goa
 				fmt.Sprintf("deep copy rules[%d]: %v", idx, err)})
 			continue
 		}
-		substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, goos, goarch)
+		substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, target)
 		if !ok {
 			warnings = append(warnings, ExpandWarning{preset.ID,
 				fmt.Sprintf("unresolved @var in rules[%d]", idx)})
@@ -188,7 +189,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string, goos, goa
 
 	// === 5. Resolve dns_rule (singular) + dns_rules (plural, SPEC 085.1) ===
 	if preset.DNSRule != nil {
-		if m, ok, fatal := expandOnePresetDNSRule(preset, preset.DNSRule, varsMap, emittedTags, goos, goarch, &warnings); fatal {
+		if m, ok, fatal := expandOnePresetDNSRule(preset, preset.DNSRule, varsMap, emittedTags, target, &warnings); fatal {
 			return nil, warnings, false
 		} else if ok {
 			frags.DNSRule = m
@@ -198,7 +199,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string, goos, goa
 		if dr == nil {
 			continue
 		}
-		m, ok, fatal := expandOnePresetDNSRule(preset, dr, varsMap, emittedTags, goos, goarch, &warnings)
+		m, ok, fatal := expandOnePresetDNSRule(preset, dr, varsMap, emittedTags, target, &warnings)
 		if fatal {
 			return nil, warnings, false
 		}
@@ -222,7 +223,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string, goos, goa
 				fmt.Sprintf("deep copy dns_server %q: %v", ds.Tag, err)})
 			continue
 		}
-		substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, goos, goarch)
+		substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, target)
 		if !ok {
 			warnings = append(warnings, ExpandWarning{preset.ID,
 				fmt.Sprintf("unresolved @var in dns_server %q", ds.Tag)})
@@ -305,8 +306,8 @@ func extractIfFromMap(m map[string]interface{}) (ifList, ifOrList []string) {
 // либо если marshal/unmarshal сломался — caller должен пропустить preset
 // целиком (legacy substituteAny semantics).
 //
-// goos / goarch — для @runtime.platform / @runtime.arch globals в #if predicates.
-func substitutePresetBody(raw interface{}, presetVars []template.PresetVar, varsMap map[string]string, goos, goarch string) (interface{}, bool) {
+// target — для @runtime.* globals в #if predicates (SPEC 067, SPEC 097).
+func substitutePresetBody(raw interface{}, presetVars []template.PresetVar, varsMap map[string]string, target template.TargetSpec) (interface{}, bool) {
 	if raw == nil {
 		return nil, true
 	}
@@ -316,7 +317,7 @@ func substitutePresetBody(raw interface{}, presetVars []template.PresetVar, vars
 	}
 	templateVars := presetVarsToTemplateVars(presetVars)
 	resolved := varsMapToResolved(varsMap, presetVars)
-	out, _, err := template.SubstituteVarsInJSONStrict(data, templateVars, resolved, goos, goarch)
+	out, _, err := template.SubstituteVarsInJSONStrict(data, templateVars, resolved, target)
 	if err != nil {
 		// UnresolvedVarError → ok=false (callers warn + skip preset).
 		return nil, false
@@ -486,7 +487,7 @@ func isDNSRuleEmpty(m map[string]interface{}, _ map[string]bool) bool {
 // prefixes a bundled server tag. Returns (rule, ok, fatal): ok=false when the
 // rule is gated off or empty; fatal=true on an unresolved @var (caller aborts
 // the whole preset). Shared by the singular dns_rule and the plural dns_rules.
-func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{}, varsMap map[string]string, emittedTags map[string]bool, goos, goarch string, warnings *[]ExpandWarning) (map[string]interface{}, bool, bool) {
+func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{}, varsMap map[string]string, emittedTags map[string]bool, target template.TargetSpec, warnings *[]ExpandWarning) (map[string]interface{}, bool, bool) {
 	dnsIf, dnsIfOr := extractIfFromMap(src)
 	if !evalIf(dnsIf, dnsIfOr, varsMap) {
 		return nil, false, false
@@ -496,7 +497,7 @@ func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{},
 		*warnings = append(*warnings, ExpandWarning{preset.ID, fmt.Sprintf("deep copy dns_rule: %v", err)})
 		return nil, false, false
 	}
-	substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, goos, goarch)
+	substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, target)
 	if !ok {
 		*warnings = append(*warnings, ExpandWarning{preset.ID, "unresolved @var in dns_rule"})
 		return nil, false, true

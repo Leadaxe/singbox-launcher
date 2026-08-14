@@ -37,6 +37,21 @@ func validateOuterIfRefs(ctx string, ifNames, ifOrNames []string, varByName map[
 
 func validateOuterIfList(ctx string, names []string, varByName map[string]TemplateVar) error {
 	for _, raw := range names {
+		// SPEC 097: запись if/if_or может быть JSON-предикатом языка #if
+		// ({"@runtime.target":"local"}, {"#not":"@gateway_mode"}, …) —
+		// одна грамматика условий на весь шаблон, никаких параллельных
+		// механизмов. Валидируем тем же walkValidateIf, что и #if внутри
+		// секций: неизвестная var или кривая форма ловятся на загрузке.
+		if trimmed := strings.TrimSpace(raw); strings.HasPrefix(trimmed, "{") {
+			var node interface{}
+			if err := json.Unmarshal([]byte(trimmed), &node); err != nil {
+				return fmt.Errorf("%s: predicate %q is not valid JSON: %w", ctx, raw, err)
+			}
+			if err := validateIfPredicate(node, varByName, ctx); err != nil {
+				return err
+			}
+			continue
+		}
 		if !strings.HasPrefix(raw, "@") {
 			return fmt.Errorf("template: %s has bare var-ref %q in if[]; use canonical %q form", ctx, raw, "@"+raw)
 		}
@@ -45,7 +60,7 @@ func validateOuterIfList(ctx string, names []string, varByName map[string]Templa
 			return fmt.Errorf("%s: empty var-ref after @", ctx)
 		}
 		if isRuntimeGlobalRef(name) {
-			return fmt.Errorf("%s: runtime global %q is not allowed in outer if[]/if_or[] (only inside #if predicates)", ctx, raw)
+			return fmt.Errorf("%s: runtime global %q needs the predicate form, e.g. {%q: \"local\"}", ctx, raw, raw)
 		}
 		vd, ok := varByName[name]
 		if !ok {
@@ -92,16 +107,21 @@ func ValidateWizardTemplate(vars []TemplateVar, params []TemplateParam, config j
 		varByName[nm] = v
 	}
 
+	// SPEC 097: default_value.#if может ссылаться на user-vars, объявленные
+	// РАНЬШЕ по списку (резолв однопроходный, см. ForTargetIn). earlier
+	// наполняется по ходу цикла, поэтому forward-ссылка — ошибка валидации,
+	// а не молчаливый false в рантайме.
+	earlier := map[string]TemplateVar{}
 	for i, v := range vars {
 		ctx := fmt.Sprintf("vars[%d]", i)
 		if err := validateOuterIfRefs(ctx, v.If, v.IfOr, varByName); err != nil {
 			return err
 		}
-		// vars[].default_value может содержать #if (SPEC 067) — но только с
-		// @runtime.* globals (user-var refs запрещены: на этапе resolve дефолтов
-		// другие vars ещё не разрешены, порядок не гарантирован).
-		if err := validateDefaultValueIf(v.DefaultValue, ctx); err != nil {
+		if err := validateDefaultValueIf(v.DefaultValue, earlier, ctx); err != nil {
 			return err
+		}
+		if !v.Separator {
+			earlier[strings.TrimSpace(v.Name)] = v
 		}
 	}
 
@@ -250,27 +270,30 @@ func validateIfConstruct(rawValue json.RawMessage, varByName map[string]Template
 	return walkValidateIf(v, varByName, context)
 }
 
-// validateDefaultValueIf валидирует #if внутри vars[].default_value. Передаём
-// ПУСТОЙ varByName — это запрещает любые ссылки на user-vars (они резолвятся как
-// "unknown var"); разрешены только @runtime.* globals. См. SPEC 067.
+// validateDefaultValueIf валидирует #if внутри vars[].default_value.
+//
+// earlierVars — vars, объявленные ВЫШЕ текущей (SPEC 097): на них ссылаться
+// можно (однопроходный резолв в ForTargetIn их уже видит); forward-ссылка
+// или неизвестное имя — ошибка. @runtime.* globals разрешены как и всюду.
+// До SPEC 097 сюда передавался пустой map — user-vars были запрещены
+// целиком (SPEC 067).
 //
 // Два размещения:
 //   - top-level: default_value == {"#if": {...}};
 //   - per-platform: {"win7": {"#if": {...}}, "default": "..."} — значение ключа = дерево.
-func validateDefaultValueIf(dv VarDefaultValue, ctx string) error {
+func validateDefaultValueIf(dv VarDefaultValue, earlierVars map[string]TemplateVar, ctx string) error {
 	if len(dv.PerPlatform) == 0 {
 		return nil
 	}
-	emptyVars := map[string]TemplateVar{}
 	if body, ok := dv.PerPlatform["#if"]; ok && len(dv.PerPlatform) == 1 {
-		return validateIfBody(body, emptyVars, ctx+".default_value.#if")
+		return validateIfBody(body, earlierVars, ctx+".default_value.#if")
 	}
 	for k, node := range dv.PerPlatform {
 		tree, ok := node.(map[string]interface{})
 		if !ok {
 			continue // обычное строковое значение
 		}
-		if err := walkValidateIf(tree, emptyVars, fmt.Sprintf("%s.default_value[%s]", ctx, k)); err != nil {
+		if err := walkValidateIf(tree, earlierVars, fmt.Sprintf("%s.default_value[%s]", ctx, k)); err != nil {
 			return err
 		}
 	}

@@ -48,7 +48,7 @@ func renderPresetBundledDNSRows(m *wizardmodels.WizardModel, parentWindow fyne.W
 	}
 	// Build shadow state из model для передачи в ResolveDNS.
 	shadowState := buildShadowStateForResolve(m)
-	resolved := build.ResolveDNS(shadowState, m.TemplateData, gatherTemplateVars(m))
+	resolved := build.ResolveDNS(shadowState, m.TemplateData, gatherTemplateVars(m), m.Target)
 
 	presetByID := make(map[string]*wizardtemplate.Preset, len(m.TemplateData.Presets))
 	for i := range m.TemplateData.Presets {

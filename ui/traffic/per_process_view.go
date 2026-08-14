@@ -3,6 +3,7 @@ package traffic
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -61,13 +62,20 @@ func buildPerProcessView(deps WindowDeps, onRefresh func()) *perProcessView {
 	v.startStopBtn.OnTapped = v.onStartStop
 
 	// 4 sub-tab lists. Updaters read v.liveItems / v.domainsData etc.
+	// Строки те же, что на главной вкладке Live: newLiveRow даёт колонки
+	// outbound/ушло/пришло справа от текста события. Раньше здесь был голый
+	// Label — одна и та же лента событий выглядела в двух местах по-разному, и
+	// трафик соединения тут не показывался вовсе.
 	v.liveList = widget.NewList(
 		func() int { return len(v.liveItems) },
-		func() fyne.CanvasObject { return widget.NewLabel("...") },
+		func() fyne.CanvasObject { return newLiveRow() },
 		func(i widget.ListItemID, o fyne.CanvasObject) {
-			label := o.(*widget.Label)
+			label, obL, upL, downL := liveRowParts(o.(*fyne.Container))
 			if i < 0 || i >= len(v.liveItems) {
 				label.SetText("")
+				obL.SetText("")
+				upL.SetText("")
+				downL.SetText("")
 				return
 			}
 			e := v.liveItems[len(v.liveItems)-1-i]
@@ -79,6 +87,16 @@ func buildPerProcessView(deps WindowDeps, onRefresh func()) *perProcessView {
 				line = "⚠ " + line
 			}
 			label.SetText(line)
+			obL.SetText(eventOutbound(e))
+			// Байты есть только у событий закрытия: у открытия их ещё нет, и
+			// «0 B» там читалось бы как «ничего не передано».
+			if e.UpBytes > 0 || e.DownBytes > 0 {
+				upL.SetText(formatBytes(e.UpBytes))
+				downL.SetText(formatBytes(e.DownBytes))
+			} else {
+				upL.SetText("")
+				downL.SetText("")
+			}
 		},
 	)
 	// Click row → detail dialog. Unselect right away so the next click
@@ -106,13 +124,33 @@ func buildPerProcessView(deps WindowDeps, onRefresh func()) *perProcessView {
 			}
 			d := v.domainsData[i]
 			lbl := o.(*widget.Label)
-			line := fmt.Sprintf("%s  ↑ %s ↓ %s  (%d conn, %d IPs)", d.Domain, formatBytes(d.UpBytes), formatBytes(d.DownBytes), d.Connections, len(d.IPs))
+			// Стрелка вплотную к числу и humanBytes без пробела перед единицей —
+			// как в «By client», где те же стрелки рисуются нормально. Пробел
+			// между стрелкой и числом тема Fyne показывает как «замену» (◆), и
+			// неразрывный не спасает: его в шрифте тоже нет.
+			line := fmt.Sprintf("%s  ↑%s ↓%s  (%d conn, %d IPs)", d.Domain, humanBytes(d.UpBytes), humanBytes(d.DownBytes), d.Connections, len(d.IPs))
 			if len(d.Issues) > 0 {
 				line = "⚠ " + line
 			}
 			lbl.SetText(line)
 		},
 	)
+	// Клик по строке → карточка домена. Строка тут — свод по всем его
+	// соединениям, и то, ради чего его открывают (цепочка CNAME, все адреса),
+	// в неё не помещается: адреса сжаты до счётчика «1 IPs».
+	v.domainsList.OnSelected = func(id widget.ListItemID) {
+		v.mu.Lock()
+		ok := id >= 0 && int(id) < len(v.domainsData)
+		var d tprof.DomainStats
+		if ok {
+			d = v.domainsData[int(id)]
+		}
+		v.mu.Unlock()
+		v.domainsList.UnselectAll()
+		if ok {
+			showDomainDetail(v.parentWindow(), d)
+		}
+	}
 
 	v.ipsList = widget.NewList(
 		func() int { return len(v.ipsData) },
@@ -127,34 +165,52 @@ func buildPerProcessView(deps WindowDeps, onRefresh func()) *perProcessView {
 			if dom == "" {
 				dom = "(hostless)"
 			}
-			lbl.SetText(fmt.Sprintf("%s:%d  ↑ %s ↓ %s  %s", d.IP, d.Port, formatBytes(d.UpBytes), formatBytes(d.DownBytes), dom))
+			lbl.SetText(fmt.Sprintf("%s:%d  ↑%s ↓%s  %s", d.IP, d.Port, humanBytes(d.UpBytes), humanBytes(d.DownBytes), dom))
 		},
 	)
+	v.ipsList.OnSelected = func(id widget.ListItemID) {
+		v.mu.Lock()
+		ok := id >= 0 && int(id) < len(v.ipsData)
+		var s tprof.IPStats
+		if ok {
+			s = v.ipsData[int(id)]
+		}
+		v.mu.Unlock()
+		v.ipsList.UnselectAll()
+		if ok {
+			showIPDetail(v.parentWindow(), s)
+		}
+	}
 
+	// Колонками, как «By client» у машины: одной строкой через двойные пробелы
+	// значения не выравнивались — шрифт пропорциональный, и хост с правилом
+	// разной длины разъезжали, так что глазом столбец не читался. Ширины и
+	// правила обрезки общие с той таблицей.
 	v.connsList = widget.NewList(
 		func() int { return len(v.connsData) },
-		func() fyne.CanvasObject { return widget.NewLabel("...") },
+		func() fyne.CanvasObject { return newConnRecordRow() },
 		func(i widget.ListItemID, o fyne.CanvasObject) {
 			if i < 0 || i >= len(v.connsData) {
 				return
 			}
-			d := v.connsData[i]
-			lbl := o.(*widget.Label)
-			dom := d.Domain
-			if dom == "" {
-				dom = d.IP
-			}
-			state := "open"
-			if d.ClosedAt != nil {
-				state = "closed"
-			}
-			line := fmt.Sprintf("%s  %s:%d  [%s]  ↑ %s ↓ %s  rule=%s", state, dom, d.Port, d.Network, formatBytes(d.UpBytes), formatBytes(d.DownBytes), d.Rule)
-			if len(d.Issues) > 0 {
-				line = "⚠ " + line
-			}
-			lbl.SetText(line)
+			o.(*connRecordRow).set(v.connsData[i])
 		},
 	)
+	// Клик по строке → те же детали, что в Live: колонки хоста и правила
+	// обрезаны по ширине, и добраться до полного значения иначе нечем.
+	v.connsList.OnSelected = func(id widget.ListItemID) {
+		v.mu.Lock()
+		ok := id >= 0 && int(id) < len(v.connsData)
+		var rec tprof.ConnRecord
+		if ok {
+			rec = v.connsData[int(id)]
+		}
+		v.mu.Unlock()
+		v.connsList.UnselectAll()
+		if ok {
+			showConnRecordDetail(v.parentWindow(), rec)
+		}
+	}
 
 	// Saved sessions list — shown when no active session.
 	v.savedList = widget.NewList(
@@ -210,10 +266,18 @@ func buildPerProcessView(deps WindowDeps, onRefresh func()) *perProcessView {
 
 	// Sub-tabs + saved block; swap between them.
 	v.subTabs = container.NewAppTabs(
-		container.NewTabItem("Live", v.liveList),
+		// Шапка колонок — та же, что на главной вкладке Live, и так же
+		// закреплена над списком: внутри него она уезжала бы при прокрутке.
+		container.NewTabItem("Live", container.NewBorder(
+			container.NewVBox(liveHeaderRow(), widget.NewSeparator()),
+			nil, nil, nil, v.liveList)),
 		container.NewTabItem("Domains", v.domainsList),
 		container.NewTabItem("IPs", v.ipsList),
-		container.NewTabItem("Connections", v.connsList),
+		// Шапка колонок закреплена над списком, а не строкой внутри него:
+		// иначе она уезжала бы при прокрутке, и столбцы теряли бы подписи.
+		container.NewTabItem("Connections", container.NewBorder(
+			container.NewVBox(connRecordRowHeader(), widget.NewSeparator()),
+			nil, nil, nil, v.connsList)),
 	)
 	savedHeader := widget.NewLabel("Saved sessions (last 5)")
 	v.activeBody = v.subTabs
@@ -371,16 +435,24 @@ func (v *perProcessView) Stop() {
 	}
 }
 
+// parentWindow — окно профайлера, к которому цепляются карточки строк.
+//
+// По ПРЕФИКСУ, а не по полному совпадению: во время записи заголовок несёт
+// таймер («Traffic Profiler ⚡ Recording · 00:29», см. FormatRecordingTitle),
+// и точное сравнение переставало находить своё окно ровно тогда, когда по
+// строкам и кликают — запись идёт. Диалог уезжал в первое попавшееся окно
+// приложения, то есть визуально никуда.
 func (v *perProcessView) parentWindow() fyne.Window {
 	if v.deps.App == nil {
 		return nil
 	}
-	for _, w := range v.deps.App.Driver().AllWindows() {
-		if w.Title() == "Traffic Profiler" || w.Title() == "" {
+	all := v.deps.App.Driver().AllWindows()
+	for _, w := range all {
+		if strings.HasPrefix(w.Title(), "Traffic Profiler") || w.Title() == "" {
 			return w
 		}
 	}
-	if all := v.deps.App.Driver().AllWindows(); len(all) > 0 {
+	if len(all) > 0 {
 		return all[0]
 	}
 	return nil

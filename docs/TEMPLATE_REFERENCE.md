@@ -1,30 +1,33 @@
 # Template reference (wizard_template.json)
 
-Архитектурная сводка: что лежит в `bin/wizard_template.json`, где это потом
-всплывает в runtime / state / UI. Справочник по синтаксису template'ов —
-[WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md). Этот файл — reference
-для разработчиков лаунчера и для понимания связи template ↔ state.
+**🌐 Language**: English | [Русский](TEMPLATE_REFERENCE.ru.md)
+
+An architectural summary: what lives in `bin/wizard_template.json` and where it
+later surfaces in runtime / state / UI. For the template *syntax* reference see
+[WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md). This file is a reference for launcher
+developers and for understanding the template ↔ state relationship.
 
 ---
 
-## 1. Файл
+## 1. The file
 
-- **`bin/wizard_template.json`** — единственный template для всех ОС.
-  Платформозависимые куски через секцию `params` + `if`/`if_or` поверх vars.
-- **Pinned ref:** `internal/constants.RequiredTemplateRef` хранит SHA коммита
-  в репозитории, под который собран launcher. CI ldflags инжектит реальный
-  hash на релизе; в dev-сборке используется source-default (последний known-good
+- **`bin/wizard_template.json`** — one template for every OS.
+  Platform-specific pieces come from the `params` section plus `if`/`if_or` over
+  vars.
+- **Pinned ref:** `internal/constants.RequiredTemplateRef` holds the SHA of the
+  repository commit the launcher was built against. CI ldflags inject the real
+  hash for a release; a dev build uses the source default (the last known-good
   merge commit).
-- **Lifecycle на upgrade:** `core/template_migration.go::InvalidateTemplateIfStale`
-  сравнивает `Settings.LastTemplateLauncherVersion` (записан после последнего
-  успешного «Download Template» через `MarkTemplateInstalled`) с
-  `constants.AppVersion`. При несовпадении удаляет `bin/wizard_template.json`
-  — на следующем запуске UI показывает «Download Template», после успешной
-  скачки `bin/settings.json` получает новый `last_template_launcher_version`.
-  Dev-сборки (`v-local-test`, `unnamed-dev`, `*-dirty`) пропускают
-  invalidation — иначе локальная разработка ломалась бы на каждом запуске.
-  См. SPEC 046 (механизм) и SPEC 067 (breaking template format — `#if` +
-  `@`-only outer `if[]` — триггерится тем же bump `AppVersion`).
+- **Upgrade lifecycle:** `core/template_migration.go::InvalidateTemplateIfStale`
+  compares `Settings.LastTemplateLauncherVersion` (written after the last
+  successful "Download Template" via `MarkTemplateInstalled`) against
+  `constants.AppVersion`. On a mismatch it deletes `bin/wizard_template.json` —
+  on the next start the UI shows "Download Template", and after a successful
+  download `bin/settings.json` gets a new `last_template_launcher_version`.
+  Dev builds (`v-local-test`, `unnamed-dev`, `*-dirty`) skip invalidation —
+  otherwise local development would break on every run. See SPEC 046 (the
+  mechanism) and SPEC 067 (the breaking template format — `#if` plus `@`-only
+  outer `if[]` — triggered by the same `AppVersion` bump).
 
 ---
 
@@ -32,11 +35,11 @@
 
 ```jsonc
 {
-  "parser_config":   { ... },        // ParserConfig wrapper для subscription parser
+  "parser_config":   { ... },        // the ParserConfig wrapper for the subscription parser
   "config":          { ... },        // sing-box config skeleton (log/dns/inbounds/outbounds/route/experimental)
-  "params":          [ ... ],        // platform-conditional patches на config (replace/prepend/append)
+  "params":          [ ... ],        // platform-conditional patches over config (replace/prepend/append)
   "dns_options":     {               // dns tab library
-    "servers": [ ... ],              // template DNS server entries (+ required:true для local/direct resolver)
+    "servers": [ ... ],              // template DNS server entries (+ required:true for the local/direct resolver)
     "rules":   [ ... ]
   },
   "selectable_rules":[ ... ],        // legacy rules library — kept for back-compat, replaced by presets[]
@@ -49,105 +52,105 @@
 
 ## 3. Per-section storage / usage
 
-| Top-level key | Содержит | Куда попадает в runtime | UI tab где видно |
+| Top-level key | Contains | Where it lands at runtime | UI tab it shows in |
 |---------------|----------|--------------------------|------------------|
-| `parser_config` | Default ParserConfig skeleton: outbounds (`proxy-out`, `direct-out`, `auto-proxy-out`) с top-level `required: true` маркерами (см. §5). После SPEC 058 — **live source-of-truth** для body referenced template outbound'ов (state хранит только thin `{tag, ref: "#TEMPLATE#"}`). | На fresh install — в `model.ParserConfigJSON`. При LoadState body для `ref="#TEMPLATE#"` entries резолвится отсюда на каждый render/build. | Outbounds tab (renders model.GlobalOutbounds) |
-| `config` | Sing-box config skeleton: `log`, `dns`, `inbounds`, `outbounds`, `route`, `experimental`. Содержит `@var` плейсхолдеры. | После `applyParams(GOOS) + substitute @vars` → `TemplateData.Config` (по секциям). При build merge'ится с state-derived sections. | Никакая напрямую; преview через Edit dialog | 
-| `params` | Platform-conditional patches (`if`/`if_or` + `replace`/`prepend`/`append`) | Применяются в `LoadTemplateData` (GetEffectiveConfig) — продьюсят `Config` под текущий runtime.GOOS | — |
-| `dns_options.servers` | Library template DNS servers (cloudflare, google, yandex, ...) + mandatory `required:true` entries (`local_dns_resolver`, `direct_dns_resolver`) | `TemplateData.DNSOptionsRaw` → используется `ResolveDNS` для резолва body kind=template entries в state | DNS tab (renders kind=template entries) |
-| `dns_options.rules` | Default template DNS rules (опционально) | Auxiliary fill для DNS rules editor если state пустой | DNS tab |
-| `selectable_rules` | **Legacy.** Library из v3+ времён. Полностью заменён `presets[]`. | Сохранено для back-compat: загружается в `TemplateData.SelectableRules`, фильтруется по platforms | Не показывается (Library показывает только `presets[]`) |
-| `presets` | Self-contained preset bundles: vars / rule_set / dns_servers / dns_rule / rules / outbounds (SPEC 053 + 055 + 057; `rules` — `[]map`, SPEC 067 Phase 9) | `TemplateData.Presets`. На enable preset → создаются `kind=preset` entries в `state.rules`, `state.dns_options.servers/rules`, `state.connections.outbounds` через Sync* функции | Library dialog (add to Rules) → Rules tab (preset rows) |
-| `vars` | Объявления типизированных template-переменных (`name`, `type`, `default_value`, `options`, `wizard_ui`, `title`, `tooltip`, `if`/`if_or`, `platforms`) | `TemplateData.Vars`. Дефолты применяются если в `state.vars[]` нет override. Литералы `@var` в `config`/`params` подставляются на build. Outer `if[]`/`if_or[]` — **только `@`-form** (SPEC 067). | Settings tab (auto-rendered) + DNS scalars (`dns_*` hidden vars) |
+| `parser_config` | The default ParserConfig skeleton: outbounds (`proxy-out`, `direct-out`, `auto-proxy-out`) with top-level `required: true` markers (see §5). Since SPEC 058 it is the **live source of truth** for the bodies of referenced template outbounds (state holds only the thin `{tag, ref: "#TEMPLATE#"}`). | On a fresh install it goes into `model.ParserConfigJSON`. During LoadState the body of `ref="#TEMPLATE#"` entries is resolved from here on every render/build. | Outbounds tab (renders model.GlobalOutbounds) |
+| `config` | The sing-box config skeleton: `log`, `dns`, `inbounds`, `outbounds`, `route`, `experimental`. Contains `@var` placeholders. | After `applyParams(GOOS) + substitute @vars` → `TemplateData.Config` (per section). At build time it is merged with the state-derived sections. | None directly; previewed through the Edit dialog | 
+| `params` | Platform-conditional patches (`if`/`if_or` + `replace`/`prepend`/`append`) | Applied in `LoadTemplateData` (GetEffectiveConfig) — they produce the `Config` for the current runtime.GOOS | — |
+| `dns_options.servers` | The library of template DNS servers (cloudflare, google, yandex, ...) plus the mandatory `required:true` entries (`local_dns_resolver`, `direct_dns_resolver`) | `TemplateData.DNSOptionsRaw` → used by `ResolveDNS` to resolve the bodies of kind=template entries in state | DNS tab (renders kind=template entries) |
+| `dns_options.rules` | Default template DNS rules (optional) | An auxiliary fill for the DNS rules editor when state is empty | DNS tab |
+| `selectable_rules` | **Legacy.** The library from the v3+ era, fully superseded by `presets[]`. | Kept for backwards compatibility: loaded into `TemplateData.SelectableRules` and filtered by platform | Not shown (the Library shows only `presets[]`) |
+| `presets` | Self-contained preset bundles: vars / rule_set / dns_servers / dns_rule / rules / outbounds (SPEC 053 + 055 + 057; `rules` is a `[]map`, SPEC 067 Phase 9) | `TemplateData.Presets`. Enabling a preset creates `kind=preset` entries in `state.rules`, `state.dns_options.servers/rules` and `state.connections.outbounds` through the Sync* functions | Library dialog (add to Rules) → Rules tab (preset rows) |
+| `vars` | Declarations of typed template variables (`name`, `type`, `default_value`, `options`, `wizard_ui`, `title`, `tooltip`, `if`/`if_or`, `platforms`) | `TemplateData.Vars`. The defaults apply when `state.vars[]` has no override. `@var` literals in `config`/`params` are substituted at build time. The outer `if[]`/`if_or[]` accept the **`@`-form only** (SPEC 067). | Settings tab (auto-rendered) + the DNS scalars (`dns_*` hidden vars) |
 
-«UI tab где видно» — где юзер взаимодействует с этой секцией. Output в
-`config.json` — это всегда build pipeline; ни одна секция template не идёт
-в config.json напрямую без прохождения через `state + resolve*`.
+"UI tab it shows in" means where the user interacts with that section. Output
+into `config.json` always goes through the build pipeline; no template section
+reaches config.json directly without passing through `state + resolve*`.
 
 ---
 
 ## 4. Presets (SPEC 053 + SPEC 055 + SPEC 057-R-N)
 
-Preset — параметризованный self-contained bundle. Каждый компонент имеет
-свой ref-механизм в state.
+A preset is a parameterized, self-contained bundle. Each component has its own
+referencing mechanism in state.
 
 ### 4.1 `presets[].outbounds[]` — SPEC 055 + SPEC 057-R-N
 
-Entries с `mode` discriminator:
+Entries carry a `mode` discriminator:
 
-| `mode` | Эффект на state | Эффект на config.json |
+| `mode` | Effect on state | Effect on config.json |
 |--------|------------------|------------------------|
-| `add` (или omit) | На enable preset → entry в `state.connections.outbounds[]` с `ref = preset.id`. Body резолвится из entry. | Эмитится как обычный outbound через `GenerateOutboundsFromParserConfig`. |
-| `update` | На enable preset → `OutboundUpdate{ref, patch}` push в `state.connections.outbounds[<target_tag>].updates[]`. Target tag должен существовать в state (find by Tag; не найден → warning, no-op). | `MergeOutboundUpdatesInPlace` применяет patches до generator'а (base + apply patches в order). |
+| `add` (or omitted) | Enabling the preset adds an entry to `state.connections.outbounds[]` with `ref = preset.id`. The body resolves from the entry. | Emitted as an ordinary outbound by `GenerateOutboundsFromParserConfig`. |
+| `update` | Enabling the preset pushes an `OutboundUpdate{ref, patch}` into `state.connections.outbounds[<target_tag>].updates[]`. The target tag must exist in state (found by Tag; if missing → a warning and a no-op). | `MergeOutboundUpdatesInPlace` applies the patches before the generator runs (base + patches in order). |
 
 Lifecycle: `core/build/sync_outbounds.go::SyncOutboundsWithActivePresets`.
-Adopt-on-first-sync: pre-SPEC-057 globals без `Ref`, совпадающие по tag с
-expected preset add — adopt'ятся (preserve body, add `Ref`).
+Adopt-on-first-sync: pre-SPEC-057 globals without a `Ref` whose tag matches an
+expected preset add are adopted (the body is preserved and a `Ref` is added).
 
 ### 4.2 `presets[].dns_servers[]` — SPEC 053 + SPEC 056-R-N
 
-Bundled DNS server defs с локальными tag'ами. На enable preset →
-`SyncDNSOptionsWithActivePresets` создаёт entries в `state.dns_options.servers[]`
-с `kind=preset, ref="<preset_id>:<local_tag>"`. Body резолвится из template
-+ `@var` substitute из `preset.body.vars` каждый раз на build/render.
+Bundled DNS server definitions with local tags. Enabling the preset makes
+`SyncDNSOptionsWithActivePresets` create entries in `state.dns_options.servers[]`
+with `kind=preset, ref="<preset_id>:<local_tag>"`. The body is resolved from the
+template with `@var` substitution from `preset.body.vars` on every build/render.
 
-Юзер может toggle per-server (preserve'ится в state.entries.Enabled).
-На disable preset → entries удаляются (re-enable → свежие дефолты).
+The user can toggle individual servers (preserved in state.entries.Enabled).
+Disabling the preset removes the entries (re-enabling gives fresh defaults).
 
 ### 4.3 `presets[].dns_rule` — SPEC 053
 
-Опциональный объект (один на preset). На enable preset → entry в
-`state.dns_options.rules[]` с `kind=preset, ref="<preset_id>"`. Body
-резолвится из template + vars + tag-prefix (`@dns_server` var может
-ссылаться на bundled `dns_servers[].tag`).
+An optional object (at most one per preset). Enabling the preset adds an entry to
+`state.dns_options.rules[]` with `kind=preset, ref="<preset_id>"`. The body is
+resolved from the template plus vars plus the tag prefix (a `@dns_server` var may
+reference a bundled `dns_servers[].tag`).
 
 ### 4.4 `presets[].rules` — SPEC 053 (`[]map`, SPEC 067 Phase 9)
 
-Routing rules preset'а — slice (`[]map[string]interface{}`); каждая entry
-— отдельный routing rule, у каждого свой `if`/`if_or`. На enable → одна
-entry в `state.rules[]` с `kind=preset, ref="<preset_id>"`. На build
-`MergePresetsIntoRoute` (через `ResolveRoute`) expand'ит ref в
+A preset's routing rules — a slice (`[]map[string]interface{}`); every entry is a
+separate routing rule with its own `if`/`if_or`. Enabling the preset creates one
+entry in `state.rules[]` with `kind=preset, ref="<preset_id>"`. At build time
+`MergePresetsIntoRoute` (via `ResolveRoute`) expands the ref into
 `template.presets[id].rules`: substitute vars, prefix local rule_set
-tag'и, resolve sentinels (`reject` / `drop` → `action`), эмитит каждый
-rule в `route.rules[]` in-order (preset entries — в том же порядке, как в
-`state.rules[]`). Empty / nil `rules` — preset без routing rule (только
-rule_set / dns_servers / outbounds), валидно.
+tags, resolves the sentinels (`reject` / `drop` → `action`) and emits every rule
+into `route.rules[]` in order (preset entries keep the order they have in
+`state.rules[]`). An empty / nil `rules` means a preset with no routing rule (just
+rule_set / dns_servers / outbounds), which is valid.
 
 ### 4.5 `presets[].vars[]` — SPEC 053 + SPEC 048
 
-Типизированные локальные переменные preset'а.
+A preset's typed local variables.
 
 | `type` | UI control | Substitution value |
 |--------|------------|--------------------|
-| `outbound` | Dropdown: outbound tags + `reject` + `drop` (опц. whitelist через `options`) | Tag-строка |
-| `dns_server` | Grouped dropdown (3 секции) или whitelist (`options`/`select`) | Tag-строка (build prefix'ует bundled tag'и при substitute) |
-| `enum` | Dropdown по `options[]` (object `{title, value}`) | `value`-строка |
-| `text` | Text entry | Строка |
-| `number` | Numeric entry | Строка-число |
+| `outbound` | Dropdown: outbound tags + `reject` + `drop` (optionally whitelisted via `options`) | A tag string |
+| `dns_server` | A grouped dropdown (3 sections) or a whitelist (`options`/`select`) | A tag string (the build prefixes bundled tags during substitution) |
+| `enum` | A dropdown over `options[]` (objects `{title, value}`) | The `value` string |
+| `text` | A text entry | A string |
+| `number` | A numeric entry | A numeric string |
 | `bool` | Checkbox | `"true"` / `"false"` |
 
-Substitute механизм: build-time recursive walk по `rules` / `dns_rule` /
-`dns_servers` / `rule_set` фрагментам — каждая строка `"@name"`
-заменяется на `varsMap[name]`. Если var отфильтрована через `if`/`if_or`
-— substitute её литерала фейлится → preset skip + warning.
+The substitution mechanism: a build-time recursive walk over the `rules` /
+`dns_rule` / `dns_servers` / `rule_set` fragments — every `"@name"` string is
+replaced with `varsMap[name]`. If a var was filtered out by `if`/`if_or`,
+substituting its literal fails → the preset is skipped with a warning.
 
-State хранит **только diff** от template defaults в `rule.body.vars`
-(пустой `vars: {}` = preset на template defaults).
+State stores **only the diff** against the template defaults in `rule.body.vars`
+(an empty `vars: {}` means the preset runs on template defaults).
 
 ---
 
 ## 5. Template-owned vs user-editable
 
-Маркер `"required": true` (SPEC 056-R-N Phase C/E) — template-only флаг,
-state не персистит. Применим к:
+The `"required": true` marker (SPEC 056-R-N Phase C/E) is a template-only flag
+that state never persists. It applies to:
 
-| Где | Эффект в UI |
+| Where | Effect in the UI |
 |-----|-------------|
-| `parser_config.outbounds[].required` | Outbounds tab: Up/Down + Edit + Reset; Del не рендерится |
-| `dns_options.servers[].required` | DNS tab: enabled+lock (toggle blocked); Edit/Del заблокированы |
+| `parser_config.outbounds[].required` | Outbounds tab: Up/Down + Edit + Reset; Delete is not rendered |
+| `dns_options.servers[].required` | DNS tab: enabled + locked (the toggle is blocked); Edit/Delete are blocked |
 
-**Shape (после SPEC 058):** `required` — top-level поле прямо на outbound
-entry, не вложенное в обёртку:
+**Shape (since SPEC 058):** `required` is a top-level field directly on the
+outbound entry, not nested inside a wrapper:
 
 ```jsonc
 "parser_config": {
@@ -161,17 +164,19 @@ entry, не вложенное в обёртку:
 }
 ```
 
-**DEPRECATED:** старая форма `{ "wizard": { "required": 1 } }` всё ещё
-парсится через legacy fallback в `td.RequiredOutboundTags()` —
-исключительно для обратной совместимости со старыми template-форками.
-Новые template'ы должны использовать top-level `required: true`.
+**DEPRECATED:** the old `{ "wizard": { "required": 1 } }` form is still parsed by
+a legacy fallback in `td.RequiredOutboundTags()`, purely for backwards
+compatibility with older template forks. New templates must use the top-level
+`required: true`.
 
-Read live на каждый UI render через helpers:
-- `wizardbusiness.DNSTagLocked(model, tag)` — для DNS
-- `templateRequiredTags(model)` → используется UI render path (`collectRowsForUI` / `collectRows` в `ui/configurator/outbounds_configurator/configurator.go`) для outbound
+Read live on every UI render through helpers:
+- `wizardbusiness.DNSTagLocked(model, tag)` — for DNS
+- `templateRequiredTags(model)` → used by the UI render path (`collectRowsForUI` /
+  `collectRows` in `ui/configurator/outbounds_configurator/configurator.go`) for
+  outbounds
 
-Если template author снимает `required:true` в новой версии template'а —
-эффект мгновенный (state не помнит stale значение).
+If a template author drops `required:true` in a new template version, the effect
+is immediate (state remembers no stale value).
 
 ---
 
@@ -184,9 +189,9 @@ bin/wizard_template.json (pinned via RequiredTemplateRef)
 LoadTemplateData(execDir)
          │   read JSON
          │   ApplyParams(runtime.GOOS) → effective Config
-         │   Substitute @vars в Config (через TemplateData.Vars defaults)
-         │   ParsePresets → []Preset (фильтр по platforms)
-         │   ParseSelectableRules → []SelectableRule (legacy, фильтр platforms)
+         │   Substitute @vars in Config (using the TemplateData.Vars defaults)
+         │   ParsePresets → []Preset (filtered by platform)
+         │   ParseSelectableRules → []SelectableRule (legacy, filtered by platform)
          ▼
 model.TemplateData (in-memory, immutable)
          │
@@ -197,29 +202,29 @@ model.TemplateData (in-memory, immutable)
          │     ResolveRoute(state, template, vars)
          │     MergeOutboundUpdatesInPlace(parserCfg, template)
          │
-         └──► presenter Sync* (на каждый preset toggle):
+         └──► presenter Sync* (on every preset toggle):
                 SyncDNSOptionsWithActivePresets(rules, &state.DNS, presets)
                 SyncOutboundsWithActivePresets(rules, &state.outbounds, presets)
 ```
 
-TemplateData immutable после load; модификация template requires app restart.
+TemplateData is immutable after load; modifying the template requires an app restart.
 
-**SPEC 058 — template body как live source.** Outbound entries в
-`state.connections.outbounds[]` хранятся как **thin refs**
-(`{tag, ref: "#TEMPLATE#", updates: [...]}`) — body отсутствует. На
-каждый render/build body резолвится из `template.parser_config.outbounds[tag]`
-через `MergeOutboundUpdates` / `MergeOutboundUpdatesInPlace`. Template-author эффект: правка
-`parser_config.outbounds[].options` / `addOutbounds` / `comment` в новом
-билде доезжает до юзера автоматически (без manual Reset на каждой
-референсной entry). User edits хранятся как field-level diff в
-`updates[].patch` с `ref="#USER#"`. См. SPEC 058 + [DATA_FLOW.md](DATA_FLOW.md)
-для подробностей resolver pipeline'а.
+**SPEC 058 — the template body as a live source.** Outbound entries in
+`state.connections.outbounds[]` are stored as **thin refs**
+(`{tag, ref: "#TEMPLATE#", updates: [...]}`) with no body. On every render/build
+the body is resolved from `template.parser_config.outbounds[tag]` through
+`MergeOutboundUpdates` / `MergeOutboundUpdatesInPlace`. The effect for a template
+author: an edit to `parser_config.outbounds[].options` / `addOutbounds` /
+`comment` in a new build reaches users automatically (no manual Reset on every
+referenced entry). User edits are stored as a field-level diff in
+`updates[].patch` with `ref="#USER#"`. See SPEC 058 and
+[DATA_FLOW.md](DATA_FLOW.md) for the resolver pipeline in detail.
 
 ---
 
 ## 7. `vars` mechanism
 
-**Объявление** (template) — канонический вид из stock `bin/wizard_template.json`:
+**Declaration** (template) — the canonical form from the stock `bin/wizard_template.json`:
 
 ```jsonc
 "vars": [
@@ -231,14 +236,14 @@ TemplateData immutable после load; модификация template requires
   {"name": "tun_address", "type": "text", "wizard_ui": "edit",
     "title": "TUN interface address", "tooltip": "…",
     "default_value": "172.16.0.1/30",
-    "if": ["@tun"]   // outer if — только @-prefixed bool var (§9.6)
+    "if": ["@tun"]   // the outer if takes only an @-prefixed bool var (§9.6)
   },
   {"separator": true}
 ]
 ```
 
-**Preset-local vars** используют поле **`default`** (не `default_value`); та же дисциплина
-`if`/`if_or` и оформление — §10.
+**Preset-local vars** use the **`default`** field (not `default_value`); the same
+`if`/`if_or` discipline and formatting apply — §10.
 
 **Override** (state.json):
 ```jsonc
@@ -247,54 +252,55 @@ TemplateData immutable после load; модификация template requires
 ]
 ```
 
-**Substitute** (build): литералы `"@tun"` в `config` / `params` / preset
-фрагментах заменяются на эффективное значение (state override ИЛИ template
-default). Условия **`if`/`if_or`** на params/presets/vars проверяются по тому
-же varsMap; каждый элемент списка **обязан** быть `@var` (bare `"tun"` → loader
+**Substitution** (build): the `"@tun"` literals in `config` / `params` / preset
+fragments are replaced with the effective value (the state override OR the
+template default). The **`if`/`if_or`** conditions on params/presets/vars are
+evaluated against the same varsMap; every element of the list **must** be an
+`@var` (a bare `"tun"` → the loader
 error, §9.6).
 
 **Scope**:
-- Глобальные template vars (`template.vars[]`) — видны в top-level `config`
-  / `params` (НЕ видны внутри preset'а).
-- Preset-local vars (`preset.vars[]`) — видны только внутри своего preset'а
-  (rule/dns_rule/dns_servers/rule_set). Cross-scope доступ запрещён —
-  preset должен быть self-contained.
+- Global template vars (`template.vars[]`) are visible in the top-level `config`
+  / `params` (NOT inside a preset).
+- Preset-local vars (`preset.vars[]`) are visible only inside their own preset
+  (rule/dns_rule/dns_servers/rule_set). Cross-scope access is forbidden — a preset
+  must be self-contained.
 
-**Reserved names:** `vars[].name` **`runtime`** зарезервировано (namespace
-runtime-globals `@runtime.*` в `#if` predicates only — §9.5; имена `platform` /
-`arch` снова свободны).
+**Reserved names:** the `vars[].name` **`runtime`** is reserved (the namespace of
+the `@runtime.*` runtime globals, usable in `#if` predicates only — §9.5; the
+names `platform` / `arch` are free again).
 
 **Special: DNS scalars.** `dns_strategy`, `dns_final`, `dns_default_domain_resolver`
-объявлены как hidden vars `dns_*`. UI DNS tab пишет в `model.SettingsVars`,
-`SyncDNSModelToSettingsVars` копирует в `state.vars[]` перед Save. Build
-substitute'ит `@dns_*` литералы в `config.dns`.
+are declared as hidden `dns_*` vars. The UI DNS tab writes into
+`model.SettingsVars`, `SyncDNSModelToSettingsVars` copies them into `state.vars[]`
+before Save, and the build substitutes the `@dns_*` literals in `config.dns`.
 
 **Special: `route_final`.** UI Rules tab dropdown «Final outbound» →
 `model.SelectedFinalOutbound` → `SettingsVars["route_final"]` →
-`state.vars[]`. Template имеет `"final": "@route_final"` в `config.route`.
+`state.vars[]`. The template carries `"final": "@route_final"` in `config.route`.
 
-**Оформление JSON** bundled template — §10 (editorial style, не контракт loader'а).
+**JSON formatting** of the bundled template — §10 (editorial style, not a loader contract).
 
-Реализация: `core/template/vars_resolve.go` + `core/template/substitute.go`.
+Implementation: `core/template/vars_resolve.go` + `core/template/substitute.go`.
 
 ---
 
 ## 8. Pinned templates
 
-Template вшит в репозиторий → embedded в бинарь → распакован в `bin/` на
-first run. Каждая релизная сборка пиннит конкретный commit:
+The template lives in the repository → is embedded into the binary → is extracted
+into `bin/` on first run. Every release build pins one specific commit:
 
-| Source | Когда используется | Where |
+| Source | When it is used | Where |
 |--------|---------------------|-------|
-| **CI inject** | Release сборка: GitHub Actions подставляет SHA merge commit'а через `-ldflags '-X singbox-launcher/internal/constants.RequiredTemplateRef=<sha>'` | `.github/workflows/release.yml` |
-| **Source default** | Dev-сборка (`go build` без ldflags) | `internal/constants/constants.go::RequiredTemplateRef` константа |
+| **CI injection** | Release builds: GitHub Actions substitutes the merge commit's SHA via `-ldflags '-X singbox-launcher/internal/constants.RequiredTemplateRef=<sha>'` | `.github/workflows/release.yml` |
+| **Source default** | Dev builds (`go build` without ldflags) | The `internal/constants/constants.go::RequiredTemplateRef` constant |
 
-**Bump процесс** (на каждом релизе):
-1. Merge `develop` → `main` (создаётся merge commit с обновлённым `bin/wizard_template.json`)
+**The bump procedure** (on every release):
+1. Merge `develop` → `main` (this creates a merge commit with the updated `bin/wizard_template.json`)
 2. Tag merge commit (`vX.Y.Z`)
-3. На `develop` обновить source-default `RequiredTemplateRef` на SHA merge commit'а
+3. On `develop`, update the `RequiredTemplateRef` source default to the merge commit's SHA
 
-**Lifecycle на launch**:
+**Lifecycle at launch**:
 ```
 launcher start
      │
@@ -304,69 +310,69 @@ InvalidateTemplateIfStale(execDir)
      │   stale (LastTemplateLauncherVersion < AppVersion) → unlink bin/wizard_template.json
      │   (dev AppVersion skip: v-local-test / unnamed-dev / *-dirty)
      ▼
-UI shows «Download Template» (если файл отсутствует)
-     │   юзер кликает → скачивается с raw.githubusercontent.com под pinned ref
+UI shows "Download Template" (when the file is absent)
+     │   the user clicks → it is downloaded from raw.githubusercontent.com at the pinned ref
      │   MarkTemplateInstalled → bin/settings.json::last_template_launcher_version = AppVersion
      ▼
 LoadTemplateData
 ```
 
-Реализация: `core/template_migration.go::InvalidateTemplateIfStale` +
+Implementation: `core/template_migration.go::InvalidateTemplateIfStale` +
 `internal/locale/settings.go::LastTemplateLauncherVersion` /
 `MarkTemplateInstalled` + `core/template/loader.go::LoadTemplateData`.
 
-Breaking template format changes (например SPEC 067 — `#if` + `@`-only outer
-`if[]`) триггерятся этим же механизмом: после bump `AppVersion` на первом
-запуске старый кеш удаляется → юзер скачивает новый шаблон одним кликом.
+Breaking template format changes (SPEC 067's `#if` + `@`-only outer `if[]`, for
+instance) ride the same mechanism: after an `AppVersion` bump the stale cache is
+deleted on first start → the user downloads the new template in one click.
 
 ---
 
 ## 9. `#if` construct (SPEC 067) — desktop only
 
-Template expressions v1 — declarative conditional field inclusion прямо в
-шаблоне, без post-substitute Go-хуков. Реализован в
-`core/template/substitute.go::SubstituteVarsInJSON` (walker) и
+Template expressions v1 — declarative conditional field inclusion right inside the
+template, with no post-substitution Go hooks. Implemented in
+`core/template/substitute.go::SubstituteVarsInJSON` (the walker) and
 `core/template/template_validate.go::validateIfConstruct` (load-time
-validation). Покрывает кейсы вида «одно поле внутри уже эмиченного объекта
-зависит от bool var / runtime platform».
+validation). It covers cases of the form "one field inside an already-emitted
+object depends on a bool var / the runtime platform".
 
-> **Mobile parity:** все `#*` constructs (`#if`, потенциальные
-> `#for_each` / `#include`) — **desktop only** до подтяжки реализации в
-> LxBox. Шаблоны, шарящиеся между лаунчерами, должны helmet'ить
-> платформы которых поддержка ещё нет.
+> **Mobile parity:** every `#*` construct (`#if`, and the potential
+> `#for_each` / `#include`) is **desktop only** until the implementation lands in
+> LxBox. Templates shared between launchers must guard the platforms that lack
+> support.
 
 ### 9.1 Naming discipline — `#` vs bare vs `@`
 
-| Префикс | Где | Зачем маркер |
+| Prefix | Where | Why the marker exists |
 |---------|-----|--------------|
-| `#` | Construct gateway (`#if`) + predicates в `and`/`or` (`#in`, `#not`, `#notEmpty`, …) | Scope-switch: walker отличает control-key от data-key в произвольном объекте; predicate-имя от string literal в predicate list |
-| bare | Inner keys тела `#if` (`and`, `or`, `value`, `else`) + outer legacy keys (`params[].if`, `params[].if_or`, `params[].value`, `params[].mode`) | Walker уже в known scope, маркер избыточен |
-| `@` | Var-ref (только имя из `vars[]`; bare `"var"` → loader error) + runtime globals `@runtime.platform` / `@runtime.arch` (только в `#if` predicates) | Унифицированная нотация var-ref'ов везде; неоднозначность «literal vs var name» устранена |
+| `#` | The construct gateway (`#if`) + predicates in `and`/`or` (`#in`, `#not`, `#notEmpty`, …) | A scope switch: the walker tells a control key from a data key in an arbitrary object, and a predicate name from a string literal inside a predicate list |
+| bare | The inner keys of an `#if` body (`and`, `or`, `value`, `else`) + the outer legacy keys (`params[].if`, `params[].if_or`, `params[].value`, `params[].mode`) | The walker is already in a known scope, so a marker would be redundant |
+| `@` | A var ref (a name from `vars[]` only; a bare `"var"` → loader error) + the runtime globals `@runtime.platform` / `@runtime.arch` (in `#if` predicates only) | One uniform notation for var refs everywhere; the "literal vs var name" ambiguity is gone |
 
-Forward compatibility: неизвестный ключ начинающийся с `#` → walker
-логирует warn и удаляет (graceful degradation). Это позволяет добавлять
-новые constructs (`#for_each`, `#include`, …) без breaking change для
-старых лаунчеров.
+Forward compatibility: an unknown key starting with `#` makes the walker log a
+warning and drop it (graceful degradation). That allows new constructs
+(`#for_each`, `#include`, …) to be added without a breaking change for older
+launchers.
 
-### 9.2 Форма
+### 9.2 Shape
 
 ```jsonc
 "#if": {
-  "and":   [<predicate>, <predicate>, ...],  // mutually exclusive с `or`
-  "or":    [<predicate>, <predicate>, ...],  // mutually exclusive с `and`
-  "value": <any JSON>,                        // обязателен, then-ветка
-  "else":  <any JSON>                         // опциональный else-ветка
+  "and":   [<predicate>, <predicate>, ...],  // mutually exclusive with `or`
+  "or":    [<predicate>, <predicate>, ...],  // mutually exclusive with `and`
+  "value": <any JSON>,                        // required, the then branch
+  "else":  <any JSON>                         // the optional else branch
 }
 ```
 
-Правила (validation на load):
-* Ровно один из `and` / `or` непустым списком. Нет / оба / пустой list → loader error.
-* `value` обязателен (не nil).
-* `else` опционален; null в `value`/`else` → error в map-spread (нельзя merge), legal в array-element.
+Rules (validated at load):
+* Exactly one of `and` / `or`, as a non-empty list. Neither / both / an empty list → loader error.
+* `value` is required (not nil).
+* `else` is optional; a null in `value`/`else` is an error in map-spread mode (nothing to merge) and legal in array-element mode.
 
-### 9.3 Два режима размещения
+### 9.3 The two placement modes
 
-**Map-spread mode** — `#if` как ключ внутри объекта:
+**Map-spread mode** — `#if` as a key inside an object:
 
 ```jsonc
 {
@@ -383,13 +389,13 @@ Forward compatibility: неизвестный ключ начинающийся 
 }
 ```
 
-* condition true → `value` обязан быть объектом; его поля мерджатся в
-  родительский объект (collision → branch overrides). Ключ `#if` удаляется.
-* condition false: при наличии `else` мерджатся его поля; без `else`
-  ключ просто удаляется (parent unchanged).
+* condition true → `value` must be an object; its fields are merged into the
+  parent object (on a collision the branch wins). The `#if` key is removed.
+* condition false: with an `else`, its fields are merged; without one the key is
+  simply removed (the parent is unchanged).
 
-**Array-element mode** — `#if` как единственный ключ объекта-элемента
-массива:
+**Array-element mode** — `#if` as the sole key of an object that is an array
+element:
 
 ```jsonc
 "options": [
@@ -399,35 +405,36 @@ Forward compatibility: неизвестный ключ начинающийся 
 ]
 ```
 
-* condition true → элемент заменяется на `value` (любой тип).
-* condition false: при наличии `else` — заменяется на `else`; без `else`
-  — элемент **удаляется** из массива (длина -1).
+* condition true → the element is replaced with `value` (of any type).
+* condition false: with an `else` it is replaced with `else`; without one the
+  element is **removed** from the array (length −1).
 
-Detection rule: элемент — `#if` wrapper, если это объект из РОВНО одного
-ключа `#if`. Иначе обычный элемент (с возможным spread-mode `#if` внутри).
+Detection rule: an element is an `#if` wrapper when it is an object with EXACTLY
+one key, `#if`. Otherwise it is an ordinary element (possibly containing a
+spread-mode `#if` inside).
 
 ### 9.4 Expression language — predicates
 
-Каждый элемент `and` / `or` — predicate. Восемь форм:
+Every element of `and` / `or` is a predicate. Eight forms:
 
-| Форма | Семантика |
+| Form | Semantics |
 |---|---|
-| `"@var"` | bool template var → `scalar == "true"` (только bool var; **не** `@runtime.platform` / `@runtime.arch`) |
-| `{"@var": "literal"}` | equality: `trim(scalar) == "literal"` (literal **не** начинается с `#`) |
+| `"@var"` | A bool template var → `scalar == "true"` (bool vars only; **not** `@runtime.platform` / `@runtime.arch`) |
+| `{"@var": "literal"}` | Equality: `trim(scalar) == "literal"` (the literal must **not** start with `#`) |
 | `{"@var": "#notEmpty"}` | text → `len(trim(scalar)) > 0`; text_list → `len(list) > 0`; bool → `scalar == "true"` |
-| `{"@var": "#isEmpty"}` | инверсия `#notEmpty` |
-| `{"@var": {"#in":      ["a","b","c"]}}` | `trim(scalar)` присутствует в списке (`["..."]` или `@text_list_var`) |
-| `{"@var": {"#notIn":   ["a","b","c"]}}` | `trim(scalar)` отсутствует в списке |
-| `{"@var": {"#matches": "^[a-z]+$"}}` | `trim(scalar)` match'ит Go-regexp |
-| `{"#not": <predicate>}` | унарная негация (recursive inner predicate) |
+| `{"@var": "#isEmpty"}` | The inverse of `#notEmpty` |
+| `{"@var": {"#in":      ["a","b","c"]}}` | `trim(scalar)` is present in the list (`["..."]` or `@text_list_var`) |
+| `{"@var": {"#notIn":   ["a","b","c"]}}` | `trim(scalar)` is absent from the list |
+| `{"@var": {"#matches": "^[a-z]+$"}}` | `trim(scalar)` matches the Go regexp |
+| `{"#not": <predicate>}` | Unary negation (a recursive inner predicate) |
 
-Substitution внутри predicate args: literal в equality, элементы `#in` /
-`#notIn`, regex pattern в `#matches` могут содержать `@var` — walker
-substitute'ит их **до** оценки predicate. ИСКЛЮЧЕНИЕ: bare `"@var"` в
-predicate list и ключ `"@var"` в single-key object'е walker не
-substitute'ит (иначе var-reference потеряется).
+Substitution inside predicate arguments: the literal in an equality, the elements
+of `#in` / `#notIn`, and the regex pattern in `#matches` may contain `@var` — the
+walker substitutes them **before** evaluating the predicate. EXCEPTION: a bare
+`"@var"` in a predicate list and the `"@var"` key of a single-key object are not
+substituted (that would lose the var reference).
 
-Пример:
+Example:
 
 ```jsonc
 "and": [
@@ -442,46 +449,47 @@ substitute'ит (иначе var-reference потеряется).
 
 ### 9.5 Runtime globals — namespace `@runtime.*`
 
-Namespace `@runtime.*` — pseudo-var'ы, доступные **только** в `#if.and` /
-`#if.or` predicates (расширяемый — новые поля добавляются под `@runtime.`):
+The `@runtime.*` namespace holds pseudo-vars available **only** in `#if.and` /
+`#if.or` predicates (it is extensible — new fields are added under `@runtime.`):
 
-| Global | Runtime source | Значения |
+| Global | Runtime source | Values |
 |---|---|---|
 | `@runtime.platform` | `runtime.GOOS` | `"darwin"`, `"windows"`, `"linux"` |
 | `@runtime.arch` | `runtime.GOARCH` | `"amd64"`, `"arm64"`, `"386"` |
 
-Семантика — те же predicate-формы, что у text-var (equality, `#in`,
+The semantics are the same predicate forms as for a text var (equality, `#in`,
 `#notIn`, `#matches`, `#notEmpty` / `#isEmpty`). Bare `"@runtime.platform"` /
-`"@runtime.arch"` в predicate list (bool-form) → validation error: они не bool.
+`"@runtime.arch"` in a predicate list (the bool form) → a validation error: they are not bools.
 
-Case-sensitive lower-case (как `runtime.GOOS` / `runtime.GOARCH`).
-**Reserved:** `vars[].name == "runtime"` → loader error (collision с namespace
-`@runtime.*`; `platform` / `arch` снова свободны как имена vars). **Outer
+Case-sensitive lower case (like `runtime.GOOS` / `runtime.GOARCH`).
+**Reserved:** `vars[].name == "runtime"` → a loader error (it collides with the
+`@runtime.*` namespace; `platform` / `arch` are free again as var names). **The outer
 `if` / `if_or`** runtime globals
-**не принимают** — там только bool template vars; platform-gate на уровне
-param по-прежнему через `params[].platforms[]`.
+**do not accept them** — only bool template vars there; platform gating at the
+param level still goes through `params[].platforms[]`.
 
-Win7-сборка (`windows/386`): `{"@runtime.platform": "windows"}` + `{"@runtime.arch": "386"}`
-в одном `and` — эквивалент «только win7-bin».
+The Win7 build (`windows/386`): `{"@runtime.platform": "windows"}` +
+`{"@runtime.arch": "386"}` in one `and` is the equivalent of "win7 binary only".
 
-### 9.6 Outer `if` / `if_or` — канонический `@`-only
+### 9.6 The outer `if` / `if_or` — canonically `@`-only
 
 `params[].if` / `params[].if_or`, `vars[].if` / `vars[].if_or`,
-`presets[].if` / `presets[].if_or` принимают **только** `@`-prefixed
-var-ref'ы. Bare `"tun"` → loader error на template load:
+`presets[].if` / `presets[].if_or` accept **only** `@`-prefixed var refs. A bare
+`"tun"` → a loader error at template load:
 
 ```
 template: params[N].if has bare var-ref "tun" in if[]; use canonical "@tun" form
 ```
 
-Var должна существовать в `vars[]` и иметь `type: "bool"`. Runtime globals
-(`@runtime.platform` / `@runtime.arch`) в outer `if[]` **запрещены** — только в `#if`
+The var must exist in `vars[]` and have `type: "bool"`. The runtime globals
+(`@runtime.platform` / `@runtime.arch`) are **forbidden** in the outer `if[]` — they
+belong in `#if`
 predicates.
 
-### 9.7 Реальный пример — TUN inbound без дублирования
+### 9.7 A real example — the TUN inbound without duplication
 
-Было (две `params[].name="inbounds"` entries, различающиеся **только**
-наличием `interface_name`):
+Before (two `params[].name="inbounds"` entries differing **only** in whether
+`interface_name` is present):
 
 ```jsonc
 { "name": "inbounds", "platforms": ["windows", "linux"], "if": ["@tun"],
@@ -496,7 +504,7 @@ predicates.
               "stack": "@tun_stack" }] }
 ```
 
-Стало (одна entry, platform-conditional поле инкапсулировано в map-spread
+After (a single entry, with the platform-conditional field encapsulated in a map-spread
 `#if`):
 
 ```jsonc
@@ -516,7 +524,7 @@ predicates.
 }
 ```
 
-**route.rules** с динамическим `inbound[]` (array-element `#if`, скалярные `value`):
+**route.rules** with a dynamic `inbound[]` (an array-element `#if` with scalar `value`s):
 
 ```jsonc
 {
@@ -529,60 +537,63 @@ predicates.
 }
 ```
 
-Подробности и edge cases — `SPECS/067-F-N-TEMPLATE_EXPRESSIONS/SPEC.md`.
+Details and edge cases — `SPECS/067-F-N-TEMPLATE_EXPRESSIONS/SPEC.md`.
 
 ---
 
-### 9.8 `default_value` поддерживает `#if` (runtime-only)
+### 9.8 `default_value` supports `#if` (runtime-only)
 
-`vars[].default_value` может быть `#if`-выражением — дефолт вычисляется в runtime
-по `@runtime.*` globals. Обобщает per-platform ключи (`win7` / `<goos>` /
-`default`): вместо именованных ключей — условия (`and`/`or`, `#in`, `#matches`, …).
+`vars[].default_value` may be an `#if` expression — the default is computed at
+runtime from the `@runtime.*` globals. It generalizes the per-platform keys
+(`win7` / `<goos>` / `default`): conditions (`and`/`or`, `#in`, `#matches`, …)
+instead of named keys.
 
-**Только `@runtime.*`:** ссылки на другие `vars[]` внутри `default_value`-`#if`
-**запрещены** (loader error) — на этапе resolve дефолтов остальные vars ещё не
-разрешены, порядок не гарантирован. Globals от порядка резолва не зависят.
+**`@runtime.*` only:** referencing other `vars[]` inside a `default_value` `#if`
+is **forbidden** (a loader error) — while defaults are being resolved the other
+vars are not resolved yet and the order is not guaranteed. The globals do not
+depend on resolution order.
 
-Две формы:
+Two forms:
 
 ```jsonc
-// top-level: всё default_value — это #if
+// top-level: the whole default_value is an #if
 "default_value": {"#if": {"and": [{"@runtime.platform": "windows"}, {"@runtime.arch": "386"}],
                           "value": "gvisor", "else": "system"}}
 
-// per-platform: значение ключа платформы — #if-дерево (можно мешать со строками)
+// per-platform: a platform key's value is an #if tree (mixable with plain strings)
 "default_value": {"default": {"#if": {"and": [{"@runtime.platform": "windows"}, {"@runtime.arch": "386"}],
                                       "value": "gvisor", "else": "system"}}}
 ```
 
-Выбранная ветвь рекурсивно разрешается до скаляра (строка / число / bool →
-строка); condition false без `else` → пустой дефолт. Реализация —
-`VarDefaultValue.ForPlatform` (`core/template/vars_default.go`), валидация —
-`validateDefaultValueIf` (пустой `varByName` → любой user-var ref = «unknown var»).
+The chosen branch is resolved recursively down to a scalar (string / number /
+bool → string); a false condition without an `else` yields an empty default.
+Implementation — `VarDefaultValue.ForPlatform` (`core/template/vars_default.go`);
+validation — `validateDefaultValueIf` (with an empty `varByName`, any user-var ref
+counts as an "unknown var").
 
 ## 10. Formatting style (stock `bin/wizard_template.json`)
 
-Editorial conventions for the **bundled** template. Порядок ключей и переносы
-**не влияют** на loader — это readability для maintainers. Кастомные шаблоны
-могут игнорировать §10, но semantic rules (§9) обязательны.
+Editorial conventions for the **bundled** template. Key order and line breaks
+**do not affect** the loader — they are readability for maintainers. Custom
+templates may ignore §10, but the semantic rules (§9) are mandatory.
 
-### 10.1 Общий принцип
+### 10.1 The general principle
 
-**Компактно** — литералы и мелкие metadata-объекты. **Развёрнуто** — выражения
-(`@…`, `#if`, outer `if[]`) и длинные списки.
+**Compact** — literals and small metadata objects. **Expanded** — expressions
+(`@…`, `#if`, the outer `if[]`) and long lists.
 
-### 10.2 Top-level `vars[]` и `presets[].vars[]`
+### 10.2 Top-level `vars[]` and `presets[].vars[]`
 
-| Часть | Оформление |
+| Part | Formatting |
 |-------|------------|
-| «Шапка» | **Строка 1:** `name`, `type`, `wizard_ui`, `title`, `tooltip`, `platforms`, `comment`, `select`, … |
-| `default_value` / `default` | **Отдельная строка** с отступом |
-| `options[]` | **Multiline:** каждый элемент на своей строке (`{title,value}` — по элементу) |
-| outer `if` / `if_or` | **Отдельная строка**, **в конце** объекта (после metadata) |
-| `{"separator": true}` | **Одна строка** |
-| Простые preset vars (`out`, …) | **Одна строка** целиком |
+| The "header" | **Line 1:** `name`, `type`, `wizard_ui`, `title`, `tooltip`, `platforms`, `comment`, `select`, … |
+| `default_value` / `default` | **Its own line**, indented |
+| `options[]` | **Multiline:** one element per line (`{title,value}` per element) |
+| The outer `if` / `if_or` | **Its own line**, **at the end** of the object (after the metadata) |
+| `{"separator": true}` | **A single line** |
+| Simple preset vars (`out`, …) | **A single line** in full |
 
-Пример conditional var:
+An example of a conditional var:
 
 ```jsonc
 {"name": "tun_mtu", "type": "text", "wizard_ui": "edit",
@@ -594,16 +605,16 @@ Editorial conventions for the **bundled** template. Порядок ключей 
 
 ### 10.3 JSON payload (`config`, `params[].value`, `parser_config`)
 
-| Контекст | Правило |
+| Context | Rule |
 |----------|---------|
-| Поля с `@` | **Одно поле — одна строка** |
-| Литералы (`type`, `tag`, `auto_route`, …) | Можно на одной строке между собой |
-| `options` **с** `@`-полями | **Multiline object** (не одна строка) |
-| `options` / `filters` / `addOutbounds` **без** `@` | **Одна строка** |
-| Мелкие struct'ы из литералов (≤2–3 поля) | **Одна строка** (`direct-out`, hijack-dns, `mode:update`) |
-| Крупные объекты (`dns_options.servers[]`, preset `dns_servers[]`, полный `mode:add`) | **Multiline** — одно поле на строку |
+| Fields containing `@` | **One field per line** |
+| Literals (`type`, `tag`, `auto_route`, …) | May share one line |
+| `options` **with** `@` fields | **A multiline object** (not one line) |
+| `options` / `filters` / `addOutbounds` **without** `@` | **A single line** |
+| Small literal-only structs (≤2–3 fields) | **A single line** (`direct-out`, hijack-dns, `mode:update`) |
+| Large objects (`dns_options.servers[]`, preset `dns_servers[]`, a full `mode:add`) | **Multiline** — one field per line |
 
-Пример urltest `options`:
+An example of urltest `options`:
 
 ```jsonc
 "options": {
@@ -616,12 +627,12 @@ Editorial conventions for the **bundled** template. Порядок ключей 
 
 ### 10.4 `#if` construct
 
-| `value` / `else` | Оформление |
+| `value` / `else` | Formatting |
 |------------------|------------|
-| **Скаляр** | `"#if": {"and": [...], "value": "…"}` — одна строка |
-| **Объект** | условие + `"value": {` на строке 1; тело объекта ниже; закрытие `}}` |
+| **A scalar** | `"#if": {"and": [...], "value": "…"}` — a single line |
+| **An object** | the condition + `"value": {` on line 1; the object body below; closing with `}}` |
 
-Пример map-spread:
+A map-spread example:
 
 ```jsonc
 "#if": {"and": [{"@runtime.platform": {"#in": ["windows", "linux"]}}], "value": {
@@ -631,40 +642,40 @@ Editorial conventions for the **bundled** template. Порядок ключей 
 
 ### 10.5 Presets
 
-| Секция | Оформление |
+| Section | Formatting |
 |--------|------------|
-| `rules`, `dns_rule`, простые `vars[]` | одна строка |
-| `rule_set[]` (inline и remote) | строка 1: metadata (`tag`/`type`/`format`/**`if`/`if_or`**); строка 2: `rules` / `url` |
-| `rule_set[]` inline, длинные suffix | одна строка если влезает; очень длинные — переносы в массивах |
-| `outbounds[]` `mode:update` | одна строка на entry |
-| `outbounds[]` `mode:add` (полный) | multiline-объект; `options` / `filters` — одна строка |
-| `params[]` route.rules (скалярные `#if`) | правило целиком в одну строку |
+| `rules`, `dns_rule`, simple `vars[]` | a single line |
+| `rule_set[]` (inline and remote) | line 1: the metadata (`tag`/`type`/`format`/**`if`/`if_or`**); line 2: `rules` / `url` |
+| `rule_set[]` inline with long suffixes | a single line when it fits; very long ones wrap inside the arrays |
+| `outbounds[]` `mode:update` | one line per entry |
+| `outbounds[]` `mode:add` (full) | a multiline object; `options` / `filters` on a single line |
+| `params[]` route.rules (scalar `#if`s) | the whole rule on one line |
 
-> У **condensed**-объектов с metadata в одну строку (`rule_set[]`) `if`/`if_or` ставится **на той же строке** (в отличие от `vars[]`, где `if` — отдельной строкой в конце).
+> In **condensed** objects whose metadata sits on one line (`rule_set[]`), `if`/`if_or` goes **on that same line** — unlike `vars[]`, where `if` takes its own line at the end.
 
-### 10.6 Шпаргалка
+### 10.6 Cheat sheet
 
-| | Одна строка | Multiline |
+| | Single line | Multiline |
 |---|-------------|-----------|
-| var metadata (строка 1) | ✓ | — |
+| var metadata (line 1) | ✓ | — |
 | `default_value` / `default` | — | ✓ |
 | `options[]` elements | — | ✓ |
-| outer `if[]` в vars | — | ✓ (в конце) |
-| `@` в payload | — | ✓ (по полю) |
-| `#if` + object `value` | условие | тело |
+| the outer `if[]` in vars | — | ✓ (at the end) |
+| `@` in a payload | — | ✓ (per field) |
+| `#if` + an object `value` | the condition | the body |
 | `#if` + scalar | ✓ | — |
 | `filters`, literal `options` | ✓ | — |
 
 ---
 
-## 11. Где лежит реализация
+## 11. Where the implementation lives
 
-| Файл | Что |
+| File | What |
 |------|-----|
 | `core/template/loader.go` | `LoadTemplateData` (entry point) + `TemplateData` struct |
 | `core/template/preset_loader.go` | `LoadPresets` + validation |
 | `core/template/preset_types.go` | Preset / PresetVar / PresetRuleSet / PresetDNSServer / PresetOutbound types |
-| `core/template/preset_lite.go` | `PresetLite` interface + `PresetLiteMap` (для sync_dns без cyclic deps) |
+| `core/template/preset_lite.go` | The `PresetLite` interface + `PresetLiteMap` (for sync_dns without cyclic deps) |
 | `core/template/vars_resolve.go` | varsMap build + outer `if`/`if_or` eval (strict `@`-prefix, SPEC 067) |
 | `core/template/substitute.go` | recursive `@var` substitution + `#if` walker / predicate engine / runtime globals `@runtime.platform`/`@runtime.arch` (SPEC 067) |
 | `core/template/template_validate.go` | template-side validation (uniqueness, refs resolvable, `#if` construct + outer `@`-only refs — SPEC 067) |
@@ -672,8 +683,9 @@ Editorial conventions for the **bundled** template. Порядок ключей 
 | `core/template_migration.go` | `InvalidateTemplateIfStale` (stale template invalidation) |
 | `core/build/preset_expand.go` | preset expand at build time (substitute + tag prefix + filter) |
 
-См. также: [WIZARD_STATE.md](WIZARD_STATE.md) — как state взаимодействует
-с template, формат `state.json` v6, lifecycle Sync*. [DATA_FLOW.md](DATA_FLOW.md)
-— расширенные load/save/build/toggle диаграммы. [WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md)
-— туториал для авторов preset'ов и template-vars (§10 здесь — editorial style
-для maintainers bundled template).
+See also: [WIZARD_STATE.md](WIZARD_STATE.md) — how state interacts with the
+template, the `state.json` v6 format, the Sync* lifecycle.
+[DATA_FLOW.md](DATA_FLOW.md) — extended load/save/build/toggle diagrams.
+[WIZARD_TEMPLATE.md](WIZARD_TEMPLATE.md) — a tutorial for preset and template-var
+authors (§10 here is the editorial style for maintainers of the bundled
+template).

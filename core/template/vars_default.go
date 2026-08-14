@@ -15,7 +15,7 @@ import (
 type VarDefaultValue struct {
 	Scalar string
 	// PerPlatform: нормализованные ключи (нижний регистр) → значение. Значение —
-	// строка ИЛИ #if-дерево (map[string]interface{}), вычисляемое в ForPlatform по
+	// строка ИЛИ #if-дерево (map[string]interface{}), вычисляемое в ForTarget по
 	// @runtime.* globals (SPEC 067). Единственный спец-ключ "#if" = top-level выражение.
 	PerPlatform map[string]interface{}
 }
@@ -25,17 +25,33 @@ func (v VarDefaultValue) IsEmpty() bool {
 	return strings.TrimSpace(v.Scalar) == "" && len(v.PerPlatform) == 0
 }
 
-// ForPlatform возвращает значение по умолчанию для goos/goarch. Узел значения
+// ForTarget возвращает значение по умолчанию для целевой машины. Узел значения
 // может быть #if-выражением (только @runtime.* globals) — оно вычисляется здесь.
-func (v VarDefaultValue) ForPlatform(goos, goarch string) string {
+//
+// Обёртка над ForTargetIn без vars-контекста — для вызывающих, которым
+// доступ к user-vars в default_value не нужен.
+func (v VarDefaultValue) ForTarget(target TargetSpec) string {
+	return v.ForTargetIn(target, nil, nil)
+}
+
+// ForTargetIn — то же с доступом к user-vars в предикатах #if (SPEC 097).
+//
+// resolved содержит vars, объявленные РАНЬШЕ этой var по списку template.vars
+// (однопроходный резолв в ResolveTemplateVarsFor): default_value может
+// ссылаться bare-формой на bool-var выше себя — например proxy_in_listen
+// дефолтится по @gateway_mode. Forward-ссылка (на var ниже по списку) не
+// найдётся в resolved и даст false с warning — это осознанный контракт,
+// а не гонка: порядок объявления в шаблоне и есть порядок вычисления.
+func (v VarDefaultValue) ForTargetIn(target TargetSpec, varTypes map[string]string, resolved map[string]ResolvedVar) string {
+	target = target.Normalized()
 	if len(v.PerPlatform) > 0 {
 		// Top-level #if: default_value == {"#if": {...}}.
 		if node, ok := v.PerPlatform["#if"]; ok && len(v.PerPlatform) == 1 {
-			return resolveDefaultNode(map[string]interface{}{"#if": node}, goos, goarch)
+			return resolveDefaultNode(map[string]interface{}{"#if": node}, target, varTypes, resolved)
 		}
-		for _, k := range defaultValueKeyOrder(goos, goarch) {
+		for _, k := range defaultValueKeyOrder(target.GOOS, target.GOARCH) {
 			if val, ok := v.PerPlatform[k]; ok {
-				if s := resolveDefaultNode(val, goos, goarch); s != "" {
+				if s := resolveDefaultNode(val, target, varTypes, resolved); s != "" {
 					return s
 				}
 			}
@@ -46,10 +62,10 @@ func (v VarDefaultValue) ForPlatform(goos, goarch string) string {
 
 // resolveDefaultNode разрешает узел default_value:
 //   - строка → trimmed;
-//   - объект {"#if": {...}} → вычисляет #if (только @runtime.* globals, без user-vars
-//     и без resolved-map) и рекурсивно разрешает выбранную ветку;
+//   - объект {"#if": {...}} → вычисляет #if (@runtime.* globals + user-vars,
+//     объявленные раньше — см. ForTargetIn) и рекурсивно разрешает ветку;
 //   - число/bool → строковое представление; иначе → "".
-func resolveDefaultNode(node interface{}, goos, goarch string) string {
+func resolveDefaultNode(node interface{}, target TargetSpec, varTypes map[string]string, resolved map[string]ResolvedVar) string {
 	switch x := node.(type) {
 	case string:
 		return strings.TrimSpace(x)
@@ -62,11 +78,11 @@ func resolveDefaultNode(node interface{}, goos, goarch string) string {
 		if !ok {
 			return ""
 		}
-		branch, take := selectIfBranch(bodyMap, nil, nil, goos, goarch)
+		branch, take := selectIfBranch(bodyMap, varTypes, resolved, target)
 		if !take {
 			return ""
 		}
-		return resolveDefaultNode(branch, goos, goarch)
+		return resolveDefaultNode(branch, target, varTypes, resolved)
 	case nil:
 		return ""
 	default:
@@ -119,7 +135,7 @@ func (v *VarDefaultValue) UnmarshalJSON(data []byte) error {
 			if sk == "" {
 				continue
 			}
-			// #if-дерево сохраняем как есть (вычислится в ForPlatform по @runtime.*);
+			// #if-дерево сохраняем как есть (вычислится в ForTarget по @runtime.*);
 			// скаляры приводим к строке.
 			if tree, ok := val.(map[string]interface{}); ok {
 				v.PerPlatform[sk] = tree

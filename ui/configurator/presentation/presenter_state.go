@@ -30,6 +30,7 @@ import (
 	"singbox-launcher/core/config/configtypes"
 	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -74,6 +75,14 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 		Comment:   comment,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
+	}
+	// SPEC 097: таргет — часть состояния, а не UI-момент. Без него визард
+	// после перезапуска собрал бы remote-состоянию local-конфиг.
+	tgt := p.model.Target.Normalized()
+	if tgt.IsRemote() {
+		state.Target = constants.ConfigTargetRemote
+		state.TargetPlatform = tgt.GOOS
+		state.TargetArch = tgt.GOARCH
 	}
 	state.Connections.Sources = append([]wizardmodels.Source(nil), p.model.Sources...)
 	if len(p.model.GlobalOutbounds) > 0 {
@@ -158,8 +167,8 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	// view'а (или хотя бы ParserConfig — тогда адаптер скопирует корректную
 	// версию в Connections).
 	if p.model.TemplateData != nil {
-		build.SyncOutboundsWithActivePresets(state.Rules, &state.Connections.Outbounds, p.model.TemplateData.Presets)
-		build.SyncOutboundsWithActivePresets(state.Rules, &state.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets)
+		build.SyncOutboundsWithActivePresets(state.Rules, &state.Connections.Outbounds, p.model.TemplateData.Presets, p.model.Target)
+		build.SyncOutboundsWithActivePresets(state.Rules, &state.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets, p.model.Target)
 	}
 
 	// dns_options в state — только servers и rules; скаляры DNS — в state.vars (dns_*).
@@ -257,6 +266,14 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 		return fmt.Errorf("template data not available")
 	}
 
+	// SPEC 097: таргет восстанавливаем ПЕРВЫМ — от него зависят per-platform
+	// дефолты vars, которые резолвятся ниже по этой же функции. Legacy-файл
+	// без meta.target даёт zero TargetSpec → нормализуется в local.
+	// Прежний таргет передаётся в восстановление: MachineID и каталоги машины
+	// в файл не пишутся (они свойство записи реестра), и без переноса первый
+	// же Load увёл бы Save в singleton-папку вместо профиля машины.
+	p.model.Target = targetSpecFromStateMeta(stateFile, p.model.Target)
+
 	// Восстановление parser_config (шаг 2)
 	if err := p.restoreParserConfig(stateFile); err != nil {
 		return err
@@ -308,8 +325,8 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 		// флаг здесь не нужен. Rules нужны migration'у для computing merged_base
 		// = template + active preset patches (чтобы USER patch не over-include
 		// preset edits которые УЖЕ были materialized в legacy body).
-		_ = build.MigrateOutboundsToReferencedShape(&p.model.GlobalOutbounds, stateFile.Rules, p.model.TemplateData)
-		build.SyncOutboundsWithActivePresets(stateFile.Rules, &p.model.GlobalOutbounds, p.model.TemplateData.Presets)
+		_ = build.MigrateOutboundsToReferencedShape(&p.model.GlobalOutbounds, stateFile.Rules, p.model.TemplateData, p.model.Target)
+		build.SyncOutboundsWithActivePresets(stateFile.Rules, &p.model.GlobalOutbounds, p.model.TemplateData.Presets, p.model.Target)
 		p.model.RefreshDerivedParserConfig()
 	}
 

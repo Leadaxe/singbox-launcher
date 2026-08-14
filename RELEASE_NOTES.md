@@ -8,6 +8,32 @@
 
 ---
 
+### Выжимка (RU) — v1.4.0
+
+**У каждой удалённой машины теперь свой конфиг.** Профиль был один на всех: настройка второй машины молча затирала первую, а Deploy отправлял то, что записалось последним, — роутер мог получить конфиг, собранный для VPS. Теперь у каждой машины своя директория: состояние визарда, снапшоты, собранный `config.json`, rule-set'ы и тела подписок. Существующие настройки переезжают автоматически, если сопряжена ровно одна машина.
+
+**Управление машинами собрано в одном месте — вкладки Local и Remote.** Они заменяют Core и Servers: слева список прокси, справа управление. В строке машины видно имя, платформу, адрес и состояние ядра, там же «Настроить», Start/Stop, Deploy, правка и удаление. Кнопка «Настроить» открывает визард на профиле именно этой машины, а Deploy в той же строке отправляет её собственный конфиг — промах «собрал для одной, задеплоил на другую» стал невозможен по конструкции.
+
+**Daemon-режим ядра (macOS).** Ядро VPN может жить внутри долгоживущей системной службы (`sing-box lxd`), а не спавниться лаунчером: sudo один раз при установке, выход из лаунчера может оставлять VPN работать, смена конфига идёт без перезапуска процесса с авто-откатом на последний рабочий. Наблюдаемость (группы, тесты задержки, статус, соединения, логи) — по gRPC. Классический движок остаётся по умолчанию.
+
+**Сломанное сопряжение чинится без потери настроек.** Пере-сопряжение по свежему приглашению меняет пин и клиентский ключ, сохраняя всё имущество машины; настройки можно скопировать с другой машины, не собирая то же самое второй раз.
+
+**Полный список изменений:** [docs/release_notes/1-4-0.md](docs/release_notes/1-4-0.md).
+
+### Highlights (EN) — v1.4.0
+
+**Every remote machine now has its own config.** A single profile used to be shared by all of them: configuring a second machine silently overwrote the first, and Deploy sent whichever config was written last — a router could receive a config built for a VPS. Each machine now owns a directory with its wizard state, snapshots, built `config.json`, rule sets and subscription bodies. Existing setups migrate automatically when exactly one machine is paired.
+
+**Machine management moved into one place: the new Local and Remote tabs.** They replace Core and Servers — proxy list on the left, management on the right. Each machine row shows name, platform, address and core status, with Configure / Start-Stop / Deploy / edit / remove right there. Configure opens the wizard rooted on that machine's profile, and Deploy on the same row sends that machine's own config, so "built for one, deployed to another" is impossible by construction.
+
+**Daemon mode for the core (macOS).** The VPN core can run inside a long-lived system service (`sing-box lxd`) instead of being spawned by the launcher: sudo once at install time, quitting the launcher can keep the VPN up, and config changes swap in-process with an auto-rollback to the last working config. Observability (groups, latency tests, status, connections, logs) flows over gRPC. The classic engine remains the default.
+
+**A broken pairing is repairable without losing the setup.** Re-pairing with a fresh invite swaps the pin and client key while keeping everything the machine owns, and settings can be copied from another machine instead of being built twice.
+
+**Полный список изменений:** [docs/release_notes/1-4-0.md](docs/release_notes/1-4-0.md).
+
+---
+
 ### Выжимка (RU) — v1.3.1
 
 **Переключение группы селектора чинится для ядра, запущенного не лаунчером.** Выбор другой группы перезагружал список узлов только если sing-box поднял сам лаунчер. При ядре, запущенном вручную, или при подключении к внешнему Clash API статус менялся, а список продолжал показывать узлы предыдущей группы — сколько бы раз группу ни переключали. Теперь условие — доступность Clash API, а не принадлежность процесса. Заодно устранена гонка: retry-цикл живёт до ~100 секунд, и его поздний ответ затирал список уже выбранной группы.
@@ -496,6 +522,14 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v1.4.0** | [docs/release_notes/1-4-0.md](docs/release_notes/1-4-0.md) |
+| **v1.3.1** | [docs/release_notes/1-3-1.md](docs/release_notes/1-3-1.md) |
+| **v1.3.0** | [docs/release_notes/1-3-0.md](docs/release_notes/1-3-0.md) |
+| **v1.2.7** | [docs/release_notes/1-2-7.md](docs/release_notes/1-2-7.md) |
+| **v1.2.6** | [docs/release_notes/1-2-6.md](docs/release_notes/1-2-6.md) |
+| **v1.2.5** | [docs/release_notes/1-2-5.md](docs/release_notes/1-2-5.md) |
+| **v1.2.4** | [docs/release_notes/1-2-4.md](docs/release_notes/1-2-4.md) |
+| **v1.2.3** | [docs/release_notes/1-2-3.md](docs/release_notes/1-2-3.md) |
 | **v1.2.2** | [docs/release_notes/1-2-2.md](docs/release_notes/1-2-2.md) |
 | **v1.2.1** | [docs/release_notes/1-2-1.md](docs/release_notes/1-2-1.md) |
 | **v1.2.0** | [docs/release_notes/1-2-0.md](docs/release_notes/1-2-0.md) |

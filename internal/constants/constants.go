@@ -9,7 +9,14 @@ const (
 	ConfigFileName         = "config.json"
 	SingBoxExecName        = "sing-box"
 	WizardTemplateFileName = "wizard_template.json"
-	WizardStateFileName    = "state.json"
+	// LegacyRemoteConfigFileName — bin/remote-config.json, единственный
+	// конфиг удалённой машины до SPEC 098.
+	//
+	// Больше не пишется: у каждой машины свой config.json в её директории
+	// (platform.GetRemoteConfigPathFor). Константа осталась только ради
+	// миграции, которая читает старый файл и переносит его владельцу.
+	LegacyRemoteConfigFileName = "remote-config.json"
+	WizardStateFileName        = "state.json"
 	// OutboundsCacheFileName — кеш-файл outbounds (SPEC 045 phase 5.1).
 	// Лежит в <execDir>/bin/. Scope = последний активный state. Парсер
 	// перезаписывает его при каждом успешном Update; на переключении
@@ -26,7 +33,29 @@ const (
 	// SubscriptionsDirName — каталог raw-body cache подписок (SPEC 052):
 	// <execDir>/bin/subscriptions/<source-id>.raw. Один файл per Source(id),
 	// атомарная запись через .tmp + Rename, lazy GC orphan-файлов.
+	//
+	// SPEC 098: для удалённой машины тот же базовый имя каталога, но внутри
+	// её директории — bin/wizard_states/remote/<id>/subscriptions/.
 	SubscriptionsDirName = "subscriptions"
+	// RemoteRuleSetsDirName — каталог .srs УДАЛЁННОЙ машины (SPEC 098 §2.3):
+	// bin/wizard_states/remote/<id>/srs/.
+	//
+	// Имя короче локального rule-sets/ намеренно: путь и так длинный, а
+	// каталог лежит внутри директории машины, где двусмысленности нет.
+	RemoteRuleSetsDirName = "srs"
+)
+
+// Config targets (SPEC 097) — для какой машины лаунчер готовит config.json.
+//
+// ConfigTargetLocal — эта машина: состояние живёт прямо в
+// bin/wizard_states/ (исторический плоский layout, без миграции).
+// ConfigTargetRemote — удалённая машина (сервер, роутер, другой mac):
+// состояние в bin/wizard_states/remote/. Слаг = имя подпапки.
+//
+// Значение попадает в state.meta.target и в @runtime.target шаблона.
+const (
+	ConfigTargetLocal  = "local"
+	ConfigTargetRemote = "remote"
 )
 
 // Log file names
@@ -52,6 +81,17 @@ const (
 const (
 	SingboxReleasesURL = "https://github.com/Leadaxe/sing-box-lx/releases"
 	WintunHomeURL      = "https://www.wintun.net/"
+	// RemoteDaemonDocsURL — как поставить `sing-box lxd` на машину, которой
+	// хочется управлять из лаунчера (SPEC 098, окно добавления машины).
+	//
+	// Документ живёт в форке ядра (docs-lx/lxd-daemon.md, ветка lx), а не в
+	// репозитории лаунчера: демон — часть ядра, и инструкция обновляется
+	// вместе с ним. BUILD_LINUX.md тут был неверной ссылкой — он про сборку
+	// самого лаунчера, а не про установку демона.
+	// Якорь ведёт сразу в раздел про Linux: удалённая машина почти всегда
+	// роутер или VPS, и начало документа (что такое демон, установка на
+	// macOS) на этом шаге только отвлекает.
+	RemoteDaemonDocsURL = "https://github.com/Leadaxe/sing-box-lx/blob/lx/docs-lx/lxd-daemon.md#8-linux--setup-approaches"
 )
 
 // sing-box core download source (SPEC 072, Variant A). The launcher ships the
@@ -65,7 +105,7 @@ const SingboxCoreRepo = "Leadaxe/sing-box-lx" // core for all platforms (XHTTP +
 // `sing-box version`, so the strict-equality reinstall check still holds.
 // Manually bumped per release; source-of-truth here. See
 // docs/RELEASE_PROCESS.md §5.1.
-const RequiredCoreVersion = "1.14.0-lx.22"
+const RequiredCoreVersion = "1.14.0-lx.26"
 
 // AppVersion — git describe output. Set by build scripts via -ldflags.
 //
@@ -79,7 +119,7 @@ const RequiredCoreVersion = "1.14.0-lx.22"
 // HEAD. See docs/RELEASE_PROCESS.md §5.2.
 var (
 	AppVersion          = "v-local-test"
-	RequiredTemplateRef = "8401a9c62dc24e5ff0b2aca34b1991750dc99c40"
+	RequiredTemplateRef = "cdb46b2046da023ae1b5fe16c5c6c70768727841"
 )
 
 // GetMyBranch возвращает ветку репозитория для загрузки ассетов, у которых нет

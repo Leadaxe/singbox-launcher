@@ -220,9 +220,10 @@ func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGener
 	// Update должен работать даже без template'а (legacy юзеры).
 	if td, terr := template.LoadTemplateData(execDir); terr == nil {
 		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.
-		_ = build.MigrateOutboundsToReferencedShape(&parserConfig.ParserConfig.Outbounds, stateRef.Rules, td)
-		build.SyncOutboundsWithActivePresets(stateRef.Rules, &parserConfig.ParserConfig.Outbounds, td.Presets)
-		build.MergeOutboundUpdatesInPlace(parserConfig, td)
+		tgt := build.TargetSpecFromState(stateRef)
+		_ = build.MigrateOutboundsToReferencedShape(&parserConfig.ParserConfig.Outbounds, stateRef.Rules, td, tgt)
+		build.SyncOutboundsWithActivePresets(stateRef.Rules, &parserConfig.ParserConfig.Outbounds, td.Presets, tgt)
+		build.MergeOutboundUpdatesInPlace(parserConfig, td, tgt)
 	} else {
 		debuglog.WarnLog("UpdateConfigFromSubscriptions: LoadTemplateData failed (skip preset.outbounds sync): %v", terr)
 	}
@@ -365,23 +366,39 @@ func atomicWriteConfig(path string, data []byte) error {
 //     if/if_or-фильтрации (consciously keep more — лучше держать .srs который
 //     потенциально нужен под другим var-комбо, чем потом качать снова).
 //
-// Используется для orphan GC `bin/rule-sets/` после Rebuild: live множество
+// Используется для orphan GC каталога .srs после Rebuild: live множество
 // = это объединение, всё за пределами — orphan.
 //
-// Multi-stage safety: тот же принцип что collectAllStageSourceIDs для
-// bin/subscriptions/. Без union'а Rebuild активного state'а сметёт .srs
-// нужные другому (неактивному) stage'у — переключение обратно требует
-// заново открыть Configurator и скачать.
+// SPEC 098: множество считается В ГРАНИЦАХ ОДНОЙ МАШИНЫ. target/machineID
+// выбирают, чьи состояния сканировать и чей каталог .srs потом чистится:
+//
+//	local          → bin/wizard_states/*.json          → bin/rule-sets/
+//	remote + <id>  → …/remote/<id>/*.json              → …/remote/<id>/srs/
+//
+// До SPEC 098 .srs лежали в одном общем каталоге, поэтому функция была
+// обязана обходить ВСЕ уровни wizard_states/: пропустив чужое состояние, GC
+// снёс бы файл, которым владеет только оно. Теперь каталоги раздельные, и
+// union по чужим машинам не только не нужен, но и вреден — он удерживал бы
+// от удаления .srs, который в этой машине уже никем не упомянут.
+//
+// Multi-stage safety внутри машины сохраняется: union по её state.json и её
+// именованным снапшотам. Без него Rebuild активного stage'а сметёт .srs,
+// нужные другому (неактивному) stage'у той же машины.
 //
 // td (nil-safe) — TemplateData для resolve preset.Ref → rule_set[]. Если nil
 // или preset не найден — preset-теги пропускаются (тот же fallback что для
 // broken preset-ref'а в UI).
 //
 // Read-only: errors per-file логируются и пропускаются.
-func collectAllStageRuleSetTags(execDir string, td *template.TemplateData) []string {
-	statesDir := platform.GetWizardStatesDir(execDir)
+func collectAllStageRuleSetTags(execDir, target, machineID string, td *template.TemplateData) []string {
+	statesDir := platform.GetWizardStatesDirFor(execDir, target, machineID)
 	entries, err := os.ReadDir(statesDir)
 	if err != nil {
+		// Машина без единого сохранённого состояния — обычное дело сразу после
+		// добавления. Не warn: чистить всё равно нечего.
+		if os.IsNotExist(err) {
+			return nil
+		}
 		debuglog.WarnLog("collectAllStageRuleSetTags: readdir %s: %v", statesDir, err)
 		return nil
 	}
@@ -402,19 +419,11 @@ func collectAllStageRuleSetTags(execDir string, td *template.TemplateData) []str
 		}
 	}
 
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if !strings.HasSuffix(name, ".json") {
-			continue
-		}
-		path := filepath.Join(statesDir, name)
+	collectFromState := func(path string) {
 		s, loadErr := state.Load(path)
 		if loadErr != nil {
 			debuglog.DebugLog("collectAllStageRuleSetTags: skip %s: %v", path, loadErr)
-			continue
+			return
 		}
 		// Legacy CustomRule rule_set tags.
 		for i := range s.CustomRules {
@@ -464,6 +473,20 @@ func collectAllStageRuleSetTags(execDir string, td *template.TemplateData) []str
 			}
 			addTag(build.SRSTagFromURL(sb.SrsURL))
 		}
+	}
+
+	// SPEC 098: сканируется ТОЛЬКО свой уровень. Поддиректории пропускаются:
+	// для local это папки машин (remote/<id>/), для машины — ничего.
+	// Спуск внутрь означал бы, что состояния одной машины удерживают .srs
+	// в каталоге другой — ровно та связность, которую §5.7 запрещает.
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		collectFromState(filepath.Join(statesDir, e.Name()))
 	}
 
 	out := make([]string, 0, len(tagSet))

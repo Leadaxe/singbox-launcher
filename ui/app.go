@@ -4,10 +4,10 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
-	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/events"
+	"singbox-launcher/core/services"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
 )
@@ -25,6 +25,11 @@ type App struct {
 	tabs        *container.AppTabs
 	clashAPITab *container.TabItem
 	currentTab  *container.TabItem
+	// localPanel / remotePanel — независимые списки прокси двух вкладок
+	// (SPEC 098). Держим ссылки, чтобы отдавать разделяемые слоты UIService
+	// активной панели при переключении вкладки.
+	localPanel  *ProxyListPanel
+	remotePanel *ProxyListPanel
 	content     fyne.CanvasObject
 	// overlay is a concrete ClickRedirect component from `ui/components`.
 	// nil when `wizardOverlayEnabled` is false (current default).
@@ -38,98 +43,126 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 		core:   controller,
 	}
 
-	// Create tabs - Core is first (opens on startup)
-	// Создаем вкладку Core первой, чтобы её callback установился.
+	// SPEC 098: вкладки Local и Remote вместо Core и Servers. Обе
+	// двухколоночные — слева список прокси, справа управление; см.
+	// ui/local_remote_tabs.go.
+	//
+	// Local создаётся первой, чтобы её callback установился (внутри живёт
+	// CreateCoreDashboardTab, который регистрирует UpdateCoreStatusFunc).
 	// Emoji-in-label (💡 default emoji presentation) — colour rendering
 	// via OS font fallback to Apple Color Emoji, matching sibling tabs
-	// (🖥️ Servers / ⚙️ Settings / 🔍 Diagnostics).
-	coreTabItem := container.NewTabItem(locale.T("app.tab.core"), CreateCoreDashboardTab(controller))
-	app.clashAPITab = container.NewTabItem(locale.T("app.tab.servers"), CreateClashAPITab(controller))
-	// Settings tab is a no-content placeholder that acts as a button: its
-	// OnSelected handler opens the standalone Settings window (see
-	// ui/settings_window.go) and then immediately reverts tab selection
-	// back to the previously active tab. Keeps the entry point visible in
-	// the tab strip without giving Settings a full-sized tab page.
-	// Content widget is a 1-line label only to satisfy Fyne's tab-must-have-
-	// content invariant; it's never actually rendered because we revert
-	// selection before the tab content is drawn.
-	settingsTabItem := container.NewTabItem(locale.T("app.tab.settings"), widget.NewLabel(""))
+	// (⚙️ Settings / 🔍 Diagnostics).
+	localContent, localPanel := CreateLocalTab(controller)
+	remoteContent, remotePanel := CreateRemoteTab(controller)
+	app.localPanel, app.remotePanel = localPanel, remotePanel
+	coreTabItem := container.NewTabItem(locale.T("app.tab.local"), localContent)
+	app.clashAPITab = container.NewTabItem(locale.T("app.tab.remote"), remoteContent)
+	// Settings — обычная вкладка со своим содержимым.
+	//
+	// Раньше она была кнопкой-подделкой: пустая вкладка, чей OnSelected
+	// открывал отдельное окно и тут же откатывал выбор назад. Это стоило
+	// защиты от бесконечного цикла в обработчике и делало Settings
+	// единственным пунктом строки, ведущим себя не как вкладка. Теперь
+	// содержимое рендерится на месте, отдельное окно удалено за
+	// ненадобностью.
+	settingsTabItem := container.NewTabItem(locale.T("app.tab.settings"),
+		components.WrapInScrollWithGutter(container.NewPadded(BuildSettingsContent(controller))))
 	// Tab order: Core | Servers | 🔍 Diagnostics | ⚙️ Settings | ❓ Help.
 	// Settings sits between Diagnostics and Help — close to other
 	// "launcher behavior" controls and one click away from Help.
-	// Каталог глифов — как и Settings, вкладка-кнопка: открывает окно и
-	// возвращает выбор на прежнюю вкладку. Нужен для подбора значков UI:
-	// символ, красивый в редакторе, в приложении может не отрисоваться,
-	// стать тофу или прийти нередактируемой цветной картинкой.
-	glyphsTabItem := container.NewTabItem("🔤", widget.NewLabel(""))
 	app.tabs = container.NewAppTabs(
 		coreTabItem,
 		app.clashAPITab,
 		container.NewTabItem(locale.T("app.tab.diagnostics"), CreateDiagnosticsTab(controller)),
 		settingsTabItem,
 		container.NewTabItem(locale.T("app.tab.help"), CreateHelpTab(controller)),
-		glyphsTabItem,
 	)
 
 	// Set tab selection handler
 	app.tabs.OnSelected = func(item *container.TabItem) {
-		// Settings tab acts as a button: open the window, revert to the
-		// previous tab. The revert triggers OnSelected again with the
-		// previous TabItem — guarded by the `item == settingsTabItem`
-		// check so we don't infinite-loop.
-		if item == settingsTabItem {
-			OpenSettingsWindow(controller)
-			// Fallback to Core if user clicked Settings as their very
-			// first action (app.currentTab still nil).
-			target := app.currentTab
-			if target == nil || target == settingsTabItem {
-				target = coreTabItem
-			}
-			app.tabs.Select(target)
-			return
-		}
-		// Каталог глифов — тоже вкладка-кнопка (см. settingsTabItem выше).
-		if item == glyphsTabItem {
-			if controller.UIService != nil && controller.UIService.Application != nil {
-				ShowGlyphExplorer(controller.UIService.Application)
-			}
-			target := app.currentTab
-			if target == nil || target == glyphsTabItem {
-				target = coreTabItem
-			}
-			app.tabs.Select(target)
-			return
-		}
 		app.currentTab = item
-		if item == app.clashAPITab {
-			// SPEC 064: Servers tab is always reachable so the user can
-			// configure a remote Clash API endpoint even when local
-			// sing-box isn't running. The tab's own UI (badge + disabled
-			// controls) communicates the "no API available" state — no
-			// need to bounce the user back to Core. RefreshAPIFunc is
-			// safe to call: it no-ops when neither local sing-box nor a
-			// remote override is reachable.
-			if controller.UIService != nil && controller.UIService.RefreshAPIFunc != nil {
-				controller.UIService.RefreshAPIFunc()
+
+		// SPEC 098: вкладка определяет, с КАКИМ ядром идёт разговор.
+		//
+		// Local — всегда своё ядро: транспорт удалённой машины снимается при
+		// входе. Без этого список на Local показывал узлы роутера, выбранного
+		// на Remote, — то есть чужие данные под именем локального ядра, и
+		// вернуться к своему было нечем (дропдаун с пунктом Local убран
+		// вместе с шапкой).
+		//
+		// Remote — выбранная машина либо ничего. Транспорт там ставит клик по
+		// строке; сама вкладка ничего не восстанавливает, потому что выбор
+		// эфемерный (SPEC 097 §4.3): после перезапуска активной машины нет, и
+		// список пуст до первого клика.
+		// Панели Local и Remote независимы, но слоты UIService рассчитаны на
+		// одного владельца — отдаём их той, что сейчас на экране.
+		switch item {
+		case coreTabItem:
+			// Порядок важен: сначала область, потом снятие транспорта. Оба
+			// шага дёргают обновление списка, и оно должно писать уже в
+			// local-состояние, а не в remote.
+			if controller.APIService != nil {
+				controller.APIService.SetProxyScope(services.ScopeLocal)
 			}
+			app.localPanel.Activate(controller)
+			// Транспорт МАШИНЫ не снимаем: соединение — состояние самой
+			// машины, а не вкладки. Рвать его при взгляде на своё ядро значит
+			// заставлять жать Connect после каждого переключения. Связь
+			// разрывает только явный Disconnect (или удаление машины).
+			//
+			// Чтобы Local при этом говорил со СВОИМ ядром, ставим его
+			// транспорт: SetTransport(nil) означал бы «никакого», а в
+			// lxd-режиме Clash HTTP нет — панель падала бы в
+			// «connection refused» на 9190.
+			controller.RestoreOwnTransport()
+		case app.clashAPITab:
+			if controller.APIService != nil {
+				controller.APIService.SetProxyScope(services.ScopeRemote)
+			}
+			// Возвращаем транспорт выбранной машины: пока смотрели Local, его
+			// место занимал транспорт своего движка. Само соединение никуда не
+			// девалось — снимает его только явный Disconnect.
+			ReapplyLxdRemoteTransport(controller)
+			app.remotePanel.Activate(controller)
+		}
+		// Авто-обновление списка узлов идёт только на видимой вкладке Remote:
+		// опрашивать машину, пока пользователь смотрит на Local, незачем.
+		app.remotePanel.AutoRefresh().SetTabActive(item == app.clashAPITab)
+		// Обновляем список только там, где есть с кем разговаривать.
+		//
+		// На Local это локальное ядро — оно есть всегда (RefreshAPIFunc сам
+		// no-op, если ядро не запущено). На Remote собеседник появляется
+		// только после выбора машины: без него запрос уходил с пустой группой
+		// и возвращал «Daemon: group "" not found». Пустой список до выбора —
+		// это честное состояние, а не сбой.
+		needRefresh := item == coreTabItem
+		if item == app.clashAPITab {
+			_, _, hasMachine := GetLxdRemoteOverride()
+			needRefresh = hasMachine
+		}
+		if needRefresh && controller.UIService != nil && controller.UIService.RefreshAPIFunc != nil {
+			controller.UIService.RefreshAPIFunc()
 		}
 	}
 
 	// Сохраняем оригинальный callback, который был установлен в CreateCoreDashboardTab
 	originalUpdateCoreStatusFunc := controller.UIService.UpdateCoreStatusFunc
 
-	// refreshCoreTabIcon — динамический emoji в табе Core по состоянию
+	// refreshCoreTabIcon — динамический emoji в табе Local по состоянию
 	// sing-box. Перерисовывает label + дёргает AppTabs.Refresh чтобы
 	// табстрип реально перечитал текст. Безопасно вызывать с UI-thread
 	// (caller wrap'ит в fyne.Do).
 	//
 	// Status-indicator paradigm (как у media-плеера):
-	//   ⏸️ Core  — stopped / idle (sing-box не запущен)
-	//   ▶️ Core  — running (sing-box активен)
+	//   ⏸️ Local  — stopped / idle (sing-box не запущен)
+	//   ▶️ Local  — running (sing-box активен)
 	//
-	// База берётся из локали (`Core` / `Ядро` / etc), эмодзи приклеивается
+	// Индикатор остался на Local, потому что показывает ЛОКАЛЬНОЕ ядро;
+	// состояние удалённых машин видно в их строках на вкладке Remote.
+	//
+	// База берётся из локали (`Local` / `Локально` / etc), эмодзи приклеивается
 	// тут чтобы не плодить per-state ключи в каждой локали.
-	coreLabelBase := locale.T("app.tab.core")
+	coreLabelBase := locale.T("app.tab.local")
 	// Strip leading emoji + space from the locale base — text after the
 	// first space character. Locale strings ship with a default ▶️ (or
 	// previous attempt's icon) for the never-changed startup case; we
@@ -181,6 +214,35 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	OnOverrideChanged(func() {
 		fyne.Do(app.updateClashAPITabState)
 	})
+
+	// Local открыта на старте, но её слоты UIService перетёр конструктор
+	// Remote (панели строятся обе, а слот один). Возвращаем владение той
+	// панели, которая реально на экране, — иначе первый же авто-пинг или
+	// ResetAPIState ушёл бы в невидимый список.
+	app.localPanel.Activate(controller)
+
+	// Авто-обновление Remote: на старте открыта Local, поэтому вкладка
+	// неактивна, а окно — видимо (режим -tray скроет его сам, дёрнув
+	// OnWindowHidden). Тикер поднимется при первом заходе на Remote.
+	app.remotePanel.AutoRefresh().SetWindowVisible(true)
+	// Пока окно в трее, обновлять нечего: данные никто не видит, а запросы
+	// продолжали бы будить машину.
+	if controller.UIService != nil {
+		prevShown := controller.UIService.OnWindowShown
+		controller.UIService.OnWindowShown = func() {
+			if prevShown != nil {
+				prevShown()
+			}
+			app.remotePanel.AutoRefresh().SetWindowVisible(true)
+		}
+		prevHidden := controller.UIService.OnWindowHidden
+		controller.UIService.OnWindowHidden = func() {
+			if prevHidden != nil {
+				prevHidden()
+			}
+			app.remotePanel.AutoRefresh().SetWindowVisible(false)
+		}
+	}
 
 	// Инициализируем состояние вкладки + первичный рендер иконки Core.
 	// EventBus.Subscribe не fires backfill — рендерим вручную для startup'а.

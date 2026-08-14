@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"fyne.io/systray"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/driver/desktop"
@@ -27,13 +29,7 @@ type UIService struct {
 	// We store it here to implement singleton-like behavior for the wizard: only
 	// one wizard window exists at a time. Other UI code checks this field to
 	// decide whether to create a new wizard or focus the existing one.
-	WizardWindow fyne.Window
-	// SettingsWindow holds the currently open Settings window (if any).
-	// Settings used to be a main tab — moved out into a separate OS-level
-	// window when content outgrew "one screen" (auto-update, language,
-	// HWID identification, Debug API). Singleton: opening Settings again
-	// while it's already up just focuses the existing window.
-	SettingsWindow fyne.Window
+	WizardWindow   fyne.Window
 	TrayIcon       fyne.Resource
 	ApiStatusLabel *widget.Label
 
@@ -91,6 +87,26 @@ type UIService struct {
 	// OnWindowShown — опциональный callback, который вызывается после открытия главного окна
 	// Используется для проверки обновлений при первом открытии окна после запуска с -tray
 	OnWindowShown func() // Called after main window is shown
+	// OnWindowHidden — парный к OnWindowShown: окно ушло в трей.
+	//
+	// Нужен потребителям с периодическим опросом (авто-обновление списка
+	// узлов на Remote): пока окно скрыто, их запросы уходят в никуда — данные
+	// никто не видит, а сеть и удалённая машина нагружаются.
+	OnWindowHidden func() // Called after main window is hidden to tray
+}
+
+// HideMainWindow прячет главное окно в трей, уведомляя подписчиков.
+//
+// Существует ради OnWindowHidden: прямой MainWindow.Hide() в местах вызова
+// оставлял бы фоновые тикеры работать на невидимое окно.
+func (ui *UIService) HideMainWindow() {
+	if ui == nil || ui.MainWindow == nil {
+		return
+	}
+	ui.MainWindow.Hide()
+	if ui.OnWindowHidden != nil {
+		ui.OnWindowHidden()
+	}
 }
 
 // NewUIService creates and initializes a new UIService instance.
@@ -242,8 +258,38 @@ func (ui *UIService) StopTrayMenuUpdateTimer() {
 }
 
 // QuitApplication quits the Fyne application.
+//
+// Fyne's glfw driver runs its tray teardown (d.trayStop) inside Quit() only
+// when `curWindow != nil`, i.e. when one of our windows currently holds focus
+// (internal/driver/glfw/driver.go). Quitting from the tray menu with the main
+// window hidden or unfocused therefore skips trayStop: on Windows the
+// notification-area icon is never NIM_DELETE'd and systray's message pump
+// keeps running, which is how quit-from-tray leaves a ghost icon and a
+// lingering process behind (tray issue reported 2026-08).
+//
+// systray.Quit() below is the exact function fyne's own trayStop ends with
+// (RunWithExternalLoop's `end` = nativeEnd + Quit) and it is guarded by a
+// sync.Once, so calling it explicitly is safe whether or not the driver later
+// gets to its own teardown. On Windows it posts WM_CLOSE to the systray window
+// and deletes the notify icon immediately.
+//
+// Application.Quit() then closes all windows and unconditionally closes the
+// driver's done channel, unwinding Run(). If the event loop still refuses to
+// exit, the watchdog armed in GracefulExit force-exits the process.
+//
+// fyne.Do is correct from every caller context: tray actions and widget
+// callbacks already run on the UI thread (the driver marshals tray actions
+// via runOnMain), where Do simply queues for the next loop iteration; after
+// the loop has died it executes inline (drained fast-path in
+// runOnMainWithWait). Running on the UI thread also makes the darwin
+// systray.Quit (AppKit NSStatusItem removal) thread-correct.
 func (ui *UIService) QuitApplication() {
-	if ui.Application != nil {
-		ui.Application.Quit()
+	if ui.Application == nil {
+		return
 	}
+
+	fyne.Do(func() {
+		systray.Quit()
+		ui.Application.Quit()
+	})
 }

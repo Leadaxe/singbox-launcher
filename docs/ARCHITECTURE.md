@@ -1,6 +1,10 @@
 # Architecture — singbox-launcher
 
-> Status: current as of SPEC 070 (architecture refactor & cleanup), branch `develop`.
+**🌐 Language**: English | [Русский](ARCHITECTURE.ru.md)
+
+> Status: layer model and ADRs current as of SPEC 070 (architecture refactor &
+> cleanup); §11 covers the core-engine and remote-machine seams added by SPEC
+> 096–099. Branch `develop`.
 > This document describes the **layer model, dependency rules, event system, state
 > model, data flow, and build pipeline** of the application, plus the Architecture
 > Decision Records (ADRs) that govern them.
@@ -12,6 +16,7 @@
 > - **[TEMPLATE_REFERENCE.md](TEMPLATE_REFERENCE.md)** — `wizard_template.json` schema, presets, vars, `#if`.
 > - **[ParserConfig.md](ParserConfig.md)** — subscription parser / share-URI reference.
 > - **[API.md](API.md)** — Debug HTTP API reference.
+> - **[DAEMON_AND_REMOTE.md](DAEMON_AND_REMOTE.md)** — daemon core engine, pairing, remote machines (user-facing view of §11).
 
 ---
 
@@ -21,7 +26,7 @@
 manages a sing-box VPN core. It is written
 in Go with [Fyne](https://fyne.io) for the UI. The launcher downloads and pins a
 sing-box binary — specifically the [`sing-box-lx`](https://github.com/Leadaxe/sing-box-lx)
-fork (`constants.RequiredCoreVersion`, currently `1.14.0-lx.3`, built with the `with_xhttp` +
+fork (`constants.RequiredCoreVersion`, currently `1.14.0-lx.26`, built with the `with_xhttp` +
 `with_awg` build tags and fetched from the fork's GitHub Releases; the fork builds
 every platform, including the Windows 7 (`windows/386`) `legacy-windows-7` asset,
 so XHTTP/AWG work there too — there is no upstream/legacy split anymore). It fetches
@@ -42,7 +47,17 @@ The runtime side launches and supervises the sing-box process (crash/restart sta
 machine, power sleep/resume handling, phantom WinTun-adapter cleanup on Windows),
 talks to the running core through the Clash API (proxy list, switch, delay tests),
 exposes an optional inbound Debug HTTP API for introspection/automation, and runs a
-Traffic Profiler. The codebase is organized into strict downward-dependency layers
+Traffic Profiler.
+
+Since SPEC 096–099 the "running core" is no longer necessarily a child process on
+this machine. A `CoreBackend` seam makes two engines interchangeable — *classic*
+(spawn `sing-box run`, Clash HTTP) and *daemon* (macOS: the core lives inside the
+long-lived `sing-box lxd` service, driven over gRPC + admin REST) — and the same
+gRPC client drives **remote machines** (router, VPS, another Mac), each with its
+own wizard profile, built config, deploy, traffic profiler and host-telemetry
+window. See §11.
+
+The codebase is organized into strict downward-dependency layers
 (L0–L7); SPEC 070 codified those layers, removed dead code, de-duplicated leaf
 helpers, and split most large monolith files — while deliberately deferring the
 high-risk lifecycle/UI-controller decompositions that need GUI runtime verification.
@@ -62,13 +77,13 @@ The codebase is organized into **eight layers**. The cardinal rule:
 | Layer | Name | Packages | Responsibility |
 |-------|------|----------|----------------|
 | **L0** | platform | `internal/platform` | OS abstraction behind a unified interface: power sleep/wake, HWID device-info, process enumeration, WinTun ghost-adapter cleanup, canonical filesystem path getters. Depends only on stdlib + `debuglog`/`constants`. No upward imports. |
-| **L1** | shared-internal (leaf utilities) | `internal/locale`, `internal/srstag`, `internal/outboundutil`, `internal/urlsafe`, `internal/debuglog`, `internal/constants`, `internal/traffic`, `internal/textnorm`, `internal/urlredact`, `internal/ctxutil`, `internal/process`, `internal/wizardsync` | Self-contained, dependency-free helpers reused across layers: i18n catalog, content-addressed SRS tag hashing, reject/drop outbound→rule mapping (single source of truth shared by core + UI), URL-scheme allowlist, leveled logging, traffic profiler (decoupled, stdlib-only), tag display normalization, URL redaction. |
+| **L1** | shared-internal (leaf utilities) | `internal/locale`, `internal/srstag`, `internal/outboundutil`, `internal/urlsafe`, `internal/debuglog`, `internal/constants`, `internal/traffic`, `internal/textnorm`, `internal/urlredact`, `internal/ctxutil`, `internal/process`, `internal/wizardsync`, `internal/lxdclient` | Self-contained, dependency-free helpers reused across layers: i18n catalog, content-addressed SRS tag hashing, reject/drop outbound→rule mapping (single source of truth shared by core + UI), URL-scheme allowlist, leveled logging, traffic profiler (decoupled, stdlib-only), tag display normalization, URL redaction, and the mTLS client for the `sing-box lxd` daemon (pinning, invite parsing, per-machine identity — no app state). |
 | **L2** | core-domain (state + build + config + template) | `core/state`, `core/snapshot`, `core/build`, `core/config`, `core/config/subscription`, `core/config/configtypes`, `core/config/parser`, `core/template` | Pure domain: state schema/load/save/migration, the JSON build pipeline and pure resolvers, subscription fetch/parse/encode and outbound generation, template load + preset extraction, snapshot capture. Pure functions where possible; **no Fyne, no `AppController`**. |
-| **L3** | services + lifecycle | `core/services`, `core/uiservice`, `core/events`, `core` (`controller.go`, `process_service.go`, `config_service.go`, `rebuild.go`, `auto_update.go`, `main.go`, downloaders) | Stateful service implementations (`FileService`/`APIService`/`StateService`/`SRSDownloader`), the UI-callback container (no Fyne deps), the typed `EventBus`, and app/process lifecycle orchestration. **Owns the EventBus and all DI wiring.** |
+| **L3** | services + lifecycle | `core/services`, `core/uiservice`, `core/events`, `core` (`controller.go`, `process_service.go`, `config_service.go`, `rebuild.go`, `auto_update.go`, `backend*.go`, `daemon_manager_darwin.go`, `main.go`, downloaders) | Stateful service implementations (`FileService`/`APIService`/`StateService`/`SRSDownloader`, the remote-machine registry / transport / deploy-resource collector), the UI-callback container (no Fyne deps), the typed `EventBus`, app/process lifecycle orchestration, and the `CoreBackend` engine seam (`LegacyBackend` / `DaemonBackend`). **Owns the EventBus and all DI wiring.** |
 | **L4** | api / remote-control | `api`, `core/debugapi` | Outbound Clash API client (`api/`) and inbound Debug HTTP API (`core/debugapi`) that introspects/controls the app through a `ControllerFacade` interface. Both sit above domain but are reachable from services; `debugapi` talks to the controller only via an interface. |
 | **L5** | ui-presentation (configurator MVP) | `ui/configurator/presentation`, `ui/configurator/business`, `ui/configurator/models`, `ui/configurator/configurator.go`, `ui/configurator/utils` | MVP layers for the wizard: **presentation** (orchestration + `fyne.Do` dispatch), **business** (pure logic behind the `UIUpdater` interface — never imports Fyne), **models** (pure `WizardModel` + slot/order containers). `business → models → core-domain`; `presentation → business`; **business never imports presentation**. |
-| **L6** | ui-views (tabs / dialogs / root) | `ui` (`app.go` + `*_tab.go`), `ui/configurator/tabs`, `ui/configurator/dialogs`, `ui/configurator/outbounds_configurator`, `ui/traffic` | Fyne views: root tab strip, main tabs (Core dashboard, Clash API, diagnostics), configurator tabs/dialogs, outbounds configurator, traffic profiler window. Subscribes to EventBus / UIService callbacks; reads core-domain for rendering. |
-| **L7** | ui-widgets / assets | `internal/fynewidget`, `ui/icons`, `ui/components` | Reusable, self-contained Fyne building blocks and assets: hover rows, check-with-content, hover forwarding, tooltips, scroll gutter, embedded SVG icons. Pure Fyne composition (one known exception: `ui/components/click_redirect.go` — see §3). |
+| **L6** | ui-views (tabs / dialogs / root) | `ui` (`app.go` + `*_tab.go`), `ui/configurator/tabs`, `ui/configurator/dialogs`, `ui/configurator/outbounds_configurator`, `ui/traffic` | Fyne views: root tab strip, main tabs (Local = proxy list + core dashboard, Remote = proxy list + machine list, then Settings / Diagnostics / Help), configurator tabs/dialogs, outbounds configurator, traffic profiler window, and the per-machine windows (add-machine, connection settings, host telemetry, resources, machine profiler). Subscribes to EventBus / UIService callbacks; reads core-domain for rendering. |
+| **L7** | ui-widgets / assets | `internal/fynewidget`, `ui/icons`, `ui/components` | Reusable, self-contained Fyne building blocks and assets: hover rows, check-with-content, hover forwarding, tooltips, scroll gutter, embedded SVG icons. Pure Fyne composition, with no dependency on `core` (the former `click_redirect.go` exception was removed — see §3, V1). |
 
 ### Dependency diagram
 
@@ -133,15 +148,16 @@ L0  platform ─────────────────► (stdlib only
 ## 3. Layering rules + known violations
 
 The single rule (imports flow downward; cross-layer-up only via interface/callback)
-is mostly upheld — `internal/platform`, `internal/traffic`, and `api` have no upward
-imports; `business` never imports Fyne; `debugapi` uses a facade. SPEC 070 codified
-the layers specifically so the few real violations become visible and trackable.
+is mostly upheld — `internal/platform`, `internal/traffic`, `internal/lxdclient` and
+`api` have no upward imports; `business` never imports Fyne; `debugapi` uses a
+facade. SPEC 070 codified the layers specifically so the few real violations become
+visible and trackable; the SPEC 094–099 cleanup pass then closed V1 and V3.
 
 | # | Violation | Location | Status | Designed fix |
 |---|-----------|----------|--------|--------------|
-| V1 | An L7 widget package imports `singbox-launcher/core` to reach `UIService.WizardWindow` for focus elevation. | `ui/components/click_redirect.go` → `core` | **Open** (accepted for the wizard focus flow) | Inject a focus callback `func()` or a small `WizardFocuser` interface from the configurator layer; do not import `core` in `ui/components`. (SPEC 070 P6) |
+| V1 | An L7 widget package imports `singbox-launcher/core` to reach `UIService.WizardWindow` for focus elevation. | `ui/components/click_redirect.go` → `core` | **Fixed** (SPEC 094–099 cleanup pass, `ce8048e`) | Done: `ClickRedirect` now takes `*uiservice.UIService` — a leaf package — instead of the whole `*core.AppController`. `ui/components` no longer imports `core` at all, which also cut `ui/traffic` from 20 transitive internal deps to 8, making its documented isolation from `AppController` factual. |
 | V2 | A root main tab (L6) reaches sideways/down into the configurator package and its models (`ValidateStateID`). | `ui/core_dashboard_tab.go` → `ui/configurator` + `ui/configurator/models` | **Open** (intentional "launch wizard from dashboard"; over-broad) | Narrow to a launcher entrypoint + hoist ID validation to `core/state` (state validates its own IDs). (SPEC 070 P6) |
-| V3 | `GetController()` fallback constructs a half-wired `AppController` divergent from `NewAppController`, creating two construction paths. | `core/controller.go` `GetController()` | **Open** (deferred; see ADR-070-7) | Delete the fallback; require `NewAppController` in `main()` (already called); use `GetControllerOrPanic()` for nil-safety (already added). |
+| V3 | `GetController()` fallback constructs a half-wired `AppController` divergent from `NewAppController`, creating two construction paths. | `core/controller.go` `GetController()` | **Fixed** (the fallback is gone) | Done: `GetController()` now just returns the singleton (nil before construction), `NewAppController` in `main()` is the only construction path, and `GetControllerOrPanic()` covers callsites that cannot proceed without it. The *field/lock extraction* half of ADR-070-7 remains deferred (§10.2). |
 | V4 | Legacy `State.CustomRules`/`DNSOptions` and canonical `State.Rules`/`DNS` are kept as **parallel sources of truth** inside the domain layer (a layering-of-truth violation, not a package-edge one). | `core/state` load/sync helpers | **Open** (deferred; see ADR-070-2) | Make canonical `Rules`/`DNS` the sole stored truth; derive legacy views on-demand in the UI/business layer. |
 | V5 | `StateChanged` + `ConfigBuilt` are published from L3/L5 but have **zero EventBus subscribers**, while `VpnStateChanged` uses **both** EventBus and a legacy UIService callback (`UpdateCoreStatusFunc`) — a dual-wiring inconsistency across the L3/L6 boundary. | `core/services/state_service.go`, `core/rebuild.go`, `presenter_save.go` (publishers); no subscribers | **Open** (deferred; see ADR-070-3, SPEC 047 phase 6) | Wire `ConfigBuilt`/`StateChanged` subscriptions in the dashboard and retire the parallel callbacks. |
 
@@ -538,9 +554,10 @@ implemented** · **Planned (deferred)**.
   + callbacks.
 - **Rationale:** The half-wired fallback diverges from the real constructor, and four
   independent mutexes create deadlock/race windows under concurrent Update+Start.
-- **Status:** **Planned (deferred).** `GetControllerOrPanic` is already added, but the
-  `GetController` fallback still exists, and the field/lock extraction is **not done**
-  (high concurrency risk; SPEC 070 P5).
+- **Status:** **Partially implemented.** The single construction path is **done**:
+  `GetControllerOrPanic` exists and the half-wired `GetController` fallback has been
+  removed, so `NewAppController` is the only constructor. The field/lock extraction
+  is still **not done** (high concurrency risk; SPEC 070 P5).
 
 ---
 
@@ -594,13 +611,13 @@ above did not.
 
 | Target | ADR | Why deferred |
 |--------|-----|--------------|
-| **Controller field/lock extraction** — split `controller.go` (728 LOC, ~113 fields, 4 mutexes) into `ProcessLifecycleManager` + `CacheManager` + thin `AppController`; delete the `GetController` fallback; unify `Monitor` + `onPrivilegedScriptExited` via one `CrashHandler`. | ADR-070-7 | **High concurrency risk.** Re-partitioning four independent mutexes (`CmdMutex`, `RunningState`, `SubscriptionMu`, parser/version locks) under concurrent Update+Start can introduce deadlocks/races that unit tests won't catch — needs GUI runtime verification of the crash/restart and connect/disconnect paths. |
+| **Controller field/lock extraction** — split `controller.go` into `ProcessLifecycleManager` + `CacheManager` + thin `AppController`; unify `Monitor` + `onPrivilegedScriptExited` via one `CrashHandler`. (The `GetController` fallback deletion, the other half of this ADR, is **done**.) | ADR-070-7 | **High concurrency risk.** Re-partitioning four independent mutexes (`CmdMutex`, `RunningState`, `SubscriptionMu`, parser/version locks) under concurrent Update+Start can introduce deadlocks/races that unit tests won't catch — needs GUI runtime verification of the crash/restart and connect/disconnect paths. |
 | **Dual-state elimination** — make canonical `Rules`/`DNS`/`Connections` the sole stored truth; delete `deriveV6FromLegacy`, `legacyCustomRulesFromV6`, `State.CustomRules`/`DNSOptions`/`SelectableRuleStates`; migrate UI Rules/DNS/source tabs to canonical fields. | ADR-070-2 | **Needs GUI runtime verification.** Every headless `Load → mutate → Save` callsite and every UI tab that reads the legacy view must be migrated and re-verified against real state files (v5 upgrades + native v6). |
 | **Full callback → event retirement** — wire `ConfigBuilt`/`StateChanged` subscriptions in the Core dashboard; retire `UpdateCoreStatusFunc`/`UpdateConfigStatusFunc`; make `VpnStateChanged` single-mechanism. | ADR-070-3 | **Needs GUI runtime verification.** UI status refresh is timing-sensitive (`fyne.Do` dispatch, dirty-marker styling); swapping the delivery mechanism must be observed live. Publishers are already in place so this is low-code-risk but high-verification-cost. |
 | **`JSONBuilder` full adoption** — migrate every protocol field generator in `GenerateNodeJSON` / selector generation onto `JSONBuilder` (insertion-order-safe), behind golden tests. | ADR-070-5 | **Partially done.** The builder exists and is used; finishing the migration is incremental and golden-test-guarded, but not blocking. |
 | **Transport/TLS unification** — merge `uriTransportFromQuery` + `xrayTransportFromStreamSettings` into one `TransportSpec` builder, and the three TLS builders into one `TLSSpec` builder. | ADR-070-6 | **Behavior-change risk on round-trip.** Both paths emit subtly different sing-box shapes today; unifying them requires golden round-trip tests across all protocols (subscription-URI ↔ Xray-JSON) to prove no drift. |
-| **UI view decomposition** — `clash_api_tab.go` (1266 LOC) → state+handlers; `add_rule_dialog.go` (1146 LOC) → editor-state/tabs/process-picker; `edit_dialog.go` (975 LOC) → edit-state/form-builder/template-resolver. | (supports ADR-070-1) | **Needs GUI runtime verification + ordered after dual-state.** These closures capture large mutable UI state; extracting it safely is best done once dual-state is gone, with live click-through verification. |
-| **`config_service.go` decomposition** (1066 LOC) — extract `SubscriptionFetcher` + `ConfigContextBuilder`; split `UpdateConfigFromSubscriptions`. | (supports ADR-070-5) | **High concurrency risk.** Must preserve `SubscriptionMu` boundaries across new service seams; needs the existing `refresh_meta`/`update` tests plus runtime verification of auto-update + manual-update races. |
+| **UI view decomposition** — `clash_api_tab.go` (1701 LOC, still the largest despite the `_helpers`/`_render`/`_autorefresh` peels) → state+handlers; `add_rule_dialog.go` (1154 LOC) → editor-state/tabs/process-picker; `outbounds_configurator/edit_dialog.go` (1095 LOC) → edit-state/form-builder/template-resolver. | (supports ADR-070-1) | **Needs GUI runtime verification + ordered after dual-state.** These closures capture large mutable UI state; extracting it safely is best done once dual-state is gone, with live click-through verification. |
+| **`config_service.go` decomposition** — the file split is **done** (1066 → 538 LOC, with `config_service_context.go` + `config_service_subscriptions.go` peeled off); what remains is promoting those to real `SubscriptionFetcher` / `ConfigContextBuilder` seams and splitting `UpdateConfigFromSubscriptions` itself. | (supports ADR-070-5) | **High concurrency risk.** Must preserve `SubscriptionMu` boundaries across new service seams; needs the existing `refresh_meta`/`update` tests plus runtime verification of auto-update + manual-update races. |
 | **CI import-graph check** enforcing L*n* → L*≤n*. | ADR-070-1 | **Planned tooling**, not yet built; would lock in the layer model and catch V1/V2-style regressions. |
 
 > **Bottom line:** SPEC 070 completed the *mechanical, behavior-preserving* work
@@ -609,3 +626,90 @@ above did not.
 > *behavioral* changes (dual-state removal, callback→event swap) and the
 > *high-concurrency* lifecycle decompositions (`AppController`, `config_service`) are
 > deferred to follow-up phases (P5/P6) that require GUI runtime verification.
+
+---
+
+## 11. Core-engine and remote-machine seams (SPEC 096–099)
+
+The user-facing view of this section — install commands, pairing, on-disk layout —
+lives in **[DAEMON_AND_REMOTE.md](DAEMON_AND_REMOTE.md)**. Here: the seams and why
+they sit where they do.
+
+### 11.1 `CoreBackend` — the engine seam
+
+> **Nothing above the seam knows which engine is running.** UI, tray, keyboard
+> shortcuts and the Debug API reach the core only through the active
+> `CoreBackend`; neither `ProcessService` nor the Clash client is called directly
+> from those layers anymore.
+
+| Implementation | Engine | Control plane | Platforms |
+|---|---|---|---|
+| `LegacyBackend` | classic — spawn + supervise `sing-box run` | Clash HTTP API | all |
+| `DaemonBackend` | daemon — core inside the `sing-box lxd` system service | gRPC (`daemon.StartedService`) + admin REST | macOS only |
+
+Classic remains the default and is unchanged. All daemon/gRPC code sits behind
+darwin build tags and never enters `go.win7.mod` — the Win7 build compiles without
+grpc/protobuf. The daemon protobuf stubs are vendored from the fork via
+`scripts/sync_daemonpb.sh`.
+
+### 11.2 `ProxyTransport` — the proxy-operation seam
+
+Proxy-group operations (list groups, select a node, latency test, balancer pool)
+go through a separate `ProxyTransport` seam: Clash HTTP for classic, gRPC for
+daemon or for a selected remote machine. That is why the server list is one widget
+with one behavior on both the Local and Remote tabs.
+
+**Scope, not mode.** The transport is resolved per *scope* (this machine vs. a
+selected remote machine), never from a global "backend mode" flag. A global
+override is what made the remote connection drag the Local tab onto an empty
+base URL (fixed in `fe575b6`): resolvers must ask for the scope's transport, and
+the gRPC gate must consult the remote override rather than the backend mode.
+
+### 11.3 Target and role are independent axes (SPEC 097)
+
+Config generation used to assume "the machine the launcher runs on": `runtime.GOOS`
+was baked into the pipeline and local assumptions (`clash_api`, `find_process`,
+`set_system_proxy`) sat in the template as literals.
+
+| Axis | Values | Decides |
+|---|---|---|
+| **target** | `local` \| `remote` | where the machine is: which state file, which control channel, where the result goes |
+| **role** | `gateway_mode` (bool) | whether the machine forwards someone else's traffic |
+| **platform** | GOOS / GOARCH | set explicitly for remote; substitutes `runtime.GOOS` throughout generation |
+
+The role is *not* derived from the target: a local gateway is legal (Mac +
+Internet Sharing) and a remote server is usually not a gateway. Target lives in
+`state.meta.target` and reaches the template as `@runtime.target`; platform lives
+in the machine's registry entry, so the list, the wizard and `TargetSpec` cannot
+disagree.
+
+### 11.4 One profile per machine (SPEC 098)
+
+Each machine owns a directory — `bin/wizard_states/remote/<machine-id>/` — holding
+its `state.json`, built `config.json`, `srs/` and `subscriptions/`. Before this, a
+single shared profile meant configuring a second machine silently overwrote the
+first. Migration is automatic when exactly one machine is paired; with several, the
+legacy files are left untouched and a warning is logged, because ownership can't be
+inferred.
+
+Selecting a machine and choosing what to build for are the **same** selection:
+"Configure" on a machine's row roots the wizard on that machine's profile, and
+Deploy on the same row ships that machine's own config — the mismatch is
+impossible by construction rather than caught by validation.
+
+### 11.5 Per-machine observability (SPEC 099)
+
+The local `TrafficProfiler` is a singleton (`GetInstance`); a machine's profiler is
+a **separate instance** with its own window, streams and ring buffer. One shared
+profiler would reproduce the disease SPEC 098 cured in the node list: opening the
+router's profiler would lose the local one, and two machines could not be compared
+side by side. Instances die with their channel (on Disconnect and on machine
+removal).
+
+Sources are gRPC only — a machine's config has no Clash API by design, and its
+`sing-box.log` is on its own filesystem. There is no per-process breakdown for a
+machine: `find_process` is off in a router's config because traffic comes from
+network devices, not from processes of this computer, so the per-process axis is
+replaced by a per-client one. Host telemetry (CPU / memory / storage / network of
+the machine itself) is a separate window over admin REST — the profiler describes
+the *core*, telemetry describes the *machine*.

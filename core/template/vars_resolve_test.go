@@ -8,10 +8,10 @@ import (
 
 func TestVarDefaultValueForPlatform_win7AndOther(t *testing.T) {
 	v := VarDefaultValue{PerPlatform: map[string]interface{}{"win7": "gvisor", "default": "system"}}
-	if got := v.ForPlatform("windows", "386"); got != "gvisor" {
+	if got := v.ForTarget(TargetSpec{GOOS: "windows", GOARCH: "386"}.Normalized()); got != "gvisor" {
 		t.Fatalf("windows/386: %q", got)
 	}
-	if got := v.ForPlatform("linux", "amd64"); got != "system" {
+	if got := v.ForTarget(TargetSpec{GOOS: "linux", GOARCH: "amd64"}.Normalized()); got != "system" {
 		t.Fatalf("linux: %q", got)
 	}
 }

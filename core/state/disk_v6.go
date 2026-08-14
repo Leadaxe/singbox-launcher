@@ -118,4 +118,14 @@ type MetaSection struct {
 	Comment   string `json:"comment,omitempty"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
+
+	// Target (SPEC 097) — для какой машины state готовит конфиг:
+	// "local" (эта машина) или "remote" (сервер/роутер/другой mac).
+	// Пусто в файле == "local": legacy-состояния читаются без миграции.
+	Target string `json:"target,omitempty"`
+
+	// TargetPlatform / TargetArch — GOOS/GOARCH ЦЕЛЕВОЙ машины. Значимы
+	// только при Target="remote"; для local платформа всегда runtime'а.
+	TargetPlatform string `json:"target_platform,omitempty"`
+	TargetArch     string `json:"target_arch,omitempty"`
 }

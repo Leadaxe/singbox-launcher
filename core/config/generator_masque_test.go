@@ -12,6 +12,10 @@ import (
 // the wizard WARP (MASQUE) source goes through exactly this emitter, and before
 // the masque branch existed the node was cut down to {tag,type,server,server_port},
 // failing `sing-box check` with "masque: at least one of ip/ipv6 is required".
+//
+// The URI deliberately uses the legacy `network=`/`sni=` spellings: foreign
+// subscriptions still ship them, and they must land in the config as the
+// current `vhttp` + nested `tls` schema (core SPEC 062).
 func TestGenerateNodeJSON_Masque(t *testing.T) {
 	uri := "masque://FAKEPRIVKEYDER0000@162.159.198.2:443?address=172.16.0.2%2F32%2C2606%3A4700%3A110%3A8142%3A1%3A2%3A3%3A4%2F128&idle_timeout=5m&keep_alive=30s&mtu=1280&network=h3&profile=cloudflare&publickey=FAKESERVERPUBDER0000&sni=example.com#masque-smoke"
 	node, err := subscription.ParseNode(uri, nil)
@@ -31,8 +35,8 @@ func TestGenerateNodeJSON_Masque(t *testing.T) {
 		`"ip":"172.16.0.2/32"`,
 		`"ipv6":"2606:4700:110:8142:1:2:3:4/128"`,
 		`"profile":"cloudflare"`,
-		`"network":"h3"`,
-		`"sni":"example.com"`,
+		`"vhttp":"h3"`,
+		`"tls":{"server_name":"example.com"}`,
 		`"idle_timeout":"5m"`,
 		`"keep_alive_period":"30s"`,
 		`"mtu":1280`,

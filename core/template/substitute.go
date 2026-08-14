@@ -21,15 +21,19 @@ func isIntCastVar(name string) bool {
 }
 
 // runtimeGlobalPrefix — пространство имён runtime-globals в #if predicates (SPEC 067).
-// Ссылка вида "@runtime.platform" / "@runtime.arch" резолвится не из vars, а из
-// runtime.GOOS / runtime.GOARCH. Namespace расширяемый: новые поля добавляются в
-// runtimeGlobalFields + dispatch в lookupVarScalar.
+// Ссылка вида "@runtime.platform" / "@runtime.arch" / "@runtime.target"
+// резолвится не из vars, а из TargetSpec — платформы и роли ЦЕЛЕВОЙ машины
+// (SPEC 097; до него — из runtime.GOOS/GOARCH текущей). Namespace расширяемый:
+// новые поля добавляются в runtimeGlobalFields + dispatch в lookupVarScalar.
 const runtimeGlobalPrefix = "runtime."
 
 // runtimeGlobalFields — известные поля namespace @runtime (без префикса).
+// Все поля строковые: bare-форма предиката ("@runtime.x") для globals
+// запрещена, сравнение только явное — {"@runtime.target": "remote"}.
 var runtimeGlobalFields = map[string]struct{}{
 	"platform": {},
 	"arch":     {},
+	"target":   {},
 }
 
 // isRuntimeGlobalRef true для имён вида "runtime.*" (после strip "@").
@@ -47,10 +51,10 @@ func isKnownRuntimeGlobal(name string) bool {
 }
 
 // SubstituteVarsInJSON заменяет литералы "@name" в дереве JSON на разрешённые значения.
-// Параметры goos / goarch используются runtime-globals (@runtime.platform / @runtime.arch)
-// в predicates #if construct'а (см. SPEC 067).
-func SubstituteVarsInJSON(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, goos, goarch string) ([]byte, error) {
-	out, _, err := substituteVarsInJSONInternal(data, vars, resolved, goos, goarch, false)
+// TargetSpec питает runtime-globals (@runtime.platform / @runtime.arch /
+// @runtime.target) в predicates #if construct'а (см. SPEC 067, SPEC 097).
+func SubstituteVarsInJSON(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) ([]byte, error) {
+	out, _, err := substituteVarsInJSONInternal(data, vars, resolved, target, false)
 	return out, err
 }
 
@@ -58,8 +62,8 @@ func SubstituteVarsInJSON(data []byte, vars []TemplateVar, resolved map[string]R
 // ошибку (UnresolvedVarError) если в дереве встречена ссылка на @var, отсутствующий
 // в `resolved`. Используется preset-substitute path'ом (см. SPEC 067 Phase 8),
 // где unresolved @var означает «пропустить preset целиком», а не подставить пустую строку.
-func SubstituteVarsInJSONStrict(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, goos, goarch string) ([]byte, []string, error) {
-	return substituteVarsInJSONInternal(data, vars, resolved, goos, goarch, true)
+func SubstituteVarsInJSONStrict(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) ([]byte, []string, error) {
+	return substituteVarsInJSONInternal(data, vars, resolved, target, true)
 }
 
 // UnresolvedVarError возвращается SubstituteVarsInJSONStrict если в дереве
@@ -72,7 +76,7 @@ func (e *UnresolvedVarError) Error() string {
 	return "unresolved @var(s): " + strings.Join(e.Names, ", ")
 }
 
-func substituteVarsInJSONInternal(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, goos, goarch string, strict bool) ([]byte, []string, error) {
+func substituteVarsInJSONInternal(data []byte, vars []TemplateVar, resolved map[string]ResolvedVar, target TargetSpec, strict bool) ([]byte, []string, error) {
 	varTypes := make(map[string]string, len(vars))
 	for _, v := range vars {
 		if v.Separator {
@@ -91,7 +95,7 @@ func substituteVarsInJSONInternal(data []byte, vars []TemplateVar, resolved map[
 	if strict {
 		unresolvedSink = &unresolved
 	}
-	substituteWalkCtx(&root, varTypes, resolved, goos, goarch, unresolvedSink)
+	substituteWalkCtx(&root, varTypes, resolved, target, unresolvedSink)
 	if strict && len(unresolved) > 0 {
 		return nil, unresolved, &UnresolvedVarError{Names: unresolved}
 	}
@@ -102,7 +106,7 @@ func substituteVarsInJSONInternal(data []byte, vars []TemplateVar, resolved map[
 // substituteWalkCtx — internal walker с опциональным sink'ом для unresolved @var
 // (используется SubstituteVarsInJSONStrict, SPEC 067 Phase 8). nil sink ==
 // legacy lenient behavior (empty string + warn log).
-func substituteWalkCtx(v *interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string, unresolvedSink *[]string) {
+func substituteWalkCtx(v *interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec, unresolvedSink *[]string) {
 	switch x := (*v).(type) {
 	case map[string]interface{}:
 		// Pre-pass: control-constructs (keys starting with "#").
@@ -117,7 +121,7 @@ func substituteWalkCtx(v *interface{}, varTypes map[string]string, resolved map[
 			raw := x[k]
 			switch k {
 			case "#if":
-				handleIfMapSpreadCtx(x, raw, varTypes, resolved, goos, goarch, unresolvedSink)
+				handleIfMapSpreadCtx(x, raw, varTypes, resolved, target, unresolvedSink)
 				// handleIfMapSpreadCtx always deletes "#if" itself.
 			default:
 				debuglog.WarnLog("substitute: unknown control-construct %q — dropping", k)
@@ -126,7 +130,7 @@ func substituteWalkCtx(v *interface{}, varTypes map[string]string, resolved map[
 		}
 		// Normal field walk.
 		for k, val := range x {
-			substituteWalkCtx(&val, varTypes, resolved, goos, goarch, unresolvedSink)
+			substituteWalkCtx(&val, varTypes, resolved, target, unresolvedSink)
 			x[k] = val
 		}
 	case []interface{}:
@@ -146,14 +150,14 @@ func substituteWalkCtx(v *interface{}, varTypes map[string]string, resolved map[
 			for _, elem := range x {
 				if m, ok := elem.(map[string]interface{}); ok && len(m) == 1 {
 					if body, ok := m["#if"].(map[string]interface{}); ok {
-						branch, take := handleIfArrayElementCtx(body, varTypes, resolved, goos, goarch, unresolvedSink)
+						branch, take := handleIfArrayElementCtx(body, varTypes, resolved, target, unresolvedSink)
 						if take {
 							out = append(out, branch)
 						}
 						continue
 					}
 				}
-				substituteWalkCtx(&elem, varTypes, resolved, goos, goarch, unresolvedSink)
+				substituteWalkCtx(&elem, varTypes, resolved, target, unresolvedSink)
 				out = append(out, elem)
 			}
 			*v = out
@@ -172,7 +176,7 @@ func substituteWalkCtx(v *interface{}, varTypes map[string]string, resolved map[
 			}
 		}
 		for i := range x {
-			substituteWalkCtx(&x[i], varTypes, resolved, goos, goarch, unresolvedSink)
+			substituteWalkCtx(&x[i], varTypes, resolved, target, unresolvedSink)
 		}
 	case string:
 		if strings.HasPrefix(x, "@") {
@@ -240,19 +244,19 @@ func replacementForPlaceholderCtx(name string, varTypes map[string]string, resol
 
 // handleIfMapSpreadCtx evaluates the #if construct in map-spread mode and merges
 // the selected branch's fields into parent. Always deletes the "#if" key.
-func handleIfMapSpreadCtx(parent map[string]interface{}, rawBody interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string, unresolvedSink *[]string) {
+func handleIfMapSpreadCtx(parent map[string]interface{}, rawBody interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec, unresolvedSink *[]string) {
 	defer delete(parent, "#if")
 	body, ok := rawBody.(map[string]interface{})
 	if !ok {
 		debuglog.WarnLog("substitute: #if body is not an object — skipping")
 		return
 	}
-	branch, take := selectIfBranch(body, varTypes, resolved, goos, goarch)
+	branch, take := selectIfBranch(body, varTypes, resolved, target)
 	if !take {
 		return
 	}
 	// Substitute placeholders inside selected branch first.
-	substituteWalkCtx(&branch, varTypes, resolved, goos, goarch, unresolvedSink)
+	substituteWalkCtx(&branch, varTypes, resolved, target, unresolvedSink)
 	branchMap, ok := branch.(map[string]interface{})
 	if !ok {
 		debuglog.WarnLog("substitute: #if branch in map-spread context is not an object — skipping merge")
@@ -266,20 +270,20 @@ func handleIfMapSpreadCtx(parent map[string]interface{}, rawBody interface{}, va
 // handleIfArrayElementCtx evaluates the #if construct in array-element mode.
 // take=false means drop element from array; take=true means include branch
 // (substituted) at this index.
-func handleIfArrayElementCtx(body map[string]interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string, unresolvedSink *[]string) (interface{}, bool) {
-	branch, take := selectIfBranch(body, varTypes, resolved, goos, goarch)
+func handleIfArrayElementCtx(body map[string]interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec, unresolvedSink *[]string) (interface{}, bool) {
+	branch, take := selectIfBranch(body, varTypes, resolved, target)
 	if !take {
 		return nil, false
 	}
-	substituteWalkCtx(&branch, varTypes, resolved, goos, goarch, unresolvedSink)
+	substituteWalkCtx(&branch, varTypes, resolved, target, unresolvedSink)
 	return branch, true
 }
 
 // selectIfBranch evaluates the condition and picks the value/else branch.
 // Returns (branch, take=true) when a branch was selected; (nil, false) when
 // condition is false and no else is present.
-func selectIfBranch(body map[string]interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string) (interface{}, bool) {
-	cond := evaluateIfCondition(body, varTypes, resolved, goos, goarch)
+func selectIfBranch(body map[string]interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec) (interface{}, bool) {
+	cond := evaluateIfCondition(body, varTypes, resolved, target)
 	if cond {
 		val, hasVal := body["value"]
 		if !hasVal {
@@ -297,7 +301,7 @@ func selectIfBranch(body map[string]interface{}, varTypes map[string]string, res
 // evaluateIfCondition extracts and/or and evaluates predicate list.
 // Defensive on both-present (warn, false) and neither-present (warn, true).
 // Empty `and` → vacuously true; empty `or` → vacuously false.
-func evaluateIfCondition(body map[string]interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string) bool {
+func evaluateIfCondition(body map[string]interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec) bool {
 	andRaw, hasAnd := body["and"]
 	orRaw, hasOr := body["or"]
 	if hasAnd && hasOr {
@@ -314,22 +318,22 @@ func evaluateIfCondition(body map[string]interface{}, varTypes map[string]string
 			debuglog.WarnLog("substitute: #if.and is not an array — treating as false")
 			return false
 		}
-		return evaluatePredicateList(list, true, varTypes, resolved, goos, goarch)
+		return evaluatePredicateList(list, true, varTypes, resolved, target)
 	}
 	list, ok := orRaw.([]interface{})
 	if !ok {
 		debuglog.WarnLog("substitute: #if.or is not an array — treating as false")
 		return false
 	}
-	return evaluatePredicateList(list, false, varTypes, resolved, goos, goarch)
+	return evaluatePredicateList(list, false, varTypes, resolved, target)
 }
 
 // evaluatePredicateList short-circuits AND/OR over predicates.
-func evaluatePredicateList(list []interface{}, isAnd bool, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string) bool {
+func evaluatePredicateList(list []interface{}, isAnd bool, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec) bool {
 	if isAnd {
 		// Empty AND → vacuously true.
 		for _, p := range list {
-			if !evaluatePredicate(p, varTypes, resolved, goos, goarch) {
+			if !evaluatePredicate(p, varTypes, resolved, target) {
 				return false
 			}
 		}
@@ -337,7 +341,7 @@ func evaluatePredicateList(list []interface{}, isAnd bool, varTypes map[string]s
 	}
 	// Empty OR → vacuously false.
 	for _, p := range list {
-		if evaluatePredicate(p, varTypes, resolved, goos, goarch) {
+		if evaluatePredicate(p, varTypes, resolved, target) {
 			return true
 		}
 	}
@@ -346,7 +350,7 @@ func evaluatePredicateList(list []interface{}, isAnd bool, varTypes map[string]s
 
 // evaluatePredicate dispatches the 8 predicate forms (see SPEC 067).
 // Recurses for #not.
-func evaluatePredicate(p interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string) bool {
+func evaluatePredicate(p interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec) bool {
 	switch pv := p.(type) {
 	case string:
 		// Bare "@var" → bool template var → scalar == "true".
@@ -360,7 +364,7 @@ func evaluatePredicate(p interface{}, varTypes map[string]string, resolved map[s
 			debuglog.WarnLog("substitute: #if bare predicate %q is not allowed for runtime globals — treating as false", pv)
 			return false
 		}
-		scalar, _, _, found := lookupVarScalar(name, resolved, goos, goarch)
+		scalar, _, _, found := lookupVarScalar(name, resolved, target)
 		if !found {
 			debuglog.WarnLog("substitute: #if predicate references unknown var @%s — treating as false", name)
 			return false
@@ -373,11 +377,11 @@ func evaluatePredicate(p interface{}, varTypes map[string]string, resolved map[s
 		}
 		for k, v := range pv {
 			if k == "#not" {
-				return !evaluatePredicate(v, varTypes, resolved, goos, goarch)
+				return !evaluatePredicate(v, varTypes, resolved, target)
 			}
 			if strings.HasPrefix(k, "@") {
 				name := strings.TrimPrefix(k, "@")
-				return evaluateVarPredicate(name, v, varTypes, resolved, goos, goarch)
+				return evaluateVarPredicate(name, v, varTypes, resolved, target)
 			}
 			debuglog.WarnLog("substitute: #if predicate has unknown key %q — treating as false", k)
 			return false
@@ -388,8 +392,8 @@ func evaluatePredicate(p interface{}, varTypes map[string]string, resolved map[s
 }
 
 // evaluateVarPredicate dispatches RHS forms for {"@var": ...} predicates.
-func evaluateVarPredicate(varName string, rhs interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, goos, goarch string) bool {
-	scalar, isList, list, found := lookupVarScalar(varName, resolved, goos, goarch)
+func evaluateVarPredicate(varName string, rhs interface{}, varTypes map[string]string, resolved map[string]ResolvedVar, target TargetSpec) bool {
+	scalar, isList, list, found := lookupVarScalar(varName, resolved, target)
 	if !found {
 		debuglog.WarnLog("substitute: #if predicate references unknown var @%s — treating as false", varName)
 		return false
@@ -436,13 +440,15 @@ func evaluateVarPredicate(varName string, rhs interface{}, varTypes map[string]s
 // lookupVarScalar resolves @runtime.* globals (case-sensitive lower-case) and
 // otherwise looks up the name in `resolved`. Returns (scalar, isList, list,
 // found). Unknown @runtime.<field> → not found (defensive).
-func lookupVarScalar(name string, resolved map[string]ResolvedVar, goos, goarch string) (string, bool, []string, bool) {
+func lookupVarScalar(name string, resolved map[string]ResolvedVar, target TargetSpec) (string, bool, []string, bool) {
 	if isRuntimeGlobalRef(name) {
 		switch name[len(runtimeGlobalPrefix):] {
 		case "platform":
-			return goos, false, nil, true
+			return target.GOOS, false, nil, true
 		case "arch":
-			return goarch, false, nil, true
+			return target.GOARCH, false, nil, true
+		case "target":
+			return target.TargetOrLocal(), false, nil, true
 		default:
 			debuglog.WarnLog("substitute: unknown runtime global @%s — treating as not found", name)
 			return "", false, nil, false

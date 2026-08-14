@@ -41,9 +41,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"runtime"
 	"strings"
 
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/debuglog"
 )
@@ -87,6 +87,32 @@ type BuildContext struct {
 	// и MergeDNSSection. Активируется когда RulesV6 содержит preset-ref'ы или
 	// DNS имеет template_servers/extra_servers/extra_rules. Иначе noop.
 	Preset PresetMergeContext
+
+	// Target (SPEC 097) — для какой машины собирается конфиг: платформа и роль
+	// (local | remote). Питает фильтрацию params, per-platform дефолты vars и
+	// runtime-globals @runtime.platform / @runtime.arch / @runtime.target в
+	// #if-ветках шаблона и пресетов.
+	//
+	// Zero value (пустой TargetSpec) нормализуется в «эта машина, local» —
+	// поведение вызывающих, не знающих о таргетах, не меняется.
+	Target template.TargetSpec
+}
+
+// TargetSpecFromState (SPEC 097) — TargetSpec из meta-полей state'а.
+// Пустой/legacy state (без meta.target) даёт local-таргет с платформой
+// текущей машины: состояния, записанные до SPEC 097, читаются без миграции.
+//
+// Живёт в core/build, а не в core/state: state — leaf-пакет модели и о
+// template.TargetSpec знать не должен.
+func TargetSpecFromState(s *corestate.State) template.TargetSpec {
+	if s == nil {
+		return template.LocalTarget()
+	}
+	return template.TargetSpec{
+		GOOS:   s.TargetPlatform,
+		GOARCH: s.TargetArch,
+		Target: s.Target,
+	}.Normalized()
 }
 
 // Result — итог сборки.
@@ -140,9 +166,10 @@ func BuildConfig(ctx BuildContext) (Result, error) {
 	}
 
 	res := Result{}
+	ctx.Target = ctx.Target.Normalized()
 
 	// Шаг 1: эффективный конфиг через GetEffectiveConfig.
-	cfg, order := effectiveConfig(ctx.Template, ctx.Vars, &res)
+	cfg, order := effectiveConfig(ctx.Template, ctx.Vars, ctx.Target, &res)
 
 	// Шаг 2: build sections.
 	sections, err := buildOrderedSections(ctx, cfg, order)
@@ -167,18 +194,18 @@ func BuildConfig(ctx BuildContext) (Result, error) {
 // effectiveConfig возвращает эффективные секции и их порядок. При неудаче
 // GetEffectiveConfig (например, неразрешимая var в `if`) — fallback на
 // предкэшированные td.Config / td.ConfigOrder + warning в Validation.
-func effectiveConfig(td *template.TemplateData, vars map[string]string, res *Result) (map[string]json.RawMessage, []string) {
+func effectiveConfig(td *template.TemplateData, vars map[string]string, target template.TargetSpec, res *Result) (map[string]json.RawMessage, []string) {
 	// Если у шаблона нет ни Params ни Vars — нечего применять, отдаём прекеш.
 	if len(td.RawConfig) == 0 || (len(td.Params) == 0 && len(td.Vars) == 0) {
 		return td.Config, td.ConfigOrder
 	}
-	effective, ord, err := template.GetEffectiveConfig(
+	effective, ord, err := template.GetEffectiveConfigFor(
 		td.RawConfig,
 		td.Params,
-		runtime.GOOS,
 		td.Vars,
 		vars,
 		td.RawTemplate,
+		target,
 	)
 	if err != nil {
 		res.Validation.Warnings = append(res.Validation.Warnings,

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"singbox-launcher/core/state"
+	"singbox-launcher/core/template"
 )
 
 // The FakeIP preset must emit a type:"fakeip" DNS server carrying inet4_range /
@@ -38,7 +39,7 @@ func TestResolveDNS_FakeIPPreset(t *testing.T) {
 			{Kind: state.RuleKindPreset, Ref: "fakeip", Enabled: true, Body: json.RawMessage(`{"vars":{}}`)},
 		},
 	}
-	got := ResolveDNS(st, td, nil)
+	got := ResolveDNS(st, td, nil, template.LocalTarget())
 
 	// fakeip server with both ranges, prefixed tag fakeip:fakeip.
 	var fakeip *ResolvedDNSServer
@@ -91,7 +92,7 @@ func TestResolveDNS_FakeIPPreset(t *testing.T) {
 	st2 := &state.State{Rules: []state.Rule{
 		{Kind: state.RuleKindPreset, Ref: "fakeip", Enabled: true, Body: json.RawMessage(`{"vars":{"force":"false"}}`)},
 	}}
-	got2 := ResolveDNS(st2, td, nil)
+	got2 := ResolveDNS(st2, td, nil, template.LocalTarget())
 	presetCount := 0
 	for _, r := range got2.Rules {
 		if r.Source == DNSSourcePreset {

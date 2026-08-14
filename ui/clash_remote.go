@@ -30,6 +30,7 @@ import (
 	"sync/atomic"
 
 	"singbox-launcher/core"
+	"singbox-launcher/core/services"
 )
 
 // RemoteOverride — ephemeral remote Clash-API endpoint.
@@ -152,14 +153,93 @@ func CurrentGeneration() uint64 {
 //   - enabled — true если caller имеет валидный (baseURL, token) для запросов
 //   - remote  — true только если override active (для UI badge differentiation)
 func EffectiveClashAPIConfig(ac *core.AppController) (baseURL, token string, enabled, remote bool) {
+	return EffectiveClashAPIConfigIn(ac, services.ScopeRemote)
+}
+
+// EffectiveClashAPIConfigIn — тот же резолвер, но привязанный к области панели.
+//
+// Remote-override (SPEC 064) и выбранная машина lxd (SPEC 097) — свойства
+// вкладки Remote. Вкладка Local всегда говорит с локальным ядром: без этого
+// подключение к удалённой машине уводило локальную панель на пустой baseURL,
+// и «Тест» падал с `unsupported protocol scheme ""`.
+func EffectiveClashAPIConfigIn(ac *core.AppController, scope services.ProxyScope) (baseURL, token string, enabled, remote bool) {
+	if scope == services.ScopeLocal {
+		if ac == nil || ac.APIService == nil {
+			return "", "", false, false
+		}
+		if base, tok, ok := ac.DaemonClashEndpoint(); ok {
+			return base, tok, true, false
+		}
+		base, tok, en := ac.APIService.GetClashAPIConfig()
+		return base, tok, en, false
+	}
 	if ov, ok := GetRemoteOverride(); ok {
 		return fmt.Sprintf("http://%s:%d", ov.Host, ov.Port), ov.Secret, true, true
+	}
+	// SPEC 097: удалённый демон lxd управляется по gRPC — Clash-адреса у него
+	// нет. Возвращаем enabled=true с пустым baseURL: это гейт доступности
+	// вкладки, а сами запросы всё равно идут через EffectiveProxyTransport.
+	// Без этого Servers оставался бы выключенным при живом gRPC-подключении.
+	if _, _, ok := GetLxdRemoteOverride(); ok {
+		return "", "", true, true
 	}
 	if ac == nil || ac.APIService == nil {
 		return "", "", false, false
 	}
+	// Бэкенд может переопределять Clash-адрес своего ядра. Сегодня
+	// DaemonBackend всегда отвечает ok=false (Clash вырезан из daemon-конфига,
+	// всё по gRPC) — ветка остаётся швом на случай бэкенда, у которого Clash
+	// живёт на собственном адресе, а не по config.json.
+	if base, tok, ok := ac.DaemonClashEndpoint(); ok {
+		return base, tok, true, false
+	}
 	base, tok, en := ac.APIService.GetClashAPIConfig()
 	return base, tok, en, false
+}
+
+// EffectiveProxyTransport — транспорт proxy-операций для Servers-tab.
+// Приоритет: явный remote-override (диагностический путь SPEC 064) →
+// транспорт активного бэкенда (daemon-режим, gRPC) → локальный Clash API.
+//
+// Всегда возвращает готовый транспорт: при выключенном clash_api это
+// ClashTransport с пустым baseURL — запрос завершится той же ошибкой
+// соединения, что и раньше (behavior-preserving для error-путей).
+func EffectiveProxyTransport(ac *core.AppController) services.ProxyTransport {
+	return EffectiveProxyTransportIn(ac, services.ScopeRemote)
+}
+
+// EffectiveProxyTransportIn — транспорт для конкретной области.
+// ScopeLocal никогда не уезжает на remote-override: локальная панель управляет
+// локальным ядром даже при подключённой удалённой машине.
+func EffectiveProxyTransportIn(ac *core.AppController, scope services.ProxyScope) services.ProxyTransport {
+	if scope == services.ScopeLocal {
+		if ac != nil && ac.APIService != nil {
+			if t := ac.APIService.TransportOverride(); t != nil {
+				return t
+			}
+		}
+		baseURL, token, _, _ := EffectiveClashAPIConfigIn(ac, services.ScopeLocal)
+		return services.NewClashTransport(baseURL, token)
+	}
+	// Daemon-режим (gRPC-транспорт) имеет приоритет над remote-override:
+	// override — диагностический путь classic-режима (SPEC 064), в daemon он
+	// только увёл бы proxy-операции с gRPC на чужой Clash-адрес.
+	if ac != nil && ac.APIService != nil {
+		if t := ac.APIService.TransportOverride(); t != nil {
+			return t
+		}
+	}
+	// SPEC 097: выбран удалённый демон lxd — говорим с ним по gRPC.
+	// Выше Clash-override: у remote-конфига Clash API нет by design, и
+	// откат на HTTP-путь дал бы гарантированно нерабочее подключение.
+	if t := lxdOverrideTransportOrNil(); t != nil {
+		return t
+	}
+	if ov, ok := GetRemoteOverride(); ok {
+		return services.NewClashTransport(fmt.Sprintf("http://%s:%d", ov.Host, ov.Port), ov.Secret)
+	}
+	baseURL, token, _, _ := EffectiveClashAPIConfig(ac)
+	return services.NewClashTransport(baseURL, token)
 }
 
 // NormalizeHost — приводит юзер-ввод к чистому hostname'у.

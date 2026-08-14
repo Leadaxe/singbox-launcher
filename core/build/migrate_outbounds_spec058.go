@@ -37,8 +37,6 @@
 package build
 
 import (
-	"runtime"
-
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
@@ -57,6 +55,7 @@ func MigrateOutboundsToReferencedShape(
 	outbounds *[]configtypes.OutboundConfig,
 	rules []state.Rule,
 	td *template.TemplateData,
+	target template.TargetSpec,
 ) bool {
 	if outbounds == nil || td == nil {
 		return false
@@ -99,7 +98,7 @@ func MigrateOutboundsToReferencedShape(
 		if pb == nil {
 			continue
 		}
-		entries, _ := ExpandPresetOutbounds(p, pb.Vars, runtime.GOOS, runtime.GOARCH)
+		entries, _ := ExpandPresetOutbounds(p, pb.Vars, target)
 		for _, entry := range entries {
 			switch entry.Mode {
 			case "add":

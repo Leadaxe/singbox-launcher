@@ -15,7 +15,7 @@ func TestSubstituteVarsInJSON_scalars(t *testing.T) {
 		"tun_mtu":   {Scalar: "1400"},
 	}
 	raw := json.RawMessage(`{"log":{"level":"@log_level"},"mtu":"@tun_mtu"}`)
-	out, err := SubstituteVarsInJSON(raw, vars, resolved, "darwin", "amd64")
+	out, err := SubstituteVarsInJSON(raw, vars, resolved, TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestSubstituteVarsInJSON_bool(t *testing.T) {
 		"auto":         {Scalar: "false"},
 	}
 	raw := json.RawMessage(`{"strict_route":"@strict_route","auto":"@auto"}`)
-	out, err := SubstituteVarsInJSON(raw, vars, resolved, "darwin", "amd64")
+	out, err := SubstituteVarsInJSON(raw, vars, resolved, TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestSubstituteVarsInJSON_proxyInListenPort(t *testing.T) {
 		"proxy_in_listen_port": {Scalar: "7890"},
 	}
 	raw := json.RawMessage(`{"listen_port":"@proxy_in_listen_port"}`)
-	out, err := SubstituteVarsInJSON(raw, vars, resolved, "darwin", "amd64")
+	out, err := SubstituteVarsInJSON(raw, vars, resolved, TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestSubstituteVarsInJSON_textList(t *testing.T) {
 		"addrs": {List: []string{"10.0.0.1/32", "10.0.0.2/32"}},
 	}
 	raw := json.RawMessage(`{"address":["@addrs"]}`)
-	out, err := SubstituteVarsInJSON(raw, vars, resolved, "darwin", "amd64")
+	out, err := SubstituteVarsInJSON(raw, vars, resolved, TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestSubstituteVarsInJSON_textList(t *testing.T) {
 
 func substituteHelper(t *testing.T, vars []TemplateVar, resolved map[string]ResolvedVar, body, goos, goarch string) map[string]interface{} {
 	t.Helper()
-	out, err := SubstituteVarsInJSON(json.RawMessage(body), vars, resolved, goos, goarch)
+	out, err := SubstituteVarsInJSON(json.RawMessage(body), vars, resolved, TargetSpec{GOOS: goos, GOARCH: goarch}.Normalized())
 	if err != nil {
 		t.Fatalf("substitute: %v", err)
 	}

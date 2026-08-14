@@ -10,7 +10,6 @@ package build
 
 import (
 	"encoding/json"
-	"runtime"
 
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
@@ -56,6 +55,15 @@ type ResolvedRouteRuleSet struct {
 	// или srs cache miss). Build skip'ает; UI показывает с warning'ом.
 	Skipped       bool
 	SkippedReason string
+
+	// Enabled — состояние правила-владельца (state.rules[i].enabled).
+	//
+	// Выключенный пресет НЕ должен тащить свои rule_set в конфиг: его
+	// routing-правила не эмитятся, ссылаться на набор некому, а вот
+	// требование к файлу остаётся — и на машине, где .srs нет, ядро падает
+	// с «open …: no such file or directory». Так выключенные block-ads и
+	// russian ломали конфиг для роутера.
+	Enabled bool
 }
 
 // ResolvedRouteRule — одна entry финального route.rules[] list'а.
@@ -105,6 +113,7 @@ func ResolveRoute(
 	td *template.TemplateData,
 	execDir string,
 	srsCachedPaths map[string]string,
+	target template.TargetSpec,
 ) ResolvedRoute {
 	var out ResolvedRoute
 	if state == nil || td == nil {
@@ -121,7 +130,7 @@ func ResolveRoute(
 	for _, rule := range state.Rules {
 		switch rule.Kind {
 		case corestate.RuleKindPreset:
-			resolvePresetRouteRule(&out, presetByID, rule, execDir, emittedTags)
+			resolvePresetRouteRule(&out, presetByID, rule, execDir, emittedTags, target)
 		case corestate.RuleKindInline:
 			resolveInlineRouteRule(&out, rule)
 		case corestate.RuleKindSrs:
@@ -139,6 +148,7 @@ func resolvePresetRouteRule(
 	rule corestate.Rule,
 	execDir string,
 	emittedTags map[string]bool,
+	target template.TargetSpec,
 ) {
 	p, ok := presetByID[rule.Ref]
 	if !ok {
@@ -151,7 +161,7 @@ func resolvePresetRouteRule(
 		return
 	}
 	pb := body.(*corestate.PresetBody)
-	frags, warns, ok := ExpandPreset(p, pb.Vars, runtime.GOOS, runtime.GOARCH)
+	frags, warns, ok := ExpandPreset(p, pb.Vars, target)
 	for _, w := range warns {
 		debuglog.WarnLog("route resolve: %s", w.String())
 	}
@@ -169,13 +179,14 @@ func resolvePresetRouteRule(
 		if emittedTags[tag] {
 			continue
 		}
-		converted, skip := convertPresetRuleSetRemoteToLocal(rs, execDir)
+		converted, skip := convertPresetRuleSetRemoteToLocal(rs, execDir, target.ResourceDir, target.SrsLocalDir)
 		if skip {
 			out.RuleSets = append(out.RuleSets, ResolvedRouteRuleSet{
 				Tag:           tag,
 				Source:        RouteSourcePreset,
 				PresetID:      p.ID,
 				PresetLabel:   presetLabel,
+				Enabled:       rule.Enabled,
 				Skipped:       true,
 				SkippedReason: "remote .srs not cached",
 			})
@@ -187,6 +198,7 @@ func resolvePresetRouteRule(
 			Source:      RouteSourcePreset,
 			PresetID:    p.ID,
 			PresetLabel: presetLabel,
+			Enabled:     rule.Enabled,
 		})
 		emittedTags[tag] = true
 	}
@@ -257,6 +269,7 @@ func resolveSrsRouteRule(
 			Tag:           tag,
 			Source:        RouteSourceSrs,
 			SrsID:         id,
+			Enabled:       rule.Enabled,
 			Skipped:       true,
 			SkippedReason: "srs file not cached",
 		})
@@ -271,10 +284,11 @@ func resolveSrsRouteRule(
 			"path":   path,
 		}
 		out.RuleSets = append(out.RuleSets, ResolvedRouteRuleSet{
-			Tag:    tag,
-			Body:   rs,
-			Source: RouteSourceSrs,
-			SrsID:  id,
+			Tag:     tag,
+			Body:    rs,
+			Source:  RouteSourceSrs,
+			SrsID:   id,
+			Enabled: rule.Enabled,
 		})
 		emittedTags[tag] = true
 	}

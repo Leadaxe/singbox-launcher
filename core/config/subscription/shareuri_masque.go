@@ -38,16 +38,35 @@ func shareURIFromMasque(out map[string]interface{}) (string, error) {
 	if profile := mapGetString(out, "profile"); profile != "" {
 		q.Set("profile", profile)
 	}
-	network := mapGetString(out, "network")
-	if network == "" {
-		network = "h3"
+	// `vhttp` + nested `tls` is the sing-box SPEC 062 shape the launcher emits;
+	// `network`/`sni` are still read here so an outbound imported from an older
+	// config round-trips instead of silently losing its transport and SNI.
+	vhttp := mapGetString(out, "vhttp")
+	if vhttp == "" {
+		vhttp = mapGetString(out, "network")
 	}
-	q.Set("network", network)
+	if vhttp == "" {
+		vhttp = "h3"
+	}
+	q.Set("vhttp", vhttp)
 	if mtu := mapGetInt(out, "mtu"); mtu > 0 {
 		q.Set("mtu", strconv.Itoa(mtu))
 	}
-	if sni := mapGetString(out, "sni"); sni != "" {
+	sni := mapGetString(out, "sni")
+	insecure := false
+	if tls, ok := out["tls"].(map[string]interface{}); ok {
+		if v := mapGetString(tls, "server_name"); v != "" {
+			sni = v
+		}
+		if v, ok := tls["insecure"].(bool); ok && v {
+			insecure = true
+		}
+	}
+	if sni != "" {
 		q.Set("sni", sni)
+	}
+	if insecure {
+		q.Set("insecure", "1")
 	}
 	if it := mapGetString(out, "idle_timeout"); it != "" {
 		q.Set("idle_timeout", it)

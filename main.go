@@ -13,6 +13,7 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core"
+	"singbox-launcher/core/services"
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
@@ -61,6 +62,18 @@ func main() {
 	// resync `last_template_launcher_version`.
 	if err := core.InvalidateTemplateIfStale(controller.FileService.ExecDir); err != nil {
 		debuglog.WarnLog("template: stale-check failed: %v", err)
+	}
+
+	// SPEC 098: до этой версии профиль удалённой машины был один на всех
+	// (bin/wizard_states/remote/state.json + bin/remote-config.json). Отдаём
+	// его владельцу, пока никто не начал читать новые пути — иначе первая же
+	// машина откроется с пустым состоянием, а настроенный конфиг останется
+	// лежать файлом, на который больше никто не смотрит.
+	//
+	// Non-fatal: при неудаче старые файлы остаются на месте нетронутыми.
+	if err := services.MigrateLegacyRemoteProfile(controller.FileService.ExecDir,
+		services.NewRemoteRegistry(controller.FileService.ExecDir)); err != nil {
+		debuglog.WarnLog("remote migration: %v", err)
 	}
 
 	// Load locale settings and external translations
@@ -230,7 +243,7 @@ func main() {
 					<-time.After(500 * time.Millisecond)
 					fyne.Do(func() {
 						if controller.UIService.MainWindow != nil {
-							controller.UIService.MainWindow.Hide()
+							controller.UIService.HideMainWindow()
 							debuglog.InfoLog("Tray mode: Window hidden")
 						}
 					})
@@ -244,16 +257,24 @@ func main() {
 
 	// Create App structure to manage UI
 	app := ui.NewApp(controller.UIService.MainWindow, controller)
-	controller.UIService.MainWindow.SetContent(fynetooltip.AddWindowToolTipLayer(app.GetContent(), controller.UIService.MainWindow.Canvas()))
-	controller.UIService.MainWindow.Resize(fyne.NewSize(350, 450)) // initial window size
-	controller.UIService.MainWindow.CenterOnScreen()               // Center the window on the screen
+	controller.UIService.MainWindow.SetContent(fynetooltip.AddWindowToolTipLayer(
+		ui.WithMinWindowSize(app.GetContent()), controller.UIService.MainWindow.Canvas()))
+	// SPEC 098 §3.2: 1000×700 — и стартовый размер, и минимум. Растянуть
+	// можно, сжать ниже нельзя: на вкладках Local и Remote две колонки, и
+	// ниже этого они не деградируют, а превращаются в кашу из обрезанных
+	// подписей. Прежние 350×450 остались от одноколоночной эпохи.
+	//
+	// SetFixedSize здесь неприменим (он запрещает и растягивание); нижнюю
+	// границу держит MinSize контента — Fyne не даёт окну стать меньше него.
+	controller.UIService.MainWindow.Resize(ui.MinWindowSize)
+	controller.UIService.MainWindow.CenterOnScreen() // Center the window on the screen
 
 	core.CheckIfLauncherAlreadyRunningUtil()
 
 	// Intercept the window close event (clicking "X") to hide it instead of exiting completely.
 	if controller.UIService.MainWindow != nil {
 		controller.UIService.MainWindow.SetCloseIntercept(func() {
-			controller.UIService.MainWindow.Hide()
+			controller.UIService.HideMainWindow()
 			if controller.UIService.HideAppFromDock {
 				platform.HideDockIcon()
 			}
