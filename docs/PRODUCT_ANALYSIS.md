@@ -1,435 +1,437 @@
-# Продуктовый анализ singbox-launcher
+# Product analysis — singbox-launcher
 
-**One-liner:** «Декларативный routing engine + сетевой профайлер + headless control plane поверх sing-box».
+**🌐 Language**: English | [Русский](PRODUCT_ANALYSIS.ru.md)
 
----
-
-## Позиционирование
-
-**Десктоп-платформа сетевой маршрутизации и анализа трафика. 15+ VPN-протоколов, глубина настроек и API уровня Enterprise. Поверх sing-box как execution-engine.**
-
-Семь тезисов, описывающих продукт:
-
-1. **VPN observability platform.** Traffic Profiler + Debug API дают полную видимость трафика и состояния — за 30 секунд видно, какой outbound выбрал router, какой DNS resolve дал какой IP, по какому правилу прошло соединение.
-
-2. **Headless mode из коробки.** Bearer-auth HTTP API из 25 endpoints (24 protected + unauthenticated `/ping`), документированный MCP integration path (SPEC 038 §6.5). Пригоден для DevOps-скриптов и AI-агентов: Claude через MCP читает `/state`, переключает прокси, рестартит engine — без открытия UI.
-
-3. **Configuration overlay.** State хранит ссылки на community template + diff пользовательских изменений (SPEC 058). Bump шаблона приносит обновления автоматически, персональные правки переезжают сверху. Паттерн дотфайл-менеджеров (chezmoi / yadm), применённый к VPN-конфигам.
-
-4. **Reliability-first.** Auto-restart with stability window (3 attempts × 180s), atomic writes (`stage → rename`), per-source raw cache с резервированием на failure, power-event aware HTTP transports.
-
-5. **Self-service support через snapshot.** `GET /debug/snapshot` + кнопка «Copy snapshot» в Diagnostics → один клик упаковывает template + state + cache + config в clipboard для bug-report.
-
-6. **Полная карта трафика per-process с CNAME-chain reconstruction.** Аналог уровня Little Snitch ($59 macOS) / GlassWire ($39 Windows) — кросс-платформенно, free, интегрировано с routing engine.
-
-7. **Декларативный routing для не-программистов.** Preset bundles (SPEC 053) с условиями `if`/`if_or`, локальными SRS rule-sets, типизированными vars (`enum`, `dns_server`, `outbound` с whitelist'ами) превращают написание pfSense-уровневых правил в чек-боксы и dropdown'ы.
+**One-liner:** "A declarative routing engine + a network profiler + a headless control plane on top of sing-box."
 
 ---
 
-# Пользовательские возможности
+## Positioning
 
-## Split-соединения / per-connection routing
+**A desktop platform for network routing and traffic analysis. 13 VPN protocols, enterprise-level configuration depth and API, with sing-box as the execution engine.**
 
-Файлы: `internal/traffic/clash_connections.go`, `api/clash.go`, `ui/clash_api_tab.go`, `core/state/connections.go`, `bin/wizard_template.json`.
+Seven theses that describe the product:
 
-### TUN-inbound + декларативный split-tunneling
+1. **A VPN observability platform.** The Traffic Profiler + the Debug API give full visibility into traffic and state — within 30 seconds you can see which outbound the router picked, which DNS resolve produced which IP, and which rule the connection matched.
 
-Шаблон (`bin/wizard_template.json`, 1432 строки) включает TUN inbound с auto-route + auto-redirect (Linux) + `find_process: true` — аналог системного VPN-драйвера. Каждый пакет проходит через routing-engine sing-box с правилами из `state.rules[]`. Decision per-connection: **proxy / direct / block** с гранулярностью домен + CIDR + порт + процесс (по имени или regex пути) + sniff (TLS SNI / HTTP Host).
+2. **Headless mode out of the box.** A bearer-auth HTTP API of 28 paths (27 protected + the unauthenticated `/ping`) with a documented MCP integration path (SPEC 038 §6.5). Suitable for DevOps scripts and AI agents: Claude reads `/state` over MCP, switches proxies and restarts the engine — without opening the UI.
 
-### Real-time observability per-connection — Clash API `/connections`
+3. **Configuration overlay.** State stores references to the community template plus the diff of the user's changes (SPEC 058). A template bump delivers updates automatically while personal edits ride on top. The dotfile-manager pattern (chezmoi / yadm) applied to VPN configs.
 
-`internal/traffic/clash_connections.go` опрашивает `http://127.0.0.1:9090/connections` каждую секунду. По каждому соединению известно: процесс-источник (путь и имя), сеть/протокол, host, destination IP+port, счётчики upload/download, цепочка outbound-селекторов и matched rule.
+4. **Reliability first.** Auto-restart with a stability window (3 attempts × 180s), atomic writes (`stage → rename`), a per-source raw cache that falls back on failure, and power-event-aware HTTP transports.
 
-`ConnPoller` сравнивает соседние snapshot'ы и выдаёт три типа событий:
-- **Opened** — новые conn-id'ы → emit `TCPOpen` / `UDPOpen`
-- **Closed** — исчезли → emit `*Close` с длительностью `now - start`
-- **Bytes** — байт-дельта для активных
+5. **Self-service support through snapshots.** `GET /debug/snapshot` plus the "Copy snapshot" button in Diagnostics → one click packs template + state + cache + config into the clipboard for a bug report.
 
-Stream lifecycle-событий с per-process attribution.
+6. **A complete per-process traffic map with CNAME-chain reconstruction.** On par with Little Snitch ($59, macOS) / GlassWire ($39, Windows) — cross-platform, free, and integrated with the routing engine.
 
-### Routing decision visibility
-
-Каждое соединение в `/connections` несёт `chains: ["vless-server", "🇫🇮 Финляндия", "vpn-1"]` (leaf→root outbound chain) и `rule: "domain_suffix"`, `rulePayload: "example.com"` — юзер видит, по какому правилу принят routing decision и через какую цепочку селекторов соединение пошло. В UI Traffic Profiler chain раскрывается до полного: `Slack.app → api.slack.com → CNAME slack-edge.com → 104.16.x.x → via vpn-1 → 🇫🇮 Финляндия`. Уровень pfSense / Untangle dashboards с привязкой к процессу-источнику.
-
-### Split-tunneling политики
-
-Типовые preset bundles в шаблоне: `ru-direct` (RU-трафик → direct, остальное → VPN), `ads-all` (block доменов рекламы) и др. Декларативное policy-based routing: «процесс X → direct, домен Y → block, всё остальное → VPN-EU». Конфигурация в Configurator — чекбоксы и dropdown'ы.
+7. **Declarative routing for non-programmers.** Preset bundles (SPEC 053) with `if`/`if_or` conditions, local SRS rule-sets and typed vars (`enum`, `dns_server`, `outbound` with whitelists) turn writing pfSense-grade rules into checkboxes and dropdowns.
 
 ---
 
-## Комплексные правила routing'а — firewall-уровень
+# User-facing capabilities
 
-Файлы: `core/state/rule_types.go`, `SPECS/053-F-N-PRESET_BUNDLES/SPEC.md`, `SPECS/018-F-C-CUSTOM_RULE_SUBSYSTEM_REFACTOR/SPEC.md`, `ui/configurator/tabs/rules_tab.go`, `bin/wizard_template.json`.
+## Split connections / per-connection routing
 
-### Двухуровневая модель правил
+Files: `internal/traffic/clash_connections.go`, `api/clash.go`, `ui/clash_api_tab.go`, `core/state/connections.go`, `bin/wizard_template.json`.
 
-**Уровень 1 — preset bundles** (SPEC 053, schema `presets_v1`). `wizard_template.json` содержит self-contained пресеты с:
+### The TUN inbound + declarative split tunneling
 
-- `vars` — параметры (типы: `outbound | dns_server | enum | text | number | bool`) с UI-control'ами (dropdown, checkbox, text entry)
-- `rule_set[]` — локальные SRS rule-sets (inline или remote URL), теги префиксуются `<preset_id>:<tag>`
-- `dns_servers[]` — локальные DNS-серверы пресета
-- `rule` — sing-box routing rule
-- `dns_rule` — sing-box dns rule
-- `if` / `if_or` условия — `if: ["use_yandex_dns"]` показывает фрагмент только если перечисленные bool vars = true
+The template (`bin/wizard_template.json`) enables a TUN inbound with auto-route + auto-redirect (Linux) + `find_process: true` — the equivalent of a system VPN driver. Every packet goes through the sing-box routing engine with the rules from `state.rules[]`. The per-connection decision is **proxy / direct / block**, at the granularity of domain + CIDR + port + process (by name or path regex) + sniff (TLS SNI / HTTP Host).
 
-Каждый var имеет `options` (whitelist) или `select: "local"|"global"` (scope shortcut). `default` обязателен.
+### Real-time per-connection observability — the Clash API `/connections`
 
-**Уровень 2 — user rules** (SPEC 018). 5 типизированных констант:
+`internal/traffic/clash_connections.go` polls `http://127.0.0.1:9090/connections` once per second. For every connection it knows: the source process (path and name), the network/protocol, the host, the destination IP+port, the upload/download counters, the chain of outbound selectors, and the matched rule.
+
+`ConnPoller` compares adjacent snapshots and emits three kinds of event:
+- **Opened** — new conn-ids → emit `TCPOpen` / `UDPOpen`
+- **Closed** — gone → emit `*Close` with a duration of `now - start`
+- **Bytes** — the byte delta for the active ones
+
+A stream of lifecycle events with per-process attribution.
+
+### Routing-decision visibility
+
+Every connection in `/connections` carries `chains: ["vless-server", "🇫🇮 Finland", "vpn-1"]` (the leaf→root outbound chain) plus `rule: "domain_suffix"` and `rulePayload: "example.com"` — the user sees which rule drove the routing decision and which chain of selectors the connection took. In the Traffic Profiler UI the chain expands in full: `Slack.app → api.slack.com → CNAME slack-edge.com → 104.16.x.x → via vpn-1 → 🇫🇮 Finland`. This is the level of pfSense / Untangle dashboards, tied to the originating process.
+
+### Split-tunneling policies
+
+Typical preset bundles in the template: `ru-direct` (Russian traffic → direct, everything else → VPN), `ads-all` (block ad domains) and others. Declarative policy-based routing: "process X → direct, domain Y → block, everything else → VPN-EU". Configuration lives in the Configurator as checkboxes and dropdowns.
+
+---
+
+## Complex routing rules — firewall grade
+
+Files: `core/state/rule_types.go`, `SPECS/053-F-N-PRESET_BUNDLES/SPEC.md`, `SPECS/018-F-C-CUSTOM_RULE_SUBSYSTEM_REFACTOR/SPEC.md`, `ui/configurator/tabs/rules_tab.go`, `bin/wizard_template.json`.
+
+### The two-level rule model
+
+**Level 1 — preset bundles** (SPEC 053, the `presets_v1` schema). `wizard_template.json` holds self-contained presets with:
+
+- `vars` — parameters (types: `outbound | dns_server | enum | text | number | bool`) with UI controls (dropdown, checkbox, text entry)
+- `rule_set[]` — local SRS rule-sets (inline or a remote URL); tags are prefixed `<preset_id>:<tag>`
+- `dns_servers[]` — the preset's local DNS servers
+- `rule` — a sing-box routing rule
+- `dns_rule` — a sing-box dns rule
+- `if` / `if_or` conditions — `if: ["use_yandex_dns"]` includes the fragment only when the listed bool vars are true
+
+Every var has either `options` (a whitelist) or `select: "local"|"global"` (a scope shortcut). `default` is mandatory.
+
+**Level 2 — user rules** (SPEC 018). Five typed constants:
 
 - `ips` — IP/CIDR
 - `urls` — domain / domain_suffix / domain_keyword / domain_regex
-- `processes` — process_name или process_path_regex (с режимом Simple/Regex, сохраняемым в `params`)
-- `srs` — SRS rule-set по URL (свой или из runetfreedom-каталога)
-- `raw` — сырой JSON правила
+- `processes` — process_name or process_path_regex (with the Simple/Regex mode stored in `params`)
+- `srs` — an SRS rule-set by URL (your own or one from the runetfreedom catalogue)
+- `raw` — the raw JSON of a rule
 
-### Поддержанные matchers
+### Supported matchers
 
-Из `bin/wizard_template.json` и `core/state/rule_types.go` (`Rule.Body` через `InlineBody.Match map[string]interface{}`):
+From `bin/wizard_template.json` and `core/state/rule_types.go` (`Rule.Body` via `InlineBody.Match map[string]interface{}`):
 
 - `domain`, `domain_suffix`, `domain_keyword`, `domain_regex`
 - `ip_cidr`, `source_ip_cidr`
 - `port`, `port_range`, `source_port`, `source_port_range`
 - `network` (tcp/udp), `protocol`
 - `process_name`, `process_path`, `process_path_regex`
-- `package_name` (Android-совместимость)
-- `geosite`, `geoip` (через rule_set с remote URL)
-- `rule_set` (SRS binary файлы, локальные)
+- `package_name` (Android compatibility)
+- `geosite`, `geoip` (through a rule_set with a remote URL)
+- `rule_set` (local SRS binary files)
 - `inbound`, `outbound`, `user`, `clash_mode`
-- Композиция: вложенные `rules` + `invert: true`
+- Composition: nested `rules` + `invert: true`
 
 Per-rule action: `route(outbound)`, `route-options`, `reject`, `direct`.
 
 ### SRS — Sing-box Rule Sets
 
-`core/state/rule_types.go::SrsBody{Name, SrsURL, Outbound}` + SPEC 014 + SPEC 020 (local download). Лаунчер:
+`core/state/rule_types.go::SrsBody{Name, SrsURL, Outbound}` + SPEC 014 + SPEC 020 (local download). The launcher:
 
-- кеширует `.srs` файлы в `bin/rule_sets/`
-- запрещает `type: remote` в финальном `config.json` (`convertRuleSetToLocalRequired()` в `core/build/route_merge.go`, SPEC 045 фаза 9) — иначе sing-box на cold-start пытается скачать rule-set через VPN-прокси, который ещё не поднят, → fatal. Invariant ловит реальный bug
-- авто-скачивает SRS на открытие configurator (если файл отсутствует)
-- показывает badge ⚠ если SRS file missing
+- caches `.srs` files in `bin/rule-sets/`
+- forbids `type: remote` in the final `config.json` (`convertRuleSetToLocalRequired()` in `core/build/route_merge.go`, SPEC 045 phase 9) — otherwise sing-box on a cold start tries to download the rule-set through a VPN proxy that isn't up yet → fatal. The invariant catches a real bug
+- auto-downloads an SRS when the Configurator opens (if the file is missing)
+- shows a ⚠ badge when an SRS file is missing
 
-### Уровень сложности
+### Level of sophistication
 
-В сравнении с pfSense (даёт `src/dst/proto/port` правила с `action: pass/block/reject` и интерфейсный matcher) singbox-launcher добавляет:
+Compared with pfSense (which offers `src/dst/proto/port` rules with `action: pass/block/reject` and an interface matcher), singbox-launcher adds:
 
-- sniff matcher (TLS SNI, HTTP Host)
-- process matcher по пути с regex
+- a sniff matcher (TLS SNI, HTTP Host)
+- a process matcher on the path, with regex
 - GeoIP/Geosite via SRS
-- composite rules с `invert`
-- per-rule outbound chain через селекторы (urltest / failover)
-- routing decision per-connection с full chain visibility (см. раздел Split)
+- composite rules with `invert`
+- a per-rule outbound chain through selectors (urltest / failover)
+- a per-connection routing decision with full chain visibility (see the Split section)
 
-sing-box не stateful firewall — это L4 routing engine, и продукт остаётся в этих рамках намеренно.
+sing-box is not a stateful firewall — it is an L4 routing engine, and the product stays inside those bounds deliberately.
 
 ---
 
-## Анализатор логов
+## The log analyzer
 
-Двухконтурная система с typed multi-sink архитектурой.
+A two-loop system with a typed multi-sink architecture.
 
-### Internal sink (для логов лаунчера)
+### The internal sink (for launcher logs)
 
-`internal/debuglog/debuglog.go`: 6 уровней (`Off/Error/Warn/Info/Verbose/Trace`), фабрики `ErrorLog/WarnLog/InfoLog/DebugLog`, `StartTiming()` для измерения операций, `LogTextFragment()` для умного логирования больших блоков с обрезкой. Конституция (`SPECS/CONSTITUTION.md §5`) требует: новые участки кода обязаны логировать start / success / error.
+`internal/debuglog/debuglog.go`: six levels (`Off/Error/Warn/Info/Verbose/Trace`), the `ErrorLog/WarnLog/InfoLog/DebugLog` factories, `StartTiming()` for measuring operations, and `LogTextFragment()` for smart truncated logging of large blocks. The constitution (`SPECS/CONSTITUTION.md §5`) requires new code paths to log start / success / error.
 
-Через `SetInternalLogSink` лог-канал лаунчера раздаётся UI-вьюеру в realtime. Дев-режим — verbose, release — warn-only, определяется автоматически по ветке сборки.
+Through `SetInternalLogSink` the launcher's log channel is fanned out to the UI viewer in real time. Dev builds are verbose, release builds warn-only, decided automatically by the build branch.
 
 ### Log Viewer Window (SPEC 007)
 
-`ui/log_viewer_window.go` (singleton окно). 3 параллельные вкладки:
+`ui/log_viewer_window.go` (a singleton window). Three parallel tabs:
 
-| Tab          | Источник                                                                              | Уровень-фильтр                |
+| Tab          | Source                                                                                | Level filter                  |
 | ------------ | ------------------------------------------------------------------------------------- | ----------------------------- |
-| **Internal** | sink `debuglog.SetInternalLogSink` — все вызовы из лаунчера в реальном времени        | да, Error→Trace, на render    |
-| **Core**     | tail файла `bin/logs/sing-box.log` (rotation-safe) с авторефрешем 5с                   | визуально по парсингу keyword |
-| **API**      | sink `api.writeLog()` — все вызовы `core/services/api_service.go` к Clash API         | да, по уровню                 |
+| **Internal** | the `debuglog.SetInternalLogSink` sink — every launcher call in real time             | yes, Error→Trace, at render   |
+| **Core**     | a tail of `bin/logs/sing-box.log` (rotation-safe) auto-refreshed every 5s              | visually, by keyword parsing  |
+| **API**      | the `api.writeLog()` sink — every `core/services/api_service.go` call to the Clash API | yes, by level                 |
 
-Корпоративная классификация наблюдаемости: 3 концентрических круга (launcher / API клиент / engine), каждый со своим конвейером, в одном окне.
+An enterprise-style observability split: three concentric circles (launcher / API client / engine), each with its own pipeline, in one window.
 
-### Log tailer с rotation detection
+### The log tailer with rotation detection
 
-`internal/traffic/logtail.go` + `inode_unix.go` / `inode_windows.go`: inode/FileIndex-based rotation detection. Каждый read tick сравнивает identity текущего FD с identity файла по path; rename rotate → reopen с начала; truncate → seek to 0. `fsnotify` исключён намеренно — шумит и не покрывает edge case'ы macOS-rename'ов. Уровень журналируемого SRE-tail'а (типа Vector / Filebeat).
+`internal/traffic/logtail.go` + `inode_unix.go` / `inode_windows.go`: inode/FileIndex-based rotation detection. Every read tick compares the identity of the current FD with the identity of the file at that path; a rename-rotate → reopen from the start; a truncate → seek to 0. `fsnotify` was excluded deliberately — it is noisy and misses the macOS rename edge cases. This is SRE-grade tailing (Vector / Filebeat territory).
 
-### Лог-парсер (анализатор событий) — `internal/traffic/parser.go`
+### The log parser (event analyzer) — `internal/traffic/parser.go`
 
-Детерминированный парсер sing-box логов:
+A deterministic parser for sing-box logs:
 
-- 5 регексов: `reDNSExchanged`, `reDNSFailed`, `reRouterProcess`, `reRouterMatch`, `reInboundOut`
-- `LogLine` — структурированное представление одной строки: `TS, Kind (EventDNSResolve|DNSFail|TCPOpen|TCPClose|UDPOpen|UDPClose|RouterMatch), ConnID, Domain, IP, CnameTarget, Port, ProcessPath, Rule, Outbound, FailReason`
-- `connIDInner = [0-9A-Za-z._-]+` — ловит numeric и uuid формы (sing-box менял формат)
-- толерантен к опциональному timestamp prefix (`reLeadingTS`), 3 разных формата времени
-- покрыт `parser_test.go` zoo логов из `testdata/sing-box-logs/`
+- five regexes: `reDNSExchanged`, `reDNSFailed`, `reRouterProcess`, `reRouterMatch`, `reInboundOut`
+- `LogLine` — the structured representation of one line: `TS, Kind (EventDNSResolve|DNSFail|TCPOpen|TCPClose|UDPOpen|UDPClose|RouterMatch), ConnID, Domain, IP, CnameTarget, Port, ProcessPath, Rule, Outbound, FailReason`
+- `connIDInner = [0-9A-Za-z._-]+` — catches both the numeric and uuid forms (sing-box changed the format)
+- tolerant of an optional timestamp prefix (`reLeadingTS`) in three different time formats
+- covered by `parser_test.go` against the log zoo in `testdata/sing-box-logs/`
 
-Поток sing-box логов превращается в типизированные события `LogLine` с kind discriminator, раздаются через `Subscribe()` UI-вьюеру + Traffic Profiler'у одновременно. Cross-source join по `ConnID` с Clash API `/connections` собирает картину: «процесс Slack пошёл в api.slack.com через outbound vpn-1, по правилу domain_suffix, TLS handshake получил RST за 800ms». Observability уровня Grafana Tempo / Datadog APM, применённого к VPN-стеку.
+The sing-box log stream is turned into typed `LogLine` events with a kind discriminator and fanned out through `Subscribe()` to the UI viewer and the Traffic Profiler at once. A cross-source join on `ConnID` with the Clash API `/connections` assembles the picture: "the Slack process went to api.slack.com through outbound vpn-1, matched by the domain_suffix rule, and the TLS handshake got an RST after 800ms". Grafana Tempo / Datadog APM-grade observability applied to a VPN stack.
 
 ---
 
-## Traffic Profiler — окно сетевого анализатора
+## Traffic Profiler — the network analyzer window
 
-Файлы: `SPECS/059-F-N-TRAFFIC_PROFILER/SPEC.md` (730 строк), `internal/traffic/profiler.go`, `session.go`, `types.go`, `clash_connections.go`, `logtail.go`, `parser.go`, `ui/traffic/window.go`, `live_view.go`, `per_process_view.go`, `process_picker.go`, `toolbar.go`, `event_detail.go`.
+Files: `SPECS/059-F-N-TRAFFIC_PROFILER/SPEC.md`, `internal/traffic/profiler.go`, `session.go`, `types.go`, `clash_connections.go`, `logtail.go`, `parser.go`, `ui/traffic/window.go`, `live_view.go`, `per_process_view.go`, `process_picker.go`, `toolbar.go`, `event_detail.go`.
 
-### Singleton сервис, always-on
+### A singleton service, always on
 
-`TrafficProfiler` (`internal/traffic/profiler.go`) — singleton, поднимается на app startup в `ui/traffic_bootstrap.go::startProfiler`, живёт до quit. Rolling buffer 60s × 3000 events заполнен постоянно. Стоимость: ~50–200 строк/сек regex-парсинга в background goroutine.
+`TrafficProfiler` (`internal/traffic/profiler.go`) is a singleton, started at app startup in `ui/traffic_bootstrap.go::startProfiler` and alive until quit. The 60s × 3000-event rolling buffer is always populated. The cost: roughly 50–200 lines/second of regex parsing in a background goroutine.
 
 ### Cross-source join
 
-Два источника:
+Two sources:
 
-1. **Clash API `/connections`** (poll 1s) — list активных соединений с метаданными процесса.
-2. **sing-box.log tail** через inode-rotation-safe tailer.
+1. **The Clash API `/connections`** (polled every 1s) — the list of active connections with process metadata.
+2. **A tail of sing-box.log** through the inode-rotation-safe tailer.
 
-Связывание по conn-id (`[12345]` префиксу в логах = `id` в Clash API). Profiler держит:
-- `connProcessMap[conn_id] → process_path` (из лог-строки `router: found process name`)
-- `dnsAccum[conn_id] → []string` (CNAME chain накопление)
-- `dnsByIP[dest_ip] → DNSAttribution` (10-секундное окно для inferred-attribution через DNS)
+They are joined by conn-id (the `[12345]` prefix in the logs equals `id` in the Clash API). The profiler keeps:
+- `connProcessMap[conn_id] → process_path` (from the `router: found process name` log line)
+- `dnsAccum[conn_id] → []string` (accumulating the CNAME chain)
+- `dnsByIP[dest_ip] → DNSAttribution` (a 10-second window for inferred attribution through DNS)
 
-### Attribution с confidence уровнями
+### Attribution with confidence levels
 
-- `verified` — sing-box лог явно сматчил process name по пути
-- `inferred` (〽) — TCP к IP, который был resolved через DNS-запрос, attribute'нутый к target'у в 10s окне
-- `unattributed` — ничего не сработало (показывается только в Live system-wide)
+- `verified` — the sing-box log explicitly matched the process name by path
+- `inferred` (〽) — a TCP connection to an IP that was resolved by a DNS query attributed to the target within the 10s window
+- `unattributed` — nothing matched (shown only in the system-wide Live view)
 
-### ⚠ Issue классификация
+### ⚠ Issue classification
 
-Конкретные diagnostic-сигналы (не статистические аномалии):
+Concrete diagnostic signals, not statistical anomalies:
 
 - **DnsTimeout** — `dns: exchange failed for X: context deadline exceeded`
-- **TcpRstEarly** — TCP закрылся за <1s с 0/0 байт. Firewall RST / TLS fail / block
+- **TcpRstEarly** — the TCP connection closed in under 1s with 0/0 bytes. A firewall RST / TLS failure / a block
 
-Отвергнуто как noisy: `geoMismatch`, `unusualPort`, `badLatency` — LxBox прошёл этот путь и выпилил.
+Rejected as noisy: `geoMismatch`, `unusualPort`, `badLatency` — LxBox went down that road and ripped them out.
 
-### 4 представления per-process
+### Four per-process views
 
-| Sub-tab          | Что показывает                                                                                       |
+| Sub-tab          | What it shows                                                                                        |
 | ---------------- | ---------------------------------------------------------------------------------------------------- |
-| **Live**         | newest-first stream events с цветовой кодировкой kind                                                |
+| **Live**         | a newest-first event stream, colour-coded by kind                                                    |
 | **Domains**      | aggregated unique domains, sorted by total bytes; tap → CNAME chain, all IPs, outbound chain, issues |
-| **IPs**          | aggregated unique destinations; useful для hostless connections (raw TCP без SNI sniff)              |
+| **IPs**          | aggregated unique destinations; useful for hostless connections (raw TCP with no SNI sniff)          |
 | **Connections**  | per-connection timeline (open/close); tap → CNAME chain, IPs, rule, outbound, issues                 |
 
-### Verbose toggle с поддержкой revert
+### The verbose toggle, with revert
 
-🔬 dbg кнопка переключает `vars[log_level]=debug`, делает atomic config rebuild + `ProcessService.KillForRestart()` (sing-box watcher автомат-рестарт). На OFF — revert. Confirmation dialog «Reloading sing-box — active connections will reset».
+The 🔬 dbg button flips `vars[log_level]=debug`, performs an atomic config rebuild and calls `ProcessService.KillForRestart()` (the sing-box watcher restarts it automatically). Turning it OFF reverts. A confirmation dialog warns: "Reloading sing-box — active connections will reset".
 
 ### Pre-session backfill
 
-Rolling buffer 60s × 3000 events ВСЕХ процессов. На `▶ START` события за last 60s, которые match target, копируются в session с marker 〽 backfilled. Решает классическую проблему «юзер видит проблему, только потом начинает recording — теряет первые секунды». Паттерн observability-best-practice (как `bpftrace` history buffer).
+A 60s × 3000-event rolling buffer covering ALL processes. On `▶ START`, the events from the last 60s that match the target are copied into the session marked 〽 backfilled. This solves the classic problem of "the user sees the problem and only then starts recording — losing the first seconds". An observability best-practice pattern (like the `bpftrace` history buffer).
 
-### Lifecycle и edge cases
+### Lifecycle and edge cases
 
 - Ring-buffer 5 completed sessions. Force-stop = wipe (in-memory only, no persist).
-- Sing-box restart mid-session → auto-finalize partial CNAME chains, session continues с новым conn-id space, `verbose_toggled_at` фиксируется.
-- Memory cap 50000 events / 3h sliding → `events_dropped` counter в footer.
+- A sing-box restart mid-session → partial CNAME chains are auto-finalized, the session continues in the new conn-id space, and `verbose_toggled_at` is recorded.
+- A memory cap of 50000 events / a 3h sliding window → the `events_dropped` counter in the footer.
 - Log rotation safe.
-- Window закрыто → background capture continues (rolling buffer + clash poll), на reopen видишь активную session.
-- Export session JSON через overflow menu (clipboard + file).
+- Close the window → background capture continues (rolling buffer + clash polling); reopening shows the active session.
+- Export the session JSON through the overflow menu (clipboard + file).
 
-### Аналоги в нативной экосистеме
+### Counterparts in the native ecosystem
 
-| Нативный аналог       | Что общего                          | Что у нас лучше                                                                |
+| Native counterpart    | What they share                     | Where we do better                                                             |
 | --------------------- | ----------------------------------- | ------------------------------------------------------------------------------ |
-| Little Snitch (macOS) | per-process соединения, host class. | + cross-platform, + integrated с VPN routing engine, + free                    |
-| Wireshark             | packet-level inspection             | L4 (proto/host/process) vs L2-L7 — разные классы; у нас integration с routing |
+| Little Snitch (macOS) | per-process connections, host class | + cross-platform, + integrated with the VPN routing engine, + free             |
+| Wireshark             | packet-level inspection             | L4 (proto/host/process) vs L2–L7 — different classes; ours integrates with routing |
 | GlassWire (Windows)   | per-process traffic graph           | + cross-platform, + per-domain agg, + headless API                              |
 
-В мире VPN-клиентов аналога нет: ни NekoBox, ни V2RayN, ни Clash Verge не дают per-process attribution с CNAME chain reconstruction и DNS-IP inferred matching.
+Among VPN clients there is no counterpart: neither NekoBox, nor V2RayN, nor Clash Verge offers per-process attribution with CNAME-chain reconstruction and DNS-to-IP inferred matching.
 
 ---
 
-## Subscription metadata — видимость состояния провайдера
+## Subscription metadata — visibility into the provider's state
 
 `SubscriptionMeta` (`core/state/connections.go`):
 
-- `profile_title`, `support_url`, `profile_web_page_url`, `content_disposition_filename` — из HTTP headers и inline `#header:` в первой строке тела (LxBox-совместимый контракт)
-- `UserInfo{UploadBytes, DownloadBytes, TotalBytes, ExpireUnix}` — раскрытый `subscription-userinfo` (V2Board / Xboard форматы)
+- `profile_title`, `support_url`, `profile_web_page_url`, `content_disposition_filename` — from the HTTP headers and the inline `#header:` on the body's first line (an LxBox-compatible contract)
+- `UserInfo{UploadBytes, DownloadBytes, TotalBytes, ExpireUnix}` — the parsed `subscription-userinfo` (V2Board / Xboard formats)
 - `LastStatus` (`ok`/`err`), `ErrorCount`, `LastErrorMsg`, `HTTPStatusCode`, `RawBodyBytes`
-- `NodesCountFetched`, `Truncated` (если обрезали по `max_nodes`), `PreviewNodes` (first 50)
-- `ProviderAnnounce` (SPEC 061) — провайдер шлёт announce-headers даже на failure (для HWID-limit / quota exceeded / IP-bind violation) → UI показывает 📢 на success-with-announce, ⚠ на err-with-announce. URL provider'а — actionable в UI
+- `NodesCountFetched`, `Truncated` (when cut off at `max_nodes`), `PreviewNodes` (the first 50)
+- `ProviderAnnounce` (SPEC 061) — providers send announce headers even on failure (HWID limit / quota exceeded / IP-bind violation) → the UI shows 📢 for success-with-announce and ⚠ for error-with-announce. The provider's URL is actionable in the UI
 
-Per-subscription observability: «у меня осталось 23 GB, до 2027-01-15, последний fetch упал с HWID-limit, провайдер сказал "renew via https://..."».
+Per-subscription observability: "I have 23 GB left, valid until 2027-01-15, the last fetch failed on the HWID limit, and the provider said 'renew via https://...'".
 
 ---
 
-# Технические возможности
+# Technical capabilities
 
 ## Debug API — headless control plane
 
-Файлы: `core/debugapi/server.go` (345 строк), `state_endpoints.go`, `traffic_endpoints.go`, `snapshot.go`, `SPECS/038-F-C-DEBUG_API/SPEC.md`, `SPECS/050-F-N-DEBUG_API_STATE_MUTATIONS/SPEC.md`.
+Files: `core/debugapi/server.go`, `state_endpoints.go`, `traffic_endpoints.go`, `snapshot.go`, `SPECS/038-F-C-DEBUG_API/SPEC.md`, `SPECS/050-F-N-DEBUG_API_STATE_MUTATIONS/SPEC.md`.
 
-### Поверхность API — 25 endpoints (24 protected + unauthenticated `/ping`) в 6 группах
+### The API surface — 28 paths (27 protected + the unauthenticated `/ping`) in 6 groups
 
-| Группа | Что покрывает |
+| Group | What it covers |
 | --- | --- |
-| **Health & info** | health-check без авторизации, версия лаунчера / sing-box / API |
-| **State (read)** | snapshot текущего состояния, активный прокси, выбранная группа, список прокси, full state, resolved outbounds |
-| **State (write)** | rules / dns / dns-rules с режимами replace и append, schema-validation перед commit'ом, mutex per state path |
-| **Actions** | start / stop / update-subs / ping-all / rebuild-config — синхронные триггеры всех ключевых действий |
+| **Health & info** | an unauthenticated health check; the launcher / sing-box / API versions |
+| **State (read)** | a snapshot of the current state, the active proxy, the selected group, the proxy list, the full state, the resolved outbounds |
+| **State (write)** | rules / dns / dns-rules with replace and append modes, schema validation before the commit, a mutex per state path |
+| **Actions** | start / stop / update-subs / ping-all / rebuild-config — synchronous triggers for every key action |
 | **Traffic Profiler control** | start / stop / clear capture, live rolling-buffer snapshot, sessions list + export + drop, processes inventory, verbose log-level toggle |
-| **Snapshot** | `/debug/snapshot` — template + state + cache + config в одном JSON-ответе |
+| **Snapshot** | `/debug/snapshot` — template + state + cache + config in one JSON response |
 
-Контракт версионирован (`api: "debugapi/v1"`), сохраняет обратную совместимость при расширении.
+The contract is versioned (`api: "debugapi/v1"`) and stays backwards compatible as it grows.
 
-### Snapshot endpoint — фича для support workflow
+### The snapshot endpoint — a feature for the support workflow
 
-`GET /debug/snapshot` (`core/snapshot/snapshot.go`) возвращает за один HTTP-вызов 4 файла — template / state / cache / config — каждый как inline JSON, плюс launcher_version / singbox_version / captured_at. Файлов нет на диске → попадают в `Missing`; есть, но битый JSON → `Errors`. Полная картина проблемы одной командой: bug report можно прислать в issue с `curl ... /debug/snapshot > snapshot.json` и весь стейт у разработчика.
+`GET /debug/snapshot` (`core/snapshot/snapshot.go`) returns four files in a single HTTP call — template / state / cache / config — each as inline JSON, plus launcher_version / singbox_version / captured_at. Files absent from disk land in `Missing`; present but malformed JSON lands in `Errors`. The whole picture of a problem in one command: a bug report can be filed with `curl ... /debug/snapshot > snapshot.json` and the developer has the entire state.
 
-Тот же `snapshot.Build()` дёргает UI-кнопка «Copy snapshot» в Diagnostics tab — один Source of Truth.
+The same `snapshot.Build()` is called by the "Copy snapshot" button on the Diagnostics tab — one source of truth.
 
-### Уникальность
+### What makes it unique
 
-Публичного, документированного, скриптуемого HTTP API для управления routing engine и state'ом нет ни у одного desktop-клиента в категории.
+No desktop client in this category offers a public, documented, scriptable HTTP API for driving the routing engine and the state.
 
 ### Use cases
 
-- **Скрипты автоматизации**: «прогнать update-subs на 3 разных DNS-конфигах, замерить latency» — обычный bash + curl
-- **MCP-обёртки для AI-агентов**: Claude через MCP читает `/state`, переключает прокси, рестартит — без касания UI (SPEC 038 §6.5)
-- **Регрессионные фикстуры**: snapshot capture для repro проблем
-- **CI/CD**: проверка валидности новых шаблонов через `/action/rebuild-config`
-- **Headless deploy**: запустить лаунчер, заскриптовать настройку, никогда не открыть UI
+- **Automation scripts**: "run update-subs against three different DNS configs and measure the latency" — plain bash + curl
+- **MCP wrappers for AI agents**: Claude reads `/state` over MCP, switches proxies and restarts — without touching the UI (SPEC 038 §6.5)
+- **Regression fixtures**: snapshot capture for reproducing problems
+- **CI/CD**: validating new templates through `/action/rebuild-config`
+- **Headless deployment**: start the launcher, script the setup, never open the UI
 
 ---
 
-## Проработанные аспекты безопасности
+## Security aspects that were thought through
 
 `core/debugapi/server.go`:
 
-- bind строго `127.0.0.1` (no LAN, no 0.0.0.0)
-- bearer token, 32 байта entropy, `base64.RawURLEncoding` (43 символа)
-- `crypto/subtle.ConstantTimeCompare` для проверки токена — защита от timing атак на loopback'е
-- mutating endpoints — только POST/PATCH/DELETE (защита от drive-by triggers через открытые web-tabs)
-- off by default, токен генерируется при первом enable, сохраняется между OFF/ON
-- token не попадает в debug-логи (`urlredact.RedactToken`)
-- graceful shutdown с 5s deadline
+- binds strictly to `127.0.0.1` (no LAN, no 0.0.0.0)
+- a bearer token with 32 bytes of entropy, `base64.RawURLEncoding` (43 characters)
+- `crypto/subtle.ConstantTimeCompare` for the token check — protection against timing attacks over loopback
+- mutating endpoints are POST/PATCH/DELETE only (protection against drive-by triggers from open web tabs)
+- off by default; the token is generated on the first enable and preserved across OFF/ON
+- the token never reaches the debug logs (`urlredact.RedactToken`)
+- graceful shutdown with a 5s deadline
 
 `core/state/`:
 
-- запрет `type: remote` rule_set в финальном `config.json` (SPEC 045 фаза 9) — иначе cold-start пытается скачать через ещё не поднятый VPN-прокси, fatal
-- atomic file writes (SPEC 041): `stage → rename` с `.tmp`/`.swap` суффиксами — защита от обнуления `config.json` / `settings.json` при kill -9 / power loss
-- per-source raw body атомарно через `.tmp + Rename`; failure не перезаписывает старый working .raw (SPEC 052)
+- `type: remote` rule_sets are forbidden in the final `config.json` (SPEC 045 phase 9) — otherwise a cold start tries to download through a VPN proxy that isn't up yet, which is fatal
+- atomic file writes (SPEC 041): `stage → rename` with `.tmp`/`.swap` suffixes — protection against zeroing out `config.json` / `settings.json` on kill -9 or power loss
+- the per-source raw body is written atomically via `.tmp + Rename`; a failure never overwrites the last working `.raw` (SPEC 052)
 
 Privacy:
 
-- Constitution §6.3 — запрет на телеметрию / неявный сбор
-- HWID UUID — random, не derived из system serial; юзер может regenerate (SPEC 061)
-- opt-out на отправку HWID и хеш модели устройства в Settings
+- Constitution §6.3 — telemetry and implicit collection are forbidden
+- The HWID UUID is random, not derived from a system serial; the user can regenerate it (SPEC 061)
+- Opt-outs for sending the HWID and for hashing the device model live in Settings
 
 ---
 
-# Архитектурные решения
+# Architectural decisions
 
 ## State-as-template-diff (SPEC 058)
 
-`SPECS/058-R-N-STATE_AS_TEMPLATE_DIFF/SPEC.md` + `core/state/rule_types.go`. State хранит тонкие ссылки на template + diff пользовательских изменений. `Rule` имеет `Kind` (`preset|inline|srs`), `Ref` (для preset), `ID` (для user), `Body` (kind-specific payload). Для пресета `PresetBody.Vars` — мап только тех vars, что юзер изменил относительно template-default.
+`SPECS/058-R-N-STATE_AS_TEMPLATE_DIFF/SPEC.md` + `core/state/rule_types.go`. State stores thin references to the template plus the diff of the user's changes. A `Rule` carries a `Kind` (`preset|inline|srs`), a `Ref` (for presets), an `ID` (for user rules) and a `Body` (the kind-specific payload). For a preset, `PresetBody.Vars` maps only the vars the user changed relative to the template default.
 
-Bump шаблона (новые домены в block-листе, новые TLD) → юзер получает их без действий с его стороны. Паттерн configuration overlay.
+A template bump (new domains in the block list, new TLDs) reaches the user without any action on their part. The configuration-overlay pattern.
 
 ## Auto-update + supervision (SPEC 052)
 
-### Process supervision со stability window
+### Process supervision with a stability window
 
-`core/process_service.go`. Параметры: 3 попытки restart, окно стабильности 180 секунд, graceful shutdown с deadline 2 секунды.
+`core/process_service.go`. Parameters: 3 restart attempts, a 180-second stability window, graceful shutdown with a 2-second deadline.
 
-Цикл `Monitor()`:
+The `Monitor()` loop:
 
-1. Process exited → если рестарт запрошен юзером → restart без счётчика.
-2. Счётчик crash-attempts превысил 3 → stop, dialog «restart_failed».
-3. Иначе increment, восстановить через delay.
-4. После успешного restart goroutine ждёт окно стабильности; если процесс прожил столько без crash'а — счётчик сбрасывается. Stability window pattern (как у systemd `RestartSec` + `StartLimitBurst`, kubelet'а, supervisord). UI отражает `[restart 2/3]` в баннере.
+1. The process exited → if the user asked for a restart, restart without touching the counter.
+2. The crash-attempt counter exceeded 3 → stop and show the "restart_failed" dialog.
+3. Otherwise increment it and recover after a delay.
+4. After a successful restart the goroutine waits out the stability window; if the process survives that long without crashing, the counter resets. The stability-window pattern (as in systemd's `RestartSec` + `StartLimitBurst`, kubelet, supervisord). The UI shows `[restart 2/3]` in the banner.
 
-### Pre-start config rebuild
+### The pre-start config rebuild
 
-`process_service.go:83`: перед каждым `Start` дёргается `RebuildConfigIfDirty()` — если wizard Save поднял `CacheStale` / `ConfigStale` маркеры, config.json пересобирается из state + raw cache + template. На ошибке — best-effort, лог + старт со старым конфигом. Invariant SPEC 045: state.json — source of truth, config.json — derived view, ребилд detects stale-state.
+`process_service.go`: before every `Start`, `RebuildConfigIfDirty()` runs — if a wizard Save raised the `CacheStale` / `ConfigStale` markers, config.json is rebuilt from state + raw cache + template. On error it is best-effort: log it and start with the old config. The SPEC 045 invariant: state.json is the source of truth, config.json is a derived view, and the rebuild detects a stale state.
 
-### Per-source heartbeat (SPEC 052 фаза 8)
+### The per-source heartbeat (SPEC 052 phase 8)
 
-`core/auto_update.go`. Параметры: heartbeat 1 час, retry-delay 15 секунд, дефолтный reload-interval 1 час, anti-storm cooldown для event-triggers 5 секунд.
+`core/auto_update.go`. Parameters: a 1-hour heartbeat, a 15-second retry delay, a default 1-hour reload interval, and a 5-second anti-storm cooldown for event triggers.
 
-Алгоритм:
+The algorithm:
 
-1. Heartbeat: проход по списку enabled subscription; для каждой смотрим время последнего fetch. Если возраст превысил effective-reload (per-source → global → 1h fallback) → подтягиваем эту подписку. Свежие источники пропускаются.
-2. Failure → retry с задержкой. Не рекурсивный — если retry упал, ждём heartbeat или event.
-3. VPN-event trigger: подписка на `VpnStateChanged` + `ProxyActiveChanged` → immediate retry для failed source'ов (с cooldown anti-storm).
-4. State-level mutex сериализует `load → mutate → save` циклы.
-5. Power resume callback — после wake просроченные источники подтягиваются.
+1. Heartbeat: walk the list of enabled subscriptions and check each one's last fetch time. If its age exceeds the effective reload interval (per-source → global → a 1h fallback), refresh that subscription. Fresh sources are skipped.
+2. On failure, retry after a delay. Not recursive — if the retry fails, wait for the heartbeat or an event.
+3. VPN-event trigger: a subscription to `VpnStateChanged` + `ProxyActiveChanged` → an immediate retry for failed sources (with the anti-storm cooldown).
+4. A state-level mutex serializes the `load → mutate → save` cycles.
+5. The power-resume callback refreshes overdue sources after a wake.
 
 ### Self-update
 
 `core/core_version.go` + `auto_update.go`:
 
-- pinned sing-box версия через `constants.RequiredCoreVersion` (SPEC 046) — на mismatch автоматически перекачивается
-- pinned template ref через `constants.RequiredTemplateRef` — CI ldflags инжектит SHA конкретного commit'а, template одобряется git'ом
-- launcher self-update — checked on startup один раз, popup на новую версию (без авто-installation — пользователь решает)
+- the sing-box version is pinned through `constants.RequiredCoreVersion` (SPEC 046) — on a mismatch it is re-downloaded automatically
+- the template ref is pinned through `constants.RequiredTemplateRef` — CI ldflags inject a specific commit's SHA, so the template is vouched for by git
+- launcher self-update — checked once at startup, with a popup for a new version (no auto-installation — the user decides)
 
 ---
 
 ## Layered + DI
 
-`core` (engine, fyne-free) → `core/services/` (fyne-free сервисы) → `core/uiservice/` (fyne-зависимая обёртка) → `ui` (Fyne).
+`core` (the engine, Fyne-free) → `core/services/` (Fyne-free services) → `core/uiservice/` (the Fyne-dependent wrapper) → `ui` (Fyne).
 
-Архитектурный инвариант зафиксирован в `SPECS/CONSTITUTION.md §1.5`:
+The architectural invariant is fixed in `SPECS/CONSTITUTION.md §1.5`:
 
-- UI не обращается к core/network напрямую
-- парсер детерминирован, без побочных эффектов
-- платформозависимый код изолирован в `internal/platform`
+- the UI never reaches core/network directly
+- the parser is deterministic and free of side effects
+- platform-specific code is isolated in `internal/platform`
 
-Контракт, не привычка.
+A contract, not a habit.
 
-## Pipeline парсинга и сборки конфига
+## The parse-and-build pipeline
 
-Парсинг подписок → нормализация (`core/config/configtypes/`) → trех-проходный генератор outbounds с топологической сортировкой селекторов (`core/config/outbound_generator.go`) → resolver presets (`core/state/`, SPEC 057/058) → атомарная запись `config.json` (SPEC 041) → `sing-box check` валидация перед commit'ом → supervised запуск (`core/process_service.go`).
+Subscription parsing → normalization (`core/config/configtypes/`) → a three-pass outbound generator with a topological sort of the selectors (`core/config/outbound_generator.go`) → preset resolution (`core/state/`, SPEC 057/058) → an atomic write of `config.json` (SPEC 041) → `sing-box check` validation before the commit → a supervised launch (`core/process_service.go`).
 
 ## Typed State Engine
 
 `core/state/`: `state.go`, `connections.go`, `rule_types.go`, `dns_options.go`, `diff.go`, `migration_v5_to_v6.go`, `legacy_migration.go`, `raw_cache.go`, `disk_v6.go`, `adapter.go`, `provider_announce.go`, `ulid.go`.
 
-Полноценная модель домена с дискриминаторами (`SourceType`, `RuleKind`, `DNSSource`), множественными миграциями (v2 → v3 → v4 → v5 → v6), диффами (SPEC 058).
+A full domain model with discriminators (`SourceType`, `RuleKind`, `DNSSource`), a chain of migrations (v2 → v3 → v4 → v5 → v6) and diffs (SPEC 058).
 
 ## Typed EventBus (SPEC 047)
 
-`core/events/`. `MemoryBus` с `Subscribe(kind, handler) Cancel`, типизированные payload'ы (`StateChanged`, `ConfigBuilt`, `SubscriptionUpdated`, `VpnStateChanged`, `ProxyActiveChanged`, `PowerResume`, `AutoUpdateStatus`). Контракт: panic в одном handler'е не ломает доставку другим.
+`core/events/`. A `MemoryBus` with `Subscribe(kind, handler) Cancel` and typed payloads (`StateChanged`, `ConfigBuilt`, `VpnStateChanged`). The contract: a panic in one handler does not break delivery to the others.
 
-SRE-фичи (auto-update on VPN-event, SPEC 052) и observability (UI icon Core tab подписан на `VpnStateChanged`) развязаны от core.
+The SRE features (auto-update on a VPN event, SPEC 052) and observability (the tab icon subscribes to `VpnStateChanged`) are decoupled from core.
 
 ## Atomic file writes (SPEC 041)
 
-`core/config_service.go`, `internal/locale/settings.go`, `core/state/save.go`. Паттерн `stage → rename` с `.tmp`/`.swap` суффиксами. На macOS/Linux — POSIX-rename атомарен; на Windows — через `MoveFileEx` (Go 1.22+).
+`core/config_service.go`, `internal/locale/settings.go`, `core/state/save.go`. The `stage → rename` pattern with `.tmp`/`.swap` suffixes. On macOS/Linux a POSIX rename is atomic; on Windows it goes through `MoveFileEx` (Go 1.22+).
 
 ## Power-events
 
-`internal/platform/`. Sleep/resume listener с `IsSleeping()` контрактом, на который подписаны таймеры трея, AutoLoadProxies, HTTP requests (PowerContext, ErrPlatformInterrupt), Clash API tab. SPEC 011 — фикс «launcher freeze after sleep»: сетевые запросы не висят после resume.
+`internal/platform/`. A sleep/resume listener with an `IsSleeping()` contract that the tray timers, AutoLoadProxies, HTTP requests (PowerContext, ErrPlatformInterrupt) and the proxy list subscribe to. SPEC 011 fixed "launcher freeze after sleep": network requests no longer hang after a resume.
 
-## Bin layout как ABI
+## The bin layout as an ABI
 
-`bin/` — стабильный layout:
+`bin/` has a stable layout:
 
 - `config.json` — sing-box runtime config (derived)
-- `wizard_template.json` — community template (1432 строки)
+- `wizard_template.json` — the community template
 - `wizard_states/<name>.json` — named state snapshots
 - `subscriptions/<source_id>.raw` — per-source raw body cache (SPEC 052)
-- `rule_sets/*.srs` — cached SRS files
+- `rule-sets/*.srs` — cached SRS files
 - `logs/sing-box.log[.old]` — engine logs
 
-Контракт: внешние инструменты (бэкап-скрипты, MCP-серверы, CI) знают где искать.
+The contract: external tools (backup scripts, MCP servers, CI) know where to look.
 
 ---
 
-# Anti-features (намеренно отсутствует)
+# Anti-features (deliberately absent)
 
-1. Editor sing-box config.json. Конфиг — derived view от state + template; ручная правка возможна, но не поддерживается как первый класс.
-2. CRUD subscriptions через API (SPEC 038 §5). Десктоп wizard покрывает это полностью; дублирование через HTTP — лишний surface для багов. Mobile LxBox даёт полный CRUD, на desktop урезано намеренно.
-3. Log streaming endpoint в Debug API. In-memory log ring в `debuglog` отсутствует. Streaming / SSE / WebSocket — нет.
-4. Packet capture / pcap. sing-box работает на L4, лаунчер — на L4 событиях.
-5. TLS fingerprinting (JA3/JA4). sing-box не expose'ит.
-6. Persist Traffic Profiler sessions через restart. In-memory only (как LxBox §044).
-7. Auth roles. Bearer-token = full-power. SPEC 050: «кто получил токен — может всё».
-8. Remote доступ к Debug API. 127.0.0.1 only, любой remote — через adb-forward или ssh-tunnel явно.
-9. Телеметрия / неявный сбор. Constitution §6.3.
-10. Bundling sing-box / wintun. Лицензионная чистота — отдельный лаунчер скачивает обе binary по версии, pinned (SPEC 046).
-11. Один файл с настройками. State разделён: settings.json (язык, debug API token, theme), state.json (wizard), config.json (sing-box runtime), wizard_states/ (named snapshots), subscriptions/*.raw (per-source cache), rule_sets/*.srs (SRS cache), logs/. Разделение интенциональное.
+1. An editor for sing-box config.json. The config is a derived view of state + template; editing it by hand is possible but not a first-class supported path.
+2. Subscription CRUD over the API (SPEC 038 §5). The desktop wizard covers it fully; duplicating it over HTTP is extra surface for bugs. Mobile LxBox offers full CRUD; on desktop it is trimmed deliberately.
+3. A log-streaming endpoint in the Debug API. There is no in-memory log ring in `debuglog`, and no streaming / SSE / WebSocket.
+4. Packet capture / pcap. sing-box works at L4, and the launcher works on L4 events.
+5. TLS fingerprinting (JA3/JA4). sing-box does not expose it.
+6. Persisting Traffic Profiler sessions across a restart. In-memory only (as in LxBox §044).
+7. Auth roles. The bearer token is all-powerful. SPEC 050: "whoever holds the token can do everything".
+8. Remote access to the Debug API. 127.0.0.1 only; any remote access goes explicitly through adb-forward or an ssh tunnel.
+9. Telemetry / implicit collection. Constitution §6.3.
+10. Bundling sing-box / wintun. For licence hygiene the launcher downloads both binaries itself, at a pinned version (SPEC 046).
+11. A single settings file. State is split: settings.json (language, the debug API token, theme), state.json (the wizard), config.json (the sing-box runtime), wizard_states/ (named snapshots), subscriptions/*.raw (the per-source cache), rule-sets/*.srs (the SRS cache), logs/. The split is intentional.
 
 ---
 
-# Ключевые файлы для навигации
+# Key files for navigation
 
-- `docs/ARCHITECTURE.md` — карта проекта (1556 строк)
-- `SPECS/CONSTITUTION.md` — архитектурные инварианты
+- `docs/ARCHITECTURE.md` — the project map
+- `SPECS/CONSTITUTION.md` — the architectural invariants

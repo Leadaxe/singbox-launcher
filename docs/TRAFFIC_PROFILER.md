@@ -1,5 +1,7 @@
 # Traffic Profiler — user guide
 
+**🌐 Language**: English | [Русский](TRAFFIC_PROFILER.ru.md)
+
 SPEC: [SPECS/059-F-N-TRAFFIC_PROFILER/SPEC.md](../SPECS/059-F-N-TRAFFIC_PROFILER/SPEC.md) ·
 remote machines: [SPECS/099-F-C-REMOTE_TRAFFIC_PROFILER/SPEC.md](../SPECS/099-F-C-REMOTE_TRAFFIC_PROFILER/SPEC.md)
 

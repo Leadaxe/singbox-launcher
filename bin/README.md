@@ -101,7 +101,7 @@ singbox-launcher/
 ### Файл шаблона:
 - **`wizard_template.json`** — шаблон визарда (секции `parser_config`, `config`, `selectable_rules`, `params`, `vars`, …)
 
-Подробнее о создании собственных шаблонов: [docs/CREATE_WIZARD_TEMPLATE.md](../docs/CREATE_WIZARD_TEMPLATE.md)
+Подробнее о создании собственных шаблонов: [docs/WIZARD_TEMPLATE.ru.md](../docs/WIZARD_TEMPLATE.ru.md)
 
 ## ⚠️ Важная информация
 
@@ -125,7 +125,7 @@ This release includes prebuilt `sing-box.exe` (Windows) / `sing-box` (macOS/Linu
 - **Полная документация**: [README.md](../README.md)
 - **Русская версия**: [README.ru.md](../README.ru.md)
 - **Инструкции по сборке**: [docs/BUILD_WINDOWS.md](../docs/BUILD_WINDOWS.md)
-- **Создание шаблонов для Config Wizard**: [docs/CREATE_WIZARD_TEMPLATE.md](../docs/CREATE_WIZARD_TEMPLATE.md)
+- **Создание шаблонов для Config Wizard**: [docs/WIZARD_TEMPLATE.ru.md](../docs/WIZARD_TEMPLATE.ru.md)
 - **Настройка парсера подписок**: [docs/ParserConfig.md](../docs/ParserConfig.md)
 
 ## 🔗 Ссылки

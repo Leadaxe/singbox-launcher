@@ -1,5 +1,7 @@
 # Per-package inventory
 
+**🌐 Language**: English | [Русский](ARCHITECTURE_PACKAGES.ru.md)
+
 > Companion to **[ARCHITECTURE.md](ARCHITECTURE.md)** (§8). One-line responsibility
 > per package + key files with one-line purposes, grouped by layer L0–L7. Reflects
 > the **current** post-SPEC-070 file layout (the monolith splits are landed). Test
@@ -459,4 +461,4 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 
 **Responsibility:** Shared UI components.
 - `scroll_gutter.go` — `NewScrollGutter` / `WrapInScrollWithGutter` (scrollbar spacing).
-- `click_redirect.go` — `ClickRedirect` overlay forwarding clicks to the wizard window for focus elevation. **(Layering violation V1: imports `core`.)**
+- `click_redirect.go` — the `ClickRedirect` overlay forwarding clicks to the wizard window for focus elevation. Takes `*uiservice.UIService` (a leaf package) — layering violation V1 is resolved.

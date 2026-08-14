@@ -18,7 +18,7 @@ export TOKEN="<paste-here>"
 export API="http://127.0.0.1:9263"
 
 # 4. Check
-curl -s "$API/ping"                                    # → {"ok":true}    (без auth)
+curl -s "$API/ping"                                    # → {"ok":true}    (no auth)
 curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 # → {"launcher":"v1.2.2","singbox":"1.14.0-lx.5","api":"debugapi/v1"}
 ```
@@ -68,114 +68,114 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 
 ## State read
 
-| Method | Path | Назначение |
+| Method | Path | Purpose |
 |---|---|---|
 | GET | `/state` | Live runtime snapshot: `{running, active_proxy, selected_group, singbox_version, subs_last_updated_unix}` |
-| GET | `/proxies` | Список прокси (`[]api.ProxyInfo`) — из текущего sing-box config |
-| GET | `/state/full` | Полный `state.json` (после load + миграций) |
-| GET | `/state/rules` | `{"rules":[]state.Rule}` — секция SPEC 053 |
-| GET | `/state/dns` | Вся секция `state.DNSOptions` (SPEC 056) |
-| GET | `/state/dns/rules` | `{"text":"..."}` — **только USER**-правила как wizard-текст. Preset-правила не включаются (они toggle-ref'ы) |
-| GET | `/state/outbounds/resolved` | `{"outbounds": []OutboundConfig}` — merge'нутые после SPEC 057/058 expansion (template + preset patches + user overrides) |
-| GET | `/state/log-level` | `{level, is_set, default, effective, allowed}` — `level` = сырое `vars[log_level]` (`""` если не задан), `effective` = что реально возьмёт sing-box (при пустом — `default`, т.е. `warn`) |
+| GET | `/proxies` | Proxy list (`[]api.ProxyInfo`) — from the current sing-box config |
+| GET | `/state/full` | The whole `state.json` (after load + migrations) |
+| GET | `/state/rules` | `{"rules":[]state.Rule}` — the SPEC 053 section |
+| GET | `/state/dns` | The whole `state.DNSOptions` section (SPEC 056) |
+| GET | `/state/dns/rules` | `{"text":"..."}` — **USER rules only**, as wizard text. Preset rules are excluded (they are toggle refs) |
+| GET | `/state/outbounds/resolved` | `{"outbounds": []OutboundConfig}` — merged after SPEC 057/058 expansion (template + preset patches + user overrides) |
+| GET | `/state/log-level` | `{level, is_set, default, effective, allowed}` — `level` is the raw `vars[log_level]` (`""` when unset), `effective` is what sing-box will actually use (when empty — `default`, i.e. `warn`) |
 
 ```bash
-# Что сейчас выбрано
+# What is selected right now
 curl -s -H "Authorization: Bearer $TOKEN" "$API/state" | jq
 
-# Полная конфигурация
+# The full configuration
 curl -s -H "Authorization: Bearer $TOKEN" "$API/state/full" > backup.json
 ```
 
-**Ошибки:** `401` (no/bad bearer), `404` (state.json не существует — fresh install), `500` (load/parse error).
+**Errors:** `401` (no/bad bearer), `404` (state.json does not exist — fresh install), `500` (load/parse error).
 
 ---
 
 ## State write
 
-Все patch-endpoint'ы возвращают `{"ok":true,"diff_summary":["..."]}` на успех. Sync-write через `state.Save` → atomic `.tmp + Rename`; **per-path mutex отсутствует** (полагается на atomic write — concurrent PATCH safe от частичной записи, но last-write-wins).
+Every patch endpoint returns `{"ok":true,"diff_summary":["..."]}` on success. The write is synchronous through `state.Save` → atomic `.tmp + Rename`; there is **no per-path mutex** (it relies on the atomic write — concurrent PATCHes are safe from partial writes, but it is last-write-wins).
 
-| Method | Path | Body | Что делает |
+| Method | Path | Body | What it does |
 |---|---|---|---|
-| PATCH | `/state/rules` | `{"mode":"replace"\|"append", "rules":[]state.Rule}` | Заменяет / добавляет правила. Каждое валидируется через `r.DecodeBody()` (kind discriminator: preset/inline/srs). |
-| PATCH | `/state/dns` | `state.DNSOptions` | Заменяет **всю** dns_options (servers + rules). Каждый server/rule валидируется по `kind`. **Тело обязано содержать `servers` и/или `rules`** — keyless `{}` → `422` (защита от молчаливого стирания всей секции), состояние не трогается. |
-| PATCH | `/state/dns/rules` | `{"text":"..."}` | Заменяет **только USER** rules; preset-rules сохраняются. `""` (пустой текст) = wipe user rules. |
-| PATCH | `/state/log-level` | `{"level":"trace"\|"debug"\|"info"\|"warn"\|"error"\|"fatal"\|"panic"}` | Пишет `vars[log_level]` → forced rebuild `config.json` → **restart sing-box** (активные соединения рвутся). Отвечает `202` + `{"ok":true,"level":"...","warning":"active connections reset"}`, а не общим `{"ok":true,"diff_summary":[...]}`. Поле `level` обязательно; невалидный уровень → `400` со списком `allowed` (ядро не трогается). |
+| PATCH | `/state/rules` | `{"mode":"replace"\|"append", "rules":[]state.Rule}` | Replaces / appends rules. Each is validated via `r.DecodeBody()` (kind discriminator: preset/inline/srs). |
+| PATCH | `/state/dns` | `state.DNSOptions` | Replaces the **whole** dns_options (servers + rules). Every server/rule is validated by its `kind`. **The body must contain `servers` and/or `rules`** — a keyless `{}` → `422` (a guard against silently wiping the entire section); state is left untouched. |
+| PATCH | `/state/dns/rules` | `{"text":"..."}` | Replaces **USER rules only**; preset rules are preserved. `""` (empty text) wipes the user rules. |
+| PATCH | `/state/log-level` | `{"level":"trace"\|"debug"\|"info"\|"warn"\|"error"\|"fatal"\|"panic"}` | Writes `vars[log_level]` → forces a `config.json` rebuild → **restarts sing-box** (active connections are dropped). Responds `202` + `{"ok":true,"level":"...","warning":"active connections reset"}` rather than the generic `{"ok":true,"diff_summary":[...]}`. The `level` field is required; an invalid level → `400` with the `allowed` list (the core is left alone). |
 
 ```bash
-# Replace all rules с одним preset-ref'ом
+# Replace all rules with a single preset ref
 curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   "$API/state/rules" \
   -d '{"mode":"replace","rules":[{"kind":"preset","ref":"ru-direct","enabled":true,"body":{"vars":{}}}]}'
 
-# Добавить одно inline-правило не трогая остальные
+# Append one inline rule without touching the rest
 curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   "$API/state/rules" \
   -d '{"mode":"append","rules":[{"kind":"inline","enabled":true,
         "body":{"name":"Block Reddit","match":{"domain_suffix":["reddit.com"]},"outbound":"reject"}}]}'
 
-# Patch DNS rules text (как в UI Raw-режиме)
+# Patch the DNS rules text (same as the UI's Raw mode)
 curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   "$API/state/dns/rules" \
   -d '{"text":"{\"rules\":[{\"domain\":\"example.com\",\"server\":\"cf\"}]}"}'
 
-# Поднять логи до trace (рвёт активные соединения — ядро перезапускается)
+# Raise logging to trace (drops active connections — the core restarts)
 curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   "$API/state/log-level" -d '{"level":"trace"}'
 ```
 
-> `POST /traffic/verbose` — булев частный случай этой же ручки: умеет только `debug` (`true`) и `warn` (`false`). Для остальных уровней используйте `PATCH /state/log-level`.
+> `POST /traffic/verbose` is the boolean special case of the same handler: it only knows `debug` (`true`) and `warn` (`false`). For any other level use `PATCH /state/log-level`.
 
-**Ошибки:** `400` (битый JSON / неизвестный mode), `422` (semantic validation: unknown rule kind, unknown DNS server kind, body decode fail), `500` (load/save), `405` (метод).
+**Errors:** `400` (malformed JSON / unknown mode), `422` (semantic validation: unknown rule kind, unknown DNS server kind, body decode failure), `500` (load/save), `405` (method).
 
 ---
 
 ## Settings
 
-`bin/settings.json` — launcher-level preferences (отдельный namespace от `state.json`). Изменения подхватываются на лету: subscription fetcher читает `LoadSubscriptionSettingsFunc` на каждом запросе, sing-box restart НЕ нужен.
+`bin/settings.json` holds launcher-level preferences (a namespace separate from `state.json`). Changes are picked up on the fly: the subscription fetcher reads `LoadSubscriptionSettingsFunc` on every request, so a sing-box restart is NOT needed.
 
-| Method | Path | Что делает |
+| Method | Path | What it does |
 |---|---|---|
-| GET | `/settings/user-agent` | `{user_agent, default, effective}` — `user_agent` raw stored (может быть пустой), `default` — что отдаст `BuildSubscriptionUserAgent()`, `effective` — что реально уйдёт в следующий fetch |
-| PATCH | `/settings/user-agent` | `{"user_agent":"..."}` — записать кастомный UA. `{"user_agent":""}` = reset к default. Поле обязательно (пропуск = `400`) — иначе truncated request мог бы случайно стереть значение |
+| GET | `/settings/user-agent` | `{user_agent, default, effective}` — `user_agent` as stored (may be empty), `default` is what `BuildSubscriptionUserAgent()` returns, `effective` is what the next fetch will actually send |
+| PATCH | `/settings/user-agent` | `{"user_agent":"..."}` — store a custom UA. `{"user_agent":""}` resets to the default. The field is required (omitting it → `400`) — otherwise a truncated request could wipe the value by accident |
 
 ```bash
-# Прочитать текущий + default + effective
+# Read the current value + default + effective
 curl -s -H "Authorization: Bearer $TOKEN" "$API/settings/user-agent" | jq
 
-# Установить UA как v2rayN (для провайдеров, которые режут наш default)
+# Set the UA to v2rayN (for providers that reject our default)
 curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   "$API/settings/user-agent" \
   -d '{"user_agent":"v2rayN/7.5.0"}'
 
-# Сбросить на default
+# Reset to the default
 curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   "$API/settings/user-agent" \
   -d '{"user_agent":""}'
 ```
 
-**Ошибки:** `400` (битый JSON / отсутствует `user_agent` поле), `500` (save settings.json), `405` (метод).
+**Errors:** `400` (malformed JSON / missing `user_agent` field), `500` (saving settings.json), `405` (method).
 
 ---
 
 ## Actions
 
-Все `POST`-only (`GET` → 405). Synchronous (блокируют до завершения). Success = `{"ok":true}`.
+All are `POST`-only (`GET` → 405) and synchronous (they block until done). Success = `{"ok":true}`.
 
-| Method | Path | Что делает |
+| Method | Path | What it does |
 |---|---|---|
-| POST | `/action/update-subs` | `ConfigService.UpdateConfigFromSubscriptions` — synchronous re-fetch всех подписок |
-| POST | `/action/start` | Запускает sing-box (fire-and-forget) |
-| POST | `/action/stop` | Останавливает sing-box (graceful, deadline 2s) |
-| POST | `/action/ping-all` | Запускает ping всех прокси. **Caveat:** silent no-op если UIService не инициализирован (headless edge-case) |
-| POST | `/action/rebuild-config` | `RebuildConfigIfDirty` — пересобирает `config.json` если есть stale-маркеры. Atomic `.tmp + Rename`. **Note:** doc-comment в коде обещает `{"rebuilt":bool}` в response, но handler возвращает только `{"ok":true}` (на доработке) |
+| POST | `/action/update-subs` | `ConfigService.UpdateConfigFromSubscriptions` — a synchronous re-fetch of every subscription |
+| POST | `/action/start` | Starts sing-box (fire-and-forget) |
+| POST | `/action/stop` | Stops sing-box (graceful, 2s deadline) |
+| POST | `/action/ping-all` | Latency-tests every proxy. **Caveat:** a silent no-op when UIService is not initialized (a headless edge case) |
+| POST | `/action/rebuild-config` | `RebuildConfigIfDirty` — rebuilds `config.json` when stale markers are present. Atomic `.tmp + Rename`. **Note:** the doc comment in the code promises `{"rebuilt":bool}` in the response, but the handler returns only `{"ok":true}` (pending) |
 
 ```bash
-# Обновить подписки и пересобрать config
+# Refresh subscriptions and rebuild the config
 curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API/action/update-subs"
 curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API/action/rebuild-config"
 
-# Рестарт sing-box
+# Restart sing-box
 curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API/action/stop"
 curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API/action/start"
 ```
@@ -184,34 +184,34 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API/action/start"
 
 ## Traffic Profiler (SPEC 059)
 
-Контроль за live DNS/TCP/UDP capture session'ом и просмотр rolling buffer'а (последние 60 секунд; параметр `last` клампится до 10 минут). Та же подсистема, что окно **Traffic Profiler** в Diagnostics.
+Control over the live DNS/TCP/UDP capture session and a view into the rolling buffer (the last 60 seconds; the `last` parameter is clamped to 10 minutes). The same subsystem as the **Traffic Profiler** window in Diagnostics.
 
-| Method | Path | Назначение |
+| Method | Path | Purpose |
 |---|---|---|
-| GET | `/traffic/status` | Состояние активной сессии (recording, target, events_dropped, etc.) |
-| GET | `/traffic/live?last=60s` | Snapshot rolling buffer'а. `last` — Go duration (≤ 10 минут, > 0). Возвращает `{events, cutoff_ts}` |
-| POST | `/traffic/start` | Body `{"target":"<process_path>","verbose":<bool>}`. Пустой target = system-wide. Verbose flips `log_level=debug` и рестартит sing-box. **409** если сессия уже активна |
-| POST | `/traffic/stop` | Финализирует активную сессию. **404** если нет активной |
-| POST | `/traffic/clear` | Стирает все завершённые сессии. Возвращает `{"cleared":N}` |
-| GET | `/traffic/sessions` | Список всех сессий (completed + active с `active:true`) |
-| GET | `/traffic/sessions/{id}` | Полный dump событий сессии |
-| DELETE | `/traffic/sessions/{id}` | Удалить одну. **409** если сессия активна |
-| GET | `/traffic/processes` | Список distinct-процессов в rolling buffer'е (для UI dropdown'а) |
-| GET | `/traffic/verbose` | Текущий sing-box `log_level` |
-| POST | `/traffic/verbose` | Body `{"enabled":<bool>}`. Toggle `log_level=debug/warn`. **202 Accepted** (требует sing-box reload); response: `{"ok":true,"level":"debug","warning":"active connections reset"}` |
+| GET | `/traffic/status` | State of the active session (recording, target, events_dropped, etc.) |
+| GET | `/traffic/live?last=60s` | A snapshot of the rolling buffer. `last` is a Go duration (≤ 10 minutes, > 0). Returns `{events, cutoff_ts}` |
+| POST | `/traffic/start` | Body `{"target":"<process_path>","verbose":<bool>}`. An empty target means system-wide. Verbose flips `log_level=debug` and restarts sing-box. **409** if a session is already active |
+| POST | `/traffic/stop` | Finalizes the active session. **404** when there is none |
+| POST | `/traffic/clear` | Wipes every completed session. Returns `{"cleared":N}` |
+| GET | `/traffic/sessions` | Every session (completed + the active one, flagged `active:true`) |
+| GET | `/traffic/sessions/{id}` | A full event dump for the session |
+| DELETE | `/traffic/sessions/{id}` | Delete one. **409** if that session is active |
+| GET | `/traffic/processes` | The distinct processes in the rolling buffer (for the UI dropdown) |
+| GET | `/traffic/verbose` | The current sing-box `log_level` |
+| POST | `/traffic/verbose` | Body `{"enabled":<bool>}`. Toggles `log_level=debug/warn`. **202 Accepted** (needs a sing-box reload); response: `{"ok":true,"level":"debug","warning":"active connections reset"}` |
 
 ```bash
-# Записать всё что происходит в Firefox 10 секунд
+# Record everything Firefox does for 10 seconds
 curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   "$API/traffic/start" -d '{"target":"/Applications/Firefox.app/Contents/MacOS/firefox","verbose":true}'
 sleep 10
 curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API/traffic/stop" | jq .session.id
 # → "01J…"
 
-# Получить полный лог сессии
+# Fetch the full session log
 curl -s -H "Authorization: Bearer $TOKEN" "$API/traffic/sessions/01J…" > firefox_session.json
 
-# Live snapshot последних 30 секунд (без записи)
+# A live snapshot of the last 30 seconds (without recording)
 curl -s -H "Authorization: Bearer $TOKEN" "$API/traffic/live?last=30s" | jq '.events | length'
 ```
 
@@ -219,12 +219,12 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/traffic/live?last=30s" | jq '.ev
 
 ## Snapshot
 
-| Method | Path | Назначение |
+| Method | Path | Purpose |
 |---|---|---|
-| GET | `/debug/snapshot` | `core.snapshot.Build()` — template + state + cache + config.json в одном JSON-е. Идеально для bug-report'а |
+| GET | `/debug/snapshot` | `core.snapshot.Build()` — template + state + cache + config.json in a single JSON. Ideal for a bug report |
 
 ```bash
-# Сохранить полный snapshot для bug-report'а
+# Save a full snapshot for a bug report
 curl -s -H "Authorization: Bearer $TOKEN" "$API/debug/snapshot" > snapshot-$(date +%Y%m%d-%H%M%S).json
 ```
 
@@ -240,55 +240,52 @@ Response shape:
 }
 ```
 
-`missing` — массив, `errors` — объект `{файл: сообщение}`; пустые поля опускаются целиком (omitempty).
-
-```json
-```
+`missing` is an array, `errors` an object of `{file: message}`; empty fields are omitted entirely (omitempty).
 
 ---
 
-## Общие правила
+## General rules
 
-- **Auth header:** `Authorization: Bearer <token>` обязателен везде кроме `GET /ping`.
-- **Content-Type:** `application/json` для всех PATCH/POST с body.
-- **Errors:** `401` — нет/неверный bearer; `404` — ресурс не найден; `405` — метод не разрешён; `409` — конфликт состояния (traffic session); `422` — semantic validation fail; `500` — внутренняя ошибка.
-- **Concurrency:** state-write через atomic `.tmp + Rename`; per-resource mutex нет — concurrent PATCH safe от частичной записи, но **last-write-wins**, не merge.
-- **Versioning:** header `api` в `/version` сейчас фиксирован `debugapi/v1`. Breaking changes планируются как `v2`-namespace (`/v2/...`), пока без авто-discovery.
-
----
-
-## Use-cases
-
-- **Bash + curl скрипты** — health-check в systemd-юните, регулярный refresh подписок из cron, валидация что `running=true` после deploy.
-- **MCP-обёртки для AI-агентов** — Claude / GPT / прочие могут читать `/state/full`, делать PATCH'и, триггерить rebuild. См. [SPEC 038 §6.5](../SPECS/038-F-C-DEBUG_API/SPEC.md).
-- **CI/CD валидация шаблонов** — `wizard_template.json` подложить, запустить лаунчер headless, PATCH-нуть state через API, дождаться rebuild, прочитать generated `config.json`, прогнать sing-box-check.
-- **Regression-фикстуры** — снимать `/debug/snapshot` до/после изменения, diff'ить.
-- **Live observability** — `/traffic/live?last=10s` + `jq` = realtime tail соединений без открытия UI.
+- **Auth header:** `Authorization: Bearer <token>` is required everywhere except `GET /ping`.
+- **Content-Type:** `application/json` for every PATCH/POST that carries a body.
+- **Errors:** `401` — missing/invalid bearer; `404` — resource not found; `405` — method not allowed; `409` — state conflict (traffic session); `422` — semantic validation failure; `500` — internal error.
+- **Concurrency:** state writes go through an atomic `.tmp + Rename`; there is no per-resource mutex — concurrent PATCHes are safe from partial writes, but it is **last-write-wins**, not a merge.
+- **Versioning:** the `api` field in `/version` is currently fixed at `debugapi/v1`. Breaking changes are planned as a `v2` namespace (`/v2/...`), with no auto-discovery for now.
 
 ---
 
-## Ограничения
+## Use cases
 
-- **Loopback-only.** Нет TLS, нет CORS, нет LAN-bind. Для удалённого доступа — ssh-tunnel: `ssh -L 9263:127.0.0.1:9263 user@host`.
-- **Нет streaming endpoint'ов** (WebSocket / SSE). `/traffic/live?last=...` — snapshot, не subscribe. Для long-tail polling берите rolling buffer чанками.
-- **Нет `GET /logs?tail=N`** — sing-box логи читать напрямую из `bin/logs/`.
-- **Нет switch_proxy / list_groups / get_logs** — упоминались в SPEC 038 §183 как future work, не реализованы.
-- **Toggle verbose** рестартит sing-box — активные TCP-соединения дропаются. Response предупреждает (`"warning":"active connections reset"`).
-- **Token rotation** — кнопка **Settings → Debug API → «Regenerate»** (с подтверждением; ротирует токен и перезапускает listener). Альтернатива без UI: stop launcher → удалить `debug_api_token` из `bin/settings.json` → start launcher → токен будет регенерирован при первом включении.
+- **Bash + curl scripts** — a health check in a systemd unit, a periodic subscription refresh from cron, asserting `running=true` after a deploy.
+- **MCP wrappers for AI agents** — Claude / GPT / others can read `/state/full`, issue PATCHes, and trigger a rebuild. See [SPEC 038 §6.5](../SPECS/038-F-C-DEBUG_API/SPEC.md).
+- **CI/CD template validation** — drop in a `wizard_template.json`, run the launcher headless, PATCH the state through the API, wait for the rebuild, read the generated `config.json`, run sing-box check over it.
+- **Regression fixtures** — capture `/debug/snapshot` before and after a change and diff them.
+- **Live observability** — `/traffic/live?last=10s` + `jq` is a realtime tail of connections without opening the UI.
+
+---
+
+## Limitations
+
+- **Loopback only.** No TLS, no CORS, no LAN bind. For remote access use an ssh tunnel: `ssh -L 9263:127.0.0.1:9263 user@host`.
+- **No streaming endpoints** (WebSocket / SSE). `/traffic/live?last=...` is a snapshot, not a subscription. For long-tail polling, take the rolling buffer in chunks.
+- **No `GET /logs?tail=N`** — read the sing-box logs straight from `bin/logs/`.
+- **No switch_proxy / list_groups / get_logs** — mentioned in SPEC 038 §183 as future work; not implemented.
+- **Toggling verbose** restarts sing-box — active TCP connections are dropped. The response says so (`"warning":"active connections reset"`).
+- **Token rotation** — the **Settings → Debug API → "Regenerate"** button (with a confirmation; rotates the token and restarts the listener). Without the UI: stop the launcher → delete `debug_api_token` from `bin/settings.json` → start the launcher → the token is regenerated on first enable.
 
 ---
 
 ## Source
 
-| Файл | Что внутри |
+| File | What's inside |
 |---|---|
 | `core/debugapi/server.go` | Routing, auth middleware, `/ping`, `/version`, `/state`, `/proxies`, `/action/*` |
 | `core/debugapi/state_endpoints.go` | `/state/full`, `/state/rules`, `/state/dns`, `/state/dns/rules`, `/state/outbounds/resolved` |
-| `core/debugapi/log_level_endpoint.go` | `/state/log-level` (валидация уровня + core restart через `core.ApplyLogLevelAndReloadCore`) |
-| `core/debugapi/traffic_endpoints.go` | Все `/traffic/*` |
+| `core/debugapi/log_level_endpoint.go` | `/state/log-level` (level validation + core restart via `core.ApplyLogLevelAndReloadCore`) |
+| `core/debugapi/traffic_endpoints.go` | All of `/traffic/*` |
 | `core/debugapi/snapshot.go` | `/debug/snapshot` |
-| `core/debugapi_wiring.go` | Bridge между Server и controller (StartSingBox, StopSingBox, Update, Rebuild, PingAll) |
+| `core/debugapi_wiring.go` | The bridge between Server and the controller (StartSingBox, StopSingBox, Update, Rebuild, PingAll) |
 | `internal/locale/settings.go` | `debug_api_enabled`, `debug_api_port`, `debug_api_token` |
 | `ui/settings_tab.go` | UI toggle / Copy token / port entry |
 
-История дизайна (необязательно к чтению): [SPEC 038](../SPECS/038-F-C-DEBUG_API/SPEC.md), [IMPLEMENTATION_REPORT](../SPECS/038-F-C-DEBUG_API/IMPLEMENTATION_REPORT.md).
+Design history (optional reading): [SPEC 038](../SPECS/038-F-C-DEBUG_API/SPEC.md), [IMPLEMENTATION_REPORT](../SPECS/038-F-C-DEBUG_API/IMPLEMENTATION_REPORT.md).

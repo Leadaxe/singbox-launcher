@@ -1,5 +1,7 @@
 # Architecture — singbox-launcher
 
+**🌐 Language**: English | [Русский](ARCHITECTURE.ru.md)
+
 > Status: layer model and ADRs current as of SPEC 070 (architecture refactor &
 > cleanup); §11 covers the core-engine and remote-machine seams added by SPEC
 > 096–099. Branch `develop`.
