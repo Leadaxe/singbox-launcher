@@ -32,9 +32,19 @@ func TestMatchesPattern(t *testing.T) {
 		{"neg-regex match returns false", "Tokyo", "!/tokyo/i", false},
 		{"neg-regex case-insensitive match returns false", "TOKYO", "!/tokyo/i", false},
 
+		// Regex /.../ без флага — case-sensitive (раньше молча уходил в
+		// literal-ветку: фильтр «/🔥/» не матчил ни одну ноду и группа
+		// выпадала из конфига).
+		{"flagless regex match", "🔥🎭 WARP (MASQUE)", "/🔥/", true},
+		{"flagless regex no match", "AL:Германия", "/🔥/", false},
+		{"flagless regex case-sensitive", "TOKYO", "/tokyo/", false},
+		{"flagless neg-regex no match returns true", "Osaka", "!/tokyo/", true},
+		{"flagless neg-regex match returns false", "tokyo-01", "!/tokyo/", false},
+
 		// Invalid regex → logged, treated as non-match.
 		{"invalid regex returns false", "anything", "/[/i", false},
 		{"invalid neg-regex returns false", "anything", "!/[/i", false},
+		{"invalid flagless regex returns false", "anything", "/[/", false},
 
 		// A literal that merely starts with '/' but is not a regex form
 		// (no trailing /i) is matched literally.

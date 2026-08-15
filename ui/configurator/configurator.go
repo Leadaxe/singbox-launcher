@@ -34,6 +34,7 @@ import (
 	"fmt"
 	"image/color"
 	"path/filepath"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -215,11 +216,23 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 			} else {
 				debuglog.InfoLog("ShowConfigWizard: loaded state from state.json")
 			}
-			// LoadState восстанавливает Target из meta файла. Для машины это
-			// затирает и её id, и платформу из реестра — а реестр здесь
-			// источник правды (§5.8). Возвращаем таргет, которым открывали.
+			// LoadState восстанавливает Target из meta файла. Для машины id и
+			// каталоги всегда из реестра (§5.8 — их в файле нет и быть не
+			// должно), а вот платформу юзер мог переопределить на вкладке
+			// Target — его сохранённый выбор уважаем, иначе смена архитектуры
+			// молча откатывалась бы на рапорт демона при каждом открытии.
+			// Legacy-файлы без meta.target падают обратно на реестр целиком.
 			if target.IsRemote() {
-				model.Target = target.Normalized()
+				next := target.Normalized()
+				if stateFile.Target == constants.ConfigTargetRemote {
+					if s := strings.TrimSpace(stateFile.TargetPlatform); s != "" {
+						next.GOOS = s
+					}
+					if s := strings.TrimSpace(stateFile.TargetArch); s != "" {
+						next.GOARCH = s
+					}
+				}
+				model.Target = next.Normalized()
 			}
 		}
 	} else {

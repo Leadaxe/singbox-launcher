@@ -1,6 +1,7 @@
 package tabs
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -81,6 +82,7 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 			lbl.Importance = widget.LowImportance
 			lbl.Wrapping = fyne.TextWrapWord
 			body.Add(lbl)
+			appendStorageRecordSection(body, src)
 			body.Refresh()
 			return
 		}
@@ -92,6 +94,7 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 			lbl.Importance = widget.LowImportance
 			lbl.Wrapping = fyne.TextWrapWord
 			body.Add(lbl)
+			appendStorageRecordSection(body, src)
 			body.Refresh()
 			return
 		}
@@ -256,6 +259,8 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 			}
 		}
 
+		appendStorageRecordSection(body, src)
+
 		body.Refresh()
 	}
 
@@ -265,6 +270,38 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 	// ~10 сек на открытии окна. Refresh вызывается из tabs.OnSelected когда
 	// юзер реально кликает Overview. До этого таб показывает пустой VBox.
 	return rootWithGutter, refresh
+}
+
+// appendStorageRecordSection — блок «как источник записан в state.json»
+// (canonical v5 Source). Раньше этот снапшот был вкладкой JSON; переехал
+// сюда, когда вкладка JSON стала показывать распакованный sing-box outbound.
+func appendStorageRecordSection(body *fyne.Container, src corestate.Source) {
+	body.Add(widget.NewSeparator())
+	body.Add(sectionHeader(locale.T("wizard.source.overview_section_storage")))
+
+	text := ""
+	if b, err := json.MarshalIndent(src, "", "  "); err != nil {
+		text = err.Error()
+	} else {
+		text = string(b)
+	}
+
+	// MultiLineEntry без Disable() — тот же приём, что у raw body выше:
+	// disabled-текст на macOS рендерится цветом фона. Ввод откатывается.
+	entry := widget.NewMultiLineEntry()
+	entry.Wrapping = fyne.TextWrapOff
+	entry.SetText(text)
+	entry.OnChanged = func(s string) {
+		if s != text {
+			entry.SetText(text)
+		}
+	}
+	entryScroll := container.NewVScroll(container.NewStack(
+		canvas.NewRectangle(transparentColor()),
+		entry,
+	))
+	entryScroll.SetMinSize(fyne.NewSize(0, 240))
+	body.Add(entryScroll)
 }
 
 // sectionHeader — bold-section-header label.

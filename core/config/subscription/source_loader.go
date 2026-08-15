@@ -527,11 +527,34 @@ func LoadNodesFromSourceEx(
 		}
 	}
 
+	// Manual config_json (server-source): готовый sing-box объект вместо URI.
+	// Приоритетнее Connections: раз пользователь сохранил ручной JSON, URI
+	// намеренно игнорируется — он мог вообще не парситься (протокол без
+	// схемы/парсера), в этом весь смысл поля. Tag перештамповывается тем же
+	// путём, что у остальных нод (mask=Label для server-source).
+	connections := proxySource.Connections
+	if len(proxySource.ConfigJSON) > 0 {
+		node, err := NodeFromManualConfigJSON(proxySource.ConfigJSON)
+		if err != nil {
+			debuglog.WarnLog("Parser: manual config_json for source %d/%d: %v",
+				subscriptionIndex+1, totalSubscriptions, err)
+		} else if nodesFromThisSource < configtypes.MaxNodesPerSubscription {
+			node.Tag = applyTagPrefixPostfix(node, proxySource.TagPrefix, proxySource.TagPostfix, proxySource.TagMask, nodesFromThisSource+1)
+			node.Tag = textnorm.NormalizeProxyDisplay(node.Tag)
+			node.Tag = MakeTagUnique(node.Tag, tagCounts, "Parser")
+			nodes = append(nodes, node)
+			nodesFromThisSource++
+			debuglog.DebugLog("LoadNodesFromSource: manual config_json node %q (type %s) for source %d/%d",
+				node.Tag, node.Scheme, subscriptionIndex+1, totalSubscriptions)
+		}
+		connections = nil
+	}
+
 	// Process direct links from Connections field
 	connectionsStartTime := time.Now()
 	debuglog.DebugLog("LoadNodesFromSource: Processing %d direct connections for source %d/%d",
-		len(proxySource.Connections), subscriptionIndex+1, totalSubscriptions)
-	for connIndex, connection := range proxySource.Connections {
+		len(connections), subscriptionIndex+1, totalSubscriptions)
+	for connIndex, connection := range connections {
 		connection = NormalizeSubscriptionTextLine(connection)
 		if connection == "" {
 			continue
@@ -539,7 +562,7 @@ func LoadNodesFromSourceEx(
 
 		if !IsDirectLink(connection) {
 			debuglog.DebugLog("LoadNodesFromSource: Invalid direct link format in connections %d/%d: %s",
-				connIndex+1, len(proxySource.Connections), connection)
+				connIndex+1, len(connections), connection)
 			debuglog.WarnLog("Parser: Invalid direct link format in connections: %s", connection)
 			continue
 		}
@@ -558,7 +581,7 @@ func LoadNodesFromSourceEx(
 		node, err := ParseNode(connection, proxySource.Skip)
 		if err != nil {
 			debuglog.DebugLog("LoadNodesFromSource: Failed to parse connection %d/%d (took %v): %v",
-				connIndex+1, len(proxySource.Connections), time.Since(parseStartTime), err)
+				connIndex+1, len(connections), time.Since(parseStartTime), err)
 			debuglog.WarnLog("Parser: Failed to parse direct link from connections: %v", err)
 			continue
 		}
@@ -572,9 +595,9 @@ func LoadNodesFromSourceEx(
 			nodesFromThisSource++
 		}
 	}
-	if len(proxySource.Connections) > 0 {
+	if len(connections) > 0 {
 		debuglog.DebugLog("LoadNodesFromSource: Processed %d connections in %v",
-			len(proxySource.Connections), time.Since(connectionsStartTime))
+			len(connections), time.Since(connectionsStartTime))
 	}
 
 	if skippedDueToLimit > 0 {
@@ -585,12 +608,18 @@ func LoadNodesFromSourceEx(
 	}
 
 	// SPEC 077: apply the source-level detour to every node it produced, so the
-	// generator emits "detour":"<tag>" on each. Skipped for WireGuard (endpoint,
-	// not a dial-based outbound) and for nodes that already carry an Xray Jump
-	// (the subscription declared its own chain — that wins). The tag is validated
-	// (dangling/cycle/self) later in the generator, where the full tag set is
-	// known; here we only stamp it.
-	applySourceDetour(nodes, proxySource.DetourTag)
+	// generator emits "detour":"<tag>" on each. Skipped for nodes that already
+	// carry an Xray Jump (the subscription declared its own chain — that wins)
+	// and for WireGuard endpoints with listen_port (the core rejects that
+	// combination). The tag is validated (dangling/cycle/self) later in the
+	// generator, where the full tag set is known; here we only stamp it.
+	// SPEC 101: a hash-addressed node detour supersedes the tag detour — it is
+	// resolved and stamped in the generator (resolveNodeHashDetours), where the
+	// target's final tag exists; stamping the tag here too would leave a stale
+	// value if the hash fails to resolve (fail-closed path).
+	if strings.TrimSpace(proxySource.DetourNodeHash) == "" {
+		ApplySourceDetour(nodes, proxySource.DetourTag)
+	}
 
 	// SPEC 094 D4: узлы, выключенные пользователем, не попадают в конфиг.
 	// Отметки живут по хешу идентичности, поэтому переживают переименование
@@ -718,20 +747,30 @@ func rebindImportedGroupNodes(nodes []*configtypes.ParsedNode) []*configtypes.Pa
 	return kept
 }
 
-// applySourceDetour stamps node.Outbound["detour"] = detourTag on every eligible
-// node (SPEC 077). No-op when detourTag is empty. WireGuard nodes and nodes with
-// an Xray Jump are left untouched (see LoadNodesFromSource for the rationale).
-func applySourceDetour(nodes []*configtypes.ParsedNode, detourTag string) {
+// ApplySourceDetour stamps node.Outbound["detour"] = detourTag on every eligible
+// node (SPEC 077). No-op when detourTag is empty. Nodes with an Xray Jump are
+// left untouched (see LoadNodesFromSource for the rationale). WireGuard endpoints
+// take detour like any dial-based outbound (sing-box-lx builds the peer dialer
+// from DialerOptions), except when the URI carried listen_port — the core
+// rejects detour+listen_port, and one such node would fail the whole config.
+//
+// Exported for the Source edit window's JSON tab, which unpacks cached
+// subscription bodies through the same steps as the real pipeline.
+func ApplySourceDetour(nodes []*configtypes.ParsedNode, detourTag string) {
 	detourTag = strings.TrimSpace(detourTag)
 	if detourTag == "" {
 		return
 	}
 	for _, node := range nodes {
-		if node == nil || node.Scheme == "wireguard" {
+		if node == nil {
 			continue
 		}
 		if node.Jump != nil {
-			debuglog.DebugLog("applySourceDetour: node %q has an Xray Jump — source detour %q not applied", node.Tag, detourTag)
+			debuglog.DebugLog("ApplySourceDetour: node %q has an Xray Jump — source detour %q not applied", node.Tag, detourTag)
+			continue
+		}
+		if _, hasListenPort := node.Outbound["listen_port"]; hasListenPort && node.Scheme == "wireguard" {
+			debuglog.WarnLog("Parser: node %q has listen_port — source detour %q not applied (core rejects detour+listen_port)", node.Tag, detourTag)
 			continue
 		}
 		if node.Outbound == nil {

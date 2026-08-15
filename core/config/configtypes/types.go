@@ -5,6 +5,7 @@
 package configtypes
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"runtime"
@@ -111,6 +112,21 @@ type ProxySource struct {
 	// ["detour"] for each non-WireGuard node at parse time; validated (dangling/
 	// cycle/self → dropped) at generation time.
 	DetourTag string `json:"detour_tag,omitempty"`
+	// DetourNodeHash: SPEC 101 — identity hash (config.NodeIdentityHash) of a
+	// single node this source's nodes dial through. The alternative to DetourTag
+	// for chaining through one concrete node (e.g. a WARP endpoint) instead of a
+	// group: node tags are runtime-generated (prefix/mask/uniquify) and would go
+	// stale, the hash survives renames and reorders — same reasoning as
+	// DisabledNodes. Mutually exclusive with DetourTag (UI enforces; if both are
+	// set, DetourNodeHash wins). Resolved hash→tag at generation time, when all
+	// sources are loaded and tags are final; an unresolved hash drops this
+	// source's nodes from the config (fail-closed — traffic must not silently go
+	// direct).
+	DetourNodeHash string `json:"detour_node_hash,omitempty"`
+	// DetourNodeLabel: display-only snapshot of the picked node's tag at pick
+	// time, so the Source dialog can show a human label without resolving the
+	// hash (the node may be temporarily absent). Never used for resolution.
+	DetourNodeLabel string `json:"detour_node_label,omitempty"`
 	// DisabledNodes: SPEC 094 D4 — per-node off switch, keyed by the node's
 	// identity hash (config.NodeIdentityHash) and valued with the unix time the
 	// mark was last confirmed.
@@ -125,6 +141,11 @@ type ProxySource struct {
 	// from the subscription longer than the TTL drops out of the map, otherwise
 	// it would grow without bound over a subscription's lifetime.
 	DisabledNodes map[string]int64 `json:"disabled_nodes,omitempty"`
+	// ConfigJSON: ручной sing-box outbound/endpoint объект (server-source).
+	// Если задан, LoadNodesFromSource строит ноду из него (Connections не
+	// парсятся), а генератор эмитит map passthrough — включая типы и поля,
+	// которых лаунчер не знает. Tag и detour перештамповываются как обычно.
+	ConfigJSON json.RawMessage `json:"config_json,omitempty"`
 }
 
 // Sentinel ref values for OutboundConfig (SPEC 058-R-N STATE_AS_TEMPLATE_DIFF).
@@ -277,6 +298,12 @@ type ParsedNode struct {
 	Chain []*ParsedNode
 	// SourceIndex is the index into ParserConfig.proxies for this node; UnsetSourceIndex if unknown.
 	SourceIndex int
+	// EmitRaw marks a node built from a manual config_json (ProxySource.
+	// ConfigJSON): the generator serializes Outbound as-is (tag/detour
+	// restamped) instead of reassembling fields through the per-scheme
+	// emitter — the whole point is carrying types and fields the emitter
+	// does not know about.
+	EmitRaw bool
 }
 
 // SyncJumpFromChain refreshes the deprecated Jump field from Chain[0].

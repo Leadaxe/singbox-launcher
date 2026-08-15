@@ -10,19 +10,25 @@ import (
 func TestApplySourceDetour(t *testing.T) {
 	vless := &configtypes.ParsedNode{Tag: "v", Scheme: "vless", Outbound: map[string]interface{}{"type": "vless"}}
 	wg := &configtypes.ParsedNode{Tag: "w", Scheme: "wireguard", Outbound: map[string]interface{}{"type": "wireguard"}}
+	wgListen := &configtypes.ParsedNode{Tag: "wl", Scheme: "wireguard", Outbound: map[string]interface{}{"type": "wireguard", "listen_port": 51820}}
 	withJump := &configtypes.ParsedNode{
 		Tag: "j", Scheme: "vless", Outbound: map[string]interface{}{"type": "vless"},
 		Jump: &configtypes.ParsedJump{Tag: "j_hop"},
 	}
 	nilOut := &configtypes.ParsedNode{Tag: "n", Scheme: "trojan"}
 
-	applySourceDetour([]*configtypes.ParsedNode{vless, wg, withJump, nilOut}, "hop-out")
+	ApplySourceDetour([]*configtypes.ParsedNode{vless, wg, wgListen, withJump, nilOut}, "hop-out")
 
 	if got, _ := vless.Outbound["detour"].(string); got != "hop-out" {
 		t.Errorf("vless detour = %q, want hop-out", got)
 	}
-	if _, ok := wg.Outbound["detour"]; ok {
-		t.Error("wireguard must not get a detour")
+	// sing-box-lx wireguard endpoints dial peers through detour like any outbound.
+	if got, _ := wg.Outbound["detour"].(string); got != "hop-out" {
+		t.Errorf("wireguard detour = %q, want hop-out", got)
+	}
+	// ...except with listen_port: the core rejects detour+listen_port.
+	if _, ok := wgListen.Outbound["detour"]; ok {
+		t.Error("wireguard with listen_port must not get a detour")
 	}
 	if _, ok := withJump.Outbound["detour"]; ok {
 		t.Error("node with Xray Jump must not get a source detour (Jump wins)")
@@ -36,7 +42,7 @@ func TestApplySourceDetour(t *testing.T) {
 // Empty detour tag is a no-op (no key added).
 func TestApplySourceDetour_EmptyNoop(t *testing.T) {
 	n := &configtypes.ParsedNode{Tag: "v", Scheme: "vless", Outbound: map[string]interface{}{"type": "vless"}}
-	applySourceDetour([]*configtypes.ParsedNode{n}, "  ")
+	ApplySourceDetour([]*configtypes.ParsedNode{n}, "  ")
 	if _, ok := n.Outbound["detour"]; ok {
 		t.Error("empty detour tag must not add a detour key")
 	}

@@ -8,6 +8,7 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/subscription"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -83,6 +84,109 @@ func DetourOptions(model *wizardmodels.WizardModel, source *configtypes.ProxySou
 		}
 	}
 	return options, selected
+}
+
+// DetourChoice describes what one picker option means (SPEC 077 + SPEC 101).
+// Exactly one of Tag / NodeHash is set: Tag targets a group outbound (stamped
+// as-is), NodeHash targets one concrete node and is resolved to its final tag
+// at generation time.
+type DetourChoice struct {
+	Tag       string
+	NodeHash  string
+	NodeLabel string
+}
+
+// detourNodeMarker prefixes single-node options so they read differently from
+// group tags in the same dropdown.
+const detourNodeMarker = "» "
+
+// DetourOptionsWithNodes builds the Source dialog's "Detour server" options:
+// the SPEC 077 group targets (see DetourOptions) plus, per SPEC 101, every
+// single-server source (state Connections URI) other than this source itself.
+// Subscription nodes are deliberately not offered — subscriptions carry
+// hundreds of unstable nodes; chaining through one of them is what a group is
+// for. options[0] is always noneLabel; choices maps a displayed option to its
+// meaning (absent for noneLabel).
+//
+// A dangling prior node selection (the server was deleted or its URI edited →
+// hash no longer parseable from any candidate) stays visible via its stored
+// label so the user can see and clear it, mirroring the dangling-tag behavior.
+func DetourOptionsWithNodes(model *wizardmodels.WizardModel, source *configtypes.ProxySource, noneLabel string) (options []string, selected string, choices map[string]DetourChoice) {
+	options, selected = DetourOptions(model, source, noneLabel)
+	choices = make(map[string]DetourChoice, len(options))
+	for _, tag := range options {
+		if tag != noneLabel {
+			choices[tag] = DetourChoice{Tag: tag}
+		}
+	}
+
+	ownURIs := map[string]struct{}{}
+	if source != nil {
+		for _, uri := range source.Connections {
+			ownURIs[strings.TrimSpace(uri)] = struct{}{}
+		}
+	}
+
+	selectedHash := ""
+	if source != nil {
+		selectedHash = strings.TrimSpace(source.DetourNodeHash)
+	}
+	selectedDisplay := ""
+	if model != nil {
+		for _, s := range model.Sources {
+			if s.Type != wizardmodels.SourceTypeServer || strings.TrimSpace(s.URI) == "" {
+				continue
+			}
+			uri := strings.TrimSpace(s.URI)
+			if _, own := ownURIs[uri]; own {
+				continue
+			}
+			hash := nodeHashForURI(uri)
+			if hash == "" {
+				continue // unparseable / unhashable — cannot be addressed
+			}
+			label := s.Label
+			if label == "" {
+				label = uri
+			}
+			display := detourNodeMarker + label
+			if _, dup := choices[display]; dup {
+				display += " (2)"
+			}
+			options = append(options, display)
+			choices[display] = DetourChoice{NodeHash: hash, NodeLabel: label}
+			if selectedHash != "" && hash == selectedHash {
+				selectedDisplay = display
+			}
+		}
+	}
+
+	if selectedHash != "" {
+		if selectedDisplay == "" {
+			// dangling: keep the stored label visible and clearable
+			label := source.DetourNodeLabel
+			if label == "" {
+				label = selectedHash[:min(12, len(selectedHash))] + "…"
+			}
+			selectedDisplay = detourNodeMarker + label
+			if _, dup := choices[selectedDisplay]; !dup {
+				options = append(options, selectedDisplay)
+				choices[selectedDisplay] = DetourChoice{NodeHash: selectedHash, NodeLabel: label}
+			}
+		}
+		selected = selectedDisplay
+	}
+	return options, selected, choices
+}
+
+// nodeHashForURI parses a single share-URI and returns its identity hash
+// (config.NodeIdentityHash), "" when the URI does not parse or emit.
+func nodeHashForURI(uri string) string {
+	node, err := subscription.ParseNode(uri, nil)
+	if err != nil || node == nil {
+		return ""
+	}
+	return config.NodeIdentityHash(node)
 }
 
 // localSubscriptionGroupTags collects every local group tag declared by a

@@ -92,6 +92,13 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 		return generateGroupNodeJSON(node)
 	}
 
+	// Manual config_json node: the map is the source of truth — serializing
+	// it as-is is the whole point (types and fields the per-scheme switch
+	// below does not know about must survive). Only tag/detour are restamped.
+	if node.EmitRaw {
+		return generateRawNodeJSON(node)
+	}
+
 	// Build JSON with correct field order
 	var parts []string
 
@@ -686,6 +693,59 @@ func GenerateEndpointJSON(node *ParsedNode) (string, error) {
 	return result, nil
 }
 
+// EmitNodeJSONs renders one parsed node exactly as the final config carries
+// it: wireguard → a single endpoints entry, everything else → one or more
+// outbounds entries (SPEC 094 B3 detour-chain hops first, then the main
+// outbound with "detour" stamped onto a copy of its map).
+//
+// Shared by the generation pipeline and the Source edit window's JSON tab —
+// one emission point, so what the tab shows is byte-for-byte what the build
+// puts into config.json.
+func EmitNodeJSONs(node *ParsedNode) (outboundJSONs []string, endpointJSON string, err error) {
+	if node == nil {
+		return nil, "", fmt.Errorf("nil node")
+	}
+
+	if node.Scheme == "wireguard" {
+		ep, err := GenerateEndpointJSON(node)
+		if err != nil {
+			return nil, "", err
+		}
+		return nil, ep, nil
+	}
+
+	// Chain — источник правды; Jump продолжает работать для узлов из
+	// Xray-пути и из state.json, написанного до SPEC 094.
+	chain := chainOfNode(node)
+
+	var jsons []string
+	for _, hop := range chain {
+		hopJSON, hopErr := GenerateNodeJSON(hop)
+		if hopErr != nil {
+			return nil, "", fmt.Errorf("chain hop %s: %w", hop.Tag, hopErr)
+		}
+		jsons = append(jsons, hopJSON)
+	}
+
+	origOutbound := node.Outbound
+	if len(chain) > 0 {
+		cp := make(map[string]interface{}, len(node.Outbound)+1)
+		for k, v := range node.Outbound {
+			cp[k] = v
+		}
+		cp["detour"] = chain[0].Tag
+		node.Outbound = cp
+	}
+	mainJSON, err := GenerateNodeJSON(node)
+	if len(chain) > 0 {
+		node.Outbound = origOutbound
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	return append(jsons, mainJSON), "", nil
+}
+
 // GenerateOutboundsFromParserConfig is the main entry point: loads nodes from all proxy sources via loadNodesFunc,
 // generates node JSONs, then runs the three passes (buildOutboundsInfo, computeOutboundValidity, generateSelectorJSONs)
 // and returns the concatenated JSON strings (nodes, then local selectors, then global selectors) plus counts.
@@ -801,6 +861,14 @@ func GenerateOutboundsFromParserConfig(
 		return nil, fmt.Errorf("no nodes parsed from any source")
 	}
 
+	// SPEC 101: resolve hash-addressed source detours (chain through one concrete
+	// node) now that every source is loaded and all tags are final. Must run
+	// before sanitizeNodeDetours so the stamped tags join cycle/self validation.
+	allNodes = resolveNodeHashDetours(parserConfig, nodesBySource, allNodes)
+	if len(allNodes) == 0 {
+		return nil, fmt.Errorf("no usable nodes: every source was dropped (detour node not found)")
+	}
+
 	// SPEC 077: sanitize source-level detours that would break sing-box —
 	// self-reference and detour cycles among nodes. Fail-open: the offending
 	// detour field is dropped (the node dials directly), generation continues.
@@ -820,58 +888,16 @@ func GenerateOutboundsFromParserConfig(
 	endpointsCount := 0
 
 	for _, node := range allNodes {
-		if node.Scheme == "wireguard" {
-			epJSON, err := GenerateEndpointJSON(node)
-			if err != nil {
-				debuglog.WarnLog("GenerateOutboundsFromParserConfig: Failed to generate JSON for endpoint %s: %v", node.Tag, err)
-				continue
-			}
+		outJSONs, epJSON, err := EmitNodeJSONs(node)
+		if err != nil {
+			debuglog.WarnLog("GenerateOutboundsFromParserConfig: Failed to generate JSON for node %s: %v", node.Tag, err)
+			continue
+		}
+		if epJSON != "" {
 			endpointsJSON = append(endpointsJSON, epJSON)
 			endpointsCount++
 		} else {
-			var nodeJSONs []string
-			// SPEC 094 B3: цепочка произвольной глубины. Chain — источник
-			// правды; Jump продолжает работать для узлов из Xray-пути и из
-			// state.json, написанного до SPEC 094.
-			chain := chainOfNode(node)
-
-			chainFailed := false
-			for _, hop := range chain {
-				hopJSON, err := GenerateNodeJSON(hop)
-				if err != nil {
-					debuglog.WarnLog("GenerateOutboundsFromParserConfig: Failed to generate JSON for chain hop %s: %v", hop.Tag, err)
-					chainFailed = true
-					break
-				}
-				nodeJSONs = append(nodeJSONs, hopJSON)
-			}
-			if chainFailed {
-				continue
-			}
-
-			origOutbound := node.Outbound
-			if len(chain) > 0 {
-				if node.Outbound == nil {
-					node.Outbound = make(map[string]interface{})
-				} else {
-					cp := make(map[string]interface{}, len(node.Outbound)+1)
-					for k, v := range node.Outbound {
-						cp[k] = v
-					}
-					node.Outbound = cp
-				}
-				node.Outbound["detour"] = chain[0].Tag
-			}
-			mainJSON, err := GenerateNodeJSON(node)
-			if len(chain) > 0 {
-				node.Outbound = origOutbound
-			}
-			if err != nil {
-				debuglog.WarnLog("GenerateOutboundsFromParserConfig: Failed to generate JSON for node %s: %v", node.Tag, err)
-				continue
-			}
-			nodeJSONs = append(nodeJSONs, mainJSON)
-			selectorsJSON = append(selectorsJSON, nodeJSONs...)
+			selectorsJSON = append(selectorsJSON, outJSONs...)
 			nodesCount++
 		}
 	}
@@ -974,6 +1000,53 @@ func generateGroupNodeJSON(node *ParsedNode) (string, error) {
 	return body, nil
 }
 
+// generateRawNodeJSON emits a manual config_json node (ParsedNode.EmitRaw):
+// the Outbound map goes into the config verbatim, except tag (restamped with
+// the node's final tag — label/mask/uniquify already applied) and detour
+// (stamped by subscription.ApplySourceDetour / the chain logic into the map itself).
+//
+// tag and type lead for readability, the rest is sorted: determinism is
+// needed by the node identity hash, which is computed from the emitted JSON.
+func generateRawNodeJSON(node *ParsedNode) (string, error) {
+	if node.Outbound == nil {
+		return "", fmt.Errorf("manual node %q has no outbound data", node.Tag)
+	}
+
+	typ, _ := node.Outbound["type"].(string)
+	typ = strings.TrimSpace(typ)
+	if typ == "" {
+		return "", fmt.Errorf("manual node %q has no type", node.Tag)
+	}
+
+	var parts []string
+	parts = append(parts, fmt.Sprintf(`"tag":%s`, marshalJSONString(node.Tag)))
+	parts = append(parts, fmt.Sprintf(`"type":%s`, marshalJSONString(typ)))
+
+	extraKeys := make([]string, 0, len(node.Outbound))
+	for k := range node.Outbound {
+		if k == "tag" || k == "type" {
+			continue
+		}
+		extraKeys = append(extraKeys, k)
+	}
+	sort.Strings(extraKeys)
+
+	for _, k := range extraKeys {
+		encoded, err := json.Marshal(node.Outbound[k])
+		if err != nil {
+			debuglog.WarnLog("GenerateNodeJSON: manual node %q: dropping unencodable field %q: %v", node.Tag, k, err)
+			continue
+		}
+		parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(k), string(encoded)))
+	}
+
+	body := fmt.Sprintf("\t{%s},", strings.Join(parts, ","))
+	if comment := sanitizeOutboundLineComment(node.Label); comment != "" {
+		return fmt.Sprintf("\t// %s\n%s", comment, body), nil
+	}
+	return body, nil
+}
+
 // groupMemberTags returns the group's member tags in order.
 func groupMemberTags(node *ParsedNode) []string {
 	if node == nil || node.Outbound == nil {
@@ -1064,6 +1137,100 @@ func normalizeChainHop(hop, owner *ParsedNode) *ParsedNode {
 		}
 	}
 	return out
+}
+
+// resolveNodeHashDetours implements SPEC 101 — a source chained through one
+// concrete node addressed by identity hash (ProxySource.DetourNodeHash), the
+// node-level sibling of the tag-addressed group detour (SPEC 077).
+//
+// Runs after all sources are loaded: only here the target's final tag is known
+// (prefix/mask/uniquify applied) and the full node set is available for lookup.
+// Group nodes are not lookup candidates — chaining through a selector is what
+// DetourTag does; the hash path is strictly node-to-node.
+//
+// Fail-closed: when the hash resolves to nothing (node gone from the
+// subscription, credentials changed → new hash, or the node was disabled),
+// the dependent source's nodes are DROPPED from the config with a warning.
+// The tag-detour path fails open (drop the detour, dial direct), which is
+// right for a group that lost a member — but a missing chain hop must not
+// silently turn into direct dialing: the user picked the hop to hide this
+// source's traffic behind it.
+//
+// When both DetourNodeHash and DetourTag are set (UI forbids it, hand-edited
+// state can), the hash wins: LoadNodesFromSource skips tag stamping for such
+// sources and the stamp happens here.
+func resolveNodeHashDetours(parserConfig *ParserConfig, nodesBySource map[int][]*ParsedNode, allNodes []*ParsedNode) []*ParsedNode {
+	var hashSources []int
+	for i, ps := range parserConfig.ParserConfig.Proxies {
+		if strings.TrimSpace(ps.DetourNodeHash) != "" && len(nodesBySource[i]) > 0 {
+			hashSources = append(hashSources, i)
+		}
+	}
+	if len(hashSources) == 0 {
+		return allNodes
+	}
+
+	byHash := make(map[string]*ParsedNode)
+	for _, n := range allNodes {
+		if n == nil || n.Scheme == SchemeGroup || n.Tag == "" {
+			continue
+		}
+		if h := NodeIdentityHash(n); h != "" {
+			if _, dup := byHash[h]; !dup {
+				byHash[h] = n
+			}
+		}
+	}
+
+	dropSource := make(map[int]bool)
+	for _, i := range hashSources {
+		ps := parserConfig.ParserConfig.Proxies[i]
+		hash := strings.TrimSpace(ps.DetourNodeHash)
+		target := byHash[hash]
+		if target == nil {
+			label := ps.DetourNodeLabel
+			if label == "" {
+				label = hash[:min(12, len(hash))] + "…"
+			}
+			debuglog.WarnLog("Parser: detour node %q for source %d not found — dropping its %d node(s) (fail-closed, traffic must not go direct)",
+				label, i+1, len(nodesBySource[i]))
+			dropSource[i] = true
+			continue
+		}
+		for _, n := range nodesBySource[i] {
+			if n == nil || n == target {
+				continue // the hop itself dials direct
+			}
+			// Same eligibility as subscription.ApplySourceDetour (SPEC 077).
+			if n.Jump != nil {
+				debuglog.DebugLog("resolveNodeHashDetours: node %q has an Xray Jump — detour %q not applied", n.Tag, target.Tag)
+				continue
+			}
+			if _, hasLP := n.Outbound["listen_port"]; hasLP && n.Scheme == "wireguard" {
+				debuglog.WarnLog("Parser: node %q has listen_port — detour %q not applied (core rejects detour+listen_port)", n.Tag, target.Tag)
+				continue
+			}
+			if n.Outbound == nil {
+				n.Outbound = map[string]interface{}{}
+			}
+			n.Outbound["detour"] = target.Tag
+		}
+	}
+
+	if len(dropSource) == 0 {
+		return allNodes
+	}
+	kept := allNodes[:0]
+	for _, n := range allNodes {
+		if n != nil && dropSource[n.SourceIndex] {
+			continue
+		}
+		kept = append(kept, n)
+	}
+	for i := range dropSource {
+		delete(nodesBySource, i)
+	}
+	return kept
 }
 
 func sanitizeNodeDetours(nodes []*ParsedNode) {

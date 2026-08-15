@@ -73,7 +73,19 @@ func NodeIdentityHash(node *ParsedNode) string {
 		return ""
 	}
 
-	emitted, err := GenerateNodeJSON(node)
+	// WireGuard nodes are endpoints and emit through GenerateEndpointJSON; the
+	// per-scheme outbound switch has no wireguard branch and would truncate them
+	// to {tag,type,server,server_port}, collapsing every WG node on one
+	// server:port into a single identity (SPEC 101). Note: this changed existing
+	// WG hashes once — pre-101 disabled-node marks on WG nodes detach (they were
+	// unsound anyway: one mark covered all WG nodes of the server).
+	var emitted string
+	var err error
+	if node.Scheme == "wireguard" {
+		emitted, err = GenerateEndpointJSON(node)
+	} else {
+		emitted, err = GenerateNodeJSON(node)
+	}
 	if err != nil {
 		debuglog.DebugLog("NodeIdentityHash: cannot emit node %q: %v", node.Tag, err)
 		return ""

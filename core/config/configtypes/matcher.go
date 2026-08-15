@@ -32,30 +32,55 @@ func MatchesPattern(value, pattern string) bool {
 		return value != literal
 	}
 
-	// Negation regex: !/regex/i
-	if strings.HasPrefix(pattern, "!/") && strings.HasSuffix(pattern, "/i") {
-		regexStr := strings.TrimPrefix(pattern, "!/")
-		regexStr = strings.TrimSuffix(regexStr, "/i")
-		re, err := regexp.Compile("(?i)" + regexStr)
-		if err != nil {
-			debuglog.WarnLog("Parser: Invalid regex pattern %s: %v", pattern, err)
-			return false
+	// Negation regex: !/regex/i (case-insensitive) или !/regex/ (case-sensitive).
+	// Флаг i опционален: раньше «/🔥/» без i молча проваливался в literal-ветку
+	// («значение == "/🔥/"»), селектор собирался пустым и выпадал из конфига.
+	if strings.HasPrefix(pattern, "!/") {
+		if regexStr, ci, ok := trimRegexPattern(strings.TrimPrefix(pattern, "!")); ok {
+			re, err := compileFilterRegex(regexStr, ci)
+			if err != nil {
+				debuglog.WarnLog("Parser: Invalid regex pattern %s: %v", pattern, err)
+				return false
+			}
+			return !re.MatchString(value)
 		}
-		return !re.MatchString(value)
 	}
 
-	// Regex: /regex/i
-	if strings.HasPrefix(pattern, "/") && strings.HasSuffix(pattern, "/i") {
-		regexStr := strings.TrimPrefix(pattern, "/")
-		regexStr = strings.TrimSuffix(regexStr, "/i")
-		re, err := regexp.Compile("(?i)" + regexStr)
-		if err != nil {
-			debuglog.WarnLog("Parser: Invalid regex pattern %s: %v", pattern, err)
-			return false
+	// Regex: /regex/i (case-insensitive) или /regex/ (case-sensitive).
+	if strings.HasPrefix(pattern, "/") {
+		if regexStr, ci, ok := trimRegexPattern(pattern); ok {
+			re, err := compileFilterRegex(regexStr, ci)
+			if err != nil {
+				debuglog.WarnLog("Parser: Invalid regex pattern %s: %v", pattern, err)
+				return false
+			}
+			return re.MatchString(value)
 		}
-		return re.MatchString(value)
 	}
 
 	// Literal match (case-sensitive)
 	return value == pattern
+}
+
+// trimRegexPattern распознаёт /regex/i и /regex/: возвращает тело регэкспа,
+// признак case-insensitive и ok=false, если строка не является /…/-формой
+// (тогда caller падает в literal-ветку).
+func trimRegexPattern(pattern string) (regexStr string, caseInsensitive bool, ok bool) {
+	if !strings.HasPrefix(pattern, "/") {
+		return "", false, false
+	}
+	if strings.HasSuffix(pattern, "/i") && len(pattern) > len("//i") {
+		return pattern[1 : len(pattern)-2], true, true
+	}
+	if strings.HasSuffix(pattern, "/") && len(pattern) > len("//") {
+		return pattern[1 : len(pattern)-1], false, true
+	}
+	return "", false, false
+}
+
+func compileFilterRegex(regexStr string, caseInsensitive bool) (*regexp.Regexp, error) {
+	if caseInsensitive {
+		return regexp.Compile("(?i)" + regexStr)
+	}
+	return regexp.Compile(regexStr)
 }
