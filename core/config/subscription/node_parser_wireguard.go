@@ -53,11 +53,14 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 	if privateKey == "" {
 		return nil, fmt.Errorf("invalid wireguard URI: empty private key")
 	}
-	// Validate base64 private key (optional but recommended)
-	if _, err := base64.StdEncoding.DecodeString(privateKey); err != nil {
-		if _, err2 := base64.URLEncoding.DecodeString(privateKey); err2 != nil {
-			debuglog.DebugLog("parseWireGuardURI: warning private key may not be valid base64")
-		}
+	// The core decodes keys with base64.StdEncoding only (transport/wireguard);
+	// an invalid key emitted into config.json fails `sing-box check` and kills
+	// the whole config (same junk-value class as pbk=enabled, v1.1.7). Reject
+	// the node here instead; URL-safe/unpadded variants are converted to std.
+	privateKey, err = normalizeWGKey("private key", privateKey)
+	if err != nil {
+		debuglog.WarnLog("parseWireGuardURI: %v — node skipped", err)
+		return nil, err
 	}
 
 	port := 51820
@@ -86,6 +89,11 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 	if allowedipsParam == "" {
 		debuglog.DebugLog("parseWireGuardURI: error missing allowedips")
 		return nil, fmt.Errorf("invalid wireguard URI: missing required query parameter allowedips")
+	}
+	publicKey, err = normalizeWGKey("peer publickey", publicKey)
+	if err != nil {
+		debuglog.WarnLog("parseWireGuardURI: %v — node skipped", err)
+		return nil, err
 	}
 
 	addressDecoded, _ := url.QueryUnescape(addressParam)
@@ -144,9 +152,18 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 			peer["persistent_keepalive_interval"] = ki
 		}
 	}
-	if psk := queryParamPreservePlus(parsedURL, "presharedkey"); psk != "" {
-		peer["pre_shared_key"] = psk
-	} else if psk := q.Get("presharedkey"); psk != "" {
+	psk := queryParamPreservePlus(parsedURL, "presharedkey")
+	if psk == "" {
+		psk = q.Get("presharedkey")
+	}
+	if psk != "" {
+		// A broken psk can't be dropped (the server would reject the handshake
+		// anyway) — reject the node like the private/public key above.
+		psk, err = normalizeWGKey("presharedkey", psk)
+		if err != nil {
+			debuglog.WarnLog("parseWireGuardURI: %v — node skipped", err)
+			return nil, err
+		}
 		peer["pre_shared_key"] = psk
 	}
 	// reserved (Cloudflare WARP): 3 decimal bytes "b0,b1,b2" derived from the
@@ -239,6 +256,33 @@ func percentEncodeWGUserinfoSlashes(uri string) string {
 		return uri
 	}
 	return uri[:start] + strings.ReplaceAll(userinfo, "/", "%2F") + uri[start+at:]
+}
+
+// normalizeWGKey validates a WireGuard key (private/public/preshared) from a
+// share-URI or pasted .conf and returns it in the std-base64 form the core
+// requires (transport/wireguard decodes with base64.StdEncoding only). URL-safe
+// and unpadded variants are converted; anything that is not a 32-byte key —
+// e.g. Proton's masked "*****" placeholder — is an error so the caller can skip
+// the node instead of emitting a value that fails `sing-box check` and kills
+// the whole config.
+func normalizeWGKey(kind, value string) (string, error) {
+	var raw []byte
+	var err error
+	for _, enc := range []*base64.Encoding{
+		base64.StdEncoding, base64.URLEncoding,
+		base64.RawStdEncoding, base64.RawURLEncoding,
+	} {
+		if raw, err = enc.DecodeString(value); err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("invalid wireguard URI: %s is not base64", kind)
+	}
+	if len(raw) != 32 {
+		return "", fmt.Errorf("invalid wireguard URI: %s decodes to %d bytes, want 32", kind, len(raw))
+	}
+	return base64.StdEncoding.EncodeToString(raw), nil
 }
 
 // normalizeWGPrefixes ensures every entry is a CIDR (netip.Prefix): a bare IP

@@ -11,7 +11,7 @@ import (
 // query plus whatever AWG params are passed in `extra`.
 func awgTestURI(scheme string, extra url.Values) string {
 	q := url.Values{}
-	q.Set("publickey", "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=")
+	q.Set("publickey", "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=")
 	q.Set("address", "10.0.0.2/32")
 	q.Set("allowedips", "0.0.0.0/0,::/0")
 	q.Set("mtu", "1408")
@@ -21,7 +21,7 @@ func awgTestURI(scheme string, extra url.Values) string {
 			q.Set(k, v)
 		}
 	}
-	return scheme + "://UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMA=@server.example.com:51821?" + q.Encode() + "#awg-server"
+	return scheme + "://UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=@server.example.com:51821?" + q.Encode() + "#awg-server"
 }
 
 func awgFullExtra() url.Values {
@@ -208,8 +208,8 @@ func TestAWG_TypeFidelity_JSON(t *testing.T) {
 // the upstream 1420 default and honors the URI value verbatim.
 func TestParseWireGuardURI_MTUClamp(t *testing.T) {
 	const (
-		pk   = "UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMA="
-		pub  = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo="
+		pk   = "UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA="
+		pub  = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU="
 		base = "publickey=" + pub + "&address=10.0.0.2/32&allowedips=0.0.0.0/0"
 	)
 	uri := func(extra string) string {

@@ -35,7 +35,7 @@ func buildVPNLink(t *testing.T, profile map[string]interface{}) string {
 const amneziaAWGIni = `[Interface]
 Address = 10.8.1.2/32
 DNS = 1.1.1.1, 1.0.0.1
-PrivateKey = UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMA=
+PrivateKey = UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
 MTU = 1420
 Jc = 4
 Jmin = 40
@@ -49,8 +49,8 @@ H4 = 992706287
 I1 = <b 0x000100002112a442><r 12>
 
 [Peer]
-PublicKey = QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=
-PresharedKey = UFNLMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+PublicKey = QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=
+PresharedKey = UFNLMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
 AllowedIPs = 0.0.0.0/0, ::/0
 Endpoint = 203.0.113.7:38291
 PersistentKeepalive = 25
@@ -58,11 +58,11 @@ PersistentKeepalive = 25
 
 const amneziaPlainWGIni = `[Interface]
 Address = 10.8.1.2/32
-PrivateKey = UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMA=
+PrivateKey = UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
 MTU = 1380
 
 [Peer]
-PublicKey = QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=
+PublicKey = QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=
 AllowedIPs = 0.0.0.0/0
 Endpoint = 198.51.100.4:51820
 `
@@ -101,7 +101,7 @@ func TestParseNode_AmneziaVPN_AWG(t *testing.T) {
 	if node.Tag != "Seliv AWG" {
 		t.Errorf("Tag = %q, want description-based label", node.Tag)
 	}
-	if got, _ := node.Outbound["private_key"].(string); got != "UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMA=" {
+	if got, _ := node.Outbound["private_key"].(string); got != "UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=" {
 		t.Errorf("private_key mismatch: %q", got)
 	}
 	wantNum := map[string]int64{"jc": 4, "jmin": 40, "jmax": 70, "s1": 116, "s2": 61,
@@ -122,7 +122,7 @@ func TestParseNode_AmneziaVPN_AWG(t *testing.T) {
 	if len(peers) != 1 {
 		t.Fatalf("peers = %v, want exactly 1", node.Outbound["peers"])
 	}
-	if got, _ := peers[0]["pre_shared_key"].(string); got != "UFNLMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=" {
+	if got, _ := peers[0]["pre_shared_key"].(string); got != "UFNLMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=" {
 		t.Errorf("pre_shared_key mismatch: %q", got)
 	}
 	if got, _ := peers[0]["persistent_keepalive_interval"].(int); got != 25 {

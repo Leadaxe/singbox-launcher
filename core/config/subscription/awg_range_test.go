@@ -86,7 +86,7 @@ func TestConvertWGConfText_AWG2RangesAndEmptyI(t *testing.T) {
 	conf := `[Interface]
 Address = 10.8.1.25/32
 DNS = 172.29.172.254, 1.0.0.1
-PrivateKey = UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMA=
+PrivateKey = UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
 Jc = 5
 Jmin = 10
 Jmax = 50
@@ -105,8 +105,8 @@ I4 =
 I5 =
 
 [Peer]
-PublicKey = QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=
-PresharedKey = UFNLMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+PublicKey = QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=
+PresharedKey = UFNLMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
 AllowedIPs = 0.0.0.0/0, ::/0
 Endpoint = 203.0.113.7:44733
 PersistentKeepalive = 25
