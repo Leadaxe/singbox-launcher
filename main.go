@@ -42,7 +42,15 @@ func main() {
 	// Parse command line arguments
 	autoStart := flag.Bool("start", false, "Automatically start VPN on launch")
 	startInTray := flag.Bool("tray", false, "Start minimized to system tray (hide window on launch)")
+	glProbe := flag.Bool("gl-probe", false, "Internal: probe desktop OpenGL and exit (used by the launcher itself)")
 	flag.Parse()
+
+	// Служебный режим: лаунчер перезапускает сам себя с -gl-probe, чтобы
+	// проверить версию OpenGL в отдельном процессе (issue #105). Печатает
+	// результат в stdout и завершается, не доходя до инициализации UI.
+	if *glProbe {
+		platform.RunGLProbeChild()
+	}
 
 	// Create the application controller. If an error occurs, print it and exit the program.
 	// Use greyIconData for red icon (no separate red icon yet)
@@ -50,6 +58,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize application: %v", err)
 	}
+
+	// Issue #105: в RDP-сессии Windows Server без GPU системный OpenGL — это
+	// «GDI Generic» 1.1, и окно Fyne молча не отрисовывается. Гейт проверяет
+	// версию GL в подпроцессе и при необходимости предлагает поставить Mesa3D
+	// (llvmpipe). Должен отработать до первого обращения Fyne к GLFW (то есть
+	// до Application.Run), пока opengl32.dll ещё не загружен в процесс.
+	platform.EnsureDesktopOpenGL(controller.FileService.ExecDir)
 
 	// Force-invalidate the wizard template if it was last installed by an
 	// older launcher version (SPEC 046). Has to run before any UI consults

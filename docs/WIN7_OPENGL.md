@@ -55,6 +55,8 @@ Mesa3D ships under a permissive license (MIT-style), so technically we could shi
 
 If demand grows, we may revisit and either bundle or auto-download Mesa on first failed startup.
 
+Update: since 1.4.2 the **Win64** build does exactly that — probes OpenGL at startup and offers to auto-download Mesa (see [RDP_OPENGL.md](RDP_OPENGL.md), issue #105). The Win7 32-bit build still requires the manual steps above: modern Mesa builds need Windows 10+, so the auto-installed version would not run there. On Win7 the launcher shows a native dialog pointing to this guide instead.
+
 ## Credit
 
 The case and the fix were reported by a user from the Telegram channel — thanks for the report.
