@@ -204,6 +204,28 @@ func formatEventDetail(e tprof.TrafficEvent) string {
 			}
 			fmt.Fprintf(&b, "Outbound:    %s\n", strings.Join(rev, "  ->  "))
 		}
+		// Via — транспортный хвост (detour-цепочка) в порядке следования
+		// пакета, отдельной подписанной строкой. Не скобками внутри Outbound:
+		// подписанная строка самоописуема и не ломается на глубокой
+		// вложенности (нода → группа → нода с detour → …). Звенья, уже
+		// показанные в Outbound, пропускаем: ядро кладёт часть обёрток в обе
+		// коллекции, и без фильтра строка читалась бы «vless → vless → tls».
+		if len(e.DetourChain) > 0 {
+			shown := make(map[string]struct{}, len(e.OutboundChain))
+			for _, s := range e.OutboundChain {
+				shown[s] = struct{}{}
+			}
+			via := make([]string, 0, len(e.DetourChain))
+			for _, s := range e.DetourChain {
+				if _, dup := shown[s]; dup || s == "" {
+					continue
+				}
+				via = append(via, s)
+			}
+			if len(via) > 0 {
+				fmt.Fprintf(&b, "Via:         %s\n", strings.Join(via, "  ->  "))
+			}
+		}
 		if e.Rule != "" {
 			fmt.Fprintf(&b, "Rule:        %s\n", e.Rule)
 		}

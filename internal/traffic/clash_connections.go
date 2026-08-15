@@ -24,6 +24,12 @@ type ClashConn struct {
 	Chains      []string      `json:"chains"`
 	Rule        string        `json:"rule"`
 	RulePayload string        `json:"rulePayload"`
+	// Detour — транспортный хвост (detour-цепочка endpoint'а/ноды) в порядке
+	// следования пакета. Отдельно от Chains: gRPC-контракт ядра (chain_list +
+	// detour_list) их различает, и склейка в один массив давала в UI
+	// бессмысленный порядок «WARP → detour → proxy-out → Proton NL».
+	// Заполняется только gRPC-трекером; Clash HTTP такого поля не отдаёт.
+	Detour []string `json:"-"`
 }
 
 // ClashConnMeta — the relevant fields of metadata. Port comes as a string

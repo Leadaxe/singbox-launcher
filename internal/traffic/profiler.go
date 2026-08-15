@@ -247,6 +247,7 @@ func (p *TrafficProfiler) eventFromConn(c ClashConn, at time.Time, _ bool) Traff
 		Port:          c.Metadata.PortInt(),
 		Network:       c.Metadata.Network,
 		OutboundChain: append([]string(nil), c.Chains...),
+		DetourChain:   append([]string(nil), c.Detour...),
 		Rule:          c.Rule,
 		UpBytes:       c.Upload,
 		DownBytes:     c.Download,
@@ -674,8 +675,11 @@ type ClientConn struct {
 	Port string
 	Up   int64
 	Down int64
-	// Chains — полная цепочка outbound'ов, leaf→root.
-	Chains  []string
+	// Chains — цепочка выбора (chain_list), leaf→root. Транспортный хвост
+	// (detour_list) лежит отдельно в Detour — см. ClashConn.Detour.
+	Chains []string
+	// Detour — транспортный хвост в порядке следования пакета.
+	Detour  []string
 	Rule    string
 	Network string
 	// Source — адрес клиента вместе с портом: в заголовке группы порт срезан,
@@ -896,6 +900,7 @@ func (p *TrafficProfiler) ClientSummaries(f ClientFilter) []ClientSummary {
 			Up:      c.Upload,
 			Down:    c.Download,
 			Chains:  c.Chains,
+			Detour:  c.Detour,
 			Rule:    c.Rule,
 			Network: c.Metadata.Network,
 			Source:  c.Metadata.SourceAddr,

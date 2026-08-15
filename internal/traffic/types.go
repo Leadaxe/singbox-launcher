@@ -115,7 +115,8 @@ type TrafficEvent struct {
 	IP            string
 	Port          int
 	Network       string   // "tcp" / "udp"
-	OutboundChain []string // chains from Clash API; order is leaf→root
+	OutboundChain []string // цепочка выбора (chain_list gRPC); order is leaf→root
+	DetourChain   []string // транспортный хвост (detour_list gRPC) в порядке следования пакета; пусто без detour
 	Rule          string   // matched router rule name (if any)
 	UpBytes       int64
 	DownBytes     int64

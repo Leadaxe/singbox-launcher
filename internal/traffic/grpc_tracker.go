@@ -125,10 +125,12 @@ func ProtoConnToClash(c *daemonpb.Connection) ClashConn {
 		Upload:   c.GetUplinkTotal(),
 		Download: c.GetDownlinkTotal(),
 		Start:    start,
-		// chainList + detourList: хвост транспортных обёрток (SPEC 017 форка)
-		// в chainList не входит by design, а именно он отвечает на вопрос
-		// «через что реально ушло соединение».
-		Chains: appendDetour(c.GetChainList(), c.GetDetourList()),
+		// chainList и detourList едут РАЗДЕЛЬНО (gRPC-контракт ядра, SPEC 017
+		// форка): первый — цепочка выбора (лист→корень), второй — транспортный
+		// хвост в порядке следования пакета. Склейка в один массив теряла
+		// структуру: UI разворачивал всё целиком и печатал бессмыслицу.
+		Chains: c.GetChainList(),
+		Detour: c.GetDetourList(),
 		Rule:   c.GetRule(),
 		Metadata: ClashConnMeta{
 			SourceAddr:      c.GetSource(),
@@ -166,26 +168,3 @@ func ProcessBase(path string) string {
 	return filepath.Base(path)
 }
 
-// appendDetour дописывает detour-хвост к цепочке outbound'ов, пропуская уже
-// присутствующие звенья.
-//
-// Дубли реальны: часть обёрток попадает в обе коллекции, и без проверки
-// цепочка в UI читалась бы как «vless → vless → tls».
-func appendDetour(chain, detour []string) []string {
-	if len(detour) == 0 {
-		return chain
-	}
-	seen := make(map[string]struct{}, len(chain))
-	for _, c := range chain {
-		seen[c] = struct{}{}
-	}
-	out := chain
-	for _, d := range detour {
-		if _, dup := seen[d]; dup || d == "" {
-			continue
-		}
-		out = append(out, d)
-		seen[d] = struct{}{}
-	}
-	return out
-}

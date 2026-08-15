@@ -467,6 +467,7 @@ func (v *byClientView) showConnDetail(c tprof.ClientConn) {
 		Port:          port,
 		Network:       c.Network,
 		OutboundChain: c.Chains,
+		DetourChain:   c.Detour,
 		Rule:          c.Rule,
 		UpBytes:       c.Up,
 		DownBytes:     c.Down,
