@@ -97,7 +97,7 @@ func (s *Server) handleRemoteResourceByName(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	name := strings.TrimSpace(r.PathValue("name"))
+	name := strings.TrimSpace(pathParam(r, "name"))
 	if name == "" || strings.Contains(name, "/") {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid resource name"})
 		return
@@ -154,7 +154,7 @@ func (s *Server) handleRemoteResourceDownload(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	name := strings.TrimSpace(r.PathValue("name"))
+	name := strings.TrimSpace(pathParam(r, "name"))
 	if name == "" || strings.Contains(name, "/") {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid resource name"})
 		return

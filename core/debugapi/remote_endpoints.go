@@ -120,7 +120,7 @@ func (s *Server) remoteEndpoints() []apiEndpoint {
 // remoteMachineID достаёт {id} и проверяет, что машина есть в реестре.
 // Отвечает 404/500 сам; второй результат false = ответ уже написан.
 func (s *Server) remoteMachineID(w http.ResponseWriter, r *http.Request) (string, bool) {
-	id := strings.TrimSpace(r.PathValue("id"))
+	id := strings.TrimSpace(pathParam(r, "id"))
 	if id == "" {
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "machine id is empty"})
 		return "", false

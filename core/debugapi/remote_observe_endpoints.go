@@ -333,7 +333,7 @@ func (s *Server) handleRemoteConnectionByID(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	connID := strings.TrimSpace(r.PathValue("conn_id"))
+	connID := strings.TrimSpace(pathParam(r, "conn_id"))
 	if connID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "conn_id is empty"})
 		return
@@ -539,7 +539,7 @@ func (s *Server) handleRemoteClientLabel(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	key := strings.TrimSpace(r.PathValue("key"))
+	key := strings.TrimSpace(pathParam(r, "key"))
 	if key == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "client key is empty"})
 		return
