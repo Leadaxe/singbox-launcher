@@ -4,6 +4,8 @@
 package state
 
 import (
+	"encoding/json"
+
 	"singbox-launcher/core/config/configtypes"
 )
 
@@ -57,12 +59,29 @@ type Source struct {
 	// type=server only
 	URI string `json:"uri,omitempty"`
 
+	// ConfigJSON — type=server only: ручной sing-box outbound/endpoint объект.
+	// Если задан, при сборке конфига он вставляется passthrough (URI не
+	// парсится): для нод, которые не выражаются share-URI (нет протокола /
+	// парсера / конвертера) и собраны руками. Лаунчер перештамповывает только
+	// tag (= Label) и detour; остальные поля уходят в config.json как есть.
+	ConfigJSON json.RawMessage `json:"config_json,omitempty"`
+
 	// DetourTag — SPEC 077: tag of another outbound this source's nodes dial
 	// through (proxy chain / hop). Empty = direct dial. Applies to both server
 	// and subscription sources. Stored by tag (consistent with rules/selectors);
 	// a dangling/cyclic/self target is dropped at build time (fail-open), the
 	// node then dials directly. Not applied to WireGuard nodes.
 	DetourTag string `json:"detour_tag,omitempty"`
+
+	// DetourNodeHash / DetourNodeLabel — SPEC 101: chain through one concrete
+	// node addressed by its identity hash (stable across provider renames and
+	// reorders, like DisabledNodes keys). Mutually exclusive with DetourTag —
+	// the picker sets one and clears the other; hash wins if both survive a
+	// hand edit. The label is a display snapshot of the picked node's tag,
+	// never used for resolution. Unresolved hash at build time drops this
+	// source's nodes (fail-closed), see config.resolveNodeHashDetours.
+	DetourNodeHash  string `json:"detour_node_hash,omitempty"`
+	DetourNodeLabel string `json:"detour_node_label,omitempty"`
 
 	// DisabledNodes — SPEC 094 D4: per-node off switch, keyed by the node's
 	// identity hash and valued with the unix time the mark was last confirmed.

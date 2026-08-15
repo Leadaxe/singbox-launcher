@@ -1,6 +1,7 @@
 package tabs
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"image/color"
@@ -168,8 +169,10 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 		src.Outbounds = append([]configtypes.OutboundConfig(nil), ps.Outbounds...)
 		src.ExcludeFromGlobal = ps.ExcludeFromGlobal
 		src.ExposeGroupTagsToGlobal = ps.ExposeGroupTagsToGlobal
-		src.DetourTag = ps.DetourTag         // SPEC 077
-		src.DisabledNodes = ps.DisabledNodes // SPEC 094 D4
+		src.DetourTag = ps.DetourTag             // SPEC 077
+		src.DetourNodeHash = ps.DetourNodeHash   // SPEC 101
+		src.DetourNodeLabel = ps.DetourNodeLabel // SPEC 101
+		src.DisabledNodes = ps.DisabledNodes     // SPEC 094 D4
 		src.Enabled = !ps.Disabled
 		if ps.TagPrefix != "" || ps.TagPostfix != "" || ps.TagMask != "" {
 			src.Tag = &wizardmodels.TagSpec{
@@ -180,10 +183,16 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 		} else {
 			src.Tag = nil
 		}
-	} else if len(ps.Connections) > 0 {
-		// server
+	} else if len(ps.Connections) > 0 || len(ps.ConfigJSON) > 0 {
+		// server: URI и/или ручной config_json. Ветка обязана срабатывать и
+		// без URI — протокол без парсера может существовать только как
+		// ручной JSON, и иначе правка вкладки JSON не доехала бы до Source.
 		src.Type = wizardmodels.SourceTypeServer
-		src.URI = ps.Connections[0]
+		if len(ps.Connections) > 0 {
+			src.URI = ps.Connections[0]
+		} else {
+			src.URI = ""
+		}
 		src.URL = ""
 		// Если widget'ом задан tag_mask — это и есть label для server.
 		if ps.TagMask != "" {
@@ -191,7 +200,10 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 		}
 		src.Enabled = !ps.Disabled
 		src.ExcludeFromGlobal = ps.ExcludeFromGlobal
-		src.DetourTag = ps.DetourTag // SPEC 077
+		src.DetourTag = ps.DetourTag             // SPEC 077
+		src.DetourNodeHash = ps.DetourNodeHash   // SPEC 101
+		src.DetourNodeLabel = ps.DetourNodeLabel // SPEC 101
+		src.ConfigJSON = ps.ConfigJSON           // ручной outbound JSON (вкладка JSON)
 		src.Outbounds = nil
 		src.Tag = nil
 	}
@@ -324,28 +336,30 @@ func showSourceEditWindow(
 	hintLabel := widget.NewLabel("")
 	hintLabel.Wrapping = fyne.TextWrapWord
 
-	// SPEC 077: detour (proxy-chain) picker — works for both server and
-	// subscription. Selecting a target sets scratch.DetourTag; the generator
-	// stamps "detour":"<tag>" on every node of this source.
+	// SPEC 077 + SPEC 101: detour (proxy-chain) picker — works for both server
+	// and subscription. A group option sets scratch.DetourTag (stamped as-is);
+	// a "» node" option sets scratch.DetourNodeHash (resolved to the node's
+	// final tag at generation time). The two are mutually exclusive.
 	detourNone := locale.T("wizard.source.detour_none")
 	detourSelect := widget.NewSelect(nil, nil)
 	detourHint := widget.NewLabel(locale.T("wizard.source.detour_hint"))
 	detourHint.Wrapping = fyne.TextWrapWord
+	detourChoices := map[string]wizardbusiness.DetourChoice{}
 	detourOnChanged := func(sel string) {
 		p := proxyRef()
 		if p == nil {
 			return
 		}
-		if sel == "" || sel == detourNone {
-			p.DetourTag = ""
-		} else {
-			p.DetourTag = sel
-		}
+		choice := detourChoices[sel] // zero value for "" / detourNone → clears both
+		p.DetourTag = choice.Tag
+		p.DetourNodeHash = choice.NodeHash
+		p.DetourNodeLabel = choice.NodeLabel
 		_ = serializeParserAfterSourceEdit(presenter, guiState, presenter.Model(), sourceIndex, &scratch, win)
 	}
 	detourSelect.OnChanged = detourOnChanged
 	refreshDetourOptions := func() {
-		opts, sel := wizardbusiness.DetourOptions(presenter.Model(), proxyRef(), detourNone)
+		opts, sel, choices := wizardbusiness.DetourOptionsWithNodes(presenter.Model(), proxyRef(), detourNone)
+		detourChoices = choices
 		detourSelect.OnChanged = nil // avoid feedback while repopulating
 		detourSelect.Options = opts
 		detourSelect.SetSelected(sel)
@@ -573,6 +587,14 @@ func showSourceEditWindow(
 			// Server: URI + Label + ExcludeFromGlobal + Detour.
 			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_uri")))
 			settingsContent.Add(uriEntry)
+			// Ручной config_json переопределяет URI — без пометки правка URI
+			// «молча не работает» и путает.
+			if len(scratch.ConfigJSON) > 0 {
+				manualNote := widget.NewLabel(locale.T("wizard.source.settings_manual_json_note"))
+				manualNote.Wrapping = fyne.TextWrapWord
+				manualNote.Importance = widget.LowImportance
+				settingsContent.Add(manualNote)
+			}
 			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_label_field")))
 			settingsContent.Add(labelEntry)
 			settingsContent.Add(widget.NewSeparator())
@@ -704,7 +726,18 @@ func showSourceEditWindow(
 				src := model.Sources[sourceIndex]
 				switch src.Type {
 				case wizardmodels.SourceTypeServer:
-					if src.URI != "" {
+					if len(src.ConfigJSON) > 0 {
+						// Ручной config_json приоритетнее URI — как в сборке.
+						node, perr := subscription.NodeFromManualConfigJSON(src.ConfigJSON)
+						if perr != nil {
+							err = perr
+						} else if node != nil {
+							if src.Label != "" {
+								node.Tag = src.Label
+							}
+							nodes = []*config.ParsedNode{node}
+						}
+					} else if src.URI != "" {
 						node, perr := subscription.ParseNode(src.URI, nil)
 						if perr != nil {
 							err = perr
@@ -870,38 +903,232 @@ func showSourceEditWindow(
 		}()
 	}
 
-	// JSON: same pattern as wizard Preview tab — MultiLineEntry inside Max + VScroll (no duplicate tab title).
+	// JSON tab — как источник распакуется в sing-box (та же точка эмиссии,
+	// что у реальной сборки: config.EmitNodeJSONs). Снапшот записи хранилища,
+	// который жил здесь раньше, переехал в Overview (блок Storage record).
+	//
+	//   - server: редактируемый outbound. Apply сохраняет ручной config_json
+	//     (переопределяет URI — для протоколов без парсера/конвертера JSON
+	//     собирается руками); Reset возвращает генерацию из URI.
+	//   - subscription: read-only распаковка кэшированного body — правки
+	//     перезатёр бы первый же сетевой refresh.
+	isServerSource := m.Sources[sourceIndex].Type == wizardmodels.SourceTypeServer
+
 	jsonEntry := widget.NewMultiLineEntry()
 	jsonEntry.Wrapping = fyne.TextWrapOff
-	jsonEntry.OnChanged = func(string) { /* display-only; changes are not saved */ }
+	// Read-only для подписки: OnChanged откатывает любой ввод к последнему
+	// установленному тексту (Disable() нельзя — на macOS disabled-текст
+	// рендерится цветом фона, см. Overview raw body).
+	lastSetJSON := ""
+	setJSONText := func(s string) {
+		lastSetJSON = s
+		jsonEntry.SetText(s)
+	}
+	if !isServerSource {
+		jsonEntry.OnChanged = func(s string) {
+			if s != lastSetJSON {
+				jsonEntry.SetText(lastSetJSON)
+			}
+		}
+	}
 	jsonScroll := container.NewVScroll(container.NewStack(
 		canvas.NewRectangle(color.Transparent),
 		jsonEntry,
 	))
 	jsonScroll.SetMinSize(fyne.NewSize(0, sourceEditJSONScrollMinH))
 
-	// SPEC 052 phase 8: JSON tab показывает v5 Source layout (canonical),
-	// а не legacy ProxySource (derived). Это match'ит state.json формат.
-	refreshJSONTab := func() {
-		mm := presenter.Model()
-		if mm == nil || sourceIndex >= len(mm.Sources) {
-			jsonEntry.SetText("")
+	jsonStatus := widget.NewLabel("")
+	jsonStatus.Wrapping = fyne.TextWrapWord
+
+	// doRefreshJSONTab — безусловный рендер (Apply/Reset). refreshJSONTab —
+	// обёртка для tabs.OnSelected/afterSync: она не затирает незаApplied
+	// ручные правки в server-режиме (текст отличается от последнего
+	// установленного → пользователь редактирует).
+	var doRefreshJSONTab func()
+
+	jsonApplyBtn := widget.NewButton(locale.T("wizard.source.json_apply"), func() {
+		text := strings.TrimSpace(jsonEntry.Text)
+		if text == "" {
+			dialog.ShowError(errors.New(locale.T("wizard.source.json_err_empty")), win)
 			return
 		}
-		src := mm.Sources[sourceIndex]
-		b, jerr := json.MarshalIndent(src, "", "  ")
-		if jerr != nil {
-			jsonEntry.SetText(jerr.Error())
+		var ob map[string]interface{}
+		if err := json.Unmarshal([]byte(text), &ob); err != nil {
+			dialog.ShowError(errors.New(locale.Tf("wizard.source.json_err_invalid", err.Error())), win)
 			return
 		}
-		jsonEntry.SetText(string(b))
+		if t, _ := ob["type"].(string); strings.TrimSpace(t) == "" {
+			dialog.ShowError(errors.New(locale.T("wizard.source.json_err_no_type")), win)
+			return
+		}
+		// Compact сохраняет порядок полей пользователя (в отличие от
+		// Unmarshal→Marshal, который пересортировал бы ключи по алфавиту).
+		var compact bytes.Buffer
+		if err := json.Compact(&compact, []byte(text)); err != nil {
+			dialog.ShowError(errors.New(locale.Tf("wizard.source.json_err_invalid", err.Error())), win)
+			return
+		}
+		scratch.ConfigJSON = json.RawMessage(append([]byte(nil), compact.Bytes()...))
+		_ = serializeParserAfterSourceEdit(presenter, guiState, presenter.Model(), sourceIndex, &scratch, win)
+		rebuildSettingsLayout() // пометка «URI игнорируется» в Settings
+		doRefreshJSONTab()
+	})
+	jsonResetBtn := widget.NewButton(locale.T("wizard.source.json_reset"), func() {
+		if len(scratch.ConfigJSON) == 0 {
+			return
+		}
+		dialog.ShowConfirm(
+			locale.T("wizard.source.json_reset"),
+			locale.T("wizard.source.json_reset_confirm"),
+			func(ok bool) {
+				if !ok {
+					return
+				}
+				scratch.ConfigJSON = nil
+				_ = serializeParserAfterSourceEdit(presenter, guiState, presenter.Model(), sourceIndex, &scratch, win)
+				rebuildSettingsLayout()
+				doRefreshJSONTab()
+			}, win)
+	})
+	jsonResetBtn.Disable()
+
+	// refreshServerJSONTab — синхронный рендер для server-source (без сети).
+	refreshServerJSONTab := func() {
+		// Ручной config_json показывается как есть (порядок полей автора);
+		// tag/detour перештампуются при сборке.
+		if len(scratch.ConfigJSON) > 0 {
+			text := string(scratch.ConfigJSON)
+			var buf bytes.Buffer
+			if err := json.Indent(&buf, scratch.ConfigJSON, "", "  "); err == nil {
+				text = buf.String()
+			}
+			setJSONText(text)
+			jsonStatus.SetText(locale.T("wizard.source.json_status_manual"))
+			jsonResetBtn.Enable()
+			return
+		}
+		jsonResetBtn.Disable()
+		// Генерация из URI — ровно тот же путь, что и сборка конфига.
+		ps := scratch
+		ps.Disabled = false
+		var node *config.ParsedNode
+		if res, _ := subscription.LoadNodesFromSourceEx(ps, map[string]int{}, nil, 0, 1); res != nil && len(res.Nodes) > 0 {
+			node = res.Nodes[0]
+		}
+		if node == nil {
+			// LoadNodesFromSourceEx ошибки только логирует — причину для
+			// пользователя добываем прямым ParseNode.
+			uri := ""
+			if len(scratch.Connections) > 0 {
+				uri = subscription.NormalizeSubscriptionTextLine(scratch.Connections[0])
+			}
+			switch {
+			case uri == "":
+				jsonStatus.SetText(locale.T("wizard.source.json_status_no_uri"))
+			default:
+				reason := locale.T("wizard.source.view_no_servers")
+				if _, perr := subscription.ParseNode(uri, nil); perr != nil {
+					reason = perr.Error()
+				}
+				jsonStatus.SetText(locale.Tf("wizard.source.json_status_unparsed", reason))
+			}
+			setJSONText("")
+			return
+		}
+		outJSONs, epJSON, eerr := config.EmitNodeJSONs(node)
+		if eerr != nil {
+			jsonStatus.SetText(locale.Tf("wizard.source.json_status_unparsed", eerr.Error()))
+			setJSONText("")
+			return
+		}
+		raw := epJSON
+		if raw == "" && len(outJSONs) > 0 {
+			raw = outJSONs[len(outJSONs)-1]
+		}
+		setJSONText(emittedToEditableJSON(raw))
+		jsonStatus.SetText(locale.T("wizard.source.json_status_generated"))
 	}
 
-	jsonHint := widget.NewLabel(locale.T("wizard.source.json_hint"))
+	jsonRefreshSeq := 0
+	doRefreshJSONTab = func() {
+		if isServerSource {
+			refreshServerJSONTab()
+			return
+		}
+		// Subscription: как Preview — декод кэшированного body в горутине.
+		jsonRefreshSeq++
+		seq := jsonRefreshSeq
+		jsonStatus.SetText(locale.T("wizard.source.preview_loading"))
+		// Снапшоты на UI-thread: горутина не должна читать scratch, который
+		// мутируют обработчики виджетов.
+		detourTag := scratch.DetourTag
+		disabled := make(map[string]int64, len(scratch.DisabledNodes))
+		for h, ts := range scratch.DisabledNodes {
+			disabled[h] = ts
+		}
+		skip := append([]map[string]string(nil), scratch.Skip...)
+		go func() {
+			model := presenter.Model()
+			text := ""
+			status := ""
+			if model != nil && sourceIndex < len(model.Sources) {
+				src := model.Sources[sourceIndex]
+				subsDir := platform.GetSubscriptionsDir(model.ExecDir)
+				if raw, rerr := state.ReadRawBody(subsDir, src.ID); rerr != nil || len(raw) == 0 {
+					status = locale.T("wizard.source.preview_no_cache")
+				} else if decoded, decErr := subscription.DecodeSubscriptionContent(raw); decErr != nil {
+					status = locale.Tf("wizard.source.json_status_unparsed", decErr.Error())
+				} else {
+					nodes := parsePreviewNodesFromBody(decoded, skip)
+					// Выключенные ноды не эмитятся — как в реальной сборке.
+					if len(disabled) > 0 {
+						kept := nodes[:0]
+						for _, n := range nodes {
+							if h := config.NodeIdentityHash(n); h != "" {
+								if _, off := disabled[h]; off {
+									continue
+								}
+							}
+							kept = append(kept, n)
+						}
+						nodes = kept
+					}
+					subscription.ApplySourceDetour(nodes, detourTag)
+					text, status = renderUnpackedNodes(nodes)
+				}
+			}
+			fyne.Do(func() {
+				if seq != jsonRefreshSeq {
+					return
+				}
+				setJSONText(text)
+				jsonStatus.SetText(status)
+			})
+		}()
+	}
+
+	refreshJSONTab := func() {
+		if isServerSource && jsonEntry.Text != lastSetJSON {
+			return // незаApplied ручные правки — не затирать автообновлением
+		}
+		doRefreshJSONTab()
+	}
+
+	jsonHintKey := "wizard.source.json_hint_subscription"
+	if isServerSource {
+		jsonHintKey = "wizard.source.json_hint_server"
+	}
+	jsonHint := widget.NewLabel(locale.T(jsonHintKey))
 	jsonHint.Wrapping = fyne.TextWrapWord
 	jsonGutter := components.NewScrollGutter()
 	jsonScrollWithGutter := container.NewBorder(nil, nil, nil, jsonGutter, jsonScroll)
-	jsonCol := container.NewVBox(jsonHint, jsonScrollWithGutter)
+	var jsonCol *fyne.Container
+	if isServerSource {
+		jsonButtonsRow := container.NewHBox(jsonApplyBtn, jsonResetBtn, layout.NewSpacer())
+		jsonCol = container.NewVBox(jsonHint, jsonStatus, jsonScrollWithGutter, jsonButtonsRow)
+	} else {
+		jsonCol = container.NewVBox(jsonHint, jsonStatus, jsonScrollWithGutter)
+	}
 
 	// SPEC 052 phase 8: Overview-tab включает raw body section (раньше был
 	// отдельный Raw tab — слили чтобы не дублировать read-only inspection).

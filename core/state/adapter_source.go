@@ -31,7 +31,9 @@ func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 			ExposeGroupTagsToGlobal: s.ExposeGroupTagsToGlobal,
 			Disabled:                !s.Enabled,
 			DetourTag:               s.DetourTag,
-			DisabledNodes:           s.DisabledNodes, // SPEC 094 D4
+			DetourNodeHash:          s.DetourNodeHash,  // SPEC 101
+			DetourNodeLabel:         s.DetourNodeLabel, // SPEC 101
+			DisabledNodes:           s.DisabledNodes,   // SPEC 094 D4
 		}
 		if s.Tag != nil {
 			ps.TagPrefix = s.Tag.Prefix
@@ -47,6 +49,9 @@ func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 			ExcludeFromGlobal: s.ExcludeFromGlobal,
 			Disabled:          !s.Enabled,
 			DetourTag:         s.DetourTag,
+			DetourNodeHash:    s.DetourNodeHash,  // SPEC 101
+			DetourNodeLabel:   s.DetourNodeLabel, // SPEC 101
+			ConfigJSON:        s.ConfigJSON,      // ручной outbound JSON
 		}
 	}
 	return configtypes.ProxySource{}

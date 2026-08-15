@@ -49,6 +49,10 @@ func syncConnectionsFromLegacy(s *State) {
 		case SourceTypeServer:
 			if src.URI != "" {
 				oldByURI[src.URI] = src
+			} else if len(src.ConfigJSON) > 0 {
+				// Server-source без URI (только ручной config_json) матчится
+				// по телу JSON — иначе он получал бы новый ULID на каждом Save.
+				oldByURI[serverConfigJSONKey(src.ConfigJSON)] = src
 			}
 		}
 	}
@@ -68,6 +72,8 @@ func syncConnectionsFromLegacy(s *State) {
 				ExcludeFromGlobal:       p.ExcludeFromGlobal,
 				ExposeGroupTagsToGlobal: p.ExposeGroupTagsToGlobal,
 				DetourTag:               p.DetourTag,
+				DetourNodeHash:          p.DetourNodeHash,  // SPEC 101
+				DetourNodeLabel:         p.DetourNodeLabel, // SPEC 101
 			}
 			if existing, ok := oldByURL[p.Source]; ok {
 				src.ID = existing.ID
@@ -83,15 +89,34 @@ func syncConnectionsFromLegacy(s *State) {
 		}
 
 		// 2. type=server (one per URI in connections[])
-		for j, uri := range p.Connections {
+		//
+		// Ручной config_json (см. Source.ConfigJSON): источник может вообще
+		// не иметь URI — синтезируем одну запись с пустым URI, иначе он
+		// выпал бы из Connections на Save. JSON прикрепляется только когда
+		// запись одна: на legacy multi-connection источник один ручной
+		// объект не размножаем.
+		conns := p.Connections
+		if len(conns) == 0 && len(p.ConfigJSON) > 0 {
+			conns = []string{""}
+		}
+		for j, uri := range conns {
 			src := Source{
 				Type:              SourceTypeServer,
 				Enabled:           !p.Disabled,
 				URI:               uri,
 				ExcludeFromGlobal: p.ExcludeFromGlobal,
 				DetourTag:         p.DetourTag,
+				DetourNodeHash:    p.DetourNodeHash,  // SPEC 101
+				DetourNodeLabel:   p.DetourNodeLabel, // SPEC 101
 			}
-			if existing, ok := oldByURI[uri]; ok {
+			if len(conns) == 1 {
+				src.ConfigJSON = p.ConfigJSON
+			}
+			key := uri
+			if key == "" && len(src.ConfigJSON) > 0 {
+				key = serverConfigJSONKey(src.ConfigJSON)
+			}
+			if existing, ok := oldByURI[key]; ok && key != "" {
 				src.ID = existing.ID
 				src.Label = existing.Label
 			}

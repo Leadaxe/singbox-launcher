@@ -68,3 +68,10 @@ func extractURIFragment(s string) string {
 
 // sprintfServerN — fmt.Sprintf("server-%d", n).
 func sprintfServerN(n int) string { return fmt.Sprintf("server-%d", n) }
+
+// serverConfigJSONKey — ключ матчинга server-source без URI при sync
+// legacy → connections: идентичность задаёт тело ручного config_json.
+// Префикс с \x00 гарантирует непересечение с реальными URI.
+func serverConfigJSONKey(configJSON []byte) string {
+	return "config_json\x00" + string(configJSON)
+}

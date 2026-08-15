@@ -26,6 +26,8 @@ func syncLegacyFromConnections(s *State) {
 				ExposeGroupTagsToGlobal: src.ExposeGroupTagsToGlobal,
 				Disabled:                !src.Enabled,
 				DetourTag:               src.DetourTag,
+				DetourNodeHash:          src.DetourNodeHash,  // SPEC 101
+				DetourNodeLabel:         src.DetourNodeLabel, // SPEC 101
 			}
 			if src.Tag != nil {
 				ps.TagPrefix = src.Tag.Prefix
@@ -41,6 +43,9 @@ func syncLegacyFromConnections(s *State) {
 				ExcludeFromGlobal: src.ExcludeFromGlobal,
 				Disabled:          !src.Enabled,
 				DetourTag:         src.DetourTag,
+				DetourNodeHash:    src.DetourNodeHash,  // SPEC 101
+				DetourNodeLabel:   src.DetourNodeLabel, // SPEC 101
+				ConfigJSON:        src.ConfigJSON,      // ручной outbound JSON
 			}
 			proxies = append(proxies, ps)
 		}
