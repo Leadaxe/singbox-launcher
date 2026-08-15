@@ -3,12 +3,14 @@
 **🌐 Language**: English | [Русский](DAEMON_AND_REMOTE.ru.md)
 
 > Status: current for SPEC 096 (daemon core engine), 097 (remote config target),
-> 098 (Local/Remote tabs, one profile per machine), 099 (machine traffic profiler).
+> 098 (Local/Remote tabs, one profile per machine), 099 (machine traffic profiler),
+> 100 (remote/daemon coverage in the Debug API).
 >
 > Companion documents:
 > - **[ARCHITECTURE.md](ARCHITECTURE.md)** — layers, the `CoreBackend`/`ProxyTransport` seams.
 > - **[TRAFFIC_PROFILER.md](TRAFFIC_PROFILER.md)** — the profiler, including the per-machine instance.
-> - **[API.md](API.md)** — the launcher's Debug HTTP API (not to be confused with the daemon's admin REST).
+> - **[API.md](API.md)** — the launcher's Debug HTTP API (not to be confused with the
+>   daemon's admin REST); see its `/remote/machines*`, `/daemon/*` and raw passthrough sections.
 
 ---
 
@@ -109,8 +111,16 @@ A remote machine is a router, a VPS or another Mac running its core under
 the right. The difference is only what is managed: your own core, or a list of
 other machines. A machine's row shows its name, platform, address and core state;
 the same row carries **Configure** (the wizard rooted on its profile), Start/Stop,
-**Deploy**, edit, remove, and a **More** block (traffic profiler, host telemetry,
-resources, diagnostics).
+**Restart ↻** (Stop + Start as one action, behind a confirmation — the machine's
+VPN clients blink during the restart), **Deploy**, edit, remove, and a **More**
+block (traffic profiler, host telemetry, resources, diagnostics).
+
+The machine's node list heals itself. Right after Start the daemon already
+reports "started", but the core inside is still coming up and returns no groups
+yet — so groups are polled in the background with retries, and the auto-refresh
+tick re-reads them whenever the group selection is empty. An empty list right
+after Stop/Start is a transient state measured in seconds, not a reason to
+Disconnect/Connect.
 
 The key property: **picking a machine and picking "who are we building for" are the
 same choice.** "Configure" opens the wizard rooted on that machine's profile, and
@@ -177,6 +187,11 @@ Delivery is the admin REST call `POST /admin/apply`: the daemon validates the co
 back to the last working config if the new one fails to start. Start/Stop go through
 `/admin`.
 
+The whole "resources strictly before the config" chain is one function,
+`services.RemoteRegistry.Deploy`: both the Deploy button and the Debug API
+(SPEC 100) call it, so "deploying via the API works differently from the button"
+is impossible by construction.
+
 ### 4.5 Observing a machine
 
 | Tool | Source | What it shows |
@@ -191,13 +206,49 @@ must be openable side by side, which is exactly why one looks at these. Re-openi
 focuses the existing window instead of starting a second stream; an instance dies
 with its channel (on Disconnect and on machine removal).
 
+gRPC subscriptions survive Deploy/Start/Stop. Recreating the core instance on the
+machine tears down server-side streams — the transport treats that as a normal
+event: it resets its state, waits a couple of seconds and resubscribes until the
+subscription is cancelled (`runResilientStream`). The profiler and the status keep
+showing live data without the Disconnect/Connect ritual.
+
 A machine has no per-process breakdown and cannot have one: `find_process` is off in
 a router's config because traffic comes from network devices, not from processes of
 this computer.
 
 ---
 
-## 5. Boundaries and requirements
+## 5. Remote in the Debug API (SPEC 100)
+
+The entire remote/daemon feature set is also available without the UI — through
+the launcher's own Debug API (loopback + bearer). The full reference with
+examples lives in [API.md](API.md); this section is about the principles.
+
+- **Stateless addressing.** Every call names the machine explicitly —
+  `/remote/machines/{id}/…`: registry and pairing, health, core
+  Start/Stop/rollback, deploy, mirrors of the wizard state handles,
+  observability, resources. The UI notion of the "active machine" (Connect on
+  the Remote tab) does not affect working calls; the override itself is managed
+  by the separate `/remote/ui*` handles and changes only what the Servers tab
+  looks at.
+- **Parity with the button.** Deploying via the API and via the Deploy button is
+  the same `services.RemoteRegistry.Deploy` chain (§4.4).
+- **Streams as snapshots.** `connections`, `dns/queries`, `logs` return a window
+  (`?duration=…&max=…`), not an endless stream; SSE subscriptions are
+  deliberately deferred.
+- **Raw passthrough.** An arbitrary admin REST call (`…/raw/rest`) and an
+  arbitrary gRPC call (`…/raw/grpc`, discovery via `GET /grpc/methods`) go
+  **only** to the control channel of a paired machine, with its mTLS keys and
+  pin from the registry. There are no requests to arbitrary addresses.
+- **`/daemon/*` (darwin).** Status, pairing and engine of the local daemon, plus
+  ready-made privileged command strings (`/daemon/commands`) — the API never
+  executes them: "sudo only in your own terminal" applies here too.
+- **The `capabilities` manifest.** `GET /` reports which groups this build has:
+  Win7 — no remote at all, non-darwin — no `/daemon/*`.
+
+---
+
+## 6. Boundaries and requirements
 
 - **Classic does not change.** The same spawn, the same Clash API, the same behavior.
 - **Daemon is macOS-only.** All of its code sits behind darwin build tags.
