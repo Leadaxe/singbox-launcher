@@ -266,9 +266,17 @@ func buildSection(ctx BuildContext, key string, raw json.RawMessage, finalOutbou
 				cache = &c
 			}
 		}
-		return BuildOutboundsSection(raw, cacheOutboundsAsStrings(cache), ctx.ForPreview, ctx.Stats)
+		gen := cacheOutboundsAsStrings(cache)
+		if !ctx.ForPreview && len(finalOutboundTags) > 0 {
+			gen = dropDanglingNodeDetours(gen, finalOutboundTags, true)
+		}
+		return BuildOutboundsSection(raw, gen, ctx.ForPreview, ctx.Stats)
 	case "endpoints":
-		return BuildEndpointsSection(raw, cacheEndpointsAsStrings(ctx.Cache), ctx.ForPreview, ctx.Stats)
+		genEP := cacheEndpointsAsStrings(ctx.Cache)
+		if !ctx.ForPreview && len(finalOutboundTags) > 0 {
+			genEP = dropDanglingNodeDetours(genEP, finalOutboundTags, false)
+		}
+		return BuildEndpointsSection(raw, genEP, ctx.ForPreview, ctx.Stats)
 	case "dns":
 		merged, err := MergeDNSSection(raw, ctx.DNS)
 		if err != nil {
@@ -382,6 +390,75 @@ func normalizeCacheEntries(entries []json.RawMessage, compact bool) []string {
 			}
 			out = append(out, b.String())
 		}
+	}
+	return out
+}
+
+// splitEntryComment отделяет ведущие `// comment`-строки cache-entry от её
+// JSON-тела (legacy GenerateNodeJSON кладёт имя ноды комментарием перед
+// объектом). Возвращает (prefix с trailing \n, jsonPart).
+func splitEntryComment(entry string) (prefix, jsonPart string) {
+	rest := entry
+	for {
+		trimmed := strings.TrimLeft(rest, " \t\r\n")
+		if !strings.HasPrefix(trimmed, "//") {
+			return entry[:len(entry)-len(rest)], rest
+		}
+		nl := strings.IndexByte(rest, '\n')
+		if nl < 0 {
+			return entry, ""
+		}
+		rest = rest[nl+1:]
+	}
+}
+
+// dropDanglingNodeDetours — final-assembly половина контракта SPEC 077:
+// sanitizeNodeDetours на этапе парсинга сознательно НЕ трогает detour'ы на
+// template/preset-теги (их ещё нет в поле зрения), а здесь полный набор тегов
+// известен — и detour на несуществующий тег дропается fail-open (нода dials
+// directly, с warning'ом). Без этого один осиротевший detour_tag источника
+// (группу переименовали/удалили) валит ВЕСЬ конфиг на sing-box check/apply:
+// «dependency[X] not found for outbound[Y]».
+//
+// compact=true — outbounds (однострочные entries), false — endpoints
+// (pretty-printed). Entries, которые не парсятся или чей detour резолвится,
+// возвращаются нетронутыми (byte-for-byte).
+func dropDanglingNodeDetours(entries []string, finalTags map[string]bool, compact bool) []string {
+	out := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		prefix, jsonPart := splitEntryComment(entry)
+		body := strings.TrimRight(strings.TrimSpace(jsonPart), ",")
+		if body == "" {
+			out = append(out, entry)
+			continue
+		}
+		dec := json.NewDecoder(strings.NewReader(body))
+		dec.UseNumber()
+		var m map[string]interface{}
+		if err := dec.Decode(&m); err != nil {
+			out = append(out, entry)
+			continue
+		}
+		d, _ := m["detour"].(string)
+		if d == "" || finalTags[d] {
+			out = append(out, entry)
+			continue
+		}
+		tag, _ := m["tag"].(string)
+		debuglog.WarnLog("build: node %q detour %q not found in final config — dropping detour (direct dial)", tag, d)
+		delete(m, "detour")
+		var rebuilt []byte
+		var err error
+		if compact {
+			rebuilt, err = json.Marshal(m)
+		} else {
+			rebuilt, err = json.MarshalIndent(m, "", IndentBase)
+		}
+		if err != nil {
+			out = append(out, entry)
+			continue
+		}
+		out = append(out, prefix+string(rebuilt))
 	}
 	return out
 }

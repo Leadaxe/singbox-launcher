@@ -24,9 +24,11 @@ package build
 
 import (
 	"encoding/json"
+	"strings"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/template"
+	"singbox-launcher/internal/debuglog"
 )
 
 // resolveBaseBody — для referenced entry возвращает base body из template/preset.
@@ -84,7 +86,7 @@ func applyUpdatesToBase(base configtypes.OutboundConfig, updates []configtypes.O
 	merged.Updates = nil // metadata, не пишется в config.json
 
 	for _, u := range updates {
-		merged = applyOutboundUpdatePatch(merged, u.Patch)
+		merged = applyOutboundUpdatePatch(merged, u.Patch, u.Ref == configtypes.RefUser)
 	}
 	return merged
 }
@@ -138,14 +140,28 @@ func MergeOutboundUpdatesInPlace(parserCfg *configtypes.ParserConfig, td *templa
 			presetByID[td.Presets[i].ID] = &td.Presets[i]
 		}
 	}
+	kept := parserCfg.ParserConfig.Outbounds[:0]
 	for i := range parserCfg.ParserConfig.Outbounds {
 		ob := parserCfg.ParserConfig.Outbounds[i]
 		if ob.Ref == "" && len(ob.Updates) == 0 {
-			continue // direct без patches — nothing to do
+			kept = append(kept, ob) // direct без patches — nothing to do
+			continue
 		}
-		base, _ := resolveBaseBody(ob, tmplOutbounds, presetByID, target)
-		parserCfg.ParserConfig.Outbounds[i] = applyUpdatesToBase(base, ob.Updates)
+		base, resolved := resolveBaseBody(ob, tmplOutbounds, presetByID, target)
+		merged := applyUpdatesToBase(base, ob.Updates)
+		// Осиротевшая ссылка (тег исчез из template/preset, например после
+		// переименования записи) даёт degraded thin body без type. Эмитить его
+		// нельзя: sing-box отвергает ВЕСЬ конфиг («unknown outbound type: ""»),
+		// один битый огрызок кладёт остальные 40+ рабочих outbound'ов. Дропаем
+		// с warning'ом. td==nil (legacy SPEC 057) сюда не попадает: там body
+		// inline и type непустой.
+		if !resolved && strings.TrimSpace(merged.Type) == "" {
+			debuglog.WarnLog("outbound resolve: %q references missing template/preset body (ref=%q) — dropped from build", ob.Tag, ob.Ref)
+			continue
+		}
+		kept = append(kept, merged)
 	}
+	parserCfg.ParserConfig.Outbounds = kept
 }
 
 // applyOutboundUpdatePatch — применяет один patch (map) к target outbound.
@@ -155,8 +171,16 @@ func MergeOutboundUpdatesInPlace(parserCfg *configtypes.ParserConfig, td *templa
 // Конвертирует map → OutboundConfig (через JSON marshal/unmarshal на patch
 // keys) → вызывает existing applyOutboundUpdate → возвращает результат.
 //
+// userPatch=true (ref=#USER#): addOutbounds в патче — это полный список из
+// формы (OutboundFieldDiff: "replace целиком"), а не добавка; union из
+// applyOutboundUpdate тут доливал бы снятые юзером теги обратно из базы, и
+// чекбокс (например proxy-out) было бы невозможно выключить. Поэтому при
+// наличии ключа "addOutbounds" список заменяется как есть, включая пустой [].
+// Preset-патчи (userPatch=false) сохраняют union — они добавляют теги, не зная
+// базового списка.
+//
 // Если patch не парсится — возвращает target без изменений (safe noop).
-func applyOutboundUpdatePatch(target configtypes.OutboundConfig, patch map[string]interface{}) configtypes.OutboundConfig {
+func applyOutboundUpdatePatch(target configtypes.OutboundConfig, patch map[string]interface{}, userPatch bool) configtypes.OutboundConfig {
 	if len(patch) == 0 {
 		return target
 	}
@@ -168,5 +192,11 @@ func applyOutboundUpdatePatch(target configtypes.OutboundConfig, patch map[strin
 	if err := json.Unmarshal(patchJSON, &patchOC); err != nil {
 		return target
 	}
-	return applyOutboundUpdate(target, patchOC)
+	out := applyOutboundUpdate(target, patchOC)
+	if userPatch {
+		if _, ok := patch["addOutbounds"]; ok {
+			out.AddOutbounds = append([]string(nil), patchOC.AddOutbounds...)
+		}
+	}
+	return out
 }

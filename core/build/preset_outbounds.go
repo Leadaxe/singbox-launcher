@@ -19,6 +19,7 @@ package build
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/template"
@@ -183,7 +184,8 @@ func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string, 
 // Семантика полей (см. PresetOutbound docstring):
 //   - Type, Tag    — НЕ меняются (immutable; Type loader уже зачищает для update)
 //   - Filters      — replace целиком (если patch.Filters != nil)
-//   - AddOutbounds — union (preserve order, dedupe)
+//   - AddOutbounds — union (preserve order, dedupe); для USER patch список
+//     затем заменяется целиком в applyOutboundUpdatePatch (см. userPatch)
 //   - Options.*    — per-key replace в target.Options (нет глубокого merge);
 //     nil-значение = "оверрайда нет" → key берётся из target (issue #91)
 //   - PreferredDefault — replace
@@ -373,13 +375,21 @@ func collectAllFinalOutboundTags(ctx BuildContext, cfg map[string]json.RawMessag
 		}
 	}
 	if ctx.Cache != nil {
-		for _, raw := range ctx.Cache.Outbounds {
-			var ob map[string]interface{}
-			if err := json.Unmarshal(raw, &ob); err != nil {
-				continue
-			}
-			if tag, _ := ob["tag"].(string); tag != "" {
-				tags[tag] = true
+		// Endpoints тоже в set: sing-box резолвит group members / route
+		// outbounds / detour и через endpoint manager, так что WG-endpoint —
+		// легитимная цель ссылки, а не dangling.
+		for _, list := range [][]json.RawMessage{ctx.Cache.Outbounds, ctx.Cache.Endpoints} {
+			for _, raw := range list {
+				// Legacy cache-entries могут нести `// comment`-префикс перед
+				// JSON — без среза префикса Unmarshal падает и тег теряется.
+				_, jsonPart := splitEntryComment(string(raw))
+				var ob map[string]interface{}
+				if err := json.Unmarshal([]byte(strings.TrimRight(strings.TrimSpace(jsonPart), ",")), &ob); err != nil {
+					continue
+				}
+				if tag, _ := ob["tag"].(string); tag != "" {
+					tags[tag] = true
+				}
 			}
 		}
 	}

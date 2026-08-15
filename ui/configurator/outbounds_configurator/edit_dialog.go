@@ -586,6 +586,18 @@ func ShowEditDialog(
 		baseEntry := *existing
 		baseEntry.Updates = filterOutUserPatch(existing.Updates)
 		mergedBase := build.MergeOutboundUpdates(baseEntry, td, tgt)
+		// Referenced entry резолвится из template/preset ПО ТЕГУ. Переименование
+		// рвёт эту связь: на следующей сборке lookup по новому тегу не найдёт
+		// тело, и в config.json уедет заглушка с пустым type (sing-box бракует
+		// весь конфиг). То же — уже осиротевшая ссылка (тег исчез из шаблона):
+		// mergedBase.Type пуст, diff'ить не от чего. В обоих случаях
+		// материализуем запись в direct: тело формы (то, что юзер видит и
+		// сохраняет) становится inline, ссылка и patch-стек отбрасываются.
+		if cfg.Tag != existing.Tag || (td != nil && strings.TrimSpace(mergedBase.Type) == "") {
+			cfg.Ref = ""
+			cfg.Updates = nil
+			return
+		}
 		diff := build.OutboundFieldDiff(*cfg, mergedBase)
 		// updates[] = existing preset patches + новый USER patch (или без него если diff пуст).
 		cfg.Updates = build.UpsertUserPatch(
