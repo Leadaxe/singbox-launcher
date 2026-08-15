@@ -18,6 +18,11 @@
 // All mutations follow the SPEC 050 contract: validate → Save → respond.
 // We do NOT touch config.json — callers wanting the rebuilt file should
 // follow up with POST /action/rebuild-config (existing endpoint).
+//
+// SPEC 100: every handler body is parameterized with a stateAccess (loader +
+// saver + mutex), so the same code serves both the LOCAL wizard state and the
+// per-machine remote profiles (/remote/machines/{id}/state/*). The handlers
+// below are thin local-scope wrappers.
 package debugapi
 
 import (
@@ -26,21 +31,41 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
 )
 
+// stateAccess — доступ к одному state-файлу: загрузка, сохранение и мьютекс,
+// сериализующий load-modify-save. Local-scope несёт facade-обвязку (dirty
+// markers на Save); machine-scope пишет файл машины напрямую.
+type stateAccess struct {
+	load func() (*state.State, error)
+	save func(*state.State) error
+	mu   *sync.Mutex
+}
+
+// localStateAccess — доступ к state.json локального визарда через facade
+// (Save взводит dirty-маркеры StateService — SPEC 050 invariant 3).
+func (s *Server) localStateAccess() stateAccess {
+	return stateAccess{load: s.facade.LoadState, save: s.facade.SaveState, mu: &s.stateMu}
+}
+
 // handleStateFull — GET /state/full. Returns the full in-memory State as
 // JSON. We marshal via State directly so the response includes ALL
 // post-SPEC-060 fields (Rules, DNS, Connections.Outbounds with Ref/Updates).
 func (s *Server) handleStateFull(w http.ResponseWriter, r *http.Request) {
+	s.stateFullWith(w, r, s.localStateAccess())
+}
+
+func (s *Server) stateFullWith(w http.ResponseWriter, r *http.Request, acc stateAccess) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET required"})
 		return
 	}
-	st, err := s.facade.LoadState()
+	st, err := acc.load()
 	if err != nil {
 		if errors.Is(err, state.ErrNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": "state.json not found"})
@@ -66,9 +91,13 @@ type patchRulesReq struct {
 }
 
 func (s *Server) handleStateRules(w http.ResponseWriter, r *http.Request) {
+	s.stateRulesWith(w, r, s.localStateAccess())
+}
+
+func (s *Server) stateRulesWith(w http.ResponseWriter, r *http.Request, acc stateAccess) {
 	switch r.Method {
 	case http.MethodGet:
-		st, err := s.facade.LoadState()
+		st, err := acc.load()
 		if err != nil {
 			writeJSON(w, stateErrStatus(err), map[string]any{"error": err.Error()})
 			return
@@ -96,11 +125,11 @@ func (s *Server) handleStateRules(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		s.stateMu.Lock()
-		defer s.stateMu.Unlock()
-		st, err := s.facade.LoadState()
+		acc.mu.Lock()
+		defer acc.mu.Unlock()
+		st, err := acc.load()
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "load state: " + err.Error()})
+			writeJSON(w, stateErrStatus(err), map[string]any{"error": "load state: " + err.Error()})
 			return
 		}
 		before := len(st.Rules)
@@ -110,7 +139,7 @@ func (s *Server) handleStateRules(w http.ResponseWriter, r *http.Request) {
 		case "append":
 			st.Rules = append(st.Rules, req.Rules...)
 		}
-		if err := s.facade.SaveState(st); err != nil {
+		if err := acc.save(st); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "save state: " + err.Error()})
 			return
 		}
@@ -130,9 +159,13 @@ func (s *Server) handleStateRules(w http.ResponseWriter, r *http.Request) {
 // We don't merge — mirrors PUT /state/dns/servers semantics from SPEC 050.
 // Callers wanting field-level edits should GET → mutate → PATCH.
 func (s *Server) handleStateDNS(w http.ResponseWriter, r *http.Request) {
+	s.stateDNSWith(w, r, s.localStateAccess())
+}
+
+func (s *Server) stateDNSWith(w http.ResponseWriter, r *http.Request, acc stateAccess) {
 	switch r.Method {
 	case http.MethodGet:
-		st, err := s.facade.LoadState()
+		st, err := acc.load()
 		if err != nil {
 			writeJSON(w, stateErrStatus(err), map[string]any{"error": err.Error()})
 			return
@@ -193,15 +226,15 @@ func (s *Server) handleStateDNS(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		s.stateMu.Lock()
-		defer s.stateMu.Unlock()
-		st, err := s.facade.LoadState()
+		acc.mu.Lock()
+		defer acc.mu.Unlock()
+		st, err := acc.load()
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "load state: " + err.Error()})
+			writeJSON(w, stateErrStatus(err), map[string]any{"error": "load state: " + err.Error()})
 			return
 		}
 		st.DNS = req
-		if err := s.facade.SaveState(st); err != nil {
+		if err := acc.save(st); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "save state: " + err.Error()})
 			return
 		}
@@ -234,9 +267,13 @@ type patchDNSRulesReq struct {
 //
 // SPEC 050 контракт: bad JSON → 400, парсинг текста → 422, save → 200.
 func (s *Server) handleStateDNSRules(w http.ResponseWriter, r *http.Request) {
+	s.stateDNSRulesWith(w, r, s.localStateAccess())
+}
+
+func (s *Server) stateDNSRulesWith(w http.ResponseWriter, r *http.Request, acc stateAccess) {
 	switch r.Method {
 	case http.MethodGet:
-		st, err := s.facade.LoadState()
+		st, err := acc.load()
 		if err != nil {
 			writeJSON(w, stateErrStatus(err), map[string]any{"error": err.Error()})
 			return
@@ -265,11 +302,11 @@ func (s *Server) handleStateDNSRules(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-		s.stateMu.Lock()
-		defer s.stateMu.Unlock()
-		st, err := s.facade.LoadState()
+		acc.mu.Lock()
+		defer acc.mu.Unlock()
+		st, err := acc.load()
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "load state: " + err.Error()})
+			writeJSON(w, stateErrStatus(err), map[string]any{"error": "load state: " + err.Error()})
 			return
 		}
 		// Считаем сколько USER-правил было до — для diff_summary.
@@ -303,7 +340,7 @@ func (s *Server) handleStateDNSRules(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		st.DNS.Rules = kept
-		if err := s.facade.SaveState(st); err != nil {
+		if err := acc.save(st); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "save state: " + err.Error()})
 			return
 		}
@@ -329,13 +366,17 @@ func (s *Server) handleStateDNSRules(w http.ResponseWriter, r *http.Request) {
 // view. Template load failures map to 500 (no usable template = nothing
 // meaningful to resolve against).
 func (s *Server) handleStateOutboundsResolved(w http.ResponseWriter, r *http.Request) {
+	s.stateOutboundsResolvedWith(w, r, s.localStateAccess())
+}
+
+func (s *Server) stateOutboundsResolvedWith(w http.ResponseWriter, r *http.Request, acc stateAccess) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "GET required"})
 		return
 	}
-	st, err := s.facade.LoadState()
+	st, err := acc.load()
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "load state: " + err.Error()})
+		writeJSON(w, stateErrStatus(err), map[string]any{"error": "load state: " + err.Error()})
 		return
 	}
 	td, err := s.facade.LoadTemplate()
@@ -346,6 +387,10 @@ func (s *Server) handleStateOutboundsResolved(w http.ResponseWriter, r *http.Req
 	// MergeOutboundUpdatesInPlace mutates a ParserConfig in place; copy
 	// the outbound slice into a fresh ParserConfig so we don't affect
 	// any state cached by the facade.
+	//
+	// TargetSpecFromState читает платформу из самого state — для профиля
+	// удалённой машины это её goos/goarch (SPEC 098), поэтому machine-scope
+	// резолвится под её платформу без дополнительных параметров.
 	pc := configtypes.ParserConfig{}
 	pc.ParserConfig.Outbounds = append([]configtypes.OutboundConfig(nil), st.Connections.Outbounds...)
 	build.MergeOutboundUpdatesInPlace(&pc, td, build.TargetSpecFromState(st))

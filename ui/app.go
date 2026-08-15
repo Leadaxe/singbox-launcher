@@ -55,6 +55,9 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	localContent, localPanel := CreateLocalTab(controller)
 	remoteContent, remotePanel := CreateRemoteTab(controller)
 	app.localPanel, app.remotePanel = localPanel, remotePanel
+	// SPEC 100 §3.8: Debug API получает Connect/Disconnect вкладки Remote.
+	// Строго после создания вкладок — подписчики OnOverrideChanged уже стоят.
+	RegisterOverrideAPIHooks(controller)
 	coreTabItem := container.NewTabItem(locale.T("app.tab.local"), localContent)
 	app.clashAPITab = container.NewTabItem(locale.T("app.tab.remote"), remoteContent)
 	// Settings — обычная вкладка со своим содержимым.

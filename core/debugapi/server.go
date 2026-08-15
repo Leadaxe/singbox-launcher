@@ -100,6 +100,52 @@ type Server struct {
 	stateMu sync.Mutex
 	// settingsMu — то же для PATCH /settings/* (bin/settings.json).
 	settingsMu sync.Mutex
+
+	// remote — remote-machines API group (SPEC 100). nil = group off (the
+	// endpoints are not registered and don't show up in / or /help).
+	remote *RemoteAPI
+	// daemon — local lxd-daemon API group (SPEC 100). Non-nil only on
+	// platforms where the daemon engine exists (darwin wiring).
+	daemon DaemonFacade
+
+	// machineMu — per-machine mutexes for PATCH /remote/machines/{id}/state/*
+	// load-modify-save cycles. Per machine, not global: two agents patching
+	// two different machines must not queue behind each other.
+	machineMuMu sync.Mutex
+	machineMu   map[string]*sync.Mutex
+}
+
+// EnableRemote turns the /remote/* endpoint group on. Call before Start.
+func (s *Server) EnableRemote(r *RemoteAPI) { s.remote = r }
+
+// EnableDaemon turns the /daemon/* endpoint group on. Call before Start.
+// Wiring passes the facade only on platforms with a daemon engine (darwin).
+func (s *Server) EnableDaemon(d DaemonFacade) { s.daemon = d }
+
+// machineMutex returns the per-machine state mutex, creating it lazily.
+func (s *Server) machineMutex(id string) *sync.Mutex {
+	s.machineMuMu.Lock()
+	defer s.machineMuMu.Unlock()
+	if s.machineMu == nil {
+		s.machineMu = map[string]*sync.Mutex{}
+	}
+	m, ok := s.machineMu[id]
+	if !ok {
+		m = &sync.Mutex{}
+		s.machineMu[id] = m
+	}
+	return m
+}
+
+// capabilities reports which optional endpoint groups this build/session
+// exposes — the manifest carries it so an agent knows up front whether
+// /remote/* and /daemon/* exist here (SPEC 100 §5).
+func (s *Server) capabilities() map[string]bool {
+	return map[string]bool{
+		"remote":   s.remote != nil,
+		"daemon":   s.daemon != nil,
+		"raw_grpc": s.remote != nil || s.daemon != nil,
+	}
 }
 
 // New constructs a Server bound to 127.0.0.1:port.
@@ -126,8 +172,10 @@ func New(facade ControllerFacade, port int, token string) (*Server, error) {
 		token:    token,
 		facade:   facade,
 	}
+	// Handler намеренно НЕ собирается здесь: между New и Start wiring может
+	// включить опциональные группы (EnableRemote/EnableDaemon, SPEC 100), а
+	// таблица endpoints() снимается при сборке роутера.
 	s.httpSrv = &http.Server{
-		Handler:           s.routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	return s, nil
@@ -139,6 +187,9 @@ func (s *Server) Start() {
 	// goroutine must not race that write (nil deref would crash the app).
 	s.mu.Lock()
 	srv, ln := s.httpSrv, s.listener
+	if srv != nil && srv.Handler == nil {
+		srv.Handler = s.routes()
+	}
 	s.mu.Unlock()
 	if srv == nil || ln == nil {
 		return
@@ -182,7 +233,7 @@ func GenerateToken() (string, error) {
 // "/" (the manifest) and "/help" are intentionally NOT in this list — they
 // describe the list and would be self-referential; routes() wires them directly.
 func (s *Server) endpoints() []apiEndpoint {
-	return []apiEndpoint{
+	eps := []apiEndpoint{
 		{"GET", "/ping", false, "Liveness probe (no auth)", func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		}},
@@ -220,6 +271,19 @@ func (s *Server) endpoints() []apiEndpoint {
 		{"POST", "/traffic/clear", true, "Clear captured traffic", s.handleTrafficClear},
 		{"GET/POST", "/traffic/verbose", true, "Get / toggle verbose capture", s.handleTrafficVerbose},
 	}
+	// SPEC 100: optional groups — registered (and therefore documented in
+	// / and /help) only when the wiring enabled them.
+	if s.remote != nil {
+		eps = append(eps, s.remoteEndpoints()...)
+	}
+	if s.daemon != nil {
+		eps = append(eps, s.daemonEndpoints()...)
+	}
+	if s.remote != nil || s.daemon != nil {
+		eps = append(eps, apiEndpoint{"GET", "/grpc/methods", true,
+			"Discovery: daemon.* gRPC methods for raw calls", s.handleGRPCMethods})
+	}
+	return eps
 }
 
 // routes wires the endpoints. auth middleware guards everything except /ping
@@ -263,14 +327,15 @@ func (s *Server) handleManifest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"api":       APIDisplayName,
-		"spec":      APISpec,
-		"launcher":  launcher,
-		"core":      s.facade.GetSingboxVersion(),
-		"auth":      APIAuthScheme,
-		"docs":      DocsURL(launcher),
-		"hint":      APIHint,
-		"endpoints": endpointViews(s.endpoints()),
+		"api":          APIDisplayName,
+		"spec":         APISpec,
+		"launcher":     launcher,
+		"core":         s.facade.GetSingboxVersion(),
+		"auth":         APIAuthScheme,
+		"docs":         DocsURL(launcher),
+		"hint":         APIHint,
+		"capabilities": s.capabilities(),
+		"endpoints":    endpointViews(s.endpoints()),
 	})
 }
 

@@ -244,6 +244,138 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/debug/snapshot" > snapshot-$(dat
 
 ---
 
+## Удалённые машины (SPEC 100)
+
+Полная обёртка над реестром удалённых lxd-машин (SPEC 096–099). Каждый вызов
+адресует машину явно — `/remote/machines/{id}/…`; понятия «активная машина» в
+API нет. Манифест `GET /` несёт `capabilities` (`remote`/`daemon`/`raw_grpc`) —
+по ним агент видит, какие группы есть в этой сборке (Win7 — без remote-группы,
+не-macOS — без `/daemon/*`).
+
+**Реестр:**
+
+| Метод | Путь | Что делает |
+|---|---|---|
+| GET/POST | `/remote/machines` | Список / сопряжение `{invite, name?, addr?, secret?}` (приглашение `адрес#отпечаток#код`) |
+| GET/PATCH/DELETE | `/remote/machines/{id}` | Запись / правка `{name?,addr?,goos?,goarch?}` / удаление (ответ предупреждает: доступ на стороне демона не отозван) |
+| POST | `/remote/machines/{id}/repair` | Пере-сопряжение `{invite, addr?, secret?}` с перевыпуском ключа; профиль машины сохраняется |
+| POST | `/remote/machines/{id}/profile/copy-from` | Копия настроек `{source_id, overwrite?}`; существующий state без `overwrite=true` → `409` |
+
+**Ядро и деплой:**
+
+| Метод | Путь | Что делает |
+|---|---|---|
+| GET | `/remote/machines/{id}/health` | `{reachable, core_status, active_sha, last_good_sha, …}` — сверка SHA = проверка «доехало» |
+| POST | `/remote/machines/{id}/core/start` \| `stop` \| `rollback` | Управление ядром машины (stop рвёт VPN её клиентов — подтверждения на стороне API нет) |
+| GET | `/remote/machines/{id}/config/active` \| `built` | Работающий конфиг с машины / локально собранный |
+| POST | `/remote/machines/{id}/deploy` | Ресурсы → конфиг (та же цепочка, что кнопка Deploy). Body `{config:{…}}` опционален. `422` = демон отклонил конфиг, инстанс не тронут |
+
+**Состояние (зеркала `/state/*`):** `GET /remote/machines/{id}/state/full`,
+`GET/PATCH …/state/rules`, `…/state/dns`, `…/state/dns/rules`,
+`GET …/state/outbounds/resolved` — те же контракты, что у локальных ручек.
+**Ограничение:** PATCH меняет state машины, но её `config.json` собирает только
+визард (Configure → Save) — программной пересборки пока нет.
+
+**Наблюдаемость:** `GET …/groups`, `GET …/proxies?group=`,
+`POST …/proxies/switch {group,name}`, `POST …/proxies/delay {name}`,
+`GET …/pool?group=`, `GET …/rules`, `GET …/outbounds`, `GET …/status`,
+`GET/DELETE …/connections`, `DELETE …/connections/{conn_id}`,
+`GET …/dns/queries?duration=5s&max=200`, `GET …/logs?duration=&max=`,
+`GET …/host`, `GET …/host/interfaces`, `GET …/clients`,
+`PUT/DELETE …/clients/{key}/label`. Стримовые источники отдаются окнами
+(`duration` ≤ 60s, `max` ≤ 5000) — SSE-подписок в v1 нет.
+
+**Ресурс-стор:** `GET …/resources` (сводка local vs machine),
+`POST …/resources/sync`, `GET/PUT/DELETE …/resources/{name}`,
+`POST …/resources/{name}/download`. `409` = имя занято живой ссылкой конфига.
+
+**UI-override (кнопки Connect/Disconnect вкладки Remote):** обычные
+remote-вызовы выбор в UI не трогают — эти три ручки управляют именно тем, на
+какую машину смотрит вкладка Servers лаунчера.
+
+| Метод | Путь | Что делает |
+|---|---|---|
+| GET | `/remote/ui` | `{connected, machine_id, machine_name}`; `connected:false` = локальное ядро |
+| POST | `/remote/machines/{id}/ui/connect` | Перевести вкладку Servers на машину. Health-гейт до переключения: недоступная машина → `502`, override не тронут. Ядро в idle — не отказ (в ответе `warning`) |
+| POST | `/remote/ui/disconnect` | Вернуть вкладку Servers к локальному ядру. Идемпотентен |
+
+`503` на всех трёх — лаунчер запущен headless либо UI ещё не создан.
+
+**Ошибки группы:** `404` неизвестная машина / нет built-конфига; `409`
+конфликт; `422` демон отклонил конфиг; `502` машина недоступна; `504` таймаут.
+
+```bash
+# Сопрячься с роутером и посмотреть его узлы
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/remote/machines" -d '{"invite":"192.168.10.1:19091#3f9c…#Q7PLM2","name":"RouteRich"}'
+curl -s -H "Authorization: Bearer $TOKEN" "$API/remote/machines/routerich/proxies?group=proxy-out" | jq
+
+# Деплой и проверка «доехало»
+curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API/remote/machines/routerich/deploy" | jq .config_sha
+curl -s -H "Authorization: Bearer $TOKEN" "$API/remote/machines/routerich/health" | jq .active_sha
+```
+
+---
+
+## Локальный демон `/daemon/*` (macOS)
+
+Группа существует только в darwin-сборке (см. `capabilities.daemon`).
+Start/stop ядра при daemon-движке идут через общие `/action/start|stop`
+(шов `CoreBackend`) — отдельных ручек нет.
+
+| Метод | Путь | Что делает |
+|---|---|---|
+| GET | `/daemon/status` | Сопряжение, служба, доступность, статус ядра, паспорт демона |
+| POST | `/daemon/pair` | `{invite, secret?}` — сопряжение с локальным демоном |
+| POST | `/daemon/unpair` | Забыть сопряжение (ключи, пин, секрет) |
+| PATCH | `/daemon/settings` | `{addr?, secret?}` |
+| GET/POST | `/daemon/engine` | Движок ядра: `{"mode":"classic"\|"daemon"}`; POST при работающем VPN → `409` |
+| GET | `/daemon/commands` | Готовые sudo-команды (install/uninstall/repair/kickstart/show_secret). **API их не исполняет** — принцип «sudo только в вашем терминале» |
+
+---
+
+## Произвольные вызовы (raw passthrough)
+
+Туннель к **сопряжённому** демону — удалённой машине или локальному. Канал,
+пин и мандат берутся из реестра/настроек; запрос на произвольный адрес через
+эти ручки сделать нельзя.
+
+| Метод | Путь |
+|---|---|
+| POST | `/remote/machines/{id}/raw/rest` \| `/daemon/raw/rest` |
+| POST | `/remote/machines/{id}/raw/grpc` \| `/daemon/raw/grpc` |
+| GET | `/grpc/methods` — discovery всех `daemon.*` методов (kind, input, output) |
+
+**REST:** body `{"method":"GET","path":"/admin/status","body":{…}|"body_base64":"…","content_type":"…"}`.
+`path` начинается с `/`; `body` и `body_base64` взаимоисключающие. Ответ —
+`{"status":<код демона>,"content_type":…,"body":{…}|"body_base64":"…"}`; наш
+HTTP-статус всегда 200, статус демона — данные (иначе не отличить «нашу» 404
+от 404 демона).
+
+**gRPC:** body `{"method":"/daemon.StartedService/URLTest","request":{…},"timeout":"15s","duration":"5s","max_events":100}`.
+Метод резолвится по имени через protoregistry (ручной таблицы нет — новые RPC
+после обновления `internal/daemonpb` подхватываются сами), JSON ↔ proto через
+protojson. Unary → `{"response":{…}}`; server-stream → окно
+`{"events":[…],"truncated":bool}`; client/bidi-stream → `501`.
+
+```bash
+# Любой admin-REST запрос к машине
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/remote/machines/routerich/raw/rest" -d '{"method":"GET","path":"/admin/info"}' | jq .body
+
+# Любой gRPC: URL-тест узла на стороне машины
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/remote/machines/routerich/raw/grpc" \
+  -d '{"method":"/daemon.StartedService/URLTestOutbound","request":{"outbound_tag":"JP-01","link":"https://cp.cloudflare.com","timeout":10000}}' | jq
+
+# Окно лога ядра машины через стрим
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/remote/machines/routerich/raw/grpc" \
+  -d '{"method":"/daemon.StartedService/SubscribeLog","duration":"3s","max_events":200}' | jq '.events | length'
+```
+
+---
+
 ## Общие правила
 
 - **Auth header:** `Authorization: Bearer <token>` обязателен везде кроме `GET /ping`.

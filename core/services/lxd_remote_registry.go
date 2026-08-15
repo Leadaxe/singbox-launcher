@@ -1,10 +1,7 @@
 package services
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -803,49 +800,8 @@ func (r *RemoteRegistry) StopCore(id string) error {
 //
 // Блокирующие сетевые вызовы — звать из горутины.
 func (r *RemoteRegistry) SyncResources(id string, files map[string][]byte) error {
-	if len(files) == 0 {
-		return nil
-	}
-	client, err := r.adminClient(id)
-	if err != nil {
-		return err
-	}
-	remote, err := client.Resources()
-	if err != nil {
-		return fmt.Errorf("remote resources: list: %w", err)
-	}
-	have := make(map[string]string, len(remote))
-	for _, res := range remote {
-		have[res.Name] = strings.ToLower(res.SHA256)
-	}
-
-	names := make([]string, 0, len(files))
-	for name := range files {
-		names = append(names, name)
-	}
-	sort.Strings(names) // детерминированный порядок — читаемые логи
-
-	uploaded := 0
-	for _, name := range names {
-		body := files[name]
-		sum := sha256.Sum256(body)
-		if have[name] == hex.EncodeToString(sum[:]) {
-			continue // на машине уже ровно этот файл
-		}
-		if _, putErr := client.PutResource(name, body); putErr != nil {
-			var resErr *lxdclient.ResourceError
-			if errors.As(putErr, &resErr) && resErr.InUse() {
-				return fmt.Errorf("rule-set %q changed, but the machine's running config still references it. "+
-					"Stop the core on that machine (or deploy a config without this rule) and try again", name)
-			}
-			return fmt.Errorf("remote resources: upload %q: %w", name, putErr)
-		}
-		uploaded++
-	}
-	if uploaded > 0 {
-		debuglog.InfoLog("remote resources: uploaded %d file(s) to %q", uploaded, id)
-	}
-	return nil
+	_, err := r.syncResourcesCounted(id, files)
+	return err
 }
 
 // ApplyConfig отправляет конфиг на удалённую машину (SPEC 097).

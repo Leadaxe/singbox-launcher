@@ -469,6 +469,29 @@ func (c *Client) Enroll(code, name string) error {
 	return nil
 }
 
+// Do выполняет произвольный запрос admin-плоскости и возвращает статус, тело
+// и Content-Type ответа (raw REST passthrough, SPEC 100 §3.7).
+//
+// Ошибка возвращается только на транспортном отказе (машина недоступна,
+// таймаут, пин не сошёлся); HTTP-статусы, включая 4xx/5xx, доезжают до
+// вызывающего как данные — passthrough не интерпретирует ответ демона.
+func (c *Client) Do(method, path string, body []byte, contentType string) (int, []byte, string, error) {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
+	resp, err := c.do(method, path, reader, contentType)
+	if err != nil {
+		return 0, nil, "", err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	if err != nil {
+		return 0, nil, "", fmt.Errorf("lxdclient: raw %s %s: read body: %w", method, path, err)
+	}
+	return resp.StatusCode, data, resp.Header.Get("Content-Type"), nil
+}
+
 // InfoData — паспорт демона (GET /admin/info): версия, домашний каталог,
 // адрес, отпечаток. Лаунчер берёт пути демона отсюда, а не хардкодит их.
 type InfoData struct {

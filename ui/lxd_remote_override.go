@@ -4,6 +4,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"fyne.io/fyne/v2"
+
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
 	"singbox-launcher/internal/debuglog"
@@ -202,6 +204,41 @@ func RemoteDaemonGroups() (groups []string, isRemote bool, err error) {
 		return nil, true, err
 	}
 	return groups, true, nil
+}
+
+// RegisterOverrideAPIHooks отдаёт Debug API управление remote-override
+// (SPEC 100 §3.8): тот же Connect/Disconnect, что кнопки вкладки Remote.
+//
+// Зовётся из NewApp ПОСЛЕ создания вкладок: подписчики OnOverrideChanged к
+// этому моменту стоят, и API-переключение перерисовывает список машин ровно
+// тем же путём, что кнопочное. До регистрации (headless, ранний старт)
+// соответствующие endpoints отвечают 503.
+func RegisterOverrideAPIHooks(ac *core.AppController) {
+	if ac == nil || ac.UIService == nil {
+		return
+	}
+	ac.UIService.LxdOverrideConnectFunc = func(id string) error {
+		// Паритет с connectMachine: окна прежней машины гасим до
+		// переключения — они должны закрыться по СВОЕЙ машине, а не по новой.
+		// fyne.Do — вызов приходит из HTTP-горутины Debug API.
+		if prevID, _, ok := GetLxdRemoteOverride(); ok && prevID != id {
+			fyne.Do(func() {
+				CloseMachineProfiler(prevID)
+				CloseMachineHostWindow(prevID)
+			})
+		}
+		return SetLxdRemoteOverride(ac, id)
+	}
+	ac.UIService.LxdOverrideDisconnectFunc = func() {
+		if prevID, _, ok := GetLxdRemoteOverride(); ok {
+			fyne.Do(func() {
+				CloseMachineProfiler(prevID)
+				CloseMachineHostWindow(prevID)
+			})
+		}
+		ClearLxdRemoteOverride(ac)
+	}
+	ac.UIService.LxdOverrideStateFunc = GetLxdRemoteOverride
 }
 
 type overrideError string

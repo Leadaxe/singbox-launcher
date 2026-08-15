@@ -73,6 +73,14 @@ type UIService struct {
 	// fresh by the time the user looks at it. Registered by the Servers tab;
 	// no-op until then. Controlled by StateService.IsAutoPingAfterConnectEnabled().
 	AutoPingAfterConnectFunc func()
+
+	// LxdOverride*Func — управление remote-override вкладки Servers из
+	// Debug API (SPEC 100 §3.8): то же, что кнопки Connect/Disconnect на
+	// вкладке Remote. Регистрируются UI-слоем (ui/lxd_remote_override.go);
+	// nil = UI ещё не создан или лаунчер headless — API отвечает 503.
+	LxdOverrideConnectFunc    func(id string) error
+	LxdOverrideDisconnectFunc func()
+	LxdOverrideStateFunc      func() (id, name string, active bool)
 	FocusOpenChildWindows    func()                                     // Focus one of wizard child windows (View, Outbound Edit, rule dialog) when user clicks wizard
 	ShowUpdatePopupFunc      func(currentVersion, latestVersion string) // Called to show update popup
 

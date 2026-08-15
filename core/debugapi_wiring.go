@@ -6,6 +6,7 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core/debugapi"
+	"singbox-launcher/core/services"
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
@@ -166,6 +167,10 @@ func (f *debugAPIFacade) UpdateSubscriptions() error {
 // debugAPIState holds a singleton-ish handle so main.go can Start/Stop it.
 var (
 	debugAPIServer *debugapi.Server
+	// debugAPIRemotePool переживает рестарты сервера: у пула фоновая
+	// горутина-уборщик, и создавать новый на каждый Start значило бы копить
+	// уборщиков. Stop закрывает транспорты, но пул остаётся переиспользуемым.
+	debugAPIRemotePool *services.TransportPool
 )
 
 // StartDebugAPI binds the debug-API server on 127.0.0.1:port with the given
@@ -179,6 +184,47 @@ func (ac *AppController) StartDebugAPI(port int, token string) error {
 	if err != nil {
 		return err
 	}
+	// SPEC 100: remote-machines group. Реестр эфемерный (файловый, как у
+	// UI-панелей); пул транспортов — общий на процесс.
+	if ac.FileService != nil {
+		registry := services.NewRemoteRegistry(ac.FileService.ExecDir)
+		if debugAPIRemotePool == nil {
+			debugAPIRemotePool = services.NewTransportPool(registry)
+		}
+		s.EnableRemote(&debugapi.RemoteAPI{
+			Registry: registry,
+			Pool:     debugAPIRemotePool,
+			ExecDir:  ac.FileService.ExecDir,
+			// UI-override (SPEC 100 §3.8): хуки читаются на КАЖДЫЙ вызов, а не
+			// снимаются здесь — Debug API может стартовать раньше, чем UI
+			// зарегистрирует обработчики (RegisterOverrideAPIHooks в NewApp).
+			UIConnect: func(id string) error {
+				if ac.UIService == nil || ac.UIService.LxdOverrideConnectFunc == nil {
+					return debugapi.ErrUIUnavailable
+				}
+				return ac.UIService.LxdOverrideConnectFunc(id)
+			},
+			UIDisconnect: func() error {
+				if ac.UIService == nil || ac.UIService.LxdOverrideDisconnectFunc == nil {
+					return debugapi.ErrUIUnavailable
+				}
+				ac.UIService.LxdOverrideDisconnectFunc()
+				return nil
+			},
+			UIState: func() (string, string, bool, error) {
+				if ac.UIService == nil || ac.UIService.LxdOverrideStateFunc == nil {
+					return "", "", false, debugapi.ErrUIUnavailable
+				}
+				id, name, active := ac.UIService.LxdOverrideStateFunc()
+				return id, name, active, nil
+			},
+		})
+	}
+	// SPEC 100: local-daemon group — только на платформах с демонным движком
+	// (darwin); стаб других платформ возвращает nil.
+	if df := ac.debugAPIDaemonFacade(); df != nil {
+		s.EnableDaemon(df)
+	}
 	debugAPIServer = s
 	debugAPIServer.Start()
 	return nil
@@ -191,6 +237,9 @@ func (ac *AppController) StopDebugAPI() {
 	}
 	debugAPIServer.Stop()
 	debugAPIServer = nil
+	if debugAPIRemotePool != nil {
+		debugAPIRemotePool.CloseAll()
+	}
 }
 
 // DebugAPIAddr returns the bound "127.0.0.1:port" string if running,

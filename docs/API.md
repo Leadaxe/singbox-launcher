@@ -244,6 +244,141 @@ Response shape:
 
 ---
 
+## Remote machines (SPEC 100)
+
+Full API wrapper over the remote lxd-machines registry (SPEC 096–099). Every
+call addresses a machine explicitly — `/remote/machines/{id}/…`; there is no
+"active machine" notion in the API. The `GET /` manifest carries
+`capabilities` (`remote`/`daemon`/`raw_grpc`) so an agent knows up front which
+groups this build exposes (Win7 builds ship without the remote group,
+non-macOS without `/daemon/*`).
+
+**Registry:**
+
+| Method | Path | What it does |
+|---|---|---|
+| GET/POST | `/remote/machines` | List / pair `{invite, name?, addr?, secret?}` (invite is `addr#fingerprint#code`) |
+| GET/PATCH/DELETE | `/remote/machines/{id}` | Get / update `{name?,addr?,goos?,goarch?}` / remove (response warns: access is NOT revoked on the daemon side) |
+| POST | `/remote/machines/{id}/repair` | Re-pair `{invite, addr?, secret?}` with a fresh client key; the machine's profile is kept |
+| POST | `/remote/machines/{id}/profile/copy-from` | Copy wizard profile `{source_id, overwrite?}`; existing state without `overwrite=true` → `409` |
+
+**Core & deploy:**
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/remote/machines/{id}/health` | `{reachable, core_status, active_sha, last_good_sha, …}` — comparing SHAs is the honest "did it land" check |
+| POST | `/remote/machines/{id}/core/start` \| `stop` \| `rollback` | Core control (stop drops the VPN of the machine's clients — the API does not ask for confirmation) |
+| GET | `/remote/machines/{id}/config/active` \| `built` | Running config fetched from the machine / locally built one |
+| POST | `/remote/machines/{id}/deploy` | Resources → config (the same chain as the Deploy button). Optional body `{config:{…}}`. `422` = daemon rejected the config, running instance untouched |
+
+**State (mirrors of `/state/*`):** `GET /remote/machines/{id}/state/full`,
+`GET/PATCH …/state/rules`, `…/state/dns`, `…/state/dns/rules`,
+`GET …/state/outbounds/resolved` — same contracts as the local endpoints.
+**Limitation:** PATCH updates the machine's state, but its `config.json` is
+still built only by the wizard (Configure → Save) — no programmatic rebuild yet.
+
+**Observability:** `GET …/groups`, `GET …/proxies?group=`,
+`POST …/proxies/switch {group,name}`, `POST …/proxies/delay {name}`,
+`GET …/pool?group=`, `GET …/rules`, `GET …/outbounds`, `GET …/status`,
+`GET/DELETE …/connections`, `DELETE …/connections/{conn_id}`,
+`GET …/dns/queries?duration=5s&max=200`, `GET …/logs?duration=&max=`,
+`GET …/host`, `GET …/host/interfaces`, `GET …/clients`,
+`PUT/DELETE …/clients/{key}/label`. Stream sources are served as windows
+(`duration` ≤ 60s, `max` ≤ 5000) — no SSE subscriptions in v1.
+
+**Resource store:** `GET …/resources` (local vs machine overview),
+`POST …/resources/sync`, `GET/PUT/DELETE …/resources/{name}`,
+`POST …/resources/{name}/download`. `409` = the name is referenced by a live
+config.
+
+**UI-override (the Remote tab's Connect/Disconnect buttons):** regular remote
+calls never touch the UI selection — these three endpoints control which
+machine the launcher's Servers tab is pointed at.
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/remote/ui` | `{connected, machine_id, machine_name}`; `connected:false` = local core |
+| POST | `/remote/machines/{id}/ui/connect` | Point the Servers tab at the machine. Health gate before switching: unreachable machine → `502`, override untouched. An idle core is not a failure (the response carries a `warning`) |
+| POST | `/remote/ui/disconnect` | Return the Servers tab to the local core. Idempotent |
+
+`503` on all three — the launcher runs headless or the UI is not created yet.
+
+**Group errors:** `404` unknown machine / no built config; `409` conflict;
+`422` config rejected by the daemon; `502` machine unreachable; `504` call
+timeout.
+
+```bash
+# Pair with a router and list its nodes
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/remote/machines" -d '{"invite":"192.168.10.1:19091#3f9c…#Q7PLM2","name":"RouteRich"}'
+curl -s -H "Authorization: Bearer $TOKEN" "$API/remote/machines/routerich/proxies?group=proxy-out" | jq
+
+# Deploy and verify it landed
+curl -s -X POST -H "Authorization: Bearer $TOKEN" "$API/remote/machines/routerich/deploy" | jq .config_sha
+curl -s -H "Authorization: Bearer $TOKEN" "$API/remote/machines/routerich/health" | jq .active_sha
+```
+
+---
+
+## Local daemon `/daemon/*` (macOS)
+
+The group exists only in darwin builds (see `capabilities.daemon`). Core
+start/stop under the daemon engine goes through the shared
+`/action/start|stop` (the `CoreBackend` seam) — no dedicated endpoints.
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/daemon/status` | Pairing, service, reachability, core status, daemon passport |
+| POST | `/daemon/pair` | `{invite, secret?}` — pair with the local daemon |
+| POST | `/daemon/unpair` | Forget the pairing (keys, pin, secret) |
+| PATCH | `/daemon/settings` | `{addr?, secret?}` |
+| GET/POST | `/daemon/engine` | Core engine: `{"mode":"classic"\|"daemon"}`; POST while the VPN runs → `409` |
+| GET | `/daemon/commands` | Ready-to-run sudo commands (install/uninstall/repair/kickstart/show_secret). **The API never executes them** — the "sudo only in your terminal" principle |
+
+---
+
+## Raw passthrough
+
+A tunnel to a **paired** daemon — a remote machine or the local one. Channel,
+pin and credentials come from the registry/settings; these endpoints cannot
+reach arbitrary addresses.
+
+| Method | Path |
+|---|---|
+| POST | `/remote/machines/{id}/raw/rest` \| `/daemon/raw/rest` |
+| POST | `/remote/machines/{id}/raw/grpc` \| `/daemon/raw/grpc` |
+| GET | `/grpc/methods` — discovery of all `daemon.*` methods (kind, input, output) |
+
+**REST:** body `{"method":"GET","path":"/admin/status","body":{…}|"body_base64":"…","content_type":"…"}`.
+`path` must start with `/`; `body` and `body_base64` are mutually exclusive.
+Response is `{"status":<daemon code>,"content_type":…,"body":{…}|"body_base64":"…"}`;
+our HTTP status is always 200 — the daemon's status is data (otherwise you
+could not tell "our" 404 from the daemon's 404).
+
+**gRPC:** body `{"method":"/daemon.StartedService/URLTest","request":{…},"timeout":"15s","duration":"5s","max_events":100}`.
+The method is resolved by name via protoregistry (no hand-written table — new
+RPCs are picked up automatically after `internal/daemonpb` updates), JSON ↔
+proto via protojson. Unary → `{"response":{…}}`; server-stream → a window
+`{"events":[…],"truncated":bool}`; client/bidi streams → `501`.
+
+```bash
+# Any admin-REST request to a machine
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/remote/machines/routerich/raw/rest" -d '{"method":"GET","path":"/admin/info"}' | jq .body
+
+# Any gRPC: URL-test a node on the machine's side
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/remote/machines/routerich/raw/grpc" \
+  -d '{"method":"/daemon.StartedService/URLTestOutbound","request":{"outbound_tag":"JP-01","link":"https://cp.cloudflare.com","timeout":10000}}' | jq
+
+# Core-log window over the stream
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  "$API/remote/machines/routerich/raw/grpc" \
+  -d '{"method":"/daemon.StartedService/SubscribeLog","duration":"3s","max_events":200}' | jq '.events | length'
+```
+
+---
+
 ## General rules
 
 - **Auth header:** `Authorization: Bearer <token>` is required everywhere except `GET /ping`.
