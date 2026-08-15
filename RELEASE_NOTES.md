@@ -8,6 +8,32 @@
 
 ---
 
+### Выжимка (RU) — v1.4.1
+
+**Debug API покрывает весь remote-функционал.** Сопряжение и здоровье машин, start/stop/rollback ядра, deploy (ресурсы + конфиг одним вызовом), зеркала состояния визарда per-machine, наблюдаемость (узлы, соединения, DNS, телеметрия хоста) и ресурс-стор; на macOS — группа `/daemon/*`; произвольные REST/gRPC-вызовы к сопряжённому демону с discovery методов. Манифест API объявляет `capabilities`, чтобы агент заранее знал, что умеет сборка.
+
+**Detour через одиночный сервер и ручной config_json.** Пикер «Detour server» предлагает не только группы, но и другие server-источники: хоп адресуется identity-хешем узла и переживает переименования; пропавший хоп выкидывает зависимые ноды из конфига, а не пускает их напрямую. Источник может нести готовый sing-box JSON-объект вместо share-URI — для протоколов без URI-схемы.
+
+**Один битый элемент больше не валит весь конфиг.** Невалидные WireGuard-ключи (например, маскированный `*****` у Proton), осиротевшие ссылки на шаблон после переименования группы и висячие detour-теги деградируют поэлементно с warning в логе — вместо `sing-box check`-отказа всего конфига или отвергнутого деплоя.
+
+**Вкладка Remote пережила перезапуски ядра.** gRPC-подписки (соединения, DNS, статус) переподписываются сами после Deploy/Start/Stop, список серверов восстанавливается без Disconnect/Connect, профайлер показывает путь пакета двумя честными строками `Outbound:`/`Via:`, у машины появилась кнопка Restart (↻).
+
+**Полный список изменений:** [docs/release_notes/1-4-1.md](docs/release_notes/1-4-1.md).
+
+### Highlights (EN) — v1.4.1
+
+**Debug API now covers the whole remote feature set.** Machine pairing and health, core start/stop/rollback, deploy (resources + config in one call), per-machine wizard-state mirrors, observability (nodes, connections, DNS, host telemetry) and the resource store; the `/daemon/*` group on macOS; raw REST/gRPC passthrough to any paired daemon with method discovery. The API manifest advertises `capabilities` so an agent knows up front what the build exposes.
+
+**Detour through a single server, and manual config_json sources.** The "Detour server" picker now offers other single-server sources alongside groups: the hop is referenced by node identity hash and survives renames; a vanished hop drops the dependent nodes from the config instead of silently dialing direct. A source can carry a ready sing-box JSON object instead of a share URI — for protocols without a URI scheme.
+
+**One broken element no longer kills the whole config.** Invalid WireGuard keys (e.g. Proton's masked `*****`), template references orphaned by a group rename, and dangling detour tags now degrade per-element with a warning — instead of a wholesale `sing-box check` failure or a rejected deploy.
+
+**The Remote tab survives core restarts.** gRPC subscriptions (connections, DNS, status) resubscribe on their own after Deploy/Start/Stop, the server list recovers without Disconnect/Connect, the traffic profiler shows the packet path as two honest `Outbound:`/`Via:` lines, and the machine row gained a Restart (↻) button.
+
+**Full changelog:** [docs/release_notes/1-4-1.md](docs/release_notes/1-4-1.md).
+
+---
+
 ### Выжимка (RU) — v1.4.0
 
 **У каждой удалённой машины теперь свой конфиг.** Профиль был один на всех: настройка второй машины молча затирала первую, а Deploy отправлял то, что записалось последним, — роутер мог получить конфиг, собранный для VPS. Теперь у каждой машины своя директория: состояние визарда, снапшоты, собранный `config.json`, rule-set'ы и тела подписок. Существующие настройки переезжают автоматически, если сопряжена ровно одна машина.
