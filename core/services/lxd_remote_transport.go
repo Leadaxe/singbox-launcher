@@ -58,6 +58,57 @@ type LxdRemoteTransport struct {
 // лишнего похода к роутеру.
 const clientsInfoTTL = time.Minute
 
+// streamResubscribeDelay — пауза между попытками переподписки оборвавшегося
+// стрима. Обрыв штатен: Deploy/Start/Stop пересоздают инстанс ядра, и
+// server-side стрим StartedService умирает вместе с ним.
+const streamResubscribeDelay = 2 * time.Second
+
+// streamConn возвращает живое gRPC-соединение (ленивый dial под mutex'ом) —
+// общий пролог всех Subscribe*.
+func (t *LxdRemoteTransport) streamConn() (*grpc.ClientConn, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.conn == nil {
+		conn, dialErr := t.client.DialGRPC()
+		if dialErr != nil {
+			return nil, fmt.Errorf("lxd remote: dial %s: %w", t.client.AddrString(), dialErr)
+		}
+		t.conn = conn
+	}
+	return t.conn, nil
+}
+
+// runResilientStream держит подписку живой до cancel.
+//
+// Deploy/Start/Stop ядра рвёт server-side стрим, и одноразовая горутина,
+// умирая вместе с ним, оставляла профайлер/статус немыми до Disconnect/
+// Connect машины. Теперь обрыв — не конец: onDrop() сбрасывает накопленное
+// состояние (закрытые ядром соединения не должны отображаться живыми), пауза,
+// переподписка. Единственный штатный выход — отмена ctx вызывающим.
+//
+// attempt открывает стрим и потребляет его до терминальной ошибки; ошибка
+// первой же подписки равнозначна обрыву — ядро могло быть остановлено в
+// момент открытия окна, и подписка догонит его на старте.
+func runResilientStream(ctx context.Context, name string, attempt func() error, onDrop func()) {
+	go func() {
+		for {
+			err := attempt()
+			if onDrop != nil {
+				onDrop()
+			}
+			if ctx.Err() != nil {
+				return
+			}
+			debuglog.DebugLog("lxd remote %s: stream closed: %v — resubscribe in %s", name, err, streamResubscribeDelay)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(streamResubscribeDelay):
+			}
+		}
+	}()
+}
+
 // NewLxdRemoteTransport строит транспорт к удалённому демону по готовой
 // конфигурации подключения (адрес + пин сервера + клиентская identity).
 func NewLxdRemoteTransport(cfg lxdclient.Config) *LxdRemoteTransport {
@@ -208,31 +259,23 @@ var _ ProxyTransport = (*LxdRemoteTransport)(nil)
 // Возвращает функцию отмены: вызывающий обязан её позвать при закрытии окна,
 // иначе стрим и горутина переживут его.
 func (t *LxdRemoteTransport) SubscribeGroupSelection(group string, onSelected func(string)) (cancel func(), err error) {
-	t.mu.Lock()
-	if t.conn == nil {
-		conn, dialErr := t.client.DialGRPC()
-		if dialErr != nil {
-			t.mu.Unlock()
-			return nil, fmt.Errorf("lxd remote: dial %s: %w", t.client.AddrString(), dialErr)
-		}
-		t.conn = conn
+	conn, err := t.streamConn()
+	if err != nil {
+		return nil, err
 	}
-	conn := t.conn
-	t.mu.Unlock()
 
 	// Собственный контекст: стрим живёт, пока открыто окно, и не связан с
 	// дедлайном одиночного RPC.
 	ctx, cancelCtx := context.WithCancel(context.Background())
-	stream, err := daemonpb.NewStartedServiceClient(conn).SubscribeGroups(ctx, &emptypb.Empty{})
-	if err != nil {
-		cancelCtx()
-		return nil, fmt.Errorf("lxd remote SubscribeGroups: %w", err)
-	}
-	go func() {
+	runResilientStream(ctx, "groups", func() error {
+		stream, serr := daemonpb.NewStartedServiceClient(conn).SubscribeGroups(ctx, &emptypb.Empty{})
+		if serr != nil {
+			return serr
+		}
 		for {
 			groups, recvErr := stream.Recv()
 			if recvErr != nil {
-				return // обрыв или отмена — окно закрылось либо ядро легло
+				return recvErr
 			}
 			for _, g := range groups.GetGroup() {
 				if g.GetTag() == group {
@@ -241,7 +284,7 @@ func (t *LxdRemoteTransport) SubscribeGroupSelection(group string, onSelected fu
 				}
 			}
 		}
-	}()
+	}, nil)
 	return cancelCtx, nil
 }
 
@@ -331,42 +374,28 @@ func IsRemoteGroupUnknown(err error) bool { return errors.Is(err, errRemoteGroup
 // Стрим живёт до вызова cancel (закрытия окна), поэтому контекст собственный,
 // не связанный с дедлайном одиночного RPC.
 func (t *LxdRemoteTransport) SubscribeConnections() (snapshot func(context.Context) (map[string]traffic.ClashConn, bool), cancel func(), err error) {
-	t.mu.Lock()
-	if t.conn == nil {
-		conn, dialErr := t.client.DialGRPC()
-		if dialErr != nil {
-			t.mu.Unlock()
-			return nil, nil, fmt.Errorf("lxd remote: dial %s: %w", t.client.AddrString(), dialErr)
-		}
-		t.conn = conn
+	conn, err := t.streamConn()
+	if err != nil {
+		return nil, nil, err
 	}
-	conn := t.conn
-	t.mu.Unlock()
 
 	ctx, cancelCtx := context.WithCancel(context.Background())
-	stream, err := daemonpb.NewStartedServiceClient(conn).SubscribeConnections(ctx,
-		&daemonpb.SubscribeConnectionsRequest{
-			// Интервал в НАНОСЕКУНДАХ (демон клампит снизу 200 мс). Прислать
-			// сюда «1000», подумав про миллисекунды, — значит попросить тикер
-			// раз в микросекунду и сжечь CPU на той стороне; так уже было.
-			Interval: int64(time.Second),
-		})
-	if err != nil {
-		cancelCtx()
-		return nil, nil, fmt.Errorf("lxd remote SubscribeConnections: %w", err)
-	}
-
 	tracker := traffic.NewConnTracker()
-	go func() {
+	runResilientStream(ctx, "conns", func() error {
+		stream, serr := daemonpb.NewStartedServiceClient(conn).SubscribeConnections(ctx,
+			&daemonpb.SubscribeConnectionsRequest{
+				// Интервал в НАНОСЕКУНДАХ (демон клампит снизу 200 мс). Прислать
+				// сюда «1000», подумав про миллисекунды, — значит попросить тикер
+				// раз в микросекунду и сжечь CPU на той стороне; так уже было.
+				Interval: int64(time.Second),
+			})
+		if serr != nil {
+			return serr
+		}
 		for {
 			events, recvErr := stream.Recv()
 			if recvErr != nil {
-				// Обрыв стрима: соединения, которые мы помним, больше не
-				// подтверждены — сбрасываем, иначе профайлер продолжил бы
-				// показывать давно закрытые как живые.
-				tracker.Reset()
-				debuglog.DebugLog("lxd remote conns: stream closed: %v", recvErr)
-				return
+				return recvErr
 			}
 			// Reset = ядро перезапустилось (apply, Start/Stop): прежние
 			// соединения мертвы, и держать их в снимке значило бы показывать
@@ -378,7 +407,9 @@ func (t *LxdRemoteTransport) SubscribeConnections() (snapshot func(context.Conte
 				tracker.ApplyEvent(ev)
 			}
 		}
-	}()
+		// Обрыв стрима: соединения, которые мы помним, больше не
+		// подтверждены — Reset делает runResilientStream через onDrop.
+	}, tracker.Reset)
 
 	return tracker.Snapshot, cancelCtx, nil
 }
@@ -388,36 +419,26 @@ func (t *LxdRemoteTransport) SubscribeConnections() (snapshot func(context.Conte
 // includeAnswers=true обязателен: без ответов не восстановить CNAME-цепочку,
 // а именно она отвечает на вопрос «куда на самом деле ушёл домен».
 func (t *LxdRemoteTransport) SubscribeDNSQueries(onQuery func(DNSQuery)) (cancel func(), err error) {
-	t.mu.Lock()
-	if t.conn == nil {
-		conn, dialErr := t.client.DialGRPC()
-		if dialErr != nil {
-			t.mu.Unlock()
-			return nil, fmt.Errorf("lxd remote: dial %s: %w", t.client.AddrString(), dialErr)
-		}
-		t.conn = conn
+	conn, err := t.streamConn()
+	if err != nil {
+		return nil, err
 	}
-	conn := t.conn
-	t.mu.Unlock()
 
 	ctx, cancelCtx := context.WithCancel(context.Background())
-	stream, err := daemonpb.NewStartedServiceClient(conn).SubscribeDNSQueries(ctx,
-		&daemonpb.SubscribeDNSQueriesRequest{IncludeAnswers: true})
-	if err != nil {
-		cancelCtx()
-		return nil, fmt.Errorf("lxd remote SubscribeDNSQueries: %w", err)
-	}
-
-	go func() {
+	runResilientStream(ctx, "dns", func() error {
+		stream, serr := daemonpb.NewStartedServiceClient(conn).SubscribeDNSQueries(ctx,
+			&daemonpb.SubscribeDNSQueriesRequest{IncludeAnswers: true})
+		if serr != nil {
+			return serr
+		}
 		for {
 			ev, recvErr := stream.Recv()
 			if recvErr != nil {
-				debuglog.DebugLog("lxd remote dns: stream closed: %v", recvErr)
-				return
+				return recvErr
 			}
 			onQuery(DNSQueryFromProto(ev))
 		}
-	}()
+	}, nil)
 	return cancelCtx, nil
 }
 
@@ -505,32 +526,23 @@ type RemoteStatus struct {
 
 // SubscribeStatus открывает стрим сводки ядра машины.
 func (t *LxdRemoteTransport) SubscribeStatus(onStatus func(RemoteStatus)) (cancel func(), err error) {
-	t.mu.Lock()
-	if t.conn == nil {
-		conn, dialErr := t.client.DialGRPC()
-		if dialErr != nil {
-			t.mu.Unlock()
-			return nil, fmt.Errorf("lxd remote: dial %s: %w", t.client.AddrString(), dialErr)
-		}
-		t.conn = conn
+	conn, err := t.streamConn()
+	if err != nil {
+		return nil, err
 	}
-	conn := t.conn
-	t.mu.Unlock()
 
 	ctx, cancelCtx := context.WithCancel(context.Background())
-	stream, err := daemonpb.NewStartedServiceClient(conn).SubscribeStatus(ctx,
-		// Наносекунды, как и у прочих Subscribe*.
-		&daemonpb.SubscribeStatusRequest{Interval: int64(time.Second)})
-	if err != nil {
-		cancelCtx()
-		return nil, fmt.Errorf("lxd remote SubscribeStatus: %w", err)
-	}
-	go func() {
+	runResilientStream(ctx, "status", func() error {
+		stream, serr := daemonpb.NewStartedServiceClient(conn).SubscribeStatus(ctx,
+			// Наносекунды, как и у прочих Subscribe*.
+			&daemonpb.SubscribeStatusRequest{Interval: int64(time.Second)})
+		if serr != nil {
+			return serr
+		}
 		for {
 			st, recvErr := stream.Recv()
 			if recvErr != nil {
-				debuglog.DebugLog("lxd remote status: stream closed: %v", recvErr)
-				return
+				return recvErr
 			}
 			onStatus(RemoteStatus{
 				Memory:         st.GetMemory(),
@@ -543,7 +555,7 @@ func (t *LxdRemoteTransport) SubscribeStatus(onStatus func(RemoteStatus)) (cance
 				DownlinkTotal:  st.GetDownlinkTotal(),
 			})
 		}
-	}()
+	}, nil)
 	return cancelCtx, nil
 }
 
