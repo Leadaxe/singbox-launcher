@@ -166,7 +166,12 @@ func DetourOptionsWithNodes(model *wizardmodels.WizardModel, source *configtypes
 			// dangling: keep the stored label visible and clearable
 			label := source.DetourNodeLabel
 			if label == "" {
-				label = selectedHash[:min(12, len(selectedHash))] + "…"
+				// Без builtin min: win7-сборка идёт тулчейном go1.20 (go.win7.mod).
+				short := selectedHash
+				if len(short) > 12 {
+					short = short[:12]
+				}
+				label = short + "…"
 			}
 			selectedDisplay = detourNodeMarker + label
 			if _, dup := choices[selectedDisplay]; !dup {

@@ -1190,7 +1190,12 @@ func resolveNodeHashDetours(parserConfig *ParserConfig, nodesBySource map[int][]
 		if target == nil {
 			label := ps.DetourNodeLabel
 			if label == "" {
-				label = hash[:min(12, len(hash))] + "…"
+				// Без builtin min: win7-сборка идёт тулчейном go1.20 (go.win7.mod).
+				short := hash
+				if len(short) > 12 {
+					short = short[:12]
+				}
+				label = short + "…"
 			}
 			debuglog.WarnLog("Parser: detour node %q for source %d not found — dropping its %d node(s) (fail-closed, traffic must not go direct)",
 				label, i+1, len(nodesBySource[i]))
