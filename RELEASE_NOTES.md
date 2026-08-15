@@ -8,6 +8,20 @@
 
 ---
 
+### Выжимка (RU) — v1.4.2
+
+**Окно открывается по RDP и на серверах без GPU** (issue #105). RDP-сессия на Windows Server без GPU отдаёт только OpenGL 1.1, а UI лаунчера нужен 2.1 — окно молча не отрисовывалось. Теперь лаунчер проверяет версию OpenGL до старта UI и при нехватке предлагает в один клик скачать программный рендерер Mesa3D (~24 МБ, зеркало в релизе `mesa3d-26.2.0`, фолбэк через ghproxy); DLL распаковываются рядом с exe, окно открывается сразу, без перезапуска. Откат — удалить три DLL; отключение проверки — `SINGBOX_LAUNCHER_NO_MESA=1`. Подробности: `docs/RDP_OPENGL.ru.md`.
+
+**Полный список изменений:** [docs/release_notes/1-4-2.md](docs/release_notes/1-4-2.md).
+
+### Highlights (EN) — v1.4.2
+
+**The window opens over RDP and on GPU-less servers** (issue #105). An RDP session on Windows Server without a GPU only provides OpenGL 1.1, while the launcher UI needs 2.1 — the window silently failed to render. The launcher now probes the OpenGL version before starting the UI and, when it falls short, offers a one-click download of the Mesa3D software renderer (~24 MB, mirrored in the `mesa3d-26.2.0` release, ghproxy fallback); the DLLs are extracted next to the exe and the window opens immediately, no restart. Rollback — delete the three DLLs; disable the probe with `SINGBOX_LAUNCHER_NO_MESA=1`. Details: `docs/RDP_OPENGL.md`.
+
+**Full changelog:** [docs/release_notes/1-4-2.md](docs/release_notes/1-4-2.md).
+
+---
+
 ### Выжимка (RU) — v1.4.1
 
 **Debug API покрывает весь remote-функционал.** Сопряжение и здоровье машин, start/stop/rollback ядра, deploy (ресурсы + конфиг одним вызовом), зеркала состояния визарда per-machine, наблюдаемость (узлы, соединения, DNS, телеметрия хоста) и ресурс-стор; на macOS — группа `/daemon/*`; произвольные REST/gRPC-вызовы к сопряжённому демону с discovery методов. Манифест API объявляет `capabilities`, чтобы агент заранее знал, что умеет сборка.
