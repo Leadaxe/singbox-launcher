@@ -187,6 +187,22 @@ func (p *ProxyListPanel) startAutoRefresh(ac *core.AppController) {
 		if platform.IsSleeping() {
 			return
 		}
+		// Самолечение: после Stop/Start ядра или Deploy config выбранная
+		// группа области сброшена в "" — silentRefresh с пустой группой
+		// вечный no-op, и список застревал на «Reading the machine's
+		// selector groups…» до Disconnect/Connect. Замечаем состояние и
+		// перечитываем группы; не вышло (ядро ещё поднимается) — молча
+		// ждём следующего тика. Сеть здесь, в горутине тикера, а не в
+		// fyne.Do: RPC с недоступной машиной подвесил бы UI на таймаут.
+		if ac != nil && ac.APIService != nil && ac.APIService.SelectedClashGroupIn(p.scope) == "" {
+			if groups, isRemote, err := RemoteDaemonGroups(); isRemote && err == nil && len(groups) > 0 {
+				fyne.Do(func() {
+					p.ReloadGroups()
+					p.Refresh()
+				})
+			}
+			return
+		}
 		if p.silentRefresh != nil {
 			p.silentRefresh(ac)
 		}

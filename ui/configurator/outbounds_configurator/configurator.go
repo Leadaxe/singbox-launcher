@@ -325,15 +325,17 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 	restoreBtn.Importance = widget.LowImportance
 	restoreBtn.SetToolTip("Restore template-defined outbounds that were deleted (e.g. auto-proxy-out, vpn ①, vpn ②). Existing entries unchanged.")
 
-	scroll := container.NewScroll(listContent)
-	scroll.SetMinSize(fyne.NewSize(0, 280))
-
+	// Без вложенного Scroll: список групп короткий, а собственный скролл,
+	// растянувшись на всю высоту, вмещал все строки и молча съедал колесо
+	// мыши (Fyne не пробрасывает wheel наружу из Scroll, которому некуда
+	// скроллить) — над списком образовывалась мёртвая зона. Список живёт в
+	// общем скролле вкладки Outbounds.
 	rightTopButtons := container.NewHBox(restoreBtn, addBtn)
 	top := container.NewBorder(nil, nil, nil, rightTopButtons, widget.NewLabel(locale.T("wizard.outbound.configurator_label")))
 	return container.NewBorder(
 		top,
 		nil,
 		nil, nil,
-		scroll,
+		listContent,
 	), refreshList
 }

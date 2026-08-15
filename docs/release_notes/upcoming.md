@@ -6,14 +6,34 @@
 
 ## EN
 ### Highlights
--
+- Debug API now covers the whole remote-machines feature set (SPEC 100): pair/re-pair/remove machines, health, start/stop/rollback of the machine's core, deploy (resources + config in one call), per-machine wizard state mirrors (`/remote/machines/{id}/state/*`), observability (proxies, switch, url-test, pool, rules, connections, DNS/log windows, host telemetry, LAN clients), and the machine's resource store.
+- Debug API: local lxd-daemon group `/daemon/*` (macOS) — status, pair/unpair, address/secret, engine switch (classic|daemon), and ready-to-run sudo commands (the API never executes them).
+- Debug API: raw passthrough to any paired daemon — `POST …/raw/rest` (arbitrary admin-REST call) and `POST …/raw/grpc` (arbitrary `daemon.*` gRPC call resolved via protoregistry; unary + server-stream windows), plus `GET /grpc/methods` discovery. The tunnel only reaches the paired daemon's control channel — it is not an open proxy.
+- Debug API manifest (`GET /`) now carries `capabilities` (`remote` / `daemon` / `raw_grpc`) so agents know up front which groups this build exposes.
+- Debug API: UI remote-override control — `GET /remote/ui`, `POST /remote/machines/{id}/ui/connect`, `POST /remote/ui/disconnect` do exactly what the Remote tab's Connect/Disconnect buttons do (switch the Servers tab to a machine and back). Health-gated; `503` when the launcher runs headless.
+- Detour through a single server (SPEC 101): the Source dialog's "Detour server" picker now offers other single-server sources (marked `»`) alongside groups. The hop is referenced by node identity hash, so it survives renames/prefixes; if the hop disappears, the dependent source's nodes are dropped from the config (fail-closed) instead of silently dialing direct. WireGuard endpoints can now be chained too (detour is applied to them; only `listen_port` endpoints stay direct — the core rejects that combination).
+- WireGuard share-URI/.conf keys (private/public/preshared) are validated at parse time: non-32-byte/non-base64 values (e.g. Proton's masked `*****` placeholder) degrade that node with a warning instead of emitting a config that fails `sing-box check` wholesale; URL-safe/unpadded key variants are normalized to the std form the core requires.
+- Node identity hashes for WireGuard nodes now cover the full endpoint (keys, addresses): previously all WG nodes on one server:port collapsed into one identity, so a per-node disable mark covered all of them. Existing disable marks on WG nodes reset once.
 
 ### Technical / Internal
--
+- Deploy chain (resources-before-config) extracted from `ui/machine_list_panel.go` into `services.(*RemoteRegistry).Deploy` — UI and API call the same function.
+- `services.TransportPool`: cached per-machine gRPC transports for the API (lazy dial, 90s idle close, invalidation on remove/re-pair/addr change).
+- `lxdclient.(*Client).Do`: raw admin-REST passthrough primitive.
+- debugapi `Server` builds its router at `Start()` (not `New()`), so optional endpoint groups registered in between land in routing and `/help`.
 
 ## RU
 ### Основное
--
+- Debug API покрывает весь remote-функционал (SPEC 100): сопряжение/пере-сопряжение/удаление машин, health, start/stop/rollback ядра машины, deploy (ресурсы + конфиг одним вызовом), зеркала состояния визарда per-machine (`/remote/machines/{id}/state/*`), наблюдаемость (узлы, переключение, url-test, пул, правила, соединения, окна DNS/лога, телеметрия хоста, клиенты сети) и ресурс-стор машины.
+- Debug API: группа локального демона `/daemon/*` (macOS) — статус, pair/unpair, адрес/секрет, переключение движка (classic|daemon) и готовые sudo-команды (API их не исполняет).
+- Debug API: произвольные вызовы к сопряжённому демону — `POST …/raw/rest` (любой admin-REST запрос) и `POST …/raw/grpc` (любой `daemon.*` gRPC-метод через protoregistry; unary + окна server-stream), плюс discovery `GET /grpc/methods`. Туннель ведёт только на управляющий канал сопряжённого демона — это не открытый прокси.
+- Манифест Debug API (`GET /`) несёт `capabilities` (`remote` / `daemon` / `raw_grpc`) — агент заранее видит, какие группы есть в этой сборке.
+- Debug API: управление remote-override UI — `GET /remote/ui`, `POST /remote/machines/{id}/ui/connect`, `POST /remote/ui/disconnect` делают ровно то же, что кнопки Connect/Disconnect вкладки Remote (переводят вкладку Servers на машину и обратно). С health-гейтом; `503` при headless-запуске.
+- Detour через одиночный сервер (SPEC 101): пикер «Detour server» в диалоге источника теперь предлагает и другие server-источники (с маркером `»`), не только группы. Хоп адресуется identity-хешем узла — переживает переименования и префиксы; если хоп пропал, ноды зависимого источника выкидываются из конфига (fail-closed), а не уходят молча напрямую. WireGuard-endpoint'ы теперь тоже можно пускать цепочкой (detour к ним применяется; напрямую остаются только endpoints с `listen_port` — ядро отвергает эту комбинацию).
+- Ключи WireGuard из share-URI/.conf (private/public/preshared) валидируются при парсинге: значение не из 32 байт base64 (например, маскированный `*****` у Proton) деградирует только эту ноду с warning, а не валит весь `sing-box check`; URL-safe/беспаддинговые варианты нормализуются в std-форму, которую требует ядро.
+- Identity-хеш WireGuard-узлов теперь считается от полного endpoint (ключи, адреса): раньше все WG-ноды одного server:port схлопывались в одну идентичность, и отметка «выключить ноду» накрывала их все. Существующие отметки на WG-нодах сбросятся один раз.
 
 ### Техническое / Внутреннее
--
+- Deploy-цепочка (ресурсы строго раньше конфига) вынесена из `ui/machine_list_panel.go` в `services.(*RemoteRegistry).Deploy` — UI и API зовут одну функцию.
+- `services.TransportPool`: кеш gRPC-транспортов per-machine для API (ленивый dial, закрытие по 90s простоя, инвалидация при remove/re-pair/смене адреса).
+- `lxdclient.(*Client).Do`: примитив raw admin-REST passthrough.
+- debugapi `Server` собирает роутер в `Start()` (а не в `New()`) — опциональные группы, включённые между ними, попадают в роутинг и `/help`.

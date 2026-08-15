@@ -10,6 +10,7 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core"
+	"singbox-launcher/core/services"
 	"singbox-launcher/internal/locale"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 )
@@ -174,11 +175,16 @@ func truncateSubtitle(s string) string {
 //
 // Пустая строка означает «показывать нечего» — узла нет в конфиге либо это
 // служебный outbound. Вызывающий в этом случае прячет Label.
-func serversNodeSubtitle(ac *core.AppController, proxyInfo api.ProxyInfo) string {
+//
+// Конфиг берётся по scope (effectiveNodeConfigPath): вкладка Remote описывает
+// ядро удалённой машины, и узлы, существующие только там (её endpoint'ы,
+// её локальные источники), в локальном bin/config.json не найдутся — подпись
+// молча пропадала.
+func serversNodeSubtitle(ac *core.AppController, proxyInfo api.ProxyInfo, scope services.ProxyScope) string {
 	if ac == nil || ac.FileService == nil {
 		return ""
 	}
-	nodes := wizardbusiness.LoadConfigNodes(ac.FileService.ConfigPath)
+	nodes := wizardbusiness.LoadConfigNodes(effectiveNodeConfigPath(ac, scope))
 	node := nodes.Lookup(proxyInfo.Name)
 	if node == nil || node.IsService() {
 		return ""

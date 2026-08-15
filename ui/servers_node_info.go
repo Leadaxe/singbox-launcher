@@ -29,12 +29,16 @@ import (
 // высокая, и Fyne раздувает такой попап на весь экран.
 
 // showNodeInfoWindow открывает окно с полной информацией об узле.
-func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo) {
+//
+// cfgPath — config.json той области, из которой открыли строку (см.
+// effectiveNodeConfigPath): для узла удалённой машины это её собранный
+// конфиг, локальный описывает другое ядро.
+func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath string) {
 	if ac == nil || ac.FileService == nil || ac.UIService == nil {
 		return
 	}
 
-	nodes := wizardbusiness.LoadConfigNodes(ac.FileService.ConfigPath)
+	nodes := wizardbusiness.LoadConfigNodes(cfgPath)
 	node := nodes.Lookup(proxy.Name)
 
 	win := fyne.CurrentApp().NewWindow(

@@ -374,9 +374,15 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				suppressSelectCallback = true
 				groupSelect.SetSelected(selectedGroup)
 				suppressSelectCallback = false
-				if ac.APIService != nil {
-					ac.APIService.SetSelectedClashGroupIn(panel.scope, selectedGroup)
-				}
+			}
+			if ac.APIService != nil {
+				// Переутверждаем выбор ВСЕГДА, не только при смене: ResetScope
+				// (Stop/Start, Deploy) чистит выбор области в APIService, а
+				// замыкание и виджет помнят прежнюю группу. Без переутверждения
+				// тикер и Refresh ходят с пустой группой при живом дропдауне —
+				// список навсегда застревал на «Reading the machine's selector
+				// groups…», хотя ручной клик по ↻ (замыкание) работал.
+				ac.APIService.SetSelectedClashGroupIn(panel.scope, selectedGroup)
 			}
 		}
 	}
@@ -715,7 +721,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 		// SPEC 095 — подзаголовок из config.json. Узел, которого там нет
 		// (гонка перегенерации), просто остаётся без подзаголовка.
-		subtitleText.Text = truncateSubtitle(serversNodeSubtitle(ac, proxyInfo))
+		subtitleText.Text = truncateSubtitle(serversNodeSubtitle(ac, proxyInfo, panel.scope))
 		subtitleText.Color = theme.Color(theme.ColorNamePlaceHolder)
 		subtitleText.Refresh()
 
@@ -761,7 +767,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			}
 
 			win := ac.UIService.MainWindow
-			menu := serversProxyContextMenu(ac, status, win, proxyInfo)
+			menu := serversProxyContextMenu(ac, status, win, proxyInfo, scope)
 			pop := widget.NewPopUpMenu(menu, win.Canvas())
 			pop.ShowAtPosition(pe.AbsolutePosition)
 		}

@@ -300,6 +300,18 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 		powerBtn.Disable()
 	}
 
+	// ↻ — рестарт ядра одним действием (Stop + Start). Тот же глиф, что у
+	// пульс-кнопки обновления списка (refreshPulseGlyph): он гарантированно
+	// есть в шрифте темы и читается как «перезапустить». Активна только на
+	// работающем ядре: перезапуск остановленного — это просто Start.
+	restartBtn := ttwidget.NewButton(refreshPulseGlyph, func() {
+		p.restartCore(d)
+	})
+	restartBtn.SetToolTip(locale.T("servers.power.restart_tooltip"))
+	if health.Err != "" || !running {
+		restartBtn.Disable()
+	}
+
 	// (i) — всё, что демон сообщил о себе: хеши конфигов, последняя ошибка,
 	// state-dir. В строку это не влезает, а при разборе «почему на машине не
 	// то» нужно целиком.
@@ -330,7 +342,7 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	// Start/Stop — напротив СТАТУСА, который он меняет: кнопка стоит там,
 	// где виден её результат.
 	statusRow := container.NewBorder(nil, nil, nil,
-		container.NewHBox(infoBtn, powerBtn), status)
+		container.NewHBox(infoBtn, powerBtn, restartBtn), status)
 	// Дополнительные инструменты — под строкой, раскрытием вниз (тот же
 	// Accordion, что «Advanced» в окне добавления машины). Не popup-меню:
 	// содержимое остаётся на месте, не перекрывает соседние машины и не
@@ -593,8 +605,25 @@ func (p *machineListPanel) loadNodes() {
 	// Порядок обязателен: сначала узнать группы ЭТОЙ машины, потом грузить
 	// узлы. Иначе запрос уходит с пустой группой, и ядро отвечает
 	// «group "" not found» на штатное подключение.
-	p.proxies.ReloadGroups()
-	p.proxies.Refresh()
+	//
+	// Группы спрашиваем с ретраями в горутине: сразу после Start демон уже
+	// отвечает «started», но ядро внутри ещё поднимается и групп не отдаёт.
+	// Единственная синхронная попытка промахивалась, список оставался пустым
+	// («Reading the machine's selector groups…») до случайного тика
+	// health-опроса. Заодно сетевой Groups() уходит с UI-потока.
+	go func() {
+		for attempt := 0; attempt < 15; attempt++ {
+			groups, isRemote, err := RemoteDaemonGroups()
+			if !isRemote || (err == nil && len(groups) > 0) {
+				break
+			}
+			time.Sleep(time.Second)
+		}
+		fyne.Do(func() {
+			p.proxies.ReloadGroups()
+			p.proxies.Refresh()
+		})
+	}()
 }
 
 // disconnectMachine рвёт связь с машиной: строка сворачивается обратно к
@@ -726,6 +755,46 @@ func (p *machineListPanel) togglePower(d services.RemoteDaemon, running bool) {
 	run()
 }
 
+// restartCore перезапускает ядро машины: Stop, затем Start, одним действием.
+//
+// С подтверждением, как у Stop: между остановкой и стартом VPN у всех, кто
+// ходит через машину, моргнёт, а неудачный Start оставит её без ядра вовсе.
+func (p *machineListPanel) restartCore(d services.RemoteDaemon) {
+	dialog.ShowConfirm(
+		locale.T("servers.power.restart_title"),
+		locale.Tf("servers.power.restart_body", d.Name),
+		func(ok bool) {
+			if !ok {
+				return
+			}
+			go func() {
+				err := p.registry.StopCore(d.ID)
+				if err == nil {
+					err = p.registry.StartCore(d.ID)
+				}
+				// Как в togglePower: состояние перечитываем, а не домысливаем —
+				// ядро могло не подняться.
+				h := p.registry.Health(d.ID)
+				fyne.Do(func() {
+					if err != nil {
+						debuglog.WarnLog("machine list: restart %q: %v", d.ID, err)
+						dialog.ShowError(err, p.ac.UIService.MainWindow)
+					}
+					p.health[d.ID] = h
+					p.redrawRows()
+					if h.CoreStatus == "started" {
+						p.loadNodes()
+						return
+					}
+					if p.ac.APIService != nil {
+						p.ac.APIService.ResetScope(services.ScopeRemote)
+					}
+					p.proxies.Clear()
+				})
+			}()
+		}, p.ac.UIService.MainWindow)
+}
+
 // deployTo отправляет машине ЕЁ СОБСТВЕННЫЙ конфиг (§2.4).
 //
 // Путь считается от ID той же строки, из которой нажали, — поэтому промах
@@ -749,27 +818,14 @@ func (p *machineListPanel) deployTo(d services.RemoteDaemon) {
 				return
 			}
 			go func() {
-				// Сначала ресурсы, потом конфиг: конфиг ссылается на
-				// <state_dir>/resources/<name>, и без файлов ядро на той
-				// стороне не поднимется — apply пройдёт, а инстанс упадёт.
-				// Демон и сам требует этого порядка: PUT на имя, занятое
-				// живой ссылкой, отбивается 409.
-				resources, resErr := services.CollectDeployResources(p.ac.FileService.ExecDir, d.ID, config)
-				if resErr == nil && len(resources) > 0 {
-					resErr = p.registry.SyncResources(d.ID, resources)
-				}
-				if resErr != nil {
-					fyne.Do(func() {
-						debuglog.WarnLog("machine list: deploy %q: resources: %v", d.ID, resErr)
-						dialog.ShowError(resErr, p.ac.UIService.MainWindow)
-					})
-					return
-				}
-				applyErr := p.registry.ApplyConfig(d.ID, config)
+				// Вся цепочка (ресурсы строго раньше конфига) — в
+				// services.Deploy: её же зовёт Debug API, поэтому «через API
+				// деплоится не так, как кнопкой» невозможно (SPEC 100).
+				_, deployErr := p.registry.Deploy(d.ID, config)
 				fyne.Do(func() {
-					if applyErr != nil {
-						debuglog.WarnLog("machine list: deploy %q: %v", d.ID, applyErr)
-						dialog.ShowError(applyErr, p.ac.UIService.MainWindow)
+					if deployErr != nil {
+						debuglog.WarnLog("machine list: deploy %q: %v", d.ID, deployErr)
+						dialog.ShowError(deployErr, p.ac.UIService.MainWindow)
 						return
 					}
 					dialog.ShowInformation(locale.T("servers.power.deploy_title"),

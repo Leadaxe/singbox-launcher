@@ -108,12 +108,19 @@ func (c *ConfigNodes) Len() int {
 
 // configNodesCache — кэш разбора: список перерисовывается часто, а на 500+
 // узлах чтение файла на каждую строку заметно тормозит.
-var configNodesCache struct {
-	mu      sync.RWMutex
-	path    string
+//
+// Кэш per-path (map), а не одиночный слот: панели Local и Remote живут
+// одновременно и смотрят в РАЗНЫЕ config.json — одиночный слот они выбивали
+// бы друг у друга на каждой перерисовке строки.
+type configNodesCacheEntry struct {
 	modTime int64
 	size    int64
 	parsed  *ConfigNodes
+}
+
+var configNodesCache struct {
+	mu     sync.RWMutex
+	byPath map[string]configNodesCacheEntry
 }
 
 // LoadConfigNodes читает и разбирает config.json по пути path.
@@ -136,23 +143,24 @@ func LoadConfigNodes(path string) *ConfigNodes {
 	modTime, size := info.ModTime().UnixNano(), info.Size()
 
 	configNodesCache.mu.RLock()
-	if configNodesCache.parsed != nil &&
-		configNodesCache.path == path &&
-		configNodesCache.modTime == modTime &&
-		configNodesCache.size == size {
-		cached := configNodesCache.parsed
+	if e, ok := configNodesCache.byPath[path]; ok &&
+		e.parsed != nil && e.modTime == modTime && e.size == size {
 		configNodesCache.mu.RUnlock()
-		return cached
+		return e.parsed
 	}
 	configNodesCache.mu.RUnlock()
 
 	parsed := parseConfigNodesFile(path)
 
 	configNodesCache.mu.Lock()
-	configNodesCache.path = path
-	configNodesCache.modTime = modTime
-	configNodesCache.size = size
-	configNodesCache.parsed = parsed
+	if configNodesCache.byPath == nil {
+		configNodesCache.byPath = make(map[string]configNodesCacheEntry, 2)
+	}
+	configNodesCache.byPath[path] = configNodesCacheEntry{
+		modTime: modTime,
+		size:    size,
+		parsed:  parsed,
+	}
 	configNodesCache.mu.Unlock()
 
 	return parsed
@@ -164,7 +172,7 @@ func LoadConfigNodes(path string) *ConfigNodes {
 // в ту же наносекунду (быстрый rebuild подряд) страховка не лишняя.
 func InvalidateConfigNodesCache() {
 	configNodesCache.mu.Lock()
-	configNodesCache.parsed = nil
+	configNodesCache.byPath = nil
 	configNodesCache.mu.Unlock()
 }
 
