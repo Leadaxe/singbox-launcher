@@ -215,7 +215,6 @@ func targetSpecFor(target string, prev wizardtemplate.TargetSpec) wizardtemplate
 // мы id внутрь state — копия несла бы чужой id и затирала настройки донора.
 func targetSpecFromStateMeta(sf *wizardmodels.WizardStateFile,
 	open wizardtemplate.TargetSpec) wizardtemplate.TargetSpec {
-
 	if sf == nil {
 		return wizardtemplate.LocalTarget()
 	}

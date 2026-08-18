@@ -194,7 +194,7 @@ func TestDaemonEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial grpc: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	grpcClient := daemonpb.NewStartedServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

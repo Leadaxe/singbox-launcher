@@ -35,7 +35,7 @@ func doLogLevel(t *testing.T, method, base, body string) (*http.Response, map[st
 	if err != nil {
 		t.Fatalf("%s: %v", method, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var out map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	return resp, out

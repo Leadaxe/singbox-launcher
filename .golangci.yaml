@@ -52,9 +52,12 @@ linters:
       - fyne-cross
       - examples
     rules:
+      # bodyclose не видит закрытие body внутри тестовых хелперов
+      # (authDo, doLogLevel и т.п.) и флагует каждый сайт вызова.
       - linters:
           - noctx
           - perfsprint
+          - bodyclose
         path: _test\.go
       - linters:
           - unused

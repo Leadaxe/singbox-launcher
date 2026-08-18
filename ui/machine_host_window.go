@@ -626,7 +626,6 @@ func hostIfacesHeader() fyne.CanvasObject {
 // разборе проблемы полезнее пустого экрана.
 func (v *hostView) update(h lxdclient.HostInfo, hErr error,
 	ifs lxdclient.HostInterfaces, ifErr error) {
-
 	if hErr != nil {
 		if errors.Is(hErr, lxdclient.ErrHostUnsupported) {
 			// 404 — это «машину видно, демон старый», а не обрыв связи.
