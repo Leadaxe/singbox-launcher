@@ -136,7 +136,6 @@ func OpenMachineResourcesWindow(ac *core.AppController, d services.RemoteDaemon)
 // resourceRow — строка одного ресурса: имя, размеры, состояние и действия.
 func resourceRow(ac *core.AppController, registry *services.RemoteRegistry,
 	d services.RemoteDaemon, e services.ResourceEntry, reload func()) fyne.CanvasObject {
-
 	name := widget.NewLabelWithStyle(e.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	var stateText string

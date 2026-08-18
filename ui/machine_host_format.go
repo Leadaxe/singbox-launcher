@@ -134,11 +134,6 @@ func hostFDText(open, limit *int) string {
 	return fmt.Sprintf("%d / %d", *open, *limit)
 }
 
-// hostMountUsed — «7.4% · свободно 3.33 ГБ» для одной точки монтирования.
-func hostMountUsed(m lxdclient.HostMount) string {
-	return locale.Tf("remote.host.mount_used", m.UsedPercent, hostBytes(m.AvailableBytes))
-}
-
 // hostMountFlags — пометки точки монтирования.
 //
 // read-only помечается явно, потому что такая ФС исключена из сводного
