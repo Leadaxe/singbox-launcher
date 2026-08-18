@@ -205,7 +205,7 @@ func (m *Manager) build() {
 
 	// Счётчик соединений и «разорвать все» кладём В полосу вкладок, справа:
 	// своя строка стоила бы ещё одного ряда высоты, а место там пустует.
-	tabsRow := fyne.CanvasObject(tabs)
+	var tabsRow fyne.CanvasObject
 	if stopCounter := m.attachConnCounter(deps, win, tabs); stopCounter != nil {
 		tabsRow = stopCounter.content
 		prevStop := stopSecond

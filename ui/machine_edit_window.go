@@ -38,7 +38,6 @@ import (
 // onChanged зовётся после любой применённой правки (перечитать список).
 func OpenEditMachineWindow(ac *core.AppController, registry *services.RemoteRegistry,
 	d services.RemoteDaemon, onChanged func()) {
-
 	if ac == nil || ac.UIService == nil || ac.UIService.Application == nil {
 		return
 	}
@@ -71,7 +70,6 @@ func OpenEditMachineWindow(ac *core.AppController, registry *services.RemoteRegi
 // требует пере-сопряжения (Update их не трогает).
 func machineEditPassport(win fyne.Window, registry *services.RemoteRegistry,
 	d services.RemoteDaemon, reload func()) fyne.CanvasObject {
-
 	nameEntry := widget.NewEntry()
 	nameEntry.SetText(d.Name)
 	addrEntry := widget.NewEntry()
@@ -122,7 +120,6 @@ func machineEditPassport(win fyne.Window, registry *services.RemoteRegistry,
 // Свёрнут по умолчанию: в штатной жизни машины сюда не заходят.
 func machineEditRePair(win fyne.Window, registry *services.RemoteRegistry,
 	d services.RemoteDaemon, reload func()) fyne.CanvasObject {
-
 	hint := widget.NewLabel(locale.T("remote.repair.hint"))
 	hint.Wrapping = fyne.TextWrapWord
 
@@ -227,7 +224,6 @@ func machineEditRePair(win fyne.Window, registry *services.RemoteRegistry,
 // его на обеих. Канал приёмника остаётся его собственным.
 func machineEditCopyProfile(ac *core.AppController, win fyne.Window,
 	registry *services.RemoteRegistry, d services.RemoteDaemon, reload func()) fyne.CanvasObject {
-
 	hint := widget.NewLabel(locale.T("remote.copy.hint"))
 	hint.Wrapping = fyne.TextWrapWord
 

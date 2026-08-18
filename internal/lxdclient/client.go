@@ -163,7 +163,7 @@ func (c *Client) Status() (StatusInfo, error) {
 	if err != nil {
 		return StatusInfo{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return StatusInfo{}, fmt.Errorf("lxdclient: status: %s", decodeError(resp))
 	}
@@ -181,7 +181,7 @@ func (c *Client) Apply(config []byte) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusOK {
 		return nil
 	}
@@ -211,7 +211,7 @@ func (c *Client) simplePost(path string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("lxdclient: %s: %s", path, decodeError(resp))
 	}
@@ -224,7 +224,7 @@ func (c *Client) ActiveConfig() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("lxdclient: config: %s", decodeError(resp))
 	}
@@ -283,7 +283,7 @@ func (c *Client) ClientsInfo() (map[string]ClientInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("lxdclient: clients-info: %s", decodeError(resp))
 	}
@@ -317,7 +317,7 @@ func (c *Client) SetClientLabel(key, name string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("lxdclient: set client label: %s", decodeError(resp))
 	}
@@ -333,7 +333,7 @@ func (c *Client) DeleteClientLabel(key string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("lxdclient: delete client label: %s", decodeError(resp))
 	}
@@ -346,7 +346,7 @@ func (c *Client) Resources() ([]Resource, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("lxdclient: resources: %s", decodeError(resp))
 	}
@@ -378,7 +378,7 @@ func (c *Client) PutResource(name string, body []byte) (Resource, error) {
 	if err != nil {
 		return Resource{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return Resource{}, &ResourceError{
 			StatusCode: resp.StatusCode,
@@ -403,7 +403,7 @@ func (c *Client) ResourceContent(name string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, &ResourceError{StatusCode: resp.StatusCode, Name: name, Message: decodeError(resp)}
 	}
@@ -419,7 +419,7 @@ func (c *Client) DeleteResource(name string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return &ResourceError{StatusCode: resp.StatusCode, Name: name, Message: decodeError(resp)}
 	}
@@ -462,7 +462,7 @@ func (c *Client) Enroll(code, name string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("lxdclient: enroll: %s", decodeError(resp))
 	}
@@ -484,7 +484,7 @@ func (c *Client) Do(method, path string, body []byte, contentType string) (int, 
 	if err != nil {
 		return 0, nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if err != nil {
 		return 0, nil, "", fmt.Errorf("lxdclient: raw %s %s: read body: %w", method, path, err)
@@ -511,7 +511,7 @@ func (c *Client) Info() (InfoData, error) {
 	if err != nil {
 		return InfoData{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return InfoData{}, fmt.Errorf("lxdclient: info: %s", decodeError(resp))
 	}
@@ -586,7 +586,7 @@ func DetectChannel(addr string) ChannelKind {
 	httpc := &http.Client{Timeout: 3 * time.Second}
 	resp, err := httpc.Get("http://" + addr + "/admin/info")
 	if err == nil {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
 		// net/http-сервер за tls.Listener (наш демон — он самый) отвечает на
 		// plain-запрос НЕ обрывом, а честным 400 с этой сигнатурой — самый

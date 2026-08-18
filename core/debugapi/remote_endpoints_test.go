@@ -61,7 +61,7 @@ func authDo(t *testing.T, method, url string, body any) (*http.Response, []byte)
 	if err != nil {
 		t.Fatalf("%s %s: %v", method, url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data := new(bytes.Buffer)
 	_, _ = data.ReadFrom(resp.Body)
 	return resp, data.Bytes()

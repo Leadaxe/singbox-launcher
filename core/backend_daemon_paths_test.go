@@ -30,11 +30,17 @@ func TestPrepareConfigForDaemon(t *testing.T) {
 			t.Fatalf("result not valid JSON: %v", err)
 		}
 		var exp map[string]json.RawMessage
-		json.Unmarshal(root["experimental"], &exp)
+		if err := json.Unmarshal(root["experimental"], &exp); err != nil {
+			t.Fatalf("experimental parse: %v", err)
+		}
 		var cf map[string]json.RawMessage
-		json.Unmarshal(exp["cache_file"], &cf)
+		if err := json.Unmarshal(exp["cache_file"], &cf); err != nil {
+			t.Fatalf("cache_file parse: %v", err)
+		}
 		var path string
-		json.Unmarshal(cf["path"], &path)
+		if err := json.Unmarshal(cf["path"], &path); err != nil {
+			t.Fatalf("path parse: %v", err)
+		}
 		if !filepath.IsAbs(path) {
 			t.Fatalf("path not absolutized: %q", path)
 		}
