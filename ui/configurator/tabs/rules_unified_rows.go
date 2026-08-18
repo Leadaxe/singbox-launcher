@@ -38,6 +38,7 @@ func buildUnifiedRuleRows(
 	availableOutbounds []string,
 	showAddRuleDialog ShowAddRuleDialogFunc,
 	rulesBox *fyne.Container,
+	dragGroup *fynewidget.DragReorderGroup,
 ) {
 	for slotIdx, slot := range model.RuleOrder {
 		switch slot.Kind {
@@ -45,12 +46,12 @@ func buildUnifiedRuleRows(
 			if slot.Index < 0 || slot.Index >= len(model.CustomRules) {
 				continue
 			}
-			buildSingleCustomRuleRow(presenter, model, guiState, availableOutbounds, showAddRuleDialog, rulesBox, slot.Index, slotIdx)
+			buildSingleCustomRuleRow(presenter, model, guiState, availableOutbounds, showAddRuleDialog, rulesBox, slot.Index, slotIdx, dragGroup)
 		case wizardmodels.SlotKindPresetRef:
 			if slot.Index < 0 || slot.Index >= len(model.PresetRefs) {
 				continue
 			}
-			buildSinglePresetRefRow(presenter, model, guiState, availableOutbounds, showAddRuleDialog, rulesBox, slot.Index, slotIdx)
+			buildSinglePresetRefRow(presenter, model, guiState, availableOutbounds, showAddRuleDialog, rulesBox, slot.Index, slotIdx, dragGroup)
 		}
 	}
 }
@@ -72,6 +73,7 @@ func buildSinglePresetRefRow(
 	rulesBox *fyne.Container,
 	refIdx int,
 	slotIdx int,
+	dragGroup *fynewidget.DragReorderGroup,
 ) {
 	pr := model.PresetRefs[refIdx]
 
@@ -250,27 +252,8 @@ func buildSinglePresetRefRow(
 	delBtn.Importance = widget.LowImportance
 	setTooltip(delBtn, locale.T("wizard.rules.button_delete"))
 
-	upBtn := fynewidget.NewHoverForwardButton("↑", func() {
-		moveSlotUp(presenter, model, slotIdx, showAddRuleDialog)
-	}, rowGetter)
-	upBtn.Importance = widget.LowImportance
-	if slotIdx <= 0 {
-		upBtn.Disable()
-		setTooltip(upBtn, locale.T("wizard.rules.tooltip_move_up_off"))
-	} else {
-		setTooltip(upBtn, locale.T("wizard.rules.tooltip_move_up"))
-	}
-
-	downBtn := fynewidget.NewHoverForwardButton("↓", func() {
-		moveSlotDown(presenter, model, slotIdx, showAddRuleDialog)
-	}, rowGetter)
-	downBtn.Importance = widget.LowImportance
-	if slotIdx >= len(model.RuleOrder)-1 {
-		downBtn.Disable()
-		setTooltip(downBtn, locale.T("wizard.rules.tooltip_move_down_off"))
-	} else {
-		setTooltip(downBtn, locale.T("wizard.rules.tooltip_move_down"))
-	}
+	dragHandle := fynewidget.NewDragHandle(dragGroup, slotIdx, rowGetter)
+	setTooltip(dragHandle, locale.T("wizard.rules.tooltip_drag_reorder"))
 
 	// SRS-облачко: показываем если preset (с учётом текущих vars) содержит
 	// remote rule_set'ы которые ещё не скачаны. На клик — скачивание всех
@@ -302,7 +285,7 @@ func buildSinglePresetRefRow(
 	// Shared row scaffolding (see row_scaffold.go). The conditional outbound
 	// select (only when the preset has exactly one outbound var) and the srsWarn
 	// badge below are preset-ref-specific and stay here.
-	leftLead := buildRowLeftLead(upBtn, downBtn, enableCh)
+	leftLead := buildRowDragLead(dragHandle, enableCh)
 	editDel := buildRowEditDelCluster(editBtn, delBtn)
 	var rightCluster *fyne.Container
 	if outSel != nil {
@@ -320,7 +303,7 @@ func buildSinglePresetRefRow(
 		}
 		center = container.NewBorder(nil, nil, nil, srsCluster, labelTap)
 	}
-	row = finalizeRow(rulesBox, leftLead, rightCluster, center, label)
+	row = finalizeDragRow(rulesBox, dragGroup, slotIdx, leftLead, rightCluster, center, label)
 
 	// Auto-download silent: SRS missing у enabled preset'а — пробуем
 	// тихо скачать сразу. Failure не показывает popup (silent=true) —
@@ -454,22 +437,13 @@ func summarizePresetVarsCompact(pr *wizardmodels.PresetRefState, tpl *wizardtemp
 	return strings.Join(parts, ", ")
 }
 
-// moveSlotUp / moveSlotDown — swap slots в RuleOrder.
-func moveSlotUp(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, slotIdx int, showAddRuleDialog ShowAddRuleDialogFunc) {
-	if slotIdx <= 0 || slotIdx >= len(model.RuleOrder) {
+// moveSlot — переносит slot в RuleOrder с позиции from на to (drag-and-drop).
+// Commit-точка драга: модель уже обновлена, остаётся пометить preview грязным
+// и пересобрать таб, чтобы строки получили новые slotIdx.
+func moveSlot(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, from, to int, showAddRuleDialog ShowAddRuleDialogFunc) {
+	if !wizardmodels.MoveRuleSlot(model, from, to) {
 		return
 	}
-	model.RuleOrder[slotIdx], model.RuleOrder[slotIdx-1] = model.RuleOrder[slotIdx-1], model.RuleOrder[slotIdx]
-	model.TemplatePreviewNeedsUpdate = true
-	presenter.MarkAsChanged()
-	refreshRulesTabFromPresenter(presenter, showAddRuleDialog)
-}
-
-func moveSlotDown(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, slotIdx int, showAddRuleDialog ShowAddRuleDialogFunc) {
-	if slotIdx < 0 || slotIdx >= len(model.RuleOrder)-1 {
-		return
-	}
-	model.RuleOrder[slotIdx], model.RuleOrder[slotIdx+1] = model.RuleOrder[slotIdx+1], model.RuleOrder[slotIdx]
 	model.TemplatePreviewNeedsUpdate = true
 	presenter.MarkAsChanged()
 	refreshRulesTabFromPresenter(presenter, showAddRuleDialog)

@@ -135,6 +135,27 @@ func presetHasDNSRuleInModel(m *WizardModel, ref string) bool {
 	return false
 }
 
+// MoveDNSRuleSlot — переносит slot с позиции from на позицию to (drag-and-drop
+// в DNS tab). Зеркало MoveRuleSlot из rule_slot.go: промежуточные slot'ы
+// сдвигаются на одну позицию, порядок остальных правил сохраняется.
+func MoveDNSRuleSlot(m *WizardModel, from, to int) bool {
+	if m == nil {
+		return false
+	}
+	n := len(m.DNSRuleOrder)
+	if from < 0 || from >= n || to < 0 || to >= n || from == to {
+		return false
+	}
+	moved := m.DNSRuleOrder[from]
+	rest := append(m.DNSRuleOrder[:from:from], m.DNSRuleOrder[from+1:]...)
+	out := make([]DNSRuleSlot, 0, n)
+	out = append(out, rest[:to]...)
+	out = append(out, moved)
+	out = append(out, rest[to:]...)
+	m.DNSRuleOrder = out
+	return true
+}
+
 // CompactDNSRuleOrderIndices — пересчитывает индексы slot'ов после удаления
 // записей в DNSUserRules/PresetRefs. Должен вызываться сразу после
 // `append(slice[:i], slice[i+1:]...)` если индексы сдвинулись.

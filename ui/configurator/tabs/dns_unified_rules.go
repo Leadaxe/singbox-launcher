@@ -22,6 +22,7 @@ import (
 	"singbox-launcher/core/build"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/fynewidget"
+	"singbox-launcher/internal/locale"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
@@ -37,18 +38,23 @@ func buildUnifiedDNSRuleRows(
 	dnsRulesBox *fyne.Container,
 	refreshAll func(),
 ) {
+	// Drag group for this rebuild; discarded together with the rows it tracks
+	// (same lifecycle as the Rules tab group — see CreateRulesTab).
+	dragGroup := fynewidget.NewDragReorderGroup(func(from, to int) {
+		moveDNSSlot(presenter, model, from, to, refreshAll)
+	})
 	for slotIdx, slot := range model.DNSRuleOrder {
 		switch slot.Kind {
 		case wizardmodels.DNSSlotKindUser:
 			if slot.Index < 0 || slot.Index >= len(model.DNSUserRules) {
 				continue
 			}
-			buildSingleDNSUserRuleRow(presenter, model, parentWindow, dnsRulesBox, slot.Index, slotIdx, refreshAll)
+			buildSingleDNSUserRuleRow(presenter, model, parentWindow, dnsRulesBox, slot.Index, slotIdx, refreshAll, dragGroup)
 		case wizardmodels.DNSSlotKindPresetRef:
 			if slot.Index < 0 || slot.Index >= len(model.PresetRefs) {
 				continue
 			}
-			buildSingleDNSPresetRuleRow(presenter, model, parentWindow, dnsRulesBox, slot.Index, slotIdx, refreshAll)
+			buildSingleDNSPresetRuleRow(presenter, model, parentWindow, dnsRulesBox, slot.Index, slotIdx, refreshAll, dragGroup)
 		}
 	}
 }
@@ -63,6 +69,7 @@ func buildSingleDNSUserRuleRow(
 	dnsRulesBox *fyne.Container,
 	userIdx, slotIdx int,
 	refreshAll func(),
+	dragGroup *fynewidget.DragReorderGroup,
 ) {
 	ur := &model.DNSUserRules[userIdx]
 
@@ -124,25 +131,13 @@ func buildSingleDNSUserRuleRow(
 	}, rowGetter)
 	delBtn.Importance = widget.LowImportance
 
-	upBtn := fynewidget.NewHoverForwardButton("↑", func() {
-		moveDNSSlotUp(presenter, model, slotIdx, refreshAll)
-	}, rowGetter)
-	upBtn.Importance = widget.LowImportance
-	if slotIdx <= 0 {
-		upBtn.Disable()
-	}
-	downBtn := fynewidget.NewHoverForwardButton("↓", func() {
-		moveDNSSlotDown(presenter, model, slotIdx, refreshAll)
-	}, rowGetter)
-	downBtn.Importance = widget.LowImportance
-	if slotIdx >= len(model.DNSRuleOrder)-1 {
-		downBtn.Disable()
-	}
+	dragHandle := fynewidget.NewDragHandle(dragGroup, slotIdx, rowGetter)
+	setTooltip(dragHandle, locale.T("wizard.rules.tooltip_drag_reorder"))
 
 	// Shared row scaffolding (see row_scaffold.go).
-	leftLead := buildRowLeftLead(upBtn, downBtn, enableCh)
+	leftLead := buildRowDragLead(dragHandle, enableCh)
 	right := buildRowEditDelCluster(editBtn, delBtn)
-	row = finalizeRow(dnsRulesBox, leftLead, right, label, label)
+	row = finalizeDragRow(dnsRulesBox, dragGroup, slotIdx, leftLead, right, label, label)
 }
 
 // buildSingleDNSPresetRuleRow — один tile для preset-ref DNS rule.
@@ -156,6 +151,7 @@ func buildSingleDNSPresetRuleRow(
 	dnsRulesBox *fyne.Container,
 	refIdx, slotIdx int,
 	refreshAll func(),
+	dragGroup *fynewidget.DragReorderGroup,
 ) {
 	pr := model.PresetRefs[refIdx]
 
@@ -230,47 +226,22 @@ func buildSingleDNSPresetRuleRow(
 	}, rowGetter)
 	viewBtn.Importance = widget.LowImportance
 
-	upBtn := fynewidget.NewHoverForwardButton("↑", func() {
-		moveDNSSlotUp(presenter, model, slotIdx, refreshAll)
-	}, rowGetter)
-	upBtn.Importance = widget.LowImportance
-	if slotIdx <= 0 {
-		upBtn.Disable()
-	}
-	downBtn := fynewidget.NewHoverForwardButton("↓", func() {
-		moveDNSSlotDown(presenter, model, slotIdx, refreshAll)
-	}, rowGetter)
-	downBtn.Importance = widget.LowImportance
-	if slotIdx >= len(model.DNSRuleOrder)-1 {
-		downBtn.Disable()
-	}
+	dragHandle := fynewidget.NewDragHandle(dragGroup, slotIdx, rowGetter)
+	setTooltip(dragHandle, locale.T("wizard.rules.tooltip_drag_reorder"))
 
 	// Shared row scaffolding (see row_scaffold.go). View-only row: no edit/del.
-	leftLead := buildRowLeftLead(upBtn, downBtn, enableCh)
+	leftLead := buildRowDragLead(dragHandle, enableCh)
 	right := container.NewHBox(viewBtn)
-	row = finalizeRow(dnsRulesBox, leftLead, right, titleLabel, titleLabel)
+	row = finalizeDragRow(dnsRulesBox, dragGroup, slotIdx, leftLead, right, titleLabel, titleLabel)
 }
 
-// moveDNSSlotUp / moveDNSSlotDown — swap slots в DNSRuleOrder. Refresh
-// rebuild'ит весь список (тот же паттерн что moveSlotUp в rules_unified_rows.go).
-func moveDNSSlotUp(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, slotIdx int, refreshAll func()) {
-	if slotIdx <= 0 || slotIdx >= len(model.DNSRuleOrder) {
+// moveDNSSlot — переносит slot в DNSRuleOrder с позиции from на to
+// (drag-and-drop). Refresh rebuild'ит весь список — тот же паттерн, что
+// moveSlot в rules_unified_rows.go.
+func moveDNSSlot(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, from, to int, refreshAll func()) {
+	if !wizardmodels.MoveDNSRuleSlot(model, from, to) {
 		return
 	}
-	model.DNSRuleOrder[slotIdx], model.DNSRuleOrder[slotIdx-1] = model.DNSRuleOrder[slotIdx-1], model.DNSRuleOrder[slotIdx]
-	model.TemplatePreviewNeedsUpdate = true
-	wizardbusiness.InvalidatePreviewCache(model) // drop cached preview so Preview tab reflects new order
-	presenter.MarkAsChanged()
-	if refreshAll != nil {
-		refreshAll()
-	}
-}
-
-func moveDNSSlotDown(presenter *wizardpresentation.WizardPresenter, model *wizardmodels.WizardModel, slotIdx int, refreshAll func()) {
-	if slotIdx < 0 || slotIdx >= len(model.DNSRuleOrder)-1 {
-		return
-	}
-	model.DNSRuleOrder[slotIdx], model.DNSRuleOrder[slotIdx+1] = model.DNSRuleOrder[slotIdx+1], model.DNSRuleOrder[slotIdx]
 	model.TemplatePreviewNeedsUpdate = true
 	wizardbusiness.InvalidatePreviewCache(model) // drop cached preview so Preview tab reflects new order
 	presenter.MarkAsChanged()

@@ -167,15 +167,24 @@ func CreateRulesTab(presenter *wizardpresentation.WizardPresenter, showAddRuleDi
 	wizardmodels.ReconcileRuleOrder(model)
 
 	rulesBox := container.NewVBox()
+	// Drag-and-drop reorder group for this rebuild of the list. Rows register
+	// themselves as they are built; the group is discarded together with them on
+	// the next rebuild, so no stale geometry can survive a reorder.
+	dragGroup := fynewidget.NewDragReorderGroup(func(from, to int) {
+		moveSlot(presenter, model, from, to, showAddRuleDialog)
+	})
 	if len(model.RuleOrder) == 0 {
 		rulesBox.Add(createRulesEmptyState())
 	} else {
-		buildUnifiedRuleRows(presenter, model, guiState, availableOutbounds, showAddRuleDialog, rulesBox)
+		buildUnifiedRuleRows(presenter, model, guiState, availableOutbounds, showAddRuleDialog, rulesBox, dragGroup)
 	}
 
 	finalSelect := createFinalOutboundSelect(presenter, model, guiState, availableOutbounds)
 	headerRow := createRulesToolbarOutboundHeaderRow(presenter, showAddRuleDialog)
 	rulesScroll := CreateRulesScroll(guiState, rulesBox)
+	// Auto-scroll during drag needs the viewport; CreateRulesScroll stores it on
+	// guiState, which is where the concrete *container.Scroll lives.
+	dragGroup.Scroll = guiState.RulesScroll
 
 	// RefreshOutboundOptions will reset UpdatingOutboundOptions flag and hasChanges after all SetSelected() calls
 	presenter.RefreshOutboundOptions()
@@ -281,6 +290,7 @@ func buildSingleCustomRuleRow(
 	rulesBox *fyne.Container,
 	customIdx int,
 	slotIdx int,
+	dragGroup *fynewidget.DragReorderGroup,
 ) {
 	customRule := model.CustomRules[customIdx]
 	srsEntries, isSRSRule := customRuleSRSEntries(customRule)
@@ -312,11 +322,14 @@ func buildSingleCustomRuleRow(
 		srsHF = srsBtn
 	}
 
-	// Slot-based move + edit + delete. Move через RuleOrder (не через CustomRules),
-	// delete через CompactRuleOrderIndices чтобы остальные slot'ы остались валидны.
-	moveUpButton, moveDownButton, editButton, deleteButton := createCustomRuleSlotActionButtons(
-		presenter, model, guiState, customRule, customIdx, slotIdx, showAddRuleDialog, rowGetter,
+	// Slot-based edit + delete. Reorder is the drag handle below (it moves slots
+	// in RuleOrder, not entries in CustomRules); delete goes through
+	// CompactRuleOrderIndices so the remaining slots stay valid.
+	editButton, deleteButton := createCustomRuleSlotActionButtons(
+		presenter, model, guiState, customRule, customIdx, showAddRuleDialog, rowGetter,
 	)
+	dragHandle := fynewidget.NewDragHandle(dragGroup, slotIdx, rowGetter)
+	setTooltip(dragHandle, locale.T("wizard.rules.tooltip_drag_reorder"))
 
 	customRuleWidget := &wizardpresentation.RuleWidget{
 		Select:    outboundSelect,
@@ -326,9 +339,9 @@ func buildSingleCustomRuleRow(
 	}
 	guiState.RuleOutboundSelects = append(guiState.RuleOutboundSelects, customRuleWidget)
 
-	// Shared row scaffolding (see row_scaffold.go): leading ↑/↓+checkbox cluster
+	// Shared row scaffolding (see row_scaffold.go): leading grip+checkbox cluster
 	// and the right edit/delete cluster; the outbound select stays separated.
-	leftLead := buildRowLeftLead(moveUpButton, moveDownButton, checkbox)
+	leftLead := buildRowDragLead(dragHandle, checkbox)
 	rightCluster := container.NewHBox(buildRowEditDelCluster(editButton, deleteButton), outboundWidget)
 
 	labelTap := newRowLabelToggleTap(label, checkbox)
@@ -336,7 +349,7 @@ func buildSingleCustomRuleRow(
 	if srsHF != nil {
 		center = container.NewBorder(nil, nil, nil, srsHF, labelTap)
 	}
-	row = finalizeRow(rulesBox, leftLead, rightCluster, center, label)
+	row = finalizeDragRow(rulesBox, dragGroup, slotIdx, leftLead, rightCluster, center, label)
 }
 
 // createRuleEnableCheckbox — чекбокс вкл/выкл; подпись правила обёрнута в TapWrap и тоже переключает состояние.
@@ -410,41 +423,18 @@ func createOutboundSelectorForCustomRule(
 	return sel
 }
 
-// createCustomRuleSlotActionButtons — версия action кнопок, где move ↑↓ работают
-// на индексах model.RuleOrder, а delete сжимает RuleOrder после удаления записи
-// из model.CustomRules. Используется новым unified renderer (rules_unified_rows.go).
+// createCustomRuleSlotActionButtons — edit + delete для строки правила.
+// Delete сжимает RuleOrder после удаления записи из model.CustomRules.
+// Reorder живёт на drag handle'е (см. buildSingleCustomRuleRow), не здесь.
 func createCustomRuleSlotActionButtons(
 	presenter *wizardpresentation.WizardPresenter,
 	model *wizardmodels.WizardModel,
 	guiState *wizardpresentation.GUIState,
 	customRule *wizardmodels.RuleState,
 	customIdx int,
-	slotIdx int,
 	showAddRuleDialog ShowAddRuleDialogFunc,
 	rowGetter fynewidget.RowHoverGetter,
-) (*fynewidget.HoverForwardButton, *fynewidget.HoverForwardButton, *fynewidget.HoverForwardButton, *fynewidget.HoverForwardButton) {
-	moveUpButton := fynewidget.NewHoverForwardButton("↑", func() {
-		moveSlotUp(presenter, model, slotIdx, showAddRuleDialog)
-	}, rowGetter)
-	moveUpButton.Importance = widget.LowImportance
-	if slotIdx <= 0 {
-		moveUpButton.Disable()
-		setTooltip(moveUpButton, locale.T("wizard.rules.tooltip_move_up_off"))
-	} else {
-		setTooltip(moveUpButton, locale.T("wizard.rules.tooltip_move_up"))
-	}
-
-	moveDownButton := fynewidget.NewHoverForwardButton("↓", func() {
-		moveSlotDown(presenter, model, slotIdx, showAddRuleDialog)
-	}, rowGetter)
-	moveDownButton.Importance = widget.LowImportance
-	if slotIdx >= len(model.RuleOrder)-1 {
-		moveDownButton.Disable()
-		setTooltip(moveDownButton, locale.T("wizard.rules.tooltip_move_down_off"))
-	} else {
-		setTooltip(moveDownButton, locale.T("wizard.rules.tooltip_move_down"))
-	}
-
+) (*fynewidget.HoverForwardButton, *fynewidget.HoverForwardButton) {
 	editButton := fynewidget.NewHoverForwardButtonWithIcon("", theme.DocumentCreateIcon(), func() {
 		showAddRuleDialog(presenter, customRule, customIdx)
 	}, rowGetter)
@@ -471,7 +461,7 @@ func createCustomRuleSlotActionButtons(
 	deleteButton.Importance = widget.LowImportance
 	setTooltip(deleteButton, locale.T("wizard.rules.button_delete"))
 
-	return moveUpButton, moveDownButton, editButton, deleteButton
+	return editButton, deleteButton
 }
 
 // deleteCustomRuleSlot — slot-aware delete: убирает запись из model.CustomRules

@@ -103,6 +103,31 @@ func ReconcileRuleOrder(m *WizardModel) {
 	m.RuleOrder = kept
 }
 
+// MoveRuleSlot — переносит slot с позиции from на позицию to (drag-and-drop
+// в Rules tab). В отличие от swap-пары moveSlotUp/moveSlotDown, промежуточные
+// slot'ы сдвигаются на одну позицию, а не меняются местами с перетаскиваемым:
+// протаскивание строки через весь список должно сохранить порядок остальных.
+//
+// Возвращает false если перемещение невозможно или бессмысленно (границы,
+// from == to) — вызывающий код по этому признаку пропускает MarkAsChanged.
+func MoveRuleSlot(m *WizardModel, from, to int) bool {
+	if m == nil {
+		return false
+	}
+	n := len(m.RuleOrder)
+	if from < 0 || from >= n || to < 0 || to >= n || from == to {
+		return false
+	}
+	moved := m.RuleOrder[from]
+	rest := append(m.RuleOrder[:from:from], m.RuleOrder[from+1:]...)
+	out := make([]RuleSlot, 0, n)
+	out = append(out, rest[:to]...)
+	out = append(out, moved)
+	out = append(out, rest[to:]...)
+	m.RuleOrder = out
+	return true
+}
+
 // CompactRuleOrderIndices — пересчитывает индексы slot'ов после удаления
 // записей в CustomRules/PresetRefs. Должен вызываться сразу после
 // `append(slice[:i], slice[i+1:]...)` если индексы сдвинулись.

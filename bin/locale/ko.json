@@ -476,5 +476,6 @@
   "wizard.dns.section_from_active_presets": "From active presets (read-only)",
   "wizard.add_rule.domain_mode_label": "Domain mode:",
   "traffic.conns.state_open": "열림",
-  "traffic.conns.state_closed": "닫힘"
+  "traffic.conns.state_closed": "닫힘",
+  "wizard.rules.tooltip_drag_reorder": "드래그하여 순서 변경"
 }

@@ -16,19 +16,21 @@ import (
 // have their own row builder with distinct wiring (outbound-select lifecycle,
 // model targets, SRS flows, delete paths — all genuinely different and kept
 // separate on purpose). What was IDENTICAL across all of them is the visual
-// scaffolding: the ↑/↓ + checkbox leading cluster, the edit/delete icon cluster,
-// the tap-to-toggle label wrapper, and the Border→HoverRow→tooltip-hover tail.
+// scaffolding: the drag-grip + checkbox leading cluster, the edit/delete icon
+// cluster, the tap-to-toggle label wrapper, and the Border→HoverRow→tooltip-hover
+// tail.
 //
 // That scaffolding had silently drifted (a tightHBox spacing change landed in the
 // custom builder but not the preset one, producing visibly inconsistent rows).
 // Centralizing it here makes the spacing provably identical and structurally
 // undriftable, while each builder keeps its own behavior.
 
-// buildRowLeftLead builds the leading cluster: ↑/↓ arrows packed tight
-// (tightHBox{rowIconGap}) followed by the enable checkbox in its leading wrap.
-func buildRowLeftLead(up, down fyne.CanvasObject, check *widget.Check) *fyne.Container {
+// buildRowDragLead builds the leading cluster for a reorderable row: the drag
+// grip, followed by the enable checkbox in its leading wrap. The grip reserves
+// the width the old ↑/↓ pair held, so the label column keeps its position.
+func buildRowDragLead(handle fyne.CanvasObject, check *widget.Check) *fyne.Container {
 	return container.NewHBox(
-		container.New(tightHBox{spacing: rowIconGap}, up, down),
+		handle,
 		fynewidget.CheckLeadingWrap(check),
 	)
 }
@@ -60,5 +62,20 @@ func finalizeRow(box *fyne.Container, leftLead, rightCluster, center fyne.Canvas
 	row := fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
 	row.WireTooltipLabelHover(hoverLabel)
 	box.Add(row)
+	return row
+}
+
+// finalizeDragRow is finalizeRow plus registration of the finished row with the
+// drag group, which needs every row's geometry — not just the dragged one — to
+// resolve a drop target.
+func finalizeDragRow(
+	box *fyne.Container,
+	group *fynewidget.DragReorderGroup,
+	slotIdx int,
+	leftLead, rightCluster, center fyne.CanvasObject,
+	hoverLabel *ttwidget.Label,
+) *fynewidget.HoverRow {
+	row := finalizeRow(box, leftLead, rightCluster, center, hoverLabel)
+	group.Register(slotIdx, row)
 	return row
 }

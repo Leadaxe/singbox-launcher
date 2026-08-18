@@ -476,5 +476,6 @@
   "wizard.dns.section_from_active_presets": "From active presets (read-only)",
   "wizard.add_rule.domain_mode_label": "Domain mode:",
   "traffic.conns.state_open": "offen",
-  "traffic.conns.state_closed": "geschlossen"
+  "traffic.conns.state_closed": "geschlossen",
+  "wizard.rules.tooltip_drag_reorder": "Zum Umsortieren ziehen"
 }

@@ -476,5 +476,6 @@
   "wizard.dns.section_from_active_presets": "From active presets (read-only)",
   "wizard.add_rule.domain_mode_label": "Domain mode:",
   "traffic.conns.state_open": "接続中",
-  "traffic.conns.state_closed": "切断"
+  "traffic.conns.state_closed": "切断",
+  "wizard.rules.tooltip_drag_reorder": "ドラッグして並べ替え"
 }
