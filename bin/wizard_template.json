@@ -6,6 +6,7 @@
       {
         "required": true,
         "tag": "proxy-out",
+        "label": "Main VPN",
         "type": "selector",
         "options": {
           "interrupt_exist_connections": true
@@ -23,6 +24,7 @@
       },
       {
         "tag": "vpn ①",
+        "label": "VPN ①",
         "type": "selector",
         "options": {
           "default": "proxy-out",
@@ -36,6 +38,7 @@
       },
       {
         "tag": "vpn ②",
+        "label": "VPN ②",
         "type": "selector",
         "options": {
           "default": "proxy-out",

@@ -695,10 +695,20 @@ func GenerateSelectorWithFilteredAddOutbounds(
 	// Build final JSON
 	jsonStr := "{" + strings.Join(parts, ",") + "}"
 
-	// Add comment if present
+	// Строчная подпись над группой в config.json — для того, кто читает
+	// конфиг глазами.
+	//
+	// SPEC 104: имя Направления важнее комментария. Пользователь вводит
+	// одно поле «Имя», и подпись в конфиге обязана совпадать с тем, что он
+	// видит в списке; комментарий шаблона остаётся запасным вариантом для
+	// записей, которым имя не задавали.
+	note := outboundConfig.Label
+	if note == "" {
+		note = outboundConfig.Comment
+	}
 	result := ""
-	if outboundConfig.Comment != "" {
-		result = fmt.Sprintf("\t// %s\n", sanitizeOutboundLineComment(outboundConfig.Comment))
+	if note != "" {
+		result = fmt.Sprintf("\t// %s\n", sanitizeOutboundLineComment(note))
 	}
 	result += fmt.Sprintf("\t%s,", jsonStr)
 

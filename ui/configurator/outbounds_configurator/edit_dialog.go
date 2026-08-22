@@ -137,12 +137,6 @@ func ShowEditDialog(
 	// применяется к двойнику `<tag>-auto`, а не к самой записи.
 	hasAutoTwin := func() bool { return autoTwinCheck.Checked }
 
-	commentEntry := widget.NewEntry()
-	if displayBody != nil {
-		commentEntry.SetText(displayBody.Comment)
-	}
-	commentEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_comment"))
-
 	// Scope: For all | For source: ...
 	//
 	// Filter out server-type sources (no subscription URL → ровно 1 нода).
@@ -501,10 +495,15 @@ func ShowEditDialog(
 		const obType = "selector"
 
 		cfg := &config.Direction{
-			Tag:     tag,
-			Type:    obType,
-			Label:   strings.TrimSpace(labelEntry.Text),
-			Comment: strings.TrimSpace(commentEntry.Text),
+			Tag:   tag,
+			Type:  obType,
+			Label: strings.TrimSpace(labelEntry.Text),
+		}
+		// SPEC 104: комментарий формой не правится (его роль взяло имя), но
+		// и не теряется: у шаблонных записей это осмысленный текст, который
+		// уедет в конфиг, если имя не задано.
+		if displayBody != nil {
+			cfg.Comment = displayBody.Comment
 		}
 		// SPEC 104: выключение — свойство записи, форма его не меняет
 		// (переключатель живёт в списке), поэтому переносим как есть.
@@ -710,8 +709,6 @@ func ShowEditDialog(
 		widget.NewLabel(locale.T("wizard.outbound.label_tag_field")),
 		tagEntry,
 		autoTwinCheck,
-		widget.NewLabel(locale.T("wizard.outbound.label_comment")),
-		commentEntry,
 		widget.NewLabel(locale.T("wizard.outbound.label_filters")),
 		container.NewGridWithColumns(2, filterKeyLabel, filterValBox),
 		filterInvertCheck,
@@ -933,7 +930,6 @@ func ShowEditDialog(
 			}
 		}
 		tagEntry.SetText(display.Tag)
-		commentEntry.SetText(display.Comment)
 		labelEntry.SetText(display.Label)
 
 		// SPEC 104: в форму кладём ТЕЛО регулярки и признак инверсии.
