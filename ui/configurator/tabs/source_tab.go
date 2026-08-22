@@ -758,49 +758,14 @@ func nodeDisplayLine(node *config.ParsedNode) string {
 	return textnorm.NormalizeProxyDisplay(s)
 }
 
-// CreateOutboundsAndParserConfigTab creates the Outbounds and ParserConfig tab UI.
-// For now it reuses the existing ParserConfig editor and Config Outbounds button;
-// later it will be extended to embed the outbounds configurator list directly.
-func CreateOutboundsAndParserConfigTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObject {
+// CreateDirectionsTab — вкладка «Направления» (SPEC 104).
+//
+// Направление — именованная точка выбора, на которую ссылаются правила.
+// Прежний редактор ParserConfig JSON отсюда убран: подписки правятся на
+// вкладке Sources, интервал обновления — в defaults, а сырой JSON остался
+// там, где он и нужен, — внутри окна одного направления.
+func CreateDirectionsTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObject {
 	guiState := presenter.GUIState()
-
-	// ParserConfig multi-line editor
-	guiState.ParserConfigEntry = widget.NewMultiLineEntry()
-	guiState.ParserConfigEntry.SetPlaceHolder(locale.T("wizard.outbounds.placeholder"))
-	guiState.ParserConfigEntry.Wrapping = fyne.TextWrapOff
-	guiState.ParserConfigEntry.OnChanged = func(string) {
-		if guiState.ParserConfigUpdating {
-			return
-		}
-		model := presenter.Model()
-		model.PreviewNeedsParse = true
-		// Sync GUI to model to update ParserConfigJSON before refreshing outbound options
-		presenter.MergeGUIToModel()
-		presenter.MarkAsChanged()
-		presenter.ScheduleRefreshOutboundOptionsDebounced()
-		// Preview status will be updated when switching to Preview tab
-	}
-
-	// Limit width and height of ParserConfig field
-	parserConfigScroll := container.NewScroll(guiState.ParserConfigEntry)
-	parserConfigScroll.Direction = container.ScrollBoth
-	parserHeightRect := canvas.NewRectangle(color.Transparent)
-	parserHeightRect.SetMinSize(fyne.NewSize(0, 200)) // ~10 lines
-	parserConfigWithHeight := container.NewStack(
-		parserHeightRect,
-		parserConfigScroll,
-	)
-
-	// Documentation button
-	docButton := widget.NewButton(locale.T("wizard.outbounds.button_docs"), func() {
-		docURL := "https://github.com/Leadaxe/singbox-launcher/blob/main/docs/ParserConfig.md"
-		if err := platform.OpenURL(docURL); err != nil {
-			dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.outbounds.error_open_docs"), err), guiState.Window)
-		}
-	})
-
-	parserLabel := widget.NewLabel(locale.T("wizard.outbounds.label"))
-	parserLabel.Importance = widget.MediumImportance
 
 	// Ensure model.ParserConfig is set so configurator can edit it (configurator reads via editPresenter.Model()).
 	m := presenter.Model()
@@ -825,8 +790,8 @@ func CreateOutboundsAndParserConfigTab(presenter *wizardpresentation.WizardPrese
 			// Per-source outbounds: ParserConfig.Proxies[i] построен из
 			// m.Sources[i] через AsParserConfig (1:1 порядок), поэтому
 			// обратный sync безопасен по тому же индексу. Без этого правки
-			// в Outbounds tab при Scope ≠ "For All" терялись на Save —
-			// state.json пишет m.Sources[i].Outbounds, а они не обновлялись.
+			// при Scope ≠ "For All" терялись на Save — state.json пишет
+			// m.Sources[i].Outbounds, а они не обновлялись.
 			proxies := m.ParserConfig.ParserConfig.Proxies
 			for i := range m.Sources {
 				if i >= len(proxies) {
@@ -843,31 +808,17 @@ func CreateOutboundsAndParserConfigTab(presenter *wizardpresentation.WizardPrese
 		if guiState.RefreshSourcesList != nil {
 			guiState.RefreshSourcesList()
 		}
-		// UpdateParserConfig sets ParserConfigUpdating during SetText so OnChanged does not MarkAsChanged;
-		// outbounds list actions (Edit/Add/Delete, ↑/↓) must mark dirty explicitly.
+		// Мутации списка (Edit/Add/Delete, ↑/↓) обязаны помечать состояние
+		// изменённым явно: UpdateParserConfig подавляет OnChanged.
 		presenter.MarkAsChanged()
 	}
 
 	configuratorContent, refreshOutboundsConfigurator := outbounds_configurator.NewConfiguratorContent(guiState.Window, presenter, onConfiguratorApply)
 	guiState.RefreshOutboundsConfiguratorList = refreshOutboundsConfigurator
 
-	// No Parse button on this tab per SPEC: update is automatic via configurator callback and tab switch (Rules/Preview).
-	headerRow := container.NewHBox(
-		parserLabel,
-		layout.NewSpacer(),
-		docButton,
-	)
-
-	parserContainer := container.NewVBox(
-		headerRow,
-		parserConfigWithHeight,
-		widget.NewSeparator(),
-		configuratorContent,
-	)
-
 	content := container.NewVBox(
 		widget.NewSeparator(),
-		parserContainer,
+		configuratorContent,
 		widget.NewSeparator(),
 	)
 

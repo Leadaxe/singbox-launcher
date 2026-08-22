@@ -36,7 +36,10 @@ func (p *WizardPresenter) TriggerParseForPreview() {
 	if !p.model.PreviewNeedsParse && len(p.model.GeneratedOutbounds) > 0 {
 		return
 	}
-	if p.guiState.SourceURLEntry == nil || p.guiState.ParserConfigEntry == nil {
+	// SPEC 104: прежнее условие требовало ещё и редактор ParserConfig JSON;
+	// после его удаления с вкладки Направлений оно молча отключило бы
+	// превью целиком.
+	if p.guiState.SourceURLEntry == nil {
 		return
 	}
 	p.MergeGUIToModel()

@@ -9,6 +9,10 @@ import (
 	"strconv"
 	"strings"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/widget"
+
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
 	"singbox-launcher/internal/locale"
@@ -356,4 +360,15 @@ func moveOutboundDown(parserConfig *config.ParserConfig, r outboundRow) {
 		}
 		prox.Outbounds[r.IndexInSlice], prox.Outbounds[r.IndexInSlice+1] = prox.Outbounds[r.IndexInSlice+1], prox.Outbounds[r.IndexInSlice]
 	}
+}
+
+// listSectionHeader — заголовок раздела в списке (SPEC 104).
+//
+// Разделяет служебные группы подписок и Направления: без него список
+// выглядит одной кучей, в которой `AL:select` от подписки неотличим от
+// `vpn-1`, созданного пользователем.
+func listSectionHeader(text string) fyne.CanvasObject {
+	label := widget.NewLabel(text)
+	label.TextStyle = fyne.TextStyle{Bold: true}
+	return container.NewVBox(widget.NewSeparator(), label)
 }

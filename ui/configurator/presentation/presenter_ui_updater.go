@@ -35,12 +35,6 @@ func (p *WizardPresenter) UpdateParserConfig(text string) {
 	if p.guiState == nil {
 		return
 	}
-	if p.guiState.ParserConfigEntry != nil {
-		p.guiState.ParserConfigUpdating = true
-		p.guiState.ParserConfigEntry.SetText(text)
-		p.guiState.ParserConfigUpdating = false
-	}
-	p.guiState.LastValidParserConfigJSON = text
 	if p.guiState.RefreshOutboundsConfiguratorList != nil {
 		p.guiState.RefreshOutboundsConfiguratorList()
 	}

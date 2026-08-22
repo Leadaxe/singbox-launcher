@@ -102,8 +102,19 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 	}
 
 	if parserCfg != nil {
-		// Add global outbounds.
+		// Направления (SPEC 104). Выключенные пропускаем по той же причине,
+		// что и выключенные подписки ниже: список целей обязан совпадать с
+		// тем, что реально попадёт в config.json, иначе правило укажет в
+		// никуда.
+		//
+		// Парные auto-группы (`<tag>-auto`) в список НЕ идут: двойник —
+		// опция внутри своего направления, а не самостоятельная цель
+		// (решение D-9А). В addOutbounds его тоже нет — он разворачивается
+		// только на сборке.
 		for _, outbound := range parserCfg.ParserConfig.Outbounds {
+			if outbound.Disabled {
+				continue
+			}
 			if outbound.Tag != "" {
 				tags[outbound.Tag] = struct{}{}
 			}

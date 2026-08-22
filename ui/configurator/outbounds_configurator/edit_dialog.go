@@ -21,6 +21,7 @@ import (
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
@@ -82,6 +83,30 @@ func ShowEditDialog(
 	}
 	tagEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_tag"))
 
+	// SPEC 104: имя Направления. Отдельно от Comment намеренно — у
+	// шаблонных записей комментарий описывает назначение абзацем, именем
+	// его не сделать.
+	labelEntry := widget.NewEntry()
+	if displayBody != nil {
+		labelEntry.SetText(displayBody.Label)
+	}
+	labelEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_label"))
+
+	// Новое Направление получает свободный тег и имя по умолчанию: тег —
+	// цель правил, и придумывать его вручную незачем; имя пользователь
+	// поправит, если захочет.
+	if isAdd {
+		nextTag := configtypes.NextDirectionTag(existingTags)
+		tagEntry.SetText(nextTag)
+		if n, ok := configtypes.DirectionNumber(nextTag); ok {
+			labelEntry.SetPlaceHolder(configtypes.DefaultDirectionLabel(n))
+		}
+	} else {
+		// Тег — цель правил: переименование сломало бы ссылки. Правится
+		// только при создании.
+		tagEntry.Disable()
+	}
+
 	// SPEC 088 load-balancing: mode/balancer парсим ЗАРАНЕЕ — он определяет, какой
 	// из трёх типов показать (round_robin = отдельный пункт "loadbalance", хотя на
 	// проводе это тот же type:urltest + mode:round_robin).
@@ -95,23 +120,46 @@ func ShowEditDialog(
 	// Type: три пункта. manual(selector) | auto(urltest, least_test) |
 	// loadbalance(urltest + round_robin). Последние два — один wire-type urltest,
 	// различаются наличием mode:round_robin.
+	// SPEC 104: четыре пункта. Первые два — Направление: ручной выбор
+	// узла и он же с парной auto-группой (`<tag>-auto`, состав тот же).
+	// Последние два — самостоятельные urltest-записи шаблона
+	// (`auto-proxy-out`): исторические, целиком заменяемые направлением с
+	// автовыбором, но существующие конфиги на них ссылаются.
 	typeSelect := widget.NewSelect([]string{
 		locale.T("wizard.outbound.type_manual"),
+		locale.T("wizard.outbound.type_with_auto"),
 		locale.T("wizard.outbound.type_auto"),
 		locale.T("wizard.outbound.type_loadbalance"),
 	}, nil)
-	if displayBody != nil {
-		if displayBody.Type == "urltest" {
-			if curBalancer.RoundRobin {
-				typeSelect.SetSelected(locale.T("wizard.outbound.type_loadbalance"))
-			} else {
-				typeSelect.SetSelected(locale.T("wizard.outbound.type_auto"))
-			}
-		} else {
-			typeSelect.SetSelected(locale.T("wizard.outbound.type_manual"))
-		}
-	} else {
+	switch {
+	case displayBody == nil:
 		typeSelect.SetSelected(locale.T("wizard.outbound.type_manual"))
+	case displayBody.Type == "urltest" && curBalancer.RoundRobin:
+		typeSelect.SetSelected(locale.T("wizard.outbound.type_loadbalance"))
+	case displayBody.Type == "urltest":
+		typeSelect.SetSelected(locale.T("wizard.outbound.type_auto"))
+	case displayBody.Auto != nil:
+		typeSelect.SetSelected(locale.T("wizard.outbound.type_with_auto"))
+	default:
+		typeSelect.SetSelected(locale.T("wizard.outbound.type_manual"))
+	}
+
+	// Режим автогруппы направления: least_test или round_robin. Отдельно от
+	// typeSelect, потому что относится к двойнику, а не к самой записи.
+	autoModeSelect := widget.NewSelect([]string{
+		locale.T("wizard.outbound.auto_mode_least_test"),
+		locale.T("wizard.outbound.auto_mode_round_robin"),
+	}, nil)
+	autoModeSelect.SetSelected(locale.T("wizard.outbound.auto_mode_least_test"))
+	if displayBody != nil && displayBody.Auto != nil &&
+		displayBody.Auto.Mode == configtypes.AutoModeRoundRobin {
+		autoModeSelect.SetSelected(locale.T("wizard.outbound.auto_mode_round_robin"))
+	}
+
+	// SPEC 104: Направление с автогруппой — та же настройка urltest, только
+	// применяется к двойнику `<tag>-auto`, а не к самой записи.
+	hasAutoTwin := func() bool {
+		return typeSelect.Selected == locale.T("wizard.outbound.type_with_auto")
 	}
 
 	commentEntry := widget.NewEntry()
@@ -257,6 +305,11 @@ func ShowEditDialog(
 	filterKeyLabel := widget.NewLabel(locale.T("wizard.outbound.label_tag"))
 	filterValEntry := widget.NewEntry()
 	filterValEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_filter"))
+
+	// SPEC 104: пользователь вводит ТЕЛО регулярки, а не `/…/i` — писать
+	// обёртку руками лишнее знание, а флаг регистра не выбор, а свойство:
+	// имена узлов приходят из подписок в произвольном регистре.
+	filterInvertCheck := widget.NewCheck(locale.T("wizard.outbound.filter_invert"), nil)
 	filterPickerBtn := widget.NewButton("🌐", func() {
 		var nodes []*config.ParsedNode
 		if editPresenter != nil {
@@ -279,42 +332,58 @@ func ShowEditDialog(
 	// Compose: [entry stretches] [button 30px].
 	filterValBox := container.NewBorder(nil, nil, nil, filterPickerBtn, filterValEntry)
 	if displayBody != nil && displayBody.Filters != nil {
-		if v, ok := displayBody.Filters["tag"]; ok {
-			if s, ok := v.(string); ok {
-				filterValEntry.SetText(s)
-			}
-		} else {
+		body, invert := configtypes.DirectionFilterTag(displayBody.Filters)
+		if body == "" {
+			// Ключа `tag` нет — показываем первое строковое значение, чтобы
+			// чужой фильтр (host, scheme) не выглядел пустым. Сохранение
+			// перепишет его в канонический вид ключа `tag`, остальные ключи
+			// останутся нетронутыми.
 			for _, v := range displayBody.Filters {
 				if s, ok := v.(string); ok {
-					filterValEntry.SetText(s)
+					body, invert, _ = configtypes.DirectionFilterBody(s)
 					break
 				}
 			}
 		}
+		filterValEntry.SetText(body)
+		filterInvertCheck.SetChecked(invert)
 	}
+
+	// SPEC 104: ссылка на справку по регуляркам с примерами — форма
+	// принимает тело выражения, и пользователю негде узнать синтаксис.
+	filterHelpBtn := widget.NewButton(locale.T("wizard.outbound.filter_help"), func() {
+		if err := platform.OpenURL(directionFilterDocURL); err != nil {
+			dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.outbound.error_open_docs"), err), parent)
+		}
+	})
+	filterHelpBtn.Importance = widget.LowImportance
+	filterHelpRow := container.NewHBox(filterHelpBtn, layout.NewSpacer())
 
 	// Preferred default: fixed key "tag", value editable
 	defKeyLabel := widget.NewLabel(locale.T("wizard.outbound.label_tag"))
 	defValEntry := widget.NewEntry()
 	defValEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_preferred"))
 	if displayBody != nil && displayBody.PreferredDefault != nil {
-		if v, ok := displayBody.PreferredDefault["tag"]; ok {
-			if s, ok := v.(string); ok {
-				defValEntry.SetText(s)
-			}
-		} else {
+		body, _ := configtypes.DirectionFilterTag(displayBody.PreferredDefault)
+		if body == "" {
 			for _, v := range displayBody.PreferredDefault {
 				if s, ok := v.(string); ok {
-					defValEntry.SetText(s)
+					body, _, _ = configtypes.DirectionFilterBody(s)
 					break
 				}
 			}
 		}
+		defValEntry.SetText(body)
 	}
 
 	// AddOutbounds: direct-out, reject checkboxes + checkboxes for other tags
 	directCheck := widget.NewCheck("direct-out", nil)
-	rejectCheck := widget.NewCheck("reject", nil)
+	// SPEC 104: вместо `reject` предлагаем тег блокировки из шаблона.
+	// `reject` — это ACTION правила sing-box, а не outbound: положить его в
+	// outbounds[] значит сослаться на несуществующий тег. Имя тега берём из
+	// шаблона (`magic_nodes.block`) — оно не универсально.
+	blockTag := directionBlockTag(editPresenter)
+	blockCheck := widget.NewCheck(blockTag, nil)
 	otherTagChecks := make([]*widget.Check, 0, len(existingTags))
 	otherTagsMap := make(map[string]*widget.Check)
 	for _, tag := range existingTags {
@@ -326,8 +395,8 @@ func ShowEditDialog(
 		for _, t := range displayBody.AddOutbounds {
 			if t == "direct-out" {
 				directCheck.SetChecked(true)
-			} else if t == "reject" {
-				rejectCheck.SetChecked(true)
+			} else if t == blockTag {
+				blockCheck.SetChecked(true)
 			} else if c, ok := otherTagsMap[t]; ok {
 				c.SetChecked(true)
 			}
@@ -452,7 +521,13 @@ func ShowEditDialog(
 		cfg := &config.Direction{
 			Tag:     tag,
 			Type:    obType,
+			Label:   strings.TrimSpace(labelEntry.Text),
 			Comment: strings.TrimSpace(commentEntry.Text),
+		}
+		// SPEC 104: выключение — свойство записи, форма его не меняет
+		// (переключатель живёт в списке), поэтому переносим как есть.
+		if displayBody != nil {
+			cfg.Disabled = displayBody.Disabled
 		}
 		if displayBody != nil && displayBody.Options != nil {
 			cfg.Options = make(map[string]interface{})
@@ -528,21 +603,65 @@ func ShowEditDialog(
 			buildBalancerOptions(cfg.Options, st)
 		}
 
-		filterVal := strings.TrimSpace(filterValEntry.Text)
-		if filterVal != "" {
-			cfg.Filters = map[string]interface{}{"tag": filterVal}
+		// SPEC 104: Направление с автогруппой. Настройки берутся из тех же
+		// виджетов, что и у самостоятельного urltest, но уезжают в Auto —
+		// двойник разворачивается на сборке, в состоянии его нет.
+		if hasAutoTwin() {
+			auto := &configtypes.DirectionAuto{}
+			if autoModeSelect.Selected == locale.T("wizard.outbound.auto_mode_round_robin") {
+				auto.Mode = configtypes.AutoModeRoundRobin
+			}
+			if lbl := urltestIntervalSelect.Selected; lbl != "" {
+				auto.Interval = intervalLabelToValue[lbl]
+			}
+			if lbl := urltestToleranceSelect.Selected; lbl != "" {
+				if v := toleranceLabelToValue[lbl]; v != "" && !strings.HasPrefix(v, "@") {
+					if n, err := strconv.Atoi(v); err == nil {
+						auto.Tolerance = n
+					}
+				}
+			}
+			auto.URL = strings.TrimSpace(urltestURLEntry.Text)
+			if auto.Mode == configtypes.AutoModeRoundRobin {
+				if n, err := strconv.Atoi(strings.TrimSpace(poolEntry.Text)); err == nil {
+					auto.Pool = n
+				}
+				if n, err := strconv.Atoi(strings.TrimSpace(poolToleranceEntry.Text)); err == nil {
+					auto.PoolTolerance = n
+				}
+				for _, k := range stickyKeys {
+					if ch := stickyChecks[k]; ch != nil && ch.Checked {
+						auto.StickyHash = append(auto.StickyHash, k)
+					}
+				}
+			}
+			cfg.Auto = auto
 		}
-		defVal := strings.TrimSpace(defValEntry.Text)
-		if defVal != "" {
-			cfg.PreferredDefault = map[string]interface{}{"tag": defVal}
+
+		// SPEC 104: форма отдаёт тело регулярки, на диск уезжает
+		// канонический паттерн `/тело/i` (или `!/тело/i`). Чужие ключи
+		// фильтра (host, scheme) сохраняются нетронутыми — их правят на
+		// вкладке JSON.
+		var baseFilters map[string]interface{}
+		if displayBody != nil {
+			baseFilters = displayBody.Filters
 		}
+		cfg.Filters = configtypes.SetDirectionFilterTag(
+			baseFilters, filterValEntry.Text, filterInvertCheck.Checked)
+
+		var baseDefault map[string]interface{}
+		if displayBody != nil {
+			baseDefault = displayBody.PreferredDefault
+		}
+		cfg.PreferredDefault = configtypes.SetDirectionFilterTag(
+			baseDefault, defValEntry.Text, false)
 
 		var addOb []string
 		if directCheck.Checked {
 			addOb = append(addOb, "direct-out")
 		}
-		if rejectCheck.Checked {
-			addOb = append(addOb, "reject")
+		if blockCheck.Checked {
+			addOb = append(addOb, blockCheck.Text)
 		}
 		for _, c := range otherTagChecks {
 			if c.Checked {
@@ -677,8 +796,13 @@ func ShowEditDialog(
 		stickyLabel,
 		stickyCheckRow,
 	)
+	autoModeLabel := ttwidget.NewLabel(locale.T("wizard.outbound.label_auto_mode"))
+	autoModeLabel.SetToolTip(locale.T("wizard.outbound.auto_mode_tooltip"))
+	autoModeRow := container.NewGridWithColumns(2, autoModeLabel, autoModeSelect)
+
 	urltestBlock := container.NewVBox(
 		urltestLabel,
+		autoModeRow,
 		container.NewGridWithColumns(2, urltestIntervalLabel, urltestIntervalSelect),
 		container.NewGridWithColumns(2, urltestToleranceLabel, urltestToleranceSelect),
 		container.NewGridWithColumns(2, urltestURLLabel, urltestURLEntry),
@@ -691,11 +815,20 @@ func ShowEditDialog(
 			typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance")
 	}
 	isLoadBalance := func() bool {
-		return typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance")
+		if typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance") {
+			return true
+		}
+		return hasAutoTwin() &&
+			autoModeSelect.Selected == locale.T("wizard.outbound.auto_mode_round_robin")
 	}
 	urltestVisible := func() {
-		if isURLTestType() {
+		if isURLTestType() || hasAutoTwin() {
 			urltestBlock.Show()
+			autoModeRow.Show()
+			if !hasAutoTwin() {
+				// У самостоятельной urltest-записи режим задаётся типом.
+				autoModeRow.Hide()
+			}
 			if isLoadBalance() {
 				balancerBlock.Show()
 			} else {
@@ -703,6 +836,7 @@ func ShowEditDialog(
 			}
 		} else {
 			urltestBlock.Hide()
+			autoModeRow.Hide()
 		}
 	}
 	urltestVisible() // initial state
@@ -717,6 +851,8 @@ func ShowEditDialog(
 	form := container.NewVBox(
 		widget.NewLabel(locale.T("wizard.outbound.label_scope")),
 		scopeSelect,
+		widget.NewLabel(locale.T("wizard.outbound.label_name")),
+		labelEntry,
 		widget.NewLabel(locale.T("wizard.outbound.label_tag_field")),
 		tagEntry,
 		widget.NewLabel(locale.T("wizard.outbound.label_type")),
@@ -726,10 +862,12 @@ func ShowEditDialog(
 		commentEntry,
 		widget.NewLabel(locale.T("wizard.outbound.label_filters")),
 		container.NewGridWithColumns(2, filterKeyLabel, filterValBox),
+		filterInvertCheck,
+		filterHelpRow,
 		widget.NewLabel(locale.T("wizard.outbound.label_preferred")),
 		container.NewGridWithColumns(2, defKeyLabel, defValEntry),
 		widget.NewLabel(locale.T("wizard.outbound.label_add_outbounds")),
-		container.NewHBox(directCheck, rejectCheck),
+		container.NewHBox(directCheck, blockCheck),
 		scrollOther,
 	)
 	// Right margin inside scroll so the scrollbar does not overlap form elements
@@ -949,24 +1087,17 @@ func ShowEditDialog(
 			typeSelect.SetSelected(locale.T("wizard.outbound.type_manual"))
 		}
 		commentEntry.SetText(display.Comment)
-		filterValEntry.SetText("")
-		if display.Filters != nil {
-			if v, ok := display.Filters["tag"]; ok {
-				if s, ok := v.(string); ok {
-					filterValEntry.SetText(s)
-				}
-			}
-		}
-		defValEntry.SetText("")
-		if display.PreferredDefault != nil {
-			if v, ok := display.PreferredDefault["tag"]; ok {
-				if s, ok := v.(string); ok {
-					defValEntry.SetText(s)
-				}
-			}
-		}
+		labelEntry.SetText(display.Label)
+
+		// SPEC 104: в форму кладём ТЕЛО регулярки и признак инверсии.
+		filterBody, filterInvert := configtypes.DirectionFilterTag(display.Filters)
+		filterValEntry.SetText(filterBody)
+		filterInvertCheck.SetChecked(filterInvert)
+
+		defBody, _ := configtypes.DirectionFilterTag(display.PreferredDefault)
+		defValEntry.SetText(defBody)
 		directCheck.SetChecked(false)
-		rejectCheck.SetChecked(false)
+		blockCheck.SetChecked(false)
 		for _, c := range otherTagChecks {
 			c.SetChecked(false)
 		}
@@ -974,8 +1105,8 @@ func ShowEditDialog(
 			for _, t := range display.AddOutbounds {
 				if t == "direct-out" {
 					directCheck.SetChecked(true)
-				} else if t == "reject" {
-					rejectCheck.SetChecked(true)
+				} else if t == blockTag {
+					blockCheck.SetChecked(true)
 				} else if c, ok := otherTagsMap[t]; ok {
 					c.SetChecked(true)
 				}

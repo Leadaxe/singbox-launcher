@@ -32,12 +32,8 @@ package presentation
     по-полевым ветками «keep model», что и после ready.
 
   • Подавление ложных срабатываний при программной записи в виджеты:
-    ParserConfigUpdating, DNSSelectsProgrammatic, UpdatingOutboundOptions,
-    SourceURLsProgrammatic, DNSRulesProgrammatic — OnChanged/селекты не должны звать MarkAsChanged.
-
-  • Поле ParserConfig (multi-line JSON): OnChanged вызывает MergeGUIToModel на каждый символ — намеренно
-    (актуальный ParserConfigJSON и hasChanges для Save/табов). Тяжёлая работа вынесена в debounce
-    RefreshOutboundOptions и мемо GetAvailableOutbounds по JSON (см. presenter_methods, business/outbound).
+    DNSSelectsProgrammatic, UpdatingOutboundOptions, SourceURLsProgrammatic,
+    DNSRulesProgrammatic — OnChanged/селекты не должны звать MarkAsChanged.
 
   • Пустой текст/выбор у Select до отрисовки: в syncGUIToModel специальные ветки «keep model»,
     см. dnsSelectReadLooksStale / dnsSelectOptionsMissingModelTag; Entry / strategy / Final outbound —
@@ -45,10 +41,7 @@ package presentation
 */
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
-
-	"fyne.io/fyne/v2/dialog"
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
@@ -103,12 +96,6 @@ func (p *WizardPresenter) applyWizardWidgetsFromModel() {
 		p.guiState.SourceURLsProgrammatic = true
 		p.guiState.SourceURLEntry.SetText(p.model.SourceURLs)
 		p.guiState.SourceURLsProgrammatic = false
-	}
-	if p.guiState.ParserConfigEntry != nil {
-		p.guiState.ParserConfigUpdating = true
-		p.guiState.ParserConfigEntry.SetText(p.model.ParserConfigJSON)
-		p.guiState.ParserConfigUpdating = false
-		p.guiState.LastValidParserConfigJSON = p.model.ParserConfigJSON
 	}
 	if p.guiState.RefreshSourcesList != nil {
 		p.guiState.RefreshSourcesList()
@@ -380,15 +367,6 @@ func (p *WizardPresenter) syncGUIToModelSourceParserFinal(ready bool) bool {
 			changed = true
 		}
 	}
-	if gs.ParserConfigEntry != nil {
-		newValue := gs.ParserConfigEntry.Text
-		if wizardsync.GuiTextAwaitingProgrammaticFill(ready, newValue, p.model.ParserConfigJSON) {
-			// ждём SetText из SyncModelToGUI
-		} else if p.model.ParserConfigJSON != newValue {
-			p.model.ParserConfigJSON = newValue
-			changed = true
-		}
-	}
 	if gs.FinalOutboundSelect != nil {
 		newValue := gs.FinalOutboundSelect.Selected
 		opts := gs.FinalOutboundSelect.Options
@@ -457,55 +435,6 @@ func (p *WizardPresenter) syncGUIToModelDNS(ready bool) bool {
 	return changed
 }
 
-// ValidateAndApplyParserConfigFromEntry parses ParserConfig from the entry, validates it,
-// and on success updates model and LastValidParserConfigJSON; on error shows dialog and reverts entry.
-// Call when leaving the Outbounds and ParserConfig tab so manual JSON edits are applied or reverted.
-func (p *WizardPresenter) ValidateAndApplyParserConfigFromEntry() {
-	if p.guiState.ParserConfigEntry == nil {
-		return
-	}
-	text := strings.TrimSpace(p.guiState.ParserConfigEntry.Text)
-	if text == "" {
-		p.model.ParserConfigJSON = ""
-		p.model.ParserConfig = nil
-		wizardbusiness.InvalidatePreviewCache(p.model)
-		p.guiState.LastValidParserConfigJSON = ""
-		return
-	}
-	pc := &config.ParserConfig{}
-	if err := json.Unmarshal([]byte(text), pc); err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.outbounds.error_invalid_json"), err), p.guiState.Window)
-		revert := p.guiState.LastValidParserConfigJSON
-		p.guiState.ParserConfigUpdating = true
-		p.guiState.ParserConfigEntry.SetText(revert)
-		p.guiState.ParserConfigUpdating = false
-		return
-	}
-	if err := wizardbusiness.ValidateParserConfig(pc); err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.outbounds.error_invalid_config"), err), p.guiState.Window)
-		revert := p.guiState.LastValidParserConfigJSON
-		p.guiState.ParserConfigUpdating = true
-		p.guiState.ParserConfigEntry.SetText(revert)
-		p.guiState.ParserConfigUpdating = false
-		return
-	}
-	serialized, err := wizardbusiness.SerializeParserConfig(pc)
-	if err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.outbounds.error_serialize"), err), p.guiState.Window)
-		return
-	}
-	p.model.ParserConfig = pc
-	p.model.ParserConfigJSON = serialized
-	p.guiState.LastValidParserConfigJSON = serialized
-	p.UpdateParserConfig(serialized)
-	p.RefreshOutboundOptions()
-	if p.guiState.RefreshSourcesList != nil {
-		p.guiState.RefreshSourcesList()
-	}
-	p.model.PreviewNeedsParse = true
-	wizardbusiness.InvalidatePreviewCache(p.model)
-}
-
 // ApplyParserConfigFromCurrentJSON replaces model.ParserConfig from model.ParserConfigJSON when JSON parses and validates,
 // normalizes via SerializeParserConfig, and updates the Outbounds entry. Used when opening the Outbounds tab so the
 // configurator list matches JSON after edits on Sources (local outbounds) or other tabs.
@@ -531,10 +460,4 @@ func (p *WizardPresenter) ApplyParserConfigFromCurrentJSON() {
 	}
 	p.model.ParserConfig = &pc
 	p.model.ParserConfigJSON = serialized
-	p.guiState.LastValidParserConfigJSON = serialized
-	if p.guiState.ParserConfigEntry != nil {
-		p.guiState.ParserConfigUpdating = true
-		p.guiState.ParserConfigEntry.SetText(serialized)
-		p.guiState.ParserConfigUpdating = false
-	}
 }

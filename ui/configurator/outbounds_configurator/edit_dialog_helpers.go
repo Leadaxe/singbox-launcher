@@ -194,3 +194,30 @@ func stripDirectBodyForReferenced(cfg *config.Direction) {
 	cfg.Label = ""
 	cfg.Auto = nil
 }
+
+// directionBlockTag — тег блокирующего outbound'а из шаблона
+// (`group_templates.magic_nodes.block`), SPEC 104.
+//
+// Имя не универсально: в шаблоне лаунчера это `block-out`, в чужом может
+// быть другим. Фолбэк на `block-out` нужен для случая, когда шаблон ещё не
+// загружен (первый запуск, тесты) — иначе чекбокс остался бы безымянным.
+func directionBlockTag(editPresenter OutboundEditPresenter) string {
+	const fallback = "block-out"
+	if editPresenter == nil {
+		return fallback
+	}
+	m := editPresenter.Model()
+	if m == nil || m.TemplateData == nil {
+		return fallback
+	}
+	if tag := m.TemplateData.DirectionMagicTag("block", ""); tag != "" {
+		return tag
+	}
+	return fallback
+}
+
+// directionFilterDocURL — справка по отбору узлов Направления (SPEC 104).
+//
+// Форма принимает ТЕЛО регулярки, и без ссылки пользователю негде узнать
+// синтаксис: `^`, `|`, флаги-эмодзи и то, что регистр не учитывается.
+const directionFilterDocURL = "https://github.com/Leadaxe/singbox-launcher/blob/main/docs/DIRECTION_FILTERS.md"

@@ -47,9 +47,8 @@ type GUIState struct {
 	ChildWindowsOverlay fyne.CanvasObject
 
 	// Tab 1: Sources & ParserConfig
-	SourceURLEntry    *widget.Entry
-	ParserConfigEntry *widget.Entry
-	ParseButton       *widget.Button
+	SourceURLEntry *widget.Entry
+	ParseButton    *widget.Button
 
 	// Template tab widgets
 	TemplatePreviewEntry       *widget.Entry
@@ -104,11 +103,9 @@ type GUIState struct {
 	RefreshTargetTabFromModel func()
 
 	// Last valid ParserConfig JSON for revert on validation error (e.g. on tab switch from Outbounds tab).
-	LastValidParserConfigJSON string
 
 	// UI-флаги состояния операций
 	SaveInProgress          bool
-	ParserConfigUpdating    bool
 	UpdatingOutboundOptions bool
 	// DNSSelectsProgrammatic: SetSelected в refreshDNSSelectsFromModel — не писать модель из OnChanged селектов.
 	DNSSelectsProgrammatic bool

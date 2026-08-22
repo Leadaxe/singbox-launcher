@@ -54,14 +54,45 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 		// preset update patches; orphan entries дропаются. Idempotent.
 		syncOutboundsLocal(model)
 		rows := collectRowsForUI(model)
-		items := make([]fyne.CanvasObject, 0, len(rows))
+		items := make([]fyne.CanvasObject, 0, len(rows)+2)
+
+		// SPEC 104: список начинается со служебных групп подписок
+		// (collectRows кладёт локальные первыми), а Направления идут после.
+		// Это разные вещи: группу подписки создаёт сама подписка и правит
+		// её жизненный цикл, Направление создаёт пользователь и на него
+		// ссылаются правила. Заголовки разделяют их визуально — без них
+		// список выглядит одной кучей из `AL:select` и `vpn-1`.
+		serviceHeaderShown := false
+		directionsHeaderShown := false
+
 		for rowIdx, r := range rows {
 			r := r
 			rowIdx := rowIdx
+			if !r.IsGlobal && !serviceHeaderShown {
+				items = append(items, listSectionHeader(locale.T("wizard.outbound.section_service")))
+				serviceHeaderShown = true
+			}
+			if r.IsGlobal && !directionsHeaderShown {
+				items = append(items, listSectionHeader(locale.T("wizard.outbound.section_directions")))
+				directionsHeaderShown = true
+			}
 			var row *fynewidget.HoverRow
 			rowGetter := func() *fynewidget.HoverRow { return row }
 
-			rawLine := r.Outbound.Tag + " (" + r.Outbound.Type + ")"
+			// SPEC 104: строка начинается с ИМЕНИ Направления, тег — рядом
+			// в скобках. Тег остаётся видимым: на него ссылаются правила, и
+			// прятать его значило бы заставить пользователя гадать, что
+			// выбирать в списке целей.
+			rawLine := r.Outbound.DisplayName()
+			if r.Outbound.Label != "" {
+				rawLine += " (" + r.Outbound.Tag + ")"
+			}
+			if r.Outbound.Auto != nil {
+				rawLine += " " + locale.T("wizard.outbound.row_auto_mark")
+			}
+			if r.Outbound.Disabled {
+				rawLine = locale.T("wizard.outbound.row_disabled_mark") + " " + rawLine
+			}
 			if r.SourceLabel != "" {
 				rawLine += " — " + r.SourceLabel
 			}
@@ -239,12 +270,46 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 				sizer.SetMinSize(fyne.NewSize(78, 0))
 				return container.NewStack(sizer, btn)
 			}
-			if r.IsPreset || r.IsRequired {
+			// SPEC 104: выключение Направления — свойство записи, а не
+			// форма: выключенное не материализуется и не предлагается целью
+			// правил, но остаётся в списке со всеми настройками.
+			// Служебные группы подписок (isLocal) не выключаются — их
+			// жизненным циклом управляет сама подписка.
+			var enableCheck *widget.Check
+			if r.IsGlobal {
+				enableCheck = widget.NewCheck("", func(on bool) {
+					pc := getParserConfig(editPresenter.Model())
+					if pc == nil {
+						return
+					}
+					rowsNow := collectRowsForUI(editPresenter.Model())
+					if rowIdx >= len(rowsNow) {
+						return
+					}
+					idx := rowsNow[rowIdx].IndexInSlice
+					if idx < 0 || idx >= len(pc.ParserConfig.Outbounds) {
+						return
+					}
+					pc.ParserConfig.Outbounds[idx].Disabled = !on
+					refreshList()
+					if onApply != nil {
+						onApply()
+					}
+				})
+				enableCheck.SetChecked(!r.Outbound.Disabled)
+				fynewidget.SetToolTipSafe(enableCheck, locale.T("wizard.outbound.enable_tooltip"))
+			}
+
+			switch {
+			case r.IsPreset || r.IsRequired:
 				// Locked rows: Edit + Reset, без Del.
 				rightControls = container.NewHBox(editBtn, fixedWidthBtn(resetBtn), rightPadding)
-			} else {
+			default:
 				// Regular: Edit + Del.
 				rightControls = container.NewHBox(editBtn, fixedWidthBtn(delBtn), rightPadding)
+			}
+			if enableCheck != nil {
+				leftArrows.Add(enableCheck)
 			}
 
 			rowInner := container.NewBorder(nil, nil, leftArrows, rightControls, nameLabel)

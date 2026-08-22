@@ -348,7 +348,7 @@ func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *w
 	}
 	sourcesTab := wizardtabs.CreateSourcesTab(presenter)
 	sourcesTabItem := container.NewTabItem(locale.T("wizard.tab_sources"), sourcesTab)
-	outboundsTab := wizardtabs.CreateOutboundsAndParserConfigTab(presenter)
+	outboundsTab := wizardtabs.CreateDirectionsTab(presenter)
 	outboundsTabItem := container.NewTabItem(locale.T("wizard.tab_outbounds"), outboundsTab)
 
 	var tabs *container.AppTabs
@@ -522,30 +522,25 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 	// Initialize button container
 	updateNavigationButtons(guiState, tabs, *currentTabIndex)
 
-	var previousTabIndex int = -1
-
 	// Update buttons when switching tabs
 	tabs.OnSelected = func(item *container.TabItem) {
 		// Sync GUI to model before switching (без MarkAsChanged — иначе ложный «есть несохранённые» при переключении табов)
 		presenter.MergeGUIToModel()
 
 		// Update current tab index
-		var newIndex int
 		for i, tabItem := range tabs.Items {
 			if tabItem == item {
-				newIndex = i
 				*currentTabIndex = i
 				break
 			}
 		}
 
-		// When leaving Outbounds tab: validate JSON, apply or revert
-		if previousTabIndex >= 0 && previousTabIndex < len(tabs.Items) && tabs.Items[previousTabIndex].Text == locale.T("wizard.tab_outbounds") {
-			presenter.ValidateAndApplyParserConfigFromEntry()
-		}
-		previousTabIndex = newIndex
+		// SPEC 104: валидации JSON при уходе с вкладки больше нет — редактор
+		// убран, и править руками там нечего; отслеживать предыдущую
+		// вкладку стало незачем.
 
-		// Outbounds tab: sync struct from JSON and rebuild configurator list (Sources Edit updates JSON/entry only).
+		// Вкладка Направлений: пересобрать структуру из JSON и перестроить
+		// список (правки на Sources меняют только JSON модели).
 		if item.Text == locale.T("wizard.tab_outbounds") {
 			presenter.ApplyParserConfigFromCurrentJSON()
 			if guiState.RefreshOutboundsConfiguratorList != nil {
