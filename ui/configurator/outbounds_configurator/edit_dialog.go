@@ -193,7 +193,27 @@ func ShowEditDialog(
 	// SPEC 104: пользователь вводит ТЕЛО регулярки, а не `/…/i` — писать
 	// обёртку руками лишнее знание, а флаг регистра не выбор, а свойство:
 	// имена узлов приходят из подписок в произвольном регистре.
-	filterInvertCheck := widget.NewCheck(locale.T("wizard.outbound.filter_invert"), nil)
+	// Инверсия — переключаемая иконка «!» в ряду кнопок, а не отдельная
+	// строка формы. Сам Check остаётся носителем состояния (его читают
+	// сборка cfg, пикер и сброс формы) — просто не показывается.
+	filterInvertCheck := widget.NewCheck("", nil)
+	filterInvertBtn := ttwidget.NewButton("!", nil)
+	filterInvertBtn.SetToolTip(locale.T("wizard.outbound.filter_invert"))
+	syncInvertBtn := func() {
+		if filterInvertCheck.Checked {
+			// Включённая инверсия меняет смысл всего отбора на обратный —
+			// это должно быть видно, а не угадываться по подсказке.
+			filterInvertBtn.Importance = widget.HighImportance
+		} else {
+			filterInvertBtn.Importance = widget.LowImportance
+		}
+		filterInvertBtn.Refresh()
+	}
+	syncInvertBtn()
+	filterInvertBtn.OnTapped = func() {
+		filterInvertCheck.SetChecked(!filterInvertCheck.Checked)
+		syncInvertBtn()
+	}
 	filterPickerBtn := widget.NewButton("🌐", func() {
 		var nodes []*config.ParsedNode
 		if editPresenter != nil {
@@ -212,6 +232,7 @@ func ShowEditDialog(
 			func(body string, invert bool) {
 				filterValEntry.SetText(body)
 				filterInvertCheck.SetChecked(invert)
+				syncInvertBtn()
 			})
 	})
 	filterPickerBtn.Importance = widget.LowImportance
@@ -229,7 +250,7 @@ func ShowEditDialog(
 	// Border, а не GridWithColumns: сетка делит ширину поровну, и между
 	// узкой подписью «tag» и полем зияла половина диалога.
 	filterValBox := container.NewBorder(nil, nil, filterKeyLabel,
-		container.NewHBox(filterPickerBtn, filterHelpBtn), filterValEntry)
+		container.NewHBox(filterInvertBtn, filterPickerBtn, filterHelpBtn), filterValEntry)
 	if displayBody != nil && displayBody.Filters != nil {
 		body, invert := configtypes.DirectionFilterTag(displayBody.Filters)
 		if body == "" {
@@ -246,6 +267,7 @@ func ShowEditDialog(
 		}
 		filterValEntry.SetText(body)
 		filterInvertCheck.SetChecked(invert)
+		syncInvertBtn()
 	}
 
 	// Preferred default: fixed key "tag", value editable
@@ -714,7 +736,6 @@ func ShowEditDialog(
 		autoTwinCheck,
 		widget.NewLabel(locale.T("wizard.outbound.label_filters")),
 		filterValBox,
-		filterInvertCheck,
 		widget.NewLabel(locale.T("wizard.outbound.label_preferred")),
 		container.NewBorder(nil, nil, defKeyLabel, nil, defValEntry),
 		widget.NewLabel(locale.T("wizard.outbound.label_add_outbounds")),
@@ -938,6 +959,7 @@ func ShowEditDialog(
 		filterBody, filterInvert := configtypes.DirectionFilterTag(display.Filters)
 		filterValEntry.SetText(filterBody)
 		filterInvertCheck.SetChecked(filterInvert)
+		syncInvertBtn()
 
 		defBody, _ := configtypes.DirectionFilterTag(display.PreferredDefault)
 		defValEntry.SetText(defBody)
