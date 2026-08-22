@@ -1,0 +1,5 @@
+{
+  "_comment": "Одиночная строка ≡ список из одного",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"node":{"#enable":"@a","y":2}}
+}

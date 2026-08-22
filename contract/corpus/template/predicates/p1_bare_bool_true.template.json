@@ -1,0 +1,5 @@
+{
+  "_comment": "P1: bare-строка '@flag' истинна при значении true (базовый случай)",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"out": {"#if": {"and": ["@flag"], "value": {"hit": true}, "else": {"hit": false}}}}
+}

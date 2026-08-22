@@ -1,0 +1,3 @@
+# mport списком: 41000,42000-43000 -> [41000:41000, 42000:43000]
+# источник: core/config/subscription/node_parser_test.go:1213 (TestParseNode_Hysteria2)
+hysteria2://pass123@example-1.com:443?mport=41000,42000-43000&sni=example-1.com#t

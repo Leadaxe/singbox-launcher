@@ -1,0 +1,3 @@
+# Базовый VMess JSON (v2): порт строкой, net=tcp, tls+sni
+# источник: core/config/subscription/node_parser_test.go:175 (TestParseNode_VMess)
+vmess://eyJ2IjoiMiIsInBzIjoiVGVzdCBWTWVzcyIsImFkZCI6InZtLmV4YW1wbGUtMjAuY29tIiwicG9ydCI6IjQ0MyIsImlkIjoiMTExMTExMTEtMTExMS0xMTExLTExMTEtMTExMTExMTExMTExIiwibmV0IjoidGNwIiwidHlwZSI6Im5vbmUiLCJ0bHMiOiJ0bHMiLCJzbmkiOiJ2bS5leGFtcGxlLTIwLmNvbSJ9

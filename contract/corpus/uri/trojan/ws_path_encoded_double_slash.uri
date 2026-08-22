@@ -1,0 +1,3 @@
+# одиночно закодированный двойной слэш %2F%2F -> //assignment, не схлопывается (валидная форма)
+# источник: LxBox app/test/parser/path_double_encoding_test.dart:53-59
+trojan://pass123@example-1.com:443?type=ws&path=%2F%2Fassignment&security=tls&sni=example-1.com#dbl-slash

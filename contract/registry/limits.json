@@ -1,0 +1,53 @@
+{
+  "v": 1,
+  "limits": {
+    "max_uri_length": {
+      "value": 65536,
+      "current": { "go": 8192, "dart": 65536 },
+      "note": "D-013/§9.B9: канон 65536, Go поднимает. Go: node_parser_core.go:40 (MaxURILength; тот же лимит в node_parser_wireguard.go:20); Dart: services/parser/uri_utils.dart:7. vpn:// из лимита исключён — у него свой amnezia_link_max_bytes."
+    },
+    "max_nodes_per_subscription": {
+      "value": 3000,
+      "current": { "go": 3000, "dart": null },
+      "note": "D-013: Dart добавляет (сегодня лимита нет). Go: configtypes/types.go:74; при превышении хвост отбрасывается с warning max_nodes_exceeded (source_loader.go:606). Защита от CIDR-подписок на 500+ нод и стампида сетевого стека."
+    },
+    "max_body_bytes": {
+      "value": 10485760,
+      "current": { "go": 10485760, "dart": null },
+      "note": "D-013: Dart добавляет (сегодня лимита нет). Go: fetcher.go:116 (MaxSubscriptionResponseSize, 10 MiB) — режется на fetch-уровне до классификации тела."
+    },
+    "amnezia_decompress_cap": {
+      "value": 4194304,
+      "current": { "go": 8388608, "dart": 4194304 },
+      "note": "НОВОЕ РАСХОЖДЕНИЕ: PLAN §9.B12 считает анти-bomb cap 4 MiB «уже общим», фактически Go = 8 MiB (node_parser_amnezia.go:41, maxAmneziaProfileJSON), Dart = 4 MiB (amnezia_link.dart:64, _maxInflated). Канон 4 MiB — Go опускает. Семантика тоже разная: Go ограничивает ФАКТИЧЕСКИЙ распакованный вывод, Dart — только claimed-length из qCompress-заголовка (сам zlib.decode не ограничен, заявленную длину бомба может занизить) — Dart-guard усилить до фактического вывода."
+    },
+    "amnezia_link_max_bytes": {
+      "value": 524288,
+      "current": { "go": 524288, "dart": null },
+      "note": "Отдельный cap на сырую vpn://-строку: Amnezia-профили с сертификатами штатно превышают max_uri_length. Go: node_parser_amnezia.go:39 (maxAmneziaLinkLength). §9.B12: Dart добавляет вместе с веткой vpn:// в parseUri (сегодня vpn:// строкой внутри URI-списка Dart молча теряет)."
+    },
+    "max_detour_chain": {
+      "value": 8,
+      "current": { "go": 8, "dart": 8 },
+      "note": "Совпадает. Go: detour_chain.go:24 (maxDetourChainDepth; тот же лимит в xray_json_array.go:550); Dart: services/parser/singbox_config.dart:37 (kMaxDetourDepth). Превышение → warning detour_chain_too_deep, цепочка усекается, узел живёт. Тот же cap 8 зафиксирован для chain[] канонического конверта (PLAN §2)."
+    },
+    "amnezia_scan_depth": {
+      "value": 8,
+      "current": { "go": 8, "dart": null },
+      "note": "Глубина рекурсивного поиска [Interface] в vpn://-профиле (реальная вложенность containers→container→proto→last_config→config = 5 уровней + запас на дрейф схемы). Go: node_parser_amnezia.go:45. Dart обходит фиксированную структуру без рекурсии — лимит не нужен; расхождением не считается."
+    },
+    "fetch_timeout_seconds": {
+      "value": 30,
+      "current": { "go": 30, "dart": 9 },
+      "note": "РЕШЕНИЯ НЕТ (в §9/DECISIONS не разбиралось). Go: fetcher.go:21 (NetworkRequestTimeout = 30s); Dart: services/subscription/sources.dart:44 (9s — выбор под мобильную сеть, быстрый фейл при смене Wi-Fi/LTE). value=30 — предложение по Go, не решение; возможно, честнее оставить per-app и убрать из канона."
+    },
+    "disabled_ttl_clamp": {
+      "value": { "intervals": 3, "floor_hours": 24, "ceil_hours": 720 },
+      "current": {
+        "go": "clamp(3×interval, 24h, 720h)",
+        "dart": "clamp(3×interval, 24h, 720h)"
+      },
+      "note": "TTL disabled-отметки: clamp(3 × интервал обновления, 24h, 30d). Совпадает буквально (D-014/§9.D2). Go: source_loader.go:49-65 (disabledNodeTTL); Dart: services/node_hash.dart:31-46 (disabledHashTtl, kDisabledHashTtl*). interval<=0 → пол 24h в обоих. В бэкапе отметки едут unix seconds (D-014)."
+    }
+  }
+}

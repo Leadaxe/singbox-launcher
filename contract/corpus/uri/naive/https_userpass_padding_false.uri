@@ -1,0 +1,3 @@
+# Канонический naive+https с user:pass и padding=false (DuckSoft-спека); padding вычищается из query
+# источник: core/config/subscription/node_parser_naive_test.go:130 (TestParseNode_Naive_Canonical)
+naive+https://what:happened@naive.example-9.com?padding=false#Naive!

@@ -1,0 +1,3 @@
+# §303 xray-форма: ed хвостом пути (path=/x?ed=2560) -> path чистый + max_early_data, БЕЗ header name
+# источник: LxBox app/test/parser/ws_query_early_data_test.dart:184-193
+trojan://pass123@example-1.com:443?type=ws&path=%2Fx%3Fed%3D2560&security=tls&sni=example-1.com#ed-path

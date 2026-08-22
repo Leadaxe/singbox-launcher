@@ -1,0 +1,26 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "congestion_control": "bbr",
+        "password": "pass123",
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "alpn": [
+            "h3"
+          ],
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "type": "tuic",
+        "uuid": "11111111-1111-1111-1111-111111111111",
+        "zero_rtt_handshake": true
+      },
+      "kind": "outbound",
+      "label": "tuic-0rtt",
+      "scheme": "tuic"
+    }
+  ],
+  "v": 1
+}

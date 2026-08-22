@@ -1,0 +1,5 @@
+{
+  "_comment": "§5.2 (N9): необъявленное имя в предикате — предикат false + warning; сборка не падает. Dart сегодня молчит",
+  "vars": [],
+  "config": {"out": {"#if": {"and": ["@nope"], "value": {"hit": true}, "else": {"hit": false}}}}
+}

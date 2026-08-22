@@ -1,0 +1,29 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "alpn": [
+            "http/1.1"
+          ],
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "transport": {
+          "headers": {
+            "Host": "example-1.com"
+          },
+          "type": "ws"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "alpn-dbl",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

@@ -1,0 +1,3 @@
+# IPv6-хост в скобках
+# источник: LxBox app/test/parser/anytls_test.dart:44-48
+anytls://pass123@[2001:db8::1]:8443#at-v6

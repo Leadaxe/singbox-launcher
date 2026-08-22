@@ -1,0 +1,3 @@
+# socks5 без auth и без фрагмента — тег генерируется из scheme-host-port
+# источник: core/config/subscription/node_parser_test.go:1700 (TestParseNode_SOCKS5)
+socks5://proxy.example-1.com:1080

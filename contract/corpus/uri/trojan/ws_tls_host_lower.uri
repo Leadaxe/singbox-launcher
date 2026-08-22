@@ -1,0 +1,3 @@
+# trojan+ws+tls: host= в нижнем регистре, sni и fp
+# источник: core/config/subscription/node_parser_test.go:1000 (TestParseNode_Trojan_WebSocket)
+trojan://pass123@example-1.com:443?type=ws&path=%2Ftjw&host=m.example-1.com&security=tls&sni=m.example-1.com&fp=chrome#tr

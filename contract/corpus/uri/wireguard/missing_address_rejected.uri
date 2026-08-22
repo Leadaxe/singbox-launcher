@@ -1,0 +1,3 @@
+# Нет обязательного address — ошибка
+# источник: core/config/subscription/node_parser_test.go:1895 (TestParseNode_Wireguard)
+wireguard://UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=@192.0.2.70:51820?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU%3D&allowedips=0.0.0.0/0

@@ -1,0 +1,5 @@
+{
+  "_comment": "Пустой вложенный or вырожденно ложен (как и на верхнем уровне)",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"out":{"#if":{"and":["@a",{"or":[]}],"value":{"hit":true},"else":{"hit":false}}}}
+}

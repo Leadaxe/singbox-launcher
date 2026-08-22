@@ -1,0 +1,118 @@
+{
+  "v": 1,
+  "scheme": "hysteria2",
+  "kind": "outbound",
+  "singbox_type": "hysteria2",
+  "aliases": ["hy2"],
+  "sources": ["uri", "singbox", "xray"],
+  "extension": null,
+  "uri": {
+    "userinfo": {
+      "meaning": "password",
+      "note": "Пароль — username-часть userinfo (hysteria2://password@host:port). Go дополнительно принимает base64-обёрнутый payload после схемы (node_parser_core.go:222-238) — desktop-расширение."
+    },
+    "query": {
+      "mport": {
+        "type": "string",
+        "aliases": ["ports"],
+        "default": null,
+        "note": "Multi-port / port hopping: список портов и диапазонов через запятую, диапазон через дефис (443,8443,20000-30000) → server_ports [\"low:high\"]. Multi-port может стоять и прямо в authority (host:20000-30000) — Go восстанавливает его через hysteria2RecoverMultiPortAuthority и сливает с mport. Сейчас только Go; §9.B2: Dart добавляет."
+      },
+      "obfs": {
+        "type": "enum",
+        "allowlist": "hysteria2_obfs",
+        "default": null,
+        "note": "Тип обфускации. Невалидный тип / obfs без пароля → блок obfs отбрасывается с warning, нода живёт (fatal ядра иначе). Go принимает только salamander (node_parser_hysteria2.go:13-15) — gecko есть в ядре lx и в Dart (§358); разрыв не решён в §9, см. note allowlists.hysteria2_obfs."
+      },
+      "obfs-password": {
+        "type": "string",
+        "default": null,
+        "note": "Пароль обфускации; обязателен при непустом obfs (иначе блок сбрасывается: Dart — с warning, Go singbox-sanitize — тоже; Go URI-путь пароль не требует — разрыв в строгости)."
+      },
+      "obfs-min-packet-size": {
+        "type": "int",
+        "default": null,
+        "ext": "mobile",
+        "note": "Собственный ключ LxBox для gecko (у hysteria2 нет де-факто URI-ключа) → obfs.min_packet_size. Привязан к gecko-разрыву."
+      },
+      "obfs-max-packet-size": {
+        "type": "int",
+        "default": null,
+        "ext": "mobile",
+        "note": "Собственный ключ LxBox для gecko → obfs.max_packet_size."
+      },
+      "upmbps": {
+        "type": "int",
+        "aliases": ["up_mbps"],
+        "default": null,
+        "note": "up_mbps (Мбит/с). РАЗРЫВ ИМЁН (новое, вне §9): Go читает/пишет upmbps, Dart читает/пишет up_mbps — кросс-эмит теряет значение. Целевое: оба принимают оба ключа; канон эмита — решить на ревью."
+      },
+      "downmbps": {
+        "type": "int",
+        "aliases": ["down_mbps"],
+        "default": null,
+        "note": "down_mbps (Мбит/с). Тот же разрыв имён, что upmbps."
+      },
+      "sni": {
+        "type": "string",
+        "default": null,
+        "note": "server_name. Значение без точки/двоеточия или '🔒' считается мусором → fallback на server (оба проекта, одинаковая эвристика)."
+      },
+      "fp": {
+        "type": "alias_enum",
+        "allowlist": "utls_fingerprints",
+        "aliases": ["fingerprint"],
+        "default": null,
+        "note": "uTLS fingerprint. РАЗРЫВ (новое, вне §9): Go эмитит tls.utls в JSON (node_parser_hysteria2.go:91-100), Dart намеренно срезает uTLS на QUIC-протоколах (§282, toSingboxForQuic) — и сам Go на Xray-пути тоже срезает (xray_protocols.go:276). Влияет на identity-хеш и, возможно, на валидность конфига."
+      },
+      "pinSHA256": {
+        "type": "string",
+        "default": null,
+        "ext": "desktop",
+        "note": "→ tls.certificate_public_key_sha256 ([значение]). Только Go."
+      },
+      "alpn": {
+        "type": "string",
+        "default": null,
+        "note": "Список через запятую → tls.alpn []string (обычно h3)."
+      },
+      "insecure": {
+        "type": "bool",
+        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "skip-cert-verify"],
+        "default": null,
+        "note": "tls.insecure. Значения 1/true/yes. Go: insecure/allowInsecure/allowinsecure + skip-cert-verify (только true/1); Dart добавляет allow_insecure. Целевой набор алиасов — объединение."
+      }
+    },
+    "fragment": "label"
+  },
+  "emit": {
+    "share_uri": true,
+    "param_order": ["alpn", "downmbps", "fp", "insecure", "mport", "obfs", "obfs-max-packet-size", "obfs-min-packet-size", "obfs-password", "sni", "upmbps"],
+    "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart _buildUri → buildQuery sort, uri_utils.dart:306-312). Ключи bandwidth/multi-port расходятся по проектам: Go эмитит upmbps/downmbps и mport (shareuri_hysteria2.go:52-58,68-73); Dart эмитит up_mbps/down_mbps (node_spec_emit.dart:360-361), а mport не эмитит вовсе (нет поля в Hysteria2Spec, §9.B2) — см. разрыв имён в note upmbps. Cross-emit сверяет узлы по смыслу, не по байтам. insecure эмитится канонично как insecure=1 в обоих."
+  },
+  "degrade": [
+    "obfs вне allowlist → блок obfs отброшен, warning, нода живёт",
+    "obfs без obfs-password → блок obfs отброшен, warning (Dart и Go singbox-sanitize; Go URI-путь пока пропускает без пароля)",
+    "fp вне allowlist → Go: utls не эмитится; Dart: fp=chrome + warning (разрыв, см. allowlists.utls_fingerprints)",
+    "sni-мусор (без точки/двоеточия, эмодзи) → server_name = server",
+    "невалидный порт в authority → нода дропается",
+    "пустой пароль → warning, нода живёт (Go) / null-skip (Dart)"
+  ],
+  "refs": {
+    "go": [
+      "core/config/subscription/node_parser_core.go:210-238",
+      "core/config/subscription/node_parser_hysteria2.go:13-116",
+      "core/config/subscription/hysteria2_ports.go:75-179",
+      "core/config/subscription/shareuri_hysteria2.go:12-83",
+      "core/config/subscription/xray_protocols.go:258-290",
+      "core/config/outbound_generator.go:143"
+    ],
+    "dart": [
+      "lib/services/parser/uri_parsers/hysteria2_parser.dart:12-82",
+      "lib/services/parser/hysteria2_obfs.dart:23-47",
+      "lib/models/node_spec_emit.dart:314-363",
+      "lib/services/parser/json_parsers.dart:513-520",
+      "lib/services/parser/json_parsers.dart:638-650"
+    ]
+  }
+}

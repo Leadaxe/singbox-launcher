@@ -1,0 +1,5 @@
+{
+  "_comment": "P1 (C1/N12): значение с пробелами ' true ' истинно после TrimSpace. Dart сегодня даёт false",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"out": {"#if": {"and": ["@flag"], "value": {"hit": true}, "else": {"hit": false}}}}
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "§4.3: условие false без else — родитель остаётся как есть, ключ #if всё равно удаляется",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"tun": {"type": "tun", "#if": {"and": ["@flag"], "value": {"mtu": 1400}}}}
+}

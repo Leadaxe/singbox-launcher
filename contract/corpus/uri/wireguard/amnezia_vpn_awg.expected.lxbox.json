@@ -1,0 +1,41 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.8.1.2/32"
+        ],
+        "h1": 1239197098,
+        "h2": 1929999940,
+        "h3": 1499605721,
+        "h4": 992706287,
+        "i1": "<b 0x000100002112a442><r 12>",
+        "jc": 4,
+        "jmax": 70,
+        "jmin": 40,
+        "mtu": 1280,
+        "peers": [
+          {
+            "address": "203.0.113.7",
+            "allowed_ips": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "persistent_keepalive_interval": 25,
+            "port": 38291,
+            "pre_shared_key": "UFNLMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=",
+            "public_key": "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU="
+          }
+        ],
+        "private_key": "UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=",
+        "s1": 116,
+        "s2": 61,
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "AWG Node",
+      "scheme": "wireguard"
+    }
+  ],
+  "v": 1
+}

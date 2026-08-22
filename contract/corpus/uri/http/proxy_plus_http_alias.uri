@@ -1,0 +1,3 @@
+# §268 плюс-алиас proxy+http эквивалентен proxy-http (plain, TLS off)
+# источник: LxBox app/test/parser/http_proxy_test.dart:74-85
+proxy+http://alice:pass123@h.example-1.com:8080#plus-http

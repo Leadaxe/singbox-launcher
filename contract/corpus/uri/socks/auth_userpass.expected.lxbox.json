@@ -1,0 +1,18 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "testpass123",
+        "server": "example-1.com",
+        "server_port": 1080,
+        "type": "socks",
+        "username": "testuser",
+        "version": "5"
+      },
+      "kind": "outbound",
+      "label": "SOCKS Auth",
+      "scheme": "socks"
+    }
+  ],
+  "v": 1
+}

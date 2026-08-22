@@ -1,0 +1,8 @@
+{
+  "_comment": "or: истинно когда истинен хотя бы один предикат",
+  "vars": [
+    {"name": "a", "type": "bool", "default_value": "false"},
+    {"name": "b", "type": "bool", "default_value": "false"}
+  ],
+  "config": {"out": {"#if": {"or": ["@a", "@b"], "value": {"hit": true}, "else": {"hit": false}}}}
+}

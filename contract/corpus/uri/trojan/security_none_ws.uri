@@ -1,0 +1,3 @@
+# security=none + ws-транспорт: транспорт есть, tls-блока нет (SPEC 045)
+# источник: core/config/subscription/node_parser_test.go:1045 (TestParseNode_Trojan_SecurityNone_OmitsTLSBlock)
+trojan://pass123@example-1.com:8080?security=none&type=ws&path=%2Ftjw&host=cdn.example-1.com#plain-trojan-ws

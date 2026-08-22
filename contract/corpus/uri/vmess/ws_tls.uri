@@ -1,0 +1,4 @@
+# VMess v2-JSON (base64): net=ws + tls; внутри add=example-1.com, port=443,
+# id=11111111-2222-3333-4444-555555555555, aid=0, scy=auto, host/path=/vm, sni=example-1.com.
+# Источник: LxBox app/test/fixtures/vmess/modern_ws_tls.uri
+vmess://eyJ2IjoiMiIsInBzIjoiVk1lc3MgV1MiLCJhZGQiOiJleGFtcGxlLTEuY29tIiwicG9ydCI6IjQ0MyIsImlkIjoiMTExMTExMTEtMjIyMi0zMzMzLTQ0NDQtNTU1NTU1NTU1NTU1IiwiYWlkIjoiMCIsInNjeSI6ImF1dG8iLCJuZXQiOiJ3cyIsInR5cGUiOiJub25lIiwiaG9zdCI6ImV4YW1wbGUtMS5jb20iLCJwYXRoIjoiL3ZtIiwidGxzIjoidGxzIiwic25pIjoiZXhhbXBsZS0xLmNvbSJ9

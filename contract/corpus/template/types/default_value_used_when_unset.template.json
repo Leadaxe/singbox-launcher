@@ -1,0 +1,5 @@
+{
+  "_comment": "§2: отсутствующий в vars.json ключ = значение не задано, берётся default_value",
+  "vars": [{"name": "port_num", "type": "int", "default_value": "1080"}],
+  "config": {"listen_port": "@port_num"}
+}

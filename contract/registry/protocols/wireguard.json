@@ -1,0 +1,250 @@
+{
+  "v": 1,
+  "scheme": "wireguard",
+  "kind": "endpoint",
+  "singbox_type": "wireguard",
+  "aliases": [
+    "wg",
+    "awg"
+  ],
+  "sources": [
+    "uri",
+    "singbox",
+    "wgconf",
+    "amnezia"
+  ],
+  "extension": null,
+  "note": "Endpoint (sing-box >= 1.11): в конфиге живёт в endpoints[], не в outbounds[]. awg:// — алиас обоих проектов (нормализуется в wireguard, AWG-поля промоутятся в корень endpoint); алиас wg:// знает только Dart (Go IsDirectLink его не принимает — разрыв). D-010: дефолтные name=\"singbox-wg0\" и system=false НЕ эмитятся (Go убирает из parseWireGuardURI). Multi-peer: URI/share-URI — строго один peer; sing-box импорт: Go сохраняет всех peers как есть, Dart берёт только peers.first (тихая потеря — разрыв).",
+  "uri": {
+    "userinfo": {
+      "meaning": "private_key — base64 32-байтного приватного ключа",
+      "note": "Сырой '/' в base64 percent-энкодится до url.Parse в обоих (percentEncodeWGUserinfoSlashes / encodeUserInfoSlashes). Go валидирует: принимает 4 base64-варианта, нормализует к std-base64 c padding, не-32-байтный ключ (напр. Proton '*****') → нода дропается; Dart не валидирует ключи вовсе — мусорный ключ уедет в конфиг и уронит sing-box check (класс pbk=enabled). Целевое поведение — валидация как в Go."
+    },
+    "query": {
+      "publickey": {
+        "type": "base64",
+        "aliases": [
+          "public_key"
+        ],
+        "default": null,
+        "note": "Обязателен. Ключ пира (32 байта). Go: нормализация к std-base64, невалидный → нода дропается; '+' сохраняется через PathUnescape (queryParamPreservePlus). Алиас public_key — только Dart."
+      },
+      "privatekey": {
+        "type": "base64",
+        "aliases": [
+          "private_key"
+        ],
+        "ext": "mobile",
+        "default": null,
+        "note": "Fallback приватника при пустом userinfo — только Dart; Go требует userinfo (разрыв; у masque Go такой fallback имеет)."
+      },
+      "address": {
+        "type": "list",
+        "default": null,
+        "note": "Обязателен в обоих. CIDR-список через запятую; bare IP чинится в /32 (v4) / /128 (v6) в обоих (normalizeWGPrefixes / ensureCidr)."
+      },
+      "allowedips": {
+        "type": "list",
+        "aliases": [
+          "allowed_ips"
+        ],
+        "default": "0.0.0.0/0,::/0",
+        "note": "Дефолт 0.0.0.0/0,::/0 при отсутствии параметра — в обоих проектах (D-022). ВАЖНО (D-041): `::/0` при отсутствии IPv6-адреса в `address` — нормальная ссылка (так отдаёт Proton и др.), парсер её НЕ правит и ноду не дропает: ядро читает allowed_ips только в system-режиме, а стек выбирает по адресу назначения. Алиас allowed_ips — только Dart."
+      },
+      "mtu": {
+        "type": "int",
+        "default": null,
+        "note": "Plain WG: дефолт Go 1420 (upstream) vs Dart 1408 (sing-box) — РАСХОЖДЕНИЕ, влияет на identity-хеш plain-WG нод без mtu=. AWG (есть любое awg-поле): дефолт 1280, всё что выше клампится к 1280 в обоих (awgMaxMTU / awgClampMtu); явно меньший уважается. Битое значение → остаётся дефолт (поле mtu в endpoint эмитится всегда, в отличие от keepalive/listenport/reserved)."
+      },
+      "keepalive": {
+        "type": "int",
+        "default": null,
+        "note": "peer.persistent_keepalive_interval. Битое значение → параметр опускается, нода живёт."
+      },
+      "presharedkey": {
+        "type": "base64",
+        "aliases": [
+          "preshared_key"
+        ],
+        "default": null,
+        "note": "peer.pre_shared_key. Go валидирует 32 байта (битый → нода дропается: битый psk чинить нечем); Dart не валидирует. Алиас preshared_key — только Dart."
+      },
+      "reserved": {
+        "type": "string",
+        "aliases": [
+          "client_id"
+        ],
+        "default": null,
+        "note": "WARP: три десятичных байта \"b0,b1,b2\" (peer.reserved). Dart дополнительно принимает base64-форму client_id (3 байта) и алиас-параметр client_id — Go только десятичную тройку (разрыв). Битое значение → параметр опускается, нода живёт."
+      },
+      "listenport": {
+        "type": "int",
+        "ext": "desktop",
+        "default": null,
+        "note": "endpoint.listen_port; только Go."
+      },
+      "name": {
+        "type": "string",
+        "ext": "desktop",
+        "default": "singbox-wg0",
+        "note": "Имя интерфейса; D-010 — дефолт не эмитится (ни в endpoint, ни в share-URI). В Go также fallback label при пустом fragment."
+      },
+      "dns": {
+        "type": "list",
+        "ext": "desktop",
+        "default": null,
+        "note": "Пишется эмиттерами Go (share-URI из endpoint-map, INI-конвертер), но URI-парсер Go его ИГНОРИРУЕТ — у sing-box endpoint нет dns-поля; параметр лоссы by design (IPv6/DNS-политика лаунчера живёт вне endpoint)."
+      },
+      "jc": {
+        "type": "int",
+        "note": "AWG: junk packet count, uint32 → JSON number в корне endpoint. Битое → поле опускается."
+      },
+      "jmin": {
+        "type": "int",
+        "note": "AWG: junk min size, uint32."
+      },
+      "jmax": {
+        "type": "int",
+        "note": "AWG: junk max size, uint32."
+      },
+      "s1": {
+        "type": "int",
+        "note": "AWG: init packet junk size, uint32."
+      },
+      "s2": {
+        "type": "int",
+        "note": "AWG: response packet junk size, uint32."
+      },
+      "s3": {
+        "type": "int",
+        "note": "AWG: transport padding, uint32."
+      },
+      "s4": {
+        "type": "int",
+        "note": "AWG: transport padding, uint32."
+      },
+      "h1": {
+        "type": "int",
+        "note": "AWG magic header: uint32 ИЛИ строка-диапазон \"lo-hi\" (AWG 2.0, ядро >= lx.6; эмитится строкой). Go нормализует порядок границ и warn'ит про overlap h1-h4 (ядро отвергает); Dart — только regex ^\\d+(-\\d+)?$. Битое → поле опускается с громким warn (дефолтный WG-header не совпадёт с сервером)."
+      },
+      "h2": {
+        "type": "int",
+        "note": "AWG magic header, как h1."
+      },
+      "h3": {
+        "type": "int",
+        "note": "AWG magic header, как h1."
+      },
+      "h4": {
+        "type": "int",
+        "note": "AWG magic header, как h1."
+      },
+      "i1": {
+        "type": "string",
+        "note": "AWG 2.0 CPS-тег (<b 0xHEX>, <r N>, <c>…); регистр сохраняется, URL-decode штатный."
+      },
+      "i2": {
+        "type": "string",
+        "note": "AWG CPS-тег, как i1."
+      },
+      "i3": {
+        "type": "string",
+        "note": "AWG CPS-тег, как i1."
+      },
+      "i4": {
+        "type": "string",
+        "note": "AWG CPS-тег, как i1."
+      },
+      "i5": {
+        "type": "string",
+        "note": "AWG CPS-тег, как i1."
+      },
+      "id": {
+        "type": "string",
+        "note": "Masquerade-сахар над i1 (SPEC 009, домен — регистр сохраняется). Go не ставит при явном i1 (ядро отвергает совместно), Dart guard'а не имеет; из INI [Interface] читает только Dart (разрыв)."
+      },
+      "ip": {
+        "type": "string",
+        "note": "Masquerade-сахар, как id."
+      },
+      "ib": {
+        "type": "string",
+        "note": "Masquerade-сахар, как id."
+      }
+    },
+    "fragment": "label"
+  },
+  "emit": {
+    "share_uri": true,
+    "param_order": [
+      "publickey",
+      "address",
+      "allowedips",
+      "mtu",
+      "presharedkey",
+      "keepalive",
+      "reserved",
+      "listenport",
+      "name",
+      "dns",
+      "jc",
+      "jmin",
+      "jmax",
+      "s1",
+      "s2",
+      "s3",
+      "s4",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "i1",
+      "i2",
+      "i3",
+      "i4",
+      "i5",
+      "id",
+      "ip",
+      "ib"
+    ],
+    "note": "Порядок — семантический (Dart insertion-order); Go сейчас эмитит алфавитно (url.Values.Encode) — URI байтово разные, парс-эквивалентные (порядок не нормативен для cross-emit по узлу). Эмитится по правилам: mtu — подавление дефолта только у Go (share-URI: mtu только при !=1420); Dart эмитит mtu всегда, когда задан, а после URI/INI-парса он задан всегда, включая дефолт 1408/1280 — разрыв; name только != singbox-wg0; AWG-числа — по НАЛИЧИЮ поля (явный jc=0 переживает round-trip); i1-i5/id/ip/ib — только непустые. Multi-peer endpoint → ErrShareURINotSupported."
+  },
+  "degrade": [
+    "невалидный base64 / не-32-байтный ключ (userinfo, publickey, presharedkey) → нода дропается (Go; Dart пока не валидирует — целевое: как Go)",
+    "битые keepalive / listenport / reserved → параметр опускается, нода живёт; битый mtu → остаётся дефолт (поле mtu в endpoint эмитится всегда)",
+    "битое AWG-число (не uint32; для h1-h4 — и не диапазон lo-hi) → поле опускается: jc/jmin/jmax/s* с debug-логом, h1-h4 с громким warn",
+    "пересечение эффективных диапазонов h1-h4 → warn на импорте, нода эмитится (источник истины — ошибка ядра 'headers must not overlap')",
+    "bare IP в address/allowedips → дописывается /32 или /128",
+    "mtu > 1280 при AWG-полях → клампится к 1280 (тихий отказ данных при завышенном MTU хуже мелких пакетов)",
+    "sing-box импорт multi-peer: Go сохраняет всех peers, Dart берёт первого — потеря (разрыв, целевое: сохранять всех)"
+  ],
+  "refs": {
+    "go": [
+      "core/config/subscription/node_parser_core.go:260-270",
+      "core/config/subscription/node_parser_wireguard.go:18",
+      "core/config/subscription/node_parser_wireguard.go:268",
+      "core/config/subscription/node_parser_wireguard.go:337-353",
+      "core/config/subscription/node_parser_wireguard.go:381",
+      "core/config/subscription/node_parser_wireguard.go:435",
+      "core/config/subscription/node_parser_wireguard.go:462",
+      "core/config/subscription/node_parser_wireguard.go:505",
+      "core/config/subscription/shareuri_wireguard.go:17",
+      "core/config/subscription/singbox_import.go:222-242",
+      "core/config/subscription/singbox_import.go:326-329",
+      "core/config/outbound_generator.go:672"
+    ],
+    "dart": [
+      "app/lib/services/parser/uri_parsers/wireguard_parser.dart:8",
+      "app/lib/services/parser/uri_utils.dart:45",
+      "app/lib/services/parser/uri_utils.dart:170",
+      "app/lib/services/parser/uri_utils.dart:181",
+      "app/lib/services/parser/uri_utils.dart:191",
+      "app/lib/models/node_spec.dart:619",
+      "app/lib/models/node_spec.dart:706",
+      "app/lib/models/node_spec.dart:743",
+      "app/lib/models/node_spec_emit.dart:584",
+      "app/lib/models/node_spec_emit.dart:614",
+      "app/lib/services/parser/json_parsers.dart:1014-1071"
+    ]
+  }
+}

@@ -1,0 +1,3 @@
+# битый URI ss://@ (пустой userinfo и host) -> отказ без исключения
+# источник: LxBox app/test/parser/round_trip_test.dart:212-216
+ss://@

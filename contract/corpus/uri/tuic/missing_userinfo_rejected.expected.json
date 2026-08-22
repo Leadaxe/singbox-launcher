@@ -1,0 +1,10 @@
+{
+  "dropped": [
+    {
+      "reason": "parse_error",
+      "ref": "tuic://example-1.com:443"
+    }
+  ],
+  "nodes": null,
+  "v": 1
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "type=bool: значение подставляется как JSON true, а не строка 'true'",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"auto_route": "@flag"}
+}

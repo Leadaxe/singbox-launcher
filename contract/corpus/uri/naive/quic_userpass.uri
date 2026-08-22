@@ -1,0 +1,3 @@
+# naive+quic: суффикс схемы включает quic-режим
+# источник: core/config/subscription/node_parser_naive_test.go:146 (TestParseNode_Naive_Canonical)
+naive+quic://manhole:pass123@quic.example-9.com

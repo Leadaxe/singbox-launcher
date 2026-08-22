@@ -1,0 +1,3 @@
+# echfq (legacy pq-schemes, роняет конфиг ядра) не читается совсем: ни ech, ни warning
+# источник: LxBox app/test/parser/ech_import_test.dart:70-78 (анонимизировано)
+trojan://pass123@192.0.2.41:443?type=ws&host=www.example-4.com&path=%2Fassignment&security=tls&sni=www.example-4.com&fp=chrome&echfq=none#echfq

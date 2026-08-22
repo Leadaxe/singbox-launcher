@@ -1,0 +1,5 @@
+{
+  "_comment": "P3: #notEmpty на text — непустая строка после trim",
+  "vars": [{"name": "host", "type": "text", "default_value": ""}],
+  "config": {"out": {"#if": {"and": [{"@host": "#notEmpty"}], "value": {"hit": true}, "else": {"hit": false}}}}
+}

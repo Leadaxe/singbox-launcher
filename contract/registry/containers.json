@@ -1,0 +1,102 @@
+{
+  "v": 1,
+  "containers": {
+    "amnezia_vpn_link": {
+      "desc": "Amnezia vpn://-ссылка: контейнер полного профиля (containers[] по протоколам), из которого извлекаются только WireGuard/AmneziaWG INI-тексты.",
+      "detect": "тело (после trim) начинается с 'vpn://' — ветка идёт ПЕРВОЙ, до base64-эвристики (':' вне base64-алфавита). Go дополнительно принимает vpn:// строкой ВНУТРИ построчного URI-списка (ParseNode, в обход MaxURILength); Dart в parseUri схемы vpn нет — строка молча теряется (§9.B12, целевое: Dart добавляет).",
+      "decode": [
+        "payload = ссылка без префикса vpn://; whitespace/переводы строк выбрасываются (ссылки из чатов переносятся), '=' -padding отрезается",
+        "base64url без padding (Qt Base64UrlEncoding|OmitTrailingEquals); fallback — std-base64 без padding",
+        "qCompress-фрейминг: 4 байта big-endian заявленной несжатой длины + zlib-поток → JSON профиля",
+        "fallback несжатого payload (голый base64-JSON, паритет importController Amnezia): принимает ТОЛЬКО Dart — Go требует qCompress-фрейминг (разрыв)",
+        "профиль: containers[] (по одному на протокол) → под-объект awg/wireguard → last_config (JSON-СТРОКА) → .config = классический [Interface]/[Peer] INI (с AWG Jc/Jmin/.../I1-I5)",
+        "INI → канонический wireguard:// URI → штатный WG-парсер (CIDR-нормализация, AWG-промоушен, MTU-кламп применяются как обычно)"
+      ],
+      "limits": {
+        "link_max_bytes": {"go": 524288, "dart": 65536, "note": "Go maxAmneziaLinkLength 512 KiB (профили с сертификатами реально > 8 KiB); Dart режет по общему maxURILength 65536 — РАСХОЖДЕНИЕ, целевое: отдельный лимит vpn:// в registry/limits.json (§9.B12)"},
+        "inflate_max_bytes": {"go": 8388608, "dart": 4194304, "note": "анти-zlib-bomb cap на заявленную/фактическую несжатую длину: Go 8 MiB, Dart 4 MiB — РАСХОЖДЕНИЕ (PLAN §9.B12 считал cap 4 MiB общим; целевое — единое значение в limits.json)"}
+      },
+      "selection": {
+        "go": "рекурсивный поиск [Interface]-текста по профилю (глубина <= 8, known-keys first: config/last_config/awg/wireguard), defaultContainer предпочтён; импортируется ОДИН контейнер (первый найденный), при нескольких — warn",
+        "dart": "плоский проход по containers[] строго по пути <container>.awg|.wireguard.last_config.config; импортируются ВСЕ WG/AWG контейнеры (по ноде на каждый, индексные суффиксы имени)",
+        "note": "разрыв: один-vs-все контейнеры и глубина поиска; плюс Dart подставляет $PRIMARY_DNS/$SECONDARY_DNS из корневых dns1/dns2 в INI (fidelity rawIni), Go — нет"
+      },
+      "label": {"go": "description → hostName → имя контейнера", "dart": "nameHint (имя файла/источника) + индекс контейнера", "note": "label до tag-политики; правила разные — расхождение фиксируется корпусом"},
+      "refs": {
+        "go": [
+          "core/config/subscription/node_parser_core.go:84-86",
+          "core/config/subscription/node_parser_amnezia.go:35-46",
+          "core/config/subscription/node_parser_amnezia.go:49",
+          "core/config/subscription/node_parser_amnezia.go:86",
+          "core/config/subscription/node_parser_amnezia.go:142",
+          "core/config/subscription/node_parser_amnezia.go:182",
+          "core/config/subscription/node_parser_amnezia.go:269"
+        ],
+        "dart": [
+          "app/lib/services/parser/body_decoder.dart:86-88",
+          "app/lib/services/parser/amnezia_link.dart:17",
+          "app/lib/services/parser/amnezia_link.dart:64",
+          "app/lib/services/parser/amnezia_link.dart:67",
+          "app/lib/services/parser/amnezia_link.dart:88",
+          "app/lib/services/parser/amnezia_link.dart:108",
+          "app/lib/services/parser/parse_all.dart:32-35"
+        ]
+      }
+    },
+    "wgconf_ini": {
+      "desc": "Классический WireGuard/AmneziaWG .conf ([Interface]/[Peer]) — как тело подписки/файла (Dart) и как вставка в поле Sources (Go). Разворачивается в канонический wireguard:// URI → штатный WG-парсер.",
+      "detect": {
+        "dart": "body-kind: первая не-comment строка == '[interface]' (case-insensitive) И тело содержит '[Peer]' (сравнение case-SENSITIVE — нюанс)",
+        "go": "ветки в ClassifySubscriptionBody НЕТ (§9.B11 — Go добавляет, иначе нормативная схема классификации невыполнима); сегодня только UI-paste: ExtractWGConfBlocks режет вставку по строкам '[Interface]' (case-insensitive), текст до первого блока уходит в обычную построчную классификацию"
+      },
+      "expand": {
+        "required": "privatekey ([Interface]), publickey + endpoint ([Peer]); Go дополнительно ТРЕБУЕТ address ([Interface]) — в Dart address опционален (разрыв)",
+        "optional": "address, mtu, presharedkey, persistentkeepalive → keepalive, listenport (только Go), dns (только Go), AWG Jc/Jmin/Jmax/S1-S4/H1-H4/I1-I5 из [Interface] (ключи lowercase, регистр значений сохраняется)",
+        "reserved": "WARP Reserved/ClientId/client_id из [Peer] → reserved= читает ТОЛЬКО Dart (§126); Go wgConfToURI reserved теряет — WARP-конф на десктопе останется без reserved (handshake есть, трафика нет) — разрыв",
+        "masquerade": "id/ip/ib из [Interface] читает только Dart (входят в Awg.strKeys); Go — только из URI-query",
+        "multi": "Go paste: несколько [Interface]-блоков в одной вставке → нода на блок; Dart body: один IniConfig на тело (второй блок перезапишет ключи первого); multi-peer внутри блока: оба берут только первый [Peer]",
+        "label": "Go paste: host из Endpoint (у .conf нет имени, фиксированный fallback дал бы одинаковые теги); Dart: nameHint (имя файла) → 'WireGuard'; Amnezia-путь Go: description/hostName"
+      },
+      "subscription_body": "как тело подписки INI работает только в LxBox (IniConfig — полноценный body-kind, в т.ч. файл-подписка *.conf); §9.B11: Go добавляет INI-ветку в ClassifySubscriptionBody",
+      "refs": {
+        "go": [
+          "core/config/subscription/wgconf_text.go:23",
+          "core/config/subscription/wgconf_text.go:52",
+          "core/config/subscription/node_parser_amnezia.go:228",
+          "core/config/subscription/node_parser_amnezia.go:269",
+          "core/config/subscription/body_classify.go:14-45"
+        ],
+        "dart": [
+          "app/lib/services/parser/body_decoder.dart:120-123",
+          "app/lib/services/parser/ini_parser.dart:12",
+          "app/lib/services/parser/ini_parser.dart:34",
+          "app/lib/services/parser/parse_all.dart:25-27"
+        ]
+      }
+    },
+    "base64_body": {
+      "desc": "Base64-обёртка всего тела подписки: декод → результат рекурсивно уходит в обычную классификацию (URI-список / JSON / INI).",
+      "variants": "4 варианта одной семьи: std/url-safe x padded/unpadded. Порядок проб Go (DecodeBase64Multi): url-nopad, std-nopad, url-pad, std-pad; Dart (decodeBase64Safe): url+добитый padding, url как есть, std+padding, std как есть. Для валидного входа результат совпадает; порядок не нормативен.",
+      "guards": {
+        "go": "весь body как одна base64-строка (trim); декод обязан быть валидным UTF-8; лимит тела 10 MB (MaxSubscriptionResponseSize, на fetch)",
+        "dart": "эвристика ДО декода: >= 16 символов, charset ^[A-Za-z0-9+/_=\\-]+$ (whitespace выброшен); после — UTF-8 c < 20% control-байтов и plausible-проверка ('://', '{', '[', '[Interface]'); лимитов тела/нод нет (§9.B9/D-013 — Dart добавляет 10 MB и 3000 нод)"
+      },
+      "recursion": "декодированный текст классифицируется заново тем же алгоритмом (шаг 4 нормативной схемы §4 PLAN): URI-строки, JSON-флейворы, INI (Dart). Вторая base64-обёртка не разворачивается (одна итерация в обоих). Известная дыра Go §9.B4: fetch-путь DecodeSubscriptionContent режет одиночный JSON-объект (decoder.go:68-71), хотя классификатор его принимает — Go чинит decoder.",
+      "vmess_legacy_note": "b64-декод отдельного vmess://<base64> — не этот контейнер, а протокольный декод (registry/protocols/vmess.json); паритет legacy-cleartext подтверждён (§9.B8).",
+      "refs": {
+        "go": [
+          "core/config/subscription/encoding_utils.go:30",
+          "core/config/subscription/decoder.go:21",
+          "core/config/subscription/decoder.go:68-71",
+          "core/config/subscription/fetcher.go:116",
+          "core/config/subscription/body_classify.go:74"
+        ],
+        "dart": [
+          "app/lib/services/parser/uri_utils.dart:22",
+          "app/lib/services/parser/body_decoder.dart:90-100",
+          "app/lib/services/parser/body_decoder.dart:144-169"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,3 @@
+# sni отсутствует — server_name из legacy peer=
+# источник: core/config/subscription/node_parser_test.go:1008 (TestParseNode_Trojan_WebSocket)
+trojan://pass123@198.51.100.2:443?security=tls&peer=tr.example-1.com&type=ws&path=%2F&host=tr.example-1.com#tr

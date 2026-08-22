@@ -1,0 +1,31 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "192.0.2.41",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "www.example-4.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "transport": {
+          "headers": {
+            "Host": "www.example-4.com"
+          },
+          "path": "/assignment",
+          "type": "ws"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "echfq",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

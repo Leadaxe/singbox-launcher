@@ -1,0 +1,5 @@
+{
+  "_comment": "§3: интерполяция в середине строки в ядро v1 НЕ входит — строка остаётся как есть",
+  "vars": [{"name": "host", "type": "text", "default_value": ""}],
+  "config": {"url": "https://@host/path"}
+}

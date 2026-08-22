@@ -1,0 +1,28 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "security": "auto",
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "transport": {
+          "headers": {
+            "Host": "example-1.com"
+          },
+          "path": "/vm",
+          "type": "ws"
+        },
+        "type": "vmess",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "VMess WS",
+      "scheme": "vmess"
+    }
+  ],
+  "v": 1
+}

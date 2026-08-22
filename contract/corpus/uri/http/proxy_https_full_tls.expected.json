@@ -1,0 +1,28 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "h.example-1.com",
+        "server_port": 8443,
+        "tls": {
+          "alpn": [
+            "h2",
+            "http/1.1"
+          ],
+          "enabled": true,
+          "insecure": true,
+          "server_name": "proxy.example-corp.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "type": "http"
+      },
+      "kind": "outbound",
+      "label": "full-tls",
+      "scheme": "http"
+    }
+  ],
+  "v": 1
+}

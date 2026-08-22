@@ -1,0 +1,29 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.0.0.2/32"
+        ],
+        "mtu": 1420,
+        "peers": [
+          {
+            "address": "example-1.com",
+            "allowed_ips": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "port": 51820,
+            "public_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
+          }
+        ],
+        "private_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "wg-1420",
+      "scheme": "wireguard"
+    }
+  ],
+  "v": 1
+}

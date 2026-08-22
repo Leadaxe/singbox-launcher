@@ -1,0 +1,3 @@
+# Фрагмент с percent-encoded UTF-8 (emoji + пробел) декодируется в метку
+# источник: core/config/subscription/node_parser_naive_test.go:246 (TestParseNode_Naive_FragmentUTF8)
+naive+https://u:p@naive.example-9.com:443/?padding=false#%E2%9C%85%20JP-01

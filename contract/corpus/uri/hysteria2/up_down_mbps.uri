@@ -1,0 +1,3 @@
+# §084 up_mbps/down_mbps читаются и переживают round-trip
+# источник: LxBox app/test/parser/round_trip_test.dart:74-83
+hysteria2://pass123@example-2.com:443?up_mbps=100&down_mbps=200&sni=example-2.com#hy2-mbps

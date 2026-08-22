@@ -1,0 +1,5 @@
+{
+  "_comment": "type=int: отрицательное значение клампится к 0",
+  "vars": [{"name": "port_num", "type": "int", "default_value": "0"}],
+  "config": {"listen_port": "@port_num"}
+}

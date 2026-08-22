@@ -1,0 +1,8 @@
+{
+  "_comment": "§5.1: объявленная var со значением null (optional) — Dropped: КЛЮЧ удаляется из объекта",
+  "vars": [
+    {"name": "opt", "type": "text"},
+    {"name": "host", "type": "text", "default_value": ""}
+  ],
+  "config": {"server": "@host", "detour": "@opt"}
+}

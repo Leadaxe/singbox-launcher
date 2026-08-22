@@ -1,0 +1,27 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.0.0.2/32"
+        ],
+        "peers": [
+          {
+            "address": "192.0.2.71",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "port": 51820,
+            "public_key": "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU="
+          }
+        ],
+        "private_key": "JSwzOkFIT1ZdZGtyeYCHjpWco6qxuL/GzdTb4unw9/4=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "node",
+      "scheme": "wireguard"
+    }
+  ],
+  "v": 1
+}

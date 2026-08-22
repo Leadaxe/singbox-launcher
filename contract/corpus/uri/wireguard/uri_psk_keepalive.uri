@@ -1,0 +1,4 @@
+# WireGuard-URI: preshared_key, keepalive=25, address списком через запятую (IPv4 + IPv6 ULA fd00::/8),
+# mtu=1280.
+# Источник: LxBox app/test/fixtures/wireguard/uri_psk_keepalive.uri
+wireguard://example-2.com:51820?privatekey=ccccccccccccccccccccccccccccccccccccccccccC%3D&publickey=ddddddddddddddddddddddddddddddddddddddddddD%3D&preshared_key=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeE%3D&address=10.0.0.3%2F32,fd00%3A%3A2%2F128&keepalive=25&mtu=1280#WG%20PSK

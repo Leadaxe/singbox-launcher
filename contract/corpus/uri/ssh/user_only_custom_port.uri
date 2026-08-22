@@ -1,0 +1,3 @@
+# Только user (без пароля), нестандартный порт
+# источник: core/config/subscription/node_parser_test.go:1532 (TestParseNode_SSH)
+ssh://user@example-1.com:2222#SSH Server

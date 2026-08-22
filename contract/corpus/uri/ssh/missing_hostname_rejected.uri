@@ -1,0 +1,3 @@
+# Нет hostname — ошибка
+# источник: core/config/subscription/node_parser_test.go:1604 (TestParseNode_SSH)
+ssh://user@

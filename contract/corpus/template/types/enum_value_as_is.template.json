@@ -1,0 +1,5 @@
+{
+  "_comment": "type=enum: значение уезжает строкой как есть; принадлежность options движком не enforce'ится",
+  "vars": [{"name": "strategy", "type": "enum", "default_value": "ipv4_only", "options": ["ipv4_only", "prefer_ipv4"]}],
+  "config": {"strategy": "@strategy"}
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "#enable:true — узел остаётся, сам ключ вырезан (как #if)",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"node":{"#enable":["@a"],"y":2}}
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "P3 (C2+C6): #notEmpty на text_list — пустой список пуст. В Dart типа text_list нет вовсе",
+  "vars": [{"name": "hosts", "type": "text_list", "default_value": ""}],
+  "config": {"out": {"#if": {"and": [{"@hosts": "#notEmpty"}], "value": {"hit": true}, "else": {"hit": false}}}}
+}

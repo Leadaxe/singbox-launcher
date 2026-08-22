@@ -1,0 +1,3 @@
+# Trojan + TLS поверх TCP: минимальный вариант — пароль, security=tls, sni.
+# Источник: LxBox app/test/fixtures/trojan/tls_tcp.uri
+trojan://testpass123@example-1.com:443?security=tls&sni=example-1.com#Trojan%20TCP

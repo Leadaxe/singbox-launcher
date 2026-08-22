@@ -1,0 +1,5 @@
+{
+  "_comment": "FAIL-CLOSED: cond-obj с обоими ключами and и or — невалиден, узел выпадает",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"node":{"#enable":{"and":["@a"],"or":["@a"]},"y":2}}
+}

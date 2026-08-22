@@ -1,0 +1,3 @@
+# Несколько значений alpn через запятую (h3,h2) -> массив
+# источник: core/config/subscription/node_parser_test.go:1167 (TestParseNode_Hysteria2)
+hysteria2://pass123@example-1.com:443?alpn=h3,h2#Test

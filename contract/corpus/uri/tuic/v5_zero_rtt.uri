@@ -1,0 +1,3 @@
+# TUIC v5: reduce_rtt=1 (0-RTT handshake), disable_sni=0 явно, congestion_control=new_reno.
+# Источник: LxBox app/test/fixtures/tuic/v5_zero_rtt.uri
+tuic://33333333-4444-5555-6666-777777777777:testpass123@example-3.com:443?congestion_control=new_reno&udp_relay_mode=native&alpn=h3&sni=example-3.com&disable_sni=0&reduce_rtt=1#TUIC%20ZeroRTT

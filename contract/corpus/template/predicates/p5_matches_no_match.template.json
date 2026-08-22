@@ -1,0 +1,5 @@
+{
+  "_comment": "P5: несовпадение регэкспа даёт false",
+  "vars": [{"name": "host", "type": "text", "default_value": ""}],
+  "config": {"out": {"#if": {"and": [{"@host": {"#matches": "^admin\\."}}], "value": {"hit": true}, "else": {"hit": false}}}}
+}

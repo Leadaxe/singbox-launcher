@@ -1,0 +1,5 @@
+{
+  "_comment": "§3: подстановка на произвольной глубине вложенности",
+  "vars": [{"name": "host", "type": "text", "default_value": ""}],
+  "config": {"inbounds": [{"tun": {"opts": {"server": "@host"}}}]}
+}

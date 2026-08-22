@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "2001:db8::1",
+        "server_port": 8443,
+        "tls": {
+          "enabled": true,
+          "server_name": "2001:db8::1",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "random"
+          }
+        },
+        "type": "anytls"
+      },
+      "kind": "outbound",
+      "label": "at-v6",
+      "scheme": "anytls"
+    }
+  ],
+  "v": 1
+}

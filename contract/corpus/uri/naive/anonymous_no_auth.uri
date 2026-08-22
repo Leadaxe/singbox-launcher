@@ -1,0 +1,3 @@
+# без userinfo -> пустые username/password, узел валиден
+# источник: LxBox app/test/parser/uri_naive_test.dart:48-53
+naive+https://server.example-1.com:443

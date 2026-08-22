@@ -1,0 +1,5 @@
+{
+  "_comment": "C6: пустой text_list даёт пустой массив, а не null и не пропажу ключа",
+  "vars": [{"name": "hosts", "type": "text_list", "default_value": ""}],
+  "config": {"address": "@hosts"}
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "§3: подстановка в позиции значения ключа",
+  "vars": [{"name": "host", "type": "text", "default_value": ""}],
+  "config": {"server": "@host"}
+}

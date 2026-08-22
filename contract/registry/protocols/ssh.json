@@ -1,0 +1,74 @@
+{
+  "v": 1,
+  "scheme": "ssh",
+  "kind": "outbound",
+  "singbox_type": "ssh",
+  "aliases": [],
+  "sources": ["uri", "singbox"],
+  "extension": null,
+  "uri": {
+    "userinfo": {
+      "meaning": "user:password",
+      "note": "user обязателен по-разному. URI-путь: Go при пустом userinfo валит ноду (валидация hostname+userinfo, node_parser_core.go:308-316); root-ветка node_parser_ssh.go:20-23 вызывается только с URI-пути (node_parser_core.go:781), где пустой userinfo уже отсечён — мёртвый код; Dart при пустом user — null-skip (ssh_parser.dart:17). Singbox-импорт: root при пустом user дефолтит ДАРТ (json_parsers.dart:967); Go кладёт map как есть без дефолта (singbox_import.go:248-298), GenerateNodeJSON пустой user просто не эмитит (outbound_generator.go:310-316) — РАЗРЫВ (новое, вне §9). Go share-URI эмиттер дефолтит root без warning (shareuri_ssh.go:12-15). password опционален. Дефолтный порт 22."
+    },
+    "query": {
+      "private_key": {
+        "type": "string",
+        "default": null,
+        "note": "Inline приватный ключ (PEM; значения уже percent-decoded — '+' в base64 не портится). РАЗРЫВ ЭМИТА (новое, вне §9): Go отказывается кодировать share-URI с inline private_key (ErrShareURINotSupported, shareuri_ssh.go:24-26); Dart пишет ключ прямо в query (node_spec_emit.dart:482). Секрет в URI — решить политику на ревью."
+      },
+      "private_key_path": {
+        "type": "string",
+        "default": null,
+        "ext": "desktop",
+        "note": "Путь к файлу ключа; учитывается только если private_key пуст. Только Go (на мобиле путей ФС нет by design)."
+      },
+      "private_key_passphrase": {
+        "type": "string",
+        "default": null,
+        "note": "Пассфраза приватного ключа."
+      },
+      "host_key": {
+        "type": "string",
+        "default": null,
+        "note": "Список через запятую → host_key []string (пустые элементы отбрасываются)."
+      },
+      "host_key_algorithms": {
+        "type": "string",
+        "default": null,
+        "note": "Список через запятую → host_key_algorithms []string."
+      },
+      "client_version": {
+        "type": "string",
+        "default": null,
+        "ext": "desktop",
+        "note": "→ client_version. Только Go."
+      }
+    },
+    "fragment": "label"
+  },
+  "emit": {
+    "share_uri": true,
+    "param_order": ["client_version", "host_key", "host_key_algorithms", "private_key", "private_key_passphrase", "private_key_path"],
+    "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart toUriSsh → buildQuery sort, node_spec_emit.dart:494 + uri_utils.dart:306-312); private_key_path/client_version — desktop-хвост Go. Go с inline private_key URI не эмитит вовсе."
+  },
+  "degrade": [
+    "пустой user → URI-путь: Go ошибка ноды, Dart null-skip; singbox-импорт: Go эмитит outbound без user (root НЕ дефолтит), Dart дефолтит 'root' — выровнять",
+    "пустые элементы в host_key / host_key_algorithms → отбрасываются",
+    "private_key задан → private_key_path игнорируется (Go)"
+  ],
+  "refs": {
+    "go": [
+      "core/config/subscription/node_parser_core.go:249-251",
+      "core/config/subscription/node_parser_core.go:308-316",
+      "core/config/subscription/node_parser_ssh.go:16-74",
+      "core/config/subscription/shareuri_ssh.go:11-71",
+      "core/config/outbound_generator.go:310"
+    ],
+    "dart": [
+      "lib/services/parser/uri_parsers/ssh_parser.dart:8-54",
+      "lib/models/node_spec_emit.dart:465-497",
+      "lib/services/parser/json_parsers.dart:797"
+    ]
+  }
+}

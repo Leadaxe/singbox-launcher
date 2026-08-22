@@ -1,0 +1,3 @@
+# SOCKS5: без аутентификации (пустой userinfo).
+# Источник: LxBox app/test/fixtures/socks/no_auth.uri
+socks5://example-2.com:1080#SOCKS%20NoAuth

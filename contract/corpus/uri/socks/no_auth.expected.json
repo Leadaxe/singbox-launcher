@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-2.com",
+        "server_port": 1080,
+        "type": "socks",
+        "version": "5"
+      },
+      "kind": "outbound",
+      "label": "SOCKS NoAuth",
+      "scheme": "socks5"
+    }
+  ],
+  "v": 1
+}

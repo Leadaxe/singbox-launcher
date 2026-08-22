@@ -1,0 +1,3 @@
+# битое число jc=abc -> поле пропущено, jmin выживает, парс не падает
+# источник: LxBox app/test/parser/awg_test.dart:43-48
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32&jc=abc&jmin=50#awg-badjc

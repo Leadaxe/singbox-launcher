@@ -1,0 +1,3 @@
+# AWG: все числовые поля jc/jmin/jmax/s1-s4/h1-h4 + строковые i1-i3 (percent-encoded blob'ы)
+# источник: core/config/subscription/awg_test.go:42 (TestParseWireGuardURI_AWGFields)
+wireguard://UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=@wg.example-1.com:51821?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU%3D&address=10.10.10.2%2F32&allowedips=0.0.0.0%2F0%2C%3A%3A%2F0&mtu=1408&keepalive=25&jc=10&jmin=50&jmax=100&s1=20&s2=20&s3=60&s4=60&h1=1234567890&h2=1234567891&h3=1234567892&h4=1234567893&i1=%3Cb%200x000100002112a442%3E%3Cr%2012%3E&i2=%3Cb%200x010100002112a442%3E%3Cr%2012%3E&i3=%3Cr%2024%3E#awg-server

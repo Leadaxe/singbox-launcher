@@ -1,0 +1,23 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "192.0.2.16",
+        "server_port": 80,
+        "transport": {
+          "host": [
+            "play.example-11.com"
+          ],
+          "path": "/",
+          "type": "http"
+        },
+        "type": "vless",
+        "uuid": "Promo"
+      },
+      "kind": "outbound",
+      "label": "node",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

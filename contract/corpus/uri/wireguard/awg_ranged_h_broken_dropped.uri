@@ -1,0 +1,3 @@
+# битые формы диапазонов (10-, a-b, -5, 1-2-3) -> все h* дропнуты, jc выживает
+# источник: LxBox app/test/parser/awg_test.dart:233-238
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32&h1=10-&h2=a-b&h3=-5&h4=1-2-3&jc=4#awg-badh

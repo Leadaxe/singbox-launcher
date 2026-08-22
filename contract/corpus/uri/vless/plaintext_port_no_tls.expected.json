@@ -1,0 +1,20 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 8080,
+        "transport": {
+          "path": "/x",
+          "type": "ws"
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "plain",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

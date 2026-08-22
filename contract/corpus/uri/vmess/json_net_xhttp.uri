@@ -1,0 +1,3 @@
+# net=xhttp в VMess JSON -> транспорт xhttp c path/host/mode (SPEC 071)
+# источник: core/config/subscription/node_parser_test.go:265 (TestParseNode_VMess)
+vmess://eyJ2IjoiMiIsInBzIjoieGgiLCJhZGQiOiJ2bS5leGFtcGxlLTIwLmNvbSIsInBvcnQiOjQ0MywiaWQiOiIxMTExMTExMS0xMTExLTExMTEtMTExMS0xMTExMTExMTExMTEiLCJuZXQiOiJ4aHR0cCIsInBhdGgiOiIvaHgiLCJob3N0IjoiaC5leGFtcGxlLTIwLmNvbSIsInRscyI6InRscyIsIm1vZGUiOiJzdHJlYW0tb25lIn0=

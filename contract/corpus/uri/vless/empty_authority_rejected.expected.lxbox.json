@@ -1,0 +1,10 @@
+{
+  "dropped": [
+    {
+      "reason": "parse_error",
+      "ref": "vless://"
+    }
+  ],
+  "nodes": [],
+  "v": 1
+}

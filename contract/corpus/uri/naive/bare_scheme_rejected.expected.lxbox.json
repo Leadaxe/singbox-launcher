@@ -1,0 +1,10 @@
+{
+  "dropped": [
+    {
+      "reason": "parse_error",
+      "ref": "naive://user1:pass123@example-1.com:443"
+    }
+  ],
+  "nodes": [],
+  "v": 1
+}

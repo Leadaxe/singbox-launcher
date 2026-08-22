@@ -1,0 +1,5 @@
+{
+  "_comment": "P5: #matches — поиск регэкспа без якорей (подстрока считается совпадением)",
+  "vars": [{"name": "host", "type": "text", "default_value": ""}],
+  "config": {"out": {"#if": {"and": [{"@host": {"#matches": "example"}}], "value": {"hit": true}, "else": {"hit": false}}}}
+}

@@ -1,0 +1,3 @@
+# AWG-поля без mtu -> дефолт 1280 (не WG-шный 1408): AWG требует запас на obfs-заголовки
+# источник: LxBox app/test/parser/awg_test.dart:105-109
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32&jc=10#awg-nomtu

@@ -1,0 +1,96 @@
+{
+  "v": 1,
+  "scheme": "tuic",
+  "kind": "outbound",
+  "singbox_type": "tuic",
+  "aliases": [],
+  "sources": ["uri", "singbox"],
+  "extension": null,
+  "uri": {
+    "userinfo": {
+      "meaning": "uuid:password",
+      "note": "TUIC v5: uuid — username-часть, password — password-часть. Обязателен только uuid у Go: валидация userinfo проверяет лишь Username (node_parser_core.go:308-316), tuic://uuid@host проходит — buildTuicOutbound при пустом password пишет warning и нода живёт (node_parser_tuic.go:62-66). Dart строже: требует оба непустыми (tuic_parser.dart:14-18, null-skip) — расхождение строгости."
+    },
+    "query": {
+      "congestion_control": {
+        "type": "enum",
+        "allowlist": "tuic_congestion",
+        "default": "cubic",
+        "note": "РАЗРЫВ ДЕФОЛТА В ЭМИТЕ (новое, вне §9): Dart всегда пишет congestion_control (дефолт cubic) в outbound-JSON, Go — только при наличии в URI. Ломает identity-паритет tuic-нод и противоречит CANON «дефолты не пишутся». Невалидное значение: Go дропает ключ с warning, Dart заменяет на cubic — итог для ядра одинаков."
+      },
+      "udp_relay_mode": {
+        "type": "enum",
+        "allowlist": "tuic_udp_relay_mode",
+        "default": "native",
+        "note": "Тот же разрыв дефолта в эмите, что congestion_control: Dart пишет всегда, Go — по наличию."
+      },
+      "reduce_rtt": {
+        "type": "bool",
+        "aliases": ["zero_rtt_handshake", "zero_rtt"],
+        "default": null,
+        "note": "→ zero_rtt_handshake:true. Алиасы разъехались: Go принимает zero_rtt_handshake+reduce_rtt (node_parser_tuic.go:87-89), Dart — reduce_rtt+zero_rtt (tuic_parser.dart:28-29). Пересечение — reduce_rtt; целевое — все три в обоих."
+      },
+      "heartbeat": {
+        "type": "string",
+        "default": null,
+        "ext": "desktop",
+        "note": "Duration; голое число трактуется как секунды (10 → 10s). Только Go."
+      },
+      "sni": {
+        "type": "string",
+        "default": null,
+        "note": "server_name; пустой/мусорный (Go: эвристика точки/двоеточия) → fallback на server."
+      },
+      "disable_sni": {
+        "type": "bool",
+        "default": null,
+        "ext": "mobile",
+        "note": "1 → server_name не эмитится. Только Dart."
+      },
+      "alpn": {
+        "type": "string",
+        "default": null,
+        "note": "Список через запятую. РАЗРЫВ ДЕФОЛТА: Dart при отсутствии подставляет h3 и эмитит tls.alpn [\"h3\"]; Go эмитит только при наличии в URI. Ещё один вклад в расхождение identity-хешей tuic."
+      },
+      "fp": {
+        "type": "alias_enum",
+        "allowlist": "utls_fingerprints",
+        "aliases": ["fingerprint"],
+        "default": null,
+        "ext": "desktop",
+        "note": "Только Go читает fp на tuic и эмитит tls.utls; Dart не читает вовсе и срезает uTLS на QUIC (§282). Тот же QUIC-uTLS-разрыв, что у hysteria2."
+      },
+      "allow_insecure": {
+        "type": "bool",
+        "aliases": ["insecure", "allowInsecure", "allowinsecure", "skip-cert-verify", "skipCertVerify"],
+        "default": null,
+        "note": "tls.insecure. Значения 1/true/yes. skipCertVerify (camelCase) принимает только Go; остальные алиасы — оба."
+      }
+    },
+    "fragment": "label"
+  },
+  "emit": {
+    "share_uri": true,
+    "param_order": ["allow_insecure", "alpn", "congestion_control", "reduce_rtt", "sni", "udp_relay_mode"],
+    "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart toUriTuic → buildQuery sort, node_spec_emit.dart:456 + uri_utils.dart:306-312). zero-RTT: Dart эмитит reduce_rtt=1, Go — zero_rtt_handshake=1 (оба парсера должны принимать оба). insecure: Dart эмитит allow_insecure=1, Go — insecure=1."
+  },
+  "degrade": [
+    "congestion_control вне allowlist → Go: ключ дропнут с warning; Dart: заменён на cubic — семантически эквивалентно",
+    "udp_relay_mode вне allowlist → Go: ключ дропнут; Dart: заменён на native",
+    "отсутствие uuid → Go: ошибка ноды (валидация userinfo); отсутствие password → Go: warning, нода живёт (node_parser_tuic.go:62-66); Dart: null-skip в обоих случаях",
+    "мусорный sni → server_name = server"
+  ],
+  "refs": {
+    "go": [
+      "core/config/subscription/node_parser_core.go:240-242",
+      "core/config/subscription/node_parser_tuic.go:14-146",
+      "core/config/subscription/shareuri_tuic.go:14-57",
+      "core/config/outbound_generator.go:255"
+    ],
+    "dart": [
+      "lib/services/parser/uri_parsers/tuic_parser.dart:10-63",
+      "lib/models/node_spec_emit.dart:432-459",
+      "lib/services/parser/json_parsers.dart:797"
+    ]
+  }
+}

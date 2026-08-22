@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "private_key_path": "$HOME/.ssh/deploy_key",
+        "server": "git.example-1.com",
+        "server_port": 22,
+        "type": "ssh",
+        "user": "deploy"
+      },
+      "kind": "outbound",
+      "label": "Git Server",
+      "scheme": "ssh"
+    }
+  ],
+  "v": 1
+}

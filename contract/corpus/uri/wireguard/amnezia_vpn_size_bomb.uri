@@ -1,0 +1,3 @@
+# vpn:// c заявленным размером 0xFFFFFFFF (zip-bomb заголовок) — ошибка, без аллокации
+# источник: core/config/subscription/node_parser_amnezia_test.go:201 (TestParseNode_AmneziaVPN_Garbage)
+vpn://_____3icAQI

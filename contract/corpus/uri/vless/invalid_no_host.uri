@@ -1,0 +1,3 @@
+# Битый URI: нет userinfo/host/port — парсинг обязан вернуть ошибку
+# источник: core/config/subscription/node_parser_test.go:116 (TestParseNode_VLESS)
+vless://invalid

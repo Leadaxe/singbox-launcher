@@ -1,0 +1,4 @@
+# SS SIP002: base64-userinfo (с padding "=") + открытый host:port;
+# декодируется в aes-256-gcm:testpass123.
+# Источник: LxBox app/test/fixtures/shadowsocks/sip002_aead.uri
+ss://YWVzLTI1Ni1nY206dGVzdHBhc3MxMjM=@example-1.com:8388#SS%20AEAD

@@ -1,0 +1,5 @@
+{
+  "_comment": "Сахар: список ≡ and — обе переменные должны быть истинны",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"node":{"#enable":["@a","@b"],"y":2}}
+}

@@ -1,0 +1,3 @@
+# AWG c mtu=1420 из URI клампится до 1280 (S3/S4-паддинг + EMSGSIZE: handshake OK, данных нет)
+# источник: core/config/subscription/awg_test.go:223 (TestParseWireGuardURI_MTUClamp)
+wireguard://UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=@wg.example-1.com:51821?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU%3D&address=10.0.0.2/32&allowedips=0.0.0.0/0&jc=10&mtu=1420#n

@@ -1,0 +1,3 @@
+# Только строковое поле i1 (без jc) — нода всё равно AWG: mtu=1500 клампится до 1280
+# источник: core/config/subscription/awg_test.go:226 (TestParseWireGuardURI_MTUClamp)
+wireguard://UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=@wg.example-1.com:51821?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU%3D&address=10.0.0.2/32&allowedips=0.0.0.0/0&i1=%3Cr+24%3E&mtu=1500#n

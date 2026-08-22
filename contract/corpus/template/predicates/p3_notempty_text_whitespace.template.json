@@ -1,0 +1,5 @@
+{
+  "_comment": "P3: строка из одних пробелов считается пустой (len(TrimSpace)>0)",
+  "vars": [{"name": "host", "type": "text", "default_value": ""}],
+  "config": {"out": {"#if": {"and": [{"@host": "#notEmpty"}], "value": {"hit": true}, "else": {"hit": false}}}}
+}

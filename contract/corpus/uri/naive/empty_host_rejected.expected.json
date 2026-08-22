@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "",
+        "server_port": 443,
+        "tls": {
+          "enabled": true
+        },
+        "type": "naive"
+      },
+      "kind": "outbound",
+      "scheme": "naive"
+    }
+  ],
+  "v": 1
+}

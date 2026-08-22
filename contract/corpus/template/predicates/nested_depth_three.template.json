@@ -1,0 +1,5 @@
+{
+  "_comment": "Глубина 3: and(or(and(...))) — ограничения на глубину нет",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"out":{"#if":{"and":[{"or":[{"and":["@a","@b"]}]}],"value":{"hit":true},"else":{"hit":false}}}}
+}

@@ -1,0 +1,23 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "example-1.com",
+        "server_port": 8080,
+        "transport": {
+          "headers": {
+            "Host": "cdn.example-1.com"
+          },
+          "path": "/tjw",
+          "type": "ws"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "plain-trojan-ws",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

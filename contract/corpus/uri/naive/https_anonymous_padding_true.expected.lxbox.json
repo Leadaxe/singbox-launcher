@@ -1,0 +1,19 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "public.example-9.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "public.example-9.com"
+        },
+        "type": "naive"
+      },
+      "kind": "outbound",
+      "label": "Public-01",
+      "scheme": "naive"
+    }
+  ],
+  "v": 1
+}

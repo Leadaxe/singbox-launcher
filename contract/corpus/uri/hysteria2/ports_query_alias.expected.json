@@ -1,0 +1,23 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "example-1.com",
+        "server_port": 443,
+        "server_ports": [
+          "5000:6000"
+        ],
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "type": "hysteria2"
+      },
+      "kind": "outbound",
+      "label": "t",
+      "scheme": "hysteria2"
+    }
+  ],
+  "v": 1
+}

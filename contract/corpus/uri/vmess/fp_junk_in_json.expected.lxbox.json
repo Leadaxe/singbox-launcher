@@ -1,0 +1,35 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "security": "auto",
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "transport": {
+          "headers": {
+            "Host": "example-1.com"
+          },
+          "path": "/",
+          "type": "ws"
+        },
+        "type": "vmess",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "vmess-fp",
+      "scheme": "vmess",
+      "warnings": [
+        "utls_fp_unknown"
+      ]
+    }
+  ],
+  "v": 1
+}

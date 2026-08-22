@@ -1,0 +1,5 @@
+{
+  "_comment": "type=int: clamp в [0,65535] — uint16-backstop, значение вне диапазона роняет ядро на decode",
+  "vars": [{"name": "port_num", "type": "int", "default_value": "0"}],
+  "config": {"listen_port": "@port_num"}
+}

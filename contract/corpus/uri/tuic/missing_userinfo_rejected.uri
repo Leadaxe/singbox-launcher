@@ -1,0 +1,3 @@
+# TUIC без uuid в userinfo — ошибка парсинга
+# источник: core/config/subscription/node_parser_tuic_test.go:64 (TestParseNode_Tuic_MissingUserinfoRejected)
+tuic://example-1.com:443

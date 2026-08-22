@@ -1,0 +1,3 @@
+# §320 ALPN проносится дословно (фильтр по транспорту откачен): ws + h3,h2,http/1.1
+# источник: LxBox app/test/parser/ech_import_test.dart:102-118 (анонимизировано)
+trojan://pass123@192.0.2.50:443?path=%2Fassignment&security=tls&alpn=h3%2Ch2%2Chttp%2F1.1&host=www.example-6.com&type=ws&sni=www.example-6.com#alpn-list

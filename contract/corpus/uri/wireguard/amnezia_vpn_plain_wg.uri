@@ -1,0 +1,3 @@
+# Amnezia vpn:// c plain-WG контейнером: AWG-ключей нет, MTU=1380 из conf уважается, тег из hostName
+# источник: core/config/subscription/node_parser_amnezia_test.go:133 (TestParseNode_AmneziaVPN_PlainWG)
+vpn://AAABonichZBRa8IwFIX_itxnF5s6oRZ8kGmHHUpXTWVYGZm5arCmksaVWfrfTfXBvYyRBO7NzflOOBVscmW4VKgL8FfVowUf-FHhRfKnUmrcnbkW0IZH7VeQ8cJ8WsVW7uzzKoV7nYLfSmE1UQb1lm9wnaZqKITGomgNWtQhHqHE7XRdex9p-c0NvuGPHbEgDJNDwGJmguViWE5Hf56B1U4XrOF1Pcc2dq8iRN2YReevTG7uzHcWjuJx8ho7-3B-MFbTi1gQzBmNkyQTH8skL6eLyWU2Yg1zmGV5iWISNV91yG11Gv5YiVMulWkc-x7pUUIdhzz7Peq5N3-obTynXBsbRddz-xTqet0GgVt-zszLP7nu88LM-BHt-Dce6ivY8oZs

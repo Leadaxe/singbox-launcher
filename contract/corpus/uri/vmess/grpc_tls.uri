@@ -1,0 +1,4 @@
+# VMess v2-JSON (base64): net=grpc + tls; serviceName передаётся в поле path ("vmess-grpc"),
+# type=multi (grpc multi-mode); внутри add=example-3.com, port=443, sni=example-3.com.
+# Источник: LxBox app/test/fixtures/vmess/grpc_tls.uri
+vmess://eyJ2IjoiMiIsInBzIjoiVk1lc3MgZ1JQQyIsImFkZCI6ImV4YW1wbGUtMy5jb20iLCJwb3J0IjoiNDQzIiwiaWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJhaWQiOiIwIiwic2N5IjoiYXV0byIsIm5ldCI6ImdycGMiLCJwYXRoIjoidm1lc3MtZ3JwYyIsInR5cGUiOiJtdWx0aSIsInRscyI6InRscyIsInNuaSI6ImV4YW1wbGUtMy5jb20ifQ==

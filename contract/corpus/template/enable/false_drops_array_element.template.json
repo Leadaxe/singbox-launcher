@@ -1,0 +1,5 @@
+{
+  "_comment": "#enable:false у элемента массива — массив укорачивается, null не остаётся",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"list":[{"n":1},{"#enable":["@a"],"n":2},{"n":3}]}
+}

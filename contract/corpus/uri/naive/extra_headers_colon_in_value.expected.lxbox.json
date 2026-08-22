@@ -1,0 +1,23 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "extra_headers": {
+          "X-Trace": "id:123"
+        },
+        "password": "pass123",
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "type": "naive",
+        "username": "user1"
+      },
+      "kind": "outbound",
+      "scheme": "naive"
+    }
+  ],
+  "v": 1
+}

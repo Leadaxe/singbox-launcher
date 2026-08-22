@@ -1,0 +1,21 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "encryption": "mlkem768x25519plus.native.0rtt.AbCd-EfGh_IjKl0123456789MnOpQrStUvWxYzAb3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9Ab3-Zx_9",
+        "server": "example-1.com",
+        "server_port": 1080,
+        "transport": {
+          "path": "/ws",
+          "type": "ws"
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "enc-pq",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

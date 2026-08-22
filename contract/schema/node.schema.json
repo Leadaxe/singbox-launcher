@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lx-contract/schema/node.schema.json",
+  "title": "LX Canonical Node Envelope",
+  "description": "Языконезависимое представление результата разбора: список канонических узлов + отброшенные входы. Форма expected.json фикстур корпуса и общий язык обсуждения нод.",
+  "type": "object",
+  "required": ["v", "nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "dropped": {
+      "type": "array",
+      "description": "Отброшенные целиком входы (битая нода → подписка живёт).",
+      "items": {
+        "type": "object",
+        "required": ["ref", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "ref": { "type": "string", "description": "Строка/индекс входа, как в исходном теле" },
+          "reason": { "type": "string", "description": "Код причины из registry/warnings.json" }
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "description": "Только для body-фикстур: распознанные метаданные подписки.",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["kind", "scheme", "entry"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["outbound", "endpoint", "group"] },
+        "scheme": { "type": "string", "description": "Имя из registry/protocols/" },
+        "label": { "type": "string", "description": "Человекочитаемое имя ДО tag-политики (prefix/mask/uniquify — постобработка вне контракта)" },
+        "entry": {
+          "type": "object",
+          "description": "sing-box outbound/endpoint map БЕЗ tag; канонизация — docs/CANON.md",
+          "required": ["type"],
+          "properties": { "type": { "type": "string" } },
+          "additionalProperties": true
+        },
+        "chain": {
+          "type": "array",
+          "description": "Detour-цепочка, ближний хоп первым, cap 8 (registry/limits.json)",
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/node" }
+        },
+        "warnings": {
+          "type": "array",
+          "description": "Коды из registry/warnings.json, порядок появления",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

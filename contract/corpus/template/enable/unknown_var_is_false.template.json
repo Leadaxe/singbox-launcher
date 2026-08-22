@@ -1,0 +1,5 @@
+{
+  "_comment": "Ссылка на необъявленное имя в #enable → предикат false → узел выпадает",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"node":{"#enable":["@nope"],"y":2}}
+}

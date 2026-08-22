@@ -1,0 +1,5 @@
+{
+  "_comment": "P1: любое значение кроме true (тут 'yes') даёт false — сравнение именно с 'true', а не 'непустая строка'",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"out": {"#if": {"and": ["@flag"], "value": {"hit": true}, "else": {"hit": false}}}}
+}

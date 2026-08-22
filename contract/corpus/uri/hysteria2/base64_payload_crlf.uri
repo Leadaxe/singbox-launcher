@@ -1,0 +1,3 @@
+# Весь URI после схемы закодирован base64 (перекодированные подписки): внутри percent-encoded UTF-8 фрагмент и хвостовой CRLF
+# источник: core/config/subscription/node_parser_test.go:1120 (TestParseNode_Hysteria2)
+hysteria2://MTExMTExMTEtMTExMS0xMTExLTExMTEtMTExMTExMTExMTExQGh5Mi5leGFtcGxlLTguY29tOjI3MjAwLz9pbnNlY3VyZT0wJnNuaT1oeTIuZXhhbXBsZS04LmNvbSZtcG9ydD0yNzIwMC0yODAwMCMlRTUlODklQTklRTQlQkQlOTklRTYlQjUlODElRTklODclOEYlRUYlQkMlOUE5Mi43MiUyMEdCDQo=

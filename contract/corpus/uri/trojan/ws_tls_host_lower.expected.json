@@ -1,0 +1,31 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "m.example-1.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "transport": {
+          "headers": {
+            "Host": "m.example-1.com"
+          },
+          "path": "/tjw",
+          "type": "ws"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "tr",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

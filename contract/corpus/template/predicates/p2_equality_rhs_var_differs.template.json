@@ -1,0 +1,8 @@
+{
+  "_comment": "P2 (C8): две переменные с разными значениями — предикат ложен",
+  "vars": [
+    {"name": "mode", "type": "text", "default_value": ""},
+    {"name": "other", "type": "text", "default_value": ""}
+  ],
+  "config": {"out": {"#if": {"and": [{"@mode": "@other"}], "value": {"hit": true}, "else": {"hit": false}}}}
+}

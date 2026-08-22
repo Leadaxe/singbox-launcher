@@ -1,0 +1,5 @@
+{
+  "_comment": "Рекурсия в #enable: тот же движок, что у #if",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"node":{"#enable":{"or":["@a",{"and":["@b","@b"]}]},"y":2}}
+}

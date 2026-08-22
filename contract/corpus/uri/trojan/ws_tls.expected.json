@@ -1,0 +1,27 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "testpass123",
+        "server": "example-2.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-2.com"
+        },
+        "transport": {
+          "headers": {
+            "Host": "example-2.com"
+          },
+          "path": "/tr",
+          "type": "ws"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "Trojan WS",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

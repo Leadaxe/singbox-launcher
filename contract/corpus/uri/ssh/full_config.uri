@@ -1,0 +1,3 @@
+# Полный набор: password + key + passphrase + host_key (percent-encoded пробел) + client_version
+# источник: core/config/subscription/node_parser_test.go:1561 (TestParseNode_SSH)
+ssh://root:pass123@192.0.2.60:22?private_key_path=/home/user/.ssh/id_rsa&private_key_passphrase=myphrase&host_key=ssh-ed25519%20AAAAC3NzaC1lZDI1NTE5AAAAIFakeSyntheticHostKey00000000000000&client_version=SSH-2.0-OpenSSH_7.4p1#My SSH Server

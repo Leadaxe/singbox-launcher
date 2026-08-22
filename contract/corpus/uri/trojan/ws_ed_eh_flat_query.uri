@@ -1,0 +1,4 @@
+# §320 плоские ed/eh в query (вторая форма early data) -> max_early_data + early_data_header_name;
+# потеря eh ломает коннект: ядро при пустом header пишет base64 в путь, сервер ждёт заголовок -> 404
+# источник: LxBox app/test/parser/ws_query_early_data_test.dart:98-107 (анонимизировано)
+trojan://pass123@192.0.2.10:2053?ed=2560&eh=Sec-WebSocket-Protocol&host=ws.example-1.com&path=%2F&sni=ws.example-1.com&type=ws#ed-eh-flat

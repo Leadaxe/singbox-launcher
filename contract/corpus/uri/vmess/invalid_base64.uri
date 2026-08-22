@@ -1,0 +1,3 @@
+# Битый base64-пейлоад — парсинг обязан вернуть ошибку
+# источник: core/config/subscription/node_parser_test.go:213 (TestParseNode_VMess)
+vmess://invalid-base64!!!

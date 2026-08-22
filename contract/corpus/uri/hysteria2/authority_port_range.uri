@@ -1,0 +1,3 @@
+# Диапазон портов в authority (:20000-50000): базовый порт 20000 + server_ports
+# источник: core/config/subscription/node_parser_test.go:1258 (TestParseNode_Hysteria2)
+hysteria2://pass123@example-1.com:20000-50000/?sni=example-1.com#r

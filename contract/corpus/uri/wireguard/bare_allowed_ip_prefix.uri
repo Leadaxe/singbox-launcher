@@ -1,0 +1,3 @@
+# Голый allowedips без /N — дефолт /32
+# источник: core/config/subscription/wireguard_robustness_test.go:86 (TestParseWireGuardURI_BareAddressGetsPrefix)
+wireguard://QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=@192.0.2.71:51820?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=&address=10.0.0.2/32&allowedips=10.0.0.5#n

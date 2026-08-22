@@ -1,0 +1,5 @@
+{
+  "_comment": "§4.3: при конфликте ключей побеждает ветка (last-wins), а не сиблинг",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"tun": {"mtu": 1500, "#if": {"and": ["@flag"], "value": {"mtu": 1400}}}}
+}

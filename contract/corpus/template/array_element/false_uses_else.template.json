@@ -1,0 +1,5 @@
+{
+  "_comment": "§4.4: при наличии else элемент заменяется веткой else, а не выпадает",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"servers": [{"#if": {"and": ["@flag"], "value": "1.1.1.1", "else": "8.8.8.8"}}]}
+}

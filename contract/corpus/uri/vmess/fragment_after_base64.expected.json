@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "security": "auto",
+        "server": "a.example-20.com",
+        "server_port": 443,
+        "type": "vmess",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "frag",
+      "scheme": "vmess"
+    }
+  ],
+  "v": 1
+}

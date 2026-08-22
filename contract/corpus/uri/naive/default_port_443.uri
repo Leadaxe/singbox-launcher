@@ -1,0 +1,3 @@
+# порт опущен -> дефолт 443
+# источник: LxBox app/test/parser/uri_naive_test.dart:27-31
+naive+https://user1:pass123@host.example-1.com

@@ -1,0 +1,3 @@
+# Короткая схема hy2:// эквивалентна hysteria2://
+# источник: core/config/subscription/node_parser_test.go:1180 (TestParseNode_Hysteria2)
+hy2://pass123@example-1.com:443?sni=example-1.com#Test Server

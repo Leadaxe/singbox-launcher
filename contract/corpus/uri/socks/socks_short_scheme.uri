@@ -1,0 +1,3 @@
+# Короткая схема socks:// (эквивалент socks5)
+# источник: core/config/subscription/node_parser_test.go:1722 (TestParseNode_SOCKS5)
+socks://192.0.2.61:1080#Local

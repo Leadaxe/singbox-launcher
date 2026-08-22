@@ -1,0 +1,3 @@
+# Нет user в userinfo — ошибка
+# источник: core/config/subscription/node_parser_test.go:1609 (TestParseNode_SSH)
+ssh://@example-1.com:22

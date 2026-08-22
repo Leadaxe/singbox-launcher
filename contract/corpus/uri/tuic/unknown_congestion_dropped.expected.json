@@ -1,0 +1,21 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "p",
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "type": "tuic",
+        "uuid": "u"
+      },
+      "kind": "outbound",
+      "label": "u",
+      "scheme": "tuic"
+    }
+  ],
+  "v": 1
+}

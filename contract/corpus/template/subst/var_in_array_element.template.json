@@ -1,0 +1,5 @@
+{
+  "_comment": "§3: подстановка в позиции элемента массива",
+  "vars": [{"name": "host", "type": "text", "default_value": ""}],
+  "config": {"servers": ["8.8.8.8", "@host"]}
+}

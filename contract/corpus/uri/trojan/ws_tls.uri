@@ -1,0 +1,3 @@
+# Trojan + ws + TLS: type=ws с path/host, sni совпадает с хостом.
+# Источник: LxBox app/test/fixtures/trojan/ws_tls.uri
+trojan://testpass123@example-2.com:443?type=ws&security=tls&path=%2Ftr&host=example-2.com&sni=example-2.com#Trojan%20WS

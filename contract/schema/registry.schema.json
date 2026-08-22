@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lx-contract/schema/registry.schema.json",
+  "title": "LX Protocol Registry Entry",
+  "description": "Схема файла registry/protocols/<scheme>.json.",
+  "type": "object",
+  "required": ["v", "scheme", "kind", "singbox_type", "sources"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "scheme": { "type": "string" },
+    "kind": { "enum": ["outbound", "endpoint", "group"] },
+    "singbox_type": { "type": "string" },
+    "aliases": { "type": "array", "items": { "type": "string" } },
+    "sources": {
+      "type": "array",
+      "items": { "enum": ["uri", "singbox", "xray", "wgconf", "amnezia"] }
+    },
+    "extension": { "enum": [null, "desktop", "mobile"] },
+    "uri": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "userinfo": { "type": "object", "additionalProperties": true },
+        "host": { "type": ["object", "string"] },
+        "query": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/param" }
+        },
+        "fragment": { "type": "string" }
+      }
+    },
+    "emit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "share_uri": { "type": "boolean" },
+        "param_order": { "type": "array", "items": { "type": "string" } },
+        "note": { "type": "string" }
+      }
+    },
+    "degrade": { "type": "array", "items": { "type": "string" } },
+    "refs": { "$ref": "#/$defs/refs" },
+    "note": { "type": "string" }
+  },
+  "$defs": {
+    "param": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["string", "int", "bool", "enum", "alias_enum", "list", "base64", "hex", "json"] },
+        "values": { "type": "array" },
+        "allowlist": { "type": "string", "description": "Имя списка из registry/allowlists.json" },
+        "default": {},
+        "aliases": { "type": "array", "items": { "type": "string" } },
+        "ext": { "enum": ["desktop", "mobile"], "description": "Параметр поддержан пока одним проектом (§9 PLAN)" },
+        "note": { "type": "string" },
+        "refs": { "$ref": "#/$defs/refs" }
+      }
+    },
+    "refs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "go": { "type": "array", "items": { "type": "string" } },
+        "dart": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

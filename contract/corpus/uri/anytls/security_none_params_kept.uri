@@ -1,0 +1,4 @@
+# security=none игнорируется (TLS всё равно on), но sni/fp/alpn/insecure НЕ теряются;
+# insecure -> InsecureTlsWarning
+# источник: LxBox app/test/parser/anytls_test.dart:55-67
+anytls://pass123@example-1.com:8443?security=none&sni=cdn.example-1.com&fp=chrome&alpn=h2,http/1.1&allowInsecure=1#at-none

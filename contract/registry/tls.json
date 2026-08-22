@@ -1,0 +1,96 @@
+{
+  "v": 1,
+  "note": "Общая TLS-суб-схема share-URI для vless/vmess/trojan (и переиспользуется anytls/hysteria2/tuic с их особенностями). Код: Go vlessTLSFromNode/trojanTLSFromNode/applyTLSQueryExtras + singbox_sanitize.go; Dart parseVlessTls/parseTrojanTls/parseVmessTls + TlsSpec/normalizeTlsFingerprint.",
+  "tls": {
+    "params": {
+      "security": {
+        "type": "enum",
+        "values": ["", "none", "tls", "reality"],
+        "default": "",
+        "aliases": [],
+        "note": "'none' → tls-блок не эмитится ВООБЩЕ (не enabled:false — SPEC 045, см. policy). 'reality' — маркер намерения, но фактический гейт reality-блока = валидность pbk (не security): pbk без security=reality тоже строит REALITY (реальные xhttp+reality ноды). '' для vless = TLS on, кроме plaintext-портов; для trojan = TLS on всегда."
+      },
+      "sni": {
+        "type": "string",
+        "values": [],
+        "default": "",
+        "aliases": ["peer", "host (только trojan, 3-я ступень)"],
+        "note": "Fallback: vless sni→peer→server; trojan sni→peer→host→server; vmess-JSON sni→host→server. Эмитится как server_name."
+      },
+      "alpn": {
+        "type": "string",
+        "values": [],
+        "default": "",
+        "aliases": [],
+        "note": "Comma-list → массив строк. Оба снимают остаточное (двойное) percent-кодирование: Go normalizePercentDecodeLoop над всей строкой (vless/trojan; во vmess-ветке — нет), Dart — per-элемент до 2 проходов. РАСХОЖДЕНИЕ (новое, вне §9): Dart дополнительно ВЫБРАСЫВАЕТ элементы, не похожие на валидный protocol-id (%/пробел/управляющие символы, §151 F2); Go пропускает как есть."
+      },
+      "insecure": {
+        "type": "bool",
+        "values": [],
+        "default": false,
+        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure (только Dart)", "skip-cert-verify (только Dart)"],
+        "note": "Истина = 1|true|yes. РАСХОЖДЕНИЕ (новое, вне §9): Go матчит все ключи case-insensitively (queryGetFold — примет и Insecure=1), но знает только 3 имени; Dart матчит case-sensitively, но знает 5 имён (+allow_insecure, skip-cert-verify). Dart вешает InsecureTlsWarning (info). Эмит: Go 'insecure=1', Dart 'allowInsecure=1'."
+      },
+      "fp": {
+        "type": "alias_enum",
+        "values": ["chrome", "chrome_psk", "chrome_psk_shuffle", "chrome_padding_psk_shuffle", "chrome_pq", "chrome_pq_psk", "firefox", "edge", "safari", "360", "qq", "ios", "android", "random", "randomized"],
+        "allowlist": "utls_fingerprints",
+        "default": "",
+        "aliases": ["fingerprint (только vless, оба проекта)"],
+        "note": "Канонический словарь = uTLSClientHelloID ядра (память utls-fp-allowlist), lowercase. Xray-алиасы по префиксу: hellochrome*→chrome, hellofirefox*→firefox, helloedge*, hellosafari*, helloios*, helloandroid*, hello360*, helloqq*, hellorandomized*→randomized, hellorandom*→random (последний есть только в Go — Dart 'hellorandom…' не матчит и уводит в junk). ПОЛИТИКА МУСОРА РАСХОДИТСЯ (новое, вне §9, ломает identity-хеш): Go — junk → '' → utls-блок не эмитится (для vless затем дефолт 'random'); Dart — junk → 'chrome' + UnknownFingerprintWarning §281. Дефолт пустого fp: vless — 'random' (оба, D-009 распространяет конвенцию на anytls); vmess/trojan — без дефолта. REALITY требует uTLS: пустой fp при reality → Dart подставляет 'chrome', Go — 'random' (vless-путь) — тоже расходится."
+      },
+      "ech": {
+        "type": "string",
+        "values": [],
+        "default": "",
+        "aliases": ["echfq (не читается намеренно — legacy pq-опция, removed in sing-box 1.13)"],
+        "note": "D-006 (ЦЕЛЕВОЕ): оба проекта вычищают ECH с warning-кодом ech_ignored — ядро собрано без with_ech (Makefile.lx, ech_tag_stub.go), пропущенный ech уронил бы конфиг; вдобавок Xray-форма 'ech=<name>+<resolver>' несёт чужой ключ (public_name ≠ SNI ноды) и убивает handshake (§320 LxBox, DEVICE-VERIFIED). ТЕКУЩИЙ РАЗРЫВ (§9.B7): Dart реализовал (warnEchIgnored + вычистка при sing-box-импорте §320); Go — URI-параметр молча теряется на allowlist-эмиттере, а tls.ech из sing-box-импорта проходит НАСКВОЗЬ (кода удаления в singbox_sanitize.go нет, коммент :47-48 врёт) — Go добавляет вычистку в sanitize."
+      }
+    },
+    "reality": {
+      "pbk": {
+        "type": "string",
+        "validation": "X25519 public key: base64url/base64std, pad/nopad — декод ровно в 32 байта; иначе ключ невалиден",
+        "note": "Гейт REALITY-блока (оба проекта, §169 / broken-list-pbk-junk): мусор pbk=enabled/true/пустота на security=tls нодах → REALITY НЕ строится, нода деградирует до plain TLS (невалидный public_key отвергает ВЕСЬ конфиг). Нюанс реализации: Go требует длину 43 после среза '=' и пробует RawURL/RawStd; Dart decodeBase64Safe (4 варианта, whitespace срезан) → len==32 — практический паритет на реальных ключах."
+      },
+      "sid": {
+        "type": "string",
+        "validation": "hex-only, lowercase, длина чётная и ≤16; пустой short_id легален (нулевой [8]byte)",
+        "note": "Нормализация: не-hex руны (мojibake U+00C2, пробелы, пунктуация) вычищаются, A-F → a-f. РАСХОЖДЕНИЕ (новое, вне §9): нечётная длина / >16 — Dart отбрасывает значение целиком в '' (§343: обрезка дала бы валидную форму с ЧУЖИМ идентификатором); Go обрезает >16 до 16 символов и НЕЧЁТНУЮ длину пропускает как есть (ядро упадёт: encoding/hex odd length — кандидат на фикс в Go по модели Dart). Целевая семантика = Dart (drop, не подгонка)."
+      },
+      "note": "REALITY взаимоисключим с QUIC-типами (см. policy) и всегда носит uTLS-блок. В trojan-URI reality не парсится ни одним проектом (только vless/anytls URI + sing-box/Xray-импорт)."
+    },
+    "policy": {
+      "quic_strip": "На QUIC-типах (hysteria2, tuic, masque) utls и reality вычищаются целиком (ядро не умеет uTLS/REALITY поверх QUIC — STDConfig() error, мёртвая нода): Go SanitizeSingboxOutboundMap/quicOutboundTypes (SPEC 094 A2), Dart TlsSpec.toSingboxForQuic (§282). server_name/alpn/insecure остаются.",
+      "disabled_block": "tls.enabled:false НЕ эмитится — ключ опускается целиком (SPEC 045: явный disabled-блок ронял ядра 1.14.0-lx.5..lx.18 SIGSEGV на первом dial). Go-санитайз вычищает такой блок и на импорте. НАРУШЕНИЕ (новое, вне §9): Dart emitTrojan при выключенном TLS пишет tls:{enabled:false} (node_spec_emit.dart:211) — конфликтует с SPEC 045 и даёт A-класс расхождение identity-хеша trojan-без-TLS нод; целевое поведение — омит ключа (как Go и как Dart же в emitVless).",
+      "plaintext_ports": "Только vless: security='' на портах {80, 8080, 8880, 2052, 2082, 2086, 2095} → TLS не эмитится (эвристика CF-HTTP, посимвольно одинакова в обоих).",
+      "utls_junk": "Битые значения TLS-полей деградируют ПОЛЕ, не ноду: fp вне allowlist → drop/замена блока (см. fp), битый pbk → plain TLS, битый sid → '' ; нода живёт (философия «деградируй ноду, не конфиг» — обратное валит весь config.json через sing-box check).",
+      "singbox_import": "sing-box JSON-импорт не пересобирает tls, а санитайзит на месте: не-объект tls → drop поля; utls c junk-fp → drop utls-блока; reality не-объект/enabled:false/битый pbk → drop reality; short_id мусор → нормализация/удаление (Go singbox_sanitize.go; Dart _tlsFromSingbox — те же гейты §169/§281)."
+    }
+  },
+  "refs": {
+    "go": [
+      "core/config/subscription/node_parser_transport.go:36-44",
+      "core/config/subscription/node_parser_transport.go:49-100",
+      "core/config/subscription/node_parser_transport.go:103-110",
+      "core/config/subscription/node_parser_transport.go:562-608",
+      "core/config/subscription/node_parser_transport.go:610-622",
+      "core/config/subscription/node_parser_transport.go:625-744",
+      "core/config/subscription/singbox_sanitize.go:44-51",
+      "core/config/subscription/singbox_sanitize.go:121-218",
+      "core/config/subscription/xray_outbound_convert.go:188-263",
+      "core/config/subscription/shareuri_helpers.go:198-216"
+    ],
+    "dart": [
+      "lib/services/parser/transport.dart:290-314",
+      "lib/services/parser/transport.dart:317-416",
+      "lib/services/parser/transport.dart:437-460",
+      "lib/services/parser/uri_utils.dart:121-133",
+      "lib/services/parser/uri_utils.dart:228-258",
+      "lib/services/parser/utls_fingerprint.dart:23-90",
+      "lib/models/tls_spec.dart:5-105",
+      "lib/services/parser/json_parsers.dart:705-739",
+      "lib/services/parser/json_parsers.dart:1141-1173"
+    ]
+  }
+}

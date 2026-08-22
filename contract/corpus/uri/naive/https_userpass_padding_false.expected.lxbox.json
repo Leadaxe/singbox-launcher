@@ -1,0 +1,21 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "happened",
+        "server": "naive.example-9.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "naive.example-9.com"
+        },
+        "type": "naive",
+        "username": "what"
+      },
+      "kind": "outbound",
+      "label": "Naive!",
+      "scheme": "naive"
+    }
+  ],
+  "v": 1
+}

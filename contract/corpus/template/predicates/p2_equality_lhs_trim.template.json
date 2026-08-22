@@ -1,0 +1,5 @@
+{
+  "_comment": "P2: левая часть сравнивается после TrimSpace (§4.2 P2)",
+  "vars": [{"name": "mode", "type": "text", "default_value": ""}],
+  "config": {"out": {"#if": {"and": [{"@mode": "manual"}], "value": {"hit": true}, "else": {"hit": false}}}}
+}

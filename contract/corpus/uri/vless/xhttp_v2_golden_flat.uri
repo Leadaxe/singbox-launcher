@@ -1,0 +1,3 @@
+# Golden-фикстура SPEC 002 §8.2: все поля XHTTP v2 плоским camelCase — маппинг на snake_case
+# источник: core/config/subscription/xhttp_v2_test.go:30 (TestXHTTPv2_FlatCamelCaseFields)
+vless://b831381d-6324-4d53-ad4f-8cda48b30811@www.example.com:443?type=xhttp&security=tls&sni=www.example.com&fp=chrome&encryption=none&host=www.example.com&path=%2Fxhttp&mode=packet-up&xPaddingBytes=100-1000&noGRPCHeader=true&sessionPlacement=header&sessionKey=X-Session&seqPlacement=query&seqKey=x_seq&uplinkDataPlacement=header&uplinkDataKey=X-Data&uplinkChunkSize=3000-4000&uplinkHTTPMethod=POST&xPaddingObfsMode=true&xPaddingKey=x_padding&xPaddingHeader=X-Padding&xPaddingPlacement=header&xPaddingMethod=tokenish&scMaxEachPostBytes=1000000&scMinPostsIntervalMs=30#golden

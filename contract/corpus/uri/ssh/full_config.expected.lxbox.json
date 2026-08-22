@@ -1,0 +1,21 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "host_key": [
+          "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeSyntheticHostKey00000000000000"
+        ],
+        "password": "pass123",
+        "private_key_passphrase": "myphrase",
+        "server": "192.0.2.60",
+        "server_port": 22,
+        "type": "ssh",
+        "user": "root"
+      },
+      "kind": "outbound",
+      "label": "My SSH Server",
+      "scheme": "ssh"
+    }
+  ],
+  "v": 1
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "ПОРЯДОК (§6): #enable вычисляется первым; при false внутренности НЕ вычисляются. Опечатка @typo_here внутри не даёт warning — если бы движок зашёл внутрь, был бы template_var_undeclared",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"node":{"#enable":["@a"],"#if":{"and":["@typo_here"],"value":{"x":1}}}}
+}

@@ -1,0 +1,3 @@
+# Обрезанный vpn:// пейлоад (короче заголовка qCompress) — ошибка
+# источник: core/config/subscription/node_parser_amnezia_test.go:199 (TestParseNode_AmneziaVPN_Garbage)
+vpn://AAAA

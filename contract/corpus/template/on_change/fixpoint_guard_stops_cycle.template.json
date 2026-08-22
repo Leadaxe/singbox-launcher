@@ -1,0 +1,9 @@
+{
+  "_comment": "§4.6: fixpoint-guard — при совпадении нового значения с уже записанным запись не производится и рекурсия обрывается (цикл a<->b не зацикливается)",
+  "_changed": "a",
+  "vars": [
+    {"name": "a", "type": "text", "default_value": "x", "on_change": {"set": {"@b": {"#if": {"and": [{"@a": "x"}], "value": "x", "else": "y"}}}}},
+    {"name": "b", "type": "text", "default_value": "x", "on_change": {"set": {"@a": {"#if": {"and": [{"@b": "x"}], "value": "x", "else": "y"}}}}}
+  ],
+  "config": {"a": "@a", "b": "@b"}
+}

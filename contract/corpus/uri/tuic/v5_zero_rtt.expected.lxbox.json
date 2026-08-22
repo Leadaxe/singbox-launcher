@@ -1,0 +1,27 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "congestion_control": "new_reno",
+        "password": "testpass123",
+        "server": "example-3.com",
+        "server_port": 443,
+        "tls": {
+          "alpn": [
+            "h3"
+          ],
+          "enabled": true,
+          "server_name": "example-3.com"
+        },
+        "type": "tuic",
+        "udp_relay_mode": "native",
+        "uuid": "33333333-4444-5555-6666-777777777777",
+        "zero_rtt_handshake": true
+      },
+      "kind": "outbound",
+      "label": "TUIC ZeroRTT",
+      "scheme": "tuic"
+    }
+  ],
+  "v": 1
+}

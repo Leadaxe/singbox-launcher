@@ -1,0 +1,10 @@
+{
+  "dropped": [
+    {
+      "reason": "parse_error",
+      "ref": "wireguard://UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=@:51820?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU%3D&address=10.10.10.2/32&allowedips=0.0.0.0/0"
+    }
+  ],
+  "nodes": [],
+  "v": 1
+}

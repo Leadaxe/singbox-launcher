@@ -1,0 +1,5 @@
+{
+  "_comment": "SPEC 107: КАНОН — все ключевые слова движка помечены '#'. Правило языка: '#' = ключевое слово, '@' = ссылка на переменную, остальное — данные",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"out":{"#if":{"#or":["@a",{"#and":["@b","@b"]}],"#value":{"hit":true},"#else":{"hit":false}}}}
+}

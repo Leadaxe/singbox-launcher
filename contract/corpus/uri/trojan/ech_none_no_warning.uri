@@ -1,0 +1,3 @@
+# ech=none -> ни ech-блока, ни warning
+# источник: LxBox app/test/parser/ech_import_test.dart:50-60
+trojan://pass123@example-1.com:443?type=ws&path=%2Fx&security=tls&ech=none&sni=example-1.com#ech-none

@@ -1,0 +1,3 @@
+# fingerprint= -> utls, pinSHA256= -> certificate_public_key_sha256
+# источник: core/config/subscription/node_parser_test.go:1302 (TestParseNode_Hysteria2)
+hysteria2://pass123@203.0.113.1:443?sni=hy.example-1.com&fingerprint=firefox&pinSHA256=YWJjZGVmZ2g=#h

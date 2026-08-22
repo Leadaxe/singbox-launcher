@@ -1,0 +1,13 @@
+{
+  "_comment": "§4.6: on_change.set пишет несколько целей за один раз (реальный случай — ipv6_enabled -> dns_strategy + resolve_strategy)",
+  "_changed": "flag",
+  "vars": [
+    {"name": "flag", "type": "bool", "default_value": "false", "on_change": {"set": {
+      "@s1": {"#if": {"and": ["@flag"], "value": "prefer_ipv4", "else": "ipv4_only"}},
+      "@s2": {"#if": {"and": ["@flag"], "value": "prefer_ipv4", "else": "ipv4_only"}}
+    }}},
+    {"name": "s1", "type": "text", "default_value": "ipv4_only"},
+    {"name": "s2", "type": "text", "default_value": "ipv4_only"}
+  ],
+  "config": {"dns": "@s1", "resolve": "@s2"}
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "#enable:true → дальше обычный обход, #if того же узла работает",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"node":{"#enable":["@a"],"#if":{"and":["@b"],"value":{"x":1},"else":{"x":2}}}}
+}

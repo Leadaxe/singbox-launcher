@@ -1,0 +1,3 @@
+# anytls без userinfo (пароля) — ошибка парсинга
+# источник: core/config/subscription/node_parser_anytls_test.go:52 (TestAnyTLS_MissingUserinfoRejected)
+anytls://any.example-1.com:443#x

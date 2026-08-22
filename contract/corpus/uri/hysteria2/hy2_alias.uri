@@ -1,0 +1,3 @@
+# Схема-алиас hy2:// (эквивалент hysteria2://), плюс insecure=1 и нестандартный порт.
+# Источник: LxBox app/test/fixtures/hysteria2/hy2_alias.uri
+hy2://testpass123@example-3.com:8443?insecure=1&sni=example-3.com#Hy2%20Alias

@@ -1,0 +1,3 @@
+# net=h2 -> http-транспорт (host списком) + обязательный tls
+# источник: core/config/subscription/node_parser_test.go:283 (TestParseNode_VMess)
+vmess://eyJ2IjoiMiIsInBzIjoiaDJuIiwiYWRkIjoidm0uZXhhbXBsZS0yMC5jb20iLCJwb3J0Ijo0NDMsImlkIjoiMTExMTExMTEtMTExMS0xMTExLTExMTEtMTExMTExMTExMTExIiwibmV0IjoiaDIiLCJwYXRoIjoiLyIsImhvc3QiOiJjZG4uZXhhbXBsZS0yMC5jb20iLCJ0bHMiOiJ0bHMifQ==

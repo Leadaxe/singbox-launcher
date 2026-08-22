@@ -1,0 +1,4 @@
+# TUIC v5: congestion_control=cubic, udp_relay_mode=quic, multi-ALPN "h3,h3-29" (список через запятую),
+# allow_insecure=1, нестандартный порт.
+# Источник: LxBox app/test/fixtures/tuic/v5_cubic.uri
+tuic://22222222-3333-4444-5555-666666666666:testpass123@example-2.com:8443?congestion_control=cubic&udp_relay_mode=quic&alpn=h3,h3-29&sni=example-2.com&allow_insecure=1#TUIC%20Cubic

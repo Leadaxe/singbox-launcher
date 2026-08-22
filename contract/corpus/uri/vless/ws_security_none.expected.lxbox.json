@@ -1,0 +1,23 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 80,
+        "transport": {
+          "headers": {
+            "Host": "cdn.example-1.com"
+          },
+          "path": "/vless/",
+          "type": "ws"
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "plain-ws",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

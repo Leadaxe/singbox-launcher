@@ -1,0 +1,3 @@
+# §281 псевдоним fp=hellochrome_131 -> chrome молча (VLESS-конвенция на anytls)
+# источник: LxBox app/test/parser/utls_fingerprint_test.dart:149-153
+anytls://pass123@example-1.com:443?fp=hellochrome_131&sni=x.example.com#at-fp

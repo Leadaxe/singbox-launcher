@@ -1,0 +1,105 @@
+{
+  "v": 1,
+  "scheme": "trojan",
+  "kind": "outbound",
+  "singbox_type": "trojan",
+  "aliases": [],
+  "sources": ["uri", "singbox", "xray"],
+  "extension": null,
+  "uri": {
+    "userinfo": {
+      "meaning": "password",
+      "note": "Percent-decoded. РАСХОЖДЕНИЕ (новое, вне §9): при ':' в userinfo Go берёт паролем часть ДО ':' (Username(); хвост уходит в Query['password'] и не эмитится), Dart — ВЕСЬ userinfo включая ':' (userParts.join(':')). Пустой пароль = drop ноды. Дефолтный порт 443."
+    },
+    "query": {
+      "type": {
+        "type": "enum",
+        "values": ["", "tcp", "raw", "ws", "grpc", "http", "h2", "httpupgrade", "xhttp"],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "note": "Транспорт — суб-схема registry/transports.json (общая с vless: тот же uriTransportFromQuery/parseTransport). 'h2' в URI читает только Dart — см. transports.json."
+      },
+      "headerType": {
+        "type": "enum",
+        "values": ["", "http"],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "note": "tcp|raw + headerType=http → transport 'http' (Xray-камуфляж). См. transports.json."
+      },
+      "security": {
+        "type": "enum",
+        "values": ["", "none", "tls"],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "note": "TLS-суб-схема — registry/tls.json. Для trojan дефолт = TLS ВКЛЮЧЁН (security пустой → tls on; plaintext-портовой эвристики vless здесь нет). security=none → tls-блок не эмитится вовсе (SPEC 045: явный tls{enabled:false} ронял ядра lx.5..lx.18 SIGSEGV). ВНИМАНИЕ: Dart emitTrojan пишет tls:{enabled:false} (node_spec_emit.dart:211) — новое расхождение вне §9, конфликтует с SPEC 045 и ломает identity-хеш класса нод. REALITY у trojan-URI не разбирается ни одним проектом (pbk игнорируется; reality приезжает только через sing-box/Xray-импорт)."
+      },
+      "sni": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": "",
+        "aliases": ["peer", "host (третий fallback — только trojan)"],
+        "note": "Fallback-цепочка sni → peer → host → server (оба проекта, посимвольно одинаковая). См. tls.json."
+      },
+      "fp": {
+        "type": "alias_enum",
+        "values": [],
+        "allowlist": "utls_fingerprints",
+        "default": "",
+        "aliases": [],
+        "note": "БЕЗ дефолта (в отличие от vless 'random'): пустой fp → utls-блок не эмитится (оба). Алиас 'fingerprint' у trojan НЕ читается (только vless). См. tls.json."
+      },
+      "alpn": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "note": "Comma-list. См. tls.json."
+      },
+      "insecure": {
+        "type": "bool",
+        "values": [],
+        "allowlist": null,
+        "default": false,
+        "aliases": ["allowInsecure", "allowinsecure"],
+        "note": "Семейство ключей — см. tls.json (у Dart шире: + allow_insecure, skip-cert-verify)."
+      }
+    },
+    "fragment": "label"
+  },
+  "emit": {
+    "share_uri": true,
+    "param_order": ["alpn", "fp", "host", "insecure", "path", "security", "serviceName", "sni", "type"],
+    "note": "Порядок лексикографический (url.Values.Encode / buildQuery). Расхождение формы: Go при включённом TLS НЕ пишет security=tls (дефолт схемы), Dart пишет явно; insecure: Go 'insecure=1', Dart 'allowInsecure=1'. Оба парсера принимают обе формы."
+  },
+  "degrade": [
+    "пустой hostname или userinfo → drop ноды",
+    "невалидный порт → drop ноды",
+    "security=none → tls-ключ опускается целиком (НЕ enabled:false — SPEC 045)",
+    "fp вне utls_fingerprints: Go → drop utls-блока; Dart → 'chrome' + warning (см. tls.json)",
+    "Xray-импорт: пустой password → drop ноды (missing trojan password)",
+    "sing-box импорт: битые tls/utls/reality чинятся санитайзом (см. tls.json policy)"
+  ],
+  "refs": {
+    "go": [
+      "core/config/subscription/node_parser_core.go:140-141",
+      "core/config/subscription/node_parser_core.go:308-316",
+      "core/config/subscription/node_parser_core.go:366-374",
+      "core/config/subscription/node_parser_core.go:759-766",
+      "core/config/subscription/node_parser_transport.go:714-744",
+      "core/config/subscription/xray_protocols.go:182-219",
+      "core/config/subscription/shareuri_trojan.go:10-59"
+    ],
+    "dart": [
+      "lib/services/parser/uri_parsers/trojan_parser.dart:11-45",
+      "lib/services/parser/transport.dart:375-395",
+      "lib/services/parser/json_parsers.dart:548-577",
+      "lib/services/parser/json_parsers.dart:839-851",
+      "lib/models/node_spec_emit.dart:199-230"
+    ]
+  }
+}

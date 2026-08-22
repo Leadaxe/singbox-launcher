@@ -1,0 +1,3 @@
+# AWG + mtu=1200 (явно ниже клампа) -> уважаем значение из ссылки
+# источник: LxBox app/test/parser/awg_test.dart:116-119
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32&jc=10&mtu=1200#awg-mtu1200

@@ -1,0 +1,29 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com"
+        },
+        "transport": {
+          "early_data_header_name": "Sec-WebSocket-Protocol",
+          "headers": {
+            "Host": "example-1.com"
+          },
+          "max_early_data": 1024,
+          "path": "/x",
+          "type": "ws"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "ed-mixed",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

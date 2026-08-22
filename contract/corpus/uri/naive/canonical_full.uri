@@ -1,0 +1,4 @@
+# spec 037 канонический naive+https: user+pass+port+label; padding=false игнорируется;
+# naive не принимает alpn/insecure/utls/reality в TLS-блоке
+# источник: LxBox app/test/parser/uri_naive_test.dart:7-25
+naive+https://user1:pass123@server.example-1.com:443/?padding=false#JP-01

@@ -1,0 +1,27 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "192.0.2.30",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "cdn.example-3.com"
+        },
+        "transport": {
+          "headers": {
+            "Host": "cdn.example-3.com"
+          },
+          "path": "Telegram🇨🇳",
+          "type": "ws"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "uni-path",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

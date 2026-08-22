@@ -1,0 +1,40 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "172.16.0.2/32"
+        ],
+        "h1": 1,
+        "h2": 2,
+        "h3": 3,
+        "h4": 4,
+        "ib": "chrome",
+        "id": "www.example-1.com",
+        "ip": "quic",
+        "jc": 4,
+        "jmax": 70,
+        "jmin": 40,
+        "mtu": 1280,
+        "peers": [
+          {
+            "address": "192.0.2.73",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "port": 955,
+            "public_key": "ZWZnaGlqa2xtbm9wcXJzdHV2d3h5ent8fX5/Pj4+q80="
+          }
+        ],
+        "private_key": "JSwzOkFIT1ZdZGtyeYCHjpWco6qxuL/GzdTb4unw9/4=",
+        "s1": 0,
+        "s2": 0,
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "WARP",
+      "scheme": "wireguard"
+    }
+  ],
+  "v": 1
+}

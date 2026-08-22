@@ -1,0 +1,5 @@
+{
+  "_comment": "Смешанная запись (канон снаружи, легаси внутри) — обе читаются одним движком",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"out":{"#if":{"#and":["@a",{"or":["@b","@a"]}],"#value":{"hit":true},"else":{"hit":false}}}}
+}

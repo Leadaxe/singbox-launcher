@@ -1,0 +1,3 @@
+# Ключ security="null" + serverName — тоже нормализуется в auto
+# источник: core/config/subscription/node_parser_test.go:241 (TestParseNode_VMess)
+vmess://eyJ2IjoiMiIsInBzIjoic2VjLWtleSIsImFkZCI6InZtLmV4YW1wbGUtMjAuY29tIiwicG9ydCI6IjQ0MyIsImlkIjoiMTExMTExMTEtMTExMS0xMTExLTExMTEtMTExMTExMTExMTExIiwibmV0IjoidGNwIiwic2VjdXJpdHkiOiJudWxsIiwidGxzIjoidGxzIiwic2VydmVyTmFtZSI6InZtLmV4YW1wbGUtMjAuY29tIn0=

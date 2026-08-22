@@ -1,0 +1,8 @@
+{
+  "_comment": "D-045: два независимых условия на одном объекте через именованные ключи; применяются в порядке сортировки ключей",
+  "vars": [
+    {"name": "a", "type": "bool", "default_value": "false"},
+    {"name": "b", "type": "bool", "default_value": "false"}
+  ],
+  "config": {"tun": {"type": "tun", "#if a": {"and": ["@a"], "value": {"x": 1}}, "#if b": {"and": ["@b"], "value": {"y": 2}}}}
+}

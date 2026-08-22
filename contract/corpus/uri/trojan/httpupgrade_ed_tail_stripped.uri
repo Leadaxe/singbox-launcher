@@ -1,0 +1,3 @@
+# httpupgrade: ?ed-хвост срезается, early data НЕ появляется (не поддержана транспортом)
+# источник: LxBox app/test/parser/ws_early_data_test.dart:53-62
+trojan://pass123@example-1.com:443?type=httpupgrade&path=%2Fup%3Fed%3D2048&security=tls&sni=example-1.com#hu-ed

@@ -1,0 +1,3 @@
+# base64-userinfo (method:password без padding) декодируется; round-trip сохраняет метод и пароль
+# источник: LxBox app/test/parser/round_trip_test.dart:52-61 (userinfo пересобран синтетически)
+ss://YWVzLTI1Ni1nY206cGFzczEyMzQ1@example-1.com:8388#ss-b64

@@ -1,0 +1,10 @@
+{
+  "_comment": "§4.6: после записи цели применяется её собственный on_change — цепочка a -> b -> c",
+  "_changed": "a",
+  "vars": [
+    {"name": "a", "type": "bool", "default_value": "false", "on_change": {"set": {"@b": {"#if": {"and": ["@a"], "value": "on", "else": "off"}}}}},
+    {"name": "b", "type": "text", "default_value": "off", "on_change": {"set": {"@c": {"#if": {"and": [{"@b": "on"}], "value": "deep", "else": "shallow"}}}}},
+    {"name": "c", "type": "text", "default_value": "shallow"}
+  ],
+  "config": {"level": "@c"}
+}

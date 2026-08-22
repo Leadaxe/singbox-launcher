@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "h.example-1.com",
+        "server_port": 8080,
+        "type": "http",
+        "username": "alice"
+      },
+      "kind": "outbound",
+      "label": "plus-http",
+      "scheme": "http"
+    }
+  ],
+  "v": 1
+}

@@ -1,0 +1,8 @@
+{
+  "_comment": "Голая ссылка на text_list В ПОЗИЦИИ ЭЛЕМЕНТА массива сплайсится, а не вкладывается. Живой случай: tun.address в шаблоне — [\"@tun_address\", {\"#if\": ...}]; вложение даёт [[\"10.0.0.1/30\"]], и ядро отвергает конфиг (cannot unmarshal array into netip.Prefix)",
+  "vars": [
+    {"name": "addrs", "type": "text_list", "default_value": ""},
+    {"name": "v6_on", "type": "bool", "default_value": "false"}
+  ],
+  "config": {"address": ["@addrs", {"#if": {"and": ["@v6_on"], "value": "fd00::1/64"}}]}
+}

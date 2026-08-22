@@ -1,0 +1,10 @@
+{
+  "dropped": [
+    {
+      "reason": "parse_error",
+      "ref": "vmess://invalid-base64!!!"
+    }
+  ],
+  "nodes": [],
+  "v": 1
+}

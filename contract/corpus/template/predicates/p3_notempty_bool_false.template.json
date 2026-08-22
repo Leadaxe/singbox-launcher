@@ -1,0 +1,5 @@
+{
+  "_comment": "P3 (C2): #notEmpty на bool-var смотрит на ЗНАЧЕНИЕ, а не на длину строки: 'false' -> пусто. Dart сегодня даёт true (строка 'false' непуста)",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"out": {"#if": {"and": [{"@flag": "#notEmpty"}], "value": {"hit": true}, "else": {"hit": false}}}}
+}

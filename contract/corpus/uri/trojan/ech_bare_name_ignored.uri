@@ -1,0 +1,3 @@
+# bare ech (без resolver) -> тоже игнор + warning
+# источник: LxBox app/test/parser/ech_import_test.dart:40-48 (анонимизировано)
+trojan://pass123@example-1.com:443?type=ws&path=%2Fx&security=tls&ech=probe.example-5.com&sni=example-1.com#ech-bare

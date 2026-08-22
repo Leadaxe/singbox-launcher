@@ -1,0 +1,3 @@
+# heartbeat=10 (голое число) нормализуется в duration "10s"
+# источник: core/config/subscription/node_parser_tuic_test.go:82 (TestBuildOutbound_Tuic_HeartbeatSeconds)
+tuic://u:p@example-1.com/?heartbeat=10

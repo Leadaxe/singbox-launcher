@@ -1,0 +1,23 @@
+%% Нормативный пайплайн эмиссии (SPEC 103): узел → outbound/endpoint JSON и share-URI.
+%% Каждой схеме — пара «парсер ↔ эмиттер» (память emitter-parser-pairing):
+%% схема без emit-ветки молча урезает узел — запрещено, ловится корпусом corpus/emit.
+flowchart TD
+  CE["Канонический узел"] --> K{"kind"}
+  K -- outbound --> OJ["sing-box outbound map
+(канон: CANON.md — без tag/detour,
+без дефолтных полей, сорт ключей;
+masque — тоже outbound)"]
+  K -- endpoint --> EJ["sing-box endpoint map
+(wireguard; без name/system — D-010)"]
+  K -- group --> GJ["selector / urltest
+(члены — по label)"]
+  OJ --> SU{"share_uri в реестре?"}
+  EJ --> SU
+  SU -- да --> U["share-URI
+(emit.param_order из registry;
+round-trip: parse(emit(x)) ≡ x)"]
+  SU -- нет --> NX["ErrShareURINotSupported
+(группы, multi-peer WG, служебные)"]
+  U --> XC["Cross-emit (corpus/emit):
+URI, эмитированный проектом A,
+парсится проектом B в тот же узел"]

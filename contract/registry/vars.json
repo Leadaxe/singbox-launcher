@@ -1,0 +1,288 @@
+{
+  "v": 1,
+  "note": "Реестр имён template-переменных обоих проектов. Источники: singbox-launcher bin/wizard_template.json (vars[]) и LxBox app/assets/wizard_template.json (sections[].vars[]). portable=true — имя есть в обоих шаблонах с одинаковой семантикой: только такие имена допустимы в секции vars бэкапа (PLAN §7). App-флаги LxBox (_appFeatureFlagVars, settings_storage.dart:164) и preset-локальные vars в реестр не входят. Типы — канон TEMPLATE_LANG.md §2.2; где типы сторон расходятся, это указано в note.",
+  "vars": {
+    "log_level": {
+      "type": "enum",
+      "portable": true,
+      "in": "both",
+      "note": "sing-box log.level; options идентичны (trace..panic)"
+    },
+    "auto_detect_interface": {
+      "type": "bool",
+      "portable": true,
+      "in": "both",
+      "note": "route.auto_detect_interface"
+    },
+    "dns_strategy": {
+      "type": "enum",
+      "portable": true,
+      "in": "both",
+      "note": "dns.strategy. Значение ведётся галкой ipv6_enabled через on_change (D-043): prefer_ipv4 при IPv6, иначе ipv4_only."
+    },
+    "dns_final": {
+      "type": "text",
+      "portable": true,
+      "in": "both",
+      "note": "dns.final — символическая ссылка на тег DNS-сервера; наборы тегов у сторон разные, при импорте действует политика «нет тега → warning» (PLAN §7)"
+    },
+    "dns_default_domain_resolver": {
+      "type": "text",
+      "portable": true,
+      "in": "both",
+      "note": "route.default_domain_resolver — символическая ссылка на тег DNS-сервера, та же политика, что dns_final"
+    },
+    "resolve_strategy": {
+      "type": "enum",
+      "portable": true,
+      "in": "both",
+      "note": "strategy route-правила action=resolve. Ведётся галкой ipv6_enabled через on_change (D-043), как и dns_strategy."
+    },
+    "urltest_url": {
+      "type": "text",
+      "portable": true,
+      "in": "both",
+      "note": "urltest.url автогруппы; options — подсказки, наборы чуть разные"
+    },
+    "urltest_interval": {
+      "type": "text",
+      "portable": true,
+      "in": "both",
+      "note": "urltest.interval (duration-строка); desktop объявляет enum, mobile text — обе стороны коэрсят в строку, семантика одна; дефолты 5m vs 15m"
+    },
+    "urltest_tolerance": {
+      "type": "int",
+      "portable": true,
+      "in": "both",
+      "note": "urltest.tolerance (ms); desktop сегодня enum + int-каст по хардкод-имени (разрыв C5, Go мигрирует на type int), mobile уже int; дефолты 100 vs 30"
+    },
+    "tun_mtu": {
+      "type": "int",
+      "portable": true,
+      "in": "both",
+      "note": "tun.mtu; desktop сегодня type text + int-каст по имени (разрыв C5), mobile int с clamp; дефолт 1492 совпадает"
+    },
+    "tun_stack": {
+      "type": "enum",
+      "portable": true,
+      "in": "both",
+      "note": "tun.stack; options идентичны (system/gvisor/mixed)"
+    },
+    "tls_fragment": {
+      "type": "bool",
+      "portable": true,
+      "in": "both",
+      "note": "tls.fragment анти-DPI на первом хопе"
+    },
+    "tls_record_fragment": {
+      "type": "bool",
+      "portable": true,
+      "in": "both",
+      "note": "tls.record_fragment; на desktop скрыт за if:[@tls_fragment] — на переносимость значения не влияет"
+    },
+    "tls_fragment_fallback_delay": {
+      "type": "text",
+      "portable": true,
+      "in": "both",
+      "note": "tls.fragment_fallback_delay (duration-строка); дефолты '' vs 500ms"
+    },
+    "tls_mixed_case_sni": {
+      "type": "bool",
+      "portable": true,
+      "in": "both",
+      "note": "рандомизация регистра SNI"
+    },
+    "tun_address": {
+      "type": "text_list",
+      "portable": false,
+      "in": "both",
+      "note": "РАЗРЫВ N7: имя общее, семантика разная — desktop text_list (несколько CIDR, IPv4+IPv6 строками), mobile text (только IPv4; IPv6 — отдельные ipv6_enabled/tun_address6). Перенос значения как есть небезопасен"
+    },
+    "cert_store": {
+      "type": "enum",
+      "portable": false,
+      "in": "desktop",
+      "note": "certificate.store; РАЗРЫВ N1: на mobile та же семантика под именем certificate_store — кандидат на выравнивание имени"
+    },
+    "certificate_store": {
+      "type": "enum",
+      "portable": false,
+      "in": "mobile",
+      "note": "certificate.store; пара к cert_store (desktop), разрыв N1"
+    },
+    "strict_route": {
+      "type": "bool",
+      "portable": false,
+      "in": "desktop",
+      "note": "tun.strict_route; РАЗРЫВ N1: на mobile — tun_strict_route"
+    },
+    "tun_strict_route": {
+      "type": "bool",
+      "portable": false,
+      "in": "mobile",
+      "note": "tun.strict_route; пара к strict_route (desktop), разрыв N1"
+    },
+    "tun_interface_name": {
+      "type": "text",
+      "portable": false,
+      "in": "desktop",
+      "note": "tun.interface_name; РАЗРЫВ N1: на mobile — tun_name; per-platform default с @runtime.target (desktop-расширение)"
+    },
+    "tun_name": {
+      "type": "text",
+      "portable": false,
+      "in": "mobile",
+      "note": "tun.interface_name; пара к tun_interface_name (desktop), разрыв N1"
+    },
+    "proxy_in_listen": {
+      "type": "text",
+      "portable": false,
+      "in": "desktop",
+      "note": "listen mixed-инбаунда; РАЗРЫВ N1: на mobile — proxy_listen"
+    },
+    "proxy_listen": {
+      "type": "text",
+      "portable": false,
+      "in": "mobile",
+      "note": "пара к proxy_in_listen (desktop), разрыв N1"
+    },
+    "proxy_in_listen_port": {
+      "type": "int",
+      "portable": false,
+      "in": "desktop",
+      "note": "listen_port mixed-инбаунда (сегодня text + int-каст по имени, C5); РАЗРЫВ N1: на mobile — proxy_port"
+    },
+    "proxy_port": {
+      "type": "int",
+      "portable": false,
+      "in": "mobile",
+      "note": "пара к proxy_in_listen_port (desktop), разрыв N1"
+    },
+    "proxy_in_username": {
+      "type": "text",
+      "portable": false,
+      "in": "desktop",
+      "note": "auth-username локального прокси; РАЗРЫВ N1: на mobile — proxy_user"
+    },
+    "proxy_user": {
+      "type": "text",
+      "portable": false,
+      "in": "mobile",
+      "note": "пара к proxy_in_username (desktop), разрыв N1"
+    },
+    "proxy_in_password": {
+      "type": "secret",
+      "portable": false,
+      "in": "desktop",
+      "note": "auth-password локального прокси; РАЗРЫВ N1: на mobile — proxy_pass"
+    },
+    "proxy_pass": {
+      "type": "secret",
+      "portable": false,
+      "in": "mobile",
+      "note": "пара к proxy_in_password (desktop), разрыв N1"
+    },
+    "proxy_in_auth_enabled": {
+      "type": "bool",
+      "portable": false,
+      "in": "desktop",
+      "note": "включение auth локального прокси; РАЗРЫВ N1: на mobile — proxy_auth"
+    },
+    "proxy_auth": {
+      "type": "bool",
+      "portable": false,
+      "in": "mobile",
+      "note": "пара к proxy_in_auth_enabled (desktop), разрыв N1"
+    },
+    "enable_proxy_in": {
+      "type": "bool",
+      "portable": false,
+      "in": "desktop",
+      "note": "включение mixed-инбаунда; на mobile роль закрывает enum vpn_mode (proxy/vpn_proxy) — модель режимов разная, прямого маппинга нет"
+    },
+    "tun": {
+      "type": "bool",
+      "portable": false,
+      "in": "desktop",
+      "note": "включение TUN-инбаунда; на mobile TUN управляется vpn_mode"
+    },
+    "gateway_mode": {
+      "type": "bool",
+      "portable": false,
+      "in": "desktop",
+      "note": "режим шлюза (LAN-шаринг); mobile-аналога нет"
+    },
+    "gateway_include_interface": {
+      "type": "text_list",
+      "portable": false,
+      "in": "desktop",
+      "note": "tun.include_interface для gateway-режима"
+    },
+    "proxy_in_set_system_proxy": {
+      "type": "bool",
+      "portable": false,
+      "in": "desktop",
+      "note": "set_system_proxy mixed-инбаунда; на мобиле не бывает"
+    },
+    "clash_api": {
+      "type": "text",
+      "portable": false,
+      "in": "desktop",
+      "note": "experimental.clash_api.external_controller; только local-target (if @runtime.target)"
+    },
+    "clash_secret": {
+      "type": "secret",
+      "portable": false,
+      "in": "desktop",
+      "note": "секрет Clash API; автогенерация по CHANGE_THIS_* (desktop-расширение §7.3)"
+    },
+    "route_final": {
+      "type": "text",
+      "portable": false,
+      "in": "desktop",
+      "note": "route.final как var (wizard_ui hidden); на mobile route.final — top-level state, не var; в бэкапе — секция route.final (PLAN §9.D5)"
+    },
+    "vpn_mode": {
+      "type": "enum",
+      "portable": false,
+      "in": "mobile",
+      "note": "vpn|proxy|vpn_proxy — способ захвата трафика; на desktop покрыто парой tun/enable_proxy_in"
+    },
+    "proxy_type": {
+      "type": "enum",
+      "portable": false,
+      "in": "mobile",
+      "note": "тип инбаунда локального прокси (mixed/http/socks); desktop всегда mixed"
+    },
+    "resolve_enabled": {
+      "type": "bool",
+      "portable": false,
+      "in": "mobile",
+      "note": "тумблер resolve-правила; на desktop resolve-правило безусловно в params[]; управляется on_change из fakeip-пресета"
+    },
+    "ipv6_enabled": {
+      "type": "bool",
+      "portable": true,
+      "in": "both",
+      "note": "Включение IPv6 в туннеле (default false). Перенесено в лаунчер (D-043): добавляет IPv6-адрес в TUN и переводит dns_strategy/resolve_strategy в prefer_ipv4, при выключении — ipv4_only (через on_change)."
+    },
+    "tun_address6": {
+      "type": "text",
+      "portable": true,
+      "in": "both",
+      "note": "IPv6 CIDR туннеля; применяется при ipv6_enabled=true (D-043). Есть в обоих проектах."
+    },
+    "route_address_enable": {
+      "type": "bool",
+      "portable": false,
+      "in": "mobile",
+      "note": "явные half-range маршруты вместо дефолтных"
+    },
+    "tun_auto_route": {
+      "type": "bool",
+      "portable": false,
+      "in": "mobile",
+      "note": "tun.auto_route как var; на desktop auto_route захардкожен true в params[]"
+    }
+  }
+}

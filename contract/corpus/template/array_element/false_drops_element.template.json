@@ -1,0 +1,8 @@
+{
+  "_comment": "§4.4: условие false без else — элемент ВЫПАДАЕТ из массива (массив укорачивается, null не остаётся)",
+  "vars": [
+    {"name": "flag", "type": "bool", "default_value": "false"},
+    {"name": "addr6", "type": "text", "default_value": ""}
+  ],
+  "config": {"address": ["10.0.0.1/30", {"#if": {"and": ["@flag"], "value": "@addr6"}}]}
+}

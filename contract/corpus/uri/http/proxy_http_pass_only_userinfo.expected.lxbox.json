@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "h.example-1.com",
+        "server_port": 3128,
+        "type": "http"
+      },
+      "kind": "outbound",
+      "label": "pass-only",
+      "scheme": "http"
+    }
+  ],
+  "v": 1
+}

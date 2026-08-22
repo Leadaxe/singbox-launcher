@@ -1,0 +1,3 @@
+# proxy-https + sni/fp/alpn/allowInsecure по trojan-конвенциям; insecure -> warning
+# источник: LxBox app/test/parser/http_proxy_test.dart:106-116
+proxy-https://h.example-1.com:8443?sni=proxy.example-corp.com&fp=chrome&alpn=h2,http/1.1&allowInsecure=1#full-tls

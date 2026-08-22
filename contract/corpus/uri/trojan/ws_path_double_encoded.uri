@@ -1,0 +1,4 @@
+# §320 двойное percent-кодирование агрегаторов: path=%2F%252Fassignment -> //assignment
+# (один decode query-парсера + снятие остаточного %2F), иначе 404
+# источник: LxBox app/test/parser/path_double_encoding_test.dart:44-50 (анонимизировано)
+trojan://pass123@192.0.2.20:443?type=ws&path=%2F%252Fassignment&security=tls&host=www.example-2.com&sni=www.example-2.com#dbl-enc

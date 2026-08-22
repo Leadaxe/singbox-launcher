@@ -1,0 +1,5 @@
+{
+  "_comment": "§2.2: неизвестный тип трактуется как text (правило толерантности), а не роняет загрузку",
+  "vars": [{"name": "thing", "type": "quantum_flux", "default_value": ""}],
+  "config": {"value": "@thing"}
+}

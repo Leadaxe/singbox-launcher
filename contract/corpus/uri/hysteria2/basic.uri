@@ -1,0 +1,3 @@
+# Hysteria2: минимальный вариант — пароль в userinfo, sni.
+# Источник: LxBox app/test/fixtures/hysteria2/basic.uri
+hysteria2://testpass123@example-1.com:443?sni=example-1.com#Hy2%20Basic

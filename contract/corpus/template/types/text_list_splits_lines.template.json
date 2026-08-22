@@ -1,0 +1,5 @@
+{
+  "_comment": "C6: type=text_list — построчный сплит в JSON-массив. В Dart типа нет",
+  "vars": [{"name": "hosts", "type": "text_list", "default_value": ""}],
+  "config": {"address": "@hosts"}
+}

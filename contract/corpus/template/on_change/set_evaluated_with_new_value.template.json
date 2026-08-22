@@ -1,0 +1,11 @@
+{
+  "_comment": "§4.6: #if-дерево вычисляется в контексте УЖЕ НОВОГО значения изменённой var (тут flag стал false)",
+  "_changed": "flag",
+  "vars": [
+    {"name": "flag", "type": "bool", "default_value": "false", "on_change": {"set": {
+      "@strategy": {"#if": {"and": ["@flag"], "value": "prefer_ipv4", "else": "ipv4_only"}}
+    }}},
+    {"name": "strategy", "type": "enum", "default_value": "ipv4_only", "options": ["ipv4_only", "prefer_ipv4"]}
+  ],
+  "config": {"strategy": "@strategy"}
+}

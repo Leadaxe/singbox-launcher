@@ -1,0 +1,4 @@
+# SS legacy: весь userinfo@host:port одним base64-блоком (до-SIP002 формат);
+# декодируется в aes-256-gcm:testpass123@example-4.com:8388.
+# Источник: LxBox app/test/fixtures/shadowsocks/legacy_base64.uri
+ss://YWVzLTI1Ni1nY206dGVzdHBhc3MxMjNAZXhhbXBsZS00LmNvbTo4Mzg4#SS%20Legacy

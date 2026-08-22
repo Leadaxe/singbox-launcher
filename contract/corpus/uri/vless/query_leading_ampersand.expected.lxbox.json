@@ -1,0 +1,31 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "192.0.2.19",
+        "server_port": 2053,
+        "tls": {
+          "enabled": true,
+          "server_name": "ws.example-8.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "transport": {
+          "headers": {
+            "Host": "ws.example-8.com"
+          },
+          "path": "/path",
+          "type": "ws"
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "t",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

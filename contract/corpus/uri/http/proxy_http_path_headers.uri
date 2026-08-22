@@ -1,0 +1,3 @@
+# path и headers (CRLF-пары) из query
+# источник: LxBox app/test/parser/http_proxy_test.dart:54-60
+proxy-http://h.example-1.com:8080?path=%2Ftunnel&headers=X-Token%3A%20abc%0D%0AUser-Agent%3A%20curl#hdrs

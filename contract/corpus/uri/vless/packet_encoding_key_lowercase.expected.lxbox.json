@@ -1,0 +1,25 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "packet_encoding": "xudp",
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "random"
+          }
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "pe-key",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

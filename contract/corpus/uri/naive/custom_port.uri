@@ -1,0 +1,3 @@
+# Нестандартный порт 10443 (дефолт 443)
+# источник: core/config/subscription/node_parser_naive_test.go:208 (TestParseNode_Naive_CustomPort)
+naive+https://a:b@naive.example-9.com:10443

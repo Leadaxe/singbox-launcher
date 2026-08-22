@@ -1,0 +1,3 @@
+# Trojan + gRPC + TLS: serviceName для gRPC-транспорта.
+# Источник: LxBox app/test/fixtures/trojan/grpc_tls.uri
+trojan://testpass123@example-3.com:443?type=grpc&security=tls&serviceName=trojan-grpc&sni=example-3.com#Trojan%20gRPC

@@ -1,0 +1,10 @@
+{
+  "dropped": [
+    {
+      "reason": "parse_error",
+      "ref": "socks5://user:pass@:1080"
+    }
+  ],
+  "nodes": null,
+  "v": 1
+}

@@ -1,0 +1,3 @@
+# VLESS + h2 + TLS: транспорт type=h2 с path и host.
+# Источник: LxBox app/test/fixtures/vless/http2_tls.uri
+vless://11111111-2222-3333-4444-555555555555@example-5.com:443?type=h2&security=tls&path=%2Fh2&host=example-5.com&sni=example-5.com#VLESS%20H2

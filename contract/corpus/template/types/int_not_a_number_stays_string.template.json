@@ -1,0 +1,5 @@
+{
+  "_comment": "C5: не-число уезжает строкой как есть + warning — опечатка видна в конфиге, а не маскируется нулём. Go сегодня даёт 0",
+  "vars": [{"name": "port_num", "type": "int", "default_value": "0"}],
+  "config": {"listen_port": "@port_num"}
+}

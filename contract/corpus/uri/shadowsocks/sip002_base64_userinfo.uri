@@ -1,0 +1,3 @@
+# SIP002: base64url(method:password) в userinfo
+# источник: core/config/subscription/node_parser_test.go:405 (TestParseNode_Shadowsocks)
+ss://YWVzLTI1Ni1nY206cGFzczEyMw==@example-1.com:443#Shadowsocks Server

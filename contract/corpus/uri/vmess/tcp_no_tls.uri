@@ -1,0 +1,4 @@
+# VMess v2-JSON (base64): net=tcp, tls="" (без TLS), нестандартный порт 8080;
+# внутри add=example-2.com, id=11111111-…, aid=0, scy=auto, type=none.
+# Источник: LxBox app/test/fixtures/vmess/modern_tcp_no_tls.uri
+vmess://eyJ2IjoiMiIsInBzIjoiVk1lc3MgVENQIiwiYWRkIjoiZXhhbXBsZS0yLmNvbSIsInBvcnQiOiI4MDgwIiwiaWQiOiIxMTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUiLCJhaWQiOiIwIiwic2N5IjoiYXV0byIsIm5ldCI6InRjcCIsInR5cGUiOiJub25lIiwidGxzIjoiIn0=

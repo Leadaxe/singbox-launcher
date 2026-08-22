@@ -1,0 +1,3 @@
+# §106 сырой '/' в private key (userInfo) -> парсится, ключ восстановлен дословно
+# источник: LxBox app/test/parser/wireguard_edge_test.dart:11-17
+wireguard://QUFBQUFBQUFBQUFBQUFBQUFBQUH///////////////8=@h.example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32#wg-rawslash

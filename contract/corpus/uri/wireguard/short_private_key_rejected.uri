@@ -1,0 +1,3 @@
+# Приватный ключ не 32 байта (c2hvcnQ= = "short") — ошибка
+# источник: core/config/subscription/wireguard_robustness_test.go:43 (TestParseWireGuardURI_InvalidKeysRejected)
+wireguard://c2hvcnQ=@192.0.2.71:51820?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=&address=10.0.0.2/32&allowedips=0.0.0.0/0#node

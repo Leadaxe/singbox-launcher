@@ -1,0 +1,5 @@
+{
+  "_comment": "C3 (§4.1): оба ключа and и or одновременно — невалидно, рантайм даёт false + warning",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "true"}],
+  "config": {"out": {"#if": {"and": ["@flag"], "or": ["@flag"], "value": {"hit": true}, "else": {"hit": false}}}}
+}

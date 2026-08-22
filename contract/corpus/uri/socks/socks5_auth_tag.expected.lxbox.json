@@ -1,0 +1,18 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "mypass",
+        "server": "proxy.example-1.com",
+        "server_port": 1080,
+        "type": "socks",
+        "username": "myuser",
+        "version": "5"
+      },
+      "kind": "outbound",
+      "label": "Office SOCKS5",
+      "scheme": "socks"
+    }
+  ],
+  "v": 1
+}

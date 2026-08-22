@@ -1,0 +1,4 @@
+# §282 fp в модели живёт, но QUIC-протокол НЕ эмитит utls (uTLS поверх QUIC = мёртвая нода);
+# остальной TLS цел
+# источник: LxBox app/test/parser/utls_fingerprint_test.dart:176-187
+hysteria2://pass123@example-1.com:443?fp=chrome&sni=x.example.com#hy2-fp

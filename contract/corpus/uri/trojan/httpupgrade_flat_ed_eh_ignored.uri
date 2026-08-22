@@ -1,0 +1,3 @@
+# httpupgrade: плоские ed/eh из query не читаются
+# источник: LxBox app/test/parser/ws_query_early_data_test.dart:86-94
+trojan://pass123@example-1.com:443?type=httpupgrade&path=%2Fx&ed=2560&eh=Sec-WebSocket-Protocol&security=tls&sni=example-1.com#hu-flat

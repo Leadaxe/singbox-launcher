@@ -1,0 +1,3 @@
+# plain WG + mtu=1420 -> 1420 как есть (кламп только при AWG-полях)
+# источник: LxBox app/test/parser/awg_test.dart:126-129
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32&mtu=1420#wg-1420

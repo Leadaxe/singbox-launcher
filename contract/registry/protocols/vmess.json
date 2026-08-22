@@ -1,0 +1,199 @@
+{
+  "v": 1,
+  "scheme": "vmess",
+  "kind": "outbound",
+  "singbox_type": "vmess",
+  "aliases": [],
+  "sources": ["uri", "singbox", "xray"],
+  "extension": null,
+  "uri": {
+    "userinfo": {
+      "meaning": "нет (контейнерная схема)",
+      "note": "vmess://base64(JSON v2rayN) ЛИБО vmess://base64('method:uuid@host:port[?query]') — legacy cleartext живёт только ВНУТРИ base64 в обоих проектах (§9.B8, паритет). '#fragment' после base64-части читается обоими (percent-decoded label) ТОЛЬКО в legacy-cleartext ветке; в основной JSON-форме fragment выбрасывают оба: Go не передаёт его в parseVMessJSON (node_parser_vmess.go:57, fragmentLabel уходит лишь в parseVMessLegacyCleartext:92), Dart не передаёт в _vmessFromJson (vmess_parser.dart:30-31, fragment уходит лишь в _vmessLegacy:36) — верхнее поле \"fragment\": \"label\" этой схемы работает только для legacy-ветки. Все 4 варианта base64 (std/url × pad/nopad); Dart дополнительно срезает '=' при эмите."
+    },
+    "query": {
+      "v": {
+        "type": "string",
+        "values": ["2"],
+        "allowlist": null,
+        "default": "2",
+        "aliases": [],
+        "note": "Ключ JSON-контейнера v2rayN (не URL-query). Оба игнорируют при парсе, пишут '2' при эмите."
+      },
+      "ps": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "note": "Имя ноды (label). Санитизация display-строки в обоих (C0/DEL вычищаются)."
+      },
+      "add": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": null,
+        "aliases": [],
+        "note": "Сервер. Обязательное: отсутствие → drop ноды."
+      },
+      "port": {
+        "type": "int",
+        "values": [],
+        "allowlist": null,
+        "default": null,
+        "aliases": [],
+        "note": "Число или строка. Go: неразбираемая строка → drop ноды; Dart: fallback 443 (мелкое расхождение деградации)."
+      },
+      "id": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": null,
+        "aliases": [],
+        "note": "UUID. Обязательное: отсутствие → drop ноды."
+      },
+      "aid": {
+        "type": "int",
+        "values": [],
+        "allowlist": null,
+        "default": 0,
+        "aliases": ["alter_id (внутренний ключ Go-Query)"],
+        "note": "alter_id; 0 не эмитится в outbound. Go эмитит числом в share-URI, Dart — строкой (оба парсят оба вида)."
+      },
+      "scy": {
+        "type": "alias_enum",
+        "values": ["auto", "none", "zero", "aes-128-gcm", "chacha20-poly1305", "aes-128-ctr"],
+        "allowlist": "vmess_security",
+        "default": "auto",
+        "aliases": ["security"],
+        "note": "Шифр канала (НЕ TLS-режим). 'chacha20-ietf-poly1305' → 'chacha20-poly1305'; ''/null/undefined/мусор → 'auto'. В Xray-JSON ветке Go allowlist чуть уже (без aes-128-ctr, normalizeVMessSecurityValue) — внутренняя несимметрия Go."
+      },
+      "net": {
+        "type": "enum",
+        "values": ["tcp", "ws", "http", "h2", "grpc", "httpupgrade", "xhttp"],
+        "allowlist": null,
+        "default": "tcp",
+        "aliases": ["network (внутренний ключ Go-Query)", "type (fallback в legacy cleartext query, Go)"],
+        "note": "Транспорт — суб-схема registry/transports.json. net=h2 подразумевает TLS (transport 'http' + tls_enabled) в обоих."
+      },
+      "type": {
+        "type": "string",
+        "values": ["none"],
+        "allowlist": null,
+        "default": "none",
+        "aliases": [],
+        "note": "Поле контейнера v2rayN (headerType); при парсе игнорируется обоими, при эмите пишется 'none'."
+      },
+      "host": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "note": "Host транспорта; для ws/xhttp fallback → sni. См. transports.json."
+      },
+      "path": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "note": "Path транспорта; для ws несёт хвост '?ed=N' (D-008). Для grpc path = service_name."
+      },
+      "serviceName": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "ext": "mobile",
+        "note": "gRPC service name отдельным ключом vmess-JSON: читает только Dart (_vmessFromJson → parseTransport); Go берёт grpc service_name только из path — новое расхождение вне §9 PLAN."
+      },
+      "mode": {
+        "type": "string",
+        "values": ["", "auto", "packet-up", "stream-up", "stream-one"],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "ext": "desktop",
+        "note": "xhttp mode из vmess-JSON (SPEC 071): читает только Go (parseVMessJSON net=xhttp); Dart не прокидывает 'mode' в parseTransport из vmess-JSON — новое расхождение вне §9 PLAN (зеркальное к serviceName)."
+      },
+      "tls": {
+        "type": "enum",
+        "values": ["", "tls"],
+        "allowlist": null,
+        "default": "",
+        "aliases": ["tls_enabled (внутренний ключ Go-Query)"],
+        "note": "tls='tls' → TLS on; net=h2 → TLS on принудительно (оба). В legacy cleartext query Go принимает tls=1|true|tls; Dart query legacy-формы не читает вовсе (см. degrade)."
+      },
+      "sni": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "note": "SNI; fallback host → server. Суб-схема registry/tls.json."
+      },
+      "alpn": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "note": "Comma-list. См. tls.json."
+      },
+      "fp": {
+        "type": "alias_enum",
+        "values": [],
+        "allowlist": "utls_fingerprints",
+        "default": "",
+        "aliases": [],
+        "note": "uTLS fingerprint. У vmess НЕТ дефолта (в отличие от vless 'random'). См. tls.json."
+      },
+      "insecure": {
+        "type": "bool",
+        "values": [],
+        "allowlist": null,
+        "default": false,
+        "aliases": [],
+        "note": "В vmess-JSON строка '1' (Go) или '1'/true (Dart). Dart toUriVmess флаг НЕ эмитит — новое расхождение вне §9 (insecure теряется на mobile round-trip)."
+      }
+    },
+    "fragment": "label"
+  },
+  "emit": {
+    "share_uri": true,
+    "param_order": ["v", "ps", "add", "port", "id", "aid", "scy", "net", "type", "host", "path", "tls", "sni", "alpn", "fp", "insecure"],
+    "note": "Эмит = base64(JSON), порядок ключей — как в таблице (фактический у Go — порядок map/json.Marshal, у Dart — insertion order). Расхождения формы: Go порт/aid числами + base64 с padding; Dart строками + padding срезан. ВАЖНО: Go при транспорте httpupgrade пишет net='ws' (shareuri_vmess.go:70-74) — меняет wire-протокол на round-trip, кандидат на баг; Dart честно пишет net='httpupgrade'. Единственный lossy-эмиттер у Dart (каноническая JSON-форма)."
+  },
+  "degrade": [
+    "base64 не декодится / пустой payload → drop ноды",
+    "JSON не парсится → попытка legacy cleartext 'method:uuid@host:port'; не подошло → drop ноды",
+    "отсутствуют add/port/id → drop ноды (Go копит список missing fields в ошибке)",
+    "scy/security вне allowlist → 'auto' (нода живёт)",
+    "query-хвост legacy cleartext: Go читает (network/type/tls → транспорт и TLS); Dart отбрасывает всё после '?' — новое расхождение вне §9 PLAN",
+    "невалидный UTF-8 в декоде → Go чинит через ToValidUTF8, Dart utf8Lossy"
+  ],
+  "refs": {
+    "go": [
+      "core/config/subscription/node_parser_core.go:108-135",
+      "core/config/subscription/node_parser_core.go:629-758",
+      "core/config/subscription/node_parser_vmess.go:18-31",
+      "core/config/subscription/node_parser_vmess.go:43-58",
+      "core/config/subscription/node_parser_vmess.go:92-169",
+      "core/config/subscription/node_parser_vmess.go:176-319",
+      "core/config/subscription/xray_protocols.go:134-179",
+      "core/config/subscription/shareuri_vmess.go:12-108"
+    ],
+    "dart": [
+      "lib/services/parser/uri_parsers/vmess_parser.dart:13-37",
+      "lib/services/parser/uri_parsers/vmess_parser.dart:39-95",
+      "lib/services/parser/uri_parsers/vmess_parser.dart:97-126",
+      "lib/services/parser/transport.dart:398-416",
+      "lib/services/parser/uri_utils.dart:261-277",
+      "lib/services/parser/json_parsers.dart:579-613",
+      "lib/services/parser/json_parsers.dart:824-838",
+      "lib/models/node_spec_emit.dart:121-193"
+    ]
+  }
+}

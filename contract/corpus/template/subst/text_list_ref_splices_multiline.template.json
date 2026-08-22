@@ -1,0 +1,8 @@
+{
+  "_comment": "То же с несколькими строками: список вливается плоско, вместе с условным элементом",
+  "vars": [
+    {"name": "addrs", "type": "text_list", "default_value": ""},
+    {"name": "v6_on", "type": "bool", "default_value": "false"}
+  ],
+  "config": {"address": ["@addrs", {"#if": {"and": ["@v6_on"], "value": "fd00::1/64"}}]}
+}

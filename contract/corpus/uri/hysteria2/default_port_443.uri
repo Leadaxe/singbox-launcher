@@ -1,0 +1,3 @@
+# Порт не указан — дефолт 443
+# источник: core/config/subscription/node_parser_test.go:1107 (TestParseNode_Hysteria2)
+hysteria2://pass123@example-1.com#Test

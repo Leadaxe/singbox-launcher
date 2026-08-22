@@ -1,0 +1,3 @@
+# Голый IPv6 address — дефолт /128
+# источник: core/config/subscription/wireguard_robustness_test.go:85 (TestParseWireGuardURI_BareAddressGetsPrefix)
+wireguard://QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=@192.0.2.71:51820?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=&address=2001:db8::2&allowedips=::/0#n

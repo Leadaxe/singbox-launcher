@@ -1,0 +1,3 @@
+# percent-encoded userinfo декодируется (user%40dom -> user@dom, p%3Ass -> p:ss)
+# источник: LxBox app/test/parser/http_proxy_test.dart:47-52
+proxy-http://user%40dom:p%3Ass@h.example-1.com:8080#pct-userinfo

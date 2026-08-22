@@ -1,0 +1,27 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "192.0.2.20",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "www.example-2.com"
+        },
+        "transport": {
+          "headers": {
+            "Host": "www.example-2.com"
+          },
+          "path": "//assignment",
+          "type": "ws"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "dbl-enc",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

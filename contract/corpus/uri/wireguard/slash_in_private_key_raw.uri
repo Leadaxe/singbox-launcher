@@ -1,0 +1,3 @@
+# Raw '/' в base64 приватного ключа (Bug A v1.1.1): url.Parse съедал userinfo как path
+# источник: core/config/subscription/wireguard_robustness_test.go:12 (TestParseWireGuardURI_SlashInPrivateKey)
+wireguard://JSwzOkFIT1ZdZGtyeYCHjpWco6qxuL/GzdTb4unw9/4=@192.0.2.71:51820?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=&address=10.0.0.2/32&allowedips=0.0.0.0/0#node

@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "method": "aes-256-gcm",
+        "password": "pass123",
+        "server": "example-1.com",
+        "server_port": 443,
+        "type": "shadowsocks"
+      },
+      "kind": "outbound",
+      "label": "Shadowsocks Server",
+      "scheme": "shadowsocks"
+    }
+  ],
+  "v": 1
+}

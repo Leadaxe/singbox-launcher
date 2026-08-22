@@ -1,0 +1,3 @@
+# Нет обязательного allowedips — ошибка
+# источник: core/config/subscription/node_parser_test.go:1900 (TestParseNode_Wireguard)
+wireguard://UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=@192.0.2.70:51820?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU%3D&address=10.10.10.2/32

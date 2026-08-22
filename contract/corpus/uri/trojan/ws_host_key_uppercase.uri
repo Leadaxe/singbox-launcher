@@ -1,0 +1,3 @@
+# Ключ Host= с большой буквы (igareck-стиль) распознаётся как host
+# источник: core/config/subscription/node_parser_test.go:1004 (TestParseNode_Trojan_WebSocket)
+trojan://pass123@example-1.com:443?security=tls&sni=cdn.example-13.com&type=ws&path=%2F&Host=cdn.example-13.com#tr

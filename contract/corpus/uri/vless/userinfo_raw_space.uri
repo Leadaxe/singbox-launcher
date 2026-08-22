@@ -1,0 +1,3 @@
+# Сырой пробел в userinfo (промо-подпись в логине) — net/url отвергает, нужен percent-encode перед парсом
+# источник: core/config/subscription/userinfo_space_test.go:9 (TestParseNodeAcceptsSpaceInUserinfo)
+vless://Promo:Configs @192.0.2.16:80?encryption=none&type=raw&headerType=http&host=play.example-11.com&path=%2F&security=none#node

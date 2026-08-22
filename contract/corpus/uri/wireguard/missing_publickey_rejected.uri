@@ -1,0 +1,3 @@
+# Нет обязательного publickey — ошибка
+# источник: core/config/subscription/node_parser_test.go:1890 (TestParseNode_Wireguard)
+wireguard://UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=@192.0.2.70:51820?address=10.10.10.2/32&allowedips=0.0.0.0/0

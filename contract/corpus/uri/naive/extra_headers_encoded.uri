@@ -1,0 +1,3 @@
+# extra-headers c CRLF-encoded парами X-Header:value
+# источник: core/config/subscription/node_parser_naive_test.go:155 (TestParseNode_Naive_Canonical)
+naive+https://hdr.example-9.com?extra-headers=X-Username%3Auser%0D%0AX-Password%3Apassword

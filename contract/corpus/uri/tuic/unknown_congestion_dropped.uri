@@ -1,0 +1,3 @@
+# Неизвестный congestion_control (reno-xyz) отбрасывается, нода выживает
+# источник: core/config/subscription/node_parser_tuic_test.go:70 (TestBuildOutbound_Tuic_UnknownCongestionDropped)
+tuic://u:p@example-1.com/?congestion_control=reno-xyz

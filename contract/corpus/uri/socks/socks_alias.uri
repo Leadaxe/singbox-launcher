@@ -1,0 +1,3 @@
+# Схема-алиас socks:// (без цифры версии) — трактуется как socks5.
+# Источник: LxBox app/test/fixtures/socks/socks_alias.uri
+socks://testuser:testpass123@example-3.com:1080#SOCKS%20Alias

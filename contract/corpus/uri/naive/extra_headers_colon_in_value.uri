@@ -1,0 +1,3 @@
+# split по первому двоеточию: значение может содержать ':' (X-Trace: id:123)
+# источник: LxBox app/test/parser/uri_naive_test.dart:63-69
+naive+https://user1:pass123@example-1.com?extra-headers=X-Trace%3A%20id%3A123

@@ -1,0 +1,69 @@
+{
+  "v": 1,
+  "scheme": "group",
+  "kind": "group",
+  "singbox_type": "selector|urltest",
+  "aliases": ["autogroup"],
+  "sources": ["singbox", "xray", "uri"],
+  "extension": null,
+  "note": "Импортированная группа — рядовой узел списка (kind:group), не канал приложения. Члены группы в каноническом узле — по label (§2 PLAN). Источники: sing-box импорт (selector/urltest из outbounds[]) и Xray-балансировщик (routing.balancers[0] элемента → urltest); source 'uri' — ТОЛЬКО синтетический autogroup:// LxBox (mobile-internal, непереносимая ссылка: правило написано под состав своей папки). Семантический разрыв импорта sing-box: Go сохраняет selector selector'ом (+default), Dart конвертит обе формы в urltest-узел AutoSelectSpec (selector → warning SelectorAsAutoWarning, default теряется); члены у Go — по тегам, у Dart — по identity-ключам (ExplicitMembers). Xray: Go игнорирует strategy (всегда urltest c url/interval из burstObservatory.pingConfig, дефолты gstatic/3m); Dart маппит strategy → mode/pool (leastPing→least_test, leastLoad expected>1→round_robin, дефолты cp.cloudflare.com/15m) — дефолты urltest-опций у проектов РАЗНЫЕ.",
+  "uri": {
+    "userinfo": {
+      "meaning": "не используется",
+      "note": "autogroup:// авторитета не имеет: host/userinfo пустые, всё в query + fragment."
+    },
+    "query": {
+      "include": {"type": "string", "ext": "mobile", "default": "", "note": "Regex членства по итоговому тегу узла И его синонимам (§321 P6); пустой = все члены контейнера. Из Xray selector строится ^(tag1|tag2) — префикс-матчинг Xray."},
+      "exclude": {"type": "string", "ext": "mobile", "default": "", "note": "Regex вычитания из пула."},
+      "members": {"type": "list", "ext": "mobile", "default": null, "note": "Явный список identity-ключей (protocol|server|port|credential) через запятую; per-key экранирование только ',' и '%' (%2C/%25, §352). Присутствие members = режим явного списка (include/exclude игнорируются)."},
+      "mode": {"type": "enum", "values": ["least_test", "round_robin"], "ext": "mobile", "default": "least_test", "note": "Режим выбора (§208). round_robin включает вложенный balancer{} ядра SPEC 019 (расширение lx-ядра, у апстримного urltest его нет)."},
+      "url": {"type": "string", "ext": "mobile", "default": "https://cp.cloudflare.com/generate_204", "note": "Цель проверки urltest."},
+      "interval": {"type": "string", "ext": "mobile", "default": "15m", "note": "Период проверки (Go-duration)."},
+      "tolerance": {"type": "int", "ext": "mobile", "default": 50, "note": "Окно от лучшего, мс."},
+      "idle_timeout": {"type": "string", "ext": "mobile", "default": "30m", "note": "urltest idle timeout."},
+      "interrupt": {"type": "bool", "ext": "mobile", "default": false, "note": "'1' → interrupt_exist_connections."},
+      "pool": {"type": "int", "ext": "mobile", "default": 3, "note": "balancer.pool (только round_robin); 0 = весь набор."},
+      "pool_tolerance": {"type": "int", "ext": "mobile", "default": 0, "note": "balancer.pool_tolerance, clamp 0..15000 (ядро SPEC 019)."},
+      "sticky": {"type": "list", "ext": "mobile", "default": null, "note": "balancer.sticky_hash через запятую; пустая строка = осознанно снятые чипы → sentinel [\"none\"] (§210: ядро схлопывает []→nil)."},
+      "badge": {"type": "string", "ext": "mobile", "default": "[\\u{1F1E6}-\\u{1F1FF}]{2}", "note": "UI-only regex значка пула; в конфиг не уходит."}
+    },
+    "fragment": "label"
+  },
+  "emit": {
+    "share_uri": false,
+    "param_order": [],
+    "note": "Переносимого share-URI у группы НЕТ: Go — ErrShareURINotSupported для selector/urltest; Dart эмитит autogroup:// только как внутренний формат хранения папки (UI копирование не даёт). В config.json группа эмитится настоящим selector/urltest в outbounds[]: Go фильтрует опции на ИМПОРТЕ — singboxGroupToNode переносит в Outbound по закрытому списку url/interval/tolerance/idle_timeout/interrupt_exist_connections + default (только если входит в состав), Xray-балансировщик кладёт url/interval без фильтра, — а сам generateGroupNodeJSON эмитит ВСЕ поля Outbound подряд в сортировке; Dart собирает urltest из AutoSelectParams (эмитит опции ВСЕГДА, со своими дефолтами; balancer{} только при round_robin) — Go опции по наличию в Outbound, Dart всегда: identity-групп это не ломает (группы не хешируются), но эмит расходится."
+  },
+  "degrade": [
+    "член группы не разрезолвлен (вложенная группа, служебный тип, отброшенный/битый узел, чужой тег) → член выпадает, счётчик в warning (Go WarnLog; Dart GroupMemberMissingWarning)",
+    "все члены выпали → группа НЕ эмитится вовсе (пустой urltest роняет старт ядра) — оба",
+    "группа без tag → пропускается (Go); Dart подставляет label ''/auto",
+    "selector.default вне состава → поле default опускается (Go); Dart default не переносит вовсе (selector конвертирован в urltest)",
+    "дубли членов схлопываются first-wins (оба)",
+    "Xray: несколько balancers[] → берётся первый, остальные молча игнорируются (оба); балансировщик без членов → группа не создаётся",
+    "Xray strategy неизвестного типа → round_robin с pool = expected из settings (или дефолт 3) — НЕ весь набор: весь набор только для null/random/roundRobin (Dart) / игнор стратегии, plain urltest (Go)"
+  ],
+  "refs": {
+    "go": [
+      "core/config/subscription/singbox_groups.go:48",
+      "core/config/subscription/singbox_groups.go:32-38",
+      "core/config/subscription/singbox_import.go:213-218",
+      "core/config/subscription/xray_balancer.go:39",
+      "core/config/subscription/xray_balancer.go:24-27",
+      "core/config/subscription/xray_json_array.go:505",
+      "core/config/configtypes/types.go:247-251",
+      "core/config/outbound_generator.go:949",
+      "core/config/subscription/share_uri.go:13"
+    ],
+    "dart": [
+      "app/lib/services/parser/singbox_config.dart:33",
+      "app/lib/services/parser/singbox_config.dart:414-480",
+      "app/lib/services/parser/json_parsers.dart:229-316",
+      "app/lib/services/parser/uri_parsers/auto_group_parser.dart:11",
+      "app/lib/models/auto_select.dart:73",
+      "app/lib/models/auto_select.dart:141",
+      "app/lib/models/auto_select.dart:201-283",
+      "app/lib/models/node_spec.dart:874"
+    ]
+  }
+}

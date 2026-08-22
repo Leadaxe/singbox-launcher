@@ -1,0 +1,3 @@
+# Невалидный vhttp=tcp принудительно заменяется на h3
+# источник: core/config/subscription/node_parser_masque_test.go:67 (TestMasque_VHTTPDefaultAndValidation)
+masque://MHcCAQEEIB5oxGzgOdLvTY2aAbRsyJslxnlvPpOzLR076h3cgsncoAoGCCqGSM49AwEHoUQDQgAEDQBTbtpEikpJDklVHdnMhgIR8YatYDJLUILDQWGdwBbqaLiKKiuawVQz6MIaHr0I/4mNM/TfUUnoENKv9qZEWw==@192.0.2.44:443?publickey=MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEDQBTbtpEikpJDklVHdnMhgIR8YatYDJLUILDQWGdwBbqaLiKKiuawVQz6MIaHr0I%2F4mNM%2FTfUUnoENKv9qZEWw%3D%3D&address=172.16.0.2%2F32&vhttp=tcp#x

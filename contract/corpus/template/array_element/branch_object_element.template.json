@@ -1,0 +1,5 @@
+{
+  "_comment": "§4.4: ветка элемента массива может быть объектом (типичный случай — условное правило маршрутизации)",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"rules": [{"#if": {"and": ["@flag"], "value": {"protocol": "dns", "outbound": "dns-out"}}}]}
+}

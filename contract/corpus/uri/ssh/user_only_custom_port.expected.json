@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 2222,
+        "type": "ssh",
+        "user": "user"
+      },
+      "kind": "outbound",
+      "label": "SSH Server",
+      "scheme": "ssh"
+    }
+  ],
+  "v": 1
+}

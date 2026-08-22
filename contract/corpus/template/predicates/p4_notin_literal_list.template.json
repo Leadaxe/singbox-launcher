@@ -1,0 +1,5 @@
+{
+  "_comment": "P4: #notIn — отрицание #in",
+  "vars": [{"name": "mode", "type": "enum", "default_value": "auto", "options": ["auto", "manual", "off"]}],
+  "config": {"out": {"#if": {"and": [{"@mode": {"#notIn": ["auto", "manual"]}}], "value": {"hit": true}, "else": {"hit": false}}}}
+}

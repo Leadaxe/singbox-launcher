@@ -1,0 +1,3 @@
+# неизвестные query-ключи игнорируются, разбор не падает
+# источник: LxBox app/test/parser/uri_naive_test.dart:88-95
+naive+https://user1:pass123@example-1.com?unknown=42&also_unknown=foo

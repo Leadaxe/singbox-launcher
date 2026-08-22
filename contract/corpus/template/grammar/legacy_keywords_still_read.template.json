@@ -1,0 +1,5 @@
+{
+  "_comment": "Легаси-форма без '#' читается бессрочно — существующие шаблоны не ломаются",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"out":{"#if":{"or":["@a",{"and":["@b","@b"]}],"value":{"hit":true},"else":{"hit":false}}}}
+}

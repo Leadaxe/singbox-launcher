@@ -1,0 +1,5 @@
+{
+  "_comment": "Канон в #enable: помеченные #or/#and/#not",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"node":{"#enable":{"#or":[{"#not":"@a"},"@b"]},"y":1}}
+}

@@ -1,0 +1,102 @@
+{
+  "v": 1,
+  "scheme": "vless",
+  "kind": "outbound",
+  "singbox_type": "vless",
+  "aliases": [],
+  "sources": ["uri", "singbox", "xray"],
+  "extension": null,
+  "uri": {
+    "userinfo": {
+      "meaning": "uuid",
+      "note": "Percent-decoded; часть до ':' (Go Username(); Dart split(':').first). Пробел в userinfo percent-кодируется до парса (Go percentEncodeUserinfoSpaces; Dart — неявно через SDK, §9.B3). Пустой userinfo = drop ноды."
+    },
+    "query": {
+      "flow": {
+        "type": "enum",
+        "values": ["", "xtls-rprx-vision", "xtls-rprx-vision-udp443"],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "note": "Ядро принимает ровно '' и 'xtls-rprx-vision'. 'xtls-rprx-vision-udp443' — quirk: разворачивается в vision + packet_encoding=xudp. Переписывание server_port=443 при этом НЕ паритет: Go переписывает порт на обоих путях (node_parser_core.go:600-607, xray_outbound_convert.go:153-156), Dart — только в Xray-JSON ветке (json_parsers.dart:424-428); Dart URI-парсер меняет лишь flow и packetEncoding, порт из URI остаётся (vless_parser.dart:31-35) — новое расхождение вне §9. vision несовместим с транспортом: при transport != null flow гасится (Dart — с warning VisionWithTransportWarning, Go — молча в sanitize). Прочее (none/deprecated/мусор) — drop поля."
+      },
+      "packetEncoding": {
+        "type": "alias_enum",
+        "values": ["", "xudp", "packetaddr"],
+        "allowlist": "packet_encoding",
+        "default": "",
+        "aliases": ["packetencoding (любой регистр — оба парсера читают ключ case-insensitively)"],
+        "note": "'none' = эквивалент отсутствия, drop молча; неизвестное значение = panic ядра (SPEC 049) — drop поля с warning."
+      },
+      "encryption": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "ext": "mobile",
+        "note": "§335 LxBox — постквантовый слой VLESS (ядро SPEC 032): значение как есть, 'none' = слой выключен (не эмитится). Go параметр НЕ парсит (только статично пишет encryption=none в share-URI) — новое расхождение вне §9 PLAN."
+      },
+      "type": {
+        "type": "enum",
+        "values": ["", "tcp", "raw", "ws", "grpc", "http", "h2", "httpupgrade", "xhttp"],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "note": "Селектор транспорта — полная суб-схема в registry/transports.json (path/host/serviceName/ed/eh/mode/extra и семейство xhttp-полей там же). 'h2' в URI-ветке читает только Dart (Go — лишь vmess net=h2 и Xray-JSON) — новое расхождение."
+      },
+      "headerType": {
+        "type": "enum",
+        "values": ["", "http"],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "note": "Xray TCP/RAW c HTTP-камуфляжем: type=tcp|raw + headerType=http → sing-box transport 'http'. См. transports.json."
+      },
+      "security": {
+        "type": "enum",
+        "values": ["", "none", "tls", "reality"],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "note": "TLS-суб-схема — registry/tls.json (sni/peer, fp/fingerprint, pbk, sid, alpn, insecure-семейство, ech). Особенность vless: security='' на портах {80,8080,8880,2052,2082,2086,2095} = TLS выключен (plaintext-эвристика, оба проекта)."
+      }
+    },
+    "fragment": "label"
+  },
+  "emit": {
+    "share_uri": true,
+    "param_order": ["alpn", "encryption", "flow", "fp", "host", "insecure", "mode", "packetEncoding", "path", "pbk", "security", "serviceName", "sid", "sni", "type"],
+    "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart buildQuery sort). Расхождения формы эмита (для cross-emit фазы 2): Go всегда пишет encryption=none и опускает fp при 'random', reality-ноды идут БЕЗ security=reality (только pbk/sid), insecure=1 под ключом 'insecure'; Dart пишет security=reality|tls|none явно, fp всегда (включая random), флаг под ключом 'allowInsecure'."
+  },
+  "degrade": [
+    "невалидный порт (не 1..65535) → drop ноды (битый server_port валит весь конфиг через sing-box check)",
+    "пустой hostname или userinfo → drop ноды",
+    "flow не из {'', vision, vision-udp443} → drop поля, нода живёт",
+    "vision + transport → drop flow (Dart: + warning §115)",
+    "packetEncoding='none' → drop поля молча; иной мусор → drop поля + warning",
+    "fp вне utls_fingerprints: Go → drop utls-блока, для vless дефолт 'random'; Dart → замена на 'chrome' + UnknownFingerprintWarning §281 (расхождение, см. tls.json)",
+    "pbk не X25519 (32 байта) → REALITY не строится, деградация до plain TLS (broken-list-pbk-junk, v1.1.7)",
+    "невалидный UTF-8 во fragment: Go чинит/дропает ноду при неисправимом; Dart — lossy-decode"
+  ],
+  "refs": {
+    "go": [
+      "core/config/subscription/node_parser_core.go:137-138",
+      "core/config/subscription/node_parser_core.go:308-316",
+      "core/config/subscription/node_parser_core.go:439",
+      "core/config/subscription/node_parser_core.go:593-627",
+      "core/config/subscription/node_parser_transport.go:625-701",
+      "core/config/subscription/xray_outbound_convert.go:103-186",
+      "core/config/subscription/singbox_sanitize.go:221-263",
+      "core/config/subscription/shareuri_vless.go:64-97"
+    ],
+    "dart": [
+      "lib/services/parser/uri_parsers/vless_parser.dart:11-76",
+      "lib/services/parser/transport.dart:317-372",
+      "lib/services/parser/uri_utils.dart:151-159",
+      "lib/services/parser/json_parsers.dart:406-466",
+      "lib/services/parser/json_parsers.dart:797-823",
+      "lib/models/node_spec_emit.dart:37-115"
+    ]
+  }
+}

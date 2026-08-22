@@ -1,0 +1,83 @@
+{
+  "v": 1,
+  "scheme": "ss",
+  "kind": "outbound",
+  "singbox_type": "shadowsocks",
+  "aliases": [],
+  "sources": ["uri", "singbox", "xray"],
+  "extension": null,
+  "uri": {
+    "userinfo": {
+      "meaning": "base64(method:password)",
+      "note": "Две формы, обе поддержаны обоими: SIP002 ss://base64(method:password)@host:port[?query]#frag и legacy ss://base64(method:password@host:port)#frag. Userinfo сперва percent-декодируется, потом base64 (все 4 варианта). ПЛОСКИЙ (не-base64) SIP002-userinfo 'method:password@host' (разрешён RFC для ss2022) НЕ поддержан ни одним проектом — паритетная дыра, фиксируется фикстурой. ss2022 (2022-blake3-*) работает в обоих через base64-форму."
+    },
+    "query": {
+      "method": {
+        "type": "alias_enum",
+        "values": ["2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305", "none", "aes-128-gcm", "aes-192-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "xchacha20-ietf-poly1305"],
+        "allowlist": "ss_methods",
+        "default": null,
+        "aliases": [],
+        "note": "Не URL-параметр, а компонент userinfo; в Go живёт во внутреннем Query['method']. Allowlist идентичен посимвольно (Go isValidShadowsocksMethod ↔ Dart shadowsocksMethods). Метод вне allowlist → drop НОДЫ (не поля): неизвестный метод валит весь конфиг ядра."
+      },
+      "password": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": null,
+        "aliases": [],
+        "note": "Компонент userinfo (после первого ':'). Пустой → drop ноды."
+      },
+      "plugin": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "ext": "mobile",
+        "note": "SIP003: 'name;k=v;…' — имя до первого ';'. Читает только Dart (→ outbound.plugin/plugin_opts); Go молча теряет query целиком — новое расхождение вне §9 PLAN. При этом Dart toUriShadowsocks plugin в URI НЕ возвращает (теряется на mobile URI-round-trip; в sing-box outbound эмитится)."
+      },
+      "plugin_opts": {
+        "type": "string",
+        "values": [],
+        "allowlist": null,
+        "default": "",
+        "aliases": [],
+        "ext": "mobile",
+        "note": "SIP003 opts: хвост plugin после первого ';' либо отдельный параметр plugin_opts. Только Dart (см. plugin)."
+      }
+    },
+    "fragment": "label"
+  },
+  "emit": {
+    "share_uri": true,
+    "param_order": [],
+    "note": "Эмит без query: ss://base64std(method:password)@host:port#frag. Расхождение формы: Go оставляет '='-padding, Dart срезает (оба парсят оба вида). Метод вне allowlist → ErrShareURINotSupported (Go). Dart НЕ эмитит plugin/plugin_opts в URI (см. plugin)."
+  },
+  "degrade": [
+    "метод вне ss_methods → drop ноды (оба; философия «неизвестный метод = мусор, который уронит конфиг»)",
+    "userinfo/legacy-blob не декодится base64 → drop ноды (Go: SIP002-ветка логирует и продолжает до финальной проверки method/password)",
+    "нет ':' в декодированном userinfo → drop ноды",
+    "порт: РАСХОЖДЕНИЕ (новое, вне §9) — Go: URI без порта → дефолт 443 (общий defaultPort); Dart: host без ':' → drop ноды, неразбираемый порт → fallback 8388",
+    "пустой пароль → drop ноды"
+  ],
+  "refs": {
+    "go": [
+      "core/config/subscription/node_parser_core.go:143-208",
+      "core/config/subscription/node_parser_core.go:338-345",
+      "core/config/subscription/node_parser_core.go:581-583",
+      "core/config/subscription/node_parser_core.go:767-773",
+      "core/config/subscription/node_parser_ss.go:6-21",
+      "core/config/subscription/xray_protocols.go:222-256",
+      "core/config/subscription/shareuri_ss.go:11-33"
+    ],
+    "dart": [
+      "lib/services/parser/uri_parsers/shadowsocks_parser.dart:8-89",
+      "lib/services/parser/uri_parsers/shadowsocks_parser.dart:91-104",
+      "lib/services/parser/uri_utils.dart:280-293",
+      "lib/services/parser/json_parsers.dart:615-636",
+      "lib/services/parser/json_parsers.dart:874-885",
+      "lib/models/node_spec_emit.dart:289-308"
+    ]
+  }
+}

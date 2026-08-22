@@ -1,0 +1,3 @@
+# Masquerade-сахар ip/id/ib поверх AWG-полей поднимается на endpoint (SPEC 009/084)
+# источник: core/config/subscription/warp_reserved_test.go:50 (TestWireGuardMasqueradeRoundTrip)
+wireguard://JSwzOkFIT1ZdZGtyeYCHjpWco6qxuL/GzdTb4unw9/4=@192.0.2.73:955?publickey=ZWZnaGlqa2xtbm9wcXJzdHV2d3h5ent8fX5%2FPj4%2Bq80%3D&address=172.16.0.2%2F32&allowedips=0.0.0.0%2F0&jc=4&jmin=40&jmax=70&s1=0&s2=0&h1=1&h2=2&h3=3&h4=4&ip=quic&id=www.example-1.com&ib=chrome#WARP

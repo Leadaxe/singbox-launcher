@@ -1,0 +1,5 @@
+{
+  "_comment": "P2: равенство переменной и строкового литерала",
+  "vars": [{"name": "mode", "type": "enum", "default_value": "auto", "options": ["auto", "manual"]}],
+  "config": {"out": {"#if": {"and": [{"@mode": "manual"}], "value": {"hit": true}, "else": {"hit": false}}}}
+}

@@ -1,0 +1,3 @@
+# Multi-port прямо в authority (host:443,20000-30000) — net/url такое не парсит, нужен recovery
+# источник: core/config/subscription/node_parser_test.go:1238 (TestParseNode_Hysteria2)
+hysteria2://pass123@example-1.com:443,20000-30000/?insecure=1#hop

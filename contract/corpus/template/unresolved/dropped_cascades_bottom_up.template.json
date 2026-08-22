@@ -1,0 +1,8 @@
+{
+  "_comment": "§5.1: каскад идёт снизу вверх без остановки сборки — соседние ветки дерева не страдают",
+  "vars": [
+    {"name": "opt", "type": "text"},
+    {"name": "host", "type": "text", "default_value": ""}
+  ],
+  "config": {"outbounds": [{"tag": "a", "detour": "@opt"}, {"tag": "b", "server": "@host"}]}
+}

@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lx-contract/schema/backup.schema.json",
+  "title": "LX Backup v1",
+  "description": "Обменный формат бэкапа телефон ↔ десктоп. Семантика импорта/экспорта — docs/BACKUP.md. Хранилища приложений остаются своими; это только формат обмена.",
+  "type": "object",
+  "required": ["lx_backup", "exported_by", "exported_at"],
+  "additionalProperties": false,
+  "properties": {
+    "lx_backup": { "const": 1 },
+    "exported_by": {
+      "type": "object",
+      "required": ["app", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "app": { "enum": ["launcher", "lxbox"] },
+        "version": { "type": "string" },
+        "platform": { "type": "string" }
+      }
+    },
+    "exported_at": { "type": "string", "format": "date-time" },
+    "subscriptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["url"],
+        "additionalProperties": false,
+        "properties": {
+          "url": { "type": "string" },
+          "label": { "type": "string" },
+          "enabled": { "type": "boolean", "default": true },
+          "skip": { "type": "boolean", "default": false },
+          "max_nodes": { "type": "integer", "minimum": 0 },
+          "tag": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "prefix": { "type": "string" },
+              "postfix": { "type": "string" },
+              "mask": { "type": "string" }
+            }
+          },
+          "update": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "interval_hours": { "type": "integer", "minimum": 0 },
+              "auto": { "type": "boolean" }
+            }
+          },
+          "disabled": {
+            "type": "object",
+            "description": "identity-хеш (64 hex) → lastSeen unix seconds. Перенос только по хешу; несовпавшие истекают по TTL (docs/BACKUP.md).",
+            "patternProperties": { "^[0-9a-f]{64}$": { "type": "integer" } },
+            "additionalProperties": false
+          },
+          "detour": { "type": "object", "additionalProperties": true },
+          "extensions": { "$ref": "#/$defs/extensions" }
+        }
+      }
+    },
+    "servers": {
+      "type": "array",
+      "description": "Одиночные серверы. Ровно одно из uri/config_json.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "uri": { "type": ["string", "null"] },
+          "config_json": { "type": ["object", "null"] },
+          "label": { "type": "string" },
+          "enabled": { "type": "boolean", "default": true },
+          "detour": { "type": "object", "additionalProperties": true },
+          "extensions": { "$ref": "#/$defs/extensions" }
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "enum": ["inline", "srs", "preset", "json"] },
+          "name": { "type": "string" },
+          "enabled": { "type": "boolean", "default": true },
+          "num": { "type": "number", "description": "Общая ось порядка (модель LxBox §370); импортёр перенумеровывает, сохраняя относительный порядок" },
+          "outbound": { "type": "string", "description": "Символическая ссылка; несуществующая цель → импорт выключенным с warning" },
+          "ref": { "type": "string", "description": "kind=preset: id из registry/presets.json; kind=srs: URL" },
+          "vars": { "type": "object", "additionalProperties": { "type": "string" } },
+          "match": { "type": "object", "description": "kind=inline|json: sing-box rule-фрагмент", "additionalProperties": true },
+          "dns": { "type": "object", "additionalProperties": true },
+          "resolve": { "type": "object", "additionalProperties": true },
+          "extensions": { "$ref": "#/$defs/extensions" }
+        }
+      }
+    },
+    "dns": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "servers": { "type": "array", "items": { "$ref": "#/$defs/dnsRef" } },
+        "rules": { "type": "array", "items": { "$ref": "#/$defs/dnsRef" } },
+        "final": { "type": "string" },
+        "strategy": { "type": "string" }
+      }
+    },
+    "vars": {
+      "type": "object",
+      "description": "Только имена с portable=true из registry/vars.json; остальное — в extensions",
+      "additionalProperties": { "type": "string" }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "final": { "type": "string" } }
+    },
+    "warp": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": { "type": { "enum": ["wg", "masque"] } },
+        "additionalProperties": true
+      }
+    },
+    "extensions": { "$ref": "#/$defs/extensions" }
+  },
+  "$defs": {
+    "extensions": {
+      "type": "object",
+      "description": "Непереносимое, per-app. Принимающая сторона обязана хранить чужой блоб нетронутым (lossless round-trip).",
+      "additionalProperties": false,
+      "properties": {
+        "launcher": { "type": "object", "additionalProperties": true },
+        "lxbox": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "dnsRef": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["template", "preset", "user"] },
+        "tag": { "type": "string" },
+        "ref": { "type": "string" },
+        "enabled": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

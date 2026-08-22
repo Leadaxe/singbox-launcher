@@ -1,0 +1,3 @@
+# obfs=salamander + obfs-password + alpn: всё сохраняется
+# источник: LxBox app/test/parser/round_trip_test.dart:63-72
+hysteria2://pass123@example-2.com:443?obfs=salamander&obfs-password=obfspass1&alpn=h3&sni=example-2.com#hy2-sala

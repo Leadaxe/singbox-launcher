@@ -1,0 +1,3 @@
+# proxy-http без порта -> дефолт 80
+# источник: LxBox app/test/parser/http_proxy_test.dart:23-28
+proxy-http://p.example-1.com

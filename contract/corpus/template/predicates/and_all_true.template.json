@@ -1,0 +1,8 @@
+{
+  "_comment": "and: истинно только когда истинны все предикаты",
+  "vars": [
+    {"name": "a", "type": "bool", "default_value": "false"},
+    {"name": "b", "type": "bool", "default_value": "false"}
+  ],
+  "config": {"out": {"#if": {"and": ["@a", "@b"], "value": {"hit": true}, "else": {"hit": false}}}}
+}

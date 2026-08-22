@@ -1,0 +1,1 @@
+{"config": {"dns": "prefer_ipv4", "resolve": "prefer_ipv4"}, "vars_after": {"flag": "true", "s1": "prefer_ipv4", "s2": "prefer_ipv4"}, "warnings": []}

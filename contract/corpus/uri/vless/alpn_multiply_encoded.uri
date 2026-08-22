@@ -1,0 +1,3 @@
+# Многократно закодированный alpn (http%2525252F1.1) декодируется до http/1.1
+# источник: core/config/subscription/node_parser_test.go:855 (TestParseNode_VLESS_TransportAndTLS)
+vless://11111111-1111-1111-1111-111111111111@192.0.2.13:8443?security=reality&alpn=http%2525252F1.1&encryption=none&pbk=mLmBhbVFfNuo2eUgBh6r9-5Koz9mUCn3aSzlR6IejUg&headerType=none&fp=random&type=tcp&flow=xtls-rprx-vision&sni=example-5.com&sid=9083951b754b4254#t

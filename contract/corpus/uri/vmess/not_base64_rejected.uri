@@ -1,0 +1,3 @@
+# не-base64 полезная нагрузка -> отказ без исключения
+# источник: LxBox app/test/parser/round_trip_test.dart:212-216
+vmess://not-base64

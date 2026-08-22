@@ -1,0 +1,5 @@
+{
+  "_comment": "§4.1: условие истинно, но ветки value нет — конструкция пропускается + warning, а не роняет сборку",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "true"}],
+  "config": {"tun": {"type": "tun", "#if": {"and": ["@flag"]}}}
+}

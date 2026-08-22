@@ -1,0 +1,3 @@
+# userinfo вида :pass (только пароль, username пуст)
+# источник: LxBox app/test/parser/http_proxy_test.dart:41-45
+proxy-http://:pass123@h.example-1.com:3128#pass-only

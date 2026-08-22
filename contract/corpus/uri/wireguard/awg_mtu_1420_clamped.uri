@@ -1,0 +1,3 @@
+# AWG + mtu=1420 из URI -> кламп до 1280 (1420 = handshake OK, но sendmsg: message too long)
+# источник: LxBox app/test/parser/awg_test.dart:111-114
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32&jc=10&mtu=1420#awg-clamp

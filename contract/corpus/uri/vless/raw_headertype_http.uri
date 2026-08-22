@@ -1,0 +1,3 @@
+# type=raw + headerType=http -> http-транспорт с host-списком, без tls (goida-стиль)
+# источник: core/config/subscription/node_parser_test.go:932 (TestParseNode_VLESS_TransportAndTLS)
+vless://22222222-2222-2222-2222-222222222222@192.0.2.14:58387?encryption=none&type=raw&headerType=http&host=cdn.example-7.com&path=%2F&security=none#t

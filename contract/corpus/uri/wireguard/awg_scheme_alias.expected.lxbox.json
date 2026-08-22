@@ -1,0 +1,33 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.0.0.2/32"
+        ],
+        "h1": 1234567890,
+        "jc": 10,
+        "jmax": 100,
+        "jmin": 50,
+        "mtu": 1280,
+        "peers": [
+          {
+            "address": "host.example.com",
+            "allowed_ips": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "port": 51821,
+            "public_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
+          }
+        ],
+        "private_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "awg-alias",
+      "scheme": "wireguard"
+    }
+  ],
+  "v": 1
+}

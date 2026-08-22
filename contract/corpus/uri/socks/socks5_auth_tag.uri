@@ -1,0 +1,3 @@
+# socks5 c user:pass и меткой с пробелами
+# источник: core/config/subscription/node_parser_test.go:1675 (TestParseNode_SOCKS5)
+socks5://myuser:mypass@proxy.example-1.com:1080#Office SOCKS5

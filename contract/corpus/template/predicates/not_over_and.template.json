@@ -1,0 +1,5 @@
+{
+  "_comment": "SPEC 107: #not над cond-obj, а не только над предикатом",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"out":{"#if":{"and":[{"#not":{"and":["@a","@b"]}}],"value":{"hit":true},"else":{"hit":false}}}}
+}

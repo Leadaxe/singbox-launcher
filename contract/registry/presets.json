@@ -1,0 +1,30 @@
+{
+  "v": 1,
+  "note": "Реестр preset id обоих проектов. Источники: singbox-launcher bin/wizard_template.json (presets[].id) и LxBox app/assets/wizard_template.json (selectable_rules[].preset_id). in=both — id совпадает буквально и семантика одна: только такие id переносимы ссылкой {kind:'preset', ref:'<id>'} в бэкапе (PLAN §7); неизвестный id при импорте — правило выключено + warning. Тело пресета живёт в шаблоне каждого приложения и НЕ переносится. Теги внутри пресета при сборке получают префикс <preset_id>:<tag> (D-012).",
+  "presets": {
+    "block-ads": {"in": "both", "label": "Block Ads", "note": "Один и тот же geosite-category-ads-all.srs; desktop даёт выбор действия var out (default reject), mobile — фиксированный action:reject. Ссылка переносима"},
+    "ru-inside": {"in": "both", "label": "Russia-only services", "note": "Один и тот же geosite-ru-available-only-inside.srs; desktop дефолтит out='ru VPN 🇷🇺' и несёт outbounds add/update (desktop-расширение), mobile дефолтит direct-out + var force_ipv4. Ссылка переносима, локальные vars различаются"},
+    "bittorrent": {"in": "both", "label": "BitTorrent", "note": "protocol=bittorrent → выбранный outbound; семантика идентична (имя var расходится: out vs outbound — как N1 для preset-vars)"},
+    "fakeip": {"in": "both", "label": "FakeIP", "note": "FakeIP DNS + блок HTTPS/SVCB (var force у обоих); desktop даёт vars inet4_range/inet6_range, mobile — dns_enable/rule_enable c on_change (mobile-расширение). Ссылка переносима"},
+
+    "private-ips": {"in": "desktop", "label": "Private IPs", "note": "РАЗРЫВ N2: на mobile тот же пресет (ip_is_private → outbound) под id 'private-ip' — id надо выравнивать, до того ссылка непереносима"},
+    "private-ip": {"in": "mobile", "label": "Private IPs", "note": "РАЗРЫВ N2: пара к 'private-ips' (desktop)"},
+    "russian": {"in": "desktop", "label": "Russian domains & IPs", "note": "РАЗРЫВ N2: на mobile та же семантика (RU-домены/сервисы/geoip-ru + Yandex DNS) под id 'ru-direct'; наборы rule_set-тегов совпадают (ru-domains/ru-services/geoip-ru)"},
+    "ru-direct": {"in": "mobile", "label": "Russian domains & IPs", "note": "РАЗРЫВ N2: пара к 'russian' (desktop); дополнительно force_ipv4 и DNS-группа dns_ru (mobile-модель DNS)"},
+
+    "local-lan-domains": {"in": "desktop", "label": "Local/LAN domains", "note": ".local/.lan → direct"},
+    "ru-blocked": {"in": "desktop", "label": "Russian blocked resources", "note": "geoip-ru-blocked + community → proxy; несёт outbounds add/update (!RU-фильтры)"},
+    "israel-sites": {"in": "desktop", "label": "Israel-specific sites", "note": "geoip-il → proxy"},
+    "ai-services": {"in": "desktop", "label": "AI services (Claude, ChatGPT, Perplexity, Gemini)", "note": "domain_suffix-список AI-сервисов → выбранный outbound"},
+    "messengers": {"in": "desktop", "label": "Messengers", "note": "домены+process_name мессенджеров; per-platform ветки через @runtime.platform (desktop-расширение); platforms-фильтр windows/darwin/linux"},
+    "games": {"in": "desktop", "label": "Games", "note": "geosite-category-games → direct"},
+    "gaming-ports": {"in": "desktop", "label": "Gaming ports", "note": "игровые порты + Steam-диапазон → direct"},
+    "stop-http3": {"in": "desktop", "label": "Stop HTTP/3", "note": "UDP/443 → drop"},
+    "split-all-traffic": {"in": "desktop", "label": "Split all traffic 50/50 across two outbounds", "note": "деление по source_port_range; per-platform диапазоны через @runtime.platform"},
+
+    "traffic-processing": {"in": "mobile", "label": "Traffic Processing", "note": "sniff/hijack-dns/resolve первым правилом; locked, num=0, isSortable=false (mobile-расширения §264/§370); на desktop эта роль зашита в params[] route.rules"},
+    "unknown-traffic": {"in": "mobile", "label": "Unknown traffic", "note": "invert+package_name_regex — Android-специфика (атрибуция по приложению)"},
+    "vowifi": {"in": "mobile", "label": "VoWiFi (carrier calling)", "note": "pub.3gppnetwork.org + IKE-порты 500/4500 → direct; телефонная специфика"},
+    "fcm-push": {"in": "mobile", "label": "Google push (FCM)", "note": "FCM-хосты и порты 5228-5230 → direct; logical-правило, Android-специфика (package_name)"}
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "_comment": "§4.6: если #if не вычисляется до скаляра (условие false и else отсутствует) — цель НЕ трогается",
+  "_changed": "flag",
+  "vars": [
+    {"name": "flag", "type": "bool", "default_value": "false", "on_change": {"set": {
+      "@keep": {"#if": {"and": ["@flag"], "value": "changed"}}
+    }}},
+    {"name": "keep", "type": "text", "default_value": "original"}
+  ],
+  "config": {"value": "@keep"}
+}

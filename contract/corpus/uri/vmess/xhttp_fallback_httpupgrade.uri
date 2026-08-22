@@ -1,0 +1,4 @@
+# Деградация: net=xhttp в vmess v2-JSON — ожидается fallback-транспорт + UnsupportedTransportWarning;
+# внутри add=example-4.com, port=443, path=/xh, tls=tls, sni=example-4.com (без поля scy).
+# Источник: LxBox app/test/fixtures/vmess/edge_fallback_xhttp.uri
+vmess://eyJ2IjoiMiIsInBzIjoiVk1lc3MgWEhUVFAiLCJhZGQiOiJleGFtcGxlLTQuY29tIiwicG9ydCI6IjQ0MyIsImlkIjoiMTExMTExMTEtMjIyMi0zMzMzLTQ0NDQtNTU1NTU1NTU1NTU1IiwiYWlkIjoiMCIsIm5ldCI6InhodHRwIiwicGF0aCI6Ii94aCIsImhvc3QiOiJleGFtcGxlLTQuY29tIiwidGxzIjoidGxzIiwic25pIjoiZXhhbXBsZS00LmNvbSJ9

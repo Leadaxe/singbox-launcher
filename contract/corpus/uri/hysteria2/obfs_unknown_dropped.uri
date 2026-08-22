@@ -1,0 +1,3 @@
+# §358 неизвестный obfs=xyz -> отброшен целиком + warning (unknown obfs = fatal всего конфига)
+# источник: LxBox app/test/parser/round_trip_test.dart:138-149
+hysteria2://pass123@example-2.com:443?obfs=xyz&obfs-password=obfspass1&sni=example-2.com#hy2-badobfs

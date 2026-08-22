@@ -1,0 +1,3 @@
+# Legacy VMess: base64(method:uuid@host:port?query) — не-JSON пейлоад, ws+tls из query
+# источник: core/config/subscription/node_parser_test.go:308 (TestParseNode_VMess)
+vmess://YWVzLTEyOC1nY206MTExMTExMTEtMTExMS0xMTExLTExMTEtMTExMTExMTExMTExQDIwMy4wLjExMy43Ojg0NDM/dHlwZT13cyZwYXRoPSUyRndzJnRscz0x#LegacyVMess

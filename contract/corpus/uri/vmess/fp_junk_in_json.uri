@@ -1,0 +1,3 @@
+# §281 мусорный fp=wat внутри base64-JSON -> chrome + UnknownFingerprintWarning
+# источник: LxBox app/test/parser/utls_fingerprint_test.dart:130-147 (JSON пересобран синтетически)
+vmess://eyJ2IjoiMiIsInBzIjoidm1lc3MtZnAiLCJhZGQiOiJleGFtcGxlLTEuY29tIiwicG9ydCI6IjQ0MyIsImlkIjoiMTExMTExMTEtMTExMS0xMTExLTExMTEtMTExMTExMTExMTExIiwibmV0Ijoid3MiLCJ0bHMiOiJ0bHMiLCJmcCI6IndhdCIsImhvc3QiOiJleGFtcGxlLTEuY29tIiwicGF0aCI6Ii8ifQ==

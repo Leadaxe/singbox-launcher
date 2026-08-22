@@ -1,0 +1,23 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "client_version": "SSH-2.0-OpenSSH_7.4p1",
+        "host_key": [
+          "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeSyntheticHostKey00000000000000"
+        ],
+        "password": "pass123",
+        "private_key_passphrase": "myphrase",
+        "private_key_path": "/home/user/.ssh/id_rsa",
+        "server": "192.0.2.60",
+        "server_port": 22,
+        "type": "ssh",
+        "user": "root"
+      },
+      "kind": "outbound",
+      "label": "My SSH Server",
+      "scheme": "ssh"
+    }
+  ],
+  "v": 1
+}

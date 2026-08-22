@@ -1,0 +1,14 @@
+# wg-quick INI: Interface (PrivateKey/Address dual-stack/DNS/MTU) + Peer
+# (PublicKey/Endpoint/PresharedKey/PersistentKeepalive); ключи — синтетические base64 32 байта.
+# Источник: LxBox app/test/fixtures/wireguard/ini_basic.conf
+[Interface]
+PrivateKey = aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=
+Address = 10.0.0.2/32, fd00::2/128
+DNS = 1.1.1.1
+MTU = 1420
+
+[Peer]
+PublicKey = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=
+Endpoint = example-3.com:51820
+PresharedKey = eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeE=
+PersistentKeepalive = 25

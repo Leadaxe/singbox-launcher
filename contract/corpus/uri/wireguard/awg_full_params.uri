@@ -1,0 +1,4 @@
+# §097 AWG полный набор: jc/jmin/jmax/s1-s4/h1-h4 числами, i1/i3 строками с сохранением
+# регистра; отсутствующие i2/i4/i5 не появляются
+# источник: LxBox app/test/parser/awg_test.dart:14-35
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@host.example.com:51821?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32&allowedips=0.0.0.0/0,::/0&mtu=1408&keepalive=25&jc=10&jmin=50&jmax=100&s1=20&s2=20&s3=60&s4=60&h1=1234567890&h2=1234567891&h3=1234567892&h4=1234567893&i1=%3Cb%200x000100002112a442%3E%3Cr%2012%3E&i3=%3Cr%2024%3E#awg-server

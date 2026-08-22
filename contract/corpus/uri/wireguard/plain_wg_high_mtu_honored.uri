@@ -1,0 +1,3 @@
+# Plain WG без AWG-полей: mtu=1500 из URI уважается, клампа нет
+# источник: core/config/subscription/awg_test.go:227 (TestParseWireGuardURI_MTUClamp)
+wireguard://UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=@wg.example-1.com:51821?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU%3D&address=10.0.0.2/32&allowedips=0.0.0.0/0&mtu=1500#n

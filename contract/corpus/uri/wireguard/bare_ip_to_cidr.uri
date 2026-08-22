@@ -1,0 +1,3 @@
+# §106 bare IP без CIDR в address/allowedips -> дополняется /32 (v4) и /128 (v6)
+# источник: LxBox app/test/parser/wireguard_edge_test.dart:42-52
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@h.example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=172.16.0.2&allowedips=10.0.0.5,fd00::2#wg-cidr

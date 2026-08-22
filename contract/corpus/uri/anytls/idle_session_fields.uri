@@ -1,0 +1,3 @@
+# idle_session_check_interval/timeout + min_idle_session читаются
+# источник: LxBox app/test/parser/anytls_test.dart:89-97
+anytls://pass123@example-1.com:8443?idle_session_check_interval=15s&idle_session_timeout=45s&min_idle_session=3#at-idle

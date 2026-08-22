@@ -1,0 +1,25 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "security": "aes-128-gcm",
+        "server": "203.0.113.7",
+        "server_port": 8443,
+        "tls": {
+          "enabled": true,
+          "server_name": "203.0.113.7"
+        },
+        "transport": {
+          "path": "/ws",
+          "type": "ws"
+        },
+        "type": "vmess",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "LegacyVMess",
+      "scheme": "vmess"
+    }
+  ],
+  "v": 1
+}

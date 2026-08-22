@@ -1,0 +1,3 @@
+# VMess JSON net=ws c ?ed=2048 в path — сплит на max_early_data + early_data_header_name (issue #96)
+# источник: core/config/subscription/ws_early_data_test.go:164 (TestParseVMess_WS_EarlyData)
+vmess://eyJ2IjoiMiIsInBzIjoidm1lc3MtZWQiLCJhZGQiOiJoLmV4YW1wbGUtMjAuY29tIiwicG9ydCI6NDQzLCJpZCI6IjExMTExMTExLTExMTEtMTExMS0xMTExLTExMTExMTExMTExMSIsImFpZCI6MCwibmV0Ijoid3MiLCJ0eXBlIjoibm9uZSIsImhvc3QiOiJoLmV4YW1wbGUtMjAuY29tIiwicGF0aCI6Ii9hcGkvdjIvY2hhbm5lbD9lZD0yMDQ4IiwidGxzIjoidGxzIn0=

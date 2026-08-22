@@ -1,0 +1,5 @@
+{
+  "_comment": "§4.4 vs §4.3: элемент массива с #if И другими ключами — это НЕ условный элемент, а обычный объект с map-spread внутри",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"rules": [{"outbound": "direct", "#if": {"and": ["@flag"], "value": {"protocol": "dns"}}}]}
+}

@@ -1,0 +1,3 @@
+# путь без ведущего слэша + эмодзи/юникод сохраняется дословно (слэш добавит ядро)
+# источник: LxBox app/test/parser/path_double_encoding_test.dart:61-69 (анонимизировано)
+trojan://pass123@192.0.2.30:443?host=cdn.example-3.com&path=Telegram%F0%9F%87%A8%F0%9F%87%B3&sni=cdn.example-3.com&type=ws#uni-path

@@ -1,0 +1,3 @@
+# Базовый hysteria2: пароль + sni
+# источник: core/config/subscription/node_parser_test.go:1082 (TestParseNode_Hysteria2)
+hysteria2://pass123@example-1.com:443?sni=example-1.com#Test Server

@@ -1,0 +1,3 @@
+# Алиас reduce_rtt=1 -> zero_rtt_handshake=true
+# источник: core/config/subscription/node_parser_tuic_test.go:92 (TestBuildOutbound_Tuic_ZeroRTTAlias)
+tuic://u:p@example-1.com/?reduce_rtt=1

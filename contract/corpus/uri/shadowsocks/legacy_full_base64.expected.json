@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "method": "chacha20-ietf-poly1305",
+        "password": "pass123",
+        "server": "192.0.2.10",
+        "server_port": 8388,
+        "type": "shadowsocks"
+      },
+      "kind": "outbound",
+      "label": "LegacyTag",
+      "scheme": "ss"
+    }
+  ],
+  "v": 1
+}

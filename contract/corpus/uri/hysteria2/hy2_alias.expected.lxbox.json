@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "testpass123",
+        "server": "example-3.com",
+        "server_port": 8443,
+        "tls": {
+          "enabled": true,
+          "insecure": true,
+          "server_name": "example-3.com"
+        },
+        "type": "hysteria2"
+      },
+      "kind": "outbound",
+      "label": "Hy2 Alias",
+      "scheme": "hysteria2",
+      "warnings": [
+        "tls_insecure"
+      ]
+    }
+  ],
+  "v": 1
+}

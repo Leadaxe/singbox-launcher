@@ -1,0 +1,15 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "proxy.example-1.com",
+        "server_port": 1080,
+        "type": "socks",
+        "version": "5"
+      },
+      "kind": "outbound",
+      "scheme": "socks"
+    }
+  ],
+  "v": 1
+}

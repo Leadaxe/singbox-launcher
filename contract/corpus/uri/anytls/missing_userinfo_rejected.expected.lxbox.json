@@ -1,0 +1,10 @@
+{
+  "dropped": [
+    {
+      "reason": "parse_error",
+      "ref": "anytls://any.example-1.com:443#x"
+    }
+  ],
+  "nodes": [],
+  "v": 1
+}

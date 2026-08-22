@@ -1,0 +1,384 @@
+{
+  "v": 1,
+  "warnings": {
+    "transport_unsupported": {
+      "severity": "warning",
+      "params": [
+        "transport",
+        "fallback"
+      ],
+      "desc": "Транспорт не поддержан ядром/билдом — применён fallback (например XHTTP → httpupgrade при emit'е без with_xhttp). РАЗРЫВ: Go в Xray-конверте молча возвращает nil для неизвестного network (kcp и пр.) — транспорт теряется без предупреждения; целевое поведение — warning как в Dart.",
+      "dart": "UnsupportedTransportWarning",
+      "go": "core/config/subscription/xray_outbound_convert.go:337"
+    },
+    "protocol_unsupported": {
+      "severity": "error",
+      "params": [
+        "scheme"
+      ],
+      "desc": "Протокол/тип outbound не поддержан — узел в dropped. Go: singbox-импорт скипает неизвестные типы (singbox_import.go:132), Xray-массив — неизвестные protocol (xray_json_array.go:499).",
+      "dart": "UnsupportedProtocolWarning",
+      "go": "core/config/subscription/singbox_import.go:132; core/config/subscription/xray_json_array.go:499"
+    },
+    "field_missing": {
+      "severity": "error",
+      "params": [
+        "field"
+      ],
+      "desc": "Обязательное поле отсутствует. Severity по Dart (error, узел в dropped); Go сегодня мягче — предупреждает и оставляет узел (hysteria2 без password node_parser_hysteria2.go:23, tuic без uuid/password node_parser_tuic.go:60/65, anytls без password node_parser_anytls.go:25) — расхождение отмечено, целевое поведение по Dart.",
+      "dart": "MissingFieldWarning",
+      "go": "core/config/subscription/node_parser_tuic.go:60"
+    },
+    "flow_deprecated": {
+      "severity": "info",
+      "params": [
+        "flow"
+      ],
+      "desc": "Flow вне {\"\", xtls-rprx-vision} (deprecated xtls-rprx-direct/origin/splice, мусор) — снимается, узел живёт.",
+      "dart": "DeprecatedFlowWarning",
+      "go": "core/config/subscription/singbox_sanitize.go:234; core/config/outbound_generator.go:356"
+    },
+    "vision_with_transport": {
+      "severity": "info",
+      "params": [
+        "transport"
+      ],
+      "desc": "xtls-rprx-vision валиден только на голом TLS; при любом v2ray-транспорте flow гасится, узел живёт.",
+      "dart": "VisionWithTransportWarning",
+      "go": "core/config/subscription/singbox_sanitize.go:240; core/config/outbound_generator.go:352"
+    },
+    "tls_insecure": {
+      "severity": "info",
+      "params": [],
+      "desc": "Проверка TLS-сертификата отключена (allowInsecure/insecure). Часто намеренный выбор провайдера — только info. Go молча эмитит insecure:true без пометки; после появления warning-аккумулятора (фаза 2) добавляет код.",
+      "dart": "InsecureTlsWarning",
+      "go": null
+    },
+    "naive_unavailable": {
+      "severity": "error",
+      "params": [],
+      "desc": "Сборка не может поднять naive: Go — probe libcronet рядом с бинарём ядра, naive-ноды пропускаются с warning (деградация всего класса нод); Dart — defensively после runtime-ошибки libbox без with_naive_outbound. Механизмы разные, смысл кода один.",
+      "dart": "NaiveBuildTagWarning",
+      "go": "core/config/outbound_generator.go:822"
+    },
+    "utls_fp_unknown": {
+      "severity": "warning",
+      "params": [
+        "value"
+      ],
+      "desc": "uTLS fingerprint вне словаря ядра (известные xray-псевдонимы канонизируются молча). НОВОЕ РАЗРЫВ-ПОВЕДЕНИЕ, решения нет: Dart заменяет на chrome + warning; Go в URI-пути молча подставляет random (node_parser_transport.go:646), в singbox-импорте молча снимает весь utls-блок (singbox_sanitize.go:177). Нужно единое fallback-значение.",
+      "dart": "UnknownFingerprintWarning",
+      "go": "core/config/subscription/singbox_sanitize.go:177; core/config/subscription/node_parser_transport.go:646"
+    },
+    "xhttp_param_reset": {
+      "severity": "warning",
+      "params": [
+        "field",
+        "reason",
+        "value"
+      ],
+      "desc": "XHTTP-параметр сброшен на дефолт (значение вне enum, header/cookie placement или GET вне packet-up режима) — иначе одна нода роняет весь конфиг в normalizeMeta ядра. Go пока НЕ нормализует — значения уходят в ядро как есть (xhttpBuildTransport: «normalization is left to the core», SPEC 102 в работе, риск №4 PLAN); фикстуры писать после закрытия 102.",
+      "dart": "XhttpParamResetWarning",
+      "go": null
+    },
+    "ech_ignored": {
+      "severity": "info",
+      "params": [
+        "query_name"
+      ],
+      "desc": "D-006/§9.B7: tls.ech вычищается с warning в обоих проектах — with_ech в LX_TAGS ядра нет, пропущенный ech уронил бы конфиг. Dart уже делает (§320); Go сегодня: URI-путь молча теряет, singbox-импорт пропускает насквозь (коммент в singbox_sanitize.go:47-48 врёт) — Go добавляет вычистку в sanitize и URI-путь.",
+      "dart": "EchIgnoredWarning",
+      "go": null
+    },
+    "obfs_unknown": {
+      "severity": "warning",
+      "params": [
+        "value"
+      ],
+      "desc": "Тип hysteria2-обфускации вне словаря ядра — снимается, узел подключается без обфускации. НОВОЕ РАСХОЖДЕНИЕ: allowlist Go = только salamander (isValidHysteria2ObfsType, node_parser_hysteria2.go:14) — gecko молча дропается, хотя ядро его поддерживает (Dart зеркалит enum salamander,gecko из option/hysteria2.go; у LxBox это был баг #53). Go добавляет gecko.",
+      "dart": "UnknownObfsWarning",
+      "go": "core/config/subscription/node_parser_hysteria2.go:39; core/config/subscription/singbox_sanitize.go:286"
+    },
+    "obfs_password_missing": {
+      "severity": "warning",
+      "params": [
+        "type"
+      ],
+      "desc": "Обфускация задана без пароля — снимается целиком («missing obfs password» fatal для всего конфига). НОВОЕ РАСХОЖДЕНИЕ/БАГ: Go проверяет только в singbox-импорте; URI-путь эмитит obfs без password (node_parser_hysteria2.go:44-47) → конфиг падает. Go добавляет проверку в URI-путь.",
+      "dart": "MissingObfsPasswordWarning",
+      "go": "core/config/subscription/singbox_sanitize.go:292"
+    },
+    "detour_cycle_broken": {
+      "severity": "warning",
+      "params": [
+        "target"
+      ],
+      "desc": "Кольцо в detour-цепочке разорвано, узел дозванивается напрямую/без замыкающего ребра. Go: импорт — DebugLog (detour_chain.go:162,172), свои узлы — self-detour outbound_generator.go:1262 и кольца :1291.",
+      "dart": "DetourCycleBrokenWarning",
+      "go": "core/config/subscription/detour_chain.go:172; core/config/outbound_generator.go:1262; core/config/outbound_generator.go:1291"
+    },
+    "detour_target_missing": {
+      "severity": "warning",
+      "params": [
+        "target"
+      ],
+      "desc": "detour указывает на несуществующий тег ИМПОРТИРУЕМОГО конфига — цепочка обрезается, узел живёт и ходит напрямую. Не путать с source_detour_missing (детур источника, настроенный пользователем, — там fail-closed).",
+      "dart": "DetourTargetMissingWarning",
+      "go": "core/config/subscription/detour_chain.go:179"
+    },
+    "detour_to_group": {
+      "severity": "warning",
+      "params": [
+        "target"
+      ],
+      "desc": "detour на группу (selector/urltest) — группа не может быть хопом цепочки; цепочка обрезается, узел живёт.",
+      "dart": "DetourToGroupWarning",
+      "go": "core/config/subscription/detour_chain.go:190"
+    },
+    "detour_chain_too_deep": {
+      "severity": "warning",
+      "params": [
+        "limit"
+      ],
+      "desc": "Цепочка длиннее max_detour_chain (см. limits.json) — усечена, узел рабочий.",
+      "dart": "DetourChainTooDeepWarning",
+      "go": "core/config/subscription/detour_chain.go:209"
+    },
+    "selector_as_auto": {
+      "severity": "info",
+      "params": [],
+      "desc": "Mobile-only by design: LxBox не имеет ручного selector-типа и импортирует его как автовыбор. Go импортирует selector нативно как группу (SchemeGroup) — warning не нужен. После SPEC 104 семантику пересмотреть.",
+      "dart": "SelectorAsAutoWarning",
+      "go": null
+    },
+    "group_member_missing": {
+      "severity": "warning",
+      "params": [
+        "count"
+      ],
+      "desc": "Часть членов группы не доехала (тег не дал узла, вложенная группа) — группа живёт без них.",
+      "dart": "GroupMemberMissingWarning",
+      "go": "core/config/subscription/singbox_groups.go:89; core/config/subscription/source_loader.go:733"
+    },
+    "reality_pbk_invalid": {
+      "severity": "warning",
+      "params": [
+        "value"
+      ],
+      "desc": "REALITY public_key не X25519-base64url (43 знака) — pbk=enabled и прочий мусор публичных подписок; узел деградирует до plain TLS (иначе «invalid public_key» валит весь конфиг). В Go URI-путь деградирует молча (node_parser_transport.go:656), import-пути — с warning. Dart-класса нет — кандидат на добавление.",
+      "dart": null,
+      "go": "core/config/subscription/singbox_sanitize.go:204; core/config/subscription/xray_outbound_convert.go:241; core/config/subscription/node_parser_transport.go:656"
+    },
+    "reality_short_id_invalid": {
+      "severity": "info",
+      "params": [
+        "value"
+      ],
+      "desc": "REALITY short_id содержит не-hex или слишком длинный — фильтруется до hex-цифр/усекается, мусор целиком → поле снимается (пустой short_id легален). Сегодня молча в обоих проектах.",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_transport.go:564; core/config/subscription/singbox_sanitize.go:209"
+    },
+    "packet_encoding_unknown": {
+      "severity": "warning",
+      "params": [
+        "value"
+      ],
+      "desc": "packet_encoding вне {xudp, packetaddr} (пустое/none = отсутствие поля) — поле снимается, иначе паника ядра (SPEC 049). Dart деградирует так же, но без NodeWarning-класса (uri_utils.dart:156, лог) — кандидат на добавление класса.",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_core.go:622; core/config/subscription/singbox_sanitize.go:260"
+    },
+    "naive_padding_ignored": {
+      "severity": "info",
+      "params": [
+        "value"
+      ],
+      "desc": "URI-параметр padding у naive не имеет sing-box-эквивалента — игнорируется, узел живёт.",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_core.go:384"
+    },
+    "ss_method_invalid": {
+      "severity": "error",
+      "params": [
+        "method"
+      ],
+      "desc": "Shadowsocks-метод вне allowlist ss_methods — узел в dropped (битый метод уронил бы конфиг).",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_core.go:170"
+    },
+    "port_invalid": {
+      "severity": "error",
+      "params": [
+        "value"
+      ],
+      "desc": "Порт вне 1..65535 или не число — узел в dropped (reason invalid_port в каноническом конверте, PLAN §2).",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_core.go:354"
+    },
+    "uri_too_long": {
+      "severity": "error",
+      "params": [
+        "length",
+        "limit"
+      ],
+      "desc": "URI длиннее max_uri_length (см. limits.json, D-013: канон 65536) — строка в dropped. vpn:// исключён — у него свой amnezia_link_max_bytes.",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_core.go:96"
+    },
+    "tuic_congestion_invalid": {
+      "severity": "warning",
+      "params": [
+        "value"
+      ],
+      "desc": "TUIC congestion_control вне {cubic, new_reno, bbr} — поле снимается, узел живёт.",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_tuic.go:73"
+    },
+    "tuic_udp_relay_mode_invalid": {
+      "severity": "warning",
+      "params": [
+        "value"
+      ],
+      "desc": "TUIC udp_relay_mode вне {native, quic} — поле снимается, узел живёт.",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_tuic.go:82"
+    },
+    "anytls_min_idle_invalid": {
+      "severity": "warning",
+      "params": [
+        "value"
+      ],
+      "desc": "anytls min_idle_session не неотрицательное целое — поле снимается, узел живёт.",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_anytls.go:40"
+    },
+    "masque_vhttp_invalid": {
+      "severity": "warning",
+      "params": [
+        "value"
+      ],
+      "desc": "MASQUE vhttp вне {h3, h2} — принудительно h3. Desktop-протокол (masque в LxBox нет).",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_masque.go:100"
+    },
+    "ssh_user_default": {
+      "severity": "info",
+      "params": [],
+      "desc": "SSH-ссылка без пользователя — подставлен root. Desktop-протокол.",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_ssh.go:22"
+    },
+    "awg_header_invalid": {
+      "severity": "warning",
+      "params": [
+        "field",
+        "value"
+      ],
+      "desc": "AWG magic-header (H1..H4/S1/S2 и др.) не uint32 и не lo-hi диапазон — поле снимается, ядро возьмёт WireGuard-дефолт.",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_wireguard.go:400"
+    },
+    "awg_headers_overlap": {
+      "severity": "warning",
+      "params": [
+        "a",
+        "b"
+      ],
+      "desc": "Диапазоны AWG-заголовков пересекаются — ядро отвергнет endpoint («headers must not overlap»); предупреждение до старта.",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_wireguard.go:427"
+    },
+    "amnezia_container_choice": {
+      "severity": "info",
+      "params": [
+        "count",
+        "chosen"
+      ],
+      "desc": "vpn://-профиль содержит несколько WG/AWG-контейнеров. НОВОЕ РАСХОЖДЕНИЕ, решения нет: Go импортирует ОДИН контейнер (дефолтный предпочтителен) с этим warning; Dart импортирует ВСЕ контейнеры (amnezia_link.dart, список INI). Нужно решение: один или все.",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_amnezia.go:171"
+    },
+    "group_empty": {
+      "severity": "warning",
+      "params": [
+        "tag"
+      ],
+      "desc": "Группа осталась без разрешимых членов — группа в dropped (узлы-члены при этом живут сами по себе).",
+      "dart": null,
+      "go": "core/config/subscription/singbox_groups.go:94; core/config/subscription/xray_json_array.go:223"
+    },
+    "detour_with_listen_port": {
+      "severity": "warning",
+      "params": [
+        "target"
+      ],
+      "desc": "Узел с listen_port не может получить detour (ядро отвергает сочетание) — detour не применяется, узел живёт. Desktop-механика (source-detour лаунчера).",
+      "dart": null,
+      "go": "core/config/outbound_generator.go:1215; core/config/subscription/source_loader.go:773"
+    },
+    "source_detour_missing": {
+      "severity": "error",
+      "params": [
+        "target",
+        "count"
+      ],
+      "desc": "Detour-узел, НАЗНАЧЕННЫЙ ПОЛЬЗОВАТЕЛЕМ на источник, не найден — все ноды источника дропаются fail-closed (трафик не должен уйти напрямую мимо приватной границы). Противоположная политика detour_target_missing — там detour приехал из чужого файла и узел живёт direct; различие by design. Desktop-фича.",
+      "dart": null,
+      "go": "core/config/outbound_generator.go:1200"
+    },
+    "max_nodes_exceeded": {
+      "severity": "warning",
+      "params": [
+        "limit",
+        "skipped"
+      ],
+      "desc": "Подписка дала больше max_nodes_per_subscription узлов — хвост отброшен (защита от CIDR-подписок). D-013: Dart добавляет лимит и код.",
+      "dart": null,
+      "go": "core/config/subscription/source_loader.go:606"
+    },
+    "clash_yaml_unsupported": {
+      "severity": "warning",
+      "params": [],
+      "desc": "§9.B5: тело подписки — Clash YAML (детект по proxies) — 0 узлов + внятная подсказка вместо generic-ошибки. Body-level код (на подписку, не на узел). Dart уже детектит (body_decoder.dart:201, JsonFlavor.clashYaml + parse_hints.dart), но без NodeWarning-класса; Go добавляет детект в ClassifySubscriptionBody.",
+      "dart": null,
+      "go": null
+    },
+    "template_var_undeclared": {
+      "severity": "warning",
+      "params": [
+        "name"
+      ],
+      "desc": "Ссылка на имя, не объявленное в vars (опечатка автора шаблона): плейсхолдер остаётся в выводе как есть (TEMPLATE_LANG §5.2), в предикате/гейте → false. Код отдают оба движка; корпус сверяет строго.",
+      "dart": "if_engine.dart: templateWarnVarUndeclared (хук onTemplateWarning)",
+      "go": "core/template/substitute_canon.go: warnVarUndeclared"
+    },
+    "template_unknown_directive": {
+      "severity": "warning",
+      "params": [
+        "key"
+      ],
+      "desc": "Неизвестный `#`-ключ выброшен (forward-compat, §4.1) ИЛИ невалидная форма условия: #if без/с обоими #and/#or, истинное условие без #value, нечисловое/не-cond значение #enable. Fail-closed: узел не включается (D-058).",
+      "dart": "if_engine.dart: templateWarnUnknownDirective",
+      "go": "core/template/substitute_canon.go: warnUnknownDirective"
+    },
+    "template_int_clamped": {
+      "severity": "warning",
+      "params": [
+        "name",
+        "value"
+      ],
+      "desc": "Значение int-переменной вне [0,65535] клампнуто (uint16-backstop ядра, §2.2).",
+      "dart": "test/contract/template_contract_test.dart: _coerceWithWarnings (движок клампит молча)",
+      "go": "core/template/substitute_canon.go: intCastCanon"
+    },
+    "template_int_invalid": {
+      "severity": "warning",
+      "params": [
+        "name",
+        "value"
+      ],
+      "desc": "int-переменная содержит не число — уезжает в конфиг строкой как есть (опечатка видна, не маскируется нулём; §2.2, D-055).",
+      "dart": "test/contract/template_contract_test.dart: _coerceWithWarnings",
+      "go": "core/template/substitute_canon.go: intCastCanon"
+    }
+  }
+}

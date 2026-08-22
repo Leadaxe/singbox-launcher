@@ -1,0 +1,5 @@
+{
+  "_comment": "Вложенный or внутри and: внешний and требует обе части",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"out":{"#if":{"and":["@a",{"or":["@b","@b"]}],"value":{"hit":true},"else":{"hit":false}}}}
+}

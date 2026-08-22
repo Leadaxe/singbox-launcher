@@ -1,0 +1,3 @@
+# TUIC v5: uuid:password в userinfo, congestion_control=bbr, udp_relay_mode=native, alpn=h3.
+# Источник: LxBox app/test/fixtures/tuic/v5_basic.uri
+tuic://11111111-2222-3333-4444-555555555555:testpass123@example-1.com:443?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=example-1.com#TUIC%20Basic

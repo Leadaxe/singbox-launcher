@@ -1,0 +1,3 @@
+# невалидный min_idle_session=abc -> поле пусто, парс не падает
+# источник: LxBox app/test/parser/anytls_test.dart:106-110
+anytls://pass123@example-1.com?min_idle_session=abc#at-bad-idle

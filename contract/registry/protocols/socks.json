@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "scheme": "socks",
+  "kind": "outbound",
+  "singbox_type": "socks",
+  "aliases": ["socks5"],
+  "sources": ["uri", "singbox"],
+  "extension": null,
+  "uri": {
+    "userinfo": {
+      "meaning": "username:password",
+      "note": "Оба компонента опциональны. Дефолтный порт 1080. socks:// и socks5:// эквивалентны, оба → sing-box type socks с version \"5\" (Go пишет version всегда; Dart хранит version в SocksSpec, дефолт '5'). version '4'/'4a' НЕ достижим ни одним parse-путём: Dart parseSingboxEntry в socks-ветке entry['version'] не читает (json_parsers.dart:973-984), поле модели с дефолтом '5' (node_spec.dart:542,553) никем не заполняется — мёртвое поле модели, не расширение. Query-параметров у схемы нет ни в одном парсере."
+    },
+    "query": {},
+    "fragment": "label"
+  },
+  "emit": {
+    "share_uri": true,
+    "param_order": [],
+    "note": "Оба эмитят socks5:// (даже если пришёл socks://). Userinfo: Go при любом непустом user/pass пишет user:pass целиком (url.UserPassword — ':pass@' при пустом user); Dart при пустом username опускает userinfo целиком, т.е. password-only нода теряет пароль в share-URI (минорный разрыв)."
+  },
+  "degrade": [
+    "отсутствие hostname → ошибка ноды (Go) / null-skip (Dart)",
+    "невалидный порт → ошибка ноды"
+  ],
+  "refs": {
+    "go": [
+      "core/config/subscription/node_parser_core.go:253-258",
+      "core/config/subscription/node_parser_core.go:317-320",
+      "core/config/subscription/node_parser_core.go:784-791",
+      "core/config/subscription/shareuri_socks.go:10-29",
+      "core/config/outbound_generator.go:205"
+    ],
+    "dart": [
+      "lib/services/parser/uri_parsers.dart:67-69",
+      "lib/services/parser/uri_parsers/socks_parser.dart:8-35",
+      "lib/models/node_spec_emit.dart:503-520",
+      "lib/services/parser/json_parsers.dart:797"
+    ]
+  }
+}

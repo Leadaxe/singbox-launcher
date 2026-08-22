@@ -1,0 +1,5 @@
+{
+  "_comment": "§5.2: объявленная var со значением null в предикате — false, БЕЗ warning (это штатная optional-var, а не опечатка)",
+  "vars": [{"name": "opt", "type": "text"}],
+  "config": {"out": {"#if": {"and": [{"@opt": "#notEmpty"}], "value": {"hit": true}, "else": {"hit": false}}}}
+}

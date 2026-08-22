@@ -1,0 +1,3 @@
+# §268 плюс-алиас proxy+https эквивалентен proxy-https (TLS on, sni читается)
+# источник: LxBox app/test/parser/http_proxy_test.dart:87-97
+proxy+https://alice:pass123@h.example-1.com:8443?sni=proxy.example-corp.com#plus-https

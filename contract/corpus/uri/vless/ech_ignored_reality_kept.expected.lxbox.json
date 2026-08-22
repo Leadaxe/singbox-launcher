@@ -1,0 +1,32 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "reality": {
+            "enabled": true,
+            "public_key": "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw",
+            "short_id": "ab"
+          },
+          "server_name": "example-1.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "random"
+          }
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "ech-reality",
+      "scheme": "vless",
+      "warnings": [
+        "ech_ignored"
+      ]
+    }
+  ],
+  "v": 1
+}

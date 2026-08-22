@@ -1,0 +1,3 @@
+# Порт не указан — дефолт 22
+# источник: core/config/subscription/node_parser_test.go:1594 (TestParseNode_SSH)
+ssh://admin@example-1.com#Default Port

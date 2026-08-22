@@ -1,0 +1,3 @@
+# UTF-8 percent-encoded fragment декодируется в label (эмодзи); пустой query перед #
+# источник: LxBox app/test/parser/uri_naive_test.dart:97-102
+naive+https://user1:pass123@example-1.com:443?#%E2%9C%85%20DE

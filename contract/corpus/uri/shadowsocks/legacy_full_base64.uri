@@ -1,0 +1,3 @@
+# Legacy-форма: base64(method:password@host:port) целиком
+# источник: core/config/subscription/node_parser_test.go:457 (TestParseNode_Shadowsocks)
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwYXNzMTIzQDE5Mi4wLjIuMTA6ODM4OA==#LegacyTag

@@ -1,0 +1,3 @@
+# SOCKS5: схема socks5:// с user:pass аутентификацией.
+# Источник: LxBox app/test/fixtures/socks/auth.uri
+socks5://testuser:testpass123@example-1.com:1080#SOCKS%20Auth

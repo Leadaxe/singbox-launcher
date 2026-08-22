@@ -1,0 +1,3 @@
+# URL-safe base64 ключ (-_) нормализуется в std-форму, которую требует ядро
+# источник: core/config/subscription/wireguard_robustness_test.go:63 (TestParseWireGuardURI_URLSafeKeyNormalized)
+wireguard://JSwzOkFIT1ZdZGtyeYCHjpWco6qxuL_GzdTb4unw9_4=@192.0.2.71:51820?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=&address=10.0.0.2/32&allowedips=0.0.0.0/0#node

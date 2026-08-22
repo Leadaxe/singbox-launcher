@@ -1,0 +1,4 @@
+# §343 нечётный sid (3 hex) -> отброшен целиком (пустой), REALITY жив;
+# иначе ядро: decode short_id: odd length hex string -> fatal всего конфига
+# источник: LxBox app/test/parser/reality_short_id_test.dart:48-56
+vless://11111111-1111-1111-1111-111111111111@example-1.com:443?type=tcp&security=reality&pbk=AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw&sid=abc&sni=w.example.com#sid-odd

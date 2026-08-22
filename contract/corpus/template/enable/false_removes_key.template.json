@@ -1,0 +1,5 @@
+{
+  "_comment": "SPEC 107: #enable:false у объекта-значения ключа — ключ исчезает из родителя",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"keep":{"x":1},"gone":{"#enable":["@a"],"y":2}}
+}

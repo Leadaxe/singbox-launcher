@@ -1,0 +1,5 @@
+{
+  "_comment": "P4: #in с массивом строковых литералов",
+  "vars": [{"name": "mode", "type": "enum", "default_value": "auto", "options": ["auto", "manual", "off"]}],
+  "config": {"out": {"#if": {"and": [{"@mode": {"#in": ["auto", "manual"]}}], "value": {"hit": true}, "else": {"hit": false}}}}
+}

@@ -1,0 +1,3 @@
+# Голый IPv4 address без /N (AmneziaWG-экспорты) — дефолт /32, иначе netip.ParsePrefix падает
+# источник: core/config/subscription/wireguard_robustness_test.go:84 (TestParseWireGuardURI_BareAddressGetsPrefix)
+wireguard://QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=@192.0.2.71:51820?publickey=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=&address=172.16.0.2&allowedips=0.0.0.0/0#n

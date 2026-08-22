@@ -1,0 +1,100 @@
+{
+  "v": 1,
+  "scheme": "anytls",
+  "kind": "outbound",
+  "singbox_type": "anytls",
+  "aliases": [],
+  "sources": ["uri", "singbox"],
+  "extension": null,
+  "uri": {
+    "userinfo": {
+      "meaning": "password",
+      "note": "Единственный кредентил — пароль в username-части, как у trojan. Dart схлопывает user:pass обратно в цельный пароль с ':'; Go берёт только Username() — пароль с ':' в Go теряет хвост (минорный разрыв)."
+    },
+    "query": {
+      "sni": {
+        "type": "string",
+        "aliases": ["peer"],
+        "default": null,
+        "note": "server_name; peer — алиас в обоих. Эвристика мусора (без точки/двоеточия, эмодзи '🔒' → fallback на server) есть только у Go (node_parser_anytls.go:58); Dart через parseVlessTls фолбэчит только ПУСТОЙ sni (transport.dart:330-331), мусор уходит в server_name как есть — расхождение."
+      },
+      "fp": {
+        "type": "alias_enum",
+        "allowlist": "utls_fingerprints",
+        "aliases": ["fingerprint"],
+        "default": "random",
+        "note": "D-009: без fp= дефолт utls random (vless-конвенция). Сейчас дефолт есть только в Dart (transport.dart:333 через parseVlessTls); Go добавляет — §9.A3."
+      },
+      "alpn": {
+        "type": "string",
+        "default": null,
+        "note": "Список через запятую → tls.alpn."
+      },
+      "insecure": {
+        "type": "bool",
+        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "skip-cert-verify", "skipCertVerify"],
+        "default": null,
+        "note": "tls.insecure; 1/true/yes. skipCertVerify — только Go; allow_insecure читают ОБА (Go явно: tuicQueryFlagTrue(q, \"allow_insecure\"), node_parser_anytls.go:64-65; Dart — isTlsInsecure); целевой набор — объединение."
+      },
+      "security": {
+        "type": "string",
+        "default": null,
+        "ext": "mobile",
+        "note": "Dart парсит TLS через vless-конвенцию: security=reality активирует REALITY; security=none игнорируется (AnyTLS всегда поверх TLS — ключ снимается перед парсом). Go security не читает."
+      },
+      "pbk": {
+        "type": "string",
+        "default": null,
+        "ext": "mobile",
+        "note": "РАЗРЫВ (новое, вне §9): REALITY на anytls есть только в Dart (parseVlessTls: pbk/sid, валидация X25519 32 байта; toUriAnyTls пишет security=reality&pbk=&sid=). Go REALITY на anytls не поддерживает — узел с pbk теряет REALITY-блок на десктопе."
+      },
+      "sid": {
+        "type": "string",
+        "default": null,
+        "ext": "mobile",
+        "note": "REALITY short_id (hex, чётная длина, ≤16) — только Dart, в паре с pbk."
+      },
+      "idle_session_check_interval": {
+        "type": "string",
+        "default": null,
+        "note": "Duration; Go трактует голое число как секунды (конвенция TUIC heartbeat), Dart передаёт как есть."
+      },
+      "idle_session_timeout": {
+        "type": "string",
+        "default": null,
+        "note": "Duration; та же нормализация, что idle_session_check_interval."
+      },
+      "min_idle_session": {
+        "type": "int",
+        "default": null,
+        "note": "Неотрицательное целое; мусор → ключ дропнут с warning (Go) / null (Dart)."
+      }
+    },
+    "fragment": "label"
+  },
+  "emit": {
+    "share_uri": true,
+    "param_order": ["alpn", "fp", "idle_session_check_interval", "idle_session_timeout", "insecure", "min_idle_session", "pbk", "security", "sid", "sni"],
+    "note": "Порядок лексикографический в обоих проектах (Go url.Values.Encode(), Dart toUriAnyTls → _buildUri → buildQuery sort, uri_utils.dart:306-312). insecure: Dart эмитит allowInsecure=1, Go — insecure=1. security/pbk/sid эмитит только Dart (REALITY-разрыв)."
+  },
+  "degrade": [
+    "fp вне allowlist → Go: utls не эмитится; Dart: chrome + warning (целевое по D-009 — random при пустом)",
+    "pbk-мусор (enabled/true, не 32 байта X25519) → Dart: REALITY не создаётся, plain TLS; Go pbk не читает",
+    "пустой пароль → drop ноды в обоих: anytls входит в общую валидацию userinfo Go (node_parser_core.go:308-316), warning-ветка node_parser_anytls.go:24-25 с URI-пути недостижима (мёртвый код); Dart: null-skip",
+    "min_idle_session не число → ключ дропнут"
+  ],
+  "refs": {
+    "go": [
+      "core/config/subscription/node_parser_core.go:244-247",
+      "core/config/subscription/node_parser_anytls.go:21-91",
+      "core/config/subscription/shareuri_anytls.go:15-54",
+      "core/config/outbound_generator.go:299"
+    ],
+    "dart": [
+      "lib/services/parser/uri_parsers/anytls_parser.dart:14-56",
+      "lib/services/parser/transport.dart:314-345",
+      "lib/models/node_spec_emit.dart:236-283",
+      "lib/services/parser/json_parsers.dart:797"
+    ]
+  }
+}

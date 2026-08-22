@@ -1,0 +1,3 @@
+# plain WG (без AWG-полей) без mtu -> дефолт 1408, кламп НЕ применяется
+# источник: LxBox app/test/parser/awg_test.dart:126-129
+wireguard://AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=@example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32#wg-plain

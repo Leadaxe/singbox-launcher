@@ -1,0 +1,3 @@
+# битый URI без authority -> parse отвергает (null), не бросает
+# источник: LxBox app/test/parser/round_trip_test.dart:212-216
+vless://

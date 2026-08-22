@@ -1,0 +1,3 @@
+# §222 proxy-http (Dart-only схема): host/port/label, TLS выключен
+# источник: LxBox app/test/parser/http_proxy_test.dart:13-21
+proxy-http://10.0.0.1:8080#Corp%20proxy

@@ -1,0 +1,5 @@
+{
+  "_comment": "#enable внутри ветки value чужого #if — ветка обходится как обычное поддерево",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"#if":{"and":["@a"],"value":{"inner":{"#enable":["@b"],"y":1}}}}
+}

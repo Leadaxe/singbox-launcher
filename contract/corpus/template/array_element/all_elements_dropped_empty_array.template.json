@@ -1,0 +1,5 @@
+{
+  "_comment": "§4.4: если выпали все элементы — остаётся пустой массив, а не удаление ключа",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"rules": [{"#if": {"and": ["@flag"], "value": {"a": 1}}}]}
+}

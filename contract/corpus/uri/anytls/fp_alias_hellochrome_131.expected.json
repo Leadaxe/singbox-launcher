@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "x.example.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "chrome"
+          }
+        },
+        "type": "anytls"
+      },
+      "kind": "outbound",
+      "label": "at-fp",
+      "scheme": "anytls"
+    }
+  ],
+  "v": 1
+}

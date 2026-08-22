@@ -1,0 +1,3 @@
+# bare naive:// (без +https) отвергается диспетчером
+# источник: LxBox app/test/parser/uri_naive_test.dart:116-118
+naive://user1:pass123@example-1.com:443

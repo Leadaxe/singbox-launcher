@@ -1,0 +1,5 @@
+{
+  "_comment": "Объектная форма: or — достаточно одной",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"node":{"#enable":{"or":["@a","@b"]},"y":2}}
+}

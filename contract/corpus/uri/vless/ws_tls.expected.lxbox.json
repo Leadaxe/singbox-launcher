@@ -1,0 +1,31 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-2.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-2.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "random"
+          }
+        },
+        "transport": {
+          "headers": {
+            "Host": "example-2.com"
+          },
+          "path": "/vless",
+          "type": "ws"
+        },
+        "type": "vless",
+        "uuid": "11111111-2222-3333-4444-555555555555"
+      },
+      "kind": "outbound",
+      "label": "VLESS WS",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

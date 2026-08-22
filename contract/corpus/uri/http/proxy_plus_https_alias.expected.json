@@ -1,0 +1,21 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "h.example-1.com",
+        "server_port": 8443,
+        "tls": {
+          "enabled": true,
+          "server_name": "proxy.example-corp.com"
+        },
+        "type": "http",
+        "username": "alice"
+      },
+      "kind": "outbound",
+      "label": "plus-https",
+      "scheme": "http"
+    }
+  ],
+  "v": 1
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "§4.3: выбранная ветка мержится в РОДИТЕЛЯ, сам ключ #if исчезает",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"tun": {"type": "tun", "#if": {"and": ["@flag"], "value": {"mtu": 1400}}}}
+}

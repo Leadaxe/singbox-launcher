@@ -1,0 +1,5 @@
+{
+  "_comment": "P6: #not поверх объектного предиката равенства",
+  "vars": [{"name": "mode", "type": "text", "default_value": ""}],
+  "config": {"out": {"#if": {"and": [{"#not": {"@mode": "auto"}}], "value": {"hit": true}, "else": {"hit": false}}}}
+}

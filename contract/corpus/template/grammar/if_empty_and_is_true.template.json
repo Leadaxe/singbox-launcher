@@ -1,0 +1,5 @@
+{
+  "_comment": "§4.1: пустой список and — вырожденно истинен (нет предикатов, которые могли бы дать false). Пустой or — вырожденно ложен",
+  "vars": [],
+  "config": {"a": {"#if": {"and": [], "value": {"hit": true}, "else": {"hit": false}}}, "b": {"#if": {"or": [], "value": {"hit": true}, "else": {"hit": false}}}}
+}

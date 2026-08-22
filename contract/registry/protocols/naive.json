@@ -1,0 +1,54 @@
+{
+  "v": 1,
+  "scheme": "naive",
+  "kind": "outbound",
+  "singbox_type": "naive",
+  "aliases": ["naive+https", "naive+quic"],
+  "sources": ["uri", "singbox"],
+  "extension": null,
+  "uri": {
+    "userinfo": {
+      "meaning": "user:password",
+      "note": "user:pass → username+password. РАЗРЫВ ОДИНОЧНОГО USERINFO (новое, вне §9): naive+https://secret@host — Go кладёт secret в username (node_parser_core.go:366-374), Dart — в password (naive_parser.dart:21-29). Go share-URI при password-без-username пишет пароль в user-слот (конвенция hysteria2) — т.е. Go-эмит Dart прочитает «наоборот». Выровнять на ревью. naive+quic — §9.B1: Dart добавляет (сейчас naive+quic парсит только Go; транспорт запоминается как quic:true + quic_congestion_control:bbr). Dart toUriNaive опускает порт 443 (каноничная форма DuckSoft) и всегда пишет naive+https."
+    },
+    "query": {
+      "extra-headers": {
+        "type": "string",
+        "default": null,
+        "note": "URL-encoded «H1: V1\\r\\nH2: V2» → extra_headers map. Имя валидируется по charset де-факто-спеки DuckSoft (подмножество RFC 7230 tchar); битая пара скипается с warning, остальные живут. При эмите ключи сортируются лексикографически (оба проекта)."
+      },
+      "padding": {
+        "type": "bool",
+        "default": null,
+        "note": "Нет sing-box-эквивалента — игнорируется с warning в обоих (Go дополнительно удаляет из Query)."
+      }
+    },
+    "fragment": "label"
+  },
+  "emit": {
+    "share_uri": true,
+    "param_order": ["extra-headers"],
+    "note": "Схема при эмите: Go — naive+quic при quic:true, иначе naive+https; Dart — всегда naive+https (нет quic, §9.B1). Dart опускает порт 443, Go пишет всегда."
+  },
+  "degrade": [
+    "битая пара в extra-headers (нет ':', запрещённые символы в имени, CR/LF/NUL в значении) → пара скипается с warning, остальные живут",
+    "padding → игнор с warning",
+    "неизвестный query-параметр → Dart: warning + игнор; Go: молча остаётся в Query и отсекается allowlist-эмиттером",
+    "TLS-блок несёт только enabled+server_name (=server): alpn/utls/reality/insecure намеренно не эмитятся — sing-box naive их отвергает"
+  ],
+  "refs": {
+    "go": [
+      "core/config/subscription/node_parser_core.go:272-282",
+      "core/config/subscription/node_parser_core.go:376-387",
+      "core/config/subscription/node_parser_naive.go:44-146",
+      "core/config/subscription/shareuri_naive.go:17-76",
+      "core/config/outbound_generator.go:223"
+    ],
+    "dart": [
+      "lib/services/parser/uri_parsers.dart:59-60",
+      "lib/services/parser/uri_parsers/naive_parser.dart:13-95",
+      "lib/models/node_spec_emit.dart:371-426",
+      "lib/services/parser/json_parsers.dart:797"
+    ]
+  }
+}

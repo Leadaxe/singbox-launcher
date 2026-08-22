@@ -1,0 +1,15 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "server": "10.0.0.1",
+        "server_port": 8080,
+        "type": "http"
+      },
+      "kind": "outbound",
+      "label": "Corp proxy",
+      "scheme": "http"
+    }
+  ],
+  "v": 1
+}

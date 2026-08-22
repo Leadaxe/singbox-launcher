@@ -1,0 +1,5 @@
+{
+  "_comment": "§4.1 (N10): неизвестный ключ на '#' выбрасывается с warning (forward-compat). Dart сегодня удаляет молча",
+  "vars": [],
+  "config": {"tun": {"type": "tun", "#unknownDirective": {"whatever": 1}}}
+}

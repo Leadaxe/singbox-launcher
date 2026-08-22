@@ -1,0 +1,4 @@
+# VLESS + Reality: flow=xtls-rprx-vision, pbk корректной длины (43 символа base64url = 32 байта),
+# короткий чётный sid (hex), sni отличается от адреса сервера, fp=chrome.
+# Источник: LxBox app/test/fixtures/vless/reality_xtls.uri
+vless://11111111-2222-3333-4444-555555555555@example-1.com:443?type=tcp&security=reality&flow=xtls-rprx-vision&pbk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&sid=abcd1234&sni=www.example.com&fp=chrome#VLESS%20Reality

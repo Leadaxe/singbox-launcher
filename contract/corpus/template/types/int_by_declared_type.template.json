@@ -1,0 +1,5 @@
+{
+  "_comment": "C5: int-каст по объявленному type, а не по хардкод-списку имён. Имя 'whatever' в списке Go не значится — значение всё равно должно стать JSON number",
+  "vars": [{"name": "whatever", "type": "int", "default_value": "0"}],
+  "config": {"listen_port": "@whatever"}
+}

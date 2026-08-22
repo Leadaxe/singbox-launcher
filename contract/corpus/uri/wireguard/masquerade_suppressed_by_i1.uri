@@ -1,0 +1,3 @@
+# Явный i1 подавляет промоушен ip/id/ib (ядро отвергает оба сразу)
+# источник: core/config/subscription/warp_reserved_test.go:83 (TestWireGuardExplicitI1SuppressesMasquerade)
+wireguard://JSwzOkFIT1ZdZGtyeYCHjpWco6qxuL/GzdTb4unw9/4=@192.0.2.73:955?publickey=ZWZnaGlqa2xtbm9wcXJzdHV2d3h5ent8fX5%2FPj4%2Bq80%3D&address=172.16.0.2%2F32&allowedips=0.0.0.0%2F0&i1=%3Cb%200x11%3E&ip=quic&id=example-1.com#WARP

@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "pass123",
+        "server": "example-1.com",
+        "server_port": 8080,
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "plain-trojan-upper",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

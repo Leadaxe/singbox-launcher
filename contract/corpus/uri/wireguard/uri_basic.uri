@@ -1,0 +1,4 @@
+# WireGuard-URI: privatekey/publickey (base64 32 байта, "=" percent-encoded как %3D),
+# address одним CIDR, mtu=1420.
+# Источник: LxBox app/test/fixtures/wireguard/uri_basic.uri
+wireguard://example-1.com:51820?privatekey=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA%3D&publickey=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA%3D&address=10.0.0.2%2F32&mtu=1420#WG%20Basic

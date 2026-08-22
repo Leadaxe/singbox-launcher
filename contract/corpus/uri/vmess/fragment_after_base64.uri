@@ -1,0 +1,3 @@
+# Фрагмент #имя после base64 не должен ломать декодирование пейлоада
+# источник: core/config/subscription/node_parser_test.go:327 (TestParseNode_VMess)
+vmess://eyJ2IjoiMiIsInBzIjoiZnJhZyIsImFkZCI6ImEuZXhhbXBsZS0yMC5jb20iLCJwb3J0Ijo0NDMsImlkIjoiMTExMTExMTEtMTExMS0xMTExLTExMTEtMTExMTExMTExMTExIn0=#MyNodeName

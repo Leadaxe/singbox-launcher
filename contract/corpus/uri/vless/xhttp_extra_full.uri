@@ -1,0 +1,5 @@
+# §127 golden: все 15 расширенных XHTTP-полей в НЕ-дефолтных значениях
+# (эталон SPEC 002 v2 URL_PARSING §8.2, проверен sing-box check на lx-ядре with_xhttp).
+# Плоский camelCase — то, что пишет toUri(); sc* одиночным числом (нормализуется в диапазон).
+# Источник: LxBox app/test/fixtures/vless/xhttp_obfs_full.uri (UUID анонимизирован под конвенцию корпуса)
+vless://11111111-2222-3333-4444-555555555555@www.example.com:443?type=xhttp&security=tls&sni=www.example.com&fp=chrome&encryption=none&host=www.example.com&path=%2Fxhttp&mode=packet-up&xPaddingBytes=100-1000&noGRPCHeader=true&sessionPlacement=header&sessionKey=X-Session&seqPlacement=query&seqKey=x_seq&uplinkDataPlacement=header&uplinkDataKey=X-Data&uplinkChunkSize=3000-4000&uplinkHTTPMethod=POST&xPaddingObfsMode=true&xPaddingKey=x_padding&xPaddingHeader=X-Padding&xPaddingPlacement=header&xPaddingMethod=tokenish&scMaxEachPostBytes=1000000&scMinPostsIntervalMs=30#golden

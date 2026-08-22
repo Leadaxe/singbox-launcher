@@ -1,0 +1,20 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "b",
+        "server": "naive.example-9.com",
+        "server_port": 10443,
+        "tls": {
+          "enabled": true,
+          "server_name": "naive.example-9.com"
+        },
+        "type": "naive",
+        "username": "a"
+      },
+      "kind": "outbound",
+      "scheme": "naive"
+    }
+  ],
+  "v": 1
+}

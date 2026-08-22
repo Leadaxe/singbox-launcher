@@ -1,0 +1,5 @@
+{
+  "_comment": "P6: #not отрицает вложенный предикат",
+  "vars": [{"name": "flag", "type": "bool", "default_value": "false"}],
+  "config": {"out": {"#if": {"and": [{"#not": "@flag"}], "value": {"hit": true}, "else": {"hit": false}}}}
+}

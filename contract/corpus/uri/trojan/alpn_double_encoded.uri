@@ -1,0 +1,3 @@
+# §151 ALPN двойного кодирования агрегатора: http%252F1.1 -> чистый http/1.1
+# источник: LxBox app/test/parser/round_trip_test.dart:35-43
+trojan://pass123@example-1.com:443?type=ws&security=tls&alpn=http%252F1.1&sni=example-1.com#alpn-dbl

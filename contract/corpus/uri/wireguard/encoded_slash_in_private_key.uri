@@ -1,0 +1,3 @@
+# уже-%2F-энкоженный ключ -> без двойного декода
+# источник: LxBox app/test/parser/wireguard_edge_test.dart:19-24
+wireguard://QUFBQUFBQUFBQUFBQUFBQUFBQUH%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8=@h.example-1.com:51820?publickey=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=&address=10.0.0.2/32#wg-encslash

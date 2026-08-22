@@ -1,0 +1,3 @@
+# §358 salamander + gecko-размеры: размеры в JSON не попадают (не тот тип obfs)
+# источник: LxBox app/test/parser/round_trip_test.dart:126-136
+hysteria2://pass123@example-2.com:443?obfs=salamander&obfs-password=obfspass1&obfs-min-packet-size=100&sni=example-2.com#hy2-mixed

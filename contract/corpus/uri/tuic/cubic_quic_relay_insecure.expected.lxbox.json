@@ -1,0 +1,31 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "congestion_control": "cubic",
+        "password": "pass123",
+        "server": "h.example-2.com",
+        "server_port": 8443,
+        "tls": {
+          "alpn": [
+            "h3",
+            "h3-29"
+          ],
+          "enabled": true,
+          "insecure": true,
+          "server_name": "h.example-2.com"
+        },
+        "type": "tuic",
+        "udp_relay_mode": "quic",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "tuic-cubic",
+      "scheme": "tuic",
+      "warnings": [
+        "tls_insecure"
+      ]
+    }
+  ],
+  "v": 1
+}

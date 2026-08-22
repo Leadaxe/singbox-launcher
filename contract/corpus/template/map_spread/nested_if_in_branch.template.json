@@ -1,0 +1,8 @@
+{
+  "_comment": "§4.1: вложенный #if внутри ветки разрешён и вычисляется лениво",
+  "vars": [
+    {"name": "outer", "type": "bool", "default_value": "false"},
+    {"name": "inner", "type": "bool", "default_value": "false"}
+  ],
+  "config": {"tun": {"#if": {"and": ["@outer"], "value": {"a": 1, "#if": {"and": ["@inner"], "value": {"b": 2}, "else": {"b": 3}}}}}}
+}

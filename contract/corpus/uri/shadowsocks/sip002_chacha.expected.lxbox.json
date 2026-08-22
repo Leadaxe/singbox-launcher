@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "method": "chacha20-ietf-poly1305",
+        "password": "testpass123",
+        "server": "example-2.com",
+        "server_port": 8388,
+        "type": "shadowsocks"
+      },
+      "kind": "outbound",
+      "label": "SS Chacha",
+      "scheme": "shadowsocks"
+    }
+  ],
+  "v": 1
+}

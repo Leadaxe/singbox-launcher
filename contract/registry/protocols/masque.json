@@ -1,0 +1,146 @@
+{
+  "v": 1,
+  "scheme": "masque",
+  "kind": "outbound",
+  "singbox_type": "masque",
+  "aliases": [],
+  "sources": [
+    "uri",
+    "singbox"
+  ],
+  "extension": null,
+  "note": "MASQUE (CONNECT-IP / Cloudflare WARP), протокол ядра sing-box-lx (SPEC 021/062, ядро >= lx.26 для vhttp + вложенного tls). kind = OUTBOUND в обоих проектах: ядро регистрирует type:masque через outbound.Register, Go эмитит в GenerateNodeJSON, Dart — Outbound (не Endpoint); задание программы ошибочно относило masque к endpoint — реестр фиксирует фактическое состояние. Ключи — ECDSA P-256 base64(DER): private_key = SEC1, public_key = PKIX (pinning). Legacy-имена network/sni принимаются на входе (URI и sing-box импорт) и нормализуются к vhttp / tls.server_name; наружу legacy не эмитится никогда.",
+  "uri": {
+    "userinfo": {
+      "meaning": "private_key — base64(SEC1 DER) клиентского ECDSA-приватника. СЕКРЕТ",
+      "note": "Сырой '/' percent-энкодится до парса (общий с WG хелпер). Fallback из query ?private_key=/?privatekey= принимают оба проекта."
+    },
+    "query": {
+      "publickey": {
+        "type": "base64",
+        "aliases": [
+          "public_key"
+        ],
+        "default": null,
+        "note": "Обязателен. base64(PKIX DER) серверного ключа (pinning). Оба принимают оба написания; '+' в Go сохраняется через queryParamPreservePlus."
+      },
+      "private_key": {
+        "type": "base64",
+        "aliases": [
+          "privatekey"
+        ],
+        "default": null,
+        "note": "Fallback приватника при пустом userinfo — принимают оба проекта."
+      },
+      "address": {
+        "type": "list",
+        "default": null,
+        "note": "Обязателен. Локальные адреса туннеля через запятую; раскладываются в ip (первый v4) / ipv6 (первый v6); bare IP → CIDR в обоих."
+      },
+      "profile": {
+        "type": "enum",
+        "values": [
+          "cloudflare",
+          "standard"
+        ],
+        "default": "cloudflare",
+        "note": "Ни один проект значение не валидирует — уезжает как есть (валидацию делает ядро)."
+      },
+      "vhttp": {
+        "type": "enum",
+        "values": [
+          "h3",
+          "h2"
+        ],
+        "aliases": [
+          "network"
+        ],
+        "default": "h3",
+        "note": "Версия HTTP. Legacy-алиас network принимают оба (vhttp приоритетнее). Значение не h3/h2 → warn + force h3 — выровнено в обоих (фаза 1, фикстура masque/vhttp_invalid_forced_h3)."
+      },
+      "sni": {
+        "type": "string",
+        "aliases": [
+          "server_name"
+        ],
+        "default": null,
+        "note": "→ tls.server_name (вложенный tls-блок, SPEC 062). Пусто = дефолт профиля ядра (www.cloudflare.com с lx.25-rc.4). Оба алиаса принимают оба проекта."
+      },
+      "disable_sni": {
+        "type": "bool",
+        "ext": "mobile",
+        "default": false,
+        "note": "→ tls.disable_sni: ClientHello без SNI (не то же, что пустой sni). Только Dart (§393); Go не парсит и не эмитит — разрыв."
+      },
+      "insecure": {
+        "type": "bool",
+        "aliases": [
+          "skip_cert_verify",
+          "allowinsecure"
+        ],
+        "ext": "desktop",
+        "default": false,
+        "note": "→ tls.insecure ('1'/'true'). Только Go; Dart masque-парсер insecure не принимает (MasqueSpec поля не имеет) — разрыв."
+      },
+      "mtu": {
+        "type": "int",
+        "default": 1280,
+        "note": "Дефолт 1280 в обоих. Go отбрасывает <= 0; клампа как у AWG нет."
+      },
+      "idle_timeout": {
+        "type": "string",
+        "default": null,
+        "note": "Go-duration (напр. 5m) — idle-suspend туннеля; пусто = дефолт ядра (5m), отрицательное = выключить."
+      },
+      "keep_alive": {
+        "type": "string",
+        "aliases": [
+          "keep_alive_period"
+        ],
+        "default": null,
+        "note": "→ keep_alive_period, Go-duration; только для vhttp=h3. Алиас keep_alive_period на входе принимает только Go (Dart — только keep_alive)."
+      }
+    },
+    "fragment": "label"
+  },
+  "emit": {
+    "share_uri": true,
+    "param_order": [
+      "publickey",
+      "address",
+      "profile",
+      "vhttp",
+      "sni",
+      "disable_sni",
+      "insecure",
+      "mtu",
+      "idle_timeout",
+      "keep_alive"
+    ],
+    "note": "Порядок — семантический (Dart insertion-order); Go эмитит алфавитно (url.Values.Encode) — байтово разные, парс-эквивалентные URI. profile и vhttp эмитятся всегда (Dart) / vhttp всегда, profile если непуст (Go); mtu: Go всегда (>0), Dart только если задан — на практике URI-парс всегда задаёт 1280. sni/insecure/disable_sni/idle_timeout/keep_alive — только непустые. В config.json эмитится vhttp + вложенный tls{}; legacy network/sni не эмитятся (deprecation-warn ядра, оба имени с разными значениями — fatal)."
+  },
+  "degrade": [
+    "vhttp не h3/h2 → warn + принудительно h3 (Go; Dart пропускает как есть — разрыв)",
+    "отсутствие privatekey / publickey / address → нода дропается (оба)",
+    "mtu <= 0 или нечисловой → дефолт 1280",
+    "sing-box импорт: плоские network/sni/skip_cert_verify (чужой диалект) → vhttp + tls{} c удалением legacy-ключей (Go sanitizeSingboxMasqueLegacy; Dart читает обе формы при импорте JSON)",
+    "ключи DER не валидируются на парсе ни одним проектом — битый ключ доедет до ядра (ошибка старта ядра, не check: outbound с lazy-ключами)"
+  ],
+  "refs": {
+    "go": [
+      "core/config/subscription/node_parser_core.go:91-93",
+      "core/config/subscription/node_parser_masque.go:28",
+      "core/config/subscription/shareuri_masque.go:15",
+      "core/config/subscription/singbox_sanitize.go:70-116",
+      "core/config/subscription/singbox_import.go:317-318",
+      "core/config/outbound_generator.go:281-287"
+    ],
+    "dart": [
+      "app/lib/services/parser/uri_parsers/masque_parser.dart:21",
+      "app/lib/models/node_spec.dart:788",
+      "app/lib/models/node_spec_emit.dart:649",
+      "app/lib/models/node_spec_emit.dart:685",
+      "app/lib/services/parser/json_parsers.dart:1072-1114"
+    ]
+  }
+}

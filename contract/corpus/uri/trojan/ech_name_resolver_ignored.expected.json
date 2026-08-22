@@ -1,0 +1,27 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "password": "11111111-1111-1111-1111-111111111111",
+        "server": "192.0.2.40",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "sp.example-4.com"
+        },
+        "transport": {
+          "headers": {
+            "Host": "sp.example-4.com"
+          },
+          "path": "/in-x",
+          "type": "ws"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "ech-full",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

@@ -1,0 +1,10 @@
+{
+  "dropped": [
+    {
+      "reason": "parse_error",
+      "ref": "ssh://user@"
+    }
+  ],
+  "nodes": null,
+  "v": 1
+}

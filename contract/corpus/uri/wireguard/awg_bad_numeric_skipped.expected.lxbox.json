@@ -1,0 +1,30 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.10.10.2/32"
+        ],
+        "jmin": 50,
+        "mtu": 1280,
+        "peers": [
+          {
+            "address": "wg.example-1.com",
+            "allowed_ips": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "port": 51821,
+            "public_key": "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU="
+          }
+        ],
+        "private_key": "UFJJVkFURUtFWTAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "awg-server",
+      "scheme": "wireguard"
+    }
+  ],
+  "v": 1
+}

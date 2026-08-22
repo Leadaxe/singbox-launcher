@@ -1,0 +1,3 @@
+# fp -> utls; idle_session_timeout=30 (голое число) -> "30s"; min_idle_session числом
+# источник: core/config/subscription/node_parser_anytls_test.go:23 (TestBuildOutbound_AnyTLS)
+anytls://pass123@any.example-1.com:443/?sni=cover.example-1.com&insecure=1&fp=chrome&idle_session_timeout=30&min_idle_session=2#node

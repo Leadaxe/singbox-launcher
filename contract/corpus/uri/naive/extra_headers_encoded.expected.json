@@ -1,0 +1,22 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "extra_headers": {
+          "X-Password": "password",
+          "X-Username": "user"
+        },
+        "server": "hdr.example-9.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "hdr.example-9.com"
+        },
+        "type": "naive"
+      },
+      "kind": "outbound",
+      "scheme": "naive"
+    }
+  ],
+  "v": 1
+}

@@ -1,0 +1,5 @@
+# SS-2022: метод 2022-blake3-aes-256-gcm, пароль — валидный по формату base64-ключ 32 байта
+# (44 символа с "="); декодируется в 2022-blake3-aes-256-gcm:AAAA…AAA=.
+# Пароль заменён относительно исходной фикстуры: там была не-base64 строка, невалидная для ss2022.
+# Источник: LxBox app/test/fixtures/shadowsocks/ss2022_blake3.uri
+ss://MjAyMi1ibGFrZTMtYWVzLTI1Ni1nY206QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQT0=@example-3.com:8388#SS%202022

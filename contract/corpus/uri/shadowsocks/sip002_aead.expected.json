@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "method": "aes-256-gcm",
+        "password": "testpass123",
+        "server": "example-1.com",
+        "server_port": 8388,
+        "type": "shadowsocks"
+      },
+      "kind": "outbound",
+      "label": "SS AEAD",
+      "scheme": "ss"
+    }
+  ],
+  "v": 1
+}

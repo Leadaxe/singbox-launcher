@@ -1,0 +1,3 @@
+# sni отсутствует — server_name берётся из legacy-параметра peer=
+# источник: core/config/subscription/node_parser_test.go:814 (TestParseNode_VLESS_TransportAndTLS)
+vless://11111111-1111-1111-1111-111111111111@198.51.100.1:443?encryption=none&security=tls&peer=cdn.example-1.com&type=tcp#t

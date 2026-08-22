@@ -1,0 +1,5 @@
+{
+  "_comment": "P3: #isEmpty — строгое отрицание #notEmpty",
+  "vars": [{"name": "host", "type": "text", "default_value": ""}],
+  "config": {"out": {"#if": {"and": [{"@host": "#isEmpty"}], "value": {"hit": true}, "else": {"hit": false}}}}
+}

@@ -1,0 +1,3 @@
+# §269 REALITY на anytls (Dart-only фича): pbk/sid в URI сохраняются в tls.reality
+# источник: LxBox app/test/parser/anytls_test.dart:221-241 (JSON->toUri->parse round-trip)
+anytls://pass123@example-1.com:443?security=reality&pbk=AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw&sid=abcd&sni=cdn.example-1.com&fp=chrome#at-reality

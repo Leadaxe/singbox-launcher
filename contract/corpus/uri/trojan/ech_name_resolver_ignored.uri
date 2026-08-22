@@ -1,0 +1,4 @@
+# §320 ech=<name>+<resolver> из подписки НЕ применяется (ключ не от того сервера -> мёртвое
+# рукопожатие), только EchIgnoredWarning; остальное разобрано, узел рабочий
+# источник: LxBox app/test/parser/ech_import_test.dart:22-38 (анонимизировано)
+trojan://11111111-1111-1111-1111-111111111111@192.0.2.40:443?path=%2Fin-x&security=tls&insecure=0&host=sp.example-4.com&ech=ech-probe.example.com%2Budp%3A%2F%2F192.0.2.53&type=ws&allowInsecure=0&sni=sp.example-4.com#ech-full

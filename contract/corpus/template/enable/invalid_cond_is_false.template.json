@@ -1,0 +1,5 @@
+{
+  "_comment": "FAIL-CLOSED (D-058): неразобранное условие → узел выпадает, а не остаётся. Число вместо cond",
+  "vars": [{"name":"a","type":"bool","default_value":"false"},{"name":"b","type":"bool","default_value":"false"}],
+  "config": {"node":{"#enable":42,"y":2}}
+}
