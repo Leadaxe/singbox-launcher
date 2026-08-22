@@ -40,14 +40,28 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 		debuglog.DebugLog("parseWireGuardURI: error missing hostname")
 		return nil, fmt.Errorf("invalid wireguard URI: missing hostname")
 	}
-	if parsedURL.User == nil || parsedURL.User.Username() == "" {
-		debuglog.DebugLog("parseWireGuardURI: error missing private key (userinfo)")
-		return nil, fmt.Errorf("invalid wireguard URI: missing private key (userinfo)")
+	// The key normally lives in the userinfo, but some clients put it in the
+	// query instead (`?privatekey=`/`?private_key=`); LxBox accepts both, so a
+	// subscription parsed there and here must yield the same node (SPEC 103,
+	// D-021). Reject only when neither slot carries a key.
+	rawPrivateKey := ""
+	if parsedURL.User != nil {
+		rawPrivateKey = parsedURL.User.Username()
+	}
+	if rawPrivateKey == "" {
+		qq := parsedURL.Query()
+		if rawPrivateKey = queryGetFold(qq, "privatekey"); rawPrivateKey == "" {
+			rawPrivateKey = queryGetFold(qq, "private_key")
+		}
+	}
+	if rawPrivateKey == "" {
+		debuglog.DebugLog("parseWireGuardURI: error missing private key (userinfo/query)")
+		return nil, fmt.Errorf("invalid wireguard URI: missing private key (userinfo or privatekey= query)")
 	}
 	// Use PathUnescape so + in base64 is preserved (QueryUnescape would turn + into space and break the key)
-	privateKey, err := url.PathUnescape(parsedURL.User.Username())
+	privateKey, err := url.PathUnescape(rawPrivateKey)
 	if err != nil {
-		privateKey = parsedURL.User.Username()
+		privateKey = rawPrivateKey
 	}
 	privateKey = strings.TrimSpace(privateKey)
 	if privateKey == "" {
@@ -87,8 +101,11 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 		return nil, fmt.Errorf("invalid wireguard URI: missing required query parameter address")
 	}
 	if allowedipsParam == "" {
-		debuglog.DebugLog("parseWireGuardURI: error missing allowedips")
-		return nil, fmt.Errorf("invalid wireguard URI: missing required query parameter allowedips")
+		// Omitted allowed_ips means "route everything" in every WireGuard client;
+		// LxBox defaults it, so dropping the node here would make the same
+		// subscription yield different sets on desktop and mobile (SPEC 103, D-022).
+		allowedipsParam = "0.0.0.0/0,::/0"
+		debuglog.DebugLog("parseWireGuardURI: allowedips omitted — defaulting to %s", allowedipsParam)
 	}
 	publicKey, err = normalizeWGKey("peer publickey", publicKey)
 	if err != nil {
@@ -112,9 +129,13 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 	// packet exceeds the path MTU and the OS rejects it with EMSGSIZE
 	// ("message too long"): the handshake succeeds but data silently stops.
 	// Default AWG to awgMaxMTU and clamp any higher URI value down to it; honor an
-	// explicitly lower value; plain WireGuard keeps the upstream 1420 default.
+	// explicitly lower value. Plain WireGuard emits no mtu at all when the URI
+	// carries none: the core defaults it to 1408 itself
+	// (transport/wireguard/endpoint.go), so writing our own 1420 both contradicts
+	// the core and gave the node a different identity hash than LxBox
+	// (SPEC 103, D-026 / CANON §2.4).
 	isAWG := hasAWGParams(q)
-	mtu := defaultWireGuardMTU
+	mtu := 0
 	if isAWG {
 		mtu = awgMaxMTU
 	}
@@ -133,10 +154,10 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 			listenport = lpi
 		}
 	}
+	// Emitted only when the URI carries it: both `name` and `system` are
+	// omitempty in the core, and writing defaults changes the node's identity
+	// hash relative to LxBox (SPEC 103, D-010 / CANON §2.4).
 	name := q.Get("name")
-	if name == "" {
-		name = "singbox-wg0"
-	}
 	if decoded, err := url.QueryUnescape(name); err == nil {
 		name = decoded
 	}
@@ -178,12 +199,15 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 	endpoint := map[string]interface{}{
 		"type":        "wireguard",
 		"tag":         "", // set below after tag is computed
-		"name":        name,
-		"system":      false,
-		"mtu":         mtu,
 		"address":     addressList,
 		"private_key": privateKey,
 		"peers":       []map[string]interface{}{peer},
+	}
+	if mtu > 0 {
+		endpoint["mtu"] = mtu
+	}
+	if name != "" {
+		endpoint["name"] = name
 	}
 	if listenport != 0 {
 		endpoint["listen_port"] = listenport

@@ -8,10 +8,12 @@ import (
 	"singbox-launcher/internal/debuglog"
 )
 
-// isValidHysteria2ObfsType checks if the obfs type is supported by sing-box for Hysteria2
-// According to sing-box documentation, only "salamander" is supported
+// isValidHysteria2ObfsType checks if the obfs type is supported by the core.
+// sing-box-lx implements both salamander and gecko (protocol/hysteria2/outbound.go);
+// LxBox already accepts gecko, so rejecting it here silently stripped working
+// obfuscation from desktop nodes (SPEC 103, D-016(а)).
 func isValidHysteria2ObfsType(obfsType string) bool {
-	return obfsType == "salamander"
+	return obfsType == "salamander" || obfsType == "gecko"
 }
 
 // buildHysteria2Outbound builds outbound configuration for Hysteria2 protocol
@@ -35,14 +37,33 @@ func buildHysteria2Outbound(node *configtypes.ParsedNode, outbound map[string]in
 
 	// Optional: obfs (obfuscation)
 	if obfs := node.Query.Get("obfs"); obfs != "" {
-		if !isValidHysteria2ObfsType(obfs) {
-			debuglog.WarnLog("Parser: Invalid or unsupported Hysteria2 obfs type '%s'. Only 'salamander' is supported. Skipping obfs.", obfs)
-		} else {
+		obfsPassword := node.Query.Get("obfs-password")
+		switch {
+		case !isValidHysteria2ObfsType(obfs):
+			debuglog.WarnLog("Parser: Invalid or unsupported Hysteria2 obfs type '%s'. Supported: salamander, gecko. Skipping obfs.", obfs)
+		case obfsPassword == "":
+			// The core refuses to start a node whose obfs block has no password
+			// ("missing obfs password") and that kills the whole config, so drop
+			// the obfs block instead of the config (SPEC 103, D-016(г)).
+			debuglog.WarnLog("Parser: Hysteria2 obfs '%s' has no obfs-password — dropping obfs (the core would reject the whole config).", obfs)
+		default:
 			obfsConfig := map[string]interface{}{
-				"type": obfs,
+				"type":     obfs,
+				"password": obfsPassword,
 			}
-			if obfsPassword := node.Query.Get("obfs-password"); obfsPassword != "" {
-				obfsConfig["password"] = obfsPassword
+			// Gecko carries optional packet-size bounds flat inside obfs
+			// (option/hysteria2.go, Hysteria2ObfsGecko); same spelling as LxBox.
+			if obfs == "gecko" {
+				if v := strings.TrimSpace(queryGetFold(node.Query, "obfs-min-packet-size")); v != "" {
+					if n, err := strconv.Atoi(v); err == nil && n > 0 {
+						obfsConfig["min_packet_size"] = n
+					}
+				}
+				if v := strings.TrimSpace(queryGetFold(node.Query, "obfs-max-packet-size")); v != "" {
+					if n, err := strconv.Atoi(v); err == nil && n > 0 {
+						obfsConfig["max_packet_size"] = n
+					}
+				}
 			}
 			outbound["obfs"] = obfsConfig
 		}
@@ -88,16 +109,11 @@ func buildHysteria2TLS(node *configtypes.ParsedNode, outbound map[string]interfa
 		tlsData["insecure"] = true
 	}
 
-	fp := NormalizeUTLSFingerprint(queryGetFold(q, "fp"))
-	if fp == "" {
-		fp = NormalizeUTLSFingerprint(queryGetFold(q, "fingerprint"))
-	}
-	if fp != "" {
-		tlsData["utls"] = map[string]interface{}{
-			"enabled":     true,
-			"fingerprint": fp,
-		}
-	}
+	// No utls on QUIC: hysteria2 runs over QUIC, which doesn't use uTLS
+	// ClientHello fingerprints at all — `fp=` here is subscription noise. The
+	// Xray-JSON path already stripped it; the URI path used to keep it, so the
+	// same node differed between paths and between desktop and mobile
+	// (SPEC 103, D-033).
 
 	if pin := strings.TrimSpace(queryGetFold(q, "pinSHA256")); pin != "" {
 		tlsData["certificate_public_key_sha256"] = []string{pin}

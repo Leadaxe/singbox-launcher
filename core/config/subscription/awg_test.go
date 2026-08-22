@@ -225,7 +225,9 @@ func TestParseWireGuardURI_MTUClamp(t *testing.T) {
 		{"awg explicit lower honored", "&jc=10&mtu=1200", 1200},
 		{"awg string-only field still AWG", "&i1=%3Cr+24%3E&mtu=1500", 1280},
 		{"plain wg keeps high mtu", "&mtu=1500", 1500},
-		{"plain wg default", "", 1420},
+		// want 0 = no mtu key at all: the core defaults plain WireGuard to 1408
+		// itself, so emitting our own value would fight it (SPEC 103, D-026).
+		{"plain wg default is left to the core", "", 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -233,9 +235,16 @@ func TestParseWireGuardURI_MTUClamp(t *testing.T) {
 			if err != nil || n == nil {
 				t.Fatalf("parse: err=%v node=%v", err, n)
 			}
-			got, ok := n.Outbound["mtu"].(int)
+			raw, present := n.Outbound["mtu"]
+			if c.want == 0 {
+				if present {
+					t.Errorf("mtu = %v, want no mtu key", raw)
+				}
+				return
+			}
+			got, ok := raw.(int)
 			if !ok {
-				t.Fatalf("mtu type = %T, want int", n.Outbound["mtu"])
+				t.Fatalf("mtu type = %T, want int", raw)
 			}
 			if got != c.want {
 				t.Errorf("mtu = %d, want %d", got, c.want)

@@ -33,7 +33,11 @@ func IsDirectLink(input string) bool {
 		strings.HasPrefix(trimmed, "socks5://") ||
 		strings.HasPrefix(trimmed, "socks://") ||
 		strings.HasPrefix(trimmed, "naive+https://") ||
-		strings.HasPrefix(trimmed, "naive+quic://")
+		strings.HasPrefix(trimmed, "naive+quic://") ||
+		strings.HasPrefix(trimmed, "proxy-http://") ||
+		strings.HasPrefix(trimmed, "proxy-https://") ||
+		strings.HasPrefix(trimmed, "proxy+http://") ||
+		strings.HasPrefix(trimmed, "proxy+https://")
 }
 
 // MaxURILength defines the maximum allowed length for a proxy URI
@@ -280,6 +284,15 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		} else {
 			uriToParse = strings.Replace(uri, "naive+https://", "https://", 1)
 		}
+
+	case strings.HasPrefix(uri, "proxy-http://"), strings.HasPrefix(uri, "proxy-https://"),
+		strings.HasPrefix(uri, "proxy+http://"), strings.HasPrefix(uri, "proxy+https://"):
+		// HTTP(S) CONNECT proxy (SPEC 103 §9.B6; LxBox http_parser.dart). Custom
+		// scheme instead of bare http(s):// — those are intercepted upstream as
+		// subscription URLs. Has its own parser (dispatched below, mirrors
+		// masque/vpn): userinfo, TLS-by-suffix and headers don't fit the generic
+		// net/url branch below.
+		return parseHTTPProxyURI(uri, skipFilters)
 
 	default:
 		return nil, fmt.Errorf("unsupported scheme")
@@ -623,6 +636,14 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 			}
 		}
 
+		// VLESS post-quantum encryption layer (lx SPEC 032, core option/vless.go
+		// Encryption). `none` and the empty value mean "layer off" — the field is
+		// then omitted, matching LxBox and CANON §2.4. Dropping it outright made
+		// such a node unusable on desktop while it worked on mobile (SPEC 103).
+		if enc := strings.TrimSpace(queryGetFold(node.Query, "encryption")); enc != "" && !strings.EqualFold(enc, "none") {
+			outbound["encryption"] = enc
+		}
+
 		if tlsData, ok := vlessTLSFromNode(node); ok {
 			outbound["tls"] = tlsData
 		}
@@ -743,7 +764,7 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 				tlsData["alpn"] = alpnList
 			}
 
-			if fp := NormalizeUTLSFingerprint(queryGetFold(node.Query, "fp")); fp != "" {
+			if fp := utlsFingerprintOrFallback(queryGetFold(node.Query, "fp")); fp != "" {
 				tlsData["utls"] = map[string]interface{}{
 					"enabled":     true,
 					"fingerprint": fp,

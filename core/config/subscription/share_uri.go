@@ -44,7 +44,9 @@ func ShareURIFromOutbound(out map[string]interface{}) (string, error) {
 		return ShareURIFromWireGuardEndpoint(out)
 	case "masque":
 		return shareURIFromMasque(out)
-	case "selector", "urltest", "direct", "block", "dns", "http":
+	case "http":
+		return shareURIFromHTTP(out)
+	case "selector", "urltest", "direct", "block", "dns":
 		return "", fmt.Errorf("%w: type %q", ErrShareURINotSupported, typ)
 	default:
 		return "", fmt.Errorf("%w: unknown type %q", ErrShareURINotSupported, typ)

@@ -68,14 +68,29 @@ func buildAnyTLSTLS(node *configtypes.ParsedNode, outbound map[string]interface{
 		tlsData["insecure"] = true
 	}
 
-	fp := NormalizeUTLSFingerprint(queryGetFold(q, "fp"))
+	fp := utlsFingerprintOrFallback(queryGetFold(q, "fp"))
 	if fp == "" {
-		fp = NormalizeUTLSFingerprint(queryGetFold(q, "fingerprint"))
+		fp = utlsFingerprintOrFallback(queryGetFold(q, "fingerprint"))
 	}
-	if fp != "" {
-		tlsData["utls"] = map[string]interface{}{
-			"enabled":     true,
-			"fingerprint": fp,
+	if fp == "" {
+		// Same default as the vless path (node_parser_transport.go): without it
+		// an anytls node without fp= gets a different identity hash here than in
+		// LxBox, which defaults it too (SPEC 103, D-009).
+		fp = "random"
+	}
+	tlsData["utls"] = map[string]interface{}{
+		"enabled":     true,
+		"fingerprint": fp,
+	}
+
+	// REALITY on anytls: gate on the key itself, exactly like the vless path —
+	// a junk pbk on a plain TLS node would make sing-box reject the whole config.
+	// LxBox already parses this; without it the two sides emit different nodes.
+	if pbk := queryGetFold(q, "pbk"); isValidRealityPublicKey(pbk) {
+		tlsData["reality"] = map[string]interface{}{
+			"enabled":    true,
+			"public_key": strings.TrimSpace(pbk),
+			"short_id":   normalizeRealityShortID(queryGetFold(q, "sid")),
 		}
 	}
 

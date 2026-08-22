@@ -170,14 +170,14 @@ func sanitizeSingboxUTLS(tlsMap map[string]interface{}, tag string) {
 		return
 	}
 	fp := mapString(utlsMap, "fingerprint")
-	normalized := NormalizeUTLSFingerprint(fp)
+	normalized := utlsFingerprintOrFallback(fp)
 	if normalized == "" {
-		// Неизвестное значение обрушило бы загрузку конфига целиком
-		// ("unknown uTLS fingerprint") — снимаем весь блок, нода живёт.
-		debuglog.WarnLog("Parser: singbox import %q: unknown uTLS fingerprint %q — dropping utls block", tag, fp)
+		// Поле пустое (а не мусорное) — блока utls тут просто нет.
 		delete(tlsMap, "utls")
 		return
 	}
+	// Мусор канонизируется в chrome (D-029), а не снимает блок целиком: раньше
+	// одна и та же нода получала utls на URI-пути и теряла его на импорте.
 	utlsMap["fingerprint"] = normalized
 }
 

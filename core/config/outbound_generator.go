@@ -179,6 +179,14 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 				}
 				obfsParts = append(obfsParts, fmt.Sprintf(`"password":%s`, string(obfsPasswordJSON)))
 			}
+			// Gecko packet-size bounds sit flat inside obfs (option/hysteria2.go,
+			// Hysteria2ObfsGecko). Without these the parser reads them and the
+			// emitter silently drops them — the emitter/parser pairing trap.
+			for _, key := range []string{"min_packet_size", "max_packet_size"} {
+				if n := obfsIntField(obfs[key]); n > 0 {
+					obfsParts = append(obfsParts, fmt.Sprintf(`"%s":%d`, key, n))
+				}
+			}
 			if len(obfsParts) > 0 {
 				obfsJSON := "{" + strings.Join(obfsParts, ",") + "}"
 				parts = append(parts, fmt.Sprintf(`"obfs":%s`, obfsJSON))
@@ -251,6 +259,38 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 				return "", fmt.Errorf("failed to marshal naive extra_headers: %w", err)
 			}
 			parts = append(parts, fmt.Sprintf(`"extra_headers":%s`, string(hdrJSON)))
+		}
+	} else if node.Scheme == "http" && node.Outbound != nil {
+		// parseHTTPProxyURI (node_parser_http.go) populates username/password,
+		// path and headers; the TLS block (https-form only) is emitted by the
+		// shared section below. This branch is required — without it the
+		// per-scheme switch falls through to the trailing } and the outbound
+		// silently loses everything but {tag,type,server,server_port} (known
+		// emitter-parser-pairing trap; also affects sing-box-import http nodes,
+		// see singbox_import.go:315).
+		if username, ok := node.Outbound["username"].(string); ok && username != "" {
+			usernameJSON, err := json.Marshal(username)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal http username: %w", err)
+			}
+			parts = append(parts, fmt.Sprintf(`"username":%s`, string(usernameJSON)))
+		}
+		if password, ok := node.Outbound["password"].(string); ok && password != "" {
+			passwordJSON, err := json.Marshal(password)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal http password: %w", err)
+			}
+			parts = append(parts, fmt.Sprintf(`"password":%s`, string(passwordJSON)))
+		}
+		if path, ok := node.Outbound["path"].(string); ok && path != "" {
+			parts = append(parts, fmt.Sprintf(`"path":%s`, marshalJSONString(path)))
+		}
+		if hdrs, ok := node.Outbound["headers"].(map[string]interface{}); ok && len(hdrs) > 0 {
+			hdrJSON, err := json.Marshal(hdrs)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal http headers: %w", err)
+			}
+			parts = append(parts, fmt.Sprintf(`"headers":%s`, string(hdrJSON)))
 		}
 	} else if node.Scheme == "tuic" && node.Outbound != nil {
 		// uuid + password required; congestion_control / udp_relay_mode /
@@ -362,6 +402,12 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 	if node.Scheme == "vless" && node.Outbound != nil {
 		if pe, ok := node.Outbound["packet_encoding"].(string); ok && pe != "" {
 			parts = append(parts, fmt.Sprintf(`"packet_encoding":%s`, marshalJSONString(pe)))
+		}
+		// VLESS post-quantum encryption layer (core option/vless.go Encryption).
+		// Without this the parser read the field and the emitter dropped it —
+		// the emitter/parser pairing trap (SPEC 103).
+		if enc, ok := node.Outbound["encryption"].(string); ok && enc != "" {
+			parts = append(parts, fmt.Sprintf(`"encryption":%s`, marshalJSONString(enc)))
 		}
 	}
 
@@ -1309,4 +1355,16 @@ func sanitizeNodeDetours(nodes []*ParsedNode) {
 			color[t] = black
 		}
 	}
+}
+
+// obfsIntField reads an integer obfs field regardless of whether it arrived as
+// an int (URI parser) or a float64 (JSON import). Returns 0 when absent.
+func obfsIntField(v interface{}) int {
+	switch t := v.(type) {
+	case int:
+		return t
+	case float64:
+		return int(t)
+	}
+	return 0
 }

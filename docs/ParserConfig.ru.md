@@ -80,6 +80,9 @@
 | Документ / место | Содержание |
 |------------------|------------|
 | **Этот файл** (`docs/ParserConfig.md`) | Форматы прямых ссылок в `connections`, Share URI, структура ParserConfig, пайплайн обновления. |
+| **`contract/registry/protocols/<scheme>.json`** | **Нормативный справочник полей**, общий с мобильным приложением LxBox (SPEC 103): query-параметры каждой схемы, алиасы, allowlist'ы, правила деградации и пометки, что где реализовано. При расхождении этого файла с реестром прав реестр. |
+| **`contract/docs/CANON.md`, `IDENTITY.md`** | Как канонизируется разобранный узел (без дефолтов, без `tag`/`detour`, сортировка ключей) и как считается его identity-хеш — оба документа общие с LxBox. |
+| **`contract/corpus/uri/`** | Конформанс-фикстуры, которые гоняют оба проекта (`core/config/contract_test.go` здесь, `test/contract/` там). Правка парсера, меняющая поведение, видна как дифф корпуса. |
 | **`SPECS/023-F-C-SUBSCRIPTION_TRANSPORT_VLESS_TROJAN/SUBSCRIPTION_PARAMS_REPORT.md`** | Таблицы: query VLESS/Trojan → поля sing-box; примеры из публичных подписок; ключи query. |
 | **`SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY/SPEC.md`** | Расширения совместимости (029): `type=httpupgrade`, `peer`, `obfsParam`, VMess legacy / `httpupgrade` / `h2`, Hysteria2 TLS; сверка со схемой sing-box. |
 | **`SPECS/033-F-N-SUBSCRIPTION_XRAY_JSON_ARRAY/SPEC.md`** | Подписка как JSON-массив полных конфигов Xray: `remarks`, slug-теги, `dialerProxy` → `detour`, границы MVP (sing-box-массив — **016**, follow-up). |

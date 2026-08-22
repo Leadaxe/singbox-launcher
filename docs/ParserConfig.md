@@ -80,6 +80,9 @@ A structure like the public Xray subscriptions (**`dns`**, **`inbounds`**, **`lo
 | Document / location | Contents |
 |------------------|------------|
 | **This file** (`docs/ParserConfig.md`) | Direct-link formats in `connections`, share URIs, the ParserConfig structure, the update pipeline. |
+| **`contract/registry/protocols/<scheme>.json`** | **The normative field reference** shared with the LxBox mobile app (SPEC 103): per-scheme query parameters, aliases, allowlists, degradation rules, and which side implements what. When this file and the registry disagree, the registry wins. |
+| **`contract/docs/CANON.md`, `IDENTITY.md`** | How a parsed node is canonicalized (no defaults, no `tag`/`detour`, sorted keys) and how its identity hash is computed — both shared with LxBox. |
+| **`contract/corpus/uri/`** | Conformance fixtures both projects run (`core/config/contract_test.go` here, `test/contract/` there). A parser change that alters behaviour shows up as a corpus diff. |
 | **`SPECS/023-F-C-SUBSCRIPTION_TRANSPORT_VLESS_TROJAN/SUBSCRIPTION_PARAMS_REPORT.md`** | Tables: VLESS/Trojan query → sing-box fields; examples from public subscriptions; query keys. |
 | **`SPECS/029-Q-С-SUBSCRIPTION_PARSER_CLASH_CONVERTOR_PARITY/SPEC.md`** | Compatibility extensions (029): `type=httpupgrade`, `peer`, `obfsParam`, VMess legacy / `httpupgrade` / `h2`, Hysteria2 TLS; cross-checked against the sing-box schema. |
 | **`SPECS/033-F-N-SUBSCRIPTION_XRAY_JSON_ARRAY/SPEC.md`** | A subscription as a JSON array of full Xray configs: `remarks`, slug tags, `dialerProxy` → `detour`, MVP boundaries (a sing-box array is **016**, follow-up). |

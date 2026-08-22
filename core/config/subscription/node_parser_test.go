@@ -1299,16 +1299,17 @@ func TestParseNode_Hysteria2(t *testing.T) {
 		}
 	})
 
-	t.Run("Hysteria2 fingerprint and pinSHA256 in outbound tls", func(t *testing.T) {
+	t.Run("Hysteria2 drops fingerprint (QUIC), keeps pinSHA256", func(t *testing.T) {
 		uri := "hysteria2://secret@203.0.113.1:443?sni=hy.example&fingerprint=firefox&pinSHA256=YWJjZGVmZ2g=#h"
 		node, err := ParseNode(uri, nil)
 		if err != nil || node == nil {
 			t.Fatalf("ParseNode: %v", err)
 		}
 		tls := node.Outbound["tls"].(map[string]interface{})
-		ut, _ := tls["utls"].(map[string]interface{})
-		if ut["fingerprint"] != "firefox" {
-			t.Fatalf("utls: %+v", ut)
+		// QUIC doesn't use uTLS ClientHello fingerprints — fp= on hysteria2 is
+		// subscription noise and must not reach the config (SPEC 103, D-033).
+		if _, present := tls["utls"]; present {
+			t.Fatalf("utls must not be emitted on a QUIC protocol: %+v", tls["utls"])
 		}
 		pins, _ := tls["certificate_public_key_sha256"].([]string)
 		if len(pins) != 1 || pins[0] != "YWJjZGVmZ2g=" {
@@ -1829,17 +1830,10 @@ func TestParseNode_Wireguard(t *testing.T) {
 	if _, has := node.Outbound["listen_port"]; has {
 		t.Errorf("Expected listen_port omitted when 0, got %v", node.Outbound["listen_port"])
 	}
-	switch mtu := node.Outbound["mtu"].(type) {
-	case int:
-		if mtu != 1420 {
-			t.Errorf("Expected mtu 1420 (default), got %d", mtu)
-		}
-	case float64:
-		if mtu != 1420 {
-			t.Errorf("Expected mtu 1420, got %v", mtu)
-		}
-	default:
-		t.Errorf("Expected mtu 1420, got %v", node.Outbound["mtu"])
+	// A plain WireGuard URI without mtu= emits no mtu at all — the core applies
+	// its own 1408 default (SPEC 103, D-026).
+	if mtu, present := node.Outbound["mtu"]; present {
+		t.Errorf("Expected no mtu key for a URI without mtu=, got %v", mtu)
 	}
 	var peer map[string]interface{}
 	switch p := node.Outbound["peers"].(type) {

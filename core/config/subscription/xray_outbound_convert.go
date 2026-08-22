@@ -27,6 +27,49 @@ func xrayMapString(m map[string]interface{}, key string) string {
 	}
 }
 
+// xrayFlattenScalars renders the scalar members of an Xray settings object as
+// the flat string map the shared XHTTP builder consumes (SPEC 102). Values are
+// stringified exactly like the share-URI branch does for its `extra` JSON, so a
+// JSON number reaches the config as "30" rather than "30.0" or "1e+06".
+//
+// The one nested object XHTTP defines — `xmux` — is flattened in alongside its
+// parent's fields: its member names do not collide with the top-level ones, and
+// the shared builder reassembles the object from those keys. Other nested values
+// carry no fields we emit and are skipped.
+//
+// A missing or non-object argument yields nil, which the builder treats as an
+// absent layer, so a malformed `extra` degrades the node instead of breaking it.
+func xrayFlattenScalars(v interface{}) map[string]string {
+	m, ok := v.(map[string]interface{})
+	if !ok || len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(m))
+	for k, raw := range m {
+		if nested, ok := raw.(map[string]interface{}); ok {
+			if strings.EqualFold(k, "xmux") {
+				for nk, nv := range nested {
+					if s := xhttpStringifyJSON(nv); s != "" {
+						out[nk] = s
+					}
+				}
+			}
+			continue
+		}
+		switch raw.(type) {
+		case []interface{}, nil:
+			continue
+		}
+		if s := xhttpStringifyJSON(raw); s != "" {
+			out[k] = s
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // xrayJSONInt coerces JSON-decoded numbers to int.
 func xrayJSONInt(v interface{}) int {
 	switch x := v.(type) {
@@ -286,19 +329,11 @@ func xrayTransportFromStreamSettings(streamSettings map[string]interface{}, netw
 		if xs == nil {
 			xs, _ = streamSettings["splithttpSettings"].(map[string]interface{})
 		}
-		tr := map[string]interface{}{"type": "xhttp"}
-		if xs != nil {
-			if p := xrayMapString(xs, "path"); p != "" {
-				tr["path"] = xhttpCleanPath(p)
-			}
-			if h := xrayMapString(xs, "host"); h != "" {
-				tr["host"] = h
-			}
-			if m := xrayMapString(xs, "mode"); m != "" {
-				tr["mode"] = m
-			}
-		}
-		return tr
+		// SPEC 102. The tuning fields live in `extra` (uplinkHTTPMethod,
+		// xPaddingBytes, sc*-limits); dropping them makes servers reject the
+		// XHTTP request with 400. Both layers go through the same builder as the
+		// share-URI branch so the two paths cannot drift apart again.
+		return xhttpBuildTransport(xrayFlattenScalars(xs["extra"]), xrayFlattenScalars(xs))
 	default:
 		return nil
 	}

@@ -29,7 +29,10 @@ func TestSanitizeSingboxUTLSFingerprint(t *testing.T) {
 		}
 	})
 
-	t.Run("unknown fingerprint drops the utls block, node survives", func(t *testing.T) {
+	// Junk canonicalizes to chrome and keeps the block: dropping utls here while
+	// the URI path kept it made the same node differ between the two import
+	// paths — and between desktop and mobile (SPEC 103, D-029).
+	t.Run("unknown fingerprint canonicalizes to chrome, block survives", func(t *testing.T) {
 		ob := map[string]interface{}{
 			"type": "vless",
 			"tls": map[string]interface{}{
@@ -40,8 +43,12 @@ func TestSanitizeSingboxUTLSFingerprint(t *testing.T) {
 		SanitizeSingboxOutboundMap(ob, "n")
 
 		tls := ob["tls"].(map[string]interface{})
-		if _, present := tls["utls"]; present {
-			t.Fatal("unknown fingerprint must drop the utls block")
+		utls, ok := tls["utls"].(map[string]interface{})
+		if !ok {
+			t.Fatal("utls block must survive an unknown fingerprint")
+		}
+		if utls["fingerprint"] != "chrome" {
+			t.Fatalf("fingerprint = %v, want chrome", utls["fingerprint"])
 		}
 		if tls["enabled"] != true {
 			t.Fatal("tls block itself must survive")
@@ -263,12 +270,26 @@ func TestSanitizeSingboxHysteria2Obfs(t *testing.T) {
 	t.Run("unsupported obfs type is dropped", func(t *testing.T) {
 		ob := map[string]interface{}{
 			"type": "hysteria2",
-			"obfs": map[string]interface{}{"type": "gecko", "password": "secret"},
+			"obfs": map[string]interface{}{"type": "quicksand", "password": "secret"},
 		}
 		SanitizeSingboxOutboundMap(ob, "n")
 
 		if _, present := ob["obfs"]; present {
 			t.Fatal("unsupported obfs type must be dropped (fatal for the whole config)")
+		}
+	})
+
+	// gecko is implemented by sing-box-lx (protocol/hysteria2/outbound.go) and
+	// accepted by LxBox, so it must survive the import (SPEC 103, D-016(а)).
+	t.Run("gecko obfs is kept", func(t *testing.T) {
+		ob := map[string]interface{}{
+			"type": "hysteria2",
+			"obfs": map[string]interface{}{"type": "gecko", "password": "secret"},
+		}
+		SanitizeSingboxOutboundMap(ob, "n")
+
+		if _, present := ob["obfs"]; !present {
+			t.Fatal("gecko obfs must be kept — the core supports it")
 		}
 	})
 

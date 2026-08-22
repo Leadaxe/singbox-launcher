@@ -8,6 +8,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -32,6 +33,14 @@ var xhttpV2StringKeys = []string{
 	"x_padding_method",
 	"sc_max_each_post_bytes",
 	"sc_min_posts_interval_ms",
+	"sc_stream_up_server_secs",
+}
+
+// xhttpIntKeys are the XHTTP transport keys the core decodes as int64, not as a
+// string like every other tuning field. Emitting them quoted makes sing-box
+// reject the whole config ("cannot unmarshal string into … of type int64").
+var xhttpIntKeys = []string{
+	"sc_max_buffered_posts",
 }
 
 // marshalJSONString returns s as a JSON string literal (including quotes).
@@ -132,8 +141,38 @@ func appendOutboundTransportParts(parts []string, outbound map[string]interface{
 			transportParts = append(transportParts, fmt.Sprintf(`%s:%s`, marshalJSONString(key), marshalJSONString(s)))
 		}
 	}
+	for _, key := range xhttpIntKeys {
+		if n := transportInt(transport[key]); n > 0 {
+			transportParts = append(transportParts, fmt.Sprintf(`%s:%d`, marshalJSONString(key), n))
+		}
+	}
 	if v, ok := transport["x_padding_obfs_mode"].(bool); ok && v {
 		transportParts = append(transportParts, `"x_padding_obfs_mode":true`)
+	}
+	if v, ok := transport["no_sse_header"].(bool); ok && v {
+		transportParts = append(transportParts, `"no_sse_header":true`)
+	}
+	// xmux is an object, not a scalar: the core decodes it as a nested struct
+	// whose members are strings except h_keep_alive_period (int). Values are
+	// written verbatim — the parser already mapped them onto the core's
+	// snake_case names, and validation is the core's job.
+	if xmux, ok := transport["xmux"].(map[string]interface{}); ok && len(xmux) > 0 {
+		keys := make([]string, 0, len(xmux))
+		for k := range xmux {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		var xmuxParts []string
+		for _, k := range keys {
+			vb, err := json.Marshal(xmux[k])
+			if err != nil {
+				continue
+			}
+			xmuxParts = append(xmuxParts, fmt.Sprintf(`%s:%s`, marshalJSONString(k), string(vb)))
+		}
+		if len(xmuxParts) > 0 {
+			transportParts = append(transportParts, fmt.Sprintf(`"xmux":{%s}`, strings.Join(xmuxParts, ",")))
+		}
 	}
 	// headers may arrive as map[string]string (ws Host) or map[string]interface{}
 	// (URI/Raw-JSON path) — handle both so they aren't silently dropped.

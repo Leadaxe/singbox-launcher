@@ -9,9 +9,13 @@ func TestNormalizeRealityShortID(t *testing.T) {
 		{"48720c", "48720c"},
 		{" 9083951b754b4254 ", "9083951b754b4254"},
 		{"ABCDEF01", "abcdef01"},
-		{"48\xC2\xA7ab", "48ab"},                         // § (UTF-8) between hex — strip non-hex
-		{"\xC2\xA0", ""},                                 // NBSP only
-		{"9083951b754b4254deadbeef", "9083951b754b4254"}, // truncate to 16 hex
+		{"48\xC2\xA7ab", "48ab"}, // § (UTF-8) between hex — strip non-hex
+		{"\xC2\xA0", ""},         // NBSP only
+		// SPEC 103 D-032: >16 hex chars decodes to >8 bytes — fatal in the core
+		// (reality_client.go: decodedLen > 8 → "invalid short_id"). Truncating
+		// silently substitutes a DIFFERENT short_id the subscription never
+		// specified; canon is to drop the value entirely, not truncate it.
+		{"9083951b754b4254deadbeef", ""},
 		{"", ""},
 	}
 	for _, tt := range tests {
@@ -136,8 +140,11 @@ func TestParseNode_VLESS_JunkFingerprintDropped(t *testing.T) {
 	if !ok {
 		t.Fatal("missing utls")
 	}
-	if got := ut["fingerprint"]; got != "random" {
-		t.Fatalf("fingerprint = %#v, want random fallback", got)
+	// Junk canonicalizes to chrome, not random: `random` re-rolls the fingerprint
+	// on every core start, so the node's identity hash would differ between runs
+	// and between the two projects (SPEC 103, D-029).
+	if got := ut["fingerprint"]; got != "chrome" {
+		t.Fatalf("fingerprint = %#v, want chrome fallback", got)
 	}
 }
 

@@ -122,16 +122,8 @@ func buildTuicTLS(node *configtypes.ParsedNode, outbound map[string]interface{})
 		tlsData["insecure"] = true
 	}
 
-	fp := NormalizeUTLSFingerprint(queryGetFold(q, "fp"))
-	if fp == "" {
-		fp = NormalizeUTLSFingerprint(queryGetFold(q, "fingerprint"))
-	}
-	if fp != "" {
-		tlsData["utls"] = map[string]interface{}{
-			"enabled":     true,
-			"fingerprint": fp,
-		}
-	}
+	// No utls on QUIC — see the same note in node_parser_hysteria2.go
+	// (SPEC 103, D-033).
 
 	// ALPN (TUIC default is ["h3"]; subscriptions often pass e.g. "h3,spdy/3.1").
 	if alpn := queryGetFold(q, "alpn"); alpn != "" {
