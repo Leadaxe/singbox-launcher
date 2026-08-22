@@ -327,7 +327,7 @@ deleted on first start → the user downloads the new template in one click.
 
 ---
 
-## 9. `#if` construct (SPEC 067) — desktop only
+## 9. `#if` construct (SPEC 067)
 
 Template expressions v1 — declarative conditional field inclusion right inside the
 template, with no post-substitution Go hooks. Implemented in
@@ -336,39 +336,113 @@ template, with no post-substitution Go hooks. Implemented in
 validation). It covers cases of the form "one field inside an already-emitted
 object depends on a bool var / the runtime platform".
 
-> **Mobile parity:** every `#*` construct (`#if`, and the potential
-> `#for_each` / `#include`) is **desktop only** until the implementation lands in
-> LxBox. Templates shared between launchers must guard the platforms that lack
-> support.
+> **Mobile parity (SPEC 103):** `#if` is implemented on both sides — the
+> launcher (`core/template/substitute.go`) and LxBox
+> (`app/lib/services/builder/if_engine.dart`) — and the normative description of
+> the shared language lives in `contract/docs/TEMPLATE_LANG.md`. Where this
+> reference and the contract disagree, the contract wins. Other `#*` constructs
+> (the potential `#for_each` / `#include`) remain desktop-only until they land in
+> LxBox as well.
 
-### 9.1 Naming discipline — `#` vs bare vs `@`
+**Named conditions.** A condition key may carry any suffix: `"#if"`, `"#if1"`,
+`"#if 2"`, `"#if tun-only"` are all equivalent. This exists because JSON keeps
+only the last of two identical keys — a second plain `"#if"` on the same object
+would silently overwrite the first — so a suffix is what lets one object carry
+several independent conditions, and it doubles as a readable label. Several
+`#if…` keys on one object are applied in sorted key order (identical in both
+engines). An array element (§9.4) and a scalar `#if` still need exactly one such
+key — with any suffix.
 
-| Prefix | Where | Why the marker exists |
-|---------|-----|--------------|
-| `#` | The construct gateway (`#if`) + predicates in `and`/`or` (`#in`, `#not`, `#notEmpty`, …) | A scope switch: the walker tells a control key from a data key in an arbitrary object, and a predicate name from a string literal inside a predicate list |
-| bare | The inner keys of an `#if` body (`and`, `or`, `value`, `else`) + the outer legacy keys (`params[].if`, `params[].if_or`, `params[].value`, `params[].mode`) | The walker is already in a known scope, so a marker would be redundant |
-| `@` | A var ref (a name from `vars[]` only; a bare `"var"` → loader error) + the runtime globals `@runtime.platform` / `@runtime.arch` (in `#if` predicates only) | One uniform notation for var refs everywhere; the "literal vs var name" ambiguity is gone |
+### 9.1 Naming discipline — `#` vs `@` vs data
 
-Forward compatibility: an unknown key starting with `#` makes the walker log a
-warning and drop it (graceful degradation). That allows new constructs
-(`#for_each`, `#include`, …) to be added without a breaking change for older
-launchers.
+**The rule in one sentence (SPEC 107, D-073):**
+
+> `#` marks an engine keyword. `@` marks a variable reference. Everything else is data.
+
+| Prefix | What it is | Examples |
+|--------|-----------|----------|
+| `#` | engine keyword: constructs, condition operators, branches | `#if`, `#enable`, `#and`, `#or`, `#not`, `#value`, `#else`, `#in`, `#notIn`, `#matches`, `#notEmpty`, `#isEmpty`, `#on_change`, `#set` |
+| `@` | reference to a `vars[]` entry or a runtime global | `@tun`, `@tun_mtu`, `@runtime.platform` |
+| no prefix | data — sing-box fields and values | `outbound`, `rule_set`, `server`, `options[].value` |
+
+The first character of a key is self-describing: the parser needs no context,
+and the template author needs not remember which construct they are inside.
+
+**Legacy spellings are read indefinitely.** Before SPEC 107 the rule held only
+half the time: `#not`/`#in`/`#matches` were marked, while `and`/`or`/`value`/
+`else`/`on_change`/`set` were not — although the same engine interprets them.
+Unmarked forms stay valid, existing templates keep working, and a mixed
+spelling (canonical outside, legacy inside) is valid too.
+
+Forward compatibility: an unknown key starting with `#` is logged and dropped
+(graceful degradation), so new constructs can be added without breaking older
+launchers. A side benefit of the marked canon: a typo such as `#adn` is now
+caught by that same mechanism.
 
 ### 9.2 Shape
 
 ```jsonc
 "#if": {
-  "and":   [<predicate>, <predicate>, ...],  // mutually exclusive with `or`
-  "or":    [<predicate>, <predicate>, ...],  // mutually exclusive with `and`
-  "value": <any JSON>,                        // required, the then branch
-  "else":  <any JSON>                         // the optional else branch
+  "#or":    [<cond>, <cond>, ...],   // mutually exclusive with "#and"
+  "#and":   [<cond>, <cond>, ...],   // mutually exclusive with "#or"
+  "#value": <any JSON>,               // required, then-branch
+  "#else":  <any JSON>                // optional, else-branch
 }
 ```
 
-Rules (validated at load):
-* Exactly one of `and` / `or`, as a non-empty list. Neither / both / an empty list → loader error.
-* `value` is required (not nil).
-* `else` is optional; a null in `value`/`else` is an error in map-spread mode (nothing to merge) and legal in array-element mode.
+An element of `#and`/`#or` is a predicate **or a nested cond-obj**; depth is
+unlimited (SPEC 107 lifted the earlier restriction):
+
+```jsonc
+"#if": {
+  "#or": [
+    "@tun",
+    {"#and": [{"@runtime.platform": "windows"}, "@enable_proxy_in"]}
+  ],
+  "#value": { "...": "..." }
+}
+```
+
+`#not` negates any condition, including `#and`/`#or`, not just a predicate.
+
+Load-time validation:
+* Exactly one of `#and` / `#or`. Neither or both → load error.
+* `#value` is required (not nil).
+* `#else` is optional; null in `#value`/`#else` is an error in map-spread
+  (nothing to merge), legal in array-element position.
+* An invalid shape evaluates to **false** plus a warning at runtime
+  (fail-closed): a typo in a condition must never silently enable a node.
+
+The same keys spelled without `#` (`and`, `or`, `value`, `else`) are supported
+indefinitely.
+
+### 9.2.1 `#enable` — node existence gate
+
+A flat key among the node's own fields: it substitutes nothing and instead
+decides whether the node exists at all.
+
+```jsonc
+{
+  "tag": "geoip-ru",
+  "type": "remote",
+  "#enable": ["@geoip_enabled"],
+  "url": "https://example.com/geoip-ru.srs"
+}
+```
+
+* The value is any condition (§9.2), including the list shorthand:
+  `["@a", "@b"]` ≡ `{"#and": ["@a", "@b"]}`.
+* false → the node drops out: the key disappears from its object, the element
+  from its array. Its contents are **not evaluated at all**.
+* Evaluated **first**, before any `#if` on the same node.
+* Carriers: objects in the `config` tree, preset fragments (`rule_set[]`,
+  `rules[]`, `dns_servers[]`, `dns_rule(s)`, `outbounds[]`), variable
+  declarations (greys out the Settings row), `params[]` (block not applied).
+* Legacy equivalents: `if` (≡ `#and` list), `if_or` (≡ `#or` list), and in
+  LxBox `enabled: "@var"` — all read indefinitely.
+
+Difference from `#if`: `#if` substitutes one of the `#value`/`#else` branches;
+`#enable` is a boolean gate with no branches.
 
 ### 9.3 The two placement modes
 
