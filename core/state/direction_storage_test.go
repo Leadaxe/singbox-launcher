@@ -129,11 +129,11 @@ func TestDirectionFieldsSurviveRoundTrip(t *testing.T) {
 			Mode:                      configtypes.AutoModeRoundRobin,
 			URL:                       "http://cp.cloudflare.com/generate_204",
 			Interval:                  "15m",
-			Tolerance:                 50,
+			Tolerance:                 configtypes.NewTemplateInt(50),
 			IdleTimeout:               "30m",
 			InterruptExistConnections: &interrupt,
 			Pool:                      3,
-			PoolTolerance:             20,
+			PoolTolerance:             configtypes.NewTemplateInt(20),
 			StickyHash:                []string{"process", "domain"},
 		},
 	}
@@ -151,7 +151,7 @@ func TestDirectionFieldsSurviveRoundTrip(t *testing.T) {
 	if out.Auto == nil {
 		t.Fatalf("двойник потерян")
 	}
-	if out.Auto.Mode != configtypes.AutoModeRoundRobin || out.Auto.Pool != 3 || out.Auto.PoolTolerance != 20 {
+	if out.Auto.Mode != configtypes.AutoModeRoundRobin || out.Auto.Pool != 3 || func() bool { n, _ := out.Auto.PoolTolerance.Int(); return n != 20 }() {
 		t.Fatalf("параметры пула потеряны: %+v", out.Auto)
 	}
 	if out.Auto.InterruptExistConnections == nil || *out.Auto.InterruptExistConnections {

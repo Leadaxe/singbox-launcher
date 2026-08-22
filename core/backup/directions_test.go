@@ -89,7 +89,7 @@ func TestDirectionRoundTrip(t *testing.T) {
 		Options:          map[string]interface{}{"interrupt_exist_connections": false},
 		Auto: &configtypes.DirectionAuto{
 			Mode: configtypes.AutoModeRoundRobin, URL: "http://cp.example/generate_204",
-			Interval: "15m", Tolerance: 50, Pool: 3, PoolTolerance: 20,
+			Interval: "15m", Tolerance: configtypes.NewTemplateInt(50), Pool: 3, PoolTolerance: configtypes.NewTemplateInt(20),
 			StickyHash:                []string{"process"},
 			InterruptExistConnections: &interrupt,
 		},
@@ -134,7 +134,7 @@ func TestDirectionRoundTrip(t *testing.T) {
 	if body != "🇩🇪|🇳🇱" || !invert {
 		t.Fatalf("round-trip отбора: (%q, %v)", body, invert)
 	}
-	if back.Auto == nil || back.Auto.PoolTolerance != 20 {
+	if back.Auto == nil || func() bool { n, _ := back.Auto.PoolTolerance.Int(); return n != 20 }() {
 		t.Fatalf("round-trip автовыбора: %+v", back.Auto)
 	}
 	if back.Auto.InterruptExistConnections == nil || *back.Auto.InterruptExistConnections {

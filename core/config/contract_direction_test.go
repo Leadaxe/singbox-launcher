@@ -99,11 +99,11 @@ func (c corpusDirection) toDirection() configtypes.Direction {
 			Mode:                      c.Auto.Mode,
 			URL:                       c.Auto.URL,
 			Interval:                  c.Auto.Interval,
-			Tolerance:                 c.Auto.Tolerance,
+			Tolerance:                 configtypes.NewTemplateInt(c.Auto.Tolerance),
 			IdleTimeout:               c.Auto.IdleTimeout,
 			InterruptExistConnections: c.Auto.InterruptExistConnections,
 			Pool:                      c.Auto.Pool,
-			PoolTolerance:             c.Auto.PoolTolerance,
+			PoolTolerance:             configtypes.NewTemplateInt(c.Auto.PoolTolerance),
 			StickyHash:                c.Auto.StickyHash,
 		}
 	}

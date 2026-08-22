@@ -4,29 +4,22 @@
     "proxies": [],
     "outbounds": [
       {
-        "tag": "auto-proxy-out",
-        "type": "urltest",
-        "options": {
-          "url": "@urltest_url",
-          "interval": "@urltest_interval",
-          "tolerance": "@urltest_tolerance",
-          "interrupt_exist_connections": true
-        },
-        "comment": "Proxy automated group for everything that should go through VPN."
-      },
-      {
         "required": true,
         "tag": "proxy-out",
         "type": "selector",
         "options": {
-          "interrupt_exist_connections": true,
-          "default": "auto-proxy-out"
+          "interrupt_exist_connections": true
         },
         "addOutbounds": [
-          "direct-out",
-          "auto-proxy-out"
+          "direct-out"
         ],
-        "comment": "Proxy group for everything that should go through VPN."
+        "comment": "Proxy group for everything that should go through VPN.",
+        "auto": {
+          "url": "@urltest_url",
+          "interval": "@urltest_interval",
+          "tolerance": "@urltest_tolerance",
+          "interrupt_exist_connections": true
+        }
       },
       {
         "tag": "vpn ①",
@@ -1135,13 +1128,6 @@
           }
         },
         {
-          "mode": "update",
-          "tag": "auto-proxy-out",
-          "filters": {
-            "tag": "!/(🇷🇺)/i"
-          }
-        },
-        {
           "tag": "ru VPN 🇷🇺",
           "type": "selector",
           "options": {
@@ -1208,13 +1194,6 @@
           }
         },
         {
-          "mode": "update",
-          "tag": "auto-proxy-out",
-          "filters": {
-            "tag": "!/(🇷🇺)/i"
-          }
-        },
-        {
           "tag": "ru VPN 🇷🇺",
           "type": "selector",
           "options": {
@@ -1268,13 +1247,6 @@
         {
           "mode": "update",
           "tag": "proxy-out",
-          "filters": {
-            "tag": "!/(🇷🇺)/i"
-          }
-        },
-        {
-          "mode": "update",
-          "tag": "auto-proxy-out",
           "filters": {
             "tag": "!/(🇷🇺)/i"
           }

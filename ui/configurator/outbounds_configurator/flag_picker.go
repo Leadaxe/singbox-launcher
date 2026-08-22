@@ -43,6 +43,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config"
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/textnorm"
 )
@@ -53,8 +54,13 @@ type flagEntry struct {
 	Count int
 }
 
-// extractFlags — пробегает по тэгам всех нод, собирает уникальные emoji-флаги
-// (Regional Indicator pairs U+1F1E6..U+1F1FF) с count'ами. Sorted by count desc.
+// extractFlags — пробегает по тэгам всех нод, собирает уникальные эмодзи с
+// count'ами, sorted by count desc.
+//
+// SPEC 104: не только флаги. Провайдеры кладут в имена 🚀, ⭐, 🔒, 💎 и
+// прочее — это такие же маркеры категории, как флаг страны, и отбирать по
+// ним должно быть так же легко. Флаг (пара Regional Indicator) остаётся
+// одним элементом, а не двумя буквами.
 func extractFlags(nodes []*config.ParsedNode) []flagEntry {
 	counts := map[string]int{}
 	for _, n := range nodes {
@@ -81,15 +87,30 @@ func extractFlags(nodes []*config.ParsedNode) []flagEntry {
 func findFlagsInString(s string) []string {
 	seen := map[string]bool{}
 	var out []string
+	add := func(e string) {
+		if !seen[e] {
+			seen[e] = true
+			out = append(out, e)
+		}
+	}
 	runes := []rune(s)
-	for i := 0; i+1 < len(runes); i++ {
-		if isRegionalIndicator(runes[i]) && isRegionalIndicator(runes[i+1]) {
-			flag := string(runes[i : i+2])
-			if !seen[flag] {
-				seen[flag] = true
-				out = append(out, flag)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		// Флаг — пара Regional Indicator, один элемент.
+		if i+1 < len(runes) && isRegionalIndicator(r) && isRegionalIndicator(runes[i+1]) {
+			add(string(runes[i : i+2]))
+			i++
+			continue
+		}
+		if isEmojiRune(r) {
+			// Захватываем следующий за эмодзи селектор вариации / модификатор
+			// тона кожи, чтобы «⭐️» и «⭐» не считались разными.
+			end := i + 1
+			for end < len(runes) && isEmojiModifier(runes[end]) {
+				end++
 			}
-			i++ // skip paired rune
+			add(string(runes[i:end]))
+			i = end - 1
 		}
 	}
 	return out
@@ -99,16 +120,35 @@ func isRegionalIndicator(r rune) bool {
 	return r >= 0x1F1E6 && r <= 0x1F1FF
 }
 
-// buildFlagRegex — строка фильтра в формате `/(flag1|flag2)/i` (или с `!`-префиксом).
-func buildFlagRegex(selected []string, exclude bool) string {
-	if len(selected) == 0 {
-		return ""
+// isEmojiRune — основные блоки эмодзи Unicode. Буквы, цифры и пунктуацию
+// не трогаем: пикер нужен для символов, которые неудобно набирать.
+func isEmojiRune(r rune) bool {
+	switch {
+	case r >= 0x1F300 && r <= 0x1FAFF: // Misc Symbols & Pictographs … Symbols Extended-A
+		return true
+	case r >= 0x2600 && r <= 0x27BF: // Misc Symbols, Dingbats (☀ ⭐ ✅ ✈)
+		return true
+	case r >= 0x1F900 && r <= 0x1F9FF: // Supplemental Symbols & Pictographs
+		return true
+	case r == 0x2B50 || r == 0x2B55 || r == 0x231A || r == 0x231B || r == 0x23F0 || r == 0x23F3:
+		return true
 	}
-	body := strings.Join(selected, "|")
-	if exclude {
-		return "!/(" + body + ")/i"
-	}
-	return "/(" + body + ")/i"
+	return false
+}
+
+// isEmojiModifier — селектор вариации (U+FE0F) и модификаторы тона кожи.
+func isEmojiModifier(r rune) bool {
+	return r == 0xFE0F || (r >= 0x1F3FB && r <= 0x1F3FF)
+}
+
+// buildFlagRegex — ТЕЛО регулярки из выбранных чипов: `flag1|flag2`.
+//
+// SPEC 104: пикер работает в тех же терминах, что и форма Направления —
+// тело без обёртки, инверсия отдельной галкой. Обёртку `/…/i` ставит
+// форма при сохранении, и пикеру выдумывать её нельзя: иначе в поле тела
+// оказывался бы полный паттерн, и генератор искал бы символы «/» в тегах.
+func buildFlagRegex(selected []string) string {
+	return strings.Join(selected, "|")
 }
 
 // showFlagPickerPopup — modal popup поверх parent-canvas'а. На Apply вызывает
@@ -119,8 +159,9 @@ func buildFlagRegex(selected []string, exclude bool) string {
 func showFlagPickerPopup(
 	parent fyne.Window,
 	nodes []*config.ParsedNode,
-	current string,
-	onApply func(filter string),
+	currentBody string,
+	currentInvert bool,
+	onApply func(body string, invert bool),
 ) {
 	if parent == nil || parent.Canvas() == nil {
 		return
@@ -132,10 +173,11 @@ func showFlagPickerPopup(
 	// ── State ──────────────────────────────────────────────────────────────
 	selected := map[string]bool{}
 	excludeCheck := widget.NewCheck(locale.T("wizard.outbound.flag_picker.exclude"), nil)
+	excludeCheck.SetChecked(currentInvert)
 
 	regexEntry := widget.NewEntry()
-	regexEntry.SetText(current)
-	regexEntry.SetPlaceHolder("/(🇳🇱|🇺🇸)/i")
+	regexEntry.SetText(currentBody)
+	regexEntry.SetPlaceHolder("🇳🇱|🇺🇸")
 
 	countLabel := widget.NewLabel("")
 	countLabel.TextStyle = fyne.TextStyle{Bold: true}
@@ -172,11 +214,9 @@ func showFlagPickerPopup(
 		// Build synthetic Direction with only the filter — we only care
 		// about which nodes match.
 		cfg := config.Direction{
-			Tag:  "_flag_picker_",
-			Type: "selector",
-			Filters: map[string]interface{}{
-				"tag": regexEntry.Text,
-			},
+			Tag:     "_flag_picker_",
+			Type:    "selector",
+			Filters: configtypes.SetDirectionFilterTag(nil, regexEntry.Text, excludeCheck.Checked),
 		}
 
 		filtered, _ := config.PreviewSelectorNodes(nodes, cfg)
@@ -239,10 +279,10 @@ func showFlagPickerPopup(
 				picked = append(picked, fe.Flag)
 			}
 		}
-		regexEntry.SetText(buildFlagRegex(picked, excludeCheck.Checked))
+		regexEntry.SetText(buildFlagRegex(picked))
 		// SetText triggers OnChanged → recomputeMatches called transitively.
 	}
-	excludeCheck.OnChanged = func(_ bool) { rebuildFromChips() }
+	excludeCheck.OnChanged = func(_ bool) { recomputeMatches() }
 
 	// ── Live-apply on regex edit (manual or chip-driven) ───────────────────
 	regexEntry.OnChanged = func(_ string) { recomputeMatches() }
@@ -318,7 +358,7 @@ func showFlagPickerPopup(
 	cancelBtn.OnTapped = func() { win.Close() }
 	applyBtn.OnTapped = func() {
 		if onApply != nil {
-			onApply(strings.TrimSpace(regexEntry.Text))
+			onApply(strings.TrimSpace(regexEntry.Text), excludeCheck.Checked)
 		}
 		win.Close()
 	}

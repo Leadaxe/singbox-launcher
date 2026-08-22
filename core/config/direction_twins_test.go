@@ -271,7 +271,7 @@ func TestNoTwinWithoutAuto(t *testing.T) {
 func TestTwinOptionsTemplateThenUser(t *testing.T) {
 	pc := directionTestConfig(configtypes.Direction{
 		Tag: "vpn-1", Type: "selector",
-		Auto: &configtypes.DirectionAuto{Interval: "1m", Tolerance: 42},
+		Auto: &configtypes.DirectionAuto{Interval: "1m", Tolerance: configtypes.NewTemplateInt(42)},
 	})
 	groups := generateDirections(t, pc, directionTestNodes("DE-1"), directionTestOptions())
 
@@ -293,7 +293,7 @@ func TestTwinRoundRobinEmitsBalancer(t *testing.T) {
 	pc := directionTestConfig(configtypes.Direction{
 		Tag: "vpn-1", Type: "selector",
 		Auto: &configtypes.DirectionAuto{
-			Mode: configtypes.AutoModeRoundRobin, Pool: 3, PoolTolerance: 20,
+			Mode: configtypes.AutoModeRoundRobin, Pool: 3, PoolTolerance: configtypes.NewTemplateInt(20),
 			StickyHash: []string{"process"},
 		},
 	})

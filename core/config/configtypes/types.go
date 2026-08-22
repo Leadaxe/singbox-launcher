@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/url"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -250,8 +251,13 @@ type DirectionAuto struct {
 	Mode        string `json:"mode,omitempty"` // "" | least_test | round_robin
 	URL         string `json:"url,omitempty"`
 	Interval    string `json:"interval,omitempty"`
-	Tolerance   int    `json:"tolerance,omitempty"`
 	IdleTimeout string `json:"idle_timeout,omitempty"`
+
+	// Tolerance — число миллисекунд ЛИБО ссылка на переменную шаблона
+	// ("@urltest_tolerance"): подстановка идёт после разворачивания
+	// двойника, и до неё здесь лежит строка. Поэтому json.RawMessage, а не
+	// int — иначе шаблон с `auto` просто не читался бы.
+	Tolerance TemplateInt `json:"tolerance,omitempty"`
 
 	// InterruptExistConnections — рвать ли живые соединения при смене лидера.
 	// Указатель, потому что здесь важна ТРЁХЗНАЧНОСТЬ: nil = «шаблон решает»,
@@ -261,9 +267,83 @@ type DirectionAuto struct {
 	InterruptExistConnections *bool `json:"interrupt_exist_connections,omitempty"`
 
 	// Поля пула (только Mode == round_robin, SPEC 088).
-	Pool          int      `json:"pool,omitempty"`
-	PoolTolerance int      `json:"pool_tolerance,omitempty"`
-	StickyHash    []string `json:"sticky_hash,omitempty"`
+	Pool          int         `json:"pool,omitempty"`
+	PoolTolerance TemplateInt `json:"pool_tolerance,omitempty"`
+	StickyHash    []string    `json:"sticky_hash,omitempty"`
+}
+
+// TemplateInt — целое число ЛИБО ссылка на переменную шаблона ("@name").
+//
+// Нужен там, где значение приходит из шаблона до подстановки переменных:
+// в JSON это либо 100, либо "@urltest_tolerance", и обычный int спотыкается
+// о вторую форму. Пустое значение означает «не задано».
+type TemplateInt struct {
+	raw json.RawMessage
+}
+
+// NewTemplateInt — значение из числа (форма редактора).
+func NewTemplateInt(v int) TemplateInt {
+	if v == 0 {
+		return TemplateInt{}
+	}
+	return TemplateInt{raw: json.RawMessage(strconv.Itoa(v))}
+}
+
+// NewTemplateVar — значение-ссылка на переменную ("@urltest_tolerance").
+func NewTemplateVar(name string) TemplateInt {
+	if name == "" {
+		return TemplateInt{}
+	}
+	quoted, err := json.Marshal(name)
+	if err != nil {
+		return TemplateInt{}
+	}
+	return TemplateInt{raw: quoted}
+}
+
+// IsZero — значение не задано (поле опускается при сериализации).
+func (t TemplateInt) IsZero() bool { return len(t.raw) == 0 }
+
+// Int возвращает число; ok == false для ссылки на переменную или пустого
+// значения. Вызывающий обязан различать: подставлять переменную здесь
+// значило бы завести вторую реализацию движка шаблонов.
+func (t TemplateInt) Int() (int, bool) {
+	if len(t.raw) == 0 {
+		return 0, false
+	}
+	var n int
+	if err := json.Unmarshal(t.raw, &n); err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// Value возвращает значение как оно уедет в конфиг: число или строка-ссылка.
+func (t TemplateInt) Value() interface{} {
+	if len(t.raw) == 0 {
+		return nil
+	}
+	var v interface{}
+	if err := json.Unmarshal(t.raw, &v); err != nil {
+		return nil
+	}
+	return v
+}
+
+func (t TemplateInt) MarshalJSON() ([]byte, error) {
+	if len(t.raw) == 0 {
+		return []byte("null"), nil
+	}
+	return t.raw, nil
+}
+
+func (t *TemplateInt) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		t.raw = nil
+		return nil
+	}
+	t.raw = append(json.RawMessage(nil), data...)
+	return nil
 }
 
 // AutoTag — тег парной urltest-группы направления.

@@ -59,11 +59,11 @@ func exportDirection(d configtypes.Direction) Direction {
 			Mode:                      d.Auto.Mode,
 			URL:                       d.Auto.URL,
 			Interval:                  d.Auto.Interval,
-			Tolerance:                 d.Auto.Tolerance,
+			Tolerance:                 templateIntToBackup(d.Auto.Tolerance),
 			IdleTimeout:               d.Auto.IdleTimeout,
 			InterruptExistConnections: d.Auto.InterruptExistConnections,
 			Pool:                      d.Auto.Pool,
-			PoolTolerance:             d.Auto.PoolTolerance,
+			PoolTolerance:             templateIntToBackup(d.Auto.PoolTolerance),
 			StickyHash:                d.Auto.StickyHash,
 		}
 	}
@@ -98,13 +98,27 @@ func importDirection(in Direction) configtypes.Direction {
 			Mode:                      in.Auto.Mode,
 			URL:                       in.Auto.URL,
 			Interval:                  in.Auto.Interval,
-			Tolerance:                 in.Auto.Tolerance,
+			Tolerance:                 configtypes.NewTemplateInt(in.Auto.Tolerance),
 			IdleTimeout:               in.Auto.IdleTimeout,
 			InterruptExistConnections: in.Auto.InterruptExistConnections,
 			Pool:                      in.Auto.Pool,
-			PoolTolerance:             in.Auto.PoolTolerance,
+			PoolTolerance:             configtypes.NewTemplateInt(in.Auto.PoolTolerance),
 			StickyHash:                in.Auto.StickyHash,
 		}
 	}
 	return d
+}
+
+// templateIntToBackup разворачивает значение в число для переноса.
+//
+// Ссылка на переменную шаблона ("@urltest_tolerance") в бэкап не едет: у
+// принимающей стороны свой шаблон, и имя переменной там может не значить
+// ничего. Ноль означает «не задано» — принимающая сторона возьмёт своё
+// умолчание, что честнее подстановки чужого значения.
+func templateIntToBackup(v configtypes.TemplateInt) int {
+	n, ok := v.Int()
+	if !ok {
+		return 0
+	}
+	return n
 }

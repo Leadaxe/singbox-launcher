@@ -120,14 +120,8 @@ func ShowEditDialog(
 	// Type: три пункта. manual(selector) | auto(urltest, least_test) |
 	// loadbalance(urltest + round_robin). Последние два — один wire-type urltest,
 	// различаются наличием mode:round_robin.
-	// SPEC 104: четыре пункта. Первые два — Направление: ручной выбор
-	// узла и он же с парной auto-группой (`<tag>-auto`, состав тот же).
-	// Последние два — самостоятельные urltest-записи шаблона
-	// (`auto-proxy-out`): исторические, целиком заменяемые направлением с
-	// автовыбором, но существующие конфиги на них ссылаются.
 	typeSelect := widget.NewSelect([]string{
 		locale.T("wizard.outbound.type_manual"),
-		locale.T("wizard.outbound.type_with_auto"),
 		locale.T("wizard.outbound.type_auto"),
 		locale.T("wizard.outbound.type_loadbalance"),
 	}, nil)
@@ -138,11 +132,16 @@ func ShowEditDialog(
 		typeSelect.SetSelected(locale.T("wizard.outbound.type_loadbalance"))
 	case displayBody.Type == "urltest":
 		typeSelect.SetSelected(locale.T("wizard.outbound.type_auto"))
-	case displayBody.Auto != nil:
-		typeSelect.SetSelected(locale.T("wizard.outbound.type_with_auto"))
 	default:
 		typeSelect.SetSelected(locale.T("wizard.outbound.type_manual"))
 	}
+
+	// SPEC 104: автовыбор — СВОЙСТВО Направления, а не его тип: галка
+	// включает парную группу `<tag>-auto`, настройки которой живут на
+	// отдельной вкладке. Смешивать это с типом записи было бы неверно —
+	// у Направления тип всегда selector.
+	autoTwinCheck := widget.NewCheck(locale.T("wizard.outbound.auto_twin_check"), nil)
+	autoTwinCheck.SetChecked(displayBody != nil && displayBody.Auto != nil)
 
 	// Режим автогруппы направления: least_test или round_robin. Отдельно от
 	// typeSelect, потому что относится к двойнику, а не к самой записи.
@@ -158,9 +157,7 @@ func ShowEditDialog(
 
 	// SPEC 104: Направление с автогруппой — та же настройка urltest, только
 	// применяется к двойнику `<tag>-auto`, а не к самой записи.
-	hasAutoTwin := func() bool {
-		return typeSelect.Selected == locale.T("wizard.outbound.type_with_auto")
-	}
+	hasAutoTwin := func() bool { return autoTwinCheck.Checked }
 
 	commentEntry := widget.NewEntry()
 	if displayBody != nil {
@@ -324,9 +321,11 @@ func ShowEditDialog(
 				nodes = m.PreviewNodes
 			}
 		}
-		showFlagPickerPopup(parent, nodes, filterValEntry.Text, func(filter string) {
-			filterValEntry.SetText(filter)
-		})
+		showFlagPickerPopup(parent, nodes, filterValEntry.Text, filterInvertCheck.Checked,
+			func(body string, invert bool) {
+				filterValEntry.SetText(body)
+				filterInvertCheck.SetChecked(invert)
+			})
 	})
 	filterPickerBtn.Importance = widget.LowImportance
 	// Compose: [entry stretches] [button 30px].
@@ -488,6 +487,82 @@ func ShowEditDialog(
 	// `requireTag=true`: empty tag → error (save() needs a real tag).
 	// `requireTag=false`: empty tag → autoinjected "_preview_" placeholder so
 	// preview tab + syncFormToRaw work before the user has typed a name.
+	// SPEC 104: вкладка «Автовыбор» — настройки парной группы `<tag>-auto`.
+	// Свои виджеты, а не общие с urltestBlock: один виджет нельзя показывать
+	// на двух вкладках, а семантика разная (запись против её двойника).
+	autoModeLabel := ttwidget.NewLabel(locale.T("wizard.outbound.label_auto_mode"))
+	autoModeLabel.SetToolTip(locale.T("wizard.outbound.auto_mode_tooltip"))
+	autoIntervalSelect := widget.NewSelect(intervalLabels, nil)
+	autoToleranceSelect := widget.NewSelect(toleranceLabels, nil)
+	autoURLEntry := widget.NewSelectEntry(urlLabels)
+	autoURLEntry.SetPlaceHolder("https://cp.cloudflare.com/generate_204")
+	autoPoolEntry := widget.NewEntry()
+	autoPoolEntry.SetPlaceHolder("3")
+	autoPoolToleranceEntry := widget.NewEntry()
+	autoPoolToleranceEntry.SetPlaceHolder("0")
+	autoStickyChecks := make(map[string]*widget.Check, len(stickyKeys))
+	autoStickyRow := container.NewHBox()
+	for _, k := range stickyKeys {
+		ch := widget.NewCheck(k, nil)
+		autoStickyChecks[k] = ch
+		autoStickyRow.Add(ch)
+	}
+	// Заполнение из текущего Auto.
+	if displayBody != nil && displayBody.Auto != nil {
+		a := displayBody.Auto
+		if a.Interval != "" {
+			for lbl, v := range intervalLabelToValue {
+				if v == a.Interval {
+					autoIntervalSelect.SetSelected(lbl)
+				}
+			}
+		}
+		if v := a.Tolerance.Value(); v != nil {
+			want := fmt.Sprint(v)
+			for lbl, raw := range toleranceLabelToValue {
+				if raw == want {
+					autoToleranceSelect.SetSelected(lbl)
+				}
+			}
+		}
+		autoURLEntry.SetText(a.URL)
+		if a.Pool > 0 {
+			autoPoolEntry.SetText(strconv.Itoa(a.Pool))
+		}
+		if n, ok := a.PoolTolerance.Int(); ok {
+			autoPoolToleranceEntry.SetText(strconv.Itoa(n))
+		}
+		for _, k := range a.StickyHash {
+			if ch := autoStickyChecks[k]; ch != nil {
+				ch.SetChecked(true)
+			}
+		}
+	}
+	autoBalancerBlock := container.NewVBox(
+		container.NewGridWithColumns(2, widget.NewLabel("Pool size"), autoPoolEntry),
+		container.NewGridWithColumns(2, widget.NewLabel("Pool tolerance (ms)"), autoPoolToleranceEntry),
+		widget.NewLabel("Sticky hash"),
+		autoStickyRow,
+	)
+	autoTabContent := container.NewVBox(
+		widget.NewLabel(locale.T("wizard.outbound.auto_tab_hint")),
+		container.NewGridWithColumns(2, autoModeLabel, autoModeSelect),
+		container.NewGridWithColumns(2, widget.NewLabel("Interval"), autoIntervalSelect),
+		container.NewGridWithColumns(2, widget.NewLabel("Tolerance (ms)"), autoToleranceSelect),
+		container.NewGridWithColumns(2, widget.NewLabel("URL"), autoURLEntry),
+		autoBalancerBlock,
+	)
+	autoBalancerVisible := func() {
+		if autoModeSelect.Selected == locale.T("wizard.outbound.auto_mode_round_robin") {
+			autoBalancerBlock.Show()
+		} else {
+			autoBalancerBlock.Hide()
+		}
+	}
+	autoBalancerVisible()
+	// Обработчик ПОСЛЕ SetSelected — иначе сработает на программной установке.
+	autoModeSelect.OnChanged = func(string) { autoBalancerVisible() }
+
 	buildConfigForPreview := func(requireTag bool) (*config.Direction, error) {
 		if editSource == "raw" {
 			var cfg config.Direction
@@ -611,26 +686,32 @@ func ShowEditDialog(
 			if autoModeSelect.Selected == locale.T("wizard.outbound.auto_mode_round_robin") {
 				auto.Mode = configtypes.AutoModeRoundRobin
 			}
-			if lbl := urltestIntervalSelect.Selected; lbl != "" {
+			if lbl := autoIntervalSelect.Selected; lbl != "" {
 				auto.Interval = intervalLabelToValue[lbl]
 			}
-			if lbl := urltestToleranceSelect.Selected; lbl != "" {
-				if v := toleranceLabelToValue[lbl]; v != "" && !strings.HasPrefix(v, "@") {
-					if n, err := strconv.Atoi(v); err == nil {
-						auto.Tolerance = n
+			if lbl := autoToleranceSelect.Selected; lbl != "" {
+				// Значение может быть числом или «@urltest_tolerance» —
+				// ссылку сохраняем как есть: подстановка на сборке, и
+				// разворачивать её здесь значило бы зашить в состояние
+				// текущее значение настройки навсегда.
+				if v := toleranceLabelToValue[lbl]; v != "" {
+					if strings.HasPrefix(v, "@") {
+						auto.Tolerance = configtypes.NewTemplateVar(strings.TrimPrefix(v, "@"))
+					} else if n, err := strconv.Atoi(v); err == nil {
+						auto.Tolerance = configtypes.NewTemplateInt(n)
 					}
 				}
 			}
-			auto.URL = strings.TrimSpace(urltestURLEntry.Text)
+			auto.URL = strings.TrimSpace(autoURLEntry.Text)
 			if auto.Mode == configtypes.AutoModeRoundRobin {
-				if n, err := strconv.Atoi(strings.TrimSpace(poolEntry.Text)); err == nil {
+				if n, err := strconv.Atoi(strings.TrimSpace(autoPoolEntry.Text)); err == nil {
 					auto.Pool = n
 				}
-				if n, err := strconv.Atoi(strings.TrimSpace(poolToleranceEntry.Text)); err == nil {
-					auto.PoolTolerance = n
+				if n, err := strconv.Atoi(strings.TrimSpace(autoPoolToleranceEntry.Text)); err == nil {
+					auto.PoolTolerance = configtypes.NewTemplateInt(n)
 				}
 				for _, k := range stickyKeys {
-					if ch := stickyChecks[k]; ch != nil && ch.Checked {
+					if ch := autoStickyChecks[k]; ch != nil && ch.Checked {
 						auto.StickyHash = append(auto.StickyHash, k)
 					}
 				}
@@ -796,13 +877,8 @@ func ShowEditDialog(
 		stickyLabel,
 		stickyCheckRow,
 	)
-	autoModeLabel := ttwidget.NewLabel(locale.T("wizard.outbound.label_auto_mode"))
-	autoModeLabel.SetToolTip(locale.T("wizard.outbound.auto_mode_tooltip"))
-	autoModeRow := container.NewGridWithColumns(2, autoModeLabel, autoModeSelect)
-
 	urltestBlock := container.NewVBox(
 		urltestLabel,
-		autoModeRow,
 		container.NewGridWithColumns(2, urltestIntervalLabel, urltestIntervalSelect),
 		container.NewGridWithColumns(2, urltestToleranceLabel, urltestToleranceSelect),
 		container.NewGridWithColumns(2, urltestURLLabel, urltestURLEntry),
@@ -815,20 +891,11 @@ func ShowEditDialog(
 			typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance")
 	}
 	isLoadBalance := func() bool {
-		if typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance") {
-			return true
-		}
-		return hasAutoTwin() &&
-			autoModeSelect.Selected == locale.T("wizard.outbound.auto_mode_round_robin")
+		return typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance")
 	}
 	urltestVisible := func() {
-		if isURLTestType() || hasAutoTwin() {
+		if isURLTestType() {
 			urltestBlock.Show()
-			autoModeRow.Show()
-			if !hasAutoTwin() {
-				// У самостоятельной urltest-записи режим задаётся типом.
-				autoModeRow.Hide()
-			}
 			if isLoadBalance() {
 				balancerBlock.Show()
 			} else {
@@ -836,7 +903,6 @@ func ShowEditDialog(
 			}
 		} else {
 			urltestBlock.Hide()
-			autoModeRow.Hide()
 		}
 	}
 	urltestVisible() // initial state
@@ -847,10 +913,6 @@ func ShowEditDialog(
 			prevOnTypeChanged(s)
 		}
 	}
-	// SPEC 104: смена режима автогруппы показывает или прячет параметры
-	// пула. Обработчик вешаем ПОСЛЕ SetSelected выше — иначе он сработал бы
-	// на программной установке значения.
-	autoModeSelect.OnChanged = func(string) { urltestVisible() }
 
 	form := container.NewVBox(
 		widget.NewLabel(locale.T("wizard.outbound.label_scope")),
@@ -862,6 +924,7 @@ func ShowEditDialog(
 		widget.NewLabel(locale.T("wizard.outbound.label_type")),
 		typeSelect,
 		urltestBlock,
+		autoTwinCheck,
 		widget.NewLabel(locale.T("wizard.outbound.label_comment")),
 		commentEntry,
 		widget.NewLabel(locale.T("wizard.outbound.label_filters")),
@@ -1166,11 +1229,34 @@ func ShowEditDialog(
 		rawEntry.SetText(string(b))
 	}
 
+	autoTabItem := container.NewTabItem(locale.T("wizard.outbound.tab_auto"), container.NewScroll(autoTabContent))
 	tabs := container.NewAppTabs(
 		container.NewTabItem(locale.T("wizard.outbound.tab_settings"), dialogScroll),
 		container.NewTabItem(locale.T("wizard.outbound.tab_raw"), rawContainer),
 		container.NewTabItem(locale.T("wizard.outbound.tab_preview"), previewContent),
 	)
+	// SPEC 104: вкладка «Автовыбор» существует ровно пока стоит галка.
+	// Вставляем второй — сразу после Settings, чтобы настройки двойника
+	// были рядом с настройками самого Направления.
+	syncAutoTab := func() {
+		has := false
+		for _, it := range tabs.Items {
+			if it == autoTabItem {
+				has = true
+				break
+			}
+		}
+		switch {
+		case autoTwinCheck.Checked && !has:
+			items := append([]*container.TabItem{tabs.Items[0], autoTabItem}, tabs.Items[1:]...)
+			tabs.SetItems(items)
+		case !autoTwinCheck.Checked && has:
+			tabs.Remove(autoTabItem)
+		}
+	}
+	syncAutoTab()
+	// Обработчик ПОСЛЕ начального SetChecked — иначе сработал бы на нём.
+	autoTwinCheck.OnChanged = func(bool) { syncAutoTab() }
 	tabs.OnSelected = func(t *container.TabItem) {
 		switch t.Text {
 		case locale.T("wizard.outbound.tab_raw"):

@@ -135,8 +135,10 @@ func buildTwin(parent configtypes.Direction, twinTag string, tmplAutoOptions map
 	if a.Interval != "" {
 		options["interval"] = a.Interval
 	}
-	if a.Tolerance > 0 {
-		options["tolerance"] = a.Tolerance
+	// Значение может быть числом или ссылкой на переменную шаблона —
+	// кладём как есть, подстановка идёт следующим шагом.
+	if v := a.Tolerance.Value(); v != nil {
+		options["tolerance"] = v
 	}
 	if a.IdleTimeout != "" {
 		options["idle_timeout"] = a.IdleTimeout
@@ -158,9 +160,13 @@ func buildTwin(parent configtypes.Direction, twinTag string, tmplAutoOptions map
 			sticky = []string{"none"}
 		}
 		balancer := map[string]interface{}{
-			"pool":           a.Pool,
-			"sticky_hash":    sticky,
-			"pool_tolerance": a.PoolTolerance,
+			"pool":        a.Pool,
+			"sticky_hash": sticky,
+		}
+		if v := a.PoolTolerance.Value(); v != nil {
+			balancer["pool_tolerance"] = v
+		} else {
+			balancer["pool_tolerance"] = 0
 		}
 		options["balancer"] = balancer
 	}
