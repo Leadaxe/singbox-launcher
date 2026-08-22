@@ -29,6 +29,8 @@
 // См. SPECS/053-F-N-PRESET_BUNDLES/SPEC.md, SPECS/056-R-N-DNS_SCHEMA_REDESIGN/SPEC.md.
 package state
 
+import "encoding/json"
+
 // SchemaVersionV6 — формат файла state.json, который пишет v6 path.
 // Видимо как SchemaVersionV6 пока v5/v6 namespaces co-exist в Phase 2.
 // В Phase 5 переименовывается в SchemaVersion (после удаления v5 пакета).
@@ -56,6 +58,16 @@ type diskStateV6 struct {
 	Vars         []SettingVar         `json:"vars,omitempty"`
 	DNSOptions   DNSOptions           `json:"dns_options"`
 	WarpAccounts *WarpAccountsSection `json:"warp_accounts,omitempty"`
+
+	// Channels — каналы роутинга (SPEC 104). Совместимое расширение v6:
+	// состояние без этой секции читается как «каналов ещё не было» и
+	// засевается из шаблона, а состояние с ней — как есть. Отдельная
+	// версия формата не нужна: чтение старых файлов не ломается.
+	Channels []Channel `json:"channels,omitempty"`
+
+	// ForeignBackupExtensions — блобы чужих приложений из LX Backup
+	// (SPEC 103, фаза 4). Хранятся нетронутыми до следующего экспорта.
+	ForeignBackupExtensions map[string]json.RawMessage `json:"foreign_backup_extensions,omitempty"`
 }
 
 // WarpAccountsSection — кеш выданных Cloudflare регистраций WARP.

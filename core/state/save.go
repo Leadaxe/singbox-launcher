@@ -119,6 +119,13 @@ func (s *State) marshalDisk() ([]byte, error) {
 		Vars:         s.Vars,
 		DNSOptions:   s.DNS,
 		WarpAccounts: s.WarpAccounts,
+
+		// Каналы и чужие блобы бэкапа пишутся как есть; nil остаётся nil —
+		// для каналов это значимое состояние («секции ещё не было»,
+		// нужен seed из шаблона), и подмена его пустым слайсом отключила
+		// бы сидирование навсегда.
+		Channels:                s.Channels,
+		ForeignBackupExtensions: s.ForeignBackupExtensions,
 	}
 	if out.Rules == nil {
 		out.Rules = []Rule{}

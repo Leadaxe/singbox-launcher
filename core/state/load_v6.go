@@ -29,12 +29,14 @@ import (
 // через новый dialog).
 func parseCurrent(data []byte) (*State, error) {
 	var raw struct {
-		Meta         MetaSection          `json:"meta"`
-		Connections  ConnectionsSection   `json:"connections"`
-		Rules        []Rule               `json:"rules"`
-		Vars         []SettingVar         `json:"vars"`
-		DNSOptions   DNSOptions           `json:"dns_options"`
-		WarpAccounts *WarpAccountsSection `json:"warp_accounts"`
+		Meta         MetaSection                `json:"meta"`
+		Connections  ConnectionsSection         `json:"connections"`
+		Rules        []Rule                     `json:"rules"`
+		Channels     []Channel                  `json:"channels,omitempty"`
+		ForeignExt   map[string]json.RawMessage `json:"foreign_backup_extensions,omitempty"`
+		Vars         []SettingVar               `json:"vars"`
+		DNSOptions   DNSOptions                 `json:"dns_options"`
+		WarpAccounts *WarpAccountsSection       `json:"warp_accounts"`
 		// Legacy dev-shape (SPEC 053). Читаем для одноразовой in-place миграции.
 		LegacyDNS json.RawMessage `json:"dns"`
 	}
@@ -49,17 +51,19 @@ func parseCurrent(data []byte) (*State, error) {
 	}
 
 	s := &State{
-		Version:            raw.Meta.Version,
-		Comment:            raw.Meta.Comment,
-		Target:             raw.Meta.Target,
-		TargetPlatform:     raw.Meta.TargetPlatform,
-		TargetArch:         raw.Meta.TargetArch,
-		Connections:        raw.Connections,
-		Vars:               raw.Vars,
-		Rules:              raw.Rules,
-		DNS:                dnsOpts,
-		WarpAccounts:       raw.WarpAccounts,
-		RulesLibraryMerged: true,
+		Version:                 raw.Meta.Version,
+		Comment:                 raw.Meta.Comment,
+		Target:                  raw.Meta.Target,
+		TargetPlatform:          raw.Meta.TargetPlatform,
+		TargetArch:              raw.Meta.TargetArch,
+		Connections:             raw.Connections,
+		Vars:                    raw.Vars,
+		Rules:                   raw.Rules,
+		DNS:                     dnsOpts,
+		WarpAccounts:            raw.WarpAccounts,
+		Channels:                raw.Channels,
+		ForeignBackupExtensions: raw.ForeignExt,
+		RulesLibraryMerged:      true,
 	}
 	if t, err := time.Parse(time.RFC3339, raw.Meta.CreatedAt); err == nil {
 		s.CreatedAt = t
