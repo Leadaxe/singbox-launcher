@@ -106,7 +106,7 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.
 		// Передаём rulesV6 для computing merged_base = template + active preset patches.
 		_ = build.MigrateOutboundsToReferencedShape(&parserConfig.ParserConfig.Outbounds, rulesV6, model.TemplateData, model.Target)
-		build.SyncOutboundsWithActivePresets(rulesV6, &parserConfig.ParserConfig.Outbounds, model.TemplateData.Presets, model.Target)
+		build.SyncOutboundsWithTemplate(rulesV6, &parserConfig.ParserConfig.Outbounds, model.TemplateData.Presets, build.TemplateOutboundTags(model.TemplateData), model.Target)
 		// Deep-copy outbounds slice для generator-only Merge.
 		// Per-element copy чтобы Updates[] стек не shared.
 		genOutbounds := make([]config.Direction, len(parserConfig.ParserConfig.Outbounds))

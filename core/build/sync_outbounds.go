@@ -50,6 +50,26 @@ func SyncOutboundsWithActivePresets(
 	presets []template.Preset,
 	target template.TargetSpec,
 ) {
+	SyncOutboundsWithTemplate(rules, outbounds, presets, nil, target)
+}
+
+// SyncOutboundsWithTemplate — то же, плюс дроп осиротевших template-ссылок
+// (SPEC 104).
+//
+// templateTags — теги `parser_config.outbounds[]` текущего шаблона; nil =
+// «шаблон не передан», проверка не выполняется (поведение прежней
+// сигнатуры). Запись с ref=#TEMPLATE#, чьего тега в шаблоне больше нет,
+// раньше оставалась навсегда: тело резолвилось в пустоту, а в списке
+// висела строка-призрак (так auto-proxy-out пережил свою свёртку в
+// proxy-out). Дропаем — но ТОЛЬКО без USER-патча: правки пользователя
+// молча терять нельзя, такая запись остаётся и показывается как есть.
+func SyncOutboundsWithTemplate(
+	rules []state.Rule,
+	outbounds *[]configtypes.Direction,
+	presets []template.Preset,
+	templateTags map[string]bool,
+	target template.TargetSpec,
+) {
 	if outbounds == nil {
 		return
 	}
@@ -134,6 +154,9 @@ func SyncOutboundsWithActivePresets(
 			// SPEC 058: strip body fields (referenced entries thin — body live из preset)
 			stripReferencedBody(&ob)
 		} else if ob.Ref == configtypes.RefTemplate {
+			if templateTags != nil && !templateTags[ob.Tag] && !hasUserPatch(ob) {
+				continue // SPEC 104: тега нет в шаблоне — ссылка-призрак
+			}
 			// Template entry — preserve, strip body (thin shape).
 			stripReferencedBody(&ob)
 		} else if presetID, expected := expectedAddRefByTag[ob.Tag]; expected {
@@ -335,4 +358,31 @@ func outboundConfigToPatchMap(cfg configtypes.Direction) map[string]interface{} 
 		patch["comment"] = cfg.Comment
 	}
 	return patch
+}
+
+// hasUserPatch — есть ли в стеке USER-патч (правки пользователя).
+func hasUserPatch(ob configtypes.Direction) bool {
+	for _, u := range ob.Updates {
+		if u.Ref == configtypes.RefUser {
+			return true
+		}
+	}
+	return false
+}
+
+// TemplateOutboundTags — множество тегов `parser_config.outbounds[]` шаблона
+// для SyncOutboundsWithTemplate. nil-safe: без шаблона возвращает nil, и
+// проверка осиротевших ссылок не выполняется.
+func TemplateOutboundTags(td *template.TemplateData) map[string]bool {
+	if td == nil {
+		return nil
+	}
+	obs := td.GlobalOutbounds()
+	out := make(map[string]bool, len(obs))
+	for _, ob := range obs {
+		if ob.Tag != "" {
+			out[ob.Tag] = true
+		}
+	}
+	return out
 }

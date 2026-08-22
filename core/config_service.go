@@ -224,7 +224,7 @@ func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGener
 		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.
 		tgt := build.TargetSpecFromState(stateRef)
 		_ = build.MigrateOutboundsToReferencedShape(&parserConfig.ParserConfig.Outbounds, stateRef.Rules, td, tgt)
-		build.SyncOutboundsWithActivePresets(stateRef.Rules, &parserConfig.ParserConfig.Outbounds, td.Presets, tgt)
+		build.SyncOutboundsWithTemplate(stateRef.Rules, &parserConfig.ParserConfig.Outbounds, td.Presets, build.TemplateOutboundTags(td), tgt)
 		build.MergeOutboundUpdatesInPlace(parserConfig, td, tgt)
 	} else {
 		debuglog.WarnLog("UpdateConfigFromSubscriptions: LoadTemplateData failed (skip preset.outbounds sync): %v", terr)

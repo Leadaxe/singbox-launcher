@@ -251,9 +251,9 @@ func (p *WizardPresenter) RefreshAfterPresetToggle() {
 		rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
 			p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules,
 		)
-		build.SyncOutboundsWithActivePresets(rulesV6, &p.model.GlobalOutbounds, p.model.TemplateData.Presets, p.model.Target)
+		build.SyncOutboundsWithTemplate(rulesV6, &p.model.GlobalOutbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
 		if p.model.ParserConfig != nil {
-			build.SyncOutboundsWithActivePresets(rulesV6, &p.model.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets, p.model.Target)
+			build.SyncOutboundsWithTemplate(rulesV6, &p.model.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
 		}
 		p.model.RefreshDerivedParserConfig()
 		p.UpdateParserConfig(p.model.ParserConfigJSON)

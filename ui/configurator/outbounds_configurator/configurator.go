@@ -17,6 +17,7 @@ import (
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardutils "singbox-launcher/ui/configurator/utils"
 
@@ -84,17 +85,27 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			// «vpn-1 (vpn-1)». Тег остаётся видимым при любом раскладе — на
 			// него ссылаются правила, и прятать его значило бы заставить
 			// пользователя гадать, что выбирать в списке целей.
-			rawLine := r.Outbound.DisplayName()
-			if r.Outbound.Label != "" {
-				rawLine += " (" + r.Outbound.Tag + ")"
+			// Для ссылочных записей (ref != "") имя, тип и Auto живут в
+			// шаблоне/пресете, в state лежит тонкая оболочка — берём
+			// merged-тело, как это делает редактор. Иначе `proxy-out` с
+			// auto{} в шаблоне в списке выглядел бы обычным селектором.
+			shown := *r.Outbound
+			if r.Outbound.Ref != "" {
+				if merged := wizardbusiness.ResolveMergedOutbound(editPresenter.Model(), r.Outbound.Tag); merged != nil {
+					shown = *merged
+				}
 			}
-			// Тип показываем только у самостоятельных urltest-групп шаблона
-			// (`auto-proxy-out`): у Направления он всегда selector, и
-			// писать это в каждой строке — шум.
-			if r.Outbound.Type == "urltest" {
-				rawLine += " [" + r.Outbound.Type + "]"
+			rawLine := shown.DisplayName()
+			if shown.Label != "" {
+				rawLine += " (" + shown.Tag + ")"
 			}
-			if r.Outbound.Auto != nil {
+			// Тип показываем только у самостоятельных urltest-групп шаблона:
+			// у Направления он всегда selector, и писать это в каждой
+			// строке — шум.
+			if shown.Type == "urltest" {
+				rawLine += " [" + shown.Type + "]"
+			}
+			if shown.Auto != nil {
 				rawLine += " " + locale.T("wizard.outbound.row_auto_mark")
 			}
 			if r.Outbound.Disabled {

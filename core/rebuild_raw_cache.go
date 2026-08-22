@@ -82,7 +82,7 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.
 		tgt := build.TargetSpecFromState(s)
 		_ = build.MigrateOutboundsToReferencedShape(&parserCfg.ParserConfig.Outbounds, s.Rules, td, tgt)
-		build.SyncOutboundsWithActivePresets(s.Rules, &parserCfg.ParserConfig.Outbounds, td.Presets, tgt)
+		build.SyncOutboundsWithTemplate(s.Rules, &parserCfg.ParserConfig.Outbounds, td.Presets, build.TemplateOutboundTags(td), tgt)
 		build.MergeOutboundUpdatesInPlace(&parserCfg, td, tgt)
 	}
 

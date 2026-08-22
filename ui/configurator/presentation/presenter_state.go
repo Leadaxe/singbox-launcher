@@ -168,8 +168,8 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	// view'а (или хотя бы ParserConfig — тогда адаптер скопирует корректную
 	// версию в Connections).
 	if p.model.TemplateData != nil {
-		build.SyncOutboundsWithActivePresets(state.Rules, &state.Connections.Outbounds, p.model.TemplateData.Presets, p.model.Target)
-		build.SyncOutboundsWithActivePresets(state.Rules, &state.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets, p.model.Target)
+		build.SyncOutboundsWithTemplate(state.Rules, &state.Connections.Outbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
+		build.SyncOutboundsWithTemplate(state.Rules, &state.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
 	}
 
 	// dns_options в state — только servers и rules; скаляры DNS — в state.vars (dns_*).
@@ -330,7 +330,7 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 		// = template + active preset patches (чтобы USER patch не over-include
 		// preset edits которые УЖЕ были materialized в legacy body).
 		_ = build.MigrateOutboundsToReferencedShape(&p.model.GlobalOutbounds, stateFile.Rules, p.model.TemplateData, p.model.Target)
-		build.SyncOutboundsWithActivePresets(stateFile.Rules, &p.model.GlobalOutbounds, p.model.TemplateData.Presets, p.model.Target)
+		build.SyncOutboundsWithTemplate(stateFile.Rules, &p.model.GlobalOutbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
 		p.model.RefreshDerivedParserConfig()
 	}
 
