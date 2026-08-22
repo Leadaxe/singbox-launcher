@@ -16,6 +16,8 @@ package template
 
 import (
 	"encoding/json"
+
+	"singbox-launcher/core/config/configtypes"
 )
 
 // Preset — параметризованный self-contained пресет в template.presets[].
@@ -196,6 +198,21 @@ type PresetOutbound struct {
 	// "// %s\n"). Не JSON-поле в финале.
 	// mode=update: replace если задан непустой.
 	Comment string `json:"comment,omitempty"`
+
+	// Label — отображаемое имя Направления (SPEC 104). Пресет может как
+	// создать направление с именем (mode=add), так и переименовать чужое
+	// (mode=update, решение D-10).
+	// mode=update: replace если задан непустой.
+	Label string `json:"label,omitempty"`
+
+	// Disabled — выключить направление (SPEC 104). Указатель: nil означает
+	// «пресет об этом не высказывался», иначе mode=update всегда включал бы
+	// направление, которое пользователь выключил сам.
+	Disabled *bool `json:"disabled,omitempty"`
+
+	// Auto — параметры парного `<tag>-auto` (SPEC 104).
+	// mode=update: replace целиком, если задан.
+	Auto *configtypes.DirectionAuto `json:"auto,omitempty"`
 
 	// Wizard — UI metadata (hide / required). Не идёт в финальный config
 	// (native pipeline стрипает). Можно задать в preset для override

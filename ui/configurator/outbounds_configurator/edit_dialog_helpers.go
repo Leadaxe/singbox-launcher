@@ -189,4 +189,8 @@ func stripDirectBodyForReferenced(cfg *config.Direction) {
 	cfg.AddOutbounds = nil
 	cfg.PreferredDefault = nil
 	cfg.Comment = ""
+	// SPEC 104: см. stripReferencedBody — имя и двойник живут в
+	// шаблоне/пресете, в state попадают только через USER-патч.
+	cfg.Label = ""
+	cfg.Auto = nil
 }

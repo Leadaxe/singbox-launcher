@@ -193,6 +193,30 @@ func applyOutboundUpdatePatch(target configtypes.Direction, patch map[string]int
 		return target
 	}
 	out := applyOutboundUpdate(target, patchOC)
+
+	// SPEC 104. Для полей, у которых нулевое значение осмысленно, источник
+	// истины — НАЛИЧИЕ ключа в map, а не значение в типизированной копии:
+	// после unmarshal `disabled:false` неотличим от «ключа не было», и
+	// направление, выключенное пресетом, нельзя было бы включить обратно.
+	// Тот же приём уже применён ниже к addOutbounds.
+	if _, ok := patch["disabled"]; ok {
+		out.Disabled = patchOC.Disabled
+	}
+	if raw, ok := patch["auto"]; ok {
+		// Явный null — «двойник выключен», а не «не задано».
+		if raw == nil {
+			out.Auto = nil
+		} else {
+			out.Auto = patchOC.Auto
+		}
+	}
+	if _, ok := patch["label"]; ok && userPatch {
+		// Пользователь вправе снять имя, данное шаблоном; пресету такого
+		// права не даём (см. applyOutboundUpdate: пустое имя от пресета —
+		// «не переименовываю»).
+		out.Label = patchOC.Label
+	}
+
 	if userPatch {
 		if _, ok := patch["addOutbounds"]; ok {
 			out.AddOutbounds = append([]string(nil), patchOC.AddOutbounds...)

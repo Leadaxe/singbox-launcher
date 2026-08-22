@@ -9,11 +9,39 @@ import (
 	"singbox-launcher/core/config/configtypes"
 )
 
-// ConnectionsSection — раздел подключений: sources + global outbounds + defaults.
+// ConnectionsSection — раздел подключений: sources + направления + defaults.
 type ConnectionsSection struct {
-	Sources   []Source                `json:"sources"`
-	Outbounds []configtypes.Direction `json:"outbounds"`
-	Defaults  Defaults                `json:"defaults"`
+	Sources []Source `json:"sources"`
+
+	// Outbounds — глобальные Направления (SPEC 104). Имя поля в Go
+	// сохранено намеренно: это те же записи, что и раньше, и ~40 callsite'ов
+	// `Connections.Outbounds` описывают именно outbound-секцию конфига.
+	Outbounds []configtypes.Direction `json:"direction_outbounds"`
+
+	// LegacyOutbounds — прежний ключ `outbounds`. ТОЛЬКО чтение: состояния,
+	// записанные до SPEC 104, переносятся в Outbounds при загрузке
+	// (`adoptLegacyDirections`) и больше никогда не пишутся. Поле обязано
+	// быть пустым к моменту сериализации — иначе state.json получил бы обе
+	// секции и следующая загрузка выбрала бы старую.
+	LegacyOutbounds []configtypes.Direction `json:"outbounds,omitempty"`
+
+	Defaults Defaults `json:"defaults"`
+}
+
+// adoptLegacyDirections переносит прежний ключ `outbounds` в канонический
+// `direction_outbounds` (SPEC 104).
+//
+// Обе секции сразу — это не «слияние», а выбор: канонический ключ
+// приоритетнее. Иначе состояние, однажды сохранённое новой версией и потом
+// потроганное старой, склеивало бы два набора направлений с дублями тегов.
+func (c *ConnectionsSection) adoptLegacyDirections() {
+	if c == nil {
+		return
+	}
+	if c.Outbounds == nil && c.LegacyOutbounds != nil {
+		c.Outbounds = c.LegacyOutbounds
+	}
+	c.LegacyOutbounds = nil
 }
 
 // Defaults — настройки по умолчанию для всех source'ов (могут переопределяться

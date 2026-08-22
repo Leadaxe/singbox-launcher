@@ -77,6 +77,28 @@ func OutboundFieldDiff(form, base configtypes.Direction) map[string]interface{} 
 		patch["comment"] = form.Comment
 	}
 
+	// SPEC 104. Label и Disabled — обычный field-level diff (пустая строка и
+	// false пишутся явно: пользователь мог снять имя, данное шаблоном, или
+	// снова включить направление, выключенное пресетом).
+	if form.Label != base.Label {
+		patch["label"] = form.Label
+	}
+	if form.Disabled != base.Disabled {
+		patch["disabled"] = form.Disabled
+	}
+
+	// Auto — replace целиком: поля двойника связаны между собой, и
+	// по-полевой diff мог бы записать смену режима без параметров пула.
+	// nil в форме при непустой базе — это «пользователь выключил двойник»,
+	// и такой diff обязан быть записан явно.
+	if !reflect.DeepEqual(form.Auto, base.Auto) {
+		if form.Auto != nil {
+			patch["auto"] = form.Auto
+		} else {
+			patch["auto"] = nil
+		}
+	}
+
 	if len(patch) == 0 {
 		return nil
 	}

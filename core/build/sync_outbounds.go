@@ -239,6 +239,11 @@ func stripReferencedBody(ob *configtypes.Direction) {
 	ob.AddOutbounds = nil
 	ob.PreferredDefault = nil
 	ob.Comment = ""
+	// SPEC 104: имя и двойник — тоже тело. Оставь их в state — и
+	// переименование в шаблоне не доехало бы до пользователя, а старое имя
+	// навсегда перебивало бы новое.
+	ob.Label = ""
+	ob.Auto = nil
 }
 
 // reorderUpdates — переставляет updates: preset patches в order

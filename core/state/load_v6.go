@@ -43,6 +43,8 @@ func parseCurrent(data []byte) (*State, error) {
 		return nil, fmt.Errorf("state: parse v6 json: %w", err)
 	}
 
+	raw.Connections.adoptLegacyDirections()
+
 	dnsOpts := raw.DNSOptions
 	if dnsOpts.IsEmpty() && len(raw.LegacyDNS) > 0 {
 		// Старый dev-shape → конвертим в новый flat layout.

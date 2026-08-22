@@ -132,6 +132,10 @@ func (s *State) marshalDisk() ([]byte, error) {
 	if out.Connections.Outbounds == nil {
 		out.Connections.Outbounds = []configtypes.Direction{}
 	}
+	// Прежний ключ `outbounds` не пишем никогда (SPEC 104): он читается для
+	// совместимости, но два набора направлений в одном файле означали бы,
+	// что следующая загрузка может выбрать не тот.
+	out.Connections.LegacyOutbounds = nil
 	// SetEscapeHTML(false): по умолчанию encoding/json экранирует «&», «<» и
 	// «>» в & и подобное — защита для вставки JSON в HTML-страницу,
 	// которая здесь не нужна. В state.json попадают URL подписок и строки

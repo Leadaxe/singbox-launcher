@@ -196,10 +196,88 @@ type Direction struct {
 	Comment          string                 `json:"comment,omitempty"`
 	Required         bool                   `json:"required,omitempty"` // template-only marker (см. RequiredOutboundTags)
 
+	// SPEC 104: поля Направления.
+	//
+	// Label — отображаемое имя («Моя Германия»). Пусто → показываем Tag.
+	// Отдельно от Comment намеренно: у шаблонных записей комментарий —
+	// описание абзацем, именем его не сделать.
+	Label string `json:"label,omitempty"`
+
+	// Disabled — направление не материализуется и не предлагается целью
+	// правил. Именно Disabled, а не Enabled: нулевое значение bool должно
+	// означать «включено», иначе запись без явного ключа читалась бы
+	// выключенной (на этом уже спотыкалась первая реализация каналов,
+	// которой пришлось заводить собственный UnmarshalJSON).
+	Disabled bool `json:"disabled,omitempty"`
+
+	// Auto — параметры парного `<tag>-auto` (urltest по узлам направления).
+	// nil = двойника нет. Сам двойник в состоянии НЕ хранится: он
+	// разворачивается на сборке, чтобы имя и состав не разъезжались с
+	// родителем.
+	Auto *DirectionAuto `json:"auto,omitempty"`
+
 	// SPEC 057/058-R-N: preset/template binding.
 	Ref     string           `json:"ref,omitempty"`     // "" (direct) | "#TEMPLATE#" | "<preset_id>"
 	Updates []OutboundUpdate `json:"updates,omitempty"` // стек patches: preset patches в rule order + опц. USER patch (всегда последний)
 }
+
+// Режимы автовыбора в `DirectionAuto.Mode` (SPEC 088 + LxBox §208).
+//
+// Пусто эквивалентно AutoModeLeastTest: апстримный urltest, который пишется
+// в конфиг бит-в-бит без лишних ключей.
+const (
+	AutoModeLeastTest  = "least_test"
+	AutoModeRoundRobin = "round_robin"
+)
+
+// DirectionAuto — параметры парной urltest-группы направления.
+//
+// Пустые поля означают «берём из шаблона» (`group_templates.auto.options`),
+// а не «ноль»: подстановка @urltest_* — задача движка шаблонов, и дублировать
+// её значениями по умолчанию здесь значило бы завести вторую реализацию.
+type DirectionAuto struct {
+	Mode        string `json:"mode,omitempty"` // "" | least_test | round_robin
+	URL         string `json:"url,omitempty"`
+	Interval    string `json:"interval,omitempty"`
+	Tolerance   int    `json:"tolerance,omitempty"`
+	IdleTimeout string `json:"idle_timeout,omitempty"`
+
+	// InterruptExistConnections — рвать ли живые соединения при смене лидера.
+	// Указатель, потому что здесь важна ТРЁХЗНАЧНОСТЬ: nil = «шаблон решает»,
+	// false = «пользователь выключил явно». Обычный bool не отличил бы
+	// осознанное выключение от отсутствия настройки и всегда перебивал бы
+	// шаблон.
+	InterruptExistConnections *bool `json:"interrupt_exist_connections,omitempty"`
+
+	// Поля пула (только Mode == round_robin, SPEC 088).
+	Pool          int      `json:"pool,omitempty"`
+	PoolTolerance int      `json:"pool_tolerance,omitempty"`
+	StickyHash    []string `json:"sticky_hash,omitempty"`
+}
+
+// AutoTag — тег парной urltest-группы направления.
+//
+// Формула зеркалит `group_templates.magic_nodes.auto.tpl`
+// (`{parent_tag}-auto`) и LxBox `Channel.autoTag`; менять её нельзя — на
+// совпадении держится поиск двойников в фильтрах и сортировках.
+func (d Direction) AutoTag() string {
+	if d.Tag == "" {
+		return ""
+	}
+	return d.Tag + "-auto"
+}
+
+// DisplayName — имя для интерфейса: Label, а при его отсутствии — Tag.
+func (d Direction) DisplayName() string {
+	if d.Label != "" {
+		return d.Label
+	}
+	return d.Tag
+}
+
+// IsEnabled — участвует ли направление в сборке и предлагается ли целью
+// правил.
+func (d Direction) IsEnabled() bool { return !d.Disabled }
 
 // OutboundUpdate — одна запись в стеке `Direction.Updates` (SPEC 057/058-R-N).
 //
