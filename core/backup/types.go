@@ -42,6 +42,7 @@ type Backup struct {
 
 	Subscriptions []Subscription    `json:"subscriptions,omitempty"`
 	Servers       []Server          `json:"servers,omitempty"`
+	Directions    []Direction       `json:"directions,omitempty"`
 	Rules         []Rule            `json:"rules,omitempty"`
 	DNS           *DNS              `json:"dns,omitempty"`
 	Vars          map[string]string `json:"vars,omitempty"`
@@ -73,6 +74,44 @@ type Subscription struct {
 	Disabled   map[string]int64 `json:"disabled,omitempty"`
 	Detour     json.RawMessage  `json:"detour,omitempty"`
 	Extensions Extensions       `json:"extensions,omitempty"`
+}
+
+// Direction — Направление, цель правил (SPEC 104, схема v1.1).
+//
+// Каноническая форма контракта (contract/schema/direction.schema.json), а не
+// внутренняя структура приложения: у сторон они разные, а переносится
+// именно модель. Отбор узлов передаётся ТЕЛОМ регулярки без обёртки — язык
+// паттернов у платформ различается, а тело одинаково.
+//
+// Зачем это в бэкапе: до v1.1 правило, ссылавшееся на `vpn-3` с телефона,
+// приезжало на десктоп в никуда и импортировалось выключенным. Теперь
+// отсутствующее Направление создаётся, и правило приходит рабочим.
+type Direction struct {
+	Tag                       string         `json:"tag"`
+	Label                     string         `json:"label,omitempty"`
+	Enabled                   *bool          `json:"enabled,omitempty"`
+	Filter                    string         `json:"filter,omitempty"`
+	Invert                    bool           `json:"invert,omitempty"`
+	Default                   string         `json:"default,omitempty"`
+	IncludeDirect             bool           `json:"include_direct,omitempty"`
+	IncludeBlock              bool           `json:"include_block,omitempty"`
+	Include                   []string       `json:"include,omitempty"`
+	InterruptExistConnections *bool          `json:"interrupt_exist_connections,omitempty"`
+	Auto                      *DirectionAuto `json:"auto,omitempty"`
+	Extensions                Extensions     `json:"extensions,omitempty"`
+}
+
+// DirectionAuto — параметры парной группы автовыбора.
+type DirectionAuto struct {
+	Mode                      string   `json:"mode,omitempty"`
+	URL                       string   `json:"url,omitempty"`
+	Interval                  string   `json:"interval,omitempty"`
+	Tolerance                 int      `json:"tolerance,omitempty"`
+	IdleTimeout               string   `json:"idle_timeout,omitempty"`
+	InterruptExistConnections *bool    `json:"interrupt_exist_connections,omitempty"`
+	Pool                      int      `json:"pool,omitempty"`
+	PoolTolerance             int      `json:"pool_tolerance,omitempty"`
+	StickyHash                []string `json:"sticky_hash,omitempty"`
 }
 
 // TagPolicy — правила именования нод источника.

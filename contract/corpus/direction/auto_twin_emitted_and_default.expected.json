@@ -1,0 +1,24 @@
+{
+  "groups": [
+    {
+      "tag": "vpn-1-auto",
+      "type": "urltest",
+      "outbounds": [
+        "🇩🇪 Frankfurt",
+        "🇳🇱 Amsterdam"
+      ],
+      "url": "http://cp.example/generate_204",
+      "interval": "15m"
+    },
+    {
+      "tag": "vpn-1",
+      "type": "selector",
+      "default": "vpn-1-auto",
+      "outbounds": [
+        "vpn-1-auto",
+        "🇩🇪 Frankfurt",
+        "🇳🇱 Amsterdam"
+      ]
+    }
+  ]
+}

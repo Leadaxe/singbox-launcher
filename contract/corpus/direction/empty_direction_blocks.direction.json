@@ -1,0 +1,18 @@
+{
+  "_": "Отбор не поймал никого: запасной состав [block, direct] с умолчанием block. Молча выпускать трафик правила мимо VPN было бы хуже.",
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "label": "Моя Германия",
+      "filter": "НЕТ-ТАКИХ"
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

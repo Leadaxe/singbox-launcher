@@ -1,0 +1,31 @@
+{
+  "groups": [
+    {
+      "tag": "vpn-1-auto",
+      "type": "urltest",
+      "outbounds": [
+        "🇩🇪 Frankfurt",
+        "🇳🇱 Amsterdam"
+      ],
+      "mode": "round_robin",
+      "balancer": {
+        "pool": 3,
+        "pool_tolerance": 20,
+        "sticky_hash": [
+          "process",
+          "domain"
+        ]
+      }
+    },
+    {
+      "tag": "vpn-1",
+      "type": "selector",
+      "default": "vpn-1-auto",
+      "outbounds": [
+        "vpn-1-auto",
+        "🇩🇪 Frankfurt",
+        "🇳🇱 Amsterdam"
+      ]
+    }
+  ]
+}

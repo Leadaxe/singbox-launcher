@@ -1,0 +1,22 @@
+{
+  "_": "Опцией можно взять Направление, стоящее выше по списку; ссылки идут перед узлами.",
+  "directions": [
+    {
+      "tag": "vpn-1"
+    },
+    {
+      "tag": "vpn-2",
+      "include": [
+        "vpn-1"
+      ]
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

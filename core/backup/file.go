@@ -87,7 +87,8 @@ func unknownRootKeys(data []byte) []Warning {
 	known := map[string]bool{
 		"lx_backup": true, "exported_by": true, "exported_at": true,
 		"subscriptions": true, "servers": true, "rules": true,
-		"dns": true, "vars": true, "route": true, "warp": true,
+		"directions": true, // SPEC 104, схема v1.1
+		"dns":        true, "vars": true, "route": true, "warp": true,
 		"extensions": true,
 	}
 	var warns []Warning

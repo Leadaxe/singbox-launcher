@@ -1,0 +1,17 @@
+{
+  "_": "Служебные опции идут ПЕРЕД узлами: в списке выбора ядра они первыми, и пользователю не нужно листать сотню узлов, чтобы включить direct.",
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "include_direct": true,
+      "include_block": true
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

@@ -263,3 +263,21 @@ func warnEmptyDirection(d configtypes.Direction, poolSize int) bool {
 		d.DisplayName(), d.Tag, body, poolSize)
 	return true
 }
+
+// dropGroupNodes убирает узлы, которые сами являются группами выбора
+// (SPEC 094 A5: `selector`/`urltest` из импортированного конфига приходят
+// обычными узлами со схемой SchemeGroup).
+//
+// Нужно только для auto-групп Направления: измерять задержку до группы
+// бессмысленно — ответит тот узел, который она сейчас выбрала, и лидер
+// urltest'а стал бы отражать чужой выбор, а не скорость сервера.
+func dropGroupNodes(nodes []*configtypes.ParsedNode) []*configtypes.ParsedNode {
+	out := make([]*configtypes.ParsedNode, 0, len(nodes))
+	for _, n := range nodes {
+		if n != nil && n.Scheme == configtypes.SchemeGroup {
+			continue
+		}
+		out = append(out, n)
+	}
+	return out
+}

@@ -170,7 +170,16 @@ func buildOutboundsInfo(
 	}
 
 	for _, outboundConfig := range parserConfig.ParserConfig.Outbounds {
-		filteredNodes := filterNodesForSelector(globalNodePool, outboundConfig.Filters)
+		pool := globalNodePool
+		if outboundConfig.TwinOf != "" {
+			// SPEC 104: в auto-группу Направления не входят ГРУППЫ выбора —
+			// ни экспортированные подпиской (см. addExposeTagEdges), ни
+			// пришедшие узлами из импортированного конфига (SPEC 094 A5).
+			// urltest внутри urltest померил бы узел, уже выбранный
+			// внутренней группой, а не сервер (частность LxBox §322).
+			pool = dropGroupNodes(pool)
+		}
+		filteredNodes := filterNodesForSelector(pool, outboundConfig.Filters)
 		logDuplicateTagIfExists(outboundsInfo, outboundConfig.Tag, "global", 0)
 		outboundsInfo[outboundConfig.Tag] = &outboundInfo{
 			config:        outboundConfig,
@@ -365,7 +374,13 @@ func generateSelectorJSONs(
 			}
 			continue
 		}
-		selectorJSON, err := GenerateSelectorWithFilteredAddOutbounds(globalNodePool, outboundConfig, outboundsInfo, true, exposeCandidates)
+		// SPEC 104: пул auto-группы Направления — без групп выбора
+		// (то же решение, что на проходе 1).
+		genPool := globalNodePool
+		if outboundConfig.TwinOf != "" {
+			genPool = dropGroupNodes(genPool)
+		}
+		selectorJSON, err := GenerateSelectorWithFilteredAddOutbounds(genPool, outboundConfig, outboundsInfo, true, exposeCandidates)
 		if err != nil {
 			debuglog.WarnLog("GenerateOutboundsFromParserConfig: Failed to generate global selector %s: %v",
 				outboundConfig.Tag, err)

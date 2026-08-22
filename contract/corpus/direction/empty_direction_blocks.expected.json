@@ -1,0 +1,16 @@
+{
+  "groups": [
+    {
+      "tag": "vpn-1",
+      "type": "selector",
+      "default": "block-out",
+      "outbounds": [
+        "block-out",
+        "direct-out"
+      ]
+    }
+  ],
+  "warnings": [
+    "direction_filter_matched_nothing"
+  ]
+}

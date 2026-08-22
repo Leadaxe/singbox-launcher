@@ -1,0 +1,18 @@
+{
+  "_": "Умолчанием становится первый узел, совпавший с default.",
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "default": "🇳🇱"
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam",
+    "🇷🇺 Moscow"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

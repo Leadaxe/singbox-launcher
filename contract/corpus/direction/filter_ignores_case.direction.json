@@ -1,0 +1,17 @@
+{
+  "_": "Регистр не учитывается: это свойство отбора, а не настройка.",
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "filter": "frankfurt"
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

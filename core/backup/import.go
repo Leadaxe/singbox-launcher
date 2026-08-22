@@ -42,6 +42,10 @@ const (
 	// WarnBackupUnknownField — ключ вне схемы и вне extensions: default-deny,
 	// в состояние не попадает.
 	WarnBackupUnknownField = "backup_unknown_field"
+	// WarnBackupDirectionExists — Направление с таким тегом уже есть:
+	// приехавшее НЕ применяется. Перезапись стёрла бы настройки, сделанные
+	// на этой машине, а правила и так найдут цель по тегу (SPEC 104).
+	WarnBackupDirectionExists = "backup_direction_exists"
 )
 
 // errSkipRule — правило пропущено осознанно (чужой kind), а не сломалось.
@@ -73,9 +77,11 @@ type ImportOptions struct {
 // ImportResult — что получилось.
 type ImportResult struct {
 	Warnings []Warning
-	// AppliedRules / AppliedSources — сколько записей реально применено.
-	AppliedRules   int
-	AppliedSources int
+	// AppliedRules / AppliedSources / AppliedDirections — сколько записей
+	// реально применено.
+	AppliedRules      int
+	AppliedSources    int
+	AppliedDirections int
 }
 
 // Import применяет бэкап к state.
@@ -110,7 +116,33 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 		res.AppliedSources++
 	}
 
-	known := newTagSet(opts.KnownOutbounds)
+	// SPEC 104: Направления импортируются ДО правил и пополняют список
+	// известных целей — иначе правило, чья цель приехала в этом же файле,
+	// импортировалось бы выключенным.
+	//
+	// Существующий тег не трогаем: у принимающей стороны своё Направление с
+	// этим именем, и перезапись стёрла бы его настройки.
+	existing := make(map[string]bool, len(s.Connections.Outbounds))
+	for _, d := range s.Connections.Outbounds {
+		existing[d.Tag] = true
+	}
+	knownTags := append([]string(nil), opts.KnownOutbounds...)
+	for _, in := range b.Directions {
+		if in.Tag == "" {
+			continue
+		}
+		if existing[in.Tag] {
+			res.Warnings = append(res.Warnings, Warning{WarnBackupDirectionExists, in.Tag})
+			knownTags = append(knownTags, in.Tag)
+			continue
+		}
+		s.Connections.Outbounds = append(s.Connections.Outbounds, importDirection(in))
+		existing[in.Tag] = true
+		knownTags = append(knownTags, in.Tag)
+		res.AppliedDirections++
+	}
+
+	known := newTagSet(knownTags)
 	presets := newTagSet(opts.KnownPresets)
 
 	for _, r := range b.Rules {

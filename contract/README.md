@@ -22,7 +22,7 @@
 | `registry/limits.json` | лимиты (URI, нод, тело, цепочки) |
 | `registry/vars.json`, `registry/presets.json` | переносимые имена переменных и preset id |
 | `registry/containers.json` | контейнеры тел (`vpn://`, wgconf INI, base64) |
-| `schema/*.schema.json` | JSON Schema узла, бэкапа, реестра |
+| `schema/*.schema.json` | JSON Schema узла, Направления, бэкапа, реестра |
 | `diagrams/*.mmd` | нормативные mermaid-блок-схемы пайплайна |
 | `corpus/` | golden-фикстуры (фаза 1+) |
 
@@ -53,3 +53,4 @@
 | 0.1.0 | Каркас: канонический узел, реестры протоколов/лимитов/warning'ов/переменных, корпус URI (282 фикстуры), язык шаблонов |
 | 0.1.1 | `#enable`, рекурсия условий, помеченные ключевые слова (`#and`/`#or`/`#value`/`#else`/`#on_change`/`#set`), раздел `corpus/template/deps/` |
 | 0.2.0 | Корпус тел подписок (`corpus/body/`) и бэкапов (`corpus/backup/`); коды деградации на узле; правило `scheme` в CANON §1; закрыты расхождения gecko, выбора vpn://-контейнера и несжатого профиля |
+| 0.3.0 | Направления (SPEC 104): `schema/direction.schema.json`, корпус `corpus/direction/`, перенос целей правил в бэкапе (`directions[]`, схема v1.1) |

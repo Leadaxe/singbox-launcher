@@ -1,0 +1,20 @@
+{
+  "_": "Выключенное Направление не материализуется вместе со своим двойником.",
+  "directions": [
+    {
+      "tag": "vpn-1"
+    },
+    {
+      "tag": "vpn-2",
+      "enabled": false,
+      "auto": {}
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

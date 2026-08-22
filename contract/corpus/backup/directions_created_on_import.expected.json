@@ -1,0 +1,17 @@
+{
+  "rules": [
+    {
+      "name": "Germany",
+      "enabled": true
+    }
+  ],
+  "directions": [
+    {
+      "tag": "vpn-3",
+      "label": "Германия",
+      "filter": "🇩🇪",
+      "include_direct": true,
+      "has_auto": true
+    }
+  ]
+}

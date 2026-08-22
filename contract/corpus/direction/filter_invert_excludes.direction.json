@@ -1,0 +1,19 @@
+{
+  "_": "Инверсия оставляет несовпавшие узлы.",
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "filter": "🇷🇺",
+      "invert": true
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam",
+    "🇷🇺 Moscow"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

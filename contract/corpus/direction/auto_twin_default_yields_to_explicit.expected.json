@@ -1,0 +1,22 @@
+{
+  "groups": [
+    {
+      "tag": "vpn-1-auto",
+      "type": "urltest",
+      "outbounds": [
+        "🇩🇪 Frankfurt",
+        "🇳🇱 Amsterdam"
+      ]
+    },
+    {
+      "tag": "vpn-1",
+      "type": "selector",
+      "default": "🇳🇱 Amsterdam",
+      "outbounds": [
+        "vpn-1-auto",
+        "🇩🇪 Frankfurt",
+        "🇳🇱 Amsterdam"
+      ]
+    }
+  ]
+}

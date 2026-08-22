@@ -1,0 +1,34 @@
+{
+  "lx_backup": 1,
+  "exported_by": {
+    "app": "lxbox",
+    "version": "2.1.0"
+  },
+  "exported_at": "2026-08-22T00:00:00Z",
+  "directions": [
+    {
+      "tag": "vpn-3",
+      "label": "Германия",
+      "filter": "🇩🇪",
+      "include_direct": true,
+      "auto": {
+        "mode": "least_test",
+        "url": "http://cp.example/generate_204",
+        "interval": "15m"
+      }
+    }
+  ],
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "Germany",
+      "outbound": "vpn-3",
+      "num": 1000,
+      "match": {
+        "domain_suffix": [
+          "de.example-1.com"
+        ]
+      }
+    }
+  ]
+}

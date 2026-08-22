@@ -1,0 +1,17 @@
+{
+  "_": "Некорректное выражение равнозначно пустому: опечатка не лишает всех узлов.",
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "filter": "(unclosed"
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

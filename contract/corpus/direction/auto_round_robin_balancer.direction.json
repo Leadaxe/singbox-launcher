@@ -1,0 +1,25 @@
+{
+  "_": "round_robin эмитит mode и balancer; least_test не пишет ни того, ни другого.",
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "auto": {
+        "mode": "round_robin",
+        "pool": 3,
+        "pool_tolerance": 20,
+        "sticky_hash": [
+          "process",
+          "domain"
+        ]
+      }
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

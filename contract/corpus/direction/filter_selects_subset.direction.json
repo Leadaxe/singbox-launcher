@@ -1,0 +1,18 @@
+{
+  "_": "Отбор по телу регулярки; порядок узлов сохраняется.",
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "filter": "🇩🇪|🇳🇱"
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam",
+    "🇷🇺 Moscow"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

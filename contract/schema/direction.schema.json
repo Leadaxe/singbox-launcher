@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lx-contract/schema/direction.schema.json",
+  "title": "LX Direction",
+  "description": "Направление — именованная точка выбора, на которую ссылаются правила (SPEC 104). Каноническая форма, общая для лаунчера и LxBox: обе стороны читают и пишут ЭТО, а не свои внутренние структуры. Материализуется в selector + опциональный парный urltest.",
+  "type": "object",
+  "required": ["tag"],
+  "additionalProperties": false,
+  "properties": {
+    "tag": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Системный идентификатор, цель правил. Неизменяем после создания. Автоматически выдаваемые имеют вид vpn-N; шаблонные и созданные пресетом — произвольные (proxy-out, ru VPN 🇷🇺)."
+    },
+    "label": {
+      "type": "string",
+      "description": "Отображаемое имя. Пусто — показываем tag. Правится свободно: на имя никто не ссылается."
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Выключенное Направление сохраняет настройки, но не материализуется и не предлагается целью правил."
+    },
+    "filter": {
+      "type": "string",
+      "description": "ТЕЛО регулярного выражения по итоговому тегу узла, без обёртки и флагов. Пусто — все узлы. Компилируется БЕЗ учёта регистра на обеих платформах: теги подписок приходят в произвольном регистре. Некорректное выражение равнозначно пустому — опечатка не должна лишать пользователя всех узлов."
+    },
+    "invert": {
+      "type": "boolean",
+      "default": false,
+      "description": "Оставить узлы, которые НЕ совпали с filter. При пустом filter не значит ничего."
+    },
+    "default": {
+      "type": "string",
+      "description": "ТЕЛО регулярного выражения; первый совпавший узел становится умолчанием селектора. Пусто — умолчание не выставляется, кроме случая auto (см. ниже)."
+    },
+    "include_direct": {
+      "type": "boolean",
+      "default": false,
+      "description": "Предложить прямое соединение опцией внутри Направления."
+    },
+    "include_block": {
+      "type": "boolean",
+      "default": false,
+      "description": "Предложить блокировку опцией внутри Направления."
+    },
+    "include": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Теги других Направлений, предлагаемых опцией. Разрешены только стоящие ВЫШЕ по списку — порядок исключает циклы по построению. Парные <tag>-auto сюда не попадают: двойник является опцией только своего Направления."
+    },
+    "interrupt_exist_connections": {
+      "type": "boolean",
+      "description": "Рвать живые соединения при переключении. Отсутствие ключа означает «решает шаблон», а не false."
+    },
+    "auto": {
+      "$ref": "#/$defs/auto",
+      "description": "Параметры парной urltest-группы <tag>-auto. Отсутствие ключа = автовыбора нет и группа не эмитится вовсе."
+    }
+  },
+  "$defs": {
+    "auto": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Парная группа <tag>-auto: состав тот же, что у Направления, минус группы выбора (urltest внутри urltest мерил бы выбор внутренней группы, а не сервер). Становится умолчанием Направления, если поле default ничего не поймало.",
+      "properties": {
+        "mode": {
+          "enum": ["least_test", "round_robin"],
+          "default": "least_test",
+          "description": "least_test — один самый быстрый узел (апстрим). round_robin — ротация по пулу; только он эмитит balancer."
+        },
+        "url": { "type": "string", "description": "Адрес проверки задержки." },
+        "interval": { "type": "string", "description": "Период перепроверки (\"15m\")." },
+        "tolerance": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "На сколько миллисекунд новый лидер должен опередить текущего, чтобы произошло переключение." },
+        "idle_timeout": { "type": "string", "description": "Через сколько простоя перестать проверять." },
+        "interrupt_exist_connections": { "type": "boolean" },
+        "pool": { "type": "integer", "minimum": 1, "description": "round_robin: размер пула." },
+        "pool_tolerance": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "round_robin: запас задержки, при котором узел остаётся в пуле." },
+        "sticky_hash": {
+          "type": "array",
+          "items": { "enum": ["process", "domain", "source_ip", "dest_ip", "dest_port", "none"] },
+          "description": "round_robin: поля соединения, привязывающие сессию к одному узлу пула. Пустой список НЕ выключает липкость — ядро схлопывает его в умолчание; выключение — это явный [\"none\"]."
+        }
+      }
+    }
+  }
+}

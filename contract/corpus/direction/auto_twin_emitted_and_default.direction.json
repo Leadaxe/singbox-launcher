@@ -1,0 +1,20 @@
+{
+  "_": "Автовыбор даёт парный urltest; он же становится умолчанием и стоит первым в списке опций.",
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "auto": {
+        "url": "http://cp.example/generate_204",
+        "interval": "15m"
+      }
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "_": "Группа выбора подписки не входит в двойник: urltest внутри urltest мерил бы выбор внутренней группы, а не сервер.",
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "auto": {}
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam",
+    "AL:auto"
+  ],
+  "group_tags": [
+    "AL:auto"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

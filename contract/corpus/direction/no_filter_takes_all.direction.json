@@ -1,0 +1,18 @@
+{
+  "_": "Без отбора Направление берёт все узлы в порядке конфига.",
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "label": "VPN ①"
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam",
+    "🇷🇺 Moscow"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

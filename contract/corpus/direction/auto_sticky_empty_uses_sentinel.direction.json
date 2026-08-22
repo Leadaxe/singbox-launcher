@@ -1,0 +1,21 @@
+{
+  "_": "Пустой набор липкости выключается sentinel'ом [\"none\"]: пустой список ядро схлопывает в умолчание, неотличимо от отсутствия поля.",
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "auto": {
+        "mode": "round_robin",
+        "pool": 2,
+        "sticky_hash": []
+      }
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

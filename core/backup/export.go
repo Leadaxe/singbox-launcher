@@ -52,6 +52,15 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 		ExportedAt: now.UTC().Format(time.RFC3339),
 	}
 
+	// SPEC 104: Направления едут вместе с правилами — иначе правило,
+	// сославшееся на `vpn-3`, приезжало бы в никуда.
+	for _, d := range s.Connections.Outbounds {
+		if d.Tag == "" {
+			continue
+		}
+		b.Directions = append(b.Directions, exportDirection(d))
+	}
+
 	for _, src := range s.Connections.Sources {
 		switch src.Type {
 		case state.SourceTypeSubscription:

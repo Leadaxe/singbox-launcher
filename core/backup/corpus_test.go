@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
 )
 
@@ -36,6 +37,19 @@ type corpusExpectation struct {
 	// фикстура остаётся одна на обе стороны.
 	ForeignKeptOtherApp bool     `json:"foreign_extensions_kept_other_app"`
 	DisabledHashes      []string `json:"disabled_hashes"`
+
+	// Directions — Направления, которые импорт обязан СОЗДАТЬ (SPEC 104,
+	// схема v1.1). Проверяется каноническая форма, а не внутренняя: она и
+	// есть предмет договорённости между приложениями.
+	Directions []struct {
+		Tag           string `json:"tag"`
+		Label         string `json:"label"`
+		Filter        string `json:"filter"`
+		Invert        bool   `json:"invert"`
+		IncludeDirect bool   `json:"include_direct"`
+		IncludeBlock  bool   `json:"include_block"`
+		HasAuto       bool   `json:"has_auto"`
+	} `json:"directions"`
 }
 
 func TestBackupCorpus(t *testing.T) {
@@ -98,6 +112,7 @@ func TestBackupCorpus(t *testing.T) {
 			checkRouteFinal(t, dst, exp)
 			checkForeignExtensions(t, dst, exp)
 			checkDisabledHashes(t, dst, exp)
+			checkDirections(t, dst, exp)
 		})
 	}
 }
@@ -247,4 +262,49 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// checkDirections проверяет Направления, созданные импортом (SPEC 104).
+//
+// Сверяется каноническая форма, а не внутренняя структура: именно о ней
+// договорились стороны, и раннер LxBox читает те же ожидания.
+func checkDirections(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	if len(exp.Directions) == 0 {
+		return
+	}
+	byTag := make(map[string]configtypes.Direction, len(dst.Connections.Outbounds))
+	for _, d := range dst.Connections.Outbounds {
+		byTag[d.Tag] = d
+	}
+	for _, want := range exp.Directions {
+		got, ok := byTag[want.Tag]
+		if !ok {
+			t.Fatalf("направление %q не создано импортом", want.Tag)
+		}
+		if got.Label != want.Label {
+			t.Errorf("%s: имя %q, ожидалось %q", want.Tag, got.Label, want.Label)
+		}
+		body, invert := configtypes.DirectionFilterTag(got.Filters)
+		if body != want.Filter || invert != want.Invert {
+			t.Errorf("%s: отбор (%q, инверсия=%v), ожидалось (%q, %v)",
+				want.Tag, body, invert, want.Filter, want.Invert)
+		}
+		hasDirect, hasBlock := false, false
+		for _, tag := range got.AddOutbounds {
+			switch tag {
+			case "direct-out":
+				hasDirect = true
+			case "block-out":
+				hasBlock = true
+			}
+		}
+		if hasDirect != want.IncludeDirect || hasBlock != want.IncludeBlock {
+			t.Errorf("%s: опции (direct=%v, block=%v), ожидалось (%v, %v)",
+				want.Tag, hasDirect, hasBlock, want.IncludeDirect, want.IncludeBlock)
+		}
+		if (got.Auto != nil) != want.HasAuto {
+			t.Errorf("%s: автовыбор=%v, ожидалось %v", want.Tag, got.Auto != nil, want.HasAuto)
+		}
+	}
 }

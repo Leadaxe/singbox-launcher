@@ -1,0 +1,13 @@
+{
+  "groups": [
+    {
+      "tag": "vpn-1",
+      "type": "selector",
+      "outbounds": [
+        "🇩🇪 Frankfurt",
+        "🇳🇱 Amsterdam",
+        "🇷🇺 Moscow"
+      ]
+    }
+  ]
+}

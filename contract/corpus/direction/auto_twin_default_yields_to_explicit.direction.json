@@ -1,0 +1,18 @@
+{
+  "_": "Явно выбранный узел важнее автовыбора.",
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "default": "🇳🇱",
+      "auto": {}
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}
