@@ -1776,5 +1776,51 @@
       ],
       "mode": "prepend"
     }
+  ],
+  "group_templates": {
+    "magic_nodes": {
+      "auto": {
+        "title": "Auto",
+        "source": "generate",
+        "tpl": "{parent_tag}-auto"
+      },
+      "direct": {
+        "title": "Direct",
+        "source": "preset",
+        "tag": "direct-out"
+      },
+      "block": {
+        "title": "Block",
+        "source": "preset",
+        "tag": "block-out"
+      }
+    },
+    "channel": {
+      "type": "selector",
+      "options": {
+        "interrupt_exist_connections": true
+      }
+    },
+    "auto": {
+      "type": "urltest",
+      "options": {
+        "url": "@urltest_url",
+        "interval": "@urltest_interval",
+        "tolerance": "@urltest_tolerance",
+        "interrupt_exist_connections": true
+      }
+    }
+  },
+  "default_channels": [
+    {
+      "tag": "vpn-1",
+      "label": "VPN ①",
+      "default_enabled": true
+    },
+    {
+      "tag": "vpn-2",
+      "label": "VPN ②",
+      "default_enabled": false
+    }
   ]
 }
