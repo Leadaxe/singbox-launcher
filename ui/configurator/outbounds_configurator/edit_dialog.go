@@ -216,7 +216,20 @@ func ShowEditDialog(
 	})
 	filterPickerBtn.Importance = widget.LowImportance
 	// Compose: [entry stretches] [button 30px].
-	filterValBox := container.NewBorder(nil, nil, nil, filterPickerBtn, filterValEntry)
+	// SPEC 104: ссылка на справку по регуляркам с примерами — форма
+	// принимает тело выражения, и пользователю негде узнать синтаксис.
+	filterHelpBtn := ttwidget.NewButton("?", func() {
+		if err := platform.OpenURL(directionFilterDocURL); err != nil {
+			dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.outbound.error_open_docs"), err), parent)
+		}
+	})
+	filterHelpBtn.Importance = widget.LowImportance
+	filterHelpBtn.SetToolTip(locale.T("wizard.outbound.filter_help"))
+
+	// Border, а не GridWithColumns: сетка делит ширину поровну, и между
+	// узкой подписью «tag» и полем зияла половина диалога.
+	filterValBox := container.NewBorder(nil, nil, filterKeyLabel,
+		container.NewHBox(filterPickerBtn, filterHelpBtn), filterValEntry)
 	if displayBody != nil && displayBody.Filters != nil {
 		body, invert := configtypes.DirectionFilterTag(displayBody.Filters)
 		if body == "" {
@@ -234,16 +247,6 @@ func ShowEditDialog(
 		filterValEntry.SetText(body)
 		filterInvertCheck.SetChecked(invert)
 	}
-
-	// SPEC 104: ссылка на справку по регуляркам с примерами — форма
-	// принимает тело выражения, и пользователю негде узнать синтаксис.
-	filterHelpBtn := widget.NewButton(locale.T("wizard.outbound.filter_help"), func() {
-		if err := platform.OpenURL(directionFilterDocURL); err != nil {
-			dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.outbound.error_open_docs"), err), parent)
-		}
-	})
-	filterHelpBtn.Importance = widget.LowImportance
-	filterHelpRow := container.NewHBox(filterHelpBtn, layout.NewSpacer())
 
 	// Preferred default: fixed key "tag", value editable
 	defKeyLabel := widget.NewLabel(locale.T("wizard.outbound.label_tag"))
@@ -710,11 +713,10 @@ func ShowEditDialog(
 		tagEntry,
 		autoTwinCheck,
 		widget.NewLabel(locale.T("wizard.outbound.label_filters")),
-		container.NewGridWithColumns(2, filterKeyLabel, filterValBox),
+		filterValBox,
 		filterInvertCheck,
-		filterHelpRow,
 		widget.NewLabel(locale.T("wizard.outbound.label_preferred")),
-		container.NewGridWithColumns(2, defKeyLabel, defValEntry),
+		container.NewBorder(nil, nil, defKeyLabel, nil, defValEntry),
 		widget.NewLabel(locale.T("wizard.outbound.label_add_outbounds")),
 		container.NewHBox(directCheck, blockCheck),
 		scrollOther,
