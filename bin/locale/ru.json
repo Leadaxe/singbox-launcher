@@ -1148,5 +1148,7 @@
   "wizard.channels.summary_filter_invert": "кроме:",
   "wizard.channels.summary_auto": "автовыбор",
   "wizard.channels.summary_direct": "+прямое",
-  "wizard.channels.summary_block": "+блокировка"
+  "wizard.channels.summary_block": "+блокировка",
+  "wizard.dns.stub_single": "Одиночный сервер",
+  "wizard.dns.stub_group": "Группа (самый быстрый из нескольких)"
 }

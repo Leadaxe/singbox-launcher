@@ -1148,5 +1148,7 @@
   "wizard.channels.summary_filter_invert": "excluding:",
   "wizard.channels.summary_auto": "auto-select",
   "wizard.channels.summary_direct": "+direct",
-  "wizard.channels.summary_block": "+block"
+  "wizard.channels.summary_block": "+block",
+  "wizard.dns.stub_single": "Single server",
+  "wizard.dns.stub_group": "Group (fastest of several)"
 }

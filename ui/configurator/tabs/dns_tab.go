@@ -642,16 +642,42 @@ func showDNSServerAddDialog(p *wizardpresentation.WizardPresenter, w fyne.Window
 	entry := widget.NewMultiLineEntry()
 	entry.Wrapping = fyne.TextWrapOff
 	tag := uniqueDNSTag(p)
-	stub := map[string]interface{}{
-		"type":        "udp",
-		"tag":         tag,
-		"server":      "1.1.1.1",
-		"server_port": 53,
-		"enabled":     true,
+
+	// Заготовки: обычный сервер и группа (SPEC 105). Группа — сервер типа
+	// `group`, который опрашивает своих членов и берёт самый быстрый ответ:
+	// одна мёртвая нода не вешает резолв. Формат ядра не очевиден, и без
+	// заготовки группу пришлось бы писать по памяти.
+	kindSelect := widget.NewSelect([]string{
+		locale.T("wizard.dns.stub_single"),
+		locale.T("wizard.dns.stub_group"),
+	}, nil)
+	applyStub := func(group bool) {
+		var stub map[string]interface{}
+		if group {
+			stub = map[string]interface{}{
+				"type":    "group",
+				"tag":     tag,
+				"servers": dnsGroupMemberSuggestions(p),
+				"mode":    "fastest",
+				"enabled": true,
+			}
+		} else {
+			stub = map[string]interface{}{
+				"type":        "udp",
+				"tag":         tag,
+				"server":      "1.1.1.1",
+				"server_port": 53,
+				"enabled":     true,
+			}
+		}
+		if b, err := json.MarshalIndent(stub, "", "  "); err == nil {
+			entry.SetText(string(b))
+		}
 	}
-	if b, err := json.MarshalIndent(stub, "", "  "); err == nil {
-		entry.SetText(string(b))
+	kindSelect.OnChanged = func(sel string) {
+		applyStub(sel == locale.T("wizard.dns.stub_group"))
 	}
+	kindSelect.SetSelected(locale.T("wizard.dns.stub_single"))
 
 	var dlg dialog.Dialog
 	save := widget.NewButton(locale.T("wizard.dns.dialog_save"), func() {
@@ -667,6 +693,7 @@ func showDNSServerAddDialog(p *wizardpresentation.WizardPresenter, w fyne.Window
 
 	main := container.NewVBox(
 		widget.NewLabel(locale.T("wizard.dns.dialog_add_hint")),
+		kindSelect,
 		dnsServerDialogJSONArea(entry),
 	)
 	buttons := container.NewHBox(layout.NewSpacer(), cancel, save)
@@ -720,4 +747,35 @@ func showDNSServerEditor(p *wizardpresentation.WizardPresenter, w fyne.Window, i
 	dlg = dialogs.NewCustom(locale.T("wizard.dns.dialog_title"), main, buttons, "", w)
 	dlg.Resize(fyne.NewSize(520, 520))
 	dlg.Show()
+}
+
+// dnsGroupMemberSuggestions — теги существующих DNS-серверов для заготовки
+// группы (SPEC 105).
+//
+// Подставляются первые два: группа из одного члена бессмысленна, а из всех —
+// почти наверняка не то, что нужно. Пользователь правит список руками; смысл
+// подсказки в том, чтобы показать ФОРМУ поля, а не угадать состав.
+func dnsGroupMemberSuggestions(p *wizardpresentation.WizardPresenter) []string {
+	out := make([]string, 0, 2)
+	model := p.Model()
+	if model == nil {
+		return out
+	}
+	for _, raw := range model.DNSServers {
+		var o struct {
+			Tag  string `json:"tag"`
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(raw, &o) != nil || o.Tag == "" {
+			continue
+		}
+		if o.Type == "group" {
+			continue // вложенные группы ядро не ждёт
+		}
+		out = append(out, o.Tag)
+		if len(out) == 2 {
+			break
+		}
+	}
+	return out
 }
