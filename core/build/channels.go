@@ -246,3 +246,77 @@ func applyChannelAuto(dst map[string]interface{}, auto *corestate.ChannelAuto) {
 	}
 	dst["interrupt_exist_connections"] = auto.InterruptExistConnections
 }
+
+// buildChannelGroupStrings материализует каналы контекста в готовые
+// JSON-строки outbound-групп.
+//
+// Возвращает пустой список, когда каналов нет: конфиг тогда собирается ровно
+// как до SPEC 104, и шаблон без секции `group_templates` не замечает разницы.
+func buildChannelGroupStrings(ctx BuildContext, cache *ParsedCache) []string {
+	if len(ctx.Channels) == 0 {
+		return nil
+	}
+
+	templates, ok := ctx.Template.ChannelTemplates()
+	if !ok {
+		// Шаблон не описывает каналы — материализовать нечем. Молча
+		// пропускаем: это не ошибка пользователя, а несовместимый шаблон.
+		return nil
+	}
+
+	nodeTags, groupTags := cacheNodeTags(cache)
+	res := BuildChannelGroups(ChannelBuildInput{
+		Channels:  ctx.Channels,
+		NodeTags:  nodeTags,
+		GroupTags: groupTags,
+		Templates: templates,
+		DirectTag: templateMagicTag(templates, "direct"),
+		BlockTag:  templateMagicTag(templates, "block"),
+	})
+
+	out := make([]string, 0, len(res.Groups))
+	for _, g := range res.Groups {
+		raw, err := json.Marshal(g)
+		if err != nil {
+			continue
+		}
+		out = append(out, string(raw))
+	}
+	return out
+}
+
+// templateMagicTag достаёт тег служебной опции (direct/block) из шаблона.
+//
+// Имена не универсальны — в лаунчере это `direct-out` и `block-out`, — и
+// зашивать их в код значило бы сломать чужой шаблон.
+func templateMagicTag(t template.ChannelGroupTemplates, name string) string {
+	node, ok := t.MagicNodes[name]
+	if !ok {
+		return ""
+	}
+	return node.ResolveTag("")
+}
+
+// cacheNodeTags возвращает теги узлов кэша и множество тех из них, что сами
+// являются группами выбора.
+func cacheNodeTags(cache *ParsedCache) ([]string, map[string]bool) {
+	if cache == nil {
+		return nil, nil
+	}
+	tags := make([]string, 0, len(cache.Outbounds))
+	groups := make(map[string]bool)
+	for _, raw := range cache.Outbounds {
+		var probe struct {
+			Tag  string `json:"tag"`
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal([]byte(raw), &probe); err != nil || probe.Tag == "" {
+			continue
+		}
+		tags = append(tags, probe.Tag)
+		if probe.Type == "urltest" || probe.Type == "selector" {
+			groups[probe.Tag] = true
+		}
+	}
+	return tags, groups
+}

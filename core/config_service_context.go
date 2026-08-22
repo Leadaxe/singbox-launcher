@@ -43,6 +43,9 @@ func (ac *AppController) buildContextFromState(s *state.State, cache *build.Pars
 		return ctx
 	}
 
+	// SPEC 104: каналы состояния материализуются в selector/urltest-группы.
+	ctx.Channels = s.Channels
+
 	// State есть: vars + DNS + Route.
 	vars := make(map[string]string, len(s.Vars))
 	for _, v := range s.Vars {

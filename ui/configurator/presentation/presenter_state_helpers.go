@@ -240,3 +240,36 @@ func (p *WizardPresenter) GetStateStore() *wizardbusiness.StateStore {
 	}
 	return wizardbusiness.NewStateStoreFor(fileServiceAdapter, target, machineID)
 }
+
+// restoreChannels восстанавливает каналы роутинга (SPEC 104) и, если секции
+// в состоянии не было, засевает её из шаблона.
+//
+// Сидирование происходит ровно один раз — при первом появлении секции.
+// Дальше набор принадлежит пользователю: повторный seed затирал бы его
+// правки при каждом обновлении шаблона, а удалённые каналы возвращались бы
+// на следующем старте.
+func (p *WizardPresenter) restoreChannels(stateFile *wizardmodels.WizardStateFile) {
+	p.model.Channels = stateFile.Channels
+	p.model.ForeignBackupExtensions = stateFile.ForeignBackupExtensions
+
+	if p.model.Channels != nil || p.model.TemplateData == nil {
+		return
+	}
+	defaults := p.model.TemplateData.DefaultChannels()
+	if len(defaults) == 0 {
+		return
+	}
+	seeds := make([]corestate.ChannelSeed, 0, len(defaults))
+	for _, d := range defaults {
+		seeds = append(seeds, corestate.ChannelSeed{
+			Tag:     d.Tag,
+			Label:   d.Label,
+			Enabled: d.IsEnabled(),
+		})
+	}
+	seeded := &corestate.State{}
+	if seeded.SeedChannels(seeds) {
+		p.model.Channels = seeded.Channels
+		debuglog.DebugLog("restoreChannels: засеяно %d канал(ов) из шаблона", len(seeded.Channels))
+	}
+}

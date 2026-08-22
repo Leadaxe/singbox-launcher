@@ -75,7 +75,11 @@ func buildConfigFromModel(model *wizardmodels.WizardModel, forPreview bool) (str
 		// с тем, что реально соберётся для таргета.
 		Target: model.Target,
 		Vars:   model.SettingsVars,
-		Cache:  inMemoryCacheFromModel(model),
+		// SPEC 104: каналы — часть конфига, и превью обязано их показывать:
+		// иначе пользователь не увидит группу, на которую ссылаются его же
+		// правила, и сочтёт ссылку битой.
+		Channels: model.Channels,
+		Cache:    inMemoryCacheFromModel(model),
 		Stats: build.PreviewStats{
 			NodesCount:           model.OutboundStats.NodesCount,
 			LocalSelectorsCount:  model.OutboundStats.LocalSelectorsCount,

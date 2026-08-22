@@ -217,3 +217,95 @@ func contains(s, sub string) bool {
 		return false
 	})()
 }
+
+// Канал материализуется в собранном конфиге рядом с узлами подписки.
+//
+// Проверяется именно связка «состояние → сборка», а не только чистая
+// функция: до этого шага канал существовал лишь в модели и до конфига не
+// доезжал.
+func TestChannelGroupsReachBuiltConfig(t *testing.T) {
+	tpl := &template.TemplateData{
+		RawTemplate: json.RawMessage(`{
+			"group_templates": {
+				"magic_nodes": {
+					"direct": {"source": "preset", "tag": "direct-out"},
+					"block":  {"source": "preset", "tag": "block-out"},
+					"auto":   {"source": "generate", "tpl": "{parent_tag}-auto"}
+				},
+				"channel": {"type": "selector", "options": {"interrupt_exist_connections": true}},
+				"auto":    {"type": "urltest",  "options": {"url": "http://cp/204"}}
+			}
+		}`),
+	}
+
+	ctx := BuildContext{
+		Template: tpl,
+		Cache: &ParsedCache{Outbounds: []json.RawMessage{
+			json.RawMessage(`{"tag":"DE-1","type":"vless"}`),
+			json.RawMessage(`{"tag":"NL-1","type":"vless"}`),
+			json.RawMessage(`{"tag":"sub-auto","type":"urltest"}`),
+		}},
+		Channels: []corestate.Channel{
+			{Tag: "vpn-1", Label: "Main", Enabled: true, InterruptExistConnections: true,
+				IncludeBlock: true,
+				Auto:         &corestate.ChannelAuto{URL: "http://mine/204"}},
+		},
+	}
+
+	groups := buildChannelGroupStrings(ctx, ctx.Cache)
+	if len(groups) != 2 {
+		t.Fatalf("построено %d групп, ожидались selector и urltest: %v", len(groups), groups)
+	}
+
+	var selector map[string]interface{}
+	if err := json.Unmarshal([]byte(groups[0]), &selector); err != nil {
+		t.Fatalf("селектор не разбирается: %v", err)
+	}
+	if selector["tag"] != "vpn-1" || selector["type"] != "selector" {
+		t.Errorf("селектор собран неверно: %v", selector)
+	}
+	outs := selector["outbounds"].([]interface{})
+	// Узлы, затем блокировка (включена пользователем), затем auto-группа.
+	want := []string{"DE-1", "NL-1", "sub-auto", "block-out", "vpn-1-auto"}
+	if len(outs) != len(want) {
+		t.Fatalf("состав селектора %v, ожидался %v", outs, want)
+	}
+	for i, w := range want {
+		if outs[i] != w {
+			t.Fatalf("состав селектора %v, ожидался %v", outs, want)
+		}
+	}
+
+	var auto map[string]interface{}
+	if err := json.Unmarshal([]byte(groups[1]), &auto); err != nil {
+		t.Fatalf("auto-группа не разбирается: %v", err)
+	}
+	if auto["url"] != "http://mine/204" {
+		t.Errorf("параметр канала не перекрыл шаблонный: %v", auto["url"])
+	}
+	for _, tag := range auto["outbounds"].([]interface{}) {
+		if tag == "sub-auto" {
+			t.Error("группа выбора подписки попала в urltest канала")
+		}
+	}
+}
+
+// Шаблон без описания каналов — не ошибка: конфиг собирается как раньше.
+func TestChannelsSkippedWhenTemplateHasNoGroupSection(t *testing.T) {
+	ctx := BuildContext{
+		Template: &template.TemplateData{RawTemplate: json.RawMessage(`{}`)},
+		Cache:    &ParsedCache{Outbounds: []json.RawMessage{json.RawMessage(`{"tag":"DE-1","type":"vless"}`)}},
+		Channels: []corestate.Channel{{Tag: "vpn-1", Enabled: true}},
+	}
+	if got := buildChannelGroupStrings(ctx, ctx.Cache); len(got) != 0 {
+		t.Errorf("без секции group_templates построены группы: %v", got)
+	}
+}
+
+// Нет каналов — нет и лишней работы.
+func TestNoChannelsNoGroups(t *testing.T) {
+	ctx := BuildContext{Template: &template.TemplateData{}, Cache: &ParsedCache{}}
+	if got := buildChannelGroupStrings(ctx, ctx.Cache); got != nil {
+		t.Errorf("построены группы без каналов: %v", got)
+	}
+}

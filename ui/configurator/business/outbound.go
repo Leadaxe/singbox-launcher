@@ -161,6 +161,13 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 		}
 	}
 
+	// Каналы (SPEC 104) — основная цель правил: тег канала неизменяем, тогда
+	// как теги узлов подписки генерируются при разборе и меняются на каждом
+	// обновлении. Правило, сославшееся на канал, переживает смену подписки.
+	for _, tag := range wizardmodels.ChannelTags(model.Channels) {
+		tags[tag] = struct{}{}
+	}
+
 	result := sortedOutboundTagSlice(tags)
 	if model.ParserConfig == nil && jsonKey != "" {
 		model.AvailableOutboundsMemoKey = jsonKey

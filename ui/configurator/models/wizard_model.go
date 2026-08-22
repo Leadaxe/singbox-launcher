@@ -67,6 +67,9 @@ type WizardModel struct {
 	// outbounds-конфигуратора и парсера. Зеркалит state.connections.outbounds.
 	GlobalOutbounds []configtypes.OutboundConfig
 
+	// Channels — каналы роутинга (SPEC 104). Зеркалит state.channels.
+	Channels []Channel
+
 	// Defaults — глобальные defaults подключений (reload interval, max_nodes
 	// fallback). Зеркалит state.connections.defaults.
 	Defaults corestate.Defaults
@@ -75,6 +78,12 @@ type WizardModel struct {
 	// Зеркалит state.warp_accounts. Диалог Add WARP переиспользует запись
 	// вместо новой регистрации, поэтому MASQUE H2/H3 ложатся на один ключ.
 	WarpAccounts *corestate.WarpAccountsSection
+
+	// ForeignBackupExtensions — блобы чужих приложений из LX Backup
+	// (SPEC 103, фаза 4). Модель их не читает и не показывает: она лишь
+	// проносит их между загрузкой и сохранением, иначе импортированный
+	// бэкап терял бы чужую часть при первом же сохранении состояния.
+	ForeignBackupExtensions map[string]json.RawMessage
 
 	// ParserConfigJSON — derived: кэш сериализации `AsParserConfig()` в
 	// строку для JSON-editor виджета. Refresh в `RefreshSerializedParserConfig`
