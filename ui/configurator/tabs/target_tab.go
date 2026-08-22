@@ -2,14 +2,12 @@ package tabs
 
 import (
 	"runtime"
-	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
 	wizardtemplate "singbox-launcher/core/template"
-	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/locale"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
@@ -31,39 +29,13 @@ func CreateTargetTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 		box.RemoveAll()
 		tgt := model.Target.Normalized()
 
-		intro := widget.NewLabel(locale.T("wizard.target.intro"))
+		// Вкладка существует только в удалённом режиме (см. createWizardTabs),
+		// поэтому ветвления по цели здесь больше нет.
+		intro := widget.NewLabel(locale.T("wizard.target.intro_remote"))
 		intro.Wrapping = fyne.TextWrapWord
 		box.Add(intro)
 
-		// --- Выбор таргета.
-		targetSelect := widget.NewSelect([]string{
-			locale.T("wizard.target.local"),
-			locale.T("wizard.target.remote"),
-		}, nil)
-		if tgt.IsRemote() {
-			targetSelect.SetSelected(locale.T("wizard.target.remote"))
-		} else {
-			targetSelect.SetSelected(locale.T("wizard.target.local"))
-		}
-		targetSelect.OnChanged = func(sel string) {
-			next := constants.ConfigTargetLocal
-			if sel == locale.T("wizard.target.remote") {
-				next = constants.ConfigTargetRemote
-			}
-			if strings.EqualFold(next, model.Target.Normalized().Target) {
-				return
-			}
-			// Смена таргета = смена файла состояния. Презентер сохраняет
-			// текущее и перечитывает целевое; без флаша несохранённые
-			// правки исчезли бы молча.
-			presenter.SwitchConfigTarget(next)
-		}
-		box.Add(widget.NewForm(widget.NewFormItem(locale.T("wizard.target.label"), targetSelect)))
-
-		hint := widget.NewLabel(locale.T("wizard.target.hint_local"))
-		if tgt.IsRemote() {
-			hint.SetText(locale.T("wizard.target.hint_remote"))
-		}
+		hint := widget.NewLabel(locale.T("wizard.target.hint_remote"))
 		hint.Wrapping = fyne.TextWrapWord
 		hint.Importance = widget.LowImportance
 		box.Add(hint)
@@ -112,9 +84,11 @@ func CreateTargetTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 		// резолвятся однопроходно в порядке объявления — переключатель
 		// обязан быть виден раньше зависимых значений.
 		//
-		// Роль ортогональна таргету: gateway бывает и удалённым роутером, и
-		// этой машиной (Internet Sharing), поэтому блок рисуется всегда.
-		if td := model.TemplateData; td != nil {
+		// Раздача в LAN настраивается только для удалённой машины (роутера):
+		// на локальной эти поля не нужны — решение владельца. Технически
+		// gateway возможен и здесь (Internet Sharing), поэтому сами
+		// переменные остаются в шаблоне, скрыт только их показ.
+		if td := model.TemplateData; td != nil && tgt.IsRemote() {
 			targetVars := wizardtemplate.TargetTabVars(td.Vars)
 			if len(targetVars) > 0 {
 				box.Add(widget.NewSeparator())

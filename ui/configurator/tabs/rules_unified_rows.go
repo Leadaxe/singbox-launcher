@@ -91,6 +91,16 @@ func buildSinglePresetRefRow(
 	labelText, brokenRef := presetTileLabel(pr, tplPreset)
 	srsEntries := presetRefSRSEntries(pr, tplPreset)
 
+	// SPEC 106: системное правило (sortable:false в шаблоне) — часть конфига,
+	// а не выбор пользователя: его нельзя двигать (позиция часть инварианта:
+	// sniff обязан отработать до матчинга), выключать и удалять — удаление
+	// всё равно откатывается re-seed'ом при следующей сборке. Убираем те
+	// элементы управления, которые всё равно не сработают: невидимая защита
+	// читается как баг («тяну — не двигается»). Кнопка редактирования
+	// ОСТАЁТСЯ: внутри переключатели sniff/hijack-dns/resolve, ради которых
+	// правило и сделано видимым.
+	systemRule := tplPreset != nil && !tplPreset.IsSortable()
+
 	// HoverRow + rowGetter — тот же паттерн что в buildSingleCustomRuleRow
 	// (rules_tab.go::247): hover-подсветка всего ряда, label с tooltip,
 	// HoverForwardButton'ы прокидывают hover-event'ы из дочерних виджетов на
@@ -179,6 +189,10 @@ func buildSinglePresetRefRow(
 	// с outbounds) refreshRulesTabFromPresenter → новый checkbox → infinite loop.
 	enableCh := widget.NewCheck("", nil)
 	enableCh.Checked = pr.Enabled
+	if systemRule {
+		// Состояние показываем (включено), но менять не даём.
+		enableCh.Disable()
+	}
 	enableCh.OnChanged = func(on bool) {
 		if on && len(srsEntries) > 0 && model.ExecDir != "" &&
 			!services.AllSRSDownloadedIn(model.ExecDir, model.SrsDir(), srsEntries) {
@@ -252,8 +266,12 @@ func buildSinglePresetRefRow(
 	delBtn.Importance = widget.LowImportance
 	setTooltip(delBtn, locale.T("wizard.rules.button_delete"))
 
-	dragHandle := fynewidget.NewDragHandle(dragGroup, slotIdx, rowGetter)
-	setTooltip(dragHandle, locale.T("wizard.rules.tooltip_drag_reorder"))
+	var dragHandle fyne.CanvasObject
+	if !systemRule {
+		h := fynewidget.NewDragHandle(dragGroup, slotIdx, rowGetter)
+		setTooltip(h, locale.T("wizard.rules.tooltip_drag_reorder"))
+		dragHandle = h
+	}
 
 	// SRS-облачко: показываем если preset (с учётом текущих vars) содержит
 	// remote rule_set'ы которые ещё не скачаны. На клик — скачивание всех
@@ -286,7 +304,13 @@ func buildSinglePresetRefRow(
 	// select (only when the preset has exactly one outbound var) and the srsWarn
 	// badge below are preset-ref-specific and stay here.
 	leftLead := buildRowDragLead(dragHandle, enableCh)
-	editDel := buildRowEditDelCluster(editBtn, delBtn)
+	// Системное правило: удаление откатывается re-seed'ом — кнопки нет.
+	var editDel *fyne.Container
+	if systemRule {
+		editDel = buildRowEditDelCluster(editBtn, nil)
+	} else {
+		editDel = buildRowEditDelCluster(editBtn, delBtn)
+	}
 	var rightCluster *fyne.Container
 	if outSel != nil {
 		rightCluster = container.NewHBox(editDel, outSel)

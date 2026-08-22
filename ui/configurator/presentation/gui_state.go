@@ -90,6 +90,14 @@ type GUIState struct {
 	// RefreshSettingsFromModel пересобирает вкладку Settings из model.TemplateData.Vars (после LoadState / шаблона).
 	RefreshSettingsFromModel func()
 
+	// SettingsGates — индекс `переменная → строки`, подписанные на её
+	// изменение (SPEC 107 §8.2). Заполняется при сборке вкладки Settings,
+	// используется точечным пересчётом вместо полной пересборки.
+	//
+	// Тип — interface{}, чтобы presentation не зависел от пакета tabs
+	// (реальный тип — *tabs.gateIndex); импорт в обратную сторону дал бы цикл.
+	SettingsGates interface{}
+
 	// RefreshTargetTabFromModel — полная пересборка вкладки Target (шаг 0).
 	// Нужна, потому что состав вкладки зависит от таргета (поля платформы)
 	// и от её собственных vars (gateway_mode → LAN-интерфейсы).

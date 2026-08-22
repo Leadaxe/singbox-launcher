@@ -28,7 +28,12 @@ import (
 // buildRowDragLead builds the leading cluster for a reorderable row: the drag
 // grip, followed by the enable checkbox in its leading wrap. The grip reserves
 // the width the old ↑/↓ pair held, so the label column keeps its position.
+// handle == nil (системное правило, SPEC 106) — на месте захвата остаётся
+// распорка той же ширины, иначе строка съезжает относительно соседних.
 func buildRowDragLead(handle fyne.CanvasObject, check *widget.Check) *fyne.Container {
+	if handle == nil {
+		handle = fynewidget.NewDragHandleSpacer()
+	}
 	return container.NewHBox(
 		handle,
 		fynewidget.CheckLeadingWrap(check),
@@ -36,7 +41,11 @@ func buildRowDragLead(handle fyne.CanvasObject, check *widget.Check) *fyne.Conta
 }
 
 // buildRowEditDelCluster packs the edit + delete action icons tight.
+// del == nil — кластер из одной кнопки (системное правило не удаляется).
 func buildRowEditDelCluster(edit, del fyne.CanvasObject) *fyne.Container {
+	if del == nil {
+		return container.New(tightHBox{spacing: rowIconGap}, edit)
+	}
 	return container.New(tightHBox{spacing: rowIconGap}, edit, del)
 }
 

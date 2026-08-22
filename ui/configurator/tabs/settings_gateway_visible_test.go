@@ -38,9 +38,15 @@ func TestGatewayVarsLiveOnTargetTab(t *testing.T) {
 		if !ok {
 			t.Fatalf("var %q missing from template", want)
 		}
-		// И не должен дублироваться на Settings.
-		if settingsVarVisible(v, "linux") {
-			t.Errorf("%s must NOT be rendered on Settings (it lives on step 0)", want)
+		// У УДАЛЁННОЙ цели вкладка Target есть, и дублировать её поля на
+		// Settings нельзя.
+		if settingsVarVisible(v, "linux", true) {
+			t.Errorf("%s must NOT be rendered on Settings for a remote target (it lives on step 0)", want)
+		}
+		// У ЛОКАЛЬНОЙ вкладки Target нет вовсе (решение владельца, SPEC 106):
+		// раздача в LAN настраивается на Settings, иначе стала бы недоступна.
+		if !settingsVarVisible(v, "linux", false) {
+			t.Errorf("%s must be rendered on Settings for a local target — there is no Target tab there", want)
 		}
 	}
 }

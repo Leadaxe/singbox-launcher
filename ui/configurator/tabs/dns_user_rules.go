@@ -430,7 +430,7 @@ func collectAllRuleSetTags(m *wizardmodels.WizardModel) []string {
 			if tpl == nil {
 				continue
 			}
-			frags, _, ok := build.ExpandPreset(tpl, pr.Vars, m.Target)
+			frags, _, ok := build.ExpandPresetWithGlobals(tpl, pr.Vars, m.SettingsVars, m.Target)
 			if !ok {
 				continue
 			}
@@ -492,7 +492,7 @@ func showViewAllDNSRulesDialog(presenter *wizardpresentation.WizardPresenter, pa
 			if tpl == nil {
 				continue
 			}
-			frags, _, ok := build.ExpandPreset(tpl, pr.Vars, m.Target)
+			frags, _, ok := build.ExpandPresetWithGlobals(tpl, pr.Vars, m.SettingsVars, m.Target)
 			if !ok {
 				continue
 			}

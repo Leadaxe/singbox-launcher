@@ -334,14 +334,29 @@ func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *w
 	// Target идёт ПЕРВЫМ (SPEC 097): он определяет платформу и роль целевой
 	// машины, а от них зависит, какие поля вообще показывать дальше.
 	// DNS goes AFTER Rules (per user request: DNS depends on which preset rules are active).
-	targetTab := wizardtabs.CreateTargetTab(presenter)
-	targetTabItem := container.NewTabItem(locale.T("wizard.tab_target"), targetTab)
+	// Вкладка Target нужна только удалённой машине: там задаются её платформа
+	// и архитектура. Для локальной цель уже определена точкой входа (вкладка
+	// Local главного окна вызывает ShowConfigWizard, Remote —
+	// ShowConfigWizardForMachine с конкретной машиной), и переспрашивать её
+	// внутри визарда незачем. Раздача в LAN для локальной цели живёт на
+	// Settings — см. settingsVarVisible.
+	showTargetTab := presenter.Model().Target.Normalized().IsRemote()
+	var targetTabItem *container.TabItem
+	if showTargetTab {
+		targetTab := wizardtabs.CreateTargetTab(presenter)
+		targetTabItem = container.NewTabItem(locale.T("wizard.tab_target"), targetTab)
+	}
 	sourcesTab := wizardtabs.CreateSourcesTab(presenter)
 	sourcesTabItem := container.NewTabItem(locale.T("wizard.tab_sources"), sourcesTab)
 	outboundsTab := wizardtabs.CreateOutboundsAndParserConfigTab(presenter)
 	outboundsTabItem := container.NewTabItem(locale.T("wizard.tab_outbounds"), outboundsTab)
 
-	tabs := container.NewAppTabs(targetTabItem, sourcesTabItem, outboundsTabItem)
+	var tabs *container.AppTabs
+	if targetTabItem != nil {
+		tabs = container.NewAppTabs(targetTabItem, sourcesTabItem, outboundsTabItem)
+	} else {
+		tabs = container.NewAppTabs(sourcesTabItem, outboundsTabItem)
+	}
 	guiState.Tabs = tabs
 
 	// Overlay that redirects clicks to open rule dialog when present

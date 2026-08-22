@@ -376,3 +376,16 @@ func (h *DragHandle) DragEnd() {
 	}
 	h.group.OnReorder(h.index, to)
 }
+
+// NewDragHandleSpacer возвращает пустышку ровно той ширины, что занимает
+// DragHandle (SPEC 106).
+//
+// Нужна строкам системных правил, у которых захвата нет: без распорки их
+// чекбокс и подпись съезжают влево относительно соседних строк, и список
+// выглядит рваным. Ширина повторяет пэд из CreateRenderer — единственное
+// место, где размер захвата определён.
+func NewDragHandleSpacer() fyne.CanvasObject {
+	pad := canvas.NewRectangle(color.Transparent)
+	pad.SetMinSize(fyne.NewSize(theme.IconInlineSize()+theme.Padding()*2, theme.IconInlineSize()))
+	return pad
+}

@@ -132,6 +132,10 @@ func buildConfigFromModel(model *wizardmodels.WizardModel, forPreview bool) (str
 		SrsCachedPaths:      build.CollectSrsCachedPaths(rulesV6, model.ExecDir, model.ResourceDir),
 		ExecDir:             model.ExecDir,
 		TemplateDNSDefaults: ParseTemplateDNSDefaults(model.TemplateData),
+			// SPEC 106 (G3): тело пресета видит глобальные переменные шаблона для
+		// имён, которых не объявило у себя — настройка со вкладки Settings
+		// (@tun, @resolve_strategy) не дублируется в каждом пресете.
+		GlobalVars: ctx.Vars,
 	}
 
 	res, err := build.BuildConfig(ctx)
