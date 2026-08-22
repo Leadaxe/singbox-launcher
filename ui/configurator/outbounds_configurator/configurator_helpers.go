@@ -6,18 +6,11 @@ package outbounds_configurator
 
 import (
 	"encoding/json"
-	"strconv"
 	"strings"
-
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
-	"singbox-launcher/internal/locale"
 	wizardmodels "singbox-launcher/ui/configurator/models"
-	wizardutils "singbox-launcher/ui/configurator/utils"
 )
 
 // outboundRow identifies one outbound in the list (global or per-source).
@@ -52,13 +45,8 @@ type outboundRow struct {
 	IsRequired bool
 }
 
-// collectRows builds the flat list: local outbounds first (per source), then global.
+// collectRows builds the flat list of Направления (global outbounds).
 // Order matters: lower items can reference upper items (e.g. in addOutbounds), not the other way around.
-//
-// Disabled sources skipped — UI должен совпадать с build pipeline, который
-// тоже пропускает disabled подписки (GenerateOutboundsFromParserConfig). Без
-// этого юзер видит per-source outbound'ы (BL:auto, BL:select) от выключенных
-// подписок, хотя в финальном config.json их нет.
 //
 // SPEC 057-R-N: preset entries в state идентифицируются по `ref` field на
 // Direction. Если ref != "" → row marked IsPreset (read-only).
@@ -68,26 +56,15 @@ type outboundRow struct {
 // requiredTags — set tag'ов с `required: true` из template (live lookup).
 // state.json не обязан персистить этот flag — template источник истины.
 func collectRows(pc *config.ParserConfig, presetTagToLabel map[string]string, requiredTags map[string]bool) []outboundRow {
+	// SPEC 108: группы подписок в списке Направлений не показываются.
+	//
+	// Раньше сюда попадали `proxies[].outbounds[]` — служебные `AL:select`
+	// и `AL:auto`. Их создаёт и правит сама подписка; настраиваются они на
+	// её вкладке «Группа», а в списке Направлений выглядели чужеродно и
+	// требовали отдельного заголовка секции, чтобы список не читался одной
+	// кучей. Свёрнутые подписки вообще не хранят групп в состоянии — они
+	// разворачиваются на сборке (config.PrepareSourceFolds).
 	var rows []outboundRow
-	for si, proxy := range pc.ParserConfig.Proxies {
-		if proxy.Disabled {
-			continue
-		}
-		label := proxy.Source
-		if label == "" {
-			label = locale.T("wizard.outbound.label_source") + strconv.Itoa(si+1)
-		}
-		label = wizardutils.TruncateStringEllipsis(label, wizardutils.MaxLabelRunes, "...")
-		for i := range proxy.Outbounds {
-			rows = append(rows, outboundRow{
-				IsGlobal:     false,
-				SourceIndex:  si,
-				IndexInSlice: i,
-				Outbound:     &pc.ParserConfig.Proxies[si].Outbounds[i],
-				SourceLabel:  label,
-			})
-		}
-	}
 	for i := range pc.ParserConfig.Outbounds {
 		ob := &pc.ParserConfig.Outbounds[i]
 		// HasUserPatch — есть ли в Updates[] entry с RefUser.
@@ -360,15 +337,4 @@ func moveOutboundDown(parserConfig *config.ParserConfig, r outboundRow) {
 		}
 		prox.Outbounds[r.IndexInSlice], prox.Outbounds[r.IndexInSlice+1] = prox.Outbounds[r.IndexInSlice+1], prox.Outbounds[r.IndexInSlice]
 	}
-}
-
-// listSectionHeader — заголовок раздела в списке (SPEC 104).
-//
-// Разделяет служебные группы подписок и Направления: без него список
-// выглядит одной кучей, в которой `AL:select` от подписки неотличим от
-// `vpn-1`, созданного пользователем.
-func listSectionHeader(text string) fyne.CanvasObject {
-	label := widget.NewLabel(text)
-	label.TextStyle = fyne.TextStyle{Bold: true}
-	return container.NewVBox(widget.NewSeparator(), label)
 }

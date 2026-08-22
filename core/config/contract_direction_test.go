@@ -60,6 +60,35 @@ type corpusDirectionCase struct {
 	NodeTags   []string          `json:"node_tags"`
 	GroupTags  []string          `json:"group_tags,omitempty"`
 	Magic      map[string]string `json:"magic,omitempty"`
+
+	// Fold — свёртка единственной подписки кейса (SPEC 108,
+	// schema/source_fold.schema.json). nil — подписка не свёрнута, её узлы
+	// идут в Направления по отдельности.
+	Fold *corpusSourceFold `json:"fold,omitempty"`
+
+	// TagPrefix — префикс тегов подписки: от него зависят теги её групп.
+	TagPrefix string `json:"tag_prefix,omitempty"`
+}
+
+// corpusSourceFold — каноническая форма свёртки
+// (contract/schema/source_fold.schema.json).
+type corpusSourceFold struct {
+	Mode string           `json:"mode,omitempty"`
+	Auto *corpusAutoGroup `json:"auto,omitempty"`
+}
+
+func (c corpusAutoGroup) toDirectionAuto() *configtypes.DirectionAuto {
+	return &configtypes.DirectionAuto{
+		Mode:                      c.Mode,
+		URL:                       c.URL,
+		Interval:                  c.Interval,
+		Tolerance:                 configtypes.NewTemplateInt(c.Tolerance),
+		IdleTimeout:               c.IdleTimeout,
+		InterruptExistConnections: c.InterruptExistConnections,
+		Pool:                      c.Pool,
+		PoolTolerance:             configtypes.NewTemplateInt(c.PoolTolerance),
+		StickyHash:                c.StickyHash,
+	}
 }
 
 type corpusDirectionExpected struct {
@@ -95,17 +124,7 @@ func (c corpusDirection) toDirection() configtypes.Direction {
 		}
 	}
 	if c.Auto != nil {
-		d.Auto = &configtypes.DirectionAuto{
-			Mode:                      c.Auto.Mode,
-			URL:                       c.Auto.URL,
-			Interval:                  c.Auto.Interval,
-			Tolerance:                 configtypes.NewTemplateInt(c.Auto.Tolerance),
-			IdleTimeout:               c.Auto.IdleTimeout,
-			InterruptExistConnections: c.Auto.InterruptExistConnections,
-			Pool:                      c.Auto.Pool,
-			PoolTolerance:             configtypes.NewTemplateInt(c.Auto.PoolTolerance),
-			StickyHash:                c.Auto.StickyHash,
-		}
+		d.Auto = c.Auto.toDirectionAuto()
 	}
 	return d
 }
@@ -148,7 +167,14 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 
 	pc := &ParserConfig{}
 	pc.ParserConfig.Version = ParserConfigVersion
-	pc.ParserConfig.Proxies = []ProxySource{{Source: "https://example.com/sub"}}
+	src := ProxySource{Source: "https://example.com/sub", TagPrefix: in.TagPrefix}
+	if in.Fold != nil {
+		src.Fold = &configtypes.SourceFold{Mode: in.Fold.Mode}
+		if in.Fold.Auto != nil {
+			src.Fold.Auto = in.Fold.Auto.toDirectionAuto()
+		}
+	}
+	pc.ParserConfig.Proxies = []ProxySource{src}
 	for _, cd := range in.Directions {
 		pc.ParserConfig.Outbounds = append(pc.ParserConfig.Outbounds, cd.toDirection())
 	}

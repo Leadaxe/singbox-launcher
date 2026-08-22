@@ -1,0 +1,28 @@
+{
+  "groups": [
+    {
+      "balancer": {
+        "pool": 3,
+        "pool_tolerance": 20,
+        "sticky_hash": [
+          "domain"
+        ]
+      },
+      "mode": "round_robin",
+      "outbounds": [
+        "AL:tokyo",
+        "AL:osaka",
+        "AL:seoul"
+      ],
+      "tag": "AL:auto",
+      "type": "urltest"
+    },
+    {
+      "outbounds": [
+        "AL:auto"
+      ],
+      "tag": "vpn-1",
+      "type": "selector"
+    }
+  ]
+}

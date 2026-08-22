@@ -1,0 +1,10 @@
+{
+  "_": "Селектор с автогруппой: AL:auto идёт ПЕРЕД AL:select, стоит его первой опцией и умолчанием — ради неё режим и выбирали",
+  "tag_prefix": "AL:",
+  "fold": { "mode": "select_auto" },
+  "directions": [
+    { "tag": "vpn-1", "label": "Main" }
+  ],
+  "node_tags": ["AL:tokyo", "AL:osaka"],
+  "magic": { "block": "block-out", "direct": "direct-out" }
+}

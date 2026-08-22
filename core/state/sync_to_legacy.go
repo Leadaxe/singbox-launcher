@@ -24,6 +24,7 @@ func syncLegacyFromConnections(s *State) {
 				Outbounds:               src.Outbounds,
 				ExcludeFromGlobal:       src.ExcludeFromGlobal,
 				ExposeGroupTagsToGlobal: src.ExposeGroupTagsToGlobal,
+				Fold:                    src.Fold, // SPEC 108
 				Disabled:                !src.Enabled,
 				DetourTag:               src.DetourTag,
 				DetourNodeHash:          src.DetourNodeHash,  // SPEC 101

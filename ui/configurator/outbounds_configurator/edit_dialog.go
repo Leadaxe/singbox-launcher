@@ -5,7 +5,6 @@ package outbounds_configurator
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"image/color"
@@ -26,6 +25,7 @@ import (
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	"singbox-launcher/internal/textnorm"
+	"singbox-launcher/ui/configurator/autogroupform"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardutils "singbox-launcher/ui/configurator/utils"
 )
@@ -121,68 +121,9 @@ func ShowEditDialog(
 	autoTwinCheck := widget.NewCheck(locale.T("wizard.outbound.auto_twin_check"), nil)
 	autoTwinCheck.SetChecked(displayBody != nil && displayBody.Auto != nil)
 
-	// Режим автогруппы направления: least_test или round_robin. Отдельно от
-	// typeSelect, потому что относится к двойнику, а не к самой записи.
-	autoModeSelect := widget.NewSelect([]string{
-		locale.T("wizard.outbound.auto_mode_least_test"),
-		locale.T("wizard.outbound.auto_mode_round_robin"),
-	}, nil)
-	autoModeSelect.SetSelected(locale.T("wizard.outbound.auto_mode_least_test"))
-	if displayBody != nil && displayBody.Auto != nil &&
-		displayBody.Auto.Mode == configtypes.AutoModeRoundRobin {
-		autoModeSelect.SetSelected(locale.T("wizard.outbound.auto_mode_round_robin"))
-	}
-
 	// SPEC 104: Направление с автогруппой — та же настройка urltest, только
 	// применяется к двойнику `<tag>-auto`, а не к самой записи.
 	hasAutoTwin := func() bool { return autoTwinCheck.Checked }
-
-	// Scope: For all | For source: ...
-	//
-	// Filter out server-type sources (no subscription URL → ровно 1 нода).
-	// Selector / urltest над 1 нодой semantically бессмыслен — это не группа,
-	// а alias на одну ноду. Раньше dropdown показывал такие источники,
-	// юзер мог их выбрать, и сохранённый selector создавал «группу из 1
-	// элемента» с тегом server-source'а внутри.
-	//
-	// Discriminator: `p.Source != ""` ⇒ subscription-type (включая mixed —
-	// подписка + extra connections). Pure server-source имеет `Source == ""`
-	// и непустой Connections, см. core/state/adapter_source.go::ToProxySourceV4.
-	scopeOptions := []string{locale.T("wizard.outbound.scope_all")}
-	// scopeIndexMap[i in scopeOptions starting from 1] = i in parserConfig.Proxies
-	// (нужен потому что не все Proxies попадают в dropdown).
-	scopeIndexMap := make([]int, 0, len(parserConfig.ParserConfig.Proxies))
-	for i, p := range parserConfig.ParserConfig.Proxies {
-		if p.Source == "" {
-			// Server-source — пропускаем.
-			continue
-		}
-		label := p.Source
-		label = wizardutils.TruncateStringEllipsis(label, wizardutils.MaxLabelRunes, "...")
-		scopeOptions = append(scopeOptions, locale.T("wizard.outbound.scope_source")+label)
-		scopeIndexMap = append(scopeIndexMap, i)
-	}
-	scopeSelect := widget.NewSelect(scopeOptions, nil)
-	if isAdd {
-		scopeSelect.SetSelected(locale.T("wizard.outbound.scope_all"))
-	} else if isGlobal {
-		scopeSelect.SetSelected(locale.T("wizard.outbound.scope_all"))
-	} else {
-		// Pre-select для существующего outbound'а: ищем sourceIndex в map'е.
-		// Если он указывает на server-source (legacy data до фикса) — fallback
-		// на "For all" (selector над одной нодой smells неправильно).
-		matched := false
-		for optIdx, srcIdx := range scopeIndexMap {
-			if srcIdx == sourceIndex {
-				scopeSelect.SetSelected(scopeOptions[optIdx+1])
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			scopeSelect.SetSelected(scopeOptions[0])
-		}
-	}
 
 	// Filters: fixed key "tag", value editable. Flag-picker button (🌐) opens
 	// emoji picker dialog with live regex preview + match-count.
@@ -372,27 +313,14 @@ func ShowEditDialog(
 	var editSource string = "settings"
 
 	var dialogWin fyne.Window
-	getScopeFromForm := func() (scopeKind string, idx int) {
-		scopeKind = "global"
-		idx = -1
-		if scopeSelect.Selected != "" && strings.HasPrefix(scopeSelect.Selected, locale.T("wizard.outbound.scope_source")) {
-			scopeKind = "source"
-			// Map: option index → real source index в Proxies (см.
-			// scopeIndexMap выше). Раньше использовали `idx = i - 1` напрямую,
-			// что было верно только если в dropdown'е попадают ВСЕ Proxies.
-			// После фильтра server-source'ов нужен явный mapping.
-			for i, opt := range scopeOptions {
-				if i > 0 && opt == scopeSelect.Selected {
-					optIdx := i - 1
-					if optIdx >= 0 && optIdx < len(scopeIndexMap) {
-						idx = scopeIndexMap[optIdx]
-					}
-					break
-				}
-			}
-		}
-		return scopeKind, idx
-	}
+
+	// SPEC 108: Направление всегда глобальное. Выбор скоупа («для всех» /
+	// «для подписки») из формы убран: локальная группа подписки создаётся
+	// её собственной свёрткой, а не здесь, — иначе тем же диалогом можно
+	// было бы завести группу старого формата, которую никто уже не
+	// показывает и не настраивает. Сигнатура onSave сохранена: у неё
+	// четыре точки вызова снаружи.
+	getScopeFromForm := func() (scopeKind string, idx int) { return "global", -1 }
 	// Списки допустимых значений для полей автогруппы. Берутся из
 	// переменных шаблона (`@urltest_*`), чтобы пользователь мог выбрать
 	// «наследовать из Settings», а не только конкретное число.
@@ -408,86 +336,22 @@ func ShowEditDialog(
 	intervalLabels, intervalLabelToValue := templateVarChoices(editPresenter, "urltest_interval", curInterval)
 	toleranceLabels, toleranceLabelToValue := templateVarChoices(editPresenter, "urltest_tolerance", curTolerance)
 	urlLabels, _ := templateVarChoices(editPresenter, "urltest_url", curURL)
-	stickyKeys := stickyHashKeys
 
-	// SPEC 104: вкладка «Автовыбор» — настройки парной группы `<tag>-auto`.
-	// Свои виджеты, а не общие с urltestBlock: один виджет нельзя показывать
-	// на двух вкладках, а семантика разная (запись против её двойника).
+	// SPEC 104/108: вкладка «Автовыбор» — настройки парной группы
+	// `<tag>-auto`. Виджеты и разметка живут в autogroupform: та же форма
+	// нужна вкладке «Группа» свёрнутой подписки, и вторая её реализация
+	// разъехалась бы с этой на первой же правке.
 	autoModeLabel := ttwidget.NewLabel(locale.T("wizard.outbound.label_auto_mode"))
 	autoModeLabel.SetToolTip(locale.T("wizard.outbound.auto_mode_tooltip"))
-	autoIntervalSelect := widget.NewSelect(intervalLabels, nil)
-	autoToleranceSelect := widget.NewSelect(toleranceLabels, nil)
-	autoURLEntry := widget.NewSelectEntry(urlLabels)
-	autoURLEntry.SetPlaceHolder("https://cp.cloudflare.com/generate_204")
-	autoPoolEntry := widget.NewEntry()
-	autoPoolEntry.SetPlaceHolder("3")
-	autoPoolToleranceEntry := widget.NewEntry()
-	autoPoolToleranceEntry.SetPlaceHolder("0")
-	autoStickyChecks := make(map[string]*widget.Check, len(stickyKeys))
-	// Два ряда по три, а не одна строка: пять чекбоксов в ширину диалога не
-	// помещаются, и последний уезжает за край.
-	autoStickyRow1 := container.NewHBox()
-	autoStickyRow2 := container.NewHBox()
-	for i, k := range stickyKeys {
-		ch := widget.NewCheck(k, nil)
-		autoStickyChecks[k] = ch
-		if i < 3 {
-			autoStickyRow1.Add(ch)
-		} else {
-			autoStickyRow2.Add(ch)
-		}
-	}
-	autoStickyRow := container.NewVBox(autoStickyRow1, autoStickyRow2)
-	// Заполнение из текущего Auto.
-	if displayBody != nil && displayBody.Auto != nil {
-		a := displayBody.Auto
-		if a.Interval != "" {
-			for lbl, v := range intervalLabelToValue {
-				if v == a.Interval {
-					autoIntervalSelect.SetSelected(lbl)
-				}
-			}
-		}
-		if v := a.Tolerance.Value(); v != nil {
-			want := fmt.Sprint(v)
-			for lbl, raw := range toleranceLabelToValue {
-				if raw == want {
-					autoToleranceSelect.SetSelected(lbl)
-				}
-			}
-		}
-		autoURLEntry.SetText(a.URL)
-		if a.Pool > 0 {
-			autoPoolEntry.SetText(strconv.Itoa(a.Pool))
-		}
-		if n, ok := a.PoolTolerance.Int(); ok {
-			autoPoolToleranceEntry.SetText(strconv.Itoa(n))
-		}
-		for _, k := range a.StickyHash {
-			if ch := autoStickyChecks[k]; ch != nil {
-				ch.SetChecked(true)
-			}
-		}
-	}
-	// Ряд «подпись — поле» на Border с подписью фиксированной ширины.
-	// GridWithColumns(2) делит ширину поровну, и узкие подписи («URL»,
-	// «Interval») отжимали поля на половину диалога.
-	autoRow := func(label fyne.CanvasObject, field fyne.CanvasObject) fyne.CanvasObject {
-		const labelWidth = 150
-		box := container.NewGridWrap(
-			fyne.NewSize(labelWidth, label.MinSize().Height), label)
-		return container.NewBorder(nil, nil, box, nil, field)
-	}
-	autoTextRow := func(text string, field fyne.CanvasObject) fyne.CanvasObject {
-		return autoRow(widget.NewLabel(text), field)
-	}
 
-	autoBalancerBlock := container.NewVBox(
-		autoTextRow("Pool size", autoPoolEntry),
-		autoTextRow("Pool tolerance (ms)", autoPoolToleranceEntry),
-		widget.NewLabel("Sticky hash"),
-		autoStickyRow,
-	)
+	autoForm := autogroupform.New(autogroupform.Choices{
+		Interval:  autogroupform.VarChoices{Labels: intervalLabels, LabelToValue: intervalLabelToValue},
+		Tolerance: autogroupform.VarChoices{Labels: toleranceLabels, LabelToValue: toleranceLabelToValue},
+		URL:       autogroupform.VarChoices{Labels: urlLabels},
+	})
+	if displayBody != nil {
+		autoForm.Load(displayBody.Auto)
+	}
 
 	// Подсказка ОБЯЗАНА переноситься: у Label без Wrapping минимальная
 	// ширина равна длине строки, и она растягивает всё содержимое — поля
@@ -495,33 +359,7 @@ func ShowEditDialog(
 	autoHint := widget.NewLabel(locale.T("wizard.outbound.auto_tab_hint"))
 	autoHint.Wrapping = fyne.TextWrapWord
 
-	autoTabForm := container.NewVBox(
-		autoHint,
-		autoRow(autoModeLabel, autoModeSelect),
-		autoTextRow("Interval", autoIntervalSelect),
-		autoTextRow("Tolerance (ms)", autoToleranceSelect),
-		autoTextRow("URL", autoURLEntry),
-		autoBalancerBlock,
-	)
-	// Та же ширина и отступ под скроллбар, что у вкладки Settings.
-	autoRightGap := canvas.NewRectangle(color.Transparent)
-	autoRightGap.SetMinSize(fyne.NewSize(20, 0))
-	autoWidthSpacer := canvas.NewRectangle(color.Transparent)
-	autoWidthSpacer.SetMinSize(fyne.NewSize(400, 0))
-	autoTabContent := container.NewStack(
-		autoWidthSpacer,
-		container.NewBorder(nil, nil, nil, autoRightGap, autoTabForm),
-	)
-	autoBalancerVisible := func() {
-		if autoModeSelect.Selected == locale.T("wizard.outbound.auto_mode_round_robin") {
-			autoBalancerBlock.Show()
-		} else {
-			autoBalancerBlock.Hide()
-		}
-	}
-	autoBalancerVisible()
-	// Обработчик ПОСЛЕ SetSelected — иначе сработает на программной установке.
-	autoModeSelect.OnChanged = func(string) { autoBalancerVisible() }
+	autoTabContent := autoForm.Content(autoHint, autoModeLabel)
 
 	// buildConfigForPreview builds a config.Direction snapshot based on
 	// the authoritative source (settings form or raw JSON). Routes by
@@ -596,41 +434,7 @@ func ShowEditDialog(
 		// виджетов, что и у самостоятельного urltest, но уезжают в Auto —
 		// двойник разворачивается на сборке, в состоянии его нет.
 		if hasAutoTwin() {
-			auto := &configtypes.DirectionAuto{}
-			if autoModeSelect.Selected == locale.T("wizard.outbound.auto_mode_round_robin") {
-				auto.Mode = configtypes.AutoModeRoundRobin
-			}
-			if lbl := autoIntervalSelect.Selected; lbl != "" {
-				auto.Interval = intervalLabelToValue[lbl]
-			}
-			if lbl := autoToleranceSelect.Selected; lbl != "" {
-				// Значение может быть числом или «@urltest_tolerance» —
-				// ссылку сохраняем как есть: подстановка на сборке, и
-				// разворачивать её здесь значило бы зашить в состояние
-				// текущее значение настройки навсегда.
-				if v := toleranceLabelToValue[lbl]; v != "" {
-					if strings.HasPrefix(v, "@") {
-						auto.Tolerance = configtypes.NewTemplateVar(strings.TrimPrefix(v, "@"))
-					} else if n, err := strconv.Atoi(v); err == nil {
-						auto.Tolerance = configtypes.NewTemplateInt(n)
-					}
-				}
-			}
-			auto.URL = strings.TrimSpace(autoURLEntry.Text)
-			if auto.Mode == configtypes.AutoModeRoundRobin {
-				if n, err := strconv.Atoi(strings.TrimSpace(autoPoolEntry.Text)); err == nil {
-					auto.Pool = n
-				}
-				if n, err := strconv.Atoi(strings.TrimSpace(autoPoolToleranceEntry.Text)); err == nil {
-					auto.PoolTolerance = configtypes.NewTemplateInt(n)
-				}
-				for _, k := range stickyKeys {
-					if ch := autoStickyChecks[k]; ch != nil && ch.Checked {
-						auto.StickyHash = append(auto.StickyHash, k)
-					}
-				}
-			}
-			cfg.Auto = auto
+			cfg.Auto = autoForm.Collect()
 		}
 
 		// SPEC 104: форма отдаёт тело регулярки, на диск уезжает
@@ -766,8 +570,6 @@ func ShowEditDialog(
 	}
 
 	form := container.NewVBox(
-		widget.NewLabel(locale.T("wizard.outbound.label_scope")),
-		scopeSelect,
 		widget.NewLabel(locale.T("wizard.outbound.label_name")),
 		labelEntry,
 		widget.NewLabel(locale.T("wizard.outbound.label_tag_field")),
@@ -1021,18 +823,7 @@ func ShowEditDialog(
 		// SPEC 104: параметры автогруппы живут в Auto, а не в Options самой
 		// записи, и правятся на вкладке «Автовыбор».
 		autoTwinCheck.SetChecked(display.Auto != nil)
-		if display.Auto != nil {
-			a := display.Auto
-			if lbl := labelForValue(intervalLabelToValue, a.Interval); lbl != "" {
-				autoIntervalSelect.SetSelected(lbl)
-			}
-			if v := a.Tolerance.Value(); v != nil {
-				if lbl := labelForValue(toleranceLabelToValue, fmt.Sprintf("%v", v)); lbl != "" {
-					autoToleranceSelect.SetSelected(lbl)
-				}
-			}
-			autoURLEntry.SetText(a.URL)
-		}
+		autoForm.Load(display.Auto)
 	}
 
 	// syncFormToRaw — собирает Direction из текущего состояния формы

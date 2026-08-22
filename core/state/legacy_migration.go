@@ -114,6 +114,7 @@ func migrateLegacySources(proxies []configtypes.ProxySource, gen IDGenerator) []
 				Outbounds:               ps.Outbounds,
 				ExcludeFromGlobal:       ps.ExcludeFromGlobal,
 				ExposeGroupTagsToGlobal: ps.ExposeGroupTagsToGlobal,
+				Fold:                    ps.Fold, // SPEC 108
 			}
 			out = append(out, s)
 		}

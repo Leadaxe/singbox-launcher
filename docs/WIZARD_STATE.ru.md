@@ -116,12 +116,13 @@ Top-level keys, отсутствующие в v6 (vs предыдущих рев
 | `type` | string | всегда | `subscription` \| `server`. |
 | `enabled` | bool | всегда | Source активен. Disabled → его outbound'ы не попадают в финальный config. |
 | `label` | string | опц. | Display name (для server обязательно для UX; для subscription — fallback из `meta.profile_title`). |
-| `exclude_from_global` | bool | опц. | Исключить из global `proxy-out` / `auto-proxy-out`. |
+| `exclude_from_global` | bool | опц. | Исключить узлы из пула Направлений. **Только чтение (SPEC 108):** свёртка выставляет флаг сама на сборке, а UI его больше не показывает. Поле остаётся ради состояний, где узлы шли мимо общего списка БЕЗ каких-либо групп — свёрткой это не выражается. |
 | `url` | string | subscription | URL подписки. |
 | `skip` | `[]map[string]string` | subscription | Skip-rules (имена нод которые не парсить). |
 | `tag` | `{prefix, postfix, mask}` | subscription | Преобразование tag'ов нод (BL: префиксы и т.п.). `mask` overrides prefix+postfix. |
-| `outbounds` | `[]OutboundConfig` | subscription | Per-source local outbound'ы (BL:auto / BL:select urltest+selector). |
-| `expose_group_tags_to_global` | bool | subscription | Выставлять локальные group-tag'и в global selector. См. SPEC 026. |
+| `outbounds` | `[]OutboundConfig` | subscription | Прежние per-source группы. **С SPEC 108 не пишутся:** группы свёрнутой подписки разворачиваются на сборке из `fold`, а записи со старыми маркерами `WIZARD:*` удаляются при загрузке. |
+| `expose_group_tags_to_global` | bool | subscription | Прежний флаг SPEC 026. **Только чтение (SPEC 108):** при загрузке разворачивается в `fold`, обратно не пишется. |
+| `fold` | `{mode, auto}` | subscription | **SPEC 108** — свёртка подписки в группу. Отсутствует — не свёрнута, узлы идут в Направления по отдельности. `mode`: `select` \| `auto` \| `select_auto`. `auto` — параметры автогруппы, форма общая с `outbounds[].auto` Направления. Сами группы (`<prefix>auto`, `<prefix>select`) в состоянии НЕ хранятся: они разворачиваются на каждой сборке, поэтому смена префикса подписки переименовывает их автоматически. |
 | `update` | `{interval_hours, auto_refresh}` | subscription | Per-source override default reload interval. |
 | `max_nodes` | int | subscription | Per-source override `defaults.max_nodes`. |
 | `meta` | `SubscriptionMeta` | subscription | Runtime данные (см. ниже), заполняется Update'ом. |
@@ -133,23 +134,15 @@ Top-level keys, отсутствующие в v6 (vs предыдущих рев
   "id": "01KQCTRQBSSF0CCYFD2WWTVY9R",
   "type": "subscription",
   "enabled": true,
-  "exclude_from_global": false,
   "url": "https://example.com/sub.txt",
   "tag": { "prefix": "BL:" },
-  "outbounds": [
-    {
-      "tag": "BL:auto",
-      "type": "urltest",
-      "options": { "interval": "5m", "tolerance": 100, "url": "https://cp.cloudflare.com/generate_204" }
-    },
-    {
-      "tag": "BL:select",
-      "type": "selector",
-      "options": { "default": "BL:auto" },
-      "addOutbounds": ["BL:auto"]
-    }
-  ],
-  "expose_group_tags_to_global": true,
+  // Свёрнута в селектор с автогруппой: в Направления приезжает одна запись
+  // BL:select, внутри неё умолчанием стоит BL:auto. Обе группы создаются на
+  // сборке — в состоянии их нет.
+  "fold": {
+    "mode": "select_auto",
+    "auto": { "interval": "5m", "tolerance": 100 }
+  },
   "update": { "interval_hours": 4, "auto_refresh": true },
   "max_nodes": 3000,
   "meta": {

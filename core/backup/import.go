@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
 )
 
@@ -239,6 +240,8 @@ func applyLauncherSourceExtensions(src *state.Source, ext Extensions) {
 		DetourTag               string              `json:"detour_tag"`
 		DetourNodeHash          string              `json:"detour_node_hash"`
 		DetourNodeLabel         string              `json:"detour_node_label"`
+		// SPEC 108: свёртка подписки в группу.
+		Fold *configtypes.SourceFold `json:"fold"`
 	}
 	if err := json.Unmarshal(blob, &own); err != nil {
 		return // битое расширение не повод терять источник
@@ -250,6 +253,7 @@ func applyLauncherSourceExtensions(src *state.Source, ext Extensions) {
 	src.DetourTag = own.DetourTag
 	src.DetourNodeHash = own.DetourNodeHash
 	src.DetourNodeLabel = own.DetourNodeLabel
+	src.Fold = own.Fold
 }
 
 func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {

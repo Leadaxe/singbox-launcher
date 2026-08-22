@@ -16,6 +16,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	fynetooltip "github.com/dweymouth/fyne-tooltip"
+	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
@@ -35,10 +36,6 @@ const (
 	sourceEditSettingsScrollMinH float32 = 260
 	sourceEditJSONScrollMinH     float32 = 380
 )
-
-func showWizardTagConflictError(win fyne.Window) {
-	dialog.ShowError(errors.New(locale.T("wizard.source.wizard_tag_conflict")), win)
-}
 
 // previewNodeCap bounds how many nodes the Preview tab parses/renders from a
 // source body, keeping the preview responsive for large (CIDR) subscriptions.
@@ -127,8 +124,8 @@ func capPreviewNodes(nodes []*config.ParsedNode) []*config.ParsedNode {
 // в canonical `model.Sources[sourceIndex]`.
 //
 // Маппинг ProxySource → Source:
-//   - subscription: URL/Skip/Outbounds/ExcludeFromGlobal/ExposeGroupTagsToGlobal/
-//     Enabled (=!Disabled) + Tag из TagPrefix/Postfix/Mask;
+//   - subscription: URL/Skip/Outbounds/Fold/Enabled (=!Disabled) + Tag из
+//     TagPrefix/Postfix/Mask;
 //   - server: URI=Connections[0], Label=TagMask (corestate adapter ставит
 //     `tag_mask=label` для server-source — тэг node будет точно label).
 //
@@ -169,6 +166,7 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 		src.Outbounds = append([]configtypes.Direction(nil), ps.Outbounds...)
 		src.ExcludeFromGlobal = ps.ExcludeFromGlobal
 		src.ExposeGroupTagsToGlobal = ps.ExposeGroupTagsToGlobal
+		src.Fold = ps.Fold                       // SPEC 108
 		src.DetourTag = ps.DetourTag             // SPEC 077
 		src.DetourNodeHash = ps.DetourNodeHash   // SPEC 101
 		src.DetourNodeLabel = ps.DetourNodeLabel // SPEC 101
@@ -329,12 +327,62 @@ func showSourceEditWindow(
 	maskEntry := widget.NewEntry()
 	maskEntry.SetPlaceHolder(locale.T("wizard.source.placeholder_mask"))
 
-	autoCheck := widget.NewCheck(locale.T("wizard.source.local_auto"), nil)
-	selectCheck := widget.NewCheck(locale.T("wizard.source.local_select"), nil)
-	excludeCheck := widget.NewCheck(locale.T("wizard.source.exclude_global"), nil)
-	exposeCheck := widget.NewCheck(locale.T("wizard.source.expose_tags"), nil)
-	hintLabel := widget.NewLabel("")
-	hintLabel.Wrapping = fyne.TextWrapWord
+	// SPEC 108: одна галка вместо прежних четырёх (`Local auto`,
+	// `Local select`, `Exclude from global`, `Expose tags`), из восьми
+	// комбинаций которых осмысленной была ровно одна. Галка отвечает на
+	// «сворачивать ли»; чем именно заменить узлы — на вкладке «Группа».
+	var afterSync func()
+
+	foldCheck := ttwidget.NewCheck(locale.T("wizard.source.fold_check"), nil)
+	foldCheck.SetToolTip(locale.T("wizard.source.fold_tooltip"))
+
+	// Вкладка «Группа»: во что именно сворачивать. Отдельно от галки
+	// намеренно (S2) — галка отвечает на «сворачивать ли», а расклад с его
+	// настройками автогруппы в один чекбокс не помещается.
+	var applyFoldFromForm func()
+	// Пересборка набора вкладок: вкладка «Группа» появляется и исчезает
+	// вместе с галкой. Объявлена заранее — сами вкладки строятся ниже.
+	var syncFoldTabVisible func()
+	foldTabBody := newFoldTab(presenter.Model(), func() { applyFoldFromForm() })
+
+	applyFoldFromForm = func() {
+		p := proxyRef()
+		if p == nil {
+			return
+		}
+		if !foldCheck.Checked {
+			p.Fold = nil
+		} else {
+			p.Fold = foldTabBody.Collect()
+		}
+		// Прежние флаги свёрткой выражены и больше не наши: оставленное
+		// значение перебивало бы её на сборке.
+		if p.Fold != nil {
+			p.ExcludeFromGlobal = false
+			p.ExposeGroupTagsToGlobal = false
+		}
+		foldTabBody.updateTagsHint(foldTabBody.selectedMode(), foldTagPrefix(p), sourceIndex)
+		if syncFoldTabVisible != nil {
+			syncFoldTabVisible()
+		}
+		_ = serializeParserAfterSourceEdit(presenter, guiState, presenter.Model(), sourceIndex, &scratch, win)
+		if afterSync != nil {
+			afterSync()
+		}
+	}
+
+	// syncFoldFormFromModel — форма из модели. Обработчик галки ставится
+	// ПОСЛЕ SetChecked: иначе programmatic установка вызвала бы OnChanged,
+	// тот — запись в модель и перестроение формы (ловушка SPEC 104).
+	syncFoldFormFromModel := func(p *config.ProxySource) {
+		if p == nil {
+			return
+		}
+		foldCheck.OnChanged = nil
+		foldCheck.SetChecked(p.Fold != nil)
+		foldCheck.OnChanged = func(bool) { applyFoldFromForm() }
+		foldTabBody.Load(p.Fold, foldTagPrefix(p), sourceIndex)
+	}
 
 	// SPEC 077 + SPEC 101: detour (proxy-chain) picker — works for both server
 	// and subscription. A group option sets scratch.DetourTag (stamped as-is);
@@ -367,60 +415,6 @@ func showSourceEditWindow(
 		detourSelect.Refresh()
 	}
 
-	var afterSync func()
-
-	exposeOnChanged := func(v bool) {
-		if exposeCheck.Disabled() {
-			return
-		}
-		pp := proxyRef()
-		if pp == nil {
-			return
-		}
-		pp.ExposeGroupTagsToGlobal = v
-		_ = serializeParserAfterSourceEdit(presenter, guiState, presenter.Model(), sourceIndex, &scratch, win)
-		if afterSync != nil {
-			afterSync()
-		}
-	}
-	exposeCheck.OnChanged = exposeOnChanged
-
-	refreshExposeAvailability := func() {
-		p := proxyRef()
-		if p == nil {
-			return
-		}
-		has := wizardbusiness.ProxyHasLocalAuto(p) || wizardbusiness.ProxyHasLocalSelect(p)
-		exposeCheck.OnChanged = nil
-		if has {
-			exposeCheck.Enable()
-			exposeCheck.SetChecked(p.ExposeGroupTagsToGlobal)
-		} else {
-			exposeCheck.Disable()
-			exposeCheck.SetChecked(false)
-		}
-		exposeCheck.OnChanged = exposeOnChanged
-		tip := locale.T("wizard.source.expose_tags_tooltip")
-		if has {
-			tip = ""
-		}
-		fynewidget.SetToolTipSafe(exposeCheck, tip)
-	}
-
-	refreshExcludeHint := func() {
-		p := proxyRef()
-		if p == nil {
-			return
-		}
-		if p.ExcludeFromGlobal && (!wizardbusiness.ProxyHasLocalAuto(p) || !wizardbusiness.ProxyHasLocalSelect(p)) {
-			hintLabel.SetText(locale.T("wizard.source.exclude_hint"))
-			hintLabel.Show()
-		} else {
-			hintLabel.SetText("")
-			hintLabel.Hide()
-		}
-	}
-
 	syncFormFromModel := func() {
 		p := proxyRef()
 		if p == nil {
@@ -441,11 +435,7 @@ func showSourceEditWindow(
 		if mm != nil && sourceIndex < len(mm.Sources) {
 			labelEntry.SetText(mm.Sources[sourceIndex].Label)
 		}
-		autoCheck.SetChecked(wizardbusiness.ProxyHasLocalAuto(p))
-		selectCheck.SetChecked(wizardbusiness.ProxyHasLocalSelect(p))
-		excludeCheck.SetChecked(p.ExcludeFromGlobal)
-		refreshExposeAvailability()
-		refreshExcludeHint()
+		syncFoldFormFromModel(p)
 		refreshDetourOptions()
 		if afterSync != nil {
 			afterSync()
@@ -500,7 +490,12 @@ func showSourceEditWindow(
 			return
 		}
 		p.TagPrefix = strings.TrimSpace(s)
-		wizardbusiness.RenameWizardLocalOutboundTags(p, sourceIndex)
+		// SPEC 108: переименовывать группы вручную больше не нужно — они
+		// не хранятся, а разворачиваются на сборке из текущего префикса
+		// (config.PrepareSourceFolds). Обновляем только подсказку с тегами.
+		if p.Fold != nil {
+			foldTabBody.updateTagsHint(foldTabBody.selectedMode(), foldTagPrefix(p), sourceIndex)
+		}
 		_ = serializeParserAfterSourceEdit(presenter, guiState, presenter.Model(), sourceIndex, &scratch, win)
 		syncFormFromModel()
 	}
@@ -521,58 +516,6 @@ func showSourceEditWindow(
 		}
 		p.TagMask = strings.TrimSpace(s)
 		_ = serializeParserAfterSourceEdit(presenter, guiState, presenter.Model(), sourceIndex, &scratch, win)
-	}
-
-	autoCheck.OnChanged = func(on bool) {
-		p := proxyRef()
-		if p == nil {
-			return
-		}
-		if on {
-			if err := wizardbusiness.EnsureLocalAuto(p, sourceIndex); err != nil {
-				autoCheck.SetChecked(false)
-				showWizardTagConflictError(win)
-				return
-			}
-		} else {
-			wizardbusiness.RemoveWizardSelectOutbounds(p)
-			wizardbusiness.RemoveWizardAutoOutbounds(p)
-			wizardbusiness.SyncExposeFlagWhenNoLocalGroups(p)
-		}
-		_ = serializeParserAfterSourceEdit(presenter, guiState, presenter.Model(), sourceIndex, &scratch, win)
-		syncFormFromModel()
-	}
-
-	selectCheck.OnChanged = func(on bool) {
-		p := proxyRef()
-		if p == nil {
-			return
-		}
-		if on {
-			if err := wizardbusiness.EnsureLocalSelect(p, sourceIndex); err != nil {
-				selectCheck.SetChecked(false)
-				showWizardTagConflictError(win)
-				return
-			}
-		} else {
-			wizardbusiness.RemoveWizardSelectOutbounds(p)
-			wizardbusiness.SyncExposeFlagWhenNoLocalGroups(p)
-		}
-		_ = serializeParserAfterSourceEdit(presenter, guiState, presenter.Model(), sourceIndex, &scratch, win)
-		syncFormFromModel()
-	}
-
-	excludeCheck.OnChanged = func(v bool) {
-		p := proxyRef()
-		if p == nil {
-			return
-		}
-		p.ExcludeFromGlobal = v
-		_ = serializeParserAfterSourceEdit(presenter, guiState, presenter.Model(), sourceIndex, &scratch, win)
-		refreshExcludeHint()
-		if afterSync != nil {
-			afterSync()
-		}
 	}
 
 	// SPEC 052 phase 8: Settings tab type-conditional. Subscription и server
@@ -597,14 +540,18 @@ func showSourceEditWindow(
 			}
 			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_label_field")))
 			settingsContent.Add(labelEntry)
-			settingsContent.Add(widget.NewSeparator())
-			settingsContent.Add(excludeCheck)
+			// SPEC 108: `Exclude from global` из формы убран вместе с
+			// остальными тремя галками. Поле в состоянии остаётся и
+			// читается — им описаны конфиги, где узлы шли мимо общего
+			// списка без всяких групп, — но выставлять его больше нечем:
+			// свёртка всегда создаёт группу, а у server-source узел один и
+			// сворачивать нечего.
 			settingsContent.Add(widget.NewSeparator())
 			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_detour")))
 			settingsContent.Add(detourSelect)
 			settingsContent.Add(detourHint)
 		} else {
-			// Subscription: URL + Tag prefix/postfix/mask + auto/select/exclude/expose + Detour.
+			// Subscription: URL + Tag prefix/postfix/mask + свёртка + Detour.
 			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_url_edit")))
 			settingsContent.Add(urlEntry)
 			settingsContent.Add(widget.NewSeparator())
@@ -615,11 +562,7 @@ func showSourceEditWindow(
 			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_mask")))
 			settingsContent.Add(maskEntry)
 			settingsContent.Add(widget.NewSeparator())
-			settingsContent.Add(autoCheck)
-			settingsContent.Add(selectCheck)
-			settingsContent.Add(excludeCheck)
-			settingsContent.Add(exposeCheck)
-			settingsContent.Add(hintLabel)
+			settingsContent.Add(foldCheck)
 			settingsContent.Add(widget.NewSeparator())
 			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_detour")))
 			settingsContent.Add(detourSelect)
@@ -1138,7 +1081,32 @@ func showSourceEditWindow(
 	previewTab := container.NewTabItem(locale.T("wizard.source.tab_preview"), previewBox)
 	overviewTab := container.NewTabItem(locale.T("wizard.source.tab_overview"), overviewContent)
 	jsonTab := container.NewTabItem(locale.T("wizard.source.tab_json"), jsonCol)
+	// Вкладка «Группа» — только у подписок и только при включённой свёртке
+	// (как «Автовыбор» у Направления, SPEC 104): показывать настройки того,
+	// чего нет, — значит предлагать настроить выключённое.
+	foldTab := container.NewTabItem(locale.T("wizard.source.tab_fold"), container.NewVScroll(foldTabBody.content))
 	tabs := container.NewAppTabs(settingsTab, previewTab, overviewTab, jsonTab)
+	syncFoldTabVisible = func() {
+		p := proxyRef()
+		show := !isServerSource && p != nil && p.Fold != nil
+		hasTab := false
+		for _, ti := range tabs.Items {
+			if ti == foldTab {
+				hasTab = true
+				break
+			}
+		}
+		switch {
+		case show && !hasTab:
+			// Сразу после Settings: расклад — продолжение галки, а не
+			// довесок в конец за JSON.
+			tabs.Items = append([]*container.TabItem{settingsTab, foldTab}, tabs.Items[1:]...)
+			tabs.Refresh()
+		case !show && hasTab:
+			tabs.Remove(foldTab)
+		}
+	}
+	syncFoldTabVisible()
 	afterSync = func() {
 		if tabs.Selected() == overviewTab {
 			refreshOverviewTab()

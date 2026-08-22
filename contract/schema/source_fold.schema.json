@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lx-contract/schema/source_fold.schema.json",
+  "title": "LX Source Fold",
+  "description": "Свёртка подписки в группу (SPEC 108). Подписка на полсотни узлов приезжает в список Направлений ОДНОЙ записью вместо пятидесяти; сами узлы остаются в конфиге составом этой группы. Отсутствие объекта = подписка не свёрнута, её узлы попадают в Направления по отдельности. Заменяет прежнюю четвёрку флагов (local auto, local select, exclude from global, expose tags), из восьми комбинаций которых осмысленной была одна.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "mode": {
+      "enum": ["select", "auto", "select_auto"],
+      "default": "select",
+      "description": "Во что заменяются узлы подписки. select — селектор <prefix>select с ручным выбором; auto — urltest-группа <prefix>auto; select_auto — селектор, у которого автогруппа стоит первой опцией и служит умолчанием. Неизвестное значение читается как select: свёрнутая подписка обязана дать хоть какую-то группу, иначе её узлы исчезли бы из конфига молча."
+    },
+    "auto": {
+      "$ref": "https://lx-contract/schema/direction.schema.json#/$defs/auto",
+      "description": "Параметры автогруппы; применяется при mode = auto | select_auto. Каноническая форма ОБЩАЯ с автогруппой Направления — это одна и та же настройка на двух уровнях, и вторая её форма разъехалась бы с первой на первой же правке."
+    }
+  }
+}

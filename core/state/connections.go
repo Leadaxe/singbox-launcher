@@ -80,9 +80,19 @@ type Source struct {
 	Tag                     *TagSpec                `json:"tag,omitempty"`
 	Outbounds               []configtypes.Direction `json:"outbounds,omitempty"`
 	ExposeGroupTagsToGlobal bool                    `json:"expose_group_tags_to_global,omitempty"`
-	Update                  *UpdateSpec             `json:"update,omitempty"`
-	MaxNodes                int                     `json:"max_nodes,omitempty"`
-	Meta                    *SubscriptionMeta       `json:"meta,omitempty"`
+
+	// Fold — свёртка подписки в группу (SPEC 108). nil = не свёрнута:
+	// узлы попадают в Направления по отдельности.
+	//
+	// Заменяет прежнюю четвёрку флагов. Сами группы (`<PFX>auto`,
+	// `<PFX>select`) в Outbounds больше не хранятся — они разворачиваются
+	// на сборке (config.PrepareSourceFolds) ровно так же, как парные
+	// auto-группы Направлений: пользователь настраивает одну свёртку, а не
+	// два объекта, которые обязаны оставаться синхронными.
+	Fold     *configtypes.SourceFold `json:"fold,omitempty"`
+	Update   *UpdateSpec             `json:"update,omitempty"`
+	MaxNodes int                     `json:"max_nodes,omitempty"`
+	Meta     *SubscriptionMeta       `json:"meta,omitempty"`
 
 	// type=server only
 	URI string `json:"uri,omitempty"`

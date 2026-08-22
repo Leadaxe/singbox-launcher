@@ -1,0 +1,21 @@
+{
+  "groups": [
+    {
+      "interval": "3m",
+      "outbounds": [
+        "AL:tokyo",
+        "AL:osaka"
+      ],
+      "tag": "AL:auto",
+      "tolerance": 50,
+      "type": "urltest"
+    },
+    {
+      "outbounds": [
+        "AL:auto"
+      ],
+      "tag": "vpn-1",
+      "type": "selector"
+    }
+  ]
+}

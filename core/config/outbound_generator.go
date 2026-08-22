@@ -847,6 +847,11 @@ func GenerateOutboundsFromParserConfig(
 	// подставились штатно, без отдельной ветки для них.
 	PrepareDirections(parserConfig, directions.TwinOptions)
 
+	// SPEC 108, тот же проход 0 — разворачиваем свёрнутые подписки в
+	// локальные группы. После Направлений и до подстановки переменных: у
+	// автогруппы подписки те же `@urltest_*` в опциях.
+	PrepareSourceFolds(parserConfig, directions.TwinOptions)
+
 	// Hotfix v0.8.8.1 — substitute `@varname` placeholders in
 	// parser_config.outbounds[].options before generating selector JSONs. See
 	// varsubst.go for the rationale; nil substituter falls back to v0.8.6

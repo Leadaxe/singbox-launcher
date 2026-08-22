@@ -1,23 +1,25 @@
 module singbox-launcher
 
-go 1.20
+go 1.21
 
 require (
 	fyne.io/fyne/v2 v2.7.3
 	fyne.io/systray v1.12.0
 	github.com/dweymouth/fyne-tooltip v0.4.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/muhammadmuzzammil1998/jsonc v1.0.0
 	github.com/pion/stun v0.6.1
 	github.com/txthinking/socks5 v0.0.0-20251011041537-5c31f201a10e
 	golang.org/x/sys v0.30.0
+	google.golang.org/grpc v0.0.0-00010101000000-000000000000
+	google.golang.org/protobuf v1.33.0
 )
 
 require (
 	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fredbi/uri v1.1.1 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fyne-io/gl-js v0.2.0 // indirect
 	github.com/fyne-io/glfw-js v0.3.0 // indirect
 	github.com/fyne-io/image v0.1.1 // indirect
@@ -48,6 +50,7 @@ require (
 	golang.org/x/image v0.24.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240318140521-94a12d6c2237 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 

@@ -122,24 +122,15 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 				tags[extra] = struct{}{}
 			}
 		}
-		// Add local outbounds from all ProxySource.
-		// Skip disabled subscriptions — UI dropdown должен показывать только теги,
-		// которые реально попадут в финальный config.json (build pipeline тоже
-		// пропускает disabled подписки). Иначе юзер может выбрать "BL:select"
-		// от отключённой подписки → dangling outbound в emit.
-		for _, proxySource := range parserCfg.ParserConfig.Proxies {
-			if proxySource.Disabled {
-				continue
-			}
-			for _, outbound := range proxySource.Outbounds {
-				if outbound.Tag != "" {
-					tags[outbound.Tag] = struct{}{}
-				}
-				for _, extra := range outbound.AddOutbounds {
-					tags[extra] = struct{}{}
-				}
-			}
-		}
+		// SPEC 108: локальные группы подписок целями правил НЕ предлагаются.
+		//
+		// Раньше сюда добавлялись все `proxies[].outbounds[]` — то есть
+		// `AL:select` и `AL:auto`. Такая цель живёт по чужим правилам
+		// жизненного цикла: исчезает вместе с подпиской и переименовывается
+		// вместе с её префиксом, а правило молча указывает в никуда.
+		// Группа подписки — это группировка и сахар к Направлению, а не
+		// самостоятельная цель (S3). Осиротевшие ссылки из старых состояний
+		// сбрасываются на direct при загрузке (state.resetForeignRuleTargets).
 	}
 
 	// SPEC 056: добавляем теги от preset.outbounds[] mode=add активных

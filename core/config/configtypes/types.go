@@ -98,9 +98,24 @@ type ProxySource struct {
 	TagPostfix  string              `json:"tag_postfix,omitempty"` // Postfix to add to all node tags from this source
 	TagMask     string              `json:"tag_mask,omitempty"`    // Mask to replace entire tag (ignores tag_prefix and tag_postfix if set)
 	// ExcludeFromGlobal: when true, nodes from this source are omitted from the pool for global ParserConfig.outbounds (generation-time only).
+	//
+	// SPEC 108: свёрнутая подписка (Fold != nil) выставляет этот флаг сама
+	// на проходе 0 — узлы уходят в свою группу и в общем списке им делать
+	// нечего. Как самостоятельное поле он остаётся ради состояний, где
+	// `exclude_from_global` стоял БЕЗ локальных групп: свёрткой это не
+	// выражается (галка всегда создаёт группу), а ломать такой конфиг
+	// незачем. UI его больше не выставляет.
 	ExcludeFromGlobal bool `json:"exclude_from_global,omitempty"`
 	// ExposeGroupTagsToGlobal: when true, tags of wizard-marked local outbounds are merged into each global outbound at generation time (SPEC 026).
+	//
+	// SPEC 108: тоже выставляется свёрткой на проходе 0. Прежний флаг
+	// читается при загрузке состояния и разворачивается в Fold; UI его не
+	// показывает.
 	ExposeGroupTagsToGlobal bool `json:"expose_group_tags_to_global,omitempty"`
+	// Fold: SPEC 108 — свёртка подписки в одну группу вместо её узлов.
+	// nil = не свёрнута. Локальные группы из неё разворачиваются на сборке
+	// (config.PrepareSourceFolds), в состоянии не материализуются.
+	Fold *SourceFold `json:"fold,omitempty"`
 	// Disabled: quick on/off toggle exposed in the wizard Sources list.
 	// When true, the parser pipeline skips this source entirely (no fetch,
 	// no parse, no nodes generated). The source stays in the file so the

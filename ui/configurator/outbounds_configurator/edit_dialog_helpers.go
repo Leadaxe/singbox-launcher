@@ -146,17 +146,6 @@ func templateVarChoices(editPresenter OutboundEditPresenter, varName, currentVal
 	return labels, labelToValue
 }
 
-// labelForValue ищет label соответствующий значению value в map. Возвращает
-// первый matching label или пустую строку.
-func labelForValue(labelToValue map[string]string, value string) string {
-	for label, val := range labelToValue {
-		if val == value {
-			return label
-		}
-	}
-	return ""
-}
-
 // filterOutUserPatch returns Updates with USER patch entry removed (preset
 // patches kept). Используется в diff computation: merged_base = template body +
 // active preset patches (БЕЗ USER patch — он и есть результат текущего edit).

@@ -1,0 +1,20 @@
+{
+  "groups": [
+    {
+      "outbounds": [
+        "AL:tokyo",
+        "AL:osaka",
+        "AL:seoul"
+      ],
+      "tag": "AL:select",
+      "type": "selector"
+    },
+    {
+      "outbounds": [
+        "AL:select"
+      ],
+      "tag": "vpn-1",
+      "type": "selector"
+    }
+  ]
+}

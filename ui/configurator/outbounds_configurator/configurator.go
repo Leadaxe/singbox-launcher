@@ -57,26 +57,12 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 		rows := collectRowsForUI(model)
 		items := make([]fyne.CanvasObject, 0, len(rows)+2)
 
-		// SPEC 104: список начинается со служебных групп подписок
-		// (collectRows кладёт локальные первыми), а Направления идут после.
-		// Это разные вещи: группу подписки создаёт сама подписка и правит
-		// её жизненный цикл, Направление создаёт пользователь и на него
-		// ссылаются правила. Заголовки разделяют их визуально — без них
-		// список выглядит одной кучей из `AL:select` и `vpn-1`.
-		serviceHeaderShown := false
-		directionsHeaderShown := false
-
+		// SPEC 108: заголовки секций убраны вместе со строками групп
+		// подписок — в списке остались только Направления, и делить его
+		// больше не на что.
 		for rowIdx, r := range rows {
 			r := r
 			rowIdx := rowIdx
-			if !r.IsGlobal && !serviceHeaderShown {
-				items = append(items, listSectionHeader(locale.T("wizard.outbound.section_service")))
-				serviceHeaderShown = true
-			}
-			if r.IsGlobal && !directionsHeaderShown {
-				items = append(items, listSectionHeader(locale.T("wizard.outbound.section_directions")))
-				directionsHeaderShown = true
-			}
 			var row *fynewidget.HoverRow
 			rowGetter := func() *fynewidget.HoverRow { return row }
 

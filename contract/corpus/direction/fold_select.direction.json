@@ -1,0 +1,10 @@
+{
+  "_": "Свёртка в селектор: узлы подписки заменяются одной группой AL:select, в Направление приезжает она, а не пятьдесят узлов",
+  "tag_prefix": "AL:",
+  "fold": { "mode": "select" },
+  "directions": [
+    { "tag": "vpn-1", "label": "Main" }
+  ],
+  "node_tags": ["AL:tokyo", "AL:osaka", "AL:seoul"],
+  "magic": { "block": "block-out", "direct": "direct-out" }
+}

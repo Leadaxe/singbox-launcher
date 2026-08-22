@@ -164,6 +164,11 @@ func launcherSourceExtensions(src state.Source) json.RawMessage {
 	if src.ExposeGroupTagsToGlobal {
 		ext["expose_group_tags_to_global"] = true
 	}
+	// SPEC 108: свёртка подписки в группу. Без неё перенос обеднил бы
+	// подписку — на другой машине она развернулась бы всеми узлами.
+	if src.Fold != nil {
+		ext["fold"] = src.Fold
+	}
 	if src.DetourTag != "" {
 		ext["detour_tag"] = src.DetourTag
 	}

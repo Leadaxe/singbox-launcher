@@ -118,12 +118,13 @@ The `type` discriminator: `subscription` (a URL → a batch of nodes) or `server
 | `type` | string | always | `subscription` \| `server`. |
 | `enabled` | bool | always | The source is active. Disabled → its outbounds never reach the final config. |
 | `label` | string | opt. | Display name (effectively required for a server; for a subscription it falls back to `meta.profile_title`). |
-| `exclude_from_global` | bool | opt. | Exclude from the global `proxy-out` / `auto-proxy-out`. |
+| `exclude_from_global` | bool | opt. | Keep this source's nodes out of the directions pool. **Read-only as of SPEC 108:** a fold sets it itself at build time and the UI no longer exposes it. The field survives for states where nodes bypassed the shared list with no groups at all — a fold cannot express that. |
 | `url` | string | subscription | The subscription URL. |
 | `skip` | `[]map[string]string` | subscription | Skip rules (names of nodes not to parse). |
 | `tag` | `{prefix, postfix, mask}` | subscription | Node tag transformation (`BL:` prefixes and the like). `mask` overrides prefix+postfix. |
-| `outbounds` | `[]OutboundConfig` | subscription | Per-source local outbounds (BL:auto / BL:select urltest+selector). |
-| `expose_group_tags_to_global` | bool | subscription | Expose the local group tags to the global selector. See SPEC 026. |
+| `outbounds` | `[]OutboundConfig` | subscription | Former per-source groups. **No longer written as of SPEC 108:** a folded subscription's groups are expanded at build time from `fold`, and entries carrying the old `WIZARD:*` markers are dropped on load. |
+| `expose_group_tags_to_global` | bool | subscription | The former SPEC 026 flag. **Read-only as of SPEC 108:** it is expanded into `fold` on load and never written back. |
+| `fold` | `{mode, auto}` | subscription | **SPEC 108** — folds the subscription into a single group. Absent means not folded: its nodes enter the directions individually. `mode`: `select` \| `auto` \| `select_auto`. `auto` holds the auto-group settings, in the same canonical shape as a direction's `outbounds[].auto`. The groups themselves (`<prefix>auto`, `<prefix>select`) are NOT stored: they are expanded on every build, so renaming the subscription's prefix renames them automatically. |
 | `update` | `{interval_hours, auto_refresh}` | subscription | Per-source override of the default reload interval. |
 | `max_nodes` | int | subscription | Per-source override `defaults.max_nodes`. |
 | `meta` | `SubscriptionMeta` | subscription | Runtime data (see below), filled in by Update. |
@@ -135,23 +136,15 @@ The `type` discriminator: `subscription` (a URL → a batch of nodes) or `server
   "id": "01KQCTRQBSSF0CCYFD2WWTVY9R",
   "type": "subscription",
   "enabled": true,
-  "exclude_from_global": false,
   "url": "https://example.com/sub.txt",
   "tag": { "prefix": "BL:" },
-  "outbounds": [
-    {
-      "tag": "BL:auto",
-      "type": "urltest",
-      "options": { "interval": "5m", "tolerance": 100, "url": "https://cp.cloudflare.com/generate_204" }
-    },
-    {
-      "tag": "BL:select",
-      "type": "selector",
-      "options": { "default": "BL:auto" },
-      "addOutbounds": ["BL:auto"]
-    }
-  ],
-  "expose_group_tags_to_global": true,
+  // Folded into a selector with an auto-group: the directions list gets one
+  // BL:select entry whose default is BL:auto. Both groups are created at build
+  // time — the state holds neither.
+  "fold": {
+    "mode": "select_auto",
+    "auto": { "interval": "5m", "tolerance": 100 }
+  },
   "update": { "interval_hours": 4, "auto_refresh": true },
   "max_nodes": 3000,
   "meta": {

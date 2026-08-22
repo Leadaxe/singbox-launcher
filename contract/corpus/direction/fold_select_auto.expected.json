@@ -1,0 +1,29 @@
+{
+  "groups": [
+    {
+      "outbounds": [
+        "AL:tokyo",
+        "AL:osaka"
+      ],
+      "tag": "AL:auto",
+      "type": "urltest"
+    },
+    {
+      "default": "AL:auto",
+      "outbounds": [
+        "AL:auto",
+        "AL:tokyo",
+        "AL:osaka"
+      ],
+      "tag": "AL:select",
+      "type": "selector"
+    },
+    {
+      "outbounds": [
+        "AL:select"
+      ],
+      "tag": "vpn-1",
+      "type": "selector"
+    }
+  ]
+}

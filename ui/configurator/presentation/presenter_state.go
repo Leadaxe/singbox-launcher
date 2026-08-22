@@ -315,6 +315,11 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 	// SPEC 053: restore preset-ref правила (kind=preset из state.Rules).
 	p.restorePresetRefs(stateFile)
 
+	// SPEC 108 (S5): цель, которой нет среди допустимых, — на direct.
+	// Строго ПОСЛЕ restorePresetRefs: пресетные теги входят в множество
+	// целей, и без них сброс убил бы живые правила.
+	p.resetForeignRuleTargets()
+
 	// SPEC 058-R-N: migration direct→referenced shape. Legacy state.json (SPEC 057
 	// и раньше) хранил template/preset-derived entries с full body inline; новый
 	// shape — thin tag+ref. Migration однопроходная, lossless (Backup .pre-058.bak

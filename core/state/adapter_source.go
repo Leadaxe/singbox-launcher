@@ -29,6 +29,7 @@ func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 			Outbounds:               s.Outbounds,
 			ExcludeFromGlobal:       s.ExcludeFromGlobal,
 			ExposeGroupTagsToGlobal: s.ExposeGroupTagsToGlobal,
+			Fold:                    s.Fold, // SPEC 108
 			Disabled:                !s.Enabled,
 			DetourTag:               s.DetourTag,
 			DetourNodeHash:          s.DetourNodeHash,  // SPEC 101

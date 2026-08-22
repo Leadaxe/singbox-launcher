@@ -24,47 +24,6 @@ func (s *stubEditPresenter) ClearOutboundEditWindow()            {}
 func (s *stubEditPresenter) UpdateChildOverlay()                 {}
 func (s *stubEditPresenter) Model() *wizardmodels.WizardModel    { return s.model }
 
-func TestLabelForValue(t *testing.T) {
-	tests := []struct {
-		name         string
-		labelToValue map[string]string
-		value        string
-		want         string
-	}{
-		{
-			name:         "reverse lookup finds matching label",
-			labelToValue: map[string]string{"Five Minutes": "5m"},
-			value:        "5m",
-			want:         "Five Minutes",
-		},
-		{
-			name:         "no match returns empty",
-			labelToValue: map[string]string{"Five Minutes": "5m"},
-			value:        "30s",
-			want:         "",
-		},
-		{
-			name:         "nil map returns empty",
-			labelToValue: nil,
-			value:        "5m",
-			want:         "",
-		},
-		{
-			name:         "empty value matched against placeholder identity",
-			labelToValue: map[string]string{"@v": "@v"},
-			value:        "@v",
-			want:         "@v",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := labelForValue(tt.labelToValue, tt.value); got != tt.want {
-				t.Errorf("labelForValue(%v, %q) = %q, want %q", tt.labelToValue, tt.value, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestFilterOutUserPatch(t *testing.T) {
 	tests := []struct {
 		name    string

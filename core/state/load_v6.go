@@ -72,6 +72,11 @@ func parseCurrent(data []byte) (*State, error) {
 		s.UpdatedAt = t
 	}
 
+	// SPEC 108: прежние флаги подписки → Fold. Строго ДО
+	// syncLegacyFromConnections и до построения legacy-вида правил: и то и
+	// другое читает уже мигрированное состояние.
+	migrateSourceFolds(s)
+
 	// Generate legacy CustomRules view for backward-compat UI (Phase 6 will use RulesV6 directly).
 	s.CustomRules = legacyCustomRulesFromV6(raw.Rules)
 

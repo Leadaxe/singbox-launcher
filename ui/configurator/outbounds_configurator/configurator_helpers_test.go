@@ -29,49 +29,25 @@ func TestCollectRows(t *testing.T) {
 		assertRows func(t *testing.T, rows []outboundRow)
 	}{
 		{
-			name: "per-source rows precede global rows; disabled source skipped",
+			// SPEC 108: группы подписок в списке Направлений не показываются
+			// вовсе — ни от включённой подписки, ни от выключенной. Их
+			// настраивают на вкладке «Группа» самой подписки, а свёрнутые
+			// подписки групп в состоянии и не хранят: те разворачиваются на
+			// сборке (config.PrepareSourceFolds).
+			name: "subscription groups are not listed as directions",
 			pc: makeParserConfig(
 				[]config.ProxySource{
 					{
 						Source:    "SubA",
 						Outbounds: []config.Direction{{Tag: "A:auto"}, {Tag: "A:select"}},
 					},
-					{
-						Source:    "SubDisabled",
-						Disabled:  true,
-						Outbounds: []config.Direction{{Tag: "D:auto"}},
-					},
 				},
 				[]config.Direction{{Tag: "global-direct"}},
 			),
-			wantLen: 3,
+			wantLen: 1,
 			assertRows: func(t *testing.T, rows []outboundRow) {
-				// First two rows are per-source (SubA), in slice order.
-				if rows[0].IsGlobal || rows[0].SourceIndex != 0 || rows[0].IndexInSlice != 0 || rows[0].Outbound.Tag != "A:auto" {
-					t.Errorf("row0 = %+v, want per-source SubA[0] A:auto", rows[0])
-				}
-				if rows[0].SourceLabel != "SubA" {
-					t.Errorf("row0 SourceLabel = %q, want %q", rows[0].SourceLabel, "SubA")
-				}
-				if rows[1].IsGlobal || rows[1].SourceIndex != 0 || rows[1].IndexInSlice != 1 || rows[1].Outbound.Tag != "A:select" {
-					t.Errorf("row1 = %+v, want per-source SubA[1] A:select", rows[1])
-				}
-				// Disabled source (SubDisabled, SourceIndex 1) must not appear.
-				for _, r := range rows {
-					if !r.IsGlobal && r.SourceIndex == 1 {
-						t.Errorf("disabled source row leaked: %+v", r)
-					}
-				}
-				// Last row is the global direct outbound.
-				g := rows[2]
-				if !g.IsGlobal || g.IndexInSlice != 0 || g.Outbound.Tag != "global-direct" {
-					t.Errorf("row2 = %+v, want global direct", g)
-				}
-				if g.IsPreset || g.IsTemplate || g.IsRequired || g.HasUserPatch {
-					t.Errorf("direct global row should have no flags set: %+v", g)
-				}
-				if g.SourceLabel != "" {
-					t.Errorf("direct global SourceLabel = %q, want empty", g.SourceLabel)
+				if !rows[0].IsGlobal || rows[0].Outbound.Tag != "global-direct" {
+					t.Errorf("row0 = %+v, want global-direct", rows[0])
 				}
 			},
 		},
@@ -247,21 +223,6 @@ func TestCollectRows(t *testing.T) {
 				}
 				if r.SourceLabel != "" {
 					t.Errorf("direct row SourceLabel = %q, want empty (no badge)", r.SourceLabel)
-				}
-			},
-		},
-		{
-			name: "empty source label is synthesized (not crashed)",
-			pc: makeParserConfig(
-				[]config.ProxySource{
-					{Source: "", Outbounds: []config.Direction{{Tag: "x"}}},
-				},
-				nil,
-			),
-			wantLen: 1,
-			assertRows: func(t *testing.T, rows []outboundRow) {
-				if rows[0].SourceLabel == "" {
-					t.Errorf("empty source should get a synthesized label, got empty")
 				}
 			},
 		},
