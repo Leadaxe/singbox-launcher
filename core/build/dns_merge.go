@@ -161,7 +161,11 @@ func stripDNSWizardOnlyFields(m map[string]interface{}) map[string]interface{} {
 		case "description", "enabled", "required", "title", "if", "if_or", "default_enabled":
 			continue
 		}
-		if len(k) > 0 && k[0] == '_' {
+		// Ключевые слова движка шаблонов (SPEC 107): всё, что начинается с
+		// '#', — директива, а не поле sing-box. Легаси-написание (`if`,
+		// `if_or`) вычищалось выше, а канон `#enable`/`#if` — нет, и уезжал
+		// в конфиг ядра как неизвестное поле.
+		if len(k) > 0 && (k[0] == '_' || k[0] == '#') {
 			continue
 		}
 		out[k] = v

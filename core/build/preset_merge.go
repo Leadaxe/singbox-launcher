@@ -126,9 +126,14 @@ func cleanDanglingRuleSetInRule(rule map[string]interface{}, emittedTags map[str
 		switch k {
 		case "outbound", "action", "method", "if", "if_or":
 			continue
-		default:
-			hasMatchFields = true
 		}
+		// Директивы движка шаблонов (SPEC 107) match-полями не являются.
+		// Иначе правило, у которого от условий остался только `#enable`,
+		// считалось бы содержательным и уезжало в конфиг пустым.
+		if len(k) > 0 && k[0] == '#' {
+			continue
+		}
+		hasMatchFields = true
 	}
 	if !hasMatchFields {
 		return nil
