@@ -40,7 +40,7 @@
 - [x] Тесты обоих проектов зелёные (лаунчер целиком; LxBox 3340). Прогон в CI-пайплайнах — фаза 5
 - [x] Проверка на живой системе: сборка с `-i`, перепарс подписок и пересборка конфига через debug API — 42 ноды, ни одна не потеряна, VPN не прерывался
 
-## Фаза 2 — Тела, эмиссия, identity (Go ✅, Dart — остаток)
+## Фаза 2 — Тела, эмиссия, identity ✅ (обе стороны)
 
 - [x] `corpus/body/` — 13 фикстур: uri-list, base64 (оба алфавита), singbox (4 формы + endpoints-WG), xray-массив, wgconf, vpn:// (сжатый и несжатый)
 - [x] Go: ветка `BodyKindWGConf` в `ClassifySubscriptionBody` (B11) + `WGConfBodyToURIs`; раннер `TestContractCorpusBody` входит через decode-слой, не через кэш-хук
@@ -49,8 +49,9 @@
 - [x] `docs/IDENTITY.md` нормативно + `core/config/identity_contract_test.go` (8 тестов; §3 закрыт и защищён от возврата)
 - [x] Go: `ParsedNode.Warnings` — коды деградации из реестра; строгая сверка `warnings` в конверте корпуса
 - [x] Sync-тесты реестра (Go): `registry_sync_test.go` — allowlist'ы кода против `registry/allowlists.json`; сразу поймал незакрытый gecko
-- [ ] Dart: ветка `vpn://` в `parseUri` для строки внутри URI-списка (B12); отдельный лимит длины vpn:// (сейчас режется общим maxURILength 65536)
-- [ ] Dart: раннер `corpus/body/` + коды warnings в конверте; sync-тесты реестра (`parseUri`, `kUtlsFingerprints`, …)
+- [x] Dart: ветка `vpn://` в `parseUri` (B12) + отдельный лимит `maxAmneziaLinkLength` 512 KiB (общий с Go и реестром)
+- [x] Dart: раннер `corpus/body/` (13/13) + sync-тесты реестра (`kUtlsFingerprints`, `kHysteria2ObfsTypes`)
+- [x] Расхождение имени схемы в конверте (`ss` vs `shadowsocks`) — приведение в раннере, правило в CANON §1
 
 ## Фаза 3 — Шаблоны (движок ✅, пресеты → SPEC 106)
 

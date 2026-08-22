@@ -7,6 +7,13 @@
 Форма — `schema/node.schema.json`: `{v, nodes[], dropped[], meta?}`. Узел:
 `{kind, scheme, label, entry, chain?, warnings?}`.
 
+**`scheme` — имя схемы URI, не тип sing-box.** Канон берётся из
+`registry/protocols/<scheme>.json` → поле `scheme`; тип ядра лежит рядом в
+`singbox_type`. Разница видна ровно на shadowsocks: схема `ss`, тип
+`shadowsocks`. Лаунчер пишет в конверт схему, LxBox — тип, поэтому раннер
+LxBox приводит имя (`_canonScheme`). Расхождение косметическое (поведение
+одинаково), но без приведения составы узлов не сходятся.
+
 ## 2. Канонизация `entry` (sing-box map)
 
 1. **Без `tag`.** Tag-политика (prefix/mask/uniquify) — постобработка приложений,
