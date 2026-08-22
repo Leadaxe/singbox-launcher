@@ -562,8 +562,11 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		previewAllBtn,
 	)
 
+	// Без ведущего разделителя: AppTabs уже рисует свой divider под строкой
+	// вкладок (container/apptabs.go), и собственная линия первым элементом
+	// давала две полоски подряд. Разделитель между URL и списком остаётся —
+	// он делит блоки, а не дублирует рамку вкладки.
 	topBlock := container.NewVBox(
-		widget.NewSeparator(),
 		urlContainer,
 		widget.NewSeparator(),
 		sourcesHeader,
@@ -816,8 +819,10 @@ func CreateDirectionsTab(presenter *wizardpresentation.WizardPresenter) fyne.Can
 	configuratorContent, refreshOutboundsConfigurator := outbounds_configurator.NewConfiguratorContent(guiState.Window, presenter, onConfiguratorApply)
 	guiState.RefreshOutboundsConfiguratorList = refreshOutboundsConfigurator
 
+	// Ведущий разделитель убран — см. topBlock выше: строку под вкладками
+	// рисует сам AppTabs. Замыкающий оставлен: он отбивает список от низа
+	// окна.
 	content := container.NewVBox(
-		widget.NewSeparator(),
 		configuratorContent,
 		widget.NewSeparator(),
 	)
