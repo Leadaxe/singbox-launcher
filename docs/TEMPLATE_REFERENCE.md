@@ -55,7 +55,7 @@ developers and for understanding the template ↔ state relationship.
 
 | Top-level key | Contains | Where it lands at runtime | UI tab it shows in |
 |---------------|----------|--------------------------|------------------|
-| `parser_config` | The default ParserConfig skeleton: outbounds (`proxy-out`, `direct-out`, `auto-proxy-out`) with top-level `required: true` markers (see §5). Since SPEC 058 it is the **live source of truth** for the bodies of referenced template outbounds (state holds only the thin `{tag, ref: "#TEMPLATE#"}`). | On a fresh install it goes into `model.ParserConfigJSON`. During LoadState the body of `ref="#TEMPLATE#"` entries is resolved from here on every render/build. | Outbounds tab (renders model.GlobalOutbounds) |
+| `parser_config` | The default ParserConfig skeleton: outbounds (`proxy-out` with its `auto{}` twin, `vpn ①`, `vpn ②`) with top-level `required: true` markers (see §5). Since SPEC 058 it is the **live source of truth** for the bodies of referenced template outbounds (state holds only the thin `{tag, ref: "#TEMPLATE#"}`). | On a fresh install it goes into `model.ParserConfigJSON`. During LoadState the body of `ref="#TEMPLATE#"` entries is resolved from here on every render/build. | Directions tab (renders model.GlobalOutbounds) |
 | `config` | The sing-box config skeleton: `log`, `dns`, `inbounds`, `outbounds`, `route`, `experimental`. Contains `@var` placeholders. | After `applyParams(GOOS) + substitute @vars` → `TemplateData.Config` (per section). At build time it is merged with the state-derived sections. | None directly; previewed through the Edit dialog | 
 | `params` | Platform-conditional patches (`if`/`if_or` + `replace`/`prepend`/`append`) | Applied in `LoadTemplateData` (GetEffectiveConfig) — they produce the `Config` for the current runtime.GOOS | — |
 | `dns_options.servers` | The library of template DNS servers (cloudflare, google, yandex, ...) plus the mandatory `required:true` entries (`local_dns_resolver`, `direct_dns_resolver`) | `TemplateData.DNSOptionsRaw` → used by `ResolveDNS` to resolve the bodies of kind=template entries in state | DNS tab (renders kind=template entries) |
@@ -186,7 +186,7 @@ that state never persists. It applies to:
 
 | Where | Effect in the UI |
 |-----|-------------|
-| `parser_config.outbounds[].required` | Outbounds tab: Up/Down + Edit + Reset; Delete is not rendered |
+| `parser_config.outbounds[].required` | Directions tab: Up/Down + Edit + Reset; Delete is not rendered |
 | `dns_options.servers[].required` | DNS tab: enabled + locked (the toggle is blocked); Edit/Delete are blocked |
 
 **Shape (since SPEC 058):** `required` is a top-level field directly on the
@@ -235,7 +235,7 @@ LoadTemplateData(execDir)
          ▼
 model.TemplateData (in-memory, immutable)
          │
-         ├──► UI render (Library dialog, DNS tab, Settings tab, Outbounds tab)
+         ├──► UI render (Library dialog, DNS tab, Settings tab, Directions tab)
          │
          ├──► build pipeline:
          │     ResolveDNS(state, template, vars)

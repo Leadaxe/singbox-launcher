@@ -262,8 +262,22 @@ The contents of `parser_config` in `state.json` (formerly the `@ParserConfig` bl
       // Extra options for the selector (optional)
       // These fields are added as top-level keys of the resulting selector JSON
       "options": {
-        "interrupt_exist_connections": true,  // Interrupt existing connections on switch
-        "default": "auto-proxy-out"            // Default node tag (when preferredDefault is not set)
+        "interrupt_exist_connections": true   // Interrupt existing connections on switch
+      },
+
+      // SPEC 104: a Direction's display name (optional; empty = the tag is shown)
+      "label": "VPN ①",
+
+      // SPEC 104: paired auto-select group <tag>-auto (optional). When present the
+      // launcher emits a urltest with the SAME nodes as this Direction, offers it
+      // as the first option and makes it the default unless preferredDefault
+      // matched something. The twin is never stored — it is expanded on build.
+      "auto": {
+        "mode": "least_test",              // least_test | round_robin
+        "url": "@urltest_url",             // @var references are substituted at build
+        "interval": "@urltest_interval",
+        "tolerance": "@urltest_tolerance",
+        "interrupt_exist_connections": true
       },
       
       // The main filter for picking nodes (version 4, optional)
@@ -277,7 +291,7 @@ The contents of `parser_config` in `state.json` (formerly the `@ParserConfig` bl
       // Tags prepended to the selector's outbound list (optional)
       // Useful for adding "direct-out", "reject" and other static outbounds
       // In version 2 this was called "outbounds.addOutbounds"
-      "addOutbounds": ["direct-out", "auto-proxy-out"],
+      "addOutbounds": ["direct-out"],
       
       // A filter that picks the default node (optional)
       // The first node matching the filter becomes the selector's "default" value
@@ -289,21 +303,6 @@ The contents of `parser_config` in `state.json` (formerly the `@ParserConfig` bl
       // A comment printed above the selector's JSON (optional)
       "comment": "Proxy group for international connections"
     },
-    {
-      // An example of a urltest selector (automatic best-node selection)
-      "tag": "auto-proxy-out",
-      "type": "urltest",
-      "options": {
-        "url": "https://cp.cloudflare.com/generate_204",  // The test URL
-        "interval": "5m",                                 // Check interval
-        "tolerance": 100,                                 // Tolerance (ms)
-        "interrupt_exist_connections": true                // Interrupt connections on switch
-      },
-      "filters": {
-        "tag": "!/(🇷🇺)/i"  // Exclude nodes carrying 🇷🇺
-      },
-      "comment": "Proxy automated group for everything that should go through VPN"
-    }
   ],
   
   // Parser settings (optional, filled in automatically)
@@ -331,7 +330,7 @@ An array of objects describing proxy-server sources.
 | `outbounds`   | array    | No          | Local outbounds for this source (version 4). Applied only to nodes from this source. Their tags are added automatically to the list of available outbounds on the wizard's second tab (Rules), so they can be used in routing rules. |
 | `exclude_from_global` | bool | No | When `true`, this source's nodes do **not** enter the pool for the **global** `ParserConfig.outbounds` entries during config generation. Local `proxies[i].outbounds` still use this source's nodes only. The field is `omitempty`; it affects generator behaviour only and does not change the global JSON. |
 | `expose_group_tags_to_global` | bool | No | When `true`, during generation the tags of the wizard-**marked** local groups (see below) are **added** to the effective outbound list of **every** global `ParserConfig.outbounds` entry. The stored `outbounds[].addOutbounds` array is **not** rewritten. Strings from a user's own `addOutbounds` are still **not** filtered through `filters`; the injected tags do pass the same `filters` as nodes (a synthetic match on `tag`/`comment`). |
-| `detour_tag` | string | No | **SPEC 077.** The tag of another outbound through which **all** of this source's nodes are dialled (a proxy chain / hop): the node gets `"detour":"<tag>"` (`A through B`). Empty means a direct connection. Stored by tag (like rules and selectors). Not applied to WireGuard nodes, nor to nodes with their own Xray chain (`dialerProxy` wins). **Fail-open** at generation time: a self-reference and a cycle among nodes (`A.detour=B`, `B.detour=A`) are detected and broken with a warning (the node then works directly) — otherwise the core would reject the config outright. A dangling detour onto a **template/preset group** tag is not dropped (group tags are only known at final assembly). **The UI choice is deliberately narrowed** (`business.DetourOptions`): only **manual global selector groups** (from the Outbounds tab) and **active preset groups** are offered; built-in/utility ones (`direct-out`/`reject`/`drop`), the auto group (`auto-proxy-out`), the subscription's own local groups and individual nodes are excluded. Single servers as a target are not offered yet. |
+| `detour_tag` | string | No | **SPEC 077.** The tag of another outbound through which **all** of this source's nodes are dialled (a proxy chain / hop): the node gets `"detour":"<tag>"` (`A through B`). Empty means a direct connection. Stored by tag (like rules and selectors). Not applied to WireGuard nodes, nor to nodes with their own Xray chain (`dialerProxy` wins). **Fail-open** at generation time: a self-reference and a cycle among nodes (`A.detour=B`, `B.detour=A`) are detected and broken with a warning (the node then works directly) — otherwise the core would reject the config outright. A dangling detour onto a **template/preset group** tag is not dropped (group tags are only known at final assembly). **The UI choice is deliberately narrowed** (`business.DetourOptions`): only **manual Directions** (from the Directions tab) and **active preset groups** are offered; built-in/utility ones (`direct-out`/`reject`/`drop`), paired auto groups (`<tag>-auto`), the subscription's own local groups and individual nodes are excluded. Single servers as a target are not offered yet. |
 | `disabled_nodes` | object | No | **SPEC 094 D4.** Marks for nodes the user switched off: `{"<identity hash>": <unix time>}`. The key is `config.NodeIdentityHash`: sha256 over the node's emitted outbound JSON without the `tag` and `detour` fields, with keys sorted recursively. A hash was chosen over a tag or a position because providers rename nodes between updates and reorder them freely, so a tag-based mark would silently move to a different server. The hash covers everything that describes the connection (SNI and transport included), so the mark follows the specific node and survives a subscription update, a restart and a rename. The value is the time of the last confirmation: a mark for a node absent from the subscription for longer than the TTL `clamp(3 × update interval, 24h, 30d)` is dropped, otherwise the map would grow without bound. GC runs **only after a successful network update** — on a cache run the body may be incomplete. |
 
 On the wizard's first tab (**Sources**) the **Edit** button on a source opens a window with the sub-tabs **Settings** (prefix, local auto/select, both flags), **Preview** (the list of local `proxies[i].outbounds` and of the subscription's nodes) and **JSON** (read-only: the whole `proxies[i]` object).

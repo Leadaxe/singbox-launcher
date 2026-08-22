@@ -322,7 +322,7 @@ writer. (For the storage-time view with diagrams, see [DATA_FLOW.md](DATA_FLOW.m
 
    An imported `selector`/`urltest` becomes a **node** with scheme `group`
    (`configtypes.SchemeGroup`), sitting in the same list as regular nodes. It has
-   no privileges: it never enters the wizard's Outbounds tab, routing rules do
+   no privileges: it never enters the wizard's Directions tab, routing rules do
    not reference it, and its membership is not user-editable. That tab stays
    reserved for the launcher's own **channels**, which do drive routing. For
    sing-box the node still emits as a real selector/urltest inside `outbounds`

@@ -54,7 +54,7 @@
 
 | Top-level key | Содержит | Куда попадает в runtime | UI tab где видно |
 |---------------|----------|--------------------------|------------------|
-| `parser_config` | Default ParserConfig skeleton: outbounds (`proxy-out`, `direct-out`, `auto-proxy-out`) с top-level `required: true` маркерами (см. §5). После SPEC 058 — **live source-of-truth** для body referenced template outbound'ов (state хранит только thin `{tag, ref: "#TEMPLATE#"}`). | На fresh install — в `model.ParserConfigJSON`. При LoadState body для `ref="#TEMPLATE#"` entries резолвится отсюда на каждый render/build. | Outbounds tab (renders model.GlobalOutbounds) |
+| `parser_config` | Default ParserConfig skeleton: outbounds (`proxy-out` с двойником `auto{}`, `vpn ①`, `vpn ②`) с top-level `required: true` маркерами (см. §5). После SPEC 058 — **live source-of-truth** для body referenced template outbound'ов (state хранит только thin `{tag, ref: "#TEMPLATE#"}`). | На fresh install — в `model.ParserConfigJSON`. При LoadState body для `ref="#TEMPLATE#"` entries резолвится отсюда на каждый render/build. | вкладка Направлений (renders model.GlobalOutbounds) |
 | `config` | Sing-box config skeleton: `log`, `dns`, `inbounds`, `outbounds`, `route`, `experimental`. Содержит `@var` плейсхолдеры. | После `applyParams(GOOS) + substitute @vars` → `TemplateData.Config` (по секциям). При build merge'ится с state-derived sections. | Никакая напрямую; преview через Edit dialog | 
 | `params` | Platform-conditional patches (`if`/`if_or` + `replace`/`prepend`/`append`) | Применяются в `LoadTemplateData` (GetEffectiveConfig) — продьюсят `Config` под текущий runtime.GOOS | — |
 | `dns_options.servers` | Library template DNS servers (cloudflare, google, yandex, ...) + mandatory `required:true` entries (`local_dns_resolver`, `direct_dns_resolver`) | `TemplateData.DNSOptionsRaw` → используется `ResolveDNS` для резолва body kind=template entries в state | DNS tab (renders kind=template entries) |
@@ -185,7 +185,7 @@ state не персистит. Применим к:
 
 | Где | Эффект в UI |
 |-----|-------------|
-| `parser_config.outbounds[].required` | Outbounds tab: Up/Down + Edit + Reset; Del не рендерится |
+| `parser_config.outbounds[].required` | вкладка Направлений: Up/Down + Edit + Reset; Del не рендерится |
 | `dns_options.servers[].required` | DNS tab: enabled+lock (toggle blocked); Edit/Del заблокированы |
 
 **Shape (после SPEC 058):** `required` — top-level поле прямо на outbound
@@ -232,7 +232,7 @@ LoadTemplateData(execDir)
          ▼
 model.TemplateData (in-memory, immutable)
          │
-         ├──► UI render (Library dialog, DNS tab, Settings tab, Outbounds tab)
+         ├──► UI render (Library dialog, DNS tab, Settings tab, Directions tab)
          │
          ├──► build pipeline:
          │     ResolveDNS(state, template, vars)

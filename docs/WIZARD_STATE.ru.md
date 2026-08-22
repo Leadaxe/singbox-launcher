@@ -542,7 +542,7 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 | Секция | Содержит | Источник истины | Кто пишет | Кто читает |
 |--------|----------|-----------------|-----------|------------|
 | `connections.sources` | Source entries (subscription URL или server URI), per-source meta (profile_title, userinfo, last_status), update spec | state | UI Sources tab (`source_tab`), Update flow (после fetch) | parser pipeline, UI dashboard, build |
-| `connections.outbounds` | Global selectors/urltest entries, в т.ч. preset-bound (`ref`) и preset-patched (`updates[]`) | state | UI Outbounds tab, `SyncOutboundsWithActivePresets`, presenter `CreateStateFromModel` | build (`MergeOutboundUpdatesInPlace`; UI preview — `MergeOutboundUpdates`), UI render |
+| `connections.direction_outbounds` | Направления — selector/urltest entries, в т.ч. preset-bound (`ref`) и preset-patched (`updates[]`). Ключ `connections.outbounds` (до SPEC 104) по-прежнему читается. | state | UI вкладка Направлений, `SyncOutboundsWithTemplate`, presenter `CreateStateFromModel` | build (`MergeOutboundUpdatesInPlace`; UI preview — `MergeOutboundUpdates`), UI render |
 | `connections.defaults` | reload interval, max_nodes per source default | state | UI Settings/Sources | parser pipeline |
 | `rules` | Routing rules через kind discriminator (preset/inline/srs) — единый упорядоченный массив | state | UI Rules tab (drag, library add, edit) | build (`MergeRouteSection` + `MergePresetsIntoRoute`), UI render |
 | `vars` | Overrides для всех объявленных в template vars: tun, route_final, dns_*, clash_secret, etc. | state (значения) + template (объявления) | UI Settings tab, скрытые синхронизаторы (`SyncDNSModelToSettingsVars`) | build (`@var` substitute) |

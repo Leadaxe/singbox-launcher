@@ -80,7 +80,7 @@ model.TemplateData (immutable for session)
 SyncModelToGUI + RefreshOutboundOptions
      │
      ▼
-UI renders (Sources / Outbounds / Rules / DNS / Settings tabs)
+UI renders (Sources / Directions / Rules / DNS / Settings tabs)
 ```
 
 The key point: `SyncOutboundsWithActivePresets` on Load performs
@@ -258,7 +258,7 @@ presenter.RefreshAfterPresetToggle()
      │     ×1: model.GlobalOutbounds
      │     ×2: model.ParserConfig.Outbounds (via RefreshDerivedParserConfig)
      │
-     ├─► refresh Outbounds tab UI
+     ├─► refresh Directions tab UI
      │     collectRowsForUI reads state directly (since SPEC 057)
      │     preset rows are shown with 🔒 + the preset label
      │     globals with updated filters show "⚠ modified by N preset(s)"
@@ -274,7 +274,7 @@ presenter.RefreshAfterPresetToggle()
 
 Eager sync (rather than lazy, on Save) exists because the user must see the
 effect immediately: a DNS server was added to the list, a new outbound appeared,
-the rule dropdowns changed. Without it, the DNS and Outbounds tabs would show a
+the rule dropdowns changed. Without it, the DNS and Directions tabs would show a
 stale state until Save.
 
 ---
@@ -286,7 +286,7 @@ referenced template / referenced preset) and stores the USER edit as a
 field-level diff over the merged base.
 
 ```
-Open Edit dialog (Outbounds tab → Edit button)
+Open Edit dialog (Directions tab → Edit button)
      │
      ▼
 ResolveMergedOutbound(state, template, tag)
