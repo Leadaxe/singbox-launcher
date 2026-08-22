@@ -365,8 +365,6 @@ var (
 )
 
 const (
-	// defaultWireGuardMTU is the upstream WireGuard tunnel MTU.
-	defaultWireGuardMTU = 1420
 	// awgMaxMTU caps AmneziaWG endpoints. It is the AmneziaWG-recommended client
 	// MTU and the IPv6 minimum, leaving headroom for S3/S4 transport padding so
 	// the obfuscated packet stays under a 1500-byte path (1500 - 28 UDP/IP - 32

@@ -50,15 +50,15 @@ const hostWindowPollInterval = 500 * time.Millisecond
 // запасом: сумма всех колонок задаёт минимальную ширину окна, и лишние 20 px
 // в каждой выталкивают правый край за экран.
 const (
-	hostColBar     = 84 // полоска заполнения
-	hostColPercent = 70 // «100.0%» плюс зазор от полоски слева
-	hostColBytes   = 78 // «213.4 MB»
-	hostColFS      = 84 // «squashfs» — под самое длинное имя ФС целиком
+	hostColBar     = 84  // полоска заполнения
+	hostColPercent = 70  // «100.0%» плюс зазор от полоски слева
+	hostColBytes   = 78  // «213.4 MB»
+	hostColFS      = 84  // «squashfs» — под самое длинное имя ФС целиком
 	hostColFlags   = 132 // «[🔒 ro · ★ state]»
-	hostColRate    = 72 // «229 B/s»
-	hostColErrors  = 84 // «120 / 52210»
-	hostColMTU     = 48 // «65536»
-	hostColCore    = 20 // номер ядра
+	hostColRate    = 72  // «229 B/s»
+	hostColErrors  = 84  // «120 / 52210»
+	hostColMTU     = 48  // «65536»
+	hostColCore    = 20  // номер ядра
 	// Имя — тоже фиксированное. Растягивающийся центр Border забирал всю
 	// свободную ширину, из-за чего строка всегда была шире окна и таблицу
 	// приходилось листать вбок.
@@ -219,7 +219,7 @@ type hostView struct {
 	// не косметическая: конфиг уедет на машину, для которой он не собран.
 	wantOS   string
 	wantArch string
-	errBar  *widget.Label
+	errBar   *widget.Label
 
 	cpuTitle    *widget.Label
 	cpuBar      *widget.ProgressBar

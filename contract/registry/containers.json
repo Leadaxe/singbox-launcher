@@ -3,25 +3,37 @@
   "containers": {
     "amnezia_vpn_link": {
       "desc": "Amnezia vpn://-ссылка: контейнер полного профиля (containers[] по протоколам), из которого извлекаются только WireGuard/AmneziaWG INI-тексты.",
-      "detect": "тело (после trim) начинается с 'vpn://' — ветка идёт ПЕРВОЙ, до base64-эвристики (':' вне base64-алфавита). Go дополнительно принимает vpn:// строкой ВНУТРИ построчного URI-списка (ParseNode, в обход MaxURILength); Dart в parseUri схемы vpn нет — строка молча теряется (§9.B12, целевое: Dart добавляет).",
+      "detect": "тело (после trim) начинается с 'vpn://' — ветка идёт ПЕРВОЙ, до base64-эвристики (':' вне base64-алфавита). Go принимает vpn:// и как ЦЕЛОЕ тело подписки (BodyKindVPNLink → ParseAmneziaVPNLinkAll), и строкой ВНУТРИ построчного URI-списка (ParseNode, в обход MaxURILength). Dart: ветка vpn:// в parseUri — §9.B12, целевое.",
       "decode": [
         "payload = ссылка без префикса vpn://; whitespace/переводы строк выбрасываются (ссылки из чатов переносятся), '=' -padding отрезается",
         "base64url без padding (Qt Base64UrlEncoding|OmitTrailingEquals); fallback — std-base64 без padding",
         "qCompress-фрейминг: 4 байта big-endian заявленной несжатой длины + zlib-поток → JSON профиля",
-        "fallback несжатого payload (голый base64-JSON, паритет importController Amnezia): принимает ТОЛЬКО Dart — Go требует qCompress-фрейминг (разрыв)",
+        "fallback несжатого payload (голый base64-JSON, паритет importController Amnezia): принимают ОБЕ стороны. Проверка идёт ДО qCompress-фрейминга — первые 4 байта такого payload суть начало JSON, а не длина. РАСХОЖДЕНИЕ ЗАКРЫТО (фаза 2).",
         "профиль: containers[] (по одному на протокол) → под-объект awg/wireguard → last_config (JSON-СТРОКА) → .config = классический [Interface]/[Peer] INI (с AWG Jc/Jmin/.../I1-I5)",
         "INI → канонический wireguard:// URI → штатный WG-парсер (CIDR-нормализация, AWG-промоушен, MTU-кламп применяются как обычно)"
       ],
       "limits": {
-        "link_max_bytes": {"go": 524288, "dart": 65536, "note": "Go maxAmneziaLinkLength 512 KiB (профили с сертификатами реально > 8 KiB); Dart режет по общему maxURILength 65536 — РАСХОЖДЕНИЕ, целевое: отдельный лимит vpn:// в registry/limits.json (§9.B12)"},
-        "inflate_max_bytes": {"go": 8388608, "dart": 4194304, "note": "анти-zlib-bomb cap на заявленную/фактическую несжатую длину: Go 8 MiB, Dart 4 MiB — РАСХОЖДЕНИЕ (PLAN §9.B12 считал cap 4 MiB общим; целевое — единое значение в limits.json)"}
+        "link_max_bytes": {
+          "go": 524288,
+          "dart": 65536,
+          "note": "Go maxAmneziaLinkLength 512 KiB (профили с сертификатами реально > 8 KiB); Dart режет по общему maxURILength 65536 — РАСХОЖДЕНИЕ ОТКРЫТО, целевое: Dart вводит отдельный лимит vpn:// (amnezia_link_max_bytes в limits.json), иначе большой профиль теряется на мобиле."
+        },
+        "inflate_max_bytes": {
+          "go": 8388608,
+          "dart": 4194304,
+          "note": "анти-zlib-bomb cap на заявленную/фактическую несжатую длину: Go 8 MiB, Dart 4 MiB — РАСХОЖДЕНИЕ (PLAN §9.B12 считал cap 4 MiB общим; целевое — единое значение в limits.json)"
+        }
       },
       "selection": {
-        "go": "рекурсивный поиск [Interface]-текста по профилю (глубина <= 8, known-keys first: config/last_config/awg/wireguard), defaultContainer предпочтён; импортируется ОДИН контейнер (первый найденный), при нескольких — warn",
-        "dart": "плоский проход по containers[] строго по пути <container>.awg|.wireguard.last_config.config; импортируются ВСЕ WG/AWG контейнеры (по ноде на каждый, индексные суффиксы имени)",
-        "note": "разрыв: один-vs-все контейнеры и глубина поиска; плюс Dart подставляет $PRIMARY_DNS/$SECONDARY_DNS из корневых dns1/dns2 в INI (fidelity rawIni), Go — нет"
+        "go": "рекурсивный поиск [Interface]-текста по профилю (глубина <= 8, known-keys first: config/last_config/awg/wireguard), defaultContainer первым; ParseAmneziaVPNLinkAll импортирует ВСЕ WG/AWG-контейнеры, одиночный ParseNode — один (сигнатура отдаёт одну ноду)",
+        "dart": "плоский проход по containers[] строго по пути <container>.awg|.wireguard.last_config.config; импортируются ВСЕ WG/AWG контейнеры",
+        "note": "РЕШЕНО (фаза 2): импортируются ВСЕ контейнеры — профиль с несколькими локациями штатен для Amnezia, и терять их незачем. Порядок детерминирован: дефолтный первым. Остаётся разница глубины поиска (Go рекурсивно, Dart по фиксированному пути) — не расхождение результата на валидных профилях, а запас Go на дрейф схемы; и подстановка $PRIMARY_DNS/$SECONDARY_DNS из корневых dns1/dns2 в INI: делает Dart, Go — нет (открыто)."
       },
-      "label": {"go": "description → hostName → имя контейнера", "dart": "nameHint (имя файла/источника) + индекс контейнера", "note": "label до tag-политики; правила разные — расхождение фиксируется корпусом"},
+      "label": {
+        "go": "description → hostName → имя контейнера",
+        "dart": "nameHint (имя файла/источника) + индекс контейнера",
+        "note": "label до tag-политики; правила разные — расхождение фиксируется корпусом"
+      },
       "refs": {
         "go": [
           "core/config/subscription/node_parser_core.go:84-86",

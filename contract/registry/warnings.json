@@ -95,7 +95,7 @@
       "params": [
         "value"
       ],
-      "desc": "Тип hysteria2-обфускации вне словаря ядра — снимается, узел подключается без обфускации. НОВОЕ РАСХОЖДЕНИЕ: allowlist Go = только salamander (isValidHysteria2ObfsType, node_parser_hysteria2.go:14) — gecko молча дропается, хотя ядро его поддерживает (Dart зеркалит enum salamander,gecko из option/hysteria2.go; у LxBox это был баг #53). Go добавляет gecko.",
+      "desc": "Тип hysteria2-обфускации вне словаря ядра — снимается, узел подключается без обфускации. Словарь ядра: salamander, gecko (protocol/hysteria2). РАСХОЖДЕНИЕ ЗАКРЫТО (фаза 1): Go принимал только salamander и молча дропал рабочий gecko — добавлен (isValidHysteria2ObfsType). Обе стороны используют один словарь.",
       "dart": "UnknownObfsWarning",
       "go": "core/config/subscription/node_parser_hysteria2.go:39; core/config/subscription/singbox_sanitize.go:286"
     },
@@ -104,9 +104,9 @@
       "params": [
         "type"
       ],
-      "desc": "Обфускация задана без пароля — снимается целиком («missing obfs password» fatal для всего конфига). НОВОЕ РАСХОЖДЕНИЕ/БАГ: Go проверяет только в singbox-импорте; URI-путь эмитит obfs без password (node_parser_hysteria2.go:44-47) → конфиг падает. Go добавляет проверку в URI-путь.",
+      "desc": "Обфускация задана без пароля — снимается целиком: ядро отвергает такой узел («missing obfs password»), и это роняет ВЕСЬ конфиг, а не одну ноду. РАСХОЖДЕНИЕ ЗАКРЫТО (фаза 1): Go проверял только на singbox-пути, а URI-путь эмитил obfs без password — проверка добавлена в оба (node_parser_hysteria2.go, singbox_sanitize.go).",
       "dart": "MissingObfsPasswordWarning",
-      "go": "core/config/subscription/singbox_sanitize.go:292"
+      "go": "core/config/subscription/singbox_sanitize.go:292; core/config/subscription/node_parser_hysteria2.go:44"
     },
     "detour_cycle_broken": {
       "severity": "warning",
@@ -293,9 +293,9 @@
         "count",
         "chosen"
       ],
-      "desc": "vpn://-профиль содержит несколько WG/AWG-контейнеров. НОВОЕ РАСХОЖДЕНИЕ, решения нет: Go импортирует ОДИН контейнер (дефолтный предпочтителен) с этим warning; Dart импортирует ВСЕ контейнеры (amnezia_link.dart, список INI). Нужно решение: один или все.",
+      "desc": "vpn://-профиль содержит несколько WG/AWG-контейнеров. РЕШЕНО (SPEC 103 фаза 2): импортируются ВСЕ контейнеры — профиль с несколькими локациями штатен для Amnezia, и терять их незачем. Порядок детерминирован: дефолтный контейнер первым; метка узла дополняется именем контейнера, иначе локации неразличимы после MakeTagUnique. Одиночный ParseNode по-прежнему отдаёт ОДИН узел (дефолтный) — не потому что остальные не нужны, а потому что его сигнатура возвращает одну ноду; путь тела подписки зовёт ParseAmneziaVPNLinkAll. Этот код остаётся info-сообщением одиночного пути.",
       "dart": null,
-      "go": "core/config/subscription/node_parser_amnezia.go:171"
+      "go": "core/config/subscription/node_parser_amnezia.go:171 (одиночный путь); ParseAmneziaVPNLinkAll (все контейнеры)"
     },
     "group_empty": {
       "severity": "warning",

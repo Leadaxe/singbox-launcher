@@ -68,3 +68,27 @@ func wgEndpointHost(endpoint string) string {
 	host := strings.TrimSpace(endpoint[:i])
 	return strings.Trim(host, "[]")
 }
+
+// WGConfBodyToURIs превращает тело подписки формата wg-quick в список
+// канонических wireguard://-URI (SPEC 103 B11, BodyKindWGConf).
+//
+// Один conf может нести несколько секций [Interface] — провайдеры так отдают
+// набор локаций одним файлом. Битый блок пропускается с сообщением, остальные
+// разбираются: политика та же, что у испорченной строки URI-списка, — одна
+// плохая запись не должна обнулять подписку целиком.
+//
+// Возвращает URI и число пропущенных блоков, чтобы вызывающий мог сказать
+// пользователю, сколько узлов потеряно, а не молчать.
+func WGConfBodyToURIs(body string) (uris []string, skipped int) {
+	_, blocks := ExtractWGConfBlocks(body)
+	uris = make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		uri, err := ConvertWGConfText(block)
+		if err != nil {
+			skipped++
+			continue
+		}
+		uris = append(uris, uri)
+	}
+	return uris, skipped
+}

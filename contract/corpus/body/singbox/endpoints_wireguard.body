@@ -1,0 +1,3 @@
+# sing-box 1.11+: WireGuard живёт в endpoints[], а не в outbounds[].
+# Тело без единого outbound обязано распознаваться по endpoints.
+{"endpoints":[{"type":"wireguard","tag":"wg-ep","address":["10.0.0.2/32"],"private_key":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=","peers":[{"address":"example-3.com","port":51820,"public_key":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA=","allowed_ips":["0.0.0.0/0"]}]}]}

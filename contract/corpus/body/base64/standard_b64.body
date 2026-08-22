@@ -1,0 +1,3 @@
+# Тело подписки в base64 (стандартный алфавит, с паддингом): два URI внутри.
+# Провайдеры отдают так по умолчанию; декодирование — до классификации.
+dmxlc3M6Ly8xMTExMTExMS0xMTExLTExMTEtMTExMS0xMTExMTExMTExMTFAZXhhbXBsZS0xLmNvbTo0NDM/dHlwZT10Y3Amc2VjdXJpdHk9dGxzI2I2NC1hCnRyb2phbjovL3Rlc3RwYXNzMTIzQGV4YW1wbGUtMi5jb206NDQzP3NuaT1leGFtcGxlLTIuY29tI2I2NC1iCg==

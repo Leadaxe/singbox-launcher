@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"math/big"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -575,20 +574,6 @@ func VarConditionIsTargetOnly(v TemplateVar) bool {
 	}
 	return true
 }
-
-// onlyRuntimeGlobalRefs true, если в JSON-предикате все "@..."-ссылки —
-// runtime-globals.
-func onlyRuntimeGlobalRefs(jsonExpr string) bool {
-	for _, ref := range atRefPattern.FindAllStringSubmatch(jsonExpr, -1) {
-		if !isRuntimeGlobalRef(ref[1]) {
-			return false
-		}
-	}
-	return true
-}
-
-// atRefPattern выбирает "@name" внутри JSON-строк предиката.
-var atRefPattern = regexp.MustCompile(`"@([A-Za-z0-9_.]+)"`)
 
 // condEntryTrue вычисляет ОДНУ запись if/if_or.
 //

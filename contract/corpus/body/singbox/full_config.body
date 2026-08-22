@@ -1,0 +1,4 @@
+# sing-box: целый конфиг (BodyKindSingboxConfig). Секции, не относящиеся к
+# узлам (route/dns/inbounds), игнорируются как ignoredSections, а не роняют
+# импорт: подписка отдаёт рабочий конфиг, а нужны из него только outbound'ы.
+{"log":{"level":"info"},"inbounds":[{"type":"mixed","listen":"127.0.0.1","listen_port":2080}],"outbounds":[{"type":"vless","tag":"cfg-a","server":"example-1.com","server_port":443,"uuid":"11111111-1111-1111-1111-111111111111"},{"type":"direct","tag":"direct"}],"route":{"final":"cfg-a"}}

@@ -19,10 +19,10 @@ import (
 
 // contractEnvelope — форма contract/schema/node.schema.json.
 type contractEnvelope struct {
-	V       int              `json:"v"`
-	Nodes   []contractNode   `json:"nodes"`
-	Dropped []contractDrop   `json:"dropped,omitempty"`
-	Meta    map[string]any   `json:"meta,omitempty"`
+	V       int            `json:"v"`
+	Nodes   []contractNode `json:"nodes"`
+	Dropped []contractDrop `json:"dropped,omitempty"`
+	Meta    map[string]any `json:"meta,omitempty"`
 }
 
 type contractNode struct {

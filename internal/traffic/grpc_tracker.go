@@ -167,4 +167,3 @@ func ProcessBase(path string) string {
 	}
 	return filepath.Base(path)
 }
-

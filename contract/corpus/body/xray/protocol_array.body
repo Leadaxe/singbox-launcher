@@ -1,0 +1,4 @@
+# Xray: массив конфигов, узлы — в outbounds[].protocol (BodyKindXrayArray).
+# Проверяется РАНЬШЕ массива sing-box-конфигов: элемент несёт "outbounds", и
+# без этой проверки ушёл бы в sing-box-ветку, где ни одного "type" нет.
+[{"outbounds":[{"protocol":"vless","tag":"xr-a","settings":{"vnext":[{"address":"example-1.com","port":443,"users":[{"id":"11111111-1111-1111-1111-111111111111","encryption":"none"}]}]},"streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"serverName":"example-1.com"}}}]}]

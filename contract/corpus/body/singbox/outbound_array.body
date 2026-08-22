@@ -1,0 +1,2 @@
+# sing-box: массив outbound'ов (BodyKindSingboxOutboundArray).
+[{"type":"vless","tag":"sb-arr-a","server":"example-1.com","server_port":443,"uuid":"11111111-1111-1111-1111-111111111111"},{"type":"trojan","tag":"sb-arr-b","server":"example-2.com","server_port":443,"password":"testpass123"}]

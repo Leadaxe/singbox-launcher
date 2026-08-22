@@ -103,6 +103,24 @@ func decodeAmneziaProfile(payload string) (map[string]interface{}, error) {
 			return nil, fmt.Errorf("invalid base64: %w", err)
 		}
 	}
+	// Несжатый профиль: голый base64(JSON) без qCompress-фрейминга.
+	// Amnezia так экспортирует часть ссылок (паритет importController), и
+	// LxBox это принимает; проверка идёт ДО фрейминга, потому что первые
+	// 4 байта такого payload — начало JSON, а не длина (SPEC 103 §9.B12).
+	if plain := bytes.TrimSpace(raw); len(plain) > 0 && plain[0] == '{' {
+		if len(plain) > maxAmneziaProfileJSON {
+			return nil, fmt.Errorf("uncompressed profile exceeds %d bytes", maxAmneziaProfileJSON)
+		}
+		var profile map[string]interface{}
+		if err := json.Unmarshal(plain, &profile); err == nil {
+			return profile, nil
+		}
+		// Начинается с '{', но не разбирается — это не «почти JSON», а битые
+		// данные: qCompress-ветка ниже на них всё равно упадёт, зато сообщение
+		// будет про zlib и уведёт диагностику не туда.
+		return nil, fmt.Errorf("payload looks like JSON but does not parse")
+	}
+
 	// qCompress framing: 4-byte big-endian uncompressed size + zlib stream.
 	if len(raw) < 5 {
 		return nil, fmt.Errorf("payload too short for qCompress framing (%d bytes)", len(raw))
@@ -171,6 +189,103 @@ func amneziaWGConfText(profile map[string]interface{}) (string, string) {
 		debuglog.WarnLog("Parser: vpn:// profile has %d WireGuard/AWG containers, importing %q (default container preferred)", matched, containerName)
 	}
 	return confText, containerName
+}
+
+// amneziaAllWGConfTexts возвращает ВСЕ WG/AWG-контейнеры профиля в
+// детерминированном порядке (дефолтный первым), а не только первый.
+//
+// SPEC 103 §9.B12: ParseNode отдаёт ровно одну ноду, поэтому одиночный путь
+// вынужденно берёт один контейнер и предупреждает об остальных. Но профиль с
+// несколькими локациями — штатный случай Amnezia, и терять их при импорте
+// тела подписки незачем: LxBox импортирует все, и расхождение решено в его
+// пользу (не терять данные пользователя).
+func amneziaAllWGConfTexts(profile map[string]interface{}) (texts []string, names []string) {
+	containers, _ := profile["containers"].([]interface{})
+	defaultName, _ := profile["defaultContainer"].(string)
+
+	ordered := make([]map[string]interface{}, 0, len(containers))
+	for _, c := range containers {
+		cm, ok := c.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if name, _ := cm["container"].(string); name != "" && name == defaultName {
+			ordered = append([]map[string]interface{}{cm}, ordered...)
+		} else {
+			ordered = append(ordered, cm)
+		}
+	}
+
+	for _, cm := range ordered {
+		if txt := findWGIniText(cm, 0); txt != "" {
+			name, _ := cm["container"].(string)
+			texts = append(texts, txt)
+			names = append(names, name)
+		}
+	}
+	return texts, names
+}
+
+// ParseAmneziaVPNLinkAll разбирает vpn://-ссылку во ВСЕ её WG/AWG-узлы.
+//
+// Используется там, где вызывающий умеет принять несколько нод: тело
+// подписки (BodyKindVPNLink) и импорт из файла. Одиночный ParseNode
+// продолжает отдавать один узел — сигнатуру менять нельзя, её зовут из
+// построчного разбора URI-списка.
+//
+// Битый контейнер пропускается со счётчиком: профиль с четырьмя локациями,
+// одна из которых без Endpoint, обязан дать три ноды, а не ошибку.
+func ParseAmneziaVPNLinkAll(uri string, skipFilters []map[string]string) ([]*configtypes.ParsedNode, int, error) {
+	if len(uri) > maxAmneziaLinkLength {
+		return nil, 0, fmt.Errorf("vpn:// link length (%d) exceeds maximum (%d)", len(uri), maxAmneziaLinkLength)
+	}
+	payload := strings.TrimPrefix(strings.TrimSpace(uri), "vpn://")
+	profile, err := decodeAmneziaProfile(payload)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to decode vpn:// profile: %w", err)
+	}
+
+	texts, names := amneziaAllWGConfTexts(profile)
+	if len(texts) == 0 {
+		return nil, 0, fmt.Errorf("vpn:// profile has no WireGuard/AmneziaWG config (containers: %s)",
+			strings.Join(amneziaContainerNames(profile), ", "))
+	}
+
+	baseLabel := amneziaString(profile, "description")
+	if baseLabel == "" {
+		baseLabel = amneziaString(profile, "hostName")
+	}
+
+	nodes := make([]*configtypes.ParsedNode, 0, len(texts))
+	skipped := 0
+	for i, confText := range texts {
+		// Метка узла: описание профиля, а при нескольких контейнерах — с
+		// именем контейнера, иначе все локации получат одинаковый тег и
+		// MakeTagUnique размножит их в «…-2», «…-3» без смысла.
+		label := baseLabel
+		if label == "" {
+			label = names[i]
+		} else if len(texts) > 1 && names[i] != "" {
+			label = label + " " + names[i]
+		}
+
+		wgURI, convErr := wgConfToURI(confText, label)
+		if convErr != nil {
+			debuglog.WarnLog("Parser: vpn:// container %q: %v", names[i], convErr)
+			skipped++
+			continue
+		}
+		node, parseErr := parseWireGuardURI(wgURI, skipFilters)
+		if parseErr != nil {
+			debuglog.WarnLog("Parser: vpn:// container %q: %v", names[i], parseErr)
+			skipped++
+			continue
+		}
+		if node != nil {
+			nodes = append(nodes, node)
+		}
+	}
+	return nodes, skipped, nil
 }
 
 // findWGIniText recursively searches a decoded profile value for a WireGuard

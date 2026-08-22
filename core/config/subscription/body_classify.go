@@ -26,6 +26,18 @@ const (
 	BodyKindSingboxConfig
 	// BodyKindSingboxConfigArray — массив целых sing-box конфигов.
 	BodyKindSingboxConfigArray
+	// BodyKindWGConf — INI-текст wg-quick: [Interface]/[Peer] (SPEC 103 B11).
+	//
+	// Провайдеры WireGuard/AmneziaWG раздают по ссылке подписки именно .conf,
+	// а не URI-список. До этого такое тело уходило в построчный разбор, где
+	// каждая строка «PrivateKey = …» не была ссылкой, и подписка давала ноль
+	// узлов без единого сообщения об ошибке.
+	BodyKindWGConf
+	// BodyKindVPNLink — Amnezia vpn://-ссылка как целое тело подписки.
+	//
+	// Проверяется ПЕРВОЙ, до base64-эвристики: ':' не входит в base64-алфавит,
+	// и без явной ветки тело уходило бы в декодер как испорченный base64.
+	BodyKindVPNLink
 )
 
 // String — человекочитаемое имя для логов.
@@ -41,6 +53,10 @@ func (k BodyKind) String() string {
 		return "singbox-config"
 	case BodyKindSingboxConfigArray:
 		return "singbox-config-array"
+	case BodyKindWGConf:
+		return "wgconf"
+	case BodyKindVPNLink:
+		return "vpn-link"
 	default:
 		return "uri-list"
 	}
@@ -77,14 +93,50 @@ func ClassifySubscriptionBody(body string) BodyKind {
 		return BodyKindURIList
 	}
 
+	// vpn:// — раньше всех: ссылка целиком и есть тело (SPEC 103 §9.B12).
+	if strings.HasPrefix(strings.ToLower(trimmed), "vpn://") {
+		return BodyKindVPNLink
+	}
+
 	switch trimmed[0] {
 	case '[':
-		return classifyJSONArrayBody(trimmed)
+		// '[' начинает и JSON-массив, и INI-секцию wg-quick. JSON проверяется
+		// первым: тело "[Interface]…" невалидно как JSON, и разбор массива
+		// вернёт URI-list, после чего INI-проба даст верный ответ.
+		if kind := classifyJSONArrayBody(trimmed); kind != BodyKindURIList {
+			return kind
+		}
+		if looksLikeWGConf(trimmed) {
+			return BodyKindWGConf
+		}
+		return BodyKindURIList
 	case '{':
 		return classifyJSONObjectBody(trimmed)
 	default:
+		// Комментарий или пустые строки перед [Interface] — тело всё ещё conf.
+		if looksLikeWGConf(trimmed) {
+			return BodyKindWGConf
+		}
 		return BodyKindURIList
 	}
+}
+
+// looksLikeWGConf распознаёт тело wg-quick по секции [Interface].
+//
+// Одной секции достаточно: [Peer] может отсутствовать у заготовки, а вот
+// [Interface] есть в любом валидном conf. Требовать оба — значит молча ронять
+// в URI-ветку файл, который пользователь считает конфигом.
+func looksLikeWGConf(body string) bool {
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.EqualFold(line, "[interface]") {
+			return true
+		}
+	}
+	return false
 }
 
 // classifyJSONArrayBody разбирает тело-массив.

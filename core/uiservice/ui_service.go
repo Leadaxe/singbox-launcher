@@ -81,8 +81,8 @@ type UIService struct {
 	LxdOverrideConnectFunc    func(id string) error
 	LxdOverrideDisconnectFunc func()
 	LxdOverrideStateFunc      func() (id, name string, active bool)
-	FocusOpenChildWindows    func()                                     // Focus one of wizard child windows (View, Outbound Edit, rule dialog) when user clicks wizard
-	ShowUpdatePopupFunc      func(currentVersion, latestVersion string) // Called to show update popup
+	FocusOpenChildWindows     func()                                     // Focus one of wizard child windows (View, Outbound Edit, rule dialog) when user clicks wizard
+	ShowUpdatePopupFunc       func(currentVersion, latestVersion string) // Called to show update popup
 
 	// Dependencies (passed from AppController)
 	RunningStateIsRunning func() bool

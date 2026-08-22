@@ -1,0 +1,4 @@
+# sing-box: одиночный outbound-объект (BodyKindSingboxOutbound).
+# "type" читается РАНЬШЕ "outbounds" — иначе одиночный selector, несущий оба
+# поля, был бы принят за целый конфиг с самим собой внутри (SPEC 094 A1).
+{"type":"vless","tag":"sb-single","server":"example-1.com","server_port":443,"uuid":"11111111-1111-1111-1111-111111111111","tls":{"enabled":true,"server_name":"example-1.com"}}

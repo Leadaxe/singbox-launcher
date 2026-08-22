@@ -1,0 +1,6 @@
+# Amnezia vpn://-профиль как ЦЕЛОЕ тело подписки (SPEC 103 §9.B12).
+# Два WG/AWG-контейнера: defaultContainer=amnezia-awg (example-1.com) и
+# amnezia-wireguard (example-2.com). Импортируются ОБА — профиль с
+# несколькими локациями штатен для Amnezia, терять их незачем.
+# Ключи — синтетические заглушки правильной длины; qCompress+zlib+base64url.
+vpn://AAADPnjarZLfS8MwEMf_lZJn13XVwRzsYagPczAK-rYMuSXXGUiTkmSbWvq_e-kehsikoneB8L0f3PHhGiasCaAMOs-mybo5a5IMKoMfCgZw3LErkvRNk4Zp8OGFCksVNWs4OwlOirP1wgR0JQjccG4Kpw4QcInvySyB3jafUe9cSofeU-MoSydplubD65zi96unGEs7J01vXSC6bt5-q5U4jdv2tm7cg5G1VSZQJ75BVWscjFJhq-l4NMmzuI_W9ohyUcSVsrTzYUwUhE_5gCYsEWvQ6oBUkY_jbgSOs0dxYnPDWcva9iq5APqoHO724GTEfRZ_gi5623fot7-HLnvbJej5P0CPlDfEUGIJex3ufrhqiV44VQdlTcw-ow9J4WypNMb0q_VhBRXG3JezYO0nIBQX8w

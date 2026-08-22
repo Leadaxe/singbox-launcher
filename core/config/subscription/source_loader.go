@@ -346,6 +346,60 @@ func LoadNodesFromSourceEx(
 
 				bodyKind := ClassifySubscriptionBody(contentStr)
 
+				// SPEC 103 B11: подписка отдала wg-quick .conf. Тело сводится к
+				// каноническим wireguard://-URI ДО ветвления, и дальше идёт тем
+				// же путём, что URI-список: разбор, AWG-поля и кламп MTU уже
+				// реализованы в parseWireGuardURI, а второй разбор INI
+				// разъехался бы с первым при первой же правке.
+				if bodyKind == BodyKindVPNLink {
+					// SPEC 103 §9.B12: тело — Amnezia-профиль. Импортируются
+					// ВСЕ WG/AWG-контейнеры: профиль с несколькими локациями —
+					// штатный случай, и терять их незачем (одиночный ParseNode
+					// вынужденно берёт один, потому что отдаёт одну ноду).
+					vpnNodes, skippedContainers, vpnErr := ParseAmneziaVPNLinkAll(contentStr, proxySource.Skip)
+					if vpnErr != nil {
+						debuglog.WarnLog("Parser: vpn:// subscription %s: %v", proxySource.Source, vpnErr)
+					} else {
+						if skippedContainers > 0 {
+							debuglog.WarnLog("Parser: vpn:// subscription %s: %d container(s) skipped",
+								proxySource.Source, skippedContainers)
+						}
+						vpnNodes = dedupNodesByIdentity(vpnNodes)
+						nodeNum := 0
+						for _, node := range vpnNodes {
+							if nodesFromThisSource >= configtypes.MaxNodesPerSubscription {
+								skippedDueToLimit++
+								continue
+							}
+							nodeNum++
+							applyTagsToSingboxNode(node, proxySource, nodeNum, tagCounts)
+							nodes = append(nodes, node)
+							nodesFromThisSource++
+						}
+						debuglog.DebugLog("LoadNodesFromSource: vpn:// subscription %d/%d: %d node(s)",
+							subscriptionIndex+1, totalSubscriptions, len(vpnNodes))
+					}
+					// Тело обработано целиком — построчный разбор не нужен.
+					contentStr = ""
+					bodyKind = BodyKindURIList
+				}
+
+				if bodyKind == BodyKindWGConf {
+					wgURIs, skippedBlocks := WGConfBodyToURIs(contentStr)
+					if skippedBlocks > 0 {
+						debuglog.WarnLog("Parser: wg-quick subscription %s: %d block(s) skipped (no [Peer] endpoint)",
+							proxySource.Source, skippedBlocks)
+					}
+					if len(wgURIs) == 0 {
+						debuglog.WarnLog("Parser: wg-quick subscription %s: no usable [Interface] block",
+							proxySource.Source)
+					}
+					debuglog.DebugLog("LoadNodesFromSource: wg-quick subscription %d/%d: %d URI(s)",
+						subscriptionIndex+1, totalSubscriptions, len(wgURIs))
+					contentStr = strings.Join(wgURIs, "\n")
+					bodyKind = BodyKindURIList
+				}
+
 				if bodyKind.IsSingbox() {
 					// SPEC 094 фаза A: подписка отдала sing-box JSON —
 					// одиночный outbound, массив outbound'ов, целый конфиг
