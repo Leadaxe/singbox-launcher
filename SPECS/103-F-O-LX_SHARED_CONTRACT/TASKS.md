@@ -72,12 +72,14 @@
 - [x] Перенос disabled-нод по identity-хешу (unix seconds); ключи проверяются на формат 64 hex
 - [x] Переменные — только portable из реестра; список сгенерирован и сверяется тестом
 - [x] `platform.PickSaveFile` — нативный диалог сохранения (macOS/Windows/Linux) парно к `PickOpenFile`
-- [ ] LxBox: export/import (settings ↔ backup; allowlist §159 расширен под формат) + пункт на backup-экране + хранение чужого блоба extensions
-- [ ] LxBox: раннер `corpus/backup/`
+- [x] LxBox: `lib/services/lx_backup.dart` — build/parse LX Backup, mobile-only матчеры в `extensions.lxbox`, хранение чужого блоба
+- [x] LxBox: раннер `corpus/backup/` (7/7) + 12 собственных тестов
+- [ ] LxBox: пункт на backup-экране (UI) — ядро готово, экран не подключён
 - [ ] Документация состояния/правил: лаунчер `WIZARD_STATE.md` (+.ru) ↔ LxBox `STORAGE.md` — дополнить форматом LX Backup (D-020)
 
-## Фаза 5 — Процесс
+## Фаза 5 — Процесс ✅
 
-- [ ] «Контракт раньше кода»: поправка в CONSTITUTION.md лаунчера; в LxBox — создать документ принципов (или раздел в AGENTS.md — CONSTITUTION там нет) + PR-чеклисты
-- [ ] CI-пин contract.lock в LxBox; договорённость о версионировании (semver VERSION)
-- [ ] (опц., решение пользователя) вынос `contract/` в отдельный репо `lx-contract`
+- [x] «Контракт раньше кода»: `CONSTITUTION.md` §7.3 (лаунчер) + раздел «Контракт с лаунчером» в `AGENTS.md` (LxBox)
+- [x] CI-пин contract.lock: `tool/check_contract_lock.dart` + шаг «Contract lock» в CI LxBox; алгоритм хеша повторяет `sync_contract.sh` дословно
+- [x] Версионирование — semver в `contract/VERSION`, правило записано в CONSTITUTION §7.3
+- [~] Вынос `contract/` в отдельный репозиторий — **решено НЕ выносить** (решение пользователя)
