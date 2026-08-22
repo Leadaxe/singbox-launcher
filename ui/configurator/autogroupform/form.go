@@ -42,6 +42,24 @@ type VarChoices struct {
 	LabelToValue map[string]string
 }
 
+// defaultLabel — вариант для незаданного поля: первый в списке, то есть
+// placeholder «@urltest_*» («наследовать из Settings»). Пусто только если
+// список не собрался — тогда и подставлять нечего.
+func (c VarChoices) defaultLabel() string {
+	if len(c.Labels) == 0 {
+		return ""
+	}
+	return c.Labels[0]
+}
+
+// Умолчания полей пула (SPEC 088). Числовые, а не ссылки на переменные:
+// шаблон переменных для пула не объявляет, а нулевой пул — это не
+// «наследовать», а группа, которая ничего не выбирает.
+const (
+	defaultPoolSize      = 3
+	defaultPoolTolerance = 0
+)
+
 // Choices — списки значений для трёх полей, берущиеся из переменных
 // шаблона (`@urltest_*`): пользователь должен иметь возможность выбрать
 // «наследовать из Settings», а не только конкретное число.
@@ -169,11 +187,19 @@ func (f *Form) Load(a *configtypes.DirectionAuto) {
 	}
 	f.ModeSelect.OnChanged = func(string) { f.syncBalancerVisible() }
 
-	f.IntervalSelect.SetSelected("")
-	f.ToleranceSelect.SetSelected("")
-	f.URLEntry.SetText("")
-	f.PoolEntry.SetText("")
-	f.PoolToleranceEntry.SetText("")
+	// Незаданное поле показывает НЕ пустоту, а первый вариант списка —
+	// сам placeholder «@urltest_*», то есть «наследовать значение из
+	// Settings». Пустой выбор здесь означал бы, что группа уедет в конфиг
+	// вообще без интервала и tolerance, и пользователь об этом не узнал
+	// бы: «(Select one)» читается как «ещё не выбрано», а не как «ничего».
+	f.IntervalSelect.SetSelected(f.choices.Interval.defaultLabel())
+	f.ToleranceSelect.SetSelected(f.choices.Tolerance.defaultLabel())
+	f.URLEntry.SetText(f.choices.URL.defaultLabel())
+	// У пула дефолты числовые: размер 0 — это не «наследовать», а
+	// неработающая группа, поэтому подставляем то же, что стояло
+	// подсказкой в пустом поле.
+	f.PoolEntry.SetText(strconv.Itoa(defaultPoolSize))
+	f.PoolToleranceEntry.SetText(strconv.Itoa(defaultPoolTolerance))
 	for _, ch := range f.StickyChecks {
 		ch.SetChecked(false)
 	}
@@ -189,7 +215,9 @@ func (f *Form) Load(a *configtypes.DirectionAuto) {
 				f.ToleranceSelect.SetSelected(lbl)
 			}
 		}
-		f.URLEntry.SetText(a.URL)
+		if a.URL != "" {
+			f.URLEntry.SetText(a.URL)
+		}
 		if a.Pool > 0 {
 			f.PoolEntry.SetText(strconv.Itoa(a.Pool))
 		}

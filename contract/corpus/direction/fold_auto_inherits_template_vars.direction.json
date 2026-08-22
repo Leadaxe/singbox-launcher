@@ -1,0 +1,10 @@
+{
+  "_": "Свёртка с ненастроенной автогруппой: форма отдаёт ссылки на переменные шаблона (@urltest_*), а не пустоту — незаданное поле означает «наследовать из Settings», и группа не должна уехать в конфиг без интервала",
+  "tag_prefix": "AL:",
+  "fold": { "mode": "auto", "auto": { "interval": "@urltest_interval", "url": "@urltest_url" } },
+  "directions": [
+    { "tag": "vpn-1", "label": "Main" }
+  ],
+  "node_tags": ["AL:tokyo", "AL:osaka"],
+  "magic": { "block": "block-out", "direct": "direct-out" }
+}

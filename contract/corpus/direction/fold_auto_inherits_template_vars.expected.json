@@ -1,0 +1,21 @@
+{
+  "groups": [
+    {
+      "interval": "5m",
+      "outbounds": [
+        "AL:tokyo",
+        "AL:osaka"
+      ],
+      "tag": "AL:auto",
+      "type": "urltest",
+      "url": "https://cp.cloudflare.com/generate_204"
+    },
+    {
+      "outbounds": [
+        "AL:auto"
+      ],
+      "tag": "vpn-1",
+      "type": "selector"
+    }
+  ]
+}
