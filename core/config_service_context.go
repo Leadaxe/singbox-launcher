@@ -78,6 +78,10 @@ func (ac *AppController) buildContextFromState(s *state.State, cache *build.Pars
 		SrsCachedPaths:      build.CollectSrsCachedPaths(s.Rules, execDir, ""),
 		TemplateDNSDefaults: parseTemplateDNSDefaultsFromTD(td),
 		ExecDir:             execDir,
+		// SPEC 106 (G3): тело пресета видит глобальные переменные шаблона для
+		// имён, которых не объявило у себя — настройка со вкладки Settings
+		// (@tun, @resolve_strategy) не дублируется в каждом пресете.
+		GlobalVars: ctx.Vars,
 	}
 	return ctx
 }
