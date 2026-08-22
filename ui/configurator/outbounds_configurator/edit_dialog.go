@@ -461,19 +461,48 @@ func ShowEditDialog(
 			}
 		}
 	}
+	// Ряд «подпись — поле» на Border с подписью фиксированной ширины.
+	// GridWithColumns(2) делит ширину поровну, и узкие подписи («URL»,
+	// «Interval») отжимали поля на половину диалога.
+	autoRow := func(label fyne.CanvasObject, field fyne.CanvasObject) fyne.CanvasObject {
+		const labelWidth = 150
+		box := container.NewGridWrap(
+			fyne.NewSize(labelWidth, label.MinSize().Height), label)
+		return container.NewBorder(nil, nil, box, nil, field)
+	}
+	autoTextRow := func(text string, field fyne.CanvasObject) fyne.CanvasObject {
+		return autoRow(widget.NewLabel(text), field)
+	}
+
 	autoBalancerBlock := container.NewVBox(
-		container.NewGridWithColumns(2, widget.NewLabel("Pool size"), autoPoolEntry),
-		container.NewGridWithColumns(2, widget.NewLabel("Pool tolerance (ms)"), autoPoolToleranceEntry),
+		autoTextRow("Pool size", autoPoolEntry),
+		autoTextRow("Pool tolerance (ms)", autoPoolToleranceEntry),
 		widget.NewLabel("Sticky hash"),
 		autoStickyRow,
 	)
-	autoTabContent := container.NewVBox(
-		widget.NewLabel(locale.T("wizard.outbound.auto_tab_hint")),
-		container.NewGridWithColumns(2, autoModeLabel, autoModeSelect),
-		container.NewGridWithColumns(2, widget.NewLabel("Interval"), autoIntervalSelect),
-		container.NewGridWithColumns(2, widget.NewLabel("Tolerance (ms)"), autoToleranceSelect),
-		container.NewGridWithColumns(2, widget.NewLabel("URL"), autoURLEntry),
+
+	// Подсказка ОБЯЗАНА переноситься: у Label без Wrapping минимальная
+	// ширина равна длине строки, и она растягивает всё содержимое — поля
+	// уезжают за правый край окна.
+	autoHint := widget.NewLabel(locale.T("wizard.outbound.auto_tab_hint"))
+	autoHint.Wrapping = fyne.TextWrapWord
+
+	autoTabForm := container.NewVBox(
+		autoHint,
+		autoRow(autoModeLabel, autoModeSelect),
+		autoTextRow("Interval", autoIntervalSelect),
+		autoTextRow("Tolerance (ms)", autoToleranceSelect),
+		autoTextRow("URL", autoURLEntry),
 		autoBalancerBlock,
+	)
+	// Та же ширина и отступ под скроллбар, что у вкладки Settings.
+	autoRightGap := canvas.NewRectangle(color.Transparent)
+	autoRightGap.SetMinSize(fyne.NewSize(20, 0))
+	autoWidthSpacer := canvas.NewRectangle(color.Transparent)
+	autoWidthSpacer.SetMinSize(fyne.NewSize(400, 0))
+	autoTabContent := container.NewStack(
+		autoWidthSpacer,
+		container.NewBorder(nil, nil, nil, autoRightGap, autoTabForm),
 	)
 	autoBalancerVisible := func() {
 		if autoModeSelect.Selected == locale.T("wizard.outbound.auto_mode_round_robin") {
@@ -1029,7 +1058,9 @@ func ShowEditDialog(
 		rawEntry.SetText(string(b))
 	}
 
-	autoTabItem := container.NewTabItem(locale.T("wizard.outbound.tab_auto"), container.NewScroll(autoTabContent))
+	autoScroll := container.NewScroll(autoTabContent)
+	autoScroll.SetMinSize(fyne.NewSize(400, 400))
+	autoTabItem := container.NewTabItem(locale.T("wizard.outbound.tab_auto"), autoScroll)
 	tabs := container.NewAppTabs(
 		container.NewTabItem(locale.T("wizard.outbound.tab_settings"), dialogScroll),
 		container.NewTabItem(locale.T("wizard.outbound.tab_raw"), rawContainer),
