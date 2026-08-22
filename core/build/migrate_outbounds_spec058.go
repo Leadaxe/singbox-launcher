@@ -52,7 +52,7 @@ import (
 // computing merged_base — какие preset patches должны быть применены к
 // template_body чтобы корректно diff'нуть юзерский USER patch.
 func MigrateOutboundsToReferencedShape(
-	outbounds *[]configtypes.OutboundConfig,
+	outbounds *[]configtypes.Direction,
 	rules []state.Rule,
 	td *template.TemplateData,
 	target template.TargetSpec,
@@ -61,7 +61,7 @@ func MigrateOutboundsToReferencedShape(
 		return false
 	}
 	tmplOutbounds := td.GlobalOutbounds()
-	tmplByTag := make(map[string]configtypes.OutboundConfig, len(tmplOutbounds))
+	tmplByTag := make(map[string]configtypes.Direction, len(tmplOutbounds))
 	for _, t := range tmplOutbounds {
 		tmplByTag[t.Tag] = t
 	}
@@ -78,7 +78,7 @@ func MigrateOutboundsToReferencedShape(
 	// Preset add bodies by tag (mode=add) — для preset_id classify.
 	type presetAdd struct {
 		ID   string
-		Body configtypes.OutboundConfig
+		Body configtypes.Direction
 	}
 	presetAddByTag := make(map[string]presetAdd)
 

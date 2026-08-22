@@ -25,7 +25,7 @@ func TestStateFull(t *testing.T) {
 			{Kind: state.DNSServerKindTemplate, Tag: "google_doh", Enabled: true},
 		},
 	}
-	st.Connections.Outbounds = []configtypes.OutboundConfig{
+	st.Connections.Outbounds = []configtypes.Direction{
 		{Tag: "proxy-out", Ref: configtypes.RefTemplate},
 	}
 	ff := &fakeFacade{stateValue: st}
@@ -374,13 +374,13 @@ func TestStateDNSRulesPatchBadJSON(t *testing.T) {
 // tests under core/build/), just verify the endpoint shape.
 func TestStateOutboundsResolved(t *testing.T) {
 	st := state.New()
-	st.Connections.Outbounds = []configtypes.OutboundConfig{
+	st.Connections.Outbounds = []configtypes.Direction{
 		{Tag: "my-direct", Type: "direct"},
 	}
 	ff := &fakeFacade{stateValue: st, templateValue: &template.TemplateData{}}
 	base, _ := newTestServer(t, ff)
 	var got struct {
-		Outbounds []configtypes.OutboundConfig `json:"outbounds"`
+		Outbounds []configtypes.Direction `json:"outbounds"`
 	}
 	status, _ := doJSON(t, authedReq(t, "GET", base+"/state/outbounds/resolved", nil), &got)
 	if status != 200 {

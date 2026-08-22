@@ -77,9 +77,9 @@ const MaxNodesPerSubscription = 3000
 // Clean structure for version 4 (legacy versions are migrated automatically)
 type ParserConfig struct {
 	ParserConfig struct {
-		Version   int              `json:"version,omitempty"`
-		Proxies   []ProxySource    `json:"proxies"`
-		Outbounds []OutboundConfig `json:"outbounds"`
+		Version   int           `json:"version,omitempty"`
+		Proxies   []ProxySource `json:"proxies"`
+		Outbounds []Direction   `json:"outbounds"`
 		Parser    struct {
 			Reload      string `json:"reload,omitempty"`       // Интервал автоматического обновления
 			LastUpdated string `json:"last_updated,omitempty"` // Время последнего обновления (RFC3339, UTC)
@@ -92,7 +92,7 @@ type ProxySource struct {
 	Source      string              `json:"source,omitempty"`
 	Connections []string            `json:"connections,omitempty"`
 	Skip        []map[string]string `json:"skip,omitempty"`
-	Outbounds   []OutboundConfig    `json:"outbounds,omitempty"`   // Local outbounds for this source (version 4)
+	Outbounds   []Direction         `json:"outbounds,omitempty"`   // Local outbounds for this source (version 4)
 	TagPrefix   string              `json:"tag_prefix,omitempty"`  // Prefix to add to all node tags from this source
 	TagPostfix  string              `json:"tag_postfix,omitempty"` // Postfix to add to all node tags from this source
 	TagMask     string              `json:"tag_mask,omitempty"`    // Mask to replace entire tag (ignores tag_prefix and tag_postfix if set)
@@ -148,7 +148,7 @@ type ProxySource struct {
 	ConfigJSON json.RawMessage `json:"config_json,omitempty"`
 }
 
-// Sentinel ref values for OutboundConfig (SPEC 058-R-N STATE_AS_TEMPLATE_DIFF).
+// Sentinel ref values for Direction (SPEC 058-R-N STATE_AS_TEMPLATE_DIFF).
 //
 // Outbound entries в state.connections.outbounds[] делятся на два класса:
 //   - **Direct (прямые):** self-contained body. `Ref` пустой (поле отсутствует в JSON).
@@ -168,7 +168,7 @@ const (
 	RefUser     = "#USER#"     // только в state.outbounds[].updates[].ref — user patch
 )
 
-// OutboundConfig represents an outbound selector configuration.
+// Direction represents an outbound selector configuration.
 //
 // **Origin class (SPEC 058-R-N):**
 //   - `Ref == ""` (поле отсутствует) — direct entry, body inline в state. Full ownership.
@@ -186,7 +186,7 @@ const (
 // не должен быть полностью удалён (UI блокирует Del, но Edit + Reset OK).
 // В state.json приходит из миграции wizard.required (legacy) → required.
 // В template — `required: true` на уровне outbound.
-type OutboundConfig struct {
+type Direction struct {
 	Tag              string                 `json:"tag"`
 	Type             string                 `json:"type,omitempty"`
 	Options          map[string]interface{} `json:"options,omitempty"`
@@ -201,7 +201,7 @@ type OutboundConfig struct {
 	Updates []OutboundUpdate `json:"updates,omitempty"` // стек patches: preset patches в rule order + опц. USER patch (всегда последний)
 }
 
-// OutboundUpdate — одна запись в стеке `OutboundConfig.Updates` (SPEC 057/058-R-N).
+// OutboundUpdate — одна запись в стеке `Direction.Updates` (SPEC 057/058-R-N).
 //
 // `Ref` принимает:
 //   - `<preset_id>` — patch от активного preset'а (mode=update). Stale → drop через sync.
@@ -217,17 +217,17 @@ type OutboundUpdate struct {
 
 // IsReferenced возвращает true если entry — referenced (#TEMPLATE# или preset_id),
 // false для direct (пустой Ref). Body для referenced live из template/preset.
-func (oc *OutboundConfig) IsReferenced() bool {
+func (oc *Direction) IsReferenced() bool {
 	return oc.Ref != ""
 }
 
 // IsTemplateRef возвращает true если entry ссылается на template global outbound.
-func (oc *OutboundConfig) IsTemplateRef() bool {
+func (oc *Direction) IsTemplateRef() bool {
 	return oc.Ref == RefTemplate
 }
 
 // IsPresetRef возвращает true если entry ссылается на preset add outbound.
-func (oc *OutboundConfig) IsPresetRef() bool {
+func (oc *Direction) IsPresetRef() bool {
 	return oc.Ref != "" && oc.Ref != RefTemplate
 }
 

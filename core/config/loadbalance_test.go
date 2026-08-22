@@ -9,7 +9,7 @@ import (
 // loop; these tests lock the sing-box-lx load-balancing contract (SPEC 088 /
 // core SPEC 019): round_robin + balancer pass through, the sticky_hash sentinel
 // is respected, and a plain urltest stays clean.
-func genSelector(t *testing.T, cfg OutboundConfig) string {
+func genSelector(t *testing.T, cfg Direction) string {
 	t.Helper()
 	out, err := GenerateSelectorWithFilteredAddOutbounds(
 		[]*ParsedNode{{Tag: "n1"}, {Tag: "n2"}},
@@ -25,7 +25,7 @@ func genSelector(t *testing.T, cfg OutboundConfig) string {
 }
 
 func TestGenerator_RoundRobinBalancer(t *testing.T) {
-	cfg := OutboundConfig{
+	cfg := Direction{
 		Tag:  "auto",
 		Type: "urltest",
 		Options: map[string]interface{}{
@@ -49,7 +49,7 @@ func TestGenerator_RoundRobinBalancer(t *testing.T) {
 // The core treats an empty sticky_hash as "use default", NOT "off"; the
 // generator must never emit a bare []  (only the explicit ["none"] disables it).
 func TestGenerator_EmptyStickyHashDropped(t *testing.T) {
-	cfg := OutboundConfig{
+	cfg := Direction{
 		Tag:  "auto",
 		Type: "urltest",
 		Options: map[string]interface{}{
@@ -70,7 +70,7 @@ func TestGenerator_EmptyStickyHashDropped(t *testing.T) {
 }
 
 func TestGenerator_ExplicitNoneSentinelKept(t *testing.T) {
-	cfg := OutboundConfig{
+	cfg := Direction{
 		Tag:  "auto",
 		Type: "urltest",
 		Options: map[string]interface{}{
@@ -86,7 +86,7 @@ func TestGenerator_ExplicitNoneSentinelKept(t *testing.T) {
 
 // A plain urltest (no mode/balancer) must not gain any load-balancing keys.
 func TestGenerator_PlainUrltestUnchanged(t *testing.T) {
-	cfg := OutboundConfig{
+	cfg := Direction{
 		Tag:     "auto",
 		Type:    "urltest",
 		Options: map[string]interface{}{"url": "https://x/y"},
@@ -100,7 +100,7 @@ func TestGenerator_PlainUrltestUnchanged(t *testing.T) {
 // Options keys emit in deterministic (sorted) order — guards against flaky
 // byte-exact golden fixtures from Go's randomized map range.
 func TestGenerator_DeterministicOptionOrder(t *testing.T) {
-	cfg := OutboundConfig{
+	cfg := Direction{
 		Tag:  "auto",
 		Type: "urltest",
 		Options: map[string]interface{}{

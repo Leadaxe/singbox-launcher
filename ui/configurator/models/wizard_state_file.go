@@ -38,10 +38,6 @@ type (
 	// state.LegacyDNSOptionsV5 to preserve callsite expectations.
 	PersistedDNSState = corestate.LegacyDNSOptionsV5
 
-	// SPEC 104: каналы роутинга в модели визарда.
-	Channel     = corestate.Channel
-	ChannelAuto = corestate.ChannelAuto
-
 	// SPEC 052 phase 7: v5-источники в wizard model.
 	Source             = corestate.Source
 	SourceType         = corestate.SourceType
@@ -192,10 +188,4 @@ func DetermineRuleType(rule map[string]interface{}) string {
 func hasKey(m map[string]interface{}, key string) bool {
 	_, ok := m[key]
 	return ok
-}
-
-// ChannelTags — теги каналов и их auto-групп (SPEC 104). Реэкспорт из
-// core/state, чтобы UI-код не тянул нижний слой напрямую.
-func ChannelTags(channels []Channel) []string {
-	return corestate.ChannelTags(channels)
 }

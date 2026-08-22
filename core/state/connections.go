@@ -11,9 +11,9 @@ import (
 
 // ConnectionsSection — раздел подключений: sources + global outbounds + defaults.
 type ConnectionsSection struct {
-	Sources   []Source                     `json:"sources"`
-	Outbounds []configtypes.OutboundConfig `json:"outbounds"`
-	Defaults  Defaults                     `json:"defaults"`
+	Sources   []Source                `json:"sources"`
+	Outbounds []configtypes.Direction `json:"outbounds"`
+	Defaults  Defaults                `json:"defaults"`
 }
 
 // Defaults — настройки по умолчанию для всех source'ов (могут переопределяться
@@ -47,14 +47,14 @@ type Source struct {
 	ExcludeFromGlobal bool       `json:"exclude_from_global,omitempty"`
 
 	// type=subscription only
-	URL                     string                       `json:"url,omitempty"`
-	Skip                    []map[string]string          `json:"skip,omitempty"`
-	Tag                     *TagSpec                     `json:"tag,omitempty"`
-	Outbounds               []configtypes.OutboundConfig `json:"outbounds,omitempty"`
-	ExposeGroupTagsToGlobal bool                         `json:"expose_group_tags_to_global,omitempty"`
-	Update                  *UpdateSpec                  `json:"update,omitempty"`
-	MaxNodes                int                          `json:"max_nodes,omitempty"`
-	Meta                    *SubscriptionMeta            `json:"meta,omitempty"`
+	URL                     string                  `json:"url,omitempty"`
+	Skip                    []map[string]string     `json:"skip,omitempty"`
+	Tag                     *TagSpec                `json:"tag,omitempty"`
+	Outbounds               []configtypes.Direction `json:"outbounds,omitempty"`
+	ExposeGroupTagsToGlobal bool                    `json:"expose_group_tags_to_global,omitempty"`
+	Update                  *UpdateSpec             `json:"update,omitempty"`
+	MaxNodes                int                     `json:"max_nodes,omitempty"`
+	Meta                    *SubscriptionMeta       `json:"meta,omitempty"`
 
 	// type=server only
 	URI string `json:"uri,omitempty"`

@@ -69,7 +69,7 @@ func migrateV4ToV5(old *v4File, gen IDGenerator) *diskStateV5 {
 		},
 		Connections: ConnectionsSection{
 			Sources:   migrateLegacySources(old.ParserConfig.Proxies, gen),
-			Outbounds: append([]configtypes.OutboundConfig(nil), old.ParserConfig.Outbounds...),
+			Outbounds: append([]configtypes.Direction(nil), old.ParserConfig.Outbounds...),
 			Defaults: Defaults{
 				Reload:   old.ParserConfig.Parser.Reload,
 				MaxNodes: DefaultMaxNodes,

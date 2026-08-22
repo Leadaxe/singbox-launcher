@@ -45,8 +45,7 @@ developers and for understanding the template ↔ state relationship.
   "selectable_rules":[ ... ],        // legacy rules library — kept for back-compat, replaced by presets[]
   "presets":         [ ... ],        // SPEC 053 self-contained preset bundles
   "vars":            [ ... ],        // typed template variables (UI Settings tab + @var substitution)
-  "group_templates": { ... },        // SPEC 104: how a routing channel materializes
-  "default_channels":[ ... ]         // SPEC 104: the starting set of channels, seeded once
+  "group_templates": { ... }         // SPEC 104: group shapes a Direction materializes into
 }
 ```
 
@@ -138,51 +137,6 @@ substituting its literal fails → the preset is skipped with a warning.
 
 State stores **only the diff** against the template defaults in `rule.body.vars`
 (an empty `vars: {}` means the preset runs on template defaults).
-
----
-
-### 4.6 `group_templates` and `default_channels` — routing channels (SPEC 104)
-
-Channels are described **by the template**, not hard-coded in the app, so both
-the launcher and LxBox read one description and behave the same way.
-
-```jsonc
-"group_templates": {
-  "magic_nodes": {                                    // service options a channel may offer
-    "auto":   { "source": "generate", "tpl": "{parent_tag}-auto" },
-    "direct": { "source": "preset",   "tag": "direct-out" },
-    "block":  { "source": "preset",   "tag": "block-out"  }
-  },
-  "channel": { "type": "selector", "options": { "interrupt_exist_connections": true } },
-  "auto":    { "type": "urltest",  "options": { "url": "@urltest_url", "interval": "@urltest_interval" } }
-},
-
-"default_channels": [
-  { "tag": "vpn-1", "label": "VPN ①", "default_enabled": true  },
-  { "tag": "vpn-2", "label": "VPN ②", "default_enabled": false }
-]
-```
-
-- **`magic_nodes`** — tags of the service options a channel can include.
-  `source: "preset"` takes the tag verbatim; `source: "generate"` builds it from
-  `tpl` with `{parent_tag}` replaced by the channel's own tag. The direct/block
-  tags are read from here rather than assumed: they are not universal
-  (`direct-out`, `block-out` here), and hard-coding them would break a custom
-  template.
-- **`channel` / `auto`** — the group each half materializes into. `options` land
-  in the emitted group as-is, **including `@var` references**: substitution is
-  the template engine's job, and doing it here would mean a second
-  implementation of it.
-- **`default_channels`** — seeded into state **once**, when the `channels`
-  section first appears. After that the set belongs to the user: re-seeding
-  would overwrite their edits on every template update, and deleted channels
-  would come back on the next start.
-
-A template without these sections simply has no channels — the config is built
-exactly as before, and nothing in the app notices.
-
-Reading side: `core/template/channel_defaults.go`. Materialization:
-`core/build/channels.go`. Stored shape: `WIZARD_STATE.md` §3.7.
 
 ---
 

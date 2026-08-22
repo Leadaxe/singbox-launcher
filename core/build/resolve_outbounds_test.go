@@ -11,7 +11,7 @@ import (
 
 // TestApplyOutboundUpdatePatch_Empty — пустой patch = noop.
 func TestApplyOutboundUpdatePatch_Empty(t *testing.T) {
-	target := configtypes.OutboundConfig{Tag: "x", Type: "selector"}
+	target := configtypes.Direction{Tag: "x", Type: "selector"}
 	out := applyOutboundUpdatePatch(target, nil, false)
 	if out.Tag != "x" || out.Type != "selector" {
 		t.Errorf("noop patch changed target: %+v", out)
@@ -22,7 +22,7 @@ func TestApplyOutboundUpdatePatch_Empty(t *testing.T) {
 // addOutbounds целиком: снятый в форме тег (proxy-out) не должен доливаться
 // обратно union'ом из базового списка.
 func TestApplyOutboundUpdatePatch_UserAddOutboundsReplace(t *testing.T) {
-	base := configtypes.OutboundConfig{
+	base := configtypes.Direction{
 		Tag:          "Proxy group 2",
 		Type:         "selector",
 		AddOutbounds: []string{"direct-out", "proxy-out"},
@@ -39,7 +39,7 @@ func TestApplyOutboundUpdatePatch_UserAddOutboundsReplace(t *testing.T) {
 // TestApplyOutboundUpdatePatch_UserAddOutboundsClear — пустой addOutbounds в
 // USER patch = юзер снял все галки; список очищается, а не игнорируется.
 func TestApplyOutboundUpdatePatch_UserAddOutboundsClear(t *testing.T) {
-	base := configtypes.OutboundConfig{
+	base := configtypes.Direction{
 		Tag:          "Proxy group 2",
 		Type:         "selector",
 		AddOutbounds: []string{"direct-out", "proxy-out"},
@@ -56,7 +56,7 @@ func TestApplyOutboundUpdatePatch_UserAddOutboundsClear(t *testing.T) {
 // TestApplyOutboundUpdatePatch_PresetAddOutboundsUnion — preset patch сохраняет
 // union-семантику: добавляет теги к базовым, ничего не удаляя.
 func TestApplyOutboundUpdatePatch_PresetAddOutboundsUnion(t *testing.T) {
-	base := configtypes.OutboundConfig{
+	base := configtypes.Direction{
 		Tag:          "Proxy group 2",
 		Type:         "selector",
 		AddOutbounds: []string{"direct-out"},
@@ -74,7 +74,7 @@ func TestApplyOutboundUpdatePatch_PresetAddOutboundsUnion(t *testing.T) {
 // бага: referenced entry с USER patch, где юзер снял proxy-out; merged view
 // не должен содержать снятый тег.
 func TestMergeOutboundUpdates_UserPatchRemovesAddOutbound(t *testing.T) {
-	ob := configtypes.OutboundConfig{
+	ob := configtypes.Direction{
 		Tag:          "Proxy group 2",
 		Type:         "selector",
 		AddOutbounds: []string{"direct-out", "proxy-out"},
@@ -105,7 +105,7 @@ func TestMergeOutboundUpdatesInPlace_DropsOrphanedTemplateRef(t *testing.T) {
 		]}}`,
 	}
 	pc := &configtypes.ParserConfig{}
-	pc.ParserConfig.Outbounds = []configtypes.OutboundConfig{
+	pc.ParserConfig.Outbounds = []configtypes.Direction{
 		{Tag: "vpn ②", Ref: configtypes.RefTemplate},
 		{Tag: "vpn ② – detour", Ref: configtypes.RefTemplate, Updates: []configtypes.OutboundUpdate{
 			{Ref: configtypes.RefUser, Patch: map[string]interface{}{
@@ -133,7 +133,7 @@ func TestMergeOutboundUpdatesInPlace_DropsOrphanedTemplateRef(t *testing.T) {
 // body есть, type непустой.
 func TestMergeOutboundUpdatesInPlace_NilTemplateKeepsLegacyBodies(t *testing.T) {
 	pc := &configtypes.ParserConfig{}
-	pc.ParserConfig.Outbounds = []configtypes.OutboundConfig{
+	pc.ParserConfig.Outbounds = []configtypes.Direction{
 		{Tag: "legacy-group", Type: "selector", Ref: configtypes.RefTemplate},
 	}
 	MergeOutboundUpdatesInPlace(pc, nil, template.TargetSpec{})

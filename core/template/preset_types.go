@@ -99,7 +99,7 @@ type Preset struct {
 	// (патч existing outbound по Tag). См. PresetOutbound + comments в
 	// core/build/preset_outbounds.go::ApplyPresetOutboundsToParserConfig.
 	//
-	// Архитектурно — это parser-format (зеркалит configtypes.OutboundConfig).
+	// Архитектурно — это parser-format (зеркалит configtypes.Direction).
 	// Build pipeline применяет их **до** native outbound generator'а:
 	// типизированный pre-patch parserCfg.ParserConfig.Outbounds[] →
 	// нативный generator сам делает options-flatten, filters/addOutbounds
@@ -141,8 +141,8 @@ func (g presetGate) EnableRaw() interface{} {
 // PresetOutbound — entry preset.outbounds[] (SPEC 056).
 //
 // Поля Tag/Type/Options/Filters/AddOutbounds/PreferredDefault/Comment/Wizard
-// зеркалят configtypes.OutboundConfig — намеренно, чтобы Phase 3 expand
-// просто маппил поля в OutboundConfig без преобразований.
+// зеркалят configtypes.Direction — намеренно, чтобы Phase 3 expand
+// просто маппил поля в Direction без преобразований.
 //
 // Контрол-поля Mode/If/IfOr НЕ попадают в финальный config (используются
 // только на этапе ExpandPresetOutbounds для разрешения какой outbound
@@ -187,7 +187,7 @@ type PresetOutbound struct {
 	AddOutbounds []string `json:"addOutbounds,omitempty"`
 
 	// PreferredDefault — приоритетный default для selector'а
-	// (см. configtypes.OutboundConfig).
+	// (см. configtypes.Direction).
 	// mode=add: установлен.
 	// mode=update: replace целиком.
 	PreferredDefault map[string]interface{} `json:"preferredDefault,omitempty"`

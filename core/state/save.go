@@ -120,11 +120,7 @@ func (s *State) marshalDisk() ([]byte, error) {
 		DNSOptions:   s.DNS,
 		WarpAccounts: s.WarpAccounts,
 
-		// Каналы и чужие блобы бэкапа пишутся как есть; nil остаётся nil —
-		// для каналов это значимое состояние («секции ещё не было»,
-		// нужен seed из шаблона), и подмена его пустым слайсом отключила
-		// бы сидирование навсегда.
-		Channels:                s.Channels,
+		// Чужие блобы бэкапа пишутся как есть.
 		ForeignBackupExtensions: s.ForeignBackupExtensions,
 	}
 	if out.Rules == nil {
@@ -134,7 +130,7 @@ func (s *State) marshalDisk() ([]byte, error) {
 		out.Connections.Sources = []Source{}
 	}
 	if out.Connections.Outbounds == nil {
-		out.Connections.Outbounds = []configtypes.OutboundConfig{}
+		out.Connections.Outbounds = []configtypes.Direction{}
 	}
 	// SetEscapeHTML(false): по умолчанию encoding/json экранирует «&», «<» и
 	// «>» в & и подобное — защита для вставки JSON в HTML-страницу,

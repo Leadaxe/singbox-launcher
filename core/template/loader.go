@@ -91,7 +91,7 @@ type TemplateData struct {
 // (SPEC 058-R-N), а также UI код'ом для seed/restore.
 //
 // Возвращает nil если ParserConfig пуст или не парсится.
-func (td *TemplateData) GlobalOutbounds() []configtypes.OutboundConfig {
+func (td *TemplateData) GlobalOutbounds() []configtypes.Direction {
 	if td == nil || td.ParserConfig == "" {
 		return nil
 	}
@@ -104,7 +104,7 @@ func (td *TemplateData) GlobalOutbounds() []configtypes.OutboundConfig {
 
 // RequiredOutboundTags возвращает set tag'ов с `required: true` в
 // template.parser_config.outbounds[]. Читает через типизированный
-// GlobalOutbounds() — OutboundConfig имеет top-level Required field.
+// GlobalOutbounds() — Direction имеет top-level Required field.
 //
 // Legacy fallback: если в template'е остались entries с устаревшим
 // `wizard.required: 1` (до wizard wrapper cleanup'а), парсим их через

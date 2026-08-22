@@ -166,7 +166,7 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 		src.URL = ps.Source
 		src.URI = ""
 		src.Skip = ps.Skip
-		src.Outbounds = append([]configtypes.OutboundConfig(nil), ps.Outbounds...)
+		src.Outbounds = append([]configtypes.Direction(nil), ps.Outbounds...)
 		src.ExcludeFromGlobal = ps.ExcludeFromGlobal
 		src.ExposeGroupTagsToGlobal = ps.ExposeGroupTagsToGlobal
 		src.DetourTag = ps.DetourTag             // SPEC 077

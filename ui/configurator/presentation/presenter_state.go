@@ -86,15 +86,12 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	}
 	state.Connections.Sources = append([]wizardmodels.Source(nil), p.model.Sources...)
 	if len(p.model.GlobalOutbounds) > 0 {
-		state.Connections.Outbounds = append([]configtypes.OutboundConfig(nil), p.model.GlobalOutbounds...)
+		state.Connections.Outbounds = append([]configtypes.Direction(nil), p.model.GlobalOutbounds...)
 	} else {
-		state.Connections.Outbounds = []configtypes.OutboundConfig{}
+		state.Connections.Outbounds = []configtypes.Direction{}
 	}
 	state.Connections.Defaults = p.model.Defaults
 	state.WarpAccounts = p.model.WarpAccounts
-	// SPEC 104: каналы. nil остаётся nil — это значимое состояние («секции
-	// ещё не было»), по которому решается сидирование из шаблона.
-	state.Channels = p.model.Channels
 	state.ForeignBackupExtensions = p.model.ForeignBackupExtensions
 
 	// Заполняем legacy ParserConfig view ради совместимости тех тестов /
@@ -305,10 +302,7 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 	p.model.RulesLibraryMerged = true
 	p.model.SelectableRuleStates = nil
 
-	// SPEC 104: каналы восстанавливаются ДО заполнения целей правил ниже —
-	// иначе правило, ссылающееся на канал, не найдёт его в списке и было бы
-	// перезаписано умолчанием.
-	p.restoreChannels(stateFile)
+	p.model.ForeignBackupExtensions = stateFile.ForeignBackupExtensions
 
 	p.restoreCustomRules(stateFile.CustomRules)
 	// Fill SelectedOutbound for any custom rules missing it (single-pass after restore).

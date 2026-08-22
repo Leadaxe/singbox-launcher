@@ -96,13 +96,6 @@ type BuildContext struct {
 	// Zero value (пустой TargetSpec) нормализуется в «эта машина, local» —
 	// поведение вызывающих, не знающих о таргетах, не меняется.
 	Target template.TargetSpec
-
-	// Channels (SPEC 104) — каналы роутинга, материализуемые в
-	// selector/urltest-группы рядом с узлами подписок.
-	//
-	// Пусто = каналы не используются: конфиг собирается как раньше, и
-	// шаблоны без секции `group_templates` работают без изменений.
-	Channels []corestate.Channel
 }
 
 // TargetSpecFromState (SPEC 097) — TargetSpec из meta-полей state'а.
@@ -276,12 +269,6 @@ func buildSection(ctx BuildContext, key string, raw json.RawMessage, finalOutbou
 		gen := cacheOutboundsAsStrings(cache)
 		if !ctx.ForPreview && len(finalOutboundTags) > 0 {
 			gen = dropDanglingNodeDetours(gen, finalOutboundTags, true)
-		}
-		// SPEC 104: каналы идут ПОСЛЕ узлов — селектор ссылается на них по
-		// тегу, и порядок в массиве outbounds для ядра не значим, но
-		// читаемость конфига важна: сначала узлы, потом группы поверх них.
-		if groups := buildChannelGroupStrings(ctx, cache); len(groups) > 0 {
-			gen = append(gen, groups...)
 		}
 		return BuildOutboundsSection(raw, gen, ctx.ForPreview, ctx.Stats)
 	case "endpoints":

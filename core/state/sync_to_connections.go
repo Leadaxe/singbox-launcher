@@ -134,9 +134,9 @@ func syncConnectionsFromLegacy(s *State) {
 
 	// Outbounds + Defaults: legacy parser_config.outbounds → connections.outbounds.
 	if s.ParserConfig.ParserConfig.Outbounds != nil {
-		s.Connections.Outbounds = append([]configtypes.OutboundConfig(nil), s.ParserConfig.ParserConfig.Outbounds...)
+		s.Connections.Outbounds = append([]configtypes.Direction(nil), s.ParserConfig.ParserConfig.Outbounds...)
 	} else if s.Connections.Outbounds == nil {
-		s.Connections.Outbounds = []configtypes.OutboundConfig{}
+		s.Connections.Outbounds = []configtypes.Direction{}
 	}
 
 	// Defaults.Reload — следуем legacy parser_config.parser.reload.

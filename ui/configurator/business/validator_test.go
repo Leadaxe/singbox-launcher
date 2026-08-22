@@ -20,9 +20,9 @@ func TestValidateParserConfig(t *testing.T) {
 			name: "Valid ParserConfig",
 			config: &config.ParserConfig{
 				ParserConfig: struct {
-					Version   int                     `json:"version,omitempty"`
-					Proxies   []config.ProxySource    `json:"proxies"`
-					Outbounds []config.OutboundConfig `json:"outbounds"`
+					Version   int                  `json:"version,omitempty"`
+					Proxies   []config.ProxySource `json:"proxies"`
+					Outbounds []config.Direction   `json:"outbounds"`
 					Parser    struct {
 						Reload      string `json:"reload,omitempty"`
 						LastUpdated string `json:"last_updated,omitempty"`
@@ -35,7 +35,7 @@ func TestValidateParserConfig(t *testing.T) {
 							Connections: []string{"vless://uuid@server:443"},
 						},
 					},
-					Outbounds: []config.OutboundConfig{
+					Outbounds: []config.Direction{
 						{
 							Tag:  "proxy-out",
 							Type: "selector",
@@ -54,9 +54,9 @@ func TestValidateParserConfig(t *testing.T) {
 			name: "ParserConfig with nil Proxies",
 			config: &config.ParserConfig{
 				ParserConfig: struct {
-					Version   int                     `json:"version,omitempty"`
-					Proxies   []config.ProxySource    `json:"proxies"`
-					Outbounds []config.OutboundConfig `json:"outbounds"`
+					Version   int                  `json:"version,omitempty"`
+					Proxies   []config.ProxySource `json:"proxies"`
+					Outbounds []config.Direction   `json:"outbounds"`
 					Parser    struct {
 						Reload      string `json:"reload,omitempty"`
 						LastUpdated string `json:"last_updated,omitempty"`
@@ -71,9 +71,9 @@ func TestValidateParserConfig(t *testing.T) {
 			name: "ParserConfig with invalid URL",
 			config: &config.ParserConfig{
 				ParserConfig: struct {
-					Version   int                     `json:"version,omitempty"`
-					Proxies   []config.ProxySource    `json:"proxies"`
-					Outbounds []config.OutboundConfig `json:"outbounds"`
+					Version   int                  `json:"version,omitempty"`
+					Proxies   []config.ProxySource `json:"proxies"`
+					Outbounds []config.Direction   `json:"outbounds"`
 					Parser    struct {
 						Reload      string `json:"reload,omitempty"`
 						LastUpdated string `json:"last_updated,omitempty"`
@@ -92,9 +92,9 @@ func TestValidateParserConfig(t *testing.T) {
 			name: "ParserConfig with invalid URI",
 			config: &config.ParserConfig{
 				ParserConfig: struct {
-					Version   int                     `json:"version,omitempty"`
-					Proxies   []config.ProxySource    `json:"proxies"`
-					Outbounds []config.OutboundConfig `json:"outbounds"`
+					Version   int                  `json:"version,omitempty"`
+					Proxies   []config.ProxySource `json:"proxies"`
+					Outbounds []config.Direction   `json:"outbounds"`
 					Parser    struct {
 						Reload      string `json:"reload,omitempty"`
 						LastUpdated string `json:"last_updated,omitempty"`
@@ -113,16 +113,16 @@ func TestValidateParserConfig(t *testing.T) {
 			name: "ParserConfig with invalid outbound",
 			config: &config.ParserConfig{
 				ParserConfig: struct {
-					Version   int                     `json:"version,omitempty"`
-					Proxies   []config.ProxySource    `json:"proxies"`
-					Outbounds []config.OutboundConfig `json:"outbounds"`
+					Version   int                  `json:"version,omitempty"`
+					Proxies   []config.ProxySource `json:"proxies"`
+					Outbounds []config.Direction   `json:"outbounds"`
 					Parser    struct {
 						Reload      string `json:"reload,omitempty"`
 						LastUpdated string `json:"last_updated,omitempty"`
 					} `json:"parser,omitempty"`
 				}{
 					Proxies: []config.ProxySource{},
-					Outbounds: []config.OutboundConfig{
+					Outbounds: []config.Direction{
 						{
 							Tag:  "", // Empty tag should fail
 							Type: "selector",
@@ -220,12 +220,12 @@ func TestValidateURI(t *testing.T) {
 func TestValidateOutbound(t *testing.T) {
 	tests := []struct {
 		name        string
-		outbound    *config.OutboundConfig
+		outbound    *config.Direction
 		expectError bool
 	}{
 		{
 			name: "Valid outbound",
-			outbound: &config.OutboundConfig{
+			outbound: &config.Direction{
 				Tag:  "proxy-out",
 				Type: "selector",
 			},
@@ -238,7 +238,7 @@ func TestValidateOutbound(t *testing.T) {
 		},
 		{
 			name: "Empty tag",
-			outbound: &config.OutboundConfig{
+			outbound: &config.Direction{
 				Tag:  "",
 				Type: "selector",
 			},
@@ -246,7 +246,7 @@ func TestValidateOutbound(t *testing.T) {
 		},
 		{
 			name: "Empty type",
-			outbound: &config.OutboundConfig{
+			outbound: &config.Direction{
 				Tag:  "proxy-out",
 				Type: "",
 			},
@@ -254,7 +254,7 @@ func TestValidateOutbound(t *testing.T) {
 		},
 		{
 			name: "Tag too long",
-			outbound: &config.OutboundConfig{
+			outbound: &config.Direction{
 				Tag:  strings.Repeat("a", 257),
 				Type: "selector",
 			},

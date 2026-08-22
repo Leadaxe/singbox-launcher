@@ -21,9 +21,9 @@ func TestSerializeParserConfig_Standalone(t *testing.T) {
 			name: "Valid ParserConfig",
 			config: &config.ParserConfig{
 				ParserConfig: struct {
-					Version   int                     `json:"version,omitempty"`
-					Proxies   []config.ProxySource    `json:"proxies"`
-					Outbounds []config.OutboundConfig `json:"outbounds"`
+					Version   int                  `json:"version,omitempty"`
+					Proxies   []config.ProxySource `json:"proxies"`
+					Outbounds []config.Direction   `json:"outbounds"`
 					Parser    struct {
 						Reload      string `json:"reload,omitempty"`
 						LastUpdated string `json:"last_updated,omitempty"`
@@ -36,7 +36,7 @@ func TestSerializeParserConfig_Standalone(t *testing.T) {
 							Connections: []string{"vless://uuid@server:443"},
 						},
 					},
-					Outbounds: []config.OutboundConfig{
+					Outbounds: []config.Direction{
 						{Tag: "proxy-out", Type: "selector"},
 					},
 				},

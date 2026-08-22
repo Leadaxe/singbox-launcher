@@ -505,7 +505,7 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 // Returned string is one line (or comment + line), with trailing comma, ready to concatenate into the outbounds array.
 func GenerateSelectorWithFilteredAddOutbounds(
 	allNodes []*ParsedNode,
-	outboundConfig OutboundConfig,
+	outboundConfig Direction,
 	outboundsInfo map[string]*outboundInfo,
 	forGlobalOutbound bool,
 	exposeCandidates []exposeTagCandidate,

@@ -26,7 +26,7 @@ type outboundRow struct {
 	IsGlobal     bool
 	SourceIndex  int
 	IndexInSlice int
-	Outbound     *config.OutboundConfig
+	Outbound     *config.Direction
 	SourceLabel  string
 
 	// IsPreset — true для referenced preset entries (ref != "" && ref != #TEMPLATE#).
@@ -57,7 +57,7 @@ type outboundRow struct {
 // подписок, хотя в финальном config.json их нет.
 //
 // SPEC 057-R-N: preset entries в state идентифицируются по `ref` field на
-// OutboundConfig. Если ref != "" → row marked IsPreset (read-only).
+// Direction. Если ref != "" → row marked IsPreset (read-only).
 // presetTagToLabel параметр legacy (для обратной compat с тестами), но
 // state's ref имеет приоритет.
 //
@@ -153,7 +153,7 @@ func collectRows(pc *config.ParserConfig, presetTagToLabel map[string]string, re
 // для возврата случайно удалённых template entries.
 //
 // Возвращает nil/пустой slice если template не загружен или parser_config пуст.
-func templateGlobalOutbounds(model *wizardmodels.WizardModel) []config.OutboundConfig {
+func templateGlobalOutbounds(model *wizardmodels.WizardModel) []config.Direction {
 	if model == nil || model.TemplateData == nil || model.TemplateData.ParserConfig == "" {
 		return nil
 	}
@@ -174,7 +174,7 @@ func templateGlobalOutbounds(model *wizardmodels.WizardModel) []config.OutboundC
 // истины (state.json НЕ персистит required, чтобы изменение template'а сразу
 // отражалось в UI).
 //
-// Парсит template raw JSON через map (не struct), так как OutboundConfig
+// Парсит template raw JSON через map (не struct), так как Direction
 // намеренно не имеет Required field — иначе оно бы попало в state.json.
 // Возвращает nil если template не загружен.
 func templateRequiredTags(model *wizardmodels.WizardModel) map[string]bool {

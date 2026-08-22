@@ -106,9 +106,9 @@ func decodeParserConfig(raw json.RawMessage, dst *configtypes.ParserConfig) erro
 	}
 
 	var simplified struct {
-		Version   int                          `json:"version"`
-		Proxies   []configtypes.ProxySource    `json:"proxies"`
-		Outbounds []configtypes.OutboundConfig `json:"outbounds"`
+		Version   int                       `json:"version"`
+		Proxies   []configtypes.ProxySource `json:"proxies"`
+		Outbounds []configtypes.Direction   `json:"outbounds"`
 		Parser    struct {
 			Reload      string `json:"reload,omitempty"`
 			LastUpdated string `json:"last_updated,omitempty"`

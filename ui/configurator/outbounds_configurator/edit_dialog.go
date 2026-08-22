@@ -36,11 +36,11 @@ import (
 func ShowEditDialog(
 	parent fyne.Window,
 	editPresenter OutboundEditPresenter,
-	existing *config.OutboundConfig,
+	existing *config.Direction,
 	isGlobal bool,
 	sourceIndex int,
 	existingTags []string,
-	onSave func(updated *config.OutboundConfig, scopeKind string, sourceIndex int),
+	onSave func(updated *config.Direction, scopeKind string, sourceIndex int),
 ) {
 	if editPresenter != nil {
 		if w := editPresenter.OpenOutboundEditWindow(); w != nil {
@@ -344,7 +344,7 @@ func ShowEditDialog(
 	// Raw tab: editable JSON (valid outbound object)
 	initialConfig := existing
 	if initialConfig == nil {
-		initialConfig = &config.OutboundConfig{
+		initialConfig = &config.Direction{
 			Tag:          "",
 			Type:         "selector",
 			Comment:      "",
@@ -411,7 +411,7 @@ func ShowEditDialog(
 		}
 		return scopeKind, idx
 	}
-	// buildConfigForPreview builds a config.OutboundConfig snapshot based on
+	// buildConfigForPreview builds a config.Direction snapshot based on
 	// the authoritative source (settings form or raw JSON). Routes by
 	// `editSource`, not `currentTab` — preview tab itself doesn't host edits,
 	// so when called from Preview we read from wherever the user last typed.
@@ -419,9 +419,9 @@ func ShowEditDialog(
 	// `requireTag=true`: empty tag → error (save() needs a real tag).
 	// `requireTag=false`: empty tag → autoinjected "_preview_" placeholder so
 	// preview tab + syncFormToRaw work before the user has typed a name.
-	buildConfigForPreview := func(requireTag bool) (*config.OutboundConfig, error) {
+	buildConfigForPreview := func(requireTag bool) (*config.Direction, error) {
 		if editSource == "raw" {
-			var cfg config.OutboundConfig
+			var cfg config.Direction
 			if err := json.Unmarshal([]byte(rawEntry.Text), &cfg); err != nil {
 				return nil, fmt.Errorf("%s: %w", locale.T("wizard.outbound.error_invalid_json"), err)
 			}
@@ -449,7 +449,7 @@ func ShowEditDialog(
 			obType = "urltest"
 		}
 
-		cfg := &config.OutboundConfig{
+		cfg := &config.Direction{
 			Tag:     tag,
 			Type:    obType,
 			Comment: strings.TrimSpace(commentEntry.Text),
@@ -560,7 +560,7 @@ func ShowEditDialog(
 	// Для referenced entries (existing.Ref!="") — вычисляем diff cfg → merged_base
 	// и обновляем USER patch в updates[]. Body fields в cfg не идут в save (referenced
 	// entries thin — body live из template/preset).
-	applyEditedConfig := func(cfg *config.OutboundConfig) {
+	applyEditedConfig := func(cfg *config.Direction) {
 		if existing == nil {
 			return
 		}
@@ -613,7 +613,7 @@ func ShowEditDialog(
 		// Save from Preview tab must use whatever was last edited, not always
 		// the form path.
 		if editSource == "raw" {
-			var cfg config.OutboundConfig
+			var cfg config.Direction
 			if err := json.Unmarshal([]byte(rawEntry.Text), &cfg); err != nil {
 				dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.outbound.error_invalid_json"), err), dialogWin)
 				return
@@ -928,7 +928,7 @@ func ShowEditDialog(
 	// Re-merge с template: build.MergeOutboundUpdates резолвит base body и
 	// applies updates → получаем full merged view для populate.
 	syncRawToForm := func() {
-		var cfg config.OutboundConfig
+		var cfg config.Direction
 		if err := json.Unmarshal([]byte(rawEntry.Text), &cfg); err != nil {
 			return // invalid JSON: leave form as is
 		}
@@ -1000,7 +1000,7 @@ func ShowEditDialog(
 		}
 	}
 
-	// syncFormToRaw — собирает OutboundConfig из текущего состояния формы
+	// syncFormToRaw — собирает Direction из текущего состояния формы
 	// и кладёт его JSON в rawEntry. Вызывается при переключении Settings → Raw.
 	//
 	// SPEC 058-R-N: Raw view показывает SAVE-shape (что реально попадёт в state),

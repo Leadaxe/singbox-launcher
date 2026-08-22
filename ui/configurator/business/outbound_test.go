@@ -22,15 +22,15 @@ func TestGetAvailableOutbounds(t *testing.T) {
 			model: &wizardmodels.WizardModel{
 				ParserConfig: &config.ParserConfig{
 					ParserConfig: struct {
-						Version   int                     `json:"version,omitempty"`
-						Proxies   []config.ProxySource    `json:"proxies"`
-						Outbounds []config.OutboundConfig `json:"outbounds"`
+						Version   int                  `json:"version,omitempty"`
+						Proxies   []config.ProxySource `json:"proxies"`
+						Outbounds []config.Direction   `json:"outbounds"`
 						Parser    struct {
 							Reload      string `json:"reload,omitempty"`
 							LastUpdated string `json:"last_updated,omitempty"`
 						} `json:"parser,omitempty"`
 					}{
-						Outbounds: []config.OutboundConfig{
+						Outbounds: []config.Direction{
 							{Tag: "selector-1", Type: "selector"},
 							{Tag: "selector-2", Type: "selector"},
 						},

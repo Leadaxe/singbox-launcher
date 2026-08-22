@@ -821,7 +821,7 @@ func CreateOutboundsAndParserConfigTab(presenter *wizardpresentation.WizardPrese
 		// (legacy view); переносим назад в canonical Sources/GlobalOutbounds,
 		// потом re-derive ParserConfig (round-trip).
 		if m.ParserConfig != nil {
-			m.GlobalOutbounds = append([]configtypes.OutboundConfig(nil), m.ParserConfig.ParserConfig.Outbounds...)
+			m.GlobalOutbounds = append([]configtypes.Direction(nil), m.ParserConfig.ParserConfig.Outbounds...)
 			// Per-source outbounds: ParserConfig.Proxies[i] построен из
 			// m.Sources[i] через AsParserConfig (1:1 порядок), поэтому
 			// обратный sync безопасен по тому же индексу. Без этого правки
@@ -832,7 +832,7 @@ func CreateOutboundsAndParserConfigTab(presenter *wizardpresentation.WizardPrese
 				if i >= len(proxies) {
 					break
 				}
-				m.Sources[i].Outbounds = append([]configtypes.OutboundConfig(nil), proxies[i].Outbounds...)
+				m.Sources[i].Outbounds = append([]configtypes.Direction(nil), proxies[i].Outbounds...)
 			}
 		}
 		m.RefreshDerivedParserConfig()
@@ -868,10 +868,6 @@ func CreateOutboundsAndParserConfigTab(presenter *wizardpresentation.WizardPrese
 	content := container.NewVBox(
 		widget.NewSeparator(),
 		parserContainer,
-		widget.NewSeparator(),
-		// SPEC 104: каналы живут рядом с outbound'ами — это тоже группы
-		// выбора, только настраиваемые не JSON'ом, а формой.
-		buildChannelsSection(presenter, guiState.Window),
 		widget.NewSeparator(),
 	)
 

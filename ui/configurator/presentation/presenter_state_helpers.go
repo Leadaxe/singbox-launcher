@@ -34,7 +34,7 @@ func (p *WizardPresenter) extractConfigParams() []wizardmodels.ConfigParam {
 func (p *WizardPresenter) restoreParserConfig(stateFile *wizardmodels.WizardStateFile) error {
 	// Sources canonical из v5 Connections.
 	p.model.Sources = append([]wizardmodels.Source(nil), stateFile.Connections.Sources...)
-	p.model.GlobalOutbounds = append([]configtypes.OutboundConfig(nil), stateFile.Connections.Outbounds...)
+	p.model.GlobalOutbounds = append([]configtypes.Direction(nil), stateFile.Connections.Outbounds...)
 	p.model.Defaults = stateFile.Connections.Defaults
 	p.model.WarpAccounts = stateFile.WarpAccounts
 
@@ -43,7 +43,7 @@ func (p *WizardPresenter) restoreParserConfig(stateFile *wizardmodels.WizardStat
 		p.model.Sources = []wizardmodels.Source{}
 	}
 	if p.model.GlobalOutbounds == nil {
-		p.model.GlobalOutbounds = []configtypes.OutboundConfig{}
+		p.model.GlobalOutbounds = []configtypes.Direction{}
 	}
 
 	// Heal-on-empty: state.json мог быть сохранён (баг до v0.9.0.1) с пустыми
@@ -57,7 +57,7 @@ func (p *WizardPresenter) restoreParserConfig(stateFile *wizardmodels.WizardStat
 		if err := json.Unmarshal([]byte(p.model.TemplateData.ParserConfig), &parsed); err != nil {
 			debuglog.WarnLog("restoreParserConfig: heal-empty: failed to parse template parser_config: %v", err)
 		} else if len(parsed.ParserConfig.Outbounds) > 0 {
-			p.model.GlobalOutbounds = append([]configtypes.OutboundConfig(nil), parsed.ParserConfig.Outbounds...)
+			p.model.GlobalOutbounds = append([]configtypes.Direction(nil), parsed.ParserConfig.Outbounds...)
 			debuglog.InfoLog("restoreParserConfig: heal-empty: seeded %d global outbounds from template (state had empty connections.outbounds)", len(p.model.GlobalOutbounds))
 		}
 	}
@@ -239,37 +239,4 @@ func (p *WizardPresenter) GetStateStore() *wizardbusiness.StateStore {
 		machineID = p.model.Target.MachineIDOrEmpty()
 	}
 	return wizardbusiness.NewStateStoreFor(fileServiceAdapter, target, machineID)
-}
-
-// restoreChannels восстанавливает каналы роутинга (SPEC 104) и, если секции
-// в состоянии не было, засевает её из шаблона.
-//
-// Сидирование происходит ровно один раз — при первом появлении секции.
-// Дальше набор принадлежит пользователю: повторный seed затирал бы его
-// правки при каждом обновлении шаблона, а удалённые каналы возвращались бы
-// на следующем старте.
-func (p *WizardPresenter) restoreChannels(stateFile *wizardmodels.WizardStateFile) {
-	p.model.Channels = stateFile.Channels
-	p.model.ForeignBackupExtensions = stateFile.ForeignBackupExtensions
-
-	if p.model.Channels != nil || p.model.TemplateData == nil {
-		return
-	}
-	defaults := p.model.TemplateData.DefaultChannels()
-	if len(defaults) == 0 {
-		return
-	}
-	seeds := make([]corestate.ChannelSeed, 0, len(defaults))
-	for _, d := range defaults {
-		seeds = append(seeds, corestate.ChannelSeed{
-			Tag:     d.Tag,
-			Label:   d.Label,
-			Enabled: d.IsEnabled(),
-		})
-	}
-	seeded := &corestate.State{}
-	if seeded.SeedChannels(seeds) {
-		p.model.Channels = seeded.Channels
-		debuglog.DebugLog("restoreChannels: засеяно %d канал(ов) из шаблона", len(seeded.Channels))
-	}
 }

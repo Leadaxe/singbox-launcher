@@ -36,7 +36,7 @@ func normalizeNilSlices(s *State) {
 //   - `outbounds[].updates[].ref`: принимаем RefUser (#USER#) или любое
 //     непустое значение НЕ начинающееся на `#` (preset_id). Reject "",
 //     RefTemplate, unknown #...# sentinel'ы.
-func sanitizeOutboundRefs(outbounds *[]configtypes.OutboundConfig) {
+func sanitizeOutboundRefs(outbounds *[]configtypes.Direction) {
 	if outbounds == nil || *outbounds == nil {
 		return
 	}

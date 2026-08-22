@@ -46,7 +46,7 @@ import (
 // контролировал какие template entries у него в state).
 func SyncOutboundsWithActivePresets(
 	rules []state.Rule,
-	outbounds *[]configtypes.OutboundConfig,
+	outbounds *[]configtypes.Direction,
 	presets []template.Preset,
 	target template.TargetSpec,
 ) {
@@ -64,7 +64,7 @@ func SyncOutboundsWithActivePresets(
 	//    re-order updates[] patches).
 	activePresetIDs := make(map[string]bool)
 	activeRulesOrder := make([]string, 0)
-	expectedAdds := make(map[string]configtypes.OutboundConfig) // tag → add entry
+	expectedAdds := make(map[string]configtypes.Direction) // tag → add entry
 	expectedUpdates := make(map[string]map[string]configtypes.OutboundUpdate)
 	// expectedUpdates[targetTag][presetID] = OutboundUpdate
 
@@ -115,7 +115,7 @@ func SyncOutboundsWithActivePresets(
 	// 2. Pass through existing outbounds. Filter out preset/template entries which
 	//    are no longer expected; filter out stale updates; adopt legacy direct
 	//    entries как referenced если tag совпадает с expected preset add.
-	out := make([]configtypes.OutboundConfig, 0, len(*outbounds))
+	out := make([]configtypes.Direction, 0, len(*outbounds))
 	existingPresetTags := make(map[string]bool) // tag'и уже-present preset add entries
 	// expectedAddRefByTag — для adopt-on-first-sync: какой preset.id owns этот tag.
 	expectedAddRefByTag := make(map[string]string, len(expectedAdds))
@@ -214,7 +214,7 @@ func SyncOutboundsWithActivePresets(
 				continue // collision с user/template global → skip (first-wins)
 			}
 			// SPEC 058: thin entry — только tag + ref (body live из preset).
-			cfg := configtypes.OutboundConfig{
+			cfg := configtypes.Direction{
 				Tag: tag,
 				Ref: preset.ID,
 			}
@@ -229,7 +229,7 @@ func SyncOutboundsWithActivePresets(
 // stripReferencedBody — для referenced entry (ref != "") очищает body-поля,
 // оставляя только tag + ref + updates. Body live из template/preset на render.
 // SPEC 058 shape.
-func stripReferencedBody(ob *configtypes.OutboundConfig) {
+func stripReferencedBody(ob *configtypes.Direction) {
 	if ob == nil || ob.Ref == "" {
 		return
 	}
@@ -292,7 +292,7 @@ func containsString(slice []string, s string) bool {
 }
 
 // findOutboundByTag — index в slice по tag, или -1.
-func findOutboundByTag(outbounds []configtypes.OutboundConfig, tag string) int {
+func findOutboundByTag(outbounds []configtypes.Direction, tag string) int {
 	for i, ob := range outbounds {
 		if ob.Tag == tag {
 			return i
@@ -302,12 +302,12 @@ func findOutboundByTag(outbounds []configtypes.OutboundConfig, tag string) int {
 }
 
 // outboundConfigToPatchMap — конвертирует preset.outbounds[mode=update] entry
-// (typed configtypes.OutboundConfig) в map для хранения в OutboundUpdate.Patch.
+// (typed configtypes.Direction) в map для хранения в OutboundUpdate.Patch.
 //
 // Включает только не-zero patch-fields (filters/options/addOutbounds/
 // preferredDefault/wizard/comment). Tag/Type для update не релевантны
 // (immutable, см. applyOutboundUpdate semantics).
-func outboundConfigToPatchMap(cfg configtypes.OutboundConfig) map[string]interface{} {
+func outboundConfigToPatchMap(cfg configtypes.Direction) map[string]interface{} {
 	patch := make(map[string]interface{})
 	if cfg.Filters != nil {
 		patch["filters"] = cfg.Filters

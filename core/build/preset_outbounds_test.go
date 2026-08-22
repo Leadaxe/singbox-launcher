@@ -12,11 +12,11 @@ import (
 // === applyOutboundUpdate (typed field-merge) ================================
 
 func TestApplyOutboundUpdate_FiltersReplace(t *testing.T) {
-	target := configtypes.OutboundConfig{
+	target := configtypes.Direction{
 		Tag: "x", Type: "selector",
 		Filters: map[string]interface{}{"old": true},
 	}
-	patch := configtypes.OutboundConfig{
+	patch := configtypes.Direction{
 		Filters: map[string]interface{}{"new": true},
 	}
 	out := applyOutboundUpdate(target, patch)
@@ -29,14 +29,14 @@ func TestApplyOutboundUpdate_FiltersReplace(t *testing.T) {
 }
 
 func TestApplyOutboundUpdate_OptionsPerKeyReplace(t *testing.T) {
-	target := configtypes.OutboundConfig{
+	target := configtypes.Direction{
 		Tag: "x", Type: "selector",
 		Options: map[string]interface{}{
 			"default":  "a",
 			"interval": "5m",
 		},
 	}
-	patch := configtypes.OutboundConfig{
+	patch := configtypes.Direction{
 		Options: map[string]interface{}{"default": "b"},
 	}
 	out := applyOutboundUpdate(target, patch)
@@ -52,7 +52,7 @@ func TestApplyOutboundUpdate_OptionsPerKeyReplace(t *testing.T) {
 // (значение берётся из base), а не как живое значение. Иначе emitter выдавал
 // "interval":null и sing-box падал: invalid duration "".
 func TestApplyOutboundUpdate_NilOptionFallsBackToBase(t *testing.T) {
-	target := configtypes.OutboundConfig{
+	target := configtypes.Direction{
 		Tag: "auto", Type: "urltest",
 		Options: map[string]interface{}{
 			"url":       "https://cp.cloudflare.com/generate_204",
@@ -60,7 +60,7 @@ func TestApplyOutboundUpdate_NilOptionFallsBackToBase(t *testing.T) {
 			"tolerance": 100,
 		},
 	}
-	patch := configtypes.OutboundConfig{
+	patch := configtypes.Direction{
 		Options: map[string]interface{}{
 			"interval":  nil,
 			"tolerance": nil,
@@ -87,11 +87,11 @@ func TestApplyOutboundUpdate_NilOptionFallsBackToBase(t *testing.T) {
 
 // nil для ключа, которого нет в base, не должен создавать ключ со значением nil.
 func TestApplyOutboundUpdate_NilOptionAbsentInBaseNotCreated(t *testing.T) {
-	target := configtypes.OutboundConfig{
+	target := configtypes.Direction{
 		Tag: "auto", Type: "urltest",
 		Options: map[string]interface{}{"interval": "5m"},
 	}
-	patch := configtypes.OutboundConfig{
+	patch := configtypes.Direction{
 		Options: map[string]interface{}{"tolerance": nil},
 	}
 	out := applyOutboundUpdate(target, patch)
@@ -101,10 +101,10 @@ func TestApplyOutboundUpdate_NilOptionAbsentInBaseNotCreated(t *testing.T) {
 }
 
 func TestApplyOutboundUpdate_AddOutboundsUnion(t *testing.T) {
-	target := configtypes.OutboundConfig{
+	target := configtypes.Direction{
 		Tag: "x", AddOutbounds: []string{"a", "b"},
 	}
-	patch := configtypes.OutboundConfig{AddOutbounds: []string{"b", "c"}}
+	patch := configtypes.Direction{AddOutbounds: []string{"b", "c"}}
 	out := applyOutboundUpdate(target, patch)
 	want := []string{"a", "b", "c"}
 	if len(out.AddOutbounds) != len(want) {
@@ -118,9 +118,9 @@ func TestApplyOutboundUpdate_AddOutboundsUnion(t *testing.T) {
 }
 
 func TestApplyOutboundUpdate_TagAndTypeImmutable(t *testing.T) {
-	target := configtypes.OutboundConfig{Tag: "original", Type: "selector"}
+	target := configtypes.Direction{Tag: "original", Type: "selector"}
 	// patch.Type ignored (loader would have already cleared it for update).
-	patch := configtypes.OutboundConfig{Tag: "overridden", Type: "urltest"}
+	patch := configtypes.Direction{Tag: "overridden", Type: "urltest"}
 	out := applyOutboundUpdate(target, patch)
 	if out.Tag != "original" {
 		t.Fatalf("Tag should be immutable, got %q", out.Tag)

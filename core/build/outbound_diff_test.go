@@ -66,7 +66,7 @@ func TestMapDiff_OnlyRemovedKeysProduceNil(t *testing.T) {
 // Их отсутствие в selector'е обеспечивает edit_dialog (он их не копирует),
 // а не tombstone в patch'е.
 func TestOutboundFieldDiff_UrltestToSelectorNoNullOptions(t *testing.T) {
-	base := configtypes.OutboundConfig{
+	base := configtypes.Direction{
 		Tag: "auto", Type: "urltest",
 		Options: map[string]interface{}{
 			"url":                         "https://cp.cloudflare.com/generate_204",
@@ -75,7 +75,7 @@ func TestOutboundFieldDiff_UrltestToSelectorNoNullOptions(t *testing.T) {
 			"interrupt_exist_connections": true,
 		},
 	}
-	form := configtypes.OutboundConfig{
+	form := configtypes.Direction{
 		Tag: "auto", Type: "selector",
 		Options: map[string]interface{}{"interrupt_exist_connections": true},
 	}
@@ -89,7 +89,7 @@ func TestOutboundFieldDiff_UrltestToSelectorNoNullOptions(t *testing.T) {
 }
 
 func TestOutboundFieldDiff_NoChangesProducesNil(t *testing.T) {
-	ob := configtypes.OutboundConfig{
+	ob := configtypes.Direction{
 		Tag: "auto", Type: "urltest",
 		Options: map[string]interface{}{"interval": "5m"},
 		Comment: "same",

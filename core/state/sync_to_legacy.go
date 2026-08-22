@@ -54,9 +54,9 @@ func syncLegacyFromConnections(s *State) {
 	s.ParserConfig.ParserConfig.Version = configtypes.ParserConfigVersion
 	s.ParserConfig.ParserConfig.Proxies = proxies
 	if s.Connections.Outbounds != nil {
-		s.ParserConfig.ParserConfig.Outbounds = append([]configtypes.OutboundConfig(nil), s.Connections.Outbounds...)
+		s.ParserConfig.ParserConfig.Outbounds = append([]configtypes.Direction(nil), s.Connections.Outbounds...)
 	} else {
-		s.ParserConfig.ParserConfig.Outbounds = []configtypes.OutboundConfig{}
+		s.ParserConfig.ParserConfig.Outbounds = []configtypes.Direction{}
 	}
 	s.ParserConfig.ParserConfig.Parser.Reload = s.Connections.Defaults.Reload
 }

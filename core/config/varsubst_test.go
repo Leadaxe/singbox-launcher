@@ -12,7 +12,7 @@ import (
 // struct, so we build via JSON round-trip rather than struct literal.
 func newPCWithAutoProxyOptions(options map[string]interface{}) *ParserConfig {
 	pc := &ParserConfig{}
-	pc.ParserConfig.Outbounds = []OutboundConfig{
+	pc.ParserConfig.Outbounds = []Direction{
 		{Tag: "auto-proxy-out", Type: "urltest", Options: options},
 	}
 	return pc
@@ -106,7 +106,7 @@ func TestSubstituteParserConfigPlaceholders_ProxySourceOutbounds(t *testing.T) {
 	pc.ParserConfig.Proxies = []ProxySource{
 		{
 			Source: "https://example.com/sub",
-			Outbounds: []OutboundConfig{
+			Outbounds: []Direction{
 				{Tag: "vpn-1-auto", Type: "urltest", Options: map[string]interface{}{"interval": "@urltest_interval"}},
 			},
 		},
@@ -120,7 +120,7 @@ func TestSubstituteParserConfigPlaceholders_ProxySourceOutbounds(t *testing.T) {
 
 func TestSubstituteParserConfigPlaceholders_NoOptionsMapNoCrash(t *testing.T) {
 	pc := &ParserConfig{}
-	pc.ParserConfig.Outbounds = []OutboundConfig{
+	pc.ParserConfig.Outbounds = []Direction{
 		{Tag: "raw", Type: "direct", Options: nil},
 	}
 	// Nil Options must not panic.

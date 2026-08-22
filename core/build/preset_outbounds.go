@@ -1,7 +1,7 @@
 // Package build — File preset_outbounds.go.
 //
 // SPEC 057-R-N (current): preset outbound binding живёт в state directly
-// через Ref/Updates fields на OutboundConfig. Runtime path использует
+// через Ref/Updates fields на Direction. Runtime path использует
 // SyncOutboundsWithActivePresets (sync_outbounds.go) +
 // MergeOutboundUpdatesInPlace (resolve_outbounds.go).
 //
@@ -42,13 +42,13 @@ var outboundSentinelLiterals = map[string]bool{
 }
 
 // presetOutboundEntry — internal: разделяет режим применения и сам
-// configtypes.OutboundConfig (без control-полей mode/if/if_or).
+// configtypes.Direction (без control-полей mode/if/if_or).
 //
 // Возвращается ExpandPresetOutbounds и потребляется sync_outbounds.go.
 // PresetID нужен для warning'ов и для разрешения origin'а в Updates[] стеке.
 type presetOutboundEntry struct {
 	Mode     string // "add" | "update"
-	Config   configtypes.OutboundConfig
+	Config   configtypes.Direction
 	PresetID string
 }
 
@@ -63,8 +63,8 @@ type presetOutboundEntry struct {
 // каждой entry дополнительно:
 //   - normalizes Mode ("" → "add"; loader уже зачистил unknown);
 //   - JSON round-trip через map для substitute @var;
-//   - drop control-полей (mode/if/if_or) из map ДО unmarshal в OutboundConfig;
-//   - типизированный re-unmarshal в configtypes.OutboundConfig.
+//   - drop control-полей (mode/if/if_or) из map ДО unmarshal в Direction;
+//   - типизированный re-unmarshal в configtypes.Direction.
 //
 // На unresolved @var — entry skip + warning, остальные entries продолжают
 // обрабатываться (в отличие от ExpandPreset который отменяет весь preset
@@ -140,9 +140,9 @@ func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string, 
 		if substMap == nil {
 			continue
 		}
-		// Control-поля не должны попасть в configtypes.OutboundConfig
+		// Control-поля не должны попасть в configtypes.Direction
 		// (он их и не имеет — strict-decoder бы ругался; но native генератор
-		// потом маршалит OutboundConfig обратно через json.Marshal, где
+		// потом маршалит Direction обратно через json.Marshal, где
 		// неизвестные ключи не возникают, так что strip — defensive).
 		delete(substMap, "mode")
 		delete(substMap, "if")
@@ -157,12 +157,12 @@ func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string, 
 			})
 			continue
 		}
-		var oc configtypes.OutboundConfig
+		var oc configtypes.Direction
 		if err := json.Unmarshal(finalRaw, &oc); err != nil {
 			warnings = append(warnings, ExpandWarning{
 				PresetID: preset.ID,
 				Message: fmt.Sprintf(
-					"outbounds[%d] (tag=%q): re-unmarshal to OutboundConfig: %v",
+					"outbounds[%d] (tag=%q): re-unmarshal to Direction: %v",
 					i, ob.Tag, err),
 			})
 			continue
@@ -191,7 +191,7 @@ func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string, 
 //   - PreferredDefault — replace
 //   - Wizard       — replace
 //   - Comment      — replace iff patch.Comment != ""
-func applyOutboundUpdate(target, patch configtypes.OutboundConfig) configtypes.OutboundConfig {
+func applyOutboundUpdate(target, patch configtypes.Direction) configtypes.Direction {
 	out := target
 
 	if patch.Filters != nil {

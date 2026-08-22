@@ -29,7 +29,7 @@ func TestSyncOutbounds_EnableAddEntry(t *testing.T) {
 		{"mode":"add","tag":"ru VPN 🇷🇺","type":"selector",
 		 "options":{"default":"direct-out"},"addOutbounds":["direct-out"]}
 	]`)
-	outbounds := []configtypes.OutboundConfig{
+	outbounds := []configtypes.Direction{
 		{Tag: "proxy-out", Type: "selector"},
 	}
 	rules := []state.Rule{
@@ -48,7 +48,7 @@ func TestSyncOutbounds_EnableAddEntry(t *testing.T) {
 
 // TestSyncOutbounds_DisableRemovesEntry — disable preset → entry удаляется.
 func TestSyncOutbounds_DisableRemovesEntry(t *testing.T) {
-	outbounds := []configtypes.OutboundConfig{
+	outbounds := []configtypes.Direction{
 		{Tag: "proxy-out", Type: "selector"},
 		{Tag: "ru VPN 🇷🇺", Type: "selector", Ref: "russian"},
 	}
@@ -66,7 +66,7 @@ func TestSyncOutbounds_UpdateStack(t *testing.T) {
 	preset := makeSyncTestPreset(t, "russian", `[
 		{"mode":"update","tag":"proxy-out","filters":{"tag":"!/(🇷🇺)/i"}}
 	]`)
-	outbounds := []configtypes.OutboundConfig{
+	outbounds := []configtypes.Direction{
 		{Tag: "proxy-out", Type: "selector"},
 	}
 	rules := []state.Rule{
@@ -88,7 +88,7 @@ func TestSyncOutbounds_UpdateStack(t *testing.T) {
 
 // TestSyncOutbounds_DisableUpdateRemovesFromStack — disable preset → update удаляется из стека.
 func TestSyncOutbounds_DisableUpdateRemovesFromStack(t *testing.T) {
-	outbounds := []configtypes.OutboundConfig{
+	outbounds := []configtypes.Direction{
 		{
 			Tag:  "proxy-out",
 			Type: "selector",
@@ -122,7 +122,7 @@ func TestSyncOutbounds_Idempotent(t *testing.T) {
 		{"mode":"add","tag":"ru VPN 🇷🇺","type":"selector"},
 		{"mode":"update","tag":"proxy-out","filters":{"tag":"!/(🇷🇺)/i"}}
 	]`)
-	outbounds := []configtypes.OutboundConfig{
+	outbounds := []configtypes.Direction{
 		{Tag: "proxy-out", Type: "selector"},
 	}
 	rules := []state.Rule{
@@ -142,7 +142,7 @@ func TestSyncOutbounds_PreserveOrder(t *testing.T) {
 	preset := makeSyncTestPreset(t, "russian", `[
 		{"mode":"add","tag":"ru VPN","type":"selector"}
 	]`)
-	outbounds := []configtypes.OutboundConfig{
+	outbounds := []configtypes.Direction{
 		{Tag: "proxy-out", Type: "selector"},
 	}
 	rules := []state.Rule{
@@ -179,7 +179,7 @@ func TestSyncOutbounds_AdoptLegacyGlobal(t *testing.T) {
 		{"mode":"add","tag":"ru VPN 🇷🇺","type":"selector",
 		 "options":{"default":"direct-out"}}
 	]`)
-	outbounds := []configtypes.OutboundConfig{
+	outbounds := []configtypes.Direction{
 		{Tag: "proxy-out", Type: "selector"},
 		// Legacy: preset entry лежит как global без ref
 		// (промоутнут старым "promote-to-global" подходом до SPEC 057).

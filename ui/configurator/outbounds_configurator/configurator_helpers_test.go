@@ -11,7 +11,7 @@ import (
 
 // makeParserConfig builds a *config.ParserConfig with the given per-source
 // proxies and global outbounds. Helper keeps the table-driven tests readable.
-func makeParserConfig(proxies []config.ProxySource, global []config.OutboundConfig) *config.ParserConfig {
+func makeParserConfig(proxies []config.ProxySource, global []config.Direction) *config.ParserConfig {
 	pc := &config.ParserConfig{}
 	pc.ParserConfig.Proxies = proxies
 	pc.ParserConfig.Outbounds = global
@@ -34,15 +34,15 @@ func TestCollectRows(t *testing.T) {
 				[]config.ProxySource{
 					{
 						Source:    "SubA",
-						Outbounds: []config.OutboundConfig{{Tag: "A:auto"}, {Tag: "A:select"}},
+						Outbounds: []config.Direction{{Tag: "A:auto"}, {Tag: "A:select"}},
 					},
 					{
 						Source:    "SubDisabled",
 						Disabled:  true,
-						Outbounds: []config.OutboundConfig{{Tag: "D:auto"}},
+						Outbounds: []config.Direction{{Tag: "D:auto"}},
 					},
 				},
-				[]config.OutboundConfig{{Tag: "global-direct"}},
+				[]config.Direction{{Tag: "global-direct"}},
 			),
 			wantLen: 3,
 			assertRows: func(t *testing.T, rows []outboundRow) {
@@ -77,7 +77,7 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "global template ref, required vs non-required",
-			pc: makeParserConfig(nil, []config.OutboundConfig{
+			pc: makeParserConfig(nil, []config.Direction{
 				{Tag: "tmpl-req", Ref: config.RefTemplate},
 				{Tag: "tmpl-opt", Ref: config.RefTemplate},
 			}),
@@ -105,7 +105,7 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "nil requiredTags means no template row is required",
-			pc: makeParserConfig(nil, []config.OutboundConfig{
+			pc: makeParserConfig(nil, []config.Direction{
 				{Tag: "tmpl-x", Ref: config.RefTemplate},
 			}),
 			requiredTags: nil,
@@ -124,7 +124,7 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "global preset ref with known label",
-			pc: makeParserConfig(nil, []config.OutboundConfig{
+			pc: makeParserConfig(nil, []config.Direction{
 				{Tag: "p1-out", Ref: "preset-one"},
 			}),
 			presetLabels: map[string]string{"preset-one": "Preset One"},
@@ -147,7 +147,7 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "global preset ref dangling (no label) falls back to ref id",
-			pc: makeParserConfig(nil, []config.OutboundConfig{
+			pc: makeParserConfig(nil, []config.Direction{
 				{Tag: "p2-out", Ref: "ghost-preset"},
 			}),
 			presetLabels: map[string]string{"other": "Other"},
@@ -167,7 +167,7 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "global preset ref with nil presetLabels uses ref id",
-			pc: makeParserConfig(nil, []config.OutboundConfig{
+			pc: makeParserConfig(nil, []config.Direction{
 				{Tag: "p3-out", Ref: "preset-nil"},
 			}),
 			presetLabels: nil,
@@ -180,7 +180,7 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "HasUserPatch badge appended for referenced template entry",
-			pc: makeParserConfig(nil, []config.OutboundConfig{
+			pc: makeParserConfig(nil, []config.Direction{
 				{
 					Tag: "tmpl-req", Ref: config.RefTemplate,
 					Updates: []config.OutboundUpdate{
@@ -204,7 +204,7 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "HasUserPatch badge for preset entry",
-			pc: makeParserConfig(nil, []config.OutboundConfig{
+			pc: makeParserConfig(nil, []config.Direction{
 				{
 					Tag: "p-out", Ref: "preset-one",
 					Updates: []config.OutboundUpdate{
@@ -226,7 +226,7 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "HasUserPatch on direct global does not append badge",
-			pc: makeParserConfig(nil, []config.OutboundConfig{
+			pc: makeParserConfig(nil, []config.Direction{
 				{
 					Tag: "direct", Ref: "",
 					Updates: []config.OutboundUpdate{
@@ -254,7 +254,7 @@ func TestCollectRows(t *testing.T) {
 			name: "empty source label is synthesized (not crashed)",
 			pc: makeParserConfig(
 				[]config.ProxySource{
-					{Source: "", Outbounds: []config.OutboundConfig{{Tag: "x"}}},
+					{Source: "", Outbounds: []config.Direction{{Tag: "x"}}},
 				},
 				nil,
 			),
@@ -290,17 +290,17 @@ func TestCollectAllTags(t *testing.T) {
 			name: "local first then global, disabled source skipped",
 			pc: makeParserConfig(
 				[]config.ProxySource{
-					{Source: "A", Outbounds: []config.OutboundConfig{{Tag: "a1"}, {Tag: "a2"}}},
-					{Source: "B", Disabled: true, Outbounds: []config.OutboundConfig{{Tag: "b1"}}},
-					{Source: "C", Outbounds: []config.OutboundConfig{{Tag: "c1"}}},
+					{Source: "A", Outbounds: []config.Direction{{Tag: "a1"}, {Tag: "a2"}}},
+					{Source: "B", Disabled: true, Outbounds: []config.Direction{{Tag: "b1"}}},
+					{Source: "C", Outbounds: []config.Direction{{Tag: "c1"}}},
 				},
-				[]config.OutboundConfig{{Tag: "g1"}, {Tag: "g2"}},
+				[]config.Direction{{Tag: "g1"}, {Tag: "g2"}},
 			),
 			want: []string{"a1", "a2", "c1", "g1", "g2"},
 		},
 		{
 			name: "only global",
-			pc:   makeParserConfig(nil, []config.OutboundConfig{{Tag: "g1"}}),
+			pc:   makeParserConfig(nil, []config.Direction{{Tag: "g1"}}),
 			want: []string{"g1"},
 		},
 		{
@@ -321,9 +321,9 @@ func TestCollectAllTags(t *testing.T) {
 
 func TestTagsAbove(t *testing.T) {
 	rows := []outboundRow{
-		{Outbound: &config.OutboundConfig{Tag: "t0"}},
-		{Outbound: &config.OutboundConfig{Tag: "t1"}},
-		{Outbound: &config.OutboundConfig{Tag: "t2"}},
+		{Outbound: &config.Direction{Tag: "t0"}},
+		{Outbound: &config.Direction{Tag: "t1"}},
+		{Outbound: &config.Direction{Tag: "t2"}},
 	}
 	tests := []struct {
 		name     string

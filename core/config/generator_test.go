@@ -22,7 +22,7 @@ func TestOutboundInfo_ThreePassAlgorithm(t *testing.T) {
 
 		// Selector B: empty (no filtered nodes)
 		outboundsInfo["B"] = &outboundInfo{
-			config: OutboundConfig{
+			config: Direction{
 				Tag:          "B",
 				Type:         "selector",
 				Filters:      map[string]interface{}{"tag": "/🇷🇺/i"},
@@ -35,7 +35,7 @@ func TestOutboundInfo_ThreePassAlgorithm(t *testing.T) {
 
 		// Selector A: has B in addOutbounds
 		outboundsInfo["A"] = &outboundInfo{
-			config: OutboundConfig{
+			config: Direction{
 				Tag:          "A",
 				Type:         "selector",
 				Filters:      map[string]interface{}{"tag": "!/🇷🇺/i"},
@@ -96,7 +96,7 @@ func TestOutboundInfo_ThreePassAlgorithm(t *testing.T) {
 
 		// Selector B: has nodes
 		outboundsInfo["B"] = &outboundInfo{
-			config: OutboundConfig{
+			config: Direction{
 				Tag:          "B",
 				Type:         "selector",
 				Filters:      map[string]interface{}{"tag": "/🇷🇺/i"},
@@ -111,7 +111,7 @@ func TestOutboundInfo_ThreePassAlgorithm(t *testing.T) {
 
 		// Selector A: has B in addOutbounds
 		outboundsInfo["A"] = &outboundInfo{
-			config: OutboundConfig{
+			config: Direction{
 				Tag:          "A",
 				Type:         "selector",
 				Filters:      map[string]interface{}{"tag": "!/🇷🇺/i"},
@@ -154,7 +154,7 @@ func TestOutboundInfo_ThreePassAlgorithm(t *testing.T) {
 		outboundsInfo := make(map[string]*outboundInfo)
 
 		outboundsInfo["A"] = &outboundInfo{
-			config: OutboundConfig{
+			config: Direction{
 				Tag:          "A",
 				Type:         "selector",
 				AddOutbounds: []string{"direct-out", "auto-proxy-out"},
@@ -193,7 +193,7 @@ func TestOutboundInfo_ThreePassAlgorithm(t *testing.T) {
 
 		// C: has nodes
 		outboundsInfo["C"] = &outboundInfo{
-			config: OutboundConfig{
+			config: Direction{
 				Tag:          "C",
 				Type:         "selector",
 				AddOutbounds: []string{},
@@ -205,7 +205,7 @@ func TestOutboundInfo_ThreePassAlgorithm(t *testing.T) {
 
 		// B: depends on C
 		outboundsInfo["B"] = &outboundInfo{
-			config: OutboundConfig{
+			config: Direction{
 				Tag:          "B",
 				Type:         "selector",
 				AddOutbounds: []string{"C"},
@@ -217,7 +217,7 @@ func TestOutboundInfo_ThreePassAlgorithm(t *testing.T) {
 
 		// A: depends on B
 		outboundsInfo["A"] = &outboundInfo{
-			config: OutboundConfig{
+			config: Direction{
 				Tag:          "A",
 				Type:         "selector",
 				AddOutbounds: []string{"B"},

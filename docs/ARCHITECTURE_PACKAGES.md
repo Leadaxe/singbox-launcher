@@ -75,9 +75,7 @@ per-source raw-body cache.
 
 | File | Purpose |
 |------|---------|
-| `state.go` | Root `State` struct (identity + legacy `ParserConfig` view + canonical `Connections`/`Rules`/`DNS`/`Channels`) + accessor helpers. |
-| `channel_types.go` | `Channel` / `ChannelAuto` — routing channels (SPEC 104): the fixed `vpn-N` tag rules point at, node filter, auto-select. Custom `UnmarshalJSON` restores `enabled`/`interrupt_exist_connections` defaults — a bool's zero value would silently switch a channel off on every read. |
-| `channel_seed.go` | One-time seeding from the template's `default_channels`, free-tag allocation (first gap, not max+1), channel lookup helpers. |
+| `state.go` | Root `State` struct (identity + legacy `ParserConfig` view + canonical `Connections`/`Rules`/`DNS`) + accessor helpers. |
 | `rule_order.go` | The numeric rule-order axis (SPEC 106): lazy shift up to the first gap, re-seed of non-sortable rules, normalization of states written before the axis existed. |
 | `save.go` | Memory→disk: `syncConnectionsFromLegacy`, `marshalDisk` (v6 layout), atomic fsync+rename, SPEC 058 backup. |
 | `load_router.go` | `Load`/`Parse`: schema detection (top-level vs `meta.version`), routes to v6/v5/v2-v4 parsers. |
@@ -117,7 +115,6 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 |------|---------|
 | `build.go` | `BuildConfig` orchestrator: validate template, `GetEffectiveConfig`, dispatch per section, concat final JSON (pure). |
 | `sections.go` | `BuildOutboundsSection`/`BuildEndpointsSection` — render outbounds/endpoints with parser markers + preview truncation. |
-| `channels.go` | Channel materialization (SPEC 104): a channel becomes a `selector` plus an optional paired `urltest`. Carries the hard-won particulars — a subscription's own auto-group never enters the channel's urltest, an empty channel falls back to `[block, direct]` with `default=block`, and the "filter matched nothing" warning states what actually happens rather than assuming the worst. |
 | `format.go` | Indentation + JSON formatting helpers (`Indent`, `FormatSectionJSON`). |
 | `dns_merge.go` | `MergeDNSSection` — overlay DNS servers/rules/final/strategy onto template DNS; strip wizard-only fields. |
 | `route_merge.go` | `MergeRouteSection` — append enabled custom-rules + SRS rule_sets; remote→local rule_set conversion. |
@@ -216,7 +213,6 @@ semantics: `contract/docs/BACKUP.md`.
 | `ifexpr.go` | `#if` predicate evaluation forms (equality, `#in`/`#matches`/`#not`, AND/OR short-circuit). |
 | `vars_resolve.go` / `vars_default.go` | Var resolution (`VarAppliesOnGOOS`, `ParamBoolVarTrue`) + object `default_value` selection (GOOS/win7/default). |
 | `preset_loader.go` / `preset_types.go` / `preset_outbounds.go` | Preset parsing + types (rules / dns / outbounds / vars). |
-| `channel_defaults.go` | Reads the template's `group_templates` / `default_channels` (SPEC 104): channels are described by the template, not hard-coded, so both apps read one description. |
 | `cond_deps.go` | Static dependency extraction from a condition (SPEC 107) — the index behind per-row Settings updates, and itself part of the shared contract. |
 | `preset_lite.go` | Adapter implementing the `state.PresetLite` interface (the interface itself lives in `core/state` to break the import cycle) + `PresetLiteMap` for `state.SyncDNSOptionsWithActivePresets`. |
 | `rule_utils.go` | Rule helpers (`HasOutbound`, `GetDefaultOutbound`, `CloneRuleRaw`). |

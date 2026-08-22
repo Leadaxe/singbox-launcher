@@ -392,7 +392,7 @@ func (s *Server) stateOutboundsResolvedWith(w http.ResponseWriter, r *http.Reque
 	// удалённой машины это её goos/goarch (SPEC 098), поэтому machine-scope
 	// резолвится под её платформу без дополнительных параметров.
 	pc := configtypes.ParserConfig{}
-	pc.ParserConfig.Outbounds = append([]configtypes.OutboundConfig(nil), st.Connections.Outbounds...)
+	pc.ParserConfig.Outbounds = append([]configtypes.Direction(nil), st.Connections.Outbounds...)
 	build.MergeOutboundUpdatesInPlace(&pc, td, build.TargetSpecFromState(st))
 	writeJSON(w, http.StatusOK, map[string]any{"outbounds": pc.ParserConfig.Outbounds})
 }

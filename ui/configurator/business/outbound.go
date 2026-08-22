@@ -33,7 +33,7 @@ import (
 // SPEC 058-R-N: единая точка merge — не дублируем resolve логику в UI.
 //
 // Returns nil если model/template отсутствуют или entry с таким tag не найден.
-func ResolveMergedOutbound(model *wizardmodels.WizardModel, tag string) *config.OutboundConfig {
+func ResolveMergedOutbound(model *wizardmodels.WizardModel, tag string) *config.Direction {
 	if model == nil || model.TemplateData == nil {
 		return nil
 	}
@@ -55,7 +55,7 @@ func ResolveMergedOutbound(model *wizardmodels.WizardModel, tag string) *config.
 		entry.Updates = append([]config.OutboundUpdate(nil), entry.Updates...)
 	}
 	pc := &config.ParserConfig{}
-	pc.ParserConfig.Outbounds = []config.OutboundConfig{entry}
+	pc.ParserConfig.Outbounds = []config.Direction{entry}
 	build.MergeOutboundUpdatesInPlace(pc, model.TemplateData, model.Target)
 	if len(pc.ParserConfig.Outbounds) == 0 {
 		return nil
@@ -159,13 +159,6 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 				tags[ob.Tag] = struct{}{}
 			}
 		}
-	}
-
-	// Каналы (SPEC 104) — основная цель правил: тег канала неизменяем, тогда
-	// как теги узлов подписки генерируются при разборе и меняются на каждом
-	// обновлении. Правило, сославшееся на канал, переживает смену подписки.
-	for _, tag := range wizardmodels.ChannelTags(model.Channels) {
-		tags[tag] = struct{}{}
 	}
 
 	result := sortedOutboundTagSlice(tags)

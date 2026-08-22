@@ -134,7 +134,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 				wasGlobal := r2.IsGlobal
 				wasSourceIndex := r2.SourceIndex
 				parserConfig := getParserConfig(editPresenter.Model())
-				ShowEditDialog(parent, editPresenter, r2.Outbound, r2.IsGlobal, r2.SourceIndex, tagsForAdd, func(updated *config.OutboundConfig, scopeKind string, sourceIndex int) {
+				ShowEditDialog(parent, editPresenter, r2.Outbound, r2.IsGlobal, r2.SourceIndex, tagsForAdd, func(updated *config.Direction, scopeKind string, sourceIndex int) {
 					newGlobal := scopeKind == "global" || sourceIndex < 0
 					scopeChanged := wasGlobal != newGlobal || (!newGlobal && wasSourceIndex != sourceIndex)
 					// Preset entries: scope locked (preset должен оставаться
@@ -264,7 +264,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			return
 		}
 		existingTags := collectAllTags(parserConfig)
-		ShowEditDialog(parent, editPresenter, nil, true, -1, existingTags, func(updated *config.OutboundConfig, scopeKind string, sourceIndex int) {
+		ShowEditDialog(parent, editPresenter, nil, true, -1, existingTags, func(updated *config.Direction, scopeKind string, sourceIndex int) {
 			if scopeKind == "global" || sourceIndex < 0 {
 				parserConfig.ParserConfig.Outbounds = append(parserConfig.ParserConfig.Outbounds, *updated)
 			} else {
@@ -308,7 +308,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			}
 			// SPEC 058-R-N: добавляем thin referenced entry (только tag + ref),
 			// body live из template на render. Не копируем полный body.
-			pc.ParserConfig.Outbounds = append(pc.ParserConfig.Outbounds, config.OutboundConfig{
+			pc.ParserConfig.Outbounds = append(pc.ParserConfig.Outbounds, config.Direction{
 				Tag: tmplOb.Tag,
 				Ref: config.RefTemplate,
 			})

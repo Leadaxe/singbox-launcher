@@ -276,7 +276,7 @@ func loadConfigFromFile(presenter *wizardpresentation.WizardPresenter, fileServi
 		if err := json.Unmarshal([]byte(parserConfigJSON), &parsed); err != nil {
 			debuglog.WarnLog("loadConfigFromFile: failed to parse template parser_config for GlobalOutbounds seed: %v", err)
 		} else {
-			model.GlobalOutbounds = append([]config.OutboundConfig(nil), parsed.ParserConfig.Outbounds...)
+			model.GlobalOutbounds = append([]config.Direction(nil), parsed.ParserConfig.Outbounds...)
 			debuglog.InfoLog("loadConfigFromFile: seeded %d global outbounds from template", len(model.GlobalOutbounds))
 		}
 	} else {

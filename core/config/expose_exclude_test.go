@@ -29,7 +29,7 @@ func TestCollectExposeTagCandidates(t *testing.T) {
 	pc.ParserConfig.Proxies = []ProxySource{
 		{
 			ExposeGroupTagsToGlobal: true,
-			Outbounds: []OutboundConfig{
+			Outbounds: []Direction{
 				{Tag: "1:auto", Comment: "x WIZARD:auto"},
 				{Tag: "noise", Comment: "no marker"},
 			},
@@ -62,12 +62,12 @@ func TestGenerateSelectorWithExposeGlobalOnly(t *testing.T) {
 	pc.ParserConfig.Proxies = []ProxySource{
 		{
 			ExposeGroupTagsToGlobal: true,
-			Outbounds: []OutboundConfig{
+			Outbounds: []Direction{
 				{Tag: "1:auto", Type: "urltest", Comment: "WIZARD:auto", Filters: map[string]interface{}{}},
 			},
 		},
 	}
-	pc.ParserConfig.Outbounds = []OutboundConfig{
+	pc.ParserConfig.Outbounds = []Direction{
 		{Tag: "g", Type: "selector", Filters: map[string]interface{}{}, AddOutbounds: []string{"direct-out"}},
 	}
 	nodes := []*ParsedNode{{Tag: "n1", SourceIndex: 0}}

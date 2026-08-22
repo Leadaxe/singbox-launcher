@@ -52,7 +52,7 @@ func TestDetourOptions_NoneFirstAndSelected(t *testing.T) {
 func TestDetourOptions_ExcludesOwnGroups(t *testing.T) {
 	m := modelWithOutbounds(t, "proxy", "ru-vpn")
 	src := &configtypes.ProxySource{
-		Outbounds: []configtypes.OutboundConfig{{Tag: "my-local-auto", Type: "urltest"}},
+		Outbounds: []configtypes.Direction{{Tag: "my-local-auto", Type: "urltest"}},
 	}
 	opts, _ := DetourOptions(m, src, none)
 	if contains(opts, "my-local-auto") {

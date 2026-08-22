@@ -109,7 +109,7 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 		build.SyncOutboundsWithActivePresets(rulesV6, &parserConfig.ParserConfig.Outbounds, model.TemplateData.Presets, model.Target)
 		// Deep-copy outbounds slice для generator-only Merge.
 		// Per-element copy чтобы Updates[] стек не shared.
-		genOutbounds := make([]config.OutboundConfig, len(parserConfig.ParserConfig.Outbounds))
+		genOutbounds := make([]config.Direction, len(parserConfig.ParserConfig.Outbounds))
 		for i, ob := range parserConfig.ParserConfig.Outbounds {
 			genOutbounds[i] = ob
 			if len(ob.Updates) > 0 {

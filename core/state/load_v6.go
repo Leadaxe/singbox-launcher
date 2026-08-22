@@ -32,7 +32,6 @@ func parseCurrent(data []byte) (*State, error) {
 		Meta         MetaSection                `json:"meta"`
 		Connections  ConnectionsSection         `json:"connections"`
 		Rules        []Rule                     `json:"rules"`
-		Channels     []Channel                  `json:"channels,omitempty"`
 		ForeignExt   map[string]json.RawMessage `json:"foreign_backup_extensions,omitempty"`
 		Vars         []SettingVar               `json:"vars"`
 		DNSOptions   DNSOptions                 `json:"dns_options"`
@@ -61,7 +60,6 @@ func parseCurrent(data []byte) (*State, error) {
 		Rules:                   raw.Rules,
 		DNS:                     dnsOpts,
 		WarpAccounts:            raw.WarpAccounts,
-		Channels:                raw.Channels,
 		ForeignBackupExtensions: raw.ForeignExt,
 		RulesLibraryMerged:      true,
 	}

@@ -179,7 +179,7 @@ func filterOutUserPatch(updates []config.OutboundUpdate) []config.OutboundUpdate
 
 // stripDirectBodyForReferenced — referenced entries (ref != "") хранят thin
 // shape: только tag + ref + updates. Body fields обнуляются (live из template/preset).
-func stripDirectBodyForReferenced(cfg *config.OutboundConfig) {
+func stripDirectBodyForReferenced(cfg *config.Direction) {
 	if cfg == nil || cfg.Ref == "" {
 		return
 	}

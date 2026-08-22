@@ -38,11 +38,11 @@ import (
 // ref (template tag исчез или preset disabled/missing); caller обычно дропает
 // такие entries через sync. Body в этом случае = ob (degraded view для UI).
 func resolveBaseBody(
-	ob configtypes.OutboundConfig,
-	tmplOutbounds []configtypes.OutboundConfig,
+	ob configtypes.Direction,
+	tmplOutbounds []configtypes.Direction,
 	presetByID map[string]*template.Preset,
 	target template.TargetSpec,
-) (configtypes.OutboundConfig, bool) {
+) (configtypes.Direction, bool) {
 	switch ob.Ref {
 	case "":
 		// Direct entry — body inline.
@@ -81,7 +81,7 @@ func resolveBaseBody(
 
 // applyUpdatesToBase — applies Updates[] stack к resolved base.
 // Returns копию (не мутирует input).
-func applyUpdatesToBase(base configtypes.OutboundConfig, updates []configtypes.OutboundUpdate) configtypes.OutboundConfig {
+func applyUpdatesToBase(base configtypes.Direction, updates []configtypes.OutboundUpdate) configtypes.Direction {
 	merged := base
 	merged.Updates = nil // metadata, не пишется в config.json
 
@@ -97,13 +97,13 @@ func applyUpdatesToBase(base configtypes.OutboundConfig, updates []configtypes.O
 //
 // td может быть nil — тогда referenced entries будут degraded (body = ob.body
 // без template lookup). Direct entries работают всегда.
-func MergeOutboundUpdates(ob configtypes.OutboundConfig, td *template.TemplateData, target template.TargetSpec) configtypes.OutboundConfig {
+func MergeOutboundUpdates(ob configtypes.Direction, td *template.TemplateData, target template.TargetSpec) configtypes.Direction {
 	return mergeOutboundUpdates(ob, td, target)
 }
 
 // mergeOutboundUpdates — вычисляет merged outbound body: resolve base
 // (template/preset/inline) + apply Updates в order. Возвращает копию.
-func mergeOutboundUpdates(ob configtypes.OutboundConfig, td *template.TemplateData, target template.TargetSpec) configtypes.OutboundConfig {
+func mergeOutboundUpdates(ob configtypes.Direction, td *template.TemplateData, target template.TargetSpec) configtypes.Direction {
 	tmplOutbounds := td.GlobalOutbounds()
 	presetByID := make(map[string]*template.Preset)
 	if td != nil {
@@ -165,10 +165,10 @@ func MergeOutboundUpdatesInPlace(parserCfg *configtypes.ParserConfig, td *templa
 }
 
 // applyOutboundUpdatePatch — применяет один patch (map) к target outbound.
-// Тонкая обёртка вокруг applyOutboundUpdate(target, patch OutboundConfig)
+// Тонкая обёртка вокруг applyOutboundUpdate(target, patch Direction)
 // для удобства работы с map-форматом из OutboundUpdate.Patch.
 //
-// Конвертирует map → OutboundConfig (через JSON marshal/unmarshal на patch
+// Конвертирует map → Direction (через JSON marshal/unmarshal на patch
 // keys) → вызывает existing applyOutboundUpdate → возвращает результат.
 //
 // userPatch=true (ref=#USER#): addOutbounds в патче — это полный список из
@@ -180,7 +180,7 @@ func MergeOutboundUpdatesInPlace(parserCfg *configtypes.ParserConfig, td *templa
 // базового списка.
 //
 // Если patch не парсится — возвращает target без изменений (safe noop).
-func applyOutboundUpdatePatch(target configtypes.OutboundConfig, patch map[string]interface{}, userPatch bool) configtypes.OutboundConfig {
+func applyOutboundUpdatePatch(target configtypes.Direction, patch map[string]interface{}, userPatch bool) configtypes.Direction {
 	if len(patch) == 0 {
 		return target
 	}
@@ -188,7 +188,7 @@ func applyOutboundUpdatePatch(target configtypes.OutboundConfig, patch map[strin
 	if err != nil {
 		return target
 	}
-	var patchOC configtypes.OutboundConfig
+	var patchOC configtypes.Direction
 	if err := json.Unmarshal(patchJSON, &patchOC); err != nil {
 		return target
 	}

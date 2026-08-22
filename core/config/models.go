@@ -7,7 +7,7 @@ import "singbox-launcher/core/config/configtypes"
 
 type ParserConfig = configtypes.ParserConfig
 type ProxySource = configtypes.ProxySource
-type OutboundConfig = configtypes.OutboundConfig
+type Direction = configtypes.Direction
 type OutboundUpdate = configtypes.OutboundUpdate
 type ParsedNode = configtypes.ParsedNode
 type ParsedJump = configtypes.ParsedJump

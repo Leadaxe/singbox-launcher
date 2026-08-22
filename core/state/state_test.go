@@ -149,7 +149,7 @@ func TestSave_RoundTrip(t *testing.T) {
 	original.ParserConfig.ParserConfig.Proxies = []configtypes.ProxySource{
 		{Source: "https://x/sub", TagPrefix: "[X] "},
 	}
-	original.ParserConfig.ParserConfig.Outbounds = []configtypes.OutboundConfig{}
+	original.ParserConfig.ParserConfig.Outbounds = []configtypes.Direction{}
 
 	if err := original.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)

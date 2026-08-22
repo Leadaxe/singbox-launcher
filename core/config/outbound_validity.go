@@ -20,11 +20,11 @@ import (
 // - Pass 2: Calculate total outboundCount (nodes + valid addOutbounds) and validity
 // - Pass 3: Generate JSON only for valid selectors with filtered addOutbounds
 type outboundInfo struct {
-	config        OutboundConfig // Original outbound configuration
-	filteredNodes []*ParsedNode  // Nodes that match this selector's filters
-	outboundCount int            // Total count: filteredNodes + valid addOutbounds (calculated in pass 2)
-	isValid       bool           // true if outboundCount > 0 (set in pass 2)
-	isLocal       bool           // true if it's a local selector (from proxySource.Outbounds), false if global
+	config        Direction     // Original outbound configuration
+	filteredNodes []*ParsedNode // Nodes that match this selector's filters
+	outboundCount int           // Total count: filteredNodes + valid addOutbounds (calculated in pass 2)
+	isValid       bool          // true if outboundCount > 0 (set in pass 2)
+	isLocal       bool          // true if it's a local selector (from proxySource.Outbounds), false if global
 }
 
 // exposeTagCandidate is a wizard local outbound tag eligible for merge into global selectors (SPEC 026).

@@ -216,9 +216,9 @@ func TestIntegration_ParserConfigFlow(t *testing.T) {
 	t.Run("Create ParserConfig with real links", func(t *testing.T) {
 		parserConfig := &config.ParserConfig{
 			ParserConfig: struct {
-				Version   int                     `json:"version,omitempty"`
-				Proxies   []config.ProxySource    `json:"proxies"`
-				Outbounds []config.OutboundConfig `json:"outbounds"`
+				Version   int                  `json:"version,omitempty"`
+				Proxies   []config.ProxySource `json:"proxies"`
+				Outbounds []config.Direction   `json:"outbounds"`
 				Parser    struct {
 					Reload      string `json:"reload,omitempty"`
 					LastUpdated string `json:"last_updated,omitempty"`
@@ -231,7 +231,7 @@ func TestIntegration_ParserConfigFlow(t *testing.T) {
 						Connections: realLinks,
 					},
 				},
-				Outbounds: []config.OutboundConfig{
+				Outbounds: []config.Direction{
 					{
 						Tag:  "proxy-out",
 						Type: "selector",

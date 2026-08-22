@@ -70,11 +70,11 @@ func ProxyHasLocalSelect(proxy *config.ProxySource) bool {
 	return false
 }
 
-func removeOutboundsWithCommentPredicate(outbounds []config.OutboundConfig, pred func(string) bool) []config.OutboundConfig {
+func removeOutboundsWithCommentPredicate(outbounds []config.Direction, pred func(string) bool) []config.Direction {
 	if len(outbounds) == 0 {
 		return outbounds
 	}
-	out := make([]config.OutboundConfig, 0, len(outbounds))
+	out := make([]config.Direction, 0, len(outbounds))
 	for _, ob := range outbounds {
 		if pred(ob.Comment) {
 			continue
@@ -110,7 +110,7 @@ func SyncExposeFlagWhenNoLocalGroups(proxy *config.ProxySource) {
 	}
 }
 
-func tagUsedByNonWizardOutbound(outbounds []config.OutboundConfig, tag string, wizardOK func(string) bool) bool {
+func tagUsedByNonWizardOutbound(outbounds []config.Direction, tag string, wizardOK func(string) bool) bool {
 	for _, ob := range outbounds {
 		if ob.Tag != tag {
 			continue
@@ -125,7 +125,7 @@ func tagUsedByNonWizardOutbound(outbounds []config.OutboundConfig, tag string, w
 
 // defaultLocalURLTestOptions is the template for a local-auto urltest outbound.
 // It is package-global, so it MUST be cloned (cloneOptions) before being assigned
-// to an OutboundConfig — handing out the shared instance would let a later edit
+// to an Direction — handing out the shared instance would let a later edit
 // of one outbound's Options mutate this global and poison every subsequent
 // local-auto outbound. Values are all primitives, so a shallow clone suffices.
 var defaultLocalURLTestOptions = map[string]interface{}{
@@ -159,7 +159,7 @@ func EnsureLocalAuto(proxy *config.ProxySource, sourceIndex int) error {
 		return ErrWizardOutboundTagConflict
 	}
 	proxy.Outbounds = removeOutboundsWithCommentPredicate(proxy.Outbounds, commentHasWizardAuto)
-	proxy.Outbounds = append(proxy.Outbounds, config.OutboundConfig{
+	proxy.Outbounds = append(proxy.Outbounds, config.Direction{
 		Tag:     autoTag,
 		Type:    "urltest",
 		Options: cloneOptions(defaultLocalURLTestOptions),
@@ -190,7 +190,7 @@ func EnsureLocalSelect(proxy *config.ProxySource, sourceIndex int) error {
 		"interrupt_exist_connections": true,
 		"default":                     autoTag,
 	}
-	proxy.Outbounds = append(proxy.Outbounds, config.OutboundConfig{
+	proxy.Outbounds = append(proxy.Outbounds, config.Direction{
 		Tag:          selTag,
 		Type:         "selector",
 		Options:      opts,

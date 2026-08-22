@@ -59,12 +59,6 @@ type diskStateV6 struct {
 	DNSOptions   DNSOptions           `json:"dns_options"`
 	WarpAccounts *WarpAccountsSection `json:"warp_accounts,omitempty"`
 
-	// Channels — каналы роутинга (SPEC 104). Совместимое расширение v6:
-	// состояние без этой секции читается как «каналов ещё не было» и
-	// засевается из шаблона, а состояние с ней — как есть. Отдельная
-	// версия формата не нужна: чтение старых файлов не ломается.
-	Channels []Channel `json:"channels,omitempty"`
-
 	// ForeignBackupExtensions — блобы чужих приложений из LX Backup
 	// (SPEC 103, фаза 4). Хранятся нетронутыми до следующего экспорта.
 	ForeignBackupExtensions map[string]json.RawMessage `json:"foreign_backup_extensions,omitempty"`

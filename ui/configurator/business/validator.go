@@ -132,14 +132,14 @@ func ValidateURI(uri string) error {
 	return nil
 }
 
-// ValidateOutbound validates an OutboundConfig.
+// ValidateOutbound validates an Direction.
 //
 // SPEC 058-R-N: referenced entries (Ref != "") хранятся thin — только tag + ref,
 // body live из template/preset. Type/Options/etc. отсутствуют — это валидное
 // состояние, не ошибка. Валидируется только tag (всё ещё обязателен).
 // Body validity проверяется при resolve через template — broken refs handled
 // в MergeOutboundUpdatesInPlace fallback.
-func ValidateOutbound(outbound *config.OutboundConfig) error {
+func ValidateOutbound(outbound *config.Direction) error {
 	if outbound == nil {
 		return fmt.Errorf("outbound is nil")
 	}

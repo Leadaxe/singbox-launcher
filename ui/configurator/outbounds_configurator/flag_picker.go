@@ -169,9 +169,9 @@ func showFlagPickerPopup(
 	recomputeMatches := func() {
 		rows = rows[:0]
 
-		// Build synthetic OutboundConfig with only the filter — we only care
+		// Build synthetic Direction with only the filter — we only care
 		// about which nodes match.
-		cfg := config.OutboundConfig{
+		cfg := config.Direction{
 			Tag:  "_flag_picker_",
 			Type: "selector",
 			Filters: map[string]interface{}{

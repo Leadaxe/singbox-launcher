@@ -24,10 +24,10 @@ type v4File struct {
 
 // v4ParserConfig — упрощённый layout (без обёртки configtypes.ParserConfig).
 type v4ParserConfig struct {
-	Version   int                          `json:"version,omitempty"`
-	Proxies   []configtypes.ProxySource    `json:"proxies"`
-	Outbounds []configtypes.OutboundConfig `json:"outbounds"`
-	Parser    v4Parser                     `json:"parser,omitempty"`
+	Version   int                       `json:"version,omitempty"`
+	Proxies   []configtypes.ProxySource `json:"proxies"`
+	Outbounds []configtypes.Direction   `json:"outbounds"`
+	Parser    v4Parser                  `json:"parser,omitempty"`
 }
 
 // v4Parser — параметры обновления (только Reload остаётся в v5).

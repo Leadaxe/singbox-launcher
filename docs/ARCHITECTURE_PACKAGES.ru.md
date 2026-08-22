@@ -78,8 +78,6 @@
 | Файл | Назначение |
 |------|---------|
 | `state.go` | Корневая структура `State` (идентичность + легаси-представление `ParserConfig` + канонические `Connections`/`Rules`/`DNS`) и хелперы доступа. |
-| `channel_types.go` | `Channel` / `ChannelAuto` — каналы роутинга (SPEC 104): неизменяемый тег `vpn-N`, на который ссылаются правила, отбор узлов, автовыбор. Свой `UnmarshalJSON` восстанавливает умолчания `enabled`/`interrupt_exist_connections`: нулевое значение bool молча выключало бы канал при каждом чтении. |
-| `channel_seed.go` | Разовое сидирование из `default_channels` шаблона, выдача свободного тега (первая дырка, а не «максимум + 1»), поиск канала. |
 | `rule_order.go` | Числовая ось порядка правил (SPEC 106): ленивый сдвиг до первой дырки, re-seed несортируемых, нормализация состояний, записанных до появления оси. |
 | `save.go` | Память→диск: `syncConnectionsFromLegacy`, `marshalDisk` (раскладка v6), атомарные fsync+rename, бэкап SPEC 058. |
 | `load_router.go` | `Load`/`Parse`: определение схемы (top-level против `meta.version`), маршрутизация в парсеры v6/v5/v2-v4. |
@@ -119,7 +117,6 @@
 |------|---------|
 | `build.go` | `BuildConfig`-оркестратор: валидация шаблона, `GetEffectiveConfig`, диспетчеризация по секциям, конкатенация финального JSON (чистая). |
 | `sections.go` | `BuildOutboundsSection`/`BuildEndpointsSection` — отрисовка outbound'ов и endpoint'ов с маркерами парсера и обрезкой для предпросмотра. |
-| `channels.go` | Материализация каналов (SPEC 104): канал становится `selector` и, при включённом автовыборе, парным `urltest`. Несёт выстраданные частности — узел автовыбора подписки не попадает в urltest канала, пустой канал получает запасной состав `[block, direct]` с `default=block`, а предупреждение «фильтр никого не поймал» говорит, что произойдёт на самом деле, а не предполагает худшее. |
 | `format.go` | Хелперы отступов и форматирования JSON (`Indent`, `FormatSectionJSON`). |
 | `dns_merge.go` | `MergeDNSSection` — наложение DNS-серверов, правил, final и strategy поверх DNS шаблона; вырезание полей, нужных только визарду. |
 | `route_merge.go` | `MergeRouteSection` — добавление включённых пользовательских правил и SRS rule_set'ов; конвертация remote→local rule_set. |
@@ -218,7 +215,6 @@
 | `ifexpr.go` | Формы вычисления предикатов `#if` (равенство, `#in`/`#matches`/`#not`, короткое замыкание AND/OR). |
 | `vars_resolve.go` / `vars_default.go` | Разрешение переменных (`VarAppliesOnGOOS`, `ParamBoolVarTrue`) и выбор объектного `default_value` (GOOS/win7/default). |
 | `preset_loader.go` / `preset_types.go` / `preset_outbounds.go` | Разбор пресетов и типы (rules / dns / outbounds / vars). |
-| `channel_defaults.go` | Чтение `group_templates` / `default_channels` шаблона (SPEC 104): каналы описываются шаблоном, а не зашиты в код, поэтому обе платформы читают одно описание. |
 | `cond_deps.go` | Статическое извлечение зависимостей условия (SPEC 107) — индекс, на котором стоит построчное обновление Settings; сам по себе часть общего контракта. |
 | `preset_lite.go` | Адаптер, реализующий интерфейс `state.PresetLite` (сам интерфейс живёт в `core/state`, чтобы разорвать цикл импортов), и `PresetLiteMap` для `state.SyncDNSOptionsWithActivePresets`. |
 | `rule_utils.go` | Хелперы правил (`HasOutbound`, `GetDefaultOutbound`, `CloneRuleRaw`). |

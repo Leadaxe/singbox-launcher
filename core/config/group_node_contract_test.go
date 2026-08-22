@@ -125,7 +125,7 @@ func TestGroupNodeDoesNotTouchOutboundChannels(t *testing.T) {
 	parserConfig.ParserConfig.Proxies = []ProxySource{{
 		Source: "https://example.invalid/sub",
 	}}
-	parserConfig.ParserConfig.Outbounds = []OutboundConfig{{
+	parserConfig.ParserConfig.Outbounds = []Direction{{
 		Tag:     "proxy-out",
 		Type:    "selector",
 		Filters: map[string]interface{}{"tag": "/./"},
@@ -173,7 +173,7 @@ func TestGroupNodeDoesNotTouchOutboundChannels(t *testing.T) {
 func TestGroupNodeIsSelectableByChannelFilter(t *testing.T) {
 	parserConfig := &ParserConfig{}
 	parserConfig.ParserConfig.Proxies = []ProxySource{{Source: "https://example.invalid/sub"}}
-	parserConfig.ParserConfig.Outbounds = []OutboundConfig{{
+	parserConfig.ParserConfig.Outbounds = []Direction{{
 		Tag:     "proxy-out",
 		Type:    "selector",
 		Filters: map[string]interface{}{"tag": "/auto/i"},

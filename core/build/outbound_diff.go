@@ -31,7 +31,7 @@ import (
 //
 // Используется только для referenced entries. Для direct entries diff не нужен
 // (body хранится inline, перезаписывается напрямую).
-func OutboundFieldDiff(form, base configtypes.OutboundConfig) map[string]interface{} {
+func OutboundFieldDiff(form, base configtypes.Direction) map[string]interface{} {
 	patch := make(map[string]interface{})
 
 	// Filters — equal? skip. Else replace целиком (map equality через reflect).

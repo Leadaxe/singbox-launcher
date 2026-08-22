@@ -44,8 +44,7 @@
   "selectable_rules":[ ... ],        // legacy rules library — kept for back-compat, replaced by presets[]
   "presets":         [ ... ],        // SPEC 053 self-contained preset bundles
   "vars":            [ ... ],         // typed template variables (UI Settings tab + @var substitution)
-  "group_templates": { ... },        // SPEC 104: как материализуется канал роутинга
-  "default_channels":[ ... ]         // SPEC 104: стартовый набор каналов, засевается один раз
+  "group_templates": { ... }         // SPEC 104: во что материализуется Направление
 }
 ```
 
@@ -137,50 +136,6 @@ Substitute механизм: build-time recursive walk по `rules` / `dns_rule`
 
 State хранит **только diff** от template defaults в `rule.body.vars`
 (пустой `vars: {}` = preset на template defaults).
-
----
-
-### 4.6 `group_templates` и `default_channels` — каналы роутинга (SPEC 104)
-
-Каналы описываются **шаблоном**, а не зашиты в приложение: и лаунчер, и LxBox
-читают одно описание и ведут себя одинаково.
-
-```jsonc
-"group_templates": {
-  "magic_nodes": {                                    // служебные опции канала
-    "auto":   { "source": "generate", "tpl": "{parent_tag}-auto" },
-    "direct": { "source": "preset",   "tag": "direct-out" },
-    "block":  { "source": "preset",   "tag": "block-out"  }
-  },
-  "channel": { "type": "selector", "options": { "interrupt_exist_connections": true } },
-  "auto":    { "type": "urltest",  "options": { "url": "@urltest_url", "interval": "@urltest_interval" } }
-},
-
-"default_channels": [
-  { "tag": "vpn-1", "label": "VPN ①", "default_enabled": true  },
-  { "tag": "vpn-2", "label": "VPN ②", "default_enabled": false }
-]
-```
-
-- **`magic_nodes`** — теги служебных опций, которые канал может включить.
-  `source: "preset"` берёт тег как есть; `source: "generate"` строит его из
-  `tpl`, подставляя вместо `{parent_tag}` тег самого канала. Теги direct/block
-  читаются отсюда, а не предполагаются: они не универсальны (здесь —
-  `direct-out`, `block-out`), и зашитое имя сломало бы чужой шаблон.
-- **`channel` / `auto`** — во что материализуется каждая половина. `options`
-  уезжают в эмитируемую группу как есть, **включая ссылки `@var`**: подстановка
-  — задача движка шаблонов, и делать её здесь значило бы завести вторую его
-  реализацию.
-- **`default_channels`** — засевается в состояние **один раз**, при первом
-  появлении секции `channels`. Дальше набор принадлежит пользователю: повторный
-  seed затирал бы его правки при каждом обновлении шаблона, а удалённые каналы
-  возвращались бы на следующем старте.
-
-Шаблон без этих секций просто не имеет каналов — конфиг собирается ровно как
-раньше, и приложение не замечает разницы.
-
-Чтение: `core/template/channel_defaults.go`. Материализация:
-`core/build/channels.go`. Форма хранения: `WIZARD_STATE.ru.md` §3.7.
 
 ---
 

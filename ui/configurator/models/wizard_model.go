@@ -65,10 +65,7 @@ type WizardModel struct {
 	// GlobalOutbounds — глобальные группы (selector / urltest), которые
 	// рендерятся в config.json `outbounds[]`. Источник истины для
 	// outbounds-конфигуратора и парсера. Зеркалит state.connections.outbounds.
-	GlobalOutbounds []configtypes.OutboundConfig
-
-	// Channels — каналы роутинга (SPEC 104). Зеркалит state.channels.
-	Channels []Channel
+	GlobalOutbounds []configtypes.Direction
 
 	// Defaults — глобальные defaults подключений (reload interval, max_nodes
 	// fallback). Зеркалит state.connections.defaults.
@@ -131,7 +128,7 @@ type WizardModel struct {
 	DNSTemplateOverrides map[string]bool
 
 	// SPEC 057-R-N: preset outbound binding live в state.connections.outbounds[]
-	// напрямую через `ref` field (см. configtypes.OutboundConfig.Ref + .Updates).
+	// напрямую через `ref` field (см. configtypes.Direction.Ref + .Updates).
 	// Display order = natural slice order — больше нет вспомогательной in-memory
 	// карты OutboundDisplayOrder. Up/Down работают через swap в slice
 	// (moveOutboundUp/Down), reorder автоматически персистится при сохранении.
@@ -224,7 +221,7 @@ func NewWizardModel() *WizardModel {
 		GeneratedOutbounds:   make([]string, 0),
 		GeneratedEndpoints:   make([]string, 0),
 		Sources:              make([]corestate.Source, 0),
-		GlobalOutbounds:      make([]configtypes.OutboundConfig, 0),
+		GlobalOutbounds:      make([]configtypes.Direction, 0),
 		Defaults:             corestate.Defaults{Reload: "4h", MaxNodes: corestate.DefaultMaxNodes},
 	}
 }
@@ -249,9 +246,9 @@ func (m *WizardModel) AsParserConfig() *config.ParserConfig {
 		pc.ParserConfig.Proxies = append(pc.ParserConfig.Proxies, m.Sources[i].ToProxySourceV4())
 	}
 	if len(m.GlobalOutbounds) > 0 {
-		pc.ParserConfig.Outbounds = append([]configtypes.OutboundConfig(nil), m.GlobalOutbounds...)
+		pc.ParserConfig.Outbounds = append([]configtypes.Direction(nil), m.GlobalOutbounds...)
 	} else {
-		pc.ParserConfig.Outbounds = []configtypes.OutboundConfig{}
+		pc.ParserConfig.Outbounds = []configtypes.Direction{}
 	}
 	pc.ParserConfig.Parser.Reload = m.Defaults.Reload
 	return pc
