@@ -217,18 +217,27 @@ func GetTemplateFileName() string {
 	return TemplateFileName
 }
 
-// GetTemplateURL возвращает URL загрузки шаблона с GitHub, pinned на коммит,
-// под который собран этот лаунчер (`constants.RequiredTemplateRef`).
+// GetTemplateURL возвращает URL загрузки шаблона с GitHub.
 //
-// Для CI-сборок ref инжектится через -ldflags = `git rev-parse HEAD`. Для
-// локальных `go run` ref берётся из source-default (последний коммит main на
-// момент бампа в RELEASE_PROCESS §1.5). Ветки HEAD здесь не используются —
-// иначе лаунчер собирается под одну версию шаблона, а в runtime получает
-// другую. См. SPEC 046.
+// РЕЛИЗНАЯ сборка pin'ится на коммит, под который собрана
+// (`constants.RequiredTemplateRef`, для CI инжектится через -ldflags =
+// `git rev-parse HEAD`). Ветку здесь брать нельзя: лаунчер собран под одну
+// версию формата шаблона и в runtime обязан получить именно её, иначе
+// свежий шаблон с полями будущей версии приедет старому коду. См. SPEC 046.
+//
+// DEV-сборка берёт шаблон из своей ветки (`develop`). Причина запрета выше
+// на неё не распространяется: она собрана из рабочего дерева, где формат
+// шаблона и код меняются вместе, а pinned-ref указывает на посторонний
+// старый коммит — то есть ровно на ту рассинхронизацию, от которой пин и
+// защищает.
 func GetTemplateURL() string {
+	ref := constants.RequiredTemplateRef
+	if constants.IsDevBuild() {
+		ref = constants.GetMyBranch()
+	}
 	return fmt.Sprintf(
 		"https://raw.githubusercontent.com/Leadaxe/singbox-launcher/%s/bin/%s",
-		constants.RequiredTemplateRef,
+		ref,
 		TemplateFileName,
 	)
 }

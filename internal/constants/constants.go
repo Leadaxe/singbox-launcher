@@ -123,8 +123,7 @@ var (
 )
 
 // GetMyBranch возвращает ветку репозитория для загрузки ассетов, у которых нет
-// pinned-ref модели (например, переводы локалей, wintun zip). wizard_template.json
-// больше не использует эту функцию — он pin'ится через RequiredTemplateRef.
+// pinned-ref модели (например, переводы локалей, wintun zip).
 //
 // Если в версии приложения есть суффикс после номера (например 0.7.1-96-gc1343cc или 0.7.1-dev), возвращает "develop", иначе "main".
 func GetMyBranch() string {
@@ -133,6 +132,23 @@ func GetMyBranch() string {
 		return "develop"
 	}
 	return "main"
+}
+
+// IsDevBuild — сборка не из релизного тега: `v-local-test` (значение по
+// умолчанию), `unnamed-dev` (значение build-скрипта), `git describe` с
+// суффиксом коммитов или `-dirty`.
+//
+// Тот же признак, по которому GetMyBranch выбирает develop; вынесен
+// отдельно, потому что о нём спрашивают и там, где ветка не нужна.
+func IsDevBuild() bool {
+	v := strings.TrimPrefix(AppVersion, "v")
+	if v == "" {
+		return true
+	}
+	if strings.HasPrefix(v, "-local-test") || strings.Contains(v, "unnamed-dev") {
+		return true
+	}
+	return strings.Contains(v, "-")
 }
 
 // UI Theme settings
