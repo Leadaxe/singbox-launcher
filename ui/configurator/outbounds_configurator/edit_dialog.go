@@ -905,6 +905,19 @@ func ShowEditDialog(
 			urltestBlock.Hide()
 		}
 	}
+	// SPEC 104: у Направления тип всегда selector — выбирать нечего, а
+	// «loadbalance» относится к автогруппе и живёт на своей вкладке.
+	// Строка Type остаётся ТОЛЬКО для легаси-записей urltest, созданных до
+	// свёртки auto-проксей: спрятать её у них значило бы лишить
+	// пользователя единственного способа увидеть и сменить их тип.
+	typeRow := container.NewVBox(
+		widget.NewLabel(locale.T("wizard.outbound.label_type")),
+		typeSelect,
+	)
+	if displayBody == nil || displayBody.Type != "urltest" {
+		typeRow.Hide()
+	}
+
 	urltestVisible() // initial state
 	prevOnTypeChanged := typeSelect.OnChanged
 	typeSelect.OnChanged = func(s string) {
@@ -921,8 +934,7 @@ func ShowEditDialog(
 		labelEntry,
 		widget.NewLabel(locale.T("wizard.outbound.label_tag_field")),
 		tagEntry,
-		widget.NewLabel(locale.T("wizard.outbound.label_type")),
-		typeSelect,
+		typeRow,
 		urltestBlock,
 		autoTwinCheck,
 		widget.NewLabel(locale.T("wizard.outbound.label_comment")),
