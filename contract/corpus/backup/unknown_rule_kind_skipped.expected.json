@@ -1,0 +1,11 @@
+{
+  "rules": [
+    {
+      "name": "Keep",
+      "enabled": true
+    }
+  ],
+  "warnings": [
+    "backup_unknown_field"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "rules": [
+    {
+      "name": "first",
+      "enabled": true
+    },
+    {
+      "name": "second",
+      "enabled": true
+    },
+    {
+      "name": "third",
+      "enabled": true
+    }
+  ],
+  "warnings": []
+}

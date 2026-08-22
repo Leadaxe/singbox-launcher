@@ -1,0 +1,32 @@
+{
+  "lx_backup": 1,
+  "exported_by": {
+    "app": "lxbox",
+    "version": "2.0.0"
+  },
+  "exported_at": "2026-08-22T00:00:00Z",
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "Work",
+      "outbound": "proxy",
+      "num": 1000,
+      "match": {
+        "domain_suffix": [
+          "work.example-1.com"
+        ]
+      }
+    },
+    {
+      "kind": "inline",
+      "name": "Channel",
+      "outbound": "vpn-3",
+      "num": 1001,
+      "match": {
+        "domain_suffix": [
+          "ch.example-1.com"
+        ]
+      }
+    }
+  ]
+}

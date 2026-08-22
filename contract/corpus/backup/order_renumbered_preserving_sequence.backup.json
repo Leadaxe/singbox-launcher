@@ -1,0 +1,43 @@
+{
+  "lx_backup": 1,
+  "exported_by": {
+    "app": "lxbox",
+    "version": "2.0.0"
+  },
+  "exported_at": "2026-08-22T00:00:00Z",
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "third",
+      "outbound": "direct",
+      "num": 9000,
+      "match": {
+        "domain_suffix": [
+          "c.example-1.com"
+        ]
+      }
+    },
+    {
+      "kind": "inline",
+      "name": "first",
+      "outbound": "direct",
+      "num": 10,
+      "match": {
+        "domain_suffix": [
+          "a.example-1.com"
+        ]
+      }
+    },
+    {
+      "kind": "inline",
+      "name": "second",
+      "outbound": "direct",
+      "num": 500,
+      "match": {
+        "domain_suffix": [
+          "b.example-1.com"
+        ]
+      }
+    }
+  ]
+}

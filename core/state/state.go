@@ -19,6 +19,7 @@
 package state
 
 import (
+	"encoding/json"
 	"time"
 
 	"singbox-launcher/core/config/configtypes"
@@ -111,6 +112,15 @@ type State struct {
 	// Legacy; в v5 не сериализуется (всегда true). В памяти сохраняется
 	// чтобы UI-код не ре-запускал миграцию каждый Load.
 	RulesLibraryMerged bool
+
+	// ForeignBackupExtensions — блобы extensions.<app> ЧУЖИХ приложений,
+	// пришедшие с импортом LX Backup (SPEC 103, фаза 4).
+	//
+	// Хранятся нетронутыми и возвращаются в следующий экспорт: бэкап,
+	// побывавший на десктопе, не должен вернуться на телефон обеднённым.
+	// Мы не знаем, что внутри, и не должны знать — это данные чужой
+	// стороны, а не наши.
+	ForeignBackupExtensions map[string]json.RawMessage
 
 	// DNSOptions — снимок вкладки DNS визарда (v5 legacy shape).
 	// Приватный тип LegacyDNSOptionsV5 — оставлен для backward-compat с UI

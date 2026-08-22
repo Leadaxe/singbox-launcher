@@ -1,0 +1,15 @@
+{
+  "rules": [
+    {
+      "name": "Work",
+      "enabled": true
+    },
+    {
+      "name": "Channel",
+      "enabled": false
+    }
+  ],
+  "warnings": [
+    "backup_unknown_outbound"
+  ]
+}

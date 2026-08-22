@@ -1,0 +1,9 @@
+{
+  "rules": [],
+  "vars": {
+    "log_level": "debug"
+  },
+  "warnings": [
+    "backup_var_skipped"
+  ]
+}
