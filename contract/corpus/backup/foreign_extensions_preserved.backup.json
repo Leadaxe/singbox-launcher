@@ -17,6 +17,15 @@
           "name": "vpn-3"
         }
       ]
+    },
+    "launcher": {
+      "state_version": 6,
+      "skip": [
+        {
+          "field": "tag",
+          "contains": "trial"
+        }
+      ]
     }
   }
 }

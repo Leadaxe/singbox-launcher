@@ -1,7 +1,5 @@
 {
   "rules": [],
-  "foreign_extensions_kept": [
-    "lxbox"
-  ],
-  "warnings": []
+  "warnings": [],
+  "foreign_extensions_kept_other_app": true
 }

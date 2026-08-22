@@ -27,11 +27,15 @@ type corpusExpectation struct {
 		Name    string `json:"name"`
 		Enabled bool   `json:"enabled"`
 	} `json:"rules"`
-	Vars                  map[string]string `json:"vars"`
-	Warnings              []string          `json:"warnings"`
-	RouteFinalApplied     *bool             `json:"route_final_applied"`
-	ForeignExtensionsKept []string          `json:"foreign_extensions_kept"`
-	DisabledHashes        []string          `json:"disabled_hashes"`
+	Vars              map[string]string `json:"vars"`
+	Warnings          []string          `json:"warnings"`
+	RouteFinalApplied *bool             `json:"route_final_applied"`
+	// ForeignKeptOtherApp — импортёр обязан сохранить блоб extensions ДРУГОГО
+	// приложения. Ожидание сформулировано относительно импортёра, а не по
+	// имени приложения: для лаунчера чужой — lxbox, для LxBox — launcher, и
+	// фикстура остаётся одна на обе стороны.
+	ForeignKeptOtherApp bool     `json:"foreign_extensions_kept_other_app"`
+	DisabledHashes      []string `json:"disabled_hashes"`
 }
 
 func TestBackupCorpus(t *testing.T) {
@@ -170,11 +174,16 @@ func checkRouteFinal(t *testing.T, dst *state.State, exp corpusExpectation) {
 
 func checkForeignExtensions(t *testing.T, dst *state.State, exp corpusExpectation) {
 	t.Helper()
-	for _, app := range exp.ForeignExtensionsKept {
-		blob, ok := dst.ForeignBackupExtensions[app]
-		if !ok || len(blob) == 0 {
-			t.Errorf("блоб extensions.%s не сохранён — при обратном экспорте данные пропадут", app)
-		}
+	if !exp.ForeignKeptOtherApp {
+		return
+	}
+	// Своё приложение блоб применяет полями, чужое — хранит нетронутым.
+	blob, ok := dst.ForeignBackupExtensions[AppLxBox]
+	if !ok || len(blob) == 0 {
+		t.Errorf("блоб extensions.%s не сохранён — при обратном экспорте данные пропадут", AppLxBox)
+	}
+	if _, wrong := dst.ForeignBackupExtensions[AppLauncher]; wrong {
+		t.Errorf("собственный блоб extensions.%s положен в чужие — он должен применяться полями", AppLauncher)
 	}
 }
 
