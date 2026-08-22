@@ -330,12 +330,12 @@ func initializeWizardContent(presenter *wizardpresentation.WizardPresenter, guiS
 // createWizardTabs создает табы визарда.
 // Возвращает контейнер табов и ссылки на Rules и Preview табы.
 func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState) (*container.AppTabs, *container.TabItem) {
-	// Tab order: Target → Sources → Outbounds → Rules → DNS → Settings → Generate.
+	// Tab order: Target → Sources → Outbounds → Rules → DNS → Settings → Files.
 	//
-	// Generate — действия над готовым состоянием: собрать config.json в
-	// файл, посмотреть его и перенести настройки на другую машину. Прежняя
-	// вкладка Preview пересобирала конфиг на каждое переключение ради
-	// текста, который нужен изредка; здесь он показывается по кнопке.
+	// Files — то, что уходит в файлы и приходит из них: собрать config.json,
+	// посмотреть его и перенести настройки на другую машину. Прежняя вкладка
+	// Preview пересобирала конфиг на каждое переключение ради текста, который
+	// нужен изредка; здесь он открывается по кнопке в своём окне.
 	// Target идёт ПЕРВЫМ (SPEC 097): он определяет платформу и роль целевой
 	// машины, а от них зависит, какие поля вообще показывать дальше.
 	// DNS goes AFTER Rules (per user request: DNS depends on which preset rules are active).
@@ -393,12 +393,12 @@ func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *w
 		dnsTabItem := container.NewTabItem(locale.T("wizard.tab_dns"), dnsTab)
 		settingsTab := wizardtabs.CreateSettingsTab(presenter)
 		settingsTabItem := container.NewTabItem(locale.T("wizard.tab_settings"), settingsTab)
-		generateTab := wizardtabs.CreateGenerateTab(presenter, guiState)
-		generateTabItem := container.NewTabItem(locale.T("wizard.tab_generate"), generateTab)
+		filesTab := wizardtabs.CreateFilesTab(presenter, guiState)
+		filesTabItem := container.NewTabItem(locale.T("wizard.tab_files"), filesTab)
 		tabs.Append(rulesTabItem)
 		tabs.Append(dnsTabItem)
 		tabs.Append(settingsTabItem)
-		tabs.Append(generateTabItem)
+		tabs.Append(filesTabItem)
 	}
 
 	return tabs, rulesTabItem
