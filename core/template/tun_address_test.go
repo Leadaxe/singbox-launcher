@@ -105,13 +105,36 @@ func TestTunAddress_SingleStaysOneElement(t *testing.T) {
 	assertAddressList(t, got, []string{"172.16.0.1/30"})
 }
 
-// issue #97: IPv6-адрес рядом с IPv4 — вторая строка в поле, второй элемент в address.
+// IPv6-адрес рядом с IPv4 — вторым элементом address.
+//
+// Прежде (issue #97) он задавался ВТОРОЙ СТРОКОЙ в самом tun_address:
+// поле было text_list, и в него клали оба семейства сразу. Это был второй
+// способ настроить IPv6 рядом с галкой ipv6_enabled, и он же расходился с
+// мобильным (разрыв N7). Теперь у каждого семейства своё однострочное
+// поле, а многострочные значения из старого state разводятся при загрузке
+// (models.MigrateTunAddressSplit) — сюда они уже не доходят.
 func TestTunAddress_IPv4AndIPv6(t *testing.T) {
 	raw := loadShippedTemplate(t)
 	got := tunAddressFromTemplate(t, raw, map[string]string{
-		"tun": "true", "tun_address": "172.16.0.1/30\nfdfe:dcba:9876::1/126",
+		"tun":          "true",
+		"tun_address":  "172.16.0.1/30",
+		"ipv6_enabled": "true",
+		"tun_address6": "fdfe:dcba:9876::1/126",
 	})
 	assertAddressList(t, got, []string{"172.16.0.1/30", "fdfe:dcba:9876::1/126"})
+}
+
+// Выключенная галка IPv6 не пускает адрес в config, даже если он задан:
+// иначе туннель получал бы IPv6 вопреки настройке.
+func TestTunAddress_IPv6DisabledOmitsAddress(t *testing.T) {
+	raw := loadShippedTemplate(t)
+	got := tunAddressFromTemplate(t, raw, map[string]string{
+		"tun":          "true",
+		"tun_address":  "172.16.0.1/30",
+		"ipv6_enabled": "false",
+		"tun_address6": "fdfe:dcba:9876::1/126",
+	})
+	assertAddressList(t, got, []string{"172.16.0.1/30"})
 }
 
 // Дефолт шаблона (state пуст) тоже должен давать валидный одноэлементный массив.

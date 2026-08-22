@@ -20,12 +20,17 @@ var portableVars = map[string]struct{}{
 	"tls_fragment_fallback_delay": {},
 	"tls_mixed_case_sni":          {},
 	"tls_record_fragment":         {},
-	"tun_address6":                {},
-	"tun_mtu":                     {},
-	"tun_stack":                   {},
-	"urltest_interval":            {},
-	"urltest_tolerance":           {},
-	"urltest_url":                 {},
+	// SPEC 108-follow-up: `tun_address` стал переносимым вместе с закрытием
+	// разрыва N7 — прежде это был text_list, куда IPv4 и IPv6 клались
+	// строками, и перенести его на мобильный (там text, только IPv4) было
+	// нельзя. Теперь по одному адресу на семейство на обеих сторонах.
+	"tun_address":       {},
+	"tun_address6":      {},
+	"tun_mtu":           {},
+	"tun_stack":         {},
+	"urltest_interval":  {},
+	"urltest_tolerance": {},
+	"urltest_url":       {},
 }
 
 // IsPortableVar сообщает, переносится ли переменная в бэкап.

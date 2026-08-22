@@ -557,7 +557,7 @@ C7 = D-012):
 | N4 | Секция и представление пресетов | `presets[]` + `id`/плоские UI-поля (desktop) vs `selectable_rules[]` + `preset_id`/`ui{}` (mobile) |
 | N5 | Объектная форма `options` форсит `type→enum` в Go | `vars_resolve.go:146-151`; канон — options не меняет type (§2.1) |
 | N6 ✅ | Условность фрагментов пресета | **закрыт (D-065)**: канон — плоский гейт `"#enable": ["@a"]` / `{"or": [...]}` на фрагментах, объявлениях переменных и `params`; `if`/`if_or`/`enabled:` — легаси-алиасы чтения |
-| N7 | `tun_address` | desktop `text_list` (несколько CIDR, v4+v6) vs mobile `text` + отдельные `ipv6_enabled`/`tun_address6` |
+| ~~N7~~ | `tun_address` | ~~desktop `text_list` (несколько CIDR, v4+v6) vs mobile `text` + отдельные `ipv6_enabled`/`tun_address6`~~ — **закрыт**: desktop переведён на `text`, по одному адресу на семейство; многострочные значения разводятся при загрузке |
 | N8 | Форма записей `dns_options.servers` | desktop плоские объекты vs mobile `{vars[], server{}}` — тема SPEC 105 |
 | N9 ✅ Go | Warning на неизвестную переменную в `#if`-предикате (Go: закрыт, `notePredicateVars`; ход Dart — резолвер сообщает код через `onTemplateWarning`) | норма — `false` + warning (§4.2, §5.2); warn'ит только Go (`substitute.go:367-370`), Dart — молча `false` в рантайме (`if_engine.dart:265, 281, 310-315`), а на load необъявленное имя — ошибка (`if_engine.dart:435, 461, 508`); ход **Dart** — warning в толерантном рантайме |
 | N10 ✅ | Warning на неизвестный `#`-ключ — закрыт с обеих сторон (Go: канонический обход; Dart: хук `onTemplateWarning`, D-057) | норма — drop + warning (§4.1); warn'ит только Go (`substitute.go:127`), Dart удаляет молча (`if_engine.dart:121-133`); ход **Dart** |

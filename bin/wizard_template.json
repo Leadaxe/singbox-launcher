@@ -118,10 +118,10 @@
     },
     {
       "name": "tun_address",
-      "type": "text_list",
+      "type": "text",
       "wizard_ui": "edit",
-      "title": "TUN interface addresses",
-      "tooltip": "CIDR addresses for the TUN interface (inbounds address), one per line. IPv4 is required; the IPv6 address is added separately by the Enable IPv6 switch below.",
+      "title": "TUN interface address",
+      "tooltip": "CIDR address for the TUN interface (inbounds address). IPv4 is required; the IPv6 address is set separately by the Enable IPv6 switch below.",
       "default_value": "172.16.0.1/30",
       "#enable": [
         "@tun"

@@ -93,10 +93,10 @@
       "note": "рандомизация регистра SNI"
     },
     "tun_address": {
-      "type": "text_list",
-      "portable": false,
+      "type": "text",
+      "portable": true,
       "in": "both",
-      "note": "РАЗРЫВ N7: имя общее, семантика разная — desktop text_list (несколько CIDR, IPv4+IPv6 строками), mobile text (только IPv4; IPv6 — отдельные ipv6_enabled/tun_address6). Перенос значения как есть небезопасен"
+      "note": "IPv4 CIDR туннеля, ОДИН адрес. Разрыв N7 закрыт: desktop был text_list (IPv4+IPv6 строками в одном поле) — второй способ задать IPv6 рядом с галкой ipv6_enabled/tun_address6. Многострочные значения разводятся по двум полям при загрузке (MigrateTunAddressSplit)"
     },
     "cert_store": {
       "type": "enum",

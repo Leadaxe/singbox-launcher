@@ -311,7 +311,19 @@ func substituteWalkCtx(v *interface{}, varTypes map[string]string, resolved map[
 						if body, ok := m[ks[0]].(map[string]interface{}); ok {
 							branch, take := handleIfArrayElementCtx(body, varTypes, resolved, target, unresolvedSink)
 							if take {
-								out = append(out, branch)
+								// Ветка, развернувшаяся в СПИСОК, сплайсится —
+								// ровно как голый "@text_list_var" ниже. Иначе
+								// `{"#if": {"#value": "@tun_address6"}}` внутри
+								// "address" даёт [[a,b]] вместо [a,b], и ядро
+								// отвергает конфиг. Раньше splice работал только
+								// у голого элемента, и text_list за #if-обёрткой
+								// был невыразим: шаблон был обязан объявлять такую
+								// переменную как text.
+								if list, ok := branch.([]interface{}); ok {
+									out = append(out, list...)
+								} else {
+									out = append(out, branch)
+								}
 							}
 							continue
 						}

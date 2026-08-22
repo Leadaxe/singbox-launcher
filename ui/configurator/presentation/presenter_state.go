@@ -287,6 +287,9 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 	p.model.SourceURLs = ""
 
 	wizardmodels.MigrateSettingsVarsFromConfigParams(stateFile)
+	// Многострочный tun_address (v4+v6 в одном поле) → два однострочных
+	// поля. До restoreConfigParams: оно читает уже разведённые значения.
+	wizardmodels.MigrateTunAddressSplit(stateFile)
 
 	// Восстановление config_params и vars (шаг 4)
 	p.restoreConfigParams(stateFile)
