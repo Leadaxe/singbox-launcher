@@ -171,7 +171,20 @@ func showFlagPickerPopup(
 	total := len(nodes)
 
 	// ── State ──────────────────────────────────────────────────────────────
+	//
+	// Отмечаем чипы, соответствующие текущему фильтру: пользователь открыл
+	// пикер поверх готового отбора и должен видеть, что в нём уже выбрано,
+	// а не пустые галки при непустом поле.
+	//
+	// Скобки вокруг тела — наследие прежнего формата `/(🇷🇺)/i`; для
+	// сопоставления с чипами они значения не имеют.
 	selected := map[string]bool{}
+	for _, part := range strings.Split(strings.Trim(currentBody, "()"), "|") {
+		part = strings.TrimSpace(strings.Trim(part, "()"))
+		if part != "" {
+			selected[part] = true
+		}
+	}
 	excludeCheck := widget.NewCheck(locale.T("wizard.outbound.flag_picker.exclude"), nil)
 	excludeCheck.SetChecked(currentInvert)
 
@@ -296,14 +309,28 @@ func showFlagPickerPopup(
 		for _, fe := range flags {
 			fe := fe
 			label := fmt.Sprintf("%s (%d)", fe.Flag, fe.Count)
-			chk := widget.NewCheck(label, func(checked bool) {
+			chk := widget.NewCheck(label, nil)
+			chk.SetChecked(selected[fe.Flag])
+			// Обработчик ПОСЛЕ SetChecked — иначе он сработал бы на
+			// восстановлении состояния и перезаписал поле фильтра.
+			chk.OnChanged = func(checked bool) {
 				selected[fe.Flag] = checked
 				rebuildFromChips()
-			})
+			}
 			chipObjs = append(chipObjs, chk)
 		}
-		// 5 чипов в ряд — компактно.
-		chipsContent = container.NewGridWithColumns(5, chipObjs...)
+		// 5 чипов в ряд — компактно. В прокрутку, потому что эмодзи в именах
+		// узлов бывает много: без ограничения высоты окно вырастало за
+		// пределы экрана и кнопки уезжали под док.
+		grid := container.NewGridWithColumns(5, chipObjs...)
+		chipsScroll := container.NewVScroll(grid)
+		rows := (len(chipObjs) + 4) / 5
+		height := float32(rows) * 38
+		if height > 190 {
+			height = 190 // ≈5 рядов, дальше прокрутка
+		}
+		chipsScroll.SetMinSize(fyne.NewSize(0, height))
+		chipsContent = chipsScroll
 	}
 
 	// ── Layout ─────────────────────────────────────────────────────────────
@@ -352,7 +379,7 @@ func showFlagPickerPopup(
 	}
 	win := app.NewWindow(locale.T("wizard.outbound.flag_picker.title"))
 	win.SetContent(content)
-	win.Resize(fyne.NewSize(580, 640))
+	win.Resize(fyne.NewSize(580, 620))
 	win.CenterOnScreen()
 
 	cancelBtn.OnTapped = func() { win.Close() }
