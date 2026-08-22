@@ -24,6 +24,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"singbox-launcher/core/template"
@@ -84,6 +85,27 @@ func (w ExpandWarning) String() string {
 // (например unresolved @var) — в этом случае fragments частично заполнен,
 // но caller должен пропустить preset целиком.
 func ExpandPreset(preset *template.Preset, userVars map[string]string, target template.TargetSpec) (*PresetFragments, []ExpandWarning, bool) {
+	return ExpandPresetWithGlobals(preset, userVars, nil, target)
+}
+
+// ExpandPresetWithGlobals — ExpandPreset с доступом к ГЛОБАЛЬНЫМ переменным
+// шаблона (SPEC 106, разрыв G3; модель LxBox `preset_expand.dart:165-167`).
+//
+// Тело пресета может ссылаться на глобальную переменную (`@tun`,
+// `@resolve_strategy`), не объявляя её у себя: настройка живёт на вкладке
+// Settings и общая для всего конфига, дублировать её в каждом пресете
+// бессмысленно. Глобали подмешиваются ТОЛЬКО там, где нет одноимённой
+// локальной — локальная всегда сильнее (putIfAbsent, а не перезапись).
+//
+// Без этого неотчуждаемый traffic-processing не собирается вовсе: его правила
+// ссылаются на @tun/@enable_proxy_in/@resolve_strategy, и все три уходят в
+// unresolved → пресет выбрасывается целиком.
+func ExpandPresetWithGlobals(
+	preset *template.Preset,
+	userVars map[string]string,
+	globalVars map[string]string,
+	target template.TargetSpec,
+) (*PresetFragments, []ExpandWarning, bool) {
 	if preset == nil {
 		return nil, nil, false
 	}
@@ -91,20 +113,60 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string, target te
 	var warnings []ExpandWarning
 
 	// === 1. Build varsMap ===
-	varsMap := make(map[string]string, len(preset.Vars))
+	varsMap := make(map[string]string, len(preset.Vars)+len(globalVars))
 	for _, v := range preset.Vars {
+		// SPEC 106 (модель LxBox §265): ref-переменная не хранит значение у
+		// себя — оно живёт в глобальных vars. Пресет лишь показывает общую
+		// настройку в своих параметрах; копия разъехалась бы с оригиналом при
+		// первом же изменении.
+		if v.Ref != "" {
+			if gv, ok := globalVars[v.Ref]; ok && gv != "" {
+				varsMap[v.Name] = gv
+			}
+			// Пустая глобаль → имени нет в varsMap: фрагмент со ссылкой на
+			// него выпадет как optional-var, а не подставит пустоту.
+			continue
+		}
 		if userVal, ok := userVars[v.Name]; ok && userVal != "" {
 			varsMap[v.Name] = userVal
-		} else {
+			continue
+		}
+		if v.Default != "" {
 			varsMap[v.Name] = v.Default
+			continue
+		}
+		// Пусто и обязательна — фрагменты, которые на неё ссылаются, собрать
+		// нечем. Пресет при этом НЕ выбрасывается целиком (D-011): выпадут
+		// только те правила, где переменная реально участвует.
+		if v.Required {
+			warnings = append(warnings, ExpandWarning{preset.ID,
+				fmt.Sprintf("required var %q is empty — fragments using it are dropped", v.Name)})
+			continue
+		}
+		varsMap[v.Name] = v.Default
+	}
+	// Глобали — только для имён, которых пресет не объявил у себя.
+	for name, val := range globalVars {
+		if _, local := varsMap[name]; !local {
+			varsMap[name] = val
 		}
 	}
 
 	// === 2. Filter vars by if/if_or (resolve once, may exclude vars from substitute) ===
-	activeVars := filterActiveVars(preset.Vars, varsMap)
+	activeVars := filterActiveVars(preset.Vars, varsMap, target)
 	// Удаляем неактивные vars из varsMap чтобы substitute @name на них упал → unresolved warning.
+	//
+	// SPEC 106 (G3): фильтр применяется ТОЛЬКО к переменным, объявленным в
+	// самом пресете. Глобали шаблона под него не попадают — у них нет
+	// локального if/if_or, и они не «неактивны», а просто объявлены в другом
+	// месте. Без этой оговорки @tun/@enable_proxy_in вычищались отсюда и
+	// доходили до подстановки как unknown var, роняя весь пресет.
+	declaredLocally := make(map[string]bool, len(preset.Vars))
+	for _, v := range preset.Vars {
+		declaredLocally[v.Name] = true
+	}
 	for name := range varsMap {
-		if !activeVars[name] {
+		if declaredLocally[name] && !activeVars[name] {
 			delete(varsMap, name)
 		}
 	}
@@ -114,7 +176,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string, target te
 	// === 3. Filter + substitute rule_set ===
 	emittedTags := make(map[string]bool) // tag после prefix
 	for _, rs := range preset.RuleSet {
-		if !evalIf(rs.If, rs.IfOr, varsMap) {
+		if !template.NormalizeGate(rs.EnableRaw(), rs.If, rs.IfOr).SatisfiedVars(varsMap, target) {
 			continue
 		}
 		raw, err := deepCopy(rs)
@@ -133,9 +195,8 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string, target te
 		if m == nil {
 			continue
 		}
-		// Strip if/if_or (уже резолвлено) — не нужны в sing-box config.
-		delete(m, "if")
-		delete(m, "if_or")
+		// Strip служебные ключи гейта (уже резолвлены) — sing-box их не знает.
+		stripGateKeys(m)
 		// Prefix tag.
 		localTag, _ := m["tag"].(string)
 		prefixed := preset.ID + TagSeparator + localTag
@@ -151,8 +212,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string, target te
 		if ruleMap == nil {
 			continue
 		}
-		ruleIf, ruleIfOr := extractIfFromMap(ruleMap)
-		if !evalIf(ruleIf, ruleIfOr, varsMap) {
+		if !extractGateFromMap(ruleMap).SatisfiedVars(varsMap, target) {
 			continue
 		}
 		raw, err := deepCopyMap(ruleMap)
@@ -171,8 +231,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string, target te
 		if m == nil {
 			continue
 		}
-		delete(m, "if")
-		delete(m, "if_or")
+		stripGateKeys(m)
 		// Rewrite rule_set refs: local → prefixed, filter dangling.
 		rewriteRuleSetRefs(m, preset.ID, emittedTags)
 		// Apply outbound sentinels (reject/drop) — shared util с UI.
@@ -214,7 +273,7 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string, target te
 	// который применяется в ResolveDNS → MergePresetsIntoDNS. Здесь только
 	// материализуем body + substitute.
 	for _, ds := range preset.DNSServers {
-		if !evalIf(ds.If, ds.IfOr, varsMap) {
+		if !template.NormalizeGate(ds.EnableRaw(), ds.If, ds.IfOr).SatisfiedVars(varsMap, target) {
 			continue
 		}
 		raw, err := deepCopy(ds)
@@ -248,12 +307,13 @@ func ExpandPreset(preset *template.Preset, userVars map[string]string, target te
 }
 
 // filterActiveVars — оценивает if/if_or каждой var'ы. Возвращает set активных имён.
-func filterActiveVars(vars []template.PresetVar, varsMap map[string]string) map[string]bool {
+func filterActiveVars(vars []template.PresetVar, varsMap map[string]string, target template.TargetSpec) map[string]bool {
 	out := make(map[string]bool, len(vars))
 	// Multi-pass для случая когда if ссылается на var ниже по списку
 	// (но since varsMap уже заполнен с default'ами, single-pass достаточно).
 	for _, v := range vars {
-		if evalIf(v.If, v.IfOr, varsMap) {
+		// SPEC 107: гейт переменной пресета — #enable + легаси if/if_or.
+		if template.NormalizeGate(v.EnableRaw(), v.If, v.IfOr).SatisfiedVars(varsMap, target) {
 			out[v.Name] = true
 		}
 	}
@@ -273,6 +333,22 @@ func filterActiveVars(vars []template.PresetVar, varsMap map[string]string) map[
 func evalIf(ifList, ifOrList []string, varsMap map[string]string) bool {
 	ok, _ := evalIfWithReason(ifList, ifOrList, varsMap)
 	return ok
+}
+
+// extractGateFromMap — гейт map-фрагмента (rules[], dns_rule, dns_rules[]):
+// #enable плюс легаси if/if_or, сведённые в одно условие (SPEC 107 §7).
+func extractGateFromMap(m map[string]interface{}) *template.GateCond {
+	ifList, ifOrList := extractIfFromMap(m)
+	return template.NormalizeGate(m[template.GateKey], ifList, ifOrList)
+}
+
+// stripGateKeys убирает служебные ключи гейта из КОПИИ фрагмента — до
+// подстановки. Иначе обходчик выбросит #enable как неизвестную директиву с
+// warning-шумом на каждое правило (ловушка SPEC 107 §11.12).
+func stripGateKeys(m map[string]interface{}) {
+	delete(m, "if")
+	delete(m, "if_or")
+	delete(m, template.GateKey)
 }
 
 // extractIfFromMap — достаёт if/if_or из map[string]interface{} (для rule/dns_rule).
@@ -315,7 +391,12 @@ func substitutePresetBody(raw interface{}, presetVars []template.PresetVar, vars
 	if err != nil {
 		return nil, false
 	}
-	templateVars := presetVarsToTemplateVars(presetVars)
+	// SPEC 106 (G3): walker'у нужны ОБЪЯВЛЕНИЯ всех имён, которые могут
+	// встретиться в теле — включая глобальные переменные шаблона,
+	// подмешанные в varsMap. Без объявления имя считается неизвестным, и
+	// strict-режим роняет весь пресет: именно так traffic-processing падал
+	// на @resolve_strategy.
+	templateVars := presetVarsToTemplateVarsWithExtras(presetVars, varsMap)
 	resolved := varsMapToResolved(varsMap, presetVars)
 	out, _, err := template.SubstituteVarsInJSONStrict(data, templateVars, resolved, target)
 	if err != nil {
@@ -349,6 +430,30 @@ func presetVarsToTemplateVars(vars []template.PresetVar) []template.TemplateVar 
 			If:   v.If,
 			IfOr: v.IfOr,
 		})
+	}
+	return out
+}
+
+// presetVarsToTemplateVarsWithExtras — объявления переменных пресета плюс
+// объявления имён, попавших в varsMap извне (глобали шаблона, SPEC 106 G3).
+// Тип у внешних имён неизвестен и трактуется как text — для подстановки этого
+// достаточно: типизированная семантика (bool/int/text_list) нужна только
+// переменным, объявленным в самом пресете.
+func presetVarsToTemplateVarsWithExtras(vars []template.PresetVar, varsMap map[string]string) []template.TemplateVar {
+	out := presetVarsToTemplateVars(vars)
+	declared := make(map[string]bool, len(out))
+	for _, v := range out {
+		declared[v.Name] = true
+	}
+	extras := make([]string, 0, len(varsMap))
+	for name := range varsMap {
+		if !declared[name] {
+			extras = append(extras, name)
+		}
+	}
+	sort.Strings(extras) // детерминированный порядок объявлений
+	for _, name := range extras {
+		out = append(out, template.TemplateVar{Name: name, Type: "text"})
 	}
 	return out
 }
@@ -488,8 +593,7 @@ func isDNSRuleEmpty(m map[string]interface{}, _ map[string]bool) bool {
 // rule is gated off or empty; fatal=true on an unresolved @var (caller aborts
 // the whole preset). Shared by the singular dns_rule and the plural dns_rules.
 func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{}, varsMap map[string]string, emittedTags map[string]bool, target template.TargetSpec, warnings *[]ExpandWarning) (map[string]interface{}, bool, bool) {
-	dnsIf, dnsIfOr := extractIfFromMap(src)
-	if !evalIf(dnsIf, dnsIfOr, varsMap) {
+	if !extractGateFromMap(src).SatisfiedVars(varsMap, target) {
 		return nil, false, false
 	}
 	raw, err := deepCopyMap(src)

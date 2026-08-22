@@ -163,6 +163,23 @@ type PresetMergeContext struct {
 	// Target (SPEC 097) — платформа и роль целевой машины для #if внутри
 	// пресетов. Zero value нормализуется в «эта машина, local».
 	Target template.TargetSpec
+
+	// GlobalVars (SPEC 106, G3) — глобальные переменные шаблона, доступные
+	// телу пресета для имён, которых он не объявил у себя. Настройка со
+	// вкладки Settings (@tun, @resolve_strategy) не должна дублироваться в
+	// каждом пресете. nil — глобалей нет, поведение прежнее.
+	GlobalVars map[string]string
+}
+
+// hasNonSortablePreset — есть ли в шаблоне неотчуждаемый пресет, который
+// обязан присутствовать в конфиге независимо от состояния (SPEC 106, D-050).
+func hasNonSortablePreset(presets []template.Preset) bool {
+	for i := range presets {
+		if !presets[i].IsSortable() {
+			return true
+		}
+	}
+	return false
 }
 
 // MergePresetsIntoRoute — единый emit-путь route через ResolveRoute()
@@ -175,7 +192,10 @@ type PresetMergeContext struct {
 // Skipped rule_sets (remote .srs не cached) пропускаются; dangling rule_set
 // refs в routing rule уже очищены resolver'ом через cleanDanglingRuleSetInRule.
 func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (json.RawMessage, error) {
-	if !hasAnyV6Rule(ctx.Rules) {
+	// SPEC 106: пустой список правил больше не повод выйти сразу — в шаблоне
+	// могут быть неотчуждаемые пресеты, которые обязан вернуть re-seed
+	// (D-050). Выходим, только если и правил нет, и сеять нечего.
+	if !hasAnyV6Rule(ctx.Rules) && !hasNonSortablePreset(ctx.Presets) {
 		return routeRaw, nil
 	}
 
@@ -189,7 +209,7 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 
 	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
 	tdVal := template.TemplateData{Presets: ctx.Presets}
-	resolved := ResolveRoute(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths, ctx.Target)
+	resolved := ResolveRouteWithGlobals(st, &tdVal, ctx.ExecDir, ctx.SrsCachedPaths, ctx.Target, ctx.GlobalVars)
 
 	// Dedup по tag (template уже мог эмитить rule_sets).
 	emittedTags := make(map[string]bool)
@@ -220,11 +240,24 @@ func MergePresetsIntoRoute(routeRaw json.RawMessage, ctx PresetMergeContext) (js
 
 	// Emit rules: Active && Enabled. (Active=true для inline/srs always;
 	// для preset — уже отфильтрован в ResolveRoute.)
+	//
+	// SPEC 106: правила с номером НИЖЕ пользовательской зоны — системные
+	// якоря (traffic-processing = 0). Они обязаны идти ПЕРЕД теми, что пришли
+	// из шаблона: sniff должен отработать до матчинга роутинга, иначе домен не
+	// извлечён. Простой append оставлял бы их в хвосте — там от них нет толку.
+	var head []interface{}
 	for _, r := range resolved.Rules {
 		if !r.Active || !r.Enabled {
 			continue
 		}
+		if r.OrderNum < state.UserRuleNumStart {
+			head = append(head, r.Body)
+			continue
+		}
 		rules = append(rules, r.Body)
+	}
+	if len(head) > 0 {
+		rules = append(head, rules...)
 	}
 
 	if len(rules) > 0 {
@@ -304,7 +337,7 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 	for i := range ctx.Presets {
 		presetByID[ctx.Presets[i].ID] = &ctx.Presets[i]
 	}
-	emittedRuleSetTags := collectRuleSetTagsFromPresets(presetByID, ctx.Rules, ctx.Target)
+	emittedRuleSetTags := collectRuleSetTagsFromPresets(presetByID, ctx.Rules, ctx.Target, ctx.GlobalVars)
 
 	// Emit rules: Active && Enabled. User → dangling cleanup; preset → as is.
 	for _, dr := range resolved.Rules {
@@ -363,7 +396,7 @@ func templateLikeFromCtx(ctx PresetMergeContext) template.TemplateData {
 // Используется в DNS rules dangling-cleanup: extra_rule с `rule_set` ссылкой
 // должен матчиться с реально-эмитнутым rule_set tag'ом. Иначе sing-box упадёт
 // на `start service: initialize DNS rule[N]: rule-set not found: <X>`.
-func collectRuleSetTagsFromPresets(presetByID map[string]*template.Preset, rules []state.Rule, target template.TargetSpec) map[string]bool {
+func collectRuleSetTagsFromPresets(presetByID map[string]*template.Preset, rules []state.Rule, target template.TargetSpec, globalVars map[string]string) map[string]bool {
 	tags := make(map[string]bool)
 	for _, rule := range rules {
 		if !rule.Enabled || rule.Kind != state.RuleKindPreset {
@@ -378,7 +411,7 @@ func collectRuleSetTagsFromPresets(presetByID map[string]*template.Preset, rules
 			continue
 		}
 		pb := body.(*state.PresetBody)
-		frags, _, ok := ExpandPreset(preset, pb.Vars, target)
+		frags, _, ok := ExpandPresetWithGlobals(preset, pb.Vars, globalVars, target)
 		if !ok {
 			continue
 		}

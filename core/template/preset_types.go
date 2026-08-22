@@ -35,6 +35,28 @@ type Preset struct {
 	// Не state; реальное состояние enable/disable в state.rules[].enabled.
 	DefaultEnabled bool `json:"default_enabled,omitempty"`
 
+	// Num — стартовая позиция на разреженной оси порядка (SPEC 106, D-051).
+	// 0 у неотчуждаемой головы; шаблонные якоря идут с шагом 10, зона
+	// пользовательских правил — 1000..1100. Значение попадает в
+	// state.Rules[].OrderNum при первой разметке и дальше живёт в state:
+	// пользователь двигает правило, номер пересчитывается.
+	// Отсутствует в JSON → DefaultRuleNum (начало пользовательской зоны).
+	Num *int `json:"num,omitempty"`
+
+	// Sortable — можно ли двигать правило в UI. Отсутствует → true.
+	//
+	// false делает пресет НЕОТЧУЖДАЕМЫМ (D-050): такой пресет
+	// (а) пере-засевается при каждой сборке, даже если его стёрли из state;
+	// (б) не двигается перетаскиванием и не вытесняется соседями — его номер
+	// часть инварианта. Пример — traffic-processing на позиции 0: sniff
+	// обязан отработать до матчинга роутинга, иначе домен не извлечён.
+	Sortable *bool `json:"sortable,omitempty"`
+
+	// Locked — запрет выключения и удаления в UI. Отсутствует → false.
+	// Роль отдельная от Sortable: Sortable управляет позицией и seed'ом,
+	// Locked — доступностью тумблера и кнопки удаления.
+	Locked bool `json:"locked,omitempty"`
+
 	// Platforms — ОС где preset доступен. Пустой список = все платформы.
 	// Loader фильтрует по runtime.GOOS — preset с несовпадающей платформой
 	// не появляется в Library и не присутствует в TemplateData.Presets.
@@ -95,6 +117,27 @@ func (p *Preset) DisplayLabel() string {
 	return p.ID
 }
 
+// presetGate — общее поле гейта #enable для типизированных фрагментов
+// (SPEC 107). Хранится сырым: разбор и слияние с легаси if/if_or делает
+// template.NormalizeGate в момент применения.
+type presetGate struct {
+	Enable json.RawMessage `json:"#enable,omitempty"`
+}
+
+// EnableRaw возвращает разобранное значение #enable (nil — ключа не было).
+func (g presetGate) EnableRaw() interface{} {
+	if len(g.Enable) == 0 {
+		return nil
+	}
+	var v interface{}
+	if err := json.Unmarshal(g.Enable, &v); err != nil {
+		// Невалидный JSON — отдаём маркер, который движок отвергнет
+		// (fail-closed): гейт не пройден, фрагмент не эмитится.
+		return map[string]interface{}{"and": []interface{}{"@\u0000invalid"}}
+	}
+	return v
+}
+
 // PresetOutbound — entry preset.outbounds[] (SPEC 056).
 //
 // Поля Tag/Type/Options/Filters/AddOutbounds/PreferredDefault/Comment/Wizard
@@ -105,6 +148,7 @@ func (p *Preset) DisplayLabel() string {
 // только на этапе ExpandPresetOutbounds для разрешения какой outbound
 // эмитить и в каком режиме).
 type PresetOutbound struct {
+	presetGate
 	// Mode — режим применения:
 	//   ""       → "add" (default)
 	//   "add"    → добавить новый outbound (нужен Type)
@@ -172,6 +216,7 @@ type PresetOutbound struct {
 // через `if`/`if_or` на vars и фрагментах preset'а — переиспользует
 // существующий механизм TemplateVar.If/IfOr (vars_resolve.go).
 type PresetVar struct {
+	presetGate
 	// Name — идентификатор переменной, локальный в preset'е.
 	// `@<name>` в rule_set/rule/dns_rule/dns_servers резолвится по этому имени.
 	Name string `json:"name"`
@@ -187,7 +232,28 @@ type PresetVar struct {
 
 	// Default — обязательное default-значение (для type=bool: "true"/"false").
 	// Substitute использует если varsValues[name] пусто/отсутствует.
+	//
+	// Канон поля дефолта — `default_value` (TEMPLATE_LANG §6.1); `default`
+	// читается как алиас, чтобы шаблоны обоих приложений грузились без правок.
 	Default string `json:"default"`
+
+	// DefaultValue — канонический алиас Default (разрыв N3). Значение
+	// сливается в Default при загрузке, см. UnmarshalJSON.
+	DefaultValue string `json:"default_value,omitempty"`
+
+	// Ref — ССЫЛКА на глобальную переменную шаблона (SPEC 106, модель LxBox
+	// §265). Значение живёт в глобальных vars, НЕ в теле правила; метаданные
+	// (тип, options, заголовок) подтягиваются из объявления той переменной.
+	//
+	// Зачем: пресет показывает в своих настройках общую настройку, не заводя
+	// её копию. Пример — стратегия разрешения имён: она же питает dns.strategy,
+	// и вторая копия разъехалась бы с первой при первом же изменении.
+	Ref string `json:"ref,omitempty"`
+
+	// Required — пустое значение делает фрагменты пресета несобираемыми.
+	// Пресет не выбрасывается целиком: правило, ссылающееся на пустую
+	// обязательную переменную, выпадает с warning (Dropped-каскад §5.1).
+	Required bool `json:"required,omitempty"`
 
 	// Title — UI label (если пусто, используется Name).
 	Title string `json:"title,omitempty"`
@@ -237,6 +303,7 @@ type OptionEntry struct {
 // Tag локален; при build префиксуется `<preset_id>:<tag>`. Может быть
 // inline (rules в template) или remote (url для download'а в bin/rule-sets/).
 type PresetRuleSet struct {
+	presetGate
 	// Tag — локальный tag, при build → `<preset_id>:<tag>`.
 	Tag string `json:"tag"`
 
@@ -267,6 +334,7 @@ type PresetRuleSet struct {
 //   - Включается в emit только если выбран через @dns_server var ИЛИ
 //     явно упомянут литералом в dns_rule.server.
 type PresetDNSServer struct {
+	presetGate
 	// Tag — локальный tag, при build → `<preset_id>:<tag>`.
 	Tag string `json:"tag"`
 
@@ -347,4 +415,29 @@ func (v *PresetVar) DecodeOptions() (enum []OptionEntry, tagList []string, ok bo
 		// Options не применимо для bool/text/number — игнорируем.
 		return nil, nil, true
 	}
+}
+
+// UnmarshalJSON — слияние канонического `default_value` в `Default`
+// (TEMPLATE_LANG §6.1, разрыв N3).
+//
+// Пресеты лаунчера исторически пишут `default`, мобильный шаблон — канонический
+// `default_value`. Читаем обе формы, чтобы приём, придуманный в одном
+// приложении, переносился в другое без правки шаблона. При наличии обеих
+// побеждает каноническая.
+func (v *PresetVar) UnmarshalJSON(data []byte) error {
+	type presetVarAlias PresetVar // без метода — иначе бесконечная рекурсия
+	var a presetVarAlias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	if a.DefaultValue != "" {
+		a.Default = a.DefaultValue
+	}
+	// Ref-переменная не несёт собственного имени: `{"ref": "x"}` значит
+	// «показать глобальную x». Имя нужно для резолва @x внутри тела пресета.
+	if a.Ref != "" && a.Name == "" {
+		a.Name = a.Ref
+	}
+	*v = PresetVar(a)
+	return nil
 }

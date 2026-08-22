@@ -119,6 +119,18 @@ func MoveRuleSlot(m *WizardModel, from, to int) bool {
 		return false
 	}
 	moved := m.RuleOrder[from]
+
+	// SPEC 106: системные правила держат закреплённую позицию, и защита обязана
+	// жить здесь, а не только в виде строки. У самого системного правила нет
+	// захвата, но чужое правило можно было бы бросить ВЫШЕ него — тогда sniff
+	// перестал бы быть первым и домен не извлекался бы до матчинга роутинга.
+	if m.isSystemSlot(moved) {
+		return false // системное не двигается
+	}
+	if to < m.firstSortableSlotIndex() {
+		return false // и над системным ничего не встаёт
+	}
+
 	rest := append(m.RuleOrder[:from:from], m.RuleOrder[from+1:]...)
 	out := make([]RuleSlot, 0, n)
 	out = append(out, rest[:to]...)
@@ -154,4 +166,33 @@ func CompactRuleOrderIndices(m *WizardModel, kind RuleSlotKind, removedIndex int
 		out = append(out, s)
 	}
 	m.RuleOrder = out
+}
+
+// isSystemSlot — slot ссылается на пресет, объявленный в шаблоне
+// несортируемым (`sortable: false`, SPEC 106).
+func (m *WizardModel) isSystemSlot(s RuleSlot) bool {
+	if s.Kind != SlotKindPresetRef || m.TemplateData == nil {
+		return false
+	}
+	if s.Index < 0 || s.Index >= len(m.PresetRefs) {
+		return false
+	}
+	ref := m.PresetRefs[s.Index].Ref
+	for i := range m.TemplateData.Presets {
+		if m.TemplateData.Presets[i].ID == ref {
+			return !m.TemplateData.Presets[i].IsSortable()
+		}
+	}
+	return false
+}
+
+// firstSortableSlotIndex — позиция первого слота, который пользователь вправе
+// занять: всё, что выше, удерживают системные правила.
+func (m *WizardModel) firstSortableSlotIndex() int {
+	for i, s := range m.RuleOrder {
+		if !m.isSystemSlot(s) {
+			return i
+		}
+	}
+	return len(m.RuleOrder)
 }

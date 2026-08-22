@@ -86,7 +86,7 @@ func ExpandPresetOutbounds(preset *template.Preset, userVars map[string]string, 
 	}
 
 	// === 2. Filter vars по if/if_or; неактивные → удалить из map. ===
-	activeVars := filterActiveVars(preset.Vars, varsMap)
+	activeVars := filterActiveVars(preset.Vars, varsMap, target)
 	for name := range varsMap {
 		if !activeVars[name] {
 			delete(varsMap, name)

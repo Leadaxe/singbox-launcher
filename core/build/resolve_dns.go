@@ -221,7 +221,7 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 				continue
 			}
 			pb := body.(*corestate.PresetBody)
-			presetVars := buildPresetVarsMap(p, pb.Vars)
+			presetVars := buildPresetVarsMap(p, pb.Vars, target)
 
 			// 3a. DNS servers — все bundled, без consumption-фильтра.
 			for i := range p.DNSServers {
@@ -251,7 +251,7 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 			// буферизуем список в карту; порядок эмиссии решается в Pass 4 по
 			// state.DNS.Rules (один toggle Ref=<id> покрывает весь список).
 			if p.PresetHasDNSRule() {
-				bodies := substitutePresetDNSRules(p, presetVars, target)
+				bodies := substitutePresetDNSRules(p, presetVars, target, templateVars)
 				if len(bodies) == 0 {
 					continue
 				}
@@ -462,7 +462,7 @@ func statePresetRuleEnabled(state *corestate.State, ref string, defaultEnabled b
 // buildPresetVarsMap — строит vars map для preset из preset.Vars defaults +
 // user-overrides (state.Rules[].Body.Vars). Применяет if/if_or каскад (как
 // ExpandPreset).
-func buildPresetVarsMap(p *template.Preset, userVars map[string]string) map[string]string {
+func buildPresetVarsMap(p *template.Preset, userVars map[string]string, target template.TargetSpec) map[string]string {
 	varsMap := make(map[string]string, len(p.Vars))
 	for _, v := range p.Vars {
 		if userVal, ok := userVars[v.Name]; ok && userVal != "" {
@@ -471,7 +471,7 @@ func buildPresetVarsMap(p *template.Preset, userVars map[string]string) map[stri
 			varsMap[v.Name] = v.Default
 		}
 	}
-	activeVars := filterActiveVars(p.Vars, varsMap)
+	activeVars := filterActiveVars(p.Vars, varsMap, target)
 	for name := range varsMap {
 		if !activeVars[name] {
 			delete(varsMap, name)
@@ -531,11 +531,11 @@ func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []templa
 // substitutePresetDNSRules — резолвит ВСЕ DNS-правила пресета (singular DNSRule
 // + plural DNSRules, SPEC 085.1) через ExpandPreset, в порядке эмиссии. Пустой
 // список, если у пресета нет активных DNS-правил.
-func substitutePresetDNSRules(p *template.Preset, varsMap map[string]string, target template.TargetSpec) []map[string]interface{} {
+func substitutePresetDNSRules(p *template.Preset, varsMap map[string]string, target template.TargetSpec, globalVars map[string]string) []map[string]interface{} {
 	if p == nil {
 		return nil
 	}
-	frags, _, ok := ExpandPreset(p, varsMap, target)
+	frags, _, ok := ExpandPresetWithGlobals(p, varsMap, globalVars, target)
 	if !ok || frags == nil {
 		return nil
 	}

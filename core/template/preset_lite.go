@@ -36,6 +36,38 @@ func (p *Preset) PresetHasDNSRule() bool {
 	return p.DNSRule != nil || len(p.DNSRules) > 0
 }
 
+// OrderNum — стартовая позиция пресета на оси порядка (SPEC 106).
+// Не задана в шаблоне → начало пользовательской зоны.
+func (p *Preset) OrderNum() int {
+	if p.Num == nil {
+		return state.DefaultRuleNum
+	}
+	return *p.Num
+}
+
+// IsSortable — можно ли двигать правило пресета. Не задано → true.
+// false означает неотчуждаемость: пере-seed при каждой сборке + запрет
+// перемещения (D-050).
+func (p *Preset) IsSortable() bool {
+	return p.Sortable == nil || *p.Sortable
+}
+
+// RuleOrderSpecs — собирает раскладку оси из пресетов шаблона для передачи в
+// state.NormalizeRuleOrder. Мост между шаблоном (где живут стартовые номера) и
+// состоянием (где живёт актуальный порядок).
+func RuleOrderSpecs(presets []Preset) map[string]state.RuleOrderSpec {
+	out := make(map[string]state.RuleOrderSpec, len(presets))
+	for i := range presets {
+		p := &presets[i]
+		out[p.ID] = state.RuleOrderSpec{
+			Num:            p.OrderNum(),
+			Sortable:       p.IsSortable(),
+			DefaultEnabled: p.DefaultEnabled,
+		}
+	}
+	return out
+}
+
 // PresetLiteMap — собирает map[id]→state.PresetLite из []Preset для передачи в
 // state.SyncDNSOptionsWithActivePresets.
 //

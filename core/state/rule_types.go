@@ -53,6 +53,20 @@ type Rule struct {
 	// Enabled — общий toggle.
 	Enabled bool `json:"enabled"`
 
+	// OrderNum — позиция на разреженной оси порядка (SPEC 106, D-051).
+	//
+	// Авторитетный источник приоритета правила: правила сортируются по
+	// возрастанию OrderNum, при равенстве сохраняется взаимный порядок в
+	// списке. Позиция в самом слайсе `state.Rules[]` перестаёт быть
+	// приоритетом — она лишь тай-брейк.
+	//
+	// nil = правило ещё не размечено (state, записанный до SPEC 106):
+	// разметка происходит при первой же загрузке (MarkRuleOrder), отдельного
+	// шага миграции нет. Стартовое значение для preset-правила берётся из
+	// шаблона (`presets[].num`), для пользовательских — подряд от
+	// UserRuleNumStart.
+	OrderNum *int `json:"order_num,omitempty"`
+
 	// Body — raw payload, декодируется через DecodeBody по Kind.
 	Body json.RawMessage `json:"body"`
 }

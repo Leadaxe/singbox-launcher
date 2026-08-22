@@ -6,6 +6,8 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/config/configtypes"
+	corestate "singbox-launcher/core/state"
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
@@ -82,6 +84,14 @@ func (p *WizardPresenter) restoreCustomRules(persistedRules []wizardmodels.Persi
 // Только kind=preset entries попадают в PresetRefs; kind=inline/srs остаются
 // в CustomRules через restoreCustomRules + legacy view (см. parseV6).
 func (p *WizardPresenter) restorePresetRefs(state *wizardmodels.WizardStateFile) {
+	// SPEC 106: тот же re-seed, что и на пути сборки конфига. Без него
+	// неотчуждаемый пресет попадал в config.json, но не показывался в списке
+	// правил — пользователь видел в конфиге правила, которых нет в UI, и не
+	// мог добраться до их настроек.
+	if p.model.TemplateData != nil {
+		state.Rules = corestate.NormalizeRuleOrder(state.Rules, wizardtemplate.RuleOrderSpecs(p.model.TemplateData.Presets))
+	}
+
 	p.model.PresetRefs = wizardmodels.SyncStateRulesToPresetRefs(state.Rules)
 	p.model.DNSTemplateOverrides = wizardmodels.SyncStateV6ToDNSOverrides(state.DNS)
 	// SPEC 056-R-N follow-up: per-server/rule preset enabled overrides → PresetRefState fields.

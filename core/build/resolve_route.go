@@ -78,6 +78,11 @@ type ResolvedRouteRule struct {
 	PresetID    string
 	PresetLabel string
 
+	// OrderNum — позиция правила на оси порядка (SPEC 106). Нужна emit-слою:
+	// правила пресетов дописываются к тем, что пришли из шаблона, и без
+	// номера якорь с num=0 всё равно оказался бы в хвосте.
+	OrderNum int
+
 	// InlineID/SrsID — для kind=inline/srs.
 	InlineID string
 	SrsID    string
@@ -115,6 +120,21 @@ func ResolveRoute(
 	srsCachedPaths map[string]string,
 	target template.TargetSpec,
 ) ResolvedRoute {
+	return ResolveRouteWithGlobals(state, td, execDir, srsCachedPaths, target, nil)
+}
+
+// ResolveRouteWithGlobals — ResolveRoute с доступом тела пресета к ГЛОБАЛЬНЫМ
+// переменным шаблона (SPEC 106, разрыв G3). Пресет может ссылаться на
+// настройку со вкладки Settings (@tun, @resolve_strategy), не объявляя её у
+// себя; локальная переменная с тем же именем всегда сильнее.
+func ResolveRouteWithGlobals(
+	state *corestate.State,
+	td *template.TemplateData,
+	execDir string,
+	srsCachedPaths map[string]string,
+	target template.TargetSpec,
+	globalVars map[string]string,
+) ResolvedRoute {
 	var out ResolvedRoute
 	if state == nil || td == nil {
 		return out
@@ -127,10 +147,16 @@ func ResolveRoute(
 
 	emittedTags := make(map[string]bool)
 
-	for _, rule := range state.Rules {
+	// SPEC 106: порядок правил задаёт разреженная ось (OrderNum), а не позиция
+	// в слайсе. Нормализация здесь же пере-засевает неотчуждаемые пресеты —
+	// именно re-seed на каждой сборке, а не флаг в state, делает их
+	// неотчуждаемыми (D-050): стёртое из state правило возвращается.
+	rules := corestate.NormalizeRuleOrder(state.Rules, template.RuleOrderSpecs(td.Presets))
+
+	for _, rule := range rules {
 		switch rule.Kind {
 		case corestate.RuleKindPreset:
-			resolvePresetRouteRule(&out, presetByID, rule, execDir, emittedTags, target)
+			resolvePresetRouteRule(&out, presetByID, rule, execDir, emittedTags, target, globalVars)
 		case corestate.RuleKindInline:
 			resolveInlineRouteRule(&out, rule)
 		case corestate.RuleKindSrs:
@@ -149,6 +175,7 @@ func resolvePresetRouteRule(
 	execDir string,
 	emittedTags map[string]bool,
 	target template.TargetSpec,
+	globalVars map[string]string,
 ) {
 	p, ok := presetByID[rule.Ref]
 	if !ok {
@@ -161,7 +188,7 @@ func resolvePresetRouteRule(
 		return
 	}
 	pb := body.(*corestate.PresetBody)
-	frags, warns, ok := ExpandPreset(p, pb.Vars, target)
+	frags, warns, ok := ExpandPresetWithGlobals(p, pb.Vars, globalVars, target)
 	for _, w := range warns {
 		debuglog.WarnLog("route resolve: %s", w.String())
 	}
@@ -218,6 +245,7 @@ func resolvePresetRouteRule(
 			PresetLabel: presetLabel,
 			Active:      true, // ExpandPreset уже отфильтровал по if/if_or
 			Enabled:     rule.Enabled,
+			OrderNum:    ruleOrderNum(rule),
 		})
 	}
 }
@@ -245,6 +273,7 @@ func resolveInlineRouteRule(out *ResolvedRoute, rule corestate.Rule) {
 		InlineID: corestate.StableRuleID(rule),
 		Active:   true,
 		Enabled:  rule.Enabled,
+		OrderNum: ruleOrderNum(rule),
 	})
 }
 
@@ -305,3 +334,12 @@ func resolveSrsRouteRule(
 
 // ── Helper: silence unused json import (will be used by tests). ──
 var _ = json.Unmarshal
+
+// ruleOrderNum — номер правила на оси; неразмеченное считается стоящим в
+// начале пользовательской зоны (SPEC 106).
+func ruleOrderNum(r corestate.Rule) int {
+	if r.OrderNum == nil {
+		return corestate.DefaultRuleNum
+	}
+	return *r.OrderNum
+}
