@@ -240,7 +240,9 @@ type PresetVar struct {
 
 	// Type — тип переменной:
 	//   "outbound"   — picker outbound-тегов + "reject"/"drop" литералы
-	//   "dns_server" — picker DNS-тегов (bundled / template / extras)
+	//   "dns_server" — picker DNS-тегов (bundled / template / extras);
+	//                  шаблон LxBox пишет "dns_servers" — читается как
+	//                  синоним, нормализуется при загрузке
 	//   "enum"       — dropdown {title, value}
 	//   "text"       — text entry
 	//   "number"     — numeric entry
@@ -441,6 +443,21 @@ func (v *PresetVar) DecodeOptions() (enum []OptionEntry, tagList []string, ok bo
 // `default_value`. Читаем обе формы, чтобы приём, придуманный в одном
 // приложении, переносился в другое без правки шаблона. При наличии обеих
 // побеждает каноническая.
+// canonicalVarType сводит синонимы имён типов к каноническому написанию.
+//
+// Разрыв имён между приложениями: у нас тип picker'а DNS-тегов называется
+// `dns_server`, в шаблоне LxBox — `dns_servers`. Одна сущность под двумя
+// именами означала бы, что шаблон, написанный на той стороне, у нас
+// молча теряет переменную (validateVar отвергает неизвестный тип и
+// пропускает весь пресет). Канон — единственное число, как у соседнего
+// `outbound`; множественное принимается бессрочно и обратно не пишется.
+func canonicalVarType(t string) string {
+	if t == "dns_servers" {
+		return "dns_server"
+	}
+	return t
+}
+
 func (v *PresetVar) UnmarshalJSON(data []byte) error {
 	type presetVarAlias PresetVar // без метода — иначе бесконечная рекурсия
 	var a presetVarAlias
@@ -450,6 +467,7 @@ func (v *PresetVar) UnmarshalJSON(data []byte) error {
 	if a.DefaultValue != "" {
 		a.Default = a.DefaultValue
 	}
+	a.Type = canonicalVarType(a.Type)
 	// Ref-переменная не несёт собственного имени: `{"ref": "x"}` значит
 	// «показать глобальную x». Имя нужно для резолва @x внутри тела пресета.
 	if a.Ref != "" && a.Name == "" {

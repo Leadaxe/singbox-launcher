@@ -28,7 +28,8 @@
 - [ ] Серверы из `LxBox/app/assets/wizard_template.json` → наш шаблон
 - [ ] DNS Shield (`group`, девять участников, `mode: fastest`)
 - [ ] Параметризация `vars` внутри записей серверов
-- [ ] `dns_servers` / `dns_server` — принимать оба, писать одно (T3)
+- [x] `dns_servers` / `dns_server` — принимать оба, писать одно (T3) —
+      сделано до фазы 1, `canonicalVarType`
 - [ ] Включёнными оставить те серверы, что включены сейчас
 
 ## Фаза 4 — D&D (D6)

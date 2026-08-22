@@ -102,7 +102,10 @@ func (v *TemplateVar) UnmarshalJSON(data []byte) error {
 	}
 	v.Separator = a.Separator
 	v.Name = a.Name
-	v.Type = a.Type
+	// Синоним имени типа сводится к канону здесь же, где и у PresetVar:
+	// переменные шаблона и переменные пресета читаются разными путями, и
+	// нормализация в одном из них оставила бы второй с чужим написанием.
+	v.Type = canonicalVarType(a.Type)
 	v.DefaultValue = a.DefaultValue
 	v.DefaultNode = a.DefaultNode
 	v.WizardUI = a.WizardUI
