@@ -53,6 +53,16 @@ func sanitizeOutboundRefs(outbounds *[]configtypes.Direction) {
 					log.Printf("state: dropping update on outbound %q with invalid ref=%q", ob.Tag, u.Ref)
 					continue
 				}
+				// SPEC 104: USER-патч из одних пустых значений ({} / [] / "")
+				// — не правка, а артефакт формы, сохранённой без изменений.
+				// Он затирает пресетные патчи (russian → `!/(🇷🇺)/i` на
+				// proxy-out) и воспроизводит себя на каждом Save. Такой
+				// мусор лежал в живых state.json с pre-058 — чистим при
+				// загрузке, не дожидаясь, пока пользователь откроет запись.
+				if u.Ref == configtypes.RefUser && isAllEmptyPatch(u.Patch) {
+					log.Printf("state: dropping empty USER patch on outbound %q (it only masked template/preset values)", ob.Tag)
+					continue
+				}
 				validUpdates = append(validUpdates, u)
 			}
 			ob.Updates = validUpdates
@@ -83,6 +93,42 @@ func validUpdateRef(ref string) bool {
 	}
 	if ref == "" || strings.HasPrefix(ref, "#") {
 		return false
+	}
+	return true
+}
+
+// isAllEmptyPatch — патч, в котором нет ни одного осмысленного значения.
+//
+// Пустыми считаем nil (кроме ключа `auto`: явный null там означает
+// «двойник выключен»), "", {} и []. Нулевые числа и false — осмысленны
+// (`disabled:false` включает направление обратно), поэтому патч с ними
+// пустым не считается. Зеркало build.dropEmptyOverrides; живёт здесь
+// отдельно, потому что state — leaf-пакет и build импортировать не может.
+func isAllEmptyPatch(patch map[string]interface{}) bool {
+	if len(patch) == 0 {
+		return true
+	}
+	for k, v := range patch {
+		switch t := v.(type) {
+		case nil:
+			if k == "auto" {
+				return false
+			}
+		case string:
+			if t != "" {
+				return false
+			}
+		case map[string]interface{}:
+			if len(t) > 0 {
+				return false
+			}
+		case []interface{}:
+			if len(t) > 0 {
+				return false
+			}
+		default:
+			return false
+		}
 	}
 	return true
 }

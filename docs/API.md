@@ -76,7 +76,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 | GET | `/state/rules` | `{"rules":[]state.Rule}` — the SPEC 053 section |
 | GET | `/state/dns` | The whole `state.DNSOptions` section (SPEC 056) |
 | GET | `/state/dns/rules` | `{"text":"..."}` — **USER rules only**, as wizard text. Preset rules are excluded (they are toggle refs) |
-| GET | `/state/outbounds/resolved` | `{"outbounds": []OutboundConfig}` — merged after SPEC 057/058 expansion (template + preset patches + user overrides) |
+| GET | `/state/outbounds/resolved` | `{"outbounds": []Direction}` — merged after SPEC 057/058 expansion (template + preset patches + user overrides); SPEC 104 fields `label`/`disabled`/`auto` included |
 | GET | `/state/log-level` | `{level, is_set, default, effective, allowed}` — `level` is the raw `vars[log_level]` (`""` when unset), `effective` is what sing-box will actually use (when empty — `default`, i.e. `warn`) |
 
 ```bash

@@ -76,7 +76,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
 | GET | `/state/rules` | `{"rules":[]state.Rule}` — секция SPEC 053 |
 | GET | `/state/dns` | Вся секция `state.DNSOptions` (SPEC 056) |
 | GET | `/state/dns/rules` | `{"text":"..."}` — **только USER**-правила как wizard-текст. Preset-правила не включаются (они toggle-ref'ы) |
-| GET | `/state/outbounds/resolved` | `{"outbounds": []OutboundConfig}` — merge'нутые после SPEC 057/058 expansion (template + preset patches + user overrides) |
+| GET | `/state/outbounds/resolved` | `{"outbounds": []Direction}` — merge'нутые после SPEC 057/058 expansion (template + preset patches + user overrides); поля SPEC 104 `label`/`disabled`/`auto` включены |
 | GET | `/state/log-level` | `{level, is_set, default, effective, allowed}` — `level` = сырое `vars[log_level]` (`""` если не задан), `effective` = что реально возьмёт sing-box (при пустом — `default`, т.е. `warn`) |
 
 ```bash

@@ -164,6 +164,19 @@ func stringSlicesEqual(a, b []string) bool {
 //
 // Используется Edit dialog'ом после OutboundFieldDiff.
 func UpsertUserPatch(updates []configtypes.OutboundUpdate, patch map[string]interface{}) []configtypes.OutboundUpdate {
+	// Патч из одних «пустых» значений ({}, [], "") — не правка, а её
+	// отсутствие: форма, открытая и сохранённая без изменений, НЕ должна
+	// оставлять после себя override. Иначе получается самовоспроизводящаяся
+	// ловушка: один раз записанный `"filters": {}` затирает пресетный фильтр
+	// (russian → `!/(🇷🇺)/i` на proxy-out), форма в следующий раз показывает
+	// уже затёртое, diff против базы снова даёт «очистил фильтр» — и так на
+	// каждом Save. В живом state.json такой патч лежал с pre-058 и молча
+	// выпускал российский трафик через российский узел.
+	//
+	// Осознанная очистка при этом остаётся возможной: она приходит вместе с
+	// хоть одним непустым ключом (например, пользователь снял фильтр И
+	// поменял комментарий), либо через Reset, который снимает патч целиком.
+	patch = dropEmptyOverrides(patch)
 	// Remove existing USER patch (if any).
 	out := make([]configtypes.OutboundUpdate, 0, len(updates)+1)
 	for _, u := range updates {
@@ -177,6 +190,51 @@ func UpsertUserPatch(updates []configtypes.OutboundUpdate, patch map[string]inte
 			Ref:   configtypes.RefUser,
 			Patch: patch,
 		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// dropEmptyOverrides убирает из патча ключи с пустым значением. Если после
+// этого ничего не осталось — возвращает nil (патча нет).
+//
+// Пустым считаем: nil, пустую строку, пустой map, пустой слайс. Нулевые числа
+// и false — НЕ пустые: `disabled:false` и `tolerance:0` — осмысленные
+// значения (см. applyOutboundUpdatePatch).
+func dropEmptyOverrides(patch map[string]interface{}) map[string]interface{} {
+	if len(patch) == 0 {
+		return nil
+	}
+	out := make(map[string]interface{}, len(patch))
+	for k, v := range patch {
+		switch t := v.(type) {
+		case nil:
+			// Явный null у auto — это «двойник выключен» (осознанно); у
+			// остальных ключей null ничего не значит и выбрасывается.
+			if k == "auto" {
+				out[k] = v
+			}
+		case string:
+			if t != "" {
+				out[k] = v
+			}
+		case map[string]interface{}:
+			if len(t) > 0 {
+				out[k] = v
+			}
+		case []interface{}:
+			if len(t) > 0 {
+				out[k] = v
+			}
+		case []string:
+			if len(t) > 0 {
+				out[k] = v
+			}
+		default:
+			out[k] = v
+		}
 	}
 	if len(out) == 0 {
 		return nil
