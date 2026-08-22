@@ -445,6 +445,7 @@
   "wizard.source.placeholder_label": "human-readable label",
   "wizard.source.placeholder_postfix": "postfix",
   "wizard.source.placeholder_mask": "{$tag}-{$server}",
+  "wizard.source.tag_vars_hint": "Variables (work in all three fields): {$tag} original node tag · {$server} address · {$port} port · {$scheme} protocol (also {$protocol}) · {$label} name from the link's #fragment · {$comment} comment · {$num} node number from 1",
   "wizard.source.overview_section_status": "Status",
   "wizard.source.overview_section_headers": "Subscription metadata (HTTP headers)",
   "wizard.source.overview_section_quota": "Traffic quota",

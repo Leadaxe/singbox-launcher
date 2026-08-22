@@ -561,6 +561,15 @@ func showSourceEditWindow(
 			settingsContent.Add(postfixEntry)
 			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_mask")))
 			settingsContent.Add(maskEntry)
+			// Список переменных — прямо под полями, а не за иконкой «?» и
+			// не в доках: их семь, они конкретны, и без них поле маски —
+			// пустое приглашение угадывать. Подсказка одна на три поля:
+			// переменные работают во всех (replaceTagVariables зовётся и
+			// для prefix/postfix, и для mask).
+			tagVarsHint := widget.NewLabel(locale.T("wizard.source.tag_vars_hint"))
+			tagVarsHint.Wrapping = fyne.TextWrapWord
+			tagVarsHint.Importance = widget.LowImportance
+			settingsContent.Add(tagVarsHint)
 			settingsContent.Add(widget.NewSeparator())
 			settingsContent.Add(foldCheck)
 			settingsContent.Add(widget.NewSeparator())

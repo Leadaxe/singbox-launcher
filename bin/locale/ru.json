@@ -442,6 +442,7 @@
   "wizard.source.placeholder_label": "человекочитаемое имя",
   "wizard.source.placeholder_postfix": "суффикс",
   "wizard.source.placeholder_mask": "{$tag}-{$server}",
+  "wizard.source.tag_vars_hint": "Переменные (работают во всех трёх полях): {$tag} исходный тег узла · {$server} адрес · {$port} порт · {$scheme} протокол (он же {$protocol}) · {$label} имя из #фрагмента ссылки · {$comment} комментарий · {$num} номер узла с 1",
   "wizard.source.overview_section_status": "Статус",
   "wizard.source.overview_section_headers": "Метаданные подписки (HTTP headers)",
   "wizard.source.overview_section_quota": "Квота трафика",
