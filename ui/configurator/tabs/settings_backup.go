@@ -70,16 +70,6 @@ func backupSection(presenter *wizardpresentation.WizardPresenter, win fyne.Windo
 	)
 }
 
-// writeTextFile пишет текст в файл, создавая каталог при необходимости.
-func writeTextFile(path, text string) error {
-	if dir := filepath.Dir(path); dir != "" {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
-		}
-	}
-	return os.WriteFile(path, []byte(text), 0o600)
-}
-
 // handleBackupExport собирает текущее состояние и пишет файл.
 func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.Window) {
 	st := presenter.CreateStateFromModel("", "")

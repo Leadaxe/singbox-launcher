@@ -14,30 +14,23 @@
 package tabs
 
 import (
-	"fmt"
-	"path/filepath"
-	"strings"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
-	"singbox-launcher/internal/platform"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
-
-// configFileName — имя по умолчанию для выгружаемого конфига.
-const configFileName = "config.json"
 
 // CreateFilesTab строит вкладку.
 func CreateFilesTab(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState) fyne.CanvasObject {
 	win := guiState.Window
 
+	// Статус нужен только показу конфига: результат сохранения показывает
+	// сам SaveConfig — прогресс на кнопке внизу и диалог по завершении.
 	status := widget.NewLabel("")
 	status.Wrapping = fyne.TextWrapWord
 	status.Alignment = fyne.TextAlignCenter
@@ -65,36 +58,12 @@ func CreateFilesTab(presenter *wizardpresentation.WizardPresenter, guiState *wiz
 		showConfigWindow(text)
 	})
 
-	saveBtn := widget.NewButton(locale.T("wizard.generate.button_save"), func() {
-		status.SetText(locale.T("wizard.generate.status_building"))
-		text, ok := build()
-		if !ok {
-			return
-		}
-		path, picked, err := platform.PickSaveFile(
-			locale.T("wizard.generate.save_prompt"), configFileName)
-		if err != nil && err != platform.ErrNativeDialogUnavailable {
-			debuglog.WarnLog("files: диалог сохранения: %v", err)
-		}
-		switch {
-		case err == platform.ErrNativeDialogUnavailable:
-			// Нативного диалога нет — кладём рядом с исполняемым файлом и
-			// говорим куда: молча ничего не делать хуже.
-			path = filepath.Join(defaultBackupDir(), configFileName)
-		case !picked:
-			status.SetText("")
-			return // отмена пользователя
-		}
-		if !strings.EqualFold(filepath.Ext(path), ".json") {
-			path += ".json"
-		}
-		if err := writeTextFile(path, text); err != nil {
-			debuglog.ErrorLog("files: запись %s: %v", path, err)
-			dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.generate.error_write"), err), win)
-			status.SetText(locale.Tf("wizard.generate.status_error", err))
-			return
-		}
-		status.SetText(locale.Tf("wizard.generate.status_saved", path))
+	// Та же операция, что у кнопки Save справа внизу: записать state.json и
+	// пересобрать рабочий config.json. Не «выгрузить копию куда-то» —
+	// диалог «куда сохранить» здесь означал бы вторую, побочную копию, а
+	// пользователю нужно применить настройки.
+	saveBtn := widget.NewButton(locale.T("wizard.files.button_save"), func() {
+		presenter.SaveConfig()
 	})
 	saveBtn.Importance = widget.HighImportance
 
