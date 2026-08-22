@@ -60,10 +60,10 @@
 - [x] Выравнивание движков: Go — C4 (Dropped-каскад, D-054), C5 (каст по типу, D-055), C3 (невалидное `#if` → false, D-058), N9/N10 (warnings); Dart — C1/N12, C2, C6, C8, N10 (D-056/D-057). Осталось C7 → SPEC 106
 - [x] `registry/presets.json`, `registry/vars.json` (в фазе 0); **выравнивание словарей снято** — D-046, шаблоны остаются разными
 - [~] Схема пресета — модель канонизирована по LxBox (D-049) → перенос в **SPEC 106**
-- [ ] LxBox: миграция тегов пресетов на префикс (C7) — heal-редиректы ссылок + release notes → **SPEC 106**
+- [x] LxBox: миграция тегов пресетов на префикс (C7) — `namespacePresetTags` + heal-редирект `healPresetTagPrefix` + changelog → **SPEC 106 закрыт**
 - [ ] Документация шаблонов в порядок: лаунчер `TEMPLATE_REFERENCE.md`+`WIZARD_TEMPLATE.md` (+.ru) ↔ LxBox `TEMPLATE.md` — сверка с contract/docs/TEMPLATE_LANG.md (D-020)
 
-## Фаза 4 — LX Backup v1 (лаунчер ✅, LxBox — остаток)
+## Фаза 4 — LX Backup v1 (ядро обеих сторон ✅, UI LxBox — остаток)
 
 - [x] `schema/backup.schema.json` + `docs/BACKUP.md` (были в фазе 0; экспорт проверен настоящим JSON-Schema-валидатором)
 - [x] Лаунчер: `core/backup/` — export/import (state v6 ↔ backup), файловый слой (атомарная запись, права 600), UI на вкладке Settings, `State.ForeignBackupExtensions` для чужого блоба
@@ -74,7 +74,7 @@
 - [x] `platform.PickSaveFile` — нативный диалог сохранения (macOS/Windows/Linux) парно к `PickOpenFile`
 - [x] LxBox: `lib/services/lx_backup.dart` — build/parse LX Backup, mobile-only матчеры в `extensions.lxbox`, хранение чужого блоба
 - [x] LxBox: раннер `corpus/backup/` (7/7) + 12 собственных тестов
-- [ ] LxBox: пункт на backup-экране (UI) — ядро готово, экран не подключён
+- [ ] LxBox: пункт на backup-экране (UI) — ядро и тесты готовы, экран не подключён
 - [ ] Документация состояния/правил: лаунчер `WIZARD_STATE.md` (+.ru) ↔ LxBox `STORAGE.md` — дополнить форматом LX Backup (D-020)
 
 ## Фаза 5 — Процесс ✅
