@@ -51,3 +51,26 @@ func winFilter(exts []string) string {
 func psSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
+
+// pickSaveFileNative uses PowerShell + SaveFileDialog. OverwritePrompt is on
+// by default in WinForms, so the OS asks about overwrite itself.
+func pickSaveFileNative(prompt, defaultName string) (string, bool, error) {
+	ps := fmt.Sprintf(
+		`Add-Type -AssemblyName System.Windows.Forms;`+
+			`$d = New-Object System.Windows.Forms.SaveFileDialog;`+
+			`$d.Title = %s;`+
+			`$d.FileName = %s;`+
+			`$d.Filter = %s;`+
+			`if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) }`,
+		psSingleQuote(prompt), psSingleQuote(defaultName), psSingleQuote("JSON (*.json)|*.json|All files (*.*)|*.*"),
+	)
+	out, err := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-STA", "-Command", ps).Output()
+	if err != nil {
+		return "", false, err
+	}
+	path := strings.TrimSpace(string(out))
+	if path == "" {
+		return "", false, nil // cancel
+	}
+	return path, true, nil
+}

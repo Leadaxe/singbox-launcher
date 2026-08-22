@@ -68,3 +68,33 @@ func kdialogArgs(prompt string, exts []string) (string, []string) {
 	}
 	return "kdialog", args
 }
+
+// pickSaveFileNative — сохранение через zenity/kdialog.
+//
+// Подтверждение перезаписи просим у самого диалога (--confirm-overwrite у
+// zenity; kdialog спрашивает всегда): дублировать этот вопрос в приложении
+// значит заставить пользователя отвечать дважды.
+func pickSaveFileNative(prompt, defaultName string) (string, bool, error) {
+	if _, err := exec.LookPath("zenity"); err == nil {
+		args := []string{"--file-selection", "--save", "--confirm-overwrite"}
+		if strings.TrimSpace(prompt) != "" {
+			args = append(args, "--title="+prompt)
+		}
+		if defaultName != "" {
+			args = append(args, "--filename="+defaultName)
+		}
+		return runFilePicker("zenity", args)
+	}
+	if _, err := exec.LookPath("kdialog"); err == nil {
+		name := defaultName
+		if name == "" {
+			name = "."
+		}
+		args := []string{"--getsavefilename", name}
+		if strings.TrimSpace(prompt) != "" {
+			args = append(args, "--title", prompt)
+		}
+		return runFilePicker("kdialog", args)
+	}
+	return "", false, ErrNativeDialogUnavailable
+}

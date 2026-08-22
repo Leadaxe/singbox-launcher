@@ -31,3 +31,15 @@ func PickOpenFile(prompt string, exts []string) (string, bool, error) {
 	}
 	return pickOpenFileNative(prompt, clean)
 }
+
+// PickSaveFile shows a native save-file dialog and returns the chosen path.
+//
+// Same contract as PickOpenFile: (path, true, nil) on choice, ("", false, nil)
+// on cancel, ErrNativeDialogUnavailable where the OS has no usable dialog.
+//
+// defaultName is the pre-filled file name (e.g. "lx-backup-2026-08-22.json").
+// Overwrite confirmation is the OS panel's job — every native save panel asks,
+// and duplicating that question in-app would make the user answer twice.
+func PickSaveFile(prompt, defaultName string) (string, bool, error) {
+	return pickSaveFileNative(prompt, strings.TrimSpace(defaultName))
+}

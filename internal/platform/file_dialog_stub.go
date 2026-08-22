@@ -7,3 +7,8 @@ package platform
 func pickOpenFileNative(prompt string, exts []string) (string, bool, error) {
 	return "", false, ErrNativeDialogUnavailable
 }
+
+// pickSaveFileNative — no native dialog on this OS.
+func pickSaveFileNative(prompt, defaultName string) (string, bool, error) {
+	return "", false, ErrNativeDialogUnavailable
+}

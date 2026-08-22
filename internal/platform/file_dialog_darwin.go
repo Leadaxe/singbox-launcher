@@ -57,3 +57,32 @@ func appleScriptStringLiteral(s string) string {
 	s = strings.ReplaceAll(s, `"`, `\"`)
 	return `"` + s + `"`
 }
+
+// pickSaveFileNative uses AppleScript `choose file name` — the native Finder
+// save panel (it asks about overwrite itself).
+func pickSaveFileNative(prompt, defaultName string) (string, bool, error) {
+	var b strings.Builder
+	b.WriteString("POSIX path of (choose file name")
+	if strings.TrimSpace(prompt) != "" {
+		b.WriteString(" with prompt ")
+		b.WriteString(appleScriptStringLiteral(prompt))
+	}
+	if defaultName != "" {
+		b.WriteString(" default name ")
+		b.WriteString(appleScriptStringLiteral(defaultName))
+	}
+	b.WriteString(")")
+
+	out, err := exec.Command("osascript", "-e", b.String()).Output()
+	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok && isAppleScriptCancel(ee.Stderr) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	path := strings.TrimSpace(string(out))
+	if path == "" {
+		return "", false, nil
+	}
+	return path, true, nil
+}
