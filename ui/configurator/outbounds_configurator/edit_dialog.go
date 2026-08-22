@@ -110,32 +110,10 @@ func ShowEditDialog(
 	// SPEC 088 load-balancing: mode/balancer парсим ЗАРАНЕЕ — он определяет, какой
 	// из трёх типов показать (round_robin = отдельный пункт "loadbalance", хотя на
 	// проводе это тот же type:urltest + mode:round_robin).
-	var curBalancer balancerFormState
-	if displayBody != nil {
-		curBalancer = parseBalancerFromOptions(displayBody.Options)
-	} else {
-		curBalancer = balancerFormState{Sticky: map[string]bool{}}
-	}
 
 	// Type: три пункта. manual(selector) | auto(urltest, least_test) |
 	// loadbalance(urltest + round_robin). Последние два — один wire-type urltest,
 	// различаются наличием mode:round_robin.
-	typeSelect := widget.NewSelect([]string{
-		locale.T("wizard.outbound.type_manual"),
-		locale.T("wizard.outbound.type_auto"),
-		locale.T("wizard.outbound.type_loadbalance"),
-	}, nil)
-	switch {
-	case displayBody == nil:
-		typeSelect.SetSelected(locale.T("wizard.outbound.type_manual"))
-	case displayBody.Type == "urltest" && curBalancer.RoundRobin:
-		typeSelect.SetSelected(locale.T("wizard.outbound.type_loadbalance"))
-	case displayBody.Type == "urltest":
-		typeSelect.SetSelected(locale.T("wizard.outbound.type_auto"))
-	default:
-		typeSelect.SetSelected(locale.T("wizard.outbound.type_manual"))
-	}
-
 	// SPEC 104: автовыбор — СВОЙСТВО Направления, а не его тип: галка
 	// включает парную группу `<tag>-auto`, настройки которой живут на
 	// отдельной вкладке. Смешивать это с типом записи было бы неверно —
@@ -164,91 +142,6 @@ func ShowEditDialog(
 		commentEntry.SetText(displayBody.Comment)
 	}
 	commentEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_comment"))
-
-	// SPEC: editable fields для urltest outbound options (interval/tolerance/url).
-	// interval/tolerance — widget.Select (только dropdown, без свободного ввода);
-	// url — widget.SelectEntry (dropdown + ручной ввод, т.к. URL разнообразны).
-	// В каждый dropdown добавлен placeholder вида `@varname` чтобы юзер мог
-	// явно выбрать «inherit from Settings» (значение переменной из state.vars).
-	//
-	// Visible только когда Type=urltest (toggled via typeSelect.OnChanged ниже).
-	curInterval, curTolerance, curURL := "", "", ""
-	if displayBody != nil && displayBody.Options != nil {
-		if v, ok := displayBody.Options["interval"]; ok {
-			curInterval = fmt.Sprintf("%v", v)
-		}
-		if v, ok := displayBody.Options["tolerance"]; ok {
-			curTolerance = fmt.Sprintf("%v", v)
-		}
-		if v, ok := displayBody.Options["url"]; ok {
-			curURL = fmt.Sprintf("%v", v)
-		}
-	}
-	// balancer уже распарсен выше (curBalancer). pool/tolerance/sticky для виджетов.
-	curPool, curPoolTolerance := curBalancer.Pool, curBalancer.PoolTolerance
-	curSticky := curBalancer.Sticky
-
-	intervalLabels, intervalLabelToValue := templateVarChoices(editPresenter, "urltest_interval", curInterval)
-	urltestIntervalSelect := widget.NewSelect(intervalLabels, nil)
-	if lbl := labelForValue(intervalLabelToValue, curInterval); lbl != "" {
-		urltestIntervalSelect.SetSelected(lbl)
-	}
-
-	toleranceLabels, toleranceLabelToValue := templateVarChoices(editPresenter, "urltest_tolerance", curTolerance)
-	urltestToleranceSelect := widget.NewSelect(toleranceLabels, nil)
-	if lbl := labelForValue(toleranceLabelToValue, curTolerance); lbl != "" {
-		urltestToleranceSelect.SetSelected(lbl)
-	}
-
-	urlLabels, _ := templateVarChoices(editPresenter, "urltest_url", curURL)
-	urltestURLEntry := widget.NewSelectEntry(urlLabels)
-	urltestURLEntry.SetPlaceHolder("https://cp.cloudflare.com/generate_204")
-	if curURL != "" {
-		urltestURLEntry.SetText(curURL)
-	}
-
-	// Mode-селекта нет: тип "loadbalance" в Type-дропдауне и означает round_robin
-	// (auto = least_test). При Save loadbalance → mode:round_robin + balancer.
-	poolEntry := widget.NewEntry()
-	poolEntry.SetPlaceHolder("3")
-	if curPool != "" {
-		poolEntry.SetText(curPool)
-	}
-	poolToleranceEntry := widget.NewEntry()
-	poolToleranceEntry.SetPlaceHolder("0")
-	if curPoolTolerance != "" {
-		poolToleranceEntry.SetText(curPoolTolerance)
-	}
-
-	// sticky_hash — компоненты липкости сессии (какие поля соединения держат его
-	// на одном узле пула). Ядро: пустой список = дефолтная липкость; ["none"] = выкл.
-	// Дефолт process + dest_ip + dest_port применяем, когда balancer ещё НЕ был
-	// round_robin (новый outbound или переключение auto→loadbalance) — держит
-	// соединения к одному хосту:порту на одном узле, разные назначения раскидывает
-	// по пулу. Если round_robin уже был сохранён — уважаем сохранённый выбор.
-	stickyDefaults := map[string]bool{"process": true, "dest_ip": true, "dest_port": true}
-	applyStickyDefaults := !curBalancer.RoundRobin
-	stickyKeys := stickyHashKeys
-	stickyChecks := make(map[string]*widget.Check, len(stickyKeys))
-	// Два компактных ряда HBox (3 + 2), а не GridWithColumns (равные растянутые
-	// колонки раздували окно). Чекбоксы встают по своей ширине слева.
-	stickyRow1 := container.NewHBox()
-	stickyRow2 := container.NewHBox()
-	for i, k := range stickyKeys {
-		ch := widget.NewCheck(k, nil)
-		if applyStickyDefaults {
-			ch.SetChecked(stickyDefaults[k])
-		} else if curSticky[k] {
-			ch.SetChecked(true)
-		}
-		stickyChecks[k] = ch
-		if i < 3 {
-			stickyRow1.Add(ch)
-		} else {
-			stickyRow2.Add(ch)
-		}
-	}
-	stickyCheckRow := container.NewVBox(stickyRow1, stickyRow2)
 
 	// Scope: For all | For source: ...
 	//
@@ -479,14 +372,23 @@ func ShowEditDialog(
 		}
 		return scopeKind, idx
 	}
-	// buildConfigForPreview builds a config.Direction snapshot based on
-	// the authoritative source (settings form or raw JSON). Routes by
-	// `editSource`, not `currentTab` — preview tab itself doesn't host edits,
-	// so when called from Preview we read from wherever the user last typed.
-	//
-	// `requireTag=true`: empty tag → error (save() needs a real tag).
-	// `requireTag=false`: empty tag → autoinjected "_preview_" placeholder so
-	// preview tab + syncFormToRaw work before the user has typed a name.
+	// Списки допустимых значений для полей автогруппы. Берутся из
+	// переменных шаблона (`@urltest_*`), чтобы пользователь мог выбрать
+	// «наследовать из Settings», а не только конкретное число.
+	curInterval, curTolerance, curURL := "", "", ""
+	if displayBody != nil && displayBody.Auto != nil {
+		a := displayBody.Auto
+		curInterval = a.Interval
+		if v := a.Tolerance.Value(); v != nil {
+			curTolerance = fmt.Sprintf("%v", v)
+		}
+		curURL = a.URL
+	}
+	intervalLabels, intervalLabelToValue := templateVarChoices(editPresenter, "urltest_interval", curInterval)
+	toleranceLabels, toleranceLabelToValue := templateVarChoices(editPresenter, "urltest_tolerance", curTolerance)
+	urlLabels, _ := templateVarChoices(editPresenter, "urltest_url", curURL)
+	stickyKeys := stickyHashKeys
+
 	// SPEC 104: вкладка «Автовыбор» — настройки парной группы `<tag>-auto`.
 	// Свои виджеты, а не общие с urltestBlock: один виджет нельзя показывать
 	// на двух вкладках, а семантика разная (запись против её двойника).
@@ -563,6 +465,14 @@ func ShowEditDialog(
 	// Обработчик ПОСЛЕ SetSelected — иначе сработает на программной установке.
 	autoModeSelect.OnChanged = func(string) { autoBalancerVisible() }
 
+	// buildConfigForPreview builds a config.Direction snapshot based on
+	// the authoritative source (settings form or raw JSON). Routes by
+	// `editSource`, not `currentTab` — preview tab itself doesn't host edits,
+	// so when called from Preview we read from wherever the user last typed.
+	//
+	// `requireTag=true`: empty tag → error (save() needs a real tag).
+	// `requireTag=false`: empty tag → autoinjected "_preview_" placeholder so
+	// preview tab + syncFormToRaw work before the user has typed a name.
 	buildConfigForPreview := func(requireTag bool) (*config.Direction, error) {
 		if editSource == "raw" {
 			var cfg config.Direction
@@ -585,13 +495,10 @@ func ShowEditDialog(
 			}
 			tag = "_preview_"
 		}
-		// auto И loadbalance → wire-type urltest (loadbalance = urltest + round_robin,
-		// применяется ниже через buildBalancerOptions).
-		obType := "selector"
-		if typeSelect.Selected == locale.T("wizard.outbound.type_auto") ||
-			typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance") {
-			obType = "urltest"
-		}
+		// SPEC 104: Направление — всегда selector. Автовыбор задаётся полем
+		// Auto (вкладка «Автовыбор») и разворачивается в парный urltest на
+		// сборке; отдельного типа записи для него нет.
+		const obType = "selector"
 
 		cfg := &config.Direction{
 			Tag:     tag,
@@ -618,64 +525,8 @@ func ShowEditDialog(
 				delete(cfg.Options, "interval")
 				delete(cfg.Options, "tolerance")
 			}
-		} else if obType == "selector" {
-			cfg.Options = map[string]interface{}{"interrupt_exist_connections": true}
 		} else {
-			cfg.Options = map[string]interface{}{
-				"url":      "https://cp.cloudflare.com/generate_204",
-				"interval": "5m", "tolerance": 100,
-				"interrupt_exist_connections": true,
-			}
-		}
-
-		// SPEC: для urltest перезаписываем interval/tolerance/url из form fields
-		// (юзер мог изменить их через urltestBlock виджеты). Перезапись только
-		// для urltest type. Для selector — поля скрыты, не применяем.
-		//
-		// interval/tolerance — widget.Select: .Selected = label, lookup в
-		// labelToValue даёт raw value. URL — SelectEntry: читаем .Text напрямую
-		// (юзер мог ввести custom URL).
-		if obType == "urltest" {
-			if cfg.Options == nil {
-				cfg.Options = map[string]interface{}{}
-			}
-			if lbl := urltestIntervalSelect.Selected; lbl != "" {
-				if v, ok := intervalLabelToValue[lbl]; ok && v != "" {
-					cfg.Options["interval"] = v
-				}
-			}
-			if lbl := urltestToleranceSelect.Selected; lbl != "" {
-				if v, ok := toleranceLabelToValue[lbl]; ok && v != "" {
-					// tolerance — число в template; placeholder @urltest_tolerance
-					// оставляем строкой (substituter резолвит на build time).
-					if strings.HasPrefix(v, "@") {
-						cfg.Options["tolerance"] = v
-					} else if n, err := strconv.Atoi(v); err == nil {
-						cfg.Options["tolerance"] = n
-					} else {
-						cfg.Options["tolerance"] = v
-					}
-				}
-			}
-			if v := strings.TrimSpace(urltestURLEntry.Text); v != "" {
-				cfg.Options["url"] = v
-			}
-
-			// SPEC 088 balancing — build via the pure helper (tested). loadbalance
-			// type → emit mode:round_robin + balancer; auto (least_test) → strip both
-			// (plain urltest stays byte-identical to upstream).
-			st := balancerFormState{
-				RoundRobin:    typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance"),
-				Pool:          poolEntry.Text,
-				PoolTolerance: poolToleranceEntry.Text,
-				Sticky:        map[string]bool{},
-			}
-			for _, k := range stickyKeys {
-				if ch := stickyChecks[k]; ch != nil && ch.Checked {
-					st.Sticky[k] = true
-				}
-			}
-			buildBalancerOptions(cfg.Options, st)
+			cfg.Options = map[string]interface{}{"interrupt_exist_connections": true}
 		}
 
 		// SPEC 104: Направление с автогруппой. Настройки берутся из тех же
@@ -851,82 +702,6 @@ func ShowEditDialog(
 		}
 	}
 
-	// Urltest-specific options block. Видим только когда Type=urltest.
-	// Tooltip объясняет что @varname placeholder означает inherit из Settings tab.
-	const urltestTooltip = "Pick a preset value or select @varname to inherit the value from Settings tab (substituted at build time)."
-	urltestLabel := widget.NewLabel("URLTest options")
-	urltestIntervalLabel := ttwidget.NewLabel("Interval")
-	urltestIntervalLabel.SetToolTip(urltestTooltip)
-	urltestToleranceLabel := ttwidget.NewLabel("Tolerance (ms)")
-	urltestToleranceLabel.SetToolTip(urltestTooltip)
-	urltestURLLabel := ttwidget.NewLabel("URL")
-	urltestURLLabel.SetToolTip(urltestTooltip)
-
-	// SPEC 088 balancing controls. balancerBlock (pool/pool_tolerance/sticky_hash)
-	// виден только для типа loadbalance (round_robin). Mode-селекта нет — тип его
-	// заменил.
-	poolLabel := ttwidget.NewLabel("Pool size")
-	poolLabel.SetToolTip("Number of live nodes to spread traffic across (round_robin balancer.pool).")
-	poolToleranceLabel := ttwidget.NewLabel("Pool tolerance (ms)")
-	poolToleranceLabel.SetToolTip("Extra latency budget (ms) a node may exceed the best and still stay in the pool (balancer.pool_tolerance, 0..65535).")
-	stickyLabel := ttwidget.NewLabel("Sticky hash")
-	stickyLabel.SetToolTip("Connection fields that pin a session to one pool node. None checked = disabled (sent as [\"none\"]).")
-	balancerBlock := container.NewVBox(
-		container.NewGridWithColumns(2, poolLabel, poolEntry),
-		container.NewGridWithColumns(2, poolToleranceLabel, poolToleranceEntry),
-		stickyLabel,
-		stickyCheckRow,
-	)
-	urltestBlock := container.NewVBox(
-		urltestLabel,
-		container.NewGridWithColumns(2, urltestIntervalLabel, urltestIntervalSelect),
-		container.NewGridWithColumns(2, urltestToleranceLabel, urltestToleranceSelect),
-		container.NewGridWithColumns(2, urltestURLLabel, urltestURLEntry),
-		balancerBlock,
-	)
-	// urltest-поля видны для auto И loadbalance (оба = wire-type urltest);
-	// balancer-блок — только для loadbalance.
-	isURLTestType := func() bool {
-		return typeSelect.Selected == locale.T("wizard.outbound.type_auto") ||
-			typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance")
-	}
-	isLoadBalance := func() bool {
-		return typeSelect.Selected == locale.T("wizard.outbound.type_loadbalance")
-	}
-	urltestVisible := func() {
-		if isURLTestType() {
-			urltestBlock.Show()
-			if isLoadBalance() {
-				balancerBlock.Show()
-			} else {
-				balancerBlock.Hide()
-			}
-		} else {
-			urltestBlock.Hide()
-		}
-	}
-	// SPEC 104: у Направления тип всегда selector — выбирать нечего, а
-	// «loadbalance» относится к автогруппе и живёт на своей вкладке.
-	// Строка Type остаётся ТОЛЬКО для легаси-записей urltest, созданных до
-	// свёртки auto-проксей: спрятать её у них значило бы лишить
-	// пользователя единственного способа увидеть и сменить их тип.
-	typeRow := container.NewVBox(
-		widget.NewLabel(locale.T("wizard.outbound.label_type")),
-		typeSelect,
-	)
-	if displayBody == nil || displayBody.Type != "urltest" {
-		typeRow.Hide()
-	}
-
-	urltestVisible() // initial state
-	prevOnTypeChanged := typeSelect.OnChanged
-	typeSelect.OnChanged = func(s string) {
-		urltestVisible()
-		if prevOnTypeChanged != nil {
-			prevOnTypeChanged(s)
-		}
-	}
-
 	form := container.NewVBox(
 		widget.NewLabel(locale.T("wizard.outbound.label_scope")),
 		scopeSelect,
@@ -934,8 +709,6 @@ func ShowEditDialog(
 		labelEntry,
 		widget.NewLabel(locale.T("wizard.outbound.label_tag_field")),
 		tagEntry,
-		typeRow,
-		urltestBlock,
 		autoTwinCheck,
 		widget.NewLabel(locale.T("wizard.outbound.label_comment")),
 		commentEntry,
@@ -1160,11 +933,6 @@ func ShowEditDialog(
 			}
 		}
 		tagEntry.SetText(display.Tag)
-		if display.Type == "urltest" {
-			typeSelect.SetSelected(locale.T("wizard.outbound.type_auto"))
-		} else {
-			typeSelect.SetSelected(locale.T("wizard.outbound.type_manual"))
-		}
 		commentEntry.SetText(display.Comment)
 		labelEntry.SetText(display.Label)
 
@@ -1191,22 +959,20 @@ func ShowEditDialog(
 				}
 			}
 		}
-		// urltest fields — для referenced merged.Options содержит финальные
-		// значения (template + preset patches + USER patch).
-		if display.Options != nil {
-			if v, ok := display.Options["interval"]; ok {
-				if lbl := labelForValue(intervalLabelToValue, fmt.Sprintf("%v", v)); lbl != "" {
-					urltestIntervalSelect.SetSelected(lbl)
-				}
+		// SPEC 104: параметры автогруппы живут в Auto, а не в Options самой
+		// записи, и правятся на вкладке «Автовыбор».
+		autoTwinCheck.SetChecked(display.Auto != nil)
+		if display.Auto != nil {
+			a := display.Auto
+			if lbl := labelForValue(intervalLabelToValue, a.Interval); lbl != "" {
+				autoIntervalSelect.SetSelected(lbl)
 			}
-			if v, ok := display.Options["tolerance"]; ok {
+			if v := a.Tolerance.Value(); v != nil {
 				if lbl := labelForValue(toleranceLabelToValue, fmt.Sprintf("%v", v)); lbl != "" {
-					urltestToleranceSelect.SetSelected(lbl)
+					autoToleranceSelect.SetSelected(lbl)
 				}
 			}
-			if v, ok := display.Options["url"]; ok {
-				urltestURLEntry.SetText(fmt.Sprintf("%v", v))
-			}
+			autoURLEntry.SetText(a.URL)
 		}
 	}
 
