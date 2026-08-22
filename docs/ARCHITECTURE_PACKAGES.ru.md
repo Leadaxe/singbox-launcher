@@ -78,6 +78,7 @@
 | Файл | Назначение |
 |------|---------|
 | `state.go` | Корневая структура `State` (идентичность + легаси-представление `ParserConfig` + канонические `Connections`/`Rules`/`DNS`) и хелперы доступа. |
+| `connections.go` | `ConnectionsSection`: источники, Направления (`direction_outbounds`) и defaults. `adoptLegacyDirections` переносит ключ `outbounds`, оставшийся от версий до SPEC 104; при наличии обоих побеждает канонический. |
 | `rule_order.go` | Числовая ось порядка правил (SPEC 106): ленивый сдвиг до первой дырки, re-seed несортируемых, нормализация состояний, записанных до появления оси. |
 | `save.go` | Память→диск: `syncConnectionsFromLegacy`, `marshalDisk` (раскладка v6), атомарные fsync+rename, бэкап SPEC 058. |
 | `load_router.go` | `Load`/`Parse`: определение схемы (top-level против `meta.version`), маршрутизация в парсеры v6/v5/v2-v4. |
@@ -142,7 +143,8 @@
 | `outbound_generator.go` | Оркестратор `GenerateOutboundsFromParserConfig` плюс `GenerateNodeJSON`/`GenerateEndpointJSON`/`GenerateSelectorWithFilteredAddOutbounds` (утончён после разбиений SPEC 070). |
 | `outbound_validity.go` | Трёхпроходный алгоритм: `buildOutboundsInfo` → `computeOutboundValidity` (топологическая сортировка, детект циклов) → `generateSelectorJSONs`. |
 | `outbound_jsonbuilder.go` | `JSONBuilder{parts}` с безопасным по порядку вставки `AppendField` (заменяет связку `fmt.Sprintf`+`strings.Join`). |
-| `outbound_filter.go` | Фильтрация узлов для селекторов (`filterNodesForSelector`, `FilterNodesExcludeFromGlobal`, синтетический узел expose, хелперы предпросмотра). |
+| `outbound_filter.go` | Фильтрация узлов для селекторов (`filterNodesForSelector`, `FilterNodesExcludeFromGlobal`, синтетический узел expose, хелперы предпросмотра). Ключ фильтра с некорректной регуляркой отбрасывается как отсутствующий: опечатка не должна лишать пользователя всех узлов, а чинить это в `MatchesPattern` нельзя — тот же матчер обслуживает skip-фильтры подписок, где «битый = совпало всё» выбросил бы все узлы разом. |
+| `direction_twins.go` | Проход 0 генератора (SPEC 104): выкидывает выключенные Направления, разворачивает `auto` в парную группу `<tag>-auto`, содержит запасной состав пустого Направления (`[block, direct]`, умолчание — block) и предупреждение «отбор никого не поймал». Двойники существуют только на сборке: хранить их значило бы держать две сущности в ручном согласии. |
 | `outbound_share.go` | Поиск share-URI по записанному `config.json` (`GetOutboundMapByTag`, `ShareProxyURIForOutboundTag`). |
 | `config_loader.go` | Чтение `config.json` (с поддержкой JSONC): группы селекторов, имя TUN-интерфейса, `experimental.cache_file`. |
 | `varsubst.go` | `SubstituteParserConfigPlaceholders` — разрешение плейсхолдеров `@name` в опциях outbound'а (дефолты шаблона + override состояния). |

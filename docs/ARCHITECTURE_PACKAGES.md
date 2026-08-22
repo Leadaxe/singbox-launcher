@@ -76,6 +76,7 @@ per-source raw-body cache.
 | File | Purpose |
 |------|---------|
 | `state.go` | Root `State` struct (identity + legacy `ParserConfig` view + canonical `Connections`/`Rules`/`DNS`) + accessor helpers. |
+| `connections.go` | `ConnectionsSection`: sources + Directions (`direction_outbounds`) + defaults. `adoptLegacyDirections` carries the pre-SPEC-104 `outbounds` key forward on load; the canonical key wins when both are present. |
 | `rule_order.go` | The numeric rule-order axis (SPEC 106): lazy shift up to the first gap, re-seed of non-sortable rules, normalization of states written before the axis existed. |
 | `save.go` | Memory→disk: `syncConnectionsFromLegacy`, `marshalDisk` (v6 layout), atomic fsync+rename, SPEC 058 backup. |
 | `load_router.go` | `Load`/`Parse`: schema detection (top-level vs `meta.version`), routes to v6/v5/v2-v4 parsers. |
@@ -140,7 +141,8 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 | `outbound_generator.go` | `GenerateOutboundsFromParserConfig` orchestrator + `GenerateNodeJSON`/`GenerateEndpointJSON`/`GenerateSelectorWithFilteredAddOutbounds` (thinned after SPEC 070 splits). |
 | `outbound_validity.go` | Three-pass algorithm: `buildOutboundsInfo` → `computeOutboundValidity` (topological sort, cycle-detect) → `generateSelectorJSONs`. |
 | `outbound_jsonbuilder.go` | `JSONBuilder{parts}` with insertion-order-safe `AppendField` (replaces `fmt.Sprintf`+`strings.Join`). |
-| `outbound_filter.go` | Node filtering for selectors (`filterNodesForSelector`, `FilterNodesExcludeFromGlobal`, expose synthetic node, preview helpers). |
+| `outbound_filter.go` | Node filtering for selectors (`filterNodesForSelector`, `FilterNodesExcludeFromGlobal`, expose synthetic node, preview helpers). A filter key whose regex does not compile is dropped as if absent — a typo must not cost the user every node, and fixing it in `MatchesPattern` would break subscription skip-filters, where "broken = matched everything" throws all nodes away. |
+| `direction_twins.go` | Pass 0 of the generator (SPEC 104): drops disabled Directions, expands each `auto` into a paired `<tag>-auto` urltest, and holds the empty-Direction fallback (`[block, direct]`, default=block) plus the "filter matched nothing" warning. Twins are build-only — keeping them in state would mean two objects to hand-sync. |
 | `outbound_share.go` | Share-URI lookup from a written `config.json` (`GetOutboundMapByTag`, `ShareProxyURIForOutboundTag`). |
 | `config_loader.go` | Read `config.json` (JSONC-aware): selector groups, TUN interface name, `experimental.cache_file`. |
 | `varsubst.go` | `SubstituteParserConfigPlaceholders` — resolve `@name` placeholders in outbound options (template defaults + state override). |

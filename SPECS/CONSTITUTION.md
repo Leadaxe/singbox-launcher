@@ -119,8 +119,9 @@
 
 - **Нормативные источники** — `contract/registry/**` (словари протоколов,
   allowlist'ы, коды warning'ов, лимиты, переменные), `contract/schema/**`
-  (канонический узел, LX Backup), `contract/docs/**` (CANON, IDENTITY,
-  TEMPLATE_LANG, BACKUP). Код обязан им соответствовать, а не наоборот.
+  (канонический узел, Направление, LX Backup), `contract/docs/**` (CANON,
+  IDENTITY, TEMPLATE_LANG, BACKUP). Код обязан им соответствовать, а не
+  наоборот.
 - **Каждый словарь — под sync-тестом.** Реестр без проверки — просто текст:
   список в коде уезжает, реестр остаётся, стороны расходятся молча.
   Примеры: `core/config/subscription/registry_sync_test.go`,

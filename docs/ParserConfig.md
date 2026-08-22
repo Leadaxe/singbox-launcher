@@ -498,7 +498,21 @@ An array of objects describing selectors (proxy groups).
 | `required`        | bool     | No          | **Template-only.** `true` marks the tag as mandatory: the wizard will not let you delete such an outbound outright (Del is blocked, Edit and Reset still work), and a missing one is added from the template. See [Config Wizard behaviour](#config-wizard-behaviour). |
 | `ref`             | string   | No          | Preset binding (SPEC 057/058): `""` (a plain outbound), `"#TEMPLATE#"` or `<preset_id>`. |
 | `updates`         | array    | No          | A patch stack (SPEC 057/058): preset patches in rule order, plus an optional USER patch — always last. |
+| `label`           | string   | No          | **SPEC 104.** The Direction's display name; empty means "show the tag". Kept apart from `comment` on purpose: a template entry's comment describes its purpose in a paragraph and does not work as a name. |
+| `disabled`        | bool     | No          | **SPEC 104.** The Direction keeps its settings but is neither built nor offered as a rule target. `disabled` rather than `enabled` so a zero value means "on". |
+| `auto`            | object   | No          | **SPEC 104.** Parameters of the paired `<tag>-auto` group: `mode` (`least_test` \| `round_robin`), `url`, `interval`, `tolerance`, `idle_timeout`, `interrupt_exist_connections`, and `pool` / `pool_tolerance` / `sticky_hash` for round-robin. Absent means no twin at all. The twin itself is never stored — it is expanded on every build. |
 | `wizard`          | object   | No          | **Legacy.** The old wrapper `{"hide": true, "required": 1}`; its `required` is still read as a fallback (the numeric form included). In the current format `required` sits **flat**, without the wrapper. The numeric semantics of "`1` — add, `2` — always rewrite" do not exist in the code. |
+
+Since SPEC 104 these entries are **Directions** — the targets rules point at —
+and the wizard edits them with a form on the *Directions* tab rather than by
+hand. The tab's shared JSON editor is gone; raw JSON stayed inside a single
+Direction's window, where it is still the escape hatch for anything the form
+does not cover (extra `filters` keys, unusual `options`).
+
+The form shows a filter as the **body** of a regular expression plus an invert
+tick, and always writes the canonical `/body/i`; matching ignores case because
+subscription tags arrive in whatever case the provider chose. See
+[DIRECTION_FILTERS.md](DIRECTION_FILTERS.md).
 
 #### Filtering logic in `filters`
 

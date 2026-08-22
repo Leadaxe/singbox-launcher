@@ -60,7 +60,8 @@ in a dev build it sits next to the binary.
 
   "connections": {
     "sources":   [ ... ],     // per-source subscription / server entries
-    "outbounds": [ ... ],     // global outbound selectors / urltests
+    "direction_outbounds": [ ... ],  // SPEC 104: Directions — the targets rules point at
+                              // (older states keep them under "outbounds"; read forever, never written)
     "defaults":  { "reload": "4h", "max_nodes": 3000 }
   },
 
@@ -489,6 +490,42 @@ written back.
   ]
 }
 ```
+
+---
+
+### 3.7 `connections.direction_outbounds[i]` — Directions (SPEC 104)
+
+A **Direction** is a named routing target rules point at. Rules cannot point
+at a subscription node directly: node tags are regenerated on every refresh,
+so such a rule would fall apart on its own. On build a Direction materializes
+into a `selector` plus, when auto-select is on, a paired `urltest` named
+`<tag>-auto`.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `tag` | string | The identifier rules reference. Immutable once created — renaming would break every rule pointing at it. Auto-issued ones look like `vpn-1`; template and preset ones are arbitrary (`proxy-out`, `ru VPN 🇷🇺`). |
+| `label` | string | Display name. Empty means "show the tag". Free to change: nothing references a name. |
+| `disabled` | bool | Not built, not offered as a rule target. **`disabled`, not `enabled`** — a bool's zero value has to mean "on", or an entry written without the key would read as switched off. |
+| `type` | string | `selector` for a Direction; `urltest` for the template's standalone auto groups (`auto-proxy-out`). |
+| `filters` | object | Node filter in the shared pattern language (`/re/i`, `!/re/i`). The form only ever shows the **body** and an invert tick; the `i` flag is always written. |
+| `preferredDefault` | object | Same language; the first matching node becomes the selector's `default`. |
+| `addOutbounds` | array | Extra options: `direct-out`, `block-out`, and Directions **above** in the list. Never a `<tag>-auto` twin — that is an option only inside its own Direction. |
+| `auto` | object \| null | Twin parameters: `mode` (`least_test` \| `round_robin`), `url`, `interval`, `tolerance`, `idle_timeout`, `interrupt_exist_connections`, plus `pool` / `pool_tolerance` / `sticky_hash` for round-robin. **null means no twin at all.** |
+| `options`, `comment`, `required`, `ref`, `updates` | | As before (SPEC 057/058): template/preset binding and the patch stack. |
+
+**The twin is not stored.** `<tag>-auto` is expanded on every build from
+`auto`. Keeping it in state would mean two objects a user has to keep in sync
+by hand.
+
+**The old key is read forever.** State written before SPEC 104 keeps its
+Directions under `connections.outbounds`; it is adopted on load and never
+written back. When both keys are present the canonical one wins — otherwise
+state touched by an older version after a newer one would glue two sets
+together with duplicate tags.
+
+Shape: `core/config/configtypes/types.go`. Materialization:
+`core/config/direction_twins.go` + the three-pass generator. Filter helpers:
+`core/config/configtypes/direction_filter.go`.
 
 ---
 

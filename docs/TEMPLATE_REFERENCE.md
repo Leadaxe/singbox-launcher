@@ -140,6 +140,45 @@ State stores **only the diff** against the template defaults in `rule.body.vars`
 
 ---
 
+### 4.6 `group_templates` — how a Direction materializes (SPEC 104)
+
+The shape a Direction turns into is described **by the template**, not
+hard-coded, so the launcher and LxBox read one description.
+
+```jsonc
+"group_templates": {
+  "magic_nodes": {                                    // service options a Direction may offer
+    "auto":   { "source": "generate", "tpl": "{parent_tag}-auto" },
+    "direct": { "source": "preset",   "tag": "direct-out" },
+    "block":  { "source": "preset",   "tag": "block-out"  }
+  },
+  "channel": { "type": "selector", "options": { "interrupt_exist_connections": true } },
+  "auto":    { "type": "urltest",  "options": { "url": "@urltest_url", "interval": "@urltest_interval" } }
+}
+```
+
+- **`magic_nodes`** — tags of the service options. `source: "preset"` takes the
+  tag verbatim; `source: "generate"` builds it from `tpl` with `{parent_tag}`
+  replaced by the Direction's own tag. The direct/block tags are read from here
+  rather than assumed: they are not universal, and hard-coding them would break
+  a custom template. The launcher also uses `block` for the fallback an empty
+  Direction falls back to.
+- **`auto.options`** — defaults of the paired urltest, landing in the emitted
+  group as-is, **including `@var` references**: substitution is the template
+  engine's job, and doing it here would be a second implementation of it. A
+  Direction's own `auto` fields override these.
+- **`channel`** — the key name is historical (the model was called "channels"
+  during SPEC 104's first draft). The template language is shared with LxBox,
+  and renaming the key would break templates already in the wild for no gain.
+
+A template without this section still works: Directions are built from what
+the user configured, just without template defaults.
+
+Mobile-only: `default_channels` (the phone seeds its starting set from it; the
+launcher seeds from `parser_config.outbounds`).
+
+---
+
 ## 5. Template-owned vs user-editable
 
 The `"required": true` marker (SPEC 056-R-N Phase C/E) is a template-only flag
