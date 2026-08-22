@@ -143,6 +143,24 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 		tags[tag] = struct{}{}
 	}
 
+	// Глобальные outbound'ы ШАБЛОНА (`parser_config.outbounds[]`).
+	//
+	// Без этого в списке не было `block-out` — единственной цели «заблокировать
+	// соединение», которую шаблон объявляет: пользователь физически не мог
+	// выбрать блокировку, хотя outbound в конфиг уезжал и работал. Список
+	// собирался только из подписок и пресетов, а объявления шаблона в него не
+	// попадали вовсе.
+	//
+	// `direct-out` тоже объявлен здесь, но он уже добавлен как умолчание —
+	// map сам снимет дубль.
+	if model.TemplateData != nil {
+		for _, ob := range model.TemplateData.GlobalOutbounds() {
+			if ob.Tag != "" {
+				tags[ob.Tag] = struct{}{}
+			}
+		}
+	}
+
 	result := sortedOutboundTagSlice(tags)
 	if model.ParserConfig == nil && jsonKey != "" {
 		model.AvailableOutboundsMemoKey = jsonKey
