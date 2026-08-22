@@ -193,9 +193,10 @@ func ShowEditDialog(
 	// SPEC 104: пользователь вводит ТЕЛО регулярки, а не `/…/i` — писать
 	// обёртку руками лишнее знание, а флаг регистра не выбор, а свойство:
 	// имена узлов приходят из подписок в произвольном регистре.
-	// Инверсия — переключаемая иконка «!» в ряду кнопок, а не отдельная
-	// строка формы. Сам Check остаётся носителем состояния (его читают
-	// сборка cfg, пикер и сброс формы) — просто не показывается.
+	// Инверсия — переключаемая иконка «!» ПЕРЕД полем: она меняет смысл
+	// всего выражения, и читается как знак перед ним, а не как действие
+	// после. Сам Check остаётся носителем состояния (его читают сборка
+	// cfg, пикер и сброс формы) — просто не показывается.
 	filterInvertCheck := widget.NewCheck("", nil)
 	filterInvertBtn := ttwidget.NewButton("!", nil)
 	filterInvertBtn.SetToolTip(locale.T("wizard.outbound.filter_invert"))
@@ -249,8 +250,9 @@ func ShowEditDialog(
 
 	// Border, а не GridWithColumns: сетка делит ширину поровну, и между
 	// узкой подписью «tag» и полем зияла половина диалога.
-	filterValBox := container.NewBorder(nil, nil, filterKeyLabel,
-		container.NewHBox(filterInvertBtn, filterPickerBtn, filterHelpBtn), filterValEntry)
+	filterValBox := container.NewBorder(nil, nil,
+		container.NewHBox(filterKeyLabel, filterInvertBtn),
+		container.NewHBox(filterPickerBtn, filterHelpBtn), filterValEntry)
 	if displayBody != nil && displayBody.Filters != nil {
 		body, invert := configtypes.DirectionFilterTag(displayBody.Filters)
 		if body == "" {
