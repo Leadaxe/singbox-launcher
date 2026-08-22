@@ -424,12 +424,20 @@ func ShowEditDialog(
 	autoPoolToleranceEntry := widget.NewEntry()
 	autoPoolToleranceEntry.SetPlaceHolder("0")
 	autoStickyChecks := make(map[string]*widget.Check, len(stickyKeys))
-	autoStickyRow := container.NewHBox()
-	for _, k := range stickyKeys {
+	// Два ряда по три, а не одна строка: пять чекбоксов в ширину диалога не
+	// помещаются, и последний уезжает за край.
+	autoStickyRow1 := container.NewHBox()
+	autoStickyRow2 := container.NewHBox()
+	for i, k := range stickyKeys {
 		ch := widget.NewCheck(k, nil)
 		autoStickyChecks[k] = ch
-		autoStickyRow.Add(ch)
+		if i < 3 {
+			autoStickyRow1.Add(ch)
+		} else {
+			autoStickyRow2.Add(ch)
+		}
 	}
+	autoStickyRow := container.NewVBox(autoStickyRow1, autoStickyRow2)
 	// Заполнение из текущего Auto.
 	if displayBody != nil && displayBody.Auto != nil {
 		a := displayBody.Auto
