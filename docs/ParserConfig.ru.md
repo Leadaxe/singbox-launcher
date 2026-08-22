@@ -1071,6 +1071,34 @@ wireguard://privkey-base64@server.example.com:51821?publickey=server-pubkey&addr
 
 Содержимое `.conf`-файла WireGuard/AmneziaWG можно вставить в поле Add вкладки Sources **как есть** — классификатор сам выделяет `[Interface]`-блоки из вставленного текста до построчного разбора и конвертирует каждый в канонический `wireguard://`-URI (хранится и шарится именно URI). Несколько блоков за одну вставку → несколько узлов; ссылки в том же тексте продолжают работать. Имя узла — хост из `Endpoint`. AWG-поля и кламп MTU — как у `vpn://` выше. Невалидный блок пропускается с предупреждением в лог, не срывая вставку. Реализация: `core/config/subscription/wgconf_text.go` + врезка в `classifyInputLines` (`ui/configurator/business/parser.go`); спека: `SPECS/076-F-C-WGCONF_PASTE_IMPORT/SPEC.md`.
 
+### Подписка, отдающая `.conf` или профиль `vpn://`
+
+Выше описано то, что пользователь может **вставить** руками. Но подписка по
+ссылке может и *отдавать* такое тело, и до фазы 2 SPEC 103 оно давало ноль
+узлов без единого сообщения: всё, что не JSON, уходило в построчный разбор
+ссылок, который не находил ни одной.
+
+Обе формы теперь распознаются как отдельные виды тела:
+
+- **wg-quick `.conf`** (`BodyKindWGConf`) — тело сводится к каноническим
+  `wireguard://`-URI *до* ветвления, поэтому AWG-поля и кламп MTU продолжают
+  работать через единственный парсер, где они уже реализованы. Несколько
+  секций `[Interface]` в одном файле дают несколько узлов; блок без
+  `[Peer] Endpoint` пропускается со счётчиком, а не обнуляет подписку целиком.
+- **Amnezia `vpn://`** (`BodyKindVPNLink`) — распознаётся раньше base64-эвристики
+  (`:` не входит в base64-алфавит). Импортируются **все** WG/AWG-контейнеры
+  профиля, а не только дефолтный: профиль с несколькими локациями — штатный
+  случай Amnezia. Порядок детерминирован (дефолтный контейнер первым), а метка
+  узла дополняется именем контейнера — иначе `MakeTagUnique` превратил бы
+  локации в «…-2»/«…-3», и отличить их было бы нечем. Несжатые профили (голый
+  base64-JSON, который Amnezia тоже экспортирует) принимаются наравне с
+  qCompress-формой.
+
+Реализация: `core/config/subscription/body_classify.go`, `wgconf_text.go`
+(`WGConfBodyToURIs`), `node_parser_amnezia.go` (`ParseAmneziaVPNLinkAll`).
+Фикстуры: `contract/corpus/body/`.
+
+
 ### Добавление из файла (Add from file)
 
 Конфиги WG/AmneziaWG часто раздают файлом — кнопка **«Add from file»** на вкладке Sources (рядом с Get free) открывает **нативное системное окно** выбора файла (`.conf` / `.vpn` / `.txt`) и прогоняет его содержимое через тот же путь, что и поле Add: `.conf` → WG/AWG-узел, `.vpn` → профиль Amnezia, текст со ссылками → узлы. Лимит файла — 1 МБ. Нативный диалог: `osascript` (macOS), PowerShell `OpenFileDialog` (Windows), `zenity`/`kdialog` (Linux); если на Linux ни того, ни другого нет — fallback на встроенный Fyne-диалог. Реализация: `platform.PickOpenFile` (SPEC 082) + `business.ReadSourceFileText` в `ui/configurator/tabs/source_tab.go`; спеки: `SPECS/079-F-N-ADD_SOURCE_FROM_FILE/`, `SPECS/082-F-N-NATIVE_FILE_PICKER/`.

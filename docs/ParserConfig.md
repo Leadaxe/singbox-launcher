@@ -1071,6 +1071,35 @@ Limits: a link up to 512 KB, an unpacked profile up to 8 MB (zlib-bomb protectio
 
 The contents of a WireGuard/AmneziaWG `.conf` file can be pasted into the Add field of the Sources tab **as is** — the classifier picks `[Interface]` blocks out of the pasted text before line-by-line parsing and converts each into a canonical `wireguard://` URI (the URI is what gets stored and shared). Several blocks in one paste produce several nodes; links in the same text keep working. The node name is the host from `Endpoint`. AWG fields and the MTU clamp behave as with `vpn://` above. An invalid block is skipped with a log warning instead of failing the whole paste. Implementation: `core/config/subscription/wgconf_text.go` plus the hook in `classifyInputLines` (`ui/configurator/business/parser.go`); spec: `SPECS/076-F-C-WGCONF_PASTE_IMPORT/SPEC.md`.
 
+### A subscription that serves a `.conf` or a `vpn://` profile
+
+The two forms above describe what a user can **paste**. A subscription URL may
+also *serve* them, and until SPEC 103 phase 2 such a body produced zero nodes
+without a single message: anything that was not JSON fell through to
+line-by-line URI parsing, which found no links.
+
+Both are now recognised as body kinds of their own:
+
+- **wg-quick `.conf`** (`BodyKindWGConf`) — the body is reduced to canonical
+  `wireguard://` URIs *before* branching, so AWG fields and the MTU clamp keep
+  working through the one parser that already implements them. Several
+  `[Interface]` sections in one file give several nodes; a block without a
+  `[Peer]` endpoint is skipped with a count rather than voiding the whole
+  subscription.
+- **Amnezia `vpn://`** (`BodyKindVPNLink`) — detected before the base64
+  heuristic (`:` is outside the base64 alphabet). **All** WG/AWG containers of
+  the profile are imported, not just the default one: a profile carrying
+  several locations is the normal Amnezia case. Order is deterministic
+  (default container first) and each node's label carries its container name —
+  otherwise `MakeTagUnique` would turn the locations into "…-2"/"…-3" with no
+  way to tell them apart. Uncompressed profiles (plain base64 JSON, which
+  Amnezia also exports) are accepted alongside the qCompress form.
+
+Implementation: `core/config/subscription/body_classify.go`,
+`wgconf_text.go` (`WGConfBodyToURIs`), `node_parser_amnezia.go`
+(`ParseAmneziaVPNLinkAll`). Fixtures: `contract/corpus/body/`.
+
+
 ### Add from file
 
 WG/AmneziaWG configs are often handed out as files — the **"Add from file"** button on the Sources tab (next to Get free) opens a **native system dialog** for picking a file (`.conf` / `.vpn` / `.txt`) and runs its contents through the same path as the Add field: `.conf` → a WG/AWG node, `.vpn` → an Amnezia profile, text with links → nodes. The file limit is 1 MB. The native dialog: `osascript` (macOS), PowerShell `OpenFileDialog` (Windows), `zenity`/`kdialog` (Linux); if neither is present on Linux, it falls back to the built-in Fyne dialog. Implementation: `platform.PickOpenFile` (SPEC 082) + `business.ReadSourceFileText` in `ui/configurator/tabs/source_tab.go`; specs: `SPECS/079-F-N-ADD_SOURCE_FROM_FILE/`, `SPECS/082-F-N-NATIVE_FILE_PICKER/`.

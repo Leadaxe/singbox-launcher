@@ -75,7 +75,10 @@ per-source raw-body cache.
 
 | File | Purpose |
 |------|---------|
-| `state.go` | Root `State` struct (identity + legacy `ParserConfig` view + canonical `Connections`/`Rules`/`DNS`) + accessor helpers. |
+| `state.go` | Root `State` struct (identity + legacy `ParserConfig` view + canonical `Connections`/`Rules`/`DNS`/`Channels`) + accessor helpers. |
+| `channel_types.go` | `Channel` / `ChannelAuto` — routing channels (SPEC 104): the fixed `vpn-N` tag rules point at, node filter, auto-select. Custom `UnmarshalJSON` restores `enabled`/`interrupt_exist_connections` defaults — a bool's zero value would silently switch a channel off on every read. |
+| `channel_seed.go` | One-time seeding from the template's `default_channels`, free-tag allocation (first gap, not max+1), channel lookup helpers. |
+| `rule_order.go` | The numeric rule-order axis (SPEC 106): lazy shift up to the first gap, re-seed of non-sortable rules, normalization of states written before the axis existed. |
 | `save.go` | Memory→disk: `syncConnectionsFromLegacy`, `marshalDisk` (v6 layout), atomic fsync+rename, SPEC 058 backup. |
 | `load_router.go` | `Load`/`Parse`: schema detection (top-level vs `meta.version`), routes to v6/v5/v2-v4 parsers. |
 | `load_v6.go` | `parseCurrent` (v6 canonical) + `legacyDevDNSToOptions` fallback + `legacyCustomRulesFromV6` (legacy-view derivation). |
@@ -114,6 +117,7 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 |------|---------|
 | `build.go` | `BuildConfig` orchestrator: validate template, `GetEffectiveConfig`, dispatch per section, concat final JSON (pure). |
 | `sections.go` | `BuildOutboundsSection`/`BuildEndpointsSection` — render outbounds/endpoints with parser markers + preview truncation. |
+| `channels.go` | Channel materialization (SPEC 104): a channel becomes a `selector` plus an optional paired `urltest`. Carries the hard-won particulars — a subscription's own auto-group never enters the channel's urltest, an empty channel falls back to `[block, direct]` with `default=block`, and the "filter matched nothing" warning states what actually happens rather than assuming the worst. |
 | `format.go` | Indentation + JSON formatting helpers (`Indent`, `FormatSectionJSON`). |
 | `dns_merge.go` | `MergeDNSSection` — overlay DNS servers/rules/final/strategy onto template DNS; strip wizard-only fields. |
 | `route_merge.go` | `MergeRouteSection` — append enabled custom-rules + SRS rule_sets; remote→local rule_set conversion. |
@@ -184,6 +188,22 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 | `utf8_utils.go` | Consolidated UTF-8 validate/repair (`FixUTF8*`, `HasControlChars`) — SPEC 070 dedup. |
 | `encoding_utils.go` | Consolidated multi-variant base64 decode — SPEC 070 dedup. |
 
+### `core/backup` — LX Backup v1 (portable settings exchange)
+
+**Responsibility:** Export/import of settings in the format shared with the LxBox
+mobile app (SPEC 103 phase 4). Schema: `contract/schema/backup.schema.json`,
+semantics: `contract/docs/BACKUP.md`.
+
+| File | Purpose |
+|------|---------|
+| `types.go` | The file's shape: subscriptions, servers, rules, DNS, portable vars, plus per-app `extensions` blobs. |
+| `export.go` | `State` → backup. Non-portable per-source fields (skip filters, local outbounds, detour, id) go into `extensions.launcher`; without that, an export-import cycle on the *same* machine would lose settings. |
+| `import.go` | Backup → `State`. A rule whose target does not exist here is imported **switched off** rather than lost or silently enabled: an enabled rule with a dead target makes the core reject the whole config. Foreign `extensions` blobs are kept untouched for the next export. |
+| `portable_vars.go` | Generated from `contract/registry/vars.json` (portable=true) and checked against it by a test — a drifted list would either lose a setting or carry a value that means something else on the other machine. |
+| `file.go` | Atomic write with 0600 permissions (the file stores secrets as plain text), size cap, and default-deny reporting of unknown top-level keys. |
+
+---
+
 ### `core/template` — template load + presets + expression language
 
 **Responsibility:** Load `wizard_template.json`, apply per-platform params, extract presets (SPEC 053), `@var`/`#if` substitution (SPEC 067), validation.
@@ -196,6 +216,8 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 | `ifexpr.go` | `#if` predicate evaluation forms (equality, `#in`/`#matches`/`#not`, AND/OR short-circuit). |
 | `vars_resolve.go` / `vars_default.go` | Var resolution (`VarAppliesOnGOOS`, `ParamBoolVarTrue`) + object `default_value` selection (GOOS/win7/default). |
 | `preset_loader.go` / `preset_types.go` / `preset_outbounds.go` | Preset parsing + types (rules / dns / outbounds / vars). |
+| `channel_defaults.go` | Reads the template's `group_templates` / `default_channels` (SPEC 104): channels are described by the template, not hard-coded, so both apps read one description. |
+| `cond_deps.go` | Static dependency extraction from a condition (SPEC 107) — the index behind per-row Settings updates, and itself part of the shared contract. |
 | `preset_lite.go` | Adapter implementing the `state.PresetLite` interface (the interface itself lives in `core/state` to break the import cycle) + `PresetLiteMap` for `state.SyncDNSOptionsWithActivePresets`. |
 | `rule_utils.go` | Rule helpers (`HasOutbound`, `GetDefaultOutbound`, `CloneRuleRaw`). |
 
