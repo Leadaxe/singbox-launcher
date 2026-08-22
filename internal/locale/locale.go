@@ -28,8 +28,12 @@ const displayNameKey = "_display_name"
 
 // RemoteLanguages lists language codes available for download from GitHub.
 // Order is used for download; all matching bin/locale/*.json are loaded at startup.
+// Пока поддерживаются только языки, которые ведутся вручную: английский
+// (вшит в бинарь) и русский. Восемь машинных переводов сняты — каждая новая
+// строка требовала правки во всех десяти файлах, а качество их всё равно
+// никто не проверял. Вернуть язык = добавить код сюда и файл в релиз.
 var RemoteLanguages = []string{
-	"ru", "de", "es", "fr", "it", "pt-BR", "zh", "ja", "ko", "tr",
+	"ru",
 }
 
 var (

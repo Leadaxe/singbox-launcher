@@ -934,11 +934,6 @@
   "conn.remote_hint": "Connect to a sing-box daemon running on another machine. Install the service THERE (on its host): sudo sing-box lxd --service=install --tls --listen 0.0.0.0:9091 — it prints a one-time pairing invite; mint a fresh one any time with sudo sing-box lxd client add. Paste the invite below. Make sure the port is reachable from this machine.",
   "conn.remote_pair_step": "Paste the invite (address#fingerprint#code) and pair:",
   "conn.secret_help": "The Bearer secret is only needed for a daemon running WITHOUT TLS (plain mode): there it is the whole authentication, paste it and press Enter. A paired mTLS daemon ignores it — the client certificate is the credential. The daemon owns the secret (daemon.json in its state dir); view it with the command below.",
-  "wizard.target.intro": "Choose which machine this config is being prepared for. A remote config (server, router, another Mac) differs from a local one: no Clash API (the lxd daemon manages the core there) and no system proxy. Gateway-specific behavior (LAN interfaces, wide proxy listen, process matching off) is controlled by Gateway mode on the Settings tab.",
-  "wizard.target.label": "Config target",
-  "wizard.target.local": "This machine (local)",
-  "wizard.target.remote": "Remote machine",
-  "wizard.target.hint_local": "The config is written to bin/config.json and used by this launcher. State lives in bin/wizard_states/state.json.",
   "wizard.target.hint_remote": "On Save the config is written to bin/remote-config.json for deployment under the lxd daemon — the local bin/config.json is never touched. State lives in bin/wizard_states/remote/state.json.",
   "wizard.target.platform": "Target OS",
   "wizard.target.arch": "Target architecture",
@@ -1096,5 +1091,6 @@
   "traffic.conns.count": "conns: %d",
   "traffic.conns.unknown": "conns: …",
   "traffic.conns.state_open": "open",
-  "traffic.conns.state_closed": "closed"
+  "traffic.conns.state_closed": "closed",
+  "wizard.target.intro_remote": "This config is for another machine and differs from a local one: no Clash API (the lxd daemon manages the core there) and no system proxy. Gateway-specific behavior — LAN interfaces, wide proxy listen, process matching off — is controlled by Gateway mode on the Settings tab."
 }
