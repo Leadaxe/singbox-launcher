@@ -70,6 +70,15 @@ type OutboundGenerationResult struct {
 	// SkippedNaiveReason carries the probe verdict for UI surfacing.
 	SkippedNaiveNodes  int
 	SkippedNaiveReason string
+
+	// EmptyDirections — Направления, чей фильтр не поймал ни одного узла
+	// (SPEC 104). Отображаемые имена, для превью и статуса: в конфиг такое
+	// направление уезжает с запасным составом [block, direct], то есть
+	// молча блокирует трафик своих правил — пользователь обязан узнать.
+	//
+	// Заполняется ТОЛЬКО когда виноват фильтр: пустой фильтр при нуле узлов
+	// — это «подписка не загрузилась», и чинить надо её.
+	EmptyDirections []string
 }
 
 // NaiveSupportProbe — hook installed by the app layer (core.AppController):
@@ -570,7 +579,10 @@ func GenerateSelectorWithFilteredAddOutbounds(
 		}
 	}
 
-	if forGlobalOutbound && len(exposeCandidates) > 0 {
+	// SPEC 104: auto-группа Направления не принимает группы подписок (см.
+	// addExposeTagEdges) — иначе urltest мерил бы выбор внутренней группы,
+	// а не сервер.
+	if forGlobalOutbound && len(exposeCandidates) > 0 && outboundConfig.TwinOf == "" {
 		exposeSeen := make(map[string]struct{}, len(exposeCandidates))
 		for _, c := range exposeCandidates {
 			if _, dup := exposeSeen[c.Tag]; dup {
@@ -618,6 +630,22 @@ func GenerateSelectorWithFilteredAddOutbounds(
 	}
 	// Note: We do NOT automatically set default to first node if preferredDefault is not specified
 	// This allows urltest/selector to work without a default value when preferredDefault is not configured
+
+	// SPEC 104: у Направления с автовыбором умолчанием становится его
+	// auto-группа — ради неё её и включали. Только если пользовательский
+	// preferredDefault ничего не поймал: явный выбор узла важнее.
+	//
+	// Обязательная проверка вхождения в outboundsList: sing-box отвергает
+	// конфиг, где `default` не входит в `outbounds`, а двойник мог
+	// отфильтроваться как пустой (проход 2).
+	if defaultTag == "" && outboundConfig.TwinTag != "" {
+		for _, t := range outboundsList {
+			if t == outboundConfig.TwinTag {
+				defaultTag = t
+				break
+			}
+		}
+	}
 
 	// Build selector JSON with correct field order
 	var parts []string
@@ -801,7 +829,14 @@ func GenerateOutboundsFromParserConfig(
 	tagCounts map[string]int,
 	progressCallback func(float64, string),
 	loadNodesFunc func(ProxySource, map[string]int, func(float64, string), int, int) ([]*ParsedNode, error),
+	directions DirectionBuildOptions,
 ) (*OutboundGenerationResult, error) {
+	// SPEC 104, проход 0 — раскрываем Направления: выключенные выпадают,
+	// у остальных разворачиваются парные auto-группы. Делается ДО
+	// подстановки переменных, чтобы `@urltest_*` в опциях двойника
+	// подставились штатно, без отдельной ветки для них.
+	PrepareDirections(parserConfig, directions.TwinOptions)
+
 	// Hotfix v0.8.8.1 — substitute `@varname` placeholders in
 	// parser_config.outbounds[].options before generating selector JSONs. See
 	// varsubst.go for the rationale; nil substituter falls back to v0.8.6
@@ -952,7 +987,8 @@ func GenerateOutboundsFromParserConfig(
 	exposeCandidates := collectExposeTagCandidates(parserConfig)
 	outboundsInfo := buildOutboundsInfo(parserConfig, nodesBySource, globalPool, progressCallback)
 	computeOutboundValidity(outboundsInfo, parserConfig, exposeCandidates, progressCallback)
-	selectorJSONs, localSelectorsCount, globalSelectorsCount := generateSelectorJSONs(parserConfig, nodesBySource, globalPool, outboundsInfo, exposeCandidates, progressCallback)
+	selectorJSONs, localSelectorsCount, globalSelectorsCount, emptyDirections := generateSelectorJSONs(
+		parserConfig, nodesBySource, globalPool, outboundsInfo, exposeCandidates, progressCallback, directions)
 	selectorsJSON = append(selectorsJSON, selectorJSONs...)
 
 	return &OutboundGenerationResult{
@@ -966,6 +1002,7 @@ func GenerateOutboundsFromParserConfig(
 		SucceededSources:     succeededSources,
 		FailedSources:        failedSources,
 		SkippedNaiveNodes:    skippedNaive,
+		EmptyDirections:      emptyDirections,
 		SkippedNaiveReason:   naiveReason,
 	}, nil
 }

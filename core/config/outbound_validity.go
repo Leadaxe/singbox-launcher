@@ -78,6 +78,12 @@ func augmentGlobalOutboundDependenciesForExpose(
 		if !ok || info == nil || info.isLocal {
 			continue
 		}
+		// SPEC 104: в auto-группу Направления группы подписок не входят —
+		// urltest внутри urltest померил бы узел, уже выбранный внутренней
+		// группой, а не сервер.
+		if gCfg.TwinOf != "" {
+			continue
+		}
 		for _, c := range exposeCandidates {
 			if !SelectorFiltersAcceptNode(gCfg.Filters, ExposeTagSyntheticNode(c.Tag, c.Comment)) {
 				continue
@@ -101,6 +107,11 @@ func augmentGlobalOutboundDependenciesForExpose(
 // globalOutboundExposeCredit counts unique expose tags that pass filters and reference a valid dynamic outbound (or unknown tag).
 func globalOutboundExposeCredit(info *outboundInfo, outboundsInfo map[string]*outboundInfo, exposeCandidates []exposeTagCandidate) int {
 	if info == nil || info.isLocal || len(exposeCandidates) == 0 {
+		return 0
+	}
+	// SPEC 104: см. addExposeTagEdges — auto-группа Направления не получает
+	// кредита от групп подписок, потому что и не принимает их в состав.
+	if info.config.TwinOf != "" {
 		return 0
 	}
 	seen := make(map[string]struct{})
@@ -285,11 +296,13 @@ func generateSelectorJSONs(
 	outboundsInfo map[string]*outboundInfo,
 	exposeCandidates []exposeTagCandidate,
 	progressCallback func(float64, string),
-) ([]string, int, int) {
+	directions DirectionBuildOptions,
+) ([]string, int, int, []string) {
 	if progressCallback != nil {
 		progressCallback(80, "Generating selectors (pass 3)...")
 	}
 	var out []string
+	var emptyDirections []string
 	localCount := 0
 	globalCount := 0
 
@@ -325,6 +338,28 @@ func generateSelectorJSONs(
 	for _, outboundConfig := range parserConfig.ParserConfig.Outbounds {
 		info, exists := outboundsInfo[outboundConfig.Tag]
 		if !exists || !info.isValid {
+			// SPEC 104: пустое ГЛОБАЛЬНОЕ Направление не выпадает из
+			// конфига, а получает запасной состав [block, direct] с
+			// default=block. Раньше такая запись просто пропускалась, и
+			// трафик правила, на неё ссылавшегося, молча уходил в
+			// route.final — то есть чаще всего мимо VPN. Блокировать
+			// безопаснее; direct остаётся видимой опцией, если
+			// пользователь захочет переключиться руками.
+			//
+			// Auto-группы (TwinOf != "") исключены: пустой urltest ядро
+			// отвергает, а [block, direct] в нём бессмысленны — мерить
+			// задержку до заглушек нечего.
+			if exists && !info.isValid && outboundConfig.TwinOf == "" && isSelectorType(outboundConfig.Type) {
+				fallbackJSON := emptyDirectionFallbackJSON(outboundConfig, directions)
+				if fallbackJSON != "" {
+					if warnEmptyDirection(outboundConfig, len(globalNodePool)) {
+						emptyDirections = append(emptyDirections, outboundConfig.DisplayName())
+					}
+					out = append(out, fallbackJSON)
+					globalCount++
+					continue
+				}
+			}
 			if exists && !info.isValid {
 				debuglog.DebugLog("GenerateOutboundsFromParserConfig: Skipping empty global selector '%s'", outboundConfig.Tag)
 			}
@@ -341,5 +376,5 @@ func generateSelectorJSONs(
 			globalCount++
 		}
 	}
-	return out, localCount, globalCount
+	return out, localCount, globalCount, emptyDirections
 }

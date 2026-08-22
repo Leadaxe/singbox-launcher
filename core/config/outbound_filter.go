@@ -8,6 +8,7 @@ package config
 
 import (
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/internal/debuglog"
 )
 
 // filterNodesForSelector returns nodes that match the filter. filter may be nil (all nodes),
@@ -74,12 +75,28 @@ func filterNodesForSelector(allNodes []*ParsedNode, filter interface{}) []*Parse
 }
 
 // convertFilterToStringMap flattens filter map to string values for matching (non-string values are skipped).
+//
+// SPEC 104: ключ с НЕВАЛИДНОЙ регуляркой отбрасывается, как будто его нет —
+// опечатка в фильтре Направления не должна оставлять пользователя без
+// узлов. MatchesPattern на битом выражении возвращает false, и без этой
+// проверки одна лишняя скобка делала бы направление пустым (а с запасным
+// составом из §3.3 — ещё и блокирующим весь трафик правила).
+//
+// Чинить это здесь, а не в MatchesPattern, обязательно: тот же матчер
+// обслуживает skip-фильтры подписок, где «битый паттерн = совпало всё»
+// означало бы выбросить все узлы разом.
 func convertFilterToStringMap(filter map[string]interface{}) map[string]string {
 	result := make(map[string]string)
 	for k, v := range filter {
-		if str, ok := v.(string); ok {
-			result[k] = str
+		str, ok := v.(string)
+		if !ok {
+			continue
 		}
+		if !configtypes.PatternCompiles(str) {
+			debuglog.WarnLog("filters: %q=%q — некорректное выражение, ключ пропущен", k, str)
+			continue
+		}
+		result[k] = str
 	}
 	return result
 }

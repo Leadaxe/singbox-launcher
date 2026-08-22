@@ -84,3 +84,21 @@ func compileFilterRegex(regexStr string, caseInsensitive bool) (*regexp.Regexp, 
 	}
 	return regexp.Compile(regexStr)
 }
+
+// PatternCompiles сообщает, разбирается ли паттерн фильтра.
+//
+// Нужна вызывающим, которые обязаны отличить «не совпало» от «выражение
+// некорректно»: MatchesPattern возвращает false в обоих случаях, и для
+// фильтра Направления это разница между «узлов нет» и «фильтра нет»
+// (SPEC 104 §3.5).
+//
+// Литеральные формы всегда корректны — компилировать в них нечего.
+func PatternCompiles(pattern string) bool {
+	body := strings.TrimPrefix(pattern, "!")
+	regexStr, ci, ok := trimRegexPattern(body)
+	if !ok {
+		return true // литерал или !литерал
+	}
+	_, err := compileFilterRegex(regexStr, ci)
+	return err == nil
+}

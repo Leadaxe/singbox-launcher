@@ -47,7 +47,7 @@ func TestGenerateOutbounds_NaiveDegradedWhenUnsupported(t *testing.T) {
 
 	nodes := []*ParsedNode{testSocksNode("socks-1"), testNaiveNode("naive-1")}
 	result, err := GenerateOutboundsFromParserConfig(
-		naiveDegradeParserConfig(), map[string]int{}, nil, naiveDegradeLoadNodes(nodes))
+		naiveDegradeParserConfig(), map[string]int{}, nil, naiveDegradeLoadNodes(nodes), DirectionBuildOptions{})
 	if err != nil {
 		t.Fatalf("GenerateOutboundsFromParserConfig: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestGenerateOutbounds_NaiveKeptWhenSupported(t *testing.T) {
 
 	nodes := []*ParsedNode{testSocksNode("socks-1"), testNaiveNode("naive-1")}
 	result, err := GenerateOutboundsFromParserConfig(
-		naiveDegradeParserConfig(), map[string]int{}, nil, naiveDegradeLoadNodes(nodes))
+		naiveDegradeParserConfig(), map[string]int{}, nil, naiveDegradeLoadNodes(nodes), DirectionBuildOptions{})
 	if err != nil {
 		t.Fatalf("GenerateOutboundsFromParserConfig: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestGenerateOutbounds_NilProbeAssumesSupported(t *testing.T) {
 
 	nodes := []*ParsedNode{testNaiveNode("naive-1")}
 	result, err := GenerateOutboundsFromParserConfig(
-		naiveDegradeParserConfig(), map[string]int{}, nil, naiveDegradeLoadNodes(nodes))
+		naiveDegradeParserConfig(), map[string]int{}, nil, naiveDegradeLoadNodes(nodes), DirectionBuildOptions{})
 	if err != nil {
 		t.Fatalf("GenerateOutboundsFromParserConfig: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestGenerateOutbounds_AllNaiveGivesActionableError(t *testing.T) {
 
 	nodes := []*ParsedNode{testNaiveNode("naive-1"), testNaiveNode("naive-2")}
 	_, err := GenerateOutboundsFromParserConfig(
-		naiveDegradeParserConfig(), map[string]int{}, nil, naiveDegradeLoadNodes(nodes))
+		naiveDegradeParserConfig(), map[string]int{}, nil, naiveDegradeLoadNodes(nodes), DirectionBuildOptions{})
 	if err == nil {
 		t.Fatal("want error when every node degraded, got nil")
 	}

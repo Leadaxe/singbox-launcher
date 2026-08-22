@@ -142,7 +142,7 @@ func TestGroupNodeDoesNotTouchOutboundChannels(t *testing.T) {
 		}, nil
 	}
 
-	res, err := GenerateOutboundsFromParserConfig(parserConfig, map[string]int{}, nil, loader)
+	res, err := GenerateOutboundsFromParserConfig(parserConfig, map[string]int{}, nil, loader, DirectionBuildOptions{})
 	if err != nil {
 		t.Fatalf("GenerateOutboundsFromParserConfig() error: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestGroupNodeIsSelectableByChannelFilter(t *testing.T) {
 		}, nil
 	}
 
-	res, err := GenerateOutboundsFromParserConfig(parserConfig, map[string]int{}, nil, loader)
+	res, err := GenerateOutboundsFromParserConfig(parserConfig, map[string]int{}, nil, loader, DirectionBuildOptions{})
 	if err != nil {
 		t.Fatalf("GenerateOutboundsFromParserConfig() error: %v", err)
 	}

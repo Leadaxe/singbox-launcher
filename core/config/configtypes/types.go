@@ -216,6 +216,17 @@ type Direction struct {
 	// родителем.
 	Auto *DirectionAuto `json:"auto,omitempty"`
 
+	// TwinOf / TwinTag — служебная связь Направления и его парной
+	// urltest-группы (SPEC 104). Оба поля живут ТОЛЬКО во время сборки
+	// (`json:"-"`): двойник разворачивается из Auto на каждом билде, и
+	// хранить его в состоянии значило бы завести вторую сущность, которую
+	// пришлось бы вручную держать синхронной с родителем.
+	//
+	// TwinOf непуст у самой auto-группы и указывает на родителя; TwinTag
+	// непуст у родителя и указывает на группу.
+	TwinOf  string `json:"-"`
+	TwinTag string `json:"-"`
+
 	// SPEC 057/058-R-N: preset/template binding.
 	Ref     string           `json:"ref,omitempty"`     // "" (direct) | "#TEMPLATE#" | "<preset_id>"
 	Updates []OutboundUpdate `json:"updates,omitempty"` // стек patches: preset patches в rule order + опц. USER patch (всегда последний)

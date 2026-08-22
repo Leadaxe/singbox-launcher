@@ -91,7 +91,8 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 		return subscription.LoadNodesFromSource(ps, tc, pc, idx, total)
 	}
 
-	result, err := config.GenerateOutboundsFromParserConfig(&parserCfg, tagCounts, nil, loadNodesFunc)
+	result, err := config.GenerateOutboundsFromParserConfig(&parserCfg, tagCounts, nil, loadNodesFunc,
+		directionBuildOptionsFrom(td))
 	if err != nil {
 		return nil, fmt.Errorf("generate outbounds from raw cache: %w", err)
 	}

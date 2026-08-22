@@ -162,13 +162,15 @@ func (svc *ConfigService) GenerateOutboundsFromParserConfig(
 	tagCounts map[string]int,
 	progressCallback func(float64, string),
 ) (*config.OutboundGenerationResult, error) {
-	subst := config.BuildVarSubstituterFromDisk(svc.ac.FileService.ExecDir)
+	execDir := svc.ac.FileService.ExecDir
+	subst := config.BuildVarSubstituterFromDisk(execDir)
 	config.SubstituteParserConfigPlaceholders(parserConfig, subst)
 
 	loadNodesFunc := func(ps config.ProxySource, tc map[string]int, pc func(float64, string), idx, total int) ([]*config.ParsedNode, error) {
 		return svc.ProcessProxySource(ps, tc, pc, idx, total)
 	}
-	return config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback, loadNodesFunc)
+	return config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback, loadNodesFunc,
+		directionBuildOptions(execDir))
 }
 
 // UpdateConfigFromSubscriptions — **pure cache-refresh pipeline**.
@@ -250,7 +252,8 @@ func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGener
 	}
 
 	tagCounts := make(map[string]int)
-	result, err := config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback, loadNodesFunc)
+	result, err := config.GenerateOutboundsFromParserConfig(parserConfig, tagCounts, progressCallback, loadNodesFunc,
+		directionBuildOptions(execDir))
 	subscription.LookupCachedBody = prevHook
 	if err != nil {
 		progressCallback(-1, fmt.Sprintf("Error: %v", err))
@@ -535,4 +538,32 @@ func jsonStringsToRawMessages(in []string) []json.RawMessage {
 		out = append(out, json.RawMessage(canonical))
 	}
 	return out
+}
+
+// directionBuildOptions читает из шаблона всё, что генератору нужно знать о
+// Направлениях (SPEC 104): умолчания auto-группы и теги служебных опций.
+//
+// Отсутствие шаблона — не ошибка: направления соберутся из того, что задал
+// пользователь, просто без шаблонных умолчаний.
+func directionBuildOptions(execDir string) config.DirectionBuildOptions {
+	td, err := template.LoadTemplateData(execDir)
+	if err != nil {
+		return config.DirectionBuildOptions{}
+	}
+	return directionBuildOptionsFrom(td)
+}
+
+// directionBuildOptionsFrom — то же для уже загруженного шаблона.
+//
+// nil-safe: часть путей сборки (тесты, legacy-фолбэк кэша) работает без
+// шаблона вовсе.
+func directionBuildOptionsFrom(td *template.TemplateData) config.DirectionBuildOptions {
+	if td == nil {
+		return config.DirectionBuildOptions{}
+	}
+	return config.DirectionBuildOptions{
+		TwinOptions: td.DirectionTwinOptions(),
+		BlockTag:    td.DirectionMagicTag("block", ""),
+		DirectTag:   td.DirectionMagicTag("direct", ""),
+	}
 }
