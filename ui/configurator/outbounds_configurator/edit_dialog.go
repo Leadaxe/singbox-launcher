@@ -847,6 +847,10 @@ func ShowEditDialog(
 			prevOnTypeChanged(s)
 		}
 	}
+	// SPEC 104: смена режима автогруппы показывает или прячет параметры
+	// пула. Обработчик вешаем ПОСЛЕ SetSelected выше — иначе он сработал бы
+	// на программной установке значения.
+	autoModeSelect.OnChanged = func(string) { urltestVisible() }
 
 	form := container.NewVBox(
 		widget.NewLabel(locale.T("wizard.outbound.label_scope")),

@@ -80,12 +80,19 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			rowGetter := func() *fynewidget.HoverRow { return row }
 
 			// SPEC 104: строка начинается с ИМЕНИ Направления, тег — рядом
-			// в скобках. Тег остаётся видимым: на него ссылаются правила, и
-			// прятать его значило бы заставить пользователя гадать, что
-			// выбирать в списке целей.
+			// в скобках, но только когда имя задано: иначе вышло бы
+			// «vpn-1 (vpn-1)». Тег остаётся видимым при любом раскладе — на
+			// него ссылаются правила, и прятать его значило бы заставить
+			// пользователя гадать, что выбирать в списке целей.
 			rawLine := r.Outbound.DisplayName()
 			if r.Outbound.Label != "" {
 				rawLine += " (" + r.Outbound.Tag + ")"
+			}
+			// Тип показываем только у самостоятельных urltest-групп шаблона
+			// (`auto-proxy-out`): у Направления он всегда selector, и
+			// писать это в каждой строке — шум.
+			if r.Outbound.Type == "urltest" {
+				rawLine += " [" + r.Outbound.Type + "]"
 			}
 			if r.Outbound.Auto != nil {
 				rawLine += " " + locale.T("wizard.outbound.row_auto_mark")
@@ -277,7 +284,13 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			// жизненным циклом управляет сама подписка.
 			var enableCheck *widget.Check
 			if r.IsGlobal {
-				enableCheck = widget.NewCheck("", func(on bool) {
+				// Обработчик вешаем ПОСЛЕ SetChecked, а не в конструкторе:
+				// widget.Check.SetChecked зовёт OnChanged, тот перестраивает
+				// список, новая строка снова зовёт SetChecked — и главный
+				// поток уходит в бесконечную рекурсию (окно замирает).
+				enableCheck = widget.NewCheck("", nil)
+				enableCheck.SetChecked(!r.Outbound.Disabled)
+				enableCheck.OnChanged = func(on bool) {
 					pc := getParserConfig(editPresenter.Model())
 					if pc == nil {
 						return
@@ -290,13 +303,15 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 					if idx < 0 || idx >= len(pc.ParserConfig.Outbounds) {
 						return
 					}
+					if pc.ParserConfig.Outbounds[idx].Disabled == !on {
+						return // значение уже такое — перестраивать нечего
+					}
 					pc.ParserConfig.Outbounds[idx].Disabled = !on
 					refreshList()
 					if onApply != nil {
 						onApply()
 					}
-				})
-				enableCheck.SetChecked(!r.Outbound.Disabled)
+				}
 				fynewidget.SetToolTipSafe(enableCheck, locale.T("wizard.outbound.enable_tooltip"))
 			}
 
