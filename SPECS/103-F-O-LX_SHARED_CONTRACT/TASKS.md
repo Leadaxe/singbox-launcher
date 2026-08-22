@@ -63,15 +63,18 @@
 - [ ] LxBox: миграция тегов пресетов на префикс (C7) — heal-редиректы ссылок + release notes → **SPEC 106**
 - [ ] Документация шаблонов в порядок: лаунчер `TEMPLATE_REFERENCE.md`+`WIZARD_TEMPLATE.md` (+.ru) ↔ LxBox `TEMPLATE.md` — сверка с contract/docs/TEMPLATE_LANG.md (D-020)
 
-## Фаза 4 — LX Backup v1
+## Фаза 4 — LX Backup v1 (лаунчер ✅, LxBox — остаток)
 
-- [ ] `schema/backup.schema.json` + `docs/BACKUP.md`
-- [ ] Лаунчер: export/import (state v6 ↔ backup) + UI в конфигураторе + **хранение чужого блоба extensions** (новое поле state v6)
-- [ ] LxBox: export/import (settings ↔ backup; allowlist §159 расширен под формат) + пункт на backup-экране + **хранение чужого блоба extensions** (новый ключ allowlist)
-- [ ] Политика символических ссылок: несуществующая цель `rules[].outbound`/`route.final` → импорт выключенным / не применяется, с warning
-- [ ] `corpus/backup/` — фикстуры экспорт→импорт в обе стороны (включая lossless round-trip через extensions)
-- [ ] Перенос disabled-нод: только по identity-хешу (значения — unix seconds, конвертация в нативный формат); несовпавшие (патченные §302, SNI-схлопнутые) истекают по TTL — задокументировать в BACKUP.md
-- [ ] Документация состояния/правил в порядок: лаунчер `WIZARD_STATE.md` (+.ru) ↔ LxBox `STORAGE.md` — дополнить форматом LX Backup (D-020)
+- [x] `schema/backup.schema.json` + `docs/BACKUP.md` (были в фазе 0; экспорт проверен настоящим JSON-Schema-валидатором)
+- [x] Лаунчер: `core/backup/` — export/import (state v6 ↔ backup), файловый слой (атомарная запись, права 600), UI на вкладке Settings, `State.ForeignBackupExtensions` для чужого блоба
+- [x] Политика символических ссылок: несуществующий `rules[].outbound` → правило выключено с warning; `route.final` в никуда → не применяется; зарезервированные литералы (direct/block/reject/drop) известны всегда
+- [x] `corpus/backup/` — 7 фикстур на решения, которые легко нарушить + раннер `TestBackupCorpus`
+- [x] Перенос disabled-нод по identity-хешу (unix seconds); ключи проверяются на формат 64 hex
+- [x] Переменные — только portable из реестра; список сгенерирован и сверяется тестом
+- [x] `platform.PickSaveFile` — нативный диалог сохранения (macOS/Windows/Linux) парно к `PickOpenFile`
+- [ ] LxBox: export/import (settings ↔ backup; allowlist §159 расширен под формат) + пункт на backup-экране + хранение чужого блоба extensions
+- [ ] LxBox: раннер `corpus/backup/`
+- [ ] Документация состояния/правил: лаунчер `WIZARD_STATE.md` (+.ru) ↔ LxBox `STORAGE.md` — дополнить форматом LX Backup (D-020)
 
 ## Фаза 5 — Процесс
 
