@@ -869,6 +869,10 @@ func CreateOutboundsAndParserConfigTab(presenter *wizardpresentation.WizardPrese
 		widget.NewSeparator(),
 		parserContainer,
 		widget.NewSeparator(),
+		// SPEC 104: каналы живут рядом с outbound'ами — это тоже группы
+		// выбора, только настраиваемые не JSON'ом, а формой.
+		buildChannelsSection(presenter, guiState.Window),
+		widget.NewSeparator(),
 	)
 
 	scrollContainer := container.NewScroll(content)
