@@ -4,7 +4,6 @@
 //   - SetSaveState - управление состоянием кнопки Save и прогресс-бара сохранения
 //   - RefreshOutboundOptions - обновление опций outbound для всех правил маршрутизации
 //   - InitializeTemplateState - инициализация состояния шаблона (секции, правила, outbounds)
-//   - SetTemplatePreviewText - установка текста preview с обработкой больших текстов
 //
 // Эти методы инкапсулируют логику управления виджетами и синхронизации с моделью.
 // Методы управления UI и инициализации, отдельные от асинхронных операций.
@@ -13,7 +12,6 @@
 // Используется в:
 //   - wizard.go - InitializeTemplateState вызывается при инициализации визарда
 //   - tabs/rules_tab.go - RefreshOutboundOptions вызывается при обновлении правил
-//   - presenter_async.go - SetTemplatePreviewText вызывается при обновлении preview
 //   - presenter_save.go - SetSaveState вызывается для управления прогресс-баром сохранения
 package presentation
 
@@ -21,7 +19,6 @@ import (
 	"time"
 
 	"singbox-launcher/internal/debuglog"
-	"singbox-launcher/internal/locale"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -198,43 +195,4 @@ func (p *WizardPresenter) InitializeTemplateState() {
 	}
 	wizardbusiness.EnsureFinalSelected(p.model, options)
 	wizardbusiness.MaterializeSecretsIfNeeded(p.model)
-}
-
-// SetTemplatePreviewText устанавливает текст предпросмотра шаблона.
-//
-// Без optimization-проверок на `model.TemplatePreviewText == text` или
-// `entry.Text == text` — раньше второе сравнение делалось из горутины и
-// возможно гонялось с UI-update'ами других путей, давая стейл-стейт где
-// model думает что текст обновлён, а entry визуально показывает старый.
-// Теперь всегда queue'им UpdateUI с SetText + Refresh.
-func (p *WizardPresenter) SetTemplatePreviewText(text string) {
-	p.model.TemplatePreviewText = text
-	if p.guiState.TemplatePreviewEntry == nil {
-		p.model.TemplatePreviewNeedsUpdate = false
-		return
-	}
-
-	// For large texts (>50KB) show loading message before insertion
-	if len(text) > 50000 {
-		p.UpdateUI(func() {
-			p.guiState.TemplatePreviewEntry.SetText(locale.T("wizard.preview.loading_large"))
-			if p.guiState.TemplatePreviewStatusLabel != nil {
-				p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_loading_large"))
-			}
-		})
-
-		go func() {
-			p.UpdateUI(func() {
-				p.guiState.TemplatePreviewEntry.SetText(text)
-				p.guiState.TemplatePreviewEntry.Refresh()
-				p.model.TemplatePreviewNeedsUpdate = false
-			})
-		}()
-	} else {
-		p.UpdateUI(func() {
-			p.guiState.TemplatePreviewEntry.SetText(text)
-			p.guiState.TemplatePreviewEntry.Refresh()
-			p.model.TemplatePreviewNeedsUpdate = false
-		})
-	}
 }

@@ -289,7 +289,6 @@ func showEditUserDNSRuleDialog(
 		// Keep DNSRulesText synced (raw-JSON toggle reads it).
 		m.DNSRulesText = wizardmodels.DNSUserRulesToText(m.DNSUserRules)
 		syncDNSRulesTextToHiddenEntry(presenter)
-		m.TemplatePreviewNeedsUpdate = true
 		presenter.MarkAsChanged()
 		editWin.Close()
 		if onChanged != nil {

@@ -8,7 +8,7 @@
 //   - Сгенерированные outbounds (GeneratedOutbounds, OutboundStats)
 //   - Template данные (TemplateData)
 //   - Правила маршрута: CustomRules (единый список); SelectedFinalOutbound; SelectableRuleStates не используется (027)
-//   - Флаги состояния бизнес-операций (AutoParseInProgress, PreviewGenerationInProgress)
+//   - Флаги состояния бизнес-операций (AutoParseInProgress)
 //
 // GUI-состояние (виджеты Fyne, UI-флаги) находится в presentation/GUIState.
 //
@@ -160,13 +160,8 @@ type WizardModel struct {
 	SettingsVars map[string]string `json:"-"`
 
 	// Флаги состояния бизнес-операций
-	PreviewNeedsParse           bool
-	TemplatePreviewNeedsUpdate  bool
-	AutoParseInProgress         bool
-	PreviewGenerationInProgress bool
-
-	// Template preview текст (кэш для оптимизации)
-	TemplatePreviewText string
+	PreviewNeedsParse   bool
+	AutoParseInProgress bool
 
 	// Preview кеш для распарсенных нод (используется всеми Preview/View, включая вкладку Preview в Edit Outbound)
 	PreviewNodes         []*config.ParsedNode

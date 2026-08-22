@@ -93,7 +93,6 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		}
 		m := presenter.Model()
 		m.PreviewNeedsParse = true
-		m.TemplatePreviewNeedsUpdate = true
 		presenter.UpdateParserConfig(m.ParserConfigJSON)
 		if guiState.RefreshSourcesList != nil {
 			guiState.RefreshSourcesList()

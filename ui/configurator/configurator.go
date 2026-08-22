@@ -304,14 +304,14 @@ func initializeWizardContent(presenter *wizardpresentation.WizardPresenter, guiS
 	wizardbusiness.ApplyDNSVarsFromSettingsToModel(model)
 
 	// Create tabs
-	tabs, rulesTabItem, previewTabItem := createWizardTabs(presenter, guiState)
+	tabs, rulesTabItem := createWizardTabs(presenter, guiState)
 
 	// Create buttons
 	var currentTabIndex int = 0
 	createWizardButtons(presenter, guiState, wizardWindow, tabs, &currentTabIndex)
 
 	// Setup tab change handler
-	setupTabChangeHandler(presenter, guiState, wizardWindow, tabs, rulesTabItem, previewTabItem, model, &currentTabIndex)
+	setupTabChangeHandler(presenter, guiState, wizardWindow, tabs, rulesTabItem, model, &currentTabIndex)
 
 	// Sync model to GUI after initial setup (Rules tab уже создана выше — без повторного пересоздания)
 	presenter.SyncModelToGUIInitial()
@@ -329,8 +329,14 @@ func initializeWizardContent(presenter *wizardpresentation.WizardPresenter, guiS
 
 // createWizardTabs создает табы визарда.
 // Возвращает контейнер табов и ссылки на Rules и Preview табы.
-func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState) (*container.AppTabs, *container.TabItem, *container.TabItem) {
-	// Tab order: Target → Sources → Outbounds → Rules → DNS → Settings → Preview.
+func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState) (*container.AppTabs, *container.TabItem) {
+	// Tab order: Target → Sources → Outbounds → Rules → DNS → Settings.
+	//
+	// Вкладки Preview больше нет: собранный config.json показывается на
+	// главном экране и в диагностике, а внутри визарда она дублировала их
+	// и требовала отдельного пересчёта на каждое переключение. Settings
+	// стала последней — секция бэкапа, живущая под её прокруткой,
+	// оказалась в конце визарда.
 	// Target идёт ПЕРВЫМ (SPEC 097): он определяет платформу и роль целевой
 	// машины, а от них зависит, какие поля вообще показывать дальше.
 	// DNS goes AFTER Rules (per user request: DNS depends on which preset rules are active).
@@ -365,7 +371,6 @@ func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *w
 	guiState.ChildWindowsOverlay.Hide()
 
 	var rulesTabItem *container.TabItem
-	var previewTabItem *container.TabItem
 
 	// Use ShowAddRuleDialog from wizard/dialogs directly
 	// We need to create a wrapper that includes createRulesTab to avoid circular import
@@ -389,14 +394,12 @@ func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *w
 		dnsTabItem := container.NewTabItem(locale.T("wizard.tab_dns"), dnsTab)
 		settingsTab := wizardtabs.CreateSettingsTab(presenter)
 		settingsTabItem := container.NewTabItem(locale.T("wizard.tab_settings"), settingsTab)
-		previewTabItem = container.NewTabItem(locale.T("wizard.tab_preview"), wizardtabs.CreatePreviewTab(presenter))
 		tabs.Append(rulesTabItem)
 		tabs.Append(dnsTabItem)
 		tabs.Append(settingsTabItem)
-		tabs.Append(previewTabItem)
 	}
 
-	return tabs, rulesTabItem, previewTabItem
+	return tabs, rulesTabItem
 }
 
 // createWizardButtons создает все кнопки визарда.
@@ -488,7 +491,7 @@ func updateNavigationButtons(guiState *wizardpresentation.GUIState, tabs *contai
 
 	var buttonsContent fyne.CanvasObject
 	if currentTabIndex == totalTabs-1 {
-		// Last tab (Preview): Close, Save As on left, status label + Prev + Save on right
+		// Last tab (Settings): Close, Save As on left, status label + Prev + Save on right
 		buttonsContent = container.NewHBox(
 			guiState.CloseButton,
 			guiState.SaveAsButton,
@@ -518,7 +521,7 @@ func updateNavigationButtons(guiState *wizardpresentation.GUIState, tabs *contai
 }
 
 // setupTabChangeHandler настраивает обработчик изменения табов.
-func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState, wizardWindow fyne.Window, tabs *container.AppTabs, rulesTabItem *container.TabItem, previewTabItem *container.TabItem, model *wizardmodels.WizardModel, currentTabIndex *int) {
+func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState, wizardWindow fyne.Window, tabs *container.AppTabs, rulesTabItem *container.TabItem, model *wizardmodels.WizardModel, currentTabIndex *int) {
 	// Initialize button container
 	updateNavigationButtons(guiState, tabs, *currentTabIndex)
 
@@ -555,15 +558,6 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 			// Refresh outbound options when switching to Rules tab
 			presenter.RefreshOutboundOptions()
 		}
-		if item == previewTabItem {
-			// Trigger async parsing (if needed)
-			presenter.TriggerParseForPreview()
-			// Check if preview needs recalculation due to changes on Rules tab
-			if model.TemplatePreviewNeedsUpdate {
-				presenter.UpdateTemplatePreviewAsync()
-			}
-		}
-
 		// Update navigation buttons
 		updateNavigationButtons(guiState, tabs, *currentTabIndex)
 

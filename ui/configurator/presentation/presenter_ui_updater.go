@@ -18,10 +18,7 @@
 // Используется в:
 //   - business/parser.go - вызывает методы UIUpdater для обновления GUI при парсинге
 //   - business/loader.go - вызывает методы UIUpdater при загрузке конфигурации
-//   - presenter_async.go - вызывает UpdateTemplatePreview при обновлении preview
 package presentation
-
-import "singbox-launcher/internal/locale"
 
 // UpdateParserConfig обновляет текст поля ParserConfig и список конфигуратора outbounds.
 //
@@ -37,34 +34,6 @@ func (p *WizardPresenter) UpdateParserConfig(text string) {
 	}
 	if p.guiState.RefreshOutboundsConfiguratorList != nil {
 		p.guiState.RefreshOutboundsConfiguratorList()
-	}
-}
-
-// UpdateTemplatePreview обновляет текст preview шаблона.
-func (p *WizardPresenter) UpdateTemplatePreview(text string) {
-	if p.guiState.TemplatePreviewEntry == nil {
-		return
-	}
-
-	if len(text) > 50000 {
-		p.UpdateUI(func() {
-			p.guiState.TemplatePreviewEntry.SetText(locale.T("wizard.preview.loading_large"))
-			if p.guiState.TemplatePreviewStatusLabel != nil {
-				p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_loading_large"))
-			}
-		})
-
-		go func() {
-			p.UpdateUI(func() {
-				p.guiState.TemplatePreviewEntry.SetText(text)
-				p.model.TemplatePreviewNeedsUpdate = false
-			})
-		}()
-	} else {
-		p.UpdateUI(func() {
-			p.guiState.TemplatePreviewEntry.SetText(text)
-			p.model.TemplatePreviewNeedsUpdate = false
-		})
 	}
 }
 

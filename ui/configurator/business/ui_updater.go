@@ -21,8 +21,6 @@ type UIUpdater interface {
 	Model() *wizardmodels.WizardModel
 	// UpdateParserConfig обновляет текст ParserConfig
 	UpdateParserConfig(text string)
-	// UpdateTemplatePreview обновляет текст preview шаблона
-	UpdateTemplatePreview(text string)
 	// UpdateSaveProgress обновляет прогресс сохранения (0.0-1.0, -1 для скрытия)
 	UpdateSaveProgress(progress float64)
 	// UpdateSaveButtonText обновляет текст кнопки Save (пустая строка для скрытия)

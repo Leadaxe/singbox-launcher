@@ -180,7 +180,6 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 	model.PreviewNeedsParse = false
 	// RefreshOutboundOptions will be called by presenter
 	if model.TemplateData != nil && (len(model.GeneratedOutbounds) > 0 || len(model.GeneratedEndpoints) > 0) {
-		model.TemplatePreviewNeedsUpdate = true
 		// go UpdateTemplatePreviewAsync(model, updater) // This will be called by presenter
 	}
 	return nil

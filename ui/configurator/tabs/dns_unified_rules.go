@@ -96,7 +96,6 @@ func buildSingleDNSUserRuleRow(
 		// raw-JSON editor toggle.
 		model.DNSRulesText = wizardmodels.DNSUserRulesToText(model.DNSUserRules)
 		syncDNSRulesTextToHiddenEntry(presenter)
-		model.TemplatePreviewNeedsUpdate = true
 		presenter.MarkAsChanged()
 	}
 
@@ -120,7 +119,6 @@ func buildSingleDNSUserRuleRow(
 				model.DNSUserRules = append(model.DNSUserRules[:deletedIdx], model.DNSUserRules[deletedIdx+1:]...)
 				wizardmodels.CompactDNSRuleOrderIndices(model, wizardmodels.DNSSlotKindUser, deletedIdx)
 				model.DNSRulesText = wizardmodels.DNSUserRulesToText(model.DNSUserRules)
-				model.TemplatePreviewNeedsUpdate = true
 				presenter.MarkAsChanged()
 				if refreshAll != nil {
 					refreshAll()
@@ -209,7 +207,6 @@ func buildSingleDNSPresetRuleRow(
 	enableCh.Checked = pr.IsDNSRuleEnabled() && pr.Enabled
 	enableCh.OnChanged = func(on bool) {
 		pr.SetDNSRuleEnabled(on)
-		model.TemplatePreviewNeedsUpdate = true
 		presenter.MarkAsChanged()
 	}
 	if !pr.Enabled {
@@ -242,7 +239,6 @@ func moveDNSSlot(presenter *wizardpresentation.WizardPresenter, model *wizardmod
 	if !wizardmodels.MoveDNSRuleSlot(model, from, to) {
 		return
 	}
-	model.TemplatePreviewNeedsUpdate = true
 	wizardbusiness.InvalidatePreviewCache(model) // drop cached preview so Preview tab reflects new order
 	presenter.MarkAsChanged()
 	if refreshAll != nil {

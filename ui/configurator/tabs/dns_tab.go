@@ -187,7 +187,6 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		mod := presenter.Model()
 		if mod.DNSFinal != sel {
 			mod.DNSFinal = sel
-			mod.TemplatePreviewNeedsUpdate = true
 			presenter.MarkAsChanged()
 		}
 	})
@@ -223,7 +222,6 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 			if mod.DefaultDomainResolver != "" || !mod.DefaultDomainResolverUnset {
 				mod.DefaultDomainResolver = ""
 				mod.DefaultDomainResolverUnset = true
-				mod.TemplatePreviewNeedsUpdate = true
 				presenter.MarkAsChanged()
 			}
 			return
@@ -231,7 +229,6 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		if mod.DefaultDomainResolver != v || mod.DefaultDomainResolverUnset {
 			mod.DefaultDomainResolver = v
 			mod.DefaultDomainResolverUnset = false
-			mod.TemplatePreviewNeedsUpdate = true
 			presenter.MarkAsChanged()
 		}
 	}
@@ -239,7 +236,6 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		v := strings.TrimSpace(value)
 		if mod.DNSStrategy != v {
 			mod.DNSStrategy = v
-			mod.TemplatePreviewNeedsUpdate = true
 			presenter.MarkAsChanged()
 		}
 	}
@@ -261,7 +257,6 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		if guiState.DNSRulesProgrammatic {
 			return
 		}
-		presenter.Model().TemplatePreviewNeedsUpdate = true
 		presenter.MarkAsChanged()
 	}
 	rulesScroll := container.NewScroll(guiState.DNSRulesEntry)
@@ -392,7 +387,6 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				})
 			}
 			m.DNSRuleOrder = kept
-			m.TemplatePreviewNeedsUpdate = true
 			presenter.MarkAsChanged()
 			rawRulesBlock.Hide()
 			unifiedRulesBox.Show()
@@ -487,7 +481,6 @@ func setDNSServerEnabledAt(p *wizardpresentation.WizardPresenter, index int, ena
 		return
 	}
 	mod.DNSServers[index] = json.RawMessage(b)
-	mod.TemplatePreviewNeedsUpdate = true
 	p.MarkAsChanged()
 
 	// SPEC 053: параллельно пишем override в model.DNSTemplateOverrides по tag'у.
@@ -559,7 +552,6 @@ func deleteDNSServerAt(p *wizardpresentation.WizardPresenter, index int) {
 		m.DefaultDomainResolver = ""
 		m.DefaultDomainResolverUnset = true
 	}
-	m.TemplatePreviewNeedsUpdate = true
 	p.MarkAsChanged()
 }
 
@@ -626,7 +618,6 @@ func applyDNSServerJSON(p *wizardpresentation.WizardPresenter, w fyne.Window, te
 	} else {
 		mod.DNSServers = append(mod.DNSServers, json.RawMessage(compact))
 	}
-	mod.TemplatePreviewNeedsUpdate = true
 	p.MarkAsChanged()
 	p.RefreshDNSListAndSelects()
 	return true

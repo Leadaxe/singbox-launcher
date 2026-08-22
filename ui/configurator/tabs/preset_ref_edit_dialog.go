@@ -62,7 +62,6 @@ func showEditPresetRefDialog(
 				}
 				model.PresetRefs = append(model.PresetRefs[:idx], model.PresetRefs[idx+1:]...)
 				wizardmodels.CompactRuleOrderIndices(model, wizardmodels.SlotKindPresetRef, idx)
-				model.TemplatePreviewNeedsUpdate = true
 				presenter.MarkAsChanged()
 				refreshRulesTabFromPresenter(presenter, showAddRuleDialog)
 			},
@@ -360,7 +359,6 @@ func showEditPresetRefDialog(
 			}
 		}
 		pr.Vars = newVars
-		model.TemplatePreviewNeedsUpdate = true
 		presenter.MarkAsChanged()
 		editWindow.Close()
 		refreshRulesTabFromPresenter(presenter, showAddRuleDialog)
@@ -388,7 +386,6 @@ func showEditPresetRefDialog(
 				}
 				model.PresetRefs = append(model.PresetRefs[:idx], model.PresetRefs[idx+1:]...)
 				wizardmodels.CompactRuleOrderIndices(model, wizardmodels.SlotKindPresetRef, idx)
-				model.TemplatePreviewNeedsUpdate = true
 				presenter.MarkAsChanged()
 				editWindow.Close()
 				refreshRulesTabFromPresenter(presenter, showAddRuleDialog)

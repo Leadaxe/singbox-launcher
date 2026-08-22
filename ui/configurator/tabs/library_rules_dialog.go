@@ -195,7 +195,6 @@ func ShowRulesLibraryDialog(p *wizardpresentation.WizardPresenter, showAddRuleDi
 		if added == 0 {
 			debuglog.WarnLog("library_rules_dialog: no presets added (all already present?)")
 		}
-		model.TemplatePreviewNeedsUpdate = true
 		p.MarkAsChanged()
 		fynetooltip.DestroyPopUpToolTipLayer(popup)
 		popup.Hide()

@@ -20,11 +20,9 @@ package presentation
 
 import (
 	"strings"
-	"time"
 
 	"singbox-launcher/core"
 	"singbox-launcher/internal/debuglog"
-	"singbox-launcher/internal/locale"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 )
 
@@ -50,12 +48,6 @@ func (p *WizardPresenter) TriggerParseForPreview() {
 
 	p.model.AutoParseInProgress = true
 	// Save остаётся доступной; при нажатии Save ensureOutboundsParsed ждёт окончания AutoParseInProgress.
-	if p.guiState.TemplatePreviewStatusLabel != nil {
-		p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_parsing"))
-	}
-	if p.guiState.TemplatePreviewEntry != nil {
-		p.SetTemplatePreviewText(locale.T("wizard.preview.text_parsing"))
-	}
 
 	go func() {
 		defer func() {
@@ -67,130 +59,11 @@ func (p *WizardPresenter) TriggerParseForPreview() {
 		}
 		if err := wizardbusiness.ParseAndPreview(p, configService); err != nil {
 			debuglog.ErrorLog("TriggerParseForPreview: ParseAndPreview failed: %v", err)
-			SafeFyneDo(p.guiState.Window, func() {
-				if p.guiState.TemplatePreviewEntry != nil {
-					p.SetTemplatePreviewText(locale.Tf("wizard.preview.error", err))
-				}
-				if p.guiState.TemplatePreviewStatusLabel != nil {
-					p.guiState.TemplatePreviewStatusLabel.SetText(locale.Tf("wizard.preview.status_error", err))
-				}
-				if p.guiState.ShowPreviewButton != nil {
-					p.guiState.ShowPreviewButton.Enable()
-				}
-			})
 			return
 		}
+		// Ради этого вызов и остаётся после удаления вкладки Preview:
+		// разбор подписок обновляет список outbound'ов, на который
+		// опираются Rules и Направления.
 		p.RefreshOutboundOptions()
-		// ParseAndPreview выставляет TemplatePreviewNeedsUpdate после успеха, но OnChanged вкладки Preview
-		// уже отработал раньше — иначе preview остаётся на «Parsing…» до любого следующего клика.
-		if p.model.TemplatePreviewNeedsUpdate {
-			p.UpdateTemplatePreviewAsync()
-		} else {
-			SafeFyneDo(p.guiState.Window, func() {
-				if p.guiState.TemplatePreviewStatusLabel != nil {
-					p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_click_show"))
-				}
-				if p.guiState.ShowPreviewButton != nil {
-					p.guiState.ShowPreviewButton.Enable()
-				}
-				if p.guiState.TemplatePreviewEntry != nil {
-					p.SetTemplatePreviewText(locale.T("wizard.preview.placeholder"))
-				}
-			})
-		}
-	}()
-}
-
-// UpdateTemplatePreviewAsync обновляет preview шаблона асинхронно.
-func (p *WizardPresenter) UpdateTemplatePreviewAsync() {
-	timing := debuglog.StartTiming("UpdateTemplatePreviewAsync")
-	defer timing.EndWithDefer()
-
-	if p.model.PreviewGenerationInProgress {
-		debuglog.DebugLog("UpdateTemplatePreviewAsync: Preview generation already in progress, skipping")
-		return
-	}
-
-	if p.model.TemplateData == nil || p.guiState.TemplatePreviewEntry == nil {
-		debuglog.DebugLog("UpdateTemplatePreviewAsync: TemplateData or TemplatePreviewEntry is nil, returning early")
-		return
-	}
-
-	p.model.PreviewGenerationInProgress = true
-
-	// Виджеты трогаем ТОЛЬКО через SafeFyneDo: этот метод вызывается и из
-	// GUI-потока (кнопка «Показать»), и из фоновой горутины
-	// TriggerParseForPreview. Прямой вызов во втором случае — гонка, которую
-	// Fyne ловит как «Error in Fyne call thread» и на которой приложение
-	// падало при сохранении визарда.
-	SafeFyneDo(p.guiState.Window, func() {
-		p.SetTemplatePreviewText(locale.T("wizard.preview.text_building"))
-		if p.guiState.TemplatePreviewStatusLabel != nil {
-			p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_building"))
-		}
-	})
-
-	go func() {
-		goroutineTiming := debuglog.StartTiming("UpdateTemplatePreviewAsync: Goroutine")
-		defer func() {
-			goroutineTiming.End()
-			p.model.PreviewGenerationInProgress = false
-			SafeFyneDo(p.guiState.Window, func() {
-				if p.guiState.ShowPreviewButton != nil {
-					p.guiState.ShowPreviewButton.Enable()
-				}
-			})
-		}()
-
-		SafeFyneDo(p.guiState.Window, func() {
-			if p.guiState.TemplatePreviewStatusLabel != nil {
-				p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_parsing_config"))
-			}
-		})
-
-		buildStartTime := time.Now()
-		debuglog.DebugLog("UpdateTemplatePreviewAsync: Calling build.BuildConfig (preview)")
-		text, err := wizardbusiness.BuildPreviewConfig(p.model)
-		buildDuration := time.Since(buildStartTime)
-		if err != nil {
-			goroutineTiming.LogTiming("BuildPreviewConfig", buildDuration)
-			debuglog.ErrorLog("UpdateTemplatePreviewAsync: BuildPreviewConfig failed: %v", err)
-			errorText := locale.Tf("wizard.preview.error", err)
-			p.model.TemplatePreviewNeedsUpdate = false
-			// Текст превью — тоже виджет: правим его в GUI-потоке вместе со
-			// статусом, а не прямо здесь, в фоновой горутине.
-			SafeFyneDo(p.guiState.Window, func() {
-				p.SetTemplatePreviewText(errorText)
-				if p.guiState.TemplatePreviewStatusLabel != nil {
-					p.guiState.TemplatePreviewStatusLabel.SetText(locale.Tf("wizard.preview.status_error", err))
-				}
-			})
-			return
-		}
-		goroutineTiming.LogTiming("BuildPreviewConfig", buildDuration)
-		debuglog.DebugLog("UpdateTemplatePreviewAsync: BuildPreviewConfig completed (result size: %d bytes)", len(text))
-
-		isLargeText := len(text) > 50000
-
-		// Текст ставится в обеих ветках — разница только в статусе: у
-		// большого текста вставка идёт долго, и «готово» дописывает сам
-		// SetTemplatePreviewText по завершении, иначе метка соврала бы.
-		SafeFyneDo(p.guiState.Window, func() {
-			p.SetTemplatePreviewText(text)
-			if isLargeText {
-				return
-			}
-			if p.guiState.TemplatePreviewStatusLabel != nil {
-				p.guiState.TemplatePreviewStatusLabel.SetText(locale.T("wizard.preview.status_ready"))
-			}
-			if p.guiState.ShowPreviewButton != nil {
-				p.guiState.ShowPreviewButton.Enable()
-			}
-		})
-		if isLargeText {
-			debuglog.DebugLog("UpdateTemplatePreviewAsync: Large text insertion started (status will update when complete)")
-		} else {
-			debuglog.DebugLog("UpdateTemplatePreviewAsync: Preview text inserted")
-		}
 	}()
 }

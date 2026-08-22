@@ -51,11 +51,8 @@ type GUIState struct {
 	ParseButton    *widget.Button
 
 	// Template tab widgets
-	TemplatePreviewEntry       *widget.Entry
-	TemplatePreviewStatusLabel *widget.Label
-	ShowPreviewButton          *widget.Button
-	FinalOutboundSelect        *widget.Select
-	RuleOutboundSelects        []*RuleWidget
+	FinalOutboundSelect *widget.Select
+	RuleOutboundSelects []*RuleWidget
 
 	// Navigation buttons
 	ReadButton        *widget.Button

@@ -208,8 +208,6 @@ func applyOnChangeAndRefresh(presenter *wizardpresentation.WizardPresenter, td *
 	// переменной БЕЗ on_change — а таких гейтов большинство (@tun,
 	// @gateway_mode).
 	changed := append([]string{changedName}, touched...)
-
-	model.TemplatePreviewNeedsUpdate = true
 	needDNSRefresh := false
 	for _, name := range touched {
 		if dnsTabOwnedVar(name) {
@@ -463,7 +461,6 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 
 	reset := func() {
 		delete(model.SettingsVars, name)
-		model.TemplatePreviewNeedsUpdate = true
 		presenter.MarkAsChanged()
 		if presenter.GUIState().RefreshSettingsFromModel != nil {
 			presenter.GUIState().RefreshSettingsFromModel()
@@ -510,7 +507,6 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 			} else {
 				model.SettingsVars[name] = "false"
 			}
-			model.TemplatePreviewNeedsUpdate = true
 			presenter.MarkAsChanged()
 			applyOnChangeAndRefresh(presenter, td, model, name)
 			maybeRefreshSettingsAfterVarChange(gs, td, name)
@@ -559,7 +555,6 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		}
 		sel := widget.NewSelect(optionTitles, func(pickedTitle string) {
 			model.SettingsVars[name] = valueForTitle(pickedTitle)
-			model.TemplatePreviewNeedsUpdate = true
 			presenter.MarkAsChanged()
 			applyOnChangeAndRefresh(presenter, td, model, name)
 			maybeRefreshSettingsAfterVarChange(gs, td, name)
@@ -593,7 +588,6 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		e.SetText(disp)
 		e.OnChanged = func(s string) {
 			model.SettingsVars[name] = s
-			model.TemplatePreviewNeedsUpdate = true
 			presenter.MarkAsChanged()
 			applyOnChangeAndRefresh(presenter, td, model, name)
 		}
@@ -611,7 +605,6 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		}
 		onChanged := func(s string) {
 			model.SettingsVars[name] = s
-			model.TemplatePreviewNeedsUpdate = true
 			presenter.MarkAsChanged()
 			applyOnChangeAndRefresh(presenter, td, model, name)
 		}
@@ -669,7 +662,6 @@ func buildSettingsSecretRow(presenter *wizardpresentation.WizardPresenter, model
 			}
 			model.SettingsVars[name] = gen
 			disp = gen
-			model.TemplatePreviewNeedsUpdate = true
 			presenter.MarkAsChanged()
 		} else {
 			debuglog.WarnLog("settings_tab: GenerateSecret prefill %q: %v", name, err)
@@ -680,7 +672,6 @@ func buildSettingsSecretRow(presenter *wizardpresentation.WizardPresenter, model
 	e.SetText(disp)
 	e.OnChanged = func(s string) {
 		model.SettingsVars[name] = s
-		model.TemplatePreviewNeedsUpdate = true
 		presenter.MarkAsChanged()
 		applyOnChangeAndRefresh(presenter, td, model, name)
 	}
@@ -699,7 +690,6 @@ func buildSettingsSecretRow(presenter *wizardpresentation.WizardPresenter, model
 		} else {
 			model.SettingsVars[name] = gen
 		}
-		model.TemplatePreviewNeedsUpdate = true
 		presenter.MarkAsChanged()
 		applyOnChangeAndRefresh(presenter, td, model, name)
 		if presenter.GUIState().RefreshSettingsFromModel != nil {

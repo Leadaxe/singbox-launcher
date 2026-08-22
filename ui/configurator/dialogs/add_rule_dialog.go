@@ -810,7 +810,6 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		}
 
 		// Set flag for preview recalculation
-		model.TemplatePreviewNeedsUpdate = true
 		// Mark as changed
 		presenter.MarkAsChanged()
 		// Refresh rules tab

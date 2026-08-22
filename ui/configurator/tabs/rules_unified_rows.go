@@ -167,7 +167,6 @@ func buildSinglePresetRefRow(
 				pr.Vars = make(map[string]string)
 			}
 			pr.Vars[soloOutVar.Name] = value
-			model.TemplatePreviewNeedsUpdate = true
 			presenter.MarkAsChanged()
 		}
 	}
@@ -205,7 +204,6 @@ func buildSinglePresetRefRow(
 		}
 		pr.Enabled = on
 		presenter.MarkAsChanged()
-		model.TemplatePreviewNeedsUpdate = true
 		// Sync inline outbound selector enable-state с preset toggle (как в
 		// legacy custom rule tile: outboundSelect.Enable/Disable в callback'е).
 		if outSel != nil {
@@ -256,7 +254,6 @@ func buildSinglePresetRefRow(
 				deletedIdx := refIdx
 				model.PresetRefs = append(model.PresetRefs[:deletedIdx], model.PresetRefs[deletedIdx+1:]...)
 				wizardmodels.CompactRuleOrderIndices(model, wizardmodels.SlotKindPresetRef, deletedIdx)
-				model.TemplatePreviewNeedsUpdate = true
 				presenter.MarkAsChanged()
 				refreshRulesTabFromPresenter(presenter, showAddRuleDialog)
 			},
@@ -338,7 +335,6 @@ func buildSinglePresetRefRow(
 	if srsMissingEnabled && srsHF != nil {
 		runSRSDownloadAsync(presenter, model, guiState, srsEntries, srsHF.TTWidget(), nil,
 			func() {
-				model.TemplatePreviewNeedsUpdate = true
 				// НЕ вызываем MarkAsChanged — это auto-fix, не user action.
 				refreshRulesTabFromPresenter(presenter, showAddRuleDialog)
 			},
@@ -379,7 +375,6 @@ func makePresetSRSButton(
 	}
 	btn.OnTapped = func() {
 		runSRSDownloadAsync(presenter, model, guiState, entries, btn.TTWidget(), nil /* no outboundSelect */, func() {
-			model.TemplatePreviewNeedsUpdate = true
 			if enableOnSuccess != nil && *enableOnSuccess {
 				*enableOnSuccess = false
 				if pr != nil {
@@ -401,7 +396,7 @@ func makePresetSRSButton(
 // SPEC 056: используется при toggle preset-ref enable/disable, чтобы решить
 // — нужен ли full Rules tab rebuild + RefreshOutboundOptions. При false →
 // preset влияет только на route rule (через ExpandPreset) → достаточно
-// уже выполненных MarkAsChanged + TemplatePreviewNeedsUpdate.
+// уже выполненного MarkAsChanged.
 func presetHasAddOutbounds(tpl *wizardtemplate.Preset) bool {
 	if tpl == nil {
 		return false
@@ -468,7 +463,6 @@ func moveSlot(presenter *wizardpresentation.WizardPresenter, model *wizardmodels
 	if !wizardmodels.MoveRuleSlot(model, from, to) {
 		return
 	}
-	model.TemplatePreviewNeedsUpdate = true
 	presenter.MarkAsChanged()
 	refreshRulesTabFromPresenter(presenter, showAddRuleDialog)
 }

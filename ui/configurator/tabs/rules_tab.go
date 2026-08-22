@@ -378,7 +378,6 @@ func createRuleEnableCheckbox(
 		}
 
 		model.CustomRules[idx].Enabled = val
-		model.TemplatePreviewNeedsUpdate = true
 
 		if val {
 			outboundSelect.Enable()
@@ -412,7 +411,6 @@ func createOutboundSelectorForCustomRule(
 			return
 		}
 		model.CustomRules[idx].SelectedOutbound = value
-		model.TemplatePreviewNeedsUpdate = true
 		presenter.MarkAsChanged()
 	}, rowGetter)
 	sel.SetSelected(customRule.SelectedOutbound)
@@ -488,8 +486,6 @@ func deleteCustomRuleSlot(
 		}
 	}
 	guiState.RuleOutboundSelects = newRuleWidgets
-
-	model.TemplatePreviewNeedsUpdate = true
 	presenter.MarkAsChanged()
 	refreshRulesTabFromPresenter(presenter, showAddRuleDialog)
 }
@@ -530,7 +526,6 @@ func createCustomRuleSRSButton(
 				checkbox.SetChecked(true)
 				guiState.UpdatingOutboundOptions = false
 				// Enable rule — это уже user action на dirty.
-				model.TemplatePreviewNeedsUpdate = true
 				presenter.MarkAsChanged()
 			}
 		}, false /* manual click — показываем фейл-диалог */)
@@ -554,7 +549,6 @@ func createFinalOutboundSelect(
 			return
 		}
 		model.SelectedFinalOutbound = value
-		model.TemplatePreviewNeedsUpdate = true
 		presenter.MarkAsChanged()
 	})
 	finalSelect.SetSelected(model.SelectedFinalOutbound)
