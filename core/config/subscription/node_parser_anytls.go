@@ -37,6 +37,7 @@ func buildAnyTLSOutbound(node *configtypes.ParsedNode, outbound map[string]inter
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
 			outbound["min_idle_session"] = n
 		} else {
+			node.AddWarning(WarnAnyTLSMinIdleInvalid)
 			debuglog.WarnLog("Parser: AnyTLS min_idle_session %q is not a non-negative integer, dropping.", v)
 		}
 	}

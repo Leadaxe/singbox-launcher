@@ -22,7 +22,10 @@
       },
       "kind": "outbound",
       "label": "sid-long",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        "reality_short_id_invalid"
+      ]
     }
   ],
   "v": 1

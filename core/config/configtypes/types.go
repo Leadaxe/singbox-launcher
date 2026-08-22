@@ -304,6 +304,30 @@ type ParsedNode struct {
 	// emitter — the whole point is carrying types and fields the emitter
 	// does not know about.
 	EmitRaw bool
+	// Warnings — коды деградаций, применённых к узлу при разборе
+	// (SPEC 103, фаза 2). Словарь кодов — contract/registry/warnings.json.
+	//
+	// До этого деградация уходила только в debuglog: пользователь видел
+	// «нода есть», но не знал, что у неё срезали обфускацию или заменили
+	// отпечаток. Коды позволяют показать это в UI и сверять поведение
+	// обоих приложений по общему корпусу, а не по тексту лога.
+	//
+	// Порядок не нормируется, дубли не хранятся: код отвечает на вопрос
+	// «что случилось», а не «сколько раз».
+	Warnings []string
+}
+
+// AddWarning помечает узел кодом деградации, не создавая дублей.
+func (n *ParsedNode) AddWarning(code string) {
+	if n == nil || code == "" {
+		return
+	}
+	for _, existing := range n.Warnings {
+		if existing == code {
+			return
+		}
+	}
+	n.Warnings = append(n.Warnings, code)
 }
 
 // SyncJumpFromChain refreshes the deprecated Jump field from Chain[0].

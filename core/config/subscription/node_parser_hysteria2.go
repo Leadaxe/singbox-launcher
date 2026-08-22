@@ -40,8 +40,10 @@ func buildHysteria2Outbound(node *configtypes.ParsedNode, outbound map[string]in
 		obfsPassword := node.Query.Get("obfs-password")
 		switch {
 		case !isValidHysteria2ObfsType(obfs):
+			node.AddWarning(WarnObfsUnknown)
 			debuglog.WarnLog("Parser: Invalid or unsupported Hysteria2 obfs type '%s'. Supported: salamander, gecko. Skipping obfs.", obfs)
 		case obfsPassword == "":
+			node.AddWarning(WarnObfsPasswordMissing)
 			// The core refuses to start a node whose obfs block has no password
 			// ("missing obfs password") and that kills the whole config, so drop
 			// the obfs block instead of the config (SPEC 103, D-016(г)).

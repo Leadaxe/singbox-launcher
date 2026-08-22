@@ -14,7 +14,10 @@
       },
       "kind": "outbound",
       "label": "tuic-bogus",
-      "scheme": "tuic"
+      "scheme": "tuic",
+      "warnings": [
+        "tuic_congestion_invalid"
+      ]
     }
   ],
   "v": 1

@@ -19,6 +19,7 @@ func buildSSHOutbound(node *configtypes.ParsedNode, outbound map[string]interfac
 		outbound["user"] = node.UUID
 	} else {
 		outbound["user"] = "root" // Default user for SSH
+		node.AddWarning(WarnSSHUserDefault)
 		debuglog.WarnLog("Parser: SSH link missing user, using default 'root'")
 	}
 

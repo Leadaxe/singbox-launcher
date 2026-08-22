@@ -30,26 +30,23 @@ import (
 
 // nodeToOutboundMap превращает разобранный узел в outbound-карту, какой её
 // видит config.json, — вход эмиттера.
-func nodeToOutboundMap(t *testing.T, node *configtypes.ParsedNode) (map[string]interface{}, bool) {
+func nodeToOutboundMap(t *testing.T, node *configtypes.ParsedNode) (map[string]any, bool) {
 	t.Helper()
 	// WireGuard живёт в endpoints[], а не в outbounds[] (sing-box >= 1.11), и
 	// у него свой генератор. GenerateNodeJSON на WG-узле отдаёт обрубок
 	// {tag,type,server,server_port} без ключей и peers — вызывать его здесь
 	// значило бы проверять не тот путь.
-	gen := GenerateNodeJSON
-	if node.Scheme == "wireguard" || node.Scheme == "wg" {
-		gen = GenerateEndpointJSON
+	raw, err := GenerateNodeJSON(node)
+	if node.Scheme == "wireguard" {
+		raw, err = GenerateEndpointJSON(node)
 	}
-	raw, err := gen(node)
 	if err != nil || strings.TrimSpace(raw) == "" {
 		t.Fatalf("генерация узла: err=%v, raw=%q", err, raw)
 	}
-	// GenerateNodeJSON отдаёт ФРАГМЕНТ config.json: строка-комментарий с
-	// именем узла, отступ и хвостовая запятая. Для эмиттера нужен чистый
-	// объект — без этой чистки Unmarshal молча падал, и весь round-trip
-	// превращался в 258 тихих скипов.
-	var out map[string]interface{}
-	if err := json.Unmarshal([]byte(stripNodeJSONFragment(raw)), &out); err != nil {
+	// Генератор отдаёт ФРАГМЕНТ config.json (комментарий, отступ, хвостовая
+	// запятая) — тот же разбор, что у канонизатора корпуса.
+	out, err := decodeEmittedEntry(raw)
+	if err != nil {
 		t.Fatalf("фрагмент узла не разбирается как JSON: %v\nfragment: %s", err, raw)
 	}
 	return out, true
@@ -63,20 +60,6 @@ func emitShareURI(out map[string]interface{}) (string, error) {
 		return subscription.ShareURIFromWireGuardEndpoint(out)
 	}
 	return subscription.ShareURIFromOutbound(out)
-}
-
-// stripNodeJSONFragment вырезает объект узла из фрагмента config.json.
-func stripNodeJSONFragment(raw string) string {
-	var kept []string
-	for _, line := range strings.Split(raw, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "//") {
-			continue
-		}
-		kept = append(kept, trimmed)
-	}
-	joined := strings.Join(kept, "\n")
-	return strings.TrimSuffix(strings.TrimSpace(joined), ",")
 }
 
 // pathRoundTripLossy сообщает, что путь узла содержит процент-экранирование,

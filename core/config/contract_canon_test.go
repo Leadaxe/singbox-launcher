@@ -71,11 +71,19 @@ func canonNode(node *configtypes.ParsedNode) (contractNode, error) {
 	delete(entry, "tag")
 	delete(entry, "detour")
 
+	// Коды деградации (SPEC 103, фаза 2) — часть контракта: они отвечают на
+	// вопрос «что узлу отняли при разборе», и расхождение кодов между
+	// приложениями означает, что одно из них молча портит узел.
+	// Порядок не нормируется — сортируем.
+	warnings := append([]string(nil), node.Warnings...)
+	sort.Strings(warnings)
+
 	out := contractNode{
-		Kind:   kind,
-		Scheme: node.Scheme,
-		Label:  node.Label,
-		Entry:  canonValue(entry).(map[string]any),
+		Kind:     kind,
+		Scheme:   node.Scheme,
+		Label:    node.Label,
+		Entry:    canonValue(entry).(map[string]any),
+		Warnings: warnings,
 	}
 
 	for _, hop := range node.Chain {

@@ -70,6 +70,7 @@ func buildTuicOutbound(node *configtypes.ParsedNode, outbound map[string]interfa
 		if isValidTuicCongestionControl(cc) {
 			outbound["congestion_control"] = cc
 		} else {
+			node.AddWarning(WarnTuicCongestionInvalid)
 			debuglog.WarnLog("Parser: unsupported TUIC congestion_control %q (want cubic/new_reno/bbr), dropping.", cc)
 		}
 	}
@@ -79,6 +80,7 @@ func buildTuicOutbound(node *configtypes.ParsedNode, outbound map[string]interfa
 		if urm == "native" || urm == "quic" {
 			outbound["udp_relay_mode"] = urm
 		} else {
+			node.AddWarning(WarnTuicUDPRelayModeInvalid)
 			debuglog.WarnLog("Parser: unsupported TUIC udp_relay_mode %q (want native/quic), dropping.", urm)
 		}
 	}

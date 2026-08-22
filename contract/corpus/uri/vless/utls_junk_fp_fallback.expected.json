@@ -17,7 +17,10 @@
       },
       "kind": "outbound",
       "label": "t",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        "utls_fp_unknown"
+      ]
     }
   ],
   "v": 1

@@ -716,6 +716,13 @@ func vlessTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, boo
 	if sni == "" {
 		sni = node.Server
 	}
+	// Мусорный отпечаток заменяется каноническим — узел выживает, но
+	// пользователь должен знать, что маскировка не та, о которой просила
+	// подписка (utls_fp_unknown, SPEC 093).
+	if utlsFingerprintWouldDegrade(queryGetFold(q, "fp")) ||
+		utlsFingerprintWouldDegrade(queryGetFold(q, "fingerprint")) {
+		node.AddWarning(WarnUTLSFingerprintUnknown)
+	}
 	fp := utlsFingerprintOrFallback(queryGetFold(q, "fp"))
 	if fp == "" {
 		fp = utlsFingerprintOrFallback(queryGetFold(q, "fingerprint"))
@@ -732,6 +739,12 @@ func vlessTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, boo
 	// ("invalid public_key") and nothing starts. In that case fall through to plain
 	// TLS below.
 	if isValidRealityPublicKey(pbk) {
+		// Деградация short_id помечается кодом ДО нормализации: после неё
+		// исходное значение потеряно, а узел уедет с чужим sid.
+		rawSID := queryGetFold(q, "sid")
+		if realityShortIDWouldDegrade(rawSID) {
+			node.AddWarning(WarnRealityShortIDInvalid)
+		}
 		tlsData := map[string]interface{}{
 			"enabled":     true,
 			"server_name": sni,
@@ -742,7 +755,7 @@ func vlessTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, boo
 			"reality": map[string]interface{}{
 				"enabled":    true,
 				"public_key": strings.TrimSpace(pbk),
-				"short_id":   normalizeRealityShortID(queryGetFold(q, "sid")),
+				"short_id":   normalizeRealityShortID(rawSID),
 			},
 		}
 		applyTLSQueryExtras(q, tlsData)

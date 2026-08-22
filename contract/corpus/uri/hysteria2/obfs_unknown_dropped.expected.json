@@ -13,7 +13,10 @@
       },
       "kind": "outbound",
       "label": "hy2-badobfs",
-      "scheme": "hysteria2"
+      "scheme": "hysteria2",
+      "warnings": [
+        "obfs_unknown"
+      ]
     }
   ],
   "v": 1
