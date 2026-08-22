@@ -1,10 +1,13 @@
 package tabs
 
-// Экспорт и импорт LX Backup на вкладке Settings (SPEC 103, фаза 4).
+// Экспорт и импорт LX Backup — секция вкладки «Generate» (SPEC 103, фаза 4).
 //
-// Почему здесь, а не отдельной вкладкой: бэкап — редкое действие над всем
-// состоянием сразу, а не режим работы. Отдельная вкладка присутствовала бы
-// постоянно ради операции, которую делают раз в месяц.
+// Сперва жила под прокруткой Settings, но была прибита к её низу через
+// Border и забирала свою высоту целиком (114–133px, тем больше, чем уже
+// окно: подсказка переносится), а прокрутке настроек доставался остаток —
+// нижние строки настроек обрезались. Переехала на «Generate» к остальным
+// действиям над готовым состоянием: собрать конфиг, посмотреть его,
+// перенести настройки на другую машину.
 
 import (
 	"fmt"
@@ -45,8 +48,8 @@ func knownPresetIDs(presenter *wizardpresentation.WizardPresenter) []string {
 	return out
 }
 
-// buildBackupSection — строка кнопок «Экспорт» / «Импорт» с пояснением.
-func buildBackupSection(presenter *wizardpresentation.WizardPresenter, win fyne.Window) fyne.CanvasObject {
+// backupSection — блок «Экспорт» / «Импорт» с пояснением.
+func backupSection(presenter *wizardpresentation.WizardPresenter, win fyne.Window) fyne.CanvasObject {
 	exportBtn := widget.NewButton(locale.T("wizard.settings.backup_export"), func() {
 		handleBackupExport(presenter, win)
 	})
@@ -65,6 +68,16 @@ func buildBackupSection(presenter *wizardpresentation.WizardPresenter, win fyne.
 		hint,
 		container.NewHBox(exportBtn, importBtn),
 	)
+}
+
+// writeTextFile пишет текст в файл, создавая каталог при необходимости.
+func writeTextFile(path, text string) error {
+	if dir := filepath.Dir(path); dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+	return os.WriteFile(path, []byte(text), 0o600)
 }
 
 // handleBackupExport собирает текущее состояние и пишет файл.

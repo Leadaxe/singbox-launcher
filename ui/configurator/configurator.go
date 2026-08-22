@@ -330,13 +330,12 @@ func initializeWizardContent(presenter *wizardpresentation.WizardPresenter, guiS
 // createWizardTabs создает табы визарда.
 // Возвращает контейнер табов и ссылки на Rules и Preview табы.
 func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState) (*container.AppTabs, *container.TabItem) {
-	// Tab order: Target → Sources → Outbounds → Rules → DNS → Settings.
+	// Tab order: Target → Sources → Outbounds → Rules → DNS → Settings → Generate.
 	//
-	// Вкладки Preview больше нет: собранный config.json показывается на
-	// главном экране и в диагностике, а внутри визарда она дублировала их
-	// и требовала отдельного пересчёта на каждое переключение. Settings
-	// стала последней — секция бэкапа, живущая под её прокруткой,
-	// оказалась в конце визарда.
+	// Generate — действия над готовым состоянием: собрать config.json в
+	// файл, посмотреть его и перенести настройки на другую машину. Прежняя
+	// вкладка Preview пересобирала конфиг на каждое переключение ради
+	// текста, который нужен изредка; здесь он показывается по кнопке.
 	// Target идёт ПЕРВЫМ (SPEC 097): он определяет платформу и роль целевой
 	// машины, а от них зависит, какие поля вообще показывать дальше.
 	// DNS goes AFTER Rules (per user request: DNS depends on which preset rules are active).
@@ -394,9 +393,12 @@ func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *w
 		dnsTabItem := container.NewTabItem(locale.T("wizard.tab_dns"), dnsTab)
 		settingsTab := wizardtabs.CreateSettingsTab(presenter)
 		settingsTabItem := container.NewTabItem(locale.T("wizard.tab_settings"), settingsTab)
+		generateTab := wizardtabs.CreateGenerateTab(presenter, guiState)
+		generateTabItem := container.NewTabItem(locale.T("wizard.tab_generate"), generateTab)
 		tabs.Append(rulesTabItem)
 		tabs.Append(dnsTabItem)
 		tabs.Append(settingsTabItem)
+		tabs.Append(generateTabItem)
 	}
 
 	return tabs, rulesTabItem

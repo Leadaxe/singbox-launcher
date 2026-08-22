@@ -425,12 +425,9 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 	scroll := container.NewVScroll(box)
 	scroll.SetMinSize(adaptiveScrollSize(gs, 0.5, 400))
 
-	// Секция бэкапа живёт ПОД прокруткой, а не внутри неё: она не зависит от
-	// набора переменных и не должна уезжать за нижний край на длинном
-	// шаблоне (SPEC 103, фаза 4).
-	if win := gs.Window; win != nil {
-		return container.NewBorder(nil, buildBackupSection(presenter, win), nil, nil, scroll)
-	}
+	// Бэкап переехал на вкладку «Generate»: прибитый к низу через Border, он
+	// забирал свою высоту целиком, и прокрутке настроек доставался остаток —
+	// нижние строки обрезались тем сильнее, чем уже окно.
 	return scroll
 }
 
