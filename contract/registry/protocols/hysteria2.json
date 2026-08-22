@@ -22,7 +22,7 @@
         "type": "enum",
         "allowlist": "hysteria2_obfs",
         "default": null,
-        "note": "Тип обфускации. Невалидный тип / obfs без пароля → блок obfs отбрасывается с warning, нода живёт (fatal ядра иначе). Go принимает только salamander (node_parser_hysteria2.go:13-15) — gecko есть в ядре lx и в Dart (§358); разрыв не решён в §9, см. note allowlists.hysteria2_obfs."
+        "note": "Тип обфускации. Невалидный тип / obfs без пароля → блок obfs отбрасывается с warning, нода живёт (fatal ядра иначе). Обе стороны принимают salamander и gecko (node_parser_hysteria2.go; сверяется TestRegistrySyncHysteria2Obfs) — gecko есть в ядре lx и в Dart (§358); разрыв не решён в §9, см. note allowlists.hysteria2_obfs."
       },
       "obfs-password": {
         "type": "string",

@@ -40,15 +40,17 @@
 - [x] Тесты обоих проектов зелёные (лаунчер целиком; LxBox 3340). Прогон в CI-пайплайнах — фаза 5
 - [x] Проверка на живой системе: сборка с `-i`, перепарс подписок и пересборка конфига через debug API — 42 ноды, ни одна не потеряна, VPN не прерывался
 
-## Фаза 2 — Тела, эмиссия, identity
+## Фаза 2 — Тела, эмиссия, identity (Go ✅, Dart — остаток)
 
-- [ ] `corpus/body/` — uri-list/base64/singbox(4 формы)/xray-массив/wgconf/vpn:// (+ ownership и порядок Xray зафиксированы фикстурами; by-design различие SNI-дедупа — через per-app override с ссылкой на IDENTITY.md)
-- [ ] Go: INI-ветка в `ClassifySubscriptionBody` (B11 — wgconf как тело подписки); Go-раннер входит через decode-слой, не через кэш-хук
-- [ ] Dart: ветка `vpn://` в `parseUri` для строки внутри URI-списка (B12)
-- [ ] `corpus/emit/` — entry→share-URI; cross-emit фикстуры (эмиссия A → парс B)
-- [ ] `docs/IDENTITY.md` нормативно + сверочные тесты identity в обоих репо
-- [ ] Go: структурированный накопитель warnings в парсере (минимум: коды на ноде) → строгая сверка `warnings` в корпусе для обоих
-- [ ] Sync-тесты реестра: Go (`IsDirectLink`, allowlist-таблицы) и Dart (`parseUri`, `kUtlsFingerprints`, …) сверяются с `registry/protocols.json`
+- [x] `corpus/body/` — 13 фикстур: uri-list, base64 (оба алфавита), singbox (4 формы + endpoints-WG), xray-массив, wgconf, vpn:// (сжатый и несжатый)
+- [x] Go: ветка `BodyKindWGConf` в `ClassifySubscriptionBody` (B11) + `WGConfBodyToURIs`; раннер `TestContractCorpusBody` входит через decode-слой, не через кэш-хук
+- [x] Go: `vpn://` как целое тело (`BodyKindVPNLink` → `ParseAmneziaVPNLinkAll`, ВСЕ контейнеры), несжатый профиль принимается
+- [x] `corpus/emit/` — round-trip поверх корпуса URI (`TestContractCorpusEmitRoundTrip`): 256/258, 2 законных отказа; **8 багов эмиссии закрыто**, 2 асимметрии оставлены by-design (D-028, ws-Host из sni)
+- [x] `docs/IDENTITY.md` нормативно + `core/config/identity_contract_test.go` (8 тестов; §3 закрыт и защищён от возврата)
+- [x] Go: `ParsedNode.Warnings` — коды деградации из реестра; строгая сверка `warnings` в конверте корпуса
+- [x] Sync-тесты реестра (Go): `registry_sync_test.go` — allowlist'ы кода против `registry/allowlists.json`; сразу поймал незакрытый gecko
+- [ ] Dart: ветка `vpn://` в `parseUri` для строки внутри URI-списка (B12); отдельный лимит длины vpn:// (сейчас режется общим maxURILength 65536)
+- [ ] Dart: раннер `corpus/body/` + коды warnings в конверте; sync-тесты реестра (`parseUri`, `kUtlsFingerprints`, …)
 
 ## Фаза 3 — Шаблоны (движок ✅, пресеты → SPEC 106)
 

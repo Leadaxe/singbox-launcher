@@ -27,14 +27,26 @@ Dart `app/lib/services/node_hash.dart` (`nodeIdentityHash`).
 Дедуп в пределах источника; владение идентичностью между элементами Xray-массива;
 ссылки групп на членов; привязка detour-ноды; ключи disabled-отметок.
 
-## 3. Известные расхождения хеша (цель фазы 2 — ноль)
+## 3. Расхождения хеша — закрыты
 
-| Класс | Причина | Ход |
+| Класс | Причина | Решение |
 |---|---|---|
-| строки с `<>&` (и ` /29`) | Go HTML/юникод-escaping | Go → без escaping (D-007) |
-| ws `?ed=N` без `eh` | Dart не эмитит `early_data_header_name` | Dart добавляет дефолт `Sec-WebSocket-Protocol` (D-008) |
-| anytls без `fp=` | Go не эмитит utls | Go добавляет дефолт `random` по vless-конвенции (D-009) |
-| wireguard | Go эмитит `name`/`system` | Go убирает дефолтные поля (D-010) |
+| строки с `<>&` (и ` /29`) | Go HTML/юникод-escaping | Go → без escaping (D-007) ✅ |
+| ws `?ed=N` без `eh` | Dart не эмитил `early_data_header_name` | Dart добавил дефолт `Sec-WebSocket-Protocol` (D-008) ✅ |
+| anytls без `fp=` | Go не эмитил utls | Go добавил дефолт `random` по vless-конвенции (D-009) ✅ |
+| wireguard | Go эмитил `name`/`system` | Go убрал дефолтные поля (D-010) ✅ |
+
+### 3.1 Защита от возврата
+
+Каждое расхождение закрыто тестом — проза сама по себе регрессию не ловит:
+
+- Go: `core/config/identity_contract_test.go` — `TestIdentityNoHTMLEscaping`,
+  `TestIdentityWSEarlyDataHeaderPresent`, `TestIdentityWireGuardNoDefaultFields`,
+  плюс инварианты §1 (tag не входит в хеш, разные ноды различимы, хеш стабилен
+  между вызовами и имеет форму 64 lowercase hex).
+- Общий корпус `corpus/uri/**` прогоняется обеими сторонами: расхождение
+  эмиссии проявится как разъехавшийся `expected` ещё до хеша.
+
 
 Миграция: отметки затронутых нод истекают по штатному TTL (§5), пересопоставление
 не строится (D-014).

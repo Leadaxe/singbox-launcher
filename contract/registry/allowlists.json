@@ -36,23 +36,40 @@
       "note": "Go isValidShadowsocksMethod (node_parser_ss.go:6-21) и Dart shadowsocksMethods (uri_utils.dart:280-293) идентичны. Метод вне списка → нода дропается (ошибка/null-skip) в обоих."
     },
     "tuic_congestion": {
-      "values": ["cubic", "new_reno", "bbr"],
+      "values": [
+        "cubic",
+        "new_reno",
+        "bbr"
+      ],
       "note": "Go isValidTuicCongestionControl (node_parser_tuic.go:14-21) и Dart _normalizeCongestion (tuic_parser.dart:62-63) — один набор. Деградация мусора различается по форме (Go дропает ключ, Dart пишет cubic), для ядра эквивалентно (дефолт cubic)."
     },
     "tuic_udp_relay_mode": {
-      "values": ["native", "quic"],
+      "values": [
+        "native",
+        "quic"
+      ],
       "note": "Go node_parser_tuic.go:78-84, Dart tuic_parser.dart:55. Мусор: Go дропает ключ, Dart пишет native."
     },
     "hysteria2_obfs": {
-      "values": ["salamander"],
-      "note": "Пересечение как канон: Go принимает только salamander (isValidHysteria2ObfsType, node_parser_hysteria2.go:13-15 + singbox_sanitize.go:284). Dart принимает salamander+gecko (kHysteria2ObfsTypes, hysteria2_obfs.dart:23 — зеркало enum ядра lx, §358). РАЗРЫВ (новое, вне §9): ядро lx умеет gecko, Go-allowlist отстал — целевое значение [salamander, gecko], Go добавляет; после решения обновить и этот список, и hysteria2.json."
+      "values": [
+        "salamander",
+        "gecko"
+      ],
+      "note": "Ядро lx реализует оба типа (protocol/hysteria2). РАЗРЫВ ЗАКРЫТ (SPEC 103, фаза 1): Go-allowlist принимал только salamander и молча дропал рабочий gecko — добавлен (isValidHysteria2ObfsType, node_parser_hysteria2.go). Dart принимал оба изначально (kHysteria2ObfsTypes, hysteria2_obfs.dart). Сверяется тестом TestRegistrySyncHysteria2Obfs."
     },
     "packet_encoding": {
-      "values": ["", "packetaddr", "xudp"],
+      "values": [
+        "",
+        "packetaddr",
+        "xudp"
+      ],
       "note": "Go node_parser_core.go:609-624, Dart normalizePacketEncoding (uri_utils.dart:151-159). Алиас none → '' (молчаливый дроп, by-design «без encoding») — оба. Прочий мусор → дроп поля с warning — оба. Регистр нормализуется к lowercase."
     },
     "vless_flow": {
-      "values": ["", "xtls-rprx-vision"],
+      "values": [
+        "",
+        "xtls-rprx-vision"
+      ],
       "note": "Алиас xtls-rprx-vision-udp443 → xtls-rprx-vision + packet_encoding=xudp + порт 443 (Go node_parser_core.go:600-607 и xray_outbound_convert.go:153-155; Dart json_parsers.dart:424-426). Dart-эмит гасит flow при любом транспорте (§115, node_spec_emit.dart:48-79); Go фильтрует flow на финальном эмиттере на ВСЕХ путях (outbound_generator.go:351-358): гасит и значения вне {'', xtls-rprx-vision}, и vision при наличии транспорта — в buildOutbound мусор попадает в Outbound['flow'], но до config.json не доезжает (плюс гейт на singbox-импорте, singbox_sanitize.go:220-236). Разрыва строгости в итоговом конфиге нет — см. vless.json degrade «drop поля»."
     }
   }
