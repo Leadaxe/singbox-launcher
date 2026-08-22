@@ -53,23 +53,44 @@ type TemplateVar struct {
 	If []string `json:"if,omitempty"`
 	// IfOr: активна если хотя бы одна bool var истинна (как params.if_or).
 	IfOr []string `json:"if_or,omitempty"`
+	// Enable — гейт #enable (SPEC 107): условие языка §5.1 любой формы.
+	// Для переменной шаблона false означает «строка Settings неактивна»;
+	// значение при этом СОХРАНЯЕТСЯ и по-прежнему подставляется в конфиг —
+	// UI-гейт, а не emit-гейт (§11.7). У переменной ПРЕСЕТА иначе: имя
+	// удаляется из varsMap, и фрагменты с ним выпадают.
+	Enable json.RawMessage `json:"#enable,omitempty"`
+	// OnChange — side-effect при изменении этой var (паритет с mobile,
+	// SPEC 103): `{"set": {"@target": <#if-дерево>, ...}}`. Ключ "set" —
+	// единственная форма сегодня (как в эталоне LxBox parser_config.dart).
+	// Каждый target пере-вычисляется через EvalIfScalar В КОНТЕКСТЕ уже
+	// НОВОГО значения этой var и пишется в целевую переменную; см.
+	// ApplyOnChange (on_change.go).
+	OnChange map[string]json.RawMessage `json:"on_change,omitempty"`
+
+	// OnChangeHashed — канонический помеченный вариант `#on_change`
+	// (SPEC 107). Правило языка: `#` — ключевое слово движка. Легаси
+	// `on_change` читается бессрочно; слияние — в UnmarshalJSON.
+	OnChangeHashed map[string]json.RawMessage `json:"#on_change,omitempty"`
 }
 
 // templateVarAlias avoids infinite recursion in UnmarshalJSON and carries the
 // raw options payload so it can be decoded into either string or object form.
 type templateVarAlias struct {
-	Separator    bool            `json:"separator,omitempty"`
-	Name         string          `json:"name"`
-	Type         string          `json:"type"`
-	DefaultValue VarDefaultValue `json:"default_value,omitempty"`
-	DefaultNode  string          `json:"default_node,omitempty"`
-	Options      json.RawMessage `json:"options,omitempty"`
-	WizardUI     string          `json:"wizard_ui,omitempty"`
-	Platforms    []string        `json:"platforms,omitempty"`
-	Title        string          `json:"title,omitempty"`
-	Tooltip      string          `json:"tooltip,omitempty"`
-	If           []string        `json:"if,omitempty"`
-	IfOr         []string        `json:"if_or,omitempty"`
+	Separator      bool                       `json:"separator,omitempty"`
+	Name           string                     `json:"name"`
+	Type           string                     `json:"type"`
+	DefaultValue   VarDefaultValue            `json:"default_value,omitempty"`
+	DefaultNode    string                     `json:"default_node,omitempty"`
+	Options        json.RawMessage            `json:"options,omitempty"`
+	WizardUI       string                     `json:"wizard_ui,omitempty"`
+	Platforms      []string                   `json:"platforms,omitempty"`
+	Title          string                     `json:"title,omitempty"`
+	Tooltip        string                     `json:"tooltip,omitempty"`
+	If             []string                   `json:"if,omitempty"`
+	IfOr           []string                   `json:"if_or,omitempty"`
+	Enable         json.RawMessage            `json:"#enable,omitempty"`
+	OnChange       map[string]json.RawMessage `json:"on_change,omitempty"`
+	OnChangeHashed map[string]json.RawMessage `json:"#on_change,omitempty"`
 }
 
 // UnmarshalJSON decodes a TemplateVar, accepting `options` as either a list of
@@ -91,6 +112,12 @@ func (v *TemplateVar) UnmarshalJSON(data []byte) error {
 	v.Tooltip = a.Tooltip
 	v.If = a.If
 	v.IfOr = a.IfOr
+	v.Enable = a.Enable
+	// Канон `#on_change` побеждает легаси `on_change` (SPEC 107).
+	v.OnChange = a.OnChange
+	if len(a.OnChangeHashed) > 0 {
+		v.OnChange = a.OnChangeHashed
+	}
 
 	if len(a.Options) == 0 || string(a.Options) == "null" {
 		return nil
@@ -208,19 +235,62 @@ func VarUISatisfied(v TemplateVar, varByName map[string]TemplateVar, resolved ma
 // правил для UI — «clash_api только на local» пишется тем же выражением,
 // что и ветка в config-секции.
 func VarUISatisfiedFor(v TemplateVar, varByName map[string]TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) bool {
-	if len(v.If) > 0 && len(v.IfOr) > 0 {
-		return false
-	}
 	if !VarAppliesOnGOOS(v.Platforms, target.Normalized().GOOS) {
 		return false
 	}
-	if len(v.If) > 0 {
-		return ParamIfSatisfiedFor(v.If, varByName, resolved, target)
+	// SPEC 107: #enable + легаси if/if_or сведены в одно условие. Прежнее
+	// «if и if_or одновременно → false» больше не нужно: обе части
+	// объединяются через and, как и задумано автором такого шаблона.
+	gate := v.Gate()
+	if gate == nil {
+		return true
 	}
-	if len(v.IfOr) > 0 {
-		return ParamIfOrSatisfiedFor(v.IfOr, varByName, resolved, target)
+	varTypes, scoped := scopeToPlatform(varByName, resolved, target)
+	return gate.Satisfied(varTypes, scoped, target)
+}
+
+// scopeToPlatform готовит контекст вычисления гейта для целевой ОС.
+//
+// Переменная, объявленная для другой платформы, обязана считаться ЛОЖНОЙ, а не
+// браться из состояния: `if_or: [tun_builtin, tun]`, где tun_builtin —
+// windows/linux, а tun — darwin, на macOS должен смотреть только на tun.
+// Иначе строка останется активной из-за значения, которого на этой ОС не
+// существует (поведение старого ParamBoolVarTrue, vars_resolve.go:480).
+//
+// Реализуется вырезанием таких имён из resolved: предикат не найдёт значение и
+// даст false — тот же результат, но одной семантикой движка.
+func scopeToPlatform(varByName map[string]TemplateVar, resolved map[string]ResolvedVar, target TargetSpec) (map[string]string, map[string]ResolvedVar) {
+	goos := target.Normalized().GOOS
+	varTypes := make(map[string]string, len(varByName))
+	scoped := make(map[string]ResolvedVar, len(resolved))
+	for name, r := range resolved {
+		scoped[name] = r
 	}
-	return true
+	for name, decl := range varByName {
+		varTypes[name] = decl.Type
+		if !VarAppliesOnGOOS(decl.Platforms, goos) {
+			delete(scoped, name)
+		}
+	}
+	return varTypes, scoped
+}
+
+// Gate возвращает нормализованный гейт переменной (#enable + легаси if/if_or)
+// или nil, если гейта нет.
+func (v TemplateVar) Gate() *GateCond {
+	var enableRaw interface{}
+	if len(v.Enable) > 0 {
+		if err := json.Unmarshal(v.Enable, &enableRaw); err != nil {
+			return &GateCond{Invalid: true} // fail-closed
+		}
+	}
+	return NormalizeGate(enableRaw, v.If, v.IfOr)
+}
+
+// GateDeps — имена переменных, от которых зависит активность строки
+// (SPEC 107 §8.1): вход в реактивный индекс UI.
+func (v TemplateVar) GateDeps() []string {
+	return v.Gate().Deps()
 }
 
 // ResolvedVar — значение переменной после разрешения (state → default).
@@ -489,20 +559,18 @@ func ParamIfOrSatisfiedFor(ifOrNames []string, varByName map[string]TemplateVar,
 // показывать выключенным. Условия со ссылками на vars (@tun) наоборот
 // гасят строку: их пользователь может выполнить.
 func VarConditionIsTargetOnly(v TemplateVar) bool {
-	entries := v.If
-	if len(entries) == 0 {
-		entries = v.IfOr
-	}
-	if len(entries) == 0 {
+	// SPEC 107: вопрос «от чего зависит условие» отвечает CondDeps — одна
+	// семантика на любую форму записи (#enable, легаси if/if_or, JSON-предикат
+	// строкой). Раньше функция читала только v.If и требовала, чтобы каждый
+	// элемент был JSON-объектом; после миграции на #enable она переставала
+	// видеть условие вовсе, и строка гасла вместо того, чтобы скрыться.
+	deps := v.GateDeps()
+	if len(deps) == 0 {
 		return false
 	}
-	for _, e := range entries {
-		t := strings.TrimSpace(e)
-		if !strings.HasPrefix(t, "{") {
-			return false // голое "@var" — ссылка на другую переменную
-		}
-		if !onlyRuntimeGlobalRefs(t) {
-			return false
+	for _, name := range deps {
+		if !isRuntimeGlobalRef(name) {
+			return false // ссылка на обычную переменную — условие не статично
 		}
 	}
 	return true

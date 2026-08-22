@@ -49,10 +49,16 @@ func tunAddressFromTemplate(t *testing.T, raw json.RawMessage, state map[string]
 	// что гейтится по @tun.
 	var inbounds json.RawMessage
 	for _, p := range root.Params {
-		if p.Name != "inbounds" || len(p.If) != 1 || p.If[0] != "@tun" {
+		if p.Name != "inbounds" {
 			continue
 		}
-		inbounds = p.Value
+		// SPEC 107: гейт живёт в #enable (легаси if/if_or читаются как алиасы),
+		// поэтому ищем секцию по ЗАВИСИМОСТЯМ нормализованного гейта, а не по
+		// конкретному полю — тест не должен ломаться от формы записи.
+		deps := p.Gate().Deps()
+		if len(deps) == 1 && deps[0] == "tun" {
+			inbounds = p.Value
+		}
 	}
 	if len(inbounds) == 0 {
 		t.Fatal("template params: TUN inbounds section not found")

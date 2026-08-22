@@ -197,6 +197,19 @@ type TemplateParam struct {
 	If        []string        `json:"if,omitempty"`
 	// IfOr: хотя бы одна перечисленная bool-переменная истинна на текущей ОС (см. ParamBoolVarTrue).
 	IfOr []string `json:"if_or,omitempty"`
+	// Enable — гейт #enable (SPEC 107). false → блок params не применяется.
+	Enable json.RawMessage `json:"#enable,omitempty"`
+}
+
+// Gate возвращает нормализованный гейт блока (#enable + легаси if/if_or).
+func (p TemplateParam) Gate() *GateCond {
+	var enableRaw interface{}
+	if len(p.Enable) > 0 {
+		if err := json.Unmarshal(p.Enable, &enableRaw); err != nil {
+			return &GateCond{Invalid: true} // fail-closed
+		}
+	}
+	return NormalizeGate(enableRaw, p.If, p.IfOr)
 }
 
 // GetTemplateFileName возвращает имя файла шаблона. Один файл для всех платформ.
@@ -366,14 +379,16 @@ func applyParamsFiltered(configJSON json.RawMessage, params []TemplateParam, goo
 			continue
 		}
 		if vi != nil && resolved != nil {
-			if len(param.If) > 0 && len(param.IfOr) > 0 {
-				return nil, fmt.Errorf("param %q: if and if_or cannot both be set", param.Name)
-			}
-			if len(param.If) > 0 && !ParamIfSatisfied(param.If, vi, resolved, goos) {
-				continue
-			}
-			if len(param.IfOr) > 0 && !ParamIfOrSatisfied(param.IfOr, vi, resolved, goos) {
-				continue
+			// SPEC 107: #enable + легаси if/if_or — одно условие. Прежний
+			// запрет «if и if_or одновременно» снят: части объединяются
+			// через and, как и подразумевал автор такого шаблона.
+			gate := param.Gate()
+			if gate != nil {
+				tgt := TargetSpec{GOOS: goos}.Normalized()
+				varTypes, scoped := scopeToPlatform(vi, resolved, tgt)
+				if !gate.Satisfied(varTypes, scoped, tgt) {
+					continue
+				}
 			}
 		}
 		mode := param.Mode

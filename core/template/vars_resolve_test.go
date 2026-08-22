@@ -92,12 +92,44 @@ func TestVarUISatisfied_ifOr(t *testing.T) {
 	}
 }
 
-func TestVarUISatisfied_ifAndIfOrInvalid(t *testing.T) {
-	v := TemplateVar{Name: "z", Type: "text", If: []string{"a"}, IfOr: []string{"b"}}
+// SPEC 107: `if` и `if_or` на одном носителе больше не считаются ошибкой —
+// части объединяются через and (§7), как и подразумевал автор такого шаблона.
+// Прежнее поведение (всегда false) молча гасило строку целиком.
+func TestVarUISatisfied_ifAndIfOrCombine(t *testing.T) {
 	vi := VarIndex([]TemplateVar{{Name: "a", Type: "bool"}, {Name: "b", Type: "bool"}})
-	res := map[string]ResolvedVar{"a": {Scalar: "true"}, "b": {Scalar: "true"}}
-	if VarUISatisfied(v, vi, res, "darwin") {
-		t.Fatal("both if and if_or → false")
+	v := TemplateVar{Name: "z", Type: "text", If: []string{"a"}, IfOr: []string{"b"}}
+
+	both := map[string]ResolvedVar{"a": {Scalar: "true"}, "b": {Scalar: "true"}}
+	if !VarUISatisfied(v, vi, both, "darwin") {
+		t.Error("обе части истинны → строка активна")
+	}
+	andFalse := map[string]ResolvedVar{"a": {Scalar: "false"}, "b": {Scalar: "true"}}
+	if VarUISatisfied(v, vi, andFalse, "darwin") {
+		t.Error("ложная if-часть гасит строку")
+	}
+	orFalse := map[string]ResolvedVar{"a": {Scalar: "true"}, "b": {Scalar: "false"}}
+	if VarUISatisfied(v, vi, orFalse, "darwin") {
+		t.Error("ложная if_or-часть гасит строку")
+	}
+}
+
+// SPEC 107: гейт #enable у переменной шаблона — тот же движок условий.
+func TestVarUISatisfied_enableGate(t *testing.T) {
+	vi := VarIndex([]TemplateVar{{Name: "a", Type: "bool"}, {Name: "b", Type: "bool"}})
+	res := map[string]ResolvedVar{"a": {Scalar: "false"}, "b": {Scalar: "true"}}
+
+	v := TemplateVar{Name: "z", Type: "text", Enable: []byte(`{"or":["@a","@b"]}`)}
+	if !VarUISatisfied(v, vi, res, "darwin") {
+		t.Error("or с одной истинной частью → строка активна")
+	}
+	nested := TemplateVar{Name: "z", Type: "text",
+		Enable: []byte(`{"and":["@b",{"or":["@a","@b"]}]}`)}
+	if !VarUISatisfied(nested, vi, res, "darwin") {
+		t.Error("вложенный or внутри and не вычислился")
+	}
+	deps := nested.GateDeps()
+	if len(deps) != 2 || deps[0] != "a" || deps[1] != "b" {
+		t.Errorf("deps гейта: %v, ожидалось [a b]", deps)
 	}
 }
 

@@ -349,8 +349,11 @@ func validateIfBody(raw interface{}, varByName map[string]TemplateVar, ctx strin
 	if !ok {
 		return fmt.Errorf("%s: body must be an object", ctx)
 	}
-	andRaw, hasAnd := body["and"]
-	orRaw, hasOr := body["or"]
+	// SPEC 107: ключевые слова читаются в обеих формах — канонической
+	// "#and"/"#or" и легаси без "#". Валидатор обязан знать обе, иначе
+	// канонический шаблон не загрузится вовсе.
+	andRaw, hasAnd := condKey(body, "and")
+	orRaw, hasOr := condKey(body, "or")
 	if hasAnd && hasOr {
 		return fmt.Errorf("%s: must have exactly one of \"and\" or \"or\" (not both)", ctx)
 	}
@@ -381,7 +384,7 @@ func validateIfBody(raw interface{}, varByName map[string]TemplateVar, ctx strin
 		}
 	}
 	// value required, not nil.
-	valField, hasVal := body["value"]
+	valField, hasVal := condKey(body, "value")
 	if !hasVal {
 		return fmt.Errorf("%s: missing required \"value\" field", ctx)
 	}
@@ -392,7 +395,7 @@ func validateIfBody(raw interface{}, varByName map[string]TemplateVar, ctx strin
 	if err := walkValidateIf(valField, varByName, ctx+".value"); err != nil {
 		return err
 	}
-	if elseField, hasElse := body["else"]; hasElse {
+	if elseField, hasElse := condKey(body, "else"); hasElse {
 		if elseField == nil {
 			return fmt.Errorf("%s.else: must not be null", ctx)
 		}
