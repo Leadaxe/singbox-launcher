@@ -655,7 +655,9 @@ func (t *daemonProxyTransport) Delay(proxyName string) (int64, error) {
 		Link:        api.GetPingTestURL(),
 		// Timeout — миллисекунды (uint32), в отличие от Interval у Subscribe*,
 		// который в наносекундах (time.Duration). Всегда через time.Duration.
-		Timeout: uint32((10 * time.Second).Milliseconds()),
+		// 5s — единый бюджет одиночного теста во всех трёх транспортах
+		// (classic GetDelay шлёт timeout=5000).
+		Timeout: uint32((5 * time.Second).Milliseconds()),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("daemon URLTestOutbound: %w", err)

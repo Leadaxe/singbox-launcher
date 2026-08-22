@@ -228,7 +228,9 @@ func (t *LxdRemoteTransport) Delay(proxyName string) (int64, error) {
 		Link:        api.GetPingTestURL(),
 		// Timeout — миллисекунды (uint32); Interval у Subscribe* —
 		// наносекунды. Всегда через time.Duration, чтобы не перепутать.
-		Timeout: uint32((10 * time.Second).Milliseconds()),
+		// 5s — единый бюджет одиночного теста во всех трёх транспортах
+		// (classic GetDelay шлёт timeout=5000).
+		Timeout: uint32((5 * time.Second).Milliseconds()),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("lxd remote URLTestOutbound: %w", err)
