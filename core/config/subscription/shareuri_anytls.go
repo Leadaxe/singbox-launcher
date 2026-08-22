@@ -34,6 +34,17 @@ func shareURIFromAnyTLS(out map[string]interface{}) (string, error) {
 		if sni := mapGetString(tls, "server_name"); sni != "" {
 			q.Set("sni", sni)
 		}
+		// REALITY: без pbk/sid ссылка описывает обычный TLS-узел, и
+		// импортировавший её получает узел, который не подключается —
+		// парсер anytls reality читает (SPEC 091), а эмиттер молчал.
+		if reality, ok := tls["reality"].(map[string]interface{}); ok {
+			if pbk := mapGetString(reality, "public_key"); pbk != "" {
+				q.Set("pbk", pbk)
+				if sid := mapGetString(reality, "short_id"); sid != "" {
+					q.Set("sid", sid)
+				}
+			}
+		}
 		shareAppendALPNInsecure(q, tls) // alpn + insecure=1
 		if utls, ok := tls["utls"].(map[string]interface{}); ok {
 			if fp := mapGetString(utls, "fingerprint"); fp != "" {

@@ -71,6 +71,15 @@ func shareURIFromVMess(out map[string]interface{}) (string, error) {
 			vm["net"] = "ws"
 			vm["path"] = mapGetString(tr, "path")
 			vm["host"] = mapGetString(tr, "host")
+		case "xhttp":
+			// SPEC 071: xhttp — отдельный транспорт, не httpupgrade. Ветки не
+			// было вовсе: net уезжал верный, а path/host/mode терялись, и
+			// узел после round-trip оставался с одним лишь типом транспорта.
+			vm["path"] = mapGetString(tr, "path")
+			vm["host"] = mapGetString(tr, "host")
+			if mode := mapGetString(tr, "mode"); mode != "" {
+				vm["mode"] = mode
+			}
 		}
 	}
 	if tls, ok := out["tls"].(map[string]interface{}); ok {

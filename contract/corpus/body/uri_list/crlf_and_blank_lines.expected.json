@@ -1,0 +1,46 @@
+{
+  "meta": {
+    "body_kind": "uri-list"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "random"
+          }
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "a",
+      "scheme": "vless"
+    },
+    {
+      "entry": {
+        "server": "example-2.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-2.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "random"
+          }
+        },
+        "type": "vless",
+        "uuid": "22222222-2222-2222-2222-222222222222"
+      },
+      "kind": "outbound",
+      "label": "b",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

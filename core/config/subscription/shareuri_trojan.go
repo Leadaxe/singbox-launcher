@@ -8,8 +8,12 @@ import (
 // --- Trojan ---
 
 func trojanTLSToQuery(q url.Values, tls map[string]interface{}, server string) {
+	// Нет блока tls — значит узел работает БЕЗ TLS, и ссылка обязана это
+	// сказать явно. Раньше здесь выставлялся sni=server, и обратный разбор
+	// включал TLS: пользователь делился ссылкой, которая давала неработающий
+	// узел (round-trip корпуса, SPEC 103 фаза 2).
 	if tls == nil {
-		q.Set("sni", server)
+		q.Set("security", "none")
 		return
 	}
 	if en, ok := tls["enabled"].(bool); ok && !en {

@@ -64,6 +64,15 @@ func shareURIFromHysteria2(out map[string]interface{}) (string, error) {
 		if op := mapGetString(obfs, "password"); op != "" {
 			q.Set("obfs-password", op)
 		}
+		// gecko несёт границы размера пакета плоско внутри obfs
+		// (option/hysteria2.go, Hysteria2ObfsGecko). Парсер их читает —
+		// эмиттер молчал, и обфускация после round-trip теряла настройку.
+		if n := mapGetInt(obfs, "min_packet_size"); n > 0 {
+			q.Set("obfs-min-packet-size", strconv.Itoa(n))
+		}
+		if n := mapGetInt(obfs, "max_packet_size"); n > 0 {
+			q.Set("obfs-max-packet-size", strconv.Itoa(n))
+		}
 	}
 	if up := mapGetInt(out, "up_mbps"); up > 0 {
 		q.Set("upmbps", strconv.Itoa(up))

@@ -8,14 +8,15 @@ import (
 // --- VLESS ---
 
 func vlessTLSToQuery(q url.Values, tls map[string]interface{}, server string, port int) {
+	// Блока tls нет — узел работает БЕЗ шифрования, и ссылка обязана сказать
+	// это явно. Раньше здесь угадывалось security=tls по номеру порта
+	// (эвристика plaintextVLESSPorts), и узел с security=none на 443 после
+	// round-trip приезжал уже с TLS: пользователь делился ссылкой на узел,
+	// который не подключается. Эвристика уместна на ВХОДЕ, где выбора нет
+	// (провайдер не написал security), но не на выходе, где мы точно знаем,
+	// что TLS выключен (SPEC 103, фаза 2).
 	if tls == nil {
-		if shouldVLESSSkipTLSForPort(port) {
-			return
-		}
-		q.Set("security", "tls")
-		if server != "" {
-			q.Set("sni", server)
-		}
+		q.Set("security", "none")
 		return
 	}
 	en, hasEn := tls["enabled"].(bool)
@@ -69,13 +70,22 @@ func shareURIFromVLESS(out map[string]interface{}) (string, error) {
 		return "", fmt.Errorf("%w: vless needs uuid, server, server_port", ErrShareURINotSupported)
 	}
 	q := url.Values{}
-	q.Set("encryption", "none")
+	// encryption: у VLESS почти всегда "none", но post-quantum узлы несут в
+	// этом поле длинный ключ (mlkem768x25519plus…). Жёсткое "none" затирало
+	// его, и поделившийся ссылкой отдавал узел без ключа обмена.
+	if enc := mapGetString(out, "encryption"); enc != "" {
+		q.Set("encryption", enc)
+	} else {
+		q.Set("encryption", "none")
+	}
 	if tr, ok := out["transport"].(map[string]interface{}); ok {
 		transportToQuery(q, tr)
 	}
+	// Эвристика порта здесь не нужна: отсутствие блока tls означает, что TLS
+	// выключен, и vlessTLSToQuery скажет об этом явным security=none.
 	if tls, ok := out["tls"].(map[string]interface{}); ok {
 		vlessTLSToQuery(q, tls, server, port)
-	} else if !shouldVLESSSkipTLSForPort(port) {
+	} else {
 		vlessTLSToQuery(q, nil, server, port)
 	}
 	if f := mapGetString(out, "flow"); f != "" {

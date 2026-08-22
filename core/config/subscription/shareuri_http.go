@@ -29,8 +29,11 @@ func shareURIFromHTTP(out map[string]interface{}) (string, error) {
 	case user != "" && pass == "":
 		ui = url.User(user)
 	case user == "" && pass != "":
-		// Same convention as SOCKS/naive: password-only goes in the user slot.
-		ui = url.User(pass)
+		// Пароль без логина эмитится как ":pass" — ровно так его читает
+		// парсер (node_parser_http.go: user | user:pass | :pass). Раньше
+		// пароль клали в слот ИМЕНИ, и round-trip превращал password в
+		// username: узел уходил к провайдеру с пустым паролем.
+		ui = url.UserPassword("", pass)
 	}
 
 	q := url.Values{}

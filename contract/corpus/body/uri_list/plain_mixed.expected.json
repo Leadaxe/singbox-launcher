@@ -1,0 +1,54 @@
+{
+  "meta": {
+    "body_kind": "uri-list"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-1.com",
+          "utls": {
+            "enabled": true,
+            "fingerprint": "random"
+          }
+        },
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "node-a",
+      "scheme": "vless"
+    },
+    {
+      "entry": {
+        "password": "testpass123",
+        "server": "example-2.com",
+        "server_port": 443,
+        "tls": {
+          "enabled": true,
+          "server_name": "example-2.com"
+        },
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "node-b",
+      "scheme": "trojan"
+    },
+    {
+      "entry": {
+        "method": "aes-256-gcm",
+        "password": "testpass123",
+        "server": "example-3.com",
+        "server_port": 8388,
+        "type": "shadowsocks"
+      },
+      "kind": "outbound",
+      "label": "node-c",
+      "scheme": "ss"
+    }
+  ],
+  "v": 1
+}

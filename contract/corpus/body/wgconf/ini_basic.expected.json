@@ -1,0 +1,35 @@
+{
+  "meta": {
+    "body_kind": "wgconf"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.0.0.2/32",
+          "fd00::2/128"
+        ],
+        "mtu": 1420,
+        "peers": [
+          {
+            "address": "example-3.com",
+            "allowed_ips": [
+              "0.0.0.0/0",
+              "::/0"
+            ],
+            "persistent_keepalive_interval": 25,
+            "port": 51820,
+            "pre_shared_key": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeE=",
+            "public_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA="
+          }
+        ],
+        "private_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "example-3.com",
+      "scheme": "wireguard"
+    }
+  ],
+  "v": 1
+}

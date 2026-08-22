@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "body_kind": "singbox-config-array"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 443,
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "multi-a",
+      "scheme": "vless"
+    },
+    {
+      "entry": {
+        "password": "testpass123",
+        "server": "example-2.com",
+        "server_port": 443,
+        "type": "trojan"
+      },
+      "kind": "outbound",
+      "label": "multi-b",
+      "scheme": "trojan"
+    }
+  ],
+  "v": 1
+}

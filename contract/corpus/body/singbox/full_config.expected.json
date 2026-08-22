@@ -1,0 +1,19 @@
+{
+  "meta": {
+    "body_kind": "singbox-config"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "server": "example-1.com",
+        "server_port": 443,
+        "type": "vless",
+        "uuid": "11111111-1111-1111-1111-111111111111"
+      },
+      "kind": "outbound",
+      "label": "cfg-a",
+      "scheme": "vless"
+    }
+  ],
+  "v": 1
+}

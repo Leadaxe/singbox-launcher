@@ -57,7 +57,11 @@ func ShareURIFromWireGuardEndpoint(ep map[string]interface{}) (string, error) {
 	q.Set("publickey", pub)
 	q.Set("address", strings.Join(addrList, ","))
 	q.Set("allowedips", strings.Join(allowed, ","))
-	if mtu := mapGetInt(ep, "mtu"); mtu > 0 && mtu != 1420 {
+	// MTU эмитится, если он есть в узле. Раньше значение 1420 умалчивалось
+	// как «дефолтное», но D-026 отдал ДЕФОЛТ ядру: если mtu лежит в узле,
+	// его туда положил пользователь или подписка, и ссылка обязана его
+	// донести — иначе round-trip молча роняет настройку.
+	if mtu := mapGetInt(ep, "mtu"); mtu > 0 {
 		q.Set("mtu", strconv.Itoa(mtu))
 	}
 	if ka := mapGetInt(peer, "persistent_keepalive_interval"); ka > 0 {

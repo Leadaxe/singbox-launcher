@@ -1,0 +1,54 @@
+{
+  "meta": {
+    "body_kind": "vpn-link"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.8.0.2/32"
+        ],
+        "peers": [
+          {
+            "address": "example-1.com",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "persistent_keepalive_interval": 25,
+            "port": 51820,
+            "public_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbA="
+          }
+        ],
+        "private_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "Test Profile amnezia-awg",
+      "scheme": "wireguard"
+    },
+    {
+      "entry": {
+        "address": [
+          "10.9.0.2/32"
+        ],
+        "peers": [
+          {
+            "address": "example-2.com",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "persistent_keepalive_interval": 25,
+            "port": 51820,
+            "public_key": "ddddddddddddddddddddddddddddddddddddddddddA="
+          }
+        ],
+        "private_key": "ccccccccccccccccccccccccccccccccccccccccccA=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "Test Profile amnezia-wireguard",
+      "scheme": "wireguard"
+    }
+  ],
+  "v": 1
+}

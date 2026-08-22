@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "body_kind": "vpn-link"
+  },
+  "nodes": [
+    {
+      "entry": {
+        "address": [
+          "10.5.0.2/32"
+        ],
+        "peers": [
+          {
+            "address": "example-4.com",
+            "allowed_ips": [
+              "0.0.0.0/0"
+            ],
+            "port": 51820,
+            "public_key": "ffffffffffffffffffffffffffffffffffffffffffE="
+          }
+        ],
+        "private_key": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeE=",
+        "type": "wireguard"
+      },
+      "kind": "endpoint",
+      "label": "Plain JSON Profile",
+      "scheme": "wireguard"
+    }
+  ],
+  "v": 1
+}
