@@ -89,6 +89,15 @@ in a dev build it sits next to the binary.
       { "kind": "preset", "ref": "<pid>", "enabled": true },
       { "kind": "user",   "enabled": true, ... }
     ]
+  },
+
+  "channels": [                          // SPEC 104; absent = never seeded yet
+    { "tag": "vpn-1", "label": "VPN ①", "enabled": true,
+      "node_filter": "^DE-", "auto": { "url": "...", "interval": "5m" } }
+  ],
+
+  "foreign_backup_extensions": {         // SPEC 103 phase 4; other apps' blobs
+    "lxbox": { ... }                     // kept verbatim, never interpreted
   }
 }
 ```
@@ -485,6 +494,57 @@ written back.
   ]
 }
 ```
+
+---
+
+### 3.7 `channels[i]` — routing channels (SPEC 104)
+
+A channel is a **named routing target** rules point at. Rules cannot point at a
+subscription node directly: node tags are regenerated on every refresh, so such a
+rule would fall apart on its own. On build a channel materializes into a
+`selector` plus, when auto-select is on, a paired `urltest` named `<tag>-auto`.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `tag` | string | `vpn-1`…`vpn-10`. **Immutable** — rules reference it, so renaming must not break them. Not user-editable. |
+| `label` | string | Display name. The only "name" the user types. |
+| `enabled` | bool | Default **true**. Absent means true, not false — see the note below. |
+| `include_direct` | bool | Offer `direct-out` as an option inside the selector. |
+| `include_block` | bool | Offer the blocking outbound as an option. |
+| `node_filter` | string | Regular expression over the node's **final** tag. Empty = every node. |
+| `node_filter_invert` | bool | Keep nodes that do **not** match. Meaningless with an empty filter. |
+| `default_filter` | string | Regular expression; the first matching node becomes the selector's `default`. |
+| `interrupt_exist_connections` | bool | Default **true**. Drop live connections when the channel switches. |
+| `auto` | object \| null | `{url, interval, tolerance, idle_timeout, interrupt_exist_connections}`. **null means auto-select is off** and `<tag>-auto` is not emitted at all. |
+
+**Absent section vs empty array.** `channels` missing entirely means "never
+seeded" — the launcher fills it once from the template's `default_channels`.
+An **empty array** is the user's own choice ("I deleted every channel"), and
+re-seeding it would bring deleted channels back on the next start. The two
+states are deliberately distinct.
+
+**Defaults on read.** `Channel.UnmarshalJSON` restores `enabled` and
+`interrupt_exist_connections` to true when the keys are absent: a bool's zero
+value is false, so without this a channel written without an explicit
+`"enabled"` would silently switch itself off on every read.
+
+Channel shape and materialization: `core/state/channel_types.go`,
+`core/build/channels.go`. Template side (`group_templates`,
+`default_channels`): `core/template/channel_defaults.go`.
+
+---
+
+### 3.8 `foreign_backup_extensions` — other apps' data (SPEC 103 phase 4)
+
+When an LX Backup created by another app is imported, its `extensions.<app>`
+blobs are stored here **verbatim** and written back into the next export.
+
+The launcher never reads or interprets them — it cannot: the contents belong to
+the other side's model. Without this field a backup that passed through the
+desktop would return to the phone impoverished, having silently lost everything
+the desktop had no place for.
+
+Keys are app identifiers (`lxbox`); values are opaque JSON.
 
 ---
 
