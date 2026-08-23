@@ -143,26 +143,16 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				// Template entries (read-only) получают View JSON вместо Edit.
 				var right *fyne.Container
 				if templateOwned {
-					bodyCopy := obj
+					// Тем же окном, что и своя запись: форма заблокирована,
+					// вкладка JSON на месте, параметры правятся кнопкой
+					// внутри. Отдельный диалог «сырой JSON» убран — он и
+					// создавал разницу между своим сервером и шаблонным.
+					viewIdx := idx
 					viewBtn := fynewidget.NewHoverForwardButtonWithIcon("View", theme.SearchIcon(), func() {
-						showTemplateDNSDetailsDialog(dialogParent(), bodyCopy, locked)
+						showDNSServerEditor(presenter, dialogParent(), viewIdx)
 					}, rowGetter)
 					viewBtn.Importance = widget.LowImportance
-					// SPEC 109: у записи из шаблона тело править нельзя, но её
-					// СОБСТВЕННЫЕ параметры (канал, адрес провайдера, профиль
-					// Safe DNS) — можно и нужно: ради них параметризация и
-					// переносилась. Кнопка только там, где параметры есть.
-					if len(dnsServerVarsFor(presenter, tag)) > 0 {
-						varsTag := tag
-						varsBtn := fynewidget.NewHoverForwardButtonWithIcon(
-							locale.T("wizard.dns.button_params"), theme.SettingsIcon(), func() {
-								showDNSTemplateVarsDialog(presenter, dialogParent(), varsTag)
-							}, rowGetter)
-						varsBtn.Importance = widget.LowImportance
-						right = container.NewHBox(varsBtn, viewBtn, rowGutter)
-					} else {
-						right = container.NewHBox(viewBtn, rowGutter)
-					}
+					right = container.NewHBox(viewBtn, rowGutter)
 				} else {
 					editBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("wizard.shared.button_edit"), theme.DocumentCreateIcon(), func() {
 						showDNSServerEditor(presenter, dialogParent(), idx)
@@ -845,7 +835,7 @@ func showDNSServerAddDialog(p *wizardpresentation.WizardPresenter, w fyne.Window
 	form := newDNSServerForm(p, "")
 	form.tagEntry.SetText(uniqueDNSTag(p))
 	showDNSServerDialog(p, w, form, nil, -1,
-		locale.T("wizard.dns.dialog_add_title"), locale.T("wizard.dns.dialog_add_hint"))
+		locale.T("wizard.dns.dialog_add_title"), locale.T("wizard.dns.dialog_add_hint"), false)
 }
 
 // showDNSServerDialog — общее окно добавления и правки: вкладка «Настройки»
@@ -862,6 +852,7 @@ func showDNSServerDialog(
 	body map[string]interface{},
 	editIndex int,
 	title, hint string,
+	readOnly bool,
 ) {
 	jsonEntry := widget.NewMultiLineEntry()
 	jsonEntry.Wrapping = fyne.TextWrapOff
@@ -927,6 +918,10 @@ func showDNSServerDialog(
 	}
 	editWin := controller.UIService.Application.NewWindow(title)
 
+	if readOnly {
+		form.SetReadOnly()
+	}
+
 	save := widget.NewButton(locale.T("wizard.dns.dialog_save"), func() {
 		text := jsonEntry.Text
 		// С вкладки «Настройки» источник истины — форма: пользователь мог
@@ -950,6 +945,21 @@ func showDNSServerDialog(
 	})
 
 	buttons := container.NewHBox(layout.NewSpacer(), cancel, save)
+	if readOnly {
+		// Шаблонная запись: сохранять нечего — тело живёт в шаблоне.
+		// Правятся только её собственные параметры, и кнопка на них здесь
+		// же, чтобы не искать её в списке.
+		cancel.SetText(locale.T("wizard.dns.dialog_close"))
+		tag, _ := body["tag"].(string)
+		if len(dnsServerVarsFor(p, tag)) > 0 {
+			paramsBtn := widget.NewButtonWithIcon(locale.T("wizard.dns.button_params"), theme.SettingsIcon(), func() {
+				showDNSTemplateVarsDialog(p, editWin, tag)
+			})
+			buttons = container.NewHBox(paramsBtn, layout.NewSpacer(), cancel)
+		} else {
+			buttons = container.NewHBox(layout.NewSpacer(), cancel)
+		}
+	}
 	editWin.SetContent(container.NewBorder(nil, buttons, nil, nil, tabs))
 	editWin.Resize(fyne.NewSize(660, 620))
 	editWin.CenterOnScreen()
@@ -969,10 +979,16 @@ func showDNSServerEditor(p *wizardpresentation.WizardPresenter, w fyne.Window, i
 	}
 	var cur map[string]interface{}
 	_ = json.Unmarshal(m.DNSServers[index], &cur)
+	// Шаблонная запись открывается ТЕМ ЖЕ окном, только в режиме чтения:
+	// раньше она уходила в отдельный диалог с сырым JSON, и один и тот же
+	// сервер выглядел формой у себя и текстом у шаблона.
 	if wizardbusiness.DNSTagFromTemplate(m, dnsJSONStringField(cur, "tag")) {
+		form := newDNSServerForm(p, dnsJSONStringField(cur, "tag"))
+		showDNSServerDialog(p, w, form, cur, -1,
+			locale.T("wizard.dns.dialog_view_title"), locale.T("wizard.dns.dialog_view_hint"), true)
 		return
 	}
 	form := newDNSServerForm(p, dnsJSONStringField(cur, "tag"))
 	showDNSServerDialog(p, w, form, cur, index,
-		locale.T("wizard.dns.dialog_title"), locale.T("wizard.dns.dialog_hint"))
+		locale.T("wizard.dns.dialog_title"), locale.T("wizard.dns.dialog_hint"), false)
 }

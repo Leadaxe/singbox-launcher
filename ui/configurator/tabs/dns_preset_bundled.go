@@ -186,36 +186,8 @@ func showBundledReadOnlyDetails(parent fyne.Window, tpl *wizardtemplate.Preset, 
 	showJSONReadOnlyDialog(parent, title, header, helpLabel, jsonBody)
 }
 
-// showTemplateDNSDetailsDialog — read-only modal для template DNS-сервера
-// (entries из template.dns_options.servers[]).
-//
-// Header показывает tag + 🔒 (или ⛔ если required). Body — pretty JSON.
-func showTemplateDNSDetailsDialog(parent fyne.Window, body map[string]interface{}, required bool) {
-	if parent == nil || body == nil {
-		return
-	}
-	tag, _ := body["tag"].(string)
-	icon := "🔒"
-	helpText := "Read-only template DNS server. Toggle on/off via checkbox."
-	if required {
-		icon = "⛔"
-		helpText = "Required template DNS server: always enabled, always emitted."
-	}
-	header := widget.NewLabelWithStyle(
-		icon+"  Template DNS server: "+tag,
-		fyne.TextAlignLeading, fyne.TextStyle{Bold: true},
-	)
-	helpLabel := widget.NewLabelWithStyle(
-		helpText,
-		fyne.TextAlignLeading, fyne.TextStyle{Italic: true},
-	)
-	helpLabel.Wrapping = fyne.TextWrapWord
-	jsonBody, _ := jsonPrettyMarshal(body)
-	showJSONReadOnlyDialog(parent, "DNS server details", header, helpLabel, jsonBody)
-}
-
 // showJSONReadOnlyDialog — общий low-level: title + header + helpLabel + JSON pretty.
-// Используется обоими: showBundledReadOnlyDetails (preset) + showTemplateDNSDetailsDialog (template).
+// Используется showBundledReadOnlyDetails (пресетные серверы и правила).
 func showJSONReadOnlyDialog(parent fyne.Window, title string, header, helpLabel fyne.CanvasObject, jsonBody string) {
 	if parent == nil {
 		return

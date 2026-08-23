@@ -93,6 +93,10 @@ type dnsServerForm struct {
 	// выключить сервер временно.
 	enabledByTag map[string]bool
 
+	// readOnly — форма показывает шаблонную запись: поля заблокированы, у
+	// участников группы нет кнопки удаления.
+	readOnly bool
+
 	// applying — правка идёт из кода. Без флага programmatic SetSelected
 	// вызвал бы OnChanged, тот — перестроение формы, и она ушла бы в
 	// рекурсию (ловушка SPEC 104).
@@ -205,6 +209,26 @@ func (f *dnsServerForm) syncRows() {
 	show("error_ttl", group)
 	show("win_ttl", group)
 	f.content.Refresh()
+}
+
+// SetReadOnly блокирует поля формы, оставляя их читаемыми.
+//
+// «Тело править нельзя» не значит «показывать нечем»: у шаблонной записи те
+// же адрес, порт, канал и резолвер, и пользователь вправе увидеть их в том
+// же виде, что у своей. Иначе один и тот же сервер выглядит формой у себя и
+// сырым JSON у шаблона — а разница между ними только в том, кто владелец.
+func (f *dnsServerForm) SetReadOnly() {
+	for _, w := range []fyne.Disableable{
+		f.typeSelect, f.tagEntry, f.serverEntry, f.portEntry,
+		f.pathEntry, f.sniEntry, f.detourSelect, f.resolverSelect,
+		f.modeSelect, f.errorTTLEntry, f.winTTLEntry, f.membersAddBtn,
+	} {
+		if w != nil {
+			w.Disable()
+		}
+	}
+	f.readOnly = true
+	f.rebuildMembers()
 }
 
 // Load заполняет форму из тела сервера. Возвращает false, если тип не
@@ -349,6 +373,10 @@ func (f *dnsServerForm) rebuildMembers() {
 			label = widget.NewLabel(strikeThrough(text) + "   " +
 				locale.T("wizard.dns.form_member_off"))
 			label.Importance = widget.LowImportance
+		}
+		if f.readOnly {
+			f.membersBox.Add(label)
+			continue
 		}
 		del := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
 			f.members = append(f.members[:idx:idx], f.members[idx+1:]...)
