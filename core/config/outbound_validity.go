@@ -142,7 +142,7 @@ func buildOutboundsInfo(
 	nodesBySource map[int][]*ParsedNode,
 	globalNodePool []*ParsedNode,
 	progressCallback func(float64, string),
-) (map[string]*outboundInfo, []ChainCycle) {
+) (map[string]*outboundInfo, []ChainCycle, []DetourCycle) {
 	if progressCallback != nil {
 		progressCallback(60, "Analyzing outbounds (pass 1)...")
 	}
@@ -153,6 +153,9 @@ func buildOutboundsInfo(
 	// Циклы группа↔цепочка (T9): собираются здесь, где видна полная
 	// картина, и уезжают в результат предупреждением.
 	var chainCycles []ChainCycle
+	// Узлы, ходящие через группу, в состав которой сами попали
+	// (SPEC 077 follow-up): то же кольцо зависимостей, только через detour.
+	var detourCycles []DetourCycle
 
 	for i, proxySource := range parserConfig.ParserConfig.Proxies {
 		if len(proxySource.Outbounds) == 0 {
@@ -166,6 +169,8 @@ func buildOutboundsInfo(
 			filteredNodes := filterNodesForSelector(sourceNodes, outboundConfig.Filters)
 			filteredNodes, chainCycles = appendChainCycles(chainCycles,
 				filteredNodes, outboundConfig.Tag, chainHops)
+			filteredNodes, detourCycles = appendDetourCycles(detourCycles,
+				filteredNodes, outboundConfig.Tag)
 			logDuplicateTagIfExists(outboundsInfo, outboundConfig.Tag, "local", i+1)
 			outboundsInfo[outboundConfig.Tag] = &outboundInfo{
 				config:        outboundConfig,
@@ -193,6 +198,8 @@ func buildOutboundsInfo(
 		// обязано означать все узлы.
 		filteredNodes, chainCycles = appendChainCycles(chainCycles,
 			filteredNodes, outboundConfig.Tag, chainHops)
+		filteredNodes, detourCycles = appendDetourCycles(detourCycles,
+			filteredNodes, outboundConfig.Tag)
 		logDuplicateTagIfExists(outboundsInfo, outboundConfig.Tag, "global", 0)
 		outboundsInfo[outboundConfig.Tag] = &outboundInfo{
 			config:        outboundConfig,
@@ -202,7 +209,7 @@ func buildOutboundsInfo(
 			isLocal:       false,
 		}
 	}
-	return outboundsInfo, chainCycles
+	return outboundsInfo, chainCycles, detourCycles
 }
 
 // ChainCycle — цепочка, не вошедшая в состав Направления, через которое она
@@ -210,6 +217,23 @@ func buildOutboundsInfo(
 type ChainCycle struct {
 	Chain     string
 	Direction string
+}
+
+// DetourCycle — узел, не вошедший в состав группы, через которую ходит
+// своим detour (SPEC 077 follow-up).
+type DetourCycle struct {
+	Node  string
+	Group string
+}
+
+// appendDetourCycles — фильтр цикла узел→группа плюс накопление
+// предупреждений.
+func appendDetourCycles(acc []DetourCycle, nodes []*ParsedNode, groupTag string) ([]*ParsedNode, []DetourCycle) {
+	kept, dropped := dropNodesDetouringThroughGroup(nodes, groupTag)
+	for _, tag := range dropped {
+		acc = append(acc, DetourCycle{Node: tag, Group: groupTag})
+	}
+	return kept, acc
 }
 
 // appendChainCycles — фильтр T9 плюс накопление предупреждений.

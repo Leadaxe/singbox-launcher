@@ -91,6 +91,12 @@ type OutboundGenerationResult struct {
 	// вышел бы не тот, что задуман, — пользователь должен узнать, почему
 	// его цепочки нет в группе.
 	ChainCycles []ChainCycle
+
+	// DetourCycles — узлы, не вошедшие в состав группы, через которую ходят
+	// своим detour (SPEC 077 follow-up). Ядро на таком кольце отвергает ВЕСЬ
+	// конфиг, и сообщение показывает не на тот узел, который пользователь
+	// трогал, — он обязан узнать причину отсюда.
+	DetourCycles []DetourCycle
 }
 
 // NaiveSupportProbe — hook installed by the app layer (core.AppController):
@@ -541,6 +547,10 @@ func GenerateSelectorWithFilteredAddOutbounds(
 	// заново, и без повторной проверки цепочка вернулась бы в группу,
 	// через которую сама и проходит.
 	filteredNodes, _ = dropChainsThroughDirection(filteredNodes, outboundConfig.Tag, chainHopsByTag(allNodes))
+	// SPEC 077 follow-up: тот же запрет для detour — состав считается здесь
+	// заново, и без повторной проверки узел вернулся бы в группу, через
+	// которую сам ходит.
+	filteredNodes, _ = dropNodesDetouringThroughGroup(filteredNodes, outboundConfig.Tag)
 	debuglog.DebugLog("Parser: filterNodesForSelector returned %d nodes for '%s'", len(filteredNodes), outboundConfig.Tag)
 
 	// Build outbounds list with unique tags
@@ -1029,7 +1039,7 @@ func GenerateOutboundsFromParserConfig(
 
 	globalPool := FilterNodesExcludeFromGlobal(allNodes, parserConfig.ParserConfig.Proxies)
 	exposeCandidates := collectExposeTagCandidates(parserConfig)
-	outboundsInfo, chainCycles := buildOutboundsInfo(parserConfig, nodesBySource, globalPool, progressCallback)
+	outboundsInfo, chainCycles, detourCycles := buildOutboundsInfo(parserConfig, nodesBySource, globalPool, progressCallback)
 	computeOutboundValidity(outboundsInfo, parserConfig, exposeCandidates, progressCallback)
 	selectorJSONs, localSelectorsCount, globalSelectorsCount, emptyDirections := generateSelectorJSONs(
 		parserConfig, nodesBySource, globalPool, outboundsInfo, exposeCandidates, progressCallback, directions)
@@ -1049,6 +1059,7 @@ func GenerateOutboundsFromParserConfig(
 		EmptyDirections:      emptyDirections,
 		BrokenChains:         brokenChains,
 		ChainCycles:          chainCycles,
+		DetourCycles:         detourCycles,
 		SkippedNaiveReason:   naiveReason,
 	}, nil
 }
