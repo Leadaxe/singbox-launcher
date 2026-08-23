@@ -86,6 +86,18 @@ type dnsServerForm struct {
 	rows    map[string]fyne.CanvasObject
 	content *fyne.Container
 
+	// varValues — значения переменных шаблона. Тело сервера приходит сырым,
+	// с `@dns_google_dot_dns_ip` вместо адреса: подстановка живёт на пути
+	// сборки конфига. В форме пользователь должен видеть значение — то же,
+	// что и в строке списка.
+	//
+	// Подстановка односторонняя, только для показа: записи с переменными —
+	// шаблонные, а они открываются в режиме чтения и не сохраняются. Если
+	// когда-нибудь такую запись дадут править, Collect() запишет уже
+	// подставленное значение и потеряет связь с переменной — тогда сюда
+	// понадобится обратное отображение «значение → @имя».
+	varValues map[string]string
+
 	// enabledByTag — включённость серверов на момент открытия окна. Нужна,
 	// чтобы вычеркнуть в составе тех, кто выключен: они не попадут в конфиг
 	// (pruneDNSGroupMembers их отбросит), и группа окажется уже, чем
@@ -109,6 +121,7 @@ func newDNSServerForm(p *wizardpresentation.WizardPresenter, selfTag string) *dn
 	f := &dnsServerForm{
 		rows:         map[string]fyne.CanvasObject{},
 		enabledByTag: dnsEnabledByTag(p.Model().DNSServers),
+		varValues:    dnsVarValues(p.Model()),
 	}
 
 	f.typeSelect = widget.NewSelect(dnsFormTypes, nil)
@@ -294,20 +307,20 @@ func (f *dnsServerForm) Load(obj map[string]interface{}) bool {
 
 	f.typeSelect.SetSelected(typ)
 	f.tagEntry.SetText(dnsJSONStringField(obj, "tag"))
-	f.serverEntry.SetText(dnsJSONStringField(obj, "server"))
+	f.serverEntry.SetText(dnsResolvePlaceholder(dnsJSONStringField(obj, "server"), f.varValues))
 	if n, ok := dnsJSONNumberField(obj, "server_port"); ok {
 		f.portEntry.SetText(strconv.Itoa(n))
 	} else {
 		f.portEntry.SetText(strconv.Itoa(dnsDefaultPort(typ)))
 	}
-	f.pathEntry.SetText(dnsJSONStringField(obj, "path"))
+	f.pathEntry.SetText(dnsResolvePlaceholder(dnsJSONStringField(obj, "path"), f.varValues))
 	if tlsObj, ok := obj["tls"].(map[string]interface{}); ok {
 		f.sniEntry.SetText(dnsJSONStringField(tlsObj, "server_name"))
 	} else {
 		f.sniEntry.SetText("")
 	}
-	f.detourSelect.SetSelected(orNone(dnsJSONStringField(obj, "detour")))
-	f.resolverSelect.SetSelected(orNone(dnsJSONStringField(obj, "domain_resolver")))
+	f.detourSelect.SetSelected(orNone(dnsResolvePlaceholder(dnsJSONStringField(obj, "detour"), f.varValues)))
+	f.resolverSelect.SetSelected(orNone(dnsResolvePlaceholder(dnsJSONStringField(obj, "domain_resolver"), f.varValues)))
 
 	f.setMembers(dnsJSONStringList(obj, "servers"))
 	if m := dnsJSONStringField(obj, "mode"); m != "" {

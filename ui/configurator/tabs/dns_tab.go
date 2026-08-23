@@ -883,8 +883,24 @@ func showDNSServerDialog(
 
 	hintLabel := widget.NewLabel(hint)
 	hintLabel.Wrapping = fyne.TextWrapWord
+
+	formBody := container.NewVBox(hintLabel)
+	// SPEC 109: у шаблонной записи параметры — ЕДИНСТВЕННОЕ, что можно
+	// менять. Прятать их за кнопку «Params» значит требовать лишний клик
+	// ради того, за чем окно и открывают; тело же, наоборот, только
+	// читается. Поэтому параметры идут сверху, до неизменяемых полей.
+	if readOnly {
+		if tag, _ := body["tag"].(string); tag != "" {
+			if rows := dnsTemplateVarRows(p, tag); rows != nil {
+				formBody.Add(rows)
+				formBody.Add(widget.NewSeparator())
+			}
+		}
+	}
+	formBody.Add(form.content)
+
 	formTab := container.NewTabItem(locale.T("wizard.dns.tab_form"),
-		container.NewVScroll(container.NewVBox(hintLabel, form.content)))
+		container.NewVScroll(formBody))
 	jsonHint := widget.NewLabel(locale.T("wizard.dns.json_hint"))
 	jsonHint.Wrapping = fyne.TextWrapWord
 	jsonTab := container.NewTabItem(locale.T("wizard.dns.tab_json"),
@@ -950,15 +966,7 @@ func showDNSServerDialog(
 		// Правятся только её собственные параметры, и кнопка на них здесь
 		// же, чтобы не искать её в списке.
 		cancel.SetText(locale.T("wizard.dns.dialog_close"))
-		tag, _ := body["tag"].(string)
-		if len(dnsServerVarsFor(p, tag)) > 0 {
-			paramsBtn := widget.NewButtonWithIcon(locale.T("wizard.dns.button_params"), theme.SettingsIcon(), func() {
-				showDNSTemplateVarsDialog(p, editWin, tag)
-			})
-			buttons = container.NewHBox(paramsBtn, layout.NewSpacer(), cancel)
-		} else {
-			buttons = container.NewHBox(layout.NewSpacer(), cancel)
-		}
+		buttons = container.NewHBox(layout.NewSpacer(), cancel)
 	}
 	editWin.SetContent(container.NewBorder(nil, buttons, nil, nil, tabs))
 	editWin.Resize(fyne.NewSize(660, 620))

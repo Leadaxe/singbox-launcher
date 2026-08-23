@@ -22,12 +22,9 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	wizardtemplate "singbox-launcher/core/template"
-	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/locale"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
@@ -52,48 +49,33 @@ func dnsServerVarsFor(p *wizardpresentation.WizardPresenter, tag string) []wizar
 	return out
 }
 
-// showDNSTemplateVarsDialog открывает параметры шаблонного сервера.
-func showDNSTemplateVarsDialog(p *wizardpresentation.WizardPresenter, w fyne.Window, tag string) {
-	if w == nil {
-		w = p.DialogParent()
-	}
-	if w == nil {
-		return
-	}
+// dnsTemplateVarRows — строки параметров сервера, готовые к встраиванию.
+//
+// Отдельно от диалога: параметры шаблонной записи показываются прямо в её
+// окне, сверху — это единственное, что там можно менять, и прятать их за
+// кнопку значило бы требовать лишний клик ради того, за чем окно и
+// открывают. nil, если параметров нет.
+func dnsTemplateVarRows(p *wizardpresentation.WizardPresenter, tag string) fyne.CanvasObject {
 	vars := dnsServerVarsFor(p, tag)
 	if len(vars) == 0 {
-		return
+		return nil
 	}
 	m := p.Model()
 	gs := p.GUIState()
 
-	rows := container.NewVBox()
+	head := widget.NewLabelWithStyle(
+		locale.T("wizard.dns.template_vars_head"),
+		fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+
+	rows := container.NewVBox(head)
 	for _, vd := range vars {
 		title := vd.Title
 		if title == "" {
-			// Имя показываем без служебного префикса: пользователь видит
-			// эту переменную в контексте своего сервера, и «dns_google_dot_»
-			// в подписи — шум.
+			// Имя без служебного префикса: пользователь видит переменную в
+			// контексте своего сервера, и «dns_google_dot_» в подписи — шум.
 			title = strings.TrimPrefix(vd.Name, "dns_"+tag+"_")
 		}
 		rows.Add(buildSettingsVarRow(p, m, m.TemplateData, vd, title, vd.Tooltip, true, gs))
 	}
-
-	hint := widget.NewLabel(locale.T("wizard.dns.template_vars_hint"))
-	hint.Wrapping = fyne.TextWrapWord
-
-	var dlg dialog.Dialog
-	closeBtn := widget.NewButton(locale.T("wizard.dns.dialog_cancel"), func() {
-		if dlg != nil {
-			dlg.Hide()
-		}
-	})
-	body := container.NewVScroll(container.NewVBox(hint, rows))
-	dlg = dialogs.NewCustom(
-		locale.Tf("wizard.dns.template_vars_title", tag),
-		body,
-		container.NewHBox(layout.NewSpacer(), closeBtn),
-		"", w)
-	dlg.Resize(fyne.NewSize(560, 420))
-	dlg.Show()
+	return rows
 }

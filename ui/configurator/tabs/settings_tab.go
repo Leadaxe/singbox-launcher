@@ -17,6 +17,7 @@ import (
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
@@ -568,6 +569,42 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 			}
 		}
 		sel.SetSelected(titleForValue(disp))
+		row := container.NewBorder(nil, nil, titleLab, resetBtn, sel)
+		setVarFieldToolTip(toolTip, titleLab, sel)
+		applySettingsRowDisabled(rowEnabled, resetBtn, sel)
+		bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, sel)
+		return row
+
+	case "outbound", "dns_server":
+		// SPEC 109: типы-пикеры. `outbound` — Направления (тот же список,
+		// что цель правила), `dns_server` — теги DNS-серверов. Оба падали в
+		// обычное текстовое поле: пользователь должен был вписать тег
+		// руками и по памяти, хотя весь смысл этих типов — выбор из
+		// известного набора.
+		titleLab := newSettingsTitleLabelFor(title, rowEnabled)
+		var picks []string
+		if typ == "outbound" {
+			picks = wizardbusiness.EnsureDefaultAvailableOutbounds(
+				wizardbusiness.GetAvailableOutbounds(model))
+		} else {
+			picks = wizardbusiness.DNSEnabledTagOptions(model)
+		}
+		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
+		if v, ok := model.SettingsVars[name]; ok {
+			disp = v
+		}
+		// Текущее значение обязано быть в списке, даже если цель исчезла:
+		// иначе выбор молча слетит на первый пункт при открытии вкладки.
+		if disp != "" && !enumListContains(picks, disp) {
+			picks = append([]string{disp}, picks...)
+		}
+		sel := widget.NewSelect(picks, func(picked string) {
+			model.SettingsVars[name] = picked
+			presenter.MarkAsChanged()
+			applyOnChangeAndRefresh(presenter, td, model, name)
+			maybeRefreshSettingsAfterVarChange(gs, td, name)
+		})
+		sel.SetSelected(disp)
 		row := container.NewBorder(nil, nil, titleLab, resetBtn, sel)
 		setVarFieldToolTip(toolTip, titleLab, sel)
 		applySettingsRowDisabled(rowEnabled, resetBtn, sel)
