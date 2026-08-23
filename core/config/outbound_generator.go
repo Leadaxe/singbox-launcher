@@ -489,6 +489,15 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 					tlsParts = append(tlsParts, fmt.Sprintf(`"insecure":%v`, insecure))
 				}
 
+				// Пин сертификата (hysteria2 `pinSHA256=`): без эмиссии узел с
+				// самоподписанным сертификатом получал обычную CA-проверку и не
+				// подключался, хотя URI содержал всё нужное — девятая потеря
+				// сверх восьми из SPEC 103 фазы 2.
+				if pins, ok := tlsData["certificate_public_key_sha256"].([]string); ok && len(pins) > 0 {
+					pinsJSON, _ := json.Marshal(pins)
+					tlsParts = append(tlsParts, fmt.Sprintf(`"certificate_public_key_sha256":%s`, string(pinsJSON)))
+				}
+
 				if reality, ok := tlsData["reality"].(map[string]interface{}); ok {
 					var realityParts []string
 					if realityEnabled, ok := reality["enabled"].(bool); ok {

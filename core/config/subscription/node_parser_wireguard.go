@@ -53,6 +53,11 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 		if rawPrivateKey = queryGetFold(qq, "privatekey"); rawPrivateKey == "" {
 			rawPrivateKey = queryGetFold(qq, "private_key")
 		}
+		// Query() уже превратил `+` base64-ключа в пробел (семантика
+		// application/x-www-form-urlencoded) — возвращаем обратно, иначе
+		// normalizeWGKey бракует ключ как «not base64» и узел пропадает.
+		// Внутри base64 пробел легально не встречается, замена безопасна.
+		rawPrivateKey = strings.ReplaceAll(rawPrivateKey, " ", "+")
 	}
 	if rawPrivateKey == "" {
 		debuglog.DebugLog("parseWireGuardURI: error missing private key (userinfo/query)")
@@ -216,6 +221,15 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 	// AmneziaWG (SPEC 073): promote obfuscation params from the query into the
 	// endpoint root (sing-box-lx with_awg shape). No-op for a plain WG URI.
 	applyAWGFields(endpoint, q)
+	// Пересечение magic-заголовков фатально не для узла, а для КОНФИГА:
+	// ядро отвергает такой endpoint на загрузке («headers must not
+	// overlap»), и одна подписка с h1=h2 оставляла пользователя без VPN
+	// целиком, с check-ошибкой, указывающей не на подписку. Узел без
+	// правильных заголовков всё равно не заработает — выбрасываем его,
+	// а не конфиг (та же политика, что у битого ключа выше).
+	if a, b := awgHeaderOverlap(endpoint); a != "" {
+		return nil, fmt.Errorf("AWG magic headers %s and %s overlap — the core rejects such an endpoint ('headers must not overlap'); node skipped", a, b)
+	}
 
 	label := parsedURL.Fragment
 	if label == "" && fragmentFromRaw != "" {
@@ -445,9 +459,6 @@ func applyAWGFields(endpoint map[string]interface{}, q url.Values) {
 			endpoint[k] = v
 		}
 	}
-	if a, b := awgHeaderOverlap(endpoint); a != "" {
-		debuglog.WarnLog("Parser: AWG magic headers %s and %s overlap — the core will reject this endpoint ('headers must not overlap')", a, b)
-	}
 }
 
 // parseReservedTriplet parses a Cloudflare WARP reserved value "b0,b1,b2"
@@ -479,8 +490,8 @@ func parseReservedTriplet(raw string) []int {
 // contract (SPEC 073.2): an unset/zero header counts as its WireGuard default
 // message type (h1=1 … h4=4), a single value as [v,v], a range as [lo,hi].
 // The core rejects an overlapping set at load with "headers must not
-// overlap", so the parser warns already at import time; the node itself is
-// still produced — the core's error stays the source of truth.
+// overlap", so the parser must not emit such an endpoint: one broken node
+// would take the whole config down (parseWireGuardURI drops the node).
 func awgHeaderOverlap(endpoint map[string]interface{}) (string, string) {
 	type span struct {
 		name   string

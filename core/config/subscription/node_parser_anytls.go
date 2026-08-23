@@ -69,10 +69,7 @@ func buildAnyTLSTLS(node *configtypes.ParsedNode, outbound map[string]interface{
 		tlsData["insecure"] = true
 	}
 
-	fp := utlsFingerprintOrFallback(queryGetFold(q, "fp"))
-	if fp == "" {
-		fp = utlsFingerprintOrFallback(queryGetFold(q, "fingerprint"))
-	}
+	fp := utlsFingerprintFromQuery(q, "fp", "fingerprint")
 	if fp == "" {
 		// Same default as the vless path (node_parser_transport.go): without it
 		// an anytls node without fp= gets a different identity hash here than in

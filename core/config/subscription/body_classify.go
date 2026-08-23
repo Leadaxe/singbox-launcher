@@ -94,7 +94,9 @@ func ClassifySubscriptionBody(body string) BodyKind {
 	}
 
 	// vpn:// — раньше всех: ссылка целиком и есть тело (SPEC 103 §9.B12).
-	if strings.HasPrefix(strings.ToLower(trimmed), "vpn://") {
+	// EqualFold по префиксу, а не ToLower всего тела: тело бывает
+	// многомегабайтным, и копия ради шести символов — лишняя.
+	if len(trimmed) >= 6 && strings.EqualFold(trimmed[:6], "vpn://") {
 		return BodyKindVPNLink
 	}
 

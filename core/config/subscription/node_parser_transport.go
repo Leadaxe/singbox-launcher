@@ -125,6 +125,34 @@ func utlsFingerprintOrFallback(raw string) string {
 // utlsJunkFallback — canonical replacement for an unrecognized fingerprint.
 const utlsJunkFallback = "chrome"
 
+// utlsFingerprintFromQuery читает отпечаток по альтернативным написаниям
+// параметра (fp / fingerprint): канон берётся из ПЕРВОГО распознанного
+// значения, а фолбэк chrome включается только когда ни одно написание не
+// дало канона. Прежний код брал фолбэк уже на первом написании — и мусорный
+// `fp=qwerty` перебивал валидный `fingerprint=firefox`, который подписка
+// назвала явно (регрессия D-029).
+func utlsFingerprintFromQuery(q url.Values, keys ...string) string {
+	junkRaw := ""
+	for _, k := range keys {
+		raw := queryGetFold(q, k)
+		if raw == "" {
+			continue
+		}
+		canon, junk := normalizeUTLSFingerprintEx(raw)
+		if !junk {
+			return canon
+		}
+		if junkRaw == "" {
+			junkRaw = raw
+		}
+	}
+	if junkRaw != "" {
+		debuglog.WarnLog("Parser: unknown uTLS fingerprint %q — using %q instead (fingerprint is client-side camouflage; the node stays)", junkRaw, utlsJunkFallback)
+		return utlsJunkFallback
+	}
+	return ""
+}
+
 // plaintextVLESSPorts are common subscription ports where TLS is typically off (plain HTTP / CF HTTP).
 var plaintextVLESSPorts = map[int]struct{}{
 	80: {}, 8080: {}, 8880: {}, 2052: {}, 2082: {}, 2086: {}, 2095: {},
@@ -221,9 +249,14 @@ func uriTransportFromQuery(q url.Values) (map[string]interface{}, bool) {
 			// httpupgrade has no early data in sing-box: strip the Xray `?ed=N`
 			// tail (and any residual encoding) instead of shipping it inside the
 			// path, which the server answers with 404 (SPEC 103, D-028).
+			//
+			// Путь, состоящий ТОЛЬКО из хвоста (`path=?ed=2048` — реальный
+			// паттерн панелей с корневым путём), даёт clean == "" — фолбэк
+			// на исходную строку вернул бы `?ed=` обратно, ровно то, от чего
+			// D-028 защищался. Корень — честный эквивалент.
 			clean, _ := splitWSEarlyData(decodeResidualPercent(p))
 			if clean == "" {
-				clean = p
+				clean = "/"
 			}
 			t["path"] = clean
 		}
@@ -595,7 +628,11 @@ func decodeResidualPercent(raw string) string {
 		if !strings.Contains(v, "%") {
 			break
 		}
-		dec, err := url.QueryUnescape(v)
+		// PathUnescape, а не QueryUnescape: значение — ПУТЬ, и литеральный
+		// `+` в нём легален. QueryUnescape превращал `/ws+v2%2Fdata` в
+		// `/ws v2/data` — сервер отвечает 404, узел «жив» и молча не
+		// работает. `%2F` и прочие проценты обе функции декодируют одинаково.
+		dec, err := url.PathUnescape(v)
 		if err != nil || dec == v {
 			break
 		}
@@ -723,10 +760,7 @@ func vlessTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, boo
 		utlsFingerprintWouldDegrade(queryGetFold(q, "fingerprint")) {
 		node.AddWarning(WarnUTLSFingerprintUnknown)
 	}
-	fp := utlsFingerprintOrFallback(queryGetFold(q, "fp"))
-	if fp == "" {
-		fp = utlsFingerprintOrFallback(queryGetFold(q, "fingerprint"))
-	}
+	fp := utlsFingerprintFromQuery(q, "fp", "fingerprint")
 	if fp == "" {
 		fp = "random"
 	}
@@ -824,7 +858,7 @@ func trojanTLSFromNode(node *configtypes.ParsedNode) (map[string]interface{}, bo
 		"enabled":     true,
 		"server_name": sni,
 	}
-	if fp := utlsFingerprintOrFallback(queryGetFold(q, "fp")); fp != "" {
+	if fp := utlsFingerprintFromQuery(q, "fp", "fingerprint"); fp != "" {
 		tlsData["utls"] = map[string]interface{}{
 			"enabled":     true,
 			"fingerprint": fp,

@@ -313,8 +313,13 @@ func xrayTransportFromStreamSettings(streamSettings map[string]interface{}, netw
 			if p := xrayMapString(hu, "path"); p != "" {
 				// Хвост `?ed=N` не является частью пути ни для одного
 				// транспорта sing-box; у httpupgrade early data нет, поэтому
-				// хвост срезается, а сам ed отбрасывается.
-				cleanPath, _ := splitWSEarlyData(p)
+				// хвост срезается, а сам ed отбрасывается. Декод остаточных
+				// процентов — как на URI-пути: двойное кодирование панелей
+				// одинаково для обоих источников тела.
+				cleanPath, _ := splitWSEarlyData(decodeResidualPercent(p))
+				if cleanPath == "" {
+					cleanPath = "/"
+				}
 				tr["path"] = cleanPath
 			}
 			if h := xrayMapString(hu, "host"); h != "" {

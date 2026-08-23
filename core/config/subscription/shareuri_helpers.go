@@ -176,11 +176,15 @@ func transportToQuery(q url.Values, tr map[string]interface{}) {
 		if pad := mapGetString(tr, "x_padding_bytes"); pad != "" {
 			q.Set("x_padding_bytes", pad)
 		}
-		if v, ok := tr["no_grpc_header"].(bool); ok && v {
-			q.Set("no_grpc_header", "true")
-		}
-		if v, ok := tr["x_padding_obfs_mode"].(bool); ok && v {
-			q.Set("x_padding_obfs_mode", "true")
+		// Таблицы полей — те же, что читает парсер (эмиттер и парсер ходят
+		// парой): булевы флаги, строки, диапазоны, int-поля и вложенный xmux.
+		// До SPEC 102-фикса эмиттер знал только старый набор — xmux,
+		// sc_max_buffered_posts и no_sse_header терялись при «Скопировать
+		// ссылку», и импортировавший получал узел с другим XHTTP-тюнингом.
+		for _, f := range xhttpBoolFields {
+			if v, ok := tr[f.jsonKey].(bool); ok && v {
+				q.Set(f.jsonKey, "true")
+			}
 		}
 		for _, f := range xhttpStringFields {
 			if val := mapGetString(tr, f.jsonKey); val != "" {
@@ -192,7 +196,41 @@ func transportToQuery(q url.Values, tr map[string]interface{}) {
 				q.Set(f.jsonKey, val)
 			}
 		}
+		for _, f := range xhttpIntFields {
+			if val := xhttpNumString(tr[f.jsonKey]); val != "" {
+				q.Set(f.jsonKey, val)
+			}
+		}
+		if xmux, ok := tr["xmux"].(map[string]interface{}); ok {
+			for _, f := range xhttpXmuxFields {
+				if val := mapGetString(xmux, f.jsonKey); val != "" {
+					q.Set(f.jsonKey, val)
+				}
+			}
+			for _, f := range xhttpXmuxIntFields {
+				if val := xhttpNumString(xmux[f.jsonKey]); val != "" {
+					q.Set(f.jsonKey, val)
+				}
+			}
+		}
 	}
+}
+
+// xhttpNumString — числовое значение транспорта в строку query-параметра.
+// Число приходит int64 из парсера, но float64/json.Number после JSON
+// round-trip'а — все формы обязаны эмититься одинаково.
+func xhttpNumString(v interface{}) string {
+	switch n := v.(type) {
+	case int:
+		return strconv.Itoa(n)
+	case int64:
+		return strconv.FormatInt(n, 10)
+	case float64:
+		return strconv.FormatInt(int64(n), 10)
+	case json.Number:
+		return n.String()
+	}
+	return ""
 }
 
 func shareAppendALPNInsecure(q url.Values, tls map[string]interface{}) {

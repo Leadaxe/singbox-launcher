@@ -29,6 +29,21 @@ func shareURIFromHysteria2(out map[string]interface{}) (string, error) {
 				q.Set("fp", fp)
 			}
 		}
+		// Пин сертификата: парсер читает pinSHA256=, значит ссылка обязана
+		// его нести — иначе roundtrip теряет пин, и узел с самоподписанным
+		// сертификатом у импортировавшего не подключается.
+		switch pins := tls["certificate_public_key_sha256"].(type) {
+		case []string:
+			if len(pins) > 0 {
+				q.Set("pinSHA256", pins[0])
+			}
+		case []interface{}:
+			if len(pins) > 0 {
+				if s, ok := pins[0].(string); ok && s != "" {
+					q.Set("pinSHA256", s)
+				}
+			}
+		}
 		if alpn, ok := tls["alpn"].([]interface{}); ok && len(alpn) > 0 {
 			parts := make([]string, 0, len(alpn))
 			for _, a := range alpn {
