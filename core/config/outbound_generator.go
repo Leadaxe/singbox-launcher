@@ -673,6 +673,36 @@ func GenerateSelectorWithFilteredAddOutbounds(
 		}
 	}
 
+	// Последний рубеж: `default` ОБЯЗАН входить в состав — иначе ядро
+	// отвергает ВЕСЬ конфиг («default outbound not found»), то есть
+	// пользователь остаётся без VPN из-за одной группы.
+	//
+	// Проверка стоит здесь, а не в каждой ветке выше, потому что источников
+	// у `default` несколько (preferredDefault по фильтру, auto-группа,
+	// шаблон/пресет), а условие для всех одно. Раньше её делала только
+	// ветка auto-группы, и значение, пришедшее из шаблона, уезжало в конфиг
+	// непроверенным: `default: "proxy-out"` при снятой галке «proxy-out»
+	// в составе не давал ядру стартовать.
+	//
+	// Выбрасываем ключ, а не подставляем первый попавшийся узел: `default` —
+	// это осознанный выбор пользователя, и подмена его чужим узлом молча
+	// увела бы трафик не туда. Без ключа селектор берёт первый элемент
+	// состава — ровно то же, что делает ядро по умолчанию.
+	if defaultTag != "" {
+		inList := false
+		for _, t := range outboundsList {
+			if t == defaultTag {
+				inList = true
+				break
+			}
+		}
+		if !inList {
+			debuglog.WarnLog("Parser: default %q группы %q не входит в её состав — ключ снят "+
+				"(иначе ядро не стартует)", defaultTag, outboundConfig.Tag)
+			defaultTag = ""
+		}
+	}
+
 	// Build selector JSON with correct field order
 	var parts []string
 
@@ -708,9 +738,37 @@ func GenerateSelectorWithFilteredAddOutbounds(
 	sanitizeBalancerOptions(outboundConfig.Options)
 	optKeys := make([]string, 0, len(outboundConfig.Options))
 	for key := range outboundConfig.Options {
-		if key != "interrupt_exist_connections" {
-			optKeys = append(optKeys, key)
+		if key == "interrupt_exist_connections" {
+			continue
 		}
+		// `default` из options проходит ту же проверку вхождения в состав,
+		// что и вычисленный выше, и по той же причине: ядро отвергает ВЕСЬ
+		// конфиг, если умолчание не входит в группу.
+		//
+		// Проверять обязательно и здесь: значение приходит из шаблона, где
+		// оно согласовано с шаблонным же составом, а пользователь состав
+		// правит (снял галку `proxy-out` — и шаблонный `default:
+		// "proxy-out"` повис). Плюс при непустом defaultTag ключ вышел бы
+		// вторым в том же объекте.
+		if key == "default" {
+			if defaultTag != "" {
+				continue // уже выпущен выше, дубль не нужен
+			}
+			val, _ := outboundConfig.Options[key].(string)
+			inList := false
+			for _, t := range outboundsList {
+				if t == val {
+					inList = true
+					break
+				}
+			}
+			if !inList {
+				debuglog.WarnLog("Parser: default %q группы %q не входит в её состав — ключ снят "+
+					"(иначе ядро не стартует)", val, outboundConfig.Tag)
+				continue
+			}
+		}
+		optKeys = append(optKeys, key)
 	}
 	sort.Strings(optKeys)
 	for _, key := range optKeys {
