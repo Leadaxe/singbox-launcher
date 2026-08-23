@@ -19,6 +19,10 @@ type Settings struct {
 	PingTestURL string `json:"ping_test_url,omitempty"`
 	// PingTestAllConcurrency — число параллельных delay-запросов для «test» на вкладке Servers; 0 = не переопредлять.
 	PingTestAllConcurrency int `json:"ping_test_all_concurrency,omitempty"`
+	// PingTestTimeoutMs — бюджет одиночного url-теста, мс; 0 = дефолт api
+	// (api.DefaultPingTestTimeoutMs). Общий для обычного пинга и послойной
+	// пробы цепочки: разные бюджеты сделали бы их цифры несравнимыми.
+	PingTestTimeoutMs int `json:"ping_test_timeout_ms,omitempty"`
 	// SubscriptionAutoUpdateDisabled — пользователь явно выключил автоматическое обновление
 	// подписок. По умолчанию (отсутствует / false) — автообновление включено, как раньше.
 	// Manual Update всегда работает независимо от флага.

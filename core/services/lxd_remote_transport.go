@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"singbox-launcher/api"
+	"singbox-launcher/core/config"
 	daemonpb "singbox-launcher/internal/daemonpb"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/lxdclient"
@@ -227,10 +228,10 @@ func (t *LxdRemoteTransport) Delay(proxyName string) (int64, error) {
 		OutboundTag: proxyName,
 		Link:        api.GetPingTestURL(),
 		// Timeout — миллисекунды (uint32); Interval у Subscribe* —
-		// наносекунды. Всегда через time.Duration, чтобы не перепутать.
-		// 5s — единый бюджет одиночного теста во всех трёх транспортах
-		// (classic GetDelay шлёт timeout=5000).
-		Timeout: uint32((5 * time.Second).Milliseconds()),
+		// наносекунды, их легко перепутать.
+		// Бюджет настраиваемый и единый во всех трёх транспортах: classic
+		// GetDelay шлёт его же в query-параметре timeout.
+		Timeout: uint32(api.GetPingTestTimeoutMs()),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("lxd remote URLTestOutbound: %w", err)
@@ -288,6 +289,92 @@ func (t *LxdRemoteTransport) SubscribeGroupSelection(group string, onSelected fu
 		}
 	}, nil)
 	return cancelCtx, nil
+}
+
+// ChainPositionInfo / ChainInfo — состояние цепочки удалённого ядра
+// (SPEC 110).
+//
+// Дублируют core.Chain*Info по той же причине, что PoolSlot ниже: core
+// импортирует services, и обратная зависимость замкнула бы граф.
+type ChainPositionInfo struct {
+	Tag         string
+	Now         string
+	IsGroup     bool
+	Transparent bool
+	CloneState  string
+	LastError   string
+}
+
+type ChainInfo struct {
+	Tag       string
+	Positions []ChainPositionInfo
+}
+
+// Chains — состояние цепочек удалённого ядра (lx-RPC GetChains).
+func (t *LxdRemoteTransport) Chains() ([]ChainInfo, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return nil, err
+	}
+	defer cancel()
+	list, err := client.GetChains(ctx, &emptypb.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("lxd remote GetChains: %w", err)
+	}
+	out := make([]ChainInfo, 0, len(list.GetChains()))
+	for _, c := range list.GetChains() {
+		if c == nil {
+			continue
+		}
+		positions := make([]ChainPositionInfo, 0, len(c.GetPositions()))
+		for _, p := range c.GetPositions() {
+			if p == nil {
+				continue
+			}
+			info := ChainPositionInfo{
+				Tag:         p.GetTag(),
+				Now:         p.GetNow(),
+				IsGroup:     p.GetIsGroup(),
+				Transparent: p.GetTransparent(),
+			}
+			if cl := p.GetClone(); cl != nil {
+				info.CloneState = cl.GetState()
+				info.LastError = cl.GetLastError()
+			}
+			positions = append(positions, info)
+		}
+		out = append(out, ChainInfo{Tag: c.GetTag(), Positions: positions})
+	}
+	return out, nil
+}
+
+// ProbeLayer — задержка префикса цепочки НА СТОРОНЕ роутера: меряется его
+// канал, а не наш, как и обычный Delay выше.
+//
+// pos < 0 — сама цепочка целиком. Схема служебного тега принадлежит ядру и
+// собирается общим config.ChainLayerTag, чтобы локальный и удалённый пути
+// не разошлись.
+func (t *LxdRemoteTransport) ProbeLayer(chainTag string, pos int) (int64, string, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return 0, "", err
+	}
+	defer cancel()
+	tag := chainTag
+	if pos >= 0 {
+		tag = config.ChainLayerTag(chainTag, pos)
+	}
+	resp, err := client.URLTestOutbound(ctx, &daemonpb.URLTestOutboundRequest{
+		OutboundTag: tag,
+		Link:        api.GetPingTestURL(),
+		Timeout:     uint32(api.GetPingTestTimeoutMs()),
+	})
+	if err != nil {
+		return 0, "", fmt.Errorf("lxd remote URLTestOutbound: %w", err)
+	}
+	// Ошибка ЯДРА приходит полем, а не gRPC-ошибкой: «хоп не поднялся» —
+	// это диагноз для пользователя, и глотать его нельзя.
+	return int64(resp.GetDelay()), resp.GetError(), nil
 }
 
 // PoolSlot — слот пула балансировщика удалённого ядра (SPEC 097).

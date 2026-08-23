@@ -8,6 +8,7 @@
 package config
 
 import (
+	"strconv"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
@@ -87,6 +88,17 @@ func ChainNestedConflict(c *configtypes.SourceChain, chainTags map[string]bool) 
 		}
 	}
 	return out
+}
+
+// ChainLayerTag — служебный тег префикса цепочки: путь от клиента до позиции
+// pos включительно.
+//
+// Парен ChainInternalTag: там эти теги распознаются, чтобы не пустить их в
+// конфиг, здесь — собираются, чтобы спросить у ядра задержку. Схема имени
+// принадлежит ядру (`protocol/chain`), и держать её в одном файле с
+// распознавателем обязательно: разойдись они — проба молча мерила бы не то.
+func ChainLayerTag(chainTag string, pos int) string {
+	return chainTag + "#" + strconv.Itoa(pos)
 }
 
 // ChainInternalTag — тег вида `<chain>#<i>`, который цепочка резервирует под

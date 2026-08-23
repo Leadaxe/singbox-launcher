@@ -571,6 +571,44 @@ func (b *DaemonBackend) PoolSlots(group string) ([]PoolSlotInfo, error) {
 	return slots, nil
 }
 
+// Chains implements chainSource через lx-RPC GetChains.
+func (b *DaemonBackend) Chains() ([]ChainInfo, error) {
+	client, err := b.grpcClient()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(b.ctx, daemonRPCTimeout)
+	defer cancel()
+	list, err := client.GetChains(ctx, &emptypb.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("daemon GetChains: %w", err)
+	}
+	return chainInfosFromPB(list.GetChains()), nil
+}
+
+// ProbeLayer implements chainSource через тот же URLTestOutbound, что и
+// обычный пинг узла: бюджет и эндпоинт общие, иначе цифра слоя была бы
+// несопоставима с колонкой Delay в списке.
+func (b *DaemonBackend) ProbeLayer(chainTag string, pos int) (int64, string, error) {
+	client, err := b.grpcClient()
+	if err != nil {
+		return 0, "", err
+	}
+	// Дедлайн вызова с запасом над бюджетом теста: первый режет проба
+	// внутри ядра, второй страхует от повисшего RPC.
+	ctx, cancel := context.WithTimeout(b.ctx, chainProbeCallTimeout())
+	defer cancel()
+	resp, err := client.URLTestOutbound(ctx, &daemonpb.URLTestOutboundRequest{
+		OutboundTag: chainProbeTag(chainTag, pos),
+		Link:        api.GetPingTestURL(),
+		Timeout:     uint32(api.GetPingTestTimeoutMs()),
+	})
+	if err != nil {
+		return 0, "", fmt.Errorf("daemon URLTestOutbound: %w", err)
+	}
+	return int64(resp.GetDelay()), resp.GetError(), nil
+}
+
 // --- gRPC-транспорт proxy-операций (Servers tab, tray, auto-load) --------
 
 // daemonProxyTransport реализует services.ProxyTransport поверх gRPC:
@@ -654,10 +692,10 @@ func (t *daemonProxyTransport) Delay(proxyName string) (int64, error) {
 		OutboundTag: proxyName,
 		Link:        api.GetPingTestURL(),
 		// Timeout — миллисекунды (uint32), в отличие от Interval у Subscribe*,
-		// который в наносекундах (time.Duration). Всегда через time.Duration.
-		// 5s — единый бюджет одиночного теста во всех трёх транспортах
-		// (classic GetDelay шлёт timeout=5000).
-		Timeout: uint32((5 * time.Second).Milliseconds()),
+		// который в наносекундах (time.Duration).
+		// Бюджет настраиваемый и единый во всех трёх транспортах: classic
+		// GetDelay шлёт его же в query-параметре timeout.
+		Timeout: uint32(api.GetPingTestTimeoutMs()),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("daemon URLTestOutbound: %w", err)

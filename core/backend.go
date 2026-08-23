@@ -170,6 +170,45 @@ type poolSource interface {
 	PoolSlots(group string) ([]PoolSlotInfo, error)
 }
 
+// ChainPositionInfo — одна позиция цепочки в рантайме (SPEC 110).
+//
+// Отличается от позиции в конфиге тем, что знает РАЗРЕШЁННЫЙ узел: за тегом
+// группы стоит её текущий выбор, и увидеть его иначе как у работающего ядра
+// нельзя.
+type ChainPositionInfo struct {
+	Tag string
+	// Now — во что позиция резолвится сейчас (для группы — её выбор,
+	// раскрытый до листа). Пусто, если ядро не смогло разрешить.
+	Now string
+	// IsGroup — за позицией группа, и Now может смениться без нашего ведома.
+	IsGroup bool
+	// Transparent — в позиции выбран direct: хоп схлопнут, в рантайме его
+	// нет. Мерить такую позицию нечем, и виновником она быть не может.
+	Transparent bool
+	// CloneState — состояние звена: starting | active | idle. Пусто у
+	// позиции 0 (вход не клонируется) и пока звено не создано.
+	CloneState string
+	LastError  string
+}
+
+// ChainInfo — состояние одной цепочки у работающего ядра.
+type ChainInfo struct {
+	Tag       string
+	Positions []ChainPositionInfo
+}
+
+// chainSource — бэкенд, умеющий отдать состояние цепочек (gRPC GetChains).
+//
+// Перечисление, а не запрос по тегу: RPC ядра аргументов не принимает, и
+// выбирать нужную цепочку приходится на нашей стороне.
+type chainSource interface {
+	Chains() ([]ChainInfo, error)
+	// ProbeLayer меряет путь от клиента до позиции pos включительно.
+	// Возвращает задержку и текст ошибки ЯДРА (не транспорта): «не
+	// поднялось» — это диагноз, а не сбой вызова.
+	ProbeLayer(chainTag string, pos int) (int64, string, error)
+}
+
 // coreLogSource — бэкенд с собственным источником логов ядра (gRPC
 // SubscribeLog вместо файла logs/sing-box.log).
 type coreLogSource interface {
@@ -278,6 +317,92 @@ func (ac *AppController) DaemonPoolSlots(group string) ([]PoolSlotInfo, error) {
 		return nil, fmt.Errorf("pool source is not available in this mode")
 	}
 	return src.PoolSlots(group)
+}
+
+// remoteChainSource — транспорт удалённой машины, умеющий то же самое.
+type remoteChainSource interface {
+	Chains() ([]services.ChainInfo, error)
+	ProbeLayer(chainTag string, pos int) (int64, string, error)
+}
+
+// ChainsAvailable — доступно ли состояние цепочек у текущего источника.
+//
+// Только gRPC-пути: служебные теги позиций (`<chain>#<i>`) намеренно не
+// попадают в Clash API, поэтому classic-режим послойную пробу не потянет —
+// и обещать её в UI там нельзя.
+func (ac *AppController) ChainsAvailable() bool {
+	if ac.APIService != nil {
+		if _, ok := ac.APIService.TransportOverride().(remoteChainSource); ok {
+			return true
+		}
+	}
+	_, ok := ac.Backend().(chainSource)
+	return ok
+}
+
+// Chains возвращает состояние цепочек текущего источника.
+func (ac *AppController) Chains() ([]ChainInfo, error) {
+	if ac.APIService != nil {
+		if src, ok := ac.APIService.TransportOverride().(remoteChainSource); ok {
+			chains, err := src.Chains()
+			if err != nil {
+				return nil, err
+			}
+			out := make([]ChainInfo, 0, len(chains))
+			for _, c := range chains {
+				positions := make([]ChainPositionInfo, 0, len(c.Positions))
+				for _, p := range c.Positions {
+					positions = append(positions, ChainPositionInfo{
+						Tag:         p.Tag,
+						Now:         p.Now,
+						IsGroup:     p.IsGroup,
+						Transparent: p.Transparent,
+						CloneState:  p.CloneState,
+						LastError:   p.LastError,
+					})
+				}
+				out = append(out, ChainInfo{Tag: c.Tag, Positions: positions})
+			}
+			return out, nil
+		}
+	}
+	src, ok := ac.Backend().(chainSource)
+	if !ok {
+		return nil, fmt.Errorf("chain state is not available in this mode")
+	}
+	return src.Chains()
+}
+
+// ChainFor возвращает цепочку по тегу. ok=false — такой цепочки в работающем
+// ядре нет (её могли переименовать или ещё не пересобрать конфиг).
+func (ac *AppController) ChainFor(tag string) (ChainInfo, bool) {
+	chains, err := ac.Chains()
+	if err != nil {
+		return ChainInfo{}, false
+	}
+	for _, c := range chains {
+		if c.Tag == tag {
+			return c, true
+		}
+	}
+	return ChainInfo{}, false
+}
+
+// ProbeChainLayer меряет префикс цепочки до позиции pos включительно.
+//
+// pos < 0 — сама цепочка целиком (тег без `#i`): её замер включает то, чего
+// нет ни в одном префиксе, — выбор звена и обвязку самого outbound'а.
+func (ac *AppController) ProbeChainLayer(chainTag string, pos int) (int64, string, error) {
+	if ac.APIService != nil {
+		if src, ok := ac.APIService.TransportOverride().(remoteChainSource); ok {
+			return src.ProbeLayer(chainTag, pos)
+		}
+	}
+	src, ok := ac.Backend().(chainSource)
+	if !ok {
+		return 0, "", fmt.Errorf("chain probe is not available in this mode")
+	}
+	return src.ProbeLayer(chainTag, pos)
 }
 
 // DaemonCoreLogLines отдаёт хвост логов ядра из бэкенда (daemon-режим:

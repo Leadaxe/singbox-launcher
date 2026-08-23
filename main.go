@@ -102,6 +102,9 @@ func main() {
 	if settings.PingTestAllConcurrency != 0 {
 		api.SetPingTestAllConcurrency(settings.PingTestAllConcurrency)
 	}
+	if settings.PingTestTimeoutMs != 0 {
+		api.SetPingTestTimeoutMs(settings.PingTestTimeoutMs)
+	}
 	// Honor persisted opt-out of subscription auto-update. The loop is started
 	// unconditionally later; this just flips the in-memory gate so it skips work.
 	if settings.SubscriptionAutoUpdateDisabled {

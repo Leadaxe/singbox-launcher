@@ -49,7 +49,54 @@ var (
 	pingTestMu             sync.RWMutex
 	pingTestURL            = PingTestEndpointGoogle.URL
 	pingTestAllConcurrency = 20
+	pingTestTimeoutMs      = DefaultPingTestTimeoutMs
 )
+
+// Бюджет одиночного url-теста.
+//
+// Прежде 5000 мс были константой в трёх транспортах сразу. Настройкой это
+// стало вместе с послойной пробой цепочки (SPEC 110): хоп, добавляющий
+// секунды, на пятисекундном бюджете выпадает в «ошибка» — то есть ровно тот
+// случай, ради которого пробу и смотрят, оказывался неизмеримым.
+//
+// Значение общее с обычным пингом намеренно: цифра слоя сравнивается с
+// колонкой Delay в списке, и разные бюджеты сделали бы это сравнение
+// ложным.
+const (
+	DefaultPingTestTimeoutMs = 5000
+	MinPingTestTimeoutMs     = 1000
+	MaxPingTestTimeoutMs     = 60000
+)
+
+// normalizePingTestTimeoutMs — 0 (нет настройки) и мусор дают дефолт,
+// остальное зажимается в границы: таймаут в 50 мс превратил бы список в
+// сплошные ошибки, а в час — подвесил бы ping-all до перезапуска.
+func normalizePingTestTimeoutMs(ms int) int {
+	if ms <= 0 {
+		return DefaultPingTestTimeoutMs
+	}
+	if ms < MinPingTestTimeoutMs {
+		return MinPingTestTimeoutMs
+	}
+	if ms > MaxPingTestTimeoutMs {
+		return MaxPingTestTimeoutMs
+	}
+	return ms
+}
+
+// GetPingTestTimeoutMs returns the single url-test budget in milliseconds.
+func GetPingTestTimeoutMs() int {
+	pingTestMu.RLock()
+	defer pingTestMu.RUnlock()
+	return pingTestTimeoutMs
+}
+
+// SetPingTestTimeoutMs sets the single url-test budget; invalid values become the default.
+func SetPingTestTimeoutMs(ms int) {
+	pingTestMu.Lock()
+	defer pingTestMu.Unlock()
+	pingTestTimeoutMs = normalizePingTestTimeoutMs(ms)
+}
 
 func normalizePingTestAllConcurrency(n int) int {
 	switch n {
@@ -103,7 +150,7 @@ func GetDelay(baseURL, token, proxyName string) (int64, error) {
 	writeLog(debuglog.LevelVerbose, "%s", logMessage)
 
 	encName := url.PathEscape(proxyName)
-	delayURL := fmt.Sprintf("%s/proxies/%s/delay?timeout=5000&url=%s", baseURL, encName, url.QueryEscape(GetPingTestURL()))
+	delayURL := fmt.Sprintf("%s/proxies/%s/delay?timeout=%d&url=%s", baseURL, encName, GetPingTestTimeoutMs(), url.QueryEscape(GetPingTestURL()))
 	reqCtx, cancel := context.WithTimeout(ctx, time.Duration(httpRequestTimeoutSeconds)*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, "GET", delayURL, nil)
