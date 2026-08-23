@@ -199,7 +199,9 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	// Доля высоты окна, а не константа: при растягивании окна список
 	// серверов растёт вместе с ним, а на низком экране не выпихивает
 	// кнопки навигации под Dock (тот же механизм, что на других вкладках).
-	serversScroll.SetMinSize(adaptiveScrollSize(guiState, 0.32, 210))
+	// Минимум скромный: высоту список берёт растяжением в Border ниже, а
+	// это лишь нижняя граница, чтобы на низком окне он не схлопнулся.
+	serversScroll.SetMinSize(fyne.NewSize(0, 160))
 
 	serversLabel := widget.NewLabel(locale.T("wizard.dns.label_servers"))
 	serversLabel.Importance = widget.MediumImportance
@@ -440,10 +442,15 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 
 	rulesHeader := container.NewHBox(rulesLabel, layout.NewSpacer(), toggleBtn)
 
-	return container.NewVBox(
-		serversHeader,
-		serversScroll,
-		widget.NewSeparator(),
+	// Border, а не VBox: VBox даёт каждому элементу ровно его минимальную
+	// высоту и не растягивает ни один — весь остаток высоты окна уходил в
+	// пустоту под последней строкой. Здесь список серверов стоит в центре
+	// и забирает всё, что осталось от шапки и нижнего блока, а список
+	// правил внутри нижнего блока держит свою долю окна.
+	//
+	// Разделитель после serversScroll убран: VScroll рисует собственную
+	// границу снизу, и своя линия сразу за ней давала две подряд.
+	bottom := container.NewVBox(
 		strategyAndCacheRow,
 		widget.NewSeparator(),
 		rulesHeader,
@@ -452,6 +459,12 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		rulesButtons,
 		widget.NewSeparator(),
 		finalAndResolverRow,
+	)
+	return container.NewBorder(
+		serversHeader,
+		bottom,
+		nil, nil,
+		serversScroll,
 	)
 }
 
@@ -566,7 +579,10 @@ func dnsGroupMembersSummary(obj map[string]interface{}, enabledByTag map[string]
 	if len(parts) == 0 {
 		return ""
 	}
-	return "  →  " + strings.Join(parts, ", ")
+	// Двоеточие, а не «→»: стрелки нет в шрифте Fyne по умолчанию, и она
+	// рисуется квадратами-заглушками (та же ловушка, что с «→» в строках
+	// DNS-правил).
+	return ":  " + strings.Join(parts, ", ")
 }
 
 // strikeThrough зачёркивает строку комбинирующим символом.
