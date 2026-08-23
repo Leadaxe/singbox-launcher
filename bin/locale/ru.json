@@ -723,6 +723,8 @@
   "wizard.outbound.tab_auto": "Автовыбор",
   "wizard.outbound.auto_tab_hint": "Парная группа urltest с именем <tag>-auto и тем же составом узлов. Предлагается первой опцией и становится умолчанием, если узел по умолчанию не задан.",
   "wizard.outbound.row_auto_mark": "· авто",
+  "wizard.outbound.row_chain_mark": "[цепочка: %d]",
+  "wizard.outbound.row_chain_unsupported": "[цепочка] ⚠️ ядро не умеет цепочки",
   "wizard.outbound.row_disabled_mark": "(выкл)",
   "wizard.outbound.enable_tooltip": "Включать направление в конфиг. Выключенное сохраняет настройки, но не собирается и не предлагается целью правил.",
   "wizard.outbound.label_name": "Имя",

@@ -118,8 +118,21 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			if shown.Type == "urltest" {
 				rawLine += " [" + shown.Type + "]"
 			}
-			if shown.Auto != nil {
+			if shown.Auto != nil && !shown.IsChain() {
 				rawLine += " " + locale.T("wizard.outbound.row_auto_mark")
+			}
+			// SPEC 110: цепочку видно по строке — иначе она неотличима от
+			// обычного Направления, а ведёт себя совсем иначе. Если ядро
+			// её не умеет, вместо метки идёт предупреждение: запись в
+			// конфиг не попадёт, и узнать об этом по факту пропавшего
+			// маршрута — худший из способов.
+			if shown.IsChain() {
+				if chainSupportedForList() {
+					rawLine += " " + locale.Tf("wizard.outbound.row_chain_mark",
+						len(shown.Chain.HopsOrNil()))
+				} else {
+					rawLine += " " + locale.T("wizard.outbound.row_chain_unsupported")
+				}
 			}
 			if r.Outbound.Disabled {
 				rawLine = locale.T("wizard.outbound.row_disabled_mark") + " " + rawLine

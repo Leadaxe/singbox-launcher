@@ -523,16 +523,40 @@ into a `selector` plus, when auto-select is on, a paired `urltest` named
 | `tag` | string | The identifier rules reference. Immutable once created — renaming would break every rule pointing at it. Auto-issued ones look like `vpn-1`; template and preset ones are arbitrary (`proxy-out`, `ru VPN 🇷🇺`). |
 | `label` | string | Display name. Empty means "show the tag". Free to change: nothing references a name. |
 | `disabled` | bool | Not built, not offered as a rule target. **`disabled`, not `enabled`** — a bool's zero value has to mean "on", or an entry written without the key would read as switched off. |
-| `type` | string | `selector` for a Direction; `urltest` for the template's standalone auto groups (`auto-proxy-out`). |
+| `type` | string | `selector` for a Direction; `urltest` for the template's standalone auto groups (`auto-proxy-out`); `chain` for a hop chain (SPEC 110). |
 | `filters` | object | Node filter in the shared pattern language (`/re/i`, `!/re/i`). The form only ever shows the **body** and an invert tick; the `i` flag is always written. |
 | `preferredDefault` | object | Same language; the first matching node becomes the selector's `default`. |
 | `addOutbounds` | array | Extra options: `direct-out`, `block-out`, and Directions **above** in the list. Never a `<tag>-auto` twin — that is an option only inside its own Direction. |
 | `auto` | object \| null | Twin parameters: `mode` (`least_test` \| `round_robin`), `url`, `interval`, `tolerance`, `idle_timeout`, `interrupt_exist_connections`, plus `pool` / `pool_tolerance` / `sticky_hash` for round-robin. **null means no twin at all.** |
+| `chain` | object \| null | **SPEC 110.** A hop chain instead of a selector: `hops` (positions in packet order), `idle_timeout`, `strip_evasion`, `strip`, `rewrite`. Present together with `type: "chain"`, it means the entry has no composition, no filter and no auto-select. |
 | `options`, `comment`, `required`, `ref`, `updates` | | As before (SPEC 057/058): template/preset binding and the patch stack. |
 
 **The twin is not stored.** `<tag>-auto` is expanded on every build from
 `auto`. Keeping it in state would mean two objects a user has to keep in sync
 by hand.
+
+**Chains (SPEC 110).** `hops` lists positions in PACKET order: the first is
+the hop closest to you, the last is the address the destination sees. `detour`
+reads the other way round ("who dials through whom"), and mixing them up builds
+a route that works but is not the one you meant. A position may be a node, a
+subscription group, another Direction or a template service tag.
+
+The core rejects the whole config when a chain breaks its rules, so they are
+checked before emitting: at least two positions, none empty, no self-reference,
+no duplicates, and a nested chain only at position 0. A position that did not
+reach the config removes the **entire** chain rather than one hop — a route
+missing a hop is a different route.
+
+`strip` removes one-way DPI-evasion tricks from links; the catalogue is closed
+(`tls.fragment`, `multiplex.padding`, `xhttp.padding`, `tls.utls`) and an
+unknown key is a startup error. `tls.utls` is not stripped by default and must
+not be stripped on `reality` nodes, where the ClientHello fingerprint carries
+the protocol rather than disguising it.
+
+A core built without `with_lx_chain` does not know the type. The launcher
+probes the build tags first: an unsupported chain is not emitted at all, rules
+pointing at it fall back to `route.final`, and the reason lands in the log and
+in the entry's editor.
 
 **The old key is read forever.** State written before SPEC 104 keeps its
 Directions under `connections.outbounds`; it is adopted on load and never

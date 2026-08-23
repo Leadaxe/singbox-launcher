@@ -505,6 +505,7 @@ An array of objects describing selectors (proxy groups).
 | `label`           | string   | No          | **SPEC 104.** The Direction's display name; empty means "show the tag". Kept apart from `comment` on purpose: a template entry's comment describes its purpose in a paragraph and does not work as a name. |
 | `disabled`        | bool     | No          | **SPEC 104.** The Direction keeps its settings but is neither built nor offered as a rule target. `disabled` rather than `enabled` so a zero value means "on". |
 | `auto`            | object   | No          | **SPEC 104.** Parameters of the paired `<tag>-auto` group: `mode` (`least_test` \| `round_robin`), `url`, `interval`, `tolerance`, `idle_timeout`, `interrupt_exist_connections`, and `pool` / `pool_tolerance` / `sticky_hash` for round-robin. Absent means no twin at all. The twin itself is never stored — it is expanded on every build. |
+| `chain`           | object   | No          | **SPEC 110.** Turns the Direction into a hop chain instead of a selector: `hops` (positions in packet order), `idle_timeout`, `strip_evasion`, `strip`, `rewrite`. Present means the entry has no composition, no filter and no auto-select at all. Requires a core built with `with_lx_chain`. See [Hop chains](#hop-chains). |
 | `wizard`          | object   | No          | **Legacy.** The old wrapper `{"hide": true, "required": 1}`; its `required` is still read as a fallback (the numeric form included). In the current format `required` sits **flat**, without the wrapper. The numeric semantics of "`1` — add, `2` — always rewrite" do not exist in the code. |
 
 Since SPEC 104 these entries are **Directions** — the targets rules point at —
@@ -517,6 +518,60 @@ The form shows a filter as the **body** of a regular expression plus an invert
 tick, and always writes the canonical `/body/i`; matching ignores case because
 subscription tags arrive in whatever case the provider chose. See
 [DIRECTION_FILTERS.md](DIRECTION_FILTERS.md).
+
+#### Hop chains
+
+**SPEC 110.** A Direction whose `type` is `"chain"` describes a multi-hop route
+`client → hop 1 → hop 2 → … → target` and is emitted as sing-box-lx's `chain`
+outbound. It is still an ordinary Direction from the outside: rules point at
+it, selectors include it, urltest measures it.
+
+```json
+{
+  "tag": "double-hop",
+  "type": "chain",
+  "chain": {
+    "hops": ["vpn-1", "🇳🇱 Amsterdam"],
+    "idle_timeout": "10m",
+    "strip_evasion": true,
+    "strip": { "tls.utls": false }
+  }
+}
+```
+
+**`hops` are in packet order**: the first entry is the hop closest to you, the
+last is the address the destination sees. `detour` reads the other way round
+("who dials through whom"), so mixing the two up builds a route that works but
+is not the one you meant. Any position may be a node, a subscription group,
+another Direction or a template's service tag; switching a group on any
+position changes the path without a restart.
+
+The core rejects the whole config — not just the chain — when any of its
+invariants break, so the launcher checks them before emitting: at least two
+positions, none empty, no self-reference, no duplicates, and a nested chain
+only at position 0. A position that did not make it into the config removes
+the **entire** chain rather than one hop: a route missing a hop is a different
+route.
+
+`strip` removes one-way DPI-evasion tricks from the links (positions from the
+second one on), which the server never sees inside a tunnel and which only add
+latency. The catalogue is closed — an unknown key is a startup error:
+
+| Key | Stripped by default | What it removes |
+|---|---|---|
+| `tls.fragment` | yes | ClientHello fragmentation |
+| `multiplex.padding` | yes | multiplex padding |
+| `xhttp.padding` | yes | XHTTP padding |
+| `tls.utls` | **no** | ClientHello fingerprint — **must not** be stripped on `reality` nodes, which need it |
+
+`rewrite` is an RFC 7396 merge patch applied to link options per outbound type;
+it is edited on the JSON tab only.
+
+**Cores without `with_lx_chain`** do not know the type and reject the entire
+config with `unknown outbound type: chain`. The launcher probes the installed
+core's build tags first: an unsupported chain is not emitted at all, rules
+pointing at it fall back to `route.final`, and the reason is reported in the
+log and in the entry's editor.
 
 #### Filtering logic in `filters`
 

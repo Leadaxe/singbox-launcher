@@ -179,3 +179,14 @@ func tagOf(d *config.Direction) string {
 	}
 	return d.Tag
 }
+
+// chainSupportedForList — умеет ли ядро цепочки; для пометок в списке
+// Направлений.
+//
+// Отдельно от формы, потому что список перерисовывается часто, а вердикт
+// уже кэширован по (mtime, size) бинаря — повторный вызов не запускает
+// `sing-box version` заново.
+func chainSupportedForList() bool {
+	supported, _ := config.ChainSupportedByCore()
+	return supported
+}

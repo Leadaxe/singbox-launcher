@@ -728,6 +728,8 @@
   "wizard.outbound.tab_auto": "Auto-select",
   "wizard.outbound.auto_tab_hint": "A paired urltest group named <tag>-auto with the same nodes as this direction. It is offered as the first option and becomes the default unless a default node is set.",
   "wizard.outbound.row_auto_mark": "· auto",
+  "wizard.outbound.row_chain_mark": "[chain: %d]",
+  "wizard.outbound.row_chain_unsupported": "[chain] ⚠️ core has no chain support",
   "wizard.outbound.row_disabled_mark": "(off)",
   "wizard.outbound.enable_tooltip": "Include this direction in the config. A switched-off direction keeps its settings but is not built and cannot be picked as a rule target.",
   "wizard.outbound.label_name": "Name",

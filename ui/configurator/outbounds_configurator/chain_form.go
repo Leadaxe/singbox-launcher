@@ -194,7 +194,7 @@ func (f *chainForm) Content() fyne.CanvasObject {
 	var head []fyne.CanvasObject
 
 	if f.unsupported != "" {
-		warn := widget.NewLabel("⚠ " + f.unsupported)
+		warn := widget.NewLabel("⚠️ " + f.unsupported)
 		warn.Wrapping = fyne.TextWrapWord
 		warn.Importance = widget.WarningImportance
 		head = append(head, warn, widget.NewSeparator())
@@ -318,7 +318,7 @@ func (f *chainForm) rebuildHops() {
 	}
 
 	for _, msg := range f.conflicts() {
-		warn := widget.NewLabel("⚠ " + msg)
+		warn := widget.NewLabel("⚠️ " + msg)
 		warn.Importance = widget.WarningImportance
 		warn.Wrapping = fyne.TextWrapWord
 		f.hopsBox.Add(warn)
