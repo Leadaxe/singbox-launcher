@@ -306,54 +306,6 @@ func TestTagsAbove(t *testing.T) {
 		})
 	}
 }
-
-func TestSameScope(t *testing.T) {
-	tests := []struct {
-		name string
-		a    outboundRow
-		b    outboundRow
-		want bool
-	}{
-		{
-			name: "both global",
-			a:    outboundRow{IsGlobal: true},
-			b:    outboundRow{IsGlobal: true},
-			want: true,
-		},
-		{
-			name: "global vs source",
-			a:    outboundRow{IsGlobal: true},
-			b:    outboundRow{IsGlobal: false, SourceIndex: 0},
-			want: false,
-		},
-		{
-			name: "source vs global",
-			a:    outboundRow{IsGlobal: false, SourceIndex: 2},
-			b:    outboundRow{IsGlobal: true},
-			want: false,
-		},
-		{
-			name: "same source index",
-			a:    outboundRow{IsGlobal: false, SourceIndex: 1},
-			b:    outboundRow{IsGlobal: false, SourceIndex: 1},
-			want: true,
-		},
-		{
-			name: "different source index",
-			a:    outboundRow{IsGlobal: false, SourceIndex: 1},
-			b:    outboundRow{IsGlobal: false, SourceIndex: 2},
-			want: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := sameScope(tt.a, tt.b); got != tt.want {
-				t.Errorf("sameScope = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestTemplateRequiredTags(t *testing.T) {
 	// Valid template JSON: wrapped {"ParserConfig": {...}} (capital P).
 	validJSON := `{

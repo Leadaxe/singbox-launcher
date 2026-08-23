@@ -237,6 +237,29 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 	sourcesBox := container.NewVBox()
 
+	// SPEC 109: перетаскивание вместо ↑/↓ — тот же механизм, что на Rules,
+	// DNS и Направлениях. Порядок источников — обычный порядок слайса
+	// model.Sources; на конфиг он не влияет (узлы собираются из всех
+	// включённых подписок), но определяет вид списка и нумерацию
+	// префиксов по умолчанию.
+	dragGroup := fynewidget.NewDragReorderGroup(func(from, to int) {
+		m := presenter.Model()
+		if m == nil || from < 0 || from >= len(m.Sources) || to < 0 || to >= len(m.Sources) || from == to {
+			return
+		}
+		// Перестановка через копию: срез с обрезанным cap (m.Sources[:from:from])
+		// не даёт append переписать хвост исходного слайса, на который могли
+		// остаться ссылки в уже построенных строках.
+		moved := m.Sources[from]
+		rest := append(m.Sources[:from:from], m.Sources[from+1:]...)
+		out := make([]corestate.Source, 0, len(m.Sources))
+		out = append(out, rest[:to]...)
+		out = append(out, moved)
+		out = append(out, rest[to:]...)
+		m.Sources = out
+		applySourceMutation(presenter, guiState)
+	})
+
 	refreshSourcesList := func() {
 		sourcesBox.Objects = sourcesBox.Objects[:0]
 		m := presenter.Model()
@@ -455,31 +478,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					fynewidget.SetToolTipSafe(noticeBtn, locale.T(tooltipKey))
 				}
 
-				// Reorder buttons (↑/↓) — move this source within the list.
-				// Order is plain slice order in model.Sources and persists to
-				// state.connections.sources on Save (handles both subscriptions
-				// and direct servers, since both live in the same Sources slice).
-				moveUpBtn := fynewidget.NewHoverForwardButton("↑", func() {
-					moveSourceUp(presenter, guiState, sourceIndex)
-				}, rowGetter)
-				moveUpBtn.Importance = widget.LowImportance
-				if sourceIndex <= 0 {
-					moveUpBtn.Disable()
-					fynewidget.SetToolTipSafe(moveUpBtn, locale.T("wizard.source.tooltip_move_up_off"))
-				} else {
-					fynewidget.SetToolTipSafe(moveUpBtn, locale.T("wizard.source.tooltip_move_up"))
-				}
-
-				moveDownBtn := fynewidget.NewHoverForwardButton("↓", func() {
-					moveSourceDown(presenter, guiState, sourceIndex)
-				}, rowGetter)
-				moveDownBtn.Importance = widget.LowImportance
-				if sourceIndex >= len(m.Sources)-1 {
-					moveDownBtn.Disable()
-					fynewidget.SetToolTipSafe(moveDownBtn, locale.T("wizard.source.tooltip_move_down_off"))
-				} else {
-					fynewidget.SetToolTipSafe(moveDownBtn, locale.T("wizard.source.tooltip_move_down"))
-				}
+				// Порядок — обычный порядок слайса model.Sources; сохраняется
+				// в state.connections.sources на Save (и подписки, и прямые
+				// серверы живут в одном слайсе).
+				dragHandle := fynewidget.NewDragHandle(dragGroup, sourceIndex, rowGetter)
 
 				rowGutter := components.NewScrollGutter()
 				rightControlsItems := []fyne.CanvasObject{}
@@ -504,11 +506,9 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					container.New(tightHBox{spacing: rowIconGap}, rightControlsItems...),
 					rowGutter,
 				)
-				// Guideline (Rules tab): reorder ↑/↓ go to the LEFT of the enable
-				// checkbox in a leading cluster, action buttons stay on the right.
-				// Arrows are packed tight; the checkbox keeps its own leading wrap.
-				arrowsCluster := container.New(tightHBox{spacing: rowIconGap}, moveUpBtn, moveDownBtn)
-				leftLead := container.NewHBox(arrowsCluster, fynewidget.CheckLeadingWrap(enableCheck))
+				// Guideline (Rules tab): ручка перетаскивания идёт ЛЕВЕЕ галки
+				// включения, кнопки действий остаются справа.
+				leftLead := container.NewHBox(dragHandle, fynewidget.CheckLeadingWrap(enableCheck))
 				titleRow := container.NewBorder(nil, nil, leftLead, rightControls, rowCenter)
 
 				// Subtitle row: meta inline (nodes / interval / fetched / quota / expires).
@@ -521,9 +521,9 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						subtitleText := canvas.NewText(subtitle, theme.Color(theme.ColorNamePlaceHolder))
 						subtitleText.TextSize = theme.CaptionTextSize()
 						// Indent the subtitle by the exact width of the leading
-						// cluster (↑ ↓ + checkbox) so it starts right under the
-						// title — the title in titleRow also sits after leftLead.
-						// Hardcoding broke once the reorder arrows were added.
+						// cluster (ручка + checkbox) so it starts right under
+						// the title — the title in titleRow also sits after
+						// leftLead. Hardcoding broke once the cluster changed.
 						leftPad := canvas.NewRectangle(color.Transparent)
 						leftPad.SetMinSize(fyne.NewSize(leftLead.MinSize().Width, 0))
 						lines = append(lines, container.NewBorder(nil, nil, leftPad, nil, subtitleText))
@@ -534,6 +534,9 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				}
 
 				row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
+				// Регистрируем КАЖДУЮ строку: вычисление точки вставки
+				// просматривает полосы всех строк, не только перетаскиваемой.
+				dragGroup.Register(sourceIndex, row)
 				row.WireTooltipLabelHover(sourceLabel)
 				if prefixLabel != nil {
 					row.WireTooltipLabelHover(prefixLabel)
@@ -585,29 +588,8 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	return body
 }
 
-// moveSourceUp swaps the source at idx with the one above it, then re-derives
-// the parser config and refreshes the list. Order persists on the next Save.
-func moveSourceUp(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState, idx int) {
-	m := presenter.Model()
-	if m == nil || idx <= 0 || idx >= len(m.Sources) {
-		return
-	}
-	m.Sources[idx-1], m.Sources[idx] = m.Sources[idx], m.Sources[idx-1]
-	applySourceMutation(presenter, guiState)
-}
-
-// moveSourceDown swaps the source at idx with the one below it.
-func moveSourceDown(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState, idx int) {
-	m := presenter.Model()
-	if m == nil || idx < 0 || idx >= len(m.Sources)-1 {
-		return
-	}
-	m.Sources[idx], m.Sources[idx+1] = m.Sources[idx+1], m.Sources[idx]
-	applySourceMutation(presenter, guiState)
-}
-
 // applySourceMutation is the single refresh chain every Sources-list mutation
-// runs after editing model.Sources (reorder ↑/↓, enable toggle, delete):
+// runs after editing model.Sources (перетаскивание, enable toggle, delete):
 // mark dirty → re-derive ParserConfig → invalidate preview cache →
 // UpdateParserConfig → refresh outbound options → rebuild the list.
 //

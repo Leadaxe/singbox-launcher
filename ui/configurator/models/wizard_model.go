@@ -131,7 +131,7 @@ type WizardModel struct {
 	// напрямую через `ref` field (см. configtypes.Direction.Ref + .Updates).
 	// Display order = natural slice order — больше нет вспомогательной in-memory
 	// карты OutboundDisplayOrder. Up/Down работают через swap в slice
-	// (moveOutboundUp/Down), reorder автоматически персистится при сохранении.
+	// (перетаскиванием), reorder автоматически персистится при сохранении.
 
 	// SPEC 056-R-N follow-up: per-server toggle для preset-bundled DNS-серверов
 	// и dns_rule живут внутри PresetRefState (DNSServerEnabled + DNSRuleEnabled).

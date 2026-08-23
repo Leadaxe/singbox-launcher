@@ -57,6 +57,33 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 		rows := collectRowsForUI(model)
 		items := make([]fyne.CanvasObject, 0, len(rows)+2)
 
+		// SPEC 109: перетаскивание вместо ↑/↓ — тот же механизм, что на
+		// Rules и DNS. Порядок Направлений для КОНФИГА не значим (генератор
+		// сортирует топологически по addOutbounds), но он определяет, что
+		// форма предложит в addOutbounds: только записи выше текущей.
+		dragGroup := fynewidget.NewDragReorderGroup(func(from, to int) {
+			pc := getParserConfig(editPresenter.Model())
+			if pc == nil {
+				return
+			}
+			outs := pc.ParserConfig.Outbounds
+			if from < 0 || from >= len(outs) || to < 0 || to >= len(outs) || from == to {
+				return
+			}
+			moved := outs[from]
+			rest := append(outs[:from:from], outs[from+1:]...)
+			out := make([]config.Direction, 0, len(outs))
+			out = append(out, rest[:to]...)
+			out = append(out, moved)
+			out = append(out, rest[to:]...)
+			pc.ParserConfig.Outbounds = out
+			editPresenter.Model().GlobalOutbounds = out
+			refreshList()
+			if onApply != nil {
+				onApply()
+			}
+		})
+
 		// SPEC 108: заголовки секций убраны вместе со строками групп
 		// подписок — в списке остались только Направления, и делить его
 		// больше не на что.
@@ -113,49 +140,9 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 
 			var leftArrows, rightControls *fyne.Container
 
-			// SPEC 057-R-N: preset rows — natural slice members с ref. Up/Down
-			// для всех rows работает через direct swap pc.ParserConfig.Outbounds[]
-			// (moveOutboundUp/Down) — preset binding (ref + updates) переезжает
-			// вместе с body, потому что мы двигаем целиком элемент.
-			canUp := rowIdx > 0 && sameScope(rows[rowIdx], rows[rowIdx-1])
-			canDown := rowIdx < len(rows)-1 && sameScope(rows[rowIdx], rows[rowIdx+1])
-
-			upBtn := fynewidget.NewHoverForwardButton("↑", func() {
-				pc := getParserConfig(editPresenter.Model())
-				if pc == nil {
-					return
-				}
-				moveOutboundUp(pc, r)
-				refreshList()
-				if onApply != nil {
-					onApply()
-				}
-			}, rowGetter)
-			if !canUp {
-				upBtn.Disable()
-				fynewidget.SetToolTipSafe(upBtn, locale.T("wizard.outbound.reorder_up_off"))
-			} else {
-				fynewidget.SetToolTipSafe(upBtn, locale.T("wizard.outbound.reorder_up"))
-			}
-
-			downBtn := fynewidget.NewHoverForwardButton("↓", func() {
-				pc := getParserConfig(editPresenter.Model())
-				if pc == nil {
-					return
-				}
-				moveOutboundDown(pc, r)
-				refreshList()
-				if onApply != nil {
-					onApply()
-				}
-			}, rowGetter)
-			if !canDown {
-				downBtn.Disable()
-				fynewidget.SetToolTipSafe(downBtn, locale.T("wizard.outbound.reorder_down_off"))
-			} else {
-				fynewidget.SetToolTipSafe(downBtn, locale.T("wizard.outbound.reorder_down"))
-			}
-
+			// SPEC 057-R-N + SPEC 109: preset rows — natural slice members с
+			// ref. Перетаскивание двигает элемент слайса целиком, поэтому
+			// preset binding (ref + updates) переезжает вместе с телом.
 			// Edit button — доступен для всех rows включая preset/required.
 			// Для preset: scope locked, Ref/Updates preserved (sync-managed
 			// metadata, не должны wipe'нуться юзерским body edit).
@@ -265,7 +252,8 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 				}
 			}
 
-			leftArrows = container.NewHBox(upBtn, downBtn)
+			dragHandle := fynewidget.NewDragHandle(dragGroup, rowIdx, rowGetter)
+			leftArrows = container.NewHBox(dragHandle)
 			// fixedWidthBtn — обёртка, фиксирующая минимальную ширину кнопки
 			// (Reset > Del по тексту; без фиксации колонка действий "прыгает"
 			// между rows). Stack комбинирует MinSize: max(sizer, btn).
@@ -327,6 +315,9 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			rowInner := container.NewBorder(nil, nil, leftArrows, rightControls, nameLabel)
 			row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
 			row.WireTooltipLabelHover(nameLabel)
+			// Регистрируем КАЖДУЮ строку, а не только перетаскиваемую:
+			// вычисление точки вставки просматривает полосы всех строк.
+			dragGroup.Register(rowIdx, row)
 			items = append(items, row)
 		}
 		listContent.Objects = items
