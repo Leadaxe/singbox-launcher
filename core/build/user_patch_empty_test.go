@@ -16,24 +16,25 @@ func TestUpsertUserPatchDropsAllEmptyPatch(t *testing.T) {
 	empty := map[string]interface{}{
 		"addOutbounds": []interface{}{}, "comment": "", "filters": map[string]interface{}{},
 	}
-	got := UpsertUserPatch(base, empty)
+	got := UpsertUserPatch(base, empty, false)
 	if len(got) != 1 || got[0].Ref != "russian" {
 		t.Fatalf("пустой патч должен быть отброшен, пресетный — сохранён: %+v", got)
 	}
 
 	// Существующий мусорный USER-патч снимается тем же путём.
 	withJunk := append(base, configtypes.OutboundUpdate{Ref: configtypes.RefUser, Patch: empty})
-	got = UpsertUserPatch(withJunk, empty)
+	got = UpsertUserPatch(withJunk, empty, false)
 	if len(got) != 1 {
 		t.Fatalf("мусорный USER-патч должен уйти: %+v", got)
 	}
 }
 
 // Осознанные значения остаются: false, 0 и явный null у auto — не «пусто».
+// explicit=false: проверяется чистка артефактов, а не правка формы.
 func TestUpsertUserPatchKeepsMeaningfulZeroes(t *testing.T) {
 	got := UpsertUserPatch(nil, map[string]interface{}{
 		"disabled": false, "auto": nil, "filters": map[string]interface{}{},
-	})
+	}, false)
 	if len(got) != 1 {
 		t.Fatalf("патч с осмысленными значениями потерян: %+v", got)
 	}
@@ -49,11 +50,12 @@ func TestUpsertUserPatchKeepsMeaningfulZeroes(t *testing.T) {
 	}
 }
 
-// Очистка вместе с реальной правкой — намеренная и сохраняется.
+// Очистка вместе с реальной правкой сохраняется даже без explicit:
+// непустой ключ сам по себе доказывает, что патч не артефакт.
 func TestUpsertUserPatchKeepsEmptyAlongsideRealChange(t *testing.T) {
 	got := UpsertUserPatch(nil, map[string]interface{}{
 		"filters": map[string]interface{}{}, "comment": "my note",
-	})
+	}, false)
 	if len(got) != 1 {
 		t.Fatalf("%+v", got)
 	}

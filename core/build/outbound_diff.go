@@ -162,21 +162,37 @@ func stringSlicesEqual(a, b []string) bool {
 // Если присутствует USER entry — replace (всегда один USER на outbound).
 // Если отсутствует — append (sync.reorderUpdates переместит в конец).
 //
+// explicit — правку делает ЖИВОЙ пользователь через форму, а не миграция и
+// не синхронизация. Только он позволяет отличить осознанную очистку поля от
+// артефакта с тем же содержимым; по самому патчу это неразличимо, поэтому
+// признак и приходит от вызывающего, а не угадывается здесь.
+//
 // Используется Edit dialog'ом после OutboundFieldDiff.
-func UpsertUserPatch(updates []configtypes.OutboundUpdate, patch map[string]interface{}) []configtypes.OutboundUpdate {
-	// Патч из одних «пустых» значений ({}, [], "") — не правка, а её
-	// отсутствие: форма, открытая и сохранённая без изменений, НЕ должна
-	// оставлять после себя override. Иначе получается самовоспроизводящаяся
-	// ловушка: один раз записанный `"filters": {}` затирает пресетный фильтр
-	// (russian → `!/(🇷🇺)/i` на proxy-out), форма в следующий раз показывает
-	// уже затёртое, diff против базы снова даёт «очистил фильтр» — и так на
-	// каждом Save. В живом state.json такой патч лежал с pre-058 и молча
-	// выпускал российский трафик через российский узел.
+func UpsertUserPatch(updates []configtypes.OutboundUpdate, patch map[string]interface{}, explicit bool) []configtypes.OutboundUpdate {
+	// Патч из одних «пустых» значений ({}, [], "") приходит в двух РАЗНЫХ
+	// случаях, и различить их по содержимому невозможно — оно одинаковое:
 	//
-	// Осознанная очистка при этом остаётся возможной: она приходит вместе с
-	// хоть одним непустым ключом (например, пользователь снял фильтр И
-	// поменял комментарий), либо через Reset, который снимает патч целиком.
-	patch = dropEmptyOverrides(patch)
+	//  1. артефакт: до SPEC 058 форма отдавала пустыми поля, которых
+	//     пользователь не трогал. Такой патч затирал пресетный фильтр
+	//     (russian → `!/(🇷🇺)/i` на proxy-out) и молча выпускал российский
+	//     трафик через российский узел;
+	//  2. осознанная очистка: пользователь стёр поле — например, убрал
+	//     умолчание группы. Пустое значение здесь и есть правка.
+	//
+	// Раньше оба случая отбрасывались, и второй молча терялся: убранное
+	// умолчание не сохранялось, форма показывала шаблонное значение снова, а
+	// в конфиг уезжала мёртвая ссылка (`default: "proxy-out"` при составе
+	// без proxy-out не давал ядру стартовать).
+	//
+	// Различает не содержимое, а происхождение. Сегодняшняя форма считает
+	// diff против базы БЕЗ USER-патча, то есть пустое значение в её выводе
+	// означает ровно «пользователь убрал то, что было». Помечаем такой патч
+	// Explicit и сохраняем целиком; legacy-патчи флага не имеют и чистятся
+	// как прежде — их снимает рубеж загрузки (state.sanitizeOutboundRefs).
+	if !explicit {
+		patch = dropEmptyOverrides(patch)
+	}
+	explicit = explicit && hasEmptyOverride(patch)
 	// Remove existing USER patch (if any).
 	out := make([]configtypes.OutboundUpdate, 0, len(updates)+1)
 	for _, u := range updates {
@@ -187,14 +203,50 @@ func UpsertUserPatch(updates []configtypes.OutboundUpdate, patch map[string]inte
 	// Append new USER patch if non-empty.
 	if len(patch) > 0 {
 		out = append(out, configtypes.OutboundUpdate{
-			Ref:   configtypes.RefUser,
-			Patch: patch,
+			Ref:      configtypes.RefUser,
+			Patch:    patch,
+			Explicit: explicit,
 		})
 	}
 	if len(out) == 0 {
 		return nil
 	}
 	return out
+}
+
+// hasEmptyOverride — есть ли в патче хоть одно пустое значение, то есть
+// «пользователь стёр поле».
+//
+// Именно наличие пустого, а не «все пустые»: очистка одного поля вместе с
+// правкой другого — тот же осознанный ввод, и терять её нельзя.
+func hasEmptyOverride(patch map[string]interface{}) bool {
+	for k, v := range patch {
+		switch t := v.(type) {
+		case nil:
+			// null у auto — «двойник выключен», осознанное значение, но не
+			// очистка поля: оно и так переживает dropEmptyOverrides.
+			if k != "auto" {
+				return true
+			}
+		case string:
+			if t == "" {
+				return true
+			}
+		case map[string]interface{}:
+			if len(t) == 0 {
+				return true
+			}
+		case []interface{}:
+			if len(t) == 0 {
+				return true
+			}
+		case []string:
+			if len(t) == 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // dropEmptyOverrides убирает из патча ключи с пустым значением. Если после

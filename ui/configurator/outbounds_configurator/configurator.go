@@ -239,6 +239,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 					pc.ParserConfig.Outbounds[r2.IndexInSlice].Updates = build.UpsertUserPatch(
 						pc.ParserConfig.Outbounds[r2.IndexInSlice].Updates,
 						nil,
+						false, // Reset снимает патч целиком — признак не при чём
 					)
 					refreshList()
 					if onApply != nil {

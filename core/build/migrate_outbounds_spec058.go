@@ -130,7 +130,10 @@ func MigrateOutboundsToReferencedShape(
 			mergedBase := applyUpdatesToBase(tmplBody, presetUpdatesByTag[ob.Tag])
 			diff := OutboundFieldDiff(*ob, mergedBase)
 			ob.Ref = configtypes.RefTemplate
-			ob.Updates = UpsertUserPatch(ob.Updates, diff)
+			// explicit=false: это миграция старого состояния, а не правка
+			// пользователя. Пустые значения здесь — артефакт формата, и
+			// чистить их надо как прежде.
+			ob.Updates = UpsertUserPatch(ob.Updates, diff, false)
 			stripReferencedBody(ob)
 			changed = true
 			continue
@@ -141,7 +144,10 @@ func MigrateOutboundsToReferencedShape(
 			// получают patches от других presetов в текущей модели).
 			diff := OutboundFieldDiff(*ob, pa.Body)
 			ob.Ref = pa.ID
-			ob.Updates = UpsertUserPatch(ob.Updates, diff)
+			// explicit=false: это миграция старого состояния, а не правка
+			// пользователя. Пустые значения здесь — артефакт формата, и
+			// чистить их надо как прежде.
+			ob.Updates = UpsertUserPatch(ob.Updates, diff, false)
 			stripReferencedBody(ob)
 			changed = true
 			continue

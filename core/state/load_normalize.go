@@ -54,12 +54,16 @@ func sanitizeOutboundRefs(outbounds *[]configtypes.Direction) {
 					continue
 				}
 				// SPEC 104: USER-патч из одних пустых значений ({} / [] / "")
-				// — не правка, а артефакт формы, сохранённой без изменений.
-				// Он затирает пресетные патчи (russian → `!/(🇷🇺)/i` на
-				// proxy-out) и воспроизводит себя на каждом Save. Такой
-				// мусор лежал в живых state.json с pre-058 — чистим при
+				// — артефакт формы, сохранённой без изменений (pre-058). Он
+				// затирает пресетные патчи (russian → `!/(🇷🇺)/i` на
+				// proxy-out) и воспроизводит себя на каждом Save. Чистим при
 				// загрузке, не дожидаясь, пока пользователь откроет запись.
-				if u.Ref == configtypes.RefUser && isAllEmptyPatch(u.Patch) {
+				//
+				// Explicit при этом означает обратное: патч записан
+				// сегодняшней формой, и пустое значение в нём — это
+				// «пользователь стёр поле». Снять такой значило бы вернуть
+				// настройку, которую он убрал (см. OutboundUpdate.Explicit).
+				if u.Ref == configtypes.RefUser && !u.Explicit && isAllEmptyPatch(u.Patch) {
 					log.Printf("state: dropping empty USER patch on outbound %q (it only masked template/preset values)", ob.Tag)
 					continue
 				}

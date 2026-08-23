@@ -518,9 +518,13 @@ func ShowEditDialog(
 		}
 		diff := build.OutboundFieldDiff(*cfg, mergedBase)
 		// updates[] = existing preset patches + новый USER patch (или без него если diff пуст).
+		// explicit=true: правку делает живой пользователь в форме. Только
+		// это отличает осознанную очистку поля («убрал умолчание») от
+		// артефакта с тем же содержимым — по патчу они неразличимы.
 		cfg.Updates = build.UpsertUserPatch(
 			append([]config.OutboundUpdate(nil), baseEntry.Updates...),
 			diff,
+			true,
 		)
 		// Strip body fields — referenced entries thin.
 		stripDirectBodyForReferenced(cfg)
