@@ -49,6 +49,16 @@ func syncLegacyFromConnections(s *State) {
 				ConfigJSON:        src.ConfigJSON,      // ручной outbound JSON
 			}
 			proxies = append(proxies, ps)
+
+		case SourceTypeChain:
+			// SPEC 110: у цепочки нет ни URL, ни URI — TagMask несёт имя,
+			// из которого получится тег её узла.
+			proxies = append(proxies, configtypes.ProxySource{
+				TagMask:           src.Label,
+				ExcludeFromGlobal: src.ExcludeFromGlobal,
+				Disabled:          !src.Enabled,
+				Chain:             src.Chain,
+			})
 		}
 	}
 

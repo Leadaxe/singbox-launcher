@@ -71,7 +71,7 @@ func PrepareDirections(parserConfig *ParserConfig, twinOptions map[string]interf
 func ExpandDirectionTwins(directions []configtypes.Direction, tmplAutoOptions map[string]interface{}) []configtypes.Direction {
 	hasTwin := false
 	for i := range directions {
-		if directions[i].Auto != nil && !directions[i].IsChain() {
+		if directions[i].Auto != nil {
 			hasTwin = true
 			break
 		}
@@ -91,13 +91,7 @@ func ExpandDirectionTwins(directions []configtypes.Direction, tmplAutoOptions ma
 
 	out := make([]configtypes.Direction, 0, len(directions)*2)
 	for _, d := range directions {
-		// SPEC 110: цепочке двойник не положен — у неё нет состава, между
-		// элементами которого urltest мог бы выбирать. Пустой Auto тут не
-		// гарантирован: пользователь переключает тип записи, и параметры
-		// автовыбора остаются лежать от прошлого выбора. Молча собранный
-		// двойник получил бы фильтр цепочки (то есть весь пул узлов) и
-		// уехал бы в её AddOutbounds, которых у цепочки не бывает.
-		if d.Auto == nil || d.Tag == "" || d.IsChain() {
+		if d.Auto == nil || d.Tag == "" {
 			out = append(out, d)
 			continue
 		}

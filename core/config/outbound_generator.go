@@ -80,10 +80,10 @@ type OutboundGenerationResult struct {
 	// — это «подписка не загрузилась», и чинить надо её.
 	EmptyDirections []string
 
-	// BrokenChains — цепочки (SPEC 110), не попавшие в конфиг: ядро без
-	// `with_lx_chain`, недошедшая позиция, нарушенный инвариант. Пользователь
-	// обязан узнать, почему настроенный маршрут не работает, — молча
-	// выпавшая цепочка выглядит как «лаунчер потерял настройку».
+	// BrokenChains — источники-цепочки (SPEC 110), не ставшие узлами: ядро
+	// без `with_lx_chain`, недошедшая позиция, нарушенный инвариант.
+	// Пользователь обязан узнать, почему настроенный маршрут не работает, —
+	// молча выпавшая цепочка выглядит как «лаунчер потерял настройку».
 	BrokenChains []ChainDegradation
 }
 
@@ -531,6 +531,10 @@ func GenerateSelectorWithFilteredAddOutbounds(
 		outboundConfig.Tag, outboundConfig.Type, filterMap, outboundConfig.AddOutbounds, len(allNodes))
 
 	filteredNodes := filterNodesForSelector(allNodes, filterMap)
+	// SPEC 110 T9: тот же запрет, что на проходе 1 — состав считается здесь
+	// заново, и без повторной проверки цепочка вернулась бы в группу,
+	// через которую сама и проходит.
+	filteredNodes = dropChainsThroughDirection(filteredNodes, outboundConfig.Tag, chainHopsByTag(allNodes))
 	debuglog.DebugLog("Parser: filterNodesForSelector returned %d nodes for '%s'", len(filteredNodes), outboundConfig.Tag)
 
 	// Build outbounds list with unique tags
@@ -963,6 +967,19 @@ func GenerateOutboundsFromParserConfig(
 		return nil, fmt.Errorf("no nodes parsed from any source")
 	}
 
+	// SPEC 110: источники-цепочки становятся узлами здесь — их позиции
+	// ссылаются на теги, окончательные только после загрузки ВСЕХ
+	// источников (префиксы подписок, уникализация дублей). Направления
+	// передаются отдельно: они разворачиваются позже, но их теги известны
+	// уже сейчас.
+	directionTagsForChains := make(map[string]bool, len(parserConfig.ParserConfig.Outbounds))
+	for _, d := range parserConfig.ParserConfig.Outbounds {
+		if d.Tag != "" && !d.Disabled {
+			directionTagsForChains[d.Tag] = true
+		}
+	}
+	allNodes, brokenChains := ResolveChainSources(parserConfig, allNodes, nodesBySource, directionTagsForChains)
+
 	// SPEC 101: resolve hash-addressed source detours (chain through one concrete
 	// node) now that every source is loaded and all tags are final. Must run
 	// before sanitizeNodeDetours so the stamped tags join cycle/self validation.
@@ -1008,7 +1025,7 @@ func GenerateOutboundsFromParserConfig(
 	exposeCandidates := collectExposeTagCandidates(parserConfig)
 	outboundsInfo := buildOutboundsInfo(parserConfig, nodesBySource, globalPool, progressCallback)
 	computeOutboundValidity(outboundsInfo, parserConfig, exposeCandidates, progressCallback)
-	selectorJSONs, localSelectorsCount, globalSelectorsCount, emptyDirections, brokenChains := generateSelectorJSONs(
+	selectorJSONs, localSelectorsCount, globalSelectorsCount, emptyDirections := generateSelectorJSONs(
 		parserConfig, nodesBySource, globalPool, outboundsInfo, exposeCandidates, progressCallback, directions)
 	selectorsJSON = append(selectorsJSON, selectorJSONs...)
 

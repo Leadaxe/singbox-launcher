@@ -1,0 +1,11 @@
+{
+  "_": "Цепочка — узел, а не Направление: её ловит фильтр Направления наравне с серверами подписки. Ради этого она и переехала из Направлений в источники.",
+  "chains": [
+    { "tag": "hop-chain", "hops": ["🇩🇪 Frankfurt", "🇳🇱 Amsterdam"] }
+  ],
+  "directions": [
+    { "tag": "vpn-1" }
+  ],
+  "node_tags": ["🇩🇪 Frankfurt", "🇳🇱 Amsterdam"],
+  "magic": { "direct": "direct-out", "block": "block-out" }
+}

@@ -1,23 +1,23 @@
-// File chain_generator.go — эмиссия Направления-цепочки (SPEC 110, фаза 1).
+// File chain_generator.go — эмиссия источника-цепочки (SPEC 110).
 //
-// Цепочка снаружи — обычный outbound: её кладут в правило, в селектор, в
-// urltest. Поэтому она живёт Направлением (SPEC 104) с Type == "chain", а не
-// отдельной сущностью, и проходит те же три прохода генератора. Отличий два,
-// и оба из-за того, что у цепочки нет состава:
+// Цепочка — это МАРШРУТ через несколько позиций подряд, а не точка выбора
+// между маршрутами. Поэтому она живёт источником рядом с подпиской и
+// сервером, а для остального лаунчера выглядит УЗЛОМ: попадает в общий пул,
+// отбирается фильтрами Направлений, переключается в Clash API.
 //
-//   - фильтры к ней не применяются: позиции заданы явно, а не отобраны по
-//     маске, и «поймать узлы фильтром» тут нечего;
-//   - зависимости на проходе 2 строятся по Hops, а не по AddOutbounds.
+// Механизм эмиссии — тот же, что у ручного `config_json`
+// (`subscription/manual_config.go`): готовый объект уходит в конфиг как
+// есть (`ParsedNode.EmitRaw`), лаунчер перештамповывает только тег.
+// Отличие в том, что объект собирает форма, а не пишет пользователь.
 //
 // Ядро отвергает конфиг ЦЕЛИКОМ, встретив неизвестный тип outbound'а или
 // цепочку, нарушающую его инварианты (`protocol/chain/chain.go:85-100`).
-// Поэтому эмиттер молчаливо ничего не выпускает: запись, не прошедшую
-// ChainEmitError, генератор пропускает, а не отдаёт ядру «пусть само
-// разберётся» — разбор кончился бы отсутствием VPN.
+// Поэтому цепочка, не прошедшая ChainEmitError, не превращается в узел
+// вовсе — отдать её ядру «пусть само разберётся» значило бы оставить
+// пользователя без VPN, а не без одного маршрута.
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -51,33 +51,33 @@ func ChainSupportedByCore() (bool, string) { return chainSupported() }
 // Проверяются ровно инварианты ядра, и в тех же словах: сообщение уезжает
 // пользователю в список Направлений, а сверять его с чужим текстом ошибки
 // ядра тому, кто читает лог, невозможно.
-func ChainEmitError(d configtypes.Direction) string {
-	if d.Chain == nil || len(d.Chain.Hops) == 0 {
+func ChainEmitError(tag string, c *configtypes.SourceChain) string {
+	if c == nil || len(c.Hops) == 0 {
 		return "цепочка пуста: не задано ни одной позиции"
 	}
-	hops := d.Chain.Hops
+	hops := c.Hops
 	if len(hops) < 2 {
 		return "в цепочке одна позиция: ядру нужно минимум две"
 	}
 	seen := make(map[string]bool, len(hops))
-	for i, tag := range hops {
-		if strings.TrimSpace(tag) == "" {
+	for i, hop := range hops {
+		if strings.TrimSpace(hop) == "" {
 			return fmt.Sprintf("позиция %d пуста", i+1)
 		}
-		if tag == d.Tag {
+		if hop == tag {
 			return fmt.Sprintf("позиция %d ссылается на саму цепочку", i+1)
 		}
-		if seen[tag] {
-			return fmt.Sprintf("позиция %d повторяет %q", i+1, tag)
+		if seen[hop] {
+			return fmt.Sprintf("позиция %d повторяет %q", i+1, hop)
 		}
-		seen[tag] = true
+		seen[hop] = true
 	}
-	for typeName := range d.Chain.Rewrite {
+	for typeName := range c.Rewrite {
 		if strings.TrimSpace(typeName) == "" {
 			return "rewrite: пустое имя типа outbound'а"
 		}
 	}
-	for key := range d.Chain.Strip {
+	for key := range c.Strip {
 		if _, known := configtypes.ChainStripDefault[key]; !known {
 			return fmt.Sprintf("strip: неизвестный ключ %q (можно: %s)",
 				key, strings.Join(configtypes.ChainStripKeys, ", "))
@@ -86,72 +86,48 @@ func ChainEmitError(d configtypes.Direction) string {
 	return ""
 }
 
-// GenerateChainJSON собирает outbound типа `chain` одной строкой с хвостовой
-// запятой — в том же виде, что отдают остальные эмиттеры прохода 3.
+// ChainOutboundObject собирает sing-box outbound типа `chain`.
 //
-// validTags — теги, дошедшие до конфига (проход 2). Позиция, которой в
-// конфиге нет, — это ссылка в никуда, на которой ядро не стартует; такую
-// цепочку не выпускаем целиком, а не выбрасываем позицию: маршрут без
-// одного хопа — это другой маршрут, и молча подменять его нельзя.
+// Возвращает map, а не строку: цепочка эмитится узлом с EmitRaw, и объект
+// уходит в конфиг через общий путь ручных нод (`generateRawNodeJSON`).
+// Своя сериализация здесь означала бы вторую реализацию того же — с риском
+// разойтись в мелочах вроде экранирования тега.
 //
-// Пустая строка = запись не выпущена; причина ушла в reason.
-func GenerateChainJSON(d configtypes.Direction, validTags map[string]bool) (string, string) {
-	if err := ChainEmitError(d); err != "" {
-		return "", err
+// Порядок ключей `strip` не важен для map, но важен для читаемости конфига,
+// поэтому каталог обходится по своему порядку, а не по map range.
+func ChainOutboundObject(tag string, c *configtypes.SourceChain) map[string]interface{} {
+	if c == nil {
+		return nil
 	}
-	if validTags != nil {
-		for i, tag := range d.Chain.Hops {
-			if !validTags[tag] {
-				return "", fmt.Sprintf("позиция %d (%q) не дошла до конфига", i+1, tag)
-			}
-		}
-	}
-
-	c := d.Chain
-	var parts []string
-	parts = append(parts, fmt.Sprintf(`"tag":%s`, marshalJSONString(d.Tag)))
-	parts = append(parts, fmt.Sprintf(`"type":%s`, marshalJSONString(configtypes.DirectionTypeChain)))
-
 	// Ключ ядра — `outbounds`, наше поле — Hops (см. комментарий у типа).
-	hopsJSON, _ := json.Marshal(c.Hops)
-	parts = append(parts, fmt.Sprintf(`"outbounds":%s`, string(hopsJSON)))
-
+	hops := make([]interface{}, 0, len(c.Hops))
+	for _, h := range c.Hops {
+		hops = append(hops, h)
+	}
+	ob := map[string]interface{}{
+		"tag":       tag,
+		"type":      configtypes.ChainOutboundType,
+		"outbounds": hops,
+	}
 	if v := strings.TrimSpace(c.IdleTimeout); v != "" {
-		parts = append(parts, fmt.Sprintf(`"idle_timeout":%s`, marshalJSONString(v)))
+		ob["idle_timeout"] = v
 	}
 	if c.StripEvasion != nil {
-		parts = append(parts, fmt.Sprintf(`"strip_evasion":%v`, *c.StripEvasion))
+		ob["strip_evasion"] = *c.StripEvasion
 	}
 	if len(c.Strip) > 0 {
-		// Порядок каталога, а не map range: конфиг обязан собираться
-		// байт-в-байт одинаково, иначе golden-фикстуры мигают.
-		var stripParts []string
+		strip := make(map[string]interface{}, len(c.Strip))
 		for _, key := range configtypes.ChainStripKeys {
 			if val, ok := c.Strip[key]; ok {
-				stripParts = append(stripParts, fmt.Sprintf(`%s:%v`, marshalJSONString(key), val))
+				strip[key] = val
 			}
 		}
-		if len(stripParts) > 0 {
-			parts = append(parts, fmt.Sprintf(`"strip":{%s}`, strings.Join(stripParts, ",")))
+		if len(strip) > 0 {
+			ob["strip"] = strip
 		}
 	}
 	if len(c.Rewrite) > 0 {
-		rewriteJSON, err := json.Marshal(c.Rewrite)
-		if err == nil {
-			parts = append(parts, fmt.Sprintf(`"rewrite":%s`, string(rewriteJSON)))
-		}
+		ob["rewrite"] = c.Rewrite
 	}
-
-	jsonStr := "{" + strings.Join(parts, ",") + "}"
-
-	note := d.Label
-	if note == "" {
-		note = d.Comment
-	}
-	result := ""
-	if note != "" {
-		result = fmt.Sprintf("\t// %s\n", sanitizeOutboundLineComment(note))
-	}
-	result += fmt.Sprintf("\t%s,", jsonStr)
-	return result, ""
+	return ob
 }

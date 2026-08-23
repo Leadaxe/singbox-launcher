@@ -40,11 +40,11 @@ type corpusDirection struct {
 	Include                   []string         `json:"include,omitempty"`
 	InterruptExistConnections *bool            `json:"interrupt_exist_connections,omitempty"`
 	Auto                      *corpusAutoGroup `json:"auto,omitempty"`
-	Chain                     *corpusChain     `json:"chain,omitempty"`
 }
 
-// corpusChain — каноническая форма цепочки (SPEC 110).
+// corpusChain — каноническая форма источника-цепочки (SPEC 110).
 type corpusChain struct {
+	Tag          string                 `json:"tag"`
 	Hops         []string               `json:"hops"`
 	IdleTimeout  string                 `json:"idle_timeout,omitempty"`
 	StripEvasion *bool                  `json:"strip_evasion,omitempty"`
@@ -78,6 +78,10 @@ type corpusDirectionCase struct {
 
 	// TagPrefix — префикс тегов подписки: от него зависят теги её групп.
 	TagPrefix string `json:"tag_prefix,omitempty"`
+
+	// Chains — источники-цепочки кейса (SPEC 110), в порядке объявления:
+	// цепочка вправе сослаться на объявленную выше, и порядок нормативен.
+	Chains []corpusChain `json:"chains,omitempty"`
 
 	// CoreSupportsChain — умеет ли ядро тип `chain` (SPEC 110). Отсутствует
 	// = умеет. Кейс с false проверяет деградацию: ядро без with_lx_chain
@@ -143,23 +147,6 @@ func (c corpusDirection) toDirection() configtypes.Direction {
 	if c.Auto != nil {
 		d.Auto = c.Auto.toDirectionAuto()
 	}
-	// SPEC 110: цепочка — другой тип outbound'а, а не свойство селектора.
-	// Поля отбора при ней бессмысленны и обнуляются здесь же: кейс, который
-	// задал бы и то и другое, не должен молча собраться селектором.
-	if c.Chain != nil {
-		d.Type = configtypes.DirectionTypeChain
-		d.Chain = &configtypes.DirectionChain{
-			Hops:         c.Chain.Hops,
-			IdleTimeout:  c.Chain.IdleTimeout,
-			StripEvasion: c.Chain.StripEvasion,
-			Strip:        c.Chain.Strip,
-			Rewrite:      c.Chain.Rewrite,
-		}
-		d.Filters = nil
-		d.PreferredDefault = nil
-		d.AddOutbounds = nil
-		d.Auto = nil
-	}
 	return d
 }
 
@@ -209,6 +196,20 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 		}
 	}
 	pc.ParserConfig.Proxies = []ProxySource{src}
+	// SPEC 110: источники-цепочки идут отдельными записями, в порядке
+	// объявления кейса — от него зависит, разрешится ли вложенная цепочка.
+	for _, cc := range in.Chains {
+		pc.ParserConfig.Proxies = append(pc.ParserConfig.Proxies, ProxySource{
+			TagMask: cc.Tag,
+			Chain: &configtypes.SourceChain{
+				Hops:         cc.Hops,
+				IdleTimeout:  cc.IdleTimeout,
+				StripEvasion: cc.StripEvasion,
+				Strip:        cc.Strip,
+				Rewrite:      cc.Rewrite,
+			},
+		})
+	}
 	for _, cd := range in.Directions {
 		pc.ParserConfig.Outbounds = append(pc.ParserConfig.Outbounds, cd.toDirection())
 	}
@@ -248,7 +249,12 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 		DirectTag: in.Magic["direct"],
 	}
 	res, err := GenerateOutboundsFromParserConfig(pc, map[string]int{}, nil,
-		func(ProxySource, map[string]int, func(float64, string), int, int) ([]*ParsedNode, error) {
+		func(_ ProxySource, _ map[string]int, _ func(float64, string), idx, _ int) ([]*ParsedNode, error) {
+			if idx != 0 {
+				// Источники-цепочки узлов не загружают: их узел строит
+				// ResolveChainSources, когда весь пул уже известен.
+				return nil, nil
+			}
 			return nodes, nil
 		}, opts)
 	if err != nil && len(in.NodeTags) > 0 {
@@ -270,6 +276,13 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 			if tag == "" || nodeTagSet[tag] {
 				continue // сами узлы в ожидания не входят — проверяем группы
 			}
+			if t, _ := m["type"].(string); t == configtypes.ChainOutboundType {
+				// SPEC 110: цепочка эмитится узлом. В ожиданиях она нужна —
+				// это и есть проверяемый результат, — но идёт как есть, без
+				// чистки шаблонных полей ниже.
+				got.Groups = append(got.Groups, m)
+				continue
+			}
 			delete(m, "interrupt_exist_connections") // шаблонное поле, не про модель
 			got.Groups = append(got.Groups, m)
 		}
@@ -286,7 +299,7 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 			switch {
 			case strings.Contains(c.Reason, "with_lx_chain"):
 				code = "chain_unsupported_by_core"
-			case strings.Contains(c.Reason, "не дошла до конфига"):
+			case strings.Contains(c.Reason, "не найдена среди узлов"):
 				code = "chain_hop_missing"
 			}
 			got.Warnings = append(got.Warnings, code)

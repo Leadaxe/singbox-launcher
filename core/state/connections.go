@@ -58,12 +58,18 @@ type SourceType string
 const (
 	SourceTypeSubscription SourceType = "subscription"
 	SourceTypeServer       SourceType = "server"
+	// SourceTypeChain — цепочка хопов (SPEC 110): маршрут через несколько
+	// позиций подряд. Третий тип рядом с подпиской и сервером, потому что
+	// цепочка это МАРШРУТ; точка выбора между маршрутами — Направление, и
+	// цепочка попадает в него узлом, наравне с серверами подписки.
+	SourceTypeChain SourceType = "chain"
 )
 
 // Source — единица подключения. Тип определяет, какие поля используются:
 //
 //   - SourceTypeSubscription: URL/Skip/Tag/Outbounds/Update/MaxNodes/Meta
 //   - SourceTypeServer:       URI; Tag/Update/Meta не используются
+//   - SourceTypeChain:        Chain; URL/URI/Tag/Update/Meta не используются
 //
 // Поля identity (ID/Type/Enabled/Label/ExcludeFromGlobal) — общие.
 type Source struct {
@@ -96,6 +102,10 @@ type Source struct {
 
 	// type=server only
 	URI string `json:"uri,omitempty"`
+
+	// Chain — type=chain only (SPEC 110): позиции маршрута и настройки
+	// звеньев. Материализуется в один outbound типа `chain`.
+	Chain *configtypes.SourceChain `json:"chain,omitempty"`
 
 	// ConfigJSON — type=server only: ручной sing-box outbound/endpoint объект.
 	// Если задан, при сборке конфига он вставляется passthrough (URI не

@@ -1,0 +1,12 @@
+{
+  "_": "T9: Направление не берёт цепочку, которая через него же проходит. Самый частый сценарий: цепочка [proxy-out, exit], а proxy-out фильтром ловит всё — включая саму цепочку.",
+  "chains": [
+    { "tag": "via-de", "hops": ["proxy-out", "🇳🇱 Amsterdam"] }
+  ],
+  "directions": [
+    { "tag": "proxy-out" },
+    { "tag": "other", "filter": "hop|via" }
+  ],
+  "node_tags": ["🇩🇪 Frankfurt", "🇳🇱 Amsterdam"],
+  "magic": { "direct": "direct-out", "block": "block-out" }
+}

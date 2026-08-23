@@ -54,6 +54,17 @@ func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 			DetourNodeLabel:   s.DetourNodeLabel, // SPEC 101
 			ConfigJSON:        s.ConfigJSON,      // ручной outbound JSON
 		}
+
+	case SourceTypeChain:
+		// SPEC 110: цепочка не имеет ни URL, ни URI — только позиции.
+		// TagMask несёт имя: тег будущего узла берётся оттуда же, откуда у
+		// server-source, чтобы имя в списке и тег в конфиге не разъезжались.
+		return configtypes.ProxySource{
+			TagMask:           s.Label,
+			ExcludeFromGlobal: s.ExcludeFromGlobal,
+			Disabled:          !s.Enabled,
+			Chain:             s.Chain,
+		}
 	}
 	return configtypes.ProxySource{}
 }

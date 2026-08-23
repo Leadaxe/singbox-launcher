@@ -40,7 +40,15 @@ func syncConnectionsFromLegacy(s *State) {
 
 	oldByURL := make(map[string]Source, len(old))
 	oldByURI := make(map[string]Source, len(old))
+	// Цепочка сопоставляется по имени: другого стабильного ключа у неё нет
+	// (позиции пользователь правит, и матчинг по ним менял бы ID на каждой
+	// правке маршрута — вместе со всем, что на ID завязано).
+	oldByChainTag := make(map[string]Source, len(old))
 	for _, src := range old {
+		if src.Type == SourceTypeChain {
+			oldByChainTag[src.Label] = src
+			continue
+		}
 		switch src.Type {
 		case SourceTypeSubscription:
 			if src.URL != "" {
@@ -59,6 +67,27 @@ func syncConnectionsFromLegacy(s *State) {
 
 	newSources := make([]Source, 0, len(s.ParserConfig.ParserConfig.Proxies))
 	for _, p := range s.ParserConfig.ParserConfig.Proxies {
+		// 0. type=chain (SPEC 110) — ни URL, ни Connections, только позиции.
+		// Проверяется первым: у цепочки Source пуст, и без этой ветки она
+		// молча выпала бы из Connections на Save.
+		if p.Chain != nil {
+			src := Source{
+				Type:              SourceTypeChain,
+				Enabled:           !p.Disabled,
+				Label:             p.TagMask,
+				ExcludeFromGlobal: p.ExcludeFromGlobal,
+				Chain:             p.Chain,
+			}
+			if existing, ok := oldByChainTag[p.TagMask]; ok {
+				src.ID = existing.ID
+			}
+			if src.ID == "" {
+				src.ID = MakeULID()
+			}
+			newSources = append(newSources, src)
+			continue
+		}
+
 		// 1. type=subscription
 		if p.Source != "" {
 			tag := buildTagSpecFromLegacy(p.TagPrefix, p.TagPostfix, p.TagMask)

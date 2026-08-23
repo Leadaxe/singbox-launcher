@@ -35,16 +35,16 @@ func TestNodeUsesReality(t *testing.T) {
 
 func TestChainStripsUTLS(t *testing.T) {
 	// Умолчание ядра: tls.utls НЕ снимается.
-	if ChainStripsUTLS(&configtypes.DirectionChain{}) {
+	if ChainStripsUTLS(&configtypes.SourceChain{}) {
 		t.Error("utls снимается по умолчанию — расходится с каталогом ядра")
 	}
 	// Точечный патч перекрывает умолчание в обе стороны.
-	on := &configtypes.DirectionChain{Strip: map[string]bool{configtypes.ChainStripTLSUTLS: true}}
+	on := &configtypes.SourceChain{Strip: map[string]bool{configtypes.ChainStripTLSUTLS: true}}
 	if !ChainStripsUTLS(on) {
 		t.Error("явное strip[tls.utls]=true не учтено")
 	}
 	yes := true
-	offEvasion := &configtypes.DirectionChain{
+	offEvasion := &configtypes.SourceChain{
 		StripEvasion: &yes,
 		Strip:        map[string]bool{configtypes.ChainStripTLSUTLS: false},
 	}
@@ -59,7 +59,7 @@ func TestChainRealityConflict(t *testing.T) {
 		"r2":    realityNode("r2"),
 		"plain": {Tag: "plain"},
 	}
-	c := &configtypes.DirectionChain{
+	c := &configtypes.SourceChain{
 		Hops:  []string{"r1", "plain", "r2"},
 		Strip: map[string]bool{configtypes.ChainStripTLSUTLS: true},
 	}
@@ -69,7 +69,7 @@ func TestChainRealityConflict(t *testing.T) {
 		t.Fatalf("конфликт = %v, ожидали [r2] (позиция 0 не звено)", got)
 	}
 	// Без снятия utls конфликта нет вовсе.
-	if got := ChainRealityConflict(&configtypes.DirectionChain{Hops: c.Hops}, nodes); len(got) != 0 {
+	if got := ChainRealityConflict(&configtypes.SourceChain{Hops: c.Hops}, nodes); len(got) != 0 {
 		t.Errorf("конфликт без снятия utls: %v", got)
 	}
 }
@@ -77,11 +77,11 @@ func TestChainRealityConflict(t *testing.T) {
 func TestChainNestedConflict(t *testing.T) {
 	chains := map[string]bool{"inner": true}
 	// Позиция 0 — единственная разрешённая для вложенной цепочки.
-	ok := &configtypes.DirectionChain{Hops: []string{"inner", "node-a"}}
+	ok := &configtypes.SourceChain{Hops: []string{"inner", "node-a"}}
 	if got := ChainNestedConflict(ok, chains); len(got) != 0 {
 		t.Errorf("вложенная цепочка первой позицией признана конфликтом: %v", got)
 	}
-	bad := &configtypes.DirectionChain{Hops: []string{"node-a", "inner"}}
+	bad := &configtypes.SourceChain{Hops: []string{"node-a", "inner"}}
 	if got := ChainNestedConflict(bad, chains); len(got) != 1 || got[0] != "inner" {
 		t.Errorf("конфликт = %v, ожидали [inner]", got)
 	}

@@ -1,138 +1,133 @@
-// File chain_emit_test.go — эмиссия Направления-цепочки (SPEC 110).
+// File chain_emit_test.go — эмиссия источника-цепочки (SPEC 110).
 //
 // Проверяются инварианты ядра (`protocol/chain/chain.go:85-100`) и форма
-// выпущенного outbound'а: нарушение любого из них не даёт стартовать ВСЕМУ
+// собранного объекта: нарушение любого из них не даёт стартовать ВСЕМУ
 // конфигу, а не одной цепочке.
 package config
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
 	"singbox-launcher/core/config/configtypes"
 )
 
-func chainDirection(hops ...string) configtypes.Direction {
-	return configtypes.Direction{
-		Tag:   "hop-chain",
-		Type:  configtypes.DirectionTypeChain,
-		Chain: &configtypes.DirectionChain{Hops: hops},
-	}
+func chainOf(hops ...string) *configtypes.SourceChain {
+	return &configtypes.SourceChain{Hops: hops}
 }
 
-// unwrapChainJSON вытаскивает объект из строки эмиттера (комментарий +
-// табуляция + хвостовая запятая).
-func unwrapChainJSON(t *testing.T, s string) map[string]interface{} {
+// chainSource — источник-цепочка в ParserConfig.
+func chainSource(tag string, c *configtypes.SourceChain) ProxySource {
+	return ProxySource{TagMask: tag, Chain: c}
+}
+
+// resolveOne прогоняет один источник-цепочку через разрешение и возвращает
+// получившийся узел (или nil) с причиной деградации.
+func resolveOne(t *testing.T, src ProxySource, poolTags []string, directionTags ...string) (*ParsedNode, string) {
 	t.Helper()
-	idx := strings.Index(s, "{")
-	if idx < 0 {
-		t.Fatalf("в выпущенной строке нет объекта: %q", s)
+	pc := &ParserConfig{}
+	pc.ParserConfig.Proxies = []ProxySource{src}
+	pool := make([]*ParsedNode, 0, len(poolTags))
+	for i, tag := range poolTags {
+		pool = append(pool, &ParsedNode{Tag: tag, Scheme: "socks", Server: "10.0.0.1", Port: 1080 + i})
 	}
-	body := strings.TrimSuffix(strings.TrimSpace(s[idx:]), ",")
-	var m map[string]interface{}
-	if err := json.Unmarshal([]byte(body), &m); err != nil {
-		t.Fatalf("невалидный JSON %q: %v", body, err)
+	dirs := make(map[string]bool, len(directionTags))
+	for _, d := range directionTags {
+		dirs[d] = true
 	}
-	return m
+	bySource := map[int][]*ParsedNode{}
+	out, broken := ResolveChainSources(pc, pool, bySource, dirs)
+	if len(broken) > 0 {
+		return nil, broken[0].Reason
+	}
+	for _, n := range out {
+		if n.Scheme == configtypes.ChainOutboundType {
+			return n, ""
+		}
+	}
+	return nil, "цепочка не появилась в пуле и не сообщила причину"
 }
 
-func TestChainEmit_MinimalShape(t *testing.T) {
-	out, reason := GenerateChainJSON(chainDirection("hop-a", "hop-b"), nil)
-	if reason != "" {
-		t.Fatalf("цепочка не выпущена: %s", reason)
+func TestChainNode_MinimalShape(t *testing.T) {
+	node, reason := resolveOne(t, chainSource("double-hop", chainOf("hop-a", "hop-b")),
+		[]string{"hop-a", "hop-b"})
+	if node == nil {
+		t.Fatalf("цепочка не стала узлом: %s", reason)
 	}
-	m := unwrapChainJSON(t, out)
-	if m["type"] != "chain" {
-		t.Errorf("type = %v, ожидали chain", m["type"])
+	// Цепочка эмитится как ручная нода — объект уходит в конфиг как есть.
+	if !node.EmitRaw {
+		t.Error("узел цепочки не помечен EmitRaw — объект пройдёт через per-scheme switch")
 	}
-	if m["tag"] != "hop-chain" {
-		t.Errorf("tag = %v", m["tag"])
+	ob := node.Outbound
+	if ob["type"] != "chain" {
+		t.Errorf("type = %v, ожидали chain", ob["type"])
+	}
+	if ob["tag"] != "double-hop" {
+		t.Errorf("tag = %v", ob["tag"])
 	}
 	// Ключ ядра — outbounds, наше поле называется Hops.
-	hops, ok := m["outbounds"].([]interface{})
+	hops, ok := ob["outbounds"].([]interface{})
 	if !ok || len(hops) != 2 || hops[0] != "hop-a" || hops[1] != "hop-b" {
-		t.Fatalf("outbounds = %v, ожидали [hop-a hop-b] в порядке пакета", m["outbounds"])
+		t.Fatalf("outbounds = %v, ожидали [hop-a hop-b] в порядке пакета", ob["outbounds"])
 	}
 	// Незаданные поля не должны появляться: пустой idle_timeout ядро
 	// читает как «0», а это другое поведение, чем умолчание 5m.
 	for _, key := range []string{"idle_timeout", "strip_evasion", "strip", "rewrite"} {
-		if _, present := m[key]; present {
+		if _, present := ob[key]; present {
 			t.Errorf("незаданное поле %q попало в конфиг", key)
 		}
 	}
 }
 
-func TestChainEmit_OptionsRoundtrip(t *testing.T) {
+func TestChainNode_OptionsRoundtrip(t *testing.T) {
 	no := false
-	d := chainDirection("hop-a", "hop-b")
-	d.Chain.IdleTimeout = "10m"
-	d.Chain.StripEvasion = &no
-	d.Chain.Strip = map[string]bool{
+	c := chainOf("hop-a", "hop-b")
+	c.IdleTimeout = "10m"
+	c.StripEvasion = &no
+	c.Strip = map[string]bool{
 		configtypes.ChainStripTLSUTLS:     true,
 		configtypes.ChainStripTLSFragment: false,
 	}
-	d.Chain.Rewrite = map[string]interface{}{"vless": map[string]interface{}{"flow": ""}}
+	c.Rewrite = map[string]interface{}{"vless": map[string]interface{}{"flow": ""}}
 
-	out, reason := GenerateChainJSON(d, nil)
-	if reason != "" {
-		t.Fatalf("цепочка не выпущена: %s", reason)
+	node, reason := resolveOne(t, chainSource("tuned", c), []string{"hop-a", "hop-b"})
+	if node == nil {
+		t.Fatalf("цепочка не стала узлом: %s", reason)
 	}
-	m := unwrapChainJSON(t, out)
-	if m["idle_timeout"] != "10m" {
-		t.Errorf("idle_timeout = %v", m["idle_timeout"])
+	ob := node.Outbound
+	if ob["idle_timeout"] != "10m" {
+		t.Errorf("idle_timeout = %v", ob["idle_timeout"])
 	}
-	if m["strip_evasion"] != false {
-		t.Errorf("strip_evasion = %v, ожидали false", m["strip_evasion"])
+	if ob["strip_evasion"] != false {
+		t.Errorf("strip_evasion = %v, ожидали false", ob["strip_evasion"])
 	}
-	strip, ok := m["strip"].(map[string]interface{})
+	strip, ok := ob["strip"].(map[string]interface{})
 	if !ok || strip[configtypes.ChainStripTLSUTLS] != true || strip[configtypes.ChainStripTLSFragment] != false {
-		t.Errorf("strip = %v", m["strip"])
+		t.Errorf("strip = %v", ob["strip"])
 	}
-	if _, ok := m["rewrite"].(map[string]interface{}); !ok {
-		t.Errorf("rewrite = %v", m["rewrite"])
-	}
-}
-
-// Порядок ключей strip берётся из каталога, а не из map range: иначе
-// golden-фикстуры конфига мигали бы от прогона к прогону.
-func TestChainEmit_StripOrderStable(t *testing.T) {
-	d := chainDirection("hop-a", "hop-b")
-	d.Chain.Strip = map[string]bool{
-		configtypes.ChainStripXHTTPPadding:     true,
-		configtypes.ChainStripTLSFragment:      false,
-		configtypes.ChainStripMultiplexPadding: true,
-	}
-	first, _ := GenerateChainJSON(d, nil)
-	for i := 0; i < 20; i++ {
-		got, _ := GenerateChainJSON(d, nil)
-		if got != first {
-			t.Fatalf("порядок ключей плавает:\n%s\n%s", first, got)
-		}
-	}
-	if !strings.Contains(first, `"strip":{"tls.fragment":false,"multiplex.padding":true,"xhttp.padding":true}`) {
-		t.Errorf("порядок не по каталогу: %s", first)
+	if _, ok := ob["rewrite"].(map[string]interface{}); !ok {
+		t.Errorf("rewrite = %v", ob["rewrite"])
 	}
 }
 
-func TestChainEmit_CoreInvariants(t *testing.T) {
-	self := chainDirection("hop-a", "hop-chain")
+func TestChainNode_CoreInvariants(t *testing.T) {
 	cases := []struct {
 		name string
-		d    configtypes.Direction
+		tag  string
+		c    *configtypes.SourceChain
 		want string
 	}{
-		{"одна позиция", chainDirection("hop-a"), "минимум две"},
-		{"пусто", chainDirection(), "не задано ни одной позиции"},
-		{"пустой тег", chainDirection("hop-a", "  "), "позиция 2 пуста"},
-		{"самоссылка", self, "ссылается на саму цепочку"},
-		{"дубль", chainDirection("hop-a", "hop-a"), "повторяет"},
+		{"одна позиция", "c", chainOf("hop-a"), "минимум две"},
+		{"пусто", "c", chainOf(), "не задано ни одной позиции"},
+		{"пустой тег", "c", chainOf("hop-a", "  "), "позиция 2 пуста"},
+		{"самоссылка", "c", chainOf("hop-a", "c"), "ссылается на саму цепочку"},
+		{"дубль", "c", chainOf("hop-a", "hop-a"), "повторяет"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			out, reason := GenerateChainJSON(tc.d, nil)
-			if out != "" {
-				t.Fatalf("цепочка выпущена, хотя ядро её отвергнет: %s", out)
+			node, reason := resolveOne(t, chainSource(tc.tag, tc.c), []string{"hop-a", "c"})
+			if node != nil {
+				t.Fatalf("цепочка стала узлом, хотя ядро её отвергнет")
 			}
 			if !strings.Contains(reason, tc.want) {
 				t.Errorf("причина %q не содержит %q", reason, tc.want)
@@ -143,46 +138,51 @@ func TestChainEmit_CoreInvariants(t *testing.T) {
 
 // Неизвестный ключ strip ядро считает ошибкой старта — конфиг не соберётся
 // целиком, поэтому такую цепочку не выпускаем.
-func TestChainEmit_UnknownStripKey(t *testing.T) {
-	d := chainDirection("hop-a", "hop-b")
-	d.Chain.Strip = map[string]bool{"tls.fragmnet": true}
-	out, reason := GenerateChainJSON(d, nil)
-	if out != "" {
-		t.Fatalf("выпущена цепочка с неизвестным ключом strip: %s", out)
+func TestChainNode_UnknownStripKey(t *testing.T) {
+	c := chainOf("hop-a", "hop-b")
+	c.Strip = map[string]bool{"tls.fragmnet": true}
+	node, reason := resolveOne(t, chainSource("c", c), []string{"hop-a", "hop-b"})
+	if node != nil {
+		t.Fatal("выпущена цепочка с неизвестным ключом strip")
 	}
 	if !strings.Contains(reason, "неизвестный ключ") {
 		t.Errorf("причина = %q", reason)
 	}
 }
 
-// Позиция, не дошедшая до конфига, — ссылка в никуда: ядро не стартует.
-// Маршрут без хопа это ДРУГОЙ маршрут, поэтому выпадает цепочка целиком, а
-// не одна позиция.
-func TestChainEmit_MissingHopDropsWholeChain(t *testing.T) {
-	valid := map[string]bool{"hop-a": true}
-	out, reason := GenerateChainJSON(chainDirection("hop-a", "hop-b"), valid)
-	if out != "" {
-		t.Fatalf("выпущена цепочка со ссылкой в никуда: %s", out)
+// Позиция, которой нет в пуле, — ссылка в никуда: ядро не стартует. Маршрут
+// без хопа это ДРУГОЙ маршрут, поэтому выпадает цепочка целиком.
+func TestChainNode_MissingHopDropsWholeChain(t *testing.T) {
+	node, reason := resolveOne(t, chainSource("c", chainOf("hop-a", "hop-b")), []string{"hop-a"})
+	if node != nil {
+		t.Fatal("выпущена цепочка со ссылкой в никуда")
 	}
 	if !strings.Contains(reason, "hop-b") {
 		t.Errorf("причина не называет потерянную позицию: %q", reason)
 	}
 }
 
-// Без поддержки ядром цепочка не эмитится вовсе (T1): неизвестный тип
-// outbound'а отвергает ВЕСЬ конфиг, то есть лишает пользователя VPN.
-func TestChainEmit_DegradesWithoutCoreSupport(t *testing.T) {
+// Направление — законная позиция: цепочка через группу это главное, чего
+// не умеет detour.
+func TestChainNode_DirectionHopAllowed(t *testing.T) {
+	node, reason := resolveOne(t, chainSource("c", chainOf("proxy-out", "hop-b")),
+		[]string{"hop-b"}, "proxy-out")
+	if node == nil {
+		t.Fatalf("цепочка через Направление не собралась: %s", reason)
+	}
+}
+
+// Без поддержки ядром цепочка не становится узлом вовсе (T1): неизвестный
+// тип outbound'а отвергает ВЕСЬ конфиг, то есть лишает пользователя VPN.
+func TestChainNode_DegradesWithoutCoreSupport(t *testing.T) {
 	prev := ChainSupportProbe
 	defer func() { ChainSupportProbe = prev }()
 	ChainSupportProbe = func() (bool, string) { return false, "ядро собрано без with_lx_chain" }
 
-	info := map[string]*outboundInfo{
-		"hop-a": {isValid: true},
-		"hop-b": {isValid: true},
-	}
-	out, reason := emitChainDirection(chainDirection("hop-a", "hop-b"), info, nil, DirectionBuildOptions{})
-	if out != "" {
-		t.Fatalf("цепочка выпущена на ядро без поддержки: %s", out)
+	node, reason := resolveOne(t, chainSource("c", chainOf("hop-a", "hop-b")),
+		[]string{"hop-a", "hop-b"})
+	if node != nil {
+		t.Fatal("цепочка собрана на ядре без поддержки")
 	}
 	if !strings.Contains(reason, "with_lx_chain") {
 		t.Errorf("причина не называет тег сборки: %q", reason)
@@ -191,59 +191,57 @@ func TestChainEmit_DegradesWithoutCoreSupport(t *testing.T) {
 
 // nil-проба (тесты, standalone) — считаем, что ядро умеет: деградировать на
 // догадке нельзя.
-func TestChainEmit_NilProbeAssumesSupported(t *testing.T) {
+func TestChainNode_NilProbeAssumesSupported(t *testing.T) {
 	prev := ChainSupportProbe
 	defer func() { ChainSupportProbe = prev }()
 	ChainSupportProbe = nil
 
-	info := map[string]*outboundInfo{
-		"hop-a": {isValid: true},
-		"hop-b": {isValid: true},
-	}
-	out, reason := emitChainDirection(chainDirection("hop-a", "hop-b"), info, nil, DirectionBuildOptions{})
-	if out == "" {
-		t.Fatalf("цепочка не выпущена при неизвестной поддержке: %s", reason)
+	node, reason := resolveOne(t, chainSource("c", chainOf("hop-a", "hop-b")),
+		[]string{"hop-a", "hop-b"})
+	if node == nil {
+		t.Fatalf("цепочка не собралась при неизвестной поддержке: %s", reason)
 	}
 }
 
-// Служебный тег шаблона генератором не создаётся и в outboundsInfo не
-// попадает — его кладёт в конфиг сам шаблон. Разрешён ЯВНО, по имени из
-// DirectionBuildOptions.
-func TestChainEmit_TemplateConstantHopAllowed(t *testing.T) {
-	info := map[string]*outboundInfo{"hop-a": {isValid: true}}
-	opts := DirectionBuildOptions{DirectTag: "direct-out", BlockTag: "block-out"}
-	out, reason := emitChainDirection(chainDirection("hop-a", "direct-out"), info, nil, opts)
-	if out == "" {
-		t.Fatalf("цепочка через служебный тег шаблона не выпущена: %s", reason)
+// Цепочка вправе сослаться на цепочку, объявленную ВЫШЕ по списку: так
+// вложенность выразима, а циклы невозможны по построению.
+func TestChainNode_NestedChainResolvesInOrder(t *testing.T) {
+	pc := &ParserConfig{}
+	pc.ParserConfig.Proxies = []ProxySource{
+		chainSource("inner", chainOf("hop-a", "hop-b")),
+		chainSource("outer", chainOf("inner", "hop-c")),
+	}
+	pool := []*ParsedNode{
+		{Tag: "hop-a", Scheme: "socks"}, {Tag: "hop-b", Scheme: "socks"}, {Tag: "hop-c", Scheme: "socks"},
+	}
+	out, broken := ResolveChainSources(pc, pool, map[int][]*ParsedNode{}, nil)
+	if len(broken) > 0 {
+		t.Fatalf("деградация: %+v", broken)
+	}
+	got := 0
+	for _, n := range out {
+		if n.Scheme == configtypes.ChainOutboundType {
+			got++
+		}
+	}
+	if got != 2 {
+		t.Fatalf("собрано цепочек: %d, ожидали 2", got)
 	}
 }
 
-// Узел подписки — законная позиция, но в outboundsInfo его нет (там только
-// группы). Его теги приезжают отдельным набором.
-func TestChainEmit_NodeHopAllowed(t *testing.T) {
-	out, reason := emitChainDirection(
-		chainDirection("🇩🇪 Frankfurt", "🇳🇱 Amsterdam"),
-		map[string]*outboundInfo{},
-		map[string]bool{"🇩🇪 Frankfurt": true, "🇳🇱 Amsterdam": true},
-		DirectionBuildOptions{})
-	if out == "" {
-		t.Fatalf("цепочка из узлов подписки не выпущена: %s", reason)
+// Обратный порядок — ссылка вперёд не разрешается: это и есть механизм,
+// которым исключены циклы между цепочками.
+func TestChainNode_ForwardReferenceRejected(t *testing.T) {
+	pc := &ParserConfig{}
+	pc.ParserConfig.Proxies = []ProxySource{
+		chainSource("outer", chainOf("inner", "hop-c")),
+		chainSource("inner", chainOf("hop-a", "hop-b")),
 	}
-}
-
-// Неизвестный тег — это чаще потерянный узел, чем константа шаблона.
-// Выпустить цепочку с ним значит не дать ядру стартовать вовсе, поэтому
-// «чего не знаем — то запрещаем».
-func TestChainEmit_UnknownHopRejected(t *testing.T) {
-	out, reason := emitChainDirection(
-		chainDirection("🇩🇪 Frankfurt", "🇸🇬 Singapore"),
-		map[string]*outboundInfo{},
-		map[string]bool{"🇩🇪 Frankfurt": true},
-		DirectionBuildOptions{DirectTag: "direct-out"})
-	if out != "" {
-		t.Fatalf("выпущена цепочка с неизвестным тегом: %s", out)
+	pool := []*ParsedNode{
+		{Tag: "hop-a", Scheme: "socks"}, {Tag: "hop-b", Scheme: "socks"}, {Tag: "hop-c", Scheme: "socks"},
 	}
-	if !strings.Contains(reason, "Singapore") {
-		t.Errorf("причина не называет потерянную позицию: %q", reason)
+	_, broken := ResolveChainSources(pc, pool, map[int][]*ParsedNode{}, nil)
+	if len(broken) != 1 || !strings.Contains(broken[0].Reason, "inner") {
+		t.Fatalf("ссылка вперёд принята: %+v", broken)
 	}
 }

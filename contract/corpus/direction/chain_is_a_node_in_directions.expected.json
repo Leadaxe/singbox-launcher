@@ -7,6 +7,15 @@
       ],
       "tag": "hop-chain",
       "type": "chain"
+    },
+    {
+      "outbounds": [
+        "🇩🇪 Frankfurt",
+        "🇳🇱 Amsterdam",
+        "hop-chain"
+      ],
+      "tag": "vpn-1",
+      "type": "selector"
     }
   ]
 }

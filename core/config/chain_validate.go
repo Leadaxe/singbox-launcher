@@ -40,7 +40,7 @@ func NodeUsesReality(node *ParsedNode) bool {
 // Учитывается и общий переключатель, и точечный патч: `strip` перекрывает
 // strip_evasion в обе стороны, и смотреть только на один из них значило бы
 // пропустить половину случаев.
-func ChainStripsUTLS(c *configtypes.DirectionChain) bool {
+func ChainStripsUTLS(c *configtypes.SourceChain) bool {
 	if c == nil {
 		return false
 	}
@@ -56,7 +56,7 @@ func ChainStripsUTLS(c *configtypes.DirectionChain) bool {
 // Проверяются позиции с индексом ≥ 1: strip применяется к звеньям, а
 // позиция 0 идёт в сеть как есть и её опции не трогаются
 // (`protocol/chain/chain.go` — звено создаётся начиная со второй позиции).
-func ChainRealityConflict(c *configtypes.DirectionChain, nodesByTag map[string]*ParsedNode) []string {
+func ChainRealityConflict(c *configtypes.SourceChain, nodesByTag map[string]*ParsedNode) []string {
 	if !ChainStripsUTLS(c) || len(nodesByTag) == 0 {
 		return nil
 	}
@@ -75,7 +75,7 @@ func ChainRealityConflict(c *configtypes.DirectionChain, nodesByTag map[string]*
 // Ядро допускает вложенную цепочку только первой позицией
 // (`protocol/chain/chain.go:279`): звено — это «узел через предыдущую
 // позицию», а цепочка не узел, её нельзя пересобрать под чужой диалер.
-func ChainNestedConflict(c *configtypes.DirectionChain, chainTags map[string]bool) []string {
+func ChainNestedConflict(c *configtypes.SourceChain, chainTags map[string]bool) []string {
 	if c == nil || len(chainTags) == 0 {
 		return nil
 	}

@@ -112,6 +112,13 @@ type ProxySource struct {
 	// читается при загрузке состояния и разворачивается в Fold; UI его не
 	// показывает.
 	ExposeGroupTagsToGlobal bool `json:"expose_group_tags_to_global,omitempty"`
+	// Chain: SPEC 110 — источник является цепочкой хопов. nil = обычный
+	// источник (подписка или сервер).
+	//
+	// Материализуется в ОДИН узел с EmitRaw (как ручной config_json), а не
+	// в группу: цепочка это маршрут, и остальной лаунчер видит её узлом —
+	// её ловят фильтры Направлений, она переключается в Clash API.
+	Chain *SourceChain `json:"chain,omitempty"`
 	// Fold: SPEC 108 — свёртка подписки в одну группу вместо её узлов.
 	// nil = не свёрнута. Локальные группы из неё разворачиваются на сборке
 	// (config.PrepareSourceFolds), в состоянии не материализуются.
@@ -243,14 +250,6 @@ type Direction struct {
 	TwinOf  string `json:"-"`
 	TwinTag string `json:"-"`
 
-	// Chain — цепочка хопов (SPEC 110). nil = обычное Направление.
-	//
-	// Непустой Chain и Type == "chain" ходят парой: тип решает, каким
-	// эмиттером запись пойдёт в конфиг, Chain несёт её содержимое. Хранить
-	// хопы в Options не вышло бы — `outbounds` там столкнулось бы с составом
-	// селектора, который в тех же Options и живёт.
-	Chain *DirectionChain `json:"chain,omitempty"`
-
 	// SPEC 057/058-R-N: preset/template binding.
 	Ref     string           `json:"ref,omitempty"`     // "" (direct) | "#TEMPLATE#" | "<preset_id>"
 	Updates []OutboundUpdate `json:"updates,omitempty"` // стек patches: preset patches в rule order + опц. USER patch (всегда последний)
@@ -298,107 +297,6 @@ type DirectionAuto struct {
 	// пользователь не делал. У указателя omitempty работает.
 	PoolTolerance *TemplateInt `json:"pool_tolerance,omitempty"`
 	StickyHash    []string     `json:"sticky_hash,omitempty"`
-}
-
-// DirectionChain — параметры Направления-цепочки (SPEC 110).
-//
-// Соответствует `option.ChainOutboundOptions` форка ядра
-// (`option/chain_lx.go`). Поля названы как в ядре везде, кроме Hops: у
-// Direction уже есть AddOutbounds (состав селектора), и второе поле со
-// словом «outbounds» и другим смыслом читалось бы как то же самое. В конфиг
-// Hops эмитится под ключом `outbounds` — форма ядра неизменна.
-type DirectionChain struct {
-	// Hops — позиции В ПОРЯДКЕ ПАКЕТА: [0] — первый хоп от клиента,
-	// последний — тот, чей адрес видит цель. НЕ «кто через кого»: в detour
-	// стрелка смотрит в обратную сторону, и перепутать их — значит собрать
-	// работающий, но не тот маршрут (SPEC 110 T3).
-	//
-	// Ядро требует минимум двух позиций, непустых, без самоссылки и без
-	// дублей (`protocol/chain/chain.go:85-100`) — нарушение любого условия
-	// не даёт стартовать всему конфигу, а не одной цепочке.
-	Hops []string `json:"hops,omitempty"`
-
-	// IdleTimeout — простой, после которого звено без соединений удаляется.
-	// Пусто = умолчание ядра (5m), "0s" = жить до остановки.
-	IdleTimeout string `json:"idle_timeout,omitempty"`
-
-	// StripEvasion — снимать ли у звеньев односторонние DPI-приёмы.
-	// Указатель ради трёхзначности: nil = «умолчание ядра» (true),
-	// false = «пользователь выключил явно». Обычный bool не отличил бы
-	// одно от другого — та же причина, что у InterruptExistConnections.
-	StripEvasion *bool `json:"strip_evasion,omitempty"`
-
-	// Strip — патч к каталогу ядра поверх StripEvasion.
-	//
-	// Ключи только из ChainStripKeys: неизвестный ключ ядро считает ошибкой
-	// старта, а не опечаткой, которую можно пропустить.
-	Strip map[string]bool `json:"strip,omitempty"`
-
-	// Rewrite — JSON merge-patch поверх опций узла, по типу outbound'а.
-	// Правится на вкладке JSON: форму для произвольного патча по всем типам
-	// протоколов не построить, а урезанная форма молча потеряла бы ключи,
-	// которых не знает.
-	Rewrite map[string]interface{} `json:"rewrite,omitempty"`
-}
-
-// DirectionTypeChain — значение Direction.Type для цепочки.
-const DirectionTypeChain = "chain"
-
-// Ключи каталога `strip` ядра (`protocol/chain/transform.go:24-27`).
-//
-// Список закрыт: ядро отвергает конфиг на неизвестном ключе, поэтому
-// «на всякий случай» сюда добавлять нечего — новый ключ появляется только
-// вместе с новой версией ядра.
-const (
-	ChainStripTLSFragment      = "tls.fragment"
-	ChainStripMultiplexPadding = "multiplex.padding"
-	ChainStripXHTTPPadding     = "xhttp.padding"
-	ChainStripTLSUTLS          = "tls.utls"
-)
-
-// ChainStripKeys — каталог в порядке показа в форме. Снимаемые по умолчанию
-// идут первыми, tls.utls последним: он единственный не снимается по
-// умолчанию и единственный, снятие которого ломает reality-узлы (T4).
-var ChainStripKeys = []string{
-	ChainStripTLSFragment,
-	ChainStripMultiplexPadding,
-	ChainStripXHTTPPadding,
-	ChainStripTLSUTLS,
-}
-
-// ChainStripDefault — снимается ли ключ при включённом strip_evasion.
-// Копия каталога ядра; форма показывает по нему исходное состояние галок.
-var ChainStripDefault = map[string]bool{
-	ChainStripTLSFragment:      true,
-	ChainStripMultiplexPadding: true,
-	ChainStripXHTTPPadding:     true,
-	ChainStripTLSUTLS:          false,
-}
-
-// IsChain — Направление является цепочкой.
-//
-// Проверяется тип, а не наличие Chain: запись, у которой тип сменили на
-// селектор, но параметры цепочки остались (пользователь передумал), обязана
-// пойти в конфиг селектором. Обратный случай — тип chain без параметров —
-// ловит валидация: пустая цепочка не эмитится.
-func (d Direction) IsChain() bool { return d.Type == DirectionTypeChain }
-
-// HopsOrNil — позиции цепочки, безопасно для nil-приёмника.
-//
-// Нужен там, где Direction уже опознан цепочкой по типу, но Chain может
-// оказаться пустым: тип и содержимое приходят из разных мест (тип — из
-// шаблона или формы, содержимое — из состояния), и рассинхрон обязан
-// кончаться нулём позиций, а не паникой на сборке конфига.
-func (c *DirectionChain) HopsOrNil() []string {
-	if c == nil {
-		return nil
-	}
-	return c.Hops
-}
-
-// StripEvasionEnabled — умолчание ядра: nil == true.
-func (c *DirectionChain) StripEvasionEnabled() bool {
-	return c == nil || c.StripEvasion == nil || *c.StripEvasion
 }
 
 // TemplateInt — целое число ЛИБО ссылка на переменную шаблона ("@name").
@@ -708,4 +606,102 @@ func NormalizeParserConfig(parserConfig *ParserConfig, updateLastUpdated bool) {
 	if updateLastUpdated {
 		parserConfig.ParserConfig.Parser.LastUpdated = time.Now().UTC().Format(time.RFC3339)
 	}
+}
+
+// SourceChain — параметры источника-цепочки (SPEC 110).
+//
+// Цепочка — это МАРШРУТ, а не точка выбора между маршрутами, поэтому она
+// живёт источником рядом с подпиской и сервером, а не Направлением. Для
+// остального лаунчера она узел: попадает в пул, отбирается фильтрами
+// Направлений, переключается в Clash API.
+//
+// Соответствует `option.ChainOutboundOptions` форка ядра
+// (`option/chain_lx.go`). Поля названы как в ядре везде, кроме Hops: рядом
+// в состоянии лежат составы групп, и второе поле со словом «outbounds» и
+// другим смыслом читалось бы как то же самое. В конфиг Hops эмитится под
+// ключом `outbounds` — форма ядра неизменна.
+type SourceChain struct {
+	// Hops — позиции В ПОРЯДКЕ ПАКЕТА: [0] — первый хоп от клиента,
+	// последний — тот, чей адрес видит цель. НЕ «кто через кого»: в detour
+	// стрелка смотрит в обратную сторону, и перепутать их — значит собрать
+	// работающий, но не тот маршрут (SPEC 110 T3).
+	//
+	// Ядро требует минимум двух позиций, непустых, без самоссылки и без
+	// дублей (`protocol/chain/chain.go:85-100`) — нарушение любого условия
+	// не даёт стартовать всему конфигу, а не одной цепочке.
+	Hops []string `json:"hops,omitempty"`
+
+	// IdleTimeout — простой, после которого звено без соединений удаляется.
+	// Пусто = умолчание ядра (5m), "0s" = жить до остановки.
+	IdleTimeout string `json:"idle_timeout,omitempty"`
+
+	// StripEvasion — снимать ли у звеньев односторонние DPI-приёмы.
+	// Указатель ради трёхзначности: nil = «умолчание ядра» (true),
+	// false = «пользователь выключил явно». Обычный bool не отличил бы
+	// одно от другого — та же причина, что у InterruptExistConnections.
+	StripEvasion *bool `json:"strip_evasion,omitempty"`
+
+	// Strip — патч к каталогу ядра поверх StripEvasion.
+	//
+	// Ключи только из ChainStripKeys: неизвестный ключ ядро считает ошибкой
+	// старта, а не опечаткой, которую можно пропустить.
+	Strip map[string]bool `json:"strip,omitempty"`
+
+	// Rewrite — JSON merge-patch поверх опций узла, по типу outbound'а.
+	// Правится на вкладке JSON: форму для произвольного патча по всем типам
+	// протоколов не построить, а урезанная форма молча потеряла бы ключи,
+	// которых не знает.
+	Rewrite map[string]interface{} `json:"rewrite,omitempty"`
+}
+
+// ChainOutboundType — значение поля `type` в конфиге ядра.
+const ChainOutboundType = "chain"
+
+// Ключи каталога `strip` ядра (`protocol/chain/transform.go:24-27`).
+//
+// Список закрыт: ядро отвергает конфиг на неизвестном ключе, поэтому
+// «на всякий случай» сюда добавлять нечего — новый ключ появляется только
+// вместе с новой версией ядра.
+const (
+	ChainStripTLSFragment      = "tls.fragment"
+	ChainStripMultiplexPadding = "multiplex.padding"
+	ChainStripXHTTPPadding     = "xhttp.padding"
+	ChainStripTLSUTLS          = "tls.utls"
+)
+
+// ChainStripKeys — каталог в порядке показа в форме. Снимаемые по умолчанию
+// идут первыми, tls.utls последним: он единственный не снимается по
+// умолчанию и единственный, снятие которого ломает reality-узлы (T4).
+var ChainStripKeys = []string{
+	ChainStripTLSFragment,
+	ChainStripMultiplexPadding,
+	ChainStripXHTTPPadding,
+	ChainStripTLSUTLS,
+}
+
+// ChainStripDefault — снимается ли ключ при включённом strip_evasion.
+// Копия каталога ядра; форма показывает по нему исходное состояние галок.
+var ChainStripDefault = map[string]bool{
+	ChainStripTLSFragment:      true,
+	ChainStripMultiplexPadding: true,
+	ChainStripXHTTPPadding:     true,
+	ChainStripTLSUTLS:          false,
+}
+
+// HopsOrNil — позиции цепочки, безопасно для nil-приёмника.
+//
+// Нужен там, где Direction уже опознан цепочкой по типу, но Chain может
+// оказаться пустым: тип и содержимое приходят из разных мест (тип — из
+// шаблона или формы, содержимое — из состояния), и рассинхрон обязан
+// кончаться нулём позиций, а не паникой на сборке конфига.
+func (c *SourceChain) HopsOrNil() []string {
+	if c == nil {
+		return nil
+	}
+	return c.Hops
+}
+
+// StripEvasionEnabled — умолчание ядра: nil == true.
+func (c *SourceChain) StripEvasionEnabled() bool {
+	return c == nil || c.StripEvasion == nil || *c.StripEvasion
 }

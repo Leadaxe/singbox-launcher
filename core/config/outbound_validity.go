@@ -147,6 +147,9 @@ func buildOutboundsInfo(
 		progressCallback(60, "Analyzing outbounds (pass 1)...")
 	}
 	outboundsInfo := make(map[string]*outboundInfo)
+	// Позиции цепочек, лежащих в пуле (SPEC 110 T9). Пусто, если цепочек
+	// нет, — тогда все проверки ниже схлопываются в no-op.
+	chainHops := chainHopsByTag(globalNodePool)
 
 	for i, proxySource := range parserConfig.ParserConfig.Proxies {
 		if len(proxySource.Outbounds) == 0 {
@@ -158,6 +161,7 @@ func buildOutboundsInfo(
 		}
 		for _, outboundConfig := range proxySource.Outbounds {
 			filteredNodes := filterNodesForSelector(sourceNodes, outboundConfig.Filters)
+			filteredNodes = dropChainsThroughDirection(filteredNodes, outboundConfig.Tag, chainHops)
 			logDuplicateTagIfExists(outboundsInfo, outboundConfig.Tag, "local", i+1)
 			outboundsInfo[outboundConfig.Tag] = &outboundInfo{
 				config:        outboundConfig,
@@ -179,14 +183,11 @@ func buildOutboundsInfo(
 			// внутренней группой, а не сервер (частность LxBox §322).
 			pool = dropGroupNodes(pool)
 		}
-		// SPEC 110: цепочка не отбирает узлы фильтром — её позиции заданы
-		// явным списком. Пропусти мы её через filterNodesForSelector, и
-		// чужая маска (у Направлений фильтр по умолчанию ловит всё)
-		// добавила бы цепочке состав, которого у неё не бывает.
-		var filteredNodes []*ParsedNode
-		if !outboundConfig.IsChain() {
-			filteredNodes = filterNodesForSelector(pool, outboundConfig.Filters)
-		}
+		filteredNodes := filterNodesForSelector(pool, outboundConfig.Filters)
+		// SPEC 110 T9: Направление не берёт цепочку, которая через него же
+		// проходит. Фильтр этого не знает и знать не должен — «все узлы»
+		// обязано означать все узлы.
+		filteredNodes = dropChainsThroughDirection(filteredNodes, outboundConfig.Tag, chainHops)
 		logDuplicateTagIfExists(outboundsInfo, outboundConfig.Tag, "global", 0)
 		outboundsInfo[outboundConfig.Tag] = &outboundInfo{
 			config:        outboundConfig,
@@ -197,21 +198,6 @@ func buildOutboundsInfo(
 		}
 	}
 	return outboundsInfo
-}
-
-// outboundDependencyTags — теги, от которых зависит запись при
-// топологической сортировке прохода 2.
-//
-// У селектора это состав (AddOutbounds), у цепочки — позиции (Hops). Одно
-// вместо другого, а не вместе: у цепочки состава не бывает, и если поля
-// заполнены оба (пользователь переключил тип, не очистив старое), в счёт
-// идёт то, что соответствует текущему типу, — иначе валидность считалась бы
-// по данным, которые в конфиг не поедут.
-func outboundDependencyTags(d Direction) []string {
-	if d.IsChain() {
-		return d.Chain.HopsOrNil()
-	}
-	return d.AddOutbounds
 }
 
 // logDuplicateTagIfExists logs a warning when a new selector tag already exists in outboundsInfo.
@@ -261,7 +247,7 @@ func computeOutboundValidity(
 		dependents[tag] = []string{}
 	}
 	for tag, info := range outboundsInfo {
-		for _, addTag := range outboundDependencyTags(info.config) {
+		for _, addTag := range info.config.AddOutbounds {
 			if _, exists := outboundsInfo[addTag]; exists {
 				dependents[addTag] = append(dependents[addTag], tag)
 				inDegree[tag]++
@@ -285,7 +271,7 @@ func computeOutboundValidity(
 		if !info.isLocal {
 			totalCount += globalOutboundExposeCredit(info, outboundsInfo, exposeCandidates)
 		}
-		for _, addTag := range outboundDependencyTags(info.config) {
+		for _, addTag := range info.config.AddOutbounds {
 			if addInfo, exists := outboundsInfo[addTag]; exists {
 				if addInfo.outboundCount > 0 {
 					totalCount++
@@ -296,13 +282,6 @@ func computeOutboundValidity(
 		}
 		info.outboundCount = totalCount
 		info.isValid = (totalCount > 0)
-		if info.config.IsChain() {
-			// SPEC 110: у цепочки «валиден» значит «дошли ВСЕ позиции».
-			// Селектор без части состава ещё работает — оставшимися
-			// узлами; цепочка без одного хопа это не урезанный маршрут, а
-			// другой, и подменять его молча нельзя.
-			info.isValid = totalCount == len(info.config.Chain.HopsOrNil())
-		}
 		processedCount++
 		for _, dependent := range dependents[current] {
 			inDegree[dependent]--
@@ -335,33 +314,14 @@ func generateSelectorJSONs(
 	exposeCandidates []exposeTagCandidate,
 	progressCallback func(float64, string),
 	directions DirectionBuildOptions,
-) ([]string, int, int, []string, []ChainDegradation) {
+) ([]string, int, int, []string) {
 	if progressCallback != nil {
 		progressCallback(80, "Generating selectors (pass 3)...")
 	}
 	var out []string
 	var emptyDirections []string
-	var brokenChains []ChainDegradation
 	localCount := 0
 	globalCount := 0
-
-	// SPEC 110: позицией цепочки может быть узел, а узлы в outboundsInfo не
-	// попадают — там только группы. Без их тегов проверка «позиция дошла до
-	// конфига» приняла бы потерянный узел за константу шаблона и выпустила
-	// бы цепочку со ссылкой в никуда, на которой ядро не стартует.
-	nodeTags := make(map[string]bool, len(globalNodePool))
-	for _, n := range globalNodePool {
-		if n != nil && n.Tag != "" {
-			nodeTags[n.Tag] = true
-		}
-	}
-	for _, list := range nodesBySource {
-		for _, n := range list {
-			if n != nil && n.Tag != "" {
-				nodeTags[n.Tag] = true
-			}
-		}
-	}
 
 	for i, proxySource := range parserConfig.ParserConfig.Proxies {
 		if len(proxySource.Outbounds) == 0 {
@@ -393,27 +353,6 @@ func generateSelectorJSONs(
 	}
 
 	for _, outboundConfig := range parserConfig.ParserConfig.Outbounds {
-		// SPEC 110: цепочка идёт своим эмиттером — у неё нет ни состава, ни
-		// умолчания, а запасной состав [block, direct] для неё бессмыслен:
-		// «цепочка из заглушек» это не деградация маршрута, а другой
-		// маршрут. Не выпущенная цепочка выпадает из конфига, а правила на
-		// неё чистит CleanDanglingOutboundsInRouteRules.
-		if outboundConfig.IsChain() {
-			chainJSON, reason := emitChainDirection(outboundConfig, outboundsInfo, nodeTags, directions)
-			if chainJSON != "" {
-				out = append(out, chainJSON)
-				globalCount++
-			} else {
-				debuglog.WarnLog("directions: цепочка %q не попала в конфиг: %s",
-					outboundConfig.DisplayName(), reason)
-				brokenChains = append(brokenChains, ChainDegradation{
-					Tag:    outboundConfig.Tag,
-					Name:   outboundConfig.DisplayName(),
-					Reason: reason,
-				})
-			}
-			continue
-		}
 		info, exists := outboundsInfo[outboundConfig.Tag]
 		if !exists || !info.isValid {
 			// SPEC 104: пустое ГЛОБАЛЬНОЕ Направление не выпадает из
@@ -460,56 +399,5 @@ func generateSelectorJSONs(
 			globalCount++
 		}
 	}
-	return out, localCount, globalCount, emptyDirections, brokenChains
-}
-
-// ChainDegradation — цепочка, не попавшая в конфиг, и почему.
-//
-// Не «тихо пропустить»: пользователь настроил маршрут, увидел его в списке
-// и вправе узнать, почему трафик пошёл не туда. Уезжает в
-// GenerationStats и оттуда в UI.
-type ChainDegradation struct {
-	Tag    string
-	Name   string
-	Reason string
-}
-
-// emitChainDirection выпускает одну цепочку, проверив, что ядро её понимает
-// и что все позиции дошли до конфига.
-//
-// Проба ядра — первым делом (SPEC 110 T1): ядро без `with_lx_chain`
-// отвергает ВЕСЬ конфиг на неизвестном типе, то есть одна настроенная
-// цепочка оставила бы пользователя вообще без VPN.
-func emitChainDirection(
-	d Direction,
-	outboundsInfo map[string]*outboundInfo,
-	nodeTags map[string]bool,
-	opts DirectionBuildOptions,
-) (string, string) {
-	if supported, reason := chainSupported(); !supported {
-		if reason == "" {
-			reason = "ядро не поддерживает цепочки"
-		}
-		return "", reason
-	}
-	validTags := make(map[string]bool, len(outboundsInfo)+len(nodeTags)+2)
-	for tag, info := range outboundsInfo {
-		if info.isValid {
-			validTags[tag] = true
-		}
-	}
-	for tag := range nodeTags {
-		validTags[tag] = true
-	}
-	// Служебные теги шаблона генератор не создаёт: их кладёт в конфиг сам
-	// шаблон, и в outboundsInfo их нет. Разрешаем ровно известные — а не
-	// «всё, чего мы не знаем»: неизвестный тег это чаще потерянный узел,
-	// чем константа, и выпущенная с ним цепочка не даёт ядру стартовать.
-	if opts.DirectTag != "" {
-		validTags[opts.DirectTag] = true
-	}
-	if opts.BlockTag != "" {
-		validTags[opts.BlockTag] = true
-	}
-	return GenerateChainJSON(d, validTags)
+	return out, localCount, globalCount, emptyDirections
 }
