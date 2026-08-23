@@ -984,8 +984,14 @@ func showDNSServerEditor(p *wizardpresentation.WizardPresenter, w fyne.Window, i
 	// сервер выглядел формой у себя и текстом у шаблона.
 	if wizardbusiness.DNSTagFromTemplate(m, dnsJSONStringField(cur, "tag")) {
 		form := newDNSServerForm(p, dnsJSONStringField(cur, "tag"))
+		// Подсказка по факту: обещать «Параметры» там, где их нет, значит
+		// отправить пользователя искать кнопку, которой не будет.
+		hint := locale.T("wizard.dns.dialog_view_hint")
+		if len(dnsServerVarsFor(p, dnsJSONStringField(cur, "tag"))) > 0 {
+			hint = locale.T("wizard.dns.dialog_view_hint_params")
+		}
 		showDNSServerDialog(p, w, form, cur, -1,
-			locale.T("wizard.dns.dialog_view_title"), locale.T("wizard.dns.dialog_view_hint"), true)
+			locale.T("wizard.dns.dialog_view_title"), hint, true)
 		return
 	}
 	form := newDNSServerForm(p, dnsJSONStringField(cur, "tag"))

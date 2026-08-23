@@ -156,9 +156,12 @@ func newDNSServerForm(p *wizardpresentation.WizardPresenter, selfTag string) *dn
 	f.rows["error_ttl"] = dnsFormRow(locale.T("wizard.dns.form_error_ttl"), f.errorTTLEntry)
 	f.rows["win_ttl"] = dnsFormRow(locale.T("wizard.dns.form_win_ttl"), f.winTTLEntry)
 
+	f.rows["type"] = dnsFormRow(locale.T("wizard.dns.form_type"), f.typeSelect)
+	f.rows["tag"] = dnsFormRow(locale.T("wizard.dns.form_tag"), f.tagEntry)
+
 	f.content = container.NewVBox(
-		dnsFormRow(locale.T("wizard.dns.form_type"), f.typeSelect),
-		dnsFormRow(locale.T("wizard.dns.form_tag"), f.tagEntry),
+		f.rows["type"],
+		f.rows["tag"],
 		f.rows["server"], f.rows["port"], f.rows["path"], f.rows["sni"],
 		f.rows["detour"], f.rows["resolver"],
 		f.rows["members"], f.rows["mode"], f.rows["error_ttl"], f.rows["win_ttl"],
@@ -218,17 +221,54 @@ func (f *dnsServerForm) syncRows() {
 // же виде, что у своей. Иначе один и тот же сервер выглядит формой у себя и
 // сырым JSON у шаблона — а разница между ними только в том, кто владелец.
 func (f *dnsServerForm) SetReadOnly() {
-	for _, w := range []fyne.Disableable{
-		f.typeSelect, f.tagEntry, f.serverEntry, f.portEntry,
-		f.pathEntry, f.sniEntry, f.detourSelect, f.resolverSelect,
-		f.modeSelect, f.errorTTLEntry, f.winTTLEntry, f.membersAddBtn,
-	} {
-		if w != nil {
-			w.Disable()
-		}
-	}
 	f.readOnly = true
+
+	// Значения показываем обычными Label, а не гашёными виджетами:
+	// Disable() у Fyne приглушает текст до нечитаемого на тёмной теме —
+	// «только для чтения» превращалось в «не разобрать, что написано».
+	// Label берёт цвет обычного текста и остаётся выделяемым глазом.
+	replace := func(key string, value string) {
+		row, ok := f.rows[key]
+		if !ok || row == nil {
+			return
+		}
+		border, ok := row.(*fyne.Container)
+		if !ok || len(border.Objects) == 0 {
+			return
+		}
+		if value == "" {
+			value = "—"
+		}
+		lbl := widget.NewLabel(value)
+		lbl.Wrapping = fyne.TextWrapWord
+		// Objects[0] у Border — центральный объект (само поле).
+		border.Objects[0] = lbl
+		border.Refresh()
+	}
+
+	replace("server", f.serverEntry.Text)
+	replace("port", f.portEntry.Text)
+	replace("path", f.pathEntry.Text)
+	replace("sni", f.sniEntry.Text)
+	replace("detour", selectedOrDash(f.detourSelect))
+	replace("resolver", selectedOrDash(f.resolverSelect))
+	replace("mode", selectedOrDash(f.modeSelect))
+	replace("error_ttl", f.errorTTLEntry.Text)
+	replace("win_ttl", f.winTTLEntry.Text)
+
+	replace("type", f.typeSelect.Selected)
+	replace("tag", f.tagEntry.Text)
+	f.membersAddBtn.Disable()
+
 	f.rebuildMembers()
+}
+
+// selectedOrDash — выбранное значение списка либо прочерк.
+func selectedOrDash(sel *widget.Select) string {
+	if sel == nil || sel.Selected == "" || sel.Selected == dnsNoDetour() {
+		return ""
+	}
+	return sel.Selected
 }
 
 // Load заполняет форму из тела сервера. Возвращает false, если тип не
