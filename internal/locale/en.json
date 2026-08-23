@@ -543,6 +543,7 @@
   "wizard.dns.dialog_hint": "Edit the DNS server. Its tag is what rules and the DNS default refer to.",
   "wizard.dns.dialog_add_hint": "A new DNS server. The tag must be unique — rules and the DNS default refer to it.",
   "wizard.dns.dialog_save": "Save",
+  "wizard.dns.details_copy": "Copy JSON",
   "wizard.dns.form_members_add": "Add member",
   "wizard.dns.form_members_empty": "No members yet",
   "wizard.dns.form_members_none": "No other DNS servers to add. Create one first — a group queries existing servers.",

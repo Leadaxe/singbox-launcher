@@ -15,9 +15,12 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
+	"singbox-launcher/internal/locale"
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/state"
@@ -218,17 +221,33 @@ func showJSONReadOnlyDialog(parent fyne.Window, title string, header, helpLabel 
 		return
 	}
 
-	jsonRich := widget.NewRichTextFromMarkdown("```json\n" + jsonBody + "\n```")
-	jsonRich.Wrapping = fyne.TextWrapWord
-	scroll := container.NewScroll(jsonRich)
+	// Entry, а не RichText: read-only значит «нельзя ПРАВИТЬ», а не «нельзя
+	// прочитать». У RichText нет ни выделения, ни копирования — тело
+	// сервера нельзя было ни забрать себе, ни показать кому-то.
+	// OnChanged пустой: правки никуда не уходят, тело живёт в шаблоне и
+	// пересобирается на каждой сборке.
+	jsonEntry := widget.NewMultiLineEntry()
+	jsonEntry.Wrapping = fyne.TextWrapOff
+	jsonEntry.SetText(jsonBody)
+	jsonEntry.OnChanged = func(string) {}
+
+	copyBtn := widget.NewButtonWithIcon(locale.T("wizard.dns.details_copy"), theme.ContentCopyIcon(), func() {
+		if parent != nil {
+			parent.Clipboard().SetContent(jsonBody)
+		}
+	})
+	copyBtn.Importance = widget.LowImportance
 
 	content := container.NewBorder(
 		container.NewVBox(header, helpLabel),
-		nil, nil, nil,
-		scroll,
+		container.NewHBox(copyBtn, layout.NewSpacer()),
+		nil, nil,
+		container.NewScroll(jsonEntry),
 	)
 	d := dialog.NewCustom(title, "Close", content, parent)
-	d.Resize(fyne.NewSize(560, 440))
+	// Выше прежних 440: тело группы с девятью участниками в них не
+	// помещалось, и низ уезжал под кнопку.
+	d.Resize(fyne.NewSize(640, 620))
 	d.Show()
 }
 

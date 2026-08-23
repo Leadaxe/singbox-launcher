@@ -539,6 +539,7 @@
   "wizard.dns.dialog_hint": "Правка DNS-сервера. На его тег ссылаются правила и DNS по умолчанию.",
   "wizard.dns.dialog_add_hint": "Новый DNS-сервер. Тег должен быть уникальным — на него ссылаются правила и DNS по умолчанию.",
   "wizard.dns.dialog_save": "Сохранить",
+  "wizard.dns.details_copy": "Копировать JSON",
   "wizard.dns.form_members_add": "Добавить участника",
   "wizard.dns.form_members_empty": "Участников пока нет",
   "wizard.dns.form_members_none": "Больше нечего добавить. Сначала заведите сервер — группа опрашивает существующие.",
