@@ -306,8 +306,21 @@ func NewTemplateInt(v int) TemplateInt {
 
 // NewTemplateVar — значение-ссылка на переменную ("@urltest_tolerance").
 func NewTemplateVar(name string) TemplateInt {
+	name = strings.TrimSpace(name)
 	if name == "" {
 		return TemplateInt{}
+	}
+	// Ссылка на переменную обязана нести «@»: без неё подстановка видит
+	// обычную строку и оставляет её в конфиге как есть, а ядро бракует
+	// «urltest_tolerance» на месте числа. Принимаем имя в любом виде —
+	// вызывающие передают и «@urltest_tolerance», и «urltest_tolerance».
+	// Голая «@» без имени — ссылка в никуда: подставлять нечего, а в конфиг
+	// уехало бы «@». Пустое значение честнее: поле просто опустится.
+	if strings.TrimPrefix(name, "@") == "" {
+		return TemplateInt{}
+	}
+	if !strings.HasPrefix(name, "@") {
+		name = "@" + name
 	}
 	quoted, err := json.Marshal(name)
 	if err != nil {

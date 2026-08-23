@@ -221,8 +221,13 @@ func dropEmptyOverrides(patch map[string]interface{}) map[string]interface{} {
 				out[k] = v
 			}
 		case map[string]interface{}:
-			if len(t) > 0 {
-				out[k] = v
+			// Вложенный объект чистится тем же правилом: `auto` несёт
+			// pool_tolerance/tolerance пустыми, и они сериализуются в null
+			// (omitempty на структуре не работает — Go опускает только
+			// нулевые скаляры). Такой null в патче читается как правка,
+			// которой пользователь не делал.
+			if inner := dropEmptyOverrides(t); len(inner) > 0 {
+				out[k] = inner
 			}
 		case []interface{}:
 			if len(t) > 0 {
