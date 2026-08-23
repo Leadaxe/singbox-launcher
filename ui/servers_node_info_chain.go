@@ -102,8 +102,27 @@ func buildChainSection(ac *core.AppController, box *fyne.Container, win fyne.Win
 			errLabel.Hide()
 
 			go func() {
-				results := probeChainLayers(ac, info)
+				// Состав перечитываем ПЕРЕД замером, а не берём тот, что
+				// прочитали при открытии окна: позиция-группа выбирает
+				// участника на лету, и пользователь мог переключить его в
+				// соседнем списке. Иначе «Замерить снова» показывало бы
+				// задержку до узла, через который трафик уже не идёт, —
+				// а именно смена пути без перезапуска и есть то, ради чего
+				// цепочку ведут через группу.
+				cur := info
+				if fresh, ok := ac.ChainFor(info.Tag); ok && len(fresh.Positions) > 0 {
+					cur = fresh
+				}
+				results := probeChainLayers(ac, cur)
 				fyne.Do(func() {
+					// Строки состава тоже обновляем: если выбор группы
+					// сменился, показать старый тег рядом со свежей
+					// задержкой значило бы соврать вдвойне.
+					for i := range rows {
+						if i < len(cur.Positions) {
+							rows[i].SetText(chainPositionText(i, cur.Positions[i]))
+						}
+					}
 					applyChainProbeResults(results, delays, errLabel)
 					probeBtn.Enable()
 					probeBtn.SetText(locale.T("servers.node_info_chain_probe_again"))

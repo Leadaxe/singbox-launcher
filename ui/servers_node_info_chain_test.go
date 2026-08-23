@@ -34,3 +34,30 @@ func TestChainPositionTextResolved(t *testing.T) {
 		t.Errorf("group must expose its current pick: %q", group)
 	}
 }
+
+// TestChainPositionTextFollowsGroupPick — строка позиции обязана меняться
+// вслед за выбором группы.
+//
+// Цепочка через группу тем и ценна, что путь меняется без перезапуска:
+// пользователь переключает участника в списке прокси, жмёт «Замерить
+// снова» — и состав, и задержки должны относиться к НОВОМУ пути. Раньше
+// проба брала состав, прочитанный при открытии окна, и показывала
+// задержку до узла, через который трафик уже не шёл.
+func TestChainPositionTextFollowsGroupPick(t *testing.T) {
+	before := chainPositionText(1, core.ChainPositionInfo{
+		Tag: "vpn ②", Now: "AL:Испания", IsGroup: true,
+	})
+	after := chainPositionText(1, core.ChainPositionInfo{
+		Tag: "vpn ②", Now: "AL:Германия-1", IsGroup: true,
+	})
+
+	if before == after {
+		t.Fatal("строка не отражает смену выбора группы")
+	}
+	if !strings.Contains(after, "AL:Германия-1") {
+		t.Errorf("новый выбор не показан: %q", after)
+	}
+	if strings.Contains(after, "AL:Испания") {
+		t.Errorf("старый выбор остался в строке: %q", after)
+	}
+}
