@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"strings"
 	"time"
 
 	"singbox-launcher/internal/debuglog"
@@ -91,7 +90,7 @@ func naiveVerdictFromVersionOutput(versionOutput string, libAvailable bool) (boo
 	if m == nil {
 		return true, "" // unknown output format — don't degrade on guesswork
 	}
-	tags := strings.Split(m[1], ",")
+	tags := splitBuildTags(m[1])
 	hasTag := func(want string) bool {
 		for _, t := range tags {
 			if t == want {

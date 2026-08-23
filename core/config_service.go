@@ -133,6 +133,12 @@ func parserSuccessToastMessage(result *config.OutboundGenerationResult) string {
 	if result.SkippedNaiveNodes > 0 {
 		msg += fmt.Sprintf(" %d naive node(s) skipped: %s.", result.SkippedNaiveNodes, result.SkippedNaiveReason)
 	}
+	// SPEC 110: то же правило для цепочек. Настроенный маршрут, молча
+	// выпавший из конфига, читается как потерянная настройка — пользователь
+	// должен узнать, что именно и почему не собралось.
+	for _, c := range result.BrokenChains {
+		msg += fmt.Sprintf(" Цепочка %q не собрана: %s.", c.Name, c.Reason)
+	}
 	return msg
 }
 

@@ -79,6 +79,12 @@ type OutboundGenerationResult struct {
 	// Заполняется ТОЛЬКО когда виноват фильтр: пустой фильтр при нуле узлов
 	// — это «подписка не загрузилась», и чинить надо её.
 	EmptyDirections []string
+
+	// BrokenChains — цепочки (SPEC 110), не попавшие в конфиг: ядро без
+	// `with_lx_chain`, недошедшая позиция, нарушенный инвариант. Пользователь
+	// обязан узнать, почему настроенный маршрут не работает, — молча
+	// выпавшая цепочка выглядит как «лаунчер потерял настройку».
+	BrokenChains []ChainDegradation
 }
 
 // NaiveSupportProbe — hook installed by the app layer (core.AppController):
@@ -1002,7 +1008,7 @@ func GenerateOutboundsFromParserConfig(
 	exposeCandidates := collectExposeTagCandidates(parserConfig)
 	outboundsInfo := buildOutboundsInfo(parserConfig, nodesBySource, globalPool, progressCallback)
 	computeOutboundValidity(outboundsInfo, parserConfig, exposeCandidates, progressCallback)
-	selectorJSONs, localSelectorsCount, globalSelectorsCount, emptyDirections := generateSelectorJSONs(
+	selectorJSONs, localSelectorsCount, globalSelectorsCount, emptyDirections, brokenChains := generateSelectorJSONs(
 		parserConfig, nodesBySource, globalPool, outboundsInfo, exposeCandidates, progressCallback, directions)
 	selectorsJSON = append(selectorsJSON, selectorJSONs...)
 
@@ -1018,6 +1024,7 @@ func GenerateOutboundsFromParserConfig(
 		FailedSources:        failedSources,
 		SkippedNaiveNodes:    skippedNaive,
 		EmptyDirections:      emptyDirections,
+		BrokenChains:         brokenChains,
 		SkippedNaiveReason:   naiveReason,
 	}, nil
 }

@@ -109,6 +109,13 @@ type AppController struct {
 	naiveSupportCache   *naiveSupportVerdict
 	naiveSupportCacheMu sync.Mutex
 
+	// --- Chain-support probe cache (SPEC 110) ---
+	// Тип `chain` есть только в ядрах, собранных с `with_lx_chain`, и ядро
+	// отвергает ВЕСЬ конфиг на неизвестном типе outbound'а. Кэш
+	// инвалидируется тем же (mtime, size) бинаря, что и naive-проба.
+	chainSupportCache   *chainSupportVerdict
+	chainSupportCacheMu sync.Mutex
+
 	// --- Auto-update per-source retry timers (SPEC 052 phase 8 event model) ---
 	// Map source.ID → pending retry timer. Один retry на 15 секунд после
 	// failed fetch; следующая попытка — на следующем heartbeat'е (1ч) или
@@ -241,6 +248,7 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	// (drop + warning) вместо того чтобы отдать sing-box конфиг, который
 	// целиком завалит `check` на ядре без naive-поддержки.
 	config.NaiveSupportProbe = ac.CoreSupportsNaive
+	config.ChainSupportProbe = ac.CoreSupportsChain
 
 	// SPEC 094 D3: дедуп внутри источника считает идентичность по
 	// эмитированному outbound-JSON. Эмиттер живёт в config, парсер — в
