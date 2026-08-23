@@ -53,6 +53,7 @@ type (
 const (
 	SourceTypeSubscription = corestate.SourceTypeSubscription
 	SourceTypeServer       = corestate.SourceTypeServer
+	SourceTypeChain        = corestate.SourceTypeChain
 )
 
 // WizardStateVersion — для callsite'ов которые используют это для

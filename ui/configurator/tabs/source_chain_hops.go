@@ -1,5 +1,5 @@
-// File chain_hops.go — кандидаты позиций цепочки и их вид в списке
-// (SPEC 110, фаза 3).
+// File source_chain_hops.go — кандидаты позиций цепочки и их вид в списке
+// (SPEC 110).
 //
 // Позиция цепочки — это тег любого outbound'а: узла подписки, группы,
 // которую подписка экспортировала, другого Направления или встроенного
@@ -10,7 +10,7 @@
 // Для чтения списка важен не только тег, но и ЧТО за ним стоит: группа
 // выбирает участника на лету, а `direct` на позиции ≥ 1 означает «хопа
 // здесь нет». Поэтому у каждого кандидата есть вид, и он показан в строке.
-package outbounds_configurator
+package tabs
 
 import (
 	"sort"
@@ -18,6 +18,7 @@ import (
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/locale"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
@@ -106,15 +107,7 @@ func collectChainHopCandidates(
 				// него не даст стартовать ядру.
 				continue
 			}
-			kind := hopKindDirection
-			if d.IsChain() {
-				// SPEC 110 T5: вложенная цепочка допустима только на
-				// позиции 0. Не прячем её из списка — сценарий рабочий, —
-				// но помечаем, чтобы форма могла предупредить о неверной
-				// позиции.
-				kind = hopKindChain
-			}
-			add(d.Tag, kind, d.DisplayName())
+			add(d.Tag, hopKindDirection, d.DisplayName())
 		}
 	}
 
@@ -124,6 +117,15 @@ func collectChainHopCandidates(
 	add("direct-out", hopKindBuiltin, "")
 
 	if model != nil {
+		// SPEC 110 T5: другие цепочки — законные позиции, но только первой.
+		// Не прячем их из списка (сценарий рабочий), а помечаем видом,
+		// чтобы форма могла предупредить о неверной позиции.
+		for _, src := range model.Sources {
+			if src.Type != corestate.SourceTypeChain || !src.Enabled {
+				continue
+			}
+			add(src.Label, hopKindChain, "")
+		}
 		_, _ = wizardbusiness.RebuildPreviewCache(model)
 		for _, n := range model.PreviewNodes {
 			if n == nil {
@@ -170,23 +172,4 @@ func describeChainHop(tag string, lookup map[string]chainHopCandidate) chainHopC
 		return c
 	}
 	return chainHopCandidate{Tag: tag, Kind: hopKindUnknown}
-}
-
-// tagOf — тег записи, безопасно для nil (новая запись ещё не создана).
-func tagOf(d *config.Direction) string {
-	if d == nil {
-		return ""
-	}
-	return d.Tag
-}
-
-// chainSupportedForList — умеет ли ядро цепочки; для пометок в списке
-// Направлений.
-//
-// Отдельно от формы, потому что список перерисовывается часто, а вердикт
-// уже кэширован по (mtime, size) бинаря — повторный вызов не запускает
-// `sing-box version` заново.
-func chainSupportedForList() bool {
-	supported, _ := config.ChainSupportedByCore()
-	return supported
 }

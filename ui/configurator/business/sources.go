@@ -9,6 +9,7 @@ package business
 import (
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -115,6 +116,27 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 	updater.UpdateParserConfig(model.ParserConfigJSON)
 	timing.LogTiming("append sources", time.Since(time.Now()))
 	return nil
+}
+
+// NextChainLabel — свободное имя для новой цепочки (SPEC 110).
+//
+// Имя цепочки становится тегом её узла, а тег обязан быть уникален: два
+// одинаковых в конфиге ядро принимает, но выбор между ними становится
+// неопределённым. Поэтому имя выдаётся автоматически, а не оставляется
+// пустым.
+func NextChainLabel(sources []corestate.Source) string {
+	used := make(map[string]bool, len(sources))
+	for _, src := range sources {
+		if src.Label != "" {
+			used[src.Label] = true
+		}
+	}
+	for i := 1; ; i++ {
+		name := "chain-" + strconv.Itoa(i)
+		if !used[name] {
+			return name
+		}
+	}
 }
 
 // extractURIFragment — `vless://...#name` → "name" (percent-decoded).

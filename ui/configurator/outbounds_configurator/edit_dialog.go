@@ -121,20 +121,6 @@ func ShowEditDialog(
 	autoTwinCheck := widget.NewCheck(locale.T("wizard.outbound.auto_twin_check"), nil)
 	autoTwinCheck.SetChecked(displayBody != nil && displayBody.Auto != nil)
 
-	// SPEC 110: тип записи — обычное Направление (селектор) или цепочка
-	// хопов. Не третий пункт где-то в опциях: от него зависит, какие
-	// вкладки вообще есть, и увидеть его надо первым.
-	kindSelect := widget.NewSelect([]string{
-		locale.T("wizard.outbound.kind_selector"),
-		locale.T("wizard.outbound.kind_chain"),
-	}, nil)
-	isChainKind := func() bool { return kindSelect.Selected == locale.T("wizard.outbound.kind_chain") }
-	if displayBody != nil && displayBody.IsChain() {
-		kindSelect.SetSelected(locale.T("wizard.outbound.kind_chain"))
-	} else {
-		kindSelect.SetSelected(locale.T("wizard.outbound.kind_selector"))
-	}
-
 	// SPEC 104: Направление с автогруппой — та же настройка urltest, только
 	// применяется к двойнику `<tag>-auto`, а не к самой записи.
 	hasAutoTwin := func() bool { return autoTwinCheck.Checked }
@@ -358,42 +344,6 @@ func ShowEditDialog(
 	autoModeLabel := ttwidget.NewLabel(locale.T("wizard.outbound.label_auto_mode"))
 	autoModeLabel.SetToolTip(locale.T("wizard.outbound.auto_mode_tooltip"))
 
-	// SPEC 110: кандидаты позиций и вердикт пробы ядра собираются один раз
-	// на открытие окна — оба требуют перестройки кэша превью и запуска
-	// `sing-box version`, и делать это на каждую перерисовку списка значило
-	// бы подвесить форму.
-	chainCands := collectChainHopCandidates(editPresenter.Model(), parserConfig, tagOf(displayBody))
-	chainUnsupported := ""
-	if supported, reason := config.ChainSupportedByCore(); !supported {
-		chainUnsupported = reason
-	}
-	// Reality-узлы: у них нельзя снимать tls.utls (T4). Считаем один раз —
-	// кэш превью уже перестроен сбором кандидатов выше.
-	chainReality := make(map[string]bool)
-	chainDetoured := make(map[string]bool)
-	if m := editPresenter.Model(); m != nil {
-		for _, n := range m.PreviewNodes {
-			if n == nil {
-				continue
-			}
-			if config.NodeUsesReality(n) {
-				chainReality[n.Tag] = true
-			}
-			if d, ok := n.Outbound["detour"].(string); ok && strings.TrimSpace(d) != "" {
-				chainDetoured[n.Tag] = true
-			}
-		}
-	}
-	chainF := newChainForm(nil, chainCands, chainReality, chainDetoured, chainUnsupported, nil)
-	// Content() создаёт виджеты, Load() их наполняет — порядок обязателен:
-	// загрузка в несозданную форму молча потеряла бы настройки.
-	chainContent := chainF.Content()
-	if displayBody != nil {
-		chainF.Load(displayBody.Chain)
-	} else {
-		chainF.Load(nil)
-	}
-
 	autoForm := autogroupform.New(autogroupform.Choices{
 		Interval:  autogroupform.VarChoices{Labels: intervalLabels, LabelToValue: intervalLabelToValue},
 		Tolerance: autogroupform.VarChoices{Labels: toleranceLabels, LabelToValue: toleranceLabelToValue},
@@ -441,17 +391,10 @@ func ShowEditDialog(
 			}
 			tag = "_preview_"
 		}
-		// SPEC 104: обычное Направление — всегда selector. Автовыбор
-		// задаётся полем Auto (вкладка «Автовыбор») и разворачивается в
-		// парный urltest на сборке; отдельного типа записи для него нет.
-		//
-		// SPEC 110: цепочка — единственное исключение, и это настоящий тип
-		// outbound'а ядра, а не свойство: у неё свой эмиттер, свой набор
-		// полей и никакого состава.
-		obType := "selector"
-		if isChainKind() {
-			obType = configtypes.DirectionTypeChain
-		}
+		// SPEC 104: Направление — всегда selector. Автовыбор задаётся полем
+		// Auto (вкладка «Автовыбор») и разворачивается в парный urltest на
+		// сборке; отдельного типа записи для него нет.
+		const obType = "selector"
 
 		cfg := &config.Direction{
 			Tag:   tag,
@@ -485,23 +428,6 @@ func ShowEditDialog(
 			}
 		} else {
 			cfg.Options = map[string]interface{}{"interrupt_exist_connections": true}
-		}
-
-		// SPEC 110: у цепочки нет ни состава, ни фильтра, ни автогруппы —
-		// только позиции. Возвращаем её и выходим до сборки полей
-		// селектора: перенесённый сюда фильтр (у Направлений он по
-		// умолчанию ловит всё) дал бы цепочке состав, которого у неё не
-		// бывает, а автогруппа — двойника, которому нечего мерить.
-		if isChainKind() {
-			cfg.Chain = chainF.Collect()
-			// Ключи urltest в Options цепочка не переносит по той же
-			// причине, по какой их не переносит селектор: ядро отвергает
-			// неизвестные поля.
-			delete(cfg.Options, "url")
-			delete(cfg.Options, "interval")
-			delete(cfg.Options, "tolerance")
-			delete(cfg.Options, "interrupt_exist_connections")
-			return cfg, nil
 		}
 
 		// SPEC 104: Направление с автогруппой. Настройки берутся из тех же
@@ -643,11 +569,11 @@ func ShowEditDialog(
 		}
 	}
 
-	// SPEC 110: всё, что относится только к селектору — состав, фильтр,
-	// умолчание, автовыбор, — живёт в одном контейнере: у цепочки этих
-	// понятий нет вовсе, и показывать их означало бы предложить настройку,
-	// которая никуда не поедет.
-	selectorOnly := container.NewVBox(
+	form := container.NewVBox(
+		widget.NewLabel(locale.T("wizard.outbound.label_name")),
+		labelEntry,
+		widget.NewLabel(locale.T("wizard.outbound.label_tag_field")),
+		tagEntry,
 		autoTwinCheck,
 		widget.NewLabel(locale.T("wizard.outbound.label_filters")),
 		filterValBox,
@@ -656,15 +582,6 @@ func ShowEditDialog(
 		widget.NewLabel(locale.T("wizard.outbound.label_add_outbounds")),
 		container.NewHBox(directCheck, blockCheck),
 		scrollOther,
-	)
-	form := container.NewVBox(
-		widget.NewLabel(locale.T("wizard.outbound.label_name")),
-		labelEntry,
-		widget.NewLabel(locale.T("wizard.outbound.label_tag_field")),
-		tagEntry,
-		widget.NewLabel(locale.T("wizard.outbound.label_kind")),
-		kindSelect,
-		selectorOnly,
 	)
 	// Right margin inside scroll so the scrollbar does not overlap form elements
 	const scrollbarGap = 20
@@ -944,11 +861,6 @@ func ShowEditDialog(
 	autoScroll.SetMinSize(fyne.NewSize(400, 400))
 	autoTabItem := container.NewTabItem(locale.T("wizard.outbound.tab_auto"), autoScroll)
 
-	// SPEC 110: окно цепочки — Fyne-окно формы, а не модальный попап:
-	// пикер позиции показывается диалогом, и ему нужен владелец.
-	chainScroll := container.NewScroll(chainContent)
-	chainScroll.SetMinSize(fyne.NewSize(400, 400))
-	chainTabItem := container.NewTabItem(locale.T("wizard.outbound.tab_chain"), chainScroll)
 	tabs := container.NewAppTabs(
 		container.NewTabItem(locale.T("wizard.outbound.tab_settings"), dialogScroll),
 		container.NewTabItem(locale.T("wizard.outbound.tab_raw"), rawContainer),
@@ -957,54 +869,25 @@ func ShowEditDialog(
 	// SPEC 104: вкладка «Автовыбор» существует ровно пока стоит галка.
 	// Вставляем второй — сразу после Settings, чтобы настройки двойника
 	// были рядом с настройками самого Направления.
-	hasTab := func(item *container.TabItem) bool {
+	syncAutoTab := func() {
+		has := false
 		for _, it := range tabs.Items {
-			if it == item {
-				return true
+			if it == autoTabItem {
+				has = true
+				break
 			}
 		}
-		return false
-	}
-	// Вкладка вставляется второй — сразу после Settings: настройки записи
-	// должны идти подряд, а не через JSON и превью.
-	insertSecond := func(item *container.TabItem) {
-		items := append([]*container.TabItem{tabs.Items[0], item}, tabs.Items[1:]...)
-		tabs.SetItems(items)
-	}
-	syncAutoTab := func() {
-		// SPEC 110: у цепочки автовыбора не бывает — мерить нечего, состава
-		// нет. Вкладка не показывается независимо от галки, которая могла
-		// остаться стоять от прошлого выбора типа.
-		want := autoTwinCheck.Checked && !isChainKind()
-		switch has := hasTab(autoTabItem); {
-		case want && !has:
-			insertSecond(autoTabItem)
-		case !want && has:
+		switch {
+		case autoTwinCheck.Checked && !has:
+			items := append([]*container.TabItem{tabs.Items[0], autoTabItem}, tabs.Items[1:]...)
+			tabs.SetItems(items)
+		case !autoTwinCheck.Checked && has:
 			tabs.Remove(autoTabItem)
 		}
 	}
-	syncChainTab := func() {
-		switch has := hasTab(chainTabItem); {
-		case isChainKind() && !has:
-			insertSecond(chainTabItem)
-		case !isChainKind() && has:
-			tabs.Remove(chainTabItem)
-		}
-	}
-	syncKind := func() {
-		if isChainKind() {
-			selectorOnly.Hide()
-		} else {
-			selectorOnly.Show()
-		}
-		syncChainTab()
-		syncAutoTab()
-	}
-	syncKind()
-	// Обработчики ПОСЛЕ начальных SetChecked/SetSelected — иначе сработали
-	// бы на них.
+	syncAutoTab()
+	// Обработчик ПОСЛЕ начального SetChecked — иначе сработал бы на нём.
 	autoTwinCheck.OnChanged = func(bool) { syncAutoTab() }
-	kindSelect.OnChanged = func(string) { syncKind() }
 	tabs.OnSelected = func(t *container.TabItem) {
 		switch t.Text {
 		case locale.T("wizard.outbound.tab_raw"):
@@ -1055,9 +938,6 @@ func ShowEditDialog(
 		return
 	}
 	dialogWin = app.NewWindow(dialogTitle)
-	// Владелец диалогов формы цепочки: пикер позиции показывается в этом
-	// окне, а не в родительском — иначе он всплыл бы за окном правки.
-	chainF.parent = dialogWin
 	if editPresenter != nil {
 		editPresenter.SetOutboundEditWindow(dialogWin)
 		dialogWin.SetOnClosed(func() {

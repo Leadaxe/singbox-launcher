@@ -1,7 +1,7 @@
-// File chain_form.go — вкладка «Цепочка» в окне правки Направления
-// (SPEC 110, фаза 3).
+// File source_chain_tab.go — вкладка «Цепочка» в окне источника
+// (SPEC 110).
 //
-// Форма правит configtypes.DirectionChain: список позиций и настройки
+// Форма правит configtypes.SourceChain: список позиций и настройки
 // звеньев. Всё, что она показывает, ограничено тем, что ядро реально
 // принимает, — форма обязана не давать собрать конфиг, на котором ядро не
 // стартует, а не ловить это в рантайме.
@@ -10,9 +10,14 @@
 // порядке пакета (первый хоп — от вас), а `detour` — наоборот, «кто через
 // кого». Это единственное различие между двумя механизмами при чтении, и
 // единственное, в чём легко ошибиться (SPEC 110 T3).
-package outbounds_configurator
+//
+// Цепочка — источник, а не Направление: она описывает МАРШРУТ, а точка
+// выбора между маршрутами это Направление. В Направления цепочка попадает
+// узлом, наравне с серверами подписки.
+package tabs
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -22,9 +27,11 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
+	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
 // chainForm — состояние вкладки «Цепочка».
@@ -37,15 +44,20 @@ type chainForm struct {
 	parent   fyne.Window
 	onChange func()
 
+	// built — собранное содержимое вкладки. Content() создаёт виджеты, и
+	// звать его дважды значило бы получить вторую форму, не связанную с
+	// загруженными данными.
+	built fyne.CanvasObject
+
 	idleEntry     *widget.Entry
 	stripEvasion  *widget.Check
 	stripChecks   map[string]*widget.Check
 	stripExplicit map[string]bool // ключ тронут пользователем → уедет в Strip
 
-	// keep — поля DirectionChain, которых форма не показывает (Rewrite).
+	// keep — поля SourceChain, которых форма не показывает (Rewrite).
 	// Их правят на вкладке JSON, и потерять их на Load/Collect значило бы
 	// стереть настройку, которую форма просто не умеет отобразить.
-	keep configtypes.DirectionChain
+	keep configtypes.SourceChain
 
 	// detourTags — позиции, чьи узлы уже ходят через собственный detour.
 	// Два механизма многохопа на одном пути дают маршрут, которого никто не
@@ -83,9 +95,9 @@ func newChainForm(parent fyne.Window, cands []chainHopCandidate, realityTags, de
 }
 
 // Load заполняет форму содержимым цепочки. nil = пустая цепочка.
-func (f *chainForm) Load(c *configtypes.DirectionChain) {
+func (f *chainForm) Load(c *configtypes.SourceChain) {
 	f.hops = nil
-	f.keep = configtypes.DirectionChain{}
+	f.keep = configtypes.SourceChain{}
 	if c != nil {
 		f.hops = append([]string(nil), c.Hops...)
 		f.keep.Rewrite = c.Rewrite
@@ -123,7 +135,7 @@ func (f *chainForm) Load(c *configtypes.DirectionChain) {
 
 // syncStripChecks расставляет галки каталога: явно заданные — по патчу,
 // остальные — по умолчанию ядра с учётом общего переключателя.
-func (f *chainForm) syncStripChecks(c *configtypes.DirectionChain) {
+func (f *chainForm) syncStripChecks(c *configtypes.SourceChain) {
 	evasion := c.StripEvasionEnabled()
 	for _, key := range configtypes.ChainStripKeys {
 		chk := f.stripChecks[key]
@@ -145,7 +157,7 @@ func (f *chainForm) syncStripChecks(c *configtypes.DirectionChain) {
 
 // Collect возвращает цепочку из формы. nil, если позиций нет вовсе —
 // пустая цепочка это не настройка, а её отсутствие.
-func (f *chainForm) Collect() *configtypes.DirectionChain {
+func (f *chainForm) Collect() *configtypes.SourceChain {
 	hops := make([]string, 0, len(f.hops))
 	for _, h := range f.hops {
 		if strings.TrimSpace(h) != "" {
@@ -155,7 +167,7 @@ func (f *chainForm) Collect() *configtypes.DirectionChain {
 	if len(hops) == 0 {
 		return nil
 	}
-	c := &configtypes.DirectionChain{
+	c := &configtypes.SourceChain{
 		Hops:    hops,
 		Rewrite: f.keep.Rewrite,
 	}
@@ -497,4 +509,47 @@ func chainFormRow(label string, field fyne.CanvasObject) fyne.CanvasObject {
 	l := widget.NewLabel(label)
 	box := container.NewGridWrap(fyne.NewSize(labelWidth, l.MinSize().Height), l)
 	return container.NewBorder(nil, nil, box, nil, field)
+}
+
+// getParserConfigForChain — ParserConfig модели для сбора кандидатов.
+//
+// Направления берутся оттуда: в Sources их нет, а позицией цепочки
+// Направление быть обязано — это главное, чего не умеет detour.
+func getParserConfigForChain(m *wizardmodels.WizardModel) *config.ParserConfig {
+	if m == nil {
+		return nil
+	}
+	if m.ParserConfig != nil {
+		return m.ParserConfig
+	}
+	if strings.TrimSpace(m.ParserConfigJSON) == "" {
+		return nil
+	}
+	var parsed config.ParserConfig
+	if err := json.Unmarshal([]byte(m.ParserConfigJSON), &parsed); err != nil {
+		return nil
+	}
+	return &parsed
+}
+
+// chainNodeFlags — узлы, о которых форма обязана предупредить: поднимающие
+// reality (у них нельзя снимать tls.utls) и уже ходящие через свой detour.
+func chainNodeFlags(m *wizardmodels.WizardModel) (reality, detoured map[string]bool) {
+	reality = make(map[string]bool)
+	detoured = make(map[string]bool)
+	if m == nil {
+		return reality, detoured
+	}
+	for _, n := range m.PreviewNodes {
+		if n == nil {
+			continue
+		}
+		if config.NodeUsesReality(n) {
+			reality[n.Tag] = true
+		}
+		if d, ok := n.Outbound["detour"].(string); ok && strings.TrimSpace(d) != "" {
+			detoured[n.Tag] = true
+		}
+	}
+	return reality, detoured
 }

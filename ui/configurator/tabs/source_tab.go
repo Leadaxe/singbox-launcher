@@ -179,6 +179,30 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		wizarddialogs.ShowAddWarpDialog(presenter, applyAddedSources)
 	}
 
+	// SPEC 110: цепочка хопов — источник, а не Направление: она описывает
+	// МАРШРУТ, а точка выбора между маршрутами это Направление. Создаётся
+	// пустой и настраивается в своём окне: позиции ссылаются на узлы и
+	// Направления, которых при создании может ещё не быть.
+	addChainAction := func() {
+		presenter.MergeGUIToModel()
+		m := presenter.Model()
+		m.Sources = append(m.Sources, corestate.Source{
+			ID:      corestate.MakeULID(),
+			Type:    corestate.SourceTypeChain,
+			Enabled: true,
+			Label:   wizardbusiness.NextChainLabel(m.Sources),
+			Chain:   &configtypes.SourceChain{},
+		})
+		m.RefreshDerivedParserConfig()
+		m.PreviewNeedsParse = true
+		wizardbusiness.InvalidatePreviewCache(m)
+		presenter.UpdateParserConfig(m.ParserConfigJSON)
+		if guiState.RefreshSourcesList != nil {
+			guiState.RefreshSourcesList()
+		}
+		presenter.MarkAsChanged()
+	}
+
 	// Limit width and height of URL input field (3 lines)
 	// Wrap MultiLineEntry in Scroll container to show scrollbars; right gutter for scrollbar strip
 	urlURIGutter := components.NewScrollGutter()
@@ -201,6 +225,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	var overflowBtn *widget.Button
 	overflowBtn = widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
 		menu := fyne.NewMenu("",
+			fyne.NewMenuItem(locale.T("wizard.source.button_add_chain"), addChainAction),
 			fyne.NewMenuItem(locale.T("wizard.source.button_add_warp"), addWarpAction),
 			fyne.NewMenuItem(locale.T("wizard.source.button_add_from_file"), addFromFileAction),
 			fyne.NewMenuItem(locale.T("wizard.source.button_get_free"), getFreeVPNAction),
@@ -314,6 +339,19 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					}
 					if label == "" {
 						label = locale.Tf("wizard.source.source_n", sourceIndex+1)
+					}
+				}
+				// SPEC 110: цепочку видно по строке — иначе она неотличима
+				// от сервера, а ведёт себя иначе. Если ядро её не умеет,
+				// вместо метки идёт предупреждение: узел в конфиг не
+				// попадёт, и узнать об этом по факту пропавшего маршрута —
+				// худший из способов.
+				if src.Type == corestate.SourceTypeChain {
+					if supported, _ := config.ChainSupportedByCore(); supported {
+						label += "  " + locale.Tf("wizard.source.row_chain_mark",
+							len(src.Chain.HopsOrNil()))
+					} else {
+						label += "  " + locale.T("wizard.source.row_chain_unsupported")
 					}
 				}
 				label = wizardutils.TruncateStringEllipsis(label, wizardutils.MaxLabelRunes, "...")

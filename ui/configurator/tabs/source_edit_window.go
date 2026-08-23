@@ -345,6 +345,34 @@ func showSourceEditWindow(
 	var syncFoldTabVisible func()
 	foldTabBody := newFoldTab(presenter.Model(), func() { applyFoldFromForm() })
 
+	// SPEC 110: форма цепочки. Существует только у источника-цепочки, где
+	// заменяет собой всё остальное: ни URL, ни URI, ни свёртки у неё нет.
+	isChainSource := m.Sources[sourceIndex].Type == wizardmodels.SourceTypeChain
+	var chainTabBody *chainForm
+	if isChainSource {
+		selfTag := m.Sources[sourceIndex].Label
+		cands := collectChainHopCandidates(presenter.Model(), getParserConfigForChain(presenter.Model()), selfTag)
+		reality, detoured := chainNodeFlags(presenter.Model())
+		unsupported := ""
+		if supported, reason := config.ChainSupportedByCore(); !supported {
+			unsupported = reason
+		}
+		chainTabBody = newChainForm(nil, cands, reality, detoured, unsupported, func() {
+			if p := proxyRef(); p != nil {
+				p.Chain = chainTabBody.Collect()
+			}
+			presenter.MarkAsChanged()
+		})
+		// Content() создаёт виджеты, Load() их наполняет — порядок
+		// обязателен: загрузка в несозданную форму молча потеряла бы
+		// настройки.
+		chainTabBody.built = chainTabBody.Content()
+		chainTabBody.Load(m.Sources[sourceIndex].Chain)
+		// Владелец диалогов формы — это окно, а не главное: пикер позиции
+		// иначе всплыл бы за окном правки.
+		chainTabBody.parent = win
+	}
+
 	applyFoldFromForm = func() {
 		p := proxyRef()
 		if p == nil {
@@ -1094,10 +1122,19 @@ func showSourceEditWindow(
 	// (как «Автовыбор» у Направления, SPEC 104): показывать настройки того,
 	// чего нет, — значит предлагать настроить выключённое.
 	foldTab := container.NewTabItem(locale.T("wizard.source.tab_fold"), container.NewVScroll(foldTabBody.content))
-	tabs := container.NewAppTabs(settingsTab, previewTab, overviewTab, jsonTab)
+	var tabs *container.AppTabs
+	if isChainSource && chainTabBody != nil {
+		// У цепочки вкладка позиций — главная и первая: остальное окно
+		// (подписка, URI, свёртка) к ней не относится.
+		chainTab := container.NewTabItem(locale.T("wizard.source.tab_chain"),
+			container.NewVScroll(chainTabBody.built))
+		tabs = container.NewAppTabs(chainTab, jsonTab)
+	} else {
+		tabs = container.NewAppTabs(settingsTab, previewTab, overviewTab, jsonTab)
+	}
 	syncFoldTabVisible = func() {
 		p := proxyRef()
-		show := !isServerSource && p != nil && p.Fold != nil
+		show := !isServerSource && !isChainSource && p != nil && p.Fold != nil
 		hasTab := false
 		for _, ti := range tabs.Items {
 			if ti == foldTab {
