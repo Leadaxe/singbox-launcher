@@ -368,12 +368,12 @@ func showSourceEditWindow(
 	if isChainSource {
 		selfTag := m.Sources[sourceIndex].Label
 		cands := collectChainHopCandidates(presenter.Model(), getParserConfigForChain(presenter.Model()), selfTag)
-		reality, detoured := chainNodeFlags(presenter.Model())
+		reality, detoured, nodeTypes := chainNodeFlags(presenter.Model())
 		unsupported := ""
 		if supported, reason := config.ChainSupportedByCore(); !supported {
 			unsupported = reason
 		}
-		chainTabBody = newChainForm(nil, cands, reality, detoured, unsupported, func() {
+		chainTabBody = newChainForm(nil, cands, reality, detoured, nodeTypes, unsupported, func() {
 			if p := proxyRef(); p != nil {
 				p.Chain = chainTabBody.Collect()
 			}

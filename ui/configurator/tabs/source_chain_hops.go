@@ -20,7 +20,6 @@ import (
 	"singbox-launcher/core/config/configtypes"
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/locale"
-	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -71,9 +70,9 @@ func (c chainHopCandidate) KindText() string {
 // selfTag исключается: ядро отвергает цепочку, содержащую саму себя
 // (`protocol/chain/chain.go:93`).
 //
-// Кэш превью перестраивается перед чтением узлов — тем же приёмом, что во
-// флаг-пикере: без этого список пуст, пока пользователь не открыл вкладку
-// превью, и выбирать оказывается не из чего.
+// Узлы берутся из готового кэша превью. Перестраивать его здесь нельзя:
+// разбор всех подписок занимает секунды на живых конфигах, а окно правки
+// открывается синхронно — пользователь смотрел бы на замерший интерфейс.
 func collectChainHopCandidates(
 	model *wizardmodels.WizardModel,
 	parserConfig *config.ParserConfig,
@@ -123,7 +122,11 @@ func collectChainHopCandidates(
 			}
 			add(src.Label, hopKindChain)
 		}
-		_, _ = wizardbusiness.RebuildPreviewCache(model)
+		// Кэш превью НЕ перестраиваем: он парсит все подписки разом, а у
+		// живых конфигов это сотни узлов — окно правки повисало на
+		// открытии. Берём то, что уже есть; пусто — список позиций
+		// покажет только Направления, и пользователь наполнит кэш,
+		// открыв превью или обновив подписки.
 		for _, n := range model.PreviewNodes {
 			if n == nil {
 				continue

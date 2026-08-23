@@ -19,6 +19,7 @@ package tabs
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -54,16 +55,22 @@ type chainForm struct {
 	stripChecks   map[string]*widget.Check
 	stripExplicit map[string]bool // ключ тронут пользователем → уедет в Strip
 
-	// keep — поля SourceChain, которых форма не показывает (Rewrite).
-	// Их правят на вкладке JSON, и потерять их на Load/Collect значило бы
-	// стереть настройку, которую форма просто не умеет отобразить.
-	keep configtypes.SourceChain
+	// rewrite — таблица переопределений опций звена. Раньше эти настройки
+	// правились только на вкладке JSON, и форма их лишь проносила мимо
+	// себя, чтобы не потерять.
+	rewrite *rewriteEditor
 
 	// detourTags — узлы со своим detour. Что он значит внутри цепочки,
 	// зависит от позиции: на входе (позиция 1) он работает и удлиняет путь,
 	// на звеньях (позиция ≥ 2) перезаписывается и не действует вовсе — см.
 	// conflicts(), где это различие и разводится (T7).
 	detourTags map[string]bool
+
+	// nodeTypes — тип протокола по тегу узла (vless, wireguard, …). Нужен
+	// подсказкой в таблице переопределений: ключ верхнего уровня `rewrite`
+	// — это тип outbound'а, и опечатка в нём означает правило, которое
+	// молча не применяется.
+	nodeTypes map[string]string
 
 	// realityTags — позиции, чьи узлы поднимают reality: у них нельзя
 	// снимать tls.utls, иначе ядро не стартует (T4). Считается по узлам,
@@ -78,9 +85,10 @@ type chainForm struct {
 }
 
 // newChainForm собирает форму. candidates — что можно поставить позицией.
-func newChainForm(parent fyne.Window, cands []chainHopCandidate, realityTags, detourTags map[string]bool, unsupported string, onChange func()) *chainForm {
+func newChainForm(parent fyne.Window, cands []chainHopCandidate, realityTags, detourTags map[string]bool, nodeTypes map[string]string, unsupported string, onChange func()) *chainForm {
 	f := &chainForm{
 		realityTags:   realityTags,
+		nodeTypes:     nodeTypes,
 		detourTags:    detourTags,
 		cands:         cands,
 		lookup:        chainHopLookup(cands),
@@ -91,16 +99,21 @@ func newChainForm(parent fyne.Window, cands []chainHopCandidate, realityTags, de
 		stripExplicit: make(map[string]bool, len(configtypes.ChainStripKeys)),
 		unsupported:   unsupported,
 	}
+	f.rewrite = newRewriteEditor(func() { f.changed() })
 	return f
 }
 
 // Load заполняет форму содержимым цепочки. nil = пустая цепочка.
 func (f *chainForm) Load(c *configtypes.SourceChain) {
 	f.hops = nil
-	f.keep = configtypes.SourceChain{}
+	var rewrite map[string]interface{}
 	if c != nil {
 		f.hops = append([]string(nil), c.Hops...)
-		f.keep.Rewrite = c.Rewrite
+		rewrite = c.Rewrite
+	}
+	if f.rewrite != nil {
+		f.rewrite.Load(rewrite)
+		f.syncRewriteTypes()
 	}
 
 	if f.idleEntry != nil {
@@ -167,9 +180,9 @@ func (f *chainForm) Collect() *configtypes.SourceChain {
 	if len(hops) == 0 {
 		return nil
 	}
-	c := &configtypes.SourceChain{
-		Hops:    hops,
-		Rewrite: f.keep.Rewrite,
+	c := &configtypes.SourceChain{Hops: hops}
+	if f.rewrite != nil {
+		c.Rewrite = f.rewrite.Collect()
 	}
 	if f.idleEntry != nil {
 		c.IdleTimeout = strings.TrimSpace(f.idleEntry.Text)
@@ -199,6 +212,38 @@ func (f *chainForm) Collect() *configtypes.SourceChain {
 		c.Strip = strip
 	}
 	return c
+}
+
+// syncRewriteTypes отдаёт редактору типы протоколов, реально стоящих в
+// цепочке.
+//
+// Список подсказки, а не ограничение: узел нужного типа может появиться
+// позже (подписка обновится), и запретить вписать «vless», когда его сейчас
+// нет в позициях, значило бы заставить ждать обновления ради настройки.
+//
+// Позиции, не являющиеся узлами (Направление, группа, другая цепочка),
+// собственного типа не имеют — их звенья разворачиваются в конкретные узлы
+// только в рантайме ядра, и здесь о них ничего не известно.
+func (f *chainForm) syncRewriteTypes() {
+	if f.rewrite == nil {
+		return
+	}
+	seen := make(map[string]bool, len(f.hops))
+	var types []string
+	for _, tag := range f.hops {
+		c, ok := f.lookup[tag]
+		if !ok || c.Kind != hopKindNode {
+			continue
+		}
+		t := f.nodeTypes[tag]
+		if t == "" || seen[t] {
+			continue
+		}
+		seen[t] = true
+		types = append(types, t)
+	}
+	sort.Strings(types)
+	f.rewrite.SetTypes(types)
 }
 
 // Content — содержимое вкладки.
@@ -263,10 +308,6 @@ func (f *chainForm) Content() fyne.CanvasObject {
 		f.changed()
 	}
 
-	rewriteNote := widget.NewLabel(locale.T("wizard.chain.rewrite_note"))
-	rewriteNote.Importance = widget.LowImportance
-	rewriteNote.Wrapping = fyne.TextWrapWord
-
 	advanced := widget.NewAccordion(widget.NewAccordionItem(
 		locale.T("wizard.chain.advanced"),
 		container.NewVBox(
@@ -275,7 +316,7 @@ func (f *chainForm) Content() fyne.CanvasObject {
 			f.stripEvasion,
 			stripRows,
 			widget.NewSeparator(),
-			rewriteNote,
+			f.rewrite.Content(),
 		),
 	))
 
@@ -350,6 +391,7 @@ func (f *chainForm) rebuildHops() {
 		f.hopsBox.Add(warn)
 	}
 	f.hopsBox.Refresh()
+	f.syncRewriteTypes()
 }
 
 // conflicts — что в текущем составе ядро не примет.
@@ -547,13 +589,15 @@ func getParserConfigForChain(m *wizardmodels.WizardModel) *config.ParserConfig {
 	return &parsed
 }
 
-// chainNodeFlags — узлы, о которых форма обязана предупредить: поднимающие
-// reality (у них нельзя снимать tls.utls) и уже ходящие через свой detour.
-func chainNodeFlags(m *wizardmodels.WizardModel) (reality, detoured map[string]bool) {
+// chainNodeFlags — то, что форма знает об узлах, но сама увидеть не может:
+// кто поднимает reality (у них нельзя снимать tls.utls), кто уже ходит
+// через свой detour, и какого типа каждый узел (для таблицы переопределений).
+func chainNodeFlags(m *wizardmodels.WizardModel) (reality, detoured map[string]bool, types map[string]string) {
 	reality = make(map[string]bool)
 	detoured = make(map[string]bool)
+	types = make(map[string]string)
 	if m == nil {
-		return reality, detoured
+		return reality, detoured, types
 	}
 	for _, n := range m.PreviewNodes {
 		if n == nil {
@@ -565,6 +609,11 @@ func chainNodeFlags(m *wizardmodels.WizardModel) (reality, detoured map[string]b
 		if d, ok := n.Outbound["detour"].(string); ok && strings.TrimSpace(d) != "" {
 			detoured[n.Tag] = true
 		}
+		// Тип из объекта outbound'а, а не Scheme: `rewrite` ключуется типом
+		// SING-BOX'а (`shadowsocks`), а схема лаунчера бывает короче (`ss`).
+		if t, ok := n.Outbound["type"].(string); ok && t != "" {
+			types[n.Tag] = t
+		}
 	}
-	return reality, detoured
+	return reality, detoured, types
 }
