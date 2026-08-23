@@ -39,6 +39,17 @@ var pingAllConcurrencyOptions = []string{"1", "5", "10", "20", "50", "100"}
 // и на прежних 5 с он выпадал в «ошибка» вместо измеримой цены.
 var pingTestTimeoutOptions = []string{"5", "10", "15", "20", "30"}
 
+// slicesContains — membership по []string. Свой, а не пакет slices: Win7-джоба
+// собирает модуль тулчейном go1.20, где slices ещё нет.
+func slicesContains(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
 // reorderWithPinned moves special proxies to the top of the list while
 // preserving relative order of the rest:
 //   - "direct-out" (if present)

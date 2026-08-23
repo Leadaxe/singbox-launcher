@@ -230,6 +230,12 @@ func buildOrderedSections(ctx BuildContext, cfg map[string]json.RawMessage, orde
 	var finalOutboundTags map[string]bool
 	if !ctx.ForPreview {
 		finalOutboundTags = collectAllFinalOutboundTags(ctx, cfg)
+		// Финальный рубеж по всему графу зависимостей (висячие ссылки,
+		// кольца, инварианты цепочек) — ДО обхода секций: endpoints идёт в
+		// шаблоне раньше outbounds, и чистка внутри одной секции не увидела
+		// бы ссылку из другой. finalOutboundTags мутируется — route-секция
+		// собирается по уже итоговому множеству тегов.
+		ctx.Cache = sanitizeOutboundGraph(ctx.Cache, finalOutboundTags)
 	}
 
 	for _, key := range order {
@@ -266,16 +272,12 @@ func buildSection(ctx BuildContext, key string, raw json.RawMessage, finalOutbou
 				cache = &c
 			}
 		}
+		// Висячие ссылки и кольца уже вычищены sanitizeOutboundGraph
+		// (buildOrderedSections) — по всему графу разом, а не по одной секции.
 		gen := cacheOutboundsAsStrings(cache)
-		if !ctx.ForPreview && len(finalOutboundTags) > 0 {
-			gen = dropDanglingNodeDetours(gen, finalOutboundTags, true)
-		}
 		return BuildOutboundsSection(raw, gen, ctx.ForPreview, ctx.Stats)
 	case "endpoints":
 		genEP := cacheEndpointsAsStrings(ctx.Cache)
-		if !ctx.ForPreview && len(finalOutboundTags) > 0 {
-			genEP = dropDanglingNodeDetours(genEP, finalOutboundTags, false)
-		}
 		return BuildEndpointsSection(raw, genEP, ctx.ForPreview, ctx.Stats)
 	case "dns":
 		merged, err := MergeDNSSection(raw, ctx.DNS)

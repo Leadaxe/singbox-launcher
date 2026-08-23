@@ -2,6 +2,7 @@ package template
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 
 	"singbox-launcher/internal/debuglog"
@@ -75,7 +76,16 @@ func applyOnChangeRec(name string, vars []TemplateVar, stateVars map[string]stri
 		return
 	}
 
-	for targetRef, ifNode := range set {
+	// Цели — в сортированном порядке ключей: обход map в Go случаен, а при
+	// пересекающихся цепочках (#set двух целей сходятся в одну) результат
+	// зависел бы от порядка. Dart-эталон LxBox упорядочен — расходиться нельзя.
+	refs := make([]string, 0, len(set))
+	for targetRef := range set {
+		refs = append(refs, targetRef)
+	}
+	sort.Strings(refs)
+	for _, targetRef := range refs {
+		ifNode := set[targetRef]
 		targetName := strings.TrimPrefix(strings.TrimSpace(targetRef), "@")
 		if targetName == "" {
 			continue

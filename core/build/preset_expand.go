@@ -187,9 +187,14 @@ func ExpandPresetWithGlobals(
 		}
 		substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, target)
 		if !ok {
+			// Dropped-каскад (§5.1, preset_types.go Required): выпадает ОДИН
+			// фрагмент, а не пресет целиком — пустая обязательная переменная
+			// одного правила не должна снимать несвязанные правила и
+			// dns_servers того же пресета (у russian это фильтр «исключить
+			// 🇷🇺-узлы», и его молчаливая потеря опаснее недостающего rule_set).
 			warnings = append(warnings, ExpandWarning{preset.ID,
-				fmt.Sprintf("unresolved @var in rule_set %q", rs.Tag)})
-			return nil, warnings, false
+				fmt.Sprintf("unresolved @var in rule_set %q — фрагмент выброшен", rs.Tag)})
+			continue
 		}
 		m, _ := substituted.(map[string]interface{})
 		if m == nil {
@@ -223,9 +228,10 @@ func ExpandPresetWithGlobals(
 		}
 		substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, target)
 		if !ok {
+			// Dropped-каскад: выпадает одно правило, остальной пресет живёт.
 			warnings = append(warnings, ExpandWarning{preset.ID,
-				fmt.Sprintf("unresolved @var in rules[%d]", idx)})
-			return nil, warnings, false
+				fmt.Sprintf("unresolved @var in rules[%d] — правило выброшено", idx)})
+			continue
 		}
 		m, _ := substituted.(map[string]interface{})
 		if m == nil {
@@ -248,9 +254,7 @@ func ExpandPresetWithGlobals(
 
 	// === 5. Resolve dns_rule (singular) + dns_rules (plural, SPEC 085.1) ===
 	if preset.DNSRule != nil {
-		if m, ok, fatal := expandOnePresetDNSRule(preset, preset.DNSRule, varsMap, emittedTags, target, &warnings); fatal {
-			return nil, warnings, false
-		} else if ok {
+		if m, ok := expandOnePresetDNSRule(preset, preset.DNSRule, varsMap, emittedTags, target, &warnings); ok {
 			frags.DNSRule = m
 		}
 	}
@@ -258,11 +262,7 @@ func ExpandPresetWithGlobals(
 		if dr == nil {
 			continue
 		}
-		m, ok, fatal := expandOnePresetDNSRule(preset, dr, varsMap, emittedTags, target, &warnings)
-		if fatal {
-			return nil, warnings, false
-		}
-		if ok {
+		if m, ok := expandOnePresetDNSRule(preset, dr, varsMap, emittedTags, target, &warnings); ok {
 			frags.DNSRules = append(frags.DNSRules, m)
 		}
 	}
@@ -284,9 +284,10 @@ func ExpandPresetWithGlobals(
 		}
 		substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, target)
 		if !ok {
+			// Dropped-каскад: выпадает один сервер, остальной пресет живёт.
 			warnings = append(warnings, ExpandWarning{preset.ID,
-				fmt.Sprintf("unresolved @var in dns_server %q", ds.Tag)})
-			return nil, warnings, false
+				fmt.Sprintf("unresolved @var in dns_server %q — сервер выброшен", ds.Tag)})
+			continue
 		}
 		m, _ := substituted.(map[string]interface{})
 		// Strip UI-only / control fields.
@@ -589,22 +590,23 @@ func isDNSRuleEmpty(m map[string]interface{}, _ map[string]bool) bool {
 
 // expandOnePresetDNSRule resolves one preset DNS rule map: evaluates its `if`,
 // deep-copies, substitutes @vars, strips if/if_or, rewrites rule_set refs, and
-// prefixes a bundled server tag. Returns (rule, ok, fatal): ok=false when the
-// rule is gated off or empty; fatal=true on an unresolved @var (caller aborts
-// the whole preset). Shared by the singular dns_rule and the plural dns_rules.
-func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{}, varsMap map[string]string, emittedTags map[string]bool, target template.TargetSpec, warnings *[]ExpandWarning) (map[string]interface{}, bool, bool) {
+// prefixes a bundled server tag. Returns (rule, ok): ok=false when the rule is
+// gated off, empty, or hit an unresolved @var — правило выпадает с warning, а
+// пресет продолжает собираться (Dropped-каскад §5.1). Shared by the singular
+// dns_rule and the plural dns_rules.
+func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{}, varsMap map[string]string, emittedTags map[string]bool, target template.TargetSpec, warnings *[]ExpandWarning) (map[string]interface{}, bool) {
 	if !extractGateFromMap(src).SatisfiedVars(varsMap, target) {
-		return nil, false, false
+		return nil, false
 	}
 	raw, err := deepCopyMap(src)
 	if err != nil {
 		*warnings = append(*warnings, ExpandWarning{preset.ID, fmt.Sprintf("deep copy dns_rule: %v", err)})
-		return nil, false, false
+		return nil, false
 	}
 	substituted, ok := substitutePresetBody(raw, preset.Vars, varsMap, target)
 	if !ok {
-		*warnings = append(*warnings, ExpandWarning{preset.ID, "unresolved @var in dns_rule"})
-		return nil, false, true
+		*warnings = append(*warnings, ExpandWarning{preset.ID, "unresolved @var in dns_rule — правило выброшено"})
+		return nil, false
 	}
 	m, _ := substituted.(map[string]interface{})
 	delete(m, "if")
@@ -620,9 +622,9 @@ func expandOnePresetDNSRule(preset *template.Preset, src map[string]interface{},
 		}
 	}
 	if isDNSRuleEmpty(m, emittedTags) {
-		return nil, false, false
+		return nil, false
 	}
-	return m, true, false
+	return m, true
 }
 
 // deepCopy — JSON round-trip копия любой структуры.

@@ -151,7 +151,15 @@ func GetDelay(baseURL, token, proxyName string) (int64, error) {
 
 	encName := url.PathEscape(proxyName)
 	delayURL := fmt.Sprintf("%s/proxies/%s/delay?timeout=%d&url=%s", baseURL, encName, GetPingTestTimeoutMs(), url.QueryEscape(GetPingTestURL()))
-	reqCtx, cancel := context.WithTimeout(ctx, time.Duration(httpRequestTimeoutSeconds)*time.Second)
+	// Дедлайн HTTP-вызова не должен срабатывать раньше бюджета теста: иначе
+	// при бюджете выше 20 секунд медленный узел возвращал бы транспортную
+	// ошибку вместо честной цифры — ровно тот случай, ради которого бюджет
+	// сделан настраиваемым.
+	callTimeout := time.Duration(httpRequestTimeoutSeconds) * time.Second
+	if budget := time.Duration(GetPingTestTimeoutMs())*time.Millisecond + 5*time.Second; budget > callTimeout {
+		callTimeout = budget
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, "GET", delayURL, nil)
 	if err != nil {

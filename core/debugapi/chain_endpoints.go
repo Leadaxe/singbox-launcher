@@ -16,10 +16,11 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
+	"singbox-launcher/api"
+	"singbox-launcher/core/config"
 	daemonpb "singbox-launcher/internal/daemonpb"
 
 	"google.golang.org/grpc/codes"
@@ -179,8 +180,11 @@ func chainViews(chains []*daemonpb.ChainState) []chainView {
 // layerTag — служебный тег префикса цепочки: `T#i` меряет путь от клиента до
 // позиции i включительно. Регистрируется ядром, но намеренно отсутствует в
 // GetOutbounds и Clash API — увидеть его можно только зная схему имени.
+//
+// Схема имени принадлежит ядру и собирается общим config.ChainLayerTag —
+// локальная копия формата разъехалась бы с распознавателем ChainInternalTag.
 func layerTag(chainTag string, pos int) string {
-	return chainTag + "#" + strconv.Itoa(pos)
+	return config.ChainLayerTag(chainTag, pos)
 }
 
 // handleChainProbe — POST /chains/{tag}/probe.
@@ -225,6 +229,12 @@ func (s *Server) handleChainProbe(w http.ResponseWriter, r *http.Request) {
 	}
 	if timeoutMs > probeMaxTimeoutMs {
 		timeoutMs = probeMaxTimeoutMs
+	}
+	// Пустой link — тот же эндпоинт, что у UI-пробы: иначе debug-цифры
+	// мерялись бы по дефолту ядра, и «почему разошлось с окном Info»
+	// становилось бы ложной загадкой.
+	if strings.TrimSpace(req.Link) == "" {
+		req.Link = api.GetPingTestURL()
 	}
 
 	client, closeConn, err := s.startedClient()

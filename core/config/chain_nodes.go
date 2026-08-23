@@ -11,6 +11,7 @@ package config
 
 import (
 	"strconv"
+	"strings"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/debuglog"
@@ -90,6 +91,27 @@ func ResolveChainSources(
 	for tag := range directionTags {
 		known[tag] = true
 	}
+	// Служебные теги шаблона, которые форма предлагает позициями. Шаблонные
+	// константы подмешиваются только на финальной сборке и здесь неизвестны —
+	// без этой добавки предложенный формой `direct-out` («первый хоп без
+	// прокси») деградировал бы цепочку с причиной, противоречащей UI.
+	for _, tag := range ChainBuiltinHopTags {
+		known[tag] = true
+	}
+
+	// Для проверок состава: узлы по тегам (reality) и уже разрешённые
+	// цепочки (вложенность). Раньше эти валидаторы существовали, но
+	// вызывались только из формы — то есть действовали лишь в момент
+	// редактирования: подписка обновлялась, узел становился reality, и
+	// сохранённая цепочка со strip[tls.utls] валила старт ядра, а check
+	// молчал (chain-check-misses-start-errors). Сборка — второй рубеж.
+	nodesByTag := make(map[string]*ParsedNode, len(allNodes))
+	for _, n := range allNodes {
+		if n != nil && n.Tag != "" {
+			nodesByTag[n.Tag] = n
+		}
+	}
+	chainTags := make(map[string]bool, 4)
 
 	var broken []ChainDegradation
 	for i, src := range parserConfig.ParserConfig.Proxies {
@@ -115,6 +137,15 @@ func ResolveChainSources(
 			degrade(reason)
 			continue
 		}
+		// Коллизия имени: цепочка, названная как существующий узел,
+		// Направление или другая цепочка, дала бы два outbound'а с одним
+		// тегом — ядро отвергает такой конфиг целиком. Узлы подписок через
+		// это не проходят (MakeTagUnique), цепочки шли в обход. После
+		// ChainEmitError: собственные диагностики цепочки информативнее.
+		if known[tag] {
+			degrade("имя «" + tag + "» уже занято другим узлом, Направлением или цепочкой")
+			continue
+		}
 		// Позиция, которой нет среди известных тегов, — ссылка в никуда, на
 		// которой ядро не стартует. Цепочка выпадает ЦЕЛИКОМ, а не теряет
 		// позицию: маршрут без хопа — это другой маршрут, и подменять его
@@ -130,6 +161,16 @@ func ResolveChainSources(
 			degrade("позиция " + missing + " не найдена среди узлов и Направлений")
 			continue
 		}
+		if conflicts := ChainRealityConflict(src.Chain, nodesByTag); len(conflicts) > 0 {
+			degrade("strip снимает tls.utls, а позиции " + strings.Join(conflicts, ", ") +
+				" — reality-узлы: ядро отказывается стартовать с таким конфигом")
+			continue
+		}
+		if nested := ChainNestedConflict(src.Chain, chainTags); len(nested) > 0 {
+			degrade("цепочки " + strings.Join(nested, ", ") +
+				" стоят не первой позицией — ядро допускает вложенную цепочку только позицией 0")
+			continue
+		}
 
 		node := &ParsedNode{
 			Tag:         tag,
@@ -142,6 +183,8 @@ func ResolveChainSources(
 		allNodes = append(allNodes, node)
 		nodesBySource[i] = append(nodesBySource[i], node)
 		known[tag] = true
+		chainTags[tag] = true
+		nodesByTag[tag] = node
 		debuglog.DebugLog("chain: источник %q стал узлом из %d позиций", tag, len(src.Chain.Hops))
 	}
 	return allNodes, broken

@@ -685,8 +685,14 @@ func (t *daemonProxyTransport) Delay(proxyName string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	// Собственный дедлайн чуть больше серверного таймаута теста.
-	ctx, cancel := context.WithTimeout(t.b.ctx, daemonRPCTimeout)
+	// Дедлайн вызова с запасом над бюджетом теста (как у ProbeLayer): при
+	// бюджете выше daemonRPCTimeout медленный узел получал бы транспортную
+	// «context deadline exceeded» вместо честной цифры.
+	callTimeout := daemonRPCTimeout
+	if probe := chainProbeCallTimeout(); probe > callTimeout {
+		callTimeout = probe
+	}
+	ctx, cancel := context.WithTimeout(t.b.ctx, callTimeout)
 	defer cancel()
 	resp, err := client.URLTestOutbound(ctx, &daemonpb.URLTestOutboundRequest{
 		OutboundTag: proxyName,

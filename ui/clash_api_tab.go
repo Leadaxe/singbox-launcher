@@ -1382,16 +1382,18 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		// Бюджет одиночной проверки. Показывается в секундах, хранится в
 		// миллисекундах: секунды читаются, а ядро и Clash принимают мс.
 		timeoutChosen := strconv.Itoa(api.GetPingTestTimeoutMs() / 1000)
-		timeoutSelect := widget.NewSelect(pingTestTimeoutOptions, func(v string) {
+		timeoutOptions := pingTestTimeoutOptions
+		if !slicesContains(timeoutOptions, timeoutChosen) {
+			// Значение не из списка (правка settings.json руками): оно
+			// добавляется отдельным пунктом, а не подменяется дефолтом —
+			// иначе сохранение диалога, где меняли только URL, молча
+			// перетирало бы бюджет пользователя.
+			timeoutOptions = append([]string{timeoutChosen}, timeoutOptions...)
+		}
+		timeoutSelect := widget.NewSelect(timeoutOptions, func(v string) {
 			timeoutChosen = v
 		})
 		timeoutSelect.SetSelected(timeoutChosen)
-		if timeoutSelect.Selected == "" {
-			// Значение не из списка (правка settings.json руками): показываем
-			// ближайший смысл — дефолт, — а не пустой контрол, который на
-			// сохранении обнулил бы настройку.
-			timeoutSelect.SetSelected(strconv.Itoa(api.DefaultPingTestTimeoutMs / 1000))
-		}
 
 		timeoutRow := container.NewHBox(
 			widget.NewLabel(locale.T("servers.ping_label_timeout")),

@@ -384,6 +384,12 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 	// "dependency[google_udp] not found for server[dns_shield]".
 	servers = pruneDNSGroupMembers(servers)
 
+	// Ссылки, которые прун мог сделать висячими, чинятся ЗДЕСЬ ЖЕ — по тому
+	// же принципу «деградируй элемент, а не конфиг»: dns.final на удалённую
+	// группу, правило с server-ссылкой в никуда и domain_resolver на
+	// неэмитнутый тег — каждая из них роняет весь конфиг на `sing-box check`.
+	dnsRules = repairDanglingDNSRefs(dns, servers, dnsRules)
+
 	if len(servers) > 0 {
 		dns["servers"] = servers
 	}
@@ -577,6 +583,70 @@ func hasAnyV6Rule(rules []state.Rule) bool {
 	return false
 }
 
+// repairDanglingDNSRefs чинит ссылки, оставшиеся висячими после чистки
+// серверов: dns.final, server у правил, domain_resolver у серверов.
+//
+// Каждая такая ссылка фатальна для конфига целиком («dependency not found» /
+// «dns server not found»), поэтому политика та же, что у пруна: выключить
+// один элемент с warning, а не отдать ядру конфиг, который оно отвергнет.
+//   - final → первый эмитнутый сервер (лучший доступный дефолт; совсем без
+//     final ядро возьмёт свой, что менее предсказуемо), при пустом списке
+//     ключ удаляется;
+//   - правило с server-ссылкой в никуда — выбрасывается;
+//   - domain_resolver на неэмитнутый тег — ключ удаляется (ядро использует
+//     дефолтный резолвер).
+func repairDanglingDNSRefs(dns map[string]interface{}, servers []interface{}, dnsRules []interface{}) []interface{} {
+	present := make(map[string]bool, len(servers))
+	firstTag := ""
+	for _, raw := range servers {
+		if m, ok := raw.(map[string]interface{}); ok {
+			if tag, _ := m["tag"].(string); tag != "" {
+				present[tag] = true
+				if firstTag == "" {
+					firstTag = tag
+				}
+			}
+		}
+	}
+
+	if final, _ := dns["final"].(string); final != "" && !present[final] {
+		if firstTag != "" {
+			debuglog.WarnLog("dns: final %q не попал в конфиг — заменён на %q", final, firstTag)
+			dns["final"] = firstTag
+		} else {
+			debuglog.WarnLog("dns: final %q не попал в конфиг, серверов нет — ключ удалён", final)
+			delete(dns, "final")
+		}
+	}
+
+	for _, raw := range servers {
+		m, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if dr, _ := m["domain_resolver"].(string); dr != "" && !present[dr] {
+			tag, _ := m["tag"].(string)
+			debuglog.WarnLog("dns: сервер %q: domain_resolver %q не попал в конфиг — ключ удалён (дефолтный резолвер)", tag, dr)
+			delete(m, "domain_resolver")
+		}
+	}
+
+	kept := make([]interface{}, 0, len(dnsRules))
+	for _, raw := range dnsRules {
+		m, ok := raw.(map[string]interface{})
+		if !ok {
+			kept = append(kept, raw)
+			continue
+		}
+		if srv, _ := m["server"].(string); srv != "" && !present[srv] {
+			debuglog.WarnLog("dns: правило со server %q выброшено — сервер не попал в конфиг", srv)
+			continue
+		}
+		kept = append(kept, m)
+	}
+	return kept
+}
+
 // pruneDNSGroupMembers убирает из состава групп участников, которых нет в
 // итоговом списке серверов, и саму группу — если после этого она пуста.
 //
@@ -597,50 +667,63 @@ func pruneDNSGroupMembers(servers []interface{}) []interface{} {
 	if len(servers) == 0 {
 		return servers
 	}
-	present := make(map[string]bool, len(servers))
-	for _, raw := range servers {
-		if m, ok := raw.(map[string]interface{}); ok {
-			if tag, _ := m["tag"].(string); tag != "" {
-				present[tag] = true
+	// До фикспойнта, а не одним проходом: удаление опустевшей группы B само
+	// делает висячей ссылку на неё из группы A (present строится по списку ДО
+	// чистки) — «dependency[B] not found», тот самый отказ, от которого
+	// функция защищает, на один уровень вложенности глубже. Каждая итерация
+	// либо удаляет хотя бы одну группу, либо завершает цикл — терминируемость
+	// гарантирована.
+	for {
+		present := make(map[string]bool, len(servers))
+		for _, raw := range servers {
+			if m, ok := raw.(map[string]interface{}); ok {
+				if tag, _ := m["tag"].(string); tag != "" {
+					present[tag] = true
+				}
 			}
 		}
-	}
 
-	out := make([]interface{}, 0, len(servers))
-	for _, raw := range servers {
-		m, ok := raw.(map[string]interface{})
-		if !ok || m["type"] != "group" {
-			out = append(out, raw)
-			continue
-		}
-		members, ok := m["servers"].([]interface{})
-		if !ok {
-			out = append(out, raw)
-			continue
-		}
-		kept := make([]interface{}, 0, len(members))
-		var dropped []string
-		for _, mem := range members {
-			tag, _ := mem.(string)
-			if tag == "" || !present[tag] {
-				if tag != "" {
-					dropped = append(dropped, tag)
-				}
+		removedGroup := false
+		out := make([]interface{}, 0, len(servers))
+		for _, raw := range servers {
+			m, ok := raw.(map[string]interface{})
+			if !ok || m["type"] != "group" {
+				out = append(out, raw)
 				continue
 			}
-			kept = append(kept, mem)
+			members, ok := m["servers"].([]interface{})
+			if !ok {
+				out = append(out, raw)
+				continue
+			}
+			kept := make([]interface{}, 0, len(members))
+			var dropped []string
+			for _, mem := range members {
+				tag, _ := mem.(string)
+				if tag == "" || !present[tag] {
+					if tag != "" {
+						dropped = append(dropped, tag)
+					}
+					continue
+				}
+				kept = append(kept, mem)
+			}
+			groupTag, _ := m["tag"].(string)
+			if len(dropped) > 0 {
+				debuglog.WarnLog("dns: группа %q: участники %v не попали в конфиг (выключены или объявлены неактивным пресетом) — исключены из состава",
+					groupTag, dropped)
+			}
+			if len(kept) == 0 {
+				debuglog.WarnLog("dns: группа %q осталась без участников — не эмитится", groupTag)
+				removedGroup = true
+				continue
+			}
+			m["servers"] = kept
+			out = append(out, m)
 		}
-		groupTag, _ := m["tag"].(string)
-		if len(dropped) > 0 {
-			debuglog.WarnLog("dns: группа %q: участники %v не попали в конфиг (выключены или объявлены неактивным пресетом) — исключены из состава",
-				groupTag, dropped)
+		servers = out
+		if !removedGroup {
+			return servers
 		}
-		if len(kept) == 0 {
-			debuglog.WarnLog("dns: группа %q осталась без участников — не эмитится", groupTag)
-			continue
-		}
-		m["servers"] = kept
-		out = append(out, m)
 	}
-	return out
 }

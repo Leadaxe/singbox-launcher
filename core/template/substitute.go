@@ -373,6 +373,21 @@ func substituteWalkCtx(v *interface{}, varTypes map[string]string, resolved map[
 		// элемент убирается — sentinel не должен попасть в JSON.
 		filtered := make([]interface{}, 0, len(x))
 		for i := range x {
+			// Splice text_list и здесь: голый "@text_list_var" в
+			// мульти-элементном массиве БЕЗ #if-соседей раньше подставлялся
+			// одним элементом — [[a,b],"literal"] — и ядро отвергало конфиг.
+			// Семантика splice не должна зависеть от того, есть ли рядом
+			// #if-обёртка (канонический обходчик сплайсит безусловно).
+			if s, ok := x[i].(string); ok && strings.HasPrefix(s, "@") {
+				name := s[1:]
+				if name != "" && !strings.Contains(name, "@") && varTypes[name] == "text_list" {
+					replaced := replacementForPlaceholderCtx(name, varTypes, resolved, unresolvedSink)
+					if list, ok := replaced.([]interface{}); ok {
+						filtered = append(filtered, list...)
+						continue
+					}
+				}
+			}
 			substituteWalkCtx(&x[i], varTypes, resolved, target, unresolvedSink)
 			if _, dropped := x[i].(droppedValue); dropped {
 				continue

@@ -183,6 +183,10 @@ func applyChainProbeResults(results []chainLayerResult, delays []*widget.Label, 
 		if i >= len(delays) {
 			break
 		}
+		// Importance выставляется на КАЖДЫЙ замер, а не только при ошибке:
+		// однажды покрасневшая позиция иначе рисовала бы опасным стилем и
+		// все последующие успешные цифры.
+		delays[i].Importance = widget.MediumImportance
 		switch {
 		case res.Skipped:
 			delays[i].SetText(locale.T("servers.node_info_chain_skipped"))

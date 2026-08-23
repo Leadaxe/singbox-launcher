@@ -159,6 +159,24 @@ func (t *LxdRemoteTransport) rpc() (daemonpb.StartedServiceClient, context.Conte
 	return daemonpb.NewStartedServiceClient(conn), ctx, cancel, nil
 }
 
+// rpcForURLTest — как rpc, но дедлайн не короче бюджета url-теста: при
+// бюджете выше 25 секунд медленный узел возвращал бы транспортную ошибку
+// вместо честной цифры, причём локальная проба той же цепочки при этом
+// работала бы — расхождение транспортов на ровном месте.
+func (t *LxdRemoteTransport) rpcForURLTest() (daemonpb.StartedServiceClient, context.Context, context.CancelFunc, error) {
+	client, ctx, cancel, err := t.rpc()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	budget := time.Duration(api.GetPingTestTimeoutMs())*time.Millisecond + 5*time.Second
+	if budget <= lxdRemoteRPCTimeout {
+		return client, ctx, cancel, nil
+	}
+	cancel()
+	longCtx, longCancel := context.WithTimeout(context.Background(), budget)
+	return client, longCtx, longCancel, nil
+}
+
 // GroupProxies implements ProxyTransport через GetGroups.
 func (t *LxdRemoteTransport) GroupProxies(group string) ([]api.ProxyInfo, string, error) {
 	client, ctx, cancel, err := t.rpc()
@@ -219,7 +237,7 @@ func (t *LxdRemoteTransport) SwitchProxy(group, name string) error {
 // Delay implements ProxyTransport через URLTestOutbound (точечный URL-тест
 // одного узла на СТОРОНЕ роутера — меряется его канал, а не наш).
 func (t *LxdRemoteTransport) Delay(proxyName string) (int64, error) {
-	client, ctx, cancel, err := t.rpc()
+	client, ctx, cancel, err := t.rpcForURLTest()
 	if err != nil {
 		return 0, err
 	}
@@ -355,7 +373,7 @@ func (t *LxdRemoteTransport) Chains() ([]ChainInfo, error) {
 // собирается общим config.ChainLayerTag, чтобы локальный и удалённый пути
 // не разошлись.
 func (t *LxdRemoteTransport) ProbeLayer(chainTag string, pos int) (int64, string, error) {
-	client, ctx, cancel, err := t.rpc()
+	client, ctx, cancel, err := t.rpcForURLTest()
 	if err != nil {
 		return 0, "", err
 	}

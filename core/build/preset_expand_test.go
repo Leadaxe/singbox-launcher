@@ -328,23 +328,33 @@ func TestExpand_PrivateIPs_NoRuleSet(t *testing.T) {
 	}
 }
 
-// TestExpand_UnresolvedVar — @unknown_var → unresolved warning, preset skip.
+// TestExpand_UnresolvedVar — @unknown_var: выпадает ОДИН фрагмент с warning,
+// а не пресет целиком (Dropped-каскад §5.1 / D-011). Правило с битой
+// переменной исчезает, соседний фрагмент того же пресета доживает до вывода —
+// иначе пустая обязательная переменная одного правила снимала бы несвязанный
+// фильтр (у russian это «исключить 🇷🇺-узлы»).
 func TestExpand_UnresolvedVar(t *testing.T) {
 	raw := []byte(`{
 		"id": "broken",
 		"label": "X",
 		"vars": [{"name": "x", "type": "text", "default": "y"}],
-		"rules": [{"outbound": "@nonexistent"}]
+		"rules": [
+			{"outbound": "@nonexistent"},
+			{"ip_is_private": true, "outbound": "direct-out"}
+		]
 	}`)
 	var p template.Preset
 	_ = json.Unmarshal(raw, &p)
 
-	_, warns, ok := ExpandPreset(&p, nil, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
-	if ok {
-		t.Error("expand should fail with unresolved var")
+	frags, warns, ok := ExpandPreset(&p, nil, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
+	if !ok {
+		t.Fatal("expand must survive an unresolved var in one fragment")
 	}
-	if len(warns) == 0 {
-		t.Error("expected warning")
+	if len(frags.RoutingRules) != 1 {
+		t.Fatalf("healthy rule must survive, broken must drop: %v", frags.RoutingRules)
+	}
+	if frags.RoutingRules[0]["outbound"] != "direct-out" {
+		t.Errorf("surviving rule is the wrong one: %v", frags.RoutingRules[0])
 	}
 	hasUnresolved := false
 	for _, w := range warns {
@@ -574,9 +584,11 @@ func TestExpandPresetOutbounds_OutboundFieldWithIf(t *testing.T) {
 	}
 }
 
-// TestExpandPreset_UnresolvedVar_StillReturnsFalse — preserving legacy substituteAny
-// semantic: unresolved @var → skip preset entirely.
-func TestExpandPreset_UnresolvedVar_StillReturnsFalse(t *testing.T) {
+// TestExpandPreset_UnresolvedVar_DropsFragmentOnly — unresolved @var в
+// единственном правиле: правило выпадает, пресет раскрывается успешно (пусть
+// и пустым), warning объясняет потерю. Прежняя семантика «skip preset
+// entirely» противоречила задокументированному Dropped-каскаду (D-011).
+func TestExpandPreset_UnresolvedVar_DropsFragmentOnly(t *testing.T) {
 	raw := []byte(`{
 		"id": "broken",
 		"label": "X",
@@ -586,9 +598,12 @@ func TestExpandPreset_UnresolvedVar_StillReturnsFalse(t *testing.T) {
 	var p template.Preset
 	_ = json.Unmarshal(raw, &p)
 
-	_, warns, ok := ExpandPreset(&p, nil, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
-	if ok {
-		t.Error("expand should fail with unresolved var (legacy substituteAny semantic)")
+	frags, warns, ok := ExpandPreset(&p, nil, template.TargetSpec{GOOS: "darwin", GOARCH: "amd64"}.Normalized())
+	if !ok {
+		t.Error("expand must not fail the whole preset on an unresolved var")
+	}
+	if len(frags.RoutingRules) != 0 {
+		t.Errorf("broken rule must be dropped: %v", frags.RoutingRules)
 	}
 	hasUnresolved := false
 	for _, w := range warns {

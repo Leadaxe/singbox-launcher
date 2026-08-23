@@ -276,7 +276,13 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 	// в плоские ДО валидации и до подстановки: объявленные ими переменные
 	// обязаны попасть в общий список, иначе `@dns_google_dot_outbound` в
 	// теле сервера останется неразрешённым плейсхолдером.
-	if normalized, dnsVars := NormalizeDNSOptions(root.DNSOptions); len(dnsVars) > 0 {
+	//
+	// Результат применяется всегда, а не только при непустом списке
+	// переменных: вложенная запись БЕЗ блока `vars` тоже требует
+	// разворачивания, иначе она остаётся вложенной, читатели
+	// верхнеуровневого `tag` её не видят — и сервер молча исчезает.
+	{
+		normalized, dnsVars := NormalizeDNSOptions(root.DNSOptions)
 		root.DNSOptions = normalized
 		root.Vars = append(root.Vars, dnsVars...)
 	}
@@ -373,7 +379,7 @@ func ApplyTemplateWithVarsFor(configJSON json.RawMessage, params []TemplateParam
 	resolved := ResolveTemplateVarsFor(vars, stateVars, rawFull, target)
 	MaybeGenerateSecrets(vars, resolved)
 	vi := VarIndex(vars)
-	out, err := applyParamsFiltered(configJSON, params, target.GOOS, vi, resolved)
+	out, err := applyParamsFiltered(configJSON, params, target, vi, resolved)
 	if err != nil {
 		return nil, err
 	}
@@ -383,7 +389,11 @@ func ApplyTemplateWithVarsFor(configJSON json.RawMessage, params []TemplateParam
 	return SubstituteVarsInJSON(out, vars, resolved, target)
 }
 
-func applyParamsFiltered(configJSON json.RawMessage, params []TemplateParam, goos string, vi map[string]TemplateVar, resolved map[string]ResolvedVar) (json.RawMessage, error) {
+func applyParamsFiltered(configJSON json.RawMessage, params []TemplateParam, target TargetSpec, vi map[string]TemplateVar, resolved map[string]ResolvedVar) (json.RawMessage, error) {
+	// Полный TargetSpec, а не только GOOS: гейт параметра может ссылаться на
+	// @runtime.target/@runtime.arch (SPEC 097/107), и подмена реального
+	// таргета на «local/арх лаунчера» применяла бы remote-параметры не туда.
+	goos := target.GOOS
 	if len(params) == 0 {
 		return configJSON, nil
 	}
@@ -403,9 +413,8 @@ func applyParamsFiltered(configJSON json.RawMessage, params []TemplateParam, goo
 			// через and, как и подразумевал автор такого шаблона.
 			gate := param.Gate()
 			if gate != nil {
-				tgt := TargetSpec{GOOS: goos}.Normalized()
-				varTypes, scoped := scopeToPlatform(vi, resolved, tgt)
-				if !gate.Satisfied(varTypes, scoped, tgt) {
+				varTypes, scoped := scopeToPlatform(vi, resolved, target)
+				if !gate.Satisfied(varTypes, scoped, target) {
 					continue
 				}
 			}

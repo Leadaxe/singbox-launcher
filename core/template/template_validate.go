@@ -304,13 +304,26 @@ func walkValidateIf(v interface{}, varByName map[string]TemplateVar, context str
 	switch x := v.(type) {
 	case map[string]interface{}:
 		// Validate control-construct keys.
+		//
+		// isIfKey, а не литерал "#if": рантайм принимает суффиксные формы
+		// (`#if1`, `#if tun-only`, SPEC 103 D-045), и валидатор обязан
+		// покрывать всё, что рантайм исполнит. Иначе условие без and/or
+		// проходит загрузку молча, а легаси-обходчик трактует его как TRUE —
+		// ветка вливается в конфиг безусловно (ровно ловушка D-058).
 		for k, raw := range x {
 			if !strings.HasPrefix(k, "#") {
 				continue
 			}
-			switch k {
-			case "#if":
-				if err := validateIfBody(raw, varByName, context+".#if"); err != nil {
+			switch {
+			case isIfKey(k):
+				if err := validateIfBody(raw, varByName, context+"."+k); err != nil {
+					return err
+				}
+			case k == GateKey:
+				// #enable — гейт существования узла: полный язык условий,
+				// но без value/else. Опечатка гасит узел fail-closed, и без
+				// валидации на load она молчала бы до самой сборки.
+				if err := validateCondNode(raw, varByName, context+"."+k); err != nil {
 					return err
 				}
 			default:
@@ -319,6 +332,9 @@ func walkValidateIf(v interface{}, varByName map[string]TemplateVar, context str
 		}
 		// Recurse into all values.
 		for k, val := range x {
+			if isIfKey(k) || k == GateKey {
+				continue // тело уже провалидировано выше как конструкция
+			}
 			if err := walkValidateIf(val, varByName, context+"."+k); err != nil {
 				return err
 			}
@@ -326,10 +342,11 @@ func walkValidateIf(v interface{}, varByName map[string]TemplateVar, context str
 	case []interface{}:
 		for i, elem := range x {
 			subCtx := fmt.Sprintf("%s[%d]", context, i)
-			// Array-element mode: single-key {"#if": {...}} wrapper.
+			// Array-element mode: single-key {"#if…": {...}} wrapper —
+			// суффиксные ключи принимаются как и в рантайме (ifKeysSorted).
 			if m, ok := elem.(map[string]interface{}); ok && len(m) == 1 {
-				if body, ok := m["#if"]; ok {
-					if err := validateIfBody(body, varByName, subCtx+".#if"); err != nil {
+				if ks := ifKeysSorted(m); len(ks) == 1 {
+					if err := validateIfBody(m[ks[0]], varByName, subCtx+"."+ks[0]); err != nil {
 						return err
 					}
 					continue
@@ -338,6 +355,68 @@ func walkValidateIf(v interface{}, varByName map[string]TemplateVar, context str
 			if err := walkValidateIf(elem, varByName, subCtx); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// validateCondNode валидирует ПОЛНОЕ условие языка (cond := pred-list |
+// cond-obj | pred) — зеркало evaluateCond. Используется для тел #enable и
+// вложенных условий внутри predicate-списков (SPEC 107: рекурсия #and/#or
+// на любую глубину — рантайм это исполняет, значит валидатор обязан
+// принимать).
+func validateCondNode(v interface{}, varByName map[string]TemplateVar, ctx string) error {
+	switch c := v.(type) {
+	case []interface{}:
+		// Сахар-список ≡ {"and": [...]}.
+		if len(c) == 0 {
+			return fmt.Errorf("%s: predicate list must be non-empty", ctx)
+		}
+		for i, p := range c {
+			if err := validateIfPredicate(p, varByName, fmt.Sprintf("%s[%d]", ctx, i)); err != nil {
+				return err
+			}
+		}
+		return nil
+	case map[string]interface{}:
+		_, hasAnd := condKey(c, "and")
+		_, hasOr := condKey(c, "or")
+		if hasAnd || hasOr {
+			return validateCondObjLists(c, varByName, ctx)
+		}
+		return validateIfPredicate(c, varByName, ctx)
+	default:
+		return validateIfPredicate(v, varByName, ctx)
+	}
+}
+
+// validateCondObjLists проверяет and/or-часть условия-объекта: ровно один из
+// ключей, значение — непустой массив валидных предикатов. Общая часть
+// validateIfBody (у #if сверх этого есть value/else) и validateCondNode
+// (у #enable и вложенных условий value/else нет).
+func validateCondObjLists(body map[string]interface{}, varByName map[string]TemplateVar, ctx string) error {
+	andRaw, hasAnd := condKey(body, "and")
+	orRaw, hasOr := condKey(body, "or")
+	if hasAnd && hasOr {
+		return fmt.Errorf("%s: must have exactly one of \"and\" or \"or\" (not both)", ctx)
+	}
+	if !hasAnd && !hasOr {
+		return fmt.Errorf("%s: must have one of \"and\" or \"or\"", ctx)
+	}
+	raw, listCtx := andRaw, ctx+".and"
+	if hasOr {
+		raw, listCtx = orRaw, ctx+".or"
+	}
+	list, ok := raw.([]interface{})
+	if !ok {
+		return fmt.Errorf("%s: must be an array", listCtx)
+	}
+	if len(list) == 0 {
+		return fmt.Errorf("%s: predicate list must be non-empty", listCtx)
+	}
+	for i, p := range list {
+		if err := validateIfPredicate(p, varByName, fmt.Sprintf("%s[%d]", listCtx, i)); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -352,36 +431,8 @@ func validateIfBody(raw interface{}, varByName map[string]TemplateVar, ctx strin
 	// SPEC 107: ключевые слова читаются в обеих формах — канонической
 	// "#and"/"#or" и легаси без "#". Валидатор обязан знать обе, иначе
 	// канонический шаблон не загрузится вовсе.
-	andRaw, hasAnd := condKey(body, "and")
-	orRaw, hasOr := condKey(body, "or")
-	if hasAnd && hasOr {
-		return fmt.Errorf("%s: must have exactly one of \"and\" or \"or\" (not both)", ctx)
-	}
-	if !hasAnd && !hasOr {
-		return fmt.Errorf("%s: must have one of \"and\" or \"or\"", ctx)
-	}
-	var list []interface{}
-	var listCtx string
-	if hasAnd {
-		list, ok = andRaw.([]interface{})
-		if !ok {
-			return fmt.Errorf("%s.and: must be an array", ctx)
-		}
-		listCtx = ctx + ".and"
-	} else {
-		list, ok = orRaw.([]interface{})
-		if !ok {
-			return fmt.Errorf("%s.or: must be an array", ctx)
-		}
-		listCtx = ctx + ".or"
-	}
-	if len(list) == 0 {
-		return fmt.Errorf("%s: predicate list must be non-empty", listCtx)
-	}
-	for i, p := range list {
-		if err := validateIfPredicate(p, varByName, fmt.Sprintf("%s[%d]", listCtx, i)); err != nil {
-			return err
-		}
+	if err := validateCondObjLists(body, varByName, ctx); err != nil {
+		return err
 	}
 	// value required, not nil.
 	valField, hasVal := condKey(body, "value")
@@ -410,6 +461,12 @@ func validateIfBody(raw interface{}, varByName map[string]TemplateVar, ctx strin
 func validateIfPredicate(p interface{}, varByName map[string]TemplateVar, ctx string) error {
 	switch pv := p.(type) {
 	case string:
+		// Предикат строкой с JSON (SPEC 097) — рантайм разбирает и вычисляет
+		// как узел; валидатор обязан делать то же, а не браковать строку как
+		// «не @-имя».
+		if node, ok := parseJSONPredicateString(pv); ok {
+			return validateCondNode(node, varByName, ctx)
+		}
 		// Bare "@var" — bool template var; @runtime.* не разрешены в bare form.
 		if !strings.HasPrefix(pv, "@") {
 			return fmt.Errorf("%s: bare predicate %q must start with @", ctx, pv)
@@ -430,6 +487,16 @@ func validateIfPredicate(p interface{}, varByName map[string]TemplateVar, ctx st
 		}
 		return nil
 	case map[string]interface{}:
+		// SPEC 107 (снятие D-018): элемент predicate-списка может быть
+		// вложенным условием-объектом {"and":[…]} / {"#or":[…]} на любую
+		// глубину — рантайм (evaluatePredicateList → evaluateCond) это
+		// исполняет, и валидатор не вправе браковать рабочую запись.
+		if _, hasAnd := condKey(pv, "and"); hasAnd {
+			return validateCondObjLists(pv, varByName, ctx)
+		}
+		if _, hasOr := condKey(pv, "or"); hasOr {
+			return validateCondObjLists(pv, varByName, ctx)
+		}
 		if len(pv) != 1 {
 			return fmt.Errorf("%s: predicate object must have exactly one key", ctx)
 		}
@@ -441,7 +508,9 @@ func validateIfPredicate(p interface{}, varByName map[string]TemplateVar, ctx st
 				if m, ok := rhs.(map[string]interface{}); ok && len(m) == 0 {
 					return fmt.Errorf("%s.#not: requires inner predicate (got empty object)", ctx)
 				}
-				return validateIfPredicate(rhs, varByName, ctx+".#not")
+				// #not отрицает ЛЮБОЕ условие, включая and/or (зеркало
+				// evaluatePredicate).
+				return validateCondNode(rhs, varByName, ctx+".#not")
 			}
 			if !strings.HasPrefix(k, "@") {
 				return fmt.Errorf("%s: predicate key %q must start with @ or be #not", ctx, k)
@@ -488,18 +557,18 @@ func validateVarPredicateRHS(varName string, rhs interface{}, varByName map[stri
 		if strings.HasPrefix(r, "#") {
 			return fmt.Errorf("%s: unknown no-arg predicate %q", ctx, r)
 		}
-		// Literal equality — var type must be text (text_list equality invalid).
+		// Literal equality — любой скалярный тип (text/enum/int/number/bool):
+		// рантайм сравнивает скаляр как строку (evaluateVarPredicate), и,
+		// например, enum-переменная (в неё принудительно превращается text с
+		// объектными options) обязана проходить валидацию. Недопустим только
+		// text_list — у списка нет одного скаляра.
 		if isRuntimeGlobal {
 			return nil
 		}
-		switch varType {
-		case "text":
-			return nil
-		case "text_list":
+		if varType == "text_list" {
 			return fmt.Errorf("%s: literal equality not applicable to text_list var (use {#in: [...]})", ctx)
-		default:
-			return fmt.Errorf("%s: literal equality not applicable to var type %q (requires text)", ctx, varType)
 		}
+		return nil
 	case map[string]interface{}:
 		if len(r) != 1 {
 			return fmt.Errorf("%s: predicate RHS object must have exactly one key", ctx)
