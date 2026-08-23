@@ -1,7 +1,6 @@
 package tabs
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"image/color"
@@ -630,49 +629,93 @@ func showDNSServerAddDialog(p *wizardpresentation.WizardPresenter, w fyne.Window
 	if w == nil {
 		return
 	}
-	entry := widget.NewMultiLineEntry()
-	entry.Wrapping = fyne.TextWrapOff
-	tag := uniqueDNSTag(p)
+	form := newDNSServerForm(p, "")
+	form.tagEntry.SetText(uniqueDNSTag(p))
+	showDNSServerDialog(p, w, form, nil, -1,
+		locale.T("wizard.dns.dialog_add_title"), locale.T("wizard.dns.dialog_add_hint"))
+}
 
-	// Заготовки: обычный сервер и группа (SPEC 105). Группа — сервер типа
-	// `group`, который опрашивает своих членов и берёт самый быстрый ответ:
-	// одна мёртвая нода не вешает резолв. Формат ядра не очевиден, и без
-	// заготовки группу пришлось бы писать по памяти.
-	kindSelect := widget.NewSelect([]string{
-		locale.T("wizard.dns.stub_single"),
-		locale.T("wizard.dns.stub_group"),
-	}, nil)
-	applyStub := func(group bool) {
-		var stub map[string]interface{}
-		if group {
-			stub = map[string]interface{}{
-				"type":    "group",
-				"tag":     tag,
-				"servers": dnsGroupMemberSuggestions(p),
-				"mode":    "fastest",
-				"enabled": true,
-			}
-		} else {
-			stub = map[string]interface{}{
-				"type":        "udp",
-				"tag":         tag,
-				"server":      "1.1.1.1",
-				"server_port": 53,
-				"enabled":     true,
-			}
+// showDNSServerDialog — общее окно добавления и правки: вкладка «Настройки»
+// с формой и вкладка «JSON» под ней.
+//
+// JSON остаётся запасным путём (SPEC 109): формы покрывают пять типов из
+// двенадцати, и без него всё остальное — hosts, fakeip, dhcp, quic/h3 —
+// стало бы ненастраиваемым. Для типа без формы вкладка «Настройки» не
+// показывается вовсе, чтобы форма не переписала чужое тело своими полями.
+func showDNSServerDialog(
+	p *wizardpresentation.WizardPresenter,
+	w fyne.Window,
+	form *dnsServerForm,
+	body map[string]interface{},
+	editIndex int,
+	title, hint string,
+) {
+	jsonEntry := widget.NewMultiLineEntry()
+	jsonEntry.Wrapping = fyne.TextWrapOff
+
+	formOK := true
+	if body != nil {
+		formOK = form.Load(body)
+	}
+
+	// Текст JSON всегда собирается из ФОРМЫ при переключении на вкладку:
+	// иначе правки формы и правки JSON расходятся, и Save берёт то, что
+	// лежало раньше.
+	syncJSONFromForm := func() {
+		if !formOK {
+			return
 		}
-		if b, err := json.MarshalIndent(stub, "", "  "); err == nil {
-			entry.SetText(string(b))
+		if b, err := json.MarshalIndent(form.Collect(), "", "  "); err == nil {
+			jsonEntry.SetText(string(b))
 		}
 	}
-	kindSelect.OnChanged = func(sel string) {
-		applyStub(sel == locale.T("wizard.dns.stub_group"))
+	if formOK {
+		syncJSONFromForm()
+	} else if body != nil {
+		if b, err := json.MarshalIndent(body, "", "  "); err == nil {
+			jsonEntry.SetText(string(b))
+		}
 	}
-	kindSelect.SetSelected(locale.T("wizard.dns.stub_single"))
+
+	hintLabel := widget.NewLabel(hint)
+	hintLabel.Wrapping = fyne.TextWrapWord
+	formTab := container.NewTabItem(locale.T("wizard.dns.tab_form"),
+		container.NewVScroll(container.NewVBox(hintLabel, form.content)))
+	jsonTab := container.NewTabItem(locale.T("wizard.dns.tab_json"),
+		dnsServerDialogJSONArea(jsonEntry))
+
+	var tabs *container.AppTabs
+	if formOK {
+		tabs = container.NewAppTabs(formTab, jsonTab)
+	} else {
+		// Тип без формы: только JSON, и сразу с пояснением почему.
+		note := widget.NewLabel(locale.T("wizard.dns.form_unsupported_type"))
+		note.Wrapping = fyne.TextWrapWord
+		tabs = container.NewAppTabs(container.NewTabItem(
+			locale.T("wizard.dns.tab_json"),
+			container.NewBorder(note, nil, nil, nil, dnsServerDialogJSONArea(jsonEntry))))
+	}
+	tabs.OnSelected = func(ti *container.TabItem) {
+		if ti == jsonTab {
+			syncJSONFromForm()
+		}
+	}
 
 	var dlg dialog.Dialog
 	save := widget.NewButton(locale.T("wizard.dns.dialog_save"), func() {
-		if applyDNSServerJSON(p, w, entry.Text, -1) && dlg != nil {
+		text := jsonEntry.Text
+		// С вкладки «Настройки» источник истины — форма: пользователь мог
+		// не открывать JSON вовсе, и там лежал бы снимок начального
+		// состояния.
+		if formOK && tabs.Selected() == formTab {
+			b, err := json.Marshal(form.Collect())
+			if err != nil {
+				dialog.ShowError(err, w)
+				return
+			}
+			text = string(b)
+		}
+		if applyDNSServerJSON(p, w, text, editIndex) && dlg != nil {
 			dlg.Hide()
 		}
 	})
@@ -682,14 +725,9 @@ func showDNSServerAddDialog(p *wizardpresentation.WizardPresenter, w fyne.Window
 		}
 	})
 
-	main := container.NewVBox(
-		widget.NewLabel(locale.T("wizard.dns.dialog_add_hint")),
-		kindSelect,
-		dnsServerDialogJSONArea(entry),
-	)
 	buttons := container.NewHBox(layout.NewSpacer(), cancel, save)
-	dlg = dialogs.NewCustom(locale.T("wizard.dns.dialog_add_title"), main, buttons, "", w)
-	dlg.Resize(fyne.NewSize(520, 520))
+	dlg = dialogs.NewCustom(title, tabs, buttons, "", w)
+	dlg.Resize(fyne.NewSize(600, 560))
 	dlg.Show()
 }
 
@@ -709,64 +747,7 @@ func showDNSServerEditor(p *wizardpresentation.WizardPresenter, w fyne.Window, i
 	if wizardbusiness.DNSTagFromTemplate(m, dnsJSONStringField(cur, "tag")) {
 		return
 	}
-	entry := widget.NewMultiLineEntry()
-	var pretty bytes.Buffer
-	if err := json.Indent(&pretty, m.DNSServers[index], "", "  "); err != nil {
-		entry.SetText(string(m.DNSServers[index]))
-	} else {
-		entry.SetText(pretty.String())
-	}
-	entry.Wrapping = fyne.TextWrapOff
-
-	var dlg dialog.Dialog
-	save := widget.NewButton(locale.T("wizard.dns.dialog_save"), func() {
-		if applyDNSServerJSON(p, w, entry.Text, index) && dlg != nil {
-			dlg.Hide()
-		}
-	})
-	cancel := widget.NewButton(locale.T("wizard.dns.dialog_cancel"), func() {
-		if dlg != nil {
-			dlg.Hide()
-		}
-	})
-
-	main := container.NewVBox(
-		widget.NewLabel(locale.T("wizard.dns.dialog_hint")),
-		dnsServerDialogJSONArea(entry),
-	)
-	buttons := container.NewHBox(layout.NewSpacer(), cancel, save)
-	dlg = dialogs.NewCustom(locale.T("wizard.dns.dialog_title"), main, buttons, "", w)
-	dlg.Resize(fyne.NewSize(520, 520))
-	dlg.Show()
-}
-
-// dnsGroupMemberSuggestions — теги существующих DNS-серверов для заготовки
-// группы (SPEC 105).
-//
-// Подставляются первые два: группа из одного члена бессмысленна, а из всех —
-// почти наверняка не то, что нужно. Пользователь правит список руками; смысл
-// подсказки в том, чтобы показать ФОРМУ поля, а не угадать состав.
-func dnsGroupMemberSuggestions(p *wizardpresentation.WizardPresenter) []string {
-	out := make([]string, 0, 2)
-	model := p.Model()
-	if model == nil {
-		return out
-	}
-	for _, raw := range model.DNSServers {
-		var o struct {
-			Tag  string `json:"tag"`
-			Type string `json:"type"`
-		}
-		if json.Unmarshal(raw, &o) != nil || o.Tag == "" {
-			continue
-		}
-		if o.Type == "group" {
-			continue // вложенные группы ядро не ждёт
-		}
-		out = append(out, o.Tag)
-		if len(out) == 2 {
-			break
-		}
-	}
-	return out
+	form := newDNSServerForm(p, dnsJSONStringField(cur, "tag"))
+	showDNSServerDialog(p, w, form, cur, index,
+		locale.T("wizard.dns.dialog_title"), locale.T("wizard.dns.dialog_hint"))
 }
