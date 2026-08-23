@@ -324,6 +324,7 @@ An array of objects describing proxy-server sources.
 | `source`      | string   | Yes           | The subscription URL. All 13 protocols from the [«Supported protocols»](#supported-protocols) table: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS. Base64 and plain text are both accepted, as is a **JSON array** of full Xray configs (`[ {...}, ... ]`), see above. |
 | `connections` | array    | No          | An array of direct links. All 13 schemes from the [«Supported protocols»](#supported-protocols) table: `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`/`hy2://`, `tuic://`, `ssh://`, `socks5://`/`socks://`, `naive+https://`/`naive+quic://`, `wireguard://`/`awg://`, `vpn://` (Amnezia), `masque://`, `anytls://`. Can be combined with subscriptions. WireGuard nodes land in the config's `endpoints` section (sing-box ≥ 1.11). NaïveProxy requires sing-box ≥ 1.13.0 + the `with_naive_outbound` build tag (fork core `1.14.0-lx.4+`). More in [URI formats for direct links](#uri-formats-for-direct-links). |
 | `skip`        | array    | No          | A list of filters. If at least one matches, the node is skipped. |
+| `chain`       | object   | No          | **SPEC 110.** Makes this source a hop chain instead of a subscription or a server: `hops` (positions in packet order), `idle_timeout`, `strip_evasion`, `strip`, `rewrite`. Such a source has no `source` and no `connections` — it materializes into a single `chain` outbound whose tag comes from `tag_mask`. Requires a core built with `with_lx_chain`. See [Hop chains](#hop-chains). |
 | `tag_prefix`  | string   | No          | A prefix added to every node tag from this source (version 4). Applied before the original tag. Supports the variables `{$tag}`, `{$scheme}`, `{$protocol}`, `{$server}`, `{$port}`, `{$label}`, `{$comment}`, `{$num}`. Ignored when `tag_mask` is set. |
 | `tag_postfix` | string   | No          | A postfix added to every node tag from this source (version 4). Applied after the original tag. Supports the same variables as `tag_prefix`. Ignored when `tag_mask` is set. |
 | `tag_mask`    | string   | No          | A mask that replaces the node tag entirely (version 4). When set, it replaces the tag completely, ignoring `tag_prefix` and `tag_postfix`. Supports the same variables as `tag_prefix`/`tag_postfix`. |
@@ -486,6 +487,80 @@ The result:
 ]
 ```
 
+#### Hop chains
+
+**SPEC 110.** A hop chain describes a multi-hop route `client → hop 1 →
+hop 2 → … → target`. It is a **source**, not a Direction — it describes a
+*route*, while a Direction is the point where you *choose between* routes.
+It lives in `proxies[]` next to subscriptions and servers:
+
+```json
+{
+  "tag_mask": "double-hop",
+  "chain": {
+    "hops": ["vpn-1", "🇳🇱 Amsterdam"],
+    "idle_timeout": "10m",
+    "strip_evasion": true,
+    "strip": { "tls.utls": false }
+  }
+}
+```
+
+For the rest of the launcher a chain is a **node**: it joins the pool, is
+picked up by Direction filters like any subscription server, and shows up in
+the Clash API as a switchable option. That is the point of it being a
+source — as a Direction it could neither be selected inside `proxy-out` nor
+measured by an auto-select group.
+
+**`hops` are in packet order**: the first entry is the hop closest to you,
+the last is the address the destination sees. `detour` reads the other way
+round ("who dials through whom"), so mixing the two up builds a route that
+works but is not the one you meant. Any position may be a node, a
+subscription group, a Direction, a template service tag or another chain;
+switching a group on any position changes the path without a restart.
+
+The core rejects the whole config — not just the chain — when any of its
+invariants break, so the launcher checks them before emitting: at least two
+positions, none empty, no self-reference, no duplicates. A position that did
+not make it into the config removes the **entire** chain rather than one
+hop: a route missing a hop is a different route.
+
+Two kinds of cycle are ruled out:
+
+- **chain → chain**: a chain may only reference one declared *above* it in
+  `proxies[]`, so forward references are rejected — cycles are impossible by
+  construction;
+- **chain → group → chain**: a Direction does not take into its members a
+  chain that runs *through that same Direction* (checked transitively). The
+  most common setup hits this immediately — a chain `[proxy-out, exit]`
+  while `proxy-out` filters "all nodes" would otherwise contain the very
+  chain that dials through it.
+
+`strip` removes one-way DPI-evasion tricks from the links (positions from
+the second one on), which the server never sees inside a tunnel and which
+only add latency. The catalogue is closed — an unknown key is a startup
+error:
+
+| Key | Stripped by default | What it removes |
+|---|---|---|
+| `tls.fragment` | yes | ClientHello fragmentation |
+| `multiplex.padding` | yes | multiplex padding |
+| `xhttp.padding` | yes | XHTTP padding |
+| `tls.utls` | **no** | ClientHello fingerprint — **must not** be stripped on `reality` nodes, which need it |
+
+Note that `sing-box check` does **not** catch the `tls.utls` + `reality`
+clash: the check passes and `run` fails at startup. The launcher's form
+refuses that combination for exactly this reason.
+
+`rewrite` is an RFC 7396 merge patch applied to link options per outbound
+type; it is edited on the JSON tab only.
+
+**Cores without `with_lx_chain`** do not know the type and reject the entire
+config with `unknown outbound type: chain`. The launcher probes the
+installed core's build tags first: an unsupported chain never becomes a
+node, so it is simply absent from the pool — exactly like a disabled source
+— and the reason is reported in the log and in the source's row.
+
 ### The `outbounds` section
 
 An array of objects describing selectors (proxy groups).
@@ -505,7 +580,6 @@ An array of objects describing selectors (proxy groups).
 | `label`           | string   | No          | **SPEC 104.** The Direction's display name; empty means "show the tag". Kept apart from `comment` on purpose: a template entry's comment describes its purpose in a paragraph and does not work as a name. |
 | `disabled`        | bool     | No          | **SPEC 104.** The Direction keeps its settings but is neither built nor offered as a rule target. `disabled` rather than `enabled` so a zero value means "on". |
 | `auto`            | object   | No          | **SPEC 104.** Parameters of the paired `<tag>-auto` group: `mode` (`least_test` \| `round_robin`), `url`, `interval`, `tolerance`, `idle_timeout`, `interrupt_exist_connections`, and `pool` / `pool_tolerance` / `sticky_hash` for round-robin. Absent means no twin at all. The twin itself is never stored — it is expanded on every build. |
-| `chain`           | object   | No          | **SPEC 110.** Turns the Direction into a hop chain instead of a selector: `hops` (positions in packet order), `idle_timeout`, `strip_evasion`, `strip`, `rewrite`. Present means the entry has no composition, no filter and no auto-select at all. Requires a core built with `with_lx_chain`. See [Hop chains](#hop-chains). |
 | `wizard`          | object   | No          | **Legacy.** The old wrapper `{"hide": true, "required": 1}`; its `required` is still read as a fallback (the numeric form included). In the current format `required` sits **flat**, without the wrapper. The numeric semantics of "`1` — add, `2` — always rewrite" do not exist in the code. |
 
 Since SPEC 104 these entries are **Directions** — the targets rules point at —
@@ -518,60 +592,6 @@ The form shows a filter as the **body** of a regular expression plus an invert
 tick, and always writes the canonical `/body/i`; matching ignores case because
 subscription tags arrive in whatever case the provider chose. See
 [DIRECTION_FILTERS.md](DIRECTION_FILTERS.md).
-
-#### Hop chains
-
-**SPEC 110.** A Direction whose `type` is `"chain"` describes a multi-hop route
-`client → hop 1 → hop 2 → … → target` and is emitted as sing-box-lx's `chain`
-outbound. It is still an ordinary Direction from the outside: rules point at
-it, selectors include it, urltest measures it.
-
-```json
-{
-  "tag": "double-hop",
-  "type": "chain",
-  "chain": {
-    "hops": ["vpn-1", "🇳🇱 Amsterdam"],
-    "idle_timeout": "10m",
-    "strip_evasion": true,
-    "strip": { "tls.utls": false }
-  }
-}
-```
-
-**`hops` are in packet order**: the first entry is the hop closest to you, the
-last is the address the destination sees. `detour` reads the other way round
-("who dials through whom"), so mixing the two up builds a route that works but
-is not the one you meant. Any position may be a node, a subscription group,
-another Direction or a template's service tag; switching a group on any
-position changes the path without a restart.
-
-The core rejects the whole config — not just the chain — when any of its
-invariants break, so the launcher checks them before emitting: at least two
-positions, none empty, no self-reference, no duplicates, and a nested chain
-only at position 0. A position that did not make it into the config removes
-the **entire** chain rather than one hop: a route missing a hop is a different
-route.
-
-`strip` removes one-way DPI-evasion tricks from the links (positions from the
-second one on), which the server never sees inside a tunnel and which only add
-latency. The catalogue is closed — an unknown key is a startup error:
-
-| Key | Stripped by default | What it removes |
-|---|---|---|
-| `tls.fragment` | yes | ClientHello fragmentation |
-| `multiplex.padding` | yes | multiplex padding |
-| `xhttp.padding` | yes | XHTTP padding |
-| `tls.utls` | **no** | ClientHello fingerprint — **must not** be stripped on `reality` nodes, which need it |
-
-`rewrite` is an RFC 7396 merge patch applied to link options per outbound type;
-it is edited on the JSON tab only.
-
-**Cores without `with_lx_chain`** do not know the type and reject the entire
-config with `unknown outbound type: chain`. The launcher probes the installed
-core's build tags first: an unsupported chain is not emitted at all, rules
-pointing at it fall back to `route.final`, and the reason is reported in the
-log and in the entry's editor.
 
 #### Filtering logic in `filters`
 

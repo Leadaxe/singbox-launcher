@@ -115,7 +115,7 @@ The `type` discriminator: `subscription` (a URL → a batch of nodes) or `server
 | Field | Type | When | Description |
 |------|-----|-------|----------|
 | `id` | string | always | A ULID (Crockford base32, 26 chars). Stable — survives Save/Load. The filename is `bin/subscriptions/<id>.raw`. |
-| `type` | string | always | `subscription` \| `server`. |
+| `type` | string | always | `subscription` \| `server` \| `chain` (SPEC 110). |
 | `enabled` | bool | always | The source is active. Disabled → its outbounds never reach the final config. |
 | `label` | string | opt. | Display name (effectively required for a server; for a subscription it falls back to `meta.profile_title`). |
 | `exclude_from_global` | bool | opt. | Keep this source's nodes out of the directions pool. **Read-only as of SPEC 108:** a fold sets it itself at build time and the UI no longer exposes it. The field survives for states where nodes bypassed the shared list with no groups at all — a fold cannot express that. |
@@ -125,6 +125,7 @@ The `type` discriminator: `subscription` (a URL → a batch of nodes) or `server
 | `outbounds` | `[]OutboundConfig` | subscription | Former per-source groups. **No longer written as of SPEC 108:** a folded subscription's groups are expanded at build time from `fold`, and entries carrying the old `WIZARD:*` markers are dropped on load. |
 | `expose_group_tags_to_global` | bool | subscription | The former SPEC 026 flag. **Read-only as of SPEC 108:** it is expanded into `fold` on load and never written back. |
 | `fold` | `{mode, auto}` | subscription | **SPEC 108** — folds the subscription into a single group. Absent means not folded: its nodes enter the directions individually. `mode`: `select` \| `auto` \| `select_auto`. `auto` holds the auto-group settings, in the same canonical shape as a direction's `outbounds[].auto`. The groups themselves (`<prefix>auto`, `<prefix>select`) are NOT stored: they are expanded on every build, so renaming the subscription's prefix renames them automatically. |
+| `chain` | `{hops, …}` | chain | **SPEC 110** — a hop chain: `hops` (positions in PACKET order), `idle_timeout`, `strip_evasion`, `strip`, `rewrite`. Only for `type: chain`; such a source has neither `url` nor `uri`. It materializes into ONE outbound of type `chain` whose tag comes from `label`. A chain describes a ROUTE while a Direction is the choice *between* routes, hence a source rather than a Direction; it enters Directions as a node, like any subscription server. |
 | `update` | `{interval_hours, auto_refresh}` | subscription | Per-source override of the default reload interval. |
 | `max_nodes` | int | subscription | Per-source override `defaults.max_nodes`. |
 | `meta` | `SubscriptionMeta` | subscription | Runtime data (see below), filled in by Update. |
@@ -181,6 +182,43 @@ The `type` discriminator: `subscription` (a URL → a batch of nodes) or `server
 | `userinfo` | `{upload_bytes, download_bytes, total_bytes, expire_unix}` — the parsed `subscription-userinfo` header (V2Board/Xboard). |
 | `url_at_fetch`, `last_fetched_at`, `last_status`, `error_count`, `last_error_msg`, `http_status_code`, `raw_body_bytes` | Fetch history. |
 | `nodes_count_fetched`, `truncated`, `preview_nodes` | The parse result. `truncated` means it was cut off at `max_nodes`. |
+
+**Hop chains (`type: chain`, SPEC 110).** `hops` lists positions in PACKET
+order: the first is the hop closest to you, the last is the address the
+destination sees. `detour` reads the other way round ("who dials through
+whom"), and mixing them up builds a route that works but is not the one you
+meant. A position may be a node, a subscription group, a Direction, a
+template service tag or another chain.
+
+A chain becomes a node AFTER every source is loaded: its positions reference
+tags that are only final by then (subscription prefixes, duplicate
+uniquification). For the rest of the launcher it is an ordinary node — it
+joins the pool, is caught by Direction filters, and switches in the Clash
+API.
+
+The core rejects the whole config when a chain breaks its rules, so they are
+checked before emitting: at least two positions, none empty, no
+self-reference, no duplicates. A position not found among nodes and
+Directions removes the **entire** chain: a route missing a hop is a
+different route.
+
+Cycles are ruled out two different ways: a chain may only reference a chain
+declared ABOVE it in the source list (forward references are rejected), and
+a Direction does not take into its members a chain that runs through that
+same Direction — checked transitively.
+
+`strip` removes one-way DPI-evasion tricks from links; the catalogue is
+closed (`tls.fragment`, `multiplex.padding`, `xhttp.padding`, `tls.utls`)
+and an unknown key is a startup error. `tls.utls` is not stripped by default
+and must not be stripped on `reality` nodes: `sing-box check` does not catch
+this — the config passes the check and fails at startup.
+
+A core built without `with_lx_chain` does not know the type. The launcher
+probes the build tags first: an unsupported chain never becomes a node — it
+is simply absent from the pool, like a disabled source — and the reason
+lands in the log and in the source's row.
+
+---
 
 ### 3.2 `connections.outbounds[i]` — `OutboundConfig`
 
@@ -523,40 +561,16 @@ into a `selector` plus, when auto-select is on, a paired `urltest` named
 | `tag` | string | The identifier rules reference. Immutable once created — renaming would break every rule pointing at it. Auto-issued ones look like `vpn-1`; template and preset ones are arbitrary (`proxy-out`, `ru VPN 🇷🇺`). |
 | `label` | string | Display name. Empty means "show the tag". Free to change: nothing references a name. |
 | `disabled` | bool | Not built, not offered as a rule target. **`disabled`, not `enabled`** — a bool's zero value has to mean "on", or an entry written without the key would read as switched off. |
-| `type` | string | `selector` for a Direction; `urltest` for the template's standalone auto groups (`auto-proxy-out`); `chain` for a hop chain (SPEC 110). |
+| `type` | string | `selector` for a Direction; `urltest` for the template's standalone auto groups (`auto-proxy-out`) |
 | `filters` | object | Node filter in the shared pattern language (`/re/i`, `!/re/i`). The form only ever shows the **body** and an invert tick; the `i` flag is always written. |
 | `preferredDefault` | object | Same language; the first matching node becomes the selector's `default`. |
 | `addOutbounds` | array | Extra options: `direct-out`, `block-out`, and Directions **above** in the list. Never a `<tag>-auto` twin — that is an option only inside its own Direction. |
 | `auto` | object \| null | Twin parameters: `mode` (`least_test` \| `round_robin`), `url`, `interval`, `tolerance`, `idle_timeout`, `interrupt_exist_connections`, plus `pool` / `pool_tolerance` / `sticky_hash` for round-robin. **null means no twin at all.** |
-| `chain` | object \| null | **SPEC 110.** A hop chain instead of a selector: `hops` (positions in packet order), `idle_timeout`, `strip_evasion`, `strip`, `rewrite`. Present together with `type: "chain"`, it means the entry has no composition, no filter and no auto-select. |
 | `options`, `comment`, `required`, `ref`, `updates` | | As before (SPEC 057/058): template/preset binding and the patch stack. |
 
 **The twin is not stored.** `<tag>-auto` is expanded on every build from
 `auto`. Keeping it in state would mean two objects a user has to keep in sync
 by hand.
-
-**Chains (SPEC 110).** `hops` lists positions in PACKET order: the first is
-the hop closest to you, the last is the address the destination sees. `detour`
-reads the other way round ("who dials through whom"), and mixing them up builds
-a route that works but is not the one you meant. A position may be a node, a
-subscription group, another Direction or a template service tag.
-
-The core rejects the whole config when a chain breaks its rules, so they are
-checked before emitting: at least two positions, none empty, no self-reference,
-no duplicates, and a nested chain only at position 0. A position that did not
-reach the config removes the **entire** chain rather than one hop — a route
-missing a hop is a different route.
-
-`strip` removes one-way DPI-evasion tricks from links; the catalogue is closed
-(`tls.fragment`, `multiplex.padding`, `xhttp.padding`, `tls.utls`) and an
-unknown key is a startup error. `tls.utls` is not stripped by default and must
-not be stripped on `reality` nodes, where the ClientHello fingerprint carries
-the protocol rather than disguising it.
-
-A core built without `with_lx_chain` does not know the type. The launcher
-probes the build tags first: an unsupported chain is not emitted at all, rules
-pointing at it fall back to `route.final`, and the reason lands in the log and
-in the entry's editor.
 
 **The old key is read forever.** State written before SPEC 104 keeps its
 Directions under `connections.outbounds`; it is adopted on load and never
