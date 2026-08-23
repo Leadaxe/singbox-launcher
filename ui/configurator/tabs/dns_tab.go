@@ -140,7 +140,21 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 						showTemplateDNSDetailsDialog(dialogParent(), bodyCopy, locked)
 					}, rowGetter)
 					viewBtn.Importance = widget.LowImportance
-					right = container.NewHBox(viewBtn, rowGutter)
+					// SPEC 109: у записи из шаблона тело править нельзя, но её
+					// СОБСТВЕННЫЕ параметры (канал, адрес провайдера, профиль
+					// Safe DNS) — можно и нужно: ради них параметризация и
+					// переносилась. Кнопка только там, где параметры есть.
+					if len(dnsServerVarsFor(presenter, tag)) > 0 {
+						varsTag := tag
+						varsBtn := fynewidget.NewHoverForwardButtonWithIcon(
+							locale.T("wizard.dns.button_params"), theme.SettingsIcon(), func() {
+								showDNSTemplateVarsDialog(presenter, dialogParent(), varsTag)
+							}, rowGetter)
+						varsBtn.Importance = widget.LowImportance
+						right = container.NewHBox(varsBtn, viewBtn, rowGutter)
+					} else {
+						right = container.NewHBox(viewBtn, rowGutter)
+					}
 				} else {
 					editBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("wizard.shared.button_edit"), theme.DocumentCreateIcon(), func() {
 						showDNSServerEditor(presenter, dialogParent(), idx)
