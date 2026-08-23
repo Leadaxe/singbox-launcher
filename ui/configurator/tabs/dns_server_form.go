@@ -79,6 +79,7 @@ type dnsServerForm struct {
 	members       []string
 	membersBox    *fyne.Container
 	membersAddBtn *widget.Button
+	membersAddRow *fyne.Container
 	modeSelect    *widget.Select
 	errorTTLEntry *widget.Entry
 	winTTLEntry   *widget.Entry
@@ -163,8 +164,12 @@ func newDNSServerForm(p *wizardpresentation.WizardPresenter, selfTag string) *dn
 	f.rows["sni"] = dnsFormRow(locale.T("wizard.dns.form_sni"), f.sniEntry)
 	f.rows["detour"] = dnsFormRow(locale.T("wizard.dns.form_detour"), f.detourSelect)
 	f.rows["resolver"] = dnsFormRow(locale.T("wizard.dns.form_resolver"), f.resolverSelect)
+	// Кнопка «+» лежит отдельным объектом: в режиме чтения она не гасится,
+	// а убирается совсем — погашенная кнопка занимает строку и предлагает
+	// действие, которого нет.
+	f.membersAddRow = container.NewHBox(f.membersAddBtn)
 	f.rows["members"] = dnsFormRow(locale.T("wizard.dns.form_members"),
-		container.NewVBox(f.membersBox, container.NewHBox(f.membersAddBtn)))
+		container.NewVBox(f.membersBox, f.membersAddRow))
 	f.rows["mode"] = dnsFormRow(locale.T("wizard.dns.form_mode"), f.modeSelect)
 	f.rows["error_ttl"] = dnsFormRow(locale.T("wizard.dns.form_error_ttl"), f.errorTTLEntry)
 	f.rows["win_ttl"] = dnsFormRow(locale.T("wizard.dns.form_win_ttl"), f.winTTLEntry)
@@ -271,7 +276,9 @@ func (f *dnsServerForm) SetReadOnly() {
 
 	replace("type", f.typeSelect.Selected)
 	replace("tag", f.tagEntry.Text)
-	f.membersAddBtn.Disable()
+	if f.membersAddRow != nil {
+		f.membersAddRow.Hide()
+	}
 
 	f.rebuildMembers()
 }

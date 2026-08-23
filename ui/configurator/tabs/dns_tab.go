@@ -116,6 +116,21 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				locked := wizardbusiness.DNSTagLocked(m, tag)
 				templateOwned := wizardbusiness.DNSTagFromTemplate(m, tag)
 
+				// Метки в конце строки (SPEC 109). Узнать это иначе можно
+				// было только открыв запись — а открывают далеко не каждую.
+				//
+				// 🔒 — запись объявлена шаблоном: тело неизменяемо. Тот же
+				// глиф и тот же смысл, что у Направлений и пресетных правил.
+				// ⚙ — у записи есть настраиваемые параметры (канал, адрес
+				// провайдера, профиль). Тем же символом в приложении помечены
+				// настройки в трёх других местах.
+				if templateOwned {
+					sum += "  🔒"
+				}
+				if tag != "" && len(dnsServerVarsFor(presenter, tag)) > 0 {
+					sum += "  ⚙"
+				}
+
 				// Не вызывать SyncModelToGUI здесь — он пересобирает весь список и все вкладки; только обновить селекты.
 				sumLabel := ttwidget.NewLabel(sum)
 				sumLabel.Truncation = fyne.TextTruncateClip
