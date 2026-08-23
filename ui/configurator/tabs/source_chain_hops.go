@@ -38,18 +38,15 @@ const (
 type chainHopCandidate struct {
 	Tag  string
 	Kind string
-	// Label — человеческое имя (имя Направления, метка узла). Пусто, если
-	// совпадает с тегом.
-	Label string
 }
 
 // Display — как строка выглядит в списке и в пикере.
-func (c chainHopCandidate) Display() string {
-	if c.Label != "" && c.Label != c.Tag {
-		return c.Label + "  ·  " + c.Tag
-	}
-	return c.Tag
-}
+//
+// ТОЛЬКО тег. Позиция цепочки — это ссылка на тег, и именно его пользователь
+// увидит в конфиге, в логе ядра и в списке прокси. Имя рядом с тегом не
+// добавляет ничего: у server-источника тег и есть его имя, и строка
+// удваивалась почти дословно («WARP (MASQUE) · WARP (MASQUE) H3»).
+func (c chainHopCandidate) Display() string { return c.Tag }
 
 // KindText — подпись вида, локализованная.
 func (c chainHopCandidate) KindText() string {
@@ -84,7 +81,7 @@ func collectChainHopCandidates(
 ) []chainHopCandidate {
 	seen := make(map[string]bool, 64)
 	var out []chainHopCandidate
-	add := func(tag, kind, label string) {
+	add := func(tag, kind string) {
 		tag = strings.TrimSpace(tag)
 		if tag == "" || tag == selfTag || seen[tag] {
 			return
@@ -95,7 +92,7 @@ func collectChainHopCandidates(
 			return
 		}
 		seen[tag] = true
-		out = append(out, chainHopCandidate{Tag: tag, Kind: kind, Label: label})
+		out = append(out, chainHopCandidate{Tag: tag, Kind: kind})
 	}
 
 	// Направления — сначала: это самые осмысленные позиции, и пользователь
@@ -107,14 +104,14 @@ func collectChainHopCandidates(
 				// него не даст стартовать ядру.
 				continue
 			}
-			add(d.Tag, hopKindDirection, d.DisplayName())
+			add(d.Tag, hopKindDirection)
 		}
 	}
 
 	// Встроенные теги шаблона: direct-out на позиции 0 — это «первый хоп
 	// без прокси», осмысленный сценарий. Блокировка в цепочке смысла не
 	// имеет и не предлагается.
-	add("direct-out", hopKindBuiltin, "")
+	add("direct-out", hopKindBuiltin)
 
 	if model != nil {
 		// SPEC 110 T5: другие цепочки — законные позиции, но только первой.
@@ -124,7 +121,7 @@ func collectChainHopCandidates(
 			if src.Type != corestate.SourceTypeChain || !src.Enabled {
 				continue
 			}
-			add(src.Label, hopKindChain, "")
+			add(src.Label, hopKindChain)
 		}
 		_, _ = wizardbusiness.RebuildPreviewCache(model)
 		for _, n := range model.PreviewNodes {
@@ -135,7 +132,7 @@ func collectChainHopCandidates(
 			if n.Scheme == configtypes.SchemeGroup {
 				kind = hopKindGroup
 			}
-			add(n.Tag, kind, n.Label)
+			add(n.Tag, kind)
 		}
 	}
 
