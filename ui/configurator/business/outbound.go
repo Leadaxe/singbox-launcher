@@ -118,6 +118,13 @@ func GetAvailableOutbounds(model *wizardmodels.WizardModel) []string {
 			if outbound.Tag != "" {
 				tags[outbound.Tag] = struct{}{}
 			}
+			// SPEC 110: у цепочки состава нет — её позиции это НЕ цели
+			// правил. Тег в Hops может быть узлом подписки, который в
+			// список целей никогда не попадал, и предложить его тут
+			// значило бы дать построить правило на узел, минуя группу.
+			if outbound.IsChain() {
+				continue
+			}
 			for _, extra := range outbound.AddOutbounds {
 				tags[extra] = struct{}{}
 			}
@@ -246,6 +253,12 @@ func evalPresetOutboundIf(ifList, ifOrList []string, varsMap map[string]string) 
 func sortedOutboundTagSlice(tags map[string]struct{}) []string {
 	result := make([]string, 0, len(tags))
 	for tag := range tags {
+		// SPEC 110 T6: `<chain>#<i>` — рантайм-звенья цепочки. В конфиге их
+		// нет, и правило на такой тег не даст ядру стартовать. Прийти сюда
+		// они могут из импортированного конфига или чужого шаблона.
+		if config.ChainInternalTag(tag) {
+			continue
+		}
 		result = append(result, tag)
 	}
 	sort.Strings(result)
