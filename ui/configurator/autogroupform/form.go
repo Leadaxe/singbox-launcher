@@ -266,9 +266,9 @@ func (f *Form) Collect() *configtypes.DirectionAuto {
 // («@urltest_tolerance»). Ссылку сохраняем как есть: подстановка идёт на
 // сборке, и разворачивать её здесь значило бы зашить в состояние текущее
 // значение настройки навсегда.
-func parseTemplateInt(v string) configtypes.TemplateInt {
+func parseTemplateInt(v string) *configtypes.TemplateInt {
 	if v == "" {
-		return configtypes.TemplateInt{}
+		return nil
 	}
 	if strings.HasPrefix(v, "@") {
 		return configtypes.NewTemplateVar(strings.TrimPrefix(v, "@"))
@@ -276,7 +276,7 @@ func parseTemplateInt(v string) configtypes.TemplateInt {
 	if n, err := strconv.Atoi(v); err == nil {
 		return configtypes.NewTemplateInt(n)
 	}
-	return configtypes.TemplateInt{}
+	return nil
 }
 
 func labelForValue(m map[string]string, value string) string {

@@ -115,7 +115,7 @@ func importDirection(in Direction) configtypes.Direction {
 // принимающей стороны свой шаблон, и имя переменной там может не значить
 // ничего. Ноль означает «не задано» — принимающая сторона возьмёт своё
 // умолчание, что честнее подстановки чужого значения.
-func templateIntToBackup(v configtypes.TemplateInt) int {
+func templateIntToBackup(v *configtypes.TemplateInt) int {
 	n, ok := v.Int()
 	if !ok {
 		return 0

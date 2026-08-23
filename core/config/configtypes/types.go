@@ -272,7 +272,8 @@ type DirectionAuto struct {
 	// ("@urltest_tolerance"): подстановка идёт после разворачивания
 	// двойника, и до неё здесь лежит строка. Поэтому json.RawMessage, а не
 	// int — иначе шаблон с `auto` просто не читался бы.
-	Tolerance TemplateInt `json:"tolerance,omitempty"`
+	// Указатель по той же причине, что PoolTolerance ниже.
+	Tolerance *TemplateInt `json:"tolerance,omitempty"`
 
 	// InterruptExistConnections — рвать ли живые соединения при смене лидера.
 	// Указатель, потому что здесь важна ТРЁХЗНАЧНОСТЬ: nil = «шаблон решает»,
@@ -282,9 +283,13 @@ type DirectionAuto struct {
 	InterruptExistConnections *bool `json:"interrupt_exist_connections,omitempty"`
 
 	// Поля пула (только Mode == round_robin, SPEC 088).
-	Pool          int         `json:"pool,omitempty"`
-	PoolTolerance TemplateInt `json:"pool_tolerance,omitempty"`
-	StickyHash    []string    `json:"sticky_hash,omitempty"`
+	Pool int `json:"pool,omitempty"`
+	// Указатель, а не значение: `omitempty` на СТРУКТУРЕ Go не действует —
+	// опускаются только нулевые скаляры, — и пустой TemplateInt уезжал в
+	// патч как `"pool_tolerance": null`, читаясь как правка, которой
+	// пользователь не делал. У указателя omitempty работает.
+	PoolTolerance *TemplateInt `json:"pool_tolerance,omitempty"`
+	StickyHash    []string     `json:"sticky_hash,omitempty"`
 }
 
 // TemplateInt — целое число ЛИБО ссылка на переменную шаблона ("@name").
@@ -297,18 +302,18 @@ type TemplateInt struct {
 }
 
 // NewTemplateInt — значение из числа (форма редактора).
-func NewTemplateInt(v int) TemplateInt {
+func NewTemplateInt(v int) *TemplateInt {
 	if v == 0 {
-		return TemplateInt{}
+		return nil
 	}
-	return TemplateInt{raw: json.RawMessage(strconv.Itoa(v))}
+	return &TemplateInt{raw: json.RawMessage(strconv.Itoa(v))}
 }
 
 // NewTemplateVar — значение-ссылка на переменную ("@urltest_tolerance").
-func NewTemplateVar(name string) TemplateInt {
+func NewTemplateVar(name string) *TemplateInt {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return TemplateInt{}
+		return nil
 	}
 	// Ссылка на переменную обязана нести «@»: без неё подстановка видит
 	// обычную строку и оставляет её в конфиге как есть, а ядро бракует
@@ -317,26 +322,26 @@ func NewTemplateVar(name string) TemplateInt {
 	// Голая «@» без имени — ссылка в никуда: подставлять нечего, а в конфиг
 	// уехало бы «@». Пустое значение честнее: поле просто опустится.
 	if strings.TrimPrefix(name, "@") == "" {
-		return TemplateInt{}
+		return nil
 	}
 	if !strings.HasPrefix(name, "@") {
 		name = "@" + name
 	}
 	quoted, err := json.Marshal(name)
 	if err != nil {
-		return TemplateInt{}
+		return nil
 	}
-	return TemplateInt{raw: quoted}
+	return &TemplateInt{raw: quoted}
 }
 
 // IsZero — значение не задано (поле опускается при сериализации).
-func (t TemplateInt) IsZero() bool { return len(t.raw) == 0 }
+func (t *TemplateInt) IsZero() bool { return t == nil || len(t.raw) == 0 }
 
 // Int возвращает число; ok == false для ссылки на переменную или пустого
 // значения. Вызывающий обязан различать: подставлять переменную здесь
 // значило бы завести вторую реализацию движка шаблонов.
-func (t TemplateInt) Int() (int, bool) {
-	if len(t.raw) == 0 {
+func (t *TemplateInt) Int() (int, bool) {
+	if t == nil || len(t.raw) == 0 {
 		return 0, false
 	}
 	var n int
@@ -347,8 +352,8 @@ func (t TemplateInt) Int() (int, bool) {
 }
 
 // Value возвращает значение как оно уедет в конфиг: число или строка-ссылка.
-func (t TemplateInt) Value() interface{} {
-	if len(t.raw) == 0 {
+func (t *TemplateInt) Value() interface{} {
+	if t == nil || len(t.raw) == 0 {
 		return nil
 	}
 	var v interface{}
@@ -358,8 +363,8 @@ func (t TemplateInt) Value() interface{} {
 	return v
 }
 
-func (t TemplateInt) MarshalJSON() ([]byte, error) {
-	if len(t.raw) == 0 {
+func (t *TemplateInt) MarshalJSON() ([]byte, error) {
+	if t == nil || len(t.raw) == 0 {
 		return []byte("null"), nil
 	}
 	return t.raw, nil
