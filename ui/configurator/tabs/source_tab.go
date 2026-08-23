@@ -201,6 +201,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			guiState.RefreshSourcesList()
 		}
 		presenter.MarkAsChanged()
+		// Сразу открываем окно правки: пустая цепочка бесполезна — без
+		// позиций она даже в конфиг не пойдёт. У подписки иначе (URL уже
+		// введён, настраивать нечего), а здесь создание и настройка — одно
+		// действие, и оставить пользователя перед пустой строкой значит
+		// заставить искать, где её заполняют.
+		idx := len(m.Sources) - 1
+		showSourceEditWindow(presenter, guiState, guiState.Window, idx, m.Sources[idx].Label)
 	}
 
 	// Limit width and height of URL input field (3 lines)
