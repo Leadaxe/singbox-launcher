@@ -50,6 +50,12 @@ type chainForm struct {
 	// загруженными данными.
 	built fyne.CanvasObject
 
+	tagEntry *widget.Entry
+	// originalTag — имя на момент открытия окна, и referencedBy — кто на
+	// него ссылается. Нужны, чтобы предупредить о разрыве ссылок при
+	// переименовании: цепочки указывают друг на друга по имени.
+	originalTag   string
+	referencedBy  map[string][]string
 	idleEntry     *widget.Entry
 	stripEvasion  *widget.Check
 	stripChecks   map[string]*widget.Check
@@ -101,6 +107,33 @@ func newChainForm(parent fyne.Window, cands []chainHopCandidate, realityTags, de
 	}
 	f.rewrite = newRewriteEditor(func() { f.changed() })
 	return f
+}
+
+// SetTag показывает имя цепочки в форме.
+//
+// Имя живёт не в SourceChain, а в источнике (Source.Label) — оттуда его и
+// берёт сборка, превращая в тег узла. Форма правит его наравне с
+// позициями, потому что для пользователя это одно и то же окно.
+func (f *chainForm) SetTag(tag string) {
+	if f.tagEntry == nil {
+		return
+	}
+	f.originalTag = tag
+	prev := f.tagEntry.OnChanged
+	f.tagEntry.OnChanged = nil
+	f.tagEntry.SetText(tag)
+	f.tagEntry.OnChanged = prev
+}
+
+// SetReferencedBy сообщает форме, кто ссылается на цепочки по имени.
+func (f *chainForm) SetReferencedBy(m map[string][]string) { f.referencedBy = m }
+
+// Tag — имя, введённое пользователем.
+func (f *chainForm) Tag() string {
+	if f.tagEntry == nil {
+		return ""
+	}
+	return strings.TrimSpace(f.tagEntry.Text)
 }
 
 // Load заполняет форму содержимым цепочки. nil = пустая цепочка.
@@ -257,6 +290,21 @@ func (f *chainForm) Content() fyne.CanvasObject {
 		head = append(head, warn, widget.NewSeparator())
 	}
 
+	// Имя цепочки = ТЕГ её узла: именно на него ссылаются Направления и
+	// правила, и именно он виден в списке прокси. Поле обязано быть в
+	// форме — иначе переименовать созданную цепочку негде вовсе.
+	f.tagEntry = widget.NewEntry()
+	f.tagEntry.SetPlaceHolder(locale.T("wizard.chain.tag_placeholder"))
+	f.tagEntry.OnChanged = func(string) {
+		// Предупреждение о разрыве ссылок живёт в списке позиций —
+		// перерисовываем его вместе с именем.
+		f.rebuildHops()
+		f.changed()
+	}
+	head = append(head,
+		chainFormRow(locale.T("wizard.chain.tag"), f.tagEntry),
+		widget.NewSeparator())
+
 	// Подпись направления пакета — над списком, до всего остального.
 	dir := widget.NewLabel(locale.T("wizard.chain.packet_order"))
 	dir.Wrapping = fyne.TextWrapWord
@@ -308,17 +356,32 @@ func (f *chainForm) Content() fyne.CanvasObject {
 		f.changed()
 	}
 
-	advanced := widget.NewAccordion(widget.NewAccordionItem(
-		locale.T("wizard.chain.advanced"),
-		container.NewVBox(
-			chainFormRow(locale.T("wizard.chain.idle_timeout"), f.idleEntry),
-			widget.NewSeparator(),
-			f.stripEvasion,
-			stripRows,
-			widget.NewSeparator(),
-			f.rewrite.Content(),
-		),
-	))
+	// Не Accordion: раскрываясь внутри VBox, он не получает высоту от
+	// родителя — содержимое есть, но его не видно (пустой блок под
+	// заголовком). Своя раскрывашка на кнопке ведёт себя предсказуемо.
+	advancedBody := container.NewVBox(
+		chainFormRow(locale.T("wizard.chain.idle_timeout"), f.idleEntry),
+		widget.NewSeparator(),
+		f.stripEvasion,
+		stripRows,
+		widget.NewSeparator(),
+		f.rewrite.Content(),
+	)
+	advancedBody.Hide()
+	var advancedBtn *widget.Button
+	advancedBtn = widget.NewButtonWithIcon(locale.T("wizard.chain.advanced"),
+		theme.MenuExpandIcon(), func() {
+			if advancedBody.Visible() {
+				advancedBody.Hide()
+				advancedBtn.SetIcon(theme.MenuExpandIcon())
+			} else {
+				advancedBody.Show()
+				advancedBtn.SetIcon(theme.MenuDropDownIcon())
+			}
+		})
+	advancedBtn.Alignment = widget.ButtonAlignLeading
+	advancedBtn.Importance = widget.LowImportance
+	advanced := container.NewVBox(advancedBtn, advancedBody)
 
 	top := container.NewVBox(head...)
 	body := container.NewVBox(f.hopsBox, container.NewCenter(addBtn), widget.NewSeparator(), advanced)
@@ -427,6 +490,18 @@ func (f *chainForm) conflicts() []string {
 	}
 	if len(nested) > 0 {
 		out = append(out, locale.Tf("wizard.chain.conflict_nested", strings.Join(nested, ", ")))
+	}
+
+	// Переименование рвёт ссылки: другие цепочки ставят эту позицией по
+	// ИМЕНИ, и после правки их позиция указывает в никуда. Тег Направления
+	// по этой причине вообще неизменяем (SPEC 104); здесь запрещать не
+	// стоит — имена автогенерируются, и первое переименование законно, —
+	// но предупредить обязаны.
+	if tag := f.Tag(); tag != "" && f.referencedBy != nil {
+		if users := f.referencedBy[f.originalTag]; len(users) > 0 && tag != f.originalTag {
+			out = append(out, locale.Tf("wizard.chain.rename_breaks_refs",
+				f.originalTag, strings.Join(users, ", ")))
+		}
 	}
 
 	// T7: узел со своим detour. Что произойдёт — зависит от ПОЗИЦИИ, и

@@ -65,3 +65,43 @@ func TestApplyProxyEdit_OtherTypesUnaffected(t *testing.T) {
 		t.Errorf("сервер сломан: type=%q uri=%q", srv.Type, srv.URI)
 	}
 }
+
+// Имя цепочки = тег её узла. В ProxySource оно живёт в TagMask, а в
+// состоянии — в Label; без переноса переименование терялось бы так же
+// молча, как раньше терялись позиции.
+func TestApplyProxyEdit_ChainRenameSurvives(t *testing.T) {
+	scratch := &config.ProxySource{
+		TagMask: "через-Германию",
+		Chain:   &configtypes.SourceChain{Hops: []string{"a", "b"}},
+	}
+	src := &wizardmodels.Source{
+		ID: "01ABC", Type: wizardmodels.SourceTypeChain, Label: "chain-1",
+	}
+
+	applyProxyEditToSource(scratch, src)
+
+	if src.Label != "через-Германию" {
+		t.Errorf("имя = %q, ожидали «через-Германию»", src.Label)
+	}
+}
+
+// Кто ссылается на цепочку по имени — карта для предупреждения о разрыве
+// ссылок при переименовании.
+func TestChainReferencedBy(t *testing.T) {
+	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{
+		{Type: wizardmodels.SourceTypeChain, Label: "inner",
+			Chain: &configtypes.SourceChain{Hops: []string{"a", "b"}}},
+		{Type: wizardmodels.SourceTypeChain, Label: "outer",
+			Chain: &configtypes.SourceChain{Hops: []string{"inner", "c"}}},
+		{Type: wizardmodels.SourceTypeServer, Label: "srv"},
+	}}
+
+	got := chainReferencedBy(m)
+
+	if users := got["inner"]; len(users) != 1 || users[0] != "outer" {
+		t.Errorf("на inner ссылается %v, ожидали [outer]", users)
+	}
+	if _, ok := got["c"]; !ok {
+		t.Error("обычная позиция тоже должна попасть в карту")
+	}
+}

@@ -376,6 +376,11 @@ func showSourceEditWindow(
 		chainTabBody = newChainForm(nil, cands, reality, detoured, nodeTypes, unsupported, func() {
 			if p := proxyRef(); p != nil {
 				p.Chain = chainTabBody.Collect()
+				// Имя цепочки = тег её узла; в ProxySource он живёт в
+				// TagMask (тем же путём, что имя server-источника).
+				if tag := chainTabBody.Tag(); tag != "" {
+					p.TagMask = tag
+				}
 			}
 			presenter.MarkAsChanged()
 		})
@@ -383,6 +388,8 @@ func showSourceEditWindow(
 		// обязателен: загрузка в несозданную форму молча потеряла бы
 		// настройки.
 		chainTabBody.built = chainTabBody.Content()
+		chainTabBody.SetReferencedBy(chainReferencedBy(presenter.Model()))
+		chainTabBody.SetTag(m.Sources[sourceIndex].Label)
 		chainTabBody.Load(m.Sources[sourceIndex].Chain)
 		// Владелец диалогов формы — это окно, а не главное: пикер позиции
 		// иначе всплыл бы за окном правки.

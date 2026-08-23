@@ -173,3 +173,31 @@ func describeChainHop(tag string, lookup map[string]chainHopCandidate) chainHopC
 	}
 	return chainHopCandidate{Tag: tag, Kind: hopKindUnknown}
 }
+
+// chainReferencedBy — кто из цепочек ссылается на цепочку с этим именем.
+//
+// Ключ — имя цепочки-цели, значение — имена тех, кто её использует
+// позицией. Нужно, чтобы предупредить о разрыве ссылок при переименовании:
+// цепочки указывают друг на друга по имени, и правка молча оставила бы
+// позицию, указывающую в никуда.
+func chainReferencedBy(m *wizardmodels.WizardModel) map[string][]string {
+	if m == nil {
+		return nil
+	}
+	var out map[string][]string
+	for _, src := range m.Sources {
+		if src.Type != corestate.SourceTypeChain || src.Chain == nil {
+			continue
+		}
+		for _, hop := range src.Chain.Hops {
+			if hop == "" || hop == src.Label {
+				continue
+			}
+			if out == nil {
+				out = make(map[string][]string, 2)
+			}
+			out[hop] = append(out[hop], src.Label)
+		}
+	}
+	return out
+}
