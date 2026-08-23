@@ -96,10 +96,13 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				if err := json.Unmarshal(raw, &obj); err != nil {
 					obj = nil
 				}
-				sum := dnsServerSummaryFromObj(obj)
+				sum := dnsServerSummaryFromObj(obj, dnsVarValues(m))
 				if obj == nil && len(raw) > 0 {
 					sum = dnsServerSummaryFromInvalidRaw(raw)
 				}
+				// У группы показываем состав: выключенные участники
+				// зачёркнуты — на сборке они из состава выпадут.
+				sum += dnsGroupMembersSummary(obj, dnsEnabledByTag(m.DNSServers))
 				tag := ""
 				if obj != nil {
 					tag = dnsJSONStringField(obj, "tag")
@@ -118,7 +121,13 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				sumLabel := ttwidget.NewLabel(sum)
 				sumLabel.Truncation = fyne.TextTruncateClip
 				cwc := fynewidget.NewCheckWithContent(func(checked bool) {
-					setDNSServerEnabledAt(presenter, idx, checked)
+					// Полная пересборка только когда изменились ДРУГИЕ строки
+					// (включение группы включает участников): она дороже, и
+					// на каждый щелчок галкой её звать незачем.
+					if setDNSServerEnabledAt(presenter, idx, checked) {
+						presenter.RefreshDNSListAndSelects()
+						return
+					}
 					presenter.RefreshDNSDependentSelectsOnly()
 				}, sumLabel, fynewidget.CheckWithContentConfig{ContentToolTip: desc})
 				enCheck := cwc.Check
@@ -187,7 +196,10 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	})
 
 	serversScroll := container.NewVScroll(serversBox)
-	serversScroll.SetMinSize(fyne.NewSize(0, 210)) // 1.5× former 140
+	// Доля высоты окна, а не константа: при растягивании окна список
+	// серверов растёт вместе с ним, а на низком экране не выпихивает
+	// кнопки навигации под Dock (тот же механизм, что на других вкладках).
+	serversScroll.SetMinSize(adaptiveScrollSize(guiState, 0.32, 210))
 
 	serversLabel := widget.NewLabel(locale.T("wizard.dns.label_servers"))
 	serversLabel.Importance = widget.MediumImportance
@@ -275,7 +287,8 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	rulesScroll := container.NewScroll(guiState.DNSRulesEntry)
 	rulesScroll.Direction = container.ScrollBoth
 	rulesHeight := canvas.NewRectangle(color.Transparent)
-	rulesHeight.SetMinSize(fyne.NewSize(0, 170)) // was 120; +50 px for rules JSON area
+	// Тоже доля окна — см. serversScroll выше.
+	rulesHeight.SetMinSize(adaptiveScrollSize(guiState, 0.26, 170))
 	rulesBlock := container.NewStack(rulesHeight, rulesScroll)
 
 	rulesLabel := widget.NewLabel(locale.T("wizard.dns.label_rules"))
@@ -455,13 +468,55 @@ func dnsServerSummaryFromInvalidRaw(raw json.RawMessage) string {
 	return s
 }
 
-func dnsServerSummaryFromObj(obj map[string]interface{}) string {
+// dnsVarValues — значения переменных шаблона: правки пользователя поверх
+// дефолтов объявлений.
+//
+// SettingsVars несёт только то, что пользователь МЕНЯЛ; переменную, которую
+// он не трогал, там не найти, и без отката на дефолт объявления строка
+// показывала бы служебное «@dns_google_dot_dns_ip» вместо адреса.
+func dnsVarValues(m *wizardmodels.WizardModel) map[string]string {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]string, len(m.SettingsVars)+8)
+	if m.TemplateData != nil {
+		for _, v := range m.TemplateData.Vars {
+			if def := v.DefaultValue.Scalar; def != "" {
+				out[v.Name] = def
+			}
+		}
+	}
+	for k, v := range m.SettingsVars {
+		if v != "" {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// dnsResolvePlaceholder показывает ЗНАЧЕНИЕ переменной вместо её имени.
+//
+// Тела серверов UI берёт прямо из шаблона, где `@dns_google_dot_dns_ip` ещё
+// не подставлен — подстановка живёт на пути сборки конфига. В строке списка
+// пользователь должен видеть адрес, который реально уедет в конфиг, а не
+// служебное имя переменной.
+func dnsResolvePlaceholder(v string, vars map[string]string) string {
+	if !strings.HasPrefix(v, "@") || vars == nil {
+		return v
+	}
+	if val, ok := vars[strings.TrimPrefix(v, "@")]; ok && val != "" {
+		return val
+	}
+	return v
+}
+
+func dnsServerSummaryFromObj(obj map[string]interface{}, vars map[string]string) string {
 	if obj == nil {
 		return locale.T("wizard.dns.invalid_server")
 	}
 	tag := dnsJSONStringField(obj, "tag")
 	typ := dnsJSONStringField(obj, "type")
-	server := dnsJSONStringField(obj, "server")
+	server := dnsResolvePlaceholder(dnsJSONStringField(obj, "server"), vars)
 	if tag == "" {
 		tag = locale.T("wizard.dns.no_tag")
 	}
@@ -471,27 +526,99 @@ func dnsServerSummaryFromObj(obj map[string]interface{}) string {
 	} else {
 		sum = fmt.Sprintf("%s  ·  %s", tag, typ)
 	}
-	if det := strings.TrimSpace(dnsJSONStringField(obj, "detour")); det != "" {
+	if det := strings.TrimSpace(dnsResolvePlaceholder(dnsJSONStringField(obj, "detour"), vars)); det != "" {
 		sum += " [" + det + "]"
 	}
 	return sum
 }
 
+// dnsGroupMembersSummary — состав группы строкой, где ВЫКЛЮЧЕННЫЕ участники
+// зачёркнуты.
+//
+// Без этого включённая группа выглядит рабочей, а на сборке ужимается до
+// тех, кто реально попал в конфиг (pruneDNSGroupMembers): «Shield DNS
+// (multi-provider)» из девяти провайдеров молча превращался в одного.
+// Зачёркивание показывает это на месте, до сборки.
+//
+// U+0336 (combining long stroke overlay) — зачёркивание символами, а не
+// стилем: строка списка рисуется одним Label, отдельного стиля на кусок
+// текста у него нет.
+func dnsGroupMembersSummary(obj map[string]interface{}, enabledByTag map[string]bool) string {
+	if obj == nil || obj["type"] != "group" {
+		return ""
+	}
+	members, ok := obj["servers"].([]interface{})
+	if !ok || len(members) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(members))
+	for _, m := range members {
+		tag, _ := m.(string)
+		if tag == "" {
+			continue
+		}
+		if enabledByTag[tag] {
+			parts = append(parts, tag)
+			continue
+		}
+		parts = append(parts, strikeThrough(tag))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "  →  " + strings.Join(parts, ", ")
+}
+
+// strikeThrough зачёркивает строку комбинирующим символом.
+func strikeThrough(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		b.WriteRune(r)
+		b.WriteRune('\u0336')
+	}
+	return b.String()
+}
+
+// dnsEnabledByTag — карта «тег → включён» по текущему списку серверов.
+func dnsEnabledByTag(servers []json.RawMessage) map[string]bool {
+	out := make(map[string]bool, len(servers))
+	for _, raw := range servers {
+		var o map[string]interface{}
+		if json.Unmarshal(raw, &o) != nil {
+			continue
+		}
+		tag, _ := o["tag"].(string)
+		if tag == "" {
+			continue
+		}
+		en := true
+		if v, has := o["enabled"].(bool); has {
+			en = v
+		}
+		out[tag] = en
+	}
+	return out
+}
+
 // dnsJSONStringField reads a string-like value from unmarshaled JSON (tag/type/server are strings in sing-box).
 
-func setDNSServerEnabledAt(p *wizardpresentation.WizardPresenter, index int, enabled bool) {
+// setDNSServerEnabledAt переключает сервер. Возвращает true, если вместе с
+// ним изменились ДРУГИЕ строки списка (включение группы включает её
+// участников) — тогда вызывающий обязан перестроить список, а не только
+// обновить селекты: иначе галки участников стоят в модели, но не на экране.
+func setDNSServerEnabledAt(p *wizardpresentation.WizardPresenter, index int, enabled bool) bool {
 	mod := p.Model()
 	if index < 0 || index >= len(mod.DNSServers) {
-		return
+		return false
 	}
 	var obj map[string]interface{}
 	if err := json.Unmarshal(mod.DNSServers[index], &obj); err != nil {
-		return
+		return false
 	}
 	obj["enabled"] = enabled
 	b, err := json.Marshal(obj)
 	if err != nil {
-		return
+		return false
 	}
 	mod.DNSServers[index] = json.RawMessage(b)
 	p.MarkAsChanged()
@@ -519,16 +646,18 @@ func setDNSServerEnabledAt(p *wizardpresentation.WizardPresenter, index int, ena
 	// Выключение группы участников НЕ трогает: они могли быть нужны сами по
 	// себе, и снимать их за пользователя — потеря его настройки.
 	if enabled && obj["type"] == "group" {
-		enableDNSGroupMembers(p, mod, obj)
+		return enableDNSGroupMembers(p, mod, obj)
 	}
+	return false
 }
 
 // enableDNSGroupMembers включает серверы, перечисленные в составе группы.
-func enableDNSGroupMembers(p *wizardpresentation.WizardPresenter, mod *wizardmodels.WizardModel, group map[string]interface{}) {
+func enableDNSGroupMembers(p *wizardpresentation.WizardPresenter, mod *wizardmodels.WizardModel, group map[string]interface{}) bool {
 	members, ok := group["servers"].([]interface{})
 	if !ok || len(members) == 0 {
-		return
+		return false
 	}
+	changed := false
 	want := make(map[string]bool, len(members))
 	for _, m := range members {
 		if tag, ok := m.(string); ok && tag != "" {
@@ -555,8 +684,12 @@ func enableDNSGroupMembers(p *wizardpresentation.WizardPresenter, mod *wizardmod
 			mod.DNSTemplateOverrides = make(map[string]bool)
 		}
 		mod.DNSTemplateOverrides[tag] = true
+		changed = true
 	}
-	p.MarkAsChanged()
+	if changed {
+		p.MarkAsChanged()
+	}
+	return changed
 }
 
 func dnsJSONStringField(m map[string]interface{}, key string) string {
