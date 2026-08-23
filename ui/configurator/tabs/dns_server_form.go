@@ -23,6 +23,8 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/internal/locale"
@@ -70,8 +72,13 @@ type dnsServerForm struct {
 	detourSelect   *widget.Select
 	resolverSelect *widget.Select
 
-	// Группа.
-	membersEntry  *widget.Entry
+	// Группа: участники — не текстовое поле, а список выбранных тегов с
+	// кнопкой «+». Вписывать тег руками так же неверно, как вписывать
+	// детур: имена приходят из шаблона и подписок, пользователь их не
+	// сочиняет, а опечатка даёт ссылку в никуда.
+	members       []string
+	membersBox    *fyne.Container
+	membersAddBtn *widget.Button
 	modeSelect    *widget.Select
 	errorTTLEntry *widget.Entry
 	winTTLEntry   *widget.Entry
@@ -112,8 +119,10 @@ func newDNSServerForm(p *wizardpresentation.WizardPresenter, selfTag string) *dn
 		append([]string{dnsNoDetour()}, dnsResolverCandidates(p, selfTag)...), nil)
 	f.resolverSelect.SetSelected(dnsNoDetour())
 
-	f.membersEntry = widget.NewMultiLineEntry()
-	f.membersEntry.SetPlaceHolder("google_udp\ncloudflare_udp")
+	f.membersBox = container.NewVBox()
+	f.membersAddBtn = widget.NewButtonWithIcon(locale.T("wizard.dns.form_members_add"), theme.ContentAddIcon(), func() {
+		f.pickMember(p, selfTag)
+	})
 	f.modeSelect = widget.NewSelect([]string{"fastest", "random"}, nil)
 	f.modeSelect.SetSelected("fastest")
 	f.errorTTLEntry = widget.NewEntry()
@@ -127,7 +136,8 @@ func newDNSServerForm(p *wizardpresentation.WizardPresenter, selfTag string) *dn
 	f.rows["sni"] = dnsFormRow(locale.T("wizard.dns.form_sni"), f.sniEntry)
 	f.rows["detour"] = dnsFormRow(locale.T("wizard.dns.form_detour"), f.detourSelect)
 	f.rows["resolver"] = dnsFormRow(locale.T("wizard.dns.form_resolver"), f.resolverSelect)
-	f.rows["members"] = dnsFormRow(locale.T("wizard.dns.form_members"), f.membersEntry)
+	f.rows["members"] = dnsFormRow(locale.T("wizard.dns.form_members"),
+		container.NewVBox(f.membersBox, container.NewHBox(f.membersAddBtn)))
 	f.rows["mode"] = dnsFormRow(locale.T("wizard.dns.form_mode"), f.modeSelect)
 	f.rows["error_ttl"] = dnsFormRow(locale.T("wizard.dns.form_error_ttl"), f.errorTTLEntry)
 	f.rows["win_ttl"] = dnsFormRow(locale.T("wizard.dns.form_win_ttl"), f.winTTLEntry)
@@ -225,7 +235,7 @@ func (f *dnsServerForm) Load(obj map[string]interface{}) bool {
 	f.detourSelect.SetSelected(orNone(dnsJSONStringField(obj, "detour")))
 	f.resolverSelect.SetSelected(orNone(dnsJSONStringField(obj, "domain_resolver")))
 
-	f.membersEntry.SetText(strings.Join(dnsJSONStringList(obj, "servers"), "\n"))
+	f.setMembers(dnsJSONStringList(obj, "servers"))
 	if m := dnsJSONStringField(obj, "mode"); m != "" {
 		f.modeSelect.SetSelected(m)
 	}
@@ -249,7 +259,7 @@ func (f *dnsServerForm) Collect() map[string]interface{} {
 	}
 
 	if typ == dnsTypeGroup {
-		out["servers"] = splitLines(f.membersEntry.Text)
+		out["servers"] = append([]string(nil), f.members...)
 		if m := f.modeSelect.Selected; m != "" {
 			out["mode"] = m
 		}
@@ -306,8 +316,72 @@ func dnsResolverCandidates(p *wizardpresentation.WizardPresenter, selfTag string
 	return out
 }
 
+// setMembers перестраивает список участников.
+func (f *dnsServerForm) setMembers(tags []string) {
+	f.members = append([]string(nil), tags...)
+	f.rebuildMembers()
+}
+
+// rebuildMembers перерисовывает строки участников: тег и кнопка удаления.
+func (f *dnsServerForm) rebuildMembers() {
+	f.membersBox.Objects = f.membersBox.Objects[:0]
+	for i, tag := range f.members {
+		idx := i
+		label := widget.NewLabel(tag)
+		del := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
+			f.members = append(f.members[:idx:idx], f.members[idx+1:]...)
+			f.rebuildMembers()
+		})
+		del.Importance = widget.LowImportance
+		f.membersBox.Add(container.NewBorder(nil, nil, nil, del, label))
+	}
+	if len(f.members) == 0 {
+		empty := widget.NewLabel(locale.T("wizard.dns.form_members_empty"))
+		empty.Importance = widget.LowImportance
+		f.membersBox.Add(empty)
+	}
+	f.membersBox.Refresh()
+}
+
+// pickMember показывает список серверов, которых ещё нет в составе.
+//
+// Уже выбранные и сама группа исключаются: дубль в составе бессмыслен, а
+// группа внутри себя — цикл. Вложенные группы тоже не предлагаем: ядро
+// ждёт в составе конкретные серверы.
+func (f *dnsServerForm) pickMember(p *wizardpresentation.WizardPresenter, selfTag string) {
+	chosen := make(map[string]bool, len(f.members))
+	for _, t := range f.members {
+		chosen[t] = true
+	}
+	var options []string
+	for _, t := range dnsResolverCandidates(p, selfTag) {
+		if !chosen[t] {
+			options = append(options, t)
+		}
+	}
+	w := p.DialogParent()
+	if len(options) == 0 {
+		dialog.ShowInformation(
+			locale.T("wizard.dns.form_members"),
+			locale.T("wizard.dns.form_members_none"), w)
+		return
+	}
+	sel := widget.NewSelect(options, nil)
+	sel.SetSelected(options[0])
+	dialog.ShowCustomConfirm(
+		locale.T("wizard.dns.form_members_add"), locale.T("wizard.dns.dialog_save"),
+		locale.T("wizard.dns.dialog_cancel"), sel,
+		func(ok bool) {
+			if !ok || sel.Selected == "" {
+				return
+			}
+			f.members = append(f.members, sel.Selected)
+			f.rebuildMembers()
+		}, w)
+}
+
 func dnsFormRow(label string, field fyne.CanvasObject) fyne.CanvasObject {
-	const labelWidth = 170
+	const labelWidth = 150
 	l := widget.NewLabel(label)
 	box := container.NewGridWrap(fyne.NewSize(labelWidth, l.MinSize().Height), l)
 	return container.NewBorder(nil, nil, box, nil, field)
@@ -324,16 +398,6 @@ func putIfSet(m map[string]interface{}, key, val string) {
 	if v := strings.TrimSpace(val); v != "" {
 		m[key] = v
 	}
-}
-
-func splitLines(s string) []string {
-	out := []string{}
-	for _, line := range strings.Split(s, "\n") {
-		if v := strings.TrimSpace(line); v != "" {
-			out = append(out, v)
-		}
-	}
-	return out
 }
 
 func dnsJSONNumberField(m map[string]interface{}, key string) (int, bool) {

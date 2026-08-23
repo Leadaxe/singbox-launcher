@@ -695,8 +695,10 @@ func showDNSServerDialog(
 	hintLabel.Wrapping = fyne.TextWrapWord
 	formTab := container.NewTabItem(locale.T("wizard.dns.tab_form"),
 		container.NewVScroll(container.NewVBox(hintLabel, form.content)))
+	jsonHint := widget.NewLabel(locale.T("wizard.dns.json_hint"))
+	jsonHint.Wrapping = fyne.TextWrapWord
 	jsonTab := container.NewTabItem(locale.T("wizard.dns.tab_json"),
-		dnsServerDialogJSONArea(jsonEntry))
+		container.NewBorder(jsonHint, nil, nil, nil, dnsServerDialogJSONArea(jsonEntry)))
 
 	var tabs *container.AppTabs
 	if formOK {
