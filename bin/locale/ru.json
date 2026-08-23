@@ -789,6 +789,7 @@
   "wizard.chain.kind_chain": "цепочка",
   "wizard.chain.kind_builtin": "встроенный",
   "wizard.chain.kind_unknown": "не найден",
+  "wizard.chain.kind_pending": "загружается…",
   "wizard.chain.advanced": "Дополнительно",
   "wizard.chain.rewrite_head": "Переопределения опций",
   "wizard.chain.rewrite_scope": "Применяются к позициям со 2-й: первая идёт в сеть как есть.",

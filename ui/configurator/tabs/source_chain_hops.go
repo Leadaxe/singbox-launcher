@@ -31,6 +31,7 @@ const (
 	hopKindChain     = "chain"     // другая цепочка (только позиция 0, T5)
 	hopKindBuiltin   = "builtin"   // встроенный тег шаблона (direct-out и т. п.)
 	hopKindUnknown   = "unknown"   // тег, которого больше нет
+	hopKindPending   = "pending"   // кэш узлов ещё не готов — судить рано
 )
 
 // chainHopCandidate — возможная позиция цепочки.
@@ -60,6 +61,8 @@ func (c chainHopCandidate) KindText() string {
 		return locale.T("wizard.chain.kind_chain")
 	case hopKindBuiltin:
 		return locale.T("wizard.chain.kind_builtin")
+	case hopKindPending:
+		return locale.T("wizard.chain.kind_pending")
 	default:
 		return locale.T("wizard.chain.kind_unknown")
 	}
@@ -151,6 +154,15 @@ func collectChainHopCandidates(
 	return out
 }
 
+// chainNodesKnown — разобран ли кэш узлов.
+//
+// Пустой кэш и «в подписках нет ни одного узла» здесь неразличимы, и это
+// осознанно: второе — тоже не повод объявлять позиции потерянными, пока
+// подписки не загружены.
+func chainNodesKnown(m *wizardmodels.WizardModel) bool {
+	return m != nil && len(m.PreviewNodes) > 0
+}
+
 // chainHopLookup — быстрый доступ к кандидату по тегу.
 func chainHopLookup(cands []chainHopCandidate) map[string]chainHopCandidate {
 	m := make(map[string]chainHopCandidate, len(cands))
@@ -167,9 +179,15 @@ func chainHopLookup(cands []chainHopCandidate) map[string]chainHopCandidate {
 // ссылкой в никуда не соберётся, и пользователь должен увидеть, ЧТО именно
 // пропало, — иначе позиция просто исчезнет из списка и маршрут поменяется
 // без его ведома.
-func describeChainHop(tag string, lookup map[string]chainHopCandidate) chainHopCandidate {
+func describeChainHop(tag string, lookup map[string]chainHopCandidate, nodesKnown bool) chainHopCandidate {
 	if c, ok := lookup[tag]; ok {
 		return c
+	}
+	if !nodesKnown {
+		// Кэш узлов ещё не разобран: в кандидатах пока только Направления,
+		// и объявить позицию потерянной значило бы покрасить красным
+		// рабочую цепочку — ровно то, что пользователь и увидел.
+		return chainHopCandidate{Tag: tag, Kind: hopKindPending}
 	}
 	return chainHopCandidate{Tag: tag, Kind: hopKindUnknown}
 }

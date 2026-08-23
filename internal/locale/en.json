@@ -794,6 +794,7 @@
   "wizard.chain.kind_chain": "chain",
   "wizard.chain.kind_builtin": "built-in",
   "wizard.chain.kind_unknown": "not found",
+  "wizard.chain.kind_pending": "loading…",
   "wizard.chain.advanced": "Advanced",
   "wizard.chain.rewrite_head": "Option overrides",
   "wizard.chain.rewrite_scope": "Applied from the 2nd position on: the first one dials as-is.",

@@ -388,12 +388,30 @@ func showSourceEditWindow(
 		// обязателен: загрузка в несозданную форму молча потеряла бы
 		// настройки.
 		chainTabBody.built = chainTabBody.Content()
+		chainTabBody.nodesKnown = chainNodesKnown(presenter.Model())
 		chainTabBody.SetReferencedBy(chainReferencedBy(presenter.Model()))
 		chainTabBody.SetTag(m.Sources[sourceIndex].Label)
 		chainTabBody.Load(m.Sources[sourceIndex].Chain)
 		// Владелец диалогов формы — это окно, а не главное: пикер позиции
 		// иначе всплыл бы за окном правки.
 		chainTabBody.parent = win
+		// Кэш узлов мог быть ещё не разобран — тогда позиции показаны как
+		// «загружается». Досчитываем в фоне: окно не должно ждать разбора
+		// всех подписок, но и оставлять пользователя перед списком без
+		// видов нельзя.
+		if !chainTabBody.nodesKnown {
+			go func() {
+				mm := presenter.Model()
+				if _, err := wizardbusiness.RebuildPreviewCache(mm); err != nil {
+					return
+				}
+				cands := collectChainHopCandidates(mm, getParserConfigForChain(mm), selfTag)
+				_, _, types := chainNodeFlags(mm)
+				fyne.Do(func() {
+					chainTabBody.SetCandidates(cands, types, chainNodesKnown(mm))
+				})
+			}()
+		}
 	}
 
 	applyFoldFromForm = func() {

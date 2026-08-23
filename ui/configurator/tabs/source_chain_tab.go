@@ -78,6 +78,10 @@ type chainForm struct {
 	// молча не применяется.
 	nodeTypes map[string]string
 
+	// nodesKnown — разобран ли кэш узлов. Пока нет, позиция, которой не
+	// видно среди кандидатов, — «ещё не знаем», а не «потеряна».
+	nodesKnown bool
+
 	// realityTags — позиции, чьи узлы поднимают reality: у них нельзя
 	// снимать tls.utls, иначе ядро не стартует (T4). Считается по узлам,
 	// которых сама цепочка не видит, — потому и приезжает снаружи.
@@ -123,6 +127,16 @@ func (f *chainForm) SetTag(tag string) {
 	f.tagEntry.OnChanged = nil
 	f.tagEntry.SetText(tag)
 	f.tagEntry.OnChanged = prev
+}
+
+// SetCandidates заменяет список кандидатов — например, когда кэш узлов
+// дозагрузился уже после открытия окна.
+func (f *chainForm) SetCandidates(cands []chainHopCandidate, nodeTypes map[string]string, nodesKnown bool) {
+	f.cands = cands
+	f.lookup = chainHopLookup(cands)
+	f.nodeTypes = nodeTypes
+	f.nodesKnown = nodesKnown
+	f.rebuildHops()
 }
 
 // SetReferencedBy сообщает форме, кто ссылается на цепочки по имени.
@@ -403,7 +417,7 @@ func (f *chainForm) rebuildHops() {
 
 	for i, tag := range f.hops {
 		idx := i
-		cand := describeChainHop(tag, f.lookup)
+		cand := describeChainHop(tag, f.lookup, f.nodesKnown)
 
 		num := widget.NewLabel(fmt.Sprintf("%d.", idx+1))
 		name := widget.NewLabel(cand.Display())
@@ -533,10 +547,16 @@ func (f *chainForm) conflicts() []string {
 	}
 
 	// Позиция, которой больше нет среди целей: ссылка в никуда.
+	//
+	// Только при готовом кэше узлов: пока он не разобран, в кандидатах одни
+	// Направления, и «позиций больше нет» было бы приговором рабочей
+	// цепочке.
 	var missing []string
-	for _, tag := range f.hops {
-		if _, ok := f.lookup[tag]; !ok {
-			missing = append(missing, tag)
+	if f.nodesKnown {
+		for _, tag := range f.hops {
+			if _, ok := f.lookup[tag]; !ok {
+				missing = append(missing, tag)
+			}
 		}
 	}
 	if len(missing) > 0 {
