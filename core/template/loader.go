@@ -271,6 +271,16 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 		return nil, fmt.Errorf("invalid JSON in %s: %w", TemplateFileName, err)
 	}
 
+	// SPEC 109: записи `dns_options.servers` бывают в двух формах — плоской
+	// (наша) и вложенной `{vars, server}` (LxBox). Разворачиваем вложенные
+	// в плоские ДО валидации и до подстановки: объявленные ими переменные
+	// обязаны попасть в общий список, иначе `@dns_google_dot_outbound` в
+	// теле сервера останется неразрешённым плейсхолдером.
+	if normalized, dnsVars := normalizeDNSOptions(root.DNSOptions); len(dnsVars) > 0 {
+		root.DNSOptions = normalized
+		root.Vars = append(root.Vars, dnsVars...)
+	}
+
 	if err := ValidateWizardTemplate(root.Vars, root.Params, root.Config); err != nil {
 		return nil, fmt.Errorf("%s: %w", TemplateFileName, err)
 	}
