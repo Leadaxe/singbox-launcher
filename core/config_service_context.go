@@ -82,6 +82,8 @@ func (ac *AppController) buildContextFromState(s *state.State, cache *build.Pars
 		// имён, которых не объявило у себя — настройка со вкладки Settings
 		// (@tun, @resolve_strategy) не дублируется в каждом пресете.
 		GlobalVars: ctx.Vars,
+		// SPEC 109: объявления переменных — см. create_config.go.
+		TemplateVars: td.Vars,
 	}
 	return ctx
 }

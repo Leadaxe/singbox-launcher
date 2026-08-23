@@ -506,6 +506,57 @@ func setDNSServerEnabledAt(p *wizardpresentation.WizardPresenter, index int, ena
 		}
 		mod.DNSTemplateOverrides[tag] = enabled
 	}
+
+	// SPEC 109: включение ГРУППЫ включает её участников.
+	//
+	// Группа опрашивает участников по тегу, а выключенный сервер в конфиг не
+	// эмитится вовсе. Включённая группа с выключенными участниками — это
+	// либо отвергнутый конфиг («dependency[x] not found»), либо, после
+	// чистки состава, группа из одного случайно включённого сервера. Ни то
+	// ни другое пользователь не имел в виду, ставя галку на «Shield DNS
+	// (multi-provider)».
+	//
+	// Выключение группы участников НЕ трогает: они могли быть нужны сами по
+	// себе, и снимать их за пользователя — потеря его настройки.
+	if enabled && obj["type"] == "group" {
+		enableDNSGroupMembers(p, mod, obj)
+	}
+}
+
+// enableDNSGroupMembers включает серверы, перечисленные в составе группы.
+func enableDNSGroupMembers(p *wizardpresentation.WizardPresenter, mod *wizardmodels.WizardModel, group map[string]interface{}) {
+	members, ok := group["servers"].([]interface{})
+	if !ok || len(members) == 0 {
+		return
+	}
+	want := make(map[string]bool, len(members))
+	for _, m := range members {
+		if tag, ok := m.(string); ok && tag != "" {
+			want[tag] = true
+		}
+	}
+	for i, raw := range mod.DNSServers {
+		var srv map[string]interface{}
+		if json.Unmarshal(raw, &srv) != nil {
+			continue
+		}
+		tag, _ := srv["tag"].(string)
+		if tag == "" || !want[tag] {
+			continue
+		}
+		if en, has := srv["enabled"].(bool); has && en {
+			continue // уже включён
+		}
+		srv["enabled"] = true
+		if b, err := json.Marshal(srv); err == nil {
+			mod.DNSServers[i] = json.RawMessage(b)
+		}
+		if mod.DNSTemplateOverrides == nil {
+			mod.DNSTemplateOverrides = make(map[string]bool)
+		}
+		mod.DNSTemplateOverrides[tag] = true
+	}
+	p.MarkAsChanged()
 }
 
 func dnsJSONStringField(m map[string]interface{}, key string) string {

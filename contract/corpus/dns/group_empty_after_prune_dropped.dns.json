@@ -1,0 +1,7 @@
+{
+  "_": "Группа, у которой после чистки не осталось ни одного участника, не эмитится вовсе: без состава она ничего не резолвит, а ядру нужна валидная ссылка",
+  "servers": [
+    {"type": "udp", "tag": "only_member", "server": "1.1.1.1", "server_port": 53, "enabled": false},
+    {"type": "group", "tag": "shield", "servers": ["only_member"], "mode": "fastest", "enabled": true}
+  ]
+}

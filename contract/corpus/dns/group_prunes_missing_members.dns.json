@@ -1,0 +1,8 @@
+{
+  "_": "Состав группы чистится от участников, которых нет в конфиге: выключенный сервер не эмитится, и ссылка на него уронила бы ВЕСЬ конфиг («dependency[x] not found for server[group]»). Включённые остаются",
+  "servers": [
+    {"type": "udp", "tag": "alive_one", "server": "1.1.1.1", "server_port": 53, "enabled": true},
+    {"type": "udp", "tag": "turned_off", "server": "8.8.8.8", "server_port": 53, "enabled": false},
+    {"type": "group", "tag": "shield", "servers": ["alive_one", "turned_off", "never_declared"], "mode": "fastest", "enabled": true}
+  ]
+}

@@ -84,10 +84,6 @@ func runDNSCorpusCase(t *testing.T, dir, caseName string) {
 	}
 	normalized, declaredVars := template.NormalizeDNSOptions(section)
 
-	td := &template.TemplateData{
-		DNSOptionsRaw: normalized,
-		Vars:          declaredVars,
-	}
 	st := &corestate.State{}
 	for _, e := range in.State {
 		st.DNS.Servers = append(st.DNS.Servers, corestate.DNSServer{
@@ -97,15 +93,30 @@ func runDNSCorpusCase(t *testing.T, dir, caseName string) {
 		})
 	}
 
-	resolved := ResolveDNS(st, td, in.Vars, template.TargetSpec{})
+	// Через MergePresetsIntoDNS, а не напрямую через ResolveDNS: очистка
+	// составов групп живёт там, и раннер обязан идти тем же путём, что
+	// боевая сборка, иначе фикстуры не увидят половину поведения.
+	merged, err := MergePresetsIntoDNS(nil, PresetMergeContext{
+		Rules:               st.Rules,
+		DNS:                 st.DNS,
+		TemplateDNSDefaults: ParseTemplateDNSDefaults(dnsLibraryOf(normalized)),
+		TemplateVars:        declaredVars,
+		GlobalVars:          in.Vars,
+	})
+	if err != nil {
+		t.Fatalf("merge dns: %v", err)
+	}
 
 	got := corpusDNSExpected{Servers: []map[string]interface{}{}}
-	for _, srv := range resolved.Servers {
-		if !srv.Active || !srv.Enabled {
-			continue // выключенная запись не эмитится вовсе
-		}
-		got.Servers = append(got.Servers, srv.Body)
+	var mergedDNS struct {
+		Servers []map[string]interface{} `json:"servers"`
 	}
+	if len(merged) > 0 {
+		if err := json.Unmarshal(merged, &mergedDNS); err != nil {
+			t.Fatalf("разбор merged dns: %v", err)
+		}
+	}
+	got.Servers = append(got.Servers, mergedDNS.Servers...)
 
 	expPath := filepath.Join(dir, caseName+".expected.json")
 	if *updateDNSCorpus {
@@ -134,4 +145,16 @@ func runDNSCorpusCase(t *testing.T, dir, caseName string) {
 		t.Errorf("%s\n--- получено ---\n%s\n--- ожидалось ---\n%s",
 			in.Doc, gotJSON, wantJSON)
 	}
+}
+
+// dnsLibraryOf достаёт `servers[]` секции как сырые записи — форма, которую
+// ждёт ParseTemplateDNSDefaults.
+func dnsLibraryOf(section json.RawMessage) []json.RawMessage {
+	var root struct {
+		Servers []json.RawMessage `json:"servers"`
+	}
+	if err := json.Unmarshal(section, &root); err != nil {
+		return nil
+	}
+	return root.Servers
 }

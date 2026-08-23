@@ -19,6 +19,7 @@ import (
 
 	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
+	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/srstag"
 )
 
@@ -174,6 +175,13 @@ type PresetMergeContext struct {
 	// вкладки Settings (@tun, @resolve_strategy) не должна дублироваться в
 	// каждом пресете. nil — глобалей нет, поведение прежнее.
 	GlobalVars map[string]string
+
+	// TemplateVars (SPEC 109) — ОБЪЯВЛЕНИЯ переменных шаблона. GlobalVars
+	// выше несёт только значения, а подстановка в теле DNS-сервера требует
+	// объявлений: из них берутся тип и дефолт для имён, которых пользователь
+	// не трогал. Без них `@dns_google_dot_outbound` уехал бы в конфиг
+	// строкой, и ядро отвергло бы его целиком.
+	TemplateVars []template.TemplateVar
 }
 
 // hasNonSortablePreset — есть ли в шаблоне неотчуждаемый пресет, который
@@ -294,7 +302,11 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 	// (RulesV6 + DNS), строит ResolvedDNS на лету.
 	st := &state.State{Rules: ctx.Rules, DNS: ctx.DNS}
 	tdVal := templateLikeFromCtx(ctx)
-	resolved := ResolveDNS(st, &tdVal, nil, ctx.Target)
+	// GlobalVars, а не nil (SPEC 109): третий параметр — ЗНАЧЕНИЯ переменных.
+	// С nil подстановка в теле DNS-сервера всегда брала бы дефолт шаблона, и
+	// выбор пользователя (адрес провайдера, канал, профиль) молча терялся бы
+	// на каждой сборке.
+	resolved := ResolveDNS(st, &tdVal, ctx.GlobalVars, ctx.Target)
 
 	if len(resolved.Servers) == 0 && len(resolved.Rules) == 0 && !hasAnyV6Rule(ctx.Rules) {
 		return dnsRaw, nil
@@ -361,6 +373,17 @@ func MergePresetsIntoDNS(dnsRaw json.RawMessage, ctx PresetMergeContext) (json.R
 		}
 	}
 
+	// SPEC 109: состав DNS-группы чистится ПОСЛЕ сборки всего списка —
+	// только здесь известно, что реально уехало в конфиг.
+	//
+	// Группа ссылается на участников по тегу, а участник попадает в конфиг
+	// лишь когда включён (выключенный не эмитится вовсе) и когда его
+	// объявил активный источник: `dns_shield` из шаблона перечисляет в том
+	// числе `yandex_*`, а те живут в пресете `russian` и появляются только
+	// с ним. Ссылка на неэмитнутый тег роняет ВЕСЬ конфиг —
+	// "dependency[google_udp] not found for server[dns_shield]".
+	servers = pruneDNSGroupMembers(servers)
+
 	if len(servers) > 0 {
 		dns["servers"] = servers
 	}
@@ -391,6 +414,7 @@ func templateLikeFromCtx(ctx PresetMergeContext) template.TemplateData {
 	td := template.TemplateData{
 		Presets:       ctx.Presets,
 		DNSOptionsRaw: raw,
+		Vars:          ctx.TemplateVars,
 	}
 	return td
 }
@@ -551,4 +575,72 @@ func hasAnyV6Rule(rules []state.Rule) bool {
 		}
 	}
 	return false
+}
+
+// pruneDNSGroupMembers убирает из состава групп участников, которых нет в
+// итоговом списке серверов, и саму группу — если после этого она пуста.
+//
+// Группа ссылается на участников по тегу, а участник попадает в конфиг лишь
+// когда включён (выключенный не эмитится вовсе) и когда его объявил активный
+// источник: `dns_shield` из шаблона перечисляет в том числе `yandex_*`, а те
+// живут в пресете `russian` и появляются только вместе с ним. Ссылка на
+// неэмитнутый тег роняет ВЕСЬ конфиг:
+// "dependency[google_udp] not found for server[dns_shield]".
+//
+// Не «оставить как есть и надеяться» и не «включить недостающих за
+// пользователя»: первое роняет конфиг целиком, второе включило бы серверы,
+// которых он не выбирал, — и трафик пошёл бы через них молча.
+//
+// Пустая группа удаляется: без участников она ничего не резолвит, а ядру
+// нужна валидная ссылка.
+func pruneDNSGroupMembers(servers []interface{}) []interface{} {
+	if len(servers) == 0 {
+		return servers
+	}
+	present := make(map[string]bool, len(servers))
+	for _, raw := range servers {
+		if m, ok := raw.(map[string]interface{}); ok {
+			if tag, _ := m["tag"].(string); tag != "" {
+				present[tag] = true
+			}
+		}
+	}
+
+	out := make([]interface{}, 0, len(servers))
+	for _, raw := range servers {
+		m, ok := raw.(map[string]interface{})
+		if !ok || m["type"] != "group" {
+			out = append(out, raw)
+			continue
+		}
+		members, ok := m["servers"].([]interface{})
+		if !ok {
+			out = append(out, raw)
+			continue
+		}
+		kept := make([]interface{}, 0, len(members))
+		var dropped []string
+		for _, mem := range members {
+			tag, _ := mem.(string)
+			if tag == "" || !present[tag] {
+				if tag != "" {
+					dropped = append(dropped, tag)
+				}
+				continue
+			}
+			kept = append(kept, mem)
+		}
+		groupTag, _ := m["tag"].(string)
+		if len(dropped) > 0 {
+			debuglog.WarnLog("dns: группа %q: участники %v не попали в конфиг (выключены или объявлены неактивным пресетом) — исключены из состава",
+				groupTag, dropped)
+		}
+		if len(kept) == 0 {
+			debuglog.WarnLog("dns: группа %q осталась без участников — не эмитится", groupTag)
+			continue
+		}
+		m["servers"] = kept
+		out = append(out, m)
+	}
+	return out
 }

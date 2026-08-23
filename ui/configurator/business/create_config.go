@@ -136,6 +136,9 @@ func buildConfigFromModel(model *wizardmodels.WizardModel, forPreview bool) (str
 		// имён, которых не объявило у себя — настройка со вкладки Settings
 		// (@tun, @resolve_strategy) не дублируется в каждом пресете.
 		GlobalVars: ctx.Vars,
+		// SPEC 109: ОБЪЯВЛЕНИЯ переменных — из них подстановка в теле
+		// DNS-сервера берёт тип и дефолт. GlobalVars выше несёт только значения.
+		TemplateVars: model.TemplateData.Vars,
 	}
 
 	res, err := build.BuildConfig(ctx)

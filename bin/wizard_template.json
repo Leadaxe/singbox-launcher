@@ -703,7 +703,7 @@
     "path": "/dns-query",
     "domain_resolver": "direct_dns_resolver",
     "description": "Google DNS over HTTPS resolver",
-    "enabled": true
+    "enabled": false
    },
    {
     "type": "https",
@@ -939,9 +939,7 @@
       "google_doh",
       "google_dot",
       "cloudflare_dot",
-      "quad9_doh",
-      "yandex_udp",
-      "yandex_dot"
+      "quad9_doh"
      ],
      "mode": "fastest",
      "error_ttl": "5m",
