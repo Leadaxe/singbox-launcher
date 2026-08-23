@@ -142,7 +142,7 @@ func buildOutboundsInfo(
 	nodesBySource map[int][]*ParsedNode,
 	globalNodePool []*ParsedNode,
 	progressCallback func(float64, string),
-) map[string]*outboundInfo {
+) (map[string]*outboundInfo, []ChainCycle) {
 	if progressCallback != nil {
 		progressCallback(60, "Analyzing outbounds (pass 1)...")
 	}
@@ -150,6 +150,9 @@ func buildOutboundsInfo(
 	// Позиции цепочек, лежащих в пуле (SPEC 110 T9). Пусто, если цепочек
 	// нет, — тогда все проверки ниже схлопываются в no-op.
 	chainHops := chainHopsByTag(globalNodePool)
+	// Циклы группа↔цепочка (T9): собираются здесь, где видна полная
+	// картина, и уезжают в результат предупреждением.
+	var chainCycles []ChainCycle
 
 	for i, proxySource := range parserConfig.ParserConfig.Proxies {
 		if len(proxySource.Outbounds) == 0 {
@@ -161,7 +164,8 @@ func buildOutboundsInfo(
 		}
 		for _, outboundConfig := range proxySource.Outbounds {
 			filteredNodes := filterNodesForSelector(sourceNodes, outboundConfig.Filters)
-			filteredNodes = dropChainsThroughDirection(filteredNodes, outboundConfig.Tag, chainHops)
+			filteredNodes, chainCycles = appendChainCycles(chainCycles,
+				filteredNodes, outboundConfig.Tag, chainHops)
 			logDuplicateTagIfExists(outboundsInfo, outboundConfig.Tag, "local", i+1)
 			outboundsInfo[outboundConfig.Tag] = &outboundInfo{
 				config:        outboundConfig,
@@ -187,7 +191,8 @@ func buildOutboundsInfo(
 		// SPEC 110 T9: Направление не берёт цепочку, которая через него же
 		// проходит. Фильтр этого не знает и знать не должен — «все узлы»
 		// обязано означать все узлы.
-		filteredNodes = dropChainsThroughDirection(filteredNodes, outboundConfig.Tag, chainHops)
+		filteredNodes, chainCycles = appendChainCycles(chainCycles,
+			filteredNodes, outboundConfig.Tag, chainHops)
 		logDuplicateTagIfExists(outboundsInfo, outboundConfig.Tag, "global", 0)
 		outboundsInfo[outboundConfig.Tag] = &outboundInfo{
 			config:        outboundConfig,
@@ -197,7 +202,28 @@ func buildOutboundsInfo(
 			isLocal:       false,
 		}
 	}
-	return outboundsInfo
+	return outboundsInfo, chainCycles
+}
+
+// ChainCycle — цепочка, не вошедшая в состав Направления, через которое она
+// проходит (SPEC 110 T9).
+type ChainCycle struct {
+	Chain     string
+	Direction string
+}
+
+// appendChainCycles — фильтр T9 плюс накопление предупреждений.
+func appendChainCycles(
+	acc []ChainCycle,
+	nodes []*ParsedNode,
+	directionTag string,
+	hopsByTag map[string][]string,
+) ([]*ParsedNode, []ChainCycle) {
+	kept, dropped := dropChainsThroughDirection(nodes, directionTag, hopsByTag)
+	for _, tag := range dropped {
+		acc = append(acc, ChainCycle{Chain: tag, Direction: directionTag})
+	}
+	return kept, acc
 }
 
 // logDuplicateTagIfExists logs a warning when a new selector tag already exists in outboundsInfo.

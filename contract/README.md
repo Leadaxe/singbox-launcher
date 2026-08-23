@@ -22,7 +22,7 @@
 | `registry/limits.json` | лимиты (URI, нод, тело, цепочки) |
 | `registry/vars.json`, `registry/presets.json` | переносимые имена переменных и preset id |
 | `registry/containers.json` | контейнеры тел (`vpn://`, wgconf INI, base64) |
-| `schema/*.schema.json` | JSON Schema узла, Направления, бэкапа, реестра |
+| `schema/*.schema.json` | JSON Schema узла, Направления, свёртки и цепочки источника, бэкапа, реестра |
 | `diagrams/*.mmd` | нормативные mermaid-блок-схемы пайплайна |
 | `corpus/` | golden-фикстуры (фаза 1+) |
 

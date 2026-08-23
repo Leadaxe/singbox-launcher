@@ -85,6 +85,12 @@ type OutboundGenerationResult struct {
 	// Пользователь обязан узнать, почему настроенный маршрут не работает, —
 	// молча выпавшая цепочка выглядит как «лаунчер потерял настройку».
 	BrokenChains []ChainDegradation
+
+	// ChainCycles — цепочки, не вошедшие в состав Направления, через
+	// которое проходят (SPEC 110 T9). Ядро на таком не падает, но маршрут
+	// вышел бы не тот, что задуман, — пользователь должен узнать, почему
+	// его цепочки нет в группе.
+	ChainCycles []ChainCycle
 }
 
 // NaiveSupportProbe — hook installed by the app layer (core.AppController):
@@ -534,7 +540,7 @@ func GenerateSelectorWithFilteredAddOutbounds(
 	// SPEC 110 T9: тот же запрет, что на проходе 1 — состав считается здесь
 	// заново, и без повторной проверки цепочка вернулась бы в группу,
 	// через которую сама и проходит.
-	filteredNodes = dropChainsThroughDirection(filteredNodes, outboundConfig.Tag, chainHopsByTag(allNodes))
+	filteredNodes, _ = dropChainsThroughDirection(filteredNodes, outboundConfig.Tag, chainHopsByTag(allNodes))
 	debuglog.DebugLog("Parser: filterNodesForSelector returned %d nodes for '%s'", len(filteredNodes), outboundConfig.Tag)
 
 	// Build outbounds list with unique tags
@@ -1023,7 +1029,7 @@ func GenerateOutboundsFromParserConfig(
 
 	globalPool := FilterNodesExcludeFromGlobal(allNodes, parserConfig.ParserConfig.Proxies)
 	exposeCandidates := collectExposeTagCandidates(parserConfig)
-	outboundsInfo := buildOutboundsInfo(parserConfig, nodesBySource, globalPool, progressCallback)
+	outboundsInfo, chainCycles := buildOutboundsInfo(parserConfig, nodesBySource, globalPool, progressCallback)
 	computeOutboundValidity(outboundsInfo, parserConfig, exposeCandidates, progressCallback)
 	selectorJSONs, localSelectorsCount, globalSelectorsCount, emptyDirections := generateSelectorJSONs(
 		parserConfig, nodesBySource, globalPool, outboundsInfo, exposeCandidates, progressCallback, directions)
@@ -1042,6 +1048,7 @@ func GenerateOutboundsFromParserConfig(
 		SkippedNaiveNodes:    skippedNaive,
 		EmptyDirections:      emptyDirections,
 		BrokenChains:         brokenChains,
+		ChainCycles:          chainCycles,
 		SkippedNaiveReason:   naiveReason,
 	}, nil
 }

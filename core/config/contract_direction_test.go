@@ -304,6 +304,9 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 			}
 			got.Warnings = append(got.Warnings, code)
 		}
+		for range res.ChainCycles {
+			got.Warnings = append(got.Warnings, "chain_cycle_through_direction")
+		}
 	}
 	sort.Strings(got.Warnings)
 

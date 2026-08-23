@@ -23,5 +23,8 @@
       "tag": "other",
       "type": "selector"
     }
+  ],
+  "warnings": [
+    "chain_cycle_through_direction"
   ]
 }

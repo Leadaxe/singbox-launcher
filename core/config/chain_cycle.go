@@ -81,9 +81,13 @@ func chainPassesThrough(chainTag, target string, hopsByTag map[string][]string, 
 //
 // Вызывается после фильтра: фильтр Направления не знает, что такое цепочка,
 // и знать не должен — «все узлы» обязано означать все узлы.
-func dropChainsThroughDirection(nodes []*ParsedNode, directionTag string, hopsByTag map[string][]string) []*ParsedNode {
+//
+// Вторым значением возвращает теги выброшенных цепочек: это предупреждение
+// пользователю (`chain_cycle_through_direction`), а не внутренняя деталь —
+// он собрал маршрут и вправе знать, почему тот не появился в группе.
+func dropChainsThroughDirection(nodes []*ParsedNode, directionTag string, hopsByTag map[string][]string) ([]*ParsedNode, []string) {
 	if directionTag == "" || len(hopsByTag) == 0 {
-		return nodes
+		return nodes, nil
 	}
 	// Сначала считаем, есть ли что выбрасывать: без цепочек в составе (а
 	// это подавляющее большинство Направлений) вход возвращается как есть,
@@ -98,16 +102,18 @@ func dropChainsThroughDirection(nodes []*ParsedNode, directionTag string, hopsBy
 		}
 	}
 	if len(cyclic) == 0 {
-		return nodes
+		return nodes, nil
 	}
 	out := make([]*ParsedNode, 0, len(nodes))
+	var dropped []string
 	for _, n := range nodes {
 		if n != nil && cyclic[n.Tag] {
-			debuglog.DebugLog("chain: цепочка %q не входит в %q — она через него проходит",
+			debuglog.WarnLog("chain: цепочка %q не входит в %q — она через него проходит",
 				n.Tag, directionTag)
+			dropped = append(dropped, n.Tag)
 			continue
 		}
 		out = append(out, n)
 	}
-	return out
+	return out, dropped
 }
