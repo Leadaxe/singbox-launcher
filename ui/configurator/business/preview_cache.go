@@ -119,4 +119,7 @@ func InvalidatePreviewCache(model *wizardmodels.WizardModel) {
 	model.PreviewIgnoredSectionsBySource = nil
 	model.AvailableOutboundsMemoKey = ""
 	model.AvailableOutboundsMemoTags = nil
+	// Счётчики узлов выведены из этого кэша и пережить его не могут:
+	// иначе список Sources показывал бы числа от прошлого состава.
+	model.SourceNodeCounts = nil
 }

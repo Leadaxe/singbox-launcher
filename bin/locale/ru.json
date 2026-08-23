@@ -524,6 +524,8 @@
   "wizard.source.button_add_chain": "Добавить цепочку хопов",
   "wizard.source.tab_chain": "Цепочка",
   "wizard.source.row_chain_mark": "[цепочка: %d]",
+  "wizard.source.row_nodes": "· %d узлов",
+  "wizard.source.row_nodes_partial": "· %d из %d узлов",
   "wizard.source.row_chain_unsupported": "[цепочка] ⚠️ ядро не умеет цепочки",
   "wizard.source.fold_tab_hint": "Подписка приезжает одной записью вместо всех своих узлов. Сами узлы остаются в конфиге составом этой группы.",
   "wizard.source.fold_mode_label": "Свернуть в",

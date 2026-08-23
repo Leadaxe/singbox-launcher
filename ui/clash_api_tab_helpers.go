@@ -29,6 +29,16 @@ const (
 
 var pingAllConcurrencyOptions = []string{"1", "5", "10", "20", "50", "100"}
 
+// pingTestTimeoutOptions — бюджет одиночной проверки, секунды.
+//
+// Список, а не поле ввода: значение уходит и в ядро, и в Clash, где оно
+// ограничено сверху, — свободный ввод дал бы «0.05» и «3600», которые всё
+// равно пришлось бы зажимать, но уже молча.
+//
+// Верх 30 с продиктован цепочками: медленный хоп добавляет к пути секунды,
+// и на прежних 5 с он выпадал в «ошибка» вместо измеримой цены.
+var pingTestTimeoutOptions = []string{"5", "10", "15", "20", "30"}
+
 // reorderWithPinned moves special proxies to the top of the list while
 // preserving relative order of the rest:
 //   - "direct-out" (if present)

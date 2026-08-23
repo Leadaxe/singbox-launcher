@@ -1379,12 +1379,33 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			parallelSelect,
 		)
 
+		// Бюджет одиночной проверки. Показывается в секундах, хранится в
+		// миллисекундах: секунды читаются, а ядро и Clash принимают мс.
+		timeoutChosen := strconv.Itoa(api.GetPingTestTimeoutMs() / 1000)
+		timeoutSelect := widget.NewSelect(pingTestTimeoutOptions, func(v string) {
+			timeoutChosen = v
+		})
+		timeoutSelect.SetSelected(timeoutChosen)
+		if timeoutSelect.Selected == "" {
+			// Значение не из списка (правка settings.json руками): показываем
+			// ближайший смысл — дефолт, — а не пустой контрол, который на
+			// сохранении обнулил бы настройку.
+			timeoutSelect.SetSelected(strconv.Itoa(api.DefaultPingTestTimeoutMs / 1000))
+		}
+
+		timeoutRow := container.NewHBox(
+			widget.NewLabel(locale.T("servers.ping_label_timeout")),
+			timeoutSelect,
+			widget.NewLabel(locale.T("servers.ping_unit_seconds")),
+		)
+
 		content := container.NewVBox(
 			widget.NewLabel(locale.T("servers.ping_label_url")),
 			radio,
 			widget.NewLabel(locale.T("servers.ping_label_custom_url")),
 			urlEntry,
 			parallelRow,
+			timeoutRow,
 			widget.NewLabel(" "),
 		)
 
@@ -1414,11 +1435,15 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				n, _ = strconv.Atoi(parallelSelect.Selected)
 			}
 			api.SetPingTestAllConcurrency(n)
+			if secs, err := strconv.Atoi(timeoutChosen); err == nil && secs > 0 {
+				api.SetPingTestTimeoutMs(secs * 1000)
+			}
 
 			binDir := platform.GetBinDir(ac.FileService.ExecDir)
 			st := locale.LoadSettings(binDir)
 			st.PingTestURL = api.GetPingTestURL()
 			st.PingTestAllConcurrency = api.GetPingTestAllConcurrency()
+			st.PingTestTimeoutMs = api.GetPingTestTimeoutMs()
 			if err := locale.SaveSettings(binDir, st); err != nil {
 				debuglog.WarnLog("ping settings: failed to save settings.json: %v", err)
 			}

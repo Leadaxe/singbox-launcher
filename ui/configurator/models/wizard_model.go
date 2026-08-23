@@ -56,6 +56,17 @@ type OutboundStats struct {
 //   - `ParserConfigJSON` — кэш сериализации того же на момент последнего
 //     RefreshSerializedParserConfig (для JSON-editor вкладки и как
 //     дешёвый fingerprint для stale-detection в ParseAndPreview).
+//
+// SourceNodeCount — счёт узлов одного источника для списка Sources.
+type SourceNodeCount struct {
+	// Total — сколько узлов дал парсер.
+	Total int
+	// Enabled — сколько из них попадёт в конфиг: без снятых пользователем
+	// галок. Меньше Total означает, что часть выключена вручную, и
+	// показывать надо оба числа — иначе «47» читается как потеря трёх.
+	Enabled int
+}
+
 type WizardModel struct {
 	// Sources — v5-canonical источники подписок и серверов (subscription/server).
 	// Editing UI напрямую мутирует этот слайс; на Save переезжает в
@@ -166,6 +177,15 @@ type WizardModel struct {
 	// Preview кеш для распарсенных нод (используется всеми Preview/View, включая вкладку Preview в Edit Outbound)
 	PreviewNodes         []*config.ParsedNode
 	PreviewNodesBySource map[int][]*config.ParsedNode
+
+	// SourceNodeCounts — сколько узлов даст каждый источник (по индексу в
+	// Sources): всего распарсено и сколько из них пойдёт в конфиг после
+	// skip-фильтров и снятых галок.
+	//
+	// Кэш, а не вычисление на месте: разбор всех подписок занимает секунды
+	// на живых конфигах (сотни узлов), а строка списка перерисовывается на
+	// каждое движение мыши. nil = ещё не считали.
+	SourceNodeCounts map[int]SourceNodeCount
 
 	// PreviewIgnoredSectionsBySource — секции импортированного sing-box конфига,
 	// которые парсер намеренно не читает (route/dns/inbounds/experimental),

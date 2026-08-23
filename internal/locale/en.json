@@ -527,6 +527,8 @@
   "wizard.source.button_add_chain": "Add hop chain",
   "wizard.source.tab_chain": "Chain",
   "wizard.source.row_chain_mark": "[chain: %d]",
+  "wizard.source.row_nodes": "· %d nodes",
+  "wizard.source.row_nodes_partial": "· %d of %d nodes",
   "wizard.source.row_chain_unsupported": "[chain] ⚠️ core has no chain support",
   "wizard.source.fold_tab_hint": "The subscription arrives as one entry instead of every node. Its nodes stay in the config as that group's members.",
   "wizard.source.fold_mode_label": "Fold into",

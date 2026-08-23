@@ -15,6 +15,7 @@ import (
 
 	"singbox-launcher/api"
 	"singbox-launcher/core"
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	wizardbusiness "singbox-launcher/ui/configurator/business"
@@ -207,6 +208,12 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 				})
 			}(proxy.Name)
 		}
+	}
+
+	// Цепочка: позиции и послойный замер. Только у outbound'а типа chain и
+	// только там, где ядро отвечает по gRPC (см. addChainSection).
+	if node.Type == configtypes.ChainOutboundType {
+		addChainSection(ac, body, win, proxy.Name)
 	}
 
 	// TLS-подробности отдельной секцией: их много и они длинные.

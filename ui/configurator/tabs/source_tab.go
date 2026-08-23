@@ -348,6 +348,18 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						label = locale.Tf("wizard.source.source_n", sourceIndex+1)
 					}
 				}
+				// Счётчик узлов: подписка на полсотни серверов, у которой
+				// половина выключена галками, выглядит в списке так же,
+				// как полная. Показываем «сколько пойдёт в конфиг», а при
+				// расхождении — и сколько всего.
+				if c, ok := m.SourceNodeCounts[sourceIndex]; ok && c.Total > 0 {
+					if c.Enabled == c.Total {
+						label += "  " + locale.Tf("wizard.source.row_nodes", c.Total)
+					} else {
+						label += "  " + locale.Tf("wizard.source.row_nodes_partial", c.Enabled, c.Total)
+					}
+				}
+
 				// SPEC 110: цепочку видно по строке — иначе она неотличима
 				// от сервера, а ведёт себя иначе. Если ядро её не умеет,
 				// вместо метки идёт предупреждение: узел в конфиг не

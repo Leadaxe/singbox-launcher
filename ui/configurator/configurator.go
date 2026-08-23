@@ -553,6 +553,24 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 			}
 		}
 
+		// Счётчики узлов на вкладке Sources считаются ЛЕНИВО: разбор всех
+		// подписок занимает секунды, и делать его при загрузке визарда
+		// значило бы платить за цифры, которых пользователь мог и не
+		// открыть. Считаем в фоне — переключение вкладки не должно ждать
+		// разбора; готовый результат перерисует список.
+		if item.Text == locale.T("wizard.tab_sources") {
+			go func() {
+				if !wizardbusiness.EnsureSourceNodeCounts(model) {
+					return
+				}
+				fyne.Do(func() {
+					if guiState.RefreshSourcesList != nil {
+						guiState.RefreshSourcesList()
+					}
+				})
+			}()
+		}
+
 		// Handle tab-specific actions
 		if item == rulesTabItem {
 			// Trigger async parsing to ensure outbounds are up-to-date
