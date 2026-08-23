@@ -278,6 +278,10 @@ func (s *Server) endpoints() []apiEndpoint {
 	}
 	if s.daemon != nil {
 		eps = append(eps, s.daemonEndpoints()...)
+		// SPEC 110: цепочки читаются из работающего ядра по gRPC, поэтому
+		// группа висит на том же условии, что и /daemon/* — без демона
+		// спрашивать нечего.
+		eps = append(eps, s.chainEndpoints()...)
 	}
 	if s.remote != nil || s.daemon != nil {
 		eps = append(eps, apiEndpoint{"GET", "/grpc/methods", true,

@@ -957,6 +957,47 @@ func showSourceEditWindow(
 			dialog.ShowError(errors.New(locale.T("wizard.source.json_err_no_type")), win)
 			return
 		}
+		// SPEC 110: у цепочки правится СВОЙ объект, а не ConfigJSON —
+		// последнего у неё нет, и правка ушла бы в никуда. Обратно
+		// разбираем только то, чем цепочка является: позиции и настройки
+		// звеньев; чужие ключи молча не принимаем — иначе пользователь
+		// решил бы, что вписал рабочую настройку.
+		if isChainSource {
+			var parsed struct {
+				Outbounds    []string               `json:"outbounds"`
+				IdleTimeout  string                 `json:"idle_timeout"`
+				StripEvasion *bool                  `json:"strip_evasion"`
+				Strip        map[string]bool        `json:"strip"`
+				Rewrite      map[string]interface{} `json:"rewrite"`
+			}
+			if err := json.Unmarshal([]byte(text), &parsed); err != nil {
+				dialog.ShowError(errors.New(locale.Tf("wizard.source.json_err_invalid", err.Error())), win)
+				return
+			}
+			c := &configtypes.SourceChain{
+				Hops:         parsed.Outbounds,
+				IdleTimeout:  parsed.IdleTimeout,
+				StripEvasion: parsed.StripEvasion,
+				Strip:        parsed.Strip,
+				Rewrite:      parsed.Rewrite,
+			}
+			// Отвергаем правку, на которой ядро не стартует: показать
+			// ошибку здесь дешевле, чем дать сохранить и обнаружить, что
+			// VPN не поднимается.
+			if reason := config.ChainEmitError(scratch.TagMask, c); reason != "" {
+				dialog.ShowError(errors.New(reason), win)
+				return
+			}
+			scratch.Chain = c
+			if chainTabBody != nil {
+				// Форма и JSON — два вида одного объекта: список позиций
+				// обязан показать то, что сейчас вписали.
+				chainTabBody.Load(c)
+			}
+			doRefreshJSONTab()
+			presenter.MarkAsChanged()
+			return
+		}
 		// Compact сохраняет порядок полей пользователя (в отличие от
 		// Unmarshal→Marshal, который пересортировал бы ключи по алфавиту).
 		var compact bytes.Buffer
@@ -989,6 +1030,43 @@ func showSourceEditWindow(
 	jsonResetBtn.Disable()
 
 	// refreshServerJSONTab — синхронный рендер для server-source (без сети).
+	// refreshChainJSONTab — вкладка JSON у цепочки (SPEC 110).
+	//
+	// Показывает ОБЪЕКТ, который уедет в конфиг, а не тело подписки: у
+	// цепочки нет ни URL, ни кэшированного body, и общая ветка подписок
+	// показывала ей «Subscription has not been fetched yet» — текст про
+	// сущность, которой здесь нет.
+	//
+	// Вкладка редактируемая, потому что `rewrite` правится только тут:
+	// это произвольный merge-patch по типам протоколов, и урезанная форма
+	// молча теряла бы ключи, которых не знает.
+	refreshChainJSONTab := func() {
+		c := scratch.Chain
+		if c == nil {
+			c = &configtypes.SourceChain{}
+		}
+		tag := scratch.TagMask
+		if tag == "" {
+			tag = locale.T("wizard.chain.unnamed")
+		}
+		ob := config.ChainOutboundObject(tag, c)
+		raw, err := json.MarshalIndent(ob, "", "  ")
+		if err != nil {
+			jsonStatus.SetText(locale.Tf("wizard.source.json_status_unparsed", err.Error()))
+			return
+		}
+		setJSONText(string(raw))
+		// Причина, по которой объект не поедет в конфиг, важнее самого
+		// объекта: без неё пользователь смотрит на валидный JSON и не
+		// понимает, почему маршрут не работает.
+		if reason := config.ChainEmitError(tag, c); reason != "" {
+			jsonStatus.SetText("⚠️ " + reason)
+		} else {
+			jsonStatus.SetText(locale.T("wizard.source.json_status_chain"))
+		}
+		jsonResetBtn.Enable()
+	}
+
 	refreshServerJSONTab := func() {
 		// Ручной config_json показывается как есть (порядок полей автора);
 		// tag/detour перештампуются при сборке.
@@ -1047,6 +1125,10 @@ func showSourceEditWindow(
 
 	jsonRefreshSeq := 0
 	doRefreshJSONTab = func() {
+		if isChainSource {
+			refreshChainJSONTab()
+			return
+		}
 		if isServerSource {
 			refreshServerJSONTab()
 			return
@@ -1104,14 +1186,17 @@ func showSourceEditWindow(
 	}
 
 	refreshJSONTab := func() {
-		if isServerSource && jsonEntry.Text != lastSetJSON {
+		if (isServerSource || isChainSource) && jsonEntry.Text != lastSetJSON {
 			return // незаApplied ручные правки — не затирать автообновлением
 		}
 		doRefreshJSONTab()
 	}
 
 	jsonHintKey := "wizard.source.json_hint_subscription"
-	if isServerSource {
+	switch {
+	case isChainSource:
+		jsonHintKey = "wizard.source.json_hint_chain"
+	case isServerSource:
 		jsonHintKey = "wizard.source.json_hint_server"
 	}
 	jsonHint := widget.NewLabel(locale.T(jsonHintKey))
@@ -1119,7 +1204,7 @@ func showSourceEditWindow(
 	jsonGutter := components.NewScrollGutter()
 	jsonScrollWithGutter := container.NewBorder(nil, nil, nil, jsonGutter, jsonScroll)
 	var jsonCol *fyne.Container
-	if isServerSource {
+	if isServerSource || isChainSource {
 		jsonButtonsRow := container.NewHBox(jsonApplyBtn, jsonResetBtn, layout.NewSpacer())
 		jsonCol = container.NewVBox(jsonHint, jsonStatus, jsonScrollWithGutter, jsonButtonsRow)
 	} else {
