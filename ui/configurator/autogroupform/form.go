@@ -81,6 +81,13 @@ type Form struct {
 
 	balancerBlock *fyne.Container
 	choices       Choices
+
+	// keep — поля Auto, которых форма НЕ показывает
+	// (interrupt_exist_connections, idle_timeout). Их задаёт шаблон, и
+	// потерять их на Load/Collect значит выдать пустую правку за
+	// пользовательскую: diff сравнивает форму с шаблонной базой, и
+	// отсутствие поля читается как «пользователь его убрал».
+	keep configtypes.DirectionAuto
 }
 
 // Row — ряд «подпись — поле» с подписью фиксированной ширины.
@@ -179,6 +186,14 @@ func (f *Form) syncBalancerVisible() {
 
 // Load заполняет форму из Auto. nil очищает поля.
 func (f *Form) Load(a *configtypes.DirectionAuto) {
+	if a != nil {
+		f.keep = configtypes.DirectionAuto{
+			IdleTimeout:               a.IdleTimeout,
+			InterruptExistConnections: a.InterruptExistConnections,
+		}
+	} else {
+		f.keep = configtypes.DirectionAuto{}
+	}
 	f.ModeSelect.OnChanged = nil
 	if a != nil && a.Mode == configtypes.AutoModeRoundRobin {
 		f.ModeSelect.SetSelected(locale.T("wizard.outbound.auto_mode_round_robin"))
@@ -235,7 +250,10 @@ func (f *Form) Load(a *configtypes.DirectionAuto) {
 
 // Collect читает форму в DirectionAuto.
 func (f *Form) Collect() *configtypes.DirectionAuto {
-	auto := &configtypes.DirectionAuto{}
+	auto := &configtypes.DirectionAuto{
+		IdleTimeout:               f.keep.IdleTimeout,
+		InterruptExistConnections: f.keep.InterruptExistConnections,
+	}
 	if f.ModeSelect.Selected == locale.T("wizard.outbound.auto_mode_round_robin") {
 		auto.Mode = configtypes.AutoModeRoundRobin
 	}
