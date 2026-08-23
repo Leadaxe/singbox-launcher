@@ -1,0 +1,10 @@
+{
+  "servers": [
+    {
+      "server": "1.1.1.1",
+      "server_port": 53,
+      "tag": "keep_me",
+      "type": "udp"
+    }
+  ]
+}

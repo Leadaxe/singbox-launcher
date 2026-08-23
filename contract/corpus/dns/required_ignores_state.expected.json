@@ -1,0 +1,8 @@
+{
+  "servers": [
+    {
+      "tag": "local_dns_resolver",
+      "type": "local"
+    }
+  ]
+}

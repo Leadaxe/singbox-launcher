@@ -1,0 +1,15 @@
+{
+  "_": "Значение переменной записи подставляется в тело: пользователь выбрал вторичный адрес, и в конфиг уезжает он, а не @-плейсхолдер",
+  "servers": [
+    {
+      "description": "Google DoT",
+      "enabled": true,
+      "vars": [
+        {"name": "dns_ip", "type": "enum", "default_value": "8.8.8.8",
+         "options": [{"title": "Primary", "value": "8.8.8.8"}, {"title": "Secondary", "value": "8.8.4.4"}]}
+      ],
+      "server": {"type": "tls", "tag": "google_dot", "server": "@dns_ip", "server_port": 853}
+    }
+  ],
+  "vars": {"dns_google_dot_dns_ip": "8.8.4.4"}
+}

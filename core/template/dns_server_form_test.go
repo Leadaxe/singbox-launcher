@@ -20,7 +20,7 @@ func TestNormalizeDNSOptionsNestedEntry(t *testing.T) {
 	   "server":{"type":"tls","tag":"google_dot","server_port":853,
 	             "server":"@dns_ip","detour":"@outbound"}}]}`)
 
-	normalized, vars := normalizeDNSOptions(raw)
+	normalized, vars := NormalizeDNSOptions(raw)
 
 	var got struct {
 		Servers []map[string]interface{} `json:"servers"`
@@ -95,7 +95,7 @@ func TestNormalizeDNSOptionsNestedEntry(t *testing.T) {
 // Шаблон в нашей плоской форме обязан грузиться байт-в-байт как раньше.
 func TestNormalizeDNSOptionsFlatUnchanged(t *testing.T) {
 	raw := json.RawMessage(`{"servers":[{"type":"udp","tag":"x","server":"1.1.1.1","enabled":true}]}`)
-	normalized, vars := normalizeDNSOptions(raw)
+	normalized, vars := NormalizeDNSOptions(raw)
 	if len(vars) != 0 {
 		t.Errorf("плоская запись объявила переменные: %+v", vars)
 	}
@@ -107,7 +107,7 @@ func TestNormalizeDNSOptionsFlatUnchanged(t *testing.T) {
 // Пустая и битая секция не роняют загрузку: шаблон без dns_options валиден.
 func TestNormalizeDNSOptionsTolerant(t *testing.T) {
 	for _, raw := range []json.RawMessage{nil, json.RawMessage(``), json.RawMessage(`{`), json.RawMessage(`{"servers":"nope"}`)} {
-		out, vars := normalizeDNSOptions(raw)
+		out, vars := NormalizeDNSOptions(raw)
 		if len(vars) != 0 {
 			t.Errorf("%q → переменные %+v, ожидалось пусто", raw, vars)
 		}

@@ -1,0 +1,8 @@
+{
+  "_": "Выключенная в состоянии запись не эмитится ВОВСЕ, а не эмитится с enabled:false — ядро не знает такого поля, и сервер работал бы вопреки настройке",
+  "servers": [
+    {"type": "udp", "tag": "keep_me", "server": "1.1.1.1", "server_port": 53, "enabled": true},
+    {"type": "udp", "tag": "turn_me_off", "server": "8.8.8.8", "server_port": 53, "enabled": true}
+  ],
+  "state": [{"tag": "turn_me_off", "enabled": false}]
+}

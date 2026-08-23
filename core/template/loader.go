@@ -276,7 +276,7 @@ func LoadTemplateData(execDir string) (*TemplateData, error) {
 	// в плоские ДО валидации и до подстановки: объявленные ими переменные
 	// обязаны попасть в общий список, иначе `@dns_google_dot_outbound` в
 	// теле сервера останется неразрешённым плейсхолдером.
-	if normalized, dnsVars := normalizeDNSOptions(root.DNSOptions); len(dnsVars) > 0 {
+	if normalized, dnsVars := NormalizeDNSOptions(root.DNSOptions); len(dnsVars) > 0 {
 		root.DNSOptions = normalized
 		root.Vars = append(root.Vars, dnsVars...)
 	}

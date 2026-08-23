@@ -1,0 +1,10 @@
+{
+  "servers": [
+    {
+      "server": "8.8.4.4",
+      "server_port": 853,
+      "tag": "google_dot",
+      "type": "tls"
+    }
+  ]
+}

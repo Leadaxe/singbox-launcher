@@ -1,0 +1,13 @@
+{
+  "_": "Вложенная запись LxBox разворачивается в плоскую: тег и тип уезжают на верхний уровень, служебные поля визарда (description, vars, enabled) в тело не протекают — ядро отвергает чужие ключи",
+  "servers": [
+    {
+      "description": "Google DoT",
+      "enabled": true,
+      "vars": [
+        {"name": "outbound", "type": "outbound", "default_value": "direct-out"}
+      ],
+      "server": {"type": "tls", "tag": "google_dot", "server": "8.8.8.8", "server_port": 853, "detour": "@outbound"}
+    }
+  ]
+}

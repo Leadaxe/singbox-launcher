@@ -21,6 +21,7 @@ import (
 
 	corestate "singbox-launcher/core/state"
 	"singbox-launcher/core/template"
+	"singbox-launcher/internal/debuglog"
 )
 
 // DNSSource — discriminator происхождения DNS entry.
@@ -179,10 +180,18 @@ func ResolveDNS(state *corestate.State, td *template.TemplateData, templateVars 
 		} else {
 			enabled = stateTemplateEnabled(state, tag, defaultEnabled)
 		}
+		// SPEC 109: тело template-сервера может содержать `@переменные` —
+		// записи, пришедшие во вложенной форме, объявляют собственные vars
+		// (канал, адрес провайдера, профиль). Раньше в этой ветке
+		// подстановки не было вовсе: в `dns_options.servers` шаблона
+		// плейсхолдеры не встречались, и тело уезжало в конфиг как есть.
+		// Без подстановки `"detour": "@dns_google_dot_outbound"` доедет до
+		// ядра строкой, и конфиг будет отвергнут.
+		body := substituteTemplateDNSServer(stripDNSWizardOnlyFields(raw), td, templateVars, target)
 		out.Servers = append(out.Servers, ResolvedDNSServer{
 			Tag:      tag,
 			LocalTag: tag,
-			Body:     stripDNSWizardOnlyFields(raw),
+			Body:     body,
 			Source:   DNSSourceTemplate,
 			Active:   true,
 			Enabled:  enabled,
@@ -522,6 +531,45 @@ func substitutePresetDNSServer(ds *template.PresetDNSServer, presetVars []templa
 		return body
 	}
 	// detour=direct-out → strip (sing-box резолвит без forwarding).
+	if det, ok := out["detour"].(string); ok && det == "direct-out" {
+		delete(out, "detour")
+	}
+	return out
+}
+
+// substituteTemplateDNSServer подставляет переменные шаблона в тело
+// DNS-сервера из `dns_options.servers`.
+//
+// Значения берутся из state (templateVars) с откатом на дефолты шаблона:
+// пользователь мог ничего не выбирать, и тогда работает то, что объявил
+// автор шаблона. Тот же движок, что у пресетных серверов
+// (SubstituteVarsInJSONStrict) — второй реализацией подстановки эти две
+// ветки разъехались бы на первой же правке языка шаблонов.
+func substituteTemplateDNSServer(
+	body map[string]interface{},
+	td *template.TemplateData,
+	templateVars map[string]string,
+	target template.TargetSpec,
+) map[string]interface{} {
+	if body == nil || td == nil || len(td.Vars) == 0 {
+		return body
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return body
+	}
+	resolved := template.ResolveTemplateVarsFor(td.Vars, templateVars, nil, target)
+	substituted, _, err := template.SubstituteVarsInJSONStrict(raw, td.Vars, resolved, target)
+	if err != nil {
+		debuglog.WarnLog("resolve_dns: подстановка в теле DNS-сервера не удалась: %v", err)
+		return body
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(substituted, &out); err != nil || out == nil {
+		return body
+	}
+	// detour=direct-out → strip: ядро резолвит без forwarding, и явный
+	// detour на прямой канал ему не нужен (зеркало пресетной ветки).
 	if det, ok := out["detour"].(string); ok && det == "direct-out" {
 		delete(out, "detour")
 	}

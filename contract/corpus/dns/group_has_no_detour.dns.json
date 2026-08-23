@@ -1,0 +1,8 @@
+{
+  "_": "Группа эмитит состав в servers[] и НЕ получает detour: в сеть ходят её участники, каждый своим каналом, а detour на самой группе ядро не применяет",
+  "servers": [
+    {"type": "udp", "tag": "a_udp", "server": "1.1.1.1", "server_port": 53, "enabled": true},
+    {"type": "udp", "tag": "b_udp", "server": "8.8.8.8", "server_port": 53, "enabled": true},
+    {"type": "group", "tag": "shield", "servers": ["a_udp", "b_udp"], "mode": "fastest", "error_ttl": "5m", "enabled": true}
+  ]
+}

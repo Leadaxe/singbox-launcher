@@ -1,0 +1,26 @@
+{
+  "servers": [
+    {
+      "server": "1.1.1.1",
+      "server_port": 53,
+      "tag": "a_udp",
+      "type": "udp"
+    },
+    {
+      "server": "8.8.8.8",
+      "server_port": 53,
+      "tag": "b_udp",
+      "type": "udp"
+    },
+    {
+      "error_ttl": "5m",
+      "mode": "fastest",
+      "servers": [
+        "a_udp",
+        "b_udp"
+      ],
+      "tag": "shield",
+      "type": "group"
+    }
+  ]
+}

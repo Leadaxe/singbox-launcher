@@ -34,12 +34,16 @@ import (
 // dnsServerVarPrefix — префикс имени переменной, порождённой записью DNS-сервера.
 const dnsServerVarPrefix = "dns_"
 
-// normalizeDNSOptions разворачивает вложенные записи серверов в плоские и
+// NormalizeDNSOptions разворачивает вложенные записи серверов в плоские и
 // возвращает переменные, которые эти записи объявили.
+//
+// Экспортирована: этот шов — часть контракта с LxBox (разрыв N8), и
+// конформанс-раннер корпуса обязан идти ровно через него, а не через свою
+// копию логики.
 //
 // Плоские записи проходят насквозь без изменений: шаблон, написанный в
 // нашей форме, обязан грузиться байт-в-байт как раньше.
-func normalizeDNSOptions(raw json.RawMessage) (json.RawMessage, []TemplateVar) {
+func NormalizeDNSOptions(raw json.RawMessage) (json.RawMessage, []TemplateVar) {
 	if len(raw) == 0 {
 		return raw, nil
 	}

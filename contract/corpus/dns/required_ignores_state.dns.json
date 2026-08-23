@@ -1,0 +1,7 @@
+{
+  "_": "required-запись эмитится даже при enabled:false в состоянии: без служебного резолвера не поднимается остальное, и выключить его случайным кликом нельзя",
+  "servers": [
+    {"type": "local", "tag": "local_dns_resolver", "required": true, "enabled": true}
+  ],
+  "state": [{"tag": "local_dns_resolver", "enabled": false}]
+}
