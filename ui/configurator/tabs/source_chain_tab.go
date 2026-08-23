@@ -59,10 +59,10 @@ type chainForm struct {
 	// стереть настройку, которую форма просто не умеет отобразить.
 	keep configtypes.SourceChain
 
-	// detourTags — позиции, чьи узлы уже ходят через собственный detour.
-	// Два механизма многохопа на одном пути дают маршрут, которого никто не
-	// задумывал: цепочка ставит звено «узел через предыдущую позицию», а
-	// detour узла добавляет к нему ещё один невидимый в списке хоп (T7).
+	// detourTags — узлы со своим detour. Что он значит внутри цепочки,
+	// зависит от позиции: на входе (позиция 1) он работает и удлиняет путь,
+	// на звеньях (позиция ≥ 2) перезаписывается и не действует вовсе — см.
+	// conflicts(), где это различие и разводится (T7).
 	detourTags map[string]bool
 
 	// realityTags — позиции, чьи узлы поднимают reality: у них нельзя
@@ -387,17 +387,32 @@ func (f *chainForm) conflicts() []string {
 		out = append(out, locale.Tf("wizard.chain.conflict_nested", strings.Join(nested, ", ")))
 	}
 
-	// T7: узел, у которого уже есть свой detour. Ядру это не мешает, но
-	// путь получается длиннее показанного, и разбираться в нём придётся по
-	// логам — предупредить дешевле.
-	var detoured []string
-	for _, tag := range f.hops {
-		if f.detourTags[tag] {
-			detoured = append(detoured, tag)
+	// T7: узел со своим detour. Что произойдёт — зависит от ПОЗИЦИИ, и
+	// сказать одно и то же про обе значило бы соврать про одну из них
+	// (проверено на ядре 1.14.0-lx.27-rc.5):
+	//
+	//   позиция 1 (вход) — узел не клонируется и идёт как есть, вместе со
+	//     своим детуром. Реальный путь ДЛИННЕЕ показанного: перед первым
+	//     хопом добавляется ещё один, которого в списке нет;
+	//   позиция ≥ 2 (звено) — detour перезаписывается на предыдущую позицию
+	//     безусловно (`protocol/chain/transform.go:110`): поле одно, и
+	//     именно им цепочка выражает «через предыдущий хоп». Собственный
+	//     детур узла просто не применяется — путь ровно такой, как нарисован.
+	//
+	// Первое — предупреждение (пользователь получит не тот путь), второе —
+	// справка (всё работает, но настройка узла здесь не действует; советовать
+	// «уберите detour» бессмысленно, он и так игнорируется).
+	if len(f.hops) > 0 && f.detourTags[f.hops[0]] {
+		out = append(out, locale.Tf("wizard.chain.conflict_detour_entry", f.hops[0]))
+	}
+	var detouredLinks []string
+	for i := 1; i < len(f.hops); i++ {
+		if f.detourTags[f.hops[i]] {
+			detouredLinks = append(detouredLinks, f.hops[i])
 		}
 	}
-	if len(detoured) > 0 {
-		out = append(out, locale.Tf("wizard.chain.conflict_detour", strings.Join(detoured, ", ")))
+	if len(detouredLinks) > 0 {
+		out = append(out, locale.Tf("wizard.chain.note_detour_ignored", strings.Join(detouredLinks, ", ")))
 	}
 
 	// Позиция, которой больше нет среди целей: ссылка в никуда.

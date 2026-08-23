@@ -157,7 +157,23 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 	if ps == nil || src == nil {
 		return
 	}
-	if ps.Source != "" {
+	if ps.Chain != nil {
+		// SPEC 110: цепочка. Проверяется ПЕРВОЙ: у неё нет ни Source, ни
+		// Connections, ни ConfigJSON — то есть в ветки ниже она не попадает
+		// вовсе, и Save молча терял бы все позиции.
+		src.Type = wizardmodels.SourceTypeChain
+		src.Chain = ps.Chain
+		src.URL = ""
+		src.URI = ""
+		src.Outbounds = nil
+		src.Enabled = !ps.Disabled
+		src.ExcludeFromGlobal = ps.ExcludeFromGlobal
+		// TagMask несёт имя: тег узла цепочки берётся оттуда же, откуда у
+		// server-source.
+		if ps.TagMask != "" {
+			src.Label = ps.TagMask
+		}
+	} else if ps.Source != "" {
 		// subscription
 		src.Type = wizardmodels.SourceTypeSubscription
 		src.URL = ps.Source
