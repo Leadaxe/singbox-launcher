@@ -432,6 +432,30 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 | `enabled` | bool | Toggle. |
 | `body` | `map[string]interface{}` | Только для `kind=user` — полное sing-box dns rule body (rule_set / server / domain_* / ip_cidr / port / network / ...). nil для preset. |
 
+**Записи шаблона: две формы (SPEC 109).** `template.dns_options.servers[]`
+принимает запись в двух видах — плоском (наш) и вложенном
+`{description, enabled, vars[], server{}}` (LxBox). Вложенная разворачивается
+в плоскую при загрузке шаблона (`template.NormalizeDNSOptions`), поэтому в
+`state.json` и в остальном коде запись всегда плоская.
+
+Объявленные записью `vars[]` становятся переменными шаблона с именем
+`dns_<tag>_<var>` и живут в общем пространстве имён с остальными
+`@placeholder`. Префикс обязателен: без него `outbound` от `google_dot`
+затирал бы `outbound` от `cloudflare_dot`. На вкладке Settings они не
+показываются (`wizard_ui: hidden`) — их место в окне самого сервера, иначе
+список настроек распух бы на два десятка неотличимых строк «Outbound».
+
+Значение такой переменной хранится в `vars[]` состояния, как любая другая
+настройка; тело сервера остаётся в шаблоне и в состояние не копируется.
+
+**Состав группы (`type: group`) чистится на сборке.** Участник, которого нет
+в итоговом списке серверов — выключен пользователем или объявлен неактивным
+пресетом, — исключается из состава, а группа без участников не эмитится
+вовсе. Ссылка на неэмитнутый тег роняет ВЕСЬ конфиг
+(`dependency[x] not found for server[group]`), поэтому «оставить как есть»
+не вариант; «включить недостающих за пользователя» — тоже: трафик пошёл бы
+через серверы, которых он не выбирал.
+
 **Удалено:**
 - `independent_cache` — deprecated в sing-box 1.14.0 (cache всегда per-transport). Legacy state с этим ключом парсится без ошибок (unknown field ignored), новые saves не пишут.
 - `extra_servers[]`, `extra_rules[]`, `template_servers` map — старая dev-схема SPEC 053, заменена flat-list'ом с kind discriminator (SPEC 056-R-N).

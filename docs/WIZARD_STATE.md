@@ -438,6 +438,30 @@ written back.
 | `enabled` | bool | Toggle. |
 | `body` | `map[string]interface{}` | For `kind=user` only — the full sing-box dns rule body (rule_set / server / domain_* / ip_cidr / port / network / ...). nil for preset. |
 
+**Template entries: two shapes (SPEC 109).** `template.dns_options.servers[]`
+accepts an entry in two forms — flat (ours) and nested
+`{description, enabled, vars[], server{}}` (LxBox). The nested one is expanded
+into the flat one when the template loads (`template.NormalizeDNSOptions`), so
+in `state.json` and everywhere downstream an entry is always flat.
+
+The `vars[]` an entry declares become template variables named
+`dns_<tag>_<var>`, sharing one namespace with every other `@placeholder`. The
+prefix is required: without it `outbound` from `google_dot` would overwrite
+`outbound` from `cloudflare_dot`. They are hidden from the Settings tab
+(`wizard_ui: hidden`) — their place is the server's own window, otherwise the
+settings list would grow by two dozen indistinguishable "Outbound" rows.
+
+Such a variable's value is stored in the state's `vars[]` like any other
+setting; the server body stays in the template and is never copied into state.
+
+**A group's members are pruned at build time.** A member missing from the final
+server list — switched off by the user, or declared by an inactive preset — is
+dropped from the group, and a group left with no members is not emitted at all.
+A reference to a tag that was not emitted brings down the WHOLE config
+(`dependency[x] not found for server[group]`), so "leave it and hope" is not an
+option; neither is "enable the missing ones for them" — traffic would then go
+through servers they never picked.
+
 **Removed:**
 - `independent_cache` — deprecated in sing-box 1.14.0 (the cache is always per-transport). A legacy state carrying this key still parses (the unknown field is ignored); new saves don't write it.
 - `extra_servers[]`, `extra_rules[]`, the `template_servers` map — the old SPEC 053 dev schema, replaced by a flat list with a kind discriminator (SPEC 056-R-N).
