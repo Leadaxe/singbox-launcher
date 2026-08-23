@@ -1,0 +1,24 @@
+{
+  "_": "Ядро без with_lx_chain не знает тип chain и отвергает конфиг целиком — цепочка не эмитится вовсе, остальные Направления собираются как обычно.",
+  "core_supports_chain": false,
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "filter": "Frankfurt"
+    },
+    {
+      "tag": "double-hop",
+      "chain": {
+        "hops": ["vpn-1", "🇳🇱 Amsterdam"]
+      }
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

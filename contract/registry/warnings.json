@@ -379,6 +379,54 @@
       "desc": "int-переменная содержит не число — уезжает в конфиг строкой как есть (опечатка видна, не маскируется нулём; §2.2, D-055).",
       "dart": "test/contract/template_contract_test.dart: _coerceWithWarnings",
       "go": "core/template/substitute_canon.go: intCastCanon"
+    },
+    "chain_unsupported_by_core": {
+      "severity": "error",
+      "params": [
+        "version",
+        "tag"
+      ],
+      "desc": "Ядро собрано без with_lx_chain и не знает тип outbound'а chain (SPEC 110). Ядро отвергает конфиг ЦЕЛИКОМ на неизвестном типе, поэтому цепочка не эмитится вовсе, а правила на неё уходят на route.final — иначе одна настроенная цепочка лишила бы пользователя VPN, а не одного маршрута. Тот же приём деградации, что naive_unavailable.",
+      "dart": "ChainBuildTagWarning",
+      "go": "core/core_chain_capability.go:96"
+    },
+    "chain_hop_missing": {
+      "severity": "error",
+      "params": [
+        "position",
+        "target"
+      ],
+      "desc": "Позиция цепочки не дошла до конфига: узел исчез из подписки, Направление выключено или отфильтровалось пустым. Цепочка выпадает ЦЕЛИКОМ, а не теряет одну позицию: маршрут без хопа это другой маршрут, а ссылка в никуда не даёт ядру стартовать. Не путать с detour_target_missing — там узел живёт и ходит напрямую.",
+      "dart": "ChainHopMissingWarning",
+      "go": "core/config/chain_generator.go:96"
+    },
+    "chain_invalid": {
+      "severity": "error",
+      "params": [
+        "reason"
+      ],
+      "desc": "Цепочка нарушает инвариант ядра: меньше двух позиций, пустой тег, ссылка на саму себя, повтор позиции или неизвестный ключ каталога strip (protocol/chain/chain.go:85-100). Каждое из этих условий не даёт стартовать всему конфигу, поэтому запись не эмитится.",
+      "dart": "ChainInvalidWarning",
+      "go": "core/config/chain_generator.go:52"
+    },
+    "chain_strip_utls_on_reality": {
+      "severity": "error",
+      "params": [
+        "target"
+      ],
+      "desc": "Цепочка снимает tls.utls у звена, чей узел поднимает reality. Ядро отказывается это делать и падает при старте (protocol/chain/transform.go:212): отпечаток ClientHello в reality — несущий элемент протокола, а не маскировка. Форма обязана предотвращать такую настройку, а не давать поймать её в рантайме.",
+      "dart": "ChainStripUtlsRealityWarning",
+      "go": "core/config/chain_validate.go:66"
+    },
+    "chain_nested_position": {
+      "severity": "error",
+      "params": [
+        "position",
+        "target"
+      ],
+      "desc": "Вложенная цепочка стоит не на позиции 0. Ядро допускает её только первой (protocol/chain/chain.go:279): звено — это «узел через предыдущую позицию», а цепочка не узел и не пересобирается под чужой диалер.",
+      "dart": "ChainNestedPositionWarning",
+      "go": "core/config/chain_validate.go:85"
     }
   }
 }

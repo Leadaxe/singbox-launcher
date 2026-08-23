@@ -1,0 +1,12 @@
+{
+  "groups": [
+    {
+      "outbounds": [
+        "🇩🇪 Frankfurt",
+        "🇳🇱 Amsterdam"
+      ],
+      "tag": "hop-chain",
+      "type": "chain"
+    }
+  ]
+}

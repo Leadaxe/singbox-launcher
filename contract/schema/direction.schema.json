@@ -2,9 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lx-contract/schema/direction.schema.json",
   "title": "LX Direction",
-  "description": "Направление — именованная точка выбора, на которую ссылаются правила (SPEC 104). Каноническая форма, общая для лаунчера и LxBox: обе стороны читают и пишут ЭТО, а не свои внутренние структуры. Материализуется в selector + опциональный парный urltest.",
+  "description": "Направление — именованная точка выбора, на которую ссылаются правила (SPEC 104). Каноническая форма, общая для лаунчера и LxBox: обе стороны читают и пишут ЭТО, а не свои внутренние структуры. Материализуется в selector + опциональный парный urltest — либо, если задан chain, в цепочку хопов (SPEC 110).",
   "type": "object",
-  "required": ["tag"],
+  "required": [
+    "tag"
+  ],
   "additionalProperties": false,
   "properties": {
     "tag": {
@@ -46,7 +48,9 @@
     },
     "include": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Теги других Направлений, предлагаемых опцией. Разрешены только стоящие ВЫШЕ по списку — порядок исключает циклы по построению. Парные <tag>-auto сюда не попадают: двойник является опцией только своего Направления."
     },
     "interrupt_exist_connections": {
@@ -56,6 +60,10 @@
     "auto": {
       "$ref": "#/$defs/auto",
       "description": "Параметры парной urltest-группы <tag>-auto. Отсутствие ключа = автовыбора нет и группа не эмитится вовсе."
+    },
+    "chain": {
+      "$ref": "#/$defs/chain",
+      "description": "Цепочка хопов вместо селектора (SPEC 110). Присутствие ключа делает Направление цепочкой: у него нет ни состава, ни фильтра, ни автовыбора, и поля filter/invert/default/include*/auto при нём не имеют смысла. Материализуется в outbound типа chain, доступный только ядрам, собранным с тегом with_lx_chain."
     }
   },
   "$defs": {
@@ -65,21 +73,107 @@
       "description": "Парная группа <tag>-auto: состав тот же, что у Направления, минус группы выбора (urltest внутри urltest мерил бы выбор внутренней группы, а не сервер). Становится умолчанием Направления, если поле default ничего не поймало.",
       "properties": {
         "mode": {
-          "enum": ["least_test", "round_robin"],
+          "enum": [
+            "least_test",
+            "round_robin"
+          ],
           "default": "least_test",
           "description": "least_test — один самый быстрый узел (апстрим). round_robin — ротация по пулу; только он эмитит balancer."
         },
-        "url": { "type": "string", "description": "Адрес проверки задержки." },
-        "interval": { "type": "string", "description": "Период перепроверки (\"15m\")." },
-        "tolerance": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "На сколько миллисекунд новый лидер должен опередить текущего, чтобы произошло переключение." },
-        "idle_timeout": { "type": "string", "description": "Через сколько простоя перестать проверять." },
-        "interrupt_exist_connections": { "type": "boolean" },
-        "pool": { "type": "integer", "minimum": 1, "description": "round_robin: размер пула." },
-        "pool_tolerance": { "type": "integer", "minimum": 0, "maximum": 65535, "description": "round_robin: запас задержки, при котором узел остаётся в пуле." },
+        "url": {
+          "type": "string",
+          "description": "Адрес проверки задержки."
+        },
+        "interval": {
+          "type": "string",
+          "description": "Период перепроверки (\"15m\")."
+        },
+        "tolerance": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "На сколько миллисекунд новый лидер должен опередить текущего, чтобы произошло переключение."
+        },
+        "idle_timeout": {
+          "type": "string",
+          "description": "Через сколько простоя перестать проверять."
+        },
+        "interrupt_exist_connections": {
+          "type": "boolean"
+        },
+        "pool": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "round_robin: размер пула."
+        },
+        "pool_tolerance": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "round_robin: запас задержки, при котором узел остаётся в пуле."
+        },
         "sticky_hash": {
           "type": "array",
-          "items": { "enum": ["process", "domain", "source_ip", "dest_ip", "dest_port", "none"] },
+          "items": {
+            "enum": [
+              "process",
+              "domain",
+              "source_ip",
+              "dest_ip",
+              "dest_port",
+              "none"
+            ]
+          },
           "description": "round_robin: поля соединения, привязывающие сессию к одному узлу пула. Пустой список НЕ выключает липкость — ядро схлопывает его в умолчание; выключение — это явный [\"none\"]."
+        }
+      }
+    },
+    "chain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hops"
+      ],
+      "description": "Многохоповый маршрут: клиент → хоп 1 → хоп 2 → … → цель. Отличается от detour тем, что позицией может быть группа любой вложенности (переключение внутри неё меняет путь без перезапуска), а узел не дублируется в конфиге — звено создаётся в рантайме.",
+      "properties": {
+        "hops": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Позиции В ПОРЯДКЕ ПАКЕТА: первая — ближайший к вам хоп, последняя — та, чей адрес видит цель. У detour порядок обратный («кто через кого»), и перепутать их значит собрать работающий, но не тот маршрут. Позицией может быть узел, группа, другое Направление или служебный тег. Минимум две, непустые, без повторов и без ссылки на саму цепочку — нарушение любого условия не даёт стартовать ВСЕМУ конфигу, а не одной цепочке. Вложенная цепочка допустима только первой позицией."
+        },
+        "idle_timeout": {
+          "type": "string",
+          "description": "Через сколько простоя удалить звено без живых соединений. Отсутствие ключа = умолчание ядра (5m); \"0s\" — жить до остановки."
+        },
+        "strip_evasion": {
+          "type": "boolean",
+          "description": "Снимать ли у звеньев односторонние приёмы обхода DPI. Отсутствие ключа означает «умолчание ядра» (true), а не false: внутри туннеля эти приёмы сервер не видит, и они дают только задержки."
+        },
+        "strip": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "propertyNames": {
+            "enum": [
+              "tls.fragment",
+              "multiplex.padding",
+              "xhttp.padding",
+              "tls.utls"
+            ]
+          },
+          "description": "Точечный патч поверх strip_evasion: false — не снимать, true — снимать дополнительно. Список ключей закрыт: неизвестный ключ ядро считает ошибкой старта. По умолчанию снимаются первые три; tls.utls не снимается, и на узлах с reality снимать его нельзя — отпечаток ClientHello там несущий элемент протокола, а не маскировка."
+        },
+        "rewrite": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object"
+          },
+          "description": "JSON merge-patch (RFC 7396) поверх опций узла, ключ — тип outbound'а. Применяется к звеньям (позиции со второй) после strip. Формой не правится: произвольный патч по всем типам протоколов урезанная форма молча потеряла бы."
         }
       }
     }

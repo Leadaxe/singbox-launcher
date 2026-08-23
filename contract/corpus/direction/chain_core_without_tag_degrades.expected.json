@@ -1,0 +1,14 @@
+{
+  "groups": [
+    {
+      "outbounds": [
+        "🇩🇪 Frankfurt"
+      ],
+      "tag": "vpn-1",
+      "type": "selector"
+    }
+  ],
+  "warnings": [
+    "chain_unsupported_by_core"
+  ]
+}

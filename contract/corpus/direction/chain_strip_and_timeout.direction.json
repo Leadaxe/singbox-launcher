@@ -1,0 +1,25 @@
+{
+  "_": "Настройки звеньев доезжают до конфига: простой, общий переключатель и точечный патч каталога strip в порядке каталога ядра.",
+  "directions": [
+    {
+      "tag": "tuned-chain",
+      "chain": {
+        "hops": ["🇩🇪 Frankfurt", "🇳🇱 Amsterdam"],
+        "idle_timeout": "10m",
+        "strip_evasion": false,
+        "strip": {
+          "tls.utls": true,
+          "tls.fragment": false
+        }
+      }
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

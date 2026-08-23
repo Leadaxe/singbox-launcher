@@ -1,0 +1,19 @@
+{
+  "_": "Позиция, не дошедшая до конфига, убирает цепочку целиком: маршрут без хопа — это другой маршрут, а ссылка в никуда не даёт ядру стартовать.",
+  "directions": [
+    {
+      "tag": "broken-chain",
+      "chain": {
+        "hops": ["🇩🇪 Frankfurt", "🇸🇬 Singapore"]
+      }
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

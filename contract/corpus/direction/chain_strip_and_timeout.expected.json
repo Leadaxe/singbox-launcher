@@ -1,0 +1,18 @@
+{
+  "groups": [
+    {
+      "idle_timeout": "10m",
+      "outbounds": [
+        "🇩🇪 Frankfurt",
+        "🇳🇱 Amsterdam"
+      ],
+      "strip": {
+        "tls.fragment": false,
+        "tls.utls": true
+      },
+      "strip_evasion": false,
+      "tag": "tuned-chain",
+      "type": "chain"
+    }
+  ]
+}

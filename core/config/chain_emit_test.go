@@ -180,7 +180,7 @@ func TestChainEmit_DegradesWithoutCoreSupport(t *testing.T) {
 		"hop-a": {isValid: true},
 		"hop-b": {isValid: true},
 	}
-	out, reason := emitChainDirection(chainDirection("hop-a", "hop-b"), info)
+	out, reason := emitChainDirection(chainDirection("hop-a", "hop-b"), info, nil, DirectionBuildOptions{})
 	if out != "" {
 		t.Fatalf("цепочка выпущена на ядро без поддержки: %s", out)
 	}
@@ -200,19 +200,50 @@ func TestChainEmit_NilProbeAssumesSupported(t *testing.T) {
 		"hop-a": {isValid: true},
 		"hop-b": {isValid: true},
 	}
-	out, reason := emitChainDirection(chainDirection("hop-a", "hop-b"), info)
+	out, reason := emitChainDirection(chainDirection("hop-a", "hop-b"), info, nil, DirectionBuildOptions{})
 	if out == "" {
 		t.Fatalf("цепочка не выпущена при неизвестной поддержке: %s", reason)
 	}
 }
 
-// Константа шаблона (direct-out) генератором не создаётся и в outboundsInfo
-// не попадает — ровно как в addOutbounds селектора. Считать её потерянной
-// позицией значило бы запретить цепочку через встроенные outbound'ы.
+// Служебный тег шаблона генератором не создаётся и в outboundsInfo не
+// попадает — его кладёт в конфиг сам шаблон. Разрешён ЯВНО, по имени из
+// DirectionBuildOptions.
 func TestChainEmit_TemplateConstantHopAllowed(t *testing.T) {
 	info := map[string]*outboundInfo{"hop-a": {isValid: true}}
-	out, reason := emitChainDirection(chainDirection("hop-a", "direct-out"), info)
+	opts := DirectionBuildOptions{DirectTag: "direct-out", BlockTag: "block-out"}
+	out, reason := emitChainDirection(chainDirection("hop-a", "direct-out"), info, nil, opts)
 	if out == "" {
-		t.Fatalf("цепочка через константу шаблона не выпущена: %s", reason)
+		t.Fatalf("цепочка через служебный тег шаблона не выпущена: %s", reason)
+	}
+}
+
+// Узел подписки — законная позиция, но в outboundsInfo его нет (там только
+// группы). Его теги приезжают отдельным набором.
+func TestChainEmit_NodeHopAllowed(t *testing.T) {
+	out, reason := emitChainDirection(
+		chainDirection("🇩🇪 Frankfurt", "🇳🇱 Amsterdam"),
+		map[string]*outboundInfo{},
+		map[string]bool{"🇩🇪 Frankfurt": true, "🇳🇱 Amsterdam": true},
+		DirectionBuildOptions{})
+	if out == "" {
+		t.Fatalf("цепочка из узлов подписки не выпущена: %s", reason)
+	}
+}
+
+// Неизвестный тег — это чаще потерянный узел, чем константа шаблона.
+// Выпустить цепочку с ним значит не дать ядру стартовать вовсе, поэтому
+// «чего не знаем — то запрещаем».
+func TestChainEmit_UnknownHopRejected(t *testing.T) {
+	out, reason := emitChainDirection(
+		chainDirection("🇩🇪 Frankfurt", "🇸🇬 Singapore"),
+		map[string]*outboundInfo{},
+		map[string]bool{"🇩🇪 Frankfurt": true},
+		DirectionBuildOptions{DirectTag: "direct-out"})
+	if out != "" {
+		t.Fatalf("выпущена цепочка с неизвестным тегом: %s", out)
+	}
+	if !strings.Contains(reason, "Singapore") {
+		t.Errorf("причина не называет потерянную позицию: %q", reason)
 	}
 }

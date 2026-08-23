@@ -345,6 +345,24 @@ func generateSelectorJSONs(
 	localCount := 0
 	globalCount := 0
 
+	// SPEC 110: позицией цепочки может быть узел, а узлы в outboundsInfo не
+	// попадают — там только группы. Без их тегов проверка «позиция дошла до
+	// конфига» приняла бы потерянный узел за константу шаблона и выпустила
+	// бы цепочку со ссылкой в никуда, на которой ядро не стартует.
+	nodeTags := make(map[string]bool, len(globalNodePool))
+	for _, n := range globalNodePool {
+		if n != nil && n.Tag != "" {
+			nodeTags[n.Tag] = true
+		}
+	}
+	for _, list := range nodesBySource {
+		for _, n := range list {
+			if n != nil && n.Tag != "" {
+				nodeTags[n.Tag] = true
+			}
+		}
+	}
+
 	for i, proxySource := range parserConfig.ParserConfig.Proxies {
 		if len(proxySource.Outbounds) == 0 {
 			continue
@@ -381,7 +399,7 @@ func generateSelectorJSONs(
 		// маршрут. Не выпущенная цепочка выпадает из конфига, а правила на
 		// неё чистит CleanDanglingOutboundsInRouteRules.
 		if outboundConfig.IsChain() {
-			chainJSON, reason := emitChainDirection(outboundConfig, outboundsInfo)
+			chainJSON, reason := emitChainDirection(outboundConfig, outboundsInfo, nodeTags, directions)
 			if chainJSON != "" {
 				out = append(out, chainJSON)
 				globalCount++
@@ -462,27 +480,36 @@ type ChainDegradation struct {
 // Проба ядра — первым делом (SPEC 110 T1): ядро без `with_lx_chain`
 // отвергает ВЕСЬ конфиг на неизвестном типе, то есть одна настроенная
 // цепочка оставила бы пользователя вообще без VPN.
-func emitChainDirection(d Direction, outboundsInfo map[string]*outboundInfo) (string, string) {
+func emitChainDirection(
+	d Direction,
+	outboundsInfo map[string]*outboundInfo,
+	nodeTags map[string]bool,
+	opts DirectionBuildOptions,
+) (string, string) {
 	if supported, reason := chainSupported(); !supported {
 		if reason == "" {
 			reason = "ядро не поддерживает цепочки"
 		}
 		return "", reason
 	}
-	validTags := make(map[string]bool, len(outboundsInfo))
+	validTags := make(map[string]bool, len(outboundsInfo)+len(nodeTags)+2)
 	for tag, info := range outboundsInfo {
 		if info.isValid {
 			validTags[tag] = true
 		}
 	}
-	// Позиция может быть и константой шаблона (direct-out), которой в
-	// outboundsInfo нет вовсе, — такие теги генератор не создаёт и не
-	// проверяет; их существование остаётся на совести шаблона, ровно как у
-	// констант в addOutbounds селектора.
-	for _, tag := range d.Chain.HopsOrNil() {
-		if _, known := outboundsInfo[tag]; !known {
-			validTags[tag] = true
-		}
+	for tag := range nodeTags {
+		validTags[tag] = true
+	}
+	// Служебные теги шаблона генератор не создаёт: их кладёт в конфиг сам
+	// шаблон, и в outboundsInfo их нет. Разрешаем ровно известные — а не
+	// «всё, чего мы не знаем»: неизвестный тег это чаще потерянный узел,
+	// чем константа, и выпущенная с ним цепочка не даёт ядру стартовать.
+	if opts.DirectTag != "" {
+		validTags[opts.DirectTag] = true
+	}
+	if opts.BlockTag != "" {
+		validTags[opts.BlockTag] = true
 	}
 	return GenerateChainJSON(d, validTags)
 }

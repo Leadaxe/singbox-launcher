@@ -1,0 +1,23 @@
+{
+  "_": "Цепочка эмитится outbound'ом типа chain; позиции сохраняют порядок пакета — первая ближе к клиенту, последняя видна цели.",
+  "directions": [
+    {
+      "tag": "vpn-1",
+      "filter": "Frankfurt"
+    },
+    {
+      "tag": "double-hop",
+      "chain": {
+        "hops": ["vpn-1", "🇳🇱 Amsterdam"]
+      }
+    }
+  ],
+  "node_tags": [
+    "🇩🇪 Frankfurt",
+    "🇳🇱 Amsterdam"
+  ],
+  "magic": {
+    "direct": "direct-out",
+    "block": "block-out"
+  }
+}

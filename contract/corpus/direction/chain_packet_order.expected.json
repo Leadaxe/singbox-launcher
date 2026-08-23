@@ -1,0 +1,19 @@
+{
+  "groups": [
+    {
+      "outbounds": [
+        "🇩🇪 Frankfurt"
+      ],
+      "tag": "vpn-1",
+      "type": "selector"
+    },
+    {
+      "outbounds": [
+        "vpn-1",
+        "🇳🇱 Amsterdam"
+      ],
+      "tag": "double-hop",
+      "type": "chain"
+    }
+  ]
+}

@@ -40,6 +40,16 @@ type corpusDirection struct {
 	Include                   []string         `json:"include,omitempty"`
 	InterruptExistConnections *bool            `json:"interrupt_exist_connections,omitempty"`
 	Auto                      *corpusAutoGroup `json:"auto,omitempty"`
+	Chain                     *corpusChain     `json:"chain,omitempty"`
+}
+
+// corpusChain — каноническая форма цепочки (SPEC 110).
+type corpusChain struct {
+	Hops         []string               `json:"hops"`
+	IdleTimeout  string                 `json:"idle_timeout,omitempty"`
+	StripEvasion *bool                  `json:"strip_evasion,omitempty"`
+	Strip        map[string]bool        `json:"strip,omitempty"`
+	Rewrite      map[string]interface{} `json:"rewrite,omitempty"`
 }
 
 type corpusAutoGroup struct {
@@ -68,6 +78,13 @@ type corpusDirectionCase struct {
 
 	// TagPrefix — префикс тегов подписки: от него зависят теги её групп.
 	TagPrefix string `json:"tag_prefix,omitempty"`
+
+	// CoreSupportsChain — умеет ли ядро тип `chain` (SPEC 110). Отсутствует
+	// = умеет. Кейс с false проверяет деградацию: ядро без with_lx_chain
+	// отвергает конфиг ЦЕЛИКОМ, поэтому цепочка обязана не эмититься вовсе.
+	// Это единственное свойство ОКРУЖЕНИЯ в корпусе, и оно здесь потому,
+	// что от него зависит выход, а не форма модели.
+	CoreSupportsChain *bool `json:"core_supports_chain,omitempty"`
 }
 
 // corpusSourceFold — каноническая форма свёртки
@@ -125,6 +142,23 @@ func (c corpusDirection) toDirection() configtypes.Direction {
 	}
 	if c.Auto != nil {
 		d.Auto = c.Auto.toDirectionAuto()
+	}
+	// SPEC 110: цепочка — другой тип outbound'а, а не свойство селектора.
+	// Поля отбора при ней бессмысленны и обнуляются здесь же: кейс, который
+	// задал бы и то и другое, не должен молча собраться селектором.
+	if c.Chain != nil {
+		d.Type = configtypes.DirectionTypeChain
+		d.Chain = &configtypes.DirectionChain{
+			Hops:         c.Chain.Hops,
+			IdleTimeout:  c.Chain.IdleTimeout,
+			StripEvasion: c.Chain.StripEvasion,
+			Strip:        c.Chain.Strip,
+			Rewrite:      c.Chain.Rewrite,
+		}
+		d.Filters = nil
+		d.PreferredDefault = nil
+		d.AddOutbounds = nil
+		d.Auto = nil
 	}
 	return d
 }
@@ -197,6 +231,18 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 		nodes = append(nodes, n)
 	}
 
+	if in.CoreSupportsChain != nil {
+		prev := ChainSupportProbe
+		supported := *in.CoreSupportsChain
+		ChainSupportProbe = func() (bool, string) {
+			if supported {
+				return true, ""
+			}
+			return false, "ядро собрано без with_lx_chain"
+		}
+		defer func() { ChainSupportProbe = prev }()
+	}
+
 	opts := DirectionBuildOptions{
 		BlockTag:  in.Magic["block"],
 		DirectTag: in.Magic["direct"],
@@ -230,6 +276,20 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 		for _, name := range res.EmptyDirections {
 			_ = name
 			got.Warnings = append(got.Warnings, "direction_filter_matched_nothing")
+		}
+		for _, c := range res.BrokenChains {
+			// Код различает причину: «ядро не умеет» и «позиция потерялась»
+			// требуют от пользователя разных действий — обновить ядро или
+			// починить состав, — и один общий код скрыл бы это различие.
+			// Имена — из contract/registry/warnings.json.
+			code := "chain_invalid"
+			switch {
+			case strings.Contains(c.Reason, "with_lx_chain"):
+				code = "chain_unsupported_by_core"
+			case strings.Contains(c.Reason, "не дошла до конфига"):
+				code = "chain_hop_missing"
+			}
+			got.Warnings = append(got.Warnings, code)
 		}
 	}
 	sort.Strings(got.Warnings)
