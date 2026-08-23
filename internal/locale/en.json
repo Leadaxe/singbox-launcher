@@ -546,6 +546,7 @@
   "wizard.dns.details_copy": "Copy JSON",
   "wizard.dns.form_members_add": "Add member",
   "wizard.dns.form_members_empty": "No members yet",
+  "wizard.dns.form_member_off": "(off — will be skipped)",
   "wizard.dns.form_members_none": "No other DNS servers to add. Create one first — a group queries existing servers.",
   "wizard.dns.form_members_hint": "One tag per line",
   "wizard.dns.json_hint": "The same entry as raw JSON, in sing-box dns.servers form. Types without a form are edited here.",

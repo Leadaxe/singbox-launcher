@@ -542,6 +542,7 @@
   "wizard.dns.details_copy": "Копировать JSON",
   "wizard.dns.form_members_add": "Добавить участника",
   "wizard.dns.form_members_empty": "Участников пока нет",
+  "wizard.dns.form_member_off": "(выключен — не попадёт в конфиг)",
   "wizard.dns.form_members_none": "Больше нечего добавить. Сначала заведите сервер — группа опрашивает существующие.",
   "wizard.dns.form_members_hint": "По одному тегу в строке",
   "wizard.dns.json_hint": "Та же запись сырым JSON, в форме sing-box dns.servers. Типы без формы правятся здесь.",

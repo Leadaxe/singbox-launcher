@@ -86,6 +86,13 @@ type dnsServerForm struct {
 	rows    map[string]fyne.CanvasObject
 	content *fyne.Container
 
+	// enabledByTag — включённость серверов на момент открытия окна. Нужна,
+	// чтобы вычеркнуть в составе тех, кто выключен: они не попадут в конфиг
+	// (pruneDNSGroupMembers их отбросит), и группа окажется уже, чем
+	// выглядит. Убирать их из состава за пользователя нельзя — он мог
+	// выключить сервер временно.
+	enabledByTag map[string]bool
+
 	// applying — правка идёт из кода. Без флага programmatic SetSelected
 	// вызвал бы OnChanged, тот — перестроение формы, и она ушла бы в
 	// рекурсию (ловушка SPEC 104).
@@ -95,7 +102,10 @@ type dnsServerForm struct {
 // newDNSServerForm собирает форму. selfTag исключается из списка резолверов
 // (сервер, резолвящий собственное имя, вешает старт).
 func newDNSServerForm(p *wizardpresentation.WizardPresenter, selfTag string) *dnsServerForm {
-	f := &dnsServerForm{rows: map[string]fyne.CanvasObject{}}
+	f := &dnsServerForm{
+		rows:         map[string]fyne.CanvasObject{},
+		enabledByTag: dnsEnabledByTag(p.Model().DNSServers),
+	}
 
 	f.typeSelect = widget.NewSelect(dnsFormTypes, nil)
 	f.tagEntry = widget.NewEntry()
@@ -327,7 +337,19 @@ func (f *dnsServerForm) rebuildMembers() {
 	f.membersBox.Objects = f.membersBox.Objects[:0]
 	for i, tag := range f.members {
 		idx := i
-		label := widget.NewLabel(tag)
+		text := tag
+		var label *widget.Label
+		if f.enabledByTag[tag] {
+			label = widget.NewLabel(text)
+		} else {
+			// Выключенный участник: вычеркнут и подписан. Он останется в
+			// составе (пользователь мог выключить сервер временно), но в
+			// конфиг не попадёт — и об этом надо сказать здесь, а не дать
+			// обнаружить по факту укоротившейся группы.
+			label = widget.NewLabel(strikeThrough(text) + "   " +
+				locale.T("wizard.dns.form_member_off"))
+			label.Importance = widget.LowImportance
+		}
 		del := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
 			f.members = append(f.members[:idx:idx], f.members[idx+1:]...)
 			f.rebuildMembers()

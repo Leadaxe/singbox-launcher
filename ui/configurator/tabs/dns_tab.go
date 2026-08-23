@@ -16,7 +16,6 @@ import (
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
 	wizardtemplate "singbox-launcher/core/template"
-	"singbox-launcher/internal/dialogs"
 	"singbox-launcher/internal/fynewidget"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/components"
@@ -917,7 +916,17 @@ func showDNSServerDialog(
 		}
 	}
 
-	var dlg dialog.Dialog
+	// Отдельное окно, а не модальный диалог (как у правки DNS-правила,
+	// dns_user_rules.go): диалог живёт внутри канвы родителя и не может
+	// быть ни выше её, ни сдвинут. У формы сервера десяток полей, у группы
+	// ещё и список участников — в модальном окне это упирается в потолок
+	// визарда, а рядом с ним подсмотреть список серверов уже нельзя.
+	controller := p.Controller()
+	if controller == nil || controller.UIService == nil {
+		return
+	}
+	editWin := controller.UIService.Application.NewWindow(title)
+
 	save := widget.NewButton(locale.T("wizard.dns.dialog_save"), func() {
 		text := jsonEntry.Text
 		// С вкладки «Настройки» источник истины — форма: пользователь мог
@@ -926,25 +935,25 @@ func showDNSServerDialog(
 		if formOK && tabs.Selected() == formTab {
 			b, err := json.Marshal(form.Collect())
 			if err != nil {
-				dialog.ShowError(err, w)
+				dialog.ShowError(err, editWin)
 				return
 			}
 			text = string(b)
 		}
-		if applyDNSServerJSON(p, w, text, editIndex) && dlg != nil {
-			dlg.Hide()
+		if applyDNSServerJSON(p, editWin, text, editIndex) {
+			editWin.Close()
 		}
 	})
+	save.Importance = widget.HighImportance
 	cancel := widget.NewButton(locale.T("wizard.dns.dialog_cancel"), func() {
-		if dlg != nil {
-			dlg.Hide()
-		}
+		editWin.Close()
 	})
 
 	buttons := container.NewHBox(layout.NewSpacer(), cancel, save)
-	dlg = dialogs.NewCustom(title, tabs, buttons, "", w)
-	dlg.Resize(fyne.NewSize(600, 560))
-	dlg.Show()
+	editWin.SetContent(container.NewBorder(nil, buttons, nil, nil, tabs))
+	editWin.Resize(fyne.NewSize(660, 620))
+	editWin.CenterOnScreen()
+	editWin.Show()
 }
 
 func showDNSServerEditor(p *wizardpresentation.WizardPresenter, w fyne.Window, index int) {
