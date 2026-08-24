@@ -158,6 +158,17 @@ func ValidateWizardTemplate(vars []TemplateVar, params []TemplateParam, config j
 			return fmt.Errorf("config: @%q is not declared in vars", ref)
 		}
 	}
+
+	// Условные конструкции ГЛАВНОЙ секции — тем же обходом, что params и
+	// default_value. Раньше config проверялся только на необъявленные
+	// @-ссылки, и невалидный `#if` (без and/or, с обоими ключами, с
+	// опечаткой в имени переменной) проходил загрузку молча, а боевой
+	// обходчик трактует такое условие как TRUE — ветка вливалась в конфиг
+	// безусловно, обратной семантикой к контракту
+	// (contract/corpus/template/grammar/if_without_and_or_is_false).
+	if err := validateIfConstruct(config, varByName, "config"); err != nil {
+		return err
+	}
 	return nil
 }
 
