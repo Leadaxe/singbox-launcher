@@ -5,6 +5,7 @@ package backup
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"singbox-launcher/core/state"
@@ -61,19 +62,17 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 		b.Directions = append(b.Directions, exportDirection(d))
 	}
 
-	// SPEC 110: цепочки — источники, и roundtrip обязан их сохранять.
-	// В схеме LX Backup секции для них пока нет, поэтому едут в
-	// extensions.launcher (штатный канал для полей без места в схеме,
-	// BACKUP.md §1): другая сторона провозит блоб нетронутым.
-	var chains []state.Source
-	for _, src := range s.Connections.Sources {
+	// SPEC 110 (схема v1.2): цепочки — корневая секция chains[], у обеих
+	// сторон общая. Порядок записей нормативен (вложенная цепочка объявлена
+	// раньше использующей) — сохраняется порядок списка источников.
+	for i, src := range s.Connections.Sources {
 		switch src.Type {
 		case state.SourceTypeSubscription:
 			b.Subscriptions = append(b.Subscriptions, exportSubscription(src))
 		case state.SourceTypeServer:
 			b.Servers = append(b.Servers, exportServer(src))
 		case state.SourceTypeChain:
-			chains = append(chains, src)
+			b.Chains = append(b.Chains, exportChain(src, i))
 		}
 	}
 
@@ -108,18 +107,39 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 	// новой машине «Add WARP» плодил лишние device-записи в Cloudflare.
 	b.Warp = exportWarp(s)
 
-	if len(chains) > 0 {
-		if b.Extensions == nil {
-			b.Extensions = Extensions{}
-		}
-		raw, err := json.Marshal(map[string]any{"chains": chains})
-		if err != nil {
-			return nil, fmt.Errorf("chains: %w", err)
-		}
-		b.Extensions[AppLauncher] = raw
-	}
-
 	return b, nil
+}
+
+// exportChain — запись секции chains[] (SPEC 110, схема v1.2).
+//
+// Tag берётся из Label: у лаунчера имя источника цепочки и есть тег её
+// outbound'а (adapter_source.go), на который ссылаются правила и позиции
+// других цепочек. index — позиция источника в общем списке: у безымянной
+// цепочки тег на сборке получается позиционным (chainSourceTag), и в файл
+// обязан уехать тот же эффективный тег — схема требует tag, а импорт
+// зафиксирует его именем (нормализация той же категории, что перенумерация
+// правил).
+func exportChain(src state.Source, index int) Chain {
+	out := Chain{
+		Tag:   src.Label,
+		Chain: src.Chain,
+	}
+	if out.Tag == "" {
+		out.Tag = "chain-" + strconv.Itoa(index+1)
+	}
+	if !src.Enabled {
+		out.Enabled = boolPtr(false)
+	}
+	if ext := launcherSourceExtensions(src); ext != nil {
+		out.Extensions = Extensions{AppLauncher: ext}
+	}
+	// Чужой label (у лаунчера отдельного отображаемого имени нет) и прочие
+	// непонятые поля записи возвращаются на место (BACKUP.md §2).
+	foreignFields := attachForeignEntityExtensions(&out.Extensions, src.ForeignExtensions)
+	if raw, ok := foreignFields["label"]; ok {
+		_ = json.Unmarshal(raw, &out.Label)
+	}
+	return out
 }
 
 // exportWarp — WG/MASQUE-регистрации в переносимую форму warp[].

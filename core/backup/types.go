@@ -15,7 +15,11 @@
 //  3. Нет молчаливых потерь: то, что не применилось, названо warning'ом.
 package backup
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"singbox-launcher/core/config/configtypes"
+)
 
 // FormatVersion — мажор формата (BACKUP.md §6). Импортёр читает свою и
 // меньшие версии; бо́льшую отклоняет с понятной ошибкой.
@@ -43,6 +47,7 @@ type Backup struct {
 	Subscriptions []Subscription    `json:"subscriptions,omitempty"`
 	Servers       []Server          `json:"servers,omitempty"`
 	Directions    []Direction       `json:"directions,omitempty"`
+	Chains        []Chain           `json:"chains,omitempty"`
 	Rules         []Rule            `json:"rules,omitempty"`
 	DNS           *DNS              `json:"dns,omitempty"`
 	Vars          map[string]string `json:"vars,omitempty"`
@@ -112,6 +117,28 @@ type DirectionAuto struct {
 	Pool                      int      `json:"pool,omitempty"`
 	PoolTolerance             int      `json:"pool_tolerance,omitempty"`
 	StickyHash                []string `json:"sticky_hash,omitempty"`
+}
+
+// Chain — цепочка хопов (SPEC 110, схема v1.2).
+//
+// Идентичность и merge — по Tag: это тег будущего outbound'а, на него
+// ссылаются rules[].outbound, route.final, фильтры Направлений и позиции
+// других цепочек. У лаунчера тег хранится именем источника (Label ≡ TagMask,
+// adapter_source.go), отдельного отображаемого имени у цепочки нет: Label
+// здесь не пишется, а чужое значение провозится непонятым полем записи
+// (backupFieldsKey) до следующего экспорта.
+//
+// Порядок записей нормативен — вложенная цепочка объявляется раньше
+// использующей; секция не сортируется ни на экспорте, ни на импорте.
+type Chain struct {
+	Tag     string `json:"tag"`
+	Label   string `json:"label,omitempty"`
+	Enabled *bool  `json:"enabled,omitempty"`
+	// Chain — канон цепочки (contract/schema/source_chain.schema.json).
+	// Общая форма с configtypes.SourceChain: вторая копия канона была бы
+	// расхождением, ждущим своего случая.
+	Chain      *configtypes.SourceChain `json:"chain"`
+	Extensions Extensions               `json:"extensions,omitempty"`
 }
 
 // TagPolicy — правила именования нод источника.

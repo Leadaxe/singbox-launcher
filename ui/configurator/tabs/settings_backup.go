@@ -257,6 +257,8 @@ func warnText(w backup.Warning) string {
 		return fmt.Sprintf(locale.T("%s — this setting means something else on this machine, skipped"), w.Detail)
 	case backup.WarnBackupUnknownField:
 		return fmt.Sprintf(locale.T("%s — not supported here, skipped"), w.Detail)
+	case backup.WarnBackupChainExists:
+		return fmt.Sprintf(locale.T("%s — a chain with this name already exists here, the incoming one is skipped"), w.Detail)
 	default:
 		return w.Code + ": " + w.Detail
 	}

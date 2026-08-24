@@ -47,6 +47,12 @@ const (
 	// приехавшее НЕ применяется. Перезапись стёрла бы настройки, сделанные
 	// на этой машине, а правила и так найдут цель по тегу (SPEC 104).
 	WarnBackupDirectionExists = "backup_direction_exists"
+	// WarnBackupChainExists — цепочка с таким тегом уже есть: приехавшая НЕ
+	// применяется, своя сильнее. Warning ставится ВСЕГДА, даже когда «своя
+	// победила» — молчание скрыло бы случайных тёзок: две несвязанные
+	// цепочки, одинаково названные на разных устройствах, склеиваются в
+	// одну, и пользователь обязан узнать об этом (BACKUP.md §2).
+	WarnBackupChainExists = "backup_chain_exists"
 )
 
 // errSkipRule — правило пропущено осознанно (чужой kind), а не сломалось.
@@ -116,10 +122,6 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 		s.Connections.Sources = append(s.Connections.Sources, importServer(srv))
 		res.AppliedSources++
 	}
-	// SPEC 110: цепочки едут в extensions.launcher (в схеме секции нет).
-	// Без этой ветки ImportReplace обнулял Sources целиком, а восстановить
-	// цепочки было неоткуда — roundtrip на одной машине их молча стирал.
-	res.AppliedSources += importLauncherChains(s, b.Extensions[AppLauncher])
 
 	// SPEC 104: Направления импортируются ДО правил и пополняют список
 	// известных целей — иначе правило, чья цель приехала в этом же файле,
@@ -146,6 +148,40 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 		knownTags = append(knownTags, in.Tag)
 		res.AppliedDirections++
 	}
+
+	// SPEC 110 (схема v1.2): цепочки — ПОСЛЕ Направлений (позиция может
+	// ссылаться на Направление) и ДО правил (правило может метить в цепочку
+	// как в цель — тег пополняет список известных). Порядок записей
+	// нормативен и сохраняется как есть. Достижимость hops здесь не
+	// проверяется: хоп — чаще всего узел подписки, которого до её обновления
+	// не существует; рубеж у обеих сторон один — сборка (chain_hop_missing).
+	existingChains := map[string]bool{}
+	for _, src := range s.Connections.Sources {
+		if src.Type == state.SourceTypeChain {
+			existingChains[src.Label] = true
+		}
+	}
+	for _, in := range b.Chains {
+		if in.Tag == "" || in.Chain == nil {
+			continue
+		}
+		if existingChains[in.Tag] {
+			res.Warnings = append(res.Warnings, Warning{WarnBackupChainExists, in.Tag})
+			knownTags = append(knownTags, in.Tag)
+			continue
+		}
+		s.Connections.Sources = append(s.Connections.Sources, importChain(in))
+		existingChains[in.Tag] = true
+		knownTags = append(knownTags, in.Tag)
+		res.AppliedSources++
+	}
+	// Legacy: релизы лаунчера v1.5.0–v1.5.1 писали цепочки блобом
+	// extensions.launcher (ключ chains). Файлы тех релизов существуют, и
+	// терять их цепочки нельзя; писать в это место больше нельзя
+	// (BACKUP.md §2). Дедуп по тегу общий с секцией.
+	legacyApplied, legacyTags := importLauncherChains(s, b.Extensions[AppLauncher], existingChains)
+	res.AppliedSources += legacyApplied
+	knownTags = append(knownTags, legacyTags...)
 
 	known := newTagSet(knownTags)
 	presets := newTagSet(opts.KnownPresets)
@@ -487,25 +523,48 @@ func (t tagSet) has(tag string) bool {
 	return ok
 }
 
-// importLauncherChains восстанавливает источники-цепочки из блоба
-// extensions.launcher. Возвращает число применённых.
-func importLauncherChains(s *state.State, blob json.RawMessage) int {
+// importChain переводит каноническую запись chains[] во внутренний источник.
+//
+// Label получает ТЕГ, а не label: у лаунчера имя источника цепочки и есть
+// тег её материализации (adapter_source.go), и взять сюда отображаемое имя
+// LxBox значило бы разъехаться со ссылками правил, route.final и позиций
+// других цепочек. Чужой label сохраняется непонятым полем записи
+// (backupFieldsKey) и возвращается при re-export (BACKUP.md §2).
+func importChain(in Chain) state.Source {
+	src := state.Source{
+		Type:    state.SourceTypeChain,
+		Label:   in.Tag,
+		Enabled: in.Enabled == nil || *in.Enabled,
+		Chain:   in.Chain,
+	}
+	applyLauncherSourceExtensions(&src, in.Extensions)
+	fields := map[string]json.RawMessage{}
+	if in.Label != "" && in.Label != in.Tag {
+		if raw, err := json.Marshal(in.Label); err == nil {
+			fields["label"] = raw
+		}
+	}
+	keepForeignEntityExtensions(&src, in.Extensions, fields)
+	return src
+}
+
+// importLauncherChains — legacy-чтение цепочек из блоба extensions.launcher
+// (формат релизов v1.5.0–v1.5.1: внутренняя структура state.Source). Файлы
+// нового формата этого блоба не содержат. existing — теги уже применённых
+// цепочек, общий дедуп с секцией chains[]. Возвращает число применённых и
+// их теги — они такие же цели правил, как теги из секции.
+func importLauncherChains(s *state.State, blob json.RawMessage, existing map[string]bool) (int, []string) {
 	if len(blob) == 0 {
-		return 0
+		return 0, nil
 	}
 	var own struct {
 		Chains []state.Source `json:"chains"`
 	}
 	if err := json.Unmarshal(blob, &own); err != nil {
-		return 0
+		return 0, nil
 	}
 	applied := 0
-	existing := map[string]bool{}
-	for _, src := range s.Connections.Sources {
-		if src.Type == state.SourceTypeChain {
-			existing[src.Label] = true
-		}
-	}
+	var tags []string
 	for _, chain := range own.Chains {
 		if chain.Type != state.SourceTypeChain || chain.Chain == nil {
 			continue
@@ -515,9 +574,10 @@ func importLauncherChains(s *state.State, blob json.RawMessage) int {
 		}
 		s.Connections.Sources = append(s.Connections.Sources, chain)
 		existing[chain.Label] = true
+		tags = append(tags, chain.Label)
 		applied++
 	}
-	return applied
+	return applied, tags
 }
 
 // importDNS применяет секцию DNS.

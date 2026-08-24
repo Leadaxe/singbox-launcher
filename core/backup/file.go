@@ -88,6 +88,7 @@ func unknownRootKeys(data []byte) []Warning {
 		"lx_backup": true, "exported_by": true, "exported_at": true,
 		"subscriptions": true, "servers": true, "rules": true,
 		"directions": true, // SPEC 104, схема v1.1
+		"chains":     true, // SPEC 110, схема v1.2
 		"dns":        true, "vars": true, "route": true, "warp": true,
 		"extensions": true,
 	}

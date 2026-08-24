@@ -3041,6 +3041,9 @@
   "%s — not supported here, skipped": {
     "value": "%s — здесь не поддерживается, пропущено"
   },
+  "%s — a chain with this name already exists here, the incoming one is skipped": {
+    "value": "%s — цепочка с таким именем здесь уже есть, приехавшая пропущена"
+  },
   "Config validation failed": {
     "value": "Конфиг не прошёл проверку"
   },
