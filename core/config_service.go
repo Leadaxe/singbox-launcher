@@ -199,6 +199,16 @@ func (svc *ConfigService) GenerateOutboundsFromParserConfig(
 //
 // Возвращает per-source result (counts) для toast-сообщения.
 func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGenerationResult, error) {
+	return svc.updateConfigFromSubscriptions(true)
+}
+
+// updateConfigFromSubscriptions — тело Update. triggerRebuild=false обязателен
+// при вызове ИЗ RebuildConfigIfDirty (fallback «кэш неполный → Update»):
+// хвостовой rebuild здесь замыкал взаимную рекурсию Update → Rebuild →
+// «cache incomplete» → Update → … — стоило одному источнику стабильно падать
+// при fetch (нет .raw), и лаунчер бесконечно перефетчивал все подписки,
+// а config.json так и не появлялся.
+func (svc *ConfigService) updateConfigFromSubscriptions(triggerRebuild bool) (*config.OutboundGenerationResult, error) {
 	ac := svc.ac
 	execDir := ac.FileService.ExecDir
 
@@ -303,9 +313,12 @@ func (svc *ConfigService) UpdateConfigFromSubscriptions() (*config.OutboundGener
 	// сопровождается rebuild'ом, чтобы config.json не отставал от свежего
 	// cache. Best-effort: ошибка rebuild'а не отменяет успех Update'а, но
 	// её сообщение покажем пользователю в финальном toast'е.
-	rebuildErr := ac.RebuildConfigIfDirty()
-	if rebuildErr != nil {
-		debuglog.WarnLog("UpdateConfigFromSubscriptions: auto-rebuild after refresh failed: %v", rebuildErr)
+	var rebuildErr error
+	if triggerRebuild {
+		rebuildErr = ac.RebuildConfigIfDirty()
+		if rebuildErr != nil {
+			debuglog.WarnLog("UpdateConfigFromSubscriptions: auto-rebuild after refresh failed: %v", rebuildErr)
+		}
 	}
 
 	// SPEC 045 фаза 9: финальный toast эмитим ЗДЕСЬ, не в RunParser-обёртке.

@@ -22,8 +22,9 @@ import (
 //   - Для каждого enabled subscription Source в state.Connections.Sources
 //     ищет matching `.raw` файл по ID;
 //   - Server source'ы парсятся напрямую из URI (не нуждаются в .raw);
-//   - Если хоть один enabled subscription без `.raw` — возвращает (nil, ErrRawCacheIncomplete);
-//     caller делает auto-Update fallback.
+//   - Если .raw нет НИ У ОДНОЙ enabled subscription — возвращает
+//     (nil, ErrRawCacheIncomplete); caller делает auto-Update fallback.
+//     Частично отсутствующий кэш — warning + деградация источника, не ошибка.
 //
 // SPEC 056: параметр td (nil-safe) подаёт template для pre-patch
 // parser_config с preset.outbounds[] перед запуском native outbound
@@ -38,18 +39,34 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 
 	// Проверяем completeness: для каждой enabled subscription есть .raw?
 	missing := []string{}
+	enabledSubs := 0
 	for _, src := range s.Connections.Sources {
 		if src.Type != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
 			continue
 		}
+		enabledSubs++
 		path := filepath.Join(subsDir, src.ID+".raw")
 		if _, err := os.Stat(path); err != nil {
 			missing = append(missing, src.URL)
 		}
 	}
-	if len(missing) > 0 {
+	// ErrRawCacheIncomplete (→ caller делает auto-Update fallback) — только
+	// когда кэша нет НИ У ОДНОЙ подписки: первый запуск или чистый профиль,
+	// там без Update собирать не из чего. Частично отсутствующий кэш —
+	// деградация, а не ошибка: источник, который стабильно падает при fetch
+	// (лимит устройств, протухший токен), никогда не получит .raw, и строгая
+	// проверка делала конфиг несобираемым навсегда — а в паре с fallback'ом
+	// это раскручивало бесконечный Update-цикл. Отсутствующий источник парсер
+	// разово попробует по сети (cache-miss → FetchSubscription) и при
+	// неудаче деградирует, конфиг соберётся из остальных.
+	if len(missing) > 0 && len(missing) == enabledSubs {
 		return nil, fmt.Errorf("%w: %d subscription(s) missing raw cache (e.g. %s)",
 			ErrRawCacheIncomplete, len(missing), missing[0])
+	}
+	var partialWarnings []string
+	for _, url := range missing {
+		debuglog.WarnLog("buildSnapshotFromRawCache: no raw cache for %s — источник деградирован (fetch падает?), конфиг собирается из остальных", url)
+		partialWarnings = append(partialWarnings, fmt.Sprintf("subscription %s has no cached nodes (last fetch failed?) — built without it", url))
 	}
 
 	// URL → decoded body lookup для парсера.
@@ -99,7 +116,7 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 
 	subscription.LogDuplicateTagStatistics(tagCounts, "Rebuild")
 
-	var warnings []string
+	warnings := partialWarnings
 	if result.SkippedNaiveNodes > 0 {
 		warnings = append(warnings, fmt.Sprintf("%d naive node(s) skipped: %s",
 			result.SkippedNaiveNodes, result.SkippedNaiveReason))

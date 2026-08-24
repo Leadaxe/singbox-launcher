@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 echo "--------------------------------------------------------------"
 echo " "
-echo "Singbox-launcher MacOS Installer Script (0.2)"
+echo "Singbox-launcher MacOS Installer Script (0.3)"
 echo "Project url: https://github.com/Leadaxe/singbox-launcher/"
 echo " "
 echo "--------------------------------------------------------------"
@@ -142,15 +142,31 @@ fi
 echo "Found app in archive: $app_path"
 
 target="${INSTALL_DIR}/${APP_NAME}"
-wizard_states_path="${target}/Contents/MacOS/bin/wizard_states"
-wizard_states_backup="${tmp}/wizard_states_backup"
+old_macos_dir="${target}/Contents/MacOS"
+data_backup="${tmp}/user_data_backup"
 
-# Backup wizard_states if exists and move old app to Trash
+# Backup ALL user data before moving the old app to Trash.
+#
+# Раньше переносился только wizard_states/ — обновление скриптом теряло
+# settings.json (hwid, режим движка ядра, debug API), bin/daemon/ (клиентский
+# mTLS-сертификат: без него установленный демон перестаёт доверять лаунчеру),
+# кэши подписок и rule-sets. Пользователь после апдейта получал «чистый»
+# лаунчер и отвалившееся сопряжение с демоном.
+#
+# Теперь бэкапится весь bin/ + logs/, а после установки данные возвращаются
+# поверх нового бандла БЕЗ затирания файлов, пришедших из архива
+# (rsync --ignore-existing). Файлы, которые обязаны обновляться по версии
+# (wizard_template.json, бинарь ядра), лаунчер сверяет и перекачивает сам —
+# перенос старых копий безопасен.
 if [[ -d "$target" ]]; then
   echo "Moving existing installation to Trash..."
-  if [[ -d "$wizard_states_path" ]]; then
-    echo "Backing up wizard_states folder..."
-    cp -R "$wizard_states_path" "$wizard_states_backup"
+  mkdir -p "$data_backup"
+  if [[ -d "$old_macos_dir/bin" ]]; then
+    echo "Backing up user data (settings, daemon pairing, caches, states)..."
+    cp -R "$old_macos_dir/bin" "$data_backup/bin"
+  fi
+  if [[ -d "$old_macos_dir/logs" ]]; then
+    cp -R "$old_macos_dir/logs" "$data_backup/logs"
   fi
   # Move to Trash using AppleScript
   osascript -e "tell application \"Finder\" to move POSIX file \"$target\" to trash" 2>/dev/null || {
@@ -163,12 +179,22 @@ fi
 echo "Installing..."
 cp -R "$app_path" "$target"
 
-# Restore wizard_states if it was backed up (automatically, no questions)
-if [[ -d "$wizard_states_backup" ]]; then
-  echo "Restoring wizard_states folder..."
-  mkdir -p "$(dirname "$wizard_states_path")"
-  cp -R "$wizard_states_backup" "$wizard_states_path"
-  echo "Wizard states restored successfully"
+# Restore user data (automatically, no questions). --ignore-existing: файлы
+# из нового архива всегда важнее одноимённых старых.
+if [[ -d "$data_backup/bin" || -d "$data_backup/logs" ]]; then
+  echo "Restoring user data..."
+  if command -v rsync >/dev/null 2>&1; then
+    [[ -d "$data_backup/bin" ]] && rsync -a --ignore-existing "$data_backup/bin/" "$target/Contents/MacOS/bin/"
+    [[ -d "$data_backup/logs" ]] && rsync -a --ignore-existing "$data_backup/logs/" "$target/Contents/MacOS/logs/"
+  else
+    # rsync есть на всех поддерживаемых macOS; fallback на случай урезанных
+    # окружений — прежнее поведение (хотя бы wizard_states).
+    if [[ -d "$data_backup/bin/wizard_states" && ! -d "$target/Contents/MacOS/bin/wizard_states" ]]; then
+      mkdir -p "$target/Contents/MacOS/bin"
+      cp -R "$data_backup/bin/wizard_states" "$target/Contents/MacOS/bin/wizard_states"
+    fi
+  fi
+  echo "User data restored"
 fi
 
 echo "Fixing macOS attributes and permissions..."

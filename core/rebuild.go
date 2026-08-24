@@ -136,7 +136,9 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		if ac.ConfigService == nil {
 			return fmt.Errorf("raw cache incomplete and ConfigService not initialized")
 		}
-		if _, updErr := ac.ConfigService.UpdateConfigFromSubscriptions(); updErr != nil {
+		// triggerRebuild=false: мы УЖЕ внутри Rebuild — хвостовой rebuild
+		// из Update замыкал бы взаимную рекурсию (см. updateConfigFromSubscriptions).
+		if _, updErr := ac.ConfigService.updateConfigFromSubscriptions(false); updErr != nil {
 			return fmt.Errorf("auto-update for empty raw cache failed: %w", updErr)
 		}
 		// Перечитываем state (Update сохраняет meta) и снова строим snapshot.
