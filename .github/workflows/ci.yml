@@ -232,6 +232,13 @@ jobs:
           echo === Running tests via build script ===
           call build\test_windows.bat nopause
 
+      - name: L10n checks (SPEC 111)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          go run ./tools/l10n/l10n_check --strict
+          go run ./tools/l10n/hardcoded_check --strict
+
       - name: Upload coverage (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@v4

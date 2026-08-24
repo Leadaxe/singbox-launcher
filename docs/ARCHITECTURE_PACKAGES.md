@@ -44,7 +44,7 @@ Each package is self-contained and dependency-free (or depends only on `debuglog
 |---------|----------------|-----------|
 | `internal/constants` | App-wide constants (file names, pinned core/template refs, UA strings, limits). | `constants.go` |
 | `internal/debuglog` | Leveled logging (Off/Error/Warn/Info/Verbose/Trace), optional in-memory sink for the diagnostics log viewer, timing helpers. | `debuglog.go`, `close.go` |
-| `internal/locale` | i18n: English embedded, external/remote JSON per language, `T`/`Tf` lookup with English fallback. | `locale.go`, `settings.go` |
+| `internal/locale` | i18n on natural keys (SPEC 111): the English text at the call site IS the key; English lives in the code, translations come from external/remote `bin/locale/<tag>.json` (`Entry`: value / plural forms / `special` collision forms). `T`/`Tf`/`TN`/`TfN`/`Plural`/`PluralN`; any miss degrades into the key itself. Guarded by `tools/l10n` CI checkers. | `locale.go`, `entry.go`, `plural.go`, `settings.go` |
 | `internal/traffic` | Decoupled Traffic Profiler (stdlib only): Clash poller + log tailer join, rolling buffer, session recording, per-process attribution. | `profiler.go`, `session.go`, `types.go`, `clash_connections.go`, `logtail.go`, `parser.go`, `http_client.go`, `singleton.go`, `inode_unix.go`/`inode_windows.go` |
 | `internal/outboundutil` | Single source of truth for `reject`/`drop` literal → rule `action`/`method` mapping (shared by core build + UI). | `outbound.go` |
 | `internal/srstag` | Content-addressed local SRS filename generation (`name-<hash8>`) for dedup. | `srstag.go` |
