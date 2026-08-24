@@ -737,3 +737,49 @@ func TestGenerateNodeJSON_DetourEmitted(t *testing.T) {
 		t.Fatalf("expected detour in JSON: %s", s)
 	}
 }
+
+// Эмиссия http-узла: ветка per-scheme switch появилась вместе с §9.B6, но
+// теста на неё не было — а без ветки узел молча схлопывается до
+// {tag,type,server,server_port} (ловушка emitter-parser-pairing). Тест
+// закрывает именно этот отказ, включая TLS у https-формы.
+func TestGenerateNodeJSON_HTTPProxy_WithAuth(t *testing.T) {
+	node, err := subscription.ParseNode("proxy-http://bob:pw@proxy.example.com:8080#Work", nil)
+	if err != nil || node == nil {
+		t.Fatalf("ParseNode: %v", err)
+	}
+	jsonStr, err := GenerateNodeJSON(node)
+	if err != nil {
+		t.Fatalf("GenerateNodeJSON: %v", err)
+	}
+	for _, want := range []string{
+		`"type":"http"`,
+		`"server":"proxy.example.com"`,
+		`"server_port":8080`,
+		`"username":"bob"`,
+		`"password":"pw"`,
+	} {
+		if !strings.Contains(jsonStr, want) {
+			t.Fatalf("expected %s in JSON:\n%s", want, jsonStr)
+		}
+	}
+}
+
+func TestGenerateNodeJSON_HTTPSProxy_EmitsTLS(t *testing.T) {
+	node, err := subscription.ParseNode("proxy-https://proxy.example.com:443?sni=cdn.example.com#Secure", nil)
+	if err != nil || node == nil {
+		t.Fatalf("ParseNode: %v", err)
+	}
+	jsonStr, err := GenerateNodeJSON(node)
+	if err != nil {
+		t.Fatalf("GenerateNodeJSON: %v", err)
+	}
+	if !strings.Contains(jsonStr, `"type":"http"`) {
+		t.Fatalf("expected http type in JSON:\n%s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"tls"`) {
+		t.Fatalf("expected tls block for https proxy:\n%s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"server_name":"cdn.example.com"`) {
+		t.Fatalf("expected server_name from sni:\n%s", jsonStr)
+	}
+}
