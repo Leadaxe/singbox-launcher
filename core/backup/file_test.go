@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -115,6 +116,12 @@ func TestWriteFilePermissions(t *testing.T) {
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// У Windows нет POSIX-битов: Go отдаёт там 0666 независимо от режима,
+	// с которым файл создан. Проверять инвариант можно только там, где права
+	// вообще существуют — иначе тест падает на ровном месте и блокирует CI.
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX-права не поддерживаются на Windows (os.Stat всегда отдаёт 0666)")
 	}
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Errorf("права файла %o, ожидалось 600 — файл содержит секреты открытым текстом", perm)

@@ -8,6 +8,32 @@
 
 ---
 
+### Выжимка (RU) — v1.5.0
+
+**Маршрут через несколько хопов подряд (цепочки).** Цепочка добавляется из меню ⋮ на вкладке *Sources* третьим типом источника рядом с подпиской и одиночным сервером: выбираете две позиции или больше, и трафик идёт через них по очереди. Позицией может быть узел, группа подписки или Направление, поэтому переключение внутри группы меняет путь без перезапуска. Дальше цепочка ведёт себя как обычный сервер: её подхватывают Направления, а автовыбор сравнивает весь многохоповый маршрут по задержке. Окно **Info** меряет её послойно, и дельта `(+N)` называет хоп, который стоит этой задержки. Нужно ядро с `with_lx_chain`.
+
+**Направления вместо каналов.** Правило целится в именованную цель со своим отбором узлов, а не в тег узла: теги провайдера пересоздаются на каждом обновлении подписки, и правило на узел ломалось при первом же переименовании. Пустое Направление теперь блокирует трафик, а не выпускает его мимо VPN.
+
+**DNS настраивается формами, а не сырым JSON**, подписка сворачивается в группу одной галкой вместо четырёх, а настройки переносятся между десктопом и телефоном одним файлом (**LX Backup**).
+
+**Аудит всего цикла:** 21 исправленный дефект. Среди них несколько такого класса, при котором ядро отвергало конфиг целиком и пользователь оставался без VPN: висячая ссылка или кольцо в графе зависимостей теперь деградируют один элемент, а не весь файл.
+
+**Полный список изменений:** [docs/release_notes/1-5-0.md](docs/release_notes/1-5-0.md).
+
+### Highlights (EN) — v1.5.0
+
+**A route can go through several hops in a row (chains).** Added from the ⋮ menu on *Sources* as a third source kind next to a subscription and a single server. A position may be a node, a subscription group or a Direction, so switching a group changes the path without a restart. The chain then behaves like any other server — Directions pick it up and an auto-select group measures the whole multi-hop route. The **Info** window probes it layer by layer, so the `(+N)` delta names the hop that costs the latency. Needs a core built with `with_lx_chain`.
+
+**Directions replace channels.** A rule points at a named target with its own node filter instead of a node tag: provider tags are regenerated on every subscription update, so a node-targeted rule used to break the moment the provider renamed it. An empty Direction now blocks traffic instead of quietly letting it out past the VPN.
+
+**DNS is configured with forms rather than raw JSON**, a subscription folds into a group with one checkbox instead of four, and settings travel between desktop and phone in a single file (**LX Backup**).
+
+**A full-cycle audit:** 21 defects fixed, several of the class where the core rejected the whole config and left the user without a VPN — a dangling reference or a dependency cycle now degrades one element instead of the entire file.
+
+**Full changelog:** [docs/release_notes/1-5-0.md](docs/release_notes/1-5-0.md).
+
+---
+
 ### Выжимка (RU) — v1.4.2
 
 **Окно открывается по RDP и на серверах без GPU** (issue #105). RDP-сессия на Windows Server без GPU отдаёт только OpenGL 1.1, а UI лаунчера нужен 2.1 — окно молча не отрисовывалось. Теперь лаунчер проверяет версию OpenGL до старта UI и при нехватке предлагает в один клик скачать программный рендерер Mesa3D (~24 МБ, зеркало в релизе `mesa3d-26.2.0`, фолбэк через ghproxy); DLL распаковываются рядом с exe, окно открывается сразу, без перезапуска. Откат — удалить три DLL; отключение проверки — `SINGBOX_LAUNCHER_NO_MESA=1`. Подробности: `docs/RDP_OPENGL.ru.md`.
