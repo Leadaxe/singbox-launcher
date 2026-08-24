@@ -1,7 +1,6 @@
 package locale
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -39,13 +38,12 @@ func loadExternalLocalesForTest(t *testing.T) {
 	LoadExternalLocales(localeDir)
 }
 
-func TestEmbeddedEnglish(t *testing.T) {
+func TestBuiltinEnglish(t *testing.T) {
+	// Английский — псевдокаталог: только имя для селектора, ключи не нужны
+	// (ключ и есть английский текст).
 	en, ok := catalogs["en"]
 	if !ok {
-		t.Fatal("embedded en catalog not found")
-	}
-	if len(en) < 10 {
-		t.Errorf("en catalog too small: %d keys", len(en))
+		t.Fatal("builtin en catalog not found")
 	}
 	if e, ok := en[displayNameKey]; !ok || e.Value.Text != "English" {
 		t.Errorf("en._display_name = %q, want %q", e.Value.Text, "English")
@@ -61,28 +59,6 @@ func TestExternalRussian(t *testing.T) {
 	}
 	if e, ok := ru[displayNameKey]; !ok || e.Value.Text != "Русский" {
 		t.Errorf("ru._display_name = %q, want %q", e.Value.Text, "Русский")
-	}
-}
-
-func TestAllKeysPresent(t *testing.T) {
-	loadExternalLocalesForTest(t)
-
-	en := catalogs["en"]
-	ru, ok := catalogs["ru"]
-	if !ok {
-		t.Skip("ru.json not found in bin/locale/ — skipping key completeness test")
-	}
-
-	// en → ru: каждый легаси-ключ переведён. Обратное направление снято:
-	// естественные ключи (SPEC 111) живут только в ru.json — для них
-	// английский И ЕСТЬ ключ, отдельной записи в en.json нет.
-	for key := range en {
-		if key == displayNameKey {
-			continue
-		}
-		if _, ok := ru[key]; !ok {
-			t.Errorf("key %q exists in en.json but missing in ru.json", key)
-		}
 	}
 }
 
@@ -131,15 +107,20 @@ func TestPlaceholderCount(t *testing.T) {
 func TestTFunction(t *testing.T) {
 	loadExternalLocalesForTest(t)
 
+	// Английский: ключ и есть текст.
 	SetLang("en")
-	if got := T("core.button_start"); got != "Start" {
-		t.Errorf("T(core.button_start) = %q, want %q", got, "Start")
+	if got := T("Start"); got != "Start" {
+		t.Errorf("T(Start) = %q, want %q", got, "Start")
 	}
 
 	if _, ok := catalogs["ru"]; ok {
 		SetLang("ru")
-		if got := T("core.button_start"); got != "Старт" {
-			t.Errorf("T(core.button_start) = %q, want %q", got, "Старт")
+		if got := T("Start"); got != "Запустить" {
+			t.Errorf("T(Start) = %q, want %q", got, "Запустить")
+		}
+		// Кнопка дашборда — special-форма 1 того же ключа.
+		if got := TN(1, "Start"); got != "Старт" {
+			t.Errorf("TN(1, Start) = %q, want %q", got, "Старт")
 		}
 	}
 
@@ -151,11 +132,12 @@ func TestTFunction(t *testing.T) {
 }
 
 func TestTfFunction(t *testing.T) {
-	SetLang("en")
-	got := Tf("help.version_label", "v1.0")
-	want := fmt.Sprintf("📦 Version: %s", "v1.0")
-	if got != want {
-		t.Errorf("Tf(help.version_label, v1.0) = %q, want %q", got, want)
+	loadExternalLocalesForTest(t)
+	SetLang("ru")
+	defer SetLang("en")
+	got := Tf("📦 Version: %s", "v1.0")
+	if got != "📦 Версия: v1.0" {
+		t.Errorf("Tf = %q", got)
 	}
 }
 

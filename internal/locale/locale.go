@@ -5,16 +5,10 @@
 // translations come from external JSON catalogs in bin/locale/. A miss at
 // any level (no catalog, no key, no form) degrades into the key itself —
 // correct English — with the arguments substituted.
-//
-// Transition note: the embedded en.json with legacy dotted keys
-// ("core.button_start") is kept until every call site is migrated to
-// natural keys; the parser accepts both the legacy flat format and the
-// structured Entry format, so both key styles work side by side.
 package locale
 
 import (
 	"context"
-	_ "embed"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,15 +24,13 @@ import (
 	"singbox-launcher/internal/debuglog"
 )
 
-//go:embed en.json
-var enJSON []byte
-
 const displayNameKey = "_display_name"
 
 // RemoteLanguages lists language codes available for download from GitHub.
 // Order is used for download; all matching bin/locale/*.json are loaded at startup.
 // Пока поддерживаются только языки, которые ведутся вручную: английский
-// (вшит в бинарь) и русский. Восемь машинных переводов сняты — каждая новая
+// (живёт в коде — ключ и есть текст) и русский. Восемь машинных переводов
+// сняты — каждая новая
 // строка требовала правки во всех десяти файлах, а качество их всё равно
 // никто не проверял. Вернуть язык = добавить код сюда и файл в релиз.
 var RemoteLanguages = []string{
@@ -56,20 +48,11 @@ var (
 var CreateHTTPClientFunc func(timeout time.Duration) *http.Client
 
 func init() {
+	// Английский — базовый язык: он живёт в коде (ключ = текст), каталог не
+	// нужен. Псевдозапись держит "en" в списке языков и даёт имя селектору.
 	catalogs = map[string]map[string]Entry{
-		"en": mustParse(enJSON),
+		"en": {displayNameKey: {Value: Value{Text: "English"}}},
 	}
-}
-
-func mustParse(data []byte) map[string]Entry {
-	entries, skipped, err := parseCatalog(data)
-	if err != nil {
-		panic(fmt.Sprintf("locale: failed to parse translations: %v", err))
-	}
-	if len(skipped) > 0 {
-		panic(fmt.Sprintf("locale: embedded catalog has malformed entries: %v", skipped))
-	}
-	return entries
 }
 
 // pick returns the rendering value for an entry: form 0 is the root value,
@@ -254,7 +237,7 @@ func LangCodeByDisplayName(name string) string {
 
 // LoadExternalLocales scans localeDir for *.json files and loads them as additional languages.
 // Language code is derived from filename (e.g. "ru.json" → "ru").
-// External files can override the embedded English catalog.
+// A file named en.json would shadow the builtin English pseudo-catalog.
 func LoadExternalLocales(localeDir string) {
 	entries, err := os.ReadDir(localeDir)
 	if err != nil {
