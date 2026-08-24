@@ -709,11 +709,12 @@ func CheckIfSingBoxRunningAtStartUtil() {
 		debuglog.WarnLog("CheckIfSingBoxRunningAtStartUtil: ProcessService is nil, this should not happen. Initializing...")
 		ac.ProcessService = NewProcessService(ac)
 	}
-	// В daemon-режиме работающее ядро внутри демона — норма, а не «чужой»
-	// инстанс: предупреждение с предложением убить процесс неуместно.
-	if ac.BackendMode() == BackendDaemon {
-		return
-	}
+	// Проверяем и в daemon-режиме: осиротевшее classic-ядро (`sing-box run`,
+	// пережившее прошлую сессию лаунчера) держит маршруты на своём TUN, пока
+	// профилировщик и статус смотрят на пустое ядро демона. Детектор на
+	// darwin аргумент-чувствительный (pgrep -f `sing-box run|…-privileged`)
+	// и демона `sing-box lxd` не ловит — ложного предложения убить демона
+	// не будет; деградацию pgrep гейтит isSingBoxProcessRunning.
 	ac.ProcessService.CheckIfRunningAtStart()
 }
 

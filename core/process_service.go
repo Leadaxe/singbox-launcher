@@ -653,7 +653,13 @@ func (svc *ProcessService) checkAndShowSingBoxRunningWarning(ctx string) bool {
 					processName := platform.GetProcessNameForCheck()
 					_ = platform.KillProcess(processName)
 				}
-				svc.ac.RunningState.Set(false)
+				// В daemon-режиме RunningState отражает ядро ДЕМОНА, а убили
+				// мы осиротевший classic-процесс — состояние демона не
+				// менялось, и Set(false) показал бы ложный «остановлен» до
+				// следующего статус-кадра supervisor'а.
+				if svc.ac.BackendMode() != BackendDaemon {
+					svc.ac.RunningState.Set(false)
+				}
 			})
 		}
 		return true
@@ -722,7 +728,13 @@ func (svc *ProcessService) isSingBoxProcessRunning() (bool, int) {
 		if found, pid, err := findSingboxRunProcessDarwin(); err == nil {
 			return found, pid
 		}
-		// pgrep недоступен/сломан — fallback на старый скан по имени.
+		// pgrep недоступен/сломан. В daemon-режиме имя-ориентированный
+		// fallback поймал бы демона `sing-box lxd` и предложил его убить —
+		// тогда честнее пропустить проверку, чем стрелять по демону.
+		if svc.ac.BackendMode() == BackendDaemon {
+			return false, -1
+		}
+		// classic: fallback на старый скан по имени.
 		return svc.isSingBoxProcessRunningWithPS(ourPID)
 	}
 
