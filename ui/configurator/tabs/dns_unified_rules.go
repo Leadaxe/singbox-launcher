@@ -107,7 +107,7 @@ func buildSingleDNSUserRuleRow(
 	delBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DeleteIcon(), func() {
 		dialog.ShowConfirm(
 			"Confirmation",
-			"Delete this DNS rule?",
+			locale.T("Delete this DNS rule?"),
 			func(ok bool) {
 				if !ok {
 					return

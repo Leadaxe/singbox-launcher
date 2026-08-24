@@ -138,7 +138,7 @@ func newWarpWGSection() *warpWGSection {
 	license.SetPlaceHolder(locale.T("optional — leave empty for free WARP"))
 
 	endpoint := widget.NewEntry()
-	endpoint.SetPlaceHolder("engage.cloudflareclient.com:2408")
+	endpoint.SetPlaceHolder("engage.cloudflareclient.com:2408") // l10n-exempt: wire endpoint
 	randEndpointBtn := widget.NewButton("🎲", func() { endpoint.SetText(warp.RandomEndpoint(nil)) })
 
 	// Obfuscation preset — заполняет поля ниже.
@@ -153,7 +153,7 @@ func newWarpWGSection() *warpWGSection {
 	ipSel := widget.NewSelect([]string{"quic", "dns", "stun", "sip"}, nil)
 	ipSel.SetSelected("quic")
 	idEntry := widget.NewSelectEntry(warp.SNIPool)
-	idEntry.SetText("www.google.com")
+	idEntry.SetText("www.google.com") // l10n-exempt: sample host
 	randIDBtn := widget.NewButton("🎲", func() { idEntry.SetText(warp.RandomSNI(nil)) })
 	ibSel := widget.NewSelect([]string{"chrome", "firefox", "curl"}, nil)
 	ibSel.SetSelected("chrome")

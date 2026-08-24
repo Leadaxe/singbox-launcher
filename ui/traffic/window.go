@@ -182,8 +182,8 @@ func (m *Manager) build() {
 		byClient := buildByClientView(deps, win)
 		stopSecond = byClient.Stop
 		tabs = container.NewAppTabs(
-			container.NewTabItem("Live", live.Content),
-			container.NewTabItem("By client", byClient.Content),
+			container.NewTabItem(locale.T("Live"), live.Content),
+			container.NewTabItem(locale.T("By client"), byClient.Content),
 		)
 	} else {
 		perProcess := buildPerProcessView(deps, func() {
@@ -195,8 +195,8 @@ func (m *Manager) build() {
 		})
 		stopSecond = perProcess.Stop
 		tabs = container.NewAppTabs(
-			container.NewTabItem("Live", live.Content),
-			container.NewTabItem("Per-process", perProcess.Content),
+			container.NewTabItem(locale.T("Live"), live.Content),
+			container.NewTabItem(locale.T("Per-process"), perProcess.Content),
 		)
 	}
 

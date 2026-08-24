@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/internal/locale"
 	tprof "singbox-launcher/internal/traffic"
 	"singbox-launcher/ui/components"
 )
@@ -56,9 +57,9 @@ type perProcessView struct {
 func buildPerProcessView(deps WindowDeps, onRefresh func()) *perProcessView {
 	v := &perProcessView{onRefresh: onRefresh, deps: deps}
 
-	v.targetLabel = widget.NewLabel("Target: (none)")
+	v.targetLabel = widget.NewLabel(locale.T("Target: (none)"))
 	v.statusLine = widget.NewLabel("")
-	v.startStopBtn = widget.NewButtonWithIcon("Pick process…", theme.MediaPlayIcon(), nil)
+	v.startStopBtn = widget.NewButtonWithIcon(locale.T("Pick process…"), theme.MediaPlayIcon(), nil)
 	v.startStopBtn.OnTapped = v.onStartStop
 
 	// 4 sub-tab lists. Updaters read v.liveItems / v.domainsData etc.
@@ -216,8 +217,8 @@ func buildPerProcessView(deps WindowDeps, onRefresh func()) *perProcessView {
 	v.savedList = widget.NewList(
 		func() int { return len(v.savedData) },
 		func() fyne.CanvasObject {
-			open := widget.NewButton("Open", nil)
-			del := widget.NewButton("Delete", nil)
+			open := widget.NewButton(locale.T("Open"), nil)
+			del := widget.NewButton(locale.T("Delete"), nil)
 			lbl := widget.NewLabel("...")
 			// Gutter в конце строки: без него полоса прокрутки списка
 			// наезжает на кнопку Delete (тот же дефект, что чинили в списке
@@ -268,18 +269,18 @@ func buildPerProcessView(deps WindowDeps, onRefresh func()) *perProcessView {
 	v.subTabs = container.NewAppTabs(
 		// Шапка колонок — та же, что на главной вкладке Live, и так же
 		// закреплена над списком: внутри него она уезжала бы при прокрутке.
-		container.NewTabItem("Live", container.NewBorder(
+		container.NewTabItem(locale.T("Live"), container.NewBorder(
 			container.NewVBox(liveHeaderRow(), widget.NewSeparator()),
 			nil, nil, nil, v.liveList)),
-		container.NewTabItem("Domains", v.domainsList),
-		container.NewTabItem("IPs", v.ipsList),
+		container.NewTabItem(locale.T("Domains"), v.domainsList),
+		container.NewTabItem(locale.T("IPs"), v.ipsList),
 		// Шапка колонок закреплена над списком, а не строкой внутри него:
 		// иначе она уезжала бы при прокрутке, и столбцы теряли бы подписи.
-		container.NewTabItem("Connections", container.NewBorder(
+		container.NewTabItem(locale.T("Connections"), container.NewBorder(
 			container.NewVBox(connRecordRowHeader(), widget.NewSeparator()),
 			nil, nil, nil, v.connsList)),
 	)
-	savedHeader := widget.NewLabel("Saved sessions (last 5)")
+	savedHeader := widget.NewLabel(locale.T("Saved sessions (last 5)"))
 	v.activeBody = v.subTabs
 	v.idleBody = container.NewBorder(savedHeader, nil, nil, nil, v.savedList)
 
@@ -303,7 +304,7 @@ func buildPerProcessView(deps WindowDeps, onRefresh func()) *perProcessView {
 		}
 		v.targetLabel.SetText(displayTitle)
 		if active != nil {
-			v.startStopBtn.SetText("STOP")
+			v.startStopBtn.SetText(locale.T("STOP"))
 			v.startStopBtn.SetIcon(theme.MediaStopIcon())
 			v.liveItems = active.Events()
 			v.domainsData = active.AggregateDomains()
@@ -324,7 +325,7 @@ func buildPerProcessView(deps WindowDeps, onRefresh func()) *perProcessView {
 				active.Duration().Truncate(time.Second), len(v.domainsData), len(v.ipsData), len(v.liveItems), footer))
 			v.swap(true)
 		} else {
-			v.startStopBtn.SetText("Pick process & START")
+			v.startStopBtn.SetText(locale.T("Pick process & START"))
 			v.startStopBtn.SetIcon(theme.MediaPlayIcon())
 			// If a saved session is currently being shown (target set
 			// while idle), keep sub-tabs visible; else show idle list.
@@ -334,10 +335,10 @@ func buildPerProcessView(deps WindowDeps, onRefresh func()) *perProcessView {
 				v.ipsData = nil
 				v.connsData = nil
 				v.savedData = reverseSessions(deps.Profiler.CompletedSessions())
-				v.statusLine.SetText("Idle — pick a process and START to begin recording.")
+				v.statusLine.SetText(locale.T("Idle — pick a process and START to begin recording."))
 				v.swap(false)
 			} else {
-				v.statusLine.SetText("Read-only view of saved session — click START to record a new one.")
+				v.statusLine.SetText(locale.T("Read-only view of saved session — click START to record a new one."))
 			}
 		}
 		v.liveList.Refresh()

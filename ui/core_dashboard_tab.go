@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image/color"
 	"net/http"
@@ -997,12 +998,34 @@ func (tab *CoreDashboardTab) handleDownload() {
 					tab.downloadInProgress = false
 					tab.setSingboxState("", locale.Tf("Download v%s", constants.RequiredCoreVersion), -1)
 					binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
-					debuglog.DebugLog("core_dashboard: showing download failed manual (sing-box)")
-					dialogs.ShowDownloadFailedManual(tab.controller.GetMainWindow(), "sing-box download failed", constants.SingboxReleasesURL, binDir)
+					// Log the real cause: the dialog only ever said "see the log",
+					// while nothing actually wrote the failure to the log.
+					debuglog.ErrorLog("core_dashboard: sing-box download failed: %s (err=%v)", progress.Message, progress.Error)
+					dialogs.ShowDownloadFailedManualWithReason(
+						tab.controller.GetMainWindow(),
+						"sing-box download failed",
+						downloadFailureReason(progress.Error),
+						constants.SingboxReleasesURL,
+						binDir,
+					)
 				}
 			})
 		}
 	}()
+}
+
+// downloadFailureReason turns a download error into a sentence the user can act
+// on. The generic "see the log" text is a dead end — especially for the rate
+// limit, which is not the user's fault, is not permanent, and has two concrete
+// workarounds (wait, or switch exit node) that the old message never mentioned.
+func downloadFailureReason(err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, core.ErrGitHubRateLimited) {
+		return locale.T("GitHub limits anonymous requests per IP address, and this limit has been reached — often because the current VPN node's address is shared with other users. Wait about an hour, switch to another node, or download the file manually.")
+	}
+	return err.Error()
 }
 
 // createWintunBlock creates a block for displaying wintun.dll status

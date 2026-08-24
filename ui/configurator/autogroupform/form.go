@@ -115,7 +115,7 @@ func New(choices Choices) *Form {
 	f.IntervalSelect = widget.NewSelect(choices.Interval.Labels, nil)
 	f.ToleranceSelect = widget.NewSelect(choices.Tolerance.Labels, nil)
 	f.URLEntry = widget.NewSelectEntry(choices.URL.Labels)
-	f.URLEntry.SetPlaceHolder("https://cp.cloudflare.com/generate_204")
+	f.URLEntry.SetPlaceHolder("https://cp.cloudflare.com/generate_204") // l10n-exempt: sample URL
 	f.PoolEntry = widget.NewEntry()
 	f.PoolEntry.SetPlaceHolder("3")
 	f.PoolToleranceEntry = widget.NewEntry()
@@ -139,7 +139,7 @@ func New(choices Choices) *Form {
 	f.balancerBlock = container.NewVBox(
 		TextRow("Pool size", f.PoolEntry),
 		TextRow("Pool tolerance (ms)", f.PoolToleranceEntry),
-		widget.NewLabel("Sticky hash"),
+		widget.NewLabel(locale.T("Sticky hash")),
 		container.NewVBox(row1, row2),
 	)
 

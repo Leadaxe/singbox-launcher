@@ -222,7 +222,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			// Для direct entries вообще не создаём (нет base для reset).
 			var resetBtn *fynewidget.HoverForwardButton
 			if r.IsTemplate || r.IsPreset {
-				resetBtn = fynewidget.NewHoverForwardButtonWithIcon("Reset", theme.ViewRefreshIcon(), func() {
+				resetBtn = fynewidget.NewHoverForwardButtonWithIcon(locale.TN(1, "Reset"), theme.ViewRefreshIcon(), func() {
 					rowsNow := collectRowsForUI(editPresenter.Model())
 					if rowIdx >= len(rowsNow) {
 						return
@@ -247,7 +247,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 					}
 				}, rowGetter)
 				resetBtn.Importance = widget.LowImportance
-				fynewidget.SetToolTipSafe(resetBtn, "Reset — clear your changes, revert to defaults")
+				fynewidget.SetToolTipSafe(resetBtn, locale.T("Reset — clear your changes, revert to defaults"))
 				if !r.HasUserPatch {
 					resetBtn.Disable()
 				}
@@ -392,7 +392,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 		}
 	})
 	restoreBtn.Importance = widget.LowImportance
-	restoreBtn.SetToolTip("Restore template-defined outbounds that were deleted (e.g. auto-proxy-out, vpn ①, vpn ②). Existing entries unchanged.")
+	restoreBtn.SetToolTip(locale.T("Restore template-defined outbounds that were deleted (e.g. auto-proxy-out, vpn ①, vpn ②). Existing entries unchanged."))
 
 	// Без вложенного Scroll: список групп короткий, а собственный скролл,
 	// растянувшись на всю высоту, вмещал все строки и молча съедал колесо

@@ -1,8 +1,8 @@
 package business
 
 import (
-	"sync"
 	"fmt"
+	"sync"
 	"time"
 
 	"singbox-launcher/core/config"

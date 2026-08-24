@@ -339,10 +339,10 @@ func showSourceEditWindow(
 	// в Settings tab. URL/Postfix/Mask показываются только для subscription;
 	// URI/Label — только для server. Все мутации идут через scratch + Source.
 	urlEntry := widget.NewEntry()
-	urlEntry.SetPlaceHolder("https://example.com/sub")
+	urlEntry.SetPlaceHolder("https://example.com/sub") // l10n-exempt: sample URL
 
 	uriEntry := widget.NewEntry()
-	uriEntry.SetPlaceHolder("vless://uuid@host:443?...#tokyo")
+	uriEntry.SetPlaceHolder("vless://uuid@host:443?...#tokyo") // l10n-exempt: sample URI
 
 	labelEntry := widget.NewEntry()
 	labelEntry.SetPlaceHolder(locale.T("human-readable label"))

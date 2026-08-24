@@ -231,7 +231,7 @@ func ShowEditDialog(
 	}
 
 	// AddOutbounds: direct-out, reject checkboxes + checkboxes for other tags
-	directCheck := widget.NewCheck("direct-out", nil)
+	directCheck := widget.NewCheck("direct-out", nil) // l10n-exempt: wire tag
 	// SPEC 104: вместо `reject` предлагаем тег блокировки из шаблона.
 	// `reject` — это ACTION правила sing-box, а не outbound: положить его в
 	// outbounds[] значит сослаться на несуществующий тег. Имя тега берём из

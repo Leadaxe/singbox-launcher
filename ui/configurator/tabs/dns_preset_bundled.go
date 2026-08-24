@@ -89,7 +89,7 @@ func renderPresetBundledDNSRows(m *wizardmodels.WizardModel, parentWindow fyne.W
 				fyne.TextAlignLeading, fyne.TextStyle{Bold: true},
 			)
 			helpLabel := widget.NewLabelWithStyle(
-				"Read-only preset DNS server. Toggle on/off via checkbox.",
+				locale.T("Read-only preset DNS server. Toggle on/off via checkbox."),
 				fyne.TextAlignLeading, fyne.TextStyle{Italic: true},
 			)
 			helpLabel.Wrapping = fyne.TextWrapWord
@@ -179,7 +179,7 @@ func showBundledReadOnlyDetails(parent fyne.Window, tpl *wizardtemplate.Preset, 
 		fyne.TextAlignLeading, fyne.TextStyle{Bold: true},
 	)
 	helpLabel := widget.NewLabelWithStyle(
-		"Read-only. Edit via preset variables (Rules tab → Edit). For custom DNS rules use the Extra rules editor below.",
+		locale.T("Read-only. Edit via preset variables (Rules tab → Edit). For custom DNS rules use the Extra rules editor below."),
 		fyne.TextAlignLeading, fyne.TextStyle{Italic: true},
 	)
 	helpLabel.Wrapping = fyne.TextWrapWord
@@ -292,7 +292,7 @@ func buildPresetBundledDNSRowFromResolved(
 
 	var right *fyne.Container
 	if onView != nil {
-		viewBtn := fynewidget.NewHoverForwardButtonWithIcon("View", theme.SearchIcon(), onView, rowGetter) // l10n-key
+		viewBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("View"), theme.SearchIcon(), onView, rowGetter)
 		viewBtn.Importance = widget.LowImportance
 		right = container.NewHBox(viewBtn, rowGutter)
 	} else {

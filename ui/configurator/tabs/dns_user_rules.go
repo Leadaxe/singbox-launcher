@@ -142,35 +142,35 @@ func showEditUserDNSRuleDialog(
 		}
 	}
 	srsSection := container.NewVBox(
-		widget.NewLabel("Rule set tag:"),
+		widget.NewLabel(locale.T("Rule set tag:")),
 		ruleSetSelect,
 	)
 
 	// === Inline section ===
 	domainSuffixEntry := widget.NewMultiLineEntry()
-	domainSuffixEntry.SetPlaceHolder("one suffix per line (e.g. example.com)")
+	domainSuffixEntry.SetPlaceHolder(locale.T("one suffix per line (e.g. example.com)"))
 	domainSuffixEntry.SetText(joinStringList(working, "domain_suffix"))
 
 	domainEntry := widget.NewMultiLineEntry()
-	domainEntry.SetPlaceHolder("one exact domain per line")
+	domainEntry.SetPlaceHolder(locale.T("one exact domain per line"))
 	domainEntry.SetText(joinStringList(working, "domain"))
 
 	keywordEntry := widget.NewMultiLineEntry()
-	keywordEntry.SetPlaceHolder("one keyword per line")
+	keywordEntry.SetPlaceHolder(locale.T("one keyword per line"))
 	keywordEntry.SetText(joinStringList(working, "domain_keyword"))
 
 	ipCIDREntry := widget.NewMultiLineEntry()
-	ipCIDREntry.SetPlaceHolder("one CIDR per line (e.g. 10.0.0.0/8)")
+	ipCIDREntry.SetPlaceHolder(locale.T("one CIDR per line (e.g. 10.0.0.0/8)"))
 	ipCIDREntry.SetText(joinStringList(working, "ip_cidr"))
 
 	inlineSection := container.NewVBox(
-		widget.NewLabel("Domain suffix:"),
+		widget.NewLabel(locale.T("Domain suffix:")),
 		domainSuffixEntry,
-		widget.NewLabel("Domain (exact):"),
+		widget.NewLabel(locale.T("Domain (exact):")),
 		domainEntry,
-		widget.NewLabel("Domain keyword:"),
+		widget.NewLabel(locale.T("Domain keyword:")),
 		keywordEntry,
-		widget.NewLabel("IP CIDR:"),
+		widget.NewLabel(locale.T("IP CIDR:")),
 		ipCIDREntry,
 	)
 
@@ -212,13 +212,13 @@ func showEditUserDNSRuleDialog(
 	typeRadio.SetSelected(currentType)
 
 	formContent := container.NewVBox(
-		widget.NewLabel("Type:"),
+		widget.NewLabel(locale.T("Type:")),
 		typeRadio,
 		widget.NewSeparator(),
 		srsSection,
 		inlineSection,
 		widget.NewSeparator(),
-		widget.NewLabel("Server:"),
+		widget.NewLabel(locale.T("Server:")),
 		serverSelect,
 	)
 	updateSectionVisibility()
@@ -233,8 +233,8 @@ func showEditUserDNSRuleDialog(
 	}
 	refreshJSON()
 
-	formTab := container.NewTabItem("Form", container.NewScroll(container.NewPadded(formContent)))
-	jsonTab := container.NewTabItem("JSON", container.NewScroll(container.NewPadded(jsonEntry)))
+	formTab := container.NewTabItem(locale.T("Form"), container.NewScroll(container.NewPadded(formContent)))
+	jsonTab := container.NewTabItem(locale.T("JSON"), container.NewScroll(container.NewPadded(jsonEntry)))
 	tabs := container.NewAppTabs(formTab, jsonTab)
 	tabs.OnSelected = func(t *container.TabItem) {
 		if t == jsonTab {
@@ -253,8 +253,8 @@ func showEditUserDNSRuleDialog(
 	}
 	editWin := controller.UIService.Application.NewWindow(titleStr)
 
-	cancelBtn := widget.NewButton("Cancel", func() { editWin.Close() })
-	saveBtn := widget.NewButton("Save", func() {
+	cancelBtn := widget.NewButton(locale.T("Cancel"), func() { editWin.Close() })
+	saveBtn := widget.NewButton(locale.T("Save"), func() {
 		// Final: parse current tab. Если на JSON tab юзер редактировал — берём
 		// его JSON. Иначе — собираем из form.
 		var finalRule map[string]interface{}
@@ -523,7 +523,7 @@ func showViewAllDNSRulesDialog(presenter *wizardpresentation.WizardPresenter, pa
 		fyne.TextAlignLeading, fyne.TextStyle{Bold: true},
 	)
 	help := widget.NewLabelWithStyle(
-		"Read-only preview of final config.json::dns.rules in user order (preset and user rules interleaved per DNSRuleOrder).",
+		locale.T("Read-only preview of final config.json::dns.rules in user order (preset and user rules interleaved per DNSRuleOrder)."),
 		fyne.TextAlignLeading, fyne.TextStyle{Italic: true},
 	)
 	help.Wrapping = fyne.TextWrapWord

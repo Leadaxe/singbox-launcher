@@ -134,14 +134,14 @@ func newDNSServerForm(p *wizardpresentation.WizardPresenter, selfTag string) *dn
 
 	f.typeSelect = widget.NewSelect(dnsFormTypes, nil)
 	f.tagEntry = widget.NewEntry()
-	f.tagEntry.SetPlaceHolder("my-dns")
+	f.tagEntry.SetPlaceHolder("my-dns") // l10n-exempt: sample tag
 	f.serverEntry = widget.NewEntry()
 	f.serverEntry.SetPlaceHolder("1.1.1.1")
 	f.portEntry = widget.NewEntry()
 	f.pathEntry = widget.NewEntry()
-	f.pathEntry.SetPlaceHolder("/dns-query")
+	f.pathEntry.SetPlaceHolder("/dns-query") // l10n-exempt: wire path
 	f.sniEntry = widget.NewEntry()
-	f.sniEntry.SetPlaceHolder("cloudflare-dns.com")
+	f.sniEntry.SetPlaceHolder("cloudflare-dns.com") // l10n-exempt: sample host
 
 	// Детур — тот же список, что цель правила: без групп подписок (SPEC 108)
 	// и без парных auto-групп (SPEC 104). Писать тег руками пользователь не
@@ -161,9 +161,9 @@ func newDNSServerForm(p *wizardpresentation.WizardPresenter, selfTag string) *dn
 	f.modeSelect = widget.NewSelect([]string{"fastest", "random"}, nil)
 	f.modeSelect.SetSelected("fastest")
 	f.errorTTLEntry = widget.NewEntry()
-	f.errorTTLEntry.SetPlaceHolder("5m")
+	f.errorTTLEntry.SetPlaceHolder("5m") // l10n-exempt: duration literal
 	f.winTTLEntry = widget.NewEntry()
-	f.winTTLEntry.SetPlaceHolder("5m")
+	f.winTTLEntry.SetPlaceHolder("5m") // l10n-exempt: duration literal
 
 	f.rows["server"] = dnsFormRow(locale.T("Address"), f.serverEntry)
 	f.rows["port"] = dnsFormRow(locale.T("Port"), f.portEntry)

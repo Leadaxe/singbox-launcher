@@ -284,6 +284,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			}
 		}
 	} else {
+		// l10n-exempt: JSON placeholder
 		rawTabEntry.SetText(`{
   "ip_cidr": [],
   "outbound": "proxy-out"

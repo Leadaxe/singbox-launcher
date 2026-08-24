@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 
+	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 	tprof "singbox-launcher/internal/traffic"
 )
@@ -82,7 +83,7 @@ func ShowProcessPicker(parent fyne.Window, profiler *tprof.TrafficProfiler, onPi
 	list.OnSelected = func(id widget.ListItemID) { selectedIdx = id }
 
 	search := widget.NewEntry()
-	search.SetPlaceHolder("Filter by name or path…")
+	search.SetPlaceHolder(locale.T("Filter by name or path…"))
 	search.OnChanged = func(s string) {
 		filter = s
 		list.Refresh()

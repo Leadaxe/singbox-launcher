@@ -1,0 +1,62 @@
+{
+  "NewButton": [
+    0
+  ],
+  "NewButtonWithIcon": [
+    0
+  ],
+  "NewCheck": [
+    0
+  ],
+  "NewFormItem": [
+    0
+  ],
+  "NewHoverForwardButtonWithIcon": [
+    0
+  ],
+  "NewHyperlink": [
+    0
+  ],
+  "NewLabel": [
+    0
+  ],
+  "NewLabelWithStyle": [
+    0
+  ],
+  "NewRadioGroup": [
+    0
+  ],
+  "NewTabItem": [
+    0
+  ],
+  "NewTabItemWithIcon": [
+    0
+  ],
+  "SetPlaceHolder": [
+    0
+  ],
+  "SetText": [
+    0
+  ],
+  "SetTitle": [
+    0
+  ],
+  "SetToolTip": [
+    0
+  ],
+  "SetToolTipSafe": [
+    1
+  ],
+  "ShowConfirm": [
+    1,
+    2
+  ],
+  "ShowErrorText": [
+    1,
+    2
+  ],
+  "ShowInformation": [
+    0,
+    1
+  ]
+}

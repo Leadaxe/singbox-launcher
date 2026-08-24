@@ -4234,5 +4234,134 @@
   },
   "%s — not supported here, skipped": {
     "value": "%s — здесь не поддерживается, пропущено"
+  },
+  "Config validation failed": {
+    "value": "Конфиг не прошёл проверку"
+  },
+  "Daemon": {
+    "value": "Демон"
+  },
+  "Search domain / IP / process…": {
+    "value": "Поиск домена / IP / процесса…"
+  },
+  "⏸ Pause": {
+    "value": "⏸ Пауза"
+  },
+  "▶ Resume": {
+    "value": "▶ Продолжить"
+  },
+  "🗑 Clear": {
+    "value": "🗑 Очистить"
+  },
+  "Target: (none)": {
+    "value": "Цель: (нет)"
+  },
+  "Pick process…": {
+    "value": "Выбрать процесс…"
+  },
+  "Live": {
+    "value": "Лайв"
+  },
+  "Domains": {
+    "value": "Домены"
+  },
+  "IPs": {
+    "value": "IP-адреса"
+  },
+  "Saved sessions (last 5)": {
+    "value": "Сохранённые сессии (последние 5)"
+  },
+  "STOP": {
+    "value": "СТОП"
+  },
+  "Pick process & START": {
+    "value": "Выбрать процесс и СТАРТ"
+  },
+  "Idle — pick a process and START to begin recording.": {
+    "value": "Ожидание — выберите процесс и нажмите СТАРТ, чтобы начать запись."
+  },
+  "Read-only view of saved session — click START to record a new one.": {
+    "value": "Сохранённая сессия открыта только для просмотра — нажмите СТАРТ, чтобы записать новую."
+  },
+  "Filter by name or path…": {
+    "value": "Фильтр по имени или пути…"
+  },
+  "Verbose logs (debug)": {
+    "value": "Подробные логи (debug)"
+  },
+  "Verbose logs active — battery/CPU impact.": {
+    "value": "Подробные логи включены — влияет на батарею/CPU."
+  },
+  "Delete all completed recording sessions? Active session is preserved.": {
+    "value": "Удалить все завершённые сессии записи? Активная сессия сохранится."
+  },
+  "By client": {
+    "value": "По клиенту"
+  },
+  "Per-process": {
+    "value": "По процессам"
+  },
+  "Sticky hash": {
+    "value": "Sticky hash"
+  },
+  "Reset — clear your changes, revert to defaults": {
+    "value": "Сброс — отменяет ваши изменения, возвращает значения по умолчанию"
+  },
+  "Restore template-defined outbounds that were deleted (e.g. auto-proxy-out, vpn ①, vpn ②). Existing entries unchanged.": {
+    "value": "Восстанавливает удалённые outbound'ы шаблона (например, auto-proxy-out, vpn ①, vpn ②). Остальные записи не меняются."
+  },
+  "Read-only preset DNS server. Toggle on/off via checkbox.": {
+    "value": "Пресетный DNS-сервер, только чтение. Включить/выключить — чекбоксом."
+  },
+  "Read-only. Edit via preset variables (Rules tab → Edit). For custom DNS rules use the Extra rules editor below.": {
+    "value": "Только чтение. Правится через переменные пресета (вкладка Rules → Изменить). Для своих DNS-правил используйте редактор ниже."
+  },
+  "+ Add Rule": {
+    "value": "+ Правило"
+  },
+  "View All DNS Rules": {
+    "value": "Все DNS-правила"
+  },
+  "Delete this DNS rule?": {
+    "value": "Удалить это DNS-правило?"
+  },
+  "Rule set tag:": {
+    "value": "Тег rule set:"
+  },
+  "one suffix per line (e.g. example.com)": {
+    "value": "по суффиксу на строку (например, example.com)"
+  },
+  "one exact domain per line": {
+    "value": "по домену на строку"
+  },
+  "one keyword per line": {
+    "value": "по ключевому слову на строку"
+  },
+  "one CIDR per line (e.g. 10.0.0.0/8)": {
+    "value": "по CIDR на строку (например, 10.0.0.0/8)"
+  },
+  "Domain suffix:": {
+    "value": "Суффикс домена:"
+  },
+  "Domain (exact):": {
+    "value": "Домен (точный):"
+  },
+  "Domain keyword:": {
+    "value": "Ключевое слово домена:"
+  },
+  "IP CIDR:": {
+    "value": "IP CIDR:"
+  },
+  "Type:": {
+    "value": "Тип:"
+  },
+  "Server:": {
+    "value": "Сервер:"
+  },
+  "Read-only preview of final config.json::dns.rules in user order (preset and user rules interleaved per DNSRuleOrder).": {
+    "value": "Просмотр итогового config.json::dns.rules в пользовательском порядке (пресетные и свои правила чередуются по DNSRuleOrder). Только чтение."
+  },
+  "GitHub limits anonymous requests per IP address, and this limit has been reached — often because the current VPN node's address is shared with other users. Wait about an hour, switch to another node, or download the file manually.": {
+    "value": "GitHub ограничивает анонимные запросы с одного IP-адреса, и лимит исчерпан — часто потому, что адрес текущего узла VPN делят другие пользователи. Подождите около часа, переключитесь на другой узел или скачайте файл вручную."
   }
 }

@@ -15,6 +15,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 
+	"singbox-launcher/internal/locale"
 	tprof "singbox-launcher/internal/traffic"
 )
 
@@ -36,7 +37,7 @@ func buildWindowToolbar(deps WindowDeps, win fyne.Window) fyne.CanvasObject {
 	// Plain widget.Check has no tooltip support; users couldn't tell what
 	// the checkbox does until they tried it (and got the «active
 	// connections will reset» confirm).
-	verboseChk := ttwidget.NewCheck("Verbose logs (debug)", nil)
+	verboseChk := ttwidget.NewCheck(locale.T("Verbose logs (debug)"), nil)
 	verboseChk.SetChecked(isCurrentlyVerbose(deps))
 	verboseChk.SetToolTip(
 		"Switches sing-box log level between your saved value (off) and " +
@@ -58,7 +59,7 @@ func buildWindowToolbar(deps WindowDeps, win fyne.Window) fyne.CanvasObject {
 
 	refreshHint := func() {
 		if verboseChk.Checked {
-			verboseHint.SetText("Verbose logs active — battery/CPU impact.")
+			verboseHint.SetText(locale.T("Verbose logs active — battery/CPU impact."))
 		} else {
 			verboseHint.SetText("")
 		}
@@ -147,7 +148,7 @@ func buildOverflowMenu(deps WindowDeps, win fyne.Window) *fyne.Menu {
 		fyne.NewMenuItem("Copy session JSON", func() { copySessionJSON(deps, win) }),
 		fyne.NewMenuItem("Export session JSON…", func() { exportSessionJSON(deps, win) }),
 		fyne.NewMenuItem("Clear completed sessions", func() {
-			dialog.ShowConfirm("Clear sessions?", "Delete all completed recording sessions? Active session is preserved.", func(yes bool) {
+			dialog.ShowConfirm("Clear sessions?", locale.T("Delete all completed recording sessions? Active session is preserved."), func(yes bool) {
 				if yes {
 					deps.Profiler.ClearAll()
 				}
@@ -202,7 +203,7 @@ func copySessionJSON(deps WindowDeps, win fyne.Window) {
 	if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
 		app.Clipboard().SetContent(string(data))
 	}
-	dialog.ShowInformation("Copied", fmt.Sprintf("Session JSON copied (%d events).", len(exp.Events)), win)
+	dialog.ShowInformation(locale.T("Copied"), fmt.Sprintf("Session JSON copied (%d events).", len(exp.Events)), win)
 }
 
 func exportSessionJSON(deps WindowDeps, win fyne.Window) {

@@ -231,12 +231,12 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 	onLoadAndRefreshProxies := func() {
 		if ac.APIService == nil {
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized"))
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized")) // l10n-exempt: product name
 			return
 		}
 		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 		if !clashAPIEnabled {
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API is disabled: config error"))
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API is disabled: config error")) // l10n-exempt: product name
 			if ac.UIService.ListStatusLabel != nil {
 				ac.UIService.ListStatusLabel.SetText(locale.T("Clash API disabled due to config error"))
 			}
@@ -389,7 +389,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 	onTestAPIConnection := func() {
 		if ac.APIService == nil {
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized"))
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized")) // l10n-exempt: product name
 			return
 		}
 		// Daemon-режим: Clash API нет, управление по gRPC. «Тест» = проверка
@@ -409,7 +409,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 						// ядро внутри демона не запущено — сырой RPC-текст
 						// пугает, а лекарство одно: нажать Start.
 						if strings.Contains(err.Error(), "service is not started") {
-							ShowErrorText(ac.UIService.MainWindow, "Daemon",
+							ShowErrorText(ac.UIService.MainWindow, locale.T("Daemon"),
 								locale.T("The daemon is paired and reachable, but the core is not started yet. Press Start to bring the VPN up."))
 							return
 						}
@@ -419,7 +419,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 						// Error while dialing…» — значит пугать текстом, из
 						// которого пользователю нечего извлечь.
 						if isUnreachableErr(err) {
-							ShowErrorText(ac.UIService.MainWindow, "Daemon",
+							ShowErrorText(ac.UIService.MainWindow, locale.T("Daemon"),
 								locale.T("The machine is not answering. Check that it is powered on and reachable on the network, then press Connect again."))
 							return
 						}
@@ -445,7 +445,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 		if !clashAPIEnabled {
 			ac.UIService.ApiStatusLabel.SetText(locale.T("❌ Clash API Off (Config Error)"))
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API is disabled: config error"))
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API is disabled: config error")) // l10n-exempt: product name
 			return
 		}
 		go func() {
@@ -782,12 +782,12 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 		switchButton.OnTapped = func() {
 			if ac.APIService == nil {
-				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized"))
+				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized")) // l10n-exempt: product name
 				return
 			}
 			_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 			if !clashAPIEnabled {
-				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API is disabled: config error"))
+				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API is disabled: config error")) // l10n-exempt: product name
 				return
 			}
 			go func(group string) {
@@ -1078,12 +1078,12 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	// --- Функция массового пинга всех прокси ---
 	pingAllProxies := func() {
 		if ac.APIService == nil {
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized"))
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized")) // l10n-exempt: product name
 			return
 		}
 		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 		if !clashAPIEnabled {
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API is disabled: config error"))
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API is disabled: config error")) // l10n-exempt: product name
 			return
 		}
 		proxies := ac.GetProxiesList()
@@ -1362,7 +1362,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		radio.Selected = selected
 
 		urlEntry := widget.NewEntry()
-		urlEntry.SetPlaceHolder("https://example.com/generate_204") // l10n-key
+		urlEntry.SetPlaceHolder("https://example.com/generate_204") // l10n-key // l10n-exempt: sample URL
 		urlEntry.SetText(currentURL)
 		if selected != customMode {
 			urlEntry.Disable()
@@ -1480,7 +1480,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	// Mapping button for showing selector -> currently active outbound (queried from Clash API)
 	mapButton := widget.NewButton("⇄", func() {
 		if ac.APIService == nil {
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized"))
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized")) // l10n-exempt: product name
 			return
 		}
 		// Гейт «clash_api включён» осмыслен только для classic: в daemon-режиме
@@ -1488,7 +1488,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		// зависят (её может вообще не быть).
 		if ac.BackendMode() != core.BackendDaemon {
 			if _, _, enabled, _ := EffectiveClashAPIConfigIn(ac, scope); !enabled {
-				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API is disabled: config error"))
+				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API is disabled: config error")) // l10n-exempt: product name
 				return
 			}
 		}

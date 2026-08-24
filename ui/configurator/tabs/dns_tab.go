@@ -177,7 +177,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 					// внутри. Отдельный диалог «сырой JSON» убран — он и
 					// создавал разницу между своим сервером и шаблонным.
 					viewIdx := idx
-					viewBtn := fynewidget.NewHoverForwardButtonWithIcon("View", theme.SearchIcon(), func() {
+					viewBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("View"), theme.SearchIcon(), func() {
 						showDNSServerEditor(presenter, dialogParent(), viewIdx)
 					}, rowGetter)
 					viewBtn.Importance = widget.LowImportance
@@ -443,11 +443,11 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	}
 
 	// [+ Add Rule] и [View All DNS Rules] кнопки внизу секции Rules.
-	addRuleBtn := widget.NewButton("+ Add Rule", func() {
+	addRuleBtn := widget.NewButton(locale.T("+ Add Rule"), func() {
 		showEditUserDNSRuleDialog(presenter, dialogParent(), -1, refreshAll)
 	})
 	addRuleBtn.Importance = widget.MediumImportance
-	viewAllBtn := widget.NewButton("View All DNS Rules", func() {
+	viewAllBtn := widget.NewButton(locale.T("View All DNS Rules"), func() {
 		showViewAllDNSRulesDialog(presenter, dialogParent())
 	})
 	viewAllBtn.Importance = widget.LowImportance
