@@ -51,6 +51,13 @@ import (
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	addRulePlaceholderIpText      = "Enter IP addresses (CIDR format)\ne.g., 192.168.1.0/24"
+	addRulePlaceholderSrsUrlsText = "SRS URLs (one per line)\ne.g. https://raw.githubusercontent.com/.../file.srs"
+	addRulePlaceholderUrlText     = "Enter domains or URLs (one per line)\ne.g., example.com"
+)
+
 // CreateRulesTabFunc is a function type for creating the rules tab.
 // This is used to avoid circular import between dialogs and tabs packages.
 type CreateRulesTabFunc func(p *wizardpresentation.WizardPresenter) fyne.CanvasObject
@@ -96,11 +103,11 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	labelEntry.SetPlaceHolder(locale.T("Rule name"))
 
 	ipEntry := widget.NewMultiLineEntry()
-	ipEntry.SetPlaceHolder(locale.T("Enter IP addresses (CIDR format)\ne.g., 192.168.1.0/24"))
+	ipEntry.SetPlaceHolder(locale.T(addRulePlaceholderIpText))
 	ipEntry.Wrapping = fyne.TextWrapWord
 
 	urlEntry := widget.NewMultiLineEntry()
-	urlEntry.SetPlaceHolder(locale.T("Enter domains or URLs (one per line)\ne.g., example.com"))
+	urlEntry.SetPlaceHolder(locale.T(addRulePlaceholderUrlText))
 	urlEntry.Wrapping = fyne.TextWrapWord
 
 	// Limit input field height
@@ -149,7 +156,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 
 	// SRS: manual URLs (one per line)
 	srsURLsEntry := widget.NewMultiLineEntry()
-	srsURLsEntry.SetPlaceHolder(locale.T("SRS URLs (one per line)\ne.g. https://raw.githubusercontent.com/.../file.srs"))
+	srsURLsEntry.SetPlaceHolder(locale.T(addRulePlaceholderSrsUrlsText))
 	srsURLsEntry.Wrapping = fyne.TextWrapWord
 	srsURLsScroll := container.NewScroll(srsURLsEntry)
 	srsURLsSizeRect := canvas.NewRectangle(color.Transparent)

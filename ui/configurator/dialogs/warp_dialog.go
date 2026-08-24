@@ -28,6 +28,12 @@ import (
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	warpJunkNoteText    = "jc/jmin/jmax add standalone junk packets (safe with WARP). Packet padding (s1–s4) and magic headers (h1–h4) are fixed to WARP-compatible values — a plain-WireGuard WARP server drops any other padding, breaking the handshake."
+	warpNewKeysNoteText = "By default the node reuses the registration you already have, so H2 and H3 share one key. Tick this if you need a new account — the old one is replaced."
+)
+
 // ShowAddWarpDialog открывает WARP-конфигуратор. onURI получает готовый URI
 // (wireguard:// или masque://) в главном потоке Fyne — обычно applyAddedSources.
 func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func(string)) {
@@ -67,7 +73,7 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 	// регистрацией и перезаписать кеш. Показываем её только когда кеш реально
 	// есть — иначе она обещает выбор, которого нет.
 	newKeys := widget.NewCheck(locale.T("Create new keys (fresh Cloudflare registration)"), nil)
-	newKeysNote := widget.NewLabel(locale.T("By default the node reuses the registration you already have, so H2 and H3 share one key. Tick this if you need a new account — the old one is replaced."))
+	newKeysNote := widget.NewLabel(locale.T(warpNewKeysNoteText))
 	newKeysNote.Wrapping = fyne.TextWrapWord
 	newKeysNote.TextStyle = fyne.TextStyle{Italic: true}
 	newKeysRow := container.NewVBox(newKeys, newKeysNote)
@@ -194,7 +200,7 @@ func newWarpWGSection() *warpWGSection {
 		}
 	}
 
-	junkNote := widget.NewLabelWithStyle(locale.T("jc/jmin/jmax add standalone junk packets (safe with WARP). Packet padding (s1–s4) and magic headers (h1–h4) are fixed to WARP-compatible values — a plain-WireGuard WARP server drops any other padding, breaking the handshake."), fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+	junkNote := widget.NewLabelWithStyle(locale.T(warpJunkNoteText), fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
 	junkNote.Wrapping = fyne.TextWrapWord // 224-симв подсказка — без wrap задаёт огромный min-width
 
 	advanced := container.NewVBox(

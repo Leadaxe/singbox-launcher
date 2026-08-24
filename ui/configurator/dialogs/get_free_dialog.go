@@ -37,6 +37,12 @@ import (
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	getFreeErrorLoadText   = "Failed to load community sources:\n\nLocal cache missing or corrupted."
+	getFreeThanksLabelText = "These are subscription URLs maintained by the community. Pick one and click Insert — the URL goes into the input field, then click Add to register it."
+)
+
 // getFreeData — плоская LxBox-style схема: текст благодарности + ссылка
 // + список URL'ов подписок. Никакого parser_config / outbounds / правил —
 // клик по URL подставляет его в поле, дальнейшую обработку (парс подписки,
@@ -147,7 +153,7 @@ func ShowGetFreeVPNDialog(presenter *wizardpresentation.WizardPresenter) {
 		fyne.Do(func() {
 			loading.Hide()
 			if err != nil {
-				dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Failed to load community sources:\n\nLocal cache missing or corrupted."), err), guiState.Window)
+				dialog.ShowError(fmt.Errorf("%s: %w", locale.T(getFreeErrorLoadText), err), guiState.Window)
 				return
 			}
 			renderGetFreeDialog(presenter, guiState, data)
@@ -164,7 +170,7 @@ func renderGetFreeDialog(
 ) {
 	_ = presenter // зарезервирован под будущий audit-лог; mутаций модели здесь нет
 
-	intro := widget.NewLabel(locale.T("These are subscription URLs maintained by the community. Pick one and click Insert — the URL goes into the input field, then click Add to register it."))
+	intro := widget.NewLabel(locale.T(getFreeThanksLabelText))
 	intro.Wrapping = fyne.TextWrapWord
 
 	// Текст благодарности + кликабельная ссылка на одной горизонтальной

@@ -30,6 +30,11 @@ import (
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	rulesTooltipSrsMissingEnabledText = "Rule-set file not downloaded — this rule won't work until the SRS is fetched. The launcher is downloading it in the background; you can also click ⬇ srs to retry."
+)
+
 // buildUnifiedRuleRows — один обход через RuleOrder, рендерит tile per slot.
 func buildUnifiedRuleRows(
 	presenter *wizardpresentation.WizardPresenter,
@@ -290,7 +295,7 @@ func buildSinglePresetRefRow(
 			srsMissingEnabled = true
 			srsWarn = ttwidget.NewLabel("⚠")
 			srsWarn.Importance = widget.WarningImportance
-			srsWarn.SetToolTip(locale.T("Rule-set file not downloaded — this rule won't work until the SRS is fetched. The launcher is downloading it in the background; you can also click ⬇ srs to retry."))
+			srsWarn.SetToolTip(locale.T(rulesTooltipSrsMissingEnabledText))
 		}
 	}
 

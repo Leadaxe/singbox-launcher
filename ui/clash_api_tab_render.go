@@ -15,6 +15,11 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	copyLinkNotSupportedText = "This outbound cannot be turned into a share link (e.g. selector, direct-out, or fields not supported by the URI encoder)."
+)
+
 // effectiveNodeConfigPath — config.json, описывающий ядро области scope.
 // Для Remote с подключённой машиной это ЕЁ собранный конфиг
 // (wizard_states/remote/<id>/config.json): локальный bin/config.json описывает
@@ -67,7 +72,7 @@ func serversRunCopyShareURIToClipboard(ac *core.AppController, status *widget.La
 		fyne.Do(func() {
 			if err != nil {
 				if errors.Is(err, subscription.ErrShareURINotSupported) {
-					ShowErrorText(win, locale.T("🖥️ Servers"), locale.T("This outbound cannot be turned into a share link (e.g. selector, direct-out, or fields not supported by the URI encoder)."))
+					ShowErrorText(win, locale.T("🖥️ Servers"), locale.T(copyLinkNotSupportedText))
 				} else {
 					ShowError(win, err)
 				}
@@ -90,7 +95,7 @@ func serversRunCopyJumpShareURIToClipboard(ac *core.AppController, status *widge
 		fyne.Do(func() {
 			if err != nil {
 				if errors.Is(err, subscription.ErrShareURINotSupported) {
-					ShowErrorText(win, locale.T("🖥️ Servers"), locale.T("This outbound cannot be turned into a share link (e.g. selector, direct-out, or fields not supported by the URI encoder)."))
+					ShowErrorText(win, locale.T("🖥️ Servers"), locale.T(copyLinkNotSupportedText))
 				} else {
 					ShowError(win, err)
 				}

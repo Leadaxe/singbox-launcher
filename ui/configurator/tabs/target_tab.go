@@ -12,6 +12,13 @@ import (
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	targetHintRemoteText  = "On Save the config is written to bin/remote-config.json for deployment under the lxd daemon — the local bin/config.json is never touched. State lives in bin/wizard_states/remote/state.json."
+	targetIntroRemoteText = "This config is for another machine and differs from a local one: no Clash API (the lxd daemon manages the core there) and no system proxy. Gateway-specific behavior — LAN interfaces, wide proxy listen, process matching off — is controlled by Gateway mode on the Settings tab."
+	targetRemoteNoteText  = "Set the TUN interface name explicitly — the core default cannot be relied on, and on a router the name is needed for firewall rules and routes."
+)
+
 // CreateTargetTab — шаг 0 визарда (SPEC 097): для какой машины готовим конфиг.
 //
 // Стоит ПЕРЕД остальными вкладками намеренно: таргет определяет, какие поля
@@ -31,11 +38,11 @@ func CreateTargetTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 
 		// Вкладка существует только в удалённом режиме (см. createWizardTabs),
 		// поэтому ветвления по цели здесь больше нет.
-		intro := widget.NewLabel(locale.T("This config is for another machine and differs from a local one: no Clash API (the lxd daemon manages the core there) and no system proxy. Gateway-specific behavior — LAN interfaces, wide proxy listen, process matching off — is controlled by Gateway mode on the Settings tab."))
+		intro := widget.NewLabel(locale.T(targetIntroRemoteText))
 		intro.Wrapping = fyne.TextWrapWord
 		box.Add(intro)
 
-		hint := widget.NewLabel(locale.T("On Save the config is written to bin/remote-config.json for deployment under the lxd daemon — the local bin/config.json is never touched. State lives in bin/wizard_states/remote/state.json."))
+		hint := widget.NewLabel(locale.T(targetHintRemoteText))
 		hint.Wrapping = fyne.TextWrapWord
 		hint.Importance = widget.LowImportance
 		box.Add(hint)
@@ -72,7 +79,7 @@ func CreateTargetTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 				widget.NewFormItem(locale.T("Target architecture"), archSelect),
 			))
 
-			note := widget.NewLabel(locale.T("Set the TUN interface name explicitly — the core default cannot be relied on, and on a router the name is needed for firewall rules and routes."))
+			note := widget.NewLabel(locale.T(targetRemoteNoteText))
 			note.Wrapping = fyne.TextWrapWord
 			note.Importance = widget.WarningImportance
 			box.Add(note)

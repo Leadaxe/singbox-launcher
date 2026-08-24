@@ -26,6 +26,14 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	debugApiRegenConfirmBodyText  = "A new bearer token will be generated and the old one will stop working immediately. Any scripts or automation using the old token must be updated. If the API is running it will restart with the new token. Continue?"
+	hashDeviceModelTooltipText    = "When enabled, X-Device-Model is sent as sha256(model)[:16] instead of the raw value (e.g. MacBookPro18,1). The provider still counts you as one device but does not see the hardware family."
+	hwidRegenerateConfirmBodyText = "This will generate a new UUID and the next subscription fetch will register a new device with HWID-binding providers — consuming one of your allowed device slots. The previous ID stays counted until you remove it via the provider's management bot. Continue?"
+	sendHwidTooltipText           = "Sends a UUIDv4 device ID + OS family/version + device model with every subscription fetch. Required by Marzban / Remnawave / NashVPN-style panels for device counting. Unchecking returns a less-fingerprinted request — HWID-binding panels will then return empty subscriptions."
+)
+
 // BuildSettingsContent builds the Settings UI body. Collects launcher-wide
 // toggles that used to be scattered across Core Dashboard (auto-update,
 // auto-ping) and Help (language + download-locales), so there's one obvious
@@ -295,7 +303,7 @@ func buildSubscriptionIdentificationBlock(ac *core.AppController, binDir string)
 	sendHWIDCheck.SetChecked(st.ShouldSendHWID())
 	sendHWIDHelp := widget.NewButton("?", helpDialog(
 		locale.T("Send device ID"),
-		locale.T("Sends a UUIDv4 device ID + OS family/version + device model with every subscription fetch. Required by Marzban / Remnawave / NashVPN-style panels for device counting. Unchecking returns a less-fingerprinted request — HWID-binding panels will then return empty subscriptions."),
+		locale.T(sendHwidTooltipText),
 	))
 	sendHWIDHelp.Importance = widget.LowImportance
 	sendHWIDRow := container.NewHBox(sendHWIDCheck, sendHWIDHelp)
@@ -305,7 +313,7 @@ func buildSubscriptionIdentificationBlock(ac *core.AppController, binDir string)
 	hashModelCheck.SetChecked(st.SubscriptionDeviceModelHashed)
 	hashModelHelp := widget.NewButton("?", helpDialog(
 		locale.T("Hash device model (privacy)"),
-		locale.T("When enabled, X-Device-Model is sent as sha256(model)[:16] instead of the raw value (e.g. MacBookPro18,1). The provider still counts you as one device but does not see the hardware family."),
+		locale.T(hashDeviceModelTooltipText),
 	))
 	hashModelHelp.Importance = widget.LowImportance
 	hashModelRow := container.NewHBox(hashModelCheck, hashModelHelp)
@@ -364,7 +372,7 @@ func buildSubscriptionIdentificationBlock(ac *core.AppController, binDir string)
 		ShowConfirm(
 			ac.UIService.MainWindow,
 			locale.T("Regenerate device ID?"),
-			locale.T("This will generate a new UUID and the next subscription fetch will register a new device with HWID-binding providers — consuming one of your allowed device slots. The previous ID stays counted until you remove it via the provider's management bot. Continue?"),
+			locale.T(hwidRegenerateConfirmBodyText),
 			func(ok bool) {
 				if !ok {
 					return
@@ -477,7 +485,7 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 		ShowConfirm(
 			ac.UIService.MainWindow,
 			locale.T("Regenerate Debug API token?"),
-			locale.T("A new bearer token will be generated and the old one will stop working immediately. Any scripts or automation using the old token must be updated. If the API is running it will restart with the new token. Continue?"),
+			locale.T(debugApiRegenConfirmBodyText),
 			func(ok bool) {
 				if !ok {
 					return

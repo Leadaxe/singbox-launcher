@@ -50,6 +50,11 @@ import (
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	sourceHintText = "Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://). For multiple links, use a new line for each."
+)
+
 // CreateSourcesTab creates the Sources tab UI (URLs, URL status and preview).
 func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObject {
 	guiState := presenter.GUIState()
@@ -71,7 +76,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		presenter.MarkAsChanged()
 	}
 
-	hintLabel := widget.NewLabel(locale.T("Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://). For multiple links, use a new line for each."))
+	hintLabel := widget.NewLabel(locale.T(sourceHintText))
 	hintLabel.Wrapping = fyne.TextWrapWord
 	wireguardHelpButton := widget.NewButton("?", func() {
 		if err := platform.OpenURL(directLinksDocURL); err != nil {

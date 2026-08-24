@@ -35,6 +35,16 @@ import (
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	singboxHelpExtractText  = "Extract the binary into the bin folder.\n\n"
+	singboxHelpLookForText  = "Look for: %s\n"
+	singboxHelpMsgText      = "sing-box is the core binary.\n\n"
+	wintunHelpInArchiveText = "In the download archive, take wintun.dll \n\n Your system is %s.\n\n "
+	wintunHelpMsgText       = "wintun.dll is required for TUN mode on Windows.\n\n"
+	wintunHelpPlaceText     = "Place it in the bin folder: bin\n\n"
+)
+
 // CoreDashboardTab управляет вкладкой Core Dashboard
 type CoreDashboardTab struct {
 	controller *core.AppController
@@ -478,14 +488,14 @@ func (tab *CoreDashboardTab) createVersionBlock() fyne.CanvasObject {
 	title.Importance = widget.MediumImportance
 
 	singboxHelpBtn := widget.NewButton("?", func() {
-		msg := locale.T("sing-box is the core binary.\n\n")
+		msg := locale.T(singboxHelpMsgText)
 		if suffix := core.SingboxAssetSuffix(); suffix != "" {
 			// Use the pinned RequiredCoreVersion in the filename hint — this
 			// is exactly what the Download button installs.
 			fileName := fmt.Sprintf("sing-box-%s-%s", constants.RequiredCoreVersion, suffix)
-			msg += locale.Tf("Look for: %s\n", fileName)
+			msg += locale.Tf(singboxHelpLookForText, fileName)
 		}
-		msg += locale.T("Extract the binary into the bin folder.\n\n") +
+		msg += locale.T(singboxHelpExtractText) +
 			locale.T("You can download with the button above, or manually from:")
 		binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
 		urlLink := widget.NewHyperlink(constants.SingboxReleasesURL, nil)
@@ -1038,9 +1048,9 @@ func (tab *CoreDashboardTab) createWintunBlock() fyne.CanvasObject {
 		if runtime.GOARCH == "arm64" {
 			archDir = "arm64"
 		}
-		msg := locale.T("wintun.dll is required for TUN mode on Windows.\n\n") +
-			locale.Tf("In the download archive, take wintun.dll \n\n Your system is %s.\n\n ", archDir) +
-			locale.T("Place it in the bin folder: bin\n\n") +
+		msg := locale.T(wintunHelpMsgText) +
+			locale.Tf(wintunHelpInArchiveText, archDir) +
+			locale.T(wintunHelpPlaceText) +
 			locale.T("You can download with the button above, or manually from:")
 		binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
 		urlLink := widget.NewHyperlink(constants.WintunHomeURL, nil)

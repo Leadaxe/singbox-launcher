@@ -32,6 +32,12 @@ import (
 	"singbox-launcher/ui/components"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	tooltipExportUrisText         = "Copy share links for all rows visible now, in current list order (one URI per line; hidden ping-error rows are skipped; excludes selector, urltest, direct)."
+	tooltipExportUrisSelectedText = "Copy share links for selected proxies only (multiple selection), in current list order (same URI rules as the default copy)."
+)
+
 // ProxyListPanel — построенная панель списка прокси вместе с её СОБСТВЕННЫМИ
 // виджетами и колбэками (SPEC 098).
 //
@@ -1261,9 +1267,9 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			return
 		}
 		if len(selectedProxyNames) > 1 {
-			exportShareURIsButton.SetToolTip(locale.T("Copy share links for selected proxies only (multiple selection), in current list order (same URI rules as the default copy)."))
+			exportShareURIsButton.SetToolTip(locale.T(tooltipExportUrisSelectedText))
 		} else {
-			exportShareURIsButton.SetToolTip(locale.T("Copy share links for all rows visible now, in current list order (one URI per line; hidden ping-error rows are skipped; excludes selector, urltest, direct)."))
+			exportShareURIsButton.SetToolTip(locale.T(tooltipExportUrisText))
 		}
 	}
 	syncExportShareURIsButtonTooltip()

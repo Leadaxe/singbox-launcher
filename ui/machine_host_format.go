@@ -9,6 +9,12 @@ import (
 	"singbox-launcher/internal/lxdclient"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	hostArchMismatchText = "⚠ This machine is recorded as %s, but the daemon reports %s. config.json is built for the recorded architecture — fix it in the machine settings."
+	hostOsMismatchText   = "⚠ This machine is recorded as %s, but the daemon runs on %s. config.json is built for the recorded platform — fix it in the machine settings."
+)
+
 // Форматирование телеметрии хоста (SPEC 068 форка, §10b документации демона).
 //
 // Вынесено из окна отдельно и без единого виджета: всё интересное здесь —
@@ -314,7 +320,7 @@ func hostArchMismatch(want, actual string) string {
 	if hostArchEqual(want, actual) {
 		return ""
 	}
-	return locale.Tf("⚠ This machine is recorded as %s, but the daemon reports %s. config.json is built for the recorded architecture — fix it in the machine settings.", want, actual)
+	return locale.Tf(hostArchMismatchText, want, actual)
 }
 
 // hostOSMismatch — то же для ОС: записанный GOOS против os_family.
@@ -330,7 +336,7 @@ func hostOSMismatch(want, actual string) string {
 	if strings.EqualFold(want, actual) {
 		return ""
 	}
-	return locale.Tf("⚠ This machine is recorded as %s, but the daemon runs on %s. config.json is built for the recorded platform — fix it in the machine settings.", want, actual)
+	return locale.Tf(hostOsMismatchText, want, actual)
 }
 
 // hostPlatformMismatch собирает предупреждения по обоим полям платформы.

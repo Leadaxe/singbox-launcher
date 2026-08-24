@@ -24,6 +24,11 @@ import (
 	ttwidget "github.com/dweymouth/fyne-tooltip/widget"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	outboundEnableTooltipText = "Include this direction in the config. A switched-off direction keeps its settings but is not built and cannot be picked as a rule target."
+)
+
 // OutboundEditPresenter is used to register the Edit/Add window with the wizard overlay (single instance, focus redirect).
 type OutboundEditPresenter interface {
 	OpenOutboundEditWindow() fyne.Window
@@ -298,7 +303,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 						onApply()
 					}
 				}
-				fynewidget.SetToolTipSafe(enableCheck, locale.T("Include this direction in the config. A switched-off direction keeps its settings but is not built and cannot be picked as a rule target."))
+				fynewidget.SetToolTipSafe(enableCheck, locale.T(outboundEnableTooltipText))
 			}
 
 			switch {

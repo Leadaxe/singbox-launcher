@@ -24,6 +24,12 @@ import (
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	dnsDialogViewHintParamsText = "This server is declared by the template: its body is fixed. Toggle it on or off with the checkbox in the list; Params below changes what it does let you set."
+	dnsPlaceholderRulesText     = "{\n  \"rules\": [\n    {\"rule_set\":\"example\",\"server\":\"tag\"}\n  ]\n}"
+)
+
 // setTooltip is the package-shared, nil/empty-guarded tooltip helper for the
 // configurator tabs — prefer it over bare o.SetToolTip(...) so empty strings
 // and nil objects can't panic or render blank tooltips. (SPEC 069 §5.4 noted
@@ -296,7 +302,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	setTooltip(guiState.DNSDefaultResolverSelect, varTooltip(wizardmodels.VarDNSDefaultDomainResolver))
 
 	guiState.DNSRulesEntry = widget.NewMultiLineEntry()
-	guiState.DNSRulesEntry.SetPlaceHolder(locale.T("{\n  \"rules\": [\n    {\"rule_set\":\"example\",\"server\":\"tag\"}\n  ]\n}"))
+	guiState.DNSRulesEntry.SetPlaceHolder(locale.T(dnsPlaceholderRulesText))
 	guiState.DNSRulesEntry.Wrapping = fyne.TextWrapOff
 	guiState.DNSRulesEntry.OnChanged = func(string) {
 		if guiState.DNSRulesProgrammatic {
@@ -1036,7 +1042,7 @@ func showDNSServerEditor(p *wizardpresentation.WizardPresenter, w fyne.Window, i
 		// отправить пользователя искать кнопку, которой не будет.
 		hint := locale.T("This server is declared by the template: its body is fixed. Toggle it on or off with the checkbox in the list.")
 		if len(dnsServerVarsFor(p, dnsJSONStringField(cur, "tag"))) > 0 {
-			hint = locale.T("This server is declared by the template: its body is fixed. Toggle it on or off with the checkbox in the list; Params below changes what it does let you set.")
+			hint = locale.T(dnsDialogViewHintParamsText)
 		}
 		showDNSServerDialog(p, w, form, cur, -1,
 			locale.T("DNS server (from template)"), hint, true)

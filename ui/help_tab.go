@@ -16,6 +16,13 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	devBuildFormatText        = "✅ You are using a development build\nCurrent: %s\nLatest release: %s"
+	latestVersionFormatText   = "✅ You are using the latest version\nCurrent: %s"
+	updateAvailableFormatText = "🆕 Update available: %s\nCurrent: %s"
+)
+
 // CreateHelpTab creates and returns the content for the "Help" tab.
 //
 // v0.9.6: "Open Config Folder" + "Kill Sing-Box" buttons moved to the
@@ -46,11 +53,11 @@ func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
 
 		compareResult := core.CompareVersions(currentClean, latestClean)
 		if compareResult < 0 {
-			launcherUpdateLabel.SetText(locale.Tf("🆕 Update available: %s\nCurrent: %s", latest, current))
+			launcherUpdateLabel.SetText(locale.Tf(updateAvailableFormatText, latest, current))
 		} else if compareResult > 0 {
-			launcherUpdateLabel.SetText(locale.Tf("✅ You are using a development build\nCurrent: %s\nLatest release: %s", current, latest))
+			launcherUpdateLabel.SetText(locale.Tf(devBuildFormatText, current, latest))
 		} else {
-			launcherUpdateLabel.SetText(locale.Tf("✅ You are using the latest version\nCurrent: %s", current))
+			launcherUpdateLabel.SetText(locale.Tf(latestVersionFormatText, current))
 		}
 	}
 

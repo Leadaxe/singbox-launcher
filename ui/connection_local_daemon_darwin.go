@@ -20,6 +20,14 @@ import (
 	"singbox-launcher/ui/components"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	secretHelpText              = "The Bearer secret is only needed for a daemon running WITHOUT TLS (plain mode): there it is the whole authentication, paste it and press Enter. A paired mTLS daemon ignores it — the client certificate is the credential. The daemon owns the secret (daemon.json in its state dir); view it with the command below."
+	daemonHintText              = "Run the VPN core inside a long-lived system daemon (sing-box lxd). Config changes swap the core in-process — no password prompts, and quitting the launcher can keep the VPN up. Managed over gRPC like the Android app."
+	daemonPairHelpText          = "Paste the invite printed by the daemon and click Pair. Where to get one:\n\n- Installing the service prints an invite at the end of its Terminal output (Install section, step 1).\n- For a fresh invite run the command below (copy or open in Terminal), then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS."
+	daemonUnpairConfirmBodyText = "Removes the launcher's client keys and daemon address. The daemon keeps its record of this client until removed there (sing-box lxd client remove)."
+)
+
 // wrappedLabel — Label с переносом: длинная подпись не должна задавать
 // min-width колонки (иначе вертикальный скролл распирает окно по ширине).
 func wrappedLabel(key string) *widget.Label {
@@ -47,7 +55,7 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	hintShort := widget.NewLabel(locale.T("The core runs inside a system daemon (sing-box lxd)."))
 	hintShort.Wrapping = fyne.TextWrapWord
 	hintHelp := widget.NewButton("?", func() {
-		showTextHelpDialog(ac, win, locale.T("Daemon (lxd)"), locale.T("Run the VPN core inside a long-lived system daemon (sing-box lxd). Config changes swap the core in-process — no password prompts, and quitting the launcher can keep the VPN up. Managed over gRPC like the Android app."))
+		showTextHelpDialog(ac, win, locale.T("Daemon (lxd)"), locale.T(daemonHintText))
 	})
 	hintHelp.Importance = widget.LowImportance
 
@@ -110,7 +118,7 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	secretHelp := widget.NewButton("?", func() {
 		showCommandHelpDialog(ac, win,
 			locale.T("Bearer secret (only for a daemon without TLS)"),
-			locale.T("The Bearer secret is only needed for a daemon running WITHOUT TLS (plain mode): there it is the whole authentication, paste it and press Enter. A paired mTLS daemon ignores it — the client certificate is the credential. The daemon owns the secret (daemon.json in its state dir); view it with the command below."),
+			locale.T(secretHelpText),
 			ac.DaemonShowSecretCommand())
 	})
 	secretHelp.Importance = widget.LowImportance
@@ -142,7 +150,7 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	pairHelp := widget.NewButton("?", func() {
 		showCommandHelpDialog(ac, win,
 			locale.T("Pair"),
-			locale.T("Paste the invite printed by the daemon and click Pair. Where to get one:\n\n- Installing the service prints an invite at the end of its Terminal output (Install section, step 1).\n- For a fresh invite run the command below (copy or open in Terminal), then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS."),
+			locale.T(daemonPairHelpText),
 			ac.DaemonRepairCommand())
 	})
 	pairHelp.Importance = widget.LowImportance
@@ -155,7 +163,7 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	unpairBtn := widget.NewButton(locale.T("Unpair"), func() {
 		ShowConfirm(win,
 			locale.T("Forget pairing?"),
-			locale.T("Removes the launcher's client keys and daemon address. The daemon keeps its record of this client until removed there (sing-box lxd client remove)."),
+			locale.T(daemonUnpairConfirmBodyText),
 			func(ok bool) {
 				if !ok {
 					return

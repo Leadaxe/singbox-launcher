@@ -51,6 +51,13 @@ import (
 	wizardbusiness "singbox-launcher/ui/configurator/business"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	saveDialogSuccessMessageText = "State saved to %s\n\nConfiguration will be rebuilt on next Update or Restart."
+	saveRemoteNeedsConnectText   = "Connect to this machine first: its config points at the machine's own resource store, and that path comes from the daemon when you connect."
+	saveRemoteNeedsParseText     = "Subscriptions have not been parsed for this target yet, so the config would contain no proxy nodes. Open the Preview tab (or press Read on Sources) to parse them, then save again."
+)
+
 // SaveConfig сохраняет конфигурацию асинхронно с прогресс-баром.
 func (p *WizardPresenter) SaveConfig() {
 	p.SyncGUIToModel()
@@ -278,7 +285,7 @@ func (p *WizardPresenter) finalizeSaveOperation() {
 // к **config.json** (для совместимости i18n-ключей `wizard.save.dialog_*`),
 // но фактическая запись config'а отложена.
 func (p *WizardPresenter) showSaveSuccessDialog(configPath string) {
-	message := locale.Tf("State saved to %s\n\nConfiguration will be rebuilt on next Update or Restart.", configPath)
+	message := locale.Tf(saveDialogSuccessMessageText, configPath)
 	title := locale.T("State Saved")
 
 	// Create dialog with OK button that closes both dialog and wizard
@@ -348,7 +355,7 @@ func (p *WizardPresenter) exportRemoteConfig() {
 		debuglog.WarnLog("exportRemoteConfig: nodes not parsed yet (needsParse=%v, outbounds=%d)",
 			p.model.PreviewNeedsParse, len(p.model.GeneratedOutbounds))
 		p.UpdateUI(func() {
-			dialog.ShowError(errors.New(locale.T("Subscriptions have not been parsed for this target yet, so the config would contain no proxy nodes. Open the Preview tab (or press Read on Sources) to parse them, then save again.")), p.guiState.Window)
+			dialog.ShowError(errors.New(locale.T(saveRemoteNeedsParseText)), p.guiState.Window)
 		})
 		return
 	}
@@ -359,7 +366,7 @@ func (p *WizardPresenter) exportRemoteConfig() {
 	if p.model.ResourceDir == "" && p.modelHasRuleSetFiles() {
 		debuglog.WarnLog("exportRemoteConfig: no resource dir for machine %q — connect first", p.ConfigMachineID())
 		p.UpdateUI(func() {
-			dialog.ShowError(errors.New(locale.T("Connect to this machine first: its config points at the machine's own resource store, and that path comes from the daemon when you connect.")), p.guiState.Window)
+			dialog.ShowError(errors.New(locale.T(saveRemoteNeedsConnectText)), p.guiState.Window)
 		})
 		return
 	}

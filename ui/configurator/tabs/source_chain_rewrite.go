@@ -27,6 +27,11 @@ import (
 	"singbox-launcher/internal/locale"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	chainRewriteHintText = "The value is JSON: quote strings (\"safari\"), write numbers as 1280, nest as {\"utls\":{\"fingerprint\":\"safari\"}}. null is special — it does not store a value, it removes the option from the link."
+)
+
 // rewriteRow — одна строка редактора: «тип · параметр · значение».
 type rewriteRow struct {
 	Type  string
@@ -267,7 +272,7 @@ func (e *rewriteEditor) Content() fyne.CanvasObject {
 
 	// null — не значение, а удаление ключа (RFC 7396, проверено на ядре).
 	// Единственное, что нельзя вывести из формы самой.
-	hint := widget.NewLabel(locale.T("The value is JSON: quote strings (\"safari\"), write numbers as 1280, nest as {\"utls\":{\"fingerprint\":\"safari\"}}. null is special — it does not store a value, it removes the option from the link."))
+	hint := widget.NewLabel(locale.T(chainRewriteHintText))
 	hint.Wrapping = fyne.TextWrapWord
 	hint.Importance = widget.LowImportance
 

@@ -16,6 +16,11 @@ import (
 	"singbox-launcher/ui/components"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	addHintText = "Run `sudo sing-box lxd client add` on the machine you want to manage — it prints a one-time invite. Paste it below. The code burns after the first attempt; mint a fresh one if pairing fails."
+)
+
 // Окно добавления удалённой машины (SPEC 098).
 //
 // Отдельное окно, а не диалог: полей пять, приглашение длинное, а модальный
@@ -89,7 +94,7 @@ func OpenAddMachineWindow(ac *core.AppController, onAdded func()) {
 		widget.NewAccordionItem(locale.T("Advanced (address, secret)"), advancedForm),
 	)
 
-	hint := widget.NewLabel(locale.T("Run `sudo sing-box lxd client add` on the machine you want to manage — it prints a one-time invite. Paste it below. The code burns after the first attempt; mint a fresh one if pairing fails."))
+	hint := widget.NewLabel(locale.T(addHintText))
 	hint.Wrapping = fyne.TextWrapWord
 
 	// Команду выполняет пользователь НА САМОЙ МАШИНЕ (там свой путь к бинарю

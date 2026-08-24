@@ -19,6 +19,13 @@ import (
 	"singbox-launcher/ui/components"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	copyHintText          = "Copies the wizard setup — sources, rules, DNS and variables — from another machine onto this one, so you don't build the same thing twice. Pairing is NOT copied: each machine keeps its own client key, because one shared key would mean revoking access on one machine revokes it on both. The built config and rule-set files are rebuilt for this machine on the next Save and Deploy."
+	repairConfirmBodyText = "Issue a new client key for %s?\n\nThe current key stops being this launcher's credential and stays on the machine as a leftover — remove it there with `sing-box lxd client remove`. Settings of this machine are not touched."
+	repairHintText        = "Use this when the channel broke on the machine's side: the daemon was reinstalled, its state directory was wiped, this client was revoked, or its server certificate changed and the pin no longer matches. Name, address, platform and every setting of this machine are kept — only the pin and the client key are replaced."
+)
+
 // Окно правки удалённой машины (SPEC 098 §2.1).
 //
 // Отдельное окно, а не модальный диалог: кроме четырёх полей паспорта здесь
@@ -120,7 +127,7 @@ func machineEditPassport(win fyne.Window, registry *services.RemoteRegistry,
 // Свёрнут по умолчанию: в штатной жизни машины сюда не заходят.
 func machineEditRePair(win fyne.Window, registry *services.RemoteRegistry,
 	d services.RemoteDaemon, reload func()) fyne.CanvasObject {
-	hint := widget.NewLabel(locale.T("Use this when the channel broke on the machine's side: the daemon was reinstalled, its state directory was wiped, this client was revoked, or its server certificate changed and the pin no longer matches. Name, address, platform and every setting of this machine are kept — only the pin and the client key are replaced."))
+	hint := widget.NewLabel(locale.T(repairHintText))
 	hint.Wrapping = fyne.TextWrapWord
 
 	// Команду выполняет пользователь НА САМОЙ МАШИНЕ — как и при добавлении,
@@ -157,7 +164,7 @@ func machineEditRePair(win fyne.Window, registry *services.RemoteRegistry,
 		// ключ, и прежний мандат этого лаунчера на машине становится мусором.
 		// Отменить это нечем — новый ключ старого не восстанавливает.
 		dialog.ShowConfirm(locale.T("Re-pair machine"),
-			locale.Tf("Issue a new client key for %s?\n\nThe current key stops being this launcher's credential and stays on the machine as a leftover — remove it there with `sing-box lxd client remove`. Settings of this machine are not touched.", d.Name),
+			locale.Tf(repairConfirmBodyText, d.Name),
 			func(ok bool) {
 				if !ok {
 					return
@@ -224,7 +231,7 @@ func machineEditRePair(win fyne.Window, registry *services.RemoteRegistry,
 // его на обеих. Канал приёмника остаётся его собственным.
 func machineEditCopyProfile(ac *core.AppController, win fyne.Window,
 	registry *services.RemoteRegistry, d services.RemoteDaemon, reload func()) fyne.CanvasObject {
-	hint := widget.NewLabel(locale.T("Copies the wizard setup — sources, rules, DNS and variables — from another machine onto this one, so you don't build the same thing twice. Pairing is NOT copied: each machine keeps its own client key, because one shared key would mean revoking access on one machine revokes it on both. The built config and rule-set files are rebuilt for this machine on the next Save and Deploy."))
+	hint := widget.NewLabel(locale.T(copyHintText))
 	hint.Wrapping = fyne.TextWrapWord
 
 	list, err := registry.List()

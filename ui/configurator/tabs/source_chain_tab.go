@@ -35,6 +35,15 @@ import (
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	chainConflictDetourEntryText = "The first position (%s) dials through its own detour — the real path is longer than shown: one more hop precedes it that is not in this list."
+	chainConflictForwardRefText  = "Chains %s are declared below this one in the sources list — a chain may only reference chains above it. Drag them higher, or this chain will not build."
+	chainConflictRealityText     = "ClientHello fingerprint is stripped, but positions %s are reality nodes that require it — the core will not start. Re-check tls.utls."
+	chainConflictTagTakenText    = "The name “%s” is already taken by another node, Direction or chain — two outbounds with one tag cannot coexist, this chain will be dropped at build."
+	chainNoteDetourIgnoredText   = "Positions %s have their own detour — it does not apply inside a chain: a link always dials through the previous position. The path is exactly as shown."
+)
+
 // chainForm — состояние вкладки «Цепочка».
 type chainForm struct {
 	hops   []string
@@ -504,7 +513,7 @@ func (f *chainForm) conflicts() []string {
 			}
 		}
 		if len(bad) > 0 {
-			out = append(out, locale.Tf("ClientHello fingerprint is stripped, but positions %s are reality nodes that require it — the core will not start. Re-check tls.utls.", strings.Join(bad, ", ")))
+			out = append(out, locale.Tf(chainConflictRealityText, strings.Join(bad, ", ")))
 		}
 	}
 
@@ -531,7 +540,7 @@ func (f *chainForm) conflicts() []string {
 		}
 	}
 	if len(forward) > 0 {
-		out = append(out, locale.Tf("Chains %s are declared below this one in the sources list — a chain may only reference chains above it. Drag them higher, or this chain will not build.", strings.Join(forward, ", ")))
+		out = append(out, locale.Tf(chainConflictForwardRefText, strings.Join(forward, ", ")))
 	}
 
 	// Дубль имени: цепочка, названная как существующий узел, Направление
@@ -539,7 +548,7 @@ func (f *chainForm) conflicts() []string {
 	// деградирует, и предупредить нужно в момент переименования.
 	if tag := f.Tag(); tag != "" && tag != f.originalTag {
 		if _, taken := f.lookup[tag]; taken {
-			out = append(out, locale.Tf("The name “%s” is already taken by another node, Direction or chain — two outbounds with one tag cannot coexist, this chain will be dropped at build.", tag))
+			out = append(out, locale.Tf(chainConflictTagTakenText, tag))
 		}
 	}
 
@@ -571,7 +580,7 @@ func (f *chainForm) conflicts() []string {
 	// справка (всё работает, но настройка узла здесь не действует; советовать
 	// «уберите detour» бессмысленно, он и так игнорируется).
 	if len(f.hops) > 0 && f.detourTags[f.hops[0]] {
-		out = append(out, locale.Tf("The first position (%s) dials through its own detour — the real path is longer than shown: one more hop precedes it that is not in this list.", f.hops[0]))
+		out = append(out, locale.Tf(chainConflictDetourEntryText, f.hops[0]))
 	}
 	var detouredLinks []string
 	for i := 1; i < len(f.hops); i++ {
@@ -580,7 +589,7 @@ func (f *chainForm) conflicts() []string {
 		}
 	}
 	if len(detouredLinks) > 0 {
-		out = append(out, locale.Tf("Positions %s have their own detour — it does not apply inside a chain: a link always dials through the previous position. The path is exactly as shown.", strings.Join(detouredLinks, ", ")))
+		out = append(out, locale.Tf(chainNoteDetourIgnoredText, strings.Join(detouredLinks, ", ")))
 	}
 
 	// Позиция, которой больше нет среди целей: ссылка в никуда.

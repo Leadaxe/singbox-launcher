@@ -30,6 +30,11 @@ import (
 	wizardutils "singbox-launcher/ui/configurator/utils"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	outboundAutoTabHintText = "A paired urltest group named <tag>-auto with the same nodes as this direction. It is offered as the first option and becomes the default unless a default node is set."
+)
+
 // ShowEditDialog opens a separate window to add or edit an outbound. existing may be nil for add.
 // ParserConfig is taken from the model (editPresenter.Model()) so the dialog always uses current sources.
 // onSave is called with the new config, scopeKind ("global" or "source") and sourceIndex (when scope is source).
@@ -356,7 +361,7 @@ func ShowEditDialog(
 	// Подсказка ОБЯЗАНА переноситься: у Label без Wrapping минимальная
 	// ширина равна длине строки, и она растягивает всё содержимое — поля
 	// уезжают за правый край окна.
-	autoHint := widget.NewLabel(locale.T("A paired urltest group named <tag>-auto with the same nodes as this direction. It is offered as the first option and becomes the default unless a default node is set."))
+	autoHint := widget.NewLabel(locale.T(outboundAutoTabHintText))
 	autoHint.Wrapping = fyne.TextWrapWord
 
 	autoTabContent := autoForm.Content(autoHint, autoModeLabel)

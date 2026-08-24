@@ -20,6 +20,11 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	daemonKickstartBodyText = "The daemon service keeps the old core binary in memory until it restarts. Run this command in Terminal (it asks for your sudo password):"
+)
+
 // Управление launchd-службой демона `sing-box lxd` (задача 057 форка,
 // ревизия модели владения 2026-08-09): все привилегированные операции —
 // ТОЛЬКО через терминал оператора. Лаунчер генерирует готовые sudo-команды
@@ -378,7 +383,7 @@ func (ac *AppController) notifyDaemonServiceAfterCoreUpdate() {
 	// Диалог сам оборачивается в fyne.Do — зваться из горутины загрузчика можно.
 	dialogs.ShowLinuxCapabilitiesRequired(ac.UIService.MainWindow,
 		locale.T("Core updated — restart the daemon service"),
-		locale.T("The daemon service keeps the old core binary in memory until it restarts. Run this command in Terminal (it asks for your sudo password):"),
+		locale.T(daemonKickstartBodyText),
 		ac.DaemonKickstartCommand())
 }
 

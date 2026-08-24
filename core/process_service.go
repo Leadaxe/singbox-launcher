@@ -19,6 +19,11 @@ import (
 	"singbox-launcher/internal/process"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	stopPrivilegedFailedText = "Could not stop sing-box with administrator rights (dialog cancelled or error). The core may still be running — try Stop again or quit sing-box in Activity Monitor."
+)
+
 const (
 	// restartAttempts is the maximum number of consecutive crash restart attempts
 	restartAttempts = 3
@@ -520,7 +525,7 @@ func (svc *ProcessService) Stop() {
 			ac.StoppedByUser = false
 			ac.CmdMutex.Unlock()
 			if ac.hasUI() {
-				dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("%s: %w", locale.T("Could not stop sing-box with administrator rights (dialog cancelled or error). The core may still be running — try Stop again or quit sing-box in Activity Monitor."), err))
+				dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("%s: %w", locale.T(stopPrivilegedFailedText), err))
 			}
 			return
 		}

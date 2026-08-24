@@ -28,6 +28,11 @@ import (
 	"singbox-launcher/internal/process"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	configNotFoundMessageText = "⚠️ Configuration file not found!\n\nThe file %s is missing from the bin/ folder.\n\nTo get started:\n1. open ⚙️ Configurator\n2. add subscription URLs in the Sources tab and click Save\n3. click 🔄 Update on this dashboard to fetch and build config\n4. press Start\n"
+)
+
 // Constants for log file names
 const (
 	logFileName      = "logs/" + constants.MainLogFileName
@@ -731,7 +736,7 @@ func CheckConfigFileExists() {
 	if _, err := os.Stat(ac.FileService.ConfigPath); os.IsNotExist(err) {
 		debuglog.WarnLog("CheckConfigFileExists: config.json not found at %s", ac.FileService.ConfigPath)
 
-		message := locale.Tf("⚠️ Configuration file not found!\n\nThe file %s is missing from the bin/ folder.\n\nTo get started:\n1. open ⚙️ Configurator\n2. add subscription URLs in the Sources tab and click Save\n3. click 🔄 Update on this dashboard to fetch and build config\n4. press Start\n", constants.ConfigFileName)
+		message := locale.Tf(configNotFoundMessageText, constants.ConfigFileName)
 
 		if ac.hasUI() {
 			dialogs.ShowInfo(ac.UIService.MainWindow, locale.T("Configuration Not Found"), message)

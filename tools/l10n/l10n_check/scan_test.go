@@ -86,3 +86,20 @@ func TestPlaceholdersArity(t *testing.T) {
 		t.Error("indexed verbs must count")
 	}
 }
+
+func TestConstResolution(t *testing.T) {
+	res := scanTest(t, `package demo
+
+const longHintText = "A very long hint"
+
+func f() {
+	_ = locale.T(longHintText)
+}
+`, nil)
+	if res.Used["A very long hint"] == nil {
+		t.Error("const-referenced key not resolved")
+	}
+	if len(res.Dynamic) != 0 {
+		t.Errorf("resolved const counted as dynamic: %v", res.Dynamic)
+	}
+}

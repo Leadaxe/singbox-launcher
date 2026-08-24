@@ -25,6 +25,11 @@ import (
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	generateHintText = "Save the settings: state is written and the working config.json is rebuilt — the same as the Save button below. \"Show config\" opens the built config.json in its own window without saving anything."
+)
+
 // CreateFilesTab строит вкладку.
 func CreateFilesTab(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState) fyne.CanvasObject {
 	win := guiState.Window
@@ -67,7 +72,7 @@ func CreateFilesTab(presenter *wizardpresentation.WizardPresenter, guiState *wiz
 	})
 	saveBtn.Importance = widget.HighImportance
 
-	hint := widget.NewLabel(locale.T("Save the settings: state is written and the working config.json is rebuilt — the same as the Save button below. \"Show config\" opens the built config.json in its own window without saving anything."))
+	hint := widget.NewLabel(locale.T(generateHintText))
 	hint.Wrapping = fyne.TextWrapWord
 
 	// Кнопки по центру: спейсеры по краям, а не HBox слева — сборка конфига

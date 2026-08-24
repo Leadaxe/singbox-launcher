@@ -31,6 +31,13 @@ import (
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	settingsBackupExportDoneText    = "Saved to:\n%s\n\nThe file stores passwords and keys as plain text — keep it somewhere safe."
+	settingsBackupHintText          = "Export settings to a file to move them between this launcher and LxBox on your phone. Subscriptions, servers, rules, DNS and portable variables are carried over."
+	settingsBackupSummaryCountsText = "Subscriptions: %d\nServers: %d\nRules: %d\nVariables: %d"
+)
+
 // knownPresetIDs — id пресетов текущего шаблона. Пустой список означает
 // «шаблон не загружен» — тогда ссылки на пресеты не режутся: выключить всё
 // подряд хуже, чем импортировать как есть.
@@ -59,7 +66,7 @@ func backupSection(presenter *wizardpresentation.WizardPresenter, win fyne.Windo
 
 	title := widget.NewLabelWithStyle(
 		locale.T("Backup"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	hint := widget.NewLabel(locale.T("Export settings to a file to move them between this launcher and LxBox on your phone. Subscriptions, servers, rules, DNS and portable variables are carried over."))
+	hint := widget.NewLabel(locale.T(settingsBackupHintText))
 	hint.Wrapping = fyne.TextWrapWord
 
 	return container.NewVBox(
@@ -114,7 +121,7 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 	// должен знать об этом ДО того, как отправит файл куда-нибудь.
 	dialog.ShowInformation(
 		locale.T("Backup saved"),
-		fmt.Sprintf(locale.T("Saved to:\n%s\n\nThe file stores passwords and keys as plain text — keep it somewhere safe."), path),
+		fmt.Sprintf(locale.T(settingsBackupExportDoneText), path),
 		win)
 }
 
@@ -197,7 +204,7 @@ func backupSummary(b *backup.Backup, warns []backup.Warning) string {
 	fmt.Fprintf(&sb, locale.T("From %s %s, exported %s"),
 		b.ExportedBy.App, b.ExportedBy.Version, b.ExportedAt)
 	sb.WriteString("\n\n")
-	fmt.Fprintf(&sb, locale.T("Subscriptions: %d\nServers: %d\nRules: %d\nVariables: %d"),
+	fmt.Fprintf(&sb, locale.T(settingsBackupSummaryCountsText),
 		len(b.Subscriptions), len(b.Servers), len(b.Rules), len(b.Vars))
 	if len(warns) > 0 {
 		sb.WriteString("\n\n")

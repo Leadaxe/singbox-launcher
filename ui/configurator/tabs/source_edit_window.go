@@ -31,6 +31,13 @@ import (
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	sourceDetourHintText         = "Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server (tracked by identity, survives renames)."
+	sourcePreviewNoCacheHintText = "Disabled subscriptions are not auto-fetched, so there is no cached body to preview. Click below to fetch this subscription once without enabling it."
+	sourceTagVarsHintText        = "Variables (work in all three fields): {$tag} original node tag · {$server} address · {$port} port · {$scheme} protocol (also {$protocol}) · {$label} name from the link's #fragment · {$comment} comment · {$num} node number from 1"
+)
+
 // Min heights for Source Edit dialog tab bodies (child window; do not use main window canvas before Show).
 const (
 	sourceEditSettingsScrollMinH float32 = 260
@@ -469,7 +476,7 @@ func showSourceEditWindow(
 	// final tag at generation time). The two are mutually exclusive.
 	detourNone := locale.T("(none — direct)")
 	detourSelect := widget.NewSelect(nil, nil)
-	detourHint := widget.NewLabel(locale.T("Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server (tracked by identity, survives renames)."))
+	detourHint := widget.NewLabel(locale.T(sourceDetourHintText))
 	detourHint.Wrapping = fyne.TextWrapWord
 	detourChoices := map[string]wizardbusiness.DetourChoice{}
 	detourOnChanged := func(sel string) {
@@ -645,7 +652,7 @@ func showSourceEditWindow(
 			// пустое приглашение угадывать. Подсказка одна на три поля:
 			// переменные работают во всех (replaceTagVariables зовётся и
 			// для prefix/postfix, и для mask).
-			tagVarsHint := widget.NewLabel(locale.T("Variables (work in all three fields): {$tag} original node tag · {$server} address · {$port} port · {$scheme} protocol (also {$protocol}) · {$label} name from the link's #fragment · {$comment} comment · {$num} node number from 1"))
+			tagVarsHint := widget.NewLabel(locale.T(sourceTagVarsHintText))
 			tagVarsHint.Wrapping = fyne.TextWrapWord
 			tagVarsHint.Importance = widget.LowImportance
 			settingsContent.Add(tagVarsHint)
@@ -808,7 +815,7 @@ func showSourceEditWindow(
 				previewListHost.Objects = nil
 				if needsFetch {
 					previewStatus.SetText(locale.T("Subscription has not been fetched yet"))
-					hint := widget.NewLabel(locale.T("Disabled subscriptions are not auto-fetched, so there is no cached body to preview. Click below to fetch this subscription once without enabling it."))
+					hint := widget.NewLabel(locale.T(sourcePreviewNoCacheHintText))
 					hint.Wrapping = fyne.TextWrapWord
 					hint.Importance = widget.LowImportance
 					fetchBtn := widget.NewButtonWithIcon(

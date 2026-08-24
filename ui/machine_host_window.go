@@ -18,6 +18,11 @@ import (
 	"singbox-launcher/ui/components"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	hostUnsupportedText = "This daemon has no host telemetry: the machine is reachable, but its sing-box build predates /admin/host. Update the daemon on the machine."
+)
+
 // Окно телеметрии ХОСТА машины (SPEC 068 форка, §10b документации демона).
 //
 // Зачем отдельно от профайлера: тот показывает трафик ЯДРА, а вопрос «почему
@@ -629,7 +634,7 @@ func (v *hostView) update(h lxdclient.HostInfo, hErr error,
 	if hErr != nil {
 		if errors.Is(hErr, lxdclient.ErrHostUnsupported) {
 			// 404 — это «машину видно, демон старый», а не обрыв связи.
-			v.errBar.SetText(locale.T("This daemon has no host telemetry: the machine is reachable, but its sing-box build predates /admin/host. Update the daemon on the machine."))
+			v.errBar.SetText(locale.T(hostUnsupportedText))
 		} else {
 			debuglog.WarnLog("host window: %v", hErr)
 			v.errBar.SetText(locale.Tf("Could not read host telemetry: %v", hErr))

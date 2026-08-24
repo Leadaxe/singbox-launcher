@@ -57,6 +57,29 @@ func ScanSource(fset *token.FileSet, filename string, src []byte, helpers Helper
 		return err
 	}
 
+	// Строковые константы файла: locale.T(constName) резолвится по ним
+	// (длинные тексты выносятся в const рядом с использованием).
+	consts := map[string]string{}
+	for _, decl := range f.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok || len(vs.Names) != len(vs.Values) {
+				continue
+			}
+			for i, name := range vs.Names {
+				if bl, ok := vs.Values[i].(*ast.BasicLit); ok && bl.Kind == token.STRING {
+					if v, err := strconv.Unquote(bl.Value); err == nil {
+						consts[name.Name] = v
+					}
+				}
+			}
+		}
+	}
+
 	marker := map[int]bool{}
 	for _, cg := range f.Comments {
 		for _, c := range cg.List {
@@ -117,9 +140,17 @@ func ScanSource(fset *token.FileSet, filename string, src []byte, helpers Helper
 					}
 				}
 				if fi.keyArg < len(call.Args) {
-					if bl, ok := call.Args[fi.keyArg].(*ast.BasicLit); ok && bl.Kind == token.STRING {
-						if key, err := strconv.Unquote(bl.Value); err == nil {
-							use(key, fi, form, fset.Position(bl.Pos()))
+					switch arg := call.Args[fi.keyArg].(type) {
+					case *ast.BasicLit:
+						if arg.Kind == token.STRING {
+							if key, err := strconv.Unquote(arg.Value); err == nil {
+								use(key, fi, form, fset.Position(arg.Pos()))
+								return true
+							}
+						}
+					case *ast.Ident:
+						if key, ok := consts[arg.Name]; ok {
+							use(key, fi, form, fset.Position(arg.Pos()))
 							return true
 						}
 					}

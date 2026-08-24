@@ -20,11 +20,16 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	processHintText = "The launcher spawns `sing-box run` itself and talks to it over the Clash API from config.json. There is nothing to configure here — the clash_api section is managed in the configurator."
+)
+
 // buildLocalEngineTab собирает вкладку LOCAL. daemon-панель приходит из
 // платформенного builder'а (nil вне macOS — тогда вкладка описывает только
 // classic-режим без переключателя).
 func buildLocalEngineTab(ac *core.AppController, win fyne.Window, onChanged func()) fyne.CanvasObject {
-	processHint := widget.NewLabel(locale.T("The launcher spawns `sing-box run` itself and talks to it over the Clash API from config.json. There is nothing to configure here — the clash_api section is managed in the configurator."))
+	processHint := widget.NewLabel(locale.T(processHintText))
 	processHint.Wrapping = fyne.TextWrapWord
 
 	var trySwitchToDaemon func()

@@ -22,6 +22,11 @@ import (
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	settingsNoInboundWarningText = "⚠ No inbound is enabled — sing-box will start, but won't accept any traffic. Turn on Enable TUN above, or Enable Proxy-in below."
+)
+
 // isRemote — конфиг готовится для другой машины. От этого зависит, где
 // показывать target-переменные: у удалённой машины есть своя вкладка Target,
 // у локальной её нет вовсе, и раздача в LAN настраивается здесь.
@@ -68,7 +73,7 @@ func noInboundConfigured(resolved map[string]wizardtemplate.ResolvedVar) bool {
 // Standalone row (no Reset button, no value), so it slots after the last
 // var-row regardless of layout. Locale key: wizard.settings.no_inbound_warning.
 func buildNoInboundWarningRow() fyne.CanvasObject {
-	lbl := widget.NewLabel(locale.T("⚠ No inbound is enabled — sing-box will start, but won't accept any traffic. Turn on Enable TUN above, or Enable Proxy-in below."))
+	lbl := widget.NewLabel(locale.T(settingsNoInboundWarningText))
 	lbl.Wrapping = fyne.TextWrapWord
 	lbl.Importance = widget.WarningImportance
 	return container.NewPadded(lbl)

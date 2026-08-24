@@ -25,6 +25,11 @@ import (
 	"singbox-launcher/internal/platform"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	externalIpFormatText = "Your External IP: %s\n%s"
+)
+
 // killSingBoxPanic — force-kill всех sing-box процессов на машине.
 // На Darwin использует AuthorizationExecuteWithPrivileges (тот же механизм
 // что запуск sing-box с TUN, и тот же что в "Sing-Box already running"
@@ -185,7 +190,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 						debuglog.InfoLog("diagnosticsTab: STUN check successful, IP: %s", ip)
 						connectionInfo = fmt.Sprintf("(determined via [UDP]%s, direct connection)", server)
 					}
-					resultLabel := widget.NewLabel(locale.Tf("Your External IP: %s\n%s", ip, connectionInfo))
+					resultLabel := widget.NewLabel(locale.Tf(externalIpFormatText, ip, connectionInfo))
 					copyButton := widget.NewButton(locale.T("Copy IP"), func() {
 						fyne.CurrentApp().Clipboard().SetContent(ip)
 						dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, locale.T("Copied"), locale.T("IP address copied to clipboard."))

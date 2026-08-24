@@ -24,6 +24,14 @@ import (
 	"singbox-launcher/ui/configurator"
 )
 
+// Длинные тексты локализации: ключ = английский текст (SPEC 111).
+const (
+	machinesDeployMissingText = "No config built for %s yet. Press Configure on its row, set it up and press Save — that writes the config this button sends."
+	machinesRemoveBodyText    = "Remove %s? Its config, wizard states and client keys are deleted from this launcher.\n\nAccess on the machine itself stays registered — revoke it there with `sing-box lxd client remove`."
+	powerDeployBodyText       = "Send the config to %s (%d bytes)? The daemon validates it before swapping the instance and rolls back to last-good if the new one fails to start."
+	powerRestartBodyText      = "Restart the core on %s? Everyone routing through that machine loses VPN for a moment; if the start fails, the machine is left without a core."
+)
+
 // Правая колонка вкладки Remote — список удалённых машин (SPEC 098 §2.1).
 //
 // Заменяет собой три разбросанных места: дропдаун выбора машины в шапке
@@ -676,7 +684,7 @@ func (p *machineListPanel) editMachine(d services.RemoteDaemon) {
 func (p *machineListPanel) removeMachine(d services.RemoteDaemon) {
 	dialog.ShowConfirm(
 		locale.T("Remove machine"),
-		locale.Tf("Remove %s? Its config, wizard states and client keys are deleted from this launcher.\n\nAccess on the machine itself stays registered — revoke it there with `sing-box lxd client remove`.", d.Name),
+		locale.Tf(machinesRemoveBodyText, d.Name),
 		func(ok bool) {
 			if !ok {
 				return
@@ -762,7 +770,7 @@ func (p *machineListPanel) togglePower(d services.RemoteDaemon, running bool) {
 func (p *machineListPanel) restartCore(d services.RemoteDaemon) {
 	dialog.ShowConfirm(
 		locale.T("Restart the core"),
-		locale.Tf("Restart the core on %s? Everyone routing through that machine loses VPN for a moment; if the start fails, the machine is left without a core.", d.Name),
+		locale.Tf(powerRestartBodyText, d.Name),
 		func(ok bool) {
 			if !ok {
 				return
@@ -807,12 +815,12 @@ func (p *machineListPanel) deployTo(d services.RemoteDaemon) {
 		// Конфиг ещё не собирали. Говорим, что делать, вместо сырой ошибки
 		// чтения — и указываем на Configure ИМЕННО этой машины.
 		dialog.ShowInformation(locale.TN(1, "Deploy config"),
-			locale.Tf("No config built for %s yet. Press Configure on its row, set it up and press Save — that writes the config this button sends.", d.Name), p.ac.UIService.MainWindow)
+			locale.Tf(machinesDeployMissingText, d.Name), p.ac.UIService.MainWindow)
 		return
 	}
 	dialog.ShowConfirm(
 		locale.TN(1, "Deploy config"),
-		locale.Tf("Send the config to %s (%d bytes)? The daemon validates it before swapping the instance and rolls back to last-good if the new one fails to start.", d.Name, len(config)),
+		locale.Tf(powerDeployBodyText, d.Name, len(config)),
 		func(ok bool) {
 			if !ok {
 				return
