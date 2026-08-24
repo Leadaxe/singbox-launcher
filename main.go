@@ -15,6 +15,7 @@ import (
 	"singbox-launcher/core"
 	"singbox-launcher/core/services"
 	"singbox-launcher/core/state"
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
@@ -96,6 +97,34 @@ func main() {
 	locale.LoadExternalLocales(locale.GetLocaleDir(binDir))
 	settings := locale.LoadSettings(binDir)
 	locale.SetLang(settings.Lang)
+	// Самолечение каталога после апдейта (SPEC 111): апдейт меняет только
+	// бинарь, bin/locale/ остаётся старым — для не-английского языка после
+	// смены версии докачиваем каталоги в фоне один раз. Non-fatal и не
+	// блокирует старт (конституция: первый запуск не зависит от сети);
+	// уже построенные окна дорисуются на новом языке после перезапуска.
+	if settings.Lang != "en" && settings.LastLocaleLauncherVersion != constants.AppVersion {
+		go func() {
+			// Каталог уже нового формата (ключ-сентинел на месте) — сеть не
+			// нужна, только штамп версии. Заодно закрывает окно, когда код
+			// новее содержимого GitHub-ветки: свежий локальный файл не
+			// перетирается протухшим удалённым.
+			if locale.CatalogHasKey(settings.Lang, "Local") {
+				if err := locale.MarkLocalesRefreshed(binDir, constants.AppVersion); err != nil {
+					debuglog.WarnLog("locale refresh: persist version: %v", err)
+				}
+				return
+			}
+			localeDir := locale.GetLocaleDir(binDir)
+			if n, err := locale.DownloadAllRemoteLocales(localeDir); err != nil {
+				debuglog.WarnLog("locale refresh after upgrade: %v (downloaded %d)", err, n)
+				return
+			}
+			if err := locale.MarkLocalesRefreshed(binDir, constants.AppVersion); err != nil {
+				debuglog.WarnLog("locale refresh: persist version: %v", err)
+			}
+			debuglog.InfoLog("locale refresh after upgrade: catalogs updated for %s", constants.AppVersion)
+		}()
+	}
 	if settings.PingTestURL != "" {
 		api.SetPingTestURL(settings.PingTestURL)
 	}

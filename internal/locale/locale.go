@@ -172,6 +172,20 @@ func langChainLocked() []string {
 	return []string{lang, "en"}
 }
 
+// CatalogHasKey reports whether the loaded catalog for code contains key.
+// Used by the post-upgrade self-heal to tell a current catalog from a stale
+// one without a network round-trip.
+func CatalogHasKey(code, key string) bool {
+	mu.RLock()
+	defer mu.RUnlock()
+	msgs, ok := catalogs[code]
+	if !ok {
+		return false
+	}
+	_, ok = msgs[key]
+	return ok
+}
+
 // SetLang changes the current language. Ignored if the language is not available.
 func SetLang(l string) {
 	mu.Lock()

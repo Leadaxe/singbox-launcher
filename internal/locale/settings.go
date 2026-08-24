@@ -50,6 +50,13 @@ type Settings struct {
 	// текущей AppVersion: если меньше → шаблон удаляется как протухший
 	// (формат шаблона мог разойтись между версиями). См. SPEC 046.
 	LastTemplateLauncherVersion string `json:"last_template_launcher_version,omitempty"`
+	// LastLocaleLauncherVersion — версия лаунчера, которая в последний раз
+	// обновила bin/locale/*.json. Апдейт заменяет только бинарь (bin/
+	// сохраняется), поэтому после смены механики ключей (SPEC 111) старый
+	// каталог молча давал английский UI. При несовпадении с AppVersion
+	// локали докачиваются в фоне один раз — тот же приём, что у шаблона
+	// (SPEC 046, LastTemplateLauncherVersion).
+	LastLocaleLauncherVersion string `json:"last_locale_launcher_version,omitempty"`
 
 	// HWID — random UUIDv4 идентификатор устройства, отправляемый в
 	// `X-Hwid` заголовке при каждом fetch'е подписки. Lazy-generated
@@ -170,6 +177,17 @@ func MarkTemplateInstalled(binDir, appVersion string) error {
 		return nil
 	}
 	s.LastTemplateLauncherVersion = appVersion
+	return SaveSettings(binDir, s)
+}
+
+// MarkLocalesRefreshed persists the launcher version that just refreshed the
+// locale catalogs. Not marked on download failure — the next launch retries.
+func MarkLocalesRefreshed(binDir, appVersion string) error {
+	s := LoadSettings(binDir)
+	if s.LastLocaleLauncherVersion == appVersion {
+		return nil
+	}
+	s.LastLocaleLauncherVersion = appVersion
 	return SaveSettings(binDir, s)
 }
 
