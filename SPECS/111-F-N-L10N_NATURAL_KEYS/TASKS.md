@@ -2,31 +2,34 @@
 
 Чеклист к [SPEC.md](SPEC.md) / [PLAN.md](PLAN.md).
 
-**Предусловие:** ветка отводится от `develop` при чистом рабочем дереве.
-Сейчас в нём незакоммиченные изменения по SPEC 110 (цепочки) — механический
-дифф по 74 файлам с ними не смержится.
+**Режим работы:** коммиты прямо в `develop` (ветки не переключаем — рабочую
+копию делят другие агенты), инкрементальный переход по PLAN §«Порядок»:
+движок параллелен старому, оба стиля ключей работают одновременно, легаси
+снимается финальным шагом.
 
 ---
 
 ## Этап 1 — Движок
 
-- [ ] `internal/locale/entry.go`: типы `Entry` / `Value`, `UnmarshalJSON`
+- [x] `internal/locale/entry.go`: типы `Entry` / `Value`, `UnmarshalJSON`
       для трёх видов записи: голая строка (= `{"value": строка}`; так живут
       `_display_name` и старый формат), объект `value`, объект форм +
       `special`
-- [ ] Битая запись не паникует: пропуск + `debuglog.WarnLog`
-- [ ] `internal/locale/plural.go`: интерфейс `PluralResolver` с `Forms()`,
+- [x] Битая запись не паникует: пропуск + `debuglog.WarnLog`
+- [x] `internal/locale/plural.go`: интерфейс `PluralResolver` с `Forms()`,
       `RuPluralResolver` (CLDR one/few/many/other), `EnPluralResolver`
 - [ ] `internal/locale/locale.go`: убрать `//go:embed en.json` и `enJSON`
-- [ ] `catalogs` → `map[string]map[string]Entry`, резолвер на язык
-- [ ] Внутренний `render(form, key, plural, n, args…)`
-- [ ] Публичные `T`, `Tf`, `TN`, `TfN`, `Plural`, `PluralN`
-- [ ] Fallback: язык → форма 0 → ключ; аргументы подставляются и в fallback
-- [ ] `LangDisplayName` читает `_display_name` как простую строку
-- [ ] `entry_test.go`: разбор трёх видов записи + деградация битой
-- [ ] `plural_test.go`: русский на 1, 2, 5, 11, 21, 22, 25, 101, 111
-- [ ] `locale_test.go`: удалить `TestEmbeddedEnglish`, адаптировать остальные
-- [ ] `go test ./internal/locale/...` зелёный
+      (финальный шаг миграции, не этап 1 — см. PLAN §«Порядок»)
+- [x] `catalogs` → `map[string]map[string]Entry`, резолвер на язык
+- [x] Внутренний `render(form, key, plural, n, args…)`
+- [x] Публичные `T`, `Tf`, `TN`, `TfN`, `Plural`, `PluralN`
+- [x] Fallback: язык → форма 0 → ключ; аргументы подставляются и в fallback
+- [x] `LangDisplayName` читает `_display_name` как простую строку
+- [x] `entry_test.go`: разбор трёх видов записи + деградация битой
+- [x] `plural_test.go`: русский на 1, 2, 5, 11, 21, 22, 25, 101, 111
+- [x] `locale_test.go`: адаптировать под `Entry` (`TestEmbeddedEnglish`
+      живёт до снятия `en.json`; parity остался только en → ru)
+- [x] `go test ./internal/locale/...` зелёный
 
 ## Этап 2 — Миграция каталога
 
@@ -38,11 +41,11 @@
       `scripts/l10n_collisions.json`
 - [ ] 130 мёртвых ключей отброшены
 - [ ] `_display_name` перенесён как простая строка
-- [ ] `bin/locale/ru.json` в новом формате, ~1075 записей — валидный JSON
+- [ ] `bin/locale/ru.json` в новом формате, ~1091 запись — валидный JSON
 
 ## Этап 3 — Call-sites
 
-- [ ] `scripts/l10n_migrate.py --code`: замена 1224 литеральных вызовов
+- [ ] `scripts/l10n_migrate.py --code`: замена 1234 литеральных вызовов
 - [ ] Корректное экранирование Go-строк (кавычки, `\n`, слэши)
 - [ ] Коллизии из `l10n_collisions.json` → `locale.TN(N, …)` / `TfN`
 - [ ] Длинные (>120 символов) и многострочные значения — в `const` рядом с
@@ -65,8 +68,8 @@
 - [ ] Ручная проверка: битый/отсутствующий `ru.json` — старт есть, UI
       английский, в логе warn
 
-> Этапы 1–3 вливаются **одним коммитом** — между ними проект собирается, но
-> интерфейс временно английский.
+> Переход инкрементальный (PLAN §«Порядок»): каждая пачка замен — рабочий
+> коммит; легаси-ключи и `en.json` снимаются финальным шагом этапа 3.
 
 ## Этап 4 — Чекер `l10n_check`
 
