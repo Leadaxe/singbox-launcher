@@ -1,0 +1,51 @@
+{
+  "lx_backup": 1,
+  "exported_by": {
+    "app": "lxbox",
+    "version": "2.2.0"
+  },
+  "exported_at": "2026-08-24T00:00:00Z",
+  "directions": [
+    {
+      "tag": "vpn-de",
+      "label": "Германия",
+      "filter": "🇩🇪"
+    }
+  ],
+  "chains": [
+    {
+      "tag": "relay",
+      "label": "Мой маршрут",
+      "chain": {
+        "hops": [
+          "vpn-de",
+          "exit-node"
+        ],
+        "idle_timeout": "0s",
+        "strip_evasion": false,
+        "strip": {
+          "tls.utls": false,
+          "xhttp.padding": true
+        },
+        "rewrite": {
+          "vless": {
+            "flow": null
+          }
+        }
+      }
+    }
+  ],
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "Chained",
+      "outbound": "relay",
+      "num": 1000,
+      "match": {
+        "domain_suffix": [
+          "de.example-1.com"
+        ]
+      }
+    }
+  ]
+}

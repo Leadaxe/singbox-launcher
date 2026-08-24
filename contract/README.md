@@ -56,3 +56,5 @@
 | 0.3.0 | Направления (SPEC 104): `schema/direction.schema.json`, корпус `corpus/direction/`, перенос целей правил в бэкапе (`directions[]`, схема v1.1) |
 | 0.4.0 | Свёртка подписки в группу (SPEC 108): `schema/source_fold.schema.json` (`auto` через `$ref` на форму Направления), кейсы `fold_*` в корпусе Направлений, поле `fold` в расширении подписки бэкапа |
 | 0.5.0 | Полный конфигуратор DNS (SPEC 109): корпус `corpus/dns/` (материализация DNS-сервера), вложенная форма записей `{vars, server}` разворачивается при загрузке (`NormalizeDNSOptions`); закрыты разрывы N8 (форма записей) и N9 (имя типа `dns_server`) |
+| 0.6.0 | Цепочки хопов (SPEC 110): `schema/source_chain.schema.json`, кейсы `chain_*` в корпусе Направлений, коды `chain_*` в реестре warning'ов |
+| 0.7.0 | Перенос цепочек в бэкапе (SPEC 110, схема v1.2): корневая секция `chains[]` вместо блоба `extensions.launcher`, идентичность и merge по `tag` (warning `backup_chain_exists`), нормативный порядок записей; кейсы `chains_roundtrip` и `chain_tag_duplicate` в `corpus/backup/` |
