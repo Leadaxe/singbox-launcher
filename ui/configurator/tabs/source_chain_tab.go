@@ -131,9 +131,17 @@ func (f *chainForm) SetTag(tag string) {
 
 // SetCandidates заменяет список кандидатов — например, когда кэш узлов
 // дозагрузился уже после открытия окна.
-func (f *chainForm) SetCandidates(cands []chainHopCandidate, nodeTypes map[string]string, nodesKnown bool) {
+//
+// realityTags/detourTags обновляются ВМЕСТЕ с кандидатами: они считаются из
+// тех же PreviewNodes, и прежняя сигнатура их выбрасывала — окно, открытое
+// до разбора подписок, навсегда оставалось с пустыми множествами, и
+// предупреждения T4 (reality + strip utls) и T7 (detour на позиции) молчали
+// именно в том сценарии, где они нужнее всего.
+func (f *chainForm) SetCandidates(cands []chainHopCandidate, realityTags, detourTags map[string]bool, nodeTypes map[string]string, nodesKnown bool) {
 	f.cands = cands
 	f.lookup = chainHopLookup(cands)
+	f.realityTags = realityTags
+	f.detourTags = detourTags
 	f.nodeTypes = nodeTypes
 	f.nodesKnown = nodesKnown
 	f.rebuildHops()
@@ -164,11 +172,14 @@ func (f *chainForm) Load(c *configtypes.SourceChain) {
 	}
 
 	if f.idleEntry != nil {
+		prev := f.idleEntry.OnChanged
+		f.idleEntry.OnChanged = nil
 		if c != nil {
 			f.idleEntry.SetText(c.IdleTimeout)
 		} else {
 			f.idleEntry.SetText("")
 		}
+		f.idleEntry.OnChanged = prev
 	}
 	if f.stripEvasion != nil {
 		on := c.StripEvasionEnabled()
@@ -331,6 +342,9 @@ func (f *chainForm) Content() fyne.CanvasObject {
 
 	f.idleEntry = widget.NewEntry()
 	f.idleEntry.SetPlaceHolder(locale.T("wizard.chain.idle_placeholder"))
+	// Без обработчика правка ТОЛЬКО этого поля молча терялась: Collect
+	// вызывается из changed(), а его дёргали все поля, кроме idle_timeout.
+	f.idleEntry.OnChanged = func(string) { f.changed() }
 
 	f.stripEvasion = widget.NewCheck(locale.T("wizard.chain.strip_evasion"), nil)
 	f.stripEvasion.SetChecked(true)
@@ -504,6 +518,29 @@ func (f *chainForm) conflicts() []string {
 	}
 	if len(nested) > 0 {
 		out = append(out, locale.Tf("wizard.chain.conflict_nested", strings.Join(nested, ", ")))
+	}
+
+	// Ссылка «вперёд»: сборка разрешает цепочку-позицию только если та
+	// объявлена ВЫШЕ по списку источников (так циклы невозможны по
+	// построению). Форма это ограничение раньше не знала — цепочка молча
+	// деградировала на сборке с причиной «позиция не найдена».
+	var forward []string
+	for _, hop := range f.hops {
+		if c, ok := f.lookup[hop]; ok && c.Kind == hopKindChain && c.Below {
+			forward = append(forward, hop)
+		}
+	}
+	if len(forward) > 0 {
+		out = append(out, locale.Tf("wizard.chain.conflict_forward_ref", strings.Join(forward, ", ")))
+	}
+
+	// Дубль имени: цепочка, названная как существующий узел, Направление
+	// или другая цепочка, даёт два outbound'а с одним тегом — сборка её
+	// деградирует, и предупредить нужно в момент переименования.
+	if tag := f.Tag(); tag != "" && tag != f.originalTag {
+		if _, taken := f.lookup[tag]; taken {
+			out = append(out, locale.Tf("wizard.chain.conflict_tag_taken", tag))
+		}
 	}
 
 	// Переименование рвёт ссылки: другие цепочки ставят эту позицией по

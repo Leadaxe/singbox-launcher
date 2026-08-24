@@ -294,6 +294,11 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 	refreshSourcesList := func() {
 		sourcesBox.Objects = sourcesBox.Objects[:0]
+		// Группа перетаскивания живёт вместе со строками (контракт
+		// DragReorderGroup): без сброса запись удалённой строки со старшим
+		// индексом оставалась бы навсегда — перетаскивание в конец списка
+		// «не срабатывало», а полоса могла разрешиться в чужой индекс.
+		dragGroup.Reset()
 		m := presenter.Model()
 		if len(m.Sources) == 0 {
 			emptyGutter := components.NewScrollGutter()
@@ -673,6 +678,20 @@ func applySourceMutation(presenter *wizardpresentation.WizardPresenter, guiState
 	if guiState != nil && guiState.RefreshSourcesList != nil {
 		guiState.RefreshSourcesList()
 	}
+	// Пользователь СМОТРИТ на вкладку (мутация делается с неё) — счётчики
+	// пересчитываются сразу в фоне, а не при следующем заходе на вкладку:
+	// иначе тумблер одного источника гасил цифры у всех строк до конца
+	// визита.
+	go func() {
+		if !wizardbusiness.EnsureSourceNodeCounts(m) {
+			return
+		}
+		fyne.Do(func() {
+			if guiState != nil && guiState.RefreshSourcesList != nil {
+				guiState.RefreshSourcesList()
+			}
+		})
+	}()
 }
 
 // showSourcePreviewAllWindow opens a window with the combined server list from all sources (uses View window slot).
@@ -936,6 +955,10 @@ func refreshOneSourceFromUI(
 					break
 				}
 			}
+			// Обновление меняет СОСТАВ узлов — кэш превью и счётчики на
+			// строках обязаны пересчитаться, иначе кандидаты позиций
+			// цепочки и «50 nodes» живут телом до обновления.
+			wizardbusiness.InvalidatePreviewCache(m)
 			if guiState != nil && guiState.RefreshSourcesList != nil {
 				guiState.RefreshSourcesList()
 			}

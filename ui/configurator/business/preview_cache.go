@@ -1,6 +1,7 @@
 package business
 
 import (
+	"sync"
 	"fmt"
 	"time"
 
@@ -19,7 +20,14 @@ import (
 //   - model.PreviewNodesBySource: nodes grouped by source index in ParserConfig.ParserConfig.Proxies.
 //
 // It returns the number of sources that failed to load (errorCount) and an error for fatal failures.
+// previewRebuildMu сериализует пересборки кэша: два фоновых захода (вкладка
+// Sources и окно цепочки) иначе разбирали бы все подписки параллельно и
+// вперемешку писали одни и те же поля модели.
+var previewRebuildMu sync.Mutex
+
 func RebuildPreviewCache(model *wizardmodels.WizardModel) (int, error) {
+	previewRebuildMu.Lock()
+	defer previewRebuildMu.Unlock()
 	timing := debuglog.StartTiming("wizardPreviewCache")
 	defer timing.EndWithDefer()
 
@@ -114,6 +122,7 @@ func InvalidatePreviewCache(model *wizardmodels.WizardModel) {
 	if model == nil {
 		return
 	}
+	model.PreviewCacheGeneration++
 	model.PreviewNodes = nil
 	model.PreviewNodesBySource = nil
 	model.PreviewIgnoredSectionsBySource = nil

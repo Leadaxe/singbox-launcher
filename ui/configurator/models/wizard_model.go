@@ -187,6 +187,13 @@ type WizardModel struct {
 	// каждое движение мыши. nil = ещё не считали.
 	SourceNodeCounts map[int]SourceNodeCount
 
+	// PreviewCacheGeneration растёт на каждую инвалидцию кэша превью.
+	// Фоновый счёт (EnsureSourceNodeCounts) снимает значение до разбора и
+	// сверяет после: если источники менялись, пока шёл счёт, результат
+	// относится к СТАРОМУ списку (ключи — индексы!) и выбрасывается, а не
+	// пишется поверх — иначе счётчики съезжали на чужие строки.
+	PreviewCacheGeneration int
+
 	// PreviewIgnoredSectionsBySource — секции импортированного sing-box конфига,
 	// которые парсер намеренно не читает (route/dns/inbounds/experimental),
 	// по индексу источника (SPEC 094 A4). Показывается в превью, чтобы

@@ -40,6 +40,12 @@ type rewriteEditor struct {
 	box      *fyne.Container
 	types    []string // типы узлов, реально стоящих в цепочке
 	onChange func()
+
+	// errLabels — подписи ошибок, по одной на строку. Живут отдельно от
+	// rebuild: обновление текста ошибки не должно пересоздавать Entry, в
+	// который пользователь прямо сейчас печатает (иначе фокус и курсор
+	// остаются на отсоединённом экземпляре).
+	errLabels []*widget.Label
 }
 
 func newRewriteEditor(onChange func()) *rewriteEditor {
@@ -124,8 +130,17 @@ func (e *rewriteEditor) rowError(idx int) string {
 	t := strings.TrimSpace(r.Type)
 	k := strings.TrimSpace(r.Key)
 	v := strings.TrimSpace(r.Value)
-	if t == "" || k == "" || v == "" {
+	if t == "" && k == "" && v == "" {
+		return "" // пустая строка-заготовка — не ругаемся
+	}
+	if t == "" || k == "" {
 		return "" // строка ещё заполняется — не ругаемся раньше времени
+	}
+	if v == "" {
+		// Тип и параметр заданы, значения нет: Collect такую строку
+		// выбросит, и без предупреждения это была бы полностью молчаливая
+		// потеря — хуже невалидного JSON, который хотя бы подсвечен.
+		return locale.T("wizard.chain.rewrite_err_json")
 	}
 	if !json.Valid([]byte(v)) {
 		return locale.T("wizard.chain.rewrite_err_json")
@@ -148,6 +163,7 @@ func (e *rewriteEditor) rebuild() {
 		return
 	}
 	e.box.Objects = e.box.Objects[:0]
+	e.errLabels = e.errLabels[:0]
 
 	for i := range e.rows {
 		idx := i
@@ -195,12 +211,12 @@ func (e *rewriteEditor) rebuild() {
 
 		e.box.Add(row)
 
-		if msg := e.rowError(idx); msg != "" {
-			warn := widget.NewLabel("⚠️ " + msg)
-			warn.Importance = widget.WarningImportance
-			warn.Wrapping = fyne.TextWrapWord
-			e.box.Add(warn)
-		}
+		warn := widget.NewLabel("")
+		warn.Importance = widget.WarningImportance
+		warn.Wrapping = fyne.TextWrapWord
+		warn.Hide()
+		e.errLabels = append(e.errLabels, warn)
+		e.box.Add(warn)
 	}
 
 	addBtn := widget.NewButtonWithIcon(locale.T("wizard.chain.rewrite_add"), theme.ContentAddIcon(), func() {
@@ -209,14 +225,27 @@ func (e *rewriteEditor) rebuild() {
 	})
 	addBtn.Importance = widget.LowImportance
 	e.box.Add(container.NewCenter(addBtn))
+	e.refreshErrors()
 	e.box.Refresh()
 }
 
-// refreshErrors перерисовывает только подписи об ошибках.
-//
-// Через полную пересборку: строк единицы, а точечное обновление потребовало
-// бы держать ссылки на подписи и следить, что они не разъехались с рядами.
-func (e *rewriteEditor) refreshErrors() { e.rebuild() }
+// refreshErrors обновляет ТОЛЬКО подписи об ошибках — на месте, без
+// пересборки строк: прежний путь через rebuild() выбрасывал из контейнера
+// Entry, в который пользователь печатает, и курсор с выделением оставались
+// на отсоединённом экземпляре.
+func (e *rewriteEditor) refreshErrors() {
+	for i, warn := range e.errLabels {
+		if i >= len(e.rows) {
+			break
+		}
+		if msg := e.rowError(i); msg != "" {
+			warn.SetText("⚠️ " + msg)
+			warn.Show()
+		} else {
+			warn.Hide()
+		}
+	}
+}
 
 func (e *rewriteEditor) changed() {
 	if e.onChange != nil {

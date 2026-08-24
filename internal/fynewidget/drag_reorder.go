@@ -110,6 +110,15 @@ func NewDragReorderGroup(onReorder func(from, to int)) *DragReorderGroup {
 // Register records the row drawn for slot index idx. Call it for every row in
 // the list (typically right after the row object exists): resolving a drop
 // target needs all the bands, not just the dragged row's.
+// Reset забывает все зарегистрированные строки. Обязателен перед пересборкой
+// списка, который мог СТАТЬ КОРОЧЕ: Register идемпотентен по индексу, но
+// запись со старшим индексом удалённой строки иначе жила бы вечно — count()
+// завышен, а точка вставки может разрешиться в несуществующий индекс или
+// чужую полосу.
+func (g *DragReorderGroup) Reset() {
+	g.rows = nil
+}
+
 func (g *DragReorderGroup) Register(idx int, row fyne.CanvasObject) {
 	if g == nil || row == nil {
 		return

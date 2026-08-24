@@ -32,6 +32,12 @@ func EnsureSourceNodeCounts(model *wizardmodels.WizardModel) bool {
 	timing := debuglog.StartTiming("sourceNodeCounts")
 	defer timing.EndWithDefer()
 
+	// Снимок поколения ДО разбора: счёт занимает секунды, и пользователь
+	// успевает удалить/добавить источник. Ключи карты — индексы, и счёт по
+	// старому списку, записанный поверх нового, сдвинул бы цифры на чужие
+	// строки.
+	gen := model.PreviewCacheGeneration
+
 	// Кэш превью — источник истины: он уже разобран тем же парсером, что
 	// и сборка конфига. Пустой кэш заполняем здесь же, раз пользователь
 	// открыл Sources и цифры ему нужны.
@@ -64,6 +70,10 @@ func EnsureSourceNodeCounts(model *wizardmodels.WizardModel) bool {
 			c.Enabled++
 		}
 		counts[idx] = c
+	}
+	if model.PreviewCacheGeneration != gen {
+		debuglog.DebugLog("sourceNodeCounts: источники менялись во время счёта — результат выброшен")
+		return false
 	}
 	model.SourceNodeCounts = counts
 	return true

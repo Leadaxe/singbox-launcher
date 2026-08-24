@@ -105,3 +105,25 @@ func TestChainReferencedBy(t *testing.T) {
 		t.Error("обычная позиция тоже должна попасть в карту")
 	}
 }
+
+// TestApplyProxyEdit_EmptyChainKeepsRename — цепочка с нулём позиций: scratch
+// несёт Chain == nil (Collect пустой формы), но источник ТИПА chain обязан
+// принять правку — иначе Save no-op и переименование только что созданной
+// цепочки молча откатывается (сценарий «создал, вписал имя, Save»).
+func TestApplyProxyEdit_EmptyChainKeepsRename(t *testing.T) {
+	src := &wizardmodels.Source{
+		Type:  wizardmodels.SourceTypeChain,
+		Label: "chain-1",
+	}
+	ps := &config.ProxySource{
+		TagMask: "my-route",
+		Chain:   nil, // пустая форма
+	}
+	applyProxyEditToSource(ps, src)
+	if src.Label != "my-route" {
+		t.Fatalf("переименование пустой цепочки потеряно: %q", src.Label)
+	}
+	if src.Type != wizardmodels.SourceTypeChain || src.Chain == nil {
+		t.Fatalf("тип источника разъехался: %+v", src)
+	}
+}

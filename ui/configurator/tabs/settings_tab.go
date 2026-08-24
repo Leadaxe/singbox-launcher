@@ -227,9 +227,17 @@ func applyOnChangeAndRefresh(presenter *wizardpresentation.WizardPresenter, td *
 	//
 	// `touched` — уже батч (изменённая var + цели каскада on_change), поэтому
 	// строка, зависящая от двух переменных каскада, пересчитается один раз.
-	if !recomputeSettingsGates(gs, td, model, changed) && gs.RefreshSettingsFromModel != nil {
-		// Индекса нет (вкладка ещё не собрана) — падаем на прежний путь.
-		gs.RefreshSettingsFromModel()
+	//
+	// НО: точечный пересчёт умеет обновлять только гейты (enable/disable),
+	// а не ЗНАЧЕНИЯ виджетов. Непустой каскад on_change как раз значения и
+	// меняет (ipv6_enabled → resolve_strategy = prefer_ipv4), и Select цели
+	// продолжал показывать старое, пока сборка уже брала новое, — UI и
+	// конфиг расходились до полной пересборки. Каскад — один клик, не
+	// горячий путь: полная пересборка здесь честнее рассинхрона.
+	if len(touched) > 0 || !recomputeSettingsGates(gs, td, model, changed) {
+		if gs.RefreshSettingsFromModel != nil {
+			gs.RefreshSettingsFromModel()
+		}
 	}
 	if gs.RefreshTargetTabFromModel != nil {
 		gs.RefreshTargetTabFromModel()

@@ -157,12 +157,22 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 	if ps == nil || src == nil {
 		return
 	}
-	if ps.Chain != nil {
+	if ps.Chain != nil || src.Type == wizardmodels.SourceTypeChain {
 		// SPEC 110: цепочка. Проверяется ПЕРВОЙ: у неё нет ни Source, ни
 		// Connections, ни ConfigJSON — то есть в ветки ниже она не попадает
 		// вовсе, и Save молча терял бы все позиции.
+		//
+		// Ключ ветки — и ТИП источника, не только ps.Chain: у цепочки с
+		// нулём позиций Collect отдаёт nil, и scratch не попадал ни в одну
+		// ветку — Save становился no-op, теряя даже переименование
+		// (сценарий «создал цепочку, вписал имя, Save» — самый первый).
 		src.Type = wizardmodels.SourceTypeChain
 		src.Chain = ps.Chain
+		if src.Chain == nil {
+			// Пустой состав — всё же цепочка: тип обязан остаться
+			// консистентным, а сборка сама объяснит, чего не хватает.
+			src.Chain = &configtypes.SourceChain{}
+		}
 		src.URL = ""
 		src.URI = ""
 		src.Outbounds = nil
@@ -406,9 +416,9 @@ func showSourceEditWindow(
 					return
 				}
 				cands := collectChainHopCandidates(mm, getParserConfigForChain(mm), selfTag)
-				_, _, types := chainNodeFlags(mm)
+				reality, detoured, types := chainNodeFlags(mm)
 				fyne.Do(func() {
-					chainTabBody.SetCandidates(cands, types, chainNodesKnown(mm))
+					chainTabBody.SetCandidates(cands, reality, detoured, types, chainNodesKnown(mm))
 				})
 			}()
 		}
@@ -713,6 +723,10 @@ func showSourceEditWindow(
 						break
 					}
 				}
+				// Состав узлов сменился — без инвалидции кэш превью (и
+				// счётчики, и кандидаты позиций цепочек) оставались бы от
+				// старого тела до случайной другой мутации.
+				wizardbusiness.InvalidatePreviewCache(m)
 				presenter.MarkAsChanged()
 				if refreshPreviewTab != nil {
 					refreshPreviewTab()

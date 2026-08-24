@@ -38,6 +38,11 @@ const (
 type chainHopCandidate struct {
 	Tag  string
 	Kind string
+	// Below — цепочка объявлена НИЖЕ редактируемой по списку источников.
+	// Сборка разрешает ссылки только на цепочки выше (ссылки вперёд
+	// отвергаются — так циклы невозможны по построению), и форма обязана
+	// предупредить, а не дать молча собрать деградирующую позицию.
+	Below bool
 }
 
 // Display — как строка выглядит в списке и в пикере.
@@ -118,12 +123,25 @@ func collectChainHopCandidates(
 	if model != nil {
 		// SPEC 110 T5: другие цепочки — законные позиции, но только первой.
 		// Не прячем их из списка (сценарий рабочий), а помечаем видом,
-		// чтобы форма могла предупредить о неверной позиции.
+		// чтобы форма могла предупредить о неверной позиции. Цепочки НИЖЕ
+		// редактируемой помечаются отдельно: сборка разрешает ссылки только
+		// вверх по списку.
+		belowSelf := false
 		for _, src := range model.Sources {
-			if src.Type != corestate.SourceTypeChain || !src.Enabled {
+			if src.Type != corestate.SourceTypeChain {
+				continue
+			}
+			if src.Label == selfTag {
+				belowSelf = true
+				continue
+			}
+			if !src.Enabled {
 				continue
 			}
 			add(src.Label, hopKindChain)
+			if belowSelf && len(out) > 0 && out[len(out)-1].Tag == src.Label {
+				out[len(out)-1].Below = true
+			}
 		}
 		// Кэш превью НЕ перестраиваем: он парсит все подписки разом, а у
 		// живых конфигов это сотни узлов — окно правки повисало на

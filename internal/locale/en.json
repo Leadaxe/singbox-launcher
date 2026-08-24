@@ -784,6 +784,8 @@
   "wizard.chain.no_candidates": "Nothing left to add: every available target is already in the chain.",
   "wizard.chain.conflict_reality": "ClientHello fingerprint is stripped, but positions %s are reality nodes that require it — the core will not start. Re-check tls.utls.",
   "wizard.chain.conflict_nested": "A nested chain (%s) is only allowed at the first position — move it to the top or remove it.",
+  "wizard.chain.conflict_forward_ref": "Chains %s are declared below this one in the sources list — a chain may only reference chains above it. Drag them higher, or this chain will not build.",
+  "wizard.chain.conflict_tag_taken": "The name “%s” is already taken by another node, Direction or chain — two outbounds with one tag cannot coexist, this chain will be dropped at build.",
   "wizard.chain.conflict_detour_entry": "The first position (%s) dials through its own detour — the real path is longer than shown: one more hop precedes it that is not in this list.",
   "wizard.chain.note_detour_ignored": "Positions %s have their own detour — it does not apply inside a chain: a link always dials through the previous position. The path is exactly as shown.",
   "wizard.chain.conflict_missing": "These positions are no longer among the available targets: %s. A chain with such a reference will not reach the config.",
