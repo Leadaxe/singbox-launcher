@@ -89,10 +89,31 @@ func NewCustom(title string, mainContent fyne.CanvasObject, buttons fyne.CanvasO
 // Always displays the same short message, a link to download manually, and a button to open
 // the target folder. downloadURL and targetDir may be empty to hide the link or "Open folder" button.
 func ShowDownloadFailedManual(window fyne.Window, title, downloadURL, targetDir string) {
-	debuglog.DebugLog("dialogs: ShowDownloadFailedManual start title=%s", title)
+	ShowDownloadFailedManualWithReason(window, title, "", downloadURL, targetDir)
+}
+
+// maxReasonLen caps the failure reason shown in the dialog. Wrapped labels grow
+// the dialog vertically without bound, and a wall of Go error text helps nobody
+// — the full error always goes to the log.
+const maxReasonLen = 200
+
+// ShowDownloadFailedManualWithReason is ShowDownloadFailedManual plus a concrete,
+// human-readable cause ("GitHub rate limit reached — wait or switch node")
+// instead of the generic "see the log". Pass an empty reason for the generic text.
+func ShowDownloadFailedManualWithReason(window fyne.Window, title, reason, downloadURL, targetDir string) {
+	debuglog.DebugLog("dialogs: ShowDownloadFailedManual start title=%s reason=%q", title, reason)
 	fyne.Do(func() {
 		mainContent := container.NewVBox()
-		msgLabel := widget.NewLabel(locale.T("Download failed. See the log for details."))
+		message := locale.T("Download failed. See the log for details.")
+		if reason != "" {
+			message = reason
+			// Count runes, not bytes: slicing Cyrillic text by byte offset
+			// splits a character in half and renders as a replacement glyph.
+			if r := []rune(message); len(r) > maxReasonLen {
+				message = string(r[:maxReasonLen]) + "…"
+			}
+		}
+		msgLabel := widget.NewLabel(message)
 		msgLabel.Wrapping = fyne.TextWrapWord
 		mainContent.Add(msgLabel)
 		hintLabel := widget.NewLabel(locale.T("Please download the file manually and place it in the folder below."))
