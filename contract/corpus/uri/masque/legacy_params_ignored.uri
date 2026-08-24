@@ -1,0 +1,4 @@
+# Снос легаси-приёма (0.8.0, D-078): ?network= и ?server_name= больше НЕ читаются.
+# network=h2 игнорируется → vhttp = parse-дефолт h3; server_name= игнорируется → tls-блока нет.
+# источник: core/config/subscription/node_parser_masque_test.go (TestMasque_LegacyParamsIgnored)
+masque://MHcCAQEEIB5oxGzgOdLvTY2aAbRsyJslxnlvPpOzLR076h3cgsncoAoGCCqGSM49AwEHoUQDQgAEDQBTbtpEikpJDklVHdnMhgIR8YatYDJLUILDQWGdwBbqaLiKKiuawVQz6MIaHr0I/4mNM/TfUUnoENKv9qZEWw==@192.0.2.44:443?publickey=MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEDQBTbtpEikpJDklVHdnMhgIR8YatYDJLUILDQWGdwBbqaLiKKiuawVQz6MIaHr0I%2F4mNM%2FTfUUnoENKv9qZEWw%3D%3D&address=172.16.0.2%2F32&network=h2&server_name=legacy.example-14.com#x

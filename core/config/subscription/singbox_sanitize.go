@@ -77,52 +77,29 @@ func SanitizeSingboxOutboundMap(ob map[string]interface{}, tag string) []string 
 	return codes
 }
 
-// sanitizeSingboxMasqueLegacy переводит masque-outbound из чужого диалекта
-// (плоские `network`/`sni`/`skip_cert_verify`) в схему ядра SPEC 062: `vhttp`
-// плюс вложенный `tls`. Ядро принимает и старую форму до lx.30, но смешивать
-// нельзя: плоский `sni` рядом с `tls.server_name` — два источника имени, и при
-// расхождении ядро падает fail-fast'ом.
+// sanitizeSingboxMasqueLegacy СТРИПАЕТ у masque-outbound ключи чужого
+// диалекта (плоские `network`/`sni`/`skip_cert_verify`) — без переноса
+// значений. Legacy-приём снесён контрактом 0.8.0 (D-078): значения больше
+// не читаются; узел живёт на канонических `vhttp` + вложенном `tls`, а при
+// их отсутствии — на дефолтах.
 //
-// Новое имя всегда выигрывает: если импортируемый конфиг уже нёс `vhttp` или
-// `tls.server_name`, legacy-дубликат просто снимается.
+// Удалять ключи всё равно обязательно, просто убрать функцию нельзя:
+// плоский `sni` рядом с `tls.server_name` — два источника имени, и при
+// расхождении ядро падает fail-fast'ом; протащенный legacy-ключ ронял бы
+// конфиг целиком вместо тихой деградации одного узла.
 func sanitizeSingboxMasqueLegacy(ob map[string]interface{}, obType, tag string) {
 	if obType != "masque" {
 		return
 	}
-
-	if legacy := strings.TrimSpace(mapString(ob, "network")); legacy != "" {
-		if strings.TrimSpace(mapString(ob, "vhttp")) == "" {
-			ob["vhttp"] = legacy
-		}
-		delete(ob, "network")
-		debuglog.DebugLog("Parser: singbox import %q: masque network → vhttp", tag)
-	}
-
-	sni := strings.TrimSpace(mapString(ob, "sni"))
-	insecure, hasInsecure := ob["skip_cert_verify"].(bool)
-	if sni == "" && !hasInsecure {
-		return
-	}
-	delete(ob, "sni")
-	delete(ob, "skip_cert_verify")
-
-	tlsMap, _ := ob["tls"].(map[string]interface{})
-	if tlsMap == nil {
-		tlsMap = map[string]interface{}{}
-	}
-	if sni != "" {
-		if _, has := tlsMap["server_name"]; !has {
-			tlsMap["server_name"] = sni
+	stripped := false
+	for _, k := range []string{"network", "sni", "skip_cert_verify"} {
+		if _, has := ob[k]; has {
+			delete(ob, k)
+			stripped = true
 		}
 	}
-	if insecure {
-		if _, has := tlsMap["insecure"]; !has {
-			tlsMap["insecure"] = true
-		}
-	}
-	if len(tlsMap) > 0 {
-		ob["tls"] = tlsMap
-		debuglog.DebugLog("Parser: singbox import %q: masque flat sni/skip_cert_verify → tls block", tag)
+	if stripped {
+		debuglog.DebugLog("Parser: singbox import %q: masque legacy flat keys stripped (0.8.0, values ignored)", tag)
 	}
 }
 

@@ -17,7 +17,7 @@ const (
 
 func TestParseNode_Masque_Canonical(t *testing.T) {
 	uri := "masque://" + masqueTestPriv + "@162.159.198.1:443?publickey=" + urlEncode(masqueTestPub) +
-		"&address=172.16.0.2%2F32%2C2606%3A4700%3A110%3A8db9%3A%3A%2F128&profile=cloudflare&network=h3" +
+		"&address=172.16.0.2%2F32%2C2606%3A4700%3A110%3A8db9%3A%3A%2F128&profile=cloudflare&vhttp=h3" +
 		"&sni=consumer-masque.cloudflareclient.com&mtu=1280&idle_timeout=5m#MASQUE-smoke"
 
 	node, err := ParseNode(uri, nil)
@@ -56,8 +56,6 @@ func TestMasque_MissingKeysRejected(t *testing.T) {
 	}
 }
 
-// Legacy `network=` is still accepted on input (foreign subscriptions ship it)
-// and normalized to `vhttp`.
 func TestMasque_VHTTPDefaultAndValidation(t *testing.T) {
 	base := "masque://" + masqueTestPriv + "@1.2.3.4:443?publickey=" + urlEncode(masqueTestPub) + "&address=172.16.0.2%2F32"
 	// default h3
@@ -69,22 +67,26 @@ func TestMasque_VHTTPDefaultAndValidation(t *testing.T) {
 	// h2 honored
 	n3, _ := ParseNode(base+"&vhttp=h2#x", nil)
 	assertEq(t, n3.Outbound["vhttp"], "h2")
-	// legacy spelling still understood
-	n4, _ := ParseNode(base+"&network=h2#x", nil)
-	assertEq(t, n4.Outbound["vhttp"], "h2")
-	if _, flat := n4.Outbound["network"]; flat {
-		t.Error("legacy network must be normalized away, not carried through")
+}
+
+// Legacy-алиасы ?network= / ?server_name= больше не читаются (0.8.0, D-078):
+// игнорируются как любой неизвестный query-параметр. Фикстура корпуса —
+// masque/legacy_params_ignored.
+func TestMasque_LegacyParamsIgnored(t *testing.T) {
+	base := "masque://" + masqueTestPriv + "@1.2.3.4:443?publickey=" + urlEncode(masqueTestPub) + "&address=172.16.0.2%2F32"
+	n, _ := ParseNode(base+"&network=h2&server_name=legacy.example#x", nil)
+	assertEq(t, n.Outbound["vhttp"], "h3") // network=h2 игнорируется → parse-дефолт
+	if _, flat := n.Outbound["network"]; flat {
+		t.Error("ignored network must not be carried through")
 	}
-	// vhttp wins over a contradicting legacy network
-	n5, _ := ParseNode(base+"&vhttp=h3&network=h2#x", nil)
-	assertEq(t, n5.Outbound["vhttp"], "h3")
+	if _, has := n.Outbound["tls"]; has {
+		t.Errorf("server_name= must be ignored, got tls block: %v", n.Outbound["tls"])
+	}
 }
 
 func TestMasque_ShareURIRoundTrip(t *testing.T) {
 	uri := "masque://" + masqueTestPriv + "@162.159.198.1:443?publickey=" + urlEncode(masqueTestPub) +
-		"&address=172.16.0.2%2F32%2C2606%3A4700%3A110%3A8db9%3A%3A%2F128&network=h3&sni=x.example#node"
-	// note: the source URI uses the legacy spellings on purpose — the round-trip
-	// must land on the current schema and stay stable across a second parse.
+		"&address=172.16.0.2%2F32%2C2606%3A4700%3A110%3A8db9%3A%3A%2F128&vhttp=h3&sni=x.example#node"
 	node, err := ParseNode(uri, nil)
 	if err != nil || node == nil {
 		t.Fatalf("parse: %v", err)
@@ -112,10 +114,11 @@ func TestMasque_ShareURIRoundTrip(t *testing.T) {
 	}
 }
 
-// Импортированный masque из чужого/старого конфига несёт плоские network/sni.
-// Ядро принимает их до lx.30, но плоский sni рядом с tls.server_name — два
-// источника имени, и при расхождении ядро падает fail-fast'ом (SPEC 062 §2).
-func TestSanitizeSingboxOutboundMap_MasqueLegacyFolded(t *testing.T) {
+// Плоские network/sni/skip_cert_verify sing-box-импорта СТРИПАЮТСЯ без
+// переноса значений (0.8.0, D-078). Удаление обязательно: плоский sni рядом
+// с tls.server_name — два источника имени, ядро падает fail-fast'ом
+// (SPEC 062 §2); а legacy-значения больше не читаются.
+func TestSanitizeSingboxOutboundMap_MasqueLegacyStripped(t *testing.T) {
 	ob := map[string]interface{}{
 		"type":             "masque",
 		"network":          "h2",
@@ -124,26 +127,21 @@ func TestSanitizeSingboxOutboundMap_MasqueLegacyFolded(t *testing.T) {
 	}
 	SanitizeSingboxOutboundMap(ob, "imported")
 
-	assertEq(t, ob["vhttp"], "h2")
-	if _, has := ob["network"]; has {
-		t.Error("legacy network must be removed")
+	for _, k := range []string{"network", "sni", "skip_cert_verify"} {
+		if _, has := ob[k]; has {
+			t.Errorf("legacy flat %q must be removed", k)
+		}
 	}
-	if _, has := ob["sni"]; has {
-		t.Error("flat sni must be removed")
+	if _, has := ob["vhttp"]; has {
+		t.Errorf("network value must NOT fold into vhttp anymore, got %v", ob["vhttp"])
 	}
-	if _, has := ob["skip_cert_verify"]; has {
-		t.Error("flat skip_cert_verify must be removed")
+	if _, has := ob["tls"]; has {
+		t.Errorf("flat sni/skip_cert_verify must NOT fold into tls anymore, got %v", ob["tls"])
 	}
-	tls, ok := ob["tls"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("tls block missing: %v", ob["tls"])
-	}
-	assertEq(t, tls["server_name"], "x.example")
-	assertEq(t, tls["insecure"], true)
 }
 
-// Новое имя выигрывает: legacy-дубликат снимается, а не перетирает его.
-func TestSanitizeSingboxOutboundMap_MasqueNewWins(t *testing.T) {
+// Канонические поля стрип не задевает.
+func TestSanitizeSingboxOutboundMap_MasqueCanonicalSurvives(t *testing.T) {
 	ob := map[string]interface{}{
 		"type":    "masque",
 		"vhttp":   "h3",

@@ -19,9 +19,9 @@ import (
 //	masque://<privKeyDer>@<server>:<port>?publickey=<serverPubDer>&address=<v4,v6>
 //	   &profile=cloudflare&vhttp=h3[&sni=][&mtu=1280][&idle_timeout=][&keep_alive=]#label
 //
-// `vhttp` (HTTP version h3/h2) and `sni` are also accepted under their legacy
-// names `network` / `server_name`; both normalize to the sing-box SPEC 062
-// shape (`vhttp` + nested `tls`).
+// `vhttp` (HTTP version h3/h2) and `sni` are the only accepted names. The
+// legacy aliases `network` / `server_name` are no longer read (contract
+// 0.8.0, D-078) — they are ignored like any unknown query parameter.
 //
 // The keys are base64(DER): private_key → x509.ParseECPrivateKey (SEC1),
 // public_key → x509.ParsePKIXPublicKey (PKIX), same as the core config.
@@ -87,12 +87,11 @@ func parseMasqueURI(uri string, skipFilters []map[string]string) (*configtypes.P
 		}
 	}
 
-	// HTTP version: `vhttp` is the current name, `network` the legacy one that
-	// the core deprecated in SPEC 062 (it meant the opposite of `network`
-	// everywhere else). Foreign subscriptions still ship `network=`, so both
-	// are accepted here and normalized to `vhttp` — the launcher never emits
-	// the legacy spelling into config.json.
-	vhttp := strings.TrimSpace(firstNonEmptyQuery(q, "vhttp", "network"))
+	// HTTP version: `vhttp` only. The legacy `network=` alias (deprecated by
+	// the core in SPEC 062 — it meant the opposite of `network` everywhere
+	// else) is no longer read (0.8.0, D-078): a URI carrying only `network=`
+	// gets the h3 default.
+	vhttp := strings.TrimSpace(q.Get("vhttp"))
 	if vhttp == "" {
 		vhttp = "h3"
 	}
@@ -134,7 +133,8 @@ func parseMasqueURI(uri string, skipFilters []map[string]string) (*configtypes.P
 	// emitted: masque is TLS-only by construction, and the generator's shared
 	// TLS section drops a block whose `enabled` is false.
 	tlsBlock := map[string]interface{}{}
-	if sni := strings.TrimSpace(firstNonEmptyQuery(q, "sni", "server_name")); sni != "" {
+	// `sni` only — the legacy `server_name=` alias is no longer read (0.8.0).
+	if sni := strings.TrimSpace(q.Get("sni")); sni != "" {
 		tlsBlock["server_name"] = sni
 	}
 	if insecure := strings.TrimSpace(firstNonEmptyQuery(q, "insecure", "skip_cert_verify", "allowinsecure")); insecure != "" {
