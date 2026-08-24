@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -148,9 +149,77 @@ func (ac *AppController) DownloadCore(ctx context.Context, version string, progr
 	progressChan <- DownloadProgress{Progress: 100, Message: fmt.Sprintf("sing-box v%s installed successfully!", version), Status: "done"}
 }
 
-// getReleaseInfo gets release information from the fork's GitHub releases.
+// ErrGitHubRateLimited marks a release-info failure caused by GitHub's
+// unauthenticated API quota (60 requests/hour per IP) rather than by a broken
+// network or a missing release. Callers use it to tell the user "wait or switch
+// exit node" instead of the useless "see the log".
+var ErrGitHubRateLimited = errors.New("github api rate limit exceeded")
+
+// getReleaseInfo gets release information for the pinned core version.
+//
+// The GitHub API is only an optimisation here: the launcher pins an exact tag
+// (constants.RequiredCoreVersion) and the asset name is fully derived from
+// GOOS/GOARCH, so the download URL is computable without asking the API at all.
+// That matters because api.github.com allows just 60 unauthenticated requests
+// per hour per IP — and a VPN exit node is a *shared* IP, so the quota is
+// routinely exhausted by other users before the launcher ever asks. When that
+// happens we skip the API and go straight to the release CDN, which has no such
+// quota (SPEC 046 pins the version, so there is nothing to discover).
 func (ac *AppController) getReleaseInfo(ctx context.Context, version string) (*ReleaseInfo, error) {
-	return ac.getReleaseInfoFromGitHub(ctx, version)
+	release, err := ac.getReleaseInfoFromGitHub(ctx, version)
+	if err == nil {
+		return release, nil
+	}
+
+	synthetic, buildErr := buildDirectReleaseInfo(version)
+	if buildErr != nil {
+		// Unsupported platform — the API error is the more useful one.
+		return nil, err
+	}
+
+	debuglog.WarnLog("getReleaseInfo: GitHub API unavailable (%v) — falling back to the direct release URL", err)
+	return synthetic, nil
+}
+
+// directAssetName returns the release asset filename for the current platform,
+// e.g. "sing-box-1.14.0-lx.27-rc.6-darwin-arm64.tar.gz".
+//
+// Note the asymmetry, which is easy to get wrong: the git tag carries a leading
+// "v" ("v1.14.0-lx.27-rc.6") but the filename does not.
+func directAssetName(version string) (string, error) {
+	suffix := SingboxAssetSuffix()
+	if suffix == "" {
+		return "", fmt.Errorf("directAssetName: unsupported platform: %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	return fmt.Sprintf("sing-box-%s-%s", version, suffix), nil
+}
+
+// DirectAssetURL returns the CDN download URL for the pinned core version on
+// this platform, bypassing api.github.com entirely.
+func DirectAssetURL(version string) (string, error) {
+	name, err := directAssetName(version)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("https://github.com/%s/releases/download/v%s/%s", coreReleaseRepo(), version, name), nil
+}
+
+// buildDirectReleaseInfo synthesises the ReleaseInfo the API would have
+// returned, containing exactly the one asset this platform needs. Size stays 0
+// — it is only used for progress display, which falls back to Content-Length.
+func buildDirectReleaseInfo(version string) (*ReleaseInfo, error) {
+	name, err := directAssetName(version)
+	if err != nil {
+		return nil, err
+	}
+	url, err := DirectAssetURL(version)
+	if err != nil {
+		return nil, err
+	}
+	return &ReleaseInfo{
+		TagName: "v" + version,
+		Assets:  []Asset{{Name: name, BrowserDownloadURL: url}},
+	}, nil
 }
 
 // getReleaseInfoFromGitHub gets release information from GitHub. `version`
@@ -158,7 +227,12 @@ func (ac *AppController) getReleaseInfo(ctx context.Context, version string) (*R
 // no longer a /releases/latest path).
 func (ac *AppController) getReleaseInfoFromGitHub(ctx context.Context, version string) (*ReleaseInfo, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/tags/v%s", coreReleaseRepo(), version)
+	return ac.fetchReleaseInfo(ctx, url)
+}
 
+// fetchReleaseInfo is the network half of getReleaseInfoFromGitHub, split out so
+// the status handling (notably rate-limit detection) is testable against a stub.
+func (ac *AppController) fetchReleaseInfo(ctx context.Context, url string) (*ReleaseInfo, error) {
 	// Используем универсальный HTTP клиент
 	client := CreateHTTPClient(NetworkRequestTimeout)
 
@@ -185,6 +259,13 @@ func (ac *AppController) getReleaseInfoFromGitHub(ctx context.Context, version s
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		// 403/429 with a zero remaining-quota header is GitHub's rate limit,
+		// not an auth problem: the endpoint is public.
+		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
+			if resp.Header.Get("X-RateLimit-Remaining") == "0" {
+				return nil, fmt.Errorf("getReleaseInfoFromGitHub: HTTP %d: %w", resp.StatusCode, ErrGitHubRateLimited)
+			}
+		}
 		return nil, fmt.Errorf("getReleaseInfoFromGitHub: HTTP %d", resp.StatusCode)
 	}
 
@@ -256,6 +337,31 @@ func (ac *AppController) findPlatformAsset(assets []Asset) (*Asset, error) {
 	return nil, fmt.Errorf("findPlatformAsset: asset not found for platform %s/%s", runtime.GOOS, runtime.GOARCH)
 }
 
+// GitHubDownloadMirrors are prefix-style GitHub proxies used when the release
+// CDN itself is unreachable. Each entry is prepended to the full https://github.com/…
+// URL. Verified to return the real binary (not an HTML interstitial) — see
+// isHTMLPayload for why that check matters.
+var GitHubDownloadMirrors = []string{
+	"https://ghfast.top/",
+	"https://gh-proxy.com/",
+}
+
+// isHTMLContentType reports whether a Content-Type marks an HTML page. Release
+// archives are served as application/octet-stream or application/gzip, so HTML
+// always means we reached an error/landing page rather than the asset.
+func isHTMLContentType(contentType string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(contentType)), "text/html")
+}
+
+// isHTMLPayload is the belt-and-braces companion to isHTMLContentType for
+// mirrors that serve HTML without labelling it. Real archives start with a
+// gzip (1f 8b) or zip ("PK") magic number, never with markup.
+func isHTMLPayload(head []byte) bool {
+	trimmed := strings.TrimSpace(string(head))
+	lower := strings.ToLower(trimmed)
+	return strings.HasPrefix(lower, "<!doctype") || strings.HasPrefix(lower, "<html")
+}
+
 // downloadFile downloads a file with progress tracking (with a GitHub mirror fallback)
 func (ac *AppController) downloadFile(ctx context.Context, url, destPath string, progressChan chan DownloadProgress) error {
 	// Try to download from original URL
@@ -264,11 +370,17 @@ func (ac *AppController) downloadFile(ctx context.Context, url, destPath string,
 		return nil
 	}
 
-	debuglog.InfoLog("downloadFile: failed to download from original URL, trying mirrors...")
+	debuglog.InfoLog("downloadFile: failed to download from original URL (%v), trying mirrors...", err)
 
-	// If that didn't work, try GitHub mirrors
-	mirrors := []string{
-		strings.Replace(url, "https://github.com/", "https://ghproxy.com/https://github.com/", 1),
+	// If that didn't work, try GitHub mirrors.
+	//
+	// ghproxy.com is deliberately NOT in this list: it now answers every
+	// request with HTTP 200 and its own ~1.8 KB HTML landing page instead of
+	// the file, which looks like a successful download and only fails later,
+	// during extraction, with a misleading "archive corrupted" error.
+	mirrors := make([]string, 0, len(GitHubDownloadMirrors))
+	for _, prefix := range GitHubDownloadMirrors {
+		mirrors = append(mirrors, prefix+url)
 	}
 
 	for _, mirrorURL := range mirrors {
@@ -319,6 +431,14 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("downloadFileFromURL: HTTP %d", resp.StatusCode)
+	}
+
+	// Guard against proxies that answer 200 with their own HTML page instead of
+	// the file (ghproxy.com does exactly this). Without this the HTML is saved
+	// as "the archive" and the failure only surfaces later as a confusing
+	// extraction error.
+	if ct := resp.Header.Get("Content-Type"); isHTMLContentType(ct) {
+		return fmt.Errorf("downloadFileFromURL: expected an archive but got %q — the mirror served a web page, not the file", ct)
 	}
 
 	// Hard upper bound on the downloaded archive. Legitimate sing-box
@@ -382,6 +502,11 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
+			// Sniff the first chunk: some mirrors serve an HTML interstitial
+			// without an HTML Content-Type, so the header check above misses it.
+			if downloaded == 0 && isHTMLPayload(buf[:n]) {
+				return fmt.Errorf("downloadFileFromURL: response body is an HTML page, not an archive — the mirror served a web page, not the file")
+			}
 			lastReadMu.Lock()
 			lastRead = time.Now()
 			lastReadMu.Unlock()

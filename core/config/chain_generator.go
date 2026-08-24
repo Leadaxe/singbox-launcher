@@ -53,33 +53,33 @@ func ChainSupportedByCore() (bool, string) { return chainSupported() }
 // ядра тому, кто читает лог, невозможно.
 func ChainEmitError(tag string, c *configtypes.SourceChain) string {
 	if c == nil || len(c.Hops) == 0 {
-		return "цепочка пуста: не задано ни одной позиции"
+		return "chain is empty: no positions set"
 	}
 	hops := c.Hops
 	if len(hops) < 2 {
-		return "в цепочке одна позиция: ядру нужно минимум две"
+		return "chain has a single position: the core needs at least two"
 	}
 	seen := make(map[string]bool, len(hops))
 	for i, hop := range hops {
 		if strings.TrimSpace(hop) == "" {
-			return fmt.Sprintf("позиция %d пуста", i+1)
+			return fmt.Sprintf("position %d is empty", i+1)
 		}
 		if hop == tag {
-			return fmt.Sprintf("позиция %d ссылается на саму цепочку", i+1)
+			return fmt.Sprintf("position %d references the chain itself", i+1)
 		}
 		if seen[hop] {
-			return fmt.Sprintf("позиция %d повторяет %q", i+1, hop)
+			return fmt.Sprintf("position %d repeats %q", i+1, hop)
 		}
 		seen[hop] = true
 	}
 	for typeName := range c.Rewrite {
 		if strings.TrimSpace(typeName) == "" {
-			return "rewrite: пустое имя типа outbound'а"
+			return "rewrite: empty outbound type name"
 		}
 	}
 	for key := range c.Strip {
 		if _, known := configtypes.ChainStripDefault[key]; !known {
-			return fmt.Sprintf("strip: неизвестный ключ %q (можно: %s)",
+			return fmt.Sprintf("strip: unknown key %q (allowed: %s)",
 				key, strings.Join(configtypes.ChainStripKeys, ", "))
 		}
 	}

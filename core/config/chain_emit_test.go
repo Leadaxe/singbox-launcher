@@ -117,11 +117,11 @@ func TestChainNode_CoreInvariants(t *testing.T) {
 		c    *configtypes.SourceChain
 		want string
 	}{
-		{"одна позиция", "c", chainOf("hop-a"), "минимум две"},
-		{"пусто", "c", chainOf(), "не задано ни одной позиции"},
-		{"пустой тег", "c", chainOf("hop-a", "  "), "позиция 2 пуста"},
-		{"самоссылка", "c", chainOf("hop-a", "c"), "ссылается на саму цепочку"},
-		{"дубль", "c", chainOf("hop-a", "hop-a"), "повторяет"},
+		{"одна позиция", "c", chainOf("hop-a"), "at least two"},
+		{"пусто", "c", chainOf(), "no positions set"},
+		{"пустой тег", "c", chainOf("hop-a", "  "), "position 2 is empty"},
+		{"самоссылка", "c", chainOf("hop-a", "c"), "references the chain itself"},
+		{"дубль", "c", chainOf("hop-a", "hop-a"), "repeats"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -145,7 +145,7 @@ func TestChainNode_UnknownStripKey(t *testing.T) {
 	if node != nil {
 		t.Fatal("выпущена цепочка с неизвестным ключом strip")
 	}
-	if !strings.Contains(reason, "неизвестный ключ") {
+	if !strings.Contains(reason, "unknown key") {
 		t.Errorf("причина = %q", reason)
 	}
 }

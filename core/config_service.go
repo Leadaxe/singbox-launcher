@@ -137,7 +137,7 @@ func parserSuccessToastMessage(result *config.OutboundGenerationResult) string {
 	// выпавший из конфига, читается как потерянная настройка — пользователь
 	// должен узнать, что именно и почему не собралось.
 	for _, c := range result.BrokenChains {
-		msg += fmt.Sprintf(" Цепочка %q не собрана: %s.", c.Name, c.Reason)
+		msg += fmt.Sprintf(" Chain %q is not built: %s.", c.Name, c.Reason)
 	}
 	return msg
 }

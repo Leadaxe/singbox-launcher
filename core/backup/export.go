@@ -80,7 +80,7 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 	for _, r := range s.Rules {
 		rule, err := exportRule(r)
 		if err != nil {
-			return nil, fmt.Errorf("правило %s: %w", r.Kind, err)
+			return nil, fmt.Errorf("rule %s: %w", r.Kind, err)
 		}
 		b.Rules = append(b.Rules, rule)
 	}
@@ -319,7 +319,7 @@ func exportRule(r state.Rule) (Rule, error) {
 		out.Ref = body.SrsURL
 		out.Outbound = body.Outbound
 	default:
-		return Rule{}, fmt.Errorf("неизвестный kind %q", r.Kind)
+		return Rule{}, fmt.Errorf("unknown kind %q", r.Kind)
 	}
 	return out, nil
 }

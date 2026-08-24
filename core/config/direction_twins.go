@@ -176,7 +176,7 @@ func buildTwin(parent configtypes.Direction, twinTag string, tmplAutoOptions map
 		Type:    "urltest",
 		Filters: parent.Filters,
 		Options: options,
-		Comment: parent.DisplayName() + " — автовыбор",
+		Comment: parent.DisplayName() + " — auto-pick",
 
 		// TwinOf помечает запись как производную: она не предлагается
 		// опцией другим направлениям и не принимает в состав группы

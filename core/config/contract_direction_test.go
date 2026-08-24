@@ -299,7 +299,7 @@ func runDirectionCorpusCase(t *testing.T, dir, caseName string) {
 			switch {
 			case strings.Contains(c.Reason, "with_lx_chain"):
 				code = "chain_unsupported_by_core"
-			case strings.Contains(c.Reason, "не найдена среди узлов"):
+			case strings.Contains(c.Reason, "not found among nodes"):
 				code = "chain_hop_missing"
 			}
 			got.Warnings = append(got.Warnings, code)

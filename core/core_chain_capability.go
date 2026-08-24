@@ -105,10 +105,10 @@ func chainVerdictFromVersionOutput(versionOutput string) (bool, string) {
 	}
 	version := coreVersionFromVersionOutput(versionOutput)
 	if version == "" {
-		version = "неизвестной версии"
+		version = "of unknown version"
 	}
-	return false, "ядро " + version + " собрано без " + chainBuildTag +
-		" — цепочки хопов недоступны, обновите ядро"
+	return false, "core " + version + " is built without " + chainBuildTag +
+		" — hop chains are unavailable, update the core"
 }
 
 // splitBuildTags — список тегов из строки `Tags:` вывода `sing-box version`.

@@ -97,7 +97,7 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 		return nil, fmt.Errorf("nil backup")
 	}
 	if b.LxBackup > FormatVersion {
-		return nil, fmt.Errorf("формат бэкапа v%d новее поддерживаемого v%d — обновите приложение",
+		return nil, fmt.Errorf("backup format v%d is newer than supported v%d — update the app",
 			b.LxBackup, FormatVersion)
 	}
 
@@ -157,7 +157,7 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 			continue // правило не наше — пропущено с warning, импорт живёт
 		}
 		if err != nil {
-			return nil, fmt.Errorf("правило %q: %w", ruleLabel(r), err)
+			return nil, fmt.Errorf("rule %q: %w", ruleLabel(r), err)
 		}
 		s.Rules = append(s.Rules, rule)
 		res.AppliedRules++

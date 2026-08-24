@@ -77,7 +77,7 @@ func ResolveChainSources(
 
 	supported, unsupportedReason := chainSupported()
 	if unsupportedReason == "" {
-		unsupportedReason = "ядро не поддерживает цепочки"
+		unsupportedReason = "the core does not support chains"
 	}
 
 	// Теги, на которые цепочка вправе сослаться. Узлы и Направления —
@@ -158,7 +158,7 @@ func ResolveChainSources(
 			}
 		}
 		if missing != "" {
-			degrade("позиция " + missing + " не найдена среди узлов и Направлений")
+			degrade("position " + missing + " not found among nodes and Directions")
 			continue
 		}
 		if conflicts := ChainRealityConflict(src.Chain, nodesByTag); len(conflicts) > 0 {

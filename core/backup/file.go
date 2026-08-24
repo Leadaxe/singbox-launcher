@@ -27,17 +27,17 @@ func WriteFile(path string, b *Backup) error {
 	}
 	data, err := json.MarshalIndent(b, "", "  ")
 	if err != nil {
-		return fmt.Errorf("сериализация бэкапа: %w", err)
+		return fmt.Errorf("backup serialization: %w", err)
 	}
 	data = append(data, '\n')
 
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("запись %s: %w", tmp, err)
+		return fmt.Errorf("write %s: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
-		return fmt.Errorf("переименование в %s: %w", path, err)
+		return fmt.Errorf("rename to %s: %w", path, err)
 	}
 	return nil
 }
@@ -50,14 +50,14 @@ func WriteFile(path string, b *Backup) error {
 func ReadFile(path string) (*Backup, []Warning, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, nil, fmt.Errorf("файл бэкапа: %w", err)
+		return nil, nil, fmt.Errorf("backup file: %w", err)
 	}
 	if info.Size() > MaxFileBytes {
-		return nil, nil, fmt.Errorf("файл бэкапа больше %d байт", MaxFileBytes)
+		return nil, nil, fmt.Errorf("backup file exceeds %d bytes", MaxFileBytes)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil, fmt.Errorf("чтение %s: %w", path, err)
+		return nil, nil, fmt.Errorf("read %s: %w", path, err)
 	}
 	return Parse(data)
 }
@@ -66,10 +66,10 @@ func ReadFile(path string) (*Backup, []Warning, error) {
 func Parse(data []byte) (*Backup, []Warning, error) {
 	var b Backup
 	if err := json.Unmarshal(data, &b); err != nil {
-		return nil, nil, fmt.Errorf("разбор бэкапа: %w", err)
+		return nil, nil, fmt.Errorf("backup parse: %w", err)
 	}
 	if b.LxBackup == 0 {
-		return nil, nil, fmt.Errorf("это не файл LX Backup: нет поля lx_backup")
+		return nil, nil, fmt.Errorf("not an LX Backup file: lx_backup field missing")
 	}
 	return &b, unknownRootKeys(data), nil
 }

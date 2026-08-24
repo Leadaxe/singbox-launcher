@@ -17,6 +17,7 @@ import (
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/dialogs"
+	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 )
 
@@ -192,7 +193,7 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		debuglog.ErrorLog("RebuildConfigIfDirty: sing-box check failed: %v", checkErr)
 		if ac.UIService != nil && ac.UIService.MainWindow != nil {
 			dialogs.ShowErrorText(ac.UIService.MainWindow,
-				"Config validation failed",
+				locale.T("Config validation failed"),
 				fmt.Sprintf("sing-box rejected the generated config.json:\n\n%v\n\nConnect won't work until this is fixed. See logs for details.", checkErr))
 		}
 		if ac.EventBus != nil {
