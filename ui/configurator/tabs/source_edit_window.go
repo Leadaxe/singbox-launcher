@@ -311,7 +311,7 @@ func showSourceEditWindow(
 			}
 		}
 	}
-	title := locale.Tf("wizard.source.edit_title", fullTitleSrc)
+	title := locale.Tf("Source — %s", fullTitleSrc)
 	win := app.NewWindow(title)
 	presenter.SetViewWindow(win)
 	win.SetOnClosed(func() {
@@ -333,7 +333,7 @@ func showSourceEditWindow(
 	}
 
 	prefixEntry := widget.NewEntry()
-	prefixEntry.SetPlaceHolder(locale.T("wizard.source.placeholder_prefix"))
+	prefixEntry.SetPlaceHolder(locale.T("prefix"))
 
 	// SPEC 052 phase 8: URL/URI/Label/Postfix/Mask editors теперь доступны
 	// в Settings tab. URL/Postfix/Mask показываются только для subscription;
@@ -345,13 +345,13 @@ func showSourceEditWindow(
 	uriEntry.SetPlaceHolder("vless://uuid@host:443?...#tokyo")
 
 	labelEntry := widget.NewEntry()
-	labelEntry.SetPlaceHolder(locale.T("wizard.source.placeholder_label"))
+	labelEntry.SetPlaceHolder(locale.T("human-readable label"))
 
 	postfixEntry := widget.NewEntry()
-	postfixEntry.SetPlaceHolder(locale.T("wizard.source.placeholder_postfix"))
+	postfixEntry.SetPlaceHolder(locale.T("postfix"))
 
 	maskEntry := widget.NewEntry()
-	maskEntry.SetPlaceHolder(locale.T("wizard.source.placeholder_mask"))
+	maskEntry.SetPlaceHolder(locale.T("{$tag}-{$server}"))
 
 	// SPEC 108: одна галка вместо прежних четырёх (`Local auto`,
 	// `Local select`, `Exclude from global`, `Expose tags`), из восьми
@@ -359,8 +359,8 @@ func showSourceEditWindow(
 	// «сворачивать ли»; чем именно заменить узлы — на вкладке «Группа».
 	var afterSync func()
 
-	foldCheck := ttwidget.NewCheck(locale.T("wizard.source.fold_check"), nil)
-	foldCheck.SetToolTip(locale.T("wizard.source.fold_tooltip"))
+	foldCheck := ttwidget.NewCheck(locale.T("Fold this subscription into a group"), nil)
+	foldCheck.SetToolTip(locale.T("Its nodes are replaced by a single entry in the directions list. Pick what to fold into on the Group tab."))
 
 	// Вкладка «Группа»: во что именно сворачивать. Отдельно от галки
 	// намеренно (S2) — галка отвечает на «сворачивать ли», а расклад с его
@@ -467,9 +467,9 @@ func showSourceEditWindow(
 	// and subscription. A group option sets scratch.DetourTag (stamped as-is);
 	// a "» node" option sets scratch.DetourNodeHash (resolved to the node's
 	// final tag at generation time). The two are mutually exclusive.
-	detourNone := locale.T("wizard.source.detour_none")
+	detourNone := locale.T("(none — direct)")
 	detourSelect := widget.NewSelect(nil, nil)
-	detourHint := widget.NewLabel(locale.T("wizard.source.detour_hint"))
+	detourHint := widget.NewLabel(locale.T("Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server (tracked by identity, survives renames)."))
 	detourHint.Wrapping = fyne.TextWrapWord
 	detourChoices := map[string]wizardbusiness.DetourChoice{}
 	detourOnChanged := func(sel string) {
@@ -607,17 +607,17 @@ func showSourceEditWindow(
 
 		if isServer {
 			// Server: URI + Label + ExcludeFromGlobal + Detour.
-			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_uri")))
+			settingsContent.Add(widget.NewLabel(locale.T("Server URI")))
 			settingsContent.Add(uriEntry)
 			// Ручной config_json переопределяет URI — без пометки правка URI
 			// «молча не работает» и путает.
 			if len(scratch.ConfigJSON) > 0 {
-				manualNote := widget.NewLabel(locale.T("wizard.source.settings_manual_json_note"))
+				manualNote := widget.NewLabel(locale.T("A manual config_json is set — the URI above is ignored at build time (see the JSON tab)."))
 				manualNote.Wrapping = fyne.TextWrapWord
 				manualNote.Importance = widget.LowImportance
 				settingsContent.Add(manualNote)
 			}
-			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_label_field")))
+			settingsContent.Add(widget.NewLabel(locale.T("Label")))
 			settingsContent.Add(labelEntry)
 			// SPEC 108: `Exclude from global` из формы убран вместе с
 			// остальными тремя галками. Поле в состоянии остаётся и
@@ -626,33 +626,33 @@ func showSourceEditWindow(
 			// свёртка всегда создаёт группу, а у server-source узел один и
 			// сворачивать нечего.
 			settingsContent.Add(widget.NewSeparator())
-			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_detour")))
+			settingsContent.Add(widget.NewLabel(locale.T("Detour server (chain)")))
 			settingsContent.Add(detourSelect)
 			settingsContent.Add(detourHint)
 		} else {
 			// Subscription: URL + Tag prefix/postfix/mask + свёртка + Detour.
-			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_url_edit")))
+			settingsContent.Add(widget.NewLabel(locale.T("Subscription URL")))
 			settingsContent.Add(urlEntry)
 			settingsContent.Add(widget.NewSeparator())
-			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_prefix")))
+			settingsContent.Add(widget.NewLabel(locale.T("Tag prefix")))
 			settingsContent.Add(prefixEntry)
-			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_postfix")))
+			settingsContent.Add(widget.NewLabel(locale.T("Tag postfix")))
 			settingsContent.Add(postfixEntry)
-			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_mask")))
+			settingsContent.Add(widget.NewLabel(locale.T("Tag mask (overrides prefix/postfix)")))
 			settingsContent.Add(maskEntry)
 			// Список переменных — прямо под полями, а не за иконкой «?» и
 			// не в доках: их семь, они конкретны, и без них поле маски —
 			// пустое приглашение угадывать. Подсказка одна на три поля:
 			// переменные работают во всех (replaceTagVariables зовётся и
 			// для prefix/postfix, и для mask).
-			tagVarsHint := widget.NewLabel(locale.T("wizard.source.tag_vars_hint"))
+			tagVarsHint := widget.NewLabel(locale.T("Variables (work in all three fields): {$tag} original node tag · {$server} address · {$port} port · {$scheme} protocol (also {$protocol}) · {$label} name from the link's #fragment · {$comment} comment · {$num} node number from 1"))
 			tagVarsHint.Wrapping = fyne.TextWrapWord
 			tagVarsHint.Importance = widget.LowImportance
 			settingsContent.Add(tagVarsHint)
 			settingsContent.Add(widget.NewSeparator())
 			settingsContent.Add(foldCheck)
 			settingsContent.Add(widget.NewSeparator())
-			settingsContent.Add(widget.NewLabel(locale.T("wizard.source.label_detour")))
+			settingsContent.Add(widget.NewLabel(locale.T("Detour server (chain)")))
 			settingsContent.Add(detourSelect)
 			settingsContent.Add(detourHint)
 		}
@@ -664,7 +664,7 @@ func showSourceEditWindow(
 	settingsGutter := components.NewScrollGutter()
 	settingsWithGutter := container.NewBorder(nil, nil, nil, settingsGutter, settingsScroll)
 
-	previewStatus := widget.NewLabel(locale.T("wizard.source.preview_loading"))
+	previewStatus := widget.NewLabel(locale.T("Loading..."))
 	previewStatus.Wrapping = fyne.TextWrapOff
 	previewStatusScroll := container.NewHScroll(previewStatus)
 	previewListHost := container.NewStack()
@@ -687,7 +687,7 @@ func showSourceEditWindow(
 			return
 		}
 		fetchInProgress = true
-		previewStatus.SetText(locale.T("wizard.source.preview_loading"))
+		previewStatus.SetText(locale.T("Loading..."))
 		previewListHost.Objects = nil
 		previewListHost.Add(layout.NewSpacer())
 		previewListHost.Refresh()
@@ -710,7 +710,7 @@ func showSourceEditWindow(
 			fyne.Do(func() {
 				fetchInProgress = false
 				if fetchErr != nil {
-					previewStatus.SetText(locale.Tf("wizard.source.preview_status_err", 0, fetchErr.Error()))
+					previewStatus.SetText(locale.Tf("Local outbounds: %d · Servers: load failed — %s", 0, fetchErr.Error()))
 					previewListHost.Objects = nil
 					previewListHost.Refresh()
 					return
@@ -737,7 +737,7 @@ func showSourceEditWindow(
 	refreshPreviewTab = func() {
 		previewRefreshSeq++
 		seq := previewRefreshSeq
-		previewStatus.SetText(locale.T("wizard.source.preview_loading"))
+		previewStatus.SetText(locale.T("Loading..."))
 		previewListHost.Objects = nil
 		previewListHost.Add(layout.NewSpacer())
 		previewListHost.Refresh()
@@ -807,12 +807,12 @@ func showSourceEditWindow(
 				}
 				previewListHost.Objects = nil
 				if needsFetch {
-					previewStatus.SetText(locale.T("wizard.source.preview_no_cache"))
-					hint := widget.NewLabel(locale.T("wizard.source.preview_no_cache_hint"))
+					previewStatus.SetText(locale.T("Subscription has not been fetched yet"))
+					hint := widget.NewLabel(locale.T("Disabled subscriptions are not auto-fetched, so there is no cached body to preview. Click below to fetch this subscription once without enabling it."))
 					hint.Wrapping = fyne.TextWrapWord
 					hint.Importance = widget.LowImportance
 					fetchBtn := widget.NewButtonWithIcon(
-						locale.T("wizard.source.preview_fetch_now"),
+						locale.T("Fetch now"),
 						nil,
 						triggerOneShotFetch,
 					)
@@ -827,13 +827,13 @@ func showSourceEditWindow(
 					return
 				}
 				if err != nil {
-					previewStatus.SetText(locale.Tf("wizard.source.preview_status_err", 0, err.Error()))
+					previewStatus.SetText(locale.Tf("Local outbounds: %d · Servers: load failed — %s", 0, err.Error()))
 				} else {
-					previewStatus.SetText(locale.Tf("wizard.source.preview_servers", len(nodes), 1))
+					previewStatus.SetText(locale.Tf("%d server(s) from %d source(s)", len(nodes), 1))
 				}
 				if err == nil {
 					if len(nodes) == 0 {
-						lbl := widget.NewLabel(locale.T("wizard.source.view_no_servers"))
+						lbl := widget.NewLabel(locale.T("No servers found."))
 						lbl.Importance = widget.LowImportance
 						// Spacer below pushes label to top instead of centering blank space.
 						previewListHost.Add(container.NewVBox(lbl, layout.NewSpacer()))
@@ -981,19 +981,19 @@ func showSourceEditWindow(
 	// установленного → пользователь редактирует).
 	var doRefreshJSONTab func()
 
-	jsonApplyBtn := widget.NewButton(locale.T("wizard.source.json_apply"), func() {
+	jsonApplyBtn := widget.NewButton(locale.T("Apply JSON"), func() {
 		text := strings.TrimSpace(jsonEntry.Text)
 		if text == "" {
-			dialog.ShowError(errors.New(locale.T("wizard.source.json_err_empty")), win)
+			dialog.ShowError(errors.New(locale.T("JSON is empty.")), win)
 			return
 		}
 		var ob map[string]interface{}
 		if err := json.Unmarshal([]byte(text), &ob); err != nil {
-			dialog.ShowError(errors.New(locale.Tf("wizard.source.json_err_invalid", err.Error())), win)
+			dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
 			return
 		}
 		if t, _ := ob["type"].(string); strings.TrimSpace(t) == "" {
-			dialog.ShowError(errors.New(locale.T("wizard.source.json_err_no_type")), win)
+			dialog.ShowError(errors.New(locale.T("The outbound object must have a non-empty \"type\" field.")), win)
 			return
 		}
 		// SPEC 110: у цепочки правится СВОЙ объект, а не ConfigJSON —
@@ -1010,7 +1010,7 @@ func showSourceEditWindow(
 				Rewrite      map[string]interface{} `json:"rewrite"`
 			}
 			if err := json.Unmarshal([]byte(text), &parsed); err != nil {
-				dialog.ShowError(errors.New(locale.Tf("wizard.source.json_err_invalid", err.Error())), win)
+				dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
 				return
 			}
 			c := &configtypes.SourceChain{
@@ -1041,7 +1041,7 @@ func showSourceEditWindow(
 		// Unmarshal→Marshal, который пересортировал бы ключи по алфавиту).
 		var compact bytes.Buffer
 		if err := json.Compact(&compact, []byte(text)); err != nil {
-			dialog.ShowError(errors.New(locale.Tf("wizard.source.json_err_invalid", err.Error())), win)
+			dialog.ShowError(errors.New(locale.Tf("Invalid JSON: %s", err.Error())), win)
 			return
 		}
 		scratch.ConfigJSON = json.RawMessage(append([]byte(nil), compact.Bytes()...))
@@ -1049,13 +1049,13 @@ func showSourceEditWindow(
 		rebuildSettingsLayout() // пометка «URI игнорируется» в Settings
 		doRefreshJSONTab()
 	})
-	jsonResetBtn := widget.NewButton(locale.T("wizard.source.json_reset"), func() {
+	jsonResetBtn := widget.NewButton(locale.T("Reset to URI"), func() {
 		if len(scratch.ConfigJSON) == 0 {
 			return
 		}
 		dialog.ShowConfirm(
-			locale.T("wizard.source.json_reset"),
-			locale.T("wizard.source.json_reset_confirm"),
+			locale.T("Reset to URI"),
+			locale.T("Delete the manual config_json and generate the outbound from the URI again?"),
 			func(ok bool) {
 				if !ok {
 					return
@@ -1086,12 +1086,12 @@ func showSourceEditWindow(
 		}
 		tag := scratch.TagMask
 		if tag == "" {
-			tag = locale.T("wizard.chain.unnamed")
+			tag = locale.T("unnamed")
 		}
 		ob := config.ChainOutboundObject(tag, c)
 		raw, err := json.MarshalIndent(ob, "", "  ")
 		if err != nil {
-			jsonStatus.SetText(locale.Tf("wizard.source.json_status_unparsed", err.Error()))
+			jsonStatus.SetText(locale.Tf("URI does not unpack: %s. You can write the outbound JSON by hand and press Apply.", err.Error()))
 			return
 		}
 		setJSONText(string(raw))
@@ -1101,7 +1101,7 @@ func showSourceEditWindow(
 		if reason := config.ChainEmitError(tag, c); reason != "" {
 			jsonStatus.SetText("⚠️ " + reason)
 		} else {
-			jsonStatus.SetText(locale.T("wizard.source.json_status_chain"))
+			jsonStatus.SetText(locale.T("Chain is ready to build"))
 		}
 		jsonResetBtn.Enable()
 	}
@@ -1116,7 +1116,7 @@ func showSourceEditWindow(
 				text = buf.String()
 			}
 			setJSONText(text)
-			jsonStatus.SetText(locale.T("wizard.source.json_status_manual"))
+			jsonStatus.SetText(locale.T("Manual config_json — the URI is ignored at build time."))
 			jsonResetBtn.Enable()
 			return
 		}
@@ -1137,20 +1137,20 @@ func showSourceEditWindow(
 			}
 			switch {
 			case uri == "":
-				jsonStatus.SetText(locale.T("wizard.source.json_status_no_uri"))
+				jsonStatus.SetText(locale.T("No URI set. Paste a sing-box outbound object below and press Apply."))
 			default:
-				reason := locale.T("wizard.source.view_no_servers")
+				reason := locale.T("No servers found.")
 				if _, perr := subscription.ParseNode(uri, nil); perr != nil {
 					reason = perr.Error()
 				}
-				jsonStatus.SetText(locale.Tf("wizard.source.json_status_unparsed", reason))
+				jsonStatus.SetText(locale.Tf("URI does not unpack: %s. You can write the outbound JSON by hand and press Apply.", reason))
 			}
 			setJSONText("")
 			return
 		}
 		outJSONs, epJSON, eerr := config.EmitNodeJSONs(node)
 		if eerr != nil {
-			jsonStatus.SetText(locale.Tf("wizard.source.json_status_unparsed", eerr.Error()))
+			jsonStatus.SetText(locale.Tf("URI does not unpack: %s. You can write the outbound JSON by hand and press Apply.", eerr.Error()))
 			setJSONText("")
 			return
 		}
@@ -1159,7 +1159,7 @@ func showSourceEditWindow(
 			raw = outJSONs[len(outJSONs)-1]
 		}
 		setJSONText(emittedToEditableJSON(raw))
-		jsonStatus.SetText(locale.T("wizard.source.json_status_generated"))
+		jsonStatus.SetText(locale.T("Generated from URI."))
 	}
 
 	jsonRefreshSeq := 0
@@ -1175,7 +1175,7 @@ func showSourceEditWindow(
 		// Subscription: как Preview — декод кэшированного body в горутине.
 		jsonRefreshSeq++
 		seq := jsonRefreshSeq
-		jsonStatus.SetText(locale.T("wizard.source.preview_loading"))
+		jsonStatus.SetText(locale.T("Loading..."))
 		// Снапшоты на UI-thread: горутина не должна читать scratch, который
 		// мутируют обработчики виджетов.
 		detourTag := scratch.DetourTag
@@ -1192,9 +1192,9 @@ func showSourceEditWindow(
 				src := model.Sources[sourceIndex]
 				subsDir := platform.GetSubscriptionsDir(model.ExecDir)
 				if raw, rerr := state.ReadRawBody(subsDir, src.ID); rerr != nil || len(raw) == 0 {
-					status = locale.T("wizard.source.preview_no_cache")
+					status = locale.T("Subscription has not been fetched yet")
 				} else if decoded, decErr := subscription.DecodeSubscriptionContent(raw); decErr != nil {
-					status = locale.Tf("wizard.source.json_status_unparsed", decErr.Error())
+					status = locale.Tf("URI does not unpack: %s. You can write the outbound JSON by hand and press Apply.", decErr.Error())
 				} else {
 					nodes := parsePreviewNodesFromBody(decoded, skip)
 					// Выключенные ноды не эмитятся — как в реальной сборке.
@@ -1231,12 +1231,12 @@ func showSourceEditWindow(
 		doRefreshJSONTab()
 	}
 
-	jsonHintKey := "wizard.source.json_hint_subscription"
+	jsonHintKey := "Read-only: how the cached subscription body unpacks into sing-box outbounds. Tags are shown before the source prefix/mask is applied; the list is rebuilt from the network on every refresh."
 	switch {
 	case isChainSource:
-		jsonHintKey = "wizard.source.json_hint_chain"
+		jsonHintKey = "The chain object exactly as it will reach the config. This is also where rewrite is edited — per-protocol overrides of node options; everything else is easier to change on the Chain tab."
 	case isServerSource:
-		jsonHintKey = "wizard.source.json_hint_server"
+		jsonHintKey = "The sing-box outbound this source unpacks into — exactly what the build writes to config.json. Edit and press Apply to save a manual config_json (it overrides the URI); Reset returns to URI-generated. Tag and detour are restamped by the launcher at build time."
 	}
 	jsonHint := widget.NewLabel(locale.T(jsonHintKey))
 	jsonHint.Wrapping = fyne.TextWrapWord
@@ -1254,19 +1254,19 @@ func showSourceEditWindow(
 	// отдельный Raw tab — слили чтобы не дублировать read-only inspection).
 	overviewContent, refreshOverviewTab := buildOverviewTab(presenter, sourceIndex)
 
-	settingsTab := container.NewTabItem(locale.T("wizard.source.tab_settings"), settingsWithGutter)
-	previewTab := container.NewTabItem(locale.T("wizard.source.tab_preview"), previewBox)
-	overviewTab := container.NewTabItem(locale.T("wizard.source.tab_overview"), overviewContent)
-	jsonTab := container.NewTabItem(locale.T("wizard.source.tab_json"), jsonCol)
+	settingsTab := container.NewTabItem(locale.T("Settings"), settingsWithGutter)
+	previewTab := container.NewTabItem(locale.TN(1, "Preview"), previewBox)
+	overviewTab := container.NewTabItem(locale.T("Overview"), overviewContent)
+	jsonTab := container.NewTabItem(locale.T("JSON"), jsonCol)
 	// Вкладка «Группа» — только у подписок и только при включённой свёртке
 	// (как «Автовыбор» у Направления, SPEC 104): показывать настройки того,
 	// чего нет, — значит предлагать настроить выключённое.
-	foldTab := container.NewTabItem(locale.T("wizard.source.tab_fold"), container.NewVScroll(foldTabBody.content))
+	foldTab := container.NewTabItem(locale.T("Group"), container.NewVScroll(foldTabBody.content))
 	var tabs *container.AppTabs
 	if isChainSource && chainTabBody != nil {
 		// У цепочки вкладка позиций — главная и первая: остальное окно
 		// (подписка, URI, свёртка) к ней не относится.
-		chainTab := container.NewTabItem(locale.T("wizard.source.tab_chain"),
+		chainTab := container.NewTabItem(locale.T("Chain"),
 			container.NewVScroll(chainTabBody.built))
 		tabs = container.NewAppTabs(chainTab, jsonTab)
 	} else {
@@ -1315,10 +1315,10 @@ func showSourceEditWindow(
 		}
 	}
 
-	cancelBtn := widget.NewButton(locale.T("wizard.outbound.button_cancel"), func() {
+	cancelBtn := widget.NewButton(locale.T("Cancel"), func() {
 		win.Close()
 	})
-	saveBtn := widget.NewButton(locale.T("wizard.outbound.button_save"), func() {
+	saveBtn := widget.NewButton(locale.T("Save"), func() {
 		// Свёртка собирается ЗДЕСЬ, а не только по событиям отдельных
 		// виджетов: у Interval/URL/Tolerance/липкости обработчиков нет, и
 		// правка «зайти на Группу, поменять интервал, Save» молча терялась —

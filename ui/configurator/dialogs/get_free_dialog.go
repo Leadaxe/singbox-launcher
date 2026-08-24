@@ -128,8 +128,8 @@ func ShowGetFreeVPNDialog(presenter *wizardpresentation.WizardPresenter) {
 	}
 
 	loading := dialog.NewInformation(
-		locale.T("wizard.get_free.loading_title"),
-		locale.T("wizard.get_free.loading_msg"),
+		locale.T("Loading"),
+		locale.T("Fetching community sources list…"),
 		guiState.Window,
 	)
 	loading.Show()
@@ -147,7 +147,7 @@ func ShowGetFreeVPNDialog(presenter *wizardpresentation.WizardPresenter) {
 		fyne.Do(func() {
 			loading.Hide()
 			if err != nil {
-				dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.get_free.error_load"), err), guiState.Window)
+				dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Failed to load community sources:\n\nLocal cache missing or corrupted."), err), guiState.Window)
 				return
 			}
 			renderGetFreeDialog(presenter, guiState, data)
@@ -164,7 +164,7 @@ func renderGetFreeDialog(
 ) {
 	_ = presenter // зарезервирован под будущий audit-лог; mутаций модели здесь нет
 
-	intro := widget.NewLabel(locale.T("wizard.get_free.thanks_label"))
+	intro := widget.NewLabel(locale.T("These are subscription URLs maintained by the community. Pick one and click Insert — the URL goes into the input field, then click Add to register it."))
 	intro.Wrapping = fyne.TextWrapWord
 
 	// Текст благодарности + кликабельная ссылка на одной горизонтальной
@@ -189,7 +189,7 @@ func renderGetFreeDialog(
 	rows := make([]fyne.CanvasObject, 0, len(data.Sources)+1)
 
 	if len(data.Sources) == 0 {
-		empty := widget.NewLabel(locale.T("wizard.get_free.no_sources"))
+		empty := widget.NewLabel(locale.T("No community sources available right now."))
 		empty.Wrapping = fyne.TextWrapWord
 		rows = append(rows, empty)
 	} else {
@@ -212,10 +212,10 @@ func renderGetFreeDialog(
 	content := container.NewBorder(header, nil, nil, nil, container.NewVScroll(listWithGutter))
 
 	d = internaldialogs.NewCustom(
-		locale.T("wizard.get_free.dialog_title"),
+		locale.T("Community VPN sources"),
 		content,
 		nil,
-		locale.T("wizard.get_free.button_close"),
+		locale.T("Close"),
 		guiState.Window,
 	)
 	d.Resize(fyne.NewSize(680, 480))
@@ -227,7 +227,7 @@ func renderGetFreeDialog(
 // тап-target — кнопка Insert. Это упрощает scan'абельность: глаз идёт по
 // номерам слева, action-кнопкам справа.
 func buildSourceRow(idx int, source string, guiState *wizardpresentation.GUIState, dlg *dialog.Dialog) fyne.CanvasObject {
-	insert := widget.NewButton(locale.T("wizard.get_free.button_insert"), func() {
+	insert := widget.NewButton(locale.T("Insert"), func() {
 		if guiState.SourceURLEntry == nil {
 			return
 		}

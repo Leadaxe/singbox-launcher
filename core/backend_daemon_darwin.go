@@ -194,7 +194,7 @@ func (b *DaemonBackend) StartVPN(skipRunningCheck ...bool) {
 	ac := b.ac
 	if ac.RunningState.IsRunning() {
 		if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
-			dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, locale.T("core.info_title"), locale.T("core.already_running"))
+			dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, locale.TN(1, "Info"), locale.T("Sing-Box already running (according to internal state)."))
 		}
 		return
 	}

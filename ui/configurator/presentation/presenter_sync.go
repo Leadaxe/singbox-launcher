@@ -74,7 +74,7 @@ func (p *WizardPresenter) syncModelToGUI(recreateRulesTab bool) {
 	if !recreateRulesTab {
 		return
 	}
-	rulesTitle := locale.T("wizard.tab_rules")
+	rulesTitle := locale.T("Rules")
 	if p.createRulesTabFunc != nil && p.guiState.Tabs != nil {
 		for _, tabItem := range p.guiState.Tabs.Items {
 			if tabItem.Text == rulesTitle {

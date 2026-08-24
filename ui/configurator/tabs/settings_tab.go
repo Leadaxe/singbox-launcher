@@ -68,7 +68,7 @@ func noInboundConfigured(resolved map[string]wizardtemplate.ResolvedVar) bool {
 // Standalone row (no Reset button, no value), so it slots after the last
 // var-row regardless of layout. Locale key: wizard.settings.no_inbound_warning.
 func buildNoInboundWarningRow() fyne.CanvasObject {
-	lbl := widget.NewLabel(locale.T("wizard.settings.no_inbound_warning"))
+	lbl := widget.NewLabel(locale.T("⚠ No inbound is enabled — sing-box will start, but won't accept any traffic. Turn on Enable TUN above, or Enable Proxy-in below."))
 	lbl.Wrapping = fyne.TextWrapWord
 	lbl.Importance = widget.WarningImportance
 	return container.NewPadded(lbl)
@@ -384,7 +384,7 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 		goos := tgt.GOOS
 		box.RemoveAll()
 		if model.TemplateData == nil || len(model.TemplateData.Vars) == 0 {
-			box.Add(widget.NewLabel(locale.T("wizard.settings.no_vars")))
+			box.Add(widget.NewLabel(locale.T("No template variables in this profile.")))
 			box.Refresh()
 			return
 		}
@@ -475,7 +475,7 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 
 	resetBtn := ttwidget.NewButtonWithIcon("", theme.ContentUndoIcon(), reset)
 	resetBtn.Importance = widget.LowImportance
-	resetBtn.SetToolTip(locale.T("wizard.settings.reset_tooltip"))
+	resetBtn.SetToolTip(locale.T("Reset to the template default."))
 
 	if viewMode {
 		disp := strings.TrimSpace(wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget))
@@ -740,7 +740,7 @@ func buildSettingsSecretRow(presenter *wizardpresentation.WizardPresenter, model
 	}
 	regenBtn := ttwidget.NewButtonWithIcon("", theme.ViewRefreshIcon(), regenerate)
 	regenBtn.Importance = widget.LowImportance
-	regenBtn.SetToolTip(locale.T("wizard.settings.clash_secret_regenerate_tooltip"))
+	regenBtn.SetToolTip(locale.T("Generate a new random secret."))
 
 	row := container.NewBorder(nil, nil, titleLab, regenBtn, e)
 	setVarFieldToolTip(toolTip, titleLab, e)

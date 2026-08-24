@@ -30,7 +30,7 @@ func OpenMachineResourcesWindow(ac *core.AppController, d services.RemoteDaemon)
 	if ac == nil || ac.UIService == nil || ac.UIService.Application == nil {
 		return
 	}
-	win := ac.UIService.Application.NewWindow(locale.Tf("remote.res.window_title", d.Name))
+	win := ac.UIService.Application.NewWindow(locale.Tf("%s — resources", d.Name))
 	registry := services.NewRemoteRegistry(ac.FileService.ExecDir)
 
 	list := container.NewVBox()
@@ -42,7 +42,7 @@ func OpenMachineResourcesWindow(ac *core.AppController, d services.RemoteDaemon)
 	var reload func()
 	reload = func() {
 		list.RemoveAll()
-		list.Add(widget.NewLabel(locale.T("remote.res.loading")))
+		list.Add(widget.NewLabel(locale.T("Reading the machine's resource store…")))
 		list.Refresh()
 		go func() {
 			entries, err := registry.ResourceOverview(d.ID)
@@ -50,14 +50,14 @@ func OpenMachineResourcesWindow(ac *core.AppController, d services.RemoteDaemon)
 				list.RemoveAll()
 				if err != nil {
 					debuglog.WarnLog("resources: overview %q: %v", d.ID, err)
-					msg := widget.NewLabel(locale.Tf("remote.res.error", err))
+					msg := widget.NewLabel(locale.Tf("Could not read the resource store: %v", err))
 					msg.Wrapping = fyne.TextWrapWord
 					list.Add(msg)
 					list.Refresh()
 					return
 				}
 				if len(entries) == 0 {
-					hint := widget.NewLabel(locale.T("remote.res.empty"))
+					hint := widget.NewLabel(locale.T("No resources: nothing stored on the machine and no rule-set files in this machine's profile."))
 					hint.Wrapping = fyne.TextWrapWord
 					list.Add(hint)
 					list.Refresh()
@@ -77,17 +77,17 @@ func OpenMachineResourcesWindow(ac *core.AppController, d services.RemoteDaemon)
 					}
 					list.Add(resourceRow(ac, registry, d, e, reload))
 				}
-				summary.SetText(locale.Tf("remote.res.summary", nLocal, nServer, nOrphan))
+				summary.SetText(locale.Tf("%d local · %d on server · %d orphan", nLocal, nServer, nOrphan))
 				list.Refresh()
 			})
 		}()
 	}
 
-	refreshBtn := widget.NewButtonWithIcon(locale.T("remote.res.refresh"), theme.ViewRefreshIcon(), reload)
+	refreshBtn := widget.NewButtonWithIcon(locale.T("Refresh"), theme.ViewRefreshIcon(), reload)
 
 	// Залить всё недостающее одной кнопкой: типичный случай после настройки
 	// нового правила — несколько наборов сразу, и жать по одному незачем.
-	uploadAllBtn := widget.NewButton(locale.T("remote.res.upload_all"), func() {
+	uploadAllBtn := widget.NewButton(locale.T("Upload all missing"), func() {
 		go func() {
 			entries, err := registry.ResourceOverview(d.ID)
 			if err != nil {
@@ -114,7 +114,7 @@ func OpenMachineResourcesWindow(ac *core.AppController, d services.RemoteDaemon)
 	})
 	uploadAllBtn.Importance = widget.HighImportance
 
-	closeBtn := widget.NewButton(locale.T("dialog.close"), func() { win.Close() })
+	closeBtn := widget.NewButton(locale.T("Close"), func() { win.Close() })
 
 	header := container.NewBorder(nil, nil, pathLabel, refreshBtn)
 	footer := container.NewBorder(nil, nil, summary,
@@ -141,13 +141,13 @@ func resourceRow(ac *core.AppController, registry *services.RemoteRegistry,
 	var stateText string
 	switch e.State {
 	case services.ResourceMatch:
-		stateText = locale.T("remote.res.state_match")
+		stateText = locale.T("✓ match")
 	case services.ResourceMissing:
-		stateText = locale.T("remote.res.state_missing")
+		stateText = locale.T("✗ not on server")
 	case services.ResourceDiffers:
-		stateText = locale.T("remote.res.state_differs")
+		stateText = locale.T("≠ differs")
 	case services.ResourceOrphan:
-		stateText = locale.T("remote.res.state_orphan")
+		stateText = locale.T("⚠ only on server")
 	}
 	meta := widget.NewLabel(fmt.Sprintf("%s   %s   %s",
 		sizeOrDash(e.LocalSize, e.LocalSHA != ""),
@@ -169,7 +169,7 @@ func resourceRow(ac *core.AppController, registry *services.RemoteRegistry,
 	buttons := container.NewHBox()
 	// Залить: когда файла на сервере нет или он другой.
 	if e.State == services.ResourceMissing || e.State == services.ResourceDiffers {
-		up := widget.NewButtonWithIcon(locale.T("remote.res.upload"), theme.MoveUpIcon(), func() {
+		up := widget.NewButtonWithIcon(locale.T("Upload"), theme.MoveUpIcon(), func() {
 			run(func() error { return registry.UploadResource(d.ID, e.Name) })
 		})
 		if e.InUse {
@@ -181,7 +181,7 @@ func resourceRow(ac *core.AppController, registry *services.RemoteRegistry,
 	}
 	// Скачать: когда файла нет локально или он расходится.
 	if e.State == services.ResourceOrphan || e.State == services.ResourceDiffers {
-		down := widget.NewButtonWithIcon(locale.T("remote.res.download"), theme.MoveDownIcon(), func() {
+		down := widget.NewButtonWithIcon(locale.T("Download"), theme.MoveDownIcon(), func() {
 			run(func() error { return registry.DownloadResource(d.ID, e.Name) })
 		})
 		buttons.Add(down)
@@ -189,8 +189,8 @@ func resourceRow(ac *core.AppController, registry *services.RemoteRegistry,
 	// Удалить на сервере: всё, что там есть.
 	if e.ServerSHA != "" {
 		del := ttwidget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
-			dialog.ShowConfirm(locale.T("remote.res.delete_title"),
-				locale.Tf("remote.res.delete_body", e.Name),
+			dialog.ShowConfirm(locale.T("Delete resource"),
+				locale.Tf("Delete %s from the machine? The local copy stays.", e.Name),
 				func(ok bool) {
 					if ok {
 						run(func() error { return registry.DeleteRemoteResource(d.ID, e.Name) })
@@ -198,10 +198,10 @@ func resourceRow(ac *core.AppController, registry *services.RemoteRegistry,
 				}, ac.UIService.MainWindow)
 		})
 		if e.InUse {
-			del.SetToolTip(locale.T("remote.res.in_use_tooltip"))
+			del.SetToolTip(locale.T("The running config references this file — deploy a config without it first"))
 			del.Disable()
 		} else {
-			del.SetToolTip(locale.T("remote.res.delete_tooltip"))
+			del.SetToolTip(locale.T("Delete from the machine"))
 		}
 		del.Importance = widget.LowImportance
 		buttons.Add(del)

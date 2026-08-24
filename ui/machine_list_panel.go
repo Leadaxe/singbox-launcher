@@ -105,7 +105,7 @@ func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyn
 	}
 	p.list = container.NewVBox()
 
-	addBtn := widget.NewButton(locale.T("remote.machines.add"), func() {
+	addBtn := widget.NewButton(locale.T("+ Add"), func() {
 		OpenAddMachineWindow(ac, func() {
 			// Только что добавленная машина ещё не подключена — узлов у неё
 			// для нас нет, и Refresh ушёл бы с пустой группой.
@@ -115,7 +115,7 @@ func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyn
 	addBtn.Importance = widget.MediumImportance
 
 	header := container.NewBorder(nil, nil,
-		widget.NewLabelWithStyle(locale.T("remote.machines.title"), fyne.TextAlignLeading,
+		widget.NewLabelWithStyle(locale.T("MACHINES"), fyne.TextAlignLeading,
 			fyne.TextStyle{Bold: true}),
 		addBtn,
 	)
@@ -151,7 +151,7 @@ func (p *machineListPanel) Reload() {
 	if len(list) == 0 {
 		// Пустой список — не ошибка: пользователь ещё не сопрягался ни с чем.
 		// Говорим, что делать, вместо пустого места.
-		hint := widget.NewLabel(locale.T("remote.machines.empty"))
+		hint := widget.NewLabel(locale.T("No remote machines yet. Press “+ Add” and paste the invite printed by `sing-box lxd` on the machine you want to manage."))
 		hint.Wrapping = fyne.TextWrapWord
 		p.list.Add(hint)
 		p.list.Refresh()
@@ -210,7 +210,7 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	// а не про ядро на той стороне (тем занимается Start/Stop у статуса).
 	var connBtn *widget.Button
 	if connected {
-		connBtn = widget.NewButton(locale.T("remote.machines.disconnect"), func() {
+		connBtn = widget.NewButton(locale.T("Disconnect"), func() {
 			p.disconnectMachine()
 		})
 	} else if attempt := p.connectAttempt[d.ID]; attempt > 0 {
@@ -221,10 +221,10 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 		// 15 секунд, и «идёт вторая из пяти» отвечает на вопрос «оно ещё
 		// живо или зависло» лучше, чем неподвижная надпись.
 		connBtn = widget.NewButton(
-			locale.Tf("remote.machines.connecting_try", attempt, connectAttempts), nil)
+			locale.Tf("Connecting… %d/%d", attempt, connectAttempts), nil)
 		connBtn.Disable()
 	} else {
-		connBtn = widget.NewButton(locale.T("remote.machines.connect"), func() {
+		connBtn = widget.NewButton(locale.T("Connect"), func() {
 			p.connectMachine(d)
 		})
 		connBtn.Importance = widget.HighImportance
@@ -234,13 +234,13 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	editBtn := ttwidget.NewButton("✎", func() {
 		p.editMachine(d)
 	})
-	editBtn.SetToolTip(locale.T("remote.machines.edit_tooltip"))
+	editBtn.SetToolTip(locale.T("Edit name, address and platform"))
 	editBtn.Importance = widget.LowImportance
 
 	removeBtn := ttwidget.NewButton("✕", func() {
 		p.removeMachine(d)
 	})
-	removeBtn.SetToolTip(locale.T("remote.machines.remove_tooltip"))
+	removeBtn.SetToolTip(locale.T("Remove this machine"))
 	removeBtn.Importance = widget.LowImportance
 
 	// Правка и удаление — напротив ИМЕНИ: это операции над самой записью,
@@ -265,17 +265,17 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	}
 
 	// Соединены: state_dir известен, конфиг соберётся с верными путями.
-	configureBtn := widget.NewButton(locale.T("remote.machines.configure"), func() {
+	configureBtn := widget.NewButton(locale.T("Configure"), func() {
 		configurator.ShowConfigWizardForMachine(p.ac.UIService.MainWindow, d)
 	})
 
 	// Соединились: показываем настоящий статус ядра и открываем управление.
 	//
 	// Статусы демона: idle | started | fatal (RemoteHealth.CoreStatus).
-	statusText := locale.T("remote.machines.reachable")
+	statusText := locale.T("reachable")
 	switch {
 	case health.Err != "":
-		statusText = locale.Tf("remote.machines.unreachable", health.Err)
+		statusText = locale.Tf("unreachable: %s", health.Err)
 	case health.CoreStatus != "":
 		statusText = health.CoreStatus
 	}
@@ -288,9 +288,9 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	status.Wrapping = fyne.TextWrapWord
 
 	running := health.CoreStatus == "started"
-	powerLabel := locale.T("servers.power.start")
+	powerLabel := locale.T("Start")
 	if running {
-		powerLabel = locale.T("servers.power.stop")
+		powerLabel = locale.T("Stop")
 	}
 	powerBtn := widget.NewButton(powerLabel, func() {
 		p.togglePower(d, running)
@@ -307,7 +307,7 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	restartBtn := ttwidget.NewButton(refreshPulseGlyph, func() {
 		p.restartCore(d)
 	})
-	restartBtn.SetToolTip(locale.T("servers.power.restart_tooltip"))
+	restartBtn.SetToolTip(locale.TN(1, "Restart the core"))
 	if health.Err != "" || !running {
 		restartBtn.Disable()
 	}
@@ -318,10 +318,10 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	infoBtn := ttwidget.NewButton("ⓘ", func() {
 		p.showHealthDetails(d, health)
 	})
-	infoBtn.SetToolTip(locale.T("remote.machines.info_tooltip"))
+	infoBtn.SetToolTip(locale.T("What the daemon reports about itself"))
 	infoBtn.Importance = widget.LowImportance
 
-	deployBtn := widget.NewButton(locale.T("servers.power.deploy"), func() {
+	deployBtn := widget.NewButton(locale.T("Deploy config"), func() {
 		p.deployTo(d)
 	})
 	if health.Err != "" {
@@ -332,7 +332,7 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	// (SPEC 063). Рядом с Deploy, потому что это его обратная сторона:
 	// Deploy заливает недостающее молча, а здесь видно, что реально лежит на
 	// той стороне и совпадает ли оно с нашим.
-	resBtn := widget.NewButton(locale.T("remote.res.button"), func() {
+	resBtn := widget.NewButton(locale.T("RES"), func() {
 		OpenMachineResourcesWindow(p.ac, d)
 	})
 	if health.Err != "" {
@@ -347,13 +347,13 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	// Accordion, что «Advanced» в окне добавления машины). Не popup-меню:
 	// содержимое остаётся на месте, не перекрывает соседние машины и не
 	// исчезает при промахе мышью.
-	profilerBtn := widget.NewButton(locale.T("remote.more.profiler"), func() {
+	profilerBtn := widget.NewButton(locale.T("Traffic profiler"), func() {
 		OpenMachineProfiler(p.ac, d)
 	})
 	// Телеметрия ХОСТА — рядом с профайлером, потому что это соседний вопрос
 	// с другим ответом: профайлер показывает трафик ядра, а «почему роутер
 	// тормозит» решается только описанием машины (CPU, память, диски, темп.).
-	hostBtn := widget.NewButton(locale.T("remote.more.host"), func() {
+	hostBtn := widget.NewButton(locale.T("Host telemetry"), func() {
 		OpenMachineHostWindow(p.ac, d)
 	})
 	// Своя кнопка вместо Accordion: тот в горизонтальном ряду растягивает
@@ -492,37 +492,37 @@ func (p *machineListPanel) connectMachine(d services.RemoteDaemon) {
 // дороже, чем пустая строка.
 func (p *machineListPanel) showHealthDetails(d services.RemoteDaemon, h services.RemoteHealth) {
 	rows := [][2]string{
-		{locale.T("remote.info.machine"), d.Name},
-		{locale.T("remote.info.addr"), d.Addr},
-		{locale.T("remote.info.platform"), fmt.Sprintf("%s/%s", d.Target().GOOS, d.Target().GOARCH)},
-		{locale.T("remote.info.daemon_version"), h.Version},
-		{locale.T("remote.info.core_status"), h.CoreStatus},
-		{locale.T("remote.info.state_dir"), h.StateDir},
-		{locale.T("remote.info.active_sha"), h.ActiveSHA},
-		{locale.T("remote.info.last_good_sha"), h.LastGoodSHA},
+		{locale.T("Machine"), d.Name},
+		{locale.T("Address"), d.Addr},
+		{locale.T("Platform"), fmt.Sprintf("%s/%s", d.Target().GOOS, d.Target().GOARCH)},
+		{locale.T("Daemon version"), h.Version},
+		{locale.T("Core status"), h.CoreStatus},
+		{locale.T("State dir"), h.StateDir},
+		{locale.T("Active config sha256"), h.ActiveSHA},
+		{locale.T("Last-good config sha256"), h.LastGoodSHA},
 	}
 	if h.InterruptedApply {
-		rows = append(rows, [2]string{locale.T("remote.info.interrupted"), locale.T("remote.info.interrupted_yes")})
+		rows = append(rows, [2]string{locale.T("Interrupted apply"), locale.T("yes — the core runs the last-good config")})
 	}
 	if h.LastError != "" {
-		rows = append(rows, [2]string{locale.T("remote.info.last_error"), h.LastError})
+		rows = append(rows, [2]string{locale.T("Last error"), h.LastError})
 	}
 	if h.Err != "" {
-		rows = append(rows, [2]string{locale.T("remote.info.unreachable"), h.Err})
+		rows = append(rows, [2]string{locale.T("Unreachable"), h.Err})
 	}
 	// Сводка ядра, если открыт профайлер машины: связи, скорости, память.
 	// Стрим статуса живёт вместе с его окном, поэтому до открытия строк нет —
 	// и выдумывать нули вместо «не знаем» нельзя.
 	if st, ok := MachineStatus(d.ID); ok {
 		rows = append(rows,
-			[2]string{locale.T("remote.info.connections"),
-				locale.Tf("remote.info.connections_value", st.ConnectionsIn, st.ConnectionsOut)},
-			[2]string{locale.T("remote.info.traffic"),
-				locale.Tf("remote.info.traffic_value",
+			[2]string{locale.T("Connections"),
+				locale.Tf("%d in / %d out", st.ConnectionsIn, st.ConnectionsOut)},
+			[2]string{locale.T("Traffic"),
+				locale.Tf("↑%s/s  ↓%s/s   (total ↑%s ↓%s)",
 					sizeOrDash(st.Uplink, true), sizeOrDash(st.Downlink, true),
 					sizeOrDash(st.UplinkTotal, true), sizeOrDash(st.DownlinkTotal, true))},
-			[2]string{locale.T("remote.info.runtime"),
-				locale.Tf("remote.info.runtime_value", sizeOrDash(int64(st.Memory), true), st.Goroutines)},
+			[2]string{locale.T("Core runtime"),
+				locale.Tf("%s, goroutines %d", sizeOrDash(int64(st.Memory), true), st.Goroutines)},
 		)
 	}
 
@@ -537,7 +537,7 @@ func (p *machineListPanel) showHealthDetails(d services.RemoteDaemon, h services
 				f.When.Format("15:04:05"), f.Attempt, connectAttempts, f.Err)
 		}
 		rows = append(rows, [2]string{
-			locale.Tf("remote.info.failures", len(fails)),
+			locale.Tf("Connection failures this session (%d)", len(fails)),
 			strings.TrimRight(b.String(), "\n"),
 		})
 	}
@@ -546,7 +546,7 @@ func (p *machineListPanel) showHealthDetails(d services.RemoteDaemon, h services
 	// значении: история из ОДНОГО отказа переносов не содержит, но всё равно
 	// длиннее строки, и однострочный Entry показывал бы её началом с
 	// обрезанием.
-	multiline := map[string]bool{locale.Tf("remote.info.failures", len(p.failures(d.ID))): true}
+	multiline := map[string]bool{locale.Tf("Connection failures this session (%d)", len(p.failures(d.ID))): true}
 
 	items := make([]*widget.FormItem, 0, len(rows))
 	var plain strings.Builder
@@ -574,11 +574,11 @@ func (p *machineListPanel) showHealthDetails(d services.RemoteDaemon, h services
 		fmt.Fprintf(&plain, "%s: %s\n", r[0], r[1])
 	}
 
-	win := p.ac.UIService.Application.NewWindow(locale.Tf("remote.info.window_title", d.Name))
-	copyBtn := widget.NewButton(locale.T("dialog.copy"), func() {
+	win := p.ac.UIService.Application.NewWindow(locale.Tf("%s — daemon status", d.Name))
+	copyBtn := widget.NewButton(locale.T("Copy"), func() {
 		setClipboard(plain.String())
 	})
-	closeBtn := widget.NewButton(locale.T("dialog.close"), func() { win.Close() })
+	closeBtn := widget.NewButton(locale.T("Close"), func() { win.Close() })
 	closeBtn.Importance = widget.HighImportance
 
 	body := container.NewVBox(
@@ -675,8 +675,8 @@ func (p *machineListPanel) editMachine(d services.RemoteDaemon) {
 // отозван.
 func (p *machineListPanel) removeMachine(d services.RemoteDaemon) {
 	dialog.ShowConfirm(
-		locale.T("remote.machines.remove_title"),
-		locale.Tf("remote.machines.remove_body", d.Name),
+		locale.T("Remove machine"),
+		locale.Tf("Remove %s? Its config, wizard states and client keys are deleted from this launcher.\n\nAccess on the machine itself stays registered — revoke it there with `sing-box lxd client remove`.", d.Name),
 		func(ok bool) {
 			if !ok {
 				return
@@ -743,8 +743,8 @@ func (p *machineListPanel) togglePower(d services.RemoteDaemon, running bool) {
 	}
 	if running {
 		dialog.ShowConfirm(
-			locale.T("servers.power.stop_title"),
-			locale.Tf("servers.power.stop_body", d.Name),
+			locale.T("Stop the core"),
+			locale.Tf("Stop the core on %s? Everyone routing through that machine loses VPN until it is started again.", d.Name),
 			func(ok bool) {
 				if ok {
 					run()
@@ -761,8 +761,8 @@ func (p *machineListPanel) togglePower(d services.RemoteDaemon, running bool) {
 // ходит через машину, моргнёт, а неудачный Start оставит её без ядра вовсе.
 func (p *machineListPanel) restartCore(d services.RemoteDaemon) {
 	dialog.ShowConfirm(
-		locale.T("servers.power.restart_title"),
-		locale.Tf("servers.power.restart_body", d.Name),
+		locale.T("Restart the core"),
+		locale.Tf("Restart the core on %s? Everyone routing through that machine loses VPN for a moment; if the start fails, the machine is left without a core.", d.Name),
 		func(ok bool) {
 			if !ok {
 				return
@@ -806,13 +806,13 @@ func (p *machineListPanel) deployTo(d services.RemoteDaemon) {
 	if err != nil {
 		// Конфиг ещё не собирали. Говорим, что делать, вместо сырой ошибки
 		// чтения — и указываем на Configure ИМЕННО этой машины.
-		dialog.ShowInformation(locale.T("servers.power.deploy_title"),
-			locale.Tf("remote.machines.deploy_missing", d.Name), p.ac.UIService.MainWindow)
+		dialog.ShowInformation(locale.TN(1, "Deploy config"),
+			locale.Tf("No config built for %s yet. Press Configure on its row, set it up and press Save — that writes the config this button sends.", d.Name), p.ac.UIService.MainWindow)
 		return
 	}
 	dialog.ShowConfirm(
-		locale.T("servers.power.deploy_title"),
-		locale.Tf("servers.power.deploy_body", d.Name, len(config)),
+		locale.TN(1, "Deploy config"),
+		locale.Tf("Send the config to %s (%d bytes)? The daemon validates it before swapping the instance and rolls back to last-good if the new one fails to start.", d.Name, len(config)),
 		func(ok bool) {
 			if !ok {
 				return
@@ -828,8 +828,8 @@ func (p *machineListPanel) deployTo(d services.RemoteDaemon) {
 						dialog.ShowError(deployErr, p.ac.UIService.MainWindow)
 						return
 					}
-					dialog.ShowInformation(locale.T("servers.power.deploy_title"),
-						locale.Tf("servers.power.deploy_done", d.Name), p.ac.UIService.MainWindow)
+					dialog.ShowInformation(locale.TN(1, "Deploy config"),
+						locale.Tf("Config applied on %s.", d.Name), p.ac.UIService.MainWindow)
 					p.Reload()
 				})
 			}()

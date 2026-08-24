@@ -203,7 +203,7 @@ func showJSONReadOnlyDialog(parent fyne.Window, title string, header, helpLabel 
 	jsonEntry.SetText(jsonBody)
 	jsonEntry.OnChanged = func(string) {}
 
-	copyBtn := widget.NewButtonWithIcon(locale.T("wizard.dns.details_copy"), theme.ContentCopyIcon(), func() {
+	copyBtn := widget.NewButtonWithIcon(locale.T("Copy JSON"), theme.ContentCopyIcon(), func() {
 		if parent != nil {
 			parent.Clipboard().SetContent(jsonBody)
 		}

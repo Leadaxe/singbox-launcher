@@ -92,15 +92,15 @@ func ShowDownloadFailedManual(window fyne.Window, title, downloadURL, targetDir 
 	debuglog.DebugLog("dialogs: ShowDownloadFailedManual start title=%s", title)
 	fyne.Do(func() {
 		mainContent := container.NewVBox()
-		msgLabel := widget.NewLabel(locale.T("dialog.download_failed"))
+		msgLabel := widget.NewLabel(locale.T("Download failed. See the log for details."))
 		msgLabel.Wrapping = fyne.TextWrapWord
 		mainContent.Add(msgLabel)
-		hintLabel := widget.NewLabel(locale.T("dialog.download_failed_manual_hint"))
+		hintLabel := widget.NewLabel(locale.T("Please download the file manually and place it in the folder below."))
 		hintLabel.Wrapping = fyne.TextWrapWord
 		mainContent.Add(hintLabel)
 
 		if downloadURL != "" {
-			link := widget.NewHyperlink(locale.T("dialog.open_download_page"), nil)
+			link := widget.NewHyperlink(locale.T("Open download page"), nil)
 			if err := link.SetURLFromString(downloadURL); err == nil {
 				link.OnTapped = func() {
 					if err := platform.OpenURL(downloadURL); err != nil {
@@ -126,7 +126,7 @@ func ShowDownloadFailedManual(window fyne.Window, title, downloadURL, targetDir 
 
 		var buttons fyne.CanvasObject
 		if targetDir != "" {
-			openFolderBtn := widget.NewButton(locale.T("dialog.open_folder"), func() {
+			openFolderBtn := widget.NewButton(locale.T("Open folder"), func() {
 				if err := platform.OpenFolder(targetDir); err != nil {
 					ShowError(window, fmt.Errorf("failed to open folder: %w", err))
 				}
@@ -134,7 +134,7 @@ func ShowDownloadFailedManual(window fyne.Window, title, downloadURL, targetDir 
 			buttons = openFolderBtn
 		}
 
-		d := NewCustom(title, mainContent, buttons, locale.T("dialog.close"), window)
+		d := NewCustom(title, mainContent, buttons, locale.T("Close"), window)
 		d.Show()
 		debuglog.DebugLog("dialogs: ShowDownloadFailedManual shown")
 	})
@@ -171,7 +171,7 @@ func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command s
 		entry.Disable()
 		entry.Wrapping = fyne.TextWrapOff
 		entry.SetMinRowsVisible(1)
-		copyBtn := widget.NewButtonWithIcon(locale.T("dialog.copy"), theme.ContentCopyIcon(), func() {
+		copyBtn := widget.NewButtonWithIcon(locale.T("Copy"), theme.ContentCopyIcon(), func() {
 			fullText := message
 			if command != "" && fullText != "" && !strings.Contains(fullText, command) {
 				fullText += "\n\n" + command
@@ -193,7 +193,7 @@ func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command s
 		bottomSpacer.SetMinSize(fyne.NewSize(1, 8))
 		mainContent.Add(bottomSpacer)
 
-		d := dialog.NewCustom(title, locale.T("dialog.ok"), mainContent, window)
+		d := dialog.NewCustom(title, locale.T("OK"), mainContent, window)
 		d.Show()
 	})
 }
@@ -231,14 +231,14 @@ func ShowConfirm(window fyne.Window, title, message string, onConfirm func(bool)
 func ShowProcessKillConfirmation(window fyne.Window, onKill func()) {
 	fyne.Do(func() {
 		var d dialog.Dialog
-		killButton := widget.NewButton(locale.T("dialog.kill_process"), nil)
-		closeButton := widget.NewButton(locale.T("dialog.close_warning"), nil)
+		killButton := widget.NewButton(locale.T("Kill Process"), nil)
+		closeButton := widget.NewButton(locale.T("Close This Warning"), nil)
 		content := container.NewVBox(
-			widget.NewLabel(locale.T("dialog.process_already_running")),
+			widget.NewLabel(locale.T("Sing-Box appears to be already running.\nWould you like to kill the existing process?")),
 			killButton,
 			closeButton,
 		)
-		d = dialog.NewCustomWithoutButtons(locale.T("dialog.warning"), content, window)
+		d = dialog.NewCustomWithoutButtons(locale.T("Warning"), content, window)
 		killButton.OnTapped = func() {
 			go onKill()
 			d.Hide()

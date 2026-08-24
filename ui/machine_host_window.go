@@ -126,11 +126,11 @@ func OpenMachineHostWindow(ac *core.AppController, d services.RemoteDaemon) {
 
 	transport, ok := lxdOverrideTransportForID(d.ID)
 	if !ok {
-		ShowErrorText(ac.UIService.MainWindow, d.Name, locale.T("remote.host.needs_connect"))
+		ShowErrorText(ac.UIService.MainWindow, d.Name, locale.T("Connect to the machine first: host telemetry is read over its control channel."))
 		return
 	}
 
-	win := ac.UIService.Application.NewWindow(locale.Tf("remote.host.window_title", d.Name))
+	win := ac.UIService.Application.NewWindow(locale.Tf("%s — host", d.Name))
 	view := newHostView()
 	view.wantOS, view.wantArch = d.GOOS, d.GOARCH
 
@@ -268,7 +268,7 @@ const (
 
 func newHostView() *hostView {
 	v := &hostView{
-		machine:     hostBoldLabel(locale.T("remote.host.loading")),
+		machine:     hostBoldLabel(locale.T("Reading host telemetry…")),
 		machineUp:   widget.NewLabelWithStyle("", fyne.TextAlignTrailing, fyne.TextStyle{}),
 		machineSw:   hostDimLabel(""),
 		archWarn:    widget.NewLabel(""),
@@ -311,9 +311,9 @@ func newHostView() *hostView {
 	// Фильтр перерисовывает из последнего ответа, а не ждёт следующего опроса:
 	// пауза в 2 секунды после клика читается как «не сработало».
 	v.ifacesFilter = widget.NewSelect([]string{
-		locale.T("remote.host.filter_all"),
-		locale.T("remote.host.filter_up"),
-		locale.T("remote.host.filter_traffic"),
+		locale.T("All"),
+		locale.T("Up only"),
+		locale.T("With traffic"),
 	}, func(string) { v.redrawInterfaces() })
 	v.ifacesFilter.SetSelectedIndex(0)
 	return v
@@ -524,7 +524,7 @@ func (v *hostView) content() fyne.CanvasObject {
 	// показатель того же вопроса «тяжело ли машине сейчас», и в одну строку
 	// зоны читаются подряд, без вертикального списка на пол-экрана.
 	thermalRow := container.NewHBox(
-		hostBoldLabel(locale.T("remote.host.thermal")),
+		hostBoldLabel(locale.T("Temperature")),
 		v.thermal,
 		v.thermalList,
 	)
@@ -532,7 +532,7 @@ func (v *hostView) content() fyne.CanvasObject {
 	// Дескрипторы — под дисками: это тоже про исчерпание лимита, только не
 	// места, а таблицы открытых файлов. Рядом их и читают.
 	fdRow := container.NewHBox(
-		hostBoldLabel(locale.T("remote.host.fd")),
+		hostBoldLabel(locale.T("File descriptors")),
 		v.fdDaemon,
 		v.fdSystem,
 	)
@@ -593,12 +593,12 @@ func hostDisksHeader() fyne.CanvasObject {
 	// над своим числом, а не над безымянной полоской, и глаз не ищет, к
 	// какой колонке относится подпись.
 	return container.NewHBox(
-		hostHead(locale.T("remote.host.col_path"), hostColName, false),
-		hostHead(locale.T("remote.host.col_fs"), hostColFS, false),
-		hostHead(locale.T("remote.host.col_used"), hostColPercent, true),
+		hostHead(locale.T("Mount"), hostColName, false),
+		hostHead(locale.T("FS"), hostColFS, false),
+		hostHead(locale.T("Used"), hostColPercent, true),
 		hostHead("", hostColBar, false),
-		hostHead(locale.T("remote.host.col_free"), hostColBytes, true),
-		hostHead(locale.T("remote.host.col_flags"), hostColFlags, false),
+		hostHead(locale.T("Free"), hostColBytes, true),
+		hostHead(locale.T("Flags"), hostColFlags, false),
 	)
 }
 
@@ -609,13 +609,13 @@ func hostDisksHeader() fyne.CanvasObject {
 // стрелки показывается тофу.
 func hostIfacesHeader() fyne.CanvasObject {
 	return container.NewHBox(
-		hostHead(locale.T("remote.host.col_iface"), hostColName, false),
-		hostHead(locale.T("remote.host.col_rx_rate"), hostColRate, true),
-		hostHead(locale.T("remote.host.col_tx_rate"), hostColRate, true),
-		hostHead(locale.T("remote.host.col_rx_total"), hostColBytes, true),
-		hostHead(locale.T("remote.host.col_tx_total"), hostColBytes, true),
-		hostHead(locale.T("remote.host.col_errors"), hostColErrors, true),
-		hostHead(locale.T("remote.host.col_mtu"), hostColMTU, true),
+		hostHead(locale.T("Interface"), hostColName, false),
+		hostHead(locale.T("↓rate"), hostColRate, true),
+		hostHead(locale.T("↑rate"), hostColRate, true),
+		hostHead(locale.T("↓total"), hostColBytes, true),
+		hostHead(locale.T("↑total"), hostColBytes, true),
+		hostHead(locale.T("err / drop"), hostColErrors, true),
+		hostHead(locale.T("MTU"), hostColMTU, true),
 	)
 }
 
@@ -629,10 +629,10 @@ func (v *hostView) update(h lxdclient.HostInfo, hErr error,
 	if hErr != nil {
 		if errors.Is(hErr, lxdclient.ErrHostUnsupported) {
 			// 404 — это «машину видно, демон старый», а не обрыв связи.
-			v.errBar.SetText(locale.T("remote.host.unsupported"))
+			v.errBar.SetText(locale.T("This daemon has no host telemetry: the machine is reachable, but its sing-box build predates /admin/host. Update the daemon on the machine."))
 		} else {
 			debuglog.WarnLog("host window: %v", hErr)
-			v.errBar.SetText(locale.Tf("remote.host.error", hErr))
+			v.errBar.SetText(locale.Tf("Could not read host telemetry: %v", hErr))
 		}
 		v.errBar.Show()
 		return
@@ -655,7 +655,7 @@ func (v *hostView) update(h lxdclient.HostInfo, hErr error,
 
 	// CPU. Заголовок несёт либо процент, либо «ждём второй замер…»: пустая
 	// полоска с нулём читалась бы как «простаивает».
-	v.cpuTitle.SetText(locale.Tf("remote.host.cpu", hostCPUSummary(h.CPU)))
+	v.cpuTitle.SetText(locale.Tf("CPU  %s", hostCPUSummary(h.CPU)))
 	v.cpuBar.SetValue(hostBarValue(h.CPU.UsagePercent))
 	v.cpuLoad.SetText(hostLoadText(h.CPU))
 	v.cpuInterval.SetText(hostInterval(h.CPU.IntervalSeconds))
@@ -663,7 +663,7 @@ func (v *hostView) update(h lxdclient.HostInfo, hErr error,
 
 	// Память: и полоска, и подпись — от available. Среднее по free кричало бы
 	// «занято» при памяти, лежащей в page cache.
-	v.memTitle.SetText(locale.Tf("remote.host.memory", hostPercent(h.Memory.UsedPercent)))
+	v.memTitle.SetText(locale.Tf("Memory  %s", hostPercent(h.Memory.UsedPercent)))
 	v.memBar.SetValue(hostBarValue(h.Memory.UsedPercent))
 	v.memDetail.SetText(hostMemoryDetail(h.Memory))
 	v.memSwap.SetText(hostSwapText(h.Memory))
@@ -671,8 +671,8 @@ func (v *hostView) update(h lxdclient.HostInfo, hErr error,
 	v.thermal.SetText(hostThermalText(h.Thermal))
 	v.thermalList.SetText(hostThermalZones(h.Thermal))
 
-	v.fdDaemon.SetText(locale.Tf("remote.host.fd_daemon", hostFDText(h.FD.Open, h.FD.Limit)))
-	v.fdSystem.SetText(locale.Tf("remote.host.fd_system", hostFDText(h.FD.SystemOpen, h.FD.SystemLimit)))
+	v.fdDaemon.SetText(locale.Tf("daemon  %s", hostFDText(h.FD.Open, h.FD.Limit)))
+	v.fdSystem.SetText(locale.Tf("system  %s", hostFDText(h.FD.SystemOpen, h.FD.SystemLimit)))
 
 	v.updateDisks(h.Disk)
 	v.updateInterfaces(ifs, ifErr)
@@ -731,7 +731,7 @@ func (v *hostView) updateCores(c lxdclient.HostCPU) {
 
 // updateDisks рисует точки монтирования таблицей.
 func (v *hostView) updateDisks(d lxdclient.HostDisk) {
-	v.disksTitle.SetText(locale.Tf("remote.host.disks", hostPercent(d.MaxUsedPercent)))
+	v.disksTitle.SetText(locale.Tf("Disks  (max %s)", hostPercent(d.MaxUsedPercent)))
 
 	v.disks.RemoveAll()
 	anyReadOnly := false
@@ -756,7 +756,7 @@ func (v *hostView) updateDisks(d lxdclient.HostDisk) {
 		pct := hostNum(fmt.Sprintf("%.1f%%", m.UsedPercent), hostColPercent)
 		var level fyne.CanvasObject = hostFixedWidth(widget.NewLabel(""), hostColBar)
 		if roByDesign {
-			pct = hostDimNum(locale.T("remote.host.ro_full"), hostColPercent)
+			pct = hostDimNum(locale.T("by design"), hostColPercent)
 		} else {
 			bar := hostBar()
 			p := m.UsedPercent
@@ -779,13 +779,13 @@ func (v *hostView) updateDisks(d lxdclient.HostDisk) {
 	// как незамеченная авария.
 	hint := ""
 	if anyReadOnly {
-		hint = locale.T("remote.host.disks_ro_hint")
+		hint = locale.T("Read-only filesystems are excluded from the maximum: a squashfs root sits at a permanent 100%.")
 	}
 	if d.StateDirPath != "" {
 		if hint != "" {
 			hint += "\n"
 		}
-		hint += locale.Tf("remote.host.state_dir", d.StateDirPath)
+		hint += locale.Tf("State dir: %s", d.StateDirPath)
 	}
 	v.disksHint.SetText(hint)
 	v.disks.Refresh()
@@ -794,8 +794,8 @@ func (v *hostView) updateDisks(d lxdclient.HostDisk) {
 // updateInterfaces принимает новый ответ и перерисовывает таблицу.
 func (v *hostView) updateInterfaces(ifs lxdclient.HostInterfaces, err error) {
 	if err != nil {
-		v.ifacesTitle.SetText(locale.T("remote.host.ifaces"))
-		v.ifacesHint.SetText(locale.Tf("remote.host.ifaces_error", err))
+		v.ifacesTitle.SetText(locale.T("Interfaces"))
+		v.ifacesHint.SetText(locale.Tf("Could not read interfaces: %v", err))
 		return
 	}
 	v.lastIfaces = ifs
@@ -824,9 +824,9 @@ func (v *hostView) redrawInterfaces() {
 	// В заголовке — сколько показано из скольких, иначе отфильтрованный
 	// список выглядит как пропавшие интерфейсы.
 	if shown == len(ifs.Interfaces) {
-		v.ifacesTitle.SetText(locale.Tf("remote.host.ifaces_n", len(ifs.Interfaces)))
+		v.ifacesTitle.SetText(locale.Tf("Interfaces (%d)", len(ifs.Interfaces)))
 	} else {
-		v.ifacesTitle.SetText(locale.Tf("remote.host.ifaces_filtered", shown, len(ifs.Interfaces)))
+		v.ifacesTitle.SetText(locale.Tf("Interfaces (%d of %d)", shown, len(ifs.Interfaces)))
 	}
 
 	v.ifaces.RemoveAll()
@@ -855,7 +855,7 @@ func (v *hostView) redrawInterfaces() {
 		))
 	}
 	// Окно дельты общее на весь ответ: интерфейсы снимаются одним проходом.
-	hint := locale.T("remote.host.ifaces_hint")
+	hint := locale.T("Graph the counter, read the rate: a counter survives restarts and gaps, a rate lies across them.")
 	if iv := hostInterval(ifs.IntervalSeconds); iv != "" {
 		hint += " · " + iv
 	}
@@ -869,7 +869,7 @@ func (v *hostView) redrawInterfaces() {
 // перечисление в столбик растянуло бы её на пол-экрана ради трёх чисел.
 func hostThermalZones(t *lxdclient.HostThermal) string {
 	if t == nil || len(t.Zones) == 0 {
-		return locale.T("remote.host.thermal_none")
+		return locale.T("no sensors on this machine")
 	}
 	s := ""
 	for i, z := range t.Zones {

@@ -88,7 +88,7 @@ func OpenLogViewerWindow(ac *core.AppController) {
 	logViewerMu.Unlock()
 
 	app := ac.UIService.Application
-	win := app.NewWindow(locale.T("log.window_title"))
+	win := app.NewWindow(locale.T("Logs"))
 	win.Resize(fyne.NewSize(700, 500))
 
 	var (
@@ -161,7 +161,7 @@ func OpenLogViewerWindow(ac *core.AppController) {
 			lbl.SetText(e.line)
 		},
 	)
-	levelNames := []string{locale.T("log.level_error"), locale.T("log.level_warn"), locale.T("log.level_info"), locale.T("log.level_verbose"), locale.T("log.level_trace")}
+	levelNames := []string{locale.TN(1, "Error"), locale.T("Warn"), locale.T("Info"), locale.T("Verbose"), locale.T("Trace")}
 	levelByIndex := []debuglog.Level{debuglog.LevelError, debuglog.LevelWarn, debuglog.LevelInfo, debuglog.LevelVerbose, debuglog.LevelTrace}
 	internalSelect := widget.NewSelect(levelNames, func(s string) {
 		for i, n := range levelNames {
@@ -172,8 +172,8 @@ func OpenLogViewerWindow(ac *core.AppController) {
 		}
 		internalList.Refresh()
 	})
-	internalSelect.SetSelected(locale.T("log.level_trace"))
-	internalTop := container.NewHBox(widget.NewLabel(locale.T("log.level_label")), internalSelect)
+	internalSelect.SetSelected(locale.T("Trace"))
+	internalTop := container.NewHBox(widget.NewLabel(locale.T("Level:")), internalSelect)
 	internalContent := container.NewBorder(internalTop, nil, nil, nil, internalList)
 
 	// API tab: store all; filter by level for display
@@ -228,8 +228,8 @@ func OpenLogViewerWindow(ac *core.AppController) {
 		}
 		apiList.Refresh()
 	})
-	apiSelect.SetSelected(locale.T("log.level_trace"))
-	apiTop := container.NewHBox(widget.NewLabel(locale.T("log.level_label")), apiSelect)
+	apiSelect.SetSelected(locale.T("Trace"))
+	apiTop := container.NewHBox(widget.NewLabel(locale.T("Level:")), apiSelect)
 	apiContent := container.NewBorder(apiTop, nil, nil, nil, apiList)
 
 	// Core tab: в daemon-режиме логи ядра приходят по gRPC SubscribeLog
@@ -239,7 +239,7 @@ func OpenLogViewerWindow(ac *core.AppController) {
 		if lines, ok := ac.DaemonCoreLogLines(logViewerMaxLines); ok {
 			fyne.Do(func() {
 				if len(lines) == 0 {
-					lines = []string{locale.T("log.daemon_buffer_empty")}
+					lines = []string{locale.T("(daemon log buffer is empty — no core output yet)")}
 				}
 				coreLines = lines
 				if coreList != nil {
@@ -252,7 +252,7 @@ func OpenLogViewerWindow(ac *core.AppController) {
 		if err != nil {
 			debuglog.WarnLog("logViewer: Core read failed: %v", err)
 			fyne.Do(func() {
-				coreLines = []string{locale.T("log.file_not_available")}
+				coreLines = []string{locale.T("Log file not available.")}
 				if coreList != nil {
 					coreList.Refresh()
 				}
@@ -261,7 +261,7 @@ func OpenLogViewerWindow(ac *core.AppController) {
 		}
 		if lines == nil {
 			fyne.Do(func() {
-				coreLines = []string{locale.T("log.file_not_available")}
+				coreLines = []string{locale.T("Log file not available.")}
 				if coreList != nil {
 					coreList.Refresh()
 				}
@@ -275,7 +275,7 @@ func OpenLogViewerWindow(ac *core.AppController) {
 			}
 		})
 	}
-	coreRefreshBtn = widget.NewButton(locale.T("log.refresh"), func() {
+	coreRefreshBtn = widget.NewButton(locale.T("Refresh"), func() {
 		loadCore()
 	})
 	coreList = widget.NewList(
@@ -301,9 +301,9 @@ func OpenLogViewerWindow(ac *core.AppController) {
 
 	// Tabs
 	tabs := container.NewAppTabs(
-		container.NewTabItemWithIcon(locale.T("log.internal_tab"), theme.DocumentIcon(), internalContent),
-		container.NewTabItemWithIcon(locale.T("log.core_tab"), theme.ViewRefreshIcon(), coreContent),
-		container.NewTabItemWithIcon(locale.T("log.api_tab"), theme.MailComposeIcon(), apiContent),
+		container.NewTabItemWithIcon(locale.T("Internal"), theme.DocumentIcon(), internalContent),
+		container.NewTabItemWithIcon(locale.T("Core"), theme.ViewRefreshIcon(), coreContent),
+		container.NewTabItemWithIcon(locale.T("API"), theme.MailComposeIcon(), apiContent),
 	)
 	coreTabIndex = 1
 

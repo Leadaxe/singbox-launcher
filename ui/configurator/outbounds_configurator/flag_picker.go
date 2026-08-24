@@ -185,7 +185,7 @@ func showFlagPickerPopup(
 			selected[part] = true
 		}
 	}
-	excludeCheck := widget.NewCheck(locale.T("wizard.outbound.flag_picker.exclude"), nil)
+	excludeCheck := widget.NewCheck(locale.T("Invert: keep nodes that do NOT match"), nil)
 	excludeCheck.SetChecked(currentInvert)
 
 	regexEntry := widget.NewEntry()
@@ -239,7 +239,7 @@ func showFlagPickerPopup(
 		}
 
 		matched := len(filtered)
-		countLabel.SetText(locale.Tf("wizard.outbound.flag_picker.matches", matched, total))
+		countLabel.SetText(locale.Tf("matches %d of %d total nodes", matched, total))
 
 		// Build rows: matching nodes first, then non-matching. Same color
 		// scheme as Preview (green=in, red=out).
@@ -303,7 +303,7 @@ func showFlagPickerPopup(
 	// ── Chips grid ─────────────────────────────────────────────────────────
 	var chipsContent fyne.CanvasObject
 	if len(flags) == 0 {
-		chipsContent = widget.NewLabel(locale.T("wizard.outbound.flag_picker.no_flags"))
+		chipsContent = widget.NewLabel(locale.T("No emoji found in node names. Refresh subscriptions first, or type a regex below manually."))
 	} else {
 		chipObjs := make([]fyne.CanvasObject, 0, len(flags))
 		for _, fe := range flags {
@@ -335,13 +335,13 @@ func showFlagPickerPopup(
 
 	// ── Layout ─────────────────────────────────────────────────────────────
 	header := widget.NewLabelWithStyle(
-		locale.T("wizard.outbound.flag_picker.title"),
+		locale.T("Emoji picker"),
 		fyne.TextAlignLeading,
 		fyne.TextStyle{Bold: true},
 	)
 
-	cancelBtn := widget.NewButton(locale.T("wizard.outbound.flag_picker.cancel"), nil)
-	applyBtn := widget.NewButton(locale.T("wizard.outbound.flag_picker.apply"), nil)
+	cancelBtn := widget.NewButton(locale.T("Cancel"), nil)
+	applyBtn := widget.NewButton(locale.T("Apply"), nil)
 	applyBtn.Importance = widget.HighImportance
 
 	buttonRow := container.NewBorder(nil, nil, nil,
@@ -352,11 +352,11 @@ func showFlagPickerPopup(
 	topStack := container.NewVBox(
 		header,
 		widget.NewSeparator(),
-		widget.NewLabel(locale.T("wizard.outbound.flag_picker.flags_header")),
+		widget.NewLabel(locale.T("Emoji found in node names (click to toggle):")),
 		chipsContent,
 		excludeCheck,
 		widget.NewSeparator(),
-		widget.NewLabel(locale.T("wizard.outbound.flag_picker.regex_header")),
+		widget.NewLabel(locale.T("Filter body (editable, live-applied):")),
 		regexEntry,
 		countLabel,
 		widget.NewSeparator(),
@@ -377,7 +377,7 @@ func showFlagPickerPopup(
 	if app == nil {
 		return
 	}
-	win := app.NewWindow(locale.T("wizard.outbound.flag_picker.title"))
+	win := app.NewWindow(locale.T("Emoji picker"))
 	win.SetContent(content)
 	win.Resize(fyne.NewSize(580, 620))
 	win.CenterOnScreen()

@@ -43,58 +43,58 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	node := nodes.Lookup(proxy.Name)
 
 	win := fyne.CurrentApp().NewWindow(
-		locale.Tf("servers.node_info_title", proxy.DisplayOrName()))
+		locale.Tf("Node: %s", proxy.DisplayOrName()))
 
 	body := container.NewVBox()
 
 	// Шапка: то, что видно в списке.
-	body.Add(sectionHeader(locale.T("servers.node_info_section_general")))
-	body.Add(infoRow(locale.T("servers.node_info_tag"), proxy.Name))
+	body.Add(sectionHeader(locale.T("General")))
+	body.Add(infoRow(locale.T("Tag"), proxy.Name))
 	if display := proxy.DisplayOrName(); display != proxy.Name {
-		body.Add(infoRow(locale.T("servers.node_info_display_name"), display))
+		body.Add(infoRow(locale.T("Display name"), display))
 	}
-	body.Add(infoRow(locale.T("servers.node_info_delay"), formatDelay(proxy.Delay)))
+	body.Add(infoRow(locale.T("Last delay"), formatDelay(proxy.Delay)))
 
 	if node == nil {
 		// Узла нет в конфиге: гонка перегенерации либо служебный outbound.
-		body.Add(widget.NewLabel(locale.T("servers.node_info_not_in_config")))
+		body.Add(widget.NewLabel(locale.T("This node is not present in the current config.json.")))
 		finishNodeInfoWindow(win, body)
 		return
 	}
 
-	body.Add(infoRow(locale.T("servers.node_info_type"), node.Type))
-	body.Add(infoRow(locale.T("servers.node_info_kind"), node.Kind))
+	body.Add(infoRow(locale.T("Type"), node.Type))
+	body.Add(infoRow(locale.T("Section"), node.Kind))
 
 	if node.Server != "" {
-		body.Add(infoRow(locale.T("servers.node_info_server"),
+		body.Add(infoRow(locale.T("Server"),
 			fmt.Sprintf("%s:%d", node.Server, node.ServerPort)))
 	}
 	if node.Transport != "" {
-		body.Add(infoRow(locale.T("servers.node_info_transport"), node.Transport))
+		body.Add(infoRow(locale.T("Transport"), node.Transport))
 	}
 	if node.Security != "" {
-		body.Add(infoRow(locale.T("servers.node_info_security"), node.Security))
+		body.Add(infoRow(locale.T("Security"), node.Security))
 	}
 	if node.Detour != "" {
-		body.Add(infoRow(locale.T("servers.node_info_detour"), node.Detour))
+		body.Add(infoRow(locale.T("Detour"), node.Detour))
 	}
 
 	// Группа: состав и параметры проверки.
 	if node.IsGroup() {
 		body.Add(widget.NewSeparator())
-		body.Add(sectionHeader(locale.Tf("servers.node_info_section_group", len(node.GroupMembers))))
+		body.Add(sectionHeader(locale.Tf("Group members (%d)", len(node.GroupMembers))))
 
 		for _, row := range groupModeRows(node) {
 			body.Add(row)
 		}
 		if url, ok := node.Raw["url"].(string); ok && url != "" {
-			body.Add(infoRow(locale.T("servers.node_info_test_url"), url))
+			body.Add(infoRow(locale.T("Test URL"), url))
 		}
 		if interval, ok := node.Raw["interval"].(string); ok && interval != "" {
-			body.Add(infoRow(locale.T("servers.node_info_test_interval"), interval))
+			body.Add(infoRow(locale.T("Test interval"), interval))
 		}
 		if def, ok := node.Raw["default"].(string); ok && def != "" {
-			body.Add(infoRow(locale.T("servers.node_info_default"), def))
+			body.Add(infoRow(locale.T("Default"), def))
 		}
 		// SPEC 097: активный участник группы помечается маркером — без него
 		// окно показывало N равнозначных строк, и понять, через кого реально
@@ -182,7 +182,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 						return
 					default:
 						poolBox.Add(widget.NewSeparator())
-						poolBox.Add(sectionHeader(locale.T("servers.node_info_section_pool")))
+						poolBox.Add(sectionHeader(locale.T("Live balancer pool (gRPC)")))
 						active := strings.TrimSpace(proxy.Now)
 						if active == "" {
 							active, _ = node.Raw["now"].(string)
@@ -219,7 +219,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	// TLS-подробности отдельной секцией: их много и они длинные.
 	if tlsRows := tlsInfoRows(node); len(tlsRows) > 0 {
 		body.Add(widget.NewSeparator())
-		body.Add(sectionHeader(locale.T("servers.node_info_section_tls")))
+		body.Add(sectionHeader(locale.T("TLS")))
 		for _, row := range tlsRows {
 			body.Add(row)
 		}
@@ -228,7 +228,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	// Транспорт с параметрами (path/host/service_name).
 	if trRows := transportInfoRows(node); len(trRows) > 0 {
 		body.Add(widget.NewSeparator())
-		body.Add(sectionHeader(locale.T("servers.node_info_section_transport")))
+		body.Add(sectionHeader(locale.T("Transport")))
 		for _, row := range trRows {
 			body.Add(row)
 		}
@@ -243,7 +243,7 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 
 	jsonTab := container.NewBorder(
 		nil,
-		widget.NewButton(locale.T("servers.node_info_copy_json"), func() {
+		widget.NewButton(locale.T("Copy JSON"), func() {
 			setClipboard(jsonText)
 		}),
 		nil, nil,
@@ -251,8 +251,8 @@ func showNodeInfoWindow(ac *core.AppController, proxy api.ProxyInfo, cfgPath str
 	)
 
 	tabs := container.NewAppTabs(
-		container.NewTabItem(locale.T("servers.node_info_tab_details"), withScrollGutter(body)),
-		container.NewTabItem(locale.T("servers.node_info_section_json"), jsonTab),
+		container.NewTabItem(locale.T("Details"), withScrollGutter(body)),
+		container.NewTabItem(locale.T("Outbound JSON"), jsonTab),
 	)
 
 	win.SetContent(tabs)
@@ -294,16 +294,16 @@ func groupModeRows(node *wizardbusiness.ConfigNode) []*fyne.Container {
 		if strings.TrimSpace(mode) == "" {
 			mode = "least_test"
 		}
-		rows = append(rows, infoRow(locale.T("servers.node_info_group_mode"), mode))
+		rows = append(rows, infoRow(locale.T("Selection mode"), mode))
 	}
 
 	// tolerance — окно, в пределах которого узлы считаются равными по
 	// скорости: без него least_test дёргал бы выбор на каждой миллисекунде.
 	if tolerance, ok := jsonNumberString(node.Raw["tolerance"]); ok {
-		rows = append(rows, infoRow(locale.T("servers.node_info_tolerance"), tolerance+" ms"))
+		rows = append(rows, infoRow(locale.T("Tolerance"), tolerance+" ms"))
 	}
 	if idle, ok := node.Raw["idle_timeout"].(string); ok && idle != "" {
-		rows = append(rows, infoRow(locale.T("servers.node_info_idle_timeout"), idle))
+		rows = append(rows, infoRow(locale.T("Idle timeout"), idle))
 	}
 
 	balancer, ok := node.Raw["balancer"].(map[string]interface{})
@@ -313,10 +313,10 @@ func groupModeRows(node *wizardbusiness.ConfigNode) []*fyne.Container {
 
 	// pool — сколько узлов держать в раздаче; 0 означает «весь состав».
 	if pool, ok := jsonNumberString(balancer["pool"]); ok {
-		rows = append(rows, infoRow(locale.T("servers.node_info_pool"), pool))
+		rows = append(rows, infoRow(locale.T("Pool size"), pool))
 	}
 	if poolTolerance, ok := jsonNumberString(balancer["pool_tolerance"]); ok {
-		rows = append(rows, infoRow(locale.T("servers.node_info_pool_tolerance"), poolTolerance+" ms"))
+		rows = append(rows, infoRow(locale.T("Pool tolerance"), poolTolerance+" ms"))
 	}
 
 	// sticky_hash — по каким признакам соединение закрепляется за узлом.
@@ -330,14 +330,14 @@ func groupModeRows(node *wizardbusiness.ConfigNode) []*fyne.Container {
 		}
 		value := strings.Join(keys, ", ")
 		if len(keys) == 1 && keys[0] == "none" {
-			value = locale.T("servers.node_info_sticky_off")
+			value = locale.T("off")
 		}
 		if value != "" {
-			rows = append(rows, infoRow(locale.T("servers.node_info_sticky_hash"), value))
+			rows = append(rows, infoRow(locale.T("Sticky by"), value))
 		}
 	}
 	if ttl, ok := balancer["sticky_ttl"].(string); ok && ttl != "" {
-		rows = append(rows, infoRow(locale.T("servers.node_info_sticky_ttl"), ttl))
+		rows = append(rows, infoRow(locale.T("Sticky TTL"), ttl))
 	}
 
 	return rows
@@ -428,7 +428,7 @@ func tlsInfoRows(node *wizardbusiness.ConfigNode) []*fyne.Container {
 
 	var rows []*fyne.Container
 	if sni, ok := tls["server_name"].(string); ok && sni != "" {
-		rows = append(rows, infoRow(locale.T("servers.node_info_sni"), sni))
+		rows = append(rows, infoRow(locale.T("SNI"), sni))
 	}
 	if alpn, ok := tls["alpn"].([]interface{}); ok && len(alpn) > 0 {
 		parts := make([]string, 0, len(alpn))
@@ -440,19 +440,19 @@ func tlsInfoRows(node *wizardbusiness.ConfigNode) []*fyne.Container {
 		rows = append(rows, infoRow("ALPN", strings.Join(parts, ", ")))
 	}
 	if insecure, ok := tls["insecure"].(bool); ok && insecure {
-		rows = append(rows, infoRow(locale.T("servers.node_info_insecure"), "true"))
+		rows = append(rows, infoRow(locale.T("Skip cert verify"), "true"))
 	}
 	if utls, ok := tls["utls"].(map[string]interface{}); ok {
 		if fp, ok := utls["fingerprint"].(string); ok && fp != "" {
-			rows = append(rows, infoRow(locale.T("servers.node_info_fingerprint"), fp))
+			rows = append(rows, infoRow(locale.T("uTLS fingerprint"), fp))
 		}
 	}
 	if reality, ok := tls["reality"].(map[string]interface{}); ok {
 		if pk, ok := reality["public_key"].(string); ok && pk != "" {
-			rows = append(rows, infoRow(locale.T("servers.node_info_reality_key"), pk))
+			rows = append(rows, infoRow(locale.T("REALITY public key"), pk))
 		}
 		if sid, ok := reality["short_id"].(string); ok && sid != "" {
-			rows = append(rows, infoRow(locale.T("servers.node_info_reality_short_id"), sid))
+			rows = append(rows, infoRow(locale.T("REALITY short ID"), sid))
 		}
 	}
 	return rows
@@ -467,7 +467,7 @@ func transportInfoRows(node *wizardbusiness.ConfigNode) []*fyne.Container {
 
 	var rows []*fyne.Container
 	if path, ok := tr["path"].(string); ok && path != "" {
-		rows = append(rows, infoRow(locale.T("servers.node_info_path"), path))
+		rows = append(rows, infoRow(locale.T("Path"), path))
 	}
 	if headers, ok := tr["headers"].(map[string]interface{}); ok {
 		if host, ok := headers["Host"].(string); ok && host != "" {
@@ -475,10 +475,10 @@ func transportInfoRows(node *wizardbusiness.ConfigNode) []*fyne.Container {
 		}
 	}
 	if sn, ok := tr["service_name"].(string); ok && sn != "" {
-		rows = append(rows, infoRow(locale.T("servers.node_info_service_name"), sn))
+		rows = append(rows, infoRow(locale.T("Service name"), sn))
 	}
 	if med, ok := tr["max_early_data"].(float64); ok && med > 0 {
-		rows = append(rows, infoRow(locale.T("servers.node_info_early_data"),
+		rows = append(rows, infoRow(locale.T("Max early data"),
 			fmt.Sprintf("%d", int(med))))
 	}
 	return rows
@@ -511,7 +511,7 @@ func formatDelay(delay int64) string {
 	case delay > 0:
 		return fmt.Sprintf("%d ms", delay)
 	case delay == -1:
-		return locale.T("servers.ping_button_error")
+		return locale.T("Error")
 	default:
 		return "—"
 	}

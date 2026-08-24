@@ -81,9 +81,9 @@ func (r *connRecordRow) CreateRenderer() fyne.WidgetRenderer {
 
 // set перекладывает запись в ячейки.
 func (r *connRecordRow) set(d tprof.ConnRecord) {
-	state := locale.T("traffic.conns.state_open")
+	state := locale.T("open")
 	if d.ClosedAt != nil {
-		state = locale.T("traffic.conns.state_closed")
+		state = locale.T("closed")
 	}
 	if len(d.Issues) > 0 {
 		// Значок в колонке состояния, а не приклеенный к хосту: иначе он
@@ -154,13 +154,13 @@ func connRecordRowHeader() fyne.CanvasObject {
 	}
 	return container.NewHBox(
 		cell("", colState, fyne.TextAlignLeading),
-		cell(locale.T("traffic.byclient.col_dest"), colDest-colState, fyne.TextAlignLeading),
+		cell(locale.T("DESTINATION"), colDest-colState, fyne.TextAlignLeading),
 		cell(":", colPort, fyne.TextAlignTrailing),
 		cell("~", colAge, fyne.TextAlignTrailing),
 		cell("↑", colTraffic, fyne.TextAlignTrailing),
 		cell("↓", colTraffic, fyne.TextAlignTrailing),
-		cell(locale.T("traffic.byclient.col_outbound"), colOutbound, fyne.TextAlignLeading),
-		cell(locale.T("traffic.byclient.col_rule"), colRule, fyne.TextAlignLeading),
+		cell(locale.T("OUTBOUND"), colOutbound, fyne.TextAlignLeading),
+		cell(locale.T("RULE"), colRule, fyne.TextAlignLeading),
 	)
 }
 

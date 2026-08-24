@@ -127,7 +127,7 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 	ac := svc.ac
 	if ac.RunningState.IsRunning() {
 		if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
-			dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, locale.T("core.info_title"), locale.T("core.already_running"))
+			dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, locale.TN(1, "Info"), locale.T("Sing-Box already running (according to internal state)."))
 		}
 		return
 	}
@@ -168,7 +168,7 @@ func (svc *ProcessService) Start(skipRunningCheck ...bool) {
 		debuglog.WarnLog("startSingBox: Capabilities check failed: %s", suggestion)
 		if ac.UIService != nil && ac.UIService.MainWindow != nil {
 			cmd := platform.GetSetCapCommand(ac.FileService.SingboxPath)
-			dialogs.ShowLinuxCapabilitiesRequired(ac.UIService.MainWindow, locale.T("error.linux_capabilities"), locale.T("error.linux_capabilities")+"\n\n"+suggestion, cmd)
+			dialogs.ShowLinuxCapabilitiesRequired(ac.UIService.MainWindow, locale.T("Linux capabilities required"), locale.T("Linux capabilities required")+"\n\n"+suggestion, cmd)
 		}
 		return
 	}
@@ -347,14 +347,14 @@ func (svc *ProcessService) onPrivilegedScriptExited() {
 	case actionMaxAttempts:
 		debuglog.DebugLog("onPrivilegedScriptExited: Max restart attempts reached.")
 		if ac.UIService != nil && ac.UIService.MainWindow != nil {
-			dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("%s", locale.Tf("error.restart_failed", restartAttempts)))
+			dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("%s", locale.Tf("Sing-Box failed to restart after %d attempts. Check sing-box.log for details.", restartAttempts)))
 		}
 		return
 	}
 	// action == actionCrashRestart
 	debuglog.WarnLog("onPrivilegedScriptExited: Sing-Box exited, auto-restart (attempt %d/%d)", ac.ConsecutiveCrashAttempts, restartAttempts)
 	if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
-		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, locale.T("core.crash_title"), locale.Tf("core.crash_restarting", ac.ConsecutiveCrashAttempts, restartAttempts))
+		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, locale.T("Crash"), locale.Tf("Sing-Box crashed, restarting... (attempt %d/%d)", ac.ConsecutiveCrashAttempts, restartAttempts))
 	}
 	ac.CmdMutex.Unlock()
 	<-time.After(2 * time.Second)
@@ -446,7 +446,7 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 	if action == actionMaxAttempts {
 		debuglog.DebugLog("monitorSingBox: Maximum restart attempts (%d) reached. Stopping auto-restart.", restartAttempts)
 		if ac.UIService != nil && ac.UIService.MainWindow != nil {
-			dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("%s", locale.Tf("error.restart_failed", restartAttempts)))
+			dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("%s", locale.Tf("Sing-Box failed to restart after %d attempts. Check sing-box.log for details.", restartAttempts)))
 		}
 		return
 	}
@@ -454,7 +454,7 @@ func (svc *ProcessService) Monitor(cmdToMonitor *exec.Cmd) {
 	// action == actionCrashRestart
 	debuglog.WarnLog("monitorSingBox: Sing-Box crashed: %v, attempting auto-restart (attempt %d/%d)", err, ac.ConsecutiveCrashAttempts, restartAttempts)
 	if ac.UIService != nil && ac.UIService.Application != nil && ac.UIService.MainWindow != nil {
-		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, locale.T("core.crash_title"), locale.Tf("core.crash_restarting", ac.ConsecutiveCrashAttempts, restartAttempts))
+		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, locale.T("Crash"), locale.Tf("Sing-Box crashed, restarting... (attempt %d/%d)", ac.ConsecutiveCrashAttempts, restartAttempts))
 	}
 
 	ac.CmdMutex.Unlock()
@@ -520,7 +520,7 @@ func (svc *ProcessService) Stop() {
 			ac.StoppedByUser = false
 			ac.CmdMutex.Unlock()
 			if ac.hasUI() {
-				dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("%s: %w", locale.T("error.stop_privileged_failed"), err))
+				dialogs.ShowError(ac.UIService.MainWindow, fmt.Errorf("%s: %w", locale.T("Could not stop sing-box with administrator rights (dialog cancelled or error). The core may still be running — try Stop again or quit sing-box in Activity Monitor."), err))
 			}
 			return
 		}

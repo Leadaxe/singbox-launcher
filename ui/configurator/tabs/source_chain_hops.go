@@ -57,19 +57,19 @@ func (c chainHopCandidate) Display() string { return c.Tag }
 func (c chainHopCandidate) KindText() string {
 	switch c.Kind {
 	case hopKindNode:
-		return locale.T("wizard.chain.kind_node")
+		return locale.T("node")
 	case hopKindGroup:
-		return locale.T("wizard.chain.kind_group")
+		return locale.T("group")
 	case hopKindDirection:
-		return locale.T("wizard.chain.kind_direction")
+		return locale.T("direction")
 	case hopKindChain:
-		return locale.T("wizard.chain.kind_chain")
+		return locale.T("chain")
 	case hopKindBuiltin:
-		return locale.T("wizard.chain.kind_builtin")
+		return locale.T("built-in")
 	case hopKindPending:
-		return locale.T("wizard.chain.kind_pending")
+		return locale.T("loading…")
 	default:
-		return locale.T("wizard.chain.kind_unknown")
+		return locale.T("not found")
 	}
 }
 

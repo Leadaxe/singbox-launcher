@@ -42,13 +42,13 @@ func showPreviewNodeContextMenu(win fyne.Window, node *config.ParsedNode, pe *fy
 	}
 
 	menu := fyne.NewMenu("",
-		fyne.NewMenuItem(locale.T("servers.menu_node_info"), func() {
+		fyne.NewMenuItem(locale.T("Node info…"), func() {
 			showPreviewNodeInfoWindow(node)
 		}),
-		fyne.NewMenuItem(locale.T("servers.node_info_copy_json"), func() {
+		fyne.NewMenuItem(locale.T("Copy JSON"), func() {
 			fynewidget.SetClipboard(previewNodeJSON(node))
 		}),
-		fyne.NewMenuItem(locale.T("wizard.source.preview_copy_tag"), func() {
+		fyne.NewMenuItem(locale.T("Copy tag"), func() {
 			fynewidget.SetClipboard(node.Tag)
 		}),
 	)
@@ -63,33 +63,33 @@ func showPreviewNodeInfoWindow(node *config.ParsedNode) {
 	}
 
 	win := fyne.CurrentApp().NewWindow(
-		locale.Tf("servers.node_info_title", node.Tag))
+		locale.Tf("Node: %s", node.Tag))
 
 	body := container.NewVBox()
 
-	body.Add(previewSectionHeader(locale.T("servers.node_info_section_general")))
-	body.Add(previewInfoRow(locale.T("servers.node_info_tag"), node.Tag))
-	body.Add(previewInfoRow(locale.T("servers.node_info_type"), node.Scheme))
+	body.Add(previewSectionHeader(locale.T("General")))
+	body.Add(previewInfoRow(locale.T("Tag"), node.Tag))
+	body.Add(previewInfoRow(locale.T("Type"), node.Scheme))
 
 	if node.Scheme == configtypes.SchemeGroup {
 		appendPreviewGroupRows(body, node)
 	} else {
 		if node.Server != "" {
-			body.Add(previewInfoRow(locale.T("servers.node_info_server"),
+			body.Add(previewInfoRow(locale.T("Server"),
 				fmt.Sprintf("%s:%d", node.Server, node.Port)))
 		}
 		if tr := previewTransportName(node); tr != "" {
-			body.Add(previewInfoRow(locale.T("servers.node_info_transport"), tr))
+			body.Add(previewInfoRow(locale.T("Transport"), tr))
 		}
 		if sec := previewSecurityName(node); sec != "" {
-			body.Add(previewInfoRow(locale.T("servers.node_info_security"), sec))
+			body.Add(previewInfoRow(locale.T("Security"), sec))
 		}
 	}
 
 	// Цепочка detour: узел ходит через другие — это важнее многих полей.
 	if len(node.Chain) > 0 {
 		body.Add(widget.NewSeparator())
-		body.Add(previewSectionHeader(locale.T("servers.node_info_section_chain")))
+		body.Add(previewSectionHeader(locale.T("Chain positions (%d)")))
 		for i, hop := range node.Chain {
 			if hop == nil {
 				continue
@@ -108,7 +108,7 @@ func showPreviewNodeInfoWindow(node *config.ParsedNode) {
 
 	jsonTab := container.NewBorder(
 		nil,
-		widget.NewButton(locale.T("servers.node_info_copy_json"), func() {
+		widget.NewButton(locale.T("Copy JSON"), func() {
 			fynewidget.SetClipboard(jsonText)
 		}),
 		nil, nil,
@@ -116,9 +116,9 @@ func showPreviewNodeInfoWindow(node *config.ParsedNode) {
 	)
 
 	tabs := container.NewAppTabs(
-		container.NewTabItem(locale.T("servers.node_info_tab_details"),
+		container.NewTabItem(locale.T("Details"),
 			previewWithScrollGutter(body)),
-		container.NewTabItem(locale.T("servers.node_info_section_json"), jsonTab),
+		container.NewTabItem(locale.T("Outbound JSON"), jsonTab),
 	)
 
 	win.SetContent(tabs)
@@ -134,19 +134,19 @@ func appendPreviewGroupRows(body *fyne.Container, node *config.ParsedNode) {
 	}
 
 	if url, ok := node.Outbound["url"].(string); ok && url != "" {
-		body.Add(previewInfoRow(locale.T("servers.node_info_test_url"), url))
+		body.Add(previewInfoRow(locale.T("Test URL"), url))
 	}
 	if interval, ok := node.Outbound["interval"].(string); ok && interval != "" {
-		body.Add(previewInfoRow(locale.T("servers.node_info_test_interval"), interval))
+		body.Add(previewInfoRow(locale.T("Test interval"), interval))
 	}
 	if def, ok := node.Outbound["default"].(string); ok && def != "" {
-		body.Add(previewInfoRow(locale.T("servers.node_info_default"), def))
+		body.Add(previewInfoRow(locale.T("Default"), def))
 	}
 
 	members := previewGroupMemberTags(node)
 	body.Add(widget.NewSeparator())
 	body.Add(previewSectionHeader(
-		locale.Tf("servers.node_info_section_group", len(members))))
+		locale.Tf("Group members (%d)", len(members))))
 	for _, tag := range members {
 		l := widget.NewLabel("   · " + tag)
 		l.Truncation = fyne.TextTruncateEllipsis

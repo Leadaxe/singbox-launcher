@@ -70,9 +70,9 @@ func previewGroupSubtitle(node *config.ParsedNode) string {
 			// «⭐» U+2B50 — подобрана в каталоге глифов: «🔀» на кегле
 			// подзаголовка не читался, а «⚡» U+26A1 не рисуется вовсе
 			// (пустой глиф в EmojiOneColor).
-			icon, mode = "\U00002B50", locale.T("servers.group_mode_round_robin")
+			icon, mode = "\U00002B50", locale.T("balanced")
 		case "least_test", "":
-			icon, mode = "\U0001F6A9", locale.T("servers.group_mode_least_test")
+			icon, mode = "\U0001F6A9", locale.T("fastest")
 		default:
 			icon, mode = "\U0001F6A9", raw
 		}

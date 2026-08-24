@@ -33,18 +33,18 @@ func OpenAddMachineWindow(ac *core.AppController, onAdded func()) {
 	if ac == nil || ac.UIService == nil || ac.UIService.Application == nil {
 		return
 	}
-	win := ac.UIService.Application.NewWindow(locale.T("remote.add.window_title"))
+	win := ac.UIService.Application.NewWindow(locale.T("Add remote machine"))
 
 	// Приглашение печатает демон на самой машине: `адрес#отпечаток#код`.
 	// Многострочное поле — строка длинная, и в однострочном её не видно
 	// целиком, из-за чего легко вставить обрезанное.
 	inviteEntry := widget.NewMultiLineEntry()
-	inviteEntry.SetPlaceHolder(locale.T("remote.add.invite_placeholder"))
+	inviteEntry.SetPlaceHolder(locale.T("address#fingerprint#code"))
 	inviteEntry.Wrapping = fyne.TextWrapBreak
 	inviteEntry.SetMinRowsVisible(3)
 
 	nameEntry := widget.NewEntry()
-	nameEntry.SetPlaceHolder(locale.T("remote.add.name_placeholder"))
+	nameEntry.SetPlaceHolder(locale.T("Router, home VPS, … (defaults to the address)"))
 
 	// Адрес подключения. Пусто = взять из приглашения.
 	//
@@ -52,7 +52,7 @@ func OpenAddMachineWindow(ac *core.AppController, onAdded func()) {
 	// listen 0.0.0.0 оттуда приезжает нерабочее значение, а при listen на
 	// LAN-интерфейсе — адрес, по которому мы можем быть недоступны.
 	addrEntry := widget.NewEntry()
-	addrEntry.SetPlaceHolder(locale.T("remote.add.addr_placeholder"))
+	addrEntry.SetPlaceHolder(locale.T("host:port — leave empty to use the invite's address"))
 
 	// Платформа машины — свойство записи реестра (§2.4): под неё собирается
 	// её конфиг, и она же видна в строке списка. Спрашиваем сразу, чтобы не
@@ -65,15 +65,15 @@ func OpenAddMachineWindow(ac *core.AppController, onAdded func()) {
 	// Секрет нужен только plain-h2c демону (dev на loopback); при mTLS
 	// мандатом служит клиентский сертификат.
 	secretEntry := widget.NewPasswordEntry()
-	secretEntry.SetPlaceHolder(locale.T("remote.add.secret_placeholder"))
+	secretEntry.SetPlaceHolder(locale.T("only for a plain-h2c daemon; leave empty for mTLS"))
 
 	// Обычный путь — одно приглашение: в нём уже есть и адрес, и отпечаток
 	// сервера, а мандатом служит клиентский сертификат (mTLS).
 	form := widget.NewForm(
-		widget.NewFormItem(locale.T("remote.add.field_name"), nameEntry),
-		widget.NewFormItem(locale.T("remote.add.field_invite"), inviteEntry),
-		widget.NewFormItem(locale.T("remote.machines.field_platform"), goosSelect),
-		widget.NewFormItem(locale.T("remote.machines.field_arch"), goarchSelect),
+		widget.NewFormItem(locale.T("Name"), nameEntry),
+		widget.NewFormItem(locale.T("Invite"), inviteEntry),
+		widget.NewFormItem(locale.T("Platform"), goosSelect),
+		widget.NewFormItem(locale.T("Architecture"), goarchSelect),
 	)
 
 	// Адрес и секрет нужны в двух узких случаях, поэтому спрятаны:
@@ -82,24 +82,24 @@ func OpenAddMachineWindow(ac *core.AppController, onAdded func()) {
 	// Держать их в основной форме значило бы спрашивать при каждом
 	// добавлении то, что почти всегда берётся из приглашения.
 	advancedForm := widget.NewForm(
-		widget.NewFormItem(locale.T("remote.add.field_addr"), addrEntry),
-		widget.NewFormItem(locale.T("remote.add.field_secret"), secretEntry),
+		widget.NewFormItem(locale.T("Address"), addrEntry),
+		widget.NewFormItem(locale.T("Secret"), secretEntry),
 	)
 	advanced := widget.NewAccordion(
-		widget.NewAccordionItem(locale.T("remote.add.advanced"), advancedForm),
+		widget.NewAccordionItem(locale.T("Advanced (address, secret)"), advancedForm),
 	)
 
-	hint := widget.NewLabel(locale.T("remote.add.hint"))
+	hint := widget.NewLabel(locale.T("Run `sudo sing-box lxd client add` on the machine you want to manage — it prints a one-time invite. Paste it below. The code burns after the first attempt; mint a fresh one if pairing fails."))
 	hint.Wrapping = fyne.TextWrapWord
 
 	// Команду выполняет пользователь НА САМОЙ МАШИНЕ (там свой путь к бинарю
 	// и свой sudo), поэтому кнопки «открыть в терминале» тут нет — только
 	// копирование: терминал открылся бы на этой машине, а нужен на той.
-	inviteCmdRow := CommandRow(win, "remote.add.client_add_label", func() (string, error) {
+	inviteCmdRow := CommandRow(win, "Run this on the machine to get an invite:", func() (string, error) {
 		return "sudo sing-box lxd client add", nil
 	}, false)
 
-	docsLink := widget.NewHyperlink(locale.T("remote.add.docs_link"), nil)
+	docsLink := widget.NewHyperlink(locale.T("How to install the daemon on a machine"), nil)
 	_ = docsLink.SetURLFromString(constants.RemoteDaemonDocsURL)
 	docsLink.OnTapped = func() {
 		if err := platform.OpenURL(constants.RemoteDaemonDocsURL); err != nil {
@@ -111,18 +111,18 @@ func OpenAddMachineWindow(ac *core.AppController, onAdded func()) {
 	status := widget.NewLabel("")
 	status.Wrapping = fyne.TextWrapWord
 
-	cancelBtn := widget.NewButton(locale.T("dialog.button_cancel"), func() { win.Close() })
-	addBtn := widget.NewButton(locale.T("remote.add.submit"), nil)
+	cancelBtn := widget.NewButton(locale.T("Cancel"), func() { win.Close() })
+	addBtn := widget.NewButton(locale.T("Add"), nil)
 	addBtn.Importance = widget.HighImportance
 
 	addBtn.OnTapped = func() {
 		invite := strings.TrimSpace(inviteEntry.Text)
 		if invite == "" {
-			status.SetText(locale.T("remote.add.error_empty_invite"))
+			status.SetText(locale.T("Paste the invite printed by the daemon."))
 			return
 		}
 		addBtn.Disable()
-		status.SetText(locale.T("remote.add.pairing"))
+		status.SetText(locale.T("Pairing…"))
 
 		// Сопряжение — блокирующий сетевой вызов (enroll по mTLS), поэтому в
 		// горутине: недоступная машина отвечает по таймауту.
@@ -144,7 +144,7 @@ func OpenAddMachineWindow(ac *core.AppController, onAdded func()) {
 					// Код приглашения одноразовый и сгорает после первой
 					// попытки — говорим об этом прямо, иначе пользователь
 					// будет жать «Add» с тем же кодом.
-					status.SetText(locale.Tf("remote.add.error_pair", err))
+					status.SetText(locale.Tf("Pairing failed: %v", err))
 					return
 				}
 				debuglog.InfoLog("add machine: paired %q (%s)", entry.Name, entry.Addr)

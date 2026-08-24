@@ -54,7 +54,7 @@ func showEditPresetRefDialog(
 	}
 	if tplPreset == nil {
 		dialog.ShowConfirm(
-			locale.T("wizard.dialog_confirmation"),
+			locale.T("Confirmation"),
 			fmt.Sprintf("Preset '%s' not found in current template. Delete this rule?", pr.Ref),
 			func(ok bool) {
 				if !ok {
@@ -287,8 +287,8 @@ func showEditPresetRefDialog(
 	// правом слоте резервирует 14pt под бегунок.
 	formInnerScroll := container.NewBorder(nil, nil, nil, components.NewScrollGutter(), formContent)
 	formScroll := container.NewVScroll(formInnerScroll)
-	formTabItem := container.NewTabItem(locale.T("wizard.add_rule.tab_form"), formScroll)
-	jsonTabItem := container.NewTabItem(locale.T("wizard.add_rule.tab_raw"), jsonContent)
+	formTabItem := container.NewTabItem(locale.T("Form"), formScroll)
+	jsonTabItem := container.NewTabItem(locale.T("JSON"), jsonContent)
 	tabs := container.NewAppTabs(formTabItem, jsonTabItem)
 	tabs.OnSelected = func(ti *container.TabItem) {
 		if ti == jsonTabItem {
@@ -320,12 +320,12 @@ func showEditPresetRefDialog(
 	topBlock := container.NewVBox(topChildren...)
 
 	// ===== Buttons =====
-	cancelButton := widget.NewButton(locale.T("wizard.dialog_cancel"), nil)
+	cancelButton := widget.NewButton(locale.T("Cancel"), nil)
 
-	saveButton := widget.NewButton(locale.T("wizard.shared.button_save"), nil)
+	saveButton := widget.NewButton(locale.T("Save"), nil)
 	saveButton.Importance = widget.HighImportance
 
-	convertButton := widget.NewButton(locale.T("wizard.rules.button_convert_to_user"), nil)
+	convertButton := widget.NewButton(locale.T("Convert to user rule(s)"), nil)
 	convertButton.Importance = widget.LowImportance
 
 	buttons := container.NewHBox(
@@ -345,7 +345,7 @@ func showEditPresetRefDialog(
 	if controller == nil || controller.UIService == nil {
 		return
 	}
-	editWindow := controller.UIService.Application.NewWindow(locale.T("wizard.add_rule.title_edit"))
+	editWindow := controller.UIService.Application.NewWindow(locale.T("Edit Rule"))
 
 	cancelButton.OnTapped = func() {
 		editWindow.Close()
@@ -374,7 +374,7 @@ func showEditPresetRefDialog(
 			}
 		}
 		dialog.ShowConfirm(
-			locale.T("wizard.dialog_confirmation"),
+			locale.T("Confirmation"),
 			fmt.Sprintf("Convert '%s' to user-defined rule(s)? You will lose the link to the template — future template updates won't apply.", tplPreset.Label),
 			func(ok bool) {
 				if !ok {

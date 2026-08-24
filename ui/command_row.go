@@ -71,7 +71,7 @@ func CommandRow(win fyne.Window, labelKey string, command func() (string, error)
 
 	// Пересчёт команды на нажатии: ошибку показываем и не копируем — прежний
 	// текст в буфере читался бы как «скопировалась актуальная команда».
-	copyBtn := NewCopyButton("conn.cmd_copy_tooltip", func() (string, bool) {
+	copyBtn := NewCopyButton("Copy the command", func() (string, bool) {
 		text, err := command()
 		if err != nil {
 			ShowError(win, err)
@@ -97,7 +97,7 @@ func CommandRow(win fyne.Window, labelKey string, command func() (string, error)
 				ShowError(win, err)
 			}
 		})
-		termBtn.SetToolTip(locale.T("conn.cmd_terminal_tooltip"))
+		termBtn.SetToolTip(locale.T("Run in Terminal"))
 		buttons.Add(termBtn)
 	}
 

@@ -51,13 +51,13 @@ func ShowEditDialog(
 	}
 	parserConfig := getParserConfig(editPresenter.Model())
 	if parserConfig == nil {
-		dialog.ShowError(fmt.Errorf("%s", locale.T("wizard.outbound.error_config")), parent)
+		dialog.ShowError(fmt.Errorf("%s", locale.T("ParserConfig is not available")), parent)
 		return
 	}
 	isAdd := existing == nil
-	dialogTitle := locale.T("wizard.outbound.title_edit")
+	dialogTitle := locale.T("Edit direction")
 	if isAdd {
-		dialogTitle = locale.T("wizard.outbound.title_add")
+		dialogTitle = locale.T("Add direction")
 	}
 
 	// SPEC 058-R-N: для referenced entries (ref != "") body live из template/preset.
@@ -81,7 +81,7 @@ func ShowEditDialog(
 	if displayBody != nil {
 		tagEntry.SetText(displayBody.Tag)
 	}
-	tagEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_tag"))
+	tagEntry.SetPlaceHolder(locale.T("e.g. vpn-1"))
 
 	// SPEC 104: имя Направления. Отдельно от Comment намеренно — у
 	// шаблонных записей комментарий описывает назначение абзацем, именем
@@ -90,7 +90,7 @@ func ShowEditDialog(
 	if displayBody != nil {
 		labelEntry.SetText(displayBody.Label)
 	}
-	labelEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_label"))
+	labelEntry.SetPlaceHolder(locale.T("e.g. My Germany"))
 
 	// Новое Направление получает свободный тег и имя по умолчанию: тег —
 	// цель правил, и придумывать его вручную незачем; имя пользователь
@@ -118,7 +118,7 @@ func ShowEditDialog(
 	// включает парную группу `<tag>-auto`, настройки которой живут на
 	// отдельной вкладке. Смешивать это с типом записи было бы неверно —
 	// у Направления тип всегда selector.
-	autoTwinCheck := widget.NewCheck(locale.T("wizard.outbound.auto_twin_check"), nil)
+	autoTwinCheck := widget.NewCheck(locale.T("Add auto-select (paired <tag>-auto group)"), nil)
 	autoTwinCheck.SetChecked(displayBody != nil && displayBody.Auto != nil)
 
 	// SPEC 104: Направление с автогруппой — та же настройка urltest, только
@@ -127,9 +127,9 @@ func ShowEditDialog(
 
 	// Filters: fixed key "tag", value editable. Flag-picker button (🌐) opens
 	// emoji picker dialog with live regex preview + match-count.
-	filterKeyLabel := widget.NewLabel(locale.T("wizard.outbound.label_tag"))
+	filterKeyLabel := widget.NewLabel(locale.T("tag"))
 	filterValEntry := widget.NewEntry()
-	filterValEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_filter"))
+	filterValEntry.SetPlaceHolder(locale.T("e.g. 🇳🇱 or DE-"))
 
 	// SPEC 104: пользователь вводит ТЕЛО регулярки, а не `/…/i` — писать
 	// обёртку руками лишнее знание, а флаг регистра не выбор, а свойство:
@@ -140,7 +140,7 @@ func ShowEditDialog(
 	// cfg, пикер и сброс формы) — просто не показывается.
 	filterInvertCheck := widget.NewCheck("", nil)
 	filterInvertBtn := ttwidget.NewButton("!", nil)
-	filterInvertBtn.SetToolTip(locale.T("wizard.outbound.filter_invert"))
+	filterInvertBtn.SetToolTip(locale.T("Invert: keep nodes that do NOT match"))
 	syncInvertBtn := func() {
 		if filterInvertCheck.Checked {
 			// Включённая инверсия меняет смысл всего отбора на обратный —
@@ -183,11 +183,11 @@ func ShowEditDialog(
 	// принимает тело выражения, и пользователю негде узнать синтаксис.
 	filterHelpBtn := ttwidget.NewButton("?", func() {
 		if err := platform.OpenURL(directionFilterDocURL); err != nil {
-			dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.outbound.error_open_docs"), err), parent)
+			dialog.ShowError(fmt.Errorf("%s: %w", locale.T("failed to open documentation"), err), parent)
 		}
 	})
 	filterHelpBtn.Importance = widget.LowImportance
-	filterHelpBtn.SetToolTip(locale.T("wizard.outbound.filter_help"))
+	filterHelpBtn.SetToolTip(locale.T("Filter syntax and examples"))
 
 	// Border, а не GridWithColumns: сетка делит ширину поровну, и между
 	// узкой подписью «tag» и полем зияла половина диалога.
@@ -214,9 +214,9 @@ func ShowEditDialog(
 	}
 
 	// Preferred default: fixed key "tag", value editable
-	defKeyLabel := widget.NewLabel(locale.T("wizard.outbound.label_tag"))
+	defKeyLabel := widget.NewLabel(locale.T("tag"))
 	defValEntry := widget.NewEntry()
-	defValEntry.SetPlaceHolder(locale.T("wizard.outbound.placeholder_preferred"))
+	defValEntry.SetPlaceHolder(locale.T("e.g. 🇳🇱"))
 	if displayBody != nil && displayBody.PreferredDefault != nil {
 		body, _ := configtypes.DirectionFilterTag(displayBody.PreferredDefault)
 		if body == "" {
@@ -284,14 +284,14 @@ func ShowEditDialog(
 	rawScroll.SetMinSize(fyne.NewSize(400, 360))
 
 	// Raw documentation button (opens ParserConfig.md "Секция outbounds")
-	rawDocButton := widget.NewButton(locale.T("wizard.outbound.button_docs"), func() {
+	rawDocButton := widget.NewButton(locale.T("📖 Documentation"), func() {
 		docURL := "https://github.com/Leadaxe/singbox-launcher/blob/main/docs/ParserConfig.md#%D1%81%D0%B5%D0%BA%D1%86%D0%B8%D1%8F-outbounds"
 		if err := platform.OpenURL(docURL); err != nil {
-			dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.outbound.error_open_docs"), err), parent)
+			dialog.ShowError(fmt.Errorf("%s: %w", locale.T("failed to open documentation"), err), parent)
 		}
 	})
 	rawHeader := container.NewHBox(
-		widget.NewLabel(locale.T("wizard.outbound.label_raw_json")),
+		widget.NewLabel(locale.T("Raw outbound JSON")),
 		layout.NewSpacer(),
 		rawDocButton,
 	)
@@ -341,8 +341,8 @@ func ShowEditDialog(
 	// `<tag>-auto`. Виджеты и разметка живут в autogroupform: та же форма
 	// нужна вкладке «Группа» свёрнутой подписки, и вторая её реализация
 	// разъехалась бы с этой на первой же правке.
-	autoModeLabel := ttwidget.NewLabel(locale.T("wizard.outbound.label_auto_mode"))
-	autoModeLabel.SetToolTip(locale.T("wizard.outbound.auto_mode_tooltip"))
+	autoModeLabel := ttwidget.NewLabel(locale.T("Auto-select mode"))
+	autoModeLabel.SetToolTip(locale.T("How the paired auto group picks a node: the single fastest one, or a rotating pool of the fastest."))
 
 	autoForm := autogroupform.New(autogroupform.Choices{
 		Interval:  autogroupform.VarChoices{Labels: intervalLabels, LabelToValue: intervalLabelToValue},
@@ -356,7 +356,7 @@ func ShowEditDialog(
 	// Подсказка ОБЯЗАНА переноситься: у Label без Wrapping минимальная
 	// ширина равна длине строки, и она растягивает всё содержимое — поля
 	// уезжают за правый край окна.
-	autoHint := widget.NewLabel(locale.T("wizard.outbound.auto_tab_hint"))
+	autoHint := widget.NewLabel(locale.T("A paired urltest group named <tag>-auto with the same nodes as this direction. It is offered as the first option and becomes the default unless a default node is set."))
 	autoHint.Wrapping = fyne.TextWrapWord
 
 	autoTabContent := autoForm.Content(autoHint, autoModeLabel)
@@ -373,11 +373,11 @@ func ShowEditDialog(
 		if editSource == "raw" {
 			var cfg config.Direction
 			if err := json.Unmarshal([]byte(rawEntry.Text), &cfg); err != nil {
-				return nil, fmt.Errorf("%s: %w", locale.T("wizard.outbound.error_invalid_json"), err)
+				return nil, fmt.Errorf("%s: %w", locale.T("invalid JSON"), err)
 			}
 			if strings.TrimSpace(cfg.Tag) == "" {
 				if requireTag {
-					return nil, fmt.Errorf("%s", locale.T("wizard.outbound.error_tag_required"))
+					return nil, fmt.Errorf("%s", locale.T("tag is required"))
 				}
 				cfg.Tag = "_preview_"
 			}
@@ -387,7 +387,7 @@ func ShowEditDialog(
 		tag := strings.TrimSpace(tagEntry.Text)
 		if tag == "" {
 			if requireTag {
-				return nil, fmt.Errorf("%s", locale.T("wizard.outbound.error_tag_required"))
+				return nil, fmt.Errorf("%s", locale.T("tag is required"))
 			}
 			tag = "_preview_"
 		}
@@ -537,11 +537,11 @@ func ShowEditDialog(
 		if editSource == "raw" {
 			var cfg config.Direction
 			if err := json.Unmarshal([]byte(rawEntry.Text), &cfg); err != nil {
-				dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.outbound.error_invalid_json"), err), dialogWin)
+				dialog.ShowError(fmt.Errorf("%s: %w", locale.T("invalid JSON"), err), dialogWin)
 				return
 			}
 			if strings.TrimSpace(cfg.Tag) == "" {
-				dialog.ShowError(fmt.Errorf("%s", locale.T("wizard.outbound.error_tag_required")), dialogWin)
+				dialog.ShowError(fmt.Errorf("%s", locale.T("tag is required")), dialogWin)
 				return
 			}
 			scopeKind, idx := getScopeFromForm()
@@ -574,16 +574,16 @@ func ShowEditDialog(
 	}
 
 	form := container.NewVBox(
-		widget.NewLabel(locale.T("wizard.outbound.label_name")),
+		widget.NewLabel(locale.T("Name")),
 		labelEntry,
-		widget.NewLabel(locale.T("wizard.outbound.label_tag_field")),
+		widget.NewLabel(locale.T("Tag")),
 		tagEntry,
 		autoTwinCheck,
-		widget.NewLabel(locale.T("wizard.outbound.label_filters")),
+		widget.NewLabel(locale.T("Node filter (regular expression body; empty = every node)")),
 		filterValBox,
-		widget.NewLabel(locale.T("wizard.outbound.label_preferred")),
+		widget.NewLabel(locale.T("Default node (regular expression; first match wins)")),
 		container.NewBorder(nil, nil, defKeyLabel, nil, defValEntry),
-		widget.NewLabel(locale.T("wizard.outbound.label_add_outbounds")),
+		widget.NewLabel(locale.T("Extra options offered in the picker")),
 		container.NewHBox(directCheck, blockCheck),
 		scrollOther,
 	)
@@ -599,7 +599,7 @@ func ShowEditDialog(
 	dialogScroll.SetMinSize(fyne.NewSize(400, 400))
 
 	// Preview tab: uses preview cache from the wizard model (via editPresenter.Model()).
-	previewStatusLabel := widget.NewLabel(locale.T("wizard.outbound.preview_switch"))
+	previewStatusLabel := widget.NewLabel(locale.T("Switch to Preview to see nodes for this outbound."))
 	type previewRow struct {
 		text  string
 		color color.Color
@@ -633,12 +633,12 @@ func ShowEditDialog(
 		previewList.Refresh()
 
 		if editPresenter == nil {
-			previewStatusLabel.SetText(locale.T("wizard.outbound.preview_no_presenter"))
+			previewStatusLabel.SetText(locale.T("Preview is not available in this context (no presenter)."))
 			return
 		}
 		model := editPresenter.Model()
 		if model == nil {
-			previewStatusLabel.SetText(locale.T("wizard.outbound.preview_model_nil"))
+			previewStatusLabel.SetText(locale.T("Preview is not available: wizard model is nil."))
 			return
 		}
 
@@ -647,7 +647,7 @@ func ShowEditDialog(
 		// which nodes match before naming the outbound.
 		cfg, err := buildConfigForPreview(false)
 		if err != nil {
-			previewStatusLabel.SetText(locale.T("wizard.outbound.preview_invalid_json"))
+			previewStatusLabel.SetText(locale.T("Failed to build preview: invalid outbound JSON. Please switch to the \"Raw\" tab and fix JSON first."))
 			return
 		}
 
@@ -673,12 +673,12 @@ func ShowEditDialog(
 		// Ensure preview cache is up to date.
 		errorCount, err := wizardbusiness.RebuildPreviewCache(model)
 		if err != nil {
-			previewStatusLabel.SetText(locale.Tf("wizard.outbound.preview_cache_failed", err))
+			previewStatusLabel.SetText(locale.Tf("Failed to build preview cache: %v", err))
 			return
 		}
 		allNodes := model.PreviewNodes
 		if len(allNodes) == 0 {
-			previewStatusLabel.SetText(locale.T("wizard.outbound.preview_no_nodes"))
+			previewStatusLabel.SetText(locale.T("No nodes available for preview. Please configure sources and try again."))
 			return
 		}
 
@@ -704,7 +704,7 @@ func ShowEditDialog(
 				proxy := model.ParserConfig.ParserConfig.Proxies[si]
 				label := proxy.Source
 				if label == "" {
-					label = locale.T("wizard.outbound.label_source") + fmt.Sprintf("%d", si+1)
+					label = locale.T("Source ") + fmt.Sprintf("%d", si+1)
 				}
 				label = wizardutils.TruncateStringEllipsis(label, wizardutils.MaxLabelRunes, "...")
 				for _, n := range nodes {
@@ -723,7 +723,7 @@ func ShowEditDialog(
 
 			src := sourceLabels[node]
 			if src == "" {
-				src = locale.T("wizard.outbound.preview_unknown_source")
+				src = locale.T("Unknown source")
 			}
 			text := node.Tag
 			if text == "" {
@@ -762,15 +762,15 @@ func ShowEditDialog(
 		previewRows = append(defaultRows, otherRows...)
 		previewList.Refresh()
 
-		status := locale.Tf("wizard.outbound.preview_status", len(allNodes), len(filteredNodes))
+		status := locale.Tf("%d node(s) total, %d matched filters", len(allNodes), len(filteredNodes))
 		if defaultTag != "" {
-			status += locale.Tf("wizard.outbound.preview_default", defaultTag)
+			status += locale.Tf(", default: %s", defaultTag)
 		}
 		if len(cfg.AddOutbounds) > 0 {
-			status += locale.Tf("wizard.outbound.preview_also_includes", strings.Join(cfg.AddOutbounds, ", "))
+			status += locale.Tf(" | Also includes: %s", strings.Join(cfg.AddOutbounds, ", "))
 		}
 		if errorCount > 0 {
-			status += locale.Tf("wizard.outbound.preview_source_errors", errorCount)
+			status += locale.Tf(" | ⚠️ %d source error(s)", errorCount)
 		}
 		previewStatusLabel.SetText(status)
 	}
@@ -863,12 +863,12 @@ func ShowEditDialog(
 
 	autoScroll := container.NewScroll(autoTabContent)
 	autoScroll.SetMinSize(fyne.NewSize(400, 400))
-	autoTabItem := container.NewTabItem(locale.T("wizard.outbound.tab_auto"), autoScroll)
+	autoTabItem := container.NewTabItem(locale.T("Auto-select"), autoScroll)
 
 	tabs := container.NewAppTabs(
-		container.NewTabItem(locale.T("wizard.outbound.tab_settings"), dialogScroll),
-		container.NewTabItem(locale.T("wizard.outbound.tab_raw"), rawContainer),
-		container.NewTabItem(locale.T("wizard.outbound.tab_preview"), previewContent),
+		container.NewTabItem(locale.T("Settings"), dialogScroll),
+		container.NewTabItem(locale.T("JSON"), rawContainer),
+		container.NewTabItem(locale.T("Preview"), previewContent),
 	)
 	// SPEC 104: вкладка «Автовыбор» существует ровно пока стоит галка.
 	// Вставляем второй — сразу после Settings, чтобы настройки двойника
@@ -894,14 +894,14 @@ func ShowEditDialog(
 	autoTwinCheck.OnChanged = func(bool) { syncAutoTab() }
 	tabs.OnSelected = func(t *container.TabItem) {
 		switch t.Text {
-		case locale.T("wizard.outbound.tab_raw"):
+		case locale.T("JSON"):
 			// Going TO raw. If editSource is "settings" → push form into raw
 			// (syncFormToRaw has its own editSource=="settings" guard).
 			// If editSource was already "raw" (returning via Preview), keep
 			// raw as user left it.
 			syncFormToRaw()
 			editSource = "raw"
-		case locale.T("wizard.outbound.tab_preview"):
+		case locale.T("Preview"):
 			// Preview is read-only. Don't touch editSource. buildPreview
 			// uses buildConfigForPreview, which routes by editSource.
 			buildPreview()
@@ -917,12 +917,12 @@ func ShowEditDialog(
 		}
 	}
 
-	cancelBtn := widget.NewButton(locale.T("wizard.outbound.button_cancel"), func() {
+	cancelBtn := widget.NewButton(locale.T("Cancel"), func() {
 		if dialogWin != nil {
 			dialogWin.Close()
 		}
 	})
-	saveBtn := widget.NewButton(locale.T("wizard.outbound.button_save"), func() { save() })
+	saveBtn := widget.NewButton(locale.T("Save"), func() { save() })
 
 	buttonsContainer := container.NewHBox(
 		layout.NewSpacer(),

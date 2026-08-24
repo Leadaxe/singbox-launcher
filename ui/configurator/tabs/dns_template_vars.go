@@ -85,7 +85,7 @@ func dnsTemplateVarRows(p *wizardpresentation.WizardPresenter, tag string) fyne.
 	gs := p.GUIState()
 
 	head := widget.NewLabelWithStyle(
-		locale.T("wizard.dns.template_vars_head"),
+		locale.T("Parameters"),
 		fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	rows := container.NewVBox(head)

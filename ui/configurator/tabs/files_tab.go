@@ -42,19 +42,19 @@ func CreateFilesTab(presenter *wizardpresentation.WizardPresenter, guiState *wiz
 		text, err := wizardbusiness.BuildPreviewConfig(presenter.Model())
 		if err != nil {
 			debuglog.ErrorLog("files: сборка конфига: %v", err)
-			status.SetText(locale.Tf("wizard.generate.status_error", err))
+			status.SetText(locale.Tf("Error: %v", err))
 			return "", false
 		}
 		return text, true
 	}
 
-	showBtn := widget.NewButton(locale.T("wizard.generate.button_show"), func() {
-		status.SetText(locale.T("wizard.generate.status_building"))
+	showBtn := widget.NewButton(locale.T("Show config"), func() {
+		status.SetText(locale.T("Building…"))
 		text, ok := build()
 		if !ok {
 			return
 		}
-		status.SetText(locale.Tf("wizard.generate.status_built", len(text)))
+		status.SetText(locale.Tf("Built: %d bytes", len(text)))
 		showConfigWindow(text)
 	})
 
@@ -62,12 +62,12 @@ func CreateFilesTab(presenter *wizardpresentation.WizardPresenter, guiState *wiz
 	// пересобрать рабочий config.json. Не «выгрузить копию куда-то» —
 	// диалог «куда сохранить» здесь означал бы вторую, побочную копию, а
 	// пользователю нужно применить настройки.
-	saveBtn := widget.NewButton(locale.T("wizard.files.button_save"), func() {
+	saveBtn := widget.NewButton(locale.T("Save"), func() {
 		presenter.SaveConfig()
 	})
 	saveBtn.Importance = widget.HighImportance
 
-	hint := widget.NewLabel(locale.T("wizard.generate.hint"))
+	hint := widget.NewLabel(locale.T("Save the settings: state is written and the working config.json is rebuilt — the same as the Save button below. \"Show config\" opens the built config.json in its own window without saving anything."))
 	hint.Wrapping = fyne.TextWrapWord
 
 	// Кнопки по центру: спейсеры по краям, а не HBox слева — сборка конфига
@@ -100,7 +100,7 @@ func showConfigWindow(text string) {
 	if app == nil {
 		return
 	}
-	w := app.NewWindow(locale.T("wizard.generate.window_title"))
+	w := app.NewWindow(locale.T("Generated config.json"))
 
 	entry := widget.NewMultiLineEntry()
 	entry.Wrapping = fyne.TextWrapOff
@@ -117,7 +117,7 @@ func showConfigWindow(text string) {
 		}
 	}
 
-	closeBtn := widget.NewButton(locale.T("wizard.outbound.button_cancel"), func() { w.Close() })
+	closeBtn := widget.NewButton(locale.T("Cancel"), func() { w.Close() })
 	w.SetContent(container.NewBorder(
 		nil,
 		container.NewHBox(layout.NewSpacer(), closeBtn),

@@ -107,10 +107,10 @@ func New(choices Choices) *Form {
 	f := &Form{choices: choices}
 
 	f.ModeSelect = widget.NewSelect([]string{
-		locale.T("wizard.outbound.auto_mode_least_test"),
-		locale.T("wizard.outbound.auto_mode_round_robin"),
+		locale.T("fastest node"),
+		locale.T("spread across a pool"),
 	}, nil)
-	f.ModeSelect.SetSelected(locale.T("wizard.outbound.auto_mode_least_test"))
+	f.ModeSelect.SetSelected(locale.T("fastest node"))
 
 	f.IntervalSelect = widget.NewSelect(choices.Interval.Labels, nil)
 	f.ToleranceSelect = widget.NewSelect(choices.Tolerance.Labels, nil)
@@ -177,7 +177,7 @@ func (f *Form) Content(hint fyne.CanvasObject, modeLabel fyne.CanvasObject) fyne
 }
 
 func (f *Form) syncBalancerVisible() {
-	if f.ModeSelect.Selected == locale.T("wizard.outbound.auto_mode_round_robin") {
+	if f.ModeSelect.Selected == locale.T("spread across a pool") {
 		f.balancerBlock.Show()
 	} else {
 		f.balancerBlock.Hide()
@@ -202,9 +202,9 @@ func (f *Form) Load(a *configtypes.DirectionAuto) {
 	prevHandler := f.ModeSelect.OnChanged
 	f.ModeSelect.OnChanged = nil
 	if a != nil && a.Mode == configtypes.AutoModeRoundRobin {
-		f.ModeSelect.SetSelected(locale.T("wizard.outbound.auto_mode_round_robin"))
+		f.ModeSelect.SetSelected(locale.T("spread across a pool"))
 	} else {
-		f.ModeSelect.SetSelected(locale.T("wizard.outbound.auto_mode_least_test"))
+		f.ModeSelect.SetSelected(locale.T("fastest node"))
 	}
 	f.ModeSelect.OnChanged = func(s string) {
 		f.syncBalancerVisible()
@@ -281,7 +281,7 @@ func (f *Form) Collect() *configtypes.DirectionAuto {
 		IdleTimeout:               f.keep.IdleTimeout,
 		InterruptExistConnections: f.keep.InterruptExistConnections,
 	}
-	if f.ModeSelect.Selected == locale.T("wizard.outbound.auto_mode_round_robin") {
+	if f.ModeSelect.Selected == locale.T("spread across a pool") {
 		auto.Mode = configtypes.AutoModeRoundRobin
 	}
 	if lbl := f.IntervalSelect.Selected; lbl != "" {

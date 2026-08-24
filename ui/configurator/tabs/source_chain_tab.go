@@ -319,7 +319,7 @@ func (f *chainForm) Content() fyne.CanvasObject {
 	// правила, и именно он виден в списке прокси. Поле обязано быть в
 	// форме — иначе переименовать созданную цепочку негде вовсе.
 	f.tagEntry = widget.NewEntry()
-	f.tagEntry.SetPlaceHolder(locale.T("wizard.chain.tag_placeholder"))
+	f.tagEntry.SetPlaceHolder(locale.T("Directions and rules reference this name"))
 	f.tagEntry.OnChanged = func(string) {
 		// Предупреждение о разрыве ссылок живёт в списке позиций —
 		// перерисовываем его вместе с именем.
@@ -327,26 +327,26 @@ func (f *chainForm) Content() fyne.CanvasObject {
 		f.changed()
 	}
 	head = append(head,
-		chainFormRow(locale.T("wizard.chain.tag"), f.tagEntry),
+		chainFormRow(locale.T("Chain name"), f.tagEntry),
 		widget.NewSeparator())
 
 	// Подпись направления пакета — над списком, до всего остального.
-	dir := widget.NewLabel(locale.T("wizard.chain.packet_order"))
+	dir := widget.NewLabel(locale.T("Packets travel top to bottom: the first hop is next to you, the last one is the address the site sees."))
 	dir.Wrapping = fyne.TextWrapWord
 	head = append(head, dir)
 
-	addBtn := widget.NewButtonWithIcon(locale.T("wizard.chain.add_hop"), theme.ContentAddIcon(), func() {
+	addBtn := widget.NewButtonWithIcon(locale.T("Add hop"), theme.ContentAddIcon(), func() {
 		f.pickHop()
 	})
 	addBtn.Importance = widget.LowImportance
 
 	f.idleEntry = widget.NewEntry()
-	f.idleEntry.SetPlaceHolder(locale.T("wizard.chain.idle_placeholder"))
+	f.idleEntry.SetPlaceHolder(locale.T("5m — core default, 0s — never drop"))
 	// Без обработчика правка ТОЛЬКО этого поля молча терялась: Collect
 	// вызывается из changed(), а его дёргали все поля, кроме idle_timeout.
 	f.idleEntry.OnChanged = func(string) { f.changed() }
 
-	f.stripEvasion = widget.NewCheck(locale.T("wizard.chain.strip_evasion"), nil)
+	f.stripEvasion = widget.NewCheck(locale.T("Strip DPI evasion from links"), nil)
 	f.stripEvasion.SetChecked(true)
 	stripRows := container.NewVBox()
 	for _, key := range configtypes.ChainStripKeys {
@@ -388,7 +388,7 @@ func (f *chainForm) Content() fyne.CanvasObject {
 	// родителя — содержимое есть, но его не видно (пустой блок под
 	// заголовком). Своя раскрывашка на кнопке ведёт себя предсказуемо.
 	advancedBody := container.NewVBox(
-		chainFormRow(locale.T("wizard.chain.idle_timeout"), f.idleEntry),
+		chainFormRow(locale.T("Link idle timeout"), f.idleEntry),
 		widget.NewSeparator(),
 		f.stripEvasion,
 		stripRows,
@@ -397,7 +397,7 @@ func (f *chainForm) Content() fyne.CanvasObject {
 	)
 	advancedBody.Hide()
 	var advancedBtn *widget.Button
-	advancedBtn = widget.NewButtonWithIcon(locale.T("wizard.chain.advanced"),
+	advancedBtn = widget.NewButtonWithIcon(locale.T("Advanced"),
 		theme.MenuExpandIcon(), func() {
 			if advancedBody.Visible() {
 				advancedBody.Hide()
@@ -469,14 +469,14 @@ func (f *chainForm) rebuildHops() {
 	}
 
 	if len(f.hops) == 0 {
-		empty := widget.NewLabel(locale.T("wizard.chain.hops_empty"))
+		empty := widget.NewLabel(locale.T("No positions yet — add at least two."))
 		empty.Importance = widget.LowImportance
 		f.hopsBox.Add(empty)
 	} else if len(f.hops) < 2 {
 		// Ядру нужно минимум две позиции — и это не наша прихоть, а условие
 		// старта всего конфига. Сказать об этом здесь дешевле, чем дать
 		// сохранить и обнаружить на сборке.
-		warn := widget.NewLabel(locale.T("wizard.chain.need_two"))
+		warn := widget.NewLabel(locale.T("One more position needed: the core rejects a single-hop chain."))
 		warn.Importance = widget.WarningImportance
 		warn.Wrapping = fyne.TextWrapWord
 		f.hopsBox.Add(warn)
@@ -504,7 +504,7 @@ func (f *chainForm) conflicts() []string {
 			}
 		}
 		if len(bad) > 0 {
-			out = append(out, locale.Tf("wizard.chain.conflict_reality", strings.Join(bad, ", ")))
+			out = append(out, locale.Tf("ClientHello fingerprint is stripped, but positions %s are reality nodes that require it — the core will not start. Re-check tls.utls.", strings.Join(bad, ", ")))
 		}
 	}
 
@@ -517,7 +517,7 @@ func (f *chainForm) conflicts() []string {
 		}
 	}
 	if len(nested) > 0 {
-		out = append(out, locale.Tf("wizard.chain.conflict_nested", strings.Join(nested, ", ")))
+		out = append(out, locale.Tf("A nested chain (%s) is only allowed at the first position — move it to the top or remove it.", strings.Join(nested, ", ")))
 	}
 
 	// Ссылка «вперёд»: сборка разрешает цепочку-позицию только если та
@@ -531,7 +531,7 @@ func (f *chainForm) conflicts() []string {
 		}
 	}
 	if len(forward) > 0 {
-		out = append(out, locale.Tf("wizard.chain.conflict_forward_ref", strings.Join(forward, ", ")))
+		out = append(out, locale.Tf("Chains %s are declared below this one in the sources list — a chain may only reference chains above it. Drag them higher, or this chain will not build.", strings.Join(forward, ", ")))
 	}
 
 	// Дубль имени: цепочка, названная как существующий узел, Направление
@@ -539,7 +539,7 @@ func (f *chainForm) conflicts() []string {
 	// деградирует, и предупредить нужно в момент переименования.
 	if tag := f.Tag(); tag != "" && tag != f.originalTag {
 		if _, taken := f.lookup[tag]; taken {
-			out = append(out, locale.Tf("wizard.chain.conflict_tag_taken", tag))
+			out = append(out, locale.Tf("The name “%s” is already taken by another node, Direction or chain — two outbounds with one tag cannot coexist, this chain will be dropped at build.", tag))
 		}
 	}
 
@@ -550,7 +550,7 @@ func (f *chainForm) conflicts() []string {
 	// но предупредить обязаны.
 	if tag := f.Tag(); tag != "" && f.referencedBy != nil {
 		if users := f.referencedBy[f.originalTag]; len(users) > 0 && tag != f.originalTag {
-			out = append(out, locale.Tf("wizard.chain.rename_breaks_refs",
+			out = append(out, locale.Tf("Chain %s is used as a position by: %s. After renaming, their position will point nowhere — fix those too.",
 				f.originalTag, strings.Join(users, ", ")))
 		}
 	}
@@ -571,7 +571,7 @@ func (f *chainForm) conflicts() []string {
 	// справка (всё работает, но настройка узла здесь не действует; советовать
 	// «уберите detour» бессмысленно, он и так игнорируется).
 	if len(f.hops) > 0 && f.detourTags[f.hops[0]] {
-		out = append(out, locale.Tf("wizard.chain.conflict_detour_entry", f.hops[0]))
+		out = append(out, locale.Tf("The first position (%s) dials through its own detour — the real path is longer than shown: one more hop precedes it that is not in this list.", f.hops[0]))
 	}
 	var detouredLinks []string
 	for i := 1; i < len(f.hops); i++ {
@@ -580,7 +580,7 @@ func (f *chainForm) conflicts() []string {
 		}
 	}
 	if len(detouredLinks) > 0 {
-		out = append(out, locale.Tf("wizard.chain.note_detour_ignored", strings.Join(detouredLinks, ", ")))
+		out = append(out, locale.Tf("Positions %s have their own detour — it does not apply inside a chain: a link always dials through the previous position. The path is exactly as shown.", strings.Join(detouredLinks, ", ")))
 	}
 
 	// Позиция, которой больше нет среди целей: ссылка в никуда.
@@ -597,7 +597,7 @@ func (f *chainForm) conflicts() []string {
 		}
 	}
 	if len(missing) > 0 {
-		out = append(out, locale.Tf("wizard.chain.conflict_missing", strings.Join(missing, ", ")))
+		out = append(out, locale.Tf("These positions are no longer among the available targets: %s. A chain with such a reference will not reach the config.", strings.Join(missing, ", ")))
 	}
 	return out
 }
@@ -646,16 +646,16 @@ func (f *chainForm) pickHop() {
 		byLabel[label] = c.Tag
 	}
 	if len(options) == 0 {
-		dialog.ShowInformation(locale.T("wizard.chain.add_hop"),
-			locale.T("wizard.chain.no_candidates"), f.parent)
+		dialog.ShowInformation(locale.T("Add hop"),
+			locale.T("Nothing left to add: every available target is already in the chain."), f.parent)
 		return
 	}
 	sel := widget.NewSelect(options, nil)
 	sel.SetSelected(options[0])
 	dialog.ShowCustomConfirm(
-		locale.T("wizard.chain.add_hop"),
-		locale.T("wizard.outbound.button_save"),
-		locale.T("wizard.outbound.button_cancel"),
+		locale.T("Add hop"),
+		locale.T("Save"),
+		locale.T("Cancel"),
 		sel,
 		func(ok bool) {
 			if !ok || sel.Selected == "" {
@@ -682,13 +682,13 @@ func (f *chainForm) changed() {
 func chainStripHint(key string) string {
 	switch key {
 	case configtypes.ChainStripTLSFragment:
-		return locale.T("wizard.chain.strip_tls_fragment")
+		return locale.T("ClientHello fragmentation")
 	case configtypes.ChainStripMultiplexPadding:
-		return locale.T("wizard.chain.strip_multiplex_padding")
+		return locale.T("multiplex padding")
 	case configtypes.ChainStripXHTTPPadding:
-		return locale.T("wizard.chain.strip_xhttp_padding")
+		return locale.T("XHTTP padding")
 	case configtypes.ChainStripTLSUTLS:
-		return locale.T("wizard.chain.strip_tls_utls")
+		return locale.T("ClientHello fingerprint (must not be stripped on reality nodes)")
 	}
 	return ""
 }

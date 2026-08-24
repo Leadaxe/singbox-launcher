@@ -39,7 +39,7 @@ func OpenConnectionWindow(ac *core.AppController, onChanged func()) {
 	}
 	connWindowMu.Unlock()
 
-	win := ac.UIService.Application.NewWindow(locale.T("conn.window_title"))
+	win := ac.UIService.Application.NewWindow(locale.T("Connection settings"))
 
 	// SPEC 098: окно осталось ТОЛЬКО про локальное ядро — движок
 	// (classic/daemon) и сопряжение со своим демоном.

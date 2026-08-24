@@ -67,9 +67,9 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	}
 
 	isEdit := editRule != nil
-	dialogTitle := locale.T("wizard.add_rule.title_add")
+	dialogTitle := locale.T("Add Rule")
 	if isEdit {
-		dialogTitle = locale.T("wizard.add_rule.title_edit")
+		dialogTitle = locale.T("Edit Rule")
 	}
 
 	// Ensure only one rule dialog is open at a time
@@ -93,14 +93,14 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 
 	// Input fields
 	labelEntry := widget.NewEntry()
-	labelEntry.SetPlaceHolder(locale.T("wizard.add_rule.placeholder_name"))
+	labelEntry.SetPlaceHolder(locale.T("Rule name"))
 
 	ipEntry := widget.NewMultiLineEntry()
-	ipEntry.SetPlaceHolder(locale.T("wizard.add_rule.placeholder_ip"))
+	ipEntry.SetPlaceHolder(locale.T("Enter IP addresses (CIDR format)\ne.g., 192.168.1.0/24"))
 	ipEntry.Wrapping = fyne.TextWrapWord
 
 	urlEntry := widget.NewMultiLineEntry()
-	urlEntry.SetPlaceHolder(locale.T("wizard.add_rule.placeholder_url"))
+	urlEntry.SetPlaceHolder(locale.T("Enter domains or URLs (one per line)\ne.g., example.com"))
 	urlEntry.Wrapping = fyne.TextWrapWord
 
 	// Limit input field height
@@ -122,47 +122,47 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	processesSizeRect := canvas.NewRectangle(color.Transparent)
 	processesSizeRect.SetMinSize(fyne.NewSize(0, inputFieldHeight))
 	processesContainerWrap := container.NewStack(processesSizeRect, processesScroll)
-	processesLabel := widget.NewLabel(locale.T("wizard.add_rule.label_processes"))
-	selectProcessesButton := widget.NewButton(locale.T("wizard.add_rule.button_select_processes"), func() {})
+	processesLabel := widget.NewLabel(locale.T("Processes (select one or more via popup):"))
+	selectProcessesButton := widget.NewButton(locale.T("Select Processes..."), func() {})
 
 	// Match by path: checkbox, Simple/Regex radio, path patterns multiline
-	matchByPathCheck := widget.NewCheck(locale.T("wizard.add_rule.check_match_by_path"), func(bool) {})
-	pathModeRadio := widget.NewRadioGroup([]string{locale.T("wizard.add_rule.radio_simple"), locale.T("wizard.add_rule.radio_regex")}, func(string) {})
+	matchByPathCheck := widget.NewCheck(locale.T("Match by path"), func(bool) {})
+	pathModeRadio := widget.NewRadioGroup([]string{locale.T("Simple"), locale.TN(1, "Regex")}, func(string) {})
 	pathPatternsEntry := widget.NewMultiLineEntry()
-	pathPatternsEntry.SetPlaceHolder(locale.T("wizard.add_rule.placeholder_path_simple"))
+	pathPatternsEntry.SetPlaceHolder(locale.T("One per line. Use * as wildcard (e.g. */steam/* or *\\Steam\\*)."))
 	pathPatternsEntry.Wrapping = fyne.TextWrapWord
 	pathPatternsScroll := container.NewScroll(pathPatternsEntry)
 	pathPatternsSizeRect := canvas.NewRectangle(color.Transparent)
 	pathPatternsSizeRect.SetMinSize(fyne.NewSize(0, inputFieldHeight))
 	pathPatternsContainer := container.NewStack(pathPatternsSizeRect, pathPatternsScroll)
-	pathPatternsLabel := widget.NewLabel(locale.T("wizard.add_rule.label_path_patterns"))
+	pathPatternsLabel := widget.NewLabel(locale.T("Path patterns (one per line):"))
 
 	// Custom JSON field (initialised early so it can be loaded when editing)
 	customEntry := widget.NewMultiLineEntry()
-	customEntry.SetPlaceHolder(locale.T("wizard.add_rule.placeholder_custom"))
+	customEntry.SetPlaceHolder(locale.T("Custom JSON (e.g., {})"))
 	customEntry.SetText("{}")
 	customScroll := container.NewScroll(customEntry)
 	customSizeRect := canvas.NewRectangle(color.Transparent)
 	customSizeRect.SetMinSize(fyne.NewSize(0, inputFieldHeight))
 	customContainer := container.NewStack(customSizeRect, customScroll)
-	customLabel := widget.NewLabel(locale.T("wizard.add_rule.label_custom_json"))
+	customLabel := widget.NewLabel(locale.T("Custom JSON:"))
 
 	// SRS: manual URLs (one per line)
 	srsURLsEntry := widget.NewMultiLineEntry()
-	srsURLsEntry.SetPlaceHolder(locale.T("wizard.add_rule.placeholder_srs_urls"))
+	srsURLsEntry.SetPlaceHolder(locale.T("SRS URLs (one per line)\ne.g. https://raw.githubusercontent.com/.../file.srs"))
 	srsURLsEntry.Wrapping = fyne.TextWrapWord
 	srsURLsScroll := container.NewScroll(srsURLsEntry)
 	srsURLsSizeRect := canvas.NewRectangle(color.Transparent)
 	srsURLsSizeRect.SetMinSize(fyne.NewSize(0, inputFieldHeight))
 	srsURLsContainer := container.NewStack(srsURLsSizeRect, srsURLsScroll)
-	srsURLsLabel := widget.NewLabel(locale.T("wizard.add_rule.label_srs_urls"))
+	srsURLsLabel := widget.NewLabel(locale.T("SRS URLs (one per line):"))
 	const runetfreedomSRSURL = "https://github.com/runetfreedom/russia-v2ray-rules-dat/tree/release/sing-box"
 	srsHintButton := widget.NewButton("?", nil)
 	srsLabelRow := container.NewHBox(srsURLsLabel, layout.NewSpacer(), srsHintButton)
 
 	// Raw tab: JSON правила (синхронизация с формой при переключении вкладок)
 	rawTabEntry := widget.NewMultiLineEntry()
-	rawTabEntry.SetPlaceHolder(locale.T("wizard.add_rule.placeholder_raw"))
+	rawTabEntry.SetPlaceHolder(locale.T("{\"ip_cidr\": [], \"outbound\": \"proxy-out\"}"))
 	rawTabEntry.Wrapping = fyne.TextWrapWord
 
 	// Process-name helpers are now top-level pure funcs (see bottom of file):
@@ -188,7 +188,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	// Determine initial rule type and load data (для нового правила — первая позиция: IP)
 	pathPatternsInitial := ""
 	matchByPathInitial := false
-	pathModeInitial := locale.T("wizard.add_rule.radio_regex") // по умолчанию Regex, если не в params
+	pathModeInitial := locale.TN(1, "Regex") // по умолчанию Regex, если не в params
 	srsURLsInitial := []string{}
 	domainModeInitial := ""  // "Exact domains"|"Suffix"|"Keyword"|"Regex"
 	domainListInitial := ""  // многострочный список для exact/suffix/keyword
@@ -211,16 +211,16 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				}
 			case wizardmodels.RuleTypeURLs:
 				if arr := ExtractStringArray(ruleData["domain_suffix"]); len(arr) > 0 {
-					domainModeInitial = locale.T("wizard.add_rule.domain_suffix")
+					domainModeInitial = locale.T("Suffix")
 					domainListInitial = strings.Join(arr, "\n")
 				} else if arr := ExtractStringArray(ruleData["domain_keyword"]); len(arr) > 0 {
-					domainModeInitial = locale.T("wizard.add_rule.domain_keyword")
+					domainModeInitial = locale.T("Keyword")
 					domainListInitial = strings.Join(arr, "\n")
 				} else if re, ok := ruleData["domain_regex"].(string); ok && re != "" {
-					domainModeInitial = locale.T("wizard.add_rule.domain_regex")
+					domainModeInitial = locale.T("Regex")
 					domainRegexInitial = re
 				} else if domains := ExtractStringArray(ruleData["domain"]); len(domains) > 0 {
-					domainModeInitial = locale.T("wizard.add_rule.domain_exact")
+					domainModeInitial = locale.T("Exact domains")
 					domainListInitial = strings.Join(domains, "\n")
 				}
 				if params != nil {
@@ -243,7 +243,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 					if v, ok := params["match_by_path"].(bool); ok {
 						matchByPathInitial = v
 					}
-					if s, ok := params["path_mode"].(string); ok && (s == locale.T("wizard.add_rule.radio_simple") || s == locale.T("wizard.add_rule.radio_regex")) {
+					if s, ok := params["path_mode"].(string); ok && (s == locale.T("Simple") || s == locale.TN(1, "Regex")) {
 						pathModeInitial = s
 					}
 				}
@@ -295,11 +295,11 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	var syncingRuleType bool
 	// Single RadioGroup для всех 5 типов — настоящий radio с круглыми маркерами
 	// (раньше были 5 NewCheck с mutex-логикой через OnChanged → визуально галки).
-	typeLabelIP := locale.T("wizard.add_rule.type_ip")
-	typeLabelDomain := locale.T("wizard.add_rule.type_domain")
-	typeLabelProcess := locale.T("wizard.add_rule.type_process")
-	typeLabelSRS := locale.T("wizard.add_rule.type_srs")
-	typeLabelCustom := locale.T("wizard.add_rule.type_custom")
+	typeLabelIP := locale.T("IP Addresses (CIDR)")
+	typeLabelDomain := locale.T("Domains/URLs")
+	typeLabelProcess := locale.T("Processes")
+	typeLabelSRS := locale.T("SRS")
+	typeLabelCustom := locale.T("Custom JSON")
 
 	ruleTypeRadio := widget.NewRadioGroup(
 		[]string{typeLabelIP, typeLabelDomain, typeLabelProcess, typeLabelSRS, typeLabelCustom},
@@ -326,9 +326,9 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	// Раньше был справа от Domain checkbox; теперь — отдельная строка под radio,
 	// показывается только когда выбран Domain тип (видимость управляется в
 	// updateFieldsVisibility — см. ниже legacy syncFormToRaw path).
-	domainModeOptions := []string{locale.T("wizard.add_rule.domain_exact"), locale.T("wizard.add_rule.domain_suffix"), locale.T("wizard.add_rule.domain_keyword"), locale.T("wizard.add_rule.domain_regex")}
+	domainModeOptions := []string{locale.T("Exact domains"), locale.T("Suffix"), locale.T("Keyword"), locale.T("Regex")}
 	domainModeSelect := widget.NewSelect(domainModeOptions, nil)
-	domainModeRow := container.NewHBox(widget.NewLabel(locale.T("wizard.add_rule.domain_mode_label")), domainModeSelect)
+	domainModeRow := container.NewHBox(widget.NewLabel(locale.T("Domain mode:")), domainModeSelect)
 
 	// matchByPathCheck (для Process) — аналогично, под radio, не inline.
 	processOptionsRow := container.NewHBox(matchByPathCheck)
@@ -336,26 +336,26 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	ruleTypeContainer := container.NewVBox(ruleTypeRadio, domainModeRow, processOptionsRow)
 
 	// Manage field visibility
-	ipLabel := widget.NewLabel(locale.T("wizard.add_rule.label_ip"))
-	urlLabel := widget.NewLabel(locale.T("wizard.add_rule.label_domains"))
+	ipLabel := widget.NewLabel(locale.T("IP Addresses (one per line, CIDR format):"))
+	urlLabel := widget.NewLabel(locale.T("Domains (one per line):"))
 	domainRegexEntry := widget.NewEntry()
-	domainRegexEntry.SetPlaceHolder(locale.T("wizard.add_rule.placeholder_domain_regex"))
+	domainRegexEntry.SetPlaceHolder(locale.T("E.g. ^.*\\.google\\.com$ or .*\\.(google|youtube)\\.com$ (full regex, no /wrapping/)"))
 	updateDomainLabel := func() {
 		switch domainModeSelect.Selected {
-		case locale.T("wizard.add_rule.domain_suffix"):
-			urlLabel.SetText(locale.T("wizard.add_rule.label_suffixes"))
-		case locale.T("wizard.add_rule.domain_keyword"):
-			urlLabel.SetText(locale.T("wizard.add_rule.label_keywords"))
-		case locale.T("wizard.add_rule.domain_regex"):
-			urlLabel.SetText(locale.T("wizard.add_rule.label_domain_regex"))
+		case locale.T("Suffix"):
+			urlLabel.SetText(locale.T("Domain suffixes (one per line):"))
+		case locale.T("Keyword"):
+			urlLabel.SetText(locale.T("Domain keywords (one per line):"))
+		case locale.T("Regex"):
+			urlLabel.SetText(locale.T("Domain regex:"))
 		default:
-			urlLabel.SetText(locale.T("wizard.add_rule.label_domains"))
+			urlLabel.SetText(locale.T("Domains (one per line):"))
 		}
 	}
-	domainModeSelect.SetSelected(locale.T("wizard.add_rule.domain_exact"))
+	domainModeSelect.SetSelected(locale.T("Exact domains"))
 	if domainModeInitial != "" {
 		domainModeSelect.SetSelected(domainModeInitial)
-		if domainModeInitial == locale.T("wizard.add_rule.domain_regex") {
+		if domainModeInitial == locale.T("Regex") {
 			domainRegexEntry.SetText(domainRegexInitial)
 		} else {
 			urlEntry.SetText(domainListInitial)
@@ -417,7 +417,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			domainModeSelect.Show()
 			urlLabel.Show()
 			updateDomainLabel()
-			if domainModeSelect.Selected == locale.T("wizard.add_rule.domain_regex") {
+			if domainModeSelect.Selected == locale.T("Regex") {
 				domainRegexEntry.Show()
 				urlContainer.Hide()
 			} else {
@@ -459,14 +459,14 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	parseCustomJSON := func() (map[string]interface{}, error) {
 		trimmed := strings.TrimSpace(customEntry.Text)
 		if trimmed == "" {
-			return nil, errors.New(locale.T("wizard.add_rule.error_custom_empty"))
+			return nil, errors.New(locale.T("Custom JSON is empty"))
 		}
 		var obj map[string]interface{}
 		if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
 			return nil, err
 		}
 		if obj == nil {
-			return nil, errors.New(locale.T("wizard.add_rule.error_custom_object"))
+			return nil, errors.New(locale.T("Custom JSON must be an object"))
 		}
 		return obj, nil
 	}
@@ -474,7 +474,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	buildSRSRuleSetsAndTags := func() (ruleSets []json.RawMessage, tags []string, err error) {
 		lines := ParseLines(strings.TrimSpace(srsURLsEntry.Text), false)
 		if len(lines) == 0 {
-			return nil, nil, errors.New(locale.T("wizard.add_rule.error_srs_required"))
+			return nil, nil, errors.New(locale.T("enter at least one SRS URL"))
 		}
 		seen := make(map[string]bool)
 		for _, rawURL := range lines {
@@ -504,7 +504,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			tags = append(tags, tag)
 		}
 		if len(ruleSets) == 0 {
-			return nil, nil, errors.New(locale.T("wizard.add_rule.error_srs_valid"))
+			return nil, nil, errors.New(locale.T("enter at least one valid SRS URL"))
 		}
 		return ruleSets, tags, nil
 	}
@@ -523,10 +523,10 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			if matchByPathCheck.Checked {
 				lines := ParseLines(pathPatternsEntry.Text, false)
 				if len(lines) == 0 {
-					return nil, nil, errors.New(locale.T("wizard.add_rule.error_path_required"))
+					return nil, nil, errors.New(locale.T("enter at least one path pattern"))
 				}
 				regexList := make([]string, 0, len(lines))
-				isSimple := pathModeRadio.Selected != locale.T("wizard.add_rule.radio_regex")
+				isSimple := pathModeRadio.Selected != locale.TN(1, "Regex")
 				for _, line := range lines {
 					var re string
 					if isSimple {
@@ -577,18 +577,18 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		default:
 			items := ParseLines(strings.TrimSpace(urlEntry.Text), false)
 			switch domainModeSelect.Selected {
-			case locale.T("wizard.add_rule.domain_regex"):
+			case locale.T("Regex"):
 				re := strings.TrimSpace(domainRegexEntry.Text)
 				return map[string]interface{}{
 					"domain_regex": re,
 					"outbound":     selectedOutbound,
 				}, nil, nil
-			case locale.T("wizard.add_rule.domain_suffix"):
+			case locale.T("Suffix"):
 				return map[string]interface{}{
 					"domain_suffix": items,
 					"outbound":      selectedOutbound,
 				}, nil, nil
-			case locale.T("wizard.add_rule.domain_keyword"):
+			case locale.T("Keyword"):
 				return map[string]interface{}{
 					"domain_keyword": items,
 					"outbound":       selectedOutbound,
@@ -615,7 +615,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				if len(lines) == 0 {
 					return false
 				}
-				isSimple := pathModeRadio.Selected != locale.T("wizard.add_rule.radio_regex")
+				isSimple := pathModeRadio.Selected != locale.TN(1, "Regex")
 				for _, line := range lines {
 					if isSimple {
 						if _, err := SimplePatternToRegex(line); err != nil {
@@ -635,7 +635,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		case wizardmodels.RuleTypeRaw:
 			return strings.TrimSpace(customEntry.Text) != ""
 		default:
-			if domainModeSelect.Selected == locale.T("wizard.add_rule.domain_regex") {
+			if domainModeSelect.Selected == locale.T("Regex") {
 				re := strings.TrimSpace(domainRegexEntry.Text)
 				if re == "" {
 					return false
@@ -691,17 +691,17 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		}
 	}
 	pathModeRadio.OnChanged = func(selected string) {
-		if selected == locale.T("wizard.add_rule.radio_regex") {
-			pathPatternsEntry.SetPlaceHolder(locale.T("wizard.add_rule.placeholder_path_regex"))
+		if selected == locale.TN(1, "Regex") {
+			pathPatternsEntry.SetPlaceHolder(locale.T("One per line. Full regex as-is (no /regex/i wrapping). E.g. ^C:\\\\Games\\\\.* or .*steam.*"))
 		} else {
-			pathPatternsEntry.SetPlaceHolder(locale.T("wizard.add_rule.placeholder_path_simple"))
+			pathPatternsEntry.SetPlaceHolder(locale.T("One per line. Use * as wildcard (e.g. */steam/* or *\\Steam\\*)."))
 		}
 		if updateButtonState != nil {
 			updateButtonState()
 		}
 	}
 
-	pathModeRadio.SetSelected(locale.T("wizard.add_rule.radio_simple"))
+	pathModeRadio.SetSelected(locale.T("Simple"))
 	if matchByPathInitial {
 		matchByPathCheck.SetChecked(true)
 		pathPatternsEntry.SetText(pathPatternsInitial)
@@ -712,7 +712,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	saveRule = func() {
 		label := strings.TrimSpace(labelEntry.Text)
 		if label == "" {
-			dialog.ShowError(errors.New(locale.T("wizard.add_rule.error_name_required")), dialogWindow)
+			dialog.ShowError(errors.New(locale.T("Rule name is required")), dialogWindow)
 			return
 		}
 		var ruleRaw map[string]interface{}
@@ -726,7 +726,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		if activeTabIsRaw {
 			trimmed := strings.TrimSpace(rawTabEntry.Text)
 			if trimmed == "" {
-				dialog.ShowError(errors.New(locale.T("wizard.add_rule.error_raw_empty")), dialogWindow)
+				dialog.ShowError(errors.New(locale.T("Raw JSON is empty")), dialogWindow)
 				return
 			}
 			if err := json.Unmarshal([]byte(trimmed), &ruleRaw); err != nil {
@@ -734,12 +734,12 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 				return
 			}
 			if ruleRaw == nil {
-				dialog.ShowError(errors.New(locale.T("wizard.add_rule.error_must_be_object")), dialogWindow)
+				dialog.ShowError(errors.New(locale.T("rule must be a JSON object")), dialogWindow)
 				return
 			}
 			if _, hasOut := ruleRaw["outbound"]; !hasOut {
 				if _, hasAction := ruleRaw["action"]; !hasAction {
-					dialog.ShowError(errors.New(locale.T("wizard.add_rule.error_must_have_outbound")), dialogWindow)
+					dialog.ShowError(errors.New(locale.T("rule must contain \"outbound\" or \"action\"")), dialogWindow)
 					return
 				}
 			}
@@ -763,10 +763,10 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		if selectedType == wizardmodels.RuleTypeProcesses {
 			params["match_by_path"] = matchByPathCheck.Checked
 			if matchByPathCheck.Checked {
-				if pathModeRadio.Selected == locale.T("wizard.add_rule.radio_simple") {
-					params["path_mode"] = locale.T("wizard.add_rule.radio_simple")
+				if pathModeRadio.Selected == locale.T("Simple") {
+					params["path_mode"] = locale.T("Simple")
 				} else {
-					params["path_mode"] = locale.T("wizard.add_rule.radio_regex")
+					params["path_mode"] = locale.TN(1, "Regex")
 				}
 			}
 		}
@@ -821,14 +821,14 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		dialogWindow.Close()
 	}
 
-	confirmBtnText := locale.T("wizard.add_rule.button_add")
+	confirmBtnText := locale.T("Add")
 	if isEdit {
-		confirmBtnText = locale.T("wizard.add_rule.button_save")
+		confirmBtnText = locale.T("Save")
 	}
 	confirmButton = widget.NewButton(confirmBtnText, saveRule)
 	confirmButton.Importance = widget.HighImportance
 
-	cancelButton := widget.NewButton(locale.T("wizard.add_rule.button_cancel"), func() {
+	cancelButton := widget.NewButton(locale.T("Cancel"), func() {
 		delete(openDialogs, dialogKey)
 		updateChildOverlay()
 		dialogWindow.Close()
@@ -858,7 +858,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			idx := i
 			p := processesSelected[i]
 			lbl := widget.NewLabel(p)
-			removeBtn := widget.NewButton(locale.T("wizard.add_rule.button_remove"), func() {
+			removeBtn := widget.NewButton(locale.T("−"), func() {
 				// remove item at idx
 				processesSelected = append(processesSelected[:idx], processesSelected[idx+1:]...)
 				refreshSelectedProcessesUI()
@@ -875,7 +875,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		if controller == nil || controller.UIService == nil {
 			return
 		}
-		w := controller.UIService.Application.NewWindow(locale.T("wizard.add_rule.window_select_processes"))
+		w := controller.UIService.Application.NewWindow(locale.T("Select Processes"))
 		w.Resize(fyne.NewSize(500, 400))
 
 		// Load process list using process package (names only, deduped)
@@ -907,7 +907,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			selectedIdx = id
 		}
 
-		addBtn := widget.NewButton(locale.T("wizard.add_rule.button_add_process"), func() {
+		addBtn := widget.NewButton(locale.T("+ Add"), func() {
 			if selectedIdx >= 0 && selectedIdx < len(listData) {
 				item := normalizeProcName(listData[selectedIdx])
 				// avoid duplicates (case-insensitive)
@@ -926,12 +926,12 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			}
 		})
 
-		refreshBtn := widget.NewButton(locale.T("wizard.add_rule.button_refresh"), func() {
+		refreshBtn := widget.NewButton(locale.T("Refresh"), func() {
 			listData = getProcesses()
 			procList.Refresh()
 		})
 
-		closeBtn := widget.NewButton(locale.T("wizard.add_rule.button_close"), func() { w.Close() })
+		closeBtn := widget.NewButton(locale.T("Close"), func() { w.Close() })
 
 		content := container.NewBorder(nil, container.NewHBox(layout.NewSpacer(), refreshBtn, addBtn, closeBtn), nil, nil, container.NewScroll(procList))
 		w.SetContent(content)
@@ -942,10 +942,10 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	selectProcessesButton.OnTapped = func() { openProcessSelector() }
 
 	// Rule name над вкладками Form/Raw
-	ruleNameBlock := container.NewVBox(widget.NewLabel(locale.T("wizard.add_rule.label_name")), labelEntry)
+	ruleNameBlock := container.NewVBox(widget.NewLabel(locale.T("Rule Name:")), labelEntry)
 	// Контент формы: тип правила и поля по типу
 	inputContainer := container.NewVBox(
-		widget.NewLabel(locale.T("wizard.add_rule.label_type")),
+		widget.NewLabel(locale.T("Rule Type:")),
 		ruleTypeContainer,
 		widget.NewSeparator(),
 		ipLabel,
@@ -964,7 +964,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 		customLabel,
 		customContainer,
 		widget.NewSeparator(),
-		widget.NewLabel(locale.T("wizard.add_rule.label_outbound")),
+		widget.NewLabel(locale.T("Direction:")),
 		outboundSelect,
 	)
 
@@ -976,8 +976,8 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 
 	formScroll := components.WrapInScrollWithGutter(inputContainer)
 	rawScroll := components.WrapInScrollWithGutter(rawTabEntry)
-	formTabItem := container.NewTabItem(locale.T("wizard.add_rule.tab_form"), formScroll)
-	rawTabItem := container.NewTabItem(locale.T("wizard.add_rule.tab_raw"), rawScroll)
+	formTabItem := container.NewTabItem(locale.T("Form"), formScroll)
+	rawTabItem := container.NewTabItem(locale.T("JSON"), rawScroll)
 	tabs := container.NewAppTabs(formTabItem, rawTabItem)
 	syncFormToRaw := func() {
 		ob := outboundSelect.Selected
@@ -994,7 +994,7 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	syncRawToForm := func() {
 		trimmed := strings.TrimSpace(rawTabEntry.Text)
 		if trimmed == "" {
-			dialog.ShowError(errors.New(locale.T("wizard.add_rule.error_raw_empty")), dialogWindow)
+			dialog.ShowError(errors.New(locale.T("Raw JSON is empty")), dialogWindow)
 			tabs.Select(rawTabItem)
 			ruleSel.SetType(wizardmodels.RuleTypeRaw)
 			return
@@ -1007,14 +1007,14 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			return
 		}
 		if obj == nil {
-			dialog.ShowError(errors.New(locale.T("wizard.add_rule.error_must_be_object")), dialogWindow)
+			dialog.ShowError(errors.New(locale.T("rule must be a JSON object")), dialogWindow)
 			tabs.Select(rawTabItem)
 			ruleSel.SetType(wizardmodels.RuleTypeRaw)
 			return
 		}
 		detected := wizardmodels.DetermineRuleType(obj)
 		if detected == wizardmodels.RuleTypeRaw {
-			dialog.ShowInformation(locale.T("wizard.add_rule.dialog_not_recognized_title"), locale.T("wizard.add_rule.dialog_not_recognized_msg"), dialogWindow)
+			dialog.ShowInformation(locale.T("Rule not recognized"), locale.T("Could not recognize rule, form cannot be loaded; staying on Raw."), dialogWindow)
 			tabs.Select(rawTabItem)
 			ruleSel.SetType(wizardmodels.RuleTypeRaw)
 			activeTabIsRaw = true
@@ -1028,16 +1028,16 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 			}
 		case wizardmodels.RuleTypeURLs:
 			if arr := ExtractStringArray(obj["domain_suffix"]); len(arr) > 0 {
-				domainModeSelect.SetSelected(locale.T("wizard.add_rule.domain_suffix"))
+				domainModeSelect.SetSelected(locale.T("Suffix"))
 				urlEntry.SetText(strings.Join(arr, "\n"))
 			} else if arr := ExtractStringArray(obj["domain_keyword"]); len(arr) > 0 {
-				domainModeSelect.SetSelected(locale.T("wizard.add_rule.domain_keyword"))
+				domainModeSelect.SetSelected(locale.T("Keyword"))
 				urlEntry.SetText(strings.Join(arr, "\n"))
 			} else if re, ok := obj["domain_regex"].(string); ok && re != "" {
-				domainModeSelect.SetSelected(locale.T("wizard.add_rule.domain_regex"))
+				domainModeSelect.SetSelected(locale.T("Regex"))
 				domainRegexEntry.SetText(re)
 			} else if domains := ExtractStringArray(obj["domain"]); len(domains) > 0 {
-				domainModeSelect.SetSelected(locale.T("wizard.add_rule.domain_exact"))
+				domainModeSelect.SetSelected(locale.T("Exact domains"))
 				urlEntry.SetText(strings.Join(domains, "\n"))
 			}
 			updateDomainLabel()
@@ -1087,12 +1087,12 @@ func ShowAddRuleDialog(presenter *wizardpresentation.WizardPresenter, editRule *
 	}
 	dialogWindow = controller.UIService.Application.NewWindow(dialogTitle)
 	srsHintButton.OnTapped = func() {
-		msg := widget.NewLabel(locale.T("wizard.add_rule.srs_hint"))
-		openBtn := widget.NewButton(locale.T("wizard.add_rule.button_open"), func() {
+		msg := widget.NewLabel(locale.T("We recommend looking for suitable rule-set files in the project:"))
+		openBtn := widget.NewButton(locale.T("Open"), func() {
 			_ = platform.OpenURL(runetfreedomSRSURL)
 		})
 		content := container.NewVBox(msg, openBtn)
-		dialog.ShowCustom(locale.T("wizard.add_rule.srs_dialog_title"), locale.T("wizard.add_rule.button_close"), content, dialogWindow)
+		dialog.ShowCustom(locale.T("SRS rule-sets"), locale.T("Close"), content, dialogWindow)
 	}
 	dialogWindow.Resize(fyne.NewSize(500, 640))
 	dialogWindow.CenterOnScreen()

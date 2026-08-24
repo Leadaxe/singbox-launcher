@@ -24,7 +24,7 @@ import (
 // платформенного builder'а (nil вне macOS — тогда вкладка описывает только
 // classic-режим без переключателя).
 func buildLocalEngineTab(ac *core.AppController, win fyne.Window, onChanged func()) fyne.CanvasObject {
-	processHint := widget.NewLabel(locale.T("conn.process_hint"))
+	processHint := widget.NewLabel(locale.T("The launcher spawns `sing-box run` itself and talks to it over the Clash API from config.json. There is nothing to configure here — the clash_api section is managed in the configurator."))
 	processHint.Wrapping = fyne.TextWrapWord
 
 	var trySwitchToDaemon func()
@@ -39,13 +39,13 @@ func buildLocalEngineTab(ac *core.AppController, win fyne.Window, onChanged func
 	if daemonPanel == nil {
 		// Не macOS: движок один, переключать нечего.
 		return container.NewVBox(
-			sectionHeader(locale.T("conn.engine_process")),
+			sectionHeader(locale.T("Process (classic)")),
 			processHint,
 		)
 	}
 
-	processLabel := locale.T("conn.engine_process")
-	daemonLabel := locale.T("conn.engine_daemon")
+	processLabel := locale.T("Process (classic)")
+	daemonLabel := locale.T("Daemon (lxd)")
 
 	processBox := container.NewVBox(processHint)
 
@@ -103,7 +103,7 @@ func buildLocalEngineTab(ac *core.AppController, win fyne.Window, onChanged func
 					updatingRadio = true
 					radio.SetSelected(daemonLabel)
 					updatingRadio = false
-					ShowErrorText(win, locale.T("conn.window_title"), locale.T("settings.daemon_stop_vpn_first"))
+					ShowErrorText(win, locale.T("Connection settings"), locale.T("Stop the VPN before switching the core engine."))
 					return
 				}
 				if err := ac.SwitchBackendMode(core.BackendClassic); err != nil {
@@ -126,7 +126,7 @@ func buildLocalEngineTab(ac *core.AppController, win fyne.Window, onChanged func
 		// установки и сопряжения именно на этой панели.
 		showPanels(true)
 		if ac.RunningState.IsRunning() && ac.BackendMode() != core.BackendDaemon {
-			ShowErrorText(win, locale.T("conn.window_title"), locale.T("settings.daemon_stop_vpn_first"))
+			ShowErrorText(win, locale.T("Connection settings"), locale.T("Stop the VPN before switching the core engine."))
 			return
 		}
 		trySwitchToDaemon()
@@ -144,7 +144,7 @@ func buildLocalEngineTab(ac *core.AppController, win fyne.Window, onChanged func
 	updatingRadio = false
 
 	return container.NewVBox(
-		widget.NewLabelWithStyle(locale.T("conn.engine_label"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabelWithStyle(locale.T("Core engine"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		radio,
 		widget.NewSeparator(),
 		processBox,

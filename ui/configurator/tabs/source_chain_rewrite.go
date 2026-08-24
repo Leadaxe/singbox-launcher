@@ -140,10 +140,10 @@ func (e *rewriteEditor) rowError(idx int) string {
 		// Тип и параметр заданы, значения нет: Collect такую строку
 		// выбросит, и без предупреждения это была бы полностью молчаливая
 		// потеря — хуже невалидного JSON, который хотя бы подсвечен.
-		return locale.T("wizard.chain.rewrite_err_json")
+		return locale.T("The value must be JSON: quote strings, e.g. \"safari\".")
 	}
 	if !json.Valid([]byte(v)) {
-		return locale.T("wizard.chain.rewrite_err_json")
+		return locale.T("The value must be JSON: quote strings, e.g. \"safari\".")
 	}
 	// Дубль «тип + параметр» молча перебил бы предыдущую строку: в map
 	// остался бы только последний, и пользователь не узнал бы, какой.
@@ -152,7 +152,7 @@ func (e *rewriteEditor) rowError(idx int) string {
 			continue
 		}
 		if strings.TrimSpace(other.Type) == t && strings.TrimSpace(other.Key) == k {
-			return locale.Tf("wizard.chain.rewrite_err_dup", t, k)
+			return locale.Tf("Option %s · %s is set twice — only the last one reaches the config.", t, k)
 		}
 	}
 	return ""
@@ -170,7 +170,7 @@ func (e *rewriteEditor) rebuild() {
 
 		typeEntry := widget.NewSelectEntry(e.types)
 		typeEntry.SetText(e.rows[idx].Type)
-		typeEntry.SetPlaceHolder(locale.T("wizard.chain.rewrite_ph_type"))
+		typeEntry.SetPlaceHolder(locale.T("type"))
 		typeEntry.OnChanged = func(s string) {
 			e.rows[idx].Type = s
 			e.changed()
@@ -179,7 +179,7 @@ func (e *rewriteEditor) rebuild() {
 
 		keyEntry := widget.NewEntry()
 		keyEntry.SetText(e.rows[idx].Key)
-		keyEntry.SetPlaceHolder(locale.T("wizard.chain.rewrite_ph_key"))
+		keyEntry.SetPlaceHolder(locale.T("option"))
 		keyEntry.OnChanged = func(s string) {
 			e.rows[idx].Key = s
 			e.changed()
@@ -188,7 +188,7 @@ func (e *rewriteEditor) rebuild() {
 
 		valEntry := widget.NewEntry()
 		valEntry.SetText(e.rows[idx].Value)
-		valEntry.SetPlaceHolder(locale.T("wizard.chain.rewrite_ph_value"))
+		valEntry.SetPlaceHolder(locale.T("value (JSON)"))
 		valEntry.OnChanged = func(s string) {
 			e.rows[idx].Value = s
 			e.changed()
@@ -219,7 +219,7 @@ func (e *rewriteEditor) rebuild() {
 		e.box.Add(warn)
 	}
 
-	addBtn := widget.NewButtonWithIcon(locale.T("wizard.chain.rewrite_add"), theme.ContentAddIcon(), func() {
+	addBtn := widget.NewButtonWithIcon(locale.T("Add override"), theme.ContentAddIcon(), func() {
 		e.rows = append(e.rows, rewriteRow{})
 		e.rebuild()
 	})
@@ -255,19 +255,19 @@ func (e *rewriteEditor) changed() {
 
 // Content — таблица с шапкой и подсказками.
 func (e *rewriteEditor) Content() fyne.CanvasObject {
-	head := widget.NewLabelWithStyle(locale.T("wizard.chain.rewrite_head"),
+	head := widget.NewLabelWithStyle(locale.T("Option overrides"),
 		fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
 	// Патч применяется к позициям со ВТОРОЙ: первая идёт в сеть как есть
 	// (`protocol/chain/transform.go:131`). Без этой строки правило «для
 	// vless» читалось бы как действующее на все vless-узлы цепочки.
-	scope := widget.NewLabel(locale.T("wizard.chain.rewrite_scope"))
+	scope := widget.NewLabel(locale.T("Applied from the 2nd position on: the first one dials as-is."))
 	scope.Wrapping = fyne.TextWrapWord
 	scope.Importance = widget.LowImportance
 
 	// null — не значение, а удаление ключа (RFC 7396, проверено на ядре).
 	// Единственное, что нельзя вывести из формы самой.
-	hint := widget.NewLabel(locale.T("wizard.chain.rewrite_hint"))
+	hint := widget.NewLabel(locale.T("The value is JSON: quote strings (\"safari\"), write numbers as 1280, nest as {\"utls\":{\"fingerprint\":\"safari\"}}. null is special — it does not store a value, it removes the option from the link."))
 	hint.Wrapping = fyne.TextWrapWord
 	hint.Importance = widget.LowImportance
 

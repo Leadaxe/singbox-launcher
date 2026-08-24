@@ -21,7 +21,7 @@ import (
 func (tab *CoreDashboardTab) updateBinaryStatus() {
 	// Проверяем, существует ли бинарник
 	if _, err := tab.controller.GetInstalledCoreVersion(); err != nil {
-		tab.statusLabel.SetText(locale.T("core.status_error_not_found"))
+		tab.statusLabel.SetText(locale.T("Core Status ❌ Error: sing-box not found"))
 		tab.statusLabel.Importance = widget.MediumImportance // Текст всегда черный
 		// UpdateUI will be called automatically by RunningState.Set() or other state changes
 		// Don't call UpdateUI() here to avoid infinite loop
@@ -109,13 +109,13 @@ func (tab *CoreDashboardTab) updateRunningStatus() {
 	}
 
 	if !buttonState.BinaryExists {
-		tab.statusLabel.SetText(locale.T("core.status_error_not_found") + restartInfo)
+		tab.statusLabel.SetText(locale.T("Core Status ❌ Error: sing-box not found") + restartInfo)
 		tab.statusLabel.Importance = widget.MediumImportance // Текст всегда черный
 	} else if buttonState.IsRunning {
-		tab.statusLabel.SetText(locale.T("core.status_running") + restartInfo)
+		tab.statusLabel.SetText(locale.T("Core Status ✅ Running") + restartInfo)
 		tab.statusLabel.Importance = widget.MediumImportance // Текст всегда черный
 	} else {
-		tab.statusLabel.SetText(locale.T("core.status_stopped") + restartInfo)
+		tab.statusLabel.SetText(locale.T("Core Status ⏸️ Stopped") + restartInfo)
 		tab.statusLabel.Importance = widget.MediumImportance // Текст всегда черный
 	}
 
@@ -170,11 +170,11 @@ func (tab *CoreDashboardTab) updateRunningStatus() {
 		// независимо — даже у disabled-кнопки видно что state ждёт рестарта.
 		// Сбрасывается ProcessService.Start после RebuildConfigIfDirty
 		// (см. core/rebuild.go).
-		restartTooltip := fmt.Sprintf(locale.T("core.button_restart_tooltip"), platform.ShortcutModifierLabel())
+		restartTooltip := fmt.Sprintf(locale.T("Restart sing-box (%s+R)"), platform.ShortcutModifierLabel())
 		tab.restartButton.SetText("🔄")
 		if tab.controller.StateService != nil && tab.controller.StateService.IsConfigStale() {
 			tab.restartButton.Importance = widget.HighImportance
-			tab.restartButton.SetToolTip(locale.T("core.restart_dirty_tooltip") + " — " + restartTooltip)
+			tab.restartButton.SetToolTip(locale.T("State edited — restart sing-box to apply") + " — " + restartTooltip)
 		} else {
 			tab.restartButton.Importance = widget.MediumImportance
 			tab.restartButton.SetToolTip(restartTooltip)
@@ -204,7 +204,7 @@ func (tab *CoreDashboardTab) updateConfigInfo() {
 		// If we have a successful-update timestamp from this session, append a
 		// relative "Xm ago / Xh ago" hint so users can see the subscription
 		// freshness at a glance without digging for the pill.
-		label := locale.Tf("core.status_config_ok", filepath.Base(configPath), modTime)
+		label := locale.Tf("%s ✅ %s", filepath.Base(configPath), modTime)
 		if tab.controller.StateService != nil {
 			tab.controller.StateService.LastUpdateMutex.RLock()
 			succAt := tab.controller.StateService.LastUpdateSucceededAt
@@ -216,10 +216,10 @@ func (tab *CoreDashboardTab) updateConfigInfo() {
 		tab.configStatusLabel.SetText(label)
 		configExists = true
 	} else if os.IsNotExist(err) {
-		tab.configStatusLabel.SetText(locale.Tf("core.status_config_not_found", filepath.Base(configPath)))
+		tab.configStatusLabel.SetText(locale.Tf("%s ❌ not found", filepath.Base(configPath)))
 		configExists = false
 	} else {
-		tab.configStatusLabel.SetText(locale.Tf("core.status_config_error", err))
+		tab.configStatusLabel.SetText(locale.Tf("Config error: %v", err))
 		configExists = false
 	}
 
@@ -305,8 +305,8 @@ func (tab *CoreDashboardTab) updateVersionInfo() error {
 				// первичной установке.
 				tab.downloadButton.Importance = widget.HighImportance
 				tab.setSingboxState(
-					locale.T("core.singbox_status_not_found"),
-					locale.Tf("core.button_download_version", required),
+					locale.T("❌ not found"),
+					locale.Tf("Download v%s", required),
 					-1,
 				)
 			case installedVersion != required:
@@ -315,7 +315,7 @@ func (tab *CoreDashboardTab) updateVersionInfo() error {
 				tab.downloadButton.Importance = widget.MediumImportance
 				tab.setSingboxState(
 					installedVersion,
-					locale.Tf("core.button_reinstall_version", required),
+					locale.Tf("Reinstall v%s", required),
 					-1,
 				)
 			default:
@@ -336,17 +336,17 @@ func (tab *CoreDashboardTab) updateWintunStatus() {
 	exists, err := tab.controller.CheckWintunDLL()
 	if err != nil {
 		tab.wintunStatusLabel.Importance = widget.MediumImportance
-		tab.setWintunState(locale.T("core.wintun_status_error"), "", -1)
+		tab.setWintunState(locale.T("❌ Error checking wintun.dll"), "", -1)
 		return
 	}
 
 	if exists {
 		tab.wintunStatusLabel.Importance = widget.MediumImportance
-		tab.setWintunState(locale.T("core.wintun_status_ok"), "", -1)
+		tab.setWintunState(locale.T("ok"), "", -1)
 	} else {
 		tab.wintunStatusLabel.Importance = widget.MediumImportance
 		tab.wintunDownloadButton.Importance = widget.HighImportance
-		tab.setWintunState(locale.T("core.wintun_status_not_found"), locale.T("core.button_download"), -1)
+		tab.setWintunState(locale.T("❌ not found"), locale.T("Download"), -1)
 	}
 
 	// Обновляем статус кнопок Start/Stop, так как они зависят от наличия wintun.dll

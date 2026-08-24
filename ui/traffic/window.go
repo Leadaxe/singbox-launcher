@@ -355,7 +355,7 @@ func (m *Manager) attachConnCounter(deps WindowDeps, win fyne.Window, tabs *cont
 	}
 
 	countL := widget.NewLabel("")
-	killBtn := widget.NewButton(locale.T("traffic.conns.kill_all"), func() {
+	killBtn := widget.NewButton(locale.T("Close all"), func() {
 		ids, ok := deps.Profiler.LiveConnIDs()
 		if !ok || len(ids) == 0 {
 			return
@@ -363,8 +363,8 @@ func (m *Manager) attachConnCounter(deps WindowDeps, win fyne.Window, tabs *cont
 		// Спрашиваем: действие рвёт ВСЁ разом, включая чужие сессии на
 		// роутере, и промахнуться мимо кнопки легко — она рядом с вкладками.
 		dialog.ShowConfirm(
-			locale.T("traffic.conns.kill_all"),
-			fmt.Sprintf(locale.T("traffic.conns.kill_all_confirm"), len(ids)),
+			locale.T("Close all"),
+			fmt.Sprintf(locale.T("Close all connections (%d)? Devices will reconnect on their own."), len(ids)),
 			func(yes bool) {
 				if yes {
 					deps.CloseConns(ids)
@@ -378,11 +378,11 @@ func (m *Manager) attachConnCounter(deps WindowDeps, win fyne.Window, tabs *cont
 		if !ok {
 			// До первого кадра стрима «0» означал бы «соединений нет», хотя мы
 			// просто ещё не знаем.
-			countL.SetText(locale.T("traffic.conns.unknown"))
+			countL.SetText(locale.T("conns: …"))
 			killBtn.Disable()
 			return
 		}
-		countL.SetText(fmt.Sprintf(locale.T("traffic.conns.count"), len(ids)))
+		countL.SetText(fmt.Sprintf(locale.T("conns: %d"), len(ids)))
 		if len(ids) == 0 {
 			killBtn.Disable()
 		} else {

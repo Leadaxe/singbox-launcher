@@ -47,23 +47,23 @@ type foldTab struct {
 func newFoldTab(model *wizardmodels.WizardModel, onChange func()) *foldTab {
 	t := &foldTab{
 		modeLabels: []string{
-			locale.T("wizard.source.fold_mode_select"),
-			locale.T("wizard.source.fold_mode_auto"),
-			locale.T("wizard.source.fold_mode_select_auto"),
+			locale.T("Selector (manual pick)"),
+			locale.T("Auto-select group (urltest)"),
+			locale.T("Selector with an auto-select group"),
 		},
 	}
 
 	t.modeSelect = widget.NewSelect(t.modeLabels, nil)
 	t.autoForm = autogroupform.New(foldAutoChoices(model))
 
-	hint := widget.NewLabel(locale.T("wizard.source.fold_tab_hint"))
+	hint := widget.NewLabel(locale.T("The subscription arrives as one entry instead of every node. Its nodes stay in the config as that group's members."))
 	hint.Wrapping = fyne.TextWrapWord
 
 	t.tagsLabel = widget.NewLabel("")
 	t.tagsLabel.Wrapping = fyne.TextWrapWord
 	t.tagsLabel.Importance = widget.LowImportance
 
-	autoModeLabel := widget.NewLabel(locale.T("wizard.outbound.label_auto_mode"))
+	autoModeLabel := widget.NewLabel(locale.T("Auto-select mode"))
 	t.autoBlock = container.NewVBox(
 		widget.NewSeparator(),
 		t.autoForm.Content(nil, autoModeLabel),
@@ -71,7 +71,7 @@ func newFoldTab(model *wizardmodels.WizardModel, onChange func()) *foldTab {
 
 	t.content = container.NewVBox(
 		hint,
-		autogroupform.TextRow(locale.T("wizard.source.fold_mode_label"), t.modeSelect),
+		autogroupform.TextRow(locale.T("Fold into"), t.modeSelect),
 		t.tagsLabel,
 		t.autoBlock,
 	)
@@ -158,7 +158,7 @@ func (t *foldTab) updateTagsHint(mode, tagPrefix string, sourceIndex int) {
 	if mode == configtypes.FoldModeSelect || mode == configtypes.FoldModeSelectAuto {
 		tags = append(tags, configtypes.FoldSelectTag(tagPrefix, sourceIndex))
 	}
-	t.tagsLabel.SetText(fmt.Sprintf(locale.T("wizard.source.fold_tags_hint"), strings.Join(tags, ", ")))
+	t.tagsLabel.SetText(fmt.Sprintf(locale.T("Tags: %s"), strings.Join(tags, ", ")))
 }
 
 // foldAutoChoices собирает варианты значений полей автогруппы из

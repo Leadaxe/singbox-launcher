@@ -44,14 +44,14 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	// Длинный рассказ про daemon-движок читают один раз, а место он занимает
 	// в каждом открытии окна: над вкладками остаётся одна строка, полный
 	// текст — под «?».
-	hintShort := widget.NewLabel(locale.T("conn.daemon_hint_short"))
+	hintShort := widget.NewLabel(locale.T("The core runs inside a system daemon (sing-box lxd)."))
 	hintShort.Wrapping = fyne.TextWrapWord
 	hintHelp := widget.NewButton("?", func() {
-		showTextHelpDialog(ac, win, locale.T("conn.engine_daemon"), locale.T("settings.daemon_hint"))
+		showTextHelpDialog(ac, win, locale.T("Daemon (lxd)"), locale.T("Run the VPN core inside a long-lived system daemon (sing-box lxd). Config changes swap the core in-process — no password prompts, and quitting the launcher can keep the VPN up. Managed over gRPC like the Android app."))
 	})
 	hintHelp.Importance = widget.LowImportance
 
-	status := widget.NewLabel(locale.T("settings.daemon_status_checking"))
+	status := widget.NewLabel(locale.T("Checking daemon status…"))
 	status.Wrapping = fyne.TextWrapWord
 
 	// --- Статус ----------------------------------------------------------
@@ -83,15 +83,15 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 		return CommandRow(win, labelKey, command, true)
 	}
 
-	kickstartRow := commandRowLocal("conn.cmd_kickstart", func() (string, error) {
+	kickstartRow := commandRowLocal("Restart the service (after a core update):", func() (string, error) {
 		return ac.DaemonKickstartCommand(), nil
 	})
 
 	// --- Сопряжение по приглашению ---------------------------------------
 	inviteEntry := widget.NewEntry()
-	inviteEntry.SetPlaceHolder(locale.T("settings.daemon_invite_placeholder"))
+	inviteEntry.SetPlaceHolder(locale.T("address#fingerprint#code"))
 	secretEntry := widget.NewPasswordEntry()
-	secretEntry.SetPlaceHolder(locale.T("settings.daemon_secret_placeholder"))
+	secretEntry.SetPlaceHolder(locale.T("Bearer secret (only for a daemon without TLS)"))
 	{
 		st := locale.LoadSettings(binDir)
 		secretEntry.SetText(st.DaemonSecret)
@@ -109,16 +109,16 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 
 	secretHelp := widget.NewButton("?", func() {
 		showCommandHelpDialog(ac, win,
-			locale.T("settings.daemon_secret_placeholder"),
-			locale.T("conn.secret_help"),
+			locale.T("Bearer secret (only for a daemon without TLS)"),
+			locale.T("The Bearer secret is only needed for a daemon running WITHOUT TLS (plain mode): there it is the whole authentication, paste it and press Enter. A paired mTLS daemon ignores it — the client certificate is the credential. The daemon owns the secret (daemon.json in its state dir); view it with the command below."),
 			ac.DaemonShowSecretCommand())
 	})
 	secretHelp.Importance = widget.LowImportance
 
-	pairBtn := widget.NewButton(locale.T("settings.daemon_pair_btn"), func() {
+	pairBtn := widget.NewButton(locale.T("Pair"), func() {
 		invite := strings.TrimSpace(inviteEntry.Text)
 		if invite == "" {
-			ShowErrorText(win, locale.T("conn.window_title"), locale.T("settings.daemon_invite_empty"))
+			ShowErrorText(win, locale.T("Connection settings"), locale.T("Paste an invite first (address#fingerprint#code)."))
 			return
 		}
 		secret := strings.TrimSpace(secretEntry.Text)
@@ -131,7 +131,7 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 				}
 				inviteEntry.SetText("")
 				dialogs.ShowAutoHideInfo(ac.UIService.Application, win,
-					locale.T("conn.window_title"), locale.T("settings.daemon_pair_done"))
+					locale.T("Connection settings"), locale.T("Paired with the daemon."))
 				if onPaired != nil {
 					onPaired()
 				}
@@ -141,8 +141,8 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	})
 	pairHelp := widget.NewButton("?", func() {
 		showCommandHelpDialog(ac, win,
-			locale.T("settings.daemon_pair_btn"),
-			locale.T("settings.daemon_pair_help"),
+			locale.T("Pair"),
+			locale.T("Paste the invite printed by the daemon and click Pair. Where to get one:\n\n- Installing the service prints an invite at the end of its Terminal output (Install section, step 1).\n- For a fresh invite run the command below (copy or open in Terminal), then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS."),
 			ac.DaemonRepairCommand())
 	})
 	pairHelp.Importance = widget.LowImportance
@@ -152,10 +152,10 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	// 2) удаление службы sudo-командой, с галкой --purge (по умолчанию ВКЛ:
 	//    «снести — так снести»; выключают её осознанно, чтобы сохранить
 	//    state демона для будущей переустановки без пере-сопряжения).
-	unpairBtn := widget.NewButton(locale.T("settings.daemon_unpair_btn"), func() {
+	unpairBtn := widget.NewButton(locale.T("Unpair"), func() {
 		ShowConfirm(win,
-			locale.T("settings.daemon_unpair_confirm_title"),
-			locale.T("settings.daemon_unpair_confirm_body"),
+			locale.T("Forget pairing?"),
+			locale.T("Removes the launcher's client keys and daemon address. The daemon keeps its record of this client until removed there (sing-box lxd client remove)."),
 			func(ok bool) {
 				if !ok {
 					return
@@ -168,7 +168,7 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 			})
 	})
 
-	purgeCheck := widget.NewCheck(locale.T("conn.uninstall_purge_check"), nil)
+	purgeCheck := widget.NewCheck(locale.T("Also wipe all daemon data — keys, clients, last-good (--purge)"), nil)
 	purgeCheck.SetChecked(true)
 	uninstallEntry := widget.NewEntry()
 	uninstallEntry.Wrapping = fyne.TextWrapOff
@@ -177,7 +177,7 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	}
 	purgeCheck.OnChanged = func(bool) { refreshUninstallCommand() }
 	refreshUninstallCommand()
-	uninstallCopyBtn := NewCopyButton("conn.cmd_copy_tooltip", func() (string, bool) {
+	uninstallCopyBtn := NewCopyButton("Copy the command", func() (string, bool) {
 		refreshUninstallCommand()
 		return uninstallEntry.Text, true
 	})
@@ -187,12 +187,12 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 			ShowError(win, err)
 		}
 	})
-	uninstallTermBtn.SetToolTip(locale.T("conn.cmd_terminal_tooltip"))
+	uninstallTermBtn.SetToolTip(locale.T("Run in Terminal"))
 
 	uninstallTab := container.NewVBox(
-		wrappedLabel("conn.uninstall_step_unpair"),
+		wrappedLabel("1. Forget the pairing on the launcher side:"),
 		unpairBtn,
-		wrappedLabel("conn.uninstall_step_service"),
+		wrappedLabel("2. Remove the service (run in Terminal, your sudo):"),
 		purgeCheck,
 		container.NewBorder(nil, nil, nil, container.NewHBox(uninstallCopyBtn, uninstallTermBtn), uninstallEntry),
 	)
@@ -212,7 +212,7 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 		refreshStatus()
 	}
 
-	stopOnExitCheck := widget.NewCheck(locale.T("settings.daemon_stop_on_exit_label"), nil)
+	stopOnExitCheck := widget.NewCheck(locale.T("Stop VPN when quitting the launcher"), nil)
 	{
 		st := locale.LoadSettings(binDir)
 		stopOnExitCheck.SetChecked(st.DaemonStopVPNOnExit)
@@ -226,7 +226,7 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	}
 
 	refreshBtn := ttwidget.NewButtonWithIcon("", theme.ViewRefreshIcon(), refreshStatus)
-	refreshBtn.SetToolTip(locale.T("settings.daemon_refresh_tooltip"))
+	refreshBtn.SetToolTip(locale.T("Refresh daemon status"))
 
 	// --- Вкладка Install: два последовательных шага ------------------------
 	// 1) sudo-команда установки (сама печатает приглашение в конце);
@@ -234,11 +234,11 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	//    отдельной строкой ниже (lxd client add): это тот же шаг 2, только
 	//    для случая «служба уже стоит, приглашение из установки протухло».
 	installTab := container.NewVBox(
-		commandRowLocal("conn.install_step_cmd", ac.DaemonInstallCommand),
-		wrappedLabel("conn.install_step_pair"),
+		commandRowLocal("1. Install the service (run in Terminal, your sudo — prints a pairing invite at the end):", ac.DaemonInstallCommand),
+		wrappedLabel("2. Paste the invite (address#fingerprint#code) and pair:"),
 		container.NewBorder(nil, nil, nil, container.NewHBox(pairBtn, pairHelp), inviteEntry),
 		widget.NewSeparator(),
-		commandRowLocal("conn.install_step_reinvite", func() (string, error) {
+		commandRowLocal("Need a fresh invite (service already installed)?", func() (string, error) {
 			return ac.DaemonRepairCommand(), nil
 		}),
 	)
@@ -252,8 +252,8 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 		widget.NewSeparator(),
 		kickstartRow,
 		widget.NewSeparator(),
-		widget.NewLabelWithStyle(locale.T("conn.connection_section"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		container.NewBorder(nil, nil, widget.NewLabel(locale.T("settings.daemon_address_label")), nil, addressEntry),
+		widget.NewLabelWithStyle(locale.T("Connection"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		container.NewBorder(nil, nil, widget.NewLabel(locale.T("Daemon address:")), nil, addressEntry),
 		container.NewBorder(nil, nil, nil, secretHelp, secretEntry),
 		stopOnExitCheck,
 	)
@@ -263,9 +263,9 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	// цене ошибки. Заголовки секций стали именами вкладок, поэтому внутри их
 	// больше нет.
 	tabs := container.NewAppTabs(
-		container.NewTabItem(locale.T("conn.status_section"), container.NewPadded(statusTab)),
-		container.NewTabItem(locale.T("conn.install_section"), container.NewPadded(installTab)),
-		container.NewTabItem(locale.T("conn.uninstall_section"), container.NewPadded(uninstallTab)),
+		container.NewTabItem(locale.T("Status"), container.NewPadded(statusTab)),
+		container.NewTabItem(locale.T("Install"), container.NewPadded(installTab)),
+		container.NewTabItem(locale.T("Uninstall"), container.NewPadded(uninstallTab)),
 	)
 	// Стартовая вкладка — по состоянию: пока служба не установлена или не
 	// сопряжена, единственное осмысленное действие живёт в Install; открывать
@@ -300,26 +300,26 @@ func renderDaemonStatusText(ac *core.AppController, snap core.DaemonUIStatus, in
 	var b strings.Builder
 	if includeLocalService {
 		if snap.CoreSupportsLxd {
-			b.WriteString(locale.T("settings.daemon_status_core_ok"))
+			b.WriteString(locale.T("✅ Installed core supports the daemon"))
 		} else {
-			b.WriteString(locale.T("settings.daemon_status_core_unsupported"))
+			b.WriteString(locale.T("❌ Installed core has no lxd support (need sing-box-lx 1.14.0-lx.23+)"))
 		}
 		b.WriteString("\n")
 		if snap.ServiceInstalled {
-			b.WriteString(locale.T("settings.daemon_status_service_installed"))
+			b.WriteString(locale.T("✅ System service installed"))
 		} else {
-			b.WriteString(locale.T("settings.daemon_status_service_missing"))
+			b.WriteString(locale.T("— System service not installed"))
 		}
 		b.WriteString("\n")
 	}
 	if snap.Paired {
-		b.WriteString(locale.Tf("settings.daemon_status_paired", snap.Address))
+		b.WriteString(locale.Tf("✅ Paired (%s)", snap.Address))
 	} else {
-		b.WriteString(locale.T("settings.daemon_status_not_paired"))
+		b.WriteString(locale.T("— Not paired"))
 	}
 	if snap.Reachable {
 		b.WriteString("\n")
-		b.WriteString(locale.Tf("settings.daemon_status_reachable", snap.CoreStatus))
+		b.WriteString(locale.Tf("✅ Daemon reachable, core: %s", snap.CoreStatus))
 		if snap.DaemonVersion != "" {
 			// Локальная сборка ядра репортит version=unknown — «vunknown»
 			// выглядит как опечатка; показываем честное «dev build».
@@ -328,25 +328,25 @@ func renderDaemonStatusText(ac *core.AppController, snap core.DaemonUIStatus, in
 				displayVersion = "dev build"
 			}
 			b.WriteString("\n")
-			b.WriteString(locale.Tf("settings.daemon_status_daemon_line", displayVersion, snap.StateDir))
+			b.WriteString(locale.Tf("Daemon %s · home: %s", displayVersion, snap.StateDir))
 		}
 		if snap.InterruptedApply {
 			b.WriteString("\n")
-			b.WriteString(locale.T("settings.daemon_status_interrupted_apply"))
+			b.WriteString(locale.T("⚠️ A previous config apply was interrupted; the daemon booted the last working config."))
 		}
 		if snap.LastError != "" {
 			b.WriteString("\n")
-			b.WriteString(locale.Tf("settings.daemon_status_last_error", snap.LastError))
+			b.WriteString(locale.Tf("Last error: %s", snap.LastError))
 		}
 	} else if snap.Paired {
 		b.WriteString("\n")
-		b.WriteString(locale.T("settings.daemon_status_unreachable"))
+		b.WriteString(locale.T("❌ Daemon not reachable"))
 	}
 	// Движок фактически не daemon (не сопряжён / переключение не прошло):
 	// подсказываем, что выбор выше — намерение, а не состояние.
 	if ac.BackendMode() != core.BackendDaemon {
 		b.WriteString("\n")
-		b.WriteString(locale.T("conn.daemon_engine_inactive"))
+		b.WriteString(locale.T("— Daemon engine is not active yet: install the service and pair on the Install tab, then it switches on automatically."))
 	}
 	return b.String()
 }
@@ -367,20 +367,20 @@ func showCommandHelpDialog(ac *core.AppController, win fyne.Window, title, text,
 	cmdEntry := widget.NewEntry()
 	cmdEntry.Wrapping = fyne.TextWrapOff
 	cmdEntry.SetText(command)
-	copyBtn := NewCopyButton("conn.cmd_copy_tooltip", func() (string, bool) { return cmdEntry.Text, true })
+	copyBtn := NewCopyButton("Copy the command", func() (string, bool) { return cmdEntry.Text, true })
 	termBtn := ttwidget.NewButtonWithIcon("", theme.ComputerIcon(), func() {
 		if err := ac.OpenTerminalWithCommand(cmdEntry.Text); err != nil {
 			ShowError(win, err)
 		}
 	})
-	termBtn.SetToolTip(locale.T("conn.cmd_terminal_tooltip"))
+	termBtn.SetToolTip(locale.T("Run in Terminal"))
 	content := container.NewVBox(helpText)
 	if command != "" {
 		content.Add(container.NewBorder(nil, nil, nil, container.NewHBox(copyBtn, termBtn), cmdEntry))
 	}
 	scrolled := container.NewVScroll(container.NewBorder(nil, nil, nil,
 		components.NewScrollGutter(), content))
-	dlg := dialogs.NewCustom(title, scrolled, nil, locale.T("dialog.ok"), win)
+	dlg := dialogs.NewCustom(title, scrolled, nil, locale.T("OK"), win)
 	dlg.Resize(fyne.NewSize(520, 360))
 	dlg.Show()
 }

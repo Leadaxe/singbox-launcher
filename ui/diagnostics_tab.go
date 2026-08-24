@@ -161,8 +161,8 @@ func effectiveSTUNServer() string {
 
 // CreateDiagnosticsTab creates and returns the content for the "Diagnostics" tab.
 func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
-	stunButton := widget.NewButton(locale.T("diag.stun_button"), func() {
-		waitDialog := dialogs.NewCustom(locale.T("diag.stun_check_title"), widget.NewLabel(locale.T("diag.stun_checking")), nil, "", ac.UIService.MainWindow)
+	stunButton := widget.NewButton(locale.T("STUN [UDP]"), func() {
+		waitDialog := dialogs.NewCustom(locale.T("STUN Check"), widget.NewLabel(locale.T("Checking, please wait...")), nil, "", ac.UIService.MainWindow)
 		waitDialog.Show()
 
 		server := effectiveSTUNServer()
@@ -185,12 +185,12 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 						debuglog.InfoLog("diagnosticsTab: STUN check successful, IP: %s", ip)
 						connectionInfo = fmt.Sprintf("(determined via [UDP]%s, direct connection)", server)
 					}
-					resultLabel := widget.NewLabel(locale.Tf("diag.external_ip_format", ip, connectionInfo))
-					copyButton := widget.NewButton(locale.T("diag.copy_ip"), func() {
+					resultLabel := widget.NewLabel(locale.Tf("Your External IP: %s\n%s", ip, connectionInfo))
+					copyButton := widget.NewButton(locale.T("Copy IP"), func() {
 						fyne.CurrentApp().Clipboard().SetContent(ip)
-						dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, locale.T("diag.copied_title"), locale.T("diag.ip_copied"))
+						dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow, locale.T("Copied"), locale.T("IP address copied to clipboard."))
 					})
-					ShowCustom(ac.UIService.MainWindow, locale.T("diag.stun_result_title"), locale.T("diag.close"), container.NewVBox(resultLabel, copyButton))
+					ShowCustom(ac.UIService.MainWindow, locale.T("STUN Check Result"), locale.T("Close"), container.NewVBox(resultLabel, copyButton))
 				}
 			})
 		}()
@@ -211,18 +211,18 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 		})
 
 		content := container.NewVBox(
-			widget.NewLabel(locale.T("diag.stun_server_label")),
+			widget.NewLabel(locale.T("STUN server (host:port):")),
 			container.NewBorder(nil, nil, nil, stunHelpButton, serverEntry),
 		)
 		var socksCheck *widget.Check
 		if runtime.GOOS == "darwin" {
-			socksCheck = widget.NewCheck(locale.T("diag.use_system_socks5"), func(bool) {})
+			socksCheck = widget.NewCheck(locale.T("Use system SOCKS5 proxy"), func(bool) {})
 			socksCheck.SetChecked(stunUseSOCKS5OnMac)
 			content.Add(socksCheck)
 		}
 		content.Add(widget.NewLabel(" "))
 
-		d := dialog.NewCustomConfirm(locale.T("diag.stun_settings"), locale.T("diag.save"), locale.T("diag.cancel"), content, func(ok bool) {
+		d := dialog.NewCustomConfirm(locale.T("STUN settings"), locale.T("Save"), locale.T("Cancel"), content, func(ok bool) {
 			if !ok {
 				return
 			}
@@ -259,7 +259,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 	}
 	ipServiceSelect := widget.NewSelect(ipServiceLabels, nil)
 	ipServiceSelect.SetSelectedIndex(0)
-	ipServiceOpenBtn := widget.NewButtonWithIcon(locale.T("diag.open_browser"), theme.ComputerIcon(), func() {
+	ipServiceOpenBtn := widget.NewButtonWithIcon(locale.T("Open in browser"), theme.ComputerIcon(), func() {
 		idx := -1
 		for i, label := range ipServiceLabels {
 			if label == ipServiceSelect.Selected {
@@ -277,7 +277,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 	})
 	ipServicesRow := container.NewBorder(nil, nil, nil, ipServiceOpenBtn, ipServiceSelect)
 
-	openLogWindowButton := widget.NewButtonWithIcon(locale.T("diag.open_log_window"), theme.ViewRestoreIcon(), func() {
+	openLogWindowButton := widget.NewButtonWithIcon(locale.T("Log window"), theme.ViewRestoreIcon(), func() {
 		OpenLogViewerWindow(ac)
 	})
 
@@ -291,13 +291,13 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 		if trafficProfilerBtn == nil {
 			return
 		}
-		label := locale.T("diag.traffic_profiler")
+		label := locale.T("Traffic Profiler")
 		if trafficManager != nil && trafficManager.IsRecording() {
 			label += " ⚡"
 		}
 		trafficProfilerBtn.SetText(label)
 	}
-	trafficProfilerBtn = widget.NewButtonWithIcon(locale.T("diag.traffic_profiler"), theme.SearchIcon(), func() {
+	trafficProfilerBtn = widget.NewButtonWithIcon(locale.T("Traffic Profiler"), theme.SearchIcon(), func() {
 		mgr := trafficWindowManager(ac, func() {
 			fyne.Do(refreshTrafficBtn)
 		})
@@ -311,7 +311,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 		fyne.Do(refreshTrafficBtn)
 	})
 	refreshTrafficBtn()
-	openLogsFolderButton := widget.NewButtonWithIcon(locale.T("diag.open_logs_folder"), theme.FolderOpenIcon(), func() {
+	openLogsFolderButton := widget.NewButtonWithIcon(locale.T("Logs folder"), theme.FolderOpenIcon(), func() {
 		logsDir := platform.GetLogsDir(ac.FileService.ExecDir)
 		if err := platform.OpenFolder(logsDir); err != nil {
 			debuglog.ErrorLog("diagnosticsTab: Failed to open logs folder: %v", err)
@@ -322,7 +322,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 	// v0.9.6: service actions перенесены из Help tab — это maintenance/
 	// troubleshooting действия, по семантике ближе к logs/STUN/debug-api,
 	// чем к информации о версии и ссылкам.
-	openConfigFolderButton := widget.NewButtonWithIcon(locale.T("help.open_config_folder"), theme.FolderOpenIcon(), func() {
+	openConfigFolderButton := widget.NewButtonWithIcon(locale.T("Config folder"), theme.FolderOpenIcon(), func() {
 		binDir := platform.GetBinDir(ac.FileService.ExecDir)
 		if err := platform.OpenFolder(binDir); err != nil {
 			debuglog.ErrorLog("diagnosticsTab: Failed to open config folder: %v", err)
@@ -331,12 +331,12 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 	})
 	// Без иконки — в locale string уже есть 🛑 (по требованию юзера).
 	// MediaStopIcon (⏹) дублировал бы visual.
-	killSingBoxButton := widget.NewButton(locale.T("help.kill_singbox"), func() {
+	killSingBoxButton := widget.NewButton(locale.T("🛑 Kill Sing-Box"), func() {
 		go func() {
 			killSingBoxPanic(ac)
 			fyne.Do(func() {
 				dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
-					locale.T("help.kill_title"), locale.T("help.kill_result"))
+					locale.T("Kill"), locale.T("Sing-Box killed if running."))
 				ac.RunningState.Set(false)
 			})
 		}()
@@ -345,16 +345,16 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 	// Clean unused rule-set files (.srs not referenced by any saved state).
 	// Multi-stage GC is kept (an .srs stays while any saved state uses it);
 	// this is the explicit manual trigger to prune true orphans.
-	cleanRuleSetsButton := widget.NewButtonWithIcon(locale.T("diag.clean_rulesets"), theme.DeleteIcon(), func() {
+	cleanRuleSetsButton := widget.NewButtonWithIcon(locale.T("Clean unused rule-sets"), theme.DeleteIcon(), func() {
 		go func() {
 			removed, err := ac.CleanOrphanRuleSets()
-			msg := locale.Tf("diag.clean_rulesets_done", len(removed))
+			msg := locale.Tf("Removed %d unused rule-set file(s).", len(removed))
 			if err != nil {
 				msg = err.Error()
 			}
 			fyne.Do(func() {
 				dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
-					locale.T("diag.clean_rulesets"), msg)
+					locale.T("Clean unused rule-sets"), msg)
 			})
 		}()
 	})
@@ -377,7 +377,7 @@ func CreateDiagnosticsTab(ac *core.AppController) fyne.CanvasObject {
 		cleanRuleSetsButton,
 		killRow,
 		trafficProfilerBtn,
-		widget.NewLabel(locale.T("diag.ip_check_services")),
+		widget.NewLabel(locale.T("IP Check Services:")),
 		stunRow,
 		ipServicesRow,
 	)

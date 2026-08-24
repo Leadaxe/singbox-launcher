@@ -79,18 +79,18 @@ func (p *WizardPresenter) SaveConfig() {
 func (p *WizardPresenter) validateSaveInput() bool {
 	if strings.TrimSpace(p.model.ParserConfigJSON) == "" {
 		debuglog.WarnLog("SaveConfig: ParserConfig is empty")
-		dialog.ShowError(errors.New(locale.T("wizard.save.error_config_empty")), p.guiState.Window)
+		dialog.ShowError(errors.New(locale.T("ParserConfig is empty")), p.guiState.Window)
 		return false
 	}
 	if err := wizardbusiness.ValidateDNSModel(p.model); err != nil {
 		debuglog.WarnLog("SaveConfig: DNS validation failed: %v", err)
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.dns.error_validation"), err), p.guiState.Window)
+		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("DNS settings are invalid"), err), p.guiState.Window)
 		return false
 	}
 	var pc config.ParserConfig
 	if err := json.Unmarshal([]byte(p.model.ParserConfigJSON), &pc); err != nil {
 		debuglog.WarnLog("SaveConfig: ParserConfig JSON invalid: %v", err)
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.save.error_config_invalid"), err), p.guiState.Window)
+		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("ParserConfig is invalid"), err), p.guiState.Window)
 		return false
 	}
 	for _, px := range pc.ParserConfig.Proxies {
@@ -99,7 +99,7 @@ func (p *WizardPresenter) validateSaveInput() bool {
 		}
 	}
 	debuglog.WarnLog("SaveConfig: no proxy with source or connections in ParserConfig")
-	dialog.ShowError(errors.New(locale.T("wizard.save.error_no_sources")), p.guiState.Window)
+	dialog.ShowError(errors.New(locale.T("Add at least one source: use the Sources tab (Add) or add proxies in ParserConfig on the Outbounds tab.")), p.guiState.Window)
 	return false
 }
 
@@ -107,7 +107,7 @@ func (p *WizardPresenter) validateSaveInput() bool {
 func (p *WizardPresenter) checkSaveOperationState() bool {
 	if p.guiState.SaveInProgress {
 		debuglog.WarnLog("SaveConfig: Save operation already in progress")
-		dialog.ShowInformation(locale.T("wizard.save.dialog_saving"), locale.T("wizard.save.dialog_in_progress"), p.guiState.Window)
+		dialog.ShowInformation(locale.T("Saving"), locale.T("Save operation already in progress... Please wait."), p.guiState.Window)
 		return false
 	}
 	return true
@@ -134,7 +134,7 @@ func (p *WizardPresenter) executeSaveOperation() {
 	// Save no longer needs outbounds parsing — state.json is purely declarative.
 	// Старый `ensureOutboundsParsed` (60-сек poll!) удалён.
 
-	p.UpdateSaveStatusText(locale.T("wizard.save.status_saving_state"))
+	p.UpdateSaveStatusText(locale.T("Saving state..."))
 	p.UpdateSaveProgress(0.5)
 
 	// Step 1: persist state.json.
@@ -215,7 +215,7 @@ func (p *WizardPresenter) executeSaveOperation() {
 		}
 	})
 
-	p.UpdateSaveStatusText(locale.T("wizard.save.status_done"))
+	p.UpdateSaveStatusText(locale.T("Done"))
 	p.UpdateSaveProgress(0.95)
 
 	p.completeSaveOperation()
@@ -241,7 +241,7 @@ func (p *WizardPresenter) saveStateOnly() string {
 	if ac == nil || ac.FileService == nil {
 		debuglog.WarnLog("SaveConfig: controller or FileService not available")
 		p.UpdateUI(func() {
-			dialog.ShowError(errors.New(locale.T("wizard.save.error_controller")), p.guiState.Window)
+			dialog.ShowError(errors.New(locale.T("controller not available")), p.guiState.Window)
 		})
 		return ""
 	}
@@ -278,12 +278,12 @@ func (p *WizardPresenter) finalizeSaveOperation() {
 // к **config.json** (для совместимости i18n-ключей `wizard.save.dialog_*`),
 // но фактическая запись config'а отложена.
 func (p *WizardPresenter) showSaveSuccessDialog(configPath string) {
-	message := locale.Tf("wizard.save.dialog_success_message", configPath)
-	title := locale.T("wizard.save.dialog_success_title")
+	message := locale.Tf("State saved to %s\n\nConfiguration will be rebuilt on next Update or Restart.", configPath)
+	title := locale.T("State Saved")
 
 	// Create dialog with OK button that closes both dialog and wizard
 	var d dialog.Dialog
-	okButton := widget.NewButton(locale.T("dialog.ok"), func() {
+	okButton := widget.NewButton(locale.T("OK"), func() {
 		// Close dialog first
 		if d != nil {
 			d.Hide()
@@ -348,7 +348,7 @@ func (p *WizardPresenter) exportRemoteConfig() {
 		debuglog.WarnLog("exportRemoteConfig: nodes not parsed yet (needsParse=%v, outbounds=%d)",
 			p.model.PreviewNeedsParse, len(p.model.GeneratedOutbounds))
 		p.UpdateUI(func() {
-			dialog.ShowError(errors.New(locale.T("wizard.save.remote_needs_parse")), p.guiState.Window)
+			dialog.ShowError(errors.New(locale.T("Subscriptions have not been parsed for this target yet, so the config would contain no proxy nodes. Open the Preview tab (or press Read on Sources) to parse them, then save again.")), p.guiState.Window)
 		})
 		return
 	}
@@ -359,7 +359,7 @@ func (p *WizardPresenter) exportRemoteConfig() {
 	if p.model.ResourceDir == "" && p.modelHasRuleSetFiles() {
 		debuglog.WarnLog("exportRemoteConfig: no resource dir for machine %q — connect first", p.ConfigMachineID())
 		p.UpdateUI(func() {
-			dialog.ShowError(errors.New(locale.T("wizard.save.remote_needs_connect")), p.guiState.Window)
+			dialog.ShowError(errors.New(locale.T("Connect to this machine first: its config points at the machine's own resource store, and that path comes from the daemon when you connect.")), p.guiState.Window)
 		})
 		return
 	}
@@ -403,7 +403,7 @@ func (p *WizardPresenter) exportRemoteConfig() {
 // Save окно оставалось открытым — поведение расходилось с local-сохранением.
 func (p *WizardPresenter) showRemoteExportDialog(outPath string) {
 	var d dialog.Dialog
-	okButton := widget.NewButton(locale.T("dialog.ok"), func() {
+	okButton := widget.NewButton(locale.T("OK"), func() {
 		if d != nil {
 			d.Hide()
 		}
@@ -418,7 +418,7 @@ func (p *WizardPresenter) showRemoteExportDialog(outPath string) {
 	// переноса: Label с TextWrapWord ломает длинный путь по СИМВОЛАМ
 	// («/Applications/singbox-lau / ncher.app/...»), что нечитаемо и
 	// невозможно скопировать. Entry ещё и выделяется мышью.
-	messageLabel := widget.NewLabel(locale.T("wizard.save.remote_exported_body"))
+	messageLabel := widget.NewLabel(locale.T("The config for the remote machine was written to a separate file. The local bin/config.json was not touched."))
 	messageLabel.Wrapping = fyne.TextWrapWord
 
 	pathField := widget.NewEntry()
@@ -427,7 +427,7 @@ func (p *WizardPresenter) showRemoteExportDialog(outPath string) {
 
 	body := container.NewVBox(messageLabel, pathField)
 
-	d = dialogs.NewCustom(locale.T("wizard.save.remote_exported_title"),
+	d = dialogs.NewCustom(locale.T("Remote config exported"),
 		body, buttonsRow, "", p.guiState.Window)
 	// Ширину задаём явно: Fyne считает её от min-size контента, а у
 	// wrapping-Label он равен одной строке — диалог схлопывался в узкую

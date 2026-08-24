@@ -50,16 +50,16 @@ func knownPresetIDs(presenter *wizardpresentation.WizardPresenter) []string {
 
 // backupSection — блок «Экспорт» / «Импорт» с пояснением.
 func backupSection(presenter *wizardpresentation.WizardPresenter, win fyne.Window) fyne.CanvasObject {
-	exportBtn := widget.NewButton(locale.T("wizard.settings.backup_export"), func() {
+	exportBtn := widget.NewButton(locale.T("Export…"), func() {
 		handleBackupExport(presenter, win)
 	})
-	importBtn := widget.NewButton(locale.T("wizard.settings.backup_import"), func() {
+	importBtn := widget.NewButton(locale.T("Import…"), func() {
 		handleBackupImport(presenter, win)
 	})
 
 	title := widget.NewLabelWithStyle(
-		locale.T("wizard.settings.backup_title"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	hint := widget.NewLabel(locale.T("wizard.settings.backup_hint"))
+		locale.T("Backup"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	hint := widget.NewLabel(locale.T("Export settings to a file to move them between this launcher and LxBox on your phone. Subscriptions, servers, rules, DNS and portable variables are carried over."))
 	hint.Wrapping = fyne.TextWrapWord
 
 	return container.NewVBox(
@@ -74,7 +74,7 @@ func backupSection(presenter *wizardpresentation.WizardPresenter, win fyne.Windo
 func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.Window) {
 	st := presenter.CreateStateFromModel("", "")
 	if st == nil {
-		dialog.ShowError(fmt.Errorf("%s", locale.T("wizard.settings.backup_error_state")), win)
+		dialog.ShowError(fmt.Errorf("%s", locale.T("Cannot read the current state")), win)
 		return
 	}
 
@@ -83,12 +83,12 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 		Platform:   runtime.GOOS,
 	})
 	if err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.settings.backup_error_export"), err), win)
+		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Export failed"), err), win)
 		return
 	}
 
 	suggested := backup.SuggestFileName(time.Now().Format("2006-01-02"))
-	path, ok, err := platform.PickSaveFile(locale.T("wizard.settings.backup_save_prompt"), suggested)
+	path, ok, err := platform.PickSaveFile(locale.T("Save LX Backup"), suggested)
 	if err != nil || !ok {
 		if err != nil && err != platform.ErrNativeDialogUnavailable {
 			debuglog.WarnLog("backup export: save dialog: %v", err)
@@ -106,29 +106,29 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 	}
 
 	if err := backup.WriteFile(path, b); err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.settings.backup_error_export"), err), win)
+		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Export failed"), err), win)
 		return
 	}
 
 	// Секреты в файле лежат открытым текстом (BACKUP.md §5) — пользователь
 	// должен знать об этом ДО того, как отправит файл куда-нибудь.
 	dialog.ShowInformation(
-		locale.T("wizard.settings.backup_export_done_title"),
-		fmt.Sprintf(locale.T("wizard.settings.backup_export_done"), path),
+		locale.T("Backup saved"),
+		fmt.Sprintf(locale.T("Saved to:\n%s\n\nThe file stores passwords and keys as plain text — keep it somewhere safe."), path),
 		win)
 }
 
 // handleBackupImport читает файл, показывает, что приедет, и применяет
 // только после подтверждения.
 func handleBackupImport(presenter *wizardpresentation.WizardPresenter, win fyne.Window) {
-	path, ok, err := platform.PickOpenFile(locale.T("wizard.settings.backup_open_prompt"), []string{"json"})
+	path, ok, err := platform.PickOpenFile(locale.T("Open LX Backup"), []string{"json"})
 	if err != nil || !ok {
 		if err == platform.ErrNativeDialogUnavailable {
 			// Linux без zenity/kdialog: молча вернуться значило бы «кнопка
 			// не работает и не говорит почему». Экспорт в этом случае пишет
 			// в домашний каталог; у импорта запасного пути нет — говорим,
 			// чего не хватает.
-			dialog.ShowError(fmt.Errorf("%s", locale.T("wizard.settings.backup_no_native_dialog")), win)
+			dialog.ShowError(fmt.Errorf("%s", locale.T("Native file dialog is unavailable. Install zenity or kdialog and try again.")), win)
 			return
 		}
 		if err != nil {
@@ -139,16 +139,16 @@ func handleBackupImport(presenter *wizardpresentation.WizardPresenter, win fyne.
 
 	b, parseWarns, err := backup.ReadFile(path)
 	if err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.settings.backup_error_import"), err), win)
+		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Import failed"), err), win)
 		return
 	}
 
 	// Импорт заменяет состояние целиком — спрашиваем ДО, а не после.
 	summary := backupSummary(b, parseWarns)
 	dialog.ShowCustomConfirm(
-		locale.T("wizard.settings.backup_import_confirm_title"),
-		locale.T("wizard.settings.backup_import_apply"),
-		locale.T("dialog.button_cancel"),
+		locale.T("Import backup"),
+		locale.T("Import"),
+		locale.T("Cancel"),
 		widget.NewLabel(summary),
 		func(confirmed bool) {
 			if !confirmed {
@@ -161,7 +161,7 @@ func handleBackupImport(presenter *wizardpresentation.WizardPresenter, win fyne.
 func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window, b *backup.Backup, parseWarns []backup.Warning) {
 	st := presenter.CreateStateFromModel("", "")
 	if st == nil {
-		dialog.ShowError(fmt.Errorf("%s", locale.T("wizard.settings.backup_error_state")), win)
+		dialog.ShowError(fmt.Errorf("%s", locale.T("Cannot read the current state")), win)
 		return
 	}
 
@@ -173,12 +173,12 @@ func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window,
 		KnownPresets:   knownPresetIDs(presenter),
 	})
 	if err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.settings.backup_error_import"), err), win)
+		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Import failed"), err), win)
 		return
 	}
 
 	if err := presenter.LoadState(st); err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.error_restore_state"), err), win)
+		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Failed to restore state"), err), win)
 		return
 	}
 	presenter.SyncModelToGUI()
@@ -186,7 +186,7 @@ func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window,
 
 	all := append(append([]backup.Warning(nil), parseWarns...), res.Warnings...)
 	dialog.ShowInformation(
-		locale.T("wizard.settings.backup_import_done_title"),
+		locale.T("Backup imported"),
 		importReport(res, all),
 		win)
 }
@@ -194,24 +194,24 @@ func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window,
 // backupSummary — что лежит в файле, до применения.
 func backupSummary(b *backup.Backup, warns []backup.Warning) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, locale.T("wizard.settings.backup_summary_head"),
+	fmt.Fprintf(&sb, locale.T("From %s %s, exported %s"),
 		b.ExportedBy.App, b.ExportedBy.Version, b.ExportedAt)
 	sb.WriteString("\n\n")
-	fmt.Fprintf(&sb, locale.T("wizard.settings.backup_summary_counts"),
+	fmt.Fprintf(&sb, locale.T("Subscriptions: %d\nServers: %d\nRules: %d\nVariables: %d"),
 		len(b.Subscriptions), len(b.Servers), len(b.Rules), len(b.Vars))
 	if len(warns) > 0 {
 		sb.WriteString("\n\n")
 		sb.WriteString(warnLines(warns))
 	}
 	sb.WriteString("\n\n")
-	sb.WriteString(locale.T("wizard.settings.backup_import_replaces"))
+	sb.WriteString(locale.T("Importing replaces the current sources and rules."))
 	return sb.String()
 }
 
 // importReport — что применилось и что нет.
 func importReport(res *backup.ImportResult, warns []backup.Warning) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, locale.T("wizard.settings.backup_import_applied"),
+	fmt.Fprintf(&sb, locale.T("Applied: %d source(s), %d rule(s)."),
 		res.AppliedSources, res.AppliedRules)
 	if len(warns) > 0 {
 		sb.WriteString("\n\n")
@@ -224,7 +224,7 @@ func importReport(res *backup.ImportResult, warns []backup.Warning) string {
 // говорит пользователю — он не читал реестр.
 func warnLines(warns []backup.Warning) string {
 	var sb strings.Builder
-	sb.WriteString(locale.T("wizard.settings.backup_warnings_head"))
+	sb.WriteString(locale.T("Not applied as-is:"))
 	shown := 0
 	for _, w := range warns {
 		if shown >= 12 {
@@ -241,15 +241,15 @@ func warnLines(warns []backup.Warning) string {
 func warnText(w backup.Warning) string {
 	switch w.Code {
 	case backup.WarnBackupUnknownOutbound:
-		return fmt.Sprintf(locale.T("wizard.settings.backup_warn_outbound"), w.Detail)
+		return fmt.Sprintf(locale.T("%s — target does not exist here, the rule is imported turned off"), w.Detail)
 	case backup.WarnBackupFinalDropped:
-		return fmt.Sprintf(locale.T("wizard.settings.backup_warn_final"), w.Detail)
+		return fmt.Sprintf(locale.T("%s — default route target does not exist here, left unchanged"), w.Detail)
 	case backup.WarnBackupUnknownPreset:
-		return fmt.Sprintf(locale.T("wizard.settings.backup_warn_preset"), w.Detail)
+		return fmt.Sprintf(locale.T("%s — unknown preset, the rule is imported turned off"), w.Detail)
 	case backup.WarnBackupVarSkipped:
-		return fmt.Sprintf(locale.T("wizard.settings.backup_warn_var"), w.Detail)
+		return fmt.Sprintf(locale.T("%s — this setting means something else on this machine, skipped"), w.Detail)
 	case backup.WarnBackupUnknownField:
-		return fmt.Sprintf(locale.T("wizard.settings.backup_warn_field"), w.Detail)
+		return fmt.Sprintf(locale.T("%s — not supported here, skipped"), w.Detail)
 	default:
 		return w.Code + ": " + w.Detail
 	}

@@ -140,9 +140,9 @@ func (p *ProxyListPanel) Clear() {
 // правая колонка Local, удалённым — строка машины на Remote.
 func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *ProxyListPanel {
 	panel := &ProxyListPanel{scope: scope}
-	apiStatusLabel := widget.NewLabel(locale.T("servers.status_not_checked"))
+	apiStatusLabel := widget.NewLabel(locale.T("Status: Not checked"))
 	panel.apiStatusLabel = apiStatusLabel
-	status := widget.NewLabel(locale.T("servers.status_click_load"))
+	status := widget.NewLabel(locale.T("Click 'Load Proxies'"))
 	panel.listStatusLabel = status
 
 	var (
@@ -231,14 +231,14 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 	onLoadAndRefreshProxies := func() {
 		if ac.APIService == nil {
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized"))
 			return
 		}
 		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 		if !clashAPIEnabled {
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API is disabled: config error"))
 			if ac.UIService.ListStatusLabel != nil {
-				ac.UIService.ListStatusLabel.SetText(locale.T("servers.status_clash_api_disabled"))
+				ac.UIService.ListStatusLabel.SetText(locale.T("Clash API disabled due to config error"))
 			}
 			return
 		}
@@ -248,7 +248,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			return
 		}
 		if ac.UIService.ListStatusLabel != nil {
-			ac.UIService.ListStatusLabel.SetText(locale.Tf("servers.status_loading", group))
+			ac.UIService.ListStatusLabel.SetText(locale.Tf("Loading proxies for '%s'...", group))
 		}
 		go func(group string) {
 			if platform.IsSleeping() {
@@ -303,7 +303,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				}
 
 				if ac.UIService.ListStatusLabel != nil {
-					ac.UIService.ListStatusLabel.SetText(locale.Tf("servers.status_loaded", group, textnorm.NormalizeProxyDisplay(now)))
+					ac.UIService.ListStatusLabel.SetText(locale.Tf("Proxies loaded for '%s'. Active: %s", group, textnorm.NormalizeProxyDisplay(now)))
 				}
 
 				// Update tray menu with new proxy list
@@ -389,7 +389,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 	onTestAPIConnection := func() {
 		if ac.APIService == nil {
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized"))
 			return
 		}
 		// Daemon-режим: Clash API нет, управление по gRPC. «Тест» = проверка
@@ -404,13 +404,13 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				_, _, err := EffectiveProxyTransportIn(ac, scope).GroupProxies(ac.APIService.GetSelectedClashGroup())
 				fyne.Do(func() {
 					if err != nil {
-						ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_grpc_off"))
+						ac.UIService.ApiStatusLabel.SetText(locale.T("❌ gRPC unavailable"))
 						// FailedPrecondition = канал и сопряжение живы, но
 						// ядро внутри демона не запущено — сырой RPC-текст
 						// пугает, а лекарство одно: нажать Start.
 						if strings.Contains(err.Error(), "service is not started") {
 							ShowErrorText(ac.UIService.MainWindow, "Daemon",
-								locale.T("servers.error_daemon_core_idle"))
+								locale.T("The daemon is paired and reachable, but the core is not started yet. Press Start to bring the VPN up."))
 							return
 						}
 						// Машина недоступна по сети (роутер перезагружается,
@@ -420,7 +420,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 						// которого пользователю нечего извлечь.
 						if isUnreachableErr(err) {
 							ShowErrorText(ac.UIService.MainWindow, "Daemon",
-								locale.T("servers.error_daemon_unreachable"))
+								locale.T("The machine is not answering. Check that it is powered on and reachable on the network, then press Connect again."))
 							return
 						}
 						// Группа машины ещё не прочитана — это не сбой, а
@@ -428,14 +428,14 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 						// на ровном месте; хватает строки состояния.
 						if services.IsRemoteGroupUnknown(err) {
 							if panel.listStatusLabel != nil {
-								panel.listStatusLabel.SetText(locale.T("remote.proxies.groups_unknown"))
+								panel.listStatusLabel.SetText(locale.T("Reading the machine's selector groups…"))
 							}
 							return
 						}
 						ShowError(ac.UIService.MainWindow, err)
 						return
 					}
-					ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_grpc_on"))
+					ac.UIService.ApiStatusLabel.SetText(locale.T("✅ gRPC (daemon)"))
 					updateSelectorList()
 					onLoadAndRefreshProxies()
 				})
@@ -444,8 +444,8 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		}
 		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 		if !clashAPIEnabled {
-			ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_clash_api_off_config"))
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
+			ac.UIService.ApiStatusLabel.SetText(locale.T("❌ Clash API Off (Config Error)"))
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API is disabled: config error"))
 			return
 		}
 		go func() {
@@ -471,11 +471,11 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			}
 			fyne.Do(func() {
 				if err != nil {
-					ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_clash_api_off_error"))
+					ac.UIService.ApiStatusLabel.SetText(locale.T("❌ Clash API Off (Error)"))
 					ShowError(ac.UIService.MainWindow, err)
 					return
 				}
-				ac.UIService.ApiStatusLabel.SetText(locale.T("servers.status_clash_api_on"))
+				ac.UIService.ApiStatusLabel.SetText(locale.T("✅ Clash API On"))
 				// Обновить список селекторов после успешного подключения (sing-box запущен, конфиг загружен)
 				updateSelectorList()
 				onLoadAndRefreshProxies()
@@ -499,13 +499,13 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			// «Sing-box is stopped» — про локальное ядро, и на вкладке Remote
 			// эта надпись противоречила зелёной машине со статусом started.
 			if panel.apiStatusLabel != nil {
-				panel.apiStatusLabel.SetText(locale.T("servers.status_not_running"))
+				panel.apiStatusLabel.SetText(locale.T("Status: Not running"))
 			}
 			if panel.listStatusLabel != nil {
 				if panel.scope == services.ScopeRemote {
-					panel.listStatusLabel.SetText(locale.T("remote.proxies.core_stopped"))
+					panel.listStatusLabel.SetText(locale.T("The core on this machine is not running. Press Start in its row."))
 				} else {
-					panel.listStatusLabel.SetText(locale.T("servers.status_singbox_stopped"))
+					panel.listStatusLabel.SetText(locale.T("Sing-box is stopped."))
 				}
 			}
 			if panel.proxiesList != nil {
@@ -533,7 +533,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		onResetAPIState()
 		fyne.Do(func() {
 			if panel.listStatusLabel != nil {
-				panel.listStatusLabel.SetText(locale.T("remote.proxies.no_machine"))
+				panel.listStatusLabel.SetText(locale.T("No machine connected. Pick one on the right and press Connect."))
 			}
 		})
 	}
@@ -564,22 +564,22 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 							if ac.APIService != nil {
 								ac.APIService.SetLastPingError(proxyName, err.Error())
 							}
-							button.SetText(locale.T("servers.ping_button_error"))
+							button.SetText(locale.T("Error"))
 							// Set tooltip immediately so hover shows error without needing a list refresh.
 							if tb, ok := button.(interface{ SetToolTip(string) }); ok && ac.APIService != nil {
 								tb.SetToolTip(ac.APIService.GetLastPingError(proxyName))
 							}
-							status.SetText(locale.Tf("servers.status_delay_error", err.Error()))
+							status.SetText(locale.Tf("Delay error: %s", err.Error()))
 						} else {
 							proxies[i].Delay = delay
 							if ac.APIService != nil {
 								ac.APIService.SetLastPingError(proxyName, "")
 							}
-							button.SetText(locale.Tf("servers.ping_format_ms", delay))
+							button.SetText(locale.Tf("%d ms", delay))
 							if tb, ok := button.(interface{ SetToolTip(string) }); ok {
 								tb.SetToolTip("")
 							}
-							status.SetText(locale.Tf("servers.status_delay_format", delay, textnorm.NormalizeProxyDisplay(proxyName)))
+							status.SetText(locale.Tf("Delay: %d ms for %s", delay, textnorm.NormalizeProxyDisplay(proxyName)))
 						}
 						ac.SetProxiesList(proxies)
 						break
@@ -782,12 +782,12 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 		switchButton.OnTapped = func() {
 			if ac.APIService == nil {
-				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
+				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized"))
 				return
 			}
 			_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 			if !clashAPIEnabled {
-				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
+				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API is disabled: config error"))
 				return
 			}
 			go func(group string) {
@@ -798,7 +798,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				fyne.Do(func() {
 					if err != nil {
 						ShowError(ac.UIService.MainWindow, err)
-						status.SetText(locale.Tf("servers.status_switch_error", err.Error()))
+						status.SetText(locale.Tf("Switch error: %s", err.Error()))
 					} else {
 						// Active name already set in APIService.SwitchProxy; pin active row to top like after API load.
 						ac.SetProxiesList(reorderWithPinned(ac, ac.GetProxiesList()))
@@ -811,7 +811,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 						}
 						pingProxy(proxyNameForCallback, delaySetter)
 						if ac.UIService.ListStatusLabel != nil {
-							ac.UIService.ListStatusLabel.SetText(locale.Tf("servers.status_switched", group, textnorm.NormalizeProxyDisplay(proxyNameForCallback)))
+							ac.UIService.ListStatusLabel.SetText(locale.Tf("Switched '%s' to %s", group, textnorm.NormalizeProxyDisplay(proxyNameForCallback)))
 						}
 					}
 				})
@@ -860,7 +860,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	refreshServersSelectionStatus := func() {
 		n := len(selectedProxyNames)
 		if n == 0 {
-			status.SetText(locale.T("servers.status_selected_none"))
+			status.SetText(locale.T("No proxy selected"))
 			return
 		}
 		if n == 1 {
@@ -871,14 +871,14 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			}
 			for _, p := range ac.GetProxiesList() {
 				if p.Name == name {
-					status.SetText(locale.Tf("servers.status_selected", p.DisplayOrName()))
+					status.SetText(locale.Tf("Selected: %s", p.DisplayOrName()))
 					return
 				}
 			}
-			status.SetText(locale.Tf("servers.status_selected", textnorm.NormalizeProxyDisplay(name)))
+			status.SetText(locale.Tf("Selected: %s", textnorm.NormalizeProxyDisplay(name)))
 			return
 		}
-		status.SetText(locale.Tf("servers.status_selected_multi", n))
+		status.SetText(locale.Tf("Selected: %d proxies", n))
 	}
 
 	refreshServersProxySelectionUI = func() {
@@ -997,12 +997,12 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			sort.Slice(sorted, func(i, j int) bool {
 				return sorted[i].DisplayOrName() < sorted[j].DisplayOrName()
 			})
-			status.SetText(locale.T("servers.status_sorted_name_az"))
+			status.SetText(locale.T("Sorted by name (A-Z)"))
 		} else {
 			sort.Slice(sorted, func(i, j int) bool {
 				return sorted[i].DisplayOrName() > sorted[j].DisplayOrName()
 			})
-			status.SetText(locale.T("servers.status_sorted_name_za"))
+			status.SetText(locale.T("Sorted by name (Z-A)"))
 		}
 		currentSortType = "name"
 		savedSortNameAscending = ascending // Сохраняем направление для восстановления
@@ -1036,7 +1036,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				}
 				return delayI < delayJ
 			})
-			status.SetText(locale.T("servers.status_sorted_delay_fast"))
+			status.SetText(locale.T("Sorted by delay (fastest first)"))
 		} else {
 			// Сортировка по задержке (больше - выше), прокси без задержки в начало
 			sort.Slice(sorted, func(i, j int) bool {
@@ -1051,7 +1051,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				}
 				return delayI > delayJ
 			})
-			status.SetText(locale.T("servers.status_sorted_delay_slow"))
+			status.SetText(locale.T("Sorted by delay (slowest first)"))
 		}
 
 		currentSortType = "delay"
@@ -1078,20 +1078,20 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	// --- Функция массового пинга всех прокси ---
 	pingAllProxies := func() {
 		if ac.APIService == nil {
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized"))
 			return
 		}
 		_, _, clashAPIEnabled, _ := EffectiveClashAPIConfigIn(ac, scope)
 		if !clashAPIEnabled {
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API is disabled: config error"))
 			return
 		}
 		proxies := ac.GetProxiesList()
 		if len(proxies) == 0 {
-			status.SetText(locale.T("servers.status_no_proxies"))
+			status.SetText(locale.T("No proxies to ping"))
 			return
 		}
-		status.SetText(locale.Tf("servers.status_pinging", len(proxies)))
+		status.SetText(locale.Tf("Pinging %d proxies...", len(proxies)))
 
 		go func() {
 			gen := atomic.AddUint64(&pingAllGeneration, 1)
@@ -1143,7 +1143,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 						}
 						reconcileListSelection()
 						completed++
-						status.SetText(locale.Tf("servers.status_pinging_progress", completed, total))
+						status.SetText(locale.Tf("Pinging %d/%d...", completed, total))
 					})
 				}
 				done <- struct{}{}
@@ -1166,7 +1166,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				if atomic.LoadUint64(&pingAllGeneration) != gen {
 					return
 				}
-				status.SetText(locale.Tf("servers.status_ping_completed", len(proxies)))
+				status.SetText(locale.Tf("Ping test completed for %d proxies", len(proxies)))
 			})
 		}()
 	}
@@ -1189,8 +1189,8 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			sortByNameButton.SetText("↓")
 		}
 	})
-	sortByNameButton.SetToolTip(locale.T("servers.tooltip_sort_by_name"))
-	sortNameLabel := widget.NewLabel(locale.T("servers.label_sort_by_name"))
+	sortByNameButton.SetToolTip(locale.T("Sort by name (toggle A–Z / Z–A)"))
+	sortNameLabel := widget.NewLabel(locale.T("A…Z"))
 
 	exportShareURIsButton = ttwidget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
 		if ac.UIService == nil || ac.UIService.MainWindow == nil {
@@ -1198,17 +1198,17 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		}
 		win := ac.UIService.MainWindow
 		if ac.FileService == nil || strings.TrimSpace(ac.FileService.ConfigPath) == "" {
-			ShowErrorText(win, locale.T("app.tab.servers"), locale.T("servers.error_export_no_config"))
+			ShowErrorText(win, locale.T("🖥️ Servers"), locale.T("Config path is not set."))
 			return
 		}
 		allProxies := ac.GetProxiesList()
 		if len(allProxies) == 0 {
-			status.SetText(locale.T("servers.status_no_proxies"))
+			status.SetText(locale.T("No proxies to ping"))
 			return
 		}
 		visible := proxiesForListView()
 		if len(visible) == 0 {
-			status.SetText(locale.T("servers.status_export_nothing_visible"))
+			status.SetText(locale.T("Nothing to export (no rows match the current view)."))
 			return
 		}
 		var rowsForExport []api.ProxyInfo
@@ -1219,7 +1219,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				}
 			}
 			if len(rowsForExport) == 0 {
-				status.SetText(locale.T("servers.status_export_nothing_selected"))
+				status.SetText(locale.T("Nothing to export (no selected rows in the current view)."))
 				return
 			}
 		} else {
@@ -1235,7 +1235,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		cfgPath := ac.FileService.ConfigPath
 		go func() {
 			fyne.Do(func() {
-				status.SetText(locale.T("servers.status_export_uris_building"))
+				status.SetText(locale.T("Preparing export…"))
 			})
 			lines, err := config.BuildShareURILinesForOutboundTags(cfgPath, tags)
 			fyne.Do(func() {
@@ -1244,7 +1244,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 					return
 				}
 				if len(lines) == 0 {
-					ShowErrorText(win, locale.T("app.tab.servers"), locale.T("servers.status_export_uris_none"))
+					ShowErrorText(win, locale.T("🖥️ Servers"), locale.T("No share links could be built for this list."))
 					return
 				}
 				// One line per server URI; full block to clipboard.
@@ -1252,7 +1252,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
 					app.Clipboard().SetContent(clipboardText)
 				}
-				status.SetText(locale.Tf("servers.status_export_uris_done", len(lines)))
+				status.SetText(locale.Tf("Clipboard: %d lines (one URI per line)", len(lines)))
 			})
 		}()
 	})
@@ -1261,9 +1261,9 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			return
 		}
 		if len(selectedProxyNames) > 1 {
-			exportShareURIsButton.SetToolTip(locale.T("servers.tooltip_export_uris_selected"))
+			exportShareURIsButton.SetToolTip(locale.T("Copy share links for selected proxies only (multiple selection), in current list order (same URI rules as the default copy)."))
 		} else {
-			exportShareURIsButton.SetToolTip(locale.T("servers.tooltip_export_uris"))
+			exportShareURIsButton.SetToolTip(locale.T("Copy share links for all rows visible now, in current list order (one URI per line; hidden ping-error rows are skipped; excludes selector, urltest, direct)."))
 		}
 	}
 	syncExportShareURIsButtonTooltip()
@@ -1282,7 +1282,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			sortByDelayButton.SetText("↓")
 		}
 	})
-	sortByDelayButton.SetToolTip(locale.T("servers.tooltip_sort_by_delay"))
+	sortByDelayButton.SetToolTip(locale.T("Sort by ping delay (toggle fastest first / slowest first)"))
 
 	filterPingErrorsButton := ttwidget.NewButtonWithIcon("", theme.VisibilityOffIcon(), nil)
 	// Default (medium) importance — same gray style as sort arrows and Test in this row.
@@ -1290,11 +1290,11 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		if hidePingErrors {
 			filterPingErrorsButton.SetIcon(theme.VisibilityIcon())
 			filterPingErrorsButton.SetText("")
-			filterPingErrorsButton.SetToolTip(locale.T("servers.tooltip_show_ping_errors"))
+			filterPingErrorsButton.SetToolTip(locale.T("Show all servers"))
 		} else {
 			filterPingErrorsButton.SetIcon(theme.VisibilityOffIcon())
 			filterPingErrorsButton.SetText("")
-			filterPingErrorsButton.SetToolTip(locale.T("servers.tooltip_hide_ping_errors"))
+			filterPingErrorsButton.SetToolTip(locale.T("Hide servers with ping errors"))
 		}
 	}
 	updatePingErrorsFilterButton()
@@ -1307,7 +1307,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				avail++
 			}
 		}
-		status.SetText(locale.Tf("servers.status_list_counts", total, avail))
+		status.SetText(locale.Tf("Total / Available: %d / %d", total, avail))
 	}
 	filterPingErrorsButton.OnTapped = func() {
 		hidePingErrors = !hidePingErrors
@@ -1317,8 +1317,8 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		setListFilterStatus()
 	}
 
-	pingAllButton := ttwidget.NewButton(locale.T("servers.button_test"), pingAllProxies)
-	pingAllButton.SetToolTip(locale.T("servers.tooltip_ping_all"))
+	pingAllButton := ttwidget.NewButton(locale.T("test"), pingAllProxies)
+	pingAllButton.SetToolTip(locale.T("Ping all proxies in this group"))
 
 	// Let the controller trigger ping-all ~5s after VPN connects, so latency
 	// in the list is fresh when the user looks. Runs on the UI thread via
@@ -1346,7 +1346,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			api.PingTestEndpointYaStaticICO,
 		}
 
-		customMode := locale.T("servers.ping_option_custom")
+		customMode := locale.T("Custom")
 
 		options := make([]string, 0, len(endpoints)+1)
 		selected := customMode
@@ -1375,7 +1375,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		parallelSelect.SetSelected(parallelChosen)
 
 		parallelRow := container.NewHBox(
-			widget.NewLabel(locale.T("servers.ping_label_parallel")),
+			widget.NewLabel(locale.T("Parallel requests (ping all):")),
 			parallelSelect,
 		)
 
@@ -1396,22 +1396,22 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		timeoutSelect.SetSelected(timeoutChosen)
 
 		timeoutRow := container.NewHBox(
-			widget.NewLabel(locale.T("servers.ping_label_timeout")),
+			widget.NewLabel(locale.T("Single test timeout:")),
 			timeoutSelect,
-			widget.NewLabel(locale.T("servers.ping_unit_seconds")),
+			widget.NewLabel(locale.T("s")),
 		)
 
 		content := container.NewVBox(
-			widget.NewLabel(locale.T("servers.ping_label_url")),
+			widget.NewLabel(locale.T("Ping test URL")),
 			radio,
-			widget.NewLabel(locale.T("servers.ping_label_custom_url")),
+			widget.NewLabel(locale.T("Custom URL:")),
 			urlEntry,
 			parallelRow,
 			timeoutRow,
 			widget.NewLabel(" "),
 		)
 
-		d := dialog.NewCustomConfirm(locale.T("servers.dialog_ping_settings_title"), locale.T("servers.ping_button_save"), locale.T("servers.ping_button_cancel"), content, func(ok bool) {
+		d := dialog.NewCustomConfirm(locale.T("Ping test settings"), locale.T("Save"), locale.T("Cancel"), content, func(ok bool) {
 			if !ok {
 				return
 			}
@@ -1450,7 +1450,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				debuglog.WarnLog("ping settings: failed to save settings.json: %v", err)
 			}
 
-			status.SetText(locale.Tf("servers.status_ping_url_updated", newURL))
+			status.SetText(locale.Tf("Ping test URL updated: %s", newURL))
 		}, ac.UIService.MainWindow)
 
 		radio.OnChanged = func(val string) {
@@ -1463,7 +1463,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 
 		d.Show()
 	})
-	pingSettingsButton.SetToolTip(locale.T("servers.tooltip_ping_settings"))
+	pingSettingsButton.SetToolTip(locale.T("Ping test URL and parallel requests"))
 
 	// Группа кнопок: слева сортировка, справа пинг, настройки и сортировка по задержке
 	buttonsRow := container.NewHBox(
@@ -1480,7 +1480,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	// Mapping button for showing selector -> currently active outbound (queried from Clash API)
 	mapButton := widget.NewButton("⇄", func() {
 		if ac.APIService == nil {
-			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_not_initialized"))
+			ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API service is not initialized"))
 			return
 		}
 		// Гейт «clash_api включён» осмыслен только для classic: в daemon-режиме
@@ -1488,7 +1488,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		// зависят (её может вообще не быть).
 		if ac.BackendMode() != core.BackendDaemon {
 			if _, _, enabled, _ := EffectiveClashAPIConfigIn(ac, scope); !enabled {
-				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("servers.error_api_disabled"))
+				ShowErrorText(ac.UIService.MainWindow, "Clash API", locale.T("API is disabled: config error"))
 				return
 			}
 		}
@@ -1522,13 +1522,13 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			for _, sel := range currentSelectorOptions {
 				_, now, err := transport.GroupProxies(sel)
 				if err != nil {
-					results = append(results, locale.Tf("servers.selector_error", sel, err))
+					results = append(results, locale.Tf("%s -> error: %v", sel, err))
 					continue
 				}
 				if now == "" {
-					results = append(results, locale.Tf("servers.selector_no_active", sel))
+					results = append(results, locale.Tf("%s -> (no active outbound)", sel))
 				} else {
-					results = append(results, locale.Tf("servers.selector_active", sel, textnorm.NormalizeProxyDisplay(now)))
+					results = append(results, locale.Tf("%s -> %s", sel, textnorm.NormalizeProxyDisplay(now)))
 				}
 			}
 
@@ -1541,7 +1541,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				}
 				scroll := container.NewVScroll(content)
 				scroll.SetMinSize(fyne.NewSize(480, 260))
-				dlg := dialogs.NewCustom(locale.T("servers.dialog_selector_active_title"), scroll, nil, locale.T("servers.dialog_selector_close"), ac.UIService.MainWindow)
+				dlg := dialogs.NewCustom(locale.T("Selector -> Active Outbound"), scroll, nil, locale.T("Close"), ac.UIService.MainWindow)
 				dlg.Show()
 			})
 		}()
@@ -1563,9 +1563,9 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		// Update status to show selected group and last used proxy for the group (if any)
 		lastUsed := ac.GetLastSelectedProxyForGroup(value)
 		if lastUsed != "" {
-			status.SetText(locale.Tf("servers.status_selected_group", value, textnorm.NormalizeProxyDisplay(lastUsed)))
+			status.SetText(locale.Tf("Selected group '%s'. Last used proxy: %s", value, textnorm.NormalizeProxyDisplay(lastUsed)))
 		} else {
-			status.SetText(locale.Tf("servers.status_selected_group_only", value))
+			status.SetText(locale.Tf("Selected group '%s'.", value))
 		}
 		// Update tray menu when group changes
 		if ac.UIService != nil && ac.UIService.UpdateTrayMenuFunc != nil {
@@ -1589,7 +1589,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			onLoadAndRefreshProxies()
 		}
 	})
-	groupSelect.PlaceHolder = locale.T("servers.placeholder_select_group")
+	groupSelect.PlaceHolder = locale.T("Select selector group")
 	if selectedGroup != "" {
 		suppressSelectCallback = true
 		groupSelect.SetSelected(selectedGroup)
@@ -1618,7 +1618,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		updateSelectorList()
 		onLoadAndRefreshProxies()
 	})
-	reloadGroupsBtn.SetToolTip(locale.T("servers.reload_groups_tooltip"))
+	reloadGroupsBtn.SetToolTip(locale.T("Reload the selector groups from the core"))
 	reloadGroupsBtn.Importance = widget.LowImportance
 
 	// Тихое авто-обновление списка узлов удалённой машины (раз в 5 секунд).
@@ -1649,7 +1649,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		pulse := newRefreshPulse(func() {
 			updateSelectorList()
 			onLoadAndRefreshProxies()
-		}, locale.T("servers.reload_groups_tooltip"))
+		}, locale.T("Reload the selector groups from the core"))
 		panel.autoRefresh.SetCountdownFunc(pulse.SetCountdown)
 		refreshRight = pulse.Object()
 	}
@@ -1659,7 +1659,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	// строки, HBox сложил бы всё встык слева.
 	groupRow := container.NewBorder(nil, nil, nil, refreshRight,
 		container.NewHBox(
-			widget.NewLabel(locale.T("servers.label_selector_group")), groupSelect, mapButton,
+			widget.NewLabel(locale.T("Selector group:")), groupSelect, mapButton,
 		),
 	)
 	topControls := container.NewVBox(groupRow, widget.NewSeparator(), buttonsRow)
@@ -1707,7 +1707,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			panel.setEnabled(false)
 			// Пустой список без объяснения читается как поломка. Говорим, чего
 			// не хватает: машина не выбрана.
-			status.SetText(locale.T("remote.proxies.no_machine"))
+			status.SetText(locale.T("No machine connected. Pick one on the right and press Connect."))
 		}
 	}
 

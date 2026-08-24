@@ -78,9 +78,9 @@ func renderUnpackedNodes(nodes []*config.ParsedNode) (string, string) {
 	if err != nil {
 		return "", err.Error()
 	}
-	status := locale.Tf("wizard.source.json_sub_status", emitted)
+	status := locale.Tf("Unpacked nodes: %d", emitted)
 	if emitted >= previewNodeCap {
-		status += " " + locale.Tf("wizard.source.json_sub_truncated", previewNodeCap)
+		status += " " + locale.Tf("(showing first %d)", previewNodeCap)
 	}
 	return string(b), status
 }

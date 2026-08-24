@@ -66,7 +66,7 @@ func addChainSection(ac *core.AppController, body *fyne.Container, win fyne.Wind
 // buildChainSection рисует позиции и кнопку замера.
 func buildChainSection(ac *core.AppController, box *fyne.Container, win fyne.Window, info core.ChainInfo) {
 	box.Add(widget.NewSeparator())
-	box.Add(sectionHeader(locale.Tf("servers.node_info_section_chain", len(info.Positions))))
+	box.Add(sectionHeader(locale.Tf("Chain positions (%d)", len(info.Positions))))
 
 	// Строка на позицию: слева состав, справа замер. Обе колонки живут в
 	// одной строке, чтобы задержка читалась напротив своего хопа, а не
@@ -93,9 +93,9 @@ func buildChainSection(ac *core.AppController, box *fyne.Container, win fyne.Win
 
 	var probeBtn *widget.Button
 	probeBtn = widget.NewButtonWithIcon(
-		locale.T("servers.node_info_chain_probe"), theme.ViewRefreshIcon(), func() {
+		locale.T("Probe by position"), theme.ViewRefreshIcon(), func() {
 			probeBtn.Disable()
-			probeBtn.SetText(locale.T("servers.node_info_chain_probing"))
+			probeBtn.SetText(locale.T("Measuring…"))
 			for _, d := range delays {
 				d.SetText("")
 			}
@@ -125,7 +125,7 @@ func buildChainSection(ac *core.AppController, box *fyne.Container, win fyne.Win
 					}
 					applyChainProbeResults(results, delays, errLabel)
 					probeBtn.Enable()
-					probeBtn.SetText(locale.T("servers.node_info_chain_probe_again"))
+					probeBtn.SetText(locale.T("Probe again"))
 				})
 			}()
 		})
@@ -144,7 +144,7 @@ func chainPositionText(i int, pos core.ChainPositionInfo) string {
 		text += "  ● " + now
 	}
 	if pos.Transparent {
-		text += "  · " + locale.T("servers.node_info_chain_transparent")
+		text += "  · " + locale.T("collapsed")
 	}
 	return text
 }
@@ -189,11 +189,11 @@ func applyChainProbeResults(results []chainLayerResult, delays []*widget.Label, 
 		delays[i].Importance = widget.MediumImportance
 		switch {
 		case res.Skipped:
-			delays[i].SetText(locale.T("servers.node_info_chain_skipped"))
+			delays[i].SetText(locale.T("—"))
 			// Опорную точку схлопнутая позиция не сбрасывает: пакет через
 			// неё проходит, просто без своего звена.
 		case res.Error != "":
-			delays[i].SetText(locale.T("servers.node_info_chain_failed"))
+			delays[i].SetText(locale.T("error"))
 			delays[i].Importance = widget.DangerImportance
 			if firstError == "" {
 				firstError = res.Error

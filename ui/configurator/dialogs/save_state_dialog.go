@@ -48,10 +48,10 @@ func ShowSaveStateDialog(presenter *wizardpresentation.WizardPresenter, onResult
 
 	// Input fields
 	idEntry := widget.NewEntry()
-	idEntry.SetPlaceHolder(locale.T("wizard.save_state.placeholder_id"))
+	idEntry.SetPlaceHolder(locale.T("Enter state ID (a-z, A-Z, 0-9, -, _)"))
 
 	commentEntry := widget.NewMultiLineEntry()
-	commentEntry.SetPlaceHolder(locale.T("wizard.save_state.placeholder_comment"))
+	commentEntry.SetPlaceHolder(locale.T("Comment (optional)"))
 	commentEntry.Wrapping = fyne.TextWrapWord
 
 	// Предупреждение о существующем ID
@@ -62,7 +62,7 @@ func ShowSaveStateDialog(presenter *wizardpresentation.WizardPresenter, onResult
 	validateID := func() (string, error) {
 		id := idEntry.Text
 		if id == "" {
-			return "", fmt.Errorf("%s", locale.T("wizard.save_state.error_empty"))
+			return "", fmt.Errorf("%s", locale.T("ID cannot be empty"))
 		}
 		if err := wizardmodels.ValidateStateID(id); err != nil {
 			return "", err
@@ -84,7 +84,7 @@ func ShowSaveStateDialog(presenter *wizardpresentation.WizardPresenter, onResult
 			return
 		}
 		if checkIDExists(id) {
-			warningLabel.SetText(locale.T("wizard.save_state.warning_exists"))
+			warningLabel.SetText(locale.T("State with this ID already exists. It will be overwritten."))
 			warningLabel.Show()
 		} else {
 			warningLabel.Hide()
@@ -93,7 +93,7 @@ func ShowSaveStateDialog(presenter *wizardpresentation.WizardPresenter, onResult
 
 	// Buttons
 	var dialogWindow dialog.Dialog
-	saveButton := widget.NewButton(locale.T("wizard.save_state.button_save"), func() {
+	saveButton := widget.NewButton(locale.T("Save"), func() {
 		id, err := validateID()
 		if err != nil {
 			dialog.ShowError(err, guiState.Window)
@@ -114,9 +114,9 @@ func ShowSaveStateDialog(presenter *wizardpresentation.WizardPresenter, onResult
 
 	// Fields container
 	fieldsContainer := container.NewVBox(
-		widget.NewLabel(locale.T("wizard.save_state.label_id")),
+		widget.NewLabel(locale.T("State ID:")),
 		idEntry,
-		widget.NewLabel(locale.T("wizard.save_state.label_comment")),
+		widget.NewLabel(locale.T("Comment:")),
 		container.NewScroll(commentEntry),
 		warningLabel,
 	)
@@ -131,7 +131,7 @@ func ShowSaveStateDialog(presenter *wizardpresentation.WizardPresenter, onResult
 	originalOnTypedKey := guiState.Window.Canvas().OnTypedKey()
 
 	// Create dialog with simplified API (cancelButton через dismissText, ESC обрабатывается автоматически)
-	dialogWindow = internaldialogs.NewCustom(locale.T("wizard.save_state.title"), fieldsContainer, buttonsContainer, locale.T("wizard.save_state.button_cancel"), guiState.Window)
+	dialogWindow = internaldialogs.NewCustom(locale.T("Save State"), fieldsContainer, buttonsContainer, locale.T("Cancel"), guiState.Window)
 	dialogWindow.Resize(fyne.NewSize(400, 300))
 
 	// Обработчик для cancelButton через dismissText и ESC

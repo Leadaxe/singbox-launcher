@@ -42,13 +42,13 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 
 	// Transport switch: показываем ровно одну секцию.
 	transport := widget.NewRadioGroup([]string{
-		locale.T("wizard.warp.mode_wireguard"),
-		locale.T("wizard.warp.mode_masque"),
+		locale.T("WireGuard"),
+		locale.T("MASQUE"),
 	}, nil)
 	transport.Horizontal = true
-	transport.SetSelected(locale.T("wizard.warp.mode_wireguard"))
+	transport.SetSelected(locale.T("WireGuard"))
 	transport.OnChanged = func(sel string) {
-		if sel == locale.T("wizard.warp.mode_masque") {
+		if sel == locale.T("MASQUE") {
 			wg.container.Hide()
 			mq.container.Show()
 		} else {
@@ -58,7 +58,7 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 	}
 	mq.container.Hide()
 
-	intro := widget.NewLabel(locale.T("wizard.warp.intro"))
+	intro := widget.NewLabel(locale.T("Registers a new anonymous WARP account. The key is generated on this device — only the public key is sent to Cloudflare."))
 	intro.Wrapping = fyne.TextWrapWord // иначе 120-симв строка задаёт огромный min-width окна
 
 	// Регистрация переиспользуется из кеша (state.warp_accounts): H2 и H3,
@@ -66,8 +66,8 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 	// снята по умолчанию; включённая заставляет пойти в Cloudflare за свежей
 	// регистрацией и перезаписать кеш. Показываем её только когда кеш реально
 	// есть — иначе она обещает выбор, которого нет.
-	newKeys := widget.NewCheck(locale.T("wizard.warp.new_keys"), nil)
-	newKeysNote := widget.NewLabel(locale.T("wizard.warp.new_keys_note"))
+	newKeys := widget.NewCheck(locale.T("Create new keys (fresh Cloudflare registration)"), nil)
+	newKeysNote := widget.NewLabel(locale.T("By default the node reuses the registration you already have, so H2 and H3 share one key. Tick this if you need a new account — the old one is replaced."))
 	newKeysNote.Wrapping = fyne.TextWrapWord
 	newKeysNote.TextStyle = fyne.TextStyle{Italic: true}
 	newKeysRow := container.NewVBox(newKeys, newKeysNote)
@@ -77,7 +77,7 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 
 	content := container.NewVBox(
 		intro,
-		container.NewHBox(widget.NewLabel(locale.T("wizard.warp.transport_label")), transport),
+		container.NewHBox(widget.NewLabel(locale.T("Transport")), transport),
 		newKeysRow,
 		widget.NewSeparator(),
 		wg.container,
@@ -93,7 +93,7 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 	if controller == nil || controller.UIService == nil {
 		return
 	}
-	warpWindow := controller.UIService.Application.NewWindow(locale.T("wizard.warp.title"))
+	warpWindow := controller.UIService.Application.NewWindow(locale.T("Generate Cloudflare WARP"))
 
 	// Точь-в-точь как preset_ref_edit (Edit Rule), который работает: контент в
 	// VScroll + gutter внутри, ширину держит само окно (Resize ниже). Никаких
@@ -101,12 +101,12 @@ func ShowAddWarpDialog(presenter *wizardpresentation.WizardPresenter, onURI func
 	scrollInner := container.NewBorder(nil, nil, nil, components.NewScrollGutter(), content)
 	scroll := container.NewVScroll(scrollInner)
 
-	cancelButton := widget.NewButton(locale.T("wizard.warp.button_cancel"), func() {
+	cancelButton := widget.NewButton(locale.T("Cancel"), func() {
 		warpWindow.Close()
 	})
-	createButton := widget.NewButton(locale.T("wizard.warp.button_create"), func() {
+	createButton := widget.NewButton(locale.T("Create"), func() {
 		warpWindow.Close()
-		if transport.Selected == locale.T("wizard.warp.mode_masque") {
+		if transport.Selected == locale.T("MASQUE") {
 			runMasqueRegistration(win, presenter, onURI, mq.collect(), newKeys.Checked)
 		} else {
 			runWarpRegistration(win, presenter, onURI, wg.collect(), newKeys.Checked)
@@ -131,11 +131,11 @@ type warpWGSection struct {
 }
 
 func newWarpWGSection() *warpWGSection {
-	obfuscate := widget.NewCheck(locale.T("wizard.warp.obfuscate"), nil)
+	obfuscate := widget.NewCheck(locale.T("AmneziaWG obfuscation (anti-DPI)"), nil)
 	obfuscate.SetChecked(true)
 
 	license := widget.NewEntry()
-	license.SetPlaceHolder(locale.T("wizard.warp.license_placeholder"))
+	license.SetPlaceHolder(locale.T("optional — leave empty for free WARP"))
 
 	endpoint := widget.NewEntry()
 	endpoint.SetPlaceHolder("engage.cloudflareclient.com:2408")
@@ -169,7 +169,7 @@ func newWarpWGSection() *warpWGSection {
 	// набора форсятся в collect() ниже. Против DPI с WARP работают только jc/jmin/
 	// jmax (отдельные мусорные датаграммы, сервер их игнорит) + masquerade id/ip/ib.
 
-	reserved := widget.NewCheck(locale.T("wizard.warp.reserved"), nil)
+	reserved := widget.NewCheck(locale.T("Bind to this device (reserved)"), nil)
 
 	applyPreset := func(name string) {
 		p := warp.PresetByName(name)
@@ -185,7 +185,7 @@ func newWarpWGSection() *warpWGSection {
 	preset.OnChanged = applyPreset
 
 	// ib только при ip=quic; masquerade-блок только при obfuscate.
-	ibRow := labeledRow(locale.T("wizard.warp.masq_browser"), ibSel)
+	ibRow := labeledRow(locale.T("Browser (ib)"), ibSel)
 	ipSel.OnChanged = func(v string) {
 		if v == "quic" {
 			ibRow.Show()
@@ -194,26 +194,26 @@ func newWarpWGSection() *warpWGSection {
 		}
 	}
 
-	junkNote := widget.NewLabelWithStyle(locale.T("wizard.warp.junk_note"), fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+	junkNote := widget.NewLabelWithStyle(locale.T("jc/jmin/jmax add standalone junk packets (safe with WARP). Packet padding (s1–s4) and magic headers (h1–h4) are fixed to WARP-compatible values — a plain-WireGuard WARP server drops any other padding, breaking the handshake."), fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
 	junkNote.Wrapping = fyne.TextWrapWord // 224-симв подсказка — без wrap задаёт огромный min-width
 
 	advanced := container.NewVBox(
-		labeledRow(locale.T("wizard.warp.license_label"), license),
-		labeledRow(locale.T("wizard.warp.endpoint_label"), container.NewBorder(nil, nil, nil, randEndpointBtn, endpoint)),
+		labeledRow(locale.T("WARP+ license"), license),
+		labeledRow(locale.T("Endpoint"), container.NewBorder(nil, nil, nil, randEndpointBtn, endpoint)),
 		reserved,
 		widget.NewSeparator(),
-		widget.NewLabelWithStyle(locale.T("wizard.warp.masq_header"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		labeledRow(locale.T("wizard.warp.masq_protocol"), ipSel),
-		labeledRow(locale.T("wizard.warp.masq_domain"), container.NewBorder(nil, nil, nil, randIDBtn, idEntry)),
+		widget.NewLabelWithStyle(locale.T("Masquerade"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		labeledRow(locale.T("Protocol (ip)"), ipSel),
+		labeledRow(locale.T("Domain (id)"), container.NewBorder(nil, nil, nil, randIDBtn, idEntry)),
 		ibRow,
 		container.NewGridWithColumns(3,
 			labeledRow("jc", jc), labeledRow("jmin", jmin), labeledRow("jmax", jmax)),
 		junkNote,
 	)
-	acc := widget.NewAccordion(widget.NewAccordionItem(locale.T("wizard.warp.advanced"), advanced))
+	acc := widget.NewAccordion(widget.NewAccordionItem(locale.T("Advanced (all fields)"), advanced))
 
 	// obfuscate=false → прячем пресет+advanced masquerade (plain WARP).
-	presetRow := labeledRow(locale.T("wizard.warp.preset_label"), preset)
+	presetRow := labeledRow(locale.T("Obfuscation preset"), preset)
 	obfuscate.OnChanged = func(on bool) {
 		if on {
 			presetRow.Show()
@@ -272,7 +272,7 @@ func newWarpMasqueSection() *warpMasqueSection {
 	idle.SetPlaceHolder("5")
 	keep := numEntry("")
 	keep.SetPlaceHolder("30")
-	keepRow := labeledRow(locale.T("wizard.warp.masque_keepalive"), keep)
+	keepRow := labeledRow(locale.T("Keep-alive (sec)"), keep)
 	vhttp.OnChanged = func(v string) {
 		if v == "h3" {
 			keepRow.Show()
@@ -281,14 +281,14 @@ func newWarpMasqueSection() *warpMasqueSection {
 		}
 	}
 
-	masqueNote := widget.NewLabel(locale.T("wizard.warp.masque_note"))
+	masqueNote := widget.NewLabel(locale.T("MASQUE tunnels over HTTPS/QUIC and masks itself — AmneziaWG obfuscation does not apply. Requires core lx.3+."))
 	masqueNote.Wrapping = fyne.TextWrapWord // 108-симв подсказка — без wrap раздувает окно
 
 	box := container.NewVBox(
 		masqueNote,
-		labeledRow(locale.T("wizard.warp.masque_transport"), vhttp),
-		labeledRow(locale.T("wizard.warp.masque_sni"), container.NewBorder(nil, nil, nil, randSNIBtn, sni)),
-		labeledRow(locale.T("wizard.warp.masque_idle"), idle),
+		labeledRow(locale.T("Transport"), vhttp),
+		labeledRow(locale.T("SNI"), container.NewBorder(nil, nil, nil, randSNIBtn, sni)),
+		labeledRow(locale.T("Idle timeout (min)"), idle),
 		keepRow,
 	)
 	collect := func() masqueRegParams {
@@ -436,8 +436,8 @@ func storeMasque(presenter *wizardpresentation.WizardPresenter, acc *warp.Masque
 
 func showWarpProgress(win fyne.Window) *dialog.CustomDialog {
 	d := dialog.NewCustomWithoutButtons(
-		locale.T("wizard.warp.registering_title"),
-		widget.NewLabel(locale.T("wizard.warp.registering_msg")),
+		locale.T("Registering WARP…"),
+		widget.NewLabel(locale.T("Contacting Cloudflare and generating keys.")),
 		win,
 	)
 	d.Show()
@@ -447,11 +447,11 @@ func showWarpProgress(win fyne.Window) *dialog.CustomDialog {
 func finishWarp(win fyne.Window, loading *dialog.CustomDialog, onURI func(string), uri string, err error) {
 	loading.Hide()
 	if err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.warp.error_register"), err), win)
+		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("WARP registration failed"), err), win)
 		return
 	}
 	onURI(uri)
-	dialog.ShowInformation(locale.T("wizard.warp.done_title"), locale.T("wizard.warp.done_msg"), win)
+	dialog.ShowInformation(locale.T("WARP added"), locale.T("The WARP node was added to Sources. Click Add-list / rebuild to use it."), win)
 }
 
 // ---- small helpers ----

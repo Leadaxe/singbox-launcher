@@ -48,37 +48,37 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 		body.Objects = body.Objects[:0]
 		m := presenter.Model()
 		if m == nil || sourceIndex >= len(m.Sources) {
-			body.Add(widget.NewLabel(locale.T("wizard.source.overview_no_meta")))
+			body.Add(widget.NewLabel(locale.T("No meta yet — press Refresh to fetch this subscription.")))
 			body.Refresh()
 			return
 		}
 		src := m.Sources[sourceIndex]
 
 		// === Identity ===
-		body.Add(sectionHeader(locale.T("wizard.source.overview_section_status")))
-		typeLabel := locale.T("wizard.source.type_subscription_label")
+		body.Add(sectionHeader(locale.T("Status")))
+		typeLabel := locale.T("Subscription")
 		if src.Type == corestate.SourceTypeServer {
-			typeLabel = locale.T("wizard.source.type_server_label")
+			typeLabel = locale.T("Server")
 		}
-		body.Add(kvRow(locale.T("wizard.source.overview_field_type"), typeLabel))
-		body.Add(kvRow(locale.T("wizard.source.overview_field_id"), src.ID))
+		body.Add(kvRow(locale.T("Type"), typeLabel))
+		body.Add(kvRow(locale.T("ID"), src.ID))
 		if src.URL != "" {
-			body.Add(kvRow(locale.T("wizard.source.overview_field_url"), src.URL))
+			body.Add(kvRow(locale.T("URL"), src.URL))
 		}
 		if src.URI != "" {
-			body.Add(kvRow(locale.T("wizard.source.overview_field_uri"), src.URI))
+			body.Add(kvRow(locale.T("URI"), src.URI))
 		}
 		if src.Label != "" {
-			body.Add(kvRow(locale.T("wizard.source.overview_field_label"), src.Label))
+			body.Add(kvRow(locale.T("Label"), src.Label))
 		}
-		body.Add(kvRow(locale.T("wizard.source.overview_field_enabled"), boolStr(src.Enabled)))
+		body.Add(kvRow(locale.T("Enabled"), boolStr(src.Enabled)))
 		if src.ExcludeFromGlobal {
-			body.Add(kvRow(locale.T("wizard.source.overview_field_excluded"), "true"))
+			body.Add(kvRow(locale.T("Excluded from global"), "true"))
 		}
 
 		if src.Type == corestate.SourceTypeServer {
 			body.Add(widget.NewSeparator())
-			lbl := widget.NewLabel(locale.T("wizard.source.overview_server_no_meta"))
+			lbl := widget.NewLabel(locale.T("Server source — meta is not collected (only fetched per subscription)."))
 			lbl.Importance = widget.LowImportance
 			lbl.Wrapping = fyne.TextWrapWord
 			body.Add(lbl)
@@ -90,7 +90,7 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 		meta := src.Meta
 		if meta == nil {
 			body.Add(widget.NewSeparator())
-			lbl := widget.NewLabel(locale.T("wizard.source.overview_no_meta"))
+			lbl := widget.NewLabel(locale.T("No meta yet — press Refresh to fetch this subscription."))
 			lbl.Importance = widget.LowImportance
 			lbl.Wrapping = fyne.TextWrapWord
 			body.Add(lbl)
@@ -100,25 +100,25 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 		}
 
 		// === Status (fetch history) ===
-		body.Add(kvRow(locale.T("wizard.source.overview_field_status"), formatStatusBadge(meta)))
+		body.Add(kvRow(locale.T("Last status"), formatStatusBadge(meta)))
 		if meta.LastFetchedAt != "" {
-			body.Add(kvRow(locale.T("wizard.source.overview_field_fetched"),
+			body.Add(kvRow(locale.T("Last fetched"),
 				fmt.Sprintf("%s (%s)", meta.LastFetchedAt, formatLastFetched(meta))))
 		}
 		if meta.HTTPStatusCode > 0 {
-			body.Add(kvRow(locale.T("wizard.source.overview_field_http"), fmt.Sprintf("%d", meta.HTTPStatusCode)))
+			body.Add(kvRow(locale.T("HTTP status"), fmt.Sprintf("%d", meta.HTTPStatusCode)))
 		}
 		if meta.RawBodyBytes > 0 {
-			body.Add(kvRow(locale.T("wizard.source.overview_field_size"), humanizeBytes(meta.RawBodyBytes)))
+			body.Add(kvRow(locale.T("Body size"), humanizeBytes(meta.RawBodyBytes)))
 		}
 		if meta.NodesCountFetched > 0 {
-			body.Add(kvRow(locale.T("wizard.source.overview_field_nodes"), formatNodesCount(meta, 0)))
+			body.Add(kvRow(locale.T("Nodes fetched"), formatNodesCount(meta, 0)))
 		}
 		if meta.ErrorCount > 0 {
-			body.Add(kvRow(locale.T("wizard.source.overview_field_errors"), fmt.Sprintf("%d", meta.ErrorCount)))
+			body.Add(kvRow(locale.T("Error count"), fmt.Sprintf("%d", meta.ErrorCount)))
 		}
 		if meta.LastErrorMsg != "" {
-			body.Add(kvRow(locale.T("wizard.source.overview_field_last_error"), meta.LastErrorMsg))
+			body.Add(kvRow(locale.T("Last error"), meta.LastErrorMsg))
 		}
 
 		// === Headers ===
@@ -126,38 +126,38 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 			meta.SupportURL != "" || meta.ProfileWebPageURL != "" || meta.ContentDispositionFilename != ""
 		if hasHeaders {
 			body.Add(widget.NewSeparator())
-			body.Add(sectionHeader(locale.T("wizard.source.overview_section_headers")))
+			body.Add(sectionHeader(locale.T("Subscription metadata (HTTP headers)")))
 			if meta.ProfileTitle != "" {
-				body.Add(kvRow(locale.T("wizard.source.overview_field_title"), meta.ProfileTitle))
+				body.Add(kvRow(locale.T("Profile title"), meta.ProfileTitle))
 			}
 			if meta.ProfileUpdateIntervalHours > 0 {
-				body.Add(kvRow(locale.T("wizard.source.overview_field_update_interval"),
+				body.Add(kvRow(locale.T("Update interval"),
 					fmt.Sprintf("%dh", meta.ProfileUpdateIntervalHours)))
 			}
 			if meta.SupportURL != "" {
-				body.Add(kvRow(locale.T("wizard.source.overview_field_support"), meta.SupportURL))
+				body.Add(kvRow(locale.T("Support URL"), meta.SupportURL))
 			}
 			if meta.ProfileWebPageURL != "" {
-				body.Add(kvRow(locale.T("wizard.source.overview_field_web"), meta.ProfileWebPageURL))
+				body.Add(kvRow(locale.T("Web page"), meta.ProfileWebPageURL))
 			}
 			if meta.ContentDispositionFilename != "" {
-				body.Add(kvRow(locale.T("wizard.source.overview_field_filename"), meta.ContentDispositionFilename))
+				body.Add(kvRow(locale.T("Content-Disposition filename"), meta.ContentDispositionFilename))
 			}
 		}
 
 		// === Quota ===
 		if ui := meta.UserInfo; ui != nil && (ui.TotalBytes > 0 || ui.ExpireUnix > 0) {
 			body.Add(widget.NewSeparator())
-			body.Add(sectionHeader(locale.T("wizard.source.overview_section_quota")))
+			body.Add(sectionHeader(locale.T("Traffic quota")))
 			if ui.TotalBytes > 0 {
 				used := ui.UploadBytes + ui.DownloadBytes
 				remaining := ui.TotalBytes - used
 				if remaining < 0 {
 					remaining = 0
 				}
-				body.Add(kvRow(locale.T("wizard.source.overview_field_used"), humanizeBytes(used)))
-				body.Add(kvRow(locale.T("wizard.source.overview_field_total"), humanizeBytes(ui.TotalBytes)))
-				body.Add(kvRow(locale.T("wizard.source.overview_field_remaining"), humanizeBytes(remaining)))
+				body.Add(kvRow(locale.TN(1, "Used"), humanizeBytes(used)))
+				body.Add(kvRow(locale.T("Total"), humanizeBytes(ui.TotalBytes)))
+				body.Add(kvRow(locale.T("Remaining"), humanizeBytes(remaining)))
 				if pct := quotaPercentage(meta); pct > 0 {
 					bar := widget.NewProgressBar()
 					bar.SetValue(pct)
@@ -166,7 +166,7 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 			}
 			if ui.ExpireUnix > 0 {
 				expireAt := time.Unix(ui.ExpireUnix, 0)
-				body.Add(kvRow(locale.T("wizard.source.overview_field_expires"),
+				body.Add(kvRow(locale.T("Expires"),
 					fmt.Sprintf("%s (%s)", expireAt.Format("2006-01-02 15:04"), formatExpire(meta))))
 			}
 		}
@@ -194,7 +194,7 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 					if len(display) > rawBodyMaxDisplay {
 						display = display[:rawBodyMaxDisplay]
 					}
-					truncatedNote = locale.Tf("wizard.source.raw_body_truncated", rawBodyMaxDisplay, totalSize)
+					truncatedNote = locale.Tf("Showing first %d of %d bytes", rawBodyMaxDisplay, totalSize)
 				}
 
 				// Header: title + icon-кнопки сразу справа от него (inline HBox).
@@ -206,16 +206,16 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 					openInFileManager(subsDir)
 				})
 				openBtn.Importance = widget.LowImportance
-				openBtn.SetToolTip(locale.T("wizard.source.raw_open_folder") + "\n" + subsDir)
+				openBtn.SetToolTip(locale.T("Open folder") + "\n" + subsDir)
 				copyBtn := ttwidget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
 					if app := fyne.CurrentApp(); app != nil && app.Clipboard() != nil {
 						app.Clipboard().SetContent(rawPath)
 					}
 				})
 				copyBtn.Importance = widget.LowImportance
-				copyBtn.SetToolTip(locale.T("wizard.source.raw_copy_path") + "\n" + rawPath)
+				copyBtn.SetToolTip(locale.T("Copy file path") + "\n" + rawPath)
 				headerRow := container.NewHBox(
-					sectionHeader(locale.T("wizard.source.raw_section_body")),
+					sectionHeader(locale.T("Raw body (decoded)")),
 					openBtn, copyBtn,
 				)
 				body.Add(headerRow)
@@ -277,7 +277,7 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 // сюда, когда вкладка JSON стала показывать распакованный sing-box outbound.
 func appendStorageRecordSection(body *fyne.Container, src corestate.Source) {
 	body.Add(widget.NewSeparator())
-	body.Add(sectionHeader(locale.T("wizard.source.overview_section_storage")))
+	body.Add(sectionHeader(locale.T("Storage record (state.json)")))
 
 	text := ""
 	if b, err := json.MarshalIndent(src, "", "  "); err != nil {

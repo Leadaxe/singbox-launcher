@@ -33,7 +33,7 @@ func (p *WizardPresenter) RefreshRulesTab(createRulesTab func(*WizardPresenter) 
 
 	// Find Rules tab
 	var rulesTabItem *container.TabItem
-	rulesTitle := locale.T("wizard.tab_rules")
+	rulesTitle := locale.T("Rules")
 	for _, tabItem := range p.guiState.Tabs.Items {
 		if tabItem.Text == rulesTitle {
 			rulesTabItem = tabItem

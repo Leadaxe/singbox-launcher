@@ -119,10 +119,10 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 				rawLine += " [" + shown.Type + "]"
 			}
 			if shown.Auto != nil {
-				rawLine += " " + locale.T("wizard.outbound.row_auto_mark")
+				rawLine += " " + locale.T("· auto")
 			}
 			if r.Outbound.Disabled {
-				rawLine = locale.T("wizard.outbound.row_disabled_mark") + " " + rawLine
+				rawLine = locale.T("(off)") + " " + rawLine
 			}
 			if r.SourceLabel != "" {
 				rawLine += " — " + r.SourceLabel
@@ -146,7 +146,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 			// Edit button — доступен для всех rows включая preset/required.
 			// Для preset: scope locked, Ref/Updates preserved (sync-managed
 			// metadata, не должны wipe'нуться юзерским body edit).
-			editBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("wizard.shared.button_edit"), theme.DocumentCreateIcon(), func() {
+			editBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.TN(1, "Edit"), theme.DocumentCreateIcon(), func() {
 				rowsNow := collectRowsForUI(editPresenter.Model())
 				if rowIdx >= len(rowsNow) {
 					return
@@ -196,7 +196,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 				})
 			}, rowGetter)
 
-			delBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("wizard.shared.button_del"), theme.DeleteIcon(), func() {
+			delBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("Del"), theme.DeleteIcon(), func() {
 				rowsNow := collectRowsForUI(editPresenter.Model())
 				if rowIdx >= len(rowsNow) || rowsNow[rowIdx].IsPreset || rowsNow[rowIdx].IsRequired {
 					return
@@ -298,7 +298,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 						onApply()
 					}
 				}
-				fynewidget.SetToolTipSafe(enableCheck, locale.T("wizard.outbound.enable_tooltip"))
+				fynewidget.SetToolTipSafe(enableCheck, locale.T("Include this direction in the config. A switched-off direction keeps its settings but is not built and cannot be picked as a rule target."))
 			}
 
 			switch {
@@ -327,7 +327,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 
 	refreshList()
 
-	addBtn := widget.NewButtonWithIcon(locale.T("wizard.outbound.button_add"), theme.ContentAddIcon(), func() {
+	addBtn := widget.NewButtonWithIcon(locale.T("Add"), theme.ContentAddIcon(), func() {
 		parserConfig := getParserConfig(editPresenter.Model())
 		if parserConfig == nil {
 			return
@@ -400,7 +400,7 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 	// скроллить) — над списком образовывалась мёртвая зона. Список живёт в
 	// общем скролле вкладки Outbounds.
 	rightTopButtons := container.NewHBox(restoreBtn, addBtn)
-	top := container.NewBorder(nil, nil, nil, rightTopButtons, widget.NewLabel(locale.T("wizard.outbound.configurator_label")))
+	top := container.NewBorder(nil, nil, nil, rightTopButtons, widget.NewLabel(locale.T("Directions:")))
 	return container.NewBorder(
 		top,
 		nil,

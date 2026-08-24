@@ -59,7 +59,7 @@ func dnsDefaultPort(typ string) int {
 }
 
 // dnsNoDetour — подпись пункта «без детура» в списке Направлений.
-func dnsNoDetour() string { return locale.T("wizard.dns.form_detour_none") }
+func dnsNoDetour() string { return locale.T("(none)") }
 
 // dnsServerForm — виджеты формы и её текущий тип.
 type dnsServerForm struct {
@@ -155,7 +155,7 @@ func newDNSServerForm(p *wizardpresentation.WizardPresenter, selfTag string) *dn
 	f.resolverSelect.SetSelected(dnsNoDetour())
 
 	f.membersBox = container.NewVBox()
-	f.membersAddBtn = widget.NewButtonWithIcon(locale.T("wizard.dns.form_members_add"), theme.ContentAddIcon(), func() {
+	f.membersAddBtn = widget.NewButtonWithIcon(locale.T("Add member"), theme.ContentAddIcon(), func() {
 		f.pickMember(p, selfTag)
 	})
 	f.modeSelect = widget.NewSelect([]string{"fastest", "random"}, nil)
@@ -165,24 +165,24 @@ func newDNSServerForm(p *wizardpresentation.WizardPresenter, selfTag string) *dn
 	f.winTTLEntry = widget.NewEntry()
 	f.winTTLEntry.SetPlaceHolder("5m")
 
-	f.rows["server"] = dnsFormRow(locale.T("wizard.dns.form_address"), f.serverEntry)
-	f.rows["port"] = dnsFormRow(locale.T("wizard.dns.form_port"), f.portEntry)
-	f.rows["path"] = dnsFormRow(locale.T("wizard.dns.form_path"), f.pathEntry)
-	f.rows["sni"] = dnsFormRow(locale.T("wizard.dns.form_sni"), f.sniEntry)
-	f.rows["detour"] = dnsFormRow(locale.T("wizard.dns.form_detour"), f.detourSelect)
-	f.rows["resolver"] = dnsFormRow(locale.T("wizard.dns.form_resolver"), f.resolverSelect)
+	f.rows["server"] = dnsFormRow(locale.T("Address"), f.serverEntry)
+	f.rows["port"] = dnsFormRow(locale.T("Port"), f.portEntry)
+	f.rows["path"] = dnsFormRow(locale.T("Path"), f.pathEntry)
+	f.rows["sni"] = dnsFormRow(locale.T("TLS server name (SNI)"), f.sniEntry)
+	f.rows["detour"] = dnsFormRow(locale.T("Direction"), f.detourSelect)
+	f.rows["resolver"] = dnsFormRow(locale.T("Resolve name via"), f.resolverSelect)
 	// Кнопка «+» лежит отдельным объектом: в режиме чтения она не гасится,
 	// а убирается совсем — погашенная кнопка занимает строку и предлагает
 	// действие, которого нет.
 	f.membersAddRow = container.NewHBox(f.membersAddBtn)
-	f.rows["members"] = dnsFormRow(locale.T("wizard.dns.form_members"),
+	f.rows["members"] = dnsFormRow(locale.T("Members"),
 		container.NewVBox(f.membersBox, f.membersAddRow))
-	f.rows["mode"] = dnsFormRow(locale.T("wizard.dns.form_mode"), f.modeSelect)
-	f.rows["error_ttl"] = dnsFormRow(locale.T("wizard.dns.form_error_ttl"), f.errorTTLEntry)
-	f.rows["win_ttl"] = dnsFormRow(locale.T("wizard.dns.form_win_ttl"), f.winTTLEntry)
+	f.rows["mode"] = dnsFormRow(locale.T("Mode"), f.modeSelect)
+	f.rows["error_ttl"] = dnsFormRow(locale.T("Error TTL"), f.errorTTLEntry)
+	f.rows["win_ttl"] = dnsFormRow(locale.T("Win TTL"), f.winTTLEntry)
 
-	f.rows["type"] = dnsFormRow(locale.T("wizard.dns.form_type"), f.typeSelect)
-	f.rows["tag"] = dnsFormRow(locale.T("wizard.dns.form_tag"), f.tagEntry)
+	f.rows["type"] = dnsFormRow(locale.T("Type"), f.typeSelect)
+	f.rows["tag"] = dnsFormRow(locale.T("Tag"), f.tagEntry)
 
 	f.content = container.NewVBox(
 		f.rows["type"],
@@ -482,7 +482,7 @@ func (f *dnsServerForm) rebuildMembers() {
 			// конфиг не попадёт — и об этом надо сказать здесь, а не дать
 			// обнаружить по факту укоротившейся группы.
 			label = widget.NewLabel(strikeThrough(text) + "   " +
-				locale.T("wizard.dns.form_member_off"))
+				locale.T("(off — will be skipped)"))
 			label.Importance = widget.LowImportance
 		}
 		if f.readOnly {
@@ -497,7 +497,7 @@ func (f *dnsServerForm) rebuildMembers() {
 		f.membersBox.Add(container.NewBorder(nil, nil, nil, del, label))
 	}
 	if len(f.members) == 0 {
-		empty := widget.NewLabel(locale.T("wizard.dns.form_members_empty"))
+		empty := widget.NewLabel(locale.T("No members yet"))
 		empty.Importance = widget.LowImportance
 		f.membersBox.Add(empty)
 	}
@@ -523,15 +523,15 @@ func (f *dnsServerForm) pickMember(p *wizardpresentation.WizardPresenter, selfTa
 	w := p.DialogParent()
 	if len(options) == 0 {
 		dialog.ShowInformation(
-			locale.T("wizard.dns.form_members"),
-			locale.T("wizard.dns.form_members_none"), w)
+			locale.T("Members"),
+			locale.T("No other DNS servers to add. Create one first — a group queries existing servers."), w)
 		return
 	}
 	sel := widget.NewSelect(options, nil)
 	sel.SetSelected(options[0])
 	dialog.ShowCustomConfirm(
-		locale.T("wizard.dns.form_members_add"), locale.T("wizard.dns.dialog_save"),
-		locale.T("wizard.dns.dialog_cancel"), sel,
+		locale.T("Add member"), locale.T("Save"),
+		locale.T("Cancel"), sel,
 		func(ok bool) {
 			if !ok || sel.Selected == "" {
 				return

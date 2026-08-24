@@ -42,7 +42,7 @@ func OpenEditMachineWindow(ac *core.AppController, registry *services.RemoteRegi
 		return
 	}
 	win := ac.UIService.Application.NewWindow(
-		locale.Tf("remote.edit.window_title", d.Name))
+		locale.Tf("Machine — %s", d.Name))
 
 	reload := func() {
 		if onChanged != nil {
@@ -82,13 +82,13 @@ func machineEditPassport(win fyne.Window, registry *services.RemoteRegistry,
 	goarchSelect.SetSelected(tgt.GOARCH)
 
 	form := widget.NewForm(
-		widget.NewFormItem(locale.T("remote.machines.field_name"), nameEntry),
-		widget.NewFormItem(locale.T("remote.machines.field_addr"), addrEntry),
-		widget.NewFormItem(locale.T("remote.machines.field_platform"), goosSelect),
-		widget.NewFormItem(locale.T("remote.machines.field_arch"), goarchSelect),
+		widget.NewFormItem(locale.T("Name"), nameEntry),
+		widget.NewFormItem(locale.T("Address"), addrEntry),
+		widget.NewFormItem(locale.T("Platform"), goosSelect),
+		widget.NewFormItem(locale.T("Architecture"), goarchSelect),
 	)
 
-	saveBtn := widget.NewButton(locale.T("dialog.button_save"), func() {
+	saveBtn := widget.NewButton(locale.T("Save"), func() {
 		if err := registry.Update(d.ID, nameEntry.Text, addrEntry.Text); err != nil {
 			dialog.ShowError(err, win)
 			return
@@ -101,7 +101,7 @@ func machineEditPassport(win fyne.Window, registry *services.RemoteRegistry,
 		win.Close()
 	})
 	saveBtn.Importance = widget.HighImportance
-	cancelBtn := widget.NewButton(locale.T("dialog.button_cancel"), func() { win.Close() })
+	cancelBtn := widget.NewButton(locale.T("Cancel"), func() { win.Close() })
 
 	return container.NewVBox(
 		form,
@@ -120,17 +120,17 @@ func machineEditPassport(win fyne.Window, registry *services.RemoteRegistry,
 // Свёрнут по умолчанию: в штатной жизни машины сюда не заходят.
 func machineEditRePair(win fyne.Window, registry *services.RemoteRegistry,
 	d services.RemoteDaemon, reload func()) fyne.CanvasObject {
-	hint := widget.NewLabel(locale.T("remote.repair.hint"))
+	hint := widget.NewLabel(locale.T("Use this when the channel broke on the machine's side: the daemon was reinstalled, its state directory was wiped, this client was revoked, or its server certificate changed and the pin no longer matches. Name, address, platform and every setting of this machine are kept — only the pin and the client key are replaced."))
 	hint.Wrapping = fyne.TextWrapWord
 
 	// Команду выполняет пользователь НА САМОЙ МАШИНЕ — как и при добавлении,
 	// поэтому только копирование: терминал открылся бы не на той машине.
-	cmdRow := CommandRow(win, "remote.add.client_add_label", func() (string, error) {
+	cmdRow := CommandRow(win, "Run this on the machine to get an invite:", func() (string, error) {
 		return "sudo sing-box lxd client add", nil
 	}, false)
 
 	inviteEntry := widget.NewMultiLineEntry()
-	inviteEntry.SetPlaceHolder(locale.T("remote.add.invite_placeholder"))
+	inviteEntry.SetPlaceHolder(locale.T("address#fingerprint#code"))
 	inviteEntry.Wrapping = fyne.TextWrapBreak
 	inviteEntry.SetMinRowsVisible(3)
 
@@ -138,32 +138,32 @@ func machineEditRePair(win fyne.Window, registry *services.RemoteRegistry,
 	// 0.0.0.0 в приглашении и plain-h2c демон. Пусто = взять из приглашения,
 	// а для адреса — оставить нынешний.
 	addrEntry := widget.NewEntry()
-	addrEntry.SetPlaceHolder(locale.T("remote.repair.addr_placeholder"))
+	addrEntry.SetPlaceHolder(locale.T("host:port — leave empty to keep the current address"))
 	secretEntry := widget.NewPasswordEntry()
-	secretEntry.SetPlaceHolder(locale.T("remote.add.secret_placeholder"))
+	secretEntry.SetPlaceHolder(locale.T("only for a plain-h2c daemon; leave empty for mTLS"))
 
 	status := widget.NewLabel("")
 	status.Wrapping = fyne.TextWrapWord
 
-	repairBtn := widget.NewButton(locale.T("remote.repair.submit"), nil)
+	repairBtn := widget.NewButton(locale.T("Re-pair"), nil)
 	repairBtn.Importance = widget.HighImportance
 	repairBtn.OnTapped = func() {
 		invite := strings.TrimSpace(inviteEntry.Text)
 		if invite == "" {
-			status.SetText(locale.T("remote.add.error_empty_invite"))
+			status.SetText(locale.T("Paste the invite printed by the daemon."))
 			return
 		}
 		// Подтверждение обязательно: успешный re-pair перевыпускает клиентский
 		// ключ, и прежний мандат этого лаунчера на машине становится мусором.
 		// Отменить это нечем — новый ключ старого не восстанавливает.
-		dialog.ShowConfirm(locale.T("remote.repair.confirm_title"),
-			locale.Tf("remote.repair.confirm_body", d.Name),
+		dialog.ShowConfirm(locale.T("Re-pair machine"),
+			locale.Tf("Issue a new client key for %s?\n\nThe current key stops being this launcher's credential and stays on the machine as a leftover — remove it there with `sing-box lxd client remove`. Settings of this machine are not touched.", d.Name),
 			func(ok bool) {
 				if !ok {
 					return
 				}
 				repairBtn.Disable()
-				status.SetText(locale.T("remote.repair.pairing"))
+				status.SetText(locale.T("Re-pairing…"))
 				// Enroll — блокирующий сетевой вызов: недоступная машина
 				// отвечает по таймауту REST-клиента.
 				go func() {
@@ -173,7 +173,7 @@ func machineEditRePair(win fyne.Window, registry *services.RemoteRegistry,
 						repairBtn.Enable()
 						if err != nil {
 							debuglog.WarnLog("edit machine: re-pair %q: %v", d.ID, err)
-							status.SetText(locale.Tf("remote.add.error_pair", err))
+							status.SetText(locale.Tf("Pairing failed: %v", err))
 							return
 						}
 						// Канал стал другим: прежнее соединение и его окна
@@ -185,7 +185,7 @@ func machineEditRePair(win fyne.Window, registry *services.RemoteRegistry,
 							CloseMachineHostWindow(d.ID)
 						}
 						debuglog.InfoLog("edit machine: re-paired %q at %s", entry.Name, entry.Addr)
-						status.SetText(locale.Tf("remote.repair.done", entry.Addr))
+						status.SetText(locale.Tf("Re-paired at %s. A new client key was issued; connect again.", entry.Addr))
 						inviteEntry.SetText("")
 						reload()
 					})
@@ -194,22 +194,22 @@ func machineEditRePair(win fyne.Window, registry *services.RemoteRegistry,
 	}
 
 	advanced := widget.NewForm(
-		widget.NewFormItem(locale.T("remote.add.field_addr"), addrEntry),
-		widget.NewFormItem(locale.T("remote.add.field_secret"), secretEntry),
+		widget.NewFormItem(locale.T("Address"), addrEntry),
+		widget.NewFormItem(locale.T("Secret"), secretEntry),
 	)
 
 	inner := container.NewVBox(
 		hint,
 		cmdRow,
-		widget.NewForm(widget.NewFormItem(locale.T("remote.add.field_invite"), inviteEntry)),
+		widget.NewForm(widget.NewFormItem(locale.T("Invite"), inviteEntry)),
 		widget.NewAccordion(
-			widget.NewAccordionItem(locale.T("remote.add.advanced"), advanced),
+			widget.NewAccordionItem(locale.T("Advanced (address, secret)"), advanced),
 		),
 		status,
 		container.NewBorder(nil, nil, nil, repairBtn),
 	)
 	return widget.NewAccordion(
-		widget.NewAccordionItem(locale.T("remote.repair.section"), inner),
+		widget.NewAccordionItem(locale.T("Re-pair — reconnect this machine with a fresh invite"), inner),
 	)
 }
 
@@ -224,7 +224,7 @@ func machineEditRePair(win fyne.Window, registry *services.RemoteRegistry,
 // его на обеих. Канал приёмника остаётся его собственным.
 func machineEditCopyProfile(ac *core.AppController, win fyne.Window,
 	registry *services.RemoteRegistry, d services.RemoteDaemon, reload func()) fyne.CanvasObject {
-	hint := widget.NewLabel(locale.T("remote.copy.hint"))
+	hint := widget.NewLabel(locale.T("Copies the wizard setup — sources, rules, DNS and variables — from another machine onto this one, so you don't build the same thing twice. Pairing is NOT copied: each machine keeps its own client key, because one shared key would mean revoking access on one machine revokes it on both. The built config and rule-set files are rebuilt for this machine on the next Save and Deploy."))
 	hint.Wrapping = fyne.TextWrapWord
 
 	list, err := registry.List()
@@ -254,30 +254,30 @@ func machineEditCopyProfile(ac *core.AppController, win fyne.Window,
 	status.Wrapping = fyne.TextWrapWord
 
 	srcSelect := widget.NewSelect(labels, nil)
-	srcSelect.PlaceHolder = locale.T("remote.copy.placeholder")
+	srcSelect.PlaceHolder = locale.T("Take settings from…")
 
-	copyBtn := widget.NewButton(locale.T("remote.copy.submit"), nil)
+	copyBtn := widget.NewButton(locale.TN(1, "Copy"), nil)
 	copyBtn.OnTapped = func() {
 		srcID, ok := byLabel[srcSelect.Selected]
 		if !ok {
-			status.SetText(locale.T("remote.copy.error_no_source"))
+			status.SetText(locale.T("Pick the machine to copy settings from."))
 			return
 		}
 		apply := func() {
 			if err := registry.CopyProfileFrom(srcID, d.ID); err != nil {
 				debuglog.WarnLog("edit machine: copy profile %q → %q: %v", srcID, d.ID, err)
-				status.SetText(locale.Tf("remote.copy.error", err))
+				status.SetText(locale.Tf("Copy failed: %v", err))
 				return
 			}
 			debuglog.InfoLog("edit machine: profile copied %q → %q", srcID, d.ID)
-			status.SetText(locale.Tf("remote.copy.done", srcSelect.Selected))
+			status.SetText(locale.Tf("Settings copied from %s. Open Configure to review them and press Save.", srcSelect.Selected))
 			reload()
 		}
 		// Приёмник уже настроен — перезапись сотрёт его настройки, и вернуть
 		// их будет неоткуда. Спрашиваем; на пустой машине спрашивать не о чем.
 		if machineHasProfile(ac, d.ID) {
-			dialog.ShowConfirm(locale.T("remote.copy.confirm_title"),
-				locale.Tf("remote.copy.confirm_body", d.Name),
+			dialog.ShowConfirm(locale.T("Overwrite settings"),
+				locale.Tf("%s already has its own setup. Copying replaces it, and there is no way back.", d.Name),
 				func(ok bool) {
 					if ok {
 						apply()
@@ -293,7 +293,7 @@ func machineEditCopyProfile(ac *core.AppController, win fyne.Window,
 		// настраивали. Говорим это прямо вместо пустого выпадающего списка.
 		srcSelect.Disable()
 		copyBtn.Disable()
-		status.SetText(locale.T("remote.copy.no_sources"))
+		status.SetText(locale.T("No other configured machine to copy from yet."))
 	}
 
 	inner := container.NewVBox(
@@ -302,7 +302,7 @@ func machineEditCopyProfile(ac *core.AppController, win fyne.Window,
 		status,
 	)
 	return widget.NewAccordion(
-		widget.NewAccordionItem(locale.T("remote.copy.section"), inner),
+		widget.NewAccordionItem(locale.T("Copy settings from another machine"), inner),
 	)
 }
 

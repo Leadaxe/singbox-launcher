@@ -23,11 +23,11 @@ import (
 // closer to logs/STUN/debug-api там, чем к информации о версии и ссылкам.
 func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
 	// Version and links section
-	versionLabel := widget.NewLabel(locale.Tf("help.version_label", constants.AppVersion))
+	versionLabel := widget.NewLabel(locale.Tf("📦 Version: %s", constants.AppVersion))
 	versionLabel.Alignment = fyne.TextAlignCenter
 
 	// Launcher update status
-	launcherUpdateLabel := widget.NewLabel(locale.T("help.checking_updates"))
+	launcherUpdateLabel := widget.NewLabel(locale.T("Checking for updates..."))
 	launcherUpdateLabel.Alignment = fyne.TextAlignCenter
 	launcherUpdateLabel.Wrapping = fyne.TextWrapWord
 
@@ -37,7 +37,7 @@ func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
 		current := constants.AppVersion
 
 		if latest == "" {
-			launcherUpdateLabel.SetText(locale.T("help.unable_to_check_updates"))
+			launcherUpdateLabel.SetText(locale.T("Unable to check for updates"))
 			return
 		}
 
@@ -46,11 +46,11 @@ func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
 
 		compareResult := core.CompareVersions(currentClean, latestClean)
 		if compareResult < 0 {
-			launcherUpdateLabel.SetText(locale.Tf("help.update_available_format", latest, current))
+			launcherUpdateLabel.SetText(locale.Tf("🆕 Update available: %s\nCurrent: %s", latest, current))
 		} else if compareResult > 0 {
-			launcherUpdateLabel.SetText(locale.Tf("help.dev_build_format", current, latest))
+			launcherUpdateLabel.SetText(locale.Tf("✅ You are using a development build\nCurrent: %s\nLatest release: %s", current, latest))
 		} else {
-			launcherUpdateLabel.SetText(locale.Tf("help.latest_version_format", current))
+			launcherUpdateLabel.SetText(locale.Tf("✅ You are using the latest version\nCurrent: %s", current))
 		}
 	}
 
@@ -75,7 +75,7 @@ func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
 		}
 	}()
 
-	telegramLink := widget.NewHyperlink(locale.T("help.telegram_link"), nil)
+	telegramLink := widget.NewHyperlink(locale.T("💬 Telegram Channel"), nil)
 	_ = telegramLink.SetURLFromString("https://t.me/singbox_launcher")
 	telegramLink.OnTapped = func() {
 		if err := platform.OpenURL("https://t.me/singbox_launcher"); err != nil {
@@ -84,7 +84,7 @@ func CreateHelpTab(ac *core.AppController) fyne.CanvasObject {
 		}
 	}
 
-	githubLink := widget.NewHyperlink(locale.T("help.github_link"), nil)
+	githubLink := widget.NewHyperlink(locale.T("🐙 GitHub Repository"), nil)
 	_ = githubLink.SetURLFromString("https://github.com/Leadaxe/singbox-launcher")
 	githubLink.OnTapped = func() {
 		if err := platform.OpenURL("https://github.com/Leadaxe/singbox-launcher"); err != nil {

@@ -245,9 +245,9 @@ func buildLiveView(deps WindowDeps) *liveView {
 		s.PlaceHolder = placeholder
 		return s
 	}
-	v.clientSel = mkSelect(locale.T("traffic.byclient.client"), func(s string) { v.filter.Client = s })
-	v.outboundSel = mkSelect(locale.T("traffic.byclient.outbound"), func(s string) { v.filter.Outbound = s })
-	v.ruleSel = mkSelect(locale.T("traffic.byclient.rule"), func(s string) { v.filter.Rule = s })
+	v.clientSel = mkSelect(locale.T("Client"), func(s string) { v.filter.Client = s })
+	v.outboundSel = mkSelect(locale.T("Outbound"), func(s string) { v.filter.Outbound = s })
+	v.ruleSel = mkSelect(locale.T("Rule"), func(s string) { v.filter.Rule = s })
 
 	// Клиентов у СВОЕГО ядра нет: трафик идёт от процессов этого компьютера,
 	// исходный адрес в соединениях Clash не заполняется вовсе. Список остался
@@ -423,12 +423,12 @@ func liveHeaderRow() fyne.CanvasObject {
 	text, ob, up, down := liveRowParts(row)
 	bold := fyne.TextStyle{Bold: true}
 	text.TextStyle, ob.TextStyle, up.TextStyle, down.TextStyle = bold, bold, bold, bold
-	text.SetText(locale.T("traffic.live.col_event"))
-	ob.SetText(locale.T("traffic.byclient.col_outbound"))
+	text.SetText(locale.T("EVENT"))
+	ob.SetText(locale.T("OUTBOUND"))
 	// Словами, а не стрелками: «↑» одинаково читается и как исходящий, и как
 	// «вверх по списку». Ушло = от клиента наружу.
-	up.SetText(locale.T("traffic.col_sent"))
-	down.SetText(locale.T("traffic.col_recv"))
+	up.SetText(locale.T("SENT"))
+	down.SetText(locale.T("RECV"))
 	return container.NewBorder(nil, nil, nil,
 		container.NewHBox(row.Objects[1], fixedWidth(widget.NewLabel(""), liveHeaderPad)),
 		row.Objects[0])

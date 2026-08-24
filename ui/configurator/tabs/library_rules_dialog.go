@@ -59,7 +59,7 @@ func ShowRulesLibraryDialog(p *wizardpresentation.WizardPresenter, showAddRuleDi
 	picked := make([]bool, len(presets))
 	listBox := container.NewVBox()
 
-	addBtn := widget.NewButton(locale.T("wizard.rules.library_add_selected"), nil)
+	addBtn := widget.NewButton(locale.T("Add selected"), nil)
 	addBtn.Importance = widget.HighImportance
 	addBtn.Disable()
 
@@ -146,17 +146,17 @@ func ShowRulesLibraryDialog(p *wizardpresentation.WizardPresenter, showAddRuleDi
 	minH.SetMinSize(fyne.NewSize(0, 300))
 	scrollBlock := container.NewStack(minH, scroll)
 
-	hint := widget.NewLabel(locale.T("wizard.rules.library_hint"))
+	hint := widget.NewLabel(locale.T("Check presets to append copies to the end of the list. You can add the same preset multiple times."))
 	hint.Wrapping = fyne.TextWrapWord
 
 	// PopUp + tooltip layer: строим dialog руками вместо dialog.NewCustom —
 	// последний прячет underlying *widget.PopUp за интерфейс, не позволяя
 	// прицепить AddPopUpToolTipLayer.
-	titleLabel := widget.NewLabelWithStyle(locale.T("wizard.rules.library_title"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	titleLabel := widget.NewLabelWithStyle(locale.T("Rule library"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	separator := widget.NewSeparator()
 
 	var popup *widget.PopUp
-	cancelBtn := widget.NewButton(locale.T("wizard.rules.library_cancel"), func() {
+	cancelBtn := widget.NewButton(locale.T("Cancel"), func() {
 		if popup != nil {
 			popup.Hide()
 		}

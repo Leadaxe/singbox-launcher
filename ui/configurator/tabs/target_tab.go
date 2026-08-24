@@ -31,11 +31,11 @@ func CreateTargetTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 
 		// Вкладка существует только в удалённом режиме (см. createWizardTabs),
 		// поэтому ветвления по цели здесь больше нет.
-		intro := widget.NewLabel(locale.T("wizard.target.intro_remote"))
+		intro := widget.NewLabel(locale.T("This config is for another machine and differs from a local one: no Clash API (the lxd daemon manages the core there) and no system proxy. Gateway-specific behavior — LAN interfaces, wide proxy listen, process matching off — is controlled by Gateway mode on the Settings tab."))
 		intro.Wrapping = fyne.TextWrapWord
 		box.Add(intro)
 
-		hint := widget.NewLabel(locale.T("wizard.target.hint_remote"))
+		hint := widget.NewLabel(locale.T("On Save the config is written to bin/remote-config.json for deployment under the lxd daemon — the local bin/config.json is never touched. State lives in bin/wizard_states/remote/state.json."))
 		hint.Wrapping = fyne.TextWrapWord
 		hint.Importance = widget.LowImportance
 		box.Add(hint)
@@ -68,11 +68,11 @@ func CreateTargetTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 			}
 
 			box.Add(widget.NewForm(
-				widget.NewFormItem(locale.T("wizard.target.platform"), platformSelect),
-				widget.NewFormItem(locale.T("wizard.target.arch"), archSelect),
+				widget.NewFormItem(locale.T("Target OS"), platformSelect),
+				widget.NewFormItem(locale.T("Target architecture"), archSelect),
 			))
 
-			note := widget.NewLabel(locale.T("wizard.target.remote_note"))
+			note := widget.NewLabel(locale.T("Set the TUN interface name explicitly — the core default cannot be relied on, and on a router the name is needed for firewall rules and routes."))
 			note.Wrapping = fyne.TextWrapWord
 			note.Importance = widget.WarningImportance
 			box.Add(note)

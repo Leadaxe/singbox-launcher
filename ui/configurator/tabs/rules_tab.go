@@ -55,9 +55,9 @@ const (
 	rulesOutboundColumnRightGutter float32 = 40
 )
 
-func srsBtnDownload() string { return locale.T("wizard.rules.button_srs_download") }
-func srsBtnLoading() string  { return locale.T("wizard.rules.button_srs_loading") }
-func srsBtnDone() string     { return locale.T("wizard.rules.button_srs_done") }
+func srsBtnDownload() string { return locale.T("⬇ srs") }
+func srsBtnLoading() string  { return locale.T("🔄 srs") }
+func srsBtnDone() string     { return locale.T("✔️ srs") }
 
 // srsEntriesTooltip возвращает строку URL для tooltip кнопки SRS.
 // customRuleSRSEntries возвращает записи SRS для строки правила, если это пресет с rule_sets; иначе ok=false.
@@ -136,7 +136,7 @@ func runSRSDownloadAsync(
 				}
 				debuglog.WarnLog("rules_tab: SRS download failed: %v", err)
 				if !silent {
-					dialogs.ShowDownloadFailedManual(guiState.Window, locale.T("wizard.rules.error_srs_failed"), downloadURL, ruleSetsDir)
+					dialogs.ShowDownloadFailedManual(guiState.Window, locale.T("Rule-set (SRS) download failed"), downloadURL, ruleSetsDir)
 				}
 				return
 			}
@@ -197,8 +197,8 @@ func CreateRulesTab(presenter *wizardpresentation.WizardPresenter, showAddRuleDi
 func createTemplateNotFoundMessage() fyne.CanvasObject {
 	templateFileName := wizardtemplate.GetTemplateFileName()
 	return container.NewVBox(
-		widget.NewLabel(locale.Tf("wizard.rules.template_not_found", templateFileName)),
-		widget.NewLabel(locale.T("wizard.rules.template_create_hint")),
+		widget.NewLabel(locale.Tf("Template file bin/%s not found.", templateFileName)),
+		widget.NewLabel(locale.T("Create the template file to enable this tab.")),
 	)
 }
 
@@ -231,15 +231,15 @@ func rulesToolbarButtons(
 	p *wizardpresentation.WizardPresenter,
 	showAddRuleDialog ShowAddRuleDialogFunc,
 ) fyne.CanvasObject {
-	addRule := widget.NewButton(locale.T("wizard.rules.button_add_rule"), func() {
+	addRule := widget.NewButton(locale.T("➕ Add Rule"), func() {
 		showAddRuleDialog(p, nil, -1)
 	})
 	addRule.Importance = widget.LowImportance
-	addLib := widget.NewButton(locale.T("wizard.rules.button_add_from_library"), func() {
+	addLib := widget.NewButton(locale.T("📚 Add from library"), func() {
 		ShowRulesLibraryDialog(p, showAddRuleDialog)
 	})
 	addLib.Importance = widget.LowImportance
-	setTooltip(addLib, locale.T("wizard.rules.tooltip_add_from_library"))
+	setTooltip(addLib, locale.T("Append copies of template presets to your rules list."))
 	return container.NewHBox(addRule, addLib)
 }
 
@@ -265,13 +265,13 @@ func createRulesToolbarOutboundHeaderRow(
 ) fyne.CanvasObject {
 	lead := canvas.NewRectangle(color.Transparent)
 	lead.SetMinSize(fyne.NewSize(rulesRowEditDeleteLeadWidth(), 1))
-	outLbl := widget.NewLabel(locale.T("wizard.rules.label_outbound"))
+	outLbl := widget.NewLabel(locale.T("Direction:"))
 	right := container.NewHBox(lead, outLbl, rulesOutboundRightEdgeGutter())
 	return container.NewBorder(nil, nil, rulesToolbarButtons(p, showAddRuleDialog), right, layout.NewSpacer())
 }
 
 func createRulesEmptyState() fyne.CanvasObject {
-	msg := widget.NewLabel(locale.T("wizard.rules.empty_state"))
+	msg := widget.NewLabel(locale.T("No route rules yet. Open the library or add a custom rule."))
 	msg.Wrapping = fyne.TextWrapWord
 	return msg
 }
@@ -329,7 +329,7 @@ func buildSingleCustomRuleRow(
 		presenter, model, guiState, customRule, customIdx, showAddRuleDialog, rowGetter,
 	)
 	dragHandle := fynewidget.NewDragHandle(dragGroup, slotIdx, rowGetter)
-	setTooltip(dragHandle, locale.T("wizard.rules.tooltip_drag_reorder"))
+	setTooltip(dragHandle, locale.T("Drag to reorder"))
 
 	customRuleWidget := &wizardpresentation.RuleWidget{
 		Select:    outboundSelect,
@@ -390,7 +390,7 @@ func createRuleEnableCheckbox(
 		}
 	})
 	ch.SetChecked(customRule.Enabled)
-	setTooltip(ch, locale.T("wizard.rules.tooltip_rule_enabled"))
+	setTooltip(ch, locale.T("Include this rule in the generated route when enabled"))
 	return ch
 }
 
@@ -437,16 +437,16 @@ func createCustomRuleSlotActionButtons(
 		showAddRuleDialog(presenter, customRule, customIdx)
 	}, rowGetter)
 	editButton.Importance = widget.LowImportance
-	setTooltip(editButton, locale.T("wizard.shared.button_edit"))
+	setTooltip(editButton, locale.TN(1, "Edit"))
 
 	deleteButton := fynewidget.NewHoverForwardButtonWithIcon("", theme.DeleteIcon(), func() {
 		ruleLabel := strings.TrimSpace(customRule.Rule.Label)
 		if ruleLabel == "" {
-			ruleLabel = locale.T("wizard.rules.dialog_delete_unnamed")
+			ruleLabel = locale.T("(unnamed rule)")
 		}
 		dialog.ShowConfirm(
-			locale.T("wizard.dialog_confirmation"),
-			locale.Tf("wizard.rules.dialog_delete_confirm", ruleLabel),
+			locale.T("Confirmation"),
+			locale.Tf("Delete custom rule \"%s\"?", ruleLabel),
 			func(ok bool) {
 				if !ok {
 					return
@@ -457,7 +457,7 @@ func createCustomRuleSlotActionButtons(
 		)
 	}, rowGetter)
 	deleteButton.Importance = widget.LowImportance
-	setTooltip(deleteButton, locale.T("wizard.rules.button_delete"))
+	setTooltip(deleteButton, locale.T("Delete rule"))
 
 	return editButton, deleteButton
 }
@@ -560,7 +560,7 @@ func createFinalOutboundSelect(
 // buildRulesTabContainer создает финальный контейнер таба правил.
 func buildRulesTabContainer(headerRow, rulesScroll fyne.CanvasObject, finalSelect *widget.Select) fyne.CanvasObject {
 	row := container.NewHBox(
-		widget.NewLabel(locale.T("wizard.rules.label_final_outbound")),
+		widget.NewLabel(locale.T("Default direction:")),
 		finalSelect,
 		layout.NewSpacer(),
 	)
@@ -599,5 +599,5 @@ func srsTargetDirHint(model *wizardmodels.WizardModel) string {
 	if dir == "" {
 		dir = filepath.Join(model.ExecDir, constants.BinDirName, constants.RuleSetsDirName)
 	}
-	return locale.Tf("wizard.rules.srs_dir_hint", dir)
+	return locale.Tf("Downloads to: %s", dir)
 }

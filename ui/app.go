@@ -68,7 +68,7 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	// единственным пунктом строки, ведущим себя не как вкладка. Теперь
 	// содержимое рендерится на месте, отдельное окно удалено за
 	// ненадобностью.
-	settingsTabItem := container.NewTabItem(locale.T("app.tab.settings"),
+	settingsTabItem := container.NewTabItem(locale.T("⚙️ Settings"),
 		components.WrapInScrollWithGutter(container.NewPadded(BuildSettingsContent(controller))))
 	// Tab order: Core | Servers | 🔍 Diagnostics | ⚙️ Settings | ❓ Help.
 	// Settings sits between Diagnostics and Help — close to other
@@ -76,9 +76,9 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	app.tabs = container.NewAppTabs(
 		coreTabItem,
 		app.clashAPITab,
-		container.NewTabItem(locale.T("app.tab.diagnostics"), CreateDiagnosticsTab(controller)),
+		container.NewTabItem(locale.T("🔍 Diagnostics"), CreateDiagnosticsTab(controller)),
 		settingsTabItem,
-		container.NewTabItem(locale.T("app.tab.help"), CreateHelpTab(controller)),
+		container.NewTabItem(locale.T("❓ Help"), CreateHelpTab(controller)),
 	)
 
 	// Set tab selection handler

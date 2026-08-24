@@ -130,7 +130,7 @@ func buildSingleDNSUserRuleRow(
 	delBtn.Importance = widget.LowImportance
 
 	dragHandle := fynewidget.NewDragHandle(dragGroup, slotIdx, rowGetter)
-	setTooltip(dragHandle, locale.T("wizard.rules.tooltip_drag_reorder"))
+	setTooltip(dragHandle, locale.T("Drag to reorder"))
 
 	// Shared row scaffolding (see row_scaffold.go).
 	leftLead := buildRowDragLead(dragHandle, enableCh)
@@ -224,7 +224,7 @@ func buildSingleDNSPresetRuleRow(
 	viewBtn.Importance = widget.LowImportance
 
 	dragHandle := fynewidget.NewDragHandle(dragGroup, slotIdx, rowGetter)
-	setTooltip(dragHandle, locale.T("wizard.rules.tooltip_drag_reorder"))
+	setTooltip(dragHandle, locale.T("Drag to reorder"))
 
 	// Shared row scaffolding (see row_scaffold.go). View-only row: no edit/del.
 	leftLead := buildRowDragLead(dragHandle, enableCh)

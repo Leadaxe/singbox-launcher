@@ -61,7 +61,7 @@ func maybeTunOffDarwin(presenter *wizardpresentation.WizardPresenter, model *wiz
 		return false
 	}
 	if ac.RunningState.IsRunning() {
-		dialog.ShowError(errors.New(locale.T("wizard.settings.tun_off_core_running")), presenter.DialogParent())
+		dialog.ShowError(errors.New(locale.T("Stop the sing-box core first (Core tab -> Stop), then turn off TUN.\n\nAfter TUN ran with administrator rights, the experimental cache under bin/ and core log files (logs/sing-box.log) may be owned by root. They are removed automatically when you turn TUN off, but only while the core is stopped.")), presenter.DialogParent())
 		chk.SetChecked(true)
 		return true
 	}
@@ -69,7 +69,7 @@ func maybeTunOffDarwin(presenter *wizardpresentation.WizardPresenter, model *wiz
 	// RunningState may be false while sing-box still runs (e.g. privileged Stop failed or was cancelled).
 	if ac.ProcessService != nil {
 		if alive, pid := ac.ProcessService.IsSingBoxProcessRunningOnSystem(); alive {
-			dialog.ShowError(fmt.Errorf("%s", locale.Tf("wizard.settings.tun_off_singbox_on_system", pid)), presenter.DialogParent())
+			dialog.ShowError(fmt.Errorf("%s", locale.Tf("sing-box is still running on the system (detected PID %d). Use Core -> Stop (enter your password if asked) until the process exits, or end it in Activity Monitor, then turn off TUN.\n\nIf Stop was cancelled earlier, the launcher could think the core was stopped while sing-box was still running — that leaves the TUN interface and ports (e.g. mixed proxy) busy.", pid)), presenter.DialogParent())
 			chk.SetChecked(true)
 			return true
 		}

@@ -124,7 +124,7 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 		debuglog.ErrorLog("ConfigWizard: failed to load %s from %s: %v", templateFileName, filepath.Join(ac.FileService.ExecDir, "bin", templateFileName), err)
 		debuglog.DebugLog("wizard: showing download failed manual (template load on open)")
 		binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
-		dialogs.ShowDownloadFailedManual(parent, locale.T("wizard.error_template_failed"), wizardtemplate.GetTemplateURL(), binDir)
+		dialogs.ShowDownloadFailedManual(parent, locale.T("Config template failed to load"), wizardtemplate.GetTemplateURL(), binDir)
 		if ac.UIService != nil && ac.UIService.UpdateConfigStatusFunc != nil {
 			ac.UIService.UpdateConfigStatusFunc()
 		}
@@ -145,7 +145,7 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 	// 1280×800 (типичный минимум для macOS 11 Big Sur) фиксированные 660px не
 	// помещались — нижний край с навигационными кнопками уходил под Dock.
 	// clampWizardSize ограничивает размер рабочей областью экрана.
-	wizardWindow := ac.UIService.Application.NewWindow(locale.T("wizard.window_title"))
+	wizardWindow := ac.UIService.Application.NewWindow(locale.T("Config Wizard"))
 	wizardWindow.Resize(clampWizardSize(ac.UIService.Application, 620, 660))
 	wizardWindow.CenterOnScreen()
 	guiState.Window = wizardWindow
@@ -260,7 +260,7 @@ func loadConfigFromFile(presenter *wizardpresentation.WizardPresenter, fileServi
 	loadedConfig, parserConfigJSON, sourceURLs, err := wizardbusiness.LoadConfigFromFile(fileService, templateData)
 	if err != nil {
 		debuglog.ErrorLog("loadConfigFromFile: Failed to load config: %v", err)
-		dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("wizard.error_load_config"), err))
+		dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to load existing config"), err))
 	}
 	if loadedConfig {
 		model.ParserConfigJSON = parserConfigJSON
@@ -285,7 +285,7 @@ func loadConfigFromFile(presenter *wizardpresentation.WizardPresenter, fileServi
 			ac := core.GetController()
 			binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
 			debuglog.DebugLog("wizard: showing download failed manual (template missing)")
-			dialogs.ShowDownloadFailedManual(wizardWindow, locale.T("wizard.error_template_missing"), wizardtemplate.GetTemplateURL(), binDir)
+			dialogs.ShowDownloadFailedManual(wizardWindow, locale.T("Config template missing"), wizardtemplate.GetTemplateURL(), binDir)
 			wizardWindow.Close()
 			return
 		}
@@ -349,12 +349,12 @@ func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *w
 	var targetTabItem *container.TabItem
 	if showTargetTab {
 		targetTab := wizardtabs.CreateTargetTab(presenter)
-		targetTabItem = container.NewTabItem(locale.T("wizard.tab_target"), targetTab)
+		targetTabItem = container.NewTabItem(locale.T("Target"), targetTab)
 	}
 	sourcesTab := wizardtabs.CreateSourcesTab(presenter)
-	sourcesTabItem := container.NewTabItem(locale.T("wizard.tab_sources"), sourcesTab)
+	sourcesTabItem := container.NewTabItem(locale.T("Sources"), sourcesTab)
 	outboundsTab := wizardtabs.CreateDirectionsTab(presenter)
-	outboundsTabItem := container.NewTabItem(locale.T("wizard.tab_outbounds"), outboundsTab)
+	outboundsTabItem := container.NewTabItem(locale.T("Directions"), outboundsTab)
 
 	var tabs *container.AppTabs
 	if targetTabItem != nil {
@@ -388,13 +388,13 @@ func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *w
 	presenter.SetCreateRulesTabFunc(createRulesTabWrapper)
 
 	if templateTab := wizardtabs.CreateRulesTab(presenter, showAddRuleDialogWrapper); templateTab != nil {
-		rulesTabItem = container.NewTabItem(locale.T("wizard.tab_rules"), templateTab)
+		rulesTabItem = container.NewTabItem(locale.T("Rules"), templateTab)
 		dnsTab := wizardtabs.CreateDNSTab(presenter)
-		dnsTabItem := container.NewTabItem(locale.T("wizard.tab_dns"), dnsTab)
+		dnsTabItem := container.NewTabItem(locale.T("DNS"), dnsTab)
 		settingsTab := wizardtabs.CreateSettingsTab(presenter)
-		settingsTabItem := container.NewTabItem(locale.T("wizard.tab_settings"), settingsTab)
+		settingsTabItem := container.NewTabItem(locale.T("Settings"), settingsTab)
 		filesTab := wizardtabs.CreateFilesTab(presenter, guiState)
-		filesTabItem := container.NewTabItem(locale.T("wizard.tab_files"), filesTab)
+		filesTabItem := container.NewTabItem(locale.T("Files"), filesTab)
 		tabs.Append(rulesTabItem)
 		tabs.Append(dnsTabItem)
 		tabs.Append(settingsTabItem)
@@ -418,12 +418,12 @@ func createWizardButtons(presenter *wizardpresentation.WizardPresenter, guiState
 
 // createStateManagementButtons создает кнопки управления состояниями.
 func createStateManagementButtons(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState, wizardWindow fyne.Window) {
-	guiState.ReadButton = widget.NewButton(locale.T("wizard.button_read"), func() {
+	guiState.ReadButton = widget.NewButton(locale.T("Read"), func() {
 		handleReadButton(presenter, wizardWindow)
 	})
 	guiState.ReadButton.Importance = widget.MediumImportance
 
-	guiState.SaveAsButton = widget.NewButton(locale.T("wizard.button_save_as"), func() {
+	guiState.SaveAsButton = widget.NewButton(locale.T("Save As"), func() {
 		handleSaveAsButton(presenter, wizardWindow)
 	})
 	guiState.SaveAsButton.Importance = widget.MediumImportance
@@ -432,12 +432,12 @@ func createStateManagementButtons(presenter *wizardpresentation.WizardPresenter,
 // createNavigationButtons создает кнопки навигации (Prev, Next, Close).
 // currentTabIndex передается по ссылке для обновления в обработчиках.
 func createNavigationButtons(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState, tabs *container.AppTabs, currentTabIndex *int) {
-	guiState.CloseButton = widget.NewButton(locale.T("wizard.button_close"), func() {
+	guiState.CloseButton = widget.NewButton(locale.T("Close"), func() {
 		handleCloseButton(presenter, guiState, guiState.Window)
 	})
 	guiState.CloseButton.Importance = widget.HighImportance
 
-	guiState.PrevButton = widget.NewButton(locale.T("wizard.button_prev"), func() {
+	guiState.PrevButton = widget.NewButton(locale.T("Prev"), func() {
 		if *currentTabIndex > 0 {
 			*currentTabIndex--
 			tabs.Select(tabs.Items[*currentTabIndex])
@@ -445,7 +445,7 @@ func createNavigationButtons(presenter *wizardpresentation.WizardPresenter, guiS
 	})
 	guiState.PrevButton.Importance = widget.HighImportance
 
-	guiState.NextButton = widget.NewButton(locale.T("wizard.button_next"), func() {
+	guiState.NextButton = widget.NewButton(locale.T("Next"), func() {
 		if *currentTabIndex < len(tabs.Items)-1 {
 			*currentTabIndex++
 			tabs.Select(tabs.Items[*currentTabIndex])
@@ -456,7 +456,7 @@ func createNavigationButtons(presenter *wizardpresentation.WizardPresenter, guiS
 
 // createSaveButtonWithProgress создает кнопку Save с прогресс-баром.
 func createSaveButtonWithProgress(presenter *wizardpresentation.WizardPresenter, guiState *wizardpresentation.GUIState) {
-	guiState.SaveButton = widget.NewButton(locale.T("wizard.button_save"), func() {
+	guiState.SaveButton = widget.NewButton(locale.T("Save"), func() {
 		debuglog.InfoLog("wizard: Save button clicked")
 		presenter.SaveConfig()
 	})
@@ -546,7 +546,7 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 
 		// Вкладка Направлений: пересобрать структуру из JSON и перестроить
 		// список (правки на Sources меняют только JSON модели).
-		if item.Text == locale.T("wizard.tab_outbounds") {
+		if item.Text == locale.T("Directions") {
 			presenter.ApplyParserConfigFromCurrentJSON()
 			if guiState.RefreshOutboundsConfiguratorList != nil {
 				guiState.RefreshOutboundsConfiguratorList()
@@ -558,7 +558,7 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 		// значило бы платить за цифры, которых пользователь мог и не
 		// открыть. Считаем в фоне — переключение вкладки не должно ждать
 		// разбора; готовый результат перерисует список.
-		if item.Text == locale.T("wizard.tab_sources") {
+		if item.Text == locale.T("Sources") {
 			go func() {
 				if !wizardbusiness.EnsureSourceNodeCounts(model) {
 					return
@@ -606,14 +606,14 @@ func handleReadButton(presenter *wizardpresentation.WizardPresenter, wizardWindo
 	// Проверяем наличие несохранённых изменений
 	if presenter.HasUnsavedChanges() {
 		// Показываем диалог подтверждения
-		dialog.ShowConfirm(locale.T("wizard.dialog_confirmation"), locale.T("wizard.dialog_unsaved_changes"),
+		dialog.ShowConfirm(locale.T("Confirmation"), locale.T("Current changes will be lost. Save current state?"),
 			func(save bool) {
 				if save {
 					// Show "Save As" dialog
 					wizarddialogs.ShowSaveStateDialog(presenter, func(result wizarddialogs.SaveStateResult) {
 						if result.Action == "save" {
 							if err := presenter.SaveStateAs(result.Comment, result.ID); err != nil {
-								dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("wizard.error_save_state"), err))
+								dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to save state"), err))
 								return
 							}
 							// Continue loading after saving
@@ -653,7 +653,7 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 				if err != nil {
 					binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
 					debuglog.DebugLog("wizard: showing download failed manual (template load on New)")
-					dialogs.ShowDownloadFailedManual(wizardWindow, locale.T("wizard.error_template_failed"), wizardtemplate.GetTemplateURL(), binDir)
+					dialogs.ShowDownloadFailedManual(wizardWindow, locale.T("Config template failed to load"), wizardtemplate.GetTemplateURL(), binDir)
 					return
 				}
 				model.TemplateData = templateData
@@ -690,13 +690,13 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 		}
 
 		if loadErr != nil {
-			dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("wizard.error_load_state"), loadErr))
+			dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to load state"), loadErr))
 			return
 		}
 
 		// Загружаем состояние в модель
 		if err := presenter.LoadState(stateFile); err != nil {
-			dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("wizard.error_restore_state"), err))
+			dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to restore state"), err))
 			return
 		}
 
@@ -710,7 +710,7 @@ func handleSaveAsButton(presenter *wizardpresentation.WizardPresenter, wizardWin
 	wizarddialogs.ShowSaveStateDialog(presenter, func(result wizarddialogs.SaveStateResult) {
 		if result.Action == "save" {
 			if err := presenter.SaveStateAs(result.Comment, result.ID); err != nil {
-				dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("wizard.error_save_state"), err))
+				dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to save state"), err))
 				return
 			}
 			// Закрываем визард после успешного сохранения
@@ -747,11 +747,11 @@ func handleCloseButton(presenter *wizardpresentation.WizardPresenter, guiState *
 
 	if hasChanges {
 		// Создаем кастомный диалог с тремя кнопками: Save, Discard, Cancel
-		messageLabel := widget.NewLabel(locale.T("wizard.dialog_save_before_close"))
+		messageLabel := widget.NewLabel(locale.T("Save changes before closing?"))
 
 		var d dialog.Dialog
 
-		saveButton := widget.NewButton(locale.T("wizard.button_save"), func() {
+		saveButton := widget.NewButton(locale.T("Save"), func() {
 			if d != nil {
 				d.Hide()
 			}
@@ -760,7 +760,7 @@ func handleCloseButton(presenter *wizardpresentation.WizardPresenter, guiState *
 			// SaveCurrentState (без progress UI, окно всё равно закрывается)
 			// + явный rebuild в фоне.
 			if err := presenter.SaveCurrentState(); err != nil {
-				dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("wizard.error_save_state"), err))
+				dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to save state"), err))
 				return
 			}
 			go func() {
@@ -776,7 +776,7 @@ func handleCloseButton(presenter *wizardpresentation.WizardPresenter, guiState *
 		})
 		saveButton.Importance = widget.HighImportance
 
-		discardButton := widget.NewButton(locale.T("wizard.dialog_discard"), func() {
+		discardButton := widget.NewButton(locale.TN(1, "Discard"), func() {
 			if d != nil {
 				d.Hide()
 			}
@@ -792,7 +792,7 @@ func handleCloseButton(presenter *wizardpresentation.WizardPresenter, guiState *
 			discardButton,
 		)
 
-		d = dialogs.NewCustom(locale.T("wizard.dialog_confirmation"), messageLabel, buttonsRow, locale.T("wizard.dialog_cancel"), wizardWindow)
+		d = dialogs.NewCustom(locale.T("Confirmation"), messageLabel, buttonsRow, locale.T("Cancel"), wizardWindow)
 		d.Show()
 	} else {
 		// Нет несохранённых правок — state на диске актуален. Если был Save

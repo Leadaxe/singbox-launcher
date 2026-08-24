@@ -58,7 +58,7 @@ const byClientRefresh = time.Second
 //
 // Функция, а не переменная пакета: язык выставляется в main уже после init'ов,
 // и константа поймала бы английский ключ независимо от настройки.
-func anyOption() string { return locale.T("traffic.byclient.any") }
+func anyOption() string { return locale.T("— all —") }
 
 // Ширины колонок в клетках сетки. Пропорциональный шрифт не выравнивается
 // пробелами, поэтому колонки задаются размерами, а не форматом строки.
@@ -100,23 +100,23 @@ func buildByClientView(deps WindowDeps, win fyne.Window) *byClientView {
 	// Имя фильтра — внутри самого списка, а не подписью над ним: отдельная
 	// строка подписей съедала целый ряд высоты, а «all» без неё не говорит,
 	// чем именно фильтруем.
-	v.clientSel.PlaceHolder = locale.T("traffic.byclient.client")
-	v.outboundSel.PlaceHolder = locale.T("traffic.byclient.outbound")
-	v.ruleSel.PlaceHolder = locale.T("traffic.byclient.rule")
+	v.clientSel.PlaceHolder = locale.T("Client")
+	v.outboundSel.PlaceHolder = locale.T("Outbound")
+	v.ruleSel.PlaceHolder = locale.T("Rule")
 
 	v.search = widget.NewEntry()
-	v.search.SetPlaceHolder(locale.T("traffic.byclient.search_hint"))
+	v.search.SetPlaceHolder(locale.T("domain, IP or port"))
 	v.search.OnChanged = func(s string) {
 		v.filter.Search = strings.TrimSpace(s)
 		v.refresh()
 	}
 
-	reset := widget.NewButtonWithIcon(locale.T("traffic.byclient.reset"), theme.ContentClearIcon(), v.reset)
+	reset := widget.NewButtonWithIcon(locale.TN(1, "Reset"), theme.ContentClearIcon(), v.reset)
 	reset.Importance = widget.LowImportance
 
 	filters := container.NewGridWithColumns(3, v.clientSel, v.outboundSel, v.ruleSel)
 	searchRow := container.NewBorder(nil, nil,
-		widget.NewLabel(locale.T("traffic.byclient.search")),
+		widget.NewLabel(locale.T("Search")),
 		container.NewHBox(v.summary, reset),
 		v.search,
 	)
@@ -193,9 +193,9 @@ func (v *byClientView) refresh() {
 		// Пусто — это либо «ядро молчит», либо «фильтр никого не оставил».
 		// Разница существенная: во втором случае искать причину в машине не
 		// надо, и сказать об этом словами честнее, чем оставить голое место.
-		key := "traffic.byclient.empty"
+		key := "No active client connections."
 		if total > 0 {
-			key = "traffic.byclient.empty_filtered"
+			key = "No connections match the filter."
 		}
 		hint := widget.NewLabel(locale.T(key))
 		hint.Wrapping = fyne.TextWrapWord
@@ -311,13 +311,13 @@ func (v *byClientView) headerRow() fyne.CanvasObject {
 	// Не эмодзи: «⏱» шрифт темы рисует цветным глифом, выбивающимся из
 	// строки подписей.
 	return container.NewHBox(
-		cell(locale.T("traffic.byclient.col_dest"), colDest, fyne.TextAlignLeading),
+		cell(locale.T("DESTINATION"), colDest, fyne.TextAlignLeading),
 		cell(":", colPort, fyne.TextAlignTrailing),
 		cell("~", colAge, fyne.TextAlignTrailing),
 		cell("↑", colTraffic, fyne.TextAlignTrailing),
 		cell("↓", colTraffic, fyne.TextAlignTrailing),
-		cell(locale.T("traffic.byclient.col_outbound"), colOutbound, fyne.TextAlignLeading),
-		cell(locale.T("traffic.byclient.col_rule"), colRule, fyne.TextAlignLeading),
+		cell(locale.T("OUTBOUND"), colOutbound, fyne.TextAlignLeading),
+		cell(locale.T("RULE"), colRule, fyne.TextAlignLeading),
 	)
 }
 
@@ -338,7 +338,7 @@ func (v *byClientView) clientRow(c tprof.ClientSummary) fyne.CanvasObject {
 	if c.MixedOutbound {
 		// Ради этого признака профайлер на роутере и открывают: устройство
 		// ушло мимо VPN частью трафика, а не целиком.
-		title += "  " + locale.T("traffic.byclient.mixed")
+		title += "  " + locale.T("⚠ mixed outbounds")
 	}
 	head := widget.NewButton(title, func() {
 		v.expanded[c.Addr] = !v.expanded[c.Addr]
@@ -374,7 +374,7 @@ func (v *byClientView) clientRow(c tprof.ClientSummary) fyne.CanvasObject {
 	if v.deps.CloseConns != nil {
 		ids := append([]string(nil), c.IDs...)
 		addr := c.Addr
-		closeBtn := widget.NewButtonWithIcon(locale.T("traffic.byclient.close_conns"), theme.CancelIcon(), func() {
+		closeBtn := widget.NewButtonWithIcon(locale.T("Close connections"), theme.CancelIcon(), func() {
 			v.deps.CloseConns(ids)
 			v.expanded[addr] = false
 			v.refresh()

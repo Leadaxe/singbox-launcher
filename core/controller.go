@@ -731,10 +731,10 @@ func CheckConfigFileExists() {
 	if _, err := os.Stat(ac.FileService.ConfigPath); os.IsNotExist(err) {
 		debuglog.WarnLog("CheckConfigFileExists: config.json not found at %s", ac.FileService.ConfigPath)
 
-		message := locale.Tf("core.config_not_found_message", constants.ConfigFileName)
+		message := locale.Tf("⚠️ Configuration file not found!\n\nThe file %s is missing from the bin/ folder.\n\nTo get started:\n1. open ⚙️ Configurator\n2. add subscription URLs in the Sources tab and click Save\n3. click 🔄 Update on this dashboard to fetch and build config\n4. press Start\n", constants.ConfigFileName)
 
 		if ac.hasUI() {
-			dialogs.ShowInfo(ac.UIService.MainWindow, locale.T("core.config_not_found_title"), message)
+			dialogs.ShowInfo(ac.UIService.MainWindow, locale.T("Configuration Not Found"), message)
 		}
 	}
 }
@@ -764,7 +764,7 @@ func CheckIfLauncherAlreadyRunningUtil() {
 		}
 		if strings.EqualFold(p.Name, execName) {
 			if ac.hasUI() {
-				dialogs.ShowInfo(ac.UIService.MainWindow, locale.T("core.already_running_app_title"), locale.T("core.already_running_app_message"))
+				dialogs.ShowInfo(ac.UIService.MainWindow, locale.T("Information"), locale.T("The application is already running. Use the existing instance or close it before starting a new one."))
 			}
 			return
 		}

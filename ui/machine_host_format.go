@@ -96,7 +96,7 @@ func hostUptime(sec int64) string {
 	secs := int(d.Seconds()) % 60
 	clock := fmt.Sprintf("%02d:%02d:%02d", hours, mins, secs)
 	if days > 0 {
-		return locale.Tf("remote.host.uptime_days", days, clock)
+		return locale.Tf("%dd %s", days, clock)
 	}
 	return clock
 }
@@ -109,7 +109,7 @@ func hostInterval(sec float64) string {
 	if sec <= 0 {
 		return ""
 	}
-	return locale.Tf("remote.host.interval", sec)
+	return locale.Tf("sampled over %.1f s", sec)
 }
 
 // hostThermalText — максимум по датчикам одной строкой.
@@ -143,11 +143,11 @@ func hostFDText(open, limit *int) string {
 func hostMountFlags(m lxdclient.HostMount) string {
 	switch {
 	case m.ReadOnly && m.HoldsStateDir:
-		return locale.T("remote.host.flag_ro_state")
+		return locale.T("🔒 ro · ★ state")
 	case m.ReadOnly:
-		return locale.T("remote.host.flag_ro")
+		return locale.T("🔒 ro")
 	case m.HoldsStateDir:
-		return locale.T("remote.host.flag_state")
+		return locale.T("★ state")
 	default:
 		return ""
 	}
@@ -202,7 +202,7 @@ func hostIfaceMTU(i lxdclient.HostInterface) string {
 // пустая полоска с «0%» читалась бы как «простаивает».
 func hostCPUSummary(c lxdclient.HostCPU) string {
 	if c.UsagePercent == nil {
-		return locale.T("remote.host.awaiting_sample")
+		return locale.T("waiting for a second sample…")
 	}
 	return hostPercent(c.UsagePercent)
 }
@@ -215,7 +215,7 @@ func hostLoadText(c lxdclient.HostCPU) string {
 	if c.Load1 == nil || c.Load5 == nil || c.Load15 == nil {
 		return hostDash
 	}
-	return locale.Tf("remote.host.load", *c.Load1, *c.Load5, *c.Load15)
+	return locale.Tf("load  %.2f  %.2f  %.2f", *c.Load1, *c.Load5, *c.Load15)
 }
 
 // hostMemoryDetail — расшифровка памяти под полоской.
@@ -233,10 +233,10 @@ func hostMemoryDetail(m lxdclient.HostMemory) string {
 	// Построчно, а не одной длинной строкой: Label без переноса отдаёт
 	// минимальной шириной весь свой текст, и «… · cache 168.1 MB» распирал
 	// колонку шире окна.
-	s := locale.Tf("remote.host.mem_used", hostBytes(used), hostBytes(m.TotalBytes))
-	s += "\n" + locale.Tf("remote.host.mem_avail", hostBytes(m.AvailableBytes))
+	s := locale.Tf("%s used of %s", hostBytes(used), hostBytes(m.TotalBytes))
+	s += "\n" + locale.Tf("%s available", hostBytes(m.AvailableBytes))
 	if m.CachedBytes != nil {
-		s += "\n" + locale.Tf("remote.host.mem_cache", hostBytes(*m.CachedBytes))
+		s += "\n" + locale.Tf("cache %s", hostBytes(*m.CachedBytes))
 	}
 	return s
 }
@@ -247,13 +247,13 @@ func hostMemoryDetail(m lxdclient.HostMemory) string {
 // это норма, и показывать «0 Б / 0 Б» значит заставлять читателя гадать.
 func hostSwapText(m lxdclient.HostMemory) string {
 	if m.SwapTotalBytes == 0 {
-		return locale.T("remote.host.swap_off")
+		return locale.T("swap disabled")
 	}
 	var used uint64
 	if m.SwapTotalBytes > m.SwapFreeBytes {
 		used = m.SwapTotalBytes - m.SwapFreeBytes
 	}
-	return locale.Tf("remote.host.swap_on", hostBytes(used), hostBytes(m.SwapTotalBytes))
+	return locale.Tf("swap %s of %s", hostBytes(used), hostBytes(m.SwapTotalBytes))
 }
 
 // hostMachineLine — шапка: модель, ОС, ядро, архитектура, аптайм.
@@ -314,7 +314,7 @@ func hostArchMismatch(want, actual string) string {
 	if hostArchEqual(want, actual) {
 		return ""
 	}
-	return locale.Tf("remote.host.arch_mismatch", want, actual)
+	return locale.Tf("⚠ This machine is recorded as %s, but the daemon reports %s. config.json is built for the recorded architecture — fix it in the machine settings.", want, actual)
 }
 
 // hostOSMismatch — то же для ОС: записанный GOOS против os_family.
@@ -330,7 +330,7 @@ func hostOSMismatch(want, actual string) string {
 	if strings.EqualFold(want, actual) {
 		return ""
 	}
-	return locale.Tf("remote.host.os_mismatch", want, actual)
+	return locale.Tf("⚠ This machine is recorded as %s, but the daemon runs on %s. config.json is built for the recorded platform — fix it in the machine settings.", want, actual)
 }
 
 // hostPlatformMismatch собирает предупреждения по обоим полям платформы.
@@ -380,7 +380,7 @@ func hostMachineUptime(h lxdclient.HostInfo) string {
 	if up == hostDash {
 		return ""
 	}
-	return locale.Tf("remote.host.uptime", up)
+	return locale.Tf("up %s", up)
 }
 
 // hostMachineSoftware — вторая строка шапки: что на машине запущено.

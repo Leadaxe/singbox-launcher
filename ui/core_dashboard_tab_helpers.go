@@ -15,15 +15,15 @@ const downloadPlaceholderWidth = 120
 // Sub-minute resolution is noisy here; clamp to minutes / hours / days.
 func formatRelativeAge(d time.Duration) string {
 	if d < time.Minute {
-		return locale.T("core.subs_updated_just_now")
+		return locale.T("(subs: just now)")
 	}
 	if d < time.Hour {
-		return locale.Tf("core.subs_updated_min_ago", int(d.Minutes()))
+		return locale.Tf("(subs: %dm ago)", int(d.Minutes()))
 	}
 	if d < 24*time.Hour {
-		return locale.Tf("core.subs_updated_hr_ago", int(d.Hours()))
+		return locale.Tf("(subs: %dh ago)", int(d.Hours()))
 	}
-	return locale.Tf("core.subs_updated_day_ago", int(d.Hours()/24))
+	return locale.Tf("(subs: %dd ago)", int(d.Hours()/24))
 }
 
 // downloadComponentState represents UI components for download state management

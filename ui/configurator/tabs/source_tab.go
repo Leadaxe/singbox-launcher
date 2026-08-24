@@ -56,11 +56,11 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	const directLinksDocURL = "https://github.com/Leadaxe/singbox-launcher/blob/6beb136b9082823699c6509d32e62f212fd7ff90/docs/ParserConfig.md#%D1%84%D0%BE%D1%80%D0%BC%D0%B0%D1%82%D1%8B-uri-%D0%B4%D0%BB%D1%8F-%D0%BF%D1%80%D1%8F%D0%BC%D1%8B%D1%85-%D1%81%D1%81%D1%8B%D0%BB%D0%BE%D0%BA"
 
 	// Section 1: Subscription URL or Direct Links
-	urlLabel := widget.NewLabel(locale.T("wizard.source.label_url"))
+	urlLabel := widget.NewLabel(locale.T("Subscription URL or Direct Links:"))
 	urlLabel.Importance = widget.MediumImportance
 
 	guiState.SourceURLEntry = widget.NewMultiLineEntry()
-	guiState.SourceURLEntry.SetPlaceHolder(locale.T("wizard.source.placeholder_url"))
+	guiState.SourceURLEntry.SetPlaceHolder(locale.T("https://your-subscription-url-here"))
 	guiState.SourceURLEntry.Wrapping = fyne.TextWrapOff
 	// No automatic application: URLs are applied only when the user clicks Add.
 	guiState.SourceURLEntry.OnChanged = func(value string) {
@@ -71,7 +71,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		presenter.MarkAsChanged()
 	}
 
-	hintLabel := widget.NewLabel(locale.T("wizard.source.hint"))
+	hintLabel := widget.NewLabel(locale.T("Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://). For multiple links, use a new line for each."))
 	hintLabel.Wrapping = fyne.TextWrapWord
 	wireguardHelpButton := widget.NewButton("?", func() {
 		if err := platform.OpenURL(directLinksDocURL); err != nil {
@@ -104,7 +104,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		guiState.SourceURLsProgrammatic = false
 	}
 
-	addURLButton := widget.NewButton(locale.T("wizard.source.button_add"), func() {
+	addURLButton := widget.NewButton(locale.T("Add"), func() {
 		applyAddedSources(guiState.SourceURLEntry.Text)
 	})
 
@@ -138,7 +138,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	// dialog (SPEC 082); fall back to the in-app one where there's no native
 	// dialog. The picked file's text goes through the same path as the Add field.
 	addFromFileAction := func() {
-		path, ok, err := platform.PickOpenFile(locale.T("wizard.source.pick_file_prompt"), []string{"conf", "vpn", "txt"})
+		path, ok, err := platform.PickOpenFile(locale.T("Select a config file (.conf / .vpn / .txt)"), []string{"conf", "vpn", "txt"})
 		if err == platform.ErrNativeDialogUnavailable {
 			fyneFileOpen()
 			return
@@ -232,10 +232,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	var overflowBtn *widget.Button
 	overflowBtn = widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
 		menu := fyne.NewMenu("",
-			fyne.NewMenuItem(locale.T("wizard.source.button_add_chain"), addChainAction),
-			fyne.NewMenuItem(locale.T("wizard.source.button_add_warp"), addWarpAction),
-			fyne.NewMenuItem(locale.T("wizard.source.button_add_from_file"), addFromFileAction),
-			fyne.NewMenuItem(locale.T("wizard.source.button_get_free"), getFreeVPNAction),
+			fyne.NewMenuItem(locale.T("Add hop chain"), addChainAction),
+			fyne.NewMenuItem(locale.T("Add WARP"), addWarpAction),
+			fyne.NewMenuItem(locale.T("Add from file"), addFromFileAction),
+			fyne.NewMenuItem(locale.T("Free community servers"), getFreeVPNAction),
 		)
 		pop := widget.NewPopUpMenu(menu, guiState.Window.Canvas())
 		pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(overflowBtn)
@@ -264,7 +264,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	)
 
 	// Section 2: Sources list (based on ParserConfig.ParserConfig.Proxies)
-	sourcesLabel := widget.NewLabel(locale.T("wizard.source.label_sources"))
+	sourcesLabel := widget.NewLabel(locale.T("Sources"))
 	sourcesLabel.Importance = widget.MediumImportance
 
 	sourcesBox := container.NewVBox()
@@ -302,7 +302,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		m := presenter.Model()
 		if len(m.Sources) == 0 {
 			emptyGutter := components.NewScrollGutter()
-			sourcesBox.Add(container.NewHBox(widget.NewLabel(locale.T("wizard.source.no_sources")), layout.NewSpacer(), emptyGutter))
+			sourcesBox.Add(container.NewHBox(widget.NewLabel(locale.T("No sources defined in ParserConfig.")), layout.NewSpacer(), emptyGutter))
 			sourcesBox.Refresh()
 			return
 		}
@@ -350,7 +350,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						}
 					}
 					if label == "" {
-						label = locale.Tf("wizard.source.source_n", sourceIndex+1)
+						label = locale.Tf("Source %d", sourceIndex+1)
 					}
 				}
 				// Счётчик узлов: подписка на полсотни серверов, у которой
@@ -359,9 +359,9 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// расхождении — и сколько всего.
 				if c, ok := m.SourceNodeCounts[sourceIndex]; ok && c.Total > 0 {
 					if c.Enabled == c.Total {
-						label += "  " + locale.Tf("wizard.source.row_nodes", c.Total)
+						label += "  " + locale.Tf("· %d nodes", c.Total)
 					} else {
-						label += "  " + locale.Tf("wizard.source.row_nodes_partial", c.Enabled, c.Total)
+						label += "  " + locale.Tf("· %d of %d nodes", c.Enabled, c.Total)
 					}
 				}
 
@@ -372,10 +372,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// худший из способов.
 				if src.Type == corestate.SourceTypeChain {
 					if supported, _ := config.ChainSupportedByCore(); supported {
-						label += "  " + locale.Tf("wizard.source.row_chain_mark",
+						label += "  " + locale.Tf("[chain: %d]",
 							len(src.Chain.HopsOrNil()))
 					} else {
-						label += "  " + locale.T("wizard.source.row_chain_unsupported")
+						label += "  " + locale.T("[chain] ⚠️ core has no chain support")
 					}
 				}
 				label = wizardutils.TruncateStringEllipsis(label, wizardutils.MaxLabelRunes, "...")
@@ -464,7 +464,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					}
 					if guiState.Window != nil {
 						fyne.CurrentApp().Clipboard().SetContent(copyText)
-						dialogs.ShowAutoHideInfo(fyne.CurrentApp(), guiState.Window, locale.T("wizard.source.dialog_copied_title"), locale.T("wizard.source.dialog_copied_message"))
+						dialogs.ShowAutoHideInfo(fyne.CurrentApp(), guiState.Window, locale.T("Copied"), locale.T("Source copied to clipboard."))
 					}
 				}, rowGetter)
 				copyBtn.Importance = widget.LowImportance
@@ -480,14 +480,14 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					showSourceEditWindow(presenter, guiState, guiState.Window, sourceIndex, shortLabel)
 				}, rowGetter)
 				editBtn.Importance = widget.LowImportance
-				fynewidget.SetToolTipSafe(editBtn, locale.T("wizard.source.button_edit"))
+				fynewidget.SetToolTipSafe(editBtn, locale.T("Edit"))
 
 				delBtn := fynewidget.NewHoverForwardButtonWithIcon("", theme.DeleteIcon(), func() {
 					// Confirm before removing — deletion drops the source (and its
 					// nodes) from the config; matches the Rules-tab delete UX.
 					dialog.ShowConfirm(
-						locale.T("wizard.dialog_confirmation"),
-						locale.Tf("wizard.source.dialog_delete_confirm", shortLabel),
+						locale.T("Confirmation"),
+						locale.Tf("Delete \"%s\"? The source and its nodes are removed from the configuration.", shortLabel),
 						func(ok bool) {
 							if !ok {
 								return
@@ -503,7 +503,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					)
 				}, rowGetter)
 				delBtn.Importance = widget.LowImportance
-				fynewidget.SetToolTipSafe(delBtn, locale.T("wizard.source.button_del"))
+				fynewidget.SetToolTipSafe(delBtn, locale.T("Del"))
 
 				// SPEC 052 phase 8: статус из subtitle (⚠ при err); badge на главной
 				// строке убран как избыточный. Refresh-icon только для подписок.
@@ -513,7 +513,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						refreshOneSourceFromUI(presenter, guiState, sourceID)
 					}, rowGetter)
 					refreshBtn.Importance = widget.LowImportance
-					fynewidget.SetToolTipSafe(refreshBtn, locale.T("wizard.source.tooltip_refresh_one"))
+					fynewidget.SetToolTipSafe(refreshBtn, locale.T("Fetch this subscription now"))
 				}
 
 				// SPEC 061 Phase 3: ⚠ / 📢 icon-button — persistent affordance to
@@ -523,13 +523,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				var noticeBtn *fynewidget.HoverForwardButton
 				if isSubscription && meta != nil && (meta.LastStatus == "err" || (meta.ProviderAnnounce != nil && !meta.ProviderAnnounce.IsEmpty())) {
 					icon := theme.WarningIcon()
-					tooltipKey := "wizard.source.tooltip_error_details"
+					tooltipKey := "Subscription update failed — click for details"
 					if meta.LastStatus != "err" {
 						// Success-with-notice path: provider sent content + announce.
 						// Use info-styled icon. We don't have an info-theme icon
 						// in our minimal set, fall back to QuestionIcon (📢-ish).
 						icon = theme.QuestionIcon()
-						tooltipKey = "wizard.source.tooltip_provider_notice"
+						tooltipKey = "Provider sent a notice — click to read"
 					}
 					srcLabel := shortLabel
 					metaCopy := meta // capture by value for closure (meta is *SubscriptionMeta, stable)
@@ -617,7 +617,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	sourcesScroll := container.NewVScroll(sourcesBox)
 	sourcesScroll.SetMinSize(fyne.NewSize(0, 80))
 
-	previewAllBtn := widget.NewButton(locale.T("wizard.source.button_preview_all"), func() {
+	previewAllBtn := widget.NewButton(locale.T("Preview all servers…"), func() {
 		showSourcePreviewAllWindow(presenter)
 	})
 	sourcesHeader := container.NewHBox(
@@ -714,7 +714,7 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 		return
 	}
 
-	win := app.NewWindow(locale.T("wizard.source.preview_all_title"))
+	win := app.NewWindow(locale.T("Servers from all sources"))
 	presenter.SetViewWindow(win)
 	win.SetOnClosed(func() {
 		presenter.ClearViewWindow()
@@ -722,7 +722,7 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 	})
 
 	var previewNodes []*config.ParsedNode
-	previewStatusLabel := widget.NewLabel(locale.T("wizard.source.preview_click_refresh"))
+	previewStatusLabel := widget.NewLabel(locale.T("Click Refresh to load servers from all sources."))
 	previewStatusLabel.Wrapping = fyne.TextWrapOff
 	previewStatusScroll := container.NewHScroll(previewStatusLabel)
 	previewList := widget.NewList(
@@ -740,10 +740,10 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 		if m.ParserConfig == nil || len(m.ParserConfig.ParserConfig.Proxies) == 0 {
 			previewNodes = nil
 			previewList.Refresh()
-			previewStatusLabel.SetText(locale.T("wizard.source.preview_no_sources"))
+			previewStatusLabel.SetText(locale.T("No sources. Add URLs and click Refresh."))
 			return
 		}
-		previewStatusLabel.SetText(locale.T("wizard.source.preview_loading"))
+		previewStatusLabel.SetText(locale.T("Loading..."))
 
 		go func() {
 			mm := m
@@ -752,7 +752,7 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 				if err != nil {
 					previewNodes = nil
 					previewList.Refresh()
-					previewStatusLabel.SetText(locale.Tf("wizard.source.preview_error", err.Error()))
+					previewStatusLabel.SetText(locale.Tf("Error: %s", err.Error()))
 					return
 				}
 				previewNodes = mm.PreviewNodes
@@ -761,17 +761,17 @@ func showSourcePreviewAllWindow(presenter *wizardpresentation.WizardPresenter) {
 				if mm.ParserConfig != nil {
 					sourcesCount = len(mm.ParserConfig.ParserConfig.Proxies)
 				}
-				status := locale.Tf("wizard.source.preview_servers", len(previewNodes), sourcesCount)
+				status := locale.Tf("%d server(s) from %d source(s)", len(previewNodes), sourcesCount)
 				if errorCount > 0 {
-					status += locale.Tf("wizard.source.preview_errors", errorCount)
+					status += locale.Tf("  ⚠️ %d error(s)", errorCount)
 				}
 				previewStatusLabel.SetText(status)
 			})
 		}()
 	}
 
-	refreshBtn := widget.NewButton(locale.T("wizard.source.button_refresh"), refreshPreview)
-	closeBtn := widget.NewButton(locale.T("wizard.source.view_close"), func() { win.Close() })
+	refreshBtn := widget.NewButton(locale.T("🔄 Refresh from sources"), refreshPreview)
+	closeBtn := widget.NewButton(locale.T("Close"), func() { win.Close() })
 	topRow := container.NewBorder(nil, nil, nil, refreshBtn, previewStatusScroll)
 	listStrip := components.NewScrollGutter()
 	previewScroll := container.NewScroll(previewList)
@@ -941,8 +941,8 @@ func refreshOneSourceFromUI(
 			if err != nil {
 				if guiState != nil && guiState.Window != nil && fyne.CurrentApp() != nil {
 					dialogs.ShowAutoHideInfo(fyne.CurrentApp(), guiState.Window,
-						locale.T("wizard.source.button_refresh_one"),
-						locale.Tf("wizard.source.refresh_failed", err.Error()))
+						locale.T("Refresh"),
+						locale.Tf("Refresh failed: %s", err.Error()))
 				}
 				return
 			}
@@ -964,8 +964,8 @@ func refreshOneSourceFromUI(
 			}
 			if guiState != nil && guiState.Window != nil && fyne.CurrentApp() != nil {
 				dialogs.ShowAutoHideInfo(fyne.CurrentApp(), guiState.Window,
-					locale.T("wizard.source.button_refresh_one"),
-					locale.T("wizard.source.refresh_succeeded"))
+					locale.T("Refresh"),
+					locale.T("Refreshed successfully"))
 			}
 			// Mark dirty: model.Sources[].Meta изменился, при следующем Save
 			// эти изменения уедут в state.json. Это пользовательский edit-ish

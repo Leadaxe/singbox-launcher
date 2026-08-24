@@ -39,9 +39,9 @@ func setTooltip(o fyne.CanvasObject, text string) {
 
 func tooltipForDNSServerCheck(locked bool) string {
 	if locked {
-		return "wizard.dns.tooltip_server_locked"
+		return "This row comes from template config.dns: it cannot be edited, removed, or toggled here. The checkbox shows inclusion in the generated DNS config (from saved state / template); when included, dns_options for the same tag can override the skeleton body."
 	}
-	return "wizard.dns.tooltip_server_enabled"
+	return "Include this server in the generated sing-box DNS config. Disabled servers stay in the list and in state; rules and Final must use enabled tags only."
 }
 
 func newTooltipLabel(text, tip string) *ttwidget.Label {
@@ -71,7 +71,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		if len(m.DNSServers) == 0 {
 			g := components.NewScrollGutter()
 			serversBox.Add(container.NewHBox(
-				widget.NewLabel(locale.T("wizard.dns.no_servers")),
+				widget.NewLabel(locale.T("No DNS servers.")),
 				layout.NewSpacer(),
 				g,
 			))
@@ -183,11 +183,11 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 					viewBtn.Importance = widget.LowImportance
 					right = container.NewHBox(viewBtn, rowGutter)
 				} else {
-					editBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("wizard.shared.button_edit"), theme.DocumentCreateIcon(), func() {
+					editBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.TN(1, "Edit"), theme.DocumentCreateIcon(), func() {
 						showDNSServerEditor(presenter, dialogParent(), idx)
 					}, rowGetter)
 					editBtn.Importance = widget.LowImportance
-					delBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("wizard.shared.button_del"), theme.DeleteIcon(), func() {
+					delBtn := fynewidget.NewHoverForwardButtonWithIcon(locale.T("Del"), theme.DeleteIcon(), func() {
 						deleteDNSServerAt(presenter, idx)
 						presenter.RefreshDNSListAndSelects()
 					}, rowGetter)
@@ -209,7 +209,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	}
 	guiState.RefreshDNSList = refreshList
 
-	addBtn := widget.NewButton(locale.T("wizard.dns.button_add"), func() {
+	addBtn := widget.NewButton(locale.T("Add"), func() {
 		showDNSServerAddDialog(presenter, dialogParent())
 	})
 
@@ -221,7 +221,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	// это лишь нижняя граница, чтобы на низком окне он не схлопнулся.
 	serversScroll.SetMinSize(fyne.NewSize(0, 160))
 
-	serversLabel := widget.NewLabel(locale.T("wizard.dns.label_servers"))
+	serversLabel := widget.NewLabel(locale.T("DNS servers"))
 	serversLabel.Importance = widget.MediumImportance
 	serversHeader := container.NewHBox(serversLabel, layout.NewSpacer(), addBtn)
 
@@ -258,7 +258,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		return strings.TrimSpace(wizardtemplate.VarDisplayTooltip(vd))
 	}
 	finalTip := varTooltip(wizardmodels.VarDNSFinal)
-	finalLabel := newTooltipLabel(varTitle(wizardmodels.VarDNSFinal, locale.T("wizard.dns.label_final")), finalTip)
+	finalLabel := newTooltipLabel(varTitle(wizardmodels.VarDNSFinal, locale.T("Final DNS:")), finalTip)
 	setTooltip(guiState.DNSFinalSelect, varTooltip(wizardmodels.VarDNSFinal))
 
 	markResolverChanged := func(value string) {
@@ -292,11 +292,11 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		markResolverChanged(sel)
 	})
 	resTip := varTooltip(wizardmodels.VarDNSDefaultDomainResolver)
-	resLabel := newTooltipLabel(varTitle(wizardmodels.VarDNSDefaultDomainResolver, locale.T("wizard.dns.label_default_resolver")), resTip)
+	resLabel := newTooltipLabel(varTitle(wizardmodels.VarDNSDefaultDomainResolver, locale.T("Default domain resolver:")), resTip)
 	setTooltip(guiState.DNSDefaultResolverSelect, varTooltip(wizardmodels.VarDNSDefaultDomainResolver))
 
 	guiState.DNSRulesEntry = widget.NewMultiLineEntry()
-	guiState.DNSRulesEntry.SetPlaceHolder(locale.T("wizard.dns.placeholder_rules"))
+	guiState.DNSRulesEntry.SetPlaceHolder(locale.T("{\n  \"rules\": [\n    {\"rule_set\":\"example\",\"server\":\"tag\"}\n  ]\n}"))
 	guiState.DNSRulesEntry.Wrapping = fyne.TextWrapOff
 	guiState.DNSRulesEntry.OnChanged = func(string) {
 		if guiState.DNSRulesProgrammatic {
@@ -311,11 +311,11 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	rulesHeight.SetMinSize(adaptiveScrollSize(guiState, 0.26, 170))
 	rulesBlock := container.NewStack(rulesHeight, rulesScroll)
 
-	rulesLabel := widget.NewLabel(locale.T("wizard.dns.label_rules"))
+	rulesLabel := widget.NewLabel(locale.T("Rules (JSON object with \"rules\" array)"))
 	rulesLabel.Importance = widget.MediumImportance
 
 	strategyTip := varTooltip(wizardmodels.VarDNSStrategy)
-	strategyLabel := newTooltipLabel(varTitle(wizardmodels.VarDNSStrategy, locale.T("wizard.dns.label_strategy")), strategyTip)
+	strategyLabel := newTooltipLabel(varTitle(wizardmodels.VarDNSStrategy, locale.T("Strategy:")), strategyTip)
 
 	guiState.DNSStrategySelect = widget.NewSelect([]string{}, func(sel string) {
 		if guiState.DNSSelectsProgrammatic {
@@ -366,7 +366,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 		// tab, DNSRuleOrder might have stale or missing slots.
 		wizardmodels.ReconcileDNSRuleOrder(m)
 		if len(m.DNSRuleOrder) == 0 {
-			unifiedRulesBox.Add(widget.NewLabel(locale.T("wizard.dns.no_rules")))
+			unifiedRulesBox.Add(widget.NewLabel(locale.T("No DNS rules.")))
 		} else {
 			buildUnifiedDNSRuleRows(presenter, m, dialogParent(), unifiedRulesBox, func() {
 				if refreshAll != nil {
@@ -398,7 +398,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 	// again → parse text, replace DNSUserRules, rebuild DNSRuleOrder.
 	toggleBtn := widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), nil)
 	toggleBtn.Importance = widget.LowImportance
-	setTooltip(toggleBtn, locale.T("wizard.dns.tooltip_toggle_raw_rules"))
+	setTooltip(toggleBtn, locale.T("Toggle between unified list view and raw JSON editor (user rules only)."))
 	toggleBtn.OnTapped = func() {
 		m := presenter.Model()
 		if !rawJSONMode {
@@ -489,7 +489,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 func dnsServerSummaryFromInvalidRaw(raw json.RawMessage) string {
 	s := strings.TrimSpace(string(raw))
 	if s == "" {
-		return locale.T("wizard.dns.invalid_server")
+		return locale.T("(invalid server JSON)")
 	}
 	const max = 64
 	runes := []rune(s)
@@ -543,13 +543,13 @@ func dnsResolvePlaceholder(v string, vars map[string]string) string {
 
 func dnsServerSummaryFromObj(obj map[string]interface{}, vars map[string]string) string {
 	if obj == nil {
-		return locale.T("wizard.dns.invalid_server")
+		return locale.T("(invalid server JSON)")
 	}
 	tag := dnsJSONStringField(obj, "tag")
 	typ := dnsJSONStringField(obj, "type")
 	server := dnsResolvePlaceholder(dnsJSONStringField(obj, "server"), vars)
 	if tag == "" {
-		tag = locale.T("wizard.dns.no_tag")
+		tag = locale.T("(no tag)")
 	}
 	var sum string
 	if server != "" {
@@ -804,17 +804,17 @@ func applyDNSServerJSON(p *wizardpresentation.WizardPresenter, w fyne.Window, te
 	}
 	text = strings.TrimSpace(text)
 	if text == "" {
-		dialog.ShowError(fmt.Errorf("%s", locale.T("wizard.dns.error_empty_json")), w)
+		dialog.ShowError(fmt.Errorf("%s", locale.T("JSON must not be empty.")), w)
 		return false
 	}
 	var obj map[string]interface{}
 	if err := json.Unmarshal([]byte(text), &obj); err != nil {
-		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("wizard.dns.error_invalid_json"), err), w)
+		dialog.ShowError(fmt.Errorf("%s: %w", locale.T("Invalid JSON"), err), w)
 		return false
 	}
 	tag := dnsJSONStringField(obj, "tag")
 	if tag == "" {
-		dialog.ShowError(fmt.Errorf("%s", locale.T("wizard.dns.error_missing_tag")), w)
+		dialog.ShowError(fmt.Errorf("%s", locale.T("Server must have a non-empty \"tag\".")), w)
 		return false
 	}
 	mod := p.Model()
@@ -822,7 +822,7 @@ func applyDNSServerJSON(p *wizardpresentation.WizardPresenter, w fyne.Window, te
 		var cur map[string]interface{}
 		_ = json.Unmarshal(mod.DNSServers[editIndex], &cur)
 		if wizardbusiness.DNSTagFromTemplate(mod, dnsJSONStringField(cur, "tag")) {
-			dialog.ShowError(fmt.Errorf("%s", locale.T("wizard.dns.error_locked_edit")), w)
+			dialog.ShowError(fmt.Errorf("%s", locale.T("This DNS server cannot be edited (template config.dns).")), w)
 			return false
 		}
 	}
@@ -835,7 +835,7 @@ func applyDNSServerJSON(p *wizardpresentation.WizardPresenter, w fyne.Window, te
 			continue
 		}
 		if dnsJSONStringField(o, "tag") == tag {
-			dialog.ShowError(fmt.Errorf("%s: %s", locale.T("wizard.dns.error_dup_tag"), tag), w)
+			dialog.ShowError(fmt.Errorf("%s: %s", locale.T("Duplicate tag"), tag), w)
 			return false
 		}
 	}
@@ -864,7 +864,7 @@ func showDNSServerAddDialog(p *wizardpresentation.WizardPresenter, w fyne.Window
 	form := newDNSServerForm(p, "")
 	form.tagEntry.SetText(uniqueDNSTag(p))
 	showDNSServerDialog(p, w, form, nil, -1,
-		locale.T("wizard.dns.dialog_add_title"), locale.T("wizard.dns.dialog_add_hint"), false)
+		locale.T("Add DNS server"), locale.T("A new DNS server. The tag must be unique — rules and the DNS default refer to it."), false)
 }
 
 // showDNSServerDialog — общее окно добавления и правки: вкладка «Настройки»
@@ -939,11 +939,11 @@ func showDNSServerDialog(
 	}
 	formBody.Add(form.content)
 
-	formTab := container.NewTabItem(locale.T("wizard.dns.tab_form"),
+	formTab := container.NewTabItem(locale.T("Settings"),
 		container.NewVScroll(formBody))
-	jsonHint := widget.NewLabel(locale.T("wizard.dns.json_hint"))
+	jsonHint := widget.NewLabel(locale.T("The same entry as raw JSON, in sing-box dns.servers form. Types without a form are edited here."))
 	jsonHint.Wrapping = fyne.TextWrapWord
-	jsonTab := container.NewTabItem(locale.T("wizard.dns.tab_json"),
+	jsonTab := container.NewTabItem(locale.T("JSON"),
 		container.NewBorder(jsonHint, nil, nil, nil, dnsServerDialogJSONArea(jsonEntry)))
 
 	var tabs *container.AppTabs
@@ -951,10 +951,10 @@ func showDNSServerDialog(
 		tabs = container.NewAppTabs(formTab, jsonTab)
 	} else {
 		// Тип без формы: только JSON, и сразу с пояснением почему.
-		note := widget.NewLabel(locale.T("wizard.dns.form_unsupported_type"))
+		note := widget.NewLabel(locale.T("This server type has no form yet — edit it as JSON. The form covers udp, tcp, tls (DoT), https (DoH) and group."))
 		note.Wrapping = fyne.TextWrapWord
 		tabs = container.NewAppTabs(container.NewTabItem(
-			locale.T("wizard.dns.tab_json"),
+			locale.T("JSON"),
 			container.NewBorder(note, nil, nil, nil, dnsServerDialogJSONArea(jsonEntry))))
 	}
 	tabs.OnSelected = func(ti *container.TabItem) {
@@ -978,7 +978,7 @@ func showDNSServerDialog(
 		form.SetReadOnly()
 	}
 
-	save := widget.NewButton(locale.T("wizard.dns.dialog_save"), func() {
+	save := widget.NewButton(locale.T("Save"), func() {
 		text := jsonEntry.Text
 		// С вкладки «Настройки» источник истины — форма: пользователь мог
 		// не открывать JSON вовсе, и там лежал бы снимок начального
@@ -996,7 +996,7 @@ func showDNSServerDialog(
 		}
 	})
 	save.Importance = widget.HighImportance
-	cancel := widget.NewButton(locale.T("wizard.dns.dialog_cancel"), func() {
+	cancel := widget.NewButton(locale.T("Cancel"), func() {
 		editWin.Close()
 	})
 
@@ -1005,7 +1005,7 @@ func showDNSServerDialog(
 		// Шаблонная запись: сохранять нечего — тело живёт в шаблоне.
 		// Правятся только её собственные параметры, и кнопка на них здесь
 		// же, чтобы не искать её в списке.
-		cancel.SetText(locale.T("wizard.dns.dialog_close"))
+		cancel.SetText(locale.T("Close"))
 		buttons = container.NewHBox(layout.NewSpacer(), cancel)
 	}
 	editWin.SetContent(container.NewBorder(nil, buttons, nil, nil, tabs))
@@ -1034,15 +1034,15 @@ func showDNSServerEditor(p *wizardpresentation.WizardPresenter, w fyne.Window, i
 		form := newDNSServerForm(p, dnsJSONStringField(cur, "tag"))
 		// Подсказка по факту: обещать «Параметры» там, где их нет, значит
 		// отправить пользователя искать кнопку, которой не будет.
-		hint := locale.T("wizard.dns.dialog_view_hint")
+		hint := locale.T("This server is declared by the template: its body is fixed. Toggle it on or off with the checkbox in the list.")
 		if len(dnsServerVarsFor(p, dnsJSONStringField(cur, "tag"))) > 0 {
-			hint = locale.T("wizard.dns.dialog_view_hint_params")
+			hint = locale.T("This server is declared by the template: its body is fixed. Toggle it on or off with the checkbox in the list; Params below changes what it does let you set.")
 		}
 		showDNSServerDialog(p, w, form, cur, -1,
-			locale.T("wizard.dns.dialog_view_title"), hint, true)
+			locale.T("DNS server (from template)"), hint, true)
 		return
 	}
 	form := newDNSServerForm(p, dnsJSONStringField(cur, "tag"))
 	showDNSServerDialog(p, w, form, cur, index,
-		locale.T("wizard.dns.dialog_title"), locale.T("wizard.dns.dialog_hint"), false)
+		locale.T("Edit DNS server"), locale.T("Edit the DNS server. Its tag is what rules and the DNS default refer to."), false)
 }

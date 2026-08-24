@@ -122,11 +122,11 @@ func (s *canvasTextSetter) SetText(v string) {
 func serversDelayText(delay int64) string {
 	switch {
 	case delay > 0:
-		return locale.Tf("servers.ping_format_ms", delay)
+		return locale.Tf("%d ms", delay)
 	case delay == -1:
-		return locale.T("servers.ping_button_error")
+		return locale.T("Error")
 	default:
-		return locale.T("servers.button_ping")
+		return locale.T("Ping")
 	}
 }
 
@@ -256,10 +256,10 @@ func groupModeLabel(node *wizardbusiness.ConfigNode) (icon, mode string) {
 		// схлопывался в неразличимое пятно. НЕ «⚡» U+26A1: глиф в
 		// EmojiOneColor пустой — символ не рисуется вовсе, ни с
 		// вариационным селектором U+FE0F, ни без него.
-		return "\U00002B50", locale.T("servers.group_mode_round_robin")
+		return "\U00002B50", locale.T("balanced")
 	case "least_test", "":
 		// Умолчание urltest — один самый быстрый по замерам.
-		return "\U0001F6A9", locale.T("servers.group_mode_least_test")
+		return "\U0001F6A9", locale.T("fastest")
 	default:
 		// Незнакомый режим: показываем как есть, не выдумывая перевод.
 		return "\U0001F6A9", raw

@@ -225,7 +225,7 @@ func buildSinglePresetRefRow(
 			refreshRulesTabFromPresenter(presenter, showAddRuleDialog)
 		}
 	}
-	setTooltip(enableCh, locale.T("wizard.rules.tooltip_rule_enabled"))
+	setTooltip(enableCh, locale.T("Include this rule in the generated route when enabled"))
 	if brokenRef {
 		enableCh.Disable()
 	}
@@ -238,7 +238,7 @@ func buildSinglePresetRefRow(
 		showEditPresetRefDialog(presenter, model, guiState, refIdx, showAddRuleDialog)
 	}, rowGetter)
 	editBtn.Importance = widget.LowImportance
-	setTooltip(editBtn, locale.T("wizard.shared.button_edit"))
+	setTooltip(editBtn, locale.TN(1, "Edit"))
 	if brokenRef {
 		editBtn.Disable()
 	}
@@ -261,12 +261,12 @@ func buildSinglePresetRefRow(
 		)
 	}, rowGetter)
 	delBtn.Importance = widget.LowImportance
-	setTooltip(delBtn, locale.T("wizard.rules.button_delete"))
+	setTooltip(delBtn, locale.T("Delete rule"))
 
 	var dragHandle fyne.CanvasObject
 	if !systemRule {
 		h := fynewidget.NewDragHandle(dragGroup, slotIdx, rowGetter)
-		setTooltip(h, locale.T("wizard.rules.tooltip_drag_reorder"))
+		setTooltip(h, locale.T("Drag to reorder"))
 		dragHandle = h
 	}
 
@@ -290,7 +290,7 @@ func buildSinglePresetRefRow(
 			srsMissingEnabled = true
 			srsWarn = ttwidget.NewLabel("⚠")
 			srsWarn.Importance = widget.WarningImportance
-			srsWarn.SetToolTip(locale.T("wizard.rules.tooltip_srs_missing_enabled"))
+			srsWarn.SetToolTip(locale.T("Rule-set file not downloaded — this rule won't work until the SRS is fetched. The launcher is downloading it in the background; you can also click ⬇ srs to retry."))
 		}
 	}
 

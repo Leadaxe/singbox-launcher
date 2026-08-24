@@ -15,15 +15,15 @@ import (
 //   - last_status == "err" → "● err"
 func formatStatusBadge(meta *corestate.SubscriptionMeta) string {
 	if meta == nil || meta.LastStatus == "" {
-		return locale.T("wizard.source.status_never")
+		return locale.T("● never")
 	}
 	switch meta.LastStatus {
 	case "ok":
-		return locale.T("wizard.source.status_ok")
+		return locale.T("● ok")
 	case "err":
-		return locale.T("wizard.source.status_err")
+		return locale.T("● err")
 	}
-	return locale.T("wizard.source.status_never")
+	return locale.T("● never")
 }
 
 // formatLastFetched — relative time с момента LastFetchedAt.
@@ -32,17 +32,17 @@ func formatStatusBadge(meta *corestate.SubscriptionMeta) string {
 //   - иначе → "fetched 5m ago" / "fetched 2h ago" / "fetched 3d ago"
 func formatLastFetched(meta *corestate.SubscriptionMeta) string {
 	if meta == nil || meta.LastFetchedAt == "" {
-		return locale.T("wizard.source.meta_never_fetched")
+		return locale.T("never fetched")
 	}
 	t, err := time.Parse(time.RFC3339, meta.LastFetchedAt)
 	if err != nil {
-		return locale.T("wizard.source.meta_never_fetched")
+		return locale.T("never fetched")
 	}
 	d := time.Since(t)
 	if d < time.Minute {
-		return locale.T("wizard.source.meta_just_fetched")
+		return locale.T("just fetched")
 	}
-	return locale.Tf("wizard.source.meta_last_fetched", humanizeDuration(d))
+	return locale.Tf("fetched %s ago", humanizeDuration(d))
 }
 
 // formatQuota — "1.2 GB / 50 GB used" если total > 0, иначе "".
@@ -55,7 +55,7 @@ func formatQuota(meta *corestate.SubscriptionMeta) string {
 		return ""
 	}
 	used := ui.UploadBytes + ui.DownloadBytes
-	return locale.Tf("wizard.source.meta_quota",
+	return locale.Tf("%s / %s used",
 		humanizeBytes(used),
 		humanizeBytes(ui.TotalBytes))
 }
@@ -88,9 +88,9 @@ func formatExpire(meta *corestate.SubscriptionMeta) string {
 	expireAt := time.Unix(meta.UserInfo.ExpireUnix, 0)
 	d := time.Until(expireAt)
 	if d < 0 {
-		return locale.T("wizard.source.meta_expired")
+		return locale.T("expired")
 	}
-	return locale.Tf("wizard.source.meta_expires_in", humanizeDuration(d))
+	return locale.Tf("expires in %s", humanizeDuration(d))
 }
 
 // formatNodesCount — "150 nodes" или "20000 nodes (truncated, max 3000)".
@@ -102,9 +102,9 @@ func formatNodesCount(meta *corestate.SubscriptionMeta, effectiveMax int) string
 		return ""
 	}
 	if meta.Truncated && effectiveMax > 0 {
-		return locale.Tf("wizard.source.meta_truncated", meta.NodesCountFetched, effectiveMax)
+		return locale.Tf("%d nodes (truncated, max %d)", meta.NodesCountFetched, effectiveMax)
 	}
-	return locale.Tf("wizard.source.meta_nodes_count", meta.NodesCountFetched)
+	return locale.Tf("%d nodes", meta.NodesCountFetched)
 }
 
 // humanizeBytes — "1.2 GB" / "150 MB" / "5 KB". Используем 1024-base.

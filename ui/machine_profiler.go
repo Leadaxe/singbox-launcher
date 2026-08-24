@@ -60,7 +60,7 @@ func OpenMachineProfiler(ac *core.AppController, d services.RemoteDaemon) {
 	transport, ok := lxdOverrideTransportForID(d.ID)
 	if !ok {
 		ShowErrorText(ac.UIService.MainWindow, d.Name,
-			locale.T("remote.profiler.needs_connect"))
+			locale.T("Connect to the machine first: the profiler reads its live connection stream."))
 		return
 	}
 

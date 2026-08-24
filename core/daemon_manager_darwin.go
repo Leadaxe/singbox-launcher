@@ -377,8 +377,8 @@ func (ac *AppController) notifyDaemonServiceAfterCoreUpdate() {
 	}
 	// Диалог сам оборачивается в fyne.Do — зваться из горутины загрузчика можно.
 	dialogs.ShowLinuxCapabilitiesRequired(ac.UIService.MainWindow,
-		locale.T("settings.daemon_kickstart_title"),
-		locale.T("settings.daemon_kickstart_body"),
+		locale.T("Core updated — restart the daemon service"),
+		locale.T("The daemon service keeps the old core binary in memory until it restarts. Run this command in Terminal (it asks for your sudo password):"),
 		ac.DaemonKickstartCommand())
 }
 

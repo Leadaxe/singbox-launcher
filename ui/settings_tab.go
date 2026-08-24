@@ -46,9 +46,9 @@ func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 	binDir := platform.GetBinDir(ac.FileService.ExecDir)
 
 	// ---- Subscriptions section ---------------------------------------------
-	subsTitle := widget.NewLabelWithStyle(locale.T("settings.section_subscriptions"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	subsTitle := widget.NewLabelWithStyle(locale.T("Subscriptions"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 
-	autoUpdateCheck := widget.NewCheck(locale.T("core.auto_update_subs_label"), nil)
+	autoUpdateCheck := widget.NewCheck(locale.T("Auto-update subscriptions"), nil)
 	autoUpdateCheck.SetChecked(ac.StateService.IsAutoUpdateEnabled())
 	autoUpdateCheck.OnChanged = func(enabled bool) {
 		ac.StateService.SetAutoUpdateEnabled(enabled)
@@ -64,8 +64,8 @@ func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 
 	// Auto-ping is a connection-behavior toggle (ping proxies after VPN
 	// connects), not a subscription setting — it gets its own section.
-	connTitle := widget.NewLabelWithStyle(locale.T("settings.section_connection"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	autoPingCheck := widget.NewCheck(locale.T("core.auto_ping_label"), nil)
+	connTitle := widget.NewLabelWithStyle(locale.T("Connection"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	autoPingCheck := widget.NewCheck(locale.T("Auto-ping on connect"), nil)
 	autoPingCheck.SetChecked(ac.StateService.IsAutoPingAfterConnectEnabled())
 	autoPingCheck.OnChanged = func(enabled bool) {
 		ac.StateService.SetAutoPingAfterConnectEnabled(enabled)
@@ -84,8 +84,8 @@ func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 	// while user pastes a long UA); save fires on focus-loss via OnSubmitted
 	// pattern and explicitly on Reset.
 	defaultUA := configtypes.BuildSubscriptionUserAgent()
-	uaLabel := widget.NewLabel(locale.T("settings.subscription_ua_label"))
-	uaHint := widget.NewLabel(locale.Tf("settings.subscription_ua_hint", defaultUA))
+	uaLabel := widget.NewLabel(locale.T("User-Agent:"))
+	uaHint := widget.NewLabel(locale.Tf("Custom User-Agent sent on subscription fetches. Leave empty to use the default: %s", defaultUA))
 	uaHint.Wrapping = fyne.TextWrapWord
 	uaEntry := widget.NewEntry()
 	uaEntry.SetPlaceHolder(defaultUA)
@@ -153,18 +153,18 @@ func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 		uaEntry.SetText("") // OnChanged fires → scheduleSaveUA("") starts timer
 		flushSaveUA("")     // override the timer with an immediate write
 	})
-	uaResetBtn.SetToolTip(locale.T("settings.subscription_ua_reset_tooltip"))
+	uaResetBtn.SetToolTip(locale.T("Reset to default"))
 
 	uaRow := container.NewBorder(nil, nil, uaLabel, uaResetBtn, uaEntry)
 
 	// ---- Language section --------------------------------------------------
-	langTitle := widget.NewLabelWithStyle(locale.T("settings.section_language"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	langLabel := widget.NewLabel(locale.T("help.language_label"))
+	langTitle := widget.NewLabelWithStyle(locale.T("Language"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	langLabel := widget.NewLabel(locale.T("Language:"))
 	langSelect := widget.NewSelect(locale.LangDisplayNames(), nil)
 	langSelect.Selected = locale.LangDisplayName(locale.GetLang())
 
-	downloadLocalesBtn := ttwidget.NewButton(locale.T("help.download_locales_btn"), nil)
-	downloadLocalesBtn.SetToolTip(locale.T("help.download_locales"))
+	downloadLocalesBtn := ttwidget.NewButton(locale.T("⬇"), nil)
+	downloadLocalesBtn.SetToolTip(locale.T("📥 Download translations"))
 
 	langSelect.OnChanged = func(selected string) {
 		code := locale.LangCodeByDisplayName(selected)
@@ -178,19 +178,19 @@ func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 		if err := locale.SaveSettings(binDir, st); err != nil {
 			debuglog.ErrorLog("settings_tab: save lang: %v", err)
 		}
-		ShowInfo(ac.UIService.MainWindow, locale.T("help.language_label"),
-			fmt.Sprintf("%s\n\n%s", locale.LangDisplayName(code), locale.T("help.language_changed")))
+		ShowInfo(ac.UIService.MainWindow, locale.T("Language:"),
+			fmt.Sprintf("%s\n\n%s", locale.LangDisplayName(code), locale.T("Language changed. Restart the app to apply fully.")))
 	}
 
 	downloadLocalesBtn.OnTapped = func() {
 		downloadLocalesBtn.Disable()
-		downloadLocalesBtn.SetText(locale.T("help.downloading_locales_btn"))
+		downloadLocalesBtn.SetText(locale.T("🔄"))
 		go func() {
 			localeDir := locale.GetLocaleDir(binDir)
 			count, err := locale.DownloadAllRemoteLocales(localeDir)
 			fyne.Do(func() {
 				downloadLocalesBtn.Enable()
-				downloadLocalesBtn.SetText(locale.T("help.download_locales_btn"))
+				downloadLocalesBtn.SetText(locale.T("⬇"))
 				if err != nil && count == 0 {
 					downloadURL := ""
 					if len(locale.RemoteLanguages) > 0 {
@@ -198,7 +198,7 @@ func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 					}
 					dialogs.ShowDownloadFailedManual(
 						ac.UIService.MainWindow,
-						locale.T("help.download_locales_failed"),
+						locale.T("Failed to download translations"),
 						downloadURL,
 						localeDir,
 					)
@@ -207,8 +207,8 @@ func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 				langSelect.Options = locale.LangDisplayNames()
 				langSelect.Selected = locale.LangDisplayName(locale.GetLang())
 				langSelect.Refresh()
-				ShowInfo(ac.UIService.MainWindow, locale.T("help.language_label"),
-					locale.Tf("help.download_locales_success", count))
+				ShowInfo(ac.UIService.MainWindow, locale.T("Language:"),
+					locale.Tf("Translations downloaded (%d). Restart to see new languages.", count))
 			})
 		}()
 	}
@@ -217,7 +217,7 @@ func BuildSettingsContent(ac *core.AppController) fyne.CanvasObject {
 	langRow := container.NewBorder(nil, nil, langLabel, downloadLocalesBtn, langSelect)
 
 	// ---- Subscription identification (SPEC 061 Phase 4) -------------------
-	subIDTitle := widget.NewLabelWithStyle(locale.T("settings.section_subscription_identification"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	subIDTitle := widget.NewLabelWithStyle(locale.T("Subscription identification"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	subIDBlock := buildSubscriptionIdentificationBlock(ac, binDir)
 
 	// ---- Debug API (переехал из Diagnostics tab) ---------------------------
@@ -291,21 +291,21 @@ func buildSubscriptionIdentificationBlock(ac *core.AppController, binDir string)
 	}
 
 	// --- send_hwid checkbox + "?" help
-	sendHWIDCheck := widget.NewCheck(locale.T("settings.send_hwid_label"), nil)
+	sendHWIDCheck := widget.NewCheck(locale.T("Send device ID"), nil)
 	sendHWIDCheck.SetChecked(st.ShouldSendHWID())
 	sendHWIDHelp := widget.NewButton("?", helpDialog(
-		locale.T("settings.send_hwid_label"),
-		locale.T("settings.send_hwid_tooltip"),
+		locale.T("Send device ID"),
+		locale.T("Sends a UUIDv4 device ID + OS family/version + device model with every subscription fetch. Required by Marzban / Remnawave / NashVPN-style panels for device counting. Unchecking returns a less-fingerprinted request — HWID-binding panels will then return empty subscriptions."),
 	))
 	sendHWIDHelp.Importance = widget.LowImportance
 	sendHWIDRow := container.NewHBox(sendHWIDCheck, sendHWIDHelp)
 
 	// --- hash_model checkbox + "?" help
-	hashModelCheck := widget.NewCheck(locale.T("settings.hash_device_model_label"), nil)
+	hashModelCheck := widget.NewCheck(locale.T("Hash device model (privacy)"), nil)
 	hashModelCheck.SetChecked(st.SubscriptionDeviceModelHashed)
 	hashModelHelp := widget.NewButton("?", helpDialog(
-		locale.T("settings.hash_device_model_label"),
-		locale.T("settings.hash_device_model_tooltip"),
+		locale.T("Hash device model (privacy)"),
+		locale.T("When enabled, X-Device-Model is sent as sha256(model)[:16] instead of the raw value (e.g. MacBookPro18,1). The provider still counts you as one device but does not see the hardware family."),
 	))
 	hashModelHelp.Importance = widget.LowImportance
 	hashModelRow := container.NewHBox(hashModelCheck, hashModelHelp)
@@ -318,7 +318,7 @@ func buildSubscriptionIdentificationBlock(ac *core.AppController, binDir string)
 	hwidEntry.SetText(st.HWID)
 
 	regenBtn := ttwidget.NewButtonWithIcon("", theme.ViewRefreshIcon(), nil)
-	regenBtn.SetToolTip(locale.T("settings.hwid_regenerate"))
+	regenBtn.SetToolTip(locale.T("Regenerate"))
 
 	// Wire send_hwid first so hashModelCheck.Enable/Disable can react.
 	sendHWIDCheck.OnChanged = func(checked bool) {
@@ -363,8 +363,8 @@ func buildSubscriptionIdentificationBlock(ac *core.AppController, binDir string)
 		// user removes it via the provider's management bot.
 		ShowConfirm(
 			ac.UIService.MainWindow,
-			locale.T("settings.hwid_regenerate_confirm_title"),
-			locale.T("settings.hwid_regenerate_confirm_body"),
+			locale.T("Regenerate device ID?"),
+			locale.T("This will generate a new UUID and the next subscription fetch will register a new device with HWID-binding providers — consuming one of your allowed device slots. The previous ID stays counted until you remove it via the provider's management bot. Continue?"),
 			func(ok bool) {
 				if !ok {
 					return
@@ -380,7 +380,7 @@ func buildSubscriptionIdentificationBlock(ac *core.AppController, binDir string)
 		)
 	}
 
-	hwidLabel := widget.NewLabel(locale.T("settings.hwid_label"))
+	hwidLabel := widget.NewLabel(locale.T("Device ID (HWID):"))
 	// 120px ≈ 12 visible UUID chars; full 36-char UUID still fits via
 	// horizontal scroll inside the entry. Compact-by-default — users
 	// either copy-paste the whole string or use Regenerate, both work
@@ -407,24 +407,24 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 	binDir := platform.GetBinDir(ac.FileService.ExecDir)
 	st := locale.LoadSettings(binDir)
 
-	title := widget.NewLabelWithStyle(locale.T("diag.debug_api_title"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	title := widget.NewLabelWithStyle(locale.T("Debug API (localhost)"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	// Hint text wraps to window width instead of forcing the window wider —
 	// otherwise a 90-char description pins the whole tab's minimum size.
-	hint := widget.NewLabel(locale.T("diag.debug_api_hint"))
+	hint := widget.NewLabel(locale.T("Local read-only HTTP API for scripts and automation. Off by default. Bound to 127.0.0.1 only."))
 	hint.Wrapping = fyne.TextWrapWord
 	status := widget.NewLabel("")
 	status.Wrapping = fyne.TextWrapWord
 	refreshStatus := func() {
 		addr := ac.DebugAPIAddr()
 		if addr == "" {
-			status.SetText(locale.T("diag.debug_api_off"))
+			status.SetText(locale.T("Status: Off"))
 		} else {
-			status.SetText(locale.Tf("diag.debug_api_on", addr))
+			status.SetText(locale.Tf("Status: Listening on %s", addr))
 		}
 	}
 	refreshStatus()
 
-	copyTokenBtn := widget.NewButtonWithIcon(locale.T("diag.debug_api_copy_token"), theme.ContentCopyIcon(), nil)
+	copyTokenBtn := widget.NewButtonWithIcon(locale.T("Copy token"), theme.ContentCopyIcon(), nil)
 	copyTokenBtn.OnTapped = func() {
 		// Re-load settings each tap so Copy always reflects the latest token
 		// (e.g. after a user regenerates via the checkbox dance).
@@ -436,7 +436,7 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 		// Silent clipboard copies feel like dead buttons. A toast confirms
 		// the token actually went to the clipboard.
 		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
-			locale.T("diag.debug_api_copied_title"), locale.T("diag.debug_api_copied_msg"))
+			locale.T("Token copied"), locale.T("Debug API bearer token copied to clipboard. Pass as: Authorization: Bearer …"))
 	}
 	if st.DebugAPIToken == "" {
 		copyTokenBtn.Disable()
@@ -446,7 +446,7 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 	// token, versions and a docs link that the user hands to an agent so it can
 	// connect from scratch. Only meaningful while the API is listening (needs a
 	// live base_url), so it tracks the enable checkbox.
-	copyCardBtn := widget.NewButtonWithIcon(locale.T("diag.debug_api_copy_card"), theme.ContentCopyIcon(), nil)
+	copyCardBtn := widget.NewButtonWithIcon(locale.T("Copy API info"), theme.ContentCopyIcon(), nil)
 	copyCardBtn.OnTapped = func() {
 		cur := locale.LoadSettings(binDir)
 		addr := ac.DebugAPIAddr()
@@ -461,7 +461,7 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 		}
 		ac.UIService.Application.Clipboard().SetContent(card)
 		dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
-			locale.T("diag.debug_api_card_copied_title"), locale.T("diag.debug_api_card_copied_msg"))
+			locale.T("API info copied"), locale.T("Connection card (base URL, token, versions, docs link) copied. Hand it to an agent — it has everything to connect."))
 	}
 	if !st.DebugAPIEnabled {
 		copyCardBtn.Disable()
@@ -472,12 +472,12 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 	// 401 on the next call. If the API is currently listening we restart it
 	// so the live server picks up the new token; otherwise the new token is
 	// just persisted for the next enable.
-	regenTokenBtn := widget.NewButtonWithIcon(locale.T("diag.debug_api_regen_token"), theme.ViewRefreshIcon(), nil)
+	regenTokenBtn := widget.NewButtonWithIcon(locale.T("Regenerate token"), theme.ViewRefreshIcon(), nil)
 	regenTokenBtn.OnTapped = func() {
 		ShowConfirm(
 			ac.UIService.MainWindow,
-			locale.T("diag.debug_api_regen_confirm_title"),
-			locale.T("diag.debug_api_regen_confirm_body"),
+			locale.T("Regenerate Debug API token?"),
+			locale.T("A new bearer token will be generated and the old one will stop working immediately. Any scripts or automation using the old token must be updated. If the API is running it will restart with the new token. Continue?"),
 			func(ok bool) {
 				if !ok {
 					return
@@ -504,7 +504,7 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 				copyTokenBtn.Enable()
 				refreshStatus()
 				dialogs.ShowAutoHideInfo(ac.UIService.Application, ac.UIService.MainWindow,
-					locale.T("diag.debug_api_regen_done_title"), locale.T("diag.debug_api_regen_done_msg"))
+					locale.T("Token regenerated"), locale.T("A new Debug API token is active. Use “Copy token” to grab it."))
 			},
 		)
 	}
@@ -522,7 +522,7 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 		portEntry.Disable()
 	}
 
-	check := widget.NewCheck(locale.T("diag.debug_api_enable"), nil)
+	check := widget.NewCheck(locale.T("Enable"), nil)
 	check.SetChecked(st.DebugAPIEnabled)
 	check.OnChanged = func(enabled bool) {
 		cur := locale.LoadSettings(binDir)
@@ -534,8 +534,8 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 			p, err := strconv.Atoi(portText)
 			if err != nil || p < 1024 || p > 65535 {
 				dialog.ShowInformation(
-					locale.T("diag.debug_api_port_invalid_title"),
-					locale.T("diag.debug_api_port_invalid_msg"),
+					locale.T("Invalid port"),
+					locale.T("Port must be a number between 1024 and 65535."),
 					ac.UIService.MainWindow,
 				)
 				check.SetChecked(false)
@@ -591,7 +591,7 @@ func buildDebugAPIRow(ac *core.AppController) fyne.CanvasObject {
 	// Port row: [label] [entry…stretch] [Copy API info]. The connection-card
 	// button lives here (Border right) instead of in the button row above so
 	// four buttons don't force the window wider; the port entry takes the slack.
-	portLabel := widget.NewLabel(locale.T("diag.debug_api_port_label"))
+	portLabel := widget.NewLabel(locale.T("Port:"))
 	portRow := container.NewBorder(nil, nil, portLabel, copyCardBtn, portEntry)
 
 	row := container.NewVBox(
