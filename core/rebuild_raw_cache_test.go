@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"singbox-launcher/core/state"
@@ -151,4 +152,61 @@ func TestCleanupLegacyOutboundsCache(t *testing.T) {
 
 	// Idempotent: повторный вызов не падает.
 	cleanupLegacyOutboundsCache(execDir)
+}
+
+// TestBuildSnapshotFromRawCache_PartialCacheDegrades — регрессия
+// бесконечного Update-цикла: .raw есть у одной подписки из двух. Раньше это
+// давало ErrRawCacheIncomplete → Rebuild запускал Update → упавший источник
+// снова не получал .raw → Update хвостом звал Rebuild → цикл. Теперь
+// частичный кэш собирает snapshot из доступного и деградирует отсутствующий
+// источник с warning'ом.
+func TestBuildSnapshotFromRawCache_PartialCacheDegrades(t *testing.T) {
+	execDir := t.TempDir()
+	subsDir := platform.GetSubscriptionsDir(execDir)
+	if err := os.MkdirAll(subsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte("vless://12345678-1234-1234-1234-123456789abc@example.com:443?encryption=none&security=tls&type=tcp#tokyo\n")
+	if err := state.WriteRawBody(subsDir, "01HASRAW", body); err != nil {
+		t.Fatal(err)
+	}
+
+	s := &state.State{
+		Connections: state.ConnectionsSection{
+			Sources: []state.Source{
+				{ID: "01HASRAW", Type: state.SourceTypeSubscription, Enabled: true, URL: "https://test/ok"},
+				// 127.0.0.1:1 — мгновенный connection refused: cache-miss
+				// уводит парсер в разовый сетевой fetch, тест не должен
+				// зависеть от внешней сети.
+				{ID: "01NORAW", Type: state.SourceTypeSubscription, Enabled: true, URL: "https://127.0.0.1:1/missing"},
+			},
+		},
+	}
+	if err := os.MkdirAll(platform.GetWizardStatesDir(execDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Save(platform.GetWizardStatePath(execDir)); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := state.Load(platform.GetWizardStatePath(execDir))
+	if err != nil {
+		t.Fatalf("reload state: %v", err)
+	}
+
+	snap, err := buildSnapshotFromRawCache(loaded, execDir, nil, nil)
+	if err != nil {
+		t.Fatalf("частичный кэш должен деградировать, а не падать: %v", err)
+	}
+	if len(snap.Outbounds) == 0 {
+		t.Error("ожидались outbound'ы из закэшированной подписки")
+	}
+	found := false
+	for _, w := range snap.Warnings {
+		if strings.Contains(w, "127.0.0.1:1") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ожидался warning о деградированном источнике, warnings=%v", snap.Warnings)
+	}
 }
