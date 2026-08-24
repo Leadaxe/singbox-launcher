@@ -96,9 +96,11 @@ func parseMasqueURI(uri string, skipFilters []map[string]string) (*configtypes.P
 	if vhttp == "" {
 		vhttp = "h3"
 	}
+	vhttpDegraded := false
 	if vhttp != "h3" && vhttp != "h2" {
 		debuglog.WarnLog("Parser: MASQUE vhttp %q invalid (want h3/h2), forcing h3.", vhttp)
 		vhttp = "h3"
+		vhttpDegraded = true
 	}
 	profile := strings.TrimSpace(q.Get("profile"))
 	if profile == "" {
@@ -176,6 +178,12 @@ func parseMasqueURI(uri string, skipFilters []map[string]string) (*configtypes.P
 	}
 	if shouldSkipNode(node, skipFilters) {
 		return nil, nil
+	}
+	// Код деградации ставится на УЗЕЛ (contract/registry/warnings.json):
+	// лог видит только тот, кто его читает, а конверт узла едет в UI и в
+	// LxBox — обе стороны обязаны сообщать об одной деградации одинаково.
+	if vhttpDegraded {
+		node.AddWarning(WarnMasqueVHTTPInvalid)
 	}
 	debuglog.DebugLog("parseMasqueURI: success tag=%s vhttp=%s", tag, vhttp)
 	return node, nil

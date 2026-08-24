@@ -605,7 +605,10 @@ func splitWSEarlyData(path string) (string, int) {
 // max_early_data was parsed from the Xray `?ed=N` tail, the two sing-box early
 // data fields. Shared by every WS transport builder (URI, Xray JSON, VMess) so
 // the `?ed=` conversion stays consistent. An empty path leaves the key unset.
-func applyWSEarlyData(tr map[string]interface{}, rawPath string) {
+// Возвращает true, когда хвост `?ed=N` был реально разложен: путь из ссылки
+// в конфиг попадает не буквально, и узел вправе сообщить об этом кодом
+// ws_early_data_converted (info — узел работает, но описан иначе, чем в URI).
+func applyWSEarlyData(tr map[string]interface{}, rawPath string) bool {
 	clean, maxED := splitWSEarlyData(decodeResidualPercent(rawPath))
 	if clean != "" {
 		tr["path"] = clean
@@ -613,7 +616,9 @@ func applyWSEarlyData(tr map[string]interface{}, rawPath string) {
 	if maxED > 0 {
 		tr["max_early_data"] = maxED
 		tr["early_data_header_name"] = wsEarlyDataHeaderName
+		return true
 	}
+	return false
 }
 
 // decodeResidualPercent strips leftover percent-encoding from a path that was

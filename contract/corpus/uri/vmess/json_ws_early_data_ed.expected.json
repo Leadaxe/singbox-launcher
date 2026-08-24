@@ -23,7 +23,10 @@
       },
       "kind": "outbound",
       "label": "vmess-ed",
-      "scheme": "vmess"
+      "scheme": "vmess",
+      "warnings": [
+        "ws_early_data_converted"
+      ]
     }
   ],
   "v": 1

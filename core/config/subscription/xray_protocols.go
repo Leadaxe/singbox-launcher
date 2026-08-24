@@ -278,9 +278,9 @@ func xrayBuildHysteria2FromOutbound(ob map[string]interface{}, label string) (*c
 	if tls, _ := xrayStreamParts(ob); tls != nil {
 		outbound["tls"] = tls
 	}
-	SanitizeSingboxOutboundMap(outbound, xrayMapString(ob, "tag"))
+	sanitizeCodes := SanitizeSingboxOutboundMap(outbound, xrayMapString(ob, "tag"))
 
-	return &configtypes.ParsedNode{
+	node := &configtypes.ParsedNode{
 		Tag:      xrayTagOrDefault(ob, "hysteria2"),
 		Scheme:   "hysteria2",
 		Server:   addr,
@@ -288,7 +288,12 @@ func xrayBuildHysteria2FromOutbound(ob map[string]interface{}, label string) (*c
 		UUID:     password,
 		Label:    label,
 		Outbound: outbound,
-	}, nil
+	}
+	// Деградации санитайзера — на узел (см. SanitizeSingboxOutboundMap).
+	for _, code := range sanitizeCodes {
+		node.AddWarning(code)
+	}
+	return node, nil
 }
 
 // xrayTagOrDefault возвращает тег outbound'а либо запасное имя по протоколу.

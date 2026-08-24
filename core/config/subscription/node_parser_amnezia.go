@@ -57,7 +57,7 @@ func parseAmneziaVPNLink(uri string, skipFilters []map[string]string) (*configty
 		return nil, fmt.Errorf("failed to decode vpn:// profile: %w", err)
 	}
 
-	confText, containerName := amneziaWGConfText(profile)
+	confText, containerName, containerCount := amneziaWGConfText(profile)
 	if confText == "" {
 		return nil, fmt.Errorf("vpn:// profile has no WireGuard/AmneziaWG config (containers: %s)",
 			strings.Join(amneziaContainerNames(profile), ", "))
@@ -76,7 +76,16 @@ func parseAmneziaVPNLink(uri string, skipFilters []map[string]string) (*configty
 	if err != nil {
 		return nil, fmt.Errorf("invalid WireGuard config in vpn:// container %q: %w", containerName, err)
 	}
-	return parseWireGuardURI(wgURI, skipFilters)
+	node, err := parseWireGuardURI(wgURI, skipFilters)
+	if err != nil || node == nil {
+		return node, err
+	}
+	// Одиночный путь отдал один контейнер из нескольких — на узел ставится
+	// info-код: остальные локации профиля в этот вызов не попали.
+	if containerCount > 1 {
+		node.AddWarning(WarnAmneziaContainerChoice)
+	}
+	return node, nil
 }
 
 // decodeAmneziaProfile turns the base64url payload of a vpn:// link into the
@@ -157,7 +166,11 @@ func decodeAmneziaProfile(payload string) (map[string]interface{}, error) {
 // The defaultContainer is tried first, then the rest in array order; the first
 // container that yields an [Interface] text wins. Returns the text and the
 // container name ("" if nothing found).
-func amneziaWGConfText(profile map[string]interface{}) (string, string) {
+// Третьим значением возвращает число найденных WG/AWG-контейнеров: одиночный
+// путь отдаёт ОДИН узел (сигнатура ParseNode), и пользователь обязан узнать,
+// что в профиле их было больше — иначе остальные локации теряются молча
+// (contract/registry/warnings.json: amnezia_container_choice, info).
+func amneziaWGConfText(profile map[string]interface{}) (string, string, int) {
 	containers, _ := profile["containers"].([]interface{})
 	defaultName, _ := profile["defaultContainer"].(string)
 
@@ -188,7 +201,7 @@ func amneziaWGConfText(profile map[string]interface{}) (string, string) {
 	if matched > 1 {
 		debuglog.WarnLog("Parser: vpn:// profile has %d WireGuard/AWG containers, importing %q (default container preferred)", matched, containerName)
 	}
-	return confText, containerName
+	return confText, containerName, matched
 }
 
 // amneziaAllWGConfTexts возвращает ВСЕ WG/AWG-контейнеры профиля в

@@ -13,9 +13,11 @@ package subscription
 
 import (
 	"encoding/json"
+	"regexp"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -134,5 +136,119 @@ func TestRegistryAllowlistsRejectOutsiders(t *testing.T) {
 	}
 	if _, junk := normalizeUTLSFingerprintEx("garbage"); !junk {
 		t.Error("uTLS принял отпечаток вне словаря")
+	}
+}
+
+// warningsFile — реестр кодов деградации.
+type warningsFile struct {
+	V        int `json:"v"`
+	Warnings map[string]struct {
+		Severity string `json:"severity"`
+		Desc     string `json:"desc"`
+		Go       string `json:"go"`
+	} `json:"warnings"`
+}
+
+func loadWarningsRegistry(t *testing.T) warningsFile {
+	t.Helper()
+	path := filepath.Join(registryRelPath, "warnings.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Skipf("реестр не найден (%s) — контракт не синхронизирован", path)
+	}
+	var f warningsFile
+	if err := json.Unmarshal(data, &f); err != nil {
+		t.Fatalf("warnings.json: %v", err)
+	}
+	return f
+}
+
+// goWarningConstants — коды из parse_warnings.go, вычитанные из исходника.
+//
+// Именно из исходника, а не списком в тесте: список пришлось бы обновлять
+// руками, и он разъехался бы с кодом ровно так же, как разъехался реестр.
+func goWarningConstants(t *testing.T) map[string]string {
+	t.Helper()
+	data, err := os.ReadFile("parse_warnings.go")
+	if err != nil {
+		t.Fatalf("parse_warnings.go: %v", err)
+	}
+	re := regexp.MustCompile(`(Warn\w+)\s*=\s*"([^"]+)"`)
+	out := map[string]string{}
+	for _, m := range re.FindAllStringSubmatch(string(data), -1) {
+		out[m[1]] = m[2]
+	}
+	if len(out) == 0 {
+		t.Fatal("в parse_warnings.go не найдено ни одной константы кода")
+	}
+	return out
+}
+
+// Каждый Go-код обязан быть объявлен в реестре: код, которого реестр не
+// знает, — это деградация, о которой вторая сторона (LxBox) не в курсе, и
+// сверить конверты становится нечем. Так `ws_early_data_converted` прожил
+// весь цикл в Go, отсутствуя в нормативном словаре.
+func TestRegistrySyncWarningCodesDeclared(t *testing.T) {
+	reg := loadWarningsRegistry(t)
+	for name, code := range goWarningConstants(t) {
+		if _, ok := reg.Warnings[code]; !ok {
+			t.Errorf("код %q (%s) есть в Go, но отсутствует в contract/registry/warnings.json", code, name)
+		}
+	}
+}
+
+// Код, который нигде не ставится на узел, обязан быть severity=error —
+// то есть описывать ОТБРОШЕННЫЙ узел, для которого объекта ParsedNode не
+// существует. Любой warning/info-код без AddWarning означает обещанную, но
+// не выдаваемую диагностику: пользователь и LxBox о деградации не узнают.
+func TestRegistryWarningCodesAreActuallySet(t *testing.T) {
+	reg := loadWarningsRegistry(t)
+	consts := goWarningConstants(t)
+
+	// Где по коду ставятся коды: и прямым node.AddWarning, и через возврат
+	// из построителей (санитайзер sing-box, AWG-поля) — их вызывающие
+	// вешают код на узел.
+	sources := []string{".", "../../../ui", "../../../core"}
+	setNames := map[string]bool{}
+	for _, dir := range sources {
+		_ = filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() || !strings.HasSuffix(p, ".go") {
+				return nil
+			}
+			if strings.HasSuffix(p, "_test.go") {
+				return nil
+			}
+			data, rerr := os.ReadFile(p)
+			if rerr != nil {
+				return nil
+			}
+			text := string(data)
+			for name := range consts {
+				// Объявление в parse_warnings.go не считается использованием.
+				if strings.HasSuffix(p, "parse_warnings.go") {
+					continue
+				}
+				if strings.Contains(text, name) {
+					setNames[name] = true
+				}
+			}
+			return nil
+		})
+	}
+
+	for name, code := range consts {
+		if setNames[name] {
+			continue
+		}
+		entry, ok := reg.Warnings[code]
+		if !ok {
+			continue // покрыто TestRegistrySyncWarningCodesDeclared
+		}
+		if entry.Severity != "error" {
+			t.Errorf("код %q (%s, severity=%s) не ставится нигде в коде: "+
+				"либо проставьте его на узле, либо зафиксируйте в реестре как "+
+				"severity=error (узел отбрасывается, вешать код не на что)",
+				code, name, entry.Severity)
+		}
 	}
 }

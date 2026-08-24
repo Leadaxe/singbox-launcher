@@ -22,7 +22,10 @@
       },
       "kind": "outbound",
       "label": "ed-mixed",
-      "scheme": "trojan"
+      "scheme": "trojan",
+      "warnings": [
+        "ws_early_data_converted"
+      ]
     }
   ],
   "v": 1

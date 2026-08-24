@@ -25,7 +25,10 @@
       },
       "kind": "endpoint",
       "label": "awg-server",
-      "scheme": "wireguard"
+      "scheme": "wireguard",
+      "warnings": [
+        "awg_header_invalid"
+      ]
     }
   ],
   "v": 1

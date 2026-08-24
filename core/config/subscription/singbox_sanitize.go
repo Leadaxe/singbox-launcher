@@ -54,17 +54,27 @@ var quicOutboundTypes = map[string]struct{}{
 // которую ядро гарантированно принимает. Правит ob на месте.
 //
 // tag используется только в логах.
-func SanitizeSingboxOutboundMap(ob map[string]interface{}, tag string) {
+//
+// Возвращает коды применённых деградаций (contract/registry/warnings.json).
+// Санитайзер работает с сырой map и узла не знает, а код обязан оказаться
+// НА УЗЛЕ: лог читает только тот, кто в него смотрит, а конверт узла едет
+// в UI и в LxBox — обе стороны должны сообщать об одной деградации
+// одинаково. Вызывающий вешает возвращённое через node.AddWarning.
+func SanitizeSingboxOutboundMap(ob map[string]interface{}, tag string) []string {
 	if ob == nil {
-		return
+		return nil
 	}
 	obType := strings.ToLower(strings.TrimSpace(mapString(ob, "type")))
 
+	var codes []string
 	sanitizeSingboxMasqueLegacy(ob, obType, tag)
 	sanitizeSingboxTLS(ob, obType, tag)
 	sanitizeSingboxFlow(ob, tag)
-	sanitizeSingboxPacketEncoding(ob, tag)
+	if sanitizeSingboxPacketEncoding(ob, tag) {
+		codes = append(codes, WarnPacketEncodingUnknown)
+	}
 	sanitizeSingboxHysteria2Obfs(ob, obType, tag)
+	return codes
 }
 
 // sanitizeSingboxMasqueLegacy переводит masque-outbound из чужого диалекта
@@ -243,10 +253,12 @@ func sanitizeSingboxFlow(ob map[string]interface{}, tag string) {
 }
 
 // sanitizeSingboxPacketEncoding применяет allowlist sing-box.
-func sanitizeSingboxPacketEncoding(ob map[string]interface{}, tag string) {
+// Возвращает true, если значение было неизвестным и поле снято (код ставит
+// вызывающий — см. SanitizeSingboxOutboundMap).
+func sanitizeSingboxPacketEncoding(ob map[string]interface{}, tag string) bool {
 	peRaw, ok := ob["packet_encoding"]
 	if !ok {
-		return
+		return false
 	}
 	pe := strings.ToLower(strings.TrimSpace(toStringValue(peRaw)))
 	switch pe {
@@ -259,7 +271,9 @@ func sanitizeSingboxPacketEncoding(ob map[string]interface{}, tag string) {
 		// Неизвестное значение даёт панику в ядре (SPEC 049).
 		debuglog.WarnLog("Parser: singbox import %q: unknown packet_encoding %q — dropping field", tag, pe)
 		delete(ob, "packet_encoding")
+		return true
 	}
+	return false
 }
 
 // sanitizeSingboxHysteria2Obfs снимает обфускацию с неподдерживаемым типом.

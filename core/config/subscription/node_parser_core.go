@@ -396,6 +396,7 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		if node.Query.Has("padding") {
 			debuglog.WarnLog("Parser: naive: 'padding' URI parameter has no sing-box equivalent, ignoring (value=%q)", node.Query.Get("padding"))
 			node.Query.Del("padding")
+			node.AddWarning(WarnNaivePaddingIgnored)
 		}
 	}
 
@@ -588,6 +589,29 @@ func shouldSkipNode(node *configtypes.ParsedNode, skipFilters []map[string]strin
 	return false // Don't skip
 }
 
+// noteWSEarlyDataConverted ставит info-код, если early data приехала из
+// Xray-хвоста `?ed=N` В ПУТИ: путь из ссылки попал в конфиг не буквально, а
+// разложенным на два поля.
+//
+// Именно из пути, а не из плоских `ed`/`eh` в query (вторая форма, SPEC 103
+// §9.E): там ссылка НЕ вводит в заблуждение — параметры названы своими
+// именами и переносятся один в один, преобразовывать нечего. Проверка идёт
+// по исходному пути, а не по результату: uriTransportFromQuery — чистый
+// построитель транспорта, узла он не знает, и менять его сигнатуру ради
+// info-кода несоразмерно.
+func noteWSEarlyDataConverted(node *configtypes.ParsedNode, transport map[string]interface{}) {
+	if node == nil || transport == nil {
+		return
+	}
+	if _, ok := transport["max_early_data"]; !ok {
+		return
+	}
+	rawPath := queryGetFold(node.Query, "path")
+	if _, maxED := splitWSEarlyData(decodeResidualPercent(rawPath)); maxED > 0 {
+		node.AddWarning(WarnWSEarlyDataEDConverted)
+	}
+}
+
 func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 	outbound := make(map[string]interface{})
 	outbound["tag"] = node.Tag
@@ -608,6 +632,7 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 		transport, hasTransport := uriTransportFromQuery(node.Query)
 		if hasTransport {
 			outbound["transport"] = transport
+			noteWSEarlyDataConverted(node, transport)
 		}
 		if node.Flow != "" {
 			// Convert xtls-rprx-vision-udp443 to compatible format
@@ -633,6 +658,7 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 				// silently drop — common, by-design "no special encoding"
 			default:
 				debuglog.WarnLog("Parser: unknown packetEncoding %q in %s URI %s — dropping field", pe, node.Scheme, node.Tag)
+				node.AddWarning(WarnPacketEncodingUnknown)
 			}
 		}
 
@@ -716,7 +742,9 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 			} else if path := node.Query.Get("path"); path != "" {
 				if network == "ws" {
 					// split Xray's `?ed=N` early-data tail out of the path (issue #96)
-					applyWSEarlyData(transport, path)
+					if applyWSEarlyData(transport, path) {
+						node.AddWarning(WarnWSEarlyDataEDConverted)
+					}
 				} else {
 					transport["path"] = path
 				}
@@ -781,6 +809,7 @@ func buildOutbound(node *configtypes.ParsedNode) map[string]interface{} {
 		outbound["password"] = node.UUID
 		if t, ok := uriTransportFromQuery(node.Query); ok {
 			outbound["transport"] = t
+			noteWSEarlyDataConverted(node, t)
 		}
 		if tlsData, ok := trojanTLSFromNode(node); ok {
 			outbound["tls"] = tlsData

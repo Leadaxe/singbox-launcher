@@ -23,7 +23,10 @@
       },
       "kind": "endpoint",
       "label": "awg-badh",
-      "scheme": "wireguard"
+      "scheme": "wireguard",
+      "warnings": [
+        "awg_header_invalid"
+      ]
     }
   ],
   "v": 1

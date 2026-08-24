@@ -201,18 +201,18 @@
       "params": [
         "method"
       ],
-      "desc": "Shadowsocks-метод вне allowlist ss_methods — узел в dropped (битый метод уронил бы конфиг).",
+      "desc": "Shadowsocks-метод вне allowlist ss_methods — узел в dropped (битый метод уронил бы конфиг). КОД НА УЗЛЕ НЕ СТАВИТСЯ: узел отбрасывается на разборе (severity=error, dropped), объекта ParsedNode для AddWarning не существует — причина живёт в конверте dropped, а не в node.warnings.",
       "dart": null,
-      "go": "core/config/subscription/node_parser_core.go:170"
+      "go": "core/config/subscription/node_parser_core.go (ParseNode: return nil, err)"
     },
     "port_invalid": {
       "severity": "error",
       "params": [
         "value"
       ],
-      "desc": "Порт вне 1..65535 или не число — узел в dropped (reason invalid_port в каноническом конверте, PLAN §2).",
+      "desc": "Порт вне 1..65535 или не число — узел в dropped (reason invalid_port в каноническом конверте, PLAN §2). КОД НА УЗЛЕ НЕ СТАВИТСЯ: узел отбрасывается на разборе (severity=error, dropped), объекта ParsedNode для AddWarning не существует — причина живёт в конверте dropped, а не в node.warnings.",
       "dart": null,
-      "go": "core/config/subscription/node_parser_core.go:354"
+      "go": "core/config/subscription/node_parser_core.go (ParseNode: return nil, err)"
     },
     "uri_too_long": {
       "severity": "error",
@@ -278,14 +278,14 @@
       "go": "core/config/subscription/node_parser_wireguard.go:400"
     },
     "awg_headers_overlap": {
-      "severity": "warning",
+      "severity": "error",
       "params": [
         "a",
         "b"
       ],
-      "desc": "Диапазоны AWG-заголовков пересекаются — ядро отвергнет endpoint («headers must not overlap»); предупреждение до старта.",
+      "desc": "Диапазоны AWG-заголовков пересекаются — ядро отвергает такой endpoint на загрузке («headers must not overlap»), то есть падает ВЕСЬ конфиг, а не один узел. Поэтому узел выбрасывается на разборе (dropped), а не помечается предупреждением: узел без правильных заголовков всё равно не заработал бы. Изменено аудитом 2026-08-24 (была пометка на живом узле).",
       "dart": null,
-      "go": "core/config/subscription/node_parser_wireguard.go:427"
+      "go": "core/config/subscription/node_parser_wireguard.go (parseWireGuardURI: return nil, err)"
     },
     "amnezia_container_choice": {
       "severity": "info",
@@ -437,6 +437,15 @@
       "desc": "Направление не взяло в состав цепочку, которая через это же Направление проходит (SPEC 110 T9). Самый частый случай: цепочка [proxy-out, exit] при фильтре «все узлы» у proxy-out. Ядро на таком не падает — оно развернёт позицию в то, что группа выбрала сейчас, — но пользователь получил бы маршрут, которого не задумывал: выбрав цепочку внутри группы, он замкнул бы трафик на неё же. Проверяется транзитивно, включая цепочку через цепочку.",
       "dart": "ChainCycleThroughDirectionWarning",
       "go": "core/config/chain_cycle.go:84"
+    },
+    "ws_early_data_converted": {
+      "severity": "info",
+      "params": [
+        "max_early_data"
+      ],
+      "desc": "Xray-хвост `?ed=N` в WebSocket-пути разложен на sing-box-поля max_early_data + early_data_header_name — путь из ссылки попадает в конфиг не буквально, узел работает. Без конверсии ядро отдаёт хвост серверу как часть пути и тот отвечает 404 (check при этом проходит). SPEC 103 §9.E / issue #96.",
+      "dart": null,
+      "go": "core/config/subscription/node_parser_core.go (noteWSEarlyDataConverted + прямой ws-путь buildOutbound)"
     }
   }
 }

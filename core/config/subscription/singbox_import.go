@@ -278,7 +278,7 @@ func parseSingboxEntry(entry map[string]interface{}, cfgIdx, entryIdx int) (*con
 		ob["tag"] = tag
 	}
 
-	SanitizeSingboxOutboundMap(ob, tag)
+	sanitizeCodes := SanitizeSingboxOutboundMap(ob, tag)
 
 	node := &configtypes.ParsedNode{
 		Tag:         tag,
@@ -294,6 +294,11 @@ func parseSingboxEntry(entry map[string]interface{}, cfgIdx, entryIdx int) (*con
 	// GenerateNodeJSON читают их из скалярных полей, а не из map.
 	node.UUID = singboxCredentialFromMap(ob, scheme)
 	node.Flow = mapString(ob, "flow")
+
+	// Деградации санитайзера — на узел: конверт узла едет в UI и в LxBox.
+	for _, code := range sanitizeCodes {
+		node.AddWarning(code)
+	}
 
 	return node, nil
 }

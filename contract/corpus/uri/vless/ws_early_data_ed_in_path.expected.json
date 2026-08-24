@@ -26,7 +26,10 @@
       },
       "kind": "outbound",
       "label": "ws-ed",
-      "scheme": "vless"
+      "scheme": "vless",
+      "warnings": [
+        "ws_early_data_converted"
+      ]
     }
   ],
   "v": 1

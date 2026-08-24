@@ -14,7 +14,10 @@
       },
       "kind": "outbound",
       "label": "Naive!",
-      "scheme": "naive"
+      "scheme": "naive",
+      "warnings": [
+        "naive_padding_ignored"
+      ]
     }
   ],
   "v": 1

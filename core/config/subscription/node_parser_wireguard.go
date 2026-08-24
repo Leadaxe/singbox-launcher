@@ -220,7 +220,7 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 
 	// AmneziaWG (SPEC 073): promote obfuscation params from the query into the
 	// endpoint root (sing-box-lx with_awg shape). No-op for a plain WG URI.
-	applyAWGFields(endpoint, q)
+	awgCodes := applyAWGFields(endpoint, q)
 	// Пересечение magic-заголовков фатально не для узла, а для КОНФИГА:
 	// ядро отвергает такой endpoint на загрузке («headers must not
 	// overlap»), и одна подписка с h1=h2 оставляла пользователя без VPN
@@ -264,6 +264,10 @@ func parseWireGuardURI(uri string, skipFilters []map[string]string) (*configtype
 
 	if shouldSkipNode(node, skipFilters) {
 		return nil, nil
+	}
+	// Деградации AWG — на узел: конверт узла едет в UI и в LxBox.
+	for _, code := range awgCodes {
+		node.AddWarning(code)
 	}
 	debuglog.DebugLog("parseWireGuardURI: success tag=%s", node.Tag)
 	return node, nil
@@ -414,7 +418,11 @@ func hasAWGParams(q url.Values) bool {
 // case preserved. A bad value is skipped with a debug log (forward-compat: one
 // broken param must not drop the whole node, matching the mtu/keepalive
 // policy). A plain WireGuard URI (no AWG params) leaves endpoint untouched.
-func applyAWGFields(endpoint map[string]interface{}, q url.Values) {
+// Возвращает коды деградаций (contract/registry/warnings.json): функция
+// работает с сырым endpoint и узла не знает, а код обязан оказаться НА УЗЛЕ —
+// конверт узла едет в UI и в LxBox, лог видит только читающий его.
+func applyAWGFields(endpoint map[string]interface{}, q url.Values) []string {
+	var codes []string
 	for _, k := range awgNumericFields {
 		raw := strings.TrimSpace(q.Get(k))
 		if raw == "" {
@@ -434,6 +442,7 @@ func applyAWGFields(endpoint map[string]interface{}, q url.Values) {
 			// default message type and the handshake won't match the server —
 			// the exact failure mode of the original 073.2 bug. Warn loudly.
 			debuglog.WarnLog("Parser: AWG %s=%q is not a uint32 or lo-hi range — field dropped, the core will use the WireGuard default header", k, raw)
+			codes = append(codes, WarnAWGHeaderInvalid)
 			continue
 		}
 		debuglog.DebugLog("applyAWGFields: skip %s=%q (invalid value)", k, raw)
@@ -459,6 +468,7 @@ func applyAWGFields(endpoint map[string]interface{}, q url.Values) {
 			endpoint[k] = v
 		}
 	}
+	return codes
 }
 
 // parseReservedTriplet parses a Cloudflare WARP reserved value "b0,b1,b2"
