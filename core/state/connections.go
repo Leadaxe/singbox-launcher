@@ -139,6 +139,14 @@ type Source struct {
 	// to a different server. Marks for nodes gone from the subscription longer
 	// than the TTL are garbage-collected, otherwise the map would grow forever.
 	DisabledNodes map[string]int64 `json:"disabled_nodes,omitempty"`
+
+	// ForeignExtensions — per-entity блобы ЧУЖИХ приложений из LX Backup
+	// (BACKUP.md §1: `extensions.lxbox` может лежать и внутри записи
+	// подписки/сервера). Хранятся нетронутыми до следующего экспорта и
+	// возвращаются в ту же запись: бэкап, побывавший на десктопе, не должен
+	// вернуться на телефон без mobile-only полей (import_rules,
+	// identity_override, папки).
+	ForeignExtensions map[string]json.RawMessage `json:"foreign_extensions,omitempty"`
 }
 
 // TagSpec — правила преобразования тэгов нод подписки.

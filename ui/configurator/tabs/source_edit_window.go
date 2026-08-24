@@ -1305,6 +1305,15 @@ func showSourceEditWindow(
 		win.Close()
 	})
 	saveBtn := widget.NewButton(locale.T("wizard.outbound.button_save"), func() {
+		// Свёртка собирается ЗДЕСЬ, а не только по событиям отдельных
+		// виджетов: у Interval/URL/Tolerance/липкости обработчиков нет, и
+		// правка «зайти на Группу, поменять интервал, Save» молча терялась —
+		// applyFoldFromForm срабатывал лишь на галку и селект режима.
+		if p := proxyRef(); p != nil && foldCheck.Checked {
+			p.Fold = foldTabBody.Collect()
+			p.ExcludeFromGlobal = false
+			p.ExposeGroupTagsToGlobal = false
+		}
 		if err := serializeParserAfterSourceEdit(presenter, guiState, presenter.Model(), sourceIndex, &scratch, win); err != nil {
 			return
 		}

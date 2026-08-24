@@ -1172,6 +1172,7 @@
   "wizard.settings.backup_import": "Import…",
   "wizard.settings.backup_save_prompt": "Save LX Backup",
   "wizard.settings.backup_open_prompt": "Open LX Backup",
+  "wizard.settings.backup_no_native_dialog": "Native file dialog is unavailable. Install zenity or kdialog and try again.",
   "wizard.settings.backup_error_state": "Cannot read the current state",
   "wizard.settings.backup_error_export": "Export failed",
   "wizard.settings.backup_error_import": "Import failed",

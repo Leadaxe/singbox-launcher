@@ -61,12 +61,19 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 		b.Directions = append(b.Directions, exportDirection(d))
 	}
 
+	// SPEC 110: цепочки — источники, и roundtrip обязан их сохранять.
+	// В схеме LX Backup секции для них пока нет, поэтому едут в
+	// extensions.launcher (штатный канал для полей без места в схеме,
+	// BACKUP.md §1): другая сторона провозит блоб нетронутым.
+	var chains []state.Source
 	for _, src := range s.Connections.Sources {
 		switch src.Type {
 		case state.SourceTypeSubscription:
 			b.Subscriptions = append(b.Subscriptions, exportSubscription(src))
 		case state.SourceTypeServer:
 			b.Servers = append(b.Servers, exportServer(src))
+		case state.SourceTypeChain:
+			chains = append(chains, src)
 		}
 	}
 
@@ -96,7 +103,49 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 		}
 	}
 
+	// Warp-аккаунты (BACKUP.md §2): канонические snake_case-поля плюс
+	// дискриминатор type. Без этого регистрация не переезжала вовсе, и на
+	// новой машине «Add WARP» плодил лишние device-записи в Cloudflare.
+	b.Warp = exportWarp(s)
+
+	if len(chains) > 0 {
+		if b.Extensions == nil {
+			b.Extensions = Extensions{}
+		}
+		raw, err := json.Marshal(map[string]any{"chains": chains})
+		if err != nil {
+			return nil, fmt.Errorf("chains: %w", err)
+		}
+		b.Extensions[AppLauncher] = raw
+	}
+
 	return b, nil
+}
+
+// exportWarp — WG/MASQUE-регистрации в переносимую форму warp[].
+func exportWarp(s *state.State) []json.RawMessage {
+	if s.WarpAccounts == nil {
+		return nil
+	}
+	var out []json.RawMessage
+	appendAcc := func(typ string, acc any) {
+		m := map[string]any{}
+		raw, err := json.Marshal(acc)
+		if err != nil || json.Unmarshal(raw, &m) != nil {
+			return
+		}
+		m["type"] = typ
+		if enc, err := json.Marshal(m); err == nil {
+			out = append(out, enc)
+		}
+	}
+	if s.WarpAccounts.WG != nil {
+		appendAcc("wg", s.WarpAccounts.WG)
+	}
+	if s.WarpAccounts.Masque != nil {
+		appendAcc("masque", s.WarpAccounts.Masque)
+	}
+	return out
 }
 
 func exportSubscription(src state.Source) Subscription {
@@ -123,7 +172,38 @@ func exportSubscription(src state.Source) Subscription {
 	if ext := launcherSourceExtensions(src); ext != nil {
 		out.Extensions = Extensions{AppLauncher: ext}
 	}
+	// Чужие per-entity блобы и непонятые нам поля схемы (skip/detour другой
+	// стороны) возвращаются в запись нетронутыми (BACKUP.md §1).
+	foreignFields := attachForeignEntityExtensions(&out.Extensions, src.ForeignExtensions)
+	if raw, ok := foreignFields["skip"]; ok {
+		_ = json.Unmarshal(raw, &out.Skip)
+	}
+	if raw, ok := foreignFields["detour"]; ok {
+		out.Detour = append(json.RawMessage(nil), raw...)
+	}
 	return out
+}
+
+// attachForeignEntityExtensions переносит сохранённые per-entity блобы чужих
+// приложений обратно в запись. Служебный ключ backupFieldsKey не блоб, а
+// непонятые поля схемы — возвращается вызывающему для распаковки на верхний
+// уровень записи.
+func attachForeignEntityExtensions(dst *Extensions, foreign map[string]json.RawMessage) map[string]json.RawMessage {
+	if len(foreign) == 0 {
+		return nil
+	}
+	var fields map[string]json.RawMessage
+	for app, blob := range foreign {
+		if app == backupFieldsKey {
+			_ = json.Unmarshal(blob, &fields)
+			continue
+		}
+		if *dst == nil {
+			*dst = Extensions{}
+		}
+		(*dst)[app] = append(json.RawMessage(nil), blob...)
+	}
+	return fields
 }
 
 func exportServer(src state.Source) Server {
@@ -139,6 +219,10 @@ func exportServer(src state.Source) Server {
 	}
 	if ext := launcherSourceExtensions(src); ext != nil {
 		out.Extensions = Extensions{AppLauncher: ext}
+	}
+	foreignFields := attachForeignEntityExtensions(&out.Extensions, src.ForeignExtensions)
+	if raw, ok := foreignFields["detour"]; ok {
+		out.Detour = append(json.RawMessage(nil), raw...)
 	}
 	return out
 }

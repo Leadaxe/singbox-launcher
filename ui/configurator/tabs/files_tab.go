@@ -108,7 +108,14 @@ func showConfigWindow(text string) {
 	// Только для чтения: править собранный конфиг здесь бессмысленно — он
 	// пересобирается из состояния при каждой сборке. Но выделение и
 	// копирование остаются, ради них поле и взято вместо Label.
-	entry.OnChanged = func(string) {}
+	// Ввод ОТКАТЫВАЕТСЯ, а не игнорируется молча: пустой хэндлер оставлял
+	// напечатанное на экране, и «правка» выглядела принятой, хотя никуда
+	// не шла (паттерн jsonEntry в source_edit_window.go).
+	entry.OnChanged = func(s string) {
+		if s != text {
+			entry.SetText(text)
+		}
+	}
 
 	closeBtn := widget.NewButton(locale.T("wizard.outbound.button_cancel"), func() { w.Close() })
 	w.SetContent(container.NewBorder(

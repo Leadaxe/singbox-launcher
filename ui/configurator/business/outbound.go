@@ -258,6 +258,37 @@ func sortedOutboundTagSlice(tags map[string]struct{}) []string {
 	return result
 }
 
+// AllDirectionTags — теги ВСЕХ Направлений, включая выключенные.
+//
+// Отдельно от GetAvailableOutbounds намеренно: тот отдаёт цели, которые
+// реально попадут в config.json (выключенные пропущены), а для защиты правил
+// от необратимого сброса (SPEC 108 S5) выключенное Направление — временно
+// снятая своя цель, а не чужая.
+func AllDirectionTags(model *wizardmodels.WizardModel) []string {
+	if model == nil {
+		return nil
+	}
+	parserCfg := model.ParserConfig
+	if parserCfg == nil {
+		jsonKey := strings.TrimSpace(model.ParserConfigJSON)
+		if jsonKey == "" {
+			return nil
+		}
+		var parsed config.ParserConfig
+		if err := json.Unmarshal([]byte(model.ParserConfigJSON), &parsed); err != nil {
+			return nil
+		}
+		parserCfg = &parsed
+	}
+	var out []string
+	for _, d := range parserCfg.ParserConfig.Outbounds {
+		if d.Tag != "" {
+			out = append(out, d.Tag)
+		}
+	}
+	return out
+}
+
 // EnsureDefaultAvailableOutbounds обеспечивает наличие дефолтных outbounds в списке.
 func EnsureDefaultAvailableOutbounds(outbounds []string) []string {
 	if len(outbounds) == 0 {

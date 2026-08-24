@@ -36,14 +36,25 @@ func (p *WizardPresenter) resetForeignRuleTargets() {
 	if p == nil || p.model == nil {
 		return
 	}
+	// Без шаблона множество целей неполно: template-теги (proxy-out,
+	// block-out) в него не попали бы, и живые правила на них были бы
+	// необратимо сброшены. Прежний guard `len(known)==0` этот случай не
+	// ловил — EnsureDefaultAvailableOutbounds гарантирует непустой список.
+	if p.model.TemplateData == nil {
+		return
+	}
 	known := make(map[string]bool)
 	for _, tag := range wizardbusiness.EnsureDefaultAvailableOutbounds(
 		wizardbusiness.GetAvailableOutbounds(p.model)) {
 		known[tag] = true
 	}
-	if len(known) == 0 {
-		// Шаблон не загрузился — сбрасывать не на чем и не за что.
-		return
+	// ВЫКЛЮЧЕННОЕ Направление — не «чужая цель», а временно снятая своя:
+	// сброс тут необратим (повторное включение Направления правило назад
+	// не вернёт), а правило на отсутствующий в конфиге тег и так чистится
+	// на сборке. Reset существует ради целей ЧУЖОГО жизненного цикла
+	// (локальные группы подписок), не ради паузы Направления.
+	for _, d := range wizardbusiness.AllDirectionTags(p.model) {
+		known[d] = true
 	}
 
 	for _, rs := range p.model.CustomRules {

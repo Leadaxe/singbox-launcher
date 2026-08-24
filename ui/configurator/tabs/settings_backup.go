@@ -123,7 +123,15 @@ func handleBackupExport(presenter *wizardpresentation.WizardPresenter, win fyne.
 func handleBackupImport(presenter *wizardpresentation.WizardPresenter, win fyne.Window) {
 	path, ok, err := platform.PickOpenFile(locale.T("wizard.settings.backup_open_prompt"), []string{"json"})
 	if err != nil || !ok {
-		if err != nil && err != platform.ErrNativeDialogUnavailable {
+		if err == platform.ErrNativeDialogUnavailable {
+			// Linux без zenity/kdialog: молча вернуться значило бы «кнопка
+			// не работает и не говорит почему». Экспорт в этом случае пишет
+			// в домашний каталог; у импорта запасного пути нет — говорим,
+			// чего не хватает.
+			dialog.ShowError(fmt.Errorf("%s", locale.T("wizard.settings.backup_no_native_dialog")), win)
+			return
+		}
+		if err != nil {
 			debuglog.WarnLog("backup import: open dialog: %v", err)
 		}
 		return

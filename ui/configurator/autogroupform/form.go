@@ -194,13 +194,24 @@ func (f *Form) Load(a *configtypes.DirectionAuto) {
 	} else {
 		f.keep = configtypes.DirectionAuto{}
 	}
+	// Обработчик снимается на время programmatic SetSelected (ловушка
+	// SetSelected→OnChanged) и ВОССТАНАВЛИВАЕТСЯ, а не заменяется своим:
+	// вызывающий (вкладка «Группа») вешает на селект собственный onChange,
+	// и прежний код молча стирал его при каждом открытии окна — правки
+	// режима свёртки не помечали окно изменённым и терялись на Save.
+	prevHandler := f.ModeSelect.OnChanged
 	f.ModeSelect.OnChanged = nil
 	if a != nil && a.Mode == configtypes.AutoModeRoundRobin {
 		f.ModeSelect.SetSelected(locale.T("wizard.outbound.auto_mode_round_robin"))
 	} else {
 		f.ModeSelect.SetSelected(locale.T("wizard.outbound.auto_mode_least_test"))
 	}
-	f.ModeSelect.OnChanged = func(string) { f.syncBalancerVisible() }
+	f.ModeSelect.OnChanged = func(s string) {
+		f.syncBalancerVisible()
+		if prevHandler != nil {
+			prevHandler(s)
+		}
+	}
 
 	// Незаданное поле показывает НЕ пустоту, а первый вариант списка —
 	// сам placeholder «@urltest_*», то есть «наследовать значение из
@@ -220,15 +231,31 @@ func (f *Form) Load(a *configtypes.DirectionAuto) {
 	}
 
 	if a != nil {
+		// Значение вне списка вариантов шаблона (миграция SPEC 108 переносит
+		// сырые interval/tolerance старой группы, импорт бэкапа привозит
+		// чужие) добавляется отдельным пунктом, а не подменяется молча
+		// плейсхолдером «наследовать»: селект, оставшийся на плейсхолдере,
+		// при следующем Collect записал бы его вместо значения пользователя.
 		if a.Interval != "" {
-			if lbl := labelForValue(f.choices.Interval.LabelToValue, a.Interval); lbl != "" {
-				f.IntervalSelect.SetSelected(lbl)
+			lbl := labelForValue(f.choices.Interval.LabelToValue, a.Interval)
+			if lbl == "" {
+				lbl = a.Interval
+				f.choices.Interval.LabelToValue[lbl] = a.Interval
+				f.IntervalSelect.Options = append([]string{lbl}, f.IntervalSelect.Options...)
+				f.IntervalSelect.Refresh()
 			}
+			f.IntervalSelect.SetSelected(lbl)
 		}
 		if v := a.Tolerance.Value(); v != nil {
-			if lbl := labelForValue(f.choices.Tolerance.LabelToValue, fmt.Sprint(v)); lbl != "" {
-				f.ToleranceSelect.SetSelected(lbl)
+			raw := fmt.Sprint(v)
+			lbl := labelForValue(f.choices.Tolerance.LabelToValue, raw)
+			if lbl == "" {
+				lbl = raw
+				f.choices.Tolerance.LabelToValue[lbl] = raw
+				f.ToleranceSelect.Options = append([]string{lbl}, f.ToleranceSelect.Options...)
+				f.ToleranceSelect.Refresh()
 			}
+			f.ToleranceSelect.SetSelected(lbl)
 		}
 		if a.URL != "" {
 			f.URLEntry.SetText(a.URL)

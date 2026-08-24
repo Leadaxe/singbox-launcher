@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
 )
 
@@ -356,4 +357,163 @@ func hasWarn(list []Warning, code string) bool {
 		}
 	}
 	return false
+}
+
+// TestRoundTripChainSources — цепочки (SPEC 110) переживают экспорт→импорт:
+// секции в схеме нет, они едут блобом extensions.launcher, и ImportReplace,
+// обнуляющий Sources, обязан восстановить их оттуда. До фикса roundtrip на
+// одной машине молча стирал все цепочки.
+func TestRoundTripChainSources(t *testing.T) {
+	s := &state.State{}
+	s.Connections.Sources = []state.Source{
+		{Type: state.SourceTypeSubscription, URL: "https://example.com/sub", Enabled: true},
+		{
+			Type:    state.SourceTypeChain,
+			Label:   "chain-1",
+			Enabled: true,
+			Chain: &configtypes.SourceChain{
+				Hops: []string{"warp", "vpn ②"},
+			},
+		},
+	}
+
+	b, err := Export(s, ExportOptions{AppVersion: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored := &state.State{}
+	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+		t.Fatal(err)
+	}
+
+	var chain *state.Source
+	for i := range restored.Connections.Sources {
+		if restored.Connections.Sources[i].Type == state.SourceTypeChain {
+			chain = &restored.Connections.Sources[i]
+		}
+	}
+	if chain == nil {
+		t.Fatal("цепочка потеряна на roundtrip")
+	}
+	if chain.Label != "chain-1" || chain.Chain == nil || len(chain.Chain.Hops) != 2 {
+		t.Fatalf("состав цепочки искажён: %+v", chain)
+	}
+}
+
+// TestRoundTripDNSSection — DNS-секция применяется на импорте (раньше
+// экспортировалась и молча игнорировалась).
+func TestRoundTripDNSSection(t *testing.T) {
+	s := &state.State{}
+	s.DNS.Final = "dns_shield"
+	s.DNS.Strategy = "ipv4_only"
+	s.DNS.Servers = []state.DNSServer{
+		{Kind: state.DNSServerKindTemplate, Tag: "google_dot", Enabled: true},
+		{Kind: state.DNSServerKindUser, Tag: "my_dns", Enabled: true,
+			Body: map[string]interface{}{"type": "udp", "server": "10.0.0.1"}},
+	}
+	s.DNS.Rules = []state.DNSRule{
+		{Kind: state.DNSRuleKindUser, Enabled: false,
+			Body: map[string]interface{}{"domain_suffix": "example.com", "server": "my_dns"}},
+	}
+
+	b, err := Export(s, ExportOptions{AppVersion: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored := &state.State{}
+	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+		t.Fatal(err)
+	}
+
+	if restored.DNS.Final != "dns_shield" || restored.DNS.Strategy != "ipv4_only" {
+		t.Fatalf("final/strategy потеряны: %q %q", restored.DNS.Final, restored.DNS.Strategy)
+	}
+	if len(restored.DNS.Servers) != 2 {
+		t.Fatalf("servers: %+v", restored.DNS.Servers)
+	}
+	if restored.DNS.Servers[1].Body["server"] != "10.0.0.1" {
+		t.Fatalf("тело user-сервера потеряно: %+v", restored.DNS.Servers[1])
+	}
+	if len(restored.DNS.Rules) != 1 || restored.DNS.Rules[0].Enabled {
+		t.Fatalf("rules: %+v", restored.DNS.Rules)
+	}
+}
+
+// TestRoundTripLocalOutbounds — локальные outbound'ы подписки: экспорт писал
+// их в extensions.launcher с самого начала, а импорт не читал.
+func TestRoundTripLocalOutbounds(t *testing.T) {
+	s := &state.State{}
+	s.Connections.Sources = []state.Source{{
+		Type:    state.SourceTypeSubscription,
+		URL:     "https://example.com/sub",
+		Enabled: true,
+		Outbounds: []configtypes.Direction{
+			{Tag: "local-select", Type: "selector"},
+		},
+	}}
+
+	b, err := Export(s, ExportOptions{AppVersion: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored := &state.State{}
+	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+		t.Fatal(err)
+	}
+	src := restored.Connections.Sources[0]
+	if len(src.Outbounds) != 1 || src.Outbounds[0].Tag != "local-select" {
+		t.Fatalf("локальные outbound'ы потеряны: %+v", src.Outbounds)
+	}
+}
+
+// TestRoundTripWarpAccounts — warp[] едет и возвращается.
+func TestRoundTripWarpAccounts(t *testing.T) {
+	s := &state.State{}
+	s.WarpAccounts = &state.WarpAccountsSection{
+		WG: &state.WarpWGAccount{PrivateKey: "priv", PeerPublic: "pub", ClientV4: "172.16.0.2"},
+	}
+	b, err := Export(s, ExportOptions{AppVersion: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Warp) != 1 {
+		t.Fatalf("warp не экспортирован: %v", b.Warp)
+	}
+	restored := &state.State{}
+	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+		t.Fatal(err)
+	}
+	if restored.WarpAccounts == nil || restored.WarpAccounts.WG == nil ||
+		restored.WarpAccounts.WG.PrivateKey != "priv" {
+		t.Fatalf("warp потерян: %+v", restored.WarpAccounts)
+	}
+}
+
+// TestPerEntityForeignExtensionsSurvive — блоб extensions.lxbox ВНУТРИ записи
+// подписки (BACKUP.md §1 разрешает и такое размещение) переживает
+// импорт→экспорт, а не выбрасывается.
+func TestPerEntityForeignExtensionsSurvive(t *testing.T) {
+	blob := json.RawMessage(`{"import_rules":true,"folder":"work"}`)
+	b := &Backup{
+		LxBackup: FormatVersion,
+		Subscriptions: []Subscription{{
+			URL:        "https://example.com/sub",
+			Extensions: Extensions{AppLxBox: blob},
+		}},
+	}
+	s := &state.State{}
+	if _, err := Import(s, b, ImportOptions{Mode: ImportReplace}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Export(s, ExportOptions{AppVersion: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Subscriptions) != 1 {
+		t.Fatalf("subscriptions: %+v", out.Subscriptions)
+	}
+	got := out.Subscriptions[0].Extensions[AppLxBox]
+	if string(got) != string(blob) {
+		t.Fatalf("lxbox-блоб записи потерян: %s", got)
+	}
 }

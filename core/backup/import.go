@@ -116,6 +116,10 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 		s.Connections.Sources = append(s.Connections.Sources, importServer(srv))
 		res.AppliedSources++
 	}
+	// SPEC 110: цепочки едут в extensions.launcher (в схеме секции нет).
+	// Без этой ветки ImportReplace обнулял Sources целиком, а восстановить
+	// цепочки было неоткуда — roundtrip на одной машине их молча стирал.
+	res.AppliedSources += importLauncherChains(s, b.Extensions[AppLauncher])
 
 	// SPEC 104: Направления импортируются ДО правил и пополняют список
 	// известных целей — иначе правило, чья цель приехала в этом же файле,
@@ -173,6 +177,13 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 
 	res.Warnings = append(res.Warnings, importVars(s, b.Vars)...)
 
+	// DNS: до сих пор секция экспортировалась, но импортёр её полностью
+	// игнорировал — перенос с другой машины молча выбрасывал настройку DNS
+	// (нарушение §1 «нет молчаливых потерь»).
+	importDNS(s, b.DNS, opts.Mode)
+
+	importWarp(s, b.Warp, opts.Mode)
+
 	// Чужой блоб extensions сохраняем нетронутым до следующего экспорта.
 	for app, blob := range b.Extensions {
 		if app == AppLauncher {
@@ -208,6 +219,16 @@ func importSubscription(sub Subscription) state.Source {
 		}
 	}
 	applyLauncherSourceExtensions(&src, sub.Extensions)
+	fields := map[string]json.RawMessage{}
+	if sub.Skip != nil {
+		if raw, err := json.Marshal(sub.Skip); err == nil {
+			fields["skip"] = raw
+		}
+	}
+	if len(sub.Detour) > 0 {
+		fields["detour"] = sub.Detour
+	}
+	keepForeignEntityExtensions(&src, sub.Extensions, fields)
 	return src
 }
 
@@ -222,6 +243,11 @@ func importServer(srv Server) state.Source {
 		src.ConfigJSON = append(json.RawMessage(nil), srv.ConfigJSON...)
 	}
 	applyLauncherSourceExtensions(&src, srv.Extensions)
+	fields := map[string]json.RawMessage{}
+	if len(srv.Detour) > 0 {
+		fields["detour"] = srv.Detour
+	}
+	keepForeignEntityExtensions(&src, srv.Extensions, fields)
 	return src
 }
 
@@ -240,6 +266,10 @@ func applyLauncherSourceExtensions(src *state.Source, ext Extensions) {
 		DetourTag               string              `json:"detour_tag"`
 		DetourNodeHash          string              `json:"detour_node_hash"`
 		DetourNodeLabel         string              `json:"detour_node_label"`
+		// Локальные outbound'ы подписки. Экспорт их писал с самого начала,
+		// а импорт не читал — классическое «поле пишется, но не читается»:
+		// roundtrip на своей же машине молча терял их (нарушение §1).
+		Outbounds []configtypes.Direction `json:"outbounds"`
 		// SPEC 108: свёртка подписки в группу.
 		Fold *configtypes.SourceFold `json:"fold"`
 	}
@@ -253,7 +283,42 @@ func applyLauncherSourceExtensions(src *state.Source, ext Extensions) {
 	src.DetourTag = own.DetourTag
 	src.DetourNodeHash = own.DetourNodeHash
 	src.DetourNodeLabel = own.DetourNodeLabel
+	src.Outbounds = own.Outbounds
 	src.Fold = own.Fold
+}
+
+// backupFieldsKey — служебный ключ в Source.ForeignExtensions для полей схемы
+// бэкапа, которые лаунчер понимает недостаточно, чтобы применить (skip/detour
+// другой стороны), но обязан вернуть при следующем экспорте (§1).
+const backupFieldsKey = "_backup_fields"
+
+// keepForeignEntityExtensions сохраняет per-entity блобы чужих приложений и
+// непонятые поля записи, чтобы re-export вернул их на место.
+func keepForeignEntityExtensions(src *state.Source, ext Extensions, fields map[string]json.RawMessage) {
+	for app, blob := range ext {
+		if app == AppLauncher || len(blob) == 0 {
+			continue
+		}
+		if src.ForeignExtensions == nil {
+			src.ForeignExtensions = map[string]json.RawMessage{}
+		}
+		src.ForeignExtensions[app] = append(json.RawMessage(nil), blob...)
+	}
+	clean := map[string]json.RawMessage{}
+	for k, v := range fields {
+		if len(v) > 0 {
+			clean[k] = v
+		}
+	}
+	if len(clean) == 0 {
+		return
+	}
+	if raw, err := json.Marshal(clean); err == nil {
+		if src.ForeignExtensions == nil {
+			src.ForeignExtensions = map[string]json.RawMessage{}
+		}
+		src.ForeignExtensions[backupFieldsKey] = raw
+	}
 }
 
 func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
@@ -420,4 +485,149 @@ func (t tagSet) has(tag string) bool {
 	}
 	_, ok := t[strings.ToLower(strings.TrimSpace(tag))]
 	return ok
+}
+
+// importLauncherChains восстанавливает источники-цепочки из блоба
+// extensions.launcher. Возвращает число применённых.
+func importLauncherChains(s *state.State, blob json.RawMessage) int {
+	if len(blob) == 0 {
+		return 0
+	}
+	var own struct {
+		Chains []state.Source `json:"chains"`
+	}
+	if err := json.Unmarshal(blob, &own); err != nil {
+		return 0
+	}
+	applied := 0
+	existing := map[string]bool{}
+	for _, src := range s.Connections.Sources {
+		if src.Type == state.SourceTypeChain {
+			existing[src.Label] = true
+		}
+	}
+	for _, chain := range own.Chains {
+		if chain.Type != state.SourceTypeChain || chain.Chain == nil {
+			continue
+		}
+		if existing[chain.Label] {
+			continue // merge: своя одноимённая цепочка сильнее
+		}
+		s.Connections.Sources = append(s.Connections.Sources, chain)
+		existing[chain.Label] = true
+		applied++
+	}
+	return applied
+}
+
+// importDNS применяет секцию DNS.
+//
+// Replace: списки замещаются приехавшими; Merge: добавляются только записи,
+// которых нет по identity (kind+tag/ref) — своя настройка сильнее приехавшей.
+// Тела переносятся только у kind=user (симметрия с exportDNS: тело
+// template/preset принадлежит шаблону принимающей стороны).
+func importDNS(s *state.State, dns *DNS, mode ImportMode) {
+	if dns == nil {
+		return
+	}
+	if mode == ImportReplace {
+		s.DNS.Servers = nil
+		s.DNS.Rules = nil
+	}
+	serverKey := func(kind, tag, ref string) string { return kind + "\x00" + tag + "\x00" + ref }
+	haveServers := map[string]bool{}
+	for _, srv := range s.DNS.Servers {
+		haveServers[serverKey(string(srv.Kind), srv.Tag, srv.Ref)] = true
+	}
+	for _, ref := range dns.Servers {
+		key := serverKey(ref.Kind, ref.Name, ref.Ref)
+		if haveServers[key] {
+			continue
+		}
+		srv := state.DNSServer{
+			Kind:    state.DNSServerKind(ref.Kind),
+			Tag:     ref.Name,
+			Ref:     ref.Ref,
+			Enabled: ref.Enabled == nil || *ref.Enabled,
+		}
+		if ref.Kind == "user" && len(ref.Value) > 0 {
+			var body map[string]interface{}
+			if json.Unmarshal(ref.Value, &body) == nil {
+				srv.Body = body
+			}
+		}
+		s.DNS.Servers = append(s.DNS.Servers, srv)
+		haveServers[key] = true
+	}
+	ruleKey := func(kind, ref string, body map[string]interface{}) string {
+		raw, _ := json.Marshal(body)
+		return kind + "\x00" + ref + "\x00" + string(raw)
+	}
+	haveRules := map[string]bool{}
+	for _, r := range s.DNS.Rules {
+		haveRules[ruleKey(string(r.Kind), r.Ref, r.Body)] = true
+	}
+	for _, ref := range dns.Rules {
+		var body map[string]interface{}
+		if ref.Kind == "user" && len(ref.Value) > 0 {
+			_ = json.Unmarshal(ref.Value, &body)
+		}
+		key := ruleKey(ref.Kind, ref.Ref, body)
+		if haveRules[key] {
+			continue
+		}
+		s.DNS.Rules = append(s.DNS.Rules, state.DNSRule{
+			Kind:    state.DNSRuleKind(ref.Kind),
+			Ref:     ref.Ref,
+			Enabled: ref.Enabled == nil || *ref.Enabled,
+			Body:    body,
+		})
+		haveRules[key] = true
+	}
+	if dns.Final != "" {
+		s.DNS.Final = dns.Final
+	}
+	if dns.Strategy != "" {
+		s.DNS.Strategy = dns.Strategy
+	}
+}
+
+// importWarp восстанавливает WG/MASQUE-регистрации из warp[].
+//
+// Merge не перетирает свою живую регистрацию приехавшей: у Cloudflare адреса
+// привязаны к ключу, и подмена работающего ключа чужим сломала бы уже
+// собранные ноды этой машины.
+func importWarp(s *state.State, warp []json.RawMessage, mode ImportMode) {
+	for _, raw := range warp {
+		var head struct {
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(raw, &head) != nil {
+			continue
+		}
+		switch head.Type {
+		case "wg":
+			var acc state.WarpWGAccount
+			if json.Unmarshal(raw, &acc) != nil || acc.PrivateKey == "" {
+				continue
+			}
+			if s.WarpAccounts == nil {
+				s.WarpAccounts = &state.WarpAccountsSection{}
+			}
+			if s.WarpAccounts.WG == nil || mode == ImportReplace {
+				s.WarpAccounts.WG = &acc
+			}
+		case "masque":
+			var acc state.WarpMasqueAccount
+			if json.Unmarshal(raw, &acc) != nil || acc.PrivateKeyDER == "" {
+				continue
+			}
+			if s.WarpAccounts == nil {
+				s.WarpAccounts = &state.WarpAccountsSection{}
+			}
+			if s.WarpAccounts.Masque == nil || mode == ImportReplace {
+				s.WarpAccounts.Masque = &acc
+			}
+		}
+	}
 }
