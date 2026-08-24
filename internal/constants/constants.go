@@ -105,7 +105,7 @@ const SingboxCoreRepo = "Leadaxe/sing-box-lx" // core for all platforms (XHTTP +
 // `sing-box version`, so the strict-equality reinstall check still holds.
 // Manually bumped per release; source-of-truth here. See
 // docs/RELEASE_PROCESS.md §5.1.
-const RequiredCoreVersion = "1.14.0-lx.27-rc.4"
+const RequiredCoreVersion = "1.14.0-lx.27-rc.6"
 
 // AppVersion — git describe output. Set by build scripts via -ldflags.
 //
