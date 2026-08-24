@@ -1,0 +1,26 @@
+{
+  "nodes": [
+    {
+      "entry": {
+        "idle_timeout": "5m",
+        "ip": "172.16.0.2/32",
+        "ipv6": "2001:db8:0:8db9::/128",
+        "mtu": 1280,
+        "private_key": "MHcCAQEEIB5oxGzgOdLvTY2aAbRsyJslxnlvPpOzLR076h3cgsncoAoGCCqGSM49AwEHoUQDQgAEDQBTbtpEikpJDklVHdnMhgIR8YatYDJLUILDQWGdwBbqaLiKKiuawVQz6MIaHr0I/4mNM/TfUUnoENKv9qZEWw==",
+        "profile": "cloudflare",
+        "public_key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEDQBTbtpEikpJDklVHdnMhgIR8YatYDJLUILDQWGdwBbqaLiKKiuawVQz6MIaHr0I/4mNM/TfUUnoENKv9qZEWw==",
+        "server": "192.0.2.44",
+        "server_port": 443,
+        "tls": {
+          "server_name": "masque.example-14.com"
+        },
+        "type": "masque",
+        "vhttp": "h3"
+      },
+      "kind": "outbound",
+      "label": "MASQUE-smoke",
+      "scheme": "masque"
+    }
+  ],
+  "v": 1
+}
