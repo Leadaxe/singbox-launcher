@@ -1,0 +1,15 @@
+{
+  "core.button_start": 1,
+  "core.button_stop": 1,
+  "core.info_title": 1,
+  "log.level_error": 1,
+  "remote.copy.submit": 1,
+  "servers.power.deploy_title": 1,
+  "servers.power.restart_tooltip": 1,
+  "traffic.byclient.reset": 1,
+  "wizard.add_rule.radio_regex": 1,
+  "wizard.dialog_discard": 1,
+  "wizard.shared.button_edit": 1,
+  "wizard.source.overview_field_used": 1,
+  "wizard.source.tab_preview": 1
+}

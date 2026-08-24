@@ -3,8 +3,12 @@
   "app.tab.servers": "🖥️ Серверы",
   "app.tab.local": "Локально",
   "app.tab.remote": "🌐 Удалённые",
-  "Local": { "value": "Локально" },
-  "🌐 Remote": { "value": "🌐 Удалённые" },
+  "Local": {
+    "value": "Локально"
+  },
+  "🌐 Remote": {
+    "value": "🌐 Удалённые"
+  },
   "remote.machines.title": "МАШИНЫ",
   "remote.machines.add": "+ Добавить",
   "remote.add.window_title": "Добавить машину",
@@ -1195,5 +1199,3337 @@
   "wizard.settings.backup_warn_preset": "%s — неизвестный пресет, правило импортировано выключенным",
   "wizard.settings.backup_warn_var": "%s — на этой машине эта настройка означает другое, пропущена",
   "wizard.settings.backup_warn_field": "%s — здесь не поддерживается, пропущено",
-  "wizard.dns.stub_group": "Группа (самый быстрый из нескольких)"
+  "wizard.dns.stub_group": "Группа (самый быстрый из нескольких)",
+  "🖥️ Servers": {
+    "value": "🖥️ Серверы"
+  },
+  "MACHINES": {
+    "value": "МАШИНЫ"
+  },
+  "+ Add": {
+    "value": "+ Добавить"
+  },
+  "Add remote machine": {
+    "value": "Добавить машину"
+  },
+  "Run `sudo sing-box lxd client add` on the machine you want to manage — it prints a one-time invite. Paste it below. The code burns after the first attempt; mint a fresh one if pairing fails.": {
+    "value": "Выполните на нужной машине `sudo sing-box lxd client add` — она напечатает одноразовое приглашение. Вставьте его ниже. Код сгорает после первой попытки; если сопряжение не удалось, выпустите новый."
+  },
+  "Run this on the machine to get an invite:": {
+    "value": "Выполните это на машине, чтобы получить приглашение:"
+  },
+  "How to install the daemon on a machine": {
+    "value": "Как установить демон на машину"
+  },
+  "Advanced (address, secret)": {
+    "value": "Дополнительно (адрес, секрет)"
+  },
+  "Invite": {
+    "value": "Приглашение"
+  },
+  "address#fingerprint#code": {
+    "value": "адрес#отпечаток#код"
+  },
+  "Name": {
+    "value": "Имя"
+  },
+  "Router, home VPS, … (defaults to the address)": {
+    "value": "Роутер, домашний VPS, … (по умолчанию — адрес)"
+  },
+  "Address": {
+    "value": "Адрес"
+  },
+  "host:port — leave empty to use the invite's address": {
+    "value": "host:port — пусто, чтобы взять адрес из приглашения"
+  },
+  "Secret": {
+    "value": "Секрет"
+  },
+  "only for a plain-h2c daemon; leave empty for mTLS": {
+    "value": "только для демона на plain-h2c; при mTLS оставьте пустым"
+  },
+  "Add": {
+    "value": "Добавить"
+  },
+  "Pairing…": {
+    "value": "Сопрягаемся…"
+  },
+  "Paste the invite printed by the daemon.": {
+    "value": "Вставьте приглашение, напечатанное демоном."
+  },
+  "Pairing failed: %v": {
+    "value": "Сопряжение не удалось: %v"
+  },
+  "No remote machines yet. Press “+ Add” and paste the invite printed by `sing-box lxd` on the machine you want to manage.": {
+    "value": "Удалённых машин пока нет. Нажмите «+ Добавить» и вставьте приглашение, которое печатает `sing-box lxd` на нужной машине."
+  },
+  "Configure": {
+    "value": "Настроить"
+  },
+  "Connect": {
+    "value": "Подключиться"
+  },
+  "Connecting…": {
+    "value": "Соединяемся…"
+  },
+  "Connecting… %d/%d": {
+    "value": "Соединяемся… %d/%d"
+  },
+  "Disconnect": {
+    "value": "Отключиться"
+  },
+  "No machine connected. Pick one on the right and press Connect.": {
+    "value": "Машина не выбрана. Нажмите Connect в строке нужной машины справа."
+  },
+  "The core on this machine is not running. Press Start in its row.": {
+    "value": "Ядро на этой машине не запущено. Нажмите Start в её строке."
+  },
+  "reachable": {
+    "value": "доступна"
+  },
+  "unreachable: %s": {
+    "value": "недоступна: %s"
+  },
+  "Edit name, address and platform": {
+    "value": "Изменить имя, адрес и платформу"
+  },
+  "Remove this machine": {
+    "value": "Удалить эту машину"
+  },
+  "What the daemon reports about itself": {
+    "value": "Что демон сообщает о себе"
+  },
+  "%s — daemon status": {
+    "value": "%s — состояние демона"
+  },
+  "Machine": {
+    "value": "Машина"
+  },
+  "Platform": {
+    "value": "Платформа"
+  },
+  "Daemon version": {
+    "value": "Версия демона"
+  },
+  "Core status": {
+    "value": "Состояние ядра"
+  },
+  "State dir": {
+    "value": "Каталог состояния"
+  },
+  "Active config sha256": {
+    "value": "sha256 работающего конфига"
+  },
+  "Last-good config sha256": {
+    "value": "sha256 последнего удачного"
+  },
+  "Interrupted apply": {
+    "value": "Прерванное применение"
+  },
+  "yes — the core runs the last-good config": {
+    "value": "да — ядро работает на последнем удачном конфиге"
+  },
+  "Last error": {
+    "value": "Последняя ошибка"
+  },
+  "Unreachable": {
+    "value": "Недоступна"
+  },
+  "Connection failures this session (%d)": {
+    "value": "Отказы соединения за сессию (%d)"
+  },
+  "Edit machine": {
+    "value": "Машина"
+  },
+  "Machine — %s": {
+    "value": "Машина — %s"
+  },
+  "Re-pair — reconnect this machine with a fresh invite": {
+    "value": "Пере-сопряжение — подключить машину заново по свежему приглашению"
+  },
+  "Use this when the channel broke on the machine's side: the daemon was reinstalled, its state directory was wiped, this client was revoked, or its server certificate changed and the pin no longer matches. Name, address, platform and every setting of this machine are kept — only the pin and the client key are replaced.": {
+    "value": "Нужно, когда канал сломался на стороне машины: демона переустановили, вычистили его state-каталог, отозвали этого клиента или у демона сменился серверный сертификат и пин перестал сходиться. Имя, адрес, платформа и все настройки машины сохраняются — заменяются только пин и клиентский ключ."
+  },
+  "host:port — leave empty to keep the current address": {
+    "value": "host:port — пусто, чтобы оставить нынешний адрес"
+  },
+  "Re-pair": {
+    "value": "Пере-сопрячь"
+  },
+  "Re-pairing…": {
+    "value": "Сопряжение…"
+  },
+  "Re-paired at %s. A new client key was issued; connect again.": {
+    "value": "Пере-сопряжено на %s. Выпущен новый клиентский ключ — подключитесь заново."
+  },
+  "Re-pair machine": {
+    "value": "Пере-сопрячь машину"
+  },
+  "Issue a new client key for %s?\n\nThe current key stops being this launcher's credential and stays on the machine as a leftover — remove it there with `sing-box lxd client remove`. Settings of this machine are not touched.": {
+    "value": "Выпустить новый клиентский ключ для %s?\n\nНынешний перестанет быть мандатом этого лаунчера и останется на машине мусором — уберите его там командой `sing-box lxd client remove`. Настройки машины не затрагиваются."
+  },
+  "Copy settings from another machine": {
+    "value": "Взять настройки с другой машины"
+  },
+  "Copies the wizard setup — sources, rules, DNS and variables — from another machine onto this one, so you don't build the same thing twice. Pairing is NOT copied: each machine keeps its own client key, because one shared key would mean revoking access on one machine revokes it on both. The built config and rule-set files are rebuilt for this machine on the next Save and Deploy.": {
+    "value": "Копирует настройку визарда — источники, правила, DNS и переменные — с другой машины на эту, чтобы не собирать то же самое второй раз. Сопряжение НЕ копируется: у каждой машины свой клиентский ключ, потому что общий означал бы, что отзыв доступа на одной отзывает его на обеих. Собранный конфиг и файлы правил пересоберутся под эту машину при следующих Save и Deploy."
+  },
+  "Take settings from…": {
+    "value": "Взять настройки с…"
+  },
+  "Copy": {
+    "value": "Копировать",
+    "special": {
+      "1": {
+        "value": "Скопировать"
+      }
+    }
+  },
+  "Settings copied from %s. Open Configure to review them and press Save.": {
+    "value": "Настройки скопированы с %s. Откройте «Настроить», проверьте их и нажмите Save."
+  },
+  "Copy failed: %v": {
+    "value": "Не удалось скопировать: %v"
+  },
+  "Pick the machine to copy settings from.": {
+    "value": "Выберите машину, с которой брать настройки."
+  },
+  "No other configured machine to copy from yet.": {
+    "value": "Пока нет другой настроенной машины, с которой можно взять настройки."
+  },
+  "Overwrite settings": {
+    "value": "Перезаписать настройки"
+  },
+  "%s already has its own setup. Copying replaces it, and there is no way back.": {
+    "value": "У %s уже есть собственная настройка. Копирование заменит её, и вернуть будет неоткуда."
+  },
+  "Architecture": {
+    "value": "Архитектура"
+  },
+  "Remove machine": {
+    "value": "Удалить машину"
+  },
+  "Remove %s? Its config, wizard states and client keys are deleted from this launcher.\n\nAccess on the machine itself stays registered — revoke it there with `sing-box lxd client remove`.": {
+    "value": "Удалить %s? Её конфиг, состояния визарда и клиентские ключи будут удалены из этого лаунчера.\n\nНа самой машине доступ останется зарегистрированным — отзовите его там командой `sing-box lxd client remove`."
+  },
+  "No config built for %s yet. Press Configure on its row, set it up and press Save — that writes the config this button sends.": {
+    "value": "Для %s ещё не собран конфиг. Нажмите «Настроить» в её строке, настройте и нажмите Save — это запишет тот файл, который отправляет эта кнопка."
+  },
+  "🔍 Diagnostics": {
+    "value": "🔍 Диагностика"
+  },
+  "❓ Help": {
+    "value": "❓ Справка"
+  },
+  "⚙️ Settings": {
+    "value": "⚙️ Настройки"
+  },
+  "Settings": {
+    "value": "Настройки"
+  },
+  "Subscriptions": {
+    "value": "Подписки"
+  },
+  "User-Agent:": {
+    "value": "User-Agent:"
+  },
+  "Custom User-Agent sent on subscription fetches. Leave empty to use the default: %s": {
+    "value": "Пользовательский User-Agent для обновлений подписок. Пусто — будет использован стандартный: %s"
+  },
+  "Reset to default": {
+    "value": "Сбросить на стандартный"
+  },
+  "Subscription identification": {
+    "value": "Идентификация устройства"
+  },
+  "Send device ID": {
+    "value": "Отправлять ID устройства"
+  },
+  "Sends a UUIDv4 device ID + OS family/version + device model with every subscription fetch. Required by Marzban / Remnawave / NashVPN-style panels for device counting. Unchecking returns a less-fingerprinted request — HWID-binding panels will then return empty subscriptions.": {
+    "value": "Отправляет UUIDv4 устройства + семейство/версию ОС + модель устройства при каждом обновлении подписки. Требуется панелями типа Marzban / Remnawave / NashVPN для подсчёта устройств. Отключение даёт менее идентифицируемый запрос — HWID-binding панели вернут пустые подписки."
+  },
+  "Hash device model (privacy)": {
+    "value": "Хешировать модель устройства (приватность)"
+  },
+  "When enabled, X-Device-Model is sent as sha256(model)[:16] instead of the raw value (e.g. MacBookPro18,1). The provider still counts you as one device but does not see the hardware family.": {
+    "value": "Если включено, X-Device-Model отправляется как sha256(model)[:16] вместо raw значения (например MacBookPro18,1). Провайдер всё ещё считает тебя одним устройством, но не видит конкретное hardware family."
+  },
+  "Device ID (HWID):": {
+    "value": "ID устройства (HWID):"
+  },
+  "Regenerate": {
+    "value": "Сгенерировать новый"
+  },
+  "Regenerate device ID?": {
+    "value": "Сгенерировать новый ID устройства?"
+  },
+  "This will generate a new UUID and the next subscription fetch will register a new device with HWID-binding providers — consuming one of your allowed device slots. The previous ID stays counted until you remove it via the provider's management bot. Continue?": {
+    "value": "Создастся новый UUID — следующее обновление подписки зарегистрирует новое устройство у HWID-binding провайдеров, заняв один из ваших доступных слотов. Старый ID будет учитываться пока ты не удалишь его через бота управления провайдера. Продолжить?"
+  },
+  "Language": {
+    "value": "Язык"
+  },
+  "Connection": {
+    "value": "Подключение"
+  },
+  "Core Status Checking...": {
+    "value": "Статус ядра: Проверка..."
+  },
+  "Core Status ❌ Error: sing-box not found": {
+    "value": "Статус ядра ❌ Ошибка: sing-box не найден"
+  },
+  "Core Status 🔄 Restarting...": {
+    "value": "Статус ядра 🔄 Перезапуск..."
+  },
+  "Core Status ✅ Running": {
+    "value": "Статус ядра ✅ Работает"
+  },
+  "Core Status ⏸️ Stopped": {
+    "value": "Статус ядра ⏸️ Остановлен"
+  },
+  "Start": {
+    "value": "Запустить",
+    "special": {
+      "1": {
+        "value": "Старт"
+      }
+    }
+  },
+  "Stop": {
+    "value": "Остановить",
+    "special": {
+      "1": {
+        "value": "Стоп"
+      }
+    }
+  },
+  "Exit": {
+    "value": "Выход"
+  },
+  "Restart": {
+    "value": "Перезапуск"
+  },
+  "Config": {
+    "value": "Конфиг"
+  },
+  "Checking config...": {
+    "value": "Проверка конфига..."
+  },
+  "%s ✅ %s": {
+    "value": "%s ✅ %s"
+  },
+  "%s ❌ not found": {
+    "value": "%s ❌ не найден"
+  },
+  "Config error: %v": {
+    "value": "Ошибка конфига: %v"
+  },
+  "Starting...": {
+    "value": "Запуск..."
+  },
+  "Refreshing subscriptions": {
+    "value": "Обновление подписок"
+  },
+  "🔄 Update": {
+    "value": "🔄 Обновить"
+  },
+  "Update subscriptions (%s+U)": {
+    "value": "Обновить подписки (%s+U)"
+  },
+  "Restart sing-box (%s+R)": {
+    "value": "Перезапустить sing-box (%s+R)"
+  },
+  "State edited — restart sing-box to apply": {
+    "value": "Состояние изменено — перезапустите sing-box"
+  },
+  "Auto-update subscriptions": {
+    "value": "Автообновление подписок"
+  },
+  "Auto-ping on connect": {
+    "value": "Автопинг после подключения"
+  },
+  "(subs: just now)": {
+    "value": "(подписки: только что)"
+  },
+  "(subs: %dm ago)": {
+    "value": "(подписки: %d мин назад)"
+  },
+  "(subs: %dh ago)": {
+    "value": "(подписки: %d ч назад)"
+  },
+  "(subs: %dd ago)": {
+    "value": "(подписки: %d д назад)"
+  },
+  "Debug API (localhost)": {
+    "value": "Debug API (локальный)"
+  },
+  "Local read-only HTTP API for scripts and automation. Off by default. Bound to 127.0.0.1 only.": {
+    "value": "Локальный HTTP API только для чтения — для скриптов и автоматизации. По умолчанию выключен. Слушает только 127.0.0.1."
+  },
+  "Enable": {
+    "value": "Включить"
+  },
+  "Copy token": {
+    "value": "Копировать токен"
+  },
+  "Status: Off": {
+    "value": "Статус: выключен"
+  },
+  "Status: Listening on %s": {
+    "value": "Статус: слушает %s"
+  },
+  "Token copied": {
+    "value": "Токен скопирован"
+  },
+  "Debug API bearer token copied to clipboard. Pass as: Authorization: Bearer …": {
+    "value": "Bearer-токен Debug API скопирован в буфер обмена. Передавайте как: Authorization: Bearer …"
+  },
+  "Copy API info": {
+    "value": "Копировать инфо API"
+  },
+  "API info copied": {
+    "value": "Инфо API скопировано"
+  },
+  "Connection card (base URL, token, versions, docs link) copied. Hand it to an agent — it has everything to connect.": {
+    "value": "Карточка подключения (base URL, токен, версии, ссылка на доку) скопирована. Передайте агенту — в ней всё для подключения."
+  },
+  "Regenerate token": {
+    "value": "Перегенерировать токен"
+  },
+  "Regenerate Debug API token?": {
+    "value": "Перегенерировать токен Debug API?"
+  },
+  "A new bearer token will be generated and the old one will stop working immediately. Any scripts or automation using the old token must be updated. If the API is running it will restart with the new token. Continue?": {
+    "value": "Будет сгенерирован новый bearer-токен, старый сразу перестанет работать. Все скрипты и автоматизацию со старым токеном нужно обновить. Если API запущен — он перезапустится с новым токеном. Продолжить?"
+  },
+  "Token regenerated": {
+    "value": "Токен перегенерирован"
+  },
+  "A new Debug API token is active. Use “Copy token” to grab it.": {
+    "value": "Новый токен Debug API активен. Нажмите «Копировать токен», чтобы скопировать."
+  },
+  "⚙️ Configurator": {
+    "value": "⚙️ Конфигуратор"
+  },
+  "Download Config Template": {
+    "value": "Скачать шаблон конфига"
+  },
+  "Sing-box": {
+    "value": "Sing-box"
+  },
+  "sing-box is the core binary.\n\n": {
+    "value": "sing-box — основной исполняемый файл.\n\n"
+  },
+  "Look for: %s\n": {
+    "value": "Ищите файл: %s\n"
+  },
+  "Extract the binary into the bin folder.\n\n": {
+    "value": "Распакуйте файл в папку bin.\n\n"
+  },
+  "You can download with the button above, or manually from:": {
+    "value": "Вы можете скачать кнопкой выше или вручную по ссылке:"
+  },
+  "Checking...": {
+    "value": "Проверка..."
+  },
+  "❌ not found": {
+    "value": "❌ не найден"
+  },
+  "Download": {
+    "value": "Скачать"
+  },
+  "Download v%s": {
+    "value": "Скачать v%s"
+  },
+  "Reinstall v%s": {
+    "value": "Переустановить v%s"
+  },
+  "Close": {
+    "value": "Закрыть"
+  },
+  "Open bin folder": {
+    "value": "Открыть папку bin"
+  },
+  "Wintun": {
+    "value": "Wintun"
+  },
+  "wintun.dll is required for TUN mode on Windows.\n\n": {
+    "value": "wintun.dll необходим для режима TUN на Windows.\n\n"
+  },
+  "In the download archive, take wintun.dll \n\n Your system is %s.\n\n ": {
+    "value": "В скачанном архиве возьмите wintun.dll\n\nВаша система: %s.\n\n"
+  },
+  "Place it in the bin folder: bin\n\n": {
+    "value": "Поместите файл в папку bin.\n\n"
+  },
+  "ok": {
+    "value": "ok"
+  },
+  "❌ Error checking wintun.dll": {
+    "value": "❌ Ошибка проверки wintun.dll"
+  },
+  "Config Template": {
+    "value": "Шаблон конфига"
+  },
+  "Template saved to %s": {
+    "value": "Шаблон сохранён в %s"
+  },
+  "Download Complete": {
+    "value": "Загрузка завершена"
+  },
+  "Update Available": {
+    "value": "Доступно обновление"
+  },
+  "A new version of the application is available": {
+    "value": "Доступна новая версия приложения"
+  },
+  "Current version: %s": {
+    "value": "Текущая версия: %s"
+  },
+  "New version: %s": {
+    "value": "Новая версия: %s"
+  },
+  "Download from GitHub": {
+    "value": "Скачать с GitHub"
+  },
+  "Configuration Not Found": {
+    "value": "Конфигурация не найдена"
+  },
+  "⚠️ Configuration file not found!\n\nThe file %s is missing from the bin/ folder.\n\nTo get started:\n1. open ⚙️ Configurator\n2. add subscription URLs in the Sources tab and click Save\n3. click 🔄 Update on this dashboard to fetch and build config\n4. press Start\n": {
+    "value": "⚠️ Файл конфигурации не найден!\n\nФайл %s отсутствует в папке bin/.\n\nДля начала работы:\n1. откройте ⚙️ Конфигуратор\n2. добавьте URL подписок на вкладке Sources и нажмите Save\n3. нажмите 🔄 Обновить — будут скачаны подписки и собран config\n4. нажмите Start\n"
+  },
+  "Information": {
+    "value": "Информация"
+  },
+  "The application is already running. Use the existing instance or close it before starting a new one.": {
+    "value": "Приложение уже запущено. Используйте существующий экземпляр или закройте его перед запуском нового."
+  },
+  "Info": {
+    "value": "Инфо",
+    "special": {
+      "1": {
+        "value": "Информация"
+      }
+    }
+  },
+  "Sing-Box already running (according to internal state).": {
+    "value": "Sing-Box уже запущен (по внутреннему состоянию)."
+  },
+  "Crash": {
+    "value": "Сбой"
+  },
+  "Sing-Box crashed, restarting... (attempt %d/%d)": {
+    "value": "Sing-Box аварийно завершился, перезапуск... (попытка %d/%d)"
+  },
+  "Failed to start sing-box:\n\n%s\n\nPlease check:\n1. config.json is valid\n2. sing-box executable exists\n3. Check logs for details": {
+    "value": "Не удалось запустить sing-box:\n\n%s\n\nПроверьте:\n1. config.json корректен\n2. Исполняемый файл sing-box существует\n3. Подробности в логах"
+  },
+  "Parser failed:\n\n%s\n\nPlease check:\n1. Subscription URL is valid\n2. Network connection\n3. Check parser.log for details": {
+    "value": "Ошибка парсера:\n\n%s\n\nПроверьте:\n1. URL подписки корректен\n2. Подключение к сети\n3. Подробности в parser.log"
+  },
+  "Linux capabilities required": {
+    "value": "Требуются права Linux capabilities"
+  },
+  "Could not stop sing-box with administrator rights (dialog cancelled or error). The core may still be running — try Stop again or quit sing-box in Activity Monitor.": {
+    "value": "Не удалось остановить sing-box с правами администратора (отмена диалога или ошибка). Ядро может всё ещё работать — нажмите Stop ещё раз или завершите процесс в «Мониторинг системы»."
+  },
+  "Sing-Box failed to restart after %d attempts. Check sing-box.log for details.": {
+    "value": "Sing-Box не удалось перезапустить после %d попыток. Проверьте sing-box.log."
+  },
+  "Failed to check for updates": {
+    "value": "Не удалось проверить обновления"
+  },
+  "Error checking version: %s": {
+    "value": "Ошибка проверки версии: %s"
+  },
+  "Update available!\n\nInstalled: %s\nLatest: %s\n\nYou can download the update from the Core tab.": {
+    "value": "Доступно обновление!\n\nУстановлена: %s\nПоследняя: %s\n\nВы можете скачать обновление на вкладке «Ядро»."
+  },
+  "No Updates": {
+    "value": "Нет обновлений"
+  },
+  "You are using the latest version.\n\nInstalled: %s\nLatest: %s": {
+    "value": "Вы используете последнюю версию.\n\nУстановлена: %s\nПоследняя: %s"
+  },
+  "Open": {
+    "value": "Открыть"
+  },
+  "Quit": {
+    "value": "Выход"
+  },
+  "Start VPN": {
+    "value": "Запустить VPN"
+  },
+  "Stop VPN": {
+    "value": "Остановить VPN"
+  },
+  "Select Proxy": {
+    "value": "Выбрать прокси"
+  },
+  "No proxies available": {
+    "value": "Нет доступных прокси"
+  },
+  "Hide app from Dock": {
+    "value": "Скрыть из Dock"
+  },
+  "Config folder": {
+    "value": "Папка конфига"
+  },
+  "🛑 Kill Sing-Box": {
+    "value": "🛑 Завершить Sing-Box"
+  },
+  "Kill": {
+    "value": "Завершение"
+  },
+  "Sing-Box killed if running.": {
+    "value": "Sing-Box завершён (если был запущен)."
+  },
+  "📦 Version: %s": {
+    "value": "📦 Версия: %s"
+  },
+  "Checking for updates...": {
+    "value": "Проверка обновлений..."
+  },
+  "Unable to check for updates": {
+    "value": "Не удалось проверить обновления"
+  },
+  "🆕 Update available: %s\nCurrent: %s": {
+    "value": "🆕 Доступно обновление: %s\nТекущая: %s"
+  },
+  "✅ You are using a development build\nCurrent: %s\nLatest release: %s": {
+    "value": "✅ Вы используете сборку разработчика\nТекущая: %s\nПоследний релиз: %s"
+  },
+  "✅ You are using the latest version\nCurrent: %s": {
+    "value": "✅ Вы используете последнюю версию\nТекущая: %s"
+  },
+  "💬 Telegram Channel": {
+    "value": "💬 Telegram-канал"
+  },
+  "🐙 GitHub Repository": {
+    "value": "🐙 Репозиторий GitHub"
+  },
+  "Language:": {
+    "value": "Язык:"
+  },
+  "Language changed. Restart the app to apply fully.": {
+    "value": "Язык изменён. Перезапустите приложение для полного применения."
+  },
+  "📥 Download translations": {
+    "value": "📥 Скачать переводы"
+  },
+  "⬇": {
+    "value": "⬇"
+  },
+  "Translations downloaded (%d). Restart to see new languages.": {
+    "value": "Переводы загружены (%d). Перезапустите для отображения новых языков."
+  },
+  "Failed to download translations": {
+    "value": "Не удалось загрузить переводы"
+  },
+  "Downloading...": {
+    "value": "Загрузка..."
+  },
+  "🔄": {
+    "value": "🔄"
+  },
+  "STUN [UDP]": {
+    "value": "STUN [UDP]"
+  },
+  "STUN Check": {
+    "value": "Проверка STUN"
+  },
+  "Checking, please wait...": {
+    "value": "Проверка, подождите..."
+  },
+  "Your External IP: %s\n%s": {
+    "value": "Ваш внешний IP: %s\n%s"
+  },
+  "Copy IP": {
+    "value": "Копировать IP"
+  },
+  "Copied": {
+    "value": "Скопировано"
+  },
+  "IP address copied to clipboard.": {
+    "value": "IP-адрес скопирован в буфер обмена."
+  },
+  "STUN Check Result": {
+    "value": "Результат STUN"
+  },
+  "STUN server (host:port):": {
+    "value": "STUN-сервер (хост:порт):"
+  },
+  "Use system SOCKS5 proxy": {
+    "value": "Использовать системный SOCKS5 прокси"
+  },
+  "STUN settings": {
+    "value": "Настройки STUN"
+  },
+  "Save": {
+    "value": "Сохранить"
+  },
+  "Cancel": {
+    "value": "Отмена"
+  },
+  "Log window": {
+    "value": "Окно логов"
+  },
+  "Logs folder": {
+    "value": "Папка логов"
+  },
+  "Clean unused rule-sets": {
+    "value": "Очистить неиспользуемые rule-set"
+  },
+  "Removed %d unused rule-set file(s).": {
+    "value": "Удалено неиспользуемых rule-set файлов: %d."
+  },
+  "Traffic Profiler": {
+    "value": "Профайлер трафика"
+  },
+  "IP Check Services:": {
+    "value": "Сервисы проверки IP:"
+  },
+  "Open in browser": {
+    "value": "Открыть в браузере"
+  },
+  "Logs": {
+    "value": "Логи"
+  },
+  "Level:": {
+    "value": "Уровень:"
+  },
+  "Error": {
+    "value": "Ошибка",
+    "special": {
+      "1": {
+        "value": "Ошибки"
+      }
+    }
+  },
+  "Warn": {
+    "value": "Предупр."
+  },
+  "Verbose": {
+    "value": "Подробно"
+  },
+  "Trace": {
+    "value": "Трассир."
+  },
+  "Refresh": {
+    "value": "Обновить"
+  },
+  "Internal": {
+    "value": "Внутренний"
+  },
+  "Core": {
+    "value": "Ядро"
+  },
+  "API": {
+    "value": "API"
+  },
+  "Log file not available.": {
+    "value": "Лог-файл недоступен."
+  },
+  "Download failed. See the log for details.": {
+    "value": "Загрузка не удалась. Подробности в логе."
+  },
+  "Please download the file manually and place it in the folder below.": {
+    "value": "Скачайте файл вручную и поместите в указанную папку."
+  },
+  "Open download page": {
+    "value": "Открыть страницу загрузки"
+  },
+  "Open folder": {
+    "value": "Открыть папку"
+  },
+  "OK": {
+    "value": "OK"
+  },
+  "Kill Process": {
+    "value": "Завершить процесс"
+  },
+  "Close This Warning": {
+    "value": "Закрыть предупреждение"
+  },
+  "Sing-Box appears to be already running.\nWould you like to kill the existing process?": {
+    "value": "Sing-Box, похоже, уже запущен.\nЗавершить существующий процесс?"
+  },
+  "Warning": {
+    "value": "Предупреждение"
+  },
+  "❌ ": {
+    "value": "❌ "
+  },
+  "Status: Not checked": {
+    "value": "Статус: Не проверен"
+  },
+  "Click 'Load Proxies'": {
+    "value": "Нажмите «Загрузить прокси»"
+  },
+  "Loading proxies for '%s'...": {
+    "value": "Загрузка прокси для «%s»..."
+  },
+  "Proxies loaded for '%s'. Active: %s": {
+    "value": "Прокси загружены для «%s». Активный: %s"
+  },
+  "Clash API disabled due to config error": {
+    "value": "Clash API отключён из-за ошибки конфига"
+  },
+  "❌ Clash API Off (Error)": {
+    "value": "❌ Clash API выключен (ошибка)"
+  },
+  "❌ Clash API Off (Config Error)": {
+    "value": "❌ Clash API выключен (ошибка конфига)"
+  },
+  "✅ Clash API On": {
+    "value": "✅ Clash API включён"
+  },
+  "Status: Not running": {
+    "value": "Статус: Не запущен"
+  },
+  "Sing-box is stopped.": {
+    "value": "Sing-box остановлен."
+  },
+  "API service is not initialized": {
+    "value": "Сервис API не инициализирован"
+  },
+  "API is disabled: config error": {
+    "value": "API отключён: ошибка конфига"
+  },
+  "Delay error: %s": {
+    "value": "Ошибка задержки: %s"
+  },
+  "Delay: %d ms for %s": {
+    "value": "Задержка: %d мс для %s"
+  },
+  "Selected: %s": {
+    "value": "Выбран: %s"
+  },
+  "Selected: %d proxies": {
+    "value": "Выбрано прокси: %d"
+  },
+  "No proxy selected": {
+    "value": "Ничего не выбрано"
+  },
+  "Switch error: %s": {
+    "value": "Ошибка переключения: %s"
+  },
+  "Switched '%s' to %s": {
+    "value": "Переключено «%s» на %s"
+  },
+  "Sorted by name (A-Z)": {
+    "value": "Сортировка по имени (А-Я)"
+  },
+  "Sorted by name (Z-A)": {
+    "value": "Сортировка по имени (Я-А)"
+  },
+  "Sorted by delay (fastest first)": {
+    "value": "Сортировка по задержке (быстрые первыми)"
+  },
+  "Sorted by delay (slowest first)": {
+    "value": "Сортировка по задержке (медленные первыми)"
+  },
+  "No proxies to ping": {
+    "value": "Нет прокси для пинга"
+  },
+  "Total / Available: %d / %d": {
+    "value": "Всего / доступно: %d / %d"
+  },
+  "Pinging %d proxies...": {
+    "value": "Пинг %d прокси..."
+  },
+  "Pinging %d/%d...": {
+    "value": "Пинг %d/%d..."
+  },
+  "Ping test completed for %d proxies": {
+    "value": "Пинг-тест завершён для %d прокси"
+  },
+  "Selected group '%s'. Last used proxy: %s": {
+    "value": "Выбрана группа «%s». Последний прокси: %s"
+  },
+  "Selected group '%s'.": {
+    "value": "Выбрана группа «%s»."
+  },
+  "Ping test URL updated: %s": {
+    "value": "URL пинг-теста обновлён: %s"
+  },
+  "Proxy Name": {
+    "value": "Имя прокси"
+  },
+  "Ping": {
+    "value": "Пинг"
+  },
+  "test": {
+    "value": "тест"
+  },
+  "Hide servers with ping errors": {
+    "value": "Скрыть серверы с ошибкой пинга"
+  },
+  "Show all servers": {
+    "value": "Показать все серверы"
+  },
+  "Sort by name (toggle A–Z / Z–A)": {
+    "value": "Сортировка по имени (↑А…Я / ↓Я…А)"
+  },
+  "Sort by ping delay (toggle fastest first / slowest first)": {
+    "value": "Сортировка по задержке (↑быстрее / ↓медленнее)"
+  },
+  "Ping all proxies in this group": {
+    "value": "Пинг всех прокси в группе"
+  },
+  "Ping test URL and parallel requests": {
+    "value": "URL пинг-теста и число параллельных запросов"
+  },
+  "Export": {
+    "value": "Экспорт"
+  },
+  "Copy share links for all rows visible now, in current list order (one URI per line; hidden ping-error rows are skipped; excludes selector, urltest, direct).": {
+    "value": "Share-ссылки для всех сейчас видимых строк, в порядке списка (строка = URI; скрытые из-за ошибки пинга не попадают; без selector, urltest, direct)."
+  },
+  "Copy share links for selected proxies only (multiple selection), in current list order (same URI rules as the default copy).": {
+    "value": "Share-ссылки только для выделенных прокси (несколько выбрано), в порядке списка (те же правила URI, что у обычного копирования)."
+  },
+  "Nothing to export (no rows match the current view).": {
+    "value": "Нечего экспортировать (в текущем виде списка нет строк)."
+  },
+  "Nothing to export (no selected rows in the current view).": {
+    "value": "Нечего экспортировать (нет выделенных строк в текущем виде)."
+  },
+  "Preparing export…": {
+    "value": "Готовим экспорт…"
+  },
+  "Clipboard: %d lines (one URI per line)": {
+    "value": "Буфер: %d строк (по одному URI в строке)"
+  },
+  "No share links could be built for this list.": {
+    "value": "Не удалось собрать ни одной share-ссылки для этого списка."
+  },
+  "Config path is not set.": {
+    "value": "Путь к конфигу не задан."
+  },
+  "A…Z": {
+    "value": "А…Я"
+  },
+  "Select selector group": {
+    "value": "Выберите группу селектора"
+  },
+  "Selector group:": {
+    "value": "Группа селектора:"
+  },
+  "Reload the selector groups from the core": {
+    "value": "Перечитать selector-группы у ядра"
+  },
+  "Ping test settings": {
+    "value": "Настройки пинг-теста"
+  },
+  "Ping test URL": {
+    "value": "URL пинг-теста"
+  },
+  "Custom URL:": {
+    "value": "Свой URL:"
+  },
+  "Parallel requests (ping all):": {
+    "value": "Параллельных запросов (массовый ping):"
+  },
+  "Single test timeout:": {
+    "value": "Таймаут одной проверки:"
+  },
+  "s": {
+    "value": "с"
+  },
+  "https://example.com/generate_204": {
+    "value": "https://example.com/generate_204"
+  },
+  "Custom": {
+    "value": "Свой"
+  },
+  "Selector -> Active Outbound": {
+    "value": "Селектор -> Активный Outbound"
+  },
+  "%d ms": {
+    "value": "%d мс"
+  },
+  "%s -> (no active outbound)": {
+    "value": "%s -> (нет активного outbound)"
+  },
+  "%s -> error: %v": {
+    "value": "%s -> ошибка: %v"
+  },
+  "%s -> %s": {
+    "value": "%s -> %s"
+  },
+  "Copy link": {
+    "value": "Копировать ссылку"
+  },
+  "Copy server link": {
+    "value": "Копировать ссылку сервера"
+  },
+  "Copy jump server link": {
+    "value": "Копировать ссылку jump-сервера"
+  },
+  "Unknown type": {
+    "value": "Тип неизвестен"
+  },
+  "Building share URI from outbound…": {
+    "value": "Сборка share URI из outbound…"
+  },
+  "Share URI copied to clipboard": {
+    "value": "Share URI скопирован в буфер обмена"
+  },
+  "Building share URI for jump outbound…": {
+    "value": "Сборка share URI для jump-outbound…"
+  },
+  "Jump share URI copied to clipboard": {
+    "value": "Jump share URI скопирован в буфер обмена"
+  },
+  "This outbound cannot be turned into a share link (e.g. selector, direct-out, or fields not supported by the URI encoder).": {
+    "value": "Этот outbound нельзя преобразовать в share-ссылку (селектор, direct-out или поля не поддерживаются кодировщиком URI)."
+  },
+  "Config Wizard": {
+    "value": "Мастер конфигурации"
+  },
+  "Target": {
+    "value": "Назначение"
+  },
+  "Sources": {
+    "value": "Источники"
+  },
+  "Directions": {
+    "value": "Направления"
+  },
+  "DNS": {
+    "value": "DNS"
+  },
+  "Rules": {
+    "value": "Правила"
+  },
+  "Files": {
+    "value": "Файлы"
+  },
+  "Save the settings: state is written and the working config.json is rebuilt — the same as the Save button below. \"Show config\" opens the built config.json in its own window without saving anything.": {
+    "value": "Сохранить настройки: записывается состояние и пересобирается рабочий config.json — то же, что кнопка Save внизу. «Показать конфиг» открывает собранный config.json в отдельном окне, ничего не сохраняя."
+  },
+  "Show config": {
+    "value": "Показать конфиг"
+  },
+  "Hide config": {
+    "value": "Скрыть конфиг"
+  },
+  "Generated config.json": {
+    "value": "Собранный config.json"
+  },
+  "Building…": {
+    "value": "Сборка…"
+  },
+  "Built: %d bytes": {
+    "value": "Собрано: %d байт"
+  },
+  "Error: %v": {
+    "value": "Ошибка: %v"
+  },
+  "No template variables in this profile.": {
+    "value": "В этом профиле нет переменных шаблона."
+  },
+  "⚠ No inbound is enabled — sing-box will start, but won't accept any traffic. Turn on Enable TUN above, or Enable Proxy-in below.": {
+    "value": "⚠ Ни один inbound не включён — sing-box запустится, но не будет принимать трафик. Включите Enable TUN выше или Enable Proxy-in ниже."
+  },
+  "Reset": {
+    "value": "Сброс",
+    "special": {
+      "1": {
+        "value": "Сбросить"
+      }
+    }
+  },
+  "Reset to the template default.": {
+    "value": "Сбросить к значению из шаблона."
+  },
+  "Generate a new random secret.": {
+    "value": "Сгенерировать новый случайный секрет."
+  },
+  "Stop the sing-box core first (Core tab -> Stop), then turn off TUN.\n\nAfter TUN ran with administrator rights, the experimental cache under bin/ and core log files (logs/sing-box.log) may be owned by root. They are removed automatically when you turn TUN off, but only while the core is stopped.": {
+    "value": "Сначала остановите ядро sing-box (вкладка Core -> Stop), затем снимите TUN.\n\nПосле работы TUN с правами администратора кеш experimental под bin/ и логи ядра (logs/sing-box.log) могут принадлежать root. Они удаляются при выключении TUN только пока ядро остановлено."
+  },
+  "sing-box is still running on the system (detected PID %d). Use Core -> Stop (enter your password if asked) until the process exits, or end it in Activity Monitor, then turn off TUN.\n\nIf Stop was cancelled earlier, the launcher could think the core was stopped while sing-box was still running — that leaves the TUN interface and ports (e.g. mixed proxy) busy.": {
+    "value": "В системе всё ещё запущен sing-box (обнаружен PID %d). Сначала полностью остановите ядро: Core -> Stop (при запросе введите пароль), либо завершите процесс в «Мониторинг системы», затем снимите TUN.\n\nЕсли раньше отменили ввод пароля при Stop, лаунчер мог считать ядро остановленным, хотя sing-box ещё работал — тогда TUN и порты (например mixed) остаются заняты."
+  },
+  "Read": {
+    "value": "Загрузить"
+  },
+  "Save As": {
+    "value": "Сохранить как"
+  },
+  "Prev": {
+    "value": "Назад"
+  },
+  "Next": {
+    "value": "Далее"
+  },
+  "Confirmation": {
+    "value": "Подтверждение"
+  },
+  "Current changes will be lost. Save current state?": {
+    "value": "Текущие изменения будут потеряны. Сохранить текущее состояние?"
+  },
+  "Save changes before closing?": {
+    "value": "Сохранить изменения перед закрытием?"
+  },
+  "Discard": {
+    "value": "Отбросить",
+    "special": {
+      "1": {
+        "value": "Отменить"
+      }
+    }
+  },
+  "Convert to user rule(s)": {
+    "value": "Преобразовать в пользовательское"
+  },
+  "Edit rule": {
+    "value": "Редактировать правило"
+  },
+  "Edit": {
+    "value": "Изменить",
+    "special": {
+      "1": {
+        "value": "Редакт."
+      }
+    }
+  },
+  "Del": {
+    "value": "Удалить"
+  },
+  "Failed to load existing config": {
+    "value": "Не удалось загрузить конфиг"
+  },
+  "Failed to save state": {
+    "value": "Не удалось сохранить состояние"
+  },
+  "Failed to load state": {
+    "value": "Не удалось загрузить состояние"
+  },
+  "Failed to restore state": {
+    "value": "Не удалось восстановить состояние"
+  },
+  "Config template failed to load": {
+    "value": "Не удалось загрузить шаблон конфига"
+  },
+  "Config template missing": {
+    "value": "Шаблон конфига отсутствует"
+  },
+  "Subscription URL or Direct Links:": {
+    "value": "URL подписки или прямые ссылки:"
+  },
+  "https://your-subscription-url-here": {
+    "value": "https://ваш-url-подписки"
+  },
+  "Supports subscription URLs (http/https) or direct links (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://). For multiple links, use a new line for each.": {
+    "value": "Поддерживаются URL подписок (http/https) или прямые ссылки (vless://, vmess://, trojan://, ss://, hysteria2://, ssh://, wireguard://). Для нескольких ссылок — по одной на строку."
+  },
+  "Add from file": {
+    "value": "Добавить из файла"
+  },
+  "Select a config file (.conf / .vpn / .txt)": {
+    "value": "Выберите файл конфигурации (.conf / .vpn / .txt)"
+  },
+  "Preview all servers…": {
+    "value": "Просмотр всех серверов…"
+  },
+  "Servers from all sources": {
+    "value": "Серверы из всех источников"
+  },
+  "No sources defined in ParserConfig.": {
+    "value": "Источники не определены в ParserConfig."
+  },
+  "Connections %d": {
+    "value": "Подключения %d"
+  },
+  "Source %d": {
+    "value": "Источник %d"
+  },
+  "prefix": {
+    "value": "префикс"
+  },
+  "View": {
+    "value": "Просмотр"
+  },
+  "Delete \"%s\"? The source and its nodes are removed from the configuration.": {
+    "value": "Удалить «%s»? Источник и его узлы будут удалены из конфигурации."
+  },
+  "Source copied to clipboard.": {
+    "value": "Источник скопирован в буфер обмена."
+  },
+  "Click Refresh to load servers from all sources.": {
+    "value": "Нажмите «Обновить» для загрузки серверов из всех источников."
+  },
+  "No sources. Add URLs and click Refresh.": {
+    "value": "Нет источников. Добавьте URL и нажмите «Обновить»."
+  },
+  "Loading...": {
+    "value": "Загрузка..."
+  },
+  "Subscription has not been fetched yet": {
+    "value": "Подписка ещё не загружалась"
+  },
+  "Disabled subscriptions are not auto-fetched, so there is no cached body to preview. Click below to fetch this subscription once without enabling it.": {
+    "value": "Отключённые подписки не загружаются автоматически, поэтому кэша для предпросмотра нет. Нажмите кнопку ниже, чтобы загрузить эту подписку разово, не включая её."
+  },
+  "Fetch now": {
+    "value": "Загрузить сейчас"
+  },
+  "Error: %s": {
+    "value": "Ошибка: %s"
+  },
+  "%d server(s) from %d source(s)": {
+    "value": "%d сервер(ов) из %d источник(ов)"
+  },
+  "  ⚠️ %d error(s)": {
+    "value": "  ⚠️ %d ошибок"
+  },
+  "🔄 Refresh from sources": {
+    "value": "🔄 Обновить подписки"
+  },
+  "Fetch this subscription now": {
+    "value": "Загрузить эту подписку сейчас"
+  },
+  "Subscription update failed — click for details": {
+    "value": "Ошибка обновления подписки — нажми для подробностей"
+  },
+  "Provider sent a notice — click to read": {
+    "value": "Провайдер прислал сообщение — нажми чтобы прочитать"
+  },
+  "📡": {
+    "value": "📡"
+  },
+  "🔌": {
+    "value": "🔌"
+  },
+  "Subscription": {
+    "value": "Подписка"
+  },
+  "Server": {
+    "value": "Сервер"
+  },
+  "● ok": {
+    "value": "● ok"
+  },
+  "● err": {
+    "value": "● ошибка"
+  },
+  "● never": {
+    "value": "● не загружено"
+  },
+  "%s / %s used": {
+    "value": "%s / %s использовано"
+  },
+  "expires %s": {
+    "value": "истекает %s"
+  },
+  "expires in %s": {
+    "value": "истекает через %s"
+  },
+  "expired": {
+    "value": "истекла"
+  },
+  "fetched %s ago": {
+    "value": "обновлено %s назад"
+  },
+  "just fetched": {
+    "value": "только что обновлено"
+  },
+  "never fetched": {
+    "value": "никогда не обновлялось"
+  },
+  "%d nodes": {
+    "value": "%d узлов"
+  },
+  "%d nodes (truncated, max %d)": {
+    "value": "%d узлов (обрезано до %d)"
+  },
+  "Refreshing…": {
+    "value": "Обновление…"
+  },
+  "Refresh failed: %s": {
+    "value": "Ошибка обновления: %s"
+  },
+  "Refreshed successfully": {
+    "value": "Обновлено успешно"
+  },
+  "Overview": {
+    "value": "Обзор"
+  },
+  "JSON": {
+    "value": "JSON"
+  },
+  "Subscription URL": {
+    "value": "URL подписки"
+  },
+  "Server URI": {
+    "value": "URI сервера"
+  },
+  "Label": {
+    "value": "Метка"
+  },
+  "Detour server (chain)": {
+    "value": "Detour-сервер (цепочка)"
+  },
+  "(none — direct)": {
+    "value": "(нет — напрямую)"
+  },
+  "Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server (tracked by identity, survives renames).": {
+    "value": "Пускать узлы этого источника через другой outbound, чтобы построить цепочку прокси. Теги групп ведут через селектор; пункты с » — через один конкретный сервер (привязка по identity-хешу, переживает переименования)."
+  },
+  "Tag postfix": {
+    "value": "Суффикс тэга"
+  },
+  "Tag mask (overrides prefix/postfix)": {
+    "value": "Маска тэга (переопределяет prefix/postfix)"
+  },
+  "human-readable label": {
+    "value": "человекочитаемое имя"
+  },
+  "postfix": {
+    "value": "суффикс"
+  },
+  "{$tag}-{$server}": {
+    "value": "{$tag}-{$server}"
+  },
+  "Variables (work in all three fields): {$tag} original node tag · {$server} address · {$port} port · {$scheme} protocol (also {$protocol}) · {$label} name from the link's #fragment · {$comment} comment · {$num} node number from 1": {
+    "value": "Переменные (работают во всех трёх полях): {$tag} исходный тег узла · {$server} адрес · {$port} порт · {$scheme} протокол (он же {$protocol}) · {$label} имя из #фрагмента ссылки · {$comment} комментарий · {$num} номер узла с 1"
+  },
+  "Status": {
+    "value": "Статус"
+  },
+  "Subscription metadata (HTTP headers)": {
+    "value": "Метаданные подписки (HTTP headers)"
+  },
+  "Traffic quota": {
+    "value": "Квота трафика"
+  },
+  "Type": {
+    "value": "Тип"
+  },
+  "ID": {
+    "value": "ID"
+  },
+  "URL": {
+    "value": "URL"
+  },
+  "URI": {
+    "value": "URI"
+  },
+  "Enabled": {
+    "value": "Включён"
+  },
+  "Excluded from global": {
+    "value": "Исключён из global outbounds"
+  },
+  "Last status": {
+    "value": "Последний статус"
+  },
+  "Last fetched": {
+    "value": "Последняя загрузка"
+  },
+  "HTTP status": {
+    "value": "HTTP-код"
+  },
+  "Body size": {
+    "value": "Размер тела"
+  },
+  "Error count": {
+    "value": "Счётчик ошибок"
+  },
+  "Profile title": {
+    "value": "Заголовок профиля"
+  },
+  "Update interval": {
+    "value": "Интервал обновления"
+  },
+  "Support URL": {
+    "value": "Support URL"
+  },
+  "Web page": {
+    "value": "Веб-страница"
+  },
+  "Content-Disposition filename": {
+    "value": "Имя файла (Content-Disposition)"
+  },
+  "Used": {
+    "value": "Занято",
+    "special": {
+      "1": {
+        "value": "Использовано"
+      }
+    }
+  },
+  "Total": {
+    "value": "Всего"
+  },
+  "Remaining": {
+    "value": "Осталось"
+  },
+  "Expires": {
+    "value": "Истекает"
+  },
+  "Nodes fetched": {
+    "value": "Нод загружено"
+  },
+  "No meta yet — press Refresh to fetch this subscription.": {
+    "value": "Метаданные ещё не загружены — нажмите Refresh для этой подписки."
+  },
+  "Server source — meta is not collected (only fetched per subscription).": {
+    "value": "Server-источник — метаданные не собираются (только для подписок)."
+  },
+  "Fetch summary": {
+    "value": "Сводка fetch'а"
+  },
+  "Parsed headers": {
+    "value": "Распарсенные заголовки"
+  },
+  "Raw body (decoded)": {
+    "value": "Сырой ответ (decoded)"
+  },
+  "No raw body cached yet. Refresh this subscription to populate `bin/subscriptions/<id>.raw`.": {
+    "value": "Сырой body ещё не закэширован. Refresh этой подписки заполнит `bin/subscriptions/<id>.raw`."
+  },
+  "Showing first %d of %d bytes": {
+    "value": "Показаны первые %d из %d байт"
+  },
+  "Copy file path": {
+    "value": "Скопировать путь"
+  },
+  "Raw view is only available for subscriptions (server sources are static URIs).": {
+    "value": "Raw-просмотр только для подписок (server — статический URI)."
+  },
+  "Servers — %s": {
+    "value": "Серверы — %s"
+  },
+  "No servers found.": {
+    "value": "Серверы не найдены."
+  },
+  "%d server(s)": {
+    "value": "%d сервер(ов)"
+  },
+  "Source — %s": {
+    "value": "Источник — %s"
+  },
+  "Preview": {
+    "value": "Превью",
+    "special": {
+      "1": {
+        "value": "Просмотр"
+      }
+    }
+  },
+  "The sing-box outbound this source unpacks into — exactly what the build writes to config.json. Edit and press Apply to save a manual config_json (it overrides the URI); Reset returns to URI-generated. Tag and detour are restamped by the launcher at build time.": {
+    "value": "Sing-box outbound, в который распаковывается этот источник — ровно то, что сборка запишет в config.json. Отредактируйте и нажмите «Применить», чтобы сохранить ручной config_json (он переопределяет URI); «Сбросить» возвращает генерацию из URI. Tag и detour лаунчер перештамповывает при сборке."
+  },
+  "The chain object exactly as it will reach the config. This is also where rewrite is edited — per-protocol overrides of node options; everything else is easier to change on the Chain tab.": {
+    "value": "Объект цепочки в том виде, в каком он уедет в конфиг. Здесь же правится rewrite — переопределения опций узла по типу протокола; остальное удобнее менять на вкладке «Цепочка»."
+  },
+  "Chain is ready to build": {
+    "value": "Цепочка готова к сборке"
+  },
+  "Read-only: how the cached subscription body unpacks into sing-box outbounds. Tags are shown before the source prefix/mask is applied; the list is rebuilt from the network on every refresh.": {
+    "value": "Только чтение: как кэшированное тело подписки распаковывается в sing-box outbounds. Теги показаны до применения префикса/маски источника; список пересобирается из сети при каждом обновлении."
+  },
+  "Generated from URI.": {
+    "value": "Сгенерировано из URI."
+  },
+  "Manual config_json — the URI is ignored at build time.": {
+    "value": "Ручной config_json — URI при сборке игнорируется."
+  },
+  "No URI set. Paste a sing-box outbound object below and press Apply.": {
+    "value": "URI не задан. Вставьте ниже объект sing-box outbound и нажмите «Применить»."
+  },
+  "URI does not unpack: %s. You can write the outbound JSON by hand and press Apply.": {
+    "value": "URI не распаковывается: %s. Можно написать outbound JSON руками и нажать «Применить»."
+  },
+  "Unpacked nodes: %d": {
+    "value": "Распаковано нод: %d"
+  },
+  "(showing first %d)": {
+    "value": "(показаны первые %d)"
+  },
+  "Apply JSON": {
+    "value": "Применить JSON"
+  },
+  "Reset to URI": {
+    "value": "Сбросить к URI"
+  },
+  "Delete the manual config_json and generate the outbound from the URI again?": {
+    "value": "Удалить ручной config_json и снова генерировать outbound из URI?"
+  },
+  "JSON is empty.": {
+    "value": "JSON пуст."
+  },
+  "Invalid JSON: %s": {
+    "value": "Некорректный JSON: %s"
+  },
+  "The outbound object must have a non-empty \"type\" field.": {
+    "value": "В объекте outbound должно быть непустое поле \"type\"."
+  },
+  "Storage record (state.json)": {
+    "value": "Запись в хранилище (state.json)"
+  },
+  "A manual config_json is set — the URI above is ignored at build time (see the JSON tab).": {
+    "value": "Задан ручной config_json — URI выше при сборке игнорируется (см. вкладку JSON)."
+  },
+  "Local outbounds (this source)": {
+    "value": "Локальные outbounds (этот источник)"
+  },
+  "Servers from subscription / links": {
+    "value": "Серверы из подписки / ссылок"
+  },
+  "None — enable Local auto or Local select in Settings.": {
+    "value": "Нет — включите «Локальный auto» или «Локальный select» в настройках."
+  },
+  "Local outbounds: %d · Servers: %d": {
+    "value": "Локальные outbounds: %d · Серверов: %d"
+  },
+  "Local outbounds: %d · Servers: load failed — %s": {
+    "value": "Локальные outbounds: %d · Серверы: ошибка загрузки — %s"
+  },
+  "Tag prefix": {
+    "value": "Префикс тега"
+  },
+  "Fold this subscription into a group": {
+    "value": "Свернуть подписку в группу"
+  },
+  "Its nodes are replaced by a single entry in the directions list. Pick what to fold into on the Group tab.": {
+    "value": "Её узлы заменяются одной записью в списке Направлений. Во что именно сворачивать — на вкладке «Группа»."
+  },
+  "Group": {
+    "value": "Группа"
+  },
+  "Add hop chain": {
+    "value": "Добавить цепочку хопов"
+  },
+  "Chain": {
+    "value": "Цепочка"
+  },
+  "[chain: %d]": {
+    "value": "[цепочка: %d]"
+  },
+  "· %d nodes": {
+    "value": "· %d узлов"
+  },
+  "· %d of %d nodes": {
+    "value": "· %d из %d узлов"
+  },
+  "[chain] ⚠️ core has no chain support": {
+    "value": "[цепочка] ⚠️ ядро не умеет цепочки"
+  },
+  "The subscription arrives as one entry instead of every node. Its nodes stay in the config as that group's members.": {
+    "value": "Подписка приезжает одной записью вместо всех своих узлов. Сами узлы остаются в конфиге составом этой группы."
+  },
+  "Fold into": {
+    "value": "Свернуть в"
+  },
+  "Selector (manual pick)": {
+    "value": "Селектор (выбор вручную)"
+  },
+  "Auto-select group (urltest)": {
+    "value": "Автогруппу (urltest)"
+  },
+  "Selector with an auto-select group": {
+    "value": "Селектор с автогруппой"
+  },
+  "Tags: %s": {
+    "value": "Теги: %s"
+  },
+  "DNS servers": {
+    "value": "DNS-серверы"
+  },
+  "No DNS servers.": {
+    "value": "Нет DNS-серверов."
+  },
+  "From active presets (read-only)": {
+    "value": "От активных пресетов (read-only)"
+  },
+  "(invalid server JSON)": {
+    "value": "(некорректный JSON сервера)"
+  },
+  "(no tag)": {
+    "value": "(нет тега)"
+  },
+  "Final DNS:": {
+    "value": "Финальный DNS:"
+  },
+  "Default domain resolver:": {
+    "value": "Резолвер доменов по умолчанию:"
+  },
+  "Rules (JSON object with \"rules\" array)": {
+    "value": "Правила (JSON-объект с массивом \"rules\")"
+  },
+  "{\n  \"rules\": [\n    {\"rule_set\":\"example\",\"server\":\"tag\"}\n  ]\n}": {
+    "value": "{\n  \"rules\": [\n    {\"rule_set\":\"example\",\"server\":\"tag\"}\n  ]\n}"
+  },
+  "Strategy:": {
+    "value": "Стратегия:"
+  },
+  "Edit DNS server": {
+    "value": "Редактировать DNS-сервер"
+  },
+  "Add DNS server": {
+    "value": "Добавить DNS-сервер"
+  },
+  "Edit the DNS server. Its tag is what rules and the DNS default refer to.": {
+    "value": "Правка DNS-сервера. На его тег ссылаются правила и DNS по умолчанию."
+  },
+  "A new DNS server. The tag must be unique — rules and the DNS default refer to it.": {
+    "value": "Новый DNS-сервер. Тег должен быть уникальным — на него ссылаются правила и DNS по умолчанию."
+  },
+  "DNS server (from template)": {
+    "value": "DNS-сервер (из шаблона)"
+  },
+  "This server is declared by the template: its body is fixed. Toggle it on or off with the checkbox in the list.": {
+    "value": "Сервер объявлен шаблоном: его тело неизменяемо. Включается и выключается галкой в списке."
+  },
+  "This server is declared by the template: its body is fixed. Toggle it on or off with the checkbox in the list; Params below changes what it does let you set.": {
+    "value": "Сервер объявлен шаблоном: его тело неизменяемо. Включается и выключается галкой в списке, а «Параметры» ниже меняют то, что он отдаёт в настройку."
+  },
+  "Copy JSON": {
+    "value": "Копировать JSON"
+  },
+  "Add member": {
+    "value": "Добавить участника"
+  },
+  "No members yet": {
+    "value": "Участников пока нет"
+  },
+  "(off — will be skipped)": {
+    "value": "(выключен — не попадёт в конфиг)"
+  },
+  "No other DNS servers to add. Create one first — a group queries existing servers.": {
+    "value": "Больше нечего добавить. Сначала заведите сервер — группа опрашивает существующие."
+  },
+  "One tag per line": {
+    "value": "По одному тегу в строке"
+  },
+  "The same entry as raw JSON, in sing-box dns.servers form. Types without a form are edited here.": {
+    "value": "Та же запись сырым JSON, в форме sing-box dns.servers. Типы без формы правятся здесь."
+  },
+  "Parameters": {
+    "value": "Параметры"
+  },
+  "Tag": {
+    "value": "Тег"
+  },
+  "Port": {
+    "value": "Порт"
+  },
+  "Path": {
+    "value": "Путь"
+  },
+  "TLS server name (SNI)": {
+    "value": "Имя сервера TLS (SNI)"
+  },
+  "Direction": {
+    "value": "Направление"
+  },
+  "Resolve name via": {
+    "value": "Резолвить имя через"
+  },
+  "(none)": {
+    "value": "(нет)"
+  },
+  "Members": {
+    "value": "Участники"
+  },
+  "Mode": {
+    "value": "Режим"
+  },
+  "Error TTL": {
+    "value": "TTL ошибки"
+  },
+  "Win TTL": {
+    "value": "TTL победителя"
+  },
+  "This server type has no form yet — edit it as JSON. The form covers udp, tcp, tls (DoT), https (DoH) and group.": {
+    "value": "Для этого типа сервера формы пока нет — правьте как JSON. Форма покрывает udp, tcp, tls (DoT), https (DoH) и group."
+  },
+  "JSON must not be empty.": {
+    "value": "JSON не должен быть пустым."
+  },
+  "Invalid JSON": {
+    "value": "Некорректный JSON"
+  },
+  "Add DNS Rule": {
+    "value": "Добавить DNS-правило"
+  },
+  "Edit DNS Rule": {
+    "value": "Редактировать DNS-правило"
+  },
+  "Rule is empty": {
+    "value": "Правило пустое"
+  },
+  "Server must have a non-empty \"tag\".": {
+    "value": "У сервера должен быть непустой \"tag\"."
+  },
+  "Duplicate tag": {
+    "value": "Дублирующийся тег"
+  },
+  "DNS settings are invalid": {
+    "value": "Некорректные настройки DNS"
+  },
+  "Include this server in the generated sing-box DNS config. Disabled servers stay in the list and in state; rules and Final must use enabled tags only.": {
+    "value": "Включить этот сервер в итоговый sing-box DNS. Отключённые остаются в списке и в state; в правилах и Final допускаются только включённые теги."
+  },
+  "This row comes from template config.dns: it cannot be edited, removed, or toggled here. The checkbox shows inclusion in the generated DNS config (from saved state / template); when included, dns_options for the same tag can override the skeleton body.": {
+    "value": "Строка из config.dns шаблона: нельзя редактировать, удалить или переключать галочку здесь. Галочка показывает, попадает ли сервер в итоговый DNS (из state/шаблона); при включении для того же тега тело может браться из dns_options шаблона."
+  },
+  "This DNS server cannot be edited (template config.dns).": {
+    "value": "Этот DNS-сервер нельзя редактировать (config.dns шаблона)."
+  },
+  "No DNS rules.": {
+    "value": "Нет DNS-правил."
+  },
+  "Toggle between unified list view and raw JSON editor (user rules only).": {
+    "value": "Переключить между списком правил и редактором JSON (только user-правила)."
+  },
+  "⬇ srs": {
+    "value": "⬇ srs"
+  },
+  "🔄 srs": {
+    "value": "🔄 srs"
+  },
+  "✔️ srs": {
+    "value": "✔️ srs"
+  },
+  "Template file bin/%s not found.": {
+    "value": "Файл шаблона bin/%s не найден."
+  },
+  "Create the template file to enable this tab.": {
+    "value": "Создайте файл шаблона, чтобы активировать эту вкладку."
+  },
+  "Direction:": {
+    "value": "Направление:"
+  },
+  "?": {
+    "value": "?"
+  },
+  "✏️": {
+    "value": "✏️"
+  },
+  "Delete rule": {
+    "value": "Удалить правило"
+  },
+  "(unnamed rule)": {
+    "value": "(правило без названия)"
+  },
+  "Delete custom rule \"%s\"?": {
+    "value": "Удалить пользовательское правило «%s»?"
+  },
+  "➕ Add Rule": {
+    "value": "➕ Добавить правило"
+  },
+  "📚 Add from library": {
+    "value": "📚 Добавить из библиотеки"
+  },
+  "Append copies of template presets to your rules list.": {
+    "value": "Добавить в список копии пресетов из шаблона."
+  },
+  "Rule library": {
+    "value": "Библиотека правил"
+  },
+  "Check presets to append copies to the end of the list. You can add the same preset multiple times.": {
+    "value": "Отметьте пресеты — копии добавятся в конец списка. Один и тот же пресет можно добавить несколько раз."
+  },
+  "Add selected": {
+    "value": "Добавить выбранные"
+  },
+  "No route rules yet. Open the library or add a custom rule.": {
+    "value": "Пока нет правил маршрута. Откройте библиотеку или добавьте своё правило."
+  },
+  "Open library": {
+    "value": "Открыть библиотеку"
+  },
+  "Include this rule in the generated route when enabled": {
+    "value": "Включить это правило в сгенерированный маршрут"
+  },
+  "Drag to reorder": {
+    "value": "Перетащите, чтобы изменить порядок"
+  },
+  "Rule-set file not downloaded — this rule won't work until the SRS is fetched. The launcher is downloading it in the background; you can also click ⬇ srs to retry.": {
+    "value": "Файл rule-set не скачан — это правило не будет работать пока SRS не загружен. Launcher скачивает в фоне; можно нажать ⬇ srs для ручного retry."
+  },
+  "Default direction:": {
+    "value": "Направление по умолчанию:"
+  },
+  "TUN": {
+    "value": "TUN"
+  },
+  "Enabling TUN will require entering your password when starting or stopping the VPN.": {
+    "value": "Включение TUN потребует ввода пароля при запуске или остановке VPN."
+  },
+  "Selectable rules": {
+    "value": "Выбираемые правила"
+  },
+  "Rule-set (SRS) download failed": {
+    "value": "Не удалось скачать набор правил (SRS)"
+  },
+  "ParserConfig is empty": {
+    "value": "ParserConfig пуст"
+  },
+  "ParserConfig is invalid": {
+    "value": "ParserConfig некорректен"
+  },
+  "Add at least one source: use the Sources tab (Add) or add proxies in ParserConfig on the Outbounds tab.": {
+    "value": "Добавьте хотя бы один источник: на вкладке «Источники» (Добавить) или в ParserConfig на вкладке «Outbound'ы»."
+  },
+  "Saving": {
+    "value": "Сохранение"
+  },
+  "Save operation already in progress... Please wait.": {
+    "value": "Сохранение уже выполняется... Подождите."
+  },
+  "Waiting for parsing...": {
+    "value": "Ожидание парсинга..."
+  },
+  "Parsing subscriptions...": {
+    "value": "Парсинг подписок..."
+  },
+  "Building config...": {
+    "value": "Сборка конфига..."
+  },
+  "Preparing...": {
+    "value": "Подготовка..."
+  },
+  "Validating...": {
+    "value": "Валидация..."
+  },
+  "Saving state...": {
+    "value": "Сохранение состояния..."
+  },
+  "Done": {
+    "value": "Готово"
+  },
+  "Copy config": {
+    "value": "Копировать конфиг"
+  },
+  "Validation failed": {
+    "value": "Валидация не пройдена"
+  },
+  "Config copied to clipboard.": {
+    "value": "Конфиг скопирован в буфер обмена."
+  },
+  "State saved to %s\n\nConfiguration will be rebuilt on next Update or Restart.": {
+    "value": "Состояние сохранено в %s\n\nКонфигурация будет пересобрана при следующем Update или Restart."
+  },
+  "State Saved": {
+    "value": "Состояние сохранено"
+  },
+  "Failed to parse subscriptions": {
+    "value": "Не удалось распарсить подписки"
+  },
+  "controller not available": {
+    "value": "контроллер недоступен"
+  },
+  "Add Rule": {
+    "value": "Добавить правило"
+  },
+  "Edit Rule": {
+    "value": "Редактировать правило"
+  },
+  "Rule name": {
+    "value": "Название правила"
+  },
+  "Enter IP addresses (CIDR format)\ne.g., 192.168.1.0/24": {
+    "value": "Введите IP-адреса (формат CIDR)\nнапр., 192.168.1.0/24"
+  },
+  "Enter domains or URLs (one per line)\ne.g., example.com": {
+    "value": "Введите домены или URL (по одному на строку)\nнапр., example.com"
+  },
+  "Processes (select one or more via popup):": {
+    "value": "Процессы (выберите через всплывающее окно):"
+  },
+  "Select Processes...": {
+    "value": "Выбрать процессы..."
+  },
+  "Match by path": {
+    "value": "Поиск по пути"
+  },
+  "Simple": {
+    "value": "Простой"
+  },
+  "Regex": {
+    "value": "Регулярное выражение",
+    "special": {
+      "1": {
+        "value": "Регулярные выражения"
+      }
+    }
+  },
+  "One per line. Use * as wildcard (e.g. */steam/* or *\\Steam\\*).": {
+    "value": "По одному на строку. Используйте * как подстановку (напр. */steam/* или *\\Steam\\*)."
+  },
+  "One per line. Full regex as-is (no /regex/i wrapping). E.g. ^C:\\\\Games\\\\.* or .*steam.*": {
+    "value": "По одному на строку. Полное регулярное выражение (без обёртки /regex/i). Напр. ^C:\\\\Games\\\\.* или .*steam.*"
+  },
+  "Path patterns (one per line):": {
+    "value": "Шаблоны путей (по одному на строку):"
+  },
+  "Custom JSON (e.g., {})": {
+    "value": "Произвольный JSON (напр., {})"
+  },
+  "Custom JSON:": {
+    "value": "Произвольный JSON:"
+  },
+  "SRS URLs (one per line)\ne.g. https://raw.githubusercontent.com/.../file.srs": {
+    "value": "URL SRS-файлов (по одному на строку)\nнапр. https://raw.githubusercontent.com/.../file.srs"
+  },
+  "SRS URLs (one per line):": {
+    "value": "URL SRS-файлов (по одному на строку):"
+  },
+  "{\"ip_cidr\": [], \"outbound\": \"proxy-out\"}": {
+    "value": "{\"ip_cidr\": [], \"outbound\": \"proxy-out\"}"
+  },
+  "IP Addresses (CIDR)": {
+    "value": "IP-адреса (CIDR)"
+  },
+  "Domains/URLs": {
+    "value": "Домены/URL"
+  },
+  "Processes": {
+    "value": "Процессы"
+  },
+  "SRS": {
+    "value": "SRS"
+  },
+  "Custom JSON": {
+    "value": "Произвольный JSON"
+  },
+  "Domain mode:": {
+    "value": "Тип домена:"
+  },
+  "Exact domains": {
+    "value": "Точные домены"
+  },
+  "Suffix": {
+    "value": "Суффикс"
+  },
+  "Keyword": {
+    "value": "Ключевое слово"
+  },
+  "IP Addresses (one per line, CIDR format):": {
+    "value": "IP-адреса (по одному на строку, формат CIDR):"
+  },
+  "Domains (one per line):": {
+    "value": "Домены (по одному на строку):"
+  },
+  "Domain suffixes (one per line):": {
+    "value": "Суффиксы доменов (по одному на строку):"
+  },
+  "Domain keywords (one per line):": {
+    "value": "Ключевые слова доменов (по одному на строку):"
+  },
+  "Domain regex:": {
+    "value": "Регулярное выражение для доменов:"
+  },
+  "E.g. ^.*\\.google\\.com$ or .*\\.(google|youtube)\\.com$ (full regex, no /wrapping/)": {
+    "value": "Напр. ^.*\\.google\\.com$ или .*\\.(google|youtube)\\.com$ (полное regex, без обёртки /.../ )"
+  },
+  "−": {
+    "value": "−"
+  },
+  "Select Processes": {
+    "value": "Выбор процессов"
+  },
+  "Rule Name:": {
+    "value": "Название правила:"
+  },
+  "Rule Type:": {
+    "value": "Тип правила:"
+  },
+  "Form": {
+    "value": "Форма"
+  },
+  "Rule name is required": {
+    "value": "Название правила обязательно"
+  },
+  "Raw JSON is empty": {
+    "value": "Raw JSON пуст"
+  },
+  "rule must be a JSON object": {
+    "value": "правило должно быть JSON-объектом"
+  },
+  "rule must contain \"outbound\" or \"action\"": {
+    "value": "правило должно содержать «outbound» или «action»"
+  },
+  "Rule not recognized": {
+    "value": "Правило не распознано"
+  },
+  "Could not recognize rule, form cannot be loaded; staying on Raw.": {
+    "value": "Не удалось распознать правило, форма не может быть загружена; остаёмся на Raw."
+  },
+  "We recommend looking for suitable rule-set files in the project:": {
+    "value": "Рекомендуем искать подходящие файлы наборов правил в проекте:"
+  },
+  "SRS rule-sets": {
+    "value": "Наборы правил SRS"
+  },
+  "enter at least one path pattern": {
+    "value": "введите хотя бы один шаблон пути"
+  },
+  "enter at least one SRS URL": {
+    "value": "введите хотя бы один URL SRS"
+  },
+  "enter at least one valid SRS URL": {
+    "value": "введите хотя бы один корректный URL SRS"
+  },
+  "Custom JSON is empty": {
+    "value": "Произвольный JSON пуст"
+  },
+  "Custom JSON must be an object": {
+    "value": "Произвольный JSON должен быть объектом"
+  },
+  "Save State": {
+    "value": "Сохранить состояние"
+  },
+  "Enter state ID (a-z, A-Z, 0-9, -, _)": {
+    "value": "Введите ID состояния (a-z, A-Z, 0-9, -, _)"
+  },
+  "Comment (optional)": {
+    "value": "Комментарий (необязательно)"
+  },
+  "State with this ID already exists. It will be overwritten.": {
+    "value": "Состояние с таким ID уже существует. Оно будет перезаписано."
+  },
+  "State ID:": {
+    "value": "ID состояния:"
+  },
+  "Comment:": {
+    "value": "Комментарий:"
+  },
+  "ID cannot be empty": {
+    "value": "ID не может быть пустым"
+  },
+  "Load State": {
+    "value": "Загрузить состояние"
+  },
+  "Failed to load states list": {
+    "value": "Не удалось загрузить список состояний"
+  },
+  " (Current)": {
+    "value": " (Текущее)"
+  },
+  "Load": {
+    "value": "Загрузить"
+  },
+  "New": {
+    "value": "Новое"
+  },
+  "Delete": {
+    "value": "Удалить"
+  },
+  "Cannot delete current state (state.json)": {
+    "value": "Нельзя удалить текущее состояние (state.json)"
+  },
+  "Delete State": {
+    "value": "Удалить состояние"
+  },
+  "Delete state '%s'?": {
+    "value": "Удалить состояние «%s»?"
+  },
+  "Failed to delete state": {
+    "value": "Не удалось удалить состояние"
+  },
+  "Edit direction": {
+    "value": "Редактировать направление"
+  },
+  "Add direction": {
+    "value": "Добавить направление"
+  },
+  "e.g. vpn-1": {
+    "value": "например, vpn-1"
+  },
+  "Source ": {
+    "value": "Источник "
+  },
+  "tag": {
+    "value": "тег"
+  },
+  "Add auto-select (paired <tag>-auto group)": {
+    "value": "Добавить автовыбор (парная группа <tag>-auto)"
+  },
+  "Auto-select": {
+    "value": "Автовыбор"
+  },
+  "A paired urltest group named <tag>-auto with the same nodes as this direction. It is offered as the first option and becomes the default unless a default node is set.": {
+    "value": "Парная группа urltest с именем <tag>-auto и тем же составом узлов. Предлагается первой опцией и становится умолчанием, если узел по умолчанию не задан."
+  },
+  "· auto": {
+    "value": "· авто"
+  },
+  "(off)": {
+    "value": "(выкл)"
+  },
+  "Include this direction in the config. A switched-off direction keeps its settings but is not built and cannot be picked as a rule target.": {
+    "value": "Включать направление в конфиг. Выключенное сохраняет настройки, но не собирается и не предлагается целью правил."
+  },
+  "e.g. My Germany": {
+    "value": "например, Моя Германия"
+  },
+  "Auto-select mode": {
+    "value": "Режим автовыбора"
+  },
+  "fastest node": {
+    "value": "самый быстрый узел"
+  },
+  "spread across a pool": {
+    "value": "распределять по пулу"
+  },
+  "How the paired auto group picks a node: the single fastest one, or a rotating pool of the fastest.": {
+    "value": "Как парная автогруппа выбирает узел: один самый быстрый или ротация по пулу самых быстрых."
+  },
+  "Invert: keep nodes that do NOT match": {
+    "value": "Инверсия: оставить узлы, которые НЕ совпали"
+  },
+  "Filter syntax and examples": {
+    "value": "Синтаксис фильтра и примеры"
+  },
+  "e.g. 🇳🇱 or DE-": {
+    "value": "например, 🇳🇱 или DE-"
+  },
+  "e.g. 🇳🇱": {
+    "value": "например, 🇳🇱"
+  },
+  "Node filter (regular expression body; empty = every node)": {
+    "value": "Отбор узлов (тело регулярного выражения; пусто = все узлы)"
+  },
+  "Default node (regular expression; first match wins)": {
+    "value": "Узел по умолчанию (регулярное выражение; первый совпавший)"
+  },
+  "Extra options offered in the picker": {
+    "value": "Дополнительные опции в списке выбора"
+  },
+  "Raw outbound JSON": {
+    "value": "Raw JSON outbound"
+  },
+  "📖 Documentation": {
+    "value": "📖 Документация"
+  },
+  "Switch to Preview to see nodes for this outbound.": {
+    "value": "Перейдите на вкладку «Превью», чтобы увидеть узлы для этого outbound."
+  },
+  "Preview is not available in this context (no presenter).": {
+    "value": "Превью недоступно в этом контексте (нет презентера)."
+  },
+  "Preview is not available: wizard model is nil.": {
+    "value": "Превью недоступно: модель визарда не инициализирована."
+  },
+  "Failed to build preview: invalid outbound JSON. Please switch to the \"Raw\" tab and fix JSON first.": {
+    "value": "Не удалось построить превью: некорректный JSON. Переключитесь на вкладку «Raw» и исправьте JSON."
+  },
+  "Failed to build preview cache: %v": {
+    "value": "Не удалось построить кэш превью: %v"
+  },
+  "No nodes available for preview. Please configure sources and try again.": {
+    "value": "Нет узлов для превью. Настройте источники и попробуйте снова."
+  },
+  "Unknown source": {
+    "value": "Неизвестный источник"
+  },
+  "%d node(s) total, %d matched filters": {
+    "value": "%d узел(ов) всего, %d совпало с фильтрами"
+  },
+  ", default: %s": {
+    "value": ", по умолчанию: %s"
+  },
+  " | Also includes: %s": {
+    "value": " | Также включает: %s"
+  },
+  " | ⚠️ %d source error(s)": {
+    "value": " | ⚠️ %d ошибок источников"
+  },
+  "ParserConfig is not available": {
+    "value": "ParserConfig недоступен"
+  },
+  "invalid JSON": {
+    "value": "некорректный JSON"
+  },
+  "tag is required": {
+    "value": "тег обязателен"
+  },
+  "failed to open documentation": {
+    "value": "не удалось открыть документацию"
+  },
+  "Directions:": {
+    "value": "Направления:"
+  },
+  "Packets travel top to bottom: the first hop is next to you, the last one is the address the site sees.": {
+    "value": "Пакет идёт сверху вниз: первый хоп — от вас, последний — тот, чей адрес видит сайт."
+  },
+  "Chain name": {
+    "value": "Имя цепочки"
+  },
+  "Directions and rules reference this name": {
+    "value": "на это имя ссылаются Направления и правила"
+  },
+  "Add hop": {
+    "value": "Добавить хоп"
+  },
+  "unnamed": {
+    "value": "без имени"
+  },
+  "No positions yet — add at least two.": {
+    "value": "Позиций пока нет — добавьте минимум две."
+  },
+  "One more position needed: the core rejects a single-hop chain.": {
+    "value": "Нужна ещё одна позиция: цепочка из одного хопа ядру не подходит."
+  },
+  "Nothing left to add: every available target is already in the chain.": {
+    "value": "Больше нечего добавить: все доступные цели уже в цепочке."
+  },
+  "ClientHello fingerprint is stripped, but positions %s are reality nodes that require it — the core will not start. Re-check tls.utls.": {
+    "value": "Отпечаток ClientHello снят, но на позициях %s стоят reality-узлы — им он нужен, и ядро не запустится. Верните галку tls.utls."
+  },
+  "A nested chain (%s) is only allowed at the first position — move it to the top or remove it.": {
+    "value": "Вложенная цепочка (%s) допустима только первой позицией — переставьте её наверх или уберите."
+  },
+  "Chains %s are declared below this one in the sources list — a chain may only reference chains above it. Drag them higher, or this chain will not build.": {
+    "value": "Цепочки %s объявлены ниже этой в списке источников — цепочка может ссылаться только на объявленные выше. Перетащите их выше, иначе эта цепочка не соберётся."
+  },
+  "The name “%s” is already taken by another node, Direction or chain — two outbounds with one tag cannot coexist, this chain will be dropped at build.": {
+    "value": "Имя «%s» уже занято другим узлом, Направлением или цепочкой — два outbound'а с одним тегом невозможны, эта цепочка выпадет на сборке."
+  },
+  "The first position (%s) dials through its own detour — the real path is longer than shown: one more hop precedes it that is not in this list.": {
+    "value": "Первая позиция (%s) ходит через свой detour — реальный путь длиннее показанного: перед ней будет ещё один хоп, которого нет в списке."
+  },
+  "Positions %s have their own detour — it does not apply inside a chain: a link always dials through the previous position. The path is exactly as shown.": {
+    "value": "У позиций %s задан свой detour — в цепочке он не применяется: звено всегда идёт через предыдущую позицию. Путь ровно такой, как показан."
+  },
+  "These positions are no longer among the available targets: %s. A chain with such a reference will not reach the config.": {
+    "value": "Позиций больше нет среди доступных целей: %s. Цепочка с такой ссылкой в конфиг не попадёт."
+  },
+  "Chain %s is used as a position by: %s. After renaming, their position will point nowhere — fix those too.": {
+    "value": "Цепочку %s используют позицией: %s. После переименования их позиция укажет в никуда — поправьте их тоже."
+  },
+  "node": {
+    "value": "узел"
+  },
+  "group": {
+    "value": "группа"
+  },
+  "direction": {
+    "value": "направление"
+  },
+  "chain": {
+    "value": "цепочка"
+  },
+  "built-in": {
+    "value": "встроенный"
+  },
+  "not found": {
+    "value": "не найден"
+  },
+  "loading…": {
+    "value": "загружается…"
+  },
+  "Advanced": {
+    "value": "Дополнительно"
+  },
+  "Option overrides": {
+    "value": "Переопределения опций"
+  },
+  "Applied from the 2nd position on: the first one dials as-is.": {
+    "value": "Применяются к позициям со 2-й: первая идёт в сеть как есть."
+  },
+  "The value is JSON: quote strings (\"safari\"), write numbers as 1280, nest as {\"utls\":{\"fingerprint\":\"safari\"}}. null is special — it does not store a value, it removes the option from the link.": {
+    "value": "Значение — JSON: строку в кавычках (\"safari\"), число как 1280, вложенное как {\"utls\":{\"fingerprint\":\"safari\"}}. Отдельно null — он не записывает значение, а удаляет параметр у звена."
+  },
+  "Add override": {
+    "value": "Добавить переопределение"
+  },
+  "type": {
+    "value": "тип"
+  },
+  "option": {
+    "value": "параметр"
+  },
+  "value (JSON)": {
+    "value": "значение (JSON)"
+  },
+  "The value must be JSON: quote strings, e.g. \"safari\".": {
+    "value": "Значение должно быть JSON: строку пишите в кавычках, например \"safari\"."
+  },
+  "Option %s · %s is set twice — only the last one reaches the config.": {
+    "value": "Параметр %s · %s задан дважды — в конфиг попадёт только последний."
+  },
+  "Link idle timeout": {
+    "value": "Простой звена"
+  },
+  "5m — core default, 0s — never drop": {
+    "value": "5m — умолчание ядра, 0s — не удалять"
+  },
+  "Strip DPI evasion from links": {
+    "value": "Снимать DPI-обвес у звеньев"
+  },
+  "ClientHello fragmentation": {
+    "value": "фрагментация ClientHello"
+  },
+  "multiplex padding": {
+    "value": "паддинг мультиплексора"
+  },
+  "XHTTP padding": {
+    "value": "паддинг XHTTP"
+  },
+  "ClientHello fingerprint (must not be stripped on reality nodes)": {
+    "value": "отпечаток ClientHello (на reality-узлах снимать нельзя)"
+  },
+  "Free community servers": {
+    "value": "Бесплатные серверы сообщества"
+  },
+  "Community VPN sources": {
+    "value": "Источники подписок сообщества"
+  },
+  "Loading": {
+    "value": "Загрузка"
+  },
+  "Fetching community sources list…": {
+    "value": "Получаю список источников…"
+  },
+  "These are subscription URLs maintained by the community. Pick one and click Insert — the URL goes into the input field, then click Add to register it.": {
+    "value": "Это URL подписок, поддерживаемые сообществом. Выберите подходящий и нажмите «Вставить» — URL подставится в поле ввода, потом нажмите «Add», чтобы добавить как источник."
+  },
+  "Insert": {
+    "value": "Вставить"
+  },
+  "Failed to download community sources:\n\nCheck your internet connection and try again.": {
+    "value": "Не удалось загрузить список источников:\n\nПроверьте подключение к интернету."
+  },
+  "Failed to load community sources:\n\nLocal cache missing or corrupted.": {
+    "value": "Не удалось прочитать список источников:\n\nЛокальный кэш отсутствует или повреждён."
+  },
+  "Failed to process community sources list": {
+    "value": "Не удалось обработать список источников"
+  },
+  "No sources loaded": {
+    "value": "Список источников не загружен"
+  },
+  "An error occurred: %v": {
+    "value": "Произошла ошибка: %v"
+  },
+  "No community sources available right now.": {
+    "value": "Нет доступных источников сообщества."
+  },
+  "Port:": {
+    "value": "Порт:"
+  },
+  "Invalid port": {
+    "value": "Неверный порт"
+  },
+  "Port must be a number between 1024 and 65535.": {
+    "value": "Порт должен быть числом от 1024 до 65535."
+  },
+  "Rebuild config only": {
+    "value": "Только пересобрать config"
+  },
+  "Rewrite config.json from current state without restarting sing-box": {
+    "value": "Перезаписать config.json из текущего state без рестарта sing-box"
+  },
+  "Rebuild & restart sing-box": {
+    "value": "Пересобрать и перезапустить sing-box"
+  },
+  "Rebuild config and kill+restart the running process": {
+    "value": "Собрать config и kill+restart процесса"
+  },
+  "Rebuild & start sing-box": {
+    "value": "Пересобрать и запустить sing-box"
+  },
+  "Re-fetch subscription URLs over the network and rebuild config.json (Cmd/Ctrl+U also works)": {
+    "value": "Заново скачать URL'ы подписок и пересобрать config.json (Cmd/Ctrl+U тоже работает)"
+  },
+  "Switch state…": {
+    "value": "Сменить state…"
+  },
+  "● Current (active)": {
+    "value": "● Текущее (активно)"
+  },
+  "💾 Save state as…": {
+    "value": "💾 Сохранить state как…"
+  },
+  "Save current state": {
+    "value": "Сохранить текущий state"
+  },
+  "Name (filename-safe):": {
+    "value": "Имя (только латиница / цифры / дефисы):"
+  },
+  "Invalid name. Use letters, digits, dashes and underscores only.": {
+    "value": "Неверное имя. Только латиница, цифры, дефис и подчёркивание."
+  },
+  "Overwrite?": {
+    "value": "Перезаписать?"
+  },
+  "State \"%s\" already exists. Overwrite?": {
+    "value": "Состояние «%s» уже существует. Перезаписать?"
+  },
+  "Saved state as \"%s\"": {
+    "value": "Сохранено как «%s»"
+  },
+  "Saved states": {
+    "value": "Сохранённые состояния"
+  },
+  "Save current state?": {
+    "value": "Сохранить текущее состояние?"
+  },
+  "Switching will overwrite the current state.json with \"%s\". Save the current state under a new name first, or discard it?": {
+    "value": "Переключение перезапишет текущий state.json содержимым «%s». Сохранить текущее состояние под именем или отбросить?"
+  },
+  "Save current…": {
+    "value": "Сохранить текущее…"
+  },
+  "Save current state as…": {
+    "value": "Сохранить текущее состояние как…"
+  },
+  "Name (letters, digits, - and _ only):": {
+    "value": "Имя (только буквы, цифры, - и _):"
+  },
+  "my-vpn-profile": {
+    "value": "my-vpn-profile"
+  },
+  "Name cannot be empty": {
+    "value": "Имя не может быть пустым"
+  },
+  "%s already exists — it will be overwritten": {
+    "value": "%s уже существует — будет перезаписан"
+  },
+  "Emoji picker": {
+    "value": "Выбор эмодзи"
+  },
+  "Emoji found in node names (click to toggle):": {
+    "value": "Эмодзи из имён узлов (клик — переключить):"
+  },
+  "No emoji found in node names. Refresh subscriptions first, or type a regex below manually.": {
+    "value": "В именах узлов эмодзи не найдены. Сначала обновите подписки или введите регулярку ниже вручную."
+  },
+  "Filter body (editable, live-applied):": {
+    "value": "Тело фильтра (правится, применяется сразу):"
+  },
+  "matches %d of %d total nodes": {
+    "value": "совпадает %d из %d узлов"
+  },
+  "Invalid regex": {
+    "value": "Невалидный regex"
+  },
+  "Apply": {
+    "value": "Применить"
+  },
+  "Add WARP": {
+    "value": "Добавить WARP"
+  },
+  "Generate Cloudflare WARP": {
+    "value": "Генерация Cloudflare WARP"
+  },
+  "Registers a new anonymous WARP account. The key is generated on this device — only the public key is sent to Cloudflare.": {
+    "value": "Регистрирует новый анонимный аккаунт WARP. Ключ генерируется на этом устройстве — в Cloudflare уходит только публичный ключ."
+  },
+  "Transport": {
+    "value": "Транспорт"
+  },
+  "AmneziaWG (obfuscated, anti-DPI)": {
+    "value": "AmneziaWG (обфускация, обход DPI)"
+  },
+  "WireGuard (plain)": {
+    "value": "WireGuard (обычный)"
+  },
+  "Random endpoint (bypass the blocked default)": {
+    "value": "Случайный endpoint (обход заблокированного по умолчанию)"
+  },
+  "WARP+ license": {
+    "value": "Лицензия WARP+"
+  },
+  "optional — leave empty for free WARP": {
+    "value": "необязательно — пусто для бесплатного WARP"
+  },
+  "Create": {
+    "value": "Создать"
+  },
+  "Registering WARP…": {
+    "value": "Регистрация WARP…"
+  },
+  "Contacting Cloudflare and generating keys.": {
+    "value": "Связь с Cloudflare и генерация ключей."
+  },
+  "WARP registration failed": {
+    "value": "Не удалось зарегистрировать WARP"
+  },
+  "WARP added": {
+    "value": "WARP добавлен"
+  },
+  "The WARP node was added to Sources. Click Add-list / rebuild to use it.": {
+    "value": "Узел WARP добавлен в Sources. Нажмите добавление в список / пересборку, чтобы использовать."
+  },
+  "WireGuard": {
+    "value": "WireGuard"
+  },
+  "MASQUE": {
+    "value": "MASQUE"
+  },
+  "AmneziaWG obfuscation (anti-DPI)": {
+    "value": "Обфускация AmneziaWG (обход DPI)"
+  },
+  "Obfuscation preset": {
+    "value": "Пресет обфускации"
+  },
+  "Advanced (all fields)": {
+    "value": "Дополнительно (все поля)"
+  },
+  "Endpoint": {
+    "value": "Endpoint"
+  },
+  "Bind to this device (reserved)": {
+    "value": "Привязать к устройству (reserved)"
+  },
+  "Masquerade": {
+    "value": "Маскировка"
+  },
+  "Protocol (ip)": {
+    "value": "Протокол (ip)"
+  },
+  "Domain (id)": {
+    "value": "Домен (id)"
+  },
+  "Browser (ib)": {
+    "value": "Браузер (ib)"
+  },
+  "jc/jmin/jmax add standalone junk packets (safe with WARP). Packet padding (s1–s4) and magic headers (h1–h4) are fixed to WARP-compatible values — a plain-WireGuard WARP server drops any other padding, breaking the handshake.": {
+    "value": "jc/jmin/jmax добавляют отдельные мусорные пакеты (безопасно для WARP). Паддинг пакетов (s1–s4) и magic-заголовки (h1–h4) зафиксированы под WARP: сервер WARP — плейн-WireGuard, любой другой паддинг он отбрасывает и handshake рвётся."
+  },
+  "MASQUE tunnels over HTTPS/QUIC and masks itself — AmneziaWG obfuscation does not apply. Requires core lx.3+.": {
+    "value": "MASQUE идёт поверх HTTPS/QUIC и маскируется сам — обфускация AmneziaWG не применяется. Требует ядро lx.3+."
+  },
+  "SNI": {
+    "value": "SNI"
+  },
+  "a name from the pool or your own — 🎲 picks at random": {
+    "value": "имя из пула или своё — 🎲 выберет случайное"
+  },
+  "Idle timeout (min)": {
+    "value": "Idle timeout (мин)"
+  },
+  "Keep-alive (sec)": {
+    "value": "Keep-alive (сек)"
+  },
+  "Create new keys (fresh Cloudflare registration)": {
+    "value": "Создать новые ключи (новая регистрация в Cloudflare)"
+  },
+  "By default the node reuses the registration you already have, so H2 and H3 share one key. Tick this if you need a new account — the old one is replaced.": {
+    "value": "По умолчанию узел собирается на уже выданной регистрации — так H2 и H3 сидят на одном ключе. Включите, если нужен новый аккаунт: старый будет заменён."
+  },
+  "Node info…": {
+    "value": "Информация об узле…"
+  },
+  "Node: %s": {
+    "value": "Узел: %s"
+  },
+  "General": {
+    "value": "Общее"
+  },
+  "Group members (%d)": {
+    "value": "Состав группы (%d)"
+  },
+  "TLS": {
+    "value": "TLS"
+  },
+  "Outbound JSON": {
+    "value": "JSON выхода"
+  },
+  "Display name": {
+    "value": "Отображаемое имя"
+  },
+  "Last delay": {
+    "value": "Последний замер"
+  },
+  "Section": {
+    "value": "Секция"
+  },
+  "Security": {
+    "value": "Защита"
+  },
+  "Detour": {
+    "value": "Цепочка (detour)"
+  },
+  "Test URL": {
+    "value": "URL проверки"
+  },
+  "Test interval": {
+    "value": "Интервал проверки"
+  },
+  "Default": {
+    "value": "По умолчанию"
+  },
+  "Skip cert verify": {
+    "value": "Не проверять сертификат"
+  },
+  "uTLS fingerprint": {
+    "value": "Отпечаток uTLS"
+  },
+  "REALITY public key": {
+    "value": "Публичный ключ REALITY"
+  },
+  "REALITY short ID": {
+    "value": "Короткий ID REALITY"
+  },
+  "Service name": {
+    "value": "Имя сервиса"
+  },
+  "Max early data": {
+    "value": "Max early data"
+  },
+  "This node is not present in the current config.json.": {
+    "value": "Этого узла нет в текущем config.json."
+  },
+  "Details": {
+    "value": "Подробности"
+  },
+  "Copy tag": {
+    "value": "Копировать тег"
+  },
+  "balanced": {
+    "value": "по кругу"
+  },
+  "fastest": {
+    "value": "быстрейший"
+  },
+  "Selection mode": {
+    "value": "Режим отбора"
+  },
+  "Tolerance": {
+    "value": "Допуск"
+  },
+  "Idle timeout": {
+    "value": "Простой до сброса"
+  },
+  "Pool size": {
+    "value": "Размер пула"
+  },
+  "Pool tolerance": {
+    "value": "Допуск пула"
+  },
+  "Sticky by": {
+    "value": "Липкость по"
+  },
+  "Sticky TTL": {
+    "value": "Время липкости"
+  },
+  "off": {
+    "value": "выключена"
+  },
+  "Run the VPN core inside a long-lived system daemon (sing-box lxd). Config changes swap the core in-process — no password prompts, and quitting the launcher can keep the VPN up. Managed over gRPC like the Android app.": {
+    "value": "Ядро VPN работает внутри долгоживущего системного демона (sing-box lxd). Смена конфига подменяет ядро внутри процесса — без запросов пароля, а выход из лаунчера может оставлять VPN работать. Управление по gRPC, как в Android-приложении."
+  },
+  "Stop VPN when quitting the launcher": {
+    "value": "Останавливать VPN при выходе из лаунчера"
+  },
+  "Checking daemon status…": {
+    "value": "Проверка состояния демона…"
+  },
+  "✅ Installed core supports the daemon": {
+    "value": "✅ Установленное ядро поддерживает демон"
+  },
+  "❌ Installed core has no lxd support (need sing-box-lx 1.14.0-lx.23+)": {
+    "value": "❌ Ядро без поддержки lxd (нужен sing-box-lx 1.14.0-lx.23+)"
+  },
+  "✅ System service installed": {
+    "value": "✅ Системная служба установлена"
+  },
+  "— System service not installed": {
+    "value": "— Системная служба не установлена"
+  },
+  "✅ Paired (%s)": {
+    "value": "✅ Сопряжение выполнено (%s)"
+  },
+  "— Not paired": {
+    "value": "— Сопряжения нет"
+  },
+  "✅ Daemon reachable, core: %s": {
+    "value": "✅ Демон отвечает, ядро: %s"
+  },
+  "❌ Daemon not reachable": {
+    "value": "❌ Демон недоступен"
+  },
+  "Last error: %s": {
+    "value": "Последняя ошибка: %s"
+  },
+  "Stop the VPN before switching the core engine.": {
+    "value": "Остановите VPN перед сменой движка ядра."
+  },
+  "Bearer secret (only for a daemon without TLS)": {
+    "value": "Bearer-секрет (только для демона без TLS)"
+  },
+  "Pair": {
+    "value": "Сопрячь"
+  },
+  "Paste the invite printed by the daemon and click Pair. Where to get one:\n\n- Installing the service prints an invite at the end of its Terminal output (Install section, step 1).\n- For a fresh invite run the command below (copy or open in Terminal), then paste the printed invite into the pairing field.\n\nThe code is one-time: it burns after a successful pairing. The secret field is only for daemons running without TLS.": {
+    "value": "Вставьте приглашение, которое печатает демон, и нажмите Pair. Где его взять:\n\n- Установка службы печатает приглашение в конце вывода в терминале (секция Install, шаг 1).\n- Свежее приглашение — команда ниже (скопируйте или откройте в терминале), затем вставьте напечатанное приглашение в поле сопряжения.\n\nКод одноразовый — сгорает после успешного сопряжения. Поле секрета нужно только для демонов без TLS."
+  },
+  "Paired with the daemon.": {
+    "value": "Сопряжение с демоном выполнено."
+  },
+  "Paste an invite first (address#fingerprint#code).": {
+    "value": "Сначала вставьте приглашение (адрес#отпечаток#код)."
+  },
+  "Unpair": {
+    "value": "Разорвать"
+  },
+  "Forget pairing?": {
+    "value": "Забыть сопряжение?"
+  },
+  "Removes the launcher's client keys and daemon address. The daemon keeps its record of this client until removed there (sing-box lxd client remove).": {
+    "value": "Клиентские ключи лаунчера и адрес демона будут удалены. Запись об этом клиенте на стороне демона останется, пока её не удалят там (sing-box lxd client remove)."
+  },
+  "Daemon address:": {
+    "value": "Адрес демона:"
+  },
+  "Refresh daemon status": {
+    "value": "Обновить состояние демона"
+  },
+  "(daemon log buffer is empty — no core output yet)": {
+    "value": "(буфер логов демона пуст — ядро ещё ничего не вывело)"
+  },
+  "⚠️ A previous config apply was interrupted; the daemon booted the last working config.": {
+    "value": "⚠️ Предыдущее применение конфига было прервано; демон загрузил последний рабочий."
+  },
+  "✅ gRPC (daemon)": {
+    "value": "✅ gRPC (демон)"
+  },
+  "❌ gRPC unavailable": {
+    "value": "❌ gRPC недоступен"
+  },
+  "Daemon %s · home: %s": {
+    "value": "Демон %s · каталог: %s"
+  },
+  "Live balancer pool (gRPC)": {
+    "value": "Живой пул балансировщика (gRPC)"
+  },
+  "Chain positions (%d)": {
+    "value": "Позиции цепочки (%d)"
+  },
+  "Probe by position": {
+    "value": "Замерить по позициям"
+  },
+  "Probe again": {
+    "value": "Замерить снова"
+  },
+  "Measuring…": {
+    "value": "Замеряю…"
+  },
+  "collapsed": {
+    "value": "схлопнута"
+  },
+  "—": {
+    "value": "—"
+  },
+  "error": {
+    "value": "ошибка"
+  },
+  "Connection settings": {
+    "value": "Настройки подключения"
+  },
+  "Core engine": {
+    "value": "Движок ядра"
+  },
+  "Process (classic)": {
+    "value": "Процесс (классический)"
+  },
+  "Daemon (lxd)": {
+    "value": "Демон (lxd)"
+  },
+  "The launcher spawns `sing-box run` itself and talks to it over the Clash API from config.json. There is nothing to configure here — the clash_api section is managed in the configurator.": {
+    "value": "Лаунчер сам запускает `sing-box run` и общается с ним через Clash API из config.json. Настраивать здесь нечего — секция clash_api задаётся в конфигураторе."
+  },
+  "— Daemon engine is not active yet: install the service and pair on the Install tab, then it switches on automatically.": {
+    "value": "— Daemon-движок ещё не активен: установите службу и сопрягитесь на вкладке «Установка» — он включится автоматически."
+  },
+  "Restart the service (after a core update):": {
+    "value": "Перезапустить службу (после обновления ядра):"
+  },
+  "Copy the command": {
+    "value": "Скопировать команду"
+  },
+  "Run in Terminal": {
+    "value": "Выполнить в терминале"
+  },
+  "Core updated — restart the daemon service": {
+    "value": "Ядро обновлено — перезапустите службу демона"
+  },
+  "The daemon service keeps the old core binary in memory until it restarts. Run this command in Terminal (it asks for your sudo password):": {
+    "value": "Служба демона держит старый бинарь ядра в памяти до перезапуска. Выполните команду в терминале (спросит ваш sudo-пароль):"
+  },
+  "Uninstall": {
+    "value": "Удаление"
+  },
+  "1. Forget the pairing on the launcher side:": {
+    "value": "1. Забыть сопряжение на стороне лаунчера:"
+  },
+  "2. Remove the service (run in Terminal, your sudo):": {
+    "value": "2. Удалить службу (выполнить в терминале, ваш sudo):"
+  },
+  "Also wipe all daemon data — keys, clients, last-good (--purge)": {
+    "value": "Стереть и все данные демона — ключи, клиентов, last-good (--purge)"
+  },
+  "Install": {
+    "value": "Установка"
+  },
+  "1. Install the service (run in Terminal, your sudo — prints a pairing invite at the end):": {
+    "value": "1. Установить службу (в терминале, ваш sudo — в конце печатает приглашение):"
+  },
+  "2. Paste the invite (address#fingerprint#code) and pair:": {
+    "value": "2. Вставьте приглашение (адрес#отпечаток#код) и сопрягитесь:"
+  },
+  "The core runs inside a system daemon (sing-box lxd).": {
+    "value": "Ядро работает внутри системного демона (sing-box lxd)."
+  },
+  "Need a fresh invite (service already installed)?": {
+    "value": "Нужно свежее приглашение (служба уже установлена)?"
+  },
+  "The daemon is paired and reachable, but the core is not started yet. Press Start to bring the VPN up.": {
+    "value": "Демон сопряжён и отвечает, но ядро ещё не запущено. Нажмите Start, чтобы поднять VPN."
+  },
+  "The machine is not answering. Check that it is powered on and reachable on the network, then press Connect again.": {
+    "value": "Машина не отвечает. Проверьте, включена ли она и доступна ли по сети, затем нажмите Connect ещё раз."
+  },
+  "Connect to a sing-box daemon running on another machine. Install the service THERE (on its host): sudo sing-box lxd --service=install --tls --listen 0.0.0.0:9091 — it prints a one-time pairing invite; mint a fresh one any time with sudo sing-box lxd client add. Paste the invite below. Make sure the port is reachable from this machine.": {
+    "value": "Подключение к демону sing-box на другой машине. Службу ставят ТАМ (на её хосте): sudo sing-box lxd --service=install --tls --listen 0.0.0.0:9091 — команда печатает одноразовое приглашение; свежее в любой момент даёт sudo sing-box lxd client add. Вставьте приглашение ниже. Порт должен быть доступен с этой машины."
+  },
+  "Paste the invite (address#fingerprint#code) and pair:": {
+    "value": "Вставьте приглашение (адрес#отпечаток#код) и сопрягитесь:"
+  },
+  "The Bearer secret is only needed for a daemon running WITHOUT TLS (plain mode): there it is the whole authentication, paste it and press Enter. A paired mTLS daemon ignores it — the client certificate is the credential. The daemon owns the secret (daemon.json in its state dir); view it with the command below.": {
+    "value": "Bearer-секрет нужен только демону БЕЗ TLS (plain-режим): там он — вся аутентификация, вставьте его и нажмите Enter. Сопряжённый mTLS-демон его игнорирует — мандатом служит клиентский сертификат. Секретом владеет демон (daemon.json в его state-каталоге); посмотреть его можно командой ниже."
+  },
+  "On Save the config is written to bin/remote-config.json for deployment under the lxd daemon — the local bin/config.json is never touched. State lives in bin/wizard_states/remote/state.json.": {
+    "value": "При сохранении конфиг пишется в bin/remote-config.json для деплоя под демон lxd — локальный bin/config.json не трогается. Состояние — bin/wizard_states/remote/state.json."
+  },
+  "Target OS": {
+    "value": "ОС целевой машины"
+  },
+  "Target architecture": {
+    "value": "Архитектура целевой машины"
+  },
+  "Set the TUN interface name explicitly — the core default cannot be relied on, and on a router the name is needed for firewall rules and routes.": {
+    "value": "Имя TUN-интерфейса задаётся явно: полагаться на дефолт ядра нельзя, а на роутере имя нужно для правил файрвола и маршрутов."
+  },
+  "Remote config exported": {
+    "value": "Конфиг для удалённой машины выгружен"
+  },
+  "The config for the remote machine was written to a separate file. The local bin/config.json was not touched.": {
+    "value": "Конфиг для удалённой машины записан в отдельный файл. Локальный bin/config.json не тронут."
+  },
+  "Remote machines running the sing-box lxd daemon (router, VPS, another Mac). Add a machine here, then switch between it and your own core from the dropdown in the Servers tab.": {
+    "value": "Удалённые машины с демоном sing-box lxd (роутер, VPS, другой Mac). Добавьте машину здесь, затем переключайтесь между ней и своим ядром в выпадающем списке на вкладке «Серверы»."
+  },
+  "No remote machines paired yet.": {
+    "value": "Удалённые машины ещё не сопряжены."
+  },
+  "Remote machines are unavailable: no controller.": {
+    "value": "Удалённые машины недоступны: нет контроллера."
+  },
+  "Router": {
+    "value": "Роутер"
+  },
+  "host:port": {
+    "value": "host:port"
+  },
+  "The invite carries the daemon listen address. If the daemon listens on 0.0.0.0, put the address you actually reach it at (for example the router LAN IP).": {
+    "value": "В приглашении стоит listen-адрес демона. Если демон слушает 0.0.0.0, укажите адрес, по которому вы реально до него достучитесь (например LAN-адрес роутера)."
+  },
+  "Remove": {
+    "value": "Удалить"
+  },
+  "Forget %s and delete its client key here?\n\nIMPORTANT: this does NOT revoke access on the machine itself — the launcher stays a trusted client there. To revoke it, run on that machine:\n\n    sudo sing-box lxd client remove singbox-launcher\n\nWithout that the old key keeps working for anyone who has it.": {
+    "value": "Забыть %s и удалить её клиентский ключ здесь?\n\nВАЖНО: доступ на самой машине это НЕ отзывает — лаунчер останется там доверенным клиентом. Чтобы отозвать, выполните на той машине:\n\n    sudo sing-box lxd client remove singbox-launcher\n\nБез этого старый ключ продолжит работать у того, у кого он есть."
+  },
+  "Subscriptions have not been parsed for this target yet, so the config would contain no proxy nodes. Open the Preview tab (or press Read on Sources) to parse them, then save again.": {
+    "value": "Подписки для этого назначения ещё не разобраны — конфиг ушёл бы без единой прокси-ноды. Откройте вкладку «Просмотр» (или нажмите «Прочитать» на «Источниках»), чтобы разобрать их, и сохраните снова."
+  },
+  "Connect to this machine first: its config points at the machine's own resource store, and that path comes from the daemon when you connect.": {
+    "value": "Сначала подключитесь к машине: её конфиг ссылается на собственное хранилище ресурсов, а этот путь приходит от демона при соединении."
+  },
+  "Add a paired machine": {
+    "value": "Добавить сопряжённую машину"
+  },
+  "Add paired machine": {
+    "value": "Добавить сопряжённую"
+  },
+  "The connection to %s is already paired (address, pin and client key exist). Add it to the list of remote machines so the Servers tab can talk to it — pairing again is not needed.": {
+    "value": "Подключение к %s уже сопряжено (есть адрес, пин и клиентский ключ). Добавьте его в список удалённых машин, чтобы вкладка «Серверы» могла с ним работать — сопрягаться заново не нужно."
+  },
+  "%s (%s) added. Press Connect to view its proxies on the Servers tab.": {
+    "value": "%s (%s) добавлена. Нажмите «Подключить», чтобы увидеть её прокси на вкладке «Серверы»."
+  },
+  "No paired daemon found. Pair with the target machine in the panel above first.": {
+    "value": "Сопряжённый демон не найден. Сначала сопрягитесь с целевой машиной в панели выше."
+  },
+  "The paired daemon runs on this machine — it is managed by the panel above, no need to add it here.": {
+    "value": "Сопряжённый демон работает на этой машине — им управляет панель выше, добавлять его сюда не нужно."
+  },
+  "Core Status ⏳ Starting...": {
+    "value": "Статус ядра ⏳ Запуск..."
+  },
+  "Core Status ⏳ Stopping...": {
+    "value": "Статус ядра ⏳ Остановка..."
+  },
+  "Add a remote machine": {
+    "value": "Добавить удалённую машину"
+  },
+  "Add machine": {
+    "value": "Добавить машину"
+  },
+  "Run this on the TARGET machine to mint a one-time invite (it prints address#fingerprint#code). Name is yours to pick. Address: where you actually reach the daemon — leave empty to take it from the invite (the invite carries the daemon listen address, which is wrong when it listens on 0.0.0.0). Secret is only needed for a daemon without TLS.": {
+    "value": "Выполните это на ЦЕЛЕВОЙ машине, чтобы получить одноразовое приглашение (печатает address#fingerprint#code). Имя — на ваш выбор. Адрес: по которому вы реально достучитесь до демона; пусто — взять из приглашения (там стоит listen-адрес демона, а он неверен при listen 0.0.0.0). Секрет нужен только демону без TLS."
+  },
+  "Machine added": {
+    "value": "Машина добавлена"
+  },
+  "%s (%s) is paired. Pick it in the Servers tab dropdown to manage it.": {
+    "value": "%s (%s) сопряжена. Выберите её в выпадающем списке на вкладке «Серверы», чтобы управлять ею."
+  },
+  "Machine settings": {
+    "value": "Настройки машины"
+  },
+  "only for a daemon without TLS": {
+    "value": "только для демона без TLS"
+  },
+  "Forget it here": {
+    "value": "Забыть здесь"
+  },
+  "checking…": {
+    "value": "проверяем…"
+  },
+  "unreachable": {
+    "value": "недоступна"
+  },
+  "core: %s": {
+    "value": "ядро: %s"
+  },
+  "daemon %s": {
+    "value": "демон %s"
+  },
+  "Stop the core": {
+    "value": "Остановить ядро"
+  },
+  "Stop the core on %s? Everyone routing through that machine loses VPN until it is started again.": {
+    "value": "Остановить ядро на %s? У всех, кто ходит через эту машину, пропадёт VPN, пока его не запустят снова."
+  },
+  "Restart the core": {
+    "value": "Перезапуск ядра",
+    "special": {
+      "1": {
+        "value": "Перезапустить ядро"
+      }
+    }
+  },
+  "Restart the core on %s? Everyone routing through that machine loses VPN for a moment; if the start fails, the machine is left without a core.": {
+    "value": "Перезапустить ядро на %s? VPN у всех, кто ходит через машину, моргнёт; если старт не удастся, машина останется без ядра."
+  },
+  "Deploy config": {
+    "value": "Отправить конфиг",
+    "special": {
+      "1": {
+        "value": "Отправка конфига"
+      }
+    }
+  },
+  "deploying…": {
+    "value": "отправляем…"
+  },
+  "Send the config to %s (%d bytes)? The daemon validates it before swapping the instance and rolls back to last-good if the new one fails to start.": {
+    "value": "Отправить конфиг на %s (%d байт)? Демон проверит его до подмены инстанса и откатится на last-good, если новый не стартует."
+  },
+  "Config applied on %s.": {
+    "value": "Конфиг применён на %s."
+  },
+  "Connection settings: core engine and daemon pairing": {
+    "value": "Настройки подключения: движок ядра и сопряжение с демоном"
+  },
+  "RES": {
+    "value": "RES"
+  },
+  "%s — resources": {
+    "value": "%s — ресурсы"
+  },
+  "Reading the machine's resource store…": {
+    "value": "Читаем хранилище ресурсов машины…"
+  },
+  "No resources: nothing stored on the machine and no rule-set files in this machine's profile.": {
+    "value": "Ресурсов нет: на машине ничего не лежит, и в её профиле нет файлов rule-set."
+  },
+  "Could not read the resource store: %v": {
+    "value": "Не удалось прочитать хранилище ресурсов: %v"
+  },
+  "%d local · %d on server · %d orphan": {
+    "value": "%d локально · %d на сервере · %d лишних"
+  },
+  "Upload": {
+    "value": "Залить"
+  },
+  "Upload all missing": {
+    "value": "Залить всё недостающее"
+  },
+  "✓ match": {
+    "value": "✓ совпадает"
+  },
+  "✗ not on server": {
+    "value": "✗ нет на сервере"
+  },
+  "≠ differs": {
+    "value": "≠ расходится"
+  },
+  "⚠ only on server": {
+    "value": "⚠ только на сервере"
+  },
+  "Delete from the machine": {
+    "value": "Удалить с машины"
+  },
+  "The running config references this file — deploy a config without it first": {
+    "value": "На файл ссылается работающий конфиг — сначала задеплойте конфиг без него"
+  },
+  "Delete resource": {
+    "value": "Удалить ресурс"
+  },
+  "Delete %s from the machine? The local copy stays.": {
+    "value": "Удалить %s с машины? Локальная копия останется."
+  },
+  "Downloads to: %s": {
+    "value": "Скачивается в: %s"
+  },
+  "Reading the machine's selector groups…": {
+    "value": "Читаем selector-группы машины…"
+  },
+  "Traffic profiler": {
+    "value": "Профайлер трафика"
+  },
+  "Connect to the machine first: the profiler reads its live connection stream.": {
+    "value": "Сначала подключитесь к машине: профайлер читает её живой поток соединений."
+  },
+  "More": {
+    "value": "Ещё"
+  },
+  "Connections": {
+    "value": "Соединения"
+  },
+  "Traffic": {
+    "value": "Трафик"
+  },
+  "Core runtime": {
+    "value": "Ядро"
+  },
+  "%d in / %d out": {
+    "value": "%d вх / %d исх"
+  },
+  "↑%s/s  ↓%s/s   (total ↑%s ↓%s)": {
+    "value": "↑%s/с  ↓%s/с   (всего ↑%s ↓%s)"
+  },
+  "%s, goroutines %d": {
+    "value": "%s, горутин %d"
+  },
+  "Host telemetry": {
+    "value": "Телеметрия хоста"
+  },
+  "%s — host": {
+    "value": "%s — хост"
+  },
+  "Connect to the machine first: host telemetry is read over its control channel.": {
+    "value": "Сначала подключитесь к машине: телеметрия хоста читается по её каналу управления."
+  },
+  "Reading host telemetry…": {
+    "value": "Читаем телеметрию хоста…"
+  },
+  "This daemon has no host telemetry: the machine is reachable, but its sing-box build predates /admin/host. Update the daemon on the machine.": {
+    "value": "У этого демона нет телеметрии хоста: машина доступна, но её сборка sing-box старее /admin/host. Обновите демон на машине."
+  },
+  "Could not read host telemetry: %v": {
+    "value": "Не удалось прочитать телеметрию хоста: %v"
+  },
+  "CPU  %s": {
+    "value": "CPU  %s"
+  },
+  "Memory  %s": {
+    "value": "Память  %s"
+  },
+  "Temperature": {
+    "value": "Температура"
+  },
+  "no sensors on this machine": {
+    "value": "на этой машине нет датчиков"
+  },
+  "File descriptors": {
+    "value": "Файловые дескрипторы"
+  },
+  "daemon  %s": {
+    "value": "демон  %s"
+  },
+  "system  %s": {
+    "value": "система  %s"
+  },
+  "Disks  (max %s)": {
+    "value": "Диски  (максимум %s)"
+  },
+  "Read-only filesystems are excluded from the maximum: a squashfs root sits at a permanent 100%.": {
+    "value": "Файловые системы только для чтения исключены из максимума: squashfs-корень постоянно показывает 100%."
+  },
+  "State dir: %s": {
+    "value": "Каталог состояния: %s"
+  },
+  "Interfaces": {
+    "value": "Интерфейсы"
+  },
+  "Interfaces (%d)": {
+    "value": "Интерфейсы (%d)"
+  },
+  "Interfaces (%d of %d)": {
+    "value": "Интерфейсы (%d из %d)"
+  },
+  "All": {
+    "value": "Все"
+  },
+  "Up only": {
+    "value": "Активные"
+  },
+  "With traffic": {
+    "value": "С трафиком"
+  },
+  "Could not read interfaces: %v": {
+    "value": "Не удалось прочитать интерфейсы: %v"
+  },
+  "Graph the counter, read the rate: a counter survives restarts and gaps, a rate lies across them.": {
+    "value": "Стройте график по счётчику, читайте скорость: счётчик переживает перезапуски и пропуски, скорость на них врёт."
+  },
+  "waiting for a second sample…": {
+    "value": "ждём второй отсчёт…"
+  },
+  "sampled over %.1f s": {
+    "value": "замер за %.1f с"
+  },
+  "load  %.2f  %.2f  %.2f": {
+    "value": "load  %.2f  %.2f  %.2f"
+  },
+  "%s used of %s": {
+    "value": "занято %s из %s"
+  },
+  "%s available": {
+    "value": "доступно %s"
+  },
+  "cache %s": {
+    "value": "кэш %s"
+  },
+  "swap disabled": {
+    "value": "swap отключён"
+  },
+  "swap %s of %s": {
+    "value": "swap %s из %s"
+  },
+  "%.1f%% · %s free": {
+    "value": "%.1f%% · свободно %s"
+  },
+  "⚠ This machine is recorded as %s, but the daemon runs on %s. config.json is built for the recorded platform — fix it in the machine settings.": {
+    "value": "⚠ Машина записана как %s, а демон работает на %s. config.json собирается под записанную платформу — поправьте её в настройках машины."
+  },
+  "⚠ This machine is recorded as %s, but the daemon reports %s. config.json is built for the recorded architecture — fix it in the machine settings.": {
+    "value": "⚠ Машина записана как %s, а демон сообщает %s. config.json собирается под записанную архитектуру — поправьте её в настройках машины."
+  },
+  "by design": {
+    "value": "так задумано"
+  },
+  "🔒 ro": {
+    "value": "🔒 ro"
+  },
+  "★ state": {
+    "value": "★ state"
+  },
+  "🔒 ro · ★ state": {
+    "value": "🔒 ro · ★ state"
+  },
+  "%dd %s": {
+    "value": "%dд %s"
+  },
+  "up %s": {
+    "value": "аптайм %s"
+  },
+  "Mount": {
+    "value": "Точка монтирования"
+  },
+  "FS": {
+    "value": "ФС"
+  },
+  "Free": {
+    "value": "Свободно"
+  },
+  "Flags": {
+    "value": "Флаги"
+  },
+  "Interface": {
+    "value": "Интерфейс"
+  },
+  "↓rate": {
+    "value": "↓скор."
+  },
+  "↑rate": {
+    "value": "↑скор."
+  },
+  "↓total": {
+    "value": "↓всего"
+  },
+  "↑total": {
+    "value": "↑всего"
+  },
+  "err / drop": {
+    "value": "ошиб. / потери"
+  },
+  "MTU": {
+    "value": "MTU"
+  },
+  "— all —": {
+    "value": "— все —"
+  },
+  "Client": {
+    "value": "Клиент"
+  },
+  "Outbound": {
+    "value": "Outbound"
+  },
+  "Rule": {
+    "value": "Правило"
+  },
+  "Search": {
+    "value": "Поиск"
+  },
+  "domain, IP or port": {
+    "value": "домен, IP или порт"
+  },
+  "⚠ mixed outbounds": {
+    "value": "⚠ разные outbound'ы"
+  },
+  "Close connections": {
+    "value": "Разорвать соединения"
+  },
+  "No active client connections.": {
+    "value": "Активных клиентских соединений нет."
+  },
+  "No connections match the filter.": {
+    "value": "Под фильтр не попало ни одного соединения."
+  },
+  "DESTINATION": {
+    "value": "НАЗНАЧЕНИЕ"
+  },
+  "PORT": {
+    "value": "ПОРТ"
+  },
+  "OUTBOUND": {
+    "value": "OUTBOUND"
+  },
+  "RULE": {
+    "value": "ПРАВИЛО"
+  },
+  "EVENT": {
+    "value": "СОБЫТИЕ"
+  },
+  "SENT": {
+    "value": "УШЛО"
+  },
+  "RECV": {
+    "value": "ПРИШЛО"
+  },
+  "Close all": {
+    "value": "Разорвать все"
+  },
+  "Close all connections (%d)? Devices will reconnect on their own.": {
+    "value": "Разорвать все соединения (%d)? Устройства переподключатся сами."
+  },
+  "conns: %d": {
+    "value": "соединений: %d"
+  },
+  "conns: …": {
+    "value": "соединения: …"
+  },
+  "open": {
+    "value": "открыто"
+  },
+  "closed": {
+    "value": "закрыто"
+  },
+  "This config is for another machine and differs from a local one: no Clash API (the lxd daemon manages the core there) and no system proxy. Gateway-specific behavior — LAN interfaces, wide proxy listen, process matching off — is controlled by Gateway mode on the Settings tab.": {
+    "value": "Этот конфиг — для другой машины, и он отличается от локального: без Clash API (там ядром управляет демон lxd) и без системного прокси. Поведение шлюза — LAN-интерфейсы, широкий listen прокси, отключённое сопоставление процессов — задаётся режимом «Шлюз» на вкладке Settings."
+  },
+  "Backup": {
+    "value": "Резервная копия"
+  },
+  "Export settings to a file to move them between this launcher and LxBox on your phone. Subscriptions, servers, rules, DNS and portable variables are carried over.": {
+    "value": "Экспорт настроек в файл — чтобы перенести их между лаунчером и LxBox на телефоне. Переносятся подписки, серверы, правила, DNS и переносимые переменные."
+  },
+  "Export…": {
+    "value": "Экспорт…"
+  },
+  "Import…": {
+    "value": "Импорт…"
+  },
+  "Save LX Backup": {
+    "value": "Сохранить LX Backup"
+  },
+  "Open LX Backup": {
+    "value": "Открыть LX Backup"
+  },
+  "Native file dialog is unavailable. Install zenity or kdialog and try again.": {
+    "value": "Системный диалог выбора файла недоступен. Установите zenity или kdialog и повторите."
+  },
+  "Cannot read the current state": {
+    "value": "Не удалось прочитать текущее состояние"
+  },
+  "Export failed": {
+    "value": "Не удалось выполнить экспорт"
+  },
+  "Import failed": {
+    "value": "Не удалось выполнить импорт"
+  },
+  "Backup saved": {
+    "value": "Копия сохранена"
+  },
+  "Saved to:\n%s\n\nThe file stores passwords and keys as plain text — keep it somewhere safe.": {
+    "value": "Сохранено:\n%s\n\nПароли и ключи лежат в файле открытым текстом — храните его в надёжном месте."
+  },
+  "Import backup": {
+    "value": "Импорт копии"
+  },
+  "Import": {
+    "value": "Импортировать"
+  },
+  "Backup imported": {
+    "value": "Копия импортирована"
+  },
+  "From %s %s, exported %s": {
+    "value": "Из %s %s, выгружено %s"
+  },
+  "Subscriptions: %d\nServers: %d\nRules: %d\nVariables: %d": {
+    "value": "Подписок: %d\nСерверов: %d\nПравил: %d\nПеременных: %d"
+  },
+  "Importing replaces the current sources and rules.": {
+    "value": "Импорт заменит текущие источники и правила."
+  },
+  "Applied: %d source(s), %d rule(s).": {
+    "value": "Применено: источников — %d, правил — %d."
+  },
+  "Not applied as-is:": {
+    "value": "Применено не полностью:"
+  },
+  "%s — target does not exist here, the rule is imported turned off": {
+    "value": "%s — такой цели здесь нет, правило импортировано выключенным"
+  },
+  "%s — default route target does not exist here, left unchanged": {
+    "value": "%s — цели маршрута по умолчанию здесь нет, оставлено без изменений"
+  },
+  "%s — unknown preset, the rule is imported turned off": {
+    "value": "%s — неизвестный пресет, правило импортировано выключенным"
+  },
+  "%s — this setting means something else on this machine, skipped": {
+    "value": "%s — на этой машине эта настройка означает другое, пропущена"
+  },
+  "%s — not supported here, skipped": {
+    "value": "%s — здесь не поддерживается, пропущено"
+  },
+  "Group (fastest of several)": {
+    "value": "Группа (самый быстрый из нескольких)"
+  }
 }
