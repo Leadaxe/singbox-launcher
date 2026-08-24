@@ -123,6 +123,12 @@ func (g *DragReorderGroup) Register(idx int, row fyne.CanvasObject) {
 	if g == nil || row == nil {
 		return
 	}
+	// Ленивая инициализация: после Reset() карта nil, и запись в неё —
+	// паника «assignment to entry in nil map», роняющая весь процесс при
+	// первом же построении списка (так падало открытие конфигуратора).
+	if g.rows == nil {
+		g.rows = make(map[int]fyne.CanvasObject)
+	}
 	g.rows[idx] = row
 }
 

@@ -133,3 +133,17 @@ func TestDragEndWithoutDragDoesNotReorder(t *testing.T) {
 		t.Error("OnReorder вызван без драга")
 	}
 }
+
+// Register после Reset обязан пересоздать карту строк. Регрессия v1.5.0:
+// Reset() обнулял rows в nil, первый же Register паниковал «assignment to
+// entry in nil map» и ронял процесс при открытии конфигуратора (вкладка
+// Sources — единственный вызывающий Reset между пересборками списка).
+func TestRegisterAfterResetDoesNotPanic(t *testing.T) {
+	g := NewDragReorderGroup(nil)
+	g.Register(0, widget.NewLabel("a"))
+	g.Reset()
+	g.Register(0, widget.NewLabel("b")) // паниковало
+	if g.count() != 1 {
+		t.Errorf("count() = %d, ожидалась 1 строка после Reset+Register", g.count())
+	}
+}
