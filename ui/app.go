@@ -58,8 +58,8 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	// SPEC 100 §3.8: Debug API получает Connect/Disconnect вкладки Remote.
 	// Строго после создания вкладок — подписчики OnOverrideChanged уже стоят.
 	RegisterOverrideAPIHooks(controller)
-	coreTabItem := container.NewTabItem(locale.T("app.tab.local"), localContent)
-	app.clashAPITab = container.NewTabItem(locale.T("app.tab.remote"), remoteContent)
+	coreTabItem := container.NewTabItem(locale.T("Local"), localContent)
+	app.clashAPITab = container.NewTabItem(locale.T("🌐 Remote"), remoteContent)
 	// Settings — обычная вкладка со своим содержимым.
 	//
 	// Раньше она была кнопкой-подделкой: пустая вкладка, чей OnSelected
@@ -165,7 +165,7 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 	//
 	// База берётся из локали (`Local` / `Локально` / etc), эмодзи приклеивается
 	// тут чтобы не плодить per-state ключи в каждой локали.
-	coreLabelBase := locale.T("app.tab.local")
+	coreLabelBase := locale.T("Local")
 	// Strip leading emoji + space from the locale base — text after the
 	// first space character. Locale strings ship with a default ▶️ (or
 	// previous attempt's icon) for the never-changed startup case; we

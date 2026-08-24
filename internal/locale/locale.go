@@ -1,18 +1,27 @@
 // Package locale provides a simple i18n layer for the application.
-// English translations are embedded (always available).
-// Additional languages are loaded from external JSON files in bin/locale/.
+//
+// SPEC 111: the English text at the call site IS the translation key
+// (natural keys). English is the base language and lives in the code;
+// translations come from external JSON catalogs in bin/locale/. A miss at
+// any level (no catalog, no key, no form) degrades into the key itself —
+// correct English — with the arguments substituted.
+//
+// Transition note: the embedded en.json with legacy dotted keys
+// ("core.button_start") is kept until every call site is migrated to
+// natural keys; the parser accepts both the legacy flat format and the
+// structured Entry format, so both key styles work side by side.
 package locale
 
 import (
 	"context"
 	_ "embed"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,7 +48,7 @@ var RemoteLanguages = []string{
 var (
 	mu       sync.RWMutex
 	lang     = "en"
-	catalogs map[string]map[string]string
+	catalogs map[string]map[string]Entry
 )
 
 // CreateHTTPClientFunc allows injecting a shared HTTP client factory from core.
@@ -47,36 +56,96 @@ var (
 var CreateHTTPClientFunc func(timeout time.Duration) *http.Client
 
 func init() {
-	catalogs = map[string]map[string]string{
+	catalogs = map[string]map[string]Entry{
 		"en": mustParse(enJSON),
 	}
 }
 
-func mustParse(data []byte) map[string]string {
-	var m map[string]string
-	if err := json.Unmarshal(data, &m); err != nil {
+func mustParse(data []byte) map[string]Entry {
+	entries, skipped, err := parseCatalog(data)
+	if err != nil {
 		panic(fmt.Sprintf("locale: failed to parse translations: %v", err))
 	}
-	return m
+	if len(skipped) > 0 {
+		panic(fmt.Sprintf("locale: embedded catalog has malformed entries: %v", skipped))
+	}
+	return entries
+}
+
+// pick returns the rendering value for an entry: form 0 is the root value,
+// form N>0 is special["N"] falling back to the root when absent.
+func pick(e Entry, form int) Value {
+	if form > 0 {
+		if sp, ok := e.Special[strconv.Itoa(form)]; ok && !sp.Value.IsZero() {
+			return sp.Value
+		}
+	}
+	return e.Value
+}
+
+// textFor resolves key in language l as a plain string; ok is false when
+// the language has no usable text for the key (missing entry, or a plural
+// entry used where a plain string is expected — the checker's domain).
+func textFor(l, key string, form int) (string, bool) {
+	msgs, ok := catalogs[l]
+	if !ok {
+		return "", false
+	}
+	e, ok := msgs[key]
+	if !ok {
+		return "", false
+	}
+	v := pick(e, form)
+	if v.Text == "" {
+		return "", false
+	}
+	return v.Text, true
+}
+
+// pluralFor resolves key in language l as a plural template for count n.
+// A plain-string value is accepted gracefully (a language may translate a
+// plural key with a single form).
+func pluralFor(l, key string, form, n int) (string, bool) {
+	msgs, ok := catalogs[l]
+	if !ok {
+		return "", false
+	}
+	e, ok := msgs[key]
+	if !ok {
+		return "", false
+	}
+	v := pick(e, form)
+	if len(v.Forms) > 0 {
+		r := resolverFor(l)
+		if t, ok := v.Forms[r.Resolve(n)]; ok && t != "" {
+			return t, true
+		}
+		if t, ok := v.Forms["other"]; ok && t != "" {
+			return t, true
+		}
+		return "", false
+	}
+	if v.Text != "" {
+		return v.Text, true
+	}
+	return "", false
 }
 
 // T returns the translated string for the given key.
-// Fallback order: current language → English → key itself.
+// Fallback order: current language → English catalog → the key itself.
 func T(key string) string {
-	mu.RLock()
-	l := lang
-	mu.RUnlock()
+	return TN(0, key)
+}
 
-	if msgs, ok := catalogs[l]; ok {
-		if val, ok := msgs[key]; ok {
-			return val
-		}
-	}
-	if l != "en" {
-		if msgs, ok := catalogs["en"]; ok {
-			if val, ok := msgs[key]; ok {
-				return val
-			}
+// TN returns the translation of key using special form N (0 = the root
+// value). Used at call sites where one English text must be translated
+// differently depending on context.
+func TN(form int, key string) string {
+	mu.RLock()
+	defer mu.RUnlock()
+	for _, l := range langChainLocked() {
+		if t, ok := textFor(l, key, form); ok {
+			return t
 		}
 	}
 	return key
@@ -85,6 +154,39 @@ func T(key string) string {
 // Tf returns a formatted translated string (fmt.Sprintf with the translated template).
 func Tf(key string, args ...any) string {
 	return fmt.Sprintf(T(key), args...)
+}
+
+// TfN is Tf with a special form index (see TN).
+func TfN(form int, key string, args ...any) string {
+	return fmt.Sprintf(TN(form, key), args...)
+}
+
+// Plural returns the plural-aware translation of key for count n; n is
+// always the first substituted argument, extra follow it.
+// The set of required forms is dictated by the language's PluralResolver.
+func Plural(key string, n int, extra ...any) string {
+	return PluralN(0, key, n, extra...)
+}
+
+// PluralN is Plural with a special form index (see TN).
+func PluralN(form int, key string, n int, extra ...any) string {
+	args := append([]any{n}, extra...)
+	mu.RLock()
+	defer mu.RUnlock()
+	for _, l := range langChainLocked() {
+		if t, ok := pluralFor(l, key, form, n); ok {
+			return fmt.Sprintf(t, args...)
+		}
+	}
+	return fmt.Sprintf(key, args...)
+}
+
+// langChainLocked is langChain for callers already holding mu.
+func langChainLocked() []string {
+	if lang == "en" {
+		return []string{"en"}
+	}
+	return []string{lang, "en"}
 }
 
 // SetLang changes the current language. Ignored if the language is not available.
@@ -121,8 +223,8 @@ func LangDisplayName(code string) string {
 	mu.RLock()
 	defer mu.RUnlock()
 	if msgs, ok := catalogs[code]; ok {
-		if name, ok := msgs[displayNameKey]; ok {
-			return name
+		if e, ok := msgs[displayNameKey]; ok && e.Value.Text != "" {
+			return e.Value.Text
 		}
 	}
 	return code
@@ -143,7 +245,7 @@ func LangCodeByDisplayName(name string) string {
 	mu.RLock()
 	defer mu.RUnlock()
 	for code, msgs := range catalogs {
-		if dn, ok := msgs[displayNameKey]; ok && dn == name {
+		if e, ok := msgs[displayNameKey]; ok && e.Value.Text == name {
 			return code
 		}
 	}
@@ -171,10 +273,14 @@ func LoadExternalLocales(localeDir string) {
 			debuglog.WarnLog("locale: failed to read %s: %v", entry.Name(), err)
 			continue
 		}
-		var m map[string]string
-		if err := json.Unmarshal(data, &m); err != nil {
+		m, skipped, err := parseCatalog(data)
+		if err != nil {
 			debuglog.WarnLog("locale: failed to parse %s: %v", entry.Name(), err)
 			continue
+		}
+		if len(skipped) > 0 {
+			debuglog.WarnLog("locale: %s has %d malformed entries (skipped): %v",
+				entry.Name(), len(skipped), skipped)
 		}
 		catalogs[code] = m
 		debuglog.InfoLog("locale: loaded external locale %q (%d keys)", code, len(m))
@@ -215,10 +321,18 @@ func DownloadLocale(langCode, localeDir string) error {
 		return fmt.Errorf("read response: %w", err)
 	}
 
-	// Validate JSON before saving
-	var m map[string]string
-	if err := json.Unmarshal(data, &m); err != nil {
+	// Validate before saving: a top-level parse error or a file with no
+	// usable entries must never replace a working catalog on disk.
+	m, skipped, err := parseCatalog(data)
+	if err != nil {
 		return fmt.Errorf("invalid JSON for %s: %w", langCode, err)
+	}
+	if len(m) == 0 {
+		return fmt.Errorf("catalog %s has no usable entries", langCode)
+	}
+	if len(skipped) > 0 {
+		debuglog.WarnLog("locale: downloaded %s has %d malformed entries (skipped): %v",
+			langCode, len(skipped), skipped)
 	}
 
 	if err := os.MkdirAll(localeDir, 0755); err != nil {

@@ -47,8 +47,8 @@ func TestEmbeddedEnglish(t *testing.T) {
 	if len(en) < 10 {
 		t.Errorf("en catalog too small: %d keys", len(en))
 	}
-	if name, ok := en[displayNameKey]; !ok || name != "English" {
-		t.Errorf("en._display_name = %q, want %q", name, "English")
+	if e, ok := en[displayNameKey]; !ok || e.Value.Text != "English" {
+		t.Errorf("en._display_name = %q, want %q", e.Value.Text, "English")
 	}
 }
 
@@ -59,8 +59,8 @@ func TestExternalRussian(t *testing.T) {
 	if !ok {
 		t.Skip("ru.json not found in bin/locale/ — skipping")
 	}
-	if name, ok := ru[displayNameKey]; !ok || name != "Русский" {
-		t.Errorf("ru._display_name = %q, want %q", name, "Русский")
+	if e, ok := ru[displayNameKey]; !ok || e.Value.Text != "Русский" {
+		t.Errorf("ru._display_name = %q, want %q", e.Value.Text, "Русский")
 	}
 }
 
@@ -73,6 +73,9 @@ func TestAllKeysPresent(t *testing.T) {
 		t.Skip("ru.json not found in bin/locale/ — skipping key completeness test")
 	}
 
+	// en → ru: каждый легаси-ключ переведён. Обратное направление снято:
+	// естественные ключи (SPEC 111) живут только в ru.json — для них
+	// английский И ЕСТЬ ключ, отдельной записи в en.json нет.
 	for key := range en {
 		if key == displayNameKey {
 			continue
@@ -81,22 +84,14 @@ func TestAllKeysPresent(t *testing.T) {
 			t.Errorf("key %q exists in en.json but missing in ru.json", key)
 		}
 	}
-	for key := range ru {
-		if key == displayNameKey {
-			continue
-		}
-		if _, ok := en[key]; !ok {
-			t.Errorf("key %q exists in ru.json but missing in en.json", key)
-		}
-	}
 }
 
 func TestNoEmptyValues(t *testing.T) {
 	loadExternalLocalesForTest(t)
 
 	for lang, msgs := range catalogs {
-		for key, val := range msgs {
-			if val == "" {
+		for key, e := range msgs {
+			if e.Value.IsZero() {
 				t.Errorf("[%s] key %q has empty value", lang, key)
 			}
 		}
@@ -112,19 +107,23 @@ func TestPlaceholderCount(t *testing.T) {
 		t.Skip("ru.json not found — skipping placeholder test")
 	}
 
-	for key, enVal := range en {
+	for key, e := range ru {
 		if key == displayNameKey {
 			continue
 		}
-		ruVal, ok := ru[key]
-		if !ok {
-			continue
+		// Эталон плейсхолдеров: значение легаси-ключа из en.json, а для
+		// естественного ключа (нет в en) — сам ключ: он и есть английский
+		// текст. Полная валидация — в l10n_check (SPEC 111, этап 4).
+		ref := key
+		if enEntry, ok := en[key]; ok && enEntry.Value.Text != "" {
+			ref = enEntry.Value.Text
 		}
-		enCount := countPlaceholders(enVal)
-		ruCount := countPlaceholders(ruVal)
-		if enCount != ruCount {
-			t.Errorf("key %q: en has %d placeholder(s) (%q), ru has %d (%q)",
-				key, enCount, enVal, ruCount, ruVal)
+		refCount := countPlaceholders(ref)
+		for _, tmpl := range entryTemplates(e) {
+			if got := countPlaceholders(tmpl); got != refCount {
+				t.Errorf("key %q: reference has %d placeholder(s) (%q), translation has %d (%q)",
+					key, refCount, ref, got, tmpl)
+			}
 		}
 	}
 }
@@ -190,6 +189,25 @@ func TestLangDisplayNameFromExternal(t *testing.T) {
 	if got := LangDisplayName("ru"); got != "Русский" {
 		t.Errorf("LangDisplayName(ru) = %q, want %q", got, "Русский")
 	}
+}
+
+// entryTemplates collects every rendered template of an entry: the root
+// value, each plural form and the same for every special form.
+func entryTemplates(e Entry) []string {
+	var out []string
+	collect := func(v Value) {
+		if v.Text != "" {
+			out = append(out, v.Text)
+		}
+		for _, f := range v.Forms {
+			out = append(out, f)
+		}
+	}
+	collect(e.Value)
+	for _, sp := range e.Special {
+		collect(sp.Value)
+	}
+	return out
 }
 
 func countPlaceholders(s string) int {

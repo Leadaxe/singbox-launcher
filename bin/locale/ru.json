@@ -3,6 +3,8 @@
   "app.tab.servers": "🖥️ Серверы",
   "app.tab.local": "Локально",
   "app.tab.remote": "🌐 Удалённые",
+  "Local": { "value": "Локально" },
+  "🌐 Remote": { "value": "🌐 Удалённые" },
   "remote.machines.title": "МАШИНЫ",
   "remote.machines.add": "+ Добавить",
   "remote.add.window_title": "Добавить машину",
