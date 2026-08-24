@@ -273,12 +273,16 @@ func buildPresetBundledDNSRowFromResolved(
 	var row *fynewidget.HoverRow
 	rowGetter := func() *fynewidget.HoverRow { return row }
 
-	cwc := fynewidget.NewCheckWithContent(func(checked bool) {
+	// Обработчик после SetChecked: иначе каждый рендер строки дёргал бы
+	// onToggle(srv.Enabled) — паразитный SetDNSServerEnabled + MarkAsChanged
+	// на пустом месте (ловушка SetChecked→OnChanged).
+	cwc := fynewidget.NewCheckWithContent(nil, titleLabel, fynewidget.CheckWithContentConfig{ContentToolTip: tip})
+	cwc.Check.SetChecked(srv.Enabled)
+	cwc.Check.OnChanged = func(checked bool) {
 		if onToggle != nil {
 			onToggle(checked)
 		}
-	}, titleLabel, fynewidget.CheckWithContentConfig{ContentToolTip: tip})
-	cwc.Check.SetChecked(srv.Enabled)
+	}
 	if !srv.Active {
 		cwc.Check.Disable()
 	}

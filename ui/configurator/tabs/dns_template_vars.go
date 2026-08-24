@@ -26,6 +26,7 @@ import (
 
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/locale"
+	wizardbusiness "singbox-launcher/ui/configurator/business"
 	wizardpresentation "singbox-launcher/ui/configurator/presentation"
 )
 
@@ -40,9 +41,29 @@ func dnsServerVarsFor(p *wizardpresentation.WizardPresenter, tag string) []wizar
 		return nil
 	}
 	prefix := "dns_" + tag + "_"
+	// Тег, являющийся префиксом другого (google_doh / google_doh_vpn),
+	// притягивал бы чужие переменные: dns_google_doh_vpn_x начинается и с
+	// dns_google_doh_. Переменная принадлежит САМОМУ ДЛИННОМУ тегу, чей
+	// префикс её покрывает.
+	longer := make([]string, 0, 2)
+	for t := range wizardbusiness.ExtractTemplateDNSTags(m.TemplateData) {
+		if t != tag && strings.HasPrefix(t, tag+"_") {
+			longer = append(longer, "dns_"+t+"_")
+		}
+	}
 	var out []wizardtemplate.TemplateVar
 	for _, v := range m.TemplateData.Vars {
-		if strings.HasPrefix(v.Name, prefix) {
+		if !strings.HasPrefix(v.Name, prefix) {
+			continue
+		}
+		owned := true
+		for _, lp := range longer {
+			if strings.HasPrefix(v.Name, lp) {
+				owned = false
+				break
+			}
+		}
+		if owned {
 			out = append(out, v)
 		}
 	}

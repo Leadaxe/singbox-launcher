@@ -85,6 +85,12 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 			presenter.MarkAsChanged()
 		})
 
+		// Обе карты инвариантны в пределах одной пересборки — считаются ДО
+		// цикла: внутри него они заново анмаршалили весь список серверов и
+		// все переменные шаблона на КАЖДУЮ строку (O(n²) на десятках строк).
+		varValues := dnsVarValues(m)
+		enabledByTag := dnsEnabledByTag(m.DNSServers)
+
 		for i := range m.DNSServers {
 			func(idx int) {
 				var row *fynewidget.HoverRow
@@ -95,13 +101,13 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				if err := json.Unmarshal(raw, &obj); err != nil {
 					obj = nil
 				}
-				sum := dnsServerSummaryFromObj(obj, dnsVarValues(m))
+				sum := dnsServerSummaryFromObj(obj, varValues)
 				if obj == nil && len(raw) > 0 {
 					sum = dnsServerSummaryFromInvalidRaw(raw)
 				}
 				// У группы показываем состав: выключенные участники
 				// зачёркнуты — на сборке они из состава выпадут.
-				sum += dnsGroupMembersSummary(obj, dnsEnabledByTag(m.DNSServers))
+				sum += dnsGroupMembersSummary(obj, enabledByTag)
 				tag := ""
 				if obj != nil {
 					tag = dnsJSONStringField(obj, "tag")
@@ -134,7 +140,17 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 				// Не вызывать SyncModelToGUI здесь — он пересобирает весь список и все вкладки; только обновить селекты.
 				sumLabel := ttwidget.NewLabel(sum)
 				sumLabel.Truncation = fyne.TextTruncateClip
-				cwc := fynewidget.NewCheckWithContent(func(checked bool) {
+				// Обработчик вешается ПОСЛЕ SetChecked (ловушка
+				// SetChecked→OnChanged): конструктор с готовым хэндлером
+				// заставлял КАЖДУЮ пересборку списка звать
+				// setDNSServerEnabledAt(idx, true) для включённых строк — а
+				// с каскадом SPEC 109 это принудительно включало обратно
+				// участников группы, которых пользователь выключил, и
+				// запускало реентерабельную пересборку из середины цикла.
+				cwc := fynewidget.NewCheckWithContent(nil, sumLabel, fynewidget.CheckWithContentConfig{ContentToolTip: desc})
+				enCheck := cwc.Check
+				enCheck.SetChecked(wizardbusiness.DNSServerWizardEnabledRaw(raw))
+				enCheck.OnChanged = func(checked bool) {
 					// Полная пересборка только когда изменились ДРУГИЕ строки
 					// (включение группы включает участников): она дороже, и
 					// на каждый щелчок галкой её звать незачем.
@@ -143,9 +159,7 @@ func CreateDNSTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObje
 						return
 					}
 					presenter.RefreshDNSDependentSelectsOnly()
-				}, sumLabel, fynewidget.CheckWithContentConfig{ContentToolTip: desc})
-				enCheck := cwc.Check
-				enCheck.SetChecked(wizardbusiness.DNSServerWizardEnabledRaw(raw))
+				}
 				if locked {
 					// required entry — toggle заблокирован (всегда вкл).
 					enCheck.Disable()
@@ -877,22 +891,33 @@ func showDNSServerDialog(
 		formOK = form.Load(body)
 	}
 
-	// Текст JSON всегда собирается из ФОРМЫ при переключении на вкладку:
-	// иначе правки формы и правки JSON расходятся, и Save берёт то, что
-	// лежало раньше.
+	// Текст JSON собирается из ФОРМЫ при переключении на вкладку — но
+	// только пока пользователь сам его не правил: снимок формы поверх
+	// живых правок JSON молча стирал их («заглянул на Настройки и
+	// вернулся» — правки заменены). Правка JSON делает его источником
+	// истины до конца сеанса окна.
+	jsonDirty := false
+	lastSyncedJSON := ""
+	jsonEntry.OnChanged = func(s string) {
+		if s != lastSyncedJSON {
+			jsonDirty = true
+		}
+	}
 	syncJSONFromForm := func() {
-		if !formOK {
+		if !formOK || jsonDirty {
 			return
 		}
 		if b, err := json.MarshalIndent(form.Collect(), "", "  "); err == nil {
-			jsonEntry.SetText(string(b))
+			lastSyncedJSON = string(b)
+			jsonEntry.SetText(lastSyncedJSON)
 		}
 	}
 	if formOK {
 		syncJSONFromForm()
 	} else if body != nil {
 		if b, err := json.MarshalIndent(body, "", "  "); err == nil {
-			jsonEntry.SetText(string(b))
+			lastSyncedJSON = string(b)
+			jsonEntry.SetText(lastSyncedJSON)
 		}
 	}
 

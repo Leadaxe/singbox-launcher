@@ -87,6 +87,13 @@ type dnsServerForm struct {
 	rows    map[string]fyne.CanvasObject
 	content *fyne.Container
 
+	// base — тело сервера, загруженное в форму. Collect начинает С НЕГО и
+	// перекрывает только поля, которыми форма управляет: сборка «с нуля»
+	// молча теряла всё, чего форма не знает, — enabled (выключенный сервер
+	// включался самим фактом Save), description, domain_strategy,
+	// tls.insecure и любые прочие поля sing-box.
+	base map[string]interface{}
+
 	// varValues — значения переменных шаблона. Тело сервера приходит сырым,
 	// с `@dns_google_dot_dns_ip` вместо адреса: подстановка живёт на пути
 	// сборки конфига. В форме пользователь должен видеть значение — то же,
@@ -312,6 +319,8 @@ func (f *dnsServerForm) Load(obj map[string]interface{}) bool {
 	f.applying = true
 	defer func() { f.applying = false }()
 
+	f.base = dnsDeepCopyMap(obj)
+
 	f.typeSelect.SetSelected(typ)
 	f.tagEntry.SetText(dnsJSONStringField(obj, "tag"))
 	f.serverEntry.SetText(dnsResolvePlaceholder(dnsJSONStringField(obj, "server"), f.varValues))
@@ -347,9 +356,36 @@ func (f *dnsServerForm) Load(obj map[string]interface{}) bool {
 // значение, на котором конфиг ломается.
 func (f *dnsServerForm) Collect() map[string]interface{} {
 	typ := f.typeSelect.Selected
-	out := map[string]interface{}{
-		"type": typ,
-		"tag":  strings.TrimSpace(f.tagEntry.Text),
+
+	// База — загруженное тело за вычетом управляемых формой ключей: их
+	// заново решает форма, остальное переживает правку нетронутым.
+	out := dnsDeepCopyMap(f.base)
+	for _, k := range []string{
+		"type", "tag", "server", "server_port", "path",
+		"detour", "domain_resolver", "servers", "mode", "error_ttl", "win_ttl",
+	} {
+		delete(out, k)
+	}
+	out["type"] = typ
+	out["tag"] = strings.TrimSpace(f.tagEntry.Text)
+
+	// tls: форма управляет только server_name — прочие ключи (insecure,
+	// alpn) сохраняются.
+	baseTLS, _ := out["tls"].(map[string]interface{})
+	delete(out, "tls")
+	setTLS := func(sni string) {
+		tls := baseTLS
+		if tls == nil {
+			tls = map[string]interface{}{}
+		}
+		if sni != "" {
+			tls["server_name"] = sni
+		} else {
+			delete(tls, "server_name")
+		}
+		if len(tls) > 0 {
+			out["tls"] = tls
+		}
 	}
 
 	if typ == dnsTypeGroup {
@@ -369,15 +405,30 @@ func (f *dnsServerForm) Collect() map[string]interface{} {
 	if typ == dnsTypeHTTPS {
 		putIfSet(out, "path", f.pathEntry.Text)
 	}
-	if sni := strings.TrimSpace(f.sniEntry.Text); sni != "" &&
-		(typ == dnsTypeTLS || typ == dnsTypeHTTPS) {
-		out["tls"] = map[string]interface{}{"server_name": sni}
+	if typ == dnsTypeTLS || typ == dnsTypeHTTPS {
+		setTLS(strings.TrimSpace(f.sniEntry.Text))
 	}
 	if d := f.detourSelect.Selected; d != "" && d != dnsNoDetour() {
 		out["detour"] = d
 	}
 	if r := f.resolverSelect.Selected; r != "" && r != dnsNoDetour() {
 		out["domain_resolver"] = r
+	}
+	return out
+}
+
+// dnsDeepCopyMap — JSON-глубокая копия тела сервера (nil-безопасна).
+func dnsDeepCopyMap(m map[string]interface{}) map[string]interface{} {
+	if len(m) == 0 {
+		return map[string]interface{}{}
+	}
+	raw, err := json.Marshal(m)
+	if err != nil {
+		return map[string]interface{}{}
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return map[string]interface{}{}
 	}
 	return out
 }
