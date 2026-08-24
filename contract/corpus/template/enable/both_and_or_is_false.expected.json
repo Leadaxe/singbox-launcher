@@ -1,1 +1,1 @@
-{"config": {}, "warnings": ["template_unknown_directive"]}
+{"load": "reject", "config": {}, "warnings": ["template_unknown_directive"]}

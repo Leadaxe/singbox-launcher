@@ -1,1 +1,1 @@
-{"config": {"out": {"hit": false}}, "warnings": ["template_var_undeclared"]}
+{"load": "either", "config": {"out": {"hit": false}}, "warnings": ["template_var_undeclared"]}

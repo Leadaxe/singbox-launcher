@@ -1,1 +1,1 @@
-{"config": {"outbounds": [{"tag": "a"}, {"tag": "b", "server": "example-1.com"}]}, "warnings": []}
+{"load": "either", "config": {"outbounds": [{"tag": "a"}, {"tag": "b", "server": "example-1.com"}]}, "warnings": []}

@@ -59,3 +59,4 @@
 | 0.6.0 | Цепочки хопов (SPEC 110): `schema/source_chain.schema.json`, кейсы `chain_*` в корпусе Направлений, коды `chain_*` в реестре warning'ов |
 | 0.7.0 | Перенос цепочек в бэкапе (SPEC 110, схема v1.2): корневая секция `chains[]` вместо блоба `extensions.launcher`, идентичность и merge по `tag` (warning `backup_chain_exists`), нормативный порядок записей; кейсы `chains_roundtrip` и `chain_tag_duplicate` в `corpus/backup/` |
 | 0.7.1 | Умолчание `enabled` у цепочки закрыто корпусом: поле в ожиданиях `chains[]` (необязательное) и кейс `chain_disabled_enabled_default` — отсутствие ключа читается как `true` обеими сторонами |
+| 0.7.2 | Рубеж загрузки в корпусе шаблонов (D-077): необязательное поле `load` в `<case>.expected.json` — `accept` (дефолт) / `reject` (валидатор обязан отвергнуть; рантайм-ожидания продолжают проверяться толерантным прогоном) / `either` (не нормирован — класс undeclared-имён). Классифицированы все 94 кейса: 7 reject, 8 either |
