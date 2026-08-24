@@ -16,7 +16,8 @@
 | `b55f406` | Этап 6: core англифицирован (валидация цепочек, бэкап, capability) — diagnostic passthrough, БЕЗ записей в каталоге; тестовые ассерты обновлены |
 | `faec8c0` | Вынос 73 длинных текстов в `const` (33 файла) + резолв констант в сканере |
 | `173f7dd` | Финальный шаг: −1194 легаси-записи, `en.json` и `//go:embed` удалены, встроенная псевдозапись `en` |
-| (этот) | Этап 7: CI-шаг «L10n checks» (--strict, Ubuntu), `tools/l10n/README.md`, ARCHITECTURE_PACKAGES, CONSTITUTION 8.3, upcoming EN/RU |
+| `dae0fba` | Этап 7: CI-шаг «L10n checks» (--strict, Ubuntu), `tools/l10n/README.md`, ARCHITECTURE_PACKAGES, CONSTITUTION 8.3, upcoming EN/RU |
+| `67b0df2` | Самолечение каталога после апдейта: апдейт меняет только бинарь, старый `bin/locale/ru.json` давал бы английский UI — при смене версии локали докачиваются в фоне один раз (паттерн SPEC 046), гейт по ключу-сентинелу защищает свежий локальный файл от протухшего удалённого |
 
 ## Итоговые цифры
 
