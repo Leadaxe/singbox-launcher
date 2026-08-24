@@ -1078,9 +1078,6 @@
   "Config template missing": {
     "value": "Шаблон конфига отсутствует"
   },
-  "Subscription URL or Direct Links:": {
-    "value": "URL подписки или прямые ссылки:"
-  },
   "https://your-subscription-url-here": {
     "value": "https://ваш-url-подписки"
   },
@@ -3172,5 +3169,47 @@
   },
   "GitHub limits anonymous requests per IP address, and this limit has been reached — often because the current VPN node's address is shared with other users. Wait about an hour, switch to another node, or download the file manually.": {
     "value": "GitHub ограничивает анонимные запросы с одного IP-адреса, и лимит исчерпан — часто потому, что адрес текущего узла VPN делят другие пользователи. Подождите около часа, переключитесь на другой узел или скачайте файл вручную."
+  },
+  "Add server": {
+    "value": "Добавить сервер"
+  },
+  "Protocol": {
+    "value": "Протокол"
+  },
+  "Host": {
+    "value": "Хост"
+  },
+  "Username": {
+    "value": "Имя пользователя"
+  },
+  "Password": {
+    "value": "Пароль"
+  },
+  "optional": {
+    "value": "необязательно"
+  },
+  "SOCKS5": {
+    "value": "SOCKS5"
+  },
+  "HTTP": {
+    "value": "HTTP"
+  },
+  "HTTPS (TLS to proxy)": {
+    "value": "HTTPS (TLS до прокси)"
+  },
+  "Host required": {
+    "value": "Укажите хост"
+  },
+  "Port 1..65535": {
+    "value": "Порт 1..65535"
+  },
+  "Subscription URL, Direct Links or sing-box JSON:": {
+    "value": "URL подписки, прямые ссылки или JSON sing-box:"
+  },
+  "Shown as the server title in the Sources list. If empty, the host is used.": {
+    "value": "Показывается как название сервера в списке «Источники». Если пусто, используется хост."
+  },
+  "Connect to the proxy over TLS (HTTPS proxy). Fine TLS settings — SNI, ALPN — can be adjusted later in the source editor.": {
+    "value": "Подключаться к прокси по TLS (HTTPS-прокси). Тонкие настройки TLS — SNI, ALPN — можно поправить позже в редакторе источника."
   }
 }

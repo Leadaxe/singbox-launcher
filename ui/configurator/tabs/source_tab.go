@@ -61,7 +61,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	const directLinksDocURL = "https://github.com/Leadaxe/singbox-launcher/blob/6beb136b9082823699c6509d32e62f212fd7ff90/docs/ParserConfig.md#%D1%84%D0%BE%D1%80%D0%BC%D0%B0%D1%82%D1%8B-uri-%D0%B4%D0%BB%D1%8F-%D0%BF%D1%80%D1%8F%D0%BC%D1%8B%D1%85-%D1%81%D1%81%D1%8B%D0%BB%D0%BE%D0%BA"
 
 	// Section 1: Subscription URL or Direct Links
-	urlLabel := widget.NewLabel(locale.T("Subscription URL or Direct Links:"))
+	urlLabel := widget.NewLabel(locale.T("Subscription URL, Direct Links or sing-box JSON:"))
 	urlLabel.Importance = widget.MediumImportance
 
 	guiState.SourceURLEntry = widget.NewMultiLineEntry()
@@ -184,6 +184,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		wizarddialogs.ShowAddWarpDialog(presenter, applyAddedSources)
 	}
 
+	// «Add server» — ручная форма SOCKS5/HTTP. У этих схем полей мало, а у
+	// HTTP-прокси ещё и нестандартный префикс (proxy-http://), который человеку
+	// негде подсмотреть. Форма собирает share-URI и отдаёт в тот же путь Add.
+	addServerAction := func() {
+		wizarddialogs.ShowAddServerDialog(presenter, applyAddedSources)
+	}
+
 	// SPEC 110: цепочка хопов — источник, а не Направление: она описывает
 	// МАРШРУТ, а точка выбора между маршрутами это Направление. Создаётся
 	// пустой и настраивается в своём окне: позиции ссылаются на узлы и
@@ -237,6 +244,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	var overflowBtn *widget.Button
 	overflowBtn = widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
 		menu := fyne.NewMenu("",
+			fyne.NewMenuItem(locale.T("Add server"), addServerAction),
 			fyne.NewMenuItem(locale.T("Add hop chain"), addChainAction),
 			fyne.NewMenuItem(locale.T("Add WARP"), addWarpAction),
 			fyne.NewMenuItem(locale.T("Add from file"), addFromFileAction),

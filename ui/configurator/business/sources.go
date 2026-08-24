@@ -38,8 +38,21 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 	if input == "" {
 		return fmt.Errorf("input is empty")
 	}
-	subs, conns := classifyInputLines(input, timing)
-	if len(subs) == 0 && len(conns) == 0 {
+
+	// Вставленный sing-box JSON разбирается до построчного классификатора:
+	// документ многострочный, и цикл по строкам не нашёл бы в нём ни ссылки.
+	// isJSON отделяет «не JSON» от «битый JSON» — второе обязано дойти до
+	// пользователя ошибкой, а не общим «no valid URLs to add».
+	jsonNodes, isJSON, jsonErr := carveSingboxJSON(input)
+	if jsonErr != nil {
+		return jsonErr
+	}
+
+	var subs, conns []string
+	if !isJSON {
+		subs, conns = classifyInputLines(input, timing)
+	}
+	if len(subs) == 0 && len(conns) == 0 && len(jsonNodes) == 0 {
 		return fmt.Errorf("no valid URLs to add")
 	}
 
@@ -102,6 +115,24 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 		}
 		model.Sources = append(model.Sources, newSrc)
 		existingURIs[uri] = struct{}{}
+		added++
+	}
+
+	// JSON-узлы: каждый outbound — отдельный Source(server) с ConfigJSON и
+	// пустым URI. Дедупа по URI здесь нет — два одинаковых outbound'а это
+	// осознанная вставка, а сравнивать документы побайтово смысла мало.
+	for _, jn := range jsonNodes {
+		label := jn.Label
+		if label == "" {
+			label = fmt.Sprintf("server-%d", startIndex+added)
+		}
+		model.Sources = append(model.Sources, corestate.Source{
+			ID:         corestate.MakeULID(),
+			Type:       corestate.SourceTypeServer,
+			Enabled:    true,
+			Label:      label,
+			ConfigJSON: jn.ConfigJSON,
+		})
 		added++
 	}
 
