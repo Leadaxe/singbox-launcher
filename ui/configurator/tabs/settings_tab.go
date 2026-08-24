@@ -439,7 +439,7 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 	scroll := container.NewVScroll(box)
 	scroll.SetMinSize(adaptiveScrollSize(gs, 0.5, 400))
 
-	// Бэкап переехал на вкладку «Generate»: прибитый к низу через Border, он
+	// Бэкап переехал на вкладку «Файлы»: прибитый к низу через Border, он
 	// забирал свою высоту целиком, и прокрутке настроек доставался остаток —
 	// нижние строки обрезались тем сильнее, чем уже окно.
 	return scroll
