@@ -109,7 +109,13 @@ func TestWalkerParityAgainstCorpus(t *testing.T) {
 			return nil
 		}
 		base := strings.TrimSuffix(p, ".template.json")
-		name := filepath.ToSlash(strings.TrimPrefix(base, filepath.ToSlash(root)+"/"))
+		// Имя кейса — ключ в knownWalkerDivergences, и оно обязано совпадать на
+		// всех ОС. filepath.Walk отдаёт путь с разделителями платформы, поэтому
+		// в слеши приводится ВЕСЬ путь, а не только префикс: иначе на Windows
+		// TrimPrefix не срабатывал (префикс уже со слешами, путь ещё с `\`),
+		// имена выходили вида `unresolved\null_value_drops_key`, ни один ключ
+		// не совпадал — и страж рапортовал, что все расхождения «исчезли».
+		name := strings.TrimPrefix(filepath.ToSlash(base), filepath.ToSlash(root)+"/")
 
 		got, want, ok := loadParityCase(t, base)
 		if !ok {
