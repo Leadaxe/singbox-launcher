@@ -38,6 +38,7 @@ import (
 	"time"
 	"unsafe"
 
+	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
 
 	"golang.org/x/sys/windows"
@@ -351,11 +352,13 @@ func installMesa(execDir string) error {
 	defer os.Remove(tmpPath) //nolint:errcheck // best-effort cleanup
 
 	directURL := fmt.Sprintf("https://github.com/Leadaxe/singbox-launcher/releases/download/%s/%s", mesaReleaseTag, mesaAssetName)
-	// Как и в core_downloader: ghproxy-зеркало на случай, если GitHub
-	// недоступен без VPN (а VPN ещё не запущен — курица и яйцо).
-	urls := []string{
-		directURL,
-		strings.Replace(directURL, "https://github.com/", "https://ghproxy.com/https://github.com/", 1),
+	// Как и в core_downloader: зеркала на случай, если GitHub недоступен без
+	// VPN (а VPN ещё не запущен — курица и яйцо). ghproxy.com здесь больше нет:
+	// он отдаёт HTTP 200 со своей HTML-страницей вместо файла, то есть
+	// «успешно» скачивается мусор вместо архива Mesa.
+	urls := []string{directURL}
+	for _, prefix := range constants.GitHubDownloadMirrors {
+		urls = append(urls, prefix+directURL)
 	}
 	var lastErr error
 	for _, u := range urls {

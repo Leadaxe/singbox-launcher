@@ -70,7 +70,10 @@ func (ac *AppController) GetLatestLauncherVersion() (string, error) {
 		url  string
 	}{
 		{"GitHub API", "https://api.github.com/repos/Leadaxe/singbox-launcher/releases/latest"},
-		{"GitHub Mirror (ghproxy)", "https://ghproxy.com/https://api.github.com/repos/Leadaxe/singbox-launcher/releases/latest"},
+		// ghproxy.com used to be the mirror here, but it answers with its own
+		// HTML landing page (hence the "invalid character '<'" parse errors in
+		// the logs) — it is not a working fallback.
+		{"GitHub Mirror (ghfast)", "https://ghfast.top/https://api.github.com/repos/Leadaxe/singbox-launcher/releases/latest"},
 	}
 
 	for _, source := range sources {

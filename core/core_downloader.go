@@ -337,14 +337,10 @@ func (ac *AppController) findPlatformAsset(assets []Asset) (*Asset, error) {
 	return nil, fmt.Errorf("findPlatformAsset: asset not found for platform %s/%s", runtime.GOOS, runtime.GOARCH)
 }
 
-// GitHubDownloadMirrors are prefix-style GitHub proxies used when the release
-// CDN itself is unreachable. Each entry is prepended to the full https://github.com/…
-// URL. Verified to return the real binary (not an HTML interstitial) — see
-// isHTMLPayload for why that check matters.
-var GitHubDownloadMirrors = []string{
-	"https://ghfast.top/",
-	"https://gh-proxy.com/",
-}
+// GitHubDownloadMirrors is the shared mirror list. It lives in constants so
+// internal/platform (the Mesa downloader) can use it too without importing
+// core, which would be an import cycle.
+var GitHubDownloadMirrors = constants.GitHubDownloadMirrors
 
 // isHTMLContentType reports whether a Content-Type marks an HTML page. Release
 // archives are served as application/octet-stream or application/gzip, so HTML

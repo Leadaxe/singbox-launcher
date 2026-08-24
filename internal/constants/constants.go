@@ -98,6 +98,18 @@ const (
 // sing-box-lx fork (upstream + XHTTP `with_xhttp` + AmneziaWG `with_awg`) on
 // every platform — including Windows 7 (32-bit), which the fork now builds as a
 // `windows-386-legacy-windows-7` asset. See coreReleaseRepo() in core_downloader.go.
+// GitHubDownloadMirrors are prefix-style GitHub proxies tried when the release
+// CDN itself is unreachable. Each entry is prepended to a full
+// https://github.com/… URL.
+//
+// ghproxy.com is deliberately absent: it answers every request with HTTP 200
+// and its own ~1.8 KB HTML landing page instead of the file, so the download
+// "succeeds" and only fails later as a bogus corrupted-archive error.
+var GitHubDownloadMirrors = []string{
+	"https://ghfast.top/",
+	"https://gh-proxy.com/",
+}
+
 const SingboxCoreRepo = "Leadaxe/sing-box-lx" // core for all platforms (XHTTP + AmneziaWG)
 
 // Pinned sing-box core version for this launcher build (SPEC 046 / 072).
