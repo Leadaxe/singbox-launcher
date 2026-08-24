@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v1.5.1
+
+Хотфикс. Бесконечный цикл обновления подписок: источник со стабильно падающим fetch и без локального кэша раскручивал взаимную рекурсию Update↔Rebuild — лаунчер перефетчивал подписки раз в секунду, а `config.json` не собирался вовсе; теперь такой источник деградирует с предупреждением, конфиг строится из остальных. macOS-скрипт установки при обновлении терял настройки (включая идентификатор устройства и режим движка), сопряжение с демоном, remote-машины и кэши подписок — теперь переносит весь каталог данных. Подробнее: [docs/release_notes/1-5-1.md](docs/release_notes/1-5-1.md).
+
+### Highlights (EN) — v1.5.1
+
+Hotfix. Infinite subscription-refresh loop: a persistently failing source with no local cache armed mutual Update↔Rebuild recursion — the launcher re-fetched subscriptions once a second and `config.json` never got built; such a source now degrades with a warning and the config builds from the rest. The macOS install script lost settings (device id, engine mode), daemon pairing, remote machines and subscription caches on update — it now migrates the whole data directory. Details: [docs/release_notes/1-5-1.md](docs/release_notes/1-5-1.md).
+
 ### Выжимка (RU) — v1.5.0
 
 **Маршрут через несколько хопов подряд (цепочки).** Цепочка добавляется из меню ⋮ на вкладке *Sources* третьим типом источника рядом с подпиской и одиночным сервером: выбираете две позиции или больше, и трафик идёт через них по очереди. Позицией может быть узел, группа подписки или Направление, поэтому переключение внутри группы меняет путь без перезапуска. Дальше цепочка ведёт себя как обычный сервер: её подхватывают Направления, а автовыбор сравнивает весь многохоповый маршрут по задержке. Окно **Info** меряет её послойно, и дельта `(+N)` называет хоп, который стоит этой задержки. Нужно ядро с `with_lx_chain`.
