@@ -5,6 +5,6 @@
       "ref": "socks5://user:pass@:1080"
     }
   ],
-  "nodes": null,
+  "nodes": [],
   "v": 1
 }

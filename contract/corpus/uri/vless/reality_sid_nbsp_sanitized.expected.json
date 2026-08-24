@@ -21,7 +21,6 @@
         "uuid": "11111111-1111-1111-1111-111111111111"
       },
       "kind": "outbound",
-      "label": "11111111-1111-1111-1111-111111111111",
       "scheme": "vless",
       "warnings": [
         "reality_short_id_invalid"

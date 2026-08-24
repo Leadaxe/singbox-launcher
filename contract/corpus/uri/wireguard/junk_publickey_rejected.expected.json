@@ -5,6 +5,6 @@
       "ref": "wireguard://QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU=@192.0.2.71:51820?publickey=enabled&address=10.0.0.2/32&allowedips=0.0.0.0/0#node"
     }
   ],
-  "nodes": null,
+  "nodes": [],
   "v": 1
 }

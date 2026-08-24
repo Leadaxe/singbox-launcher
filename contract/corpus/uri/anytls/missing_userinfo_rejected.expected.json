@@ -5,6 +5,6 @@
       "ref": "anytls://any.example-1.com:443#x"
     }
   ],
-  "nodes": null,
+  "nodes": [],
   "v": 1
 }

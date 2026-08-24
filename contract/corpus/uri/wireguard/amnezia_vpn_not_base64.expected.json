@@ -5,6 +5,6 @@
       "ref": "vpn://%%%not-base64%%%"
     }
   ],
-  "nodes": null,
+  "nodes": [],
   "v": 1
 }

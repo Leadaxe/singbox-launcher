@@ -172,3 +172,31 @@ func TestSanitizeSingboxOutboundMap_MasqueStripsUTLS(t *testing.T) {
 		t.Error("utls must be stripped on QUIC-based masque")
 	}
 }
+
+// Метка узла НИКОГДА не берётся из userinfo: там лежат учётные данные
+// (vless/tuic — UUID, wireguard/masque — приватный ключ, ss/trojan — пароль).
+// Прежде URI без `#fragment` получал в Label собственный секрет, а имя узла
+// едет в UI, логи и бэкап. Ожидание: Label пуст, Tag — scheme-server-port.
+func TestNodeLabel_NeverFromUserinfo(t *testing.T) {
+	cases := map[string]string{
+		"vless uuid":     "vless://11111111-1111-1111-1111-111111111111@example-1.com:443?security=tls",
+		"tuic uuid":      "tuic://u:p@example-1.com:443",
+		"trojan pass":    "trojan://secretpass@example-1.com:443",
+		"masque privkey": "masque://" + masqueTestPriv + "@192.0.2.44:443?publickey=" + urlEncode(masqueTestPub) + "&address=172.16.0.2%2F32",
+	}
+	for name, uri := range cases {
+		t.Run(name, func(t *testing.T) {
+			node, err := ParseNode(uri, nil)
+			if err != nil || node == nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if node.Label != "" {
+				t.Errorf("Label = %q — учётные данные утекли в имя узла", node.Label)
+			}
+			if strings.Contains(node.Tag, "11111111") || strings.Contains(node.Tag, "secretpass") ||
+				strings.Contains(node.Tag, masqueTestPriv) {
+				t.Errorf("Tag = %q — учётные данные утекли в тег", node.Tag)
+			}
+		})
+	}
+}
