@@ -292,7 +292,7 @@ func buildPresetBundledDNSRowFromResolved(
 
 	var right *fyne.Container
 	if onView != nil {
-		viewBtn := fynewidget.NewHoverForwardButtonWithIcon("View", theme.SearchIcon(), onView, rowGetter)
+		viewBtn := fynewidget.NewHoverForwardButtonWithIcon("View", theme.SearchIcon(), onView, rowGetter) // l10n-key
 		viewBtn.Importance = widget.LowImportance
 		right = container.NewHBox(viewBtn, rowGutter)
 	} else {

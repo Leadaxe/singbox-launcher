@@ -83,7 +83,7 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 		return CommandRow(win, labelKey, command, true)
 	}
 
-	kickstartRow := commandRowLocal("Restart the service (after a core update):", func() (string, error) {
+	kickstartRow := commandRowLocal("Restart the service (after a core update):", func() (string, error) { // l10n-key
 		return ac.DaemonKickstartCommand(), nil
 	})
 
@@ -190,9 +190,9 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	uninstallTermBtn.SetToolTip(locale.T("Run in Terminal"))
 
 	uninstallTab := container.NewVBox(
-		wrappedLabel("1. Forget the pairing on the launcher side:"),
+		wrappedLabel("1. Forget the pairing on the launcher side:"), // l10n-key
 		unpairBtn,
-		wrappedLabel("2. Remove the service (run in Terminal, your sudo):"),
+		wrappedLabel("2. Remove the service (run in Terminal, your sudo):"), // l10n-key
 		purgeCheck,
 		container.NewBorder(nil, nil, nil, container.NewHBox(uninstallCopyBtn, uninstallTermBtn), uninstallEntry),
 	)
@@ -234,11 +234,11 @@ func buildDaemonPanel(ac *core.AppController, win fyne.Window, onPaired func()) 
 	//    отдельной строкой ниже (lxd client add): это тот же шаг 2, только
 	//    для случая «служба уже стоит, приглашение из установки протухло».
 	installTab := container.NewVBox(
-		commandRowLocal("1. Install the service (run in Terminal, your sudo — prints a pairing invite at the end):", ac.DaemonInstallCommand),
-		wrappedLabel("2. Paste the invite (address#fingerprint#code) and pair:"),
+		commandRowLocal("1. Install the service (run in Terminal, your sudo — prints a pairing invite at the end):", ac.DaemonInstallCommand), // l10n-key
+		wrappedLabel("2. Paste the invite (address#fingerprint#code) and pair:"),                                                              // l10n-key
 		container.NewBorder(nil, nil, nil, container.NewHBox(pairBtn, pairHelp), inviteEntry),
 		widget.NewSeparator(),
-		commandRowLocal("Need a fresh invite (service already installed)?", func() (string, error) {
+		commandRowLocal("Need a fresh invite (service already installed)?", func() (string, error) { // l10n-key
 			return ac.DaemonRepairCommand(), nil
 		}),
 	)

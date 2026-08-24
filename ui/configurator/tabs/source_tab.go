@@ -523,13 +523,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				var noticeBtn *fynewidget.HoverForwardButton
 				if isSubscription && meta != nil && (meta.LastStatus == "err" || (meta.ProviderAnnounce != nil && !meta.ProviderAnnounce.IsEmpty())) {
 					icon := theme.WarningIcon()
-					tooltipKey := "Subscription update failed — click for details"
+					tooltipKey := "Subscription update failed — click for details" // l10n-key
 					if meta.LastStatus != "err" {
 						// Success-with-notice path: provider sent content + announce.
 						// Use info-styled icon. We don't have an info-theme icon
 						// in our minimal set, fall back to QuestionIcon (📢-ish).
 						icon = theme.QuestionIcon()
-						tooltipKey = "Provider sent a notice — click to read"
+						tooltipKey = "Provider sent a notice — click to read" // l10n-key
 					}
 					srcLabel := shortLabel
 					metaCopy := meta // capture by value for closure (meta is *SubscriptionMeta, stable)

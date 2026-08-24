@@ -1269,9 +1269,6 @@
   "Connect": {
     "value": "Подключиться"
   },
-  "Connecting…": {
-    "value": "Соединяемся…"
-  },
   "Connecting… %d/%d": {
     "value": "Соединяемся… %d/%d"
   },
@@ -1337,9 +1334,6 @@
   },
   "Connection failures this session (%d)": {
     "value": "Отказы соединения за сессию (%d)"
-  },
-  "Edit machine": {
-    "value": "Машина"
   },
   "Machine — %s": {
     "value": "Машина — %s"
@@ -1506,9 +1500,6 @@
   "Exit": {
     "value": "Выход"
   },
-  "Restart": {
-    "value": "Перезапуск"
-  },
   "Config": {
     "value": "Конфиг"
   },
@@ -1529,9 +1520,6 @@
   },
   "Refreshing subscriptions": {
     "value": "Обновление подписок"
-  },
-  "🔄 Update": {
-    "value": "🔄 Обновить"
   },
   "Update subscriptions (%s+U)": {
     "value": "Обновить подписки (%s+U)"
@@ -1735,21 +1723,6 @@
   },
   "Sing-Box failed to restart after %d attempts. Check sing-box.log for details.": {
     "value": "Sing-Box не удалось перезапустить после %d попыток. Проверьте sing-box.log."
-  },
-  "Failed to check for updates": {
-    "value": "Не удалось проверить обновления"
-  },
-  "Error checking version: %s": {
-    "value": "Ошибка проверки версии: %s"
-  },
-  "Update available!\n\nInstalled: %s\nLatest: %s\n\nYou can download the update from the Core tab.": {
-    "value": "Доступно обновление!\n\nУстановлена: %s\nПоследняя: %s\n\nВы можете скачать обновление на вкладке «Ядро»."
-  },
-  "No Updates": {
-    "value": "Нет обновлений"
-  },
-  "You are using the latest version.\n\nInstalled: %s\nLatest: %s": {
-    "value": "Вы используете последнюю версию.\n\nУстановлена: %s\nПоследняя: %s"
   },
   "Open": {
     "value": "Открыть"
@@ -1957,9 +1930,6 @@
   "Warning": {
     "value": "Предупреждение"
   },
-  "❌ ": {
-    "value": "❌ "
-  },
   "Status: Not checked": {
     "value": "Статус: Не проверен"
   },
@@ -2053,9 +2023,6 @@
   "Ping test URL updated: %s": {
     "value": "URL пинг-теста обновлён: %s"
   },
-  "Proxy Name": {
-    "value": "Имя прокси"
-  },
   "Ping": {
     "value": "Пинг"
   },
@@ -2079,9 +2046,6 @@
   },
   "Ping test URL and parallel requests": {
     "value": "URL пинг-теста и число параллельных запросов"
-  },
-  "Export": {
-    "value": "Экспорт"
   },
   "Copy share links for all rows visible now, in current list order (one URI per line; hidden ping-error rows are skipped; excludes selector, urltest, direct).": {
     "value": "Share-ссылки для всех сейчас видимых строк, в порядке списка (строка = URI; скрытые из-за ошибки пинга не попадают; без selector, urltest, direct)."
@@ -2158,9 +2122,6 @@
   "%s -> %s": {
     "value": "%s -> %s"
   },
-  "Copy link": {
-    "value": "Копировать ссылку"
-  },
   "Copy server link": {
     "value": "Копировать ссылку сервера"
   },
@@ -2211,9 +2172,6 @@
   },
   "Show config": {
     "value": "Показать конфиг"
-  },
-  "Hide config": {
-    "value": "Скрыть конфиг"
   },
   "Generated config.json": {
     "value": "Собранный config.json"
@@ -2285,9 +2243,6 @@
   "Convert to user rule(s)": {
     "value": "Преобразовать в пользовательское"
   },
-  "Edit rule": {
-    "value": "Редактировать правило"
-  },
   "Edit": {
     "value": "Изменить",
     "special": {
@@ -2340,9 +2295,6 @@
   },
   "No sources defined in ParserConfig.": {
     "value": "Источники не определены в ParserConfig."
-  },
-  "Connections %d": {
-    "value": "Подключения %d"
   },
   "Source %d": {
     "value": "Источник %d"
@@ -2398,12 +2350,6 @@
   "Provider sent a notice — click to read": {
     "value": "Провайдер прислал сообщение — нажми чтобы прочитать"
   },
-  "📡": {
-    "value": "📡"
-  },
-  "🔌": {
-    "value": "🔌"
-  },
   "Subscription": {
     "value": "Подписка"
   },
@@ -2421,9 +2367,6 @@
   },
   "%s / %s used": {
     "value": "%s / %s использовано"
-  },
-  "expires %s": {
-    "value": "истекает %s"
   },
   "expires in %s": {
     "value": "истекает через %s"
@@ -2445,9 +2388,6 @@
   },
   "%d nodes (truncated, max %d)": {
     "value": "%d узлов (обрезано до %d)"
-  },
-  "Refreshing…": {
-    "value": "Обновление…"
   },
   "Refresh failed: %s": {
     "value": "Ошибка обновления: %s"
@@ -2580,17 +2520,8 @@
   "Server source — meta is not collected (only fetched per subscription).": {
     "value": "Server-источник — метаданные не собираются (только для подписок)."
   },
-  "Fetch summary": {
-    "value": "Сводка fetch'а"
-  },
-  "Parsed headers": {
-    "value": "Распарсенные заголовки"
-  },
   "Raw body (decoded)": {
     "value": "Сырой ответ (decoded)"
-  },
-  "No raw body cached yet. Refresh this subscription to populate `bin/subscriptions/<id>.raw`.": {
-    "value": "Сырой body ещё не закэширован. Refresh этой подписки заполнит `bin/subscriptions/<id>.raw`."
   },
   "Showing first %d of %d bytes": {
     "value": "Показаны первые %d из %d байт"
@@ -2598,17 +2529,8 @@
   "Copy file path": {
     "value": "Скопировать путь"
   },
-  "Raw view is only available for subscriptions (server sources are static URIs).": {
-    "value": "Raw-просмотр только для подписок (server — статический URI)."
-  },
-  "Servers — %s": {
-    "value": "Серверы — %s"
-  },
   "No servers found.": {
     "value": "Серверы не найдены."
-  },
-  "%d server(s)": {
-    "value": "%d сервер(ов)"
   },
   "Source — %s": {
     "value": "Источник — %s"
@@ -2675,18 +2597,6 @@
   "A manual config_json is set — the URI above is ignored at build time (see the JSON tab).": {
     "value": "Задан ручной config_json — URI выше при сборке игнорируется (см. вкладку JSON)."
   },
-  "Local outbounds (this source)": {
-    "value": "Локальные outbounds (этот источник)"
-  },
-  "Servers from subscription / links": {
-    "value": "Серверы из подписки / ссылок"
-  },
-  "None — enable Local auto or Local select in Settings.": {
-    "value": "Нет — включите «Локальный auto» или «Локальный select» в настройках."
-  },
-  "Local outbounds: %d · Servers: %d": {
-    "value": "Локальные outbounds: %d · Серверов: %d"
-  },
   "Local outbounds: %d · Servers: load failed — %s": {
     "value": "Локальные outbounds: %d · Серверы: ошибка загрузки — %s"
   },
@@ -2744,9 +2654,6 @@
   "No DNS servers.": {
     "value": "Нет DNS-серверов."
   },
-  "From active presets (read-only)": {
-    "value": "От активных пресетов (read-only)"
-  },
   "(invalid server JSON)": {
     "value": "(некорректный JSON сервера)"
   },
@@ -2803,9 +2710,6 @@
   },
   "No other DNS servers to add. Create one first — a group queries existing servers.": {
     "value": "Больше нечего добавить. Сначала заведите сервер — группа опрашивает существующие."
-  },
-  "One tag per line": {
-    "value": "По одному тегу в строке"
   },
   "The same entry as raw JSON, in sing-box dns.servers form. Types without a form are edited here.": {
     "value": "Та же запись сырым JSON, в форме sing-box dns.servers. Типы без формы правятся здесь."
@@ -2906,12 +2810,6 @@
   "Direction:": {
     "value": "Направление:"
   },
-  "?": {
-    "value": "?"
-  },
-  "✏️": {
-    "value": "✏️"
-  },
   "Delete rule": {
     "value": "Удалить правило"
   },
@@ -2942,9 +2840,6 @@
   "No route rules yet. Open the library or add a custom rule.": {
     "value": "Пока нет правил маршрута. Откройте библиотеку или добавьте своё правило."
   },
-  "Open library": {
-    "value": "Открыть библиотеку"
-  },
   "Include this rule in the generated route when enabled": {
     "value": "Включить это правило в сгенерированный маршрут"
   },
@@ -2956,15 +2851,6 @@
   },
   "Default direction:": {
     "value": "Направление по умолчанию:"
-  },
-  "TUN": {
-    "value": "TUN"
-  },
-  "Enabling TUN will require entering your password when starting or stopping the VPN.": {
-    "value": "Включение TUN потребует ввода пароля при запуске или остановке VPN."
-  },
-  "Selectable rules": {
-    "value": "Выбираемые правила"
   },
   "Rule-set (SRS) download failed": {
     "value": "Не удалось скачать набор правил (SRS)"
@@ -2984,44 +2870,17 @@
   "Save operation already in progress... Please wait.": {
     "value": "Сохранение уже выполняется... Подождите."
   },
-  "Waiting for parsing...": {
-    "value": "Ожидание парсинга..."
-  },
-  "Parsing subscriptions...": {
-    "value": "Парсинг подписок..."
-  },
-  "Building config...": {
-    "value": "Сборка конфига..."
-  },
-  "Preparing...": {
-    "value": "Подготовка..."
-  },
-  "Validating...": {
-    "value": "Валидация..."
-  },
   "Saving state...": {
     "value": "Сохранение состояния..."
   },
   "Done": {
     "value": "Готово"
   },
-  "Copy config": {
-    "value": "Копировать конфиг"
-  },
-  "Validation failed": {
-    "value": "Валидация не пройдена"
-  },
-  "Config copied to clipboard.": {
-    "value": "Конфиг скопирован в буфер обмена."
-  },
   "State saved to %s\n\nConfiguration will be rebuilt on next Update or Restart.": {
     "value": "Состояние сохранено в %s\n\nКонфигурация будет пересобрана при следующем Update или Restart."
   },
   "State Saved": {
     "value": "Состояние сохранено"
-  },
-  "Failed to parse subscriptions": {
-    "value": "Не удалось распарсить подписки"
   },
   "controller not available": {
     "value": "контроллер недоступен"
@@ -3496,20 +3355,8 @@
   "Insert": {
     "value": "Вставить"
   },
-  "Failed to download community sources:\n\nCheck your internet connection and try again.": {
-    "value": "Не удалось загрузить список источников:\n\nПроверьте подключение к интернету."
-  },
   "Failed to load community sources:\n\nLocal cache missing or corrupted.": {
     "value": "Не удалось прочитать список источников:\n\nЛокальный кэш отсутствует или повреждён."
-  },
-  "Failed to process community sources list": {
-    "value": "Не удалось обработать список источников"
-  },
-  "No sources loaded": {
-    "value": "Список источников не загружен"
-  },
-  "An error occurred: %v": {
-    "value": "Произошла ошибка: %v"
   },
   "No community sources available right now.": {
     "value": "Нет доступных источников сообщества."
@@ -3526,47 +3373,17 @@
   "Rebuild config only": {
     "value": "Только пересобрать config"
   },
-  "Rewrite config.json from current state without restarting sing-box": {
-    "value": "Перезаписать config.json из текущего state без рестарта sing-box"
-  },
   "Rebuild & restart sing-box": {
     "value": "Пересобрать и перезапустить sing-box"
   },
-  "Rebuild config and kill+restart the running process": {
-    "value": "Собрать config и kill+restart процесса"
-  },
   "Rebuild & start sing-box": {
     "value": "Пересобрать и запустить sing-box"
-  },
-  "Re-fetch subscription URLs over the network and rebuild config.json (Cmd/Ctrl+U also works)": {
-    "value": "Заново скачать URL'ы подписок и пересобрать config.json (Cmd/Ctrl+U тоже работает)"
   },
   "Switch state…": {
     "value": "Сменить state…"
   },
   "● Current (active)": {
     "value": "● Текущее (активно)"
-  },
-  "💾 Save state as…": {
-    "value": "💾 Сохранить state как…"
-  },
-  "Save current state": {
-    "value": "Сохранить текущий state"
-  },
-  "Name (filename-safe):": {
-    "value": "Имя (только латиница / цифры / дефисы):"
-  },
-  "Invalid name. Use letters, digits, dashes and underscores only.": {
-    "value": "Неверное имя. Только латиница, цифры, дефис и подчёркивание."
-  },
-  "Overwrite?": {
-    "value": "Перезаписать?"
-  },
-  "State \"%s\" already exists. Overwrite?": {
-    "value": "Состояние «%s» уже существует. Перезаписать?"
-  },
-  "Saved state as \"%s\"": {
-    "value": "Сохранено как «%s»"
   },
   "Saved states": {
     "value": "Сохранённые состояния"
@@ -3610,9 +3427,6 @@
   "matches %d of %d total nodes": {
     "value": "совпадает %d из %d узлов"
   },
-  "Invalid regex": {
-    "value": "Невалидный regex"
-  },
   "Apply": {
     "value": "Применить"
   },
@@ -3627,15 +3441,6 @@
   },
   "Transport": {
     "value": "Транспорт"
-  },
-  "AmneziaWG (obfuscated, anti-DPI)": {
-    "value": "AmneziaWG (обфускация, обход DPI)"
-  },
-  "WireGuard (plain)": {
-    "value": "WireGuard (обычный)"
-  },
-  "Random endpoint (bypass the blocked default)": {
-    "value": "Случайный endpoint (обход заблокированного по умолчанию)"
   },
   "WARP+ license": {
     "value": "Лицензия WARP+"
@@ -3702,9 +3507,6 @@
   },
   "SNI": {
     "value": "SNI"
-  },
-  "a name from the pool or your own — 🎲 picks at random": {
-    "value": "имя из пула или своё — 🎲 выберет случайное"
   },
   "Idle timeout (min)": {
     "value": "Idle timeout (мин)"
@@ -3991,12 +3793,6 @@
   "The machine is not answering. Check that it is powered on and reachable on the network, then press Connect again.": {
     "value": "Машина не отвечает. Проверьте, включена ли она и доступна ли по сети, затем нажмите Connect ещё раз."
   },
-  "Connect to a sing-box daemon running on another machine. Install the service THERE (on its host): sudo sing-box lxd --service=install --tls --listen 0.0.0.0:9091 — it prints a one-time pairing invite; mint a fresh one any time with sudo sing-box lxd client add. Paste the invite below. Make sure the port is reachable from this machine.": {
-    "value": "Подключение к демону sing-box на другой машине. Службу ставят ТАМ (на её хосте): sudo sing-box lxd --service=install --tls --listen 0.0.0.0:9091 — команда печатает одноразовое приглашение; свежее в любой момент даёт sudo sing-box lxd client add. Вставьте приглашение ниже. Порт должен быть доступен с этой машины."
-  },
-  "Paste the invite (address#fingerprint#code) and pair:": {
-    "value": "Вставьте приглашение (адрес#отпечаток#код) и сопрягитесь:"
-  },
   "The Bearer secret is only needed for a daemon running WITHOUT TLS (plain mode): there it is the whole authentication, paste it and press Enter. A paired mTLS daemon ignores it — the client certificate is the credential. The daemon owns the secret (daemon.json in its state dir); view it with the command below.": {
     "value": "Bearer-секрет нужен только демону БЕЗ TLS (plain-режим): там он — вся аутентификация, вставьте его и нажмите Enter. Сопряжённый mTLS-демон его игнорирует — мандатом служит клиентский сертификат. Секретом владеет демон (daemon.json в его state-каталоге); посмотреть его можно командой ниже."
   },
@@ -4018,95 +3814,17 @@
   "The config for the remote machine was written to a separate file. The local bin/config.json was not touched.": {
     "value": "Конфиг для удалённой машины записан в отдельный файл. Локальный bin/config.json не тронут."
   },
-  "Remote machines running the sing-box lxd daemon (router, VPS, another Mac). Add a machine here, then switch between it and your own core from the dropdown in the Servers tab.": {
-    "value": "Удалённые машины с демоном sing-box lxd (роутер, VPS, другой Mac). Добавьте машину здесь, затем переключайтесь между ней и своим ядром в выпадающем списке на вкладке «Серверы»."
-  },
-  "No remote machines paired yet.": {
-    "value": "Удалённые машины ещё не сопряжены."
-  },
-  "Remote machines are unavailable: no controller.": {
-    "value": "Удалённые машины недоступны: нет контроллера."
-  },
-  "Router": {
-    "value": "Роутер"
-  },
-  "host:port": {
-    "value": "host:port"
-  },
-  "The invite carries the daemon listen address. If the daemon listens on 0.0.0.0, put the address you actually reach it at (for example the router LAN IP).": {
-    "value": "В приглашении стоит listen-адрес демона. Если демон слушает 0.0.0.0, укажите адрес, по которому вы реально до него достучитесь (например LAN-адрес роутера)."
-  },
-  "Remove": {
-    "value": "Удалить"
-  },
-  "Forget %s and delete its client key here?\n\nIMPORTANT: this does NOT revoke access on the machine itself — the launcher stays a trusted client there. To revoke it, run on that machine:\n\n    sudo sing-box lxd client remove singbox-launcher\n\nWithout that the old key keeps working for anyone who has it.": {
-    "value": "Забыть %s и удалить её клиентский ключ здесь?\n\nВАЖНО: доступ на самой машине это НЕ отзывает — лаунчер останется там доверенным клиентом. Чтобы отозвать, выполните на той машине:\n\n    sudo sing-box lxd client remove singbox-launcher\n\nБез этого старый ключ продолжит работать у того, у кого он есть."
-  },
   "Subscriptions have not been parsed for this target yet, so the config would contain no proxy nodes. Open the Preview tab (or press Read on Sources) to parse them, then save again.": {
     "value": "Подписки для этого назначения ещё не разобраны — конфиг ушёл бы без единой прокси-ноды. Откройте вкладку «Просмотр» (или нажмите «Прочитать» на «Источниках»), чтобы разобрать их, и сохраните снова."
   },
   "Connect to this machine first: its config points at the machine's own resource store, and that path comes from the daemon when you connect.": {
     "value": "Сначала подключитесь к машине: её конфиг ссылается на собственное хранилище ресурсов, а этот путь приходит от демона при соединении."
   },
-  "Add a paired machine": {
-    "value": "Добавить сопряжённую машину"
-  },
-  "Add paired machine": {
-    "value": "Добавить сопряжённую"
-  },
-  "The connection to %s is already paired (address, pin and client key exist). Add it to the list of remote machines so the Servers tab can talk to it — pairing again is not needed.": {
-    "value": "Подключение к %s уже сопряжено (есть адрес, пин и клиентский ключ). Добавьте его в список удалённых машин, чтобы вкладка «Серверы» могла с ним работать — сопрягаться заново не нужно."
-  },
-  "%s (%s) added. Press Connect to view its proxies on the Servers tab.": {
-    "value": "%s (%s) добавлена. Нажмите «Подключить», чтобы увидеть её прокси на вкладке «Серверы»."
-  },
-  "No paired daemon found. Pair with the target machine in the panel above first.": {
-    "value": "Сопряжённый демон не найден. Сначала сопрягитесь с целевой машиной в панели выше."
-  },
-  "The paired daemon runs on this machine — it is managed by the panel above, no need to add it here.": {
-    "value": "Сопряжённый демон работает на этой машине — им управляет панель выше, добавлять его сюда не нужно."
-  },
   "Core Status ⏳ Starting...": {
     "value": "Статус ядра ⏳ Запуск..."
   },
   "Core Status ⏳ Stopping...": {
     "value": "Статус ядра ⏳ Остановка..."
-  },
-  "Add a remote machine": {
-    "value": "Добавить удалённую машину"
-  },
-  "Add machine": {
-    "value": "Добавить машину"
-  },
-  "Run this on the TARGET machine to mint a one-time invite (it prints address#fingerprint#code). Name is yours to pick. Address: where you actually reach the daemon — leave empty to take it from the invite (the invite carries the daemon listen address, which is wrong when it listens on 0.0.0.0). Secret is only needed for a daemon without TLS.": {
-    "value": "Выполните это на ЦЕЛЕВОЙ машине, чтобы получить одноразовое приглашение (печатает address#fingerprint#code). Имя — на ваш выбор. Адрес: по которому вы реально достучитесь до демона; пусто — взять из приглашения (там стоит listen-адрес демона, а он неверен при listen 0.0.0.0). Секрет нужен только демону без TLS."
-  },
-  "Machine added": {
-    "value": "Машина добавлена"
-  },
-  "%s (%s) is paired. Pick it in the Servers tab dropdown to manage it.": {
-    "value": "%s (%s) сопряжена. Выберите её в выпадающем списке на вкладке «Серверы», чтобы управлять ею."
-  },
-  "Machine settings": {
-    "value": "Настройки машины"
-  },
-  "only for a daemon without TLS": {
-    "value": "только для демона без TLS"
-  },
-  "Forget it here": {
-    "value": "Забыть здесь"
-  },
-  "checking…": {
-    "value": "проверяем…"
-  },
-  "unreachable": {
-    "value": "недоступна"
-  },
-  "core: %s": {
-    "value": "ядро: %s"
-  },
-  "daemon %s": {
-    "value": "демон %s"
   },
   "Stop the core": {
     "value": "Остановить ядро"
@@ -4132,9 +3850,6 @@
         "value": "Отправка конфига"
       }
     }
-  },
-  "deploying…": {
-    "value": "отправляем…"
   },
   "Send the config to %s (%d bytes)? The daemon validates it before swapping the instance and rolls back to last-good if the new one fails to start.": {
     "value": "Отправить конфиг на %s (%d байт)? Демон проверит его до подмены инстанса и откатится на last-good, если новый не стартует."
@@ -4204,9 +3919,6 @@
   },
   "Connect to the machine first: the profiler reads its live connection stream.": {
     "value": "Сначала подключитесь к машине: профайлер читает её живой поток соединений."
-  },
-  "More": {
-    "value": "Ещё"
   },
   "Connections": {
     "value": "Соединения"
@@ -4322,9 +4034,6 @@
   "swap %s of %s": {
     "value": "swap %s из %s"
   },
-  "%.1f%% · %s free": {
-    "value": "%.1f%% · свободно %s"
-  },
   "⚠ This machine is recorded as %s, but the daemon runs on %s. config.json is built for the recorded platform — fix it in the machine settings.": {
     "value": "⚠ Машина записана как %s, а демон работает на %s. config.json собирается под записанную платформу — поправьте её в настройках машины."
   },
@@ -4414,9 +4123,6 @@
   },
   "DESTINATION": {
     "value": "НАЗНАЧЕНИЕ"
-  },
-  "PORT": {
-    "value": "ПОРТ"
   },
   "OUTBOUND": {
     "value": "OUTBOUND"
@@ -4528,8 +4234,5 @@
   },
   "%s — not supported here, skipped": {
     "value": "%s — здесь не поддерживается, пропущено"
-  },
-  "Group (fastest of several)": {
-    "value": "Группа (самый быстрый из нескольких)"
   }
 }

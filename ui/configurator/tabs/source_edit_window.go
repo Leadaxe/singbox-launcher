@@ -1231,12 +1231,12 @@ func showSourceEditWindow(
 		doRefreshJSONTab()
 	}
 
-	jsonHintKey := "Read-only: how the cached subscription body unpacks into sing-box outbounds. Tags are shown before the source prefix/mask is applied; the list is rebuilt from the network on every refresh."
+	jsonHintKey := "Read-only: how the cached subscription body unpacks into sing-box outbounds. Tags are shown before the source prefix/mask is applied; the list is rebuilt from the network on every refresh." // l10n-key
 	switch {
 	case isChainSource:
-		jsonHintKey = "The chain object exactly as it will reach the config. This is also where rewrite is edited — per-protocol overrides of node options; everything else is easier to change on the Chain tab."
+		jsonHintKey = "The chain object exactly as it will reach the config. This is also where rewrite is edited — per-protocol overrides of node options; everything else is easier to change on the Chain tab." // l10n-key
 	case isServerSource:
-		jsonHintKey = "The sing-box outbound this source unpacks into — exactly what the build writes to config.json. Edit and press Apply to save a manual config_json (it overrides the URI); Reset returns to URI-generated. Tag and detour are restamped by the launcher at build time."
+		jsonHintKey = "The sing-box outbound this source unpacks into — exactly what the build writes to config.json. Edit and press Apply to save a manual config_json (it overrides the URI); Reset returns to URI-generated. Tag and detour are restamped by the launcher at build time." // l10n-key
 	}
 	jsonHint := widget.NewLabel(locale.T(jsonHintKey))
 	jsonHint.Wrapping = fyne.TextWrapWord

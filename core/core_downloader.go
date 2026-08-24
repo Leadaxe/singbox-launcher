@@ -401,7 +401,7 @@ func (ac *AppController) downloadFileFromURL(ctx context.Context, url, destPath 
 				progress := 15 + int(float64(downloaded)/float64(totalSize)*65)
 				progressChan <- DownloadProgress{
 					Progress: progress,
-					Message:  "Downloading...",
+					Message:  "Downloading...", // l10n-key
 					Status:   "downloading",
 				}
 			}

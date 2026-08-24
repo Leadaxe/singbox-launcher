@@ -193,9 +193,9 @@ func (v *byClientView) refresh() {
 		// Пусто — это либо «ядро молчит», либо «фильтр никого не оставил».
 		// Разница существенная: во втором случае искать причину в машине не
 		// надо, и сказать об этом словами честнее, чем оставить голое место.
-		key := "No active client connections."
+		key := "No active client connections." // l10n-key
 		if total > 0 {
-			key = "No connections match the filter."
+			key = "No connections match the filter." // l10n-key
 		}
 		hint := widget.NewLabel(locale.T(key))
 		hint.Wrapping = fyne.TextWrapWord

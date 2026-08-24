@@ -1362,7 +1362,7 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		radio.Selected = selected
 
 		urlEntry := widget.NewEntry()
-		urlEntry.SetPlaceHolder("https://example.com/generate_204")
+		urlEntry.SetPlaceHolder("https://example.com/generate_204") // l10n-key
 		urlEntry.SetText(currentURL)
 		if selected != customMode {
 			urlEntry.Disable()

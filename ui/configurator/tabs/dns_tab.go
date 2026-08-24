@@ -39,9 +39,9 @@ func setTooltip(o fyne.CanvasObject, text string) {
 
 func tooltipForDNSServerCheck(locked bool) string {
 	if locked {
-		return "This row comes from template config.dns: it cannot be edited, removed, or toggled here. The checkbox shows inclusion in the generated DNS config (from saved state / template); when included, dns_options for the same tag can override the skeleton body."
+		return "This row comes from template config.dns: it cannot be edited, removed, or toggled here. The checkbox shows inclusion in the generated DNS config (from saved state / template); when included, dns_options for the same tag can override the skeleton body." // l10n-key
 	}
-	return "Include this server in the generated sing-box DNS config. Disabled servers stay in the list and in state; rules and Final must use enabled tags only."
+	return "Include this server in the generated sing-box DNS config. Disabled servers stay in the list and in state; rules and Final must use enabled tags only." // l10n-key
 }
 
 func newTooltipLabel(text, tip string) *ttwidget.Label {
