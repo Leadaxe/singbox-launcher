@@ -416,6 +416,12 @@ config_service.buildContextFromState
             ▼
 build.BuildConfig  (pure)
             │
+            ├─► sanitizeOutboundGraph  (final dependency-graph pass)
+            │      one walk over ALL edge kinds (group member / detour / chain
+            │      position): dangling refs, cross-edge cycles, chain invariants
+            │      («nested chain only at position 0») — degrade one element with
+            │      a warning instead of letting the core reject the whole config
+            │
             ├─► BuildOutboundsSection / BuildEndpointsSection
             │      (consume BuildContext.Cache = GenerateOutboundsFromParserConfig output)
             │

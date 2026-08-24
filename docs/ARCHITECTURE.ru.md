@@ -394,6 +394,13 @@ config_service.buildContextFromState
             ▼
 build.BuildConfig  (чистая)
             │
+            ├─► sanitizeOutboundGraph  (финальный проход по графу зависимостей)
+            │      один обход ВСЕХ видов рёбер (member группы / detour / позиция
+            │      цепочки): висячие ссылки, кольца через рёбра разных видов,
+            │      инварианты цепочек («вложенная цепочка только позицией 0») —
+            │      деградировать один элемент с warning, а не отдать ядру конфиг,
+            │      который оно отвергнет целиком
+            │
             ├─► BuildOutboundsSection / BuildEndpointsSection
             │      (потребляют BuildContext.Cache = вывод GenerateOutboundsFromParserConfig)
             │
