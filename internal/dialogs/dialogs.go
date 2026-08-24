@@ -176,22 +176,51 @@ func ShowLinuxCapabilitiesRequired(window fyne.Window, title, message, command s
 	fyne.Do(func() {
 		mainContent := container.NewVBox()
 
-		// Use selectable multiline text so users can copy the full error details.
-		msgEntry := widget.NewMultiLineEntry()
-		msgEntry.SetText(message)
-		msgEntry.Disable()
-		msgEntry.Wrapping = fyne.TextWrapWord
-		msgEntry.SetMinRowsVisible(10)
-		msgScroll := container.NewScroll(msgEntry)
-		msgScroll.SetMinSize(fyne.NewSize(520, 220))
+		// Обычный Label, а не Disable()'нутый Entry: отключённый Entry в Fyne
+		// рисуется цветом DisabledColor — тем же, которым рисуется
+		// placeholder, — и объяснение выглядит как незаполненная подсказка,
+		// а не как текст, который надо прочесть. Копирование от этого не
+		// теряется: кнопка Copy ниже кладёт в буфер и сообщение, и команду.
+		msgLabel := widget.NewLabel(message)
+		msgLabel.Wrapping = fyne.TextWrapWord
+
+		// Высота — по содержимому, с потолком. Прежние SetMinRowsVisible(10)
+		// и MinSize 520×220 резервировали десять строк под сообщение из двух,
+		// и половину диалога занимала пустота.
+		// Высота оценивается по длине текста, а не по Label.MinSize(): до
+		// размещения в контейнере тот не знает ширину и считает перенос по
+		// словам как одну строку, занижая высоту в разы на длинном тексте
+		// (Linux capabilities).
+		const msgWidth = 520
+		lines := 1 + len([]rune(message))/72 // ~72 символа в строке при 520px
+		if n := strings.Count(message, "\n"); n > 0 {
+			lines += n
+		}
+		msgH := float32(lines)*theme.TextSize()*1.5 + 16
+		if msgH < 56 {
+			msgH = 56
+		}
+		if msgH > 260 {
+			msgH = 260 // длинное сообщение скроллится
+		}
+		msgScroll := container.NewVScroll(msgLabel)
+		msgScroll.SetMinSize(fyne.NewSize(msgWidth, msgH))
 		mainContent.Add(msgScroll)
 
 		// Selectable command line and Copy button
+		// Команда остаётся Entry — её выделяют и копируют мышью, — но НЕ
+		// Disable()'нутым: отключённый Entry рисуется цветом placeholder'а, и
+		// команда для терминала выглядит нечитаемой подсказкой. Правки гасятся
+		// откатом текста: поле остаётся только для чтения, оставаясь читаемым.
 		entry := widget.NewEntry()
 		entry.SetText(command)
-		entry.Disable()
 		entry.Wrapping = fyne.TextWrapOff
 		entry.SetMinRowsVisible(1)
+		entry.OnChanged = func(s string) {
+			if s != command {
+				entry.SetText(command)
+			}
+		}
 		copyBtn := widget.NewButtonWithIcon(locale.T("Copy"), theme.ContentCopyIcon(), func() {
 			fullText := message
 			if command != "" && fullText != "" && !strings.Contains(fullText, command) {
