@@ -59,10 +59,16 @@ type corpusExpectation struct {
 	// пережить перенос как есть). label, если задан, проверяется через
 	// re-export: сторона без отдельного отображаемого имени (лаунчер)
 	// обязана вернуть чужое значение нетронутым (BACKUP.md §2).
+	//
+	// Enabled — указатель, а не bool: умолчание схемы true, и отсутствие
+	// ключа в ожиданиях обязано значить «не проверяем», а не «ожидаем
+	// false». Обычный bool сделал бы нулевое значение требованием
+	// выключенности и провалил бы все кейсы без этого поля.
 	Chains []struct {
-		Tag   string          `json:"tag"`
-		Label string          `json:"label"`
-		Chain json.RawMessage `json:"chain"`
+		Tag     string          `json:"tag"`
+		Label   string          `json:"label"`
+		Enabled *bool           `json:"enabled"`
+		Chain   json.RawMessage `json:"chain"`
 	} `json:"chains"`
 }
 
@@ -314,6 +320,12 @@ func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 		}
 		if !jsonDeepEqual(gotRaw, want.Chain) {
 			t.Errorf("%s: канон цепочки искажён: %s, ожидалось %s", want.Tag, gotRaw, want.Chain)
+		}
+		// Выключенность — состояние записи, а не канона: enabled живёт в
+		// обвязке chains[], и умолчание схемы (отсутствие ключа = true)
+		// стороны обязаны читать одинаково.
+		if want.Enabled != nil && src.Enabled != *want.Enabled {
+			t.Errorf("%s: enabled=%v, ожидалось %v", want.Tag, src.Enabled, *want.Enabled)
 		}
 		if want.Label != "" {
 			needExport = true

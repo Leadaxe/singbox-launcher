@@ -1,0 +1,26 @@
+{
+  "rules": [],
+  "warnings": [],
+  "chains": [
+    {
+      "tag": "off-relay",
+      "enabled": false,
+      "chain": {
+        "hops": [
+          "hop-1",
+          "hop-2"
+        ]
+      }
+    },
+    {
+      "tag": "on-relay",
+      "enabled": true,
+      "chain": {
+        "hops": [
+          "hop-3",
+          "hop-4"
+        ]
+      }
+    }
+  ]
+}
