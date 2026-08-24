@@ -587,7 +587,7 @@ func validateVarPredicateRHS(varName string, rhs interface{}, varByName map[stri
 		for k, arg := range r {
 			switch k {
 			case "#in", "#notIn":
-				return validateInArg(varType, isRuntimeGlobal, arg, varByName, ctx+"."+k)
+				return validateInArg(arg, varByName, ctx+"."+k)
 			case "#matches":
 				return validateMatchesArg(varType, isRuntimeGlobal, arg, ctx+"."+k)
 			default:
@@ -599,10 +599,16 @@ func validateVarPredicateRHS(varName string, rhs interface{}, varByName map[stri
 }
 
 // validateInArg — args для #in/#notIn: либо []string, либо "@text_list_var" string.
-func validateInArg(varType string, isRuntimeGlobal bool, arg interface{}, varByName map[string]TemplateVar, ctx string) error {
-	if !isRuntimeGlobal && varType != "text" && varType != "text_list" {
-		return fmt.Errorf("%s: #in/#notIn not applicable to var type %q", ctx, varType)
-	}
+//
+// Тип левой части НЕ ограничивается: TEMPLATE_LANG §4.2 P4 определяет
+// предикат как принадлежность `TrimSpace(scalar)` множеству, а скаляр есть у
+// любого типа. Прежняя проверка допускала только text/text_list и отвергала
+// на загрузке шаблон с `{"@mode": {"#in": [...]}}` по enum — при том, что
+// собственный рантайм такой шаблон исполняет верно (фикстуры
+// predicates/p4_in_literal_list, p4_notin_literal_list зелёные), а Dart его
+// принимает. То есть валидатор был строже и спеки, и своего движка, и второй
+// стороны: один и тот же файл грузился на телефоне и отвергался на десктопе.
+func validateInArg(arg interface{}, varByName map[string]TemplateVar, ctx string) error {
 	switch a := arg.(type) {
 	case string:
 		// Must be "@text_list_var".
