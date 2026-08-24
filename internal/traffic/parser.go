@@ -70,7 +70,14 @@ var (
 	// Optional leading timestamp. sing-box config.log.timestamp=true emits a
 	// `2026-05-24 12:34:15` prefix before the level word. We don't fail if
 	// it's missing (tests cover both shapes).
-	reLeadingTS = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+`)
+	//
+	// Живой лаунчер пишет лог через враппер, который добавляет СВОЙ префикс —
+	// смещение зоны: `+0300 2026-08-24 14:39:37 INFO …`. Без допуска этого
+	// префикса не совпадала ни одна строка, и TS оставался нулевым у всех
+	// событий лога (симптом: events_dropped растёт на ровном месте — нулевая
+	// метка «старше» 3-часового окна сессии и вытесняется следующим же
+	// добавлением). Префикс необязателен: обе формы читаются.
+	reLeadingTS = regexp.MustCompile(`^(?:[+-]\d{4}\s+)?(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?)\s+`)
 )
 
 // timestampLayouts the parser tries in order. The fractional-seconds variant
@@ -131,6 +138,14 @@ func ParseLogLine(line string) (LogLine, bool) {
 				break
 			}
 		}
+	}
+	// Метку не удалось прочитать (лог без timestamp'а, незнакомый формат
+	// префикса) — ставим время разбора. Нулевой TS роняет событие в обоих
+	// буферах: и в сессии (старше maxSessionAge), и в rolling-окне — то есть
+	// строка молча исчезает, лишь увеличив счётчик потерь. Время доставки
+	// на пару миллисекунд позже события, но это несопоставимо лучше.
+	if out.TS.IsZero() {
+		out.TS = time.Now()
 	}
 
 	if m := reDNSExchanged.FindStringSubmatch(line); m != nil {
