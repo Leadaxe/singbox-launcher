@@ -210,11 +210,40 @@ core/build entry (BuildConfig)  — pure function over BuildContext
      ▼
 GenerateOutboundsFromParserConfig
      │     consume merged parserCfg.Outbounds[]
+     │     проход 0: двойники Направлений — `auto` разворачивается в
+     │             `<tag>-auto` (core/config/direction_twins.go, SPEC 104);
+     │             пустое Направление получает запас [block, direct]
      │     resolve filters / addOutbounds / preferredDefault
      │     append per-source proxies (parsed from .raw cache)
+     │     источники-цепочки материализуются в ОДИН узел `type: chain`
+     │             каждый (core/config/chain_nodes.go, SPEC 110); цепочка,
+     │             не прошедшая ChainEmitError, не становится узлом вовсе —
+     │             ядро отвергает весь конфиг из-за одной битой цепочки
      ▼
-MergeDNSSection + MergeRouteSection + MergePresetsIntoRoute
-     │     emit final dns / route sections в порядке state.rules[]
+BuildConfig (core/build/build.go) — три шага, чистая функция над BuildContext
+     │
+     ├─ 1. effectiveConfig(template, vars, target)
+     │      GetEffectiveConfigFor; при неудаче — fallback на прекеш
+     │      td.Config/td.ConfigOrder плюс warning в Result.Validation
+     │
+     ├─ 2. buildOrderedSections(ctx, cfg, order)
+     │      ├─ sanitizeOutboundGraph(ctx.Cache, finalOutboundTags)
+     │      │     ОДИН проход по всем видам рёбер (участник группы /
+     │      │     detour / позиция цепочки) ДО обхода секций: `endpoints`
+     │      │     идёт в шаблоне раньше `outbounds`, и чистка внутри одной
+     │      │     секции не увидела бы ссылку из другой. Висячие ссылки,
+     │      │     кольца через рёбра разных видов, опустевшие группы и
+     │      │     инварианты цепочек деградируют ОДИН элемент с warning,
+     │      │     вместо того чтобы отдать ядру конфиг, который оно
+     │      │     отвергнет целиком. finalOutboundTags мутируется — секция
+     │      │     route видит итоговое множество тегов. При ForPreview
+     │      │     проход пропускается.
+     │      └─ buildSection на каждый ключ:
+     │            outbounds → ApplyTLSTransforms (SPEC 092) → эмиссия
+     │            dns       → MergeDNSSection → MergePresetsIntoDNS
+     │            route     → MergeRouteSection → MergePresetsIntoRoute
+     │
+     └─ 3. конкатенация секций в финальный JSON
      ▼
 atomic write: bin/config.json
 ```

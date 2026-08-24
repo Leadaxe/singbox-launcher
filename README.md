@@ -5,7 +5,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-Leadaxe%2Fsingbox--launcher-blue)](https://github.com/Leadaxe/singbox-launcher)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.25%2B-blue)](https://golang.org/)
-[![Version](https://img.shields.io/badge/version-1.3.1-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
+[![Version](https://img.shields.io/badge/version-1.4.2-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
 
 **Desktop platform for network routing and traffic analysis. 13 VPN protocols, configuration depth and API at enterprise level. Built on top of the [sing-box-lx](https://github.com/Leadaxe/sing-box-lx) fork (upstream sing-box + XHTTP transport + AmneziaWG 2.0) as execution engine — on every platform, including the Windows 7 32-bit legacy build. Drives its own core and, over a mutually-authenticated channel, the cores of remote machines — a router or a VPS — each with its own config.**
 
@@ -24,7 +24,7 @@ Four layers that together define the product:
 - **User layer** — one-button start/stop, subscription URL → working VPN flow, server picker with ping, declarative rules via checkboxes, Traffic Profiler window with per-process attribution.
 - **Power layer** — Configurator with full sing-box rule semantics (CIDR, domain regex, process matching, sniff, GeoIP/Geosite via SRS), preset bundles with `if`/`if_or` conditions, DNS server selection with conditional rules.
 - **Fleet layer** — the **Remote** tab manages other machines (router, VPS, another Mac) running the core as a daemon: each has its own wizard profile and built config, its own Start/Stop and Deploy, its own traffic profiler and host telemetry window.
-- **Headless layer** — bearer-auth Debug API on `127.0.0.1`, 26 endpoints covering state read/write, action triggers, traffic capture control, and a one-shot snapshot endpoint for support workflows.
+- **Headless layer** — bearer-auth Debug API on `127.0.0.1`, ~30 local endpoints covering state read/write, action triggers, traffic capture control, and a one-shot snapshot endpoint for support workflows.
 
 ## Features
 
@@ -53,11 +53,15 @@ Four layers that together define the product:
 - **User rules** — five typed kinds: IP / CIDR, domain (suffix / keyword / regex), process (name or path regex), SRS URL, raw JSON.
 - **17+ matchers** — domain, IP CIDR, ports, network, protocol, process, package name, GeoSite / GeoIP via SRS, composite rules with `invert`.
 - **Per-rule outbound chains** through selectors (urltest / failover).
+- **Hop chains** — a route through several hops in a row (`you → hop 1 → hop 2 → the site`), added from the ⋮ menu on *Sources* as a third source kind next to a subscription and a single server. A position may be a node, a subscription group or a Direction, so switching a group changes the path without a restart. The chain then behaves like any other server: Directions pick it up and an auto-select group measures the whole multi-hop route. The **Info** window probes it layer by layer, so the `(+N)` delta names the hop that costs the latency. Needs a core built with `with_lx_chain`; on an older one the chain simply does not appear and the launcher says which core you have.
+- **Directions** — a named routing target with its own node filter and an optional auto-select twin. A rule points at the Direction, not at a node tag: provider tags are regenerated on every subscription update, so a node-targeted rule breaks the moment the provider renames it.
+- **Fold a subscription into a group** — one checkbox instead of the old four flags: a fifty-node subscription arrives as one entry (selector, auto-select, or a selector with an auto-select default).
 - **SRS auto-download** — missing-file `⚠` badge on Wizard open; engine never tries to fetch SRS over a not-yet-up VPN.
 
 ### DNS
 
-- **Multiple DNS servers** with independent enable/disable (UDP / DoH / local).
+- **DNS servers set up with a form, not raw JSON** — one form per kind that people actually use (UDP, TCP, DoT, DoH and a group), with the fields that kind needs and nothing else. The channel a query travels through is picked from the list of Directions. Raw JSON stays on its own tab for the types without a form (hosts, fakeip, dhcp, quic/h3).
+- **DNS groups** — several resolvers behind one name: the group queries its members and takes the fastest answer, so one dead resolver no longer stalls name resolution.
 - **Per-domain DNS rules** routing specific names to specific servers.
 - **Resolve strategy**: `prefer_ipv4` / `prefer_ipv6` / `ipv4_only` / `ipv6_only`.
 
@@ -87,22 +91,23 @@ Four layers that together define the product:
 
 ### Power tools
 
-- **Debug API** — local HTTP API (26 endpoints, bearer-auth, off by default) for state read/write, action triggers, traffic capture control. See [Headless control plane](#headless-control-plane--debug-api).
-- **Configurator** — 7-tab visual editor (Target / Sources / Outbounds / Rules / DNS / Settings / Preview) with schema validation, named state snapshots, atomic save. The **Target** tab decides which machine the config is built for — this one, or a paired remote machine with its own OS/architecture and optional gateway role.
+- **Debug API** — local HTTP API (~30 local endpoints plus the `/remote/*` and `/daemon/*` groups; bearer-auth, off by default) for state read/write, action triggers, traffic capture control. See [Headless control plane](#headless-control-plane--debug-api).
+- **Configurator** — 7-tab visual editor (Target / Sources / Directions / Rules / DNS / Settings / Files) with schema validation, named state snapshots, atomic save. The **Target** tab decides which machine the config is built for — this one, or a paired remote machine with its own OS/architecture and optional gateway role.
+- **LX Backup** — carry settings between the desktop launcher and LxBox on your phone: *Settings → Backup* exports subscriptions, servers, rules, DNS and portable variables into one file and imports one back. Anything the other side has no place for travels along untouched, so a backup that passed through the phone does not come back impoverished.
 - **Snapshot for support** — `GET /debug/snapshot` or **Copy snapshot** button packages template + state + cache + config into a single JSON for bug reports.
 - **Verbose toggle** — `🔬 dbg` button in Traffic Profiler flips sing-box `log_level=debug` with atomic rebuild and revert.
 
 ### Distribution
 
 - **Cross-platform** — Windows 10/11 (fully tested), Windows 7 via legacy build, macOS 11+ universal (Apple Silicon + Intel), Linux (build from source).
-- **11 UI locales** — English, Russian, German, Spanish, French, Italian, Japanese, Korean, Brazilian Portuguese, Turkish, Chinese.
+- **English and Russian UI** — the English text at the call site *is* the translation key (SPEC 111), so English lives in the code and `bin/locale/ru.json` carries the Russian catalogue.
 - **Self-update** — pinned sing-box version auto-downloaded on mismatch; launcher self-update check at startup with notification (no silent installation).
 
 ## Quick start
 
 1. Download from [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases) and install (see [Installation](#installation)).
 2. Open the app → **Local** tab → click **Download** to fetch the matching `sing-box` binary (and `wintun.dll` on Windows). The core is the `sing-box-lx` fork (XHTTP + AmneziaWG 2.0) from its GitHub Releases — on every platform, including the Windows 7 32-bit `legacy-windows-7` build (with a GitHub-proxy mirror fallback if GitHub is blocked).
-3. Click **Wizard** → paste your subscription URL on the **Sources** tab → step through Outbounds / Rules / DNS / Settings / Preview → **Save**.
+3. Click **Wizard** → paste your subscription URL on the **Sources** tab → step through Directions / Rules / DNS / Settings / Files → **Save**.
 4. Back on **Local** → **Start**. Servers are in the same tab's left column; monitor traffic via the **Traffic Profiler** button in Diagnostics.
 
 ### Command-line flags
@@ -196,7 +201,7 @@ Keyboard shortcuts (work regardless of which tab is focused, unless a text field
 
 ### Headless control plane — Debug API
 
-Local HTTP API on `127.0.0.1`, bearer-auth, off by default. 26 endpoints in five groups:
+Local HTTP API on `127.0.0.1`, bearer-auth, off by default. ~30 local endpoints in five groups (plus the `/remote/*`, `/daemon/*` and `/chains/*` groups when their capability is on):
 
 | Group | Coverage |
 | --- | --- |
@@ -255,7 +260,7 @@ User Agent: `singbox-launcher/<version> (<os> <arch>)`. Privacy controls in Sett
 - **Universal** (recommended): macOS 11+ (Big Sur), supports Apple Silicon and Intel.
 - **Intel-only legacy build**: macOS 10.15+ (Catalina).
 - [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — fork core (XHTTP + AmneziaWG 2.0) auto-downloaded via the Local tab.
-- **Daemon mode** (optional, macOS only) additionally needs a core built with the `lxd` subcommand (`with_lx_command`). The pinned `RequiredCoreVersion` (`1.14.0-lx.26`) ships it. See [docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md).
+- **Daemon mode** (optional, macOS only) additionally needs a core built with the `lxd` subcommand (`with_lx_command`). The pinned `RequiredCoreVersion` ships it (the current value lives in `internal/constants/constants.go` — the single source of truth). See [docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md).
 
 ### Linux
 

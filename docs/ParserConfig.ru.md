@@ -10,7 +10,7 @@
 
 ## Назначение
 
-Парсер обновляет файл `bin/config.json`, загружая подписки (см. таблицу [«Поддерживаемые протоколы»](#поддерживаемые-протоколы) ниже — 13 протоколов: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS), фильтруя и группируя их в селекторы. Результат записывается в секции между маркерами `/** @ParserSTART */` и `/** @ParserEND */` (outbounds), а узлы WireGuard — между `/** @ParserSTART_E */` и `/** @ParserEND_E */` (endpoints). Секция **endpoints** (WireGuard) поддерживается в sing-box начиная с версии **1.11**.
+Парсер обновляет файл `bin/config.json`, загружая подписки (см. таблицу [«Поддерживаемые протоколы»](#поддерживаемые-протоколы) ниже — 14 протоколов: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS, HTTP(S) CONNECT-прокси), фильтруя и группируя их в селекторы. Результат записывается в секции между маркерами `/** @ParserSTART */` и `/** @ParserEND */` (outbounds), а узлы WireGuard — между `/** @ParserSTART_E */` и `/** @ParserEND_E */` (endpoints). Секция **endpoints** (WireGuard) поддерживается в sing-box начиная с версии **1.11**.
 
 ### Поддерживаемые протоколы
 
@@ -20,7 +20,7 @@
 | 2 | `vmess://` | `vmess` | `outbounds[]` | core (+ **`with_xhttp`**) | Base64 JSON или legacy cleartext `method:uuid@host:port`. `net=h2`→`http`+TLS; `net=xhttp`→**`xhttp`**, `net=httpupgrade`→`httpupgrade` (разные транспорты). |
 | 3 | `trojan://` | `trojan` | `outbounds[]` | core | Те же transport/TLS, что и VLESS. Пароль в userinfo. |
 | 4 | `ss://` | `shadowsocks` | `outbounds[]` | core | SIP002 + legacy `ss://base64("method:password@host:port")`. Методы — фиксированный allow-list (2022-blake3, AEAD GCM, ChaCha20-Poly1305). |
-| 5 | `hysteria2://`, `hy2://` | `hysteria2` | `outbounds[]` | core (QUIC) | Multi-port (`mport`/`ports` query или `host:123,5000-6000` в authority); obfs только `salamander`. |
+| 5 | `hysteria2://`, `hy2://` | `hysteria2` | `outbounds[]` | core (QUIC) | Multi-port (`mport`/`ports` query или `host:123,5000-6000` в authority); obfs — `salamander` или `gecko` (ядро форка умеет оба). |
 | 6 | `ssh://` | `ssh` | `outbounds[]` | core | **Собственный URI-диалект singbox-launcher**, не RFC. Inline-ключ / путь к ключу / passphrase / host_key. |
 | 7 | `socks5://`, `socks://` | `socks` (version=5) | `outbounds[]` | core | User/pass опциональны. Поле фильтра `scheme` сохраняет оригинал (`socks5` vs `socks`). |
 | 8 | `naive+https://`, `naive+quic://` | `naive` | `outbounds[]` | **sing-box ≥ 1.13.0** + build tag **`with_naive_outbound`** (ядро форка `1.14.0-lx.4+` — все desktop-платформы; на Windows нужен `libcronet.dll`, лаунчер ставит его сам). На ядре без поддержки ноды **деградируются с warning**, конфиг не ломается. | DuckSoft 2020 URI-диалект. `extra-headers=` (CRLF-разделённые пары). TLS только `server_name`. |
@@ -29,6 +29,7 @@
 | 11 | `vpn://` | `wireguard` | **`endpoints[]`** | как №9 | Профиль **Amnezia** (`.vpn`-файл: base64url + qCompress + JSON, SPEC 075): импортируется WG/AWG-контейнер, конвертация в канонический `wireguard://`-URI. См. секцию Amnezia (`vpn://`) ниже. |
 | 12 | `masque://` | `masque` | `outbounds[]` | **ядро форка `1.14.0-lx.26+`** (схема `vhttp`+`tls`, core SPEC 062) | **Собственный URI-диалект singbox-launcher.** MASQUE / CONNECT-IP (RFC 9484) — целые IP-пакеты поверх HTTP/3 (`h3`) или HTTP/2 (`h2`), в первую очередь Cloudflare WARP. Ключи base64(DER), адреса туннеля в `address=`. Узлы обычно создаёт мастер WARP. См. секцию MASQUE (`masque://`) ниже. |
 | 13 | `anytls://` | `anytls` | `outbounds[]` | core (ядро rc.17+: `option/anytls.go`) | Пароль в userinfo, обязательный TLS-блок; тюнинг session-пула (`idle_session_check_interval`, `idle_session_timeout`, `min_idle_session`). Спека SPEC 091. |
+| 14 | `proxy-http://`, `proxy-https://` (алиасы `proxy+http://`, `proxy+https://`) | `http` | `outbounds[]` | core | **HTTP(S) CONNECT-прокси** (SPEC 103 §9.B6, конвенция LxBox). Учётные данные в userinfo; `proxy-https` добавляет TLS (порт по умолчанию 443, без TLS — 80). Своя схема вместо голого `http(s)://`, потому что тот означает **источник-подписку** и перехватывается выше по стеку раньше, чем мог бы быть прочитан как узел. |
 
 Кроме URI, поле Add принимает **голый `[Interface]/[Peer]`-текст** (`.conf` WireGuard/AmneziaWG, включая AWG-поля) — conf-блоки распознаются до построчного разбора и конвертируются в `wireguard://`-URI (SPEC 076); см. секцию про `.conf`-текст ниже.
 
@@ -74,6 +75,45 @@
 **Пример и код**
 
 Структура как у публичных Xray-подписок (**`dns`**, **`inbounds`**, **`log`**, **`mux`**, **`tcpSettings`**, **`routing`**, **`freedom`/`blackhole`**), с вымышленными данными: **`docs/examples/xray_subscription_array_sample.json`**. Тот же сценарий в тестах: **`core/config/subscription/testdata/xray_provider_anon.json`** (`go:embed` в **`xray_json_array_test.go`**). Реализация: **`xray_json_array.go`**, **`xray_outbound_convert.go`**, **`decoder.go`** (`DecodeSubscriptionContent`), **`source_loader.go`** (`LoadNodesFromSource`, **`applyTagsToXrayNode`**), configurator: **`ui/configurator/tabs/source_tab.go`** (`refreshOneSourceFromUI`).
+
+### Коды деградации на узле
+
+Ссылка из публичной подписки сплошь и рядом кривая не по вине пользователя:
+мусорный `fp=`, `packet_encoding` вне allowlist, неизвестный ядру тип обфускации.
+Правило парсера — **деградируй узел, а не конфиг**: одно битое значение не должно
+заставлять `sing-box check` отвергнуть весь файл и оставить пользователя без VPN.
+
+Но деградация, доехавшая только до `debuglog`, невидима: UI и LxBox показывают
+узел как ни в чём не бывало. Поэтому выживший узел несёт машиночитаемые коды
+всего, что было молча подправлено:
+
+- `configtypes.ParsedNode.Warnings []string`, добавляются через `AddWarning`
+  (с дедупликацией).
+- Нормативный словарь — **`contract/registry/warnings.json`**, общий с LxBox:
+  обе стороны сообщают об одном событии одним именем.
+- Go-константы живут в `core/config/subscription/parse_warnings.go`.
+
+Коды делятся на два вида, и деление осознанное:
+
+| Вид | Severity | Где живёт |
+|---|---|---|
+| Узел **выжил**, значение подправлено | `info` / `warning` | на узле, в `Warnings[]` |
+| Узел **отброшен** на разборе | `error` | в причине отброса — объекта `ParsedNode` не существует |
+
+Примеры первого вида: `masque_vhttp_invalid` (`vhttp` вне `{h3,h2}` принудительно
+становится `h3`), `naive_padding_ignored`, `packet_encoding_unknown`,
+`ws_early_data_converted` (хвост Xray `?ed=N` разложен на `max_early_data` +
+`early_data_header_name` — путь в конфиге намеренно не тот, что в ссылке),
+`amnezia_container_choice` (в профиле `vpn://` было несколько контейнеров, и
+одиночный путь взял один).
+
+Примеры второго: `ss_method_invalid`, `port_invalid`, `awg_headers_overlap` —
+ядро отвергает такой endpoint на загрузке, то есть падает *весь* конфиг, поэтому
+узел выбрасывается ещё на разборе.
+
+Тест-страж (`registry_sync_test.go`) держит обе стороны честными: каждый Go-код
+обязан быть в реестре, а код, который никогда не вешается на узел, обязан быть
+объявлен как `severity: error`.
 
 ## Документы и исходный код парсера URI
 
@@ -183,7 +223,7 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
     {
       // URL подписки (Base64, plain-текст или JSON-массив конфигов Xray)
       // Поддерживаются: VLESS, VMess, Trojan, Shadowsocks, Hysteria2,
-      // TUIC, SSH, SOCKS5, NaïveProxy, WireGuard/AWG, Amnezia, MASQUE, AnyTLS.
+      // TUIC, SSH, SOCKS5, NaïveProxy, WireGuard/AWG, Amnezia, MASQUE, AnyTLS, HTTP(S) CONNECT-прокси.
       // См. таблицу «Поддерживаемые
       // протоколы» в начале документа.
       "source": "https://your-subscription-url.com/subscription",
@@ -322,7 +362,7 @@ Round-trip и выборочные сценарии: `core/config/subscription/s
 
 | Поле          | Тип      | Обязательное | Описание |
 |---------------|----------|--------------|----------|
-| `source`      | string   | Да           | URL подписки. Все 13 протоколов из таблицы [«Поддерживаемые протоколы»](#поддерживаемые-протоколы): VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS. Допускаются Base64 и plain-текст; также **JSON-массив** полных конфигов Xray (`[ {...}, ... ]`), см. выше. |
+| `source`      | string   | Да           | URL подписки. Все 14 протоколов из таблицы [«Поддерживаемые протоколы»](#поддерживаемые-протоколы): VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS, HTTP(S) CONNECT-прокси. Допускаются Base64 и plain-текст; также **JSON-массив** полных конфигов Xray (`[ {...}, ... ]`), см. выше. |
 | `connections` | array    | Нет          | Массив прямых ссылок. Все 13 схем из таблицы [«Поддерживаемые протоколы»](#поддерживаемые-протоколы): `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`/`hy2://`, `tuic://`, `ssh://`, `socks5://`/`socks://`, `naive+https://`/`naive+quic://`, `wireguard://`/`awg://`, `vpn://` (Amnezia), `masque://`, `anytls://`. Можно комбинировать с подписками. Узлы WireGuard попадают в секцию `endpoints` конфига (sing-box ≥ 1.11). NaïveProxy требует sing-box ≥ 1.13.0 + build tag `with_naive_outbound` (ядро форка `1.14.0-lx.4+`). Подробнее — раздел [Форматы URI для прямых ссылок](#форматы-uri-для-прямых-ссылок). |
 | `skip`        | array    | Нет          | Список фильтров. Если хотя бы один совпал — узел пропускается. |
 | `tag_prefix`  | string   | Нет          | Префикс, добавляемый ко всем тегам узлов из этого источника (версия 4). Применяется перед оригинальным тегом. Поддерживает переменные: `{$tag}`, `{$scheme}`, `{$protocol}`, `{$server}`, `{$port}`, `{$label}`, `{$comment}`, `{$num}`. Игнорируется, если указан `tag_mask`. |
@@ -782,7 +822,7 @@ ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@server.com:443#Shadowsocks Server
 Дальше sing-box сам разруливает: при наличии `server_ports` (список) клиент open'ит по любому из них.
 
 **Параметры query string (согласно официальной спецификации):**
-- `obfs` - тип обфускации (в настоящее время поддерживается только `salamander`)
+- `obfs` — тип обфускации: `salamander` или `gecko`. Неизвестный тип деградирует узел до «без обфускации» с предупреждением, а не роняет конфиг; обфускация без пароля тоже оставляет узел рабочим (`node_parser_hysteria2.go`).
 - `obfs-password` - пароль для указанного типа обфускации
 - `sni` - Server Name Indication для TLS соединений
 - `insecure`, **`allowInsecure` / `allowinsecure`** — небезопасный TLS (как у VLESS: `1` / `true` / `yes`); также учитывается `skip-cert-verify`, но он признаётся только в точных формах `true` / `1`

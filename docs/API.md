@@ -20,7 +20,7 @@ export API="http://127.0.0.1:9263"
 # 4. Check
 curl -s "$API/ping"                                    # → {"ok":true}    (no auth)
 curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
-# → {"launcher":"v1.2.2","singbox":"1.14.0-lx.5","api":"debugapi/v1"}
+# → {"launcher":"v1.2.2","singbox":"1.14.0-lx.27-rc.6","api":"debugapi/v1"}
 ```
 
 ---
@@ -51,7 +51,7 @@ The API is **self-describing** (SPEC 078): point an agent at the base URL with t
 | GET | `/ping` | — | `{"ok":true}` |
 | GET | `/` | ✓ | **Manifest** — `api`, `spec`, `launcher`, `core`, `auth`, `docs` (version-pinned link to this file), `hint`, `endpoints[]` (method/path/summary). |
 | GET | `/help` | ✓ | `{"endpoints":[{method,path,summary,auth}, …]}` — just the endpoint list. |
-| GET | `/version` | ✓ | `{"launcher":"v…","singbox":"1.14.0-lx.5","api":"debugapi/v1"}` |
+| GET | `/version` | ✓ | `{"launcher":"v…","singbox":"1.14.0-lx.27-rc.6","api":"debugapi/v1"}` |
 
 An authed request to any **unknown** path returns `404` with a `docs` pointer, so an agent that guessed wrong is nudged back to `/` and this file.
 
@@ -93,7 +93,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/state/full" > backup.json
 
 ## State write
 
-Every patch endpoint returns `{"ok":true,"diff_summary":["..."]}` on success. The write is synchronous through `state.Save` → atomic `.tmp + Rename`; there is **no per-path mutex** (it relies on the atomic write — concurrent PATCHes are safe from partial writes, but it is last-write-wins).
+Every patch endpoint returns `{"ok":true,"diff_summary":["..."]}` on success. The write is synchronous through `state.Save` → atomic `.tmp + Rename`; the whole load-modify-save cycle is **serialized by a mutex** (`stateMu` for `/state/*`, `settingsMu` for `/settings/*`), so two concurrent PATCHes cannot lose one side's edit. Remote machines get a **per-machine** mutex — patching two different machines does not queue.
 
 | Method | Path | Body | What it does |
 |---|---|---|---|
@@ -233,7 +233,7 @@ Response shape:
 {
   "captured_at": "2026-05-28T12:00:00Z",
   "launcher_version": "v1.2.2",
-  "singbox_version": "1.14.0-lx.5",
+  "singbox_version": "1.14.0-lx.27-rc.6",
   "files": { "state.json": "...", "config.json": "...", "wizard_template.json": "..." },
   "missing": ["cache.json"],
   "errors": { "config.json": "read: permission denied" }
@@ -337,6 +337,48 @@ start/stop under the daemon engine goes through the shared
 
 ---
 
+## Chains `/chains/*` (SPEC 110)
+
+Gated exactly like `/daemon/*` — the group is registered only when the local
+daemon is wired in (`capabilities.daemon`), because the layered probe rides the
+daemon's gRPC plane.
+
+| Method | Path | What it does |
+|---|---|---|
+| GET | `/chains` | Chain runtime state: positions, the node each one currently resolves to, clone status |
+| POST | `/chains/{tag}/probe` | Layer-by-layer latency probe of one chain |
+
+**Probe body** — `{repeat?, timeout_ms?, link?}`. Defaults and clamps:
+`repeat` = 2 (max 10), `timeout_ms` = 15000 (max 120000), `link` falls back to
+the UI's own ping URL so debug numbers stay comparable with the Servers tab.
+
+`repeat` defaults to **2, not 1**: the first run brings the tunnels up (WG
+handshake, QUIC session) and is inflated several-fold. The response marks it
+`warm_up` rather than hiding it, so the discrepancy is explained instead of
+looking like jitter. `timeout_ms` is **per position**, not for the whole run —
+the point is to let a slow hop answer and show its real cost instead of being
+cut off together with the rest.
+
+**Response** carries `runs[]` (each with `layers[]`: `pos`, `tag`, `probe_tag`,
+`transparent`, `delay_ms`, `error`), the per-hop `deltas[]`, and `worst`.
+
+> **`probe_tag` is authoritative — do not reconstruct it.** A chain reserves the
+> service tags `<chain>#<i>` for its own links (`config.ChainLayerTag`): `T#0` is
+> the path up to and including position 0, `T#1` up to position 1, and so on.
+> These exist only inside the running core — they are deliberately absent from
+> `GetOutbounds` and the Clash API. Chain tags contain emoji and hashes, so the
+> response hands you the exact string rather than a naming rule to re-implement.
+
+**Status codes** map the core's gRPC errors: `501` — the core was built without
+`with_lx_command` (the single most common cause), `502` Unavailable, `504`
+DeadlineExceeded, `422` FailedPrecondition / InvalidArgument.
+
+Layered probing also works for a **remote** machine
+(`LxdRemoteTransport.ProbeLayer`) — measured **on the router's side**, not from
+this host, so the numbers describe the router's channel to each hop.
+
+---
+
 ## Raw passthrough
 
 A tunnel to a **paired** daemon — a remote machine or the local one. Channel,
@@ -384,7 +426,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 - **Auth header:** `Authorization: Bearer <token>` is required everywhere except `GET /ping`.
 - **Content-Type:** `application/json` for every PATCH/POST that carries a body.
 - **Errors:** `401` — missing/invalid bearer; `404` — resource not found; `405` — method not allowed; `409` — state conflict (traffic session); `422` — semantic validation failure; `500` — internal error.
-- **Concurrency:** state writes go through an atomic `.tmp + Rename`; there is no per-resource mutex — concurrent PATCHes are safe from partial writes, but it is **last-write-wins**, not a merge.
+- **Concurrency:** state writes go through an atomic `.tmp + Rename`, and the load-modify-save cycle is serialized by a mutex (`stateMu` / `settingsMu`; per-machine for remote state). Concurrent PATCHes to the same resource queue rather than overwrite each other.
 - **Versioning:** the `api` field in `/version` is currently fixed at `debugapi/v1`. Breaking changes are planned as a `v2` namespace (`/v2/...`), with no auto-discovery for now.
 
 ---

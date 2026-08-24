@@ -10,7 +10,7 @@
 
 ## Purpose
 
-The parser updates `bin/config.json` by loading subscriptions (see the [«Supported protocols»](#supported-protocols) table below — 13 protocols: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS), filtering them and grouping them into selectors. The result is written between the `/** @ParserSTART */` and `/** @ParserEND */` markers (outbounds); WireGuard nodes go between `/** @ParserSTART_E */` and `/** @ParserEND_E */` (endpoints). The **endpoints** section (WireGuard) is supported by sing-box from version **1.11** on.
+The parser updates `bin/config.json` by loading subscriptions (see the [«Supported protocols»](#supported-protocols) table below — 14 protocols: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS, HTTP(S) CONNECT proxy), filtering them and grouping them into selectors. The result is written between the `/** @ParserSTART */` and `/** @ParserEND */` markers (outbounds); WireGuard nodes go between `/** @ParserSTART_E */` and `/** @ParserEND_E */` (endpoints). The **endpoints** section (WireGuard) is supported by sing-box from version **1.11** on.
 
 ### Supported protocols
 
@@ -20,7 +20,7 @@ The parser updates `bin/config.json` by loading subscriptions (see the [«Suppor
 | 2 | `vmess://` | `vmess` | `outbounds[]` | core (+ **`with_xhttp`**) | Base64 JSON or legacy cleartext `method:uuid@host:port`. `net=h2`→`http`+TLS; `net=xhttp`→**`xhttp`**, `net=httpupgrade`→`httpupgrade` (distinct transports). |
 | 3 | `trojan://` | `trojan` | `outbounds[]` | core | Same transport/TLS as VLESS. Password in the userinfo. |
 | 4 | `ss://` | `shadowsocks` | `outbounds[]` | core | SIP002 + legacy `ss://base64("method:password@host:port")`. Methods are a fixed allow-list (2022-blake3, AEAD GCM, ChaCha20-Poly1305). |
-| 5 | `hysteria2://`, `hy2://` | `hysteria2` | `outbounds[]` | core (QUIC) | Multi-port (`mport`/`ports` query, or `host:123,5000-6000` in the authority); obfs is `salamander` only. |
+| 5 | `hysteria2://`, `hy2://` | `hysteria2` | `outbounds[]` | core (QUIC) | Multi-port (`mport`/`ports` query, or `host:123,5000-6000` in the authority); obfs is `salamander` or `gecko` (the fork's core supports both). |
 | 6 | `ssh://` | `ssh` | `outbounds[]` | core | **A singbox-launcher URI dialect**, not an RFC. Inline key / key path / passphrase / host_key. |
 | 7 | `socks5://`, `socks://` | `socks` (version=5) | `outbounds[]` | core | User/pass optional. The `scheme` filter field keeps the original (`socks5` vs `socks`). |
 | 8 | `naive+https://`, `naive+quic://` | `naive` | `outbounds[]` | **sing-box ≥ 1.13.0** + build tag **`with_naive_outbound`** (fork core `1.14.0-lx.4+` — all desktop platforms; on Windows `libcronet.dll` is required and the launcher ships it). On a core without support such nodes are **degraded with a warning** instead of breaking the config. | DuckSoft 2020 URI dialect. `extra-headers=` (CRLF-separated pairs). TLS carries `server_name` only. |
@@ -29,10 +29,11 @@ The parser updates `bin/config.json` by loading subscriptions (see the [«Suppor
 | 11 | `vpn://` | `wireguard` | **`endpoints[]`** | same as #9 | An **Amnezia** profile (a `.vpn` file: base64url + qCompress + JSON, SPEC 075): the WG/AWG container is imported and converted into a canonical `wireguard://` URI. See the Amnezia (`vpn://`) section below. |
 | 12 | `masque://` | `masque` | `outbounds[]` | **fork core `1.14.0-lx.26+`** (the `vhttp`+`tls` schema, core SPEC 062) | **A singbox-launcher URI dialect.** MASQUE / CONNECT-IP (RFC 9484) — whole IP packets over HTTP/3 (`h3`) or HTTP/2 (`h2`), primarily Cloudflare WARP. base64(DER) keys, tunnel addresses in `address=`. Nodes are usually produced by the WARP wizard. See the MASQUE (`masque://`) section below. |
 | 13 | `anytls://` | `anytls` | `outbounds[]` | core (core rc.17+: `option/anytls.go`) | Password in the userinfo, mandatory TLS block; session-pool tuning (`idle_session_check_interval`, `idle_session_timeout`, `min_idle_session`). SPEC 091. |
+| 14 | `proxy-http://`, `proxy-https://` (aliases `proxy+http://`, `proxy+https://`) | `http` | `outbounds[]` | core | **HTTP(S) CONNECT proxy** (SPEC 103 §9.B6, LxBox convention). Credentials in the userinfo; `proxy-https` adds TLS (default port 443, plain 80). A custom scheme rather than a bare `http(s)://` because those are a **subscription source**, intercepted upstream before they could ever be read as a node. |
 
 Besides URIs, the Add field accepts **raw `[Interface]/[Peer]` text** (a WireGuard/AmneziaWG `.conf`, AWG fields included) — conf blocks are detected before line-by-line parsing and converted into `wireguard://` URIs (SPEC 076); see the `.conf` text section below.
 
-**Not supported** (explicitly, not implemented): **ShadowTLS**, **Mieru**, **Hysteria 1** (v2 only), **ShadowsocksR / SSR**, **Tor**, a plain HTTP proxy as a node type (an `http(s)://...` URL is always a **subscription source**, never a node). Selectors (`selector`, `urltest`, `direct`, `block`, `dns`) are not URI protocols; they are assembled on the ParserConfig side (see the [`outbounds` section](#the-outbounds-section)).
+**Not supported** (explicitly, not implemented): **ShadowTLS**, **Mieru**, **Hysteria 1** (v2 only), **ShadowsocksR / SSR**, **Tor**, a bare `http(s)://...` URL as a node (it is always a **subscription source**; the node form is `proxy-http://` / `proxy-https://`, row 14 above). Selectors (`selector`, `urltest`, `direct`, `block`, `dns`) are not URI protocols; they are assembled on the ParserConfig side (see the [`outbounds` section](#the-outbounds-section)).
 
 ### The xhttp transport and AmneziaWG
 
@@ -74,6 +75,45 @@ With **`streamSettings.sockopt.dialerProxy`** (or **`dialer`**) pointing at an o
 **Example and code**
 
 A structure like the public Xray subscriptions (**`dns`**, **`inbounds`**, **`log`**, **`mux`**, **`tcpSettings`**, **`routing`**, **`freedom`/`blackhole`**), with made-up data: **`docs/examples/xray_subscription_array_sample.json`**. The same scenario in tests: **`core/config/subscription/testdata/xray_provider_anon.json`** (`go:embed` in **`xray_json_array_test.go`**). Implementation: **`xray_json_array.go`**, **`xray_outbound_convert.go`**, **`decoder.go`** (`DecodeSubscriptionContent`), **`source_loader.go`** (`LoadNodesFromSource`, **`applyTagsToXrayNode`**), configurator: **`ui/configurator/tabs/source_tab.go`** (`refreshOneSourceFromUI`).
+
+### Degradation codes on a node
+
+A link from a public subscription is routinely wrong in ways that are *not* the
+user's fault: a junk `fp=`, an out-of-allowlist `packet_encoding`, an obfuscation
+type the core does not know. The parser's rule is **degrade the node, not the
+config** — one broken value must never make `sing-box check` reject the whole file
+and leave the user without a VPN.
+
+But a degradation that only reaches `debuglog` is invisible: the UI and LxBox show
+the node as if nothing happened. So a surviving node carries the machine-readable
+codes of everything that was silently adjusted:
+
+- `configtypes.ParsedNode.Warnings []string`, appended via `AddWarning` (deduped).
+- The normative dictionary is **`contract/registry/warnings.json`** — shared with
+  LxBox, so both apps report the same event by the same name.
+- `core/config/subscription/parse_warnings.go` holds the Go constants.
+
+Codes split into two kinds, and the split is deliberate:
+
+| Kind | Severity | Where it lives |
+|---|---|---|
+| The node **survives**, a value was adjusted | `info` / `warning` | on the node, in `Warnings[]` |
+| The node is **dropped** at parse time | `error` | in the drop reason — there is no `ParsedNode` to mark |
+
+Examples of the first kind: `masque_vhttp_invalid` (a `vhttp` outside `{h3,h2}` is
+forced to `h3`), `naive_padding_ignored`, `packet_encoding_unknown`,
+`ws_early_data_converted` (an Xray `?ed=N` tail split into `max_early_data` +
+`early_data_header_name` — the path in the config is deliberately not the one in
+the link), `amnezia_container_choice` (a `vpn://` profile held several containers
+and the single-node path took one).
+
+Examples of the second: `ss_method_invalid`, `port_invalid`,
+`awg_headers_overlap` — the core rejects such an endpoint at load, i.e. the *whole*
+config fails, so the node is skipped during parsing instead.
+
+A guard test (`registry_sync_test.go`) keeps the two sides honest: every Go code
+must exist in the registry, and a code that is never attached to a node must be
+declared `severity: error`.
 
 ## Documents and URI-parser source code
 
@@ -183,7 +223,7 @@ The contents of `parser_config` in `state.json` (formerly the `@ParserConfig` bl
     {
       // Subscription URL (Base64, plain text, or a JSON array of Xray configs)
       // Supported: VLESS, VMess, Trojan, Shadowsocks, Hysteria2,
-      // TUIC, SSH, SOCKS5, NaïveProxy, WireGuard/AWG, Amnezia, MASQUE, AnyTLS.
+      // TUIC, SSH, SOCKS5, NaïveProxy, WireGuard/AWG, Amnezia, MASQUE, AnyTLS, HTTP(S) CONNECT proxy.
       // See the "Supported protocols" table at the top of this document.
       "source": "https://your-subscription-url.com/subscription",
       
@@ -321,7 +361,7 @@ An array of objects describing proxy-server sources.
 
 | Field          | Type      | Required | Description |
 |---------------|----------|--------------|----------|
-| `source`      | string   | Yes           | The subscription URL. All 13 protocols from the [«Supported protocols»](#supported-protocols) table: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS. Base64 and plain text are both accepted, as is a **JSON array** of full Xray configs (`[ {...}, ... ]`), see above. |
+| `source`      | string   | Yes           | The subscription URL. All 14 protocols from the [«Supported protocols»](#supported-protocols) table: VLESS, VMess, Trojan, Shadowsocks, Hysteria2, SSH, SOCKS5, NaïveProxy, WireGuard/AmneziaWG, TUIC, Amnezia (`vpn://`), MASQUE, AnyTLS, HTTP(S) CONNECT proxy. Base64 and plain text are both accepted, as is a **JSON array** of full Xray configs (`[ {...}, ... ]`), see above. |
 | `connections` | array    | No          | An array of direct links. All 13 schemes from the [«Supported protocols»](#supported-protocols) table: `vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`/`hy2://`, `tuic://`, `ssh://`, `socks5://`/`socks://`, `naive+https://`/`naive+quic://`, `wireguard://`/`awg://`, `vpn://` (Amnezia), `masque://`, `anytls://`. Can be combined with subscriptions. WireGuard nodes land in the config's `endpoints` section (sing-box ≥ 1.11). NaïveProxy requires sing-box ≥ 1.13.0 + the `with_naive_outbound` build tag (fork core `1.14.0-lx.4+`). More in [URI formats for direct links](#uri-formats-for-direct-links). |
 | `skip`        | array    | No          | A list of filters. If at least one matches, the node is skipped. |
 | `chain`       | object   | No          | **SPEC 110.** Makes this source a hop chain instead of a subscription or a server: `hops` (positions in packet order), `idle_timeout`, `strip_evasion`, `strip`, `rewrite`. Such a source has no `source` and no `connections` — it materializes into a single `chain` outbound whose tag comes from `tag_mask`. Requires a core built with `with_lx_chain`. See [Hop chains](#hop-chains). |
@@ -861,7 +901,7 @@ The standard URI format: `hysteria2://[auth@]hostname[:port]/?[key=value]&[key=v
 From there sing-box takes over: with `server_ports` (a list) present, the client may open on any of them.
 
 **Query-string parameters (per the official spec):**
-- `obfs` — the obfuscation type (currently only `salamander` is supported)
+- `obfs` — the obfuscation type: `salamander` or `gecko`. An unknown type degrades the node to obfuscation-off with a warning rather than taking the config down; an obfs without a password keeps working with obfuscation off (`node_parser_hysteria2.go`).
 - `obfs-password` — the password for that obfuscation type
 - `sni` — Server Name Indication for TLS connections
 - `insecure`, **`allowInsecure` / `allowinsecure`** — insecure TLS (as with VLESS: `1` / `true` / `yes`); `skip-cert-verify` is honoured too, but only in the exact forms `true` / `1`

@@ -5,7 +5,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-Leadaxe%2Fsingbox--launcher-blue)](https://github.com/Leadaxe/singbox-launcher)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.25%2B-blue)](https://golang.org/)
-[![Version](https://img.shields.io/badge/version-1.3.1-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
+[![Version](https://img.shields.io/badge/version-1.4.2-blue)](https://github.com/Leadaxe/singbox-launcher/releases)
 
 **Десктоп-платформа сетевой маршрутизации и анализа трафика. 13 VPN-протоколов, глубина настроек и API уровня Enterprise. Поверх форка [sing-box-lx](https://github.com/Leadaxe/sing-box-lx) (upstream sing-box + XHTTP + AmneziaWG 2.0) как execution-engine — на всех платформах, включая Windows 7 32-бит. Управляет своим ядром и — по взаимно аутентифицированному каналу — ядрами удалённых машин (роутер, VPS), у каждой свой конфиг.**
 
@@ -30,7 +30,7 @@
 - **Пользовательский слой** — старт/стоп одной кнопкой, поток «subscription URL → работающий VPN», переключение серверов с пингом, правила маршрутизации через чекбоксы, окно Traffic Profiler с per-process атрибуцией.
 - **Power-слой** — Configurator с полной семантикой правил sing-box (CIDR, regex доменов, process matching, sniff, GeoIP/Geosite через SRS), preset bundles с условиями `if` / `if_or`, выбор DNS-серверов с условными правилами.
 - **Флот-слой** — вкладка **Удалённые** управляет другими машинами (роутер, VPS, другой Mac), где ядро работает демоном: у каждой свой профиль визарда и собранный конфиг, свои Start/Stop и Deploy, свой профайлер трафика и окно телеметрии хоста.
-- **Headless-слой** — bearer-auth Debug API на `127.0.0.1`, 26 endpoints: чтение и запись state, action-триггеры, управление capture трафика, snapshot endpoint для support workflows.
+- **Headless-слой** — bearer-auth Debug API на `127.0.0.1`, ~30 локальных эндпоинтов: чтение и запись state, action-триггеры, управление capture трафика, snapshot endpoint для support workflows.
 
 ## Возможности
 
@@ -61,11 +61,15 @@
 - **User rules** — 5 типизированных kind'ов: IP / CIDR, домен (suffix / keyword / regex), процесс (имя или regex пути), SRS URL, raw JSON.
 - **17+ matchers** — domain, IP CIDR, ports, network, protocol, process, package name, GeoSite / GeoIP через SRS, composite rules с `invert`.
 - **Per-rule outbound chains** через селекторы (urltest / failover).
+- **Цепочки хопов** — маршрут через несколько хопов подряд (`вы → хоп 1 → хоп 2 → сайт`), добавляется из меню ⋮ на вкладке *Sources* третьим типом источника рядом с подпиской и одиночным сервером. Позицией может быть узел, группа подписки или Направление, поэтому переключение внутри группы меняет путь без перезапуска. Дальше цепочка ведёт себя как обычный сервер: её подхватывают Направления, а автовыбор сравнивает весь многохоповый маршрут по задержке. Окно **Info** меряет её послойно, и дельта `(+N)` называет хоп, который стоит этой задержки. Нужно ядро с `with_lx_chain`: на старом цепочка просто не появится, а лаунчер скажет, какое ядро стоит.
+- **Направления** — именованная цель маршрутизации со своим отбором узлов и опциональным двойником-автовыбором. Правило целится в Направление, а не в тег узла: теги провайдера пересоздаются на каждом обновлении подписки, и правило на узел ломается при первом же переименовании.
+- **Свёртка подписки в группу** — одна галка вместо прежних четырёх флагов: подписка на полсотни узлов приезжает одной записью (селектор, автовыбор или селектор с автогруппой по умолчанию).
 - **SRS auto-download** — `⚠` badge на missing-file при открытии визарда; движок не пытается скачивать SRS через ещё не поднятый VPN.
 
 ### DNS
 
-- **Несколько DNS-серверов** с независимым включением/отключением (UDP / DoH / local).
+- **DNS-серверы настраиваются формой, а не сырым JSON** — на каждый востребованный вид (UDP, TCP, DoT, DoH и группа) своя форма с нужными полями и без лишних. Канал, которым идёт запрос, выбирается из списка Направлений. Сырой JSON остался на своей вкладке — только через него доступны типы без формы (hosts, fakeip, dhcp, quic/h3).
+- **Группы DNS** — несколько резолверов под одним именем: группа опрашивает участников и берёт самый быстрый ответ, так что один мёртвый сервер больше не вешает разрешение имён.
 - **Per-domain DNS-правила** — направление конкретных имён на конкретные серверы.
 - **Resolve strategy**: `prefer_ipv4` / `prefer_ipv6` / `ipv4_only` / `ipv6_only`.
 
@@ -95,22 +99,23 @@
 
 ### Power-инструменты
 
-- **Debug API** — локальный HTTP API (26 endpoints, bearer-auth, off by default) для чтения/записи state, action-триггеров, управления capture трафика. См. [Headless control plane](#headless-control-plane--debug-api).
-- **Configurator** — 7-tab визуальный редактор (Target / Sources / Outbounds / Rules / DNS / Settings / Preview) со schema validation, named state snapshots, атомарным save. Вкладка **Target** решает, для какой машины собирается конфиг — для этой или для сопряжённой удалённой со своей ОС/архитектурой и опциональной ролью gateway.
+- **Debug API** — локальный HTTP API (~30 локальных эндпоинтов плюс группы `/remote/*` и `/daemon/*`, bearer-auth, off by default) для чтения/записи state, action-триггеров, управления capture трафика. См. [Headless control plane](#headless-control-plane--debug-api).
+- **Configurator** — 7-tab визуальный редактор (Target / Sources / Directions / Rules / DNS / Settings / Files) со schema validation, named state snapshots, атомарным save. Вкладка **Target** решает, для какой машины собирается конфиг — для этой или для сопряжённой удалённой со своей ОС/архитектурой и опциональной ролью gateway.
+- **LX Backup** — перенос настроек между десктопным лаунчером и LxBox на телефоне: *Settings → Backup* экспортирует подписки, серверы, правила, DNS и переносимые переменные в один файл и импортирует обратно. То, чему на другой стороне нет места, едет нетронутым — бэкап, побывавший на телефоне, не возвращается обеднённым.
 - **Snapshot для support** — `GET /debug/snapshot` или кнопка **Copy snapshot** упаковывает template + state + cache + config в один JSON для bug-report.
 - **Verbose toggle** — `🔬 dbg` кнопка в Traffic Profiler переключает `log_level=debug` с atomic rebuild и revert.
 
 ### Дистрибуция
 
 - **Кросс-платформенность** — Windows 10/11 (полностью протестировано), Windows 7 через legacy-сборку, macOS 11+ universal (Apple Silicon + Intel), Linux (сборка из исходников).
-- **11 локалей UI** — English, Русский, Deutsch, Español, Français, Italiano, 日本語, 한국어, Português (BR), Türkçe, 中文.
+- **Английский и русский интерфейс** — английский текст в месте вызова *и есть* ключ перевода (SPEC 111): английский живёт в коде, русский каталог — `bin/locale/ru.json`.
 - **Self-update** — pinned версия ядра (форк sing-box-lx с XHTTP + AmneziaWG, на всех платформах включая Win7/386) автоматически перекачивается при mismatch; проверка self-update лаунчера при старте с уведомлением (без тихой установки).
 
 ## Быстрый старт
 
 1. Скачайте релиз с [GitHub Releases](https://github.com/Leadaxe/singbox-launcher/releases) и установите (см. [Установка](#установка)).
 2. Откройте приложение → вкладка **Локально** → кнопка **Download** скачает `sing-box` (и `wintun.dll` на Windows). Если GitHub недоступен, работает fallback на GitHub-зеркала.
-3. Кнопка **Wizard** → вставьте subscription URL на вкладке **Sources** → пройдите Outbounds / Rules / DNS / Settings / Preview → **Save**.
+3. Кнопка **Wizard** → вставьте subscription URL на вкладке **Sources** → пройдите Directions / Rules / DNS / Settings / Files → **Save**.
 4. Назад на **Локально** → **Start**. Серверы — в левой колонке той же вкладки; за трафиком наблюдайте через кнопку **Traffic Profiler** в Diagnostics.
 
 ### Флаги командной строки
@@ -204,7 +209,7 @@ Keyboard shortcuts (работают независимо от текущей а
 
 ### Headless control plane — Debug API
 
-Локальный HTTP API на `127.0.0.1`, bearer-auth, off by default. 26 endpoints в пяти группах:
+Локальный HTTP API на `127.0.0.1`, bearer-auth, off by default. ~30 локальных эндпоинтов в пяти группах (плюс группы `/remote/*`, `/daemon/*` и `/chains/*`, когда включена их capability):
 
 | Группа | Что покрывает |
 | --- | --- |
@@ -262,7 +267,7 @@ User Agent: `singbox-launcher/<version> (<os> <arch>)`. Контроли при�
 
 - **Universal** (рекомендуется): macOS 11+ (Big Sur), поддерживает Apple Silicon и Intel.
 - **Intel-only legacy build**: macOS 10.15+ (Catalina).
-- **Daemon-режим** (опционально, только macOS) дополнительно требует ядра, собранного с сабкомандой `lxd` (`with_lx_command`). Пин `RequiredCoreVersion` (`1.14.0-lx.26`) её включает. См. [docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md).
+- **Daemon-режим** (опционально, только macOS) дополнительно требует ядра, собранного с сабкомандой `lxd` (`with_lx_command`). Пин `RequiredCoreVersion` её включает (актуальное значение — в `internal/constants/constants.go`, единственный источник истины). См. [docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md).
 - [sing-box-lx](https://github.com/Leadaxe/sing-box-lx/releases) — форк-ядро (XHTTP + AmneziaWG), авто-загрузка через вкладку Локально.
 
 ### Linux

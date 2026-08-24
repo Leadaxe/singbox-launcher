@@ -246,7 +246,7 @@ gRPC-подписки переживают Deploy/Start/Stop. Пересозда
 - **Classic не меняется.** Тот же spawn, тот же Clash API, то же поведение.
 - **Daemon — только macOS.** Весь код под darwin build-tags.
 - **Ядро должно уметь `lxd`** (`with_lx_command`). Пин `constants.RequiredCoreVersion`
-  (сейчас `1.14.0-lx.26`) эту сборку включает. Проверять границу фичи следует
+  (актуальный пин — в `internal/constants/constants.go`) эту сборку включает. Проверять границу фичи следует
   запуском бинаря (`sing-box lxd --help`), а не по номеру релиза.
 - **Clash API у remote-конфига нет** by design — отсюда и gRPC-источники для
   списка узлов и профайлера.

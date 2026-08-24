@@ -33,7 +33,7 @@
    - **Sources**: URL подписки или прямые ссылки на прокси
    - **Rules**: правила маршрута
    - **Settings**: переменные шаблона (`vars` в `wizard_template.json` — лог, Clash API, TUN на macOS и т.д.)
-   - **Preview**: просмотр `config.json`
+   - **Files**: сборка `config.json` в файл; просмотр — по кнопке, в отдельном окне
    - **Save** для сохранения
 
 4. **Запустите VPN**:

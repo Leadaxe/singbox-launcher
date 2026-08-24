@@ -25,7 +25,7 @@ WinTun.dll is distributed under the MIT license, which permits:
 
 ### Included third-party binaries
 
-This release downloads/bundles a prebuilt `sing-box.exe` (Windows) / `sing-box` (macOS/Linux) from the **sing-box-lx** fork (upstream sing-box + the `with_xhttp` and `with_awg` build tags, at the version in `constants.RequiredCoreVersion` — currently `1.14.0-lx.26`):
+This release downloads/bundles a prebuilt `sing-box.exe` (Windows) / `sing-box` (macOS/Linux) from the **sing-box-lx** fork (upstream sing-box + the `with_xhttp` and `with_awg` build tags, at the version in `constants.RequiredCoreVersion`):
 
 **Core repository:** [https://github.com/Leadaxe/sing-box-lx](https://github.com/Leadaxe/sing-box-lx)  
 **License:** GPL-3.0

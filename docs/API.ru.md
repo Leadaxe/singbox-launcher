@@ -20,7 +20,7 @@ export API="http://127.0.0.1:9263"
 # 4. Проверить
 curl -s "$API/ping"                                    # → {"ok":true}    (без auth)
 curl -s -H "Authorization: Bearer $TOKEN" "$API/version"
-# → {"launcher":"v1.2.2","singbox":"1.14.0-lx.5","api":"debugapi/v1"}
+# → {"launcher":"v1.2.2","singbox":"1.14.0-lx.27-rc.6","api":"debugapi/v1"}
 ```
 
 ---
@@ -51,7 +51,7 @@ API **самоописываемый** (SPEC 078): дайте агенту base 
 | GET | `/ping` | — | `{"ok":true}` |
 | GET | `/` | ✓ | **Манифест** — `api`, `spec`, `launcher`, `core`, `auth`, `docs` (ссылка на этот файл, привязанная к версии), `hint`, `endpoints[]` (метод/путь/описание). |
 | GET | `/help` | ✓ | `{"endpoints":[{method,path,summary,auth}, …]}` — только список эндпоинтов. |
-| GET | `/version` | ✓ | `{"launcher":"v…","singbox":"1.14.0-lx.5","api":"debugapi/v1"}` |
+| GET | `/version` | ✓ | `{"launcher":"v…","singbox":"1.14.0-lx.27-rc.6","api":"debugapi/v1"}` |
 
 Авторизованный запрос к **неизвестному** пути возвращает `404` с указателем `docs` — агент, промахнувшийся с путём, возвращается к `/` и к этому файлу.
 
@@ -93,7 +93,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/state/full" > backup.json
 
 ## Запись состояния
 
-Все patch-endpoint'ы возвращают `{"ok":true,"diff_summary":["..."]}` на успех. Sync-write через `state.Save` → atomic `.tmp + Rename`; **per-path mutex отсутствует** (полагается на atomic write — concurrent PATCH safe от частичной записи, но last-write-wins).
+Все patch-endpoint'ы возвращают `{"ok":true,"diff_summary":["..."]}` на успех. Sync-write через `state.Save` → atomic `.tmp + Rename`; весь цикл load-modify-save **сериализован мьютексом** (`stateMu` для `/state/*`, `settingsMu` для `/settings/*`), поэтому два одновременных PATCH не теряют правку одной из сторон. У удалённых машин мьютекс **на машину** — правка двух разных машин не встаёт в очередь.
 
 | Метод | Путь | Тело | Что делает |
 |---|---|---|---|
@@ -233,7 +233,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/debug/snapshot" > snapshot-$(dat
 {
   "captured_at": "2026-05-28T12:00:00Z",
   "launcher_version": "v1.2.2",
-  "singbox_version": "1.14.0-lx.5",
+  "singbox_version": "1.14.0-lx.27-rc.6",
   "files": { "state.json": "...", "config.json": "...", "wizard_template.json": "..." },
   "missing": ["cache.json"],
   "errors": { "config.json": "read: permission denied" }
@@ -334,6 +334,49 @@ Start/stop ядра при daemon-движке идут через общие `/
 
 ---
 
+## Цепочки `/chains/*` (SPEC 110)
+
+Группа гейтится ровно как `/daemon/*` — регистрируется только когда подключён
+локальный демон (`capabilities.daemon`): послойная проба идёт по его
+gRPC-плоскости.
+
+| Метод | Путь | Что делает |
+|---|---|---|
+| GET | `/chains` | Рантайм-состояние цепочек: позиции, в какой узел каждая резолвится сейчас, статус клонов |
+| POST | `/chains/{tag}/probe` | Послойный замер задержки одной цепочки |
+
+**Тело пробы** — `{repeat?, timeout_ms?, link?}`. Умолчания и границы:
+`repeat` = 2 (максимум 10), `timeout_ms` = 15000 (максимум 120000), пустой
+`link` заменяется на тот же URL пинга, что у UI, — иначе цифры debug-пробы
+несопоставимы с колонкой на вкладке серверов.
+
+`repeat` по умолчанию **2, а не 1**: первый прогон поднимает туннели
+(WG-хендшейк, QUIC-сессия) и завышен в разы. В ответе он помечен `warm_up`, а
+не спрятан, — расхождение объясняется, а не выглядит случайным разбросом.
+`timeout_ms` — **на позицию**, а не на весь прогон: смысл как раз в том, чтобы
+медленный хоп дождался ответа и показал свою цену, а не выпал по общему
+дедлайну вместе с остальными.
+
+**Ответ** несёт `runs[]` (в каждом `layers[]`: `pos`, `tag`, `probe_tag`,
+`transparent`, `delay_ms`, `error`), поштучные `deltas[]` и `worst`.
+
+> **`probe_tag` — источник истины, не собирайте его сами.** Цепочка резервирует
+> под свои звенья служебные теги `<chain>#<i>` (`config.ChainLayerTag`): `T#0` —
+> путь до позиции 0 включительно, `T#1` — до позиции 1, и так далее. Эти теги
+> существуют только внутри работающего ядра — их намеренно нет ни в
+> `GetOutbounds`, ни в Clash API. Теги цепочек содержат эмодзи и хеши, поэтому
+> ответ отдаёт готовую строку, а не правило именования для повторной реализации.
+
+**Коды ответа** отображают gRPC-ошибки ядра: `501` — ядро собрано без
+`with_lx_command` (самая частая причина), `502` Unavailable, `504`
+DeadlineExceeded, `422` FailedPrecondition / InvalidArgument.
+
+Послойная проба работает и для **удалённой** машины
+(`LxdRemoteTransport.ProbeLayer`) — меряется **сторона роутера**, а не этот
+хост: цифры описывают канал роутера до каждого хопа.
+
+---
+
 ## Произвольные вызовы (raw passthrough)
 
 Туннель к **сопряжённому** демону — удалённой машине или локальному. Канал,
@@ -381,7 +424,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 - **Auth header:** `Authorization: Bearer <token>` обязателен везде кроме `GET /ping`.
 - **Content-Type:** `application/json` для всех PATCH/POST с body.
 - **Errors:** `401` — нет/неверный bearer; `404` — ресурс не найден; `405` — метод не разрешён; `409` — конфликт состояния (traffic session); `422` — semantic validation fail; `500` — внутренняя ошибка.
-- **Concurrency:** state-write через atomic `.tmp + Rename`; per-resource mutex нет — concurrent PATCH safe от частичной записи, но **last-write-wins**, не merge.
+- **Concurrency:** state-write через atomic `.tmp + Rename`, а цикл load-modify-save сериализован мьютексом (`stateMu` / `settingsMu`; для remote-состояния — на машину). Одновременные PATCH одного ресурса встают в очередь, а не перетирают друг друга.
 - **Versioning:** header `api` в `/version` сейчас фиксирован `debugapi/v1`. Breaking changes планируются как `v2`-namespace (`/v2/...`), пока без авто-discovery.
 
 ---

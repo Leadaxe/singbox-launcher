@@ -26,7 +26,7 @@
 управляющий VPN-ядром sing-box. Написан на Go с [Fyne](https://fyne.io) для UI.
 Лаунчер скачивает и пиннит бинарь sing-box — а именно форк
 [`sing-box-lx`](https://github.com/Leadaxe/sing-box-lx) (`constants.RequiredCoreVersion`,
-сейчас `1.14.0-lx.26`, собранный с build-тегами `with_xhttp` + `with_awg` и взятый
+актуальный пин — в `internal/constants/constants.go`; собран с build-тегами `with_xhttp` + `with_awg` и взят
 из GitHub Releases форка; форк собирает все платформы, включая ассет
 `legacy-windows-7` для Windows 7 (`windows/386`), так что XHTTP/AWG работают и
 там — отдельного upstream/legacy-разделения больше нет). Он забирает и разбирает

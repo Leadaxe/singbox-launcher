@@ -129,6 +129,9 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 | `sync_outbounds.go` | `SyncOutboundsWithActivePresets` (adopt-on-first-sync; preset-bound outbound lifecycle). |
 | `migrate_outbounds_spec058.go` | `MigrateOutboundsToReferencedShape` one-shot v5→v6 outbound migration. |
 | `outbound_diff.go` | `OutboundFieldDiff` helper (USER patch computation for Edit dialog). |
+| `outbound_graph_sanitize.go` | **The final dependency-graph pass.** One walk over every edge kind (group member / detour / chain position) to a fixpoint: dangling refs, cross-edge cycles, emptied groups, a `default` outside its members, and the chain invariants the core only checks at `run`. Degrades one element with a warning instead of handing the core a config it rejects whole. **A new kind of edge belongs here, not in a fourth private check.** |
+| `tls_transforms.go` | **SPEC 092.** Opt-in anti-DPI TLS transforms (fragment / record fragment / mixed-case SNI) applied to first-hop outbounds before emit. |
+| `sync_dns.go` | DNS list sync between the UI model and canonical state. |
 | `parsed_cache.go` | In-memory parsed-node cache used by build. |
 | `secrets.go` | Materialize/redact secret fields during build. |
 
@@ -143,6 +146,11 @@ handlers + the `ResolveDNS`/`ResolveRoute`/`ExpandPreset` resolvers.
 | `outbound_jsonbuilder.go` | `JSONBuilder{parts}` with insertion-order-safe `AppendField` (replaces `fmt.Sprintf`+`strings.Join`). |
 | `outbound_filter.go` | Node filtering for selectors (`filterNodesForSelector`, `FilterNodesExcludeFromGlobal`, expose synthetic node, preview helpers). A filter key whose regex does not compile is dropped as if absent — a typo must not cost the user every node, and fixing it in `MatchesPattern` would break subscription skip-filters, where "broken = matched everything" throws all nodes away. |
 | `direction_twins.go` | Pass 0 of the generator (SPEC 104): drops disabled Directions, expands each `auto` into a paired `<tag>-auto` urltest, and holds the empty-Direction fallback (`[block, direct]`, default=block) plus the "filter matched nothing" warning. Twins are build-only — keeping them in state would mean two objects to hand-sync. |
+| `chain_nodes.go` | **SPEC 110.** Chain sources become nodes here, once the whole pool is loaded: positions reference tags that are only final after every source is parsed. A chain may only reference a chain declared **above** it, so cycles are impossible by construction. A chain failing validation does not become a node at all. |
+| `chain_generator.go` | Emission of the `type: chain` object (positions in packet order, `strip`, `rewrite`, `idle_timeout`). |
+| `chain_validate.go` | The invariants `sing-box check` misses (only `run` fails): reality plus a stripped `tls.utls`, a nested chain off position 0. Also `ChainLayerTag` — the `<chain>#<i>` service-tag scheme used by the layered probe. |
+| `chain_cycle.go` / `detour_group_cycle.go` | Direction↔chain and node↔group-it-dials-through cycles: fail-open, the element drops out of the members rather than taking the config down. |
+| `source_folds.go` | **SPEC 108.** Expands a subscription's fold into groups at build time (they are not stored in state). |
 | `outbound_share.go` | Share-URI lookup from a written `config.json` (`GetOutboundMapByTag`, `ShareProxyURIForOutboundTag`). |
 | `config_loader.go` | Read `config.json` (JSONC-aware): selector groups, TUN interface name, `experimental.cache_file`. |
 | `varsubst.go` | `SubstituteParserConfigPlaceholders` — resolve `@name` placeholders in outbound options (template defaults + state override). |
@@ -261,6 +269,7 @@ semantics: `contract/docs/BACKUP.md`.
 | `backend.go` | `CoreBackend` — the engine seam every caller above it uses instead of touching the process manager or Clash client directly. |
 | `backend_legacy.go` | `LegacyBackend` — classic engine: spawn + supervise `sing-box run`, Clash HTTP control plane. |
 | `backend_daemon_darwin.go` (+ `_dns_`, `_traffic_`) | `DaemonBackend` — macOS lxd engine: gRPC control plane, structured DNS and connection streams for the profiler. Darwin build tags only. |
+| `chain_probe.go` | **SPEC 110.** Shared plumbing for the layered chain probe. Lives in `core`, not in a transport: the local daemon and a remote machine ask the core over the very same RPCs, and a disagreement about which tag is sent or how the answer is read would produce different diagnoses for one chain. |
 | `backend_daemon_stub.go` | Non-darwin stub so the rest of the code compiles without gRPC (this is what keeps the Win7 build clean). |
 | `daemon_manager_darwin.go` | Daemon lifecycle from the launcher's side: the sudo command strings it hands the user (`--service=install` / `=uninstall [--purge]` / `lxd client add`), pairing, daemon passport (`GET /admin/info`). Runs nothing privileged itself. |
 | `process_service.go` | `ProcessService`: `Start`/`Stop`/`Monitor`, crash/restart state machine, privileged-script exit handling, TUN/phantom-adapter cleanup before Start (SPEC 065). |
@@ -411,19 +420,25 @@ semantics: `contract/docs/BACKUP.md`.
 
 ### `ui/configurator/tabs`
 
-**Responsibility:** Wizard tab views (Sources / Outbounds / Rules / DNS / Settings / Preview) + source-edit window.
+**Responsibility:** Wizard tab views (Sources / Directions / Rules / DNS / Settings / Generate / Files, plus Target for a remote machine) + source-edit window.
 
 | File | Purpose |
 |------|---------|
 | `source_tab.go` | Sources tab: URL input, source list, preview-all window launcher. |
 | `source_edit_window.go` + `source_edit_overview.go` / `_raw.go` / `_misc.go` | Per-source edit window (settings / preview / raw JSON; exclude/expose markers). |
-| `source_meta_format.go` / `source_support_link.go` / `source_error_dialog.go` | Source metadata formatting + support/web-page link + error dialog. |
+| `source_meta_format.go` / `source_support_link.go` | Source metadata formatting + support/web-page link. |
+| `source_fold_tab.go` | **SPEC 108.** Group tab of the source window: one fold checkbox replaces the old four flags; picks selector / auto-select / selector-with-auto-default. |
+| `source_chain_tab.go` / `source_chain_hops.go` / `source_chain_rewrite.go` | **SPEC 110.** Hop-chain form: positions in packet order (drag reorder), candidate picker (node / group / Direction / builtin), `rewrite` table (protocol · key · JSON value, `null` deletes). Refuses the combinations the core rejects only at `run` — the form is the only line of defence there. |
+| `target_tab.go` | Target tab for a remote machine (SPEC 097): gateway mode + LAN interfaces. |
+| `files_tab.go` | Files tab: build `config.json` into a file, view it read-only in a separate window. |
+| `settings_reactive.go` | **SPEC 107.** Per-row gate recomputation on the Settings tab: a static dependency index updates only the rows whose condition actually changed. |
+| `settings_backup.go` | LX Backup export/import UI (SPEC 103 phase 4). |
+| `dns_server_form.go` / `dns_template_vars.go` | **SPEC 109.** Per-kind DNS server forms (UDP/TCP/DoT/DoH/group) + template-declared server parameters. |
 | `rules_tab.go` / `rules_unified_rows.go` | Routing rules list (add/edit/delete, SRS auto-download, per-rule outbound select). |
 | `dns_tab.go` / `dns_unified_rules.go` / `dns_user_rules.go` / `dns_preset_bundled.go` | DNS servers + unified rules editor (preset + user). |
 | `settings_tab.go` + `settings_tun_darwin.go` / `settings_tun_stub.go` | Template-vars settings; darwin TUN-off privileged cleanup. |
 | `preset_ref_edit_dialog.go` / `preset_ref_convert.go` / `preset_ref_srs.go` | Preset-ref edit/convert/SRS handling. |
 | `library_rules_dialog.go` | Template-preset library picker (Add selected → CustomRules). |
-| `preview_tab.go` | Config preview tab. |
 | `tight_vbox.go` / `tight_hbox.go` | Compact vbox/hbox layout helpers (`tight_hbox.go` packs row icons with a negative gap, `rowIconGap`). |
 | `row_scaffold.go` | Shared row scaffolding for the reorderable Rules/DNS/Sources lists: `buildRowLeftLead` (↑/↓ + checkbox), `buildRowEditDelCluster` (edit/delete icons), `newRowLabelToggleTap` (toggle on label tap), `finalizeRow` (Border + HoverRow + tooltip-hover assembly). Unifies icon spacing across builders so it can't drift per-builder. |
 

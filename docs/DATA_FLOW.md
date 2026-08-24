@@ -211,11 +211,39 @@ core/build entry (BuildConfig)  — pure function over BuildContext
      ▼
 GenerateOutboundsFromParserConfig
      │     consume merged parserCfg.Outbounds[]
+     │     pass 0: direction twins — expand `auto` into `<tag>-auto`
+     │             (core/config/direction_twins.go, SPEC 104); an empty
+     │             Direction falls back to [block, direct]
      │     resolve filters / addOutbounds / preferredDefault
      │     append per-source proxies (parsed from .raw cache)
+     │     materialize chain sources into one `type: chain` node each
+     │             (core/config/chain_nodes.go, SPEC 110); a chain failing
+     │             ChainEmitError does not become a node at all — the core
+     │             rejects the whole config over one bad chain
      ▼
-MergeDNSSection + MergeRouteSection + MergePresetsIntoRoute
-     │     emit final dns / route sections in state.rules[] order
+BuildConfig (core/build/build.go) — three steps, pure over BuildContext
+     │
+     ├─ 1. effectiveConfig(template, vars, target)
+     │      GetEffectiveConfigFor; on failure falls back to the pre-cached
+     │      td.Config/td.ConfigOrder plus a warning in Result.Validation
+     │
+     ├─ 2. buildOrderedSections(ctx, cfg, order)
+     │      ├─ sanitizeOutboundGraph(ctx.Cache, finalOutboundTags)
+     │      │     ONE pass over every edge kind (group member / detour /
+     │      │     chain position) BEFORE the section walk, because
+     │      │     `endpoints` precedes `outbounds` in the template and a
+     │      │     per-section cleanup would not see a cross-section
+     │      │     reference. Dangling refs, cross-edge cycles, emptied
+     │      │     groups and chain invariants degrade ONE element with a
+     │      │     warning instead of handing the core a config it rejects
+     │      │     outright. Mutates finalOutboundTags, so the route section
+     │      │     sees the final tag set. Skipped when ForPreview.
+     │      └─ buildSection per key:
+     │            outbounds → ApplyTLSTransforms (SPEC 092) → emit
+     │            dns       → MergeDNSSection → MergePresetsIntoDNS
+     │            route     → MergeRouteSection → MergePresetsIntoRoute
+     │
+     └─ 3. concatenate sections into the final JSON
      ▼
 atomic write: bin/config.json
 ```

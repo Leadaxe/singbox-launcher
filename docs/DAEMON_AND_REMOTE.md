@@ -253,7 +253,7 @@ examples lives in [API.md](API.md); this section is about the principles.
 - **Classic does not change.** The same spawn, the same Clash API, the same behavior.
 - **Daemon is macOS-only.** All of its code sits behind darwin build tags.
 - **The core must support `lxd`** (`with_lx_command`). The pinned
-  `constants.RequiredCoreVersion` (currently `1.14.0-lx.26`) includes that build.
+  `constants.RequiredCoreVersion` includes that build (the current pin lives in `internal/constants/constants.go`).
   Check the feature boundary by running the binary (`sing-box lxd --help`), not by
   release number.
 - **A remote config has no Clash API** by design — hence the gRPC sources for both
