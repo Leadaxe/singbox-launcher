@@ -255,6 +255,14 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		defaultPort = 22 // Default port for SSH
 
 	case strings.HasPrefix(uri, "socks5://"):
+		// ВНИМАНИЕ: алиас НЕ канонизируется в "socks" (CANON §1), хотя канон
+		// схемы — именно "socks". Причина не в контракте, а в дефолтном теге:
+		// он строится из схемы (`fmt.Sprintf("%s-%s-%d", scheme, ...)`, :551),
+		// и канонизация переименовала бы socks5-host-1080 → socks-host-1080
+		// у ВСЕХ существующих узлов. Тег входит в identity-хеш и в ключи
+		// disabled-отметок — переименование сбросило бы пользовательские
+		// отметки и порвало ссылки detour/цепочек. Расхождение с Dart
+		// остаётся в корпусе как per-app override (docs/IDENTITY.md §4a-C).
 		scheme = "socks5"
 		defaultPort = 1080
 	case strings.HasPrefix(uri, "socks://"):
