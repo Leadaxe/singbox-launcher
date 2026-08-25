@@ -2617,8 +2617,11 @@
   "The config for the remote machine was written to a separate file. The local bin/config.json was not touched.": {
     "value": "Конфиг для удалённой машины записан в отдельный файл. Локальный bin/config.json не тронут."
   },
-  "Subscriptions have not been parsed for this target yet, so the config would contain no proxy nodes. Open the Preview tab (or press Read on Sources) to parse them, then save again.": {
-    "value": "Подписки для этого назначения ещё не разобраны — конфиг ушёл бы без единой прокси-ноды. Откройте вкладку «Просмотр» (или нажмите «Прочитать» на «Источниках»), чтобы разобрать их, и сохраните снова."
+  "Could not read the subscriptions for this target, so the config would contain no proxy nodes. Check the sources on the Sources tab and try again.": {
+    "value": "Не удалось прочитать подписки для этого назначения — конфиг ушёл бы без единой прокси-ноды. Проверьте источники на вкладке «Источники» и попробуйте снова."
+  },
+  "Parsing subscriptions...": {
+    "value": "Разбор подписок..."
   },
   "Connect to this machine first: its config points at the machine's own resource store, and that path comes from the daemon when you connect.": {
     "value": "Сначала подключитесь к машине: её конфиг ссылается на собственное хранилище ресурсов, а этот путь приходит от демона при соединении."
@@ -3283,5 +3286,11 @@
   },
   "Keys are base64, as in a wg-quick .conf. MTU above 1380 breaks AmneziaWG endpoints — for those the parser clamps it down. A whole .conf can be pasted on the Source tab instead.": {
     "value": "Ключи в base64, как в .conf для wg-quick. MTU выше 1380 ломает узлы AmneziaWG — для них парсер сам понижает значение. Целый .conf можно вставить на вкладке Source."
+  },
+  "macOS is blocking the launcher's access to the local network: the system rejects the connection instantly, before it even leaves this Mac. Enable the launcher in System Settings → Privacy & Security → Local Network. If it is already enabled there, the app bundle's code signature is broken (typical after swapping a dev binary into the installed app) — reinstall the launcher.": {
+    "value": "macOS блокирует лаунчеру доступ к локальной сети: система отклоняет соединение мгновенно, ещё до выхода в сеть. Включите лаунчер в Настройки → Конфиденциальность и безопасность → Локальная сеть. Если он там уже включён — у бандла сломана подпись кода (типично после подмены dev-бинаря в установленном приложении), переустановите лаунчер."
+  },
+  "The machine is answering again — the failure was transient (macOS re-checked its local-network policy or the network blinked). Press Connect again.": {
+    "value": "Машина снова отвечает — отказ был кратковременным (macOS перепроверила политику локальной сети или сеть моргнула). Нажмите Connect ещё раз."
   }
 }
