@@ -408,6 +408,9 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 		if ac.BackendMode() == core.BackendDaemon || (scope == services.ScopeRemote && lxdConnected) {
 			go func() {
 				_, _, err := EffectiveProxyTransportIn(ac, scope).GroupProxies(ac.APIService.GetSelectedClashGroup())
+				// Диагноз «no route to host» ходит в сеть (контрольный dial с
+				// таймаутом) — считаем до fyne.Do, вне UI-потока.
+				lanHint := lanDenialHint(diagnoseLanDenialFromErr(err))
 				fyne.Do(func() {
 					if err != nil {
 						ac.UIService.ApiStatusLabel.SetText(locale.T("❌ gRPC unavailable"))
@@ -425,8 +428,16 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 						// Error while dialing…» — значит пугать текстом, из
 						// которого пользователю нечего извлечь.
 						if isUnreachableErr(err) {
-							ShowErrorText(ac.UIService.MainWindow, locale.T("Daemon"),
-								locale.T("The machine is not answering. Check that it is powered on and reachable on the network, then press Connect again."))
+							// Мгновенный EHOSTUNREACH к LAN-адресу — не про
+							// «включена ли машина»: это блокировка macOS
+							// «Локальная сеть» (NECP при сломанной подписи
+							// бандла). Общий текст здесь вредит — отправляет
+							// проверять не то.
+							msg := lanHint
+							if msg == "" {
+								msg = locale.T("The machine is not answering. Check that it is powered on and reachable on the network, then press Connect again.")
+							}
+							ShowErrorText(ac.UIService.MainWindow, locale.T("Daemon"), msg)
 							return
 						}
 						// Группа машины ещё не прочитана — это не сбой, а
