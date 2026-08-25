@@ -251,49 +251,6 @@ func TestBuildWireGuardURI_NumericBounds(t *testing.T) {
 	}
 }
 
-// Direct: плоский outbound без полей назначения — ядро 1.13+ их не принимает.
-func TestDirectResult_PlainOutbound(t *testing.T) {
-	res, err := directResult("", "", "wa")
-	if err != nil {
-		t.Fatalf("directResult: %v", err)
-	}
-	body := string(res.ConfigJSON)
-	if !strings.Contains(body, `"type":"direct"`) {
-		t.Errorf("not a direct outbound: %s", body)
-	}
-	// Именно эти поля ядро отвергает — их не должно быть в outbound'е.
-	for _, banned := range []string{"override_address", "override_port", "server", "server_port"} {
-		if strings.Contains(body, banned) {
-			t.Errorf("banned field %q emitted into direct outbound: %s", banned, body)
-		}
-	}
-	if res.Label != "wa" {
-		t.Errorf("label: got %q", res.Label)
-	}
-}
-
-// Заполненные IP/порт возвращаются отдельно — они для правила маршрута.
-func TestDirectResult_OverrideReturnedSeparately(t *testing.T) {
-	res, err := directResult("1.2.3.4", "443", "")
-	if err != nil {
-		t.Fatalf("directResult: %v", err)
-	}
-	if res.OverrideIP != "1.2.3.4" || res.OverridePort != "443" {
-		t.Errorf("override lost: ip=%q port=%q", res.OverrideIP, res.OverridePort)
-	}
-	if strings.Contains(string(res.ConfigJSON), "1.2.3.4") {
-		t.Errorf("override leaked into outbound: %s", res.ConfigJSON)
-	}
-	// Пустой тег получает осмысленный fallback, а не пустую строку.
-	if res.Label == "" {
-		t.Error("empty tag must fall back to a default")
-	}
-
-	if _, err := directResult("", "70000", ""); err == nil {
-		t.Error("bad port must fail")
-	}
-}
-
 // Ключи WireGuard — ровно 32 байта base64. Значения детерминированные и не
 // секретные: важна только длина, которую требует и парсер, и ядро.
 const (

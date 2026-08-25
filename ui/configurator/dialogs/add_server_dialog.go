@@ -48,7 +48,6 @@ const (
 	addServerSourceNoteText = "Paste anything: share-URI (one per line), a sing-box outbound or config JSON, or [Interface]/[Peer] WireGuard conf."
 	addServerJSONHintText   = "Preview of what this source unpacks into. Edit it and your version wins — the fields above stop overwriting it."
 	addServerJSONDirtyText  = "Edited by hand — the fields no longer overwrite this JSON."
-	addServerDirectNoteText = "Goes straight out, bypassing every proxy — for traffic that VPN breaks or does not need (WhatsApp calls, LAN). Leave both fields empty for a plain direct outbound. Filled in, they become a route rule: sing-box removed destination override from the direct outbound itself in 1.13."
 	addServerWGNoteText     = "Keys are base64, as in a wg-quick .conf. MTU above 1380 breaks AmneziaWG endpoints — for those the parser clamps it down. A whole .conf can be pasted on the Source tab instead."
 )
 
@@ -62,11 +61,6 @@ type AddServerResult struct {
 	ConfigJSON []byte
 	// Label — тег из верхнего поля; для ConfigJSON становится Label источника.
 	Label string
-	// OverrideIP/OverridePort — только для Direct: адрес назначения, который
-	// ядро принимает лишь в правиле маршрута, но не в самом outbound'е
-	// (удалено в sing-box 1.13). Пустые — обычный direct.
-	OverrideIP   string
-	OverridePort string
 }
 
 // ShowAddServerDialog открывает форму ручного добавления источника. onResult
@@ -129,11 +123,6 @@ type addServerForm struct {
 	wgDNS       *widget.Entry
 	wgBox       *fyne.Container
 
-	// Поля Direct.
-	directIP   *widget.Entry
-	directPort *widget.Entry
-	directBox  *fyne.Container
-
 	// source — многострочный ввод варианта Source.
 	source    *widget.Entry
 	sourceBox *fyne.Container
@@ -158,7 +147,6 @@ const (
 	modeSocks addServerMode = iota
 	modeHTTP
 	modeWireGuard
-	modeDirect
 	modeSource
 )
 
@@ -203,7 +191,6 @@ func (f *addServerForm) buildParamsTab() {
 	socksLabel := locale.T("SOCKS5")
 	httpLabel := locale.T("HTTP")
 	wgLabel := locale.T("WireGuard")
-	directLabel := locale.T("Direct")
 	sourceLabel := locale.T("Source")
 
 	f.host = widget.NewEntry()
@@ -260,10 +247,9 @@ func (f *addServerForm) buildParamsTab() {
 	f.sourceBox.Hide()
 
 	f.buildWGFields()
-	f.buildDirectFields()
 
 	f.proto = widget.NewSelect(
-		[]string{socksLabel, httpLabel, wgLabel, directLabel, sourceLabel}, nil)
+		[]string{socksLabel, httpLabel, wgLabel, sourceLabel}, nil)
 	f.proto.SetSelected(socksLabel)
 	f.proto.OnChanged = func(sel string) {
 		switch sel {
@@ -271,8 +257,6 @@ func (f *addServerForm) buildParamsTab() {
 			f.mode = modeHTTP
 		case wgLabel:
 			f.mode = modeWireGuard
-		case directLabel:
-			f.mode = modeDirect
 		case sourceLabel:
 			f.mode = modeSource
 		default:
@@ -325,49 +309,15 @@ func (f *addServerForm) buildWGFields() {
 	f.wgBox.Hide()
 }
 
-// buildDirectFields собирает поля Direct.
-//
-// direct-outbound идёт мимо прокси — им закрывают трафик, который через VPN
-// либо ломается, либо не нужен (звонки WhatsApp, локальная сеть).
-//
-// IP и порт здесь — НЕ поля outbound'а: sing-box 1.11 объявил
-// override_address/override_port устаревшими, а 1.13 их удалил
-// («destination override fields in direct outbound are deprecated … use route
-// options instead»). Ядро отвергает и server/server_port. Поэтому адрес
-// назначения задаётся правилом маршрута, а форма кладёт введённое в поля
-// правила — см. directRouteNote.
-func (f *addServerForm) buildDirectFields() {
-	f.directIP = widget.NewEntry()
-	f.directIP.SetPlaceHolder(locale.T("optional"))
-	f.directIP.OnChanged = func(string) { f.refreshJSON() }
-
-	f.directPort = widget.NewEntry()
-	f.directPort.SetPlaceHolder(locale.T("optional"))
-	f.directPort.OnChanged = func(string) { f.refreshJSON() }
-
-	note := widget.NewLabel(locale.T(addServerDirectNoteText))
-	note.Wrapping = fyne.TextWrapWord
-
-	f.directBox = container.NewVBox(
-		labeledRow(locale.T("Override IP"), f.directIP),
-		labeledRow(locale.T("Override port"), f.directPort),
-		note,
-	)
-	f.directBox.Hide()
-}
-
 // applyModeVisibility показывает блок, отвечающий выбранному варианту.
 func (f *addServerForm) applyModeVisibility() {
 	f.fieldsBox.Hide()
 	f.sourceBox.Hide()
 	f.wgBox.Hide()
-	f.directBox.Hide()
 
 	switch f.mode {
 	case modeSource:
 		f.sourceBox.Show()
-	case modeDirect:
-		f.directBox.Show()
 	case modeWireGuard:
 		// Host/Port живут в fieldsBox и переиспользуются WG-блоком, поэтому
 		// сам блок строится со своими строками Host/Port — см. buildWGFields.
@@ -393,7 +343,6 @@ func (f *addServerForm) paramsContent() fyne.CanvasObject {
 			widget.NewSeparator(),
 			f.fieldsBox,
 			f.wgBox,
-			f.directBox,
 		),
 		nil, nil, nil,
 		f.sourceBox,
@@ -569,14 +518,6 @@ func (f *addServerForm) rawInput() (string, error) {
 	if f.mode == modeSource {
 		return f.source.Text, nil
 	}
-	if f.mode == modeDirect {
-		// У direct нет URI-схемы — превью строится прямо из outbound'а.
-		res, err := directResult(f.directIP.Text, f.directPort.Text, f.tag.Text)
-		if err != nil {
-			return "", err
-		}
-		return string(res.ConfigJSON), nil
-	}
 	return f.buildURI()
 }
 
@@ -587,10 +528,6 @@ func (f *addServerForm) result() (AddServerResult, error) {
 	// Ручная правка JSON побеждает: в конфиг уходит она, а не поля.
 	if f.jsonDirty {
 		return manualJSONResult(f.jsonView.Text, label)
-	}
-
-	if f.mode == modeDirect {
-		return directResult(f.directIP.Text, f.directPort.Text, label)
 	}
 
 	if f.mode == modeSource {
@@ -606,42 +543,6 @@ func (f *addServerForm) result() (AddServerResult, error) {
 		return AddServerResult{}, err
 	}
 	return AddServerResult{Text: uri, Label: label}, nil
-}
-
-// directResult собирает direct-outbound.
-//
-// У direct нет share-URI схемы, поэтому результат отдаётся сразу как
-// ConfigJSON, минуя URI-путь.
-//
-// override-поля намеренно НЕ пишутся в outbound: sing-box 1.13 их оттуда
-// удалил, и конфиг с ними ядро отвергает целиком («destination override
-// fields in direct outbound are deprecated … removed in 1.13.0»). Заполненные
-// IP/порт возвращаются вызывающему отдельно — их место в правиле маршрута.
-func directResult(ip, port, label string) (AddServerResult, error) {
-	tag := strings.TrimSpace(label)
-	if tag == "" {
-		tag = "direct-out"
-	}
-
-	ip = strings.TrimSpace(ip)
-	port = strings.TrimSpace(port)
-	if port != "" {
-		if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
-			return AddServerResult{}, fmt.Errorf("%s", locale.T("Port 1..65535"))
-		}
-	}
-
-	ob := map[string]interface{}{"type": "direct", "tag": tag}
-	body, err := json.Marshal(ob)
-	if err != nil {
-		return AddServerResult{}, err
-	}
-	return AddServerResult{
-		ConfigJSON:   body,
-		Label:        tag,
-		OverrideIP:   ip,
-		OverridePort: port,
-	}, nil
 }
 
 // manualJSONResult решает, чем стал отредактированный вручную JSON.

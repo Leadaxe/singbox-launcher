@@ -199,18 +199,6 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					dialog.ShowError(err, guiState.Window)
 					return
 				}
-				// Direct с заданным назначением: сам outbound такие поля больше
-				// не принимает (удалены в sing-box 1.13), их место — правило
-				// маршрута. Узел создан, а куда вписать адрес, говорим прямо:
-				// молча проглотить введённое значит потерять его без следа.
-				if res.OverrideIP != "" || res.OverridePort != "" {
-					dialog.ShowInformation(
-						locale.T("Direct server added"),
-						locale.Tf("Destination override (%s) belongs to a route rule — sing-box removed it from the direct outbound in 1.13. Add a rule on the Rules tab pointing at %q.",
-							strings.TrimSpace(res.OverrideIP+":"+res.OverridePort), res.Label),
-						guiState.Window,
-					)
-				}
 			} else {
 				if err := wizardbusiness.AppendURLsToSources(presenter, strings.TrimSpace(res.Text)); err != nil {
 					dialog.ShowError(err, guiState.Window)
