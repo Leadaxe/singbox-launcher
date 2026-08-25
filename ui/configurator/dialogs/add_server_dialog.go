@@ -92,7 +92,7 @@ func ShowAddServerDialog(presenter *wizardpresentation.WizardPresenter, onResult
 		},
 		win,
 	)
-	d.Resize(fyne.NewSize(640, 560))
+	d.Resize(fyne.NewSize(640, 680))
 	d.Show()
 }
 
@@ -122,6 +122,9 @@ type addServerForm struct {
 	wgKeepalive *widget.Entry
 	wgDNS       *widget.Entry
 	wgBox       *fyne.Container
+
+	// formsScroll — прокручиваемая область с формами SOCKS5/HTTP/WireGuard.
+	formsScroll *container.Scroll
 
 	// source — многострочный ввод варианта Source.
 	source    *widget.Entry
@@ -161,6 +164,7 @@ func newAddServerForm() *addServerForm {
 	tagNote.Wrapping = fyne.TextWrapWord
 
 	f.buildParamsTab()
+	f.formsScroll = container.NewScroll(container.NewVBox(f.fieldsBox, f.wgBox))
 	f.buildJSONTab()
 
 	tabs := container.NewAppTabs(
@@ -317,12 +321,15 @@ func (f *addServerForm) applyModeVisibility() {
 
 	switch f.mode {
 	case modeSource:
+		f.formsScroll.Hide()
 		f.sourceBox.Show()
 	case modeWireGuard:
 		// Host/Port живут в fieldsBox и переиспользуются WG-блоком, поэтому
 		// сам блок строится со своими строками Host/Port — см. buildWGFields.
+		f.formsScroll.Show()
 		f.wgBox.Show()
 	default:
+		f.formsScroll.Show()
 		f.fieldsBox.Show()
 		if f.mode == modeHTTP {
 			f.tlsRow.Show()
@@ -333,19 +340,23 @@ func (f *addServerForm) applyModeVisibility() {
 }
 
 func (f *addServerForm) paramsContent() fyne.CanvasObject {
-	// Формы (fieldsBox/wgBox) — фиксированной высоты, они идут в top вместе с
-	// селектором. Source занимает центр и растёт на всю оставшуюся высоту:
-	// внутри VBox многострочное поле получило бы минимальную высоту в одну
-	// строку, что и было видно на первом скриншоте.
+	// Селектор закреплён сверху, всё остальное — внутри скролла.
+	//
+	// Формы в top у Border были ошибкой: эта область берёт полную высоту
+	// содержимого и не сжимается, поэтому длинная форма (WireGuard — десять
+	// строк) уезжала под кнопки диалога, и добраться до нижних полей было
+	// нечем — скроллить в top нечего.
+	//
+	// Source живёт своей веткой: у него внутри уже есть скролл поля, и второй
+	// поверх первого дал бы вложенную прокрутку с непредсказуемым захватом
+	// колеса. Поэтому многострочник растягивается на центр напрямую.
 	return container.NewBorder(
 		container.NewVBox(
 			labeledRow(locale.T("Server type"), f.proto),
 			widget.NewSeparator(),
-			f.fieldsBox,
-			f.wgBox,
 		),
 		nil, nil, nil,
-		f.sourceBox,
+		container.NewStack(f.formsScroll, f.sourceBox),
 	)
 }
 
