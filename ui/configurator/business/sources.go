@@ -102,15 +102,19 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 		if _, ok := existingURIs[uri]; ok {
 			continue
 		}
-		label := extractURIFragment(uri)
-		if label == "" {
-			label = fmt.Sprintf("server-%d", startIndex+added)
+		// Фрагмент ссылки (#имя) — это тег outbound'а: именно под ним узел
+		// уедет в config.json и на него сошлются правила. Подпись остаётся
+		// пустой — показывать её списку нечего сверх тега, пока
+		// пользователь не задал своё имя.
+		tag := extractURIFragment(uri)
+		if tag == "" {
+			tag = fmt.Sprintf("server-%d", startIndex+added)
 		}
 		newSrc := corestate.Source{
 			ID:      corestate.MakeULID(),
 			Type:    corestate.SourceTypeServer,
 			Enabled: true,
-			Label:   label,
+			NodeTag: tag,
 			URI:     uri,
 		}
 		model.Sources = append(model.Sources, newSrc)
@@ -122,15 +126,17 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 	// пустым URI. Дедупа по URI здесь нет — два одинаковых outbound'а это
 	// осознанная вставка, а сравнивать документы побайтово смысла мало.
 	for _, jn := range jsonNodes {
-		label := jn.Label
-		if label == "" {
-			label = fmt.Sprintf("server-%d", startIndex+added)
+		// Имя из JSON-узла — это тег outbound'а: под ним узел знают
+		// правила и фильтры Направлений, поэтому оно едет в NodeTag.
+		tag := jn.Label
+		if tag == "" {
+			tag = fmt.Sprintf("server-%d", startIndex+added)
 		}
 		model.Sources = append(model.Sources, corestate.Source{
 			ID:         corestate.MakeULID(),
 			Type:       corestate.SourceTypeServer,
 			Enabled:    true,
-			Label:      label,
+			NodeTag:    tag,
 			ConfigJSON: jn.ConfigJSON,
 		})
 		added++

@@ -68,6 +68,11 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 		if src.URI != "" {
 			body.Add(kvRow(locale.T("URI"), src.URI))
 		}
+		// Тег и подпись — разные строки: раньше их роль делило одно поле,
+		// и по обзору нельзя было понять, на что сошлётся правило.
+		if tag := src.NodeTag; tag != "" {
+			body.Add(kvRow(locale.T("Node tag"), tag))
+		}
 		if src.Label != "" {
 			body.Add(kvRow(locale.T("Label"), src.Label))
 		}

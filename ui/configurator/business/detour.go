@@ -145,7 +145,12 @@ func DetourOptionsWithNodes(model *wizardmodels.WizardModel, source *configtypes
 			if hash == "" {
 				continue // unparseable / unhashable — cannot be addressed
 			}
+			// Показываем подпись, а без неё — тег узла: он и есть имя,
+			// под которым цель detour'а известна конфигу.
 			label := s.Label
+			if label == "" {
+				label = s.NodeTag
+			}
 			if label == "" {
 				label = uri
 			}

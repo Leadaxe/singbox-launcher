@@ -315,10 +315,10 @@ func showSourceEditWindow(
 				fullTitleSrc = s.URL
 			}
 		case wizardmodels.SourceTypeServer:
-			if s.Label != "" {
-				fullTitleSrc = s.Label
-			} else if s.URI != "" {
-				fullTitleSrc = s.URI
+			// Подпись, а без неё — тег: у server-источника тег и есть то
+			// имя, под которым его знают правила.
+			if name := firstNonEmpty(s.Label, s.NodeTag, s.URI); name != "" {
+				fullTitleSrc = name
 			}
 		}
 	}
@@ -1385,4 +1385,14 @@ func showSourceEditWindow(
 	syncFormFromModel()
 	win.Show()
 	presenter.UpdateChildOverlay()
+}
+
+// firstNonEmpty — первая непустая строка из перечисленных.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
