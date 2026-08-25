@@ -10,10 +10,12 @@
 package business
 
 import (
+	"strings"
 	"testing"
 
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/config/subscription"
 	corestate "singbox-launcher/core/state"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -100,6 +102,81 @@ func TestRebuildPreviewCache_ChainDegradedWhenCoreLacksSupport(t *testing.T) {
 	for _, n := range m.PreviewNodes {
 		if n != nil && n.Tag == "NL-chain" {
 			t.Fatal("цепочка показана узлом, хотя ядро её не поддерживает")
+		}
+	}
+}
+
+// TestPreviewPoolMatchesBuildPool — главный инвариант обеих правок: состав
+// Направления в превью совпадает с составом в config.json.
+//
+// Держится на двух вещах сразу, и обе ломались по отдельности: превью
+// обязано резолвить цепочки тем же вызовом, что и сборка (иначе #91), а
+// тег узла обязан браться из NodeTag, а не из подписи (иначе
+// переименование источника уводит его из-под фильтра). Подписи здесь
+// намеренно НЕ совпадают с тегами — если отбор случится по ним, состав
+// разъедется и тест это покажет.
+func TestPreviewPoolMatchesBuildPool(t *testing.T) {
+	prev := config.ChainSupportProbe
+	config.ChainSupportProbe = func() (bool, string) { return true, "" }
+	defer func() { config.ChainSupportProbe = prev }()
+
+	m := &wizardmodels.WizardModel{
+		Sources: []corestate.Source{
+			{
+				ID: "01SRV", Type: corestate.SourceTypeServer, Enabled: true,
+				NodeTag: "NL-ams", Label: "Мой Амстердам",
+				URI: "vless://11111111-1111-1111-1111-111111111111@10.0.0.1:443?security=none#ams",
+			},
+			{
+				ID: "01CHN", Type: corestate.SourceTypeChain, Enabled: true,
+				NodeTag: "NL-chain", Label: "Через Германию",
+				Chain: &configtypes.SourceChain{Hops: []string{"NL-ams", "direct-out"}},
+			},
+		},
+		GlobalOutbounds: []configtypes.Direction{
+			{Tag: "vpn-1", Type: "selector", Filters: map[string]interface{}{"tag": "/NL/i"}},
+		},
+	}
+	m.RefreshDerivedParserConfig()
+
+	if _, err := RebuildPreviewCache(m); err != nil {
+		t.Fatalf("RebuildPreviewCache: %v", err)
+	}
+	previewNodes, _ := config.PreviewSelectorNodes(m.PreviewNodes, m.GlobalOutbounds[0])
+	var previewTags []string
+	for _, n := range previewNodes {
+		previewTags = append(previewTags, n.Tag)
+	}
+
+	res, err := config.GenerateOutboundsFromParserConfig(m.ParserConfig, map[string]int{}, nil,
+		func(ps config.ProxySource, tc map[string]int, pc func(float64, string), idx, total int) ([]*config.ParsedNode, error) {
+			return subscription.LoadNodesFromSource(ps, tc, pc, idx, total)
+		},
+		config.DirectionBuildOptions{BlockTag: "block-out", DirectTag: "direct-out"})
+	if err != nil {
+		t.Fatalf("сборка: %v", err)
+	}
+	group := ""
+	for _, entry := range res.OutboundsJSON {
+		if strings.Contains(entry, `"tag":"vpn-1"`) {
+			group = entry
+		}
+	}
+	if group == "" {
+		t.Fatal("Направление vpn-1 не собрано")
+	}
+
+	if len(previewTags) == 0 {
+		t.Fatal("превью не отобрало ни одного узла — фильтр /NL/i должен ловить оба")
+	}
+	for _, tag := range previewTags {
+		if !strings.Contains(group, `"`+tag+`"`) {
+			t.Errorf("узел %q показан в превью, но в конфиг не попал: %s", tag, strings.TrimSpace(group))
+		}
+	}
+	for _, tag := range []string{"NL-ams", "NL-chain"} {
+		if !strings.Contains(group, `"`+tag+`"`) {
+			t.Errorf("узла %q нет в составе Направления: %s", tag, strings.TrimSpace(group))
 		}
 	}
 }
