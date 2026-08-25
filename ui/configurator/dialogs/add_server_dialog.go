@@ -23,6 +23,7 @@ package dialogs
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -47,6 +48,8 @@ const (
 	addServerSourceNoteText = "Paste anything: share-URI (one per line), a sing-box outbound or config JSON, or [Interface]/[Peer] WireGuard conf."
 	addServerJSONHintText   = "Preview of what this source unpacks into. Edit it and your version wins — the fields above stop overwriting it."
 	addServerJSONDirtyText  = "Edited by hand — the fields no longer overwrite this JSON."
+	addServerDirectNoteText = "Goes straight out, bypassing every proxy — for traffic that VPN breaks or does not need (WhatsApp calls, LAN). Leave both fields empty for a plain direct outbound. Filled in, they become a route rule: sing-box removed destination override from the direct outbound itself in 1.13."
+	addServerWGNoteText     = "Keys are base64, as in a wg-quick .conf. MTU above 1380 breaks AmneziaWG endpoints — for those the parser clamps it down. A whole .conf can be pasted on the Source tab instead."
 )
 
 // AddServerResult — что форма отдала наружу. Ровно одно из полей непусто.
@@ -59,6 +62,11 @@ type AddServerResult struct {
 	ConfigJSON []byte
 	// Label — тег из верхнего поля; для ConfigJSON становится Label источника.
 	Label string
+	// OverrideIP/OverridePort — только для Direct: адрес назначения, который
+	// ядро принимает лишь в правиле маршрута, но не в самом outbound'е
+	// (удалено в sing-box 1.13). Пустые — обычный direct.
+	OverrideIP   string
+	OverridePort string
 }
 
 // ShowAddServerDialog открывает форму ручного добавления источника. onResult
@@ -101,7 +109,7 @@ type addServerForm struct {
 	tag *widget.Entry
 
 	// Вкладка «Параметры».
-	proto  *widget.RadioGroup
+	proto  *widget.Select
 	host   *widget.Entry
 	port   *widget.Entry
 	user   *widget.Entry
@@ -110,6 +118,22 @@ type addServerForm struct {
 	tlsRow *fyne.Container
 	// fieldsBox — блок полей SOCKS5/HTTP; прячется при выборе Source.
 	fieldsBox *fyne.Container
+	// Поля WireGuard.
+	wgPrivate   *widget.Entry
+	wgPublic    *widget.Entry
+	wgPreshared *widget.Entry
+	wgAddress   *widget.Entry
+	wgAllowed   *widget.Entry
+	wgMTU       *widget.Entry
+	wgKeepalive *widget.Entry
+	wgDNS       *widget.Entry
+	wgBox       *fyne.Container
+
+	// Поля Direct.
+	directIP   *widget.Entry
+	directPort *widget.Entry
+	directBox  *fyne.Container
+
 	// source — многострочный ввод варианта Source.
 	source    *widget.Entry
 	sourceBox *fyne.Container
@@ -133,6 +157,8 @@ type addServerMode int
 const (
 	modeSocks addServerMode = iota
 	modeHTTP
+	modeWireGuard
+	modeDirect
 	modeSource
 )
 
@@ -176,6 +202,8 @@ func newAddServerForm() *addServerForm {
 func (f *addServerForm) buildParamsTab() {
 	socksLabel := locale.T("SOCKS5")
 	httpLabel := locale.T("HTTP")
+	wgLabel := locale.T("WireGuard")
+	directLabel := locale.T("Direct")
 	sourceLabel := locale.T("Source")
 
 	f.host = widget.NewEntry()
@@ -222,19 +250,29 @@ func (f *addServerForm) buildParamsTab() {
 	f.source.OnChanged = func(string) { f.refreshJSON() }
 	sourceNote := widget.NewLabel(locale.T(addServerSourceNoteText))
 	sourceNote.Wrapping = fyne.TextWrapWord
+	// Border со скроллом в центре: поле растягивается на всю высоту вкладки,
+	// как на вкладке JSON. Без него MultiLineEntry внутри VBox схлопывается
+	// до одной строки — VBox отдаёт ровно минимальную высоту.
 	f.sourceBox = container.NewBorder(
 		nil, sourceNote, nil, nil,
 		container.NewScroll(f.source),
 	)
 	f.sourceBox.Hide()
 
-	f.proto = widget.NewRadioGroup([]string{socksLabel, httpLabel, sourceLabel}, nil)
-	f.proto.Horizontal = true
+	f.buildWGFields()
+	f.buildDirectFields()
+
+	f.proto = widget.NewSelect(
+		[]string{socksLabel, httpLabel, wgLabel, directLabel, sourceLabel}, nil)
 	f.proto.SetSelected(socksLabel)
 	f.proto.OnChanged = func(sel string) {
 		switch sel {
 		case httpLabel:
 			f.mode = modeHTTP
+		case wgLabel:
+			f.mode = modeWireGuard
+		case directLabel:
+			f.mode = modeDirect
 		case sourceLabel:
 			f.mode = modeSource
 		default:
@@ -246,27 +284,119 @@ func (f *addServerForm) buildParamsTab() {
 	}
 }
 
+// buildWGFields собирает поля WireGuard.
+//
+// Обязательны приватный ключ, сервер:порт, публичный ключ пира, адрес
+// интерфейса и allowed_ips; остальное опционально. Клампинг MTU под
+// AmneziaWG делает парсер (awgMaxMTU) — форме достаточно передать значение.
+func (f *addServerForm) buildWGFields() {
+	mk := func(placeholder string) *widget.Entry {
+		e := widget.NewEntry()
+		e.SetPlaceHolder(placeholder)
+		e.OnChanged = func(string) { f.refreshJSON() }
+		return e
+	}
+
+	f.wgPrivate = mk(locale.T("base64 private key"))
+	f.wgPublic = mk(locale.T("base64 peer public key"))
+	f.wgPreshared = mk(locale.T("optional"))
+	f.wgAddress = mk("10.0.0.2/32")
+	f.wgAllowed = mk("0.0.0.0/0")
+	f.wgMTU = mk("1280")
+	f.wgKeepalive = mk(locale.T("optional"))
+	f.wgDNS = mk(locale.T("optional"))
+
+	wgNote := widget.NewLabel(locale.T(addServerWGNoteText))
+	wgNote.Wrapping = fyne.TextWrapWord
+
+	f.wgBox = container.NewVBox(
+		labeledRow(locale.T("Host"), f.host),
+		labeledRow(locale.T("Port"), f.port),
+		labeledRow(locale.T("Private key"), f.wgPrivate),
+		labeledRow(locale.T("Peer public key"), f.wgPublic),
+		labeledRow(locale.T("Pre-shared key"), f.wgPreshared),
+		labeledRow(locale.T("Address"), f.wgAddress),
+		labeledRow(locale.T("Allowed IPs"), f.wgAllowed),
+		labeledRow(locale.T("MTU"), f.wgMTU),
+		labeledRow(locale.T("Keepalive"), f.wgKeepalive),
+		labeledRow(locale.T("DNS"), f.wgDNS),
+		wgNote,
+	)
+	f.wgBox.Hide()
+}
+
+// buildDirectFields собирает поля Direct.
+//
+// direct-outbound идёт мимо прокси — им закрывают трафик, который через VPN
+// либо ломается, либо не нужен (звонки WhatsApp, локальная сеть).
+//
+// IP и порт здесь — НЕ поля outbound'а: sing-box 1.11 объявил
+// override_address/override_port устаревшими, а 1.13 их удалил
+// («destination override fields in direct outbound are deprecated … use route
+// options instead»). Ядро отвергает и server/server_port. Поэтому адрес
+// назначения задаётся правилом маршрута, а форма кладёт введённое в поля
+// правила — см. directRouteNote.
+func (f *addServerForm) buildDirectFields() {
+	f.directIP = widget.NewEntry()
+	f.directIP.SetPlaceHolder(locale.T("optional"))
+	f.directIP.OnChanged = func(string) { f.refreshJSON() }
+
+	f.directPort = widget.NewEntry()
+	f.directPort.SetPlaceHolder(locale.T("optional"))
+	f.directPort.OnChanged = func(string) { f.refreshJSON() }
+
+	note := widget.NewLabel(locale.T(addServerDirectNoteText))
+	note.Wrapping = fyne.TextWrapWord
+
+	f.directBox = container.NewVBox(
+		labeledRow(locale.T("Override IP"), f.directIP),
+		labeledRow(locale.T("Override port"), f.directPort),
+		note,
+	)
+	f.directBox.Hide()
+}
+
 // applyModeVisibility показывает блок, отвечающий выбранному варианту.
 func (f *addServerForm) applyModeVisibility() {
-	if f.mode == modeSource {
-		f.fieldsBox.Hide()
-		f.sourceBox.Show()
-		return
-	}
+	f.fieldsBox.Hide()
 	f.sourceBox.Hide()
-	f.fieldsBox.Show()
-	if f.mode == modeHTTP {
-		f.tlsRow.Show()
-	} else {
-		f.tlsRow.Hide()
+	f.wgBox.Hide()
+	f.directBox.Hide()
+
+	switch f.mode {
+	case modeSource:
+		f.sourceBox.Show()
+	case modeDirect:
+		f.directBox.Show()
+	case modeWireGuard:
+		// Host/Port живут в fieldsBox и переиспользуются WG-блоком, поэтому
+		// сам блок строится со своими строками Host/Port — см. buildWGFields.
+		f.wgBox.Show()
+	default:
+		f.fieldsBox.Show()
+		if f.mode == modeHTTP {
+			f.tlsRow.Show()
+		} else {
+			f.tlsRow.Hide()
+		}
 	}
 }
 
 func (f *addServerForm) paramsContent() fyne.CanvasObject {
+	// Формы (fieldsBox/wgBox) — фиксированной высоты, они идут в top вместе с
+	// селектором. Source занимает центр и растёт на всю оставшуюся высоту:
+	// внутри VBox многострочное поле получило бы минимальную высоту в одну
+	// строку, что и было видно на первом скриншоте.
 	return container.NewBorder(
-		container.NewVBox(f.proto, widget.NewSeparator()),
+		container.NewVBox(
+			labeledRow(locale.T("Server type"), f.proto),
+			widget.NewSeparator(),
+			f.fieldsBox,
+			f.wgBox,
+			f.directBox,
+		),
 		nil, nil, nil,
-		container.NewVBox(f.fieldsBox, f.sourceBox),
+		f.sourceBox,
 	)
 }
 
@@ -305,6 +435,9 @@ func (f *addServerForm) jsonContent() fyne.CanvasObject {
 
 // defaultPort — порт по умолчанию для текущей комбинации протокол+TLS.
 func (f *addServerForm) defaultPort() string {
+	if f.mode == modeWireGuard {
+		return "51820"
+	}
 	if f.mode != modeHTTP {
 		return "1080"
 	}
@@ -327,7 +460,7 @@ func (f *addServerForm) applyDefaultPort() {
 // portIsSomeDefault — в поле стоит один из наших дефолтов, а не ручной ввод.
 func (f *addServerForm) portIsSomeDefault() bool {
 	switch strings.TrimSpace(f.port.Text) {
-	case "1080", "8080", "443":
+	case "1080", "8080", "443", "51820":
 		return true
 	}
 	return false
@@ -436,6 +569,14 @@ func (f *addServerForm) rawInput() (string, error) {
 	if f.mode == modeSource {
 		return f.source.Text, nil
 	}
+	if f.mode == modeDirect {
+		// У direct нет URI-схемы — превью строится прямо из outbound'а.
+		res, err := directResult(f.directIP.Text, f.directPort.Text, f.tag.Text)
+		if err != nil {
+			return "", err
+		}
+		return string(res.ConfigJSON), nil
+	}
 	return f.buildURI()
 }
 
@@ -446,6 +587,10 @@ func (f *addServerForm) result() (AddServerResult, error) {
 	// Ручная правка JSON побеждает: в конфиг уходит она, а не поля.
 	if f.jsonDirty {
 		return manualJSONResult(f.jsonView.Text, label)
+	}
+
+	if f.mode == modeDirect {
+		return directResult(f.directIP.Text, f.directPort.Text, label)
 	}
 
 	if f.mode == modeSource {
@@ -461,6 +606,42 @@ func (f *addServerForm) result() (AddServerResult, error) {
 		return AddServerResult{}, err
 	}
 	return AddServerResult{Text: uri, Label: label}, nil
+}
+
+// directResult собирает direct-outbound.
+//
+// У direct нет share-URI схемы, поэтому результат отдаётся сразу как
+// ConfigJSON, минуя URI-путь.
+//
+// override-поля намеренно НЕ пишутся в outbound: sing-box 1.13 их оттуда
+// удалил, и конфиг с ними ядро отвергает целиком («destination override
+// fields in direct outbound are deprecated … removed in 1.13.0»). Заполненные
+// IP/порт возвращаются вызывающему отдельно — их место в правиле маршрута.
+func directResult(ip, port, label string) (AddServerResult, error) {
+	tag := strings.TrimSpace(label)
+	if tag == "" {
+		tag = "direct-out"
+	}
+
+	ip = strings.TrimSpace(ip)
+	port = strings.TrimSpace(port)
+	if port != "" {
+		if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+			return AddServerResult{}, fmt.Errorf("%s", locale.T("Port 1..65535"))
+		}
+	}
+
+	ob := map[string]interface{}{"type": "direct", "tag": tag}
+	body, err := json.Marshal(ob)
+	if err != nil {
+		return AddServerResult{}, err
+	}
+	return AddServerResult{
+		ConfigJSON:   body,
+		Label:        tag,
+		OverrideIP:   ip,
+		OverridePort: port,
+	}, nil
 }
 
 // manualJSONResult решает, чем стал отредактированный вручную JSON.
@@ -495,6 +676,21 @@ func manualJSONResult(raw, label string) (AddServerResult, error) {
 
 // buildURI собирает share-URI из полей формы.
 func (f *addServerForm) buildURI() (string, error) {
+	if f.mode == modeWireGuard {
+		return buildWireGuardURI(wgURIInput{
+			Host:      f.host.Text,
+			Port:      f.port.Text,
+			Private:   f.wgPrivate.Text,
+			Public:    f.wgPublic.Text,
+			Preshared: f.wgPreshared.Text,
+			Address:   f.wgAddress.Text,
+			Allowed:   f.wgAllowed.Text,
+			MTU:       f.wgMTU.Text,
+			Keepalive: f.wgKeepalive.Text,
+			DNS:       f.wgDNS.Text,
+			Tag:       f.tag.Text,
+		})
+	}
 	return buildProxyURI(proxyURIInput{
 		Mode: f.mode,
 		TLS:  f.tlsOn,
@@ -504,6 +700,116 @@ func (f *addServerForm) buildURI() (string, error) {
 		Pass: f.pass.Text,
 		Tag:  f.tag.Text,
 	})
+}
+
+// validateWGKey проверяет, что ключ — base64 ровно 32 байт.
+//
+// Без этой проверки форма молча отдаёт негодный ключ парсеру, тот бракует
+// узел с warning в лог — и узел просто не появляется, без единого слова в
+// интерфейсе. Ошибка в форме — единственный рубеж, который человек увидит.
+func validateWGKey(key string) error {
+	raw, err := base64.StdEncoding.DecodeString(key)
+	if err != nil {
+		// Ключи WireGuard иногда носят url-safe алфавит.
+		raw, err = base64.URLEncoding.DecodeString(key)
+		if err != nil {
+			return fmt.Errorf("%s", locale.T("not valid base64"))
+		}
+	}
+	if len(raw) != 32 {
+		return fmt.Errorf("%s", locale.Tf("decodes to %d bytes, want 32", len(raw)))
+	}
+	return nil
+}
+
+// wgURIInput — вход сборки wireguard:// URI, отвязанный от виджетов.
+type wgURIInput struct {
+	Host      string
+	Port      string
+	Private   string
+	Public    string
+	Preshared string
+	Address   string
+	Allowed   string
+	MTU       string
+	Keepalive string
+	DNS       string
+	Tag       string
+}
+
+// buildWireGuardURI собирает wireguard:// URI, который дальше разбирает
+// parseWireGuardURI — тот же путь, что у ссылки, вставленной руками.
+//
+// Приватный ключ уезжает в userinfo. Слэши base64 экранирует url.URL сам;
+// парсер их восстанавливает (percentEncodeWGUserinfoSlashes).
+func buildWireGuardURI(in wgURIInput) (string, error) {
+	host := strings.TrimSpace(in.Host)
+	if host == "" {
+		return "", fmt.Errorf("%s", locale.T("Host required"))
+	}
+	port, err := strconv.Atoi(strings.TrimSpace(in.Port))
+	if err != nil || port < 1 || port > 65535 {
+		return "", fmt.Errorf("%s", locale.T("Port 1..65535"))
+	}
+
+	priv := strings.TrimSpace(in.Private)
+	if priv == "" {
+		return "", fmt.Errorf("%s", locale.T("Private key required"))
+	}
+	if err := validateWGKey(priv); err != nil {
+		return "", fmt.Errorf("%s: %w", locale.T("Private key"), err)
+	}
+	pub := strings.TrimSpace(in.Public)
+	if pub == "" {
+		return "", fmt.Errorf("%s", locale.T("Peer public key required"))
+	}
+	if err := validateWGKey(pub); err != nil {
+		return "", fmt.Errorf("%s: %w", locale.T("Peer public key"), err)
+	}
+	addr := strings.TrimSpace(in.Address)
+	if addr == "" {
+		return "", fmt.Errorf("%s", locale.T("Address required"))
+	}
+
+	allowed := strings.TrimSpace(in.Allowed)
+	if allowed == "" {
+		allowed = "0.0.0.0/0"
+	}
+
+	q := url.Values{}
+	q.Set("publickey", pub)
+	q.Set("address", addr)
+	q.Set("allowedips", allowed)
+	if v := strings.TrimSpace(in.Preshared); v != "" {
+		if err := validateWGKey(v); err != nil {
+			return "", fmt.Errorf("%s: %w", locale.T("Pre-shared key"), err)
+		}
+		q.Set("presharedkey", v)
+	}
+	if v := strings.TrimSpace(in.MTU); v != "" {
+		if n, err := strconv.Atoi(v); err != nil || n < 576 || n > 9000 {
+			return "", fmt.Errorf("%s", locale.T("MTU 576..9000"))
+		}
+		q.Set("mtu", v)
+	}
+	if v := strings.TrimSpace(in.Keepalive); v != "" {
+		if n, err := strconv.Atoi(v); err != nil || n < 0 || n > 65535 {
+			return "", fmt.Errorf("%s", locale.T("Keepalive 0..65535"))
+		}
+		q.Set("keepalive", v)
+	}
+	if v := strings.TrimSpace(in.DNS); v != "" {
+		q.Set("dns", v)
+	}
+
+	u := &url.URL{
+		Scheme:   "wireguard",
+		User:     url.User(priv),
+		Host:     joinHostPort(host, port),
+		RawQuery: q.Encode(),
+		Fragment: strings.TrimSpace(in.Tag),
+	}
+	return u.String(), nil
 }
 
 // proxyURIInput — вход сборки URI, отвязанный от виджетов: логика схемы и

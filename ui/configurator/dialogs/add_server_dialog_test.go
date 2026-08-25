@@ -179,3 +179,153 @@ func TestManualJSONResult_Rejects(t *testing.T) {
 		t.Error("object without type must fail")
 	}
 }
+
+// WireGuard: обязательные поля проверяются формой, а не парсером.
+func TestBuildWireGuardURI_RequiredFields(t *testing.T) {
+	full := wgURIInput{
+		Host: "vpn.example", Port: "51820",
+		Private: testWGPriv, Public: testWGPub,
+		Address: "10.0.0.2/32", Allowed: "0.0.0.0/0",
+	}
+	if _, err := buildWireGuardURI(full); err != nil {
+		t.Fatalf("full input must pass: %v", err)
+	}
+
+	for name, mutate := range map[string]func(*wgURIInput){
+		"no host":    func(in *wgURIInput) { in.Host = "" },
+		"no private": func(in *wgURIInput) { in.Private = "" },
+		"no public":  func(in *wgURIInput) { in.Public = "" },
+		"no address": func(in *wgURIInput) { in.Address = "" },
+		"bad port":   func(in *wgURIInput) { in.Port = "0" },
+	} {
+		in := full
+		mutate(&in)
+		if _, err := buildWireGuardURI(in); err == nil {
+			t.Errorf("%s must fail", name)
+		}
+	}
+}
+
+// URI, собранный формой, обязан разобраться нашим же парсером — иначе форма
+// и парсер разошлись, и узел молча не доедет до конфига.
+func TestBuildWireGuardURI_RoundTrip(t *testing.T) {
+	uri, err := buildWireGuardURI(wgURIInput{
+		Host: "vpn.example", Port: "51820",
+		Private: testWGPriv, Public: testWGPub,
+		Address: "10.0.0.2/32", Allowed: "0.0.0.0/0",
+		MTU: "1280", Keepalive: "25", Tag: "wg node",
+	})
+	if err != nil {
+		t.Fatalf("buildWireGuardURI: %v", err)
+	}
+	nodes := parseAddServerInput(uri)
+	if len(nodes) != 1 {
+		t.Fatalf("want 1 node from %q, got %d", uri, len(nodes))
+	}
+	if nodes[0].Scheme != "wireguard" {
+		t.Errorf("scheme: got %q", nodes[0].Scheme)
+	}
+	if mtu, ok := nodes[0].Outbound["mtu"].(int); !ok || mtu != 1280 {
+		t.Errorf("mtu lost: %v", nodes[0].Outbound["mtu"])
+	}
+}
+
+// MTU и keepalive вне разумных границ отвергаются формой.
+func TestBuildWireGuardURI_NumericBounds(t *testing.T) {
+	base := wgURIInput{
+		Host: "h", Port: "51820", Private: testWGPriv, Public: testWGPub, Address: "10.0.0.2/32",
+	}
+	for _, bad := range []string{"1", "100000", "abc"} {
+		in := base
+		in.MTU = bad
+		if _, err := buildWireGuardURI(in); err == nil {
+			t.Errorf("mtu %q must fail", bad)
+		}
+	}
+	for _, bad := range []string{"-1", "70000", "x"} {
+		in := base
+		in.Keepalive = bad
+		if _, err := buildWireGuardURI(in); err == nil {
+			t.Errorf("keepalive %q must fail", bad)
+		}
+	}
+}
+
+// Direct: плоский outbound без полей назначения — ядро 1.13+ их не принимает.
+func TestDirectResult_PlainOutbound(t *testing.T) {
+	res, err := directResult("", "", "wa")
+	if err != nil {
+		t.Fatalf("directResult: %v", err)
+	}
+	body := string(res.ConfigJSON)
+	if !strings.Contains(body, `"type":"direct"`) {
+		t.Errorf("not a direct outbound: %s", body)
+	}
+	// Именно эти поля ядро отвергает — их не должно быть в outbound'е.
+	for _, banned := range []string{"override_address", "override_port", "server", "server_port"} {
+		if strings.Contains(body, banned) {
+			t.Errorf("banned field %q emitted into direct outbound: %s", banned, body)
+		}
+	}
+	if res.Label != "wa" {
+		t.Errorf("label: got %q", res.Label)
+	}
+}
+
+// Заполненные IP/порт возвращаются отдельно — они для правила маршрута.
+func TestDirectResult_OverrideReturnedSeparately(t *testing.T) {
+	res, err := directResult("1.2.3.4", "443", "")
+	if err != nil {
+		t.Fatalf("directResult: %v", err)
+	}
+	if res.OverrideIP != "1.2.3.4" || res.OverridePort != "443" {
+		t.Errorf("override lost: ip=%q port=%q", res.OverrideIP, res.OverridePort)
+	}
+	if strings.Contains(string(res.ConfigJSON), "1.2.3.4") {
+		t.Errorf("override leaked into outbound: %s", res.ConfigJSON)
+	}
+	// Пустой тег получает осмысленный fallback, а не пустую строку.
+	if res.Label == "" {
+		t.Error("empty tag must fall back to a default")
+	}
+
+	if _, err := directResult("", "70000", ""); err == nil {
+		t.Error("bad port must fail")
+	}
+}
+
+// Ключи WireGuard — ровно 32 байта base64. Значения детерминированные и не
+// секретные: важна только длина, которую требует и парсер, и ядро.
+const (
+	testWGPriv = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+	testWGPub  = "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8="
+	testWGPSK  = "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8="
+)
+
+// Негодный ключ обязан отвергаться формой, а не молча ронять узел в парсере:
+// там он уходит warning'ом в лог, которого человек в форме не увидит.
+func TestBuildWireGuardURI_RejectsBadKeys(t *testing.T) {
+	base := wgURIInput{
+		Host: "h", Port: "51820", Private: testWGPriv, Public: testWGPub,
+		Address: "10.0.0.2/32",
+	}
+	for name, mutate := range map[string]func(*wgURIInput){
+		"short private": func(in *wgURIInput) { in.Private = "dG9vLXNob3J0" },
+		"short public":  func(in *wgURIInput) { in.Public = "dG9vLXNob3J0" },
+		"not base64":    func(in *wgURIInput) { in.Private = "!!! not base64 !!!" },
+		"short psk":     func(in *wgURIInput) { in.Preshared = "dG9vLXNob3J0" },
+	} {
+		in := base
+		mutate(&in)
+		if _, err := buildWireGuardURI(in); err == nil {
+			t.Errorf("%s must be rejected by the form", name)
+		}
+	}
+
+	// Валидный pre-shared ключ проходит.
+	in := base
+	in.Preshared = testWGPSK
+	if _, err := buildWireGuardURI(in); err != nil {
+		t.Errorf("valid psk rejected: %v", err)
+	}
+}

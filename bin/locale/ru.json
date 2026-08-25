@@ -3235,5 +3235,71 @@
   },
   "Edited by hand — the fields no longer overwrite this JSON.": {
     "value": "Изменено вручную — поля больше не перезаписывают этот JSON."
+  },
+  "Server type": {
+    "value": "Тип сервера"
+  },
+  "Direct": {
+    "value": "Direct"
+  },
+  "Private key": {
+    "value": "Приватный ключ"
+  },
+  "Peer public key": {
+    "value": "Публичный ключ пира"
+  },
+  "Pre-shared key": {
+    "value": "Общий ключ (PSK)"
+  },
+  "Allowed IPs": {
+    "value": "Разрешённые IP"
+  },
+  "Keepalive": {
+    "value": "Keepalive"
+  },
+  "base64 private key": {
+    "value": "приватный ключ base64"
+  },
+  "base64 peer public key": {
+    "value": "публичный ключ пира base64"
+  },
+  "Private key required": {
+    "value": "Укажите приватный ключ"
+  },
+  "Peer public key required": {
+    "value": "Укажите публичный ключ пира"
+  },
+  "Address required": {
+    "value": "Укажите адрес"
+  },
+  "MTU 576..9000": {
+    "value": "MTU 576..9000"
+  },
+  "Keepalive 0..65535": {
+    "value": "Keepalive 0..65535"
+  },
+  "not valid base64": {
+    "value": "не является корректным base64"
+  },
+  "decodes to %d bytes, want 32": {
+    "value": "декодируется в %d байт, нужно 32"
+  },
+  "Override IP": {
+    "value": "Целевой IP"
+  },
+  "Override port": {
+    "value": "Целевой порт"
+  },
+  "Direct server added": {
+    "value": "Direct-сервер добавлен"
+  },
+  "Keys are base64, as in a wg-quick .conf. MTU above 1380 breaks AmneziaWG endpoints — for those the parser clamps it down. A whole .conf can be pasted on the Source tab instead.": {
+    "value": "Ключи в base64, как в .conf для wg-quick. MTU выше 1380 ломает узлы AmneziaWG — для них парсер сам понижает значение. Целый .conf можно вставить на вкладке Source."
+  },
+  "Goes straight out, bypassing every proxy — for traffic that VPN breaks or does not need (WhatsApp calls, LAN). Leave both fields empty for a plain direct outbound. Filled in, they become a route rule: sing-box removed destination override from the direct outbound itself in 1.13.": {
+    "value": "Идёт напрямую, минуя все прокси — для трафика, который VPN ломает или которому он не нужен (звонки WhatsApp, локальная сеть). Оставьте оба поля пустыми для обычного direct. Заполненные, они станут правилом маршрута: из самого direct-outbound переопределение назначения убрали в sing-box 1.13."
+  },
+  "Destination override (%s) belongs to a route rule — sing-box removed it from the direct outbound in 1.13. Add a rule on the Rules tab pointing at %q.": {
+    "value": "Переопределение назначения (%s) задаётся правилом маршрута — из direct-outbound его убрали в sing-box 1.13. Добавьте правило на вкладке «Правила», направив его на %q."
   }
 }
