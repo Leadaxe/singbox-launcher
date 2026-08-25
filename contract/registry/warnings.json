@@ -175,7 +175,7 @@
         "value"
       ],
       "desc": "REALITY short_id содержит не-hex или слишком длинный — фильтруется до hex-цифр/усекается, мусор целиком → поле снимается (пустой short_id легален). Сегодня молча в обоих проектах.",
-      "dart": null,
+      "dart": "RealityShortIdInvalidWarning",
       "go": "core/config/subscription/node_parser_transport.go:564; core/config/subscription/singbox_sanitize.go:209"
     },
     "packet_encoding_unknown": {
@@ -184,7 +184,7 @@
         "value"
       ],
       "desc": "packet_encoding вне {xudp, packetaddr} (пустое/none = отсутствие поля) — поле снимается, иначе паника ядра (SPEC 049). Dart деградирует так же, но без NodeWarning-класса (uri_utils.dart:156, лог) — кандидат на добавление класса.",
-      "dart": null,
+      "dart": "PacketEncodingUnknownWarning",
       "go": "core/config/subscription/node_parser_core.go:622; core/config/subscription/singbox_sanitize.go:260"
     },
     "naive_padding_ignored": {
@@ -193,7 +193,7 @@
         "value"
       ],
       "desc": "URI-параметр padding у naive не имеет sing-box-эквивалента — игнорируется, узел живёт.",
-      "dart": null,
+      "dart": "NaivePaddingIgnoredWarning",
       "go": "core/config/subscription/node_parser_core.go:384"
     },
     "ss_method_invalid": {
@@ -230,7 +230,7 @@
         "value"
       ],
       "desc": "TUIC congestion_control вне {cubic, new_reno, bbr} — поле снимается, узел живёт.",
-      "dart": null,
+      "dart": "TuicCongestionInvalidWarning",
       "go": "core/config/subscription/node_parser_tuic.go:73"
     },
     "tuic_udp_relay_mode_invalid": {
@@ -248,7 +248,7 @@
         "value"
       ],
       "desc": "anytls min_idle_session не неотрицательное целое — поле снимается, узел живёт.",
-      "dart": null,
+      "dart": "AnyTlsMinIdleInvalidWarning",
       "go": "core/config/subscription/node_parser_anytls.go:40"
     },
     "masque_vhttp_invalid": {
@@ -256,14 +256,14 @@
       "params": [
         "value"
       ],
-      "desc": "MASQUE vhttp вне {h3, h2} — принудительно h3. Desktop-протокол (masque в LxBox нет).",
-      "dart": null,
+      "desc": "MASQUE vhttp вне {h3, h2} — принудительно h3. Есть в ОБОИХ проектах (прежняя пометка «Desktop-протокол, в LxBox нет» протухла: masque в LxBox поддержан). Контракт 0.8.0 (D-078) снёс приём legacy-алиаса `network=` — параметр игнорируется, дефолт h3.",
+      "dart": "MasqueVhttpInvalidWarning",
       "go": "core/config/subscription/node_parser_masque.go:100"
     },
     "ssh_user_default": {
       "severity": "info",
       "params": [],
-      "desc": "SSH-ссылка без пользователя — подставлен root. Desktop-протокол.",
+      "desc": "SSH-ссылка без пользователя — подставлен root. Прежняя пометка «Desktop-протокол» протухла: ssh в LxBox поддержан. РАСХОЖДЕНИЕ ЖИВО: Go на URI-пути валит ноду ещё раньше (пустой userinfo, node_parser_core.go:308-316) и root-ветка — мёртвый код; Dart на URI-пути делает null-skip (ssh_parser.dart), а в singbox-импорте дефолтит root (json_parsers.dart). Код ставится только на singbox-пути Dart; выравнивание — за Go.",
       "dart": null,
       "go": "core/config/subscription/node_parser_ssh.go:22"
     },
@@ -274,7 +274,7 @@
         "value"
       ],
       "desc": "AWG magic-header (H1..H4/S1/S2 и др.) не uint32 и не lo-hi диапазон — поле снимается, ядро возьмёт WireGuard-дефолт.",
-      "dart": null,
+      "dart": "AwgHeaderInvalidWarning",
       "go": "core/config/subscription/node_parser_wireguard.go:400"
     },
     "awg_headers_overlap": {
@@ -386,8 +386,8 @@
         "version",
         "tag"
       ],
-      "desc": "Ядро собрано без with_lx_chain и не знает тип outbound'а chain (SPEC 110). Ядро отвергает конфиг ЦЕЛИКОМ на неизвестном типе, поэтому источник-цепочка не превращается в узел вовсе — иначе одна настроенная цепочка лишила бы пользователя VPN, а не одного маршрута. Тот же приём деградации, что naive_unavailable.",
-      "dart": "ChainBuildTagWarning",
+      "desc": "Ядро собрано без with_lx_chain и не знает тип outbound'а chain (SPEC 110). Ядро отвергает конфиг ЦЕЛИКОМ на неизвестном типе, поэтому источник-цепочка не превращается в узел вовсе — иначе одна настроенная цепочка лишила бы пользователя VPN, а не одного маршрута. Тот же приём деградации, что naive_unavailable. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
+      "dart": "services/builder/core_chain_capability.dart + chain_nodes.dart:99",
       "go": "core/core_chain_capability.go:96"
     },
     "chain_hop_missing": {
@@ -396,8 +396,8 @@
         "position",
         "target"
       ],
-      "desc": "Позиция цепочки не найдена среди узлов и Направлений: узел исчез из подписки, Направление выключено, или цепочка сослалась на объявленную НИЖЕ по списку (ссылки вперёд запрещены — этим исключены циклы между цепочками). Цепочка выпадает ЦЕЛИКОМ, а не теряет одну позицию: маршрут без хопа это другой маршрут, а ссылка в никуда не даёт ядру стартовать. Не путать с detour_target_missing — там узел живёт и ходит напрямую.",
-      "dart": "ChainHopMissingWarning",
+      "desc": "Позиция цепочки не найдена среди узлов и Направлений: узел исчез из подписки, Направление выключено, или цепочка сослалась на объявленную НИЖЕ по списку (ссылки вперёд запрещены — этим исключены циклы между цепочками). Цепочка выпадает ЦЕЛИКОМ, а не теряет одну позицию: маршрут без хопа это другой маршрут, а ссылка в никуда не даёт ядру стартовать. Не путать с detour_target_missing — там узел живёт и ходит напрямую. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
+      "dart": "services/builder/chain_nodes.dart:137",
       "go": "core/config/chain_nodes.go:130"
     },
     "chain_invalid": {
@@ -405,8 +405,8 @@
       "params": [
         "reason"
       ],
-      "desc": "Цепочка нарушает инвариант ядра: меньше двух позиций, пустой тег, ссылка на саму себя, повтор позиции или неизвестный ключ каталога strip (protocol/chain/chain.go:85-100). Каждое из этих условий не даёт стартовать всему конфигу, поэтому запись не эмитится.",
-      "dart": "ChainInvalidWarning",
+      "desc": "Цепочка нарушает инвариант ядра: меньше двух позиций, пустой тег, ссылка на саму себя, повтор позиции или неизвестный ключ каталога strip (protocol/chain/chain.go:85-100). Каждое из этих условий не даёт стартовать всему конфигу, поэтому запись не эмитится. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
+      "dart": "services/builder/chain_nodes.dart:107,117",
       "go": "core/config/chain_generator.go:54"
     },
     "chain_strip_utls_on_reality": {
@@ -414,8 +414,8 @@
       "params": [
         "target"
       ],
-      "desc": "Цепочка снимает tls.utls у звена, чей узел поднимает reality. Ядро отказывается это делать и падает при старте (protocol/chain/transform.go:212): отпечаток ClientHello в reality — несущий элемент протокола, а не маскировка. Форма обязана предотвращать такую настройку, а не давать поймать её в рантайме.",
-      "dart": "ChainStripUtlsRealityWarning",
+      "desc": "Цепочка снимает tls.utls у звена, чей узел поднимает reality. Ядро отказывается это делать и падает при старте (protocol/chain/transform.go:212): отпечаток ClientHello в reality — несущий элемент протокола, а не маскировка. Форма обязана предотвращать такую настройку, а не давать поймать её в рантайме. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
+      "dart": "screens/chain_edit/chain_form_validation.dart (ChainIssueCode.stripUtlsOnReality)",
       "go": "core/config/chain_validate.go:59"
     },
     "chain_nested_position": {
@@ -424,8 +424,8 @@
         "position",
         "target"
       ],
-      "desc": "Вложенная цепочка стоит не на позиции 0. Ядро допускает её только первой (protocol/chain/chain.go:279): звено — это «узел через предыдущую позицию», а цепочка не узел и не пересобирается под чужой диалер.",
-      "dart": "ChainNestedPositionWarning",
+      "desc": "Вложенная цепочка стоит не на позиции 0. Ядро допускает её только первой (protocol/chain/chain.go:279): звено — это «узел через предыдущую позицию», а цепочка не узел и не пересобирается под чужой диалер. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
+      "dart": "services/builder/chain_nodes.dart:154",
       "go": "core/config/chain_validate.go:78"
     },
     "chain_cycle_through_direction": {
@@ -434,8 +434,8 @@
         "chain",
         "direction"
       ],
-      "desc": "Направление не взяло в состав цепочку, которая через это же Направление проходит (SPEC 110 T9). Самый частый случай: цепочка [proxy-out, exit] при фильтре «все узлы» у proxy-out. Ядро на таком не падает — оно развернёт позицию в то, что группа выбрала сейчас, — но пользователь получил бы маршрут, которого не задумывал: выбрав цепочку внутри группы, он замкнул бы трафик на неё же. Проверяется транзитивно, включая цепочку через цепочку.",
-      "dart": "ChainCycleThroughDirectionWarning",
+      "desc": "Направление не взяло в состав цепочку, которая через это же Направление проходит (SPEC 110 T9). Самый частый случай: цепочка [proxy-out, exit] при фильтре «все узлы» у proxy-out. Ядро на таком не падает — оно развернёт позицию в то, что группа выбрала сейчас, — но пользователь получил бы маршрут, которого не задумывал: выбрав цепочку внутри группы, он замкнул бы трафик на неё же. Проверяется транзитивно, включая цепочку через цепочку. МЕХАНИЗМ DART: не NodeWarning-класс, а строковый код в ChainDegradation (цепочка деградирует ЦЕЛИКОМ до сборки конфига, а не помечается предупреждением на живом узле) и/или находка формы ChainIssueCode. Прежняя запись называла *Warning-класс, которого в коде нет.",
+      "dart": "services/builder/chain_nodes.dart (T9) + screens/chain_edit/chain_form_validation.dart",
       "go": "core/config/chain_cycle.go:84"
     },
     "ws_early_data_converted": {
@@ -444,7 +444,7 @@
         "max_early_data"
       ],
       "desc": "Xray-хвост `?ed=N` в WebSocket-пути разложен на sing-box-поля max_early_data + early_data_header_name — путь из ссылки попадает в конфиг не буквально, узел работает. Без конверсии ядро отдаёт хвост серверу как часть пути и тот отвечает 404 (check при этом проходит). SPEC 103 §9.E / issue #96.",
-      "dart": null,
+      "dart": "WsEarlyDataConvertedWarning",
       "go": "core/config/subscription/node_parser_core.go (noteWSEarlyDataConverted + прямой ws-путь buildOutbound)"
     }
   }
