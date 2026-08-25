@@ -793,22 +793,71 @@ vless://uuid@server.com:443?encryption=none&flow=xtls-rprx-vision&security=reali
 
 With `type=xhttp` (VLESS/Trojan) or `net=xhttp` (VMess) a `{"type":"xhttp", …}` transport is assembled. Values come from two sources: ordinary query parameters and **`extra`** — a URL-encoded JSON; on a key collision `extra` wins. Names are read in both snake_case and camelCase (`session_key` = `sessionKey`).
 
-| Parameter | Meaning |
-|---|---|
-| `mode` | `auto` \| `packet-up` \| `stream-up` \| `stream-one`. On the fork `auto` = `packet-up`; `stream-one` has a known downlink-framing bug |
-| `path` | The request path |
-| `host` | The Host header; when empty, the SNI from TLS is substituted |
-| `x_padding_bytes` (`xPaddingBytes`) | A `"min-max"` range, default `100-1000`; carried in the `Referer` header |
-| `no_grpc_header` | Drop the gRPC-compatible header |
-| `session_placement`, `session_key` | Placement and key name for the session |
-| `seq_placement`, `seq_key` | Placement and key name for the sequence |
-| `uplink_data_placement`, `uplink_data_key` | Placement and key name for the uplink data |
-| `uplink_chunk_size`, `uplink_http_method` | The uplink's chunk size and HTTP method |
-| `x_padding_key`, `x_padding_header`, `x_padding_placement`, `x_padding_method` | Fine tuning of the x-padding obfuscation |
-| `sc_max_each_post_bytes` (`scMaxEachPostBytes`) | The core expects a `"min-max"` string; a bare number (including `30.0` coming from `extra`) is normalized into a string |
-| `sc_min_posts_interval_ms` (`scMinPostsIntervalMs`) | The same rule |
+| Parameter (snake_case / camelCase) | Type in config | Meaning |
+|---|---|---|
+| `mode` | string | `auto` \| `packet-up` \| `stream-up` \| `stream-one`. On the fork `auto` = `packet-up`; `stream-one` has a known downlink-framing bug |
+| `path` | string | The request path; the tail from the first `?` is trimmed (see the warning below) |
+| `host` | string | The Host header; when empty, the SNI from TLS is substituted |
+| `x_padding_bytes` / `xPaddingBytes` | string | A `"min-max"` range, default `100-1000`; carried in the `Referer` header |
+| `no_grpc_header` / `noGRPCHeader` | bool | Drop the gRPC-compatible header |
+| `no_sse_header` / `noSSEHeader` | bool | Drop the SSE-compatible header |
+| `x_padding_obfs_mode` / `xPaddingObfsMode` | bool | Enable x-padding obfuscation |
+| `session_placement`, `session_key` / `sessionPlacement`, `sessionKey` | string | Placement and key name for the session |
+| `seq_placement`, `seq_key` / `seqPlacement`, `seqKey` | string | Placement and key name for the sequence |
+| `uplink_data_placement`, `uplink_data_key` / `uplinkDataPlacement`, `uplinkDataKey` | string | Placement and key name for the uplink data |
+| `uplink_chunk_size` / `uplinkChunkSize` | string | The uplink's chunk size |
+| `uplink_http_method` / `uplinkHTTPMethod` | string | The uplink's HTTP method |
+| `x_padding_key`, `x_padding_header`, `x_padding_placement`, `x_padding_method` (camelCase: `xPaddingKey`, `xPaddingHeader`, `xPaddingPlacement`, `xPaddingMethod`) | string | Fine tuning of the x-padding obfuscation |
+| `sc_max_each_post_bytes` / `scMaxEachPostBytes` | string | The core expects a `"min-max"` string; a bare number (including `30.0` coming from `extra`) is normalized into a string |
+| `sc_min_posts_interval_ms` / `scMinPostsIntervalMs` | string | The same rule |
+| `sc_stream_up_server_secs` / `scStreamUpServerSecs` | string | The same rule |
+| `sc_max_buffered_posts` / `scMaxBufferedPosts` | **number** | The core decodes it as an int, not as a string |
 
-Values are not validated further — the core parses them. Implementation: `xhttpTransportFromQuery` in `core/config/subscription/node_parser_transport.go`; specs: `SPECS/071-F-N-XHTTP_TRANSPORT/SPEC.md`, `sing-box-lx` SPEC 002.
+**The `xmux` fields** are written as the same flat parameters — no nested object is needed; the parser assembles `"xmux": {…}` inside the transport itself:
+
+| Parameter (snake_case / camelCase) | Type in config | Meaning |
+|---|---|---|
+| `max_connections` / `maxConnections` | string | Connection-count limit (a `"min-max"` range is allowed) |
+| `max_concurrency` / `maxConcurrency` | string | Concurrency limit (a range is allowed) |
+| `c_max_reuse_times` / `cMaxReuseTimes` | string | How many times a connection is reused |
+| `h_max_request_times` / `hMaxRequestTimes` | string | Request limit per HTTP connection |
+| `h_max_reusable_secs` / `hMaxReusableSecs` | string | How long an HTTP connection stays reusable |
+| `h_keep_alive_period` / `hKeepAlivePeriod` | **number** | The core decodes it as an int, not as a string |
+
+**Boolean fields are emitted only when true.** `no_grpc_header`, `no_sse_header` and `x_padding_obfs_mode` are not written at all when `false` — the core's default is the absent field. `1`, `true` and `yes` count as true (case-insensitive).
+
+**An example covering every group** (flat parameters, the recommended form):
+
+```
+vless://UUID@example.com:443?encryption=none&security=tls&sni=a.com&type=xhttp&mode=packet-up&path=%2Fgtm.js&host=a.com&xPaddingBytes=100-1000&scMaxEachPostBytes=1000000&scMaxBufferedPosts=30&maxConnections=1&maxConcurrency=16-32&hKeepAlivePeriod=30#node-01
+```
+
+yields the transport:
+
+```json
+{
+  "type": "xhttp",
+  "mode": "packet-up",
+  "path": "/gtm.js",
+  "host": "a.com",
+  "x_padding_bytes": "100-1000",
+  "sc_max_each_post_bytes": "1000000",
+  "sc_max_buffered_posts": 30,
+  "xmux": { "max_connections": "1", "max_concurrency": "16-32", "h_keep_alive_period": 30 }
+}
+```
+
+The same fields may travel in `extra` (URL-encoded JSON) — on a key collision `extra` wins:
+
+```
+&extra=%7B%22maxConnections%22%3A1%2C%22scMaxBufferedPosts%22%3A30%7D
+```
+
+The nested form `extra={"xmux":{…}}` — the one Xray itself writes — is read as well: its members are flattened into the same fields. It is not needed for your own links; the flat form is shorter and equivalent.
+
+**⚠️ The query tail in `path` is trimmed.** `path=/gtm.js?id-aabbccdd` yields `"path": "/gtm.js"` — everything from the first `?` counts as a query rather than the path (SPEC 002 §4.1; real nodes ship `path=/GaMeOpTiMiZeR?ed=2048`). Nothing else is normalized: a backslash (`\gtm.js`) and residual percent-encoding reach the config as-is — `check` accepts them and the server answers 404.
+
+Values are not validated further — the core parses them. Implementation: `xhttpTransportFromQuery` / `xhttpBuildTransport` in `core/config/subscription/node_parser_transport.go`; specs: `SPECS/071-F-N-XHTTP_TRANSPORT/SPEC.md`, `sing-box-lx` SPEC 002.
 
 ### VMess (`vmess://`)
 **⚠️ A quirk:** VMess is normally base64(JSON), but a **legacy** string after base64 is supported too: `method:uuid@host:port` with an optional `?query` (as in some clients). The `#tag` fragment is cut off **before** base64 decoding.

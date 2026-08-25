@@ -167,3 +167,36 @@ func urlEnc(s string) string {
 	)
 	return r.Replace(s)
 }
+
+// SPEC 102 R2: Xray пишет xmux в `extra` вложенным объектом, а не плоскими
+// ключами. Обе формы должны давать один и тот же транспорт — иначе один и тот
+// же узел разбирается по-разному в зависимости от того, пришёл он ссылкой или
+// JSON-конфигом (в JSON-ветке вложенность разворачивалась всегда).
+func TestXHTTPv2_ExtraNestedXmuxEqualsFlat(t *testing.T) {
+	const base = "vless://c59eb5ed-6324-4d53-ad4f-8cda48b30811@h.test:443?type=xhttp&security=tls&sni=h.test&path=%2Fp"
+	nested := tr(t, base+"&extra="+urlEnc(`{"xmux":{"maxConnections":1,"maxConcurrency":"16-32","hKeepAlivePeriod":30}}`)+"#nested")
+	flat := tr(t, base+"&maxConnections=1&maxConcurrency=16-32&hKeepAlivePeriod=30#flat")
+
+	for _, form := range []struct {
+		name string
+		m    map[string]interface{}
+	}{{"nested", nested}, {"flat", flat}} {
+		xmux, ok := form.m["xmux"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("%s: xmux missing, transport=%+v", form.name, form.m)
+		}
+		if got, _ := xmux["max_connections"].(string); got != "1" {
+			t.Errorf("%s: max_connections = %q, want 1", form.name, got)
+		}
+		if got, _ := xmux["max_concurrency"].(string); got != "16-32" {
+			t.Errorf("%s: max_concurrency = %q, want 16-32", form.name, got)
+		}
+		if got, _ := xmux["h_keep_alive_period"].(int); got != 30 {
+			t.Errorf("%s: h_keep_alive_period = %v (%T), want int 30", form.name, xmux["h_keep_alive_period"], xmux["h_keep_alive_period"])
+		}
+	}
+	// Сам ключ "xmux" не должен просочиться строкой в верхний слой.
+	if s, ok := nested["xmux"].(string); ok {
+		t.Errorf("xmux leaked as string: %q", s)
+	}
+}

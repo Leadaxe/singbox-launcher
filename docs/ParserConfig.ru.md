@@ -714,22 +714,71 @@ vless://uuid@server.com:443?encryption=none&flow=xtls-rprx-vision&security=reali
 
 При `type=xhttp` (VLESS/Trojan) или `net=xhttp` (VMess) собирается транспорт `{"type":"xhttp", …}`. Значения берутся из двух источников: обычных query-параметров и **`extra`** — URL-encoded JSON; при совпадении ключей выигрывает `extra`. Имена читаются и в snake_case, и в camelCase (`session_key` = `sessionKey`).
 
-| Параметр | Значение |
-|---|---|
-| `mode` | `auto` \| `packet-up` \| `stream-up` \| `stream-one`. У форка `auto` = `packet-up`; у `stream-one` известен баг downlink-framing |
-| `path` | путь запроса |
-| `host` | заголовок Host; при пустом подставляется SNI из TLS |
-| `x_padding_bytes` (`xPaddingBytes`) | диапазон `"min-max"`, дефолт `100-1000`; несётся в заголовке `Referer` |
-| `no_grpc_header` | убрать gRPC-совместимый заголовок |
-| `session_placement`, `session_key` | размещение и имя ключа сессии |
-| `seq_placement`, `seq_key` | размещение и имя ключа последовательности |
-| `uplink_data_placement`, `uplink_data_key` | размещение и имя ключа uplink-данных |
-| `uplink_chunk_size`, `uplink_http_method` | размер чанка и HTTP-метод uplink'а |
-| `x_padding_key`, `x_padding_header`, `x_padding_placement`, `x_padding_method` | тонкая настройка x-padding-обфускации |
-| `sc_max_each_post_bytes` (`scMaxEachPostBytes`) | ожидается ядром как `"min-max"`; голое число (в т.ч. `30.0` из `extra`) нормализуется в строку |
-| `sc_min_posts_interval_ms` (`scMinPostsIntervalMs`) | то же правило |
+| Параметр (snake_case / camelCase) | Тип в конфиге | Значение |
+|---|---|---|
+| `mode` | строка | `auto` \| `packet-up` \| `stream-up` \| `stream-one`. У форка `auto` = `packet-up`; у `stream-one` известен баг downlink-framing |
+| `path` | строка | путь запроса; хвост от первого `?` отрезается (см. предупреждение ниже) |
+| `host` | строка | заголовок Host; при пустом подставляется SNI из TLS |
+| `x_padding_bytes` / `xPaddingBytes` | строка | диапазон `"min-max"`, дефолт `100-1000`; несётся в заголовке `Referer` |
+| `no_grpc_header` / `noGRPCHeader` | bool | убрать gRPC-совместимый заголовок |
+| `no_sse_header` / `noSSEHeader` | bool | убрать SSE-совместимый заголовок |
+| `x_padding_obfs_mode` / `xPaddingObfsMode` | bool | включить обфускацию x-padding |
+| `session_placement`, `session_key` / `sessionPlacement`, `sessionKey` | строка | размещение и имя ключа сессии |
+| `seq_placement`, `seq_key` / `seqPlacement`, `seqKey` | строка | размещение и имя ключа последовательности |
+| `uplink_data_placement`, `uplink_data_key` / `uplinkDataPlacement`, `uplinkDataKey` | строка | размещение и имя ключа uplink-данных |
+| `uplink_chunk_size` / `uplinkChunkSize` | строка | размер чанка uplink'а |
+| `uplink_http_method` / `uplinkHTTPMethod` | строка | HTTP-метод uplink'а |
+| `x_padding_key`, `x_padding_header`, `x_padding_placement`, `x_padding_method` (camelCase: `xPaddingKey`, `xPaddingHeader`, `xPaddingPlacement`, `xPaddingMethod`) | строка | тонкая настройка x-padding-обфускации |
+| `sc_max_each_post_bytes` / `scMaxEachPostBytes` | строка | ожидается ядром как `"min-max"`; голое число (в т.ч. `30.0` из `extra`) нормализуется в строку |
+| `sc_min_posts_interval_ms` / `scMinPostsIntervalMs` | строка | то же правило |
+| `sc_stream_up_server_secs` / `scStreamUpServerSecs` | строка | то же правило |
+| `sc_max_buffered_posts` / `scMaxBufferedPosts` | **число** | ядро декодирует как int, а не как строку |
 
-Значения дальше не валидируются — их разбирает ядро. Реализация: `xhttpTransportFromQuery` в `core/config/subscription/node_parser_transport.go`; спеки: `SPECS/071-F-N-XHTTP_TRANSPORT/SPEC.md`, `sing-box-lx` SPEC 002.
+**Поля `xmux`** пишутся такими же плоскими параметрами — оборачивать их во вложенный объект не нужно; парсер сам соберёт из них `"xmux": {…}` внутри транспорта:
+
+| Параметр (snake_case / camelCase) | Тип в конфиге | Значение |
+|---|---|---|
+| `max_connections` / `maxConnections` | строка | предел числа соединений (допускается диапазон `"min-max"`) |
+| `max_concurrency` / `maxConcurrency` | строка | предел параллелизма (допускается диапазон) |
+| `c_max_reuse_times` / `cMaxReuseTimes` | строка | сколько раз переиспользуется соединение |
+| `h_max_request_times` / `hMaxRequestTimes` | строка | предел запросов на HTTP-соединение |
+| `h_max_reusable_secs` / `hMaxReusableSecs` | строка | срок переиспользования HTTP-соединения |
+| `h_keep_alive_period` / `hKeepAlivePeriod` | **число** | ядро декодирует как int, а не как строку |
+
+**Булевы поля эмитятся только при истине.** `no_grpc_header`, `no_sse_header`, `x_padding_obfs_mode` при `false` не пишутся вовсе — у ядра дефолт равен отсутствующему полю. Истиной считаются `1`, `true`, `yes` (регистр не важен).
+
+**Пример со всеми группами полей** (flat-параметры, рекомендуемая форма):
+
+```
+vless://UUID@example.com:443?encryption=none&security=tls&sni=a.com&type=xhttp&mode=packet-up&path=%2Fgtm.js&host=a.com&xPaddingBytes=100-1000&scMaxEachPostBytes=1000000&scMaxBufferedPosts=30&maxConnections=1&maxConcurrency=16-32&hKeepAlivePeriod=30#node-01
+```
+
+даёт транспорт:
+
+```json
+{
+  "type": "xhttp",
+  "mode": "packet-up",
+  "path": "/gtm.js",
+  "host": "a.com",
+  "x_padding_bytes": "100-1000",
+  "sc_max_each_post_bytes": "1000000",
+  "sc_max_buffered_posts": 30,
+  "xmux": { "max_connections": "1", "max_concurrency": "16-32", "h_keep_alive_period": 30 }
+}
+```
+
+Те же поля можно передать через `extra` (URL-encoded JSON) — при совпадении ключей выигрывает `extra`:
+
+```
+&extra=%7B%22maxConnections%22%3A1%2C%22scMaxBufferedPosts%22%3A30%7D
+```
+
+Вложенная форма `extra={"xmux":{…}}` — та, что пишет сам Xray, — тоже читается: её члены разворачиваются в те же поля. Для своих ссылок она не нужна, плоская форма короче и эквивалентна.
+
+**⚠️ Хвост запроса в `path` отрезается.** `path=/gtm.js?id-aabbccdd` даёт `"path": "/gtm.js"` — всё от первого `?` считается query, а не путём (SPEC 002 §4.1; реальные ноды шлют `path=/GaMeOpTiMiZeR?ed=2048`). Больше никакой нормализации нет: обратный слеш (`\gtm.js`) и остаточное percent-кодирование уезжают в конфиг как есть, `check` их пропустит, а сервер ответит 404.
+
+Значения дальше не валидируются — их разбирает ядро. Реализация: `xhttpTransportFromQuery` / `xhttpBuildTransport` в `core/config/subscription/node_parser_transport.go`; спеки: `SPECS/071-F-N-XHTTP_TRANSPORT/SPEC.md`, `sing-box-lx` SPEC 002.
 
 ### VMess (`vmess://`)
 **⚠️ Особенность:** обычно VMess — base64(JSON); поддерживается и **legacy**-строка после base64: `method:uuid@host:port` с опциональным `?query` (как в части клиентов). Фрагмент `#tag` отрезается **до** декодирования base64.
