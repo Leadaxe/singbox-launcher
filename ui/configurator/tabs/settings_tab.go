@@ -170,6 +170,31 @@ func dnsTabOwnedVar(name string) bool {
 	}
 }
 
+// dnsServerOwnedVar true для переменной, объявленной ЗАПИСЬЮ DNS-сервера
+// шаблона (SPEC 109: `dns_<tag>_<var>`, см. dnsServerVarsFor).
+//
+// Такая переменная попадает в подпись строки списка DNS-серверов: строка
+// показывает подставленные значения (`udp · 8.8.8.8 [direct-out]`), а не
+// имена плейсхолдеров — их считает dnsVarValues на КАЖДОЙ пересборке
+// списка. Пока список не пересобран, правка параметра видна только в окне
+// сервера, а строка под ним продолжает показывать прежний outbound/адрес.
+//
+// Отбор по тегам шаблона, а не по одному префиксу `dns_`: под `dns_`
+// живут и переменные вкладки DNS (dns_strategy, dns_final), у которых своя
+// ветка выше. Тег определяется как самый длинный подходящий — та же
+// причина, что в dnsServerVarsFor (google_doh / google_doh_vpn).
+func dnsServerOwnedVar(td *wizardtemplate.TemplateData, name string) bool {
+	if td == nil || !strings.HasPrefix(name, "dns_") {
+		return false
+	}
+	for tag := range wizardbusiness.ExtractTemplateDNSTags(td) {
+		if tag != "" && strings.HasPrefix(name, "dns_"+tag+"_") {
+			return true
+		}
+	}
+	return false
+}
+
 // syncDNSMirrorFieldFromSettingsVars переносит on_change-запись из
 // model.SettingsVars[name] в соответствующее зеркальное поле DNS-вкладки,
 // иначе refreshDNSSelectsFromModel (presenter_sync.go:190) увидит старое
@@ -221,6 +246,17 @@ func applyOnChangeAndRefresh(presenter *wizardpresentation.WizardPresenter, td *
 			needDNSRefresh = true
 		}
 	}
+	// Параметры шаблонного DNS-сервера правятся В ОКНЕ САМОГО СЕРВЕРА
+	// (dnsTemplateVarRows), а не на вкладке Settings, поэтому здесь важен
+	// changedName, а не только каскад `touched`: у «Outbound» и «UDP server
+	// IP» никакого on_change нет, touched пуст — и список DNS оставался с
+	// прежней подписью, пока пользователь не переоткрывал визард.
+	needDNSListRebuild := dnsServerOwnedVar(td, changedName)
+	for _, name := range touched {
+		if dnsServerOwnedVar(td, name) {
+			needDNSListRebuild = true
+		}
+	}
 	gs := presenter.GUIState()
 	if gs == nil {
 		return
@@ -247,7 +283,11 @@ func applyOnChangeAndRefresh(presenter *wizardpresentation.WizardPresenter, td *
 	if gs.RefreshTargetTabFromModel != nil {
 		gs.RefreshTargetTabFromModel()
 	}
-	if needDNSRefresh {
+	// Полная пересборка перерисовывает подписи строк, точечная — только
+	// селекты; изменившийся параметр сервера виден лишь в первой.
+	if needDNSListRebuild {
+		presenter.RefreshDNSListAndSelects()
+	} else if needDNSRefresh {
 		presenter.RefreshDNSDependentSelectsOnly()
 	}
 }
@@ -475,6 +515,12 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		presenter.MarkAsChanged()
 		if presenter.GUIState().RefreshSettingsFromModel != nil {
 			presenter.GUIState().RefreshSettingsFromModel()
+		}
+		// Сброс параметра сервера к дефолту шаблона меняет подпись его
+		// строки ровно так же, как выбор значения, — а сюда каскад
+		// applyOnChangeAndRefresh не заходит: он на пути ИЗМЕНЕНИЯ.
+		if dnsServerOwnedVar(td, name) {
+			presenter.RefreshDNSListAndSelects()
 		}
 	}
 
