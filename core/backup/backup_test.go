@@ -409,7 +409,7 @@ func TestRoundTripChainSources(t *testing.T) {
 	if chain == nil {
 		t.Fatal("цепочка потеряна на roundtrip")
 	}
-	if chain.Label != "chain-1" || chain.Chain == nil {
+	if chain.NodeTagOrLabel() != "chain-1" || chain.Chain == nil {
 		t.Fatalf("состав цепочки искажён: %+v", chain)
 	}
 	want, _ := json.Marshal(s.Connections.Sources[1].Chain)

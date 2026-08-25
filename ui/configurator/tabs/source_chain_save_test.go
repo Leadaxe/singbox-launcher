@@ -39,10 +39,10 @@ func TestApplyProxyEdit_ChainHopsSurviveSave(t *testing.T) {
 	if src.Type != wizardmodels.SourceTypeChain {
 		t.Errorf("тип = %q, ожидали chain", src.Type)
 	}
-	// Имя цепочки становится тегом её узла — берётся из TagMask, как у
-	// server-источника.
-	if src.Label != "chain-1" {
-		t.Errorf("label = %q, ожидали chain-1", src.Label)
+	// TagMask несёт ТЕГ узла цепочки — он и едет в NodeTag; подпись
+	// (Label) при этом не трогается.
+	if src.NodeTag != "chain-1" {
+		t.Errorf("node_tag = %q, ожидали chain-1", src.NodeTag)
 	}
 	// Поля чужих типов не должны появиться: цепочка не подписка и не сервер.
 	if src.URL != "" || src.URI != "" {
@@ -66,22 +66,42 @@ func TestApplyProxyEdit_OtherTypesUnaffected(t *testing.T) {
 	}
 }
 
-// Имя цепочки = тег её узла. В ProxySource оно живёт в TagMask, а в
-// состоянии — в Label; без переноса переименование терялось бы так же
-// молча, как раньше терялись позиции.
+// Тег цепочки правится в форме. В ProxySource он живёт в TagMask, а в
+// состоянии — в NodeTag; без переноса правка терялась бы так же молча,
+// как раньше терялись позиции.
 func TestApplyProxyEdit_ChainRenameSurvives(t *testing.T) {
 	scratch := &config.ProxySource{
 		TagMask: "через-Германию",
 		Chain:   &configtypes.SourceChain{Hops: []string{"a", "b"}},
 	}
 	src := &wizardmodels.Source{
-		ID: "01ABC", Type: wizardmodels.SourceTypeChain, Label: "chain-1",
+		ID: "01ABC", Type: wizardmodels.SourceTypeChain, NodeTag: "chain-1",
 	}
 
 	applyProxyEditToSource(scratch, src)
 
-	if src.Label != "через-Германию" {
-		t.Errorf("имя = %q, ожидали «через-Германию»", src.Label)
+	if src.NodeTag != "через-Германию" {
+		t.Errorf("тег = %q, ожидали «через-Германию»", src.NodeTag)
+	}
+}
+
+// Подпись — не тег: правка тега в форме не должна её трогать, иначе
+// разделение ролей существует только на бумаге.
+func TestApplyProxyEdit_ChainRetagKeepsLabel(t *testing.T) {
+	src := &wizardmodels.Source{
+		Type: wizardmodels.SourceTypeChain, NodeTag: "chain-1", Label: "Моя Германия",
+	}
+
+	applyProxyEditToSource(&config.ProxySource{
+		TagMask: "chain-2",
+		Chain:   &configtypes.SourceChain{Hops: []string{"a", "b"}},
+	}, src)
+
+	if src.NodeTag != "chain-2" {
+		t.Errorf("тег = %q, ожидали chain-2", src.NodeTag)
+	}
+	if src.Label != "Моя Германия" {
+		t.Errorf("подпись = %q — правка тега её затёрла", src.Label)
 	}
 }
 
@@ -89,11 +109,11 @@ func TestApplyProxyEdit_ChainRenameSurvives(t *testing.T) {
 // ссылок при переименовании.
 func TestChainReferencedBy(t *testing.T) {
 	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{
-		{Type: wizardmodels.SourceTypeChain, Label: "inner",
+		{Type: wizardmodels.SourceTypeChain, NodeTag: "inner",
 			Chain: &configtypes.SourceChain{Hops: []string{"a", "b"}}},
-		{Type: wizardmodels.SourceTypeChain, Label: "outer",
+		{Type: wizardmodels.SourceTypeChain, NodeTag: "outer",
 			Chain: &configtypes.SourceChain{Hops: []string{"inner", "c"}}},
-		{Type: wizardmodels.SourceTypeServer, Label: "srv"},
+		{Type: wizardmodels.SourceTypeServer, NodeTag: "srv"},
 	}}
 
 	got := chainReferencedBy(m)
@@ -112,16 +132,16 @@ func TestChainReferencedBy(t *testing.T) {
 // цепочки молча откатывается (сценарий «создал, вписал имя, Save»).
 func TestApplyProxyEdit_EmptyChainKeepsRename(t *testing.T) {
 	src := &wizardmodels.Source{
-		Type:  wizardmodels.SourceTypeChain,
-		Label: "chain-1",
+		Type:    wizardmodels.SourceTypeChain,
+		NodeTag: "chain-1",
 	}
 	ps := &config.ProxySource{
 		TagMask: "my-route",
 		Chain:   nil, // пустая форма
 	}
 	applyProxyEditToSource(ps, src)
-	if src.Label != "my-route" {
-		t.Fatalf("переименование пустой цепочки потеряно: %q", src.Label)
+	if src.NodeTag != "my-route" {
+		t.Fatalf("переименование пустой цепочки потеряно: %q", src.NodeTag)
 	}
 	if src.Type != wizardmodels.SourceTypeChain || src.Chain == nil {
 		t.Fatalf("тип источника разъехался: %+v", src)

@@ -40,7 +40,7 @@ func syncLegacyFromConnections(s *State) {
 		case SourceTypeServer:
 			ps := configtypes.ProxySource{
 				Connections:       []string{src.URI},
-				TagMask:           src.Label, // force tag = label
+				TagMask:           src.NodeTagOrLabel(), // тег узла, не подпись
 				ExcludeFromGlobal: src.ExcludeFromGlobal,
 				Disabled:          !src.Enabled,
 				DetourTag:         src.DetourTag,
@@ -51,10 +51,11 @@ func syncLegacyFromConnections(s *State) {
 			proxies = append(proxies, ps)
 
 		case SourceTypeChain:
-			// SPEC 110: у цепочки нет ни URL, ни URI — TagMask несёт имя,
-			// из которого получится тег её узла.
+			// SPEC 110: у цепочки нет ни URL, ни URI — TagMask несёт ТЕГ
+			// её узла (NodeTag), на который ссылаются фильтры Направлений
+			// и позиции других цепочек.
 			proxies = append(proxies, configtypes.ProxySource{
-				TagMask:           src.Label,
+				TagMask:           src.NodeTagOrLabel(),
 				ExcludeFromGlobal: src.ExcludeFromGlobal,
 				Disabled:          !src.Enabled,
 				Chain:             src.Chain,

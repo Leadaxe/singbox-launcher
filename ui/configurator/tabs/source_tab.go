@@ -228,7 +228,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			ID:      corestate.MakeULID(),
 			Type:    corestate.SourceTypeChain,
 			Enabled: true,
-			Label:   wizardbusiness.NextChainLabel(m.Sources),
+			// Выданное имя — ТЕГ узла: на него сошлются фильтры и позиции.
+			// Подпись остаётся пустой, и список показывает тег, пока
+			// пользователь не задаст своё отображаемое имя.
+			NodeTag: wizardbusiness.NextChainLabel(m.Sources),
 			Chain:   &configtypes.SourceChain{},
 		})
 		m.RefreshDerivedParserConfig()
@@ -371,7 +374,14 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						label = src.URL
 					}
 				} else {
+					// Подпись, а при её отсутствии — тег узла: у server и
+					// chain тег и есть то имя, под которым источник знают
+					// правила, и показывать вместо него «Source N» значит
+					// прятать единственный опознавательный признак.
 					label = src.Label
+					if label == "" {
+						label = src.NodeTag
+					}
 					if label == "" {
 						label = src.URI
 					}

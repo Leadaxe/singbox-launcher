@@ -158,7 +158,7 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 	existingChains := map[string]bool{}
 	for _, src := range s.Connections.Sources {
 		if src.Type == state.SourceTypeChain {
-			existingChains[src.Label] = true
+			existingChains[src.NodeTagOrLabel()] = true
 		}
 	}
 	for _, in := range b.Chains {
@@ -302,6 +302,8 @@ func applyLauncherSourceExtensions(src *state.Source, ext Extensions) {
 		DetourTag               string              `json:"detour_tag"`
 		DetourNodeHash          string              `json:"detour_node_hash"`
 		DetourNodeLabel         string              `json:"detour_node_label"`
+		// Тег узла server-источника: в схеме servers[] поля под него нет.
+		NodeTag string `json:"node_tag"`
 		// Локальные outbound'ы подписки. Экспорт их писал с самого начала,
 		// а импорт не читал — классическое «поле пишется, но не читается»:
 		// roundtrip на своей же машине молча терял их (нарушение §1).
@@ -319,6 +321,7 @@ func applyLauncherSourceExtensions(src *state.Source, ext Extensions) {
 	src.DetourTag = own.DetourTag
 	src.DetourNodeHash = own.DetourNodeHash
 	src.DetourNodeLabel = own.DetourNodeLabel
+	src.NodeTag = own.NodeTag
 	src.Outbounds = own.Outbounds
 	src.Fold = own.Fold
 }
@@ -525,26 +528,21 @@ func (t tagSet) has(tag string) bool {
 
 // importChain переводит каноническую запись chains[] во внутренний источник.
 //
-// Label получает ТЕГ, а не label: у лаунчера имя источника цепочки и есть
-// тег её материализации (adapter_source.go), и взять сюда отображаемое имя
-// LxBox значило бы разъехаться со ссылками правил, route.final и позиций
-// других цепочек. Чужой label сохраняется непонятым полем записи
-// (backupFieldsKey) и возвращается при re-export (BACKUP.md §2).
+// Тег записи едет в NodeTag, отображаемое имя — в Label: обе роли теперь
+// имеют своё поле, и провозить чужую подпись непонятым полем больше не
+// нужно. Раньше тег клался в Label (другого места не было), из-за чего
+// импорт чужого label разъехался бы со ссылками правил, route.final и
+// позиций других цепочек.
 func importChain(in Chain) state.Source {
 	src := state.Source{
 		Type:    state.SourceTypeChain,
-		Label:   in.Tag,
+		NodeTag: in.Tag,
+		Label:   in.Label,
 		Enabled: in.Enabled == nil || *in.Enabled,
 		Chain:   in.Chain,
 	}
 	applyLauncherSourceExtensions(&src, in.Extensions)
-	fields := map[string]json.RawMessage{}
-	if in.Label != "" && in.Label != in.Tag {
-		if raw, err := json.Marshal(in.Label); err == nil {
-			fields["label"] = raw
-		}
-	}
-	keepForeignEntityExtensions(&src, in.Extensions, fields)
+	keepForeignEntityExtensions(&src, in.Extensions, map[string]json.RawMessage{})
 	return src
 }
 
@@ -569,12 +567,15 @@ func importLauncherChains(s *state.State, blob json.RawMessage, existing map[str
 		if chain.Type != state.SourceTypeChain || chain.Chain == nil {
 			continue
 		}
-		if existing[chain.Label] {
+		// Записи тех релизов несут тег в Label (разделения ролей ещё не
+		// было) — NodeTagOrLabel читает их без переписывания файла.
+		tag := chain.NodeTagOrLabel()
+		if existing[tag] {
 			continue // merge: своя одноимённая цепочка сильнее
 		}
 		s.Connections.Sources = append(s.Connections.Sources, chain)
-		existing[chain.Label] = true
-		tags = append(tags, chain.Label)
+		existing[tag] = true
+		tags = append(tags, tag)
 		applied++
 	}
 	return applied, tags

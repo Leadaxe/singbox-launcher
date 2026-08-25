@@ -112,17 +112,24 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 
 // exportChain — запись секции chains[] (SPEC 110, схема v1.2).
 //
-// Tag берётся из Label: у лаунчера имя источника цепочки и есть тег её
-// outbound'а (adapter_source.go), на который ссылаются правила и позиции
-// других цепочек. index — позиция источника в общем списке: у безымянной
-// цепочки тег на сборке получается позиционным (chainSourceTag), и в файл
-// обязан уехать тот же эффективный тег — схема требует tag, а импорт
-// зафиксирует его именем (нормализация той же категории, что перенумерация
-// правил).
+// Tag — эффективный тег outbound'а цепочки (NodeTagOrLabel), на который
+// ссылаются правила и позиции других цепочек; Label — отображаемое имя,
+// теперь у лаунчера своё (прежде эти роли делило одно поле). index —
+// позиция источника в общем списке: у безымянной цепочки тег на сборке
+// получается позиционным (chainSourceTag), и в файл обязан уехать тот же
+// эффективный тег — схема требует tag, а импорт зафиксирует его именем
+// (нормализация той же категории, что перенумерация правил).
 func exportChain(src state.Source, index int) Chain {
 	out := Chain{
-		Tag:   src.Label,
+		Tag:   src.NodeTagOrLabel(),
+		Label: src.Label,
 		Chain: src.Chain,
+	}
+	// Подпись, совпадающая с тегом, — это не подпись, а прежнее состояние
+	// без разделения ролей: писать её отдельным полем значит плодить шум,
+	// который на импорте не несёт информации.
+	if out.Label == out.Tag {
+		out.Label = ""
 	}
 	if out.Tag == "" {
 		out.Tag = "chain-" + strconv.Itoa(index+1)
@@ -133,10 +140,12 @@ func exportChain(src state.Source, index int) Chain {
 	if ext := launcherSourceExtensions(src); ext != nil {
 		out.Extensions = Extensions{AppLauncher: ext}
 	}
-	// Чужой label (у лаунчера отдельного отображаемого имени нет) и прочие
-	// непонятые поля записи возвращаются на место (BACKUP.md §2).
+	// Непонятые поля записи возвращаются на место (BACKUP.md §2). Чужой
+	// label подставляется только когда своего нет: теперь у цепочки есть
+	// собственное отображаемое имя, и затирать его провезённым значением
+	// было бы потерей пользовательской правки.
 	foreignFields := attachForeignEntityExtensions(&out.Extensions, src.ForeignExtensions)
-	if raw, ok := foreignFields["label"]; ok {
+	if raw, ok := foreignFields["label"]; ok && out.Label == "" {
 		_ = json.Unmarshal(raw, &out.Label)
 	}
 	return out
@@ -261,6 +270,14 @@ func launcherSourceExtensions(src state.Source) json.RawMessage {
 	}
 	if len(src.Outbounds) > 0 {
 		ext["outbounds"] = src.Outbounds
+	}
+	// Тег узла server-источника: в схеме servers[] поля под него нет (там
+	// только label), а роль у него не декоративная — на тег ссылаются
+	// правила и фильтры Направлений. Без провоза round-trip на одной
+	// машине переименовывал бы узел в подпись (BACKUP.md §1). У цепочек
+	// иначе: там тег — поле схемы chains[].tag.
+	if src.Type == state.SourceTypeServer && src.NodeTag != "" {
+		ext["node_tag"] = src.NodeTag
 	}
 	if src.ExcludeFromGlobal {
 		ext["exclude_from_global"] = true

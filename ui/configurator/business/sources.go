@@ -149,17 +149,19 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 	return nil
 }
 
-// NextChainLabel — свободное имя для новой цепочки (SPEC 110).
+// NextChainLabel — свободный ТЕГ для новой цепочки (SPEC 110).
 //
-// Имя цепочки становится тегом её узла, а тег обязан быть уникален: два
-// одинаковых в конфиге ядро принимает, но выбор между ними становится
-// неопределённым. Поэтому имя выдаётся автоматически, а не оставляется
-// пустым.
+// Тег обязан быть уникален: два одинаковых в конфиге ядро принимает, но
+// выбор между ними становится неопределённым. Поэтому он выдаётся
+// автоматически, а не оставляется пустым.
+//
+// Занятость считается по тегам (NodeTagOrLabel), а не по подписям: подписи
+// пользователь волен дублировать, и коллизия тегов от этого не зависит.
 func NextChainLabel(sources []corestate.Source) string {
 	used := make(map[string]bool, len(sources))
 	for _, src := range sources {
-		if src.Label != "" {
-			used[src.Label] = true
+		if tag := src.NodeTagOrLabel(); tag != "" {
+			used[tag] = true
 		}
 	}
 	for i := 1; ; i++ {

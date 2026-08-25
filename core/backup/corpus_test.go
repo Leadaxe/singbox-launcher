@@ -300,7 +300,7 @@ func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 	count := 0
 	for _, src := range dst.Connections.Sources {
 		if src.Type == state.SourceTypeChain {
-			byTag[src.Label] = src
+			byTag[src.NodeTagOrLabel()] = src
 			count++
 		}
 	}

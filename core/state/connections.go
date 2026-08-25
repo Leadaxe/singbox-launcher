@@ -72,6 +72,7 @@ const (
 //   - SourceTypeChain:        Chain; URL/URI/Tag/Update/Meta не используются
 //
 // Поля identity (ID/Type/Enabled/Label/ExcludeFromGlobal) — общие.
+// Тег узла у server/chain — в NodeTag (см. там); Label только отображает.
 type Source struct {
 	// identity
 	ID                string     `json:"id"`
@@ -79,6 +80,25 @@ type Source struct {
 	Enabled           bool       `json:"enabled"`
 	Label             string     `json:"label,omitempty"`
 	ExcludeFromGlobal bool       `json:"exclude_from_global,omitempty"`
+
+	// NodeTag — системный тег узла для type=server и type=chain.
+	//
+	// Заведён отдельно от Label, потому что раньше этих двух ролей у
+	// источника не различали: adapter_source.go клал `TagMask: s.Label`
+	// («force tag = label»), то есть переименование в списке молча меняло
+	// тег, на который ссылаются фильтры Направлений, позиции других цепочек
+	// и rules[].outbound. Пользователь правил подпись — и терял маршрут.
+	//
+	// Теперь роли разведены ровно как у Направления (Direction.Tag /
+	// Direction.Label): тег — идентификатор, на него ссылаются; Label —
+	// отображаемое имя, правится свободно. Пусто → NodeTagOrLabel
+	// откатывается на Label, чем и держится совместимость с состояниями,
+	// записанными до этого разделения (миграция их не переписывает: пустой
+	// NodeTag читается как «тег = Label», ровно прежнее поведение).
+	//
+	// Для type=subscription не используется: там именами узлов управляет
+	// Tag (*TagSpec) — prefix/postfix/mask.
+	NodeTag string `json:"node_tag,omitempty"`
 
 	// type=subscription only
 	URL                     string                  `json:"url,omitempty"`
@@ -168,6 +188,20 @@ func (t *TagSpec) IsZero() bool {
 		return true
 	}
 	return t.Prefix == "" && t.Postfix == "" && t.Mask == ""
+}
+
+// NodeTagOrLabel — системный тег узла источника (type=server / type=chain).
+//
+// Откат на Label при пустом NodeTag — не удобство, а миграция: состояния,
+// записанные до разделения ролей, несут тег именно в Label, и переписывать
+// их на загрузке нельзя (файл делят с более старыми сборками). Пустой
+// NodeTag поэтому читается как «тег равен Label» — прежнее поведение слово
+// в слово, — а заполненный побеждает.
+func (s Source) NodeTagOrLabel() string {
+	if s.NodeTag != "" {
+		return s.NodeTag
+	}
+	return s.Label
 }
 
 // UpdateSpec — настройки авто-обновления per-subscription. nil → используются

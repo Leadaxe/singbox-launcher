@@ -2422,6 +2422,12 @@
   "off": {
     "value": "выключена"
   },
+  "Node tag": {
+    "value": "Тег узла"
+  },
+  "node tag (referenced by rules and filters)": {
+    "value": "тег узла (на него ссылаются правила и фильтры)"
+  },
   "Run the VPN core inside a long-lived system daemon (sing-box lxd). Config changes swap the core in-process — no password prompts, and quitting the launcher can keep the VPN up. Managed over gRPC like the Android app.": {
     "value": "Ядро VPN работает внутри долгоживущего системного демона (sing-box lxd). Смена конфига подменяет ядро внутри процесса — без запросов пароля, а выход из лаунчера может оставлять VPN работать. Управление по gRPC, как в Android-приложении."
   },
@@ -2523,6 +2529,12 @@
   },
   "collapsed": {
     "value": "схлопнута"
+  },
+  "off": {
+    "value": "выключена"
+  },
+  "This core cannot switch chain positions on the fly — update the core.": {
+    "value": "Это ядро не умеет переключать позиции цепочки на лету — обновите ядро."
   },
   "—": {
     "value": "—"

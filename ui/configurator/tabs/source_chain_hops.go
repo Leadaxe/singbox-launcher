@@ -131,15 +131,15 @@ func collectChainHopCandidates(
 			if src.Type != corestate.SourceTypeChain {
 				continue
 			}
-			if src.Label == selfTag {
+			if src.NodeTagOrLabel() == selfTag {
 				belowSelf = true
 				continue
 			}
 			if !src.Enabled {
 				continue
 			}
-			add(src.Label, hopKindChain)
-			if belowSelf && len(out) > 0 && out[len(out)-1].Tag == src.Label {
+			add(src.NodeTagOrLabel(), hopKindChain)
+			if belowSelf && len(out) > 0 && out[len(out)-1].Tag == src.NodeTagOrLabel() {
 				out[len(out)-1].Below = true
 			}
 		}
@@ -226,13 +226,13 @@ func chainReferencedBy(m *wizardmodels.WizardModel) map[string][]string {
 			continue
 		}
 		for _, hop := range src.Chain.Hops {
-			if hop == "" || hop == src.Label {
+			if hop == "" || hop == src.NodeTagOrLabel() {
 				continue
 			}
 			if out == nil {
 				out = make(map[string][]string, 2)
 			}
-			out[hop] = append(out[hop], src.Label)
+			out[hop] = append(out[hop], src.NodeTagOrLabel())
 		}
 	}
 	return out

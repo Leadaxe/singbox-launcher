@@ -46,7 +46,7 @@ func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 	case SourceTypeServer:
 		return configtypes.ProxySource{
 			Connections:       []string{s.URI},
-			TagMask:           s.Label,
+			TagMask:           s.NodeTagOrLabel(),
 			ExcludeFromGlobal: s.ExcludeFromGlobal,
 			Disabled:          !s.Enabled,
 			DetourTag:         s.DetourTag,
@@ -57,10 +57,11 @@ func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 
 	case SourceTypeChain:
 		// SPEC 110: цепочка не имеет ни URL, ни URI — только позиции.
-		// TagMask несёт имя: тег будущего узла берётся оттуда же, откуда у
-		// server-source, чтобы имя в списке и тег в конфиге не разъезжались.
+		// TagMask несёт ТЕГ узла (NodeTag), а не подпись: на тег цепочки
+		// ссылаются фильтры Направлений и позиции других цепочек, поэтому
+		// переименование в списке его менять не должно.
 		return configtypes.ProxySource{
-			TagMask:           s.Label,
+			TagMask:           s.NodeTagOrLabel(),
 			ExcludeFromGlobal: s.ExcludeFromGlobal,
 			Disabled:          !s.Enabled,
 			Chain:             s.Chain,

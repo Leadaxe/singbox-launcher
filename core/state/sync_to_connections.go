@@ -40,13 +40,15 @@ func syncConnectionsFromLegacy(s *State) {
 
 	oldByURL := make(map[string]Source, len(old))
 	oldByURI := make(map[string]Source, len(old))
-	// Цепочка сопоставляется по имени: другого стабильного ключа у неё нет
+	// Цепочка сопоставляется по ТЕГУ: другого стабильного ключа у неё нет
 	// (позиции пользователь правит, и матчинг по ним менял бы ID на каждой
-	// правке маршрута — вместе со всем, что на ID завязано).
+	// правке маршрута — вместе со всем, что на ID завязано). Именно по
+	// тегу, а не по подписи: подпись правится свободно, и ключом она
+	// теряла бы ID при каждом переименовании.
 	oldByChainTag := make(map[string]Source, len(old))
 	for _, src := range old {
 		if src.Type == SourceTypeChain {
-			oldByChainTag[src.Label] = src
+			oldByChainTag[src.NodeTagOrLabel()] = src
 			continue
 		}
 		switch src.Type {
@@ -74,12 +76,15 @@ func syncConnectionsFromLegacy(s *State) {
 			src := Source{
 				Type:              SourceTypeChain,
 				Enabled:           !p.Disabled,
-				Label:             p.TagMask,
+				NodeTag:           p.TagMask,
 				ExcludeFromGlobal: p.ExcludeFromGlobal,
 				Chain:             p.Chain,
 			}
 			if existing, ok := oldByChainTag[p.TagMask]; ok {
 				src.ID = existing.ID
+				// Подпись живёт только здесь: в legacy-форме её негде
+				// хранить, и без переноса она терялась бы на каждом Save.
+				src.Label = existing.Label
 			}
 			if src.ID == "" {
 				src.ID = MakeULID()
@@ -146,12 +151,15 @@ func syncConnectionsFromLegacy(s *State) {
 			if key == "" && len(src.ConfigJSON) > 0 {
 				key = serverConfigJSONKey(src.ConfigJSON)
 			}
+			// TagMask legacy-формы — это тег узла (ToProxySourceV4 кладёт
+			// туда NodeTagOrLabel), поэтому обратно он и возвращается тегом.
+			src.NodeTag = p.TagMask
 			if existing, ok := oldByURI[key]; ok && key != "" {
 				src.ID = existing.ID
 				src.Label = existing.Label
 			}
-			if src.Label == "" {
-				src.Label = serverLabelFromLegacy(uri, j+1, p.TagPrefix, p.TagPostfix)
+			if src.NodeTag == "" {
+				src.NodeTag = serverLabelFromLegacy(uri, j+1, p.TagPrefix, p.TagPostfix)
 			}
 			if src.ID == "" {
 				src.ID = MakeULID()

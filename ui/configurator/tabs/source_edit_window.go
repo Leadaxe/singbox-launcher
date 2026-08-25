@@ -133,8 +133,13 @@ func capPreviewNodes(nodes []*config.ParsedNode) []*config.ParsedNode {
 // Маппинг ProxySource → Source:
 //   - subscription: URL/Skip/Outbounds/Fold/Enabled (=!Disabled) + Tag из
 //     TagPrefix/Postfix/Mask;
-//   - server: URI=Connections[0], Label=TagMask (corestate adapter ставит
-//     `tag_mask=label` для server-source — тэг node будет точно label).
+//   - server: URI=Connections[0], NodeTag=TagMask (тег узла; corestate
+//     adapter отдаёт его обратно в TagMask через NodeTagOrLabel);
+//   - chain:  Chain + NodeTag=TagMask.
+//
+// Label в обе стороны НЕ участвует: это подпись, она живёт только в
+// canonical Source и в legacy-форме места не имеет — перенос её оттуда
+// затирал бы правку пользователя пустым значением.
 //
 // setNodeEnabled ставит или снимает отметку «нода выключена» (SPEC 094 D4).
 //
@@ -185,10 +190,9 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 		src.Outbounds = nil
 		src.Enabled = !ps.Disabled
 		src.ExcludeFromGlobal = ps.ExcludeFromGlobal
-		// TagMask несёт имя: тег узла цепочки берётся оттуда же, откуда у
-		// server-source.
+		// TagMask несёт ТЕГ узла цепочки — он и едет в NodeTag.
 		if ps.TagMask != "" {
-			src.Label = ps.TagMask
+			src.NodeTag = ps.TagMask
 		}
 	} else if ps.Source != "" {
 		// subscription
@@ -225,9 +229,9 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 			src.URI = ""
 		}
 		src.URL = ""
-		// Если widget'ом задан tag_mask — это и есть label для server.
+		// Если widget'ом задан tag_mask — это тег узла server-источника.
 		if ps.TagMask != "" {
-			src.Label = ps.TagMask
+			src.NodeTag = ps.TagMask
 		}
 		src.Enabled = !ps.Disabled
 		src.ExcludeFromGlobal = ps.ExcludeFromGlobal
@@ -354,6 +358,13 @@ func showSourceEditWindow(
 	labelEntry := widget.NewEntry()
 	labelEntry.SetPlaceHolder(locale.T("human-readable label"))
 
+	// Тег узла — отдельным полем от подписи: на него ссылаются фильтры
+	// Направлений, позиции цепочек и правила, поэтому переименование в
+	// списке его менять не должно (прежде Label работал и подписью, и
+	// тегом сразу — «force tag = label»).
+	nodeTagEntry := widget.NewEntry()
+	nodeTagEntry.SetPlaceHolder(locale.T("node tag (referenced by rules and filters)"))
+
 	postfixEntry := widget.NewEntry()
 	postfixEntry.SetPlaceHolder(locale.T("postfix"))
 
@@ -383,7 +394,7 @@ func showSourceEditWindow(
 	isChainSource := m.Sources[sourceIndex].Type == wizardmodels.SourceTypeChain
 	var chainTabBody *chainForm
 	if isChainSource {
-		selfTag := m.Sources[sourceIndex].Label
+		selfTag := m.Sources[sourceIndex].NodeTagOrLabel()
 		cands := collectChainHopCandidates(presenter.Model(), getParserConfigForChain(presenter.Model()), selfTag)
 		reality, detoured, nodeTypes := chainNodeFlags(presenter.Model())
 		unsupported := ""
@@ -393,8 +404,10 @@ func showSourceEditWindow(
 		chainTabBody = newChainForm(nil, cands, reality, detoured, nodeTypes, unsupported, func() {
 			if p := proxyRef(); p != nil {
 				p.Chain = chainTabBody.Collect()
-				// Имя цепочки = тег её узла; в ProxySource он живёт в
-				// TagMask (тем же путём, что имя server-источника).
+				// Форма правит ТЕГ узла цепочки; в ProxySource он живёт в
+				// TagMask, откуда sync_to_connections вернёт его в
+				// Source.NodeTag. Подпись (Label) при этом не трогается —
+				// на тег ссылаются фильтры и позиции других цепочек.
 				if tag := chainTabBody.Tag(); tag != "" {
 					p.TagMask = tag
 				}
@@ -407,7 +420,7 @@ func showSourceEditWindow(
 		chainTabBody.built = chainTabBody.Content()
 		chainTabBody.nodesKnown = chainNodesKnown(presenter.Model())
 		chainTabBody.SetReferencedBy(chainReferencedBy(presenter.Model()))
-		chainTabBody.SetTag(m.Sources[sourceIndex].Label)
+		chainTabBody.SetTag(m.Sources[sourceIndex].NodeTagOrLabel())
 		chainTabBody.Load(m.Sources[sourceIndex].Chain)
 		// Владелец диалогов формы — это окно, а не главное: пикер позиции
 		// иначе всплыл бы за окном правки.
@@ -520,6 +533,7 @@ func showSourceEditWindow(
 		mm := presenter.Model()
 		if mm != nil && sourceIndex < len(mm.Sources) {
 			labelEntry.SetText(mm.Sources[sourceIndex].Label)
+			nodeTagEntry.SetText(mm.Sources[sourceIndex].NodeTagOrLabel())
 		}
 		syncFoldFormFromModel(p)
 		refreshDetourOptions()
@@ -556,12 +570,28 @@ func showSourceEditWindow(
 		if mm == nil || sourceIndex >= len(mm.Sources) {
 			return
 		}
+		// Только подпись: тег живёт в NodeTag и правится своим полем.
+		// Прежде эта же строка переписывала TagMask, и переименование
+		// источника молча уводило тег из-под ссылающихся на него правил.
 		mm.Sources[sourceIndex].Label = strings.TrimSpace(s)
-		// Для server-type: Label также используется как TagMask в derived
-		// view (см. ToProxySourceV4) — синхронизируем scratch.
-		if mm.Sources[sourceIndex].Type == wizardmodels.SourceTypeServer {
-			scratch.TagMask = strings.TrimSpace(s)
+		mm.RefreshDerivedParserConfig()
+		presenter.UpdateParserConfig(mm.ParserConfigJSON)
+		presenter.MarkAsChanged()
+		if guiState.RefreshSourcesList != nil {
+			guiState.RefreshSourcesList()
 		}
+	}
+
+	nodeTagEntry.OnChanged = func(s string) {
+		mm := presenter.Model()
+		if mm == nil || sourceIndex >= len(mm.Sources) {
+			return
+		}
+		tag := strings.TrimSpace(s)
+		mm.Sources[sourceIndex].NodeTag = tag
+		// Derived view держит тег в TagMask (ToProxySourceV4) — scratch
+		// обязан идти с ним в ногу, иначе вкладка JSON покажет прошлый тег.
+		scratch.TagMask = tag
 		mm.RefreshDerivedParserConfig()
 		presenter.UpdateParserConfig(mm.ParserConfigJSON)
 		presenter.MarkAsChanged()
@@ -624,6 +654,8 @@ func showSourceEditWindow(
 				manualNote.Importance = widget.LowImportance
 				settingsContent.Add(manualNote)
 			}
+			settingsContent.Add(widget.NewLabel(locale.T("Node tag")))
+			settingsContent.Add(nodeTagEntry)
 			settingsContent.Add(widget.NewLabel(locale.T("Label")))
 			settingsContent.Add(labelEntry)
 			// SPEC 108: `Exclude from global` из формы убран вместе с
@@ -774,8 +806,8 @@ func showSourceEditWindow(
 						if perr != nil {
 							err = perr
 						} else if node != nil {
-							if src.Label != "" {
-								node.Tag = src.Label
+							if tag := src.NodeTagOrLabel(); tag != "" {
+								node.Tag = tag
 							}
 							nodes = []*config.ParsedNode{node}
 						}
@@ -784,7 +816,7 @@ func showSourceEditWindow(
 						if perr != nil {
 							err = perr
 						} else if node != nil {
-							node.Tag = src.Label
+							node.Tag = src.NodeTagOrLabel()
 							nodes = []*config.ParsedNode{node}
 						}
 					}
