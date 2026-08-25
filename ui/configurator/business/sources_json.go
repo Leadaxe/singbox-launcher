@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"singbox-launcher/core/config/subscription"
+	corestate "singbox-launcher/core/state"
 	"singbox-launcher/internal/debuglog"
 )
 
@@ -108,4 +109,57 @@ func compactJSON(s string) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// AppendManualConfigJSON добавляет один вручную отредактированный outbound как
+// Source(server). Отдельный вход, а не AppendURLsToSources: там тело проходит
+// повторный разбор, а здесь важно сохранить объект ровно таким, каким его
+// набрал человек — включая поля, которых наш парсер не знает.
+func AppendManualConfigJSON(ctx UIUpdater, body []byte, label string) error {
+	node, err := subscription.NodeFromManualConfigJSON(body)
+	if err != nil {
+		return err
+	}
+
+	compact, err := compactJSON(string(body))
+	if err != nil {
+		return err
+	}
+
+	model := ctx.Model()
+	if strings.TrimSpace(label) == "" {
+		label = node.Tag
+	}
+	if strings.TrimSpace(label) == "" {
+		label = fmt.Sprintf("server-%d", len(model.Sources)+1)
+	}
+
+	model.Sources = append(model.Sources, corestate.Source{
+		ID:         corestate.MakeULID(),
+		Type:       corestate.SourceTypeServer,
+		Enabled:    true,
+		Label:      label,
+		ConfigJSON: compact,
+	})
+
+	model.RefreshDerivedParserConfig()
+	model.PreviewNeedsParse = true
+	InvalidatePreviewCache(model)
+	ctx.UpdateParserConfig(model.ParserConfigJSON)
+	return nil
+}
+
+// RelabelLastSources переименовывает источники, добавленные последним вызовом
+// Append*: форма даёт один тег на всё добавленное, а общий путь Add берёт
+// метку из фрагмента ссылки. Применяется только когда добавился ровно один
+// источник — на список ссылок один тег не натянешь, там метки уже свои.
+func RelabelLastSources(ctx UIUpdater, before int, label string) {
+	label = strings.TrimSpace(label)
+	model := ctx.Model()
+	if label == "" || before < 0 || len(model.Sources)-before != 1 {
+		return
+	}
+	model.Sources[len(model.Sources)-1].Label = label
+	model.RefreshDerivedParserConfig()
+	ctx.UpdateParserConfig(model.ParserConfigJSON)
 }

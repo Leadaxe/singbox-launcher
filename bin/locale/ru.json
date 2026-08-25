@@ -3206,10 +3206,34 @@
   "Subscription URL, Direct Links or sing-box JSON:": {
     "value": "URL подписки, прямые ссылки или JSON sing-box:"
   },
-  "Shown as the server title in the Sources list. If empty, the host is used.": {
-    "value": "Показывается как название сервера в списке «Источники». Если пусто, используется хост."
-  },
   "Connect to the proxy over TLS (HTTPS proxy). Fine TLS settings — SNI, ALPN — can be adjusted later in the source editor.": {
     "value": "Подключаться к прокси по TLS (HTTPS-прокси). Тонкие настройки TLS — SNI, ALPN — можно поправить позже в редакторе источника."
+  },
+  "Source": {
+    "value": "Source"
+  },
+  "Rebuild from fields": {
+    "value": "Пересобрать из полей"
+  },
+  "JSON is empty": {
+    "value": "JSON пуст"
+  },
+  "Input is empty": {
+    "value": "Поле ввода пусто"
+  },
+  "Nothing recognized yet.": {
+    "value": "Пока нечего разобрать."
+  },
+  "Shown as the server title in the Sources list. If empty, the host or the link fragment is used.": {
+    "value": "Показывается как название сервера в списке «Источники». Если пусто, используется хост или фрагмент ссылки."
+  },
+  "Paste anything: share-URI (one per line), a sing-box outbound or config JSON, or [Interface]/[Peer] WireGuard conf.": {
+    "value": "Вставьте что угодно: share-URI (по одной на строку), outbound или конфиг sing-box в JSON, либо [Interface]/[Peer] WireGuard."
+  },
+  "Preview of what this source unpacks into. Edit it and your version wins — the fields above stop overwriting it.": {
+    "value": "Превью того, во что распакуется источник. Отредактируйте — и победит ваша версия: поля выше перестанут её перезаписывать."
+  },
+  "Edited by hand — the fields no longer overwrite this JSON.": {
+    "value": "Изменено вручную — поля больше не перезаписывают этот JSON."
   }
 }

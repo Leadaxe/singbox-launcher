@@ -184,11 +184,37 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		wizarddialogs.ShowAddWarpDialog(presenter, applyAddedSources)
 	}
 
-	// «Add server» — ручная форма SOCKS5/HTTP. У этих схем полей мало, а у
-	// HTTP-прокси ещё и нестандартный префикс (proxy-http://), который человеку
-	// негде подсмотреть. Форма собирает share-URI и отдаёт в тот же путь Add.
+	// «Add server» — ручная форма: SOCKS5/HTTP по полям либо Source (любой
+	// текст, который понимает Add). У этих схем полей мало, а у HTTP-прокси
+	// ещё и нестандартный префикс (proxy-http://), который человеку негде
+	// подсмотреть. Форма собирает вход и отдаёт в тот же путь Add; вручную
+	// отредактированный JSON идёт своей веткой, чтобы сохраниться побайтово.
 	addServerAction := func() {
-		wizarddialogs.ShowAddServerDialog(presenter, applyAddedSources)
+		wizarddialogs.ShowAddServerDialog(presenter, func(res wizarddialogs.AddServerResult) {
+			presenter.MergeGUIToModel()
+			before := len(presenter.Model().Sources)
+
+			if len(res.ConfigJSON) > 0 {
+				if err := wizardbusiness.AppendManualConfigJSON(presenter, res.ConfigJSON, res.Label); err != nil {
+					dialog.ShowError(err, guiState.Window)
+					return
+				}
+			} else {
+				if err := wizardbusiness.AppendURLsToSources(presenter, strings.TrimSpace(res.Text)); err != nil {
+					dialog.ShowError(err, guiState.Window)
+					return
+				}
+				wizardbusiness.RelabelLastSources(presenter, before, res.Label)
+			}
+
+			m := presenter.Model()
+			m.PreviewNeedsParse = true
+			presenter.UpdateParserConfig(m.ParserConfigJSON)
+			if guiState.RefreshSourcesList != nil {
+				guiState.RefreshSourcesList()
+			}
+			presenter.MarkAsChanged()
+		})
 	}
 
 	// SPEC 110: цепочка хопов — источник, а не Направление: она описывает
