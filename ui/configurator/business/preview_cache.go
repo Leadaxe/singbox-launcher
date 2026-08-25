@@ -101,6 +101,25 @@ func RebuildPreviewCache(model *wizardmodels.WizardModel) (int, error) {
 	timing.LogTiming("load nodes for preview", time.Since(loadTimingStart))
 	debuglog.DebugLog("wizardPreviewCache: loaded %d nodes from %d sources (errors: %d)", len(allNodes), totalSources, errorCount)
 
+	// SPEC 110: источники-цепочки становятся узлами ровно тем же вызовом,
+	// что и на сборке, — иначе превью показывало бы не тот пул, из которого
+	// собирается конфиг.
+	//
+	// Это и был баг #91 «regex Направления не подхватывает цепочки»: в
+	// config.json цепочка в состав входила (ResolveChainSources зовётся из
+	// GenerateOutboundsFromParserConfig), а здесь её не было вовсе, и
+	// пользователь, глядя на превью и на flag picker, делал вывод, что
+	// фильтр цепочки не берёт. Врало превью, а не отбор.
+	//
+	// Деградировавшие цепочки (ядро без with_lx_chain, недошедшая позиция)
+	// в пул не попадают — как и в конфиге; их причины показывает сборка.
+	chainPool, broken := config.ResolveChainSources(
+		model.ParserConfig, allNodes, nodesBySource, previewDirectionTags(model))
+	for _, b := range broken {
+		debuglog.DebugLog("wizardPreviewCache: цепочка %q не стала узлом: %s", b.Tag, b.Reason)
+	}
+	allNodes = chainPool
+
 	model.PreviewNodes = allNodes
 	if len(nodesBySource) > 0 {
 		model.PreviewNodesBySource = nodesBySource
@@ -114,6 +133,24 @@ func RebuildPreviewCache(model *wizardmodels.WizardModel) (int, error) {
 	}
 
 	return errorCount, nil
+}
+
+// previewDirectionTags — теги включённых Направлений: позиция цепочки
+// вправе ссылаться на Направление, и без этого списка такая цепочка
+// деградировала бы в превью с причиной «позиция не найдена», хотя в
+// конфиге собирается (там тот же список строит генератор).
+func previewDirectionTags(model *wizardmodels.WizardModel) map[string]bool {
+	if model == nil || model.ParserConfig == nil {
+		return nil
+	}
+	dirs := model.ParserConfig.ParserConfig.Outbounds
+	tags := make(map[string]bool, len(dirs))
+	for _, d := range dirs {
+		if d.Tag != "" && !d.Disabled {
+			tags[d.Tag] = true
+		}
+	}
+	return tags
 }
 
 // InvalidatePreviewCache clears the preview cache so that the next consumer (Sources Refresh, View, Edit Outbound Preview) will rebuild via RebuildPreviewCache.

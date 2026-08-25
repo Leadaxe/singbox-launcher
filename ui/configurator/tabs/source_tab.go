@@ -853,12 +853,14 @@ func nodeDisplayLine(node *config.ParsedNode) string {
 	if node == nil {
 		return ""
 	}
+	// Ветки Label здесь нет намеренно: у разобранного узла Tag не бывает
+	// пустым — парсер подставляет `scheme-server-port` (generateDefaultTag),
+	// когда имени в подписке не оказалось. Фолбэк на Label был недостижим и
+	// создавал впечатление, будто это два взаимозаменяемых имени.
 	var s string
 	switch {
 	case node.Tag != "":
 		s = node.Tag
-	case node.Label != "":
-		s = node.Label
 	case node.Server != "":
 		return fmt.Sprintf("%s:%d", node.Server, node.Port)
 	default:
