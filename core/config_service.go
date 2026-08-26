@@ -139,7 +139,31 @@ func parserSuccessToastMessage(result *config.OutboundGenerationResult) string {
 	for _, c := range result.BrokenChains {
 		msg += fmt.Sprintf(" Chain %q is not built: %s.", c.Name, c.Reason)
 	}
+	// SPEC 112-B часть B: то же и для источника, выпавшего fail-closed. До
+	// этого исключение уходило только в лог, а строка источника в Wizard
+	// выглядела здоровой — парадокс Proton NL.
+	if s := excludedSourcesToastPart(result.ExcludedSources); s != "" {
+		msg += " " + s
+	}
 	return msg
+}
+
+// excludedSourcesToastPart — хвост тоста про источники, выпавшие fail-closed.
+// Пустой реестр — пустая строка: молчание тут и есть «всё собралось».
+//
+// Несколько источников перечисляются через запятую одной фразой: отдельная
+// строка на каждый вытеснила бы из тоста всё остальное на конфиге с десятком
+// зависимых подписок.
+func excludedSourcesToastPart(list []config.SourceExclusion) string {
+	if len(list) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(list))
+	for _, e := range list {
+		names = append(names, fmt.Sprintf("%q — %s", e.SourceLabel, e.Reason))
+	}
+	return locale.Tf("Source excluded from the config: %s. Details in Wizard → Sources.",
+		strings.Join(names, ", "))
 }
 
 // updateParserProgress safely calls UpdateParserProgressFunc if it's not nil
@@ -276,6 +300,10 @@ func (svc *ConfigService) updateConfigFromSubscriptions(triggerRebuild bool) (*c
 		return result, fmt.Errorf("failed to generate outbounds: %w", err)
 	}
 	subscription.LogDuplicateTagStatistics(tagCounts, "Parser")
+
+	// SPEC 112-B часть B: реестр исключений — итог ПОСЛЕДНЕЙ сборки.
+	// Переписывается и пустым списком: чистая сборка снимает прежние ⚠.
+	config.SetExcludedSources(result.ExcludedSources)
 
 	// SPEC 052 phase 6: bin/outbounds.cache.json больше не пишем.
 	// Per-source resilience приходит из bin/subscriptions/<id>.raw —

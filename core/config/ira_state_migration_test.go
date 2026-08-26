@@ -171,4 +171,24 @@ func TestIRAState_NoLabelStillFailsClosed(t *testing.T) {
 	if proton := emittedNodeByTag(t, res, "🇳🇱 Proton NL"); proton != nil {
 		t.Fatalf("Proton NL остался в конфиге без разрешённого хопа: %+v", proton)
 	}
+	// SPEC 112-B часть B: сквозная сборка обязана донести исключение до
+	// вызывающего, а не только до лога.
+	if len(res.ExcludedSources) == 0 {
+		t.Fatal("сборка выбросила источник, но реестр исключений пуст — UI покажет здоровую строку")
+	}
+}
+
+// Сквозная зеркальная проверка: сборка, где ссылка разрешилась, реестр
+// исключений не наполняет.
+func TestIRAState_CleanBuildLeavesRegistryEmpty(t *testing.T) {
+	pc := iraParserConfig("", iraHopTag, iraHopSourceID, iraHopTag)
+
+	res, err := GenerateOutboundsFromParserConfig(
+		pc, map[string]int{}, nil, iraLoadNodes(t), DirectionBuildOptions{})
+	if err != nil {
+		t.Fatalf("сборка провалилась: %v", err)
+	}
+	if len(res.ExcludedSources) != 0 {
+		t.Fatalf("чистая сборка вернула %d исключений: %+v", len(res.ExcludedSources), res.ExcludedSources)
+	}
 }

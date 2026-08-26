@@ -322,12 +322,14 @@ func gcDisabledNodes(disabled map[string]int64, ttl time.Duration, now time.Time
 	return kept
 }
 
-// SPEC 112: dedupNodesByIdentity снесён вместе с контент-хешем. Единственный
-// механизм при дублях — уникализация тегов (MakeTagUnique / StampNodeIdentity):
-// полные копии узла больше не схлопываются, счётчик узлов на мусорных
-// подписках вправе вырасти. Схлопывание по содержимому противоречило самой
-// модели идентичности — «тот же сервер под двумя именами» это два узла, у
-// каждого своя отметка выключения.
+// SPEC 112 снёс dedupNodesByIdentity вместе с контент-хешем — и вместе с ним
+// уехал дедуп байтовых копий (регресс v1.5.2: подписка из 39 записей, где 32
+// одинаковых ss:// различались только `#fragment`, показывала 32 узла вместо
+// одного). SPEC 112-B вернул дедуп КАК PARSE-СЛОЙ: ключ — не идентичность, а
+// подключение (serverConnKey, server_conn_key.go); он живёт один разбор
+// источника, в состояние не пишется и на отметки/ссылки не влияет.
+// Идентичность узла по-прежнему тег, и «тот же сервер под двумя ИМЕНАМИ, но
+// с разными кредами» — по-прежнему два узла.
 
 // NormalizeSubscriptionTextLine trims whitespace, drops invalid UTF-8 byte sequences, and replaces
 // HTML-escaped "&amp;" with "&". Some public lists are HTML-exported; without this, query parameters
@@ -449,6 +451,12 @@ func LoadNodesFromSourceEx(
 	// быть уникальны глобально, идентичность — только внутри источника).
 	idCounts := make(map[string]int)
 
+	// SPEC 112-B: дедуп записей ПО ПОДКЛЮЧЕНИЮ — свой на источник, как и
+	// idCounts. Опрашивается ДО простановки тегов (SPEC 094 D3): пропусти
+	// проверку, и дубль сперва получил бы уникализованный тег «X-2», а с ним
+	// и собственную идентичность — снять его отметку стало бы нечем.
+	dedup := newSourceDedup()
+
 	// SPEC 094 A4: секции импортированного конфига, которые парсер не читает.
 	// Группы отдельным списком НЕ идут: они рядовые узлы и лежат в nodes.
 	var ignoredSections []string
@@ -522,12 +530,13 @@ func LoadNodesFromSourceEx(
 							debuglog.WarnLog("Parser: vpn:// subscription %s: %d container(s) skipped",
 								proxySource.Source, skippedContainers)
 						}
-						// SPEC 112: контент-дедуп упразднён — дубли разводит
-						// уникализация тегов и идентичностей.
 						nodeNum := 0
 						for _, node := range vpnNodes {
 							if nodesFromThisSource >= configtypes.MaxNodesPerSubscription {
 								skippedDueToLimit++
+								continue
+							}
+							if !dedup.accept(node) {
 								continue
 							}
 							nodeNum++
@@ -570,9 +579,6 @@ func LoadNodesFromSourceEx(
 					} else {
 						debuglog.DebugLog("LoadNodesFromSource: sing-box JSON subscription %d/%d (%s): %d node(s)",
 							subscriptionIndex+1, totalSubscriptions, bodyKind, len(importRes.Nodes))
-						// SPEC 112: контент-дедуп упразднён — узел, приехавший
-						// дважды под одним именем, разводится уникализацией
-						// тега и получает СВОЮ идентичность («X», «X-2»).
 						nodeNum := 0
 						accepted := make([]*configtypes.ParsedNode, 0, len(importRes.Nodes))
 						for _, node := range importRes.Nodes {
@@ -582,6 +588,12 @@ func LoadNodesFromSourceEx(
 									debuglog.DebugLog("LoadNodesFromSource: Reached limit of %d nodes for subscription %d/%d",
 										configtypes.MaxNodesPerSubscription, subscriptionIndex+1, totalSubscriptions)
 								}
+								continue
+							}
+							// Дубль отбрасывается ДО простановки тегов; группа
+							// узлов ключа не имеет и проходит всегда — её состав
+							// переписывается ниже на выживших.
+							if !dedup.accept(node) {
 								continue
 							}
 							nodeNum++
@@ -646,11 +658,6 @@ func LoadNodesFromSourceEx(
 					debuglog.DebugLog("LoadNodesFromSource: Parsing subscription %d/%d: %d lines",
 						subscriptionIndex+1, totalSubscriptions, len(subscriptionLines))
 
-					// SPEC 112: дедупа по содержимому здесь больше нет.
-					// Строка, повторённая дважды, даёт два узла с тегами «X» и
-					// «X-2» и двумя разными идентичностями — у каждого своя
-					// отметка выключения. Схлопывание по содержимому
-					// противоречило бы модели «идентичность = имя».
 					lineCount := 0
 					for _, subLine := range subscriptionLines {
 						subLine = NormalizeSubscriptionTextLine(subLine)
@@ -678,6 +685,11 @@ func LoadNodesFromSourceEx(
 						}
 
 						if node != nil {
+							// Дубль отбрасывается ДО applyURINodeTags — иначе он
+							// получил бы тег «X-2» и уехал под чужим именем.
+							if !dedup.accept(node) {
+								continue
+							}
 							// Apply prefix, postfix, or mask to tag if specified (with variable substitution)
 							applyURINodeTags(node, proxySource, nodesFromThisSource+1, tagCounts, idCounts)
 							nodes = append(nodes, node)
@@ -709,7 +721,7 @@ func LoadNodesFromSourceEx(
 					debuglog.DebugLog("LoadNodesFromSource: Failed to parse direct link (took %v): %v",
 						time.Since(parseStartTime), err)
 					debuglog.WarnLog("Parser: Failed to parse direct link: %v", err)
-				} else if node != nil {
+				} else if node != nil && dedup.accept(node) {
 					// Apply prefix, postfix, or mask to tag if specified (with variable substitution)
 					applyURINodeTags(node, proxySource, nodesFromThisSource+1, tagCounts, idCounts)
 					nodes = append(nodes, node)
@@ -733,7 +745,7 @@ func LoadNodesFromSourceEx(
 		if err != nil {
 			debuglog.WarnLog("Parser: manual config_json for source %d/%d: %v",
 				subscriptionIndex+1, totalSubscriptions, err)
-		} else if nodesFromThisSource < configtypes.MaxNodesPerSubscription {
+		} else if nodesFromThisSource < configtypes.MaxNodesPerSubscription && dedup.accept(node) {
 			applyURINodeTags(node, proxySource, nodesFromThisSource+1, tagCounts, idCounts)
 			nodes = append(nodes, node)
 			nodesFromThisSource++
@@ -779,7 +791,7 @@ func LoadNodesFromSourceEx(
 			continue
 		}
 
-		if node != nil {
+		if node != nil && dedup.accept(node) {
 			// Apply prefix, postfix, or mask to tag if specified (with variable substitution)
 			applyURINodeTags(node, proxySource, nodesFromThisSource+1, tagCounts, idCounts)
 			nodes = append(nodes, node)
@@ -819,6 +831,10 @@ func LoadNodesFromSourceEx(
 	// Отметки живут по хешу идентичности, поэтому переживают переименование
 	// ноды провайдером и смену её позиции в подписке.
 	nodes, refreshedDisabled, disabledMigrated := filterDisabledNodes(nodes, proxySource.DisabledNodes, time.Now())
+
+	// Итог дедупа — до строки END, чтобы в логе он читался как часть разбора,
+	// а не как что-то, случившееся после него.
+	dedup.logSummary(proxySource.Source)
 
 	totalDuration := time.Since(startTime)
 	debuglog.DebugLog("LoadNodesFromSource: END source %d/%d (total duration: %v, nodes: %d)",

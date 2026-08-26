@@ -116,6 +116,10 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 
 	subscription.LogDuplicateTagStatistics(tagCounts, "Rebuild")
 
+	// SPEC 112-B часть B: реестр исключений переписывается КАЖДОЙ сборкой —
+	// и пустым итогом тоже, иначе пометка ⚠ пережила бы свою причину.
+	config.SetExcludedSources(result.ExcludedSources)
+
 	warnings := partialWarnings
 	if result.SkippedNaiveNodes > 0 {
 		warnings = append(warnings, fmt.Sprintf("%d naive node(s) skipped: %s",

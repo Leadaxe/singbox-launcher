@@ -1433,6 +1433,12 @@
   "[chain] ⚠️ core has no chain support": {
     "value": "[цепочка] ⚠️ ядро не умеет цепочки"
   },
+  "⚠ Excluded from the config: %s": {
+    "value": "⚠ Исключён из конфига: %s"
+  },
+  "Source excluded from the config: %s. Details in Wizard → Sources.": {
+    "value": "Источник исключён из конфига: %s. Подробности в Мастере → Источники."
+  },
   "The subscription arrives as one entry instead of every node. Its nodes stay in the config as that group's members.": {
     "value": "Подписка приезжает одной записью вместо всех своих узлов. Сами узлы остаются в конфиге составом этой группы."
   },
