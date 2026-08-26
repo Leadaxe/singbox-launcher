@@ -18,6 +18,19 @@ import (
 // сетевой фетч кэш-хуком.
 func loadFromInlineBody(t *testing.T, body string, ps configtypes.ProxySource) *SourceLoadResult {
 	t.Helper()
+	return loadFromInlineBodyWithCounts(t, body, ps, map[string]int{})
+}
+
+// loadFromInlineBodyWithCounts — то же, но с ЯВНЫМ tagCounts: он общий на весь
+// конфиг, и тесты про «идентичность уникальна в пределах источника» обязаны
+// прогонять два источника через один счётчик тегов (SPEC 112).
+func loadFromInlineBodyWithCounts(
+	t *testing.T,
+	body string,
+	ps configtypes.ProxySource,
+	tagCounts map[string]int,
+) *SourceLoadResult {
+	t.Helper()
 
 	const url = "https://example.invalid/sub"
 	ps.Source = url
@@ -31,7 +44,7 @@ func loadFromInlineBody(t *testing.T, body string, ps configtypes.ProxySource) *
 	}
 	t.Cleanup(func() { LookupCachedBody = prev })
 
-	res, err := LoadNodesFromSourceEx(ps, map[string]int{}, nil, 0, 1)
+	res, err := LoadNodesFromSourceEx(ps, tagCounts, nil, 0, 1)
 	if err != nil {
 		t.Fatalf("LoadNodesFromSourceEx() error: %v", err)
 	}

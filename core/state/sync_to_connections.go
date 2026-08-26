@@ -46,7 +46,16 @@ func syncConnectionsFromLegacy(s *State) {
 	// тегу, а не по подписи: подпись правится свободно, и ключом она
 	// теряла бы ID при каждом переименовании.
 	oldByChainTag := make(map[string]Source, len(old))
+	// SPEC 112-A: legacy-форма теперь везёт ULID (ProxySource.ID), и он —
+	// точнее любого матчинга по URL/URI: правка адреса подписки или URI сервера
+	// больше не выдаёт источнику новый ID, из-под которого уехали бы ссылки на
+	// его узел. URL/URI-карты остаются запасным путём для форм, где ID нет
+	// (ручная правка вкладки JSON, состояния до этой версии).
+	oldByID := make(map[string]Source, len(old))
 	for _, src := range old {
+		if src.ID != "" {
+			oldByID[src.ID] = src
+		}
 		if src.Type == SourceTypeChain {
 			oldByChainTag[src.NodeTagOrLabel()] = src
 			continue
@@ -80,7 +89,10 @@ func syncConnectionsFromLegacy(s *State) {
 				ExcludeFromGlobal: p.ExcludeFromGlobal,
 				Chain:             p.Chain,
 			}
-			if existing, ok := oldByChainTag[p.TagMask]; ok {
+			if existing, ok := oldByID[p.ID]; ok && p.ID != "" {
+				src.ID = existing.ID
+				src.Label = existing.Label
+			} else if existing, ok := oldByChainTag[p.TagMask]; ok {
 				src.ID = existing.ID
 				// Подпись живёт только здесь: в legacy-форме её негде
 				// хранить, и без переноса она терялась бы на каждом Save.
@@ -107,15 +119,22 @@ func syncConnectionsFromLegacy(s *State) {
 				ExposeGroupTagsToGlobal: p.ExposeGroupTagsToGlobal,
 				Fold:                    p.Fold, // SPEC 108
 				DetourTag:               p.DetourTag,
-				DetourNodeHash:          p.DetourNodeHash,  // SPEC 101
-				DetourNodeLabel:         p.DetourNodeLabel, // SPEC 101
+				DetourNodeSourceID:      p.DetourNodeSourceID, // SPEC 112-A
+				DetourNodeTag:           p.DetourNodeTag,      // SPEC 112
+				DetourNodeHash:          p.DetourNodeHash,     // legacy, мигрирует на сборке
+				DetourNodeLabel:         p.DetourNodeLabel,    // SPEC 101
 			}
-			if existing, ok := oldByURL[p.Source]; ok {
+			carryOver := func(existing Source) {
 				src.ID = existing.ID
 				src.Label = existing.Label
 				src.Meta = existing.Meta
 				src.MaxNodes = existing.MaxNodes
 				src.Update = existing.Update
+			}
+			if existing, ok := oldByID[p.ID]; ok && p.ID != "" {
+				carryOver(existing)
+			} else if existing, ok := oldByURL[p.Source]; ok {
+				carryOver(existing)
 			}
 			if src.ID == "" {
 				src.ID = MakeULID()
@@ -136,13 +155,15 @@ func syncConnectionsFromLegacy(s *State) {
 		}
 		for j, uri := range conns {
 			src := Source{
-				Type:              SourceTypeServer,
-				Enabled:           !p.Disabled,
-				URI:               uri,
-				ExcludeFromGlobal: p.ExcludeFromGlobal,
-				DetourTag:         p.DetourTag,
-				DetourNodeHash:    p.DetourNodeHash,  // SPEC 101
-				DetourNodeLabel:   p.DetourNodeLabel, // SPEC 101
+				Type:               SourceTypeServer,
+				Enabled:            !p.Disabled,
+				URI:                uri,
+				ExcludeFromGlobal:  p.ExcludeFromGlobal,
+				DetourTag:          p.DetourTag,
+				DetourNodeSourceID: p.DetourNodeSourceID, // SPEC 112-A
+				DetourNodeTag:      p.DetourNodeTag,      // SPEC 112
+				DetourNodeHash:     p.DetourNodeHash,     // legacy, мигрирует на сборке
+				DetourNodeLabel:    p.DetourNodeLabel,    // SPEC 101
 			}
 			if len(conns) == 1 {
 				src.ConfigJSON = p.ConfigJSON
@@ -154,7 +175,14 @@ func syncConnectionsFromLegacy(s *State) {
 			// TagMask legacy-формы — это тег узла (ToProxySourceV4 кладёт
 			// туда NodeTagOrLabel), поэтому обратно он и возвращается тегом.
 			src.NodeTag = p.TagMask
-			if existing, ok := oldByURI[key]; ok && key != "" {
+			// ID берётся из legacy-формы только у ОДНОГО источника на запись:
+			// legacy multi-connection ProxySource разворачивается в несколько
+			// Source, и раздать им один ULID значило бы склеить разные узлы под
+			// одной идентичностью — ссылки на них перестали бы различаться.
+			if existing, ok := oldByID[p.ID]; ok && p.ID != "" && len(conns) == 1 {
+				src.ID = existing.ID
+				src.Label = existing.Label
+			} else if existing, ok := oldByURI[key]; ok && key != "" {
 				src.ID = existing.ID
 				src.Label = existing.Label
 			}

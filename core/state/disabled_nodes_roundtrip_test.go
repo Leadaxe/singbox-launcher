@@ -5,11 +5,13 @@ import (
 	"testing"
 )
 
-// SPEC 094 D4 — отметки о выключенных нодах переживают запись state.json.
+// SPEC 094 D4 + SPEC 112 — отметки о выключенных нодах переживают запись
+// state.json.
 //
 // Проверяется именно сериализация: отметка бесполезна, если теряется при
-// перезапуске лаунчера — ровно тот сценарий, ради которого она привязана к
-// хешу, а не к тегу.
+// перезапуске лаунчера. Ключ карты для этого слоя непрозрачен — с SPEC 112 это
+// идентичность узла (тег в рамках источника), а legacy-хеши доживают до первой
+// миграции в парсере, и оба вида обязаны переживать round-trip одинаково.
 
 func TestDisabledNodesSurviveJSONRoundTrip(t *testing.T) {
 	src := Source{
@@ -17,8 +19,11 @@ func TestDisabledNodesSurviveJSONRoundTrip(t *testing.T) {
 		Enabled: true,
 		URL:     "https://example.invalid/sub",
 		DisabledNodes: map[string]int64{
-			"aaaabbbbccccdddd": 1754400000,
-			"eeeeffff00001111": 1754500000,
+			// Тег-идентичность (SPEC 112) — с эмодзи и пробелами: ключ карты
+			// не обязан быть hex, и JSON это переживает.
+			"🇳🇱 Amsterdam": 1754400000,
+			// И legacy-хеш, который доживёт до миграции в парсере.
+			"aaaabbbbccccddddaaaabbbbccccddddaaaabbbbccccddddaaaabbbbccccdddd": 1754500000,
 		},
 	}
 
@@ -35,7 +40,7 @@ func TestDisabledNodesSurviveJSONRoundTrip(t *testing.T) {
 	if len(restored.DisabledNodes) != 2 {
 		t.Fatalf("got %d marks, want 2 (%v)", len(restored.DisabledNodes), restored.DisabledNodes)
 	}
-	if restored.DisabledNodes["aaaabbbbccccdddd"] != 1754400000 {
+	if restored.DisabledNodes["🇳🇱 Amsterdam"] != 1754400000 {
 		t.Errorf("timestamp lost: %v", restored.DisabledNodes)
 	}
 

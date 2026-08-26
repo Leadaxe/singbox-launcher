@@ -255,11 +255,12 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	config.NaiveSupportProbe = ac.CoreSupportsNaive
 	config.ChainSupportProbe = ac.CoreSupportsChain
 
-	// SPEC 094 D3: дедуп внутри источника считает идентичность по
-	// эмитированному outbound-JSON. Эмиттер живёт в config, парсер — в
-	// subscription, поэтому зависимость подставляется здесь (прямой вызов
-	// дал бы цикл импорта).
-	subscription.NodeIdentityHashFunc = config.NodeIdentityHash
+	// SPEC 112: идентичность узла (тег) и УПРАЗДНЁННЫЙ контент-хеш для
+	// миграции legacy-отметок. Обе живут в config (эмиттер нужен второй),
+	// парсер — в subscription, поэтому зависимости подставляются здесь
+	// (прямой вызов дал бы цикл импорта).
+	subscription.NodeIdentityFunc = config.NodeIdentity
+	subscription.LegacyNodeIdentityHashFunc = config.LegacyNodeIdentityHash
 
 	// Устанавливаем callback для проверки обновлений при открытии окна
 	ac.UIService.OnWindowShown = func() {

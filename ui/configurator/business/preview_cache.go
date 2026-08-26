@@ -82,6 +82,15 @@ func RebuildPreviewCache(model *wizardmodels.WizardModel) (int, error) {
 			continue
 		}
 		nodes := res.Nodes
+
+		// SPEC 112: парсер переписал legacy-ключи отметок выключения на
+		// тег-идентичность — сохраняем результат в canonical Sources.
+		// В самом парсере сохранять некуда: он не видит ни состояния, ни
+		// файла, и без этого хеши мигрировали бы заново на каждом запуске.
+		if res.DisabledMigrated {
+			applyMigratedDisabledKeys(model, i, res.DisabledNodes)
+		}
+
 		// SPEC 094 A4: подписка отдала целый sing-box конфиг — показываем, какие
 		// его секции импорт не читает, чтобы «проглочено молча» не выглядело
 		// как потеря данных.
@@ -168,4 +177,25 @@ func InvalidatePreviewCache(model *wizardmodels.WizardModel) {
 	// Счётчики узлов выведены из этого кэша и пережить его не могут:
 	// иначе список Sources показывал бы числа от прошлого состава.
 	model.SourceNodeCounts = nil
+}
+
+// applyMigratedDisabledKeys кладёт переписанные парсером отметки выключения
+// обратно в canonical Source (SPEC 112).
+//
+// proxyIndex — индекс в ParserConfig.ParserConfig.Proxies; canonical Sources
+// идут тем же порядком (RefreshDerivedParserConfig строит derived-view из них
+// один к одному), поэтому индекс общий.
+//
+// Времена lastSeen из парса сюда НЕ переносятся отдельно: карта приезжает
+// целиком, и продление меток — штатная часть того же прогона.
+func applyMigratedDisabledKeys(model *wizardmodels.WizardModel, proxyIndex int, migrated map[string]int64) {
+	if model == nil || proxyIndex < 0 || proxyIndex >= len(model.Sources) {
+		return
+	}
+	if len(migrated) == 0 {
+		model.Sources[proxyIndex].DisabledNodes = nil
+	} else {
+		model.Sources[proxyIndex].DisabledNodes = migrated
+	}
+	debuglog.DebugLog("wizardPreviewCache: источник %d — отметки выключения переведены на тег-идентичность (SPEC 112)", proxyIndex+1)
 }

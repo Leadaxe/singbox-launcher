@@ -608,3 +608,133 @@ func TestPerEntityForeignExtensionsSurvive(t *testing.T) {
 		t.Fatalf("lxbox-блоб записи потерян: %s", got)
 	}
 }
+
+// SPEC 112-A — ссылка detour-на-узел переносится ОБЪЕКТОМ: id источника-цели
+// плюс identity-тег узла. Обе половины обязаны пережить roundtrip, включая
+// сами id источников: без них ссылка на приёмнике мертва.
+func TestRoundTripDetourNodeRef(t *testing.T) {
+	s := &state.State{}
+	s.Connections.Sources = []state.Source{
+		{
+			ID:      "01WARP00000000000000000",
+			Type:    state.SourceTypeServer,
+			URI:     "vless://u@h:443",
+			NodeTag: "🔥🎭 WARP (MASQUE)",
+			Label:   "WARP hop",
+			Enabled: true,
+		},
+		{
+			ID:                 "01PROTON0000000000000000",
+			Type:               state.SourceTypeSubscription,
+			URL:                "https://example.com/sub",
+			Enabled:            true,
+			DetourNodeSourceID: "01WARP00000000000000000",
+			DetourNodeTag:      "🔥🎭 WARP (MASQUE)",
+			DetourNodeLabel:    "WARP hop",
+		},
+	}
+
+	b, err := Export(s, ExportOptions{AppVersion: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob := b.Subscriptions[0].Extensions[AppLauncher]
+	var ext map[string]interface{}
+	if err := json.Unmarshal(blob, &ext); err != nil {
+		t.Fatal(err)
+	}
+	if ext["detour_node_source_id"] != "01WARP00000000000000000" {
+		t.Fatalf("detour_node_source_id не выехал в бэкап: %v", ext)
+	}
+	if ext["detour_node_tag"] != "🔥🎭 WARP (MASQUE)" {
+		t.Fatalf("detour_node_tag не выехал в бэкап: %v", ext)
+	}
+	if _, stale := ext["detour_node_hash"]; stale {
+		t.Errorf("упразднённый detour_node_hash не должен писаться: %v", ext)
+	}
+
+	restored := &state.State{}
+	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+		t.Fatal(err)
+	}
+	var hop, dep *state.Source
+	for i := range restored.Connections.Sources {
+		switch restored.Connections.Sources[i].Type {
+		case state.SourceTypeServer:
+			hop = &restored.Connections.Sources[i]
+		case state.SourceTypeSubscription:
+			dep = &restored.Connections.Sources[i]
+		}
+	}
+	if hop == nil || dep == nil {
+		t.Fatalf("источники не восстановились: %+v", restored.Connections.Sources)
+	}
+	// Ключ вопроса из ТЗ: id источника-цели обязан пережить roundtrip, иначе
+	// ссылка на приёмнике указывает в никуда.
+	if hop.ID != "01WARP00000000000000000" {
+		t.Fatalf("id источника-цели потерян: %q", hop.ID)
+	}
+	if dep.DetourNodeSourceID != hop.ID {
+		t.Fatalf("DetourNodeSourceID после импорта = %q, ожидался %q", dep.DetourNodeSourceID, hop.ID)
+	}
+	if dep.DetourNodeTag != "🔥🎭 WARP (MASQUE)" {
+		t.Fatalf("DetourNodeTag после импорта = %q", dep.DetourNodeTag)
+	}
+}
+
+// Переходная форма: ссылка только тегом (dev-состояния между SPEC 112 и
+// 112-A). Она обязана переехать как есть — на приёмнике её разрешит
+// глобальный поиск по финальному тегу.
+func TestRoundTripDetourNodeTagOnlyRef(t *testing.T) {
+	s := &state.State{}
+	s.Connections.Sources = []state.Source{{
+		Type:            state.SourceTypeSubscription,
+		URL:             "https://example.com/sub",
+		Enabled:         true,
+		DetourNodeTag:   "🔥🎭 WARP (MASQUE)",
+		DetourNodeLabel: "WARP hop",
+	}}
+
+	b, err := Export(s, ExportOptions{AppVersion: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored := &state.State{}
+	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+		t.Fatal(err)
+	}
+	got := restored.Connections.Sources[0]
+	if got.DetourNodeTag != "🔥🎭 WARP (MASQUE)" || got.DetourNodeSourceID != "" {
+		t.Fatalf("tag-only ссылка искажена: source_id=%q tag=%q", got.DetourNodeSourceID, got.DetourNodeTag)
+	}
+}
+
+// Бэкап, снятый ДО первой сборки (миграция ещё не отработала), везёт
+// legacy-хеш как есть — иначе ссылка потерялась бы из-за момента снятия.
+// На приёмнике его мигрирует первый же парс.
+func TestRoundTripLegacyDetourNodeHashSurvives(t *testing.T) {
+	s := &state.State{}
+	s.Connections.Sources = []state.Source{{
+		Type:            state.SourceTypeSubscription,
+		URL:             "https://example.com/sub",
+		Enabled:         true,
+		DetourNodeHash:  "62bff800aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		DetourNodeLabel: "🔥🎭 WARP (MASQUE)",
+	}}
+
+	b, err := Export(s, ExportOptions{AppVersion: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored := &state.State{}
+	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+		t.Fatal(err)
+	}
+	src := restored.Connections.Sources[0]
+	if src.DetourNodeHash != s.Connections.Sources[0].DetourNodeHash {
+		t.Fatalf("legacy-хеш потерян на переносе: %q", src.DetourNodeHash)
+	}
+	if src.DetourNodeLabel != "🔥🎭 WARP (MASQUE)" {
+		t.Fatalf("подпись потеряна — миграция по label-fallback не сработает: %q", src.DetourNodeLabel)
+	}
+}

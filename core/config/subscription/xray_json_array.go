@@ -50,15 +50,15 @@ func ParseNodesFromXrayJSONArray(jsonBody string, skip []map[string]string) ([]*
 	// Проход 2 (боевой) — элементы строго в порядке файла; элемент выпускает
 	// только те серверы, что закреплены за ним. Имена осмысленные, а позиции
 	// авторские: автор часто ставит рекомендуемый узел первым.
-	owner := computeXrayIdentityOwners(elems, skip)
+	owner := computeXrayServerOwners(elems, skip)
 
 	seen := make(map[string]struct{})
-	// memberIdentities помнит, какую идентичность несёт каждый узел-группа в
+	// memberServers помнит, какие серверы несёт каждый узел-группа в
 	// своём составе: члены пула часто уезжают к другим элементам (страна
 	// специфичнее пула), и ссылаться на них надо по ИТОГОВЫМ тегам.
-	memberIdentities := make(map[*configtypes.ParsedNode][]string)
-	// finalTagByIdentity — итоговый тег выжившего сервера.
-	finalTagByIdentity := make(map[string]string)
+	memberServers := make(map[*configtypes.ParsedNode][]string)
+	// finalTagByServer — итоговый тег выжившего сервера.
+	finalTagByServer := make(map[string]string)
 
 	var out []*configtypes.ParsedNode
 	for i, raw := range elems {
@@ -67,8 +67,8 @@ func ParseNodesFromXrayJSONArray(jsonBody string, skip []map[string]string) ([]*
 			debuglog.WarnLog("Parser: Xray JSON array element %d: %v", i, err)
 			continue
 		}
-		rememberGroupMemberIdentities(nodes, memberIdentities)
-		out = append(out, filterByIdentityOwner(nodes, i, owner, seen, finalTagByIdentity)...)
+		rememberGroupMemberServers(nodes, memberServers)
+		out = append(out, filterByServerOwner(nodes, i, owner, seen, finalTagByServer)...)
 	}
 
 	// Элемент, от которого после дедупа остался ровно один сервер, отдаёт ему
@@ -77,13 +77,13 @@ func ParseNodesFromXrayJSONArray(jsonBody string, skip []map[string]string) ([]*
 	// стран, и без этого пользователь видел бы технический тег
 	// «🇩🇪-Германия-БС-1 proxy-wl-d9yrc-guardora-pro».
 	//
-	// Делается ДО резолва состава групп: тот работает по идентичностям и
+	// Делается ДО резолва состава групп: тот работает по серверным ключам и
 	// подставит уже итоговые теги.
-	simplifySoloElementTags(out, finalTagByIdentity)
+	simplifySoloElementTags(out, finalTagByServer)
 
 	// Состав групп резолвится ПОСЛЕ всех элементов: член мог достаться
 	// элементу, который ещё не разобран.
-	return resolveGroupMembers(out, memberIdentities, finalTagByIdentity), nil
+	return resolveGroupMembers(out, memberServers, finalTagByServer), nil
 }
 
 // simplifySoloElementTags убирает различитель у элементов, от которых выжил
@@ -92,11 +92,11 @@ func ParseNodesFromXrayJSONArray(jsonBody string, skip []map[string]string) ([]*
 // Работает по базовому тегу (имя элемента): если его несёт единственный узел
 // и он же не конфликтует с чужим тегом, различитель отбрасывается.
 //
-// finalTagByIdentity обновляется вместе с тегом, чтобы состав групп
-// (резолвится позже, по идентичностям) сослался на новое имя.
+// finalTagByServer обновляется вместе с тегом, чтобы состав групп
+// (резолвится позже, по серверным ключам) сослался на новое имя.
 func simplifySoloElementTags(
 	nodes []*configtypes.ParsedNode,
-	finalTagByIdentity map[string]string,
+	finalTagByServer map[string]string,
 ) {
 	byBase := make(map[string][]*configtypes.ParsedNode)
 	taken := make(map[string]struct{}, len(nodes))
@@ -128,32 +128,26 @@ func simplifySoloElementTags(
 		if node.Outbound != nil {
 			node.Outbound["tag"] = base
 		}
-		// Группы ссылаются на членов по идентичности — обновляем и её.
-		if NodeIdentityHashFunc != nil {
-			if hash := NodeIdentityHashFunc(node); hash != "" {
-				finalTagByIdentity[hash] = base
-			}
+		// Группы ссылаются на членов по серверному ключу — обновляем и его.
+		if key := xrayServerKey(node); key != "" {
+			finalTagByServer[key] = base
 		}
 	}
 }
 
-// rememberGroupMemberIdentities запоминает идентичности членов узла-группы до
+// rememberGroupMemberServers запоминает серверные ключи членов узла-группы до
 // того, как фильтр владения раскидает их по элементам.
-func rememberGroupMemberIdentities(
+func rememberGroupMemberServers(
 	nodes []*configtypes.ParsedNode,
-	memberIdentities map[*configtypes.ParsedNode][]string,
+	memberServers map[*configtypes.ParsedNode][]string,
 ) {
-	if NodeIdentityHashFunc == nil {
-		return
-	}
-
 	byTag := make(map[string]string, len(nodes))
 	for _, n := range nodes {
 		if n == nil || n.Scheme == configtypes.SchemeGroup {
 			continue
 		}
-		if hash := NodeIdentityHashFunc(n); hash != "" {
-			byTag[n.Tag] = hash
+		if key := xrayServerKey(n); key != "" {
+			byTag[n.Tag] = key
 		}
 	}
 
@@ -165,12 +159,12 @@ func rememberGroupMemberIdentities(
 		ids := make([]string, 0, len(raw))
 		for _, item := range raw {
 			if tag, ok := item.(string); ok {
-				if hash, known := byTag[tag]; known {
-					ids = append(ids, hash)
+				if key, known := byTag[tag]; known {
+					ids = append(ids, key)
 				}
 			}
 		}
-		memberIdentities[n] = ids
+		memberServers[n] = ids
 	}
 }
 
@@ -182,10 +176,10 @@ func rememberGroupMemberIdentities(
 // Группа должна ссылаться на итоговый тег («🇩🇪-Германия»), а не исчезать.
 func resolveGroupMembers(
 	nodes []*configtypes.ParsedNode,
-	memberIdentities map[*configtypes.ParsedNode][]string,
-	finalTagByIdentity map[string]string,
+	memberServers map[*configtypes.ParsedNode][]string,
+	finalTagByServer map[string]string,
 ) []*configtypes.ParsedNode {
-	if len(memberIdentities) == 0 {
+	if len(memberServers) == 0 {
 		return nodes
 	}
 
@@ -199,7 +193,7 @@ func resolveGroupMembers(
 			continue
 		}
 
-		ids, tracked := memberIdentities[node]
+		ids, tracked := memberServers[node]
 		if !tracked {
 			out = append(out, node)
 			continue
@@ -208,7 +202,7 @@ func resolveGroupMembers(
 		members := make([]interface{}, 0, len(ids))
 		dedup := make(map[string]struct{}, len(ids))
 		for _, id := range ids {
-			tag, alive := finalTagByIdentity[id]
+			tag, alive := finalTagByServer[id]
 			if !alive {
 				continue
 			}
@@ -229,19 +223,14 @@ func resolveGroupMembers(
 	return out
 }
 
-// computeXrayIdentityOwners — проход 1 §342: определяет, какой элемент вправе
+// computeXrayServerOwners — проход 1 §342: определяет, какой элемент вправе
 // выпустить каждый сервер.
 //
 // Элементы обходятся от одиночных к многоузловым (стабильно: при равном числе
-// узлов — в порядке файла), и первый встретивший идентичность её и получает.
+// узлов — в порядке файла), и первый встретивший сервер его и получает.
 // Так «🇩🇪⚡Германия» забирает сервер себе, а пул «Авто | Лучший сервер»,
 // перечисляющий тот же адрес, его отдаёт.
-func computeXrayIdentityOwners(elems []json.RawMessage, skip []map[string]string) map[string]int {
-	if NodeIdentityHashFunc == nil {
-		// Без хука идентичности владения нет — дедуп не работает вовсе.
-		return nil
-	}
-
+func computeXrayServerOwners(elems []json.RawMessage, skip []map[string]string) map[string]int {
 	order := make([]int, len(elems))
 	for i := range elems {
 		order[i] = i
@@ -271,29 +260,29 @@ func computeXrayIdentityOwners(elems []json.RawMessage, skip []map[string]string
 			if node == nil || node.Scheme == configtypes.SchemeGroup {
 				continue // группа — не сервер, идентичности не занимает
 			}
-			hash := NodeIdentityHashFunc(node)
-			if hash == "" {
+			key := xrayServerKey(node)
+			if key == "" {
 				continue
 			}
-			if _, taken := owner[hash]; !taken {
-				owner[hash] = idx
+			if _, taken := owner[key]; !taken {
+				owner[key] = idx
 			}
 		}
 	}
 	return owner
 }
 
-// filterByIdentityOwner — проход 2 §342: элемент выпускает только закреплённые
+// filterByServerOwner — проход 2 §342: элемент выпускает только закреплённые
 // за ним серверы.
 //
 // seen страхует от повтора внутри одного владельца. Узлы-группы проходят
 // всегда: они не серверы, а объединяют то, что выжило.
-func filterByIdentityOwner(
+func filterByServerOwner(
 	nodes []*configtypes.ParsedNode,
 	elemIndex int,
 	owner map[string]int,
 	seen map[string]struct{},
-	finalTagByIdentity map[string]string,
+	finalTagByServer map[string]string,
 ) []*configtypes.ParsedNode {
 	if owner == nil {
 		return nodes
@@ -312,25 +301,61 @@ func filterByIdentityOwner(
 			continue
 		}
 
-		hash := NodeIdentityHashFunc(node)
-		if hash == "" {
+		key := xrayServerKey(node)
+		if key == "" {
 			kept = append(kept, node)
 			continue
 		}
-		if ownerIdx, ok := owner[hash]; ok && ownerIdx != elemIndex {
+		if ownerIdx, ok := owner[key]; ok && ownerIdx != elemIndex {
 			debuglog.DebugLog("Parser: Xray element %d: %q belongs to element %d — dropped here",
 				elemIndex, node.Tag, ownerIdx)
 			continue
 		}
-		if _, dup := seen[hash]; dup {
+		if _, dup := seen[key]; dup {
 			continue
 		}
-		seen[hash] = struct{}{}
-		finalTagByIdentity[hash] = node.Tag
+		seen[key] = struct{}{}
+		finalTagByServer[key] = node.Tag
 		kept = append(kept, node)
 	}
 
 	return kept
+}
+
+// xrayServerKey — ключ «тот же сервер» ВНУТРИ разбора Xray-массива.
+//
+// Это НЕ идентичность узла (та с SPEC 112 — тег, config.NodeIdentity). Здесь
+// решается другая задача: провайдер намеренно перечисляет один и тот же адрес
+// в нескольких элементах — как «🇩🇪 Германия» и внутри пула «Авто | Лучший
+// сервер», — и надо понять, что это одна запись, ДО того как теги вообще
+// назначены. Теги на этом этапе как раз разные (у пула технические, у страны
+// осмысленные), поэтому ключом взято подключение.
+//
+// Ключ намеренно узкий и локальный: `схема|сервер|порт|креденшл`. Транспорт и
+// TLS в него не входят — внутри одного элемента разные SNI одного адреса это
+// decoy-дубли пула, а не самостоятельные способы пройти фильтрацию. Наружу
+// пакета ключ не отдаётся и на пользовательские отметки не влияет.
+//
+// Пустая строка — «сервер не определён»: узел проходит без владения.
+func xrayServerKey(node *configtypes.ParsedNode) string {
+	if node == nil || node.Scheme == configtypes.SchemeGroup {
+		return ""
+	}
+	server := strings.TrimSpace(node.Server)
+	if server == "" {
+		return ""
+	}
+	cred := strings.TrimSpace(node.UUID)
+	if cred == "" && node.Outbound != nil {
+		// ss/trojan/hy2 несут секрет не в UUID — берём первое, что есть.
+		for _, field := range []string{"password", "uuid", "private_key", "auth_str"} {
+			if v, ok := node.Outbound[field].(string); ok && strings.TrimSpace(v) != "" {
+				cred = strings.TrimSpace(v)
+				break
+			}
+		}
+	}
+	return fmt.Sprintf("%s|%s|%d|%s", strings.ToLower(node.Scheme), server, node.Port, cred)
 }
 
 // xrayElementPayloadCount — сколько непослужебных outbound'ов в элементе.
@@ -480,15 +505,15 @@ func parseXrayJSONArrayElementNodes(raw json.RawMessage, elemIndex int, skip []m
 		}
 
 		// Дедуп внутри элемента: тот же сервер, перечисленный в пуле дважды.
-		if NodeIdentityHashFunc != nil {
-			if hash := NodeIdentityHashFunc(node); hash != "" {
-				if _, dup := seenInElement[hash]; dup {
-					debuglog.DebugLog("Parser: Xray element %d: %q duplicates an earlier node — dropped",
-						elemIndex, node.Tag)
-					continue
-				}
-				seenInElement[hash] = struct{}{}
+		// Это не идентичность узла (SPEC 112 — та по тегу), а разбор одного
+		// элемента: пул, перечисливший адрес дважды, объявляет один сервер.
+		if key := xrayServerKey(node); key != "" {
+			if _, dup := seenInElement[key]; dup {
+				debuglog.DebugLog("Parser: Xray element %d: %q duplicates an earlier node — dropped",
+					elemIndex, node.Tag)
+				continue
 			}
+			seenInElement[key] = struct{}{}
 		}
 
 		out = append(out, node)

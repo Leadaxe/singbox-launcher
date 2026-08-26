@@ -44,8 +44,6 @@ const realisticXraySubscription = `[
 // Право назвать сервер достаётся элементу с наименьшим числом узлов: имя
 // страны осмысленнее технического тега из пула.
 func TestXrayOwnershipGivesNamesToSpecificElements(t *testing.T) {
-	withIdentityHash(t)
-
 	nodes, err := ParseNodesFromXrayJSONArray(realisticXraySubscription, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -80,8 +78,6 @@ func TestXrayOwnershipGivesNamesToSpecificElements(t *testing.T) {
 
 // Элемент с балансировщиком даёт узел-группу, а не N строк с техтегами.
 func TestXrayBalancerBecomesGroupNode(t *testing.T) {
-	withIdentityHash(t)
-
 	nodes, err := ParseNodesFromXrayJSONArray(realisticXraySubscription, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -109,8 +105,6 @@ func TestXrayBalancerBecomesGroupNode(t *testing.T) {
 // Группа ссылается на ИТОГОВЫЕ теги членов, даже если те уехали к другим
 // элементам. Висячая ссылка роняет старт ядра.
 func TestXrayBalancerGroupReferencesSurvivingTags(t *testing.T) {
-	withIdentityHash(t)
-
 	nodes, err := ParseNodesFromXrayJSONArray(realisticXraySubscription, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -144,8 +138,6 @@ func TestXrayBalancerGroupReferencesSurvivingTags(t *testing.T) {
 // Порядок элементов остаётся авторским: пул стоит в подписке первым и
 // обязан остаться первым.
 func TestXrayOwnershipKeepsAuthorOrder(t *testing.T) {
-	withIdentityHash(t)
-
 	nodes, err := ParseNodesFromXrayJSONArray(realisticXraySubscription, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -159,19 +151,48 @@ func TestXrayOwnershipKeepsAuthorOrder(t *testing.T) {
 	}
 }
 
-// Без хука идентичности владения нет — подписка разбирается как есть.
-func TestXrayOwnershipInertWithoutHook(t *testing.T) {
-	prev := NodeIdentityHashFunc
-	NodeIdentityHashFunc = nil
-	t.Cleanup(func() { NodeIdentityHashFunc = prev })
+// SPEC 112: владение серверами больше не зависит от хука идентичности — оно
+// считается своим локальным ключом подключения (xrayServerKey) и работает
+// всегда. Раньше без хука пул съедал страны.
+func TestXrayOwnershipWorksWithoutIdentityHook(t *testing.T) {
+	prev := NodeIdentityFunc
+	NodeIdentityFunc = nil
+	t.Cleanup(func() { NodeIdentityFunc = prev })
 
 	nodes, err := ParseNodesFromXrayJSONArray(realisticXraySubscription, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Без дедупа выживают все узлы пула плюс страны.
-	if len(nodes) < 4 {
-		t.Fatalf("получено %d узлов, ожидалось не меньше 4 без дедупа", len(nodes))
+	tags := tagsOfNodes(nodes)
+	for _, want := range []string{"🇩🇪-Германия", "🇫🇮-Финляндия"} {
+		found := false
+		for _, tag := range tags {
+			if tag == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("страна %q пропала без хука идентичности (теги: %v)", want, tags)
+		}
+	}
+}
+
+// xrayServerKey — ключ разбора, а не идентичность: один адрес под двумя
+// именами внутри массива это одна запись, и владение обязано их свести.
+func TestXrayServerKeyIsIndependentOfTag(t *testing.T) {
+	a := &configtypes.ParsedNode{Tag: "🇩🇪 Германия", Scheme: "vless", Server: "1.1.1.1", Port: 443, UUID: "u1"}
+	b := &configtypes.ParsedNode{Tag: "proxy-1-1-1-1-direct", Scheme: "vless", Server: "1.1.1.1", Port: 443, UUID: "u1"}
+	if xrayServerKey(a) != xrayServerKey(b) {
+		t.Fatalf("один адрес под двумя именами дал разные ключи: %q и %q",
+			xrayServerKey(a), xrayServerKey(b))
+	}
+	other := &configtypes.ParsedNode{Tag: "🇩🇪 Германия", Scheme: "vless", Server: "2.2.2.2", Port: 443, UUID: "u1"}
+	if xrayServerKey(a) == xrayServerKey(other) {
+		t.Fatal("разные адреса дали один ключ")
+	}
+	if got := xrayServerKey(&configtypes.ParsedNode{Tag: "auto", Scheme: configtypes.SchemeGroup}); got != "" {
+		t.Fatalf("узел-группа получил серверный ключ %q", got)
 	}
 }
 
@@ -204,8 +225,6 @@ func indexOf(s, sub string) int {
 // ловит (существование членов он не проверяет), но в рантайме такая группа
 // мертва: ядру некуда балансировать.
 func TestXrayGroupMembersSurviveTagPrefix(t *testing.T) {
-	withIdentityHash(t)
-
 	res := loadFromInlineBody(t, realisticXraySubscription, configtypes.ProxySource{
 		TagPrefix: "AL:",
 	})

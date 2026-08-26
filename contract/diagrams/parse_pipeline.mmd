@@ -17,15 +17,18 @@ reality pbk/sid, ws ?ed=N, клампы
     W --> CE["Канонический узел
 {kind, scheme, label, entry, chain}
 (schema/node.schema.json, docs/CANON.md)"]
-    CE --> IH["identity-хеш
-(docs/IDENTITY.md)"]
+    CE --> IH["Идентичность = сырой тег,
+уникализированный в источнике
+(docs/IDENTITY.md §1)"]
   end
   subgraph app["Вне контракта (постобработка приложений)"]
-    IH --> DD["Дедуп по identity"]
-    DD --> TG["Tag-политика:
-prefix/postfix/mask/uniquify"]
-    TG --> DIS["Фильтр disabled (TTL)"]
-    DIS --> DET["Detour источника / цепочки"]
+    IH --> TG["Tag-политика:
+prefix/postfix/mask/uniquify
+(идентичность УЖЕ снята)"]
+    TG --> DIS["Фильтр disabled (ключ = идентичность,
+миграция legacy-хешей, TTL)"]
+    DIS --> DET["Detour источника / цепочки
+(узел адресуется финальным тегом)"]
     DET --> OUT["Вставка в config
 (секции outbounds / endpoints)"]
   end

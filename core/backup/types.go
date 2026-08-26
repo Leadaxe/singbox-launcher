@@ -92,8 +92,10 @@ type Subscription struct {
 // приезжало на десктоп в никуда и импортировалось выключенным. Теперь
 // отсутствующее Направление создаётся, и правило приходит рабочим.
 type Direction struct {
+	// Tag — единственное имя Направления (контракт 0.9.0): отдельного
+	// отображаемого имени нет, поле label из формы снято. Приехавший из
+	// чужого/старого бэкапа ключ игнорируется — именем остаётся тег.
 	Tag                       string         `json:"tag"`
-	Label                     string         `json:"label,omitempty"`
 	Enabled                   *bool          `json:"enabled,omitempty"`
 	Filter                    string         `json:"filter,omitempty"`
 	Invert                    bool           `json:"invert,omitempty"`

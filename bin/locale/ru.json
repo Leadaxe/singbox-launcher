@@ -1219,8 +1219,8 @@
   "(none — direct)": {
     "value": "(нет — напрямую)"
   },
-  "Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server (tracked by identity, survives renames).": {
-    "value": "Пускать узлы этого источника через другой outbound, чтобы построить цепочку прокси. Теги групп ведут через селектор; пункты с » — через один конкретный сервер (привязка по identity-хешу, переживает переименования)."
+  "Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server, tracked by that server and its node tag — editing the server's settings or tag prefix keeps the link, renaming its node tag clears it.": {
+    "value": "Пускать узлы этого источника через другой outbound, чтобы построить цепочку прокси. Теги групп ведут через селектор; пункты с » — через один конкретный сервер; ссылка держится за сам сервер и за его тег узла: правка настроек сервера или префикса тегов её не рвёт, а переименование тега узла сбрасывает."
   },
   "Tag postfix": {
     "value": "Суффикс тэга"
@@ -3304,5 +3304,89 @@
   },
   "The machine is answering again — the failure was transient (macOS re-checked its local-network policy or the network blinked). Press Connect again.": {
     "value": "Машина снова отвечает — отказ был кратковременным (macOS перепроверила политику локальной сети или сеть моргнула). Нажмите Connect ещё раз."
+  },
+  "Detour links cleared": {
+    "value": "Ссылки detour сброшены"
+  },
+  "Node %q was renamed, so its identity changed. Detour links to it have been cleared in: %s": {
+    "value": "Узел %q переименован — его идентичность изменилась. Ссылки detour на него сброшены у источников: %s"
+  },
+  "tag %q is already taken — directions, nodes and service outbounds share one namespace": {
+    "value": "тег %q уже занят — Направления, узлы и служебные outbound'ы живут в одном пространстве имён"
+  },
+  "Clone from…": {
+    "value": "Клонировать с…"
+  },
+  "Clone from": {
+    "value": "Клонирование настроек"
+  },
+  "Clone": {
+    "value": "Клонировать"
+  },
+  "Pick the machine whose settings you want to copy here.": {
+    "value": "Выберите машину, чьи настройки скопировать сюда."
+  },
+  "not configured yet": {
+    "value": "ещё не настроена"
+  },
+  "There are no other machines to clone from. Add a machine on the Remote tab, or configure the local one first.": {
+    "value": "Клонировать не с чего: других настроенных машин нет. Добавьте машину на вкладке «Удалённые» или сначала настройте локальную."
+  },
+  "%s has no saved configuration yet — there is nothing to clone from it.": {
+    "value": "У машины %s ещё нет сохранённой конфигурации — клонировать с неё нечего."
+  },
+  "Copying settings from %s.": {
+    "value": "Копирование настроек с машины %s."
+  },
+  "Will be copied:": {
+    "value": "Будет скопировано:"
+  },
+  "  Subscriptions: %d": {
+    "value": "  Подписки: %d"
+  },
+  "  Servers: %d": {
+    "value": "  Серверы: %d"
+  },
+  "  Chains: %d": {
+    "value": "  Цепочки: %d"
+  },
+  "  Directions: %d": {
+    "value": "  Направления: %d"
+  },
+  "  Rules: %d": {
+    "value": "  Правила: %d"
+  },
+  "  Variables: %d": {
+    "value": "  Переменные: %d"
+  },
+  "Stays machine-specific (not copied):": {
+    "value": "Останется своим у этой машины (не копируется):"
+  },
+  "This replaces the current settings of this machine. The current state is saved as a snapshot first — you can get it back with Read.": {
+    "value": "Это заменит текущие настройки машины. Сначала текущее состояние сохранится снимком — его можно вернуть через «Читать»."
+  },
+  "before cloning from %s": {
+    "value": "до клонирования с %s"
+  },
+  "Could not save a snapshot of the current settings, so nothing was changed": {
+    "value": "Не удалось сохранить снимок текущих настроек, поэтому ничего не изменено"
+  },
+  "Settings copied from %s. Press Save to apply them to this machine; the previous state is saved as %s.": {
+    "value": "Настройки скопированы с машины %s. Нажмите «Сохранить», чтобы применить их к этой машине; прежнее состояние сохранено как %s."
+  },
+  "Traffic follows the system default route.": {
+    "value": "Трафик идёт системным маршрутом по умолчанию."
+  },
+  "Cannot verify: the machine's interfaces are unavailable.": {
+    "value": "Проверить нельзя: интерфейсы машины недоступны."
+  },
+  "no IP address — no traffic will go through it": {
+    "value": "нет IP-адреса — трафик через него не пойдёт"
+  },
+  "not found on this machine": {
+    "value": "на этой машине не найден"
+  },
+  "empty — follow system default route": {
+    "value": "пусто — системный маршрут по умолчанию"
   }
 }

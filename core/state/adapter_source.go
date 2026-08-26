@@ -24,6 +24,8 @@ func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 	switch s.Type {
 	case SourceTypeSubscription:
 		ps := configtypes.ProxySource{
+			ID:                      s.ID,    // SPEC 112-A: адресат ссылок на узлы
+			Label:                   s.Label, // только для текстов диагностики
 			Source:                  s.URL,
 			Skip:                    s.Skip,
 			Outbounds:               s.Outbounds,
@@ -32,9 +34,11 @@ func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 			Fold:                    s.Fold, // SPEC 108
 			Disabled:                !s.Enabled,
 			DetourTag:               s.DetourTag,
-			DetourNodeHash:          s.DetourNodeHash,  // SPEC 101
-			DetourNodeLabel:         s.DetourNodeLabel, // SPEC 101
-			DisabledNodes:           s.DisabledNodes,   // SPEC 094 D4
+			DetourNodeSourceID:      s.DetourNodeSourceID, // SPEC 112-A
+			DetourNodeTag:           s.DetourNodeTag,      // SPEC 112
+			DetourNodeHash:          s.DetourNodeHash,     // legacy, мигрирует на сборке
+			DetourNodeLabel:         s.DetourNodeLabel,    // SPEC 101
+			DisabledNodes:           s.DisabledNodes,      // SPEC 094 D4
 		}
 		if s.Tag != nil {
 			ps.TagPrefix = s.Tag.Prefix
@@ -45,14 +49,18 @@ func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 
 	case SourceTypeServer:
 		return configtypes.ProxySource{
-			Connections:       []string{s.URI},
-			TagMask:           s.NodeTagOrLabel(),
-			ExcludeFromGlobal: s.ExcludeFromGlobal,
-			Disabled:          !s.Enabled,
-			DetourTag:         s.DetourTag,
-			DetourNodeHash:    s.DetourNodeHash,  // SPEC 101
-			DetourNodeLabel:   s.DetourNodeLabel, // SPEC 101
-			ConfigJSON:        s.ConfigJSON,      // ручной outbound JSON
+			ID:                 s.ID,    // SPEC 112-A: адресат ссылок на узлы
+			Label:              s.Label, // только для текстов диагностики
+			Connections:        []string{s.URI},
+			TagMask:            s.NodeTagOrLabel(),
+			ExcludeFromGlobal:  s.ExcludeFromGlobal,
+			Disabled:           !s.Enabled,
+			DetourTag:          s.DetourTag,
+			DetourNodeSourceID: s.DetourNodeSourceID, // SPEC 112-A
+			DetourNodeTag:      s.DetourNodeTag,      // SPEC 112
+			DetourNodeHash:     s.DetourNodeHash,     // legacy, мигрирует на сборке
+			DetourNodeLabel:    s.DetourNodeLabel,    // SPEC 101
+			ConfigJSON:         s.ConfigJSON,         // ручной outbound JSON
 		}
 
 	case SourceTypeChain:
@@ -61,6 +69,8 @@ func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 		// ссылаются фильтры Направлений и позиции других цепочек, поэтому
 		// переименование в списке его менять не должно.
 		return configtypes.ProxySource{
+			ID:                s.ID,    // SPEC 112-A: адресат ссылок на узлы
+			Label:             s.Label, // только для текстов диагностики
 			TagMask:           s.NodeTagOrLabel(),
 			ExcludeFromGlobal: s.ExcludeFromGlobal,
 			Disabled:          !s.Enabled,

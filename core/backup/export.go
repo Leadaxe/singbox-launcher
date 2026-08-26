@@ -293,7 +293,24 @@ func launcherSourceExtensions(src state.Source) json.RawMessage {
 	if src.DetourTag != "" {
 		ext["detour_tag"] = src.DetourTag
 	}
-	if src.DetourNodeHash != "" {
+	// SPEC 112-A: наружу едет ссылка-ОБЪЕКТ — id источника-цели плюс
+	// identity-тег узла внутри него. Финальный конфиговый тег не вывозится: на
+	// приёмнике он другой (свои tag_prefix/tag_mask), и ссылка приехала бы
+	// мёртвой. Id источников roundtrip переживают — они пишутся сюда же
+	// (ext["id"]) и читаются импортом.
+	//
+	// Упразднённый detour_node_hash не пишется, пока ссылка жива: он мигрирует
+	// на первой сборке, и вывозить его значило бы вывозить протухающее.
+	if src.DetourNodeTag != "" || src.DetourNodeSourceID != "" {
+		if src.DetourNodeSourceID != "" {
+			ext["detour_node_source_id"] = src.DetourNodeSourceID
+		}
+		ext["detour_node_tag"] = src.DetourNodeTag
+		ext["detour_node_label"] = src.DetourNodeLabel
+	} else if src.DetourNodeHash != "" {
+		// Ещё не мигрировавший источник (бэкап снят до первой сборки):
+		// хеш едет как есть и мигрирует уже на приёмнике — терять ссылку
+		// из-за момента снятия бэкапа нельзя.
 		ext["detour_node_hash"] = src.DetourNodeHash
 		ext["detour_node_label"] = src.DetourNodeLabel
 	}

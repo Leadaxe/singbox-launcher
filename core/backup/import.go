@@ -300,8 +300,16 @@ func applyLauncherSourceExtensions(src *state.Source, ext Extensions) {
 		ExcludeFromGlobal       bool                `json:"exclude_from_global"`
 		ExposeGroupTagsToGlobal bool                `json:"expose_group_tags_to_global"`
 		DetourTag               string              `json:"detour_tag"`
-		DetourNodeHash          string              `json:"detour_node_hash"`
-		DetourNodeLabel         string              `json:"detour_node_label"`
+		// Ссылка на узел, все три поколения формата (BACKUP.md §1 —
+		// молчаливых потерь быть не должно):
+		//   detour_node_source_id + detour_node_tag — SPEC 112-A, ссылка-объект;
+		//   detour_node_tag без id — dev-состояния SPEC 112, финальный тег;
+		//   detour_node_hash — релизы v1.5.x, упразднённый контент-хеш;
+		//     мигрирует при первом парсе на приёмнике.
+		DetourNodeSourceID string `json:"detour_node_source_id"`
+		DetourNodeTag      string `json:"detour_node_tag"`
+		DetourNodeHash     string `json:"detour_node_hash"`
+		DetourNodeLabel    string `json:"detour_node_label"`
 		// Тег узла server-источника: в схеме servers[] поля под него нет.
 		NodeTag string `json:"node_tag"`
 		// Локальные outbound'ы подписки. Экспорт их писал с самого начала,
@@ -319,6 +327,8 @@ func applyLauncherSourceExtensions(src *state.Source, ext Extensions) {
 	src.ExcludeFromGlobal = own.ExcludeFromGlobal
 	src.ExposeGroupTagsToGlobal = own.ExposeGroupTagsToGlobal
 	src.DetourTag = own.DetourTag
+	src.DetourNodeSourceID = own.DetourNodeSourceID
+	src.DetourNodeTag = own.DetourNodeTag
 	src.DetourNodeHash = own.DetourNodeHash
 	src.DetourNodeLabel = own.DetourNodeLabel
 	src.NodeTag = own.NodeTag

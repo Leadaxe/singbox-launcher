@@ -114,7 +114,7 @@ func TestDetourOptions_DanglingSelectionKept(t *testing.T) {
 	}
 }
 
-// --- SPEC 101: single-node detour targets ---
+// --- SPEC 101 + SPEC 112: single-node detour targets, адресуемые тегом ---
 
 const detourTestServerURI = "vless://b831381d-6324-4d53-ad4f-8cda48b30811@h.example.com:443?encryption=none&security=tls&sni=h.example.com#hop"
 
@@ -122,6 +122,9 @@ func modelWithServerSource(t *testing.T, label, uri string, groupTags ...string)
 	t.Helper()
 	m := modelWithOutbounds(t, groupTags...)
 	m.Sources = []wizardmodels.Source{{
+		// ID обязателен: SPEC 112-A адресует узел парой «source_id + тег»,
+		// и пикер обязан записать в выбор именно его.
+		ID:      "01SRV0000000000000000000",
 		Type:    wizardmodels.SourceTypeServer,
 		Enabled: true,
 		Label:   label,
@@ -141,14 +144,58 @@ func TestDetourOptionsWithNodes_OffersServerSources(t *testing.T) {
 		t.Fatalf("server source must be offered as %q, got %v", want, opts)
 	}
 	c := choices[want]
-	if c.NodeHash == "" || c.Tag != "" {
-		t.Errorf("node option must carry NodeHash only, got %+v", c)
+	if c.NodeTag == "" || c.Tag != "" {
+		t.Errorf("node option must carry NodeTag only, got %+v", c)
+	}
+	// SPEC 112-A: ссылка — объект, и id источника-цели в выбор попадает.
+	if c.NodeSourceID != "01SRV0000000000000000000" {
+		t.Errorf("node option must carry the target source id, got %+v", c)
+	}
+	// Тег узла server-источника — NodeTag, а при пустом откат на Label
+	// (Source.NodeTagOrLabel): именно под этим именем узел войдёт в конфиг.
+	if c.NodeTag != "WARP hop" {
+		t.Errorf("NodeTag = %q, want the source's node tag", c.NodeTag)
 	}
 	if c.NodeLabel != "WARP hop" {
 		t.Errorf("NodeLabel = %q, want the source label", c.NodeLabel)
 	}
-	if g := choices["proxy"]; g.Tag != "proxy" || g.NodeHash != "" {
+	if g := choices["proxy"]; g.Tag != "proxy" || g.NodeTag != "" {
 		t.Errorf("group option must stay tag-addressed, got %+v", g)
+	}
+}
+
+// Явно заданный NodeTag побеждает подпись: адресуется тег, а показывается
+// подпись — разные роли (SPEC 112 + tag-vs-label).
+func TestDetourOptionsWithNodes_UsesNodeTagOverLabel(t *testing.T) {
+	m := modelWithServerSource(t, "WARP hop", detourTestServerURI)
+	m.Sources[0].NodeTag = "🔥🎭 WARP (MASQUE)"
+
+	_, _, choices := DetourOptionsWithNodes(m, &configtypes.ProxySource{}, none)
+	c := choices[detourNodeMarker+"WARP hop"]
+	if c.NodeTag != "🔥🎭 WARP (MASQUE)" {
+		t.Errorf("NodeTag = %q, ожидался тег узла, а не подпись", c.NodeTag)
+	}
+}
+
+// Источник, у которого только ручной config_json (URI нет), тоже узел и
+// хопом быть вправе: именно так лежал WARP в сломавшемся стейте.
+func TestDetourOptionsWithNodes_OffersConfigJSONOnlySource(t *testing.T) {
+	m := modelWithOutbounds(t, "proxy")
+	m.Sources = []wizardmodels.Source{{
+		Type:       wizardmodels.SourceTypeServer,
+		Enabled:    true,
+		Label:      "WARP hop",
+		NodeTag:    "🔥🎭 WARP (MASQUE)",
+		ConfigJSON: json.RawMessage(`{"type":"vless","server":"h.example.com","server_port":443}`),
+	}}
+
+	opts, _, choices := DetourOptionsWithNodes(m, &configtypes.ProxySource{}, none)
+	want := detourNodeMarker + "WARP hop"
+	if !contains(opts, want) {
+		t.Fatalf("источник с ручным JSON обязан предлагаться как %q, получено %v", want, opts)
+	}
+	if choices[want].NodeTag != "🔥🎭 WARP (MASQUE)" {
+		t.Errorf("NodeTag = %q", choices[want].NodeTag)
 	}
 }
 
@@ -161,31 +208,31 @@ func TestDetourOptionsWithNodes_ExcludesOwnURI(t *testing.T) {
 	}
 }
 
-func TestDetourOptionsWithNodes_SelectedByHash(t *testing.T) {
+func TestDetourOptionsWithNodes_SelectedByTag(t *testing.T) {
 	m := modelWithServerSource(t, "WARP hop", detourTestServerURI)
-	hash := nodeHashForURI(detourTestServerURI)
-	if hash == "" {
-		t.Fatal("test URI must hash")
+	src := &configtypes.ProxySource{
+		DetourNodeSourceID: "01SRV0000000000000000000",
+		DetourNodeTag:      "WARP hop",
+		DetourNodeLabel:    "stale label",
 	}
-	src := &configtypes.ProxySource{DetourNodeHash: hash, DetourNodeLabel: "stale label"}
 	_, sel, choices := DetourOptionsWithNodes(m, src, none)
 	if sel != detourNodeMarker+"WARP hop" {
 		t.Errorf("selected = %q, want the live node option", sel)
 	}
-	if choices[sel].NodeHash != hash {
-		t.Errorf("selected choice hash mismatch")
+	if choices[sel].NodeTag != "WARP hop" {
+		t.Errorf("selected choice tag mismatch: %q", choices[sel].NodeTag)
 	}
 }
 
-func TestDetourOptionsWithNodes_DanglingHashKept(t *testing.T) {
+func TestDetourOptionsWithNodes_DanglingTagKept(t *testing.T) {
 	m := modelWithOutbounds(t, "proxy")
-	src := &configtypes.ProxySource{DetourNodeHash: "deadbeefdeadbeef", DetourNodeLabel: "gone hop"}
+	src := &configtypes.ProxySource{DetourNodeTag: "gone-hop-tag", DetourNodeLabel: "gone hop"}
 	opts, sel, choices := DetourOptionsWithNodes(m, src, none)
 	want := detourNodeMarker + "gone hop"
 	if sel != want || !contains(opts, want) {
-		t.Errorf("dangling hash must stay visible as %q, got sel=%q opts=%v", want, sel, opts)
+		t.Errorf("dangling tag must stay visible as %q, got sel=%q opts=%v", want, sel, opts)
 	}
-	if choices[want].NodeHash != "deadbeefdeadbeef" {
-		t.Errorf("dangling choice must keep the stored hash")
+	if choices[want].NodeTag != "gone-hop-tag" {
+		t.Errorf("dangling choice must keep the stored tag")
 	}
 }

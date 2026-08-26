@@ -90,6 +90,27 @@ type ParserConfig struct {
 
 // ProxySource represents a proxy subscription source
 type ProxySource struct {
+	// ID — ULID источника (state.Source.ID), провезённый в сборочную форму.
+	//
+	// SPEC 112-A: ссылка на узел адресуется парой «source_id + identity-тег»,
+	// поэтому генератору нужно соответствие «источник в ParserConfig → ULID».
+	// Поле деривное: канонический владелец — Connections.Sources; сюда его
+	// кладут ToProxySourceV4 / syncLegacyFromConnections, а обратный синк
+	// (syncConnectionsFromLegacy) предпочитает его матчингу по URL/URI.
+	//
+	// Пусто у конфигов, собранных не из состояния (тесты, ручной JSON) —
+	// резолв ссылок обязан это переживать (глобальный поиск по тегу).
+	ID string `json:"id,omitempty"`
+	// Label — подпись источника (state.Source.Label), провезённая в сборочную
+	// форму ТОЛЬКО ради текстов диагностики.
+	//
+	// SPEC 112-A требует, чтобы сообщение о непойманной ссылке называло обе
+	// стороны человеческими именами: «в подписке "AL: Liberty" не нашлось узла
+	// …». До этого у сборки на руках был лишь URL подписки, и предупреждение
+	// приходилось читать по адресу — а подпись пользователь как раз и правит,
+	// чтобы источник узнавать. Ни на что, кроме сообщений, поле не влияет:
+	// именем узла остаётся тег (SPEC 112).
+	Label       string              `json:"label,omitempty"`
 	Source      string              `json:"source,omitempty"`
 	Connections []string            `json:"connections,omitempty"`
 	Skip        []map[string]string `json:"skip,omitempty"`
@@ -135,30 +156,58 @@ type ProxySource struct {
 	// ["detour"] for each non-WireGuard node at parse time; validated (dangling/
 	// cycle/self → dropped) at generation time.
 	DetourTag string `json:"detour_tag,omitempty"`
-	// DetourNodeHash: SPEC 101 — identity hash (config.NodeIdentityHash) of a
-	// single node this source's nodes dial through. The alternative to DetourTag
-	// for chaining through one concrete node (e.g. a WARP endpoint) instead of a
-	// group: node tags are runtime-generated (prefix/mask/uniquify) and would go
-	// stale, the hash survives renames and reorders — same reasoning as
-	// DisabledNodes. Mutually exclusive with DetourTag (UI enforces; if both are
-	// set, DetourNodeHash wins). Resolved hash→tag at generation time, when all
-	// sources are loaded and tags are final; an unresolved hash drops this
-	// source's nodes from the config (fail-closed — traffic must not silently go
-	// direct).
+	// DetourNodeSourceID / DetourNodeTag — SPEC 112-A: ссылка на ОДИН узел,
+	// через который дозваниваются узлы этого источника (альтернатива DetourTag,
+	// который метит в группу). Ссылка — ОБЪЕКТ из двух частей:
+	//
+	//	DetourNodeSourceID — ULID источника-цели (ProxySource.ID);
+	//	DetourNodeTag      — identity-тег узла ВНУТРИ этого источника
+	//	                     (ParsedNode.IdentityTag, SPEC 112).
+	//
+	// Финальный конфиговый тег здесь НЕ хранится: он вычисляется на каждой
+	// сборке (prefix/mask/uniquify), и хранимый тег протухал бы от смены
+	// tag_prefix источника-цели — ровно тем же классом багов, что до SPEC 112
+	// протухал контент-хеш.
+	//
+	// Резолв СТРОГИЙ (дополнение к SPEC 112-A): ссылка жива, только если
+	// source_id найден И узел с таким identity-тегом в нём есть. Расхождение =
+	// fail-closed. Честность за пределами сборки обеспечивает UI: операция,
+	// меняющая идентичность узла (переименование node_tag), сама сбрасывает
+	// ссылки на него и сообщает об этом пользователю.
+	//
+	// Пустой DetourNodeSourceID при непустом DetourNodeTag — переходная форма
+	// (состояния dev-сборок между SPEC 112 и 112-A): тег трактуется как ФИНАЛЬНЫЙ
+	// и ищется глобально, как раньше.
+	//
+	// Mutually exclusive with DetourTag (UI enforces; if both are set,
+	// DetourNodeTag wins).
+	DetourNodeSourceID string `json:"detour_node_source_id,omitempty"`
+	DetourNodeTag      string `json:"detour_node_tag,omitempty"`
+	// DetourNodeHash: УПРАЗДНЁННАЯ ссылка по контент-хешу (SPEC 101).
+	//
+	// Читается только ради миграции состояний, записанных до SPEC 112:
+	// resolveNodeDetours опознаёт по нему узел (config.LegacyNodeIdentityHash)
+	// и переписывает ссылку в пару DetourNodeSourceID+DetourNodeTag; не опознал —
+	// берёт DetourNodeLabel как тег (label там и есть тег выбранного хопа), но
+	// уже без source_id: узел-цель неизвестен. После миграции поле не пишется.
 	DetourNodeHash string `json:"detour_node_hash,omitempty"`
 	// DetourNodeLabel: display-only snapshot of the picked node's tag at pick
-	// time, so the Source dialog can show a human label without resolving the
-	// hash (the node may be temporarily absent). Never used for resolution.
+	// time, so the Source dialog can show a human label even when the node is
+	// temporarily absent. Not used for resolution — except as the fallback of
+	// the SPEC 112 migration described above.
 	DetourNodeLabel string `json:"detour_node_label,omitempty"`
 	// DisabledNodes: SPEC 094 D4 — per-node off switch, keyed by the node's
-	// identity hash (config.NodeIdentityHash) and valued with the unix time the
-	// mark was last confirmed.
+	// IDENTITY and valued with the unix time the mark was last confirmed.
 	//
-	// Keyed by hash rather than by tag or position because both are unstable:
-	// providers rename nodes between refreshes and reorder them freely, so a
-	// tag-keyed mark would silently jump to a different server. The hash covers
-	// everything that describes the connection, so the mark follows the actual
-	// node and survives refreshes, restarts and provider-side renames.
+	// Identity is the node's raw provider tag, uniquified within the source and
+	// taken before this source's tag_prefix / tag_mask (SPEC 112,
+	// config.NodeIdentity). The tag is the name the provider manages the node
+	// by: it survives the provider rotating the server behind that name, and
+	// changing the source's tag policy does not move the marks.
+	//
+	// Was an emitted-JSON hash until SPEC 112; keys of that shape (64 lowercase
+	// hex) are migrated to tag keys on the first parse of the source and are
+	// never written again.
 	//
 	// The timestamp exists for garbage collection: a node that has been gone
 	// from the subscription longer than the TTL drops out of the map, otherwise
@@ -221,10 +270,12 @@ type Direction struct {
 
 	// SPEC 104: поля Направления.
 	//
-	// Label — отображаемое имя («Моя Германия»). Пусто → показываем Tag.
-	// Отдельно от Comment намеренно: у шаблонных записей комментарий —
-	// описание абзацем, именем его не сделать.
-	Label string `json:"label,omitempty"`
+	// Отображаемого имени у Направления НЕТ — имя ровно одно, Tag
+	// (контракт 0.9.0). Прежнее поле Label снято намеренно: на тег
+	// ссылаются правила, и второе имя означало, что в списке видно одно,
+	// а в выпадашке целей — другое. Переименование = смена Tag вместе со
+	// ссылками. Не возвращать; у узлов и пресетов Label законен — там
+	// ссылочного тега в паре нет.
 
 	// Disabled — направление не материализуется и не предлагается целью
 	// правил. Именно Disabled, а не Enabled: нулевое значение bool должно
@@ -398,11 +449,10 @@ func (d Direction) AutoTag() string {
 	return d.Tag + "-auto"
 }
 
-// DisplayName — имя для интерфейса: Label, а при его отсутствии — Tag.
+// DisplayName — имя для интерфейса. У Направления оно одно — Tag
+// (контракт 0.9.0); метод оставлен точкой смысла «как показать
+// Направление», чтобы вызовы не разъезжались по прямым d.Tag.
 func (d Direction) DisplayName() string {
-	if d.Label != "" {
-		return d.Label
-	}
 	return d.Tag
 }
 
@@ -516,6 +566,18 @@ type ParsedNode struct {
 	// tag, so rebinding them to the final tags needs this untouched copy.
 	// Empty for nodes that did not come from a sing-box config.
 	SourceTag string
+	// IdentityTag — идентичность узла (SPEC 112): сырой провайдерский тег,
+	// уникализированный В ПРЕДЕЛАХ ИСТОЧНИКА, снятый ДО применения
+	// tag_prefix / tag_postfix / tag_mask.
+	//
+	// Именно она держит отметки выключения (ProxySource.DisabledNodes) и
+	// принадлежность узла между элементами Xray-массива. Содержимое узла
+	// (server, port, ключи, SNI, транспорт) в идентичность НЕ входит:
+	// провайдер вправе поменять сервер под тем же именем — это тот же узел.
+	//
+	// Пустая строка = «идентичности нет» (узел собран не парсером источника):
+	// вызывающий обязан считать это отсутствием, а не общим ключом "".
+	IdentityTag string
 	// Chain is the ordered detour path from the nearest hop outwards
 	// (SPEC 094 B1). Empty means the node dials directly.
 	//

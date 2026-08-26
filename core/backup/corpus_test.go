@@ -380,9 +380,6 @@ func checkDirections(t *testing.T, dst *state.State, exp corpusExpectation) {
 		if !ok {
 			t.Fatalf("направление %q не создано импортом", want.Tag)
 		}
-		if got.Label != want.Label {
-			t.Errorf("%s: имя %q, ожидалось %q", want.Tag, got.Label, want.Label)
-		}
 		body, invert := configtypes.DirectionFilterTag(got.Filters)
 		if body != want.Filter || invert != want.Invert {
 			t.Errorf("%s: отбор (%q, инверсия=%v), ожидалось (%q, %v)",

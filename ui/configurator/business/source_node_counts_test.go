@@ -9,9 +9,11 @@ import (
 )
 
 func modelWithNodes() *wizardmodels.WizardModel {
-	n1 := &config.ParsedNode{Tag: "a", Scheme: "socks", Server: "10.0.0.1", Port: 1080}
-	n2 := &config.ParsedNode{Tag: "b", Scheme: "socks", Server: "10.0.0.2", Port: 1080}
-	n3 := &config.ParsedNode{Tag: "c", Scheme: "socks", Server: "10.0.0.3", Port: 1080}
+	// IdentityTag ставит парсер (SPEC 112) — здесь он проставлен явно, как
+	// после LoadNodesFromSource: превью и сборка идут одним путём.
+	n1 := &config.ParsedNode{Tag: "AL:a", IdentityTag: "a", Scheme: "socks", Server: "10.0.0.1", Port: 1080}
+	n2 := &config.ParsedNode{Tag: "AL:b", IdentityTag: "b", Scheme: "socks", Server: "10.0.0.2", Port: 1080}
+	n3 := &config.ParsedNode{Tag: "AL:c", IdentityTag: "c", Scheme: "socks", Server: "10.0.0.3", Port: 1080}
 	return &wizardmodels.WizardModel{
 		Sources:      []wizardmodels.Source{{ID: "s1", Type: wizardmodels.SourceTypeSubscription}},
 		PreviewNodes: []*config.ParsedNode{n1, n2, n3},
@@ -36,9 +38,9 @@ func TestSourceNodeCounts_AllEnabled(t *testing.T) {
 // «2 узла» читалось бы как потеря третьего, а не как выключение.
 func TestSourceNodeCounts_DisabledNodeCountedApart(t *testing.T) {
 	m := modelWithNodes()
-	off := config.NodeIdentityHash(m.PreviewNodesBySource[0][1])
+	off := config.NodeIdentity(m.PreviewNodesBySource[0][1])
 	if off == "" {
-		t.Fatal("хеш идентичности пуст — тест не проверяет ничего")
+		t.Fatal("идентичность пуста — тест не проверяет ничего")
 	}
 	m.Sources[0].DisabledNodes = map[string]int64{off: 1}
 

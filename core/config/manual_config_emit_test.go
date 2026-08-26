@@ -88,10 +88,10 @@ func TestManualConfigJSON_UnknownTypeAndFieldsSurvive(t *testing.T) {
 		t.Fatalf("emitted line must be valid JSON: %v\n%s", err, line)
 	}
 
-	// Идентичность считается от эмитированного JSON — у ручной ноды она
-	// должна вычисляться (на ней держатся DisabledNodes и detour-by-hash).
-	if NodeIdentityHash(node) == "" {
-		t.Error("manual node must have a computable identity hash")
+	// SPEC 112: идентичность ручной ноды — её тег. Он обязан быть, иначе
+	// ни отметку выключения, ни ссылку detour к ней не привязать.
+	if NodeIdentity(node) == "" {
+		t.Error("у ручной ноды обязана быть идентичность (тег)")
 	}
 }
 
