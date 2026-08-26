@@ -5,6 +5,6 @@
       "ref": "vless://invalid"
     }
   ],
-  "nodes": null,
+  "nodes": [],
   "v": 1
 }

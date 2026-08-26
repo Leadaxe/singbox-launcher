@@ -72,6 +72,7 @@ const (
 //   - SourceTypeChain:        Chain; URL/URI/Tag/Update/Meta не используются
 //
 // Поля identity (ID/Type/Enabled/Label/ExcludeFromGlobal) — общие.
+// Тег узла у server/chain — в NodeTag (см. там); Label только отображает.
 type Source struct {
 	// identity
 	ID                string     `json:"id"`
@@ -79,6 +80,25 @@ type Source struct {
 	Enabled           bool       `json:"enabled"`
 	Label             string     `json:"label,omitempty"`
 	ExcludeFromGlobal bool       `json:"exclude_from_global,omitempty"`
+
+	// NodeTag — системный тег узла для type=server и type=chain.
+	//
+	// Заведён отдельно от Label, потому что раньше этих двух ролей у
+	// источника не различали: adapter_source.go клал `TagMask: s.Label`
+	// («force tag = label»), то есть переименование в списке молча меняло
+	// тег, на который ссылаются фильтры Направлений, позиции других цепочек
+	// и rules[].outbound. Пользователь правил подпись — и терял маршрут.
+	//
+	// Теперь роли разведены ровно как у Направления (Direction.Tag /
+	// Direction.Label): тег — идентификатор, на него ссылаются; Label —
+	// отображаемое имя, правится свободно. Пусто → NodeTagOrLabel
+	// откатывается на Label, чем и держится совместимость с состояниями,
+	// записанными до этого разделения (миграция их не переписывает: пустой
+	// NodeTag читается как «тег = Label», ровно прежнее поведение).
+	//
+	// Для type=subscription не используется: там именами узлов управляет
+	// Tag (*TagSpec) — prefix/postfix/mask.
+	NodeTag string `json:"node_tag,omitempty"`
 
 	// type=subscription only
 	URL                     string                  `json:"url,omitempty"`
@@ -121,23 +141,49 @@ type Source struct {
 	// node then dials directly. Not applied to WireGuard nodes.
 	DetourTag string `json:"detour_tag,omitempty"`
 
-	// DetourNodeHash / DetourNodeLabel — SPEC 101: chain through one concrete
-	// node addressed by its identity hash (stable across provider renames and
-	// reorders, like DisabledNodes keys). Mutually exclusive with DetourTag —
-	// the picker sets one and clears the other; hash wins if both survive a
-	// hand edit. The label is a display snapshot of the picked node's tag,
-	// never used for resolution. Unresolved hash at build time drops this
-	// source's nodes (fail-closed), see config.resolveNodeHashDetours.
+	// DetourNodeSourceID / DetourNodeTag — SPEC 112-A: ссылка на ОДИН узел,
+	// через который дозваниваются узлы этого источника. Ссылка — ОБЪЕКТ:
+	// ULID источника-цели плюс identity-тег узла ВНУТРИ него (SPEC 112).
+	//
+	// Финальный конфиговый тег в состоянии не хранится намеренно: он —
+	// производная от tag_prefix/tag_mask источника-цели и вычисляется на каждой
+	// сборке, а хранимый протухал бы от правки этих полей (тот же класс багов,
+	// из-за которого до SPEC 112 протухал контент-хеш).
+	//
+	// Резолв строгий: обе части обязаны сойтись, иначе источник выпадает из
+	// конфига fail-closed (трафик не уходит напрямую) — см.
+	// config.resolveNodeDetours. Смену идентичности узла (переименование
+	// node_tag) UI отрабатывает сам: сбрасывает ссылки и сообщает об этом.
+	//
+	// Пустой DetourNodeSourceID при непустом DetourNodeTag — переходная форма
+	// (dev-состояния между SPEC 112 и 112-A): тег трактуется как ФИНАЛЬНЫЙ и
+	// ищется глобально.
+	//
+	// Взаимоисключимы с DetourTag — пикер ставит одно и гасит другое; при
+	// ручной правке, оставившей оба, побеждает ссылка на узел. DetourNodeLabel
+	// — снимок подписи узла на момент выбора, только для показа.
+	DetourNodeSourceID string `json:"detour_node_source_id,omitempty"`
+	DetourNodeTag      string `json:"detour_node_tag,omitempty"`
+
+	// DetourNodeHash — УПРАЗДНЁННАЯ ссылка по контент-хешу (SPEC 101).
+	// Читается только ради миграции состояний, записанных до SPEC 112:
+	// генератор опознаёт по нему узел и переписывает ссылку в пару
+	// DetourNodeSourceID+DetourNodeTag, а не опознав — берёт DetourNodeLabel
+	// как тег (уже без source_id). После миграции не пишется.
 	DetourNodeHash  string `json:"detour_node_hash,omitempty"`
 	DetourNodeLabel string `json:"detour_node_label,omitempty"`
 
 	// DisabledNodes — SPEC 094 D4: per-node off switch, keyed by the node's
-	// identity hash and valued with the unix time the mark was last confirmed.
+	// IDENTITY and valued with the unix time the mark was last confirmed.
 	//
-	// Keyed by hash rather than tag or position: providers rename nodes between
-	// refreshes and reorder them freely, so a tag-keyed mark would silently move
-	// to a different server. Marks for nodes gone from the subscription longer
-	// than the TTL are garbage-collected, otherwise the map would grow forever.
+	// Identity is the node's raw provider tag, uniquified within the source and
+	// taken before this source's tag_prefix / tag_mask (SPEC 112). The tag is
+	// the name the provider manages the node by, so the mark survives the
+	// provider rotating the server behind that name, and editing the source's
+	// tag policy does not move the marks. Keys written before SPEC 112 (64
+	// lowercase hex of the abolished content hash) are migrated to tag keys on
+	// the first parse. Marks for nodes gone from the subscription longer than
+	// the TTL are garbage-collected, otherwise the map would grow forever.
 	DisabledNodes map[string]int64 `json:"disabled_nodes,omitempty"`
 
 	// ForeignExtensions — per-entity блобы ЧУЖИХ приложений из LX Backup
@@ -168,6 +214,20 @@ func (t *TagSpec) IsZero() bool {
 		return true
 	}
 	return t.Prefix == "" && t.Postfix == "" && t.Mask == ""
+}
+
+// NodeTagOrLabel — системный тег узла источника (type=server / type=chain).
+//
+// Откат на Label при пустом NodeTag — не удобство, а миграция: состояния,
+// записанные до разделения ролей, несут тег именно в Label, и переписывать
+// их на загрузке нельзя (файл делят с более старыми сборками). Пустой
+// NodeTag поэтому читается как «тег равен Label» — прежнее поведение слово
+// в слово, — а заполненный побеждает.
+func (s Source) NodeTagOrLabel() string {
+	if s.NodeTag != "" {
+		return s.NodeTag
+	}
+	return s.Label
 }
 
 // UpdateSpec — настройки авто-обновления per-subscription. nil → используются

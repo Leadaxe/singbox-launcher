@@ -1,0 +1,28 @@
+{
+  "lx_backup": 1,
+  "exported_by": {
+    "app": "launcher",
+    "version": "1.6.0"
+  },
+  "exported_at": "2026-08-24T00:00:00Z",
+  "chains": [
+    {
+      "tag": "relay",
+      "chain": {
+        "hops": [
+          "hop-1",
+          "hop-2"
+        ]
+      }
+    },
+    {
+      "tag": "relay",
+      "chain": {
+        "hops": [
+          "hop-3",
+          "hop-4"
+        ]
+      }
+    }
+  ]
+}

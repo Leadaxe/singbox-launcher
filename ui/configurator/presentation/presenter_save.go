@@ -55,8 +55,12 @@ import (
 const (
 	saveDialogSuccessMessageText = "State saved to %s\n\nConfiguration will be rebuilt on next Update or Restart."
 	saveRemoteNeedsConnectText   = "Connect to this machine first: its config points at the machine's own resource store, and that path comes from the daemon when you connect."
-	saveRemoteNeedsParseText     = "Subscriptions have not been parsed for this target yet, so the config would contain no proxy nodes. Open the Preview tab (or press Read on Sources) to parse them, then save again."
+	saveRemoteNeedsParseText     = "Could not read the subscriptions for this target, so the config would contain no proxy nodes. Check the sources on the Sources tab and try again."
 )
+
+// parseWaitTimeout — сколько Save ждёт уже идущий фоновый разбор подписок,
+// прежде чем запустить свой. Разбор сотен нод занимает секунды.
+const parseWaitTimeout = 60 * time.Second
 
 // SaveConfig сохраняет конфигурацию асинхронно с прогресс-баром.
 func (p *WizardPresenter) SaveConfig() {
@@ -350,14 +354,19 @@ func (p *WizardPresenter) exportRemoteConfig() {
 	// Ноды разбирает парсер подписок; после смены таргета (или до первого
 	// разбора) их ещё нет, и конфиг ушёл бы с ПУСТЫМИ секциями между
 	// парсер-маркерами — валидный по check, но без единой прокси-ноды.
-	// Лучше честно сказать, чем отдать пустышку под видом готового конфига.
+	// Раньше тут был отказ с советом «открой Preview» — вкладки Preview
+	// больше нет, а разбор запускается только заходом на Rules, поэтому
+	// remote-Save упирался в тупик. Save и так идёт в своей горутине —
+	// разбираем прямо здесь.
 	if p.model.PreviewNeedsParse || len(p.model.GeneratedOutbounds) == 0 {
-		debuglog.WarnLog("exportRemoteConfig: nodes not parsed yet (needsParse=%v, outbounds=%d)",
+		debuglog.InfoLog("exportRemoteConfig: nodes not parsed yet (needsParse=%v, outbounds=%d) — parsing now",
 			p.model.PreviewNeedsParse, len(p.model.GeneratedOutbounds))
-		p.UpdateUI(func() {
-			dialog.ShowError(errors.New(locale.T(saveRemoteNeedsParseText)), p.guiState.Window)
-		})
-		return
+		if !p.parseOutboundsForSave() {
+			p.UpdateUI(func() {
+				dialog.ShowError(errors.New(locale.T(saveRemoteNeedsParseText)), p.guiState.Window)
+			})
+			return
+		}
 	}
 	// Страховка на случай, если визард для машины открыли в обход строки
 	// списка: без state_dir пути .srs указывали бы в файловую систему
@@ -467,4 +476,34 @@ func (p *WizardPresenter) modelHasRuleSetFiles() bool {
 		}
 	}
 	return false
+}
+
+// parseOutboundsForSave выполняет разбор подписок синхронно (вызывается из
+// горутины Save). Ждёт уже идущий фоновый разбор, иначе запускает свой.
+// Возвращает false, если нод так и не появилось.
+func (p *WizardPresenter) parseOutboundsForSave() bool {
+	p.UpdateSaveStatusText(locale.T("Parsing subscriptions..."))
+
+	// Фоновый разбор (переключение на Rules) мог уже идти — дожидаемся его,
+	// вместо параллельного второго прохода по тем же подпискам.
+	deadline := time.Now().Add(parseWaitTimeout)
+	for p.model.AutoParseInProgress && time.Now().Before(deadline) {
+		<-time.After(100 * time.Millisecond)
+	}
+
+	if p.model.PreviewNeedsParse || len(p.model.GeneratedOutbounds) == 0 {
+		ac := core.GetController()
+		if ac == nil {
+			return false
+		}
+		p.model.AutoParseInProgress = true
+		configService := &wizardbusiness.ConfigServiceAdapter{CoreConfigService: ac.ConfigService}
+		err := wizardbusiness.ParseAndPreview(p, configService)
+		p.model.AutoParseInProgress = false
+		if err != nil {
+			debuglog.ErrorLog("parseOutboundsForSave: ParseAndPreview failed: %v", err)
+			return false
+		}
+	}
+	return !p.model.PreviewNeedsParse && len(p.model.GeneratedOutbounds) > 0
 }

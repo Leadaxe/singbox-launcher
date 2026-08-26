@@ -6,7 +6,7 @@
     "auto": { "mode": "round_robin", "pool": 3, "pool_tolerance": 20, "sticky_hash": ["domain"] }
   },
   "directions": [
-    { "tag": "vpn-1", "label": "Main" }
+    { "tag": "vpn-1" }
   ],
   "node_tags": ["AL:tokyo", "AL:osaka", "AL:seoul"],
   "magic": { "block": "block-out", "direct": "direct-out" }

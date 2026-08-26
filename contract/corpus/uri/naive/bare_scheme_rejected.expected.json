@@ -5,6 +5,6 @@
       "ref": "naive://user1:pass123@example-1.com:443"
     }
   ],
-  "nodes": null,
+  "nodes": [],
   "v": 1
 }

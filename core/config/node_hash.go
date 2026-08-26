@@ -11,74 +11,102 @@ import (
 	"singbox-launcher/internal/debuglog"
 )
 
-// SPEC 094 фаза D — стабильная идентичность узла.
+// SPEC 112 — идентичность узла есть его ТЕГ, уникальный в рамках источника.
 //
-// Единственный механизм идентичности: один хеш обслуживает и дедупликацию, и
-// привязку пользовательского выбора (выключенные ноды). Отдельного строкового
-// ключа `scheme|server|port|credential` намеренно нет — два механизма с разной
-// строгостью разошлись бы в поведении, и пользователю пришлось бы помнить,
-// какой где действует.
+// Единственный ключ идентичности — сырой провайдерский тег, уникализированный
+// внутри источника (первый `X`, следующий `X-2`) и снятый ДО применения наших
+// tag_prefix / tag_postfix / tag_mask. Содержимое узла (server, port, ключи,
+// SNI, транспорт, mtu) в идентичность НЕ входит.
 //
-// Отличие от LxBox зафиксировано сознательно: там дедуп идёт по ключу без
-// транспорта и TLS, и один сервер с двумя SNI схлопывается. Здесь не
-// схлопывается — разные SNI это разные способы пройти фильтрацию, и объединение
-// потеряло бы рабочий запасной вариант.
+// Почему так (решение 2026-08-26):
+//   - Тег — имя, которым провайдер управляет узлом. Смена сервера под тем же
+//     именем (ротация IP, обход белых списков) — это ТОТ ЖЕ узел; привязка
+//     идентичности к содержимому ломала логику провайдера.
+//   - Контент-хеш зависел от эмиттера и от формы хранения: один и тот же узел,
+//     записанный как `uri` и как `config_json`, давал разные хеши. Из-за этого
+//     detour-ссылка на узел (SPEC 101) молча протухала, и зависимый источник
+//     fail-closed выпадал из конфига целиком. Класс багов снимается только
+//     сносом контент-хеша.
+//
+// Смена tag_prefix / tag_mask источника идентичность НЕ меняет — отметки
+// выключения переживают правку тегов. Узлы-группы (SchemeGroup) идентичности
+// не имеют: цепляться через selector — задача DetourTag (SPEC 077).
+//
+// Контент-дедуп упразднён вместе с хешем: при дублях работает уникализация
+// тегов, полные копии узла больше не схлопываются.
 
 // init подставляет вычисление идентичности в парсер.
 //
 // Раньше это делал контроллер при старте приложения, и любой путь, который
 // разбирает подписку раньше (превью источника в визарде, снимок preview_nodes
-// в фетчере), работал без дедупа: узлы приезжали с техническими тегами
-// провайдера и без узлов-групп. init снимает вопрос «успел ли кто-то выставить
-// хук» — пакет config всё равно импортируется всеми этими путями.
+// в фетчере), работал без идентичности. init снимает вопрос «успел ли кто-то
+// выставить хук» — пакет config всё равно импортируется всеми этими путями.
 //
 // Цикла импорта нет: config уже импортирует subscription (см. outbound_share.go).
 func init() {
-	subscription.NodeIdentityHashFunc = NodeIdentityHash
+	subscription.NodeIdentityFunc = NodeIdentity
+	subscription.LegacyNodeIdentityHashFunc = LegacyNodeIdentityHash
 }
 
-// nodeHashIgnoredFields — поля, не участвующие в идентичности узла.
+// NodeIdentity возвращает идентичность узла (SPEC 112) — его тег в рамках
+// источника, снятый до применения tag_prefix / tag_mask.
+//
+// Контракт стабильности:
+//   - смена tag_prefix / tag_postfix / tag_mask источника идентичность НЕ меняет;
+//   - смена формы хранения узла (uri ↔ config_json) её НЕ меняет;
+//   - правка mtu / SNI / ключей / сервера её НЕ меняет;
+//   - переименование узла провайдером её МЕНЯЕТ — это и есть смена имени.
+//
+// Возвращает "" для узлов без снятой идентичности (собраны не парсером
+// источника) и для узлов-групп. Вызывающие обязаны трактовать "" как
+// «идентичности нет» и пропускать узел, а не сливать все такие узлы в один ключ.
+func NodeIdentity(node *ParsedNode) string {
+	if node == nil {
+		return ""
+	}
+	if node.Scheme == SchemeGroup {
+		return ""
+	}
+	if id := strings.TrimSpace(node.IdentityTag); id != "" {
+		return id
+	}
+	// Идентичность не снималась — узел пришёл из пути, который тегов ещё не
+	// стемпил (ручной config_json без источника, тесты). Тег на этот момент
+	// ещё сырой, и он же станет идентичностью после стемпинга.
+	return strings.TrimSpace(node.Tag)
+}
+
+// nodeHashIgnoredFields — поля, не участвовавшие в legacy-хеше идентичности.
 //
 // tag    — ремарка провайдера плюс наши tag_prefix/tag_mask/-2 от уникализации;
+// detour — тег соседнего узла: контекст, а не сам узел.
 //
-//	отображение, а не свойство сервера.
-//
-// detour — тег соседнего узла: контекст, а не сам узел. Иначе смена джампа
-//
-//	отвязала бы пользовательский выбор от ноды.
-//
-// Всё прочее в хеш входит, включая server_name (SNI), transport.headers.Host,
-// utls.fingerprint и reality.*.
+// Оставлено ради воспроизведения старых ключей при миграции (SPEC 112).
 var nodeHashIgnoredFields = map[string]struct{}{
 	"tag":    {},
 	"detour": {},
 }
 
-// NodeIdentityHash returns a stable identity for a parsed node: sha256 over its
-// emitted outbound JSON with tag/detour removed and every object key sorted.
+// LegacyNodeIdentityHash воспроизводит УПРАЗДНЁННУЮ идентичность SPEC 094 D /
+// SPEC 101: sha256 от эмитированного outbound-JSON узла без полей tag/detour, с
+// рекурсивно отсортированными ключами.
 //
-// Stability contract:
-//   - a provider renaming the node does NOT change the hash;
-//   - the source's tag_prefix / tag_mask do NOT change it;
-//   - changing port, uuid, password, SNI, transport or reality DOES.
+// Существует ТОЛЬКО ради миграции (SPEC 112): по нему опознаются ключи
+// disabled-отметок и `detour_node_hash` из state.json и бэкапов, записанных до
+// перехода на тег. Новый код идентичность так не считает — используйте
+// NodeIdentity.
 //
-// The hash is computed from the decoded map, never from the emitted string:
-// GenerateNodeJSON assembles JSON by hand and its field order is not a contract,
-// so a string hash would drift on the first edit to the emitter.
-//
-// Returns "" when the node cannot be emitted; callers must treat that as "no
-// identity" and skip dedup rather than collapsing unrelated nodes onto "".
-func NodeIdentityHash(node *ParsedNode) string {
+// Экспортирована, потому что миграция живёт в пакете subscription (парсер знает
+// момент первого разбора), а эмиттер — здесь; прямой вызов оттуда дал бы цикл
+// импорта, поэтому функция уезжает туда хуком LegacyNodeIdentityHashFunc.
+func LegacyNodeIdentityHash(node *ParsedNode) string {
 	if node == nil {
 		return ""
 	}
 
-	// WireGuard nodes are endpoints and emit through GenerateEndpointJSON; the
-	// per-scheme outbound switch has no wireguard branch and would truncate them
-	// to {tag,type,server,server_port}, collapsing every WG node on one
-	// server:port into a single identity (SPEC 101). Note: this changed existing
-	// WG hashes once — pre-101 disabled-node marks on WG nodes detach (they were
-	// unsound anyway: one mark covered all WG nodes of the server).
+	// WireGuard-узлы — endpoint'ы и эмитятся через GenerateEndpointJSON:
+	// per-scheme switch outbound'ов ветки wireguard не имеет и обрезал бы их
+	// до {tag,type,server,server_port} (SPEC 101).
 	var emitted string
 	var err error
 	if node.Scheme == "wireguard" {
@@ -87,13 +115,13 @@ func NodeIdentityHash(node *ParsedNode) string {
 		emitted, err = GenerateNodeJSON(node)
 	}
 	if err != nil {
-		debuglog.DebugLog("NodeIdentityHash: cannot emit node %q: %v", node.Tag, err)
+		debuglog.DebugLog("LegacyNodeIdentityHash: cannot emit node %q: %v", node.Tag, err)
 		return ""
 	}
 
 	obj, ok := decodeEmittedOutbound(emitted)
 	if !ok {
-		debuglog.DebugLog("NodeIdentityHash: emitted outbound for %q is not decodable JSON", node.Tag)
+		debuglog.DebugLog("LegacyNodeIdentityHash: emitted outbound for %q is not decodable JSON", node.Tag)
 		return ""
 	}
 
@@ -103,7 +131,7 @@ func NodeIdentityHash(node *ParsedNode) string {
 
 	canonical, err := marshalCanonicalJSON(obj)
 	if err != nil {
-		debuglog.DebugLog("NodeIdentityHash: cannot canonicalize node %q: %v", node.Tag, err)
+		debuglog.DebugLog("LegacyNodeIdentityHash: cannot canonicalize node %q: %v", node.Tag, err)
 		return ""
 	}
 

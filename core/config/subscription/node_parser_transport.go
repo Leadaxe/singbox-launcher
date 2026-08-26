@@ -503,6 +503,13 @@ func xhttpLookupBool(primary, fallback map[string]string, keys ...string) bool {
 // → "30", "1000000" → "1000000"), bools become "true"/"false". Returns nil when
 // there is no usable extra. Flat query params are read separately via xhttpGet,
 // so this map only carries the extra-only keys.
+//
+// `xmux` — единственный вложенный объект, который XHTTP определяет, и Xray
+// пишет его в `extra` именно объектом. Его члены разворачиваются в тот же
+// плоский слой (их имена не конфликтуют с верхнеуровневыми, а builder собирает
+// объект обратно) — ровно как это делает xrayFlattenScalars для JSON-ветки.
+// Без этого вложенная форма молча терялась: share-URI понимал только плоскую,
+// а импорт того же узла из Xray-конфига — обе (SPEC 102 R2).
 func xhttpMergeSource(q url.Values) map[string]string {
 	raw := strings.TrimSpace(queryGetFold(q, "extra"))
 	if raw == "" {
@@ -521,6 +528,18 @@ func xhttpMergeSource(q url.Values) map[string]string {
 	}
 	out := make(map[string]string, len(obj))
 	for k, v := range obj {
+		if nested, ok := v.(map[string]interface{}); ok {
+			if strings.EqualFold(k, "xmux") {
+				for nk, nv := range nested {
+					if s := xhttpStringifyJSON(nv); s != "" {
+						out[nk] = s
+					}
+				}
+			}
+			// Прочие вложенные объекты не несут полей, которые мы эмитим:
+			// класть их сюда строкой значило бы кормить lookup мусором.
+			continue
+		}
 		out[k] = xhttpStringifyJSON(v)
 	}
 	return out

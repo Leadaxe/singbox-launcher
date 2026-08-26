@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -50,6 +51,25 @@ type corpusExpectation struct {
 		IncludeBlock  bool   `json:"include_block"`
 		HasAuto       bool   `json:"has_auto"`
 	} `json:"directions"`
+
+	// Chains — цепочки после импорта (SPEC 110, схема v1.2). Список
+	// ИСЧЕРПЫВАЮЩИЙ: запись, пропущенная merge'м по занятому тегу, не должна
+	// материализоваться второй копией. chain сверяется deep-equal канона —
+	// включая null-значения rewrite (RFC 7396: null удаляет ключ и обязан
+	// пережить перенос как есть). label, если задан, проверяется через
+	// re-export: сторона без отдельного отображаемого имени (лаунчер)
+	// обязана вернуть чужое значение нетронутым (BACKUP.md §2).
+	//
+	// Enabled — указатель, а не bool: умолчание схемы true, и отсутствие
+	// ключа в ожиданиях обязано значить «не проверяем», а не «ожидаем
+	// false». Обычный bool сделал бы нулевое значение требованием
+	// выключенности и провалил бы все кейсы без этого поля.
+	Chains []struct {
+		Tag     string          `json:"tag"`
+		Label   string          `json:"label"`
+		Enabled *bool           `json:"enabled"`
+		Chain   json.RawMessage `json:"chain"`
+	} `json:"chains"`
 }
 
 func TestBackupCorpus(t *testing.T) {
@@ -113,6 +133,7 @@ func TestBackupCorpus(t *testing.T) {
 			checkForeignExtensions(t, dst, exp)
 			checkDisabledHashes(t, dst, exp)
 			checkDirections(t, dst, exp)
+			checkChains(t, dst, exp)
 		})
 	}
 }
@@ -264,6 +285,83 @@ func equalStrings(a, b []string) bool {
 	return true
 }
 
+// checkChains проверяет цепочки после импорта (SPEC 110, схема v1.2).
+//
+// Сверяется канон chain (deep-equal, включая null внутри rewrite) и число
+// записей; label — через re-export, потому что лаунчер его не применяет, а
+// только провозит (BACKUP.md §2). Раннер LxBox читает те же ожидания, но
+// label там — хранимое поле модели.
+func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
+	t.Helper()
+	if len(exp.Chains) == 0 {
+		return
+	}
+	byTag := map[string]state.Source{}
+	count := 0
+	for _, src := range dst.Connections.Sources {
+		if src.Type == state.SourceTypeChain {
+			byTag[src.NodeTagOrLabel()] = src
+			count++
+		}
+	}
+	if count != len(exp.Chains) {
+		t.Fatalf("цепочек %d, ожидалось %d", count, len(exp.Chains))
+	}
+
+	needExport := false
+	for _, want := range exp.Chains {
+		src, ok := byTag[want.Tag]
+		if !ok {
+			t.Fatalf("цепочка %q не создана импортом", want.Tag)
+		}
+		gotRaw, err := json.Marshal(src.Chain)
+		if err != nil {
+			t.Fatalf("%s: marshal канона: %v", want.Tag, err)
+		}
+		if !jsonDeepEqual(gotRaw, want.Chain) {
+			t.Errorf("%s: канон цепочки искажён: %s, ожидалось %s", want.Tag, gotRaw, want.Chain)
+		}
+		// Выключенность — состояние записи, а не канона: enabled живёт в
+		// обвязке chains[], и умолчание схемы (отсутствие ключа = true)
+		// стороны обязаны читать одинаково.
+		if want.Enabled != nil && src.Enabled != *want.Enabled {
+			t.Errorf("%s: enabled=%v, ожидалось %v", want.Tag, src.Enabled, *want.Enabled)
+		}
+		if want.Label != "" {
+			needExport = true
+		}
+	}
+	if !needExport {
+		return
+	}
+	b, err := Export(dst, ExportOptions{AppVersion: "corpus"})
+	if err != nil {
+		t.Fatalf("re-export: %v", err)
+	}
+	exported := map[string]Chain{}
+	for _, c := range b.Chains {
+		exported[c.Tag] = c
+	}
+	for _, want := range exp.Chains {
+		if want.Label == "" {
+			continue
+		}
+		if got := exported[want.Tag].Label; got != want.Label {
+			t.Errorf("%s: label в re-export %q, ожидалось %q — чужое имя потеряно", want.Tag, got, want.Label)
+		}
+	}
+}
+
+// jsonDeepEqual сравнивает два JSON-фрагмента структурно, без чувствительности
+// к порядку ключей и пробелам.
+func jsonDeepEqual(a, b json.RawMessage) bool {
+	var av, bv interface{}
+	if json.Unmarshal(a, &av) != nil || json.Unmarshal(b, &bv) != nil {
+		return false
+	}
+	return reflect.DeepEqual(av, bv)
+}
+
 // checkDirections проверяет Направления, созданные импортом (SPEC 104).
 //
 // Сверяется каноническая форма, а не внутренняя структура: именно о ней
@@ -281,9 +379,6 @@ func checkDirections(t *testing.T, dst *state.State, exp corpusExpectation) {
 		got, ok := byTag[want.Tag]
 		if !ok {
 			t.Fatalf("направление %q не создано импортом", want.Tag)
-		}
-		if got.Label != want.Label {
-			t.Errorf("%s: имя %q, ожидалось %q", want.Tag, got.Label, want.Label)
 		}
 		body, invert := configtypes.DirectionFilterTag(got.Filters)
 		if body != want.Filter || invert != want.Invert {

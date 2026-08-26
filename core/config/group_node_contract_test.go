@@ -201,22 +201,11 @@ func TestGroupNodeIsSelectableByChannelFilter(t *testing.T) {
 	}
 }
 
-// Узел-группа участвует в идентичности наравне с прочими узлами.
-func TestGroupNodeHasStableIdentityHash(t *testing.T) {
-	a := groupNode("auto", "n1", "n2")
-	b := groupNode("auto-renamed", "n1", "n2")
-
-	ha, hb := NodeIdentityHash(a), NodeIdentityHash(b)
-	if ha == "" {
-		t.Fatal("group node must have an identity hash")
-	}
-	if ha != hb {
-		t.Fatal("renaming a group must not change its hash")
-	}
-
-	different := groupNode("auto", "n1", "n3")
-	if NodeIdentityHash(different) == ha {
-		t.Fatal("changing the member list must change the hash")
+// SPEC 112: узел-группа идентичности НЕ имеет. Отметок выключения у групп нет,
+// а хопом цепочки группа быть не может — для этого есть DetourTag (SPEC 077).
+func TestGroupNodeHasNoIdentity(t *testing.T) {
+	if got := NodeIdentity(groupNode("auto", "n1", "n2")); got != "" {
+		t.Fatalf("идентичность узла-группы = %q, ожидалась пустая", got)
 	}
 }
 
@@ -252,8 +241,8 @@ func TestGroupNodeSurvivesJSONRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip changed the emitted group:\nbefore: %s\nafter:  %s", beforeJSON, afterJSON)
 	}
 
-	if NodeIdentityHash(original) != NodeIdentityHash(restored) {
-		t.Fatal("round-trip changed the identity hash")
+	if original.Tag != restored.Tag {
+		t.Fatal("round-trip changed the group tag")
 	}
 }
 

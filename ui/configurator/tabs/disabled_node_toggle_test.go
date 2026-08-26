@@ -7,21 +7,24 @@ import (
 	"singbox-launcher/core/state"
 )
 
-// SPEC 094 D4 — переключатель «нода включена» в превью источника.
+// SPEC 094 D4 + SPEC 112 — переключатель «нода включена» в превью источника.
+//
+// Ключ отметки — идентичность узла (тег в рамках источника). Для самого
+// переключателя ключ непрозрачен: он лишь кладёт и снимает отметку.
 
 func TestSetNodeEnabledMarksAndClears(t *testing.T) {
 	ps := &config.ProxySource{Source: "https://example.invalid/sub"}
 
-	setNodeEnabled(ps, "hash-a", false)
-	if _, off := ps.DisabledNodes["hash-a"]; !off {
+	setNodeEnabled(ps, "🇩🇪 DE", false)
+	if _, off := ps.DisabledNodes["🇩🇪 DE"]; !off {
 		t.Fatal("disabling a node must record a mark")
 	}
-	if ps.DisabledNodes["hash-a"] <= 0 {
-		t.Fatalf("mark timestamp = %d, want a unix time", ps.DisabledNodes["hash-a"])
+	if ps.DisabledNodes["🇩🇪 DE"] <= 0 {
+		t.Fatalf("mark timestamp = %d, want a unix time", ps.DisabledNodes["🇩🇪 DE"])
 	}
 
-	setNodeEnabled(ps, "hash-a", true)
-	if _, off := ps.DisabledNodes["hash-a"]; off {
+	setNodeEnabled(ps, "🇩🇪 DE", true)
+	if _, off := ps.DisabledNodes["🇩🇪 DE"]; off {
 		t.Fatal("enabling a node must clear its mark")
 	}
 	// Пустая карта обнуляется: omitempty не пишет её в state.json.
@@ -45,34 +48,34 @@ func TestSetNodeEnabledKeepsOtherMarks(t *testing.T) {
 	}
 }
 
-func TestSetNodeEnabledIgnoresEmptyHash(t *testing.T) {
+func TestSetNodeEnabledIgnoresEmptyIdentity(t *testing.T) {
 	ps := &config.ProxySource{}
-	// Нода без вычислимого хеша: отметку не к чему привязать, и она поехала бы
+	// Нода без идентичности: отметку не к чему привязать, и она поехала бы
 	// на соседа при следующем обновлении.
 	setNodeEnabled(ps, "", false)
 	if len(ps.DisabledNodes) != 0 {
-		t.Fatalf("empty hash must not create a mark, got %v", ps.DisabledNodes)
+		t.Fatalf("пустая идентичность не должна создавать отметку, получено %v", ps.DisabledNodes)
 	}
 
-	setNodeEnabled(nil, "hash", false) // не должно паниковать
+	setNodeEnabled(nil, "🇩🇪 DE", false) // не должно паниковать
 }
 
 // Полная цепочка сохранения: отметка в окне редактирования доезжает до Source,
 // а оттуда обратно в ProxySource, который читает парсер.
 func TestDisabledNodesSurviveEditRoundTrip(t *testing.T) {
 	ps := &config.ProxySource{Source: "https://example.invalid/sub"}
-	setNodeEnabled(ps, "node-hash", false)
+	setNodeEnabled(ps, "🇳🇱 Amsterdam", false)
 
 	src := &state.Source{Type: state.SourceTypeSubscription}
 	applyProxyEditToSource(ps, src)
 
-	if _, off := src.DisabledNodes["node-hash"]; !off {
+	if _, off := src.DisabledNodes["🇳🇱 Amsterdam"]; !off {
 		t.Fatalf("mark lost on the way to Source: %v", src.DisabledNodes)
 	}
 
 	// Source → ProxySource: этот путь читает парсер при генерации конфига.
 	back := src.ToProxySourceV4()
-	if _, off := back.DisabledNodes["node-hash"]; !off {
+	if _, off := back.DisabledNodes["🇳🇱 Amsterdam"]; !off {
 		t.Fatalf("mark lost on the way back to ProxySource: %v", back.DisabledNodes)
 	}
 }

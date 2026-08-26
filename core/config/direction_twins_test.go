@@ -381,11 +381,11 @@ func TestDirectionCanIncludeEarlierDirection(t *testing.T) {
 
 // --- предупреждения ----------------------------------------------------
 
-// Пустое направление доезжает до UI списком имён: в конфиге оно молча
+// Пустое направление доезжает до UI списком тегов: в конфиге оно молча
 // блокирует трафик своих правил, и пользователь обязан узнать.
 func TestEmptyDirectionReportedToUI(t *testing.T) {
 	pc := directionTestConfig(configtypes.Direction{
-		Tag: "vpn-1", Type: "selector", Label: "Моя Германия",
+		Tag: "vpn-1", Type: "selector",
 		Filters: map[string]interface{}{"tag": configtypes.DirectionFilterPattern("НЕТ-ТАКИХ", false)},
 	})
 	res, err := GenerateOutboundsFromParserConfig(pc, map[string]int{}, nil,
@@ -393,7 +393,7 @@ func TestEmptyDirectionReportedToUI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("генерация: %v", err)
 	}
-	if len(res.EmptyDirections) != 1 || res.EmptyDirections[0] != "Моя Германия" {
+	if len(res.EmptyDirections) != 1 || res.EmptyDirections[0] != "vpn-1" {
 		t.Fatalf("предупреждение не доехало до UI: %v", res.EmptyDirections)
 	}
 }

@@ -1078,9 +1078,6 @@
   "Config template missing": {
     "value": "Шаблон конфига отсутствует"
   },
-  "Subscription URL or Direct Links:": {
-    "value": "URL подписки или прямые ссылки:"
-  },
   "https://your-subscription-url-here": {
     "value": "https://ваш-url-подписки"
   },
@@ -1222,8 +1219,8 @@
   "(none — direct)": {
     "value": "(нет — напрямую)"
   },
-  "Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server (tracked by identity, survives renames).": {
-    "value": "Пускать узлы этого источника через другой outbound, чтобы построить цепочку прокси. Теги групп ведут через селектор; пункты с » — через один конкретный сервер (привязка по identity-хешу, переживает переименования)."
+  "Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server, tracked by that server and its node tag — editing the server's settings or tag prefix keeps the link, renaming its node tag clears it.": {
+    "value": "Пускать узлы этого источника через другой outbound, чтобы построить цепочку прокси. Теги групп ведут через селектор; пункты с » — через один конкретный сервер; ссылка держится за сам сервер и за его тег узла: правка настроек сервера или префикса тегов её не рвёт, а переименование тега узла сбрасывает."
   },
   "Tag postfix": {
     "value": "Суффикс тэга"
@@ -2425,6 +2422,12 @@
   "off": {
     "value": "выключена"
   },
+  "Node tag": {
+    "value": "Тег узла"
+  },
+  "node tag (referenced by rules and filters)": {
+    "value": "тег узла (на него ссылаются правила и фильтры)"
+  },
   "Run the VPN core inside a long-lived system daemon (sing-box lxd). Config changes swap the core in-process — no password prompts, and quitting the launcher can keep the VPN up. Managed over gRPC like the Android app.": {
     "value": "Ядро VPN работает внутри долгоживущего системного демона (sing-box lxd). Смена конфига подменяет ядро внутри процесса — без запросов пароля, а выход из лаунчера может оставлять VPN работать. Управление по gRPC, как в Android-приложении."
   },
@@ -2527,6 +2530,12 @@
   "collapsed": {
     "value": "схлопнута"
   },
+  "off": {
+    "value": "выключена"
+  },
+  "This core cannot switch chain positions on the fly — update the core.": {
+    "value": "Это ядро не умеет переключать позиции цепочки на лету — обновите ядро."
+  },
   "—": {
     "value": "—"
   },
@@ -2620,8 +2629,11 @@
   "The config for the remote machine was written to a separate file. The local bin/config.json was not touched.": {
     "value": "Конфиг для удалённой машины записан в отдельный файл. Локальный bin/config.json не тронут."
   },
-  "Subscriptions have not been parsed for this target yet, so the config would contain no proxy nodes. Open the Preview tab (or press Read on Sources) to parse them, then save again.": {
-    "value": "Подписки для этого назначения ещё не разобраны — конфиг ушёл бы без единой прокси-ноды. Откройте вкладку «Просмотр» (или нажмите «Прочитать» на «Источниках»), чтобы разобрать их, и сохраните снова."
+  "Could not read the subscriptions for this target, so the config would contain no proxy nodes. Check the sources on the Sources tab and try again.": {
+    "value": "Не удалось прочитать подписки для этого назначения — конфиг ушёл бы без единой прокси-ноды. Проверьте источники на вкладке «Источники» и попробуйте снова."
+  },
+  "Parsing subscriptions...": {
+    "value": "Разбор подписок..."
   },
   "Connect to this machine first: its config points at the machine's own resource store, and that path comes from the daemon when you connect.": {
     "value": "Сначала подключитесь к машине: её конфиг ссылается на собственное хранилище ресурсов, а этот путь приходит от демона при соединении."
@@ -3041,6 +3053,9 @@
   "%s — not supported here, skipped": {
     "value": "%s — здесь не поддерживается, пропущено"
   },
+  "%s — a chain with this name already exists here, the incoming one is skipped": {
+    "value": "%s — цепочка с таким именем здесь уже есть, приехавшая пропущена"
+  },
   "Config validation failed": {
     "value": "Конфиг не прошёл проверку"
   },
@@ -3169,5 +3184,209 @@
   },
   "GitHub limits anonymous requests per IP address, and this limit has been reached — often because the current VPN node's address is shared with other users. Wait about an hour, switch to another node, or download the file manually.": {
     "value": "GitHub ограничивает анонимные запросы с одного IP-адреса, и лимит исчерпан — часто потому, что адрес текущего узла VPN делят другие пользователи. Подождите около часа, переключитесь на другой узел или скачайте файл вручную."
+  },
+  "Add server": {
+    "value": "Добавить сервер"
+  },
+  "Protocol": {
+    "value": "Протокол"
+  },
+  "Host": {
+    "value": "Хост"
+  },
+  "Username": {
+    "value": "Имя пользователя"
+  },
+  "Password": {
+    "value": "Пароль"
+  },
+  "optional": {
+    "value": "необязательно"
+  },
+  "SOCKS5": {
+    "value": "SOCKS5"
+  },
+  "HTTP": {
+    "value": "HTTP"
+  },
+  "HTTPS (TLS to proxy)": {
+    "value": "HTTPS (TLS до прокси)"
+  },
+  "Host required": {
+    "value": "Укажите хост"
+  },
+  "Port 1..65535": {
+    "value": "Порт 1..65535"
+  },
+  "Subscription URL, Direct Links or sing-box JSON:": {
+    "value": "URL подписки, прямые ссылки или JSON sing-box:"
+  },
+  "Connect to the proxy over TLS (HTTPS proxy). Fine TLS settings — SNI, ALPN — can be adjusted later in the source editor.": {
+    "value": "Подключаться к прокси по TLS (HTTPS-прокси). Тонкие настройки TLS — SNI, ALPN — можно поправить позже в редакторе источника."
+  },
+  "Source": {
+    "value": "Source"
+  },
+  "Rebuild from fields": {
+    "value": "Пересобрать из полей"
+  },
+  "JSON is empty": {
+    "value": "JSON пуст"
+  },
+  "Input is empty": {
+    "value": "Поле ввода пусто"
+  },
+  "Nothing recognized yet.": {
+    "value": "Пока нечего разобрать."
+  },
+  "Shown as the server title in the Sources list. If empty, the host or the link fragment is used.": {
+    "value": "Показывается как название сервера в списке «Источники». Если пусто, используется хост или фрагмент ссылки."
+  },
+  "Paste anything: share-URI (one per line), a sing-box outbound or config JSON, or [Interface]/[Peer] WireGuard conf.": {
+    "value": "Вставьте что угодно: share-URI (по одной на строку), outbound или конфиг sing-box в JSON, либо [Interface]/[Peer] WireGuard."
+  },
+  "Preview of what this source unpacks into. Edit it and your version wins — the fields above stop overwriting it.": {
+    "value": "Превью того, во что распакуется источник. Отредактируйте — и победит ваша версия: поля выше перестанут её перезаписывать."
+  },
+  "Edited by hand — the fields no longer overwrite this JSON.": {
+    "value": "Изменено вручную — поля больше не перезаписывают этот JSON."
+  },
+  "Server type": {
+    "value": "Тип сервера"
+  },
+  "Private key": {
+    "value": "Приватный ключ"
+  },
+  "Peer public key": {
+    "value": "Публичный ключ пира"
+  },
+  "Pre-shared key": {
+    "value": "Общий ключ (PSK)"
+  },
+  "Allowed IPs": {
+    "value": "Разрешённые IP"
+  },
+  "Keepalive": {
+    "value": "Keepalive"
+  },
+  "base64 private key": {
+    "value": "приватный ключ base64"
+  },
+  "base64 peer public key": {
+    "value": "публичный ключ пира base64"
+  },
+  "Private key required": {
+    "value": "Укажите приватный ключ"
+  },
+  "Peer public key required": {
+    "value": "Укажите публичный ключ пира"
+  },
+  "Address required": {
+    "value": "Укажите адрес"
+  },
+  "MTU 576..9000": {
+    "value": "MTU 576..9000"
+  },
+  "Keepalive 0..65535": {
+    "value": "Keepalive 0..65535"
+  },
+  "not valid base64": {
+    "value": "не является корректным base64"
+  },
+  "decodes to %d bytes, want 32": {
+    "value": "декодируется в %d байт, нужно 32"
+  },
+  "Keys are base64, as in a wg-quick .conf. MTU above 1380 breaks AmneziaWG endpoints — for those the parser clamps it down. A whole .conf can be pasted on the Source tab instead.": {
+    "value": "Ключи в base64, как в .conf для wg-quick. MTU выше 1380 ломает узлы AmneziaWG — для них парсер сам понижает значение. Целый .conf можно вставить на вкладке Source."
+  },
+  "macOS is blocking the launcher's access to the local network: the system rejects the connection instantly, before it even leaves this Mac. Enable the launcher in System Settings → Privacy & Security → Local Network. If it is already enabled there, the app bundle's code signature is broken (typical after swapping a dev binary into the installed app) — reinstall the launcher.": {
+    "value": "macOS блокирует лаунчеру доступ к локальной сети: система отклоняет соединение мгновенно, ещё до выхода в сеть. Включите лаунчер в Настройки → Конфиденциальность и безопасность → Локальная сеть. Если он там уже включён — у бандла сломана подпись кода (типично после подмены dev-бинаря в установленном приложении), переустановите лаунчер."
+  },
+  "The machine is answering again — the failure was transient (macOS re-checked its local-network policy or the network blinked). Press Connect again.": {
+    "value": "Машина снова отвечает — отказ был кратковременным (macOS перепроверила политику локальной сети или сеть моргнула). Нажмите Connect ещё раз."
+  },
+  "Detour links cleared": {
+    "value": "Ссылки detour сброшены"
+  },
+  "Node %q was renamed, so its identity changed. Detour links to it have been cleared in: %s": {
+    "value": "Узел %q переименован — его идентичность изменилась. Ссылки detour на него сброшены у источников: %s"
+  },
+  "tag %q is already taken — directions, nodes and service outbounds share one namespace": {
+    "value": "тег %q уже занят — Направления, узлы и служебные outbound'ы живут в одном пространстве имён"
+  },
+  "Clone from…": {
+    "value": "Клонировать с…"
+  },
+  "Clone from": {
+    "value": "Клонирование настроек"
+  },
+  "Clone": {
+    "value": "Клонировать"
+  },
+  "Pick the machine whose settings you want to copy here.": {
+    "value": "Выберите машину, чьи настройки скопировать сюда."
+  },
+  "not configured yet": {
+    "value": "ещё не настроена"
+  },
+  "There are no other machines to clone from. Add a machine on the Remote tab, or configure the local one first.": {
+    "value": "Клонировать не с чего: других настроенных машин нет. Добавьте машину на вкладке «Удалённые» или сначала настройте локальную."
+  },
+  "%s has no saved configuration yet — there is nothing to clone from it.": {
+    "value": "У машины %s ещё нет сохранённой конфигурации — клонировать с неё нечего."
+  },
+  "Copying settings from %s.": {
+    "value": "Копирование настроек с машины %s."
+  },
+  "Will be copied:": {
+    "value": "Будет скопировано:"
+  },
+  "  Subscriptions: %d": {
+    "value": "  Подписки: %d"
+  },
+  "  Servers: %d": {
+    "value": "  Серверы: %d"
+  },
+  "  Chains: %d": {
+    "value": "  Цепочки: %d"
+  },
+  "  Directions: %d": {
+    "value": "  Направления: %d"
+  },
+  "  Rules: %d": {
+    "value": "  Правила: %d"
+  },
+  "  Variables: %d": {
+    "value": "  Переменные: %d"
+  },
+  "Stays machine-specific (not copied):": {
+    "value": "Останется своим у этой машины (не копируется):"
+  },
+  "This replaces the current settings of this machine. The current state is saved as a snapshot first — you can get it back with Read.": {
+    "value": "Это заменит текущие настройки машины. Сначала текущее состояние сохранится снимком — его можно вернуть через «Читать»."
+  },
+  "before cloning from %s": {
+    "value": "до клонирования с %s"
+  },
+  "Could not save a snapshot of the current settings, so nothing was changed": {
+    "value": "Не удалось сохранить снимок текущих настроек, поэтому ничего не изменено"
+  },
+  "Settings copied from %s. Press Save to apply them to this machine; the previous state is saved as %s.": {
+    "value": "Настройки скопированы с машины %s. Нажмите «Сохранить», чтобы применить их к этой машине; прежнее состояние сохранено как %s."
+  },
+  "Traffic follows the system default route.": {
+    "value": "Трафик идёт системным маршрутом по умолчанию."
+  },
+  "Cannot verify: the machine's interfaces are unavailable.": {
+    "value": "Проверить нельзя: интерфейсы машины недоступны."
+  },
+  "no IP address — no traffic will go through it": {
+    "value": "нет IP-адреса — трафик через него не пойдёт"
+  },
+  "not found on this machine": {
+    "value": "на этой машине не найден"
+  },
+  "empty — follow system default route": {
+    "value": "пусто — системный маршрут по умолчанию"
   }
 }

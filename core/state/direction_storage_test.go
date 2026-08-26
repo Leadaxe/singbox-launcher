@@ -88,7 +88,7 @@ func TestSaveWritesCanonicalKeyOnly(t *testing.T) {
 	path := filepath.Join(dir, "state.json")
 
 	s := &State{Version: SchemaVersion}
-	s.Connections.Outbounds = []configtypes.Direction{{Tag: "vpn-1", Label: "VPN ①"}}
+	s.Connections.Outbounds = []configtypes.Direction{{Tag: "vpn-1"}}
 	s.Connections.LegacyOutbounds = []configtypes.Direction{{Tag: "proxy-out"}}
 
 	if err := s.Save(path); err != nil {
@@ -106,23 +106,22 @@ func TestSaveWritesCanonicalKeyOnly(t *testing.T) {
 		t.Fatalf("старый ключ не должен писаться:\n%s", text)
 	}
 
-	// Перечитываем — направление на месте с именем.
+	// Перечитываем — направление на месте.
 	back, err := Load(path)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if len(back.Connections.Outbounds) != 1 || back.Connections.Outbounds[0].Label != "VPN ①" {
+	if len(back.Connections.Outbounds) != 1 || back.Connections.Outbounds[0].Tag != "vpn-1" {
 		t.Fatalf("round-trip потерял направление: %+v", back.Connections.Outbounds)
 	}
 }
 
-// Новые поля переживают запись и чтение — иначе имя и двойник молча
-// пропадали бы на следующем старте.
+// Новые поля переживают запись и чтение — иначе выключение и двойник
+// молча пропадали бы на следующем старте.
 func TestDirectionFieldsSurviveRoundTrip(t *testing.T) {
 	interrupt := false
 	in := configtypes.Direction{
 		Tag:      "vpn-2",
-		Label:    "Моя Германия",
 		Disabled: true,
 		Filters:  map[string]interface{}{"tag": "/🇩🇪/i"},
 		Auto: &configtypes.DirectionAuto{
@@ -145,8 +144,8 @@ func TestDirectionFieldsSurviveRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if out.Label != in.Label || !out.Disabled {
-		t.Fatalf("имя/выключение потеряны: %+v", out)
+	if out.Tag != in.Tag || !out.Disabled {
+		t.Fatalf("тег/выключение потеряны: %+v", out)
 	}
 	if out.Auto == nil {
 		t.Fatalf("двойник потерян")

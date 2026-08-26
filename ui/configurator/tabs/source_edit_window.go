@@ -33,7 +33,7 @@ import (
 
 // Длинные тексты локализации: ключ = английский текст (SPEC 111).
 const (
-	sourceDetourHintText         = "Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server (tracked by identity, survives renames)."
+	sourceDetourHintText         = "Dial this source's nodes through another outbound to build a proxy chain. Group tags chain through a selector; » entries chain through one concrete server, tracked by that server and its node tag — editing the server's settings or tag prefix keeps the link, renaming its node tag clears it."
 	sourcePreviewNoCacheHintText = "Disabled subscriptions are not auto-fetched, so there is no cached body to preview. Click below to fetch this subscription once without enabling it."
 	sourceTagVarsHintText        = "Variables (work in all three fields): {$tag} original node tag · {$server} address · {$port} port · {$scheme} protocol (also {$protocol}) · {$label} name from the link's #fragment · {$comment} comment · {$num} node number from 1"
 )
@@ -79,6 +79,7 @@ func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.
 		return capPreviewNodes(uniquifyPreviewTags(nodes))
 	}
 	tagCounts := make(map[string]int)
+	idCounts := make(map[string]int)
 	out := make([]*config.ParsedNode, 0)
 	contentStr := strings.ReplaceAll(string(body), "\r\n", "\n")
 	contentStr = strings.ReplaceAll(contentStr, "\r", "\n")
@@ -91,6 +92,9 @@ func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.
 		if perr != nil || node == nil {
 			continue
 		}
+		// SPEC 112: идентичность снимается с сырого тега, ДО уникализации
+		// конфигового тега — как в LoadNodesFromSource.
+		subscription.StampNodeIdentity(node, idCounts)
 		node.Tag = subscription.MakeTagUnique(node.Tag, tagCounts, "ConfigWizard")
 		out = append(out, node)
 		if len(out) >= previewNodeCap {
@@ -100,18 +104,26 @@ func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.
 	return out
 }
 
-// uniquifyPreviewTags разводит одинаковые теги суффиксами «-2», «-3».
+// uniquifyPreviewTags разводит одинаковые теги суффиксами «-2», «-3» и
+// штампует узлам идентичность (SPEC 112).
 //
 // Провайдер часто отдаёт по два сервера на страну под одним именем
 // («🇳🇱-Нидерланды» дважды). В основном списке их разводит LoadNodesFromSource,
 // а превью зовёт парсер напрямую — без этого пользователь видит две
 // неразличимые строки и не понимает, какую из них выключает.
+//
+// Ловушка «Preview ≡ parse»: идентичность здесь обязана совпасть с боевой.
+// Совпадает потому, что превью тегов источника не применяет (сырой тег = тег
+// узла) и уникализирует тем же алгоритмом, в том же порядке разбора; сам
+// стемпинг идёт через ту же subscription.StampNodeIdentity.
 func uniquifyPreviewTags(nodes []*config.ParsedNode) []*config.ParsedNode {
 	tagCounts := make(map[string]int, len(nodes))
+	idCounts := make(map[string]int, len(nodes))
 	for _, node := range nodes {
 		if node == nil {
 			continue
 		}
+		subscription.StampNodeIdentity(node, idCounts)
 		node.Tag = subscription.MakeTagUnique(node.Tag, tagCounts, "ConfigWizard")
 	}
 	return nodes
@@ -133,8 +145,13 @@ func capPreviewNodes(nodes []*config.ParsedNode) []*config.ParsedNode {
 // Маппинг ProxySource → Source:
 //   - subscription: URL/Skip/Outbounds/Fold/Enabled (=!Disabled) + Tag из
 //     TagPrefix/Postfix/Mask;
-//   - server: URI=Connections[0], Label=TagMask (corestate adapter ставит
-//     `tag_mask=label` для server-source — тэг node будет точно label).
+//   - server: URI=Connections[0], NodeTag=TagMask (тег узла; corestate
+//     adapter отдаёт его обратно в TagMask через NodeTagOrLabel);
+//   - chain:  Chain + NodeTag=TagMask.
+//
+// Label в обе стороны НЕ участвует: это подпись, она живёт только в
+// canonical Source и в legacy-форме места не имеет — перенос её оттуда
+// затирал бы правку пользователя пустым значением.
 //
 // setNodeEnabled ставит или снимает отметку «нода выключена» (SPEC 094 D4).
 //
@@ -185,10 +202,9 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 		src.Outbounds = nil
 		src.Enabled = !ps.Disabled
 		src.ExcludeFromGlobal = ps.ExcludeFromGlobal
-		// TagMask несёт имя: тег узла цепочки берётся оттуда же, откуда у
-		// server-source.
+		// TagMask несёт ТЕГ узла цепочки — он и едет в NodeTag.
 		if ps.TagMask != "" {
-			src.Label = ps.TagMask
+			src.NodeTag = ps.TagMask
 		}
 	} else if ps.Source != "" {
 		// subscription
@@ -201,8 +217,10 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 		src.ExposeGroupTagsToGlobal = ps.ExposeGroupTagsToGlobal
 		src.Fold = ps.Fold                       // SPEC 108
 		src.DetourTag = ps.DetourTag             // SPEC 077
-		src.DetourNodeHash = ps.DetourNodeHash   // SPEC 101
-		src.DetourNodeLabel = ps.DetourNodeLabel // SPEC 101
+		src.DetourNodeSourceID = ps.DetourNodeSourceID // SPEC 112-A
+		src.DetourNodeTag = ps.DetourNodeTag           // SPEC 112
+		src.DetourNodeHash = ps.DetourNodeHash         // legacy, мигрирует на сборке
+		src.DetourNodeLabel = ps.DetourNodeLabel       // SPEC 101
 		src.DisabledNodes = ps.DisabledNodes     // SPEC 094 D4
 		src.Enabled = !ps.Disabled
 		if ps.TagPrefix != "" || ps.TagPostfix != "" || ps.TagMask != "" {
@@ -225,15 +243,17 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 			src.URI = ""
 		}
 		src.URL = ""
-		// Если widget'ом задан tag_mask — это и есть label для server.
+		// Если widget'ом задан tag_mask — это тег узла server-источника.
 		if ps.TagMask != "" {
-			src.Label = ps.TagMask
+			src.NodeTag = ps.TagMask
 		}
 		src.Enabled = !ps.Disabled
 		src.ExcludeFromGlobal = ps.ExcludeFromGlobal
 		src.DetourTag = ps.DetourTag             // SPEC 077
-		src.DetourNodeHash = ps.DetourNodeHash   // SPEC 101
-		src.DetourNodeLabel = ps.DetourNodeLabel // SPEC 101
+		src.DetourNodeSourceID = ps.DetourNodeSourceID // SPEC 112-A
+		src.DetourNodeTag = ps.DetourNodeTag           // SPEC 112
+		src.DetourNodeHash = ps.DetourNodeHash         // legacy, мигрирует на сборке
+		src.DetourNodeLabel = ps.DetourNodeLabel       // SPEC 101
 		src.ConfigJSON = ps.ConfigJSON           // ручной outbound JSON (вкладка JSON)
 		src.Outbounds = nil
 		src.Tag = nil
@@ -311,10 +331,10 @@ func showSourceEditWindow(
 				fullTitleSrc = s.URL
 			}
 		case wizardmodels.SourceTypeServer:
-			if s.Label != "" {
-				fullTitleSrc = s.Label
-			} else if s.URI != "" {
-				fullTitleSrc = s.URI
+			// Подпись, а без неё — тег: у server-источника тег и есть то
+			// имя, под которым его знают правила.
+			if name := firstNonEmpty(s.Label, s.NodeTag, s.URI); name != "" {
+				fullTitleSrc = name
 			}
 		}
 	}
@@ -331,6 +351,16 @@ func showSourceEditWindow(
 	// widget'ы мутируют его in-place; на сохранение → applyProxyEditToSource
 	// синхронизирует обратно в canonical Sources[i].
 	scratch := m.Sources[sourceIndex].ToProxySourceV4()
+	// SPEC 112-A: имя узла на момент открытия формы. Переименование меняет
+	// ИДЕНТИЧНОСТЬ узла, а резолв ссылок на сборке строгий — значит на
+	// сохранении надо сбросить ссылки на прежнее имя и сказать об этом
+	// пользователю (иначе ссылающиеся источники выпали бы fail-closed молча).
+	// Сравнивается именно исходное значение, а не то, что было в поле секунду
+	// назад: nodeTagEntry.OnChanged срабатывает на каждый символ.
+	nodeTagAtOpen := strings.TrimSpace(m.Sources[sourceIndex].NodeTagOrLabel())
+	sourceIDAtOpen := m.Sources[sourceIndex].ID
+	nodeIdentityOwner := m.Sources[sourceIndex].Type == wizardmodels.SourceTypeServer ||
+		m.Sources[sourceIndex].Type == wizardmodels.SourceTypeChain
 	proxyRef := func() *config.ProxySource {
 		mm := presenter.Model()
 		if mm == nil || sourceIndex >= len(mm.Sources) {
@@ -353,6 +383,13 @@ func showSourceEditWindow(
 
 	labelEntry := widget.NewEntry()
 	labelEntry.SetPlaceHolder(locale.T("human-readable label"))
+
+	// Тег узла — отдельным полем от подписи: на него ссылаются фильтры
+	// Направлений, позиции цепочек и правила, поэтому переименование в
+	// списке его менять не должно (прежде Label работал и подписью, и
+	// тегом сразу — «force tag = label»).
+	nodeTagEntry := widget.NewEntry()
+	nodeTagEntry.SetPlaceHolder(locale.T("node tag (referenced by rules and filters)"))
 
 	postfixEntry := widget.NewEntry()
 	postfixEntry.SetPlaceHolder(locale.T("postfix"))
@@ -383,7 +420,7 @@ func showSourceEditWindow(
 	isChainSource := m.Sources[sourceIndex].Type == wizardmodels.SourceTypeChain
 	var chainTabBody *chainForm
 	if isChainSource {
-		selfTag := m.Sources[sourceIndex].Label
+		selfTag := m.Sources[sourceIndex].NodeTagOrLabel()
 		cands := collectChainHopCandidates(presenter.Model(), getParserConfigForChain(presenter.Model()), selfTag)
 		reality, detoured, nodeTypes := chainNodeFlags(presenter.Model())
 		unsupported := ""
@@ -393,8 +430,10 @@ func showSourceEditWindow(
 		chainTabBody = newChainForm(nil, cands, reality, detoured, nodeTypes, unsupported, func() {
 			if p := proxyRef(); p != nil {
 				p.Chain = chainTabBody.Collect()
-				// Имя цепочки = тег её узла; в ProxySource он живёт в
-				// TagMask (тем же путём, что имя server-источника).
+				// Форма правит ТЕГ узла цепочки; в ProxySource он живёт в
+				// TagMask, откуда sync_to_connections вернёт его в
+				// Source.NodeTag. Подпись (Label) при этом не трогается —
+				// на тег ссылаются фильтры и позиции других цепочек.
 				if tag := chainTabBody.Tag(); tag != "" {
 					p.TagMask = tag
 				}
@@ -407,7 +446,7 @@ func showSourceEditWindow(
 		chainTabBody.built = chainTabBody.Content()
 		chainTabBody.nodesKnown = chainNodesKnown(presenter.Model())
 		chainTabBody.SetReferencedBy(chainReferencedBy(presenter.Model()))
-		chainTabBody.SetTag(m.Sources[sourceIndex].Label)
+		chainTabBody.SetTag(m.Sources[sourceIndex].NodeTagOrLabel())
 		chainTabBody.Load(m.Sources[sourceIndex].Chain)
 		// Владелец диалогов формы — это окно, а не главное: пикер позиции
 		// иначе всплыл бы за окном правки.
@@ -470,10 +509,11 @@ func showSourceEditWindow(
 		foldTabBody.Load(p.Fold, foldTagPrefix(p), sourceIndex)
 	}
 
-	// SPEC 077 + SPEC 101: detour (proxy-chain) picker — works for both server
-	// and subscription. A group option sets scratch.DetourTag (stamped as-is);
-	// a "» node" option sets scratch.DetourNodeHash (resolved to the node's
-	// final tag at generation time). The two are mutually exclusive.
+	// SPEC 077 + SPEC 101 (ключ — SPEC 112): detour (proxy-chain) picker —
+	// works for both server and subscription. A group option sets
+	// scratch.DetourTag (stamped as-is); a "» node" option sets
+	// scratch.DetourNodeTag (looked up by that tag at generation time).
+	// The two are mutually exclusive.
 	detourNone := locale.T("(none — direct)")
 	detourSelect := widget.NewSelect(nil, nil)
 	detourHint := widget.NewLabel(locale.T(sourceDetourHintText))
@@ -486,8 +526,14 @@ func showSourceEditWindow(
 		}
 		choice := detourChoices[sel] // zero value for "" / detourNone → clears both
 		p.DetourTag = choice.Tag
-		p.DetourNodeHash = choice.NodeHash
+		// SPEC 112-A: в состояние едет ссылка-ОБЪЕКТ (источник + identity-тег
+		// узла), а не финальный конфиговый тег — тот вычисляется на сборке.
+		p.DetourNodeSourceID = choice.NodeSourceID
+		p.DetourNodeTag = choice.NodeTag
 		p.DetourNodeLabel = choice.NodeLabel
+		// Явный выбор гасит упразднённую ссылку: иначе миграция на сборке
+		// перебила бы только что выбранный пользователем хоп.
+		p.DetourNodeHash = ""
 		_ = serializeParserAfterSourceEdit(presenter, guiState, presenter.Model(), sourceIndex, &scratch, win)
 	}
 	detourSelect.OnChanged = detourOnChanged
@@ -520,6 +566,7 @@ func showSourceEditWindow(
 		mm := presenter.Model()
 		if mm != nil && sourceIndex < len(mm.Sources) {
 			labelEntry.SetText(mm.Sources[sourceIndex].Label)
+			nodeTagEntry.SetText(mm.Sources[sourceIndex].NodeTagOrLabel())
 		}
 		syncFoldFormFromModel(p)
 		refreshDetourOptions()
@@ -556,12 +603,28 @@ func showSourceEditWindow(
 		if mm == nil || sourceIndex >= len(mm.Sources) {
 			return
 		}
+		// Только подпись: тег живёт в NodeTag и правится своим полем.
+		// Прежде эта же строка переписывала TagMask, и переименование
+		// источника молча уводило тег из-под ссылающихся на него правил.
 		mm.Sources[sourceIndex].Label = strings.TrimSpace(s)
-		// Для server-type: Label также используется как TagMask в derived
-		// view (см. ToProxySourceV4) — синхронизируем scratch.
-		if mm.Sources[sourceIndex].Type == wizardmodels.SourceTypeServer {
-			scratch.TagMask = strings.TrimSpace(s)
+		mm.RefreshDerivedParserConfig()
+		presenter.UpdateParserConfig(mm.ParserConfigJSON)
+		presenter.MarkAsChanged()
+		if guiState.RefreshSourcesList != nil {
+			guiState.RefreshSourcesList()
 		}
+	}
+
+	nodeTagEntry.OnChanged = func(s string) {
+		mm := presenter.Model()
+		if mm == nil || sourceIndex >= len(mm.Sources) {
+			return
+		}
+		tag := strings.TrimSpace(s)
+		mm.Sources[sourceIndex].NodeTag = tag
+		// Derived view держит тег в TagMask (ToProxySourceV4) — scratch
+		// обязан идти с ним в ногу, иначе вкладка JSON покажет прошлый тег.
+		scratch.TagMask = tag
 		mm.RefreshDerivedParserConfig()
 		presenter.UpdateParserConfig(mm.ParserConfigJSON)
 		presenter.MarkAsChanged()
@@ -624,6 +687,8 @@ func showSourceEditWindow(
 				manualNote.Importance = widget.LowImportance
 				settingsContent.Add(manualNote)
 			}
+			settingsContent.Add(widget.NewLabel(locale.T("Node tag")))
+			settingsContent.Add(nodeTagEntry)
 			settingsContent.Add(widget.NewLabel(locale.T("Label")))
 			settingsContent.Add(labelEntry)
 			// SPEC 108: `Exclude from global` из формы убран вместе с
@@ -774,8 +839,8 @@ func showSourceEditWindow(
 						if perr != nil {
 							err = perr
 						} else if node != nil {
-							if src.Label != "" {
-								node.Tag = src.Label
+							if tag := src.NodeTagOrLabel(); tag != "" {
+								node.Tag = tag
 							}
 							nodes = []*config.ParsedNode{node}
 						}
@@ -784,7 +849,7 @@ func showSourceEditWindow(
 						if perr != nil {
 							err = perr
 						} else if node != nil {
-							node.Tag = src.Label
+							node.Tag = src.NodeTagOrLabel()
 							nodes = []*config.ParsedNode{node}
 						}
 					}
@@ -847,11 +912,12 @@ func showSourceEditWindow(
 					} else {
 						nn := nodes
 						// SPEC 094 D4: у каждой ноды переключатель «включена».
-						// Отметка живёт по хешу идентичности, поэтому переживает
-						// переименование ноды провайдером и смену её позиции.
-						hashes := make([]string, len(nn))
+						// Отметка живёт по идентичности узла — сырому тегу
+						// источника (SPEC 112), поэтому переживает смену
+						// сервера под тем же именем и правку tag_prefix.
+						identities := make([]string, len(nn))
 						for i, n := range nn {
-							hashes[i] = config.NodeIdentityHash(n)
+							identities[i] = config.NodeIdentity(n)
 						}
 						// widget.List сам виртуализирует scroll — не оборачиваем в
 						// NewScroll/NewVScroll (двойной scroll + ограничивающий
@@ -918,11 +984,11 @@ func showSourceEditWindow(
 								sub.Color = theme.Color(theme.ColorNamePlaceHolder)
 								sub.Refresh()
 
-								hash := hashes[id]
-								// Узел без вычислимого хеша выключать нельзя:
+								identity := identities[id]
+								// Узел без идентичности выключать нельзя:
 								// отметку не к чему привязать, и она поехала бы
 								// на соседа при следующем обновлении.
-								if hash == "" {
+								if identity == "" {
 									check.OnChanged = nil
 									check.SetChecked(true)
 									check.Disable()
@@ -930,10 +996,10 @@ func showSourceEditWindow(
 								}
 								check.Enable()
 								check.OnChanged = nil
-								_, off := scratch.DisabledNodes[hash]
+								_, off := scratch.DisabledNodes[identity]
 								check.SetChecked(!off)
 								check.OnChanged = func(enabled bool) {
-									setNodeEnabled(&scratch, hash, enabled)
+									setNodeEnabled(&scratch, identity, enabled)
 								}
 							},
 						)
@@ -1208,8 +1274,8 @@ func showSourceEditWindow(
 					if len(disabled) > 0 {
 						kept := nodes[:0]
 						for _, n := range nodes {
-							if h := config.NodeIdentityHash(n); h != "" {
-								if _, off := disabled[h]; off {
+							if id := config.NodeIdentity(n); id != "" {
+								if _, off := disabled[id]; off {
 									continue
 								}
 							}
@@ -1338,7 +1404,18 @@ func showSourceEditWindow(
 		if err := serializeParserAfterSourceEdit(presenter, guiState, presenter.Model(), sourceIndex, &scratch, win); err != nil {
 			return
 		}
+		// SPEC 112-A: узел переименован — его прежней идентичности больше нет,
+		// и ссылки на неё обязаны погаснуть здесь, а не молча провалиться на
+		// следующей сборке. Порядок важен: сначала запись формы (тег уже
+		// новый), потом сброс ссылок на СТАРОЕ имя.
+		affected := resetRefsAfterNodeRename(presenter, guiState,
+			nodeIdentityOwner, sourceIndex, sourceIDAtOpen, nodeTagAtOpen)
 		win.Close()
+		if len(affected) > 0 {
+			// Владелец окна — родительское, а не win: то закрывается прямо
+			// сейчас, и диалог на нём умер бы вместе с ним, не показавшись.
+			showDetourRefsResetDialog(parent, nodeTagAtOpen, affected)
+		}
 	})
 	buttonsRow := container.NewHBox(layout.NewSpacer(), cancelBtn, saveBtn)
 	root := container.NewBorder(nil, buttonsRow, nil, nil, tabs)
@@ -1353,4 +1430,83 @@ func showSourceEditWindow(
 	syncFormFromModel()
 	win.Show()
 	presenter.UpdateChildOverlay()
+}
+
+// resetRefsAfterNodeRename гасит detour-ссылки на узел, чьё имя только что
+// сменилось, и возвращает имена задетых источников (SPEC 112-A).
+//
+// Тег узла — единственная идентичность узла (SPEC 112), поэтому его
+// переименование = появление ДРУГОГО узла. Резолв ссылок на сборке строгий и
+// такую ссылку не разрешит; чинить её подстановкой узла с новым именем нельзя
+// (пользователь его хопом не выбирал), поэтому единственный честный исход —
+// сбросить ссылку здесь и сказать об этом.
+//
+// Возвращает nil, когда сбрасывать нечего: имя не менялось, источник не
+// именует узел (подписка — там имён много, и переименования узла в форме нет)
+// или на прежнее имя никто не ссылался.
+func resetRefsAfterNodeRename(
+	presenter *wizardpresentation.WizardPresenter,
+	guiState *wizardpresentation.GUIState,
+	nodeIdentityOwner bool,
+	sourceIndex int,
+	sourceIDAtOpen string,
+	nodeTagAtOpen string,
+) []string {
+	if !nodeIdentityOwner || nodeTagAtOpen == "" {
+		return nil
+	}
+	m := presenter.Model()
+	if m == nil || sourceIndex < 0 || sourceIndex >= len(m.Sources) {
+		return nil
+	}
+	if strings.TrimSpace(m.Sources[sourceIndex].NodeTagOrLabel()) == nodeTagAtOpen {
+		return nil // имя на месте — идентичность не менялась
+	}
+
+	affected := wizardbusiness.ResetDetourNodeRefs(m, sourceIDAtOpen, nodeTagAtOpen)
+	if len(affected) == 0 {
+		return nil
+	}
+	m.RefreshDerivedParserConfig()
+	m.PreviewNeedsParse = true
+	wizardbusiness.InvalidatePreviewCache(m)
+	presenter.UpdateParserConfig(m.ParserConfigJSON)
+	presenter.ScheduleRefreshOutboundOptionsDebounced()
+	presenter.MarkAsChanged()
+	if guiState != nil && guiState.RefreshSourcesList != nil {
+		guiState.RefreshSourcesList()
+	}
+	return affected
+}
+
+// showDetourRefsResetDialog сообщает, чьи ссылки погасли из-за переименования.
+//
+// Окно информирующее: сброс уже применён вместе с сохранением формы, отменять
+// в нём нечего.
+//
+// Ловушка Fyne (fyne-label-minwidth-trap): Label без Wrapping задаёт окну
+// min-width своей строкой в одну линию — список из десятка имён растянул бы
+// диалог на весь экран. Отсюда Wrapping и явный Resize у содержимого.
+func showDetourRefsResetDialog(parent fyne.Window, nodeTag string, affected []string) {
+	if parent == nil || len(affected) == 0 {
+		return
+	}
+	body := widget.NewLabel(locale.Tf(
+		"Node %q was renamed, so its identity changed. Detour links to it have been cleared in: %s",
+		nodeTag, strings.Join(affected, ", ")))
+	body.Wrapping = fyne.TextWrapWord
+
+	content := container.NewVScroll(body)
+	content.SetMinSize(fyne.NewSize(460, 120))
+	dialog.ShowCustom(locale.T("Detour links cleared"), locale.T("OK"), content, parent)
+}
+
+// firstNonEmpty — первая непустая строка из перечисленных.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

@@ -3,7 +3,7 @@
   "tag_prefix": "AL:",
   "fold": { "mode": "auto", "auto": { "interval": "3m", "tolerance": 50 } },
   "directions": [
-    { "tag": "vpn-1", "label": "Main" }
+    { "tag": "vpn-1" }
   ],
   "node_tags": ["AL:tokyo", "AL:osaka"],
   "magic": { "block": "block-out", "direct": "direct-out" }

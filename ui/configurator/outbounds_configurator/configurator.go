@@ -113,10 +113,11 @@ func NewConfiguratorContent(parent fyne.Window, editPresenter OutboundEditPresen
 					shown = *merged
 				}
 			}
+			// Строка начинается с тега — единственного имени Направления
+			// (контракт 0.9.0). Прежде здесь стояло «имя (тег)», и одна и
+			// та же запись читалась в списке одним именем, а в выпадашке
+			// целей правил — другим.
 			rawLine := shown.DisplayName()
-			if shown.Label != "" {
-				rawLine += " (" + shown.Tag + ")"
-			}
 			// Тип показываем только у самостоятельных urltest-групп шаблона:
 			// у Направления он всегда selector, и писать это в каждой
 			// строке — шум.

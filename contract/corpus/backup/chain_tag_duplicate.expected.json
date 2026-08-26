@@ -1,0 +1,17 @@
+{
+  "rules": [],
+  "warnings": [
+    "backup_chain_exists"
+  ],
+  "chains": [
+    {
+      "tag": "relay",
+      "chain": {
+        "hops": [
+          "hop-1",
+          "hop-2"
+        ]
+      }
+    }
+  ]
+}

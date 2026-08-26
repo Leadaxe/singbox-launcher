@@ -255,6 +255,14 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		defaultPort = 22 // Default port for SSH
 
 	case strings.HasPrefix(uri, "socks5://"):
+		// ВНИМАНИЕ: алиас НЕ канонизируется в "socks" (CANON §1), хотя канон
+		// схемы — именно "socks". Причина не в контракте, а в дефолтном теге:
+		// он строится из схемы (`fmt.Sprintf("%s-%s-%d", scheme, ...)`, :551),
+		// и канонизация переименовала бы socks5-host-1080 → socks-host-1080
+		// у ВСЕХ существующих узлов. Тег входит в identity-хеш и в ключи
+		// disabled-отметок — переименование сбросило бы пользовательские
+		// отметки и порвало ссылки detour/цепочек. Расхождение с Dart
+		// остаётся в корпусе как per-app override (docs/IDENTITY.md §4a-C).
 		scheme = "socks5"
 		defaultPort = 1080
 	case strings.HasPrefix(uri, "socks://"):
@@ -422,16 +430,21 @@ func ParseNode(uri string, skipFilters []map[string]string) (*configtypes.Parsed
 		}
 	}
 
-	// For some formats, label might be in path or userinfo
-	if node.Label == "" {
-		// Try to extract from path (some formats use path for label)
-		if parsedURL.Path != "" && parsedURL.Path != "/" {
-			node.Label = strings.TrimPrefix(parsedURL.Path, "/")
-		} else if parsedURL.User != nil && scheme != "hysteria2" && scheme != "naive" {
-			// Some formats encode label in username (but not for hysteria2 where
-			// it's the password, and not for naive where user is the auth user).
-			node.Label = parsedURL.User.Username()
-		}
+	// For some formats, label might be in the path.
+	//
+	// Из userinfo метка НЕ берётся: там лежат учётные данные, а не имя.
+	// vless/vmess — UUID, tuic — UUID, wireguard/masque — приватный ключ,
+	// ss/trojan — пароль, ssh/socks — имя пользователя. Прежняя ветка
+	// подставляла всё это в Label, и узел без `#fragment` получал в имя
+	// свой же секрет: имя едет в UI, логи, скриншоты поддержки и бэкап,
+	// то есть значение утекало за пределы локального файла (в отличие от
+	// секретов в state.json, которые там by design). Продуктово оно тоже
+	// бесполезно — «11111111-1111-…» ничего не говорит пользователю.
+	// Пустой Label ниже разворачивается в `scheme-server-port`
+	// (generateDefaultTag) — осмысленное имя без секрета.
+	// Паритет с LxBox: та сторона userinfo в метку не берёт вовсе.
+	if node.Label == "" && parsedURL.Path != "" && parsedURL.Path != "/" {
+		node.Label = strings.TrimPrefix(parsedURL.Path, "/")
 	}
 
 	node.Label = sanitizeForDisplay(node.Label)

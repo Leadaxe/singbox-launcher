@@ -9,7 +9,7 @@
     "singbox"
   ],
   "extension": null,
-  "note": "MASQUE (CONNECT-IP / Cloudflare WARP), протокол ядра sing-box-lx (SPEC 021/062, ядро >= lx.26 для vhttp + вложенного tls). kind = OUTBOUND в обоих проектах: ядро регистрирует type:masque через outbound.Register, Go эмитит в GenerateNodeJSON, Dart — Outbound (не Endpoint); задание программы ошибочно относило masque к endpoint — реестр фиксирует фактическое состояние. Ключи — ECDSA P-256 base64(DER): private_key = SEC1, public_key = PKIX (pinning). Legacy-имена network/sni принимаются на входе (URI и sing-box импорт) и нормализуются к vhttp / tls.server_name; наружу legacy не эмитится никогда.",
+  "note": "MASQUE (CONNECT-IP / Cloudflare WARP), протокол ядра sing-box-lx (SPEC 021/062, ядро >= lx.26 для vhttp + вложенного tls). kind = OUTBOUND в обоих проектах: ядро регистрирует type:masque через outbound.Register, Go эмитит в GenerateNodeJSON, Dart — Outbound (не Endpoint); задание программы ошибочно относило masque к endpoint — реестр фиксирует фактическое состояние. Ключи — ECDSA P-256 base64(DER): private_key = SEC1, public_key = PKIX (pinning). Legacy-имена network/sni БОЛЬШЕ НЕ ПРИНИМАЮТСЯ (0.8.0, D-078): vhttp и sni — единственные имена; ?network=/?server_name= игнорируются как любой неизвестный query-параметр, плоские network/sni/skip_cert_verify sing-box-импорта стрипаются без переноса значений (защита от fail-fast ядра на смешении с tls.server_name). Наружу legacy не эмитится никогда.",
   "uri": {
     "userinfo": {
       "meaning": "private_key — base64(SEC1 DER) клиентского ECDSA-приватника. СЕКРЕТ",
@@ -52,19 +52,13 @@
           "h3",
           "h2"
         ],
-        "aliases": [
-          "network"
-        ],
         "default": "h3",
-        "note": "Версия HTTP. Legacy-алиас network принимают оба (vhttp приоритетнее). Значение не h3/h2 → warn + force h3 — выровнено в обоих (фаза 1, фикстура masque/vhttp_invalid_forced_h3)."
+        "note": "Версия HTTP. Legacy-алиас network= снесён (0.8.0) — игнорируется, узел получает дефолт h3. Значение не h3/h2 → warn + force h3 — выровнено в обоих (фаза 1, фикстура masque/vhttp_invalid_forced_h3)."
       },
       "sni": {
         "type": "string",
-        "aliases": [
-          "server_name"
-        ],
         "default": null,
-        "note": "→ tls.server_name (вложенный tls-блок, SPEC 062). Пусто = дефолт профиля ядра (www.cloudflare.com с lx.25-rc.4). Оба алиаса принимают оба проекта."
+        "note": "→ tls.server_name (вложенный tls-блок, SPEC 062). Legacy-алиас server_name= снесён (0.8.0) — игнорируется. Пусто = дефолт профиля ядра (www.cloudflare.com с lx.25-rc.4)."
       },
       "disable_sni": {
         "type": "bool",
@@ -123,8 +117,8 @@
     "vhttp не h3/h2 → warn + принудительно h3 (Go; Dart пропускает как есть — разрыв)",
     "отсутствие privatekey / publickey / address → нода дропается (оба)",
     "mtu <= 0 или нечисловой → дефолт 1280",
-    "sing-box импорт: плоские network/sni/skip_cert_verify (чужой диалект) → vhttp + tls{} c удалением legacy-ключей (Go sanitizeSingboxMasqueLegacy; Dart читает обе формы при импорте JSON)",
-    "ключи DER не валидируются на парсе ни одним проектом — битый ключ доедет до ядра (ошибка старта ядра, не check: outbound с lazy-ключами)"
+    "ключи DER не валидируются на парсе ни одним проектом — битый ключ доедет до ядра (ошибка старта ядра, не check: outbound с lazy-ключами)",
+    "sing-box импорт: плоские network/sni/skip_cert_verify (чужой диалект) → стрип БЕЗ переноса значений (0.8.0; Go sanitizeSingboxMasqueLegacy). Удаление ключей обязательно: плоский sni рядом с tls.server_name роняет ядро fail-fast'ом"
   ],
   "refs": {
     "go": [

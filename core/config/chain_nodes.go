@@ -6,7 +6,7 @@
 // цепочка не может собраться внутри своего источника, как собирается сервер
 // из URI, — её узел строится здесь, когда весь пул уже известен.
 //
-// Тот же довод, по которому здесь же живёт resolveNodeHashDetours (SPEC 101).
+// Тот же довод, по которому здесь же живёт resolveNodeTagDetours (SPEC 101).
 package config
 
 import (
@@ -173,8 +173,14 @@ func ResolveChainSources(
 		}
 
 		node := &ParsedNode{
-			Tag:         tag,
-			Label:       name,
+			Tag:   tag,
+			Label: name,
+			// SPEC 112: идентичность узла цепочки — её собственный тег. Он же
+			// финальный: ни префиксов, ни маски у цепочки нет, тег задаётся
+			// пользователем напрямую. Проставляется явно, чтобы ссылка на
+			// цепочку (SPEC 112-A) резолвилась той же картой, что и на узел
+			// подписки, а не падала на запасное правило.
+			IdentityTag: tag,
 			Scheme:      configtypes.ChainOutboundType,
 			Outbound:    ChainOutboundObject(tag, src.Chain),
 			SourceIndex: i,

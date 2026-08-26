@@ -1,1 +1,1 @@
-{"config": {"server": "@typo_here"}, "warnings": ["template_var_undeclared"]}
+{"load": "either", "config": {"server": "@typo_here"}, "warnings": ["template_var_undeclared"]}

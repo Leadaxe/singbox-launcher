@@ -35,6 +35,7 @@ import (
 	"image/color"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -427,6 +428,14 @@ func createStateManagementButtons(presenter *wizardpresentation.WizardPresenter,
 		handleSaveAsButton(presenter, wizardWindow)
 	})
 	guiState.SaveAsButton.Importance = widget.MediumImportance
+
+	// Clone from — рядом с Read, потому что это его недостающая половина:
+	// Read листает снапшоты СВОЕЙ машины (на свежей машине их нет), а Clone
+	// приносит настройки с чужой.
+	guiState.CloneFromButton = widget.NewButton(locale.T("Clone from…"), func() {
+		handleCloneFromButton(presenter, wizardWindow)
+	})
+	guiState.CloneFromButton.Importance = widget.MediumImportance
 }
 
 // createNavigationButtons создает кнопки навигации (Prev, Next, Close).
@@ -507,6 +516,7 @@ func updateNavigationButtons(guiState *wizardpresentation.GUIState, tabs *contai
 		buttonsContent = container.NewHBox(
 			guiState.CloseButton,
 			guiState.ReadButton,
+			guiState.CloneFromButton,
 			layout.NewSpacer(),
 			guiState.NextButton,
 		)
@@ -575,6 +585,15 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 		if item == rulesTabItem {
 			// Trigger async parsing to ensure outbounds are up-to-date
 			presenter.TriggerParseForPreview()
+			// Список целей у preset-строк — снимок availableOutbounds,
+			// сделанный при постройке вкладки (rules_unified_rows.go::outSel).
+			// RefreshOutboundOptions его не догоняет: она обходит только
+			// guiState.RuleOutboundSelects, где живут legacy custom-rule
+			// селекты, а inline-селекторы preset'ов туда не регистрируются.
+			// Поэтому Направление, добавленное на соседней вкладке, не
+			// появлялось в выпадашке до перезапуска приложения —
+			// пересобираем вкладку целиком, как после правки самих правил.
+			presenter.RefreshRulesTabAfterLoadState()
 			// Refresh outbound options when switching to Rules tab
 			presenter.RefreshOutboundOptions()
 		}
@@ -703,6 +722,99 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 		// Синхронизируем GUI
 		presenter.SyncModelToGUI()
 	})
+}
+
+// handleCloneFromButton — перенос настроек с другой машины на текущую.
+//
+// Три шага, и каждый отвечает на свой вопрос: откуда (список машин), что
+// приедет (сводка), и только потом — применение. Клон заменяет состояние
+// целиком, поэтому текущее сперва уходит в снапшот: откат существует и
+// делается через Read, а не через «восстановите из бэкапа, если он был».
+func handleCloneFromButton(presenter *wizardpresentation.WizardPresenter, wizardWindow fyne.Window) {
+	ac := core.GetController()
+	if ac == nil || ac.FileService == nil {
+		return
+	}
+	execDir := ac.FileService.ExecDir
+
+	// Машины реестра → строки списка. Платформа справочна: она свойство
+	// машины (SPEC 098 §2.4) и клоном не переносится, но объясняет, что за
+	// конфиг берём.
+	var machines []wizardbusiness.CloneSource
+	registry := services.NewRemoteRegistry(execDir)
+	list, err := registry.List()
+	if err != nil {
+		debuglog.WarnLog("clone: list machines: %v", err)
+	}
+	for _, d := range list {
+		goos, goarch := d.GOOS, d.GOARCH
+		platformLabel := ""
+		if goos != "" || goarch != "" {
+			platformLabel = fmt.Sprintf("%s/%s", goos, goarch)
+		}
+		machines = append(machines, wizardbusiness.CloneSource{
+			MachineID: d.ID,
+			Name:      d.Name,
+			Platform:  platformLabel,
+		})
+	}
+
+	sources := wizardbusiness.ListCloneSources(
+		execDir, machines, presenter.ConfigTarget(), presenter.ConfigMachineID())
+
+	wizarddialogs.ShowCloneFromDialog(presenter, sources, func(res wizarddialogs.CloneFromResult) {
+		if res.Action != "clone" {
+			return
+		}
+
+		state, summary, loadErr := wizardbusiness.LoadCloneState(execDir, res.Source)
+		if loadErr != nil {
+			dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to load state"), loadErr))
+			return
+		}
+
+		wizarddialogs.ShowClonePreviewDialog(wizardWindow, res.Source, summary, func(ok bool) {
+			if !ok {
+				return
+			}
+			applyClone(presenter, wizardWindow, res.Source, state)
+		})
+	})
+}
+
+// applyClone делает снапшот текущего состояния и применяет клон.
+//
+// Снапшот — не «на всякий случай», а единственный откат: клон затирает
+// state.json машины, и без него отменить операцию было бы нечем.
+// Не сохранился — не применяем: потерять настройки молча хуже, чем не
+// выполнить действие.
+func applyClone(presenter *wizardpresentation.WizardPresenter, wizardWindow fyne.Window,
+	src wizardbusiness.CloneSource, state *wizardmodels.WizardStateFile) {
+
+	snapshotID := cloneSnapshotID()
+	if err := presenter.SaveStateAs(locale.Tf("before cloning from %s", src.Name), snapshotID); err != nil {
+		debuglog.WarnLog("clone: snapshot %q failed: %v", snapshotID, err)
+		dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w",
+			locale.T("Could not save a snapshot of the current settings, so nothing was changed"), err))
+		return
+	}
+
+	if err := presenter.ApplyClonedState(state); err != nil {
+		dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to restore state"), err))
+		return
+	}
+
+	dialog.ShowInformation(
+		locale.T("Clone from"),
+		locale.Tf("Settings copied from %s. Press Save to apply them to this machine; the previous state is saved as %s.",
+			src.Name, snapshotID+".json"),
+		wizardWindow)
+}
+
+// cloneSnapshotID — имя снапшота-отката. Дата в имени, потому что в списке
+// Read его придётся узнать глазами через недели после клона.
+func cloneSnapshotID() string {
+	return "before-clone-" + time.Now().Format("20060102-150405")
 }
 
 // handleSaveAsButton обрабатывает нажатие кнопки "Save As".

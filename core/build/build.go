@@ -171,6 +171,12 @@ func BuildConfig(ctx BuildContext) (Result, error) {
 	// Шаг 1: эффективный конфиг через GetEffectiveConfig.
 	cfg, order := effectiveConfig(ctx.Template, ctx.Vars, ctx.Target, &res)
 
+	// Привязка аплинка к несуществующему интерфейсу — не ошибка сборки:
+	// конфиг валиден по схеме, но ядро на нём останется без сети. Предупредить
+	// нужно ЗДЕСЬ, до записи файла, иначе диагноз выясняется по отсутствию
+	// интернета после старта.
+	warnBindInterface(ctx.Vars, ctx.Target, &res)
+
 	// Шаг 2: build sections.
 	sections, err := buildOrderedSections(ctx, cfg, order)
 	if err != nil {

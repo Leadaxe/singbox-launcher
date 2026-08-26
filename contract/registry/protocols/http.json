@@ -3,58 +3,74 @@
   "scheme": "http",
   "kind": "outbound",
   "singbox_type": "http",
-  "aliases": ["proxy-http", "proxy-https", "proxy+http", "proxy+https"],
-  "sources": ["uri", "singbox"],
+  "aliases": [
+    "proxy-http",
+    "proxy-https",
+    "proxy+http",
+    "proxy+https"
+  ],
+  "sources": [
+    "uri",
+    "singbox"
+  ],
   "extension": null,
   "uri": {
     "userinfo": {
       "meaning": "username:password",
-      "note": "HTTP(S) CONNECT proxy. Кастомные схемы вместо голых http(s):// — те перехватываются как URL подписки. Суффикс схемы — TLS-дискриминатор: *-https/+https → TLS on (порт по умолчанию 443), *-http/+http → plain (порт 80). §9.B6: URI-схемы сейчас mobile-only, Go добавляет. Sing-box-импорт: Go принимает type http (singbox_import.go:315), НО GenerateNodeJSON не имеет http-ветки → молча теряются username/password/path/headers; общие секции всё же эмитят transport и tls из импортированной map (outbound_generator.go:368, 370-438), так что урезание частичное, не до четырёх полей (ловушка emitter-parser-pairing; новое расхождение, чинить вместе с B6)."
+      "note": "HTTP(S) CONNECT proxy. Кастомные схемы вместо голых http(s):// — те перехватываются как URL подписки. Суффикс схемы — TLS-дискриминатор: *-https/+https → TLS on (порт по умолчанию 443), *-http/+http → plain (порт 80). §9.B6 закрыт: схемы разбираются и в Go (node_parser_core.go:288 → parseHTTPProxyURI), и в Dart. GenerateNodeJSON имеет http-ветку (outbound_generator.go:290): username/password/path/headers; transport и tls эмитятся общими секциями ниже. Sing-box-импорт принимает type http (singbox_import.go:315) и проходит через ту же ветку."
     },
     "query": {
       "path": {
         "type": "string",
         "default": null,
-        "ext": "mobile",
+        "ext": null,
         "note": "→ path outbound'а (uri прокси-запроса)."
       },
       "headers": {
         "type": "string",
         "default": null,
-        "ext": "mobile",
+        "ext": null,
         "note": "Та же сериализация, что naive extra-headers: URL-encoded «H1: V1\\r\\nH2: V2» → headers map; ключи при эмите сортируются."
       },
       "sni": {
         "type": "string",
-        "aliases": ["peer", "host"],
+        "aliases": [
+          "peer",
+          "host"
+        ],
         "default": null,
-        "ext": "mobile",
+        "ext": null,
         "note": "server_name (только при TLS-схеме); trojan-конвенция sni/peer/host, fallback на server."
       },
       "fp": {
         "type": "alias_enum",
         "allowlist": "utls_fingerprints",
         "default": null,
-        "ext": "mobile",
+        "ext": null,
         "note": "uTLS fingerprint (только при TLS-схеме); канонизация §281."
       },
       "alpn": {
         "type": "string",
         "default": null,
-        "ext": "mobile",
+        "ext": null,
         "note": "Список через запятую → tls.alpn (только при TLS-схеме)."
       },
       "insecure": {
         "type": "bool",
-        "aliases": ["allowInsecure", "allowinsecure", "allow_insecure", "skip-cert-verify"],
+        "aliases": [
+          "allowInsecure",
+          "allowinsecure",
+          "allow_insecure",
+          "skip-cert-verify"
+        ],
         "default": null,
-        "ext": "mobile",
+        "ext": null,
         "note": "tls.insecure; 1/true/yes."
       },
       "security": {
         "type": "string",
         "default": null,
-        "ext": "mobile",
+        "ext": null,
         "note": "security=none гасит TLS даже на https-схеме (trojan-конвенция parseTrojanTls)."
       }
     },
@@ -62,8 +78,15 @@
   },
   "emit": {
     "share_uri": true,
-    "param_order": ["path", "headers", "sni", "fp", "alpn", "insecure"],
-    "note": "Dart toUriHttp: схема по tls.enabled (proxy-https/proxy-http), insecure эмитится как allowInsecure=1. Go-эмиттера нет (появится с B6)."
+    "param_order": [
+      "path",
+      "headers",
+      "sni",
+      "fp",
+      "alpn",
+      "insecure"
+    ],
+    "note": "Dart toUriHttp и Go shareURIFromHTTP (shareuri_http.go:16): схема по tls.enabled (proxy-https/proxy-http), insecure эмитится как allowInsecure=1."
   },
   "degrade": [
     "fp вне allowlist → chrome + warning (Dart, §281)",
@@ -72,6 +95,10 @@
   ],
   "refs": {
     "go": [
+      "core/config/subscription/node_parser_core.go:288",
+      "core/config/subscription/node_parser_http.go:42",
+      "core/config/subscription/shareuri_http.go:16",
+      "core/config/outbound_generator.go:290",
       "core/config/subscription/singbox_import.go:315"
     ],
     "dart": [

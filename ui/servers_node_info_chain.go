@@ -8,6 +8,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -68,11 +69,26 @@ func buildChainSection(ac *core.AppController, box *fyne.Container, win fyne.Win
 	box.Add(widget.NewSeparator())
 	box.Add(sectionHeader(locale.Tf("Chain positions (%d)", len(info.Positions))))
 
-	// Строка на позицию: слева состав, справа замер. Обе колонки живут в
-	// одной строке, чтобы задержка читалась напротив своего хопа, а не
-	// отдельным списком, который пришлось бы сопоставлять глазами.
+	// Строка на позицию: слева тумблер, затем состав, справа замер. Галочка
+	// слева читается как «хоп участвует в маршруте» — список позиций и есть
+	// маршрут; правый край остаётся за задержками, иначе тумблер и цифра
+	// дрались бы за одно место.
 	rows := make([]*widget.Label, len(info.Positions))
 	delays := make([]*widget.Label, len(info.Positions))
+	toggles := make([]*widget.Check, len(info.Positions))
+	// applying — идёт программная расстановка галочек, а не клик
+	// пользователя. Fyne зовёт OnChanged и на SetChecked, и отличить одно
+	// от другого больше нечем.
+	applying := false
+
+	// Текст ошибки — под списком, с переносом: сообщение ядра длинное и
+	// в колонку задержки не помещается. Объявлен до строк, потому что
+	// обработчик тумблера пишет в него провал прогрева.
+	errLabel := widget.NewLabel("")
+	errLabel.Wrapping = fyne.TextWrapWord
+	errLabel.Importance = widget.DangerImportance
+	errLabel.Hide()
+
 	for i, pos := range info.Positions {
 		rows[i] = widget.NewLabel(chainPositionText(i, pos))
 		rows[i].Truncation = fyne.TextTruncateEllipsis
@@ -80,15 +96,23 @@ func buildChainSection(ac *core.AppController, box *fyne.Container, win fyne.Win
 		delays[i] = widget.NewLabel("")
 		delays[i].Alignment = fyne.TextAlignTrailing
 
-		box.Add(container.NewBorder(nil, nil, nil, delays[i], rows[i]))
-	}
+		toggles[i] = newChainPositionToggle(ac, info.Tag, i, &applying, func(fresh core.ChainInfo) {
+			// Перерисовываем ВСЮ секцию, а не одну строку: маршрут общий,
+			// и выключенный хоп меняет то, во что резолвятся соседние
+			// позиции (группа выше могла держать выбор через него).
+			applyChainRows(fresh, rows, toggles, &applying)
+		}, delays, errLabel)
 
-	// Текст ошибки — под списком, с переносом: сообщение ядра длинное и
-	// в колонку задержки не помещается.
-	errLabel := widget.NewLabel("")
-	errLabel.Wrapping = fyne.TextWrapWord
-	errLabel.Importance = widget.DangerImportance
-	errLabel.Hide()
+		box.Add(container.NewBorder(nil, nil, toggles[i], delays[i], rows[i]))
+	}
+	// Начальное состояние ставим ПОСЛЕ создания тумблеров и под флагом:
+	// SetChecked дёргает OnChanged, и без него отрисовка окна отправила бы
+	// ядру тумблер, которого пользователь не нажимал.
+	applying = true
+	for i, pos := range info.Positions {
+		toggles[i].SetChecked(!pos.Disabled)
+	}
+	applying = false
 	box.Add(errLabel)
 
 	var probeBtn *widget.Button
@@ -132,6 +156,99 @@ func buildChainSection(ac *core.AppController, box *fyne.Container, win fyne.Win
 	box.Add(container.NewCenter(probeBtn))
 }
 
+// newChainPositionToggle — тумблер одной позиции (SPEC 075 ядра).
+//
+// Состояние живёт в ЯДРЕ (cache-file, по тегам позиций), не в нашем state:
+// лаунчер здесь только пульт. Поэтому после ответа ядра состав перечитываем
+// через refresh, а не рисуем то, что нажали, — если ядро переключение не
+// приняло, галочка обязана вернуться, а не соврать.
+func newChainPositionToggle(
+	ac *core.AppController,
+	chainTag string,
+	pos int,
+	applying *bool,
+	refresh func(core.ChainInfo),
+	delays []*widget.Label,
+	errLabel *widget.Label,
+) *widget.Check {
+	var check *widget.Check
+	check = widget.NewCheck("", func(enabled bool) {
+		if *applying {
+			return
+		}
+		check.Disable()
+		errLabel.Hide()
+		// Все замеры протухли разом: путь через позицию i входит в цену
+		// каждой позиции выше. Цифра прежнего маршрута рядом с новым
+		// составом врала бы, и заметить это было бы нечем.
+		for _, d := range delays {
+			d.SetText("")
+		}
+
+		go func() {
+			warmupErr, err := ac.SetChainPositionEnabled(chainTag, pos, enabled)
+			// Состояние перечитываем здесь же, в фоне: ChainFor — это RPC к
+			// ядру, и его дедлайн в UI-потоке подвесил бы окно целиком.
+			fresh, ok := ac.ChainFor(chainTag)
+			fyne.Do(func() {
+				defer check.Enable()
+				switch {
+				case err != nil:
+					debuglog.WarnLog("chain toggle: %s#%d enabled=%v: %v", chainTag, pos, enabled, err)
+					errLabel.SetText(chainToggleErrorText(err))
+					errLabel.Show()
+				case strings.TrimSpace(warmupErr) != "":
+					// Флаг ядро применило, а звено не поднялось. Это диагноз
+					// узла, а не отказ переключения: галочка остаётся там,
+					// куда её поставил пользователь, текст объясняет, почему
+					// трафик через позицию пока не пойдёт.
+					debuglog.WarnLog("chain toggle warmup: %s#%d: %s", chainTag, pos, warmupErr)
+					errLabel.SetText(warmupErr)
+					errLabel.Show()
+				}
+				if ok {
+					refresh(fresh)
+				}
+			})
+		}()
+	})
+	return check
+}
+
+// applyChainRows приводит строки с галочками к состоянию, прочитанному у
+// ядра. Состояние уже на руках — сюда попадаем из UI-потока, ходить в ядро
+// отсюда нельзя.
+//
+// Под флагом applying: SetChecked зовёт OnChanged, и без него приведение к
+// состоянию ядра само отправило бы ядру новый тумблер — рекурсией.
+func applyChainRows(
+	fresh core.ChainInfo,
+	rows []*widget.Label,
+	toggles []*widget.Check,
+	applying *bool,
+) {
+	*applying = true
+	defer func() { *applying = false }()
+	for i := range rows {
+		if i >= len(fresh.Positions) {
+			break
+		}
+		rows[i].SetText(chainPositionText(i, fresh.Positions[i]))
+		toggles[i].SetChecked(!fresh.Positions[i].Disabled)
+	}
+}
+
+// chainToggleErrorText — текст отказа переключения.
+//
+// Старое ядро выделено: оно отвечает Unimplemented, и «update the core»
+// пользователю полезнее, чем gRPC-строка про неизвестный метод.
+func chainToggleErrorText(err error) string {
+	if errors.Is(err, core.ErrChainToggleUnsupported) {
+		return locale.T("This core cannot switch chain positions on the fly — update the core.")
+	}
+	return err.Error()
+}
+
 // chainPositionText — состав позиции: номер, тег и во что он резолвится.
 //
 // `now` показывается только когда отличается от тега: у обычного узла они
@@ -146,6 +263,11 @@ func chainPositionText(i int, pos core.ChainPositionInfo) string {
 	if pos.Transparent {
 		text += "  · " + locale.T("collapsed")
 	}
+	// Выключенная позиция помечается отдельно от схлопнутой: причина разная
+	// (воля пользователя против direct в конфиге), и лечится по-разному.
+	if pos.Disabled {
+		text += "  · " + locale.T("off")
+	}
 	return text
 }
 
@@ -158,8 +280,10 @@ func probeChainLayers(ac *core.AppController, info core.ChainInfo) []chainLayerR
 	results := make([]chainLayerResult, len(info.Positions))
 	for run := 0; run < chainProbeWarmUpRuns; run++ {
 		for i, pos := range info.Positions {
-			if pos.Transparent {
-				// Схлопнутая позиция: в ней выбран direct, звена нет.
+			if pos.Transparent || pos.Disabled {
+				// Мерить нечего: в схлопнутой позиции выбран direct, а
+				// выключенная исключена из маршрута — её служебный тег
+				// измерил бы путь БЕЗ неё, то есть чужую позицию.
 				results[i] = chainLayerResult{Skipped: true}
 				continue
 			}

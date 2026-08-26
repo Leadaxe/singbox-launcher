@@ -11,7 +11,8 @@ package template
 //
 //	<case>.template.json  {"vars": [...], "config": {...}, "_changed": "имя"}
 //	<case>.vars.json      {"имя": "строка"}  (null = optional-var)
-//	<case>.expected.json  {"config": {...}, "warnings": [...], "vars_after": {...}}
+//	<case>.expected.json  {"load": "accept|reject|either", "config": {...},
+//	                       "warnings": [...], "vars_after": {...}}
 //
 // Кейсы с "_changed" проверяют on_change (§4.6): переменная объявлена
 // изменённой, ApplyOnChange прогоняется до подстановки, а "vars_after"
@@ -48,6 +49,13 @@ type corpusCase struct {
 }
 
 type corpusExpected struct {
+	// Load — рубеж ЗАГРУЗКИ шаблона (контракт 0.7.2, D-077):
+	// "accept" (или отсутствие поля) — валидатор обязан принять;
+	// "reject" — валидатор обязан отвергнуть, при этом рантайм-ожидания
+	// кейса продолжают проверяться толерантным прогоном (поле не выключает
+	// проверку рантайма); "either" — вердикт намеренно не нормирован
+	// (кандидаты unresolved/*: политика undeclared-имён на load не решена).
+	Load      string            `json:"load,omitempty"`
 	Config    json.RawMessage   `json:"config"`
 	Warnings  []string          `json:"warnings"`
 	VarsAfter map[string]string `json:"vars_after,omitempty"`
@@ -200,9 +208,31 @@ func TestContractCorpusTemplate(t *testing.T) {
 		name, _ := filepath.Rel(root, base)
 		t.Run(name, func(t *testing.T) {
 			c := loadCorpusCase(t, base)
+
+			// Рубеж загрузки (поле "load" в expected, D-077). Проверяется
+			// ДО рантайма и независимо от него: reject-кейс обязан и
+			// отвергаться валидатором, и выполнять рантайм-ожидания в
+			// толерантном прогоне ниже.
+			loadErr := ValidateWizardTemplate(c.template.Vars, nil, c.template.Config)
+			switch c.expected.Load {
+			case "", "accept":
+				if loadErr != nil {
+					t.Errorf("load: валидатор отверг шаблон, ожидался accept: %v", loadErr)
+				}
+			case "reject":
+				if loadErr == nil {
+					t.Errorf("load: валидатор принял шаблон, ожидался reject")
+				}
+			case "either":
+				// вердикт намеренно не нормирован
+			default:
+				t.Errorf("load: неизвестное значение %q (accept|reject|either)", c.expected.Load)
+			}
+
 			got := runCorpusCase(t, c)
 
 			if *updateTemplateGolden {
+				got.Load = c.expected.Load // load нормируется руками, -update его не трогает
 				writeGolden(t, base+".expected.json", got)
 				return
 			}

@@ -58,11 +58,12 @@ func EnsureSourceNodeCounts(model *wizardmodels.WizardModel) bool {
 		c := wizardmodels.SourceNodeCount{Total: len(nodes)}
 		for _, n := range nodes {
 			if len(disabled) > 0 {
-				// Отметка «нода выключена» хранится по хешу идентичности,
-				// а не по тегу: теги подписок пересоздаются на каждом
-				// обновлении (SPEC 094 D4).
-				if h := config.NodeIdentityHash(n); h != "" {
-					if _, off := disabled[h]; off {
+				// Отметка «нода выключена» хранится по идентичности узла —
+				// сырому тегу источника (SPEC 112). Превью разбирается тем
+				// же LoadNodesFromSource, что и сборка, поэтому идентичность
+				// здесь ровно та, по которой узел выключается в конфиге.
+				if id := config.NodeIdentity(n); id != "" {
+					if _, off := disabled[id]; off {
 						continue
 					}
 				}

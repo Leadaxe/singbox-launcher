@@ -255,11 +255,12 @@ func NewAppController(appIconData, greyIconData, greenIconData, redIconData []by
 	config.NaiveSupportProbe = ac.CoreSupportsNaive
 	config.ChainSupportProbe = ac.CoreSupportsChain
 
-	// SPEC 094 D3: дедуп внутри источника считает идентичность по
-	// эмитированному outbound-JSON. Эмиттер живёт в config, парсер — в
-	// subscription, поэтому зависимость подставляется здесь (прямой вызов
-	// дал бы цикл импорта).
-	subscription.NodeIdentityHashFunc = config.NodeIdentityHash
+	// SPEC 112: идентичность узла (тег) и УПРАЗДНЁННЫЙ контент-хеш для
+	// миграции legacy-отметок. Обе живут в config (эмиттер нужен второй),
+	// парсер — в subscription, поэтому зависимости подставляются здесь
+	// (прямой вызов дал бы цикл импорта).
+	subscription.NodeIdentityFunc = config.NodeIdentity
+	subscription.LegacyNodeIdentityHashFunc = config.LegacyNodeIdentityHash
 
 	// Устанавливаем callback для проверки обновлений при открытии окна
 	ac.UIService.OnWindowShown = func() {
@@ -709,11 +710,12 @@ func CheckIfSingBoxRunningAtStartUtil() {
 		debuglog.WarnLog("CheckIfSingBoxRunningAtStartUtil: ProcessService is nil, this should not happen. Initializing...")
 		ac.ProcessService = NewProcessService(ac)
 	}
-	// В daemon-режиме работающее ядро внутри демона — норма, а не «чужой»
-	// инстанс: предупреждение с предложением убить процесс неуместно.
-	if ac.BackendMode() == BackendDaemon {
-		return
-	}
+	// Проверяем и в daemon-режиме: осиротевшее classic-ядро (`sing-box run`,
+	// пережившее прошлую сессию лаунчера) держит маршруты на своём TUN, пока
+	// профилировщик и статус смотрят на пустое ядро демона. Детектор на
+	// darwin аргумент-чувствительный (pgrep -f `sing-box run|…-privileged`)
+	// и демона `sing-box lxd` не ловит — ложного предложения убить демона
+	// не будет; деградацию pgrep гейтит isSingBoxProcessRunning.
 	ac.ProcessService.CheckIfRunningAtStart()
 }
 

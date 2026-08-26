@@ -132,6 +132,14 @@ func TestContractCorpusURI(t *testing.T) {
 // marshalEnvelopePretty пишет конверт читаемо (для файла), сохраняя канон
 // значений; строгое сравнение идёт по разобранному JSON, не по байтам.
 func marshalEnvelopePretty(env contractEnvelope) ([]byte, error) {
+	// Пустой список сериализуется как `[]`, а не `null`. Go отдаёт nil-срез
+	// как `null`, Dart — как `[]`, и каждый reject-кейс (нод нет, есть
+	// только dropped) требовал .expected.lxbox.json, хотя поведение сторон
+	// идентично: различалась не логика, а сериализация пустоты. 24 таких
+	// override'а — чистый шум, маскировавший настоящие расхождения.
+	if env.Nodes == nil {
+		env.Nodes = []contractNode{}
+	}
 	compact, err := json.Marshal(env)
 	if err != nil {
 		return nil, err

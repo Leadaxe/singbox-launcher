@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 
 	"singbox-launcher/core/services"
@@ -185,6 +186,12 @@ type ChainPositionInfo struct {
 	// Transparent — в позиции выбран direct: хоп схлопнут, в рантайме его
 	// нет. Мерить такую позицию нечем, и виновником она быть не может.
 	Transparent bool
+	// Disabled — позицию выключил пользователь тумблером (SPEC 075 ядра).
+	// Отличается от Transparent источником решения: Transparent — так
+	// написан конфиг (в позиции direct), Disabled — воля пользователя в
+	// рантайме, ядро помнит её в cache-file и восстанавливает при старте.
+	// Now у выключенной позиции остаётся заполненным: видно, ЧТО выключено.
+	Disabled bool
 	// CloneState — состояние звена: starting | active | idle. Пусто у
 	// позиции 0 (вход не клонируется) и пока звено не создано.
 	CloneState string
@@ -207,6 +214,11 @@ type chainSource interface {
 	// Возвращает задержку и текст ошибки ЯДРА (не транспорта): «не
 	// поднялось» — это диагноз, а не сбой вызова.
 	ProbeLayer(chainTag string, pos int) (int64, string, error)
+	// SetPositionEnabled включает/выключает позицию в рантайме.
+	// Второй результат — warmupError ЯДРА: флаг применён, но прогрев
+	// звена не удался. Это диагноз узла, а не сбой вызова, поэтому
+	// приезжает данными рядом с nil-ошибкой (контракт SPEC 075 ядра).
+	SetPositionEnabled(chainTag string, pos int, enabled bool) (string, error)
 }
 
 // coreLogSource — бэкенд с собственным источником логов ядра (gRPC
@@ -323,6 +335,7 @@ func (ac *AppController) DaemonPoolSlots(group string) ([]PoolSlotInfo, error) {
 type remoteChainSource interface {
 	Chains() ([]services.ChainInfo, error)
 	ProbeLayer(chainTag string, pos int) (int64, string, error)
+	SetPositionEnabled(chainTag string, pos int, enabled bool) (string, error)
 }
 
 // ChainsAvailable — доступно ли состояние цепочек у текущего источника.
@@ -357,6 +370,7 @@ func (ac *AppController) Chains() ([]ChainInfo, error) {
 						Now:         p.Now,
 						IsGroup:     p.IsGroup,
 						Transparent: p.Transparent,
+						Disabled:    p.Disabled,
 						CloneState:  p.CloneState,
 						LastError:   p.LastError,
 					})
@@ -403,6 +417,40 @@ func (ac *AppController) ProbeChainLayer(chainTag string, pos int) (int64, strin
 		return 0, "", fmt.Errorf("chain probe is not available in this mode")
 	}
 	return src.ProbeLayer(chainTag, pos)
+}
+
+// ErrChainToggleUnsupported — ядро не знает SetChainPositionEnabled.
+//
+// Тег `with_lx_chain` для гейта не годится: он есть и у ядер до lx.28, где
+// сам тумблер ещё не реализован. Единственный честный признак — ответ
+// Unimplemented на вызов, поэтому проверяем по факту, а не пробой заранее.
+var ErrChainToggleUnsupported = errors.New("core does not support chain position toggle — update the core")
+
+// SetChainPositionEnabled включает/выключает позицию цепочки в работающем
+// ядре (SPEC 075 ядра). pos — порядок пакета, 0 = вход.
+//
+// Первый результат — warmupError ядра: тумблер УЖЕ применён, но поднять
+// звено на включённой позиции не удалось. Ядро отдаёт это данными, а не
+// статус-ошибкой, потому что тумблер выражает волю пользователя, а
+// здоровье узла — отдельный факт; UI обязан показать оба.
+func (ac *AppController) SetChainPositionEnabled(chainTag string, pos int, enabled bool) (string, error) {
+	if ac.APIService != nil {
+		if src, ok := ac.APIService.TransportOverride().(remoteChainSource); ok {
+			warmup, err := src.SetPositionEnabled(chainTag, pos, enabled)
+			// services не может импортировать core (граф замкнулся бы), и
+			// «старое ядро» приезжает оттуда своим значением ошибки.
+			// Сводим к одному, чтобы UI проверял один errors.Is.
+			if errors.Is(err, services.ErrChainToggleUnsupported) {
+				return warmup, ErrChainToggleUnsupported
+			}
+			return warmup, err
+		}
+	}
+	src, ok := ac.Backend().(chainSource)
+	if !ok {
+		return "", fmt.Errorf("chain position toggle is not available in this mode")
+	}
+	return src.SetPositionEnabled(chainTag, pos, enabled)
 }
 
 // DaemonCoreLogLines отдаёт хвост логов ядра из бэкенда (daemon-режим:

@@ -40,26 +40,13 @@ func TestDirectionNumber(t *testing.T) {
 	}
 }
 
-// Имена по умолчанию совпадают с LxBox — иначе одинаковые направления
-// назывались бы по-разному на двух платформах.
-func TestDefaultDirectionLabel(t *testing.T) {
-	cases := map[int]string{1: "VPN ①", 2: "VPN ②", 10: "VPN ⑩", 11: "VPN 11", 0: "VPN 0"}
-	for n, want := range cases {
-		if got := DefaultDirectionLabel(n); got != want {
-			t.Fatalf("DefaultDirectionLabel(%d) = %q, want %q", n, got, want)
-		}
-	}
-}
-
-// Имя, тег и двойник — три разные вещи; проверяем, что они не путаются.
+// Имя Направления — это его тег, и только он (контракт 0.9.0). Тест
+// держит рубеж: вернись отдельное отображаемое имя — DisplayName начнёт
+// расходиться с тем, что показано целью правил, и мы это увидим здесь.
 func TestDirectionDisplayAndAutoTag(t *testing.T) {
 	d := Direction{Tag: "vpn-1"}
 	if d.DisplayName() != "vpn-1" {
-		t.Fatalf("без имени показываем тег, got %q", d.DisplayName())
-	}
-	d.Label = "Моя Германия"
-	if d.DisplayName() != "Моя Германия" {
-		t.Fatalf("got %q", d.DisplayName())
+		t.Fatalf("имя Направления — его тег, got %q", d.DisplayName())
 	}
 	if d.AutoTag() != "vpn-1-auto" {
 		t.Fatalf("got %q", d.AutoTag())

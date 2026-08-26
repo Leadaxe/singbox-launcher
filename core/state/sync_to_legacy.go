@@ -19,6 +19,8 @@ func syncLegacyFromConnections(s *State) {
 		switch src.Type {
 		case SourceTypeSubscription:
 			ps := configtypes.ProxySource{
+				ID:                      src.ID,    // SPEC 112-A: адресат ссылок на узлы
+				Label:                   src.Label, // только для текстов диагностики
 				Source:                  src.URL,
 				Skip:                    src.Skip,
 				Outbounds:               src.Outbounds,
@@ -27,8 +29,10 @@ func syncLegacyFromConnections(s *State) {
 				Fold:                    src.Fold, // SPEC 108
 				Disabled:                !src.Enabled,
 				DetourTag:               src.DetourTag,
-				DetourNodeHash:          src.DetourNodeHash,  // SPEC 101
-				DetourNodeLabel:         src.DetourNodeLabel, // SPEC 101
+				DetourNodeSourceID:      src.DetourNodeSourceID, // SPEC 112-A
+				DetourNodeTag:           src.DetourNodeTag,      // SPEC 112
+				DetourNodeHash:          src.DetourNodeHash,     // legacy, мигрирует на сборке
+				DetourNodeLabel:         src.DetourNodeLabel,    // SPEC 101
 			}
 			if src.Tag != nil {
 				ps.TagPrefix = src.Tag.Prefix
@@ -39,22 +43,29 @@ func syncLegacyFromConnections(s *State) {
 
 		case SourceTypeServer:
 			ps := configtypes.ProxySource{
-				Connections:       []string{src.URI},
-				TagMask:           src.Label, // force tag = label
-				ExcludeFromGlobal: src.ExcludeFromGlobal,
-				Disabled:          !src.Enabled,
-				DetourTag:         src.DetourTag,
-				DetourNodeHash:    src.DetourNodeHash,  // SPEC 101
-				DetourNodeLabel:   src.DetourNodeLabel, // SPEC 101
-				ConfigJSON:        src.ConfigJSON,      // ручной outbound JSON
+				ID:                 src.ID,    // SPEC 112-A: адресат ссылок на узлы
+				Label:              src.Label, // только для текстов диагностики
+				Connections:        []string{src.URI},
+				TagMask:            src.NodeTagOrLabel(), // тег узла, не подпись
+				ExcludeFromGlobal:  src.ExcludeFromGlobal,
+				Disabled:           !src.Enabled,
+				DetourTag:          src.DetourTag,
+				DetourNodeSourceID: src.DetourNodeSourceID, // SPEC 112-A
+				DetourNodeTag:      src.DetourNodeTag,      // SPEC 112
+				DetourNodeHash:     src.DetourNodeHash,     // legacy, мигрирует на сборке
+				DetourNodeLabel:    src.DetourNodeLabel,    // SPEC 101
+				ConfigJSON:         src.ConfigJSON,         // ручной outbound JSON
 			}
 			proxies = append(proxies, ps)
 
 		case SourceTypeChain:
-			// SPEC 110: у цепочки нет ни URL, ни URI — TagMask несёт имя,
-			// из которого получится тег её узла.
+			// SPEC 110: у цепочки нет ни URL, ни URI — TagMask несёт ТЕГ
+			// её узла (NodeTag), на который ссылаются фильтры Направлений
+			// и позиции других цепочек.
 			proxies = append(proxies, configtypes.ProxySource{
-				TagMask:           src.Label,
+				ID:                src.ID,    // SPEC 112-A: адресат ссылок на узлы
+				Label:             src.Label, // только для текстов диагностики
+				TagMask:           src.NodeTagOrLabel(),
 				ExcludeFromGlobal: src.ExcludeFromGlobal,
 				Disabled:          !src.Enabled,
 				Chain:             src.Chain,

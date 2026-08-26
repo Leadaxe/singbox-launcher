@@ -170,6 +170,31 @@ func dnsTabOwnedVar(name string) bool {
 	}
 }
 
+// dnsServerOwnedVar true для переменной, объявленной ЗАПИСЬЮ DNS-сервера
+// шаблона (SPEC 109: `dns_<tag>_<var>`, см. dnsServerVarsFor).
+//
+// Такая переменная попадает в подпись строки списка DNS-серверов: строка
+// показывает подставленные значения (`udp · 8.8.8.8 [direct-out]`), а не
+// имена плейсхолдеров — их считает dnsVarValues на КАЖДОЙ пересборке
+// списка. Пока список не пересобран, правка параметра видна только в окне
+// сервера, а строка под ним продолжает показывать прежний outbound/адрес.
+//
+// Отбор по тегам шаблона, а не по одному префиксу `dns_`: под `dns_`
+// живут и переменные вкладки DNS (dns_strategy, dns_final), у которых своя
+// ветка выше. Тег определяется как самый длинный подходящий — та же
+// причина, что в dnsServerVarsFor (google_doh / google_doh_vpn).
+func dnsServerOwnedVar(td *wizardtemplate.TemplateData, name string) bool {
+	if td == nil || !strings.HasPrefix(name, "dns_") {
+		return false
+	}
+	for tag := range wizardbusiness.ExtractTemplateDNSTags(td) {
+		if tag != "" && strings.HasPrefix(name, "dns_"+tag+"_") {
+			return true
+		}
+	}
+	return false
+}
+
 // syncDNSMirrorFieldFromSettingsVars переносит on_change-запись из
 // model.SettingsVars[name] в соответствующее зеркальное поле DNS-вкладки,
 // иначе refreshDNSSelectsFromModel (presenter_sync.go:190) увидит старое
@@ -221,6 +246,17 @@ func applyOnChangeAndRefresh(presenter *wizardpresentation.WizardPresenter, td *
 			needDNSRefresh = true
 		}
 	}
+	// Параметры шаблонного DNS-сервера правятся В ОКНЕ САМОГО СЕРВЕРА
+	// (dnsTemplateVarRows), а не на вкладке Settings, поэтому здесь важен
+	// changedName, а не только каскад `touched`: у «Outbound» и «UDP server
+	// IP» никакого on_change нет, touched пуст — и список DNS оставался с
+	// прежней подписью, пока пользователь не переоткрывал визард.
+	needDNSListRebuild := dnsServerOwnedVar(td, changedName)
+	for _, name := range touched {
+		if dnsServerOwnedVar(td, name) {
+			needDNSListRebuild = true
+		}
+	}
 	gs := presenter.GUIState()
 	if gs == nil {
 		return
@@ -247,7 +283,11 @@ func applyOnChangeAndRefresh(presenter *wizardpresentation.WizardPresenter, td *
 	if gs.RefreshTargetTabFromModel != nil {
 		gs.RefreshTargetTabFromModel()
 	}
-	if needDNSRefresh {
+	// Полная пересборка перерисовывает подписи строк, точечная — только
+	// селекты; изменившийся параметр сервера виден лишь в первой.
+	if needDNSListRebuild {
+		presenter.RefreshDNSListAndSelects()
+	} else if needDNSRefresh {
 		presenter.RefreshDNSDependentSelectsOnly()
 	}
 }
@@ -439,7 +479,7 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 	scroll := container.NewVScroll(box)
 	scroll.SetMinSize(adaptiveScrollSize(gs, 0.5, 400))
 
-	// Бэкап переехал на вкладку «Generate»: прибитый к низу через Border, он
+	// Бэкап переехал на вкладку «Файлы»: прибитый к низу через Border, он
 	// забирал свою высоту целиком, и прокрутке настроек доставался остаток —
 	// нижние строки обрезались тем сильнее, чем уже окно.
 	return scroll
@@ -475,6 +515,12 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		presenter.MarkAsChanged()
 		if presenter.GUIState().RefreshSettingsFromModel != nil {
 			presenter.GUIState().RefreshSettingsFromModel()
+		}
+		// Сброс параметра сервера к дефолту шаблона меняет подпись его
+		// строки ровно так же, как выбор значения, — а сюда каскад
+		// applyOnChangeAndRefresh не заходит: он на пути ИЗМЕНЕНИЯ.
+		if dnsServerOwnedVar(td, name) {
+			presenter.RefreshDNSListAndSelects()
 		}
 	}
 
@@ -586,6 +632,46 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		setVarFieldToolTip(toolTip, titleLab, sel)
 		applySettingsRowDisabled(rowEnabled, resetBtn, sel)
 		bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, sel)
+		return row
+
+	case "interface":
+		// Комбо-бокс, а не выпадающий список: имя интерфейса нужно уметь
+		// вписать руками. На remote-таргете (lxd) интерфейсы чужой машины
+		// отсюда не перечислить, и без ручного ввода настройка была бы там
+		// недоступна вовсе. Тот же ввод спасает, когда адаптер временно
+		// вынут, а настроить его нужно заранее.
+		titleLab := newSettingsTitleLabelFor(title, rowEnabled)
+		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
+		if v, ok := model.SettingsVars[name]; ok {
+			disp = v
+		}
+		disp = strings.TrimSpace(disp)
+
+		// В выпадающем списке — ЧИСТЫЕ имена: SelectEntry подставляет
+		// выбранный пункт в поле дословно, и подпись вида «en0 — Wi-Fi»
+		// уехала бы в конфиг целиком. Расшифровка живёт строкой ниже.
+		names, hints := interfacePickOptions(model, disp)
+		se := widget.NewSelectEntry(names)
+		se.SetText(disp)
+		se.PlaceHolder = locale.T("empty — follow system default route")
+
+		hint := newInterfaceHintLabel()
+		hint.SetText(interfaceHintFor(model, disp, hints))
+
+		se.OnChanged = func(s string) {
+			s = strings.TrimSpace(s)
+			model.SettingsVars[name] = s
+			hint.SetText(interfaceHintFor(model, s, hints))
+			presenter.MarkAsChanged()
+			applyOnChangeAndRefresh(presenter, td, model, name)
+			maybeRefreshSettingsAfterVarChange(gs, td, name)
+		}
+
+		field := container.NewVBox(se, hint)
+		row := container.NewBorder(nil, nil, titleLab, resetBtn, field)
+		setVarFieldToolTip(toolTip, titleLab, se)
+		applySettingsRowDisabled(rowEnabled, resetBtn, se)
+		bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, se)
 		return row
 
 	case "outbound", "dns_server":

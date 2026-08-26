@@ -8,39 +8,52 @@ import (
 	"singbox-launcher/core/config/configtypes"
 )
 
-// SPEC 094 D4 — выключение отдельной ноды по хешу идентичности.
+// SPEC 094 D4 + SPEC 112 — выключение отдельной ноды по её идентичности (тегу
+// в рамках источника).
 
-// Критерий 21: выключенная нода не попадает в конфиг и остаётся выключенной
-// после обновления подписки — отметка живёт по хешу, а не по тегу.
-func TestDisabledNodeSurvivesProviderRename(t *testing.T) {
-	withIdentityHash(t)
+// Критерий приёмки 3: правка содержимого узла не рвёт отметку выключения.
+// Провайдер вправе крутить сервер, порт и ключ под тем же именем.
+func TestDisabledNodeSurvivesContentChange(t *testing.T) {
+	const tag = "🇩🇪 Frankfurt"
+	before := "vless://b831381d-6324-4d53-ad4f-8cda48b30811@drop.com:443?security=tls&sni=drop.com#" + tag
+	after := "vless://11111111-2222-3333-4444-555555555555@other.com:8443?security=tls&sni=other.com&type=ws&path=%2Fws#" + tag
 
-	const uri = "vless://b831381d-6324-4d53-ad4f-8cda48b30811@drop.com:443?security=tls&sni=drop.com"
-
-	// Первый прогон: узнаём хеш ноды, которую пользователь хочет выключить.
-	first := loadFromInlineBody(t, uri+"#Old Name", configtypes.ProxySource{})
+	first := loadFromInlineBody(t, before, configtypes.ProxySource{})
 	if len(first.Nodes) != 1 {
-		t.Fatalf("got %d nodes, want 1", len(first.Nodes))
+		t.Fatalf("получено %d узлов, ожидался 1", len(first.Nodes))
 	}
-	hash := NodeIdentityHashFunc(first.Nodes[0])
-	if hash == "" {
-		t.Fatal("identity hash must not be empty")
+	id := first.Nodes[0].IdentityTag
+	if id != tag {
+		t.Fatalf("идентичность = %q, ожидалась %q", id, tag)
 	}
 
-	// Провайдер переименовал ноду — отметка обязана продолжать действовать.
-	second := loadFromInlineBody(t, uri+"#Brand New Name", configtypes.ProxySource{
-		DisabledNodes: map[string]int64{hash: time.Now().Unix()},
+	// Провайдер поменял всё, кроме имени — отметка обязана действовать.
+	second := loadFromInlineBody(t, after, configtypes.ProxySource{
+		DisabledNodes: map[string]int64{id: time.Now().Unix()},
 	})
-
 	if len(second.Nodes) != 0 {
-		t.Fatalf("disabled node leaked into the config: %+v", second.Nodes[0])
+		t.Fatalf("выключенный узел просочился в конфиг: %+v", second.Nodes[0])
+	}
+}
+
+// Смена tag_prefix источника отметку не роняет: идентичность снята до неё.
+func TestDisabledNodeSurvivesTagPrefixChange(t *testing.T) {
+	const uri = "vless://b831381d-6324-4d53-ad4f-8cda48b30811@drop.com:443?security=tls&sni=drop.com#🇩🇪 DE"
+
+	plain := loadFromInlineBody(t, uri, configtypes.ProxySource{})
+	id := plain.Nodes[0].IdentityTag
+
+	prefixed := loadFromInlineBody(t, uri, configtypes.ProxySource{
+		TagPrefix:     "AL:",
+		DisabledNodes: map[string]int64{id: time.Now().Unix()},
+	})
+	if len(prefixed.Nodes) != 0 {
+		t.Fatalf("правка tag_prefix отцепила отметку, узел вернулся: %q", prefixed.Nodes[0].Tag)
 	}
 }
 
 // Выключение одной ноды не задевает соседей.
 func TestDisabledNodeDoesNotAffectOthers(t *testing.T) {
-	withIdentityHash(t)
-
 	body := strings.Join([]string{
 		"vless://b831381d-6324-4d53-ad4f-8cda48b30811@keep.com:443?security=tls&sni=keep.com#Keep",
 		"vless://b831381d-6324-4d53-ad4f-8cda48b30811@drop.com:443?security=tls&sni=drop.com#Drop",
@@ -48,52 +61,57 @@ func TestDisabledNodeDoesNotAffectOthers(t *testing.T) {
 
 	all := loadFromInlineBody(t, body, configtypes.ProxySource{})
 	if len(all.Nodes) != 2 {
-		t.Fatalf("baseline: got %d nodes, want 2", len(all.Nodes))
-	}
-
-	var dropHash string
-	for _, n := range all.Nodes {
-		if n.Server == "drop.com" {
-			dropHash = NodeIdentityHashFunc(n)
-		}
-	}
-	if dropHash == "" {
-		t.Fatal("could not resolve the hash of the node to disable")
+		t.Fatalf("базовый прогон: получено %d узлов, ожидалось 2", len(all.Nodes))
 	}
 
 	res := loadFromInlineBody(t, body, configtypes.ProxySource{
-		DisabledNodes: map[string]int64{dropHash: time.Now().Unix()},
+		DisabledNodes: map[string]int64{"Drop": time.Now().Unix()},
 	})
 
 	if len(res.Nodes) != 1 {
-		t.Fatalf("got %d nodes, want 1", len(res.Nodes))
+		t.Fatalf("получено %d узлов, ожидался 1", len(res.Nodes))
 	}
 	if res.Nodes[0].Server != "keep.com" {
-		t.Fatalf("surviving node = %q, want keep.com", res.Nodes[0].Server)
+		t.Fatalf("выживший узел = %q, ожидался keep.com", res.Nodes[0].Server)
+	}
+}
+
+// Тёзки одного источника выключаются раздельно: у них разные идентичности.
+func TestDisabledNodeDistinguishesNamesakes(t *testing.T) {
+	const uri = "vless://b831381d-6324-4d53-ad4f-8cda48b30811@e.com:443?security=tls&sni=e.com"
+	body := uri + "#🇳🇱 NL\n" + uri + "#🇳🇱 NL"
+
+	res := loadFromInlineBody(t, body, configtypes.ProxySource{
+		DisabledNodes: map[string]int64{"🇳🇱 NL-2": time.Now().Unix()},
+	})
+
+	if len(res.Nodes) != 1 {
+		t.Fatalf("получено %d узлов, ожидался 1", len(res.Nodes))
+	}
+	if res.Nodes[0].IdentityTag != "🇳🇱 NL" {
+		t.Fatalf("выжил узел %q, ожидался первый тёзка", res.Nodes[0].IdentityTag)
 	}
 }
 
 // Отметка ноды, встреченной в подписке, продлевается — иначе GC снёс бы её,
 // пока нода всё ещё на месте.
 func TestDisabledNodeMarkIsRefreshedWhenSeen(t *testing.T) {
-	withIdentityHash(t)
-
 	const uri = "vless://b831381d-6324-4d53-ad4f-8cda48b30811@drop.com:443?security=tls&sni=drop.com#Drop"
-
-	first := loadFromInlineBody(t, uri, configtypes.ProxySource{})
-	hash := NodeIdentityHashFunc(first.Nodes[0])
 
 	stale := time.Now().Add(-20 * 24 * time.Hour).Unix()
 	res := loadFromInlineBody(t, uri, configtypes.ProxySource{
-		DisabledNodes: map[string]int64{hash: stale},
+		DisabledNodes: map[string]int64{"Drop": stale},
 	})
 
-	ts, ok := res.DisabledNodes[hash]
+	ts, ok := res.DisabledNodes["Drop"]
 	if !ok {
-		t.Fatal("mark for a node still present must be kept")
+		t.Fatal("отметка узла, который всё ещё на месте, обязана сохраниться")
 	}
 	if ts <= stale {
-		t.Fatalf("mark timestamp = %d, want it refreshed past %d", ts, stale)
+		t.Fatalf("время отметки = %d, ожидалось обновление после %d", ts, stale)
+	}
+	if res.DisabledMigrated {
+		t.Error("продление отметки не миграция — флаг поднимать нельзя")
 	}
 }
 
@@ -110,16 +128,16 @@ func TestGCDropsExpiredMarks(t *testing.T) {
 	kept := gcDisabledNodes(disabled, ttl, now)
 
 	if _, ok := kept["fresh"]; !ok {
-		t.Error("a recently confirmed mark must survive GC")
+		t.Error("недавно подтверждённая отметка обязана пережить GC")
 	}
 	if _, ok := kept["expired"]; ok {
-		t.Error("a mark older than the TTL must be dropped")
+		t.Error("отметка старше TTL обязана быть удалена")
 	}
 }
 
 func TestGCHandlesEmptyMap(t *testing.T) {
 	if got := gcDisabledNodes(nil, time.Hour, time.Now()); len(got) != 0 {
-		t.Fatalf("got %d marks, want 0", len(got))
+		t.Fatalf("получено %d отметок, ожидалось 0", len(got))
 	}
 }
 
@@ -129,40 +147,37 @@ func TestDisabledNodeTTLClamping(t *testing.T) {
 		interval int
 		want     time.Duration
 	}{
-		{name: "zero interval falls back to the floor", interval: 0, want: 24 * time.Hour},
-		{name: "short interval is clamped to the floor", interval: 1, want: 24 * time.Hour},
-		{name: "typical interval scales by three", interval: 24, want: 72 * time.Hour},
-		{name: "long interval is capped at 30 days", interval: 500, want: 30 * 24 * time.Hour},
+		{name: "нулевой интервал падает на пол", interval: 0, want: 24 * time.Hour},
+		{name: "короткий интервал клампится к полу", interval: 1, want: 24 * time.Hour},
+		{name: "типовой интервал множится на три", interval: 24, want: 72 * time.Hour},
+		{name: "длинный интервал упирается в 30 суток", interval: 500, want: 30 * 24 * time.Hour},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := disabledNodeTTL(tt.interval); got != tt.want {
-				t.Fatalf("disabledNodeTTL(%d) = %v, want %v", tt.interval, got, tt.want)
+				t.Fatalf("disabledNodeTTL(%d) = %v, ожидалось %v", tt.interval, got, tt.want)
 			}
 		})
 	}
 }
 
-// Без хука идентичности фильтрация не выполняется: парсер обязан работать
-// в изоляции, а не выкидывать ноды наугад.
-func TestDisabledFilterIsInertWithoutHook(t *testing.T) {
-	prev := NodeIdentityHashFunc
-	NodeIdentityHashFunc = nil
-	t.Cleanup(func() { NodeIdentityHashFunc = prev })
-
-	nodes := []*configtypes.ParsedNode{{Tag: "a", Scheme: "vless"}}
-	got, _ := filterDisabledNodes(nodes, map[string]int64{"some-hash": 1}, time.Now())
+// Пустая карта отметок — фильтр не трогает ничего.
+func TestDisabledFilterIsInertWithoutMarks(t *testing.T) {
+	nodes := []*configtypes.ParsedNode{{Tag: "a", Scheme: "vless", IdentityTag: "a"}}
+	got, _, migrated := filterDisabledNodes(nodes, nil, time.Now())
 
 	if len(got) != 1 {
-		t.Fatalf("got %d nodes, want 1 — filtering must be inert without the hook", len(got))
+		t.Fatalf("получено %d узлов, ожидался 1", len(got))
+	}
+	if migrated {
+		t.Error("без отметок мигрировать нечего")
 	}
 }
 
-// Узел-группа тоже можно выключить: она рядовая нода списка.
-func TestDisabledFilterAppliesToGroupNodes(t *testing.T) {
-	withIdentityHash(t)
-
+// SPEC 112: узел-группа идентичности не имеет и выключаться не может.
+// Отметка с тегом группы её не задевает.
+func TestDisabledFilterSkipsGroupNodes(t *testing.T) {
 	body := `{
 	  "outbounds":[
 	    {"type":"vless","tag":"a","server":"e.com","server_port":443,"uuid":"u1"},
@@ -170,21 +185,11 @@ func TestDisabledFilterAppliesToGroupNodes(t *testing.T) {
 	  ]
 	}`
 
-	all := loadFromInlineBody(t, body, configtypes.ProxySource{})
-	groups := groupNodesOf(all.Nodes)
-	if len(groups) != 1 {
-		t.Fatalf("baseline: got %d group nodes, want 1", len(groups))
-	}
-	groupHash := NodeIdentityHashFunc(groups[0])
-	if groupHash == "" {
-		t.Skip("test identity hook yields no hash for group nodes")
-	}
-
 	res := loadFromInlineBody(t, body, configtypes.ProxySource{
-		DisabledNodes: map[string]int64{groupHash: time.Now().Unix()},
+		DisabledNodes: map[string]int64{"auto": time.Now().Unix()},
 	})
 
-	if got := len(groupNodesOf(res.Nodes)); got != 0 {
-		t.Fatalf("disabled group node leaked into the config (%d left)", got)
+	if got := len(groupNodesOf(res.Nodes)); got != 1 {
+		t.Fatalf("узел-группа выключен отметкой, хотя идентичности не имеет (осталось %d)", got)
 	}
 }

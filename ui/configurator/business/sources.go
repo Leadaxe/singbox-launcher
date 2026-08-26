@@ -38,8 +38,21 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 	if input == "" {
 		return fmt.Errorf("input is empty")
 	}
-	subs, conns := classifyInputLines(input, timing)
-	if len(subs) == 0 && len(conns) == 0 {
+
+	// Вставленный sing-box JSON разбирается до построчного классификатора:
+	// документ многострочный, и цикл по строкам не нашёл бы в нём ни ссылки.
+	// isJSON отделяет «не JSON» от «битый JSON» — второе обязано дойти до
+	// пользователя ошибкой, а не общим «no valid URLs to add».
+	jsonNodes, isJSON, jsonErr := carveSingboxJSON(input)
+	if jsonErr != nil {
+		return jsonErr
+	}
+
+	var subs, conns []string
+	if !isJSON {
+		subs, conns = classifyInputLines(input, timing)
+	}
+	if len(subs) == 0 && len(conns) == 0 && len(jsonNodes) == 0 {
 		return fmt.Errorf("no valid URLs to add")
 	}
 
@@ -89,19 +102,43 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 		if _, ok := existingURIs[uri]; ok {
 			continue
 		}
-		label := extractURIFragment(uri)
-		if label == "" {
-			label = fmt.Sprintf("server-%d", startIndex+added)
+		// Фрагмент ссылки (#имя) — это тег outbound'а: именно под ним узел
+		// уедет в config.json и на него сошлются правила. Подпись остаётся
+		// пустой — показывать её списку нечего сверх тега, пока
+		// пользователь не задал своё имя.
+		tag := extractURIFragment(uri)
+		if tag == "" {
+			tag = fmt.Sprintf("server-%d", startIndex+added)
 		}
 		newSrc := corestate.Source{
 			ID:      corestate.MakeULID(),
 			Type:    corestate.SourceTypeServer,
 			Enabled: true,
-			Label:   label,
+			NodeTag: tag,
 			URI:     uri,
 		}
 		model.Sources = append(model.Sources, newSrc)
 		existingURIs[uri] = struct{}{}
+		added++
+	}
+
+	// JSON-узлы: каждый outbound — отдельный Source(server) с ConfigJSON и
+	// пустым URI. Дедупа по URI здесь нет — два одинаковых outbound'а это
+	// осознанная вставка, а сравнивать документы побайтово смысла мало.
+	for _, jn := range jsonNodes {
+		// Имя из JSON-узла — это тег outbound'а: под ним узел знают
+		// правила и фильтры Направлений, поэтому оно едет в NodeTag.
+		tag := jn.Label
+		if tag == "" {
+			tag = fmt.Sprintf("server-%d", startIndex+added)
+		}
+		model.Sources = append(model.Sources, corestate.Source{
+			ID:         corestate.MakeULID(),
+			Type:       corestate.SourceTypeServer,
+			Enabled:    true,
+			NodeTag:    tag,
+			ConfigJSON: jn.ConfigJSON,
+		})
 		added++
 	}
 
@@ -118,17 +155,19 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 	return nil
 }
 
-// NextChainLabel — свободное имя для новой цепочки (SPEC 110).
+// NextChainLabel — свободный ТЕГ для новой цепочки (SPEC 110).
 //
-// Имя цепочки становится тегом её узла, а тег обязан быть уникален: два
-// одинаковых в конфиге ядро принимает, но выбор между ними становится
-// неопределённым. Поэтому имя выдаётся автоматически, а не оставляется
-// пустым.
+// Тег обязан быть уникален: два одинаковых в конфиге ядро принимает, но
+// выбор между ними становится неопределённым. Поэтому он выдаётся
+// автоматически, а не оставляется пустым.
+//
+// Занятость считается по тегам (NodeTagOrLabel), а не по подписям: подписи
+// пользователь волен дублировать, и коллизия тегов от этого не зависит.
 func NextChainLabel(sources []corestate.Source) string {
 	used := make(map[string]bool, len(sources))
 	for _, src := range sources {
-		if src.Label != "" {
-			used[src.Label] = true
+		if tag := src.NodeTagOrLabel(); tag != "" {
+			used[tag] = true
 		}
 	}
 	for i := 1; ; i++ {

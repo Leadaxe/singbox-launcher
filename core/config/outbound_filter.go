@@ -113,6 +113,19 @@ func matchesFilter(node *ParsedNode, filter map[string]string) bool {
 }
 
 // getNodeValue returns the node field used in filters: tag, host, label, scheme, fragment (alias for label), comment.
+//
+// `label` (и его алиас `fragment`) — ИСХОДНОЕ имя узла из подписки, до
+// tag-политики источника: prefix/postfix/mask и уникализация дублей меняют
+// Tag, но не Label. Отбирать по нему имеет смысл ровно там, где маска
+// перештамповала теги во что-то своё, а различать узлы надо по имени
+// провайдера.
+//
+// Ключи оставлены, хотя ни один шаблон и ни один пресет ими не пользуется:
+// они документированы (docs/ParserConfig.ru.md) и доступны в ручном JSON
+// Направления, а неизвестный ключ фильтра не игнорируется — он не совпадает
+// НИ С ЧЕМ (getNodeValue вернёт ""), то есть удаление молча опустошило бы
+// такое Направление, а пустое уезжает в конфиг с запасным составом
+// [block, direct] и блокирует трафик своих правил.
 func getNodeValue(node *ParsedNode, key string) string {
 	switch key {
 	case "tag":

@@ -30,7 +30,6 @@ var updateDirectionCorpus = flag.Bool("update-direction", false,
 // corpusDirection — каноническая форма Направления (contract/schema/direction.schema.json).
 type corpusDirection struct {
 	Tag                       string           `json:"tag"`
-	Label                     string           `json:"label,omitempty"`
 	Enabled                   *bool            `json:"enabled,omitempty"`
 	Filter                    string           `json:"filter,omitempty"`
 	Invert                    bool             `json:"invert,omitempty"`
@@ -125,7 +124,6 @@ func (c corpusDirection) toDirection() configtypes.Direction {
 	d := configtypes.Direction{
 		Tag:      c.Tag,
 		Type:     "selector",
-		Label:    c.Label,
 		Disabled: c.Enabled != nil && !*c.Enabled,
 		Filters:  configtypes.SetDirectionFilterTag(nil, c.Filter, c.Invert),
 	}

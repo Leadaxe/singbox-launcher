@@ -1,0 +1,43 @@
+{
+  "rules": [
+    {
+      "name": "Chained",
+      "enabled": true
+    }
+  ],
+  "warnings": [],
+  "directions": [
+    {
+      "tag": "vpn-de",
+      "label": "Германия",
+      "filter": "🇩🇪",
+      "invert": false,
+      "include_direct": false,
+      "include_block": false,
+      "has_auto": false
+    }
+  ],
+  "chains": [
+    {
+      "tag": "relay",
+      "label": "Мой маршрут",
+      "chain": {
+        "hops": [
+          "vpn-de",
+          "exit-node"
+        ],
+        "idle_timeout": "0s",
+        "strip_evasion": false,
+        "strip": {
+          "tls.utls": false,
+          "xhttp.padding": true
+        },
+        "rewrite": {
+          "vless": {
+            "flow": null
+          }
+        }
+      }
+    }
+  ]
+}

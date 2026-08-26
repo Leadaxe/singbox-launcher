@@ -54,6 +54,7 @@ func chainInfosFromPB(chains []*daemonpb.ChainState) []ChainInfo {
 				Now:         p.GetNow(),
 				IsGroup:     p.GetIsGroup(),
 				Transparent: p.GetTransparent(),
+				Disabled:    p.GetDisabled(),
 			}
 			if cl := p.GetClone(); cl != nil {
 				info.CloneState = cl.GetState()

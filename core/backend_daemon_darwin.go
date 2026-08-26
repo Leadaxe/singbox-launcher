@@ -609,6 +609,36 @@ func (b *DaemonBackend) ProbeLayer(chainTag string, pos int) (int64, string, err
 	return int64(resp.GetDelay()), resp.GetError(), nil
 }
 
+// SetPositionEnabled implements chainSource через lx-RPC
+// SetChainPositionEnabled (SPEC 075 ядра).
+//
+// warmupError возвращается ПЕРВЫМ результатом рядом с nil-ошибкой: ядро
+// применяет флаг всегда, а неудачный прогрев звена сообщает данными.
+// Свалить это в error значило бы сказать «не переключилось», хотя
+// переключилось — и следующий GetChains показал бы обратное.
+func (b *DaemonBackend) SetPositionEnabled(chainTag string, pos int, enabled bool) (string, error) {
+	client, err := b.grpcClient()
+	if err != nil {
+		return "", err
+	}
+	// Бюджет как у пробы, а не общий daemonRPCTimeout: включение позиции
+	// поднимает звено (WG-хендшейк, TLS), и это укладывается в секунды.
+	ctx, cancel := context.WithTimeout(b.ctx, chainProbeCallTimeout())
+	defer cancel()
+	resp, err := client.SetChainPositionEnabled(ctx, &daemonpb.SetChainPositionEnabledRequest{
+		ChainTag: chainTag,
+		Position: int32(pos),
+		Enabled:  enabled,
+	})
+	if err != nil {
+		if isUnimplemented(err) {
+			return "", ErrChainToggleUnsupported
+		}
+		return "", fmt.Errorf("daemon SetChainPositionEnabled: %w", err)
+	}
+	return resp.GetWarmupError(), nil
+}
+
 // --- gRPC-транспорт proxy-операций (Servers tab, tray, auto-load) --------
 
 // daemonProxyTransport реализует services.ProxyTransport поверх gRPC:

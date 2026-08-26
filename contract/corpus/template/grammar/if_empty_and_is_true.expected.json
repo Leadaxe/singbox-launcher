@@ -1,1 +1,1 @@
-{"config": {"a": {"hit": true}, "b": {"hit": false}}, "warnings": []}
+{"load": "reject", "config": {"a": {"hit": true}, "b": {"hit": false}}, "warnings": []}

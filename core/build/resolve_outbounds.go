@@ -210,13 +210,6 @@ func applyOutboundUpdatePatch(target configtypes.Direction, patch map[string]int
 			out.Auto = patchOC.Auto
 		}
 	}
-	if _, ok := patch["label"]; ok && userPatch {
-		// Пользователь вправе снять имя, данное шаблоном; пресету такого
-		// права не даём (см. applyOutboundUpdate: пустое имя от пресета —
-		// «не переименовываю»).
-		out.Label = patchOC.Label
-	}
-
 	if userPatch {
 		if _, ok := patch["addOutbounds"]; ok {
 			out.AddOutbounds = append([]string(nil), patchOC.AddOutbounds...)

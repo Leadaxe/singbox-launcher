@@ -791,14 +791,10 @@ func GenerateSelectorWithFilteredAddOutbounds(
 	// Строчная подпись над группой в config.json — для того, кто читает
 	// конфиг глазами.
 	//
-	// SPEC 104: имя Направления важнее комментария. Пользователь вводит
-	// одно поле «Имя», и подпись в конфиге обязана совпадать с тем, что он
-	// видит в списке; комментарий шаблона остаётся запасным вариантом для
-	// записей, которым имя не задавали.
-	note := outboundConfig.Label
-	if note == "" {
-		note = outboundConfig.Comment
-	}
+	// Только Comment: отдельного имени у Направления нет (контракт 0.9.0),
+	// а его тег стоит строкой ниже в самом JSON — дублировать его
+	// комментарием значит писать одно и то же дважды подряд.
+	note := outboundConfig.Comment
 	result := ""
 	if note != "" {
 		result = fmt.Sprintf("\t// %s\n", sanitizeOutboundLineComment(note))
@@ -1063,10 +1059,17 @@ func GenerateOutboundsFromParserConfig(
 	}
 	allNodes, brokenChains := ResolveChainSources(parserConfig, allNodes, nodesBySource, directionTagsForChains)
 
-	// SPEC 101: resolve hash-addressed source detours (chain through one concrete
-	// node) now that every source is loaded and all tags are final. Must run
-	// before sanitizeNodeDetours so the stamped tags join cycle/self validation.
-	allNodes = resolveNodeHashDetours(parserConfig, nodesBySource, allNodes)
+	// ПРОХОД 2 (SPEC 112-A, инвариант двухпроходности): выше закончился проход
+	// 1 — каждый узел каждого источника получил ФИНАЛЬНЫЙ тег. Только теперь
+	// материализуются ссылки на узлы: строится единая карта резолва
+	// «источник + identity-тег → узел», и ссылки-объекты
+	// (detour_node_source_id + detour_node_tag) превращаются в теги. Легаси
+	// detour_node_hash мигрирует на этом же проходе.
+	//
+	// Резолв обязан идти ДО sanitizeNodeDetours, чтобы проставленные теги
+	// попали в проверку циклов и самоссылок, и до граф-санитайзера ниже по
+	// потоку — финального рубежа по всем рёбрам outbound-графа.
+	allNodes = resolveNodeDetours(parserConfig, nodesBySource, allNodes)
 	if len(allNodes) == 0 {
 		return nil, fmt.Errorf("no usable nodes: every source was dropped (detour node not found)")
 	}
@@ -1346,76 +1349,77 @@ func normalizeChainHop(hop, owner *ParsedNode) *ParsedNode {
 	return out
 }
 
-// resolveNodeHashDetours implements SPEC 101 — a source chained through one
-// concrete node addressed by identity hash (ProxySource.DetourNodeHash), the
-// node-level sibling of the tag-addressed group detour (SPEC 077).
+// resolveNodeDetours implements SPEC 101 → SPEC 112 → SPEC 112-A — a source
+// chained through ONE concrete node, the node-level sibling of the
+// tag-addressed group detour (SPEC 077).
 //
-// Runs after all sources are loaded: only here the target's final tag is known
-// (prefix/mask/uniquify applied) and the full node set is available for lookup.
-// Group nodes are not lookup candidates — chaining through a selector is what
-// DetourTag does; the hash path is strictly node-to-node.
+// Ссылка на узел — объект «source_id + identity-тег» (см. node_ref.go); тут
+// она материализуется в финальный тег. Это ПРОХОД 2 сборки: карта резолва
+// строится одним местом (buildNodeRefIndex), и только после неё резолвится
+// хоть что-нибудь. Резолв из прохода 1 запрещён по построению — там финальных
+// тегов у части узлов ещё нет.
 //
-// Fail-closed: when the hash resolves to nothing (node gone from the
-// subscription, credentials changed → new hash, or the node was disabled),
-// the dependent source's nodes are DROPPED from the config with a warning.
-// The tag-detour path fails open (drop the detour, dial direct), which is
-// right for a group that lost a member — but a missing chain hop must not
-// silently turn into direct dialing: the user picked the hop to hide this
-// source's traffic behind it.
+// Группы кандидатами не являются: дозвон через selector — задача DetourTag.
 //
-// When both DetourNodeHash and DetourTag are set (UI forbids it, hand-edited
-// state can), the hash wins: LoadNodesFromSource skips tag stamping for such
-// sources and the stamp happens here.
-func resolveNodeHashDetours(parserConfig *ParserConfig, nodesBySource map[int][]*ParsedNode, allNodes []*ParsedNode) []*ParsedNode {
-	var hashSources []int
+// Fail-closed: ссылка не разрешилась (источник-цель удалён, узел исчез из
+// подписки, провайдер его переименовал) — узлы зависимого источника ВЫПАДАЮТ
+// из конфига с предупреждением. Групповой detour падает fail-open (снять
+// detour, звонить напрямую) — и для потерявшей участника группы это правильно,
+// но пропавший хоп цепочки не имеет права молча превратиться в прямой звонок:
+// хоп выбирали, чтобы спрятать за ним трафик источника.
+//
+// Когда заданы и DetourNodeTag, и DetourTag (UI это запрещает, ручная правка
+// состояния — нет), побеждает ссылка на узел: LoadNodesFromSource у такого
+// источника групповой тег не штампует, штамп происходит здесь.
+//
+// Миграция SPEC 112: источник, у которого остался упразднённый
+// `detour_node_hash`, переезжает на ссылку-объект тут же — см.
+// migrateLegacyDetourNodeHash.
+func resolveNodeDetours(parserConfig *ParserConfig, nodesBySource map[int][]*ParsedNode, allNodes []*ParsedNode) []*ParsedNode {
+	var refSources []int
 	for i, ps := range parserConfig.ParserConfig.Proxies {
-		if strings.TrimSpace(ps.DetourNodeHash) != "" && len(nodesBySource[i]) > 0 {
-			hashSources = append(hashSources, i)
+		if len(nodesBySource[i]) == 0 {
+			continue
+		}
+		if strings.TrimSpace(ps.DetourNodeTag) != "" ||
+			strings.TrimSpace(ps.DetourNodeSourceID) != "" ||
+			strings.TrimSpace(ps.DetourNodeHash) != "" {
+			refSources = append(refSources, i)
 		}
 	}
-	if len(hashSources) == 0 {
+	if len(refSources) == 0 {
 		return allNodes
 	}
 
-	byHash := make(map[string]*ParsedNode)
-	for _, n := range allNodes {
-		if n == nil || n.Scheme == SchemeGroup || n.Tag == "" {
-			continue
-		}
-		if h := NodeIdentityHash(n); h != "" {
-			if _, dup := byHash[h]; !dup {
-				byHash[h] = n
-			}
-		}
-	}
+	// Карта резолва — ОДНА на сборку и строится здесь, на проходе 2. Любой
+	// будущий вид ссылки на узел обязан ходить через неё, а не заводить свой
+	// поиск (см. развёрнутое обоснование в node_ref.go).
+	idx := buildNodeRefIndex(parserConfig, nodesBySource, allNodes)
 
 	dropSource := make(map[int]bool)
-	for _, i := range hashSources {
+	for _, i := range refSources {
 		ps := parserConfig.ParserConfig.Proxies[i]
-		hash := strings.TrimSpace(ps.DetourNodeHash)
-		target := byHash[hash]
-		if target == nil {
-			label := ps.DetourNodeLabel
-			if label == "" {
-				// Без builtin min: win7-сборка идёт тулчейном go1.20 (go.win7.mod).
-				short := hash
-				if len(short) > 12 {
-					short = short[:12]
-				}
-				label = short + "…"
-			}
-			debuglog.WarnLog("Parser: detour node %q for source %d not found — dropping its %d node(s) (fail-closed, traffic must not go direct)",
-				label, i+1, len(nodesBySource[i]))
+		if strings.TrimSpace(ps.DetourNodeHash) != "" &&
+			strings.TrimSpace(ps.DetourNodeTag) == "" && strings.TrimSpace(ps.DetourNodeSourceID) == "" {
+			// Состояние до SPEC 112 — ссылка живёт хешем; переводим на объект.
+			migrateLegacyDetourNodeHash(&parserConfig.ParserConfig.Proxies[i], idx, allNodes, i)
+			ps = parserConfig.ParserConfig.Proxies[i]
+		}
+
+		res := idx.resolve(ps.DetourNodeSourceID, ps.DetourNodeTag)
+		if res.node == nil {
+			debuglog.WarnLog("%s", detourFailureMessage(parserConfig, idx, ps, i))
 			dropSource[i] = true
 			continue
 		}
+		target := res.node
 		for _, n := range nodesBySource[i] {
 			if n == nil || n == target {
 				continue // the hop itself dials direct
 			}
 			// Same eligibility as subscription.ApplySourceDetour (SPEC 077).
 			if n.Jump != nil {
-				debuglog.DebugLog("resolveNodeHashDetours: node %q has an Xray Jump — detour %q not applied", n.Tag, target.Tag)
+				debuglog.DebugLog("resolveNodeDetours: node %q has an Xray Jump — detour %q not applied", n.Tag, target.Tag)
 				continue
 			}
 			if _, hasLP := n.Outbound["listen_port"]; hasLP && n.Scheme == "wireguard" {
@@ -1443,6 +1447,113 @@ func resolveNodeHashDetours(parserConfig *ParserConfig, nodesBySource map[int][]
 		delete(nodesBySource, i)
 	}
 	return kept
+}
+
+// detourFailureMessage — текст предупреждения о непойманной ссылке.
+//
+// SPEC 112-A («Понятные ошибки»): сообщение обязано называть ОБЕ стороны — где
+// искали и что, — человеческими именами. Источники зовутся подписью, за ней
+// тегом узла или URL; ULID выносится в текст только когда другого имени нет
+// (источник удалён — от него остался лишь id в ссылке).
+func detourFailureMessage(parserConfig *ParserConfig, idx *nodeRefIndex, ps ProxySource, index int) string {
+	dependent := sourceDisplayName(ps, index)
+	nodeName := strings.TrimSpace(ps.DetourNodeTag)
+	if nodeName == "" {
+		nodeName = strings.TrimSpace(ps.DetourNodeLabel)
+	}
+
+	if target := idx.detourTargetName(parserConfig, ps.DetourNodeSourceID); target != "" {
+		if _, known := idx.sourceIndexByID[strings.TrimSpace(ps.DetourNodeSourceID)]; !known {
+			return fmt.Sprintf("Detour: источник ссылки (%s) не найден — источник %q исключён из конфига (fail-closed)",
+				target, dependent)
+		}
+		if nodeName == "" {
+			return fmt.Sprintf("Detour: в источнике %q не указан узел — источник %q исключён из конфига (fail-closed)",
+				target, dependent)
+		}
+		return fmt.Sprintf("Detour: в источнике %q не нашлось узла %q — источник %q исключён из конфига (fail-closed)",
+			target, nodeName, dependent)
+	}
+
+	if nodeName == "" {
+		return fmt.Sprintf("Detour: ссылка на узел пуста — источник %q исключён из конфига (fail-closed)", dependent)
+	}
+	return fmt.Sprintf("Detour: узла %q нет среди узлов конфига — источник %q исключён из конфига (fail-closed)",
+		nodeName, dependent)
+}
+
+// migrateLegacyDetourNodeHash переводит ссылку detour-на-узел с упразднённого
+// контент-хеша на ссылку-объект «source_id + identity-тег» (SPEC 112 → 112-A).
+//
+// Порядок проб:
+//  1. Прогнать LegacyNodeIdentityHash по всем узлам конфига; хеш совпал —
+//     ссылка едет на ПОЛНЫЙ ref найденного узла: ULID его источника плюс его
+//     identity-тег.
+//  2. Не совпал — взять DetourNodeLabel как тег, но уже БЕЗ source_id: узел
+//     под ним не опознан, и приписывать ссылке чужой источник нельзя. Пикер
+//     писал в label финальный тег узла на момент выбора, поэтому для узла,
+//     живого под тем же именем, глобальный поиск по тегу даст верную цель.
+//     Именно этот путь лечит стейт, где хеш протух из-за смены формы хранения
+//     узла (uri ↔ config_json дают разные хеши одного узла): узел на месте, а
+//     ссылка мертва, и источник fail-closed выпадал из конфига целиком.
+//
+// detour_node_hash гасится в любом исходе: повторно мигрировать нечего, и поле
+// больше не пишется. Ничего не найдено — ссылка остаётся пустой, и вызывающий
+// отработает fail-closed ровно так же, как для потерянной.
+func migrateLegacyDetourNodeHash(ps *ProxySource, idx *nodeRefIndex, allNodes []*ParsedNode, index int) {
+	hash := strings.TrimSpace(ps.DetourNodeHash)
+	ps.DetourNodeHash = ""
+	if hash == "" {
+		return
+	}
+
+	for _, n := range allNodes {
+		if n == nil || n.Scheme == SchemeGroup || n.Tag == "" {
+			continue
+		}
+		if LegacyNodeIdentityHash(n) != hash {
+			continue
+		}
+		if srcID := sourceIDOfNode(idx, n); srcID != "" {
+			ps.DetourNodeSourceID = srcID
+			ps.DetourNodeTag = nodeIdentityTag(n)
+		} else {
+			// У источника узла нет ULID (конфиг собран не из состояния):
+			// пишем tag-only ref, и он обязан нести ФИНАЛЬНЫЙ тег — именно по
+			// нему идёт глобальный поиск.
+			ps.DetourNodeSourceID = ""
+			ps.DetourNodeTag = n.Tag
+		}
+		debuglog.DebugLog("SPEC 112-A: ссылка источника %q переехала с упразднённого хеша на узел %q",
+			sourceDisplayName(*ps, index), n.Tag)
+		return
+	}
+
+	if label := strings.TrimSpace(ps.DetourNodeLabel); label != "" {
+		ps.DetourNodeSourceID = ""
+		ps.DetourNodeTag = label
+		debuglog.DebugLog("SPEC 112-A: хеш-ссылка источника %q не опознана — цель взята из подписи %q (поиск по финальному тегу)",
+			sourceDisplayName(*ps, index), label)
+		return
+	}
+
+	debuglog.WarnLog("Detour: устаревшая ссылка источника %q не опознана и подписи нет — ссылка потеряна, источник будет исключён из конфига (fail-closed)",
+		sourceDisplayName(*ps, index))
+}
+
+// sourceIDOfNode — ULID источника, которому принадлежит узел. Пусто, если у
+// источника ULID нет (конфиг собран не из состояния) — тогда мигрированная
+// ссылка останется tag-only и разрешится глобальным поиском.
+func sourceIDOfNode(idx *nodeRefIndex, n *ParsedNode) string {
+	if idx == nil || n == nil {
+		return ""
+	}
+	for id, i := range idx.sourceIndexByID {
+		if i == n.SourceIndex {
+			return id
+		}
+	}
+	return ""
 }
 
 func sanitizeNodeDetours(nodes []*ParsedNode) {

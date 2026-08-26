@@ -6,7 +6,6 @@
    {
     "required": true,
     "tag": "proxy-out",
-    "label": "Main VPN",
     "type": "selector",
     "options": {
      "interrupt_exist_connections": true
@@ -24,7 +23,6 @@
    },
    {
     "tag": "vpn ①",
-    "label": "VPN ①",
     "type": "selector",
     "options": {
      "default": "proxy-out",
@@ -38,7 +36,6 @@
    },
    {
     "tag": "vpn ②",
-    "label": "VPN ②",
     "type": "selector",
     "options": {
      "default": "proxy-out",
@@ -369,6 +366,14 @@
    "default_value": "true"
   },
   {
+   "name": "bind_interface",
+   "type": "interface",
+   "wizard_ui": "edit",
+   "title": "Outbound network interface",
+   "tooltip": "sing-box route.default_interface: force all outbound traffic through this interface. Leave empty to follow the system default route. Set it when the machine has several uplinks (Wi-Fi plus a LAN cable) and only one of them actually reaches the internet.",
+   "default_value": ""
+  },
+  {
    "name": "cert_store",
    "type": "enum",
    "wizard_ui": "edit",
@@ -633,6 +638,16 @@
     },
     "#else": {
      "find_process": false
+    }
+   },
+   "#if_bind_interface": {
+    "#and": [
+     {
+      "@bind_interface": "#notEmpty"
+     }
+    ],
+    "#value": {
+     "default_interface": "@bind_interface"
     }
    }
   },

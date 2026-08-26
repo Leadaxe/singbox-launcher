@@ -61,7 +61,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	const directLinksDocURL = "https://github.com/Leadaxe/singbox-launcher/blob/6beb136b9082823699c6509d32e62f212fd7ff90/docs/ParserConfig.md#%D1%84%D0%BE%D1%80%D0%BC%D0%B0%D1%82%D1%8B-uri-%D0%B4%D0%BB%D1%8F-%D0%BF%D1%80%D1%8F%D0%BC%D1%8B%D1%85-%D1%81%D1%81%D1%8B%D0%BB%D0%BE%D0%BA"
 
 	// Section 1: Subscription URL or Direct Links
-	urlLabel := widget.NewLabel(locale.T("Subscription URL or Direct Links:"))
+	urlLabel := widget.NewLabel(locale.T("Subscription URL, Direct Links or sing-box JSON:"))
 	urlLabel.Importance = widget.MediumImportance
 
 	guiState.SourceURLEntry = widget.NewMultiLineEntry()
@@ -184,6 +184,39 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		wizarddialogs.ShowAddWarpDialog(presenter, applyAddedSources)
 	}
 
+	// «Add server» — ручная форма: SOCKS5/HTTP по полям либо Source (любой
+	// текст, который понимает Add). У этих схем полей мало, а у HTTP-прокси
+	// ещё и нестандартный префикс (proxy-http://), который человеку негде
+	// подсмотреть. Форма собирает вход и отдаёт в тот же путь Add; вручную
+	// отредактированный JSON идёт своей веткой, чтобы сохраниться побайтово.
+	addServerAction := func() {
+		wizarddialogs.ShowAddServerDialog(presenter, func(res wizarddialogs.AddServerResult) {
+			presenter.MergeGUIToModel()
+			before := len(presenter.Model().Sources)
+
+			if len(res.ConfigJSON) > 0 {
+				if err := wizardbusiness.AppendManualConfigJSON(presenter, res.ConfigJSON, res.Label); err != nil {
+					dialog.ShowError(err, guiState.Window)
+					return
+				}
+			} else {
+				if err := wizardbusiness.AppendURLsToSources(presenter, strings.TrimSpace(res.Text)); err != nil {
+					dialog.ShowError(err, guiState.Window)
+					return
+				}
+				wizardbusiness.RelabelLastSources(presenter, before, res.Label)
+			}
+
+			m := presenter.Model()
+			m.PreviewNeedsParse = true
+			presenter.UpdateParserConfig(m.ParserConfigJSON)
+			if guiState.RefreshSourcesList != nil {
+				guiState.RefreshSourcesList()
+			}
+			presenter.MarkAsChanged()
+		})
+	}
+
 	// SPEC 110: цепочка хопов — источник, а не Направление: она описывает
 	// МАРШРУТ, а точка выбора между маршрутами это Направление. Создаётся
 	// пустой и настраивается в своём окне: позиции ссылаются на узлы и
@@ -195,7 +228,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 			ID:      corestate.MakeULID(),
 			Type:    corestate.SourceTypeChain,
 			Enabled: true,
-			Label:   wizardbusiness.NextChainLabel(m.Sources),
+			// Выданное имя — ТЕГ узла: на него сошлются фильтры и позиции.
+			// Подпись остаётся пустой, и список показывает тег, пока
+			// пользователь не задаст своё отображаемое имя.
+			NodeTag: wizardbusiness.NextChainLabel(m.Sources),
 			Chain:   &configtypes.SourceChain{},
 		})
 		m.RefreshDerivedParserConfig()
@@ -237,6 +273,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 	var overflowBtn *widget.Button
 	overflowBtn = widget.NewButtonWithIcon("", theme.MoreVerticalIcon(), func() {
 		menu := fyne.NewMenu("",
+			fyne.NewMenuItem(locale.T("Add server"), addServerAction),
 			fyne.NewMenuItem(locale.T("Add hop chain"), addChainAction),
 			fyne.NewMenuItem(locale.T("Add WARP"), addWarpAction),
 			fyne.NewMenuItem(locale.T("Add from file"), addFromFileAction),
@@ -337,7 +374,14 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 						label = src.URL
 					}
 				} else {
+					// Подпись, а при её отсутствии — тег узла: у server и
+					// chain тег и есть то имя, под которым источник знают
+					// правила, и показывать вместо него «Source N» значит
+					// прятать единственный опознавательный признак.
 					label = src.Label
+					if label == "" {
+						label = src.NodeTag
+					}
 					if label == "" {
 						label = src.URI
 					}
@@ -809,12 +853,14 @@ func nodeDisplayLine(node *config.ParsedNode) string {
 	if node == nil {
 		return ""
 	}
+	// Ветки Label здесь нет намеренно: у разобранного узла Tag не бывает
+	// пустым — парсер подставляет `scheme-server-port` (generateDefaultTag),
+	// когда имени в подписке не оказалось. Фолбэк на Label был недостижим и
+	// создавал впечатление, будто это два взаимозаменяемых имени.
 	var s string
 	switch {
 	case node.Tag != "":
 		s = node.Tag
-	case node.Label != "":
-		s = node.Label
 	case node.Server != "":
 		return fmt.Sprintf("%s:%d", node.Server, node.Port)
 	default:

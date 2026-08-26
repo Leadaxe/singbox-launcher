@@ -556,14 +556,21 @@ func validateVarPredicateRHS(varName string, rhs interface{}, varByName map[stri
 	}
 	switch r := rhs.(type) {
 	case string:
-		// "#notEmpty" / "#isEmpty" — no-arg predicate (any of text/text_list/bool).
+		// "#notEmpty" / "#isEmpty" — no-arg predicate.
+		//
+		// Применим к любому типу с одним скаляром: рантайм (checkNotEmpty)
+		// для списка смотрит длину, для bool — значение "true", а для всего
+		// остального — непустоту строки, и ни один скалярный тип для него не
+		// особенный. Прежний allowlist из text/text_list/bool был строже
+		// рантайма и отвергал шаблон с `#notEmpty` над типами-пикерами
+		// (outbound / dns_server / interface / enum), хотя вычислился бы он
+		// там корректно. Отвергается только secret: условие на секрете
+		// утекало бы фактом его наличия в неветвящуюся часть конфига.
 		if r == "#notEmpty" || r == "#isEmpty" {
-			switch varType {
-			case "text", "text_list", "bool":
-				return nil
-			default:
+			if varType == "secret" {
 				return fmt.Errorf("%s: %s not applicable to var type %q", ctx, r, varType)
 			}
+			return nil
 		}
 		if strings.HasPrefix(r, "#") {
 			return fmt.Errorf("%s: unknown no-arg predicate %q", ctx, r)
@@ -587,7 +594,7 @@ func validateVarPredicateRHS(varName string, rhs interface{}, varByName map[stri
 		for k, arg := range r {
 			switch k {
 			case "#in", "#notIn":
-				return validateInArg(varType, isRuntimeGlobal, arg, varByName, ctx+"."+k)
+				return validateInArg(arg, varByName, ctx+"."+k)
 			case "#matches":
 				return validateMatchesArg(varType, isRuntimeGlobal, arg, ctx+"."+k)
 			default:
@@ -599,10 +606,16 @@ func validateVarPredicateRHS(varName string, rhs interface{}, varByName map[stri
 }
 
 // validateInArg — args для #in/#notIn: либо []string, либо "@text_list_var" string.
-func validateInArg(varType string, isRuntimeGlobal bool, arg interface{}, varByName map[string]TemplateVar, ctx string) error {
-	if !isRuntimeGlobal && varType != "text" && varType != "text_list" {
-		return fmt.Errorf("%s: #in/#notIn not applicable to var type %q", ctx, varType)
-	}
+//
+// Тип левой части НЕ ограничивается: TEMPLATE_LANG §4.2 P4 определяет
+// предикат как принадлежность `TrimSpace(scalar)` множеству, а скаляр есть у
+// любого типа. Прежняя проверка допускала только text/text_list и отвергала
+// на загрузке шаблон с `{"@mode": {"#in": [...]}}` по enum — при том, что
+// собственный рантайм такой шаблон исполняет верно (фикстуры
+// predicates/p4_in_literal_list, p4_notin_literal_list зелёные), а Dart его
+// принимает. То есть валидатор был строже и спеки, и своего движка, и второй
+// стороны: один и тот же файл грузился на телефоне и отвергался на десктопе.
+func validateInArg(arg interface{}, varByName map[string]TemplateVar, ctx string) error {
 	switch a := arg.(type) {
 	case string:
 		// Must be "@text_list_var".

@@ -5,6 +5,7 @@ package backup
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"singbox-launcher/core/state"
@@ -61,19 +62,17 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 		b.Directions = append(b.Directions, exportDirection(d))
 	}
 
-	// SPEC 110: цепочки — источники, и roundtrip обязан их сохранять.
-	// В схеме LX Backup секции для них пока нет, поэтому едут в
-	// extensions.launcher (штатный канал для полей без места в схеме,
-	// BACKUP.md §1): другая сторона провозит блоб нетронутым.
-	var chains []state.Source
-	for _, src := range s.Connections.Sources {
+	// SPEC 110 (схема v1.2): цепочки — корневая секция chains[], у обеих
+	// сторон общая. Порядок записей нормативен (вложенная цепочка объявлена
+	// раньше использующей) — сохраняется порядок списка источников.
+	for i, src := range s.Connections.Sources {
 		switch src.Type {
 		case state.SourceTypeSubscription:
 			b.Subscriptions = append(b.Subscriptions, exportSubscription(src))
 		case state.SourceTypeServer:
 			b.Servers = append(b.Servers, exportServer(src))
 		case state.SourceTypeChain:
-			chains = append(chains, src)
+			b.Chains = append(b.Chains, exportChain(src, i))
 		}
 	}
 
@@ -108,18 +107,48 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 	// новой машине «Add WARP» плодил лишние device-записи в Cloudflare.
 	b.Warp = exportWarp(s)
 
-	if len(chains) > 0 {
-		if b.Extensions == nil {
-			b.Extensions = Extensions{}
-		}
-		raw, err := json.Marshal(map[string]any{"chains": chains})
-		if err != nil {
-			return nil, fmt.Errorf("chains: %w", err)
-		}
-		b.Extensions[AppLauncher] = raw
-	}
-
 	return b, nil
+}
+
+// exportChain — запись секции chains[] (SPEC 110, схема v1.2).
+//
+// Tag — эффективный тег outbound'а цепочки (NodeTagOrLabel), на который
+// ссылаются правила и позиции других цепочек; Label — отображаемое имя,
+// теперь у лаунчера своё (прежде эти роли делило одно поле). index —
+// позиция источника в общем списке: у безымянной цепочки тег на сборке
+// получается позиционным (chainSourceTag), и в файл обязан уехать тот же
+// эффективный тег — схема требует tag, а импорт зафиксирует его именем
+// (нормализация той же категории, что перенумерация правил).
+func exportChain(src state.Source, index int) Chain {
+	out := Chain{
+		Tag:   src.NodeTagOrLabel(),
+		Label: src.Label,
+		Chain: src.Chain,
+	}
+	// Подпись, совпадающая с тегом, — это не подпись, а прежнее состояние
+	// без разделения ролей: писать её отдельным полем значит плодить шум,
+	// который на импорте не несёт информации.
+	if out.Label == out.Tag {
+		out.Label = ""
+	}
+	if out.Tag == "" {
+		out.Tag = "chain-" + strconv.Itoa(index+1)
+	}
+	if !src.Enabled {
+		out.Enabled = boolPtr(false)
+	}
+	if ext := launcherSourceExtensions(src); ext != nil {
+		out.Extensions = Extensions{AppLauncher: ext}
+	}
+	// Непонятые поля записи возвращаются на место (BACKUP.md §2). Чужой
+	// label подставляется только когда своего нет: теперь у цепочки есть
+	// собственное отображаемое имя, и затирать его провезённым значением
+	// было бы потерей пользовательской правки.
+	foreignFields := attachForeignEntityExtensions(&out.Extensions, src.ForeignExtensions)
+	if raw, ok := foreignFields["label"]; ok && out.Label == "" {
+		_ = json.Unmarshal(raw, &out.Label)
+	}
+	return out
 }
 
 // exportWarp — WG/MASQUE-регистрации в переносимую форму warp[].
@@ -242,6 +271,14 @@ func launcherSourceExtensions(src state.Source) json.RawMessage {
 	if len(src.Outbounds) > 0 {
 		ext["outbounds"] = src.Outbounds
 	}
+	// Тег узла server-источника: в схеме servers[] поля под него нет (там
+	// только label), а роль у него не декоративная — на тег ссылаются
+	// правила и фильтры Направлений. Без провоза round-trip на одной
+	// машине переименовывал бы узел в подпись (BACKUP.md §1). У цепочек
+	// иначе: там тег — поле схемы chains[].tag.
+	if src.Type == state.SourceTypeServer && src.NodeTag != "" {
+		ext["node_tag"] = src.NodeTag
+	}
 	if src.ExcludeFromGlobal {
 		ext["exclude_from_global"] = true
 	}
@@ -256,7 +293,24 @@ func launcherSourceExtensions(src state.Source) json.RawMessage {
 	if src.DetourTag != "" {
 		ext["detour_tag"] = src.DetourTag
 	}
-	if src.DetourNodeHash != "" {
+	// SPEC 112-A: наружу едет ссылка-ОБЪЕКТ — id источника-цели плюс
+	// identity-тег узла внутри него. Финальный конфиговый тег не вывозится: на
+	// приёмнике он другой (свои tag_prefix/tag_mask), и ссылка приехала бы
+	// мёртвой. Id источников roundtrip переживают — они пишутся сюда же
+	// (ext["id"]) и читаются импортом.
+	//
+	// Упразднённый detour_node_hash не пишется, пока ссылка жива: он мигрирует
+	// на первой сборке, и вывозить его значило бы вывозить протухающее.
+	if src.DetourNodeTag != "" || src.DetourNodeSourceID != "" {
+		if src.DetourNodeSourceID != "" {
+			ext["detour_node_source_id"] = src.DetourNodeSourceID
+		}
+		ext["detour_node_tag"] = src.DetourNodeTag
+		ext["detour_node_label"] = src.DetourNodeLabel
+	} else if src.DetourNodeHash != "" {
+		// Ещё не мигрировавший источник (бэкап снят до первой сборки):
+		// хеш едет как есть и мигрирует уже на приёмнике — терять ссылку
+		// из-за момента снятия бэкапа нельзя.
 		ext["detour_node_hash"] = src.DetourNodeHash
 		ext["detour_node_label"] = src.DetourNodeLabel
 	}

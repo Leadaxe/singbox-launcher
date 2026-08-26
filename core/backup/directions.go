@@ -27,7 +27,6 @@ func exportDirection(d configtypes.Direction) Direction {
 
 	out := Direction{
 		Tag:     d.Tag,
-		Label:   d.Label,
 		Filter:  body,
 		Invert:  invert,
 		Default: defBody,
@@ -75,7 +74,6 @@ func importDirection(in Direction) configtypes.Direction {
 	d := configtypes.Direction{
 		Tag:      in.Tag,
 		Type:     "selector",
-		Label:    in.Label,
 		Disabled: in.Enabled != nil && !*in.Enabled,
 		Filters:  configtypes.SetDirectionFilterTag(nil, in.Filter, in.Invert),
 	}

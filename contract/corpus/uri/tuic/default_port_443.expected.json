@@ -13,7 +13,6 @@
         "uuid": "u"
       },
       "kind": "outbound",
-      "label": "u",
       "scheme": "tuic"
     }
   ],

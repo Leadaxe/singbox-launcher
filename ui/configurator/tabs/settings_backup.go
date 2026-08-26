@@ -1,11 +1,11 @@
 package tabs
 
-// Экспорт и импорт LX Backup — секция вкладки «Generate» (SPEC 103, фаза 4).
+// Экспорт и импорт LX Backup — секция вкладки «Файлы» (SPEC 103, фаза 4).
 //
 // Сперва жила под прокруткой Settings, но была прибита к её низу через
 // Border и забирала свою высоту целиком (114–133px, тем больше, чем уже
 // окно: подсказка переносится), а прокрутке настроек доставался остаток —
-// нижние строки настроек обрезались. Переехала на «Generate» к остальным
+// нижние строки настроек обрезались. Переехала на «Файлы» к остальным
 // действиям над готовым состоянием: собрать конфиг, посмотреть его,
 // перенести настройки на другую машину.
 
@@ -257,6 +257,8 @@ func warnText(w backup.Warning) string {
 		return fmt.Sprintf(locale.T("%s — this setting means something else on this machine, skipped"), w.Detail)
 	case backup.WarnBackupUnknownField:
 		return fmt.Sprintf(locale.T("%s — not supported here, skipped"), w.Detail)
+	case backup.WarnBackupChainExists:
+		return fmt.Sprintf(locale.T("%s — a chain with this name already exists here, the incoming one is skipped"), w.Detail)
 	default:
 		return w.Code + ": " + w.Detail
 	}
