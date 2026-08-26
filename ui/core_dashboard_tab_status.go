@@ -51,6 +51,7 @@ const pendingOpTimeout = 12 * time.Second
 func (tab *CoreDashboardTab) beginPendingOp(statusText string, wantRunning bool) {
 	tab.pendingOp = true
 	tab.pendingOpWantRun = wantRunning
+	tab.pendingOpMismatchTicks = 0
 	tab.pendingOpGen++
 	gen := tab.pendingOpGen
 
@@ -95,9 +96,21 @@ func (tab *CoreDashboardTab) updateRunningStatus() {
 		// ядро не переключилось — держим кнопки выключенными и статус
 		// «Запуск…»/«Остановка…».
 		if tab.controller == nil || tab.controller.RunningState.IsRunning() != tab.pendingOpWantRun {
-			return
+			// Ядро может ЗАКОННО прийти в противоположное состояние и там
+			// остаться: нажали Stop, а rebuild после обновления подписок
+			// перезапустил ядро. Таймаут-горутина в beginPendingOp — не
+			// единственный спасатель (её fyne.Do однажды терялся, и панель
+			// навсегда застревала на «Stopping…»): watcher тикает ~раз в
+			// секунду, и несколько тиков подряд в противоположном состоянии —
+			// достаточное доказательство, что ожидаемый переход не случится.
+			tab.pendingOpMismatchTicks++
+			if tab.pendingOpMismatchTicks < 8 {
+				return
+			}
+			debuglog.WarnLog("dashboard: core settled in the opposite state during a pending op — releasing buttons")
 		}
 		tab.pendingOp = false
+		tab.pendingOpMismatchTicks = 0
 	}
 	// Get button state from centralized function (same logic as Tray Menu)
 	buttonState := tab.controller.GetVPNButtonState()
