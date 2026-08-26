@@ -68,7 +68,7 @@ func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.
 		if err != nil || res == nil {
 			return nil
 		}
-		return capPreviewNodes(uniquifyPreviewTags(res.Nodes))
+		return capPreviewNodes(uniquifyPreviewTags(subscription.DedupParsedNodes(res.Nodes)))
 	}
 
 	if subscription.IsXrayJSONArrayBody(bodyStr) {
@@ -76,10 +76,8 @@ func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.
 		if err != nil {
 			return nil
 		}
-		return capPreviewNodes(uniquifyPreviewTags(nodes))
+		return capPreviewNodes(uniquifyPreviewTags(subscription.DedupParsedNodes(nodes)))
 	}
-	tagCounts := make(map[string]int)
-	idCounts := make(map[string]int)
 	out := make([]*config.ParsedNode, 0)
 	contentStr := strings.ReplaceAll(string(body), "\r\n", "\n")
 	contentStr = strings.ReplaceAll(contentStr, "\r", "\n")
@@ -92,16 +90,13 @@ func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.
 		if perr != nil || node == nil {
 			continue
 		}
-		// SPEC 112: идентичность снимается с сырого тега, ДО уникализации
-		// конфигового тега — как в LoadNodesFromSource.
-		subscription.StampNodeIdentity(node, idCounts)
-		node.Tag = subscription.MakeTagUnique(node.Tag, tagCounts, "ConfigWizard")
 		out = append(out, node)
-		if len(out) >= previewNodeCap {
-			break
-		}
 	}
-	return out
+	// Дедуп ДО стемпинга и уникализации (SPEC 094 D3, как в боевом
+	// LoadNodesFromSource) — иначе дубль получил бы «X-2» и превью показало
+	// бы 39 строк там, где сборка даст 8. Кап — ПОСЛЕ дедупа: 32 копии не
+	// должны съедать лимит отрисовки.
+	return capPreviewNodes(uniquifyPreviewTags(subscription.DedupParsedNodes(out)))
 }
 
 // uniquifyPreviewTags разводит одинаковые теги суффиксами «-2», «-3» и
@@ -215,13 +210,13 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 		src.Outbounds = append([]configtypes.Direction(nil), ps.Outbounds...)
 		src.ExcludeFromGlobal = ps.ExcludeFromGlobal
 		src.ExposeGroupTagsToGlobal = ps.ExposeGroupTagsToGlobal
-		src.Fold = ps.Fold                       // SPEC 108
-		src.DetourTag = ps.DetourTag             // SPEC 077
+		src.Fold = ps.Fold                             // SPEC 108
+		src.DetourTag = ps.DetourTag                   // SPEC 077
 		src.DetourNodeSourceID = ps.DetourNodeSourceID // SPEC 112-A
 		src.DetourNodeTag = ps.DetourNodeTag           // SPEC 112
 		src.DetourNodeHash = ps.DetourNodeHash         // legacy, мигрирует на сборке
 		src.DetourNodeLabel = ps.DetourNodeLabel       // SPEC 101
-		src.DisabledNodes = ps.DisabledNodes     // SPEC 094 D4
+		src.DisabledNodes = ps.DisabledNodes           // SPEC 094 D4
 		src.Enabled = !ps.Disabled
 		if ps.TagPrefix != "" || ps.TagPostfix != "" || ps.TagMask != "" {
 			src.Tag = &wizardmodels.TagSpec{
@@ -249,12 +244,12 @@ func applyProxyEditToSource(ps *config.ProxySource, src *wizardmodels.Source) {
 		}
 		src.Enabled = !ps.Disabled
 		src.ExcludeFromGlobal = ps.ExcludeFromGlobal
-		src.DetourTag = ps.DetourTag             // SPEC 077
+		src.DetourTag = ps.DetourTag                   // SPEC 077
 		src.DetourNodeSourceID = ps.DetourNodeSourceID // SPEC 112-A
 		src.DetourNodeTag = ps.DetourNodeTag           // SPEC 112
 		src.DetourNodeHash = ps.DetourNodeHash         // legacy, мигрирует на сборке
 		src.DetourNodeLabel = ps.DetourNodeLabel       // SPEC 101
-		src.ConfigJSON = ps.ConfigJSON           // ручной outbound JSON (вкладка JSON)
+		src.ConfigJSON = ps.ConfigJSON                 // ручной outbound JSON (вкладка JSON)
 		src.Outbounds = nil
 		src.Tag = nil
 	}

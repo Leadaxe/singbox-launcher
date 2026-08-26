@@ -343,7 +343,7 @@ func filterByServerOwner(
 // Здесь requireCred=false: узел без опознанного секрета всё равно закрепляется
 // за элементом, ownership решает «чей адрес», а не «та же ли это запись».
 func xrayServerKey(node *configtypes.ParsedNode) string {
-	return buildServerConnKey(node, false)
+	return buildServerConnKey(node)
 }
 
 // xrayElementPayloadCount — сколько непослужебных outbound'ов в элементе.

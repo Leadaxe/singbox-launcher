@@ -15,30 +15,38 @@ import (
 	"singbox-launcher/internal/debuglog"
 )
 
-// serverConnKey — `схема|сервер|порт|креденшл`.
+// dedupSignature — подпись «та же запись» для дедупа: полная эмиссия узла
+// без tag/detour (LegacyNodeIdentityHashFunc), НЕ ключ подключения.
 //
-// Обобщение xrayServerKey (тот теперь зовёт эту функцию): семейство одно, и
-// оно же у LxBox nodeIdentityKey — контракт IDENTITY.md §4.
+// Вердикт пользователя (SPEC 112-B, уточнение 26.08): разные транспорты
+// одного сервера с одним креденшлом (grpc/xhttp, разные SNI) — это разные
+// соединения и разные схемы обхода блокировок, их НЕ схлопывать. Первая
+// редакция дедупила по кредам (`схема|сервер|порт|креденшл`) и склеила
+// nl3-grpc с nl3-xhttp — откатились к семантике v1.5.1: схлопывается только
+// байтовый повтор записи (различие лишь в #подписи). Ключ по кредам остался
+// у единственного потребителя — xray-ownership (buildServerConnKey ниже).
 //
-// Транспорт, TLS и SNI в ключ НЕ входят — решение пользователя (SPEC 112-B):
-// один сервер с одним паролем под разными SNI считается одной записью, как на
-// мобиле. Прежний контент-хеш держал такие записи раздельно; семантики двух
-// приложений сходятся намеренно.
+// Зависимость подписи от эмиттера здесь безвредна: она живёт один разбор
+// одного тела — обе копии эмитятся одним кодом из одной формы.
 //
-// Пустая строка — «подключение не определено» (нет сервера или креденшла, либо
-// это узел-группа): такие записи не схлопываются никогда, иначе все безымянные
-// сложились бы в одну.
-func serverConnKey(node *configtypes.ParsedNode) string {
-	// requireCred=true: ключ без креденшла — это «любой узел на этом адресе»,
-	// под него попали бы разные аккаунты одного шлюза. Не схлопываем.
-	return buildServerConnKey(node, true)
+// Пустая строка — «подписи нет» (группа, эмиссия не удалась): такие записи
+// не схлопываются никогда, иначе все безымянные сложились бы в одну.
+func dedupSignature(node *configtypes.ParsedNode) string {
+	if node == nil || node.Scheme == configtypes.SchemeGroup {
+		return ""
+	}
+	if LegacyNodeIdentityHashFunc == nil {
+		return ""
+	}
+	return LegacyNodeIdentityHashFunc(node)
 }
 
-// buildServerConnKey — общее тело ключа. requireCred разводит двух
-// потребителей: дедуп записей (нужен креденшл, иначе не схлопываем) и
-// xray-ownership, где безымянный по секрету сервер всё равно закрепляется за
-// элементом — там ключ решает «чей адрес», а не «та же ли это запись».
-func buildServerConnKey(node *configtypes.ParsedNode, requireCred bool) string {
+// buildServerConnKey — ключ подключения `схема|сервер|порт|креденшл`.
+// Единственный потребитель — xray-ownership (xrayServerKey): там ключ решает
+// «чей адрес», а не «та же ли это запись», поэтому безымянный по секрету
+// сервер тоже получает ключ (пустой креденшл в хвосте). Дедуп записей им НЕ
+// пользуется — см. dedupSignature (вердикт про транспорты).
+func buildServerConnKey(node *configtypes.ParsedNode) string {
 	if node == nil || node.Scheme == configtypes.SchemeGroup {
 		return ""
 	}
@@ -56,9 +64,6 @@ func buildServerConnKey(node *configtypes.ParsedNode, requireCred bool) string {
 			}
 		}
 	}
-	if cred == "" && requireCred {
-		return ""
-	}
 	return fmt.Sprintf("%s|%s|%d|%s", strings.ToLower(node.Scheme), server, node.Port, cred)
 }
 
@@ -71,7 +76,7 @@ func buildServerConnKey(node *configtypes.ParsedNode, requireCred bool) string {
 //
 // Нулевое значение непригодно — заводить через newSourceDedup.
 type sourceDedup struct {
-	seen    map[string]string // ключ подключения → тег ПЕРВОЙ принятой записи
+	seen    map[string]string // подпись содержимого → тег ПЕРВОЙ принятой записи
 	dropped int
 }
 
@@ -87,13 +92,13 @@ func (d *sourceDedup) accept(node *configtypes.ParsedNode) bool {
 	if d == nil || node == nil {
 		return true
 	}
-	key := serverConnKey(node)
+	key := dedupSignature(node)
 	if key == "" {
 		return true
 	}
 	if firstTag, dup := d.seen[key]; dup {
 		d.dropped++
-		debuglog.DebugLog("Parser: duplicate entry %q collapsed into %q (same server credentials)",
+		debuglog.DebugLog("Parser: duplicate entry %q collapsed into %q (identical content)",
 			node.Tag, firstTag)
 		return false
 	}
@@ -118,17 +123,16 @@ func sourceLogName(source string) string {
 	return "source"
 }
 
-// dedupParsedNodes схлопывает готовый список записей по ключу подключения,
+// DedupParsedNodes схлопывает готовый список записей по подписи содержимого,
 // сохраняя порядок.
 //
 // Боевой путь его НЕ зовёт: там дедуп идёт по одной записи (sourceDedup.accept)
-// строго ДО простановки тегов, и списком его не подменить. Функция —
-// единственный способ применить то же правило к уже разобранному набору;
-// нужна тем, кто получил узлы, а не тело источника. Превью к таким не
-// относится: оно ходит тем же LoadNodesFromSource, что и сборка, и дедуп у
-// него уже применён (иначе счётчик на строке источника разошёлся бы со
-// сборкой — память lazy-cache-vs-lost-state).
-func dedupParsedNodes(nodes []*configtypes.ParsedNode) []*configtypes.ParsedNode {
+// строго ДО простановки тегов, и списком его не подменить. Функция для тех,
+// кто получил узлы, а не тело источника: вкладка Preview окна источника
+// (parsePreviewNodesFromBody) парсит тело своим путём и обязана показывать
+// то же, что соберётся, — иначе пользователь видит 39 строк там, где в
+// конфиг уедет 8 (превью ≡ боевой разбор).
+func DedupParsedNodes(nodes []*configtypes.ParsedNode) []*configtypes.ParsedNode {
 	if len(nodes) < 2 {
 		return nodes
 	}
