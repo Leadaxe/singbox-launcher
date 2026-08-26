@@ -337,25 +337,13 @@ func filterByServerOwner(
 // пакета ключ не отдаётся и на пользовательские отметки не влияет.
 //
 // Пустая строка — «сервер не определён»: узел проходит без владения.
+//
+// SPEC 112-B: тело переехало в serverConnKey (server_conn_key.go) — то же
+// семейство ключей теперь схлопывает и байтовые дубли записей источника.
+// Здесь requireCred=false: узел без опознанного секрета всё равно закрепляется
+// за элементом, ownership решает «чей адрес», а не «та же ли это запись».
 func xrayServerKey(node *configtypes.ParsedNode) string {
-	if node == nil || node.Scheme == configtypes.SchemeGroup {
-		return ""
-	}
-	server := strings.TrimSpace(node.Server)
-	if server == "" {
-		return ""
-	}
-	cred := strings.TrimSpace(node.UUID)
-	if cred == "" && node.Outbound != nil {
-		// ss/trojan/hy2 несут секрет не в UUID — берём первое, что есть.
-		for _, field := range []string{"password", "uuid", "private_key", "auth_str"} {
-			if v, ok := node.Outbound[field].(string); ok && strings.TrimSpace(v) != "" {
-				cred = strings.TrimSpace(v)
-				break
-			}
-		}
-	}
-	return fmt.Sprintf("%s|%s|%d|%s", strings.ToLower(node.Scheme), server, node.Port, cred)
+	return buildServerConnKey(node)
 }
 
 // xrayElementPayloadCount — сколько непослужебных outbound'ов в элементе.

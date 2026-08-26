@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"singbox-launcher/core/build"
+	"singbox-launcher/core/config"
 	"singbox-launcher/core/events"
 	"singbox-launcher/core/services"
 	"singbox-launcher/core/state"
@@ -255,8 +256,32 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		}
 	}
 
+	// SPEC 112-B часть B: источник, выпавший fail-closed, обязан быть виден не
+	// только в логе. Тост идёт тем же каналом, что «Subscriptions partially
+	// refreshed» — ShowSubsResultFunc сам заворачивает показ в fyne.Do, и
+	// сборка вправе звать его из своей горутины.
+	//
+	// Update поверх этого показывает СВОЙ финальный тост, и тот несёт ту же
+	// фразу (parserSuccessToastMessage): порядок «сборка → Update» оставляет
+	// на экране актуальное сообщение, а не устаревшее.
+	ac.showExcludedSourcesToast()
+
 	debuglog.InfoLog("RebuildConfigIfDirty: config.json written (%d bytes)", len(res.ConfigJSON))
 	return nil
+}
+
+// showExcludedSourcesToast показывает тост об источниках, выпавших fail-closed
+// на только что законченной сборке. Пустой реестр — молчание: тост «всё
+// хорошо» здесь не нужен, о самой сборке пользователь и так знает.
+func (ac *AppController) showExcludedSourcesToast() {
+	if ac == nil || ac.UIService == nil || ac.UIService.ShowSubsResultFunc == nil {
+		return
+	}
+	msg := excludedSourcesToastPart(config.ExcludedSources())
+	if msg == "" {
+		return
+	}
+	ac.UIService.ShowSubsResultFunc(false, msg)
 }
 
 // CleanOrphanRuleSets removes bin/rule-sets/*.srs files not referenced by any

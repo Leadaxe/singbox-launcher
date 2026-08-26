@@ -49,7 +49,7 @@ func TestResolveNodeDetours_StampsFinalTag(t *testing.T) {
 			DetourNodeSourceID: "01HOP", DetourNodeTag: "hop"},
 	)
 	nodesBySource := map[int][]*ParsedNode{0: {hop}, 1: {chained}}
-	all := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
+	all, _ := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
 
 	if len(all) != 2 {
 		t.Fatalf("no nodes may be dropped, got %d", len(all))
@@ -83,7 +83,7 @@ func TestResolveNodeDetours_SurvivesTargetTagPrefixChange(t *testing.T) {
 			DetourNodeSourceID: "01HOP", DetourNodeTag: "hop"},
 	)
 	nodesBySource := map[int][]*ParsedNode{0: {hop}, 1: {chained}}
-	all := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
+	all, _ := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
 
 	if len(all) != 2 {
 		t.Fatalf("смена tag_prefix цели не должна ронять источник, осталось %d узлов", len(all))
@@ -112,7 +112,7 @@ func TestResolveNodeDetours_SurvivesHopContentEdit(t *testing.T) {
 			DetourNodeSourceID: "01HOP", DetourNodeTag: "hop"},
 	)
 	nodesBySource := map[int][]*ParsedNode{0: {hop}, 1: {chained}}
-	all := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
+	all, _ := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
 
 	if len(all) != 2 {
 		t.Fatalf("правка содержимого хопа не должна ронять источник, осталось %d узлов", len(all))
@@ -141,7 +141,7 @@ func TestResolveNodeDetours_RenamedIdentityFailsClosed(t *testing.T) {
 			DetourNodeSourceID: "01HOP", DetourNodeTag: "hop"},
 	)
 	nodesBySource := map[int][]*ParsedNode{0: {hop}, 1: {chained}}
-	all := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
+	all, _ := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
 
 	if len(all) != 1 || all[0] != hop {
 		t.Fatalf("ссылка на исчезнувшую идентичность обязана падать fail-closed; осталось %d узлов", len(all))
@@ -169,7 +169,7 @@ func TestResolveNodeDetours_SubscriptionNodeRenamedByProviderFailsClosed(t *test
 			DetourNodeSourceID: "01LIB", DetourNodeTag: "🇳🇱 Amsterdam-1"},
 	)
 	nodesBySource := map[int][]*ParsedNode{0: {stayed}, 1: {chained}}
-	all := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{stayed, chained})
+	all, _ := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{stayed, chained})
 
 	if len(all) != 1 || all[0] != stayed {
 		t.Fatalf("исчезнувший узел подписки обязан ронять зависимый источник; осталось %d узлов", len(all))
@@ -222,7 +222,7 @@ func TestResolveNodeDetours_UnresolvedDropsSource(t *testing.T) {
 			DetourNodeSourceID: "01GONE", DetourNodeTag: "gone-hop"},
 	)
 	nodesBySource := map[int][]*ParsedNode{0: {hop}, 1: {chained}}
-	all := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
+	all, _ := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
 
 	if len(all) != 1 || all[0] != hop {
 		t.Fatalf("chained source must be dropped, hop kept; got %d node(s)", len(all))
@@ -250,7 +250,7 @@ func TestResolveNodeDetours_TagOnlyRefResolvesGlobally(t *testing.T) {
 		ProxySource{ID: "01SUB", Connections: []string{"..."}, DetourNodeTag: "prefixed:hop"},
 	)
 	nodesBySource := map[int][]*ParsedNode{0: {hop}, 1: {chained}}
-	all := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
+	all, _ := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
 
 	if len(all) != 2 {
 		t.Fatalf("tag-only ссылка обязана резолвиться глобально, осталось %d узлов", len(all))
@@ -281,7 +281,7 @@ func TestResolveNodeDetours_WireGuardChained(t *testing.T) {
 			DetourNodeSourceID: "01HOP", DetourNodeTag: "hop"},
 	)
 	nodesBySource := map[int][]*ParsedNode{0: {hop}, 1: {wg, wgListen}}
-	all := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, wg, wgListen})
+	all, _ := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, wg, wgListen})
 
 	if len(all) != 3 {
 		t.Fatalf("nothing may be dropped, got %d", len(all))
@@ -309,7 +309,7 @@ func TestResolveNodeDetours_GroupIsNotACandidate(t *testing.T) {
 			DetourNodeSourceID: "01GRP", DetourNodeTag: "🚀 Авто"},
 	)
 	nodesBySource := map[int][]*ParsedNode{0: {group}, 1: {chained}}
-	all := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{group, chained})
+	all, _ := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{group, chained})
 
 	if len(all) != 1 || all[0] != group {
 		t.Fatalf("источник, сославшийся на группу, обязан упасть fail-closed; осталось %d узлов", len(all))
@@ -340,7 +340,7 @@ func TestMigrateLegacyDetourNodeHash_ResolvedByHashWritesFullRef(t *testing.T) {
 			DetourNodeHash: hash, DetourNodeLabel: "старая подпись"},
 	)
 	nodesBySource := map[int][]*ParsedNode{0: {hop}, 1: {chained}}
-	all := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
+	all, _ := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
 
 	if len(all) != 2 {
 		t.Fatalf("миграция не должна ронять источник, осталось %d узлов", len(all))
@@ -393,7 +393,7 @@ func TestMigrateLegacyDetourNodeHash_LabelFallbackHealsIRAState(t *testing.T) {
 		},
 	)
 	nodesBySource := map[int][]*ParsedNode{0: {hop}, 1: {chained}}
-	all := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
+	all, _ := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
 
 	if len(all) != 2 {
 		t.Fatalf("Proton NL обязан остаться в конфиге, осталось %d узлов", len(all))
@@ -426,7 +426,7 @@ func TestMigrateLegacyDetourNodeHash_NoLabelFailsClosed(t *testing.T) {
 			DetourNodeHash: strings.Repeat("f", 64)},
 	)
 	nodesBySource := map[int][]*ParsedNode{0: {hop}, 1: {chained}}
-	all := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
+	all, _ := resolveNodeDetours(pc, nodesBySource, []*ParsedNode{hop, chained})
 
 	if len(all) != 1 || all[0] != hop {
 		t.Fatalf("источник без опознанной ссылки обязан выпасть; осталось %d узлов", len(all))

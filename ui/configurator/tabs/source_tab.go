@@ -430,6 +430,15 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				label = wizardutils.TruncateStringEllipsis(label, wizardutils.MaxLabelRunes, "...")
 				shortLabel := label
 
+				// SPEC 112-B часть B: источник, выпавший из конфига
+				// fail-closed (detour-хоп не разрешился), обязан быть виден
+				// ЗДЕСЬ. Раньше исключение уходило только в лог, а строка
+				// продолжала показывать галку и «N nodes» — парадокс Proton
+				// NL: настройка на месте, трафика нет. Пометка живёт, пока
+				// живёт причина: реестр целиком переписывается каждой
+				// сборкой, и чистая сборка её снимает.
+				exclusionReason := config.ExcludedSourceReason(sourceID)
+
 				fullURL := src.URL
 				var tagPrefix, tagPostfix, tagMask string
 				if src.Tag != nil {
@@ -625,23 +634,38 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// Subtitle row: meta inline (nodes / interval / fetched / quota / expires).
 				// tightVBox — custom layout без theme.Padding между title/subtitle
 				// (стандартный VBox / Border даёт ~12px воздуха, slишком много).
-				var rowInner fyne.CanvasObject = titleRow
+				//
+				// Отступ дополнительных строк равен ширине ведущего кластера
+				// (ручка + галка) — тогда они начинаются ровно под заголовком,
+				// который в titleRow тоже стоит за leftLead. Хардкод тут уже
+				// ломался при смене состава кластера.
+				leftPad := func() fyne.CanvasObject {
+					pad := canvas.NewRectangle(color.Transparent)
+					pad.SetMinSize(fyne.NewSize(leftLead.MinSize().Width, 0))
+					return pad
+				}
+				lines := []fyne.CanvasObject{titleRow}
 				if isSubscription {
-					lines := []fyne.CanvasObject{titleRow}
 					if subtitle := formatSourceSubtitle(meta, srcPtr.Update, m.Defaults.Reload); subtitle != "" {
 						subtitleText := canvas.NewText(subtitle, theme.Color(theme.ColorNamePlaceHolder))
 						subtitleText.TextSize = theme.CaptionTextSize()
-						// Indent the subtitle by the exact width of the leading
-						// cluster (ручка + checkbox) so it starts right under
-						// the title — the title in titleRow also sits after
-						// leftLead. Hardcoding broke once the cluster changed.
-						leftPad := canvas.NewRectangle(color.Transparent)
-						leftPad.SetMinSize(fyne.NewSize(leftLead.MinSize().Width, 0))
-						lines = append(lines, container.NewBorder(nil, nil, leftPad, nil, subtitleText))
+						lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, subtitleText))
 					}
-					if len(lines) > 1 {
-						rowInner = container.New(tightVBox{}, lines...)
-					}
+				}
+				if exclusionReason != "" {
+					// Wrapping обязателен: Label без него отдаёт всю строку как
+					// min-width и раздувает окно визарда на весь экран
+					// (fyne-ловушка). Причина бывает длинной — имя источника
+					// плюс имя ненайденного узла.
+					warn := widget.NewLabel(locale.Tf("⚠ Excluded from the config: %s", exclusionReason))
+					warn.Wrapping = fyne.TextWrapWord
+					warn.Importance = widget.WarningImportance
+					warn.TextStyle = fyne.TextStyle{Italic: true}
+					lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, warn))
+				}
+				var rowInner fyne.CanvasObject = titleRow
+				if len(lines) > 1 {
+					rowInner = container.New(tightVBox{}, lines...)
 				}
 
 				row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})

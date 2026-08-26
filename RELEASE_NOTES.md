@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v1.5.3
+
+Хотфикс к v1.5.2. Дубли записей подписки снова схлопываются: подписка, перечисляющая один сервер 32 раза с разным только `#именем`, опять даёт один узел — при этом разные SNI или транспорты одного сервера остаются разными узлами, потому что это разные схемы обхода. Порядок правил наконец переживает перезаход в Мастер: перетаскивание записывает номера на ось порядка, системные правила остаются закреплёнными, а безымянные inline-правила не уезжают в конец. Stop в daemon-режиме больше не зависает на «Stopping…». Источник, выпавший из конфига из-за ненайденного detour-хопа, перестал молчать: пометка ⚠ с причиной в строке источника и уведомление на вкладке Local. Подробнее: [docs/release_notes/1-5-3.md](docs/release_notes/1-5-3.md).
+
+### Highlights (EN) — v1.5.3
+
+Hotfix on top of v1.5.2. Duplicate subscription entries collapse again: a subscription listing one server 32 times, differing only in the `#name`, yields one node — while different SNI or transports on the same server stay separate, since those are different DPI-evasion paths. Rule order finally survives reopening the Wizard: dragging writes numbers onto the order axis, system rules stay pinned, and unnamed inline rules keep their place. Stop no longer hangs on "Stopping…" in daemon mode. A source dropped from the config over an unresolvable detour hop is no longer silent: a ⚠ mark with the reason on its row, plus a toast on the Local tab. Details: [docs/release_notes/1-5-3.md](docs/release_notes/1-5-3.md).
+
 ### Выжимка (RU) — v1.5.2
 
 **Идентичность узла — тег, а не хеш содержимого (SPEC 112).** Отметки выключения и цепочки-через-узел (detour) больше не отваливаются от ротации IP у провайдера или смены формы хранения: ссылка хранится объектом (id источника + тег), финальный тег вычисляется на каждой сборке, старые состояния мигрируют сами — включая уже протухшие ссылки («включённый источник пропал из селектора»). Переименование узла сбрасывает ссылки на него явно, с окном-предупреждением; неразрешённая ссылка по-прежнему fail-closed, но ошибка называет подписку и узел по именам. Плюс переработанная форма сервера (типы селектором, вкладка JSON, клонирование), привязка к сетевому интерфейсу, честное превью Направлений (#91) и цепочки в LX Backup. Подробнее: [docs/release_notes/1-5-2.md](docs/release_notes/1-5-2.md).
@@ -604,6 +612,7 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v1.5.3** | [docs/release_notes/1-5-3.md](docs/release_notes/1-5-3.md) |
 | **v1.5.2** | [docs/release_notes/1-5-2.md](docs/release_notes/1-5-2.md) |
 | **v1.5.1** | [docs/release_notes/1-5-1.md](docs/release_notes/1-5-1.md) |
 | **v1.5.0** | [docs/release_notes/1-5-0.md](docs/release_notes/1-5-0.md) |

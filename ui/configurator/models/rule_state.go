@@ -35,4 +35,8 @@ type RuleState struct {
 	Enabled bool
 	// SelectedOutbound - выбранный outbound для правила
 	SelectedOutbound string
+	// OrderNum — позиция на разреженной оси порядка (SPEC 106, D-051).
+	// Живёт рядом с Enabled/SelectedOutbound по той же причине: это состояние
+	// правила, а не данные шаблона. nil — не размечено (ось доразметит).
+	OrderNum *int
 }

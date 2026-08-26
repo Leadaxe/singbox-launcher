@@ -66,6 +66,7 @@ type CoreDashboardTab struct {
 	pendingOp                 bool
 	pendingOpGen              uint64              // поколение операции — отсекает просроченный таймаут
 	pendingOpWantRun          bool                // какого состояния ждём: true — Start, false — Stop
+	pendingOpMismatchTicks    int                 // подряд тиков со СТАБИЛЬНО противоположным состоянием
 	wintunStatusLabel         *widget.Label       // wintun.dll status
 	wintunHelpBtn             *widget.Button      // "?" help button, hidden when Download is hidden
 	wintunDownloadButton      *widget.Button      // wintun.dll download button

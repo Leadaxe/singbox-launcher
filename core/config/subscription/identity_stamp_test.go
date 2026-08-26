@@ -7,23 +7,23 @@ import (
 	"singbox-launcher/core/config/configtypes"
 )
 
-// SPEC 112 — контент-дедуп упразднён; при дублях работает уникализация тегов
-// и идентичностей.
+// SPEC 112 — идентичность узла есть его тег; SPEC 112-B вернул дедуп записей
+// по подключению (parse-слой, dedup_test.go). Здесь проверяется стемпинг
+// идентичности, поэтому все узлы РАЗНЫЕ по кредам — иначе их схлопнул бы
+// дедуп и тест проверял бы не то, что заявляет.
 //
 // Хуки NodeIdentityFunc / LegacyNodeIdentityHashFunc в тестах пакета
 // subscription приложением не устанавливаются: парсер обязан оставаться
 // работоспособным в изоляции, и встроенное правило (тег как идентичность) —
 // часть контракта, а не заглушка.
 
-// Один сервер, повторённый трижды с разными ремарками, теперь даёт ТРИ узла:
-// имена разные, значит и узлы разные. Раньше их схлопывал контент-хеш —
-// вместе с ним уезжали и пользовательские отметки, привязанные к содержимому.
-func TestNoContentDedupInURIList(t *testing.T) {
-	const uri = "vless://b831381d-6324-4d53-ad4f-8cda48b30811@e.com:443?security=tls&sni=e.com"
+// Разные серверы под разными именами — три узла, каждому проставлена
+// идентичность.
+func TestIdentityStampedForEveryURINode(t *testing.T) {
 	body := strings.Join([]string{
-		uri + "#🇳🇱 NL-1",
-		uri + "#🇳🇱 Amsterdam",
-		uri + "#🇳🇱 Fast",
+		"vless://b831381d-6324-4d53-ad4f-8cda48b30811@a.com:443?security=tls&sni=a.com#🇳🇱 NL-1",
+		"vless://b831381d-6324-4d53-ad4f-8cda48b30811@b.com:443?security=tls&sni=b.com#🇳🇱 Amsterdam",
+		"vless://b831381d-6324-4d53-ad4f-8cda48b30811@c.com:443?security=tls&sni=c.com#🇳🇱 Fast",
 	}, "\n")
 
 	res := loadFromInlineBody(t, body, configtypes.ProxySource{})
@@ -42,11 +42,12 @@ func TestNoContentDedupInURIList(t *testing.T) {
 	}
 }
 
-// Полные тёзки одного источника разводятся суффиксом и получают РАЗНЫЕ
-// идентичности: иначе одна отметка выключения накрыла бы обе строки.
+// Полные тёзки одного источника (но РАЗНЫЕ подключения) разводятся суффиксом и
+// получают РАЗНЫЕ идентичности: иначе одна отметка выключения накрыла бы обе
+// строки.
 func TestDuplicateTagsGetDistinctIdentities(t *testing.T) {
-	const uri = "vless://b831381d-6324-4d53-ad4f-8cda48b30811@e.com:443?security=tls&sni=e.com"
-	body := uri + "#🇳🇱 NL\n" + uri + "#🇳🇱 NL"
+	body := "vless://b831381d-6324-4d53-ad4f-8cda48b30811@a.com:443?security=tls&sni=a.com#🇳🇱 NL\n" +
+		"vless://b831381d-6324-4d53-ad4f-8cda48b30811@b.com:443?security=tls&sni=b.com#🇳🇱 NL"
 
 	res := loadFromInlineBody(t, body, configtypes.ProxySource{})
 
@@ -86,13 +87,13 @@ func TestIdentityStampedForSingboxImport(t *testing.T) {
 	body := `{
 	  "outbounds":[
 	    {"type":"vless","tag":"first","server":"e.com","server_port":443,"uuid":"u1"},
-	    {"type":"vless","tag":"second","server":"e.com","server_port":443,"uuid":"u1"}
+	    {"type":"vless","tag":"second","server":"e2.com","server_port":443,"uuid":"u1"}
 	  ]
 	}`
 	res := loadFromInlineBody(t, body, configtypes.ProxySource{TagPrefix: "AL:"})
 
 	if len(res.Nodes) != 2 {
-		t.Fatalf("получено %d узлов, ожидалось 2 (дедупа больше нет)", len(res.Nodes))
+		t.Fatalf("получено %d узлов, ожидалось 2 (серверы разные — дедуп их не трогает)", len(res.Nodes))
 	}
 	want := []string{"first", "second"}
 	for i, n := range res.Nodes {

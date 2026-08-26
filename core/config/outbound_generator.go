@@ -97,6 +97,24 @@ type OutboundGenerationResult struct {
 	// конфиг, и сообщение показывает не на тот узел, который пользователь
 	// трогал, — он обязан узнать причину отсюда.
 	DetourCycles []DetourCycle
+
+	// ExcludedSources — источники, целиком выпавшие из конфига fail-closed:
+	// detour-хоп не разрешился (SPEC 112-B часть B). До этого исключение было
+	// видно только в логе, а строка источника в Wizard выглядела здоровой
+	// («галка + N nodes») — ровно парадокс Proton NL: настройка на месте,
+	// трафика нет, и связи между этими фактами пользователю не показывали.
+	ExcludedSources []SourceExclusion
+}
+
+// SourceExclusion — один исключённый источник и почему.
+//
+// SourceID — ULID (ProxySource.ID): по нему строка Wizard → Sources находит
+// СВОЮ пометку. Пустой id (конфиг собран не из состояния) оставляет запись
+// пригодной только для тоста — привязать её к строке не к чему.
+type SourceExclusion struct {
+	SourceID    string
+	SourceLabel string
+	Reason      string
 }
 
 // NaiveSupportProbe — hook installed by the app layer (core.AppController):
@@ -1069,7 +1087,7 @@ func GenerateOutboundsFromParserConfig(
 	// Резолв обязан идти ДО sanitizeNodeDetours, чтобы проставленные теги
 	// попали в проверку циклов и самоссылок, и до граф-санитайзера ниже по
 	// потоку — финального рубежа по всем рёбрам outbound-графа.
-	allNodes = resolveNodeDetours(parserConfig, nodesBySource, allNodes)
+	allNodes, excludedSources := resolveNodeDetours(parserConfig, nodesBySource, allNodes)
 	if len(allNodes) == 0 {
 		return nil, fmt.Errorf("no usable nodes: every source was dropped (detour node not found)")
 	}
@@ -1130,6 +1148,7 @@ func GenerateOutboundsFromParserConfig(
 		BrokenChains:         brokenChains,
 		ChainCycles:          chainCycles,
 		DetourCycles:         detourCycles,
+		ExcludedSources:      excludedSources,
 		SkippedNaiveReason:   naiveReason,
 	}, nil
 }
@@ -1375,7 +1394,15 @@ func normalizeChainHop(hop, owner *ParsedNode) *ParsedNode {
 // Миграция SPEC 112: источник, у которого остался упразднённый
 // `detour_node_hash`, переезжает на ссылку-объект тут же — см.
 // migrateLegacyDetourNodeHash.
-func resolveNodeDetours(parserConfig *ParserConfig, nodesBySource map[int][]*ParsedNode, allNodes []*ParsedNode) []*ParsedNode {
+//
+// Второе возвращаемое значение — реестр исключений (SPEC 112-B часть B): те же
+// drop'ы, но пригодные для показа. Молчаливое исключение по логу и было
+// парадоксом Proton NL — строка источника оставалась здоровой на вид.
+func resolveNodeDetours(
+	parserConfig *ParserConfig,
+	nodesBySource map[int][]*ParsedNode,
+	allNodes []*ParsedNode,
+) ([]*ParsedNode, []SourceExclusion) {
 	var refSources []int
 	for i, ps := range parserConfig.ParserConfig.Proxies {
 		if len(nodesBySource[i]) == 0 {
@@ -1388,7 +1415,7 @@ func resolveNodeDetours(parserConfig *ParserConfig, nodesBySource map[int][]*Par
 		}
 	}
 	if len(refSources) == 0 {
-		return allNodes
+		return allNodes, nil
 	}
 
 	// Карта резолва — ОДНА на сборку и строится здесь, на проходе 2. Любой
@@ -1397,6 +1424,7 @@ func resolveNodeDetours(parserConfig *ParserConfig, nodesBySource map[int][]*Par
 	idx := buildNodeRefIndex(parserConfig, nodesBySource, allNodes)
 
 	dropSource := make(map[int]bool)
+	var excluded []SourceExclusion
 	for _, i := range refSources {
 		ps := parserConfig.ParserConfig.Proxies[i]
 		if strings.TrimSpace(ps.DetourNodeHash) != "" &&
@@ -1410,6 +1438,11 @@ func resolveNodeDetours(parserConfig *ParserConfig, nodesBySource map[int][]*Par
 		if res.node == nil {
 			debuglog.WarnLog("%s", detourFailureMessage(parserConfig, idx, ps, i))
 			dropSource[i] = true
+			excluded = append(excluded, SourceExclusion{
+				SourceID:    strings.TrimSpace(ps.ID),
+				SourceLabel: sourceDisplayName(ps, i),
+				Reason:      detourFailureReason(parserConfig, idx, ps),
+			})
 			continue
 		}
 		target := res.node
@@ -1434,7 +1467,7 @@ func resolveNodeDetours(parserConfig *ParserConfig, nodesBySource map[int][]*Par
 	}
 
 	if len(dropSource) == 0 {
-		return allNodes
+		return allNodes, nil
 	}
 	kept := allNodes[:0]
 	for _, n := range allNodes {
@@ -1446,17 +1479,30 @@ func resolveNodeDetours(parserConfig *ParserConfig, nodesBySource map[int][]*Par
 	for i := range dropSource {
 		delete(nodesBySource, i)
 	}
-	return kept
+	return kept, excluded
 }
 
-// detourFailureMessage — текст предупреждения о непойманной ссылке.
+// detourFailureMessage — строка предупреждения в лог: причина плюс имя
+// источника, который из-за неё выпал.
+func detourFailureMessage(parserConfig *ParserConfig, idx *nodeRefIndex, ps ProxySource, index int) string {
+	return fmt.Sprintf("Detour: %s — источник %q исключён из конфига (fail-closed)",
+		detourFailureReason(parserConfig, idx, ps), sourceDisplayName(ps, index))
+}
+
+// detourFailureReason — ПОЧЕМУ ссылка не разрешилась, без упоминания
+// зависимого источника.
 //
-// SPEC 112-A («Понятные ошибки»): сообщение обязано называть ОБЕ стороны — где
-// искали и что, — человеческими именами. Источники зовутся подписью, за ней
+// Отдельно от detourFailureMessage, потому что у причины теперь два
+// потребителя: лог (там она обрамляется именем выпавшего источника) и UI —
+// пометка в строке Wizard → Sources и тост после сборки (SPEC 112-B часть B),
+// где источник и так известен из контекста и повтор его имени только съедал бы
+// место.
+//
+// SPEC 112-A («Понятные ошибки»): текст обязан называть обе стороны — где
+// искали и что — человеческими именами. Источники зовутся подписью, за ней
 // тегом узла или URL; ULID выносится в текст только когда другого имени нет
 // (источник удалён — от него остался лишь id в ссылке).
-func detourFailureMessage(parserConfig *ParserConfig, idx *nodeRefIndex, ps ProxySource, index int) string {
-	dependent := sourceDisplayName(ps, index)
+func detourFailureReason(parserConfig *ParserConfig, idx *nodeRefIndex, ps ProxySource) string {
 	nodeName := strings.TrimSpace(ps.DetourNodeTag)
 	if nodeName == "" {
 		nodeName = strings.TrimSpace(ps.DetourNodeLabel)
@@ -1464,22 +1510,18 @@ func detourFailureMessage(parserConfig *ParserConfig, idx *nodeRefIndex, ps Prox
 
 	if target := idx.detourTargetName(parserConfig, ps.DetourNodeSourceID); target != "" {
 		if _, known := idx.sourceIndexByID[strings.TrimSpace(ps.DetourNodeSourceID)]; !known {
-			return fmt.Sprintf("Detour: источник ссылки (%s) не найден — источник %q исключён из конфига (fail-closed)",
-				target, dependent)
+			return fmt.Sprintf("источник ссылки (%s) не найден", target)
 		}
 		if nodeName == "" {
-			return fmt.Sprintf("Detour: в источнике %q не указан узел — источник %q исключён из конфига (fail-closed)",
-				target, dependent)
+			return fmt.Sprintf("в источнике %q не указан узел", target)
 		}
-		return fmt.Sprintf("Detour: в источнике %q не нашлось узла %q — источник %q исключён из конфига (fail-closed)",
-			target, nodeName, dependent)
+		return fmt.Sprintf("в источнике %q не нашлось узла %q", target, nodeName)
 	}
 
 	if nodeName == "" {
-		return fmt.Sprintf("Detour: ссылка на узел пуста — источник %q исключён из конфига (fail-closed)", dependent)
+		return "ссылка на узел пуста"
 	}
-	return fmt.Sprintf("Detour: узла %q нет среди узлов конфига — источник %q исключён из конфига (fail-closed)",
-		nodeName, dependent)
+	return fmt.Sprintf("узла %q нет среди узлов конфига", nodeName)
 }
 
 // migrateLegacyDetourNodeHash переводит ссылку detour-на-узел с упразднённого

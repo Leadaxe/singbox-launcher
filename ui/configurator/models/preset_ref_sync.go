@@ -73,10 +73,11 @@ func SyncRulesByOrderToStateRulesV6(order []RuleSlot, presetRefs []*PresetRefSta
 			}
 			body, _ := jsonMarshalPreset(vars)
 			out = append(out, state.Rule{
-				Kind:    state.RuleKindPreset,
-				Ref:     pr.Ref,
-				Enabled: pr.Enabled,
-				Body:    body,
+				Kind:     state.RuleKindPreset,
+				Ref:      pr.Ref,
+				Enabled:  pr.Enabled,
+				OrderNum: copyOrderNum(pr.OrderNum),
+				Body:     body,
 			})
 		case SlotKindCustom:
 			if slot.Index < 0 || slot.Index >= len(customRules) {
@@ -105,62 +106,82 @@ func jsonMarshalPreset(vars map[string]string) ([]byte, error) {
 // из state.Rules, чтобы UI после load увидел правила в том же порядке как
 // они были при save.
 //
+// SPEC 106: порядок задаёт ОСЬ (state.Rule.OrderNum), а не позиция в слайсе —
+// сортируем стабильно по номеру, позиция остаётся тай-брейком. Заодно номер
+// раздаётся в модель (PresetRefState.OrderNum / RuleState.OrderNum), чтобы он
+// пережил round-trip: без этого Save эмитил бы правила без номера и ось
+// пере-размечалась бы при каждой загрузке (drag&drop «откатывался»).
+//
 // Параметры (presetRefs, customRules) должны быть уже заполнены (после
 // SyncStateRulesToPresetRefs + restoreCustomRules) — функция строит slot'ы
-// сопоставляя ref'ы / id'шники.
+// сопоставляя ref'ы / identity.
 //
-// Возвращает order. Если совпадения по ref/id нет (e.g. legacy state v5
+// Возвращает order. Если совпадения по ref/identity нет (e.g. legacy state v5
 // без RulesV6), возвращает пустой list → caller должен сделать RebuildRuleOrder.
 func RuleOrderFromStateRulesV6(rules []state.Rule, presetRefs []*PresetRefState, customRules []*RuleState) []RuleSlot {
 	if len(rules) == 0 {
 		return nil
 	}
-	// Index lookups by ref / id / label.
 	prByRef := make(map[string]int, len(presetRefs))
 	for i, pr := range presetRefs {
 		if pr != nil {
 			prByRef[pr.Ref] = i
 		}
 	}
-	// SPEC 063: identity для kind=inline/srs = state.StableRuleID(r), которая
-	// для legacy RuleState равна sanitize(rs.Rule.Label) (body.name берётся
-	// из Label при конверсии). Совпадение по identity → совпадение по label.
-	crByLabel := make(map[string]int, len(customRules))
+	// SPEC 063: identity для kind=inline/srs = state.StableRuleID(r). Для
+	// legacy RuleState она равна sanitize(Label) (body.name берётся из Label
+	// при конверсии), а безымянное правило даёт общий литерал "unnamed" —
+	// поэтому одной identity мало: очередь одинаковых identity разбирается
+	// по порядку появления. Так безымянное inline-правило не теряет место.
+	crQueue := make(map[string][]int, len(customRules))
 	for i, cr := range customRules {
 		if cr == nil {
 			continue
 		}
-		if cr.Rule.Label != "" {
-			crByLabel[cr.Rule.Label] = i
-		}
+		id := state.StableRuleID(*customRuleStateToIdentityRule(cr))
+		crQueue[id] = append(crQueue[id], i)
 	}
 
-	out := make([]RuleSlot, 0, len(rules))
-	for _, r := range rules {
+	// Сортировка по оси — стабильная, чтобы правила с равными номерами
+	// (исчерпанная пользовательская зона) сохранили взаимный порядок.
+	sorted := state.SortRulesByNum(rules)
+
+	out := make([]RuleSlot, 0, len(sorted))
+	for _, r := range sorted {
 		switch r.Kind {
 		case state.RuleKindPreset:
-			if idx, ok := prByRef[r.Ref]; ok {
-				out = append(out, RuleSlot{Kind: SlotKindPresetRef, Index: idx})
+			idx, ok := prByRef[r.Ref]
+			if !ok {
+				continue
+			}
+			out = append(out, RuleSlot{Kind: SlotKindPresetRef, Index: idx})
+			if presetRefs[idx] != nil {
+				presetRefs[idx].OrderNum = copyOrderNum(r.OrderNum)
 			}
 		case state.RuleKindInline, state.RuleKindSrs:
-			// Lookup по body.name (=label) — единственная точка истины с SPEC 063.
-			if body, err := r.DecodeBody(); err == nil {
-				var name string
-				switch b := body.(type) {
-				case *state.InlineBody:
-					name = b.Name
-				case *state.SrsBody:
-					name = b.Name
-				}
-				if name != "" {
-					if idx, ok := crByLabel[name]; ok {
-						out = append(out, RuleSlot{Kind: SlotKindCustom, Index: idx})
-					}
-				}
+			id := state.StableRuleID(r)
+			q := crQueue[id]
+			if len(q) == 0 {
+				continue
+			}
+			idx := q[0]
+			crQueue[id] = q[1:]
+			out = append(out, RuleSlot{Kind: SlotKindCustom, Index: idx})
+			if customRules[idx] != nil {
+				customRules[idx].OrderNum = copyOrderNum(r.OrderNum)
 			}
 		}
 	}
 	return out
+}
+
+// customRuleStateToIdentityRule — RuleState в state.Rule ТОЛЬКО ради identity.
+// Отдельно от customRuleStateToV6Rule, потому что тот отбрасывает правило с
+// пустым match (возвращает nil), а для сопоставления позиций такое правило
+// всё равно нужно посчитать — иначе очередь identity сместилась бы.
+func customRuleStateToIdentityRule(rs *RuleState) *state.Rule {
+	body, _ := json.Marshal(state.InlineBody{Name: rs.Rule.Label})
+	return &state.Rule{Kind: state.RuleKindInline, Body: body}
 }
 
 // customRuleStateToV6Rule — конверсия RuleState (legacy) → state.Rule (kind=inline|srs).
@@ -193,9 +214,10 @@ func customRuleStateToV6Rule(rs *RuleState) *state.Rule {
 					Outbound: outbound,
 				})
 				return &state.Rule{
-					Kind:    state.RuleKindSrs,
-					Enabled: rs.Enabled,
-					Body:    body,
+					Kind:     state.RuleKindSrs,
+					Enabled:  rs.Enabled,
+					OrderNum: copyOrderNum(rs.OrderNum),
+					Body:     body,
 				}
 			}
 		}
@@ -212,10 +234,22 @@ func customRuleStateToV6Rule(rs *RuleState) *state.Rule {
 		Outbound: outbound,
 	})
 	return &state.Rule{
-		Kind:    state.RuleKindInline,
-		Enabled: rs.Enabled,
-		Body:    body,
+		Kind:     state.RuleKindInline,
+		Enabled:  rs.Enabled,
+		OrderNum: copyOrderNum(rs.OrderNum),
+		Body:     body,
 	}
+}
+
+// copyOrderNum — номер оси едет в state по значению: указатель из модели
+// нельзя отдавать наружу, иначе нормализация state пере-нумеровала бы модель
+// вживую (и наоборот). SPEC 106.
+func copyOrderNum(n *int) *int {
+	if n == nil {
+		return nil
+	}
+	v := *n
+	return &v
 }
 
 func stripOutboundAction(rule map[string]interface{}) map[string]interface{} {
@@ -559,10 +593,11 @@ func SyncPresetRefsToStateRules(refs []*PresetRefState) []state.Rule {
 		}
 		body, _ := json.Marshal(state.PresetBody{Vars: vars})
 		out = append(out, state.Rule{
-			Kind:    state.RuleKindPreset,
-			Ref:     r.Ref,
-			Enabled: r.Enabled,
-			Body:    body,
+			Kind:     state.RuleKindPreset,
+			Ref:      r.Ref,
+			Enabled:  r.Enabled,
+			OrderNum: copyOrderNum(r.OrderNum),
+			Body:     body,
 		})
 	}
 	return out
@@ -589,9 +624,10 @@ func SyncStateRulesToPresetRefs(rules []state.Rule) []*PresetRefState {
 			continue
 		}
 		out = append(out, &PresetRefState{
-			Ref:     r.Ref,
-			Enabled: r.Enabled,
-			Vars:    pb.Vars,
+			Ref:      r.Ref,
+			Enabled:  r.Enabled,
+			Vars:     pb.Vars,
+			OrderNum: copyOrderNum(r.OrderNum),
 		})
 	}
 	return out

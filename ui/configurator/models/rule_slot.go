@@ -137,6 +137,11 @@ func MoveRuleSlot(m *WizardModel, from, to int) bool {
 	out = append(out, moved)
 	out = append(out, rest[to:]...)
 	m.RuleOrder = out
+
+	// SPEC 106: слот — только отображение, приоритет держит ось. Без этого
+	// вызова перетаскивание жило до первого Save→Load: state.Rules эмитился с
+	// прежними номерами, и загрузка возвращала правило на старое место.
+	m.applyAxisAfterMove(to)
 	return true
 }
 

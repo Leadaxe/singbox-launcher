@@ -30,6 +30,12 @@ type PresetRefState struct {
 	// на preset. nil или true = enabled. false = выключен.
 	// При Save → state.DNS.Rules[kind=preset, ref=<id>].Enabled.
 	DNSRuleEnabled *bool
+
+	// OrderNum — позиция на разреженной оси порядка (SPEC 106, D-051).
+	// Приезжает из state.Rules[].OrderNum при загрузке, пересчитывается
+	// перетаскиванием (PlaceRuleAfter) и уезжает обратно при Save.
+	// nil — правило ещё не размечено; ось доразметит при следующей загрузке.
+	OrderNum *int
 }
 
 // Clone — глубокая копия (для diff/undo сценариев).
@@ -54,6 +60,10 @@ func (p *PresetRefState) Clone() *PresetRefState {
 	if p.DNSRuleEnabled != nil {
 		b := *p.DNSRuleEnabled
 		cp.DNSRuleEnabled = &b
+	}
+	if p.OrderNum != nil {
+		n := *p.OrderNum
+		cp.OrderNum = &n
 	}
 	return cp
 }

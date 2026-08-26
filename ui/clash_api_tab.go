@@ -328,6 +328,12 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	// самого демона по gRPC. Без этого список групп оставался от локального
 	// ядра, хотя прокси внутри уже приезжали с роутера.
 	updateSelectorList := func() {
+		// Сбор данных (чтение config.json, gRPC к демону) — в потоке вызова:
+		// сюда приходят и фоновые пути (daemon-apply → ResetAPIStateFunc из
+		// горутины бэкенда), и обработчики кнопок. Виджеты же трогаем строго
+		// через fyne.Do ниже: прямые SetOptions/SetSelected из горутины
+		// бэкенда ломали очередь UI-вызовов, и статус-панель Local застревала
+		// на «Stopping…» после каждого Stop в daemon-режиме.
 		var updatedSelectorOptions []string
 		var updatedDefaultSelector string
 		var err error
@@ -346,50 +352,54 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 			// Remote без выбранной машины: собеседника нет, значит нет и групп.
 			// Оставить прежние значило бы показывать группы отключённой машины
 			// (а на старте — локальные) как её собственные.
-			selectorOptions = nil
-			selectedGroup = ""
-			groupSelect.SetOptions(nil)
-			suppressSelectCallback = true
-			groupSelect.SetSelected("")
-			suppressSelectCallback = false
-			if ac.APIService != nil {
-				ac.APIService.SetSelectedClashGroupIn(panel.scope, "")
-			}
+			fyne.Do(func() {
+				selectorOptions = nil
+				selectedGroup = ""
+				groupSelect.SetOptions(nil)
+				suppressSelectCallback = true
+				groupSelect.SetSelected("")
+				suppressSelectCallback = false
+				if ac.APIService != nil {
+					ac.APIService.SetSelectedClashGroupIn(panel.scope, "")
+				}
+			})
 			return
 		}
 		if err == nil && len(updatedSelectorOptions) > 0 && groupSelect != nil {
-			// Обновляем и переменную selectorOptions, и виджет groupSelect
-			selectorOptions = updatedSelectorOptions
-			groupSelect.SetOptions(updatedSelectorOptions)
+			fyne.Do(func() {
+				// Обновляем и переменную selectorOptions, и виджет groupSelect
+				selectorOptions = updatedSelectorOptions
+				groupSelect.SetOptions(updatedSelectorOptions)
 
-			// Обновить selectedGroup если текущий выбор больше не доступен
-			currentSelected := selectedGroup
-			found := false
-			for _, opt := range updatedSelectorOptions {
-				if opt == currentSelected {
-					found = true
-					break
+				// Обновить selectedGroup если текущий выбор больше не доступен
+				currentSelected := selectedGroup
+				found := false
+				for _, opt := range updatedSelectorOptions {
+					if opt == currentSelected {
+						found = true
+						break
+					}
 				}
-			}
-			if !found {
-				if updatedDefaultSelector != "" {
-					selectedGroup = updatedDefaultSelector
-				} else if len(updatedSelectorOptions) > 0 {
-					selectedGroup = updatedSelectorOptions[0]
+				if !found {
+					if updatedDefaultSelector != "" {
+						selectedGroup = updatedDefaultSelector
+					} else if len(updatedSelectorOptions) > 0 {
+						selectedGroup = updatedSelectorOptions[0]
+					}
+					suppressSelectCallback = true
+					groupSelect.SetSelected(selectedGroup)
+					suppressSelectCallback = false
 				}
-				suppressSelectCallback = true
-				groupSelect.SetSelected(selectedGroup)
-				suppressSelectCallback = false
-			}
-			if ac.APIService != nil {
-				// Переутверждаем выбор ВСЕГДА, не только при смене: ResetScope
-				// (Stop/Start, Deploy) чистит выбор области в APIService, а
-				// замыкание и виджет помнят прежнюю группу. Без переутверждения
-				// тикер и Refresh ходят с пустой группой при живом дропдауне —
-				// список навсегда застревал на «Reading the machine's selector
-				// groups…», хотя ручной клик по ↻ (замыкание) работал.
-				ac.APIService.SetSelectedClashGroupIn(panel.scope, selectedGroup)
-			}
+				if ac.APIService != nil {
+					// Переутверждаем выбор ВСЕГДА, не только при смене: ResetScope
+					// (Stop/Start, Deploy) чистит выбор области в APIService, а
+					// замыкание и виджет помнят прежнюю группу. Без переутверждения
+					// тикер и Refresh ходят с пустой группой при живом дропдауне —
+					// список навсегда застревал на «Reading the machine's selector
+					// groups…», хотя ручной клик по ↻ (замыкание) работал.
+					ac.APIService.SetSelectedClashGroupIn(panel.scope, selectedGroup)
+				}
+			})
 		}
 	}
 

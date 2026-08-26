@@ -214,6 +214,16 @@ func (p *WizardPresenter) executeSaveOperation() {
 			if err := ac.RebuildConfigIfDirty(); err != nil {
 				debuglog.WarnLog("Save: auto-rebuild after Save failed: %v", err)
 			}
+			// SPEC 112-B часть B: сборка только что переписала реестр
+			// исключений, а строка источника читает его при отрисовке — без
+			// перерисовки пометка ⚠ появилась бы (или не исчезла) лишь при
+			// следующем заходе на вкладку. Виджеты из горутины сборки трогаем
+			// только через fyne.Do.
+			fyne.Do(func() {
+				if p.guiState != nil && p.guiState.RefreshSourcesList != nil {
+					p.guiState.RefreshSourcesList()
+				}
+			})
 		}()
 
 		// Step 3: success dialog — только если визард-окно ещё живо. Если
