@@ -8,6 +8,14 @@
 
 ---
 
+### Выжимка (RU) — v1.5.2
+
+**Идентичность узла — тег, а не хеш содержимого (SPEC 112).** Отметки выключения и цепочки-через-узел (detour) больше не отваливаются от ротации IP у провайдера или смены формы хранения: ссылка хранится объектом (id источника + тег), финальный тег вычисляется на каждой сборке, старые состояния мигрируют сами — включая уже протухшие ссылки («включённый источник пропал из селектора»). Переименование узла сбрасывает ссылки на него явно, с окном-предупреждением; неразрешённая ссылка по-прежнему fail-closed, но ошибка называет подписку и узел по именам. Плюс переработанная форма сервера (типы селектором, вкладка JSON, клонирование), привязка к сетевому интерфейсу, честное превью Направлений (#91) и цепочки в LX Backup. Подробнее: [docs/release_notes/1-5-2.md](docs/release_notes/1-5-2.md).
+
+### Highlights (EN) — v1.5.2
+
+**Node identity is the tag, not a content hash (SPEC 112).** Disabled marks and chain-through-node (detour) links no longer detach on a provider IP rotation or a storage-form change: a link is stored as an object (source id + tag), the final tag is computed on every build, and old states migrate themselves — including already-rotted links (the "enabled source missing from the selector" case). Renaming a node resets links to it explicitly, with a dialog; an unresolved link still fails closed, but the error names the subscription and the node. Plus a reworked server form (type selector, JSON tab, cloning), network-interface pinning, a truthful Direction preview (#91), and chains in LX Backup. Details: [docs/release_notes/1-5-2.md](docs/release_notes/1-5-2.md).
+
 ### Выжимка (RU) — v1.5.1
 
 Хотфикс. Бесконечный цикл обновления подписок: источник со стабильно падающим fetch и без локального кэша раскручивал взаимную рекурсию Update↔Rebuild — лаунчер перефетчивал подписки раз в секунду, а `config.json` не собирался вовсе; теперь такой источник деградирует с предупреждением, конфиг строится из остальных. macOS-скрипт установки при обновлении терял настройки (включая идентификатор устройства и режим движка), сопряжение с демоном, remote-машины и кэши подписок — теперь переносит весь каталог данных. Подробнее: [docs/release_notes/1-5-1.md](docs/release_notes/1-5-1.md).
@@ -596,6 +604,11 @@ Wizard (DNS tab, Rules v3, Sources, scroll gutters, row hover, per-source edit, 
 
 | Версия | Описание |
 |--------|----------|
+| **v1.5.2** | [docs/release_notes/1-5-2.md](docs/release_notes/1-5-2.md) |
+| **v1.5.1** | [docs/release_notes/1-5-1.md](docs/release_notes/1-5-1.md) |
+| **v1.5.0** | [docs/release_notes/1-5-0.md](docs/release_notes/1-5-0.md) |
+| **v1.4.2** | [docs/release_notes/1-4-2.md](docs/release_notes/1-4-2.md) |
+| **v1.4.1** | [docs/release_notes/1-4-1.md](docs/release_notes/1-4-1.md) |
 | **v1.4.0** | [docs/release_notes/1-4-0.md](docs/release_notes/1-4-0.md) |
 | **v1.3.1** | [docs/release_notes/1-3-1.md](docs/release_notes/1-3-1.md) |
 | **v1.3.0** | [docs/release_notes/1-3-0.md](docs/release_notes/1-3-0.md) |
