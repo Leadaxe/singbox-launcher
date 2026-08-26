@@ -35,6 +35,20 @@ func convertPresetRefToUserRules(
 		return 0
 	}
 
+	// SPEC 106: конвертированные правила занимают место пресета на оси —
+	// иначе они уехали бы в конец списка и порядок маршрутизации поменялся бы
+	// молча, хотя пользователь просил только «отвязать от шаблона».
+	// Указатель раздаётся КОПИЯМИ: общий *int на несколько правил означал бы,
+	// что перетаскивание одного двигает все.
+	presetNum := wizardmodels.PresetRuleOrderNum(model, tplPreset.ID)
+	orderNum := func() *int {
+		if presetNum == nil {
+			return nil
+		}
+		n := *presetNum
+		return &n
+	}
+
 	created := 0
 	outbound := ""
 	// SPEC 067 Phase 9: preset.rules — slice. Для одно-rule presets берём первый.
@@ -75,6 +89,7 @@ func convertPresetRefToUserRules(
 					},
 					Enabled:          enabled,
 					SelectedOutbound: outbound,
+					OrderNum:         orderNum(),
 				}
 				model.CustomRules = append(model.CustomRules, &cr)
 				created++
@@ -94,6 +109,7 @@ func convertPresetRefToUserRules(
 						},
 						Enabled:          enabled,
 						SelectedOutbound: outbound,
+						OrderNum:         orderNum(),
 					}
 					model.CustomRules = append(model.CustomRules, &cr)
 					created++
@@ -141,6 +157,7 @@ func convertPresetRefToUserRules(
 			},
 			Enabled:          enabled,
 			SelectedOutbound: ruleOutbound,
+			OrderNum:         orderNum(),
 		}
 		model.CustomRules = append(model.CustomRules, &cr)
 		created++

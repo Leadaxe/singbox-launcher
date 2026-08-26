@@ -269,11 +269,16 @@ func (p PresetRefForUI) AppendTo(model *wizardmodels.WizardModel) {
 		Ref:     p.Ref,
 		Enabled: p.Enabled,
 		Vars:    p.Vars,
+		// SPEC 106: якорь из шаблона (или конец пользовательской зоны для
+		// пресета без num) — иначе правило уехало бы в конец списка и
+		// «прыгнуло» на своё место при следующем открытии визарда.
+		OrderNum: wizardmodels.PresetRuleOrderNum(model, p.Ref),
 	})
-	// Append slot to RuleOrder so the new preset-ref shows up in the unified
-	// list at the end (юзер потом может drag вверх если хочет приоритет).
+	// Append slot to RuleOrder, then place it by the axis — новый пресет
+	// показывается сразу там, где его увидит и build pipeline.
 	model.RuleOrder = append(model.RuleOrder, wizardmodels.RuleSlot{
 		Kind:  wizardmodels.SlotKindPresetRef,
 		Index: newIdx,
 	})
+	wizardmodels.SortRuleOrderByAxis(model)
 }

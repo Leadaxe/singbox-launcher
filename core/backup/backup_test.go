@@ -331,6 +331,59 @@ func TestImportRenumbersPreservingOrder(t *testing.T) {
 	}
 }
 
+// SPEC 106-B: подключение оси к визарду не должно ломать импорт. Номера,
+// проставленные renumberImportedRules, — уже разметка: NormalizeRuleOrder на
+// первой же загрузке обязан оставить их и порядок как есть, а не пере-размечать.
+func TestNormalizeKeepsImportedOrder(t *testing.T) {
+	n := func(v int) *float64 { f := float64(v); return &f }
+	b := &Backup{LxBackup: FormatVersion, Rules: []Rule{
+		{Kind: RuleInline, Name: "third", Num: n(9000), Match: json.RawMessage(`{}`)},
+		{Kind: RuleInline, Name: "first", Num: n(10), Match: json.RawMessage(`{}`)},
+		{Kind: RuleInline, Name: "second", Num: n(500), Match: json.RawMessage(`{}`)},
+	}}
+	dst := &state.State{}
+	if _, err := Import(dst, b, ImportOptions{}); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	names := func(rules []state.Rule) []string {
+		out := make([]string, 0, len(rules))
+		for _, r := range rules {
+			var body state.InlineBody
+			_ = json.Unmarshal(r.Body, &body)
+			out = append(out, body.Name)
+		}
+		return out
+	}
+
+	// Шаблон пустой: у импорта нет пресетов, seed'ить нечего.
+	normalized := state.NormalizeRuleOrder(dst.Rules, map[string]state.RuleOrderSpec{})
+	got := names(normalized)
+	want := []string{"first", "second", "third"}
+	for i := range want {
+		if i >= len(got) || got[i] != want[i] {
+			t.Fatalf("normalize переставил импортированные правила: %v, ожидалось %v", got, want)
+		}
+	}
+	for i, r := range normalized {
+		if r.OrderNum == nil {
+			t.Fatalf("правило %d потеряло номер после normalize", i)
+		}
+		if *r.OrderNum != state.UserRuleNumStart+i {
+			t.Errorf("номер правила %q = %d, ожидался %d (импортные номера переписаны)",
+				got[i], *r.OrderNum, state.UserRuleNumStart+i)
+		}
+	}
+
+	// Идемпотентность: второй проход ничего не меняет.
+	again := state.NormalizeRuleOrder(normalized, map[string]state.RuleOrderSpec{})
+	for i, name := range names(again) {
+		if name != want[i] {
+			t.Fatalf("повторный normalize переставил правила: %v", names(again))
+		}
+	}
+}
+
 // Чужой kind не роняет импорт: остальные правила обязаны приехать.
 func TestImportUnknownKindSkipsOnlyThatRule(t *testing.T) {
 	b := &Backup{LxBackup: FormatVersion, Rules: []Rule{
