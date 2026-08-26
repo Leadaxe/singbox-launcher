@@ -66,6 +66,8 @@ const (
 	StartedService_GetRunningConfig_FullMethodName               = "/daemon.StartedService/GetRunningConfig"
 	StartedService_GetURLViaOutbound_FullMethodName              = "/daemon.StartedService/GetURLViaOutbound"
 	StartedService_GetChains_FullMethodName                      = "/daemon.StartedService/GetChains"
+	StartedService_SetChainPositionEnabled_FullMethodName        = "/daemon.StartedService/SetChainPositionEnabled"
+	StartedService_GetChainCloneConfig_FullMethodName            = "/daemon.StartedService/GetChainCloneConfig"
 )
 
 // StartedServiceClient is the client API for StartedService service.
@@ -123,6 +125,8 @@ type StartedServiceClient interface {
 	GetRunningConfig(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*RunningConfig, error)
 	GetURLViaOutbound(ctx context.Context, in *GetURLViaOutboundRequest, opts ...grpc.CallOption) (*GetURLViaOutboundResponse, error)
 	GetChains(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ChainList, error)
+	SetChainPositionEnabled(ctx context.Context, in *SetChainPositionEnabledRequest, opts ...grpc.CallOption) (*SetChainPositionEnabledResponse, error)
+	GetChainCloneConfig(ctx context.Context, in *GetChainCloneConfigRequest, opts ...grpc.CallOption) (*RunningConfig, error)
 }
 
 type startedServiceClient struct {
@@ -814,6 +818,26 @@ func (c *startedServiceClient) GetChains(ctx context.Context, in *emptypb.Empty,
 	return out, nil
 }
 
+func (c *startedServiceClient) SetChainPositionEnabled(ctx context.Context, in *SetChainPositionEnabledRequest, opts ...grpc.CallOption) (*SetChainPositionEnabledResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetChainPositionEnabledResponse)
+	err := c.cc.Invoke(ctx, StartedService_SetChainPositionEnabled_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *startedServiceClient) GetChainCloneConfig(ctx context.Context, in *GetChainCloneConfigRequest, opts ...grpc.CallOption) (*RunningConfig, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RunningConfig)
+	err := c.cc.Invoke(ctx, StartedService_GetChainCloneConfig_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StartedServiceServer is the server API for StartedService service.
 // All implementations must embed UnimplementedStartedServiceServer
 // for forward compatibility.
@@ -869,6 +893,8 @@ type StartedServiceServer interface {
 	GetRunningConfig(context.Context, *emptypb.Empty) (*RunningConfig, error)
 	GetURLViaOutbound(context.Context, *GetURLViaOutboundRequest) (*GetURLViaOutboundResponse, error)
 	GetChains(context.Context, *emptypb.Empty) (*ChainList, error)
+	SetChainPositionEnabled(context.Context, *SetChainPositionEnabledRequest) (*SetChainPositionEnabledResponse, error)
+	GetChainCloneConfig(context.Context, *GetChainCloneConfigRequest) (*RunningConfig, error)
 	mustEmbedUnimplementedStartedServiceServer()
 }
 
@@ -1081,6 +1107,14 @@ func (UnimplementedStartedServiceServer) GetURLViaOutbound(context.Context, *Get
 
 func (UnimplementedStartedServiceServer) GetChains(context.Context, *emptypb.Empty) (*ChainList, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetChains not implemented")
+}
+
+func (UnimplementedStartedServiceServer) SetChainPositionEnabled(context.Context, *SetChainPositionEnabledRequest) (*SetChainPositionEnabledResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetChainPositionEnabled not implemented")
+}
+
+func (UnimplementedStartedServiceServer) GetChainCloneConfig(context.Context, *GetChainCloneConfigRequest) (*RunningConfig, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetChainCloneConfig not implemented")
 }
 func (UnimplementedStartedServiceServer) mustEmbedUnimplementedStartedServiceServer() {}
 func (UnimplementedStartedServiceServer) testEmbeddedByValue()                        {}
@@ -1862,6 +1896,42 @@ func _StartedService_GetChains_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StartedService_SetChainPositionEnabled_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetChainPositionEnabledRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).SetChainPositionEnabled(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_SetChainPositionEnabled_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).SetChainPositionEnabled(ctx, req.(*SetChainPositionEnabledRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_GetChainCloneConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetChainCloneConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).GetChainCloneConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_GetChainCloneConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).GetChainCloneConfig(ctx, req.(*GetChainCloneConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // StartedService_ServiceDesc is the grpc.ServiceDesc for StartedService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1988,6 +2058,14 @@ var StartedService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetChains",
 			Handler:    _StartedService_GetChains_Handler,
+		},
+		{
+			MethodName: "SetChainPositionEnabled",
+			Handler:    _StartedService_SetChainPositionEnabled_Handler,
+		},
+		{
+			MethodName: "GetChainCloneConfig",
+			Handler:    _StartedService_GetChainCloneConfig_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

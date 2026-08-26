@@ -16,7 +16,6 @@ func TestUserPatchCarriesDirectionFields(t *testing.T) {
 	base := configtypes.Direction{Tag: "vpn-1", Type: "selector"}
 	interrupt := true
 	form := base
-	form.Label = "Моя Германия"
 	form.Disabled = true
 	form.Auto = &configtypes.DirectionAuto{
 		Mode:                      configtypes.AutoModeRoundRobin,
@@ -26,10 +25,7 @@ func TestUserPatchCarriesDirectionFields(t *testing.T) {
 
 	patch := OutboundFieldDiff(form, base)
 	if patch == nil {
-		t.Fatal("diff пуст: правка имени/двойника не дойдёт до state")
-	}
-	if patch["label"] != "Моя Германия" {
-		t.Fatalf("label не в патче: %+v", patch)
+		t.Fatal("diff пуст: правка выключения/двойника не дойдёт до state")
 	}
 	if patch["disabled"] != true {
 		t.Fatalf("disabled не в патче: %+v", patch)
@@ -49,9 +45,6 @@ func TestUserPatchCarriesDirectionFields(t *testing.T) {
 	}
 
 	got := applyOutboundUpdatePatch(base, stored, true)
-	if got.Label != "Моя Германия" {
-		t.Fatalf("имя не применилось: %+v", got)
-	}
 	if !got.Disabled {
 		t.Fatalf("выключение не применилось: %+v", got)
 	}
@@ -63,25 +56,20 @@ func TestUserPatchCarriesDirectionFields(t *testing.T) {
 	}
 }
 
-// Обратный ход: пользователь снял имя и выключил двойник у направления,
-// которое пришло из шаблона с именем. Нулевые значения обязаны записаться
-// явно, иначе форма не сможет ничего отменить.
-func TestUserPatchCanClearNameAndTwin(t *testing.T) {
+// Обратный ход: пользователь выключил двойник у направления, которое
+// пришло из шаблона с ним. Нулевое значение обязано записаться явно,
+// иначе форма не сможет ничего отменить.
+func TestUserPatchCanClearTwin(t *testing.T) {
 	base := configtypes.Direction{
-		Tag:   "vpn-1",
-		Label: "VPN ①",
-		Auto:  &configtypes.DirectionAuto{URL: "http://example.com"},
+		Tag:  "vpn-1",
+		Auto: &configtypes.DirectionAuto{URL: "http://example.com"},
 	}
 	form := base
-	form.Label = ""
 	form.Auto = nil
 
 	patch := OutboundFieldDiff(form, base)
 	if patch == nil {
 		t.Fatal("очистка должна давать непустой diff")
-	}
-	if v, ok := patch["label"]; !ok || v != "" {
-		t.Fatalf("пустое имя должно писаться явно: %+v", patch)
 	}
 	if v, ok := patch["auto"]; !ok || v != nil {
 		t.Fatalf("снятый двойник должен писаться явным null: %+v", patch)
@@ -93,9 +81,6 @@ func TestUserPatchCanClearNameAndTwin(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	got := applyOutboundUpdatePatch(base, stored, true)
-	if got.Label != "" {
-		t.Fatalf("имя не снялось: %q", got.Label)
-	}
 	if got.Auto != nil {
 		t.Fatalf("двойник не снялся: %+v", got.Auto)
 	}
@@ -111,24 +96,8 @@ func TestUserPatchCanReEnableDirection(t *testing.T) {
 	}
 }
 
-// Пресет с mode=update переименовывает и настраивает двойник; пустое имя у
-// пресета означает «не переименовываю» и не должно стирать пользовательское.
-func TestPresetUpdateRenamesButEmptyNameKeepsUserLabel(t *testing.T) {
-	target := configtypes.Direction{Tag: "vpn-1", Label: "Моё имя"}
-
-	renamed := applyOutboundUpdate(target, configtypes.Direction{Label: "ru VPN 🇷🇺"})
-	if renamed.Label != "ru VPN 🇷🇺" {
-		t.Fatalf("пресет не переименовал: %q", renamed.Label)
-	}
-
-	untouched := applyOutboundUpdate(target, configtypes.Direction{Filters: map[string]interface{}{"tag": "/x/i"}})
-	if untouched.Label != "Моё имя" {
-		t.Fatalf("пресет без label стёр имя пользователя: %q", untouched.Label)
-	}
-}
-
-// Пресет умеет создать направление с именем и двойником (mode=add,
-// решение D-10) — поля должны доехать через JSON-разворачивание.
+// Пресет умеет создать направление с двойником (mode=add, решение D-10) —
+// поля должны доехать через JSON-разворачивание.
 func TestPresetAddCarriesDirectionFields(t *testing.T) {
 	disabled := false
 	preset := template.Preset{
@@ -137,7 +106,6 @@ func TestPresetAddCarriesDirectionFields(t *testing.T) {
 			Mode:     "add",
 			Tag:      "ru VPN 🇷🇺",
 			Type:     "selector",
-			Label:    "ru VPN 🇷🇺",
 			Disabled: &disabled,
 			Auto: &configtypes.DirectionAuto{
 				Mode: configtypes.AutoModeLeastTest,
@@ -153,8 +121,8 @@ func TestPresetAddCarriesDirectionFields(t *testing.T) {
 		t.Fatalf("ожидалась одна запись, got %d", len(entries))
 	}
 	got := entries[0].Config
-	if got.Label != "ru VPN 🇷🇺" {
-		t.Fatalf("имя не доехало: %+v", got)
+	if got.Tag != "ru VPN 🇷🇺" {
+		t.Fatalf("тег не доехал: %+v", got)
 	}
 	if got.Auto == nil || got.Auto.URL == "" {
 		t.Fatalf("двойник не доехал: %+v", got.Auto)
@@ -164,18 +132,17 @@ func TestPresetAddCarriesDirectionFields(t *testing.T) {
 	}
 }
 
-// Тело referenced-записи живёт в шаблоне/пресете: имя и двойник обязаны
-// зачищаться вместе с остальным телом, иначе старое имя навсегда перебивало
-// бы обновление шаблона.
-func TestStripReferencedBodyClearsNameAndTwin(t *testing.T) {
+// Тело referenced-записи живёт в шаблоне/пресете: двойник обязан
+// зачищаться вместе с остальным телом, иначе старая настройка навсегда
+// перебивала бы обновление шаблона.
+func TestStripReferencedBodyClearsTwin(t *testing.T) {
 	ob := &configtypes.Direction{
-		Tag:   "proxy-out",
-		Ref:   configtypes.RefTemplate,
-		Label: "старое имя",
-		Auto:  &configtypes.DirectionAuto{URL: "http://example.com"},
+		Tag:  "proxy-out",
+		Ref:  configtypes.RefTemplate,
+		Auto: &configtypes.DirectionAuto{URL: "http://example.com"},
 	}
 	stripReferencedBody(ob)
-	if ob.Label != "" || ob.Auto != nil {
+	if ob.Auto != nil {
 		t.Fatalf("тело не зачищено: %+v", ob)
 	}
 	if ob.Tag != "proxy-out" || ob.Ref != configtypes.RefTemplate {
@@ -183,9 +150,12 @@ func TestStripReferencedBodyClearsNameAndTwin(t *testing.T) {
 	}
 
 	// Direct-запись (ref="") не трогаем — её тело и есть источник истины.
-	direct := &configtypes.Direction{Tag: "vpn-1", Label: "Моё"}
+	direct := &configtypes.Direction{
+		Tag:  "vpn-1",
+		Auto: &configtypes.DirectionAuto{URL: "http://example.com"},
+	}
 	stripReferencedBody(direct)
-	if direct.Label != "Моё" {
+	if direct.Auto == nil {
 		t.Fatalf("direct-запись обеднена: %+v", direct)
 	}
 }

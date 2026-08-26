@@ -556,14 +556,21 @@ func validateVarPredicateRHS(varName string, rhs interface{}, varByName map[stri
 	}
 	switch r := rhs.(type) {
 	case string:
-		// "#notEmpty" / "#isEmpty" — no-arg predicate (any of text/text_list/bool).
+		// "#notEmpty" / "#isEmpty" — no-arg predicate.
+		//
+		// Применим к любому типу с одним скаляром: рантайм (checkNotEmpty)
+		// для списка смотрит длину, для bool — значение "true", а для всего
+		// остального — непустоту строки, и ни один скалярный тип для него не
+		// особенный. Прежний allowlist из text/text_list/bool был строже
+		// рантайма и отвергал шаблон с `#notEmpty` над типами-пикерами
+		// (outbound / dns_server / interface / enum), хотя вычислился бы он
+		// там корректно. Отвергается только secret: условие на секрете
+		// утекало бы фактом его наличия в неветвящуюся часть конфига.
 		if r == "#notEmpty" || r == "#isEmpty" {
-			switch varType {
-			case "text", "text_list", "bool":
-				return nil
-			default:
+			if varType == "secret" {
 				return fmt.Errorf("%s: %s not applicable to var type %q", ctx, r, varType)
 			}
+			return nil
 		}
 		if strings.HasPrefix(r, "#") {
 			return fmt.Errorf("%s: unknown no-arg predicate %q", ctx, r)

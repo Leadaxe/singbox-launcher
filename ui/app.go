@@ -209,6 +209,32 @@ func NewApp(window fyne.Window, controller *core.AppController) *App {
 		controller.EventBus.Subscribe(events.VpnStateChanged, func(_ events.Event) {
 			fyne.Do(refreshCoreTabIcon)
 		})
+
+		// Направление, добавленное в визарде, приезжает в config.json
+		// только при пересборке, а выпадашка «Selector group» читает файл
+		// один раз — на подключении к API. Поэтому новая группа не
+		// появлялась в списке, пока пользователь не перезапустит
+		// приложение, а удалённая продолжала висеть.
+		//
+		// `ConfigBuilt{OK:true}` — момент, когда пересобранный config.json
+		// прошёл проверку ядром и записан на диск: ровно тогда набор
+		// selector-групп в файле стал новым. Берём его, а не
+		// `restart_dirty_cleared`: тот публикуется только при ПЕРЕХОДЕ
+		// флага из dirty, и пересборка при уже чистом флаге прошла бы мимо.
+		//
+		// Только Local: у remote-панели свой источник групп (gRPC к
+		// демону), и локальный config.json ей не собеседник.
+		controller.EventBus.Subscribe(events.ConfigBuilt, func(e events.Event) {
+			payload, ok := e.Payload.(events.ConfigBuiltPayload)
+			if !ok || !payload.OK {
+				return
+			}
+			fyne.Do(func() {
+				if app.localPanel != nil {
+					app.localPanel.ReloadGroups()
+				}
+			})
+		})
 	}
 
 	// SPEC 064: подписка на remote-override changes. Set/Clear из

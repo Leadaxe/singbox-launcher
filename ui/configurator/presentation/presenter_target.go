@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"fmt"
 	"runtime"
 	"strings"
 
@@ -251,4 +252,44 @@ func (p *WizardPresenter) invalidateParsedNodes() {
 	p.model.ParserConfig = nil
 	p.model.PreviewNeedsParse = true
 	wizardbusiness.InvalidatePreviewCache(p.model)
+}
+
+// ApplyClonedState применяет состояние, склонированное с ДРУГОЙ машины.
+//
+// Отличается от LoadState ровно одним, но критическим пунктом: у клона снята
+// идентичность донора, в том числе meta.target. LoadState читает таргет из
+// файла (targetSpecFromStateMeta), пустой meta.target нормализуется в local —
+// и remote-машина, на которую клонировали, молча стала бы local. Следующий
+// Save ушёл бы в bin/wizard_states/state.json, затирая ЛОКАЛЬНЫЙ конфиг
+// чужим. Поэтому таргет приёмника снимается ДО загрузки и ставится обратно
+// после — файл описывает настройки, а машину описывает открытый визард.
+//
+// Состояние помечается изменённым, а не сохранённым: клон — это правка,
+// которую пользователь ещё может отменить, закрыв визард без Save.
+func (p *WizardPresenter) ApplyClonedState(stateFile *wizardmodels.WizardStateFile) error {
+	if p.model == nil {
+		return fmt.Errorf("model is not initialized")
+	}
+	// Таргет приёмника — со всеми путевыми полями машины (MachineID,
+	// ResourceDir, SrsLocalDir): они свойство записи реестра, а не файла.
+	own := p.model.Target
+
+	if err := p.LoadState(stateFile); err != nil {
+		return err
+	}
+
+	p.model.Target = own
+	// Ноды, разобранные для прежнего набора источников, к новому отношения
+	// не имеют — иначе превью и Save показали бы состав ДО клона.
+	p.invalidateParsedNodes()
+	p.MarkAsChanged()
+
+	debuglog.InfoLog("ApplyClonedState: applied, target restored to %s/%s (machine %q)",
+		own.Normalized().Target, own.Normalized().GOARCH, own.MachineIDOrEmpty())
+
+	// Перерисовка того же объёма, что и после смены таргета: клон меняет
+	// СОСТАВ вкладок (набор источников, правил, vars), а не только значения.
+	p.refreshAfterTargetChange()
+	p.RefreshRulesTabAfterLoadState()
+	return nil
 }

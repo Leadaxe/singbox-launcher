@@ -384,6 +384,7 @@ build\test_windows.bat   # Windows
 - **[docs/API.md](docs/API.md)** — референс Debug API с curl-рецептами.
 - **[docs/DAEMON_AND_REMOTE.md](docs/DAEMON_AND_REMOTE.md)** — daemon-режим ядра, сопряжение, управление удалёнными машинами.
 - **[docs/WIZARD_TEMPLATE.ru.md](docs/WIZARD_TEMPLATE.ru.md)** — справочник по синтаксису `wizard_template.json` (для VPN-провайдеров, поставляющих собственный шаблон).
+- **[docs/Protocols.ru.md](docs/Protocols.ru.md)** — поддерживаемые протоколы и форматы ссылок.
 - **[docs/ParserConfig.ru.md](docs/ParserConfig.ru.md)** — справочник по настройке парсера подписок.
 - **[docs/TRAFFIC_PROFILER.md](docs/TRAFFIC_PROFILER.md)** — внутренности и использование Traffic Profiler.
 - **[docs/TEMPLATE_REFERENCE.md](docs/TEMPLATE_REFERENCE.md)** — справочник схемы `wizard_template.json`.

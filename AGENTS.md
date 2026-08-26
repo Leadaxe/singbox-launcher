@@ -72,7 +72,7 @@
 - **Задачи:** `SPECS/README.md`, папки `SPECS/NNN-T-S-NAME/`
 - **Правила реализации и DoD:** `SPECS/IMPLEMENTATION_PROMPT.md`
 - **Сборка, тесты:** `docs/BUILD_WINDOWS.md`, `docs/TEST_README.md`; GUI-пакеты исключены из `go test` (CONSTITUTION).
-- **Конфиг парсера:** `docs/ParserConfig.md`; шаблон визарда — `bin/wizard_template.json`.
+- **Конфиг парсера:** `docs/ParserConfig.md`; протоколы и форматы ссылок — `docs/Protocols.md`; шаблон визарда — `bin/wizard_template.json`.
 
 ---
 

@@ -77,12 +77,10 @@ func OutboundFieldDiff(form, base configtypes.Direction) map[string]interface{} 
 		patch["comment"] = form.Comment
 	}
 
-	// SPEC 104. Label и Disabled — обычный field-level diff (пустая строка и
-	// false пишутся явно: пользователь мог снять имя, данное шаблоном, или
-	// снова включить направление, выключенное пресетом).
-	if form.Label != base.Label {
-		patch["label"] = form.Label
-	}
+	// SPEC 104. Disabled — обычный field-level diff (false пишется явно:
+	// пользователь мог снова включить направление, выключенное пресетом).
+	// Имени в diff'е нет: у Направления его нет вовсе (контракт 0.9.0), а
+	// тег правится не патчем, а переименованием со сменой ссылок.
 	if form.Disabled != base.Disabled {
 		patch["disabled"] = form.Disabled
 	}

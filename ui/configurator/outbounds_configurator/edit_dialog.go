@@ -88,29 +88,24 @@ func ShowEditDialog(
 	}
 	tagEntry.SetPlaceHolder(locale.T("e.g. vpn-1"))
 
-	// SPEC 104: имя Направления. Отдельно от Comment намеренно — у
-	// шаблонных записей комментарий описывает назначение абзацем, именем
-	// его не сделать.
-	labelEntry := widget.NewEntry()
-	if displayBody != nil {
-		labelEntry.SetText(displayBody.Label)
-	}
-	labelEntry.SetPlaceHolder(locale.T("e.g. My Germany"))
-
-	// Новое Направление получает свободный тег и имя по умолчанию: тег —
-	// цель правил, и придумывать его вручную незачем; имя пользователь
-	// поправит, если захочет.
+	// Новое Направление получает свободный тег: он же имя (контракт
+	// 0.9.0), и придумывать его вручную незачем.
 	if isAdd {
-		nextTag := configtypes.NextDirectionTag(existingTags)
-		tagEntry.SetText(nextTag)
-		if n, ok := configtypes.DirectionNumber(nextTag); ok {
-			labelEntry.SetPlaceHolder(configtypes.DefaultDirectionLabel(n))
-		}
-	} else {
-		// Тег — цель правил: переименование сломало бы ссылки. Правится
-		// только при создании.
+		tagEntry.SetText(configtypes.NextDirectionTag(existingTags))
+	} else if existing != nil && existing.Ref != "" {
+		// Ссылочная запись (шаблон/пресет): тег — не имя, а СВЯЗЬ с базой.
+		// По нему SyncOutboundsWithTemplate находит запись в шаблоне и
+		// ResolveMergedOutbound достаёт тело; переименуй — связь порвётся,
+		// а на следующей сборке шаблон создаст запись со старым тегом
+		// заново, и пользователь получит дубль. Имя такой записи
+		// принадлежит шаблону, не пользователю.
 		tagEntry.Disable()
 	}
+	// У собственной записи (ref == "") тег правится и на Edit: он
+	// единственное имя Направления (контракт 0.9.0), и запрет означал бы,
+	// что переименовать Направление нельзя вовсе. Ссылки на старый тег
+	// переписывает RenameDirection при сохранении — правки поля самой по
+	// себе для этого мало.
 
 	// SPEC 088 load-balancing: mode/balancer парсим ЗАРАНЕЕ — он определяет, какой
 	// из трёх типов показать (round_robin = отдельный пункт "loadbalance", хотя на
@@ -404,7 +399,6 @@ func ShowEditDialog(
 		cfg := &config.Direction{
 			Tag:   tag,
 			Type:  obType,
-			Label: strings.TrimSpace(labelEntry.Text),
 		}
 		// SPEC 104: комментарий формой не правится (его роль взяло имя), но
 		// и не теряется: у шаблонных записей это осмысленный текст, который
@@ -535,6 +529,39 @@ func ShowEditDialog(
 		stripDirectBodyForReferenced(cfg)
 	}
 
+	// originalTag — тег, с которым форма открылась; пусто при создании.
+	// Ссылки переписываем только при РЕАЛЬНОЙ смене, поэтому исходное имя
+	// нужно запомнить до правок.
+	originalTag := ""
+	if existing != nil {
+		originalTag = existing.Tag
+	}
+
+	// checkTagFree — отказ вместо молчаливого слияния: два Направления под
+	// одним тегом на сборке схлопнулись бы в одно, и какое из них уедет в
+	// конфиг, зависело бы от порядка обхода.
+	checkTagFree := func(tag string) error {
+		if editPresenter == nil {
+			return nil
+		}
+		if wizardbusiness.DirectionTagTaken(editPresenter.Model(), tag, originalTag) {
+			return fmt.Errorf(locale.T("tag %q is already taken — directions, nodes and service outbounds share one namespace"), strings.TrimSpace(tag))
+		}
+		return nil
+	}
+
+	// renameRefs — переименование Направления это смена его тега, а тег
+	// ссылочный: правила, route.final, опции других Направлений, detour
+	// DNS-серверов и позиции цепочек смотрят на него по имени. Переписываем
+	// их здесь, ДО onSave: иначе форма сохранит новое имя, а ссылки
+	// останутся указывать в никуда.
+	renameRefs := func(newTag string) {
+		if editPresenter == nil || originalTag == "" {
+			return
+		}
+		wizardbusiness.RenameDirection(editPresenter.Model(), originalTag, strings.TrimSpace(newTag))
+	}
+
 	save := func() {
 		// Route by editSource (where user actually typed) instead of currentTab.
 		// Save from Preview tab must use whatever was last edited, not always
@@ -549,6 +576,11 @@ func ShowEditDialog(
 				dialog.ShowError(fmt.Errorf("%s", locale.T("tag is required")), dialogWin)
 				return
 			}
+			if err := checkTagFree(cfg.Tag); err != nil {
+				dialog.ShowError(err, dialogWin)
+				return
+			}
+			renameRefs(cfg.Tag)
 			scopeKind, idx := getScopeFromForm()
 			// SPEC 057-R-N: Raw tab показывает ref/updates юзеру (они в JSON),
 			// но юзерский edit мог их случайно изменить/удалить. Преимущество
@@ -567,6 +599,11 @@ func ShowEditDialog(
 			dialog.ShowError(err, dialogWin)
 			return
 		}
+		if err := checkTagFree(cfg.Tag); err != nil {
+			dialog.ShowError(err, dialogWin)
+			return
+		}
+		renameRefs(cfg.Tag)
 		scopeKind, idx := getScopeFromForm()
 
 		// SPEC 057-R-N: preserve preset binding (Form tab их не показывает,
@@ -579,8 +616,6 @@ func ShowEditDialog(
 	}
 
 	form := container.NewVBox(
-		widget.NewLabel(locale.T("Name")),
-		labelEntry,
 		widget.NewLabel(locale.T("Tag")),
 		tagEntry,
 		autoTwinCheck,
@@ -803,7 +838,6 @@ func ShowEditDialog(
 			}
 		}
 		tagEntry.SetText(display.Tag)
-		labelEntry.SetText(display.Label)
 
 		// SPEC 104: в форму кладём ТЕЛО регулярки и признак инверсии.
 		filterBody, filterInvert := configtypes.DirectionFilterTag(display.Filters)

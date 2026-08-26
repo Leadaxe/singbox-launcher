@@ -47,9 +47,9 @@ func TestExplicitClear_PreferredDefaultSurvives(t *testing.T) {
 
 // Патч без пустых значений пишется как раньше — без флага, байт-в-байт.
 func TestExplicitClear_PlainEditNotMarked(t *testing.T) {
-	base := configtypes.Direction{Tag: "vpn-1", Type: "selector", Label: "старое"}
+	base := configtypes.Direction{Tag: "vpn-1", Type: "selector", Comment: "старое"}
 	form := base
-	form.Label = "новое"
+	form.Comment = "новое"
 
 	updates := UpsertUserPatch(nil, OutboundFieldDiff(form, base), true)
 	if len(updates) != 1 {
@@ -78,19 +78,19 @@ func TestExplicitClear_MixedEditKeepsBoth(t *testing.T) {
 	base := configtypes.Direction{
 		Tag:     "proxy-out",
 		Type:    "selector",
-		Label:   "старое",
+		Comment: "старое",
 		Filters: map[string]interface{}{"tag": "!/(🇷🇺)/i"},
 	}
 	form := base
-	form.Label = "новое"
+	form.Comment = "новое"
 	form.Filters = nil
 
 	updates := UpsertUserPatch(nil, OutboundFieldDiff(form, base), true)
 	if len(updates) != 1 || !updates[0].Explicit {
 		t.Fatalf("смешанная правка: %+v", updates)
 	}
-	if updates[0].Patch["label"] != "новое" {
-		t.Errorf("правка имени потеряна: %+v", updates[0].Patch)
+	if updates[0].Patch["comment"] != "новое" {
+		t.Errorf("правка комментария потеряна: %+v", updates[0].Patch)
 	}
 	if _, ok := updates[0].Patch["filters"]; !ok {
 		t.Errorf("очистка фильтра потеряна: %+v", updates[0].Patch)

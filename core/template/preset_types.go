@@ -199,12 +199,6 @@ type PresetOutbound struct {
 	// mode=update: replace если задан непустой.
 	Comment string `json:"comment,omitempty"`
 
-	// Label — отображаемое имя Направления (SPEC 104). Пресет может как
-	// создать направление с именем (mode=add), так и переименовать чужое
-	// (mode=update, решение D-10).
-	// mode=update: replace если задан непустой.
-	Label string `json:"label,omitempty"`
-
 	// Disabled — выключить направление (SPEC 104). Указатель: nil означает
 	// «пресет об этом не высказывался», иначе mode=update всегда включал бы
 	// направление, которое пользователь выключил сам.

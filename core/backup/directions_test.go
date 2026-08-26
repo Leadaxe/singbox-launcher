@@ -15,7 +15,7 @@ func TestRuleWithImportedDirectionArrivesEnabled(t *testing.T) {
 	b := &Backup{
 		LxBackup:   FormatVersion,
 		ExportedBy: ExportedBy{App: AppLxBox, Version: "2.1.0"},
-		Directions: []Direction{{Tag: "vpn-3", Label: "Германия", Filter: "🇩🇪"}},
+		Directions: []Direction{{Tag: "vpn-3", Filter: "🇩🇪"}},
 		Rules: []Rule{{
 			Kind:     RuleInline,
 			Name:     "Germany",
@@ -46,14 +46,14 @@ func TestRuleWithImportedDirectionArrivesEnabled(t *testing.T) {
 func TestExistingDirectionIsNotOverwritten(t *testing.T) {
 	dst := &state.State{}
 	dst.Connections.Outbounds = []configtypes.Direction{{
-		Tag: "vpn-1", Label: "Моё имя",
+		Tag:     "vpn-1",
 		Filters: configtypes.SetDirectionFilterTag(nil, "🇳🇱", false),
 	}}
 
 	b := &Backup{
 		LxBackup:   FormatVersion,
 		ExportedBy: ExportedBy{App: AppLxBox, Version: "2.1.0"},
-		Directions: []Direction{{Tag: "vpn-1", Label: "Чужое имя", Filter: "🇩🇪"}},
+		Directions: []Direction{{Tag: "vpn-1", Filter: "🇩🇪"}},
 	}
 	res, err := Import(dst, b, ImportOptions{})
 	if err != nil {
@@ -61,9 +61,6 @@ func TestExistingDirectionIsNotOverwritten(t *testing.T) {
 	}
 	if res.AppliedDirections != 0 {
 		t.Fatalf("существующее направление перезаписано")
-	}
-	if dst.Connections.Outbounds[0].Label != "Моё имя" {
-		t.Fatalf("имя затёрто: %q", dst.Connections.Outbounds[0].Label)
 	}
 	body, _ := configtypes.DirectionFilterTag(dst.Connections.Outbounds[0].Filters)
 	if body != "🇳🇱" {
@@ -81,7 +78,6 @@ func TestDirectionRoundTrip(t *testing.T) {
 	src := &state.State{}
 	src.Connections.Outbounds = []configtypes.Direction{{
 		Tag:              "vpn-2",
-		Label:            "Моя Германия",
 		Disabled:         true,
 		Filters:          configtypes.SetDirectionFilterTag(nil, "🇩🇪|🇳🇱", true),
 		PreferredDefault: configtypes.SetDirectionFilterTag(nil, "🇳🇱", false),
@@ -127,7 +123,7 @@ func TestDirectionRoundTrip(t *testing.T) {
 		t.Fatalf("импорт: %v", err)
 	}
 	back := dst.Connections.Outbounds[0]
-	if !back.Disabled || back.Label != "Моя Германия" {
+	if !back.Disabled || back.Tag != "vpn-2" {
 		t.Fatalf("round-trip потерял поля: %+v", back)
 	}
 	body, invert := configtypes.DirectionFilterTag(back.Filters)

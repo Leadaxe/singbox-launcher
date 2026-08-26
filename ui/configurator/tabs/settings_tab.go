@@ -634,6 +634,46 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, sel)
 		return row
 
+	case "interface":
+		// Комбо-бокс, а не выпадающий список: имя интерфейса нужно уметь
+		// вписать руками. На remote-таргете (lxd) интерфейсы чужой машины
+		// отсюда не перечислить, и без ручного ввода настройка была бы там
+		// недоступна вовсе. Тот же ввод спасает, когда адаптер временно
+		// вынут, а настроить его нужно заранее.
+		titleLab := newSettingsTitleLabelFor(title, rowEnabled)
+		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
+		if v, ok := model.SettingsVars[name]; ok {
+			disp = v
+		}
+		disp = strings.TrimSpace(disp)
+
+		// В выпадающем списке — ЧИСТЫЕ имена: SelectEntry подставляет
+		// выбранный пункт в поле дословно, и подпись вида «en0 — Wi-Fi»
+		// уехала бы в конфиг целиком. Расшифровка живёт строкой ниже.
+		names, hints := interfacePickOptions(model, disp)
+		se := widget.NewSelectEntry(names)
+		se.SetText(disp)
+		se.PlaceHolder = locale.T("empty — follow system default route")
+
+		hint := newInterfaceHintLabel()
+		hint.SetText(interfaceHintFor(model, disp, hints))
+
+		se.OnChanged = func(s string) {
+			s = strings.TrimSpace(s)
+			model.SettingsVars[name] = s
+			hint.SetText(interfaceHintFor(model, s, hints))
+			presenter.MarkAsChanged()
+			applyOnChangeAndRefresh(presenter, td, model, name)
+			maybeRefreshSettingsAfterVarChange(gs, td, name)
+		}
+
+		field := container.NewVBox(se, hint)
+		row := container.NewBorder(nil, nil, titleLab, resetBtn, field)
+		setVarFieldToolTip(toolTip, titleLab, se)
+		applySettingsRowDisabled(rowEnabled, resetBtn, se)
+		bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, se)
+		return row
+
 	case "outbound", "dns_server":
 		// SPEC 109: типы-пикеры. `outbound` — Направления (тот же список,
 		// что цель правила), `dns_server` — теги DNS-серверов. Оба падали в

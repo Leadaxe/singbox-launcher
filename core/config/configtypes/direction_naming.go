@@ -46,20 +46,6 @@ func DirectionNumber(tag string) (n int, ok bool) {
 	return n, true
 }
 
-// DefaultDirectionLabel — имя по умолчанию для направления с номером n:
-// «VPN ①»…«VPN ⑩».
-//
-// Кружок-цифра берётся из Unicode-блока Enclosed Alphanumerics (① = U+2460,
-// далее подряд), поэтому формула работает только до ⑩; дальше — обычное
-// число. Совпадает с LxBox `defaultChannelLabel`, чтобы одинаковые
-// направления назывались одинаково на обеих платформах.
-func DefaultDirectionLabel(n int) string {
-	if n < 1 || n > 10 {
-		return "VPN " + strconv.Itoa(n)
-	}
-	return "VPN " + string(rune(0x2460+n-1))
-}
-
 // trimPrefix — strings.TrimPrefix с признаком «префикс был».
 //
 // Локальная копия ради одного факта: `strings.TrimPrefix` не отличает

@@ -227,11 +227,6 @@ func applyOutboundUpdate(target, patch configtypes.Direction) configtypes.Direct
 	if patch.Comment != "" {
 		out.Comment = patch.Comment
 	}
-	// SPEC 104. Пустое имя — это «пресет не переименовывает», а не «убрать
-	// имя»: mode=update без label иначе стирал бы имя, данное пользователем.
-	if patch.Label != "" {
-		out.Label = patch.Label
-	}
 	// Двойник заменяется целиком: его поля связаны между собой (режим и
 	// параметры пула), и по-полевой merge собрал бы round_robin без пула.
 	if patch.Auto != nil {

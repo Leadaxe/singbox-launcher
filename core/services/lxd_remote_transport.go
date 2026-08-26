@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"singbox-launcher/api"
@@ -319,8 +321,11 @@ type ChainPositionInfo struct {
 	Now         string
 	IsGroup     bool
 	Transparent bool
-	CloneState  string
-	LastError   string
+	// Disabled — позиция выключена пользователем в рантайме (SPEC 075 ядра),
+	// состояние живёт в cache-file удалённого ядра.
+	Disabled   bool
+	CloneState string
+	LastError  string
 }
 
 type ChainInfo struct {
@@ -354,6 +359,7 @@ func (t *LxdRemoteTransport) Chains() ([]ChainInfo, error) {
 				Now:         p.GetNow(),
 				IsGroup:     p.GetIsGroup(),
 				Transparent: p.GetTransparent(),
+				Disabled:    p.GetDisabled(),
 			}
 			if cl := p.GetClone(); cl != nil {
 				info.CloneState = cl.GetState()
@@ -393,6 +399,37 @@ func (t *LxdRemoteTransport) ProbeLayer(chainTag string, pos int) (int64, string
 	// Ошибка ЯДРА приходит полем, а не gRPC-ошибкой: «хоп не поднялся» —
 	// это диагноз для пользователя, и глотать его нельзя.
 	return int64(resp.GetDelay()), resp.GetError(), nil
+}
+
+// ErrChainToggleUnsupported — удалённое ядро старше lx.28: метод объявлен
+// в proto, реализации нет. Дубль core.ErrChainToggleUnsupported по той же
+// причине, что и типы выше: core импортирует services, не наоборот.
+var ErrChainToggleUnsupported = errors.New("core does not support chain position toggle — update the core")
+
+// SetPositionEnabled — тумблер позиции цепочки на УДАЛЁННОМ ядре
+// (SPEC 075 ядра). Состояние хранит его cache-file, не наш state.
+//
+// Бюджет как у URL-теста: включение позиции поднимает звено, а не только
+// пишет флаг.
+func (t *LxdRemoteTransport) SetPositionEnabled(chainTag string, pos int, enabled bool) (string, error) {
+	client, ctx, cancel, err := t.rpcForURLTest()
+	if err != nil {
+		return "", err
+	}
+	defer cancel()
+	resp, err := client.SetChainPositionEnabled(ctx, &daemonpb.SetChainPositionEnabledRequest{
+		ChainTag: chainTag,
+		Position: int32(pos),
+		Enabled:  enabled,
+	})
+	if err != nil {
+		if status.Code(err) == codes.Unimplemented {
+			return "", ErrChainToggleUnsupported
+		}
+		return "", fmt.Errorf("lxd remote SetChainPositionEnabled: %w", err)
+	}
+	// Провал прогрева — диагноз узла, а не сбой вызова: едет данными.
+	return resp.GetWarmupError(), nil
 }
 
 // PoolSlot — слот пула балансировщика удалённого ядра (SPEC 097).

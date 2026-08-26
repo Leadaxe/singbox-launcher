@@ -56,6 +56,7 @@ type GUIState struct {
 
 	// Navigation buttons
 	ReadButton        *widget.Button
+	CloneFromButton   *widget.Button
 	SaveAsButton      *widget.Button
 	CloseButton       *widget.Button
 	PrevButton        *widget.Button
