@@ -107,7 +107,7 @@ func buildConfigFromModel(model *wizardmodels.WizardModel, forPreview bool) (str
 	// Reconcile model.RuleOrder → v6.Rule[] via same Sync helpers that
 	// CreateStateFromModel uses on Save.
 	wizardmodels.ReconcileRuleOrder(model)
-	rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
+	rulesV6 := wizardmodels.EmitStateRulesInAxisOrder(
 		model.RuleOrder, model.PresetRefs, model.CustomRules,
 	)
 	templateDNSTags := ExtractTemplateDNSTags(model.TemplateData)

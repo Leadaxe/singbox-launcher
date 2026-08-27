@@ -54,7 +54,7 @@ func loadIntoModel(t *testing.T, rules []corestate.Rule, td *wizardtemplate.Temp
 	m.PresetRefs = SyncStateRulesToPresetRefs(norm)
 	m.CustomRules = customRulesFromStateRules(norm)
 
-	order := RuleOrderFromStateRulesV6(norm, m.PresetRefs, m.CustomRules)
+	order := RuleOrderFromAxis(norm, m.PresetRefs, m.CustomRules)
 	if len(order) == 0 {
 		RebuildRuleOrder(m)
 	} else {
@@ -110,7 +110,7 @@ func customRulesFromStateRules(rules []corestate.Rule) []*RuleState {
 // saveModel воспроизводит CreateStateFromModel в части state.Rules.
 func saveModel(m *WizardModel) []corestate.Rule {
 	ReconcileRuleOrder(m)
-	return SyncRulesByOrderToStateRulesV6(m.RuleOrder, m.PresetRefs, m.CustomRules)
+	return EmitStateRulesInAxisOrder(m.RuleOrder, m.PresetRefs, m.CustomRules)
 }
 
 // slotNames — читаемое представление порядка: ref пресета либо label правила.
@@ -144,8 +144,11 @@ func equalStrings(a, b []string) bool {
 }
 
 // Тест 1 (обязательный, e2e): загрузка → перетаскивание custom-правила выше
-// сортируемого пресета → Save → повторная загрузка. Порядок слотов совпадает,
-// state.json несёт order_num.
+// соседа → Save → повторная загрузка. Порядок слотов совпадает, state.json
+// несёт order_num.
+//
+// Перетаскивание идёт внутри пользовательской зоны: выше якорей 950..990
+// правило подняться не может (SPEC 113-C §3, клэмп), и это отдельный тест.
 func TestAxisSurvivesSaveLoadRoundTrip(t *testing.T) {
 	td := axisTemplate()
 	initial := []corestate.Rule{
@@ -153,22 +156,23 @@ func TestAxisSurvivesSaveLoadRoundTrip(t *testing.T) {
 		presetRule("private-ips", intp(950)),
 		presetRule("block-ads", intp(960)),
 		inlineRule("my-rule", intp(1000)),
+		inlineRule("other", intp(1001)),
 		presetRule("russian", intp(1120)),
 	}
 
 	m := loadIntoModel(t, initial, td)
 	before := slotNames(m)
-	want := []string{"traffic-processing", "private-ips", "block-ads", "my-rule", "russian"}
+	want := []string{"traffic-processing", "private-ips", "block-ads", "my-rule", "other", "russian"}
 	if !equalStrings(before, want) {
 		t.Fatalf("порядок после загрузки = %v, ожидалось %v", before, want)
 	}
 
-	// Перетаскиваем custom-правило выше block-ads (позиция 2).
-	if !MoveRuleSlot(m, 3, 2) {
-		t.Fatal("MoveRuleSlot(3,2) вернул false — перетаскивание отклонено")
+	// Перетаскиваем other выше my-rule (позиция 3).
+	if !MoveRuleSlot(m, 4, 3) {
+		t.Fatal("MoveRuleSlot(4,3) вернул false — перетаскивание отклонено")
 	}
 	afterDrag := slotNames(m)
-	wantDrag := []string{"traffic-processing", "private-ips", "my-rule", "block-ads", "russian"}
+	wantDrag := []string{"traffic-processing", "private-ips", "block-ads", "other", "my-rule", "russian"}
 	if !equalStrings(afterDrag, wantDrag) {
 		t.Fatalf("порядок после drag = %v, ожидалось %v", afterDrag, wantDrag)
 	}
@@ -301,6 +305,11 @@ func TestNewRuleGetsNextUserNum(t *testing.T) {
 // Правило, брошенное ВПЛОТНУЮ к шаблонному якорю, не двигает якорь: между
 // ними сотня свободных номеров, вытеснять некуда и незачем. Каскад +1 съедал
 // бы зазоры, и вписать новый пресет между соседями стало бы нельзя.
+//
+// SPEC 113-C §3 добавил сюда клэмп: номер 951 правилу больше не выдаётся —
+// зоны 1..949 не существует, пользовательское правило живёт в 1000..1100. Дроп
+// под якорь даёт начало зоны, и список сразу пересортировывается по оси, чтобы
+// показывать то же, что скажет маршрутизация.
 func TestDragNextToAnchorDoesNotMoveAnchor(t *testing.T) {
 	td := axisTemplate()
 	m := loadIntoModel(t, []corestate.Rule{
@@ -346,13 +355,16 @@ func TestDragNextToAnchorDoesNotMoveAnchor(t *testing.T) {
 	if nums["traffic-processing"] != 0 {
 		t.Errorf("системный якорь уехал на %d", nums["traffic-processing"])
 	}
-	if nums["mine"] != 951 {
-		t.Errorf("перетащенное правило получило %d, ожидалось 951 (сразу за якорем 950)", nums["mine"])
+	if nums["mine"] < corestate.UserRuleNumStart {
+		t.Errorf("перетащенное правило получило %d — покинуло пользовательскую зону", nums["mine"])
 	}
 
-	// И порядок переживает round-trip.
+	// Список и ось не расходятся: что показано, то и сохранится.
+	want := []string{"traffic-processing", "private-ips", "block-ads", "mine", "russian"}
+	if got := slotNames(m); !equalStrings(got, want) {
+		t.Fatalf("порядок после drag = %v, ожидалось %v", got, want)
+	}
 	m2 := loadIntoModel(t, saveModel(m), td)
-	want := []string{"traffic-processing", "private-ips", "mine", "block-ads", "russian"}
 	if got := slotNames(m2); !equalStrings(got, want) {
 		t.Fatalf("порядок после round-trip = %v, ожидалось %v", got, want)
 	}

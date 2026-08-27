@@ -13,19 +13,22 @@ package models
 
 import (
 	"encoding/json"
+	"sort"
+
 	"singbox-launcher/core/state"
 )
 
-// SyncAllRulesToStateRulesV6 — full sync model rules → state.Rules (БЕЗ порядка).
+// EmitStateRulesWithoutOrder — эмиссия model → state.Rules без обхода слотов.
 //
 // Кладёт в state.Rules:
 //   - preset-ref'ы из model.PresetRefs как kind=preset (сначала)
 //   - inline/srs правила из model.CustomRules как kind=inline/srs (после)
 //
-// **Не сохраняет порядок RuleOrder.** Для save с правильным порядком
-// используется SyncRulesByOrderToStateRulesV6 (см. ниже). Эта функция —
-// fallback для случаев когда RuleOrder не заполнен (нечасто).
-func SyncAllRulesToStateRulesV6(presetRefs []*PresetRefState, customRules []*RuleState) []state.Rule {
+// Fallback для случаев, когда RuleOrder не заполнен (нечасто): слотов нет, и
+// обходить нечего. На ось это не влияет — номера едут из модели, и выход всё
+// равно выпрямляется по ним (см. SortRulesByNum в конце). Основной путь —
+// EmitStateRulesInAxisOrder (см. ниже).
+func EmitStateRulesWithoutOrder(presetRefs []*PresetRefState, customRules []*RuleState) []state.Rule {
 	out := make([]state.Rule, 0, len(presetRefs)+len(customRules))
 
 	// 1. Preset-refs
@@ -42,19 +45,27 @@ func SyncAllRulesToStateRulesV6(presetRefs []*PresetRefState, customRules []*Rul
 		}
 	}
 
-	return out
+	// Тот же закон оси, что и у order-aware пути: конкатенация «сначала
+	// пресеты, потом inline» — это файловый порядок, а он больше ничего не
+	// значит. Без сортировки fallback выдал бы массив, противоречащий номерам.
+	return state.SortRulesByNum(out)
 }
 
-// SyncRulesByOrderToStateRulesV6 — sync с сохранением порядка RuleOrder.
+// EmitStateRulesInAxisOrder — эмиссия model → state.Rules в порядке оси.
 // Обходит slots в порядке RuleOrder, dispatch'ит по kind, эмитит state.Rule.
 //
 // Гарантирует что state.Rules имеет тот же порядок что UI Rules tab видит.
 // Это критично для build pipeline (emit в правильном порядке) и round-trip
 // load→save→load (порядок не теряется).
-func SyncRulesByOrderToStateRulesV6(order []RuleSlot, presetRefs []*PresetRefState, customRules []*RuleState) []state.Rule {
+//
+// SPEC 113-C §1: на выходе массив отсортирован по оси. Обход RuleOrder даёт
+// осевой порядок сам по себе (SortRuleOrderByAxis держит слоты в нём), но
+// закон «файл = ось» не может опираться на дисциплину вызывающих — модель
+// может подать слоты в любом порядке, поэтому сортировка стоит на выходе.
+func EmitStateRulesInAxisOrder(order []RuleSlot, presetRefs []*PresetRefState, customRules []*RuleState) []state.Rule {
 	if len(order) == 0 {
 		// Fallback: используем legacy concat если RuleOrder пуст.
-		return SyncAllRulesToStateRulesV6(presetRefs, customRules)
+		return EmitStateRulesWithoutOrder(presetRefs, customRules)
 	}
 	out := make([]state.Rule, 0, len(order))
 	for _, slot := range order {
@@ -93,18 +104,20 @@ func SyncRulesByOrderToStateRulesV6(order []RuleSlot, presetRefs []*PresetRefSta
 			}
 		}
 	}
-	return out
+	return state.SortRulesByNum(out)
 }
 
 // jsonMarshalPreset — helper для serialization PresetBody (избавляет от
-// дублирования в SyncPresetRefsToStateRules / SyncRulesByOrderToStateRulesV6).
+// дублирования в SyncPresetRefsToStateRules / EmitStateRulesInAxisOrder).
 func jsonMarshalPreset(vars map[string]string) ([]byte, error) {
 	return json.Marshal(state.PresetBody{Vars: vars})
 }
 
-// RuleOrderFromStateRulesV6 — обратная конверсия: восстанавливает model.RuleOrder
-// из state.Rules, чтобы UI после load увидел правила в том же порядке как
-// они были при save.
+// RuleOrderFromAxis — обратная конверсия: восстанавливает model.RuleOrder ПО
+// ОСИ, чтобы UI после load увидел правила в том же порядке, что и при save.
+//
+// Имя говорит, откуда берётся порядок: не из позиций в state.Rules, а из
+// номеров оси — слоты выкладываются по ним (см. ниже).
 //
 // SPEC 106: порядок задаёт ОСЬ (state.Rule.OrderNum), а не позиция в слайсе —
 // сортируем стабильно по номеру, позиция остаётся тай-брейком. Заодно номер
@@ -118,7 +131,7 @@ func jsonMarshalPreset(vars map[string]string) ([]byte, error) {
 //
 // Возвращает order. Если совпадения по ref/identity нет (e.g. legacy state v5
 // без RulesV6), возвращает пустой list → caller должен сделать RebuildRuleOrder.
-func RuleOrderFromStateRulesV6(rules []state.Rule, presetRefs []*PresetRefState, customRules []*RuleState) []RuleSlot {
+func RuleOrderFromAxis(rules []state.Rule, presetRefs []*PresetRefState, customRules []*RuleState) []RuleSlot {
 	if len(rules) == 0 {
 		return nil
 	}
@@ -128,23 +141,11 @@ func RuleOrderFromStateRulesV6(rules []state.Rule, presetRefs []*PresetRefState,
 			prByRef[pr.Ref] = i
 		}
 	}
-	// SPEC 063: identity для kind=inline/srs = state.StableRuleID(r). Для
-	// legacy RuleState она равна sanitize(Label) (body.name берётся из Label
-	// при конверсии), а безымянное правило даёт общий литерал "unnamed" —
-	// поэтому одной identity мало: очередь одинаковых identity разбирается
-	// по порядку появления. Так безымянное inline-правило не теряет место.
-	crQueue := make(map[string][]int, len(customRules))
-	for i, cr := range customRules {
-		if cr == nil {
-			continue
-		}
-		id := state.StableRuleID(*customRuleStateToIdentityRule(cr))
-		crQueue[id] = append(crQueue[id], i)
-	}
-
 	// Сортировка по оси — стабильная, чтобы правила с равными номерами
 	// (исчерпанная пользовательская зона) сохранили взаимный порядок.
 	sorted := state.SortRulesByNum(rules)
+
+	crQueue := buildCustomRuleQueue(rules, customRules)
 
 	out := make([]RuleSlot, 0, len(sorted))
 	for _, r := range sorted {
@@ -173,6 +174,67 @@ func RuleOrderFromStateRulesV6(rules []state.Rule, presetRefs []*PresetRefState,
 		}
 	}
 	return out
+}
+
+// buildCustomRuleQueue — очередь индексов customRules на каждую identity,
+// упорядоченная ПО ОСИ.
+//
+// SPEC 063: identity для kind=inline/srs = state.StableRuleID(r). Для legacy
+// RuleState она равна sanitize(Label) (body.name берётся из Label при
+// конверсии), а безымянное правило даёт общий литерал "unnamed" — поэтому
+// одной identity мало: очередь одинаковых identity разбирается по порядку.
+//
+// SPEC 113-C §2: этот порядок обязан совпадать с порядком ПОТРЕБЛЕНИЯ, а
+// потребляем мы в порядке оси (SortRulesByNum). customRules приезжают из
+// legacyCustomRulesFromV6 в файловом порядке, и на файле, собранном чужой
+// рукой (порядок массива обратен оси), очередь перекрещивала номера: осевому
+// первому правилу доставался индекс файлового первого. Поэтому внутри группы
+// одной identity индексы переставляются по номеру соответствующего им правила
+// — сопоставление позиционное, оба слайса сохраняют относительный порядок.
+func buildCustomRuleQueue(rules []state.Rule, customRules []*RuleState) map[string][]int {
+	// Файловый порядок индексов customRules по identity.
+	byID := make(map[string][]int, len(customRules))
+	for i, cr := range customRules {
+		if cr == nil {
+			continue
+		}
+		id := state.StableRuleID(*customRuleStateToIdentityRule(cr))
+		byID[id] = append(byID[id], i)
+	}
+
+	// Номера оси в том же файловом порядке — по правилам из state.
+	numsByID := make(map[string][]int, len(byID))
+	for _, r := range rules {
+		if r.Kind != state.RuleKindInline && r.Kind != state.RuleKindSrs {
+			continue
+		}
+		id := state.StableRuleID(r)
+		n := state.DefaultRuleNum
+		if r.OrderNum != nil {
+			n = *r.OrderNum
+		}
+		numsByID[id] = append(numsByID[id], n)
+	}
+
+	for id, idxs := range byID {
+		nums := numsByID[id]
+		if len(nums) != len(idxs) || len(idxs) < 2 {
+			// Группы разошлись (правило отброшено при конверсии) — файловый
+			// порядок остаётся единственным, чем мы располагаем.
+			continue
+		}
+		pos := make([]int, len(idxs))
+		for i := range pos {
+			pos[i] = i
+		}
+		sort.SliceStable(pos, func(a, b int) bool { return nums[pos[a]] < nums[pos[b]] })
+		reordered := make([]int, len(idxs))
+		for i, p := range pos {
+			reordered[i] = idxs[p]
+		}
+		byID[id] = reordered
+	}
+	return byID
 }
 
 // customRuleStateToIdentityRule — RuleState в state.Rule ТОЛЬКО ради identity.
@@ -270,7 +332,7 @@ func stripOutboundAction(rule map[string]interface{}) map[string]interface{} {
 
 // SyncDNSByOrderToState — SPEC 062-F-N: full DNS sync с уважением к DNSRuleOrder.
 //
-// Зеркало SyncRulesByOrderToStateRulesV6 для DNS rules. Servers собираются
+// Зеркало EmitStateRulesInAxisOrder для DNS rules. Servers собираются
 // через syncDNSServersOnly (kind=template/preset/user
 // классификация по tag); rules собираются обходом DNSRuleOrder:
 //

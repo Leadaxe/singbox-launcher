@@ -448,6 +448,10 @@ func ruleLabel(r Rule) string {
 
 // renumberImportedRules перенумеровывает ось порядка, сохраняя относительный
 // порядок: у сторон свои диапазоны, а важен лишь порядок следования.
+//
+// SPEC 113-C §1: перенумерация заканчивается пересортировкой массива. Иначе
+// импорт оставлял бы файл, где номера говорят одно, а порядок записей другое —
+// а закон оси запрещает читать позицию в слайсе как самостоятельный смысл.
 func renumberImportedRules(rules []state.Rule) {
 	idx := make([]int, 0, len(rules))
 	for i, r := range rules {
@@ -462,6 +466,22 @@ func renumberImportedRules(rules []state.Rule) {
 		n := state.UserRuleNumStart + pos
 		rules[i].OrderNum = &n
 	}
+
+	// Неразмеченные (бэкап без num) уезжают в хвост, сохраняя взаимный
+	// порядок: разметку им раздаст MarkRuleOrder на первой загрузке, и она
+	// пойдёт от конца занятой части — иначе они перебили бы перенумерованных.
+	sort.SliceStable(rules, func(a, b int) bool {
+		return importedAxisNum(rules[a]) < importedAxisNum(rules[b])
+	})
+}
+
+// importedAxisNum — номер для сортировки импортированных: неразмеченное
+// правило считается стоящим за всеми размеченными.
+func importedAxisNum(r state.Rule) int {
+	if r.OrderNum == nil {
+		return state.UserRuleNumEnd + 1
+	}
+	return *r.OrderNum
 }
 
 func importVars(s *state.State, vars map[string]string) []Warning {

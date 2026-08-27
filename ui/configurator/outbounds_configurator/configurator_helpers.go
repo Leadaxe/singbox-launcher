@@ -268,7 +268,7 @@ func syncOutboundsLocal(model *wizardmodels.WizardModel) {
 	if model == nil || model.TemplateData == nil {
 		return
 	}
-	rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
+	rulesV6 := wizardmodels.EmitStateRulesInAxisOrder(
 		model.RuleOrder, model.PresetRefs, model.CustomRules,
 	)
 	build.SyncOutboundsWithTemplate(rulesV6, &model.GlobalOutbounds, model.TemplateData.Presets, build.TemplateOutboundTags(model.TemplateData), model.Target)

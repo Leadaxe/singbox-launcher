@@ -15,6 +15,13 @@
 //
 // Шаг 10 между шаблонными якорями оставлен НАМЕРЕННО: в зазор вписывается
 // новый пресет, не переделывая раскладку и не трогая чужие номера.
+//
+// ЗАКОН ОСИ (SPEC 113-C): массив правил ВСЕГДА отсортирован по оси. Двойного
+// порядка — файлового и осевого — не существует, и ни один потребитель не
+// вправе читать позицию в слайсе как самостоятельную информацию: она только
+// тай-брейк при равных номерах. Поэтому всякая перенумерация здесь
+// заканчивается стабильной пересортировкой, а сохранение эмитит в порядке оси
+// (ui/configurator/models/rule_order_axis.go ссылается на этот закон).
 package state
 
 import "sort"
@@ -54,6 +61,11 @@ type RuleOrderSpec struct {
 // Принятое следствие: правила из старого state садятся в начало
 // пользовательской зоны и оказываются приоритетнее добавленных после
 // обновления. Возвращает true, если что-то размечено — вызывающий сохраняет.
+//
+// Разметка заканчивается пересортировкой на месте: закон оси не терпит
+// состояния «номера розданы, а массив ещё в старом порядке» — потребитель,
+// прочитавший такой слайс между разметкой и сортировкой, увидел бы другую
+// раскладку.
 func MarkRuleOrder(rules []Rule, specs map[string]RuleOrderSpec) bool {
 	changed := false
 	nextUser := UserRuleNumStart
@@ -77,7 +89,16 @@ func MarkRuleOrder(rules []Rule, specs map[string]RuleOrderSpec) bool {
 		rules[i].OrderNum = &n
 		changed = true
 	}
+	sortRulesByNumInPlace(rules)
 	return changed
+}
+
+// sortRulesByNumInPlace — та же стабильная сортировка, что и SortRulesByNum, но
+// без копии: применяется там, где массив уже наш и его надо привести к оси.
+func sortRulesByNumInPlace(rules []Rule) {
+	sort.SliceStable(rules, func(i, j int) bool {
+		return ruleNum(rules[i]) < ruleNum(rules[j])
+	})
 }
 
 // SortRulesByNum сортирует правила по возрастанию OrderNum.
@@ -228,17 +249,66 @@ func NextUserRuleNum(rules []Rule) int {
 //
 // target == nil → правило уезжает в начало сортируемой части.
 // Несортируемые не двигаются и не сдвигаются: их номера часть инварианта.
+//
+// M7 (SPEC 113-C §3): want клэмпится к началу пользовательской зоны. Зоны
+// 1..949 на оси не существует, а дроп вплотную ПОД правило с меньшим номером
+// (системная голова 0, якоря шаблона 950..990) давал want = сосед+1 и навсегда
+// уводил правило из зоны 1000..1100: NextUserRuleNum перестаёт его видеть, а
+// сборка (core/build/preset_merge.go) считает всё ниже UserRuleNumStart
+// системной головой и поднимает такое правило впереди шаблонных.
 func PlaceRuleAfter(rules []Rule, movedIdx int, targetIdx int, sortable func(Rule) bool) {
+	want := UserRuleNumStart
+	if targetIdx >= 0 && targetIdx < len(rules) {
+		want = ruleNum(rules[targetIdx]) + 1
+	}
+	if want < UserRuleNumStart {
+		want = UserRuleNumStart
+	}
+	placeRuleAt(rules, movedIdx, want, sortable)
+}
+
+// PlaceRuleBefore ставит правило moved НЕПОСРЕДСТВЕННО перед target: moved
+// забирает номер target'а, а сам target вытесняется тем же ленивым сдвигом.
+//
+// Нужен для случая «брошено в самый верх списка»: соседа сверху нет, и раздать
+// перетащенному номер начала пользовательской зоны нельзя — над ним могут
+// стоять сортируемые якоря 950..990, и правило уехало бы визуально вверх, а по
+// маршрутизации вниз. Прежняя реализация выдавала moved номер соседа снизу
+// как есть, оставляя на оси два правила с равным номером и полагаясь на
+// стабильность сортировки — тай-брейк переставал быть тай-брейком и становился
+// носителем смысла. Здесь номера остаются различными.
+//
+// Клэмпа M7 тут НЕТ намеренно: он защищает от ухода ПОД чужой номер, а здесь
+// правило встаёт НАД соседом, и если сосед — сортируемый якорь на 950, то 950
+// и есть верная позиция. Иначе дроп в самый верх стал бы невозможен всякий раз,
+// когда над правилом стоит якорь.
+//
+// КОНТРАКТ: target ОБЯЗАН быть сортируемым (sortable(rules[targetIdx]) == true);
+// за проверку отвечает ВЫЗЫВАЮЩИЙ. Вытеснение внутри placeRuleAt собирает блок
+// занятых номеров только из сортируемых, поэтому несортируемый target в блок не
+// попадает и с места не уходит — moved получил бы номер, РАВНЫЙ его номеру, то
+// есть ровно тот дубль на оси, ради устранения которого функция и написана
+// (SPEC 113-C §4). Сейчас недостижимо: единственный вызов — applyAxisAfterMove
+// (ui/configurator/models/rule_order_axis.go), а MoveRuleSlot
+// (ui/configurator/models/rule_slot.go, гард `to < firstSortableSlotIndex()`)
+// не даёт бросить правило над несортируемой головой. Функция экспортирована, и
+// новый вызывающий обязан этот гард повторить.
+func PlaceRuleBefore(rules []Rule, movedIdx int, targetIdx int, sortable func(Rule) bool) {
+	if targetIdx < 0 || targetIdx >= len(rules) {
+		PlaceRuleAfter(rules, movedIdx, -1, sortable)
+		return
+	}
+	placeRuleAt(rules, movedIdx, ruleNum(rules[targetIdx]), sortable)
+}
+
+// placeRuleAt — общее тело обоих Place*: занять номер want, вытеснив сплошной
+// занятый блок от want вверх.
+func placeRuleAt(rules []Rule, movedIdx int, want int, sortable func(Rule) bool) {
 	if movedIdx < 0 || movedIdx >= len(rules) {
 		return
 	}
 	if !sortable(rules[movedIdx]) {
 		return
-	}
-
-	want := UserRuleNumStart
-	if targetIdx >= 0 && targetIdx < len(rules) {
-		want = ruleNum(rules[targetIdx]) + 1
 	}
 
 	// Занятые номера от want вверх — без самого moved и без несортируемых
@@ -258,6 +328,8 @@ func PlaceRuleAfter(rules []Rule, movedIdx int, targetIdx int, sortable func(Rul
 
 	// Сплошной занятый блок от want: 1001,1002,1003 — сдвигаем; на первой
 	// дырке останавливаемся, всё что за ней (включая якоря) не трогаем.
+	// Блок конечен и сдвиг взаимно однозначен — значит равных номеров после
+	// него не появляется, пока в зоне есть хоть одна дырка (SPEC 113-C §4).
 	var block []int
 	for n := want; ; n++ {
 		idxs, ok := occupied[n]
@@ -266,6 +338,7 @@ func PlaceRuleAfter(rules []Rule, movedIdx int, targetIdx int, sortable func(Rul
 		}
 		block = append(block, idxs...)
 	}
+
 	// Сдвигаем сверху вниз — иначе +1 наложился бы на ещё не сдвинутого соседа.
 	for i := len(block) - 1; i >= 0; i-- {
 		idx := block[i]

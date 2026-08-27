@@ -100,7 +100,7 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 	parserConfigForGen := parserConfig
 	if model.TemplateData != nil {
 		wizardmodels.ReconcileRuleOrder(model)
-		rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
+		rulesV6 := wizardmodels.EmitStateRulesInAxisOrder(
 			model.RuleOrder, model.PresetRefs, model.CustomRules,
 		)
 		// SPEC 058-R-N: migration legacy direct→referenced. Idempotent.

@@ -120,7 +120,7 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	// (включая drag-reordering). Build pipeline затем эмитит fragments
 	// в config.json::route.rules[] в этом же порядке.
 	wizardmodels.ReconcileRuleOrder(p.model)
-	state.Rules = wizardmodels.SyncRulesByOrderToStateRulesV6(
+	state.Rules = wizardmodels.EmitStateRulesInAxisOrder(
 		p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules,
 	)
 

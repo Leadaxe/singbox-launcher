@@ -99,9 +99,9 @@ func (p *WizardPresenter) restorePresetRefs(state *wizardmodels.WizardStateFile)
 
 	// Restore RuleOrder из state.Rules (preserve порядок between save/load).
 	// Порядок задаёт ось (OrderNum), а не позиция в слайсе — сортировку и
-	// раздачу номеров в модель делает RuleOrderFromStateRulesV6 (SPEC 106).
+	// раздачу номеров в модель делает RuleOrderFromAxis (SPEC 106).
 	// Fallback на дефолтную последовательность если state v5 (нет RulesV6).
-	order := wizardmodels.RuleOrderFromStateRulesV6(state.Rules, p.model.PresetRefs, p.model.CustomRules)
+	order := wizardmodels.RuleOrderFromAxis(state.Rules, p.model.PresetRefs, p.model.CustomRules)
 	if len(order) == 0 {
 		wizardmodels.RebuildRuleOrder(p.model)
 	} else {

@@ -248,7 +248,7 @@ func (p *WizardPresenter) RefreshAfterPresetToggle() {
 	// === 2. Outbounds eager sync ===
 	if p.model.TemplateData != nil {
 		wizardmodels.ReconcileRuleOrder(p.model)
-		rulesV6 := wizardmodels.SyncRulesByOrderToStateRulesV6(
+		rulesV6 := wizardmodels.EmitStateRulesInAxisOrder(
 			p.model.RuleOrder, p.model.PresetRefs, p.model.CustomRules,
 		)
 		build.SyncOutboundsWithTemplate(rulesV6, &p.model.GlobalOutbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
