@@ -529,6 +529,10 @@ func (r *RemoteRegistry) Remove(id string) error {
 			debuglog.WarnLog("remote registry: remove state dir for %q: %v", id, err)
 		}
 	}
+	// Журнал обмена — про машину, которой больше нет в реестре. Оставить его
+	// значило бы отдать историю чужого разговора новой записи, если та займёт
+	// освободившийся ID (uniqueRemoteID выдаёт slug имени — совпадение реально).
+	lxdclient.DropWireLog(id)
 	return nil
 }
 
@@ -837,6 +841,10 @@ func (r *RemoteRegistry) adminClient(id string) (*lxdclient.Client, error) {
 		Addr:              entry.Addr,
 		ServerFingerprint: entry.ServerFingerprint,
 		Secret:            entry.Secret,
+		// Журнал обмена ведётся по ID записи: клиент здесь пересоздаётся на
+		// каждый вызов, и без общего ключа история разговора с машиной
+		// распадалась бы на одноразовые обрывки.
+		LogKey: id,
 	}
 	if cfg.TLSEnabled() {
 		identity, idErr := lxdclient.LoadOrCreateIdentity(r.identityDir(id))
@@ -862,6 +870,7 @@ func (r *RemoteRegistry) Transport(id string) (*LxdRemoteTransport, error) {
 		Addr:              entry.Addr,
 		ServerFingerprint: entry.ServerFingerprint,
 		Secret:            entry.Secret,
+		LogKey:            id,
 	}
 	// Identity нужна только TLS-каналу; plain-h2c демон (dev на loopback)
 	// авторизует Bearer-секретом.

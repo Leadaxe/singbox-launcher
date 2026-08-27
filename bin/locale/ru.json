@@ -3394,5 +3394,38 @@
   },
   "empty — follow system default route": {
     "value": "пусто — системный маршрут по умолчанию"
+  },
+  "The machine answers. Click to see the exchange log.": {
+    "value": "Машина отвечает. Нажмите, чтобы посмотреть журнал обмена."
+  },
+  "No answer to the last poll — retrying. Click to see the exchange log.": {
+    "value": "Ответа на последний опрос нет — идут повторы. Нажмите, чтобы посмотреть журнал обмена."
+  },
+  "The machine is not answering. Click to see the exchange log.": {
+    "value": "Машина не отвечает. Нажмите, чтобы посмотреть журнал обмена."
+  },
+  "Not connected. Click to see the exchange log.": {
+    "value": "Не подключено. Нажмите, чтобы посмотреть журнал обмена."
+  },
+  "%s — exchange log": {
+    "value": "%s — журнал обмена"
+  },
+  "No exchange with this machine yet — press Connect.": {
+    "value": "Обмена с этой машиной ещё не было — нажмите «Подключиться»."
+  },
+  "\nAnswering.": {
+    "value": "\nОтвечает."
+  },
+  "\nNo answer to the last %d poll(s) — retrying.": {
+    "value": "\nНет ответа на последние опросы (%d) — идут повторы."
+  },
+  "\nNot answering.": {
+    "value": "\nНе отвечает."
+  },
+  "\nNot connected.": {
+    "value": "\nНе подключено."
+  },
+  "  Last answer at %s.": {
+    "value": "  Последний ответ в %s."
   }
 }

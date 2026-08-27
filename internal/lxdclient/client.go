@@ -40,6 +40,10 @@ type Config struct {
 	// владеет демон, и лаунчер его не знает. Слать заголовок при mTLS
 	// безвредно (демон его игнорирует).
 	Secret string
+	// LogKey — под каким ключом писать журнал обмена (обычно ID записи
+	// реестра). Пусто = не журналировать: клиента к демону строят и разовые
+	// сценарии (проба канала, enroll), которым журнал ни к чему.
+	LogKey string
 }
 
 // TLSEnabled — включён ли TLS-канал (установлен пин сервера).
@@ -50,8 +54,9 @@ func (c *Client) AddrString() string { return c.cfg.Addr }
 
 // Client — REST-клиент admin-плоскости + фабрика gRPC-соединений.
 type Client struct {
-	cfg   Config
-	httpc *http.Client
+	cfg    Config
+	httpc  *http.Client
+	logKey string
 }
 
 const restTimeout = 30 * time.Second
@@ -64,8 +69,9 @@ func New(cfg Config) *Client {
 		transport.TLSClientConfig = cfg.tlsConfig()
 	}
 	return &Client{
-		cfg:   cfg,
-		httpc: &http.Client{Timeout: restTimeout, Transport: transport},
+		cfg:    cfg,
+		httpc:  &http.Client{Timeout: restTimeout, Transport: transport},
+		logKey: cfg.LogKey,
 	}
 }
 
@@ -132,9 +138,18 @@ func (e *ApplyError) Error() string {
 // Rejected — конфиг не прошёл валидацию (422): работающий инстанс не тронут.
 func (e *ApplyError) Rejected() bool { return e.StatusCode == http.StatusUnprocessableEntity }
 
+// do — единственная точка выхода REST-плоскости наружу, поэтому журнал
+// обмена ведётся здесь: любой новый вызов попадает в него сам, без правки
+// в каждом методе.
+//
+// Пишется только конверт (метод, путь, код, длительность, ошибка). Тела не
+// журналируются by design: через /admin/apply едет конфиг с приватными
+// ключами узлов, а журнал открывается кнопкой и копируется в тикет.
 func (c *Client) do(method, path string, body io.Reader, contentType string) (*http.Response, error) {
+	started := time.Now()
 	req, err := http.NewRequest(method, c.baseURL()+path, body)
 	if err != nil {
+		c.record(method+" "+path, started, 0, err)
 		return nil, err
 	}
 	if contentType != "" {
@@ -143,7 +158,13 @@ func (c *Client) do(method, path string, body io.Reader, contentType string) (*h
 	if c.cfg.Secret != "" {
 		req.Header.Set("Authorization", "Bearer "+c.cfg.Secret)
 	}
-	return c.httpc.Do(req)
+	resp, err := c.httpc.Do(req)
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode
+	}
+	c.record(method+" "+path, started, status, err)
+	return resp, err
 }
 
 func decodeError(resp *http.Response) string {

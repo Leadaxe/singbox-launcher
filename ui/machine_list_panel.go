@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"os"
 	"strings"
 	"sync"
@@ -83,6 +84,14 @@ type machineListPanel struct {
 	connectAttempt map[string]int
 	// moreOpen — раскрыта ли панель дополнительных инструментов у машины.
 	moreOpen map[string]bool
+	// liveness — свежесть ответов машины: сколько опросов подряд не дошло.
+	//
+	// Отдельно от health намеренно: health — это то, что машина СКАЗАЛА о
+	// себе, liveness — доходят ли ответы вообще. Смешать их значило бы
+	// стирать последнее известное состояние ядра на первом же промахе.
+	liveness map[string]machineLiveness
+	// stopHeartbeat закрывается при закрытии панели и гасит фоновый опрос.
+	stopHeartbeat chan struct{}
 }
 
 // connectFailure — одна неудачная попытка соединения.
@@ -113,6 +122,8 @@ func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyn
 		errLog:         make(map[string][]connectFailure),
 		connectAttempt: make(map[string]int),
 		moreOpen:       make(map[string]bool),
+		liveness:       make(map[string]machineLiveness),
+		stopHeartbeat:  make(chan struct{}),
 	}
 	p.list = container.NewVBox()
 
@@ -149,6 +160,10 @@ func CreateMachineListPanel(ac *core.AppController, proxies *ProxyListPanel) fyn
 	OnOverrideChanged(func() {
 		fyne.Do(p.redrawRows)
 	})
+	// Фоновый опрос активной машины: без него строка живёт кешем последнего
+	// действия пользователя и показывает зелёный маркер над лежащим сервером
+	// (см. ui/machine_heartbeat.go).
+	p.startHeartbeat()
 	return p.container
 }
 
@@ -198,18 +213,33 @@ func (p *machineListPanel) buildRow(d services.RemoteDaemon, active bool) fyne.C
 	// цвет здесь несёт смысл (это первое, что видно в списке из нескольких
 	// машин). Форма при этом одна — цвет не единственный различитель: рядом
 	// стоит либо Connect, либо Disconnect со статусом.
-	markerColor := theme.Color(theme.ColorNameDisabled)
-	switch {
-	case connected && health.Err != "":
-		markerColor = theme.Color(theme.ColorNameError)
-	case connected:
+	// Состояние считает markerFor: цвет здесь — только его отображение.
+	// Жёлтый (markerFlaky) означает «ответы перестали доходить, идут
+	// повторы» — промежуток между «всё хорошо» и «легло», в котором честного
+	// ответа ещё нет.
+	live := p.liveness[d.ID]
+	state := markerFor(connected, health, live)
+	var markerColor color.Color = theme.Color(theme.ColorNameDisabled)
+	switch state {
+	case markerLive:
 		markerColor = theme.Color(theme.ColorNameSuccess)
+	case markerFlaky:
+		markerColor = theme.Color(theme.ColorNameWarning)
+	case markerDown:
+		markerColor = theme.Color(theme.ColorNameError)
 	}
 	// Круг занимает ВСЮ выданную площадь (его MinSize = 1×1, а Layout
 	// растягивает), поэтому и GridWrap, и Center раздували точку до размера
 	// ячейки. Фиксируем размер собственной раскладкой и центрируем по
 	// вертикали, чтобы маркер стоял вровень с именем.
-	markerBox := container.New(&dotLayout{size: 10}, canvas.NewCircle(markerColor))
+	//
+	// Маркер кликабельный: он первым показывает, что с машиной что-то не так,
+	// и логично, что по нему же открывается разговор с ней. Форма при этом
+	// одна — цвет не единственный различитель: рядом стоит либо Connect, либо
+	// Disconnect со статусом, а подсказка называет состояние словами.
+	markerBox := newMachineMarker(state, markerColor, func() {
+		OpenMachineWireLogWindow(p.ac, d, p)
+	})
 
 	name := widget.NewLabelWithStyle(d.Name, fyne.TextAlignLeading,
 		fyne.TextStyle{Bold: active})
@@ -422,6 +452,8 @@ func (p *machineListPanel) connectMachine(d services.RemoteDaemon) {
 		CloseMachineHostWindow(prevID)
 		delete(p.health, prevID)
 		delete(p.connectAttempt, prevID)
+		delete(p.liveness, prevID)
+		CloseMachineWireLogWindow(prevID)
 		debuglog.InfoLog("machine list: %q disconnected — connecting to %q", prevID, d.ID)
 	}
 	if err := SetLxdRemoteOverride(p.ac, d.ID); err != nil {
@@ -475,6 +507,19 @@ func (p *machineListPanel) connectMachine(d services.RemoteDaemon) {
 		fyne.Do(func() {
 			p.connectAttempt[d.ID] = 0
 			p.health[d.ID] = h
+			// Connect — точка отсчёта для heartbeat: его вердикт заменяет
+			// всё, что накопилось до него.
+			live := machineLiveness{}
+			if h.Err != "" {
+				// Соединиться не удалось за все попытки — это уже устойчивый
+				// отказ, а не «моргнуло»: маркер обязан быть красным сразу,
+				// а не жёлтым до следующих двух промахов heartbeat.
+				live.FailStreak = heartbeatFailThreshold
+				live.LastErr = h.Err
+			} else {
+				live.LastOK = time.Now()
+			}
+			p.liveness[d.ID] = live
 			p.redrawRows()
 
 			if h.Err != "" {
@@ -667,6 +712,10 @@ func (p *machineListPanel) disconnectMachine() {
 	p.proxies.SetEnabled(false)
 	ClearLxdRemoteOverride(p.ac)
 	p.health = make(map[string]services.RemoteHealth)
+	// Свежесть ответов забывается вместе с состоянием: иначе следующий
+	// Connect начинался бы с накопленным FailStreak и красил маркер красным
+	// ещё до первого опроса.
+	p.liveness = make(map[string]machineLiveness)
 	p.Reload()
 	p.proxies.Clear()
 }
@@ -707,6 +756,8 @@ func (p *machineListPanel) removeMachine(d services.RemoteDaemon) {
 			// Машины не станет — её профайлер и телеметрия тоже должны уйти.
 			CloseMachineProfiler(d.ID)
 			CloseMachineHostWindow(d.ID)
+			// Журнал обмена — про машину, которой больше не будет в реестре.
+			CloseMachineWireLogWindow(d.ID)
 			activeID, _, _ := GetLxdRemoteOverride()
 			if activeID == d.ID {
 				// Снимаем выбор до удаления: иначе левая колонка осталась бы
