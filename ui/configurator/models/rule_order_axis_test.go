@@ -147,8 +147,8 @@ func equalStrings(a, b []string) bool {
 // соседа → Save → повторная загрузка. Порядок слотов совпадает, state.json
 // несёт order_num.
 //
-// Перетаскивание идёт внутри пользовательской зоны: выше якорей 950..990
-// правило подняться не может (SPEC 113-C §3, клэмп), и это отдельный тест.
+// Перетаскивание идёт внутри пользовательской зоны; подъём выше якорей
+// 950..990 разобран отдельными тестами в rule_order_invariant_test.go.
 func TestAxisSurvivesSaveLoadRoundTrip(t *testing.T) {
 	td := axisTemplate()
 	initial := []corestate.Rule{
@@ -306,10 +306,10 @@ func TestNewRuleGetsNextUserNum(t *testing.T) {
 // ними сотня свободных номеров, вытеснять некуда и незачем. Каскад +1 съедал
 // бы зазоры, и вписать новый пресет между соседями стало бы нельзя.
 //
-// SPEC 113-C §3 добавил сюда клэмп: номер 951 правилу больше не выдаётся —
-// зоны 1..949 не существует, пользовательское правило живёт в 1000..1100. Дроп
-// под якорь даёт начало зоны, и список сразу пересортировывается по оси, чтобы
-// показывать то же, что скажет маршрутизация.
+// Решение пользователя 28.08.2026 (кейс 4pda) вернуло сюда номер 951: клэмп
+// к UserRuleNumStart снят, пользовательское правило вправе занять место между
+// якорями «локальная сеть» (950) и «русские домены» (960) и остаться там.
+// Клэмп остался только у системной головы.
 func TestDragNextToAnchorDoesNotMoveAnchor(t *testing.T) {
 	td := axisTemplate()
 	m := loadIntoModel(t, []corestate.Rule{
@@ -355,12 +355,17 @@ func TestDragNextToAnchorDoesNotMoveAnchor(t *testing.T) {
 	if nums["traffic-processing"] != 0 {
 		t.Errorf("системный якорь уехал на %d", nums["traffic-processing"])
 	}
-	if nums["mine"] < corestate.UserRuleNumStart {
-		t.Errorf("перетащенное правило получило %d — покинуло пользовательскую зону", nums["mine"])
+	// Норма 28.08.2026: правило встаёт вплотную за якорем — 950 + 1 = 951, в
+	// зазоре шага 10, оставленном ровно под такие вставки.
+	if nums["mine"] != 951 {
+		t.Errorf("перетащенное правило получило %d, ожидался 951 (номер якоря + 1)", nums["mine"])
+	}
+	if nums["mine"] < corestate.MinSortableRuleNum {
+		t.Errorf("перетащенное правило получило %d — провалилось под системную голову", nums["mine"])
 	}
 
 	// Список и ось не расходятся: что показано, то и сохранится.
-	want := []string{"traffic-processing", "private-ips", "block-ads", "mine", "russian"}
+	want := []string{"traffic-processing", "private-ips", "mine", "block-ads", "russian"}
 	if got := slotNames(m); !equalStrings(got, want) {
 		t.Fatalf("порядок после drag = %v, ожидалось %v", got, want)
 	}

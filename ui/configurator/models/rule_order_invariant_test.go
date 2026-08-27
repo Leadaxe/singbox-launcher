@@ -11,8 +11,12 @@ import (
 // SPEC 113-C: закон оси — массив правил всегда отсортирован по номерам, а
 // файловый порядок не несёт самостоятельного смысла. Тесты ниже — регрессы на
 // три места, где двойной порядок расходился: очередь безымянных правил (C6),
-// клэмп пользовательской зоны при дропе под системное правило (M7) и равные
-// номера при дропе в самый верх (movedPos == 0).
+// дроп под системное правило (M7) и равные номера при дропе в самый верх
+// (movedPos == 0).
+//
+// M7 пересмотрен решением пользователя 28.08.2026: клэмп к UserRuleNumStart
+// снят, пользовательское правило вправе встать в любую позицию, кроме как выше
+// несортируемой системной головы. Кейс-эталон — 4pda между якорями 950 и 960.
 
 // loadCrooked — загрузка БЕЗ нормализации: воспроизводит файл, собранный чужой
 // рукой, где массив идёт против оси. Нормализация такой файл выпрямила бы, и
@@ -99,11 +103,17 @@ func TestUnnamedQueueFollowsAxisOnCrookedFile(t *testing.T) {
 	}
 }
 
-// M7 (обязательный регресс): дроп вплотную под системное правило (номер 0)
-// давал want = 1 — правило навсегда покидало зону 1000..1100, а сборка
-// (core/build/preset_merge.go) считала всё ниже UserRuleNumStart системной
-// головой и поднимала такое правило впереди шаблонных якорей.
-func TestDropUnderSystemRuleStaysInUserZone(t *testing.T) {
+// M7, редакция 28.08.2026 (норма — зеркало LxBox §370): дроп вплотную ПОД
+// системное правило ЛЕГАЛЕН и даёт номер 1 — позицию сразу под несортируемой
+// головой. Прежняя редакция клэмпила такой драг к UserRuleNumStart, и правило,
+// брошенное в самый верх, уезжало под все шаблонные якоря.
+//
+// Чем это безопасно для сборки: core/build/preset_merge.go делит правила на
+// «голову» (num < UserRuleNumStart) и хвост, СОХРАНЯЯ относительный порядок
+// внутри каждой группы. Якоря 950..990 сами живут в голове, так что правило на
+// 1 встаёт перед ними ровно там, где его показали, а traffic-processing на 0
+// остаётся первым.
+func TestDropUnderSystemRuleIsLegalAndKeepsAnchors(t *testing.T) {
 	td := axisTemplate()
 	m := loadIntoModel(t, []corestate.Rule{
 		presetRule("traffic-processing", intp(0)), // системное, несортируемое
@@ -126,16 +136,14 @@ func TestDropUnderSystemRuleStaysInUserZone(t *testing.T) {
 	if moved == nil || moved.OrderNum == nil {
 		t.Fatal("перетащенное правило потеряло номер")
 	}
-	if *moved.OrderNum < corestate.UserRuleNumStart {
-		t.Errorf("правило получило номер %d — покинуло пользовательскую зону (>= %d)",
-			*moved.OrderNum, corestate.UserRuleNumStart)
+	if *moved.OrderNum != 1 {
+		t.Errorf("правило получило номер %d, ожидался 1 — позиция сразу под головой", *moved.OrderNum)
 	}
-	if *moved.OrderNum > corestate.UserRuleNumEnd {
-		t.Errorf("правило получило номер %d — выше пользовательской зоны (<= %d)",
-			*moved.OrderNum, corestate.UserRuleNumEnd)
+	if *moved.OrderNum < corestate.MinSortableRuleNum {
+		t.Errorf("правило получило номер %d — провалилось под системную голову", *moved.OrderNum)
 	}
 
-	// Якоря не тронуты: клэмп не имеет права оплатить себя сдвигом шаблона.
+	// Якоря не тронуты: между 1 и 950 дырка, вытеснять некого.
 	anchors := map[string]int{}
 	for _, pr := range m.PresetRefs {
 		if pr.OrderNum != nil {
@@ -149,9 +157,100 @@ func TestDropUnderSystemRuleStaysInUserZone(t *testing.T) {
 		t.Errorf("якоря шаблона сдвинуты: %v", anchors)
 	}
 
-	// Список показывает то же, что скажет маршрутизация: закон оси держится
-	// пересортировкой слотов сразу после перестановки.
+	// Правило стоит там, куда его бросили, и переживает round-trip.
+	want := []string{"traffic-processing", "mine", "private-ips", "block-ads"}
+	if got := slotNames(m); !equalStrings(got, want) {
+		t.Fatalf("порядок после drag = %v, ожидалось %v", got, want)
+	}
+	m2 := loadIntoModel(t, saveModel(m), td)
+	if got := slotNames(m2); !equalStrings(got, want) {
+		t.Fatalf("порядок после save→load = %v, ожидалось %v", got, want)
+	}
+
+	// Список показывает то же, что скажет маршрутизация.
 	assertSlotsMatchAxis(t, m)
+}
+
+// Кейс-эталон 4pda (решение пользователя 28.08.2026): пользовательское правило
+// встаёт МЕЖДУ шаблонными якорями «локальная сеть» (950) и «русские домены»
+// (960) — после локалки, до рудоменов — получает промежуточный номер 951..959,
+// якоря при этом НЕ двигаются, и позиция переживает save→load.
+func TestUserRuleLandsBetweenAnchors4pda(t *testing.T) {
+	td := axisTemplate()
+	m := loadIntoModel(t, []corestate.Rule{
+		presetRule("traffic-processing", intp(0)),
+		presetRule("private-ips", intp(950)), // «локальная сеть»
+		presetRule("block-ads", intp(960)),   // «русские домены»
+		inlineRule("4pda", intp(1000)),
+		presetRule("russian", intp(1120)), // хвостовой catch-all
+	}, td)
+
+	// Бросаем 4pda на позицию 2 — сразу за «локальной сетью».
+	if !MoveRuleSlot(m, 3, 2) {
+		t.Fatal("MoveRuleSlot(3,2) вернул false")
+	}
+
+	nums := collectAxisNums(t, m)
+	if nums["4pda"] != 951 {
+		t.Errorf("4pda получило номер %d, ожидался 951 (между 950 и 960)", nums["4pda"])
+	}
+	if nums["4pda"] <= 950 || nums["4pda"] >= 960 {
+		t.Errorf("4pda на %d — вне промежутка между якорями 950 и 960", nums["4pda"])
+	}
+	if nums["private-ips"] != 950 || nums["block-ads"] != 960 {
+		t.Errorf("якоря сдвинуты: private-ips=%d block-ads=%d", nums["private-ips"], nums["block-ads"])
+	}
+	if nums["traffic-processing"] != 0 {
+		t.Errorf("системная голова сдвинута на %d", nums["traffic-processing"])
+	}
+	if nums["russian"] != 1120 {
+		t.Errorf("хвостовой catch-all уехал на %d", nums["russian"])
+	}
+
+	want := []string{"traffic-processing", "private-ips", "4pda", "block-ads", "russian"}
+	if got := slotNames(m); !equalStrings(got, want) {
+		t.Fatalf("порядок после drag = %v, ожидалось %v", got, want)
+	}
+
+	// Главное требование кейса: позиция ОСТАЁТСЯ после save→load.
+	m2 := loadIntoModel(t, saveModel(m), td)
+	if got := slotNames(m2); !equalStrings(got, want) {
+		t.Fatalf("порядок после save→load = %v, ожидалось %v", got, want)
+	}
+	nums2 := collectAxisNums(t, m2)
+	if nums2["4pda"] != 951 {
+		t.Errorf("после save→load 4pda получило %d, ожидался 951", nums2["4pda"])
+	}
+	if nums2["private-ips"] != 950 || nums2["block-ads"] != 960 {
+		t.Errorf("после save→load якоря сдвинуты: %v", nums2)
+	}
+}
+
+// Дроп НАД всеми якорями (в первую доступную строку под системной головой):
+// номер < 950, якоря не тронуты. Это верхняя граница свободы пользователя.
+func TestDropAboveAllAnchorsGetsNumBelowAnchors(t *testing.T) {
+	td := axisTemplate()
+	m := loadIntoModel(t, []corestate.Rule{
+		presetRule("traffic-processing", intp(0)),
+		presetRule("private-ips", intp(950)),
+		presetRule("block-ads", intp(960)),
+		inlineRule("mine", intp(1000)),
+	}, td)
+
+	if !MoveRuleSlot(m, 3, 1) {
+		t.Fatal("MoveRuleSlot(3,1) вернул false")
+	}
+
+	nums := collectAxisNums(t, m)
+	if nums["mine"] >= 950 {
+		t.Errorf("mine получило %d — не поднялось выше якорей (< 950)", nums["mine"])
+	}
+	if nums["mine"] < corestate.MinSortableRuleNum {
+		t.Errorf("mine получило %d — провалилось под системную голову", nums["mine"])
+	}
+	if nums["private-ips"] != 950 || nums["block-ads"] != 960 {
+		t.Errorf("якоря сдвинуты: %v", nums)
+	}
 }
 
 // movedPos == 0 (обязательный регресс): дроп в самый верх выдавал
