@@ -191,10 +191,10 @@ func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window,
 	presenter.MarkAsChanged()
 
 	all := append(append([]backup.Warning(nil), parseWarns...), res.Warnings...)
-	dialog.ShowInformation(
-		locale.T("Backup imported"),
-		importReport(res, all),
-		win)
+	// Отчёт — не «ок, понял»: потери надо прочитать целиком, поэтому список
+	// уезжает в своё окно без обрезки (settings_backup_report_window.go).
+	// Вызов идёт с UI-потока (обработчик подтверждения), fyne.Do не нужен.
+	showImportReport(win, res, all)
 }
 
 // backupSummary — что лежит в файле, до применения.
@@ -207,34 +207,34 @@ func backupSummary(b *backup.Backup, warns []backup.Warning) string {
 		len(b.Subscriptions), len(b.Servers), len(b.Rules), len(b.Vars))
 	if len(warns) > 0 {
 		sb.WriteString("\n\n")
-		sb.WriteString(warnLines(warns))
+		sb.WriteString(warnLines(warns, backupSummaryWarnLimit))
 	}
 	sb.WriteString("\n\n")
 	sb.WriteString(locale.T("Importing replaces the current sources and rules."))
 	return sb.String()
 }
 
-// importReport — что применилось и что нет.
-func importReport(res *backup.ImportResult, warns []backup.Warning) string {
-	var sb strings.Builder
-	fmt.Fprintf(&sb, locale.T("Applied: %d source(s), %d rule(s)."),
-		res.AppliedSources, res.AppliedRules)
-	if len(warns) > 0 {
-		sb.WriteString("\n\n")
-		sb.WriteString(warnLines(warns))
-	}
-	return sb.String()
-}
+// backupSummaryWarnLimit — сколько потерь показываем в модалке подтверждения.
+//
+// Модалка отвечает на «стоит ли вообще импортировать», а не «что именно
+// потеряется»: полный список живёт в окне отчёта после импорта, куда обрезка и
+// отсылает. Ограничение здесь не косметика — высокий модальный попап в Fyne
+// раздувает окно ([[fyne-label-minwidth-trap]]).
+const backupSummaryWarnLimit = 20
 
 // warnLines превращает коды в читаемые строки. Код без пояснения ничего не
 // говорит пользователю — он не читал реестр.
-func warnLines(warns []backup.Warning) string {
+//
+// limit <= 0 означает «без обрезки».
+func warnLines(warns []backup.Warning, limit int) string {
 	var sb strings.Builder
 	sb.WriteString(locale.T("Not applied as-is:"))
 	shown := 0
 	for _, w := range warns {
-		if shown >= 12 {
+		if limit > 0 && shown >= limit {
 			fmt.Fprintf(&sb, "\n… +%d", len(warns)-shown)
+			sb.WriteString("\n")
+			sb.WriteString(locale.T(settingsBackupReportMoreText))
 			break
 		}
 		sb.WriteString("\n• ")

@@ -3041,6 +3041,12 @@
   "Not applied as-is:": {
     "value": "Применено не полностью:"
   },
+  "Import report": {
+    "value": "Отчёт импорта"
+  },
+  "The full list is in the import report shown after the import.": {
+    "value": "Полный список — в отчёте после импорта."
+  },
   "%s — target does not exist here, the rule is imported turned off": {
     "value": "%s — такой цели здесь нет, правило импортировано выключенным"
   },
