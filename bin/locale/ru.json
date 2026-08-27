@@ -2536,9 +2536,6 @@
   "collapsed": {
     "value": "схлопнута"
   },
-  "off": {
-    "value": "выключена"
-  },
   "This core cannot switch chain positions on the fly — update the core.": {
     "value": "Это ядро не умеет переключать позиции цепочки на лету — обновите ядро."
   },
@@ -3386,8 +3383,20 @@
   "Cannot verify: the machine's interfaces are unavailable.": {
     "value": "Проверить нельзя: интерфейсы машины недоступны."
   },
+  "Reading the machine's interfaces…": {
+    "value": "Читаем интерфейсы машины…"
+  },
   "no IP address — no traffic will go through it": {
     "value": "нет IP-адреса — трафик через него не пойдёт"
+  },
+  "this is a tunnel — the core cannot use it as an uplink": {
+    "value": "это туннель — ядро не может выйти через него наружу"
+  },
+  "loopback — no traffic will leave the machine through it": {
+    "value": "петля — трафик через неё не покинет машину"
+  },
+  "Traffic will go through this interface.": {
+    "value": "Трафик пойдёт через этот интерфейс."
   },
   "not found on this machine": {
     "value": "на этой машине не найден"

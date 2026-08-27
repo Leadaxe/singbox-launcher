@@ -1,6 +1,7 @@
 package subscription
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -131,5 +132,43 @@ func TestTrustedFetchDropsGhostLegacyKey(t *testing.T) {
 	}
 	if !res.DisabledMigrated {
 		t.Error("флаг DisabledMigrated не поднят — вызывающий не сохранит очищенную карту")
+	}
+}
+
+// Сквозной пин условия skippedDueToLimit: источник отдаёт БОЛЬШЕ
+// MaxNodesPerSubscription узлов, разбор обрезается капом → trustedParse=false
+// → legacy-ключи остаются нетронутыми.
+//
+// Отличие от TestUntrustedCappedParseKeepsLegacyKeys: там trustedParse=false
+// передан руками, здесь он рождается внутри LoadNodesFromSourceEx — то есть
+// пин ловит и разрыв самой связки «кап сработал → разбору не верим».
+func TestCapExceededParseKeepsLegacyKeysEndToEnd(t *testing.T) {
+	withLegacyHashHook(t)
+
+	// На один узел больше лимита: последняя строка обязана попасть в
+	// skippedDueToLimit. Узлы различаются адресом, иначе их схлопнул бы
+	// дедуп источника и кап не сработал бы вовсе.
+	const over = configtypes.MaxNodesPerSubscription + 1
+	var body strings.Builder
+	for i := 0; i < over; i++ {
+		body.WriteString(fmt.Sprintf(
+			"vless://b831381d-6324-4d53-ad4f-8cda48b30811@h%d.example.invalid:443?security=tls&sni=h%d.example.invalid#N%d\n",
+			i, i, i))
+	}
+
+	ghost := strings.Repeat("b", 64)
+	res := loadFromInlineBody(t, body.String(), configtypes.ProxySource{
+		DisabledNodes: map[string]int64{ghost: time.Now().Unix()},
+	})
+
+	if len(res.Nodes) != configtypes.MaxNodesPerSubscription {
+		t.Fatalf("кап не сработал: разобрано %d узлов из %d предложенных (лимит %d)",
+			len(res.Nodes), over, configtypes.MaxNodesPerSubscription)
+	}
+	if _, ok := res.DisabledNodes[ghost]; !ok {
+		t.Fatalf("legacy-ключ выброшен на разборе, урезанном капом; карта: %v", res.DisabledNodes)
+	}
+	if res.DisabledMigrated {
+		t.Error("флаг миграции поднят на недостоверном разборе — карту сохранять нечем")
 	}
 }

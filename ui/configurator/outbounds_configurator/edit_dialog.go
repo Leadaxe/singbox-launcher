@@ -397,8 +397,8 @@ func ShowEditDialog(
 		const obType = "selector"
 
 		cfg := &config.Direction{
-			Tag:   tag,
-			Type:  obType,
+			Tag:  tag,
+			Type: obType,
 		}
 		// SPEC 104: комментарий формой не правится (его роль взяло имя), но
 		// и не теряется: у шаблонных записей это осмысленный текст, который

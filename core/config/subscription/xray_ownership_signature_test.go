@@ -162,3 +162,71 @@ func TestXrayServerKeyIsContentSignature(t *testing.T) {
 		t.Fatal("ownership и дедуп записей обязаны считать один ключ")
 	}
 }
+
+// Пин внутриэлементного дедупа (xray_json_array.go, ветка seenInElement).
+//
+// Дедуп ВНУТРИ элемента считает ту же подпись эмиссии, что и ownership между
+// элементами. Значит decoy-дубли — тот же адрес, порт и креденшл, но РАЗНЫЙ
+// SNI в одном пуле — НЕ схлопываются: SNI попадает в эмиссию, это две разные
+// записи. Ключ по кредам (схема|сервер|порт|uuid) убил бы вторую молча, и
+// половина маскировок пула исчезла бы из списка.
+const xraySNIDecoyPoolSubscription = `[
+  {
+    "remarks": "🇳🇱 Пул с маскировками",
+    "outbounds": [
+      {"protocol":"vless","tag":"decoy-a","settings":{"vnext":[
+        {"address":"3.3.3.3","port":443,"users":[{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}]}]},
+        "streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"serverName":"decoy-a.example"}}},
+      {"protocol":"vless","tag":"decoy-b","settings":{"vnext":[
+        {"address":"3.3.3.3","port":443,"users":[{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}]}]},
+        "streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"serverName":"decoy-b.example"}}}
+    ]
+  }
+]`
+
+func TestXrayInElementDedupKeepsSNIDecoys(t *testing.T) {
+	withContentSignatureHook(t)
+
+	nodes, err := ParseNodesFromXrayJSONArray(xraySNIDecoyPoolSubscription, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 2 {
+		t.Fatalf("получено %d узлов, ожидалось 2 — decoy-дубли с разным SNI это разные записи (теги: %v)",
+			len(nodes), tagsOfNodes(nodes))
+	}
+
+	// Подписи обязаны РАЗОЙТИСЬ: именно на этом держится выживание обоих.
+	if a, b := xrayServerKey(nodes[0]), xrayServerKey(nodes[1]); a == "" || a == b {
+		t.Fatalf("подписи decoy-узлов совпали (%q vs %q) — дедуп считает ключ по кредам, не по эмиссии", a, b)
+	}
+}
+
+// Обратная половина того же пина: байт-идентичный дубль ВНУТРИ одного пула
+// схлопывается. Без неё первый тест проходил бы и на выключенном дедупе.
+const xrayByteCopyInsidePoolSubscription = `[
+  {
+    "remarks": "🇳🇱 Пул с повтором",
+    "outbounds": [
+      {"protocol":"vless","tag":"twin-a","settings":{"vnext":[
+        {"address":"4.4.4.4","port":443,"users":[{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}]}]},
+        "streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"serverName":"twin.example"}}},
+      {"protocol":"vless","tag":"twin-b","settings":{"vnext":[
+        {"address":"4.4.4.4","port":443,"users":[{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}]}]},
+        "streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"serverName":"twin.example"}}}
+    ]
+  }
+]`
+
+func TestXrayInElementDedupCollapsesByteCopy(t *testing.T) {
+	withContentSignatureHook(t)
+
+	nodes, err := ParseNodesFromXrayJSONArray(xrayByteCopyInsidePoolSubscription, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 1 {
+		t.Fatalf("получено %d узлов, ожидался 1 — байт-идентичный повтор в пуле схлопывается (теги: %v)",
+			len(nodes), tagsOfNodes(nodes))
+	}
+}

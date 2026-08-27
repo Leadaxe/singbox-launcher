@@ -13,9 +13,9 @@ package subscription
 
 import (
 	"encoding/json"
-	"regexp"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
