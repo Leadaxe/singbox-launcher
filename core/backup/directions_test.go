@@ -2,6 +2,7 @@ package backup
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"singbox-launcher/core/config/configtypes"
@@ -135,5 +136,47 @@ func TestDirectionRoundTrip(t *testing.T) {
 	}
 	if back.Auto.InterruptExistConnections == nil || *back.Auto.InterruptExistConnections {
 		t.Fatalf("трёхзначный interrupt потерян при переносе")
+	}
+}
+
+// Контракт 0.9.0 снёс у Направления поле label: имя ровно одно — tag.
+// Приехавший label чужой стороны — обычный неизвестный ключ (П3): warning,
+// именем остаётся тег, ничего никуда не провозится.
+func TestDirectionForeignLabelDroppedWithWarning(t *testing.T) {
+	raw := []byte(`{"lx_backup":1,"exported_by":{"app":"lxbox","version":"2.1.0"},` +
+		`"exported_at":"2026-08-22T00:00:00Z",` +
+		`"directions":[{"tag":"vpn-3","label":"Германия","filter":"🇩🇪"}]}`)
+	b, warns, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	named := false
+	for _, w := range warns {
+		if w.Code == WarnBackupUnknownField && w.Detail == "directions[vpn-3].label" {
+			named = true
+		}
+	}
+	if !named {
+		t.Fatalf("чужой label Направления отброшен молча: %v", warns)
+	}
+
+	dst := &state.State{}
+	if _, err := Import(dst, b, ImportOptions{}); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	if len(dst.Connections.Outbounds) != 1 || dst.Connections.Outbounds[0].Tag != "vpn-3" {
+		t.Fatalf("Направление не создано или переименовано: %+v", dst.Connections.Outbounds)
+	}
+	// Провоза больше нет: обратный экспорт обязан быть без чужого имени.
+	back, err := Export(dst, ExportOptions{AppVersion: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := json.Marshal(back)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "Германия") {
+		t.Fatalf("чужая подпись Направления провезена: %s", out)
 	}
 }

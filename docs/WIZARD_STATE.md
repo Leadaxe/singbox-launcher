@@ -90,17 +90,17 @@ in a dev build it sits next to the binary.
       { "kind": "preset", "ref": "<pid>", "enabled": true },
       { "kind": "user",   "enabled": true, ... }
     ]
-  },
-
-  "foreign_backup_extensions": {         // SPEC 103 phase 4; other apps' blobs
-    "lxbox": { ... }                     // kept verbatim, never interpreted
   }
 }
 ```
 
 Top-level keys absent from v6 (compared with earlier revisions):
 `id` (the snapshot name lives in the filename), `config_params`, `custom_rules`,
-`selectable_rule_states`, `rules_library_merged`, `dns_options.independent_cache`.
+`selectable_rule_states`, `rules_library_merged`, `dns_options.independent_cache`,
+`foreign_backup_extensions` (the LX Backup `extensions` carry-through mechanism
+was abolished with contract 0.11.0 — see `contract/docs/BACKUP_PRINCIPLES.md`
+П3: state after an import is indistinguishable from state configured by hand,
+so there is nothing left to store verbatim).
 
 ---
 
@@ -581,20 +581,6 @@ together with duplicate tags.
 Shape: `core/config/configtypes/types.go`. Materialization:
 `core/config/direction_twins.go` + the three-pass generator. Filter helpers:
 `core/config/configtypes/direction_filter.go`.
-
----
-
-### 3.8 `foreign_backup_extensions` — other apps' data (SPEC 103 phase 4)
-
-When an LX Backup created by another app is imported, its `extensions.<app>`
-blobs are stored here **verbatim** and written back into the next export.
-
-The launcher never reads or interprets them — it cannot: the contents belong to
-the other side's model. Without this field a backup that passed through the
-desktop would return to the phone impoverished, having silently lost everything
-the desktop had no place for.
-
-Keys are app identifiers (`lxbox`); values are opaque JSON.
 
 ---
 

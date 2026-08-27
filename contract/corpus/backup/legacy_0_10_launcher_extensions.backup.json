@@ -1,0 +1,42 @@
+{
+  "lx_backup": 1,
+  "exported_by": {
+    "app": "launcher",
+    "version": "1.5.3"
+  },
+  "exported_at": "2026-08-22T00:00:00Z",
+  "subscriptions": [
+    {
+      "url": "https://example-1.com/sub",
+      "label": "Main",
+      "max_nodes": 150,
+      "extensions": {
+        "launcher": {
+          "id": "01SRC0000000000000000000",
+          "skip": [
+            {
+              "field": "tag",
+              "contains": "trial"
+            }
+          ],
+          "detour_tag": "hop-1",
+          "detour_node_hash": "62bff800aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "detour_node_label": "WARP hop"
+        }
+      }
+    }
+  ],
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "Work",
+      "outbound": "proxy",
+      "num": 1000,
+      "match": {
+        "domain_suffix": [
+          "work.example-1.com"
+        ]
+      }
+    }
+  ]
+}

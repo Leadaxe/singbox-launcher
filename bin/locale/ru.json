@@ -3056,6 +3056,12 @@
   "%s — not supported here, skipped": {
     "value": "%s — здесь не поддерживается, пропущено"
   },
+  "%s — this field means something different here, its value is skipped": {
+    "value": "%s — это поле здесь устроено иначе, значение пропущено"
+  },
+  "this backup was made by an older version and carries an \"extensions\" section (%s); the shared fields were imported, the rest is dropped": {
+    "value": "бэкап снят более старой версией и несёт раздел «extensions» (%s); общие поля импортированы, остальное отброшено"
+  },
   "%s — a chain with this name already exists here, the incoming one is skipped": {
     "value": "%s — цепочка с таким именем здесь уже есть, приехавшая пропущена"
   },

@@ -88,17 +88,16 @@ release-сборке это `~/Library/Application Support/singbox-launcher/bin/
       { "kind": "preset", "ref": "<pid>", "enabled": true },
       { "kind": "user",   "enabled": true, ... }
     ]
-  },
-
-  "foreign_backup_extensions": {         // SPEC 103 фаза 4; блобы чужих приложений
-    "lxbox": { ... }                     // хранятся нетронутыми, не толкуются
   }
 }
 ```
 
 Top-level keys, отсутствующие в v6 (vs предыдущих ревизий):
 `id` (snapshot-имя живёт в имени файла), `config_params`, `custom_rules`,
-`selectable_rule_states`, `rules_library_merged`, `dns_options.independent_cache`.
+`selectable_rule_states`, `rules_library_merged`, `dns_options.independent_cache`,
+`foreign_backup_extensions` (механизм провоза `extensions` в LX Backup упразднён
+контрактом 0.11.0 — см. `contract/docs/BACKUP_PRINCIPLES.md` П3: состояние после
+импорта неотличимо от настроенного руками, и хранить нетронутым больше нечего).
 
 ---
 
@@ -573,20 +572,6 @@ Merge semantics (`core/build/resolve_outbounds.go::applyOutboundUpdatePatch`
 Форма: `core/config/configtypes/types.go`. Материализация:
 `core/config/direction_twins.go` и трёхпроходный генератор. Хелперы отбора:
 `core/config/configtypes/direction_filter.go`.
-
----
-
-### 3.8 `foreign_backup_extensions` — данные чужих приложений (SPEC 103 фаза 4)
-
-При импорте LX Backup, созданного другим приложением, его блобы
-`extensions.<app>` сохраняются здесь **нетронутыми** и возвращаются в следующий
-экспорт.
-
-Лаунчер их не читает и не толкует — и не может: содержимое принадлежит модели
-другой стороны. Без этого поля бэкап, побывавший на десктопе, вернулся бы на
-телефон обеднённым, молча потеряв всё, чему на десктопе не нашлось места.
-
-Ключи — идентификаторы приложений (`lxbox`), значения — непрозрачный JSON.
 
 ---
 

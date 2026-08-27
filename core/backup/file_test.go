@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -78,6 +79,172 @@ func TestParseReportsUnknownRootKeys(t *testing.T) {
 	}
 	if !hasWarn(warns, WarnBackupUnknownField) {
 		t.Errorf("неизвестный ключ не назван: %v", warns)
+	}
+}
+
+// П3/П6: неизвестный ключ ВНУТРИ записи называется вместе с сущностью, в
+// которой он встретился. «unknown field: packages» без имени правила
+// пользователю ничего не говорит — он не знает, где это искать.
+func TestParseNamesEntityOfUnknownKey(t *testing.T) {
+	raw := []byte(`{"lx_backup":1,"exported_by":{"app":"lxbox","version":"3.0"},` +
+		`"exported_at":"2026-08-22T00:00:00Z",` +
+		`"subscriptions":[{"url":"https://example.com/sub","identity_override":"by-server"}],` +
+		`"rules":[{"kind":"inline","name":"Keep","packages":["com.example"]}]}`)
+	_, warns, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	want := map[string]bool{
+		"subscriptions[https://example.com/sub].identity_override": false,
+		"rules[Keep].packages": false,
+	}
+	for _, w := range warns {
+		if w.Code != WarnBackupUnknownField {
+			continue
+		}
+		if _, ok := want[w.Detail]; ok {
+			want[w.Detail] = true
+		}
+	}
+	for detail, seen := range want {
+		if !seen {
+			t.Errorf("не названо %q; получено: %v", detail, warns)
+		}
+	}
+}
+
+// П4: файл 0.10.x с extensions на нескольких уровнях даёт ОДИН warning на
+// файл, перечисляющий затронутые записи. Строка на каждый карман утопила бы
+// пользователя в списке вместо объяснения, а молчание нарушило бы П6.
+func TestParseAggregatesExtensionsIntoSingleWarning(t *testing.T) {
+	raw := []byte(`{"lx_backup":1,"exported_by":{"app":"launcher","version":"1.5.3"},` +
+		`"exported_at":"2026-08-22T00:00:00Z","extensions":{"lxbox":{"folders":[]}},` +
+		`"subscriptions":[{"url":"https://a.example/sub","extensions":{"launcher":{"id":"x"}}},` +
+		`{"url":"https://b.example/sub","extensions":{"launcher":{"id":"y"}}}],` +
+		`"chains":[{"tag":"relay","chain":{"hops":["a"]},"extensions":{"launcher":{"id":"z"}}}]}`)
+	_, warns, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	var got []Warning
+	for _, w := range warns {
+		if w.Code == WarnBackupExtensionsDropped {
+			got = append(got, w)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("warning'ов об extensions %d, ожидался ровно один: %v", len(got), warns)
+	}
+	for _, place := range []string{
+		"<корень файла>",
+		"subscriptions[https://a.example/sub]",
+		"subscriptions[https://b.example/sub]",
+		"chains[relay]",
+	} {
+		if !strings.Contains(got[0].Detail, place) {
+			t.Errorf("перечень затронутых записей не называет %q: %q", place, got[0].Detail)
+		}
+	}
+}
+
+// Единственная коллизия ТИПОВ между 0.10.x и 0.11.0: `subscriptions[].skip` —
+// boolean у LxBox, список фильтров отсева у launcher. Строгий разбор ронял бы
+// весь импорт из-за одного поля, то есть терял бы всё остальное молча.
+// Требование BACKUP.md §10: булев skip отбрасывается с warning, импорт идёт.
+func TestParseTolerantToBooleanSkip(t *testing.T) {
+	raw := []byte(`{"lx_backup":1,"exported_by":{"app":"lxbox","version":"3.0"},` +
+		`"exported_at":"2026-08-22T00:00:00Z",` +
+		`"subscriptions":[{"url":"https://example.com/sub","label":"Main","skip":true}],` +
+		`"rules":[{"kind":"inline","name":"Keep"}]}`)
+	b, warns, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("булев skip уронил разбор: %v", err)
+	}
+	if len(b.Subscriptions) != 1 || b.Subscriptions[0].Label != "Main" {
+		t.Fatalf("остальные поля записи потеряны: %+v", b.Subscriptions)
+	}
+	if len(b.Subscriptions[0].Skip) != 0 {
+		t.Errorf("несовпавшее по типу поле применено: %+v", b.Subscriptions[0].Skip)
+	}
+	if len(b.Rules) != 1 {
+		t.Errorf("остальные секции потеряны: %+v", b.Rules)
+	}
+
+	found := false
+	for _, w := range warns {
+		if w.Code == WarnBackupFieldTypeMismatch &&
+			w.Detail == "subscriptions[https://example.com/sub].skip" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("отброшенное поле не названо warning'ом: %v", warns)
+	}
+}
+
+// Несовпадение типа не должно съедать соседнюю запись, где поле в порядке:
+// вырезается ключ, а не секция.
+func TestParseTolerantKeepsWellTypedNeighbour(t *testing.T) {
+	raw := []byte(`{"lx_backup":1,"exported_by":{"app":"lxbox","version":"3.0"},` +
+		`"exported_at":"2026-08-22T00:00:00Z","subscriptions":[` +
+		`{"url":"https://a.example/sub","skip":true},` +
+		`{"url":"https://b.example/sub","skip":[{"field":"tag","contains":"trial"}]}]}`)
+	b, _, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(b.Subscriptions) != 2 {
+		t.Fatalf("подписок %d, ожидалось 2", len(b.Subscriptions))
+	}
+	// Ключ снимается у всей секции: тип поля у стороны один на весь файл,
+	// и индексов путь из UnmarshalTypeError не содержит. Важно, что соседняя
+	// запись СОХРАНИЛАСЬ и названа — а не то, что её skip уцелел.
+	if b.Subscriptions[1].URL != "https://b.example/sub" {
+		t.Errorf("вторая запись потеряна: %+v", b.Subscriptions[1])
+	}
+}
+
+// Ошибка НЕ типа фатальна: битый файл нечего спасать, и делать вид, что он
+// прочитан, хуже отказа.
+func TestParseStillRejectsBrokenAfterTolerance(t *testing.T) {
+	if _, _, err := Parse([]byte(`{"lx_backup":1,"subscriptions":[{"url":`)); err == nil {
+		t.Fatal("обрезанный JSON принят терпимым разбором")
+	}
+}
+
+// SPEC §3: неизвестные ключи ЛЮБОГО уровня дают warning с полным путём.
+// Вложенный уровень — самое удобное место спрятать чужое поле, и раньше
+// сканер до него не спускался.
+func TestParseNamesUnknownKeysAtNestedLevels(t *testing.T) {
+	raw := []byte(`{"lx_backup":1,"exported_by":{"app":"lxbox","version":"3.0"},` +
+		`"exported_at":"2026-08-22T00:00:00Z","subscriptions":[{"url":"https://a.example/sub",` +
+		`"outbounds":[{"tag":"vpn-1","local_only":1,"auto":{"mode":"least_test","mystery":2}}]}],` +
+		`"directions":[{"tag":"vpn-9","auto":{"mode":"round_robin","phantom":3}}],` +
+		`"chains":[{"tag":"relay","chain":{"hops":["a"],"weird":true}}],` +
+		`"warp":[{"type":"wg","private_key":"k","stowaway":1}]}`)
+	_, warns, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	want := map[string]bool{
+		"subscriptions[https://a.example/sub].outbounds[vpn-1].local_only":   false,
+		"subscriptions[https://a.example/sub].outbounds[vpn-1].auto.mystery": false,
+		"directions[vpn-9].auto.phantom":                                     false,
+		"chains[relay].chain.weird":                                          false,
+		"warp[wg].stowaway":                                                  false,
+	}
+	for _, w := range warns {
+		if w.Code != WarnBackupUnknownField {
+			continue
+		}
+		if _, ok := want[w.Detail]; ok {
+			want[w.Detail] = true
+		}
+	}
+	for detail, seen := range want {
+		if !seen {
+			t.Errorf("вложенный ключ не назван: %q; получено %v", detail, warns)
+		}
 	}
 }
 

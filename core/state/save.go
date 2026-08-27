@@ -119,9 +119,6 @@ func (s *State) marshalDisk() ([]byte, error) {
 		Vars:         s.Vars,
 		DNSOptions:   s.DNS,
 		WarpAccounts: s.WarpAccounts,
-
-		// Чужие блобы бэкапа пишутся как есть.
-		ForeignBackupExtensions: s.ForeignBackupExtensions,
 	}
 	if out.Rules == nil {
 		out.Rules = []Rule{}

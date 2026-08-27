@@ -1,0 +1,21 @@
+{
+  "rules": [
+    {
+      "name": "Keep",
+      "enabled": true
+    }
+  ],
+  "warnings": [
+    "backup_field_type_mismatch"
+  ],
+  "directions": [
+    {
+      "tag": "vpn-3",
+      "filter": "🇩🇪",
+      "invert": false,
+      "include_direct": false,
+      "include_block": false,
+      "has_auto": false
+    }
+  ]
+}

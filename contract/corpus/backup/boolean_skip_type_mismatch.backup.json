@@ -1,0 +1,45 @@
+{
+  "lx_backup": 1,
+  "exported_by": {
+    "app": "lxbox",
+    "version": "2.9.0"
+  },
+  "exported_at": "2026-08-22T00:00:00Z",
+  "subscriptions": [
+    {
+      "url": "https://example-1.com/sub",
+      "label": "Main",
+      "max_nodes": 40,
+      "skip": true
+    },
+    {
+      "url": "https://example-2.com/sub",
+      "label": "Backup",
+      "skip": [
+        {
+          "field": "tag",
+          "contains": "trial"
+        }
+      ]
+    }
+  ],
+  "directions": [
+    {
+      "tag": "vpn-3",
+      "filter": "🇩🇪"
+    }
+  ],
+  "rules": [
+    {
+      "kind": "inline",
+      "name": "Keep",
+      "outbound": "vpn-3",
+      "num": 1000,
+      "match": {
+        "domain_suffix": [
+          "keep.example-1.com"
+        ]
+      }
+    }
+  ]
+}

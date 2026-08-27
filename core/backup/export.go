@@ -1,6 +1,6 @@
 package backup
 
-// Экспорт состояния лаунчера в переносимый LX Backup (SPEC 103, фаза 4).
+// Экспорт состояния лаунчера в переносимый LX Backup (контракт 0.11.0).
 
 import (
 	"encoding/json"
@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/state"
 )
 
@@ -24,16 +25,22 @@ type ExportOptions struct {
 
 // Export переносит state в формат бэкапа.
 //
-// Что НЕ едет в переносимую часть и почему:
+// Экспорт — ЧИСТАЯ ФУНКЦИЯ СОСТОЯНИЯ (П1): всё, что пишется в файл, читается
+// из полей state, и ничего кроме. Ни блобов «на провоз», ни следов того,
+// откуда состояние взялось: два неотличимых состояния обязаны давать
+// байт-идентичные файлы, а состояние, приехавшее импортом, — тот же файл,
+// что и настроенное руками.
+//
+// Что НЕ едет и почему:
 //   - runtime-данные подписок (Meta: когда обновлялась, сколько нод) —
 //     они принадлежат машине, а не пользовательской настройке;
-//   - local outbounds источника, exclude_from_global и прочее, чему нет
-//     места в схеме, — уезжает в extensions.launcher, чтобы round-trip
-//     остался lossless.
+//   - финальные конфиговые теги (П5) — они вычисляются каждой сборкой на
+//     принимающей стороне, и хранимый приехал бы мёртвым;
+//   - упразднённый detour_node_hash — его нет в схеме 0.11.0.
 //
-// Чужой блоб extensions.lxbox, если он пришёл с импортом, возвращается в
-// файл нетронутым: бэкап, побывавший на десктопе, не должен вернуться на
-// телефон обеднённым (BACKUP.md §1).
+// Пустые и нулевые поля опускаются: значение по умолчанию, записанное явно, —
+// это лишний шум, из-за которого «одно и то же состояние» перестаёт давать
+// один и тот же файл.
 func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 	if s == nil {
 		return nil, fmt.Errorf("nil state")
@@ -62,9 +69,9 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 		b.Directions = append(b.Directions, exportDirection(d))
 	}
 
-	// SPEC 110 (схема v1.2): цепочки — корневая секция chains[], у обеих
-	// сторон общая. Порядок записей нормативен (вложенная цепочка объявлена
-	// раньше использующей) — сохраняется порядок списка источников.
+	// Цепочки — корневая секция chains[], у обеих сторон общая. Порядок
+	// записей нормативен (вложенная цепочка объявлена раньше использующей) —
+	// сохраняется порядок списка источников.
 	for i, src := range s.Connections.Sources {
 		switch src.Type {
 		case state.SourceTypeSubscription:
@@ -94,14 +101,6 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 		b.DNS = dns
 	}
 
-	// Чужие расширения, сохранённые прошлым импортом.
-	if len(s.ForeignBackupExtensions) > 0 {
-		b.Extensions = Extensions{}
-		for app, blob := range s.ForeignBackupExtensions {
-			b.Extensions[app] = append(json.RawMessage(nil), blob...)
-		}
-	}
-
 	// Warp-аккаунты (BACKUP.md §2): канонические snake_case-поля плюс
 	// дискриминатор type. Без этого регистрация не переезжала вовсе, и на
 	// новой машине «Add WARP» плодил лишние device-записи в Cloudflare.
@@ -110,20 +109,52 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 	return b, nil
 }
 
-// exportChain — запись секции chains[] (SPEC 110, схема v1.2).
+// exportDirections — список Направлений в канонической форме.
+func exportDirections(list []configtypes.Direction) []Direction {
+	var out []Direction
+	for _, d := range list {
+		if d.Tag == "" {
+			continue
+		}
+		out = append(out, exportDirection(d))
+	}
+	return out
+}
+
+// exportSourceRef — ссылка источника на цель дозвона.
+//
+// Упразднённый detour_node_hash не пишется никогда: в схеме 0.11.0 его нет.
+// Источник, ещё не прошедший миграцию, отдаёт пустую ссылку — она
+// восстановится на приёмнике первой же сборкой из своего состояния, а вывозить
+// протухающий хеш значило бы вернуть в формат ровно то, ради чего он снесён.
+func exportSourceRef(src state.Source) SourceRef {
+	ref := SourceRef{
+		DetourTag:          src.DetourTag,
+		DetourNodeSourceID: src.DetourNodeSourceID,
+		DetourNodeTag:      src.DetourNodeTag,
+	}
+	if ref.DetourNodeTag != "" || ref.DetourNodeSourceID != "" {
+		ref.DetourNodeLabel = src.DetourNodeLabel
+	}
+	return ref
+}
+
+// exportChain — запись секции chains[] (SPEC 110).
 //
 // Tag — эффективный тег outbound'а цепочки (NodeTagOrLabel), на который
-// ссылаются правила и позиции других цепочек; Label — отображаемое имя,
-// теперь у лаунчера своё (прежде эти роли делило одно поле). index —
-// позиция источника в общем списке: у безымянной цепочки тег на сборке
-// получается позиционным (chainSourceTag), и в файл обязан уехать тот же
-// эффективный тег — схема требует tag, а импорт зафиксирует его именем
+// ссылаются правила и позиции других цепочек; Label — отображаемое имя.
+// index — позиция источника в общем списке: у безымянной цепочки тег на
+// сборке получается позиционным (chainSourceTag), и в файл обязан уехать тот
+// же эффективный тег — схема требует tag, а импорт зафиксирует его именем
 // (нормализация той же категории, что перенумерация правил).
 func exportChain(src state.Source, index int) Chain {
 	out := Chain{
-		Tag:   src.NodeTagOrLabel(),
-		Label: src.Label,
-		Chain: src.Chain,
+		ID:                src.ID,
+		Tag:               src.NodeTagOrLabel(),
+		Label:             src.Label,
+		Chain:             src.Chain,
+		ExcludeFromGlobal: src.ExcludeFromGlobal,
+		SourceRef:         exportSourceRef(src),
 	}
 	// Подпись, совпадающая с тегом, — это не подпись, а прежнее состояние
 	// без разделения ролей: писать её отдельным полем значит плодить шум,
@@ -136,17 +167,6 @@ func exportChain(src state.Source, index int) Chain {
 	}
 	if !src.Enabled {
 		out.Enabled = boolPtr(false)
-	}
-	if ext := launcherSourceExtensions(src); ext != nil {
-		out.Extensions = Extensions{AppLauncher: ext}
-	}
-	// Непонятые поля записи возвращаются на место (BACKUP.md §2). Чужой
-	// label подставляется только когда своего нет: теперь у цепочки есть
-	// собственное отображаемое имя, и затирать его провезённым значением
-	// было бы потерей пользовательской правки.
-	foreignFields := attachForeignEntityExtensions(&out.Extensions, src.ForeignExtensions)
-	if raw, ok := foreignFields["label"]; ok && out.Label == "" {
-		_ = json.Unmarshal(raw, &out.Label)
 	}
 	return out
 }
@@ -179,9 +199,16 @@ func exportWarp(s *state.State) []json.RawMessage {
 
 func exportSubscription(src state.Source) Subscription {
 	out := Subscription{
-		URL:      src.URL,
-		Label:    src.Label,
-		MaxNodes: src.MaxNodes,
+		ID:                      src.ID,
+		URL:                     src.URL,
+		Label:                   src.Label,
+		MaxNodes:                src.MaxNodes,
+		Skip:                    src.Skip,
+		Outbounds:               exportDirections(src.Outbounds),
+		Fold:                    src.Fold,
+		ExcludeFromGlobal:       src.ExcludeFromGlobal,
+		ExposeGroupTagsToGlobal: src.ExposeGroupTagsToGlobal,
+		SourceRef:               exportSourceRef(src),
 	}
 	if !src.Enabled {
 		out.Enabled = boolPtr(false)
@@ -198,47 +225,17 @@ func exportSubscription(src state.Source) Subscription {
 			out.Disabled[hash] = ts
 		}
 	}
-	if ext := launcherSourceExtensions(src); ext != nil {
-		out.Extensions = Extensions{AppLauncher: ext}
-	}
-	// Чужие per-entity блобы и непонятые нам поля схемы (skip/detour другой
-	// стороны) возвращаются в запись нетронутыми (BACKUP.md §1).
-	foreignFields := attachForeignEntityExtensions(&out.Extensions, src.ForeignExtensions)
-	if raw, ok := foreignFields["skip"]; ok {
-		_ = json.Unmarshal(raw, &out.Skip)
-	}
-	if raw, ok := foreignFields["detour"]; ok {
-		out.Detour = append(json.RawMessage(nil), raw...)
-	}
 	return out
-}
-
-// attachForeignEntityExtensions переносит сохранённые per-entity блобы чужих
-// приложений обратно в запись. Служебный ключ backupFieldsKey не блоб, а
-// непонятые поля схемы — возвращается вызывающему для распаковки на верхний
-// уровень записи.
-func attachForeignEntityExtensions(dst *Extensions, foreign map[string]json.RawMessage) map[string]json.RawMessage {
-	if len(foreign) == 0 {
-		return nil
-	}
-	var fields map[string]json.RawMessage
-	for app, blob := range foreign {
-		if app == backupFieldsKey {
-			_ = json.Unmarshal(blob, &fields)
-			continue
-		}
-		if *dst == nil {
-			*dst = Extensions{}
-		}
-		(*dst)[app] = append(json.RawMessage(nil), blob...)
-	}
-	return fields
 }
 
 func exportServer(src state.Source) Server {
 	out := Server{
-		URI:   src.URI,
-		Label: src.Label,
+		ID:                src.ID,
+		URI:               src.URI,
+		Label:             src.Label,
+		NodeTag:           src.NodeTag,
+		ExcludeFromGlobal: src.ExcludeFromGlobal,
+		SourceRef:         exportSourceRef(src),
 	}
 	if len(src.ConfigJSON) > 0 {
 		out.ConfigJSON = append(json.RawMessage(nil), src.ConfigJSON...)
@@ -246,82 +243,7 @@ func exportServer(src state.Source) Server {
 	if !src.Enabled {
 		out.Enabled = boolPtr(false)
 	}
-	if ext := launcherSourceExtensions(src); ext != nil {
-		out.Extensions = Extensions{AppLauncher: ext}
-	}
-	foreignFields := attachForeignEntityExtensions(&out.Extensions, src.ForeignExtensions)
-	if raw, ok := foreignFields["detour"]; ok {
-		out.Detour = append(json.RawMessage(nil), raw...)
-	}
 	return out
-}
-
-// launcherSourceExtensions собирает непереносимые поля источника.
-//
-// Без этого round-trip терял бы detour, skip-фильтры и локальные outbound'ы:
-// экспорт-импорт на одной машине обязан быть тождественным (BACKUP.md §1).
-func launcherSourceExtensions(src state.Source) json.RawMessage {
-	ext := map[string]any{}
-	if src.ID != "" {
-		ext["id"] = src.ID
-	}
-	if len(src.Skip) > 0 {
-		ext["skip"] = src.Skip
-	}
-	if len(src.Outbounds) > 0 {
-		ext["outbounds"] = src.Outbounds
-	}
-	// Тег узла server-источника: в схеме servers[] поля под него нет (там
-	// только label), а роль у него не декоративная — на тег ссылаются
-	// правила и фильтры Направлений. Без провоза round-trip на одной
-	// машине переименовывал бы узел в подпись (BACKUP.md §1). У цепочек
-	// иначе: там тег — поле схемы chains[].tag.
-	if src.Type == state.SourceTypeServer && src.NodeTag != "" {
-		ext["node_tag"] = src.NodeTag
-	}
-	if src.ExcludeFromGlobal {
-		ext["exclude_from_global"] = true
-	}
-	if src.ExposeGroupTagsToGlobal {
-		ext["expose_group_tags_to_global"] = true
-	}
-	// SPEC 108: свёртка подписки в группу. Без неё перенос обеднил бы
-	// подписку — на другой машине она развернулась бы всеми узлами.
-	if src.Fold != nil {
-		ext["fold"] = src.Fold
-	}
-	if src.DetourTag != "" {
-		ext["detour_tag"] = src.DetourTag
-	}
-	// SPEC 112-A: наружу едет ссылка-ОБЪЕКТ — id источника-цели плюс
-	// identity-тег узла внутри него. Финальный конфиговый тег не вывозится: на
-	// приёмнике он другой (свои tag_prefix/tag_mask), и ссылка приехала бы
-	// мёртвой. Id источников roundtrip переживают — они пишутся сюда же
-	// (ext["id"]) и читаются импортом.
-	//
-	// Упразднённый detour_node_hash не пишется, пока ссылка жива: он мигрирует
-	// на первой сборке, и вывозить его значило бы вывозить протухающее.
-	if src.DetourNodeTag != "" || src.DetourNodeSourceID != "" {
-		if src.DetourNodeSourceID != "" {
-			ext["detour_node_source_id"] = src.DetourNodeSourceID
-		}
-		ext["detour_node_tag"] = src.DetourNodeTag
-		ext["detour_node_label"] = src.DetourNodeLabel
-	} else if src.DetourNodeHash != "" {
-		// Ещё не мигрировавший источник (бэкап снят до первой сборки):
-		// хеш едет как есть и мигрирует уже на приёмнике — терять ссылку
-		// из-за момента снятия бэкапа нельзя.
-		ext["detour_node_hash"] = src.DetourNodeHash
-		ext["detour_node_label"] = src.DetourNodeLabel
-	}
-	if len(ext) == 0 {
-		return nil
-	}
-	raw, err := json.Marshal(ext)
-	if err != nil {
-		return nil
-	}
-	return raw
 }
 
 func exportRule(r state.Rule) (Rule, error) {

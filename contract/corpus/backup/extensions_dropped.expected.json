@@ -1,0 +1,7 @@
+{
+  "rules": [],
+  "warnings": [
+    "backup_extensions_dropped"
+  ],
+  "extensions_dropped": true
+}

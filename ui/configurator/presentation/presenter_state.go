@@ -92,7 +92,6 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	}
 	state.Connections.Defaults = p.model.Defaults
 	state.WarpAccounts = p.model.WarpAccounts
-	state.ForeignBackupExtensions = p.model.ForeignBackupExtensions
 
 	// Заполняем legacy ParserConfig view ради совместимости тех тестов /
 	// callsite'ов, что читают state.ParserConfig.ParserConfig.Proxies сразу
@@ -304,8 +303,6 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 	// have no runtime effect; just zero the in-memory copies so nothing reads stale.
 	p.model.RulesLibraryMerged = true
 	p.model.SelectableRuleStates = nil
-
-	p.model.ForeignBackupExtensions = stateFile.ForeignBackupExtensions
 
 	p.restoreCustomRules(stateFile.CustomRules)
 	// Fill SelectedOutbound for any custom rules missing it (single-pass after restore).

@@ -1,12 +1,12 @@
 package backup
 
-// Конформанс-раннер корпуса LX Backup (SPEC 103, фаза 4).
+// Конформанс-раннер корпуса LX Backup (контракт 0.11.0).
 //
 // Гоняет contract/corpus/backup/*.backup.json через Import и сверяет с
 // <case>.expected.json. Тот же набор обязана проходить сторона LxBox: перенос
 // настроек между приложениями имеет смысл ровно настолько, насколько обе
-// стороны одинаково понимают битую ссылку, непереносимую переменную и чужой
-// блок extensions.
+// стороны одинаково понимают битую ссылку, непереносимую переменную и
+// упразднённый карман extensions.
 
 import (
 	"encoding/json"
@@ -32,12 +32,13 @@ type corpusExpectation struct {
 	Vars              map[string]string `json:"vars"`
 	Warnings          []string          `json:"warnings"`
 	RouteFinalApplied *bool             `json:"route_final_applied"`
-	// ForeignKeptOtherApp — импортёр обязан сохранить блоб extensions ДРУГОГО
-	// приложения. Ожидание сформулировано относительно импортёра, а не по
-	// имени приложения: для лаунчера чужой — lxbox, для LxBox — launcher, и
-	// фикстура остаётся одна на обе стороны.
-	ForeignKeptOtherApp bool     `json:"foreign_extensions_kept_other_app"`
-	DisabledHashes      []string `json:"disabled_hashes"`
+	// ExtensionsDropped — файл несёт упразднённый механизм extensions
+	// (схема 0.10.x). Импортёр обязан его ОТБРОСИТЬ и назвать одним
+	// warning'ом на файл (BACKUP_PRINCIPLES.md П3/П4), а не провозить:
+	// провоз непонятого создавал состояние-призрак. Ожидание сформулировано
+	// относительно импортёра и одинаково для обеих сторон.
+	ExtensionsDropped bool     `json:"extensions_dropped"`
+	DisabledHashes    []string `json:"disabled_hashes"`
 
 	// Directions — Направления, которые импорт обязан СОЗДАТЬ (SPEC 104,
 	// схема v1.1). Проверяется каноническая форма, а не внутренняя: она и
@@ -52,13 +53,12 @@ type corpusExpectation struct {
 		HasAuto       bool   `json:"has_auto"`
 	} `json:"directions"`
 
-	// Chains — цепочки после импорта (SPEC 110, схема v1.2). Список
-	// ИСЧЕРПЫВАЮЩИЙ: запись, пропущенная merge'м по занятому тегу, не должна
-	// материализоваться второй копией. chain сверяется deep-equal канона —
-	// включая null-значения rewrite (RFC 7396: null удаляет ключ и обязан
-	// пережить перенос как есть). label, если задан, проверяется через
-	// re-export: сторона без отдельного отображаемого имени (лаунчер)
-	// обязана вернуть чужое значение нетронутым (BACKUP.md §2).
+	// Chains — цепочки после импорта (SPEC 110). Список ИСЧЕРПЫВАЮЩИЙ:
+	// запись, пропущенная по занятому тегу, не должна материализоваться
+	// второй копией. chain сверяется deep-equal канона — включая
+	// null-значения rewrite (RFC 7396: null удаляет ключ и обязан пережить
+	// перенос как есть). label, если задан, проверяется через re-export:
+	// это общее поле схемы, и обе стороны обязаны вернуть его на место.
 	//
 	// Enabled — указатель, а не bool: умолчание схемы true, и отсутствие
 	// ключа в ожиданиях обязано значить «не проверяем», а не «ожидаем
@@ -111,7 +111,6 @@ func TestBackupCorpus(t *testing.T) {
 
 			dst := &state.State{}
 			res, err := Import(dst, b, ImportOptions{
-				Mode: ImportReplace,
 				// Принимающая сторона знает эти цели; всё прочее —
 				// символическая ссылка в никуда.
 				KnownOutbounds: []string{"proxy", "direct"},
@@ -130,7 +129,7 @@ func TestBackupCorpus(t *testing.T) {
 			checkRules(t, dst, exp)
 			checkVars(t, dst, exp)
 			checkRouteFinal(t, dst, exp)
-			checkForeignExtensions(t, dst, exp)
+			checkExtensionsDropped(t, dst, exp)
 			checkDisabledHashes(t, dst, exp)
 			checkDirections(t, dst, exp)
 			checkChains(t, dst, exp)
@@ -208,18 +207,26 @@ func checkRouteFinal(t *testing.T, dst *state.State, exp corpusExpectation) {
 	}
 }
 
-func checkForeignExtensions(t *testing.T, dst *state.State, exp corpusExpectation) {
+// checkExtensionsDropped — упразднённый карман не возвращается в экспорт.
+//
+// Warning об этом уже сверен общим сравнением кодов; здесь проверяется вторая
+// половина П1: состояние после импорта неотличимо от настроенного руками, то
+// есть следа от extensions в нём нет и повторный экспорт его не воскрешает.
+func checkExtensionsDropped(t *testing.T, dst *state.State, exp corpusExpectation) {
 	t.Helper()
-	if !exp.ForeignKeptOtherApp {
+	if !exp.ExtensionsDropped {
 		return
 	}
-	// Своё приложение блоб применяет полями, чужое — хранит нетронутым.
-	blob, ok := dst.ForeignBackupExtensions[AppLxBox]
-	if !ok || len(blob) == 0 {
-		t.Errorf("блоб extensions.%s не сохранён — при обратном экспорте данные пропадут", AppLxBox)
+	back, err := Export(dst, ExportOptions{AppVersion: "corpus"})
+	if err != nil {
+		t.Fatalf("re-export: %v", err)
 	}
-	if _, wrong := dst.ForeignBackupExtensions[AppLauncher]; wrong {
-		t.Errorf("собственный блоб extensions.%s положен в чужие — он должен применяться полями", AppLauncher)
+	raw, err := json.Marshal(back)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "extensions") {
+		t.Errorf("extensions вернулся в экспорт — карман провоза не закрыт: %s", raw)
 	}
 }
 
@@ -285,12 +292,11 @@ func equalStrings(a, b []string) bool {
 	return true
 }
 
-// checkChains проверяет цепочки после импорта (SPEC 110, схема v1.2).
+// checkChains проверяет цепочки после импорта (SPEC 110).
 //
 // Сверяется канон chain (deep-equal, включая null внутри rewrite) и число
-// записей; label — через re-export, потому что лаунчер его не применяет, а
-// только провозит (BACKUP.md §2). Раннер LxBox читает те же ожидания, но
-// label там — хранимое поле модели.
+// записей; label — через re-export: он общее поле схемы, у лаунчера живёт в
+// Source.Label и обязан вернуться на место (П1).
 func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 	t.Helper()
 	if len(exp.Chains) == 0 {
@@ -347,7 +353,7 @@ func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 			continue
 		}
 		if got := exported[want.Tag].Label; got != want.Label {
-			t.Errorf("%s: label в re-export %q, ожидалось %q — чужое имя потеряно", want.Tag, got, want.Label)
+			t.Errorf("%s: label в re-export %q, ожидалось %q — подпись потеряна", want.Tag, got, want.Label)
 		}
 	}
 }

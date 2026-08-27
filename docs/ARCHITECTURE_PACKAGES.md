@@ -203,9 +203,9 @@ semantics: `contract/docs/BACKUP.md`.
 
 | File | Purpose |
 |------|---------|
-| `types.go` | The file's shape: subscriptions, servers, rules, DNS, portable vars, plus per-app `extensions` blobs. |
-| `export.go` | `State` → backup. Non-portable per-source fields (skip filters, local outbounds, detour, id) go into `extensions.launcher`; without that, an export-import cycle on the *same* machine would lose settings. |
-| `import.go` | Backup → `State`. A rule whose target does not exist here is imported **switched off** rather than lost or silently enabled: an enabled rule with a dead target makes the core reject the whole config. Foreign `extensions` blobs are kept untouched for the next export. |
+| `types.go` | The file's shape: subscriptions, servers, chains, directions, rules, DNS, portable vars. There is no `extensions` mechanism (contract 0.11.0): the file is a serialisation of state and nothing else. |
+| `export.go` | `State` → backup, a **pure function of state**: per-source fields (skip filters, local outbounds, detour, id, node tag, fold) are plain optional keys of the entity record. Two indistinguishable states must produce byte-identical files, so nothing about where the state came from may leak in. |
+| `import.go` | Backup → `State`. A rule whose target does not exist here is imported **switched off** rather than lost or silently enabled: an enabled rule with a dead target makes the core reject the whole config. Anything the importer does not understand is dropped with a warning — never carried through — so the imported state is indistinguishable from one configured by hand. |
 | `portable_vars.go` | Generated from `contract/registry/vars.json` (portable=true) and checked against it by a test — a drifted list would either lose a setting or carry a value that means something else on the other machine. |
 | `file.go` | Atomic write with 0600 permissions (the file stores secrets as plain text), size cap, and default-deny reporting of unknown top-level keys. |
 

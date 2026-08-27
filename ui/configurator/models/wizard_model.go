@@ -87,12 +87,6 @@ type WizardModel struct {
 	// вместо новой регистрации, поэтому MASQUE H2/H3 ложатся на один ключ.
 	WarpAccounts *corestate.WarpAccountsSection
 
-	// ForeignBackupExtensions — блобы чужих приложений из LX Backup
-	// (SPEC 103, фаза 4). Модель их не читает и не показывает: она лишь
-	// проносит их между загрузкой и сохранением, иначе импортированный
-	// бэкап терял бы чужую часть при первом же сохранении состояния.
-	ForeignBackupExtensions map[string]json.RawMessage
-
 	// ParserConfigJSON — derived: кэш сериализации `AsParserConfig()` в
 	// строку для JSON-editor виджета. Refresh в `RefreshSerializedParserConfig`
 	// после любой мутации Sources/GlobalOutbounds. Не источник истины.

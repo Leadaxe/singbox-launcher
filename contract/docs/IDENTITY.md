@@ -103,7 +103,7 @@ SPEC 112-A):
 
 | Поле | Значение |
 |---|---|
-| `detour_node_source_id` | id источника-цели (`subscriptions[].extensions.launcher.id` / `servers[].…`) |
+| `detour_node_source_id` | id источника-цели (в бэкапе — `subscriptions[].id` / `servers[].id` / `chains[].id`, контракт 0.11.0) |
 | `detour_node_tag` | **identity-тег** узла ВНУТРИ этого источника (§1) |
 | `detour_node_label` | подпись для UI, в резолве не участвует |
 

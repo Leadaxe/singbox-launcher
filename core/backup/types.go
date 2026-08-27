@@ -1,18 +1,22 @@
-// Package backup — переносимый формат LX Backup v1 (SPEC 103, фаза 4).
+// Package backup — переносимый формат LX Backup (контракт 0.11.0).
 //
-// Назначение: перенести подписки, серверы, правила, DNS и переменные между
-// лаунчером и LxBox без потерь. Формат общий, схема нормативна —
-// contract/schema/backup.schema.json, семантика — contract/docs/BACKUP.md.
+// Назначение: перенести подписки, серверы, цепочки, Направления, правила, DNS
+// и переменные между лаунчером и LxBox. Формат общий, схема нормативна —
+// contract/schema/backup.schema.json, семантика — contract/docs/BACKUP.md,
+// идеи и инварианты — contract/docs/BACKUP_PRINCIPLES.md (П1–П7, при
+// конфликте побеждают они).
 //
 // Три инварианта определяют весь дизайн:
 //
-//  1. Lossless round-trip: import(export(x)) == x в том же приложении.
-//     Всё, что не переносится, едет в extensions.<app> и обязано пережить
-//     чужой импорт нетронутым — иначе бэкап, прошедший через телефон,
-//     возвращается на десктоп обеднённым.
-//  2. Default-deny: неизвестный ключ вне extensions не применяется молча —
-//     он либо предъявлен пользователю, либо не существует.
-//  3. Нет молчаливых потерь: то, что не применилось, названо warning'ом.
+//  1. Бэкап — сериализация состояния (П1). Экспорт — чистая функция
+//     состояния: два неотличимых состояния дают байт-идентичные файлы;
+//     состояние после импорта неотличимо от настроенного руками. Механизма
+//     extensions нет: провоз непонятого создавал состояние-призрак, которое
+//     протухает, когда каноническую часть правят в другом приложении.
+//  2. Непонятое отбрасывается с предупреждением (П3), а не применяется молча
+//     и не везётся дальше.
+//  3. Нет молчаливых потерь (П6): всё, что не применилось, названо
+//     пользователю warning'ом.
 package backup
 
 import (
@@ -21,22 +25,15 @@ import (
 	"singbox-launcher/core/config/configtypes"
 )
 
-// FormatVersion — мажор формата (BACKUP.md §6). Импортёр читает свою и
+// FormatVersion — мажор формата (BACKUP.md §8). Импортёр читает свою и
 // меньшие версии; бо́льшую отклоняет с понятной ошибкой.
 const FormatVersion = 1
 
-// AppLauncher — идентификатор приложения в exported_by.app и в ключах
-// extensions.
+// AppLauncher — идентификатор приложения в exported_by.app.
 const AppLauncher = "launcher"
 
-// AppLxBox — вторая сторона контракта; её блоб extensions мы обязаны
-// сохранять нетронутым.
+// AppLxBox — вторая сторона контракта.
 const AppLxBox = "lxbox"
-
-// Extensions — непереносимые данные по приложениям: {"launcher": {...},
-// "lxbox": {...}}. Чужой блоб хранится как есть и возвращается в следующий
-// экспорт.
-type Extensions map[string]json.RawMessage
 
 // Backup — корень файла.
 type Backup struct {
@@ -53,8 +50,6 @@ type Backup struct {
 	Vars          map[string]string `json:"vars,omitempty"`
 	Route         *Route            `json:"route,omitempty"`
 	Warp          []json.RawMessage `json:"warp,omitempty"`
-
-	Extensions Extensions `json:"extensions,omitempty"`
 }
 
 // ExportedBy — кто и чем создал файл. Нужен для диагностики и для
@@ -65,36 +60,72 @@ type ExportedBy struct {
 	Platform string `json:"platform,omitempty"`
 }
 
+// SourceRef — ссылка источника на цель дозвона, общая для всех типов
+// источников (подписка / сервер / цепочка).
+//
+// Вынесена отдельной структурой, а не переписана трижды: у трёх записей это
+// одно и то же понятие, и разъехавшиеся копии полей — это разъехавшийся
+// формат. Финальный конфиговый тег сюда не пишется никогда (П5): он
+// вычисляется каждой сборкой на принимающей стороне.
+type SourceRef struct {
+	// DetourTag — тег outbound'а, через который дозваниваются узлы источника.
+	DetourTag string `json:"detour_tag,omitempty"`
+	// DetourNodeSourceID + DetourNodeTag — ссылка-ОБЪЕКТ на один узел:
+	// id источника-цели плюс identity-тег узла внутри него (IDENTITY.md §2.1).
+	DetourNodeSourceID string `json:"detour_node_source_id,omitempty"`
+	DetourNodeTag      string `json:"detour_node_tag,omitempty"`
+	// DetourNodeLabel — снимок подписи узла-цели, только для показа.
+	DetourNodeLabel string `json:"detour_node_label,omitempty"`
+}
+
 // Subscription — источник подписки.
 type Subscription struct {
+	// ID — стабильный идентификатор источника: цель ссылок
+	// detour_node_source_id. Без него ссылка на узел этого источника приехала
+	// бы мёртвой.
+	ID       string        `json:"id,omitempty"`
 	URL      string        `json:"url"`
 	Label    string        `json:"label,omitempty"`
 	Enabled  *bool         `json:"enabled,omitempty"`
-	Skip     *bool         `json:"skip,omitempty"`
 	MaxNodes int           `json:"max_nodes,omitempty"`
 	Tag      *TagPolicy    `json:"tag,omitempty"`
 	Update   *UpdatePolicy `json:"update,omitempty"`
-	// Disabled — отметки выключенных нод: identity-хеш → unix seconds.
-	// Только по хешу (BACKUP.md §4): тег и подпись у сторон разные.
-	Disabled   map[string]int64 `json:"disabled,omitempty"`
-	Detour     json.RawMessage  `json:"detour,omitempty"`
-	Extensions Extensions       `json:"extensions,omitempty"`
+	// Disabled — отметки выключенных нод: идентичность узла → unix seconds.
+	// Ключ для формата обмена непрозрачен и копируется как есть (BACKUP.md §5).
+	Disabled map[string]int64 `json:"disabled,omitempty"`
+	// Skip — фильтры отсева узлов подписки. Поддержка — только launcher.
+	Skip []map[string]string `json:"skip,omitempty"`
+	// Outbounds — локальные Направления источника, в КАНОНИЧЕСКОЙ форме —
+	// той же, что directions[] на корне. Внутренняя структура сюда не едет:
+	// её поля не объявлены в схеме и не стоят в таблице поддержки
+	// BACKUP.md §2 — то есть были бы ровно тем тайным грузом, ради сноса
+	// которого убран механизм extensions.
+	//
+	// Канонизация — с потерями, и цена названа в BACKUP.md §2/§10: не едут
+	// ref и updates (привязка к пресету), comment, options кроме
+	// interrupt_exist_connections, ключи filters кроме tag, type (импорт
+	// принудительно ставит selector) и invert у preferredDefault.
+	// addOutbounds и preferredDefault, напротив, переносятся — первый
+	// признаками include_direct/include_block/include, второй телом
+	// регулярки в default. Поддержка — только launcher.
+	Outbounds []Direction `json:"outbounds,omitempty"`
+	// Fold — свёртка подписки в группу (SPEC 108). Только launcher.
+	Fold                    *configtypes.SourceFold `json:"fold,omitempty"`
+	ExcludeFromGlobal       bool                    `json:"exclude_from_global,omitempty"`
+	ExposeGroupTagsToGlobal bool                    `json:"expose_group_tags_to_global,omitempty"`
+	SourceRef
 }
 
-// Direction — Направление, цель правил (SPEC 104, схема v1.1).
+// Direction — Направление, цель правил (SPEC 104).
 //
 // Каноническая форма контракта (contract/schema/direction.schema.json), а не
 // внутренняя структура приложения: у сторон они разные, а переносится
 // именно модель. Отбор узлов передаётся ТЕЛОМ регулярки без обёртки — язык
 // паттернов у платформ различается, а тело одинаково.
-//
-// Зачем это в бэкапе: до v1.1 правило, ссылавшееся на `vpn-3` с телефона,
-// приезжало на десктоп в никуда и импортировалось выключенным. Теперь
-// отсутствующее Направление создаётся, и правило приходит рабочим.
 type Direction struct {
 	// Tag — единственное имя Направления (контракт 0.9.0): отдельного
-	// отображаемого имени нет, поле label из формы снято. Приехавший из
-	// чужого/старого бэкапа ключ игнорируется — именем остаётся тег.
+	// отображаемого имени нет. Ключ label из чужого/старого файла — обычное
+	// неизвестное поле: отбрасывается с warning (П3), а не подставляется.
 	Tag                       string         `json:"tag"`
 	Enabled                   *bool          `json:"enabled,omitempty"`
 	Filter                    string         `json:"filter,omitempty"`
@@ -105,7 +136,6 @@ type Direction struct {
 	Include                   []string       `json:"include,omitempty"`
 	InterruptExistConnections *bool          `json:"interrupt_exist_connections,omitempty"`
 	Auto                      *DirectionAuto `json:"auto,omitempty"`
-	Extensions                Extensions     `json:"extensions,omitempty"`
 }
 
 // DirectionAuto — параметры парной группы автовыбора.
@@ -121,26 +151,26 @@ type DirectionAuto struct {
 	StickyHash                []string `json:"sticky_hash,omitempty"`
 }
 
-// Chain — цепочка хопов (SPEC 110, схема v1.2).
+// Chain — цепочка хопов (SPEC 110).
 //
 // Идентичность и merge — по Tag: это тег будущего outbound'а, на него
 // ссылаются rules[].outbound, route.final, фильтры Направлений и позиции
-// других цепочек. У лаунчера тег хранится именем источника (Label ≡ TagMask,
-// adapter_source.go), отдельного отображаемого имени у цепочки нет: Label
-// здесь не пишется, а чужое значение провозится непонятым полем записи
-// (backupFieldsKey) до следующего экспорта.
+// других цепочек. ID переносится ради ссылок detour_node_source_id, но
+// идентичностью при merge не является (BACKUP.md §4).
 //
 // Порядок записей нормативен — вложенная цепочка объявляется раньше
 // использующей; секция не сортируется ни на экспорте, ни на импорте.
 type Chain struct {
+	ID      string `json:"id,omitempty"`
 	Tag     string `json:"tag"`
 	Label   string `json:"label,omitempty"`
 	Enabled *bool  `json:"enabled,omitempty"`
 	// Chain — канон цепочки (contract/schema/source_chain.schema.json).
 	// Общая форма с configtypes.SourceChain: вторая копия канона была бы
 	// расхождением, ждущим своего случая.
-	Chain      *configtypes.SourceChain `json:"chain"`
-	Extensions Extensions               `json:"extensions,omitempty"`
+	Chain             *configtypes.SourceChain `json:"chain"`
+	ExcludeFromGlobal bool                     `json:"exclude_from_global,omitempty"`
+	SourceRef
 }
 
 // TagPolicy — правила именования нод источника.
@@ -158,12 +188,17 @@ type UpdatePolicy struct {
 
 // Server — одиночный узел: ровно одно из URI / ConfigJSON.
 type Server struct {
+	ID         string          `json:"id,omitempty"`
 	URI        string          `json:"uri,omitempty"`
 	ConfigJSON json.RawMessage `json:"config_json,omitempty"`
 	Label      string          `json:"label,omitempty"`
-	Enabled    *bool           `json:"enabled,omitempty"`
-	Detour     json.RawMessage `json:"detour,omitempty"`
-	Extensions Extensions      `json:"extensions,omitempty"`
+	// NodeTag — ТЕГ узла, а не подпись: на него ссылаются rules[].outbound,
+	// фильтры Направлений и позиции цепочек. Отдельно от Label, потому что
+	// переименование в списке не должно уводить тег из-под ссылок.
+	NodeTag           string `json:"node_tag,omitempty"`
+	Enabled           *bool  `json:"enabled,omitempty"`
+	ExcludeFromGlobal bool   `json:"exclude_from_global,omitempty"`
+	SourceRef
 }
 
 // RuleKind — вид правила.
@@ -186,13 +221,12 @@ type Rule struct {
 	Num *float64 `json:"num,omitempty"`
 	// Outbound — символическая ссылка на цель. Несуществующая цель не
 	// повод терять правило: импортируется выключенным с warning.
-	Outbound   string            `json:"outbound,omitempty"`
-	Ref        string            `json:"ref,omitempty"`
-	Vars       map[string]string `json:"vars,omitempty"`
-	Match      json.RawMessage   `json:"match,omitempty"`
-	DNS        json.RawMessage   `json:"dns,omitempty"`
-	Resolve    json.RawMessage   `json:"resolve,omitempty"`
-	Extensions Extensions        `json:"extensions,omitempty"`
+	Outbound string            `json:"outbound,omitempty"`
+	Ref      string            `json:"ref,omitempty"`
+	Vars     map[string]string `json:"vars,omitempty"`
+	Match    json.RawMessage   `json:"match,omitempty"`
+	DNS      json.RawMessage   `json:"dns,omitempty"`
+	Resolve  json.RawMessage   `json:"resolve,omitempty"`
 }
 
 // DNS — секция DNS.
@@ -205,14 +239,13 @@ type DNS struct {
 
 // DNSRef — запись DNS с дискриминатором происхождения.
 type DNSRef struct {
-	Kind       string            `json:"kind,omitempty"`
-	Name       string            `json:"name,omitempty"`
-	Enabled    *bool             `json:"enabled,omitempty"`
-	Num        *float64          `json:"num,omitempty"`
-	Ref        string            `json:"ref,omitempty"`
-	Vars       map[string]string `json:"vars,omitempty"`
-	Value      json.RawMessage   `json:"value,omitempty"`
-	Extensions Extensions        `json:"extensions,omitempty"`
+	Kind    string            `json:"kind,omitempty"`
+	Name    string            `json:"name,omitempty"`
+	Enabled *bool             `json:"enabled,omitempty"`
+	Num     *float64          `json:"num,omitempty"`
+	Ref     string            `json:"ref,omitempty"`
+	Vars    map[string]string `json:"vars,omitempty"`
+	Value   json.RawMessage   `json:"value,omitempty"`
 }
 
 // Route — маршрутные умолчания.

@@ -8,7 +8,6 @@
   "directions": [
     {
       "tag": "vpn-de",
-      "label": "Германия",
       "filter": "🇩🇪"
     }
   ],

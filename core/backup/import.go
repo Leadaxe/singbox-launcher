@@ -1,6 +1,6 @@
 package backup
 
-// Импорт LX Backup в состояние лаунчера (SPEC 103, фаза 4).
+// Импорт LX Backup в состояние лаунчера (контракт 0.11.0).
 
 import (
 	"encoding/json"
@@ -17,7 +17,7 @@ import (
 //
 // Не ошибка: импорт продолжается. Но и не молчание — пользователь обязан
 // узнать, что правило приехало выключенным или что настройка не применилась
-// (BACKUP.md §1, инвариант «нет молчаливых потерь»).
+// (BACKUP_PRINCIPLES.md П6, «молчаливых потерь нет»).
 type Warning struct {
 	// Code — машинный код (contract/registry/warnings.json).
 	Code string
@@ -40,9 +40,23 @@ const (
 	WarnBackupUnknownPreset = "backup_unknown_preset"
 	// WarnBackupVarSkipped — переменная не в списке переносимых.
 	WarnBackupVarSkipped = "backup_var_skipped"
-	// WarnBackupUnknownField — ключ вне схемы и вне extensions: default-deny,
-	// в состояние не попадает.
+	// WarnBackupUnknownField — ключ вне схемы: в состояние не попадает (П3).
+	// Detail называет и ключ, и сущность, в которой он встретился.
 	WarnBackupUnknownField = "backup_unknown_field"
+	// WarnBackupFieldTypeMismatch — ключ модели пришёл ЧУЖОГО ТИПА: поле
+	// отбрасывается, разбор файла продолжается. Отдельный код, а не
+	// backup_unknown_field: ключ-то знакомый, разошёлся его тип
+	// (`subscriptions[].skip` — boolean у LxBox 0.10.x, список фильтров
+	// отсева у launcher), и пользователю важно различать «такого поля тут
+	// нет» и «поле есть, но значение записано по-другому». Detail называет
+	// полный путь: subscriptions[https://…].skip.
+	WarnBackupFieldTypeMismatch = "backup_field_type_mismatch"
+	// WarnBackupExtensionsDropped — файл схемы 0.10.x с механизмом
+	// extensions. Один warning на файл с перечнем затронутых записей: пока
+	// extensions существовал, он был не «одним лишним ключом», а карманом с
+	// произвольным содержимым, и перечислять его внутренности по одной
+	// значило бы утопить пользователя в списке.
+	WarnBackupExtensionsDropped = "backup_extensions_dropped"
 	// WarnBackupDirectionExists — Направление с таким тегом уже есть:
 	// приехавшее НЕ применяется. Перезапись стёрла бы настройки, сделанные
 	// на этой машине, а правила и так найдут цель по тегу (SPEC 104).
@@ -51,7 +65,7 @@ const (
 	// применяется, своя сильнее. Warning ставится ВСЕГДА, даже когда «своя
 	// победила» — молчание скрыло бы случайных тёзок: две несвязанные
 	// цепочки, одинаково названные на разных устройствах, склеиваются в
-	// одну, и пользователь обязан узнать об этом (BACKUP.md §2).
+	// одну, и пользователь обязан узнать об этом (BACKUP.md §4).
 	WarnBackupChainExists = "backup_chain_exists"
 )
 
@@ -60,19 +74,15 @@ const (
 // «импорт невозможен», иначе одно чужое правило уронит весь файл.
 var errSkipRule = errors.New("rule skipped")
 
-// ImportMode — как сочетать с текущим состоянием.
-type ImportMode int
-
-const (
-	// ImportReplace — заменить разделы целиком.
-	ImportReplace ImportMode = iota
-	// ImportMerge — дописать к существующему, не трогая совпадающее.
-	ImportMerge
-)
-
 // ImportOptions — контекст принимающей стороны.
+//
+// Режим импорта один — replace (BACKUP.md §9): разделы источников и правил
+// замещаются приехавшими. Прежний ImportMerge удалён — он не был достижим
+// ни из одного UI и потому не проверялся ничем, кроме собственных тестов, а
+// его перенумерация оси переписывала номера уже стоявших правил, включая
+// якорные зоны шаблона. Возвращать merge следует не флагом, а вместе с
+// инвариантом «файл = ось» из SPEC 113-C.
 type ImportOptions struct {
-	Mode ImportMode
 	// KnownOutbounds — теги, на которые правилу разрешено ссылаться.
 	// Пустой список означает «проверять нечем» — тогда ссылки не режутся:
 	// выключить всё подряд хуже, чем импортировать как есть.
@@ -93,6 +103,11 @@ type ImportResult struct {
 
 // Import применяет бэкап к state.
 //
+// Состояние после импорта неотличимо от настроенного руками (П1): теневых
+// полей «на провоз» нет, непонятое отброшено и названо warning'ом (П3).
+// Warning'и о неизвестных ключах и об extensions выдаёт Parse — он один видит
+// сырой JSON; здесь они не дублируются.
+//
 // Порядок разделов значим: источники раньше правил, потому что правило может
 // ссылаться на тег, который приезжает вместе с источником.
 func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error) {
@@ -109,10 +124,8 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 
 	res := &ImportResult{}
 
-	if opts.Mode == ImportReplace {
-		s.Connections.Sources = nil
-		s.Rules = nil
-	}
+	s.Connections.Sources = nil
+	s.Rules = nil
 
 	for _, sub := range b.Subscriptions {
 		s.Connections.Sources = append(s.Connections.Sources, importSubscription(sub))
@@ -149,12 +162,12 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 		res.AppliedDirections++
 	}
 
-	// SPEC 110 (схема v1.2): цепочки — ПОСЛЕ Направлений (позиция может
-	// ссылаться на Направление) и ДО правил (правило может метить в цепочку
-	// как в цель — тег пополняет список известных). Порядок записей
-	// нормативен и сохраняется как есть. Достижимость hops здесь не
-	// проверяется: хоп — чаще всего узел подписки, которого до её обновления
-	// не существует; рубеж у обеих сторон один — сборка (chain_hop_missing).
+	// Цепочки — ПОСЛЕ Направлений (позиция может ссылаться на Направление) и
+	// ДО правил (правило может метить в цепочку как в цель — тег пополняет
+	// список известных). Порядок записей нормативен и сохраняется как есть.
+	// Достижимость hops здесь не проверяется: хоп — чаще всего узел подписки,
+	// которого до её обновления не существует; рубеж у обеих сторон один —
+	// сборка (chain_hop_missing).
 	existingChains := map[string]bool{}
 	for _, src := range s.Connections.Sources {
 		if src.Type == state.SourceTypeChain {
@@ -175,13 +188,6 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 		knownTags = append(knownTags, in.Tag)
 		res.AppliedSources++
 	}
-	// Legacy: релизы лаунчера v1.5.0–v1.5.1 писали цепочки блобом
-	// extensions.launcher (ключ chains). Файлы тех релизов существуют, и
-	// терять их цепочки нельзя; писать в это место больше нельзя
-	// (BACKUP.md §2). Дедуп по тегу общий с секцией.
-	legacyApplied, legacyTags := importLauncherChains(s, b.Extensions[AppLauncher], existingChains)
-	res.AppliedSources += legacyApplied
-	knownTags = append(knownTags, legacyTags...)
 
 	known := newTagSet(knownTags)
 	presets := newTagSet(opts.KnownPresets)
@@ -213,35 +219,47 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 
 	res.Warnings = append(res.Warnings, importVars(s, b.Vars)...)
 
-	// DNS: до сих пор секция экспортировалась, но импортёр её полностью
-	// игнорировал — перенос с другой машины молча выбрасывал настройку DNS
-	// (нарушение §1 «нет молчаливых потерь»).
-	importDNS(s, b.DNS, opts.Mode)
-
-	importWarp(s, b.Warp, opts.Mode)
-
-	// Чужой блоб extensions сохраняем нетронутым до следующего экспорта.
-	for app, blob := range b.Extensions {
-		if app == AppLauncher {
-			continue // своё применяется полями выше
-		}
-		if s.ForeignBackupExtensions == nil {
-			s.ForeignBackupExtensions = map[string]json.RawMessage{}
-		}
-		s.ForeignBackupExtensions[app] = append(json.RawMessage(nil), blob...)
-	}
+	importDNS(s, b.DNS)
+	importWarp(s, b.Warp)
 
 	return res, nil
 }
 
+// importDirections — обратная сторона exportDirections.
+func importDirections(list []Direction) []configtypes.Direction {
+	var out []configtypes.Direction
+	for _, in := range list {
+		if in.Tag == "" {
+			continue
+		}
+		out = append(out, importDirection(in))
+	}
+	return out
+}
+
+// importSourceRef восстанавливает ссылку источника на цель дозвона.
+func importSourceRef(src *state.Source, ref SourceRef) {
+	src.DetourTag = ref.DetourTag
+	src.DetourNodeSourceID = ref.DetourNodeSourceID
+	src.DetourNodeTag = ref.DetourNodeTag
+	src.DetourNodeLabel = ref.DetourNodeLabel
+}
+
 func importSubscription(sub Subscription) state.Source {
 	src := state.Source{
-		Type:     state.SourceTypeSubscription,
-		URL:      sub.URL,
-		Label:    sub.Label,
-		MaxNodes: sub.MaxNodes,
-		Enabled:  sub.Enabled == nil || *sub.Enabled,
+		ID:                      sub.ID,
+		Type:                    state.SourceTypeSubscription,
+		URL:                     sub.URL,
+		Label:                   sub.Label,
+		MaxNodes:                sub.MaxNodes,
+		Enabled:                 sub.Enabled == nil || *sub.Enabled,
+		Skip:                    sub.Skip,
+		Outbounds:               importDirections(sub.Outbounds),
+		Fold:                    sub.Fold,
+		ExcludeFromGlobal:       sub.ExcludeFromGlobal,
+		ExposeGroupTagsToGlobal: sub.ExposeGroupTagsToGlobal,
 	}
+	importSourceRef(&src, sub.SourceRef)
 	if sub.Tag != nil {
 		src.Tag = &state.TagSpec{Prefix: sub.Tag.Prefix, Postfix: sub.Tag.Postfix, Mask: sub.Tag.Mask}
 	}
@@ -254,120 +272,44 @@ func importSubscription(sub Subscription) state.Source {
 			src.DisabledNodes[hash] = ts
 		}
 	}
-	applyLauncherSourceExtensions(&src, sub.Extensions)
-	fields := map[string]json.RawMessage{}
-	if sub.Skip != nil {
-		if raw, err := json.Marshal(sub.Skip); err == nil {
-			fields["skip"] = raw
-		}
-	}
-	if len(sub.Detour) > 0 {
-		fields["detour"] = sub.Detour
-	}
-	keepForeignEntityExtensions(&src, sub.Extensions, fields)
 	return src
 }
 
 func importServer(srv Server) state.Source {
 	src := state.Source{
-		Type:    state.SourceTypeServer,
-		URI:     srv.URI,
-		Label:   srv.Label,
-		Enabled: srv.Enabled == nil || *srv.Enabled,
+		ID:                srv.ID,
+		Type:              state.SourceTypeServer,
+		URI:               srv.URI,
+		Label:             srv.Label,
+		NodeTag:           srv.NodeTag,
+		Enabled:           srv.Enabled == nil || *srv.Enabled,
+		ExcludeFromGlobal: srv.ExcludeFromGlobal,
 	}
+	importSourceRef(&src, srv.SourceRef)
 	if len(srv.ConfigJSON) > 0 {
 		src.ConfigJSON = append(json.RawMessage(nil), srv.ConfigJSON...)
 	}
-	applyLauncherSourceExtensions(&src, srv.Extensions)
-	fields := map[string]json.RawMessage{}
-	if len(srv.Detour) > 0 {
-		fields["detour"] = srv.Detour
-	}
-	keepForeignEntityExtensions(&src, srv.Extensions, fields)
 	return src
 }
 
-// applyLauncherSourceExtensions возвращает собственные непереносимые поля.
-// Чужие блобы здесь не трогаются — их место в ForeignBackupExtensions.
-func applyLauncherSourceExtensions(src *state.Source, ext Extensions) {
-	blob, ok := ext[AppLauncher]
-	if !ok || len(blob) == 0 {
-		return
+// importChain переводит каноническую запись chains[] во внутренний источник.
+//
+// Тег записи едет в NodeTag, отображаемое имя — в Label: обе роли имеют своё
+// поле. Раньше тег клался в Label (другого места не было), из-за чего импорт
+// чужого label разъехался бы со ссылками правил, route.final и позиций других
+// цепочек.
+func importChain(in Chain) state.Source {
+	src := state.Source{
+		ID:                in.ID,
+		Type:              state.SourceTypeChain,
+		NodeTag:           in.Tag,
+		Label:             in.Label,
+		Enabled:           in.Enabled == nil || *in.Enabled,
+		Chain:             in.Chain,
+		ExcludeFromGlobal: in.ExcludeFromGlobal,
 	}
-	var own struct {
-		ID                      string              `json:"id"`
-		Skip                    []map[string]string `json:"skip"`
-		ExcludeFromGlobal       bool                `json:"exclude_from_global"`
-		ExposeGroupTagsToGlobal bool                `json:"expose_group_tags_to_global"`
-		DetourTag               string              `json:"detour_tag"`
-		// Ссылка на узел, все три поколения формата (BACKUP.md §1 —
-		// молчаливых потерь быть не должно):
-		//   detour_node_source_id + detour_node_tag — SPEC 112-A, ссылка-объект;
-		//   detour_node_tag без id — dev-состояния SPEC 112, финальный тег;
-		//   detour_node_hash — релизы v1.5.x, упразднённый контент-хеш;
-		//     мигрирует при первом парсе на приёмнике.
-		DetourNodeSourceID string `json:"detour_node_source_id"`
-		DetourNodeTag      string `json:"detour_node_tag"`
-		DetourNodeHash     string `json:"detour_node_hash"`
-		DetourNodeLabel    string `json:"detour_node_label"`
-		// Тег узла server-источника: в схеме servers[] поля под него нет.
-		NodeTag string `json:"node_tag"`
-		// Локальные outbound'ы подписки. Экспорт их писал с самого начала,
-		// а импорт не читал — классическое «поле пишется, но не читается»:
-		// roundtrip на своей же машине молча терял их (нарушение §1).
-		Outbounds []configtypes.Direction `json:"outbounds"`
-		// SPEC 108: свёртка подписки в группу.
-		Fold *configtypes.SourceFold `json:"fold"`
-	}
-	if err := json.Unmarshal(blob, &own); err != nil {
-		return // битое расширение не повод терять источник
-	}
-	src.ID = own.ID
-	src.Skip = own.Skip
-	src.ExcludeFromGlobal = own.ExcludeFromGlobal
-	src.ExposeGroupTagsToGlobal = own.ExposeGroupTagsToGlobal
-	src.DetourTag = own.DetourTag
-	src.DetourNodeSourceID = own.DetourNodeSourceID
-	src.DetourNodeTag = own.DetourNodeTag
-	src.DetourNodeHash = own.DetourNodeHash
-	src.DetourNodeLabel = own.DetourNodeLabel
-	src.NodeTag = own.NodeTag
-	src.Outbounds = own.Outbounds
-	src.Fold = own.Fold
-}
-
-// backupFieldsKey — служебный ключ в Source.ForeignExtensions для полей схемы
-// бэкапа, которые лаунчер понимает недостаточно, чтобы применить (skip/detour
-// другой стороны), но обязан вернуть при следующем экспорте (§1).
-const backupFieldsKey = "_backup_fields"
-
-// keepForeignEntityExtensions сохраняет per-entity блобы чужих приложений и
-// непонятые поля записи, чтобы re-export вернул их на место.
-func keepForeignEntityExtensions(src *state.Source, ext Extensions, fields map[string]json.RawMessage) {
-	for app, blob := range ext {
-		if app == AppLauncher || len(blob) == 0 {
-			continue
-		}
-		if src.ForeignExtensions == nil {
-			src.ForeignExtensions = map[string]json.RawMessage{}
-		}
-		src.ForeignExtensions[app] = append(json.RawMessage(nil), blob...)
-	}
-	clean := map[string]json.RawMessage{}
-	for k, v := range fields {
-		if len(v) > 0 {
-			clean[k] = v
-		}
-	}
-	if len(clean) == 0 {
-		return
-	}
-	if raw, err := json.Marshal(clean); err == nil {
-		if src.ForeignExtensions == nil {
-			src.ForeignExtensions = map[string]json.RawMessage{}
-		}
-		src.ForeignExtensions[backupFieldsKey] = raw
-	}
+	importSourceRef(&src, in.SourceRef)
+	return src
 }
 
 func importRule(r Rule, known, presets tagSet) (state.Rule, []Warning, error) {
@@ -556,80 +498,19 @@ func (t tagSet) has(tag string) bool {
 	return ok
 }
 
-// importChain переводит каноническую запись chains[] во внутренний источник.
+// importDNS применяет секцию DNS: списки замещаются приехавшими.
 //
-// Тег записи едет в NodeTag, отображаемое имя — в Label: обе роли теперь
-// имеют своё поле, и провозить чужую подпись непонятым полем больше не
-// нужно. Раньше тег клался в Label (другого места не было), из-за чего
-// импорт чужого label разъехался бы со ссылками правил, route.final и
-// позиций других цепочек.
-func importChain(in Chain) state.Source {
-	src := state.Source{
-		Type:    state.SourceTypeChain,
-		NodeTag: in.Tag,
-		Label:   in.Label,
-		Enabled: in.Enabled == nil || *in.Enabled,
-		Chain:   in.Chain,
-	}
-	applyLauncherSourceExtensions(&src, in.Extensions)
-	keepForeignEntityExtensions(&src, in.Extensions, map[string]json.RawMessage{})
-	return src
-}
-
-// importLauncherChains — legacy-чтение цепочек из блоба extensions.launcher
-// (формат релизов v1.5.0–v1.5.1: внутренняя структура state.Source). Файлы
-// нового формата этого блоба не содержат. existing — теги уже применённых
-// цепочек, общий дедуп с секцией chains[]. Возвращает число применённых и
-// их теги — они такие же цели правил, как теги из секции.
-func importLauncherChains(s *state.State, blob json.RawMessage, existing map[string]bool) (int, []string) {
-	if len(blob) == 0 {
-		return 0, nil
-	}
-	var own struct {
-		Chains []state.Source `json:"chains"`
-	}
-	if err := json.Unmarshal(blob, &own); err != nil {
-		return 0, nil
-	}
-	applied := 0
-	var tags []string
-	for _, chain := range own.Chains {
-		if chain.Type != state.SourceTypeChain || chain.Chain == nil {
-			continue
-		}
-		// Записи тех релизов несут тег в Label (разделения ролей ещё не
-		// было) — NodeTagOrLabel читает их без переписывания файла.
-		tag := chain.NodeTagOrLabel()
-		if existing[tag] {
-			continue // merge: своя одноимённая цепочка сильнее
-		}
-		s.Connections.Sources = append(s.Connections.Sources, chain)
-		existing[tag] = true
-		tags = append(tags, tag)
-		applied++
-	}
-	return applied, tags
-}
-
-// importDNS применяет секцию DNS.
-//
-// Replace: списки замещаются приехавшими; Merge: добавляются только записи,
-// которых нет по identity (kind+tag/ref) — своя настройка сильнее приехавшей.
 // Тела переносятся только у kind=user (симметрия с exportDNS: тело
 // template/preset принадлежит шаблону принимающей стороны).
-func importDNS(s *state.State, dns *DNS, mode ImportMode) {
+func importDNS(s *state.State, dns *DNS) {
 	if dns == nil {
 		return
 	}
-	if mode == ImportReplace {
-		s.DNS.Servers = nil
-		s.DNS.Rules = nil
-	}
+	s.DNS.Servers = nil
+	s.DNS.Rules = nil
+
 	serverKey := func(kind, tag, ref string) string { return kind + "\x00" + tag + "\x00" + ref }
 	haveServers := map[string]bool{}
-	for _, srv := range s.DNS.Servers {
-		haveServers[serverKey(string(srv.Kind), srv.Tag, srv.Ref)] = true
-	}
 	for _, ref := range dns.Servers {
 		key := serverKey(ref.Kind, ref.Name, ref.Ref)
 		if haveServers[key] {
@@ -650,14 +531,12 @@ func importDNS(s *state.State, dns *DNS, mode ImportMode) {
 		s.DNS.Servers = append(s.DNS.Servers, srv)
 		haveServers[key] = true
 	}
+
 	ruleKey := func(kind, ref string, body map[string]interface{}) string {
 		raw, _ := json.Marshal(body)
 		return kind + "\x00" + ref + "\x00" + string(raw)
 	}
 	haveRules := map[string]bool{}
-	for _, r := range s.DNS.Rules {
-		haveRules[ruleKey(string(r.Kind), r.Ref, r.Body)] = true
-	}
 	for _, ref := range dns.Rules {
 		var body map[string]interface{}
 		if ref.Kind == "user" && len(ref.Value) > 0 {
@@ -684,11 +563,7 @@ func importDNS(s *state.State, dns *DNS, mode ImportMode) {
 }
 
 // importWarp восстанавливает WG/MASQUE-регистрации из warp[].
-//
-// Merge не перетирает свою живую регистрацию приехавшей: у Cloudflare адреса
-// привязаны к ключу, и подмена работающего ключа чужим сломала бы уже
-// собранные ноды этой машины.
-func importWarp(s *state.State, warp []json.RawMessage, mode ImportMode) {
+func importWarp(s *state.State, warp []json.RawMessage) {
 	for _, raw := range warp {
 		var head struct {
 			Type string `json:"type"`
@@ -705,9 +580,7 @@ func importWarp(s *state.State, warp []json.RawMessage, mode ImportMode) {
 			if s.WarpAccounts == nil {
 				s.WarpAccounts = &state.WarpAccountsSection{}
 			}
-			if s.WarpAccounts.WG == nil || mode == ImportReplace {
-				s.WarpAccounts.WG = &acc
-			}
+			s.WarpAccounts.WG = &acc
 		case "masque":
 			var acc state.WarpMasqueAccount
 			if json.Unmarshal(raw, &acc) != nil || acc.PrivateKeyDER == "" {
@@ -716,9 +589,7 @@ func importWarp(s *state.State, warp []json.RawMessage, mode ImportMode) {
 			if s.WarpAccounts == nil {
 				s.WarpAccounts = &state.WarpAccountsSection{}
 			}
-			if s.WarpAccounts.Masque == nil || mode == ImportReplace {
-				s.WarpAccounts.Masque = &acc
-			}
+			s.WarpAccounts.Masque = &acc
 		}
 	}
 }

@@ -173,7 +173,6 @@ func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window,
 	}
 
 	res, err := backup.Import(st, b, backup.ImportOptions{
-		Mode: backup.ImportReplace,
 		// Известные цели берём из модели: правило, ссылающееся в никуда,
 		// приедет выключенным, а не уронит конфиг ядра.
 		KnownOutbounds: wizardbusiness.GetAvailableOutbounds(presenter.Model()),
@@ -257,6 +256,15 @@ func warnText(w backup.Warning) string {
 		return fmt.Sprintf(locale.T("%s — this setting means something else on this machine, skipped"), w.Detail)
 	case backup.WarnBackupUnknownField:
 		return fmt.Sprintf(locale.T("%s — not supported here, skipped"), w.Detail)
+	case backup.WarnBackupFieldTypeMismatch:
+		// Ключ знакомый, а тип чужой: сказать «не поддержано» было бы
+		// неправдой — поле есть, разошлась его форма.
+		return fmt.Sprintf(locale.T("%s — this field means something different here, its value is skipped"), w.Detail)
+	case backup.WarnBackupExtensionsDropped:
+		// Один warning на файл: extensions — упразднённый карман, а не
+		// лишний ключ, и перечислять его внутренности значило бы утопить
+		// пользователя в списке вместо объяснения.
+		return fmt.Sprintf(locale.T("this backup was made by an older version and carries an \"extensions\" section (%s); the shared fields were imported, the rest is dropped"), w.Detail)
 	case backup.WarnBackupChainExists:
 		return fmt.Sprintf(locale.T("%s — a chain with this name already exists here, the incoming one is skipped"), w.Detail)
 	default:

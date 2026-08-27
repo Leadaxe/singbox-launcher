@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -110,7 +111,6 @@ func TestRoundTripLossless(t *testing.T) {
 
 	dst := &state.State{}
 	res, err := Import(dst, b, ImportOptions{
-		Mode:           ImportReplace,
 		KnownOutbounds: []string{"proxy", "hop-1"},
 		KnownPresets:   []string{"traffic-processing"},
 	})
@@ -134,8 +134,8 @@ func TestRoundTripLossless(t *testing.T) {
 	if got := sub.DisabledNodes[testNodeHash]; got != 1750000000 {
 		t.Errorf("отметка выключенной ноды потеряна: %v", sub.DisabledNodes)
 	}
-	// Непереносимые поля обязаны вернуться через extensions.launcher —
-	// иначе round-trip на своей же машине теряет настройку.
+	// Прежде эти поля ездили карманом extensions.launcher; теперь они —
+	// обычные поля записи, и roundtrip на своей же машине обязан их вернуть.
 	if len(sub.Skip) != 1 || sub.Skip[0]["contains"] != "trial" {
 		t.Errorf("skip-фильтр потерян: %+v", sub.Skip)
 	}
@@ -252,13 +252,19 @@ func TestReservedOutboundsAlwaysKnown(t *testing.T) {
 	}
 }
 
-// Чужой блоб extensions обязан пережить импорт и вернуться в экспорт:
-// бэкап, побывавший на десктопе, не должен вернуться на телефон обеднённым.
-func TestForeignExtensionsSurviveRoundTrip(t *testing.T) {
-	foreign := json.RawMessage(`{"folders":["work","home"],"import_rules":[{"x":1}]}`)
-	b := &Backup{
-		LxBackup:   FormatVersion,
-		Extensions: Extensions{AppLxBox: foreign},
+// П3: чужой блоб extensions больше НЕ провозится — он отбрасывается с
+// warning'ом при разборе файла. Провоз непонятого создавал состояние-призрак,
+// которое протухало, когда каноническую часть правили на другой стороне.
+func TestForeignExtensionsDroppedWithWarning(t *testing.T) {
+	raw := []byte(`{"lx_backup":1,"exported_by":{"app":"lxbox","version":"2.0.0"},` +
+		`"exported_at":"2026-08-22T00:00:00Z",` +
+		`"extensions":{"lxbox":{"folders":["work"]}}}`)
+	b, warns, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !hasWarn(warns, WarnBackupExtensionsDropped) {
+		t.Fatalf("отброшенный extensions не назван: %v", warns)
 	}
 	dst := &state.State{}
 	if _, err := Import(dst, b, ImportOptions{}); err != nil {
@@ -268,12 +274,12 @@ func TestForeignExtensionsSurviveRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Export: %v", err)
 	}
-	got, ok := back.Extensions[AppLxBox]
-	if !ok {
-		t.Fatal("чужой блоб extensions потерян при обратном экспорте")
+	out, err := json.Marshal(back)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if string(got) != string(foreign) {
-		t.Errorf("чужой блоб изменён:\n  было %s\n  стало %s", foreign, got)
+	if strings.Contains(string(out), "extensions") {
+		t.Fatalf("extensions вернулся в экспорт — карман провоза не закрыт: %s", out)
 	}
 }
 
@@ -445,12 +451,9 @@ func TestRoundTripChainSources(t *testing.T) {
 	if len(b.Chains) != 1 || b.Chains[0].Tag != "chain-1" {
 		t.Fatalf("секция chains[] не собрана: %+v", b.Chains)
 	}
-	if _, ok := b.Extensions[AppLauncher]; ok {
-		t.Fatal("цепочки снова уехали в extensions.launcher — это место закрыто (BACKUP.md §2)")
-	}
 
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+	if _, err := Import(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	var chain *state.Source
@@ -472,58 +475,49 @@ func TestRoundTripChainSources(t *testing.T) {
 	}
 }
 
-// TestImportLegacyExtensionsChains — файлы релизов v1.5.0–v1.5.1 несли
-// цепочки блобом extensions.launcher (внутренняя структура state.Source).
-// Читать это место обязаны и после переезда в секцию chains[] — иначе
-// восстановление старого бэкапа молча теряет цепочки.
-func TestImportLegacyExtensionsChains(t *testing.T) {
-	old := []state.Source{{
-		Type: state.SourceTypeChain, Label: "old-relay", Enabled: true,
-		Chain: &configtypes.SourceChain{Hops: []string{"a", "b"}},
-	}}
-	blob, err := json.Marshal(map[string]any{"chains": old})
+// П4: legacy-развилки чтения нет. Файл релизов v1.5.0–v1.5.1 нёс цепочки
+// блобом extensions.launcher; теперь этот карман — обычное неизвестное поле:
+// отбрасывается с warning'ом, цепочки из него не материализуются. Цена
+// разрыва задокументирована (BACKUP.md §10), молчания нет.
+func TestLegacyExtensionsChainsNotRead(t *testing.T) {
+	raw := []byte(`{"lx_backup":1,"exported_by":{"app":"launcher","version":"1.5.1"},` +
+		`"exported_at":"2026-08-22T00:00:00Z","extensions":{"launcher":{"chains":` +
+		`[{"type":"chain","label":"old-relay","enabled":true,"chain":{"hops":["a","b"]}}]}}}`)
+	b, warns, err := Parse(raw)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Parse: %v", err)
 	}
-	b := &Backup{
-		LxBackup:   FormatVersion,
-		Extensions: Extensions{AppLauncher: blob},
+	if !hasWarn(warns, WarnBackupExtensionsDropped) {
+		t.Fatalf("legacy-блоб отброшен молча: %v", warns)
 	}
-
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
-		t.Fatal(err)
+	if _, err := Import(restored, b, ImportOptions{}); err != nil {
+		t.Fatalf("Import: %v", err)
 	}
-	found := false
 	for _, src := range restored.Connections.Sources {
-		if src.Type == state.SourceTypeChain && src.Label == "old-relay" &&
-			src.Chain != nil && len(src.Chain.Hops) == 2 {
-			found = true
+		if src.Type == state.SourceTypeChain {
+			t.Fatalf("цепочка прочитана из упразднённого кармана: %+v", src)
 		}
-	}
-	if !found {
-		t.Fatal("legacy-цепочка из extensions.launcher не восстановлена")
 	}
 }
 
-// TestImportChainTagBusy — занятый тег: своя цепочка сильнее, приехавшая
-// пропускается, и это ВСЕГДА предъявляется warning'ом — молчаливое «своя
-// победила» скрыло бы случайных тёзок (BACKUP.md §2).
+// TestImportChainTagBusy — занятый тег: первая запись побеждает, вторая
+// пропускается, и это ВСЕГДА предъявляется warning'ом — молчаливое «одна
+// победила» скрыло бы случайных тёзок (BACKUP.md §4).
+//
+// Тёзки проверяются ВНУТРИ одного файла: режим импорта один — replace, и
+// коллизия «своя против приехавшей» в нём невозможна по построению.
 func TestImportChainTagBusy(t *testing.T) {
-	s := &state.State{}
-	s.Connections.Sources = []state.Source{{
-		Type: state.SourceTypeChain, Label: "relay", Enabled: true,
-		Chain: &configtypes.SourceChain{Hops: []string{"mine-1", "mine-2"}},
-	}}
 	b := &Backup{
 		LxBackup: FormatVersion,
-		Chains: []Chain{{
-			Tag:   "relay",
-			Chain: &configtypes.SourceChain{Hops: []string{"theirs-1", "theirs-2"}},
-		}},
+		Chains: []Chain{
+			{Tag: "relay", Chain: &configtypes.SourceChain{Hops: []string{"first-1", "first-2"}}},
+			{Tag: "relay", Chain: &configtypes.SourceChain{Hops: []string{"second-1", "second-2"}}},
+		},
 	}
 
-	res, err := Import(s, b, ImportOptions{Mode: ImportMerge})
+	s := &state.State{}
+	res, err := Import(s, b, ImportOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -534,8 +528,8 @@ func TestImportChainTagBusy(t *testing.T) {
 	for _, src := range s.Connections.Sources {
 		if src.Type == state.SourceTypeChain {
 			count++
-			if src.Chain == nil || src.Chain.Hops[0] != "mine-1" {
-				t.Fatal("приехавшая цепочка перезаписала свою")
+			if src.Chain == nil || src.Chain.Hops[0] != "first-1" {
+				t.Fatalf("вторая запись перезаписала первую: %+v", src.Chain)
 			}
 		}
 	}
@@ -565,7 +559,7 @@ func TestRoundTripDNSSection(t *testing.T) {
 		t.Fatal(err)
 	}
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+	if _, err := Import(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -601,7 +595,7 @@ func TestRoundTripLocalOutbounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+	if _, err := Import(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	src := restored.Connections.Sources[0]
@@ -624,7 +618,7 @@ func TestRoundTripWarpAccounts(t *testing.T) {
 		t.Fatalf("warp не экспортирован: %v", b.Warp)
 	}
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+	if _, err := Import(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if restored.WarpAccounts == nil || restored.WarpAccounts.WG == nil ||
@@ -633,32 +627,42 @@ func TestRoundTripWarpAccounts(t *testing.T) {
 	}
 }
 
-// TestPerEntityForeignExtensionsSurvive — блоб extensions.lxbox ВНУТРИ записи
-// подписки (BACKUP.md §1 разрешает и такое размещение) переживает
-// импорт→экспорт, а не выбрасывается.
-func TestPerEntityForeignExtensionsSurvive(t *testing.T) {
-	blob := json.RawMessage(`{"import_rules":true,"folder":"work"}`)
-	b := &Backup{
-		LxBackup: FormatVersion,
-		Subscriptions: []Subscription{{
-			URL:        "https://example.com/sub",
-			Extensions: Extensions{AppLxBox: blob},
-		}},
+// П3 на уровне записи: extensions ВНУТРИ подписки тоже отбрасывается — и
+// одним общим warning'ом с корневым, а не отдельной строкой на каждую запись.
+func TestPerEntityForeignExtensionsDropped(t *testing.T) {
+	raw := []byte(`{"lx_backup":1,"exported_by":{"app":"lxbox","version":"2.0.0"},` +
+		`"exported_at":"2026-08-22T00:00:00Z","subscriptions":[{"url":"https://example.com/sub",` +
+		`"extensions":{"lxbox":{"import_rules":true}}}]}`)
+	b, warns, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	n := 0
+	for _, w := range warns {
+		if w.Code == WarnBackupExtensionsDropped {
+			n++
+			if !strings.Contains(w.Detail, "https://example.com/sub") {
+				t.Errorf("warning не называет затронутую запись: %q", w.Detail)
+			}
+		}
+	}
+	if n != 1 {
+		t.Fatalf("warning'ов об extensions %d, ожидался ровно один на файл: %v", n, warns)
 	}
 	s := &state.State{}
-	if _, err := Import(s, b, ImportOptions{Mode: ImportReplace}); err != nil {
+	if _, err := Import(s, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	out, err := Export(s, ExportOptions{AppVersion: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Subscriptions) != 1 {
-		t.Fatalf("subscriptions: %+v", out.Subscriptions)
+	enc, err := json.Marshal(out)
+	if err != nil {
+		t.Fatal(err)
 	}
-	got := out.Subscriptions[0].Extensions[AppLxBox]
-	if string(got) != string(blob) {
-		t.Fatalf("lxbox-блоб записи потерян: %s", got)
+	if strings.Contains(string(enc), "import_rules") {
+		t.Fatalf("mobile-блоб записи провезён вопреки П3: %s", enc)
 	}
 }
 
@@ -691,9 +695,14 @@ func TestRoundTripDetourNodeRef(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blob := b.Subscriptions[0].Extensions[AppLauncher]
+	// Ссылка едет ОБЩИМИ полями записи, а не карманом: extensions больше
+	// не существует (П3), и ключи обязаны лежать прямо в subscriptions[0].
+	raw, err := json.Marshal(b.Subscriptions[0])
+	if err != nil {
+		t.Fatal(err)
+	}
 	var ext map[string]interface{}
-	if err := json.Unmarshal(blob, &ext); err != nil {
+	if err := json.Unmarshal(raw, &ext); err != nil {
 		t.Fatal(err)
 	}
 	if ext["detour_node_source_id"] != "01WARP00000000000000000" {
@@ -707,7 +716,7 @@ func TestRoundTripDetourNodeRef(t *testing.T) {
 	}
 
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+	if _, err := Import(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	var hop, dep *state.Source
@@ -753,7 +762,7 @@ func TestRoundTripDetourNodeTagOnlyRef(t *testing.T) {
 		t.Fatal(err)
 	}
 	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+	if _, err := Import(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	got := restored.Connections.Sources[0]
@@ -762,10 +771,11 @@ func TestRoundTripDetourNodeTagOnlyRef(t *testing.T) {
 	}
 }
 
-// Бэкап, снятый ДО первой сборки (миграция ещё не отработала), везёт
-// legacy-хеш как есть — иначе ссылка потерялась бы из-за момента снятия.
-// На приёмнике его мигрирует первый же парс.
-func TestRoundTripLegacyDetourNodeHashSurvives(t *testing.T) {
+// Упразднённый detour_node_hash в схему 0.11.0 не входит и в файл не
+// пишется. Источник, ещё не прошедший миграцию, отдаёт пустую ссылку: её
+// восстановит первая же сборка из своего состояния, а вывоз протухающего хеша
+// вернул бы в формат ровно то, ради чего он снесён (BACKUP.md §6).
+func TestLegacyDetourNodeHashNotExported(t *testing.T) {
 	s := &state.State{}
 	s.Connections.Sources = []state.Source{{
 		Type:            state.SourceTypeSubscription,
@@ -779,15 +789,50 @@ func TestRoundTripLegacyDetourNodeHashSurvives(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	restored := &state.State{}
-	if _, err := Import(restored, b, ImportOptions{Mode: ImportReplace}); err != nil {
+	raw, err := json.Marshal(b)
+	if err != nil {
 		t.Fatal(err)
 	}
-	src := restored.Connections.Sources[0]
-	if src.DetourNodeHash != s.Connections.Sources[0].DetourNodeHash {
-		t.Fatalf("legacy-хеш потерян на переносе: %q", src.DetourNodeHash)
+	if strings.Contains(string(raw), "62bff800") || strings.Contains(string(raw), "detour_node_hash") {
+		t.Fatalf("упразднённый хеш уехал в файл: %s", raw)
 	}
-	if src.DetourNodeLabel != "🔥🎭 WARP (MASQUE)" {
-		t.Fatalf("подпись потеряна — миграция по label-fallback не сработает: %q", src.DetourNodeLabel)
+	// Подпись без самой ссылки — тоже мусор: показывать нечего, а поле
+	// сделало бы два экспорта разными на неотличимых состояниях.
+	if strings.Contains(string(raw), "detour_node_label") {
+		t.Fatalf("осиротевшая подпись ссылки уехала в файл: %s", raw)
+	}
+}
+
+// Старый файл, где ссылка лежала хешем в extensions: общие поля читаются,
+// карман отбрасывается с warning'ом, ссылка по хешу теряется — это
+// задокументированная цена разрыва (П4), а не молчаливая потеря.
+func TestLegacyDetourNodeHashFileReadsWithWarning(t *testing.T) {
+	raw := []byte(`{"lx_backup":1,"exported_by":{"app":"launcher","version":"1.5.3"},` +
+		`"exported_at":"2026-08-22T00:00:00Z","subscriptions":[{"url":"https://example.com/sub",` +
+		`"label":"Main","max_nodes":150,"extensions":{"launcher":{"id":"src-1",` +
+		`"detour_node_hash":"62bff800aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",` +
+		`"detour_node_label":"WARP hop"}}}]}`)
+	b, warns, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !hasWarn(warns, WarnBackupExtensionsDropped) {
+		t.Fatalf("потеря кармана не названа: %v", warns)
+	}
+	dst := &state.State{}
+	if _, err := Import(dst, b, ImportOptions{}); err != nil {
+		t.Fatalf("старый файл уронил импорт: %v", err)
+	}
+	if len(dst.Connections.Sources) != 1 {
+		t.Fatalf("источников %d, ожидался 1", len(dst.Connections.Sources))
+	}
+	src := dst.Connections.Sources[0]
+	// Общие поля применились...
+	if src.URL != "https://example.com/sub" || src.Label != "Main" || src.MaxNodes != 150 {
+		t.Errorf("общие поля старого файла не применились: %+v", src)
+	}
+	// ...а содержимое кармана не применилось и не осело в состоянии.
+	if src.DetourNodeHash != "" || src.DetourNodeTag != "" || src.ID != "" {
+		t.Errorf("содержимое extensions просочилось в состояние: %+v", src)
 	}
 }
