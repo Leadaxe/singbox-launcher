@@ -64,14 +64,14 @@ func TestMigrate_RealFixture(t *testing.T) {
 	}
 
 	// 3. Server: правильный label с tag_prefix preservation.
-	//    fixture: tag_prefix="WG:", uri ends with "#wg-parnas"
-	//    expected label = "WG:wg-parnas"
+	//    fixture: tag_prefix="WG:", uri ends with "#wg-mock"
+	//    expected label = "WG:wg-mock"
 	for _, s := range state.Connections.Sources {
 		if s.Type != SourceTypeServer {
 			continue
 		}
-		if s.Label != "WG:wg-parnas" {
-			t.Errorf("server.Label = %q, want %q", s.Label, "WG:wg-parnas")
+		if s.Label != "WG:wg-mock" {
+			t.Errorf("server.Label = %q, want %q", s.Label, "WG:wg-mock")
 		}
 		if s.URI == "" {
 			t.Errorf("server.URI empty")

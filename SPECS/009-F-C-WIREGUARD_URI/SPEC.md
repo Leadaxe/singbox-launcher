@@ -107,7 +107,7 @@ wireguard://<PRIVATE_KEY>@<SERVER_IP>:<SERVER_PORT>?<параметры>
 **Пример:**
 
 ```
-wireguard://aDHCHnkcdMjnq0bF+V4fARkbJBW8cWjuYoVjKfUwsXo=@212.232.78.237:51820?publickey=fiK9ZG990zunr5cpRnx+SOVW2rVKKqFoVxmHMHAvAFk=&address=10.10.10.2%2F32&allowedips=0.0.0.0%2F0%2C%3A%3A%2F0&keepalive=25&mtu=1420
+wireguard://RAUTG+IXUH+KW8Ocva7RTpv6y/gdVQIIgh9MeuzeMtU=@198.51.100.7:51820?publickey=CY6LY0SWr69h/WZokDYecQlTfIsZs8EhdSMd+NuaWJ4=&address=10.10.10.2%2F32&allowedips=0.0.0.0%2F0%2C%3A%3A%2F0&keepalive=25&mtu=1420
 ```
 
 ### 3.2 Компоненты URL

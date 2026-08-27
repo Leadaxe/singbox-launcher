@@ -1799,7 +1799,7 @@ func TestParseNode_SOCKS5(t *testing.T) {
 // TestParseNode_Wireguard tests parsing WireGuard URI (wireguard://).
 func TestParseNode_Wireguard(t *testing.T) {
 	// Valid: minimal required params (publickey, address, allowedips)
-	validURI := "wireguard://aDHCHnkcdMjnq0bF+V4fARkbJBW8cWjuYoVjKfUwsXo=@212.232.78.237:51820?publickey=fiK9ZG990zunr5cpRnx%2BSOVW2rVKKqFoVxmHMHAvAFk%3D&address=10.10.10.2%2F32&allowedips=0.0.0.0%2F0%2C%3A%3A%2F0"
+	validURI := "wireguard://RAUTG+IXUH+KW8Ocva7RTpv6y/gdVQIIgh9MeuzeMtU=@198.51.100.7:51820?publickey=CY6LY0SWr69h%2FWZokDYecQlTfIsZs8EhdSMd%2BNuaWJ4%3D&address=10.10.10.2%2F32&allowedips=0.0.0.0%2F0%2C%3A%3A%2F0"
 	node, err := ParseNode(validURI, nil)
 	if err != nil {
 		t.Fatalf("ParseNode(wireguard) unexpected error: %v", err)
@@ -1810,8 +1810,8 @@ func TestParseNode_Wireguard(t *testing.T) {
 	if node.Scheme != "wireguard" {
 		t.Errorf("Expected scheme wireguard, got %q", node.Scheme)
 	}
-	if node.Server != "212.232.78.237" {
-		t.Errorf("Expected server 212.232.78.237, got %q", node.Server)
+	if node.Server != "198.51.100.7" {
+		t.Errorf("Expected server 198.51.100.7, got %q", node.Server)
 	}
 	if node.Port != 51820 {
 		t.Errorf("Expected port 51820, got %d", node.Port)
@@ -1823,7 +1823,7 @@ func TestParseNode_Wireguard(t *testing.T) {
 		t.Errorf("Expected outbound type wireguard, got %q", typ)
 	}
 	// private_key must preserve '+' (not decoded to space)
-	if pk, _ := node.Outbound["private_key"].(string); pk != "aDHCHnkcdMjnq0bF+V4fARkbJBW8cWjuYoVjKfUwsXo=" {
+	if pk, _ := node.Outbound["private_key"].(string); pk != "RAUTG+IXUH+KW8Ocva7RTpv6y/gdVQIIgh9MeuzeMtU=" {
 		t.Errorf("Expected private_key to preserve '+', got %q", pk)
 	}
 	// listen_port omitted when 0 (sing-box optional)
@@ -1853,8 +1853,8 @@ func TestParseNode_Wireguard(t *testing.T) {
 	if peer == nil {
 		t.Fatal("Expected peer to be non-nil")
 	}
-	if addr, _ := peer["address"].(string); addr != "212.232.78.237" {
-		t.Errorf("Expected peer address 212.232.78.237, got %q", addr)
+	if addr, _ := peer["address"].(string); addr != "198.51.100.7" {
+		t.Errorf("Expected peer address 198.51.100.7, got %q", addr)
 	}
 	if portInt, ok := peer["port"].(int); ok {
 		if portInt != 51820 {

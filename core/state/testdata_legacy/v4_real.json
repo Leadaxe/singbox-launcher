@@ -366,7 +366,7 @@
     },
     {
       "name": "clash_secret",
-      "value": "gIVcGiXsAQ3lZSQQ"
+      "value": "MockClashSecret01"
     },
     {
       "name": "dns_strategy",
@@ -391,7 +391,7 @@
     "version": 4,
     "proxies": [
       {
-        "source": "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS_mobile.txt",
+        "source": "https://sub-a.example/list-black.txt",
         "outbounds": [
           {
             "tag": "BL:auto",
@@ -421,7 +421,7 @@
         "disabled": true
       },
       {
-        "source": "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Mobile.txt",
+        "source": "https://sub-a.example/list-white.txt",
         "outbounds": [
           {
             "tag": "WL:auto",
@@ -453,7 +453,7 @@
         "disabled": true
       },
       {
-        "source": "https://github.com/AvenCores/goida-vpn-configs/raw/refs/heads/main/githubmirror/22.txt",
+        "source": "https://sub-b.example/mirror/22.txt",
         "outbounds": [
           {
             "tag": "XX:auto",
@@ -485,7 +485,7 @@
         "disabled": true
       },
       {
-        "source": "https://connliberty.com/connection/subs/104d012c-cbcc-49ef-845c-c5b3c529cc8a",
+        "source": "https://sub-c.example/connection/subs/00000000-0000-4000-8000-0000000000a1",
         "outbounds": [
           {
             "tag": "AL:auto",
@@ -515,7 +515,7 @@
         "expose_group_tags_to_global": true
       },
       {
-        "source": "https://connliberty.com/connection/test_proxies_subs/104d012c-cbcc-49ef-845c-c5b3c529cc8a",
+        "source": "https://sub-c.example/connection/test_proxies_subs/00000000-0000-4000-8000-0000000000a1",
         "outbounds": [
           {
             "tag": "LW:auto",
@@ -548,12 +548,12 @@
       },
       {
         "connections": [
-          "wireguard://aDHCHnkcdMjnq0bF%2BV4fARkbJBW8cWjuYoVjKfUwsXo%3D@212.232.78.237:51820?publickey=fiK9ZG990zunr5cpRnx%2BSOVW2rVKKqFoVxmHMHAvAFk%3D\u0026address=10.10.10.2%2F32\u0026allowedips=0.0.0.0%2F0%2C%3A%3A%2F0\u0026keepalive=25\u0026mtu=1420#wg-parnas"
+          "wireguard://RAUTG%2BIXUH%2BKW8Ocva7RTpv6y%2FgdVQIIgh9MeuzeMtU%3D@198.51.100.7:51820?publickey=CY6LY0SWr69h%2FWZokDYecQlTfIsZs8EhdSMd%2BNuaWJ4%3D\u0026address=10.10.10.2%2F32\u0026allowedips=0.0.0.0%2F0%2C%3A%3A%2F0\u0026keepalive=25\u0026mtu=1420#wg-mock"
         ],
         "tag_prefix": "WG:"
       },
       {
-        "source": "https://marz.taeasdbtest.ru/sub/MjFmMGE0N2I5YmExNGM5NiwxNzc2ODYyMDgzkYadjCH9qb/",
+        "source": "https://sub-d.example/sub/c3ludGhldGljLXRva2VuLTAwMDE/",
         "tag_prefix": "AAA",
         "disabled": true
       }
