@@ -1,36 +1,35 @@
-// File server_conn_key.go — ключ «то же подключение» и дедуп записей источника.
+// File server_conn_key.go — подпись содержимого и дедуп записей источника.
 //
-// SPEC 112-B часть A. Это НЕ идентичность узла (та с SPEC 112 — тег,
-// config.NodeIdentity) и не отметка выключения: ключ живёт ровно один разбор
-// источника, в состояние не пишется и ни на что пользовательское не влияет.
-// Он отвечает на единственный вопрос: «эта запись подписки — байтовый повтор
-// уже принятой?».
+// SPEC 112-B часть A, SPEC 113-A §2. Это НЕ идентичность узла (та с SPEC 112 —
+// тег, config.NodeIdentity) и не отметка выключения: подпись живёт ровно один
+// разбор источника, в состояние не пишется и ни на что пользовательское не
+// влияет. Она отвечает на единственный вопрос: «эта запись подписки —
+// байтовый повтор уже принятой?».
 package subscription
 
 import (
-	"fmt"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/internal/debuglog"
 )
 
-// dedupSignature — подпись «та же запись» для дедупа: полная эмиссия узла
-// без tag/detour (LegacyNodeIdentityHashFunc), НЕ ключ подключения.
+// dedupSignature — подпись «та же запись»: полная эмиссия узла без tag/detour
+// (LegacyNodeIdentityHashFunc). ЕДИНСТВЕННЫЙ ключ дедупа во всём парсере
+// (SPEC 113, решение 1) — и для записей источника, и для xray-ownership.
 //
 // Вердикт пользователя (SPEC 112-B, уточнение 26.08): разные транспорты
 // одного сервера с одним креденшлом (grpc/xhttp, разные SNI) — это разные
-// соединения и разные схемы обхода блокировок, их НЕ схлопывать. Первая
-// редакция дедупила по кредам (`схема|сервер|порт|креденшл`) и склеила
-// grpc-вариант узла с его xhttp-вариантом — откатились к семантике v1.5.1: схлопывается только
-// байтовый повтор записи (различие лишь в #подписи). Ключ по кредам остался
-// у единственного потребителя — xray-ownership (buildServerConnKey ниже).
+// соединения и разные схемы обхода блокировок, их НЕ схлопывать. Ключ по
+// кредам (`схема|сервер|порт|креденшл`) склеивал grpc-вариант узла с его
+// xhttp-вариантом и потому упразднён совсем (SPEC 113-A §2).
 //
 // Зависимость подписи от эмиттера здесь безвредна: она живёт один разбор
 // одного тела — обе копии эмитятся одним кодом из одной формы.
 //
-// Пустая строка — «подписи нет» (группа, эмиссия не удалась): такие записи
-// не схлопываются никогда, иначе все безымянные сложились бы в одну.
+// Пустая строка — «подписи нет» (группа, эмиссия не удалась, хук не
+// установлен): такие записи не схлопываются никогда, иначе все безымянные
+// сложились бы в одну.
 func dedupSignature(node *configtypes.ParsedNode) string {
 	if node == nil || node.Scheme == configtypes.SchemeGroup {
 		return ""
@@ -39,32 +38,6 @@ func dedupSignature(node *configtypes.ParsedNode) string {
 		return ""
 	}
 	return LegacyNodeIdentityHashFunc(node)
-}
-
-// buildServerConnKey — ключ подключения `схема|сервер|порт|креденшл`.
-// Единственный потребитель — xray-ownership (xrayServerKey): там ключ решает
-// «чей адрес», а не «та же ли это запись», поэтому безымянный по секрету
-// сервер тоже получает ключ (пустой креденшл в хвосте). Дедуп записей им НЕ
-// пользуется — см. dedupSignature (вердикт про транспорты).
-func buildServerConnKey(node *configtypes.ParsedNode) string {
-	if node == nil || node.Scheme == configtypes.SchemeGroup {
-		return ""
-	}
-	server := strings.TrimSpace(node.Server)
-	if server == "" {
-		return ""
-	}
-	cred := strings.TrimSpace(node.UUID)
-	if cred == "" && node.Outbound != nil {
-		// ss/trojan/hy2 несут секрет не в UUID — берём первое, что есть.
-		for _, field := range []string{"password", "uuid", "private_key", "auth_str"} {
-			if v, ok := node.Outbound[field].(string); ok && strings.TrimSpace(v) != "" {
-				cred = strings.TrimSpace(v)
-				break
-			}
-		}
-	}
-	return fmt.Sprintf("%s|%s|%d|%s", strings.ToLower(node.Scheme), server, node.Port, cred)
 }
 
 // sourceDedup — состояние per-source дедупа записей.
@@ -76,12 +49,21 @@ func buildServerConnKey(node *configtypes.ParsedNode) string {
 //
 // Нулевое значение непригодно — заводить через newSourceDedup.
 type sourceDedup struct {
-	seen    map[string]string // подпись содержимого → тег ПЕРВОЙ принятой записи
-	dropped int
+	seen map[string]string // подпись содержимого → тег ПЕРВОЙ принятой записи
+	// collapsedInto — исходный тег выброшенного дубля → исходный тег
+	// выжившего. Нужен узлам-группам (SPEC 113-A §4, находка аудита M1):
+	// группа перечисляет членов исходными тегами, и член, схлопнутый дедупом,
+	// иначе просто выпадал из состава — а группа, потерявшая ВСЕХ членов,
+	// удалялась целиком.
+	collapsedInto map[string]string
+	dropped       int
 }
 
 func newSourceDedup() *sourceDedup {
-	return &sourceDedup{seen: make(map[string]string)}
+	return &sourceDedup{
+		seen:          make(map[string]string),
+		collapsedInto: make(map[string]string),
+	}
 }
 
 // accept решает, брать ли запись. false — это байтовый повтор уже принятой.
@@ -100,10 +82,22 @@ func (d *sourceDedup) accept(node *configtypes.ParsedNode) bool {
 		d.dropped++
 		debuglog.DebugLog("Parser: duplicate entry %q collapsed into %q (identical content)",
 			node.Tag, firstTag)
+		if d.collapsedInto != nil && node.Tag != "" {
+			d.collapsedInto[node.Tag] = firstTag
+		}
 		return false
 	}
 	d.seen[key] = node.Tag
 	return true
+}
+
+// collapsedTags — карта «тег выброшенного дубля → тег выжившего» в ИСХОДНЫХ
+// тегах источника. Пустая карта, если схлопывать было нечего.
+func (d *sourceDedup) collapsedTags() map[string]string {
+	if d == nil {
+		return nil
+	}
+	return d.collapsedInto
 }
 
 // logSummary — один INFO-итог на источник; молчит, когда схлопывать было нечего.
@@ -144,5 +138,55 @@ func DedupParsedNodes(nodes []*configtypes.ParsedNode) []*configtypes.ParsedNode
 		}
 		kept = append(kept, n)
 	}
-	return kept
+	// Схлопнутый член группы перепривязывается на выжившую копию (SPEC 113-A
+	// §4). Без этого превью показывало бы группу, ссылающуюся в пустоту, или
+	// вовсе теряло её — а боевой разбор группу сохраняет.
+	return rebindCollapsedGroupMembers(kept, d.collapsedTags())
+}
+
+// rebindCollapsedGroupMembers переписывает состав узлов-групп со схлопнутых
+// копий на выживших. Работает с ТЕКУЩИМИ тегами (превью тегов не переставляет),
+// в отличие от rebindImportedGroupNodes, который идёт от SourceTag к итоговому.
+func rebindCollapsedGroupMembers(
+	nodes []*configtypes.ParsedNode,
+	collapsedInto map[string]string,
+) []*configtypes.ParsedNode {
+	if len(collapsedInto) == 0 {
+		return nodes
+	}
+	alive := make(map[string]struct{}, len(nodes))
+	for _, n := range nodes {
+		if n != nil {
+			alive[n.Tag] = struct{}{}
+		}
+	}
+	for _, n := range nodes {
+		if n == nil || n.Scheme != configtypes.SchemeGroup || n.Outbound == nil {
+			continue
+		}
+		raw, ok := n.Outbound[configtypes.GroupMembersKey].([]interface{})
+		if !ok {
+			continue
+		}
+		members := make([]interface{}, 0, len(raw))
+		seen := make(map[string]struct{}, len(raw))
+		for _, item := range raw {
+			tag, ok := item.(string)
+			if !ok {
+				continue
+			}
+			if _, live := alive[tag]; !live {
+				if survivor, collapsed := collapsedInto[tag]; collapsed {
+					tag = survivor
+				}
+			}
+			if _, dup := seen[tag]; dup {
+				continue
+			}
+			seen[tag] = struct{}{}
+			members = append(members, tag)
+		}
+		n.Outbound[configtypes.GroupMembersKey] = members
+	}
+	return nodes
 }

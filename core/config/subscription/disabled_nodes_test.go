@@ -165,7 +165,7 @@ func TestDisabledNodeTTLClamping(t *testing.T) {
 // Пустая карта отметок — фильтр не трогает ничего.
 func TestDisabledFilterIsInertWithoutMarks(t *testing.T) {
 	nodes := []*configtypes.ParsedNode{{Tag: "a", Scheme: "vless", IdentityTag: "a"}}
-	got, _, migrated := filterDisabledNodes(nodes, nil, time.Now())
+	got, _, migrated := filterDisabledNodes(nodes, nil, time.Now(), true)
 
 	if len(got) != 1 {
 		t.Fatalf("получено %d узлов, ожидался 1", len(got))

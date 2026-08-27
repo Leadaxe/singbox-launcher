@@ -128,6 +128,23 @@ var NaiveSupportProbe func() (supported bool, reason string)
 // Includes optional TLS (including reality), transport (ws/http/grpc), and protocol-specific options.
 // Returned string ends with a trailing comma and may include a leading comment line (node label) for readability.
 func GenerateNodeJSON(node *ParsedNode) (string, error) {
+	body, err := GenerateNodeJSONBare(node)
+	if err != nil {
+		return "", err
+	}
+	return wrapOutboundForConfig(body, node.Label, node.Scheme != SchemeGroup && !node.EmitRaw), nil
+}
+
+// GenerateNodeJSONBare — тот же outbound, но ГОЛЫМ JSON-объектом: без строки
+// комментария с именем узла, без обёрточного таба и без хвостовой запятой.
+//
+// Нужен всем, кто не собирает config.json, а разбирает результат эмиссии
+// обратно (подпись содержимого, миграция legacy-ключей). Раньше они звали
+// GenerateNodeJSON и резали обёртку строковым поиском первой `{` — а она
+// находилась внутри имени узла («SG {премиум} 1») и разбор молча ломался.
+// Формой обёртки владеет ТОЛЬКО сборка конфига, потребители подписи её не
+// видят.
+func GenerateNodeJSONBare(node *ParsedNode) (string, error) {
 	// SPEC 094 A5: a group imported from a sing-box config is a node in the
 	// subscription's own list, not a separate entry in the wizard's outbound
 	// configurator. It carries no server/server_port, so it gets its own
@@ -548,8 +565,23 @@ func GenerateNodeJSON(node *ParsedNode) (string, error) {
 	}
 
 	// Build final JSON
-	jsonStr := "{" + strings.Join(parts, ",") + "}"
-	return fmt.Sprintf("\t// %s\n\t%s,", sanitizeOutboundLineComment(node.Label), jsonStr), nil
+	return "{" + strings.Join(parts, ",") + "}", nil
+}
+
+// wrapOutboundForConfig одевает голый outbound в форму строки config.json:
+// таб, необязательная строка-комментарий с именем узла и хвостовая запятая для
+// сборки массива.
+//
+// alwaysComment сохраняет исторический вид per-scheme узлов: у них комментарий
+// печатался даже при пустом имени (пустая `// `-строка), а у групп и ручного
+// JSON — только когда имя есть. Формат конфига руками правят и глазами читают,
+// поэтому расхождение оставлено как было.
+func wrapOutboundForConfig(body, label string, alwaysComment bool) string {
+	comment := sanitizeOutboundLineComment(label)
+	if comment == "" && !alwaysComment {
+		return "\t" + body + ","
+	}
+	return fmt.Sprintf("\t// %s\n\t%s,", comment, body)
 }
 
 // GenerateSelectorWithFilteredAddOutbounds builds one selector/urltest outbound as a JSON string.
@@ -861,7 +893,21 @@ func sanitizeBalancerOptions(opts map[string]interface{}) {
 // Uses node.Tag (with tag_prefix applied by source) for the endpoint "tag" so selectors can reference it.
 // Returned string is pretty-printed (multi-line); trailing comma is added by the caller when inserting into the array.
 func GenerateEndpointJSON(node *ParsedNode) (string, error) {
-	if node.Scheme != "wireguard" || node.Outbound == nil {
+	body, err := GenerateEndpointJSONBare(node)
+	if err != nil {
+		return "", err
+	}
+	if node.Comment != "" {
+		return "// " + sanitizeOutboundLineComment(node.Comment) + "\n" + body, nil
+	}
+	return body, nil
+}
+
+// GenerateEndpointJSONBare — endpoint ГОЛЫМ JSON-объектом, без строки
+// комментария. Парная к GenerateNodeJSONBare: подпись содержимого и миграция
+// legacy-ключей разбирают эмиссию обратно и обёртку видеть не должны.
+func GenerateEndpointJSONBare(node *ParsedNode) (string, error) {
+	if node == nil || node.Scheme != "wireguard" || node.Outbound == nil {
 		return "", fmt.Errorf("GenerateEndpointJSON requires wireguard node with Outbound set")
 	}
 	// Use node.Tag (includes tag_prefix, e.g. "4:wg-parnas") so endpoint tag matches outbound references
@@ -876,12 +922,7 @@ func GenerateEndpointJSON(node *ParsedNode) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal wireguard endpoint: %w", err)
 	}
-	result := ""
-	if node.Comment != "" {
-		result = "// " + sanitizeOutboundLineComment(node.Comment) + "\n"
-	}
-	result += string(jsonBytes)
-	return result, nil
+	return string(jsonBytes), nil
 }
 
 // EmitNodeJSONs renders one parsed node exactly as the final config carries
@@ -1175,6 +1216,9 @@ func GenerateOutboundsFromParserConfig(
 // Emitting an empty group is not allowed: sing-box refuses to start on an
 // urltest with no outbounds, so a group that lost all its members must have
 // been dropped earlier. Returning an error here is the last line of defence.
+//
+// Возвращает ГОЛЫЙ объект: комментарий и запятую добавляет
+// wrapOutboundForConfig, когда эмиссия идёт в config.json.
 func generateGroupNodeJSON(node *ParsedNode) (string, error) {
 	if node.Outbound == nil {
 		return "", fmt.Errorf("group node %q has no outbound data", node.Tag)
@@ -1222,11 +1266,7 @@ func generateGroupNodeJSON(node *ParsedNode) (string, error) {
 		parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(k), string(encoded)))
 	}
 
-	body := fmt.Sprintf("\t{%s},", strings.Join(parts, ","))
-	if comment := sanitizeOutboundLineComment(node.Label); comment != "" {
-		return fmt.Sprintf("\t// %s\n%s", comment, body), nil
-	}
-	return body, nil
+	return "{" + strings.Join(parts, ",") + "}", nil
 }
 
 // generateRawNodeJSON emits a manual config_json node (ParsedNode.EmitRaw):
@@ -1236,6 +1276,9 @@ func generateGroupNodeJSON(node *ParsedNode) (string, error) {
 //
 // tag and type lead for readability, the rest is sorted: determinism is
 // needed by the node identity hash, which is computed from the emitted JSON.
+//
+// Возвращает ГОЛЫЙ объект — обёртку для config.json ставит
+// wrapOutboundForConfig.
 func generateRawNodeJSON(node *ParsedNode) (string, error) {
 	if node.Outbound == nil {
 		return "", fmt.Errorf("manual node %q has no outbound data", node.Tag)
@@ -1269,11 +1312,7 @@ func generateRawNodeJSON(node *ParsedNode) (string, error) {
 		parts = append(parts, fmt.Sprintf(`%s:%s`, marshalJSONString(k), string(encoded)))
 	}
 
-	body := fmt.Sprintf("\t{%s},", strings.Join(parts, ","))
-	if comment := sanitizeOutboundLineComment(node.Label); comment != "" {
-		return fmt.Sprintf("\t// %s\n%s", comment, body), nil
-	}
-	return body, nil
+	return "{" + strings.Join(parts, ",") + "}", nil
 }
 
 // groupMemberTags returns the group's member tags in order.

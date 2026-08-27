@@ -86,12 +86,30 @@ func StampNodeIdentity(node *configtypes.ParsedNode, idCounts map[string]int) st
 // makeIdentityUnique повторяет схему MakeTagUnique (`X`, `X-2`, `X-3`) без
 // журналирования: дубли имён у провайдера — норма, а не предупреждение.
 func makeIdentityUnique(raw string, idCounts map[string]int) string {
-	if idCounts[raw] > 0 {
-		idCounts[raw]++
-		return fmt.Sprintf("%s-%d", raw, idCounts[raw])
+	return uniquifyAgainstCounts(raw, idCounts)
+}
+
+// uniquifyAgainstCounts подбирает свободное имя вида `X`, `X-2`, `X-3` и
+// занимает его в счётчике.
+//
+// Кандидат ПРОВЕРЯЕТСЯ на занятость (SPEC 113-A §5, находка аудита M2):
+// сгенерированное `X-2` может уже принадлежать настоящему имени из подписки.
+// Подписка `X, X-2, X` без этой проверки давала `X, X-2, X-2` — две
+// идентичности с одним ключом (отметка выключения гасила оба узла), а в
+// конфиговых тегах ядро отвергает весь outbounds на дубле тега.
+func uniquifyAgainstCounts(name string, counts map[string]int) string {
+	if counts[name] == 0 {
+		counts[name] = 1
+		return name
 	}
-	idCounts[raw] = 1
-	return raw
+	for {
+		counts[name]++
+		candidate := fmt.Sprintf("%s-%d", name, counts[name])
+		if counts[candidate] == 0 {
+			counts[candidate] = 1
+			return candidate
+		}
+	}
 }
 
 // nodeIdentity — идентичность узла через хук, с встроенным запасным правилом.
@@ -146,10 +164,14 @@ func disabledNodeTTL(updateIntervalHours int) time.Duration {
 //
 // Перед фильтрацией legacy-ключи (SPEC 094/101: 64 hex контент-хеша)
 // переписываются на тег-идентичность — см. migrateLegacyDisabledKeys.
+//
+// trustedParse — «разбору верим» (SPEC 113, решение 2). Параметр, а не
+// глобальный флаг: достоверность знает только тот, кто добыл тело источника.
 func filterDisabledNodes(
 	nodes []*configtypes.ParsedNode,
 	disabled map[string]int64,
 	now time.Time,
+	trustedParse bool,
 ) ([]*configtypes.ParsedNode, map[string]int64, bool) {
 	if len(disabled) == 0 {
 		return nodes, disabled, false
@@ -157,7 +179,7 @@ func filterDisabledNodes(
 
 	// Миграция идёт по ПОЛНОМУ списку узлов — до того как выключенные из него
 	// выпадут: legacy-ключ опознаётся именно по выключенному узлу.
-	disabled, migrated := migrateLegacyDisabledKeys(disabled, nodes)
+	disabled, migrated := migrateLegacyDisabledKeys(disabled, nodes, trustedParse)
 
 	refreshed := make(map[string]int64, len(disabled))
 	for id, ts := range disabled {
@@ -215,14 +237,23 @@ func isLegacyIdentityHash(key string) bool {
 	return true
 }
 
+// ЗАКОН чисток отметок (SPEC 113, решение 2, формулировка пользователя):
+// «нет достоверного ответа — состояние не меняем». Любое ВЫБРАСЫВАНИЕ отметки
+// (миграция неопознанных legacy-ключей здесь, TTL-уборка в GCDisabledNodes,
+// любая будущая чистка) допустимо только по разбору, которому верим: тело
+// источника прочитано целиком, узлы есть, ни один не отброшен капом
+// MaxNodesPerSubscription. Иначе пустой или урезанный разбор молча включал бы
+// выключенные пользователем узлы обратно. Перепись СОВПАВШИХ ключей на новую
+// форму безопасна всегда: она не теряет ни одной отметки.
+
 // migrateLegacyDisabledKeys переписывает отметки выключения с упразднённого
 // контент-хеша на тег-идентичность (SPEC 112).
 //
 // Legacy-ключ ищется среди узлов ЭТОГО источника прогоном
 // LegacyNodeIdentityHashFunc. Совпал — отметка переезжает на идентичность
-// найденного узла; не совпал — ключ выбрасывается: узла с таким содержимым в
-// источнике нет, и отметка всё равно мертва (по TTL она ушла бы позже, но
-// хранить нечитаемый ключ смысла нет).
+// найденного узла. Не совпал: при trustedParse ключ выбрасывается (узла с
+// таким содержимым в источнике нет, отметка мертва), иначе ОСТАЁТСЯ как есть —
+// см. закон выше.
 //
 // Возвращает карту (ту же, если мигрировать нечего) и число ТРОНУТЫХ
 // legacy-ключей — и переписанных, и выброшенных: сохранять надо оба исхода,
@@ -232,6 +263,7 @@ func isLegacyIdentityHash(key string) bool {
 func migrateLegacyDisabledKeys(
 	disabled map[string]int64,
 	nodes []*configtypes.ParsedNode,
+	trustedParse bool,
 ) (map[string]int64, int) {
 	legacyKeys := 0
 	for key := range disabled {
@@ -277,6 +309,13 @@ func migrateLegacyDisabledKeys(
 		}
 		id, found := identityByLegacy[key]
 		if !found {
+			if !trustedParse {
+				// Разбору не верим — ключ мог не совпасть просто потому, что
+				// своего узла в этом прогоне не было (сеть отпала, кэш урезан).
+				debuglog.DebugLog("Parser: legacy disabled-node key %q kept — parse not trustworthy (SPEC 113)", key)
+				out[key] = ts
+				continue
+			}
 			debuglog.DebugLog("Parser: legacy disabled-node key %q matches no node — dropped (SPEC 112 migration)", key)
 			migrated++
 			continue
@@ -296,7 +335,10 @@ func migrateLegacyDisabledKeys(
 //
 // Вызывать ТОЛЬКО после успешного СЕТЕВОГО обновления: на прогоне из кэша тело
 // может быть неполным, и отметки исчезли бы для живых нод — те молча включились
-// бы обратно за спиной пользователя.
+// бы обратно за спиной пользователя. Это тот же ЗАКОН чисток, что и у миграции
+// legacy-ключей (см. комментарий над migrateLegacyDisabledKeys): выбрасывать —
+// только по достоверному разбору. Здесь его гарантирует вызывающий, потому что
+// GC зовётся не из парсера, а после апдейта источника.
 func GCDisabledNodes(disabled map[string]int64, updateIntervalHours int, now time.Time) map[string]int64 {
 	return gcDisabledNodes(disabled, disabledNodeTTL(updateIntervalHours), now)
 }
@@ -351,18 +393,20 @@ func IsSubscriptionURL(input string) bool {
 // MakeTagUnique makes a tag unique by appending a number if it already exists in tagCounts.
 // Updates tagCounts map and returns the unique tag.
 // logPrefix is used for logging (e.g., "Parser" or "ConfigWizard").
+//
+// Сгенерированный суффикс проверяется на занятость (SPEC 113-A §5): подписка
+// `X, X-2, X` раньше давала два тега `X-2`, и ядро отвергало весь массив
+// outbounds — дубль тега для sing-box фатален.
 func MakeTagUnique(tag string, tagCounts map[string]int, logPrefix string) string {
-	if tagCounts[tag] > 0 {
-		// Tag already exists, make it unique
-		tagCounts[tag]++
-		uniqueTag := fmt.Sprintf("%s-%d", tag, tagCounts[tag])
-		debuglog.WarnLog("%s: Duplicate tag '%s' found (occurrence #%d), renamed to '%s'", logPrefix, tag, tagCounts[tag], uniqueTag)
-		return uniqueTag
+	if tagCounts[tag] == 0 {
+		// First occurrence of this tag
+		tagCounts[tag] = 1
+		return tag
 	}
-
-	// First occurrence of this tag
-	tagCounts[tag] = 1
-	return tag
+	occurrence := tagCounts[tag] + 1
+	uniqueTag := uniquifyAgainstCounts(tag, tagCounts)
+	debuglog.WarnLog("%s: Duplicate tag '%s' found (occurrence #%d), renamed to '%s'", logPrefix, tag, occurrence, uniqueTag)
+	return uniqueTag
 }
 
 // LogDuplicateTagStatistics logs statistics about duplicate tags found during processing
@@ -451,11 +495,18 @@ func LoadNodesFromSourceEx(
 	// быть уникальны глобально, идентичность — только внутри источника).
 	idCounts := make(map[string]int)
 
-	// SPEC 112-B: дедуп записей ПО ПОДКЛЮЧЕНИЮ — свой на источник, как и
-	// idCounts. Опрашивается ДО простановки тегов (SPEC 094 D3): пропусти
+	// SPEC 112-B: дедуп записей ПО ПОДПИСИ СОДЕРЖИМОГО — свой на источник, как
+	// и idCounts. Опрашивается ДО простановки тегов (SPEC 094 D3): пропусти
 	// проверку, и дубль сперва получил бы уникализованный тег «X-2», а с ним
 	// и собственную идентичность — снять его отметку стало бы нечем.
 	dedup := newSourceDedup()
+
+	// SPEC 113 (решение 2): «нет достоверного ответа — состояние не меняем».
+	// Тело подписки прочитано целиком (сеть или живой кэш) — только тогда
+	// можно ВЫБРАСЫВАТЬ неопознанные legacy-отметки. Источник без URL
+	// (прямые ссылки, connections, ручной config_json) читается локально и
+	// достоверен всегда; подписка становится достоверной, когда тело получено.
+	bodyRead := !IsSubscriptionURL(proxySource.Source)
 
 	// SPEC 094 A4: секции импортированного конфига, которые парсер не читает.
 	// Группы отдельным списком НЕ идут: они рядовые узлы и лежат в nodes.
@@ -497,6 +548,9 @@ func LoadNodesFromSourceEx(
 			} else if len(content) > 0 {
 				debuglog.DebugLog("LoadNodesFromSource: Fetched subscription %d/%d: %d bytes in %v",
 					subscriptionIndex+1, totalSubscriptions, len(content), fetchDuration)
+
+				// Тело на руках — разбору можно верить (SPEC 113, решение 2).
+				bodyRead = true
 
 				if progressCallback != nil {
 					progressCallback(20+float64(subscriptionIndex)*50.0/float64(totalSubscriptions)+10.0/float64(totalSubscriptions),
@@ -605,7 +659,7 @@ func LoadNodesFromSourceEx(
 						// префикс/маску/уникализацию — состав переписывается на
 						// итоговые теги. Группа, потерявшая всех членов (лимит,
 						// skip-фильтр), отбрасывается: пустой urltest роняет ядро.
-						accepted = rebindImportedGroupNodes(accepted)
+						accepted = rebindImportedGroupNodes(accepted, dedup.collapsedTags())
 						nodes = append(nodes, accepted...)
 						ignoredSections = importRes.IgnoredSections
 					}
@@ -648,7 +702,10 @@ func LoadNodesFromSourceEx(
 						// переписывается на итоговые теги. Без этого группа с
 						// tag_prefix указывала в пустоту: `sing-box check`
 						// такое пропускает, но в рантайме группа мертва.
-						acceptedXray = rebindImportedGroupNodes(acceptedXray)
+						// Xray-массив дедупится внутри ParseNodesFromXrayJSONArray
+						// (ownership по подписи содержимого), состав групп там же
+						// и резолвится — карта дедупа источника здесь пуста.
+						acceptedXray = rebindImportedGroupNodes(acceptedXray, dedup.collapsedTags())
 						nodes = append(nodes, acceptedXray...)
 					}
 					debuglog.DebugLog("LoadNodesFromSource: Parsed subscription %d/%d: %d nodes in %v (Xray JSON array)",
@@ -828,9 +885,14 @@ func LoadNodesFromSourceEx(
 	}
 
 	// SPEC 094 D4: узлы, выключенные пользователем, не попадают в конфиг.
-	// Отметки живут по хешу идентичности, поэтому переживают переименование
-	// ноды провайдером и смену её позиции в подписке.
-	nodes, refreshedDisabled, disabledMigrated := filterDisabledNodes(nodes, proxySource.DisabledNodes, time.Now())
+	// Отметки живут по идентичности-тегу, поэтому переживают смену позиции
+	// ноды в подписке и правку тег-политики источника.
+	//
+	// trustedParse — SPEC 113, решение 2: тело прочитано, узлы есть и ни один
+	// не отброшен капом. Только тогда неопознанные legacy-ключи выбрасываются;
+	// иначе они остаются нетронутыми до следующего честного разбора.
+	trustedParse := bodyRead && len(nodes) > 0 && skippedDueToLimit == 0
+	nodes, refreshedDisabled, disabledMigrated := filterDisabledNodes(nodes, proxySource.DisabledNodes, time.Now(), trustedParse)
 
 	// Итог дедупа — до строки END, чтобы в логе он читался как часть разбора,
 	// а не как что-то, случившееся после него.
@@ -968,14 +1030,37 @@ func applyTagsToSingboxNode(
 // в списке отсутствует и потому из состава выпадает: ссылка на неэмитированный
 // тег отвергается ядром.
 //
+// collapsedInto — «исходный тег дубля → исходный тег выжившего» от дедупа
+// (SPEC 113-A §4). Член, схлопнутый дедупом, перепривязывается на ВЫЖИВШУЮ
+// копию, а не выпадает: группа из одних дублей иначе теряла весь состав и
+// удалялась, хотя её узлы живы под другими именами. Повторы после
+// перепривязки схлопываются — дубль тега в outbounds ядро отвергает.
+//
 // Возвращает отфильтрованный список узлов.
-func rebindImportedGroupNodes(nodes []*configtypes.ParsedNode) []*configtypes.ParsedNode {
+func rebindImportedGroupNodes(
+	nodes []*configtypes.ParsedNode,
+	collapsedInto map[string]string,
+) []*configtypes.ParsedNode {
 	finalByOriginal := make(map[string]string, len(nodes))
 	for _, node := range nodes {
 		if node == nil || node.SourceTag == "" {
 			continue
 		}
 		finalByOriginal[node.SourceTag] = node.Tag
+	}
+
+	// resolveMember — итоговый тег члена: свой, а если узел схлопнут дедупом —
+	// тег выжившей копии.
+	resolveMember := func(memberTag string) (string, bool) {
+		if finalTag, ok := finalByOriginal[memberTag]; ok {
+			return finalTag, true
+		}
+		if survivor, ok := collapsedInto[memberTag]; ok {
+			if finalTag, ok := finalByOriginal[survivor]; ok {
+				return finalTag, true
+			}
+		}
+		return "", false
 	}
 
 	kept := make([]*configtypes.ParsedNode, 0, len(nodes))
@@ -991,11 +1076,18 @@ func rebindImportedGroupNodes(nodes []*configtypes.ParsedNode) []*configtypes.Pa
 		members := make([]interface{}, 0)
 		switch raw := node.Outbound[configtypes.GroupMembersKey].(type) {
 		case []interface{}:
+			seen := make(map[string]struct{}, len(raw))
 			for _, item := range raw {
 				if memberTag, ok := item.(string); ok {
-					if finalTag, ok := finalByOriginal[memberTag]; ok {
-						members = append(members, finalTag)
+					finalTag, ok := resolveMember(memberTag)
+					if !ok {
+						continue
 					}
+					if _, dup := seen[finalTag]; dup {
+						continue
+					}
+					seen[finalTag] = struct{}{}
+					members = append(members, finalTag)
 				}
 			}
 		}
@@ -1007,7 +1099,7 @@ func rebindImportedGroupNodes(nodes []*configtypes.ParsedNode) []*configtypes.Pa
 		node.Outbound[configtypes.GroupMembersKey] = members
 
 		if def, ok := node.Outbound["default"].(string); ok {
-			if finalTag, ok := finalByOriginal[def]; ok {
+			if finalTag, ok := resolveMember(def); ok {
 				node.Outbound["default"] = finalTag
 			} else {
 				delete(node.Outbound, "default")

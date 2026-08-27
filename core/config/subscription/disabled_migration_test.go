@@ -169,7 +169,7 @@ func TestLegacyKeysSurviveWithoutHook(t *testing.T) {
 
 	oldKey := strings.Repeat("b", 64)
 	nodes := []*configtypes.ParsedNode{{Tag: "a", Scheme: "vless", IdentityTag: "a", Server: "e.com"}}
-	got, refreshed, migrated := filterDisabledNodes(nodes, map[string]int64{oldKey: 1}, time.Now())
+	got, refreshed, migrated := filterDisabledNodes(nodes, map[string]int64{oldKey: 1}, time.Now(), true)
 
 	if len(got) != 1 {
 		t.Fatalf("получено %d узлов, ожидался 1", len(got))

@@ -257,57 +257,26 @@ func TestDedupIsPerSource(t *testing.T) {
 	}
 }
 
-// Ключ подключения остался только у xray-ownership: креденшл берётся из
-// UUID, иначе из первого непустого password/uuid/private_key/auth_str;
-// безымянный по секрету сервер ключ ПОЛУЧАЕТ (ownership решает «чей адрес»).
-func TestXrayServerKeyPicksCredential(t *testing.T) {
-	cases := []struct {
-		name string
-		node *configtypes.ParsedNode
-		want string
-	}{
-		{
-			name: "uuid",
-			node: &configtypes.ParsedNode{Scheme: "VLESS", Server: "e.com", Port: 443, UUID: "u1"},
-			want: "vless|e.com|443|u1",
-		},
-		{
-			name: "password",
-			node: &configtypes.ParsedNode{Scheme: "ss", Server: "e.com", Port: 443,
-				Outbound: map[string]interface{}{"password": "p1"}},
-			want: "ss|e.com|443|p1",
-		},
-		{
-			name: "no server",
-			node: &configtypes.ParsedNode{Scheme: "vless", UUID: "u1"},
-			want: "",
-		},
-		{
-			name: "no credential — ключ есть, хвост пустой",
-			node: &configtypes.ParsedNode{Scheme: "vless", Server: "e.com", Port: 443},
-			want: "vless|e.com|443|",
-		},
-		{
-			name: "group",
-			node: &configtypes.ParsedNode{Scheme: configtypes.SchemeGroup, Server: "e.com", Port: 443, UUID: "u1"},
-			want: "",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := xrayServerKey(tc.node); got != tc.want {
-				t.Fatalf("xrayServerKey() = %q, ожидалось %q", got, tc.want)
-			}
-		})
-	}
-}
+// SPEC 113-A §2: ключ по кредам упразднён — во всём парсере остался ОДИН ключ,
+// подпись содержимого. xray-ownership считает её же, значит группы и записи
+// схлопываются по одному правилу.
+func TestXrayServerKeyUsesTheSameSignatureAsDedup(t *testing.T) {
+	withContentSignatureHook(t)
 
-// xray-ownership на обобщение ключа не отреагировал: узел без опознанного
-// секрета по-прежнему закрепляется за элементом (там ключ решает «чей адрес»,
-// а не «та же ли это запись»).
-func TestXrayServerKeyStillOwnsCredlessNodes(t *testing.T) {
-	node := &configtypes.ParsedNode{Scheme: "vless", Server: "e.com", Port: 443}
-	if got := xrayServerKey(node); got != "vless|e.com|443|" {
-		t.Fatalf("xrayServerKey() = %q — ownership безымянного по секрету узла изменилась", got)
+	node := &configtypes.ParsedNode{Scheme: "vless", Server: "e.com", Port: 443, UUID: "u1"}
+	if got, want := xrayServerKey(node), dedupSignature(node); got != want {
+		t.Fatalf("xrayServerKey() = %q, дедуп считает %q — ключ во всём парсере обязан быть один", got, want)
+	}
+
+	// Узел-группа подписи не имеет ни там, ни там.
+	group := &configtypes.ParsedNode{Scheme: configtypes.SchemeGroup, Server: "e.com", Port: 443, UUID: "u1"}
+	if got := xrayServerKey(group); got != "" {
+		t.Fatalf("узел-группа получил подпись %q", got)
+	}
+
+	// Разные креды на одном адресе — разные подписи (это разные аккаунты).
+	other := &configtypes.ParsedNode{Scheme: "vless", Server: "e.com", Port: 443, UUID: "u2"}
+	if xrayServerKey(node) == xrayServerKey(other) {
+		t.Fatal("узлы с разными кредами получили одну подпись")
 	}
 }
