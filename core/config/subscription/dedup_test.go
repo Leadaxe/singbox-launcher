@@ -60,13 +60,13 @@ func withContentSignatureHook(t *testing.T) {
 	t.Cleanup(func() { LegacyNodeIdentityHashFunc = prev })
 }
 
-// Регресс v1.5.2 в чистом виде: подписка darkline отдаёт 32 байт-одинаковых
+// Регресс v1.5.2 в чистом виде: мок реальной подписки — 32 байт-одинаковых
 // ss://, различающихся ТОЛЬКО подписью. v1.5.1 показывал один узел, v1.5.2 —
 // все 32. Побеждает ПЕРВАЯ запись: её имя пользователь и увидит.
 func TestDedupCollapses32ByteCopiesIntoOne(t *testing.T) {
 	withContentSignatureHook(t)
-	const uri = "ss://YWVzLTI1Ni1nY206c2VjcmV0cGFzcw@DARK-BOT:443"
-	names := []string{"Хорватия", "Финляндия"}
+	const uri = "ss://YWVzLTI1Ni1nY206c2VjcmV0cGFzcw@dup-pool.example:443"
+	names := []string{"Страна А", "Страна Б"}
 	for i := 1; i <= 7; i++ {
 		names = append(names, fmt.Sprintf("LTE %d", i))
 	}
@@ -84,7 +84,7 @@ func TestDedupCollapses32ByteCopiesIntoOne(t *testing.T) {
 		}
 		t.Fatalf("получено %d узлов, ожидался 1 (теги: %v)", len(res.Nodes), got)
 	}
-	if want := "Хорватия 0"; res.Nodes[0].Tag != want {
+	if want := "Страна А 0"; res.Nodes[0].Tag != want {
 		t.Errorf("выжил узел %q, ожидался первый по порядку (%q)", res.Nodes[0].Tag, want)
 	}
 }
@@ -107,8 +107,8 @@ func TestDedupKeepsSameServerWithDifferentSNI(t *testing.T) {
 	}
 }
 
-// Тот же вердикт для транспортов: nl3-grpc и nl3-xhttp (кейс darkline) — два
-// узла, не один.
+// Тот же вердикт для транспортов: grpc- и xhttp-варианты одного сервера с
+// одним кредом (реальный кейс из подписки пользователя) — два узла, не один.
 func TestDedupKeepsSameServerWithDifferentTransport(t *testing.T) {
 	withContentSignatureHook(t)
 	body := strings.Join([]string{

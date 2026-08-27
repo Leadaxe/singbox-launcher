@@ -16,10 +16,10 @@ import (
 // Расхождение читается пользователем как потерянные записи (память
 // lazy-cache-vs-lost-state), поэтому дедуп обязан быть виден и здесь.
 //
-// Форма подписки — darkline: 32 байт-одинаковых ss:// плюс несколько
+// Форма — мок реальной подписки: 32 байт-одинаковых ss:// плюс несколько
 // самостоятельных узлов. До SPEC 112-B строка показывала все 39.
 func TestPreviewNodeCountsSeeDedup(t *testing.T) {
-	const dup = "ss://YWVzLTI1Ni1nY206c2VjcmV0cGFzcw@DARK-BOT:443"
+	const dup = "ss://YWVzLTI1Ni1nY206c2VjcmV0cGFzcw@dup-pool.example:443"
 	lines := make([]string, 0, 39)
 	for i := 0; i < 32; i++ {
 		lines = append(lines, fmt.Sprintf("%s#копия %d", dup, i))
@@ -29,7 +29,7 @@ func TestPreviewNodeCountsSeeDedup(t *testing.T) {
 			fmt.Sprintf("ss://YWVzLTI1Ni1nY206c2VjcmV0cGFzcw@host-%d:443#узел %d", i, i))
 	}
 
-	const url = "https://example.invalid/darkline"
+	const url = "https://example.invalid/dups"
 	prev := subscription.LookupCachedBody
 	subscription.LookupCachedBody = func(requested string) ([]byte, bool) {
 		if requested == url {
