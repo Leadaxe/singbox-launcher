@@ -35,6 +35,36 @@ func SetExcludedSources(list []SourceExclusion) {
 	excludedSources = append([]SourceExclusion(nil), list...)
 }
 
+// AppendExcludedSources доливает записи в реестр, не трогая уже лежащие
+// (SPEC 113-B).
+//
+// Нужно потому, что исключений теперь два поставщика и работают они в разное
+// время: парсер знает про недоступный хоп-узел и пишет реестр сразу после
+// сборки узлов; последний рубеж (core/build) узнаёт про исчезнувший селектор
+// шаблона только когда сложен полный набор финальных тегов — то есть уже
+// ПОСЛЕ SetExcludedSources. Перезапись там стёрла бы причины парсера, поэтому
+// доливка. Повторная запись про тот же источник игнорируется: первая причина
+// ближе к корню.
+func AppendExcludedSources(list []SourceExclusion) {
+	if len(list) == 0 {
+		return
+	}
+	excludedSourcesMu.Lock()
+	defer excludedSourcesMu.Unlock()
+	for _, e := range list {
+		dup := false
+		for _, have := range excludedSources {
+			if have.SourceID == e.SourceID && have.SourceLabel == e.SourceLabel {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			excludedSources = append(excludedSources, e)
+		}
+	}
+}
+
 // ExcludedSources — копия реестра. Копия, а не сам слайс: читатель из UI не
 // должен уметь испортить его следующей сборке.
 func ExcludedSources() []SourceExclusion {

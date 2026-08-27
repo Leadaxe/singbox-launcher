@@ -2,7 +2,6 @@ package build
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 
 	"singbox-launcher/core/config/configtypes"
@@ -139,34 +138,5 @@ func TestMergeOutboundUpdatesInPlace_NilTemplateKeepsLegacyBodies(t *testing.T) 
 	MergeOutboundUpdatesInPlace(pc, nil, template.TargetSpec{})
 	if len(pc.ParserConfig.Outbounds) != 1 {
 		t.Fatalf("legacy inline-body entry must survive td==nil merge, got %v", pc.ParserConfig.Outbounds)
-	}
-}
-
-// TestDropDanglingNodeDetours — сценарий Proton NL: endpoint с
-// detour_tag на несуществующую группу не должен валить весь конфиг на
-// remote apply («dependency[Proton NL] not found»); висячий detour дропается
-// fail-open, резолвящийся и отсутствующий — не трогаются.
-func TestDropDanglingNodeDetours(t *testing.T) {
-	finalTags := map[string]bool{"detour-group": true}
-	entries := []string{
-		"// Proton NL\n{\"detour\":\"missing-group\",\"tag\":\"Proton NL\",\"type\":\"wireguard\"}",
-		`{"detour":"detour-group","tag":"ok-node","type":"vless"}`,
-		`{"tag":"plain-node","type":"vless"}`,
-		"not json at all",
-	}
-	got := dropDanglingNodeDetours(entries, finalTags, true)
-	if len(got) != len(entries) {
-		t.Fatalf("entry count changed: got %d, want %d", len(got), len(entries))
-	}
-	if strings.Contains(got[0], "missing-group") {
-		t.Errorf("dangling detour must be dropped: %s", got[0])
-	}
-	if !strings.Contains(got[0], "// Proton NL") || !strings.Contains(got[0], `"tag":"Proton NL"`) {
-		t.Errorf("comment prefix/tag must survive: %s", got[0])
-	}
-	for i := 1; i < len(entries); i++ {
-		if got[i] != entries[i] {
-			t.Errorf("entry %d must be untouched: got %s", i, got[i])
-		}
 	}
 }

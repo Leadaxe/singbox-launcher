@@ -21,7 +21,7 @@ func sanitizeHelper(t *testing.T, outbounds []string, templateTags ...string) (m
 		}
 		finalTags[m["tag"].(string)] = true
 	}
-	out := sanitizeOutboundGraph(cache, finalTags)
+	out, _ := sanitizeOutboundGraph(cache, finalTags)
 	got := make(map[string]map[string]interface{})
 	for _, raw := range out.Outbounds {
 		var m map[string]interface{}
@@ -176,7 +176,7 @@ func TestSanitizeKeepsHealthyGraph(t *testing.T) {
 		_ = json.Unmarshal([]byte(o), &m)
 		finalTags[m["tag"].(string)] = true
 	}
-	out := sanitizeOutboundGraph(cache, finalTags)
+	out, _ := sanitizeOutboundGraph(cache, finalTags)
 	if len(out.Outbounds) != len(in) {
 		t.Fatalf("healthy graph lost entries: %d != %d", len(out.Outbounds), len(in))
 	}

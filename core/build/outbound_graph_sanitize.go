@@ -17,7 +17,13 @@
 // ядру конфиг, который оно отвергнет.
 //
 // Правила:
-//  1. detour на несуществующий тег — ключ удаляется (узел ходит напрямую);
+//  1. detour на несуществующий тег — выбрасывается НОСИТЕЛЬ перехода (узел), с
+//     warning и записью в реестр исключений. До SPEC 113-B тут снимался ключ
+//     detour, и узел начинал ходить напрямую: пользователь настраивал переход
+//     ради анонимности, а получал прямой дозвон и ни слова об этом. Сюда
+//     висячий detour доезжает, только если выше по конвейеру баг или если цель
+//     — исчезнувший селектор шаблона (выключили мульти-VPN); спасать такой
+//     переход снятием запрещено;
 //  2. группа: участники-призраки исключаются; пустая группа удаляется;
 //     default вне состава заменяется первым участником;
 //  3. цепочка: позиция на несуществующий тег ИЛИ другая цепочка на позиции
@@ -27,8 +33,9 @@
 //     вложенные группы), не содержит цепочек: ядро обходит ЛИСТЬЯ группы на
 //     старте и отвергает вложенную цепочку («nested chain is only allowed at
 //     position 0») — check это не ловит, падает только run;
-//  5. кольцо по любым рёбрам (detour → member → позиция цепочки → …)
-//     разрывается по ребру, замкнувшему цикл.
+//  5. кольцо по любым рёбрам (member → позиция цепочки → …) разрывается по
+//     ребру, замкнувшему цикл; кольцо, замкнувшееся ребром detour, разрывается
+//     выбросом носителя — снять detour значило бы тот же тихий direct.
 //
 // Удаление узла может делать висячими новые ссылки — проход повторяется до
 // фикспойнта. finalTags мутируется на месте: секция route собирается позже
@@ -89,9 +96,14 @@ func (e *graphEntry) setMembers(members []string) {
 // sanitizeOutboundGraph — точка входа: принимает кэш и множество финальных
 // тегов (template static + generated), возвращает кэш с вычищенным графом.
 // finalTags мутируется: теги удалённых узлов исключаются.
-func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool) *ParsedCache {
+//
+// Второе значение — источники, чьи узлы отсюда выпали из-за недоступного
+// detour (SPEC 113-B). Вызывающий доливает их в реестр исключений: без этого
+// исчезновение источника после выключения мульти-VPN снова стало бы
+// молчаливым.
+func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool) (*ParsedCache, []SourceExclusion) {
 	if cache == nil || (len(cache.Outbounds) == 0 && len(cache.Endpoints) == 0) {
-		return cache
+		return cache, nil
 	}
 
 	entries := make([]*graphEntry, 0, len(cache.Outbounds)+len(cache.Endpoints))
@@ -133,6 +145,37 @@ func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool) *Parse
 		debuglog.WarnLog("build: outbound %q удалён из конфига: %s", e.tag, why)
 	}
 
+	// dropDetourCarrier — выброс носителя недоступного перехода плюс запись в
+	// реестр исключений. Собирается по источникам, а не по узлам: у подписки на
+	// 500 нод сломанный detour ломает их все разом, и 500 одинаковых пометок в
+	// UI были бы не сообщением, а шумом.
+	excludedBySource := make(map[string]*SourceExclusion)
+	var excludedOrder []string
+	dropDetourCarrier := func(e *graphEntry, reason string) {
+		if e.dropped {
+			return
+		}
+		origin := cache.NodeOrigins[e.tag]
+		drop(e, reason+" — переход настроен ради анонимности и не имеет права стать прямым дозвоном")
+		key := origin.SourceID
+		if key == "" {
+			key = origin.SourceLabel
+		}
+		if key == "" {
+			// Узел не из источника (ручной outbound шаблона) — реестр он не
+			// наполняет: привязать пометку не к чему, warning выше уже сказан.
+			return
+		}
+		if _, seen := excludedBySource[key]; !seen {
+			excludedOrder = append(excludedOrder, key)
+			excludedBySource[key] = &SourceExclusion{
+				SourceID:    origin.SourceID,
+				SourceLabel: origin.SourceLabel,
+				Reason:      reason,
+			}
+		}
+	}
+
 	// Fixpoint: каждое исправление может открыть следующее. Верхняя граница —
 	// защитная: каждый содержательный проход удаляет узел или ребро, их
 	// конечное число.
@@ -142,14 +185,14 @@ func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool) *Parse
 			if e.dropped || e.m == nil {
 				continue
 			}
-			if sanitizeEntryRefs(e, byTag, finalTags, drop) {
+			if sanitizeEntryRefs(e, byTag, finalTags, drop, dropDetourCarrier) {
 				changed = true
 			}
 		}
 		if pruneChainLeavesUnderGroups(entries, byTag) {
 			changed = true
 		}
-		if breakDependencyCycle(entries, byTag, drop) {
+		if breakDependencyCycle(entries, byTag, drop, dropDetourCarrier) {
 			changed = true
 		}
 		if !changed {
@@ -161,19 +204,24 @@ func sanitizeOutboundGraph(cache *ParsedCache, finalTags map[string]bool) *Parse
 	*out = *cache
 	out.Outbounds = rebuildEntries(entries, false, true)
 	out.Endpoints = rebuildEntries(entries, true, false)
-	return out
+
+	excluded := make([]SourceExclusion, 0, len(excludedOrder))
+	for _, key := range excludedOrder {
+		excluded = append(excluded, *excludedBySource[key])
+	}
+	return out, excluded
 }
 
 // sanitizeEntryRefs — правила 1–3 для одной записи. Возвращает true, если
 // что-то изменилось.
-func sanitizeEntryRefs(e *graphEntry, byTag map[string]*graphEntry, finalTags map[string]bool, drop func(*graphEntry, string)) bool {
+func sanitizeEntryRefs(e *graphEntry, byTag map[string]*graphEntry, finalTags map[string]bool, drop func(*graphEntry, string), dropDetourCarrier func(*graphEntry, string)) bool {
 	changed := false
 
+	// SPEC 113-B: висячий detour — не повод снять ключ. Носитель выбрасывается.
 	if d, _ := e.m["detour"].(string); d != "" && !finalTags[d] {
-		debuglog.WarnLog("build: node %q detour %q not found in final config — dropping detour (direct dial)", e.tag, d)
-		delete(e.m, "detour")
-		e.dirty = true
-		changed = true
+		debuglog.WarnLog("build: у %q цель detour %q отсутствует в финальном конфиге — узел исключён (fail-closed, тихий прямой дозвон запрещён)", e.tag, d)
+		dropDetourCarrier(e, "цель detour «"+d+"» не существует в конфиге")
+		return true
 	}
 
 	switch {
@@ -281,7 +329,7 @@ func pruneChainLeavesUnderGroups(entries []*graphEntry, byTag map[string]*graphE
 // breakDependencyCycle — правило 5: DFS по рёбрам detour/member/позиция.
 // Разрывает ПЕРВОЕ найденное кольцо (по ребру, замкнувшему цикл) и
 // возвращает true; фикспойнт-цикл вызовет её снова, пока колец не останется.
-func breakDependencyCycle(entries []*graphEntry, byTag map[string]*graphEntry, drop func(*graphEntry, string)) bool {
+func breakDependencyCycle(entries []*graphEntry, byTag map[string]*graphEntry, drop func(*graphEntry, string), dropDetourCarrier func(*graphEntry, string)) bool {
 	const (
 		white = 0
 		grey  = 1
@@ -347,9 +395,10 @@ func breakDependencyCycle(entries []*graphEntry, byTag map[string]*graphEntry, d
 
 	switch found.kind {
 	case "detour":
-		debuglog.WarnLog("build: кольцо зависимостей через detour %q → %q — detour снят (узел ходит напрямую)", found.from.tag, found.ref)
-		delete(found.from.m, "detour")
-		found.from.dirty = true
+		// SPEC 113-B: снять detour значило бы отправить трафик носителя напрямую
+		// — молча и вопреки настройке. Выбрасывается носитель.
+		debuglog.WarnLog("build: кольцо зависимостей через detour %q → %q — узел исключён (fail-closed)", found.from.tag, found.ref)
+		dropDetourCarrier(found.from, "циклическая ссылка: переход на «"+found.ref+"» по цепочке возвращается обратно")
 	case "chain":
 		drop(found.from, "кольцо зависимостей через позицию «"+found.ref+"»")
 	default: // member

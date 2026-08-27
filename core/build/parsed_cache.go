@@ -28,4 +28,28 @@ type ParsedCache struct {
 	// with_naive_outbound). Caller (RebuildConfigIfDirty) присоединяет их
 	// к Result.Validation.Warnings; BuildConfig это поле не читает.
 	Warnings []string
+
+	// NodeOrigins — финальный тег узла → источник, из которого он приехал
+	// (SPEC 113-B). Граф-санитайзер видит только теги; выбросив узел за
+	// висячий detour, он обязан назвать источник, у которого сломался
+	// переход, — иначе исключение снова становится молчаливым. Пустая карта
+	// не ошибка: узел тогда назовут собственным тегом.
+	NodeOrigins map[string]NodeOrigin
+}
+
+// NodeOrigin — чей это узел: ULID источника и его человеческая подпись.
+// Зеркалит config.NodeOrigin; своё определение здесь, потому что core/build
+// про core/config не знает (и не должен: зависимость идёт в другую сторону).
+type NodeOrigin struct {
+	SourceID    string
+	SourceLabel string
+}
+
+// SourceExclusion — источник, выпавший из конфига на последнем рубеже
+// (SPEC 113-B). Та же тройка, что у config.SourceExclusion; вызывающий
+// доливает эти записи в реестр исключений поверх записей парсера.
+type SourceExclusion struct {
+	SourceID    string
+	SourceLabel string
+	Reason      string
 }

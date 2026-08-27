@@ -136,9 +136,14 @@ type Source struct {
 
 	// DetourTag — SPEC 077: tag of another outbound this source's nodes dial
 	// through (proxy chain / hop). Empty = direct dial. Applies to both server
-	// and subscription sources. Stored by tag (consistent with rules/selectors);
-	// a dangling/cyclic/self target is dropped at build time (fail-open), the
-	// node then dials directly. Not applied to WireGuard nodes.
+	// and subscription sources. Stored by tag (consistent with rules/selectors).
+	//
+	// SPEC 113-B — единая строгость: detour это управление анонимностью, а не
+	// балансировка, поэтому недоступная цель (висячая, самоссылка, кольцо)
+	// НИКОГДА не чинится снятием ключа — это отправило бы трафик напрямую
+	// ровно вопреки настройке. Выбрасывается носитель перехода: источник
+	// целиком, fail-closed, с записью причины в реестр исключений и ⚠,
+	// называющей цель. Not applied to WireGuard nodes.
 	DetourTag string `json:"detour_tag,omitempty"`
 
 	// DetourNodeSourceID / DetourNodeTag — SPEC 112-A: ссылка на ОДИН узел,

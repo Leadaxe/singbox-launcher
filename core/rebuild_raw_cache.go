@@ -127,10 +127,25 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 	}
 
 	return &build.ParsedCache{
-		Outbounds: jsonStringsToRawMessages(result.OutboundsJSON),
-		Endpoints: jsonStringsToRawMessages(result.EndpointsJSON),
-		Warnings:  warnings,
+		Outbounds:   jsonStringsToRawMessages(result.OutboundsJSON),
+		Endpoints:   jsonStringsToRawMessages(result.EndpointsJSON),
+		Warnings:    warnings,
+		NodeOrigins: buildNodeOrigins(result.NodeOrigins),
 	}, nil
+}
+
+// buildNodeOrigins переводит карту происхождения узлов из формы парсера в
+// форму сборщика (SPEC 113-B). Два одинаковых типа в разных пакетах — цена
+// того, что core/build остаётся leaf-пакетом и о core/config не знает.
+func buildNodeOrigins(src map[string]config.NodeOrigin) map[string]build.NodeOrigin {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]build.NodeOrigin, len(src))
+	for tag, o := range src {
+		out[tag] = build.NodeOrigin{SourceID: o.SourceID, SourceLabel: o.SourceLabel}
+	}
+	return out
 }
 
 // ErrRawCacheIncomplete — sentinel для отсутствующих .raw файлов.

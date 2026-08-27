@@ -2,6 +2,11 @@ package config
 
 import "testing"
 
+// SPEC 077 → SPEC 113-B: единая строгость. Прежние тесты этого файла
+// фиксировали fail-open («detour снят, узел ходит напрямую»); поведение
+// инвертировано — снятие ключа и есть тот молчаливый прямой дозвон, ради
+// запрета которого писан SPEC 113-B. Выбрасывается носитель.
+
 func nodeWithDetour(tag, detour string) *ParsedNode {
 	ob := map[string]interface{}{"type": "vless", "tag": tag}
 	if detour != "" {
@@ -15,64 +20,96 @@ func detourOf(n *ParsedNode) (string, bool) {
 	return v, ok
 }
 
-// SPEC 077 phase 2: self-reference is dropped, the node keeps dialing directly.
-func TestSanitizeNodeDetours_SelfReference(t *testing.T) {
+func tagsOf(nodes []*ParsedNode) map[string]bool {
+	out := make(map[string]bool, len(nodes))
+	for _, n := range nodes {
+		if n != nil {
+			out[n.Tag] = true
+		}
+	}
+	return out
+}
+
+// Самоссылка: узел выпадает целиком. Снять detour было бы тихим прямым
+// дозвоном, а он для detour запрещён.
+func TestSanitizeNodeDetours_SelfReferenceDropsNode(t *testing.T) {
 	a := nodeWithDetour("A", "A")
-	sanitizeNodeDetours([]*ParsedNode{a})
-	if _, ok := detourOf(a); ok {
-		t.Error("self-referential detour must be dropped")
+	kept := tagsOf(sanitizeNodeDetours([]*ParsedNode{a}))
+	if kept["A"] {
+		t.Error("самоссылающийся узел обязан выпасть, а не потерять detour")
+	}
+	if _, ok := detourOf(a); !ok {
+		t.Error("detour снят — это тихий прямой дозвон")
 	}
 }
 
-// A→B where B has no detour is a valid one-hop chain — nothing is dropped.
+// A→B, где у B перехода нет, — валидный однохоповый маршрут: не трогаем.
 func TestSanitizeNodeDetours_ValidChainKept(t *testing.T) {
 	a := nodeWithDetour("A", "B")
 	b := nodeWithDetour("B", "")
-	sanitizeNodeDetours([]*ParsedNode{a, b})
+	kept := tagsOf(sanitizeNodeDetours([]*ParsedNode{a, b}))
+	if !kept["A"] || !kept["B"] {
+		t.Fatalf("здоровая связка распалась: %v", kept)
+	}
 	if d, ok := detourOf(a); !ok || d != "B" {
-		t.Errorf("valid A→B detour must be kept, got %q (present=%v)", d, ok)
+		t.Errorf("рабочий A→B detour обязан уцелеть, получено %q (есть=%v)", d, ok)
 	}
 }
 
-// Detour onto a tag that is not a node (template/preset group, built-in) is
-// left untouched — it cannot be validated here.
+// Detour на тег, который узлом не является (шаблонная/preset-группа,
+// служебный outbound), здесь не решается: полный набор тегов известен только
+// на финальной сборке. Узел остаётся, решение — за граф-санитайзером.
 func TestSanitizeNodeDetours_ExternalTargetKept(t *testing.T) {
-	a := nodeWithDetour("A", "proxy-group") // group lives in template, not in node set
-	sanitizeNodeDetours([]*ParsedNode{a})
+	a := nodeWithDetour("A", "proxy-group") // группа живёт в шаблоне, не среди узлов
+	kept := tagsOf(sanitizeNodeDetours([]*ParsedNode{a}))
+	if !kept["A"] {
+		t.Fatal("узел с внешней целью detour выпадать здесь не должен")
+	}
 	if d, ok := detourOf(a); !ok || d != "proxy-group" {
-		t.Errorf("detour onto external tag must be kept, got %q (present=%v)", d, ok)
+		t.Errorf("detour на внешний тег обязан уцелеть, получено %q (есть=%v)", d, ok)
 	}
 }
 
-// A↔B mutual detour is a cycle; exactly one edge is dropped so sing-box won't
-// reject the config, and at least one direction survives.
-func TestSanitizeNodeDetours_TwoCycleBroken(t *testing.T) {
+// Кольцо A↔B: fail-closed для ОБОИХ. Прежде выпадало одно ребро, и один из
+// узлов начинал ходить напрямую — молча.
+func TestSanitizeNodeDetours_TwoCycleDropsBoth(t *testing.T) {
 	a := nodeWithDetour("A", "B")
 	b := nodeWithDetour("B", "A")
-	sanitizeNodeDetours([]*ParsedNode{a, b})
-	_, aHas := detourOf(a)
-	_, bHas := detourOf(b)
-	if aHas && bHas {
-		t.Error("2-cycle must have at least one edge dropped")
+	kept := tagsOf(sanitizeNodeDetours([]*ParsedNode{a, b}))
+	if kept["A"] || kept["B"] {
+		t.Errorf("участники кольца остались в конфиге: %v", kept)
 	}
-	if !aHas && !bHas {
-		t.Error("2-cycle must not drop both edges (over-pruning)")
+	if _, ok := detourOf(a); !ok {
+		t.Error("detour снят у A — тихий прямой дозвон")
+	}
+	if _, ok := detourOf(b); !ok {
+		t.Error("detour снят у B — тихий прямой дозвон")
 	}
 }
 
-// A→B→C→A 3-cycle: the ring must be broken (not all three survive).
-func TestSanitizeNodeDetours_ThreeCycleBroken(t *testing.T) {
+// A→B→C→A: выпадают все трое.
+func TestSanitizeNodeDetours_ThreeCycleDropsAll(t *testing.T) {
 	a := nodeWithDetour("A", "B")
 	b := nodeWithDetour("B", "C")
 	c := nodeWithDetour("C", "A")
-	sanitizeNodeDetours([]*ParsedNode{a, b, c})
-	kept := 0
-	for _, n := range []*ParsedNode{a, b, c} {
-		if _, ok := detourOf(n); ok {
-			kept++
-		}
+	kept := tagsOf(sanitizeNodeDetours([]*ParsedNode{a, b, c}))
+	if len(kept) != 0 {
+		t.Errorf("кольцо из трёх обязано выпасть целиком, осталось %v", kept)
 	}
-	if kept != 2 {
-		t.Errorf("3-cycle must drop exactly one edge (kept=%d, want 2)", kept)
+}
+
+// Каскад: D ходил через участника кольца — выпадает следом, иначе у него
+// остался бы detour в никуда.
+func TestSanitizeNodeDetours_CascadeAfterRing(t *testing.T) {
+	a := nodeWithDetour("A", "B")
+	b := nodeWithDetour("B", "A")
+	d := nodeWithDetour("D", "A")
+	e := nodeWithDetour("E", "")
+	kept := tagsOf(sanitizeNodeDetours([]*ParsedNode{a, b, d, e}))
+	if kept["D"] {
+		t.Error("узел, ходивший через выброшенный, обязан выпасть следом")
+	}
+	if !kept["E"] {
+		t.Error("узел без detour к кольцу отношения не имеет и выпадать не должен")
 	}
 }

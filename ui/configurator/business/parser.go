@@ -166,6 +166,13 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 
 	subscription.LogDuplicateTagStatistics(tagCounts, "ConfigWizard")
 
+	// SPEC 113-B (M3): реестр исключений переписывается КАЖДОЙ сборкой, и
+	// preview-сборка Мастера — сборка. Пока этот путь результат выбрасывал,
+	// ⚠ в списке источников показывал итог чужой, предыдущей сборки: починил
+	// хоп, нажал Preview — узлы вернулись, а пометка осталась висеть до
+	// полного Rebuild. Пустой список тут так же обязателен, как непустой.
+	config.SetExcludedSources(result.ExcludedSources)
+
 	model.OutboundStats.NodesCount = result.NodesCount
 	model.OutboundStats.EndpointsCount = result.EndpointsCount
 	model.OutboundStats.LocalSelectorsCount = result.LocalSelectorsCount

@@ -171,6 +171,20 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		return fmt.Errorf("build: %w", err)
 	}
 
+	// SPEC 113-B: последний рубеж мог выбросить узлы источника за недоступную
+	// цель detour (исчез селектор шаблона — выключили мульти-VPN). Парсер про
+	// это не знал, поэтому запись доливается в реестр поверх его собственных.
+	if len(res.ExcludedSources) > 0 {
+		add := make([]config.SourceExclusion, 0, len(res.ExcludedSources))
+		for _, e := range res.ExcludedSources {
+			debuglog.WarnLog("RebuildConfigIfDirty: источник %q исключён из конфига: %s", e.SourceLabel, e.Reason)
+			add = append(add, config.SourceExclusion{
+				SourceID: e.SourceID, SourceLabel: e.SourceLabel, Reason: e.Reason,
+			})
+		}
+		config.AppendExcludedSources(add)
+	}
+
 	// Parser-stage warnings (e.g. naive nodes degraded on a core without
 	// naive support, SPEC 044 feature-probe) ride along with the build
 	// validation warnings into the ConfigBuilt event.

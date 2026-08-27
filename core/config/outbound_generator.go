@@ -104,6 +104,19 @@ type OutboundGenerationResult struct {
 	// («галка + N nodes») — ровно парадокс Proton NL: настройка на месте,
 	// трафика нет, и связи между этими фактами пользователю не показывали.
 	ExcludedSources []SourceExclusion
+
+	// NodeOrigins — финальный тег узла → источник, из которого он приехал
+	// (SPEC 113-B). Нужен последнему рубежу: граф-санитайзер (core/build)
+	// видит только теги, а выбросив узел за висячий detour, обязан назвать
+	// пользователю ИСТОЧНИК, у которого сломался переход. Селекторы и
+	// Направления сюда не попадают — у них источника нет.
+	NodeOrigins map[string]NodeOrigin
+}
+
+// NodeOrigin — чей это узел: ULID источника и его человеческая подпись.
+type NodeOrigin struct {
+	SourceID    string
+	SourceLabel string
 }
 
 // SourceExclusion — один исключённый источник и почему.
@@ -1133,13 +1146,15 @@ func GenerateOutboundsFromParserConfig(
 		return nil, fmt.Errorf("no usable nodes: every source was dropped (detour node not found)")
 	}
 
-	// SPEC 077: sanitize source-level detours that would break sing-box —
-	// self-reference and detour cycles among nodes. Fail-open: the offending
-	// detour field is dropped (the node dials directly), generation continues.
-	// Dangling detours onto template/preset group tags are NOT pruned here:
-	// those tags are merged in only at final config assembly, so they are
-	// unknown at this point and pruning them would be a false positive.
-	sanitizeNodeDetours(allNodes)
+	// SPEC 077 → SPEC 113-B: самоссылка и кольцо detour среди узлов. Fail-closed:
+	// выбрасывается УЗЕЛ-носитель, а не ключ detour, — снятие ключа отправило бы
+	// его трафик напрямую молча. Висячие detour на теги шаблонных/preset-групп
+	// здесь не трогаются: они сводятся только при финальной сборке, и решение
+	// принимает граф-санитайзер (core/build), которому виден полный набор тегов.
+	allNodes = sanitizeNodeDetours(allNodes)
+	// Локальные селекторы собираются по nodesBySource — выброшенный узел не
+	// должен остаться в составе группы призраком.
+	pruneNodesBySource(nodesBySource, allNodes)
 
 	// Step 2: Generate JSON for all nodes
 	if progressCallback != nil {
@@ -1150,6 +1165,23 @@ func GenerateOutboundsFromParserConfig(
 	endpointsJSON := make([]string, 0)
 	nodesCount := 0
 	endpointsCount := 0
+
+	// SPEC 113-B: карта «тег узла → источник». Строится здесь, потому что это
+	// последнее место, где узел и его источник видны вместе: дальше по конвейеру
+	// от узла остаётся строка JSON.
+	nodeOrigins := make(map[string]NodeOrigin, len(allNodes))
+	for _, node := range allNodes {
+		if node == nil || node.Tag == "" ||
+			node.SourceIndex == UnsetSourceIndex ||
+			node.SourceIndex >= len(parserConfig.ParserConfig.Proxies) {
+			continue
+		}
+		ps := parserConfig.ParserConfig.Proxies[node.SourceIndex]
+		nodeOrigins[node.Tag] = NodeOrigin{
+			SourceID:    strings.TrimSpace(ps.ID),
+			SourceLabel: sourceDisplayName(ps, node.SourceIndex),
+		}
+	}
 
 	for _, node := range allNodes {
 		outJSONs, epJSON, err := EmitNodeJSONs(node)
@@ -1190,22 +1222,11 @@ func GenerateOutboundsFromParserConfig(
 		ChainCycles:          chainCycles,
 		DetourCycles:         detourCycles,
 		ExcludedSources:      excludedSources,
+		NodeOrigins:          nodeOrigins,
 		SkippedNaiveReason:   naiveReason,
 	}, nil
 }
 
-// sanitizeNodeDetours removes source-level detour fields that would break
-// sing-box (SPEC 077), fail-open: the field is dropped and the node dials
-// directly. Two cases are handled, both decidable from the node set alone:
-//
-//   - self-reference: node.detour == node.tag;
-//   - cycle among nodes: following node.detour from node to node returns to an
-//     already-visited node (A→B→A, longer rings, …). The detour on the node
-//     that closes the ring is dropped, which breaks every cycle it belongs to.
-//
-// Detours pointing at tags outside the node set (template/preset group tags,
-// built-in outbounds) are left untouched — those are resolved only at final
-// config assembly and are not knowable here.
 // generateGroupNodeJSON emits a selector/urltest node imported from a sing-box
 // config (SPEC 094 A5).
 //
@@ -1421,10 +1442,19 @@ func normalizeChainHop(hop, owner *ParsedNode) *ParsedNode {
 //
 // Fail-closed: ссылка не разрешилась (источник-цель удалён, узел исчез из
 // подписки, провайдер его переименовал) — узлы зависимого источника ВЫПАДАЮТ
-// из конфига с предупреждением. Групповой detour падает fail-open (снять
-// detour, звонить напрямую) — и для потерявшей участника группы это правильно,
-// но пропавший хоп цепочки не имеет права молча превратиться в прямой звонок:
-// хоп выбирали, чтобы спрятать за ним трафик источника.
+// из конфига с предупреждением. Хоп выбирали, чтобы спрятать за ним трафик
+// источника, и молча превратить его в прямой звонок нельзя.
+//
+// SPEC 113-B — единая строгость и топологический порядок:
+//   - источники со ссылками обходятся в порядке «цель раньше ссылающегося»
+//     (detour_topo.go), поэтому выпадение КАСКАДИРУЕТ: выпал источник хопа —
+//     выпадает и тот, кто через этот хоп ходил, со своей причиной;
+//   - кольцо ссылок = fail-closed ВСЕХ участников. Прежде кольцо доезжало до
+//     граф-санитайзера и разрывалось снятием detour — тихий переход на
+//     прямой дозвон, теперь запрещённый на всех уровнях;
+//   - у группового detour (DetourTag) та же строгость, но проверяется он
+//     позже: существование селектора шаблона известно только там, где собран
+//     полный набор финальных тегов (core/build, sanitizeOutboundGraph).
 //
 // Когда заданы и DetourNodeTag, и DetourTag (UI это запрещает, ручная правка
 // состояния — нет), побеждает ссылка на узел: LoadNodesFromSource у такого
@@ -1462,26 +1492,82 @@ func resolveNodeDetours(
 	// поиск (см. развёрнутое обоснование в node_ref.go).
 	idx := buildNodeRefIndex(parserConfig, nodesBySource, allNodes)
 
-	dropSource := make(map[int]bool)
-	var excluded []SourceExclusion
+	// Легаси-хеши мигрируют ДО построения графа: без этого ребро у такого
+	// источника ещё не видно, и топологический порядок вышел бы неполным.
 	for _, i := range refSources {
 		ps := parserConfig.ParserConfig.Proxies[i]
 		if strings.TrimSpace(ps.DetourNodeHash) != "" &&
 			strings.TrimSpace(ps.DetourNodeTag) == "" && strings.TrimSpace(ps.DetourNodeSourceID) == "" {
 			// Состояние до SPEC 112 — ссылка живёт хешем; переводим на объект.
 			migrateLegacyDetourNodeHash(&parserConfig.ParserConfig.Proxies[i], idx, allNodes, i)
-			ps = parserConfig.ParserConfig.Proxies[i]
+		}
+	}
+
+	// SPEC 113-B: граф зависимостей источников. Ребро — «ссылающийся → источник,
+	// в котором живёт хоп». Предварительный резолв здесь НИЧЕГО не штампует:
+	// он нужен ровно ради ребра, и для tag-only ссылок (без source_id) это
+	// единственный способ узнать источник-цель.
+	edges := make(map[int]detourEdge, len(refSources))
+	for _, i := range refSources {
+		ps := parserConfig.ParserConfig.Proxies[i]
+		if res := idx.resolve(ps.DetourNodeSourceID, ps.DetourNodeTag); res.node != nil &&
+			res.node.SourceIndex != UnsetSourceIndex && res.node.SourceIndex != i {
+			edges[i] = detourEdge{target: res.node.SourceIndex, targetKnown: true}
+		}
+	}
+	order, inCycle := detourSourceOrder(refSources, edges)
+
+	dropSource := make(map[int]bool)
+	var excluded []SourceExclusion
+
+	dropWithReason := func(i int, reason string) {
+		ps := parserConfig.ParserConfig.Proxies[i]
+		name := sourceDisplayName(ps, i)
+		debuglog.WarnLog("Detour: %s — источник %q исключён из конфига (fail-closed)", reason, name)
+		dropSource[i] = true
+		excluded = append(excluded, SourceExclusion{
+			SourceID:    strings.TrimSpace(ps.ID),
+			SourceLabel: name,
+			Reason:      reason,
+		})
+	}
+
+	// Кольцо — fail-closed ВСЕХ участников: разорвать его снятием detour значит
+	// пустить трафик источника напрямую, чего пользователь не просил.
+	// Участники перечисляются в порядке источников, чтобы список исключений был
+	// детерминированным.
+	if len(inCycle) > 0 {
+		for _, i := range refSources {
+			if !inCycle[i] {
+				continue
+			}
+			ps := parserConfig.ParserConfig.Proxies[i]
+			targetName := idx.detourTargetName(parserConfig, ps.DetourNodeSourceID)
+			if targetName == "" {
+				if e, ok := edges[i]; ok && e.targetKnown && e.target < len(parserConfig.ParserConfig.Proxies) {
+					targetName = sourceDisplayName(parserConfig.ParserConfig.Proxies[e.target], e.target)
+				}
+			}
+			dropWithReason(i, detourCycleReason(sourceDisplayName(ps, i), targetName))
+		}
+	}
+
+	for _, i := range order {
+		ps := parserConfig.ParserConfig.Proxies[i]
+
+		// Каскад: источник-цель уже выпал — вместе с ним исчез и хоп. Проверка
+		// обязана идти ДО резолва: карта резолва строилась по полному набору
+		// узлов и о выпадениях этой сборки ничего не знает.
+		if e, ok := edges[i]; ok && e.targetKnown && dropSource[e.target] {
+			dropWithReason(i, detourCascadeReason(
+				detourHopDisplayName(ps),
+				sourceDisplayName(parserConfig.ParserConfig.Proxies[e.target], e.target)))
+			continue
 		}
 
 		res := idx.resolve(ps.DetourNodeSourceID, ps.DetourNodeTag)
 		if res.node == nil {
-			debuglog.WarnLog("%s", detourFailureMessage(parserConfig, idx, ps, i))
-			dropSource[i] = true
-			excluded = append(excluded, SourceExclusion{
-				SourceID:    strings.TrimSpace(ps.ID),
-				SourceLabel: sourceDisplayName(ps, i),
-				Reason:      detourFailureReason(parserConfig, idx, ps),
-			})
+			dropWithReason(i, detourFailureReason(parserConfig, idx, ps))
 			continue
 		}
 		target := res.node
@@ -1637,7 +1723,28 @@ func sourceIDOfNode(idx *nodeRefIndex, n *ParsedNode) string {
 	return ""
 }
 
-func sanitizeNodeDetours(nodes []*ParsedNode) {
+// sanitizeNodeDetours выбрасывает узлы, чей detour сломал бы sing-box
+// (SPEC 077 → SPEC 113-B). Fail-closed: выбрасывается УЗЕЛ-носитель, а не поле
+// detour. Снятие поля — тихий переход на прямой дозвон, запрещённый на всех
+// уровнях: переход выбирали, чтобы спрятать за ним трафик.
+//
+// Два случая, оба разрешимые по одному лишь набору узлов:
+//
+//   - самоссылка: node.detour == node.tag;
+//   - кольцо среди узлов: идя по node.detour от узла к узлу, возвращаемся к уже
+//     пройденному (A→B→A и длиннее). Выпадают ВСЕ участники кольца, а не один
+//     замкнувший его: у кольца нет виноватого, и оставить часть значило бы
+//     решить за пользователя, чей переход не важен.
+//
+// Выпадение каскадирует до фикспойнта: узел, ходивший через выброшенного,
+// выбрасывается следом — иначе у него остался бы detour в никуда.
+//
+// Detour на теги вне набора узлов (шаблонные/preset-группы, служебные
+// outbound'ы) здесь не трогается — они сводятся только при финальной сборке, и
+// решение принимает граф-санитайзер (core/build).
+//
+// Возвращает отфильтрованный список узлов.
+func sanitizeNodeDetours(nodes []*ParsedNode) []*ParsedNode {
 	// detourOf[tag] = the detour target of the node with that tag, but only
 	// when the target is itself a node (intra-node edge). Also drop self-refs.
 	nodeByTag := make(map[string]*ParsedNode, len(nodes))
@@ -1646,6 +1753,9 @@ func sanitizeNodeDetours(nodes []*ParsedNode) {
 			nodeByTag[n.Tag] = n
 		}
 	}
+
+	// dropped — теги узлов-носителей, выброшенных fail-closed (SPEC 113-B).
+	dropped := make(map[string]bool)
 
 	detourOf := make(map[string]string)
 	for _, n := range nodes {
@@ -1658,8 +1768,8 @@ func sanitizeNodeDetours(nodes []*ParsedNode) {
 			continue
 		}
 		if d == n.Tag {
-			debuglog.WarnLog("Parser: node %q detour points at itself — dropping detour (direct dial)", n.Tag)
-			delete(n.Outbound, "detour")
+			debuglog.WarnLog("Parser: у узла %q detour указывает на него самого — узел исключён (fail-closed: снять detour значило бы пустить его трафик напрямую)", n.Tag)
+			dropped[n.Tag] = true
 			continue
 		}
 		if _, isNode := nodeByTag[d]; isNode {
@@ -1685,12 +1795,23 @@ func sanitizeNodeDetours(nodes []*ParsedNode) {
 		cur := start
 		for {
 			if color[cur] == gray {
-				// back-edge: cur is on the current path → break the ring here
-				if n := nodeByTag[cur]; n != nil && n.Outbound != nil {
-					debuglog.WarnLog("Parser: detour cycle through node %q — dropping its detour to break the chain", cur)
-					delete(n.Outbound, "detour")
+				// Back-edge: cur лежит на текущем пути. SPEC 113-B — кольцо
+				// fail-closed для ВСЕХ участников: разорвать его снятием detour
+				// значило бы отправить трафик одного из узлов напрямую, молча.
+				at := -1
+				for k, v := range path {
+					if v == cur {
+						at = k
+						break
+					}
 				}
-				delete(detourOf, cur)
+				if at >= 0 {
+					for _, v := range path[at:] {
+						debuglog.WarnLog("Parser: кольцо detour через узел %q — узел исключён (fail-closed, все участники кольца)", v)
+						dropped[v] = true
+						delete(detourOf, v)
+					}
+				}
 				break
 			}
 			if color[cur] == black {
@@ -1707,6 +1828,57 @@ func sanitizeNodeDetours(nodes []*ParsedNode) {
 		for _, t := range path {
 			color[t] = black
 		}
+	}
+
+	if len(dropped) == 0 {
+		return nodes
+	}
+	// Выпадение носителя делает висячими ссылки тех, кто ходил через него.
+	// Каскад до фикспойнта: цель исчезла — исчезает и ссылающийся.
+	for changed := true; changed; {
+		changed = false
+		for tag, target := range detourOf {
+			if !dropped[tag] && dropped[target] {
+				debuglog.WarnLog("Parser: узел %q ходил через исключённый %q — исключён следом (fail-closed)", tag, target)
+				dropped[tag] = true
+				changed = true
+			}
+		}
+	}
+
+	kept := make([]*ParsedNode, 0, len(nodes))
+	for _, n := range nodes {
+		if n != nil && n.Tag != "" && dropped[n.Tag] {
+			continue
+		}
+		kept = append(kept, n)
+	}
+	return kept
+}
+
+// pruneNodesBySource приводит per-source карту в соответствие с оставшимся
+// набором узлов (SPEC 113-B). Узел, выброшенный fail-closed, иначе доехал бы
+// до состава локального селектора и остался бы там ссылкой-призраком.
+func pruneNodesBySource(nodesBySource map[int][]*ParsedNode, allNodes []*ParsedNode) {
+	alive := make(map[*ParsedNode]bool, len(allNodes))
+	for _, n := range allNodes {
+		alive[n] = true
+	}
+	for i, list := range nodesBySource {
+		kept := make([]*ParsedNode, 0, len(list))
+		for _, n := range list {
+			if alive[n] {
+				kept = append(kept, n)
+			}
+		}
+		if len(kept) == len(list) {
+			continue
+		}
+		if len(kept) == 0 {
+			delete(nodesBySource, i)
+			continue
+		}
+		nodesBySource[i] = kept
 	}
 }
 
