@@ -165,31 +165,30 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	if scope == services.ScopeLocal {
 		var err error
 		selectorOptions, defaultSelector, err = config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
-		if err != nil {
-			// Cold-start: config.json ещё не существует (пользователь не нажал
-			// Save). Сваливаемся на "proxy-out" дефолт ниже — не повод писать
-			// ERROR. На любую другую ошибку (битый JSON, нет experimental.clash_api)
-			// логируем громко.
-			if os.IsNotExist(err) {
-				debuglog.DebugLog("clash_api_tab: config.json not present yet (cold start): %v", err)
-			} else {
-				debuglog.ErrorLog("clash_api_tab: failed to get selector groups: %v", err)
-			}
-		}
+		// Сваливаемся на "proxy-out" дефолт ниже; различие «файла ещё нет» и
+		// «файл битый» разбирает logSelectorConfigErr.
+		logSelectorConfigErr(err)
 	}
 	// SPEC 097: при подключении к удалённому демону локальный config.json не
 	// описывает ЕГО ядро — группы спрашиваем у самого демона по gRPC.
-	if remoteGroups, isRemote, groupsErr := RemoteDaemonGroups(); isRemote {
-		// Выбрана удалённая машина: её группы — единственный корректный
-		// источник. При ошибке НЕ откатываемся на локальный config.json —
-		// он описывает другое ядро, и подстановка выдавала бы чужой список
-		// за список выбранной машины.
-		selectorOptions = remoteGroups
-		defaultSelector = ""
-		if len(remoteGroups) > 0 {
-			defaultSelector = remoteGroups[0]
-		} else if groupsErr != nil {
-			debuglog.WarnLog("clash_api_tab: remote groups unavailable: %v", groupsErr)
+	//
+	// SPEC 113-E (M5): только для remote-панели. Спросив глобальный
+	// RemoteDaemonGroups() без гейта по scope, Local-панель получала группы
+	// РОУТЕРА при подключённой машине — тот же класс, что «remote-override
+	// глобальный».
+	if scope == services.ScopeRemote {
+		if remoteGroups, isRemote, groupsErr := RemoteDaemonGroups(); isRemote {
+			// Выбрана удалённая машина: её группы — единственный корректный
+			// источник. При ошибке НЕ откатываемся на локальный config.json —
+			// он описывает другое ядро, и подстановка выдавала бы чужой список
+			// за список выбранной машины.
+			selectorOptions = remoteGroups
+			defaultSelector = ""
+			if len(remoteGroups) > 0 {
+				defaultSelector = remoteGroups[0]
+			} else if groupsErr != nil {
+				debuglog.WarnLog("clash_api_tab: remote groups unavailable: %v", groupsErr)
+			}
 		}
 	}
 	// Заглушка "proxy-out" — только для local: у него ядро есть всегда, и
@@ -327,32 +326,34 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 	// локальный config.json описывает не её ядро — спрашиваем группы у
 	// самого демона по gRPC. Без этого список групп оставался от локального
 	// ядра, хотя прокси внутри уже приезжали с роутера.
-	updateSelectorList := func() {
-		// Сбор данных (чтение config.json, gRPC к демону) — в потоке вызова:
-		// сюда приходят и фоновые пути (daemon-apply → ResetAPIStateFunc из
-		// горутины бэкенда), и обработчики кнопок. Виджеты же трогаем строго
-		// через fyne.Do ниже: прямые SetOptions/SetSelected из горутины
-		// бэкенда ломали очередь UI-вызовов, и статус-панель Local застревала
-		// на «Stopping…» после каждого Stop в daemon-режиме.
-		var updatedSelectorOptions []string
-		var updatedDefaultSelector string
-		var err error
-		if remoteGroups, isRemote, groupsErr := RemoteDaemonGroups(); isRemote {
-			updatedSelectorOptions = remoteGroups
-			if len(remoteGroups) > 0 {
-				updatedDefaultSelector = remoteGroups[0]
-			} else if groupsErr != nil {
-				// Машина недоступна или ядро не запущено — список пуст, но
-				// локальные группы подставлять нельзя: это чужое ядро.
-				debuglog.WarnLog("clash_api_tab: remote groups unavailable: %v", groupsErr)
+	//
+	// SPEC 113-E (M4): сбор данных — ВСЕГДА в фоне. Четыре из пяти путей
+	// вызова приходят с UI-потока (UpdateUI → ResetAPIStateFunc, колбэки
+	// успешного теста связи, клики по ↻ и по пульсу), а сбор ходит на диск и
+	// по gRPC к машине. Недоступный роутер держал главный цикл на весь
+	// dial-дедлайн — отсюда «зависший Stop». Виджеты трогаем строго через
+	// fyne.Do: прямые SetOptions/SetSelected из горутины бэкенда ломали
+	// очередь UI-вызовов, и статус-панель Local застревала на «Stopping…».
+	reloader := &selectorReloader{}
+	reloader.collect = func() selectorGroupsSnapshot {
+		snap := collectSelectorGroups(scope, ac.FileService.ConfigPath)
+		logSelectorConfigErr(snap.err)
+		return snap
+	}
+	reloader.apply = func(snap selectorGroupsSnapshot) {
+		// Все переменные замыкания (groupSelect, selectorOptions,
+		// selectedGroup) читаются и пишутся ТОЛЬКО на UI-потоке: сюда мы
+		// попадаем из горутины сбора, и проверять groupSelect до fyne.Do
+		// значило бы читать его в гонке с конструктором панели.
+		fyne.Do(func() {
+			if groupSelect == nil {
+				return
 			}
-		} else if scope == services.ScopeLocal {
-			updatedSelectorOptions, updatedDefaultSelector, err = config.GetSelectorGroupsFromConfig(ac.FileService.ConfigPath)
-		} else if groupSelect != nil {
-			// Remote без выбранной машины: собеседника нет, значит нет и групп.
-			// Оставить прежние значило бы показывать группы отключённой машины
-			// (а на старте — локальные) как её собственные.
-			fyne.Do(func() {
+			if snap.clearAll {
+				// Remote без выбранной машины: собеседника нет, значит нет и
+				// групп. Оставить прежние значило бы показывать группы
+				// отключённой машины (а на старте — локальные) как её
+				// собственные.
 				selectorOptions = nil
 				selectedGroup = ""
 				groupSelect.SetOptions(nil)
@@ -362,46 +363,49 @@ func CreateProxyListPanel(ac *core.AppController, scope services.ProxyScope) *Pr
 				if ac.APIService != nil {
 					ac.APIService.SetSelectedClashGroupIn(panel.scope, "")
 				}
-			})
-			return
-		}
-		if err == nil && len(updatedSelectorOptions) > 0 && groupSelect != nil {
-			fyne.Do(func() {
-				// Обновляем и переменную selectorOptions, и виджет groupSelect
-				selectorOptions = updatedSelectorOptions
-				groupSelect.SetOptions(updatedSelectorOptions)
+				return
+			}
+			if snap.err != nil || len(snap.options) == 0 {
+				// Читать было нечего (нет config.json, ядро машины ещё не
+				// поднялось) — прежний список не трогаем: пустой дропдаун при
+				// живой группе хуже, чем чуть устаревший.
+				return
+			}
+			// Обновляем и переменную selectorOptions, и виджет groupSelect
+			selectorOptions = snap.options
+			groupSelect.SetOptions(snap.options)
 
-				// Обновить selectedGroup если текущий выбор больше не доступен
-				currentSelected := selectedGroup
-				found := false
-				for _, opt := range updatedSelectorOptions {
-					if opt == currentSelected {
-						found = true
-						break
-					}
+			// Обновить selectedGroup если текущий выбор больше не доступен
+			currentSelected := selectedGroup
+			found := false
+			for _, opt := range snap.options {
+				if opt == currentSelected {
+					found = true
+					break
 				}
-				if !found {
-					if updatedDefaultSelector != "" {
-						selectedGroup = updatedDefaultSelector
-					} else if len(updatedSelectorOptions) > 0 {
-						selectedGroup = updatedSelectorOptions[0]
-					}
-					suppressSelectCallback = true
-					groupSelect.SetSelected(selectedGroup)
-					suppressSelectCallback = false
+			}
+			if !found {
+				if snap.defaultGroup != "" {
+					selectedGroup = snap.defaultGroup
+				} else {
+					selectedGroup = snap.options[0]
 				}
-				if ac.APIService != nil {
-					// Переутверждаем выбор ВСЕГДА, не только при смене: ResetScope
-					// (Stop/Start, Deploy) чистит выбор области в APIService, а
-					// замыкание и виджет помнят прежнюю группу. Без переутверждения
-					// тикер и Refresh ходят с пустой группой при живом дропдауне —
-					// список навсегда застревал на «Reading the machine's selector
-					// groups…», хотя ручной клик по ↻ (замыкание) работал.
-					ac.APIService.SetSelectedClashGroupIn(panel.scope, selectedGroup)
-				}
-			})
-		}
+				suppressSelectCallback = true
+				groupSelect.SetSelected(selectedGroup)
+				suppressSelectCallback = false
+			}
+			if ac.APIService != nil {
+				// Переутверждаем выбор ВСЕГДА, не только при смене: ResetScope
+				// (Stop/Start, Deploy) чистит выбор области в APIService, а
+				// замыкание и виджет помнят прежнюю группу. Без переутверждения
+				// тикер и Refresh ходят с пустой группой при живом дропдауне —
+				// список навсегда застревал на «Reading the machine's selector
+				// groups…», хотя ручной клик по ↻ (замыкание) работал.
+				ac.APIService.SetSelectedClashGroupIn(panel.scope, selectedGroup)
+			}
+		})
 	}
+	updateSelectorList := reloader.Request
 
 	onTestAPIConnection := func() {
 		if ac.APIService == nil {

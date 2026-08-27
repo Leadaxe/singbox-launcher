@@ -96,14 +96,21 @@ func isTunnelAddr(ip net.IP) bool {
 	return false
 }
 
-// isTunnel — три независимых признака туннеля. Достаточно любого: имя ловит
-// юниксовые utun/wg, флаг POINTOPOINT ловит туннели без узнаваемого имени,
-// адрес ловит наш собственный TUN на Windows, где не срабатывают первые два.
+// isTunnel — три независимых признака туннеля. Имя ловит юниксовые utun/wg,
+// адрес ловит наш собственный TUN на Windows, где имя ничего не говорит, а
+// флаг POINTOPOINT — туннели без узнаваемого имени.
+//
+// SPEC 113-E: POINTOPOINT считается признаком туннеля ТОЛЬКО у интерфейса без
+// адреса. Флаг несут не одни туннели: PPPoE и мобильные WAN-модемы — это
+// точка-точка по своей природе, и они же бывают единственным аплинком машины.
+// Отсекая их, List() прятала настоящий аплинк, а диагностика bind_interface
+// объявляла его «без IP-адреса», хотя адрес у него был. Туннель без адреса
+// ничего не теряет: аплинком он всё равно не годится.
 func isTunnel(name string, flags net.Flags, addrs []net.IP) bool {
 	if hasTunnelName(name) {
 		return true
 	}
-	if flags&net.FlagPointToPoint != 0 {
+	if flags&net.FlagPointToPoint != 0 && len(addrs) == 0 {
 		return true
 	}
 	for _, ip := range addrs {
@@ -242,6 +249,68 @@ func Names() []string {
 		names = append(names, i.Name)
 	}
 	return names
+}
+
+// Unfitness — почему существующий интерфейс не годится в аплинки.
+//
+// SPEC 113-E: раньше вызывающие знали ровно два состояния — «в списке» и «нет
+// вовсе», — и всё остальное объявляли отсутствием IP-адреса. Для туннеля это
+// прямая ложь: адрес у него есть, чинить нечего, а совет «получите адрес»
+// уводит не туда. Диагностика обязана говорить по фактам.
+type Unfitness int
+
+const (
+	// UnfitUnknown — интерфейса с таким именем на машине нет.
+	UnfitUnknown Unfitness = iota
+	// UnfitFit — интерфейс годится (есть в List).
+	UnfitFit
+	// UnfitLoopback — петля: трафик наружу через неё не пойдёт по определению.
+	UnfitLoopback
+	// UnfitTunnel — туннель (в том числе собственный TUN лаунчера): привязка
+	// аплинка к нему замкнула бы ядро само на себя.
+	UnfitTunnel
+	// UnfitNoAddress — интерфейс есть и не туннель, но адреса у него нет.
+	UnfitNoAddress
+)
+
+// Fitness сообщает, годится ли интерфейс в аплинки, а если нет — по какой
+// причине. Смотрит на систему СЕЙЧАС, тем же фильтром, что List.
+func Fitness(name string) Unfitness {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return UnfitUnknown
+	}
+	sys, err := net.Interfaces()
+	if err != nil {
+		return UnfitUnknown
+	}
+	for _, si := range sys {
+		if !strings.EqualFold(si.Name, name) {
+			continue
+		}
+		if si.Flags&net.FlagLoopback != 0 {
+			return UnfitLoopback
+		}
+		addrs, _ := si.Addrs()
+		ips := make([]net.IP, 0, len(addrs))
+		for _, a := range addrs {
+			ipn, ok := a.(*net.IPNet)
+			if !ok || ipn.IP == nil || ipn.IP.IsLinkLocalUnicast() {
+				continue
+			}
+			ips = append(ips, ipn.IP)
+		}
+		// Порядок тот же, что в List: туннель проверяется по собранным
+		// адресам, иначе признак «наша подсеть TUN» не вычислить.
+		if isTunnel(si.Name, si.Flags, ips) {
+			return UnfitTunnel
+		}
+		if len(ips) == 0 {
+			return UnfitNoAddress
+		}
+		return UnfitFit
+	}
+	return UnfitUnknown
 }
 
 // Exists сообщает, есть ли на машине интерфейс с таким именем СЕЙЧАС —

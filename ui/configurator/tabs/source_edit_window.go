@@ -615,17 +615,17 @@ func showSourceEditWindow(
 		if mm == nil || sourceIndex >= len(mm.Sources) {
 			return
 		}
-		tag := strings.TrimSpace(s)
-		mm.Sources[sourceIndex].NodeTag = tag
-		// Derived view держит тег в TagMask (ToProxySourceV4) — scratch
-		// обязан идти с ним в ногу, иначе вкладка JSON покажет прошлый тег.
-		scratch.TagMask = tag
-		mm.RefreshDerivedParserConfig()
-		presenter.UpdateParserConfig(mm.ParserConfigJSON)
-		presenter.MarkAsChanged()
-		if guiState.RefreshSourcesList != nil {
-			guiState.RefreshSourcesList()
-		}
+		// SPEC 113-E: правка тега БУФЕРИЗУЕТСЯ в scratch, как и остальные поля
+		// формы, и доезжает до модели только на Save (applyProxyEditToSource
+		// переносит TagMask в NodeTag).
+		//
+		// Прежде она писалась в модель прямо здесь, посимвольно. Идентичность
+		// узла = его тег (SPEC 112), поэтому такая запись означала смену
+		// идентичности БЕЗ сопутствующего сброса ссылок — тот делается только
+		// на Save. Cancel её не откатывал: окно закрывалось, а тег в модели
+		// оставался новым, и ссылающиеся источники выпадали на следующей
+		// сборке fail-closed — по правке, от которой пользователь отказался.
+		scratch.TagMask = strings.TrimSpace(s)
 	}
 
 	prefixEntry.OnChanged = func(s string) {
@@ -1399,6 +1399,7 @@ func showSourceEditWindow(
 		if err := serializeParserAfterSourceEdit(presenter, guiState, presenter.Model(), sourceIndex, &scratch, win); err != nil {
 			return
 		}
+		applyClearedNodeTag(presenter.Model(), nodeIdentityOwner, sourceIndex, scratch.TagMask)
 		// SPEC 112-A: узел переименован — его прежней идентичности больше нет,
 		// и ссылки на неё обязаны погаснуть здесь, а не молча провалиться на
 		// следующей сборке. Порядок важен: сначала запись формы (тег уже
@@ -1425,6 +1426,24 @@ func showSourceEditWindow(
 	syncFormFromModel()
 	win.Show()
 	presenter.UpdateChildOverlay()
+}
+
+// applyClearedNodeTag доносит до модели ОЧИЩЕННОЕ поле тега (SPEC 113-E).
+//
+// Правка тега буферизуется в scratch.TagMask и доезжает через
+// applyProxyEditToSource — но тот пустую маску намеренно игнорирует: у
+// подписки «маски нет» и «сотри тег» это разные вещи, и различить их там
+// нечем. У источников, ИМЕНУЮЩИХ узел (server, chain), пустое поле значит
+// именно «тега нет»: дальше NodeTagOrLabel сам откатится на подпись, как и до
+// разделения ролей.
+func applyClearedNodeTag(m *wizardmodels.WizardModel, nodeIdentityOwner bool, sourceIndex int, tagMask string) {
+	if !nodeIdentityOwner || strings.TrimSpace(tagMask) != "" {
+		return
+	}
+	if m == nil || sourceIndex < 0 || sourceIndex >= len(m.Sources) {
+		return
+	}
+	m.Sources[sourceIndex].NodeTag = ""
 }
 
 // resetRefsAfterNodeRename гасит detour-ссылки на узел, чьё имя только что

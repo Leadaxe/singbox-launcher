@@ -421,6 +421,12 @@ func CreateSettingsTab(presenter *wizardpresentation.WizardPresenter) fyne.Canva
 	gs := presenter.GUIState()
 	box := container.NewVBox()
 
+	// SPEC 113-E (M6): подсказки для поля аплинка греем ЗАРАНЕЕ и в фоне —
+	// у локального пути это подпроцесс `networksetup`, у remote — REST к
+	// машине. Строки вкладки при этом строятся из кэша и не ждут ни того,
+	// ни другого.
+	WarmUpInterfaceHints(model)
+
 	refresh := func() {
 		// SPEC 097: платформа ЦЕЛЕВОЙ машины, не той, где запущен лаунчер.
 		// Для local Target нормализуется в runtime.GOOS, так что поведение
@@ -650,22 +656,39 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		// В выпадающем списке — ЧИСТЫЕ имена: SelectEntry подставляет
 		// выбранный пункт в поле дословно, и подпись вида «en0 — Wi-Fi»
 		// уехала бы в конфиг целиком. Расшифровка живёт строкой ниже.
-		names, hints := interfacePickOptions(model, disp)
+		//
+		// SPEC 113-E (M6): ряд строится из того, что известно СЕЙЧАС. На
+		// remote-таргете это кэш машины: раньше здесь синхронно ходил REST с
+		// mTLS и дедлайном в десятки секунд — на каждый refresh вкладки, — и
+		// неотвечающая машина вешала приложение целиком.
+		names, hints, pending := interfacePickOptions(model, disp)
 		se := widget.NewSelectEntry(names)
 		se.SetText(disp)
 		se.PlaceHolder = locale.T("empty — follow system default route")
 
 		hint := newInterfaceHintLabel()
-		hint.SetText(interfaceHintFor(model, disp, hints))
+		hint.SetText(interfaceHintFor(model, disp, hints, pending))
 
 		se.OnChanged = func(s string) {
 			s = strings.TrimSpace(s)
 			model.SettingsVars[name] = s
-			hint.SetText(interfaceHintFor(model, s, hints))
+			hint.SetText(interfaceHintFor(model, s, hints, pending))
 			presenter.MarkAsChanged()
 			applyOnChangeAndRefresh(presenter, td, model, name)
 			maybeRefreshSettingsAfterVarChange(gs, td, name)
 		}
+
+		// Ответ доехал — дозаполняем список и подпись на месте, не пересобирая
+		// вкладку: пользователь мог уже что-то печатать в поле. Подписка одна
+		// на приложение и вытесняется следующей пересборкой строки.
+		subscribeInterfaceHints(func() {
+			fyne.Do(func() {
+				freshNames, freshHints, stillPending := interfacePickOptions(model, se.Text)
+				hints, pending = freshHints, stillPending
+				se.SetOptions(freshNames)
+				hint.SetText(interfaceHintFor(model, strings.TrimSpace(se.Text), freshHints, stillPending))
+			})
+		})
 
 		field := container.NewVBox(se, hint)
 		row := container.NewBorder(nil, nil, titleLab, resetBtn, field)

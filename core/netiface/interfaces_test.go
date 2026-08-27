@@ -31,6 +31,59 @@ func TestIsTunnelByPointToPointFlag(t *testing.T) {
 	}
 }
 
+// SPEC 113-E: POINTOPOINT с адресом — это не туннель, а PPPoE или мобильный
+// WAN-модем, и он бывает единственным аплинком машины. Раньше флаг рубил его
+// из List() безусловно, и диагностика bind_interface объявляла его «без
+// IP-адреса», хотя адрес у него был.
+func TestPointToPointWithAddressIsNotTunnel(t *testing.T) {
+	if isTunnel("wwan0", net.FlagUp|net.FlagPointToPoint, []net.IP{net.ParseIP("100.64.7.9")}) {
+		t.Error("мобильный WAN с адресом отсеян как туннель")
+	}
+	// Тот же интерфейс без адреса аплинком всё равно не годится — прежняя
+	// ветка остаётся в силе.
+	if !isTunnel("wwan0", net.FlagUp|net.FlagPointToPoint, nil) {
+		t.Error("POINTOPOINT без адреса обязан отсеиваться")
+	}
+	// Узнаваемое туннельное имя перевешивает адрес: собственный TUN ядра с
+	// адресом аплинком быть не может.
+	if !isTunnel("utun3", net.FlagUp|net.FlagPointToPoint, []net.IP{net.ParseIP("10.7.0.2")}) {
+		t.Error("именованный туннель с адресом пропущен в аплинки")
+	}
+}
+
+// SPEC 113-E: диагностика обязана называть настоящую причину. Прежде всякий
+// существующий, но не прошедший фильтр интерфейс объявлялся «без IP-адреса» —
+// для туннеля и для петли это прямая ложь.
+func TestFitnessSeparatesReasons(t *testing.T) {
+	if got := Fitness(""); got != UnfitUnknown {
+		t.Errorf(`Fitness("") = %v, ожидалось UnfitUnknown`, got)
+	}
+	if got := Fitness("definitely-no-such-iface-42"); got != UnfitUnknown {
+		t.Errorf("Fitness(несуществующий) = %v, ожидалось UnfitUnknown", got)
+	}
+	// Петля есть на любой машине под любым из двух имён.
+	loopbackSeen := false
+	for _, name := range []string{"lo0", "lo"} {
+		if !Exists(name) {
+			continue
+		}
+		loopbackSeen = true
+		if got := Fitness(name); got != UnfitLoopback {
+			t.Errorf("Fitness(%q) = %v, ожидалось UnfitLoopback", name, got)
+		}
+	}
+	if !loopbackSeen {
+		t.Skip("на этой машине нет ни lo0, ни lo — сверять не с чем")
+	}
+	// Всё, что List() отдал, обязано числиться годным: два ответа на один
+	// вопрос разъехались бы, и поле противоречило бы выпадающему списку.
+	for _, ifc := range ListOrEmpty() {
+		if got := Fitness(ifc.Name); got != UnfitFit {
+			t.Errorf("Fitness(%q) = %v, но List() его предлагает", ifc.Name, got)
+		}
+	}
+}
+
 func TestIsTunnelByOwnTunAddress(t *testing.T) {
 	// Главный случай Windows: адаптер Wintun называется «Подключение по
 	// локальной сети 2» и не имеет POINTOPOINT — узнать его можно только по

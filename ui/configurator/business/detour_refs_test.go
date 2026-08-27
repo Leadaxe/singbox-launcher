@@ -83,6 +83,50 @@ func TestResetDetourNodeRefs_TagOnlyRefOnlyWhenUnambiguous(t *testing.T) {
 	}
 }
 
+// SPEC 113-E, регресс: уникальность тега считается ДО перезаписи модели.
+//
+// Сброс зовётся УЖЕ после того, как форма записала новое имя. На старом коде
+// подсчёт шёл по изменённой модели: переименованный источник тег сменил, тёзка
+// оставался один — тег объявлялся уникальным, и tag-only ссылка на ТЁЗКУ
+// гасла, хотя его никто не переименовывал.
+func TestResetDetourNodeRefs_TagOnlyRefSurvivesRenameOfNamesake(t *testing.T) {
+	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{
+		// 01WARP уже переименован формой: в модели новый тег, сброс зовут со
+		// старым.
+		{ID: "01WARP", Type: wizardmodels.SourceTypeServer, Enabled: true, NodeTag: "hop-renamed"},
+		// Тёзка, которого никто не трогал: ссылка ниже могла вести к нему.
+		{ID: "01TWIN", Type: wizardmodels.SourceTypeServer, Enabled: true, NodeTag: "hop"},
+		{ID: "01PROTON", Type: wizardmodels.SourceTypeSubscription, Enabled: true,
+			Label: "Proton NL", DetourNodeTag: "hop"},
+	}}
+
+	affected := ResetDetourNodeRefs(m, "01WARP", "hop")
+
+	if len(affected) != 0 {
+		t.Fatalf("неоднозначная tag-only ссылка трогаться не должна, затронуто %v", affected)
+	}
+	if m.Sources[2].DetourNodeTag != "hop" {
+		t.Errorf("ссылка на живого тёзку стёрта: %+v", m.Sources[2])
+	}
+}
+
+// Обратная сторона того же правила: тёзки нет — ссылка однозначно вела на
+// переименованный узел и обязана погаснуть, даже когда тег в модели уже новый.
+func TestResetDetourNodeRefs_TagOnlyRefClearedAfterRenameWithoutNamesake(t *testing.T) {
+	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{
+		{ID: "01WARP", Type: wizardmodels.SourceTypeServer, Enabled: true, NodeTag: "hop-renamed"},
+		{ID: "01PROTON", Type: wizardmodels.SourceTypeSubscription, Enabled: true,
+			Label: "Proton NL", DetourNodeTag: "hop"},
+	}}
+
+	if affected := ResetDetourNodeRefs(m, "01WARP", "hop"); len(affected) != 1 {
+		t.Fatalf("однозначная tag-only ссылка обязана гаснуть, затронуто %v", affected)
+	}
+	if m.Sources[1].DetourNodeTag != "" {
+		t.Errorf("ссылка не погасла: %+v", m.Sources[1])
+	}
+}
+
 // Пикер дорезолвивает переходную ссылку (тег без source_id) до полного ref'а:
 // цель однозначна, и сохранение формы запишет уже объект.
 func TestDetourOptionsWithNodes_UpgradesTagOnlyRef(t *testing.T) {

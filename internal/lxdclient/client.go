@@ -146,8 +146,20 @@ func (e *ApplyError) Rejected() bool { return e.StatusCode == http.StatusUnproce
 // журналируются by design: через /admin/apply едет конфиг с приватными
 // ключами узлов, а журнал открывается кнопкой и копируется в тикет.
 func (c *Client) do(method, path string, body io.Reader, contentType string) (*http.Response, error) {
+	return c.doCtx(context.Background(), method, path, body, contentType)
+}
+
+// doCtx — то же, но с собственным сроком вызова. Нужен там, где общий
+// restTimeout заведомо велик: у рабочих вызовов (apply, ресурсы) тридцать
+// секунд — запас на медленный канал, а у справочных запросов ровно наоборот
+// цена ожидания выше цены ответа (SPEC 113-E M6: пикер интерфейсов).
+//
+// Дедлайн задаётся контекстом, а не подменой c.httpc.Timeout: клиент один на
+// вызов, но Transport в нём общий, и трогать поле http.Client параллельным
+// вызовам нельзя.
+func (c *Client) doCtx(ctx context.Context, method, path string, body io.Reader, contentType string) (*http.Response, error) {
 	started := time.Now()
-	req, err := http.NewRequest(method, c.baseURL()+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL()+path, body)
 	if err != nil {
 		c.record(method+" "+path, started, 0, err)
 		return nil, err

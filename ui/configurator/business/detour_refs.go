@@ -43,21 +43,31 @@ func ResetDetourNodeRefs(m *wizardmodels.WizardModel, sourceID, nodeTag string) 
 		return nil
 	}
 
-	// Тег узла уникален среди серверов? Только тогда tag-only ссылку можно
+	// Тег узла был уникален среди серверов? Только тогда tag-only ссылку можно
 	// уверенно приписать этому узлу.
+	//
+	// Считаем ДО перезаписи, то есть по состоянию «переименованный источник ещё
+	// носит nodeTag»: сам он в подсчёт не входит, а любой ДРУГОЙ носитель того
+	// же имени делает тег неоднозначным (SPEC 113-E). Раньше подсчёт шёл по уже
+	// изменённой модели — переименованный источник тег сменил, тёзка оставался
+	// один, тег объявлялся уникальным, и сброс гасил ЧУЖИЕ tag-only ссылки.
 	tagIsUnique := nodeTag != ""
 	if tagIsUnique {
-		seen := 0
 		for i := range m.Sources {
 			s := &m.Sources[i]
 			if s.Type != wizardmodels.SourceTypeServer && s.Type != wizardmodels.SourceTypeChain {
 				continue
 			}
+			// Переименованный источник — это и есть прежний носитель имени;
+			// сравнивать его текущий (уже новый) тег бессмысленно.
+			if sourceID != "" && strings.TrimSpace(s.ID) == sourceID {
+				continue
+			}
 			if strings.TrimSpace(s.NodeTagOrLabel()) == nodeTag {
-				seen++
+				tagIsUnique = false
+				break
 			}
 		}
-		tagIsUnique = seen <= 1
 	}
 
 	var affected []string

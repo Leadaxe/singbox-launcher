@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"time"
 
 	"singbox-launcher/core/netiface"
 	"singbox-launcher/internal/debuglog"
@@ -20,6 +21,16 @@ func init() {
 	configuratortabs.SetRemoteInterfaceProvider(remoteInterfaceNames)
 }
 
+// interfacePickTimeout — сколько ждём список интерфейсов для ПОДСКАЗКИ в поле.
+//
+// Радикально меньше общего REST-дедлайна клиента (тридцать секунд): тот —
+// запас для рабочих вызовов, где ответ нужен любой ценой. Здесь цена обратная:
+// подсказки — удобство, поле и без них рабочее, а пока запрос в полёте, он
+// держит single-flight слот машины, и подпись под полем стоит на «идёт
+// загрузка». Пять секунд — предел, за которым честнее сказать «проверить
+// нечем», чем продолжать ждать (SPEC 113-E M6).
+const interfacePickTimeout = 5 * time.Second
+
 // remoteInterfaceNames спрашивает у демона машины её интерфейсы и фильтрует их
 // так же, как локальные: демон отдаёт ВСЁ, включая lo и туннели, и прямо
 // оговаривает, что отбор — задача UI (см. lxdclient.Client.HostInterfaces).
@@ -32,7 +43,7 @@ func remoteInterfaceNames(machineID string) ([]string, map[string]string, bool) 
 	if !connected {
 		return nil, nil, false
 	}
-	res, err := transport.HostInterfaces()
+	res, err := transport.HostInterfacesWithin(interfacePickTimeout)
 	if err != nil {
 		// Старый демон — штатный случай, а не поломка: 404 отличён от обрыва
 		// на уровне клиента, и оба здесь значат одно — подсказок не будет.

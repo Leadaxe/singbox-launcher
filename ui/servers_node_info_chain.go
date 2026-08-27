@@ -197,6 +197,19 @@ func newChainPositionToggle(
 					debuglog.WarnLog("chain toggle: %s#%d enabled=%v: %v", chainTag, pos, enabled, err)
 					errLabel.SetText(chainToggleErrorText(err))
 					errLabel.Show()
+					if chainToggleNeedsRevert(err, warmupErr, ok) {
+						// Двойной сбой: ядро переключение отвергло И состав
+						// перечитать не удалось — приводить галочку не по чему,
+						// а оставить её нажатой значит соврать про состояние
+						// ядра. Возвращаем ровно то положение, что было до
+						// клика (SPEC 113-E).
+						//
+						// Под applying: SetChecked зовёт OnChanged, и без флага
+						// откат сам ушёл бы в ядро обратным тумблером.
+						*applying = true
+						check.SetChecked(!enabled)
+						*applying = false
+					}
 				case strings.TrimSpace(warmupErr) != "":
 					// Флаг ядро применило, а звено не поднялось. Это диагноз
 					// узла, а не отказ переключения: галочка остаётся там,
@@ -213,6 +226,24 @@ func newChainPositionToggle(
 		}()
 	})
 	return check
+}
+
+// chainToggleNeedsRevert — надо ли самим вернуть галочку в пред-кликовое
+// положение (SPEC 113-E).
+//
+// Три исхода клика, и откат нужен ровно в одном:
+//   - ядро приняло переключение (err == nil) — галочка права, а состав всё
+//     равно приедет из refresh;
+//   - ядро отвергло, но состав перечитан (refreshed) — галочку приведёт к
+//     состоянию ядра applyChainRows, и второй источник правды тут вреден;
+//   - ядро отвергло И состав перечитать не удалось — приводить не по чему,
+//     а оставленная нажатой галочка врёт про состояние ядра.
+//
+// warmupErr к откату отношения не имеет: флаг ядро применило, не поднялось
+// само звено — это диагноз узла, и галочка остаётся там, куда её поставили.
+func chainToggleNeedsRevert(err error, warmupErr string, refreshed bool) bool {
+	_ = warmupErr
+	return err != nil && !refreshed
 }
 
 // applyChainRows приводит строки с галочками к состоянию, прочитанному у
