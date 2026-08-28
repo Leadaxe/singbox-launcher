@@ -278,6 +278,11 @@ func (svc *ConfigService) updateConfigFromSubscriptions(triggerRebuild bool) (*c
 	subscription.LookupCachedBody = prevHook
 	if err != nil {
 		progressCallback(-1, fmt.Sprintf("Error: %v", err))
+		// Причины по источникам приезжают вместе с ошибкой (генератор отдаёт
+		// диагностический результат, когда узлов не набралось ни одного).
+		// Иначе обновление единственной сломанной подписки снимало бы прежние
+		// пометки и не ставило новых — источник выглядел бы здоровым.
+		feedParserDiagnosticsOnFailure(result)
 		return result, fmt.Errorf("failed to generate outbounds: %w", err)
 	}
 	subscription.LogDuplicateTagStatistics(tagCounts, "Parser")

@@ -149,6 +149,17 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 	if err != nil {
 		timing.LogTiming("generate outbounds", time.Since(generateStartTime))
 		debuglog.DebugLog("parseAndPreview: Failed to generate outbounds: %v", err)
+		// Конфига не будет, но причины по источникам — есть: генератор отдаёт
+		// их вместе с ошибкой, когда ни один источник не дал узлов. Без этой
+		// ветки единственная подписка, ответившая «подписка неактивна»,
+		// оставалась в списке без пометки: Preview причину показывал (он
+		// разбирает источник сам), а строку красит отчёт сборки, до которого
+		// управление не доходило.
+		if result != nil {
+			gen := config.StartBuildReport()
+			model.BuildReportGen = gen
+			corepkg.FeedBuildReportFromParser(gen, result)
+		}
 		updater.UpdateSaveButtonText("Save")
 		return fmt.Errorf("failed to generate outbounds: %w", err)
 	}

@@ -1216,13 +1216,36 @@ func GenerateOutboundsFromParserConfig(
 	subscription.RecordParseFailures = prevRecordHook
 
 	if len(allNodes) == 0 {
+		// Узлов не набралось ни одного — конфига не будет. Но причины УЖЕ
+		// собраны выше (parseFailedSources), и возвращать их некому:
+		// раньше здесь стоял голый `return nil, err`, и вместе с результатом
+		// на пол летела вся диагностика. Наружу это выглядело так, что
+		// подписка с внятным ответом провайдера («подписка неактивна»)
+		// молчала в строке Sources, хотя Preview ту же причину показывал:
+		// Preview разбирает источник сам, а строку красит отчёт сборки.
+		//
+		// Поэтому результат возвращается ВМЕСТЕ с ошибкой. Ошибка по-прежнему
+		// не даёт собрать конфиг — вызывающий обязан её уважать; результат
+		// несёт только диагностику (узлов в нём нет по определению), и его
+		// единственный потребитель — фид отчёта.
+		diag := &OutboundGenerationResult{
+			TotalSources:       totalSources,
+			SucceededSources:   succeededSources,
+			FailedSources:      failedSources,
+			SkippedNaiveNodes:  skippedNaive,
+			SkippedNaiveReason: naiveReason,
+			// ExcludedSources здесь пуст по существу, а не по недосмотру:
+			// исключения считает resolveNodeDetours ниже, и при нулевом наборе
+			// узлов исключать нечего — до графа ссылок дело не дошло.
+			ParseFailedSources: parseFailedSources,
+		}
 		if totalSources == 0 {
-			return nil, fmt.Errorf("no enabled sources (all subscriptions disabled in wizard)")
+			return diag, fmt.Errorf("no enabled sources (all subscriptions disabled in wizard)")
 		}
 		if skippedNaive > 0 {
-			return nil, fmt.Errorf("no usable nodes: %d naive node(s) skipped (%s)", skippedNaive, naiveReason)
+			return diag, fmt.Errorf("no usable nodes: %d naive node(s) skipped (%s)", skippedNaive, naiveReason)
 		}
-		return nil, fmt.Errorf("no nodes parsed from any source")
+		return diag, fmt.Errorf("no nodes parsed from any source")
 	}
 
 	// SPEC 110: источники-цепочки становятся узлами здесь — их позиции

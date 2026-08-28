@@ -129,6 +129,11 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	cacheSnap, parserRes, snapErr := buildSnapshotFromRawCache(s, execDir, nil, td)
 	cacheMissing := errors.Is(snapErr, ErrRawCacheIncomplete)
 	if snapErr != nil && !cacheMissing {
+		// Сборка не состоялась — но если разбор успел объяснить, почему
+		// (все источники пусты, провайдер ответил отказом), это объяснение
+		// обязано доехать до списка источников. Молчаливый выход оставлял бы
+		// сломанную подписку с виду здоровой.
+		feedParserDiagnosticsOnFailure(parserRes)
 		return fmt.Errorf("build snapshot from raw cache: %w", snapErr)
 	}
 
@@ -149,6 +154,7 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		}
 		cacheSnap, parserRes, snapErr = buildSnapshotFromRawCache(s, execDir, nil, td)
 		if snapErr != nil {
+			feedParserDiagnosticsOnFailure(parserRes)
 			return fmt.Errorf("rebuild snapshot after auto-update: %w", snapErr)
 		}
 	}

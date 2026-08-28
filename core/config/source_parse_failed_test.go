@@ -153,6 +153,57 @@ func TestGenerateOutbounds_ProviderAnnounceLeadsTheReason(t *testing.T) {
 	}
 }
 
+// ЕДИНСТВЕННЫЙ источник, не давший узлов: сборка проваливается — и всё равно
+// обязана вернуть причины.
+//
+// Регрессия из жизни: у пользователя одна подписка, провайдер отвечает
+// «Подписка неактивна». Узлов ноль → генератор выходил голым `return nil, err`,
+// и уже собранная причина летела на пол вместе с результатом. В окне источника
+// причина была (Preview разбирает источник сам), а строка Sources стояла без
+// пометки — тот самый парадокс «здоровый на вид сломанный источник», ради
+// которого вид записи source_parse_failed и заводили. Все прежние тесты
+// проверяли смешанный случай (живой сосед + мёртвый), и дыру не ловили.
+func TestGenerateOutbounds_SoleDeadSourceStillReportsReason(t *testing.T) {
+	pc := &ParserConfig{}
+	pc.ParserConfig.Version = ParserConfigVersion
+	pc.ParserConfig.Proxies = []ProxySource{{
+		ID:               "01DEAD",
+		Label:            "AL: Liberty VPN",
+		Source:           "https://example.com/dead",
+		ProviderAnnounce: "Подписка неактивна. Продлите подписку в Боте/WebUI",
+	}}
+
+	res, err := GenerateOutboundsFromParserConfig(pc, map[string]int{}, nil,
+		loaderWithReasons(nil, map[int][]string{0: {
+			"vless outbound rejected: empty user id — the server returned a placeholder, subscription may be expired",
+		}}),
+		DirectionBuildOptions{})
+
+	// Ошибка обязана остаться: конфига действительно нет, и вызывающий не
+	// вправе принять эту сборку за удачную.
+	if err == nil {
+		t.Fatal("сборка без единого узла обязана вернуть ошибку")
+	}
+	// …но диагностика едет ВМЕСТЕ с ней.
+	if res == nil {
+		t.Fatal("результат выброшен вместе с ошибкой — строку Sources снова нечем раскрасить")
+	}
+	if len(res.ParseFailedSources) != 1 {
+		t.Fatalf("записей о пустых источниках %d, ожидалась 1: %+v",
+			len(res.ParseFailedSources), res.ParseFailedSources)
+	}
+	got := res.ParseFailedSources[0]
+	if got.SourceID != "01DEAD" {
+		t.Errorf("запись привязана к %q, ожидался 01DEAD", got.SourceID)
+	}
+	if !strings.Contains(got.Reason, "Подписка неактивна") {
+		t.Errorf("сообщение провайдера потерялось: %q", got.Reason)
+	}
+	if !strings.Contains(got.Reason, "empty user id") {
+		t.Errorf("наша причина потерялась: %q", got.Reason)
+	}
+}
+
 // Хук разбора не переживает свою сборку: глобальная переменная, оставшаяся от
 // прошлого прогона, приписала бы чужие причины следующему.
 func TestGenerateOutbounds_ParseFailureHookRestored(t *testing.T) {

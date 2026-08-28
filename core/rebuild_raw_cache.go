@@ -118,7 +118,11 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 	result, err := config.GenerateOutboundsFromParserConfig(&parserCfg, tagCounts, nil, loadNodesFunc,
 		directionBuildOptionsFrom(td))
 	if err != nil {
-		return nil, nil, fmt.Errorf("generate outbounds from raw cache: %w", err)
+		// Кэш вернулся, но узлов из него не набралось. Снимок не построен —
+		// зато диагностика по источникам приехала вместе с ошибкой, и её
+		// отдаём: она объясняет, ПОЧЕМУ сборка не состоялась. Отбросив её
+		// здесь, мы оставили бы сломанный источник без пометки в списке.
+		return nil, result, fmt.Errorf("generate outbounds from raw cache: %w", err)
 	}
 
 	subscription.LogDuplicateTagStatistics(tagCounts, "Rebuild")
