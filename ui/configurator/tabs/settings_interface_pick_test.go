@@ -81,6 +81,66 @@ func TestInterfaceHintSaysLoadingWhilePending(t *testing.T) {
 	}
 }
 
+// В sing-box route.auto_detect_interface перебивает route.default_interface:
+// при включённой галке выбранное имя ядро молча игнорирует. Активный дропдаун
+// в этот момент обманывает пользователя, поэтому строка обязана гаснуть.
+
+func TestInterfacePickSuppressedByAutoDetect(t *testing.T) {
+	on := map[string]wizardtemplate.ResolvedVar{autoDetectInterfaceVar: {Scalar: "true"}}
+	if !interfacePickSuppressed(on) {
+		t.Error("автоопределение включено — выбор интерфейса не имеет силы, поле обязано гаснуть")
+	}
+	off := map[string]wizardtemplate.ResolvedVar{autoDetectInterfaceVar: {Scalar: "false"}}
+	if interfacePickSuppressed(off) {
+		t.Error("автоопределение снято — поле обязано работать")
+	}
+}
+
+func TestInterfacePickNotSuppressedWithoutTheVar(t *testing.T) {
+	// Переменной нет в шаблоне = автоопределения нет. Гасить поле «на всякий
+	// случай» значило бы отнять настройку у шаблона, который её не запрещал.
+	if interfacePickSuppressed(map[string]wizardtemplate.ResolvedVar{}) {
+		t.Error("без auto_detect_interface подавлять нечем")
+	}
+}
+
+func TestInterfaceRowEnabledCombinesGateAndSuppression(t *testing.T) {
+	// Состояние строки — конъюнкция: гейт шаблона И отсутствие подавления.
+	// Ни одна из половин не должна уметь включить поле в одиночку.
+	on := map[string]wizardtemplate.ResolvedVar{autoDetectInterfaceVar: {Scalar: "true"}}
+	off := map[string]wizardtemplate.ResolvedVar{autoDetectInterfaceVar: {Scalar: "false"}}
+
+	if interfaceRowEnabled(true, on) {
+		t.Error("гейт открыт, но автоопределение включено — поле обязано быть выключено")
+	}
+	if interfaceRowEnabled(false, off) {
+		t.Error("автоопределение снято, но гейт шаблона закрыт — поле обязано остаться выключенным")
+	}
+	if !interfaceRowEnabled(true, off) {
+		t.Error("гейт открыт и автоопределение снято — поле обязано работать")
+	}
+}
+
+// Подпись обязана объяснять, ПОЧЕМУ поле погашено. Прежняя строка «Traffic will
+// go through this interface» под погашенным дропдауном — прямая ложь: трафик
+// пойдёт через интерфейс, который выберет ядро.
+func TestInterfaceHintExplainsSuppression(t *testing.T) {
+	m := &wizardmodels.WizardModel{}
+	hints := map[string]string{"en0": "en0 — Wi-Fi (192.168.10.124)"}
+
+	got := interfaceHintForRow(m, "en0", hints, false, true)
+	if got == hints["en0"] {
+		t.Fatal("при подавлении подпись расшифровывает выбранное имя — она обещает то, чего не будет")
+	}
+	if got == "" {
+		t.Fatal("погашенное поле обязано объяснять причину, а не молчать")
+	}
+	// А без подавления — обычное поведение, ничего не подменяем.
+	if got := interfaceHintForRow(m, "en0", hints, false, false); got != hints["en0"] {
+		t.Errorf("подпись = %q, без подавления ожидалась расшифровка", got)
+	}
+}
+
 func TestInterfacePickLocalNamesAreBare(t *testing.T) {
 	// В выпадающем списке SelectEntry лежит то, что уедет в конфиг дословно:
 	// имя обязано быть чистым, без подписи вида «en0 — Wi-Fi (…)».

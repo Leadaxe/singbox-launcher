@@ -34,6 +34,10 @@ type gateSubscriber struct {
 	// last — последнее применённое значение гейта (кэш): без него каждый
 	// батч дёргал бы Enable/Disable вхолостую.
 	last bool
+	// recalc — своя формула состояния вместо гейта переменной. Непусто только
+	// у подписок subscribeOn, где условие шире шаблонного гейта (поведение
+	// ядра). nil = считать по varName, как обычно.
+	recalc func(resolved map[string]wizardtemplate.ResolvedVar) bool
 }
 
 // gateIndex — инвертированный индекс `имя переменной → подписчики`.
@@ -62,6 +66,28 @@ func (idx *gateIndex) subscribe(vd wizardtemplate.TemplateVar, enabled bool, app
 		return
 	}
 	sub := &gateSubscriber{varName: vd.Name, apply: apply, last: enabled}
+	idx.all = append(idx.all, sub)
+	for _, dep := range deps {
+		idx.byDep[dep] = append(idx.byDep[dep], sub)
+	}
+}
+
+// subscribeOn регистрирует подписчика на ЯВНО заданные имена, минуя гейт
+// переменной, и сам считает своё состояние переданным recalc.
+//
+// Нужно там, где зависимость диктует не шаблон, а поведение ядра: у
+// bind_interface гейта в шаблоне нет вовсе (и быть не обязано — шаблон
+// пользовательский), но auto_detect_interface перебивает его в самом sing-box.
+// Через subscribe такая строка не подписалась бы ни на что, и клик по галке
+// оставлял бы её в прежнем состоянии до полной пересборки вкладки.
+//
+// recalc, а не общий VarUISatisfiedFor: состояние такой строки — конъюнкция
+// гейта шаблона и внешнего условия, и знает о ней только вызывающий.
+func (idx *gateIndex) subscribeOn(deps []string, enabled bool, recalc func(resolved map[string]wizardtemplate.ResolvedVar) bool, apply func(bool)) {
+	if idx == nil || apply == nil || recalc == nil || len(deps) == 0 {
+		return
+	}
+	sub := &gateSubscriber{apply: apply, last: enabled, recalc: recalc}
 	idx.all = append(idx.all, sub)
 	for _, dep := range deps {
 		idx.byDep[dep] = append(idx.byDep[dep], sub)
@@ -104,11 +130,16 @@ func (idx *gateIndex) recompute(
 ) int {
 	updated := 0
 	for _, sub := range idx.affected(changed) {
-		vd, ok := varByName[sub.varName]
-		if !ok {
-			continue
+		var now bool
+		if sub.recalc != nil {
+			now = sub.recalc(resolved)
+		} else {
+			vd, ok := varByName[sub.varName]
+			if !ok {
+				continue
+			}
+			now = wizardtemplate.VarUISatisfiedFor(vd, varByName, resolved, target)
 		}
-		now := wizardtemplate.VarUISatisfiedFor(vd, varByName, resolved, target)
 		if now == sub.last {
 			continue // состояние не изменилось — виджет не трогаем
 		}

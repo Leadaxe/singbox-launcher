@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/netiface"
+	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/locale"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -272,6 +273,58 @@ func interfacePickOptions(model *wizardmodels.WizardModel, current string) (name
 		hints[ifc.Name] = ifc.Label()
 	}
 	return names, hints, false
+}
+
+// autoDetectInterfaceVar — переменная шаблона, несущая route.auto_detect_interface.
+const autoDetectInterfaceVar = "auto_detect_interface"
+
+// interfacePickSuppressed — выбор интерфейса не имеет силы, потому что включено
+// автоопределение.
+//
+// В sing-box route.auto_detect_interface ПЕРЕБИВАЕТ route.default_interface:
+// при включённом автоопределении ядро молча игнорирует выбранное имя. Активный
+// дропдаун в этот момент — обман: пользователь выбирает то, что ни на что не
+// влияет, и потом ищет причину «настройка не применилась» в чём угодно, кроме
+// галки выше.
+//
+// Проверка живёт в коде, а не только в гейте шаблона (`#enable`), намеренно:
+// приоритет — свойство САМОГО ЯДРА, а не редактируемой пользователем разметки.
+// Шаблон лежит на диске у пользователя, переживает обновления лаунчера и может
+// быть отредактирован руками — приоритет ядра от этого не исчезнет. Гейту
+// шаблона это не мешает: он вычисляется отдельно, и оба условия сводятся через
+// «и» (см. interfaceRowEnabled).
+//
+// Отсутствие переменной в шаблоне = автоопределения нет → не подавляем.
+func interfacePickSuppressed(resolved map[string]wizardtemplate.ResolvedVar) bool {
+	r, ok := resolved[autoDetectInterfaceVar]
+	if !ok {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(r.Scalar), "true")
+}
+
+// interfaceRowEnabled — итоговое состояние строки выбора аплинка: гейт шаблона
+// И отсутствие подавления автоопределением.
+//
+// Чистая функция, потому что здесь и только здесь живёт вся логика «активен ли
+// пикер»: и первичная сборка вкладки, и реактивный пересчёт по клику зовут её,
+// и разойтись им негде.
+func interfaceRowEnabled(templateGate bool, resolved map[string]wizardtemplate.ResolvedVar) bool {
+	return templateGate && !interfacePickSuppressed(resolved)
+}
+
+// interfaceHintForRow — подпись под полем с учётом подавления.
+//
+// Когда выбор подавлен, расшифровывать выбранное имя незачем и вредно:
+// «Traffic will go through this interface» — прямая ложь при включённом
+// автоопределении, трафик пойдёт через интерфейс, который выберет ядро. Поэтому
+// подпись подменяется объяснением, ПОЧЕМУ поле погашено, — иначе пользователю
+// пришлось бы догадываться самому.
+func interfaceHintForRow(model *wizardmodels.WizardModel, current string, hints map[string]string, pending, suppressed bool) string {
+	if suppressed {
+		return locale.T("Auto-detect is on — the core picks the interface itself.")
+	}
+	return interfaceHintFor(model, current, hints, pending)
 }
 
 // interfaceHintFor — строка под полем, объясняющая текущее значение.

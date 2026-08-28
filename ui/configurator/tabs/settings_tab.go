@@ -360,6 +360,74 @@ func bindRowGate(
 	})
 }
 
+// bindInterfaceAutoDetect подписывает строку выбора аплинка на галку
+// автоопределения.
+//
+// Отдельно от bindRowGate, потому что зависимость здесь не шаблонная: в
+// wizard_template.json у bind_interface гейта нет (и требовать его от
+// пользовательского шаблона нельзя — файл живёт на диске и переживает
+// обновления), а приоритет auto_detect_interface над default_interface — это
+// свойство самого sing-box. Через GateDeps такая строка не подписалась бы ни на
+// что, и клик по галке не гасил бы дропдаун до пересборки вкладки.
+//
+// Значение поля при гашении НЕ стирается: пользователь вернётся к нему, сняв
+// галку, и терять выбранное имя из-за временного включения автоопределения —
+// худшее, что можно сделать.
+func bindInterfaceAutoDetect(
+	gs *wizardpresentation.GUIState,
+	vd wizardtemplate.TemplateVar,
+	model *wizardmodels.WizardModel,
+	td *wizardtemplate.TemplateData,
+	rowEnabled bool,
+	titleLab *ttwidget.Label,
+	resetBtn *ttwidget.Button,
+	se *widget.SelectEntry,
+	hint *widget.Label,
+) {
+	if gs == nil || gs.SettingsGates == nil || td == nil {
+		return
+	}
+	idx, ok := gs.SettingsGates.(*gateIndex)
+	if !ok {
+		return
+	}
+	target := model.Target.Normalized()
+	varByName := wizardtemplate.VarIndex(td.Vars)
+
+	// Состояние строки = гейт шаблона И отсутствие подавления. Гейт
+	// пересчитывается здесь же: он мог измениться тем же батчем.
+	recalc := func(resolved map[string]wizardtemplate.ResolvedVar) bool {
+		gate := wizardtemplate.VarUISatisfiedFor(vd, varByName, resolved, target)
+		return interfaceRowEnabled(gate, resolved)
+	}
+
+	// Подписка идёт и на auto_detect_interface, и на переменные гейта шаблона:
+	// иначе строка с гейтом получила бы две несогласованные точки пересчёта.
+	deps := append([]string{autoDetectInterfaceVar}, vd.GateDeps()...)
+
+	idx.subscribeOn(deps, rowEnabled, recalc, func(enabled bool) {
+		setRowEnabled(enabled, resetBtn, se)
+		if titleLab != nil {
+			if enabled {
+				titleLab.Importance = widget.MediumImportance
+			} else {
+				titleLab.Importance = widget.LowImportance
+			}
+			titleLab.Refresh()
+		}
+		if hint != nil {
+			// Подпись обязана меняться вместе с полем: «Traffic will go through
+			// this interface» под погашенным дропдауном — прямая ложь.
+			resolved := wizardtemplate.ResolveTemplateVarsFor(
+				td.Vars, model.SettingsVars, td.RawTemplate, target)
+			suppressed := interfacePickSuppressed(resolved)
+			_, hints, pending := interfacePickOptions(model, se.Text)
+			hint.SetText(interfaceHintForRow(
+				model, strings.TrimSpace(se.Text), hints, pending, suppressed))
+		}
+	})
+}
+
 func newSettingsTitleLabel(text string) *ttwidget.Label {
 	l := ttwidget.NewLabel(text)
 	// В container.NewBorder лейбл в позиции leading получает свою MinSize; при TextWrapWord
@@ -646,6 +714,14 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		// отсюда не перечислить, и без ручного ввода настройка была бы там
 		// недоступна вовсе. Тот же ввод спасает, когда адаптер временно
 		// вынут, а настроить его нужно заранее.
+		// auto_detect_interface перебивает default_interface в самом ядре:
+		// при включённом автоопределении выбранное здесь имя игнорируется.
+		// Поэтому состояние строки = гейт шаблона И отсутствие подавления —
+		// иначе активный дропдаун обещал бы то, чего не будет.
+		resolvedNow := wizardtemplate.ResolveTemplateVarsFor(vars, st, raw, rowTarget)
+		suppressed := interfacePickSuppressed(resolvedNow)
+		rowEnabled = interfaceRowEnabled(rowEnabled, resolvedNow)
+
 		titleLab := newSettingsTitleLabelFor(title, rowEnabled)
 		disp := wizardtemplate.DisplaySettingValueFor(vars, st, raw, name, rowTarget)
 		if v, ok := model.SettingsVars[name]; ok {
@@ -667,12 +743,12 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		se.PlaceHolder = locale.T("empty — follow system default route")
 
 		hint := newInterfaceHintLabel()
-		hint.SetText(interfaceHintFor(model, disp, hints, pending))
+		hint.SetText(interfaceHintForRow(model, disp, hints, pending, suppressed))
 
 		se.OnChanged = func(s string) {
 			s = strings.TrimSpace(s)
 			model.SettingsVars[name] = s
-			hint.SetText(interfaceHintFor(model, s, hints, pending))
+			hint.SetText(interfaceHintForRow(model, s, hints, pending, suppressed))
 			presenter.MarkAsChanged()
 			applyOnChangeAndRefresh(presenter, td, model, name)
 			maybeRefreshSettingsAfterVarChange(gs, td, name)
@@ -686,7 +762,7 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 				freshNames, freshHints, stillPending := interfacePickOptions(model, se.Text)
 				hints, pending = freshHints, stillPending
 				se.SetOptions(freshNames)
-				hint.SetText(interfaceHintFor(model, strings.TrimSpace(se.Text), freshHints, stillPending))
+				hint.SetText(interfaceHintForRow(model, strings.TrimSpace(se.Text), freshHints, stillPending, suppressed))
 			})
 		})
 
@@ -695,6 +771,12 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 		setVarFieldToolTip(toolTip, titleLab, se)
 		applySettingsRowDisabled(rowEnabled, resetBtn, se)
 		bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, se)
+		// Строка гаснет не только по гейту шаблона, но и по галке
+		// автоопределения — на неё подписываемся отдельно. Без этого клик по
+		// галке оставлял бы дропдаун в прежнем состоянии до пересборки вкладки:
+		// у bind_interface в шаблоне гейта нет вовсе, и в индекс гейтов строка
+		// не попадает.
+		bindInterfaceAutoDetect(gs, vd, model, td, rowEnabled, titleLab, resetBtn, se, hint)
 		return row
 
 	case "outbound", "dns_server":

@@ -3452,6 +3452,9 @@
   "Traffic will go through this interface.": {
     "value": "Трафик пойдёт через этот интерфейс."
   },
+  "Auto-detect is on — the core picks the interface itself.": {
+    "value": "Включено автоопределение — интерфейс выбирает ядро."
+  },
   "not found on this machine": {
     "value": "на этой машине не найден"
   },
