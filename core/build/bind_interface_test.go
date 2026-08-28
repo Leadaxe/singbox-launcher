@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"singbox-launcher/core/netiface"
 	"singbox-launcher/core/template"
 )
 
@@ -86,6 +87,64 @@ func TestWarnBindInterfaceUnknownName(t *testing.T) {
 func TestWarnBindInterfaceSilentWhenEmpty(t *testing.T) {
 	if w := warningsFor(t, "", template.LocalTarget()); len(w) != 0 {
 		t.Fatalf("warnings = %v, пустое значение — штатный режим, предупреждать не о чем", w)
+	}
+}
+
+// SPEC 113-F: чужой туннель (системный WireGuard/AmneziaWG) — ВАЛИДНЫЙ выбор
+// аплинка. Warning ему не полагается: лишняя строка в отчёте сборки заставляла
+// бы искать поломку там, где всё сделано намеренно.
+func TestWarnBindInterfaceSilentForAnyListedInterface(t *testing.T) {
+	for _, ifc := range netiface.ListOrEmpty() {
+		if !ifc.Up {
+			// Лежачий интерфейс — свой отдельный warning, он к делу не идёт.
+			continue
+		}
+		if w := warningsFor(t, ifc.Name, template.LocalTarget()); len(w) != 0 {
+			t.Errorf("warnings для предложенного %q = %v, ожидалось молчание", ifc.Name, w)
+		}
+	}
+}
+
+// Петля на месте под любым из двух имён — причину обязаны называть по факту, а
+// не сваливать всё в «нет IP-адреса».
+func TestWarnBindInterfaceNamesLoopbackReason(t *testing.T) {
+	seen := false
+	for _, name := range []string{"lo0", "lo"} {
+		if !netiface.Exists(name) {
+			continue
+		}
+		seen = true
+		w := warningsFor(t, name, template.LocalTarget())
+		if len(w) != 1 || !strings.Contains(w[0], "loopback") {
+			t.Fatalf("warnings для %q = %v, ожидалось предупреждение про петлю", name, w)
+		}
+	}
+	if !seen {
+		t.Skip("на этой машине нет ни lo0, ни lo — сверять не с чем")
+	}
+}
+
+// Собственный TUN ядра назван по имени из конфига: диагностика обязана сказать
+// именно про петлю, а не про отсутствующий адрес (адрес у него есть).
+func TestWarnBindInterfaceNamesOwnTunReason(t *testing.T) {
+	var candidate string
+	for _, ifc := range netiface.ListOrEmpty() {
+		if ifc.Up {
+			candidate = ifc.Name
+			break
+		}
+	}
+	if candidate == "" {
+		t.Skip("на этой машине нет ни одного поднятого интерфейса")
+	}
+	// Объявляем реальный интерфейс собственным TUN — ровно то, что делает
+	// лаунчер, прочитав tun.interface_name из config.json.
+	netiface.SetOwnTunNames(candidate)
+	defer netiface.SetOwnTunNames()
+
+	w := warningsFor(t, candidate, template.LocalTarget())
+	if len(w) != 1 || !strings.Contains(w[0], "own tunnel") {
+		t.Fatalf("warnings для собственного TUN %q = %v, ожидалось предупреждение про петлю", candidate, w)
 	}
 }
 

@@ -3444,7 +3444,13 @@
     "value": "нет IP-адреса — трафик через него не пойдёт"
   },
   "this is a tunnel — the core cannot use it as an uplink": {
-    "value": "это туннель — ядро не может выйти через него наружу"
+    "value": "это туннель самого ядра — выйти через него наружу нельзя"
+  },
+  "Tunnel — traffic will go out through it.": {
+    "value": "Туннель — трафик выйдет через него."
+  },
+  "tunnel: traffic will go out through it": {
+    "value": "туннель: трафик выйдет через него"
   },
   "loopback — no traffic will leave the machine through it": {
     "value": "петля — трафик через неё не покинет машину"

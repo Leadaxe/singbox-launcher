@@ -270,9 +270,29 @@ func interfacePickOptions(model *wizardmodels.WizardModel, current string) (name
 
 	for _, ifc := range netiface.ListOrEmpty() {
 		names = append(names, ifc.Name)
-		hints[ifc.Name] = ifc.Label()
+		hints[ifc.Name] = InterfaceHintText(ifc)
 	}
 	return names, hints, false
+}
+
+// InterfaceHintText — расшифровка интерфейса для строки под полем.
+//
+// SPEC 113-F: у чужого туннеля к обычной подписи добавляется предупреждение.
+// Он законный аплинк (ровно это и нужно тому, у кого поднят системный awg1),
+// но трафик ядра уйдёт В НЕГО, а не в физическую сеть — и адрес на выходе
+// будет его. Умолчать значит оставить пользователя гадать, почему выход не тот.
+//
+// Отдельная функция, а не метод Label(): Label живёт в core и о локали не
+// знает, а сама подпись обязана переводиться.
+//
+// Экспортирована ради ОДНОГО источника подписи на оба пути: локальный список
+// строится здесь, а удалённый — в пакете `ui` (там транспорт машины). Разъехавшись,
+// они начали бы описывать один и тот же туннель по-разному.
+func InterfaceHintText(ifc netiface.Iface) string {
+	if !ifc.IsTunnel {
+		return ifc.Label()
+	}
+	return ifc.Label() + " — " + locale.T("tunnel: traffic will go out through it")
 }
 
 // autoDetectInterfaceVar — переменная шаблона, несущая route.auto_detect_interface.
@@ -362,6 +382,12 @@ func interfaceHintFor(model *wizardmodels.WizardModel, current string, hints map
 		return "⚠ " + locale.T("this is a tunnel — the core cannot use it as an uplink")
 	case netiface.UnfitLoopback:
 		return "⚠ " + locale.T("loopback — no traffic will leave the machine through it")
+	case netiface.UnfitFitTunnel:
+		// SPEC 113-F: чужой туннель — законный выбор, а не ошибка. Но
+		// последствие нетривиальное: трафик ядра уйдёт в этот туннель, а не в
+		// физическую сеть, и адрес на выходе будет его. Молчать об этом
+		// значит оставить пользователя гадать, почему выход не тот.
+		return locale.T("Tunnel — traffic will go out through it.")
 	case netiface.UnfitFit:
 		// Годен, но подсказок нет: список интерфейсов брали до того, как его
 		// подняли (или он вообще не запрашивался). Пугать нечем.

@@ -61,7 +61,10 @@ func remoteInterfaceNames(machineID string) ([]string, map[string]string, bool) 
 			continue
 		}
 		names = append(names, ifc.Name)
-		hints[ifc.Name] = ifc.Label()
+		// Та же расшифровка, что для локальных: чужой туннель роутера (awg1)
+		// — законный аплинк, но подпись обязана предупредить, что трафик
+		// уйдёт в него, а не в физическую сеть (SPEC 113-F).
+		hints[ifc.Name] = configuratortabs.InterfaceHintText(ifc)
 	}
 	return names, hints, true
 }

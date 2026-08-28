@@ -204,6 +204,11 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		return fmt.Errorf("write config: %w", err)
 	}
 
+	// Имя собственного TUN могло смениться этой пересборкой. Реестр netiface
+	// обязан догнать её сразу: по нему пикер аплинков прячет наш TUN, а всё
+	// прочее туннельное — теперь законный выбор (SPEC 113-F).
+	ac.refreshOwnTunNames()
+
 	// Step 5.4: sing-box check — валидация только что записанного config.json
 	// через сам sing-box (`sing-box check -c config.json`). Catches schema
 	// violations (unknown fields, legacy DNS format, type mismatches) ДО того

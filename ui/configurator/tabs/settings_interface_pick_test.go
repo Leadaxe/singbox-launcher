@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"singbox-launcher/core/netiface"
 	wizardtemplate "singbox-launcher/core/template"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -154,6 +155,45 @@ func TestInterfacePickLocalNamesAreBare(t *testing.T) {
 		}
 		if hints[n] == "" {
 			t.Errorf("для %q нет расшифровки", n)
+		}
+	}
+}
+
+// SPEC 113-F: чужой туннель — законный аплинк, и подпись обязана отличаться от
+// обычной. Прежде «this is a tunnel — the core cannot use it as an uplink»
+// врало пользователю с поднятым системным awg1: как раз может, и именно этого
+// он хотел.
+func TestInterfaceHintMarksForeignTunnel(t *testing.T) {
+	plain := netiface.Iface{Name: "en0", FriendlyName: "Wi-Fi", Addrs: []string{"192.168.10.124"}, Up: true}
+	tunnel := netiface.Iface{Name: "awg1", Addrs: []string{"10.7.0.2"}, Up: true, IsTunnel: true}
+
+	if got := InterfaceHintText(plain); got != plain.Label() {
+		t.Errorf("подпись обычного интерфейса = %q, ожидался чистый Label()", got)
+	}
+	got := InterfaceHintText(tunnel)
+	if !strings.HasPrefix(got, tunnel.Label()) {
+		t.Fatalf("подпись туннеля = %q, имя и адрес обязаны остаться на месте", got)
+	}
+	if got == tunnel.Label() {
+		t.Fatal("туннель подписан как обычный интерфейс — о последствии никто не предупредил")
+	}
+	// Предупреждение, а не отказ: значок ⚠ здесь ставить нельзя, выбор законный.
+	if strings.Contains(got, "⚠") {
+		t.Errorf("подпись = %q, законный выбор помечен как ошибка", got)
+	}
+}
+
+func TestInterfacePickListsForeignTunnelAsFit(t *testing.T) {
+	// Сквозная проверка по живой машине: если туннель попал в List, то и
+	// Fitness обязан звать его годным, и подпись — брать расшифровку, а не
+	// ругаться. Разъехавшись, список и поле противоречили бы друг другу.
+	names, hints, _ := interfacePickOptions(&wizardmodels.WizardModel{}, "")
+	for _, n := range names {
+		if fit := netiface.Fitness(n); !fit.Fit() {
+			t.Errorf("Fitness(%q) = %v, но пикер его предлагает", n, fit)
+		}
+		if got := interfaceHintFor(&wizardmodels.WizardModel{}, n, hints, false); strings.Contains(got, "⚠") {
+			t.Errorf("подпись предложенного %q = %q — пикер и поле разошлись", n, got)
 		}
 	}
 }

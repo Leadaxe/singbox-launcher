@@ -6,27 +6,28 @@ import (
 	"testing"
 )
 
-func TestIsTunnelByName(t *testing.T) {
-	// Привязка аплинка к собственному TUN ядра = петля, поэтому туннели
-	// обязаны отсеиваться до попадания в выбор.
+// SPEC 113-F: туннельное ИМЯ само по себе больше не отказ. Системный
+// WireGuard/AmneziaWG — законный аплинк, и режется только мёртвый (без
+// адреса) и собственный TUN ядра.
+func TestDeadTunnelIsRejectedByName(t *testing.T) {
 	for _, name := range []string{"utun0", "utun7", "tun0", "wg0", "awg1", "ppp0", "gif0", "stf0", "singbox-tun0"} {
-		if !isTunnel(name, 0, nil) {
-			t.Errorf("isTunnel(%q) = false, туннель обязан отсеиваться", name)
+		if !isDeadTunnel(name, 0, nil) {
+			t.Errorf("isDeadTunnel(%q) = false, туннель без адреса — мёртвый маршрут", name)
 		}
 	}
 	for _, name := range []string{"en0", "en9", "eth0", "Ethernet", "Wi-Fi", "bridge0"} {
-		if isTunnel(name, 0, nil) {
-			t.Errorf("isTunnel(%q) = true, обычный интерфейс отсеиваться не должен", name)
+		if isDeadTunnel(name, 0, nil) {
+			t.Errorf("isDeadTunnel(%q) = true, обычный интерфейс отсеиваться не должен", name)
 		}
 	}
 }
 
-func TestIsTunnelByPointToPointFlag(t *testing.T) {
-	// Туннель без узнаваемого имени ловится флагом.
-	if !isTunnel("weird0", net.FlagPointToPoint, nil) {
-		t.Error("POINTOPOINT-интерфейс не распознан как туннель")
+func TestDeadTunnelByPointToPointFlag(t *testing.T) {
+	// Туннель без узнаваемого имени и без адреса ловится флагом.
+	if !isDeadTunnel("weird0", net.FlagPointToPoint, nil) {
+		t.Error("безадресный POINTOPOINT-интерфейс не распознан как мёртвый туннель")
 	}
-	if isTunnel("weird0", net.FlagUp|net.FlagBroadcast, nil) {
+	if isDeadTunnel("weird0", net.FlagUp|net.FlagBroadcast, nil) {
 		t.Error("обычный broadcast-интерфейс распознан как туннель")
 	}
 }
@@ -36,18 +37,84 @@ func TestIsTunnelByPointToPointFlag(t *testing.T) {
 // из List() безусловно, и диагностика bind_interface объявляла его «без
 // IP-адреса», хотя адрес у него был.
 func TestPointToPointWithAddressIsNotTunnel(t *testing.T) {
-	if isTunnel("wwan0", net.FlagUp|net.FlagPointToPoint, []net.IP{net.ParseIP("100.64.7.9")}) {
-		t.Error("мобильный WAN с адресом отсеян как туннель")
+	ip := []net.IP{net.ParseIP("100.64.7.9")}
+	if isDeadTunnel("wwan0", net.FlagUp|net.FlagPointToPoint, ip) {
+		t.Error("мобильный WAN с адресом отсеян как мёртвый туннель")
+	}
+	if isOwnTun("wwan0", ip) {
+		t.Error("мобильный WAN опознан как собственный TUN ядра")
+	}
+	if isForeignTunnel("wwan0", ip) {
+		t.Error("мобильный WAN помечен туннелем — имя у него не туннельное")
 	}
 	// Тот же интерфейс без адреса аплинком всё равно не годится — прежняя
 	// ветка остаётся в силе.
-	if !isTunnel("wwan0", net.FlagUp|net.FlagPointToPoint, nil) {
+	if !isDeadTunnel("wwan0", net.FlagUp|net.FlagPointToPoint, nil) {
 		t.Error("POINTOPOINT без адреса обязан отсеиваться")
 	}
-	// Узнаваемое туннельное имя перевешивает адрес: собственный TUN ядра с
-	// адресом аплинком быть не может.
-	if !isTunnel("utun3", net.FlagUp|net.FlagPointToPoint, []net.IP{net.ParseIP("10.7.0.2")}) {
-		t.Error("именованный туннель с адресом пропущен в аплинки")
+}
+
+// SPEC 113-F, суть решения: ЧУЖОЙ туннель с адресом — законный аплинк.
+// Пользователь с поднятым системным awg1 на роутере хочет выйти именно через
+// него, и прежний фильтр (резавший туннели скопом) отнимал у него эту
+// возможность.
+func TestForeignTunnelWithAddressIsAllowed(t *testing.T) {
+	SetOwnTunNames()
+	defer SetOwnTunNames()
+
+	cases := []struct {
+		name string
+		addr string
+	}{
+		{"awg1", "10.7.0.2"},
+		{"wg0", "10.9.0.3"},
+		{"utun4", "100.64.1.5"},
+		{"tun0", "10.8.0.6"},
+	}
+	for _, c := range cases {
+		ips := []net.IP{net.ParseIP(c.addr)}
+		if isOwnTun(c.name, ips) {
+			t.Errorf("%q (%s) опознан как СОБСТВЕННЫЙ TUN — это чужой туннель", c.name, c.addr)
+		}
+		if isDeadTunnel(c.name, net.FlagUp|net.FlagPointToPoint, ips) {
+			t.Errorf("%q (%s) отсеян как мёртвый, хотя адрес у него есть", c.name, c.addr)
+		}
+		if !isForeignTunnel(c.name, ips) {
+			t.Errorf("%q (%s) не помечен туннелем — подпись промолчит о последствии", c.name, c.addr)
+		}
+	}
+}
+
+// Имя собственного TUN приходит из config.json и сравнивается ТОЧНО: префикс
+// «tun» не разделяет наш singbox-tun0 и чужой tun0, и именно на этом прежний
+// фильтр рубил чужие туннели.
+func TestOwnTunNameSeparatesOursFromForeign(t *testing.T) {
+	SetOwnTunNames("singbox-tun0")
+	defer SetOwnTunNames()
+
+	ours := []net.IP{net.ParseIP("10.55.0.1")} // адрес сдвинут за пределы tunSubnets
+	if !isOwnTun("singbox-tun0", ours) {
+		t.Error("собственный TUN не опознан по имени из конфига")
+	}
+	if !isOwnTun("SingBox-Tun0", ours) {
+		t.Error("сравнение имени обязано игнорировать регистр")
+	}
+	// Чужой туннель, чьё имя лишь начинается похоже, остаётся законным.
+	if isOwnTun("singbox-tun0-peer", ours) {
+		t.Error("сравнение по префиксу вернулось — чужой туннель объявлен нашим")
+	}
+	if isOwnTun("tun0", ours) {
+		t.Error("чужой tun0 объявлен собственным TUN ядра")
+	}
+	// Пустой реестр (конфига нет) никого не прячет.
+	SetOwnTunNames()
+	if isOwnTun("singbox-tun0", ours) {
+		t.Error("пустой реестр всё ещё прячет интерфейс")
+	}
+	// Пустые строки в реестр не попадают: иначе они совпали бы с чем угодно.
+	SetOwnTunNames("", "   ")
+	if isOwnTun("", nil) || isOwnTun("en0", nil) {
+		t.Error("пустое имя попало в реестр собственных TUN")
 	}
 }
 
@@ -77,9 +144,29 @@ func TestFitnessSeparatesReasons(t *testing.T) {
 	}
 	// Всё, что List() отдал, обязано числиться годным: два ответа на один
 	// вопрос разъехались бы, и поле противоречило бы выпадающему списку.
+	// Годных исходов два — обычный интерфейс и чужой туннель (SPEC 113-F).
 	for _, ifc := range ListOrEmpty() {
-		if got := Fitness(ifc.Name); got != UnfitFit {
+		got := Fitness(ifc.Name)
+		if !got.Fit() {
 			t.Errorf("Fitness(%q) = %v, но List() его предлагает", ifc.Name, got)
+		}
+		// И классы обязаны совпадать: List пометил туннелем — Fitness обязан
+		// сказать то же, иначе подпись под полем опишет не тот интерфейс.
+		if want := ifc.IsTunnel; want != (got == UnfitFitTunnel) {
+			t.Errorf("Fitness(%q) = %v, но List().IsTunnel = %v", ifc.Name, got, want)
+		}
+	}
+}
+
+// Классификация — единый список исходов, и Fit() обязан покрывать ровно
+// «годные». Без пина новый Unfit* легко забыть добавить в Fit() (или наоборот
+// добавить лишний), и половина кода начнёт считать интерфейс годным, а
+// половина — нет.
+func TestUnfitnessFitCoversBothFitStates(t *testing.T) {
+	fit := map[Unfitness]bool{UnfitFit: true, UnfitFitTunnel: true}
+	for _, u := range []Unfitness{UnfitUnknown, UnfitFit, UnfitLoopback, UnfitTunnel, UnfitNoAddress, UnfitFitTunnel} {
+		if got := u.Fit(); got != fit[u] {
+			t.Errorf("Unfitness(%d).Fit() = %v, ожидалось %v", u, got, fit[u])
 		}
 	}
 }
@@ -89,19 +176,18 @@ func TestIsTunnelByOwnTunAddress(t *testing.T) {
 	// локальной сети 2» и не имеет POINTOPOINT — узнать его можно только по
 	// адресу из собственной подсети TUN лаунчера. Без этой ветки пользователь
 	// выбрал бы TUN ядра как аплинк и получил петлю.
-	if !isTunnel("Подключение по локальной сети 2", net.FlagUp|net.FlagBroadcast,
-		[]net.IP{net.ParseIP("172.16.0.1")}) {
+	if !isOwnTun("Подключение по локальной сети 2", []net.IP{net.ParseIP("172.16.0.1")}) {
 		t.Error("TUN лаунчера по адресу 172.16.0.1 не распознан")
 	}
-	if !isTunnel("Ethernet 3", net.FlagUp, []net.IP{net.ParseIP("fdfe:dcba:9876::1")}) {
+	if !isOwnTun("Ethernet 3", []net.IP{net.ParseIP("fdfe:dcba:9876::1")}) {
 		t.Error("TUN лаунчера по IPv6-адресу не распознан")
 	}
 	// Соседние подсети трогать нельзя: 172.16.0.4 уже вне /30.
-	if isTunnel("Ethernet", net.FlagUp|net.FlagBroadcast, []net.IP{net.ParseIP("172.16.0.4")}) {
-		t.Error("адрес вне подсети TUN ошибочно распознан как туннель")
+	if isOwnTun("Ethernet", []net.IP{net.ParseIP("172.16.0.4")}) {
+		t.Error("адрес вне подсети TUN ошибочно распознан как собственный TUN")
 	}
-	if isTunnel("Ethernet", net.FlagUp|net.FlagBroadcast, []net.IP{net.ParseIP("192.168.10.124")}) {
-		t.Error("обычный LAN-адрес распознан как туннель")
+	if isOwnTun("Ethernet", []net.IP{net.ParseIP("192.168.10.124")}) {
+		t.Error("обычный LAN-адрес распознан как собственный TUN")
 	}
 }
 
@@ -132,12 +218,17 @@ func TestLabelMarksDownInterface(t *testing.T) {
 	}
 }
 
-func TestListSkipsLoopbackAndTunnels(t *testing.T) {
+func TestListSkipsLoopbackAndOwnTun(t *testing.T) {
 	// Прогон по живой машине: гарантий про конкретные имена нет, но ни один
-	// loopback и ни один туннель попасть в выбор не может.
+	// loopback, ни собственный TUN, ни безадресный интерфейс попасть в выбор
+	// не могут. Чужой туннель — может, и это теперь норма (SPEC 113-F).
 	for _, ifc := range ListOrEmpty() {
-		if isTunnel(ifc.Name, 0, nil) {
-			t.Errorf("List() вернул туннель %q", ifc.Name)
+		ips := make([]net.IP, 0, len(ifc.Addrs))
+		for _, a := range ifc.Addrs {
+			ips = append(ips, net.ParseIP(a))
+		}
+		if isOwnTun(ifc.Name, ips) {
+			t.Errorf("List() вернул собственный TUN %q — это петля в выборе", ifc.Name)
 		}
 		if ifc.Name == "lo0" || ifc.Name == "lo" {
 			t.Errorf("List() вернул loopback %q", ifc.Name)
@@ -160,15 +251,18 @@ func TestExistsRejectsEmptyAndUnknown(t *testing.T) {
 func TestFromRemoteFiltersLikeLocal(t *testing.T) {
 	// Правила отбора обязаны совпадать с локальными: демон отдаёт всё подряд
 	// и прямо оговаривает, что фильтрация — задача вызывающего.
+	SetOwnTunNames("lxd-tun0")
+	defer SetOwnTunNames()
+
 	rejected := []struct {
 		name  string
 		addrs []string
 		why   string
 	}{
 		{"lo", []string{"127.0.0.1/8"}, "loopback"},
-		{"lxd-tun0", []string{"172.16.0.1/30"}, "TUN демона"},
-		{"tun0", []string{"10.8.0.1/24"}, "туннель"},
-		{"wg0", []string{"10.9.0.1/24"}, "WireGuard"},
+		{"lxd-tun0", []string{"172.16.0.1/30"}, "TUN демона (адрес из нашей /30)"},
+		{"lxd-tun0", []string{"10.99.0.1/24"}, "TUN демона (имя из конфига)"},
+		{"tun9", nil, "туннель без адреса"},
 		{"eth2", nil, "нет адреса"},
 		{"", []string{"1.2.3.4/24"}, "пустое имя"},
 	}
@@ -179,8 +273,31 @@ func TestFromRemoteFiltersLikeLocal(t *testing.T) {
 	}
 
 	for _, name := range []string{"eth0", "wan", "br-lan"} {
-		if _, ok := FromRemote(name, true, []string{"192.168.1.1/24"}); !ok {
+		ifc, ok := FromRemote(name, true, []string{"192.168.1.1/24"})
+		if !ok {
 			t.Errorf("FromRemote(%q) отвергнут, хотя годится в аплинки", name)
+			continue
+		}
+		if ifc.IsTunnel {
+			t.Errorf("FromRemote(%q) помечен туннелем — это обычный интерфейс", name)
+		}
+	}
+}
+
+// SPEC 113-F, remote-путь: фильтрует ЛАУНЧЕР (демон отдаёт всё подряд, см.
+// Client.HostInterfaces), поэтому чужой туннель роутера обязан доходить до
+// пикера отсюда — иначе awg1 на RouteRich так и не появился бы в выборе.
+func TestFromRemoteKeepsForeignTunnel(t *testing.T) {
+	SetOwnTunNames("lxd-tun0")
+	defer SetOwnTunNames()
+
+	for _, name := range []string{"awg1", "wg0", "tun0"} {
+		ifc, ok := FromRemote(name, true, []string{"10.7.0.2/24"})
+		if !ok {
+			t.Fatalf("FromRemote(%q) отвергнут — системный туннель роутера это законный аплинк", name)
+		}
+		if !ifc.IsTunnel {
+			t.Errorf("FromRemote(%q).IsTunnel = false — подпись промолчит о последствии", name)
 		}
 	}
 }

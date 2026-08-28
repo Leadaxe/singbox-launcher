@@ -120,6 +120,44 @@ func ConfigHasTun(configPath string) (bool, error) {
 	return false, nil
 }
 
+// TunInterfaceNames returns tun.interface_name of every TUN inbound in the
+// config — the exact names the core gives to ITS OWN tunnel devices.
+//
+// SPEC 113-F: netiface needs this to tell our own TUN apart from a foreign
+// one. A system WireGuard/AmneziaWG tunnel is a legal uplink for
+// bind_interface, so the name prefix ("tun", "wg") cannot decide: our
+// singbox-tun0 and someone else's tun0 both match it. Only the exact name from
+// the config separates them.
+//
+// An inbound without interface_name contributes nothing: the core then picks
+// the name itself (utunN on macOS), and there is no name to compare against —
+// that case is left to the own-TUN subnet check.
+func TunInterfaceNames(configPath string) ([]string, error) {
+	cleanData, err := getConfigJSON(configPath)
+	if err != nil {
+		return nil, err
+	}
+	var config struct {
+		Inbounds []struct {
+			Type          string `json:"type"`
+			InterfaceName string `json:"interface_name"`
+		} `json:"inbounds"`
+	}
+	if err := json.Unmarshal(cleanData, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse config: %w", err)
+	}
+	var names []string
+	for _, in := range config.Inbounds {
+		if in.Type != "tun" {
+			continue
+		}
+		if n := strings.TrimSpace(in.InterfaceName); n != "" {
+			names = append(names, n)
+		}
+	}
+	return names, nil
+}
+
 // ExperimentalCacheFileFromSection parses experimental.cache_file from the JSON value of the top-level
 // "experimental" key (not the full config). Returns whether removal should be attempted and the path string
 // from JSON (may be relative to the sing-box working directory, typically bin/).
