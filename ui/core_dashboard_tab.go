@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -898,69 +897,34 @@ func (tab *CoreDashboardTab) switchToNamedState(id string) error {
 	return nil
 }
 
+// downloadConfigTemplate — кнопка [Download template] вкладки Local.
+//
+// Само скачивание живёт в wizardtemplate.DownloadTemplate: тот же механизм
+// зовёт Мастер, когда обнаруживает, что файла нет (в том числе после того,
+// как апгрейд лаунчера инвалидировал пин). Здесь остаётся только UI:
+// блокировка кнопки, диалоги и обновление статуса.
 func (tab *CoreDashboardTab) downloadConfigTemplate() {
 	configTemplateURL := wizardtemplate.GetTemplateURL()
 	if tab.templateDownloadButton != nil {
 		tab.templateDownloadButton.Disable()
 	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), wizardtemplate.DownloadTimeout)
 		defer cancel()
 
-		data, status, err := tab.controller.GetURLBytes(ctx, configTemplateURL, 30*time.Second)
+		target, err := wizardtemplate.DownloadTemplate(ctx, tab.controller.FileService.ExecDir, tab.controller.GetURLBytes)
 		if err != nil {
 			fyne.Do(func() {
 				if tab.templateDownloadButton != nil {
 					tab.templateDownloadButton.Enable()
 				}
 				binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
-				debuglog.DebugLog("core_dashboard: showing download failed manual (template, GetURLBytes error)")
-				dialogs.ShowDownloadFailedManual(tab.controller.GetMainWindow(), "Config template download failed", configTemplateURL, binDir)
+				debuglog.DebugLog("core_dashboard: showing download failed manual (template: %v)", err)
+				// С причиной, а не «см. лог»: диалог без неё был тупиком.
+				dialogs.ShowDownloadFailedManualWithReason(tab.controller.GetMainWindow(),
+					"Config template download failed", err.Error(), configTemplateURL, binDir)
 			})
 			return
-		}
-		if status != http.StatusOK {
-			fyne.Do(func() {
-				if tab.templateDownloadButton != nil {
-					tab.templateDownloadButton.Enable()
-				}
-				binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
-				debuglog.DebugLog("core_dashboard: showing download failed manual (template, status not OK)")
-				dialogs.ShowDownloadFailedManual(tab.controller.GetMainWindow(), "Config template download failed", configTemplateURL, binDir)
-			})
-			return
-		}
-		templateFileName := wizardtemplate.GetTemplateFileName()
-		target := filepath.Join(tab.controller.FileService.ExecDir, "bin", templateFileName)
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			fyne.Do(func() {
-				if tab.templateDownloadButton != nil {
-					tab.templateDownloadButton.Enable()
-				}
-				binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
-				debuglog.DebugLog("core_dashboard: showing download failed manual (template, MkdirAll error)")
-				dialogs.ShowDownloadFailedManual(tab.controller.GetMainWindow(), "Config template download failed", configTemplateURL, binDir)
-			})
-			return
-		}
-		if err := os.WriteFile(target, data, 0o644); err != nil {
-			fyne.Do(func() {
-				if tab.templateDownloadButton != nil {
-					tab.templateDownloadButton.Enable()
-				}
-				binDir := filepath.Join(tab.controller.FileService.ExecDir, constants.BinDirName)
-				debuglog.DebugLog("core_dashboard: showing download failed manual (template, WriteFile error)")
-				dialogs.ShowDownloadFailedManual(tab.controller.GetMainWindow(), "Config template download failed", configTemplateURL, binDir)
-			})
-			return
-		}
-		// Pin install: record which launcher version installed this template so
-		// the next launcher upgrade knows to invalidate it (SPEC 046). Best
-		// effort — failure here doesn't undo the file write, just risks
-		// re-invalidation on next upgrade.
-		binDirForMark := filepath.Dir(target)
-		if err := locale.MarkTemplateInstalled(binDirForMark, constants.AppVersion); err != nil {
-			debuglog.WarnLog("template: failed to record install version: %v", err)
 		}
 		fyne.Do(func() {
 			if tab.templateDownloadButton != nil {

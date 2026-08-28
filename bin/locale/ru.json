@@ -468,6 +468,15 @@
   "Template saved to %s": {
     "value": "Шаблон сохранён в %s"
   },
+  "Downloading config template…": {
+    "value": "Скачивание шаблона конфига…"
+  },
+  "Config template download failed": {
+    "value": "Не удалось скачать шаблон конфига"
+  },
+  "server returned an empty file": {
+    "value": "сервер вернул пустой файл"
+  },
   "Download Complete": {
     "value": "Загрузка завершена"
   },

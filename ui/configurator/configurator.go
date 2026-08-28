@@ -30,6 +30,7 @@
 package configurator
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"image/color"
@@ -100,6 +101,10 @@ func ShowConfigWizardForMachine(parent fyne.Window, machine services.RemoteDaemo
 	showConfigWizardFor(parent, tgt, machine.ResourceDir())
 }
 
+// showConfigWizardFor — общая точка обоих входов Мастера (Local и
+// Remote → Configure). Всё, что делается до появления окна, обязано вести
+// себя одинаково у обоих: раньше это было не так только потому, что
+// автоскачивание шаблона жило в UI вкладки Local, а не здесь.
 func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, resourceDir string) {
 	ac := core.GetController()
 	if ac == nil {
@@ -113,24 +118,98 @@ func showConfigWizardFor(parent fyne.Window, target wizardtemplate.TargetSpec, r
 		return
 	}
 
+	// Шаблон читается ЗДЕСЬ, до всякой сборки окна, и его отсутствие больше
+	// не является приговором: сначала пробуем скачать (тот же механизм, что
+	// у кнопки на вкладке Local — wizardtemplate.EnsureTemplate), и только
+	// реальный сбой скачивания даёт диалог «скачайте вручную» — теперь с
+	// конкретной причиной, а не с «см. лог», которого в логе не было.
+	//
+	// Быстрый путь: файл на месте — открываем синхронно, как и раньше, без
+	// мигания прелоадера.
+	templateLoader := &wizardbusiness.DefaultTemplateLoader{}
+	templateData, loadErr := templateLoader.LoadTemplateData(ac.FileService.ExecDir)
+	if loadErr == nil {
+		buildWizardWindow(ac, templateLoader, templateData, target, resourceDir)
+		return
+	}
+	templateFileName := wizardtemplate.GetTemplateFileName()
+	debuglog.InfoLog("ConfigWizard: %s unreadable at %s (%v) — trying to download it",
+		templateFileName, filepath.Join(ac.FileService.ExecDir, constants.BinDirName, templateFileName), loadErr)
+
+	// Сеть — не на UI-потоке: сюда приходят из OnTapped кнопок Local и
+	// Remote → Configure. Всё, что трогает виджеты после, идёт через fyne.Do.
+	progress := showTemplateDownloadProgress(parent)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), wizardtemplate.DownloadTimeout)
+		defer cancel()
+
+		fetched, _, err := wizardtemplate.EnsureTemplate(ctx, ac.FileService.ExecDir, ac.GetURLBytes)
+
+		fyne.Do(func() {
+			if progress != nil {
+				progress.Hide()
+			}
+			if err != nil {
+				debuglog.ErrorLog("ConfigWizard: template download failed: %v", err)
+				binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
+				dialogs.ShowDownloadFailedManualWithReason(parent,
+					locale.T("Config template failed to load"), err.Error(),
+					wizardtemplate.GetTemplateURL(), binDir)
+				if ac.UIService != nil && ac.UIService.UpdateConfigStatusFunc != nil {
+					ac.UIService.UpdateConfigStatusFunc()
+				}
+				return
+			}
+			debuglog.InfoLog("ConfigWizard: template downloaded on demand — opening wizard")
+			if ac.UIService != nil && ac.UIService.UpdateConfigStatusFunc != nil {
+				ac.UIService.UpdateConfigStatusFunc()
+			}
+			// Пока качали, Мастер мог открыть кто-то ещё — второго окна быть
+			// не должно (тот же инвариант, что и в начале функции).
+			if ac.UIService != nil && ac.UIService.WizardWindow != nil {
+				ac.UIService.WizardWindow.RequestFocus()
+				return
+			}
+			buildWizardWindow(ac, templateLoader, fetched, target, resourceDir)
+		})
+	}()
+}
+
+// showTemplateDownloadProgress показывает модальный прелоадер на время
+// скачивания шаблона. Возвращает диалог (его обязан скрыть вызывающий) или
+// nil, если родительского окна нет.
+func showTemplateDownloadProgress(parent fyne.Window) dialog.Dialog {
+	if parent == nil {
+		return nil
+	}
+	bar := widget.NewProgressBarInfinite()
+	// Wrapping обязателен: Label без переноса отдаёт всю строку как
+	// min-width и раздувает диалог ([[fyne-label-minwidth-trap]]).
+	label := widget.NewLabel(locale.T("Downloading config template…"))
+	label.Wrapping = fyne.TextWrapWord
+	// Ширину задаёт распорка, а не текст: с Wrapping у Label min-width
+	// нулевая, и диалог схлопывается в полоску.
+	spacer := canvas.NewRectangle(color.Transparent)
+	spacer.SetMinSize(fyne.NewSize(280, 1))
+	content := container.NewVBox(label, bar, spacer)
+	d := dialog.NewCustomWithoutButtons(locale.T("Config Template"), content, parent)
+	d.Show()
+	return d
+}
+
+// buildWizardWindow собирает и показывает окно Мастера на уже загруженном
+// шаблоне. Только UI-поток.
+func buildWizardWindow(
+	ac *core.AppController,
+	templateLoader *wizardbusiness.DefaultTemplateLoader,
+	templateData *wizardtemplate.TemplateData,
+	target wizardtemplate.TargetSpec,
+	resourceDir string,
+) {
 	// Create model and GUI state
 	model := wizardmodels.NewWizardModel()
 	guiState := &wizardpresentation.GUIState{}
 
-	// Load template data
-	templateLoader := &wizardbusiness.DefaultTemplateLoader{}
-	templateData, err := templateLoader.LoadTemplateData(ac.FileService.ExecDir)
-	if err != nil {
-		templateFileName := wizardtemplate.GetTemplateFileName()
-		debuglog.ErrorLog("ConfigWizard: failed to load %s from %s: %v", templateFileName, filepath.Join(ac.FileService.ExecDir, "bin", templateFileName), err)
-		debuglog.DebugLog("wizard: showing download failed manual (template load on open)")
-		binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
-		dialogs.ShowDownloadFailedManual(parent, locale.T("Config template failed to load"), wizardtemplate.GetTemplateURL(), binDir)
-		if ac.UIService != nil && ac.UIService.UpdateConfigStatusFunc != nil {
-			ac.UIService.UpdateConfigStatusFunc()
-		}
-		return
-	}
 	model.TemplateData = templateData
 	model.ExecDir = ac.FileService.ExecDir
 	// Таргет ставится ДО чтения состояния: от него зависит, из чьей
@@ -697,9 +776,16 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 				templateLoader := &wizardbusiness.DefaultTemplateLoader{}
 				templateData, err := templateLoader.LoadTemplateData(ac.FileService.ExecDir)
 				if err != nil {
+					// Страховочная ветка: окно Мастера не открывается без
+					// шаблона (showConfigWizardFor его гарантирует, при
+					// необходимости скачав), так что сюда попадают, только
+					// если файл унесли из-под работающего окна. Причина —
+					// текстом ошибки, а не «см. лог».
 					binDir := filepath.Join(ac.FileService.ExecDir, constants.BinDirName)
-					debuglog.DebugLog("wizard: showing download failed manual (template load on New)")
-					dialogs.ShowDownloadFailedManual(wizardWindow, locale.T("Config template failed to load"), wizardtemplate.GetTemplateURL(), binDir)
+					debuglog.ErrorLog("wizard: template load on New failed: %v", err)
+					dialogs.ShowDownloadFailedManualWithReason(wizardWindow,
+						locale.T("Config template failed to load"), err.Error(),
+						wizardtemplate.GetTemplateURL(), binDir)
 					return
 				}
 				model.TemplateData = templateData
