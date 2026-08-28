@@ -110,14 +110,28 @@ type ProxySource struct {
 	// приходилось читать по адресу — а подпись пользователь как раз и правит,
 	// чтобы источник узнавать. Ни на что, кроме сообщений, поле не влияет:
 	// именем узла остаётся тег (SPEC 112).
-	Label       string              `json:"label,omitempty"`
-	Source      string              `json:"source,omitempty"`
-	Connections []string            `json:"connections,omitempty"`
-	Skip        []map[string]string `json:"skip,omitempty"`
-	Outbounds   []Direction         `json:"outbounds,omitempty"`   // Local outbounds for this source (version 4)
-	TagPrefix   string              `json:"tag_prefix,omitempty"`  // Prefix to add to all node tags from this source
-	TagPostfix  string              `json:"tag_postfix,omitempty"` // Postfix to add to all node tags from this source
-	TagMask     string              `json:"tag_mask,omitempty"`    // Mask to replace entire tag (ignores tag_prefix and tag_postfix if set)
+	Label string `json:"label,omitempty"`
+	// ProviderAnnounce — сообщение провайдера (заголовок `announce`) из
+	// метаданных последнего фетча, провезённое в сборочную форму ТОЛЬКО ради
+	// текстов диагностики — ровно как Label.
+	//
+	// SPEC 115: когда подписка отдаёт ноль узлов, лучший диагноз обычно уже
+	// написан самим провайдером («⚠️ Произошла ошибка при получении подписки»);
+	// наши синтезированные причины идут после него. Без этого поля разбор о
+	// сообщении не знает: метаданные живут в state.Source.Meta, а разбору
+	// достаётся только сборочная форма.
+	//
+	// ГРАНИЦА ДОВЕРИЯ: чужой текст. Он показывается как ДАННЫЕ, не
+	// интерпретируется и ни на что в сборке не влияет; длина ограничена при
+	// заполнении (state.ProviderAnnounce.AnnounceMessage).
+	ProviderAnnounce string              `json:"-"`
+	Source           string              `json:"source,omitempty"`
+	Connections      []string            `json:"connections,omitempty"`
+	Skip             []map[string]string `json:"skip,omitempty"`
+	Outbounds        []Direction         `json:"outbounds,omitempty"`   // Local outbounds for this source (version 4)
+	TagPrefix        string              `json:"tag_prefix,omitempty"`  // Prefix to add to all node tags from this source
+	TagPostfix       string              `json:"tag_postfix,omitempty"` // Postfix to add to all node tags from this source
+	TagMask          string              `json:"tag_mask,omitempty"`    // Mask to replace entire tag (ignores tag_prefix and tag_postfix if set)
 	// ExcludeFromGlobal: when true, nodes from this source are omitted from the pool for global ParserConfig.outbounds (generation-time only).
 	//
 	// SPEC 108: свёрнутая подписка (Fold != nil) выставляет этот флаг сама

@@ -453,6 +453,21 @@ type SourceLoadResult struct {
 	// state.json никогда не почистится. Продление lastSeen сохранения не
 	// требует и флага не поднимает.
 	DisabledMigrated bool
+
+	// ParseFailures — КОМПАКТНЫЙ список причин, по которым разбор отбраковал
+	// содержимое источника: сетевая ошибка фетча, битые элементы Xray-массива,
+	// нечитаемое тело.
+	//
+	// Заполняется всегда, когда причина была, — даже если узлы всё-таки есть:
+	// «половина подписки протухла» тоже стоит показать. Решение «показывать
+	// или нет» принимает адресат (отчёт сборки показывает только у источника,
+	// не давшего ни одного узла), а не разбор: разбор не знает, чем кончится
+	// сборка.
+	//
+	// SPEC 113-A не затрагивается: это только видимость. Достоверность разбора
+	// (bodyRead, trustedParse) считается прежним способом, и наличие причин на
+	// неё не влияет.
+	ParseFailures []string
 }
 
 // LoadNodesFromSource loads and processes nodes from a configtypes.ProxySource
@@ -512,6 +527,11 @@ func LoadNodesFromSourceEx(
 	// Группы отдельным списком НЕ идут: они рядовые узлы и лежат в nodes.
 	var ignoredSections []string
 
+	// SPEC 115: причины отбраковки — компактно, для отчёта сборки. Копятся
+	// здесь, а не в лог, потому что адресат у них пользователь: источник,
+	// разобравшийся в ноль узлов, до этого не сообщал о себе ничего.
+	rejected := &ParseFailureReasons{}
+
 	// Process subscription from Source field
 	if proxySource.Source != "" {
 		// Check if source is a direct link (legacy format)
@@ -545,6 +565,11 @@ func LoadNodesFromSourceEx(
 				debuglog.DebugLog("LoadNodesFromSource: Failed to fetch subscription %d/%d (took %v): %v",
 					subscriptionIndex+1, totalSubscriptions, fetchDuration, err)
 				debuglog.ErrorLog("Parser: Failed to fetch subscription from %s: %v", proxySource.Source, err)
+				// Сетевая ошибка идёт наверх КАК ЕСТЬ: сокращать «connection
+				// refused» до «источник не загрузился» значило бы отнять у
+				// пользователя ровно то, по чему он отличает сбой провайдера
+				// от собственного файрвола.
+				rejected.Add(fmt.Sprintf("fetch failed: %v", err))
 			} else if len(content) > 0 {
 				debuglog.DebugLog("LoadNodesFromSource: Fetched subscription %d/%d: %d bytes in %v",
 					subscriptionIndex+1, totalSubscriptions, len(content), fetchDuration)
@@ -630,6 +655,7 @@ func LoadNodesFromSourceEx(
 					importRes, err := ParseSingboxBody(contentStr, bodyKind, proxySource.Skip)
 					if err != nil {
 						debuglog.WarnLog("Parser: sing-box JSON subscription %s: %v", proxySource.Source, err)
+						rejected.Add(fmt.Sprintf("sing-box JSON body rejected: %v", err))
 					} else {
 						debuglog.DebugLog("LoadNodesFromSource: sing-box JSON subscription %d/%d (%s): %d node(s)",
 							subscriptionIndex+1, totalSubscriptions, bodyKind, len(importRes.Nodes))
@@ -666,9 +692,11 @@ func LoadNodesFromSourceEx(
 					debuglog.DebugLog("LoadNodesFromSource: Parsed subscription %d/%d: %d nodes in %v (%s)",
 						subscriptionIndex+1, totalSubscriptions, nodesFromThisSource, time.Since(parseStartTime), bodyKind)
 				} else if bodyKind == BodyKindXrayArray {
-					arrayNodes, err := ParseNodesFromXrayJSONArray(contentStr, proxySource.Skip)
+					arrayNodes, xrayReasons, err := ParseNodesFromXrayJSONArrayEx(contentStr, proxySource.Skip)
+					rejected.AddAll(xrayReasons)
 					if err != nil {
 						debuglog.WarnLog("Parser: Xray JSON array subscription %s: %v", proxySource.Source, err)
+						rejected.Add(fmt.Sprintf("Xray JSON array body rejected: %v", err))
 					} else {
 						debuglog.DebugLog("LoadNodesFromSource: Xray JSON array subscription %d/%d: %d node(s)",
 							subscriptionIndex+1, totalSubscriptions, len(arrayNodes))
@@ -901,11 +929,16 @@ func LoadNodesFromSourceEx(
 	totalDuration := time.Since(startTime)
 	debuglog.DebugLog("LoadNodesFromSource: END source %d/%d (total duration: %v, nodes: %d)",
 		subscriptionIndex+1, totalSubscriptions, totalDuration, len(nodes))
+	// Хук зовётся ДО возврата и одинаково для обеих обёрток: тонкая
+	// LoadNodesFromSource отдаёт наверх только узлы, и без него причины
+	// доезжали бы лишь до тех вызывающих, кто зовёт Ex-форму.
+	reportParseFailures(proxySource, rejected.List())
 	return &SourceLoadResult{
 		Nodes:            nodes,
 		IgnoredSections:  ignoredSections,
 		DisabledNodes:    refreshedDisabled,
 		DisabledMigrated: disabledMigrated,
+		ParseFailures:    rejected.List(),
 	}, nil
 }
 

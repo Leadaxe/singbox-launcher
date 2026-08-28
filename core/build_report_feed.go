@@ -35,7 +35,26 @@ func FeedBuildReportFromParser(gen config.BuildGeneration, res *config.OutboundG
 	// своего вида, и чистая сборка обязана снять пометки предыдущей.
 	config.SetExcludedSources(gen, res.ExcludedSources)
 
-	entries := make([]config.BuildReportEntry, 0, len(res.BrokenChains)+1)
+	entries := make([]config.BuildReportEntry, 0,
+		len(res.BrokenChains)+len(res.ParseFailedSources)+1)
+
+	// SPEC 115: источник, не давший ни одного узла. До этого вида записи такой
+	// источник сообщал о себе одним WARN в логе («source returned zero nodes
+	// (counted as failed)»), а в UI — ничем: строка Sources показывала галку и
+	// прежний счётчик узлов. Ровно тот же парадокс, что был у исключённых
+	// источников, только причина другая — чинить надо саму подписку.
+	//
+	// Субъект — подпись источника, как у source_excluded: список отчёта читают
+	// по левому краю, и там должно стоять имя того, что сломалось.
+	for _, s := range res.ParseFailedSources {
+		entries = append(entries, config.BuildReportEntry{
+			Kind:        config.BuildReportSourceParseFailed,
+			Subject:     s.SourceLabel,
+			SourceID:    s.SourceID,
+			SourceLabel: s.SourceLabel,
+			Reason:      s.Reason,
+		})
+	}
 
 	// Цепочка, не ставшая узлом (SPEC 110): причина уже сформулирована
 	// chain_nodes.go, здесь она только меняет адресата — из лога в отчёт.

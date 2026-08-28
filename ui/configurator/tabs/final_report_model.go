@@ -83,12 +83,16 @@ type finalReportLine struct {
 // потери. Внутри вида сохраняется порядок записей (он детерминирован в
 // сборке), поэтому список не прыгает между заходами на вкладку.
 func finalReportLines(entries []config.BuildReportEntry) []finalReportLine {
+	// Источник, не давший ни одного узла, идёт ПЕРВЫМ: он объясняет остальные
+	// записи (у пропавшей подписки следом рвутся ссылки на её узлы), и читать
+	// список сверху вниз надо начиная с корня.
 	order := map[config.BuildReportKind]int{
-		config.BuildReportSourceExcluded: 0,
-		config.BuildReportTargetMissing:  1,
-		config.BuildReportNodesDropped:   2,
-		config.BuildReportChainFailed:    3,
-		config.BuildReportNaiveDegraded:  4,
+		config.BuildReportSourceParseFailed: 0,
+		config.BuildReportSourceExcluded:    1,
+		config.BuildReportTargetMissing:     2,
+		config.BuildReportNodesDropped:      3,
+		config.BuildReportChainFailed:       4,
+		config.BuildReportNaiveDegraded:     5,
 	}
 	idx := make([]int, len(entries))
 	for i := range idx {
@@ -120,6 +124,8 @@ func finalReportEntryText(e config.BuildReportEntry) string {
 		subject = strings.TrimSpace(e.SourceLabel)
 	}
 	switch e.Kind {
+	case config.BuildReportSourceParseFailed:
+		return locale.Tf("Source %q produced no nodes: %s", subject, e.Reason)
 	case config.BuildReportSourceExcluded:
 		return locale.Tf("Source %q excluded from the config: %s", subject, e.Reason)
 	case config.BuildReportNodesDropped:

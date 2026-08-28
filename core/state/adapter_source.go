@@ -39,6 +39,10 @@ func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 			DetourNodeHash:          s.DetourNodeHash,     // legacy, мигрирует на сборке
 			DetourNodeLabel:         s.DetourNodeLabel,    // SPEC 101
 			DisabledNodes:           s.DisabledNodes,      // SPEC 094 D4
+			// SPEC 115: сообщение провайдера — тоже только для диагностики.
+			// Провозится ЗДЕСЬ, потому что дальше по конвейеру метаданных
+			// источника уже нет: разбору достаётся только сборочная форма.
+			ProviderAnnounce: s.announceMessage(),
 		}
 		if s.Tag != nil {
 			ps.TagPrefix = s.Tag.Prefix
@@ -78,4 +82,15 @@ func (s *Source) ToProxySourceV4() configtypes.ProxySource {
 		}
 	}
 	return configtypes.ProxySource{}
+}
+
+// announceMessage — сообщение провайдера из метаданных источника, обрезанное
+// общим правилом (AnnounceMessage); пусто, если провайдер молчал.
+//
+// Только для подписок: у источника-сервера и цепочки метаданных нет.
+func (s *Source) announceMessage() string {
+	if s == nil || s.Meta == nil {
+		return ""
+	}
+	return s.Meta.ProviderAnnounce.AnnounceMessage()
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image/color"
 	"strings"
 	"time"
@@ -60,24 +61,46 @@ const previewNodeCap = 200
 // SPEC 094: sing-box JSON (одиночный outbound, массив, целый конфиг, массив
 // конфигов) разбирается той же веткой, что и в основном пайплайне — иначе
 // превью показывало бы 0 нод для тела, которое импортируется успешно.
+//
+// Тонкая обёртка над parsePreviewNodesFromBodyEx для вызывающих, которым
+// причины отбраковки не нужны.
 func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.ParsedNode {
+	nodes, _ := parsePreviewNodesFromBodyEx(body, skip)
+	return nodes
+}
+
+// parsePreviewNodesFromBodyEx — тот же разбор, но вторым значением отдаёт
+// КОМПАКТНЫЙ список причин отбраковки (SPEC 115).
+//
+// Превью обязано совпадать с боевым разбором не только числом узлов, но и
+// объяснением: до этого вкладка Preview у протухшей подписки показывала
+// «0 server(s)» и «No servers found.» — то есть ровно тот же факт пустоты, что
+// и список Sources, и ни слова о причине. Причины берутся из ТОГО ЖЕ разбора,
+// а не из отдельного прохода: разъехавшись, превью и сборка снова давали бы
+// два разных ответа про одно тело.
+func parsePreviewNodesFromBodyEx(body []byte, skip []map[string]string) ([]*config.ParsedNode, []string) {
 	bodyStr := strings.TrimSpace(string(body))
 
 	if kind := subscription.ClassifySubscriptionBody(bodyStr); kind.IsSingbox() {
 		res, err := subscription.ParseSingboxBody(bodyStr, kind, skip)
 		if err != nil || res == nil {
-			return nil
+			var reasons []string
+			if err != nil {
+				reasons = []string{fmt.Sprintf("sing-box JSON body rejected: %v", err)}
+			}
+			return nil, reasons
 		}
-		return capPreviewNodes(uniquifyPreviewTags(subscription.DedupParsedNodes(res.Nodes)))
+		return capPreviewNodes(uniquifyPreviewTags(subscription.DedupParsedNodes(res.Nodes))), nil
 	}
 
 	if subscription.IsXrayJSONArrayBody(bodyStr) {
-		nodes, err := subscription.ParseNodesFromXrayJSONArray(bodyStr, skip)
+		nodes, reasons, err := subscription.ParseNodesFromXrayJSONArrayEx(bodyStr, skip)
 		if err != nil {
-			return nil
+			return nil, append(reasons, fmt.Sprintf("Xray JSON array body rejected: %v", err))
 		}
-		return capPreviewNodes(uniquifyPreviewTags(subscription.DedupParsedNodes(nodes)))
+		return capPreviewNodes(uniquifyPreviewTags(subscription.DedupParsedNodes(nodes))), reasons
 	}
+	rejected := &subscription.ParseFailureReasons{}
 	out := make([]*config.ParsedNode, 0)
 	contentStr := strings.ReplaceAll(string(body), "\r\n", "\n")
 	contentStr = strings.ReplaceAll(contentStr, "\r", "\n")
@@ -87,7 +110,14 @@ func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.
 			continue
 		}
 		node, perr := subscription.ParseNode(line, skip)
-		if perr != nil || node == nil {
+		if perr != nil {
+			// Причина построчной отбраковки — тоже свойство подписки:
+			// «vless:// не распаковывается» пользователь обязан увидеть, а не
+			// выводить из пустого списка.
+			rejected.Add(fmt.Sprintf("URI rejected: %v", perr))
+			continue
+		}
+		if node == nil {
 			continue
 		}
 		out = append(out, node)
@@ -96,7 +126,34 @@ func parsePreviewNodesFromBody(body []byte, skip []map[string]string) []*config.
 	// LoadNodesFromSource) — иначе дубль получил бы «X-2» и превью показало
 	// бы 39 строк там, где сборка даст 8. Кап — ПОСЛЕ дедупа: 32 копии не
 	// должны съедать лимит отрисовки.
-	return capPreviewNodes(uniquifyPreviewTags(subscription.DedupParsedNodes(out)))
+	return capPreviewNodes(uniquifyPreviewTags(subscription.DedupParsedNodes(out))), rejected.List()
+}
+
+// previewParseReasonsBlock — блок причин отбраковки для вкладки Preview;
+// nil, если причин нет (показывать нечего, и пустая рамка только шумит).
+//
+// Wrapping обязателен у каждой строки: Label без него отдаёт всю строку как
+// min-width и раздувает окно источника на весь экран (fyne-ловушка), а причины
+// тут длинные по построению — «empty user id — the server returned a
+// placeholder, subscription may be expired».
+func previewParseReasonsBlock(reasons []string) fyne.CanvasObject {
+	if len(reasons) == 0 {
+		return nil
+	}
+	items := make([]fyne.CanvasObject, 0, len(reasons)+1)
+	head := widget.NewLabel(locale.T("Why nodes were rejected:"))
+	head.Wrapping = fyne.TextWrapWord
+	head.Importance = widget.WarningImportance
+	head.TextStyle = fyne.TextStyle{Bold: true}
+	items = append(items, head)
+	for _, reason := range reasons {
+		lbl := widget.NewLabel("• " + reason)
+		lbl.Wrapping = fyne.TextWrapWord
+		lbl.Importance = widget.MediumImportance
+		lbl.TextStyle = fyne.TextStyle{Italic: true}
+		items = append(items, lbl)
+	}
+	return container.NewVBox(items...)
 }
 
 // uniquifyPreviewTags разводит одинаковые теги суффиксами «-2», «-3» и
@@ -812,6 +869,13 @@ func showSourceEditWindow(
 			model := presenter.Model()
 			var nodes []*config.ParsedNode
 			var err error
+			// parseReasons — компактные причины отбраковки от ТОГО ЖЕ разбора,
+			// что дал nodes (SPEC 115). Показываются и при нуле узлов, и при
+			// частичной отбраковке: «половина подписки протухла» — тоже ответ,
+			// которого у пользователя раньше не было. До этого вкладка Preview
+			// у протухшей подписки писала «0 server(s)» и «No servers found.» —
+			// то есть повторяла факт пустоты и молчала о причине.
+			var parseReasons []string
 			// needsFetch — true когда нет .raw кэша для subscription: UI должен
 			// показать кнопку "Fetch now" вместо просто текста ошибки.
 			needsFetch := false
@@ -860,7 +924,16 @@ func showSourceEditWindow(
 							if pp != nil {
 								skip = pp.Skip
 							}
-							nodes = parsePreviewNodesFromBody(decoded, skip)
+							nodes, parseReasons = parsePreviewNodesFromBodyEx(decoded, skip)
+							// Сообщение провайдера — ПЕРВОЙ причиной: он
+							// объясняет, почему тело такое, а наши причины —
+							// что мы в этом теле увидели. Чужой текст,
+							// показывается как данные (см. announce).
+							if msg := providerAnnounceText(src.Meta); msg != "" {
+								parseReasons = append(
+									[]string{locale.Tf("provider says: %s", msg)},
+									parseReasons...)
+							}
 						}
 					} else {
 						// Нет кэша — UI даст affordance для one-shot fetch'а.
@@ -898,12 +971,22 @@ func showSourceEditWindow(
 				} else {
 					previewStatus.SetText(locale.Tf("%d server(s) from %d source(s)", len(nodes), 1))
 				}
+				// SPEC 115: причины отбраковки — под счётчиком, ДО списка.
+				// Строка «0 server(s) from 1 source(s)» отвечает на вопрос
+				// «сколько», а пользователю нужен ответ «почему»; без него
+				// вкладка Preview у протухшей подписки была тупиком.
+				reasonsBlock := previewParseReasonsBlock(parseReasons)
 				if err == nil {
 					if len(nodes) == 0 {
 						lbl := widget.NewLabel(locale.T("No servers found."))
 						lbl.Importance = widget.LowImportance
 						// Spacer below pushes label to top instead of centering blank space.
-						previewListHost.Add(container.NewVBox(lbl, layout.NewSpacer()))
+						items := []fyne.CanvasObject{lbl}
+						if reasonsBlock != nil {
+							items = append(items, reasonsBlock)
+						}
+						items = append(items, layout.NewSpacer())
+						previewListHost.Add(container.NewVBox(items...))
 					} else {
 						nn := nodes
 						// SPEC 094 D4: у каждой ноды переключатель «включена».
@@ -998,7 +1081,14 @@ func showSourceEditWindow(
 								}
 							},
 						)
-						previewListHost.Add(srvList)
+						// Частичная отбраковка: узлы есть, но часть элементов
+						// отвергнута. Причины идут НАД списком — иначе их не
+						// видно у подписки на две сотни серверов.
+						if reasonsBlock != nil {
+							previewListHost.Add(container.NewBorder(reasonsBlock, nil, nil, nil, srvList))
+						} else {
+							previewListHost.Add(srvList)
+						}
 					}
 				}
 				previewListHost.Refresh()

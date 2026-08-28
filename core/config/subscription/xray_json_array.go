@@ -27,12 +27,34 @@ func IsXrayJSONArrayBody(s string) bool {
 // ParseNodesFromXrayJSONArray parses a JSON array of Xray-style full configs into ParsedNode list.
 // Non-Xray elements (e.g. sing-box-only outbounds) are skipped with a debug log.
 // skip uses the same rules as URI subscriptions (shouldSkipNode).
+//
+// Тонкая обёртка над ParseNodesFromXrayJSONArrayEx для вызывающих, которым
+// причины отбраковки не нужны (тесты разбора, точечные прогоны).
 func ParseNodesFromXrayJSONArray(jsonBody string, skip []map[string]string) ([]*configtypes.ParsedNode, error) {
+	nodes, _, err := ParseNodesFromXrayJSONArrayEx(jsonBody, skip)
+	return nodes, err
+}
+
+// ParseNodesFromXrayJSONArrayEx — тот же разбор, но вторым значением отдаёт
+// КОМПАКТНЫЙ список причин, по которым элементы были отбракованы.
+//
+// Причины нужны наверху (SPEC 115, вид записи source_parse_failed): подписка,
+// разобравшаяся в ноль узлов, до этого объявлялась пользователю никак — WARN
+// «source returned zero nodes» жил только в логе, а строка Sources выглядела
+// здоровой. Список компактный по построению (ParseFailureReasons): у подписки
+// на 500 узлов одна и та же причина повторяется 500 раз, и стенограмма
+// заменила бы сообщение шумом.
+func ParseNodesFromXrayJSONArrayEx(
+	jsonBody string,
+	skip []map[string]string,
+) ([]*configtypes.ParsedNode, []string, error) {
 	jsonBody = strings.TrimSpace(jsonBody)
 	var elems []json.RawMessage
 	if err := json.Unmarshal([]byte(jsonBody), &elems); err != nil {
-		return nil, fmt.Errorf("subscription JSON array: %w", err)
+		return nil, nil, fmt.Errorf("subscription JSON array: %w", err)
 	}
+
+	rejected := &ParseFailureReasons{}
 
 	// SPEC 094 §342 — ДВА прохода: «кто даёт узлу имя» и «в каком порядке узлы
 	// идут» — разные задачи.
@@ -62,7 +84,7 @@ func ParseNodesFromXrayJSONArray(jsonBody string, skip []map[string]string) ([]*
 
 	var out []*configtypes.ParsedNode
 	for i, raw := range elems {
-		nodes, err := parseXrayJSONArrayElementNodes(raw, i, skip)
+		nodes, err := parseXrayJSONArrayElementNodes(raw, i, skip, rejected)
 		if err != nil {
 			debuglog.WarnLog("Parser: Xray JSON array element %d: %v", i, err)
 			continue
@@ -83,7 +105,7 @@ func ParseNodesFromXrayJSONArray(jsonBody string, skip []map[string]string) ([]*
 
 	// Состав групп резолвится ПОСЛЕ всех элементов: член мог достаться
 	// элементу, который ещё не разобран.
-	return resolveGroupMembers(out, memberServers, finalTagByServer), nil
+	return resolveGroupMembers(out, memberServers, finalTagByServer), rejected.List(), nil
 }
 
 // simplifySoloElementTags убирает различитель у элементов, от которых выжил
@@ -261,7 +283,7 @@ func computeXrayServerOwners(elems []json.RawMessage, skip []map[string]string) 
 
 	owner := make(map[string]int)
 	for _, idx := range order {
-		nodes, err := parseXrayJSONArrayElementNodes(elems[idx], idx, skip)
+		nodes, err := parseXrayJSONArrayElementNodes(elems[idx], idx, skip, nil)
 		if err != nil {
 			continue
 		}
@@ -406,7 +428,16 @@ func xrayElementPayloadCount(raw json.RawMessage) int {
 // Именование (C3) сохраняет обратную совместимость тегов: единственный узел
 // элемента получает чистое имя из remarks — ровно как раньше, — и лишь при
 // нескольких узлах добавляется различитель.
-func parseXrayJSONArrayElementNodes(raw json.RawMessage, elemIndex int, skip []map[string]string) ([]*configtypes.ParsedNode, error) {
+// rejected (может быть nil) собирает причины отбраковки ПОДДЕРЖИВАЕМЫХ
+// протоколов — их адресат пользователь, а не лог. Чёрновой проход владения
+// (computeXrayServerOwners) передаёт nil: он разбирает те же элементы второй
+// раз, и его причины были бы дублями боевого прохода.
+func parseXrayJSONArrayElementNodes(
+	raw json.RawMessage,
+	elemIndex int,
+	skip []map[string]string,
+	rejected *ParseFailureReasons,
+) ([]*configtypes.ParsedNode, error) {
 	var root map[string]interface{}
 	if err := json.Unmarshal(raw, &root); err != nil {
 		return nil, fmt.Errorf("invalid element JSON: %w", err)
@@ -477,6 +508,11 @@ func parseXrayJSONArrayElementNodes(raw json.RawMessage, elemIndex int, skip []m
 	out := make([]*configtypes.ParsedNode, 0, len(payload))
 	memberTags := make([]string, 0, len(payload))
 	unsupported := make(map[string]struct{})
+	if rejected == nil {
+		// Локальный сток: ветки ниже пишут причины безусловно, и проверка на
+		// nil в каждой из них была бы приглашением однажды её забыть.
+		rejected = &ParseFailureReasons{}
+	}
 
 	for idx, ob := range payload {
 		label := remarksRaw
@@ -489,12 +525,27 @@ func parseXrayJSONArrayElementNodes(raw json.RawMessage, elemIndex int, skip []m
 
 		node, err := xrayNodeFromOutbound(ob, label)
 		if err != nil {
-			// C1: протокол не исчезает молча.
-			protocol := strings.ToLower(strings.TrimSpace(xrayMapString(ob, "protocol")))
-			if protocol != "" {
+			// Два РАЗНЫХ класса отбраковки, и сваливать их в один список
+			// нельзя: до этого разделения элемент vless с пустым id объявлялся
+			// «unsupported protocol "vless"» — сообщение, которое отправляло
+			// пользователя искать несуществующую нехватку поддержки протокола
+			// вместо протухшей подписки.
+			if protocol, isUnsupported := xrayUnsupportedProtocol(err); isUnsupported {
+				// C1: протокол не исчезает молча. Чинить тут пользователю
+				// нечем — это свойство лаунчера, поэтому и причина общая.
 				unsupported[protocol] = struct{}{}
+				debuglog.DebugLog("Parser: Xray element %d outbound %d: %v", elemIndex, idx, err)
+				continue
 			}
-			debuglog.DebugLog("Parser: Xray element %d outbound %d: %v", elemIndex, idx, err)
+			// Поддерживаемый протокол, битый элемент: причина — свойство
+			// ПОДПИСКИ, и она обязана доехать до пользователя как есть.
+			protocol := strings.ToLower(strings.TrimSpace(xrayMapString(ob, "protocol")))
+			if protocol == "" {
+				protocol = "?"
+			}
+			reason := fmt.Sprintf("%s outbound rejected: %v", protocol, err)
+			rejected.Add(reason)
+			debuglog.WarnLog("Parser: Xray element %d: %s", elemIndex, reason)
 			continue
 		}
 		if node == nil {

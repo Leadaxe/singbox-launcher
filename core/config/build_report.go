@@ -49,6 +49,19 @@ const (
 	// умеет (SPEC 044 feature-probe).
 	BuildReportNaiveDegraded BuildReportKind = "naive_degraded"
 
+	// BuildReportSourceParseFailed — источник не дал конфигу НИ ОДНОГО узла:
+	// не фетчнулся, или фетчнулся и разобрался в ноль (SPEC 115).
+	//
+	// Отдельный вид от source_excluded, хотя строка Sources у обоих несёт ⚠:
+	// исключённый источник узлы дал, но выпал из конфига из-за ссылки, и чинить
+	// надо ссылку; этот не дал ничего, и чинить надо саму подписку. Показать
+	// второе первым значило бы отправить пользователя искать несуществующий
+	// сломанный detour.
+	//
+	// Причина — компактная (первые несколько РАЗНЫХ причин отбраковки), а не
+	// стенограмма: у подписки на 500 узлов причина одна, повторённая 500 раз.
+	BuildReportSourceParseFailed BuildReportKind = "source_parse_failed"
+
 	// BuildReportTargetMissing — цель detour не существует в собранном
 	// конфиге. Отдельный вид от nodes_dropped: там субъект — источник и
 	// счётчик узлов, здесь — сама несуществующая цель.
@@ -246,6 +259,27 @@ func BuildReportReadyFor(gen BuildGeneration) bool {
 	buildReportMu.RLock()
 	defer buildReportMu.RUnlock()
 	return buildReportReady && gen != 0 && gen == buildReportGen
+}
+
+// ParseFailedSourceReason — почему источник с данным ULID не дал конфигу ни
+// одного узла; пусто, если узлы он дал.
+//
+// Спрашивает строка Wizard → Sources — тем же способом, что и про исключение:
+// у неё на руках ULID, а не позиция в сборке. Пустой sourceID никогда не
+// совпадает: записи без id (конфиг собран не из состояния) привязать к строке
+// не к чему.
+func ParseFailedSourceReason(sourceID string) string {
+	if sourceID == "" {
+		return ""
+	}
+	buildReportMu.RLock()
+	defer buildReportMu.RUnlock()
+	for _, e := range buildReport {
+		if e.Kind == BuildReportSourceParseFailed && e.SourceID == sourceID {
+			return e.Reason
+		}
+	}
+	return ""
 }
 
 // DroppedNodesForSource — сколько узлов источника снял последний рубеж; ноль,

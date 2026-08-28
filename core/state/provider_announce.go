@@ -11,6 +11,8 @@
 // success-with-announce fetch.
 package state
 
+import "strings"
+
 // ProviderAnnounce — header-derived rationale for an empty / errored
 // subscription response, in human-readable form. Surfaced to the user via
 // the source-row icon + dialog (SPEC 061 Phase 3).
@@ -36,6 +38,37 @@ type ProviderAnnounce struct {
 	HWIDNotSupported      bool `json:"hwid_not_supported,omitempty"`
 	HWIDMaxDevicesReached bool `json:"hwid_max_devices_reached,omitempty"`
 	HWIDLimit             bool `json:"hwid_limit,omitempty"` // legacy alias of MaxDevicesReached
+}
+
+// MaxAnnounceRunes — сколько символов сообщения провайдера показываем.
+//
+// Текст чужой и в длине не ограничен ничем: провайдер вправе прислать хоть
+// страницу. Показывать её целиком нельзя — она вытеснит собственную
+// диагностику лаунчера и раздует строку списка, — но и молча резать до трёх
+// слов тоже: сообщение обязано остаться читаемым. 500 символов покрывают
+// живые случаи с запасом.
+const MaxAnnounceRunes = 500
+
+// AnnounceMessage — сообщение провайдера, обрезанное до MaxAnnounceRunes.
+//
+// ГРАНИЦА ДОВЕРИЯ: это текст, написанный чужой стороной. Он показывается как
+// ДАННЫЕ — без интерпретации, без превращения в вывод лаунчера и без попыток
+// вычитать из него состояние подписки. Единственная обработка — схлопывание
+// переводов строки (иначе одна строка UI распадается на семь) и обрезка.
+func (a *ProviderAnnounce) AnnounceMessage() string {
+	if a == nil {
+		return ""
+	}
+	msg := strings.TrimSpace(a.Message)
+	if msg == "" {
+		return ""
+	}
+	msg = strings.Join(strings.Fields(msg), " ")
+	runes := []rune(msg)
+	if len(runes) > MaxAnnounceRunes {
+		msg = strings.TrimSpace(string(runes[:MaxAnnounceRunes])) + "…"
+	}
+	return msg
 }
 
 // IsEmpty — true if no field is populated (provider sent no announce headers

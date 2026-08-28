@@ -1,6 +1,7 @@
 package subscription
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -103,35 +104,38 @@ func xraySockoptDialerRef(streamSettings map[string]interface{}) string {
 func xrayBuildVLESSFromOutbound(ob map[string]interface{}, label string) (*configtypes.ParsedNode, error) {
 	settings, _ := ob["settings"].(map[string]interface{})
 	if settings == nil {
-		return nil, fmt.Errorf("missing settings")
+		return nil, errors.New(xrayReasonNoSettings)
 	}
 	vnextRaw, ok := settings["vnext"].([]interface{})
 	if !ok || len(vnextRaw) == 0 {
-		return nil, fmt.Errorf("missing vnext")
+		return nil, errors.New(xrayReasonNoVNext)
 	}
 	vn0, ok := vnextRaw[0].(map[string]interface{})
 	if !ok {
-		return nil, fmt.Errorf("invalid vnext[0]")
+		return nil, errors.New(xrayReasonNoVNext)
 	}
 	addr := xrayMapString(vn0, "address")
 	if addr == "" {
-		return nil, fmt.Errorf("missing vnext address")
+		return nil, errors.New(xrayReasonNoAddress)
 	}
 	port := xrayJSONInt(vn0["port"])
 	if port <= 0 || port > 65535 {
-		return nil, fmt.Errorf("invalid vnext port")
+		return nil, errors.New(xrayReasonBadPort)
 	}
 	users, _ := vn0["users"].([]interface{})
 	if len(users) == 0 {
-		return nil, fmt.Errorf("missing vnext users")
+		return nil, errors.New("no users in the server section — the element carries no credentials")
 	}
 	u0, ok := users[0].(map[string]interface{})
 	if !ok {
-		return nil, fmt.Errorf("invalid vnext user")
+		return nil, errors.New("malformed user record in the server section")
 	}
 	uuid := xrayMapString(u0, "id")
 	if uuid == "" {
-		return nil, fmt.Errorf("missing user id")
+		// Живой кейс: провайдер отдаёт валидный по форме конфиг с пустым id —
+		// подписка протухла, а не «протокол не поддержан». Формулировка обязана
+		// вести к продлению подписки.
+		return nil, errors.New(xrayReasonEmptyUserID)
 	}
 	flow := xrayMapString(u0, "flow")
 

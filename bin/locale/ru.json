@@ -1006,6 +1006,9 @@
   "Show source": {
     "value": "Показать источник"
   },
+  "Source %q produced no nodes: %s": {
+    "value": "Источник %q не дал узлов: %s"
+  },
   "Source %q excluded from the config: %s": {
     "value": "Источник %q исключён из конфига: %s"
   },
@@ -1477,6 +1480,9 @@
   },
   "[chain] ⚠️ core has no chain support": {
     "value": "[цепочка] ⚠️ ядро не умеет цепочки"
+  },
+  "⚠ No nodes from this source: %s": {
+    "value": "⚠ Узлов из этого источника нет: %s"
   },
   "⚠ Excluded from the config: %s": {
     "value": "⚠ Исключён из конфига: %s"
@@ -3505,5 +3511,20 @@
   },
   "  Last answer at %s.": {
     "value": "  Последний ответ в %s."
+  },
+  "Provider message": {
+    "value": "Сообщение провайдера"
+  },
+  "Announcement": {
+    "value": "Объявление"
+  },
+  "Announcement URL": {
+    "value": "Ссылка объявления"
+  },
+  "Why nodes were rejected:": {
+    "value": "Почему узлы отбракованы:"
+  },
+  "provider says: %s": {
+    "value": "провайдер сообщает: %s"
   }
 }

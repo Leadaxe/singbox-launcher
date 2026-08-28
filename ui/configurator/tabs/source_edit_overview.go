@@ -150,6 +150,26 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 			}
 		}
 
+		// === Сообщение провайдера (announce) ===
+		//
+		// Заголовок `announce` мы разбирали и раньше, но показывали только в
+		// диалоге ошибки и значком в списке: подписка, которая ФЕТЧИТСЯ
+		// успешно и при этом отдаёт «⚠️ Произошла ошибка при получении
+		// подписки», выглядела здоровой, а её сообщение не показывалось нигде.
+		//
+		// Показывается КАК ДАННЫЕ: чужой текст, без интерпретации и без
+		// превращения в наш вывод, обрезанный до вменяемой длины (провайдер не
+		// обязан быть краток). Отдельной секцией, а не строкой в блоке
+		// заголовков: это обращение к пользователю, а не техническое поле.
+		if msg := providerAnnounceText(meta); msg != "" {
+			body.Add(widget.NewSeparator())
+			body.Add(sectionHeader(locale.T("Provider message")))
+			body.Add(kvRow(locale.T("Announcement"), msg))
+			if meta.ProviderAnnounce != nil && meta.ProviderAnnounce.URL != "" {
+				body.Add(kvRow(locale.T("Announcement URL"), meta.ProviderAnnounce.URL))
+			}
+		}
+
 		// === Quota ===
 		if ui := meta.UserInfo; ui != nil && (ui.TotalBytes > 0 || ui.ExpireUnix > 0) {
 			body.Add(widget.NewSeparator())
@@ -317,6 +337,19 @@ func sectionHeader(text string) *widget.Label {
 }
 
 // kvRow — label "Key: Value" с соответствующим стилем.
+// providerAnnounceText — сообщение провайдера из метаданных источника; пусто,
+// если провайдер ничего не присылал.
+//
+// Обрезка и схлопывание переносов — в state.AnnounceMessage: правило одно на
+// все поверхности (Overview, Preview, пометка Sources, отчёт «Итога»), и
+// разъехаться им нельзя.
+func providerAnnounceText(meta *corestate.SubscriptionMeta) string {
+	if meta == nil {
+		return ""
+	}
+	return meta.ProviderAnnounce.AnnounceMessage()
+}
+
 func kvRow(key, value string) fyne.CanvasObject {
 	if value == "" {
 		value = "—"

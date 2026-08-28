@@ -460,6 +460,14 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// пометки молчат — раскраска не имеет права врать о
 				// конфигурации, которую никто не собирал.
 				droppedNodes, droppedReason := config.DroppedNodesForSource(sourceID)
+				// SPEC 115: источник, не давший конфигу ни одного узла
+				// (не фетчнулся, или разобрался в ноль). Раньше это жило
+				// одним WARN в логе — «source returned zero nodes» — и
+				// пользователь не видел НИЧЕГО: строка показывала галку и
+				// счётчик узлов от прошлой удачной сборки. Пометка та же
+				// ⚠, что у исключения, но причина принципиально другая:
+				// чинить надо саму подписку, а не ссылку на узел.
+				parseFailedReason := config.ParseFailedSourceReason(sourceID)
 
 				fullURL := src.URL
 				var tagPrefix, tagPostfix, tagMask string
@@ -684,6 +692,15 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					warn.Importance = widget.WarningImportance
 					warn.TextStyle = fyne.TextStyle{Italic: true}
 					lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, warn))
+				} else if parseFailedReason != "" {
+					// После исключения, но ДО «снято N»: источник без узлов
+					// снятых узлов не имеет, а исключение (ссылка не
+					// разрешилась) ближе к корню, если случилось и то и другое.
+					empty := widget.NewLabel(locale.Tf("⚠ No nodes from this source: %s", parseFailedReason))
+					empty.Wrapping = fyne.TextWrapWord
+					empty.Importance = widget.WarningImportance
+					empty.TextStyle = fyne.TextStyle{Italic: true}
+					lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, empty))
 				} else if droppedNodes > 0 {
 					// else if: источник, выпавший целиком, узлов уже не имеет —
 					// вторая строка про «снято N» рядом с «исключён» была бы

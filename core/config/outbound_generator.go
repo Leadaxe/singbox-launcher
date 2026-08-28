@@ -105,6 +105,19 @@ type OutboundGenerationResult struct {
 	// трафика нет, и связи между этими фактами пользователю не показывали.
 	ExcludedSources []SourceExclusion
 
+	// ParseFailedSources — источники, которые не дали конфигу НИ ОДНОГО узла:
+	// не фетчнулись, или фетчнулись и разобрались в ноль (SPEC 115).
+	//
+	// Отдельно от ExcludedSources, потому что это разные события с разной
+	// подсказкой пользователю: исключённый источник узлы дал, но выпал из
+	// конфига из-за ссылки; этот не дал ничего, и чинить надо саму подписку.
+	// До SPEC 115 второе жило одним WARN «source returned zero nodes (counted
+	// as failed)» — в UI не было ничего, и строка Sources выглядела здоровой.
+	//
+	// Reason у записи — компактная человекочитаемая причина от разбора
+	// (первые несколько РАЗНЫХ), а не стенограмма на 500 строк.
+	ParseFailedSources []SourceExclusion
+
 	// NodeOrigins — финальный тег узла → источник, из которого он приехал
 	// (SPEC 113-B). Нужен последнему рубежу: граф-санитайзер (core/build)
 	// видит только теги, а выбросив узел за висячий detour, обязан назвать
@@ -128,6 +141,66 @@ type SourceExclusion struct {
 	SourceID    string
 	SourceLabel string
 	Reason      string
+}
+
+// unknownParseFailureReason — что показать, когда источник дал ноль узлов, а
+// причин разбор не назвал.
+//
+// Такое бывает штатно: тело прочиталось, но всё содержимое отсеяли skip-правила
+// или отметки выключения узлов. Молчать тут нельзя — пользователь всё равно
+// видит источник без узлов, — но и выдумывать причину тоже: формулировка
+// говорит ровно то, что известно.
+const unknownParseFailureReason = "the source produced no nodes (nothing left after parsing and filters)"
+
+// sourceParseFailure собирает запись о источнике, не давшем ни одного узла.
+//
+// Причины склеиваются в ОДНУ строку: адресат — строка списка Sources и строка
+// отчёта, а там место под одну фразу. Компактность гарантирована выше
+// (ParseFailureReasons), поэтому склейка не может разрастись.
+func sourceParseFailure(ps ProxySource, reasons []string) SourceExclusion {
+	label := strings.TrimSpace(ps.Label)
+	if label == "" {
+		label = strings.TrimSpace(ps.Source)
+	}
+	reason := strings.Join(prependProviderAnnounce(ps.ProviderAnnounce, reasons), "; ")
+	if strings.TrimSpace(reason) == "" {
+		reason = unknownParseFailureReason
+	}
+	return SourceExclusion{SourceID: ps.ID, SourceLabel: label, Reason: reason}
+}
+
+// prependProviderAnnounce ставит сообщение провайдера ПЕРВОЙ причиной.
+//
+// Когда подписка отдаёт ноль узлов, лучший диагноз обычно уже написан самим
+// провайдером («⚠️ Произошла ошибка при получении подписки. Попробуйте позже
+// или обратитесь в службу поддержки») — наши синтезированные причины («empty
+// user id…») объясняют, ЧТО мы увидели в теле, а провайдер объясняет, ПОЧЕМУ
+// тело такое. Второе ближе к корню, поэтому идёт первым.
+//
+// ГРАНИЦА ДОВЕРИЯ: текст чужой и вставляется как ДАННЫЕ, помеченные
+// источником. Он ничего не решает — ни состав узлов, ни достоверность разбора
+// (SPEC 113-A), — и только показывается.
+func prependProviderAnnounce(announce string, reasons []string) []string {
+	announce = strings.TrimSpace(announce)
+	if announce == "" {
+		return reasons
+	}
+	head := fmt.Sprintf("provider says: %s", announce)
+	return append([]string{head}, reasons...)
+}
+
+// appendReason доливает причину к уже собранным, не плодя дублей.
+func appendReason(reasons []string, extra string) []string {
+	extra = strings.TrimSpace(extra)
+	if extra == "" {
+		return reasons
+	}
+	for _, r := range reasons {
+		if r == extra {
+			return reasons
+		}
+	}
+	return append(append([]string(nil), reasons...), extra)
 }
 
 // NaiveSupportProbe — hook installed by the app layer (core.AppController):
@@ -1046,9 +1119,29 @@ func GenerateOutboundsFromParserConfig(
 	}
 	skippedNaive := 0
 
+	// SPEC 115: причины отбраковки от разбора. Хук ставится на время ЭТОГО
+	// прогона и снимается сразу после цикла — глобальная переменная,
+	// пережившая свою сборку, приписала бы чужие причины следующей.
+	//
+	// Ключ — позиция источника в ParserConfig, а не ULID: у конфигов, собранных
+	// не из состояния, ULID пуст, и все такие источники слились бы в один ключ.
+	parseFailuresBySource := make(map[int][]string)
+	currentSourceIdx := -1
+	prevRecordHook := subscription.RecordParseFailures
+	subscription.RecordParseFailures = func(_ ProxySource, reasons []string) {
+		if currentSourceIdx >= 0 && len(reasons) > 0 {
+			parseFailuresBySource[currentSourceIdx] = reasons
+		}
+	}
+	// defer, а не только снятие после цикла: паника в загрузчике оставила бы
+	// хук этой сборки жить дальше, и следующий разбор писал бы причины в
+	// карту, которую уже никто не читает.
+	defer func() { subscription.RecordParseFailures = prevRecordHook }()
+
 	processedIdx := 0
 	succeededSources := 0
 	failedSources := 0
+	var parseFailedSources []SourceExclusion
 	for i, proxySource := range parserConfig.ParserConfig.Proxies {
 		if proxySource.Disabled {
 			debuglog.DebugLog("GenerateOutboundsFromParserConfig: skipping source %d (disabled)", i+1)
@@ -1063,10 +1156,14 @@ func GenerateOutboundsFromParserConfig(
 		// SPEC 094 A5: группы из импортированного sing-box конфига приходят
 		// В ЭТОМ ЖЕ списке как обычные узлы (SchemeGroup). Отдельного канала
 		// для них нет — вкладка Outbounds остаётся за каналами лаунчера.
+		currentSourceIdx = i
 		nodesFromSource, err := loadNodesFunc(proxySource, tagCounts, progressCallback, i, totalSources)
+		currentSourceIdx = -1
 		if err != nil {
 			debuglog.ErrorLog("GenerateOutboundsFromParserConfig: Error processing source %d/%d: %v", i+1, totalSources, err)
 			failedSources++
+			parseFailedSources = append(parseFailedSources,
+				sourceParseFailure(proxySource, appendReason(parseFailuresBySource[i], err.Error())))
 			continue
 		}
 
@@ -1103,10 +1200,20 @@ func GenerateOutboundsFromParserConfig(
 			// Silent-empty: source fetched OK but parsed zero nodes. From
 			// the user's perspective this is indistinguishable from a hard
 			// failure — they expected nodes, got none.
-			debuglog.WarnLog("GenerateOutboundsFromParserConfig: source %d/%d returned zero nodes (counted as failed)", i+1, totalSources)
+			//
+			// SPEC 115: до этого место кончалось WARN'ом — в UI не было
+			// НИЧЕГО, и строка Sources показывала здоровый источник. Причины
+			// разбора уже собраны (хук выше), и здесь они становятся записью
+			// отчёта: пользователю нужен ответ «почему пусто», а не факт
+			// пустоты.
+			failure := sourceParseFailure(proxySource, parseFailuresBySource[i])
+			debuglog.WarnLog("GenerateOutboundsFromParserConfig: source %d/%d returned zero nodes (counted as failed): %s",
+				i+1, totalSources, failure.Reason)
 			failedSources++
+			parseFailedSources = append(parseFailedSources, failure)
 		}
 	}
+	subscription.RecordParseFailures = prevRecordHook
 
 	if len(allNodes) == 0 {
 		if totalSources == 0 {
@@ -1222,6 +1329,7 @@ func GenerateOutboundsFromParserConfig(
 		ChainCycles:          chainCycles,
 		DetourCycles:         detourCycles,
 		ExcludedSources:      excludedSources,
+		ParseFailedSources:   parseFailedSources,
 		NodeOrigins:          nodeOrigins,
 		SkippedNaiveReason:   naiveReason,
 	}, nil

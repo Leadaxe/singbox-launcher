@@ -33,6 +33,10 @@ func syncLegacyFromConnections(s *State) {
 				DetourNodeTag:           src.DetourNodeTag,      // SPEC 112
 				DetourNodeHash:          src.DetourNodeHash,     // legacy, мигрирует на сборке
 				DetourNodeLabel:         src.DetourNodeLabel,    // SPEC 101
+				// SPEC 115: сообщение провайдера — только для диагностики,
+				// как Label. Провозится здесь же: дальше по конвейеру
+				// метаданных источника нет.
+				ProviderAnnounce: src.announceMessage(),
 			}
 			if src.Tag != nil {
 				ps.TagPrefix = src.Tag.Prefix
