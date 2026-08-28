@@ -2933,26 +2933,26 @@
   "Flags": {
     "value": "Флаги"
   },
-  "Interface": {
-    "value": "Интерфейс"
+  "— down —": {
+    "value": "— лежит —"
   },
-  "↓rate": {
-    "value": "↓скор."
+  "(no address)": {
+    "value": "(без адреса)"
   },
-  "↑rate": {
-    "value": "↑скор."
+  "MAC %s": {
+    "value": "MAC %s"
   },
-  "↓total": {
-    "value": "↓всего"
+  "MTU %d": {
+    "value": "MTU %d"
   },
-  "↑total": {
-    "value": "↑всего"
+  "pkt %s/%s": {
+    "value": "пакетов %s/%s"
   },
-  "err / drop": {
-    "value": "ошиб. / потери"
+  "err %d/%d": {
+    "value": "ошиб. %d/%d"
   },
-  "MTU": {
-    "value": "MTU"
+  "drop %d/%d": {
+    "value": "потери %d/%d"
   },
   "— all —": {
     "value": "— все —"
