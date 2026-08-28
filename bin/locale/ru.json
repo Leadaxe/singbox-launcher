@@ -3440,6 +3440,12 @@
   "Reading the machine's interfaces…": {
     "value": "Читаем интерфейсы машины…"
   },
+  "Add an interface from the machine's list.": {
+    "value": "Добавить интерфейс из списка машины."
+  },
+  "No interfaces to add — type the name manually.": {
+    "value": "Добавить нечего — впишите имя вручную."
+  },
   "no IP address — no traffic will go through it": {
     "value": "нет IP-адреса — трафик через него не пойдёт"
   },

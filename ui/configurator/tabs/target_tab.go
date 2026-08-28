@@ -98,6 +98,11 @@ func CreateTargetTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasO
 		if td := model.TemplateData; td != nil && tgt.IsRemote() {
 			targetVars := wizardtemplate.TargetTabVars(td.Vars)
 			if len(targetVars) > 0 {
+				// Среди target-полей есть выбор LAN-интерфейсов, и его
+				// кандидаты приезжают от демона машины. Греем ЗДЕСЬ и в фоне,
+				// чтобы к первому клику по «+» список уже был: сама функция
+				// ничего не ждёт (SPEC 113-E M6).
+				WarmUpInterfaceHints(model)
 				box.Add(widget.NewSeparator())
 				vi := wizardtemplate.VarIndex(td.Vars)
 				resolved := wizardtemplate.ResolveTemplateVarsFor(td.Vars, model.SettingsVars, td.RawTemplate, tgt)

@@ -269,6 +269,133 @@ func FromRemote(name string, up bool, addrs []string) (Iface, bool) {
 	return Iface{Name: name, Addrs: joined, Up: up, IsTunnel: isForeignTunnel(name, ips)}, true
 }
 
+// LAN-сторона: отбор МЯГЧЕ аплинкового.
+//
+// tun.include_interface перечисляет интерфейсы, трафик КОТОРЫХ заворачивается в
+// TUN, — это порты, смотрящие в локальную сеть, а не путь наружу. Отсюда два
+// расхождения с List():
+//
+//   - Интерфейс БЕЗ адреса легален. LAN-порт роутера (lan1, lan2) часто не
+//     несёт собственного IP вовсе — адрес живёт на мосту, — а иногда в него
+//     просто ещё никто не воткнулся. Для аплинка это мёртвый маршрут, для
+//     LAN-стороны — штатное состояние.
+//   - Туннель нелегален ЛЮБОЙ. Собственный TUN ядра — обязательно (завернуть
+//     TUN сам в себя = петля), но и чужой awg1 смысла здесь не имеет: в него
+//     приходит уже маршрутизированный трафик, а не запросы устройств LAN.
+//     Для аплинка чужой туннель — законный выбор (SPEC 113-F), здесь — нет.
+//
+// Общее с List() ровно одно: петля отсекается всегда.
+
+// lanCandidate — общее правило отбора LAN-стороны для обоих путей (локального
+// и удалённого). Держится одной функцией намеренно: разъехавшись, локальный
+// список и список роутера начали бы предлагать разное для одной и той же роли.
+//
+// loopback приходит признаком, а не именем: локально его несут флаги, у демона
+// флагов нет и остаётся имя (lo/lo0).
+func lanCandidate(name string, loopback bool, addrs []net.IP) bool {
+	if strings.TrimSpace(name) == "" || loopback {
+		return false
+	}
+	// Туннель любого рода: собственный TUN ядра, мёртвый (безадресный
+	// туннельный) и чужой с адресом. Отдельные предикаты, а не своя эвристика:
+	// именам туннелей здесь одно место на пакет.
+	if isOwnTun(name, addrs) || hasTunnelName(name) || isForeignTunnel(name, addrs) {
+		return false
+	}
+	return true
+}
+
+// ListLANCandidates возвращает интерфейсы, годные на роль LAN-порта в
+// tun.include_interface: не петля и не туннель, адрес НЕ обязателен.
+//
+// Порядок тот же, что у List: поднятые первыми, внутри группы — по системному
+// индексу.
+func ListLANCandidates() ([]Iface, error) {
+	sys, err := net.Interfaces()
+	if err != nil {
+		return nil, fmt.Errorf("enumerate interfaces: %w", err)
+	}
+	out := make([]Iface, 0, len(sys))
+	for _, si := range sys {
+		addrs, _ := si.Addrs()
+		v4, v6 := []string{}, []string{}
+		ips := make([]net.IP, 0, len(addrs))
+		for _, a := range addrs {
+			ipn, ok := a.(*net.IPNet)
+			if !ok || ipn.IP == nil || ipn.IP.IsLinkLocalUnicast() {
+				continue
+			}
+			ips = append(ips, ipn.IP)
+			if ipn.IP.To4() != nil {
+				v4 = append(v4, ipn.IP.String())
+			} else {
+				v6 = append(v6, ipn.IP.String())
+			}
+		}
+		if !lanCandidate(si.Name, si.Flags&net.FlagLoopback != 0, ips) {
+			continue
+		}
+		out = append(out, Iface{
+			Name:         si.Name,
+			FriendlyName: friendlyName(si.Name),
+			Addrs:        append(v4, v6...),
+			Up:           si.Flags&net.FlagUp != 0 && si.Flags&net.FlagRunning != 0,
+			index:        si.Index,
+		})
+	}
+	sort.SliceStable(out, func(a, b int) bool {
+		if out[a].Up != out[b].Up {
+			return out[a].Up
+		}
+		return out[a].index < out[b].index
+	})
+	return out, nil
+}
+
+// ListLANCandidatesOrEmpty — ListLANCandidates без ошибки, по тем же
+// соображениям, что ListOrEmpty.
+func ListLANCandidatesOrEmpty() []Iface {
+	list, err := ListLANCandidates()
+	if err != nil {
+		debuglog.WarnLog("netiface: enumerate LAN candidates failed: %v", err)
+		return nil
+	}
+	return list
+}
+
+// FromRemoteLAN — LAN-кандидат по данным ДРУГОЙ машины (демон отдаёт имя, флаг
+// up и адреса строками).
+//
+// Парная к FromRemote и с тем же контрактом: демон присылает всё подряд, отбор
+// — задача вызывающего. Расходятся они ровно фильтром: здесь безадресный порт
+// проходит, а туннель — нет.
+func FromRemoteLAN(name string, up bool, addrs []string) (Iface, bool) {
+	name = strings.TrimSpace(name)
+	loopback := strings.EqualFold(name, "lo") || strings.EqualFold(name, "lo0")
+	v4, v6 := []string{}, []string{}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, a := range addrs {
+		s := strings.TrimSpace(a)
+		if i := strings.IndexByte(s, '/'); i >= 0 {
+			s = s[:i]
+		}
+		ip := net.ParseIP(s)
+		if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+			continue
+		}
+		ips = append(ips, ip)
+		if ip.To4() != nil {
+			v4 = append(v4, ip.String())
+		} else {
+			v6 = append(v6, ip.String())
+		}
+	}
+	if !lanCandidate(name, loopback, ips) {
+		return Iface{}, false
+	}
+	return Iface{Name: name, Addrs: append(v4, v6...), Up: up}, true
+}
+
 // ListOrEmpty — List без ошибки: перечисление интерфейсов падает только при
 // поломке системного стека, и в UI это должно означать пустой список, а не
 // пустую вкладку настроек.

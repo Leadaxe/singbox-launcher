@@ -4,7 +4,6 @@ import (
 	"errors"
 	"time"
 
-	"singbox-launcher/core/netiface"
 	"singbox-launcher/internal/debuglog"
 	"singbox-launcher/internal/lxdclient"
 	configuratortabs "singbox-launcher/ui/configurator/tabs"
@@ -31,17 +30,22 @@ func init() {
 // нечем», чем продолжать ждать (SPEC 113-E M6).
 const interfacePickTimeout = 5 * time.Second
 
-// remoteInterfaceNames спрашивает у демона машины её интерфейсы и фильтрует их
-// так же, как локальные: демон отдаёт ВСЁ, включая lo и туннели, и прямо
-// оговаривает, что отбор — задача UI (см. lxdclient.Client.HostInterfaces).
+// remoteInterfaceNames спрашивает у демона машины её интерфейсы и отдаёт их
+// СЫРЫМИ: демон присылает ВСЁ, включая lo и туннели, и прямо оговаривает, что
+// отбор — задача UI (см. lxdclient.Client.HostInterfaces).
+//
+// Отбор здесь не делается намеренно: у одного ответа два потребителя с разными
+// правилами — поле аплинка (нужен адрес, чужой туннель законен) и поле LAN-портов
+// (безадресный порт законен, туннель — нет). Отфильтровав здесь, пришлось бы
+// либо второй раз ходить к машине, либо сводить две роли к одному фильтру.
 //
 // ok=false во всех случаях «спросить не у кого»: машина не подключена, демон
 // старее телеметрии хоста, канал оборван. Для поля это не ошибка — подсказок
 // нет, ручной ввод остаётся.
-func remoteInterfaceNames(machineID string) ([]string, map[string]string, bool) {
+func remoteInterfaceNames(machineID string) ([]configuratortabs.RemoteRawIface, bool) {
 	transport, connected := lxdOverrideTransportForID(machineID)
 	if !connected {
-		return nil, nil, false
+		return nil, false
 	}
 	res, err := transport.HostInterfacesWithin(interfacePickTimeout)
 	if err != nil {
@@ -50,21 +54,16 @@ func remoteInterfaceNames(machineID string) ([]string, map[string]string, bool) 
 		if !errors.Is(err, lxdclient.ErrHostUnsupported) {
 			debuglog.WarnLog("interface picker: host interfaces for %q: %v", machineID, err)
 		}
-		return nil, nil, false
+		return nil, false
 	}
 
-	names := make([]string, 0, len(res.Interfaces))
-	hints := make(map[string]string, len(res.Interfaces))
-	for _, raw := range res.Interfaces {
-		ifc, ok := netiface.FromRemote(raw.Name, raw.Up, raw.Addresses)
-		if !ok {
-			continue
-		}
-		names = append(names, ifc.Name)
-		// Та же расшифровка, что для локальных: чужой туннель роутера (awg1)
-		// — законный аплинк, но подпись обязана предупредить, что трафик
-		// уйдёт в него, а не в физическую сеть (SPEC 113-F).
-		hints[ifc.Name] = configuratortabs.InterfaceHintText(ifc)
+	raw := make([]configuratortabs.RemoteRawIface, 0, len(res.Interfaces))
+	for _, i := range res.Interfaces {
+		raw = append(raw, configuratortabs.RemoteRawIface{
+			Name:  i.Name,
+			Up:    i.Up,
+			Addrs: i.Addresses,
+		})
 	}
-	return names, hints, true
+	return raw, true
 }

@@ -324,3 +324,127 @@ func TestFromRemoteKeepsDownInterfaceWithAddress(t *testing.T) {
 		t.Errorf("Label() = %q, ожидалась пометка [down]", ifc.Label())
 	}
 }
+
+// LAN-сторона (tun.include_interface) отбирается МЯГЧЕ аплинковой: порт без
+// адреса законен, туннель — нет вовсе.
+
+func TestLANCandidateKeepsAddresslessPort(t *testing.T) {
+	// Главный случай роутера: lan1/lan2 не несут собственного IP (адрес живёт
+	// на мосту) или в них ещё никто не воткнулся. Для аплинка это мёртвый
+	// маршрут, для LAN-стороны — штатное состояние, и прятать такой порт
+	// значило бы отнять ровно то, ради чего поле и существует.
+	for _, name := range []string{"lan1", "lan2", "eth3", "br-lan"} {
+		if !lanCandidate(name, false, nil) {
+			t.Errorf("lanCandidate(%q) = false, безадресный LAN-порт обязан предлагаться", name)
+		}
+	}
+}
+
+func TestLANCandidateRejectsLoopback(t *testing.T) {
+	if lanCandidate("lo0", true, []net.IP{net.ParseIP("127.0.0.1")}) {
+		t.Error("петля предложена как LAN-порт")
+	}
+	if lanCandidate("lo", true, nil) {
+		t.Error("петля без адреса предложена как LAN-порт")
+	}
+}
+
+func TestLANCandidateRejectsEveryTunnel(t *testing.T) {
+	SetOwnTunNames("singbox-tun0")
+	defer SetOwnTunNames()
+
+	addr := []net.IP{net.ParseIP("10.7.0.2")}
+	cases := []struct {
+		name  string
+		addrs []net.IP
+		why   string
+	}{
+		{"singbox-tun0", []net.IP{net.ParseIP("10.55.0.1")}, "СОБСТВЕННЫЙ TUN ядра по имени из конфига"},
+		{"Подключение по локальной сети 2", []net.IP{net.ParseIP("172.16.0.1")}, "собственный TUN по адресу из нашей /30"},
+		{"awg1", addr, "чужой туннель с адресом — для аплинка законен, для LAN нет"},
+		{"wg0", addr, "чужой туннель с адресом"},
+		{"tun0", addr, "чужой туннель с адресом"},
+		{"utun4", nil, "туннель без адреса"},
+		{"ipsec0", addr, "туннель с адресом"},
+	}
+	for _, c := range cases {
+		if lanCandidate(c.name, false, c.addrs) {
+			t.Errorf("lanCandidate(%q) = true, а это %s", c.name, c.why)
+		}
+	}
+}
+
+func TestLANCandidateRejectsEmptyName(t *testing.T) {
+	if lanCandidate("   ", false, nil) {
+		t.Error("интерфейс без имени предложен как LAN-порт")
+	}
+}
+
+// Отбор LAN-стороны обязан быть НЕ строже аплинкового: всё, что годится в
+// аплинк и не является туннелем, годится и в LAN-порты. Разъехавшись, два
+// списка предлагали бы для одной машины взаимоисключающее.
+func TestListLANCandidatesSupersetOfNonTunnelUplinks(t *testing.T) {
+	lan := map[string]bool{}
+	for _, ifc := range ListLANCandidatesOrEmpty() {
+		lan[ifc.Name] = true
+		if ifc.Name == "lo" || ifc.Name == "lo0" {
+			t.Errorf("ListLANCandidates() вернул петлю %q", ifc.Name)
+		}
+		if hasTunnelName(ifc.Name) {
+			t.Errorf("ListLANCandidates() вернул туннель %q", ifc.Name)
+		}
+	}
+	for _, ifc := range ListOrEmpty() {
+		if ifc.IsTunnel {
+			continue // чужой туннель для LAN-стороны законно отсутствует
+		}
+		if !lan[ifc.Name] {
+			t.Errorf("аплинк %q не попал в LAN-кандидаты, хотя туннелем не является", ifc.Name)
+		}
+	}
+}
+
+func TestFromRemoteLANKeepsAddresslessAndDropsTunnels(t *testing.T) {
+	SetOwnTunNames("lxd-tun0")
+	defer SetOwnTunNames()
+
+	// Порт роутера без адреса — самый частый LAN-кандидат.
+	if _, ok := FromRemoteLAN("lan2", true, nil); !ok {
+		t.Error("FromRemoteLAN(lan2) отвергнут — безадресный LAN-порт обязан проходить")
+	}
+	// Лежачий тоже: настроить его нужно заранее.
+	ifc, ok := FromRemoteLAN("lan3", false, nil)
+	if !ok {
+		t.Fatal("лежачий LAN-порт отвергнут")
+	}
+	if !strings.Contains(ifc.Label(), "[down]") {
+		t.Errorf("Label() = %q, ожидалась пометка [down]", ifc.Label())
+	}
+
+	rejected := []struct {
+		name  string
+		addrs []string
+		why   string
+	}{
+		{"lo", []string{"127.0.0.1/8"}, "петля"},
+		{"lo0", nil, "петля"},
+		{"lxd-tun0", []string{"10.99.0.1/24"}, "собственный TUN демона"},
+		{"awg1", []string{"10.7.0.2/24"}, "чужой туннель"},
+		{"wg0", nil, "туннель без адреса"},
+		{"", []string{"1.2.3.4/24"}, "пустое имя"},
+	}
+	for _, c := range rejected {
+		if _, ok := FromRemoteLAN(c.name, true, c.addrs); ok {
+			t.Errorf("FromRemoteLAN(%q) принят, хотя это %s", c.name, c.why)
+		}
+	}
+
+	// Мост с адресом — обычный LAN-кандидат, префикс из адреса срезается.
+	br, ok := FromRemoteLAN("br-lan", true, []string{"192.168.10.1/24"})
+	if !ok {
+		t.Fatal("br-lan отвергнут")
+	}
+	if got, want := br.Label(), "br-lan (192.168.10.1)"; got != want {
+		t.Errorf("Label() = %q, want %q", got, want)
+	}
+}

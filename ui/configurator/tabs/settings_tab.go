@@ -829,6 +829,17 @@ func buildSettingsVarRow(presenter *wizardpresentation.WizardPresenter, model *w
 			presenter.MarkAsChanged()
 			applyOnChangeAndRefresh(presenter, td, model, name)
 		}
+		// LAN-порты для tun.include_interface — тот же список интерфейсов, что
+		// у пикера аплинка, но мягче отфильтрованный. Поле остаётся источником
+		// правды и принимает ручной ввод: интерфейс может ещё не существовать.
+		if lanIfacePickApplies(name) {
+			field, addBtn := buildLANIfacePickField(gs, model, e)
+			row := container.NewBorder(nil, nil, titleLab, resetBtn, field)
+			setVarFieldToolTip(toolTip, titleLab, e)
+			applySettingsRowDisabled(rowEnabled, resetBtn, e, addBtn)
+			bindRowGate(gs, vd, rowEnabled, titleLab, resetBtn, e, addBtn)
+			return row
+		}
 		row := container.NewBorder(nil, nil, titleLab, resetBtn, e)
 		setVarFieldToolTip(toolTip, titleLab, e)
 		applySettingsRowDisabled(rowEnabled, resetBtn, e)

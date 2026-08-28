@@ -212,13 +212,13 @@ func TestInterfacePickRemoteWithoutProviderIsEmpty(t *testing.T) {
 
 func TestInterfacePickRemoteUsesProvider(t *testing.T) {
 	resetInterfaceCacheForTest(t)
-	SetRemoteInterfaceProvider(func(id string) ([]string, map[string]string, bool) {
+	SetRemoteInterfaceProvider(func(id string) ([]RemoteRawIface, bool) {
 		if id != "home" {
 			t.Errorf("провайдер получил machineID %q, ожидался home", id)
 		}
-		return []string{"eth0", "wan"}, map[string]string{
-			"eth0": "eth0 (192.168.10.1)",
-			"wan":  "wan (10.20.30.40)",
+		return []RemoteRawIface{
+			{Name: "eth0", Up: true, Addrs: []string{"192.168.10.1/24"}},
+			{Name: "wan", Up: true, Addrs: []string{"10.20.30.40/24"}},
 		}, true
 	})
 	defer SetRemoteInterfaceProvider(nil)
@@ -254,9 +254,9 @@ func TestInterfacePickRemoteUsesProvider(t *testing.T) {
 func TestInterfacePickDoesNotBlockOnUnresponsiveMachine(t *testing.T) {
 	resetInterfaceCacheForTest(t)
 	release := make(chan struct{})
-	SetRemoteInterfaceProvider(func(string) ([]string, map[string]string, bool) {
+	SetRemoteInterfaceProvider(func(string) ([]RemoteRawIface, bool) {
 		<-release
-		return []string{"wan"}, map[string]string{"wan": "wan (10.0.0.1)"}, true
+		return []RemoteRawIface{{Name: "wan", Up: true, Addrs: []string{"10.0.0.1/24"}}}, true
 	})
 	defer func() {
 		close(release)
@@ -287,10 +287,10 @@ func TestInterfacePickSingleFlightPerMachine(t *testing.T) {
 	resetInterfaceCacheForTest(t)
 	var calls int32
 	release := make(chan struct{})
-	SetRemoteInterfaceProvider(func(string) ([]string, map[string]string, bool) {
+	SetRemoteInterfaceProvider(func(string) ([]RemoteRawIface, bool) {
 		atomic.AddInt32(&calls, 1)
 		<-release
-		return []string{"wan"}, map[string]string{"wan": "wan"}, true
+		return []RemoteRawIface{{Name: "wan", Up: true, Addrs: []string{"10.0.0.1/24"}}}, true
 	})
 	defer func() {
 		close(release)
@@ -318,8 +318,8 @@ func TestInterfacePickSingleFlightPerMachine(t *testing.T) {
 // следующей пересборки вкладки, а pending не давал сказать «проверить нечем».
 func TestInterfacePickWakesSubscriberOnFailure(t *testing.T) {
 	resetInterfaceCacheForTest(t)
-	SetRemoteInterfaceProvider(func(string) ([]string, map[string]string, bool) {
-		return nil, nil, false
+	SetRemoteInterfaceProvider(func(string) ([]RemoteRawIface, bool) {
+		return nil, false
 	})
 	defer SetRemoteInterfaceProvider(nil)
 
@@ -363,11 +363,11 @@ func TestInterfacePickWakesSubscriberOnFailure(t *testing.T) {
 func TestInterfacePickKeepsCacheOnProviderFailure(t *testing.T) {
 	resetInterfaceCacheForTest(t)
 	var ok int32 = 1
-	SetRemoteInterfaceProvider(func(string) ([]string, map[string]string, bool) {
+	SetRemoteInterfaceProvider(func(string) ([]RemoteRawIface, bool) {
 		if atomic.LoadInt32(&ok) == 1 {
-			return []string{"wan"}, map[string]string{"wan": "wan (10.0.0.1)"}, true
+			return []RemoteRawIface{{Name: "wan", Up: true, Addrs: []string{"10.0.0.1/24"}}}, true
 		}
-		return nil, nil, false
+		return nil, false
 	})
 	defer SetRemoteInterfaceProvider(nil)
 

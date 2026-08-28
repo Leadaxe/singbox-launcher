@@ -21,6 +21,20 @@ func newInterfaceHintLabel() *widget.Label {
 	return l
 }
 
+// RemoteRawIface — интерфейс удалённой машины КАК ЕГО ОТДАЛ ДЕМОН, до всякого
+// отбора.
+//
+// Сырой, а не отфильтрованный, потому что потребителей у одного ответа уже два
+// и фильтры у них разные: аплинку нужны интерфейсы с адресом (включая чужие
+// туннели), LAN-стороне — безадресные порты, но без туннелей вовсе. Отдавать
+// готовый список значило бы либо второй REST к той же машине, либо один фильтр
+// на две несовместимые роли.
+type RemoteRawIface struct {
+	Name  string
+	Up    bool
+	Addrs []string
+}
+
 // RemoteInterfaceProvider отдаёт интерфейсы удалённой машины по её ID.
 //
 // Хук, а не прямой вызов: перечисление живёт в пакете `ui` (там транспорт
@@ -30,7 +44,7 @@ func newInterfaceHintLabel() *widget.Label {
 // ok=false означает «спросить не у кого» — машина не подключена, демон старый
 // (ErrHostUnsupported) или не ответил. Для UI это не ошибка: список подсказок
 // просто пуст, а поле остаётся полноценным для ручного ввода.
-type RemoteInterfaceProvider func(machineID string) (names []string, hints map[string]string, ok bool)
+type RemoteInterfaceProvider func(machineID string) (raw []RemoteRawIface, ok bool)
 
 var (
 	remoteIfaceMu       sync.RWMutex
@@ -45,12 +59,12 @@ func SetRemoteInterfaceProvider(p RemoteInterfaceProvider) {
 	remoteIfaceProvider = p
 }
 
-func remoteInterfaces(machineID string) ([]string, map[string]string, bool) {
+func remoteInterfaces(machineID string) ([]RemoteRawIface, bool) {
 	remoteIfaceMu.RLock()
 	p := remoteIfaceProvider
 	remoteIfaceMu.RUnlock()
 	if p == nil || strings.TrimSpace(machineID) == "" {
-		return nil, nil, false
+		return nil, false
 	}
 	return p(machineID)
 }
@@ -68,9 +82,12 @@ func remoteInterfaces(machineID string) ([]string, map[string]string, bool) {
 // в полёте, следующие только подписываются на его результат.
 
 // remoteIfaceEntry — что известно про интерфейсы одной машины.
+//
+// Хранится СЫРОЙ ответ демона, а не готовый список имён: у одного ответа два
+// потребителя с разными фильтрами (аплинк и LAN-порты), и второй запрос к той
+// же машине ради второго фильтра ничего нового не узнал бы.
 type remoteIfaceEntry struct {
-	names  []string
-	hints  map[string]string
+	raw    []RemoteRawIface
 	loaded bool // ответ уже приходил (пусть и пустой)
 	inWork bool // запрос в полёте — второй не заводим
 	// failed — последняя попытка спросить не удалась (машина не подключена,
@@ -131,16 +148,53 @@ func InvalidateRemoteInterfaceCache(machineID string) {
 	delete(remoteIfaceCache, machineID)
 }
 
-// cachedRemoteInterfaces — что знаем про машину прямо сейчас, без единого
-// сетевого вызова. loaded=false означает «ещё не спрашивали или ответа нет».
-func cachedRemoteInterfaces(machineID string) (names []string, hints map[string]string, loaded bool) {
+// cachedRemoteRaw — сырой ответ демона по машине, без единого сетевого вызова.
+// loaded=false означает «ещё не спрашивали или ответа нет».
+func cachedRemoteRaw(machineID string) (raw []RemoteRawIface, loaded bool) {
 	remoteIfaceCacheMu.Lock()
 	defer remoteIfaceCacheMu.Unlock()
 	e := remoteIfaceCache[machineID]
 	if e == nil {
-		return nil, nil, false
+		return nil, false
 	}
-	return e.names, e.hints, e.loaded
+	return e.raw, e.loaded
+}
+
+// cachedRemoteInterfaces — интерфейсы машины, годные в АПЛИНК, из кэша.
+//
+// Фильтр применяется на чтении, а не при записи в кэш: ответ демона один, а
+// ролей у него две (см. remoteIfaceEntry.raw).
+func cachedRemoteInterfaces(machineID string) (names []string, hints map[string]string, loaded bool) {
+	raw, loaded := cachedRemoteRaw(machineID)
+	names = make([]string, 0, len(raw))
+	hints = make(map[string]string, len(raw))
+	for _, r := range raw {
+		ifc, ok := netiface.FromRemote(r.Name, r.Up, r.Addrs)
+		if !ok {
+			continue
+		}
+		names = append(names, ifc.Name)
+		// Та же расшифровка, что для локальных: чужой туннель роутера (awg1) —
+		// законный аплинк, но подпись обязана предупредить, что трафик уйдёт в
+		// него, а не в физическую сеть (SPEC 113-F).
+		hints[ifc.Name] = InterfaceHintText(ifc)
+	}
+	return names, hints, loaded
+}
+
+// cachedRemoteLANCandidates — интерфейсы машины, годные в LAN-порты
+// (tun.include_interface), из ТОГО ЖЕ кэша.
+func cachedRemoteLANCandidates(machineID string) (ifaces []netiface.Iface, loaded bool) {
+	raw, loaded := cachedRemoteRaw(machineID)
+	ifaces = make([]netiface.Iface, 0, len(raw))
+	for _, r := range raw {
+		ifc, ok := netiface.FromRemoteLAN(r.Name, r.Up, r.Addrs)
+		if !ok {
+			continue
+		}
+		ifaces = append(ifaces, ifc)
+	}
+	return ifaces, loaded
 }
 
 // remoteInterfacesSettled — вопрос про машину закрыт: ответ приехал ЛИБО
@@ -183,14 +237,13 @@ func ensureRemoteInterfaces(machineID string) {
 	remoteIfaceCacheMu.Unlock()
 
 	go func() {
-		names, hints, ok := remoteInterfaces(machineID)
+		raw, ok := remoteInterfaces(machineID)
 		remoteIfaceCacheMu.Lock()
 		entry := remoteIfaceCache[machineID]
 		if entry != nil {
 			entry.inWork = false
 			if ok {
-				entry.names = names
-				entry.hints = hints
+				entry.raw = raw
 				entry.loaded = true
 				entry.failed = false
 			} else {
