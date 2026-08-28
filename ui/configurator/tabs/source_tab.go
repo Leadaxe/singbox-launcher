@@ -311,6 +311,13 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 	sourcesBox := container.NewVBox()
 
+	// SPEC 115 §3: какой источник подсвечен переходом из отчёта «Итога» и
+	// какая строка его несёт. Живут в замыкании вкладки, а не в модели:
+	// подсветка — состояние ЭТОГО экрана, оно не переживает пересоздание
+	// вкладки и не имеет смысла ни для сборки, ни для сохранения.
+	revealedSourceID := ""
+	var revealedRow fyne.CanvasObject
+
 	// SPEC 109: перетаскивание вместо ↑/↓ — тот же механизм, что на Rules,
 	// DNS и Направлениях. Порядок источников — обычный порядок слайса
 	// model.Sources; на конфиг он не влияет (узлы собираются из всех
@@ -336,6 +343,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 	refreshSourcesList := func() {
 		sourcesBox.Objects = sourcesBox.Objects[:0]
+		// Ссылка на подсвеченную строку живёт ровно один набор строк:
+		// пересборка списка делает прежний виджет мусором, и прокрутка к
+		// нему увезла бы список в никуда.
+		revealedRow = nil
 		// Группа перетаскивания живёт вместе со строками (контракт
 		// DragReorderGroup): без сброса запись удалённой строки со старшим
 		// индексом оставалась бы навсегда — перетаскивание в конец списка
@@ -438,6 +449,17 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// живёт причина: реестр целиком переписывается каждой
 				// сборкой, и чистая сборка её снимает.
 				exclusionReason := config.ExcludedSourceReason(sourceID)
+				// SPEC 115 §3: у источника, который в конфиг попал, но
+				// потерял часть узлов на последнем рубеже, — МЯГКАЯ пометка,
+				// не ⚠-исключение. Разница содержательная: исключённый
+				// источник не работает вовсе, а этот работает урезанным, и
+				// показать второе как первое значило бы объявить потерянным
+				// то, что живо.
+				//
+				// До первой сборки и после правки модели реестр пуст, и обе
+				// пометки молчат — раскраска не имеет права врать о
+				// конфигурации, которую никто не собирал.
+				droppedNodes, droppedReason := config.DroppedNodesForSource(sourceID)
 
 				fullURL := src.URL
 				var tagPrefix, tagPostfix, tagMask string
@@ -662,13 +684,33 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 					warn.Importance = widget.WarningImportance
 					warn.TextStyle = fyne.TextStyle{Italic: true}
 					lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, warn))
+				} else if droppedNodes > 0 {
+					// else if: источник, выпавший целиком, узлов уже не имеет —
+					// вторая строка про «снято N» рядом с «исключён» была бы
+					// про один и тот же факт дважды.
+					dropped := widget.NewLabel(locale.Tf("⚠ %d node(s) dropped: %s", droppedNodes, droppedReason))
+					dropped.Wrapping = fyne.TextWrapWord
+					dropped.Importance = widget.MediumImportance
+					dropped.TextStyle = fyne.TextStyle{Italic: true}
+					lines = append(lines, container.NewBorder(nil, nil, leftPad(), nil, dropped))
 				}
 				var rowInner fyne.CanvasObject = titleRow
 				if len(lines) > 1 {
 					rowInner = container.New(tightVBox{}, lines...)
 				}
 
-				row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{})
+				// Подсветка строки — половина перехода «показать источник» из
+				// отчёта «Итога» (SPEC 115 §3): прокрутки мало, в списке из
+				// сорока подписок глаз без выделения не находит нужную.
+				rowSourceID := sourceID
+				row = fynewidget.NewHoverRow(rowInner, fynewidget.HoverRowConfig{
+					IsSelected: func() bool {
+						return rowSourceID != "" && rowSourceID == revealedSourceID
+					},
+				})
+				if rowSourceID != "" && rowSourceID == revealedSourceID {
+					revealedRow = row
+				}
 				// Регистрируем КАЖДУЮ строку: вычисление точки вставки
 				// просматривает полосы всех строк, не только перетаскиваемой.
 				dragGroup.Register(sourceIndex, row)
@@ -689,6 +731,23 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 	sourcesScroll := container.NewVScroll(sourcesBox)
 	sourcesScroll.SetMinSize(fyne.NewSize(0, 80))
+
+	// SPEC 115 §3: переход «показать источник» из отчёта «Итога».
+	//
+	// Список пересобирается целиком (строки — не переиспользуемые ячейки
+	// widget.List), поэтому подсветка ставится ДО пересборки, а прокрутка —
+	// после: только тогда на руках свежий виджет строки.
+	guiState.RevealSource = func(sourceID string) {
+		revealedSourceID = strings.TrimSpace(sourceID)
+		refreshSourcesList()
+		if revealedRow == nil {
+			// Источник могли удалить между сборкой и кликом по строке
+			// отчёта — законный исход: вкладку показали, прокручивать не к
+			// чему.
+			return
+		}
+		sourcesScroll.ScrollToOffset(fyne.NewPos(0, rowOffsetInBox(sourcesBox, revealedRow)))
+	}
 
 	previewAllBtn := widget.NewButton(locale.T("Preview all servers…"), func() {
 		showSourcePreviewAllWindow(presenter)
@@ -1048,4 +1107,38 @@ func refreshOneSourceFromUI(
 			presenter.MarkAsChanged()
 		})
 	}()
+}
+
+// rowOffsetInBox — вертикальное смещение строки внутри вертикального
+// контейнера, посчитанное по МИНИМАЛЬНЫМ размерам предыдущих строк, а не по
+// Position().Y самой строки.
+//
+// Position().Y здесь не годится: список пересобирается целиком, и прокрутка
+// зовётся сразу за пересборкой — layout к этому моменту ещё не отработал, у
+// свежесозданных виджетов Position нулевая, и «прокрутка к источнику»
+// молча уезжала в начало списка. Ждать layout'а вторым fyne.Do — гонка с
+// неизвестным числом кадров: разложиться контейнер может и позже.
+//
+// VBox выкладывает детей подряд с одним отступом между ними и берёт высоту
+// каждого из MinSize — те же слагаемые, что суммируются здесь. MinSize
+// считается по требованию, до всякого layout'а, поэтому ответ верен уже в
+// момент пересборки. Невидимые дети пропускаются: VBox им места не отводит.
+func rowOffsetInBox(box *fyne.Container, row fyne.CanvasObject) float32 {
+	if box == nil || row == nil {
+		return 0
+	}
+	pad := theme.Padding()
+	var y float32
+	for _, o := range box.Objects {
+		if o == row {
+			return y
+		}
+		if o == nil || !o.Visible() {
+			continue
+		}
+		y += o.MinSize().Height + pad
+	}
+	// Строки нет в контейнере — прокручивать не к чему; ноль честнее
+	// произвольной точки.
+	return 0
 }

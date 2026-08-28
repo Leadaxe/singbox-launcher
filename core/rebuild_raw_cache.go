@@ -31,9 +31,16 @@ import (
 // generator'а. td=nil → no preset processing (тесты, legacy fallback);
 // non-nil → ApplyPresetOutboundsToParserConfig применяет mode=add/update
 // от enabled preset-refs в s.Rules.
-func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarSubstituter, td *template.TemplateData) (*build.ParsedCache, error) {
+//
+// SPEC 115 (фикс-раунд): парсерный результат отдаётся ВТОРЫМ возвратом, а не
+// уезжает отсюда прямо в отчёт сборки. Разбор кэша идёт ДО noop-развилки
+// Rebuild'а, и открытая здесь попытка на холостом вызове оставалась бы вечно
+// незавершённой — то есть стирала бы готовый отчёт прошлой полной сборки, ничего
+// не дав взамен. Кто попытку открывает, тот её и доводит: RebuildConfigIfDirty
+// делает это уже за развилкой, когда известно, что сборка реально идёт.
+func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarSubstituter, td *template.TemplateData) (*build.ParsedCache, *config.OutboundGenerationResult, error) {
 	if s == nil {
-		return nil, fmt.Errorf("buildSnapshotFromRawCache: nil state")
+		return nil, nil, fmt.Errorf("buildSnapshotFromRawCache: nil state")
 	}
 	subsDir := platform.GetSubscriptionsDir(execDir)
 
@@ -60,7 +67,7 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 	// разово попробует по сети (cache-miss → FetchSubscription) и при
 	// неудаче деградирует, конфиг соберётся из остальных.
 	if len(missing) > 0 && len(missing) == enabledSubs {
-		return nil, fmt.Errorf("%w: %d subscription(s) missing raw cache (e.g. %s)",
+		return nil, nil, fmt.Errorf("%w: %d subscription(s) missing raw cache (e.g. %s)",
 			ErrRawCacheIncomplete, len(missing), missing[0])
 	}
 	var partialWarnings []string
@@ -111,14 +118,10 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 	result, err := config.GenerateOutboundsFromParserConfig(&parserCfg, tagCounts, nil, loadNodesFunc,
 		directionBuildOptionsFrom(td))
 	if err != nil {
-		return nil, fmt.Errorf("generate outbounds from raw cache: %w", err)
+		return nil, nil, fmt.Errorf("generate outbounds from raw cache: %w", err)
 	}
 
 	subscription.LogDuplicateTagStatistics(tagCounts, "Rebuild")
-
-	// SPEC 112-B часть B: реестр исключений переписывается КАЖДОЙ сборкой —
-	// и пустым итогом тоже, иначе пометка ⚠ пережила бы свою причину.
-	config.SetExcludedSources(result.ExcludedSources)
 
 	warnings := partialWarnings
 	if result.SkippedNaiveNodes > 0 {
@@ -131,7 +134,7 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 		Endpoints:   jsonStringsToRawMessages(result.EndpointsJSON),
 		Warnings:    warnings,
 		NodeOrigins: buildNodeOrigins(result.NodeOrigins),
-	}, nil
+	}, result, nil
 }
 
 // buildNodeOrigins переводит карту происхождения узлов из формы парсера в

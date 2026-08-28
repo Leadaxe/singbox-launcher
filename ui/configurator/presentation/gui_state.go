@@ -73,6 +73,21 @@ type GUIState struct {
 	// Optional refresh for Sources list (set by CreateSourcesTab); called from SyncModelToGUI.
 	RefreshSourcesList func()
 
+	// RevealSource подсвечивает и прокручивает к строке источника с данным
+	// ULID (SPEC 115 §3, переход «показать источник» из отчёта «Итога»).
+	// Ставится CreateSourcesTab; nil до её постройки. Переключение самой
+	// вкладки — забота вызывающего: список не знает, показан ли он.
+	//
+	// Неизвестный ULID — законный исход, а не ошибка: источник могли удалить
+	// между сборкой и кликом по строке отчёта.
+	RevealSource func(sourceID string)
+
+	// RunFinalBuild запускает сборку в памяти для вкладки «Итог»
+	// (SPEC 115 §1). Ставится CreateFinalTab; зовётся из обработчика смены
+	// вкладок. Возврат мгновенный — сама сборка уходит в горутину, повторные
+	// входы схлопываются.
+	RunFinalBuild func()
+
 	// Optional refresh for Outbounds configurator list (set by CreateOutboundsAndParserConfigTab).
 	// Must run after ParserConfig/proxies change from Sources Edit, UpdateParserConfig, or tab switch.
 	RefreshOutboundsConfiguratorList func()

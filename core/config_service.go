@@ -139,31 +139,12 @@ func parserSuccessToastMessage(result *config.OutboundGenerationResult) string {
 	for _, c := range result.BrokenChains {
 		msg += fmt.Sprintf(" Chain %q is not built: %s.", c.Name, c.Reason)
 	}
-	// SPEC 112-B часть B: то же и для источника, выпавшего fail-closed. До
-	// этого исключение уходило только в лог, а строка источника в Wizard
-	// выглядела здоровой — парадокс Proton NL.
-	if s := excludedSourcesToastPart(result.ExcludedSources); s != "" {
-		msg += " " + s
-	}
+	// SPEC 115 §3: хвоста про исключённые источники здесь больше НЕТ (решение
+	// пользователя). Тост живёт секунды и вмещает одну строку, а список
+	// исключений на конфиге с десятком зависимых подписок в неё не влезал —
+	// сообщение, которое не успевали дочитать. Роль забрали отчёт вкладки
+	// «Итог» и стойкие пометки в строках Wizard → Sources.
 	return msg
-}
-
-// excludedSourcesToastPart — хвост тоста про источники, выпавшие fail-closed.
-// Пустой реестр — пустая строка: молчание тут и есть «всё собралось».
-//
-// Несколько источников перечисляются через запятую одной фразой: отдельная
-// строка на каждый вытеснила бы из тоста всё остальное на конфиге с десятком
-// зависимых подписок.
-func excludedSourcesToastPart(list []config.SourceExclusion) string {
-	if len(list) == 0 {
-		return ""
-	}
-	names := make([]string, 0, len(list))
-	for _, e := range list {
-		names = append(names, fmt.Sprintf("%q — %s", e.SourceLabel, e.Reason))
-	}
-	return locale.Tf("Source excluded from the config: %s. Details in Wizard → Sources.",
-		strings.Join(names, ", "))
 }
 
 // updateParserProgress safely calls UpdateParserProgressFunc if it's not nil
@@ -301,9 +282,13 @@ func (svc *ConfigService) updateConfigFromSubscriptions(triggerRebuild bool) (*c
 	}
 	subscription.LogDuplicateTagStatistics(tagCounts, "Parser")
 
-	// SPEC 112-B часть B: реестр исключений — итог ПОСЛЕДНЕЙ сборки.
+	// SPEC 112-B часть B / SPEC 115: отчёт сборки — итог ПОСЛЕДНЕЙ попытки.
 	// Переписывается и пустым списком: чистая сборка снимает прежние ⚠.
-	config.SetExcludedSources(result.ExcludedSources)
+	//
+	// Finish здесь НЕ зовётся: обновление подписок — парсерная стадия, до
+	// последнего рубежа она не доходила. Открытая тут попытка закрывает гейт
+	// Save, и это верно: пока конвейер не пройден целиком, сохранять нечего.
+	FeedBuildReportFromParser(config.StartBuildReport(), result)
 
 	// SPEC 052 phase 6: bin/outbounds.cache.json больше не пишем.
 	// Per-source resilience приходит из bin/subscriptions/<id>.raw —

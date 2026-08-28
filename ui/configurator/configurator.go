@@ -394,12 +394,16 @@ func createWizardTabs(presenter *wizardpresentation.WizardPresenter, guiState *w
 		dnsTabItem := container.NewTabItem(locale.T("DNS"), dnsTab)
 		settingsTab := wizardtabs.CreateSettingsTab(presenter)
 		settingsTabItem := container.NewTabItem(locale.T("Settings"), settingsTab)
-		filesTab := wizardtabs.CreateFilesTab(presenter, guiState)
-		filesTabItem := container.NewTabItem(locale.T("Files"), filesTab)
+		// SPEC 115 §1: Files → «Итог». Вкладка перестала быть складом трёх
+		// файловых действий и стала стадией сборки — имя обязано это
+		// говорить, иначе пользователь не поймёт, почему вход на неё что-то
+		// считает.
+		finalTab := wizardtabs.CreateFinalTab(presenter, guiState)
+		finalTabItem := container.NewTabItem(locale.T("Final"), finalTab)
 		tabs.Append(rulesTabItem)
 		tabs.Append(dnsTabItem)
 		tabs.Append(settingsTabItem)
-		tabs.Append(filesTabItem)
+		tabs.Append(finalTabItem)
 	}
 
 	return tabs, rulesTabItem
@@ -579,6 +583,29 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 					}
 				})
 			}()
+		}
+
+		// SPEC 115 §1: вход на «Итог» = запуск сборки в памяти. Именно вход,
+		// а не кнопка: вкладка и есть стадия сборки, и требовать на ней
+		// лишнего клика значило бы разрешить смотреть отчёт, которого никто
+		// не строил.
+		//
+		// Кнопка Save гасится ДО запуска: пока сборка идёт, сохранять нечего,
+		// а оставшаяся с прошлого захода открытая кнопка предлагала бы
+		// сохранить итог, к которому отчёт на экране уже не относится.
+		if item.Text == locale.T("Final") {
+			if guiState.SaveButton != nil {
+				guiState.SaveButton.Hide()
+			}
+			if guiState.RunFinalBuild != nil {
+				guiState.RunFinalBuild()
+			}
+		} else if guiState.SaveButton != nil {
+			// Уходя с «Итога», кнопку возвращаем: на остальных вкладках она
+			// не показывается вовсе (updateNavigationButtons кладёт её только
+			// на последнюю), и оставить её скрытой значило бы получить пустое
+			// место после следующего Save-гейта.
+			guiState.SaveButton.Show()
 		}
 
 		// Handle tab-specific actions

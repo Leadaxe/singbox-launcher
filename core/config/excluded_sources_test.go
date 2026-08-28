@@ -84,9 +84,10 @@ func TestResolveNodeDetours_CleanBuildRecordsNothing(t *testing.T) {
 // Реестр — итог ПОСЛЕДНЕЙ сборки: чистая сборка обязана снять прежние пометки,
 // иначе ⚠ переживёт свою причину.
 func TestExcludedSourcesRegistryOverwrittenByEveryBuild(t *testing.T) {
-	t.Cleanup(func() { SetExcludedSources(nil) })
+	t.Cleanup(ResetBuildReport)
+	gen := StartBuildReport()
 
-	SetExcludedSources([]SourceExclusion{{SourceID: "01SUB", SourceLabel: "Proton NL", Reason: "хоп не найден"}})
+	SetExcludedSources(gen, []SourceExclusion{{SourceID: "01SUB", SourceLabel: "Proton NL", Reason: "хоп не найден"}})
 	if got := ExcludedSourceReason("01SUB"); got == "" {
 		t.Fatal("причина не найдена по source_id — строка источника не сможет показать пометку")
 	}
@@ -97,7 +98,7 @@ func TestExcludedSourcesRegistryOverwrittenByEveryBuild(t *testing.T) {
 		t.Errorf("пустой source_id совпал с записью: %q", got)
 	}
 
-	SetExcludedSources(nil)
+	SetExcludedSources(gen, nil)
 	if got := ExcludedSourceReason("01SUB"); got != "" {
 		t.Fatalf("пометка пережила чистую сборку: %q", got)
 	}
@@ -109,9 +110,10 @@ func TestExcludedSourcesRegistryOverwrittenByEveryBuild(t *testing.T) {
 // Реестр отдаёт КОПИЮ: читатель из UI не должен уметь испортить его следующей
 // сборке.
 func TestExcludedSourcesReturnsCopy(t *testing.T) {
-	t.Cleanup(func() { SetExcludedSources(nil) })
+	t.Cleanup(ResetBuildReport)
+	gen := StartBuildReport()
 
-	SetExcludedSources([]SourceExclusion{{SourceID: "01SUB", Reason: "r"}})
+	SetExcludedSources(gen, []SourceExclusion{{SourceID: "01SUB", Reason: "r"}})
 	got := ExcludedSources()
 	got[0].Reason = "испорчено"
 

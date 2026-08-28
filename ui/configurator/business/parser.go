@@ -25,6 +25,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	corepkg "singbox-launcher/core"
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/subscription"
@@ -160,18 +161,33 @@ func ParseAndPreview(ctx UIUpdater, configService ConfigService) error {
 		model.GeneratedOutbounds = nil
 		model.GeneratedEndpoints = nil
 		model.PreviewNeedsParse = true
+		// Попытки не было: результат выброшен, и оставленный номер разрешил бы
+		// сборке «Итога» дописать санитайзерные записи в чужую попытку.
+		model.BuildReportGen = 0
 		updater.UpdateSaveButtonText("Save")
 		return nil
 	}
 
 	subscription.LogDuplicateTagStatistics(tagCounts, "ConfigWizard")
 
-	// SPEC 113-B (M3): реестр исключений переписывается КАЖДОЙ сборкой, и
-	// preview-сборка Мастера — сборка. Пока этот путь результат выбрасывал,
+	// SPEC 113-B (M3) / SPEC 115: отчёт сборки переписывается КАЖДОЙ сборкой,
+	// и preview-сборка Мастера — сборка. Пока этот путь результат выбрасывал,
 	// ⚠ в списке источников показывал итог чужой, предыдущей сборки: починил
 	// хоп, нажал Preview — узлы вернулись, а пометка осталась висеть до
 	// полного Rebuild. Пустой список тут так же обязателен, как непустой.
-	config.SetExcludedSources(result.ExcludedSources)
+	//
+	// Признак «отчёт готов» здесь НЕ ставится: парсерная стадия — половина
+	// конвейера, последнего рубежа она не проходила. Его ставит тот, кто
+	// довёл сборку до конца (вкладка «Итог», боевой rebuild).
+	//
+	// Номер открытой попытки уезжает в модель: вторая половина конвейера
+	// (сборка «Итога») доливает свои записи и ставит «готов» ИМЕННО этой
+	// попытке. Без номера её Finish объявил бы готовым чужой отчёт, если между
+	// половинами успел вклиниться другой писатель — например, фоновое
+	// авто-обновление подписок.
+	gen := config.StartBuildReport()
+	model.BuildReportGen = gen
+	corepkg.FeedBuildReportFromParser(gen, result)
 
 	model.OutboundStats.NodesCount = result.NodesCount
 	model.OutboundStats.EndpointsCount = result.EndpointsCount

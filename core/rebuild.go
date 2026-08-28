@@ -126,7 +126,7 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	}
 
 	// Step 2: попытаться построить snapshot из raw cache.
-	cacheSnap, snapErr := buildSnapshotFromRawCache(s, execDir, nil, td)
+	cacheSnap, parserRes, snapErr := buildSnapshotFromRawCache(s, execDir, nil, td)
 	cacheMissing := errors.Is(snapErr, ErrRawCacheIncomplete)
 	if snapErr != nil && !cacheMissing {
 		return fmt.Errorf("build snapshot from raw cache: %w", snapErr)
@@ -147,7 +147,7 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		if err != nil {
 			return fmt.Errorf("reload state after auto-update: %w", err)
 		}
-		cacheSnap, snapErr = buildSnapshotFromRawCache(s, execDir, nil, td)
+		cacheSnap, parserRes, snapErr = buildSnapshotFromRawCache(s, execDir, nil, td)
 		if snapErr != nil {
 			return fmt.Errorf("rebuild snapshot after auto-update: %w", snapErr)
 		}
@@ -163,6 +163,19 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	debuglog.InfoLog("RebuildConfigIfDirty: rebuilding config.json (forced=%v update_dirty=%v restart_dirty=%v cache_missing_initially=%v)",
 		isForced, ac.StateService.IsCacheStale(), ac.StateService.IsConfigStale(), cacheMissing)
 
+	// SPEC 112-B часть B / SPEC 115: попытка сборки открывается ЗДЕСЬ, за
+	// noop-развилкой, а не в разборе raw-кэша выше. Разбор идёт до развилки, и
+	// открытая там попытка на холостом вызове (dirty-маркеры чисты, кэш на
+	// месте) осталась бы без санитайзерных записей и без Finish: холостой
+	// Rebuild стирал бы пометки «снято N» прошлой полной сборки, не дав взамен
+	// ничего. Начиная попытку тут, мы начинаем её ровно тогда, когда сборка
+	// действительно идёт.
+	//
+	// Записи парсерной стадии кладутся сразу, включая ПУСТОЙ итог: чистая
+	// сборка обязана снять прежние ⚠, иначе пометка переживёт свою причину.
+	gen := config.StartBuildReport()
+	FeedBuildReportFromParser(gen, parserRes)
+
 	// Step 4: build.
 	parserCfg := s.ParserConfig
 	ctx := ac.buildContextFromState(s, cacheSnap, td, &parserCfg)
@@ -173,17 +186,8 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 
 	// SPEC 113-B: последний рубеж мог выбросить узлы источника за недоступную
 	// цель detour (исчез селектор шаблона — выключили мульти-VPN). Парсер про
-	// это не знал, поэтому запись доливается в реестр поверх его собственных.
-	if len(res.ExcludedSources) > 0 {
-		add := make([]config.SourceExclusion, 0, len(res.ExcludedSources))
-		for _, e := range res.ExcludedSources {
-			debuglog.WarnLog("RebuildConfigIfDirty: источник %q исключён из конфига: %s", e.SourceLabel, e.Reason)
-			add = append(add, config.SourceExclusion{
-				SourceID: e.SourceID, SourceLabel: e.SourceLabel, Reason: e.Reason,
-			})
-		}
-		config.AppendExcludedSources(add)
-	}
+	// это не знал, поэтому записи доливаются в отчёт поверх его собственных.
+	FeedBuildReportFromSanitizer(gen, res.ExcludedSources)
 
 	// Parser-stage warnings (e.g. naive nodes degraded on a core without
 	// naive support, SPEC 044 feature-probe) ride along with the build
@@ -249,6 +253,14 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 	// перепроверил. CacheStale НЕ трогаем: rebuild не делал network fetch (при
 	// cacheMissing Update уже его сбросил; иначе CacheStale остаётся как был).
 	if configValid {
+		// SPEC 115 (фикс-раунд): «отчёт готов» ставится ТОЛЬКО здесь — после
+		// того как конфиг записан и принят sing-box'ом. Раньше признак стоял
+		// сразу за BuildConfig, и сборка, отвергнутая валидацией, объявляла свой
+		// отчёт готовым: гейт Save открывался на конфиге, который ядро не
+		// возьмёт. Упавшая сборка Finish не зовёт вовсе, и попытка остаётся
+		// незавершённой — записи в отчёте есть (их видно), но готовым он не
+		// считается.
+		config.FinishBuildReport(gen)
 		ac.StateService.ClearConfigStale()
 		if ac.EventBus != nil {
 			ac.EventBus.Publish(events.Event{
@@ -270,32 +282,16 @@ func (ac *AppController) RebuildConfigIfDirty(forced ...bool) error {
 		}
 	}
 
-	// SPEC 112-B часть B: источник, выпавший fail-closed, обязан быть виден не
-	// только в логе. Тост идёт тем же каналом, что «Subscriptions partially
-	// refreshed» — ShowSubsResultFunc сам заворачивает показ в fyne.Do, и
-	// сборка вправе звать его из своей горутины.
-	//
-	// Update поверх этого показывает СВОЙ финальный тост, и тот несёт ту же
-	// фразу (parserSuccessToastMessage): порядок «сборка → Update» оставляет
-	// на экране актуальное сообщение, а не устаревшее.
-	ac.showExcludedSourcesToast()
+	// SPEC 115 §3: тоста об исключённых источниках здесь больше НЕТ (решение
+	// пользователя). Тост исчезает через несколько секунд, а список
+	// исключений на конфиге с десятком зависимых подписок в одну строку не
+	// помещался — то есть ровно тот случай, ради которого сообщение и
+	// показывали, пользователь дочитать не успевал. Роль забрали отчёт
+	// вкладки «Итог» (полный, со скроллом и копированием) и стойкие пометки в
+	// строках Wizard → Sources, которые живут, пока живёт причина.
 
 	debuglog.InfoLog("RebuildConfigIfDirty: config.json written (%d bytes)", len(res.ConfigJSON))
 	return nil
-}
-
-// showExcludedSourcesToast показывает тост об источниках, выпавших fail-closed
-// на только что законченной сборке. Пустой реестр — молчание: тост «всё
-// хорошо» здесь не нужен, о самой сборке пользователь и так знает.
-func (ac *AppController) showExcludedSourcesToast() {
-	if ac == nil || ac.UIService == nil || ac.UIService.ShowSubsResultFunc == nil {
-		return
-	}
-	msg := excludedSourcesToastPart(config.ExcludedSources())
-	if msg == "" {
-		return
-	}
-	ac.UIService.ShowSubsResultFunc(false, msg)
 }
 
 // CleanOrphanRuleSets removes bin/rule-sets/*.srs files not referenced by any

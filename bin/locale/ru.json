@@ -970,14 +970,50 @@
   "Rules": {
     "value": "Правила"
   },
-  "Files": {
-    "value": "Файлы"
-  },
-  "Save the settings: state is written and the working config.json is rebuilt — the same as the Save button below. \"Show config\" opens the built config.json in its own window without saving anything.": {
-    "value": "Сохранить настройки: записывается состояние и пересобирается рабочий config.json — то же, что кнопка Save внизу. «Показать конфиг» открывает собранный config.json в отдельном окне, ничего не сохраняя."
-  },
   "Show config": {
     "value": "Показать конфиг"
+  },
+  "Final": {
+    "value": "Итог"
+  },
+  "Entering this tab runs a full build in memory: sources are parsed, references and chains are resolved, the outbound graph is checked. Nothing is written and the core is not restarted — the build only produces the report below. Save writes the state and rebuilds the working config.json.": {
+    "value": "Вход на вкладку запускает полную сборку в памяти: разбираются источники, разрешаются ссылки и цепочки, проверяется граф outbound'ов. Ничего не записывается и ядро не перезапускается — сборка нужна только ради отчёта ниже. Кнопка «Сохранить» пишет состояние и пересобирает рабочий config.json."
+  },
+  "Building the config in memory…": {
+    "value": "Собираем конфиг в памяти…"
+  },
+  "The build passed with no warnings.": {
+    "value": "Сборка прошла без предупреждений."
+  },
+  "The sources produced no nodes, so the build would contain no proxies. Check the Sources tab.": {
+    "value": "Источники не дали ни одного узла — в сборке не оказалось бы прокси. Проверьте вкладку «Источники»."
+  },
+  "Build warnings:": {
+    "value": "Предупреждения сборки:"
+  },
+  "Build failed: %v": {
+    "value": "Сборка не удалась: %v"
+  },
+  "Show source": {
+    "value": "Показать источник"
+  },
+  "Source %q excluded from the config: %s": {
+    "value": "Источник %q исключён из конфига: %s"
+  },
+  "Source %q: %d node(s) dropped — %s": {
+    "value": "Источник %q: снято узлов — %d — %s"
+  },
+  "Chain %q did not build: %s": {
+    "value": "Цепочка %q не собралась: %s"
+  },
+  "%d naive node(s) skipped: %s": {
+    "value": "Узлов naive пропущено: %d — %s"
+  },
+  "Detour target %q is missing from the build: %s": {
+    "value": "Цели перехода %q нет в сборке: %s"
+  },
+  "⚠ %d node(s) dropped: %s": {
+    "value": "⚠ снято узлов: %d — %s"
   },
   "Generated config.json": {
     "value": "Собранный config.json"
@@ -1435,9 +1471,6 @@
   },
   "⚠ Excluded from the config: %s": {
     "value": "⚠ Исключён из конфига: %s"
-  },
-  "Source excluded from the config: %s. Details in Wizard → Sources.": {
-    "value": "Источник исключён из конфига: %s. Подробности в Мастере → Источники."
   },
   "The subscription arrives as one entry instead of every node. Its nodes stay in the config as that group's members.": {
     "value": "Подписка приезжает одной записью вместо всех своих узлов. Сами узлы остаются в конфиге составом этой группы."

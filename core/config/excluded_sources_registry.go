@@ -1,79 +1,97 @@
-// File excluded_sources_registry.go — реестр источников, выпавших из конфига
-// на ПОСЛЕДНЕЙ сборке (SPEC 112-B часть B).
+// File excluded_sources_registry.go — источники, выпавшие из конфига на
+// ПОСЛЕДНЕЙ сборке (SPEC 112-B часть B).
 //
-// Зачем отдельное хранилище, а не поле состояния: исключение — свойство
-// сборки, а не пользовательской настройки. Оно возникает и исчезает вместе с
-// составом узлов (провайдер вернул хоп — исключения нет), и записанное в
-// state.json пережило бы собственную причину: строка источника носила бы ⚠ до
-// следующего сохранения. Поэтому реестр живёт в памяти процесса и целиком
-// переписывается каждой сборкой.
+// SPEC 115: собственного хранилища у этого файла больше нет — он стал фасадом
+// над типизированным отчётом сборки (build_report.go), где исключение
+// источника живёт записью вида source_excluded. Так и должно быть: два
+// независимых реестра давали бы два разных ответа на вопрос «что случилось на
+// последней сборке», а раскраска Sources и окно «Итога» обязаны отвечать
+// одинаково.
 //
-// Читатели — UI: строка Wizard → Sources (пометка) и тост после сборки на
-// вкладке Local. Оба ходят сюда из горутин, отсюда мьютекс; сами виджеты
-// трогать только через fyne.Do — это забота вызывающего.
+// Внешний контракт сохранён дословно: SetExcludedSources переписывает,
+// AppendExcludedSources доливает, ExcludedSourceReason ищет по ULID.
+//
+// Зачем в памяти, а не в состоянии: исключение — свойство сборки, а не
+// пользовательской настройки. Оно возникает и исчезает вместе с составом узлов
+// (провайдер вернул хоп — исключения нет), и записанное в state.json пережило
+// бы собственную причину.
+//
+// Читатели — UI: строка Wizard → Sources (пометка) и отчёт «Итога». Оба ходят
+// сюда из горутин; сами виджеты трогать только через fyne.Do — это забота
+// вызывающего.
 package config
 
-import "sync"
-
-var (
-	excludedSourcesMu sync.RWMutex
-	excludedSources   []SourceExclusion
-)
-
-// SetExcludedSources переписывает реестр итогом сборки.
+// SetExcludedSources переписывает записи об исключённых источниках итогом
+// сборки.
 //
 // Зовётся ПОСЛЕ КАЖДОЙ сборки, в том числе успешной: чистая сборка обязана
 // снять прежние пометки, иначе ⚠ переживёт свою причину. Пустой аргумент —
 // штатный способ очистки.
-func SetExcludedSources(list []SourceExclusion) {
-	excludedSourcesMu.Lock()
-	defer excludedSourcesMu.Unlock()
-	if len(list) == 0 {
-		excludedSources = nil
+//
+// Стираются только записи вида source_excluded: остальные виды отчёта
+// (снятые узлы, цепочки, naive) приходят от других поставщиков той же попытки,
+// и обнулять их чужой перезаписью нельзя. Целиком попытку открывает
+// StartBuildReport.
+// Номер попытки обязателен: чужая (обогнанная или инвалидированная правкой
+// модели) сборка не вправе ни стирать записи текущей, ни доливать свои.
+func SetExcludedSources(gen BuildGeneration, list []SourceExclusion) {
+	buildReportMu.Lock()
+	if gen != buildReportGen {
+		buildReportMu.Unlock()
 		return
 	}
-	excludedSources = append([]SourceExclusion(nil), list...)
+	kept := buildReport[:0]
+	for _, e := range buildReport {
+		if e.Kind != BuildReportSourceExcluded {
+			kept = append(kept, e)
+		}
+	}
+	buildReport = kept
+	buildReportMu.Unlock()
+	AppendExcludedSources(gen, list)
 }
 
-// AppendExcludedSources доливает записи в реестр, не трогая уже лежащие
-// (SPEC 113-B).
+// AppendExcludedSources доливает записи, не трогая уже лежащие (SPEC 113-B).
 //
-// Нужно потому, что исключений теперь два поставщика и работают они в разное
-// время: парсер знает про недоступный хоп-узел и пишет реестр сразу после
-// сборки узлов; последний рубеж (core/build) узнаёт про исчезнувший селектор
-// шаблона только когда сложен полный набор финальных тегов — то есть уже
-// ПОСЛЕ SetExcludedSources. Перезапись там стёрла бы причины парсера, поэтому
+// Нужно потому, что исключений два поставщика и работают они в разное время:
+// парсер знает про недоступный хоп-узел и пишет реестр сразу после сборки
+// узлов; последний рубеж (core/build) узнаёт про исчезнувший селектор шаблона
+// только когда сложен полный набор финальных тегов — то есть уже ПОСЛЕ
+// SetExcludedSources. Перезапись там стёрла бы причины парсера, поэтому
 // доливка. Повторная запись про тот же источник игнорируется: первая причина
 // ближе к корню.
-func AppendExcludedSources(list []SourceExclusion) {
+func AppendExcludedSources(gen BuildGeneration, list []SourceExclusion) {
 	if len(list) == 0 {
 		return
 	}
-	excludedSourcesMu.Lock()
-	defer excludedSourcesMu.Unlock()
+	entries := make([]BuildReportEntry, 0, len(list))
 	for _, e := range list {
-		dup := false
-		for _, have := range excludedSources {
-			if have.SourceID == e.SourceID && have.SourceLabel == e.SourceLabel {
-				dup = true
-				break
-			}
-		}
-		if !dup {
-			excludedSources = append(excludedSources, e)
-		}
+		entries = append(entries, BuildReportEntry{
+			Kind:        BuildReportSourceExcluded,
+			Subject:     e.SourceLabel,
+			SourceID:    e.SourceID,
+			SourceLabel: e.SourceLabel,
+			Reason:      e.Reason,
+		})
 	}
+	AddBuildReportEntries(gen, entries)
 }
 
-// ExcludedSources — копия реестра. Копия, а не сам слайс: читатель из UI не
-// должен уметь испортить его следующей сборке.
+// ExcludedSources — копия записей об исключённых источниках. Копия, а не сам
+// слайс: читатель из UI не должен уметь испортить отчёт следующей сборке.
 func ExcludedSources() []SourceExclusion {
-	excludedSourcesMu.RLock()
-	defer excludedSourcesMu.RUnlock()
-	if len(excludedSources) == 0 {
-		return nil
+	buildReportMu.RLock()
+	defer buildReportMu.RUnlock()
+	var out []SourceExclusion
+	for _, e := range buildReport {
+		if e.Kind != BuildReportSourceExcluded {
+			continue
+		}
+		out = append(out, SourceExclusion{
+			SourceID: e.SourceID, SourceLabel: e.SourceLabel, Reason: e.Reason,
+		})
 	}
-	return append([]SourceExclusion(nil), excludedSources...)
+	return out
 }
 
 // ExcludedSourceReason — причина исключения источника с данным ULID; пусто,
@@ -81,15 +99,15 @@ func ExcludedSources() []SourceExclusion {
 // у неё на руках id, а не позиция в сборке.
 //
 // Пустой sourceID никогда не совпадает: записи без id (конфиг собран не из
-// состояния) привязать к строке не к чему, они живут только ради тоста.
+// состояния) привязать к строке не к чему, они живут только ради отчёта.
 func ExcludedSourceReason(sourceID string) string {
 	if sourceID == "" {
 		return ""
 	}
-	excludedSourcesMu.RLock()
-	defer excludedSourcesMu.RUnlock()
-	for _, e := range excludedSources {
-		if e.SourceID == sourceID {
+	buildReportMu.RLock()
+	defer buildReportMu.RUnlock()
+	for _, e := range buildReport {
+		if e.Kind == BuildReportSourceExcluded && e.SourceID == sourceID {
 			return e.Reason
 		}
 	}

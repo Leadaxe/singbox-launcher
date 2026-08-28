@@ -493,7 +493,25 @@ func (p *WizardPresenter) modelHasRuleSetFiles() bool {
 // Возвращает false, если нод так и не появилось.
 func (p *WizardPresenter) parseOutboundsForSave() bool {
 	p.UpdateSaveStatusText(locale.T("Parsing subscriptions..."))
+	return p.EnsureOutboundsParsed()
+}
 
+// EnsureOutboundsParsed — общий механизм «дождись/прогони разбор подписок»,
+// синхронный, для вызова ИЗ ГОРУТИНЫ (диск и сеть; на UI-потоке звать нельзя).
+//
+// Один механизм на всех потребителей осознанно: у разбора два входа (Save и
+// сборка «Итога»), а поля модели (PreviewNeedsParse, GeneratedOutbounds,
+// AutoParseInProgress) у них общие. Второй, самостоятельно написанный вариант
+// ожидания разошёлся бы с этим на первой же правке — а платой была бы гонка
+// двух разборов по одной модели.
+//
+// Ожидание идущего фонового разбора — не оптимизация: параллельный второй
+// проход по тем же подпискам писал бы в те же поля модели, и победил бы тот,
+// кто закончил позже, а не тот, чей результат нужен.
+//
+// Возвращает false, если нод так и не появилось: сборка на пустом кэше даёт
+// валидный конфиг БЕЗ единой прокси-ноды — успех, который врёт.
+func (p *WizardPresenter) EnsureOutboundsParsed() bool {
 	// Фоновый разбор (переключение на Rules) мог уже идти — дожидаемся его,
 	// вместо параллельного второго прохода по тем же подпискам.
 	deadline := time.Now().Add(parseWaitTimeout)
@@ -511,9 +529,50 @@ func (p *WizardPresenter) parseOutboundsForSave() bool {
 		err := wizardbusiness.ParseAndPreview(p, configService)
 		p.model.AutoParseInProgress = false
 		if err != nil {
-			debuglog.ErrorLog("parseOutboundsForSave: ParseAndPreview failed: %v", err)
+			debuglog.ErrorLog("EnsureOutboundsParsed: ParseAndPreview failed: %v", err)
 			return false
 		}
 	}
 	return !p.model.PreviewNeedsParse && len(p.model.GeneratedOutbounds) > 0
+}
+
+// PrepareFinalBuild доводит модель до состояния, в котором сборка «Итога»
+// имеет право начаться: узлы разобраны И их разбор ПРИНАДЛЕЖИТ живой попытке
+// отчёта. Синхронный, звать только из горутины.
+//
+// Второе условие — не придирка. Записи парсерной стадии (source_excluded,
+// chain_failed, naive_degraded) кладутся в попытку, а попытку сбрасывает любая
+// правка модели (MarkAsChanged → ResetBuildReport) и перехватывает любой другой
+// писатель реестра — например, фоновое авто-обновление подписок. Кэш узлов при
+// этом остаётся целым, поэтому «узлы есть» ещё не значит «их причины лежат в
+// отчёте»: без перепроверки «Итог» показал бы отчёт из одних санитайзерных
+// записей и объявил его полным.
+//
+// Ноль вместо номера попытки — то же самое состояние («парсерной стадии в
+// текущей попытке не было»), поэтому обрабатывается тем же путём.
+func (p *WizardPresenter) PrepareFinalBuild() bool {
+	if !p.EnsureOutboundsParsed() {
+		return false
+	}
+	if config.BuildReportGenerationLive(p.model.BuildReportGen) {
+		return true
+	}
+	// Попытка мертва: разбор гоняем заново — он и откроет новую, положив в неё
+	// свои причины. PreviewNeedsParse тут поднимать нельзя (кэш узлов цел и
+	// верен), поэтому ParseAndPreview зовётся напрямую.
+	debuglog.InfoLog("PrepareFinalBuild: parser-stage attempt is stale — re-running the parse to refill the report")
+	ac := core.GetController()
+	if ac == nil {
+		return false
+	}
+	p.model.AutoParseInProgress = true
+	configService := &wizardbusiness.ConfigServiceAdapter{CoreConfigService: ac.ConfigService}
+	err := wizardbusiness.ParseAndPreview(p, configService)
+	p.model.AutoParseInProgress = false
+	if err != nil {
+		debuglog.ErrorLog("PrepareFinalBuild: ParseAndPreview failed: %v", err)
+		return false
+	}
+	return !p.model.PreviewNeedsParse && len(p.model.GeneratedOutbounds) > 0 &&
+		config.BuildReportGenerationLive(p.model.BuildReportGen)
 }

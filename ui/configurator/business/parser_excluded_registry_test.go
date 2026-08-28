@@ -49,7 +49,7 @@ func runPreview(t *testing.T, res *config.OutboundGenerationResult) {
 }
 
 func TestParseAndPreview_WritesExclusionRegistry(t *testing.T) {
-	t.Cleanup(func() { config.SetExcludedSources(nil) })
+	t.Cleanup(config.ResetBuildReport)
 
 	// Preview со сломанным хопом обязана поставить пометку.
 	runPreview(t, &config.OutboundGenerationResult{
@@ -75,9 +75,9 @@ func TestParseAndPreview_WritesExclusionRegistry(t *testing.T) {
 // Отброшенный результат (ParserConfigJSON изменился во время генерации) реестр
 // трогать не имеет права: сборки, чей итог выброшен, не было.
 func TestParseAndPreview_DiscardedResultLeavesRegistryAlone(t *testing.T) {
-	t.Cleanup(func() { config.SetExcludedSources(nil) })
+	t.Cleanup(config.ResetBuildReport)
 
-	config.SetExcludedSources([]config.SourceExclusion{
+	config.SetExcludedSources(config.StartBuildReport(), []config.SourceExclusion{
 		{SourceID: "01SUB", SourceLabel: "Proton NL", Reason: "хоп не найден"},
 	})
 

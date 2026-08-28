@@ -168,6 +168,17 @@ type WizardModel struct {
 	PreviewNeedsParse   bool
 	AutoParseInProgress bool
 
+	// BuildReportGen — номер попытки сборки (core/config), открытой парсерной
+	// стадией Мастера (SPEC 115). Конвейер «Итога» состоит из двух половин,
+	// идущих в разное время: разбор подписок кладёт свои причины
+	// (source_excluded, chain_failed, naive_degraded), последний рубеж —
+	// свои. Обе обязаны попасть в ОДНУ попытку, иначе отчёт покажет половину
+	// причин; номер и есть то, чем вторая половина опознаёт первую.
+	//
+	// Ноль — «парсерной стадии не было»: с ним не совпадает ни одна живая
+	// попытка, и сборка «Итога» на таком номере отчёта не соберёт.
+	BuildReportGen config.BuildGeneration `json:"-"`
+
 	// Preview кеш для распарсенных нод (используется всеми Preview/View, включая вкладку Preview в Edit Outbound)
 	PreviewNodes         []*config.ParsedNode
 	PreviewNodesBySource map[int][]*config.ParsedNode

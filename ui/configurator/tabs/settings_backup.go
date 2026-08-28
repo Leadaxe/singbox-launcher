@@ -190,6 +190,16 @@ func applyBackup(presenter *wizardpresentation.WizardPresenter, win fyne.Window,
 	presenter.SyncModelToGUI()
 	presenter.MarkAsChanged()
 
+	// SPEC 115: импорт — единственная правка модели, которую делают, СТОЯ на
+	// вкладке «Итог» (блок импорта живёт на ней). MarkAsChanged выше уже
+	// стёр отчёт, но экран и кнопка Save остались от прошлой сборки: без
+	// пересборки пользователь смотрел бы на отчёт чужого состояния и мог бы
+	// его сохранить. Остальные вкладки такой проводки не требуют — на «Итог»
+	// с них попадают входом, а вход и есть сборка.
+	if guiState := presenter.GUIState(); guiState != nil && guiState.RunFinalBuild != nil {
+		guiState.RunFinalBuild()
+	}
+
 	all := append(append([]backup.Warning(nil), parseWarns...), res.Warnings...)
 	// Отчёт — не «ок, понял»: потери надо прочитать целиком, поэтому список
 	// уезжает в своё окно без обрезки (settings_backup_report_window.go).

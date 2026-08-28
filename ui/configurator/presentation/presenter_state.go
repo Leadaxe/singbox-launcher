@@ -27,6 +27,7 @@ import (
 
 	"singbox-launcher/core"
 	"singbox-launcher/core/build"
+	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	corestate "singbox-launcher/core/state"
 	wizardtemplate "singbox-launcher/core/template"
@@ -45,8 +46,20 @@ func (p *WizardPresenter) HasUnsavedChanges() bool {
 }
 
 // MarkAsChanged устанавливает флаг изменений.
+//
+// SPEC 115 §2: он же — сигнал инвалидации отчёта сборки. Отчёт описывает
+// КОНКРЕТНУЮ конфигурацию, и после правки описывает уже не ту: пользователь
+// чинит источник и смотрит, ушла ли пометка ⚠, а устаревший отчёт отвечает на
+// этот вопрос неправильно. Заодно закрывается кнопка Save на вкладке «Итог» —
+// сохранять то, чего не собирали, нельзя.
+//
+// Вешается именно сюда, а не на каждую правку по отдельности: MarkAsChanged —
+// единственный сигнал «модель изменилась», через который проходят ВСЕ правки
+// Мастера (источники, правила, DNS, настройки). Своя инвалидация у каждой
+// формы разъехалась бы с первой же новой формой.
 func (p *WizardPresenter) MarkAsChanged() {
 	p.hasChanges = true
+	config.ResetBuildReport()
 	debuglog.DebugLog("MarkAsChanged: hasChanges set to true")
 }
 
@@ -260,6 +273,12 @@ func (p *WizardPresenter) LoadState(stateFile *wizardmodels.WizardStateFile) err
 
 	timing := debuglog.StartTiming("loadState")
 	defer timing.EndWithDefer()
+
+	// SPEC 115 §2: загрузка состояния — самая крупная правка модели, какая
+	// бывает, но через MarkAsChanged она не проходит (загруженное состояние
+	// не считается несохранённым изменением). Без явного сброса отчёт
+	// прошлой конфигурации раскрасил бы источники ЧУЖОГО состояния.
+	config.ResetBuildReport()
 
 	// Валидация шаблона (шаг 1)
 	if p.model.TemplateData == nil {
