@@ -69,36 +69,7 @@ func TestDetourNodeRefReachesProxySource(t *testing.T) {
 	}
 }
 
-// Обратный синк (Save): ссылка и ULID возвращаются из legacy-формы в
-// Connections. ID теперь приезжает полем, а не восстанавливается матчингом по
-// URL — иначе правка адреса подписки выдавала бы ей новый ULID, и все ссылки
-// на её узлы обрывались бы разом.
-func TestSyncConnectionsFromLegacy_KeepsRefAndID(t *testing.T) {
-	s := &State{}
-	s.Connections.Sources = []Source{{
-		ID: "01PROTON", Type: SourceTypeSubscription, Enabled: true, Label: "Proton NL",
-		URL: "https://example.invalid/proton",
-	}}
-	syncLegacyFromConnections(s)
-
-	// Пользователь поменял адрес подписки и выбрал хоп.
-	s.ParserConfig.ParserConfig.Proxies[0].Source = "https://example.invalid/proton-v2"
-	s.ParserConfig.ParserConfig.Proxies[0].DetourNodeSourceID = "01WARP"
-	s.ParserConfig.ParserConfig.Proxies[0].DetourNodeTag = "hop"
-
-	syncConnectionsFromLegacy(s)
-
-	if n := len(s.Connections.Sources); n != 1 {
-		t.Fatalf("источников %d, ожидался 1", n)
-	}
-	got := s.Connections.Sources[0]
-	if got.ID != "01PROTON" {
-		t.Errorf("ULID = %q — смена URL не должна выдавать источнику новый id", got.ID)
-	}
-	if got.Label != "Proton NL" {
-		t.Errorf("подпись потеряна: %q", got.Label)
-	}
-	if got.DetourNodeSourceID != "01WARP" || got.DetourNodeTag != "hop" {
-		t.Errorf("ссылка не вернулась: source_id=%q tag=%q", got.DetourNodeSourceID, got.DetourNodeTag)
-	}
-}
+// SPEC 117 (W4): TestSyncConnectionsFromLegacy_KeepsRefAndID удалён — предмет
+// теста (обратный синк syncConnectionsFromLegacy) упразднён этим этапом. ID
+// живёт в canonical и не пересоздаётся вовсе; инвариант ID-стабильности
+// закрывает canonical_roundtrip_test.go (TestCanonical_IDStability).

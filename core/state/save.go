@@ -32,9 +32,9 @@ func (s *State) Save(path string) error {
 	}
 	s.UpdatedAt = now
 
-	// Sync legacy → canonical перед сериализацией.
-	syncConnectionsFromLegacy(s)
-
+	// SPEC 117 (W4): обратного синка legacy → canonical больше нет. Save
+	// сериализует ТОЛЬКО s.Connections (canonical); s.ParserConfig — read-only
+	// Load-проекция, Save её не читает. Все мутации обязаны идти в Connections.
 	s.Version = SchemaVersionV6
 
 	// SPEC 058-R-N: backup перед первым перезаписыванием когда outbounds

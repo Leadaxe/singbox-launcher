@@ -71,17 +71,13 @@ func (p *WizardPresenter) MarkAsSaved() {
 
 // CreateStateFromModel создает state.State из текущей модели.
 //
-// SPEC 052 phase 8: канонический список — model.Sources, model.GlobalOutbounds,
-// model.Defaults. ParserConfig (legacy view) синхронизируется в core/state.Save
-// через syncConnectionsFromLegacy, но здесь мы пишем напрямую в Connections —
-// это короче и нет потери информации (Sources уже содержит все ID/Meta).
+// SPEC 117 (W4): пишет ТОЛЬКО canonical — Connections (model.Sources,
+// model.GlobalOutbounds, model.Defaults) + остальные секции. Legacy-проекция
+// state.ParserConfig здесь не заполняется: она наполняется исключительно на
+// Load (syncLegacyFromConnections), а Save её не читает.
 func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels.WizardStateFile {
 	// Синхронизируем GUI с моделью перед созданием состояния
 	p.SyncGUIToModel()
-
-	// Создаём состояние с v5 layout: Connections — canonical, ParserConfig
-	// — derived (заполняется через syncLegacyFromConnections при Load,
-	// либо просто игнорируется на следующем сохранении).
 	state := &wizardmodels.WizardStateFile{
 		Version:   wizardmodels.WizardStateVersion,
 		ID:        id,
@@ -105,14 +101,6 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	}
 	state.Connections.Defaults = p.model.Defaults
 	state.WarpAccounts = p.model.WarpAccounts
-
-	// Заполняем legacy ParserConfig view ради совместимости тех тестов /
-	// callsite'ов, что читают state.ParserConfig.ParserConfig.Proxies сразу
-	// после CreateStateFromModel (без round-trip через диск).
-	derivedPC := p.model.AsParserConfig()
-	if derivedPC != nil {
-		state.ParserConfig = *derivedPC
-	}
 
 	// Извлекаем config_params из модели
 	state.ConfigParams = p.extractConfigParams()
@@ -174,14 +162,10 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	// preset-ref'ами. Idempotent.
 	//
 	// SPEC 117: Sync ровно один — по canonical Connections.Outbounds.
-	// Пока жив обратный синк Save (syncConnectionsFromLegacy, умирает в W4),
-	// он пересобирает Connections.Outbounds из проекции state.ParserConfig —
-	// поэтому проекцию выравниваем по только что синхронизированной копии.
-	// Это не второй Sync, а страховка от того, чтобы Save не перетёр его
-	// результат несинхронизированной проекцией; умирает вместе с ней в W4.
+	// Обратный синк Save удалён (W4): Save сериализует Connections как есть,
+	// выравнивать проекцию больше не нужно.
 	if p.model.TemplateData != nil {
 		build.SyncOutboundsWithTemplate(state.Rules, &state.Connections.Outbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
-		state.ParserConfig.ParserConfig.Outbounds = append([]configtypes.Direction(nil), state.Connections.Outbounds...)
 	}
 
 	// dns_options в state — только servers и rules; скаляры DNS — в state.vars (dns_*).

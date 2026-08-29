@@ -95,8 +95,8 @@ type ProxySource struct {
 	// SPEC 112-A: ссылка на узел адресуется парой «source_id + identity-тег»,
 	// поэтому генератору нужно соответствие «источник в ParserConfig → ULID».
 	// Поле деривное: канонический владелец — Connections.Sources; сюда его
-	// кладут ToProxySourceV4 / syncLegacyFromConnections, а обратный синк
-	// (syncConnectionsFromLegacy) предпочитает его матчингу по URL/URI.
+	// кладут ToProxySourceV4 / syncLegacyFromConnections (прямая проекция;
+	// обратного синка нет — SPEC 117).
 	//
 	// Пусто у конфигов, собранных не из состояния (тесты, ручной JSON) —
 	// резолв ссылок обязан это переживать (глобальный поиск по тегу).

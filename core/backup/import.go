@@ -245,9 +245,19 @@ func importSourceRef(src *state.Source, ref SourceRef) {
 	src.DetourNodeLabel = ref.DetourNodeLabel
 }
 
+// ensureSourceID — Р3 (SPEC 117): ULID рождается в момент создания Source.
+// Обратного синка Save, который раньше доминтовывал пустые id, больше нет —
+// бэкап без id (чужой/рукописный файл) обязан получить ULID здесь.
+func ensureSourceID(id string) string {
+	if id == "" {
+		return state.MakeULID()
+	}
+	return id
+}
+
 func importSubscription(sub Subscription) state.Source {
 	src := state.Source{
-		ID:                      sub.ID,
+		ID:                      ensureSourceID(sub.ID),
 		Type:                    state.SourceTypeSubscription,
 		URL:                     sub.URL,
 		Label:                   sub.Label,
@@ -277,7 +287,7 @@ func importSubscription(sub Subscription) state.Source {
 
 func importServer(srv Server) state.Source {
 	src := state.Source{
-		ID:                srv.ID,
+		ID:                ensureSourceID(srv.ID),
 		Type:              state.SourceTypeServer,
 		URI:               srv.URI,
 		Label:             srv.Label,
@@ -300,7 +310,7 @@ func importServer(srv Server) state.Source {
 // цепочек.
 func importChain(in Chain) state.Source {
 	src := state.Source{
-		ID:                in.ID,
+		ID:                ensureSourceID(in.ID),
 		Type:              state.SourceTypeChain,
 		NodeTag:           in.Tag,
 		Label:             in.Label,

@@ -832,7 +832,12 @@ func TestLegacyDetourNodeHashFileReadsWithWarning(t *testing.T) {
 		t.Errorf("общие поля старого файла не применились: %+v", src)
 	}
 	// ...а содержимое кармана не применилось и не осело в состоянии.
-	if src.DetourNodeHash != "" || src.DetourNodeTag != "" || src.ID != "" {
+	// ID при этом НЕ пуст: SPEC 117 (Р3) — импорт как создатель Source
+	// минтит свежий ULID, но именно свежий, а не id из кармана.
+	if src.DetourNodeHash != "" || src.DetourNodeTag != "" || src.ID == "src-1" {
 		t.Errorf("содержимое extensions просочилось в состояние: %+v", src)
+	}
+	if len(src.ID) != 26 {
+		t.Errorf("импорт обязан выдать источнику свежий ULID (Р3): id=%q", src.ID)
 	}
 }

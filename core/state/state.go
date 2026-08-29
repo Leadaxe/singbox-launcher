@@ -4,8 +4,9 @@
 // SPEC 052 (CONNECTIONS_REDESIGN): на диск пишется v5/v6-схема. Поверхностный
 // in-memory тип State сохраняет legacy-форму (ParserConfig.ParserConfig.Proxies,
 // Vars, CustomRules, DNSOptions) для совместимости с существующими
-// callsite'ами; canonical секция Connections живёт параллельно и
-// синхронизируется на Save (UI-edits ParserConfig → Sync → write).
+// callsite'ами; canonical секция Connections — единственный источник истины.
+// SPEC 117: legacy-форма — read-only проекция, наполняется только на Load
+// (syncLegacyFromConnections); Save сериализует только Connections.
 //
 // SPEC 060: v5/ и v6/ subpackages collapsed в единый core/state/. Wire format
 // не меняется. Историческое имя поля RulesV6 сохранено в Phase 2/3/4 и

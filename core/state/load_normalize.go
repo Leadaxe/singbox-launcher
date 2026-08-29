@@ -21,6 +21,14 @@ func normalizeNilSlices(s *State) {
 	sanitizeOutboundRefs(&s.Connections.Outbounds)
 	for i := range s.Connections.Sources {
 		sanitizeOutboundRefs(&s.Connections.Sources[i].Outbounds)
+		// Источник без id — рукописный state.json: приложение минтит ULID
+		// при создании (SPEC 117 W4, Р3), а до сноса обратного синка пустой
+		// id долечивал матчинг на Save. Синка больше нет — долечиваем на
+		// Load, иначе ссылки detour_node_source_id на такой источник не
+		// смогут родиться вовсе. Симметрично ensureSourceID импорта бэкапа.
+		if s.Connections.Sources[i].ID == "" {
+			s.Connections.Sources[i].ID = MakeULID()
+		}
 	}
 }
 

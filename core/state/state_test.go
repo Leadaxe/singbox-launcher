@@ -133,6 +133,9 @@ func TestLoad_V3LegacyShapes(t *testing.T) {
 // SPEC 052: ID не сериализуется в v5 (snapshot-имена живут в имени файла).
 // Comment, CreatedAt, UpdatedAt — в meta. ParserConfig — derived view,
 // заполняется на Load из Connections.
+//
+// SPEC 117 (W4): тест переработан — мутируется canonical s.Connections, а не
+// legacy-view (обратный синк Save упразднён; Save читает только Connections).
 func TestSave_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
@@ -145,11 +148,14 @@ func TestSave_RoundTrip(t *testing.T) {
 		Vars:         []SettingVar{{Name: "log_level", Value: "info"}},
 		CustomRules:  []CustomRule{},
 	}
-	original.ParserConfig.ParserConfig.Version = 4
-	original.ParserConfig.ParserConfig.Proxies = []configtypes.ProxySource{
-		{Source: "https://x/sub", TagPrefix: "[X] "},
-	}
-	original.ParserConfig.ParserConfig.Outbounds = []configtypes.Direction{}
+	original.Connections.Sources = []Source{{
+		ID:      "01ROUNDTRIP0000000000000000",
+		Type:    SourceTypeSubscription,
+		Enabled: true,
+		URL:     "https://x/sub",
+		Tag:     &TagSpec{Prefix: "[X] "},
+	}}
+	original.Connections.Outbounds = []configtypes.Direction{}
 
 	if err := original.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -171,7 +177,7 @@ func TestSave_RoundTrip(t *testing.T) {
 	if loaded.Connections.Sources[0].Tag == nil || loaded.Connections.Sources[0].Tag.Prefix != "[X] " {
 		t.Fatalf("Tag prefix not preserved: %+v", loaded.Connections.Sources[0].Tag)
 	}
-	// Legacy ParserConfig — derived from Connections at Load.
+	// Legacy ParserConfig — derived from Connections at Load (Load-проекция).
 	if len(loaded.ParserConfig.ParserConfig.Proxies) != 1 {
 		t.Fatalf("Proxies count")
 	}
@@ -186,9 +192,10 @@ func TestSave_RoundTrip(t *testing.T) {
 	if loaded.UpdatedAt.Before(original.CreatedAt) {
 		t.Fatalf("UpdatedAt not refreshed: %v vs %v", loaded.UpdatedAt, original.CreatedAt)
 	}
-	// Source.ID — должен быть auto-сгенерирован на Save.
-	if loaded.Connections.Sources[0].ID == "" {
-		t.Fatalf("Source.ID was not auto-generated on Save")
+	// Source.ID — рождается при создании источника и не пересоздаётся:
+	// Save обязан вернуть ровно тот же ULID.
+	if loaded.Connections.Sources[0].ID != "01ROUNDTRIP0000000000000000" {
+		t.Fatalf("Source.ID changed across Save/Load: %q", loaded.Connections.Sources[0].ID)
 	}
 }
 

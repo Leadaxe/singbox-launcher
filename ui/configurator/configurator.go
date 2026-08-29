@@ -640,10 +640,10 @@ func setupTabChangeHandler(presenter *wizardpresentation.WizardPresenter, guiSta
 		// убран, и править руками там нечего; отслеживать предыдущую
 		// вкладку стало незачем.
 
-		// Вкладка Направлений: пересобрать структуру из JSON и перестроить
-		// список (правки на Sources меняют только JSON модели).
+		// Вкладка Направлений: перестроить список — конфигуратор читает
+		// canonical (model.GlobalOutbounds / Sources[i].Outbounds) напрямую
+		// (SPEC 117), пересборка структуры из JSON упразднена.
 		if item.Text == locale.T("Directions") {
-			presenter.ApplyParserConfigFromCurrentJSON()
 			if guiState.RefreshOutboundsConfiguratorList != nil {
 				guiState.RefreshOutboundsConfiguratorList()
 			}

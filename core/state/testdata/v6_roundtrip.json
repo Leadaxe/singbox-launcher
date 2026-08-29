@@ -1,0 +1,182 @@
+{
+  "meta": {
+    "version": 6,
+    "schema": "presets_v1",
+    "comment": "SPEC 117 roundtrip fixture",
+    "created_at": "2026-08-01T00:00:00Z",
+    "updated_at": "2026-08-01T00:00:00Z"
+  },
+  "connections": {
+    "sources": [
+      {
+        "id": "01J00000000000000000000SUB",
+        "type": "subscription",
+        "enabled": true,
+        "label": "Proton NL",
+        "url": "https://example.invalid/sub?token=abc&kind=all",
+        "skip": [
+          {
+            "tag": "/(RU)/i"
+          }
+        ],
+        "tag": {
+          "prefix": "[P] ",
+          "postfix": " •"
+        },
+        "outbounds": [
+          {
+            "tag": "local-video",
+            "type": "selector",
+            "filters": {
+              "tag": "/(NL|DE)/"
+            },
+            "auto": {
+              "mode": "least_test"
+            }
+          }
+        ],
+        "fold": {
+          "mode": "select_auto",
+          "auto": {
+            "interval": "5m"
+          }
+        },
+        "update": {
+          "interval_hours": 6,
+          "auto_refresh": false
+        },
+        "max_nodes": 500,
+        "meta": {
+          "profile_title": "Proton",
+          "userinfo": {
+            "upload_bytes": 10,
+            "download_bytes": 20,
+            "total_bytes": 100
+          },
+          "last_fetched_at": "2026-08-01T00:00:00Z",
+          "last_status": "ok",
+          "nodes_count_fetched": 42,
+          "preview_nodes": [
+            "🇳🇱 NL-1",
+            "🇩🇪 DE-2"
+          ]
+        },
+        "disabled_nodes": {
+          "🇩🇪 DE-2": 1750000000,
+          "🇳🇱 NL-11": 1750000001
+        }
+      },
+      {
+        "id": "01J00000000000000000000SRV",
+        "type": "server",
+        "enabled": true,
+        "label": "Tokyo",
+        "node_tag": "🇯🇵 Tokyo",
+        "uri": "vless://uuid@h.example:443?security=reality&pbk=k#Tokyo",
+        "detour_node_source_id": "01J00000000000000000000SUB",
+        "detour_node_tag": "NL-1",
+        "detour_node_label": "🇳🇱 NL-1"
+      },
+      {
+        "id": "01J0000000000000000000JSON",
+        "type": "server",
+        "enabled": false,
+        "label": "manual-node",
+        "node_tag": "manual-node",
+        "config_json": {
+          "type": "someproto",
+          "server": "10.0.0.1"
+        }
+      },
+      {
+        "id": "01J0000000000000000000CHN0",
+        "type": "chain",
+        "enabled": true,
+        "label": "Двойной хоп",
+        "node_tag": "chain-1",
+        "chain": {
+          "hops": [
+            "🇯🇵 Tokyo",
+            "NL-1"
+          ],
+          "idle_timeout": "2m",
+          "strip_evasion": false,
+          "strip": {
+            "tls.utls": false
+          }
+        }
+      }
+    ],
+    "direction_outbounds": [
+      {
+        "tag": "proxy-out",
+        "auto": {
+          "mode": "least_test"
+        },
+        "ref": "#TEMPLATE#",
+        "updates": [
+          {
+            "ref": "#USER#",
+            "patch": {
+              "filters": {
+                "tag": "!/(🇷🇺)/i"
+              }
+            },
+            "explicit": true
+          }
+        ]
+      },
+      {
+        "tag": "video-out",
+        "type": "selector",
+        "filters": {
+          "tag": "/(NL)/"
+        }
+      }
+    ],
+    "defaults": {
+      "reload": "4h",
+      "max_nodes": 3000
+    }
+  },
+  "rules": [
+    {
+      "kind": "preset",
+      "ref": "ru-direct",
+      "enabled": true,
+      "body": {
+        "vars": {}
+      }
+    },
+    {
+      "kind": "inline",
+      "enabled": true,
+      "body": {
+        "name": "X",
+        "match": {
+          "port": [
+            443
+          ]
+        },
+        "outbound": "proxy-out"
+      }
+    }
+  ],
+  "vars": [
+    {
+      "name": "log_level",
+      "value": "warn"
+    }
+  ],
+  "dns_options": {
+    "strategy": "prefer_ipv4",
+    "final": "google_doh",
+    "servers": [
+      {
+        "enabled": true,
+        "kind": "template",
+        "tag": "cloudflare_udp"
+      }
+    ]
+  }
+}

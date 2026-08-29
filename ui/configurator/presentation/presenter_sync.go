@@ -40,11 +40,9 @@ package presentation
     internal/wizardsync (GuiTextAwaitingProgrammaticFill, FinalOutboundSelectReadLooksStale), юнит-тесты без Fyne.
 */
 import (
-	"encoding/json"
 	"strings"
 
 	"singbox-launcher/core/build"
-	"singbox-launcher/core/config"
 	wizardtemplate "singbox-launcher/core/template"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/wizardsync"
@@ -434,31 +432,4 @@ func (p *WizardPresenter) syncGUIToModelDNS(ready bool) bool {
 		}
 	}
 	return changed
-}
-
-// ApplyParserConfigFromCurrentJSON replaces model.ParserConfig from model.ParserConfigJSON when JSON parses and validates,
-// normalizes via SerializeParserConfig, and updates the Outbounds entry. Used when opening the Outbounds tab so the
-// configurator list matches JSON after edits on Sources (local outbounds) or other tabs.
-func (p *WizardPresenter) ApplyParserConfigFromCurrentJSON() {
-	if p.guiState == nil {
-		return
-	}
-	raw := strings.TrimSpace(p.model.ParserConfigJSON)
-	if raw == "" {
-		p.model.ParserConfig = nil
-		return
-	}
-	var pc config.ParserConfig
-	if err := json.Unmarshal([]byte(raw), &pc); err != nil {
-		return
-	}
-	if err := wizardbusiness.ValidateParserConfig(&pc); err != nil {
-		return
-	}
-	serialized, err := wizardbusiness.SerializeParserConfig(&pc)
-	if err != nil {
-		return
-	}
-	p.model.ParserConfig = &pc
-	p.model.ParserConfigJSON = serialized
 }

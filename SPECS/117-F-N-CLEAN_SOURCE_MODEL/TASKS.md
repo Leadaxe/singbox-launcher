@@ -138,36 +138,49 @@
 
 ## W4 — Снос обратных синков
 
-- [ ] Удалить `core/state/sync_to_connections.go` целиком + вызов в
+- [x] Удалить `core/state/sync_to_connections.go` целиком + вызов в
       `core/state/save.go:36`.
-- [ ] `core/state/connections_helpers.go:12-79`: удалить хелперы, жившие
-      только ради обратного синка (`buildTagSpecFromLegacy` и т.п.);
-      прямые (canonical→legacy) оставить.
-- [ ] `ui/configurator/presentation/presenter_state.go:100-115`:
+- [x] `core/state/connections_helpers.go:12-79`: удалить хелперы, жившие
+      только ради обратного синка (`serverLabelFromLegacy`,
+      `extractURIFragment`, `sprintfServerN`, `serverConfigJSONKey`);
+      `buildTagSpecFromLegacy` оставлен — его использует Load-миграция v4
+      (`legacy_migration.go`), это прямое направление.
+- [x] `ui/configurator/presentation/presenter_state.go:100-115`:
       `CreateStateFromModel` пишет только Connections — заполнение
-      `state.ParserConfig` проекцией удалить.
-- [ ] `ui/configurator/presentation/presenter_sync.go:438-470`:
-      `ApplyParserConfigFromCurrentJSON` удалить + вызов
-      `configurator.go:643`.
-- [ ] Тесты категории (а), core/state (фиксация в отчёте):
-      - [ ] `TestConfigJSON_LegacyRoundTrip`
-            (`config_json_roundtrip_test.go:17`) — удалить;
-      - [ ] `TestSyncConnectionsFromLegacy_KeepsRefAndID`
-            (`detour_node_ref_test.go:76`) — удалить;
-      - [ ] `TestDetourTag_LegacyRoundTrip` (`detour_mapping_test.go:20`)
-            — переработать: только прямая проекция;
-      - [ ] `TestLoad_V4Minimal` (`state_test.go:52,77`) — ассерты на
-            `s.Connections` (+ допустимо на Load-проекцию);
-      - [ ] `TestSaveLoadRoundTrip` (`state_test.go:148`) — мутирует
-            `s.Connections`.
-- [ ] Новые тесты (SPEC §5.B):
-      - [ ] roundtrip `Load→Save→Load→Save` байт-в-байт на фикстурах v6
-            (подписки + server + chain + локальные Outbounds +
-            DisabledNodes + Fold + Meta);
-      - [ ] ID-стабильность: ULID неизменны через циклы Save/Load, новые
-            не выдаются (риск Р3 — проверить, что все создатели Source
-            выдают ULID при создании).
-- [ ] `go build ./...` + `go test ./core/state/... ./ui/...` зелёные.
+      `state.ParserConfig` проекцией удалено (вместе с W3-страховкой
+      выравнивания `state.ParserConfig.ParserConfig.Outbounds`).
+- [x] `ui/configurator/presentation/presenter_sync.go:438-470`:
+      `ApplyParserConfigFromCurrentJSON` удалён + вызов
+      `configurator.go:643` (Refresh списка Направлений остался).
+- [x] Тесты категории (а), core/state (фиксация в отчёте):
+      - [x] `TestConfigJSON_LegacyRoundTrip`
+            (`config_json_roundtrip_test.go:17`) — удалён (предмет —
+            обратный синк — упразднён этапом);
+      - [x] `TestSyncConnectionsFromLegacy_KeepsRefAndID`
+            (`detour_node_ref_test.go:76`) — удалён (предмет — сам синк);
+      - [x] `TestDetourTag_LegacyRoundTrip` (`detour_mapping_test.go:20`)
+            — переработан: только прямая проекция;
+      - [x] `TestLoad_V4Minimal` (`state_test.go:52,77`) — уже ассертит
+            `s.Connections` + Load-проекцию (она остаётся на Load), без
+            изменений;
+      - [x] `TestSave_RoundTrip` (`state_test.go`) — переработан: мутирует
+            `s.Connections`, ID задаётся при создании и не пересоздаётся.
+- [x] Новые тесты (SPEC §5.B) — `core/state/canonical_roundtrip_test.go`
+      + фикстура `testdata/v6_roundtrip.json`:
+      - [x] roundtrip `Load→Save→Load→Save` байт-в-байт (modulo
+            meta.updated_at — Save штампует время всегда) на фикстуре v6
+            (подписка + server + config_json-server + chain + локальные
+            Outbounds + DisabledNodes + Fold + Meta + rules/vars/dns);
+      - [x] ID-стабильность: ULID неизменны через 4 цикла мутаций
+            canonical (URL/label/toggle/chain/reorder) + Save/Load; новые
+            не выдаются. Аудит создателей Source (Р3): UI-создатели
+            (`sources.go`, `sources_json.go`, `source_tab.go` add chain)
+            минтят ULID при создании — закреплено
+            `business/source_creator_ulid_test.go`; импорт бэкапа минтил
+            через снесённый синк → добавлен `ensureSourceID` в
+            `core/backup/import.go` + `import_ulid_test.go`.
+- [x] `go build ./...` + `go test ./core/state/... ./ui/...` зелёные
+      (полный `go test ./...` + `go vet ./...` — тоже).
 
 ## W5 — Чистка мёртвого транспорта и полей
 

@@ -15,8 +15,12 @@ func TestDetourTag_ToProxySourceV4(t *testing.T) {
 	}
 }
 
-// syncLegacyFromConnections (Source → ProxySource) then syncConnectionsFromLegacy
-// (ProxySource → Source) must preserve DetourTag for both types.
+// syncLegacyFromConnections (Source → ProxySource, прямая Load-проекция)
+// must preserve DetourTag for both types.
+//
+// SPEC 117 (W4): обратная половина теста (syncConnectionsFromLegacy на Save)
+// удалена — обратный синк упразднён этим этапом; проверяется только прямая
+// проекция canonical → legacy.
 func TestDetourTag_LegacyRoundTrip(t *testing.T) {
 	s := &State{}
 	s.Connections.Sources = []Source{
@@ -33,23 +37,5 @@ func TestDetourTag_LegacyRoundTrip(t *testing.T) {
 	}
 	if got := s.ParserConfig.ParserConfig.Proxies[1].DetourTag; got != "hop-srv" {
 		t.Errorf("legacy server DetourTag = %q, want hop-srv", got)
-	}
-
-	syncConnectionsFromLegacy(s)
-	byID := map[string]Source{}
-	for _, src := range s.Connections.Sources {
-		// match by URL/URI since round-trip may re-key IDs
-		switch src.Type {
-		case SourceTypeSubscription:
-			byID["sub"] = src
-		case SourceTypeServer:
-			byID["srv"] = src
-		}
-	}
-	if got := byID["sub"].DetourTag; got != "hop-sub" {
-		t.Errorf("round-trip subscription DetourTag = %q, want hop-sub", got)
-	}
-	if got := byID["srv"].DetourTag; got != "hop-srv" {
-		t.Errorf("round-trip server DetourTag = %q, want hop-srv", got)
 	}
 }
