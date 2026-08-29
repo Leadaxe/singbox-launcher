@@ -43,10 +43,8 @@ func TestRawCacheSnapshotDoesNotTouchBuildReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &state.State{
-		Connections: state.ConnectionsSection{
-			Sources: []state.Source{
-				{ID: "01NOOPRAW", Type: state.SourceTypeSubscription, Enabled: true, URL: "https://test/sub"},
-			},
+		Sources: []state.Source{
+			{ID: "01NOOPRAW", Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true}, URL: "https://test/sub"},
 		},
 	}
 	if err := os.MkdirAll(platform.GetWizardStatesDir(execDir), 0o755); err != nil {

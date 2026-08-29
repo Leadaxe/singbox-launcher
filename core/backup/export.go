@@ -62,7 +62,7 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 
 	// SPEC 104: Направления едут вместе с правилами — иначе правило,
 	// сославшееся на `vpn-3`, приезжало бы в никуда.
-	for _, d := range s.Connections.Outbounds {
+	for _, d := range s.Directions {
 		if d.Tag == "" {
 			continue
 		}
@@ -72,8 +72,8 @@ func Export(s *state.State, opts ExportOptions) (*Backup, error) {
 	// Цепочки — корневая секция chains[], у обеих сторон общая. Порядок
 	// записей нормативен (вложенная цепочка объявлена раньше использующей) —
 	// сохраняется порядок списка источников.
-	for i, src := range s.Connections.Sources {
-		switch src.Type {
+	for i, src := range s.Sources {
+		switch src.Kind {
 		case state.SourceTypeSubscription:
 			b.Subscriptions = append(b.Subscriptions, exportSubscription(src))
 		case state.SourceTypeServer:
@@ -213,8 +213,8 @@ func exportSubscription(src state.Source) Subscription {
 	if !src.Enabled {
 		out.Enabled = boolPtr(false)
 	}
-	if src.Tag != nil && !src.Tag.IsZero() {
-		out.Tag = &TagPolicy{Prefix: src.Tag.Prefix, Postfix: src.Tag.Postfix, Mask: src.Tag.Mask}
+	if src.TagPolicy != nil && !src.TagPolicy.IsZero() {
+		out.Tag = &TagPolicy{Prefix: src.TagPolicy.Prefix, Postfix: src.TagPolicy.Postfix, Mask: src.TagPolicy.Mask}
 	}
 	if src.Update != nil {
 		out.Update = &UpdatePolicy{IntervalHours: src.Update.IntervalHours, Auto: src.Update.AutoRefresh}

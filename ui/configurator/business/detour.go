@@ -144,7 +144,7 @@ func DetourOptionsWithNodes(model *wizardmodels.WizardModel, source *corestate.S
 	selectedDisplay := ""
 	if model != nil {
 		for _, s := range model.Sources {
-			if s.Type != wizardmodels.SourceTypeServer {
+			if s.Kind != wizardmodels.SourceTypeServer {
 				continue
 			}
 			uri := strings.TrimSpace(s.URI)

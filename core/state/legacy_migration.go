@@ -88,7 +88,7 @@ func migrateV4ToV5(old *v4File, gen IDGenerator) *diskStateV5 {
 		out.CustomRules = []CustomRule{}
 	}
 	if out.Connections.Sources == nil {
-		out.Connections.Sources = []Source{}
+		out.Connections.Sources = []sourceV6{}
 	}
 	if out.Connections.Outbounds == nil {
 		out.Connections.Outbounds = nil
@@ -96,15 +96,15 @@ func migrateV4ToV5(old *v4File, gen IDGenerator) *diskStateV5 {
 	return out
 }
 
-// migrateLegacySources разворачивает legacy ProxySource[] в новые Source[].
+// migrateLegacySources разворачивает legacy ProxySource[] в sourceV6[] (v5/v6-форма).
 // Один input может породить несколько output'ов (mixed source+connections).
-func migrateLegacySources(proxies []configtypes.ProxySource, gen IDGenerator) []Source {
-	out := make([]Source, 0, len(proxies))
+func migrateLegacySources(proxies []configtypes.ProxySource, gen IDGenerator) []sourceV6 {
+	out := make([]sourceV6, 0, len(proxies))
 	for _, ps := range proxies {
 		// 1. type=subscription (если задан source URL)
 		if ps.Source != "" {
 			tag := buildTagSpecFromLegacy(ps.TagPrefix, ps.TagPostfix, ps.TagMask)
-			s := Source{
+			s := sourceV6{
 				ID:                      gen(),
 				Type:                    SourceTypeSubscription,
 				Enabled:                 !ps.Disabled,
@@ -122,7 +122,7 @@ func migrateLegacySources(proxies []configtypes.ProxySource, gen IDGenerator) []
 		// 2. type=server (один Source per URI в connections[])
 		for j, uri := range ps.Connections {
 			label := legacyServerLabel(uri, j+1, ps.TagPrefix, ps.TagPostfix)
-			s := Source{
+			s := sourceV6{
 				ID:                gen(),
 				Type:              SourceTypeServer,
 				Enabled:           !ps.Disabled,

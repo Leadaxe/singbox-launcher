@@ -224,9 +224,8 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 		presenter.MergeGUIToModel()
 		m := presenter.Model()
 		m.Sources = append(m.Sources, corestate.Source{
-			ID:      corestate.MakeULID(),
-			Type:    corestate.SourceTypeChain,
-			Enabled: true,
+			Node: corestate.Node{Kind: corestate.SourceKindChain, Enabled: true},
+			ID:   corestate.MakeULID(),
 			// Выданное имя — ТЕГ узла: на него сошлются фильтры и позиции.
 			// Подпись остаётся пустой, и список показывает тег, пока
 			// пользователь не задаст своё отображаемое имя.
@@ -368,7 +367,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				srcPtr := &m.Sources[sourceIndex]
 				src := *srcPtr
 
-				isSubscription := src.Type == corestate.SourceTypeSubscription
+				isSubscription := src.Kind == corestate.SourceTypeSubscription
 				meta := src.Meta
 				sourceID := src.ID
 
@@ -429,7 +428,7 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 				// вместо метки идёт предупреждение: узел в конфиг не
 				// попадёт, и узнать об этом по факту пропавшего маршрута —
 				// худший из способов.
-				if src.Type == corestate.SourceTypeChain {
+				if src.Kind == corestate.SourceTypeChain {
 					if supported, _ := config.ChainSupportedByCore(); supported {
 						label += "  " + locale.Tf("[chain: %d]",
 							len(src.Chain.HopsOrNil()))
@@ -470,10 +469,10 @@ func CreateSourcesTab(presenter *wizardpresentation.WizardPresenter) fyne.Canvas
 
 				fullURL := src.URL
 				var tagPrefix, tagPostfix, tagMask string
-				if src.Tag != nil {
-					tagPrefix = src.Tag.Prefix
-					tagPostfix = src.Tag.Postfix
-					tagMask = src.Tag.Mask
+				if src.TagPolicy != nil {
+					tagPrefix = src.TagPolicy.Prefix
+					tagPostfix = src.TagPolicy.Postfix
+					tagMask = src.TagPolicy.Mask
 				}
 
 				localTags := make([]string, 0, len(src.Outbounds))

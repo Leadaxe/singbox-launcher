@@ -25,9 +25,9 @@ const renameDependentURI = "vless://c931381d-6324-4d53-ad4f-8cda48b30811@dep.exa
 
 func modelWithLiveNodeRef(hopTag string) *wizardmodels.WizardModel {
 	m := &wizardmodels.WizardModel{Sources: []corestate.Source{
-		{ID: "01WARP", Type: corestate.SourceTypeServer, Enabled: true,
+		{ID: "01WARP", Node: corestate.Node{Kind: corestate.SourceKindServer, Enabled: true},
 			Label: "WARP hop", NodeTag: hopTag, URI: renameHopURI},
-		{ID: "01DEP", Type: corestate.SourceTypeServer, Enabled: true,
+		{ID: "01DEP", Node: corestate.Node{Kind: corestate.SourceKindServer, Enabled: true},
 			Label: "Proton NL", NodeTag: "🇳🇱 Proton NL", URI: renameDependentURI,
 			DetourNodeSourceID: "01WARP", DetourNodeTag: hopTag, DetourNodeLabel: "WARP hop"},
 	}}

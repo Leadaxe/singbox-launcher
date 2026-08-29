@@ -46,10 +46,9 @@ func TestEmptyModelGate_BuildPreviewConfig(t *testing.T) {
 
 	// Один canonical-источник открывает сборку.
 	model.Sources = append(model.Sources, wizardmodels.Source{
-		ID:      "01C6SUB00000000000000000",
-		Type:    wizardmodels.SourceTypeSubscription,
-		Enabled: true,
-		URL:     "https://example.com/sub",
+		ID:   "01C6SUB00000000000000000",
+		Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
+		URL:  "https://example.com/sub",
 	})
 	if _, err := BuildPreviewConfig(model); err != nil {
 		t.Fatalf("модель с источником: превью обязано собраться, получено: %v", err)
@@ -72,11 +71,10 @@ func TestEmptyModelGate_ParseAndPreview(t *testing.T) {
 
 	// Наличие источника выводит из гейта (дальше падение уже не про пустоту).
 	model.Sources = append(model.Sources, corestate.Source{
-		ID:      "01C6SRV00000000000000000",
-		Type:    corestate.SourceTypeServer,
-		Enabled: true,
-		Label:   "srv",
-		URI:     "vless://uuid@host:443",
+		ID:    "01C6SRV00000000000000000",
+		Node:  corestate.Node{Kind: corestate.SourceKindServer, Enabled: true},
+		Label: "srv",
+		URI:   "vless://uuid@host:443",
 	})
 	model.BumpRevision()
 	gen := &blockingGenMock{proceed: make(chan struct{}), out: &config.OutboundGenerationResult{}}

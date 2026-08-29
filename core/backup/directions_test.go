@@ -46,7 +46,7 @@ func TestRuleWithImportedDirectionArrivesEnabled(t *testing.T) {
 // настройки под тем же тегом, и молча стереть их нельзя.
 func TestExistingDirectionIsNotOverwritten(t *testing.T) {
 	dst := &state.State{}
-	dst.Connections.Outbounds = []configtypes.Direction{{
+	dst.Directions = []configtypes.Direction{{
 		Tag:     "vpn-1",
 		Filters: configtypes.SetDirectionFilterTag(nil, "🇳🇱", false),
 	}}
@@ -63,7 +63,7 @@ func TestExistingDirectionIsNotOverwritten(t *testing.T) {
 	if res.AppliedDirections != 0 {
 		t.Fatalf("существующее направление перезаписано")
 	}
-	body, _ := configtypes.DirectionFilterTag(dst.Connections.Outbounds[0].Filters)
+	body, _ := configtypes.DirectionFilterTag(dst.Directions[0].Filters)
 	if body != "🇳🇱" {
 		t.Fatalf("отбор затёрт: %q", body)
 	}
@@ -77,7 +77,7 @@ func TestExistingDirectionIsNotOverwritten(t *testing.T) {
 func TestDirectionRoundTrip(t *testing.T) {
 	interrupt := false
 	src := &state.State{}
-	src.Connections.Outbounds = []configtypes.Direction{{
+	src.Directions = []configtypes.Direction{{
 		Tag:              "vpn-2",
 		Disabled:         true,
 		Filters:          configtypes.SetDirectionFilterTag(nil, "🇩🇪|🇳🇱", true),
@@ -123,7 +123,7 @@ func TestDirectionRoundTrip(t *testing.T) {
 	if _, err := Import(dst, b, ImportOptions{}); err != nil {
 		t.Fatalf("импорт: %v", err)
 	}
-	back := dst.Connections.Outbounds[0]
+	back := dst.Directions[0]
 	if !back.Disabled || back.Tag != "vpn-2" {
 		t.Fatalf("round-trip потерял поля: %+v", back)
 	}
@@ -164,8 +164,8 @@ func TestDirectionForeignLabelDroppedWithWarning(t *testing.T) {
 	if _, err := Import(dst, b, ImportOptions{}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	if len(dst.Connections.Outbounds) != 1 || dst.Connections.Outbounds[0].Tag != "vpn-3" {
-		t.Fatalf("Направление не создано или переименовано: %+v", dst.Connections.Outbounds)
+	if len(dst.Directions) != 1 || dst.Directions[0].Tag != "vpn-3" {
+		t.Fatalf("Направление не создано или переименовано: %+v", dst.Directions)
 	}
 	// Провоза больше нет: обратный экспорт обязан быть без чужого имени.
 	back, err := Export(dst, ExportOptions{AppVersion: "test"})

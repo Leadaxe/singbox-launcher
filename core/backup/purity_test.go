@@ -40,14 +40,14 @@ func richState() *state.State {
 	auto := true
 	stripOff := false
 	s := &state.State{}
-	s.Connections.Outbounds = []configtypes.Direction{
+	s.Directions = []configtypes.Direction{
 		{Tag: "vpn-de", Type: "selector", AddOutbounds: []string{"direct-out"}},
 	}
-	s.Connections.Sources = []state.Source{
+	s.Sources = []state.Source{
 		{
-			ID: "01SUB0000000000000000000", Type: state.SourceTypeSubscription, Enabled: true,
+			ID: "01SUB0000000000000000000", Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
 			URL: "https://example-1.com/sub", Label: "Main", MaxNodes: 200,
-			Tag:                     &state.TagSpec{Prefix: "[A] ", Mask: "%s"},
+			TagPolicy:               &state.TagSpec{Prefix: "[A] ", Mask: "%s"},
 			Update:                  &state.UpdateSpec{IntervalHours: 12, AutoRefresh: &auto},
 			DisabledNodes:           map[string]int64{"node-a": 1750000000, "node-b": 1750000001},
 			Skip:                    []map[string]string{{"field": "tag", "contains": "trial"}},
@@ -60,12 +60,12 @@ func richState() *state.State {
 			DetourNodeLabel:         "WARP hop",
 		},
 		{
-			ID: "01SRV0000000000000000000", Type: state.SourceTypeServer, Enabled: true,
+			ID: "01SRV0000000000000000000", Node: state.Node{Kind: state.SourceKindServer, Enabled: true},
 			URI:   "vless://11111111-1111-1111-1111-111111111111@example-2.com:443?type=tcp#s",
 			Label: "WARP hop", NodeTag: "🔥 WARP", DetourTag: "hop-1",
 		},
 		{
-			ID: "01CHN0000000000000000000", Type: state.SourceTypeChain, Enabled: true,
+			ID: "01CHN0000000000000000000", Node: state.Node{Kind: state.SourceKindChain, Enabled: true},
 			NodeTag: "relay", Label: "Мой маршрут",
 			Chain: &configtypes.SourceChain{
 				Hops: []string{"vpn-de", "🔥 WARP"}, IdleTimeout: "0s",
@@ -174,9 +174,9 @@ func TestRoundTripAllEntitiesByteIdentical(t *testing.T) {
 	}
 
 	var chain *state.Source
-	for i := range restored.Connections.Sources {
-		if restored.Connections.Sources[i].Type == state.SourceTypeChain {
-			chain = &restored.Connections.Sources[i]
+	for i := range restored.Sources {
+		if restored.Sources[i].Kind == state.SourceTypeChain {
+			chain = &restored.Sources[i]
 		}
 	}
 	if chain == nil {

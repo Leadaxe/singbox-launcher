@@ -64,14 +64,14 @@ func TestLoad_V4Minimal(t *testing.T) {
 		t.Fatalf("ID: want 'test-state', got %q", s.ID)
 	}
 	// Connections.Sources — должен содержать одну subscription.
-	if got := len(s.Connections.Sources); got != 1 {
+	if got := len(s.Sources); got != 1 {
 		t.Fatalf("Connections.Sources: want 1, got %d", got)
 	}
-	if s.Connections.Sources[0].Type != SourceTypeSubscription {
-		t.Fatalf("Source[0].Type: %q", s.Connections.Sources[0].Type)
+	if s.Sources[0].Kind != SourceTypeSubscription {
+		t.Fatalf("Source[0].Kind: %q", s.Sources[0].Kind)
 	}
-	if s.Connections.Sources[0].URL != "https://example.com/sub-a" {
-		t.Fatalf("URL mismatch: %+v", s.Connections.Sources[0])
+	if s.Sources[0].URL != "https://example.com/sub-a" {
+		t.Fatalf("URL mismatch: %+v", s.Sources[0])
 	}
 	// Legacy view тоже заполнен.
 	if got := len(s.ParserConfig.ParserConfig.Proxies); got != 1 {
@@ -148,14 +148,13 @@ func TestSave_RoundTrip(t *testing.T) {
 		Vars:         []SettingVar{{Name: "log_level", Value: "info"}},
 		CustomRules:  []CustomRule{},
 	}
-	original.Connections.Sources = []Source{{
-		ID:      "01ROUNDTRIP0000000000000000",
-		Type:    SourceTypeSubscription,
-		Enabled: true,
-		URL:     "https://x/sub",
-		Tag:     &TagSpec{Prefix: "[X] "},
+	original.Sources = []Source{{
+		ID:        "01ROUNDTRIP0000000000000000",
+		Node:      Node{Kind: SourceKindSubscription, Enabled: true},
+		URL:       "https://x/sub",
+		TagPolicy: &TagSpec{Prefix: "[X] "},
 	}}
-	original.Connections.Outbounds = []configtypes.Direction{}
+	original.Directions = []configtypes.Direction{}
 
 	if err := original.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -171,11 +170,11 @@ func TestSave_RoundTrip(t *testing.T) {
 	if loaded.Version != SchemaVersion {
 		t.Fatalf("Version: want %d, got %d", SchemaVersion, loaded.Version)
 	}
-	if len(loaded.Connections.Sources) != 1 {
-		t.Fatalf("Connections.Sources: want 1, got %d", len(loaded.Connections.Sources))
+	if len(loaded.Sources) != 1 {
+		t.Fatalf("Connections.Sources: want 1, got %d", len(loaded.Sources))
 	}
-	if loaded.Connections.Sources[0].Tag == nil || loaded.Connections.Sources[0].Tag.Prefix != "[X] " {
-		t.Fatalf("Tag prefix not preserved: %+v", loaded.Connections.Sources[0].Tag)
+	if loaded.Sources[0].TagPolicy == nil || loaded.Sources[0].TagPolicy.Prefix != "[X] " {
+		t.Fatalf("Tag prefix not preserved: %+v", loaded.Sources[0].TagPolicy)
 	}
 	// Legacy ParserConfig — derived from Connections at Load (Load-проекция).
 	if len(loaded.ParserConfig.ParserConfig.Proxies) != 1 {
@@ -194,8 +193,8 @@ func TestSave_RoundTrip(t *testing.T) {
 	}
 	// Source.ID — рождается при создании источника и не пересоздаётся:
 	// Save обязан вернуть ровно тот же ULID.
-	if loaded.Connections.Sources[0].ID != "01ROUNDTRIP0000000000000000" {
-		t.Fatalf("Source.ID changed across Save/Load: %q", loaded.Connections.Sources[0].ID)
+	if loaded.Sources[0].ID != "01ROUNDTRIP0000000000000000" {
+		t.Fatalf("Source.ID changed across Save/Load: %q", loaded.Sources[0].ID)
 	}
 }
 
@@ -234,12 +233,12 @@ func TestLoadSave_IdempotentV5(t *testing.T) {
 		t.Fatalf("Load 2: %v", err)
 	}
 	// Source.ID должен сохраниться между save'ами.
-	if len(s1.Connections.Sources) != 1 || len(s2.Connections.Sources) != 1 {
-		t.Fatalf("source count drift: s1=%d s2=%d", len(s1.Connections.Sources), len(s2.Connections.Sources))
+	if len(s1.Sources) != 1 || len(s2.Sources) != 1 {
+		t.Fatalf("source count drift: s1=%d s2=%d", len(s1.Sources), len(s2.Sources))
 	}
-	if s1.Connections.Sources[0].ID != s2.Connections.Sources[0].ID {
+	if s1.Sources[0].ID != s2.Sources[0].ID {
 		t.Errorf("Source.ID changed across save/load: %q → %q",
-			s1.Connections.Sources[0].ID, s2.Connections.Sources[0].ID)
+			s1.Sources[0].ID, s2.Sources[0].ID)
 	}
 
 	if err := s2.Save(path); err != nil {

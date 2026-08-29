@@ -572,8 +572,8 @@ func (tab *CoreDashboardTab) readConfigOnDemand() {
 	// s.ParserConfig — только для build-путей, читать её здесь незачем.
 	debuglog.InfoLog("CoreDashboard: state.json snapshot (schema v%d, %d sources, %d outbounds, %d custom rules)",
 		s.Version,
-		len(s.Connections.Sources),
-		len(s.Connections.Outbounds),
+		len(s.Sources),
+		len(s.Directions),
 		len(s.CustomRules))
 }
 

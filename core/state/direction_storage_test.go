@@ -14,7 +14,7 @@ import (
 // обязано читаться, а следующая запись — переехать на канонический ключ.
 func TestLegacyOutboundsKeyAdopted(t *testing.T) {
 	raw := `{
-	  "meta": {"version": 6, "schema": "` + SchemaName + `", "created_at": "2026-08-22T00:00:00Z", "updated_at": "2026-08-22T00:00:00Z"},
+	  "meta": {"version": 6, "schema": "` + SchemaNameV6 + `", "created_at": "2026-08-22T00:00:00Z", "updated_at": "2026-08-22T00:00:00Z"},
 	  "connections": {
 	    "sources": [],
 	    "outbounds": [{"tag": "proxy-out", "type": "selector"}],
@@ -23,15 +23,12 @@ func TestLegacyOutboundsKeyAdopted(t *testing.T) {
 	  "rules": [],
 	  "dns_options": {}
 	}`
-	s, err := parseCurrent([]byte(raw))
+	s, err := parseV6Legacy([]byte(raw))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if len(s.Connections.Outbounds) != 1 || s.Connections.Outbounds[0].Tag != "proxy-out" {
-		t.Fatalf("старый ключ не подхвачен: %+v", s.Connections.Outbounds)
-	}
-	if s.Connections.LegacyOutbounds != nil {
-		t.Fatalf("legacy-поле обязано обнуляться после переноса: %+v", s.Connections.LegacyOutbounds)
+	if len(s.Directions) != 1 || s.Directions[0].Tag != "proxy-out" {
+		t.Fatalf("старый ключ не подхвачен: %+v", s.Directions)
 	}
 }
 
@@ -39,7 +36,7 @@ func TestLegacyOutboundsKeyAdopted(t *testing.T) {
 // после новой, не должно склеивать два набора направлений.
 func TestCanonicalKeyWinsOverLegacy(t *testing.T) {
 	raw := `{
-	  "meta": {"version": 6, "schema": "` + SchemaName + `", "created_at": "2026-08-22T00:00:00Z", "updated_at": "2026-08-22T00:00:00Z"},
+	  "meta": {"version": 6, "schema": "` + SchemaNameV6 + `", "created_at": "2026-08-22T00:00:00Z", "updated_at": "2026-08-22T00:00:00Z"},
 	  "connections": {
 	    "sources": [],
 	    "direction_outbounds": [{"tag": "vpn-1", "label": "VPN ①"}],
@@ -49,12 +46,12 @@ func TestCanonicalKeyWinsOverLegacy(t *testing.T) {
 	  "rules": [],
 	  "dns_options": {}
 	}`
-	s, err := parseCurrent([]byte(raw))
+	s, err := parseV6Legacy([]byte(raw))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if len(s.Connections.Outbounds) != 1 || s.Connections.Outbounds[0].Tag != "vpn-1" {
-		t.Fatalf("должен побеждать канонический ключ: %+v", s.Connections.Outbounds)
+	if len(s.Directions) != 1 || s.Directions[0].Tag != "vpn-1" {
+		t.Fatalf("должен побеждать канонический ключ: %+v", s.Directions)
 	}
 }
 
@@ -62,7 +59,7 @@ func TestCanonicalKeyWinsOverLegacy(t *testing.T) {
 // «секции не было»: старый набор подхватывать нельзя.
 func TestEmptyCanonicalKeyIsNotSeededFromLegacy(t *testing.T) {
 	raw := `{
-	  "meta": {"version": 6, "schema": "` + SchemaName + `", "created_at": "2026-08-22T00:00:00Z", "updated_at": "2026-08-22T00:00:00Z"},
+	  "meta": {"version": 6, "schema": "` + SchemaNameV6 + `", "created_at": "2026-08-22T00:00:00Z", "updated_at": "2026-08-22T00:00:00Z"},
 	  "connections": {
 	    "sources": [],
 	    "direction_outbounds": [],
@@ -72,12 +69,12 @@ func TestEmptyCanonicalKeyIsNotSeededFromLegacy(t *testing.T) {
 	  "rules": [],
 	  "dns_options": {}
 	}`
-	s, err := parseCurrent([]byte(raw))
+	s, err := parseV6Legacy([]byte(raw))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if len(s.Connections.Outbounds) != 0 {
-		t.Fatalf("пустой канонический ключ подменён легаси: %+v", s.Connections.Outbounds)
+	if len(s.Directions) != 0 {
+		t.Fatalf("пустой канонический ключ подменён легаси: %+v", s.Directions)
 	}
 }
 
@@ -88,8 +85,7 @@ func TestSaveWritesCanonicalKeyOnly(t *testing.T) {
 	path := filepath.Join(dir, "state.json")
 
 	s := &State{Version: SchemaVersion}
-	s.Connections.Outbounds = []configtypes.Direction{{Tag: "vpn-1"}}
-	s.Connections.LegacyOutbounds = []configtypes.Direction{{Tag: "proxy-out"}}
+	s.Directions = []configtypes.Direction{{Tag: "vpn-1"}}
 
 	if err := s.Save(path); err != nil {
 		t.Fatalf("save: %v", err)
@@ -99,11 +95,12 @@ func TestSaveWritesCanonicalKeyOnly(t *testing.T) {
 		t.Fatalf("read: %v", err)
 	}
 	text := string(data)
-	if !strings.Contains(text, `"direction_outbounds"`) {
+	// SPEC 118: канонический v7-ключ — плоский `directions`.
+	if !strings.Contains(text, `"directions"`) {
 		t.Fatalf("канонического ключа нет в файле:\n%s", text)
 	}
-	if strings.Contains(text, `"outbounds":`) {
-		t.Fatalf("старый ключ не должен писаться:\n%s", text)
+	if strings.Contains(text, `"direction_outbounds"`) || strings.Contains(text, `"outbounds":`) {
+		t.Fatalf("старые ключи не должны писаться:\n%s", text)
 	}
 
 	// Перечитываем — направление на месте.
@@ -111,8 +108,8 @@ func TestSaveWritesCanonicalKeyOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if len(back.Connections.Outbounds) != 1 || back.Connections.Outbounds[0].Tag != "vpn-1" {
-		t.Fatalf("round-trip потерял направление: %+v", back.Connections.Outbounds)
+	if len(back.Directions) != 1 || back.Directions[0].Tag != "vpn-1" {
+		t.Fatalf("round-trip потерял направление: %+v", back.Directions)
 	}
 }
 

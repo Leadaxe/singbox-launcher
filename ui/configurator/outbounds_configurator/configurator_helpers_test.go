@@ -236,11 +236,11 @@ func TestCollectAllTags(t *testing.T) {
 			name: "local first then global, disabled source skipped",
 			model: &wizardmodels.WizardModel{
 				Sources: []wizardmodels.Source{
-					{Type: wizardmodels.SourceTypeSubscription, Enabled: true, URL: "A",
+					{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true}, URL: "A",
 						Outbounds: []config.Direction{{Tag: "a1"}, {Tag: "a2"}}},
-					{Type: wizardmodels.SourceTypeSubscription, Enabled: false, URL: "B",
+					{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: false}, URL: "B",
 						Outbounds: []config.Direction{{Tag: "b1"}}},
-					{Type: wizardmodels.SourceTypeSubscription, Enabled: true, URL: "C",
+					{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true}, URL: "C",
 						Outbounds: []config.Direction{{Tag: "c1"}}},
 				},
 				GlobalOutbounds: []config.Direction{{Tag: "g1"}, {Tag: "g2"}},

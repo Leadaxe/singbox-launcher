@@ -17,8 +17,7 @@ import (
 func serverSourceWithTag(tag string) wizardmodels.Source {
 	return wizardmodels.Source{
 		ID:      "01SRV0000000000000000000",
-		Type:    wizardmodels.SourceTypeServer,
-		Enabled: true,
+		Node:    wizardmodels.Node{Kind: wizardmodels.SourceKindServer, Enabled: true},
 		Label:   "WARP hop",
 		NodeTag: tag,
 		URI:     "vless://uuid@host:443",
@@ -73,13 +72,12 @@ func TestClearedNodeTagReachesModelOnSave(t *testing.T) {
 // иначе правка формы утечёт в модель до Save и переживёт Cancel.
 func TestCloneSourceIsDeeplyIndependent(t *testing.T) {
 	orig := wizardmodels.Source{
-		ID:      "01SUB0000000000000000000",
-		Type:    wizardmodels.SourceTypeSubscription,
-		Enabled: true,
-		Label:   "Proton NL",
-		URL:     "https://example.com/sub",
-		Skip:    []map[string]string{{"scheme": "ss"}},
-		Tag:     &wizardmodels.TagSpec{Prefix: "NL-"},
+		ID:        "01SUB0000000000000000000",
+		Node:      wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
+		Label:     "Proton NL",
+		URL:       "https://example.com/sub",
+		Skip:      []map[string]string{{"scheme": "ss"}},
+		TagPolicy: &wizardmodels.TagSpec{Prefix: "NL-"},
 		Outbounds: []configtypes.Direction{
 			{Tag: "AL:select", AddOutbounds: []string{"a", "b"}},
 		},
@@ -93,7 +91,7 @@ func TestCloneSourceIsDeeplyIndependent(t *testing.T) {
 	// Мутации буфера — всё, что делает форма между открытием и Cancel.
 	setNodeEnabled(&clone, "🇳🇱 NL", false)
 	delete(clone.DisabledNodes, "🇩🇪 DE")
-	clone.Tag.Prefix = "XX-"
+	clone.TagPolicy.Prefix = "XX-"
 	clone.Fold.Mode = "auto"
 	clone.Fold.Auto.Interval = "1m"
 	clone.Outbounds[0].AddOutbounds[0] = "hacked"
@@ -108,8 +106,8 @@ func TestCloneSourceIsDeeplyIndependent(t *testing.T) {
 	if _, kept := src.DisabledNodes["🇩🇪 DE"]; !kept {
 		t.Error("снятие отметки утекло в модель до Save")
 	}
-	if src.Tag.Prefix != "NL-" {
-		t.Errorf("Tag.Prefix утёк: %q", src.Tag.Prefix)
+	if src.TagPolicy.Prefix != "NL-" {
+		t.Errorf("Tag.Prefix утёк: %q", src.TagPolicy.Prefix)
 	}
 	if src.Fold.Mode != "select" || src.Fold.Auto.Interval != "5m" {
 		t.Errorf("Fold утёк: %+v", src.Fold)
@@ -130,8 +128,7 @@ func TestCloneSourceIsDeeplyIndependent(t *testing.T) {
 func TestCloneSourceChainIndependent(t *testing.T) {
 	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{{
 		ID:      "01CHN0000000000000000000",
-		Type:    wizardmodels.SourceTypeChain,
-		Enabled: true,
+		Node:    wizardmodels.Node{Kind: wizardmodels.SourceKindChain, Enabled: true},
 		NodeTag: "chain-1",
 		Chain:   &configtypes.SourceChain{Hops: []string{"a", "b"}, Strip: map[string]bool{"x": true}},
 	}}}

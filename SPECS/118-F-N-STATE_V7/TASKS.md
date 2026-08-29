@@ -11,43 +11,43 @@ GUI-пакеты — скрипты `build/`. Git не трогать. `ui/traff
 
 ## W1 — Типы, схема v7, Load/Save, мост совместимости
 
-- [ ] `core/state/sources_v7.go`: `SourceKind`, `NodeLink`, `Origin`,
+- [x] `core/state/sources_v7.go`: `SourceKind`, `NodeLink`, `Origin`,
       `TagPolicy`, `AutoStrategy` (= alias `configtypes.DirectionAuto`),
       `AutoGroup`, `Node`, `Source` (плоский юнион, embedded Node),
       `FolderReplace`, `SubMeta` (из SubscriptionMeta минус
       fetch-история/PreviewNodes), `SubUpdateStatus` (+`FetchWarning`) —
       формы по PLAN §1.2.
-- [ ] `normalizeSourceShape`: по kind обнуляет нелегальные поля с warning;
+- [x] `normalizeSourceShape`: по kind обнуляет нелегальные поля с warning;
       неизвестный kind — внятный отказ загрузки.
-- [ ] `core/state/disk_v7.go`: `diskStateV7` (плоский корень
+- [x] `core/state/disk_v7.go`: `diskStateV7` (плоский корень
       `meta/sources/directions/rules/vars/dns_options/warp_accounts`),
       `SchemaVersion = 7`, `SchemaName = "sources_v7"`.
-- [ ] `parseV7` / `marshalDiskV7`; `save.go` пишет только v7;
+- [x] `parseV7` / `marshalDiskV7`; `save.go` пишет только v7;
       `load_router.go`: 7 → parseV7, ≤6 → легаси-парс + миграция
       (в W1 — структурный перенос-заглушка, см. ниже).
-- [ ] `State`: `Sources []Source` + `Directions []configtypes.Direction`
+- [x] `State`: `Sources []Source` + `Directions []configtypes.Direction`
       вместо `Connections ConnectionsSection`; механическая правка
       callsite'ов `Connections.Sources`/`Connections.Outbounds`
       (компиляционно-управляемая, семантику не менять).
-- [ ] Мост (PLAN §6): `adapter_source.go` — проекция v7 → ProxySource с
+- [x] Мост (PLAN §6): `adapter_source.go` — проекция v7 → ProxySource с
       ВРЕМЕННОЙ деривацией легаси-полей (DisabledNodes из enabled, Fold из
       replace, TagSpec из TagPolicy, тройня из NodeLink, Outbounds — пусто);
       маркер `// TEMPORARY BRIDGE (SPEC 118 W1-W4)`; build-пути core и
       raw-кэш работают как раньше.
-- [ ] Load v6 → структурный перенос в v7-формы без семантики (nodes[]
+- [x] Load v6 → структурный перенос в v7-формы без семантики (nodes[]
       пустые, легаси-значения доезжают до моста); гейт
       `migrationPurgesLegacy = false`.
-- [ ] `WizardModel`: `Sources` на новом типе; `Defaults` пока живёт
+- [x] `WizardModel`: `Sources` на новом типе; `Defaults` пока живёт
       (умирает в W5); точки BumpRevision не потеряны.
-- [ ] `cloneSource`/deep-copy окна источника обновлены под новые поля
+- [x] `cloneSource`/deep-copy окна источника обновлены под новые поля
       (Nodes, Replace, TagPolicy, NodeLink) — без slices./maps.
-- [ ] Тесты: `canonical_roundtrip_test.go` → v7-фикстура
+- [x] Тесты: `canonical_roundtrip_test.go` → v7-фикстура
       `testdata/v7_roundtrip.json` (папка с узлами, подписка с nodes[],
       chain c NodeLink-хопами, Auto, replace, directions, warp_accounts):
       Load→Save→Load→Save байт-в-байт; ID-стабильность папок.
-- [ ] Компиляционная правка тестов затронутых пакетов (семантику не
+- [x] Компиляционная правка тестов затронутых пакетов (семантику не
       менять; падающие по существу — пометить и отложить до своих волн).
-- [ ] `go build ./...` + `go test ./core/state/... ./ui/configurator/...`.
+- [x] `go build ./...` + `go test ./core/state/... ./ui/configurator/...`.
 
 ## W2 — Миграция v6 → v7
 
@@ -252,3 +252,17 @@ GUI-пакеты — скрипты `build/`. Git не трогать. `ui/traff
 - [ ] IMPLEMENTATION_REPORT.md: файлы по волнам, судьба тестов категории
       (б) с причинами, изменённые сигнатуры, таблица grep-инвариантов,
       результат байт-эквивалентности, статус открытых вопросов O1–O3.
+
+## Хвосты ревью W1 (обязательны в последующих волнах)
+
+- [ ] W2+: cloneCanonicalNode / clone Replace.Strategy — deep-copy
+      *TemplateInt (Tolerance/PoolTolerance) вместо разделяемых
+      указателей (latent, пока TemplateInt replace-not-mutate).
+- [ ] Волна, включающая создание folder/auto (W5/этап 3): backup Export
+      switch по Kind обязан получить кейсы folder/auto (или явный
+      warning) — иначе молчаливое выпадение из экспорта (ловушка
+      этапа 0 SPEC 116).
+- [x] Semantic-фиксация ревью: Load-проекция теперь несёт DisabledNodes
+      (устранено расхождение projection/wizard в сторону намерения
+      пользователя); folder/auto/unknown в проекции — выключенный
+      плейсхолдер (индексный инвариант жив).

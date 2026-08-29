@@ -60,7 +60,7 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 	existingURLs := make(map[string]struct{}, len(model.Sources))
 	existingURIs := make(map[string]struct{}, len(model.Sources))
 	for _, src := range model.Sources {
-		switch src.Type {
+		switch src.Kind {
 		case corestate.SourceTypeSubscription:
 			if src.URL != "" {
 				existingURLs[src.URL] = struct{}{}
@@ -81,10 +81,9 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 		}
 		idx := startIndex + added
 		newSrc := corestate.Source{
-			ID:      corestate.MakeULID(),
-			Type:    corestate.SourceTypeSubscription,
-			Enabled: true,
-			URL:     subURL,
+			Node: corestate.Node{Kind: corestate.SourceKindSubscription, Enabled: true},
+			ID:   corestate.MakeULID(),
+			URL:  subURL,
 		}
 		// tag_prefix derived from URL fragment (#abvpn → "abvpn:") иначе
 		// generated `1:`, `2:` per index.
@@ -92,7 +91,7 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 		if prefix == "" {
 			prefix = GenerateTagPrefix(idx)
 		}
-		newSrc.Tag = &corestate.TagSpec{Prefix: prefix}
+		newSrc.TagPolicy = &corestate.TagSpec{Prefix: prefix}
 		model.Sources = append(model.Sources, newSrc)
 		existingURLs[subURL] = struct{}{}
 		added++
@@ -111,9 +110,8 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 			tag = fmt.Sprintf("server-%d", startIndex+added)
 		}
 		newSrc := corestate.Source{
+			Node:    corestate.Node{Kind: corestate.SourceKindServer, Enabled: true},
 			ID:      corestate.MakeULID(),
-			Type:    corestate.SourceTypeServer,
-			Enabled: true,
 			NodeTag: tag,
 			URI:     uri,
 		}
@@ -133,9 +131,8 @@ func AppendURLsToSources(ctx UIUpdater, input string) error {
 			tag = fmt.Sprintf("server-%d", startIndex+added)
 		}
 		model.Sources = append(model.Sources, corestate.Source{
+			Node:       corestate.Node{Kind: corestate.SourceKindServer, Enabled: true},
 			ID:         corestate.MakeULID(),
-			Type:       corestate.SourceTypeServer,
-			Enabled:    true,
 			NodeTag:    tag,
 			ConfigJSON: jn.ConfigJSON,
 		})

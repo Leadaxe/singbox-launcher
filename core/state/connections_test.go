@@ -8,7 +8,8 @@ import (
 
 // TestStateJSONRoundTrip — encode/decode цикл сохраняет данные.
 //
-// Тест диск-shape v5 (diskStateV5) — нужен для legacy parse path.
+// Тест диск-shape v5 (diskStateV5) — нужен для legacy parse path; источники
+// здесь — приватная v6-форма sourceV6 (SPEC 118 W1).
 func TestStateJSONRoundTrip(t *testing.T) {
 	tr := true
 	expire := int64(1717171717)
@@ -20,7 +21,7 @@ func TestStateJSONRoundTrip(t *testing.T) {
 			UpdatedAt: "2026-04-28T10:00:00Z",
 		},
 		Connections: ConnectionsSection{
-			Sources: []Source{
+			Sources: []sourceV6{
 				{
 					ID:      "01ABCSUB",
 					Type:    SourceTypeSubscription,
@@ -86,14 +87,14 @@ func TestStateJSONRoundTrip(t *testing.T) {
 	}
 }
 
-// TestSourceOmitempty — пустые поля исчезают из JSON.
+// TestSourceOmitempty — пустые поля исчезают из JSON (v7-форма Source).
+// Всегда присутствуют только поля Node без omitempty: kind, tag, enabled.
 func TestSourceOmitempty(t *testing.T) {
 	s := Source{
-		ID:      "01ABC",
-		Type:    SourceTypeServer,
-		Enabled: true,
-		Label:   "wg-parnas",
-		URI:     "wireguard://...",
+		Node:  Node{Kind: SourceKindServer, Tag: "wg-parnas", Enabled: true},
+		ID:    "01ABC",
+		Label: "wg-parnas",
+		URI:   "wireguard://...",
 	}
 	b, err := json.Marshal(s)
 	if err != nil {
@@ -101,20 +102,20 @@ func TestSourceOmitempty(t *testing.T) {
 	}
 	str := string(b)
 
-	// Ожидаем что поля type=subscription не появятся.
-	for _, want := range []string{`"id":"01ABC"`, `"type":"server"`, `"label":"wg-parnas"`, `"uri":"wireguard://..."`} {
+	// Ожидаем что поля подписки/папки не появятся.
+	for _, want := range []string{`"id":"01ABC"`, `"kind":"server"`, `"tag":"wg-parnas"`, `"label":"wg-parnas"`, `"uri":"wireguard://..."`} {
 		if !strings.Contains(str, want) {
 			t.Errorf("missing %s in %s", want, str)
 		}
 	}
-	for _, unwanted := range []string{`"url":`, `"skip":`, `"tag":`, `"outbounds":`, `"meta":`, `"update":`, `"max_nodes":`, `"expose_group_tags_to_global":`} {
+	for _, unwanted := range []string{`"url":`, `"skip":`, `"tag_policy":`, `"outbounds":`, `"meta":`, `"update":`, `"max_nodes":`, `"expose_group_tags_to_global":`, `"nodes":`, `"replace":`, `"update_status":`} {
 		if strings.Contains(str, unwanted) {
 			t.Errorf("unexpected %s in %s", unwanted, str)
 		}
 	}
 }
 
-// TestTagSpecIsZero — корректно определяем «пустой» TagSpec.
+// TestTagSpecIsZero — корректно определяем «пустой» TagPolicy/TagSpec.
 func TestTagSpecIsZero(t *testing.T) {
 	cases := []struct {
 		name string

@@ -15,7 +15,7 @@ import (
 // рабочей deep-copy); scratch-ProxySource упразднён.
 
 func TestSetNodeEnabledMarksAndClears(t *testing.T) {
-	src := &wizardmodels.Source{Type: wizardmodels.SourceTypeSubscription, URL: "https://example.invalid/sub"}
+	src := &wizardmodels.Source{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription}, URL: "https://example.invalid/sub"}
 
 	setNodeEnabled(src, "🇩🇪 DE", false)
 	if _, off := src.DisabledNodes["🇩🇪 DE"]; !off {
@@ -65,7 +65,7 @@ func TestSetNodeEnabledIgnoresEmptyIdentity(t *testing.T) {
 // Отметка доезжает до сборки: Source → ProxySource — этот путь читает парсер
 // при генерации конфига (прямая одноразовая проекция, Т2).
 func TestDisabledNodesSurviveProjection(t *testing.T) {
-	src := &wizardmodels.Source{Type: wizardmodels.SourceTypeSubscription, URL: "https://example.invalid/sub"}
+	src := &wizardmodels.Source{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription}, URL: "https://example.invalid/sub"}
 	setNodeEnabled(src, "🇳🇱 Amsterdam", false)
 
 	back := src.ToProxySourceV4()

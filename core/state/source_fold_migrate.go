@@ -42,12 +42,15 @@ func commentIsWizardSelect(comment string) bool {
 //
 // Идемпотентна: у подписки с уже выставленным Fold только вычищаются
 // остатки групп.
-func migrateSourceFolds(s *State) {
-	if s == nil {
+//
+// SPEC 118 (W1): работает на v6-форме секции connections (до структурного
+// переноса в v7-корень) — fold-флаги живут именно там.
+func migrateSourceFolds(cs *ConnectionsSection) {
+	if cs == nil {
 		return
 	}
-	for i := range s.Connections.Sources {
-		src := &s.Connections.Sources[i]
+	for i := range cs.Sources {
+		src := &cs.Sources[i]
 		if src.Type != SourceTypeSubscription {
 			continue
 		}

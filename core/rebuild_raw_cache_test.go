@@ -27,14 +27,11 @@ func TestBuildSnapshotFromRawCache_HappyPath(t *testing.T) {
 	}
 
 	s := &state.State{
-		Connections: state.ConnectionsSection{
-			Sources: []state.Source{
-				{
-					ID:      "01TESTRAW",
-					Type:    state.SourceTypeSubscription,
-					Enabled: true,
-					URL:     "https://test/sub",
-				},
+		Sources: []state.Source{
+			{
+				ID:   "01TESTRAW",
+				Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
+				URL:  "https://test/sub",
 			},
 		},
 	}
@@ -71,14 +68,11 @@ func TestBuildSnapshotFromRawCache_IncompleteCache(t *testing.T) {
 	}
 
 	s := &state.State{
-		Connections: state.ConnectionsSection{
-			Sources: []state.Source{
-				{
-					ID:      "01MISSING",
-					Type:    state.SourceTypeSubscription,
-					Enabled: true,
-					URL:     "https://test/sub",
-				},
+		Sources: []state.Source{
+			{
+				ID:   "01MISSING",
+				Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
+				URL:  "https://test/sub",
 			},
 		},
 	}
@@ -112,11 +106,9 @@ func TestBuildSnapshotFromRawCache_DisabledSubscriptionsIgnored(t *testing.T) {
 	}
 
 	s := &state.State{
-		Connections: state.ConnectionsSection{
-			Sources: []state.Source{
-				{ID: "01ENABLED", Type: state.SourceTypeSubscription, Enabled: true, URL: "https://test/sub-a"},
-				{ID: "01DISABLED", Type: state.SourceTypeSubscription, Enabled: false, URL: "https://test/sub-b"},
-			},
+		Sources: []state.Source{
+			{ID: "01ENABLED", Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true}, URL: "https://test/sub-a"},
+			{ID: "01DISABLED", Node: state.Node{Kind: state.SourceKindSubscription, Enabled: false}, URL: "https://test/sub-b"},
 		},
 	}
 	if err := s.Save(platform.GetWizardStatePath(execDir)); err != nil {
@@ -172,14 +164,12 @@ func TestBuildSnapshotFromRawCache_PartialCacheDegrades(t *testing.T) {
 	}
 
 	s := &state.State{
-		Connections: state.ConnectionsSection{
-			Sources: []state.Source{
-				{ID: "01HASRAW", Type: state.SourceTypeSubscription, Enabled: true, URL: "https://test/ok"},
-				// 127.0.0.1:1 — мгновенный connection refused: cache-miss
-				// уводит парсер в разовый сетевой fetch, тест не должен
-				// зависеть от внешней сети.
-				{ID: "01NORAW", Type: state.SourceTypeSubscription, Enabled: true, URL: "https://127.0.0.1:1/missing"},
-			},
+		Sources: []state.Source{
+			{ID: "01HASRAW", Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true}, URL: "https://test/ok"},
+			// 127.0.0.1:1 — мгновенный connection refused: cache-miss
+			// уводит парсер в разовый сетевой fetch, тест не должен
+			// зависеть от внешней сети.
+			{ID: "01NORAW", Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true}, URL: "https://127.0.0.1:1/missing"},
 		},
 	}
 	if err := os.MkdirAll(platform.GetWizardStatesDir(execDir), 0o755); err != nil {

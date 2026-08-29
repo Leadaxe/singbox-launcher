@@ -16,11 +16,10 @@ import (
 
 func TestStateFullExposesDisabledNodes(t *testing.T) {
 	st := state.New()
-	st.Connections.Sources = []state.Source{{
-		ID:      "sub-1",
-		Type:    state.SourceTypeSubscription,
-		Enabled: true,
-		URL:     "https://example.invalid/sub",
+	st.Sources = []state.Source{{
+		ID:   "sub-1",
+		Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
+		URL:  "https://example.invalid/sub",
 		DisabledNodes: map[string]int64{
 			"74954ec683a0aaaabbbbccccddddeeee": 1754400000,
 		},
@@ -43,10 +42,10 @@ func TestStateFullExposesDisabledNodes(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 
-	if len(got.Connections.Sources) != 1 {
-		t.Fatalf("got %d sources, want 1", len(got.Connections.Sources))
+	if len(got.Sources) != 1 {
+		t.Fatalf("got %d sources, want 1", len(got.Sources))
 	}
-	marks := got.Connections.Sources[0].DisabledNodes
+	marks := got.Sources[0].DisabledNodes
 	if len(marks) != 1 {
 		t.Fatalf("disabled_nodes = %v, want one mark", marks)
 	}
@@ -58,11 +57,10 @@ func TestStateFullExposesDisabledNodes(t *testing.T) {
 // Источник без отметок не отдаёт пустое поле — оно omitempty на всём пути.
 func TestStateFullOmitsEmptyDisabledNodes(t *testing.T) {
 	st := state.New()
-	st.Connections.Sources = []state.Source{{
-		ID:      "sub-1",
-		Type:    state.SourceTypeSubscription,
-		Enabled: true,
-		URL:     "https://example.invalid/sub",
+	st.Sources = []state.Source{{
+		ID:   "sub-1",
+		Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
+		URL:  "https://example.invalid/sub",
 	}}
 
 	ff := &fakeFacade{stateValue: st}
@@ -79,9 +77,9 @@ func TestStateFullOmitsEmptyDisabledNodes(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 
-	// У поля Connections нет json-тега, поэтому ключ — имя поля как есть.
-	conns, _ := raw["Connections"].(map[string]interface{})
-	sources, _ := conns["sources"].([]interface{})
+	// У поля Sources нет json-тега, поэтому ключ — имя поля как есть
+	// (SPEC 118: плоский корень вместо секции Connections).
+	sources, _ := raw["Sources"].([]interface{})
 	if len(sources) != 1 {
 		t.Fatalf("got %d sources, want 1", len(sources))
 	}

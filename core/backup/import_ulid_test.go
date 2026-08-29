@@ -29,13 +29,13 @@ func TestImport_MintsULIDsForSourcesWithoutID(t *testing.T) {
 	if _, err := Import(s, b, ImportOptions{}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	if len(s.Connections.Sources) != 3 {
-		t.Fatalf("sources = %d, want 3", len(s.Connections.Sources))
+	if len(s.Sources) != 3 {
+		t.Fatalf("sources = %d, want 3", len(s.Sources))
 	}
 	seen := map[string]bool{}
-	for _, src := range s.Connections.Sources {
+	for _, src := range s.Sources {
 		if len(src.ID) != 26 {
-			t.Errorf("source %s imported without ULID: id=%q", src.Type, src.ID)
+			t.Errorf("source %s imported without ULID: id=%q", src.Kind, src.ID)
 		}
 		if seen[src.ID] {
 			t.Errorf("duplicate ULID %q", src.ID)
@@ -55,7 +55,7 @@ func TestImport_KeepsExistingIDs(t *testing.T) {
 	if _, err := Import(s, b, ImportOptions{}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	if len(s.Connections.Sources) != 1 || s.Connections.Sources[0].ID != "01J00000000000000000000KEEP" {
-		t.Fatalf("imported ID was not preserved: %+v", s.Connections.Sources)
+	if len(s.Sources) != 1 || s.Sources[0].ID != "01J00000000000000000000KEEP" {
+		t.Fatalf("imported ID was not preserved: %+v", s.Sources)
 	}
 }

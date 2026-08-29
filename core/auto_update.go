@@ -14,7 +14,7 @@ import (
 //
 // Старая модель (одна попытка на ВСЕ подписки + 2 retry × 20 сек) заменена на:
 //
-//   - **Heartbeat 1 час**: на каждом тике пробег по `state.Connections.Sources[]`.
+//   - **Heartbeat 1 час**: на каждом тике пробег по `state.Sources[]`.
 //     Для каждой enabled subscription смотрим `meta.last_fetched_at`. Если
 //     `now - last_fetched_at >= effective_reload` (per-source override или
 //     `defaults.reload`) → fetch только этого source через
@@ -125,11 +125,11 @@ func (ac *AppController) runScheduledRefresh(trigger string) {
 	now := time.Now().UTC()
 	stale := 0
 	skipped := 0
-	for _, src := range s.Connections.Sources {
-		if src.Type != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
+	for _, src := range s.Sources {
+		if src.Kind != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
 			continue
 		}
-		if !sourceIsStale(&src, s.Connections.Defaults, now) {
+		if !sourceIsStale(&src, s.Defaults, now) {
 			skipped++
 			continue
 		}
@@ -261,8 +261,8 @@ func (ac *AppController) triggerRetryForFailedSources(trigger string) {
 		return
 	}
 	now := time.Now()
-	for _, src := range s.Connections.Sources {
-		if src.Type != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
+	for _, src := range s.Sources {
+		if src.Kind != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
 			continue
 		}
 		if src.Meta == nil || src.Meta.LastStatus != "err" {

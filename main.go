@@ -270,8 +270,8 @@ func main() {
 				// s.ParserConfig — только для build-путей, читать её здесь незачем.
 				debuglog.InfoLog("Application startup: state.json loaded (schema v%d, %d sources, %d outbounds, %d custom rules)",
 					s.Version,
-					len(s.Connections.Sources),
-					len(s.Connections.Outbounds),
+					len(s.Sources),
+					len(s.Directions),
 					len(s.CustomRules))
 			}()
 

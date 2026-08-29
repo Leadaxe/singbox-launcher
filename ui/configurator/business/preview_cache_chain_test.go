@@ -28,12 +28,12 @@ func TestRebuildPreviewCache_ChainBecomesNode(t *testing.T) {
 	m := &wizardmodels.WizardModel{
 		Sources: []corestate.Source{
 			{
-				ID: "01SRV", Type: corestate.SourceTypeServer, Enabled: true,
+				ID: "01SRV", Node: corestate.Node{Kind: corestate.SourceKindServer, Enabled: true},
 				NodeTag: "🇳🇱 Amsterdam",
 				URI:     "vless://11111111-1111-1111-1111-111111111111@10.0.0.1:443?security=none#ams",
 			},
 			{
-				ID: "01CHN", Type: corestate.SourceTypeChain, Enabled: true,
+				ID: "01CHN", Node: corestate.Node{Kind: corestate.SourceKindChain, Enabled: true},
 				NodeTag: "NL-chain",
 				Chain:   &configtypes.SourceChain{Hops: []string{"🇳🇱 Amsterdam", "direct-out"}},
 			},
@@ -82,12 +82,12 @@ func TestRebuildPreviewCache_ChainDegradedWhenCoreLacksSupport(t *testing.T) {
 	m := &wizardmodels.WizardModel{
 		Sources: []corestate.Source{
 			{
-				ID: "01SRV", Type: corestate.SourceTypeServer, Enabled: true,
+				ID: "01SRV", Node: corestate.Node{Kind: corestate.SourceKindServer, Enabled: true},
 				NodeTag: "🇳🇱 Amsterdam",
 				URI:     "vless://11111111-1111-1111-1111-111111111111@10.0.0.1:443?security=none#ams",
 			},
 			{
-				ID: "01CHN", Type: corestate.SourceTypeChain, Enabled: true,
+				ID: "01CHN", Node: corestate.Node{Kind: corestate.SourceKindChain, Enabled: true},
 				NodeTag: "NL-chain",
 				Chain:   &configtypes.SourceChain{Hops: []string{"🇳🇱 Amsterdam", "direct-out"}},
 			},
@@ -121,12 +121,12 @@ func TestPreviewPoolMatchesBuildPool(t *testing.T) {
 	m := &wizardmodels.WizardModel{
 		Sources: []corestate.Source{
 			{
-				ID: "01SRV", Type: corestate.SourceTypeServer, Enabled: true,
+				ID: "01SRV", Node: corestate.Node{Kind: corestate.SourceKindServer, Enabled: true},
 				NodeTag: "NL-ams", Label: "Мой Амстердам",
 				URI: "vless://11111111-1111-1111-1111-111111111111@10.0.0.1:443?security=none#ams",
 			},
 			{
-				ID: "01CHN", Type: corestate.SourceTypeChain, Enabled: true,
+				ID: "01CHN", Node: corestate.Node{Kind: corestate.SourceKindChain, Enabled: true},
 				NodeTag: "NL-chain", Label: "Через Германию",
 				Chain: &configtypes.SourceChain{Hops: []string{"NL-ams", "direct-out"}},
 			},

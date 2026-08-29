@@ -135,9 +135,8 @@ func AppendManualConfigJSON(ctx UIUpdater, body []byte, label string) error {
 	}
 
 	model.Sources = append(model.Sources, corestate.Source{
+		Node:       corestate.Node{Kind: corestate.SourceKindServer, Enabled: true},
 		ID:         corestate.MakeULID(),
-		Type:       corestate.SourceTypeServer,
-		Enabled:    true,
 		Label:      label,
 		ConfigJSON: compact,
 	})

@@ -33,9 +33,10 @@ func (s *State) Save(path string) error {
 	s.UpdatedAt = now
 
 	// SPEC 117 (W4): обратного синка legacy → canonical больше нет. Save
-	// сериализует ТОЛЬКО s.Connections (canonical); s.ParserConfig — read-only
-	// Load-проекция, Save её не читает. Все мутации обязаны идти в Connections.
-	s.Version = SchemaVersionV6
+	// сериализует ТОЛЬКО canonical (s.Sources/s.Directions/...); s.ParserConfig
+	// — read-only Load-проекция, Save её не читает. Все мутации обязаны идти
+	// в canonical-поля. SPEC 118 (W1): единственный формат записи — v7.
+	s.Version = SchemaVersionV7
 
 	// SPEC 058-R-N: backup перед первым перезаписыванием когда outbounds
 	// содержат referenced entries (post-migration shape). Gate idempotent
@@ -85,27 +86,28 @@ func (s *State) Save(path string) error {
 	return nil
 }
 
-// marshalDisk — сериализация State в canonical (v6) shape (SPEC 053 + SPEC 056-R-N).
+// marshalDisk — сериализация State в canonical (v7) shape (SPEC 118).
 //
 //	{
-//	  "meta":        { version: 6, schema: "presets_v1", ... },
-//	  "connections": { ... },
-//	  "rules":       [ {kind, ref|id, enabled, body} ],
-//	  "vars":        [ ... ],                                  // dns_* scalars живут здесь
-//	  "dns_options": {                                          // SPEC 056-R-N
-//	    "servers": [ {kind:template|preset|user, tag|ref, enabled, ...body} ],
-//	    "rules":   [ {kind:preset|user, ref|..., enabled, ...body} ]
-//	  }
+//	  "meta":          { version: 7, schema: "sources_v7", ... },
+//	  "sources":       [ {kind, tag, enabled, ...} ],
+//	  "directions":    [ ... ],
+//	  "rules":         [ {kind, ref|id, enabled, body} ],
+//	  "vars":          [ ... ],                                 // dns_* scalars
+//	  "dns_options":   { servers: [...], rules: [...] },        // SPEC 056-R-N
+//	  "warp_accounts": { ... },
+//	  "legacy_defaults": { ... }                                // TEMPORARY BRIDGE
 //	}
 //
-// SPEC 060 Phase 5: единственный write path — `marshalDiskV6` rename'нут в
-// `marshalDisk`, старый v5-marshaller удалён. Legacy `s.CustomRules` /
-// `s.DNSOptions` НЕ сериализуются — источник истины Rules / DNS.
+// Legacy `s.CustomRules` / `s.DNSOptions` НЕ сериализуются — источник истины
+// Rules / DNS. Легаси-ключей v6 в корне нет; мостовые поля источников
+// (TEMPORARY BRIDGE, SPEC 118 W1-W4) едут внутри sources[] под прежними
+// именами до миграции W2 и сноса W5.
 func (s *State) marshalDisk() ([]byte, error) {
-	out := diskStateV6{
+	out := diskStateV7{
 		Meta: MetaSection{
-			Version:   SchemaVersionV6,
-			Schema:    SchemaName,
+			Version:   SchemaVersionV7,
+			Schema:    SchemaNameV7,
 			Comment:   s.Comment,
 			CreatedAt: s.CreatedAt.Format(time.RFC3339),
 			UpdatedAt: s.UpdatedAt.Format(time.RFC3339),
@@ -114,7 +116,8 @@ func (s *State) marshalDisk() ([]byte, error) {
 			TargetPlatform: s.TargetPlatform,
 			TargetArch:     s.TargetArch,
 		},
-		Connections:  s.Connections,
+		Sources:      s.Sources,
+		Directions:   s.Directions,
 		Rules:        s.Rules,
 		Vars:         s.Vars,
 		DNSOptions:   s.DNS,
@@ -123,16 +126,18 @@ func (s *State) marshalDisk() ([]byte, error) {
 	if out.Rules == nil {
 		out.Rules = []Rule{}
 	}
-	if out.Connections.Sources == nil {
-		out.Connections.Sources = []Source{}
+	if out.Sources == nil {
+		out.Sources = []Source{}
 	}
-	if out.Connections.Outbounds == nil {
-		out.Connections.Outbounds = []configtypes.Direction{}
+	if out.Directions == nil {
+		out.Directions = []configtypes.Direction{}
 	}
-	// Прежний ключ `outbounds` не пишем никогда (SPEC 104): он читается для
-	// совместимости, но два набора направлений в одном файле означали бы,
-	// что следующая загрузка может выбрать не тот.
-	out.Connections.LegacyOutbounds = nil
+	// TEMPORARY BRIDGE (SPEC 118 W1-W4), удаляется в W5: умолчания едут под
+	// мостовым ключом, пока не переехали в настройки приложения (W2, шаг 8).
+	if s.Defaults != (Defaults{}) {
+		d := s.Defaults
+		out.LegacyDefaults = &d
+	}
 	// SetEscapeHTML(false): по умолчанию encoding/json экранирует «&», «<» и
 	// «>» в & и подобное — защита для вставки JSON в HTML-страницу,
 	// которая здесь не нужна. В state.json попадают URL подписок и строки
@@ -151,10 +156,10 @@ func (s *State) marshalDisk() ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
-// hasReferencedOutbounds — true если хотя бы один outbound в state.Connections.Outbounds
+// hasReferencedOutbounds — true если хотя бы одно Направление в s.Directions
 // имеет непустой Ref (referenced shape, SPEC 058).
 func hasReferencedOutbounds(s *State) bool {
-	for _, ob := range s.Connections.Outbounds {
+	for _, ob := range s.Directions {
 		if ob.Ref != "" {
 			return true
 		}

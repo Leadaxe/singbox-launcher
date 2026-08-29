@@ -55,7 +55,7 @@ func ResetDetourNodeRefs(m *wizardmodels.WizardModel, sourceID, nodeTag string) 
 	if tagIsUnique {
 		for i := range m.Sources {
 			s := &m.Sources[i]
-			if s.Type != wizardmodels.SourceTypeServer && s.Type != wizardmodels.SourceTypeChain {
+			if s.Kind != wizardmodels.SourceTypeServer && s.Kind != wizardmodels.SourceTypeChain {
 				continue
 			}
 			// Переименованный источник — это и есть прежний носитель имени;

@@ -45,11 +45,10 @@ func TestAnnounceMessageEmptyIsEmpty(t *testing.T) {
 // метаданные недоступны, и без этого провоза он о сообщении не узнает.
 func TestProxySourceCarriesProviderAnnounce(t *testing.T) {
 	src := &Source{
-		ID:      "01SUB",
-		Type:    SourceTypeSubscription,
-		Label:   "AL: Liberty",
-		URL:     "https://example.com/sub",
-		Enabled: true,
+		Node:  Node{Kind: SourceKindSubscription, Enabled: true},
+		ID:    "01SUB",
+		Label: "AL: Liberty",
+		URL:   "https://example.com/sub",
 		Meta: &SubscriptionMeta{
 			ProviderAnnounce: &ProviderAnnounce{
 				Message: "⚠️ Произошла ошибка при получении подписки.",

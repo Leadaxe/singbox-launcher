@@ -57,21 +57,19 @@ const testNodeHash = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d
 func mkState() *state.State {
 	enabled := true
 	return &state.State{
-		Connections: state.ConnectionsSection{
-			Sources: []state.Source{
-				{
-					ID: "src-1", Type: state.SourceTypeSubscription, Enabled: true,
-					URL: "https://example-1.com/sub", Label: "Main", MaxNodes: 200,
-					Tag:           &state.TagSpec{Prefix: "[A] "},
-					Update:        &state.UpdateSpec{IntervalHours: 12, AutoRefresh: &enabled},
-					DisabledNodes: map[string]int64{testNodeHash: 1750000000},
-					Skip:          []map[string]string{{"field": "tag", "contains": "trial"}},
-					DetourTag:     "hop-1",
-				},
-				{
-					ID: "src-2", Type: state.SourceTypeServer, Enabled: true,
-					URI: "vless://11111111-1111-1111-1111-111111111111@example-2.com:443?type=tcp#s",
-				},
+		Sources: []state.Source{
+			{
+				ID: "src-1", Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
+				URL: "https://example-1.com/sub", Label: "Main", MaxNodes: 200,
+				TagPolicy:     &state.TagSpec{Prefix: "[A] "},
+				Update:        &state.UpdateSpec{IntervalHours: 12, AutoRefresh: &enabled},
+				DisabledNodes: map[string]int64{testNodeHash: 1750000000},
+				Skip:          []map[string]string{{"field": "tag", "contains": "trial"}},
+				DetourTag:     "hop-1",
+			},
+			{
+				ID: "src-2", Node: state.Node{Kind: state.SourceKindServer, Enabled: true},
+				URI: "vless://11111111-1111-1111-1111-111111111111@example-2.com:443?type=tcp#s",
 			},
 		},
 		Rules: []state.Rule{
@@ -118,15 +116,15 @@ func TestRoundTripLossless(t *testing.T) {
 		t.Fatalf("Import: %v", err)
 	}
 
-	if len(dst.Connections.Sources) != 2 {
-		t.Fatalf("источников %d, ожидалось 2", len(dst.Connections.Sources))
+	if len(dst.Sources) != 2 {
+		t.Fatalf("источников %d, ожидалось 2", len(dst.Sources))
 	}
-	sub := dst.Connections.Sources[0]
+	sub := dst.Sources[0]
 	if sub.URL != "https://example-1.com/sub" || sub.Label != "Main" || sub.MaxNodes != 200 {
 		t.Errorf("подписка приехала искажённой: %+v", sub)
 	}
-	if sub.Tag == nil || sub.Tag.Prefix != "[A] " {
-		t.Errorf("tag-политика потеряна: %+v", sub.Tag)
+	if sub.TagPolicy == nil || sub.TagPolicy.Prefix != "[A] " {
+		t.Errorf("tag-политика потеряна: %+v", sub.TagPolicy)
 	}
 	if sub.Update == nil || sub.Update.IntervalHours != 12 {
 		t.Errorf("политика обновления потеряна: %+v", sub.Update)
@@ -424,12 +422,11 @@ func hasWarn(list []Warning, code string) bool {
 func TestRoundTripChainSources(t *testing.T) {
 	stripOff := false
 	s := &state.State{}
-	s.Connections.Sources = []state.Source{
-		{Type: state.SourceTypeSubscription, URL: "https://example.com/sub", Enabled: true},
+	s.Sources = []state.Source{
+		{Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true}, URL: "https://example.com/sub"},
 		{
-			Type:    state.SourceTypeChain,
-			Label:   "chain-1",
-			Enabled: true,
+			Node:  state.Node{Kind: state.SourceKindChain, Enabled: true},
+			Label: "chain-1",
 			Chain: &configtypes.SourceChain{
 				Hops:         []string{"warp", "vpn ②"},
 				IdleTimeout:  "0s",
@@ -457,9 +454,9 @@ func TestRoundTripChainSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	var chain *state.Source
-	for i := range restored.Connections.Sources {
-		if restored.Connections.Sources[i].Type == state.SourceTypeChain {
-			chain = &restored.Connections.Sources[i]
+	for i := range restored.Sources {
+		if restored.Sources[i].Kind == state.SourceTypeChain {
+			chain = &restored.Sources[i]
 		}
 	}
 	if chain == nil {
@@ -468,7 +465,7 @@ func TestRoundTripChainSources(t *testing.T) {
 	if chain.NodeTagOrLabel() != "chain-1" || chain.Chain == nil {
 		t.Fatalf("состав цепочки искажён: %+v", chain)
 	}
-	want, _ := json.Marshal(s.Connections.Sources[1].Chain)
+	want, _ := json.Marshal(s.Sources[1].Chain)
 	got, _ := json.Marshal(chain.Chain)
 	if string(want) != string(got) {
 		t.Fatalf("канон цепочки искажён: %s, ожидалось %s", got, want)
@@ -494,8 +491,8 @@ func TestLegacyExtensionsChainsNotRead(t *testing.T) {
 	if _, err := Import(restored, b, ImportOptions{}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	for _, src := range restored.Connections.Sources {
-		if src.Type == state.SourceTypeChain {
+	for _, src := range restored.Sources {
+		if src.Kind == state.SourceTypeChain {
 			t.Fatalf("цепочка прочитана из упразднённого кармана: %+v", src)
 		}
 	}
@@ -525,8 +522,8 @@ func TestImportChainTagBusy(t *testing.T) {
 		t.Fatal("занятый тег не предъявлен warning'ом")
 	}
 	count := 0
-	for _, src := range s.Connections.Sources {
-		if src.Type == state.SourceTypeChain {
+	for _, src := range s.Sources {
+		if src.Kind == state.SourceTypeChain {
 			count++
 			if src.Chain == nil || src.Chain.Hops[0] != "first-1" {
 				t.Fatalf("вторая запись перезаписала первую: %+v", src.Chain)
@@ -581,10 +578,9 @@ func TestRoundTripDNSSection(t *testing.T) {
 // их в extensions.launcher с самого начала, а импорт не читал.
 func TestRoundTripLocalOutbounds(t *testing.T) {
 	s := &state.State{}
-	s.Connections.Sources = []state.Source{{
-		Type:    state.SourceTypeSubscription,
-		URL:     "https://example.com/sub",
-		Enabled: true,
+	s.Sources = []state.Source{{
+		Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
+		URL:  "https://example.com/sub",
 		Outbounds: []configtypes.Direction{
 			{Tag: "local-select", Type: "selector"},
 		},
@@ -598,7 +594,7 @@ func TestRoundTripLocalOutbounds(t *testing.T) {
 	if _, err := Import(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	src := restored.Connections.Sources[0]
+	src := restored.Sources[0]
 	if len(src.Outbounds) != 1 || src.Outbounds[0].Tag != "local-select" {
 		t.Fatalf("локальные outbound'ы потеряны: %+v", src.Outbounds)
 	}
@@ -671,20 +667,18 @@ func TestPerEntityForeignExtensionsDropped(t *testing.T) {
 // сами id источников: без них ссылка на приёмнике мертва.
 func TestRoundTripDetourNodeRef(t *testing.T) {
 	s := &state.State{}
-	s.Connections.Sources = []state.Source{
+	s.Sources = []state.Source{
 		{
 			ID:      "01WARP00000000000000000",
-			Type:    state.SourceTypeServer,
+			Node:    state.Node{Kind: state.SourceKindServer, Enabled: true},
 			URI:     "vless://u@h:443",
 			NodeTag: "🔥🎭 WARP (MASQUE)",
 			Label:   "WARP hop",
-			Enabled: true,
 		},
 		{
 			ID:                 "01PROTON0000000000000000",
-			Type:               state.SourceTypeSubscription,
+			Node:               state.Node{Kind: state.SourceKindSubscription, Enabled: true},
 			URL:                "https://example.com/sub",
-			Enabled:            true,
 			DetourNodeSourceID: "01WARP00000000000000000",
 			DetourNodeTag:      "🔥🎭 WARP (MASQUE)",
 			DetourNodeLabel:    "WARP hop",
@@ -720,16 +714,16 @@ func TestRoundTripDetourNodeRef(t *testing.T) {
 		t.Fatal(err)
 	}
 	var hop, dep *state.Source
-	for i := range restored.Connections.Sources {
-		switch restored.Connections.Sources[i].Type {
+	for i := range restored.Sources {
+		switch restored.Sources[i].Kind {
 		case state.SourceTypeServer:
-			hop = &restored.Connections.Sources[i]
+			hop = &restored.Sources[i]
 		case state.SourceTypeSubscription:
-			dep = &restored.Connections.Sources[i]
+			dep = &restored.Sources[i]
 		}
 	}
 	if hop == nil || dep == nil {
-		t.Fatalf("источники не восстановились: %+v", restored.Connections.Sources)
+		t.Fatalf("источники не восстановились: %+v", restored.Sources)
 	}
 	// Ключ вопроса из ТЗ: id источника-цели обязан пережить roundtrip, иначе
 	// ссылка на приёмнике указывает в никуда.
@@ -749,10 +743,9 @@ func TestRoundTripDetourNodeRef(t *testing.T) {
 // глобальный поиск по финальному тегу.
 func TestRoundTripDetourNodeTagOnlyRef(t *testing.T) {
 	s := &state.State{}
-	s.Connections.Sources = []state.Source{{
-		Type:            state.SourceTypeSubscription,
+	s.Sources = []state.Source{{
+		Node:            state.Node{Kind: state.SourceKindSubscription, Enabled: true},
 		URL:             "https://example.com/sub",
-		Enabled:         true,
 		DetourNodeTag:   "🔥🎭 WARP (MASQUE)",
 		DetourNodeLabel: "WARP hop",
 	}}
@@ -765,7 +758,7 @@ func TestRoundTripDetourNodeTagOnlyRef(t *testing.T) {
 	if _, err := Import(restored, b, ImportOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	got := restored.Connections.Sources[0]
+	got := restored.Sources[0]
 	if got.DetourNodeTag != "🔥🎭 WARP (MASQUE)" || got.DetourNodeSourceID != "" {
 		t.Fatalf("tag-only ссылка искажена: source_id=%q tag=%q", got.DetourNodeSourceID, got.DetourNodeTag)
 	}
@@ -777,10 +770,9 @@ func TestRoundTripDetourNodeTagOnlyRef(t *testing.T) {
 // вернул бы в формат ровно то, ради чего он снесён (BACKUP.md §6).
 func TestLegacyDetourNodeHashNotExported(t *testing.T) {
 	s := &state.State{}
-	s.Connections.Sources = []state.Source{{
-		Type:            state.SourceTypeSubscription,
+	s.Sources = []state.Source{{
+		Node:            state.Node{Kind: state.SourceKindSubscription, Enabled: true},
 		URL:             "https://example.com/sub",
-		Enabled:         true,
 		DetourNodeHash:  "62bff800aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		DetourNodeLabel: "🔥🎭 WARP (MASQUE)",
 	}}
@@ -823,10 +815,10 @@ func TestLegacyDetourNodeHashFileReadsWithWarning(t *testing.T) {
 	if _, err := Import(dst, b, ImportOptions{}); err != nil {
 		t.Fatalf("старый файл уронил импорт: %v", err)
 	}
-	if len(dst.Connections.Sources) != 1 {
-		t.Fatalf("источников %d, ожидался 1", len(dst.Connections.Sources))
+	if len(dst.Sources) != 1 {
+		t.Fatalf("источников %d, ожидался 1", len(dst.Sources))
 	}
-	src := dst.Connections.Sources[0]
+	src := dst.Sources[0]
 	// Общие поля применились...
 	if src.URL != "https://example.com/sub" || src.Label != "Main" || src.MaxNodes != 150 {
 		t.Errorf("общие поля старого файла не применились: %+v", src)

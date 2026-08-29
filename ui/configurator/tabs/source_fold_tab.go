@@ -205,8 +205,8 @@ func templateVarChoicesForFold(vars []template.TemplateVar, varName string) auto
 //
 // SPEC 117: читает canonical state.Source (Tag — *TagSpec; nil = префикса нет).
 func foldTagPrefix(p *wizardmodels.Source) string {
-	if p == nil || p.Tag == nil {
+	if p == nil || p.TagPolicy == nil {
 		return ""
 	}
-	return p.Tag.Prefix
+	return p.TagPolicy.Prefix
 }

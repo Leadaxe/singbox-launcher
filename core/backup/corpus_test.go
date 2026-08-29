@@ -236,7 +236,7 @@ func checkDisabledHashes(t *testing.T, dst *state.State, exp corpusExpectation) 
 		return
 	}
 	found := map[string]bool{}
-	for _, src := range dst.Connections.Sources {
+	for _, src := range dst.Sources {
 		for hash := range src.DisabledNodes {
 			found[hash] = true
 		}
@@ -304,8 +304,8 @@ func checkChains(t *testing.T, dst *state.State, exp corpusExpectation) {
 	}
 	byTag := map[string]state.Source{}
 	count := 0
-	for _, src := range dst.Connections.Sources {
-		if src.Type == state.SourceTypeChain {
+	for _, src := range dst.Sources {
+		if src.Kind == state.SourceTypeChain {
 			byTag[src.NodeTagOrLabel()] = src
 			count++
 		}
@@ -377,8 +377,8 @@ func checkDirections(t *testing.T, dst *state.State, exp corpusExpectation) {
 	if len(exp.Directions) == 0 {
 		return
 	}
-	byTag := make(map[string]configtypes.Direction, len(dst.Connections.Outbounds))
-	for _, d := range dst.Connections.Outbounds {
+	byTag := make(map[string]configtypes.Direction, len(dst.Directions))
+	for _, d := range dst.Directions {
 		byTag[d.Tag] = d
 	}
 	for _, want := range exp.Directions {

@@ -19,7 +19,7 @@ import (
 // в память и строит ParsedCache, готовый для BuildConfig. **Без network call'ов.**
 //
 // Контракт:
-//   - Для каждого enabled subscription Source в state.Connections.Sources
+//   - Для каждого enabled subscription Source в state.Sources
 //     ищет matching `.raw` файл по ID;
 //   - Server source'ы парсятся напрямую из URI (не нуждаются в .raw);
 //   - Если .raw нет НИ У ОДНОЙ enabled subscription — возвращает
@@ -47,8 +47,8 @@ func buildSnapshotFromRawCache(s *state.State, execDir string, subst config.VarS
 	// Проверяем completeness: для каждой enabled subscription есть .raw?
 	missing := []string{}
 	enabledSubs := 0
-	for _, src := range s.Connections.Sources {
-		if src.Type != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
+	for _, src := range s.Sources {
+		if src.Kind != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
 			continue
 		}
 		enabledSubs++
@@ -164,9 +164,9 @@ var ErrRawCacheIncomplete = fmt.Errorf("raw cache incomplete")
 // уже decoded content (после base64 strip), а LookupCachedBody hook должен
 // мимикрировать тот же контракт.
 func buildBodyLookup(s *state.State, subsDir string) map[string][]byte {
-	out := make(map[string][]byte, len(s.Connections.Sources))
-	for _, src := range s.Connections.Sources {
-		if src.Type != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
+	out := make(map[string][]byte, len(s.Sources))
+	for _, src := range s.Sources {
+		if src.Kind != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
 			continue
 		}
 		raw, err := state.ReadRawBody(subsDir, src.ID)

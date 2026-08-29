@@ -108,11 +108,11 @@ func TestCloneCountsChainsAndSources(t *testing.T) {
 	execDir := t.TempDir()
 
 	donor := corestate.New()
-	donor.Connections.Sources = []corestate.Source{
-		{ID: "a", Type: corestate.SourceTypeSubscription},
-		{ID: "b", Type: corestate.SourceTypeServer},
-		{ID: "c", Type: corestate.SourceTypeChain},
-		{ID: "d", Type: corestate.SourceTypeChain},
+	donor.Sources = []corestate.Source{
+		{ID: "a", Node: corestate.Node{Kind: corestate.SourceKindSubscription}},
+		{ID: "b", Node: corestate.Node{Kind: corestate.SourceKindServer}},
+		{ID: "c", Node: corestate.Node{Kind: corestate.SourceKindChain}},
+		{ID: "d", Node: corestate.Node{Kind: corestate.SourceKindChain}},
 	}
 	donor.Rules = []corestate.Rule{
 		{Kind: corestate.RuleKindInline, Enabled: true},

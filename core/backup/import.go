@@ -124,15 +124,15 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 
 	res := &ImportResult{}
 
-	s.Connections.Sources = nil
+	s.Sources = nil
 	s.Rules = nil
 
 	for _, sub := range b.Subscriptions {
-		s.Connections.Sources = append(s.Connections.Sources, importSubscription(sub))
+		s.Sources = append(s.Sources, importSubscription(sub))
 		res.AppliedSources++
 	}
 	for _, srv := range b.Servers {
-		s.Connections.Sources = append(s.Connections.Sources, importServer(srv))
+		s.Sources = append(s.Sources, importServer(srv))
 		res.AppliedSources++
 	}
 
@@ -142,8 +142,8 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 	//
 	// Существующий тег не трогаем: у принимающей стороны своё Направление с
 	// этим именем, и перезапись стёрла бы его настройки.
-	existing := make(map[string]bool, len(s.Connections.Outbounds))
-	for _, d := range s.Connections.Outbounds {
+	existing := make(map[string]bool, len(s.Directions))
+	for _, d := range s.Directions {
 		existing[d.Tag] = true
 	}
 	knownTags := append([]string(nil), opts.KnownOutbounds...)
@@ -156,7 +156,7 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 			knownTags = append(knownTags, in.Tag)
 			continue
 		}
-		s.Connections.Outbounds = append(s.Connections.Outbounds, importDirection(in))
+		s.Directions = append(s.Directions, importDirection(in))
 		existing[in.Tag] = true
 		knownTags = append(knownTags, in.Tag)
 		res.AppliedDirections++
@@ -169,8 +169,8 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 	// которого до её обновления не существует; рубеж у обеих сторон один —
 	// сборка (chain_hop_missing).
 	existingChains := map[string]bool{}
-	for _, src := range s.Connections.Sources {
-		if src.Type == state.SourceTypeChain {
+	for _, src := range s.Sources {
+		if src.Kind == state.SourceTypeChain {
 			existingChains[src.NodeTagOrLabel()] = true
 		}
 	}
@@ -183,7 +183,7 @@ func Import(s *state.State, b *Backup, opts ImportOptions) (*ImportResult, error
 			knownTags = append(knownTags, in.Tag)
 			continue
 		}
-		s.Connections.Sources = append(s.Connections.Sources, importChain(in))
+		s.Sources = append(s.Sources, importChain(in))
 		existingChains[in.Tag] = true
 		knownTags = append(knownTags, in.Tag)
 		res.AppliedSources++
@@ -257,12 +257,11 @@ func ensureSourceID(id string) string {
 
 func importSubscription(sub Subscription) state.Source {
 	src := state.Source{
+		Node:                    state.Node{Kind: state.SourceKindSubscription, Enabled: sub.Enabled == nil || *sub.Enabled},
 		ID:                      ensureSourceID(sub.ID),
-		Type:                    state.SourceTypeSubscription,
 		URL:                     sub.URL,
 		Label:                   sub.Label,
 		MaxNodes:                sub.MaxNodes,
-		Enabled:                 sub.Enabled == nil || *sub.Enabled,
 		Skip:                    sub.Skip,
 		Outbounds:               importDirections(sub.Outbounds),
 		Fold:                    sub.Fold,
@@ -271,7 +270,7 @@ func importSubscription(sub Subscription) state.Source {
 	}
 	importSourceRef(&src, sub.SourceRef)
 	if sub.Tag != nil {
-		src.Tag = &state.TagSpec{Prefix: sub.Tag.Prefix, Postfix: sub.Tag.Postfix, Mask: sub.Tag.Mask}
+		src.TagPolicy = &state.TagSpec{Prefix: sub.Tag.Prefix, Postfix: sub.Tag.Postfix, Mask: sub.Tag.Mask}
 	}
 	if sub.Update != nil {
 		src.Update = &state.UpdateSpec{IntervalHours: sub.Update.IntervalHours, AutoRefresh: sub.Update.Auto}
@@ -287,12 +286,11 @@ func importSubscription(sub Subscription) state.Source {
 
 func importServer(srv Server) state.Source {
 	src := state.Source{
+		Node:              state.Node{Kind: state.SourceKindServer, Enabled: srv.Enabled == nil || *srv.Enabled},
 		ID:                ensureSourceID(srv.ID),
-		Type:              state.SourceTypeServer,
 		URI:               srv.URI,
 		Label:             srv.Label,
 		NodeTag:           srv.NodeTag,
-		Enabled:           srv.Enabled == nil || *srv.Enabled,
 		ExcludeFromGlobal: srv.ExcludeFromGlobal,
 	}
 	importSourceRef(&src, srv.SourceRef)
@@ -310,11 +308,10 @@ func importServer(srv Server) state.Source {
 // цепочек.
 func importChain(in Chain) state.Source {
 	src := state.Source{
+		Node:              state.Node{Kind: state.SourceKindChain, Enabled: in.Enabled == nil || *in.Enabled},
 		ID:                ensureSourceID(in.ID),
-		Type:              state.SourceTypeChain,
 		NodeTag:           in.Tag,
 		Label:             in.Label,
-		Enabled:           in.Enabled == nil || *in.Enabled,
 		Chain:             in.Chain,
 		ExcludeFromGlobal: in.ExcludeFromGlobal,
 	}

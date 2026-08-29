@@ -11,7 +11,7 @@ import "testing"
 // Canonical roundtrip и ID-стабильность закрывает canonical_roundtrip_test.go.
 func TestConfigJSON_ToProxySourceV4(t *testing.T) {
 	raw := []byte(`{"type":"someproto","server":"10.0.0.1"}`)
-	srv := Source{Type: SourceTypeServer, Enabled: true, URI: "x://y", ConfigJSON: raw}
+	srv := Source{Node: Node{Kind: SourceKindServer, Enabled: true}, URI: "x://y", ConfigJSON: raw}
 	if got := string(srv.ToProxySourceV4().ConfigJSON); got != string(raw) {
 		t.Errorf("ConfigJSON = %q, want %q", got, raw)
 	}

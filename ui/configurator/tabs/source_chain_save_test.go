@@ -17,11 +17,11 @@ import (
 // ссылок при переименовании.
 func TestChainReferencedBy(t *testing.T) {
 	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{
-		{Type: wizardmodels.SourceTypeChain, NodeTag: "inner",
+		{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindChain}, NodeTag: "inner",
 			Chain: &configtypes.SourceChain{Hops: []string{"a", "b"}}},
-		{Type: wizardmodels.SourceTypeChain, NodeTag: "outer",
+		{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindChain}, NodeTag: "outer",
 			Chain: &configtypes.SourceChain{Hops: []string{"inner", "c"}}},
-		{Type: wizardmodels.SourceTypeServer, NodeTag: "srv"},
+		{Node: wizardmodels.Node{Kind: wizardmodels.SourceKindServer}, NodeTag: "srv"},
 	}}
 
 	got := chainReferencedBy(m)

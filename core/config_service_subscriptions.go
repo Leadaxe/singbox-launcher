@@ -36,7 +36,7 @@ import (
 // phase 8 race-fix.
 //
 // Поведение:
-//   - Идём по `state.Connections.Sources` (только subscription, enabled, URL ≠ "");
+//   - Идём по `state.Sources` (только subscription, enabled, URL ≠ "");
 //   - На success: атомарная запись raw + обновлённая Meta (headers, last_status="ok",
 //     error_count=0, last_fetched_at, http_status_code, raw_body_bytes,
 //     preview_nodes[:50], nodes_count_fetched, truncated);
@@ -55,8 +55,8 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 
 	// Считаем enabled subscriptions для progress reporting.
 	enabledCount := 0
-	for _, src := range s.Connections.Sources {
-		if src.Type == state.SourceTypeSubscription && src.Enabled && src.URL != "" {
+	for _, src := range s.Sources {
+		if src.Kind == state.SourceTypeSubscription && src.Enabled && src.URL != "" {
 			enabledCount++
 		}
 	}
@@ -69,9 +69,9 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 	}
 
 	idx := 0
-	for i := range s.Connections.Sources {
-		src := &s.Connections.Sources[i]
-		if src.Type != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
+	for i := range s.Sources {
+		src := &s.Sources[i]
+		if src.Kind != state.SourceTypeSubscription || !src.Enabled || src.URL == "" {
 			continue
 		}
 		idx++
@@ -83,7 +83,7 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 		}
 		progress(pct, fmt.Sprintf("Fetching %d/%d: %s", idx, enabledCount, shortURL))
 
-		if refreshOneSubscriptionSource(src, s.Connections.Defaults, subsDir) {
+		if refreshOneSubscriptionSource(src, s.Defaults, subsDir) {
 			dirty = true
 		}
 
@@ -176,7 +176,7 @@ func collectAllStageSourceIDs(execDir, target, machineID string) []string {
 			debuglog.DebugLog("collectAllStageSourceIDs: skip %s: %v", path, loadErr)
 			return
 		}
-		for _, src := range s.Connections.Sources {
+		for _, src := range s.Sources {
 			if src.ID != "" {
 				idSet[src.ID] = struct{}{}
 			}
@@ -211,7 +211,7 @@ func collectAllStageSourceIDs(execDir, target, machineID string) []string {
 // На failed fetch: keep старый .raw, error_count++, last_status="err".
 // На success: write .raw atomic, fill meta полностью.
 func refreshOneSubscriptionSource(src *state.Source, defaults state.Defaults, subsDir string) bool {
-	if src == nil || src.Type != state.SourceTypeSubscription || src.URL == "" {
+	if src == nil || src.Kind != state.SourceTypeSubscription || src.URL == "" {
 		return false
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -316,8 +316,8 @@ func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) 
 	if src == nil {
 		return false, fmt.Errorf("RefreshSourceInPlace: nil source")
 	}
-	if src.Type != state.SourceTypeSubscription {
-		return false, fmt.Errorf("source %s is not a subscription (type=%q)", src.ID, src.Type)
+	if src.Kind != state.SourceTypeSubscription {
+		return false, fmt.Errorf("source %s is not a subscription (type=%q)", src.ID, src.Kind)
 	}
 	if src.URL == "" {
 		return false, fmt.Errorf("source %s has empty URL", src.ID)
@@ -330,7 +330,7 @@ func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) 
 	// state.DefaultMaxNodes — нормально для cold-start.
 	var defaults state.Defaults
 	if s, err := state.Load(platform.GetWizardStatePath(execDir)); err == nil {
-		defaults = s.Connections.Defaults
+		defaults = s.Defaults
 	}
 
 	changed := refreshOneSubscriptionSource(src, defaults, subsDir)
@@ -368,12 +368,12 @@ func (svc *ConfigService) RefreshSingleSubscription(sourceID string) (*state.Sou
 	if src == nil {
 		return nil, fmt.Errorf("source not found: %s", sourceID)
 	}
-	if src.Type != state.SourceTypeSubscription {
-		return nil, fmt.Errorf("source %s is not a subscription (type=%q)", sourceID, src.Type)
+	if src.Kind != state.SourceTypeSubscription {
+		return nil, fmt.Errorf("source %s is not a subscription (type=%q)", sourceID, src.Kind)
 	}
 
 	subsDir := platform.GetSubscriptionsDir(execDir)
-	dirty := refreshOneSubscriptionSource(src, s.Connections.Defaults, subsDir)
+	dirty := refreshOneSubscriptionSource(src, s.Defaults, subsDir)
 	if dirty {
 		if err := s.Save(statePath); err != nil {
 			return src, fmt.Errorf("save state after refresh: %w", err)

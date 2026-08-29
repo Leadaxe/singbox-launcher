@@ -192,7 +192,7 @@ func LoadCloneState(execDir string, src CloneSource) (*corestate.State, CloneSum
 	st.TargetArch = ""
 
 	debuglog.InfoLog("clone: loaded state from %s (%s): %d sources, %d rules, %d vars, %d machine-bound skipped",
-		path, src.Name, len(st.Connections.Sources), len(st.Rules), len(st.Vars), len(summary.SkippedVars))
+		path, src.Name, len(st.Sources), len(st.Rules), len(st.Vars), len(summary.SkippedVars))
 
 	return st, summary, nil
 }
@@ -201,8 +201,8 @@ func LoadCloneState(execDir string, src CloneSource) (*corestate.State, CloneSum
 func scrubMachineBound(st *corestate.State) CloneSummary {
 	var sum CloneSummary
 
-	for _, s := range st.Connections.Sources {
-		switch s.Type {
+	for _, s := range st.Sources {
+		switch s.Kind {
 		case corestate.SourceTypeSubscription:
 			sum.Subscriptions++
 		case corestate.SourceTypeServer:
@@ -213,7 +213,7 @@ func scrubMachineBound(st *corestate.State) CloneSummary {
 			sum.Chains++
 		}
 	}
-	sum.Directions = len(st.Connections.Outbounds)
+	sum.Directions = len(st.Directions)
 	// Считаем по Rules и только по ним: corestate.Load наполняет эту секцию
 	// всегда — и из v6-файла, и деривацией из legacy custom_rules
 	// (deriveV6FromLegacy). Фолбэк на CustomRules был бы недостижимым кодом.

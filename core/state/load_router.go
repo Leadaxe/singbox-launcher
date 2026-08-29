@@ -56,8 +56,12 @@ func Parse(data []byte) (*State, error) {
 	}
 
 	switch {
-	case probe.Meta.Version >= 6:
-		return parseCurrent(data)
+	case probe.Meta.Version >= 7:
+		// v7 и минорные добавки поверх (PLAN §1.3: незнакомые ключи
+		// игнорируются, пока мажор 7; неизвестный kind внутри — отказ).
+		return parseV7(data)
+	case probe.Meta.Version == 6:
+		return parseV6Legacy(data)
 	case probe.Meta.Version == 5:
 		return parseV5Legacy(data)
 	case probe.TopLevelVersion >= 2 && probe.TopLevelVersion <= 4:

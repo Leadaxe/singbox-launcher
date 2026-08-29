@@ -15,9 +15,8 @@ import (
 
 func TestDisabledNodesSurviveJSONRoundTrip(t *testing.T) {
 	src := Source{
-		Type:    SourceTypeSubscription,
-		Enabled: true,
-		URL:     "https://example.invalid/sub",
+		Node: Node{Kind: SourceKindSubscription, Enabled: true},
+		URL:  "https://example.invalid/sub",
 		DisabledNodes: map[string]int64{
 			// Тег-идентичность (SPEC 112) — с эмодзи и пробелами: ключ карты
 			// не обязан быть hex, и JSON это переживает.
@@ -54,7 +53,7 @@ func TestDisabledNodesSurviveJSONRoundTrip(t *testing.T) {
 // Источник без отметок не пишет поле в state.json: omitempty бережёт файл от
 // пустых карт у каждой подписки.
 func TestNoDisabledNodesOmittedFromJSON(t *testing.T) {
-	src := Source{Type: SourceTypeSubscription, Enabled: true, URL: "https://example.invalid/sub"}
+	src := Source{Node: Node{Kind: SourceKindSubscription, Enabled: true}, URL: "https://example.invalid/sub"}
 
 	data, err := json.Marshal(src)
 	if err != nil {

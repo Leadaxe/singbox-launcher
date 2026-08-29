@@ -61,7 +61,6 @@ func parseLegacyAndMigrate(data []byte) (*State, error) {
 		ID:                   raw.ID,
 		Comment:              raw.Comment,
 		ParserConfig:         pc,
-		Connections:          migrated.Connections,
 		ConfigParams:         migrated.ConfigParams,
 		Vars:                 migrated.Vars,
 		SelectableRuleStates: selectable,
@@ -75,6 +74,10 @@ func parseLegacyAndMigrate(data []byte) (*State, error) {
 	if t, err := time.Parse(time.RFC3339, raw.UpdatedAt); err == nil {
 		s.UpdatedAt = t
 	}
+	// SPEC 118 (W1): структурный перенос мигрированной v5-секции в v7-корень.
+	// ParserConfig здесь — сырой legacy-вид из файла (как и раньше), проекция
+	// из canonical не пересобирается.
+	adoptConnectionsV6(s, migrated.Connections)
 	deriveV6FromLegacy(s) // BUG1: derive v6 Rules/DNS from migrated legacy fields
 	normalizeNilSlices(s)
 	return s, nil

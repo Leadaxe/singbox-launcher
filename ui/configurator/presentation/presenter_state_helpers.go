@@ -33,9 +33,9 @@ func (p *WizardPresenter) extractConfigParams() []wizardmodels.ConfigParam {
 // модели: производные результаты перечитаются от свежезагруженного состава.
 func (p *WizardPresenter) restoreParserConfig(stateFile *wizardmodels.WizardStateFile) error {
 	// Sources canonical из v5 Connections.
-	p.model.Sources = append([]wizardmodels.Source(nil), stateFile.Connections.Sources...)
-	p.model.GlobalOutbounds = append([]configtypes.Direction(nil), stateFile.Connections.Outbounds...)
-	p.model.Defaults = stateFile.Connections.Defaults
+	p.model.Sources = append([]wizardmodels.Source(nil), stateFile.Sources...)
+	p.model.GlobalOutbounds = append([]configtypes.Direction(nil), stateFile.Directions...)
+	p.model.Defaults = stateFile.Defaults
 	p.model.WarpAccounts = stateFile.WarpAccounts
 
 	// Validate: на свежей миграции должна быть хотя бы пустая slice.

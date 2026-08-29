@@ -25,7 +25,6 @@ func parseV5Legacy(data []byte) (*State, error) {
 	s := &State{
 		Version:      raw.Meta.Version,
 		Comment:      raw.Meta.Comment,
-		Connections:  raw.Connections,
 		ConfigParams: raw.ConfigParams,
 		CustomRules:  raw.CustomRules,
 		Vars:         raw.Vars,
@@ -41,13 +40,19 @@ func parseV5Legacy(data []byte) (*State, error) {
 		s.UpdatedAt = t
 	}
 
+	// SPEC 118 (W1): структурный перенос v5-секции connections в v7-корень
+	// (форма секции та же, что у v6). adoptLegacyDirections здесь НЕ зовётся
+	// — ровно как до W1 (v5-путь никогда не переносил прежний ключ
+	// `outbounds` в направления; менять это — не дело компиляционной волны).
+	adoptConnectionsV6(s, raw.Connections)
+
 	// BUG1 fix: derive canonical v6 Rules/DNS from legacy v5 CustomRules/
 	// DNSOptions так, чтобы headless Save (сериализует только v6) их не терял.
 	deriveV6FromLegacy(s)
 
-	// Заполняем legacy proxies-view из Connections для backward-compat
+	// Заполняем legacy proxies-view из canonical для backward-compat
 	// callsite'ов (UI source_tab, dashboard counters, parser).
-	syncLegacyFromConnections(s)
+	syncLegacyFromCanonical(s)
 	normalizeNilSlices(s)
 	return s, nil
 }

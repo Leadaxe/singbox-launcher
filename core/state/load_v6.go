@@ -27,7 +27,15 @@ import (
 // Для backward-compat UI callsite'ов (DNS tab пока на v5-моделях) генерируется
 // legacy CustomRules view (preset-ref пропускается — UI Phase 6 покажет
 // через новый dialog).
-func parseCurrent(data []byte) (*State, error) {
+//
+// SPEC 118 (W1): v6 — легаси-формат. Секция connections читается в приватную
+// v6-форму и переносится в плоский v7-корень СТРУКТУРНО (adoptConnectionsV6):
+// легаси-поля доезжают в мостовые деривативы TEMPORARY BRIDGE, из которых
+// adapter_source.go собирает прежнюю ProxySource-проекцию. Семантическая
+// миграция (8 шагов features/state.md — материализация nodes[], отметки,
+// теги, хопы, тройня, fold→replace, отчёт потерь) — волна W2; её снос
+// легаси гейтится migrationPurgesLegacy.
+func parseV6Legacy(data []byte) (*State, error) {
 	var raw struct {
 		Meta         MetaSection          `json:"meta"`
 		Connections  ConnectionsSection   `json:"connections"`
@@ -56,7 +64,6 @@ func parseCurrent(data []byte) (*State, error) {
 		Target:             raw.Meta.Target,
 		TargetPlatform:     raw.Meta.TargetPlatform,
 		TargetArch:         raw.Meta.TargetArch,
-		Connections:        raw.Connections,
 		Vars:               raw.Vars,
 		Rules:              raw.Rules,
 		DNS:                dnsOpts,
@@ -70,15 +77,17 @@ func parseCurrent(data []byte) (*State, error) {
 		s.UpdatedAt = t
 	}
 
-	// SPEC 108: прежние флаги подписки → Fold. Строго ДО
-	// syncLegacyFromConnections и до построения legacy-вида правил: и то и
-	// другое читает уже мигрированное состояние.
-	migrateSourceFolds(s)
+	// SPEC 108: прежние флаги подписки → Fold. Строго ДО переноса в v7 и
+	// до построения legacy-вида: и то и другое читает уже мигрированное.
+	migrateSourceFolds(&raw.Connections)
+
+	// SPEC 118 (W1): структурный перенос v6-секции в плоский v7-корень.
+	adoptConnectionsV6(s, raw.Connections)
 
 	// Generate legacy CustomRules view for backward-compat UI (Phase 6 will use RulesV6 directly).
 	s.CustomRules = legacyCustomRulesFromV6(raw.Rules)
 
-	syncLegacyFromConnections(s)
+	syncLegacyFromCanonical(s)
 	normalizeNilSlices(s)
 	return s, nil
 }

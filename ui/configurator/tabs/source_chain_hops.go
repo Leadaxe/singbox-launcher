@@ -129,7 +129,7 @@ func collectChainHopCandidates(
 		// вверх по списку.
 		belowSelf := false
 		for _, src := range model.Sources {
-			if src.Type != corestate.SourceTypeChain {
+			if src.Kind != corestate.SourceTypeChain {
 				continue
 			}
 			if src.NodeTagOrLabel() == selfTag {
@@ -223,7 +223,7 @@ func chainReferencedBy(m *wizardmodels.WizardModel) map[string][]string {
 	}
 	var out map[string][]string
 	for _, src := range m.Sources {
-		if src.Type != corestate.SourceTypeChain || src.Chain == nil {
+		if src.Kind != corestate.SourceTypeChain || src.Chain == nil {
 			continue
 		}
 		for _, hop := range src.Chain.Hops {

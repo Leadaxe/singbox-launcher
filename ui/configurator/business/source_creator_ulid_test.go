@@ -29,7 +29,7 @@ func assertFreshULIDs(t *testing.T, model *wizardmodels.WizardModel, from int) {
 	for i := from; i < len(model.Sources); i++ {
 		if len(model.Sources[i].ID) != 26 {
 			t.Errorf("source %d (%s) created without ULID: id=%q",
-				i, model.Sources[i].Type, model.Sources[i].ID)
+				i, model.Sources[i].Kind, model.Sources[i].ID)
 		}
 	}
 }

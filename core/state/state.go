@@ -1,12 +1,12 @@
 // Package state — модель декларативного состояния Configurator (бывшего
 // Wizard) без UI-зависимостей.
 //
-// SPEC 052 (CONNECTIONS_REDESIGN): на диск пишется v5/v6-схема. Поверхностный
-// in-memory тип State сохраняет legacy-форму (ParserConfig.ParserConfig.Proxies,
-// Vars, CustomRules, DNSOptions) для совместимости с существующими
-// callsite'ами; canonical секция Connections — единственный источник истины.
-// SPEC 117: legacy-форма — read-only проекция, наполняется только на Load
-// (syncLegacyFromConnections); Save сериализует только Connections.
+// SPEC 118 (этап 2): на диск пишется v7-схема — плоский корень
+// sources[]/directions[]/rules[]/vars[]/dns_options/warp_accounts/meta.
+// Canonical-поля State (Sources/Directions/...) — единственный источник
+// истины; поверхностная legacy-форма (ParserConfig.ParserConfig.Proxies) —
+// read-only Load-проекция для build-путей (SPEC 117), наполняется только на
+// Load (syncLegacyFromCanonical); Save сериализует только canonical.
 //
 // SPEC 060: v5/ и v6/ subpackages collapsed в единый core/state/. Wire format
 // не меняется. Историческое имя поля RulesV6 сохранено в Phase 2/3/4 и
@@ -33,10 +33,11 @@ import (
 //   - v4 — SPEC 032 (vars + literals + if/if_or в params);
 //   - v5 — SPEC 052: top-level meta + connections, per-source meta/raw cache.
 //   - v6 — SPEC 053/056: rules[] kind discriminator, dns_options flat shape.
+//   - v7 — SPEC 118: плоский корень sources[]/directions[], юнион по kind,
+//     материализованные узлы подписок.
 //
-// SPEC 060 Phase 5: SchemaVersion теперь всегда v6 — dual write path удалён.
-// Load принимает v2/v3/v4/v5 (с авто-миграцией); Save всегда пишет v6.
-const SchemaVersion = SchemaVersionV6
+// Load принимает v2–v6 (с авто-миграцией); Save всегда пишет v7.
+const SchemaVersion = SchemaVersionV7
 
 // ── State ────────────────────────────────────────────────────────
 
@@ -80,19 +81,30 @@ type State struct {
 	// (configtypes.ParserConfig.ParserConfig.{Proxies,Outbounds,Parser}).
 	//
 	// SPEC 117: read-only Load-проекция. Наполняется ТОЛЬКО на Load
-	// (syncLegacyFromConnections) для build-путей core, перечитывающих state
+	// (syncLegacyFromCanonical) для build-путей core, перечитывающих state
 	// с диска на каждую операцию (loadParserConfigForUpdate, rebuild).
 	// Писать в неё запрещено; Save её не читает. Код, мутирующий
-	// s.Connections в памяти, не имеет права читать s.ParserConfig того же
-	// экземпляра — проекция строится один раз на Load и после мутаций врёт.
+	// canonical-поля (s.Sources/...) в памяти, не имеет права читать
+	// s.ParserConfig того же экземпляра — проекция строится один раз на
+	// Load и после мутаций врёт.
 	ParserConfig configtypes.ParserConfig
 
-	// === Connections (v5 canonical) ===
+	// === Canonical v7 (SPEC 118): плоский корень ===
 
-	// Connections — sources + global outbounds + defaults в v5-форме.
-	// Источник истины для нового кода (parser adapter / Rebuild / UI после
-	// Phase 7).
-	Connections ConnectionsSection
+	// Sources — дерево источников v7 (юнион по kind: server / chain / auto /
+	// folder / subscription). Источник истины; на диск уезжает ключом
+	// `sources`. Было Connections.Sources.
+	Sources []Source
+
+	// Directions — глобальные Направления (SPEC 104); ключ `directions`.
+	// Было Connections.Outbounds.
+	Directions []configtypes.Direction
+
+	// Defaults — TEMPORARY BRIDGE (SPEC 118 W1-W4), удаляется в W5:
+	// глобальные умолчания подключений до переезда в настройки приложения
+	// (миграция W2, шаг 8). Было Connections.Defaults; в v7-файле — мостовой
+	// ключ `legacy_defaults`.
+	Defaults Defaults
 
 	// === Common (template / rules) ===
 
@@ -167,29 +179,29 @@ func New() *State {
 	}
 }
 
-// GetSubscriptionSources возвращает только source'ы типа subscription
-// из Connections.Sources (для parser adapter и UI).
+// GetSubscriptionSources возвращает только source'ы вида subscription
+// из Sources (для parser adapter и UI).
 func (s *State) GetSubscriptionSources() []Source {
 	if s == nil {
 		return nil
 	}
-	out := make([]Source, 0, len(s.Connections.Sources))
-	for _, src := range s.Connections.Sources {
-		if src.Type == SourceTypeSubscription {
+	out := make([]Source, 0, len(s.Sources))
+	for _, src := range s.Sources {
+		if src.Kind == SourceKindSubscription {
 			out = append(out, src)
 		}
 	}
 	return out
 }
 
-// GetServerSources возвращает только source'ы типа server.
+// GetServerSources возвращает только source'ы вида server.
 func (s *State) GetServerSources() []Source {
 	if s == nil {
 		return nil
 	}
-	out := make([]Source, 0, len(s.Connections.Sources))
-	for _, src := range s.Connections.Sources {
-		if src.Type == SourceTypeServer {
+	out := make([]Source, 0, len(s.Sources))
+	for _, src := range s.Sources {
+		if src.Kind == SourceKindServer {
 			out = append(out, src)
 		}
 	}
@@ -201,9 +213,9 @@ func (s *State) FindSource(id string) *Source {
 	if s == nil {
 		return nil
 	}
-	for i := range s.Connections.Sources {
-		if s.Connections.Sources[i].ID == id {
-			return &s.Connections.Sources[i]
+	for i := range s.Sources {
+		if s.Sources[i].ID == id {
+			return &s.Sources[i]
 		}
 	}
 	return nil

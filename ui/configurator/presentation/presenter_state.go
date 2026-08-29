@@ -93,13 +93,13 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 		state.TargetPlatform = tgt.GOOS
 		state.TargetArch = tgt.GOARCH
 	}
-	state.Connections.Sources = append([]wizardmodels.Source(nil), p.model.Sources...)
+	state.Sources = append([]wizardmodels.Source(nil), p.model.Sources...)
 	if len(p.model.GlobalOutbounds) > 0 {
-		state.Connections.Outbounds = append([]configtypes.Direction(nil), p.model.GlobalOutbounds...)
+		state.Directions = append([]configtypes.Direction(nil), p.model.GlobalOutbounds...)
 	} else {
-		state.Connections.Outbounds = []configtypes.Direction{}
+		state.Directions = []configtypes.Direction{}
 	}
-	state.Connections.Defaults = p.model.Defaults
+	state.Defaults = p.model.Defaults
 	state.WarpAccounts = p.model.WarpAccounts
 
 	// Извлекаем config_params из модели
@@ -165,7 +165,7 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	// Обратный синк Save удалён (W4): Save сериализует Connections как есть,
 	// выравнивать проекцию больше не нужно.
 	if p.model.TemplateData != nil {
-		build.SyncOutboundsWithTemplate(state.Rules, &state.Connections.Outbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
+		build.SyncOutboundsWithTemplate(state.Rules, &state.Directions, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
 	}
 
 	// dns_options в state — только servers и rules; скаляры DNS — в state.vars (dns_*).

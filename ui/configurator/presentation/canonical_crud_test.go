@@ -31,16 +31,14 @@ func newCanonicalCRUDModel() *wizardmodels.WizardModel {
 	m := wizardmodels.NewWizardModel()
 	m.Sources = []wizardmodels.Source{
 		{
-			ID:      "01C1SUB00000000000000000",
-			Type:    wizardmodels.SourceTypeSubscription,
-			Enabled: true,
-			Label:   "Proton NL",
-			URL:     "https://example.com/sub",
+			ID:    "01C1SUB00000000000000000",
+			Node:  wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
+			Label: "Proton NL",
+			URL:   "https://example.com/sub",
 		},
 		{
 			ID:      "01C1SRV00000000000000000",
-			Type:    wizardmodels.SourceTypeServer,
-			Enabled: true,
+			Node:    wizardmodels.Node{Kind: wizardmodels.SourceKindServer, Enabled: true},
 			Label:   "WARP hop",
 			NodeTag: "warp-hop",
 			URI:     "vless://uuid@host:443",
@@ -130,24 +128,24 @@ func TestDirectionsCRUD_CanonicalThroughSaveLoad(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if len(loaded.Connections.Sources) != 2 {
-		t.Fatalf("sources после roundtrip: %d, ожидалось 2", len(loaded.Connections.Sources))
+	if len(loaded.Sources) != 2 {
+		t.Fatalf("sources после roundtrip: %d, ожидалось 2", len(loaded.Sources))
 	}
 	for i := range m.Sources {
-		if loaded.Connections.Sources[i].ID != m.Sources[i].ID {
-			t.Errorf("source[%d].ID = %q, ожидался %q (ID обязан жить в canonical)", i, loaded.Connections.Sources[i].ID, m.Sources[i].ID)
+		if loaded.Sources[i].ID != m.Sources[i].ID {
+			t.Errorf("source[%d].ID = %q, ожидался %q (ID обязан жить в canonical)", i, loaded.Sources[i].ID, m.Sources[i].ID)
 		}
 	}
-	if len(loaded.Connections.Outbounds) != 2 ||
-		loaded.Connections.Outbounds[0].Tag != "vpn-1" ||
-		loaded.Connections.Outbounds[1].Tag != "NL:select" {
-		t.Fatalf("outbounds после roundtrip: %+v", loaded.Connections.Outbounds)
+	if len(loaded.Directions) != 2 ||
+		loaded.Directions[0].Tag != "vpn-1" ||
+		loaded.Directions[1].Tag != "NL:select" {
+		t.Fatalf("outbounds после roundtrip: %+v", loaded.Directions)
 	}
-	if !loaded.Connections.Outbounds[0].Disabled {
+	if !loaded.Directions[0].Disabled {
 		t.Error("toggle (Disabled=true) потерян на Save/Load")
 	}
-	if len(loaded.Connections.Sources[0].Outbounds) != 0 {
-		t.Errorf("смена scope local→global оставила локальную копию: %+v", loaded.Connections.Sources[0].Outbounds)
+	if len(loaded.Sources[0].Outbounds) != 0 {
+		t.Errorf("смена scope local→global оставила локальную копию: %+v", loaded.Sources[0].Outbounds)
 	}
 
 	// --- C7: update-конвейер (loadParserConfigForUpdate → generate) читает

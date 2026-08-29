@@ -81,10 +81,9 @@ func TestDefaultWizardFlow_NextNextFinish(t *testing.T) {
 	// подписка добавляется как источник (сборка превью её не скачивает).
 	model.SourceURLs = "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt"
 	model.Sources = append(model.Sources, wizardmodels.Source{
-		ID:      "01TESTWIZARDFLOW000000000",
-		Type:    wizardmodels.SourceTypeSubscription,
-		Enabled: true,
-		URL:     model.SourceURLs,
+		ID:   "01TESTWIZARDFLOW000000000",
+		Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
+		URL:  model.SourceURLs,
 	})
 
 	// SPEC 053 removed template.selectable_rules — wizard now opens with empty
@@ -151,10 +150,9 @@ func TestWizardFlowWithCustomRules(t *testing.T) {
 	// SPEC 117: canonical-источник для гейта «нечего собирать» (см. выше).
 	model.SourceURLs = "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS.txt"
 	model.Sources = append(model.Sources, wizardmodels.Source{
-		ID:      "01TESTWIZARDRULES00000000",
-		Type:    wizardmodels.SourceTypeSubscription,
-		Enabled: true,
-		URL:     model.SourceURLs,
+		ID:   "01TESTWIZARDRULES00000000",
+		Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
+		URL:  model.SourceURLs,
 	})
 
 	// SPEC 053 removed template.selectable_rules — wizard now opens with empty

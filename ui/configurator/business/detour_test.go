@@ -60,9 +60,8 @@ func TestDetourOptions_ExcludesOwnGroups(t *testing.T) {
 func TestDetourOptions_ExcludesAllSubscriptionLocalGroups(t *testing.T) {
 	m := modelWithOutbounds(t, "proxy")
 	m.Sources = []wizardmodels.Source{{
-		Type:    wizardmodels.SourceTypeSubscription,
-		Enabled: true,
-		URL:     "https://x/sub1",
+		Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
+		URL:  "https://x/sub1",
 		Outbounds: []configtypes.Direction{
 			{Tag: "sub-auto", Type: "urltest"},
 		},
@@ -116,11 +115,10 @@ func modelWithServerSource(t *testing.T, label, uri string, groupTags ...string)
 	m.Sources = []wizardmodels.Source{{
 		// ID обязателен: SPEC 112-A адресует узел парой «source_id + тег»,
 		// и пикер обязан записать в выбор именно его.
-		ID:      "01SRV0000000000000000000",
-		Type:    wizardmodels.SourceTypeServer,
-		Enabled: true,
-		Label:   label,
-		URI:     uri,
+		ID:    "01SRV0000000000000000000",
+		Node:  wizardmodels.Node{Kind: wizardmodels.SourceKindServer, Enabled: true},
+		Label: label,
+		URI:   uri,
 	}}
 	return m
 }
@@ -174,8 +172,7 @@ func TestDetourOptionsWithNodes_UsesNodeTagOverLabel(t *testing.T) {
 func TestDetourOptionsWithNodes_OffersConfigJSONOnlySource(t *testing.T) {
 	m := modelWithOutbounds(t, "proxy")
 	m.Sources = []wizardmodels.Source{{
-		Type:       wizardmodels.SourceTypeServer,
-		Enabled:    true,
+		Node:       wizardmodels.Node{Kind: wizardmodels.SourceKindServer, Enabled: true},
 		Label:      "WARP hop",
 		NodeTag:    "🔥🎭 WARP (MASQUE)",
 		ConfigJSON: json.RawMessage(`{"type":"vless","server":"h.example.com","server_port":443}`),

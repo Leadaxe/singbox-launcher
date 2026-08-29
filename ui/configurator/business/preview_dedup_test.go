@@ -41,10 +41,9 @@ func TestPreviewNodeCountsSeeDedup(t *testing.T) {
 
 	m := &wizardmodels.WizardModel{
 		Sources: []corestate.Source{{
-			ID:      "01DARK",
-			Type:    corestate.SourceTypeSubscription,
-			Enabled: true,
-			URL:     url,
+			ID:   "01DARK",
+			Node: corestate.Node{Kind: corestate.SourceKindSubscription, Enabled: true},
+			URL:  url,
 		}},
 	}
 

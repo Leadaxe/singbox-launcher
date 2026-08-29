@@ -33,10 +33,9 @@ func finalReportModel(t *testing.T) *wizardmodels.WizardModel {
 	// SPEC 117: гейты «нечего собирать» смотрят на canonical model.Sources —
 	// эмулируем добавленную подписку (генератор в тестах замокан).
 	model.Sources = append(model.Sources, wizardmodels.Source{
-		ID:      "01TESTFINALREPORT00000000",
-		Type:    wizardmodels.SourceTypeSubscription,
-		Enabled: true,
-		URL:     "https://example.com/sub",
+		ID:   "01TESTFINALREPORT00000000",
+		Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
+		URL:  "https://example.com/sub",
 	})
 	model.RulesLibraryMerged = true
 	model.Target = wizardtemplate.LocalTarget()

@@ -10,12 +10,12 @@ import (
 
 func modelWithHopAndDependents(hopID, hopTag string) *wizardmodels.WizardModel {
 	return &wizardmodels.WizardModel{Sources: []wizardmodels.Source{
-		{ID: hopID, Type: wizardmodels.SourceTypeServer, Enabled: true,
+		{ID: hopID, Node: wizardmodels.Node{Kind: wizardmodels.SourceKindServer, Enabled: true},
 			Label: "WARP hop", NodeTag: hopTag, URI: detourTestServerURI},
-		{ID: "01PROTON", Type: wizardmodels.SourceTypeSubscription, Enabled: true,
+		{ID: "01PROTON", Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
 			Label: "Proton NL", URL: "https://example.com/proton",
 			DetourNodeSourceID: hopID, DetourNodeTag: hopTag, DetourNodeLabel: "WARP hop"},
-		{ID: "01OTHER", Type: wizardmodels.SourceTypeSubscription, Enabled: true,
+		{ID: "01OTHER", Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
 			Label: "Liberty", URL: "https://example.com/liberty"},
 	}}
 }
@@ -43,9 +43,9 @@ func TestResetDetourNodeRefs_ClearsFullRef(t *testing.T) {
 // подписки много узлов, и смена имени одного не касается остальных.
 func TestResetDetourNodeRefs_KeepsSiblingNodeRef(t *testing.T) {
 	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{
-		{ID: "01LIB", Type: wizardmodels.SourceTypeSubscription, Enabled: true,
+		{ID: "01LIB", Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
 			Label: "AL: Liberty", URL: "https://example.com/liberty"},
-		{ID: "01PROTON", Type: wizardmodels.SourceTypeSubscription, Enabled: true,
+		{ID: "01PROTON", Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
 			Label: "Proton NL", DetourNodeSourceID: "01LIB", DetourNodeTag: "🇳🇱 Amsterdam-2"},
 	}}
 
@@ -61,8 +61,8 @@ func TestResetDetourNodeRefs_KeepsSiblingNodeRef(t *testing.T) {
 // принадлежало этому узлу.
 func TestResetDetourNodeRefs_TagOnlyRefOnlyWhenUnambiguous(t *testing.T) {
 	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{
-		{ID: "01WARP", Type: wizardmodels.SourceTypeServer, Enabled: true, NodeTag: "hop"},
-		{ID: "01PROTON", Type: wizardmodels.SourceTypeSubscription, Enabled: true,
+		{ID: "01WARP", Node: wizardmodels.Node{Kind: wizardmodels.SourceKindServer, Enabled: true}, NodeTag: "hop"},
+		{ID: "01PROTON", Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
 			Label: "Proton NL", DetourNodeTag: "hop"},
 	}}
 	if affected := ResetDetourNodeRefs(m, "01WARP", "hop"); len(affected) != 1 {
@@ -72,9 +72,9 @@ func TestResetDetourNodeRefs_TagOnlyRefOnlyWhenUnambiguous(t *testing.T) {
 	// Тёзка: двух серверов с одним тегом отличить нечем — ссылку не трогаем,
 	// чтобы не погасить чужую.
 	m2 := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{
-		{ID: "01WARP", Type: wizardmodels.SourceTypeServer, Enabled: true, NodeTag: "hop"},
-		{ID: "01TWIN", Type: wizardmodels.SourceTypeServer, Enabled: true, NodeTag: "hop"},
-		{ID: "01PROTON", Type: wizardmodels.SourceTypeSubscription, Enabled: true,
+		{ID: "01WARP", Node: wizardmodels.Node{Kind: wizardmodels.SourceKindServer, Enabled: true}, NodeTag: "hop"},
+		{ID: "01TWIN", Node: wizardmodels.Node{Kind: wizardmodels.SourceKindServer, Enabled: true}, NodeTag: "hop"},
+		{ID: "01PROTON", Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
 			Label: "Proton NL", DetourNodeTag: "hop"},
 	}}
 	if affected := ResetDetourNodeRefs(m2, "01WARP", "hop"); len(affected) != 0 {
@@ -92,10 +92,10 @@ func TestResetDetourNodeRefs_TagOnlyRefSurvivesRenameOfNamesake(t *testing.T) {
 	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{
 		// 01WARP уже переименован формой: в модели новый тег, сброс зовут со
 		// старым.
-		{ID: "01WARP", Type: wizardmodels.SourceTypeServer, Enabled: true, NodeTag: "hop-renamed"},
+		{ID: "01WARP", Node: wizardmodels.Node{Kind: wizardmodels.SourceKindServer, Enabled: true}, NodeTag: "hop-renamed"},
 		// Тёзка, которого никто не трогал: ссылка ниже могла вести к нему.
-		{ID: "01TWIN", Type: wizardmodels.SourceTypeServer, Enabled: true, NodeTag: "hop"},
-		{ID: "01PROTON", Type: wizardmodels.SourceTypeSubscription, Enabled: true,
+		{ID: "01TWIN", Node: wizardmodels.Node{Kind: wizardmodels.SourceKindServer, Enabled: true}, NodeTag: "hop"},
+		{ID: "01PROTON", Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
 			Label: "Proton NL", DetourNodeTag: "hop"},
 	}}
 
@@ -113,8 +113,8 @@ func TestResetDetourNodeRefs_TagOnlyRefSurvivesRenameOfNamesake(t *testing.T) {
 // переименованный узел и обязана погаснуть, даже когда тег в модели уже новый.
 func TestResetDetourNodeRefs_TagOnlyRefClearedAfterRenameWithoutNamesake(t *testing.T) {
 	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{
-		{ID: "01WARP", Type: wizardmodels.SourceTypeServer, Enabled: true, NodeTag: "hop-renamed"},
-		{ID: "01PROTON", Type: wizardmodels.SourceTypeSubscription, Enabled: true,
+		{ID: "01WARP", Node: wizardmodels.Node{Kind: wizardmodels.SourceKindServer, Enabled: true}, NodeTag: "hop-renamed"},
+		{ID: "01PROTON", Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
 			Label: "Proton NL", DetourNodeTag: "hop"},
 	}}
 

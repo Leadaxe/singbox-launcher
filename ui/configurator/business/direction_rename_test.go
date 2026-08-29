@@ -30,7 +30,7 @@ func renameTestModel() *wizardmodels.WizardModel {
 			{Ref: "russian", Enabled: true, Vars: map[string]string{"out": "vpn-1"}},
 		},
 		Sources: []corestate.Source{
-			{Type: corestate.SourceTypeChain, Chain: &configtypes.SourceChain{
+			{Node: corestate.Node{Kind: corestate.SourceKindChain}, Chain: &configtypes.SourceChain{
 				Hops: []string{"node-a", "vpn-1"},
 			}},
 		},
@@ -105,8 +105,8 @@ func TestRenameDirection_CanonicalOnly(t *testing.T) {
 	// Локальное Направление источника ссылается на переименовываемый тег
 	// опцией — та самая вторая canonical-половина правки.
 	m.Sources = append(m.Sources, corestate.Source{
-		Type: corestate.SourceTypeSubscription, Enabled: true,
-		URL: "https://example.com/sub",
+		Node: corestate.Node{Kind: corestate.SourceKindSubscription, Enabled: true},
+		URL:  "https://example.com/sub",
 		Outbounds: []configtypes.Direction{
 			{Tag: "AL:select", Type: "selector", AddOutbounds: []string{"vpn-1", "vpn-1-auto"}},
 		},

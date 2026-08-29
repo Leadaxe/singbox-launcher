@@ -80,7 +80,7 @@ func TestMigrate_RealFixture(t *testing.T) {
 
 	// 4. Subscription: TagSpec.Prefix перенесён, ExcludeFromGlobal/Expose флаги
 	//    сохранены. Ищем `WL:` источник у которого был exclude_from_global=true.
-	var wl *Source
+	var wl *sourceV6
 	for i, s := range state.Connections.Sources {
 		if s.Tag != nil && s.Tag.Prefix == "WL:" {
 			wl = &state.Connections.Sources[i]

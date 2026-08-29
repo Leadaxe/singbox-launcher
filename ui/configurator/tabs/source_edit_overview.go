@@ -57,7 +57,7 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 		// === Identity ===
 		body.Add(sectionHeader(locale.T("Status")))
 		typeLabel := locale.T("Subscription")
-		if src.Type == corestate.SourceTypeServer {
+		if src.Kind == corestate.SourceTypeServer {
 			typeLabel = locale.T("Server")
 		}
 		body.Add(kvRow(locale.T("Type"), typeLabel))
@@ -81,7 +81,7 @@ func buildOverviewTab(presenter *wizardpresentation.WizardPresenter, sourceIndex
 			body.Add(kvRow(locale.T("Excluded from global"), "true"))
 		}
 
-		if src.Type == corestate.SourceTypeServer {
+		if src.Kind == corestate.SourceTypeServer {
 			body.Add(widget.NewSeparator())
 			lbl := widget.NewLabel(locale.T("Server source — meta is not collected (only fetched per subscription)."))
 			lbl.Importance = widget.LowImportance

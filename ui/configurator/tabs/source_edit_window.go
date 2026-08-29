@@ -227,6 +227,38 @@ func setNodeEnabled(src *wizardmodels.Source, hash string, enabled bool) {
 // не мутирует, только заменяет целиком.
 //
 // go1.20 (риск Р9): без slices./maps. — ручные append/копии карт.
+// cloneCanonicalNode — глубокая копия канонического Node v7 (SPEC 118):
+// Origin/Body/Detour/Hops/Group — ссылочные, буфер формы обязан владеть
+// своими экземплярами. Без slices./maps. (go1.20-гард win7-сборки).
+func cloneCanonicalNode(n wizardmodels.Node) wizardmodels.Node {
+	c := n
+	if n.Origin != nil {
+		o := *n.Origin
+		c.Origin = &o
+	}
+	if n.Body != nil {
+		c.Body = append(json.RawMessage(nil), n.Body...)
+	}
+	if n.Detour != nil {
+		d := *n.Detour
+		c.Detour = &d
+	}
+	if n.Hops != nil {
+		c.Hops = append([]wizardmodels.NodeLink(nil), n.Hops...)
+	}
+	if n.Group != nil {
+		g := *n.Group
+		g.Members = append([]wizardmodels.NodeLink(nil), n.Group.Members...)
+		if n.Group.Strategy.InterruptExistConnections != nil {
+			b := *n.Group.Strategy.InterruptExistConnections
+			g.Strategy.InterruptExistConnections = &b
+		}
+		g.Strategy.StickyHash = append([]string(nil), n.Group.Strategy.StickyHash...)
+		c.Group = &g
+	}
+	return c
+}
+
 func cloneSource(src *wizardmodels.Source) wizardmodels.Source {
 	if src == nil {
 		return wizardmodels.Source{}
@@ -245,9 +277,9 @@ func cloneSource(src *wizardmodels.Source) wizardmodels.Source {
 			c.Skip[i] = mm
 		}
 	}
-	if src.Tag != nil {
-		t := *src.Tag
-		c.Tag = &t
+	if src.TagPolicy != nil {
+		t := *src.TagPolicy
+		c.TagPolicy = &t
 	}
 	if src.Outbounds != nil {
 		c.Outbounds = make([]configtypes.Direction, len(src.Outbounds))
@@ -316,6 +348,30 @@ func cloneSource(src *wizardmodels.Source) wizardmodels.Source {
 			dn[k] = v
 		}
 		c.DisabledNodes = dn
+	}
+
+	// SPEC 118 (W1): канонические поля v7 — глубокая копия, иначе правки
+	// буфера формы утекали бы в модель до Save (тот же контракт, что у
+	// остальных полей выше).
+	c.Node = cloneCanonicalNode(src.Node)
+	if src.Nodes != nil {
+		c.Nodes = make([]wizardmodels.Node, len(src.Nodes))
+		for i := range src.Nodes {
+			c.Nodes[i] = cloneCanonicalNode(src.Nodes[i])
+		}
+	}
+	if src.Replace != nil {
+		r := *src.Replace
+		if src.Replace.Strategy != nil {
+			st := *src.Replace.Strategy
+			r.Strategy = &st
+		}
+		c.Replace = &r
+	}
+	if src.UpdateStatus != nil {
+		us := *src.UpdateStatus
+		us.Warnings = append([]wizardmodels.FetchWarning(nil), src.UpdateStatus.Warnings...)
+		c.UpdateStatus = &us
 	}
 	return c
 }
@@ -442,7 +498,7 @@ func showSourceEditWindow(
 	fullTitleSrc := shortLabel
 	if mm != nil && sourceIndex < len(mm.Sources) {
 		s := mm.Sources[sourceIndex]
-		switch s.Type {
+		switch s.Kind {
 		case wizardmodels.SourceTypeSubscription:
 			if s.Meta != nil && strings.TrimSpace(s.Meta.ProfileTitle) != "" {
 				fullTitleSrc = s.Meta.ProfileTitle
@@ -478,8 +534,8 @@ func showSourceEditWindow(
 	// назад: nodeTagEntry.OnChanged срабатывает на каждый символ.
 	nodeTagAtOpen := strings.TrimSpace(m.Sources[sourceIndex].NodeTagOrLabel())
 	sourceIDAtOpen := m.Sources[sourceIndex].ID
-	nodeIdentityOwner := m.Sources[sourceIndex].Type == wizardmodels.SourceTypeServer ||
-		m.Sources[sourceIndex].Type == wizardmodels.SourceTypeChain
+	nodeIdentityOwner := m.Sources[sourceIndex].Kind == wizardmodels.SourceTypeServer ||
+		m.Sources[sourceIndex].Kind == wizardmodels.SourceTypeChain
 	// srcRef — рабочая копия, если источник ещё существует в модели (список
 	// могли перестроить, пока окно открыто); nil — форме больше некого править.
 	srcRef := func() *wizardmodels.Source {
@@ -538,7 +594,7 @@ func showSourceEditWindow(
 
 	// SPEC 110: форма цепочки. Существует только у источника-цепочки, где
 	// заменяет собой всё остальное: ни URL, ни URI, ни свёртки у неё нет.
-	isChainSource := m.Sources[sourceIndex].Type == wizardmodels.SourceTypeChain
+	isChainSource := m.Sources[sourceIndex].Kind == wizardmodels.SourceTypeChain
 	var chainTabBody *chainForm
 	if isChainSource {
 		selfTag := m.Sources[sourceIndex].NodeTagOrLabel()
@@ -681,19 +737,19 @@ func showSourceEditWindow(
 		if p == nil {
 			return
 		}
-		if p.Tag == nil {
-			p.Tag = &wizardmodels.TagSpec{}
+		if p.TagPolicy == nil {
+			p.TagPolicy = &wizardmodels.TagSpec{}
 		}
-		set(p.Tag)
-		if p.Tag.Prefix == "" && p.Tag.Postfix == "" && p.Tag.Mask == "" {
-			p.Tag = nil
+		set(p.TagPolicy)
+		if p.TagPolicy.Prefix == "" && p.TagPolicy.Postfix == "" && p.TagPolicy.Mask == "" {
+			p.TagPolicy = nil
 		}
 	}
 	tagSpecOf := func(p *wizardmodels.Source) wizardmodels.TagSpec {
-		if p == nil || p.Tag == nil {
+		if p == nil || p.TagPolicy == nil {
 			return wizardmodels.TagSpec{}
 		}
-		return *p.Tag
+		return *p.TagPolicy
 	}
 
 	syncFormFromModel := func() {
@@ -751,7 +807,7 @@ func showSourceEditWindow(
 		// Поле именует УЗЕЛ и есть только у источников-владельцев
 		// идентичности (server/chain); у подписки NodeTag не используется,
 		// и programmatic SetText не должен его затрагивать.
-		if p == nil || (p.Type != wizardmodels.SourceTypeServer && p.Type != wizardmodels.SourceTypeChain) {
+		if p == nil || (p.Kind != wizardmodels.SourceTypeServer && p.Kind != wizardmodels.SourceTypeChain) {
 			return
 		}
 		// SPEC 113-E: правка тега БУФЕРИЗУЕТСЯ в рабочей копии, как и
@@ -792,7 +848,7 @@ func showSourceEditWindow(
 	rebuildSettingsLayout := func() {
 		settingsContent.Objects = settingsContent.Objects[:0]
 		mm := presenter.Model()
-		isServer := mm != nil && sourceIndex < len(mm.Sources) && mm.Sources[sourceIndex].Type == wizardmodels.SourceTypeServer
+		isServer := mm != nil && sourceIndex < len(mm.Sources) && mm.Sources[sourceIndex].Kind == wizardmodels.SourceTypeServer
 
 		if isServer {
 			// Server: URI + Label + ExcludeFromGlobal + Detour.
@@ -957,7 +1013,7 @@ func showSourceEditWindow(
 			//     включать источник).
 			if model != nil && sourceIndex < len(model.Sources) {
 				src := model.Sources[sourceIndex]
-				switch src.Type {
+				switch src.Kind {
 				case wizardmodels.SourceTypeServer:
 					if len(src.ConfigJSON) > 0 {
 						// Ручной config_json приоритетнее URI — как в сборке.
@@ -1172,7 +1228,7 @@ func showSourceEditWindow(
 	//     собирается руками); Reset возвращает генерацию из URI.
 	//   - subscription: read-only распаковка кэшированного body — правки
 	//     перезатёр бы первый же сетевой refresh.
-	isServerSource := m.Sources[sourceIndex].Type == wizardmodels.SourceTypeServer
+	isServerSource := m.Sources[sourceIndex].Kind == wizardmodels.SourceTypeServer
 
 	jsonEntry := widget.NewMultiLineEntry()
 	jsonEntry.Wrapping = fyne.TextWrapOff

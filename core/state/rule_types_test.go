@@ -367,7 +367,13 @@ func TestSchemaConstants(t *testing.T) {
 	if SchemaVersionV6 != 6 {
 		t.Errorf("SchemaVersionV6 should be 6, got %d", SchemaVersionV6)
 	}
-	if SchemaName != "presets_v1" {
-		t.Errorf("SchemaName mismatch: %q", SchemaName)
+	if SchemaNameV6 != "presets_v1" {
+		t.Errorf("SchemaNameV6 mismatch: %q", SchemaNameV6)
+	}
+	if SchemaVersionV7 != 7 || SchemaVersion != SchemaVersionV7 {
+		t.Errorf("SchemaVersion should be v7 (SPEC 118), got %d", SchemaVersion)
+	}
+	if SchemaNameV7 != "sources_v7" {
+		t.Errorf("SchemaNameV7 mismatch: %q", SchemaNameV7)
 	}
 }

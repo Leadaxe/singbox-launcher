@@ -51,10 +51,9 @@ func (m *blockingGenMock) RefreshSourceInPlace(*corestate.Source) (bool, error) 
 func newStaleTestModel() *wizardmodels.WizardModel {
 	model := wizardmodels.NewWizardModel()
 	model.Sources = append(model.Sources, corestate.Source{
-		ID:      corestate.MakeULID(),
-		Type:    corestate.SourceTypeSubscription,
-		Enabled: true,
-		URL:     "https://example.com/a",
+		ID:   corestate.MakeULID(),
+		Node: corestate.Node{Kind: corestate.SourceKindSubscription, Enabled: true},
+		URL:  "https://example.com/a",
 	})
 	model.BumpRevision()
 	return model

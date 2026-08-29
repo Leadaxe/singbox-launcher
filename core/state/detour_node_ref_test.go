@@ -13,8 +13,7 @@ import (
 func TestDetourNodeRefSurvivesJSONRoundTrip(t *testing.T) {
 	src := Source{
 		ID:                 "01PROTON0000000000000000",
-		Type:               SourceTypeSubscription,
-		Enabled:            true,
+		Node:               Node{Kind: SourceKindSubscription, Enabled: true},
 		Label:              "Proton NL",
 		URL:                "https://example.invalid/proton",
 		DetourNodeSourceID: "01WARP00000000000000000",
@@ -43,12 +42,12 @@ func TestDetourNodeRefReachesProxySource(t *testing.T) {
 		src  Source
 	}{
 		{"subscription", Source{
-			ID: "01PROTON", Type: SourceTypeSubscription, Enabled: true, Label: "Proton NL",
+			ID: "01PROTON", Node: Node{Kind: SourceKindSubscription, Enabled: true}, Label: "Proton NL",
 			URL:                "https://example.invalid/proton",
 			DetourNodeSourceID: "01WARP", DetourNodeTag: "hop",
 		}},
 		{"server", Source{
-			ID: "01SRV", Type: SourceTypeServer, Enabled: true, Label: "Tokyo",
+			ID: "01SRV", Node: Node{Kind: SourceKindServer, Enabled: true}, Label: "Tokyo",
 			URI: "vless://u@h:443", NodeTag: "🇯🇵 Tokyo",
 			DetourNodeSourceID: "01WARP", DetourNodeTag: "hop",
 		}},

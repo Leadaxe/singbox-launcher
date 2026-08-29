@@ -15,7 +15,7 @@ func modelWithNodes() *wizardmodels.WizardModel {
 	n2 := &config.ParsedNode{Tag: "AL:b", IdentityTag: "b", Scheme: "socks", Server: "10.0.0.2", Port: 1080}
 	n3 := &config.ParsedNode{Tag: "AL:c", IdentityTag: "c", Scheme: "socks", Server: "10.0.0.3", Port: 1080}
 	return &wizardmodels.WizardModel{
-		Sources:      []wizardmodels.Source{{ID: "s1", Type: wizardmodels.SourceTypeSubscription}},
+		Sources:      []wizardmodels.Source{{ID: "s1", Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription}}},
 		PreviewNodes: []*config.ParsedNode{n1, n2, n3},
 		PreviewNodesBySource: map[int][]*config.ParsedNode{
 			0: {n1, n2, n3},

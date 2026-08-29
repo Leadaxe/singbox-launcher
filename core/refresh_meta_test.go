@@ -32,12 +32,11 @@ func TestRefreshSubscriptionsMetaAndCache_HappyPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := state.New()
-	s.Connections.Sources = []state.Source{
+	s.Sources = []state.Source{
 		{
-			ID:      "01TESTID",
-			Type:    state.SourceTypeSubscription,
-			Enabled: true,
-			URL:     srv.URL,
+			ID:   "01TESTID",
+			Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
+			URL:  srv.URL,
 		},
 	}
 	if err := s.Save(platform.GetWizardStatePath(execDir)); err != nil {
@@ -68,10 +67,10 @@ func TestRefreshSubscriptionsMetaAndCache_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload state: %v", err)
 	}
-	if len(reloaded.Connections.Sources) != 1 {
-		t.Fatalf("source count: %d", len(reloaded.Connections.Sources))
+	if len(reloaded.Sources) != 1 {
+		t.Fatalf("source count: %d", len(reloaded.Sources))
 	}
-	src := reloaded.Connections.Sources[0]
+	src := reloaded.Sources[0]
 	if src.Meta == nil {
 		t.Fatalf("Meta should be populated after refresh")
 	}
@@ -119,13 +118,12 @@ func TestRefreshSubscriptionsMetaAndCache_FailureKeepsOldRaw(t *testing.T) {
 	}
 
 	s := state.New()
-	s.Connections.Sources = []state.Source{
+	s.Sources = []state.Source{
 		{
-			ID:      "01FAIL",
-			Type:    state.SourceTypeSubscription,
-			Enabled: true,
-			URL:     srv.URL,
-			Meta:    &state.SubscriptionMeta{ErrorCount: 0},
+			ID:   "01FAIL",
+			Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true},
+			URL:  srv.URL,
+			Meta: &state.SubscriptionMeta{ErrorCount: 0},
 		},
 	}
 	if err := s.Save(platform.GetWizardStatePath(execDir)); err != nil {
@@ -146,7 +144,7 @@ func TestRefreshSubscriptionsMetaAndCache_FailureKeepsOldRaw(t *testing.T) {
 
 	// 2. Meta содержит status=err, error_count=1, http_status_code=403.
 	reloaded, _ := state.Load(platform.GetWizardStatePath(execDir))
-	src := reloaded.Connections.Sources[0]
+	src := reloaded.Sources[0]
 	if src.Meta == nil || src.Meta.LastStatus != "err" {
 		t.Errorf("LastStatus should be err: %+v", src.Meta)
 	}
@@ -178,8 +176,8 @@ func TestRefreshSubscriptionsMetaAndCache_DeleteOrphans(t *testing.T) {
 	}
 
 	s := state.New()
-	s.Connections.Sources = []state.Source{
-		{ID: "01KEEP", Type: state.SourceTypeSubscription, Enabled: true, URL: srv.URL},
+	s.Sources = []state.Source{
+		{ID: "01KEEP", Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true}, URL: srv.URL},
 	}
 	if err := s.Save(platform.GetWizardStatePath(execDir)); err != nil {
 		t.Fatal(err)
@@ -218,8 +216,8 @@ func TestRefreshSubscriptionsMetaAndCache_EmptyBodyDoesNotCache(t *testing.T) {
 	subsDir := platform.GetSubscriptionsDir(execDir)
 
 	s := state.New()
-	s.Connections.Sources = []state.Source{
-		{ID: "01EMPTY", Type: state.SourceTypeSubscription, Enabled: true, URL: srv.URL},
+	s.Sources = []state.Source{
+		{ID: "01EMPTY", Node: state.Node{Kind: state.SourceKindSubscription, Enabled: true}, URL: srv.URL},
 	}
 	if err := s.Save(platform.GetWizardStatePath(execDir)); err != nil {
 		t.Fatal(err)

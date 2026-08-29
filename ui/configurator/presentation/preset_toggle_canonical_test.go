@@ -64,10 +64,9 @@ func TestPresetToggle_SingleCanonicalWriteAndIdempotent(t *testing.T) {
 	m.TemplateData = td
 	m.ExecDir = root
 	m.Sources = []wizardmodels.Source{{
-		ID:      "01C4SUB00000000000000000",
-		Type:    wizardmodels.SourceTypeSubscription,
-		Enabled: true,
-		URL:     "https://example.com/sub",
+		ID:   "01C4SUB00000000000000000",
+		Node: wizardmodels.Node{Kind: wizardmodels.SourceKindSubscription, Enabled: true},
+		URL:  "https://example.com/sub",
 	}}
 	m.PresetRefs = []*wizardmodels.PresetRefState{{Ref: "russian", Enabled: true}}
 	wizardmodels.RebuildRuleOrder(m)
