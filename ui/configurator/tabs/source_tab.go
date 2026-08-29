@@ -1091,6 +1091,10 @@ func refreshOneSourceFromUI(
 			// эти изменения уедут в state.json. Это пользовательский edit-ish
 			// — даём ему dirty marker, чтобы Save-кнопка светилась.
 			presenter.MarkAsChanged()
+			// SPEC 118 W3: fetch-merge наполнил канонические nodes[] —
+			// это мутация модели, производные конвейеры обязаны увидеть
+			// новую ревизию («конфиг устарел», не автозапуск сборки).
+			m.BumpRevision()
 		})
 	}()
 }

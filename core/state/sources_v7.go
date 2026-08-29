@@ -187,6 +187,15 @@ type Source struct {
 	Update       *UpdateSpec         `json:"update,omitempty"`
 	Meta         *SubMeta            `json:"meta,omitempty"`
 	UpdateStatus *SubUpdateStatus    `json:"update_status,omitempty"`
+	// PendingDisabled — одноразовые отметки выключения по сырым тегам
+	// (вердикт O2, SPEC 118): их БУДЕТ писать импорт бэкапа (волна W7 —
+	// сегодня импорт кладёт DisabledNodes-карту, её втягивает merge),
+	// когда nodes[] ещё пусты и применять карту не к чему.
+	// Применяются на первом ДОСТОВЕРНОМ
+	// fetch (MergeSubscriptionNodes) и стираются; при truncated-разборе
+	// несматченные теги переживают fetch — узел мог остаться за капом.
+	// Это не TTL-карта: поле живёт только между импортом и первым fetch.
+	PendingDisabled []string `json:"pending_disabled,omitempty"`
 
 	// === TEMPORARY BRIDGE (SPEC 118 W1-W4), удаляется в W5 ===
 	//
@@ -388,9 +397,9 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 			drop("replace")
 			s.Replace = nil
 		}
-		if s.URL != "" || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil {
-			drop("url/skip/max_nodes/update/meta/update_status")
-			s.URL, s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus = "", nil, 0, nil, nil, nil
+		if s.URL != "" || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
+			drop("url/skip/max_nodes/update/meta/update_status/pending_disabled")
+			s.URL, s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus, s.PendingDisabled = "", nil, 0, nil, nil, nil, nil
 		}
 		if ws := normalizeNodeShape(&s.Node, sourceShapeName(s)); len(ws) > 0 {
 			warns = append(warns, ws...)
@@ -420,9 +429,9 @@ func normalizeSourceShape(s *Source) ([]string, error) {
 			s.Group = nil
 		}
 		if s.Kind == SourceKindFolder {
-			if s.URL != "" || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil {
-				drop("url/skip/max_nodes/update/meta/update_status")
-				s.URL, s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus = "", nil, 0, nil, nil, nil
+			if s.URL != "" || len(s.Skip) > 0 || s.MaxNodes != 0 || s.Update != nil || s.Meta != nil || s.UpdateStatus != nil || len(s.PendingDisabled) > 0 {
+				drop("url/skip/max_nodes/update/meta/update_status/pending_disabled")
+				s.URL, s.Skip, s.MaxNodes, s.Update, s.Meta, s.UpdateStatus, s.PendingDisabled = "", nil, 0, nil, nil, nil, nil
 			}
 		}
 		for i := range s.Nodes {

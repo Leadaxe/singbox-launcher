@@ -18,11 +18,13 @@ import (
 	"strings"
 	"time"
 
+	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/config/subscription"
 	"singbox-launcher/core/state"
 	"singbox-launcher/internal/constants"
 	"singbox-launcher/internal/debuglog"
+	"singbox-launcher/internal/locale"
 	"singbox-launcher/internal/platform"
 )
 
@@ -68,6 +70,13 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 		}
 	}
 
+	// Настройки приложения — дефолт капа max_nodes (SPEC 118 Т1); читаются
+	// один раз на весь sweep, а не на каждую подписку.
+	settings := locale.LoadSettings(platform.GetBinDir(execDir))
+
+	// Фан-аут по подпискам остаётся последовательным (memory:
+	// subscription_scale_fanout) — параллельный fetch сотен подписок
+	// стампедил бы сетевой стек.
 	idx := 0
 	for i := range s.Sources {
 		src := &s.Sources[i]
@@ -83,34 +92,13 @@ func refreshSubscriptionsMetaAndCache(s *state.State, execDir string) {
 		}
 		progress(pct, fmt.Sprintf("Fetching %d/%d: %s", idx, enabledCount, shortURL))
 
-		if refreshOneSubscriptionSource(src, s.Defaults, subsDir) {
+		if refreshOneSubscriptionSource(src, s.Defaults, settings, subsDir) {
 			dirty = true
 		}
-
-		// SPEC 094 D4: чистка отметок о выключенных нодах. Выполняется ТОЛЬКО
-		// здесь — на пути успешного сетевого обновления: на прогоне из кэша
-		// тело может быть неполным, и отметки исчезли бы для живых нод, молча
-		// включив их обратно за спиной пользователя.
-		if len(src.DisabledNodes) > 0 {
-			// Интервал: пользовательская настройка, иначе объявленный
-			// провайдером. Ноль означает «не задан» — TTL тогда падает на
-			// свой пол в 24 часа.
-			interval := 0
-			if src.Update != nil {
-				interval = src.Update.IntervalHours
-			}
-			if interval <= 0 && src.Meta != nil {
-				interval = src.Meta.ProfileUpdateIntervalHours
-			}
-			before := len(src.DisabledNodes)
-			src.DisabledNodes = subscription.GCDisabledNodes(src.DisabledNodes, interval, time.Now())
-			if len(src.DisabledNodes) == 0 {
-				src.DisabledNodes = nil
-			}
-			if len(src.DisabledNodes) != before {
-				dirty = true
-			}
-		}
+		// Прежний GCDisabledNodes-проход (SPEC 094 D4) здесь умер: карта
+		// выключенных теперь согласуется с каноном node.enabled внутри
+		// merge на том же пути достоверного обновления
+		// (state.syncLegacyDisabledMap); TTL-механика целиком умирает в W5.
 	}
 
 	// Lazy GC: known set = ОБЪЕДИНЕНИЕ Source.ID'ов из всех state'ов ЛОКАЛЬНОЙ
@@ -204,56 +192,124 @@ func collectAllStageSourceIDs(execDir, target, machineID string) []string {
 	return out
 }
 
-// refreshOneSubscriptionSource — атомарный fetch+meta+raw-cache для
-// одного source. Мутирует src.Meta in-place; возвращает true если
-// что-то изменилось (caller должен сохранить state).
+// refreshOneSubscriptionSource — атомарный fetch одного source: скачать →
+// SubMeta из заголовков → ParseSubscriptionBody → MergeSubscriptionNodes →
+// updateStatus (SPEC 118 W3, PLAN §3.1). Возвращает true если что-то
+// изменилось (caller должен сохранить state).
 //
-// На failed fetch: keep старый .raw, error_count++, last_status="err".
-// На success: write .raw atomic, fill meta полностью.
-func refreshOneSubscriptionSource(src *state.Source, defaults state.Defaults, subsDir string) bool {
+// Пишет ТОЛЬКО новые slice/pointer'ы (src.Nodes, src.Meta, src.UpdateStatus
+// заменяются, не мутируются): UI-пути RefreshSourceInPlace работают со
+// value-snapshot'ом источника, и мутация разделяемых объектов утекала бы в
+// модель мимо UI-thread.
+//
+// На failed fetch / недостоверный разбор: nodes[] НЕ трогаются (SPEC 113-A),
+// старый .raw остаётся, ошибка — в updateStatus (и мостовую Meta).
+// На success: write .raw atomic (мост до W5 — сборка пока читает его),
+// merge в nodes[], meta полностью.
+func refreshOneSubscriptionSource(src *state.Source, defaults state.Defaults, settings locale.Settings, subsDir string) bool {
 	if src == nil || src.Kind != state.SourceTypeSubscription || src.URL == "" {
 		return false
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	res, fetchErr := subscription.FetchSubscriptionWithMeta(src.URL)
-	if src.Meta == nil {
-		src.Meta = &state.SubscriptionMeta{}
-	}
 
 	if fetchErr != nil {
-		src.Meta.URLAtFetch = src.URL
-		src.Meta.LastFetchedAt = now
-		src.Meta.LastStatus = "err"
-		src.Meta.ErrorCount++
-		src.Meta.LastErrorMsg = fetchErr.Error()
+		// Мостовая Meta (TEMPORARY BRIDGE, UI читает её до W6) — новая копия,
+		// не мутация разделяемого указателя.
+		meta := state.SubscriptionMeta{}
+		if src.Meta != nil {
+			meta = *src.Meta
+		}
+		meta.URLAtFetch = src.URL
+		meta.LastFetchedAt = now
+		meta.LastStatus = "err"
+		meta.ErrorCount++
+		meta.LastErrorMsg = fetchErr.Error()
 		// SPEC 061: surface the structured announce on either error variant
 		// so UI can render an actionable dialog with the provider message +
 		// clickable URL, not just a flat error label.
-		src.Meta.ProviderAnnounce = nil
-		src.Meta.LastErrorURL = ""
+		meta.ProviderAnnounce = nil
+		meta.LastErrorURL = ""
 		if ae, ok := subscription.IsAnnounceError(fetchErr); ok {
 			a := ae.Announce
-			src.Meta.ProviderAnnounce = &a
-			src.Meta.LastErrorURL = a.URL
+			meta.ProviderAnnounce = &a
+			meta.LastErrorURL = a.URL
 		}
 		if httpErr, ok := subscription.IsHTTPError(fetchErr); ok {
-			src.Meta.HTTPStatusCode = httpErr.StatusCode
+			meta.HTTPStatusCode = httpErr.StatusCode
 			if httpErr.Announce != nil && !httpErr.Announce.IsEmpty() {
-				src.Meta.ProviderAnnounce = httpErr.Announce
-				src.Meta.LastErrorURL = httpErr.Announce.URL
+				meta.ProviderAnnounce = httpErr.Announce
+				meta.LastErrorURL = httpErr.Announce.URL
 			}
 		} else if res != nil {
-			src.Meta.HTTPStatusCode = res.HTTPStatus
+			meta.HTTPStatusCode = res.HTTPStatus
 		}
+		src.Meta = &meta
+		// Канонический статус: nodes[] не тронуты вообще (SPEC 113-A).
+		src.UpdateStatus = failedSubStatus(src.UpdateStatus, src.URL, now, fetchErr, meta.HTTPStatusCode, meta.LastErrorURL)
 		debuglog.WarnLog("refreshOneSubscriptionSource: source %s fetch failed: %v", src.ID, fetchErr)
 		return true
 	}
 
-	if writeErr := state.WriteRawBody(subsDir, src.ID, res.RawBody); writeErr != nil {
-		debuglog.WarnLog("refreshOneSubscriptionSource: WriteRawBody for %s: %v", src.ID, writeErr)
+	// Единственное место разбора тела подписки (SPEC Т3): кап резолвится
+	// «настройка подписки → дефолт настроек приложения», аварийный потолок
+	// 3000 клэмпится внутри парсера.
+	capN := resolveSubscriptionMaxNodes(src.MaxNodes, settings, defaults)
+	material, matErr := config.MaterializeSubscriptionBody(src.ID, res.Body, src.Skip, capN)
+
+	// Достоверность (SPEC 113-A): обрыв разбора — недостоверен. Тело, из
+	// которого не родилось НИ ОДНОЙ записи при наличии per-record деградаций,
+	// тоже: так выглядит HTML-страница вместо подписки, и удалить по ней все
+	// узлы значило бы потерять состояние из-за мусорного ответа. Ноль записей
+	// БЕЗ деградаций — легально (пользователь skip'ом отсёк всё): merge
+	// честно удалит исчезнувших. material == nil при nil-ошибке парсера —
+	// дефект контракта ниже по стеку: тоже недостоверно (фикс ревью W3 —
+	// прежняя форма выражения разыменовывала бы nil в ветке trusted).
+	trusted := matErr == nil && material != nil && (len(material.Nodes) > 0 || len(material.Warnings) == 0)
+
+	var mergeWarns []string
+	if trusted {
+		// Raw-кэш — TEMPORARY BRIDGE (SPEC 118 W3-W4, умирает в W5): сборка
+		// читает его, пока эмиссия не переехала на nodes[]. Пишется ТОЛЬКО
+		// после trust-вердикта (фикс ревью W3, симметрия 113-A на мостовую
+		// эпоху): недостоверный ответ не трогает ни nodes[], ни .raw — иначе
+		// легаси-путь сборки терял бы узлы, которые канон сохранил.
+		//
+		// Известное окно расхождения .raw↔канон (не чиним, мост умирает в
+		// W5): .raw уже записан, а Save state.json у вызывающего упал →
+		// канонические nodes[] отстают от .raw до следующего достоверного
+		// fetch. Обе стороны при этом самодостаточны, следующий успешный
+		// fetch их выравнивает.
+		if writeErr := state.WriteRawBody(subsDir, src.ID, res.RawBody); writeErr != nil {
+			debuglog.WarnLog("refreshOneSubscriptionSource: WriteRawBody for %s: %v", src.ID, writeErr)
+		}
+		_, mergeWarns = state.MergeSubscriptionNodes(src, &state.SubFetchMaterial{
+			Nodes:     material.Nodes,
+			Truncated: material.Truncated,
+		}, true)
+		src.UpdateStatus = successSubStatus(src.URL, now, res.HTTPStatus, res.RawBodyBytes, material, mergeWarns)
+	} else {
+		reason := matErr
+		if reason == nil {
+			if material == nil {
+				reason = fmt.Errorf("subscription parser returned no material")
+			} else {
+				reason = fmt.Errorf("subscription body yielded no nodes (%d record(s) degraded)", len(material.Warnings))
+			}
+		}
+		st := failedSubStatus(src.UpdateStatus, src.URL, now, reason, res.HTTPStatus, "")
+		if material != nil {
+			// Причины «почему не родилось» — пользователю в диагностику.
+			for _, w := range material.Warnings {
+				st.Warnings = append(st.Warnings, state.FetchWarning{Kind: "parse", Message: w})
+			}
+		}
+		src.UpdateStatus = st
+		debuglog.WarnLog("refreshOneSubscriptionSource: source %s body untrusted: %v — nodes kept", src.ID, reason)
 	}
 
+	// Мостовая Meta успеха (TEMPORARY BRIDGE, UI читает её до W6).
 	merged := res.Meta // value-copy
 	merged.URLAtFetch = src.URL
 	merged.LastFetchedAt = now
@@ -276,18 +332,82 @@ func refreshOneSubscriptionSource(src *state.Source, defaults state.Defaults, su
 		merged.PreviewNodes = extractPreviewNodes(res.Body, 50)
 		merged.NodesCountFetched = countURIs(res.Body)
 	}
-
-	effectiveMax := src.MaxNodes
-	if effectiveMax == 0 {
-		effectiveMax = defaults.MaxNodes
-	}
-	if effectiveMax == 0 {
-		effectiveMax = state.DefaultMaxNodes
-	}
-	merged.Truncated = merged.NodesCountFetched > effectiveMax
+	// Реальный truncated от парсера, а не прежняя оценка «счёт строк > кап».
+	merged.Truncated = material != nil && material.Truncated
 
 	src.Meta = &merged
 	return true
+}
+
+// resolveSubscriptionMaxNodes — резолв капа принятых узлов (SPEC Т1,
+// двухступенчатый — провайдерского заголовка у max_nodes не существует):
+// настройка подписки → дефолт настроек приложения → аварийный
+// потолок-константа (клэмп 3000 внутри ParseSubscriptionBody).
+func resolveSubscriptionMaxNodes(subMax int, settings locale.Settings, defaults state.Defaults) int {
+	if subMax > 0 {
+		return subMax
+	}
+	if settings.DefaultSubscriptionMaxNodes > 0 {
+		return settings.DefaultSubscriptionMaxNodes
+	}
+	// TEMPORARY BRIDGE (SPEC 118 W3-W4), удаляется в W5: до включения сноса
+	// миграции (шаг 8) прежние defaults ещё не переехали в настройки
+	// приложения — без этой ступени пользователь с defaults.max_nodes в
+	// state.json потерял бы свой кап до W5.
+	if defaults.MaxNodes > 0 {
+		return defaults.MaxNodes
+	}
+	return 0 // → configtypes.MaxNodesPerSubscription в парсере
+}
+
+// failedSubStatus — канонический updateStatus неудачной попытки: ошибка и
+// счётчики свежие, память о последнем успехе (даты, счёт узлов, warnings
+// живых nodes[]) сохраняется — отчёт сборки и UI продолжают видеть
+// диагностику материала, на котором подписка реально живёт.
+func failedSubStatus(prev *state.SubUpdateStatus, url, now string, err error, httpCode int, errURL string) *state.SubUpdateStatus {
+	st := &state.SubUpdateStatus{
+		URLAtFetch:     url,
+		LastAttemptAt:  now,
+		LastStatus:     "err",
+		ErrorCount:     1,
+		LastErrorMsg:   err.Error(),
+		LastErrorURL:   errURL,
+		HTTPStatusCode: httpCode,
+	}
+	if prev != nil {
+		st.ErrorCount = prev.ErrorCount + 1
+		st.LastSuccessAt = prev.LastSuccessAt
+		st.RawBodyBytes = prev.RawBodyBytes
+		st.NodesCountFetched = prev.NodesCountFetched
+		st.Truncated = prev.Truncated
+		st.Warnings = append([]state.FetchWarning(nil), prev.Warnings...)
+	}
+	return st
+}
+
+// successSubStatus — канонический updateStatus успешного fetch+merge:
+// per-record деградации парсера и merge персистятся здесь — отчёт сборки и
+// UI читают их из состояния, ничего не перепарсивая (jsontab-К4).
+func successSubStatus(url, now string, httpStatus int, rawBytes int64, material *config.SubscriptionFetchMaterial, mergeWarns []string) *state.SubUpdateStatus {
+	st := &state.SubUpdateStatus{
+		URLAtFetch:     url,
+		LastAttemptAt:  now,
+		LastSuccessAt:  now,
+		LastStatus:     "ok",
+		HTTPStatusCode: httpStatus,
+		RawBodyBytes:   rawBytes,
+	}
+	if material != nil {
+		st.NodesCountFetched = len(material.Nodes)
+		st.Truncated = material.Truncated
+		for _, w := range material.Warnings {
+			st.Warnings = append(st.Warnings, state.FetchWarning{Kind: "parse", Message: w})
+		}
+	}
+	for _, w := range mergeWarns {
+		st.Warnings = append(st.Warnings, state.FetchWarning{Kind: "merge", Message: w})
+	}
+	return st
 }
 
 // RefreshSourceInPlace — SPEC 052 phase 7 cold-start path: fetch+raw+meta для
@@ -325,15 +445,16 @@ func (svc *ConfigService) RefreshSourceInPlace(src *state.Source) (bool, error) 
 	execDir := svc.ac.FileService.ExecDir
 	subsDir := platform.GetSubscriptionsDir(execDir)
 
-	// Defaults для MaxNodes truncation: пытаемся прочитать из state.json,
-	// если он есть. Иначе refreshOneSubscriptionSource fallback'нется на
-	// state.DefaultMaxNodes — нормально для cold-start.
+	// Defaults капа: настройки приложения (SPEC Т1) + мостовые defaults из
+	// state.json, если он есть (TEMPORARY BRIDGE до W5) — нормально для
+	// cold-start, когда нет ни того, ни другого: парсер клэмпит потолком.
+	settings := locale.LoadSettings(platform.GetBinDir(execDir))
 	var defaults state.Defaults
 	if s, err := state.Load(platform.GetWizardStatePath(execDir)); err == nil {
 		defaults = s.Defaults
 	}
 
-	changed := refreshOneSubscriptionSource(src, defaults, subsDir)
+	changed := refreshOneSubscriptionSource(src, defaults, settings, subsDir)
 	return changed, nil
 }
 
@@ -373,13 +494,15 @@ func (svc *ConfigService) RefreshSingleSubscription(sourceID string) (*state.Sou
 	}
 
 	subsDir := platform.GetSubscriptionsDir(execDir)
-	dirty := refreshOneSubscriptionSource(src, s.Defaults, subsDir)
+	settings := locale.LoadSettings(platform.GetBinDir(execDir))
+	dirty := refreshOneSubscriptionSource(src, s.Defaults, settings, subsDir)
 	if dirty {
 		if err := s.Save(statePath); err != nil {
 			return src, fmt.Errorf("save state after refresh: %w", err)
 		}
-		// Mark cache stale так, чтобы Rebuild подхватил свежий .raw,
-		// и mark config stale — UI должен напомнить про Rebuild/Restart.
+		// «Конфиг устарел» (SPEC Т4): fetch-merge поднимает признак, но
+		// НИКОГДА не запускает пересборку сам — это решение пользователя
+		// (Rebuild рядом либо AutoRebuildOnChange).
 		if svc.ac.StateService != nil {
 			svc.ac.StateService.MarkConfigStale()
 		}

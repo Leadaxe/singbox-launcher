@@ -133,32 +133,58 @@ GUI-пакеты — скрипты `build/`. Git не трогать. `ui/traff
       `TestLANIfaceCandidatesShareUplinkCache` падал; добавлен guard
       `e.loaded` (failed по-прежнему retry).
 
-## W3 — Fetch/merge: материализация
+## W3 — Fetch/merge: материализация — СДЕЛАНО
 
-- [ ] `subscription.ParseSubscriptionBody(body, skip, capN)` — чистый
-      парсер (PLAN §3.1): классификация тел, skip внутри парсеров, дедуп
-      по подписи + collapsedInto, уникализация сырых тегов, реальный кап
-      capN в точках цикла; БЕЗ тег-политики, БЕЗ MakeTagUnique, БЕЗ
-      ApplySourceDetour, БЕЗ filterDisabledNodes; выход — ParsedMaterial
-      + группы + truncated + warnings.
-- [ ] `state.MergeSubscriptionNodes`: merge по сырому тегу (освежить /
-      добавить / удалить), порядок = порядок тела; truncated → удаление
-      запрещено; trusted=false → nodes[] не тронуты; Auto-члены →
-      `[]NodeLink{folderId: sub.ID}` c prune потерянных (warning);
-      вложенная группа — warning.
-- [ ] `config_service_subscriptions.go`: fetch-сервис → скачать,
-      SubMeta-заголовки, ParseSubscriptionBody, Merge, updateStatus
-      (last_attempt/success, ошибки, truncated, nodes_count, warnings),
-      Save, BumpRevision/«конфиг устарел»; писатель raw-кэша остаётся до
-      W5 (мост).
-- [ ] Резолв капа: sub.MaxNodes → настройка приложения → клэмп 3000;
-      резолв интервала: sub.Update → profile-update-interval → настройка
-      приложения. Чтение дефолтов из `bin/settings.json` (канал
-      locale-Settings); поля UI — в W6.
-- [ ] Авто-fetch свежедобавленной подписки — на новый конвейер.
-- [ ] Тесты SPEC §4.D (1–9), включая регресс v1.5.2 (32 ss:// → 1) и
-      «X, X-2, X»; 113-A и truncated-семантика; body без detour-ключа.
-- [ ] `go build ./...` + `go test ./core/... `.
+- [x] `subscription.ParseSubscriptionBody` (создан в W2) — в W3 расширен:
+      per-record деградации sing-box-импорта (потерянные члены групп —
+      `SingboxImportResult.Warnings`, singbox_groups.go) текут в общий
+      поток warnings разбора, а не только в лог (Т3 «не молча»).
+- [x] `state.MergeSubscriptionNodes` (`core/state/subscription_merge.go`):
+      merge по сырому тегу (освежить / добавить / удалить), порядок =
+      порядок свежего тела (удержанные truncated-узлы — в хвосте);
+      truncated → удаление запрещено; trusted=false → nodes[] не тронуты;
+      `pending_disabled` (вердикт O2, новое поле Source) применяется на
+      первом достоверном fetch и стирается (при truncated несматченные
+      теги выживают); смена вида узла теряет detour с warning; мостовая
+      карта DisabledNodes синхронизируется с каноном
+      (`syncLegacyDisabledMap`, TEMPORARY BRIDGE — прежний
+      GCDisabledNodes-проход в sweep умер, TTL целиком умирает в W5).
+- [x] `config_service_subscriptions.go`: refreshOneSubscriptionSource →
+      скачать, SubMeta-заголовки (мостовая Meta живёт до W6),
+      `config.MaterializeSubscriptionBody` (`core/config/
+      fetch_materialize.go`; общий с миграцией конвертер
+      canonicalNodeFromEntry — body fetch = body миграции байт-в-байт),
+      Merge, канонический updateStatus (last_attempt/success, ошибки,
+      truncated, nodes_count, warnings parse+merge); недостоверность
+      113-A: ошибка сети / пустое тело / обрыв / «ноль записей при
+      per-record деградациях» (HTML вместо тела) → nodes[] нетронуты;
+      Save + MarkConfigStale (RefreshSingleSubscription) и BumpRevision
+      (UI in-place пути) — без автозапуска сборки; писатель raw-кэша
+      остаётся (мост до W5). Мутации только новыми slice/pointer'ами —
+      value-snapshot UI не делит объекты с горутиной.
+- [x] Резолв капа (`resolveSubscriptionMaxNodes`): sub.MaxNodes →
+      `settings.DefaultSubscriptionMaxNodes` → (мост) legacy defaults →
+      клэмп 3000 в парсере. Резолв интервала (`effectiveReload`,
+      auto_update.go): sub.Update → `profile-update-interval` заголовок →
+      `settings.DefaultSubscriptionReload` → (мост) defaults.Reload →
+      встроенный 1ч; staleness — по каноническому
+      updateStatus.last_attempt_at (фолбэк Meta). Чтение дефолтов —
+      `locale.LoadSettings(bin)`; поля UI — в W6.
+- [x] Авто-fetch свежедобавленной подписки — как сегодня: пути
+      RefreshSourceInPlace/RefreshSingleSubscription целиком на новом
+      конвейере (nodes[] наполняются на любом fetch).
+- [x] Тесты SPEC §4.D (1–9): `core/subscription_fetch_test.go`
+      (httptest-стабы тел, без сети) — skip со следующего fetch, дедуп
+      32→1 + перепривязка членов, «X, X-2, X», реальный кап (подписка и
+      настройки приложения) + truncated, merge-пометки, 113-A
+      (ошибка/пусто/мусор/truncated без удаления), body без detour/tag,
+      Auto-материализация (NodeLink на свою подписку, selector
+      type+default, вложенный член — warning), pending_disabled,
+      «не фетчилось» на fetch-уровне (warning отчёта сборки — читатель
+      updateStatus, волна W4). Merge-юниты —
+      `core/state/subscription_merge_test.go`.
+- [x] `go build ./...` + `go test -count=1 ./...` + `go vet ./...` —
+      зелёные; греп go1.20 по правкам — чисто.
 
 ## W4 — Эмиссия, резолв, гард, пул
 
@@ -321,3 +347,16 @@ GUI-пакеты — скрипты `build/`. Git не трогать. `ui/traff
 - [ ] W6: MigrationReport персистить в файл (bin/migration_report.txt)
       и показывать при первом открытии конфигуратора — headless-первый
       Load сейчас оставляет отчёт только в логе (LOW/UX-находка).
+
+## Хвосты ревью W3 (фикс-раунд принят)
+
+- [ ] W6: write-back one-shot fetch в окне источника
+      (source_edit_window.go, m.Sources[i] = snapshot) — сверять ревизию
+      модели перед записью: Save во время полёта fetch'а сейчас может
+      быть откачен снимком (pre-existing гонка, не W3).
+- [ ] W6: мостовая Meta при недостоверном теле штампует LastStatus="ok"
+      с PreviewNodes из мусора, расходясь с UpdateStatus="err" — UI
+      мостовой эпохи показывает противоречивый успех; чинится смертью
+      мостовой Meta в W6 (проверить при сносе).
+- [ ] W7: импорт бэкапа переводится с DisabledNodes-карты на
+      PendingDisabled (комментарий в sources_v7.go актуализирован).

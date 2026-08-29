@@ -148,6 +148,11 @@ func ParseSubscriptionBody(body []byte, skip []map[string]string, capN int) (*Pa
 			break
 		}
 		res.IgnoredSections = importRes.IgnoredSections
+		// Per-record деградации импорта (потерянные члены групп) — в общий
+		// поток warnings разбора: fetch персистит их в updateStatus (Т3).
+		for _, w := range importRes.Warnings {
+			st.warn(w)
+		}
 		for _, node := range importRes.Nodes {
 			// Исходный тег нужен группам для перепривязки состава на сырые
 			// теги (тот же приём, что applyTagsToSingboxNode → SourceTag).

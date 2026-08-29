@@ -1,6 +1,7 @@
 package subscription
 
 import (
+	"fmt"
 	"strings"
 
 	"singbox-launcher/core/config/configtypes"
@@ -44,11 +45,20 @@ var singboxGroupOptionKeys = []string{
 // файла, иначе ссылки на отброшенные/переименованные узлы дали бы группу,
 // указывающую в пустоту.
 //
+// warns — коллектор per-record деградаций импорта (SPEC 118 Т3: потеря
+// члена группы не молча — fetch персистит её в updateStatus); nil легален.
+//
 // Возвращает false, если группу эмитить нельзя.
 func singboxGroupToNode(
 	entry map[string]interface{},
 	nodeByTag map[string]*configtypes.ParsedNode,
+	warns *[]string,
 ) (*configtypes.ParsedNode, bool) {
+	warn := func(msg string) {
+		if warns != nil {
+			*warns = append(*warns, msg)
+		}
+	}
 	groupType := strings.ToLower(strings.TrimSpace(mapString(entry, "type")))
 	tag := strings.TrimSpace(mapString(entry, "tag"))
 	if tag == "" {
@@ -87,11 +97,16 @@ func singboxGroupToNode(
 
 	if lost > 0 {
 		debuglog.WarnLog("Parser: singbox import: group %q: %d member(s) could not be resolved", tag, lost)
+		// Вложенная группа-член, служебный тип, битый узел — потеря не молча
+		// (SPEC 118 Т3): текст совпадает по форме с warning'ом резолва
+		// parse_body («not resolvable»), читатели updateStatus видят один язык.
+		warn(fmt.Sprintf("group %q: %d member(s) not resolvable — dropped (nested group, unsupported or broken node)", tag, lost))
 	}
 
 	if len(members) == 0 {
 		// Пустой urltest роняет старт ядра — не эмитим вовсе (A5).
 		debuglog.WarnLog("Parser: singbox import: group %q has no resolvable members — skipped", tag)
+		warn(fmt.Sprintf("group %q lost all members — dropped", tag))
 		return nil, false
 	}
 

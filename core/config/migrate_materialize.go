@@ -64,58 +64,70 @@ func materializeSubscriptionForMigration(req state.MigrationSubRequest) (*state.
 		// старом applyURINodeTags/applyTagsToSingboxNode.
 		finalTag := subscription.ApplyLegacyTagMachine(e.Node, req.TagPrefix, req.TagPostfix, req.TagMask, e.Num, req.TagCounts)
 
-		var origin *state.Origin
-		if e.OriginKind != "" {
-			origin = &state.Origin{Kind: e.OriginKind, Raw: e.OriginRaw}
-		}
-
-		if e.Node.Scheme == configtypes.SchemeGroup {
-			group := &state.AutoGroup{
-				GroupType: e.GroupType,
-				Default:   e.GroupDefaultRaw,
-				Members:   make([]state.NodeLink, 0, len(e.MemberRawTags)),
-				Strategy:  autoStrategyFromGroupOptions(e.Node.Outbound),
-			}
-			for _, raw := range e.MemberRawTags {
-				group.Members = append(group.Members, state.NodeLink{FolderID: req.SubID, Tag: raw})
-			}
-			// default только у selector; urltest со stray default не плодим.
-			if group.GroupType != state.AutoGroupSelector {
-				group.Default = ""
-			}
-			res.Nodes = append(res.Nodes, state.MigrationMaterializedNode{
-				Node: state.Node{
-					Kind:    state.SourceKindAuto,
-					Tag:     e.RawTag,
-					Enabled: true,
-					Origin:  origin,
-					Group:   group,
-				},
-				FinalTag: finalTag,
-			})
-			continue
-		}
-
-		bodyJSON, emitErr := emitMigrationBody(e.Node)
-		if emitErr != nil {
+		node, convErr := canonicalNodeFromEntry(req.SubID, e)
+		if convErr != nil {
 			// Битая запись — деградация записи, не подписки (SPEC Т3):
 			// старый движок такой узел тоже не доносил до конфига.
-			res.Warnings = append(res.Warnings, fmt.Sprintf("node %q not emittable — dropped: %v", e.RawTag, emitErr))
+			res.Warnings = append(res.Warnings, fmt.Sprintf("node %q not emittable — dropped: %v", e.RawTag, convErr))
 			continue
 		}
-		res.Nodes = append(res.Nodes, state.MigrationMaterializedNode{
-			Node: state.Node{
-				Kind:    state.SourceKindServer,
-				Tag:     e.RawTag,
-				Enabled: true,
-				Origin:  origin,
-				Body:    bodyJSON,
-			},
-			FinalTag:   finalTag,
-			LegacyHash: LegacyNodeIdentityHash(e.Node),
-		})
+		mat := state.MigrationMaterializedNode{Node: node, FinalTag: finalTag}
+		if node.Kind == state.SourceKindServer {
+			mat.LegacyHash = LegacyNodeIdentityHash(e.Node)
+		}
+		res.Nodes = append(res.Nodes, mat)
 	}
 	return res, nil
+}
+
+// canonicalNodeFromEntry — общая конверсия принятой записи тела в
+// канонический узел v7 (server с body/origin либо auto с group).
+//
+// Один код на миграцию W2 и fetch W3 намеренно: body мигрированных узлов и
+// body свежего fetch обязаны совпадать байт-в-байт — иначе первый fetch
+// после апгрейда дал бы массовый «body изменился».
+func canonicalNodeFromEntry(subID string, e *subscription.ParsedBodyEntry) (state.Node, error) {
+	var origin *state.Origin
+	if e.OriginKind != "" {
+		origin = &state.Origin{Kind: e.OriginKind, Raw: e.OriginRaw}
+	}
+
+	if e.Node.Scheme == configtypes.SchemeGroup {
+		group := &state.AutoGroup{
+			GroupType: e.GroupType,
+			Default:   e.GroupDefaultRaw,
+			Members:   make([]state.NodeLink, 0, len(e.MemberRawTags)),
+			Strategy:  autoStrategyFromGroupOptions(e.Node.Outbound),
+		}
+		for _, raw := range e.MemberRawTags {
+			// Члены резолвятся на узлы ТОЙ ЖЕ подписки по сырым тегам —
+			// контейнер и есть связь (features/sources.md «Auto»).
+			group.Members = append(group.Members, state.NodeLink{FolderID: subID, Tag: raw})
+		}
+		// default только у selector; urltest со stray default не плодим.
+		if group.GroupType != state.AutoGroupSelector {
+			group.Default = ""
+		}
+		return state.Node{
+			Kind:    state.SourceKindAuto,
+			Tag:     e.RawTag,
+			Enabled: true,
+			Origin:  origin,
+			Group:   group,
+		}, nil
+	}
+
+	bodyJSON, emitErr := emitMigrationBody(e.Node)
+	if emitErr != nil {
+		return state.Node{}, emitErr
+	}
+	return state.Node{
+		Kind:    state.SourceKindServer,
+		Tag:     e.RawTag,
+		Enabled: true,
+		Origin:  origin,
+		Body:    bodyJSON,
+	}, nil
 }
 
 // materializeServerForMigration — body корневого server-источника из URI

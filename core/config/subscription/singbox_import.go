@@ -36,6 +36,10 @@ type SingboxImportResult struct {
 	IgnoredSections []string
 	// UnsupportedTypes — типы outbound'ов, которые импорт не смог разобрать.
 	UnsupportedTypes []string
+	// Warnings — per-record деградации импорта (потерянные члены групп и
+	// т.п.): SPEC 118 Т3 требует «не молча» — fetch персистит их в
+	// updateStatus, лог сам по себе пользователя не достигает.
+	Warnings []string
 }
 
 // ParseSingboxBody разбирает тело подписки, классифицированное как sing-box JSON.
@@ -211,7 +215,7 @@ func parseSingboxConfig(
 	// A5/A7: группы идут ПОСЛЕ узлов — и в тот же список. Это рядовые узлы
 	// без привилегий, а не записи вкладки Outbounds (см. singbox_groups.go).
 	for _, groupEntry := range groupEntries {
-		groupNode, ok := singboxGroupToNode(groupEntry, nodeByTag)
+		groupNode, ok := singboxGroupToNode(groupEntry, nodeByTag, &result.Warnings)
 		if !ok {
 			continue
 		}

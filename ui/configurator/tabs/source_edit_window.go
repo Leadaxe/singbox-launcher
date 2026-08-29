@@ -200,9 +200,20 @@ func capPreviewNodes(nodes []*config.ParsedNode) []*config.ParsedNode {
 //
 // SPEC 117: правит canonical state.Source (в окне — его рабочую deep-copy;
 // до модели отметки доезжают на Save вместе со всей копией).
+//
+// SPEC 118 W3 (фикс ревью, блокер 1): пишутся ОБА представления — канон
+// Nodes[i].Enabled и мостовая легаси-карта. Идентичность узла = его сырой
+// тег (SPEC 112), то есть ключ карты и Node.Tag — одно и то же значение.
+// Запись только в карту молча откатывалась бы следующим fetch'ем: merge
+// берёт enabled из канона, а карта — временный мост до W5.
 func setNodeEnabled(src *wizardmodels.Source, hash string, enabled bool) {
 	if src == nil || hash == "" {
 		return
+	}
+	for i := range src.Nodes {
+		if src.Nodes[i].Tag == hash {
+			src.Nodes[i].Enabled = enabled
+		}
 	}
 	if enabled {
 		delete(src.DisabledNodes, hash)
@@ -369,6 +380,10 @@ func cloneSource(src *wizardmodels.Source) wizardmodels.Source {
 		us.Warnings = append([]wizardmodels.FetchWarning(nil), src.UpdateStatus.Warnings...)
 		c.UpdateStatus = &us
 	}
+	// SPEC 118 W3: одноразовые отметки выключения (вердикт O2) — свой слайс.
+	if src.PendingDisabled != nil {
+		c.PendingDisabled = append([]string(nil), src.PendingDisabled...)
+	}
 	return c
 }
 
@@ -420,9 +435,50 @@ func cloneDirection(d *configtypes.Direction) configtypes.Direction {
 	return c
 }
 
-// applySourceEditToModel — путь Save окна источника (SPEC 117, Т4):
-// рабочая deep-copy записывается в canonical `m.Sources[sourceIndex]`
-// ЦЕЛИКОМ, полевого маппинга (бывший applyProxyEditToSource) больше нет.
+// mergeEditedSourceIntoModel — data-часть Save окна источника: рабочая
+// deep-copy записывается в canonical `m.Sources[sourceIndex]` ЦЕЛИКОМ,
+// полевого маппинга (бывший applyProxyEditToSource) больше нет.
+//
+// SPEC 118 W3 (фикс ревью, блокер 2): runtime-поля fetch'а берутся из ЖИВОЙ
+// записи модели, а не из снимка окна — one-shot fetch вкладки Preview и
+// фоновый fetch могли обновить их, пока окно открыто, и запись снимка
+// целиком молча откатывала бы свежие nodes[]/updateStatus. Поверх живых
+// полей применяются ТОЛЬКО оконные правки включённости — по тегам из
+// журнала тумблеров (enabledEdits), а не слепым снимком DisabledNodes:
+// так побеждают и свежий fetch, и то, что пользователь реально нажал.
+//
+// Вынесена из applySourceEditToModel, чтобы контракт Save был проверяем
+// тестом без presenter'а/Fyne (сама applySourceEditToModel лишь добавляет
+// пересчёт превью и перерисовку списков).
+func mergeEditedSourceIntoModel(
+	m *wizardmodels.WizardModel,
+	sourceIndex int,
+	edited *wizardmodels.Source,
+	enabledEdits map[string]bool,
+) {
+	if m == nil || edited == nil || sourceIndex < 0 || sourceIndex >= len(m.Sources) {
+		return
+	}
+	live := &m.Sources[sourceIndex]
+	// Runtime-поля источника формой не правятся (кроме журналируемых
+	// тумблеров ниже) — переносим их из актуальной записи.
+	edited.Meta = live.Meta
+	edited.Update = live.Update
+	edited.MaxNodes = live.MaxNodes
+	edited.Nodes = live.Nodes
+	edited.UpdateStatus = live.UpdateStatus
+	edited.PendingDisabled = live.PendingDisabled
+	edited.DisabledNodes = live.DisabledNodes
+	// Оконные тумблеры — поверх живых полей: setNodeEnabled пишет и канон
+	// Nodes[i].Enabled, и мостовую карту (блокер 1), то есть правка из окна
+	// доезжает даже до узлов, родившихся фоновым fetch'ем после открытия.
+	for tag, enabled := range enabledEdits {
+		setNodeEnabled(edited, tag, enabled)
+	}
+	m.Sources[sourceIndex] = *edited
+}
+
+// applySourceEditToModel — путь Save окна источника (SPEC 117, Т4).
 // До этого вызова ни одна правка формы модели не касается — Cancel
 // закрывает окно без следов.
 func applySourceEditToModel(
@@ -431,18 +487,12 @@ func applySourceEditToModel(
 	m *wizardmodels.WizardModel,
 	sourceIndex int,
 	edited *wizardmodels.Source,
+	enabledEdits map[string]bool,
 ) {
 	if m == nil || edited == nil || sourceIndex < 0 || sourceIndex >= len(m.Sources) {
 		return
 	}
-	// Runtime-поля источника формой не правятся, а снаружи могли обновиться,
-	// пока окно открыто (one-shot fetch вкладки Preview пишет свежую Meta
-	// прямо в модель): переносим их из актуальной записи, иначе запись копии
-	// целиком откатила бы результат fetch'а снимком на момент открытия.
-	edited.Meta = m.Sources[sourceIndex].Meta
-	edited.Update = m.Sources[sourceIndex].Update
-	edited.MaxNodes = m.Sources[sourceIndex].MaxNodes
-	m.Sources[sourceIndex] = *edited
+	mergeEditedSourceIntoModel(m, sourceIndex, edited, enabledEdits)
 	m.BumpRevision()
 	m.PreviewNeedsParse = true
 	wizardbusiness.InvalidatePreviewCache(m)
@@ -522,6 +572,11 @@ func showSourceEditWindow(
 	// Widget'ы мутируют копию; Save записывает её в m.Sources[sourceIndex]
 	// целиком (applySourceEditToModel); Cancel закрывает окно без следов.
 	scratch := cloneSource(&m.Sources[sourceIndex])
+	// SPEC 118 W3 (фикс ревью, блокер 2): журнал тумблеров включённости,
+	// сделанных В ЭТОМ окне (identity → последнее выбранное состояние).
+	// На Save он применяется поверх runtime-полей живой записи модели —
+	// снимок scratch их не переносит (см. mergeEditedSourceIntoModel).
+	enabledEdits := make(map[string]bool)
 	// SPEC 112-A: имя узла на момент открытия формы. Переименование меняет
 	// ИДЕНТИЧНОСТЬ узла, а резолв ссылок на сборке строгий — значит на
 	// сохранении надо сбросить ссылки на прежнее имя и сказать об этом
@@ -949,6 +1004,41 @@ func showSourceEditWindow(
 			metaCopy := *snapshot.Meta
 			snapshot.Meta = &metaCopy
 		}
+		// SPEC 118 W3 (фикс ревью): горутина читает Skip и гоняет merge по
+		// Nodes/DisabledNodes/PendingDisabled — глубокие копии, иначе merge
+		// мутировал бы backing-массивы, разделяемые с моделью и scratch'ем
+		// на UI-thread. Руками, без slices./maps. — go1.20 (win7-сборка).
+		if snapshot.Skip != nil {
+			sk := make([]map[string]string, len(snapshot.Skip))
+			for i, mp := range snapshot.Skip {
+				if mp == nil {
+					continue
+				}
+				mm := make(map[string]string, len(mp))
+				for k, v := range mp {
+					mm[k] = v
+				}
+				sk[i] = mm
+			}
+			snapshot.Skip = sk
+		}
+		if snapshot.DisabledNodes != nil {
+			dn := make(map[string]int64, len(snapshot.DisabledNodes))
+			for k, v := range snapshot.DisabledNodes {
+				dn[k] = v
+			}
+			snapshot.DisabledNodes = dn
+		}
+		if snapshot.Nodes != nil {
+			nn := make([]wizardmodels.Node, len(snapshot.Nodes))
+			for i := range snapshot.Nodes {
+				nn[i] = cloneCanonicalNode(snapshot.Nodes[i])
+			}
+			snapshot.Nodes = nn
+		}
+		if snapshot.PendingDisabled != nil {
+			snapshot.PendingDisabled = append([]string(nil), snapshot.PendingDisabled...)
+		}
 		sourceID := snapshot.ID
 		configService := presenter.ConfigServiceAdapter()
 		go func() {
@@ -974,6 +1064,9 @@ func showSourceEditWindow(
 				// старого тела до случайной другой мутации.
 				wizardbusiness.InvalidatePreviewCache(m)
 				presenter.MarkAsChanged()
+				// SPEC 118 W3: fetch-merge наполнил канонические nodes[] —
+				// мутация модели, ревизия обязана вырасти.
+				m.BumpRevision()
 				if refreshPreviewTab != nil {
 					refreshPreviewTab()
 				}
@@ -1200,6 +1293,10 @@ func showSourceEditWindow(
 								check.SetChecked(!off)
 								check.OnChanged = func(enabled bool) {
 									setNodeEnabled(&scratch, identity, enabled)
+									// Журнал правок окна: на Save тумблер
+									// применится поверх живой записи модели
+									// (блокер 2 ревью W3).
+									enabledEdits[identity] = enabled
 								}
 							},
 						)
@@ -1621,8 +1718,10 @@ func showSourceEditWindow(
 				scratch.Chain = &configtypes.SourceChain{}
 			}
 		}
-		// SPEC 117 (Т4): вся правка одной записью — копия в m.Sources[i].
-		applySourceEditToModel(presenter, guiState, presenter.Model(), sourceIndex, &scratch)
+		// SPEC 117 (Т4): вся правка одной записью — копия в m.Sources[i];
+		// runtime-поля fetch'а берутся из живой записи, оконные тумблеры —
+		// журналом enabledEdits (блокер 2 ревью W3).
+		applySourceEditToModel(presenter, guiState, presenter.Model(), sourceIndex, &scratch, enabledEdits)
 		// SPEC 112-A: узел переименован — его прежней идентичности больше нет,
 		// и ссылки на неё обязаны погаснуть здесь, а не молча провалиться на
 		// следующей сборке. Порядок важен: сначала запись формы (тег уже
