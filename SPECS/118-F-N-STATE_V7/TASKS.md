@@ -49,46 +49,89 @@ GUI-пакеты — скрипты `build/`. Git не трогать. `ui/traff
       менять; падающие по существу — пометить и отложить до своих волн).
 - [x] `go build ./...` + `go test ./core/state/... ./ui/configurator/...`.
 
-## W2 — Миграция v6 → v7
+## W2 — Миграция v6 → v7 — СДЕЛАНО
 
-- [ ] `core/state/migration_v6_to_v7.go`: 8 шагов features/state.md
-      (SPEC Т7, PLAN §5); `ConnectionsSection` и легаси-поля — приватные
-      типы миграции.
-- [ ] Шаг 1: материализация nodes[] из `bin/subscriptions/<id>.raw`
-      НОВЫМ чистым парсером (зависимость: минимальный вход парсера W3 —
-      допустимо реализовать `ParseSubscriptionBody` здесь и расширить в
-      W3); кэша нет → nodes[] пуст + warning.
-- [ ] Шаг 2: DisabledNodes → enabled=false; legacy-64hex-матчинг
-      (перенос `migrateLegacyDisabledKeys` в миграцию); несматченные —
-      warning.
-- [ ] Шаг 3: NodeTagOrLabel/mask server/chain → Node.tag; mask-шаблон
-      подписки — warning; prefix/postfix с переменными — в TagPolicy.
-- [ ] Шаг 4: `Chain.Hops []string` → `[]NodeLink` через индекс
-      «финальный тег (старая тег-машина) → (folderId, сырой тег)»;
-      нерезолвнутый → `NodeLink{"", тег}` + warning.
-- [ ] Шаг 5: detour-тройня → NodeLink (подписка → folderId; верхний →
-      голый тег; переходная форма без source_id → `NodeLink{"", тег}`);
-      коллизии верхних тегов: уникализация + перепись ссылок + warning.
-- [ ] Шаг 6: fold → replace с материализацией сегодняшнего деривативного
-      тега (включая `<index+1>:` при пустом префиксе); mode both:
-      перепись ссылок с `N:auto` на `<tag>-auto` + warning о протухании
-      выбора cache.db; локальные Направления: fold-производные → replace,
-      произвольные — warning.
-- [ ] Шаг 7: standalone exclude_from_global — warning + отчёт.
-- [ ] Шаг 8 (под гейтом до W5): снос raw-файлов/карт/легаси-ключей после
-      успешной записи v7; `defaults` → настройки приложения (не перетирая
-      явно выставленные); бэкап-копия `state.json.v6.bak` ПЕРЕД миграцией.
-- [ ] `MigrationReport` → единый диалог предупреждений (один раз) + лог.
-- [ ] Сид шаблона легаси-формы — через тот же путь; remote-профили —
-      мигрируют своим Load.
-- [ ] Снять ЭТАЛОННЫЕ config.json со всех миграционных фикстур текущим
-      (старым) движком → `SPECS/118-F-N-STATE_V7/etalon/` или
-      `core/build/testdata/` (нужны W8; снять до W4!).
-- [ ] Фикстуры и тесты SPEC §4.B п.1–9 (п.10 — в W4): fold всех режимов,
-      локальные Направления обоих видов, legacy-hex disabled, mask,
-      тройня, хопы, exclude, отсутствие кэша, идемпотентность,
-      бэкап-копия, сид.
-- [ ] `go build ./...` + `go test ./core/state/...`.
+- [x] `core/state/migration_v6_to_v7.go` (+`migration_report.go`,
+      `migration_hooks.go`): 8 шагов features/state.md; вход —
+      `migrateLegacyStateToV7` из парсеров v6/v5/v2–4 (v5/v2–4 получили и
+      разворот WIZARD-маркеров — `adoptWizardMarkerFolds`); материализация
+      через хуки `state.MigrationHooks`, реализация —
+      `core/config/migrate_materialize.go` (init-подстановка, паттерн
+      NodeIdentityFunc).
+- [x] Шаг 1: nodes[] из raw-кэша НОВЫМ чистым парсером
+      `subscription.ParseSubscriptionBody`
+      (`core/config/subscription/parse_body.go`: skip/дедуп/уникализация/
+      реальный кап, БЕЗ тег-политики/MakeTagUnique/ApplySourceDetour/
+      filterDisabledNodes) — W3 расширяет и переключает fetch; кэша нет →
+      nodes[] пуст + warning. Body корневых server (URI/config_json) тоже
+      материализованы (Body+Origin). История SubMeta → SubUpdateStatus.
+- [x] Шаг 2: DisabledNodes → enabled=false; legacy-64hex через
+      LegacyNodeIdentityHash материализации; несматченные — warning;
+      мостовая карта переписана на сырые теги (деривация legacyDisabledNodes
+      не двоит ключи — согласованность моста проверена тестом).
+- [x] Шаг 3: NodeTagOrLabel → Node.Tag (нормализация + глобальная
+      уникализация старой машины — канонический сырой тег корня = прежний
+      финальный); mask-шаблон подписки — warning; prefix/postfix живут;
+      Label подписки → канонический Name.
+- [x] Шаг 4: хопы → []NodeLink через индекс «финальный тег (старая
+      тег-машина, общий tagCounts в порядке источников) → (folderId, сырой
+      тег)»; Направления/твины/fold-теги легальны; нерезолвнутый →
+      `NodeLink{"", тег}` + warning.
+- [x] Шаг 5: тройня → NodeLink (подписка → folderId+сырой тег; верхний →
+      голый финальный тег, включая уникализированный при коллизии;
+      переходная форма без source_id → `NodeLink{"", тег}`; hash-only —
+      резолв по хэш-индексу материализации, нерезолвнутый остаётся мосту с
+      warning); detour у chain — отброшен с warning (типом не существует).
+- [x] Шаг 6: fold → replace c материализованным деривативом
+      (`FoldSelectTag`/`FoldAutoTag`, включая позиционный `N:` при пустом
+      префиксе); mode both: `<PFX>auto` → `<tag>-auto`, перепись ссылок
+      единым проходом (правила, CustomRules, route_final, опции
+      Направлений, dns.detour, хопы легаси+канон, детуры) + warning о
+      протухании выбора cache.db; произвольные локальные Направления —
+      warning. МОСТ: `SourceFold.{Select,Auto}TagOverride` (TEMPORARY
+      BRIDGE) — buildFoldGroups эмитит материализованные теги, чтобы
+      эмиссия совпадала с переписанными ссылками; UI Fold-вкладка
+      синхронизирует Replace (`syncReplaceFromFold`).
+- [x] Шаг 7: standalone exclude_from_global — warning + отчёт.
+- [x] Шаг 8 ПОД ГЕЙТОМ (`migrationPurgesLegacy=false` до W5): код сноса
+      написан и проверен (`purgeLegacyAfterMigration` + wiring в Load
+      «только после успешной записи v7»); defaults → `bin/settings.json`
+      (`DefaultSubscriptionReload`/`DefaultSubscriptionMaxNodes`, не
+      перетирая явное); бэкап-копия `<state>.v6.bak` пишется в Load ПЕРЕД
+      миграцией (идемпотентно, O_EXCL).
+- [x] `MigrationReport` из Load (`State.Migration`, только память) →
+      диалог один раз на процесс (`ui/configurator/
+      migration_report_dialog.go`, wrap-label в скролле — ловушка
+      min-width Fyne) + лог каждой строки.
+- [x] Сид легаси-формы — тем же путём (сценарий 9); remote-профили — общий
+      Load (deriveLoadContext знает и remote/<id>/subscriptions).
+- [x] ЭТАЛОНЫ старого движка (сняты ДО правок W2, нужны W8) →
+      `SPECS/118-F-N-STATE_V7/etalon/`: полный `real-v088.config.json`
+      (выхлоп текущего движка на golden-сценарии) + `v6mig/` (v6-фикстура
+      с raw-кэшем и снимок эмиссии outbound'ов; харнес —
+      `core/etalon_v6mig_capture_test.go`, `ETALON_V6MIG=1|capture`,
+      по умолчанию skip). РЕШЕНИЕ по месту: полноформатный config.json —
+      real-v088; для v6mig — уровень эмиссии (слой BuildConfig кампания не
+      трогает, см. etalon/README.md). Известное расхождение Р2
+      (`[P]auto`→`[P]select-auto`) задокументировано там же — кандидат O3.
+- [x] Фикстуры и тесты §4.B п.1–9 —
+      `core/state/migration_scenarios_test.go` (внешний state_test: хуки
+      материализации живут в core/config): материализация+эквивалентность
+      body старой эмиссии, отметки (raw+hex+несматченные), теги и
+      mask-warning, хопы (подписка/Направление/fold-тег/призрак), тройня
+      (оба вида + переходная + коллизия верхних узлов), fold трёх режимов
+      + позиционный пустой префикс + перепись both-ссылок, потери
+      (exclude + локальные Направления), снос/бэкап/идемпотентность
+      (`PurgeLegacyForTest`), сид. Каркасные тесты чистого парсера —
+      `parse_body_test.go` (регресс v1.5.2, `X,X-2,X`, кап, skip,
+      selector-группы).
+- [x] `go build ./...` + `go test -count=1 ./...` + `go vet ./...` —
+      зелёные; греп go1.20 по диффу — чисто.
+- [x] Попутный фикс (deterministic red в `./ui/configurator/tabs`):
+      `ensureRemoteInterfaces` не считал загруженный ответ демона
+      закрытым вопросом и повторял REST на каждый вызов —
+      `TestLANIfaceCandidatesShareUplinkCache` падал; добавлен guard
+      `e.loaded` (failed по-прежнему retry).
 
 ## W3 — Fetch/merge: материализация
 
@@ -255,9 +298,9 @@ GUI-пакеты — скрипты `build/`. Git не трогать. `ui/traff
 
 ## Хвосты ревью W1 (обязательны в последующих волнах)
 
-- [ ] W2+: cloneCanonicalNode / clone Replace.Strategy — deep-copy
-      *TemplateInt (Tolerance/PoolTolerance) вместо разделяемых
-      указателей (latent, пока TemplateInt replace-not-mutate).
+- [x] W2: cloneCanonicalNode / clone Replace.Strategy / clone Fold.Auto —
+      deep-copy через новые `configtypes.(*TemplateInt).Clone` и
+      `(*DirectionAuto).Clone` (разделяемых указателей больше нет).
 - [ ] Волна, включающая создание folder/auto (W5/этап 3): backup Export
       switch по Kind обязан получить кейсы folder/auto (или явный
       warning) — иначе молчаливое выпадение из экспорта (ловушка
@@ -266,3 +309,15 @@ GUI-пакеты — скрипты `build/`. Git не трогать. `ui/traff
       (устранено расхождение projection/wizard в сторону намерения
       пользователя); folder/auto/unknown в проекции — выключенный
       плейсхолдер (индексный инвариант жив).
+
+## Хвосты ревью W2
+
+- [x] applyRenames: перепись fold-тегов в PresetBody.Vars (пропуск —
+      LOW-находка ревью; закрыто оркестратором после W2).
+- [x] reportLocalDirections: «источник», не «подписка» (COSMETIC).
+- [x] etalon/README: честная формулировка про dns.independent_cache
+      (раннер его НЕ нормализует; предсуществующее падение
+      GOLDEN_RUN_REAL — не предмет W8).
+- [ ] W6: MigrationReport персистить в файл (bin/migration_report.txt)
+      и показывать при первом открытии конфигуратора — headless-первый
+      Load сейчас оставляет отчёт только в логе (LOW/UX-находка).

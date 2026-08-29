@@ -116,9 +116,18 @@ func (s *Source) displayName() string {
 func (s *Source) legacyFold() *configtypes.SourceFold {
 	if s.Replace != nil {
 		fold := &configtypes.SourceFold{Mode: legacyFoldMode(s.Replace.Mode)}
-		if s.Replace.Strategy != nil {
-			strat := *s.Replace.Strategy
-			fold.Auto = &strat
+		fold.Auto = s.Replace.Strategy.Clone()
+		// Материализованный тег замены (W2) — вместо позиционных
+		// деривативов buildFoldGroups: эмиссия обязана совпадать со
+		// ссылками, переписанными миграцией (mode both → `<tag>-auto`).
+		switch s.Replace.Mode {
+		case FolderReplaceAuto:
+			fold.AutoTagOverride = s.Replace.Tag
+		case FolderReplaceBoth:
+			fold.SelectTagOverride = s.Replace.Tag
+			fold.AutoTagOverride = s.Replace.Tag + "-auto"
+		default: // manual
+			fold.SelectTagOverride = s.Replace.Tag
 		}
 		return fold
 	}

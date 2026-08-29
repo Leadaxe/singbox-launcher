@@ -1,0 +1,5 @@
+vless://11111111-1111-4111-8111-111111111111@nl.example:443?security=tls&sni=nl.example&type=ws&path=/ws#NL-1
+vless://22222222-2222-4222-8222-222222222222@de2.example:443?security=tls&sni=de2.example#DE-2
+ss://YWVzLTEyOC1nY206cGFzc3dvcmQ=@nl3.example:8388#NL-1
+ss://YWVzLTEyOC1nY206cGFzc3dvcmQ=@nl3.example:8388#NL-1-copy
+trojan://pw@ru.example:443?sni=ru.example#RU-1

@@ -249,11 +249,10 @@ func cloneCanonicalNode(n wizardmodels.Node) wizardmodels.Node {
 	if n.Group != nil {
 		g := *n.Group
 		g.Members = append([]wizardmodels.NodeLink(nil), n.Group.Members...)
-		if n.Group.Strategy.InterruptExistConnections != nil {
-			b := *n.Group.Strategy.InterruptExistConnections
-			g.Strategy.InterruptExistConnections = &b
-		}
-		g.Strategy.StickyHash = append([]string(nil), n.Group.Strategy.StickyHash...)
+		// Хвост ревью W1: Strategy глубоко — *TemplateInt
+		// (Tolerance/PoolTolerance) не должны разделяться указателями с
+		// моделью, даже пока TemplateInt replace-not-mutate.
+		g.Strategy = *n.Group.Strategy.Clone()
 		c.Group = &g
 	}
 	return c
@@ -289,10 +288,8 @@ func cloneSource(src *wizardmodels.Source) wizardmodels.Source {
 	}
 	if src.Fold != nil {
 		f := *src.Fold
-		if src.Fold.Auto != nil {
-			a := *src.Fold.Auto
-			f.Auto = &a
-		}
+		// Тот же хвост ревью W1: Auto глубоко (внутри *TemplateInt).
+		f.Auto = src.Fold.Auto.Clone()
 		c.Fold = &f
 	}
 	if src.Update != nil {
@@ -362,10 +359,9 @@ func cloneSource(src *wizardmodels.Source) wizardmodels.Source {
 	}
 	if src.Replace != nil {
 		r := *src.Replace
-		if src.Replace.Strategy != nil {
-			st := *src.Replace.Strategy
-			r.Strategy = &st
-		}
+		// Хвост ревью W1: deep-copy *TemplateInt внутри стратегии, а не
+		// копия структуры с разделяемыми указателями.
+		r.Strategy = src.Replace.Strategy.Clone()
 		c.Replace = &r
 	}
 	if src.UpdateStatus != nil {
@@ -667,6 +663,9 @@ func showSourceEditWindow(
 			p.ExcludeFromGlobal = false
 			p.ExposeGroupTagsToGlobal = false
 		}
+		// SPEC 118 (W2): канонический Replace следует за свёрткой — мост
+		// предпочитает его, устаревший канон молча перебивал бы форму.
+		syncReplaceFromFold(p, sourceIndex)
 		foldTabBody.updateTagsHint(foldTabBody.selectedMode(), foldTagPrefix(p), sourceIndex)
 		if syncFoldTabVisible != nil {
 			syncFoldTabVisible()
@@ -1605,6 +1604,9 @@ func showSourceEditWindow(
 			p.Fold = foldTabBody.Collect()
 			p.ExcludeFromGlobal = false
 			p.ExposeGroupTagsToGlobal = false
+			// SPEC 118 (W2): канон Replace — вслед за свёрткой (см.
+			// applyFoldFromForm).
+			syncReplaceFromFold(p, sourceIndex)
 		}
 		// Тег цепочки финализируется с формы: пустое поле = «тега нет»
 		// (откат на подпись через NodeTagOrLabel) — посимвольный обработчик

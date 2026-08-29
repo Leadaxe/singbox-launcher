@@ -80,6 +80,16 @@ func buildFoldGroups(
 ) []configtypes.Direction {
 	autoTag := configtypes.FoldAutoTag(tagPrefix, sourceIndex)
 	selectTag := configtypes.FoldSelectTag(tagPrefix, sourceIndex)
+	// TEMPORARY BRIDGE (SPEC 118 W2-W4), удаляется в W5: свёртка,
+	// мигрированная в FolderReplace, несёт МАТЕРИАЛИЗОВАННЫЕ теги — они
+	// стабильны при перестановке источников и совпадают со ссылками,
+	// переписанными миграцией.
+	if fold.SelectTagOverride != "" {
+		selectTag = fold.SelectTagOverride
+	}
+	if fold.AutoTagOverride != "" {
+		autoTag = fold.AutoTagOverride
+	}
 
 	var out []configtypes.Direction
 

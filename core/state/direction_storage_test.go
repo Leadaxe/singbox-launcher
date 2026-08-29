@@ -23,7 +23,7 @@ func TestLegacyOutboundsKeyAdopted(t *testing.T) {
 	  "rules": [],
 	  "dns_options": {}
 	}`
-	s, err := parseV6Legacy([]byte(raw))
+	s, err := parseV6Legacy([]byte(raw), LoadContext{})
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestCanonicalKeyWinsOverLegacy(t *testing.T) {
 	  "rules": [],
 	  "dns_options": {}
 	}`
-	s, err := parseV6Legacy([]byte(raw))
+	s, err := parseV6Legacy([]byte(raw), LoadContext{})
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestEmptyCanonicalKeyIsNotSeededFromLegacy(t *testing.T) {
 	  "rules": [],
 	  "dns_options": {}
 	}`
-	s, err := parseV6Legacy([]byte(raw))
+	s, err := parseV6Legacy([]byte(raw), LoadContext{})
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}

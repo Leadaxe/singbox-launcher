@@ -10,7 +10,7 @@ import (
 
 // parseLegacyAndMigrate — v2/v3/v4 → in-memory v5 (с legacy-view заполненной
 // для обратной совместимости).
-func parseLegacyAndMigrate(data []byte) (*State, error) {
+func parseLegacyAndMigrate(data []byte, lc LoadContext) (*State, error) {
 	var raw rawLegacyFile
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("state: parse legacy json: %w", err)
@@ -75,10 +75,18 @@ func parseLegacyAndMigrate(data []byte) (*State, error) {
 		s.UpdatedAt = t
 	}
 	// SPEC 118 (W1): структурный перенос мигрированной v5-секции в v7-корень.
-	// ParserConfig здесь — сырой legacy-вид из файла (как и раньше), проекция
-	// из canonical не пересобирается.
 	adoptConnectionsV6(s, migrated.Connections)
 	deriveV6FromLegacy(s) // BUG1: derive v6 Rules/DNS from migrated legacy fields
+
+	// SPEC 118 (W2): семантическая миграция v6→v7 (включая разворот
+	// WIZARD-маркерных локальных групп в fold/replace). Проекция ПОСЛЕ неё
+	// пересобирается из canonical: сырой legacy-вид из файла разъезжался бы
+	// с переписанными миграцией ссылками (fold both → `<tag>-auto`) —
+	// правила указывали бы на группу, которой сборка больше не эмитит.
+	migrateLegacyStateToV7(s, raw.Version, lc)
+	// Пересборка не теряет Parser.LastUpdated: sync трогает только
+	// Version/Proxies/Outbounds/Reload, отпечаток остаётся из файла.
+	syncLegacyFromCanonical(s)
 	normalizeNilSlices(s)
 	return s, nil
 }

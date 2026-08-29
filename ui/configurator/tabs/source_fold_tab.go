@@ -18,6 +18,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"singbox-launcher/core/config/configtypes"
+	"singbox-launcher/core/state"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/locale"
 	"singbox-launcher/ui/configurator/autogroupform"
@@ -209,4 +210,39 @@ func foldTagPrefix(p *wizardmodels.Source) string {
 		return ""
 	}
 	return p.TagPolicy.Prefix
+}
+
+// syncReplaceFromFold — TEMPORARY BRIDGE (SPEC 118 W2-W4), умирает вместе с
+// Fold-вкладкой (W5: вкладка Replace правит канон напрямую).
+//
+// Канонический FolderReplace обязан следовать за правкой свёртки в форме:
+// после миграции W2 он заполнен, а мост (legacyFold) предпочитает канон —
+// не синхронизируй мы его здесь, правка формы молча игнорировалась бы
+// сборкой. Тег материализуется тем же деривативом, что в миграции; смена
+// режима меняет теги ровно так же, как меняла в старой позиционной схеме.
+func syncReplaceFromFold(p *wizardmodels.Source, sourceIndex int) {
+	if p == nil {
+		return
+	}
+	if p.Fold == nil {
+		p.Replace = nil
+		return
+	}
+	prefix := foldTagPrefix(p)
+	rep := &state.FolderReplace{}
+	switch p.Fold.EffectiveMode() {
+	case configtypes.FoldModeAuto:
+		rep.Mode = state.FolderReplaceAuto
+		rep.Tag = configtypes.FoldAutoTag(prefix, sourceIndex)
+	case configtypes.FoldModeSelectAuto:
+		rep.Mode = state.FolderReplaceBoth
+		rep.Tag = configtypes.FoldSelectTag(prefix, sourceIndex)
+	default:
+		rep.Mode = state.FolderReplaceManual
+		rep.Tag = configtypes.FoldSelectTag(prefix, sourceIndex)
+	}
+	if p.Fold.HasAuto() {
+		rep.Strategy = p.Fold.Auto.Clone()
+	}
+	p.Replace = rep
 }

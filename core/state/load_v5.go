@@ -9,7 +9,7 @@ import (
 // parseV5Legacy — прямой read v5-формата (legacy). После SPEC 060 Phase 5
 // canonical write всегда v6, но v5-файлы юзеров читаются здесь и нормализуются
 // в State. На следующем Save перезаписываются в v6 shape.
-func parseV5Legacy(data []byte) (*State, error) {
+func parseV5Legacy(data []byte, lc LoadContext) (*State, error) {
 	var raw struct {
 		Meta         metaSectionV5       `json:"meta"`
 		Connections  ConnectionsSection  `json:"connections"`
@@ -49,6 +49,12 @@ func parseV5Legacy(data []byte) (*State, error) {
 	// BUG1 fix: derive canonical v6 Rules/DNS from legacy v5 CustomRules/
 	// DNSOptions так, чтобы headless Save (сериализует только v6) их не терял.
 	deriveV6FromLegacy(s)
+
+	// SPEC 118 (W2): семантическая миграция v6→v7 поверх структурного
+	// переноса — до построения legacy-проекции (она обязана видеть
+	// мигрированный канон). Маркерные fold-флаги v5-эпохи разворачивает
+	// сама миграция (adoptWizardMarkerFolds).
+	migrateLegacyStateToV7(s, 5, lc)
 
 	// Заполняем legacy proxies-view из canonical для backward-compat
 	// callsite'ов (UI source_tab, dashboard counters, parser).

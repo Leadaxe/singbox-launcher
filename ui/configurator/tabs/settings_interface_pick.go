@@ -227,9 +227,12 @@ func ensureRemoteInterfaces(machineID string) {
 		e = &remoteIfaceEntry{}
 		remoteIfaceCache[machineID] = e
 	}
-	if e.inWork {
-		// Single-flight: второй REST к той же машине ничего нового не узнает,
-		// а на неотвечающей машине их накопилось бы по одному на refresh.
+	if e.inWork || e.loaded {
+		// Single-flight + кэш: второй REST к той же машине ничего нового не
+		// узнает — и уже полученный ответ повторно не спрашиваем (оба
+		// фильтра, аплинковый и LAN, живут на одном ответе демона; смена
+		// машины забывает его через InvalidateRemoteInterfaceCache).
+		// Провал (failed) кэшем не считается: следующий ensure — retry.
 		remoteIfaceCacheMu.Unlock()
 		return
 	}

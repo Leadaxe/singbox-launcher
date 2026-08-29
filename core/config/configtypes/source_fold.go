@@ -41,6 +41,16 @@ type SourceFold struct {
 	// это одна и та же настройка на двух уровнях, и вторая её реализация
 	// разъехалась бы с первой на первой же правке.
 	Auto *DirectionAuto `json:"auto,omitempty"`
+
+	// SelectTagOverride / AutoTagOverride — TEMPORARY BRIDGE (SPEC 118
+	// W2-W4), удаляется в W5: явные теги свёртки, деривированные мостом из
+	// материализованного FolderReplace.Tag (adapter_source.legacyFold).
+	// buildFoldGroups обязан эмитить именно их, а не позиционные
+	// деривативы: миграция W2 переписала ссылки (mode both: `<PFX>auto` →
+	// `<tag>-auto`), и разъезд эмиссии со ссылками ронял бы правила.
+	// json:"-" — на диск не едут: это деривация, не хранение.
+	SelectTagOverride string `json:"-"`
+	AutoTagOverride   string `json:"-"`
 }
 
 // EffectiveMode возвращает режим с учётом умолчания.

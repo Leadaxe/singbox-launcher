@@ -295,6 +295,7 @@ func buildWizardWindow(
 				loadConfigFromFile(presenter, fileServiceAdapter, templateData, model, wizardWindow)
 			} else {
 				debuglog.InfoLog("ShowConfigWizard: loaded state from state.json")
+				maybeShowMigrationReport(wizardWindow, stateFile)
 			}
 			// LoadState восстанавливает Target из meta файла. Для машины id и
 			// каталоги всегда из реестра (§5.8 — их в файле нет и быть не
@@ -833,6 +834,7 @@ func loadStateFromRead(presenter *wizardpresentation.WizardPresenter, wizardWind
 			dialogs.ShowError(wizardWindow, fmt.Errorf("%s: %w", locale.T("Failed to restore state"), err))
 			return
 		}
+		maybeShowMigrationReport(wizardWindow, stateFile)
 
 		// Синхронизируем GUI
 		presenter.SyncModelToGUI()

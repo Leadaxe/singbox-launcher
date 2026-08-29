@@ -364,6 +364,25 @@ type DirectionAuto struct {
 	StickyHash    []string     `json:"sticky_hash,omitempty"`
 }
 
+// Clone — глубокая копия (SPEC 118, хвост ревью W1): указатели
+// Tolerance/PoolTolerance/InterruptExistConnections и слайс StickyHash не
+// разделяются с оригиналом — рабочие буферы форм и материализация миграции
+// обязаны владеть своими экземплярами. Без slices./maps. (go1.20-гард).
+func (a *DirectionAuto) Clone() *DirectionAuto {
+	if a == nil {
+		return nil
+	}
+	c := *a
+	c.Tolerance = a.Tolerance.Clone()
+	c.PoolTolerance = a.PoolTolerance.Clone()
+	if a.InterruptExistConnections != nil {
+		b := *a.InterruptExistConnections
+		c.InterruptExistConnections = &b
+	}
+	c.StickyHash = append([]string(nil), a.StickyHash...)
+	return &c
+}
+
 // TemplateInt — целое число ЛИБО ссылка на переменную шаблона ("@name").
 //
 // Нужен там, где значение приходит из шаблона до подстановки переменных:
@@ -371,6 +390,16 @@ type DirectionAuto struct {
 // о вторую форму. Пустое значение означает «не задано».
 type TemplateInt struct {
 	raw json.RawMessage
+}
+
+// Clone — независимая копия (SPEC 118, хвост ревью W1): raw — слайс, и
+// копия структуры по значению разделяла бы backing-массив с оригиналом;
+// deep-copy рабочих буферов форм обязана владеть своими байтами.
+func (t *TemplateInt) Clone() *TemplateInt {
+	if t == nil {
+		return nil
+	}
+	return &TemplateInt{raw: append(json.RawMessage(nil), t.raw...)}
 }
 
 // NewTemplateInt — значение из числа (форма редактора).
