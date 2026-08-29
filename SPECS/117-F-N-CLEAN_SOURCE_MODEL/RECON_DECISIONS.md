@@ -27,11 +27,14 @@ DRAFT «tag — он же тег в конфиге» верна только д�
 
 ## Detour (groups-К1, warp-К5)
 
-**`detour` объявляется у Server и Chain, НЕ у Node.** У Auto и FolderReplace
-detour не существует: selector/urltest не принимают dial-поля — сегодняшний
-штамп source-detour на группы это латентный баг, модель его закрывает типом.
-Папочный общий detour применяется к Server/Chain без личного и ПРОПУСКАЕТ
-Auto. Body чист от detour: ApplySourceDetour-запекание умирает, вся
+**`detour` объявляется ТОЛЬКО у Server, НЕ у Node.** У Chain detour
+избыточен по построению (поправка Саши): маршрут целиком в hops,
+«через X» = вставить X ближним хопом; проекция chain-источника detour
+и сегодня не проносит. У Auto и FolderReplace detour не существует:
+selector/urltest не принимают dial-поля — сегодняшний штамп
+source-detour на группы это латентный баг, модель его закрывает типом.
+Папочный общий detour применяется к Server-узлам без личного и
+ПРОПУСКАЕТ Chain и Auto. Body чист от detour: ApplySourceDetour-запекание умирает, вся
 маршрутизация — NodeLink на эмиссии.
 
 Исключение ядра сохраняется как есть: detour не применяется к

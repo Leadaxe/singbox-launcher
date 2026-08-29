@@ -29,13 +29,15 @@ abstract class Node extends Source {
   Origin?   origin;            // null = создан руками; в Node, не в Server:
                                // происхождение есть у любого узла
                                // (провайдерский Auto тоже помнит subUrl)
-  NodeLink? detour;            // null = напрямую
 
   JSON emitJSON();
 }
 
 class Server extends Node {
-  JSON body;
+  JSON      body;
+  NodeLink? detour;            // null = напрямую. ТОЛЬКО у Server:
+                               // у Chain «через кого» = ближний хоп,
+                               // у Auto dial-полей не бывает
 
   JSON emitJSON();             // отдаёт body
 }
