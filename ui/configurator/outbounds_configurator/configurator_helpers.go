@@ -1,12 +1,15 @@
 // configurator_helpers.go holds standalone helpers and the row model for the
 // outbounds configurator: row collection / classification, tag gathering,
-// reorder swaps, preset/template lookups, and ParserConfig access. The main
-// NewConfiguratorContent builder stays in configurator.go.
+// reorder swaps, preset/template lookups. The main NewConfiguratorContent
+// builder stays in configurator.go.
+//
+// SPEC 117: пакет работает НАПРЯМУЮ на canonical-модели
+// (model.GlobalOutbounds / model.Sources[i].Outbounds) — legacy-проекция
+// ParserConfig здесь больше не читается и не пишется.
 package outbounds_configurator
 
 import (
 	"encoding/json"
-	"strings"
 
 	"singbox-launcher/core/build"
 	"singbox-launcher/core/config"
@@ -55,7 +58,11 @@ type outboundRow struct {
 //
 // requiredTags — set tag'ов с `required: true` из template (live lookup).
 // state.json не обязан персистить этот flag — template источник истины.
-func collectRows(pc *config.ParserConfig, presetTagToLabel map[string]string, requiredTags map[string]bool) []outboundRow {
+//
+// SPEC 117: на входе — canonical model.GlobalOutbounds. Указатели в rows
+// смотрят прямо в canonical-слайс: in-place правка строки (Edit без смены
+// scope, toggle) мутирует модель без промежуточных копий.
+func collectRows(outbounds []config.Direction, presetTagToLabel map[string]string, requiredTags map[string]bool) []outboundRow {
 	// SPEC 108: группы подписок в списке Направлений не показываются.
 	//
 	// Раньше сюда попадали `proxies[].outbounds[]` — служебные `AL:select`
@@ -65,8 +72,8 @@ func collectRows(pc *config.ParserConfig, presetTagToLabel map[string]string, re
 	// кучей. Свёрнутые подписки вообще не хранят групп в состоянии — они
 	// разворачиваются на сборке (config.PrepareSourceFolds).
 	var rows []outboundRow
-	for i := range pc.ParserConfig.Outbounds {
-		ob := &pc.ParserConfig.Outbounds[i]
+	for i := range outbounds {
+		ob := &outbounds[i]
 		// HasUserPatch — есть ли в Updates[] entry с RefUser.
 		hasUserPatch := false
 		for _, u := range ob.Updates {
@@ -183,29 +190,20 @@ func templateRequiredTags(model *wizardmodels.WizardModel) map[string]bool {
 	return out
 }
 
-// collectRowsForUI — convenience wrapper: collectRows (без mutation) + append
-// синтетических preset rows. Возвращает unified список для UI render.
+// collectRowsForUI — wrapper над collectRows: добавляет live-lookup'ы
+// required-тегов шаблона и подписей пресетов.
 //
-// **Важно:** preset rows синтетические, их IndexInSlice = -1, Outbound указывает
-// на local copy (не в model.ParserConfig). Edit/Del handlers ОБЯЗАНЫ проверять
-// row.IsPreset и bailout — иначе будут операции на копии которая не сохранится.
-//
-// Dedup: existingTags (global + per-source) → preset rows для conflicting tag'ов
-// не показываются (паритет с build first-wins).
-// collectRowsForUI — wrapper над collectRows + dispatch preset rows.
-//
-// SPEC 057-R-N: preset entries теперь живут в state.connections.outbounds[]
-// напрямую с `ref` field. collectRows уже их рендерит правильно (IsPreset=true
-// для ref != ""). Synthetic preset rows + OutboundDisplayOrder больше не
+// SPEC 057-R-N: preset entries живут в canonical outbounds[] напрямую с
+// `ref` field. collectRows уже их рендерит правильно (IsPreset=true для
+// ref != ""). Synthetic preset rows + OutboundDisplayOrder больше не
 // нужны — natural slice order = display order = emit order.
 func collectRowsForUI(model *wizardmodels.WizardModel) []outboundRow {
-	pc := getParserConfig(model)
-	if pc == nil {
+	if model == nil {
 		return nil
 	}
 	requiredTags := templateRequiredTags(model)
 	presetLabels := presetLabelsByID(model)
-	return collectRows(pc, presetLabels, requiredTags)
+	return collectRows(model.GlobalOutbounds, presetLabels, requiredTags)
 }
 
 // presetLabelsByID — map[preset_id]→display_label для UI label preset rows.
@@ -228,18 +226,23 @@ func presetLabelsByID(model *wizardmodels.WizardModel) map[string]string {
 
 // collectAllTags returns all outbound tags in display order (local first, then global).
 // Skips disabled sources (their tags не доступны для addOutbounds references).
-func collectAllTags(pc *config.ParserConfig) []string {
+//
+// SPEC 117: читает canonical model.Sources / model.GlobalOutbounds напрямую.
+func collectAllTags(model *wizardmodels.WizardModel) []string {
+	if model == nil {
+		return nil
+	}
 	var tags []string
-	for si := range pc.ParserConfig.Proxies {
-		if pc.ParserConfig.Proxies[si].Disabled {
+	for si := range model.Sources {
+		if !model.Sources[si].Enabled {
 			continue
 		}
-		for i := range pc.ParserConfig.Proxies[si].Outbounds {
-			tags = append(tags, pc.ParserConfig.Proxies[si].Outbounds[i].Tag)
+		for i := range model.Sources[si].Outbounds {
+			tags = append(tags, model.Sources[si].Outbounds[i].Tag)
 		}
 	}
-	for i := range pc.ParserConfig.Outbounds {
-		tags = append(tags, pc.ParserConfig.Outbounds[i].Tag)
+	for i := range model.GlobalOutbounds {
+		tags = append(tags, model.GlobalOutbounds[i].Tag)
 	}
 	return tags
 }
@@ -256,14 +259,16 @@ func tagsAbove(rows []outboundRow, rowIndex int) []string {
 	return tags
 }
 
-// syncOutboundsLocal — local sync helper: вызывает SyncOutboundsWithActivePresets
-// на обоих outbound views модели (GlobalOutbounds canonical + ParserConfig
-// derived view). Используется refreshList после любой UI-мутации, чтобы новые
-// entries получали expected preset patches, stale entries — дропались.
-// Idempotent — safe для repeated calls.
+// syncOutboundsLocal — local sync helper: вызывает SyncOutboundsWithTemplate
+// на canonical model.GlobalOutbounds. Используется refreshList после любой
+// UI-мутации, чтобы новые entries получали expected preset patches, stale
+// entries — дропались. Idempotent — safe для repeated calls.
 //
 // SPEC 058-R-N: фикс для сценария «удалил template entry → Restore missing →
 // новый thin entry не имел preset updates пока юзер не toggle'нул preset».
+//
+// SPEC 117: запись ровно одна — canonical; второй проход по legacy-виду
+// model.ParserConfig снесён вместе с самим двоевластием представлений.
 func syncOutboundsLocal(model *wizardmodels.WizardModel) {
 	if model == nil || model.TemplateData == nil {
 		return
@@ -272,27 +277,4 @@ func syncOutboundsLocal(model *wizardmodels.WizardModel) {
 		model.RuleOrder, model.PresetRefs, model.CustomRules,
 	)
 	build.SyncOutboundsWithTemplate(rulesV6, &model.GlobalOutbounds, model.TemplateData.Presets, build.TemplateOutboundTags(model.TemplateData), model.Target)
-	if model.ParserConfig != nil {
-		build.SyncOutboundsWithTemplate(rulesV6, &model.ParserConfig.ParserConfig.Outbounds, model.TemplateData.Presets, build.TemplateOutboundTags(model.TemplateData), model.Target)
-	}
-}
-
-// getParserConfig returns the model's ParserConfig, ensuring it is set from ParserConfigJSON when nil.
-func getParserConfig(model *wizardmodels.WizardModel) *config.ParserConfig {
-	if model == nil {
-		return nil
-	}
-	if model.ParserConfig != nil {
-		return model.ParserConfig
-	}
-	raw := strings.TrimSpace(model.ParserConfigJSON)
-	if raw == "" {
-		return nil
-	}
-	var pc config.ParserConfig
-	if err := json.Unmarshal([]byte(raw), &pc); err != nil {
-		return nil
-	}
-	model.ParserConfig = &pc
-	return model.ParserConfig
 }

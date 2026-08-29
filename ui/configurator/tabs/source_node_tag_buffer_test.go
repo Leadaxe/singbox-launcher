@@ -3,19 +3,16 @@ package tabs
 import (
 	"testing"
 
+	"singbox-launcher/core/config/configtypes"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
-// SPEC 113-E: правка тега узла БУФЕРИЗУЕТСЯ до Save.
+// SPEC 113-E + SPEC 117: правки окна источника БУФЕРИЗУЮТСЯ до Save.
 //
-// Тег — единственная идентичность узла (SPEC 112), и его смена обязана идти в
-// паре со сбросом ссылок; сброс делается только на Save. Раньше поле писало
-// новый тег в модель посимвольно, а Cancel его не откатывал: окно закрывалось,
-// тег в модели оставался новым, ссылающиеся источники выпадали на следующей
-// сборке fail-closed — по правке, от которой пользователь отказался.
-//
-// Здесь проверяется контракт буфера: правка живёт в scratch, а в модель её
-// переносит только applyProxyEditToSource (= путь Save).
+// Рабочий буфер окна — deep-copy state.Source (cloneSource). Тег — единственная
+// идентичность узла (SPEC 112), и его смена обязана идти в паре со сбросом
+// ссылок; сброс делается только на Save. Cancel закрывает окно без следов:
+// ни одно поле копии не должно разделять память с записью модели (риск Р4).
 
 func serverSourceWithTag(tag string) wizardmodels.Source {
 	return wizardmodels.Source{
@@ -30,72 +27,125 @@ func serverSourceWithTag(tag string) wizardmodels.Source {
 
 // Cancel: буфер правили, Save не жали — модель обязана остаться прежней.
 func TestNodeTagEditIsBufferedUntilSave(t *testing.T) {
-	src := serverSourceWithTag("hop")
-	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{src}}
-	scratch := m.Sources[0].ToProxySourceV4()
+	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{serverSourceWithTag("hop")}}
+	clone := cloneSource(&m.Sources[0])
 
 	// Ровно то, что делает nodeTagEntry.OnChanged: пишет в буфер, и только.
-	scratch.TagMask = "hop-renamed"
+	clone.NodeTag = "hop-renamed"
 
 	if got := m.Sources[0].NodeTagOrLabel(); got != "hop" {
 		t.Fatalf("тег в модели = %q — правка утекла мимо Save", got)
 	}
 }
 
-// Save: буфер доезжает до модели.
+// Save: буфер доезжает до модели одной записью (m.Sources[i] = копия).
 func TestNodeTagEditReachesModelOnSave(t *testing.T) {
 	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{serverSourceWithTag("hop")}}
-	scratch := m.Sources[0].ToProxySourceV4()
-	scratch.TagMask = "hop-renamed"
+	clone := cloneSource(&m.Sources[0])
+	clone.NodeTag = "hop-renamed"
 
-	applyProxyEditToSource(&scratch, &m.Sources[0])
+	m.Sources[0] = clone
 
 	if got := m.Sources[0].NodeTagOrLabel(); got != "hop-renamed" {
 		t.Fatalf("тег в модели = %q, ожидался hop-renamed", got)
 	}
 }
 
-// Очистка поля — тоже правка: applyProxyEditToSource пустую маску игнорирует,
-// поэтому у именующих узел источников её применяет applyClearedNodeTag.
+// Очистка поля — тоже правка: пустой NodeTag в копии доезжает до модели тем
+// же присваиванием (отдельный applyClearedNodeTag больше не нужен), а
+// NodeTagOrLabel откатывается на подпись — прежнее поведение.
 func TestClearedNodeTagReachesModelOnSave(t *testing.T) {
 	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{serverSourceWithTag("hop")}}
-	scratch := m.Sources[0].ToProxySourceV4()
-	scratch.TagMask = ""
+	clone := cloneSource(&m.Sources[0])
+	clone.NodeTag = ""
 
-	applyProxyEditToSource(&scratch, &m.Sources[0])
-	applyClearedNodeTag(m, true, 0, scratch.TagMask)
+	m.Sources[0] = clone
 
 	if m.Sources[0].NodeTag != "" {
 		t.Fatalf("тег = %q, очистка поля не доехала", m.Sources[0].NodeTag)
 	}
-	// Пустой NodeTag читается как «тег равен подписи» — прежнее поведение.
 	if got := m.Sources[0].NodeTagOrLabel(); got != "WARP hop" {
 		t.Errorf("NodeTagOrLabel = %q, ожидался откат на подпись", got)
 	}
 }
 
-// У подписки пустая маска значит «маски нет», а не «сотри тег»: чужой ветке
-// applyClearedNodeTag делать нечего.
-func TestClearedNodeTagSkipsNonIdentityOwner(t *testing.T) {
-	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{{
-		ID: "01SUB", Type: wizardmodels.SourceTypeSubscription, Enabled: true,
-		Label: "Proton NL", NodeTag: "leftover", URL: "https://example.com/sub",
-	}}}
+// Р4 «Cancel без следов»: копия не должна разделять ссылочные поля с моделью —
+// иначе правка формы утечёт в модель до Save и переживёт Cancel.
+func TestCloneSourceIsDeeplyIndependent(t *testing.T) {
+	orig := wizardmodels.Source{
+		ID:      "01SUB0000000000000000000",
+		Type:    wizardmodels.SourceTypeSubscription,
+		Enabled: true,
+		Label:   "Proton NL",
+		URL:     "https://example.com/sub",
+		Skip:    []map[string]string{{"scheme": "ss"}},
+		Tag:     &wizardmodels.TagSpec{Prefix: "NL-"},
+		Outbounds: []configtypes.Direction{
+			{Tag: "AL:select", AddOutbounds: []string{"a", "b"}},
+		},
+		Fold:          &configtypes.SourceFold{Mode: "select", Auto: &configtypes.DirectionAuto{Interval: "5m"}},
+		Meta:          &wizardmodels.SubscriptionMeta{ProfileTitle: "Proton", PreviewNodes: []string{"n1"}},
+		DisabledNodes: map[string]int64{"🇩🇪 DE": 42},
+	}
+	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{orig}}
+	clone := cloneSource(&m.Sources[0])
 
-	applyClearedNodeTag(m, false, 0, "")
+	// Мутации буфера — всё, что делает форма между открытием и Cancel.
+	setNodeEnabled(&clone, "🇳🇱 NL", false)
+	delete(clone.DisabledNodes, "🇩🇪 DE")
+	clone.Tag.Prefix = "XX-"
+	clone.Fold.Mode = "auto"
+	clone.Fold.Auto.Interval = "1m"
+	clone.Outbounds[0].AddOutbounds[0] = "hacked"
+	clone.Skip[0]["scheme"] = "vless"
+	clone.Meta.ProfileTitle = "hacked"
+	clone.Meta.PreviewNodes[0] = "hacked"
 
-	if m.Sources[0].NodeTag != "leftover" {
-		t.Fatalf("тег подписки затёрт: %q", m.Sources[0].NodeTag)
+	src := &m.Sources[0]
+	if _, off := src.DisabledNodes["🇳🇱 NL"]; off {
+		t.Error("отметка узла утекла в модель до Save")
+	}
+	if _, kept := src.DisabledNodes["🇩🇪 DE"]; !kept {
+		t.Error("снятие отметки утекло в модель до Save")
+	}
+	if src.Tag.Prefix != "NL-" {
+		t.Errorf("Tag.Prefix утёк: %q", src.Tag.Prefix)
+	}
+	if src.Fold.Mode != "select" || src.Fold.Auto.Interval != "5m" {
+		t.Errorf("Fold утёк: %+v", src.Fold)
+	}
+	if src.Outbounds[0].AddOutbounds[0] != "a" {
+		t.Errorf("Outbounds утекли: %v", src.Outbounds[0].AddOutbounds)
+	}
+	if src.Skip[0]["scheme"] != "ss" {
+		t.Errorf("Skip утёк: %v", src.Skip)
+	}
+	if src.Meta.ProfileTitle != "Proton" || src.Meta.PreviewNodes[0] != "n1" {
+		t.Errorf("Meta утекла: %+v", src.Meta)
 	}
 }
 
-// Выход за границы модели не должен ничего ронять: окно живёт своей жизнью, а
-// источник за это время могли удалить из списка.
-func TestClearedNodeTagOutOfRangeIsNoop(t *testing.T) {
-	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{serverSourceWithTag("hop")}}
-	applyClearedNodeTag(m, true, 7, "")
-	applyClearedNodeTag(nil, true, 0, "")
-	if m.Sources[0].NodeTag != "hop" {
-		t.Fatalf("тег = %q, ожидался нетронутым", m.Sources[0].NodeTag)
+// Цепочка: правка позиций в буфере не трогает модель (форма цепочки живёт на
+// копии Chain — Load/Collect не должны дотягиваться до записи модели).
+func TestCloneSourceChainIndependent(t *testing.T) {
+	m := &wizardmodels.WizardModel{Sources: []wizardmodels.Source{{
+		ID:      "01CHN0000000000000000000",
+		Type:    wizardmodels.SourceTypeChain,
+		Enabled: true,
+		NodeTag: "chain-1",
+		Chain:   &configtypes.SourceChain{Hops: []string{"a", "b"}, Strip: map[string]bool{"x": true}},
+	}}}
+	clone := cloneSource(&m.Sources[0])
+
+	clone.Chain.Hops[0] = "hacked"
+	clone.Chain.Strip["x"] = false
+	clone.Chain = &configtypes.SourceChain{Hops: []string{"c"}}
+
+	src := &m.Sources[0]
+	if src.Chain.Hops[0] != "a" || len(src.Chain.Hops) != 2 {
+		t.Errorf("позиции утекли: %v", src.Chain.Hops)
+	}
+	if !src.Chain.Strip["x"] {
+		t.Errorf("Strip утёк: %v", src.Chain.Strip)
 	}
 }

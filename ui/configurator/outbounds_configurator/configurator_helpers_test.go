@@ -9,19 +9,13 @@ import (
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
-// makeParserConfig builds a *config.ParserConfig with the given per-source
-// proxies and global outbounds. Helper keeps the table-driven tests readable.
-func makeParserConfig(proxies []config.ProxySource, global []config.Direction) *config.ParserConfig {
-	pc := &config.ParserConfig{}
-	pc.ParserConfig.Proxies = proxies
-	pc.ParserConfig.Outbounds = global
-	return pc
-}
+// SPEC 117: collectRows/collectAllTags работают на canonical-модели —
+// тестовые данные строятся сразу как GlobalOutbounds / Sources.
 
 func TestCollectRows(t *testing.T) {
 	tests := []struct {
 		name         string
-		pc           *config.ParserConfig
+		outbounds    []config.Direction
 		presetLabels map[string]string
 		requiredTags map[string]bool
 		// Expected per-row assertions, indexed by the produced row order.
@@ -29,22 +23,13 @@ func TestCollectRows(t *testing.T) {
 		assertRows func(t *testing.T, rows []outboundRow)
 	}{
 		{
-			// SPEC 108: группы подписок в списке Направлений не показываются
-			// вовсе — ни от включённой подписки, ни от выключенной. Их
-			// настраивают на вкладке «Группа» самой подписки, а свёрнутые
-			// подписки групп в состоянии и не хранят: те разворачиваются на
-			// сборке (config.PrepareSourceFolds).
-			name: "subscription groups are not listed as directions",
-			pc: makeParserConfig(
-				[]config.ProxySource{
-					{
-						Source:    "SubA",
-						Outbounds: []config.Direction{{Tag: "A:auto"}, {Tag: "A:select"}},
-					},
-				},
-				[]config.Direction{{Tag: "global-direct"}},
-			),
-			wantLen: 1,
+			// SPEC 108 + SPEC 117: группы подписок в списке Направлений не
+			// показываются вовсе — collectRows принимает только глобальный
+			// canonical-слайс, per-source группам в него не попасть по
+			// построению. Настраиваются они на вкладке «Группа» подписки.
+			name:      "subscription groups are not listed as directions",
+			outbounds: []config.Direction{{Tag: "global-direct"}},
+			wantLen:   1,
 			assertRows: func(t *testing.T, rows []outboundRow) {
 				if !rows[0].IsGlobal || rows[0].Outbound.Tag != "global-direct" {
 					t.Errorf("row0 = %+v, want global-direct", rows[0])
@@ -53,10 +38,10 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "global template ref, required vs non-required",
-			pc: makeParserConfig(nil, []config.Direction{
+			outbounds: []config.Direction{
 				{Tag: "tmpl-req", Ref: config.RefTemplate},
 				{Tag: "tmpl-opt", Ref: config.RefTemplate},
-			}),
+			},
 			requiredTags: map[string]bool{"tmpl-req": true},
 			wantLen:      2,
 			assertRows: func(t *testing.T, rows []outboundRow) {
@@ -81,9 +66,9 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "nil requiredTags means no template row is required",
-			pc: makeParserConfig(nil, []config.Direction{
+			outbounds: []config.Direction{
 				{Tag: "tmpl-x", Ref: config.RefTemplate},
-			}),
+			},
 			requiredTags: nil,
 			wantLen:      1,
 			assertRows: func(t *testing.T, rows []outboundRow) {
@@ -100,9 +85,9 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "global preset ref with known label",
-			pc: makeParserConfig(nil, []config.Direction{
+			outbounds: []config.Direction{
 				{Tag: "p1-out", Ref: "preset-one"},
-			}),
+			},
 			presetLabels: map[string]string{"preset-one": "Preset One"},
 			wantLen:      1,
 			assertRows: func(t *testing.T, rows []outboundRow) {
@@ -123,9 +108,9 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "global preset ref dangling (no label) falls back to ref id",
-			pc: makeParserConfig(nil, []config.Direction{
+			outbounds: []config.Direction{
 				{Tag: "p2-out", Ref: "ghost-preset"},
-			}),
+			},
 			presetLabels: map[string]string{"other": "Other"},
 			wantLen:      1,
 			assertRows: func(t *testing.T, rows []outboundRow) {
@@ -143,9 +128,9 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "global preset ref with nil presetLabels uses ref id",
-			pc: makeParserConfig(nil, []config.Direction{
+			outbounds: []config.Direction{
 				{Tag: "p3-out", Ref: "preset-nil"},
-			}),
+			},
 			presetLabels: nil,
 			wantLen:      1,
 			assertRows: func(t *testing.T, rows []outboundRow) {
@@ -156,7 +141,7 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "HasUserPatch badge appended for referenced template entry",
-			pc: makeParserConfig(nil, []config.Direction{
+			outbounds: []config.Direction{
 				{
 					Tag: "tmpl-req", Ref: config.RefTemplate,
 					Updates: []config.OutboundUpdate{
@@ -164,7 +149,7 @@ func TestCollectRows(t *testing.T) {
 						{Ref: config.RefUser, Patch: map[string]interface{}{"y": 2}},
 					},
 				},
-			}),
+			},
 			requiredTags: map[string]bool{"tmpl-req": true},
 			wantLen:      1,
 			assertRows: func(t *testing.T, rows []outboundRow) {
@@ -180,14 +165,14 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "HasUserPatch badge for preset entry",
-			pc: makeParserConfig(nil, []config.Direction{
+			outbounds: []config.Direction{
 				{
 					Tag: "p-out", Ref: "preset-one",
 					Updates: []config.OutboundUpdate{
 						{Ref: config.RefUser, Patch: map[string]interface{}{"y": 2}},
 					},
 				},
-			}),
+			},
 			presetLabels: map[string]string{"preset-one": "Preset One"},
 			wantLen:      1,
 			assertRows: func(t *testing.T, rows []outboundRow) {
@@ -202,14 +187,14 @@ func TestCollectRows(t *testing.T) {
 		},
 		{
 			name: "HasUserPatch on direct global does not append badge",
-			pc: makeParserConfig(nil, []config.Direction{
+			outbounds: []config.Direction{
 				{
 					Tag: "direct", Ref: "",
 					Updates: []config.OutboundUpdate{
 						{Ref: config.RefUser, Patch: map[string]interface{}{"y": 2}},
 					},
 				},
-			}),
+			},
 			wantLen: 1,
 			assertRows: func(t *testing.T, rows []outboundRow) {
 				r := rows[0]
@@ -230,7 +215,7 @@ func TestCollectRows(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rows := collectRows(tt.pc, tt.presetLabels, tt.requiredTags)
+			rows := collectRows(tt.outbounds, tt.presetLabels, tt.requiredTags)
 			if len(rows) != tt.wantLen {
 				t.Fatalf("collectRows len = %d, want %d (rows=%+v)", len(rows), tt.wantLen, rows)
 			}
@@ -243,36 +228,39 @@ func TestCollectRows(t *testing.T) {
 
 func TestCollectAllTags(t *testing.T) {
 	tests := []struct {
-		name string
-		pc   *config.ParserConfig
-		want []string
+		name  string
+		model *wizardmodels.WizardModel
+		want  []string
 	}{
 		{
 			name: "local first then global, disabled source skipped",
-			pc: makeParserConfig(
-				[]config.ProxySource{
-					{Source: "A", Outbounds: []config.Direction{{Tag: "a1"}, {Tag: "a2"}}},
-					{Source: "B", Disabled: true, Outbounds: []config.Direction{{Tag: "b1"}}},
-					{Source: "C", Outbounds: []config.Direction{{Tag: "c1"}}},
+			model: &wizardmodels.WizardModel{
+				Sources: []wizardmodels.Source{
+					{Type: wizardmodels.SourceTypeSubscription, Enabled: true, URL: "A",
+						Outbounds: []config.Direction{{Tag: "a1"}, {Tag: "a2"}}},
+					{Type: wizardmodels.SourceTypeSubscription, Enabled: false, URL: "B",
+						Outbounds: []config.Direction{{Tag: "b1"}}},
+					{Type: wizardmodels.SourceTypeSubscription, Enabled: true, URL: "C",
+						Outbounds: []config.Direction{{Tag: "c1"}}},
 				},
-				[]config.Direction{{Tag: "g1"}, {Tag: "g2"}},
-			),
+				GlobalOutbounds: []config.Direction{{Tag: "g1"}, {Tag: "g2"}},
+			},
 			want: []string{"a1", "a2", "c1", "g1", "g2"},
 		},
 		{
-			name: "only global",
-			pc:   makeParserConfig(nil, []config.Direction{{Tag: "g1"}}),
-			want: []string{"g1"},
+			name:  "only global",
+			model: &wizardmodels.WizardModel{GlobalOutbounds: []config.Direction{{Tag: "g1"}}},
+			want:  []string{"g1"},
 		},
 		{
-			name: "empty config yields nil",
-			pc:   makeParserConfig(nil, nil),
-			want: nil,
+			name:  "empty model yields nil",
+			model: &wizardmodels.WizardModel{},
+			want:  nil,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := collectAllTags(tt.pc)
+			got := collectAllTags(tt.model)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("collectAllTags = %v, want %v", got, tt.want)
 			}

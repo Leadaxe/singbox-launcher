@@ -36,9 +36,9 @@ const (
 )
 
 // ShowEditDialog opens a separate window to add or edit an outbound. existing may be nil for add.
-// ParserConfig is taken from the model (editPresenter.Model()) so the dialog always uses current sources.
+// Sources and outbounds come from the canonical model (editPresenter.Model()) so the dialog always uses current data.
 // onSave is called with the new config, scopeKind ("global" or "source") and sourceIndex (when scope is source).
-// editPresenter is required (Model() is used to get ParserConfig); when set, only one Edit/Add window is allowed.
+// editPresenter is required (Model() supplies the canonical model); when set, only one Edit/Add window is allowed.
 func ShowEditDialog(
 	parent fyne.Window,
 	editPresenter OutboundEditPresenter,
@@ -54,8 +54,8 @@ func ShowEditDialog(
 			return
 		}
 	}
-	parserConfig := getParserConfig(editPresenter.Model())
-	if parserConfig == nil {
+	// SPEC 117: диалог живёт на canonical-модели; legacy-проекция не нужна.
+	if editPresenter == nil || editPresenter.Model() == nil {
 		dialog.ShowError(fmt.Errorf("%s", locale.T("ParserConfig is not available")), parent)
 		return
 	}
@@ -722,27 +722,26 @@ func ShowEditDialog(
 			return
 		}
 
-		var filteredNodes []*config.ParsedNode
-		var defaultTag string
-		if model.ParserConfig != nil {
-			filteredNodes, defaultTag = config.PreviewGlobalSelectorNodes(allNodes, model.ParserConfig.ParserConfig.Proxies, *cfg)
-		} else {
-			filteredNodes, defaultTag = config.PreviewSelectorNodes(allNodes, *cfg)
-		}
+		// SPEC 117: PreviewGlobalSelectorNodes требует legacy-форму по
+		// сигнатуре core — строим ОДНОРАЗОВУЮ проекцию на месте вызова и
+		// выбрасываем; в модель она не сохраняется.
+		previewProxies := model.AsParserConfig().ParserConfig.Proxies
+		filteredNodes, defaultTag := config.PreviewGlobalSelectorNodes(allNodes, previewProxies, *cfg)
 		filteredSet := make(map[*config.ParsedNode]bool, len(filteredNodes))
 		for _, n := range filteredNodes {
 			filteredSet[n] = true
 		}
 
-		// Map node pointer to source label using PreviewNodesBySource and ParserConfig.
+		// Map node pointer to source label using PreviewNodesBySource; подписи
+		// источников — из canonical model.Sources (индексный инвариант Р1:
+		// Proxies[i] ↔ Sources[i]).
 		sourceLabels := make(map[*config.ParsedNode]string)
-		if model.ParserConfig != nil && model.PreviewNodesBySource != nil {
+		if model.PreviewNodesBySource != nil {
 			for si, nodes := range model.PreviewNodesBySource {
-				if si < 0 || si >= len(model.ParserConfig.ParserConfig.Proxies) {
+				if si < 0 || si >= len(model.Sources) {
 					continue
 				}
-				proxy := model.ParserConfig.ParserConfig.Proxies[si]
-				label := proxy.Source
+				label := model.Sources[si].URL
 				if label == "" {
 					label = locale.T("Source ") + fmt.Sprintf("%d", si+1)
 				}

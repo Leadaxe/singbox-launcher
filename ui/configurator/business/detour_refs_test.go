@@ -3,7 +3,6 @@ package business
 import (
 	"testing"
 
-	"singbox-launcher/core/config/configtypes"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -131,7 +130,7 @@ func TestResetDetourNodeRefs_TagOnlyRefClearedAfterRenameWithoutNamesake(t *test
 // цель однозначна, и сохранение формы запишет уже объект.
 func TestDetourOptionsWithNodes_UpgradesTagOnlyRef(t *testing.T) {
 	m := modelWithServerSource(t, "WARP hop", detourTestServerURI)
-	src := &configtypes.ProxySource{DetourNodeTag: "WARP hop"} // без source_id
+	src := &wizardmodels.Source{DetourNodeTag: "WARP hop"} // без source_id
 
 	_, sel, choices := DetourOptionsWithNodes(m, src, none)
 	if sel != detourNodeMarker+"WARP hop" {
@@ -147,7 +146,7 @@ func TestDetourOptionsWithNodes_UpgradesTagOnlyRef(t *testing.T) {
 func TestDetourOptionsWithNodes_RenamedTargetShowsDangling(t *testing.T) {
 	m := modelWithServerSource(t, "WARP hop", detourTestServerURI)
 	m.Sources[0].NodeTag = "hop-renamed"
-	src := &configtypes.ProxySource{
+	src := &wizardmodels.Source{
 		DetourNodeSourceID: "01SRV0000000000000000000",
 		DetourNodeTag:      "hop-was",
 		DetourNodeLabel:    "WARP hop",

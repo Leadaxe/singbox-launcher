@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"singbox-launcher/core/config/configtypes"
+	corestate "singbox-launcher/core/state"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
 
@@ -42,7 +42,10 @@ var detourExcludedBuiltins = map[string]struct{}{
 // options[0] is always noneLabel (clears the detour). A dangling prior
 // selection (target no longer offered) is appended so it stays visible/clearable.
 // selected is noneLabel when DetourTag is empty, else the DetourTag value.
-func DetourOptions(model *wizardmodels.WizardModel, source *configtypes.ProxySource, noneLabel string) (options []string, selected string) {
+//
+// SPEC 117: source — canonical *corestate.Source (форма правит рабочую
+// deep-copy записи модели, scratch-ProxySource упразднён).
+func DetourOptions(model *wizardmodels.WizardModel, source *corestate.Source, noneLabel string) (options []string, selected string) {
 	own := map[string]struct{}{}
 	if source != nil {
 		for _, ob := range source.Outbounds {
@@ -117,7 +120,7 @@ const detourNodeMarker = "» "
 // A dangling prior node selection (the server was deleted or renamed) stays
 // visible via its stored label so the user can see and clear it, mirroring the
 // dangling-tag behavior.
-func DetourOptionsWithNodes(model *wizardmodels.WizardModel, source *configtypes.ProxySource, noneLabel string) (options []string, selected string, choices map[string]DetourChoice) {
+func DetourOptionsWithNodes(model *wizardmodels.WizardModel, source *corestate.Source, noneLabel string) (options []string, selected string, choices map[string]DetourChoice) {
 	options, selected = DetourOptions(model, source, noneLabel)
 	choices = make(map[string]DetourChoice, len(options))
 	for _, tag := range options {
@@ -126,11 +129,11 @@ func DetourOptionsWithNodes(model *wizardmodels.WizardModel, source *configtypes
 		}
 	}
 
+	// У canonical-источника URI один (server-type); «свои» адреса — чтобы
+	// не предлагать источнику цепочку через самого себя.
 	ownURIs := map[string]struct{}{}
-	if source != nil {
-		for _, uri := range source.Connections {
-			ownURIs[strings.TrimSpace(uri)] = struct{}{}
-		}
+	if source != nil && strings.TrimSpace(source.URI) != "" {
+		ownURIs[strings.TrimSpace(source.URI)] = struct{}{}
 	}
 
 	selectedNodeSourceID, selectedNodeTag := "", ""

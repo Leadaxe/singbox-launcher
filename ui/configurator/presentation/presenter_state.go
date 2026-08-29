@@ -173,15 +173,15 @@ func (p *WizardPresenter) CreateStateFromModel(comment, id string) *wizardmodels
 	// и mode=update patches (в Updates стеке) синхронизируются с active
 	// preset-ref'ами. Idempotent.
 	//
-	// **Важно — Sync на BOTH viewах:** state.Save() вызывает
-	// syncConnectionsFromLegacy (core/state/adapter.go), который копирует
-	// state.ParserConfig.Outbounds → state.Connections.Outbounds. Если
-	// Sync'нуть только Connections — адаптер затрёт изменения. Sync'аем оба
-	// view'а (или хотя бы ParserConfig — тогда адаптер скопирует корректную
-	// версию в Connections).
+	// SPEC 117: Sync ровно один — по canonical Connections.Outbounds.
+	// Пока жив обратный синк Save (syncConnectionsFromLegacy, умирает в W4),
+	// он пересобирает Connections.Outbounds из проекции state.ParserConfig —
+	// поэтому проекцию выравниваем по только что синхронизированной копии.
+	// Это не второй Sync, а страховка от того, чтобы Save не перетёр его
+	// результат несинхронизированной проекцией; умирает вместе с ней в W4.
 	if p.model.TemplateData != nil {
 		build.SyncOutboundsWithTemplate(state.Rules, &state.Connections.Outbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
-		build.SyncOutboundsWithTemplate(state.Rules, &state.ParserConfig.ParserConfig.Outbounds, p.model.TemplateData.Presets, build.TemplateOutboundTags(p.model.TemplateData), p.model.Target)
+		state.ParserConfig.ParserConfig.Outbounds = append([]configtypes.Direction(nil), state.Connections.Outbounds...)
 	}
 
 	// dns_options в state — только servers и rules; скаляры DNS — в state.vars (dns_*).

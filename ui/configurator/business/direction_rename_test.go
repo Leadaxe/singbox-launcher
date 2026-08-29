@@ -6,7 +6,6 @@ import (
 
 	corestate "singbox-launcher/core/state"
 
-	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	wizardmodels "singbox-launcher/ui/configurator/models"
 )
@@ -40,8 +39,6 @@ func renameTestModel() *wizardmodels.WizardModel {
 			json.RawMessage(`{"tag":"dns-direct","type":"udp","server":"8.8.8.8","detour":"direct-out"}`),
 		},
 	}
-	m.ParserConfig = &config.ParserConfig{}
-	m.ParserConfig.ParserConfig.Outbounds = append([]configtypes.Direction(nil), m.GlobalOutbounds...)
 	return m
 }
 
@@ -99,18 +96,33 @@ func TestRenameDirectionRewritesEveryReference(t *testing.T) {
 	}
 }
 
-// Legacy-вид, с которым работает форма, обязан переименоваться вместе с
-// canonical: он синхронизируется в одну сторону уже ПОСЛЕ вызова, и правка
-// только одного из двух была бы затёрта.
-func TestRenameDirectionTouchesBothViews(t *testing.T) {
+// SPEC 117 (сценарий C2): переименование правит ровно два canonical-места —
+// GlobalOutbounds и локальные Направления источников (Sources[i].Outbounds).
+// Legacy-вид больше не существует как рабочая модель, четвёртой копии имени
+// нет и объекта для неё нет.
+func TestRenameDirection_CanonicalOnly(t *testing.T) {
 	m := renameTestModel()
+	// Локальное Направление источника ссылается на переименовываемый тег
+	// опцией — та самая вторая canonical-половина правки.
+	m.Sources = append(m.Sources, corestate.Source{
+		Type: corestate.SourceTypeSubscription, Enabled: true,
+		URL: "https://example.com/sub",
+		Outbounds: []configtypes.Direction{
+			{Tag: "AL:select", Type: "selector", AddOutbounds: []string{"vpn-1", "vpn-1-auto"}},
+		},
+	})
+
 	RenameDirection(m, "vpn-1", "vpn-9")
 
-	if m.ParserConfig.ParserConfig.Outbounds[0].Tag != "vpn-9" {
-		t.Errorf("legacy-вид не переименован: %q", m.ParserConfig.ParserConfig.Outbounds[0].Tag)
+	if m.GlobalOutbounds[0].Tag != "vpn-9" {
+		t.Errorf("canonical-тег не переименован: %q", m.GlobalOutbounds[0].Tag)
 	}
-	if got := m.ParserConfig.ParserConfig.Outbounds[1].AddOutbounds; got[0] != "vpn-9" {
-		t.Errorf("ссылки в legacy-виде не переписаны: %v", got)
+	if got := m.GlobalOutbounds[1].AddOutbounds; got[0] != "vpn-9" || got[1] != "vpn-9-auto" {
+		t.Errorf("ссылки в GlobalOutbounds не переписаны: %v", got)
+	}
+	local := m.Sources[len(m.Sources)-1].Outbounds[0].AddOutbounds
+	if local[0] != "vpn-9" || local[1] != "vpn-9-auto" {
+		t.Errorf("ссылки в Sources[i].Outbounds не переписаны: %v", local)
 	}
 }
 

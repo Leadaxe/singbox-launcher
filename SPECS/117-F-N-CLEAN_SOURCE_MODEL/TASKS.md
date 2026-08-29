@@ -82,59 +82,59 @@
 
 ## W3 — Write-пути и CRUD на canonical
 
-- [ ] **`ui/configurator/outbounds_configurator/`** — перевод пакета на
+- [x] **`ui/configurator/outbounds_configurator/`** — перевод пакета на
       `model.GlobalOutbounds` / `model.Sources[i].Outbounds`:
-      - [ ] `configurator_helpers.go`: удалить `getParserConfig`
+      - [x] `configurator_helpers.go`: удалить `getParserConfig`
             (:280-297); `collectRows` (:58-100) и `collectAllTags`
             (:231-244) — чтение canonical;
             `syncPresetOutboundsForModel` (:260-278) — одна запись в
             `GlobalOutbounds`.
-      - [ ] `configurator.go`: reorder (:70-86), edit+смена scope
+      - [x] `configurator.go`: reorder (:70-86), edit+смена scope
             (:164-190, достройку пустых `ProxySource{}` :184-187 снести),
             delete (:211-217), `Updates`-патч (:240-247), toggle
             (:286-302), add (:337-350, снести достройку :346-349), seed
             required (:370-390) — на canonical; каждая мутация →
             `BumpRevision()`.
-      - [ ] `edit_dialog.go`: открытие (:57-59) без `getParserConfig`;
+      - [x] `edit_dialog.go`: открытие (:57-59) без `getParserConfig`;
             превью селектора (:727-744) — одноразовая проекция
             `model.AsParserConfig().ParserConfig.Proxies` на месте вызова.
-- [ ] `ui/configurator/tabs/source_tab.go`: `CreateDirectionsTab`
+- [x] `ui/configurator/tabs/source_tab.go`: `CreateDirectionsTab`
       (:981-992) — снести ленивую материализацию `m.ParserConfig`;
       `onConfiguratorApply` (:994-1024) — снести обратное копирование
       (`GlobalOutbounds ←`, `Sources[i].Outbounds ←`), оставить
       `MarkAsChanged`+`BumpRevision`+refresh.
-- [ ] **`ui/configurator/tabs/source_edit_window.go`** — окно на
+- [x] **`ui/configurator/tabs/source_edit_window.go`** — окно на
       `state.Source`:
-      - [ ] `cloneSource()` — явная deep-copy (`Fold`, `Outbounds`,
+      - [x] `cloneSource()` — явная deep-copy (`Fold`, `Outbounds`,
             `DisabledNodes`, `Meta`, слайсы; риск Р4, без `slices.`/`maps.`);
-      - [ ] `showSourceEditWindow` (:405): scratch = клон
+      - [x] `showSourceEditWindow` (:405): scratch = клон
             `m.Sources[i]` вместо `ToProxySourceV4()`;
-      - [ ] `setNodeEnabled` (:215-230) — правка `DisabledNodes` копии
+      - [x] `setNodeEnabled` (:215-230) — правка `DisabledNodes` копии
             Source;
-      - [ ] Fold-вкладка: `syncFoldFormFromModel` (:554) и
+      - [x] Fold-вкладка: `syncFoldFormFromModel` (:554) и
             `foldTagPrefix` (`source_fold_tab.go:206`) — на `Source.Fold`
             / `Source.TagSpec`;
-      - [ ] `applyProxyEditToSource` (:232-313) удалить; Apply =
+      - [x] `applyProxyEditToSource` (:232-313) удалить; Apply =
             `m.Sources[i] = clone` + `BumpRevision()`;
             `serializeParserAfterSourceEdit` (:315-336) упростить;
-      - [ ] chain-wiring (:476, :516) — на canonical из W2.
-- [ ] `ui/configurator/business/detour.go`: сигнатуры
+      - [x] chain-wiring (:476, :516) — на canonical из W2.
+- [x] `ui/configurator/business/detour.go`: сигнатуры
       `DetourOptions`/`DetourOptionsWithNodes` (:47, :122) —
       `*configtypes.ProxySource` → `*corestate.Source`; поправить
       компиляцию тестов-потребителей (семантику не менять, риск Р7).
-- [ ] Дубли-правки:
-      - [ ] `business/direction_rename.go:120-130` — legacy-правки
+- [x] Дубли-правки:
+      - [x] `business/direction_rename.go:120-130` — legacy-правки
             (`model.ParserConfig.Outbounds`, `Proxies[i].Outbounds`)
             удалить; остаются `GlobalOutbounds` + `Sources[i].Outbounds`.
-      - [ ] `presentation/presenter_sync.go:249-260` — одиночный
+      - [x] `presentation/presenter_sync.go:249-260` — одиночный
             `SyncOutboundsWithTemplate(GlobalOutbounds)`.
-      - [ ] `presentation/presenter_state.go:176-185` — одиночный
+      - [x] `presentation/presenter_state.go:176-185` — одиночный
             `SyncOutboundsWithTemplate(state.Connections.Outbounds)`.
-- [ ] Тесты: `TestRenameDirectionTouchesBothViews`
+- [x] Тесты: `TestRenameDirectionTouchesBothViews`
       (`direction_rename_test.go:105`) → `TestRenameDirection_CanonicalOnly`;
       компиляционная правка `detour_test.go`,
       `configurator_helpers_test.go`.
-- [ ] `go build ./...` + `go test ./ui/...` зелёные.
+- [x] `go build ./...` + `go test ./ui/...` зелёные.
 
 ## W4 — Снос обратных синков
 

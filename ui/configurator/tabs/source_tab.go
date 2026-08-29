@@ -15,7 +15,6 @@
 package tabs
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -978,39 +977,12 @@ func nodeDisplayLine(node *config.ParsedNode) string {
 func CreateDirectionsTab(presenter *wizardpresentation.WizardPresenter) fyne.CanvasObject {
 	guiState := presenter.GUIState()
 
-	// Ensure model.ParserConfig is set so configurator can edit it (configurator reads via editPresenter.Model()).
-	m := presenter.Model()
-	if m.ParserConfig == nil {
-		pc := &config.ParserConfig{}
-		raw := strings.TrimSpace(m.ParserConfigJSON)
-		if raw != "" {
-			if err := json.Unmarshal([]byte(raw), pc); err != nil {
-				debuglog.DebugLog("source_tab: initial parse of ParserConfigJSON failed: %v", err)
-			}
-		}
-		m.ParserConfig = pc
-	}
-
 	onConfiguratorApply := func() {
 		m := presenter.Model()
-		// SPEC 052 phase 8: outbounds-configurator мутирует m.ParserConfig
-		// (legacy view); переносим назад в canonical Sources/GlobalOutbounds,
-		// потом re-derive ParserConfig (round-trip).
-		if m.ParserConfig != nil {
-			m.GlobalOutbounds = append([]configtypes.Direction(nil), m.ParserConfig.ParserConfig.Outbounds...)
-			// Per-source outbounds: ParserConfig.Proxies[i] построен из
-			// m.Sources[i] через AsParserConfig (1:1 порядок), поэтому
-			// обратный sync безопасен по тому же индексу. Без этого правки
-			// при Scope ≠ "For All" терялись на Save — state.json пишет
-			// m.Sources[i].Outbounds, а они не обновлялись.
-			proxies := m.ParserConfig.ParserConfig.Proxies
-			for i := range m.Sources {
-				if i >= len(proxies) {
-					break
-				}
-				m.Sources[i].Outbounds = append([]configtypes.Direction(nil), proxies[i].Outbounds...)
-			}
-		}
+		// SPEC 117: конфигуратор мутирует canonical
+		// (model.GlobalOutbounds / model.Sources[i].Outbounds) напрямую —
+		// копировать назад больше нечего. Здесь остаются только производные
+		// эффекты правки: протухание превью и обновление зависимых списков.
 		m.BumpRevision()
 		m.RefreshDerivedParserConfig()
 		m.PreviewNeedsParse = true

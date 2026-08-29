@@ -32,7 +32,7 @@ func contains(s []string, v string) bool {
 
 func TestDetourOptions_NoneFirstAndSelected(t *testing.T) {
 	m := modelWithOutbounds(t, "proxy", "ru-vpn")
-	opts, sel := DetourOptions(m, &configtypes.ProxySource{}, none)
+	opts, sel := DetourOptions(m, &wizardmodels.Source{}, none)
 	if len(opts) == 0 || opts[0] != none {
 		t.Fatalf("first option must be %q, got %v", none, opts)
 	}
@@ -46,7 +46,7 @@ func TestDetourOptions_NoneFirstAndSelected(t *testing.T) {
 
 func TestDetourOptions_ExcludesOwnGroups(t *testing.T) {
 	m := modelWithOutbounds(t, "proxy", "ru-vpn")
-	src := &configtypes.ProxySource{
+	src := &wizardmodels.Source{
 		Outbounds: []configtypes.Direction{{Tag: "my-local-auto", Type: "urltest"}},
 	}
 	opts, _ := DetourOptions(m, src, none)
@@ -96,7 +96,7 @@ func TestDetourOptions_ExcludesBuiltinsAndAuto(t *testing.T) {
 
 func TestDetourOptions_DanglingSelectionKept(t *testing.T) {
 	m := modelWithOutbounds(t, "proxy")
-	src := &configtypes.ProxySource{DetourTag: "ghost-group"} // not in available
+	src := &wizardmodels.Source{DetourTag: "ghost-group"} // not in available
 	opts, sel := DetourOptions(m, src, none)
 	if sel != "ghost-group" {
 		t.Errorf("selected = %q, want the dangling tag", sel)
@@ -127,7 +127,7 @@ func modelWithServerSource(t *testing.T, label, uri string, groupTags ...string)
 
 func TestDetourOptionsWithNodes_OffersServerSources(t *testing.T) {
 	m := modelWithServerSource(t, "WARP hop", detourTestServerURI, "proxy")
-	opts, sel, choices := DetourOptionsWithNodes(m, &configtypes.ProxySource{}, none)
+	opts, sel, choices := DetourOptionsWithNodes(m, &wizardmodels.Source{}, none)
 	if sel != none {
 		t.Errorf("selected = %q, want %q", sel, none)
 	}
@@ -162,7 +162,7 @@ func TestDetourOptionsWithNodes_UsesNodeTagOverLabel(t *testing.T) {
 	m := modelWithServerSource(t, "WARP hop", detourTestServerURI)
 	m.Sources[0].NodeTag = "🔥🎭 WARP (MASQUE)"
 
-	_, _, choices := DetourOptionsWithNodes(m, &configtypes.ProxySource{}, none)
+	_, _, choices := DetourOptionsWithNodes(m, &wizardmodels.Source{}, none)
 	c := choices[detourNodeMarker+"WARP hop"]
 	if c.NodeTag != "🔥🎭 WARP (MASQUE)" {
 		t.Errorf("NodeTag = %q, ожидался тег узла, а не подпись", c.NodeTag)
@@ -181,7 +181,7 @@ func TestDetourOptionsWithNodes_OffersConfigJSONOnlySource(t *testing.T) {
 		ConfigJSON: json.RawMessage(`{"type":"vless","server":"h.example.com","server_port":443}`),
 	}}
 
-	opts, _, choices := DetourOptionsWithNodes(m, &configtypes.ProxySource{}, none)
+	opts, _, choices := DetourOptionsWithNodes(m, &wizardmodels.Source{}, none)
 	want := detourNodeMarker + "WARP hop"
 	if !contains(opts, want) {
 		t.Fatalf("источник с ручным JSON обязан предлагаться как %q, получено %v", want, opts)
@@ -193,7 +193,7 @@ func TestDetourOptionsWithNodes_OffersConfigJSONOnlySource(t *testing.T) {
 
 func TestDetourOptionsWithNodes_ExcludesOwnURI(t *testing.T) {
 	m := modelWithServerSource(t, "WARP hop", detourTestServerURI)
-	src := &configtypes.ProxySource{Connections: []string{detourTestServerURI}}
+	src := &wizardmodels.Source{URI: detourTestServerURI}
 	opts, _, _ := DetourOptionsWithNodes(m, src, none)
 	if contains(opts, detourNodeMarker+"WARP hop") {
 		t.Errorf("a source must not chain through itself, got %v", opts)
@@ -202,7 +202,7 @@ func TestDetourOptionsWithNodes_ExcludesOwnURI(t *testing.T) {
 
 func TestDetourOptionsWithNodes_SelectedByTag(t *testing.T) {
 	m := modelWithServerSource(t, "WARP hop", detourTestServerURI)
-	src := &configtypes.ProxySource{
+	src := &wizardmodels.Source{
 		DetourNodeSourceID: "01SRV0000000000000000000",
 		DetourNodeTag:      "WARP hop",
 		DetourNodeLabel:    "stale label",
@@ -218,7 +218,7 @@ func TestDetourOptionsWithNodes_SelectedByTag(t *testing.T) {
 
 func TestDetourOptionsWithNodes_DanglingTagKept(t *testing.T) {
 	m := modelWithOutbounds(t, "proxy")
-	src := &configtypes.ProxySource{DetourNodeTag: "gone-hop-tag", DetourNodeLabel: "gone hop"}
+	src := &wizardmodels.Source{DetourNodeTag: "gone-hop-tag", DetourNodeLabel: "gone hop"}
 	opts, sel, choices := DetourOptionsWithNodes(m, src, none)
 	want := detourNodeMarker + "gone hop"
 	if sel != want || !contains(opts, want) {

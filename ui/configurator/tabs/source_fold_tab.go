@@ -17,7 +17,6 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
-	"singbox-launcher/core/config"
 	"singbox-launcher/core/config/configtypes"
 	"singbox-launcher/core/template"
 	"singbox-launcher/internal/locale"
@@ -203,9 +202,11 @@ func templateVarChoicesForFold(vars []template.TemplateVar, varName string) auto
 }
 
 // foldTagPrefix — префикс тегов подписки, как его увидит сборка.
-func foldTagPrefix(p *config.ProxySource) string {
-	if p == nil {
+//
+// SPEC 117: читает canonical state.Source (Tag — *TagSpec; nil = префикса нет).
+func foldTagPrefix(p *wizardmodels.Source) string {
+	if p == nil || p.Tag == nil {
 		return ""
 	}
-	return p.TagPrefix
+	return p.Tag.Prefix
 }

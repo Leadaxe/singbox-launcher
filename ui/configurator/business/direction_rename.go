@@ -92,10 +92,10 @@ func RenameDirection(model *wizardmodels.WizardModel, oldTag, newTag string) int
 	// из тега на каждой сборке, и ссылка на старое имя двойника осталась
 	// бы висеть на несуществующей группе.
 	//
-	// Правим ОБА представления Направлений: canonical GlobalOutbounds и
-	// legacy-вид model.ParserConfig, с которым работает форма. Они
-	// синхронизируются в одну сторону уже после этого вызова, и
-	// переименовать только один значило бы, что второй перетрёт правку.
+	// Правки ровно две и обе canonical (SPEC 117): GlobalOutbounds и
+	// локальные Направления источников (Sources[i].Outbounds). Legacy-вид
+	// model.ParserConfig — одноразовая проекция и здесь не трогается:
+	// четвёртой копии имени больше не существует.
 	renameIn := func(dirs []configtypes.Direction) {
 		for i := range dirs {
 			d := &dirs[i]
@@ -115,13 +115,7 @@ func RenameDirection(model *wizardmodels.WizardModel, oldTag, newTag string) int
 		}
 	}
 	renameIn(model.GlobalOutbounds)
-	if model.ParserConfig != nil {
-		renameIn(model.ParserConfig.ParserConfig.Outbounds)
-		// Per-source группы тоже могут предлагать Направление опцией.
-		for i := range model.ParserConfig.ParserConfig.Proxies {
-			renameIn(model.ParserConfig.ParserConfig.Proxies[i].Outbounds)
-		}
-	}
+	// Per-source группы тоже могут предлагать Направление опцией.
 	for i := range model.Sources {
 		renameIn(model.Sources[i].Outbounds)
 	}
